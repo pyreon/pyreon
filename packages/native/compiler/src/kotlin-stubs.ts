@@ -1839,6 +1839,7 @@ enum class PyreonFlowControlsPosition { TopLeft, TopRight, BottomLeft, BottomRig
 data class PyreonFlowControlsStyle(val showZoomIn: Boolean = true, val showZoomOut: Boolean = true, val showFitView: Boolean = true, val showLock: Boolean = false, val position: PyreonFlowControlsPosition = PyreonFlowControlsPosition.BottomLeft)
 data class PyreonFlowMiniMapStyle(val nodeColor: String = "#e2e8f0", val maskColor: String = "#000000", val width: Double = 200.0, val height: Double = 150.0, val pannable: Boolean = true, val zoomable: Boolean = true)
 data class PyreonFlowNodeResizerConfig(val minWidth: Double = 50.0, val minHeight: Double = 30.0, val handleSize: Double = 8.0, val showEdgeHandles: Boolean = false)
+data class PyreonFlowNodeToolbarConfig(val position: String = "top", val align: String = "center", val offset: Double = 8.0, val showOnSelect: Boolean = true)
 
 @Composable
 fun <T> PyreonFlowView(
@@ -1852,6 +1853,8 @@ fun <T> PyreonFlowView(
   ariaLabel: String = "Flow diagram",
   nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
   nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
+  nodeToolbarConfig: (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { null },
+  nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean) -> Unit = { _, _ -> },
   nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
 ) {}
 @Composable
@@ -1866,6 +1869,8 @@ fun <T> PyreonFlowView(
   ariaLabel: String = "Flow diagram",
   nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
   nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
+  nodeToolbarConfig: (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { null },
+  nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean) -> Unit = { _, _ -> },
   nodeContent: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit,
 ) {}
 

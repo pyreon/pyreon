@@ -227,8 +227,10 @@ fun <T> PyreonFlowView(
     ariaLabel: String = "Flow diagram",
     nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
     nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
+    nodeToolbarConfig: (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { null },
+    nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean) -> Unit = { _, _ -> },
     nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
-) = PyreonFlowView(state, modifier, edgeColor, edgeWidth, background, controls, miniMap, ariaLabel, nodeHandles, nodeResizer) { node, _, _ -> nodeContent(node) }
+) = PyreonFlowView(state, modifier, edgeColor, edgeWidth, background, controls, miniMap, ariaLabel, nodeHandles, nodeResizer, nodeToolbarConfig, nodeToolbar) { node, _, _ -> nodeContent(node) }
 
 @Composable
 fun <T> PyreonFlowView(
@@ -242,6 +244,8 @@ fun <T> PyreonFlowView(
     ariaLabel: String = "Flow diagram",
     nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
     nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
+    nodeToolbarConfig: (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { null },
+    nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean) -> Unit = { _, _ -> },
     nodeContent: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit,
 ) {
     val density = LocalDensity.current
@@ -539,6 +543,29 @@ fun <T> PyreonFlowView(
                         },
                 ) { drawCircle(androidx.compose.ui.graphics.Color.Blue.copy(alpha = 0.35f)) }
             }
+        }
+
+        // Toolbars live outside the graph transform: their anchor follows the
+        // node through pan/zoom, while their controls remain screen-sized.
+        for (node in visibleNodes) {
+            val config = nodeToolbarConfig(node) ?: continue
+            val selected = state.isNodeSelected(node.id)
+            if (config.showOnSelect && !selected) continue
+            val absolute = state.getAbsolutePosition(node.id)
+            val dimensions = state.getNodeDimensions(node.id)
+            val placement = pyreonFlowNodeToolbarPlacement(
+                PyreonFlowNodeBox(absolute.x, absolute.y, dimensions.width, dimensions.height),
+                state.viewport,
+                config,
+            )
+            Box(
+                Modifier
+                    .offset { IntOffset(placement.x.roundToInt(), placement.y.roundToInt()) }
+                    .graphicsLayer {
+                        translationX = (-placement.anchorX * size.width).toFloat()
+                        translationY = (-placement.anchorY * size.height).toFloat()
+                    },
+            ) { nodeToolbar(node, selected) }
         }
 
         if (controls != null) {

@@ -413,6 +413,21 @@ private struct PyreonFlowNodeSizePreference: PreferenceKey {
     }
 }
 
+@available(iOS 17.0, macOS 14.0, *)
+private struct PyreonFlowToolbarPortal: View {
+    let placement: PyreonFlowNodeToolbarPlacement
+    let content: AnyView
+    @State private var contentSize: CGSize = .zero
+    var body: some View {
+        content.fixedSize().background(GeometryReader { proxy in
+            Color.clear.onAppear { contentSize = proxy.size }
+                .onChange(of: proxy.size) { _, size in contentSize = size }
+        }).position(
+            x: placement.x + (0.5 - placement.anchorX) * contentSize.width,
+            y: placement.y + (0.5 - placement.anchorY) * contentSize.height)
+    }
+}
+
 /// A native SwiftUI host for `PyreonFlowState`: it measures its container,
 /// draws edges and nodes under one viewport, and supplies selection, dragging,
 /// panning, zooming, and accessibility without a web view.
@@ -427,6 +442,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private let ariaLabel: String
     private let nodeHandles: (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig]
     private let nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig?
+    private let nodeToolbarConfig: (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig?
+    private let nodeToolbar: (PyreonFlowNode<T>, Bool) -> AnyView?
     private let nodeContent: (PyreonFlowNode<T>, Bool, Bool) -> NodeContent
 
     @State private var nodeDragStart: [String: PyreonXYPosition] = [:]
@@ -450,6 +467,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         ariaLabel: String = "Flow diagram",
         nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] },
         nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil },
+        nodeToolbarConfig: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { _ in nil },
+        nodeToolbar: @escaping (PyreonFlowNode<T>, Bool) -> AnyView? = { _, _ in nil },
         @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent
     ) {
         self.state = state
@@ -461,6 +480,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         self.ariaLabel = ariaLabel
         self.nodeHandles = nodeHandles
         self.nodeResizer = nodeResizer
+        self.nodeToolbarConfig = nodeToolbarConfig
+        self.nodeToolbar = nodeToolbar
         self.nodeContent = { node, _, _ in nodeContent(node) }
     }
 
@@ -474,6 +495,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         ariaLabel: String = "Flow diagram",
         nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] },
         nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil },
+        nodeToolbarConfig: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { _ in nil },
+        nodeToolbar: @escaping (PyreonFlowNode<T>, Bool) -> AnyView? = { _, _ in nil },
         @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>, Bool, Bool) -> NodeContent
     ) {
         self.state = state
@@ -485,6 +508,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         self.ariaLabel = ariaLabel
         self.nodeHandles = nodeHandles
         self.nodeResizer = nodeResizer
+        self.nodeToolbarConfig = nodeToolbarConfig
+        self.nodeToolbar = nodeToolbar
         self.nodeContent = nodeContent
     }
 
@@ -519,6 +544,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 }
                 .scaleEffect(state.viewport.zoom, anchor: .topLeading)
                 .offset(x: state.viewport.x, y: state.viewport.y)
+
+                nodeToolbarsLayer
 
                 if let start = selectionStart, let current = selectionCurrent {
                     let x1 = start.x * state.zoom + state.viewport.x, y1 = start.y * state.zoom + state.viewport.y
@@ -661,6 +688,23 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private var nodesLayer: some View {
         ForEach(visibleNodes, id: \.id) { node in
             measuredNodeView(node)
+        }
+    }
+
+    private var nodeToolbarsLayer: some View {
+        ForEach(visibleNodes, id: \.id) { node in
+            let selected = state.isNodeSelected(node.id)
+            if let config = nodeToolbarConfig(node), (!config.showOnSelect || selected), let toolbar = nodeToolbar(node, selected) {
+                let absolute = state.getAbsolutePosition(node.id)
+                let dimensions = state.getNodeDimensions(node.id)
+                PyreonFlowToolbarPortal(
+                    placement: pyreonFlowNodeToolbarPlacement(
+                        node: PyreonFlowRect(x: absolute.x, y: absolute.y, width: dimensions.width, height: dimensions.height),
+                        viewport: state.viewport,
+                        config: config),
+                    content: toolbar)
+                    .zIndex(10)
+            }
         }
     }
 
