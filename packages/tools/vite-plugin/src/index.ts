@@ -2978,11 +2978,11 @@ const AS_SPLIT_RE = /\s{1,10}as\s{1,10}/
 export function plainMarkerLocalNames(code: string): { state: string; derived: string } {
   const state = new Set(['state'])
   const derived = new Set(['derived'])
-  const IMPORT_RE = /import\s*\{([^}]*)\}\s*from\s*['"]@pyreon\/core\/plain['"]/g
+  const IMPORT_RE = /import\s{0,10}\{([^}]*)\}\s{0,10}from\s{0,10}['"]@pyreon\/core\/plain['"]/g
   let m: RegExpExecArray | null
   while ((m = IMPORT_RE.exec(code)) !== null) {
     for (const spec of m[1]!.split(',')) {
-      const parts = spec.trim().split(/\s+as\s+/)
+      const parts = spec.trim().split(AS_SPLIT_RE)
       const imported = parts[0]?.trim()
       const local = (parts[1] ?? parts[0])?.trim()
       if (!imported || !local || !/^\w+$/.test(local)) continue
