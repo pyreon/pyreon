@@ -11,6 +11,7 @@ const EXPECTED = [
   'CalendarChart', 'ParallelChart', 'PolarChart', 'SingleAxisChart', 'RiverChart', 'MapChart',
   'funnelToSvg', 'treemapToSvg', 'sunburstToSvg', 'treeToSvg', 'sankeyToSvg', 'graphToSvg',
   'calendarToSvg', 'parallelToSvg', 'polarToSvg', 'singleAxisToSvg', 'riverToSvg', 'geoToSvg', 'geoPointsToSvg',
+  'chartCapabilityScore',
   'compileOption', 'optionToSvg', 'planOption', 'compileFamily', 'familyToSvg',
   'resolveDataset', 'applyTransforms', 'graphicCommands', 'visualMapCommands', 'customCommands',
   'registerTheme', 'resolveTheme', 'registerLocale', 'numberFormatter', 'registerMap',

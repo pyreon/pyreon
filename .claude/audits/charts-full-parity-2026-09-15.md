@@ -49,6 +49,12 @@ for interaction, animation or accessibility parity.
 4. Complete the exact-engine bridge runtime API.
 5. Run browser plus iOS/Android conformance galleries and update documentation.
 
+## Progress checkpoints
+
+- [x] Versioned, machine-readable capability ledger with separate direct and
+  hosted scores, evidence paths, and a regression test that prevents a false
+  100% direct score while partial or pending rows remain.
+
 ## Exit gate
 
 Zero unclassified core inventory rows; green real-browser conformance; green
