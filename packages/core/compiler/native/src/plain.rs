@@ -2453,7 +2453,7 @@ fn collect_assignment_target_names_ordered(target: &AssignmentTarget, into: &mut
 
 /// The Plain Mode pre-pass, native. Returns `None` (JS `null`) when the
 /// module is not in the dialect — byte-untouched. Mirrors `transformPlain`.
-#[napi]
+#[napi(catch_unwind)]
 pub fn transform_plain(
     code: String,
     filename: String,

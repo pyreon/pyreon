@@ -18,6 +18,7 @@
  */
 import { h } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
+import type { VNodeChild } from '@pyreon/core'
 import { _tpl, mountChild } from '../index'
 
 const CSS = '.a { color: red }\n.b > i { top: 0 }'
@@ -26,8 +27,11 @@ describe('raw-text elements in real Chromium', () => {
   it('an entity-escaped <style> bake renders the ENTITIES literally (the pre-fix emit)', () => {
     const container = document.createElement('div')
     document.body.appendChild(container)
+    // A NativeItem is what a compiled template evaluates to; `mountChild` takes
+    // the VNodeChild union at the type level and dispatches on `__isNative` at
+    // runtime (the same shape-normalisation cast the compiled-path specs use).
     const cleanup = mountChild(
-      _tpl('<style>.a { color: red }&#10;.b &gt; i { top: 0 }</style>', () => null),
+      _tpl('<style>.a { color: red }&#10;.b &gt; i { top: 0 }</style>', () => null) as unknown as VNodeChild,
       container,
     )
     expect(container.querySelector('style')!.textContent).not.toBe(CSS)

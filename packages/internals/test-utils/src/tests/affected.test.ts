@@ -326,10 +326,14 @@ describe('isScriptFile — must AGREE with e2e-affected on scripts/**', () => {
     expect(isScriptFile('lint-baseline.json')).toBe(false) // root ratchet file — not scripts/
   })
 
-  it('still classifies script code files and rejects non-script paths', () => {
+  it('classifies ANY file under scripts/ (aligned with e2e-affected\'s forcesFullRun) and rejects other paths', () => {
     expect(isScriptFile('scripts/affected.ts')).toBe(true)
     expect(isScriptFile('scripts/bench/core/router.ts')).toBe(true)
-    expect(isScriptFile('scripts/README.md')).toBe(false)
+    // A non-code file under scripts/ is a script input too: e2e-affected already
+    // escalated on it, and this decider computing ∅ for the same path was the
+    // fail-closed-aggregator contradiction (a `.swift` harness, a `.sh`).
+    expect(isScriptFile('scripts/phase0/harness.swift')).toBe(true)
+    expect(isScriptFile('scripts/README.md')).toBe(true)
     expect(isScriptFile('packages/core/core/src/index.ts')).toBe(false)
   })
 })
@@ -571,6 +575,7 @@ describe('computeAffectedFlags', () => {
     it('docInputConsumer identifies the parser package', () => {
       expect(docInputConsumer('.claude/rules/anti-patterns.md')).toBe('@pyreon/mcp')
       expect(docInputConsumer('docs/patterns/keyed-lists.md')).toBe('@pyreon/mcp')
+      expect(docInputConsumer('.claude/rules/browser-packages.json')).toBe('@pyreon/lint')
       expect(docInputConsumer('docs/guides/routing.md')).toBeUndefined()
       expect(docInputConsumer('packages/tools/mcp/src/index.ts')).toBeUndefined()
     })

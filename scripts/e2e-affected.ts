@@ -45,7 +45,6 @@
  */
 
 import { gitChangedFilesZ } from './changed-files'
-import { execFileSync } from 'node:child_process'
 
 // ── Suite catalogue ────────────────────────────────────────────────────────
 // `name` is the matrix label + check name; `script` is the package.json

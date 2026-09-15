@@ -103,7 +103,12 @@ export function isRootFile(path: string): boolean {
  * structurally un-mergeable. The two deciders MUST agree on `scripts/**`.
  */
 export function isScriptFile(path: string): boolean {
-  return path.startsWith('scripts/') && /\.(ts|tsx|js|mjs|cjs|json)$/.test(path)
+  // ANY file under scripts/ — the same rule `e2e-affected.ts:forcesFullRun`
+  // applies. The two deciders gate the same downstream jobs, and when this
+  // one required a code extension a `scripts/**/*.swift` harness edit (or a
+  // `.sh`) computed `affected=∅` while the e2e decider ran every suite — the
+  // documented fail-closed-aggregator contradiction, from a NEW shape.
+  return path.startsWith('scripts/')
 }
 
 /**
@@ -143,6 +148,10 @@ export const SCRIPT_TEST_PACKAGE = '@pyreon/test-utils'
 export const DOC_INPUT_CONSUMERS: ReadonlyArray<{ match: (p: string) => boolean; pkg: string }> = [
   { match: (p) => p === '.claude/rules/anti-patterns.md', pkg: '@pyreon/mcp' },
   { match: (p) => p.startsWith('docs/patterns/'), pkg: '@pyreon/mcp' },
+  // `@pyreon/lint`'s `require-browser-smoke-test` loads this list at runtime
+  // and its runner tests construct it — a `.claude/**` change is docs-only
+  // for the heavy jobs, but this file's consumer must still run its tests.
+  { match: (p) => p === '.claude/rules/browser-packages.json', pkg: '@pyreon/lint' },
 ]
 
 /** The consuming package for a doc-input file, or undefined if it isn't one. */

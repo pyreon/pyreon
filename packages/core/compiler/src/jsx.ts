@@ -6042,7 +6042,8 @@ export function transformJSX_JS(
 /**
  * Elements whose content the HTML parser reads as RAW TEXT — character
  * references are NEVER decoded inside them (`<script>`/`<style>` and the
- * legacy raw-text set; `<noscript>` is raw text whenever scripting is
+ * legacy raw-text set — `<iframe>` is raw text too, but its content is a
+ * never-rendered fallback, so it is deliberately NOT here; `<noscript>` is raw text whenever scripting is
  * enabled, which the `<template>` parser's owner document may be). A baked
  * `&lt;` / `&#10;` therefore lands as the LITERAL characters, and an
  * `_ssr` bake mirroring `renderNode`'s full escape would corrupt the same
@@ -6054,7 +6055,6 @@ const RAW_TEXT_ELEMENTS = new Set([
   'script',
   'style',
   'xmp',
-  'iframe',
   'noembed',
   'noframes',
   'plaintext',

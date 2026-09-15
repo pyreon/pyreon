@@ -134,7 +134,7 @@ fn is_delegated_event(name: &str) -> bool {
 fn is_raw_text_element(tag: &str) -> bool {
     matches!(
         tag,
-        "script" | "style" | "xmp" | "iframe" | "noembed" | "noframes" | "plaintext" | "noscript"
+        "script" | "style" | "xmp" | "noembed" | "noframes" | "plaintext" | "noscript"
     )
 }
 
@@ -3991,7 +3991,12 @@ fn slice_span(span: Span, ctx: &Ctx) -> String {
 
 // ─── Main entry ──────────────────────────────────────────────────────────────
 
-#[napi]
+// `catch_unwind`: the JS side documents that a native PANIC falls back to
+// the JS backend instead of crashing the dev server — without this attribute
+// napi-rs does NOT catch unwinds, so a panic aborted the Vite process. (A
+// stack OVERFLOW is not an unwind and stays uncatchable; the JS backend is
+// the guard for pathological nesting.)
+#[napi(catch_unwind)]
 pub fn transform_jsx(
     code: String,
     filename: String,

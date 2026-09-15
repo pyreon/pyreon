@@ -12,13 +12,13 @@
  * never looked at. `-z` NUL-delimits the output and suppresses quoting
  * entirely, so the real name reaches the classifier.
  */
-import { execFileSync } from 'node:child_process'
+import { execFileSync, type StdioOptions } from 'node:child_process'
 
 export interface ChangedFilesOptions {
   cwd?: string
   /** Extra `git diff` arguments placed before the range (e.g. `--diff-filter=ACDMRTUXB`). */
   args?: string[]
-  stdio?: Parameters<typeof execFileSync>[2] extends { stdio?: infer S } ? S : never
+  stdio?: StdioOptions
 }
 
 /** Split `git diff -z` output — NUL-delimited, trailing NUL, never quoted. */

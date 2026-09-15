@@ -78,7 +78,6 @@
  */
 
 import { gitChangedFilesZ } from './changed-files'
-import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { isTestPath } from './test-paths'
@@ -485,9 +484,6 @@ export function evaluateGate(inp: GateInputs): GateResult {
  * sanitized value can't be interpreted as a shell metacharacter —
  * defense in depth on top of the BASE_REF allowlist.
  */
-function git(...args: string[]): string {
-  return execFileSync('git', args, { encoding: 'utf8' }).trim()
-}
 
 /**
  * The changed files, or `null` when the diff could not be OBTAINED.

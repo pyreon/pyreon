@@ -719,6 +719,19 @@ jobs:
       - name: Dependency Audit (no lockfile drift)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: git diff --exit-code bun.lock || (echo "::error::Lockfile is out of sync with package.json" && exit 1)
+      # ── every validate-fast gate no workflow step runs on its own ────────
+      # validate-fast is the pre-push wall; a hook is bypassed by
+      # PYREON_SKIP_PRE_PUSH / --no-verify / a merge that never came through
+      # a local push, so a gate that lived ONLY there was enforced by nobody
+      # (26 of 46 on 2026-09-15) while check-gates-wired reported it wired.
+      # `--ci-complement` computes the set at runtime (gates whose command no
+      # workflow file invokes), so nothing here is run twice and a gate added
+      # to validate-fast is enforced from its first PR. check-gates-wired
+      # fails if this step disappears.
+      - name: validate-fast gates not run elsewhere (ci-complement)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun scripts/validate-fast.ts --ci-complement
+
       # The trufflehog action `docker run`s ghcr.io/trufflesecurity/trufflehog
       # at runtime, and ghcr.io intermittently times out on the manifest fetch
       # (exit 125, before any scan). Pre-pull with retry + backoff so the
