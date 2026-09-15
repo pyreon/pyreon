@@ -694,7 +694,7 @@ export function desugarOptionChart(
     return undefined
   }
 
-  optionFields(raw, ['series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'visualMap', 'color'], 'option', warn)
+  optionFields(raw, ['series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'visualMap', 'color'], 'option', warn)
 
   for (const a of e.attrs) {
     if (a.kind === 'event' && a.name !== 'selectindex') {
@@ -851,6 +851,78 @@ export function desugarOptionChart(
     set('data', { kind: 'array', elements: rows })
     for (const name of ['open', 'high', 'low', 'close', 'x']) set(name, { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: name } })
     return { kind: 'jsx-element', tag: 'CandlestickChart', attrs, children: [] }
+  }
+
+  if (kind === 'parallel') {
+    optionFields(series, ['type', 'name', 'data', 'lineStyle', 'color'], 'option.series[0]', warn)
+    const rawAxes = literalOf(objectField(raw, 'parallelAxis'), resolve)
+    const data = literalOf(objectField(series, 'data'), resolve)
+    if (rawAxes?.kind !== 'array' || data?.kind !== 'array') {
+      warn('<OptionChart option.parallelAxis>: native parallel coordinates need literal axes and data rows; emitting nothing.')
+      return undefined
+    }
+    const axes: ExprIR[] = []
+    for (let i = 0; i < rawAxes.elements.length; i++) {
+      const axis = literalOf(rawAxes.elements[i], resolve)
+      if (axis?.kind !== 'object') {
+        warn(`<OptionChart option.parallelAxis[${i}]>: a native parallel axis must be a literal object; emitting nothing.`)
+        return undefined
+      }
+      const dim = litNumber(objectField(axis, 'dim')) ?? i
+      if (!Number.isInteger(dim) || dim < 0) {
+        warn(`<OptionChart option.parallelAxis[${i}].dim>: a native parallel dimension must be a non-negative integer; emitting nothing.`)
+        return undefined
+      }
+      optionFields(axis, ['dim', 'name', 'type', 'data', 'min', 'max', 'inverse'], `option.parallelAxis[${i}]`, warn)
+      const fields: { name: string; value: ExprIR }[] = [
+        { name: 'name', value: litString(objectField(axis, 'name')) === undefined ? lit(`dim ${dim}`) : objectField(axis, 'name')! },
+      ]
+      if (litString(objectField(axis, 'type')) === 'category') {
+        const categories = literalOf(objectField(axis, 'data'), resolve)
+        if (categories?.kind !== 'array' || categories.elements.some((v) => litString(v) === undefined)) {
+          warn(`<OptionChart option.parallelAxis[${i}].data>: a native category axis needs literal string categories; emitting nothing.`)
+          return undefined
+        }
+        fields.push({ name: 'type', value: lit('category') }, { name: 'categories', value: categories })
+      } else {
+        const min = litNumber(objectField(axis, 'min'))
+        const max = litNumber(objectField(axis, 'max'))
+        if (min !== undefined && max !== undefined) fields.push({ name: 'domain', value: { kind: 'object', fields: [{ name: 'min', value: optionNumberLiteral(min) }, { name: 'max', value: optionNumberLiteral(max) }] } })
+      }
+      if (objectField(axis, 'inverse')?.kind === 'literal' && objectField(axis, 'inverse')?.value === true) fields.push({ name: 'inverse', value: lit(true) })
+      axes[dim] = { kind: 'object', fields }
+    }
+    if (axes.some((axis) => axis === undefined)) {
+      warn('<OptionChart option.parallelAxis>: native parallel dimensions must be contiguous; emitting nothing.')
+      return undefined
+    }
+    for (let i = 0; i < data.elements.length; i++) {
+      const row = literalOf(data.elements[i], resolve)
+      if (row?.kind !== 'array' || row.elements.length !== axes.length) {
+        warn(`<OptionChart option.series[0].data[${i}]>: a native parallel datum needs one literal value per axis; emitting nothing.`)
+        return undefined
+      }
+    }
+    const lineStyle = literalOf(objectField(series, 'lineStyle'), resolve)
+    const parallelFields: { name: string; value: ExprIR }[] = []
+    if (lineStyle?.kind === 'object') {
+      optionFields(lineStyle, ['width', 'opacity', 'color'], 'option.series[0].lineStyle', warn)
+      const width = litNumber(objectField(lineStyle, 'width'))
+      const opacity = litNumber(objectField(lineStyle, 'opacity'))
+      const color = litString(objectField(lineStyle, 'color'))
+      if (width !== undefined) parallelFields.push({ name: 'lineWidth', value: optionNumberLiteral(width) })
+      if (opacity !== undefined) parallelFields.push({ name: 'lineOpacity', value: optionNumberLiteral(opacity) })
+      if (color !== undefined) parallelFields.push({ name: 'lineColor', value: lit(color) })
+    }
+    const parallel = literalOf(objectField(raw, 'parallel'), resolve)
+    if (parallel?.kind === 'object') {
+      optionFields(parallel, ['layout'], 'option.parallel', warn)
+      if (litString(objectField(parallel, 'layout')) === 'vertical') warn('<OptionChart option.parallel.layout>: vertical native parallel coordinates are not supported; rendering horizontally.')
+    }
+    set('axes', { kind: 'array', elements: axes })
+    set('rows', data)
+    if (parallelFields.length > 0) set('parallel', { kind: 'object', fields: parallelFields })
+    return { kind: 'jsx-element', tag: 'ParallelChart', attrs, children: [] }
   }
 
   if (kind === 'heatmap' && litString(objectField(series, 'coordinateSystem')) === 'calendar') {

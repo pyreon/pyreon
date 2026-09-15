@@ -2,4 +2,4 @@
 '@pyreon/native-compiler': patch
 ---
 
-Lower static ECharts calendar heatmap options through the native CalendarChart engine on SwiftUI and Compose, preserving literal year or date ranges and dated numeric values.
+Lower static option-format calendar heatmap and parallel-coordinate charts through their native engines on SwiftUI and Compose, preserving literal ranges, values, axes, categories, domains, and line styles.
