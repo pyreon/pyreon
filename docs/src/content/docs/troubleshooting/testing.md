@@ -115,6 +115,12 @@ real browsers never fire `hashchange` for pushState/replaceState (WHATWG: only f
 
 ---
 
+### Running vitest from the repo ROOT ran every file on vitest's DEFAULTS — a 5,000ms timeout and parallel files — because the root had no config
+
+(2026-09, surfaced by a chart-lowering matrix). Each package's `vitest.config.ts` (bun aliases, the shared setup file, the 20s default, `@pyreon/native-compiler`'s 180s budget + serial files for its swiftc/kotlinc subprocesses) applies only when vitest starts INSIDE that package. `bunx vitest run packages/native/compiler/src/tests/chart-*.test.ts` from the root — the natural way to run a hand-picked matrix across packages — found no config and ran the defaults: six kotlinc specs failed `Test timed out in 5000ms` (7–31s each) while every one passed from the package dir, and the parallel JVM stampede made it worse under load, so it read as a load flake in the tests rather than a missing config. **Fix: the root `vitest.config.mts` is a ROUTER** — `test.projects: ['packages/*/*/vitest.config.ts', 'examples/*/vitest.config.ts']` — so a root invocation resolves each file to its owning package and runs it under that package's config (measured: the same two files 6 failed → 32 passed; a warm reactivity spec 0.65s wall from the root). It changes nothing for `bun run test`, which still runs each package from its own directory. **Rule: in a monorepo where per-package configs carry load-bearing overrides, the root must route to them, or the ONE invocation shape that spans packages silently drops every override — and "passes in isolation, times out in a matrix" then looks like contention when it is configuration.** Totality (every per-package config covered by a router glob) is locked by `test-utils/src/tests/root-vitest-projects.test.ts`, bisect-verified.
+
+---
+
 ### Running `bun test`
 
 Use `bun run test` (runs vitest via package scripts)
