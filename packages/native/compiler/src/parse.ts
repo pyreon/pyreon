@@ -9020,16 +9020,12 @@ function tryDeclFromSyncedSignal(node: AnyNode, ctx: ParseCtx): DeclIR | null {
  * a real, useful subset now, everything else named as a follow-up rather
  * than silently missing:
  *   - Each node: `id` (string literal), optional `type` (string literal),
- *     `position: { x, y }` (numeric expressions), `data` (an object literal —
- *     the SAME field set across every node, so ONE row struct can be
- *     synthesized), optional numeric `width`/`height`.
+ *     `position: { x, y }` (numeric expressions), `data` (an object literal;
+ *     heterogeneous field sets synthesize one optional union model), optional
+ *     numeric `width`/`height`.
  *   - Each edge: optional `id` (string literal; absent ids use the web
  *     engine's deterministic `edgeId()` fallback), `source`/`target` (string literals), optional
  *     `type`/`label` (string literals) and `animated` (boolean literal).
- *   - `viewport`/`minZoom`/`maxZoom` config fields are NOT yet recognized —
- *     the native port always starts at the default viewport `(0,0,1)` /
- *     zoom range `[0.1, 4]` (the same defaults the web engine uses absent
- *     explicit config).
  * Anything outside that shape warns + falls back to silent-drop, same as
  * every other v1 recognizer in this file.
  */
@@ -9386,15 +9382,12 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     )
     return null
   }
-  // Every node's `data` must share the SAME field set so ONE row struct can
-  // be synthesized — the same uniform-row assumption `createTableState`
-  // makes about its data source.
-  const dataFieldSets = new Set(
-    nodesOut.map((n) => (n.data.kind === 'object' ? n.data.fields.map((f) => f.name).sort().join(',') : '<non-object>')),
-  )
-  if (nodesOut.some((n) => n.data.kind !== 'object') || dataFieldSets.size > 1) {
+  // Node data remains object-shaped, but different node types may naturally
+  // carry different fields. The emitters synthesize their union shape and
+  // make fields absent from any row optional.
+  if (nodesOut.some((n) => n.data.kind !== 'object')) {
     ctx.warnings.push(
-      `${factory} declaration \`${name}\`: every node's \`data\` must be an object literal with the SAME field set, so one row struct can be synthesized (v1). Falling back to silent-drop.`,
+      `${factory} declaration \`${name}\`: every node's \`data\` must be an object literal so a native data model can be synthesized. Falling back to silent-drop.`,
     )
     return null
   }

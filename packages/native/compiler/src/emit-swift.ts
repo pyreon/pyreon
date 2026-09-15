@@ -435,7 +435,7 @@ function withEnumReturnCtx<T>(fn: () => T): T {
 function expectedStructFor(fields: readonly { name: string }[]): string | null {
   const t = _expectedType
   if (t === undefined || t.kind !== 'typeRef') return null
-  const st = _declaredStructs.find((s) => s.name === t.name)
+  const st = [..._declaredStructs, ..._synthExprStructs].find((s) => s.name === t.name)
   if (st === undefined) return null
   const given = new Set(fields.map((f) => f.name))
   for (const g of given) if (!st.fields.some((f) => f.name === g)) return null
@@ -4140,18 +4140,37 @@ function emitSwiftDecl(
     // reintroducing. Registering FIRST (via the shared registry) guarantees
     // this name is the SAME one each node's `data: {...}` literal resolves
     // to below, since both hit the identical field-set key.
+    const dataRows = d.nodes.flatMap((node) => node.data.kind === 'object' ? [node.data.fields] : [])
     const firstData = d.nodes[0]?.data
     const rowFields = firstData?.kind === 'object' ? firstData.fields : []
-    const rowType = d.dataType !== undefined
-      ? swiftType(d.dataType)
-      : resolveSwiftObjectStructName(rowFields) ?? 'Any'
+    let inferredRowType: TypeIR | undefined
+    let rowType = d.dataType !== undefined ? swiftType(d.dataType) : 'Any'
+    if (d.dataType === undefined && dataRows.length > 0) {
+      const allNames = [...new Set(dataRows.flatMap((fields) => fields.map((field) => field.name)))]
+      const heterogeneous = dataRows.some((fields) => fields.length !== allNames.length || allNames.some((name) => !fields.some((field) => field.name === name)))
+      if (heterogeneous) {
+        const fields = allNames.map((name) => {
+          const values = dataRows.flatMap((row) => row.find((field) => field.name === name)?.value ?? [])
+          const distinct = [...new Map(values.map((value) => { const type = inferType(value, _activeInferCtx); return [JSON.stringify(type), type] })).values()]
+          const base: TypeIR = distinct.length === 1 ? distinct[0]! : { kind: 'union', branches: distinct }
+          return { name, type: values.length < dataRows.length ? { kind: 'union', branches: [base, { kind: 'undefined' }] } as TypeIR : base }
+        })
+        const name = `__Obj${_synthExprStructs.length}`
+        _synthExprStructs.push({ name, fields })
+        inferredRowType = { kind: 'typeRef', name, args: [] }
+        rowType = name
+      } else {
+        rowType = resolveSwiftObjectStructName(rowFields) ?? 'Any'
+      }
+    }
+    const expectedRowType = d.dataType ?? inferredRowType
     const nodeLits = d.nodes
       .map((n) => {
         const parts = [
           `id: ${JSON.stringify(n.id)}`,
           ...(n.type !== undefined ? [`type: ${JSON.stringify(n.type)}`] : []),
           `position: PyreonXYPosition(x: ${emitSwiftExpr(n.positionX, 0)}, y: ${emitSwiftExpr(n.positionY, 0)})`,
-          `data: ${withExpectedType(d.dataType, () => emitSwiftExpr(n.data, 0))}`,
+          `data: ${withExpectedType(expectedRowType, () => emitSwiftExpr(n.data, 0))}`,
           ...(n.width !== undefined ? [`width: ${emitSwiftExpr(n.width, 0)}`] : []),
           ...(n.height !== undefined ? [`height: ${emitSwiftExpr(n.height, 0)}`] : []),
           ...(n.draggable !== undefined ? [`draggable: ${n.draggable}`] : []),

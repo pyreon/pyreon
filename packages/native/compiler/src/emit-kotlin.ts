@@ -384,7 +384,7 @@ let _expectedTypeKotlin: TypeIR | undefined
 function expectedStructForKotlin(fields: readonly { name: string }[]): string | null {
   const t = _expectedTypeKotlin
   if (t === undefined || t.kind !== 'typeRef') return null
-  const st = _declaredStructs.find((s) => s.name === t.name)
+  const st = [..._declaredStructs, ..._synthExprStructs].find((s) => s.name === t.name)
   if (st === undefined) return null
   const given = new Set(fields.map((f) => f.name))
   for (const g of given) if (!st.fields.some((f) => f.name === g)) return null
@@ -3286,6 +3286,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     // seen declared before — see emit-swift.ts's comment on this same
     // decision). Registering FIRST guarantees this name is the SAME one
     // each node's `data = {...}` literal resolves to below.
+    const dataRows = d.nodes.flatMap((node) => node.data.kind === 'object' ? [node.data.fields] : [])
     const firstData = d.nodes[0]?.data
     const rowFields = firstData?.kind === 'object' ? firstData.fields : []
     const typedKey = literalShapeKey(rowFields)
@@ -3294,9 +3295,25 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       (typedKey !== null ? _structTypedKeyToName.get(typedKey) : undefined) ??
       _structFieldsToName.get(fieldSet) ??
       subsetStructName(rowFields.map((field) => field.name), _declaredStructs, typeIsOptional)
-    const rowType = d.dataType !== undefined
-      ? kotlinType(d.dataType)
-      : declaredRowType ?? synthLiteralStructName(rowFields, _synthExprStructs, _synthExprStructKeys, (ex) => inferType(ex, _kotlinExprInferCtx)) ?? 'Any'
+    let inferredRowType: TypeIR | undefined
+    let rowType = d.dataType !== undefined ? kotlinType(d.dataType) : 'Any'
+    const allNames = [...new Set(dataRows.flatMap((fields) => fields.map((field) => field.name)))]
+    const heterogeneous = dataRows.some((fields) => fields.length !== allNames.length || allNames.some((name) => !fields.some((field) => field.name === name)))
+    if (d.dataType === undefined && heterogeneous) {
+      const fields = allNames.map((name) => {
+        const values = dataRows.flatMap((row) => row.find((field) => field.name === name)?.value ?? [])
+        const distinct = [...new Map(values.map((value) => { const type = inferType(value, _kotlinExprInferCtx); return [JSON.stringify(type), type] })).values()]
+        const base: TypeIR = distinct.length === 1 ? distinct[0]! : { kind: 'union', branches: distinct }
+        return { name, type: values.length < dataRows.length ? { kind: 'union', branches: [base, { kind: 'undefined' }] } as TypeIR : base }
+      })
+      const name = `__Obj${_synthExprStructs.length}`
+      _synthExprStructs.push({ name, fields })
+      inferredRowType = { kind: 'typeRef', name, args: [] }
+      rowType = name
+    } else if (d.dataType === undefined) {
+      rowType = declaredRowType ?? synthLiteralStructName(rowFields, _synthExprStructs, _synthExprStructKeys, (ex) => inferType(ex, _kotlinExprInferCtx)) ?? 'Any'
+    }
+    const expectedRowType = d.dataType ?? inferredRowType
     // `PyreonXYPosition`/`PyreonFlowNode.width`/`.height` are Double —
     // Kotlin refuses a bare Int literal there (same reason charts' Pie/Gauge
     // emitters run every numeric arg through `ktChartDouble`).
@@ -3306,7 +3323,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
           `id = ${JSON.stringify(n.id)}`,
           ...(n.type !== undefined ? [`type = ${JSON.stringify(n.type)}`] : []),
           `position = PyreonXYPosition(${ktChartDouble(emitKotlinExpr(n.positionX, 0))}, ${ktChartDouble(emitKotlinExpr(n.positionY, 0))})`,
-          `data = ${withExpectedTypeKotlin(d.dataType, () => emitKotlinExpr(n.data, 0))}`,
+          `data = ${withExpectedTypeKotlin(expectedRowType, () => emitKotlinExpr(n.data, 0))}`,
           ...(n.width !== undefined ? [`width = ${ktChartDouble(emitKotlinExpr(n.width, 0))}`] : []),
           ...(n.height !== undefined ? [`height = ${ktChartDouble(emitKotlinExpr(n.height, 0))}`] : []),
           ...(n.draggable !== undefined ? [`draggable = ${n.draggable}`] : []),

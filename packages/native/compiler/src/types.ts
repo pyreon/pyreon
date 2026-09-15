@@ -890,21 +890,12 @@ export type DeclIR =
    * — the emit is a fully self-contained `@State`/`remember` initializer,
    * no `.onAppear`/post-init wiring needed (closer to `machine`'s shape).
    *
-   * v1: every node's `data` must share the SAME field set (so ONE row
-   * struct is synthesized, the same uniform-row assumption `table-state`
-   * makes) — `swiftType(inferType({ kind: 'array', elements: nodes.map(n
-   * => n.data) }, ctx).element, synth)` at emit time gets the row type,
-   * mirroring how `table-state`'s `dataBody` resolves its row type. Edge
-   * `id` is required (not auto-generated, unlike the web engine's
-   * `edgeId()` fallback) — a v1 narrowing, like `table-state`'s explicit
-   * `columns: [{ id }]`.
+   * Node `data` literals synthesize one native union model; a field absent
+   * from any node type becomes optional. An absent edge `id` uses the same
+   * deterministic source/handle/target fallback as the web engine.
    *
-   * `minZoom`/`maxZoom` ARE recognized (both native constructors already take
-   * them, so threading them through was pure compiler-side work). Every OTHER
-   * `FlowConfig` key still lowers to nothing — but now WARNS by name instead of
-   * dropping silently, because a dropped `fitView: true` or `snapToGrid` is a
-   * behavioural divergence from the same source line, and silence is what makes
-   * that expensive to find.
+   * Portable literal `FlowConfig` fields are carried in this declaration;
+   * unsupported dynamic/browser-specific shapes are diagnosed by name.
    */
   | {
       kind: 'flow-state'
@@ -918,7 +909,7 @@ export type DeclIR =
         type?: string
         positionX: ExprIR
         positionY: ExprIR
-        /** The node's `data: {...}` object literal — uniform across every node. */
+        /** The node's `data: {...}` object literal; emitters union heterogeneous field sets. */
         data: ExprIR
         width?: ExprIR
         height?: ExprIR

@@ -710,7 +710,7 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', { t
     )
   })
 
-  it('nodes whose data field sets DIFFER decline (one row struct cannot represent both)', () => {
+  it('nodes whose data field sets differ synthesize one optional union model', () => {
     const src = `
       import { createFlow } from '@pyreon/flow'
       import { Text } from '${P}'
@@ -725,8 +725,16 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', { t
         return <Text>{flow.nodes().length}</Text>
       }
     `
-    const r = transform(src, { target: 'swift' })
-    expect((r.warnings ?? []).some((w) => w.includes('SAME field set'))).toBe(true)
+    const swift = transform(src, { target: 'swift' })
+    const kotlin = transform(src, { target: 'kotlin' })
+    expect(swift.warnings.join(' ')).not.toContain('createFlow declaration `flow`')
+    expect(kotlin.warnings.join(' ')).not.toContain('createFlow declaration `flow`')
+    expect(swift.code).toContain('var label: String? = nil')
+    expect(swift.code).toContain('var count: Int? = nil')
+    expect(kotlin.code).toContain('var label: String? = null')
+    expect(kotlin.code).toContain('var count: Int? = null')
+    expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
+    expect(validateKotlin(kotlin.code).ok).toBe(true)
   })
 
   it('generates the same deterministic id as web when an edge omits id', () => {
