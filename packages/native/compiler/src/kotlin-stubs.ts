@@ -1583,7 +1583,8 @@ class PyreonSortableState<T>(
 // @pyreon/flow — the PyreonFlowState engine. Mirrors PyreonFlowState.kt.
 data class PyreonXYPosition(val x: Double, val y: Double)
 data class PyreonFlowDimensions(val width: Double, val height: Double)
-data class PyreonFlowNodeMeasurement(val width: Double, val height: Double)
+data class PyreonFlowMeasuredHandle(val id: String, val type: String, val position: PyreonFlowPosition, val x: Double, val y: Double)
+data class PyreonFlowNodeMeasurement(val width: Double, val height: Double, val handles: List<PyreonFlowMeasuredHandle> = emptyList())
 data class PyreonFlowViewport(val x: Double = 0.0, val y: Double = 0.0, val zoom: Double = 1.0)
 data class PyreonFlowNodeExtent(val minX: Double, val minY: Double, val maxX: Double, val maxY: Double)
 enum class PyreonFlowPosition { Top, Right, Bottom, Left }
@@ -1760,7 +1761,8 @@ class PyreonFlowState<T>(
   fun layout(algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()) {}
   fun getNode(id: String): PyreonFlowNode<T>? = null
   fun getNodeDimensions(id: String): PyreonFlowDimensions = PyreonFlowDimensions(150.0, 40.0)
-  fun updateNodeMeasurement(id: String, width: Double, height: Double) {}
+  fun updateNodeMeasurement(id: String, width: Double, height: Double, handles: List<PyreonFlowMeasuredHandle> = emptyList()) {}
+  fun clearNodeMeasurement(id: String) {}
   fun isValidConnection(connection: PyreonFlowConnection): Boolean = true
   fun connect(connection: PyreonFlowConnection, id: String? = null): PyreonFlowEdge? = null
   fun resolvedMarkers(edge: PyreonFlowEdge): Pair<PyreonFlowMarker?, PyreonFlowMarker?> = null to null

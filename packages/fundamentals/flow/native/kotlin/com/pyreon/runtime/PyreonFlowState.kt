@@ -1071,12 +1071,13 @@ class PyreonFlowState<T>(
         val node = nodeMap[id] ?: return PyreonFlowDimensions(PYREON_FLOW_DEFAULT_NODE_WIDTH, PYREON_FLOW_DEFAULT_NODE_HEIGHT)
         return pyreonEffectiveDimensions(node, measurementStore[id])
     }
-    fun updateNodeMeasurement(id: String, width: Double, height: Double) {
+    fun updateNodeMeasurement(id: String, width: Double, height: Double, handles: List<PyreonFlowMeasuredHandle> = emptyList()) {
         if (!nodeMap.containsKey(id) || width <= 0.0 || height <= 0.0) return
         val previous = measurementStore[id]
-        val next = PyreonFlowNodeMeasurement(width, height, previous?.handles ?: emptyList())
+        val next = PyreonFlowNodeMeasurement(width, height, handles)
         if (previous != next) measurementStore[id] = next
     }
+    fun clearNodeMeasurement(id: String) { measurementStore.remove(id) }
     fun addNode(node: PyreonFlowNode<T>) {
         if (nodeMap.containsKey(node.id)) return
         checkpoint()

@@ -5223,6 +5223,24 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (e.args.length === 0 && member === 'getNodes') return `${kotlinIdent(flowName)}.nodes`
         if (e.args.length === 0 && member === 'getEdges') return `${kotlinIdent(flowName)}.edges`
         if (e.args.length === 0 && member === 'getViewport') return `${kotlinIdent(flowName)}.viewport`
+        if (member === '_clearNodeMeasurement' && e.args.length === 1) return `${kotlinIdent(flowName)}.clearNodeMeasurement(${emitKotlinExpr(e.args[0]!, indent)})`
+        if (member === '_setNodeMeasurement' && (e.args.length === 3 || e.args.length === 4)) {
+          const baseArgs = `${emitKotlinExpr(e.args[0]!, indent)}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[2]!, indent))}`
+          if (e.args.length === 3) return `${kotlinIdent(flowName)}.updateNodeMeasurement(${baseArgs})`
+          const handles = e.args[3]!
+          if (handles.kind === 'array') {
+            const emitted = handles.elements.map((item) => {
+              if (item.kind !== 'object') return null
+              const fields = new Map(item.fields.map((field) => [field.name, field.value]))
+              const position = fields.get('position')
+              if (!fields.has('id') || !fields.has('type') || !fields.has('x') || !fields.has('y') || position?.kind !== 'literal' || typeof position.value !== 'string') return null
+              const nativePosition = position.value[0]!.toUpperCase() + position.value.slice(1)
+              return `PyreonFlowMeasuredHandle(id = ${emitKotlinExpr(fields.get('id')!, indent)}, type = ${emitKotlinExpr(fields.get('type')!, indent)}, position = PyreonFlowPosition.${nativePosition}, x = ${ktChartDouble(emitKotlinExpr(fields.get('x')!, indent))}, y = ${ktChartDouble(emitKotlinExpr(fields.get('y')!, indent))})`
+            })
+            if (emitted.every((value) => value !== null)) return `${kotlinIdent(flowName)}.updateNodeMeasurement(${baseArgs}, listOf(${emitted.join(', ')}))`
+          }
+          _emitWarnings.push(`createFlow binding \`${flowName}\`: \`_setNodeMeasurement\` handle geometry must be a literal array to lower natively.`)
+        }
         // Nothing silent inside the boundary — mirrors emit-swift.ts exactly.
         if (!LOWERED_FLOW_METHODS.has(member) && !LOWERED_FLOW_PROPERTY_READS.has(member)) {
           _emitWarnings.push(unloweredFlowMemberWarning(flowName, member))

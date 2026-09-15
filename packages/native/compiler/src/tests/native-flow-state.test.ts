@@ -1153,6 +1153,18 @@ export function C() {
       if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       else expect(validateKotlin(result.code).ok).toBe(true)
     })
+    it(`[${target}] internal node measurement writes preserve handle geometry and cleanup`, () => {
+      const result = transform(base('', '<Button onPress={() => { flow._setNodeMeasurement("1", 200, 80, [{ id: "out", type: "source", position: "right", x: 200, y: 40 }]); flow._clearNodeMeasurement("1") }}>Measure</Button>'), { target })
+      const warnings = result.warnings.join(' ')
+      expect(warnings).not.toContain('`_setNodeMeasurement` is NOT ported')
+      expect(warnings).not.toContain('`_clearNodeMeasurement` is NOT ported')
+      expect(result.code).toContain(target === 'swift'
+        ? 'flow.updateNodeMeasurement("1", width: 200, height: 80, handles: [PyreonFlowMeasuredHandle(id: "out", type: "source", position: .right, x: 200, y: 40)])'
+        : 'flow.updateNodeMeasurement("1", 200.0, 80.0, listOf(PyreonFlowMeasuredHandle(id = "out", type = "source", position = PyreonFlowPosition.Right, x = 200.0, y = 40.0)))')
+      expect(result.code).toContain(target === 'swift' ? 'flow.clearNodeMeasurement("1")' : 'flow.clearNodeMeasurement("1")')
+      const validation = target === 'swift' ? validateSwiftWithStubs(result.code) : validateKotlin(result.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    })
     it(`[${target}] getNodeDimensions lowers with a native nominal result`, () => {
       const result = transform(base('', '<Text>{flow.getNodeDimensions("1").width}</Text>'), { target })
       expect((result.warnings ?? []).join(' ')).not.toContain('`getNodeDimensions` is NOT ported')
