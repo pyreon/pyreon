@@ -1073,8 +1073,13 @@ final class PyreonCounterUITests: XCTestCase {
         XCTAssertTrue(unlock.exists, "Unlock button missing")
         // The page is an outer vertical Scroll; Unlock sits below the fold, and
         // tapping a non-hittable element lands on whatever covers its point.
+        // `isHittable` can read true for a row the page has scrolled off screen,
+        // and a tap at an off-window point is silently dropped (observed: three
+        // taps, handler never entered). Scroll until the frame is really inside
+        // the window, not until the element calls itself hittable.
         var swipes = 0
-        while !unlock.isHittable && swipes < 10 { app.swipeUp(); swipes += 1 }
+        let onScreen = { app.windows.firstMatch.frame.contains(unlock.frame) }
+        while !(unlock.isHittable && onScreen()) && swipes < 10 { app.swipeUp(); swipes += 1 }
         // Retry the tap: on the CI simulator the first tap after launch can be
         // absorbed by the page's ScrollView while the Flow canvas above is still
         // settling (observed: one hittable Unlock button, state still "idle").
@@ -1089,7 +1094,8 @@ final class PyreonCounterUITests: XCTestCase {
         let unlockButtons = denied ? 0 : app.buttons.matching(identifier: "Unlock").count
         XCTAssertTrue(
             denied,
-            "observed Lock texts=\(lockTexts) unlockButtons=\(unlockButtons) hittable=\(unlock.isHittable) — "
+            "observed Lock texts=\(lockTexts) unlockButtons=\(unlockButtons) hittable=\(unlock.isHittable) "
+                + "frame=\(unlock.frame) window=\(app.windows.firstMatch.frame) swipes=\(swipes) — "
                 + "\"Lock: denied\" never appeared after tapping Unlock — the async "
                 + "handler was not wrapped in a Task (so the awaited "
                 + "bio.authenticate never ran) or the post-await lockStatus "
