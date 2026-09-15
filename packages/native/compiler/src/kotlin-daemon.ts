@@ -287,7 +287,8 @@ function javaCommand(): string | null {
     ? join(home, 'bin', process.platform === 'win32' ? 'java.exe' : 'java')
     : null
   if (fromKotlinc && runnable(fromKotlinc)) {
-    if (memo) writeFileSync(memo, fromKotlinc, 'utf8')
+    // Owner-only: this file names an executable a later run will spawn.
+    if (memo) writeFileSync(memo, fromKotlinc, { encoding: 'utf8', mode: 0o600 })
     return fromKotlinc
   }
   return runnable('java') ? 'java' : null
