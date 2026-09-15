@@ -8481,8 +8481,11 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     return 'EmptyView()'
   }
   const nodeTypesAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeTypes')
-  const nodeTypes = nodeTypesAttr?.kind === 'attr' && nodeTypesAttr.value?.kind === 'object' && (nodeTypesAttr.value.spreads?.length ?? 0) === 0 && nodeTypesAttr.value.fields.every((field) => field.value.kind === 'identifier')
-    ? nodeTypesAttr.value.fields.map((field) => ({ type: field.name, component: (field.value as Extract<ExprIR, { kind: 'identifier' }>).name }))
+  const nodeTypesValue = nodeTypesAttr?.kind === 'attr' && nodeTypesAttr.value?.kind === 'identifier'
+    ? (_moduleConstExprs.get(nodeTypesAttr.value.name) ?? nodeTypesAttr.value)
+    : nodeTypesAttr?.kind === 'attr' ? nodeTypesAttr.value : undefined
+  const nodeTypes = nodeTypesValue?.kind === 'object' && (nodeTypesValue.spreads?.length ?? 0) === 0 && nodeTypesValue.fields.every((field) => field.value.kind === 'identifier')
+    ? nodeTypesValue.fields.map((field) => ({ type: field.name, component: (field.value as Extract<ExprIR, { kind: 'identifier' }>).name }))
     : undefined
   if (nodeTypesAttr !== undefined && nodeTypes === undefined) {
     _emitWarnings.push('<Flow nodeTypes={…}> must be a literal { type: Component } map to lower natively; the native default node renderer is used.')
@@ -8493,8 +8496,11 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     if (_flowComponentsWithInvalidToolbars.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeToolbar> requires literal position, align, offset, and showOnSelect props on native; unsupported values use native defaults.`)
   }
   const edgeTypesAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'edgeTypes')
-  const edgeTypes = edgeTypesAttr?.kind === 'attr' && edgeTypesAttr.value?.kind === 'object' && (edgeTypesAttr.value.spreads?.length ?? 0) === 0 && edgeTypesAttr.value.fields.every((field) => field.value.kind === 'identifier')
-    ? edgeTypesAttr.value.fields.map((field) => ({ type: field.name, component: (field.value as Extract<ExprIR, { kind: 'identifier' }>).name }))
+  const edgeTypesValue = edgeTypesAttr?.kind === 'attr' && edgeTypesAttr.value?.kind === 'identifier'
+    ? (_moduleConstExprs.get(edgeTypesAttr.value.name) ?? edgeTypesAttr.value)
+    : edgeTypesAttr?.kind === 'attr' ? edgeTypesAttr.value : undefined
+  const edgeTypes = edgeTypesValue?.kind === 'object' && (edgeTypesValue.spreads?.length ?? 0) === 0 && edgeTypesValue.fields.every((field) => field.value.kind === 'identifier')
+    ? edgeTypesValue.fields.map((field) => ({ type: field.name, component: (field.value as Extract<ExprIR, { kind: 'identifier' }>).name }))
     : undefined
   if (edgeTypesAttr !== undefined && edgeTypes === undefined) {
     _emitWarnings.push('<Flow edgeTypes={…}> must be a literal { type: Component } map to lower natively; the native default edge renderer is used.')

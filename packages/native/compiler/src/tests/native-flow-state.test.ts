@@ -1317,6 +1317,25 @@ export function C() {
   })
 
   describe('custom edge renderer native lowering', () => {
+    it.each(['swift', 'kotlin'] as const)('resolves module-constant nodeTypes and edgeTypes maps on %s', (target) => {
+      const source = `
+        import { createFlow, Flow, type NodeComponentProps, type EdgeComponentProps } from '@pyreon/flow'
+        import { Text } from '@pyreon/primitives'
+        function Card(props: NodeComponentProps<{ label: string }>) { return <Text>{props.data().label}</Text> }
+        function SignalEdge(_props: EdgeComponentProps) { return null }
+        const nodeTypes = { card: Card }
+        const edgeTypes = { signal: SignalEdge }
+        export function App() {
+          const flow = createFlow({ nodes: [{ id: 'a', type: 'card', position: { x: 0, y: 0 }, data: { label: 'A' } }], edges: [] })
+          return <Flow instance={flow} nodeTypes={nodeTypes} edgeTypes={edgeTypes} />
+        }
+      `
+      const result = transform(source, { target })
+      expect(result.warnings.join(' ')).not.toContain('must be a literal { type: Component } map')
+      expect(result.code).toContain(target === 'swift' ? 'case "card":\n    Card(' : '"card" -> Card(')
+      expect(result.code).toContain(target === 'swift' ? 'customEdgeTypes: Set(["signal"])' : 'customEdgeTypes = setOf("signal")')
+    })
+
     const src = `
       import { createFlow, Flow, EdgeLabelRenderer, getBezierPath, type EdgeComponentProps } from '@pyreon/flow'
       import { Text } from '@pyreon/primitives'
