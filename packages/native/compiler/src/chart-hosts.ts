@@ -134,6 +134,8 @@ export interface ChartHostArgs {
 export interface ChartHostSpec {
   /** Required data props, in engine argument order. */
   readonly data: readonly string[]
+  /** Optional engine arguments and the target expression used when their prop is absent. */
+  readonly dataDefaults?: Readonly<Record<string, (t: ChartHostTarget) => string>>
   /** The options prop (an `XOptions` struct); optional. */
   readonly options: string
   /** The engine struct the options prop holds — steers an inline literal and names the entrance copy. */
@@ -152,6 +154,8 @@ export interface ChartHostSpec {
   readonly layout: (a: ChartHostArgs, t: ChartHostTarget) => string
   /** Builds the `[PyreonDrawCmd]` expression from a layout expression. */
   readonly render: (layout: string, a: ChartHostArgs, t: ChartHostTarget) => string
+  /** Hoist a layout that the render expression consumes more than once. */
+  readonly reuseLayout?: boolean
   /** Builds the index-hit expression for a tap at (x, y) — what `onSelectIndex` receives. */
   readonly hit: (layout: string, x: string, y: string, a: ChartHostArgs, t: ChartHostTarget) => string
   /** Per-prop literal adapters for props whose web shape has no native form (see the adapters below). */
@@ -600,13 +604,19 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     adapt: { values: calendarValuesAdapter },
   },
   MapChart: {
-    data: ['map', 'values'],
+    data: ['map', 'values', 'paths', 'points', 'overlayOptions'],
+    dataDefaults: {
+      paths: (t) => t.list([]),
+      points: (t) => t.list([]),
+      overlayOptions: (t) => t.nil,
+    },
     options: 'options',
     optionsStruct: 'GeoOptions',
     themeDefaults: ['stops', 'emptyColor', 'borderColor', 'labelColor'],
     defaultHeight: 300,
     layout: (a, t) => `layoutGeoShapes(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
-    render: (l, a) => `renderGeo(${l}, ${a.data[1]}, ${a.options})`,
+    render: (l, a) => `renderGeo(${l}, ${a.data[1]}, ${a.options}) + renderGeoOverlayPaths(${l}, ${a.data[2]}, ${a.data[4]}) + renderGeoOverlayPoints(${l}, ${a.data[3]}, ${a.data[4]})`,
+    reuseLayout: true,
     hit: (l, x, y) => `hitGeoIndex(${l}, ${x}, ${y})`,
     tooltip: (l, x, y, a) => `geoTip(${l}, ${a.data[1]}, ${x}, ${y})`,
     adapt: { map: geoShapesAdapter, values: geoValuesAdapter },

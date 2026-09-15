@@ -10645,6 +10645,7 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   for (const name of spec.data) {
     const v = chartAttrExprKotlin(e, name)
     if (v === undefined) {
+      if (spec.dataDefaults?.[name] !== undefined) continue
       _emitWarnings.push(`<${tag}>: needs a \`${name}\` attribute on native; emitting an empty Box().`)
       return 'Box {}'
     }
@@ -10652,6 +10653,10 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   }
   const data: string[] = []
   for (const name of spec.data) {
+    if (attrs[name] === undefined) {
+      data.push(spec.dataDefaults![name]!(KOTLIN_CHART_TARGET))
+      continue
+    }
     const adapter = spec.adapt?.[name]
     if (adapter !== undefined) {
       const adapted = adapter(attrs, KOTLIN_CHART_TARGET, (m) => _emitWarnings.push(m), (n) => _moduleConstExprsKotlin.get(n), (x) => emitKotlinExpr(x, indent))
@@ -10701,8 +10706,9 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   const onSel = e.attrs.find((a) => a.kind === 'event' && a.name === 'selectindex')
   if (e.attrs.some((a) => a.kind === 'event' && a.name === 'select')) _emitWarnings.push(chartRichSelectWarning(tag))
   const tapping = onSel?.kind === 'event' || tooltip
-  const layout = tapping ? 'pyreonLayout' : spec.layout(plotArgs, KOTLIN_CHART_TARGET)
-  if (tapping) lets.push(`val pyreonLayout = ${spec.layout(plotArgs, KOTLIN_CHART_TARGET)}`)
+  const reuseLayout = tapping || spec.reuseLayout === true
+  const layout = reuseLayout ? 'pyreonLayout' : spec.layout(plotArgs, KOTLIN_CHART_TARGET)
+  if (reuseLayout) lets.push(`val pyreonLayout = ${spec.layout(plotArgs, KOTLIN_CHART_TARGET)}`)
   // The entrance reaches the RENDER only: the layout, the hit and the tooltip read the user's options.
   const animating = kotlinChartAnimating(e, tag)
   if (animating) lets.push(`val pyreonOpts: ${spec.optionsStruct} = ${KOTLIN_CHART_TARGET.withProgress(options, spec.optionsStruct, 'pyreonEntrance')}`)

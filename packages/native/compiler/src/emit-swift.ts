@@ -12635,6 +12635,7 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
   for (const name of spec.data) {
     const v = chartAttrExpr(e, name)
     if (v === undefined) {
+      if (spec.dataDefaults?.[name] !== undefined) continue
       _emitWarnings.push(`<${tag}>: needs a \`${name}\` attribute on native; emitting an EmptyView().`)
       return 'EmptyView()'
     }
@@ -12642,6 +12643,10 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
   }
   const data: string[] = []
   for (const name of spec.data) {
+    if (attrs[name] === undefined) {
+      data.push(spec.dataDefaults![name]!(SWIFT_CHART_TARGET))
+      continue
+    }
     // A prop whose web shape has no native form goes through its literal adapter.
     const adapter = spec.adapt?.[name]
     if (adapter !== undefined) {
@@ -12702,8 +12707,9 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
   // shape; it used to vanish with no diagnostic on all eleven of these hosts.
   if (e.attrs.some((a) => a.kind === 'event' && a.name === 'select')) _emitWarnings.push(chartRichSelectWarning(tag))
   const tapping = onSel?.kind === 'event' || tooltip
-  const layout = tapping ? 'pyreonLayout' : spec.layout(plotArgs, SWIFT_CHART_TARGET)
-  if (tapping) lets.push(`let pyreonLayout = ${spec.layout(plotArgs, SWIFT_CHART_TARGET)}`)
+  const reuseLayout = tapping || spec.reuseLayout === true
+  const layout = reuseLayout ? 'pyreonLayout' : spec.layout(plotArgs, SWIFT_CHART_TARGET)
+  if (reuseLayout) lets.push(`let pyreonLayout = ${spec.layout(plotArgs, SWIFT_CHART_TARGET)}`)
   // The entrance reaches the RENDER only: the layout, the hit and the tooltip read the user's options.
   const animating = swiftChartAnimating(e, tag)
   if (animating) lets.push(`let pyreonOpts: ${spec.optionsStruct} = ${SWIFT_CHART_TARGET.withProgress(options, spec.optionsStruct, 'pyreonEntrance')}`)
