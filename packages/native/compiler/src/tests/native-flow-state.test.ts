@@ -1398,4 +1398,29 @@ export function C() {
       expect(validation.ok, validation.error ?? '').toBe(true)
     })
   })
+
+  describe('Flow chrome extension parity', () => {
+    const src = `
+      import { createFlow, Flow, MiniMap, Controls, type FlowNode } from '@pyreon/flow'
+      import { Button } from '@pyreon/primitives'
+      export function Diagram() {
+        const flow = createFlow({ nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: { label: 'A' } }], edges: [] })
+        return <Flow instance={flow}>
+          <MiniMap nodeColor={(node: FlowNode<{ label: string }>) => node.data.label === 'A' ? '#ef4444' : '#22c55e'} />
+          <Controls position="top-right"><Button onPress={() => flow.selectAll()}>All</Button></Controls>
+        </Flow>
+      }
+    `
+
+    for (const target of ['swift', 'kotlin'] as const) {
+      it(`[${target}] keeps minimap callbacks and appended controls`, () => {
+        const result = transform(src, { target })
+        expect(result.code).toContain(target === 'swift' ? 'miniMapNodeColor: {' : 'miniMapNodeColor = {')
+        expect(result.code).toContain(target === 'swift' ? 'controlsContent: { AnyView(Group {' : 'controlsContent = {')
+        expect(result.code).toContain(target === 'swift' ? 'flow.selectAll()' : 'flow.selectAll()')
+        const validation = target === 'swift' ? validateSwiftWithStubs(result.code) : validateKotlin(result.code)
+        expect(validation.ok, validation.error ?? '').toBe(true)
+      })
+    }
+  })
 })

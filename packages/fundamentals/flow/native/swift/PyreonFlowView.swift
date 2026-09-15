@@ -181,15 +181,19 @@ public func pyreonFlowMiniMapLayout<T>(state: PyreonFlowState<T>, width: Double 
 public struct PyreonFlowMiniMap<T>: View {
     @Bindable private var state: PyreonFlowState<T>
     private let style: PyreonFlowMiniMapStyle
+    private let nodeColor: (PyreonFlowNode<T>) -> String
     @State private var panStart: PyreonFlowViewport?
     @State private var zoomStart: (zoom: Double, centerX: Double, centerY: Double)?
-    public init(state: PyreonFlowState<T>, style: PyreonFlowMiniMapStyle = PyreonFlowMiniMapStyle()) { self.state = state; self.style = style }
+    public init(state: PyreonFlowState<T>, style: PyreonFlowMiniMapStyle = PyreonFlowMiniMapStyle(), nodeColor: @escaping (PyreonFlowNode<T>) -> String = { _ in "" }) {
+        self.state = state; self.style = style; self.nodeColor = nodeColor
+    }
     public var body: some View {
         let layout = pyreonFlowMiniMapLayout(state: state, width: style.width, height: style.height)
         Canvas { context, _ in
-            let nodeColor = pyreonFlowEdgeColor(style.nodeColor)
+            let nodesById = Dictionary(uniqueKeysWithValues: state.nodes.map { ($0.id, $0) })
             for node in layout.nodes {
-                context.fill(Path(CGRect(x: node.x, y: node.y, width: node.width, height: node.height)), with: .color(nodeColor))
+                let resolved = nodesById[node.id].map(nodeColor) ?? ""
+                context.fill(Path(CGRect(x: node.x, y: node.y, width: node.width, height: node.height)), with: .color(pyreonFlowEdgeColor(resolved.isEmpty ? style.nodeColor : resolved)))
             }
             let viewport = layout.viewport
             context.stroke(Path(CGRect(x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height)), with: .color(pyreonFlowEdgeColor(style.maskColor)), lineWidth: 1)
@@ -258,8 +262,9 @@ public struct PyreonFlowControls<T>: View {
     @Bindable private var state: PyreonFlowState<T>
     @Binding private var locked: Bool
     private let style: PyreonFlowControlsStyle
-    public init(state: PyreonFlowState<T>, style: PyreonFlowControlsStyle, locked: Binding<Bool>) {
-        self.state = state; self.style = style; self._locked = locked
+    private let extraContent: () -> AnyView?
+    public init(state: PyreonFlowState<T>, style: PyreonFlowControlsStyle, locked: Binding<Bool>, extraContent: @escaping () -> AnyView? = { nil }) {
+        self.state = state; self.style = style; self._locked = locked; self.extraContent = extraContent
     }
     public var body: some View {
         VStack(spacing: 2) {
@@ -270,6 +275,7 @@ public struct PyreonFlowControls<T>: View {
             Text("\(Int((state.zoom * 100).rounded()))%")
                 .font(.caption2)
                 .accessibilityLabel("Current zoom level")
+            if let extra = extraContent() { extra }
         }
         .padding(2)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
@@ -487,7 +493,9 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private let edgeWidth: Double
     private let background: PyreonFlowBackgroundStyle?
     private let controls: PyreonFlowControlsStyle?
+    private let controlsContent: () -> AnyView?
     private let miniMap: PyreonFlowMiniMapStyle?
+    private let miniMapNodeColor: (PyreonFlowNode<T>) -> String
     private let ariaLabel: String
     private let nodeHandles: (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig]
     private let nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig?
@@ -516,7 +524,9 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         edgeWidth: Double = 1.5,
         background: PyreonFlowBackgroundStyle? = nil,
         controls: PyreonFlowControlsStyle? = nil,
+        controlsContent: @escaping () -> AnyView? = { nil },
         miniMap: PyreonFlowMiniMapStyle? = nil,
+        miniMapNodeColor: @escaping (PyreonFlowNode<T>) -> String = { _ in "" },
         ariaLabel: String = "Flow diagram",
         nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] },
         nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil },
@@ -533,7 +543,9 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         self.edgeWidth = edgeWidth
         self.background = background
         self.controls = controls
+        self.controlsContent = controlsContent
         self.miniMap = miniMap
+        self.miniMapNodeColor = miniMapNodeColor
         self.ariaLabel = ariaLabel
         self.nodeHandles = nodeHandles
         self.nodeResizer = nodeResizer
@@ -552,7 +564,9 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         edgeWidth: Double = 1.5,
         background: PyreonFlowBackgroundStyle? = nil,
         controls: PyreonFlowControlsStyle? = nil,
+        controlsContent: @escaping () -> AnyView? = { nil },
         miniMap: PyreonFlowMiniMapStyle? = nil,
+        miniMapNodeColor: @escaping (PyreonFlowNode<T>) -> String = { _ in "" },
         ariaLabel: String = "Flow diagram",
         nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] },
         nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil },
@@ -569,7 +583,9 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         self.edgeWidth = edgeWidth
         self.background = background
         self.controls = controls
+        self.controlsContent = controlsContent
         self.miniMap = miniMap
+        self.miniMapNodeColor = miniMapNodeColor
         self.ariaLabel = ariaLabel
         self.nodeHandles = nodeHandles
         self.nodeResizer = nodeResizer
@@ -634,10 +650,10 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 }
 
                 if let controls {
-                    PyreonFlowControls(state: state, style: controls, locked: $interactionsLocked)
+                    PyreonFlowControls(state: state, style: controls, locked: $interactionsLocked, extraContent: controlsContent)
                 }
                 if let miniMap {
-                    PyreonFlowMiniMap(state: state, style: miniMap)
+                    PyreonFlowMiniMap(state: state, style: miniMap, nodeColor: miniMapNodeColor)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                         .padding(10)
                 }

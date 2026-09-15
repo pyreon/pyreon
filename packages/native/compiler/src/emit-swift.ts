@@ -8520,7 +8520,14 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   const otherChildren = e.children.filter((child) => !(child.kind === 'expr' && child.expr.kind === 'jsx-element' && (child.expr.tag === 'Background' || child.expr.tag === 'Controls' || child.expr.tag === 'MiniMap' || child.expr.tag === 'Panel')))
   const bgArg = background?.kind === 'jsx-element' ? `, background: ${emitSwiftFlowBackground(background)}` : ''
   const controlsArg = controls?.kind === 'jsx-element' ? `, controls: ${emitSwiftFlowControls(controls)}` : ''
+  const controlsContentArg = controls?.kind === 'jsx-element' && controls.children.length > 0
+    ? `, controlsContent: { AnyView(Group {\n${controls.children.map((child) => `      ${emitSwiftChild(child, 6)}`).join('\n')}\n    }) }`
+    : ''
   const miniMapArg = miniMap?.kind === 'jsx-element' ? `, miniMap: ${emitSwiftFlowMiniMap(miniMap)}` : ''
+  const miniMapNodeColorAttr = miniMap?.kind === 'jsx-element' ? miniMap.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeColor') : undefined
+  const miniMapNodeColorArg = miniMapNodeColorAttr?.kind === 'attr' && miniMapNodeColorAttr.value !== undefined && !(miniMapNodeColorAttr.value.kind === 'literal' && typeof miniMapNodeColorAttr.value.value === 'string')
+    ? `, miniMapNodeColor: ${emitSwiftExpr(miniMapNodeColorAttr.value, 0)}`
+    : ''
   const ariaLabelAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'ariaLabel')
   const ariaLabelArg = ariaLabelAttr?.kind === 'attr' && ariaLabelAttr.value !== undefined ? `, ariaLabel: ${emitSwiftExpr(ariaLabelAttr.value, 0)}` : ''
   const handleCases = nodeTypes?.flatMap(({ type, component }) => {
@@ -8567,7 +8574,7 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     ? `switch pyreonNode.type {\n${nodeTypes.map(({ type, component }) => `  case ${JSON.stringify(type)}:\n    ${swiftIdent(component)}(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging })`).join('\n')}\n  default:\n    ${nodeText}\n  }`
     : nodeText
   const rendererParams = nodeTypes && nodeTypes.length > 0 ? 'pyreonNode, pyreonSelected, pyreonDragging' : 'pyreonNode'
-  const host = `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}${ariaLabelArg}${nodeHandlesArg}${nodeResizerArg}${nodeToolbarConfigArg}${nodeToolbarArg}${customEdgeTypesArg}${customEdgeArg}${customConnectionLineArg}) { ${rendererParams} in\n  ${renderer}\n}`
+  const host = `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}${controlsArg}${controlsContentArg}${miniMapArg}${miniMapNodeColorArg}${ariaLabelArg}${nodeHandlesArg}${nodeResizerArg}${nodeToolbarConfigArg}${nodeToolbarArg}${customEdgeTypesArg}${customEdgeArg}${customConnectionLineArg}) { ${rendererParams} in\n  ${renderer}\n}`
   if (panels.length === 0 && otherChildren.length === 0) return host
   const overlays = panels.map((panel) => {
     const position = readStaticAttr(panel, 'position')
@@ -8577,8 +8584,10 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     if (panel.attrs.some((a) => a.kind === 'attr' && a.name === 'style')) _emitWarnings.push('<Panel style={…}> uses web CSS and is not applied natively; its position and content still lower.')
     const content = panel.children.map((child) => `      ${emitSwiftChild(child, 6)}`).join('\n')
     return `    Group {\n${content}\n    }\n    .padding(10)\n    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: ${alignment})`
-  }).concat(otherChildren.map((child) => `    ${emitSwiftChild(child, 4)}`)).join('\n')
-  return `ZStack {\n  ${host}\n${overlays}\n}`
+  })
+  overlays.push(...otherChildren.map((child) => `    ${emitSwiftChild(child, 4)}`))
+  const overlaysCode = overlays.join('\n')
+  return `ZStack {\n  ${host}\n${overlaysCode}\n}`
 }
 
 function emitSwiftFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {

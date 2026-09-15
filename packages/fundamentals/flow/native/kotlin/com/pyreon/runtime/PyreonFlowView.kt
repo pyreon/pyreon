@@ -159,6 +159,7 @@ private fun <T> PyreonFlowState<T>.handleKeyEvent(event: KeyEvent, nodeId: Strin
 fun <T> PyreonFlowMiniMap(
     state: PyreonFlowState<T>,
     style: PyreonFlowMiniMapStyle = PyreonFlowMiniMapStyle(),
+    nodeColor: (PyreonFlowNode<T>) -> String = { "" },
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
@@ -185,9 +186,10 @@ fun <T> PyreonFlowMiniMap(
                 }
             },
     ) {
-        val nodeColor = pyreonFlowEdgeColor(style.nodeColor)
+        val nodesById = state.nodes.associateBy { it.id }
         for (node in layout.nodes) {
-            drawRect(nodeColor, Offset(node.x.toFloat(), node.y.toFloat()), androidx.compose.ui.geometry.Size(node.width.toFloat(), node.height.toFloat()))
+            val resolved = nodesById[node.id]?.let(nodeColor).orEmpty()
+            drawRect(pyreonFlowEdgeColor(resolved.ifEmpty { style.nodeColor }), Offset(node.x.toFloat(), node.y.toFloat()), androidx.compose.ui.geometry.Size(node.width.toFloat(), node.height.toFloat()))
         }
         val vp = layout.viewport
         drawRect(
@@ -206,6 +208,7 @@ fun <T> PyreonFlowControls(
     locked: Boolean,
     onLockedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    extraContent: @Composable () -> Unit = {},
 ) {
     Column(modifier.padding(2.dp)) {
         if (style.showZoomIn) Button(onClick = { state.zoomIn() }, modifier = Modifier.semantics { contentDescription = "Zoom in" }) { Text("+") }
@@ -213,6 +216,7 @@ fun <T> PyreonFlowControls(
         if (style.showFitView) Button(onClick = { state.fitView() }, modifier = Modifier.semantics { contentDescription = "Fit view" }) { Text("Fit") }
         if (style.showLock) Button(onClick = { onLockedChange(!locked) }, modifier = Modifier.semantics { contentDescription = "Lock the canvas"; selected = locked }) { Text(if (locked) "Unlock" else "Lock") }
         Text("${(state.zoom * 100).roundToInt()}%", modifier = Modifier.semantics { contentDescription = "Current zoom level" })
+        extraContent()
     }
 }
 
@@ -264,7 +268,9 @@ fun <T> PyreonFlowView(
     edgeWidth: Double = 1.5,
     background: PyreonFlowBackgroundStyle? = null,
     controls: PyreonFlowControlsStyle? = null,
+    controlsContent: @Composable () -> Unit = {},
     miniMap: PyreonFlowMiniMapStyle? = null,
+    miniMapNodeColor: (PyreonFlowNode<T>) -> String = { "" },
     ariaLabel: String = "Flow diagram",
     nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
     nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
@@ -275,7 +281,7 @@ fun <T> PyreonFlowView(
     customConnectionLineEnabled: Boolean = false,
     customConnectionLine: @Composable (PyreonFlowConnectionLineContext) -> Unit = {},
     nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
-) = PyreonFlowView(state, modifier, edgeColor, edgeWidth, background, controls, miniMap, ariaLabel, nodeHandles, nodeResizer, nodeToolbarConfig, nodeToolbar, customEdgeTypes, customEdge, customConnectionLineEnabled, customConnectionLine) { node, _, _ -> nodeContent(node) }
+) = PyreonFlowView(state, modifier, edgeColor, edgeWidth, background, controls, controlsContent, miniMap, miniMapNodeColor, ariaLabel, nodeHandles, nodeResizer, nodeToolbarConfig, nodeToolbar, customEdgeTypes, customEdge, customConnectionLineEnabled, customConnectionLine) { node, _, _ -> nodeContent(node) }
 
 @Composable
 fun <T> PyreonFlowView(
@@ -285,7 +291,9 @@ fun <T> PyreonFlowView(
     edgeWidth: Double = 1.5,
     background: PyreonFlowBackgroundStyle? = null,
     controls: PyreonFlowControlsStyle? = null,
+    controlsContent: @Composable () -> Unit = {},
     miniMap: PyreonFlowMiniMapStyle? = null,
+    miniMapNodeColor: (PyreonFlowNode<T>) -> String = { "" },
     ariaLabel: String = "Flow diagram",
     nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
     nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
@@ -667,10 +675,11 @@ fun <T> PyreonFlowView(
                 interactionsLocked,
                 { interactionsLocked = it },
                 Modifier.align(alignment).padding(10.dp),
+                controlsContent,
             )
         }
         if (miniMap != null) {
-            PyreonFlowMiniMap(state, miniMap, Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(10.dp))
+            PyreonFlowMiniMap(state, miniMap, miniMapNodeColor, Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(10.dp))
         }
     }
 }
