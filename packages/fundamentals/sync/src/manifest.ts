@@ -418,7 +418,7 @@ const title = syncedSignal({ doc, key: "title", initial: "Untitled" })`,
       kind: 'function',
       signature: '(options: SyncServerOptions) => Promise<SyncServer>',
       summary:
-        "Start a Node/Bun WebSocket relay that brokers Yjs sync between clients sharing a room. Keeps one authoritative Y.Doc per room (so a late-joiner catches up), applies each inbound update, and broadcasts to the room's OTHER clients. Server-only (`@pyreon/sync/server` — imports `ws` + `node:http`, never enters a client bundle). The `authorize(ctx)` hook is the per-room/per-doc access gate: return false (or throw) to reject with close code 4401 before any data flows. Rooms are GC'd when the last client leaves — the relay is ephemeral (no persistence); clients keep their own copy. Pass `server` to attach to an existing http.Server instead of opening a port.",
+        "Start a Node/Bun WebSocket relay that brokers Yjs sync between clients sharing a room. Keeps one authoritative Y.Doc per room (so a late-joiner catches up), applies each inbound update, and broadcasts to the room's OTHER clients. Server-only (`@pyreon/sync/server` — imports `ws` + `node:http`, never enters a client bundle). The `authorize(ctx)` hook is the per-room/per-doc access gate: return false (or throw) to reject with close code 4401 before any data flows. Omitting it accepts EVERY connection (an open relay) and warns once at startup, in production too. Rooms are GC'd when the last client leaves — the relay is ephemeral (no persistence); clients keep their own copy. Pass `server` to attach to an existing http.Server instead of opening a port.",
       example: `import { createSyncServer } from "@pyreon/sync/server"
 const relay = await createSyncServer({
   port: 1234,
@@ -426,7 +426,7 @@ const relay = await createSyncServer({
 })
 // later: await relay.close()`,
       mistakes: [
-        'Deploying without an `authorize` hook — the default allows EVERY connection (dev-only); a real deployment MUST supply it or anyone with the room id can read/write',
+        'Deploying without an `authorize` hook — the default allows EVERY connection (dev-only); a real deployment MUST supply it or anyone with the room id can read/write. `createSyncServer` warns once at startup when the hook is absent, in production as well as development, because an open relay is a live misconfiguration rather than a developer-time nicety.',
         'Importing `@pyreon/sync/server` into client code — it pulls `ws` + `node:http`; it is the server-only subpath by design',
         'Expecting the relay to persist data — it is ephemeral; durability lives on the clients (persistViaIndexedDB) or an external store',
       ],

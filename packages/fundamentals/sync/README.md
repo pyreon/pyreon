@@ -184,6 +184,13 @@ const relay = await createSyncServer({
 })
 ```
 
+> **Omitting `authorize` makes an open relay.** Every connection is accepted, so
+> anyone who can reach the port joins any room and reads and rewrites its
+> document. That default exists for local development only, and
+> `createSyncServer` now says so at startup — once per server, **in production
+> too**, because it is a live misconfiguration rather than a developer-time
+> nicety.
+
 One authoritative `Y.Doc` per room: a late-joiner catches up via the
 state-vector handshake, each inbound update is applied + fanned out to the
 room's other clients, and a room is GC'd when its last client leaves (the relay
