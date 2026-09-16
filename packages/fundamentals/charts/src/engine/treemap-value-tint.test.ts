@@ -98,3 +98,15 @@ describe('layoutTreemap — degenerate rectangles', () => {
     expect(layoutTreemap([], { x: 0, y: 0, w: 100, h: 50 })).toEqual([])
   })
 })
+
+describe('squarify on a degenerate rect', () => {
+  it('a zero-width or zero-height rect lays out finite, zero-area cells', () => {
+    const nodes: TreeNode[] = [{ name: 'a', value: 3 }, { name: 'b', value: 1 }, { name: 'c', value: 2 }]
+    for (const rect of [{ x: 0, y: 0, w: 0, h: 50 }, { x: 0, y: 0, w: 100, h: 0 }]) {
+      for (const c of layoutTreemap(nodes, rect)) {
+        expect(Number.isFinite(c.rect.w)).toBe(true)
+        expect(Number.isFinite(c.rect.h)).toBe(true)
+      }
+    }
+  })
+})

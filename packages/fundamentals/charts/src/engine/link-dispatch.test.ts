@@ -42,3 +42,13 @@ describe('ChartHandle.dispatch — selection and legend vocabulary', () => {
     expect(chart.hidden()).toEqual([1, 2])
   })
 })
+
+describe('legendInverseSelect without an explicit count', () => {
+  it('falls back to the handle’s own seriesCount', () => {
+    const chart = createChartHandle()
+    chart.seriesCount.set(4)
+    chart.dispatch({ type: 'legendToggle', series: 2 })
+    chart.dispatch({ type: 'legendInverseSelect' })
+    expect(chart.hidden()).toEqual([0, 1, 3])
+  })
+})
