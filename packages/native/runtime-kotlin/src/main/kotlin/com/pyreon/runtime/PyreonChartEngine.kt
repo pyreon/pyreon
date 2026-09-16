@@ -56,7 +56,7 @@ data class StackSegment(var rect: PyreonChartRect, var seriesIndex: Int, var dat
 
 data class WaterfallStep(var rect: PyreonChartRect, var datumIndex: Int, var value: Double, var start: Double, var end: Double)
 
-data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null, var extras: List<SeriesExtra>? = null)
+data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var focus: String? = null, var emphasisColor: String? = null, var selectColor: String? = null, var blurOpacity: Double? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null, var extras: List<SeriesExtra>? = null)
 
 data class SeriesExtra(var label: String, var numbers: List<Double>? = null, var texts: List<String>? = null)
 
@@ -1584,6 +1584,35 @@ fun emphasisLevel(spec: ChartSpec, index: Int): Int {
     return if (e.highlight == index) 1 else 0
   }
 
+fun blurActive(spec: ChartSpec): Boolean {
+    val e = (spec.emphasis ?: Emphasis(highlight = -1, selected = listOf()))
+    if (e.highlight < 0) {
+      return false
+    }
+    for (s in spec.series) {
+      if (s.focus == "self" || s.focus == "series") {
+        return true
+      }
+    }
+    return false
+  }
+
+fun stateFill(spec: ChartSpec, s: Series, index: Int, fill: String): String {
+    val level = emphasisLevel(spec, index)
+    val selectColor = (s.selectColor ?: "")
+    val emphasisColor = (s.emphasisColor ?: "")
+    if (level == 2 && selectColor != "") {
+      return selectColor
+    }
+    if (level == 1 && emphasisColor != "") {
+      return emphasisColor
+    }
+    if (level == 0 && blurActive(spec)) {
+      return withAlpha(fill, (s.blurOpacity ?: 0.1))
+    }
+    return fill
+  }
+
 fun emphasisOutline(r: PyreonChartRect, level: Int, stroke: String): PyreonDrawCmd = PyreonDrawCmd(kind = "polyline", stroke = stroke, width = if (level == 2) 2.5 else 1.5, points = listOf(PyreonChartPt(x = r.x, y = r.y), PyreonChartPt(x = r.x + r.w, y = r.y), PyreonChartPt(x = r.x + r.w, y = r.y + r.h), PyreonChartPt(x = r.x, y = r.y + r.h), PyreonChartPt(x = r.x, y = r.y)))
 
 fun resolveYDomain(spec: ChartSpec): Domain = (spec.yDomain ?: deriveOver(leftAxisSeries(spec)))
@@ -1933,7 +1962,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
       for (seg in stackSegs) {
         val rS = growRect(seg.rect, yDomain)
         val gS = seriesGradient(stackedSeries[seg.seriesIndex].gradient, plot)
-        out.add(rectCmd(rS, stackedSeries[seg.seriesIndex].color, stackedSeries[seg.seriesIndex].corners, if (gS.stops.length == 0) null else gS, stackedSeries[seg.seriesIndex].pattern))
+        out.add(rectCmd(rS, stateFill(spec, stackedSeries[seg.seriesIndex], seg.datumIndex, stackedSeries[seg.seriesIndex].color), stackedSeries[seg.seriesIndex].corners, if (gS.stops.length == 0) null else gS, stackedSeries[seg.seriesIndex].pattern))
         val lvlS = emphasisLevel(spec, seg.datumIndex)
         if (lvlS > 0) {
           out.add(emphasisOutline(rS, lvlS, t.label))
@@ -1950,7 +1979,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
       for (seg in groupSegs) {
         val rG = growRect(seg.rect, yDomain)
         val gG = seriesGradient(groupedSeries[seg.seriesIndex].gradient, plot)
-        out.add(rectCmd(rG, groupedSeries[seg.seriesIndex].color, groupedSeries[seg.seriesIndex].corners, if (gG.stops.length == 0) null else gG, groupedSeries[seg.seriesIndex].pattern))
+        out.add(rectCmd(rG, stateFill(spec, groupedSeries[seg.seriesIndex], seg.datumIndex, groupedSeries[seg.seriesIndex].color), groupedSeries[seg.seriesIndex].corners, if (gG.stops.length == 0) null else gG, groupedSeries[seg.seriesIndex].pattern))
         val lvlG = emphasisLevel(spec, seg.datumIndex)
         if (lvlG > 0) {
           out.add(emphasisOutline(rG, lvlG, t.label))
@@ -2017,8 +2046,9 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         for (ri in 0 until rects.length) {
           val r = rects[ri]
           val grown = growRectH(r)
+          val fillH = stateFill(spec, s, ri, s.color)
           if (s.symbol == null) {
-            out.add(rectCmd(grown, s.color, (s.corners ?: themeCorners(spec.theme.radius, ((s.values[ri] ?: 0.0)) >= 0.0, true)), sGrad, s.pattern))
+            out.add(rectCmd(grown, fillH, (s.corners ?: themeCorners(spec.theme.radius, ((s.values[ri] ?: 0.0)) >= 0.0, true)), sGrad, s.pattern))
           } else {
             if (s.symbolRepeat == true) {
               val unit = grown.h
@@ -2032,11 +2062,11 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
               }
               var kf = 0.0
               for (k in 0 until count) {
-                out.add(symbolCommand(PyreonChartRect(x = grown.x + unit * kf, y = grown.y, w = unit, h = unit), (s.symbol ?: "rect"), s.color))
+                out.add(symbolCommand(PyreonChartRect(x = grown.x + unit * kf, y = grown.y, w = unit, h = unit), (s.symbol ?: "rect"), fillH))
                 kf = kf + 1.0
               }
             } else {
-              out.add(symbolCommand(grown, (s.symbol ?: "rect"), s.color))
+              out.add(symbolCommand(grown, (s.symbol ?: "rect"), fillH))
             }
           }
         }
@@ -2064,8 +2094,9 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         for (ri in 0 until rects.length) {
           val r = rects[ri]
           val grown = growRect(r, sDomain)
+          val fillV = stateFill(spec, s, ri, s.color)
           if (s.symbol == null) {
-            out.add(rectCmd(grown, s.color, (s.corners ?: themeCorners(spec.theme.radius, ((s.values[ri] ?: 0.0)) >= 0.0, false)), sGrad, s.pattern))
+            out.add(rectCmd(grown, fillV, (s.corners ?: themeCorners(spec.theme.radius, ((s.values[ri] ?: 0.0)) >= 0.0, false)), sGrad, s.pattern))
           } else {
             if (s.symbolRepeat == true) {
               val unit = grown.w
@@ -2081,11 +2112,11 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
               var kf = 0.0
               for (k in 0 until count) {
                 val cell = PyreonChartRect(x = grown.x, y = grown.y + grown.h - unit * (kf + 1.0), w = unit, h = unit)
-                out.add(symbolCommand(cell, (s.symbol ?: "rect"), s.color))
+                out.add(symbolCommand(cell, (s.symbol ?: "rect"), fillV))
                 kf = kf + 1.0
               }
             } else {
-              out.add(symbolCommand(grown, (s.symbol ?: "rect"), s.color))
+              out.add(symbolCommand(grown, (s.symbol ?: "rect"), fillV))
             }
           }
         }
@@ -2111,7 +2142,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           val steps = layoutWaterfall(s.values, plot, sDomain, 0.25)
           for (si in 0 until steps.length) {
             val st = steps[si]
-            val fill = if (st.value < 0.0) (s.negativeColor ?: withAlpha(s.color, 0.55)) else s.color
+            val fill = stateFill(spec, s, st.datumIndex, if (st.value < 0.0) (s.negativeColor ?: withAlpha(s.color, 0.55)) else s.color)
             val startY = scaleLinear(sDomain, plot.y + plot.h, plot.y, st.start)
             val grownH = st.rect.h * progress
             val grown = if (progress >= 1.0) st.rect else PyreonChartRect(x = st.rect.x, y = if (st.value >= 0.0) startY - grownH else startY, w = st.rect.w, h = grownH)
@@ -2212,10 +2243,11 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
                   }
                   val r = fullR * progress
                   val pointSymbol = (s.symbol ?: "circle")
+                  val fillP = stateFill(spec, s, i, s.color)
                   if (pointSymbol == "circle") {
-                    out.add(PyreonDrawCmd(kind = "circle", fill = s.color, center = pts[i], radius = r))
+                    out.add(PyreonDrawCmd(kind = "circle", fill = fillP, center = pts[i], radius = r))
                   } else {
-                    out.add(symbolCommand(PyreonChartRect(x = pts[i].x - r, y = pts[i].y - r, w = r * 2.0, h = r * 2.0), pointSymbol, s.color))
+                    out.add(symbolCommand(PyreonChartRect(x = pts[i].x - r, y = pts[i].y - r, w = r * 2.0, h = r * 2.0), pointSymbol, fillP))
                   }
                 }
               }

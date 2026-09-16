@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.21' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.22' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -93,7 +93,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('runtime.resize', 'runtime', 'direct', 'complete', 'src/engine/canvas-host.tsx'),
 
   row('presentation.labels-rich-text', 'presentation', 'direct', 'partial', 'src/engine/option.ts'),
-  row('presentation.states', 'presentation', 'direct', 'partial', 'src/engine/emphasis.test.ts'),
+  row('presentation.states', 'presentation', 'direct', 'partial', 'src/engine/emphasis.test.ts', 'src/engine/option-states.test.ts', 'src/engine/option-chart-states.test.tsx', '../../native/compiler/src/tests/chart-states-native.test.ts'), // emphasis/select/blur FILLS + focus blur + selectedMode pinning cross; state labels, symbol scale and whole-series selection warn by name, and the hover is a datum column (no per-series focus)
   row('presentation.symbols', 'presentation', 'direct', 'complete', 'src/engine/option-symbols.test.ts', '../../native/compiler/src/tests/chart-symbols-native.test.ts'),
   row('presentation.gradients-patterns', 'presentation', 'direct', 'partial', 'src/engine/option-gradients.test.ts', '../../native/compiler/src/tests/chart-gradients-native.test.ts'), // linear + radial gradients and decals cross; IMAGE patterns (`color: { image }`) warn by name
   row('presentation.decals', 'presentation', 'direct', 'partial', 'src/engine/pattern.test.ts'),

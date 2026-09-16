@@ -1698,7 +1698,7 @@ export function desugarOptionChart(
         warn(`<OptionChart option.series[${si}].type>: this cartesian adapter needs line, bar, pictorialBar, or scatter series; emitting nothing.`)
         return undefined
       }
-      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras', 'sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold'], `option.series[${si}]`, warn)
+      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras', 'sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'emphasis', 'select', 'blur', 'selectedMode'], `option.series[${si}]`, warn)
       seriesObjects.push(s)
     }
     const xAxis = literalOf(objectField(raw, 'xAxis'), resolve)
@@ -1810,6 +1810,44 @@ export function desugarOptionChart(
       }
       const pattern = optionPatternLiteral(objectField(s, 'itemStyle'), resolve)
       if (pattern !== undefined) opts.push({ name: 'pattern', value: pattern })
+      // ECharts' states: `emphasis.focus` / `emphasis.itemStyle.color`,
+      // `select.itemStyle.color`, `blur.itemStyle.opacity` — the same four
+      // Series fields the web facade fills; anything beyond a fill is named.
+      const stateLiteral = (key: string): Extract<ExprIR, { kind: 'object' }> | undefined => {
+        const v = literalOf(objectField(s, key), resolve)
+        return v?.kind === 'object' ? v : undefined
+      }
+      const emphasisOpt = stateLiteral('emphasis')
+      if (emphasisOpt !== undefined) {
+        const focus = litString(objectField(emphasisOpt, 'focus'))
+        if (focus === 'self' || focus === 'series') opts.push({ name: 'focus', value: lit(focus) })
+        else if (objectField(emphasisOpt, 'focus') !== undefined && focus !== 'none') warn(`<OptionChart option.series[${si}].emphasis.focus>: only self, series and none are supported natively; nothing is blurred.`)
+        const emphasisItem = literalOf(objectField(emphasisOpt, 'itemStyle'), resolve)
+        const c = emphasisItem?.kind === 'object' ? litString(objectField(emphasisItem, 'color')) : undefined
+        if (c !== undefined) opts.push({ name: 'emphasisColor', value: lit(c) })
+        for (const key of ['label', 'scale', 'lineStyle', 'areaStyle', 'blurScope', 'disabled']) if (objectField(emphasisOpt, key) !== undefined) warn(`<OptionChart option.series[${si}].emphasis.${key}>: has no engine form (the highlighted datum takes emphasis.itemStyle.color and an outline); it was ignored.`)
+      }
+      const selectOpt = stateLiteral('select')
+      if (selectOpt !== undefined) {
+        const selectItem = literalOf(objectField(selectOpt, 'itemStyle'), resolve)
+        const c = selectItem?.kind === 'object' ? litString(objectField(selectItem, 'color')) : undefined
+        if (c !== undefined) opts.push({ name: 'selectColor', value: lit(c) })
+        for (const key of ['label', 'lineStyle', 'areaStyle', 'disabled']) if (objectField(selectOpt, key) !== undefined) warn(`<OptionChart option.series[${si}].select.${key}>: has no engine form (a pinned datum takes select.itemStyle.color and a heavy outline); it was ignored.`)
+      }
+      const blurOpt = stateLiteral('blur')
+      if (blurOpt !== undefined) {
+        const blurItem = literalOf(objectField(blurOpt, 'itemStyle'), resolve)
+        const opacity = blurItem?.kind === 'object' ? litNumber(objectField(blurItem, 'opacity')) : undefined
+        if (opacity !== undefined) opts.push({ name: 'blurOpacity', value: optionDoubleLiteral(Math.max(0, Math.min(1, opacity))) })
+        for (const key of ['label', 'lineStyle', 'areaStyle']) if (objectField(blurOpt, key) !== undefined) warn(`<OptionChart option.series[${si}].blur.${key}>: has no engine form (a blurred datum fades to blur.itemStyle.opacity); it was ignored.`)
+      }
+      const modeRaw = objectField(s, 'selectedMode')
+      if (modeRaw !== undefined && si === 0) {
+        const mode = modeRaw.kind === 'literal' ? modeRaw.value : undefined
+        if (mode === true || mode === 'single') set('selectedMode', lit('single'))
+        else if (mode === 'multiple') set('selectedMode', lit('multiple'))
+        else if (mode !== false) warn(`<OptionChart option.series[0].selectedMode>: only true, single and multiple are supported natively; taps do not pin.`)
+      }
       // The dataset pre-pass materialised `encode.tooltip` as `tooltipExtras`.
       const extras = literalOf(objectField(s, 'tooltipExtras'), resolve)
       if (extras?.kind === 'array' && extras.elements.length > 0) opts.push({ name: 'extras', value: extras })
@@ -2991,6 +3029,10 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'symbol', kind: 'string' },
   { name: 'symbolRepeat', kind: 'boolean' },
   { name: 'negativeColor', kind: 'string' },
+  { name: 'focus', kind: 'string' },
+  { name: 'emphasisColor', kind: 'string' },
+  { name: 'selectColor', kind: 'string' },
+  { name: 'blurOpacity', kind: 'number' },
 ]
 
 /**

@@ -158,7 +158,7 @@ describe('rectCmd / polygonCmd — every optional-key combination', () => {
   // every backend, and the native subset cannot add a key conditionally. So
   // each combination is its own shape, and each deserves its own case.
   const rect = { x: 0, y: 0, w: 10, h: 4 }
-  const grad = { from: { x: 0, y: 0 }, to: { x: 10, y: 0 }, stops: [{ offset: 0, color: '#000' }] }
+  const grad = { from: { x: 0, y: 0 }, to: { x: 10, y: 0 }, stops: [{ offset: 0, color: '#000' }], radial: false }
   const pattern = { kind: 'dots' as const, color: '#fff', spacing: 4, width: 1 }
   const corners = [1, 2, 3, 4]
 

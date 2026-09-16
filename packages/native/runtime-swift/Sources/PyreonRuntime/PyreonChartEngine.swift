@@ -299,11 +299,15 @@ public struct Series {
   public var pattern: PyreonChartPattern? = nil
   public var dash: [Double]? = nil
   public var negativeColor: String? = nil
+  public var focus: String? = nil
+  public var emphasisColor: String? = nil
+  public var selectColor: String? = nil
+  public var blurOpacity: Double? = nil
   public var errLow: [Double]? = nil
   public var errHigh: [Double]? = nil
   public var values2: [Double]? = nil
   public var extras: [SeriesExtra]? = nil
-  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil, extras: [SeriesExtra]? = nil) {
+  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, focus: String? = nil, emphasisColor: String? = nil, selectColor: String? = nil, blurOpacity: Double? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil, extras: [SeriesExtra]? = nil) {
     self.kind = kind
     self.values = values
     self.color = color
@@ -323,6 +327,10 @@ public struct Series {
     self.pattern = pattern
     self.dash = dash
     self.negativeColor = negativeColor
+    self.focus = focus
+    self.emphasisColor = emphasisColor
+    self.selectColor = selectColor
+    self.blurOpacity = blurOpacity
     self.errLow = errLow
     self.errHigh = errHigh
     self.values2 = values2
@@ -3630,6 +3638,35 @@ public func emphasisLevel(_ spec: ChartSpec, _ index: Int) -> Int {
     return e.highlight == index ? 1 : 0
   }
 
+public func blurActive(_ spec: ChartSpec) -> Bool {
+    let e = (spec.emphasis ?? Emphasis(highlight: -1, selected: []))
+    if e.highlight < 0 {
+      return false
+    }
+    for s in spec.series {
+      if s.focus == "self" || s.focus == "series" {
+        return true
+      }
+    }
+    return false
+  }
+
+public func stateFill(_ spec: ChartSpec, _ s: Series, _ index: Int, _ fill: String) -> String {
+    let level = emphasisLevel(spec, index)
+    let selectColor = (s.selectColor ?? "")
+    let emphasisColor = (s.emphasisColor ?? "")
+    if level == 2 && selectColor != "" {
+      return selectColor
+    }
+    if level == 1 && emphasisColor != "" {
+      return emphasisColor
+    }
+    if level == 0 && blurActive(spec) {
+      return withAlpha(fill, (s.blurOpacity ?? 0.1))
+    }
+    return fill
+  }
+
 public func emphasisOutline(_ r: PyreonChartRect, _ level: Int, _ stroke: String) -> PyreonDrawCmd { PyreonDrawCmd(kind: "polyline", stroke: stroke, width: level == 2 ? 2.5 : 1.5, points: [PyreonChartPt(x: r.x, y: r.y), PyreonChartPt(x: r.x + r.w, y: r.y), PyreonChartPt(x: r.x + r.w, y: r.y + r.h), PyreonChartPt(x: r.x, y: r.y + r.h), PyreonChartPt(x: r.x, y: r.y)]) }
 
 public func resolveYDomain(_ spec: ChartSpec) -> Domain { (spec.yDomain ?? deriveOver(leftAxisSeries(spec))) }
@@ -3979,7 +4016,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       for seg in stackSegs {
         let rS = growRect(seg.rect, yDomain)
         let gS = seriesGradient(stackedSeries[seg.seriesIndex].gradient, plot)
-        out.append(rectCmd(rS, stackedSeries[seg.seriesIndex].color, stackedSeries[seg.seriesIndex].corners, gS.stops.count == 0 ? nil : gS, stackedSeries[seg.seriesIndex].pattern))
+        out.append(rectCmd(rS, stateFill(spec, stackedSeries[seg.seriesIndex], seg.datumIndex, stackedSeries[seg.seriesIndex].color), stackedSeries[seg.seriesIndex].corners, gS.stops.count == 0 ? nil : gS, stackedSeries[seg.seriesIndex].pattern))
         let lvlS = emphasisLevel(spec, seg.datumIndex)
         if lvlS > 0 {
           out.append(emphasisOutline(rS, lvlS, t.label))
@@ -3996,7 +4033,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       for seg in groupSegs {
         let rG = growRect(seg.rect, yDomain)
         let gG = seriesGradient(groupedSeries[seg.seriesIndex].gradient, plot)
-        out.append(rectCmd(rG, groupedSeries[seg.seriesIndex].color, groupedSeries[seg.seriesIndex].corners, gG.stops.count == 0 ? nil : gG, groupedSeries[seg.seriesIndex].pattern))
+        out.append(rectCmd(rG, stateFill(spec, groupedSeries[seg.seriesIndex], seg.datumIndex, groupedSeries[seg.seriesIndex].color), groupedSeries[seg.seriesIndex].corners, gG.stops.count == 0 ? nil : gG, groupedSeries[seg.seriesIndex].pattern))
         let lvlG = emphasisLevel(spec, seg.datumIndex)
         if lvlG > 0 {
           out.append(emphasisOutline(rG, lvlG, t.label))
@@ -4063,8 +4100,9 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         for ri in 0..<rects.count {
           let r = rects[ri]
           let grown = growRectH(r)
+          let fillH = stateFill(spec, s, ri, s.color)
           if s.symbol == nil {
-            out.append(rectCmd(grown, s.color, (s.corners ?? themeCorners(spec.theme.radius, ((s.values[ri] ?? 0.0)) >= 0.0, true)), sGrad, s.pattern))
+            out.append(rectCmd(grown, fillH, (s.corners ?? themeCorners(spec.theme.radius, ((s.values[ri] ?? 0.0)) >= 0.0, true)), sGrad, s.pattern))
           } else {
             if s.symbolRepeat == true {
               let unit = grown.h
@@ -4078,11 +4116,11 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
               }
               var kf = 0.0
               for k in 0..<count {
-                out.append(symbolCommand(PyreonChartRect(x: grown.x + unit * kf, y: grown.y, w: unit, h: unit), (s.symbol ?? "rect"), s.color))
+                out.append(symbolCommand(PyreonChartRect(x: grown.x + unit * kf, y: grown.y, w: unit, h: unit), (s.symbol ?? "rect"), fillH))
                 kf = kf + 1.0
               }
             } else {
-              out.append(symbolCommand(grown, (s.symbol ?? "rect"), s.color))
+              out.append(symbolCommand(grown, (s.symbol ?? "rect"), fillH))
             }
           }
         }
@@ -4110,8 +4148,9 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         for ri in 0..<rects.count {
           let r = rects[ri]
           let grown = growRect(r, sDomain)
+          let fillV = stateFill(spec, s, ri, s.color)
           if s.symbol == nil {
-            out.append(rectCmd(grown, s.color, (s.corners ?? themeCorners(spec.theme.radius, ((s.values[ri] ?? 0.0)) >= 0.0, false)), sGrad, s.pattern))
+            out.append(rectCmd(grown, fillV, (s.corners ?? themeCorners(spec.theme.radius, ((s.values[ri] ?? 0.0)) >= 0.0, false)), sGrad, s.pattern))
           } else {
             if s.symbolRepeat == true {
               let unit = grown.w
@@ -4127,11 +4166,11 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
               var kf = 0.0
               for k in 0..<count {
                 let cell = PyreonChartRect(x: grown.x, y: grown.y + grown.h - unit * (kf + 1.0), w: unit, h: unit)
-                out.append(symbolCommand(cell, (s.symbol ?? "rect"), s.color))
+                out.append(symbolCommand(cell, (s.symbol ?? "rect"), fillV))
                 kf = kf + 1.0
               }
             } else {
-              out.append(symbolCommand(grown, (s.symbol ?? "rect"), s.color))
+              out.append(symbolCommand(grown, (s.symbol ?? "rect"), fillV))
             }
           }
         }
@@ -4157,7 +4196,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           let steps = layoutWaterfall(s.values, plot, sDomain, 0.25)
           for si in 0..<steps.count {
             let st = steps[si]
-            let fill = st.value < 0.0 ? (s.negativeColor ?? withAlpha(s.color, 0.55)) : s.color
+            let fill = stateFill(spec, s, st.datumIndex, st.value < 0.0 ? (s.negativeColor ?? withAlpha(s.color, 0.55)) : s.color)
             let startY = scaleLinear(sDomain, plot.y + plot.h, plot.y, st.start)
             let grownH = st.rect.h * progress
             let grown = progress >= 1.0 ? st.rect : PyreonChartRect(x: st.rect.x, y: st.value >= 0.0 ? startY - grownH : startY, w: st.rect.w, h: grownH)
@@ -4258,10 +4297,11 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
                   }
                   let r = fullR * progress
                   let pointSymbol = (s.symbol ?? "circle")
+                  let fillP = stateFill(spec, s, i, s.color)
                   if pointSymbol == "circle" {
-                    out.append(PyreonDrawCmd(kind: "circle", fill: s.color, center: pts[i], radius: r))
+                    out.append(PyreonDrawCmd(kind: "circle", fill: fillP, center: pts[i], radius: r))
                   } else {
-                    out.append(symbolCommand(PyreonChartRect(x: pts[i].x - r, y: pts[i].y - r, w: r * 2.0, h: r * 2.0), pointSymbol, s.color))
+                    out.append(symbolCommand(PyreonChartRect(x: pts[i].x - r, y: pts[i].y - r, w: r * 2.0, h: r * 2.0), pointSymbol, fillP))
                   }
                 }
               }

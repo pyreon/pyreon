@@ -71,6 +71,8 @@ export interface CompiledOption {
    * its series is a different chart, so the whole option is reported as not
    * rendering faithfully — the conformance metric counts it as a miss.
    */
+  /** ECharts' series `selectedMode` (true / single / multiple): how a click pins a datum in the host. */
+  selectedMode?: 'single' | 'multiple' | undefined
   supported: boolean
 }
 
@@ -96,7 +98,53 @@ const KNOWN_SERIES = new Set([
   'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'rippleEffect', 'showEffectOn',
   'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex', 'tooltipExtras',
   'coordinateSystem', 'polyline', 'effect', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'sampling',
+  'select', 'blur', 'selectedMode',
 ])
+
+/**
+ * ECharts' state options as the engine's series fields: `emphasis.focus` and
+ * `emphasis.itemStyle.color` (the hover state), `select.itemStyle.color` (the
+ * pinned state), `blur.itemStyle.opacity` (what the others fade to). What a
+ * state changes beyond its fill — a label, a symbol scale, a line width — has
+ * no engine form and is named.
+ */
+function stateFields(s: Record<string, unknown>, path: string, warn: (code: OptionWarning['code'], path: string, message: string) => void): Partial<Series> {
+  const out: Partial<Series> = {}
+  const state = (key: 'emphasis' | 'select' | 'blur'): Record<string, unknown> | undefined => (isObj(s[key]) ? (s[key] as Record<string, unknown>) : undefined)
+  const emphasis = state('emphasis')
+  if (emphasis !== undefined) {
+    const focus = emphasis['focus']
+    if (focus === 'self' || focus === 'series') out.focus = focus
+    else if (focus !== undefined && focus !== 'none') warn('series-option-unsupported', `${path}.emphasis.focus`, `emphasis.focus "${String(focus)}" is not supported (self, series and none are); nothing is blurred.`)
+    const item = isObj(emphasis['itemStyle']) ? emphasis['itemStyle'] : {}
+    if (typeof item['color'] === 'string') out.emphasisColor = item['color']
+    for (const key of ['label', 'scale', 'lineStyle', 'areaStyle', 'blurScope', 'disabled']) if (emphasis[key] !== undefined) warn('series-option-unsupported', `${path}.emphasis.${key}`, `emphasis.${key} has no engine form (the highlighted datum takes emphasis.itemStyle.color and an outline); it was ignored.`)
+  }
+  const select = state('select')
+  if (select !== undefined) {
+    const item = isObj(select['itemStyle']) ? select['itemStyle'] : {}
+    if (typeof item['color'] === 'string') out.selectColor = item['color']
+    for (const key of ['label', 'lineStyle', 'areaStyle', 'disabled']) if (select[key] !== undefined) warn('series-option-unsupported', `${path}.select.${key}`, `select.${key} has no engine form (a pinned datum takes select.itemStyle.color and a heavy outline); it was ignored.`)
+  }
+  const blur = state('blur')
+  if (blur !== undefined) {
+    const item = isObj(blur['itemStyle']) ? blur['itemStyle'] : {}
+    const opacity = num(item['opacity'])
+    if (opacity !== null) out.blurOpacity = Math.max(0.0, Math.min(1.0, opacity))
+    for (const key of ['label', 'lineStyle', 'areaStyle']) if (blur[key] !== undefined) warn('series-option-unsupported', `${path}.blur.${key}`, `blur.${key} has no engine form (a blurred datum fades to blur.itemStyle.opacity); it was ignored.`)
+  }
+  return out
+}
+
+/** ECharts' `selectedMode` as the host's pin mode; `series` (whole-series selection) is named. */
+function selectedModeOf(s: Record<string, unknown>, path: string, warn: (code: OptionWarning['code'], path: string, message: string) => void): 'single' | 'multiple' | undefined {
+  const mode = s['selectedMode']
+  if (mode === undefined || mode === false) return undefined
+  if (mode === true || mode === 'single') return 'single'
+  if (mode === 'multiple') return 'multiple'
+  warn('series-option-unsupported', `${path}.selectedMode`, `selectedMode "${String(mode)}" is not supported (true, single and multiple are); clicks do not pin.`)
+  return undefined
+}
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -276,6 +324,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   let xValues: Double[] | undefined = undefined
   // Large-data requests per compiled cartesian series (see the sampling pass).
   const sampleRequests: SamplingRequest[] = []
+  // The first series' `selectedMode` decides how the host pins a click.
+  let selectedMode: 'single' | 'multiple' | undefined = undefined
   // Running totals per `stack` name for stacked LINES.
   const lineStacks = new Map<string, Double[]>()
   const barCount = rawSeries.filter((s) => isObj(s) && s['type'] === 'bar' && s['stack'] === undefined).length
@@ -452,8 +502,11 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       ...(kind === 'line' || kind === 'points' ? seriesSymbol(s, kind, warn, path) : {}),
       ...(gradient !== undefined && gradient.stops.length > 0 ? { gradient } : {}),
       ...(Array.isArray(s['tooltipExtras']) ? { extras: s['tooltipExtras'] as SeriesExtra[] } : {}),
+      ...stateFields(s, path, warn),
     }
     series.push(entry)
+    const pinMode = selectedModeOf(s, path, warn)
+    if (pinMode !== undefined && selectedMode === undefined) selectedMode = pinMode
     const seriesIndex = series.length - 1
 
     // markLine / markArea → annotations; markPoint → markers.
@@ -655,7 +708,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   }
   if (customY !== undefined && spec.yDomain === undefined) spec.yDomain = customY
   if (customX !== undefined && (spec.xValues === undefined || spec.xValues.length === 0)) spec.xValues = customX
-  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, warnings, supported }
+  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }) }
 }
 
 const defaultPalette = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']

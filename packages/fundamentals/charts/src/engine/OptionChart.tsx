@@ -11,6 +11,7 @@ import type { VNode } from '@pyreon/core'
 import { batch, effect, signal } from '@pyreon/reactivity'
 import { canvasHost } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
+import { pinSelection } from './legend-toggle'
 import { compiledCommands, optionToSvg, planOption } from './option'
 import type { CompiledOption, EChartsOption, OptionPlan } from './option'
 import { familyHostNode } from './family-host'
@@ -20,7 +21,7 @@ import type { OptionUpdatePolicy } from './option-composite'
 import { graphicCommands } from './option-layer'
 import { visualMapCommands } from './visual-map'
 import { barsFor, layoutChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
-import type { ChartSpec } from './render'
+import type { ChartSpec, Emphasis } from './render'
 import { hitBar, hitNearestX, layoutSeriesPoints } from './layout'
 import { plain } from './format'
 import type { ThemeDefinition } from './theme-registry'
@@ -375,12 +376,61 @@ export function OptionChart(props: OptionChartProps): VNode {
   // The host's `title` chrome stays off — a compiled option draws its own
   // `title` — and it takes the props the facade shares with every host.
   const hostProps = hostPropsFor(props)
+  // The host attaches its pointer listeners only for a tooltip; an option
+  // whose series carry states (`emphasis` / `select` / `blur`) needs the
+  // hover too, so the host's tooltip switch is on for either — and the
+  // tooltip callback below hands back no rows unless the prop asked for them.
+  const hasStates = (opt: EChartsOption): boolean => {
+    const list = opt['series']
+    const entries = Array.isArray(list) ? list : list === undefined ? [] : [list]
+    return entries.some((entry) => typeof entry === 'object' && entry !== null && ('emphasis' in entry || 'select' in entry || 'blur' in entry))
+  }
+  Object.defineProperty(hostProps, 'tooltip', {
+    get: () => props.tooltip === true || hasStates(readOption()),
+    enumerable: true,
+    configurable: true,
+  })
   const hit = (g: OptionGeometry, i: number): OptionHit | null => {
     const f = firstSpec(g)
     if (f === null || i < 0) return null
     const s = f.spec.series[0]
     if (s === undefined || i >= s.values.length) return null
     return { seriesIndex: 0, dataIndex: i, name: f.spec.categories[i] ?? String(i), value: s.values[i] ?? NaN }
+  }
+  // ECharts' states on the compiled option: the hovered datum is the
+  // highlight (`emphasis`), a click pins per the option's `selectedMode`
+  // (`select`), and a series' `emphasis.focus` blurs the others. Both live in
+  // signals the draw effect tracks; the commands are re-rendered with the
+  // `emphasis` set only while a state is active, so a plain chart paints the
+  // compiled commands as before.
+  const hoverIndex = signal(-1)
+  const pinned = signal<number[]>([])
+  const stateCmds = (g: OptionGeometry): DrawCmd[] => {
+    const highlight = hoverIndex()
+    const selected = pinned()
+    if (highlight < 0 && selected.length === 0) return g.cmds
+    const emphasis: Emphasis = { highlight, selected }
+    if (g.plan.kind === 'cartesian') return compiledCommands({ ...g.plan.compiled, spec: { ...g.plan.compiled.spec, emphasis } }, g.option, g.measure).cmds
+    if (g.plan.kind === 'grids') {
+      const cmds: DrawCmd[] = []
+      let first = true
+      for (const part of g.plan.parts) {
+        if (part.plan.kind !== 'cartesian') continue
+        const compiled = first ? { ...part.plan.compiled, spec: { ...part.plan.compiled.spec, emphasis } } : part.plan.compiled
+        first = false
+        for (const c of compiledCommands(compiled, {}, g.measure).cmds) cmds.push(offsetCmd(c, part.rect.x, part.rect.y))
+      }
+      return cmds
+    }
+    return g.cmds
+  }
+  const pinMode = (g: OptionGeometry): 'single' | 'multiple' | undefined => {
+    if (g.plan.kind === 'cartesian') return g.plan.compiled.selectedMode
+    if (g.plan.kind === 'grids') {
+      const part = g.plan.parts.find((p) => p.plan.kind === 'cartesian')
+      if (part !== undefined && part.plan.kind === 'cartesian') return part.plan.compiled.selectedMode
+    }
+    return undefined
   }
   const canvasNode = canvasHost<OptionGeometry>({
     props: hostProps,
@@ -390,17 +440,23 @@ export function OptionChart(props: OptionChartProps): VNode {
       readOption()
       step()
       void props.timelineIndex
+      hoverIndex()
+      pinned()
     },
     layout: (box, measure) => cartesian(box.w, box.h, measure),
-    render: (g) => g.cmds,
+    render: (g) => stateCmds(g),
     select: (g, px, py) => {
       const h1 = hitAt(g, px, py)
+      const pin = pinMode(g)
+      if (pin !== undefined && h1 !== null) pinned.set(pinSelection(pinned(), h1.dataIndex, pin === 'multiple'))
       props.onSelect?.(h1)
       props.onSelectIndex?.(h1 === null ? -1 : h1.dataIndex)
     },
+    leave: () => hoverIndex.set(-1),
     tooltip: (g, px, py) => {
       const h1 = hitAt(g, px, py)
-      if (h1 === null) return null
+      hoverIndex.set(h1 === null ? -1 : h1.dataIndex)
+      if (h1 === null || props.tooltip !== true) return null
       const f = firstSpec(g)
       const label = f?.spec.series[h1.seriesIndex]?.label ?? `Series ${h1.seriesIndex + 1}`
       return [h1.name, `${label}: ${plain(h1.value)}`]

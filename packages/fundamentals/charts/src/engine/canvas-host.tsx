@@ -167,6 +167,8 @@ export interface CanvasHostSpec<L> {
   focusRect?: ((layout: L, index: number) => Rect | null) | undefined
   /** Tooltip lines for a pointer position, or null for a miss. */
   tooltip?: ((layout: L, px: Double, py: Double, theme: ChartTheme) => string[] | null) | undefined
+  /** The pointer left the canvas (or the gesture was cancelled): whatever `tooltip` set as the hover is over. */
+  leave?: (() => void) | undefined
   /** The accessible description + table input. */
   a11y: (layout: L) => A11yInput
   /** A family-specific `aria-label` sentence, when the generic `describeChart` reads worse than the family's own (range and last close, grid dimensions). */
@@ -506,6 +508,7 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
   }
   const handleLeave = (): void => {
     if (tip !== null) tip.style.display = 'none'
+    spec.leave?.()
   }
 
   const layoutForA11y = (): L => {

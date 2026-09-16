@@ -191,6 +191,18 @@ for interaction, animation or accessibility parity.
   stays partial on IMAGE patterns (`color: { image }`), which now warn by
   name instead of silently painting the palette colour.
 
+- [x] `presentation.states` (still partial, narrowed): ECharts' `emphasis` /
+  `select` / `blur` FILLS and `emphasis.focus` blur are engine fields
+  (`Series.emphasisColor` / `selectColor` / `focus` / `blurOpacity`, applied
+  through one `stateFill` at every bar and point site, so the generated
+  engines carry them); `<OptionChart>` now hovers (highlight) and pins per the
+  series' `selectedMode` on the web host, and the native desugar lowers the
+  same four fields plus `selectedMode` as the host's tap-to-pin state. Named
+  by name: state labels, symbol scale, `blurScope`, whole-series selection;
+  the engine's highlight is a datum COLUMN, so `focus: 'series'` dims the
+  other columns like `self`. Fixed on the way: `<SingleAxisChart>` mounted no
+  tooltip node at all (the host sweep's one red row on the base branch).
+
 ## Exit gate
 
 Zero unclassified core inventory rows; green real-browser conformance; green
