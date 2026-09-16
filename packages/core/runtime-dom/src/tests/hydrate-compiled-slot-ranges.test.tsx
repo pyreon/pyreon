@@ -21,7 +21,7 @@
  * a non-Pyreon script attached silently gone.
  */
 import { transformJSX } from '@pyreon/compiler'
-import { For, Fragment, h } from '@pyreon/core'
+import { _fuse, _lc, For, Fragment, h } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
@@ -31,10 +31,16 @@ import {
   _bindDirect,
   _bindProp,
   _bindText,
+  _bindSpread,
+  _mountChild,
   _mountSlot,
   _setAttr,
+  _setChild,
+  _setChildAt,
   _setClass,
+  _setHtml,
   _setStyle,
+  _setValue,
   _textSlot,
   _tpl,
   hydrateRoot,
@@ -52,8 +58,16 @@ const RUNTIME_DEPS = {
   _setStyle,
   _setAttr,
   _setClass,
+  _bindSpread,
   _mountSlot,
   _textSlot,
+  _setChild,
+  _setChildAt,
+  _mountChild,
+  _setHtml,
+  _setValue,
+  _fuse,
+  _lc,
   bindPolymorphicText,
   h,
   Fragment,
@@ -71,10 +85,38 @@ const lowerResidualJsx = (code: string) =>
     jsxFragment: 'Fragment',
   }).code
 
+/**
+ * Every runtime helper the emit IMPORTS must be in `RUNTIME_DEPS`, or the
+ * compiled body hits a free variable and `new Function` throws a
+ * `ReferenceError` the moment that line runs.
+ *
+ * That used to be SILENT here. The throw lands inside `hydrateComponent`'s
+ * try/catch, which logs and returns `[noop, domNode]` — and until #3505 nothing
+ * swept the server DOM the failed hydration never claimed, so the page still
+ * showed the SERVER nodes and every assertion below passed while the client
+ * build had crashed. Three specs in this file were green for exactly that
+ * reason (`_setChild` / `_setChildAt` missing from the map). Assert the deps
+ * instead of discovering them.
+ */
+function assertDepsCover(code: string): void {
+  for (const m of code.matchAll(/^import\s*\{([^}]*)\}\s*from\s*["'][^"']+["']/gm)) {
+    for (const raw of (m[1] ?? '').split(',')) {
+      const name = raw.trim().split(/\s+as\s+/).pop()?.trim()
+      if (name && !DEP_NAMES.includes(name)) {
+        throw new Error(
+          `[harness] the emit imports "${name}" but RUNTIME_DEPS does not provide it — ` +
+            `add it, or this spec asserts the server DOM after a crashed client build`,
+        )
+      }
+    }
+  }
+}
+
 function build(source: string, globals: Record<string, unknown>, ssr: boolean): () => unknown {
   const { code } = ssr
     ? transformJSX(source, 'test.tsx', { ssr: true })
     : transformJSX(source, 'test.tsx')
+  assertDepsCover(code)
   const body = lowerResidualJsx(code.replace(/^import[^\n]*\n/gm, '').replace(/^export\s+/gm, ''))
   const fn = new Function(...DEP_NAMES, ...Object.keys(globals), `${body}\nreturn App`)
   return fn(...DEP_VALUES, ...Object.values(globals)) as () => unknown

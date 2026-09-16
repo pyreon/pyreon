@@ -1919,6 +1919,34 @@ const geometry = () => props.shape
         '// stringified on older runtimes: a getter whose value is an accessor\n// <Star {...state.getItemProps(i)} />  // { tabIndex: () => 0 | -1 }\n\n// resolve at the site if you cannot upgrade\nconst item = state.getItemProps(i)\n<Star {...item} tabIndex={item.tabIndex()} />',
     }),
   },
+  {
+    // Appended at the END on purpose: the catalog is matched in ORDER and a
+    // broad `/(\w+) is not defined/` entry already sits above, so the V8
+    // spelling of this error can never reach a rule added here. The JSC /
+    // Safari spelling is unclaimed, and it is the one a `bun` runner or a
+    // Safari user actually sees.
+    //
+    // Found while fixing the hydration boundary sweep: two real-`transformJSX`
+    // test harnesses in `runtime-dom` omitted `_setChild` / `_setChildAt` /
+    // `_fuse` from their `new Function` dependency map, the compiled body hit a
+    // free variable, `hydrateComponent` caught the throw — and the specs PASSED
+    // anyway, because nothing swept the server DOM the crashed client build
+    // never claimed. That is the general shape: under hydration this error is
+    // SILENT at the page level, because the SSR markup stays on screen and
+    // looks like a working render.
+    pattern: /Can't find variable: (_(?:tpl|bind\w*|applyProps|set\w+|mount\w+|textSlot|fuse|lc|ssr\w*|esc\w*|rsCollapse\w*))/,
+    diagnose: (m) => ({
+      cause: `\`${m[1]}\` is a RUNTIME HELPER the Pyreon JSX transform injects an import for, and at the point it ran nothing provided it. Three ways that happens: \`@pyreon/runtime-dom\` (or \`@pyreon/core\`, which owns \`_fuse\` and \`_lc\`) is OLDER than \`@pyreon/compiler\` and does not export the helper yet; a downstream transform stripped the injected import line; or a test harness evaluates the emit through \`new Function\` / \`eval\` and hands it a hand-maintained dependency map that has fallen behind the emit. Under HYDRATION the page-level symptom is misleading — the throw is caught per component, the server's markup stays on screen, and the page looks rendered while none of its bindings exist.`,
+      fix: 'Align the versions (`pyreon info` reports `@pyreon/*` skew; `pyreon upgrade` fixes it) and make sure whatever consumes the transform output preserves its injected imports. In a harness that evaluates the emit, do not maintain the dependency list by hand — parse the emitted `import { … } from "@pyreon/…"` names and ASSERT every one is provided, so a missing helper fails the spec loudly instead of leaving it asserting the server DOM.',
+      fixCode: `// harness: assert the deps cover the emit instead of discovering a gap
+const { code } = transformJSX(source, 'app.tsx')
+for (const m of code.matchAll(/^import\\s*\\{([^}]*)\\}/gm))
+  for (const raw of m[1].split(',')) {
+    const name = raw.trim().split(/\\s+as\\s+/).pop()
+    if (name && !(name in RUNTIME_DEPS)) throw new Error(\`missing runtime dep: \${name}\`)
+  }`,
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */
