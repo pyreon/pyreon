@@ -2,7 +2,7 @@
 
 Pyreon adapter for TanStack Table v9 — reactive `useTable` + `flexRender`.
 
-`@pyreon/table` wraps `@tanstack/table-core` so a Pyreon app gets all the headless table machinery (sorting, filtering, pagination, grouping, expanding, faceting) with signal-driven options. `useTable(() => opts)` returns the `Table` instance **directly**: v9 exposes a pluggable reactivity seam, so the adapter binds every table state slice to a Pyreon signal and reads track natively inside templates and effects — no accessor wrapper, no version counter. `flexRender` handles the four column-def shapes TanStack supports (string, number, function, VNode). `flexRenderCell` gives **fine-grained per-cell updates**: an in-place data edit patches only the changed rows' cells (via per-row signals), matching a hand-memoized `@tanstack/react-table` row with no `React.memo` boilerplate. The TanStack Table author surface is re-exported, so consumers import everything from `@pyreon/table`.
+`@pyreon/table` wraps `@tanstack/table-core` so a Pyreon app gets all the headless table machinery (sorting, filtering, pagination, grouping, expanding, faceting) with signal-driven options. `useTable(() => opts)` returns the `Table` instance **directly**: v9 exposes a pluggable reactivity seam, so the adapter binds every table state slice to a Pyreon signal and reads track natively inside templates and effects — no accessor wrapper, no version counter. `flexRender` handles the four column-def shapes TanStack supports (string, number, function, VNode). `flexRenderCell` gives **fine-grained per-cell updates**: an in-place data edit patches only the changed rows' cells (via per-row signals), matching a hand-memoized `@tanstack/react-table` row with no `React.memo` boilerplate. The TanStack Table author surface is re-exported, so consumers import everything from `@pyreon/table`. The package also ships a second, dependency-free engine — [`createTableState`](#createtablestate--the-multiplatform-core) — for apps that want sort/filter/paginate/select without TanStack, including on iOS/Android via PMTC.
 
 ## Install
 
@@ -270,6 +270,59 @@ re-exported wholesale — they carry no runtime weight.
 
 A drift snapshot test in `src/tests/public-surface.test.ts` locks the re-export set — when TanStack adds, renames, or removes an export in a minor bump, the snapshot fails and the diff becomes the deliberate decision moment (run `bunx vitest run --update public-surface` to accept).
 
+## `createTableState` — the multiplatform core
+
+`useTable` binds `@tanstack/table-core` and is rich but web-only. `createTableState` is the
+opposite trade: dependency-free, pure signal logic (no DOM, no TanStack) covering the 80% of
+tables most apps need — single-column sort, a global text filter, fixed-page pagination, and
+multi-row selection. Because it's pure signals, the SAME source runs unchanged on iOS/Android
+via PMTC (co-located Swift/Kotlin ports, behaviour-identical + compile-and-run verified) —
+render `rows()` with a native `<For>` (tables *are* native: SwiftUI `List` / Compose
+`LazyColumn`), no WebView. A `createTableState`-only import tree-shakes TanStack out entirely.
+
+```tsx
+import { For } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
+import { createTableState } from '@pyreon/table'
+
+const data = signal([
+  { id: 1, name: 'Ada', role: 'Engineer' },
+  { id: 2, name: 'Linus', role: 'Maintainer' },
+])
+
+const table = createTableState({
+  data: () => data(),
+  columns: [{ id: 'name' }, { id: 'role' }],
+  pageSize: 10,
+  rowId: (r) => String(r.id),
+})
+
+table.toggleSort('name')  // none → asc → desc → none
+table.setFilter('li')     // case-insensitive substring across every column
+
+// <For each={table.rows()} by={(r) => r.id}>{(r) => <tr>…</tr>}</For>
+```
+
+`data` is an **accessor** so a `signal()`/`computed()` source stays reactive; `rows()`
+re-derives filtered → sorted → paginated on every change. `page()` is CLAMPED against the
+LIVE row count, so a page that falls off the end when the data shrinks (a filter, a refetch
+that returns fewer rows) reports the last page rather than rendering a blank table — and a
+*transient* shrink (typed then cleared) restores the reader to where they were, instead of
+stranding them on the last page. Empty cells (`null`/`undefined`) sort as ONE rank, so rows
+with nothing in the sorted column keep their relative order rather than scattering.
+
+Grouping / faceting / column pinning / virtual sizing stay on the full `useTable` (TanStack)
+web path — `createTableState` is deliberately scoped to what a native list view can render
+directly.
+
+| Concern | `createTableState` |
+| --- | --- |
+| Sorting | `toggleSort(columnId)` — cycles none → asc → desc → none. `sortColumn()` / `sortDirection()` read the state |
+| Filtering | `setFilter(query)` — case-insensitive substring by default; override with `filterFn` |
+| Pagination | `pageSize` option; `page()` / `pageCount()` / `setPage()` / `nextPage()` / `prevPage()` |
+| Selection | `isSelected(id)` / `toggleSelected(id)` / `clearSelection()` / `selectedIds()`, keyed by `rowId` (default: row index) |
+| Derived | `rows()` — filtered → sorted → paginated; `filteredCount()` — matches BEFORE pagination, for "N of M" UIs |
+
 ## Gotchas
 
 - **`useTable` returns the `Table` instance** — there is no `table()` call. But reads still belong inside a reactive scope: `each={() => table.getRowModel().rows}` subscribes; a bare `each={table.getRowModel().rows}` reads once and freezes.
@@ -282,6 +335,8 @@ A drift snapshot test in `src/tests/public-surface.test.ts` locks the re-export 
 - **Sync effect disposes on unmount** via `onUnmount`, along with the table's reactive subscriptions. The table instance itself has no `dispose` — its lifecycle is the component's.
 - **Use `<For>`, not `.map()`** — `.map()` inside a reactive scope rebuilds the whole `<tbody>` on every change (worst-case DOM churn). Keyed `<For>` reuses/moves DOM nodes.
 - **Cells that change in place need `flexRenderCell` in an accessor** — a keyed `<For>` reuses the cell and never re-runs its body, so `flexRender(cell…, cell.getContext())` freezes on an in-place value change. `flexRenderCell(table, row.id, cell.column.id)` re-navigates to the live cell.
+
+- **`createTableState` is a SEPARATE engine, not `useTable` with fewer features** — its `TableColumn`/`TableState` shapes don't interop with TanStack column defs or `flexRender`; pick one per table. Reach for it when the table needs to render on iOS/Android via PMTC, or when a `useTable`-only import's TanStack weight isn't worth paying for a plain sort/filter/paginate list.
 
 ## Documentation
 

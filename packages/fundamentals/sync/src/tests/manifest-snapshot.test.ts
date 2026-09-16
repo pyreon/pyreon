@@ -47,6 +47,14 @@ describe('gen-docs — @pyreon/sync manifest snapshot', () => {
       'sync/createSyncServer',
       'sync/LOCAL_ORIGIN',
       'sync/REMOTE_ORIGIN',
+      // The multiplatform (pure-TS, PMTC-lowerable) engine + its transport.
+      'sync/pyreonAdapter',
+      'sync/PyreonCrdtAdapter',
+      'sync/PyreonCrdtDoc',
+      'sync/createActorId',
+      'sync/connectPyreonSync',
+      'sync/webSocketChannel',
+      'sync/createNativeSyncHost',
     ]) {
       expect(entries[key], `missing api-reference entry: ${key}`).toBeDefined()
     }
