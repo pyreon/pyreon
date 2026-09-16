@@ -155,7 +155,10 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   const seriesArr = Array.isArray(option['series']) ? (option['series'] as unknown[]) : [option['series']]
   const s = seriesArr[0] as Record<string, unknown>
   const type = s['type'] as string
-  const familyKey = s['coordinateSystem'] === 'polar' ? 'polar' : s['coordinateSystem'] === 'geo' ? 'geo' : s['coordinateSystem'] === 'singleAxis' ? 'singleAxis' : type
+  // A theme river is keyed by TYPE: ECharts requires `coordinateSystem:
+  // 'singleAxis'` on it, and keying on the coordinate first sent every
+  // canonical theme river into the single-axis scatter arm, which skipped it.
+  const familyKey = type === 'themeRiver' ? 'themeRiver' : s['coordinateSystem'] === 'polar' ? 'polar' : s['coordinateSystem'] === 'geo' ? 'geo' : s['coordinateSystem'] === 'singleAxis' ? 'singleAxis' : type
   for (const key of Object.keys(option)) if (!KNOWN_TOP.has(key)) warn('option-key-unsupported', key, `"${key}" has no mapping yet; it was ignored.`)
   for (const key of Object.keys(s)) if (!KNOWN_BY_FAMILY[familyKey]!.has(key)) warn('series-option-unsupported', `series[0].${key}`, `"${key}" has no mapping for ${type} yet; it was ignored.`)
   // This guard has collided across the whole charts wave — polar, boxplot,
@@ -303,7 +306,8 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   }
 
   if (familyKey === 'singleAxis') {
-    if (type !== 'scatter' && type !== 'effectScatter') warn('series-type-unsupported', 'series[0].type', 'Only scatter renders on a single axis; ' + type + ' was skipped.')
+    // ECharts' own contract: a single axis hosts scatter / effectScatter (and the theme river, keyed by type above).
+    if (type !== 'scatter' && type !== 'effectScatter') warn('series-type-unsupported', 'series[0].type', 'Only scatter and effectScatter render on a single axis (ECharts allows no other series there); ' + type + ' was skipped.')
     const axRaw = first(option['singleAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
     const ax = isObj(axRaw) ? axRaw : {}
     const isCat = ax['type'] === 'category'

@@ -77,6 +77,12 @@ for interaction, animation or accessibility parity.
   transpose exists three times (web `transposeCmds`, `pyreonTransposeCmds` in
   both runtimes) and is locked by execution like the RTL mirror. Rows
   `series.sankey`, `coordinates.calendar`, `coordinates.parallel` complete.
+- [x] `coordinates.single-axis` complete: ECharts itself places only scatter /
+  effectScatter and the theme river on a single axis, and the arm now honours
+  exactly that. Found on the way: a theme river declared with
+  `coordinateSystem: 'singleAxis'` — ECharts' REQUIRED spelling — was keyed by
+  its coordinate into the scatter arm and skipped with a warning; families are
+  keyed by type first now.
 - [x] `coordinates.polar` complete: scatter / effectScatter join bar and line
   on the polar coordinate (points at the line placement, circles only, the
   symbol radius) on web, iOS and Android. Found on the way: a polar option

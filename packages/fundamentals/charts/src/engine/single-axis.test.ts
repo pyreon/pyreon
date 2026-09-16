@@ -69,3 +69,19 @@ describe('singleAxis option mapping', () => {
     expect(bad.warnings.map((w) => w.code)).toContain('series-type-unsupported')
   })
 })
+
+describe('single axis — routing by ECharts contract', () => {
+  it("a theme river declared with coordinateSystem 'singleAxis' (ECharts' required spelling) is a theme river, not a skipped scatter", () => {
+    const r = compileFamily({ singleAxis: { type: 'time' }, series: [{ type: 'themeRiver', coordinateSystem: 'singleAxis', data: [['2024-01-01', 1, 'a'], ['2024-01-02', 2, 'a']] }] })!
+    expect(r.warnings).toEqual([])
+    expect(r.plan.kind).toBe('themeRiver')
+  })
+  it('effectScatter is a scatter on the axis; a series ECharts itself cannot place there warns by name', () => {
+    const ok = compileFamily({ singleAxis: { type: 'value' }, series: [{ type: 'effectScatter', coordinateSystem: 'singleAxis', data: [1, 2] }] })!
+    expect(ok.warnings).toEqual([])
+    expect(ok.plan.kind).toBe('singleAxis')
+    const bar = compileFamily({ singleAxis: { type: 'value' }, series: [{ type: 'bar', coordinateSystem: 'singleAxis', data: [1] }] })!
+    expect(bar.warnings.map((w) => w.code + '@' + w.path)).toEqual(['series-type-unsupported@series[0].type'])
+    expect(bar.warnings[0]!.message).toContain('ECharts allows no other series there')
+  })
+})

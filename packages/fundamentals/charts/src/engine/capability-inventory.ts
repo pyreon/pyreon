@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.15' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.16' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -58,7 +58,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('coordinates.polar', 'coordinates', 'direct', 'complete', 'src/engine/polar.test.ts', '../../native/compiler/src/tests/chart-polar-scatter-native.test.ts'),
   row('coordinates.calendar', 'coordinates', 'direct', 'complete', 'src/engine/option-orient.test.ts', '../../native/compiler/src/tests/chart-orient-native.test.ts'),
   row('coordinates.parallel', 'coordinates', 'direct', 'complete', 'src/engine/option-orient.test.ts', '../../native/compiler/src/tests/chart-orient-native.test.ts'),
-  row('coordinates.single-axis', 'coordinates', 'direct', 'partial', 'src/engine/option-family.ts'), // scatter only
+  row('coordinates.single-axis', 'coordinates', 'direct', 'complete', 'src/engine/single-axis.test.ts'), // scatter / effectScatter + theme river: ECharts' own contract
   row('coordinates.axes', 'coordinates', 'direct', 'partial', 'src/engine/option.ts'), // one x axis, two y axes
   row('coordinates.visual-map', 'coordinates', 'direct', 'partial', 'src/engine/visual-map.ts'), // calculable handle
   row('coordinates.graphic', 'coordinates', 'direct', 'partial', 'src/engine/option-layer.ts'), // element types
