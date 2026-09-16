@@ -32,6 +32,10 @@ package com.pyreon
 
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.swipe
+import org.junit.Assert.assertFalse
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.printToString
@@ -842,6 +846,14 @@ class TasksAppInstrumentedTest {
         )) {
             composeRule.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
         }
+        // The map ROAMS: a horizontal swipe pans it, so its pixels change.
+        val roamMap = composeRule.onNodeWithTag("gal-map").performScrollTo()
+        val mapBefore = roamMap.captureToImage().asAndroidBitmap()
+        roamMap.performTouchInput {
+            swipe(start = Offset(width * 0.3f, height * 0.5f), end = Offset(width * 0.3f + 200f, height * 0.5f), durationMillis = 400)
+        }
+        composeRule.waitForIdle()
+        assertFalse("dragging the roaming map did not pan it", mapBefore.sameAs(roamMap.captureToImage().asAndroidBitmap()))
         // The lines trail renders. Its MOTION is proven on the iOS device lane
         // and in real Chromium; here it cannot be: the trail runs on
         // withInfiniteAnimationFrameNanos (a plain frame loop kept this harness

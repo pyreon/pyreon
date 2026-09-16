@@ -103,7 +103,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -13474,6 +13474,17 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
   const H = swiftChartDouble(e, 'height', spec.defaultHeight, indent)
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
+  // `roam`: the view lives in host state and is merged into the options every
+  // render, so the layout, the paint and the hit all see the roamed map.
+  const roamCfg = spec.roam === true ? chartRoamConfig((n) => readStaticAttr(e, n), (m) => _emitWarnings.push(m), tag, (n) => chartAttrExpr(e, n)) : null
+  if (roamCfg !== null) {
+    _hostStateDecls.push('@State private var pyreonView: GeoView = GeoView(zoom: 1.0, panX: 0.0, panY: 0.0)')
+    _hostStateDecls.push('@State private var pyreonPanFrom: PyreonChartPt = PyreonChartPt(x: 0.0, y: 0.0)')
+    _hostStateDecls.push('@State private var pyreonPinchFrom: Double = 1.0')
+    const base = options === 'nil' ? `${spec.optionsStruct}()` : options
+    themeLets.push(`let pyreonRoamed: ${spec.optionsStruct} = { () -> ${spec.optionsStruct} in var pyreonO = ${base}; pyreonO.zoom = pyreonView.zoom; pyreonO.panX = pyreonView.panX; pyreonO.panY = pyreonView.panY; return pyreonO }()`)
+    options = 'pyreonRoamed'
+  }
   const args: ChartHostArgs = {
     data,
     options,
@@ -13549,6 +13560,16 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
       parts.push(`do { ${swiftChartSelectBody(event.handler, extra.hit(layout, hitX, hitY, plotArgs, SWIFT_CHART_TARGET), indent)} }`)
     }
     gesture = `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${parts.join('; ')} })`
+  }
+  if (roamCfg !== null) {
+    const box = SWIFT_CHART_TARGET.rect('0.0', '0.0', plotArgs.W, plotArgs.H)
+    const pan = `DragGesture(minimumDistance: 3).onChanged { pyreonG in let pyreonD = PyreonChartPt(x: Double(pyreonG.translation.width), y: Double(pyreonG.translation.height)); pyreonView = geoRoamPan(pyreonView, pyreonD.x - pyreonPanFrom.x, pyreonD.y - pyreonPanFrom.y); pyreonPanFrom = pyreonD }.onEnded { _ in pyreonPanFrom = PyreonChartPt(x: 0.0, y: 0.0) }`
+    const pinch = `MagnificationGesture().onChanged { pyreonS in pyreonView = geoRoamZoom(pyreonView, Double(pyreonS) / pyreonPinchFrom, (${plotArgs.W}) / 2.0, (${plotArgs.H}) / 2.0, ${box}, ${chartDouble(roamCfg.min)}, ${chartDouble(roamCfg.max)}); pyreonPinchFrom = Double(pyreonS) }.onEnded { _ in pyreonPinchFrom = 1.0 }`
+    // Simultaneous, so a vertical drag over the map still scrolls an enclosing
+    // page, and a select tap keeps working beside the pan.
+    if (gesture === '') gesture = '.contentShape(Rectangle())'
+    if (roamCfg.move) gesture += `.simultaneousGesture(${pan})`
+    if (roamCfg.scale) gesture += `.simultaneousGesture(${pinch})`
   }
   if (lets.length === 0) {
     const tail = swiftChartA11y(e, undefined, indent) + emitSwiftLayoutModifiers(e)

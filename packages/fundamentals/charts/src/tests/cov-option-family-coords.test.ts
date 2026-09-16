@@ -155,10 +155,14 @@ describe('map', () => {
     expect((c.plan as unknown as { values: Record<string, number> }).values).toEqual({ West: 4 })
     expect(c.warnings.map((w) => w.path)).toEqual(['series[0].data[1]', 'series[0].data[2]', 'series[0].data[3]', 'series[0].data[4]'])
   })
-  it('roam:true warns that the map is static; any other value is silent', () => {
-    expect(warns(series({ type: 'map', map: 'cov-family-world', data: [], roam: true }))).toEqual(['series[0].roam'])
-    expect(warns(series({ type: 'map', map: 'cov-family-world', data: [], roam: 'scale' }))).toEqual([])
-    expect(warns(series({ type: 'map', map: 'cov-family-world', data: [] }))).toEqual([])
+  it('roam maps true / scale / zoom / move / pan silently; an unknown value is named; zoom and scaleLimit carry', () => {
+    for (const roam of [true, 'scale', 'zoom', 'move', 'pan', false]) expect(warns(series({ type: 'map', map: 'cov-family-world', data: [], roam }))).toEqual([])
+    expect(warns(series({ type: 'map', map: 'cov-family-world', data: [], roam: 'spin' }))).toEqual(['series[0].roam'])
+    expect(warns(series({ type: 'map', map: 'cov-family-world', data: [], center: [1, 2] }))).toEqual(['series[0].center'])
+    const plan = m({ data: [], roam: 'zoom', zoom: 2, scaleLimit: { min: 1, max: 4 } }) as unknown as { roam: unknown; scaleLimit: unknown; options: { zoom?: number } }
+    expect(plan.roam).toBe('scale')
+    expect(plan.scaleLimit).toEqual({ min: 1, max: 4 })
+    expect(plan.options.zoom).toBe(2)
   })
   it('nameProperty / border styling pass through only in their declared types', () => {
     const o = (s: Record<string, unknown>): Record<string, unknown> => (m({ data: [], ...s }) as unknown as { options: Record<string, unknown> }).options

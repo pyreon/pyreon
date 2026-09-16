@@ -161,6 +161,18 @@ export interface CanvasHostSpec<L> {
    * off, and a trail is the chart's content, not its arrival.)
    */
   effectClock?: ((layout: L) => boolean) | undefined
+  /**
+   * Pan / zoom by pointer (ECharts' `roam`). The host keeps the view in a
+   * signal its `track` reads, so a gesture repaints; here the canvas only
+   * turns the wheel into `zoom` about the pointer and a drag into `pan`. A
+   * drag that moved never fires the click after it.
+   */
+  roam?: {
+    move: () => boolean
+    scale: () => boolean
+    zoom: (factor: Double, px: Double, py: Double) => void
+    pan: (dx: Double, dy: Double) => void
+  } | undefined
   /** Legend entries for this layout, when the family has named series. */
   legend?: ((layout: L, theme: ChartTheme) => LegendEntry[]) | undefined
   /** Report the click through the family's own callbacks (rich hit and/or engine index). */
@@ -599,6 +611,65 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     ev.preventDefault()
   }
 
+  // Roam gestures. `dragFrom` is the last pointer position of a live drag;
+  // `dragMoved` swallows the click that ends a real pan.
+  let dragFrom: { x: Double; y: Double; id: number } | null = null
+  let dragMoved = false
+  const roam = spec.roam
+  const handleWheel = (ev: WheelEvent): void => {
+    const el = canvas
+    if (roam === undefined || el === null || !roam.scale()) return
+    ev.preventDefault()
+    const p = localPoint(el, ev)
+    roam.zoom(Math.exp(-ev.deltaY * 0.0015), p.x, p.y)
+  }
+  const roamDown = (ev: PointerEvent): void => {
+    const el = canvas
+    if (roam === undefined || el === null || !roam.move()) return
+    const p = localPoint(el, ev)
+    dragFrom = { x: p.x, y: p.y, id: ev.pointerId }
+    dragMoved = false
+  }
+  const roamMove = (ev: PointerEvent): void => {
+    const el = canvas
+    if (roam === undefined || el === null || dragFrom === null || dragFrom.id !== ev.pointerId) return
+    const p = localPoint(el, ev)
+    const dx = p.x - dragFrom.x
+    const dy = p.y - dragFrom.y
+    if (!dragMoved && Math.abs(dx) + Math.abs(dy) < 3.0) return
+    if (!dragMoved && typeof el.setPointerCapture === 'function') {
+      // Capture keeps a drag that leaves the canvas panning; a pointer the
+      // browser no longer tracks throws, and the pan must still happen.
+      try {
+        el.setPointerCapture(ev.pointerId)
+      } catch {
+        // not capturable — pan without it
+      }
+    }
+    dragMoved = true
+    dragFrom = { x: p.x, y: p.y, id: ev.pointerId }
+    roam.pan(dx, dy)
+  }
+  const roamUp = (): void => {
+    dragFrom = null
+  }
+  const tooltipOn = props.tooltip === true && spec.tooltip !== undefined
+  const onPointerDown = (ev: PointerEvent): void => {
+    roamDown(ev)
+    if (tooltipOn) handleMove(ev)
+  }
+  const onPointerMove = (ev: PointerEvent): void => {
+    roamMove(ev)
+    if (tooltipOn && !dragMoved) handleMove(ev)
+  }
+  const onClickRoamAware = (ev: MouseEvent): void => {
+    if (dragMoved) {
+      dragMoved = false
+      return
+    }
+    handleClick(ev)
+  }
+
   const canvasNode = h('canvas', {
     class: props.class,
     // `img` + a label is what makes the canvas announce as a single described
@@ -637,11 +708,13 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
       })
       sizeObserver.observe(box)
     },
-    onClick: handleClick,
+    onClick: onClickRoamAware,
+    ...(roam !== undefined ? { onWheel: handleWheel, onPointerUp: roamUp } : {}),
     ...(keyboardOn ? { tabIndex: 0, onKeyDown: handleKeyDown, onBlur: () => { batch(() => { focusIdx.set(-1); announce.set('') }); paintCached() } } : {}),
     // Pointer events, not mouse events: a finger gets the tooltip on tap
     // (pointerdown) and on drag (pointermove) exactly as a mouse does on hover.
-    ...(props.tooltip === true && spec.tooltip !== undefined ? { onPointerMove: handleMove, onPointerDown: handleMove, onPointerLeave: handleLeave, onPointerCancel: handleLeave } : {}),
+    ...(tooltipOn || roam !== undefined ? { onPointerMove, onPointerDown } : {}),
+    ...(tooltipOn ? { onPointerLeave: handleLeave, onPointerCancel: () => { roamUp(); handleLeave() } } : roam !== undefined ? { onPointerCancel: roamUp } : {}),
   })
 
   const tipNode = (): VNode | null =>

@@ -220,7 +220,9 @@ data class GeoTransform(var minX: Double, var maxY: Double, var scale: Double, v
 
 data class GeoLayout(var regions: List<GeoRegion>, var transform: GeoTransform)
 
-data class GeoOptions(var projection: GeoProjection? = null, var padding: Double? = null, var nameProperty: String? = null, var stops: List<String>? = null, var domain: Domain? = null, var emptyColor: String? = null, var borderColor: String? = null, var borderWidth: Double? = null, var showLabels: Boolean? = null, var fontSize: Double? = null, var labelColor: String? = null, var progress: Double? = null)
+data class GeoOptions(var projection: GeoProjection? = null, var padding: Double? = null, var nameProperty: String? = null, var stops: List<String>? = null, var domain: Domain? = null, var emptyColor: String? = null, var borderColor: String? = null, var borderWidth: Double? = null, var showLabels: Boolean? = null, var fontSize: Double? = null, var labelColor: String? = null, var progress: Double? = null, var zoom: Double? = null, var panX: Double? = null, var panY: Double? = null)
+
+data class GeoView(var zoom: Double, var panX: Double, var panY: Double)
 
 data class GeoOverlayPoint(var name: String? = null, var lon: Double, var lat: Double, var value: Double? = null, var color: String? = null)
 
@@ -6339,9 +6341,15 @@ fun layoutGeoShapes(shapes: List<GeoShape>, box: PyreonChartRect, options: GeoOp
     val innerH = Math.max(0.0, box.h - pad * 2.0)
     val spanX = maxX - minX
     val spanY = maxY - minY
-    val scale = if (raw.length == 0 || spanX <= 0.0 || spanY <= 0.0) 1.0 else Math.min((innerW).toDouble() / (spanX).toDouble(), (innerH).toDouble() / (spanY).toDouble())
-    val ox = box.x + pad + ((innerW - spanX * scale)).toDouble() / (2.0).toDouble()
-    val oy = box.y + pad + ((innerH - spanY * scale)).toDouble() / (2.0).toDouble()
+    val fitScale = if (raw.length == 0 || spanX <= 0.0 || spanY <= 0.0) 1.0 else Math.min((innerW).toDouble() / (spanX).toDouble(), (innerH).toDouble() / (spanY).toDouble())
+    val fitOx = box.x + pad + ((innerW - spanX * fitScale)).toDouble() / (2.0).toDouble()
+    val fitOy = box.y + pad + ((innerH - spanY * fitScale)).toDouble() / (2.0).toDouble()
+    val zoom = if (((options?.zoom ?: 1.0)) > 0.0) (options?.zoom ?: 1.0) else 1.0
+    val cx = box.x + (box.w).toDouble() / (2.0).toDouble()
+    val cy = box.y + (box.h).toDouble() / (2.0).toDouble()
+    val scale = fitScale * zoom
+    val ox = cx + (fitOx - cx) * zoom + ((options?.panX ?: 0.0))
+    val oy = cy + (fitOy - cy) * zoom + ((options?.panY ?: 0.0))
     val toPx = { p: PyreonChartPt -> (PyreonChartPt(x = ox + (p.x - minX) * scale, y = oy + (maxY - p.y) * scale)) }
     val regions = raw.map({ r ->
       val rings = r.rings.map({ ring -> ring.map(toPx) })
@@ -6388,6 +6396,21 @@ fun layoutGeoShapes(shapes: List<GeoShape>, box: PyreonChartRect, options: GeoOp
     })
     return GeoLayout(regions = regions, transform = GeoTransform(minX = minX, maxY = maxY, scale = scale, ox = ox, oy = oy, projection = projection))
   }
+
+fun geoRoamZoom(view: GeoView, factor: Double, px: Double, py: Double, box: PyreonChartRect, minZoom: Double, maxZoom: Double): GeoView {
+    val lo = if (minZoom > 0.0) minZoom else 0.1
+    val hi = if (maxZoom >= lo) maxZoom else lo
+    val wanted = view.zoom * factor
+    val zoom = if (wanted < lo) lo else if (wanted > hi) hi else wanted
+    val k = (zoom).toDouble() / (view.zoom).toDouble()
+    val cx = box.x + (box.w).toDouble() / (2.0).toDouble()
+    val cy = box.y + (box.h).toDouble() / (2.0).toDouble()
+    val panX = (px - cx) - (px - cx - view.panX) * k
+    val panY = (py - cy) - (py - cy - view.panY) * k
+    return GeoView(zoom = zoom, panX = panX, panY = panY)
+  }
+
+fun geoRoamPan(view: GeoView, dx: Double, dy: Double): GeoView = GeoView(zoom = view.zoom, panX = view.panX + dx, panY = view.panY + dy)
 
 fun geoDomain(layout: GeoLayout, values: List<GeoValue>): Domain {
     var lo = 0.0

@@ -830,6 +830,23 @@ final class PyreonTasksUITests: XCTestCase {
             XCTAssertTrue(canvas.waitForExistence(timeout: 10), "\(id) canvas missing on the gallery")
             XCTAssertFalse(canvas.frame.isEmpty, "\(id) rendered with an empty frame — it laid out to nothing")
         }
+        // The map ROAMS: a horizontal drag pans it, so its canvas differs.
+        let roamMap = app.descendants(matching: .any).matching(identifier: "gal-map").firstMatch
+        XCTAssertTrue(roamMap.waitForExistence(timeout: 10), "gal-map canvas missing on the gallery")
+        // The gallery loop above left the page scrolled PAST the map (its frame
+        // sits above the window), and a drag at off-screen coordinates lands on
+        // nothing — so scroll back up until the map is fully on screen.
+        let galScroll = app.scrollViews["gal-scroll"].firstMatch
+        var upTries = 0
+        while roamMap.frame.minY < app.windows.firstMatch.frame.minY + 120 && upTries < 12 {
+            galScroll.swipeDown()
+            upTries += 1
+        }
+        let mapBefore = roamMap.screenshot().pngRepresentation
+        let mapGrab = roamMap.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5))
+        mapGrab.press(forDuration: 0.1, thenDragTo: mapGrab.withOffset(CGVector(dx: 90, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        XCTAssertNotEqual(mapBefore, roamMap.screenshot().pngRepresentation, "dragging the roaming map did not pan it")
         // The lines trail MOVES: two screenshots of its canvas half a second
         // apart differ (the simulator runs with Reduce Motion off).
         let linesChart = app.descendants(matching: .any).matching(identifier: "gal-lines").firstMatch

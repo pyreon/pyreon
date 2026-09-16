@@ -95,7 +95,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -11424,6 +11424,14 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   const H = kotlinChartDouble(e, 'height', spec.defaultHeight, indent)
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
+  // `roam` (mirror of the Swift host): a remembered view merged into the options every composition.
+  const roamCfg = spec.roam === true ? chartRoamConfig((n) => readStaticAttrKotlin(e, n), (m) => _emitWarnings.push(m), tag, (n) => chartAttrExprKotlin(e, n)) : null
+  if (roamCfg !== null) {
+    themeLets.push('var pyreonView by remember { mutableStateOf(GeoView(1.0, 0.0, 0.0)) }')
+    const base = options === 'null' ? `${spec.optionsStruct}()` : options
+    themeLets.push(`val pyreonRoamed: ${spec.optionsStruct} = (${base}).copy(zoom = pyreonView.zoom, panX = pyreonView.panX, panY = pyreonView.panY)`)
+    options = 'pyreonRoamed'
+  }
   const args: ChartHostArgs = {
     data,
     options,
@@ -11496,6 +11504,15 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     }
     // Keyed on the layout the lambda captures: a `pointerInput(Unit)` keeps the FIRST composition's val (the plot host's #3294 lesson).
     tap = `.pointerInput(pyreonLayout) { detectTapGestures { pyreonTap -> ${parts.join('; ')} } }`
+  }
+  if (roamCfg !== null) {
+    const box = KOTLIN_CHART_TARGET.rect('0.0', '0.0', plotArgs.W, plotArgs.H)
+    const panPart = roamCfg.move ? 'geoRoamPan(pyreonView, (pyreonPan.x / pyreonDensity).toDouble(), (pyreonPan.y / pyreonDensity).toDouble())' : 'pyreonView'
+    const next = roamCfg.scale
+      ? `geoRoamZoom(${panPart}, pyreonZoom.toDouble(), (pyreonC.x / pyreonDensity).toDouble(), (pyreonC.y / pyreonDensity).toDouble(), ${box}, ${chartDouble(roamCfg.min)}, ${chartDouble(roamCfg.max)})`
+      : panPart
+    // Keyed on the box, which the gesture lambda captures.
+    tap += `.pointerInput(${plotArgs.W}, ${plotArgs.H}) { detectTransformGestures { pyreonC, pyreonPan, pyreonZoom, _ -> pyreonView = ${next} } }`
   }
   if (lets.length > 0) return kotlinFrameHostWithTap(e, lets, cmds, tap, W, H, hasWidth, indent)
   // Size modifiers first (they are the host's own layout), then the tap, the

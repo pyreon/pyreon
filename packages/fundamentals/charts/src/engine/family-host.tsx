@@ -94,7 +94,22 @@ export function familyHostNode(plan: FamilyPlan, o: FamilyHostOptions): VNode | 
     case 'themeRiver':
       return h(RiverChart, { series: plan.series, river: plan.river, ...size, ...title, ...sel('themeRiver') })
     case 'map':
-      return h(MapChart, { map: plan.geo, values: plan.values, options: plan.options, ...size, ...title, ...sel('map') })
+      return h(MapChart, { map: plan.geo, values: plan.values, options: plan.options, roam: plan.roam, scaleLimit: plan.scaleLimit, ...size, ...title, ...sel('map') })
+    // Scatter / lines on a geo: the map with the points and paths as its overlays, so it roams too.
+    case 'geoPoints':
+      return h(MapChart, {
+        map: plan.geo,
+        values: {},
+        options: plan.map,
+        points: plan.points,
+        paths: plan.paths.map((p) => ({ coords: p.coords.map(([lon, lat]) => ({ lon, lat })), ...(p.color === undefined ? {} : { color: p.color }), ...(p.width === undefined ? {} : { width: p.width }) })),
+        overlayOptions: plan.options,
+        roam: plan.roam,
+        scaleLimit: plan.scaleLimit,
+        ...size,
+        ...title,
+        ...sel('geoPoints'),
+      })
     // Renders through the facade's SVG only. boxplot is here for a concrete
     // reason rather than an omission: the plan carries rows that are ALREADY
     // five-number summaries (option-family feeds them straight to
@@ -105,7 +120,6 @@ export function familyHostNode(plan: FamilyPlan, o: FamilyHostOptions): VNode | 
     // batch merge; until then a boxplot option renders as static SVG, which
     // is what it did before this switch became exhaustive over it.
     case 'boxplot':
-    case 'geoPoints':
     case 'singleAxis':
       return null
   }

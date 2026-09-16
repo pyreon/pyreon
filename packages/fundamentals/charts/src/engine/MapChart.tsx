@@ -9,16 +9,17 @@
 // `GeoShape[]` const) lowers; the registry name and the raw GeoJSON stay web.
 
 import type { VNode } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 import { canvasHost, orNull } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
 import { geoTip } from './chrome'
-import { geoDomain, geoValueOf, hitGeoIndex, layoutGeoShapes, renderGeo } from './geo'
+import { geoDomain, geoRoamPan, geoRoamZoom, geoValueOf, hitGeoIndex, layoutGeoShapes, renderGeo } from './geo'
 import { hitGeoOverlayPoint, renderGeoOverlayPaths, renderGeoOverlayPoints } from './geo-overlay'
 import { geoShapes, geoValues, getMap } from './geo-web'
-import type { GeoLayout, GeoOptions, GeoRegion, GeoShape, GeoValue } from './geo'
+import type { GeoLayout, GeoOptions, GeoRegion, GeoShape, GeoValue, GeoView } from './geo'
 import type { GeoOverlayOptions, GeoOverlayPath, GeoOverlayPoint } from './geo-overlay'
 import type { GeoJson } from './geo-web'
-import type { Double } from './types'
+import type { Double, Rect } from './types'
 
 /** Region values as a record (`{ DE: 83 }`) or as the crossing list. */
 export type MapChartValues = Record<string, Double> | GeoValue[]
@@ -43,6 +44,14 @@ export interface MapChartProps extends CanvasHostProps {
   onSelectIndex?: (index: number) => void
   /** The overlay point's index under the click, or -1 for a miss. */
   onSelectPointIndex?: (index: number) => void
+  /**
+   * ECharts' `roam`: `true` pans and zooms, `'scale'` only zooms (wheel /
+   * pinch), `'move'` only pans (drag). Starts from `options.zoom` / `panX` /
+   * `panY` when given.
+   */
+  roam?: boolean | 'scale' | 'move' | 'pan'
+  /** Zoom bounds for roaming; defaults 0.5 … 20. */
+  scaleLimit?: { min?: Double; max?: Double }
 }
 
 const isShapes = (m: GeoShape[] | GeoJson | string): m is GeoShape[] => Array.isArray(m)
@@ -59,16 +68,33 @@ export function MapChart(props: MapChartProps): VNode {
     const v = typeof props.values === 'function' ? props.values() : props.values
     return Array.isArray(v) ? v : geoValues(v)
   }
+  const view = signal<GeoView>({ zoom: props.options?.zoom ?? 1.0, panX: props.options?.panX ?? 0.0, panY: props.options?.panY ?? 0.0 })
+  let lastBox: Rect = { x: 0.0, y: 0.0, w: 0.0, h: 0.0 }
+  const roamMove = (): boolean => props.roam === true || props.roam === 'move' || props.roam === 'pan'
+  const roamScale = (): boolean => props.roam === true || props.roam === 'scale'
+  const viewed = (): GeoOptions => ({ ...props.options, ...view() })
   return canvasHost<GeoLayout>({
     props,
+    roam: props.roam === undefined || props.roam === false
+      ? undefined
+      : {
+          move: roamMove,
+          scale: roamScale,
+          zoom: (factor, px, py) => view.set(geoRoamZoom(view(), factor, px, py, lastBox, props.scaleLimit?.min ?? 0.5, props.scaleLimit?.max ?? 20.0)),
+          pan: (dx, dy) => view.set(geoRoamPan(view(), dx, dy)),
+        },
     defaultHeight: 300,
     caption: 'Map data',
     track: () => {
       readValues()
       void props.points
       void props.paths
+      view()
     },
-    layout: (box) => layoutGeoShapes(shapes(), box, props.options),
+    layout: (box) => {
+      lastBox = box
+      return layoutGeoShapes(shapes(), box, viewed())
+    },
     animates: true,
     // Took `_theme` and threw it away, so a geo chart was the one host that
     // followed no theme at all. The border SEPARATES filled regions, so it
@@ -83,7 +109,7 @@ export function MapChart(props: MapChartProps): VNode {
           borderColor: theme.background === '' ? '#ffffff' : theme.background,
           stops: theme.ramp,
           labelColor: theme.label,
-          ...props.options,
+          ...viewed(),
           progress,
         },
         measure,

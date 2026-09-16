@@ -50,8 +50,8 @@ export type FamilyPlan =
   | { kind: 'polar'; axes: PolarAxes; series: PolarSeries[]; polar: PolarOptions; title: string | undefined }
   | { kind: 'themeRiver'; series: RiverSeries[]; river: RiverOptions; title: string | undefined }
   | { kind: 'boxplot'; rows: (FiveNumber & { x: string })[]; fill: string | undefined; stroke: string | undefined; title: string | undefined }
-  | { kind: 'map'; geo: GeoJson; values: Record<string, Double>; options: GeoOptions; title: string | undefined }
-  | { kind: 'geoPoints'; geo: GeoJson; points: GeoPoint[]; paths: GeoPath[]; map: GeoOptions; options: GeoPointsOptions; title: string | undefined }
+  | { kind: 'map'; geo: GeoJson; values: Record<string, Double>; options: GeoOptions; title: string | undefined; roam: RoamMode; scaleLimit: { min: Double; max: Double } }
+  | { kind: 'geoPoints'; geo: GeoJson; points: GeoPoint[]; paths: GeoPath[]; map: GeoOptions; options: GeoPointsOptions; title: string | undefined; roam: RoamMode; scaleLimit: { min: Double; max: Double } }
   | { kind: 'singleAxis'; axis: SingleAxisSpec; points: SingleAxisPoint[]; options: SingleAxisOptions; title: string | undefined }
 
 import type { ChordLink, ChordNode, ChordOptions } from './chord'
@@ -105,6 +105,22 @@ const pct = (v: unknown): number | null => {
 }
 
 /** True when the option's first series is a family (non-cartesian) type. */
+
+/** ECharts' `roam`: false, both, zoom only or pan only. */
+export type RoamMode = false | true | 'scale' | 'move'
+
+/** Read `roam`, `zoom` and `scaleLimit` off a map series or a geo component. */
+function roamOf(o: Record<string, unknown>, path: string, warn: (code: OptionWarning['code'], path: string, message: string) => void): { roam: RoamMode; scaleLimit: { min: Double; max: Double }; zoom: Double | null } {
+  const r = o['roam']
+  const roam: RoamMode = r === true ? true : r === 'scale' || r === 'zoom' ? 'scale' : r === 'move' || r === 'pan' ? 'move' : false
+  if (r !== undefined && r !== false && roam === false) warn('series-option-unsupported', path + '.roam', 'roam must be true, "scale"/"zoom" or "move"/"pan"; the map is static.')
+  const lim = isObj(o['scaleLimit']) ? o['scaleLimit'] : {}
+  for (const key of ['center', 'aspectScale', 'layoutCenter', 'layoutSize']) {
+    if (o[key] !== undefined) warn('series-option-unsupported', path + '.' + key, '"' + key + '" has no mapping yet; the map is fitted to the box.')
+  }
+  return { roam, scaleLimit: { min: num(lim['min']) ?? 0.5, max: num(lim['max']) ?? 20.0 }, zoom: num(o['zoom']) }
+}
+
 export function isFamilyOption(option: EChartsOption): boolean {
   const s = first(option['series'] as unknown)
   return isObj(s) && typeof s['type'] === 'string' && (FAMILY_TYPES.has(s['type'] as string) || s['coordinateSystem'] === 'polar' || s['coordinateSystem'] === 'geo' || s['coordinateSystem'] === 'singleAxis')
@@ -124,7 +140,7 @@ const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   sankey: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'nodeWidth', 'nodeGap', 'nodeAlign', 'layoutIterations', 'orient', 'draggable', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'levels', 'top', 'left', 'right', 'bottom']),
   singleAxis: new Set(['type', 'name', 'data', 'coordinateSystem', 'singleAxisIndex', 'symbolSize', 'symbol', 'label', 'itemStyle', 'emphasis', 'color', 'animation']),
   geo: new Set(['type', 'name', 'data', 'coordinateSystem', 'geoIndex', 'symbolSize', 'symbol', 'label', 'itemStyle', 'lineStyle', 'effect', 'polyline', 'emphasis', 'rippleEffect', 'showEffectOn', 'color', 'animation', 'zlevel', 'z']),
-  map: new Set(['type', 'name', 'data', 'map', 'roam', 'label', 'itemStyle', 'emphasis', 'select', 'selectedMode', 'nameProperty', 'projection', 'zoom', 'center', 'aspectScale', 'layoutCenter', 'layoutSize', 'showLegendSymbol', 'geoIndex', 'left', 'top', 'right', 'bottom']),
+  map: new Set(['type', 'name', 'data', 'map', 'roam', 'scaleLimit', 'label', 'itemStyle', 'emphasis', 'select', 'selectedMode', 'nameProperty', 'projection', 'zoom', 'center', 'aspectScale', 'layoutCenter', 'layoutSize', 'showLegendSymbol', 'geoIndex', 'left', 'top', 'right', 'bottom']),
   themeRiver: new Set(['type', 'name', 'data', 'coordinateSystem', 'singleAxisIndex', 'boundaryGap', 'label', 'itemStyle', 'emphasis', 'color', 'animation']),
   polar: new Set(['type', 'name', 'data', 'coordinateSystem', 'polarIndex', 'stack', 'itemStyle', 'lineStyle', 'label', 'emphasis', 'smooth', 'symbol', 'symbolSize', 'barWidth', 'barGap', 'barCategoryGap', 'roundCap', 'showBackground', 'backgroundStyle', 'areaStyle', 'animation', 'color']),
   parallel: new Set(['type', 'name', 'data', 'coordinateSystem', 'parallelIndex', 'lineStyle', 'emphasis', 'inactiveOpacity', 'activeOpacity', 'realtime', 'smooth', 'progressive', 'animation']),
@@ -362,7 +378,9 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
     if (found === null) warn('series-option-unsupported', 'geo.map', 'Map "' + mapName + '" is not registered (call registerMap first); nothing was drawn.')
     const geo: GeoJson = found ?? { type: 'FeatureCollection', features: [] }
     const geoItem = isObj(geoObj['itemStyle']) ? geoObj['itemStyle'] : {}
+    const geoRoam = roamOf(geoObj, 'geo', warn)
     const map: GeoOptions = {
+      ...(geoRoam.zoom !== null ? { zoom: geoRoam.zoom } : {}),
       ...(typeof geoItem['borderColor'] === 'string' ? { borderColor: geoItem['borderColor'] as string } : {}),
       ...(typeof geoItem['areaColor'] === 'string' ? { emptyColor: geoItem['areaColor'] as string } : {}),
     }
@@ -419,7 +437,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       ...(size !== null ? { radius: size / 2.0 } : {}),
       ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
     }
-    return { plan: { kind: 'geoPoints', geo, points, paths, map, options, title }, warnings, supported }
+    return { plan: { kind: 'geoPoints', geo, points, paths, map, options, title, roam: geoRoam.roam, scaleLimit: geoRoam.scaleLimit }, warnings, supported }
   }
 
   if (type === 'map') {
@@ -445,8 +463,9 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       : []
     const vmMin = isObj(vm) ? num(vm['min']) : null
     const vmMax = isObj(vm) ? num(vm['max']) : null
-    if (s['roam'] === true) warn('series-option-unsupported', 'series[0].roam', 'Map roaming (pan/zoom) is not supported yet; the map is static.')
+    const mapRoam = roamOf(s, 'series[0]', warn)
     const options: GeoOptions = {
+      ...(mapRoam.zoom !== null ? { zoom: mapRoam.zoom } : {}),
       showLabels: label['show'] === true,
       ...(typeof s['nameProperty'] === 'string' ? { nameProperty: s['nameProperty'] as string } : {}),
       ...(typeof item['borderColor'] === 'string' ? { borderColor: item['borderColor'] as string } : {}),
@@ -454,7 +473,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       ...(stops.length >= 2 ? { stops } : {}),
       ...(vmMin !== null && vmMax !== null ? { domain: { min: vmMin, max: vmMax } } : {}),
     }
-    return { plan: { kind: 'map', geo, values, options, title }, warnings, supported }
+    return { plan: { kind: 'map', geo, values, options, title, roam: mapRoam.roam, scaleLimit: mapRoam.scaleLimit }, warnings, supported }
   }
 
   if (type === 'themeRiver') {

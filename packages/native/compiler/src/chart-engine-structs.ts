@@ -8073,6 +8073,84 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             }
           ]
         }
+      },
+      {
+        "name": "zoom",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "panX",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "panY",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "GeoView",
+    "fields": [
+      {
+        "name": "zoom",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "panX",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "panY",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
       }
     ],
     "external": true
@@ -11165,6 +11243,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "GeoShape",
   "GeoTransform",
   "GeoValue",
+  "GeoView",
   "GraphLayout",
   "GraphLayoutLink",
   "GraphLayoutNode",

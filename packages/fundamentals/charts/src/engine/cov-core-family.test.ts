@@ -42,12 +42,19 @@ describe('familyHostNode — the families the routing table has to name', () => 
     // boxplot: the plan carries five-number SUMMARIES, which the canvas host
     // has no prop for (it summarises raw observations itself).
     expect(host({ xAxis: { data: ['a'] }, yAxis: {}, series: [{ type: 'boxplot', data: [[1, 2, 3, 4, 5]] }] })).toBeNull()
-    // geoPoints: scatter over a registered map.
+  })
+
+  it('geoPoints (scatter / lines on a geo) mounts the map canvas host with its overlays, so it can roam', () => {
     const geo = compileFamily({
-      geo: { map: 'cov-family' },
+      geo: { map: 'cov-family', roam: true },
       series: [{ type: 'scatter', coordinateSystem: 'geo', data: [[5, 5]] }],
     })
-    if (geo !== null && geo.plan.kind === 'geoPoints') expect(familyHostNode(geo.plan, { width: 100, height: 100 })).toBeNull()
+    expect(geo?.plan.kind).toBe('geoPoints')
+    if (geo === null || geo.plan.kind !== 'geoPoints') return
+    const node = familyHostNode(geo.plan, { width: 100, height: 100 })!
+    const props = node.props as { points: unknown[]; roam: unknown }
+    expect(props.points).toHaveLength(1)
+    expect(props.roam).toBe(true)
   })
 
   it('a plan with a TITLE passes it through; one without leaves the prop unset', () => {

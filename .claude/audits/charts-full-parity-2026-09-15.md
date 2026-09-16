@@ -270,6 +270,17 @@ for interaction, animation or accessibility parity.
   animations, which the Kotlin clock must use (a plain frame loop hung the
   harness).
 
+- [x] `series.map` complete (roam): GeoOptions carries zoom/panX/panY and
+  layoutGeoShapes applies them, so every geo pixel follows the view;
+  geoRoamZoom holds the point under the pointer. Web canvas host: wheel zoom,
+  drag pan, no click after a drag; native MapChart: GeoView host state with a
+  simultaneous drag + pinch (iOS) and detectTransformGestures (Android). Both
+  device lanes drag the gallery map and assert its pixels change; a no-op pan
+  fails each. Device lesson: the first iOS failure was the test, not the
+  gesture — the gallery was scrolled past the map (frame y -600), so the drag
+  landed off screen. `coordinates.geo` stays partial on series types other
+  than scatter / effectScatter / lines.
+
 ## Exit gate
 
 Zero unclassified core inventory rows; green real-browser conformance; green

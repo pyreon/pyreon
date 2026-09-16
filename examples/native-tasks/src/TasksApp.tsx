@@ -763,7 +763,7 @@ function GalleryPage() {
         />
         <GanttChart tasks={GANTT_TASKS} height={160} data-testid="gal-gantt" />
         <GraphChart nodes={GRAPH_NODES} links={GRAPH_LINKS} height={200} data-testid="gal-graph" />
-        <MapChart map={GEO} values={GEO_VALUES} height={180} data-testid="gal-map" />
+        <MapChart map={GEO} values={GEO_VALUES} height={180} roam data-testid="gal-map" />
         <ParallelChart
           axes={PARALLEL_AXES}
           rows={PARALLEL_ROWS}

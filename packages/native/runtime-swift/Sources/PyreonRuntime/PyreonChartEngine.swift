@@ -1794,7 +1794,10 @@ public struct GeoOptions: Codable {
   public var fontSize: Double? = nil
   public var labelColor: String? = nil
   public var progress: Double? = nil
-  public init(projection: GeoProjection? = nil, padding: Double? = nil, nameProperty: String? = nil, stops: [String]? = nil, domain: Domain? = nil, emptyColor: String? = nil, borderColor: String? = nil, borderWidth: Double? = nil, showLabels: Bool? = nil, fontSize: Double? = nil, labelColor: String? = nil, progress: Double? = nil) {
+  public var zoom: Double? = nil
+  public var panX: Double? = nil
+  public var panY: Double? = nil
+  public init(projection: GeoProjection? = nil, padding: Double? = nil, nameProperty: String? = nil, stops: [String]? = nil, domain: Domain? = nil, emptyColor: String? = nil, borderColor: String? = nil, borderWidth: Double? = nil, showLabels: Bool? = nil, fontSize: Double? = nil, labelColor: String? = nil, progress: Double? = nil, zoom: Double? = nil, panX: Double? = nil, panY: Double? = nil) {
     self.projection = projection
     self.padding = padding
     self.nameProperty = nameProperty
@@ -1807,6 +1810,20 @@ public struct GeoOptions: Codable {
     self.fontSize = fontSize
     self.labelColor = labelColor
     self.progress = progress
+    self.zoom = zoom
+    self.panX = panX
+    self.panY = panY
+  }
+}
+
+public struct GeoView: Codable {
+  public var zoom: Double
+  public var panX: Double
+  public var panY: Double
+  public init(zoom: Double, panX: Double, panY: Double) {
+    self.zoom = zoom
+    self.panX = panX
+    self.panY = panY
   }
 }
 
@@ -8598,9 +8615,15 @@ public func layoutGeoShapes(_ shapes: [GeoShape], _ box: PyreonChartRect, _ opti
     let innerH = max(0.0, box.h - pad * 2.0)
     let spanX = maxX - minX
     let spanY = maxY - minY
-    let scale = raw.count == 0 || spanX <= 0.0 || spanY <= 0.0 ? 1.0 : min(innerW / spanX, innerH / spanY)
-    let ox = box.x + pad + (innerW - spanX * scale) / 2.0
-    let oy = box.y + pad + (innerH - spanY * scale) / 2.0
+    let fitScale = raw.count == 0 || spanX <= 0.0 || spanY <= 0.0 ? 1.0 : min(innerW / spanX, innerH / spanY)
+    let fitOx = box.x + pad + (innerW - spanX * fitScale) / 2.0
+    let fitOy = box.y + pad + (innerH - spanY * fitScale) / 2.0
+    let zoom = ((options?.zoom ?? 1.0)) > 0.0 ? (options?.zoom ?? 1.0) : 1.0
+    let cx = box.x + box.w / 2.0
+    let cy = box.y + box.h / 2.0
+    let scale = fitScale * zoom
+    let ox = cx + (fitOx - cx) * zoom + ((options?.panX ?? 0.0))
+    let oy = cy + (fitOy - cy) * zoom + ((options?.panY ?? 0.0))
     let toPx = { (p: PyreonChartPt) in (PyreonChartPt(x: ox + (p.x - minX) * scale, y: oy + (maxY - p.y) * scale)) }
     let regions = raw.map({ r in
       let rings = r.rings.map({ ring in ring.map(toPx) })
@@ -8647,6 +8670,21 @@ public func layoutGeoShapes(_ shapes: [GeoShape], _ box: PyreonChartRect, _ opti
     })
     return GeoLayout(regions: regions, transform: GeoTransform(minX: minX, maxY: maxY, scale: scale, ox: ox, oy: oy, projection: projection))
   }
+
+public func geoRoamZoom(_ view: GeoView, _ factor: Double, _ px: Double, _ py: Double, _ box: PyreonChartRect, _ minZoom: Double, _ maxZoom: Double) -> GeoView {
+    let lo = minZoom > 0.0 ? minZoom : 0.1
+    let hi = maxZoom >= lo ? maxZoom : lo
+    let wanted = view.zoom * factor
+    let zoom = wanted < lo ? lo : wanted > hi ? hi : wanted
+    let k = zoom / view.zoom
+    let cx = box.x + box.w / 2.0
+    let cy = box.y + box.h / 2.0
+    let panX = (px - cx) - (px - cx - view.panX) * k
+    let panY = (py - cy) - (py - cy - view.panY) * k
+    return GeoView(zoom: zoom, panX: panX, panY: panY)
+  }
+
+public func geoRoamPan(_ view: GeoView, _ dx: Double, _ dy: Double) -> GeoView { GeoView(zoom: view.zoom, panX: view.panX + dx, panY: view.panY + dy) }
 
 public func geoDomain(_ layout: GeoLayout, _ values: [GeoValue]) -> Domain {
     var lo = 0.0

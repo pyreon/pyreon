@@ -134,6 +134,8 @@ export interface ChartHostArgs {
 }
 
 export interface ChartHostSpec {
+  /** The host accepts `roam` (pan / pinch-zoom over a `GeoView` merged into its `GeoOptions`). */
+  readonly roam?: boolean
   /** Required data props, in engine argument order. */
   readonly data: readonly string[]
   /** Optional engine arguments and the target expression used when their prop is absent. */
@@ -552,6 +554,27 @@ export const geoValuesAdapter: ChartHostAdapter = (attrs, t, warn, resolve, emit
 
 const box00 = (a: ChartHostArgs, t: ChartHostTarget): string => t.rect('0.0', '0.0', a.W, a.H)
 
+/**
+ * `<MapChart roam>` on native: which gestures it wants and its zoom bounds,
+ * read off static attributes (true / 'scale' / 'move' / 'pan', and a literal
+ * `scaleLimit`), the same vocabulary and defaults as the web host.
+ */
+export function chartRoamConfig(read: (name: string) => unknown, warn: (m: string) => void, tag: string, readExpr: (name: string) => ExprIR | undefined = () => undefined): { move: boolean; scale: boolean; min: number; max: number } | null {
+  const roam = read('roam')
+  if (roam === undefined || roam === false) return null
+  const move = roam === true || roam === 'move' || roam === 'pan'
+  const scale = roam === true || roam === 'scale'
+  if (!move && !scale) {
+    warn(`<${tag} roam>: roam must be a literal true, 'scale', 'move' or 'pan' on native; the map is static.`)
+    return null
+  }
+  const lim = readExpr('scaleLimit')
+  if (lim !== undefined && lim.kind !== 'object') warn(`<${tag} scaleLimit>: scaleLimit must be a literal { min, max } on native; the default 0.5 … 20 applies.`)
+  const min = lim?.kind === 'object' ? litNumber(objectField(lim, 'min')) : undefined
+  const max = lim?.kind === 'object' ? litNumber(objectField(lim, 'max')) : undefined
+  return { move, scale, min: min ?? 0.5, max: max ?? 20 }
+}
+
 /** `options?.field` — or the target's nil when no options were given (`nil?.x` is not Swift). */
 const optField = (a: ChartHostArgs, t: ChartHostTarget, field: string): string =>
   a.options === t.nil ? t.nil : `(${a.options}).${field}`
@@ -688,6 +711,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     adapt: { values: calendarValuesAdapter },
   },
   MapChart: {
+    roam: true,
     data: ['map', 'values', 'paths', 'points', 'overlayOptions'],
     dataDefaults: {
       paths: (t) => t.list([]),
