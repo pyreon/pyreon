@@ -7228,6 +7228,16 @@ fun calendarTip(layout: CalendarLayout, values: List<CalendarValue>, px: Double,
     return listOf(date)
   }
 
+fun singleAxisTip(layout: SingleAxisLayout, points: List<SingleAxisPoint>, px: Double, py: Double): List<String> {
+    val i = hitSingleAxis(layout, px, py)
+    if (i < 0 || i >= points.length) {
+      return listOf()
+    }
+    val point = points[i]
+    val name = point.name
+    return if (name == null) listOf(plain(point.x)) else listOf(name, plain(point.x))
+  }
+
 fun geoTip(layout: GeoLayout, values: List<GeoValue>, px: Double, py: Double): List<String> {
     val i = hitGeoIndex(layout, px, py)
     if (i < 0) {

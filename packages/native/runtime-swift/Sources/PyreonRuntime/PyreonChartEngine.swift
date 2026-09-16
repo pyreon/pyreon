@@ -9272,6 +9272,16 @@ public func calendarTip(_ layout: CalendarLayout, _ values: [CalendarValue], _ p
     return [date]
   }
 
+public func singleAxisTip(_ layout: SingleAxisLayout, _ points: [SingleAxisPoint], _ px: Double, _ py: Double) -> [String] {
+    let i = hitSingleAxis(layout, px, py)
+    if i < 0 || i >= points.count {
+      return []
+    }
+    let point = points[i]
+    let name = point.name
+    return (name.map { name in [name, plain(point.x)] } ?? [plain(point.x)])
+  }
+
 public func geoTip(_ layout: GeoLayout, _ values: [GeoValue], _ px: Double, _ py: Double) -> [String] {
     let i = hitGeoIndex(layout, px, py)
     if i < 0 {

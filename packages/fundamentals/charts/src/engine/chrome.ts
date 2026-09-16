@@ -256,9 +256,11 @@ export function calendarTip(layout: CalendarLayout, values: CalendarValue[], px:
  */
 export function singleAxisTip(layout: SingleAxisLayout, points: SingleAxisPoint[], px: Double, py: Double): string[] {
   const i = hitSingleAxis(layout, px, py)
-  if (i < 0) return []
-  const point = points[i]
-  if (point === undefined) return []
+  // A BOUNDS test, not an `=== undefined` test on the indexed value: this file
+  // crosses to Swift and Kotlin, where `points[i]` is a subscript that TRAPS
+  // out of range rather than handing back a nil to compare.
+  if (i < 0 || i >= points.length) return []
+  const point = points[i]!
   const name = point.name
   return name === undefined ? [plain(point.x)] : [name, plain(point.x)]
 }
