@@ -95,7 +95,7 @@ const KNOWN_TOP = new Set([
 ])
 const KNOWN_SERIES = new Set([
   'type', 'name', 'data', 'stack', 'smooth', 'step', 'areaStyle', 'itemStyle',
-  'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'markLine', 'markPoint', 'markArea',
+  'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'xAxisIndex', 'markLine', 'markPoint', 'markArea',
   'color', 'showSymbol', 'symbol', 'emphasis', 'z', 'zlevel', 'silent',
   'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'rippleEffect', 'showEffectOn',
   'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex', 'tooltipExtras',
@@ -378,8 +378,15 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
 
   // ---- axes -----------------------------------------------------------
   const xAxisRaw = option['xAxis']
-  if (Array.isArray(xAxisRaw) && xAxisRaw.length > 1) {
-    warn('axis-count-unsupported', 'xAxis', 'Only one x axis is supported; extra axes were ignored.')
+  // A second x axis maps when it labels the SAME categories count (a second
+  // naming of the same bands); a value axis or a different count is named.
+  const xAxisList: unknown[] = Array.isArray(xAxisRaw) ? (xAxisRaw as unknown[]) : []
+  const x2Axis = xAxisList.length > 1 && isObj(xAxisList[1]) ? (xAxisList[1] as Record<string, unknown>) : undefined
+  const x2Data = x2Axis !== undefined && Array.isArray(x2Axis['data']) ? (x2Axis['data'] as unknown[]).map((c) => (isObj(c) ? String(c['value'] ?? '') : String(c))) : []
+  const x0Count = Array.isArray(xAxisList[0] as unknown) ? 0 : isObj(xAxisList[0]) && Array.isArray((xAxisList[0] as Record<string, unknown>)['data']) ? ((xAxisList[0] as Record<string, unknown>)['data'] as unknown[]).length : 0
+  const x2Mapped = x2Axis !== undefined && x2Data.length > 0 && x2Data.length === x0Count
+  if (xAxisList.length > 2 || (xAxisList.length === 2 && !x2Mapped)) {
+    warn('axis-count-unsupported', 'xAxis', 'A second x axis maps only as a second set of category labels with the same count; other x axes were ignored.')
   }
   const xAxis = first(xAxisRaw as Record<string, unknown> | Record<string, unknown>[] | undefined)
   const xType = isObj(xAxis) && typeof xAxis['type'] === 'string' ? (xAxis['type'] as string) : undefined
@@ -835,6 +842,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     ...(num(isObj(xAxis) ? xAxis['offset'] : undefined) !== null ? { xOffset: num((xAxis as Record<string, unknown>)['offset']) as number } : {}),
     ...(num(isObj(yAxes[0]) ? yAxes[0]['offset'] : undefined) !== null ? { yOffset: num(yAxes[0]!['offset']) as number } : {}),
     ...(num(isObj(yAxes[1]) ? yAxes[1]['offset'] : undefined) !== null ? { y2Offset: num(yAxes[1]!['offset']) as number } : {}),
+    ...(x2Mapped ? { x2Labels: x2Data } : {}),
+    ...(x2Mapped && typeof x2Axis!['name'] === 'string' ? { x2Title: x2Axis!['name'] as string } : {}),
     ...(yAxes.length > 2
       ? {
           extraYAxes: yAxes.slice(2).map((a) => ({

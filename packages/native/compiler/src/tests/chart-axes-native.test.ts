@@ -83,6 +83,19 @@ describe.each(['swift', 'kotlin'] as const)('option axes on %s', (target) => {
     if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
   })
 
+  it('carries a second x axis as labels on the same bands, and compiles', () => {
+    const r = transform(`
+import { OptionChart } from '@pyreon/charts/plot'
+export function App() {
+  return <OptionChart option={{ xAxis: [{ type: 'category', data: ['Mon', 'Tue'] }, { type: 'category', data: ['W1', 'W2'], name: 'Week' }], yAxis: {}, series: [{ type: 'bar', data: [1, 2] }, { type: 'line', xAxisIndex: 1, data: [2, 1] }] }} />
+}`, { target })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('"W1"')
+    expect(r.code).toContain(`x2Title${sep}"Week"`)
+    if (target === 'swift' && isSwiftcAvailable()) expect(validateSwiftWithStubs(r.code)).toMatchObject({ ok: true })
+    if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
+  })
+
   it('names a yAxisIndex that points at no declared axis', () => {
     const r = transform(app(`yAxis: [{}, {}]`, `{ type: 'bar', yAxisIndex: 3, data: [1, 2] }`), { target })
     expect(r.warnings).toEqual([expect.stringContaining('names no declared y axis')])

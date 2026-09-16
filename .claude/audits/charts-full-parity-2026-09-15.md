@@ -253,7 +253,10 @@ for interaction, animation or accessibility parity.
   lone y right move the label band in layout; two y axes with the first placed
   right swap and yAxisIndex follows. Offset moves each axis off its edge and
   grows the gutter. A third and later y axis is ChartSpec.extraYAxes; every
-  left/right domain choice goes through seriesDomain. Open: a second x axis.
+  left/right domain choice goes through seriesDomain. A second x axis over the
+  same categories draws as labels on the opposite edge. Open (the only residual
+  in this row): a second x axis with its own value domain, which needs a second
+  x scale per series.
 
 ## Exit gate
 

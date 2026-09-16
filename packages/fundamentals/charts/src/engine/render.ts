@@ -382,6 +382,9 @@ export interface ChartSpec {
   y2Offset?: Double | undefined
   /** Third and later y axes — ECharts' `yAxis[2..]`. */
   extraYAxes?: ExtraYAxis[] | undefined
+  /** A second x axis's category labels — ECharts' `xAxis[1].data` — on the side opposite the first. */
+  x2Labels?: string[] | undefined
+  x2Title?: string | undefined
 }
 
 /**
@@ -902,6 +905,8 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     yOffset: spec.yOffset,
     y2Offset: spec.y2Offset,
     extraYAxes: resolvedExtraAxes(spec),
+    x2Labels: spec.x2Labels,
+    x2Title: spec.x2Title,
   }
   return computeLayout(cfg, measure)
 }
@@ -1659,6 +1664,23 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       baseline: 'middle',
     })
   }
+  // A second x axis: its labels at the first axis's tick positions, on the
+  // opposite edge, reversed with the categories when the axis is inverted.
+  const x2 = spec.x2Labels ?? []
+  if (x2.length > 0 && spec.showXAxis && spec.horizontal !== true) {
+    const edgeY = xTop ? plot.y + plot.h : plot.y
+    out.push({ kind: 'line', from: { x: plot.x, y: edgeY }, to: { x: plot.x + plot.w, y: edgeY }, stroke: t.axis, width: 1.0 })
+    const inv = categoriesInverted(spec)
+    for (let ti = 0; ti < l.xTicks.length; ti++) {
+      const tick = l.xTicks[ti]!
+      const j = inv ? x2.length - 1 - ti : ti
+      if (j < 0 || j >= x2.length) continue
+      out.push({ kind: 'text', text: x2[j]!, at: { x: tick.pos, y: xTop ? edgeY + 6.0 : edgeY - 6.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: xTop ? 'top' : 'bottom' })
+    }
+    const x2Title = spec.x2Title ?? ''
+    if (x2Title !== '') out.push({ kind: 'text', text: x2Title, at: { x: plot.x + plot.w / 2.0, y: xTop ? spec.height - 2.0 : 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: xTop ? 'bottom' : 'top' })
+  }
+
   // Extra y axes: their tick labels outside their own line, and a title
   // outside the widest of them.
   let extraIndex = 0.0

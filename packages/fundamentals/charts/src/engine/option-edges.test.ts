@@ -14,7 +14,7 @@ describe('option facade — edge shapes (every branch NAMES its loss)', () => {
 
   it('axes: extra x axes warn, a third y axis is carried; min/max (even as strings) become the domain; a lone min or max does not', () => {
     const c = compileOption({
-      xAxis: [{ data: ['a'] }, { data: ['b'] }],
+      xAxis: [{ data: ['a'] }, { data: ['b', 'c'] }],
       yAxis: [{ min: '0', max: '10' }, { min: 1 }, { max: 9 }],
       series: [{ type: 'bar', data: [1] }],
     })

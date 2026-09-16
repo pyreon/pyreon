@@ -1734,16 +1734,29 @@ export function desugarOptionChart(
         warn(`<OptionChart option.series[${si}].type>: this cartesian adapter needs line, bar, pictorialBar, or scatter series; emitting nothing.`)
         return undefined
       }
-      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras', 'sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'emphasis', 'select', 'blur', 'selectedMode', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'label', 'yAxisIndex'], `option.series[${si}]`, warn)
+      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras', 'sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'emphasis', 'select', 'blur', 'selectedMode', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'label', 'yAxisIndex', 'xAxisIndex'], `option.series[${si}]`, warn)
       seriesObjects.push(s)
     }
-    const xAxis = literalOf(objectField(raw, 'xAxis'), resolve)
+    const xAxisTop = literalOf(objectField(raw, 'xAxis'), resolve)
+    // ECharts' xAxis may be an array: the first axis places the bands, and a
+    // second labels the SAME bands on the opposite edge when its count matches.
+    const xAxisEntries = xAxisTop?.kind === 'array' ? xAxisTop.elements.map((el) => literalOf(el, resolve)) : []
+    const xAxis = xAxisTop?.kind === 'array' ? xAxisEntries[0] : xAxisTop
+    const x2AxisLit = xAxisEntries.length > 1 ? xAxisEntries[1] : undefined
     const categories = xAxis === undefined ? undefined : literalOf(objectField(xAxis, 'data'), resolve)
     if (categories?.kind !== 'array' || !categories.elements.every((x) => litString(x) !== undefined || litNumber(x) !== undefined)) {
       warn('<OptionChart option.xAxis.data>: native cartesian options need a literal category array; emitting nothing.')
       return undefined
     }
     optionFields(xAxis!, ['type', 'data', 'show', 'name', 'inverse', 'position', 'offset'], 'option.xAxis', warn)
+    const x2Data = x2AxisLit?.kind === 'object' ? literalOf(objectField(x2AxisLit, 'data'), resolve) : undefined
+    const x2Mapped = x2Data?.kind === 'array' && x2Data.elements.length === categories.elements.length && x2Data.elements.every((x) => litString(x) !== undefined || litNumber(x) !== undefined)
+    if (xAxisEntries.length > 2 || (xAxisEntries.length === 2 && !x2Mapped)) warn('<OptionChart option.xAxis>: a second x axis maps only as a second set of category labels with the same count; other x axes were ignored.')
+    if (x2Mapped && x2Data?.kind === 'array') {
+      set('x2Labels', { kind: 'array', elements: x2Data.elements.map((x) => lit(litString(x) ?? String(litNumber(x)))) })
+      const x2Name = x2AxisLit?.kind === 'object' ? litString(objectField(x2AxisLit, 'name')) : undefined
+      if (x2Name !== undefined) set('x2Title', lit(x2Name))
+    }
     const xOffsetLit = litNumber(objectField(xAxis!, 'offset'))
     if (xOffsetLit !== undefined) set('xOffset', lit(xOffsetLit))
     if (litString(objectField(xAxis!, 'position')) === 'top') set('xTop', lit(true))

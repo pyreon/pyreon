@@ -138,6 +138,9 @@ export interface LayoutConfig {
   yRight?: boolean | undefined
   /** Third and later y axes, each with its domain already resolved. */
   extraYAxes?: ExtraYAxis[] | undefined
+  /** A second x axis's category labels, drawn on the side opposite the first. */
+  x2Labels?: string[] | undefined
+  x2Title?: string | undefined
   /** Pixels an axis sits off its plot edge; its gutter grows by the same. */
   xOffset?: Double | undefined
   yOffset?: Double | undefined
@@ -280,8 +283,11 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // A top x axis takes the label band above the plot; the bottom keeps the
   // slim padding the top had.
   const xTop = cfg.xTop === true && cfg.horizontal !== true
-  const top = xTop ? xBand : padTop
-  const bottom = xTop ? padTop : xBand
+  // A second x axis takes a label band (and its title's line) on the other side.
+  const hasX2 = (cfg.x2Labels ?? []).length > 0 && cfg.showXAxis && cfg.horizontal !== true
+  const x2Band = hasX2 ? cfg.fontSize + labelGap + tickLen + (cfg.x2Title !== undefined && cfg.x2Title !== '' ? titleH : 0.0) : padTop
+  const top = xTop ? xBand : x2Band
+  const bottom = xTop ? x2Band : xBand
   const gutters: Gutters = { left, right, top, bottom }
 
   const plot: Rect = {

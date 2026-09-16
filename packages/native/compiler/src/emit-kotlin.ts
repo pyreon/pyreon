@@ -12286,6 +12286,10 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   // Third and later y axes — the LAST ChartSpec field, so it follows the literal switches.
   const extraAxes = chartAttrExprKotlin(e, 'extraYAxes')
   if (extraAxes !== undefined) specArgs.push(`extraYAxes = ${withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'ExtraYAxis', args: [] } }, () => emitKotlinExpr(extraAxes, indent))}`)
+  const x2Labels = chartAttrExprKotlin(e, 'x2Labels')
+  if (x2Labels !== undefined) specArgs.push(`x2Labels = ${emitKotlinExpr(x2Labels, indent)}`)
+  const x2Title = readStaticAttrKotlin(e, 'x2Title')
+  if (typeof x2Title === 'string') specArgs.push(`x2Title = ${kotlinStr(x2Title)}`)
   lets.push(`val pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
   if (brushing) {
     lets.push('val pyreonPlot: PyreonChartRect = layoutChart(pyreonSpec, ::pyreonChartMeasure).plot')

@@ -1455,6 +1455,37 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "x2Labels",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "x2Title",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "xOffset",
         "type": {
           "kind": "union",
@@ -3461,6 +3492,37 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
                 "name": "ExtraYAxis",
                 "args": []
               }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "x2Labels",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "x2Title",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
             },
             {
               "kind": "undefined"

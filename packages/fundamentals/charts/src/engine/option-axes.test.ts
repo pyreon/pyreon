@@ -234,3 +234,30 @@ describe('a third y axis', () => {
     expect(l.gutters.right).toBeGreaterThan(layoutChart(compileOption(option(0)).spec, measure).gutters.right)
   })
 })
+
+describe('a second x axis', () => {
+  const measure = (t: string): number => t.length * 6
+  it('labels the same bands on the opposite edge, with its title', () => {
+    const { spec, warnings } = compileOption({
+      xAxis: [{ type: 'category', data: ['Mon', 'Tue'] }, { type: 'category', data: ['W1', 'W2'], name: 'Week' }],
+      yAxis: {},
+      series: [{ type: 'bar', data: [1, 2] }, { type: 'line', xAxisIndex: 1, data: [2, 1] }],
+    })
+    expect(warnings).toEqual([])
+    expect(spec.x2Labels).toEqual(['W1', 'W2'])
+    const l = layoutChart(spec, measure)
+    const p = l.plot
+    const cmds = renderChart(spec, measure)
+    const mon = l.xTicks.find((t) => t.label === 'Mon')!
+    const w1 = cmds.find((c) => c.kind === 'text' && c.text === 'W1')
+    expect(w1?.kind === 'text' && w1.at.x === mon.pos && w1.at.y < p.y).toBe(true)
+    expect(cmds.some((c) => c.kind === 'text' && c.text === 'Week' && c.at.y < p.y)).toBe(true)
+    expect(l.gutters.top).toBeGreaterThan(8)
+  })
+
+  it('a second x axis with a different category count is named', () => {
+    const { warnings, spec } = compileOption({ xAxis: [{ data: ['a', 'b'] }, { data: ['x'] }], yAxis: {}, series: [{ type: 'bar', data: [1, 2] }] })
+    expect(warnings.map((w) => w.path)).toEqual(['xAxis'])
+    expect(spec.x2Labels).toBeUndefined()
+  })
+})
