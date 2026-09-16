@@ -10,7 +10,7 @@
  * Output: JSON to stdout (pipe to file for CI)
  */
 
-import { execSync } from 'node:child_process'
+import { execFileSync, execSync } from 'node:child_process'
 import { resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dir, '../..')
@@ -43,7 +43,11 @@ const failed: string[] = []
 function runBench(scriptPath: string, args: string[] = [], timeoutMs = 120_000): string {
   const fullPath = resolve(ROOT, scriptPath)
   try {
-    return execSync(`bun ${fullPath} ${args.join(' ')}`.trim(), {
+    // `execFileSync`, not a shell string: the path is absolute and built from
+    // the repo root, so interpolating it into a command line hands the shell
+    // whatever a directory name happens to contain (CodeQL js/shell-command-…).
+    // Passing argv directly also removes the quoting question entirely.
+    return execFileSync('bun', [fullPath, ...args], {
       cwd: ROOT,
       encoding: 'utf-8',
       timeout: timeoutMs,
