@@ -1504,7 +1504,19 @@ export type ExprIR =
    * is the canonical zero-spread case; the field is optional for
    * backward compat with pre-G4 IR consumers.
    */
-  | { kind: 'object'; fields: { name: string; value: ExprIR }[]; spreads?: ExprIR[] }
+  | {
+      kind: 'object'
+      /**
+       * `afterSpreads` is how many SPREADS precede this field in source
+       * order. The two arrays lost their relative order, which made
+       * `{ a: 9, ...p }` and `{ ...p, a: 9 }` emit byte-identically while JS
+       * answers `1` and `9` — see `spread-lowering.ts`. Absent means "order
+       * unknown", which every non-parse constructor of this node implies and
+       * which is read as "after all spreads" (the pre-existing behaviour).
+       */
+      fields: { name: string; value: ExprIR; afterSpreads?: number }[]
+      spreads?: ExprIR[]
+    }
   | { kind: 'paren'; inner: ExprIR }
   /**
    * Spread element in array literal (`[...todos(), newTodo]`) used by
