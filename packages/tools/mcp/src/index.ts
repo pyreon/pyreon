@@ -891,8 +891,14 @@ server.tool(
         .boolean()
         .optional()
         .describe('Entire catalog (~14K tokens). Default is the compact index.'),
+      page: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe('Index page (240 entries each). Default 1; the footer names the next.'),
     },
-    async ({ category, name, full }) => {
+    async ({ category, name, full, page }) => {
       const doc = loadAntiPatternsDoc()
       if (!doc) {
         return textResult(
@@ -935,7 +941,7 @@ server.tool(
 
       // 4. default (no args, or category:'all') → compact index. ~1.5K
       //    vs ~14K — the ≈90% cut on the common path.
-      return textResult(formatAntiPatternsIndex(all))
+      return textResult(formatAntiPatternsIndex(all, page ?? 1))
     },
   )
 
