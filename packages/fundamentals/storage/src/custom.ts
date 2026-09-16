@@ -1,5 +1,5 @@
 import { signal, wrapSignal } from '@pyreon/reactivity'
-import { getEntry, releaseEntry, retainEntry, setEntry } from './registry'
+import { getEntry, getScopedMap, releaseEntry, retainEntry, setEntry } from './registry'
 import type { StorageBackend, StorageOptions, StorageSignal } from './types'
 import { deserialize, serialize } from './utils'
 
@@ -101,13 +101,20 @@ export function createStorage(
  * ```
  */
 export const useMemoryStorage = createStorage(
-  (() => {
-    const store = new Map<string, string>()
-    return {
-      get: (key: string) => store.get(key) ?? null,
-      set: (key: string, value: string) => store.set(key, value),
-      remove: (key: string) => store.delete(key),
-    }
-  })(),
+  {
+    // Request-scoped rather than a module-level `Map`. A plain module map is
+    // correct in a browser and a cross-request bleed on a server: the store
+    // this hook documents as "useful for SSR" would serve request B whatever
+    // request A wrote under the same key. Isolating the cached SIGNAL alone
+    // does not fix that — a fresh signal seeded from a process-global byte
+    // store still reads A's value — so the bytes move behind the same seam.
+    get: (key: string) => getScopedMap<string>('memory').get(key) ?? null,
+    set: (key: string, value: string) => {
+      getScopedMap<string>('memory').set(key, value)
+    },
+    remove: (key: string) => {
+      getScopedMap<string>('memory').delete(key)
+    },
+  },
   'memory',
 )

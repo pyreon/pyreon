@@ -14,7 +14,7 @@ Common mistakes and anti-patterns across Pyreon, grouped by area, each with its 
 - **[Context & Provider Mistakes](/docs/troubleshooting/context)** — 6 entries
 - **[Architecture Mistakes](/docs/troubleshooting/architecture)** — 73 entries
 - **[Islands Mistakes](/docs/troubleshooting/islands)** — 11 entries
-- **[SSR-rendering Mistakes](/docs/troubleshooting/ssr)** — 23 entries
+- **[SSR-rendering Mistakes](/docs/troubleshooting/ssr)** — 24 entries
 - **[SSG / e2e Test-Server Mistakes](/docs/troubleshooting/ssg)** — 17 entries
 - **[Bundling Mistakes](/docs/troubleshooting/bundling)** — 4 entries
 - **[Testing Mistakes](/docs/troubleshooting/testing)** — 27 entries
