@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.11' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.12' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -46,7 +46,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   // Rows whose engine still emits a live "not supported" warning for a
   // contract member are PARTIAL, whatever else they render. The path cited
   // is the warning site; the row closes when the warning goes.
-  row('series.line', 'series', 'direct', 'partial', 'src/engine/option.ts'), // stacked lines
+  row('series.line', 'series', 'direct', 'complete', 'src/engine/option-edges.test.ts'),
   row('series.sankey', 'series', 'direct', 'partial', 'src/engine/option-family.ts'), // vertical orient
   row('series.map', 'series', 'direct', 'partial', 'src/engine/geo-web.ts'),
   row('series.lines', 'series', 'direct', 'partial', 'src/engine/lines-series.test.ts'),

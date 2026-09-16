@@ -241,6 +241,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   let xValues: Double[] | undefined = undefined
   // Large-data requests per compiled cartesian series (see the sampling pass).
   const sampleRequests: { limit: number; method: SamplingMethod }[] = []
+  // Running totals per `stack` name for stacked LINES.
+  const lineStacks = new Map<string, Double[]>()
   const barCount = rawSeries.filter((s) => isObj(s) && s['type'] === 'bar' && s['stack'] === undefined).length
 
   for (let i = 0; i < rawSeries.length; i++) {
@@ -317,16 +319,13 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     }
     let kind: Series['kind']
     if (type === 'bar') kind = s['stack'] !== undefined ? 'stacked' : barCount > 1 ? 'grouped' : 'bars'
-    else if (type === 'line') kind = isObj(s['areaStyle']) || s['areaStyle'] === true ? 'area' : 'line'
+    else if (type === 'line') kind = isObj(s['areaStyle']) || s['areaStyle'] === true ? (s['stack'] !== undefined ? 'stackedArea' : 'area') : 'line'
     else if (type === 'scatter' || type === 'effectScatter') kind = 'points'
     else if (type === 'pictorialBar') kind = s['stack'] !== undefined ? 'stacked' : barCount > 1 ? 'grouped' : 'bars'
     else {
       warn('series-type-unsupported', `${path}.type`, `Series type "${type}" is not mapped by this facade yet (cartesian family only).`)
       supported = false
       continue
-    }
-    if (type === 'line' && s['stack'] !== undefined) {
-      warn('series-option-unsupported', `${path}.stack`, 'Stacked LINES are not supported; the line was drawn unstacked.')
     }
 
     // Data: number[] | {value}[] | [x, y][] (pairs feed a continuous x).
@@ -363,6 +362,23 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     if (xContinuous && xs.length === values.length && xs.length > 0 && xValues === undefined) xValues = xs
     const request = samplingRequest(s, values.length, opts.width ?? 640.0, warn, path)
     if (request !== null) sampleRequests.push(request)
+    // Stacked LINES: each line sits on the running total of the lines that
+    // share its `stack` name (ECharts' stacked line chart). The total is
+    // carried across a gap so a missing datum does not drop the lines above
+    // it to zero; the gap itself stays a gap. Stacked AREAS are the engine's
+    // own `stackedArea` kind (fills between levels), so their values stay raw.
+    if (type === 'line' && kind === 'line' && s['stack'] !== undefined) {
+      const key = String(s['stack'])
+      const below = lineStacks.get(key)
+      const total: Double[] = []
+      for (let j = 0; j < values.length; j++) {
+        const under = below?.[j] ?? 0.0
+        const v = values[j]!
+        if (!Number.isNaN(v)) values[j] = v + under
+        total.push(Number.isNaN(v) ? under : v + under)
+      }
+      lineStacks.set(key, total)
+    }
 
     const itemStyle = isObj(s['itemStyle']) ? s['itemStyle'] : {}
     const lineStyle = isObj(s['lineStyle']) ? s['lineStyle'] : {}
