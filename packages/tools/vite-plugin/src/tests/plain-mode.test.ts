@@ -17,7 +17,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import pyreonPlugin, { type PyreonPluginOptions } from '../index'
+import pyreonPlugin, { plainMarkerLocalNames, type PyreonPluginOptions } from '../index'
 
 type ConfigHook = (
   userConfig: Record<string, unknown>,
@@ -226,5 +226,47 @@ export function App() {
     // becomes ONE fused accessor (text fusion) — no per-read placeholders.
     expect(result!.code).toMatch(/_fuse\(count\(\), " \/ ", double\(\)\)/)
     expect(result!.code).not.toMatch(/_bindText\(/)
+  })
+})
+
+describe('cross-module: ALIASED plain markers and non-.ts plain stores', () => {
+  // The pre-pass recognises the markers by IMPORT SOURCE, so an aliased store
+  // compiles — but the registry scan matched the literal names, so its
+  // exports were never registered and a classic importer rendered the
+  // signal's SOURCE. And the transform gate accepted only `.ts`/`.mts` while
+  // the prescan walks `.js`: a `.js` plain store threw at runtime.
+  it('plainMarkerLocalNames reads aliases (and keeps the canonical names)', () => {
+    expect(plainMarkerLocalNames("import { state as s, derived as d } from '@pyreon/core/plain'")).toEqual({
+      state: 'state|s',
+      derived: 'derived|d',
+    })
+    expect(plainMarkerLocalNames("'use plain'")).toEqual({ state: 'state', derived: 'derived' })
+  })
+
+  it('registers `export let x = s(0)` from an aliased store so a classic {x} auto-calls', async () => {
+    writeFile(
+      'src/store.ts',
+      "import { state as s, derived as d } from '@pyreon/core/plain'\nexport let count = s(0)\nexport const double = d(count * 2)\n",
+    )
+    const appSource = `import { h } from "@pyreon/core"
+import { count, double } from "./store"
+export function App() { return <div>{count}{double}</div> }`
+    writeFile('src/App.tsx', appSource)
+    const plugin = bootstrap()
+    await runBuildStart(plugin)
+    const result = await runTransform(plugin, appSource, join(root, 'src/App.tsx'), {
+      './store': join(root, 'src/store.ts'),
+    })
+    expect(result!.code).toMatch(/count\(\)/)
+    expect(result!.code).toMatch(/double\(\)/)
+  })
+
+  it('transforms a marker-bearing .js store', async () => {
+    const store = "import { state } from '@pyreon/core/plain'\nexport let count = state(0)\nexport const bump = () => { count = count + 1 }\n"
+    const plugin = bootstrap()
+    const result = await runTransform(plugin, store, join(root, 'src/store.js'))
+    expect(result).toBeDefined()
+    expect(result!.code).toContain('signal(0')
+    expect(result!.code).not.toContain('state(0')
   })
 })

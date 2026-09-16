@@ -177,11 +177,17 @@ describe('jsx.ts — template attribute emitter: reserved names and duplicates',
     expect(out).not.toContain('_tpl(')
   })
 
-  it('a DUPLICATE plain attribute alongside a SPREAD keeps only the last plain one', () => {
-    const out = t('<div id="a" {...p} id="b">x</div>')
-    expect(out).toContain('id=\\"b\\"')
-    expect(out).not.toContain('id=\\"a\\"')
-    expect(out).toContain('_applyProps(__root, p)')
+  it('a plain attribute AFTER a spread bails to h() — JSX object semantics make it win', () => {
+    // `<a {...p} rel="noopener">` ≡ `{...p, rel: "noopener"}` — the static
+    // value must beat the spread's key. The template path baked the static
+    // into the HTML and applied the spread LAST (and a dynamic spread re-applies
+    // on every change), so a caller-controlled `p.rel` silently overrode the
+    // guard written to defeat it. The h() path spreads into one object and is
+    // correct by construction, so the element is bailed to it.
+    const out = bothAgree('<div id="a" {...p} id="b">x</div>')
+    expect(out).not.toContain('_tpl(')
+    expect(out).toContain('<div id="a" {...p} id="b">x</div>')
+    expect(bothAgree('<a {...p} rel="noopener" href="/safe">x</a>')).not.toContain('_tpl(')
   })
 
   it('a single plain attribute alongside a spread is kept', () => {

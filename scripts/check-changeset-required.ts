@@ -77,7 +77,7 @@
  * 6. Otherwise → exit 1 with actionable guidance.
  */
 
-import { execFileSync } from 'node:child_process'
+import { gitChangedFilesZ } from './changed-files'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { isTestPath } from './test-paths'
@@ -484,9 +484,6 @@ export function evaluateGate(inp: GateInputs): GateResult {
  * sanitized value can't be interpreted as a shell metacharacter —
  * defense in depth on top of the BASE_REF allowlist.
  */
-function git(...args: string[]): string {
-  return execFileSync('git', args, { encoding: 'utf8' }).trim()
-}
 
 /**
  * The changed files, or `null` when the diff could not be OBTAINED.
@@ -512,8 +509,10 @@ function changedFiles(baseRef: string): string[] | null {
   // diff-filter that catches additions AND deletions (changeset files
   // are deleted when the Version PR consumes them).
   try {
-    const out = git('diff', '--name-only', '--diff-filter=ACDMRTUXB', `origin/${baseRef}...HEAD`)
-    return out.length === 0 ? [] : out.split('\n')
+    // `--no-renames`: with rename detection a `git mv` OUT of a published
+    // package lists only the NEW path, so the source that LEFT the package
+    // (a consumer-affecting change) was invisible to this classifier.
+    return gitChangedFilesZ(`origin/${baseRef}...HEAD`, { args: ['--no-renames', '--diff-filter=ACDMRTUXB'] })
   } catch (err) {
     // Loud, and NOT an empty diff.
     console.error(

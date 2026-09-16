@@ -62,6 +62,7 @@
  *
  * Run those separately when the change actually warrants it.
  */
+import { ciComplementGates } from './gate-wiring'
 import { spawn } from 'node:child_process'
 import { availableParallelism } from 'node:os'
 
@@ -239,6 +240,15 @@ interface Result {
 const startTotal = Date.now()
 const json = process.argv.includes('--json')
 const serial = process.argv.includes('--serial')
+// `--ci-complement`: run ONLY the gates no GitHub workflow `run:` block
+// invokes on its own (directly or through a root package.json alias).
+// validate-fast is the pre-push hook's gate wall, and a hook is bypassed by
+// `PYREON_SKIP_PRE_PUSH=1`, `--no-verify`, or any merge that never came
+// through a local push — so a gate that lived ONLY here was enforced by
+// nobody (26 of 46, 2026-09). The Fast Gates job runs this mode as one step,
+// which makes "in validate-fast" mean "enforced in CI" by construction,
+// without duplicating the gates ci.yml already runs.
+const ciComplement = process.argv.includes('--ci-complement')
 
 const CWD = new URL('..', import.meta.url).pathname
 
@@ -290,7 +300,10 @@ function runGate(gate: Gate): Promise<Result> {
   })
 }
 
-const results: Result[] = new Array(GATES.length)
+const RUN: Gate[] = ciComplement
+  ? ciComplementGates(GATES, new URL('../.github/workflows', import.meta.url).pathname)
+  : GATES
+const results: Result[] = new Array(RUN.length)
 
 async function runAll(): Promise<void> {
   let next = 0
@@ -299,7 +312,7 @@ async function runAll(): Promise<void> {
   let printed = 0
   const flush = () => {
     if (json) return
-    while (printed < GATES.length && results[printed] !== undefined) {
+    while (printed < RUN.length && results[printed] !== undefined) {
       const r = results[printed]!
       const time = `${(r.durationMs / 1000).toFixed(1)}s`
       console.log(`${r.ok ? '✓' : '✗'} ${r.name.padEnd(38)} ${time.padStart(7)}`)
@@ -308,13 +321,13 @@ async function runAll(): Promise<void> {
     }
   }
   const worker = async (): Promise<void> => {
-    while (next < GATES.length) {
+    while (next < RUN.length) {
       const index = next++
-      results[index] = await runGate(GATES[index]!)
+      results[index] = await runGate(RUN[index]!)
       flush()
     }
   }
-  await Promise.all(Array.from({ length: Math.min(POOL, GATES.length) }, worker))
+  await Promise.all(Array.from({ length: Math.min(POOL, RUN.length) }, worker))
 }
 
 await runAll()

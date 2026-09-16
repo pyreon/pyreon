@@ -40,6 +40,23 @@ export interface ErrorPattern {
  */
 export const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // The signal auto-call pass recognised three binding forms as shadows
+    // (a plain param, a one-level destructured param, a top-level `const`),
+    // so a `catch (error)` / `for (const item of …)` / nested-pattern binding
+    // that shared a module signal's name was still auto-called — and the
+    // throw landed INSIDE the error handler or loop that declared it. Fixed
+    // in the compiler (every binding form shadows); a pinned app still sees
+    // the JSC shape below, which names the non-function value it received.
+    pattern:
+      /(\w+) is not a function\. \(In '\1\(\)', '\1' is an instance of (?:Error|Object|Array|\w+)\)/,
+    diagnose: (m) => ({
+      cause: `A JSX child or attribute read \`${m[1]}\` bare, and the compiler auto-called it as a signal because a module-level \`const ${m[1]} = signal(…)\` exists — but at that point \`${m[1]}\` is a LOCAL binding (a \`catch (${m[1]})\` parameter, a \`for (const ${m[1]} of …)\` head, a nested destructure, a block-scoped \`let\`), which compilers before 0.53 did not recognise as a shadow.`,
+      fix: `Upgrade @pyreon/compiler — every binding form now shadows. If you are pinned, rename the local binding so it does not share a module signal's name.`,
+      fixCode: `// pinned workaround — a distinct name for the local
+try { load() } catch (err) { return <p>{err.message}</p> }`,
+    }),
+  },
+  {
     // `<For>`'s row-mount path probed the render result for the NativeItem
     // marker before checking it was a value at all, so a row rendering `null`
     // — the ordinary way to hide one — threw before ANY row had been placed.

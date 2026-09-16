@@ -31,8 +31,9 @@
  *
  *   bun scripts/check-published-state.ts [--json] [--native]
  */
-import { readFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 export const SENTINELS = ['@pyreon/reactivity', '@pyreon/core', '@pyreon/zero'] as const
 
@@ -43,9 +44,32 @@ export const SENTINELS = ['@pyreon/reactivity', '@pyreon/core', '@pyreon/zero'] 
 // when native has caught up, so it passes `--native` to ALSO guard the
 // native-binary cascade (JS published, but the tag→native step failed or the tag
 // never pushed — the historical skew class where `@pyreon/compiler-*` lagged a
-// version behind). One representative binary suffices: all 7 share the
-// fixed-group version, bumped in lockstep by `changeset version`.
-export const NATIVE_SENTINELS = ['@pyreon/compiler-darwin-arm64'] as const
+// version behind). EVERY binary is a sentinel, not one representative: the
+// release-native publish MATRIX is `fail-fast: false` per target, so one
+// target can be a version behind while the others published — and on that
+// platform `@pyreon/compiler`'s optionalDependency then resolves to a stale
+// binary, i.e. the 3.7-8.9× slower JS fallback, silently. The set is READ from
+// the parent package's `optionalDependencies` so a new target cannot be
+// forgotten here (the one hand-maintained list this gate used to carry).
+export const NATIVE_SENTINELS: readonly string[] = readNativeSentinels()
+
+function readNativeSentinels(): string[] {
+  const manifest = join(findRepoRoot(), 'packages', 'core', 'compiler', 'package.json')
+  const pkg = JSON.parse(readFileSync(manifest, 'utf8')) as { optionalDependencies?: Record<string, string> }
+  const names = Object.keys(pkg.optionalDependencies ?? {}).filter((n) => n.startsWith('@pyreon/compiler-'))
+  if (names.length === 0) throw new Error(`[check-published-state] no @pyreon/compiler-* optionalDependencies in ${manifest}`)
+  return names.sort()
+}
+
+/** Walk up from this script to the `.changeset/config.json` marker. */
+function findRepoRoot(): string {
+  let dir = dirname(fileURLToPath(import.meta.url))
+  for (let i = 0; i < 6; i++) {
+    if (existsSync(join(dir, '.changeset', 'config.json'))) return dir
+    dir = dirname(dir)
+  }
+  throw new Error('[check-published-state] repo root not found')
+}
 
 /**
  * The sentinel set to verify. `--native` adds the native compiler binary(ies)
@@ -237,6 +261,45 @@ if (import.meta.main) {
       }),
     )
 
+    // ── Existence sweep (the first-publish-bootstrap class) ───────────
+    // Every publishable package must EXIST on npm. OIDC cannot create a
+    // package, so publish.ts warn-and-skips first-publishes — correct for
+    // the release run, but silent: 0.46.0 shipped with @pyreon/rich-text
+    // (3 weeks of releases) and @pyreon/testing never on npm while the
+    // docs advertised both. This sweep makes that a red, actionable run
+    // wherever this script is wired (release.yml post-publish + the daily
+    // published-state.yml).
+    const all = enumeratePublishable()
+    // Bounded concurrency + one retry: 65 simultaneous fetches to the npm
+    // registry get ECONNRESET-throttled (observed live) — walk in pools of 8.
+    const sweep: Array<{ pkg: string; npm: string | null }> = []
+    for (let i = 0; i < all.length; i += 8) {
+      const batch = all.slice(i, i + 8)
+      sweep.push(
+        ...(await Promise.all(
+          batch.map(async (pkg) => {
+            try {
+              return { pkg, npm: await npmLatest(pkg) }
+            } catch {
+              await new Promise((r) => setTimeout(r, 500))
+              return { pkg, npm: await npmLatest(pkg) } // retry once; throw → outer catch (exit 2)
+            }
+          }),
+        )),
+      )
+    }
+    // `--lag-json` is emitted FIRST: release.yml's resume-detect reads this
+    // one stdout line to republish a partial release from the tag, and the
+    // DEAD-RELEASE verdict below exits 1 — so an ENTIRELY dead release (the
+    // case a resume is most needed for) used to print nothing and the resume
+    // step read "registry lookup failed — not resuming".
+    if (process.argv.includes('--lag-json')) {
+      const lagNow = classifyLag(sweep, enumeratePublishableVersions())
+      const repoNow = repoVersion('@pyreon/core')
+      const current = lagNow.filter((l) => l.repo === repoNow)
+      console.log(JSON.stringify({ version: current.length > 0 ? repoNow : '', packages: current.map((l) => l.pkg) }))
+    }
+
     // DEAD-RELEASE detection: the repo's package.json version is only ever
     // bumped by a MERGED `chore: version packages` commit — i.e. a release
     // that was CUT. If npm latest is behind that version, the publish never
@@ -276,51 +339,11 @@ if (import.meta.main) {
       `[check-published-state] OK — npm latest matches the released repo version (${results[0]?.repo}) for ${results.length - unpublished.length}/${results.length} sentinels${includeNative ? ' (incl. native compiler binary)' : ''}.`,
     )
 
-    // ── Existence sweep (the first-publish-bootstrap class) ───────────
-    // Every publishable package must EXIST on npm. OIDC cannot create a
-    // package, so publish.ts warn-and-skips first-publishes — correct for
-    // the release run, but silent: 0.46.0 shipped with @pyreon/rich-text
-    // (3 weeks of releases) and @pyreon/testing never on npm while the
-    // docs advertised both. This sweep makes that a red, actionable run
-    // wherever this script is wired (release.yml post-publish + the daily
-    // published-state.yml).
-    const all = enumeratePublishable()
-    // Bounded concurrency + one retry: 65 simultaneous fetches to the npm
-    // registry get ECONNRESET-throttled (observed live) — walk in pools of 8.
-    const sweep: Array<{ pkg: string; npm: string | null }> = []
-    for (let i = 0; i < all.length; i += 8) {
-      const batch = all.slice(i, i + 8)
-      sweep.push(
-        ...(await Promise.all(
-          batch.map(async (pkg) => {
-            try {
-              return { pkg, npm: await npmLatest(pkg) }
-            } catch {
-              await new Promise((r) => setTimeout(r, 500))
-              return { pkg, npm: await npmLatest(pkg) } // retry once; throw → outer catch (exit 2)
-            }
-          }),
-        )),
-      )
-    }
     const { absent } = classifyExistence(sweep)
     // ── Lag sweep (the partial-release class) — over EVERY package ─────
     const lagging = classifyLag(sweep, enumeratePublishableVersions())
     if (json) console.warn(JSON.stringify({ lagging }, null, 2))
-    // `--lag-json`: ONE machine-readable line on STDOUT (everything else this
-    // script prints goes to stderr) — what release.yml's resume-detect reads.
-    // Only packages lagging the CURRENT repo version are resumable: the tag
-    // that job checks out is v<repo version>.
-    if (process.argv.includes('--lag-json')) {
-      const repoNow = repoVersion('@pyreon/core')
-      const current = lagging.filter((l) => l.repo === repoNow)
-      console.log(
-        JSON.stringify({
-          version: current.length > 0 ? repoNow : '',
-          packages: current.map((l) => l.pkg),
-        }),
-      )
-    }
+    // (`--lag-json` was already emitted above, before any verdict could exit.)
     if (lagging.length > 0) {
       console.error(
         `[check-published-state] PARTIAL RELEASE — ${lagging.length} package(s) exist on npm but lag the version the repo has cut:`,

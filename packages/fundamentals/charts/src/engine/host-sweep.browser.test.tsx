@@ -24,6 +24,7 @@ import { HeatmapChart } from './HeatmapChart'
 import { MapChart } from './MapChart'
 import { OptionChart } from './OptionChart'
 import { ParallelChart } from './ParallelChart'
+import { SingleAxisChart } from './SingleAxisChart'
 import { GaugeChart, PieChart } from './PieChart'
 import { PolarChart } from './PolarChart'
 import { RadarChart } from './RadarChart'
@@ -81,6 +82,7 @@ const HOSTS: Host[] = [
   { name: 'GanttChart', make: (k) => h(GanttChart, { ...shared(k), tasks: [{ id: '1', name: 'Design', start: '2024-01-01', end: '2024-01-10', progress: 0.5 }, { id: '2', name: 'Build', start: '2024-01-08', end: '2024-01-20' }] }) },
   { name: 'MapChart', make: (k) => h(MapChart, { ...shared(k), map: WORLD, values: { A: 1, B: 9 } }) },
   { name: 'ParallelChart', make: (k) => h(ParallelChart, { ...shared(k), axes: [{ name: 'a' }, { name: 'b' }], rows: [[1, 10], [2, 20], [3, 30]] }) },
+  { name: 'SingleAxisChart', make: (k) => h(SingleAxisChart, { ...shared(k), axis: { name: 'v' }, points: [{ x: 1, name: 'a' }, { x: 8, name: 'b' }] }) },
   { name: 'HeatmapChart', make: (k) => h(HeatmapChart<Obs>, { ...shared(k), data: HEAT, x: (d: Obs) => d.day, y: (d: Obs) => d.hour, value: (d: Obs) => d.n }) },
   { name: 'CandlestickChart', make: (k) => h(CandlestickChart<Bar>, { ...shared(k), data: CANDLES, x: (d: Bar) => d.day, open: (d: Bar) => d.o, high: (d: Bar) => d.h, low: (d: Bar) => d.l, close: (d: Bar) => d.c }) },
   { name: 'RadarChart', make: (k) => h(RadarChart<Player>, { ...shared(k), data: PLAYERS, axes: [{ label: 'Speed', max: 100 }, { label: 'Power', max: 100 }, { label: 'Skill', max: 100 }], values: (d: Player) => [d.speed, d.power, d.skill], label: (d: Player) => d.name }) },

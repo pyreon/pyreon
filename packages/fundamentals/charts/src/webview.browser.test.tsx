@@ -26,6 +26,11 @@ import echartsScript from 'echarts/dist/echarts.min.js?raw'
 import { ChartWebView, buildChartHostHtml } from './webview'
 
 const HOST = buildChartHostHtml({ echartsScript })
+const INTERACTIVE_HOST = buildChartHostHtml({
+  echartsScript: echartsScript,
+  forwardEvents: ['legendselectchanged'],
+  hostSetupScript: 'window.__pyreonSetupProof = 42',
+})
 
 const barOption = (data: number[]) => ({
   xAxis: { type: 'category', data: ['A', 'B', 'C'] },
@@ -137,6 +142,72 @@ describe('ChartWebView bridge (real ECharts in a real iframe)', () => {
 
     expect(received).toHaveLength(1)
     expect(received[0]).toEqual({ name: 'B', value: 6, dataIndex: 1, seriesIndex: 0 })
+    unmount()
+  })
+
+  it('runs each command id once and forwards configured events through the same bridge', async () => {
+    const commands = signal<readonly { id: string; type: string; name: string }[]>([])
+    const loading = signal(false)
+    const received: unknown[] = []
+    const { container, unmount } = mountInBrowser(
+      h(ChartWebView as never, {
+        html: INTERACTIVE_HOST,
+        option: () => ({
+          legend: {},
+          xAxis: { type: 'category', data: ['A'] },
+          yAxis: { type: 'value' },
+          series: [{ name: 'A', type: 'bar', data: [1] }],
+        }),
+        commands: () => commands(),
+        loading: () => loading(),
+        loadingOptions: { text: 'Working' },
+        onEvent: (event: unknown) => received.push(event),
+      }),
+    )
+    container.style.width = '300px'
+    container.style.height = '200px'
+    await flush()
+    const iframe = query<HTMLIFrameElement>(container, 'iframe')
+    const win = await waitForChart(iframe)
+    expect((win as unknown as { __pyreonSetupProof?: number }).__pyreonSetupProof).toBe(42)
+    const el = iframe.contentDocument!.getElementById('pyreon-chart')!
+    const instance = (
+      win as unknown as {
+        [key: string]: { getInstanceByDom(el: Element): { getOption(): { legend: { selected?: Record<string, boolean> }[] } } }
+      }
+    )['ech' + 'arts']!.getInstanceByDom(el)
+    const loadingCalls: string[] = []
+    const hostInstance = instance as unknown as {
+      showLoading(kind: string, options: { text?: string }): void
+      hideLoading(): void
+    }
+    hostInstance.showLoading = (kind, options) => loadingCalls.push(kind + ':' + options.text)
+    hostInstance.hideLoading = () => loadingCalls.push('hide')
+
+    commands.set([{ id: 'hide-a', type: 'legendToggleSelect', name: 'A' }])
+    await flush()
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+
+    expect(instance.getOption().legend[0]!.selected?.A).toBe(false)
+    expect(received).toContainEqual({
+      name: 'legendselectchanged',
+      payload: expect.objectContaining({ name: 'A' }),
+    })
+
+    // Re-sending an already completed id must not toggle the series back on.
+    commands.set([{ id: 'hide-a', type: 'legendToggleSelect', name: 'A' }])
+    await flush()
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+    expect(instance.getOption().legend[0]!.selected?.A).toBe(false)
+
+    loading.set(true)
+    await flush()
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+    loading.set(false)
+    await flush()
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+    expect(loadingCalls).toEqual(['default:Working', 'hide'])
     unmount()
   })
 })

@@ -31,6 +31,11 @@
  * nor JSX attr names should start/end with `-`, but the emitter
  * shouldn't crash if a fixture provides one).
  */
+const PLAIN_IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/
+
+/** Characters a Kotlin backtick-quoted name may NOT contain (JVM + dex rules). */
+const KOTLIN_UNQUOTABLE = /[.;[\]/<>:\\`\r\n]/
+
 export function safeIdent(name: string): string {
   if (!name.includes('-')) return name
   const segments = name.split('-').filter((s) => s.length > 0)
@@ -103,6 +108,12 @@ const KOTLIN_KEYWORDS = new Set([
  * emit stays human-readable for non-colliding names.
  */
 export function swiftIdent(name: string): string {
+  // A name that is not an identifier at all (`my-key`, `has space` — a
+  // quoted object key reaching a struct field / member access) is camelCased
+  // and stripped of the rest; Swift has no way to quote those. Every reader
+  // of the same name (declaration, memberwise init label, member access)
+  // goes through this one function, so they agree.
+  if (!PLAIN_IDENT.test(name)) name = safeIdent(name).replace(/[^A-Za-z0-9_]/g, '_')
   return SWIFT_KEYWORDS.has(name) ? '`' + name + '`' : name
 }
 
@@ -111,5 +122,39 @@ export function swiftIdent(name: string): string {
  * keyword. Same shape as `swiftIdent` but with the Kotlin keyword set.
  */
 export function kotlinIdent(name: string): string {
+  // A non-identifier name is backtick-quoted (see `kotlinMember`) — Kotlin
+  // allows it, and the serialized name stays the original string.
+  if (!PLAIN_IDENT.test(name)) return kotlinMember(name)
   return KOTLIN_KEYWORDS.has(name) ? '`' + name + '`' : name
+}
+
+/**
+ * A Kotlin MEMBER name — enum entry, data-class property, named-argument
+ * label — for a JS-side name that may be a keyword OR not an identifier at
+ * all (`'my-key'`, `'has space'`; string-literal-union enum cases and
+ * quoted object keys both produce these). Kotlin backtick-quotes any such
+ * name and the serialized name stays the ORIGINAL string, so a `top-left`
+ * enum entry or a `my-key` field round-trips through kotlinx JSON with no
+ * `@SerialName`. A name Kotlin cannot quote even in backticks falls back to
+ * the camelCase `safeIdent` form (the JSON key then diverges — rare, and
+ * a compile beats a silent nothing).
+ */
+export function kotlinMember(name: string): string {
+  if (PLAIN_IDENT.test(name)) return KOTLIN_KEYWORDS.has(name) ? '`' + name + '`' : name
+  if (!KOTLIN_UNQUOTABLE.test(name)) return '`' + name + '`'
+  const fallback = safeIdent(name).replace(/[^A-Za-z0-9_]/g, '_')
+  return KOTLIN_KEYWORDS.has(fallback) ? '`' + fallback + '`' : fallback
+}
+
+/**
+ * A Swift enum-CASE name for a string-literal-union member. Swift cannot
+ * backtick-quote a hyphen or a space, so the case is camelCased
+ * (`top-left` → `topLeft`) and the DECLARATION keeps the original string
+ * as the raw value (`case topLeft = "top-left"`) so `Codable` / storage /
+ * URL round-trips are unchanged; a keyword case is backticked.
+ */
+export function swiftEnumCase(value: string): string {
+  let ident = safeIdent(value).replace(/[^A-Za-z0-9_]/g, '_')
+  if (ident === '' || /^[0-9]/.test(ident)) ident = `_${ident}`
+  return swiftIdent(ident)
 }

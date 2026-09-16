@@ -100,9 +100,19 @@ export function validateReleaseVersion(raw: unknown): string | null {
  * manifest must degrade to "phase 2 will reconcile", never crash the
  * always() step or tag garbage.
  */
-export function parsePublishResult(
-  text: string | null,
-): { version: string; published: string[] } | null {
+export interface PublishResult {
+  version: string
+  published: string[]
+  /** Packages this run FAILED to publish or BLOCKED (`failed` ∪ `blocked` in
+   * the manifest). Non-empty means the release is PARTIAL: the chain still
+   * completes (the umbrella tag is what the native builds hang off, and
+   * `check-published-state` owns the incompleteness alarm), but no GitHub
+   * Release claiming "all packages" may be minted from it. `needsBootstrap`
+   * is deliberately NOT here — a first-publish is documented non-blocking. */
+  incomplete: string[]
+}
+
+export function parsePublishResult(text: string | null): PublishResult | null {
   if (text === null) return null
   let raw: unknown
   try {
@@ -122,7 +132,54 @@ export function parsePublishResult(
   if (version.includes('-')) return null
   if (!Array.isArray(obj.published) || obj.published.length === 0) return null
   if (!obj.published.every((p) => typeof p === 'string')) return null
-  return { version, published: obj.published }
+  const strings = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+  const { failed, blocked } = raw as { failed?: unknown; blocked?: unknown }
+  return { version, published: obj.published, incomplete: [...strings(failed), ...strings(blocked)] }
+}
+
+/** The manifest publish.ts wrote for THIS checkout, or null (Version-PR path / stale). */
+function readPublishResult(): PublishResult | null {
+  const manifestPath = join(REPO_ROOT, 'publish-result.json')
+  return parsePublishResult(existsSync(manifestPath) ? readFileSync(manifestPath, 'utf-8') : null)
+}
+
+/**
+ * A partial publish must never be announced as complete. The manifest is the
+ * only evidence (npm cannot say which packages a run MEANT to publish), so
+ * both phases consult it before minting the Release: phase 1 has it in hand,
+ * phase 2 re-reads it because it runs in the same invocation and would
+ * otherwise mint from npm's anchor alone. Returns the packages to name.
+ */
+function incompleteFor(version: string): string[] {
+  const r = readPublishResult()
+  return r !== null && r.version === version ? r.incomplete : []
+}
+
+/**
+ * The native binaries (`@pyreon/compiler-<triple>`, built by release-native
+ * from the umbrella tag) belong to `@pyreon/compiler`, which declares them as
+ * `optionalDependencies`. Dispatching them for a version whose PARENT package
+ * failed to publish mints binaries nothing can resolve; any OTHER incomplete
+ * member (PMTC's `@pyreon/native-compiler` included — a different package)
+ * is irrelevant to the binaries and must not block them. Returns the
+ * blocking package name, or null.
+ */
+export function nativeDispatchBlockedBy(incomplete: readonly string[]): string | null {
+  return incomplete.includes(NATIVE_PARENT_PKG) ? NATIVE_PARENT_PKG : null
+}
+const NATIVE_PARENT_PKG = '@pyreon/compiler'
+
+function refuseNativeForPartial(version: string, blocker: string): void {
+  console.log(
+    `::error title=Native dispatch skipped for ${version}::${blocker} did NOT publish, and the native binaries are its optionalDependencies — re-run publish.ts for it, then re-run this workflow to dispatch release-native.`,
+  )
+}
+
+function refuseReleaseForPartial(version: string, incomplete: string[]): void {
+  console.log(
+    `::error title=Partial release ${version}::${incomplete.length} package(s) did NOT publish: ${incomplete.join(', ')} — the umbrella tag + native dispatch still complete, but NO GitHub Release is created until every package is on npm (re-run publish.ts for the failed set; check-published-state owns the alarm).`,
+  )
 }
 
 export type HealAction =
@@ -217,16 +274,24 @@ async function npmVersionExists(pkg: string, version: string): Promise<boolean> 
   // workflow already talks to registry.npmjs.org (the publish itself +
   // check-published-state).
   for (let i = 0; i < 2; i++) {
-    const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg)}`, {
-      // Abbreviated packument — versions map without READMEs/attachments.
-      headers: { accept: 'application/vnd.npm.install-v1+json' },
-    })
-    if (res.status === 404) return false // package has never been published
-    if (res.ok) {
-      const doc = (await res.json()) as { versions?: Record<string, unknown> }
-      // Object.hasOwn, not `in`/index — belt on top of the semver gate so a
-      // key like `__proto__` could never false-positive.
-      return Object.hasOwn(doc.versions ?? {}, version)
+    // A THROWN fetch (DNS, ECONNRESET, TLS — the dominant transient class)
+    // must retry exactly like a non-OK status; unguarded, it escaped on the
+    // first iteration and the "registry unreachable — refusing to guess"
+    // verdict below was unreachable for the very failure it names.
+    try {
+      const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg)}`, {
+        // Abbreviated packument — versions map without READMEs/attachments.
+        headers: { accept: 'application/vnd.npm.install-v1+json' },
+      })
+      if (res.status === 404) return false // package has never been published
+      if (res.ok) {
+        const doc = (await res.json()) as { versions?: Record<string, unknown> }
+        // Object.hasOwn, not `in`/index — belt on top of the semver gate so a
+        // key like `__proto__` could never false-positive.
+        return Object.hasOwn(doc.versions ?? {}, version)
+      }
+    } catch (err) {
+      console.warn(`[heal-release-chain] registry fetch for ${pkg} threw: ${String(err)}`)
     }
     await new Promise((r) => setTimeout(r, 1000))
   }
@@ -341,9 +406,7 @@ function observeChain(tag: string): {
 // ─── Phase 1 — THIS run, local truth (publish-result.json) ────────────────
 
 async function finalizeCurrentRun(): Promise<void> {
-  const manifestPath = join(REPO_ROOT, 'publish-result.json')
-  const text = existsSync(manifestPath) ? readFileSync(manifestPath, 'utf-8') : null
-  const result = parsePublishResult(text)
+  const result = readPublishResult()
   if (result === null) {
     console.log(
       '[heal-release-chain] phase 1: no valid publish-result.json — nothing published in THIS run (Version-PR path). Phase 2 reconciles standing state.',
@@ -376,10 +439,15 @@ async function finalizeCurrentRun(): Promise<void> {
   const obs = observeChain(tag)
   // HEAD is the version commit — this checkout IS the run that published.
   if (!obs.originHasUmbrellaTag) await ensureUmbrellaTag(tag, 'HEAD')
-  if (!obs.releaseExists) createGithubRelease(tag, result.version)
+  if (result.incomplete.length > 0) refuseReleaseForPartial(result.version, result.incomplete)
+  else if (!obs.releaseExists) createGithubRelease(tag, result.version)
   // Fresh publish: the binaries CANNOT be on npm yet (they build from this
-  // tag), so the only question is whether a run exists (retry-run case).
-  if (!obs.nativeRunExists) await ensureNativeRun(tag)
+  // tag), so the only question is whether a run exists (retry-run case) —
+  // UNLESS the package the binaries belong to did not publish (see
+  // `nativeDispatchBlockedBy`).
+  const blocker = nativeDispatchBlockedBy(result.incomplete)
+  if (blocker) refuseNativeForPartial(result.version, blocker)
+  else if (!obs.nativeRunExists) await ensureNativeRun(tag)
   await pushMissingPerPkgTags(result.version)
   console.log('[heal-release-chain] phase 1 done')
 }
@@ -440,9 +508,13 @@ async function reconcile(): Promise<void> {
         ) ?? 'HEAD'
       await ensureUmbrellaTag(tag, target)
     } else if (action === 'dispatch-native') {
-      await ensureNativeRun(tag)
+      const blocker = nativeDispatchBlockedBy(incompleteFor(version))
+      if (blocker) refuseNativeForPartial(version, blocker)
+      else await ensureNativeRun(tag)
     } else if (action === 'create-release') {
-      createGithubRelease(tag, version)
+      const incomplete = incompleteFor(version)
+      if (incomplete.length > 0) refuseReleaseForPartial(version, incomplete)
+      else createGithubRelease(tag, version)
     }
   }
 

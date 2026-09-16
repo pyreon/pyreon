@@ -6,7 +6,10 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -18,8 +21,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.nativeCanvas
 import android.graphics.Paint
@@ -53,6 +58,13 @@ data class PyreonChartGradient(
     var stops: List<PyreonChartGradientStop>,
 )
 
+data class PyreonChartPattern(
+    var kind: String,
+    var color: String,
+    var spacing: Double,
+    var width: Double,
+)
+
 data class PyreonDrawCmd(
     var kind: String,
     var rect: PyreonChartRect? = null,
@@ -71,6 +83,7 @@ data class PyreonDrawCmd(
     var corners: List<Double>? = null,
     /** Paint the fill as a linear gradient; `fill` stays the fallback. */
     var grad: PyreonChartGradient? = null,
+    var pattern: PyreonChartPattern? = null,
     var center: PyreonChartPt? = null,
     var radius: Double? = null,
     var text: String? = null,
@@ -230,6 +243,33 @@ fun pyreonMirrorCmds(cmds: List<PyreonDrawCmd>, width: Double): List<PyreonDrawC
 }
 
 /**
+ * Transpose a draw list — a VERTICAL sankey / calendar / parallel is the
+ * horizontal one reflected across the diagonal. The twin of the web engine's
+ * `transposeCmds` and the iOS runtime's `pyreonTransposeCmds`; parity is
+ * asserted by EXECUTION, so every field it touches must match field for field.
+ */
+fun pyreonTransposeCmds(cmds: List<PyreonDrawCmd>): List<PyreonDrawCmd> {
+    fun tp(p: PyreonChartPt): PyreonChartPt = PyreonChartPt(p.y, p.x)
+    return cmds.map { c ->
+        c.copy(
+            rect = c.rect?.let { PyreonChartRect(it.y, it.x, it.h, it.w) },
+            from = c.from?.let { tp(it) },
+            to = c.to?.let { tp(it) },
+            points = c.points?.map { tp(it) },
+            center = c.center?.let { tp(it) },
+            at = c.at?.let { tp(it) },
+            // Corners run top-left, top-right, bottom-right, bottom-left; the diagonal fixes the first and third and swaps the other two.
+            corners = c.corners?.let { if (it.size == 4) listOf(it[0], it[3], it[2], it[1]) else it },
+            grad = c.grad?.let { PyreonChartGradient(tp(it.from), tp(it.to), it.stops) },
+            // Text is anchored, never reflected: the horizontal anchor becomes the vertical one and back.
+            align = c.baseline?.let { if (it == "top") "start" else if (it == "bottom") "end" else "middle" } ?: c.align,
+            baseline = c.align?.let { if (it == "start") "top" else if (it == "end") "bottom" else "middle" } ?: c.baseline,
+            rotate = c.rotate?.let { 90.0 - it },
+        )
+    }
+}
+
+/**
  * A Compose brush from the engine's gradient, or null when there is none (the
  * caller then paints the solid colour).
  */
@@ -277,8 +317,140 @@ fun pyreonRoundedRectPath(r: PyreonChartRect, radii: List<Double>): Path {
     return p
 }
 
+private fun DrawScope.pyreonPaintPattern(pattern: PyreonChartPattern?, clip: Path, bounds: PyreonChartRect) {
+    pattern ?: return
+    val spacing = pattern.spacing.coerceAtLeast(2.0).toFloat()
+    val width = pattern.width.coerceAtLeast(0.5).toFloat()
+    val color = pyreonChartColor(pattern.color)
+    clipPath(clip) {
+        if (pattern.kind == "dots") {
+            var y = bounds.y.toFloat()
+            while (y <= (bounds.y + bounds.h).toFloat()) {
+                var x = bounds.x.toFloat()
+                while (x <= (bounds.x + bounds.w).toFloat()) {
+                    drawCircle(color = color, radius = width / 2f, center = Offset(x, y))
+                    x += spacing
+                }
+                y += spacing
+            }
+        } else {
+            val span = (bounds.w + bounds.h).toFloat()
+            var d = -bounds.h.toFloat()
+            while (d <= bounds.w.toFloat()) {
+                drawLine(color, Offset(bounds.x.toFloat() + d, (bounds.y + bounds.h).toFloat()), Offset(bounds.x.toFloat() + d + span, bounds.y.toFloat()), width)
+                if (pattern.kind == "cross") {
+                    drawLine(color, Offset(bounds.x.toFloat() + d, bounds.y.toFloat()), Offset(bounds.x.toFloat() + d + span, (bounds.y + bounds.h).toFloat()), width)
+                }
+                d += spacing
+            }
+        }
+    }
+}
+
+private fun pyreonChartMix(a: Double, b: Double, t: Double): Double = a + (b - a) * t
+private fun pyreonChartMixPoint(a: PyreonChartPt, b: PyreonChartPt, t: Double) =
+    PyreonChartPt(pyreonChartMix(a.x, b.x, t), pyreonChartMix(a.y, b.y, t))
+
+fun pyreonSameChartCommandShape(a: List<PyreonDrawCmd>, b: List<PyreonDrawCmd>): Boolean {
+    if (a.size != b.size) return false
+    for (i in a.indices) {
+        if (a[i].kind != b[i].kind) return false
+        if ((a[i].kind == "polyline" || a[i].kind == "polygon") && a[i].points?.size != b[i].points?.size) return false
+        if (a[i].kind == "text" && a[i].text != b[i].text) return false
+    }
+    return true
+}
+
+fun pyreonTweenChartCommands(from: List<PyreonDrawCmd>, to: List<PyreonDrawCmd>, progress: Double): List<PyreonDrawCmd> {
+    if (progress >= 1.0 || !pyreonSameChartCommandShape(from, to)) return to
+    return to.indices.map { i ->
+        val a = from[i]
+        val b = to[i]
+        when (b.kind) {
+            "rect" -> b.copy(rect = if (a.rect != null && b.rect != null) PyreonChartRect(
+                pyreonChartMix(a.rect!!.x, b.rect!!.x, progress), pyreonChartMix(a.rect!!.y, b.rect!!.y, progress),
+                pyreonChartMix(a.rect!!.w, b.rect!!.w, progress), pyreonChartMix(a.rect!!.h, b.rect!!.h, progress)) else b.rect)
+            "line" -> b.copy(
+                from = if (a.from != null && b.from != null) pyreonChartMixPoint(a.from!!, b.from!!, progress) else b.from,
+                to = if (a.to != null && b.to != null) pyreonChartMixPoint(a.to!!, b.to!!, progress) else b.to)
+            "polyline", "polygon" -> b.copy(points = if (a.points != null && b.points != null && a.points!!.size == b.points!!.size)
+                b.points!!.indices.map { pyreonChartMixPoint(a.points!![it], b.points!![it], progress) } else b.points)
+            "circle" -> b.copy(
+                center = if (a.center != null && b.center != null) pyreonChartMixPoint(a.center!!, b.center!!, progress) else b.center,
+                radius = if (a.radius != null && b.radius != null) pyreonChartMix(a.radius!!, b.radius!!, progress) else b.radius)
+            "text" -> b.copy(
+                at = if (a.at != null && b.at != null) pyreonChartMixPoint(a.at!!, b.at!!, progress) else b.at,
+                size = pyreonChartMix(a.size ?: b.size ?: 0.0, b.size ?: 0.0, progress))
+            else -> b
+        }
+    }
+}
+
+private fun pyreonChartBounds(command: PyreonDrawCmd): PyreonChartRect {
+    val points = when {
+        command.rect != null -> listOf(PyreonChartPt(command.rect!!.x, command.rect!!.y), PyreonChartPt(command.rect!!.x + command.rect!!.w, command.rect!!.y + command.rect!!.h))
+        command.from != null && command.to != null -> listOf(command.from!!, command.to!!)
+        command.points != null -> command.points!!
+        command.center != null && command.radius != null -> listOf(PyreonChartPt(command.center!!.x - command.radius!!, command.center!!.y - command.radius!!), PyreonChartPt(command.center!!.x + command.radius!!, command.center!!.y + command.radius!!))
+        command.at != null -> listOf(command.at!!)
+        else -> emptyList()
+    }
+    if (points.isEmpty()) return PyreonChartRect(0.0, 0.0, 0.0, 0.0)
+    var minX = points[0].x; var maxX = minX; var minY = points[0].y; var maxY = minY
+    for (point in points.drop(1)) {
+        minX = minOf(minX, point.x); maxX = maxOf(maxX, point.x)
+        minY = minOf(minY, point.y); maxY = maxOf(maxY, point.y)
+    }
+    return PyreonChartRect(minX, minY, maxX - minX, maxY - minY)
+}
+
+private fun pyreonCollapsedChartCommand(command: PyreonDrawCmd): PyreonDrawCmd {
+    val box = pyreonChartBounds(command)
+    val center = PyreonChartPt(box.x + box.w / 2.0, box.y + box.h / 2.0)
+    return when (command.kind) {
+        "rect" -> command.copy(rect = PyreonChartRect(center.x, center.y, 0.0, 0.0))
+        "line" -> command.copy(from = center, to = center)
+        "polyline", "polygon" -> command.copy(points = List(command.points?.size ?: 0) { center.copy() })
+        "circle" -> command.copy(center = center, radius = 0.0)
+        "text" -> command.copy(at = center, size = 0.0)
+        else -> command
+    }
+}
+
+private fun pyreonChartTarget(target: PyreonDrawCmd, source: PyreonDrawCmd?): PyreonDrawCmd {
+    if (source == null) return pyreonCollapsedChartCommand(target)
+    val box = pyreonChartBounds(source)
+    val center = PyreonChartPt(box.x + box.w / 2.0, box.y + box.h / 2.0)
+    return when (target.kind) {
+        "rect" -> target.copy(rect = box)
+        "line" -> target.copy(from = PyreonChartPt(box.x, box.y), to = PyreonChartPt(box.x + box.w, box.y + box.h))
+        "polyline", "polygon" -> target.copy(points = List(target.points?.size ?: 0) { center.copy() })
+        "circle" -> target.copy(center = center, radius = maxOf(box.w, box.h) / 2.0)
+        "text" -> target.copy(at = center, size = if (source.kind == "text") source.size else 0.0)
+        else -> target
+    }
+}
+
+fun pyreonUniversalTweenChartCommands(from: List<PyreonDrawCmd>, to: List<PyreonDrawCmd>, progress: Double): List<PyreonDrawCmd> {
+    if (progress >= 1.0) return to
+    if (pyreonSameChartCommandShape(from, to)) return pyreonTweenChartCommands(from, to, progress)
+    val used = mutableSetOf<Int>()
+    val out = mutableListOf<PyreonDrawCmd>()
+    for (target in to) {
+        var sourceIndex = from.indices.firstOrNull { it !in used && from[it].kind == target.kind }
+        if (sourceIndex == null) sourceIndex = from.indices.firstOrNull { it !in used }
+        if (sourceIndex != null) used.add(sourceIndex)
+        val start = pyreonChartTarget(target, sourceIndex?.let { from[it] })
+        out.add(pyreonTweenChartCommands(listOf(start), listOf(target), progress)[0])
+    }
+    for (i in from.indices) if (i !in used) {
+        out.add(pyreonTweenChartCommands(listOf(from[i]), listOf(pyreonCollapsedChartCommand(from[i])), progress)[0])
+    }
+    return out
+}
+
 @Composable
-fun PyreonChartCanvas(
+private fun PyreonStaticChartCanvas(
     cmds: List<PyreonDrawCmd>,
     modifier: Modifier = Modifier,
 ) {
@@ -299,6 +471,7 @@ fun PyreonChartCanvas(
                         val path = pyreonRoundedRectPath(r, radii)
                         if (brush != null) drawPath(path = path, brush = brush, style = Fill)
                         else drawPath(path = path, color = pyreonChartColor(fill), style = Fill)
+                        pyreonPaintPattern(c.pattern, path, r)
                     } else {
                         val topLeft = Offset(r.x.toFloat(), r.y.toFloat())
                         val size = Size(r.w.toFloat(), r.h.toFloat())
@@ -306,6 +479,10 @@ fun PyreonChartCanvas(
                         else
                             drawRect(
                                 color = pyreonChartColor(fill), topLeft = topLeft, size = size)
+                        val path = Path().apply {
+                            addRect(ComposeRect(r.x.toFloat(), r.y.toFloat(), (r.x + r.w).toFloat(), (r.y + r.h).toFloat()))
+                        }
+                        pyreonPaintPattern(c.pattern, path, r)
                     }
                 }
                 "line" -> {
@@ -350,6 +527,11 @@ fun PyreonChartCanvas(
                     val pbrush = pyreonChartBrush(c.grad)
                     if (pbrush != null) drawPath(path = p, brush = pbrush, style = Fill)
                     else drawPath(path = p, color = pyreonChartColor(fill), style = Fill)
+                    val minX = pts.minOf { it.x }
+                    val maxX = pts.maxOf { it.x }
+                    val minY = pts.minOf { it.y }
+                    val maxY = pts.maxOf { it.y }
+                    pyreonPaintPattern(c.pattern, p, PyreonChartRect(minX, minY, maxX - minX, maxY - minY))
                 }
                 "circle" -> {
                     val ctr = c.center ?: continue
@@ -403,6 +585,43 @@ fun PyreonChartCanvas(
         }
         }
     }
+}
+
+/** Draw-list transition host for reactive chart updates on Android. */
+@Composable
+fun PyreonChartCanvas(
+    cmds: List<PyreonDrawCmd>,
+    modifier: Modifier = Modifier,
+    durationMs: Double = 350.0,
+    universal: Boolean = false,
+    animated: Boolean = true,
+) {
+    val context = LocalContext.current
+    val reduceMotion = remember {
+        Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+    }
+    var from by remember { mutableStateOf(cmds) }
+    var target by remember { mutableStateOf(cmds) }
+    val progress = remember { Animatable(1f) }
+    LaunchedEffect(cmds, durationMs, universal, reduceMotion) {
+        from = if (universal) {
+            pyreonUniversalTweenChartCommands(from, target, progress.value.toDouble())
+        } else {
+            pyreonTweenChartCommands(from, target, progress.value.toDouble())
+        }
+        target = cmds
+        progress.snapTo(if (!animated || reduceMotion || durationMs <= 0.0 || from == target) 1f else 0f)
+        if (progress.value < 1f) {
+            progress.animateTo(1f, tween(durationMs.toInt(), easing = LinearEasing))
+            from = target
+        }
+    }
+    val rendered = if (universal) {
+        pyreonUniversalTweenChartCommands(from, target, progress.value.toDouble())
+    } else {
+        pyreonTweenChartCommands(from, target, progress.value.toDouble())
+    }
+    PyreonStaticChartCanvas(rendered, modifier)
 }
 
 // ── Radial chart components ─────────────────────────────────────────────

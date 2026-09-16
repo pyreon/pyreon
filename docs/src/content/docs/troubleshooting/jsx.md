@@ -119,6 +119,42 @@ A `<label>` FORWARDS its click to the wrapped control as a default action, so on
 
 ---
 
+### [FIXED, 2026-09] Template ATTRIBUTE bake lagged the TEXT bake by three escaping rules.
+
+`escapeLiteralText` (text children) already encoded line terminators as numeric entities, preserved well-formed entities and used the COOKED template-literal value; `escapeHtmlAttr` (attributes) escaped only `&` and `"`. Consequences: a multi-line JSX attribute — legal JSX, and oxc keeps the newline verbatim — baked a raw `\n` into the double-quoted `_tpl` JS string → `Unterminated string`, a hard BUILD break (CRLF checkouts hit it on every multi-line attribute); `title="a&quot;b"` was escaped AGAIN so the DOM attribute held the SOURCE text `a&quot;b` while the h() path (oxc decodes entities) and SSR held `a"b` — a wrong value AND a hydration divergence; `` title=&#123;`a\tb`&#125; `` baked the RAW quasi, rendering a backslash and a `t`. Fix: `escapeHtmlAttr` (JSX string — entity-aware `&`, like `escapeHtmlText`) / `escapeLiteralAttr` (JS string — unconditional `&`), both encoding `\n`/`\r`/U+2028/9 as `&#N;`, and the cooked quasi (absent cooked → runtime path). **Rule: when a seam has two consumers of one contract (text bake / attribute bake; JSX-string / JS-string), a fix to one is a fix to a SHAPE — grep the sibling before closing.** Both backends byte-identical; locked by `compiler/src/tests/template-escape-audit.test.ts` + `runtime-dom/src/tests/template-escape-audit.test.tsx` (bisect-verified). **Same emitter, same PR — a plain attribute AFTER a spread lost to the spread:** `<a {...p} rel="noopener" href="/safe">` ≡ `{...p, rel, href}`: the later key wins. The emitter baked the static value into the HTML and only THEN applied the spread (`_applyProps`), and a dynamic spread (`_bindSpread`) re-applied on every change — so `<div {...p} id="b">` and `<div id="b" {...p}>` emitted BYTE-IDENTICALLY and a caller-controlled `p.rel` silently overrode the very guard written to defeat it. Fix: `hasBailAttr` bails an element with a plain attribute after a spread to h(), which spreads into one object and is correct by construction (a plain attribute BEFORE the spread keeps the template — the spread legitimately wins there). In-repo blast radius: one file.
+
+---
+
+### [FIXED, 2026-09] Raw-text elements (`<script>`/`<style>`) were entity-escaped in the bake AND in SSR.
+
+`<style>{'.b > i {}'}</style>` baked `.b &gt; i {}` and the browser rendered the ENTITY CHARACTERS (invalid selector, rule dropped); `<script>{'a && b'}</script>` shipped `a &amp;&amp; b`, a SyntaxError at eval. SSR (`renderToString`) made the same mistake with `escapeHtml`, so every server-rendered inline style/script was corrupted too — and differently from the client (`&#10;` vs a real newline), a guaranteed hydration mismatch. Fix: the compiler bails raw-text elements WITH content to h() in both the `_tpl` and `_ssr` emitters (`RAW_TEXT_ELEMENTS`; `<iframe>` is raw text too but its fallback is never rendered, so it is deliberately excluded — a differential spec depends on that), and `runtime-server` serializes `<script>`/`<style>` text with React Fizz's raw-text-safe escape (only `</script`/`<script`/`</style` are neutralised, with `\u0073` so the escaped script still parses). A void element written with children (`<br>x</br>`) bails too — the parser reads them as SIBLINGS of the template root and drops them. **Detection trap: happy-dom DECODES entities inside `<style>`, so the happy-dom mount spec passed against the reverted gate; only the compiler emit spec and the real-Chromium `raw-text-template.browser.test.tsx` discriminate.**
+
+---
+
+### [FIXED, 2026-09] Signal auto-call knew three shadow forms and auto-called every other binding.
+
+`findShadowingNames` knew a plain param, a one-level destructured param and a top-level `const`. A `catch (error)` / `for (const item of …)` / nested-pattern / default / rest / block-scoped `let` / function or class declaration sharing a module signal's name was still auto-called — `const error = signal(null)` + `catch (error) { return <p>{error}</p> }` compiled to `error()` and threw `TypeError: error is not a function` INSIDE the error handler. Fix: `collectFunctionBindings` (both backends) walks params + every declaration at any block depth, flattening block scope (an over-approximation that can only SKIP an auto-call — the reference stays bare, which the runtime treats as an accessor — never mis-call). **Rule: a scope pass must enumerate the language's BINDING GRAMMAR, not the three shapes the author thought of** — the same "one spelling of an idiom" class PMTC hit four times.
+
+---
+
+### [FIXED, 2026-09] SSR fast-path attribute seams diverged from `renderProp` in three places the name-based dispatch could not see.
+
+The compile-to-string path (`ssrSerializeAttr`, both backends) skipped only the camelCase handler spelling (`/^on[A-Z]/`), so a LOWERCASE `onclick={handler}` reached `_ssrAttrGen`, whose function branch INVOKED the handler during server render and baked its return — and a string value baked a live inline handler `renderPropSkipped` refuses by name set. A literal `aria-hidden={false}` was omitted where `renderPropValue` emits `aria-hidden="false"`. And "provably a string" trusted a METHOD NAME on an untyped receiver (`x.join()`, `n.toFixed(2)`), so a user object's `join()` returning null baked `name="null"` where the h() path omits — and `String(x)` proved a string even when the module rebinds `String`. **Rules: the skip set is the runtime's set, MIRRORED and identity-locked (`SSR_EVENT_HANDLER_ATTRS`, like `SSR_URL_ATTRS`); a boolean aria literal follows the runtime's string-enum rule; a proof must come from the value's own syntax (a literal, a template, a concat with a literal side) or a GLOBAL the module provably does not rebind — never from a method name.** Detection lesson: the render-fuzz grammar had no lowercase handler, no `{false}` literal and no method-call value, so 20,000 seeds were green; one new name in `ATTR_NAMES` (`onclick`) and a `lit: 'false'` attr kind made the grammar catch all three on its first run. Reference: `compiler/src/jsx.ts:ssrSerializeAttr`/`ssrProvablyString` + `native/src/lib.rs` mirrors; locked by `ssr-fast-path-attr-parity.test.ts` (both backends), `ssr-template-differential.test.tsx`, and the widened fuzz — bisect-verified.
+
+---
+
+### [FIXED, 2026-09] Plain Mode total tracking hoisted reads it had no right to.
+
+The prologue that pre-reads conditionally-read state (`void (a());`) treated a read inside a NESTED function as "conditional" and hoisted it — so `effect(() => { setTimeout(() => log(a), 100) })` re-ran on every `a` change (a timer pile-up), and a cleanup that read state re-ran the effect forever; classic code never subscribes to a nested callback's reads, and neither must the dialect. A binding SHADOWED inside the effect body (`const a = 2`) was mistaken for the outer state — hoisted, and its inner read rewritten to a call. And a hoisted deep path (`s.items[0].id`) was read UNGUARDED before the body's own null check, so the prologue threw where the body would not. **Rules: a hoist is sound only at the effect's own function depth AND for a name not declared inside the effect (`hoistable(frame, name)`); a hoisted member path is optionally chained (`s()?.items?.[0]?.id`) because it runs before every guard the author wrote.** Both implementations (JS oracle + Rust mirror) changed in one PR; `plain-native-equivalence` locks byte-equality. Reference: `compiler/src/plain.ts:recordRead`/`recordPath` + `native/src/plain.rs`; bisect-verified in `plain.test.ts`.
+
+---
+
+### [FIXED, 2026-09] A probe that INVOKES an accessor to classify it, then hands the ORIGINAL children to the fallback path, invokes it twice.
+
+`runtime-server`'s raw-text (`<script>`/`<style>`) serializer called every function child to see whether the content was text-shaped and, when one returned a VNode, fell back to the ordinary path over `vnode.children` — invoking the same accessor a second time: a duplicated side effect, and a non-idempotent accessor rendered its SECOND value. "Function values are called once at render time — SSR is one-shot" is a contract every classification probe must honour: resolve once into a list, classify the RESOLVED values, and render those. Reference: `runtime-server/src/index.ts:rawTextChildren`/`rawTextContent`; bisect-verified (`expected 2 to be 1`).
+
+---
+
 ### `className`/`htmlFor`
 
 Use `class` and `for` — standard HTML attributes

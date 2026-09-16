@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { hitSingleAxis, layoutSingleAxis, renderSingleAxis, singleAxisToSvg } from './single-axis'
+import { hitSingleAxis, layoutSingleAxis, renderSingleAxis } from './single-axis'
+import { singleAxisTip } from './chrome'
+import { singleAxisToSvg } from './single-axis-web'
 import { compileFamily, familyToSvg, isFamilyOption } from './option-family'
 
 const box = { x: 0, y: 0, w: 400, h: 100 }
@@ -21,7 +23,7 @@ describe('single axis', () => {
     expect(l.points[0]!.at.x).toBe(20)
     expect(l.points[1]!.at.x).toBe(380)
     expect(l.axis.ticks.length).toBeGreaterThan(2)
-    const fixed = layoutSingleAxis({ type: 'value', domain: [0, 100] }, [{ x: 50 }], box, { fontSize: 10 })
+    const fixed = layoutSingleAxis({ type: 'value', domain: { min: 0, max: 100 } }, [{ x: 50 }], box, { fontSize: 10 })
     expect(fixed.points[0]!.at.x).toBe(200)
     const flat = layoutSingleAxis({ type: 'value' }, [{ x: 7 }, { x: 7 }], box, { fontSize: 10 })
     expect(flat.points[0]!.at.x).toBe(200)
@@ -62,9 +64,49 @@ describe('singleAxis option mapping', () => {
     expect(familyToSvg(f.plan)).toContain('<circle')
     const value = compileFamily({ singleAxis: { type: 'value', min: 0, max: 10 }, series: [{ type: 'scatter', coordinateSystem: 'singleAxis', data: [3, 7] }] })!
     if (value.plan.kind !== 'singleAxis') throw new Error('kind')
-    expect(value.plan.axis.domain).toEqual([0, 10])
+    expect(value.plan.axis.domain).toEqual({ min: 0, max: 10 })
     expect(value.plan.points.map((p) => p.x)).toEqual([3, 7])
     const bad = compileFamily({ singleAxis: {}, series: [{ type: 'bar', coordinateSystem: 'singleAxis', data: [1] }] })!
     expect(bad.warnings.map((w) => w.code)).toContain('series-type-unsupported')
+  })
+})
+
+describe('single axis — routing by ECharts contract', () => {
+  it("a theme river declared with coordinateSystem 'singleAxis' (ECharts' required spelling) is a theme river, not a skipped scatter", () => {
+    const r = compileFamily({ singleAxis: { type: 'time' }, series: [{ type: 'themeRiver', coordinateSystem: 'singleAxis', data: [['2024-01-01', 1, 'a'], ['2024-01-02', 2, 'a']] }] })!
+    expect(r.warnings).toEqual([])
+    expect(r.plan.kind).toBe('themeRiver')
+  })
+  it('effectScatter is a scatter on the axis; a series ECharts itself cannot place there warns by name', () => {
+    const ok = compileFamily({ singleAxis: { type: 'value' }, series: [{ type: 'effectScatter', coordinateSystem: 'singleAxis', data: [1, 2] }] })!
+    expect(ok.warnings).toEqual([])
+    expect(ok.plan.kind).toBe('singleAxis')
+    const bar = compileFamily({ singleAxis: { type: 'value' }, series: [{ type: 'bar', coordinateSystem: 'singleAxis', data: [1] }] })!
+    expect(bar.warnings.map((w) => w.code + '@' + w.path)).toEqual(['series-type-unsupported@series[0].type'])
+    expect(bar.warnings[0]!.message).toContain('ECharts allows no other series there')
+  })
+})
+
+describe('singleAxisTip — what the pointer reads off a point', () => {
+  const points = [{ x: 1, name: 'a' }, { x: 8, name: 'b' }, { x: 4 }]
+  const layout = layoutSingleAxis({ name: 'v' }, points, { x: 0, y: 0, w: 200, h: 80 })
+
+  it('answers the hit point with its name and value', () => {
+    const p = layout.points[0]!
+    expect(singleAxisTip(layout, points, p.at.x, p.at.y)).toEqual(['a', '1'])
+  })
+
+  it('an UNNAMED point reads as its value alone, not as a blank line', () => {
+    const p = layout.points[2]!
+    expect(singleAxisTip(layout, points, p.at.x, p.at.y)).toEqual(['4'])
+  })
+
+  it('a miss answers nothing', () => {
+    expect(singleAxisTip(layout, points, -50, -50)).toEqual([])
+  })
+
+  it('a points list SHORTER than the layout answers nothing rather than reading past it', () => {
+    const p = layout.points[1]!
+    expect(singleAxisTip(layout, [points[0]!], p.at.x, p.at.y)).toEqual([])
   })
 })

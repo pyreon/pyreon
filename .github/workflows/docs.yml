@@ -81,10 +81,12 @@ concurrency:
   group: deploy-docs-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only by default; `pages: write` + `id-token: write` belong to the
+# `deploy` job alone. At file scope they were ALSO granted to `build`, which
+# runs on every pull request — a PR's build job held a Pages deploy credential
+# it never uses.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
   build:
@@ -180,6 +182,9 @@ jobs:
     # verification-only gate (it caught nothing to deploy), so skip deploy —
     # a PR must never publish to the live pyreon.dev site.
     if: github.event_name == 'push'
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

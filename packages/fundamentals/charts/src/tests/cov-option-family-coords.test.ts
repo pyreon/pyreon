@@ -33,7 +33,7 @@ registerMap('cov-family-world', world)
 describe('singleAxis', () => {
   const sa = (s: Record<string, unknown>, singleAxis?: unknown): PlanFields => plan(series({ type: 'scatter', coordinateSystem: 'singleAxis', ...s }, singleAxis === undefined ? {} : { singleAxis }))
   it('a value axis reads min/max as a domain; a category axis reads the labels instead', () => {
-    expect((sa({ data: [] }, { min: 0, max: 10, name: 'Load' }) as { axis: unknown }).axis).toEqual({ type: 'value', domain: [0, 10], name: 'Load' })
+    expect((sa({ data: [] }, { min: 0, max: 10, name: 'Load' }) as { axis: unknown }).axis).toEqual({ type: 'value', domain: { min: 0, max: 10 }, name: 'Load' })
     expect((sa({ data: [] }, { type: 'category', data: ['a', { value: 'b' }, 7] }) as { axis: unknown }).axis).toEqual({ type: 'category', categories: ['a', 'b', '7'] })
     // A category axis with no data still gets an (empty) category list, never a domain.
     expect((sa({ data: [] }, { type: 'category', min: 0, max: 5 }) as { axis: unknown }).axis).toEqual({ type: 'category', categories: [] })
@@ -204,11 +204,11 @@ describe('polar', () => {
     // A non-object axis behaves like an absent one.
     expect(axes({ angleAxis: 'x', radiusAxis: 'x' })).toEqual({ categories: [], categoryOn: 'angle' })
   })
-  it('only bar and line render; every other series warns by INDEX and is skipped', () => {
-    const c = compileFamily({ angleAxis: { data: ['a'] }, series: [{ type: 'bar', coordinateSystem: 'polar', data: [1] }, { type: 'scatter', coordinateSystem: 'polar', data: [2] }, 'x', { type: 'line', coordinateSystem: 'polar', data: [3] }] })!
-    expect((c.plan as unknown as { series: { name: string; kind: string }[] }).series.map((x) => [x.name, x.kind])).toEqual([['Series 1', 'bar'], ['Series 4', 'line']])
+  it('bar, line and scatter render; every other series warns by INDEX and is skipped', () => {
+    const c = compileFamily({ angleAxis: { data: ['a'] }, series: [{ type: 'bar', coordinateSystem: 'polar', data: [1] }, { type: 'gauge', coordinateSystem: 'polar', data: [2] }, 'x', { type: 'line', coordinateSystem: 'polar', data: [3] }, { type: 'scatter', coordinateSystem: 'polar', data: [4] }] })!
+    expect((c.plan as unknown as { series: { name: string; kind: string }[] }).series.map((x) => [x.name, x.kind])).toEqual([['Series 1', 'bar'], ['Series 4', 'line'], ['Series 5', 'scatter']])
     expect(c.warnings.map((w) => w.path)).toEqual(['series[1].type'])
-    expect(c.warnings[0]!.message).toContain('scatter')
+    expect(c.warnings[0]!.message).toContain('gauge')
   })
   it('a value may be a scalar, a [value, ...] tuple or an object; a bad one becomes NaN', () => {
     const vals = (data: unknown[]): number[] => (p([{ type: 'bar', data }]) as { series: { values: number[] }[] }).series[0]!.values
@@ -268,9 +268,11 @@ describe('parallel', () => {
     expect((c.plan as unknown as { rows: unknown[] }).rows).toEqual([[1, 'a', null], [2, 3]])
     expect(c.warnings.map((w) => w.path)).toEqual(['series[0].data[2]', 'series[0].data[3]'])
   })
-  it('a vertical parallel layout warns; a horizontal one does not', () => {
-    expect(warns(series({ type: 'parallel', data: [] }, { parallel: { layout: 'vertical' } }))).toEqual(['parallel.layout'])
+  it('a vertical parallel layout carries into the plan (the host lays out transposed); a horizontal one is the default', () => {
+    expect(warns(series({ type: 'parallel', data: [] }, { parallel: { layout: 'vertical' } }))).toEqual([])
+    expect(plan(series({ type: 'parallel', data: [] }, { parallel: { layout: 'vertical' } }))).toMatchObject({ orient: 'vertical' })
     expect(warns(series({ type: 'parallel', data: [] }, { parallel: { layout: 'horizontal' } }))).toEqual([])
+    expect(plan(series({ type: 'parallel', data: [] }, { parallel: { layout: 'horizontal' } }))).not.toHaveProperty('orient')
     expect(warns(series({ type: 'parallel', data: [] }, { parallel: 'x' }))).toEqual([])
   })
   it('lineStyle width / opacity / colour pass through only in their declared types', () => {
@@ -315,9 +317,12 @@ describe('calendar heatmap', () => {
     expect(warns(series({ type: 'heatmap', coordinateSystem: 'calendar', data: [] }))).toEqual(['calendar.range'])
     expect(warns(series({ type: 'heatmap', coordinateSystem: 'calendar', data: [] }, { calendar: 'x' }))).toEqual(['calendar.range'])
   })
-  it('a vertical calendar warns and renders horizontally', () => {
-    expect(warns(series({ type: 'heatmap', coordinateSystem: 'calendar', data: [] }, { calendar: { range: 2024, orient: 'vertical' } }))).toEqual(['calendar.orient'])
+  it('a vertical calendar carries its orient into the plan (the host lays out transposed) and never warns', () => {
+    const vertical = series({ type: 'heatmap', coordinateSystem: 'calendar', data: [] }, { calendar: { range: 2024, orient: 'vertical' } })
+    expect(warns(vertical)).toEqual([])
+    expect(compileFamily(vertical)!.plan).toMatchObject({ kind: 'calendar', orient: 'vertical' })
     expect(warns(series({ type: 'heatmap', coordinateSystem: 'calendar', data: [] }, { calendar: { range: 2024, orient: 'horizontal' } }))).toEqual([])
+    expect(compileFamily(series({ type: 'heatmap', coordinateSystem: 'calendar', data: [] }, { calendar: { range: 2024 } }))!.plan).not.toHaveProperty('orient')
   })
   it('a datum must be [YYYY-MM-DD, value] in array or object form; anything else is skipped', () => {
     const c = compileFamily(series({ type: 'heatmap', coordinateSystem: 'calendar', data: [['2024-01-02', 3], { value: ['2024-01-03', 4] }, ['2024-1-2', 5], [7, 1], ['2024-01-04', 'x'], 'nope'] }, { calendar: { range: 2024 } }))!

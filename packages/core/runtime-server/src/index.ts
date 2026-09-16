@@ -736,8 +736,12 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
     // every await, so a module-level stack would cross-contaminate; the
     // ALS context sticks to this stream's continuation graph.
     const taValue = textareaValue(tag, props)
+    const raw = taValue === null ? rawTextContent(tag, vnode.children) : null
+    const children = raw !== null && 'fallback' in raw ? raw.fallback : vnode.children
     if (taValue !== null) {
       enqueue(taValue)
+    } else if (raw !== null && 'html' in raw) {
+      enqueue(raw.html)
     } else {
       const frame = tag === 'select' ? makeSelectFrame(props) : null
       // Sole-child accessor: stream its VALUE directly, no range markers — the
@@ -745,16 +749,16 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
       // Spelled out per branch rather than through a shared closure: this runs
       // once per streamed element, and the `<select>` frame was the only case
       // that allocated one before.
-      const sole = soleAccessorChild(vnode.children)
+      const sole = soleAccessorChild(children)
       if (frame) {
         await _selectValueAls.run(frame, async () => {
           if (sole) await streamNode(sole(), enqueue)
-          else for (const child of vnode.children) await streamNode(child, enqueue)
+          else for (const child of children) await streamNode(child, enqueue)
         })
       } else if (sole) {
         await streamNode(sole(), enqueue)
       } else {
-        for (const child of vnode.children) await streamNode(child, enqueue)
+        for (const child of children) await streamNode(child, enqueue)
       }
     }
   }
@@ -1252,13 +1256,18 @@ function renderElement(vnode: VNode): MaybeAsync {
       html += taValue
       return `${html}</${tag}>`
     }
+    const raw = rawTextContent(tag, vnode.children)
+    if (raw !== null && 'html' in raw) return `${html}${raw.html}</${tag}>`
+    // A raw-text element with a non-text child renders its ONCE-resolved
+    // children (never re-invoking an accessor); every other tag its own.
+    const children = raw !== null ? raw.fallback : vnode.children
     const frame = tag === 'select' ? makeSelectFrame(props) : null
     // Sole-child accessor: render its VALUE directly — the tag boundary is the
     // extent, so no range markers. See `soleAccessorChild`.
-    const sole = soleAccessorChild(vnode.children)
+    const sole = soleAccessorChild(children)
     const renderInner = sole
       ? () => renderNode(sole())
-      : () => renderChildList(vnode.children, 0, '')
+      : () => renderChildList(children, 0, '')
     const inner = frame ? _selectValueAls.run(frame, renderInner) : renderInner()
     if (typeof inner !== 'string') {
       const open = html
@@ -2305,6 +2314,91 @@ const NEEDS_ESCAPE_RE = /[&<>"']/
  * (`<textarea value="prop">child</textarea>` yields `.value === "prop"` on the
  * client). SSR emitting the children instead would be a hydration mismatch.
  */
+// ─── Raw-text elements (`<script>` / `<style>`) ───────────────────────────────
+//
+// The HTML parser reads the content of these two elements as RAW TEXT: no
+// character reference is ever decoded inside them, so the `escapeHtml` every
+// other text child gets would land as LITERAL characters — `.b > i` became
+// `.b &gt; i` (an invalid selector, rule dropped) and `a && b` became
+// `a &amp;&amp; b` (a SyntaxError at script-eval). The only thing that CAN
+// break out of raw text is the element's own end tag (plus, for script, the
+// `<!--`/`<script` double-escape state), so that is the only thing escaped —
+// the same minimal escape React's Fizz renderer applies (`escapeStyleTextContent`
+// / `escapeEntireInlineScriptContent`). `\u0073` is chosen over a backslash
+// because it is valid inside a JS identifier, string AND regex, so the escaped
+// source still parses to the same program.
+//
+// Content is collected from string/number/accessor children only; a VNode
+// child (or anything else) keeps the ordinary path, which is what the h()
+// client mount does for it too. The compiled `_ssr` fast path bails on these
+// tags in both backends (`RAW_TEXT_ELEMENTS`), so the runtime is the single
+// producer of their bytes.
+/**
+ * Collect a raw-text element's children as text. Every TOP-LEVEL accessor
+ * child is invoked exactly once ("function values are called once at render
+ * time — SSR is one-shot"): `resolved` holds the values, so when a child turns
+ * out not to be text-shaped the ordinary path renders `resolved`, never
+ * re-invoking the accessor.
+ */
+function rawTextChildren(children: readonly VNodeChild[]): {
+  ok: boolean
+  text: string
+  resolved: VNodeChild[]
+} {
+  let out = ''
+  const walk = (c: unknown): boolean => {
+    if (c == null || typeof c === 'boolean') return true
+    if (typeof c === 'string') {
+      out += c
+      return true
+    }
+    if (typeof c === 'number') {
+      out += String(c)
+      return true
+    }
+    if (typeof c === 'function') return walk((c as () => unknown)())
+    if (Array.isArray(c)) {
+      for (const x of c) if (!walk(x)) return false
+      return true
+    }
+    return false
+  }
+  const resolved: VNodeChild[] = []
+  let ok = true
+  for (const c of children) {
+    const v = typeof c === 'function' ? ((c as () => unknown)() as VNodeChild) : c
+    resolved.push(v)
+    if (!walk(v)) ok = false
+  }
+  return { ok, text: out, resolved }
+}
+
+const SCRIPT_BREAKOUT_RE = /(<\/|<)(s)(cript)/gi
+const STYLE_BREAKOUT_RE = /<\/(style)/gi
+
+function escapeRawText(tag: string, text: string): string {
+  if (tag === 'script') {
+    return text.replace(SCRIPT_BREAKOUT_RE, (_m, prefix: string, s: string, rest: string) =>
+      `${prefix}${s === 's' ? '\\u0073' : '\\u0053'}${rest}`,
+    )
+  }
+  return text.replace(STYLE_BREAKOUT_RE, '<\\/$1')
+}
+
+/**
+ * Raw-text content for a `<script>`/`<style>` element: `{ html }` when every
+ * child is text-shaped, `{ fallback }` (the ONCE-resolved children for the
+ * ordinary path) when one is not, `null` when the tag is not raw-text.
+ */
+function rawTextContent(
+  tag: string,
+  children: readonly VNodeChild[],
+): { html: string } | { fallback: readonly VNodeChild[] } | null {
+  if (tag !== 'script' && tag !== 'style') return null
+  const r = rawTextChildren(children)
+  return r.ok ? { html: escapeRawText(tag, r.text) } : { fallback: r.resolved }
+}
+
 function textareaValue(tag: string, props: Record<string, unknown> | null): string | null {
   if (tag !== 'textarea' || props == null) return null
   let v = props.value

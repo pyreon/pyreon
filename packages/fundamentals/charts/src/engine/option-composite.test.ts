@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { composeSvg, gridRect, resolveTimeline, splitGrids, timelineCommands, timelineSteps } from './option-composite'
+import { composeSvg, gridRect, mergeChartOptions, resolveTimeline, splitGrids, timelineCommands, timelineSteps } from './option-composite'
 import { optionToSvg, planOption } from './option'
 
 const twoGrids = {
@@ -15,6 +15,61 @@ const timeline = {
   options: [{ series: [{ data: [1, 2] }] }, { title: { subtext: 'step two' }, series: [{ data: [3, 4] }] }, { series: [{ data: [5, 6] }] }],
 }
 
+describe('reactive option updates', () => {
+  const previous = {
+    title: { text: 'Sales', textStyle: { color: '#111111', size: 14 } },
+    series: [
+      { id: 'revenue', type: 'bar', data: [1, 2], itemStyle: { color: '#123456' } },
+      { name: 'cost', type: 'line', data: [3, 4] },
+    ],
+  }
+
+  it('merges nested objects and matches component arrays by id/name without mutation', () => {
+    const update = {
+      title: { textStyle: { size: 18 } },
+      series: [
+        { name: 'cost', data: [8, 9] },
+        { id: 'revenue', itemStyle: { opacity: 0.5 } },
+      ],
+    }
+    const merged = mergeChartOptions(previous, update)
+    expect(merged['title']).toEqual({ text: 'Sales', textStyle: { color: '#111111', size: 18 } })
+    expect(merged['series']).toEqual([
+      { id: 'revenue', type: 'bar', data: [1, 2], itemStyle: { color: '#123456', opacity: 0.5 } },
+      { name: 'cost', type: 'line', data: [8, 9] },
+    ])
+    expect(previous.series[0]!.itemStyle).toEqual({ color: '#123456' })
+    expect(update.series[1]!.itemStyle).toEqual({ opacity: 0.5 })
+  })
+
+  it('supports whole-option and selected-component replacement', () => {
+    const update = { title: { text: 'Only this' }, series: [{ id: 'new', type: 'pie', data: [7] }] }
+    expect(mergeChartOptions(previous, update, { mode: 'replace' })).toBe(update)
+    const merged = mergeChartOptions(previous, update, { replaceKeys: 'series' })
+    expect(merged['series']).toBe(update.series)
+    expect(merged['title']).toEqual({ text: 'Only this', textStyle: { color: '#111111', size: 14 } })
+  })
+
+  it("speaks setOption's own spelling: notMerge, replaceMerge (id-merge + drop unmatched), lazyUpdate and silent", () => {
+    const update = { series: [{ id: 'revenue', data: [5] }, { id: 'new', type: 'pie', data: [7] }] }
+    expect(mergeChartOptions(previous, update, { notMerge: true })).toBe(update)
+    // replaceMerge: `revenue` keeps its type/style through the id match, the
+    // unnamed `cost` series is dropped, `new` is appended — the other keys merge.
+    const rm = mergeChartOptions(previous, update, { replaceMerge: ['series'] })
+    expect(rm['series']).toEqual([
+      { id: 'revenue', type: 'bar', data: [5], itemStyle: { color: '#123456' } },
+      { id: 'new', type: 'pie', data: [7] },
+    ])
+    expect(rm['title']).toEqual(previous.title)
+    // A plain merge would have kept `cost` (by index) — the two policies differ exactly there.
+    expect((mergeChartOptions(previous, update)['series'] as unknown[]).length).toBe(2)
+    expect((mergeChartOptions(previous, { series: [{ id: 'revenue', data: [5] }] })['series'] as unknown[]).length).toBe(2)
+    expect((mergeChartOptions(previous, { series: [{ id: 'revenue', data: [5] }] }, { replaceMerge: 'series' })['series'] as unknown[]).length).toBe(1)
+    // Accepted for parity; the host paints once per frame and emits nothing on apply.
+    expect(mergeChartOptions(previous, { title: { text: 'T' } }, { lazyUpdate: true, silent: true })['title']).toEqual({ text: 'T', textStyle: { color: '#111111', size: 14 } })
+  })
+})
+
 describe('timeline', () => {
   it('reads the step labels and clamps currentIndex', () => {
     const steps = timelineSteps(timeline.baseOption)!
@@ -23,7 +78,7 @@ describe('timeline', () => {
     expect(timelineSteps({ timeline: { data: ['x'], currentIndex: 9 } })!.current).toBe(0)
     expect(timelineSteps({ series: [] })).toBeNull()
   })
-  it('resolves a step: series merge BY INDEX over the base, objects merge shallowly, timeline keys vanish', () => {
+  it('resolves a step: series merge by index over the base, objects merge recursively, timeline keys vanish', () => {
     const r = resolveTimeline(timeline, 1)
     expect(r.warnings).toEqual([])
     const series = r.option['series'] as { type: string; name: string; data: number[] }[]
@@ -36,6 +91,26 @@ describe('timeline', () => {
     expect('options' in r.option).toBe(false)
     // Default step = currentIndex.
     expect((resolveTimeline(timeline).option['series'] as { data: number[] }[])[0]!.data).toEqual([3, 4])
+  })
+
+  it('recursively preserves nested option and indexed-series fields', () => {
+    const resolved = resolveTimeline({
+      baseOption: {
+        timeline: { data: ['one'] },
+        title: { textStyle: { color: '#111111', fontSize: 14 } },
+        series: [{ type: 'pie', label: { show: false, position: 'inside' }, itemStyle: { color: '#123456' } }],
+      },
+      options: [{
+        title: { textStyle: { fontSize: 18 } },
+        series: [{ label: { position: 'outside' }, itemStyle: { opacity: 0.5 } }],
+      }],
+    }).option
+    expect(resolved['title']).toEqual({ textStyle: { color: '#111111', fontSize: 18 } })
+    expect(resolved['series']).toEqual([{
+      type: 'pie',
+      label: { show: false, position: 'outside' },
+      itemStyle: { color: '#123456', opacity: 0.5 },
+    }])
   })
   it('a step past the list warns by name and renders the base', () => {
     const r = resolveTimeline(timeline, 7)

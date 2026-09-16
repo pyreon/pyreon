@@ -32,13 +32,20 @@ on:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
 
+# Read-only by default. `id-token: write` (the npm OIDC trusted-publishing
+# credential) is granted to the `publish` job ONLY — the seven build jobs run
+# third-party toolchain actions (rust-toolchain, zigbuild, cross) that have no
+# business minting a token that can publish `@pyreon/compiler-*`.
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: release-native-${{ github.ref }}
-  cancel-in-progress: true
+  # NEVER cancel a release in progress: a re-dispatch for the same tag while
+  # the publish matrix is half-way through would leave some targets published
+  # and others not — the partial-native-release class check-published-state
+  # alarms on. Queue instead.
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -209,6 +216,9 @@ jobs:
     if: github.event_name == 'push' || github.event.inputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -229,6 +239,13 @@ jobs:
             npm: win32-x64-msvc
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The SAME ref the build job compiled — a `workflow_dispatch` with
+          # `inputs.ref` (how heal-release-chain re-dispatches a missed
+          # release) otherwise checked out the default branch here and
+          # published the stub package.json VERSION of main around a binary
+          # built at the tag.
+          ref: ${{ inputs.ref || github.ref }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
@@ -286,7 +303,7 @@ jobs:
       - name: Publish to npm (OIDC trusted publishing)
         # Token-free OIDC trusted publishing. npm (>=11.5.1, ensured
         # above) performs the OIDC exchange automatically when:
-        #   1. `id-token: write` is granted (file scope, line 37);
+        #   1. `id-token: write` is granted (this job's `permissions`);
         #   2. NO `.npmrc` registry-auth line exists (setup-node's
         #      `registry-url:` was removed above — that was writing an
         #      empty `_authToken` that defeated OIDC);

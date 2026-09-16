@@ -78,6 +78,7 @@
  *    message.
  */
 
+import { gitChangedFilesZ } from './changed-files'
 import { execFileSync } from 'node:child_process'
 import { isTestPath } from './test-paths'
 
@@ -228,8 +229,8 @@ function changedFiles(baseRef: string): string[] | null {
   // to compare only commits unique to HEAD, not the union of both
   // branches' changes since divergence.
   try {
-    const out = git('diff', '--name-only', `origin/${baseRef}...HEAD`)
-    return out.length === 0 ? [] : out.split('\n')
+    // `--no-renames`: a file moved OUT of a sensitive package must still count.
+    return gitChangedFilesZ(`origin/${baseRef}...HEAD`, { args: ['--no-renames'] })
   } catch (err) {
     // Loud, and NOT an empty diff.
     console.error(

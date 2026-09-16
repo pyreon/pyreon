@@ -12,7 +12,9 @@ import type { Double, MeasureText, Rect } from './types'
 export interface BoxplotChartProps<T> extends CanvasHostProps {
   data: T[] | (() => T[])
   /** The raw samples per category; reduced with `fiveNumber`. */
-  values: (d: T, index: number) => Double[]
+  values?: (d: T, index: number) => Double[]
+  /** Precomputed five-number summary. Takes precedence over `values`. */
+  summary?: (d: T, index: number) => FiveNumber
   x?: (d: T, index: number) => string
   box?: BoxplotOptions
   /** Formats the value axis and the tooltip. */
@@ -37,7 +39,9 @@ export function BoxplotChart<T>(props: BoxplotChartProps<T>): VNode {
     },
     layout: (box, measure, theme) => {
       const data = readData()
-      const rows = data.map((d, i) => fiveNumber(props.values(d, i)))
+      const rows = props.summary !== undefined
+        ? data.map((d, i) => props.summary!(d, i))
+        : data.map((d, i) => fiveNumber(props.values?.(d, i) ?? []))
       const categories = props.x !== undefined ? data.map((d, i) => props.x!(d, i)) : rows.map((_, i) => `${i + 1}`)
       // The frame the canvas and the native hosts share (`boxplot-chart.ts`); its plot rect is what the hit test runs against.
       const plot = boxplotFrame(rows, box.w, box.h, props.x !== undefined ? categories : [], theme.fontSize, measure, props.format).layout.plot

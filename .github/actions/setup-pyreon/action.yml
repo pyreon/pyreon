@@ -175,7 +175,14 @@ runs:
       if: inputs.restore-bootstrap == 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: packages/*/*/lib
+        # Path list MUST equal every `bootstrap-*` saver's (ci.yml) — an entry
+        # is versioned by its path list, so a differing list matches nothing
+        # and the restore-keys fallback below silently never fires. The
+        # incremental manifest rides along so a prefix hit rebuilds only the
+        # 1-2 changed packages instead of everything.
+        path: |
+          packages/*/*/lib
+          .bootstrap-cache.json
         key: ${{ env.BOOTSTRAP_KEY }}
         restore-keys: |
           bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}

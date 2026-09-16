@@ -77,7 +77,9 @@ export async function findManifests(repoRoot: string): Promise<LoadedManifest[]>
     const categoryDir = join(repoRoot, 'packages', category)
     let pkgs: string[]
     try {
-      pkgs = readdirSync(categoryDir)
+      // Sorted: readdir order is the FILESYSTEM's (alphabetical on APFS, hash
+      // order on ext4), and generated tables built from it drifted CI-only.
+      pkgs = readdirSync(categoryDir).sort()
     } catch {
       continue
     }

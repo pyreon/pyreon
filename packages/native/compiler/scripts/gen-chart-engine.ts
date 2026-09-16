@@ -64,8 +64,10 @@ export const ENGINE_FILES = [
   'graph',
   'calendar',
   'geo',
+  'geo-overlay',
   'gantt',
   'parallel',
+  'single-axis',
   'candlestick-chart',
   'boxplot',
   'boxplot-chart',
@@ -94,6 +96,7 @@ const RENAMES: ReadonlyArray<readonly [string, string]> = [
   ['DrawCmd', 'PyreonDrawCmd'],
   ['ChartGradientStop', 'PyreonChartGradientStop'],
   ['ChartGradient', 'PyreonChartGradient'],
+  ['ChartPattern', 'PyreonChartPattern'],
 ]
 
 const HEADER = (lang: string) =>
@@ -124,7 +127,7 @@ function renameTypes(code: string): string {
 /** Strip the synthesized Pt/Rect/DrawCmd struct blocks from the Swift emit. */
 function stripSwiftStructs(code: string): string {
   let out = code
-  for (const name of ['Pt', 'Rect', 'DrawCmd', 'ChartGradientStop', 'ChartGradient']) {
+  for (const name of ['Pt', 'Rect', 'DrawCmd', 'ChartGradientStop', 'ChartGradient', 'ChartPattern']) {
     // Flat data structs — fields only, no nested braces.
     const re = new RegExp(`struct ${name}(?::[^\\{]*)? \\{[^}]*\\}\\n*`, 'g')
     const before = out
@@ -137,7 +140,7 @@ function stripSwiftStructs(code: string): string {
 /** Strip the synthesized data classes + @Serializable lines from Kotlin. */
 function stripKotlinDecls(code: string): string {
   let out = code
-  for (const name of ['Pt', 'Rect', 'DrawCmd', 'ChartGradientStop', 'ChartGradient']) {
+  for (const name of ['Pt', 'Rect', 'DrawCmd', 'ChartGradientStop', 'ChartGradient', 'ChartPattern']) {
     const re = new RegExp(`^data class ${name}\\([^\\n]*\\)\\n`, 'm')
     const before = out
     out = out.replace(re, '')
@@ -243,7 +246,7 @@ export function buildChartEngine(repoRoot: string = REPO): { swift: string; kotl
  */
 export function buildChartEngineStructs(repoRoot: string = REPO): string {
   const parsed = parsePyreon(bundleEngineSource(repoRoot))
-  const RENAME: Record<string, string> = { Pt: 'PyreonChartPt', Rect: 'PyreonChartRect', DrawCmd: 'PyreonDrawCmd', ChartGradientStop: 'PyreonChartGradientStop', ChartGradient: 'PyreonChartGradient' }
+  const RENAME: Record<string, string> = { Pt: 'PyreonChartPt', Rect: 'PyreonChartRect', DrawCmd: 'PyreonDrawCmd', ChartGradientStop: 'PyreonChartGradientStop', ChartGradient: 'PyreonChartGradient', ChartPattern: 'PyreonChartPattern' }
   const rename = (v: unknown): unknown => {
     if (Array.isArray(v)) return v.map(rename)
     if (v !== null && typeof v === 'object') {

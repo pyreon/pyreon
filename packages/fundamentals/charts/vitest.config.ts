@@ -55,6 +55,8 @@ export default defineNodeConfig({
     'src/engine/GraphChart.tsx',
     'src/engine/CalendarChart.tsx',
     'src/engine/ParallelChart.tsx',
+    // Same class: a canvas host, measured by host-sweep.browser.test.tsx.
+    'src/engine/SingleAxisChart.tsx',
     'src/engine/PolarChart.tsx',
     'src/engine/RiverChart.tsx',
     // Same class — canvas hosts covered only by their real-Chromium suites (boxplot.browser.test.tsx).

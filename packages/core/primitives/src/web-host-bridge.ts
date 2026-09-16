@@ -33,11 +33,63 @@ export interface WebHostConnection<T> {
   onData(callback: (data: T | undefined) => void): () => void
   /** Send a string message back to the host's `onMessage` handler (JSON-stringify structured payloads). */
   emit(message: string): void
+  /**
+   * Join a host group. Every hosted page is its own realm, so two guests can
+   * never reach each other directly; the HOST fans {@link WebHostConnection.relay}
+   * messages into every other guest of the same group (an `<iframe>` sibling on
+   * web, another `WKWebView` / Android `WebView` natively). A page is in at
+   * most one group — joining another leaves the first.
+   */
+  joinGroup(group: string): void
+  /** Leave the current host group (a no-op when not in one). */
+  leaveGroup(): void
+  /** Send a string to every OTHER guest in the current group (never echoed back). */
+  relay(message: string): void
+  /** Subscribe to strings relayed by sibling guests of the same group. Returns an unsubscribe. */
+  onRelay(callback: (message: string) => void): () => void
+}
+
+/**
+ * The host-group protocol the `<WebView>` hosts speak on every target. A
+ * guest posts these through the SAME `window.pyreonPostMessage` channel as
+ * its ordinary messages; the host consumes them and never forwards them to
+ * `onMessage`. Inbound relays arrive through `window.__pyreonWebViewGroupMessage`.
+ */
+export const WEB_HOST_GROUP_MARKER = '__pyreonWebViewGroup'
+export const WEB_HOST_GROUP_RELAY_FN = '__pyreonWebViewGroupMessage'
+
+export type WebHostGroupMessage =
+  | { [WEB_HOST_GROUP_MARKER]: 1; join: string }
+  | { [WEB_HOST_GROUP_MARKER]: 1; leave: true }
+  | { [WEB_HOST_GROUP_MARKER]: 1; group: string; message: string }
+
+/**
+ * Parse a guest message as a host-group message. Returns `null` for anything
+ * else — a host tests this FIRST and hands every other string to `onMessage`.
+ * The prefix check keeps ordinary messages off the JSON parser.
+ */
+export function parseWebHostGroupMessage(message: string): WebHostGroupMessage | null {
+  if (!message.startsWith(`{"${WEB_HOST_GROUP_MARKER}"`)) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(message)
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object' || (parsed as Record<string, unknown>)[WEB_HOST_GROUP_MARKER] !== 1) return null
+  const value = parsed as Record<string, unknown>
+  if (typeof value.join === 'string' && value.join !== '') return { [WEB_HOST_GROUP_MARKER]: 1, join: value.join }
+  if (value.leave === true) return { [WEB_HOST_GROUP_MARKER]: 1, leave: true }
+  if (typeof value.group === 'string' && value.group !== '' && typeof value.message === 'string') {
+    return { [WEB_HOST_GROUP_MARKER]: 1, group: value.group, message: value.message }
+  }
+  return null
 }
 
 type HostWindow = Window & {
   __pyreonData?: unknown
   pyreonPostMessage?: (message: string) => void
+  [WEB_HOST_GROUP_RELAY_FN]?: (message: string) => void
 }
 
 /**
@@ -58,10 +110,45 @@ type HostWindow = Window & {
  */
 export function connectWebHost<T = unknown>(): WebHostConnection<T> {
   if (isServer) {
-    return { data: () => undefined, onData: () => () => {}, emit: () => {} }
+    return {
+      data: () => undefined,
+      onData: () => () => {},
+      emit: () => {},
+      joinGroup: () => {},
+      leaveGroup: () => {},
+      relay: () => {},
+      onRelay: () => () => {},
+    }
   }
   const win = window as HostWindow
+  let group: string | null = null
+  const post = (message: WebHostGroupMessage): void => {
+    win.pyreonPostMessage?.(JSON.stringify(message))
+  }
   return {
+    joinGroup: (name) => {
+      if (name === '' || name === group) return
+      group = name
+      post({ [WEB_HOST_GROUP_MARKER]: 1, join: name })
+    },
+    leaveGroup: () => {
+      if (group === null) return
+      group = null
+      post({ [WEB_HOST_GROUP_MARKER]: 1, leave: true })
+    },
+    relay: (message) => {
+      if (group === null) return
+      post({ [WEB_HOST_GROUP_MARKER]: 1, group, message })
+    },
+    onRelay: (callback) => {
+      // The host calls ONE page-level function; fan it out to every subscriber
+      // so several guest modules can listen without clobbering each other.
+      const listeners = relayListeners(win)
+      listeners.add(callback)
+      return () => {
+        listeners.delete(callback)
+      }
+    },
     data: () => win.__pyreonData as T | undefined,
     onData: (callback) => {
       const handler = (): void => callback(win.__pyreonData as T | undefined)
@@ -79,6 +166,22 @@ export function connectWebHost<T = unknown>(): WebHostConnection<T> {
       win.pyreonPostMessage?.(message)
     },
   }
+}
+
+const RELAY_LISTENERS = new WeakMap<Window, Set<(message: string) => void>>()
+
+/** The page's relay subscribers, installing the host-facing entry point on first use. */
+function relayListeners(win: HostWindow): Set<(message: string) => void> {
+  let listeners = RELAY_LISTENERS.get(win)
+  if (listeners === undefined) {
+    listeners = new Set()
+    RELAY_LISTENERS.set(win, listeners)
+    const set = listeners
+    win[WEB_HOST_GROUP_RELAY_FN] = (message: string): void => {
+      for (const listener of set) listener(message)
+    }
+  }
+  return listeners
 }
 
 /** Options for {@link webHostDocument}. */

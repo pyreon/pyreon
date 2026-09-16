@@ -167,7 +167,7 @@ describe('<CandlestickChart> — the per-field accessor bails', () => {
 describe('<BoxplotChart> — values, format and options arms', () => {
   it('missing `data` and missing `values` are separate named bails', () => {
     bails(chart(`<BoxplotChart values={(d) => d.vals} />`), '<BoxplotChart>: needs a `data`')
-    bails(chart(`<BoxplotChart data={rows()} />`), 'needs a `values` accessor')
+    bails(chart(`<BoxplotChart data={rows()} />`), 'needs a `values` or `summary` accessor')
   })
 
   it('a `format` prop is a named loss, not a bail', () => {

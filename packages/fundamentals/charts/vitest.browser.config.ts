@@ -72,6 +72,7 @@ export default defineBrowserConfig(playwright(), {
         'src/engine/GraphChart.tsx',
         'src/engine/CalendarChart.tsx',
         'src/engine/ParallelChart.tsx',
+        'src/engine/SingleAxisChart.tsx',
         'src/engine/PolarChart.tsx',
         'src/engine/RiverChart.tsx',
         'src/engine/BoxplotChart.tsx',

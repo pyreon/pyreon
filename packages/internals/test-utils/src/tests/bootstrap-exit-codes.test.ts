@@ -242,14 +242,16 @@ describeIfFull('scripts/bootstrap.ts exit-code policy', () => {
       // Loud warning surfaces the other-package error so the user
       // notices it before they hit a confusing build failure later.
       expect(result.stderr).toContain(
-        '[bootstrap] ⚠ Build subprocess emitted nonzero exit code',
+        '[bootstrap] ⚠ Build subprocess exited nonzero but named no failing package',
       )
       // Names the contract explicitly so the user knows the install
-      // is fine even though they see the warning.
+      // is fine even though they see the warning — and that NO build hash
+      // was recorded: an unattributed non-zero exit is not evidence a
+      // package built, so the next run rebuilds instead of trusting it.
       expect(result.stderr).toContain(
         "[bootstrap] Bootstrap's contract",
       )
-      expect(result.stderr).toContain('IS satisfied')
+      expect(result.stderr).toContain('NO build hashes were recorded')
       // Names common causes so users can diagnose.
       expect(result.stderr).toContain('Common causes')
       expect(result.stderr).toContain('node_modules/.bun/')
@@ -271,7 +273,7 @@ describeIfFull('scripts/bootstrap.ts exit-code policy', () => {
       // contract is the same regardless of invocation mode.
       expect(result.status).toBe(0)
       expect(result.stderr).toContain(
-        '[bootstrap] ⚠ Build subprocess emitted nonzero exit code',
+        '[bootstrap] ⚠ Build subprocess exited nonzero but named no failing package',
       )
       expect(result.stderr).not.toContain('[bootstrap] ✗ Build failure')
     })

@@ -33,6 +33,8 @@ import type { LegendEntry } from './legend'
 import { paletteAt } from './palette'
 import { hitPolarIndex } from './polar'
 import type { PolarLayout, PolarSeries } from './polar'
+import { hitSingleAxis } from './single-axis'
+import type { SingleAxisLayout, SingleAxisPoint } from './single-axis'
 import { hitRiverIndex } from './river'
 import { hitChordIndex } from './chord'
 import type { ChordLayout } from './chord'
@@ -173,6 +175,9 @@ export function treeTip(layout: TreeLayout, px: Double, py: Double, symbolSize?:
   // what unwraps the optional natively — a ternary over `=== undefined` does
   // not narrow in the emit.
   if (n.value === undefined) return [n.name]
+  /* v8 ignore next — the `?? 0.0` arm is unreachable on the web: the guard
+     above already returned for undefined. It exists to unwrap the optional
+     natively, where a `=== undefined` ternary does not narrow. */
   return [n.name, plain(n.value ?? 0.0)]
 }
 
@@ -211,6 +216,9 @@ export function graphTip(layout: GraphLayout, px: Double, py: Double): string[] 
   // what unwraps the optional natively — a ternary over `=== undefined` does
   // not narrow in the emit.
   if (n.value === undefined) return [n.name]
+  /* v8 ignore next — the `?? 0.0` arm is unreachable on the web: the guard
+     above already returned for undefined. It exists to unwrap the optional
+     natively, where a `=== undefined` ternary does not narrow. */
   return [n.name, plain(n.value ?? 0.0)]
 }
 
@@ -243,6 +251,24 @@ export function calendarTip(layout: CalendarLayout, values: CalendarValue[], px:
   const date = layout.cells[i]!.date
   for (const v of values) if (v.date === date) return [date, plain(v.value)]
   return [date]
+}
+
+/**
+ * The point's name and its position on the axis.
+ *
+ * A single-axis plot carries ONE number per point, and the layout keeps only
+ * where it was drawn — so the caller's own points supply the value, the way
+ * `calendarTip` and `geoTip` take theirs.
+ */
+export function singleAxisTip(layout: SingleAxisLayout, points: SingleAxisPoint[], px: Double, py: Double): string[] {
+  const i = hitSingleAxis(layout, px, py)
+  // A BOUNDS test, not an `=== undefined` test on the indexed value: this file
+  // crosses to Swift and Kotlin, where `points[i]` is a subscript that TRAPS
+  // out of range rather than handing back a nil to compare.
+  if (i < 0 || i >= points.length) return []
+  const point = points[i]!
+  const name = point.name
+  return name === undefined ? [plain(point.x)] : [name, plain(point.x)]
 }
 
 /** The region's name, and its value when one was recorded for that region. */

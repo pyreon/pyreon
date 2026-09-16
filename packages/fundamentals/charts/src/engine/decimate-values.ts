@@ -122,6 +122,10 @@ export function lttbIndices(xs: Double[], ys: Double[], threshold: number): numb
     let avgHi = edges[i + 2]! + 1
     if (avgHi > n) avgHi = n
     let avgCount = avgHi - avgLo
+    /* v8 ignore next 5 — defensive: `count` is `threshold - 2` and the guard
+       above keeps `threshold < n`, so `count <= span - 1` and every bucket
+       window holds at least one row. Kept because the arithmetic crosses to
+       Swift/Kotlin, where an empty window would subscript out of range. */
     if (avgCount < 1) {
       avgLo = lo
       avgHi = hi

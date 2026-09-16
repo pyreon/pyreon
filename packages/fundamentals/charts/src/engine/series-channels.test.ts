@@ -34,6 +34,7 @@ const ROLE: Readonly<Record<keyof Series, Role>> = {
   kind: 'presentation',
   values: 'data',
   values2: 'data',
+  extras: 'data',
   errLow: 'data',
   errHigh: 'data',
   rValues: 'data',
@@ -51,6 +52,7 @@ const ROLE: Readonly<Record<keyof Series, Role>> = {
   symbolRepeat: 'presentation',
   corners: 'presentation',
   gradient: 'presentation',
+  pattern: 'presentation',
   dash: 'presentation',
   negativeColor: 'presentation',
 }
@@ -64,6 +66,7 @@ function loaded(): Series {
     errLow: [2, 5],
     errHigh: [4, 7],
     rValues: [11, 22],
+    extras: [{ label: 'stock', numbers: [7, 8] }, { label: 'region', texts: ['north', 'south'] }],
     color: '#111',
     width: 2,
     radius: 3,
@@ -78,6 +81,7 @@ const PRINTED: Readonly<Record<string, string[]>> = {
   errLow: ['2', '5'],
   errHigh: ['4', '7'],
   rValues: ['11', '22'],
+  extras: ['7', '8', 'north', 'south'],
 }
 
 describe('every data channel reaches the reader', () => {

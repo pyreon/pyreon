@@ -48,9 +48,23 @@ describe('option facade — edge shapes (every branch NAMES its loss)', () => {
     expect(bad.supported).toBe(false)
     expect(bad.warnings.map((w) => `${w.code}@${w.path}`)).toEqual(['series-data-shape@series[0]'])
     expect(compileOption(cat({ series: 'garbage' })).spec.series).toHaveLength(0)
-    const stacked = compileOption(cat({ series: [{ type: 'line', stack: 'a', data: [1] }] }))
-    expect(stacked.spec.series[0]!.kind).toBe('line')
-    expect(stacked.warnings.map((w) => `${w.code}@${w.path}`)).toContain('series-option-unsupported@series[0].stack')
+    // Stacked lines sit on the running total of their stack; a gap carries the
+    // total without dropping the lines above it; other stacks are independent;
+    // a stacked AREA is the engine's own stackedArea kind over raw values.
+    const stacked = compileOption(cat({ series: [
+      { type: 'line', stack: 'a', data: [1, 2, 3] },
+      { type: 'line', stack: 'a', data: [3, null, 4] },
+      { type: 'line', stack: 'a', data: [1, 1, 1] },
+      { type: 'line', stack: 'b', data: [10, 10, 10] },
+      { type: 'line', stack: 'a', areaStyle: {}, data: [5, 5, 5] },
+    ] }))
+    expect(stacked.spec.series.map((x) => x.kind)).toEqual(['line', 'line', 'line', 'line', 'stackedArea'])
+    expect(stacked.spec.series[0]!.values).toEqual([1, 2, 3])
+    expect(stacked.spec.series[1]!.values).toEqual([4, NaN, 7])
+    expect(stacked.spec.series[2]!.values).toEqual([5, 3, 8])
+    expect(stacked.spec.series[3]!.values).toEqual([10, 10, 10])
+    expect(stacked.spec.series[4]!.values).toEqual([5, 5, 5])
+    expect(stacked.warnings.map((w) => `${w.code}@${w.path}`)).not.toContain('series-option-unsupported@series[0].stack')
     expect(compileOption(cat({ series: [{ type: 'line', areaStyle: true, data: [1] }] })).spec.series[0]!.kind).toBe('area')
     expect(compileOption(cat({ series: [{ type: 'line', areaStyle: {}, data: [1] }] })).spec.series[0]!.kind).toBe('area')
     const missing = compileOption(cat({ series: [{ type: 'bar' }] }))
@@ -137,5 +151,19 @@ describe('option facade — edge shapes (every branch NAMES its loss)', () => {
     expect(compileOption({ ...base, tooltip: true }).tooltip).toBe(true)
     // Category entries may be objects with a value, objects without one, or bare numbers.
     expect(compileOption({ xAxis: { data: [{ value: 'q' }, { name: 'n' }, 3] }, yAxis: {}, series: [] }).spec.categories).toEqual(['q', '', '3'])
+  })
+})
+
+describe('pictorialBar accepted-but-unmapped keys', () => {
+  it('names symbolClip / symbolMargin / symbolBoundingData / symbolOffset / symbolPosition / symbolRotate rather than swallowing them', () => {
+    const { warnings } = compileOption({ xAxis: { type: 'category', data: ['a'] }, yAxis: {}, series: [{ type: 'pictorialBar', symbol: 'circle', symbolRepeat: true, symbolClip: true, symbolMargin: 4, symbolBoundingData: 10, symbolOffset: [0, 2], symbolPosition: 'end', symbolRotate: 30, data: [3] }] })
+    expect(warnings.map((w) => w.code + '@' + w.path).sort()).toEqual([
+      'series-option-unsupported@series[0].symbolBoundingData',
+      'series-option-unsupported@series[0].symbolClip',
+      'series-option-unsupported@series[0].symbolMargin',
+      'series-option-unsupported@series[0].symbolOffset',
+      'series-option-unsupported@series[0].symbolPosition',
+      'series-option-unsupported@series[0].symbolRotate',
+    ])
   })
 })

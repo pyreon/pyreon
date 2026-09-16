@@ -21,7 +21,7 @@ import { batch, effect, isClient, signal } from '@pyreon/reactivity'
 import { chartTable, describeChart } from './a11y'
 import type { A11yInput } from './a11y'
 import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas } from './canvas-web'
-import { cmdsEqual, sameCmdShape, tweenCmds } from './cmd-tween'
+import { cmdsEqual, sameCmdShape, tweenCmds, universalTweenCmds } from './cmd-tween'
 import { placeLegend } from './legend'
 import type { LegendEntry, LegendPosition } from './legend'
 import type { ChartTheme } from './render'
@@ -32,7 +32,7 @@ import type { ToolboxTool } from './toolbox'
 import { placeTooltip } from './tooltip'
 import { easeOutCubic } from './tween'
 import type { ChartGradient, DrawCmd, Double, MeasureText, Rect } from './types'
-import { mirrorCmds, mirrorX, screenRectX } from './rtl'
+import { mirrorCmds, mirrorX, screenRectX , transposeCmds, transposeRect } from './rtl'
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 /** The accessible table stops here — a 100k-row table is a 100k-node DOM, and no reader walks it. */
@@ -105,13 +105,14 @@ export interface CanvasHostProps {
   /**
    * Tween a data change from the previous frame to the new one instead of
    * snapping, when the two frames have the same shape. Default on; respects
-   * `prefers-reduced-motion`, like the entrance. A shape change (a row added,
-   * a series removed) snaps — there is no path between two different shapes
-   * that means anything.
+   * `prefers-reduced-motion`, like the entrance. Shape-changing updates snap
+   * unless `universalTransition` is enabled.
    */
   updateAnimation?: boolean
   /** Tween duration in ms; default the theme's `updateMs`. */
   updateDuration?: Double
+  /** Morph updates even when the family or item count changes. Opt-in. */
+  universalTransition?: boolean
   /**
    * Keyboard navigation: the canvas is focusable; Left/Right (and Up/Down)
    * move through the chart's items, Home/End jump, Enter/Space select
@@ -174,6 +175,12 @@ export interface CanvasHostSpec<L> {
   caption: string
   /** Whether `render` honours `progress` — only then does the entrance tween run. */
   animates?: boolean | undefined
+  /**
+   * Lay the family out TRANSPOSED (a vertical sankey / calendar / parallel):
+   * the layout runs in the box reflected across the diagonal, the draw list is
+   * reflected back, and every pointer is reflected before its hit test.
+   */
+  transpose?: (() => boolean) | undefined
 }
 
 /** Measures the PARENT, never the canvas: a canvas pinned to its own last width can never shrink with its container (the pinned-width trap). */
@@ -213,6 +220,9 @@ function focusRing(r: Rect): DrawCmd {
 }
 
 export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
+  const transposed = (): boolean => spec.transpose?.() === true
+  /** The family's layout, in the box reflected across the diagonal when transposed (the render reflects it back). */
+  const lay = (box: Rect, measure: MeasureText, t: ChartTheme): L => spec.layout(transposed() ? transposeRect(box) : box, measure, t)
   const { props } = spec
   const themeOf = useChartTheme()
   const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
@@ -280,7 +290,9 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     tweenFrame = requestAnimationFrame(tick)
   }
   /** The family commands to show right now: the tween's frame, else the last full frame. */
-  const shownFamily = (): DrawCmd[] => (tweenFrom !== null && tweenTo !== null && tweenT < 1.0 ? tweenCmds(tweenFrom, tweenTo, easeOutCubic(tweenT)) : (lastFamily ?? []))
+  const transitionFrame = (from: DrawCmd[], to: DrawCmd[], t: Double): DrawCmd[] =>
+    props.universalTransition === true ? universalTweenCmds(from, to, t) : tweenCmds(from, to, t)
+  const shownFamily = (): DrawCmd[] => (tweenFrom !== null && tweenTo !== null && tweenT < 1.0 ? transitionFrame(tweenFrom, tweenTo, easeOutCubic(tweenT)) : (lastFamily ?? []))
 
   /**
    * Chrome first, then the family in what is left. The title and a wrapped
@@ -308,7 +320,7 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     if (props.showLegend === true && spec.legend !== undefined) {
       // The legend needs the entries, the entries need a layout: lay out once in
       // the pre-legend box for the names, then again in what the legend leaves.
-      const probe = spec.layout({ x: 0, y: top, w, h: Math.max(0, hgt - top) }, measure, t)
+      const probe = lay({ x: 0, y: top, w, h: Math.max(0, hgt - top) }, measure, t)
       const entries = spec.legend(probe, t)
       if (entries.length === 0) layout = probe
       else {
@@ -330,7 +342,7 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
       }
     }
     const box = { x: left, y: top, w: Math.max(0, w - left - right), h: Math.max(0, hgt - top - bottom) }
-    if (layout === null || top > 0 || left > 0 || right > 0 || bottom > 0) layout = spec.layout(box, measure, t)
+    if (layout === null || top > 0 || left > 0 || right > 0 || bottom > 0) layout = lay(box, measure, t)
     return { w, hgt, box, layout, chrome, toolBoxes }
   }
 
@@ -339,7 +351,7 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     const i = focusIdx()
     if (i < 0 || spec.focusRect === undefined) return []
     const r = spec.focusRect(f.layout, i)
-    return r === null ? [] : [focusRing(r)]
+    return r === null ? [] : [focusRing(transposed() ? transposeRect(r) : r)]
   }
 
   /**
@@ -385,16 +397,17 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     const measure = canvasMeasure(ctx, FONT)
     const f = frame(w, hgt, measure, t)
     last = f
-    const family = spec.render(f.layout, measure, t, entrance)
+    const family = transposed() ? transposeCmds(spec.render(f.layout, measure, t, entrance)) : spec.render(f.layout, measure, t, entrance)
     if (entrance >= 1.0) {
       const enabled = props.updateAnimation !== false && hasRaf() && !prefersReducedMotion() && (props.updateDuration ?? t.updateMs) > 0
-      if (enabled && lastFamily !== null && sameCmdShape(lastFamily, family) && !cmdsEqual(lastFamily, family)) {
+      const transitionable = lastFamily !== null && (sameCmdShape(lastFamily, family) || props.universalTransition === true)
+      if (enabled && transitionable && lastFamily !== null && !cmdsEqual(lastFamily, family)) {
         // Retarget a running tween from where it is; start one from the last frame otherwise.
-        tweenFrom = tweenFrom !== null && tweenTo !== null && tweenT < 1.0 ? tweenCmds(tweenFrom, tweenTo, easeOutCubic(tweenT)) : lastFamily
+        tweenFrom = tweenFrom !== null && tweenTo !== null && tweenT < 1.0 ? transitionFrame(tweenFrom, tweenTo, easeOutCubic(tweenT)) : lastFamily
         tweenTo = family
         lastFamily = family
         startTween()
-        paint(ctx, present([...f.chrome, ...tweenCmds(tweenFrom, family, 0.0), ...ringCmds(f)], w), w, hgt, FONT)
+        paint(ctx, present([...f.chrome, ...transitionFrame(tweenFrom, family, 0.0), ...ringCmds(f)], w), w, hgt, FONT)
         return
       }
       // A shape change snaps, and cancels any tween still running toward the old shape.
@@ -465,7 +478,8 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     if (spec.select === undefined) return
     const f = layoutNow(el)
     if (f === null) return
-    spec.select(f.layout, p.x, p.y)
+    if (transposed()) spec.select(f.layout, p.y, p.x)
+    else spec.select(f.layout, p.x, p.y)
   }
 
   const handleMove = (ev: PointerEvent): void => {
@@ -475,7 +489,7 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     const f = layoutNow(el)
     if (f === null) return
     const p = localPoint(el, ev)
-    const lines = spec.tooltip(f.layout, p.x, p.y, theme())
+    const lines = transposed() ? spec.tooltip(f.layout, p.y, p.x, theme()) : spec.tooltip(f.layout, p.x, p.y, theme())
     if (lines === null || lines.length === 0) {
       box.style.display = 'none'
       return
@@ -499,7 +513,7 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     const w = el === null ? 300 : drawWidth(el, props.width)
     const hgt = props.height ?? spec.defaultHeight
     const measure: MeasureText = (text, size) => text.length * size * 0.6
-    return spec.layout({ x: 0, y: 0, w, h: hgt }, measure, theme())
+    return lay({ x: 0, y: 0, w, h: hgt }, measure, theme())
   }
   /** The a11y input, computed once per draw (the description, the table and the keyboard all read it). */
   const a11yNow = (): A11yInput => {

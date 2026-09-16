@@ -70,14 +70,17 @@ describe('jsx.ts — signal shadowing by a body-level declaration', () => {
     expect(out).toContain('count()')
   })
 
-  it('CHARACTERIZATION: a body-level DESTRUCTURING re-declaration is NOT tracked as a shadow', () => {
-    // `findShadowingNames` scans body declarations for `decl.id.type ===
+  it('a body-level DESTRUCTURING re-declaration IS a shadow (every binding form is)', () => {
+    // `findShadowingNames` used to scan body declarations for `decl.id.type ===
     // "Identifier"` only, so an object/array pattern re-binding a signal name
-    // keeps the auto-call. Recorded rather than asserted-correct: the shape is
-    // rare, and the PARAMETER form (which IS handled) is the common one.
+    // kept the auto-call — `const { count } = p` then `{count}` emitted
+    // `count()`, a `TypeError` on whatever `p.count` held. Every binding form a
+    // function introduces now shadows: patterns at any depth, `catch (e)`,
+    // `for (const x of …)` heads, block-nested `let`, function/class
+    // declarations (see `collectFunctionBindings`).
     const out = t(`${SIG}function A() { const { count } = p; return <div>{count}</div> }`)
-    expect(out).toContain('count()')
-    // The parameter form of the same destructure DOES shadow.
+    expect(out).not.toContain('count()')
+    // The parameter form of the same destructure shadows too.
     expect(t(`${SIG}function A({ count }) { return <div>{count}</div> }`)).not.toContain('count()')
   })
 })

@@ -21,6 +21,8 @@ import {
   findDuplicateWriters,
   findKeyDrift,
   findOrphanRestores,
+  findOrphanSaves,
+  findPathListMismatches,
 } from '../../../../../scripts/check-cache-key-sync'
 
 // ── one artifact ⇒ one prefix ⇒ one writer ──────────────────────────────────
@@ -48,7 +50,7 @@ describe('extractCacheSteps', () => {
   it('reads kind, scalar path and the literal key prefix', () => {
     const text = step({ kind: 'save', path: '~/.bun/install/cache', key: "bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}" })
     expect(extractCacheSteps(text, 'ci.yml')).toEqual([
-      { file: 'ci.yml', line: 1, kind: 'save', paths: ['~/.bun/install/cache'], prefix: 'bun-install-cache-' },
+      { file: 'ci.yml', line: 1, kind: 'save', paths: ['~/.bun/install/cache'], prefix: 'bun-install-cache-', keyTemplate: 'bun-install-cache-<expr>-<expr>', restorePrefixes: ['whatever-'] },
     ])
   })
   it('reads a block-scalar path list, sorted, as the artifact identity', () => {
@@ -132,6 +134,68 @@ describe('findOrphanRestores', () => {
       ...extractCacheSteps(step({ kind: 'restore', path: 'x', key: 'a-${{ h }}' }), 'g'),
     ]
     expect(findOrphanRestores(steps)).toEqual([])
+  })
+})
+
+describe('findPathListMismatches — one prefix ⇒ one path list', () => {
+  // The RECIPROCAL of findDuplicateWriters. actions/cache versions an entry
+  // by key AND path list, so ci.yml's per-run `bootstrap-*` saver
+  // (`packages/*/*/lib` only) and its source-hashed saver (`+ .bootstrap-
+  // cache.json`) produced entries setup-pyreon's single-path restore could
+  // hit only by EXACT key — the documented prefix fallback was inert.
+  it('flags a prefix whose sites disagree on `path:`', () => {
+    const steps = [
+      ...extractCacheSteps(step({ kind: 'save', path: ['lib', 'manifest.json'], key: 'boot-${{ h }}' }), 'ci'),
+      ...extractCacheSteps(step({ kind: 'restore', path: 'lib', key: 'boot-${{ h }}' }), 'setup'),
+    ]
+    expect(findPathListMismatches(steps)).toEqual([
+      {
+        prefix: 'boot-<expr>',
+        variants: [
+          { paths: ['lib'], sites: ['setup:1'] },
+          { paths: ['lib', 'manifest.json'], sites: ['ci:1'] },
+        ],
+      },
+    ])
+  })
+  it('accepts a prefix whose every site declares the same list (order-insensitive)', () => {
+    const steps = [
+      ...extractCacheSteps(step({ kind: 'save', path: ['lib', 'manifest.json'], key: 'boot-${{ h }}' }), 'ci'),
+      ...extractCacheSteps(step({ kind: 'restore', path: ['manifest.json', 'lib'], key: 'boot-${{ h }}' }), 'setup'),
+    ]
+    expect(findPathListMismatches(steps)).toEqual([])
+  })
+  it('compares a pure-expression-key restore through its restore-keys prefixes (the setup-pyreon shape)', () => {
+    const text = `      - uses: actions/cache/restore@sha
+        with:
+          path: lib
+          key: \${{ env.BOOTSTRAP_KEY }}
+          restore-keys: |
+            boot-\${{ h }}
+            boot-
+`
+    const steps = [
+      ...extractCacheSteps(step({ kind: 'save', path: ['lib', 'manifest.json'], key: 'boot-${{ h }}' }), 'ci'),
+      ...extractCacheSteps(text, 'setup'),
+    ]
+    expect(steps[1]!.restorePrefixes).toEqual(['boot-<expr>', 'boot-'])
+    expect(findPathListMismatches(steps).map((m) => m.prefix)).toEqual(['boot-<expr>'])
+  })
+  it('does NOT flag two keys that share a literal prefix but differ after it', () => {
+    // `cache-<expr>-alpha` and `cache-<expr>-beta` are different entries; a
+    // prefix-keyed comparison blocked this correct workflow.
+    const steps = [
+      ...extractCacheSteps(step({ kind: 'save', path: 'dirA', key: 'cache-${{ runner.os }}-alpha' }), 'a'),
+      ...extractCacheSteps(step({ kind: 'save', path: 'dirB', key: 'cache-${{ runner.os }}-beta' }), 'b'),
+    ]
+    expect(findPathListMismatches(steps)).toEqual([])
+  })
+  it('skips pure-expression keys (no prefix to compare)', () => {
+    const steps = [
+      ...extractCacheSteps(step({ kind: 'save', path: 'a', key: '${{ env.K }}' }), 'ci'),
+      ...extractCacheSteps(step({ kind: 'restore', path: 'b', key: '${{ env.K }}' }), 'setup'),
+    ]
+    expect(findPathListMismatches(steps)).toEqual([])
   })
 })
 
@@ -224,5 +288,29 @@ describe('findKeyDrift', () => {
     // gate is deliberately strict rather than normalising.
     const out = findKeyDrift([use('a', "'x', 'y'"), use('b', "'x','y'")])
     expect(out).toHaveLength(1)
+  })
+})
+
+describe('findOrphanSaves — a save nothing restores is eviction pressure', () => {
+  it('flags a save-only template no restore site can hit', () => {
+    const steps = [
+      ...extractCacheSteps(step({ kind: 'save', path: 'x', key: 'a-${{ h }}' }), 'f'),
+      ...extractCacheSteps(step({ kind: 'restore', path: 'x', key: 'b-${{ h }}' }), 'g'),
+    ]
+    expect(findOrphanSaves(steps)).toEqual([{ keyTemplate: 'a-<expr>', sites: ['f:1'] }])
+  })
+  it('accepts a save restored by exact key, by a restore-keys prefix, or by a combined step', () => {
+    const exact = [
+      ...extractCacheSteps(step({ kind: 'save', path: 'x', key: 'a-${{ h }}' }), 'f'),
+      ...extractCacheSteps(step({ kind: 'restore', path: 'x', key: 'a-${{ h }}' }), 'g'),
+    ]
+    expect(findOrphanSaves(exact)).toEqual([])
+    const byPrefix = [
+      ...extractCacheSteps(step({ kind: 'save', path: 'x', key: 'whatever-${{ h }}' }), 'f'),
+      ...extractCacheSteps(step({ kind: 'restore', path: 'x', key: 'zzz-${{ h }}' }), 'g'),
+    ]
+    expect(findOrphanSaves(byPrefix)).toEqual([])
+    const combined = extractCacheSteps(step({ kind: 'both', path: 'x', key: 'only-${{ h }}' }), 'f')
+    expect(findOrphanSaves(combined)).toEqual([])
   })
 })

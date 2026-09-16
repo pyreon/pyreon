@@ -174,15 +174,15 @@ describe('modules the hook must not touch at all', () => {
     expect(await run(boot({}), 'export const x = 1\n', join(root, 'src/a.js'))).toBeUndefined()
   })
 
-  it('does NOT filter node_modules itself — that is Vite\'s job', async () => {
-    // Pinned as an observed fact rather than asserted as a contract: the
-    // hook transforms whatever id it is handed, and dependency exclusion
-    // happens upstream in Vite's pipeline. Worth recording because the
-    // opposite is the intuitive assumption (it was mine), and a future
-    // reader adding a guard here should know none exists today.
+  it('SKIPS third-party node_modules JSX by default (a `@pyreon/*` package is still transformed)', async () => {
+    // Vite does not exclude a dependency from plugin transforms — a package
+    // in `optimizeDeps.exclude` shipping untranspiled React `.jsx` reached
+    // this hook and had its JSX reinterpreted as Pyreon JSX, with an
+    // `@pyreon/runtime-dom` import injected into a package that has no such
+    // dependency. `include`/`exclude` are the escape hatches.
     const src = `export function C() { return <div /> }\n`
-    const out = await run(boot({}), src, join(root, 'node_modules/x/index.jsx'))
-    expect(out, 'transformed, not skipped').toBeDefined()
+    expect(await run(boot({}), src, join(root, 'node_modules/x/index.jsx'))).toBeUndefined()
+    expect(await run(boot({}), src, join(root, 'node_modules/@pyreon/x/src/index.tsx'))).toBeDefined()
   })
 })
 
