@@ -253,6 +253,8 @@ Beyond bars, lines, points, pie, gauge, radar, candlestick and heatmap, `/plot` 
 
 Datasets follow ECharts' own contract: `source` (array or object rows, `sourceHeader`, `dimensions`), `id` / `datasetId` / `fromDatasetId` references, the built-in `filter` and `sort` transforms, and **external transforms** through `registerChartTransform` — the `echarts.registerTransform` shape, with the same `upstream` surface (`cloneRawData`, `getRawData`, `getDimensionInfo`, `cloneAllDimensionInfo`), so an ecStat transform object registers unchanged and a multi-result transform feeds `fromTransformResult`. `encode` resolves `x` / `y` / `value` / `itemName` / `seriesName` by dimension name or index; `encode.tooltip` is not mapped yet and warns by name.
 
+Large data: a series' `sampling` (`lttb` / `average` / `max` / `min` / `sum`) thins it to the pixel width, `large` + `largeThreshold` (2000) and `progressive` + `progressiveThreshold` (3000) bound its point count — all three resolve to the engine's one large-data mechanism, decimation on shared rows (every series and the category axis thinned together, so a hit still names a real datum), and only when every series has the same length. Reactive updates take `setOption`'s own options on `<OptionChart optionUpdate>`: `notMerge`, `replaceMerge` (id-merge, drop what the update does not name), `lazyUpdate` and `silent` (accepted; the host already paints once per frame and emits nothing on apply).
+
 ```ts
 import { optionToSvg } from '@pyreon/charts/plot'
 const svg = optionToSvg({ xAxis: { data: ['Mon', 'Tue'] }, yAxis: {}, series: [{ type: 'bar', data: [120, 200] }] }, { theme: 'dark' })

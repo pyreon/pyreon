@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.9' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.10' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -30,11 +30,12 @@ const row = (
 ): ChartCapability => ({ id, area, mode, status, evidence })
 
 export const CHART_CAPABILITIES: readonly ChartCapability[] = [
-  row('data.option-merge', 'data', 'direct', 'partial', 'src/engine/option-composite.ts'),
+  row('data.option-merge', 'data', 'direct', 'complete', 'src/engine/option-composite.test.ts'),
   row('data.dataset', 'data', 'direct', 'complete', 'src/engine/option-layer.ts'),
   row('data.dimensions-encode', 'data', 'direct', 'partial', 'src/engine/option-layer.ts'), // encode.tooltip
   row('data.transforms', 'data', 'direct', 'complete', 'src/engine/option-transform.test.ts'),
-  row('data.progressive-large', 'data', 'direct', 'partial', 'src/engine/decimate.ts'),
+  // sampling / large / progressive resolve to bounded decimation on shared rows.
+  row('data.progressive-large', 'data', 'direct', 'complete', 'src/engine/option-sampling.test.ts'),
   row('data.empty-null', 'data', 'direct', 'complete', 'src/engine/gaps.test.ts'),
 
   ...[

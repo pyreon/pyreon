@@ -13,6 +13,7 @@
 // cross. And it is DATA in, DATA out — no console, no DOM — so it runs on the
 // server and in a test the same way the engine does.
 
+import { lttbIndices } from './decimate-values'
 import { renderChart } from './render'
 import { appendGraphicLayer, graphicCommands, resolveDataset, svgSize } from './option-layer'
 import { visualMapCommands } from './visual-map'
@@ -92,11 +93,35 @@ const KNOWN_SERIES = new Set([
   'color', 'showSymbol', 'symbol', 'emphasis', 'z', 'zlevel', 'silent',
   'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'rippleEffect', 'showEffectOn',
   'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex',
-  'coordinateSystem', 'polyline', 'effect', 'large', 'largeThreshold', 'progressive',
+  'coordinateSystem', 'polyline', 'effect', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'sampling',
 ])
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
+
+type SamplingMethod = 'lttb' | 'average' | 'max' | 'min' | 'sum'
+const SAMPLING_METHODS = new Set<string>(['lttb', 'average', 'max', 'min', 'sum'])
+
+/** What a series' `sampling` / `large` / `progressive` keys ask of the large-data pass, or null when nothing applies. */
+function samplingRequest(
+  s: Record<string, unknown>,
+  count: number,
+  width: number,
+  warn: (code: OptionWarning['code'], path: string, message: string) => void,
+  path: string,
+): { limit: number; method: SamplingMethod } | null {
+  const toNum = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+  const sampling = s['sampling']
+  if (sampling !== undefined) {
+    if (typeof sampling === 'string' && SAMPLING_METHODS.has(sampling)) return { limit: Math.max(3, Math.floor(width)), method: sampling as SamplingMethod }
+    warn('series-option-unsupported', `${path}.sampling`, `sampling "${String(sampling)}" is not supported (lttb, average, max, min, sum are); the series was not thinned.`)
+  }
+  if (s['large'] === true) return { limit: Math.max(3, toNum(s['largeThreshold']) ?? 2000), method: 'lttb' }
+  const progressive = toNum(s['progressive'])
+  if (progressive !== null && progressive > 0) return { limit: Math.max(3, toNum(s['progressiveThreshold']) ?? 3000), method: 'lttb' }
+  void count
+  return null
+}
 const num = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
   if (typeof v === 'string' && v.trim() !== '') {
@@ -214,6 +239,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   const annotations: Annotation[] = []
   const markers: PointMarker[] = []
   let xValues: Double[] | undefined = undefined
+  // Large-data requests per compiled cartesian series (see the sampling pass).
+  const sampleRequests: { limit: number; method: SamplingMethod }[] = []
   const barCount = rawSeries.filter((s) => isObj(s) && s['type'] === 'bar' && s['stack'] === undefined).length
 
   for (let i = 0; i < rawSeries.length; i++) {
@@ -334,6 +361,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       }
     }
     if (xContinuous && xs.length === values.length && xs.length > 0 && xValues === undefined) xValues = xs
+    const request = samplingRequest(s, values.length, opts.width ?? 640.0, warn, path)
+    if (request !== null) sampleRequests.push(request)
 
     const itemStyle = isObj(s['itemStyle']) ? s['itemStyle'] : {}
     const lineStyle = isObj(s['lineStyle']) ? s['lineStyle'] : {}
@@ -445,6 +474,55 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       const ext = customExtents(plan)
       if (ext.y !== null) customY = customY === undefined ? { min: Math.min(0.0, ext.y[0]), max: ext.y[1] } : { min: Math.min(customY.min, ext.y[0]), max: Math.max(customY.max, ext.y[1]) }
       if (ext.x !== null && categories.length === 0) customX = [ext.x[0], ext.x[1]]
+    }
+  }
+  // ---- large data: sampling / large / progressive ----------------------
+  // ECharts thins a `sampling` series to the pixel width, gives a `large`
+  // series past `largeThreshold` (2000) a cheaper draw, and draws a
+  // `progressive` series in chunks past `progressiveThreshold` (3000). This
+  // engine has ONE large-data mechanism — decimation to a bounded point count,
+  // LTTB unless `sampling` names an aggregate, with every series and the
+  // category axis thinned on the SAME rows so a hit still names a real datum —
+  // and each of those keys resolves to that count. It applies only when every
+  // cartesian series has the same length: thinning one would misalign the
+  // shared x.
+  if (sampleRequests.length > 0 && series.length > 0) {
+    const n = series[0]!.values.length
+    const aligned = series.every((entry) => entry.values.length === n)
+    let limit = Infinity
+    for (const r of sampleRequests) if (r.limit < limit) limit = r.limit
+    if (aligned && n > limit && limit >= 3) {
+      const method = sampleRequests[0]!.method
+      if (method === 'lttb') {
+        const keep = lttbIndices(xValues ?? [], series[0]!.values, limit)
+        if (keep.length > 0) {
+          for (const entry of series) entry.values = keep.map((i) => entry.values[i]!)
+          if (categories.length === n) categories.splice(0, n, ...keep.map((i) => categories[i]!))
+          if (xValues !== undefined) xValues = keep.map((i) => xValues![i]!)
+        }
+      } else {
+        const edges: number[] = []
+        for (let b = 0; b <= limit; b++) edges.push(Math.floor((b * n) / limit))
+        const aggregate = (values: Double[]): Double[] => {
+          const out: Double[] = []
+          for (let b = 0; b < limit; b++) {
+            let acc = NaN
+            let count = 0
+            for (let i = edges[b]!; i < edges[b + 1]!; i++) {
+              const v = values[i]!
+              if (Number.isNaN(v)) continue
+              acc = count === 0 ? v : method === 'max' ? Math.max(acc, v) : method === 'min' ? Math.min(acc, v) : acc + v
+              count++
+            }
+            out.push(method === 'average' && count > 0 ? acc / count : acc)
+          }
+          return out
+        }
+        for (const entry of series) entry.values = aggregate(entry.values)
+        const firstOf = <T>(list: T[]): T[] => edges.slice(0, limit).map((start) => list[start]!)
+        if (categories.length === n) categories.splice(0, n, ...firstOf(categories))
+        if (xValues !== undefined) xValues = firstOf(xValues)
+      }
     }
   }
   const spec: ChartSpec = {

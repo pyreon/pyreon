@@ -69,6 +69,11 @@ for interaction, animation or accessibility parity.
   `<WebView>` host group (web iframes, WKWebViews, Android WebViews all speak
   the same reserved protocol); real-Chromium proof across separate pages,
   compiler proof on both targets. Hosted ledger: 11/11.
+- [x] C1 `data.option-merge` and `data.progressive-large` complete: the merge
+  policy speaks `setOption`'s spelling (`notMerge`, a true `replaceMerge`,
+  `lazyUpdate`, `silent`); `sampling` / `large` / `progressive` resolve to
+  bounded decimation on shared rows (the engine's one large-data mechanism,
+  stated as such rather than claimed as chunked rendering).
 - [x] C1 `data.transforms` complete: the ECharts dataset contract end to end —
   built-in filter/sort, `registerChartTransform` in the `echarts.registerTransform`
   shape (ecStat transform objects register unchanged), multi-result transforms

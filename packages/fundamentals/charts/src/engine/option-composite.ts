@@ -21,11 +21,36 @@ const num = (v: unknown): number | null => {
 }
 const toArr = (v: unknown): Obj[] => (Array.isArray(v) ? v.filter(isObj) : isObj(v) ? [v] : [])
 
+/**
+ * How a reactive option update lands — `setOption`'s `opts`, in Pyreon's and
+ * in ECharts' spelling (`notMerge`, `replaceMerge`, `lazyUpdate`, `silent`).
+ */
 export interface OptionUpdatePolicy {
   /** Replace the whole previous option instead of merging the update. */
   mode?: 'merge' | 'replace'
+  /** ECharts' spelling of `mode: 'replace'`. */
+  notMerge?: boolean
   /** Top-level component keys replaced as a unit while the rest still merges. */
   replaceKeys?: string | readonly string[]
+  /**
+   * ECharts' `replaceMerge`: for these component keys, components in the
+   * update merge into their id/name matches and every component the update
+   * does NOT name is removed (a plain merge keeps them). Distinct from
+   * `replaceKeys`, which takes the update's array verbatim.
+   */
+  replaceMerge?: string | readonly string[]
+  /**
+   * ECharts' `lazyUpdate` — defer the redraw to the next frame. The canvas
+   * host already paints once per frame for any number of option writes, so
+   * this is accepted for parity and changes nothing.
+   */
+  lazyUpdate?: boolean
+  /**
+   * ECharts' `silent` — do not emit events for the option change itself.
+   * Applying an option never emits an event in this engine (selection and
+   * hover events are pointer-driven), so this is accepted and changes nothing.
+   */
+  silent?: boolean
 }
 
 const INDEXED_COMPONENTS = new Set([
@@ -66,17 +91,32 @@ const mergeComponentArray = (before: unknown[], after: unknown[]): unknown[] => 
  * Ordinary arrays are values and replace as a unit.
  */
 export function mergeChartOptions(previous: Obj | undefined, update: Obj, policy: OptionUpdatePolicy = {}): Obj {
-  if (previous === undefined || policy.mode === 'replace') return update
-  const replace = new Set(typeof policy.replaceKeys === 'string' ? [policy.replaceKeys] : policy.replaceKeys ?? [])
+  if (previous === undefined || policy.mode === 'replace' || policy.notMerge === true) return update
+  const keys = (v: string | readonly string[] | undefined): Set<string> => new Set(typeof v === 'string' ? [v] : v ?? [])
+  const replace = keys(policy.replaceKeys)
+  const replaceMerge = keys(policy.replaceMerge)
   const out: Obj = { ...previous }
   for (const key of Object.keys(update)) {
     const before = previous[key]
     const after = update[key]
     if (replace.has(key)) out[key] = after
+    else if (replaceMerge.has(key) && Array.isArray(before) && Array.isArray(after)) out[key] = replaceMergeComponentArray(before, after)
     else if (INDEXED_COMPONENTS.has(key) && Array.isArray(before) && Array.isArray(after)) out[key] = mergeComponentArray(before, after)
     else out[key] = isObj(before) && isObj(after) ? mergeObjects(before, after) : after
   }
   return out
+}
+
+/** ECharts `replaceMerge`: the update's components, each merged into its id/name match; unmatched previous components are dropped. */
+const replaceMergeComponentArray = (before: unknown[], after: unknown[]): unknown[] => {
+  const claimed = new Set<number>()
+  return after.map((next) => {
+    const key = componentKey(next)
+    const at = key === null ? -1 : before.findIndex((candidate, index) => !claimed.has(index) && componentKey(candidate) === key)
+    if (at < 0) return next
+    claimed.add(at)
+    return isObj(before[at]) && isObj(next) ? mergeObjects(before[at] as Obj, next) : next
+  })
 }
 
 /** Height reserved under the chart for the timeline strip. */

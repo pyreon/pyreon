@@ -49,6 +49,25 @@ describe('reactive option updates', () => {
     expect(merged['series']).toBe(update.series)
     expect(merged['title']).toEqual({ text: 'Only this', textStyle: { color: '#111111', size: 14 } })
   })
+
+  it("speaks setOption's own spelling: notMerge, replaceMerge (id-merge + drop unmatched), lazyUpdate and silent", () => {
+    const update = { series: [{ id: 'revenue', data: [5] }, { id: 'new', type: 'pie', data: [7] }] }
+    expect(mergeChartOptions(previous, update, { notMerge: true })).toBe(update)
+    // replaceMerge: `revenue` keeps its type/style through the id match, the
+    // unnamed `cost` series is dropped, `new` is appended — the other keys merge.
+    const rm = mergeChartOptions(previous, update, { replaceMerge: ['series'] })
+    expect(rm['series']).toEqual([
+      { id: 'revenue', type: 'bar', data: [5], itemStyle: { color: '#123456' } },
+      { id: 'new', type: 'pie', data: [7] },
+    ])
+    expect(rm['title']).toEqual(previous.title)
+    // A plain merge would have kept `cost` (by index) — the two policies differ exactly there.
+    expect((mergeChartOptions(previous, update)['series'] as unknown[]).length).toBe(2)
+    expect((mergeChartOptions(previous, { series: [{ id: 'revenue', data: [5] }] })['series'] as unknown[]).length).toBe(2)
+    expect((mergeChartOptions(previous, { series: [{ id: 'revenue', data: [5] }] }, { replaceMerge: 'series' })['series'] as unknown[]).length).toBe(1)
+    // Accepted for parity; the host paints once per frame and emits nothing on apply.
+    expect(mergeChartOptions(previous, { title: { text: 'T' } }, { lazyUpdate: true, silent: true })['title']).toEqual({ text: 'T', textStyle: { color: '#111111', size: 14 } })
+  })
 })
 
 describe('timeline', () => {
