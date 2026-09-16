@@ -1992,9 +1992,8 @@ export interface ParseResult {
    */
   attrsComponents: AttrsComponentIR[]
   /**
-   * Local-name → `@pyreon` package for the alias-tag names (Element, PyreonUI,
-   * PyreonUIProvider, Container, Row, Col). The emit's alias hooks intercept a
-   * tag ONLY when it is imported from its expected package — so a user
+   * Local-name → source package + original imported name for package-specific
+   * JSX hooks. The emit intercepts a tag ONLY when both match — so a user
    * component that happens to share a name (`Row` from `./my-components`) is
    * NOT mis-lowered as a coolgrid Row. An untracked name (absent from the map)
    * keeps prior behaviour, so this is a purely additive precision guard.

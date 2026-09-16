@@ -152,7 +152,7 @@ The server registers **17 tools**. The table below is the complete surface — e
 | [`get_content_entry`](#get_content_entry) | `collection: string`, `slug: string` | One content entry's frontmatter, heading outline, path, byte size |
 | [`get_browser_smoke_status`](#get_browser_smoke_status) | *(none)* | Which browser-categorized packages have a `*.browser.test.*` file |
 | [`get_pattern`](#get_pattern) | `name?: string` | A canonical "how do I do X" pattern body (or the catalog of slugs) |
-| [`get_anti_patterns`](#get_anti_patterns) | `category?: enum`, `name?: string`, `full?: boolean` | The anti-pattern catalog — compact index by default, drill-in on demand |
+| [`get_anti_patterns`](#get_anti_patterns) | `category?: enum`, `name?: string`, `full?: boolean`, `page?: number` | The anti-pattern catalog — compact index by default, drill-in on demand |
 | [`get_changelog`](#get_changelog) | `package?: string`, `limit?: number`, `includeDependencyUpdates?: boolean`, `since?: string` | Recent release notes for a `@pyreon/*` package, ceremonial bumps filtered |
 | [`audit_test_environment`](#audit_test_environment) | `minRisk?: enum`, `limit?: number` | Mock-vnode test scanner, files ranked HIGH / MEDIUM / LOW |
 | [`audit_islands`](#audit_islands) | `json?: boolean` | Project-wide islands audit — five cross-file foot-gun detectors |
@@ -631,6 +631,7 @@ Browse the anti-pattern catalog parsed live from `.claude/rules/anti-patterns.md
 - `{ name }` → the single matching entry's full body (cheapest drill-in; case-insensitive title substring match).
 - `{ category }` → full bodies for one category (the pre-existing filtered contract).
 - `{ full: true }` → the entire catalog (~14K tokens — explicit, expensive opt-in).
+- `{ page }` → the next slice of the index. The index is PAGINATED at 240 entries, because its size follows the entry count rather than any entry's density; the footer names the next page when there is one.
 
 Each `[detector: <code>]` tag pairs the entry with the live static detector run by the [`validate`](#validate) tool.
 
@@ -640,7 +641,8 @@ Each `[detector: <code>]` tag pairs the entry with the live static detector run 
 | ---------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `category` | `string?`  | Full bodies for one category. Allowed: `reactivity`, `jsx`, `context`, `architecture`, `testing`, `lifecycle`, `documentation`, `all`. Omit for the index |
 | `name`     | `string?`  | Full body of the entry whose title contains this (case-insensitive). Most token-frugal drill-in                                                           |
-| `full`     | `boolean?` | Return the entire catalog (~14K tokens). Default is the compact index                                                                                     |
+| `full`     | `boolean?` | Return the entire catalog (~14K tokens). Default is the compact index
+| `page`     | `number?`  | Index page (240 entries each). Default 1; the footer names the next page                                                                                     |
 
 **Example calls:**
 

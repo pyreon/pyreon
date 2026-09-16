@@ -25,6 +25,8 @@ fun main() {
     checkHost(pyreonFlowEffectiveHandles(state.getNode("visible")!!, inferredHandles) == inferredHandles, "renderer handles fill missing endpoint types")
     val explicitNode = PyreonFlowNode("explicit", position = PyreonXYPosition(0.0, 0.0), data = "Explicit", sourceHandles = listOf(PyreonFlowHandleConfig("model", "source", PyreonFlowPosition.Top)))
     checkHost(pyreonFlowEffectiveHandles(explicitNode, inferredHandles).mapNotNull { it.id } == listOf("model", "in"), "explicit model handles win per endpoint type without duplicates")
+    val explicitTarget = PyreonFlowNode("explicit-target", position = PyreonXYPosition(0.0, 0.0), data = "Target", targetHandles = listOf(PyreonFlowHandleConfig("model-in", "target", PyreonFlowPosition.Bottom)))
+    checkHost(pyreonFlowEffectiveHandles(explicitTarget, inferredHandles).mapNotNull { it.id } == listOf("model-in", "out"), "explicit target handles come first and replace only the inferred target endpoint")
     val resized = pyreonFlowResizeFrame(PyreonFlowResizeFrame(PyreonXYPosition(100.0, 80.0), 150.0, 40.0), "nw", 170.0, 30.0)
     checkHost(resized == PyreonFlowResizeFrame(PyreonXYPosition(200.0, 90.0), 50.0, 30.0), "north-west resizing clamps dimensions and keeps the opposite corner fixed")
     val expanded = pyreonFlowResizeFrame(PyreonFlowResizeFrame(PyreonXYPosition(100.0, 80.0), 150.0, 40.0), "se", 25.0, 15.0)

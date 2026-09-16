@@ -1544,6 +1544,12 @@ public struct PyreonChartWebViewEvent { public let name: String; public let payl
 public struct PyreonChartWebViewError: Error { public let message: String }
 public func pyreonChartWebViewData(option: String, commands: String, loading: Bool, loadingOptions: String, group: String? = nil) -> String { option }
 public func pyreonDispatchChartWebViewMessage(_ message: String, onSelect: ((PyreonChartWebViewSelection) -> Void)? = nil, onEvent: ((PyreonChartWebViewEvent) -> Void)? = nil, onError: ((PyreonChartWebViewError) -> Void)? = nil) {}
+public struct PyreonFlowWebViewSelection { public let id: String; public let data: Any? }
+public struct PyreonFlowWebViewViewport { public let x: Double; public let y: Double; public let zoom: Double }
+public struct PyreonFlowWebViewEvent { public let type: String; public let id: String?; public let data: Any?; public let source: String?; public let target: String?; public let viewport: PyreonFlowWebViewViewport? }
+public struct PyreonFlowWebViewError: Error { public let message: String }
+public func pyreonFlowWebViewData(graph: String, commands: String) -> String { graph }
+public func pyreonDispatchFlowWebViewMessage(_ message: String, onSelect: ((PyreonFlowWebViewSelection) -> Void)? = nil, onMessage: ((Any?) -> Void)? = nil, onEvent: ((PyreonFlowWebViewEvent) -> Void)? = nil, onError: ((PyreonFlowWebViewError) -> Void)? = nil) {}
 
 // ---- PyreonForm (@pyreon/form -> runtime-swift's PyreonForm, a final class) ----
 // The emit does @State private var form = PyreonForm(initialValues:validators:)

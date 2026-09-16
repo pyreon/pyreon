@@ -49,6 +49,48 @@ export const HANDLED_FLOW_HOST_PROPS: ReadonlySet<string> = new Set([
   'style', 'class', 'ariaLabel', 'colorMode', 'children',
 ])
 
+/** The public `@pyreon/flow/webview` component surface. Both emitters consume
+ * every entry; this set is source-ratcheted in native-flow-state.test.ts. */
+export const HANDLED_FLOW_WEBVIEW_PROPS: ReadonlySet<string> = new Set([
+  'graph', 'commands', 'onSelect', 'onMessage', 'onEvent', 'onError', 'html',
+  'nodeWidth', 'nodeHeight', 'nodeFill', 'nodeStroke', 'labelColor', 'edgeColor',
+  'background',
+])
+
+/** Every public supporting-component prop is lowered, consumed from native
+ * context, or diagnosed as an explicit browser-presentation boundary. */
+export const HANDLED_FLOW_COMPONENT_PROPS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ['BackgroundProps', new Set(['variant', 'gap', 'size', 'color'])],
+  ['MiniMapProps', new Set(['style', 'class', 'nodeColor', 'maskColor', 'width', 'height', 'pannable', 'zoomable'])],
+  ['ControlsProps', new Set(['instance', 'showZoomIn', 'showZoomOut', 'showFitView', 'showLock', 'position', 'children'])],
+  ['PanelProps', new Set(['position', 'style', 'class', 'children'])],
+  ['HandleProps', new Set(['type', 'position', 'id', 'offset', 'style', 'class'])],
+  ['NodeResizerProps', new Set(['nodeId', 'instance', 'minWidth', 'minHeight', 'handleSize', 'showEdgeHandles'])],
+  ['NodeToolbarProps', new Set(['position', 'offset', 'showOnSelect', 'selected', 'nodeId', 'align', 'style', 'class', 'children'])],
+  ['EdgeLabelRendererProps', new Set(['children'])],
+])
+
+/** Public runtime exports whose portable semantics are implemented by the
+ * native compiler/runtime pair. This inventory deliberately includes helpers,
+ * constants and enum-like values, not only JSX hosts. */
+export const LOWERED_FLOW_RUNTIME_EXPORTS: ReadonlySet<string> = new Set([
+  'Background', 'Controls', 'Flow', 'Handle', 'MiniMap', 'NodeResizer',
+  'NodeToolbar', 'EdgeLabelRenderer', 'Panel',
+  'DEFAULT_NODE_HEIGHT', 'DEFAULT_NODE_WIDTH', 'getBezierPath', 'getEdgePath',
+  'getEffectiveDimensions', 'getFloatingEndpoints', 'getHandlePosition',
+  'getNodeIntersection', 'getSmartHandlePositions', 'getSmoothStepPath',
+  'getStepPath', 'getStraightPath', 'getWaypointPath', 'resolveHandleAnchor',
+  'collectEdgeMarkers', 'DEFAULT_MARKER_END', 'markerId', 'resolveEdgeMarkers',
+  'resolveMarker', 'createFlow', 'useFlow', 'computeLayout', 'MarkerType',
+  'Position',
+])
+
+/** Public runtime exports that are intrinsically tied to the DOM renderer and
+ * must remain behind a web branch/host rather than being silently emitted. */
+export const WEB_ONLY_FLOW_RUNTIME_EXPORTS: ReadonlySet<string> = new Set([
+  'FlowLayersContext', 'flowStyles',
+])
+
 /** Mutable `FlowConfig` fields retained by both native state engines. */
 export const LOWERED_FLOW_CONFIG_PROPERTIES: ReadonlyMap<string, string> = new Map([
   ['defaultEdgeType', 'defaultEdgeType'], ['defaultEdgeOptions', 'defaultEdgeOptions'],

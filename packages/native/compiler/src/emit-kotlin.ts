@@ -16,6 +16,7 @@ import {
   unloweredFlowMemberWarning,
 } from './flow-lowering'
 import { CHART_WEBVIEW_HOST_PROPS, configureChartWebViewHost, legacyChartHostProp } from './chart-webview-lowering'
+import { DEFAULT_FLOW_WEBVIEW_HOST_HTML } from './generated-flow-webview-host'
 import {
   ICON_MAP,
   isCanonicalPrimitive,
@@ -199,6 +200,9 @@ let _attrsComponents: Map<string, AttrsComponentIR> = new Map()
 // Alias-tag local name → its import package. The Element/PyreonUI/Container/
 // Row/Col hooks intercept a tag ONLY when it resolves from its expected
 // @pyreon package, so a same-named user component isn't mis-lowered.
+// Alias-tag local name → its source + original imported symbol. Package hooks
+// intercept only an exact pair, so renamed imports work without mis-lowering a
+// same-named user component.
 let _aliasImports: Map<string, { source: string; imported: string }> = new Map()
 
 /**
@@ -7150,6 +7154,9 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (canAliasIntercept(tag, '@pyreon/charts', 'ChartWebView') && _aliasImports.get(tag)?.imported === 'ChartWebView') {
     return emitKotlinChartWebView(e)
   }
+  if (canAliasIntercept(tag, '@pyreon/flow', 'FlowWebView') && _aliasImports.get(tag)?.imported === 'FlowWebView') {
+    return emitKotlinFlowWebView(e)
+  }
   if (tag === 'Flow' && canAliasIntercept(tag, '@pyreon/flow')) return emitKotlinFlowHost(e)
   if (tag === 'Controls' && canAliasIntercept(tag, '@pyreon/flow')) return emitKotlinStandaloneFlowControls(e, indent)
   // `@pyreon/charts/plot` family hosts → PyreonChartCanvas over the generated
@@ -9047,6 +9054,67 @@ function emitKotlinChartWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): st
   })
   const onMessage = callbackArgs.length === 0 ? '' : `, onMessage = { pyreonMsg -> pyreonDispatchChartWebViewMessage(pyreonMsg, ${callbackArgs.join(', ')}) }`
   return `PyreonWebView(html = ${html}, data = ${data}${onMessage})`
+}
+
+function flowWebViewHostHtmlKotlin(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  let html = DEFAULT_FLOW_WEBVIEW_HOST_HTML
+  for (const prop of ['nodeWidth', 'nodeHeight', 'nodeFill', 'nodeStroke', 'labelColor', 'edgeColor', 'background']) {
+    const present = e.attrs.some((a) => a.kind === 'attr' && a.name === prop)
+    if (present && readStaticAttrKotlin(e, prop) === undefined) {
+      _emitWarnings.push(`<FlowWebView ${prop}={…}>: native host styling must be statically resolvable; using the documented default.`)
+    }
+  }
+  const nodeWidth = readStaticAttrKotlin(e, 'nodeWidth')
+  const nodeHeight = readStaticAttrKotlin(e, 'nodeHeight')
+  if (typeof nodeWidth === 'number' || typeof nodeHeight === 'number') {
+    html = html.replace(
+      'var NODE_W = 150, NODE_H = 44;',
+      `var NODE_W = ${typeof nodeWidth === 'number' && Number.isFinite(nodeWidth) ? nodeWidth : 150}, NODE_H = ${typeof nodeHeight === 'number' && Number.isFinite(nodeHeight) ? nodeHeight : 44};`,
+    )
+  }
+  const safeColor = (value: string): string => value.replace(/[^#a-zA-Z0-9(),.%\s-]/g, '')
+  const colors = [
+    ['nodeFill', '#ffffff'], ['nodeStroke', '#c9ced6'],
+    ['labelColor', '#1f2933'], ['edgeColor', '#98a2b3'],
+  ] as const
+  for (const [prop, fallback] of colors) {
+    const value = readStaticAttrKotlin(e, prop)
+    if (typeof value === 'string') html = html.replaceAll(fallback, safeColor(value))
+  }
+  const background = readStaticAttrKotlin(e, 'background')
+  if (typeof background === 'string') {
+    html = html.replace('background:transparent}', `background:${background.replace(/[<>"']/g, '')}}`)
+  }
+  return html
+}
+
+function emitKotlinFlowWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const graph = dynamicWebViewAttrKotlin(e, 'graph')
+  if (graph === undefined) _emitWarnings.push('<FlowWebView>: `graph` is required on native; emitting an empty host.')
+  const explicitHtml = dynamicWebViewAttrKotlin(e, 'html')
+  const generatedHtml = flowWebViewHostHtmlKotlin(e)
+  if (explicitHtml !== undefined) {
+    for (const prop of ['nodeWidth', 'nodeHeight', 'nodeFill', 'nodeStroke', 'labelColor', 'edgeColor', 'background']) {
+      if (e.attrs.some((a) => a.kind === 'attr' && a.name === prop)) {
+        _emitWarnings.push(`<FlowWebView html={…} ${prop}={…}>: ${prop} is ignored because custom host HTML owns its presentation.`)
+      }
+    }
+  }
+  const html = explicitHtml === undefined ? JSON.stringify(generatedHtml) : emitKotlinExpr(explicitHtml, 0)
+  const graphJson = graph === undefined ? '"{\\"nodes\\":[],\\"edges\\":[]}"' : kotlinWebViewDataArg(graph)
+  const commands = dynamicWebViewAttrKotlin(e, 'commands')
+  const data = commands === undefined
+    ? graphJson
+    : `pyreonFlowWebViewData(graph = ${graphJson}, commands = ${kotlinWebViewDataArg(commands)})`
+  const callbacks = ['select', 'message', 'event', 'error'] as const
+  const callbackArgs = callbacks.flatMap((name) => {
+    const attr = e.attrs.find((a) => a.kind === 'event' && a.name === name)
+    return attr?.kind === 'event' ? [`on${name[0]!.toUpperCase()}${name.slice(1)} = ${emitKotlinMessageHandler(attr.handler)}`] : []
+  })
+  const onMessage = callbackArgs.length === 0
+    ? undefined
+    : `onMessage = { pyreonMsg -> pyreonDispatchFlowWebViewMessage(pyreonMsg, ${callbackArgs.join(', ')}) }`
+  return `PyreonWebView(html = ${html}, data = ${data}${onMessage ? `, ${onMessage}` : ''})`
 }
 
 /**

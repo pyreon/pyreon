@@ -1,4 +1,5 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { INDEX_PAGE_SIZE } from '../anti-patterns'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { createServer } from '../index'
 
@@ -103,8 +104,10 @@ describe('MCP token budgets', () => {
       const entryCount = Number(text.match(/\((\d+) total/)?.[1] ?? NaN)
       expect(entryCount).toBeGreaterThan(0) // header shape is load-bearing
       const lines = text.split('\n').filter((l) => l.startsWith('- '))
-      expect(lines.length).toBe(entryCount) // one index line per entry
-      expect(tok(text) / entryCount).toBeLessThan(55)
+      // One index line per entry ON THIS PAGE (the header's count is the
+      // whole catalog; the index is paginated at INDEX_PAGE_SIZE).
+      expect(lines.length).toBe(Math.min(entryCount, INDEX_PAGE_SIZE))
+      expect(tok(text) / lines.length).toBeLessThan(55)
       const maxLine = Math.max(...lines.map((l) => tok(l)))
       expect(maxLine).toBeLessThan(100)
     })
