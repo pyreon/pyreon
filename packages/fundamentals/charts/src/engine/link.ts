@@ -36,12 +36,21 @@ export type ChartAction =
   | { type: 'legendToggle'; series: number }
   | { type: 'dataZoom'; start: number; end: number }
   | { type: 'restore' }
+  /** ECharts' tooltip actions in this engine's terms: the crosshair datum (same space as `highlight`). */
+  | { type: 'showTip'; index: number }
+  | { type: 'hideTip' }
+  /** Show every series. */
+  | { type: 'legendAllSelect' }
+  /** Flip every series; `count` overrides the bound chart's series count (needed with no chart bound). */
+  | { type: 'legendInverseSelect'; count?: number }
 
 export interface ChartHandle extends ChartLink {
   /** Pinned datums (GLOBAL indices), in selection order. */
   selected: Signal<number[]>
   /** Hidden series, by mark index — what a legend click toggles. */
   hidden: Signal<number[]>
+  /** The bound chart's series count, kept by the chart (0 until one binds) — what `legendInverseSelect` flips over. */
+  seriesCount: Signal<number>
   /** Apply an action; every write lands in one batch, so the chart repaints once. */
   dispatch(action: ChartAction): void
 }
@@ -77,15 +86,29 @@ export function createChartHandle(): ChartHandle {
   const hover = signal(-1)
   const selected = signal<number[]>([])
   const hidden = signal<number[]>([])
+  const seriesCount = signal(0)
   const dispatch = (a: ChartAction): void =>
     batch(() => {
       switch (a.type) {
         case 'highlight':
+        case 'showTip':
           hover.set(a.index)
           break
         case 'downplay':
+        case 'hideTip':
           hover.set(-1)
           break
+        case 'legendAllSelect':
+          if (hidden().length > 0) hidden.set([])
+          break
+        case 'legendInverseSelect': {
+          const n = a.count ?? seriesCount()
+          const was = hidden()
+          const next: number[] = []
+          for (let i = 0; i < n; i++) if (!was.includes(i)) next.push(i)
+          hidden.set(next)
+          break
+        }
         case 'select':
           if (!selected().includes(a.index)) selected.set([...selected(), a.index])
           break
@@ -117,5 +140,5 @@ export function createChartHandle(): ChartHandle {
           break
       }
     })
-  return { zoom, hover, selected, hidden, dispatch }
+  return { zoom, hover, selected, hidden, seriesCount, dispatch }
 }

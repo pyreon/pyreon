@@ -676,7 +676,7 @@ export function Plot<T>(props: PlotProps<T>): VNodeChild {
   const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize'] as const
   for (const key of forwarded) plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key] ?? (resolved().props as Record<string, unknown>)[key])
   // Every other `<PlotChart>` prop, the events/actions model included — the grammar reaches the whole host.
-  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'emphasis', 'seriesLabels', 'toolbox', 'onSaveImage', 'locale'] as const) {
+  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'seriesLabels', 'toolbox', 'onSaveImage', 'locale'] as const) {
     plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key])
   }
   // `onSelect` and `onSelectIndex` are one callback on the plot host.

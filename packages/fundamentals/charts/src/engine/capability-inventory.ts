@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.10' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.11' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -82,8 +82,9 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('runtime.renderer-options', 'runtime', 'hosted', 'complete', 'src/webview.ts'),
   row('runtime.extension-registration', 'runtime', 'hosted', 'complete', 'src/tests/webview.test.ts'),
   row('runtime.option-updates', 'runtime', 'direct', 'complete', 'src/engine/OptionChart.tsx'),
+  // Still missing: brush, timelineChange / timelinePlayChange, selectDataRange, the roam actions.
   row('runtime.actions', 'runtime', 'direct', 'partial', 'src/engine/link.ts'),
-  row('runtime.events', 'runtime', 'direct', 'partial', 'src/engine/events-actions.browser.test.tsx'),
+  row('runtime.events', 'runtime', 'direct', 'complete', 'src/engine/events-actions.browser.test.tsx'),
   row('runtime.connected-groups', 'runtime', 'direct', 'complete', 'src/engine/link.ts'),
   row('runtime.resize', 'runtime', 'direct', 'complete', 'src/engine/canvas-host.tsx'),
 

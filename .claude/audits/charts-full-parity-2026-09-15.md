@@ -69,6 +69,15 @@ for interaction, animation or accessibility parity.
   `<WebView>` host group (web iframes, WKWebViews, Android WebViews all speak
   the same reserved protocol); real-Chromium proof across separate pages,
   compiler proof on both targets. Hosted ledger: 11/11.
+- [x] C4 `runtime.events` (direct) complete: `onClick` / `onDoubleClick` /
+  `onContextMenu` (datum under the pointer, -1 for a miss, whatever
+  `selectedMode` says) and `onRendered` join `onSelect` / `onHighlight` /
+  `onLegendChange` / `onZoom` / `onBrush`, proven in real Chromium; they are
+  named as web-only on native (a tap is a pick, a native canvas has no paint
+  callback). `runtime.actions` gains `showTip` / `hideTip` /
+  `legendAllSelect` / `legendInverseSelect` (the handle now tracks the bound
+  chart's series count) and stays partial on brush / timeline / visualMap /
+  roam actions.
 - [x] C1 `data.option-merge` and `data.progressive-large` complete: the merge
   policy speaks `setOption`'s spelling (`notMerge`, a true `replaceMerge`,
   `lazyUpdate`, `silent`); `sampling` / `large` / `progressive` resolve to

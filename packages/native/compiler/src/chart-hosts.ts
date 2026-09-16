@@ -2729,6 +2729,10 @@ const PLOT_UNLOWERED_REASON: Readonly<Record<string, string>> = {
   // Each of these names what is MISSING, because "not lowered" without that
   // reads as impossible when it is merely unbuilt.
   emphasis: 'it is the HOVER band (`mouseover`/`mouseout`), and a touch target has no hover state to draw it for — the same wall `crosshair` hits. The engine\'s `ChartSpec.emphasis` does cross and IS fed on native, by `selectedMode`: a tap pins a datum and the pinned outline draws. What stays web-only is the hover half',
+  onClick: 'it reports a DOM click by datum; on native a tap is a pick, which is `onSelect`',
+  onDoubleClick: 'it reports a DOM double-click by datum; the native canvas has the tap gesture only',
+  onContextMenu: 'it reports a DOM context-menu gesture by datum; the native canvas has the tap gesture only',
+  onRendered: 'it follows a canvas paint; the SwiftUI / Compose canvas draws with no paint callback to hand back',
   onHighlight: 'it reports the HOVERED datum and -1 when the pointer leaves, so a touch target has nothing to report — a tap is a pick, which is `onSelect`. Firing this on tap would report a hover that did not happen',
 }
 
@@ -2745,4 +2749,4 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
 // `updateAnimation`, `updateDuration`, `toolbox`, `onSaveImage`,
 // `accessibleTable`) are reported through `chartChromeUnlowered` for the plot
 // host too — listing them here as well would warn twice.
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'onHighlight', 'emphasis', 'crosshair', 'link', 'keyboard', 'toolbox', 'onSaveImage', 'accessibleTable', 'facet', 'facetColumns']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'onHighlight', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'crosshair', 'link', 'keyboard', 'toolbox', 'onSaveImage', 'accessibleTable', 'facet', 'facetColumns']

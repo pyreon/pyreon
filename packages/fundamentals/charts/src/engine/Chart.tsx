@@ -125,6 +125,18 @@ export interface PlotChartProps<T> {
   /** Fired with the zoom window (fractions; null = everything) whenever it changes — wheel, pan, navigator, preset, dispatch (ECharts `datazoom`). */
   onZoom?: (window: { start: number; end: number } | null) => void
   /**
+   * A click on the plot — the GLOBAL datum index under the pointer, -1 for a
+   * miss. Fires whatever `selectedMode` says (a pick is `onSelect`); the
+   * ECharts `click` event in this engine's index space.
+   */
+  onClick?: (index: number) => void
+  /** A double-click on the plot, same index space as `onClick` (ECharts `dblclick`). With `dataZoom` the window still resets. */
+  onDoubleClick?: (index: number) => void
+  /** A context-menu gesture on the plot, same index space as `onClick` (ECharts `contextmenu`); the menu is not suppressed. */
+  onContextMenu?: (index: number) => void
+  /** After every paint of the canvas (ECharts `rendered` / `finished` — this engine paints in one pass). */
+  onRendered?: () => void
+  /**
    * Hover emphasis: the highlighted datum's column gets a faint band, its
    * bars and points an outline. On by default when the events model is in
    * play (`selectedMode`, `handle` or `onHighlight`); `false` keeps the
@@ -602,6 +614,12 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     props.xFormat ?? (props.locale === undefined ? undefined : props.xTime === true ? localeFmts(props.locale).date : undefined)
 
   const buildSpec = (allRows: T[], w: Double, hgt: Double): ChartSpec => {
+    const built = buildSpecInner(allRows, w, hgt)
+    // The handle's `legendInverseSelect` flips over the series the chart drew.
+    if (props.handle !== undefined && props.handle.seriesCount.peek() !== built.series.length) props.handle.seriesCount.set(built.series.length)
+    return built
+  }
+  const buildSpecInner = (allRows: T[], w: Double, hgt: Double): ChartSpec => {
     const off = viewRange(allRows).from
     const visible = viewRows(allRows)
     const keep = decimateRows(visible)
@@ -815,6 +833,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     lastW = w
     lastH = hgt
     paint(ctx, painted, w, hgt, FONT)
+    if (props.onRendered !== undefined) untrack(() => props.onRendered!())
   }
 
   // The navigator's series over ALL rows, resolved once per data change (the
@@ -1369,7 +1388,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
         return
       }
     }
-    if (props.onSelect === undefined && props.onSelectIndex === undefined && props.selectedMode === undefined) return
+    if (props.onSelect === undefined && props.onSelectIndex === undefined && props.selectedMode === undefined && props.onClick === undefined) return
     const f = frameNow()
     if (f === null) return
     const rect = el.getBoundingClientRect()
@@ -1382,8 +1401,20 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // there is no separate loop here to keep in sync with it.
     const off = viewRange(readData()).from
     const idx = plotHitBarsIn(f.spec, f.layout, px, py)
-    pickDatum(idx < 0 ? idx : globalOf(idx, off))
+    const global = idx < 0 ? idx : globalOf(idx, off)
+    if (props.onClick !== undefined) props.onClick(global)
+    pickDatum(global)
   })
+
+  /** The GLOBAL datum under a pointer event, -1 for a miss — what `onDoubleClick` / `onContextMenu` report. */
+  const datumOfEvent = (ev: MouseEvent): number => {
+    const el = canvas
+    const f = frameNow()
+    if (el === null || f === null) return -1
+    const rect = el.getBoundingClientRect()
+    const idx = plotHitBarsIn(f.spec, f.layout, localX(ev.clientX, rect) - leftOffset, ev.clientY - rect.top - topOffset)
+    return idx < 0 ? idx : globalOf(idx, viewRange(readData()).from)
+  }
 
   // The a11y input is read by the description, the table and every keystroke;
   // resolving the marks over all rows each time was a full O(N) pass per read.
@@ -1480,7 +1511,16 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     'data-pyreon-hover': () => String(hoverIdx()),
     'data-pyreon-selected': () => selected().join(','),
     ...(keyboardOn ? { tabIndex: 0, onKeyDown: handleKeyDown, onBlur: () => batch(() => { focusIdx.set(-1); announce.set('') }) } : {}),
-    ...(props.dataZoom === true ? { onWheel: handleWheel, onDblClick: () => zoomWin.set(null) } : {}),
+    ...(props.dataZoom === true ? { onWheel: handleWheel } : {}),
+    ...(props.dataZoom === true || props.onDoubleClick !== undefined
+      ? {
+          onDblClick: (ev: MouseEvent) => {
+            if (props.dataZoom === true) zoomWin.set(null)
+            if (props.onDoubleClick !== undefined) props.onDoubleClick(datumOfEvent(ev))
+          },
+        }
+      : {}),
+    ...(props.onContextMenu !== undefined ? { onContextMenu: (ev: MouseEvent) => props.onContextMenu!(datumOfEvent(ev)) } : {}),
     // Pointer events, not mouse events: a finger drags, pans, brushes and
     // pinches exactly as a mouse does — and the tooltip follows a touch.
     ...(props.dataZoom === true || props.brush === true || props.navigator === true
