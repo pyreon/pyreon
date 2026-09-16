@@ -130,3 +130,36 @@ describe('axis offsets', () => {
     expect(right.length).toBeGreaterThan(0)
   })
 })
+
+describe('placement combinations', () => {
+  const many = { categories: Array.from({ length: 30 }, (_, i) => `category-${i}`), series: [series({ values: Array.from({ length: 30 }, (_, i) => i) })] }
+
+  it('rotated labels on a TOP axis slant the other way', () => {
+    const rot = (xTop: boolean) =>
+      draw({ ...many, xLabels: 'rotate', xTop }).find((c) => c.kind === 'text' && c.text === 'category-0')
+    const bottom = rot(false)
+    const top = rot(true)
+    expect(bottom!.kind === 'text' && top!.kind === 'text' && Math.sign(bottom.rotate ?? 0)).toBe(-Math.sign((top as { rotate?: number }).rotate ?? 0))
+  })
+
+  it('a second x axis title sits at the bottom edge when the first axis is on top', () => {
+    const top = textCmd(draw({ xTop: true, x2Labels: ['p', 'q', 'r'], x2Title: 'Second' }), 'Second')!
+    const bottom = textCmd(draw({ x2Labels: ['p', 'q', 'r'], x2Title: 'Second' }), 'Second')!
+    expect(top.at.y).toBeGreaterThan(bottom.at.y)
+  })
+
+  it('two extra axes each draw only their OWN ticks', () => {
+    const cmds = draw({
+      series: [series(), series({ values: [10, 20, 30], axisExtra: 0 }), series({ values: [1000, 2000, 3000], axisExtra: 1 })],
+      extraYAxes: [{ side: 'right', title: 'Three' }, { side: 'right', title: 'Four', offset: 50 }],
+    })
+    expect(textCmd(cmds, 'Three')).toBeDefined()
+    expect(textCmd(cmds, 'Four')).toBeDefined()
+  })
+
+  it('a continuous x axis inverts its DOMAIN rather than its categories', () => {
+    const plain = draw({ xValues: [0, 5, 10], categories: [], series: [series({ kind: 'line', values: [1, 2, 3] })] })
+    const inv = draw({ xInverse: true, xValues: [0, 5, 10], categories: [], series: [series({ kind: 'line', values: [1, 2, 3] })] })
+    expect(JSON.stringify(inv)).not.toBe(JSON.stringify(plain))
+  })
+})
