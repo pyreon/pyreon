@@ -77,6 +77,21 @@ for interaction, animation or accessibility parity.
   transpose exists three times (web `transposeCmds`, `pyreonTransposeCmds` in
   both runtimes) and is locked by execution like the RTL mirror. Rows
   `series.sankey`, `coordinates.calendar`, `coordinates.parallel` complete.
+- [x] `encode.tooltip` (web): the dataset columns named by `encode.tooltip`
+  become `Series.extras` (numbers as values, texts as text); the engine's
+  `tooltipAt` lists them under the value and the accessible table prints one
+  column per extra, so the reader who cannot hover gets the same numbers.
+  Both are generated into the native engines and the emitters carry
+  `extras` through `TooltipSeries`.
+- [ ] Ledger honesty: the four dataset-pipeline rows (`data.dataset`,
+  `data.dimensions-encode`, `data.transforms`, `data.progressive-large`) were
+  marked complete on the strength of the web facade, but the native
+  `<OptionChart>` desugar takes literal series data only — `option.dataset`,
+  `encode`, transforms and `sampling` are named as not crossing and the chart
+  emits nothing. They are `partial` now, with the reason on the row. Closing
+  them means resolving a literal dataset (source + dimensions + encode +
+  the built-in filter/sort transforms) at compile time in the desugar;
+  registered transforms and `sampling` would still need a runtime path.
 - [ ] `presentation.gradients-patterns`: ECharts' LINEAR gradient objects on
   every colour slot now resolve to the series gradient (direction from the
   dominant axis, a backwards ramp reverses its stops, the first stop is the

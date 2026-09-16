@@ -300,7 +300,8 @@ public struct Series {
   public var errLow: [Double]? = nil
   public var errHigh: [Double]? = nil
   public var values2: [Double]? = nil
-  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil) {
+  public var extras: [SeriesExtra]? = nil
+  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil, extras: [SeriesExtra]? = nil) {
     self.kind = kind
     self.values = values
     self.color = color
@@ -323,6 +324,18 @@ public struct Series {
     self.errLow = errLow
     self.errHigh = errHigh
     self.values2 = values2
+    self.extras = extras
+  }
+}
+
+public struct SeriesExtra: Codable {
+  public var label: String
+  public var numbers: [Double]? = nil
+  public var texts: [String]? = nil
+  public init(label: String, numbers: [Double]? = nil, texts: [String]? = nil) {
+    self.label = label
+    self.numbers = numbers
+    self.texts = texts
   }
 }
 
@@ -2149,12 +2162,14 @@ public struct TooltipRow: Codable {
   public var color: String
   public var value2: Double? = nil
   public var size: Double? = nil
-  public init(label: String, value: Double, color: String, value2: Double? = nil, size: Double? = nil) {
+  public var text: String? = nil
+  public init(label: String, value: Double, color: String, value2: Double? = nil, size: Double? = nil, text: String? = nil) {
     self.label = label
     self.value = value
     self.color = color
     self.value2 = value2
     self.size = size
+    self.text = text
   }
 }
 
@@ -2173,12 +2188,14 @@ public struct TooltipSeries: Codable {
   public var color: String
   public var values2: [Double]? = nil
   public var rValues: [Double]? = nil
-  public init(label: String, values: [Double], color: String, values2: [Double]? = nil, rValues: [Double]? = nil) {
+  public var extras: [SeriesExtra]? = nil
+  public init(label: String, values: [Double], color: String, values2: [Double]? = nil, rValues: [Double]? = nil, extras: [SeriesExtra]? = nil) {
     self.label = label
     self.values = values
     self.color = color
     self.values2 = values2
     self.rValues = rValues
+    self.extras = extras
   }
 }
 
@@ -2299,7 +2316,8 @@ public struct A11ySeries: Codable {
   public var errLow: [Double]? = nil
   public var errHigh: [Double]? = nil
   public var rValues: [Double]? = nil
-  public init(label: String, values: [Double], kind: String, values2: [Double]? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, rValues: [Double]? = nil) {
+  public var extras: [SeriesExtra]? = nil
+  public init(label: String, values: [Double], kind: String, values2: [Double]? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, rValues: [Double]? = nil, extras: [SeriesExtra]? = nil) {
     self.label = label
     self.values = values
     self.kind = kind
@@ -2307,6 +2325,7 @@ public struct A11ySeries: Codable {
     self.errLow = errLow
     self.errHigh = errHigh
     self.rValues = rValues
+    self.extras = extras
   }
 }
 
@@ -8986,6 +9005,23 @@ public func tooltipAt(_ index: Int, _ categories: [String], _ series: [TooltipSe
         }
       }
       rows.append(row)
+      let extras = (s.extras ?? [])
+      for e in extras {
+        let nums = (e.numbers ?? [])
+        let strs = (e.texts ?? [])
+        if index < nums.count {
+          let ev = nums[index]
+          if isFiniteNumber(ev) {
+            let numRow = TooltipRow(label: e.label, value: ev, color: s.color)
+            rows.append(numRow)
+          }
+        } else {
+          if index < strs.count {
+            let textRow = TooltipRow(label: e.label, value: 0.0 / 0.0, color: s.color, text: strs[index])
+            rows.append(textRow)
+          }
+        }
+      }
     }
     return TooltipContent(title: (categories[index] ?? "\(index + 1)"), rows: rows)
   }
@@ -8996,13 +9032,18 @@ public func tooltipLines(_ c: TooltipContent, _ format: ((Double) -> String)? = 
     for r in c.rows {
       let lo = (r.value2 ?? (0.0 / 0.0))
       let sz = (r.size ?? (0.0 / 0.0))
+      let txt = (r.text ?? "")
       if lo == lo {
         out.append("\(r.label): \(fmt(lo)) to \(fmt(r.value))")
       } else {
         if sz == sz {
           out.append("\(r.label): \(fmt(r.value)) (size \(fmt(sz)))")
         } else {
-          out.append("\(r.label): \(fmt(r.value))")
+          if r.value != r.value {
+            out.append("\(r.label): \(txt)")
+          } else {
+            out.append("\(r.label): \(fmt(r.value))")
+          }
         }
       }
     }
@@ -9788,6 +9829,10 @@ public func chartTable(_ input: A11yInput) -> A11yTable {
       if rs.count > 0 {
         headers.append("\(s.label) (size)")
       }
+      let extras = (s.extras ?? [])
+      for e in extras {
+        headers.append("\(s.label) (\(e.label))")
+      }
     }
     var n = input.categories.count
     for s in input.series {
@@ -9803,12 +9848,16 @@ public func chartTable(_ input: A11yInput) -> A11yTable {
         let rs = (s.rValues ?? [])
         let two = other.count > 0
         let sized = rs.count > 0
+        let extras = (s.extras ?? [])
         if i >= s.values.count {
           row.append("")
           if two {
             row.append("")
           }
           if sized {
+            row.append("")
+          }
+          for k in 0..<extras.count {
             row.append("")
           }
           continue
@@ -9829,6 +9878,20 @@ public func chartTable(_ input: A11yInput) -> A11yTable {
           } else {
             let r = rs[i]
             row.append(isFiniteNumber(r) ? fmt(r) : "")
+          }
+        }
+        for e in extras {
+          let nums = (e.numbers ?? [])
+          let strs = (e.texts ?? [])
+          if i < nums.count {
+            let ev = nums[i]
+            row.append(isFiniteNumber(ev) ? fmt(ev) : "")
+          } else {
+            if i < strs.count {
+              row.append(strs[i])
+            } else {
+              row.append("")
+            }
           }
         }
       }

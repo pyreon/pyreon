@@ -108,8 +108,10 @@ describe('dataset transforms', () => {
       expect((named.option['series'] as Record<string, unknown>[])[0]!['name']).toBe('Mine')
       expect((named.option['series'] as Record<string, unknown>[])[0]!['data']).toEqual([5, 9, 1, 7])
       expect(named.warnings.map((w) => w.path)).toEqual(['series[0].encode.itemName'])
-      const tip = resolveDataset({ dataset: src, series: [{ type: 'bar', encode: { y: 'score', tooltip: ['score', 'team'] } }] })
-      expect(tip.warnings.map((w) => w.code + ' ' + w.path)).toEqual(['option-key-unsupported series[0].encode.tooltip'])
+      // encode.tooltip: each named dimension becomes a tooltip extra — numbers as values, texts as texts.
+      const tip = resolveDataset({ dataset: src, series: [{ type: 'bar', encode: { y: 'score', tooltip: ['score', 'team', 'nope'] } }] })
+      expect(tip.warnings.map((w) => w.code + ' ' + w.path)).toEqual(['series-data-shape series[0].encode.tooltip'])
+      expect((tip.option['series'] as Record<string, unknown>[])[0]!['tooltipExtras']).toEqual([{ label: 'score', numbers: [5, 9, 1, 7] }, { label: 'team', texts: ['x', 'y', 'x', 'y'] }])
     } finally {
       unregisterChartTransform('test:split')
     }

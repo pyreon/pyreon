@@ -95,7 +95,9 @@ onto them — `median`, `[from, to]` pairs, category-named `coord`s, per-mark
 `lineStyle` / `itemStyle` colours and `symbolSize` — on web, iOS and Android. **`bubble`** maps its r
 channel by AREA, not radius — radius-proportional bubbles exaggerate the data.
 **`bars(y, { showValues: true })`** labels each bar with its formatted value.
-**Gradients**: a mark's `gradient: { stops, direction }` ramps its fill across
+**Tooltip extras**: a series' `extras: [{ label, numbers | texts }]` lists extra
+dimensions under the value in the tooltip and as columns of the accessible
+table — the option facade's `encode.tooltip` over a dataset. **Gradients**: a mark's `gradient: { stops, direction }` ramps its fill across
 the plot; the option facade reads ECharts' linear gradient objects on
 `itemStyle` / `areaStyle` / `lineStyle` / series `color` (a radial gradient
 warns and degrades to its first stop). **Symbols**: `points(y, { symbol: 'diamond' })` draws every datum as that

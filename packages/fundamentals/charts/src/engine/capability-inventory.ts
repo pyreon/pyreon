@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.18' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.19' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -31,11 +31,15 @@ const row = (
 
 export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('data.option-merge', 'data', 'direct', 'complete', 'src/engine/option-composite.test.ts'),
-  row('data.dataset', 'data', 'direct', 'complete', 'src/engine/option-layer.ts'),
-  row('data.dimensions-encode', 'data', 'direct', 'partial', 'src/engine/option-layer.ts'), // encode.tooltip
-  row('data.transforms', 'data', 'direct', 'complete', 'src/engine/option-transform.test.ts'),
+  // The four dataset-pipeline rows resolve on the WEB facade; the native
+  // OptionChart takes literal series data only (`option.dataset`, `encode`,
+  // transforms and `sampling` are named as not crossing). Partial until the
+  // desugar resolves a literal dataset at compile time.
+  row('data.dataset', 'data', 'direct', 'partial', 'src/engine/option-layer.ts'),
+  row('data.dimensions-encode', 'data', 'direct', 'partial', 'src/engine/option-encode-tooltip.test.ts'), // web complete incl. encode.tooltip; native: see above
+  row('data.transforms', 'data', 'direct', 'partial', 'src/engine/option-transform.test.ts'), // web complete; native: see above
   // sampling / large / progressive resolve to bounded decimation on shared rows.
-  row('data.progressive-large', 'data', 'direct', 'complete', 'src/engine/option-sampling.test.ts'),
+  row('data.progressive-large', 'data', 'direct', 'partial', 'src/engine/option-sampling.test.ts'), // web complete; native decimation is `<PlotChart maxPoints>`, the option spellings do not cross
   row('data.empty-null', 'data', 'direct', 'complete', 'src/engine/gaps.test.ts'),
 
   ...[

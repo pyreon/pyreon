@@ -90,6 +90,26 @@ export interface Series {
    * region" the same request.
    */
   values2?: Double[] | undefined
+  /**
+   * Extra per-datum dimensions the TOOLTIP shows under the value — ECharts'
+   * `encode.tooltip`: a dataset's other columns for the hovered row. Drawn by
+   * nothing; read by `tooltipAt` only.
+   */
+  extras?: SeriesExtra[] | undefined
+}
+
+/**
+ * One extra tooltip dimension: a label and either numbers or texts, one per
+ * datum. Two optional arrays rather than a union — a mixed string/number
+ * array has no native form. Named `numbers`, not `values`: struct selection
+ * matches object literals by field NAMES, and `{ label, values }` is the
+ * shape of every plain series literal in the engine — this type must not be
+ * what a `{ label: 'A', values: [80, 60] }` radar row resolves to.
+ */
+export interface SeriesExtra {
+  label: string
+  numbers?: Double[] | undefined
+  texts?: string[] | undefined
 }
 
 /**

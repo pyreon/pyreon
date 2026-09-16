@@ -56,7 +56,9 @@ data class StackSegment(var rect: PyreonChartRect, var seriesIndex: Int, var dat
 
 data class WaterfallStep(var rect: PyreonChartRect, var datumIndex: Int, var value: Double, var start: Double, var end: Double)
 
-data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null)
+data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null, var extras: List<SeriesExtra>? = null)
+
+data class SeriesExtra(var label: String, var numbers: List<Double>? = null, var texts: List<String>? = null)
 
 data class Annotation(var y: Double? = null, var x: Double? = null, var yFrom: Double? = null, var yTo: Double? = null, var xFrom: Double? = null, var xTo: Double? = null, var x1: Double? = null, var y1: Double? = null, var x2: Double? = null, var y2: Double? = null, var label: String? = null, var color: String? = null)
 
@@ -284,11 +286,11 @@ data class LegendPlacement(var cmds: List<PyreonDrawCmd>, var top: Double, var b
 
 data class Size(var w: Double, var h: Double)
 
-data class TooltipRow(var label: String, var value: Double, var color: String, var value2: Double? = null, var size: Double? = null)
+data class TooltipRow(var label: String, var value: Double, var color: String, var value2: Double? = null, var size: Double? = null, var text: String? = null)
 
 data class TooltipContent(var title: String, var rows: List<TooltipRow>)
 
-data class TooltipSeries(var label: String, var values: List<Double>, var color: String, var values2: List<Double>? = null, var rValues: List<Double>? = null)
+data class TooltipSeries(var label: String, var values: List<Double>, var color: String, var values2: List<Double>? = null, var rValues: List<Double>? = null, var extras: List<SeriesExtra>? = null)
 
 data class TooltipOptions(var fontSize: Double, var fill: String, var border: String, var text: String, var pad: Double, var radius: Double)
 
@@ -308,7 +310,7 @@ data class BrushRange(var start: Int, var end: Int)
 
 data class BrushBand(var visible: Boolean, var lo: Double, var hi: Double)
 
-data class A11ySeries(var label: String, var values: List<Double>, var kind: String, var values2: List<Double>? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var rValues: List<Double>? = null)
+data class A11ySeries(var label: String, var values: List<Double>, var kind: String, var values2: List<Double>? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var rValues: List<Double>? = null, var extras: List<SeriesExtra>? = null)
 
 data class A11yInput(var title: String? = null, var categories: List<String>, var series: List<A11ySeries>, var format: ((Double) -> String)? = null)
 
@@ -6959,6 +6961,23 @@ fun tooltipAt(index: Int, categories: List<String>, series: List<TooltipSeries>)
         }
       }
       rows.add(row)
+      val extras = (s.extras ?: listOf())
+      for (e in extras) {
+        val nums = (e.numbers ?: listOf())
+        val strs = (e.texts ?: listOf())
+        if (index < nums.length) {
+          val ev = nums[index]
+          if (isFiniteNumber(ev)) {
+            val numRow = TooltipRow(label = e.label, value = ev, color = s.color)
+            rows.add(numRow)
+          }
+        } else {
+          if (index < strs.length) {
+            val textRow = TooltipRow(label = e.label, value = (0.0).toDouble() / (0.0).toDouble(), color = s.color, text = strs[index])
+            rows.add(textRow)
+          }
+        }
+      }
     }
     return TooltipContent(title = (categories[index] ?: "${index + 1}"), rows = rows)
   }
@@ -6969,13 +6988,18 @@ fun tooltipLines(c: TooltipContent, format: ((Double) -> String)? = null): List<
     for (r in c.rows) {
       val lo = (r.value2 ?: ((0.0).toDouble() / (0.0).toDouble()))
       val sz = (r.size ?: ((0.0).toDouble() / (0.0).toDouble()))
+      val txt = (r.text ?: "")
       if (lo == lo) {
         out.add("${r.label}: ${fmt(lo)} to ${fmt(r.value)}")
       } else {
         if (sz == sz) {
           out.add("${r.label}: ${fmt(r.value)} (size ${fmt(sz)})")
         } else {
-          out.add("${r.label}: ${fmt(r.value)}")
+          if (r.value != r.value) {
+            out.add("${r.label}: ${txt}")
+          } else {
+            out.add("${r.label}: ${fmt(r.value)}")
+          }
         }
       }
     }
@@ -7761,6 +7785,10 @@ fun chartTable(input: A11yInput): A11yTable {
       if (rs.length > 0) {
         headers.add("${s.label} (size)")
       }
+      val extras = (s.extras ?: listOf())
+      for (e in extras) {
+        headers.add("${s.label} (${e.label})")
+      }
     }
     var n = input.categories.length
     for (s in input.series) {
@@ -7776,12 +7804,16 @@ fun chartTable(input: A11yInput): A11yTable {
         val rs = (s.rValues ?: listOf())
         val two = other.length > 0
         val sized = rs.length > 0
+        val extras = (s.extras ?: listOf())
         if (i >= s.values.length) {
           row.add("")
           if (two) {
             row.add("")
           }
           if (sized) {
+            row.add("")
+          }
+          for (k in 0 until extras.length) {
             row.add("")
           }
           continue
@@ -7802,6 +7834,20 @@ fun chartTable(input: A11yInput): A11yTable {
           } else {
             val r = rs[i]
             row.add(if (isFiniteNumber(r)) fmt(r) else "")
+          }
+        }
+        for (e in extras) {
+          val nums = (e.numbers ?: listOf())
+          val strs = (e.texts ?: listOf())
+          if (i < nums.length) {
+            val ev = nums[i]
+            row.add(if (isFiniteNumber(ev)) fmt(ev) else "")
+          } else {
+            if (i < strs.length) {
+              row.add(strs[i])
+            } else {
+              row.add("")
+            }
           }
         }
       }

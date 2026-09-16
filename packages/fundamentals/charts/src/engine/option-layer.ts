@@ -370,11 +370,24 @@ export function resolveDataset(option: EChartsOptionLike): { option: EChartsOpti
     const enc = isObj(sRaw['encode']) ? sRaw['encode'] : {}
     const type = typeof sRaw['type'] === 'string' ? (sRaw['type'] as string) : ''
     const col = (v: unknown[] | undefined | unknown, fallback: number): number | null => dimIndex(t!, Array.isArray(v) ? v[0] : v) ?? (fallback < t!.dims.length ? fallback : null)
-    // `encode.tooltip` picks the dimensions the tooltip shows; the tooltip does
-    // not read per-datum extras yet, so the intent is named rather than dropped.
-    if (enc['tooltip'] !== undefined) {
-      warnings.push({ code: 'option-key-unsupported', path: 'series[' + String(si) + '].encode.tooltip', message: 'encode.tooltip is not mapped yet; the tooltip shows the encoded value.' })
+    // `encode.tooltip` picks the dimensions the tooltip shows under the value:
+    // each named column becomes a `tooltipExtras` entry the facade hands to
+    // the engine's `Series.extras` (numbers as values, anything else as text).
+    // An unknown dimension warns by name and is skipped.
+    const tipDims = enc['tooltip'] === undefined ? [] : Array.isArray(enc['tooltip']) ? (enc['tooltip'] as unknown[]) : [enc['tooltip']]
+    const tooltipExtras: { label: string; numbers?: number[]; texts?: string[] }[] = []
+    for (const ref of tipDims) {
+      const c = dimIndex(t, ref)
+      if (c === null) {
+        warnings.push({ code: 'series-data-shape', path: 'series[' + String(si) + '].encode.tooltip', message: 'Unknown dataset dimension "' + String(ref) + '"; the tooltip skips it.' })
+        continue
+      }
+      const cells = t.rows.map((r) => r[c])
+      const label = t.dims[c] ?? String(ref)
+      if (cells.every((v) => num(v) !== null)) tooltipExtras.push({ label, numbers: cells.map((v) => num(v) as number) })
+      else tooltipExtras.push({ label, texts: cells.map((v) => (v === undefined || v === null ? '' : String(v))) })
     }
+    const withExtras = (o: Record<string, unknown>): Record<string, unknown> => (tooltipExtras.length === 0 ? o : { ...o, tooltipExtras })
     // `encode.seriesName` names the series after a dimension; an explicit
     // `name` still wins (it is the author's, not the data's).
     let sr: Record<string, unknown> = sRaw
@@ -387,13 +400,13 @@ export function resolveDataset(option: EChartsOptionLike): { option: EChartsOpti
       const nameCol = col(enc['itemName'], 0)
       const valueCol = col(enc['value'], enc['value'] === undefined ? nextColumn(dsIndex) : 0)
       if (nameCol === null || valueCol === null) return sr
-      return withData(sr, t.rows.map((r) => ({ name: String(r[nameCol] ?? ''), value: num(r[valueCol]) ?? 0 })))
+      return withExtras(withData(sr, t.rows.map((r) => ({ name: String(r[nameCol] ?? ''), value: num(r[valueCol]) ?? 0 }))))
     }
     if (type === 'scatter') {
       const xCol = col(enc['x'], 0)
       const yCol = col(enc['y'], enc['y'] === undefined ? nextColumn(dsIndex) : 0)
       if (xCol === null || yCol === null) return sr
-      return withData(sr, t.rows.map((r) => [num(r[xCol]) ?? 0, num(r[yCol]) ?? 0]))
+      return withExtras(withData(sr, t.rows.map((r) => [num(r[xCol]) ?? 0, num(r[yCol]) ?? 0])))
     }
     const xCol = col(enc['x'], 0)
     const want = enc['y'] === undefined ? nextColumn(dsIndex) : 0
@@ -409,7 +422,7 @@ export function resolveDataset(option: EChartsOptionLike): { option: EChartsOpti
     if (enc['itemName'] !== undefined && itemNameCol === null) {
       warnings.push({ code: 'series-data-shape', path: 'series[' + String(si) + '].encode.itemName', message: 'Unknown dataset dimension "' + String(enc['itemName']) + '"; the data keeps bare values.' })
     }
-    return withData(sr, t.rows.map((r) => (itemNameCol === null ? num(r[yCol]) ?? null : { name: String(r[itemNameCol] ?? ''), value: num(r[yCol]) ?? null })))
+    return withExtras(withData(sr, t.rows.map((r) => (itemNameCol === null ? num(r[yCol]) ?? null : { name: String(r[itemNameCol] ?? ''), value: num(r[yCol]) ?? null }))))
   })
   const out: EChartsOptionLike = { ...option, series: Array.isArray(option['series']) ? outSeries : outSeries[0] }
   const x = out['xAxis']

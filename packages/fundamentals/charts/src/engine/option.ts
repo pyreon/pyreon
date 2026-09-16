@@ -23,7 +23,7 @@ import type { CustomRenderItem, CustomSeriesPlan } from './custom-series'
 import { resolveTheme } from './theme-registry'
 import type { ThemeDefinition } from './theme-registry'
 import { dateFormatter, numberFormatter } from './locale'
-import type { Annotation, ChartSpec, PointMarker, Series } from './render'
+import type { Annotation, ChartSpec, PointMarker, Series, SeriesExtra } from './render'
 import { smooth, step } from './curve'
 import type { Formatter } from './format'
 import { renderLegend } from './legend'
@@ -93,7 +93,7 @@ const KNOWN_SERIES = new Set([
   'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'markLine', 'markPoint', 'markArea',
   'color', 'showSymbol', 'symbol', 'emphasis', 'z', 'zlevel', 'silent',
   'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'rippleEffect', 'showEffectOn',
-  'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex',
+  'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex', 'tooltipExtras',
   'coordinateSystem', 'polyline', 'effect', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'sampling',
 ])
 
@@ -464,6 +464,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       ...(type === 'pictorialBar' ? pictorialFields(s, warn, path) : {}),
       ...(kind === 'line' || kind === 'points' ? seriesSymbol(s, kind, warn, path) : {}),
       ...(gradient !== undefined && gradient.stops.length > 0 ? { gradient } : {}),
+      ...(Array.isArray(s['tooltipExtras']) ? { extras: s['tooltipExtras'] as SeriesExtra[] } : {}),
     }
     series.push(entry)
     const seriesIndex = series.length - 1
