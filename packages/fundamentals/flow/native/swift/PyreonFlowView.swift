@@ -739,6 +739,15 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         let fixedWidth = (node.width ?? inlineStyle.width).map { CGFloat($0) }
         let fixedHeight = (node.height ?? inlineStyle.height).map { CGFloat($0) }
         return nodeContent(node, state.isNodeSelected(node.id), nodeDragStart[node.id] != nil)
+            // Shrink-to-fit with a floor, which is what the web node box does
+            // (an absolutely-positioned element with `min-width`). Without
+            // `fixedSize`, `.frame(minWidth:)` GROWS with the proposal, and
+            // `.position` proposes the whole canvas — so every auto-sized node
+            // silently filled the canvas: nodes overlapped and swallowed each
+            // other's taps and drags, the measured size fed edge anchoring the
+            // canvas box, and every node reported the canvas frame to VoiceOver.
+            // Device-found; a fixed width/height keeps the explicit size.
+            .fixedSize(horizontal: fixedWidth == nil, vertical: fixedHeight == nil)
             .frame(
                 minWidth: fixedWidth == nil ? CGFloat(pyreonFlowDefaultNodeWidth) : nil,
                 idealWidth: fixedWidth,
@@ -750,6 +759,22 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             .background(GeometryReader { measured in
                 Color.clear.preference(key: PyreonFlowNodeSizePreference.self, value: [node.id: measured.size])
             })
+            // Attached before `.position` so the element describes the node view
+            // itself. NOTE (device-found, open): SwiftUI still reports the
+            // POSITION container's frame for it, so every node's accessibility
+            // frame is the whole canvas — VoiceOver cannot locate a node and a
+            // coordinate drag must be aimed at the canvas instead. Tracked as an
+            // F4 accessibility item in the flow parity audit.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(node.ariaLabel ?? node.id))
+            .accessibilityAddTraits(state.isNodeSelected(node.id) ? [.isSelected] : [])
+            .accessibilityAction {
+                if node.selectable ?? state.nodesSelectable {
+                    state.selectNode(node.id)
+                    state.emitNodeClick(node.id)
+                }
+            }
+            .accessibilityHidden(state.disableKeyboardA11y || !(node.focusable ?? state.nodesFocusable))
             .position(x: absolute.x + dimensions.width / 2, y: absolute.y + dimensions.height / 2)
             .contentShape(Rectangle())
             .onTapGesture {
@@ -762,16 +787,6 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             .onKeyPress { press in
                 handleKeyPress(press, nodeId: node.id)
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text(node.ariaLabel ?? node.id))
-            .accessibilityAddTraits(state.isNodeSelected(node.id) ? [.isSelected] : [])
-            .accessibilityAction {
-                if node.selectable ?? state.nodesSelectable {
-                    state.selectNode(node.id)
-                    state.emitNodeClick(node.id)
-                }
-            }
-            .accessibilityHidden(state.disableKeyboardA11y || !(node.focusable ?? state.nodesFocusable))
     }
 
     private func handleKeyPress(_ press: KeyPress, nodeId: String? = nil) -> KeyPress.Result {

@@ -5,9 +5,10 @@ local.properties
 .cxx/
 app/src/main/kotlin/com/pyreon/generated/
 node_modules/
-# Asset pipeline output — scripts/build.sh rematerializes res/drawable*
-# from the shared assets/ on every build.
+# Asset pipeline output — scripts/build.sh rematerializes res/drawable* and the
+# WebView bridge host from the shared assets/ on every build.
 app/src/main/res/drawable-mdpi/
 app/src/main/res/drawable-xhdpi/
 app/src/main/res/drawable-xxhdpi/
 app/src/main/res/font/
+app/src/main/assets/

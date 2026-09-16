@@ -42,6 +42,31 @@ WebView escape path; silent drops are release blockers.
 - [ ] **F7 — documentation/manifest truth.** Update the manifest, package docs,
   multiplatform matrix and generated references from the measured inventory.
 
+- [x] F3/F4 first device evidence: the tasks example now renders a real
+  `<Flow>` canvas with `<Background>` / `<Controls>` / `<MiniMap>`, and BOTH
+  device lanes assert it — the canvas and minimap exist by accessibility
+  name, the Controls' zoom-in drives the engine to its `maxZoom` clamp
+  (read back through the app's own label), and Fit view runs. Android
+  additionally DRAGS a node through Compose and asserts the engine moved it.
+  Two renderer bugs fell out, both device-found:
+  - an auto-sized node FILLED the canvas on iOS (`.frame(minWidth:)` grows
+    with the proposal and `.position` proposes the whole canvas), so nodes
+    overlapped and swallowed each other's taps and drags, and the measured
+    size fed edge anchoring the canvas box. Fixed with `fixedSize` —
+    shrink-to-fit with a floor, which is what the web's `min-width` box does.
+  - OPEN (F4): SwiftUI reports the `.position` container's frame for every
+    node's accessibility element, so each node's a11y frame is the whole
+    canvas. VoiceOver cannot locate an individual node, and no XCUITest
+    coordinate (the element's own, or one computed on the canvas) reaches a
+    node's drag gesture. Attaching the element before `.position`, giving the
+    node a fixed size, and placing it by `offset` in a top-leading container
+    were each tried and each left the frame unchanged. The iOS drag assertion
+    is therefore NOT claimed; Android covers that half.
+- [ ] F3/F4 remaining: pixel-level renderer parity (connection line, handles,
+  toolbar, resizer, panel, labels, markers, theming, reduced motion), the
+  iOS node-drag accessibility item above, and pan/zoom/connect/reconnect
+  gestures on both targets.
+
 ## Exit gate
 
 The completion audit must show zero unclassified public surfaces, zero silent

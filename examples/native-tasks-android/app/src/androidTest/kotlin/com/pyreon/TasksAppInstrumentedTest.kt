@@ -44,6 +44,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -194,6 +195,10 @@ class TasksAppInstrumentedTest {
      * opposite fixes, and a bare not-displayed is identical for both — and for
      * a third case where the screen simply never recomposed.
      */
+    /** The text a tagged node shows right now — for before/after comparisons. */
+    private fun textOf(tag: String): String =
+        composeRule.onNodeWithTag(tag).fetchSemanticsNode().config.getOrNull(SemanticsProperties.Text)?.joinToString("") { it.text } ?: ""
+
     private fun assertTagDisplayed(tag: String, where: String) {
         try {
             // WAIT first, exactly as the pre-helper assertions did
@@ -527,8 +532,28 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("flow-node-count").assertTextEquals("3")
         composeRule.onNodeWithTag("flow-select").performClick()
         composeRule.onNodeWithTag("flow-selected-count").assertTextEquals("1")
-        composeRule.onNodeWithTag("flow-zoom-in").performClick()
-        composeRule.onNodeWithTag("flow-zoom").assertTextEquals("zoom 1.2")
+        // The RENDERER half (F3/F4): the <Flow> canvas and its chrome exist, a
+        // touch drag moves a node through the native engine, and the Controls
+        // drive the same engine the labels read. The drag runs FIRST, at the
+        // initial zoom 1 / origin viewport, so the node sits where the seed put
+        // it and no reset is needed.
+        composeRule.onNodeWithContentDescription("Task flow").assertExists()
+        composeRule.onNodeWithContentDescription("minimap").assertExists()
+        val before = textOf("flow-a-pos")
+        composeRule.onNodeWithText("Start").performTouchInput {
+            down(center)
+            // Past the touch slop first (the drag starts at the slop point), then the move.
+            moveBy(Offset(24f, 0f))
+            moveBy(Offset(40f, 15f))
+            moveBy(Offset(40f, 15f))
+            up()
+        }
+        composeRule.waitUntil(5_000) { textOf("flow-a-pos") != before }
+        check(textOf("flow-a-pos") != before) { "dragging node 'Start' did not move it (still ${textOf("flow-a-pos")})" }
+        // Tapped past maxZoom (2) so the asserted value is the clamp, not a float product.
+        repeat(5) { composeRule.onNodeWithContentDescription("Zoom in").performClick() }
+        composeRule.onNodeWithTag("flow-zoom").assertTextEquals("zoom 2.0")
+        composeRule.onNodeWithContentDescription("Fit view").performClick()
         composeRule.onNodeWithTag("flow-back").performClick()
         assertTagDisplayed("tasks-page", "after flow-back (/flow -> /tasks)")
 
