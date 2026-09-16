@@ -143,3 +143,26 @@ describe('gradient fills — pixels', () => {
     unmount()
   })
 })
+
+describe('radial gradient fills — pixels', () => {
+  it('a radial bar is red at the centre of the plot and blue towards the edge, symmetrically', async () => {
+    const wide: Row[] = [{ k: 'a', v: 10 }, { k: 'b', v: 10 }, { k: 'c', v: 10 }]
+    const grad = mountInBrowser(
+      <PlotChart<Row> {...chartProps({ data: wide, marks: [bars((d: Row) => d.v, { color: TOP, gradient: { ...GRADIENT, shape: 'radial' } })] })} />,
+    )
+    await flush()
+    const canvas = query(grad.container, 'canvas')
+    const box = paintedBox(canvas)
+    const midY = box.y + box.h / 2
+    const centre = rgbaAt(canvas, box.x + box.w / 2, midY)
+    const left = rgbaAt(canvas, box.x + 3, midY)
+    const right = rgbaAt(canvas, box.x + box.w - 4, midY)
+    // Centre is red-dominant, the edges are bluer than the centre …
+    expect(centre[0]).toBeGreaterThan(centre[2]!)
+    expect(left[2]).toBeGreaterThan(centre[2]!)
+    expect(right[2]).toBeGreaterThan(centre[2]!)
+    // … and the two edges match each other: a LINEAR ramp reads differently left and right.
+    expect(Math.abs(left[2]! - right[2]!)).toBeLessThan(12)
+    grad.unmount()
+  })
+})

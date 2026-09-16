@@ -19,7 +19,8 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import { resolveDataset } from '@pyreon/charts/option-layer'
+import { decimateShared, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
+import type { SamplingRequest } from '@pyreon/charts/option-layer'
 import type { AttrIR, ExprIR } from './types'
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 
@@ -274,7 +275,11 @@ function resolveStaticDataset(raw: Extract<ExprIR, { kind: 'object' }>, resolve:
 }
 
 function litNumber(e: ExprIR | undefined): number | undefined {
-  return e !== undefined && e.kind === 'literal' && typeof e.value === 'number' ? e.value : undefined
+  if (e === undefined) return undefined
+  // A negative datum parses as unary minus over a literal (`-2`), which an
+  // option is full of; folding it here keeps every literal reader honest.
+  if (e.kind === 'unary' && (e.op === '-' || e.op === '+') && e.argument.kind === 'literal' && typeof e.argument.value === 'number') return e.op === '-' ? -e.argument.value : e.argument.value
+  return e.kind === 'literal' && typeof e.value === 'number' ? e.value : undefined
 }
 
 function litNull(e: ExprIR): boolean {
@@ -767,6 +772,16 @@ function optionFields(
   for (const field of e.fields) {
     if (!allowed.includes(field.name)) warn(`<OptionChart ${path}.${field.name}>: this option field does not cross yet; native renders without it.`)
   }
+}
+
+/** A few literal fields of an object IR as the plain record the web facade's readers take. */
+function optionLiteralRecord(o: Extract<ExprIR, { kind: 'object' }>, keys: readonly string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const key of keys) {
+    const v = objectField(o, key)
+    if (v?.kind === 'literal') out[key] = v.value
+  }
+  return out
 }
 
 function optionDatumNumber(e: ExprIR | undefined): number | undefined {
@@ -1683,7 +1698,7 @@ export function desugarOptionChart(
         warn(`<OptionChart option.series[${si}].type>: this cartesian adapter needs line, bar, pictorialBar, or scatter series; emitting nothing.`)
         return undefined
       }
-      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras'], `option.series[${si}]`, warn)
+      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras', 'sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'emphasis', 'select', 'blur', 'selectedMode', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate'], `option.series[${si}]`, warn)
       seriesObjects.push(s)
     }
     const xAxis = literalOf(objectField(raw, 'xAxis'), resolve)
@@ -1702,12 +1717,30 @@ export function desugarOptionChart(
       }
       seriesValues.push(data.elements.map((d) => optionDatumNumber(literalOf(d, resolve))!))
     }
+    // Large data at COMPILE time, through the web facade's own decimation
+    // (`sampling` thins to the option's static `width` — the same 640 the web
+    // uses when nothing measured it — `large` / `progressive` to their
+    // thresholds), so the native chart carries the same datums the web draws.
+    const sampleRequests: SamplingRequest[] = []
+    const staticWidth = litNumber(literalOf(attrOf(e, 'width'), resolve)) ?? 640
+    for (let si = 0; si < seriesObjects.length; si++) {
+      const request = samplingRequest(optionLiteralRecord(seriesObjects[si]!, ['sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold']), staticWidth, (message) => warn(`<OptionChart option.series[${si}].sampling>: ${message}`))
+      if (request !== null) sampleRequests.push(request)
+    }
+    let categoryLiterals = categories.elements
+    if (sampleRequests.length > 0) {
+      const thinned = decimateShared(sampleRequests, { columns: seriesValues, categories: categoryLiterals.map((x) => String(litString(x) ?? litNumber(x))), xValues: undefined })
+      if (thinned.columns !== seriesValues) {
+        for (let si = 0; si < seriesValues.length; si++) seriesValues[si] = thinned.columns[si]!
+        categoryLiterals = thinned.categories.map((c) => lit(c))
+      }
+    }
     // Synthesised row structs infer each field from their first occurrence.
     // Keep an all-integral series as Int (the mark accessor converts it), but
     // make EVERY value Double when any row is fractional so later rows cannot
     // disagree with the first row's generated Swift/Kotlin field type.
     const seriesFloat = seriesValues.map((values) => values.some((n) => !Number.isInteger(n)))
-    const rows: ExprIR[] = categories.elements.map((x, i) => ({
+    const rows: ExprIR[] = categoryLiterals.map((x, i) => ({
       kind: 'object',
       fields: [
         { name: 'x', value: lit(String(litString(x) ?? litNumber(x))) },
@@ -1738,12 +1771,17 @@ export function desugarOptionChart(
       const item = literalOf(objectField(s, sk === 'line' ? 'lineStyle' : 'itemStyle'), resolve)
       const color = item === undefined ? undefined : objectField(item, 'color')
       if (litString(color) !== undefined) opts.push({ name: 'color', value: color! })
-      // ECharts' gradient colour object → the mark's `gradient` (stops + direction);
-      // its first stop is the solid colour. A radial gradient warns and degrades.
+      // ECharts' gradient colour object → the mark's `gradient` (stops + direction,
+      // or the radial shape); its first stop is the solid colour. An IMAGE
+      // pattern (`color: { image }`) has no native form and is named.
       const gradientSlots: [string, ExprIR | undefined][] = [['itemStyle', literalOf(objectField(s, 'itemStyle'), resolve)], ['areaStyle', literalOf(objectField(s, 'areaStyle'), resolve)], ['lineStyle', literalOf(objectField(s, 'lineStyle'), resolve)]]
       for (const [slot, style] of gradientSlots) {
         const g = style?.kind === 'object' ? literalOf(objectField(style, 'color'), resolve) : undefined
         const rawStops = g?.kind === 'object' ? literalOf(objectField(g, 'colorStops'), resolve) : undefined
+        if (g?.kind === 'object' && rawStops === undefined && objectField(g, 'image') !== undefined) {
+          warn(`<OptionChart option.series[${si}].${slot}.color>: image patterns are not supported natively (linear and radial gradients, and decals, are); the palette colour is used.`)
+          continue
+        }
         if (g?.kind !== 'object' || rawStops?.kind !== 'array') continue
         const stops: { offset: number; color: string }[] = []
         for (const st of rawStops.elements) {
@@ -1754,7 +1792,8 @@ export function desugarOptionChart(
         }
         if (stops.length === 0) continue
         if (litString(objectField(g, 'type')) === 'radial') {
-          warn(`<OptionChart option.series[${si}].${slot}.color>: radial gradients are not supported natively (linear ones are); the first stop is used as a solid colour.`)
+          const stopLiterals: ExprIR[] = stops.map((st) => ({ kind: 'object', fields: [{ name: 'offset', value: optionDoubleLiteral(st.offset) }, { name: 'color', value: lit(st.color) }] }))
+          opts.push({ name: 'gradient', value: { kind: 'object', fields: [{ name: 'stops', value: { kind: 'array', elements: stopLiterals } }, { name: 'shape', value: lit('radial') }] } })
           if (litString(color) === undefined) opts.push({ name: 'color', value: lit(stops[0]!.color) })
           break
         }
@@ -1771,6 +1810,44 @@ export function desugarOptionChart(
       }
       const pattern = optionPatternLiteral(objectField(s, 'itemStyle'), resolve)
       if (pattern !== undefined) opts.push({ name: 'pattern', value: pattern })
+      // ECharts' states: `emphasis.focus` / `emphasis.itemStyle.color`,
+      // `select.itemStyle.color`, `blur.itemStyle.opacity` — the same four
+      // Series fields the web facade fills; anything beyond a fill is named.
+      const stateLiteral = (key: string): Extract<ExprIR, { kind: 'object' }> | undefined => {
+        const v = literalOf(objectField(s, key), resolve)
+        return v?.kind === 'object' ? v : undefined
+      }
+      const emphasisOpt = stateLiteral('emphasis')
+      if (emphasisOpt !== undefined) {
+        const focus = litString(objectField(emphasisOpt, 'focus'))
+        if (focus === 'self' || focus === 'series') opts.push({ name: 'focus', value: lit(focus) })
+        else if (objectField(emphasisOpt, 'focus') !== undefined && focus !== 'none') warn(`<OptionChart option.series[${si}].emphasis.focus>: only self, series and none are supported natively; nothing is blurred.`)
+        const emphasisItem = literalOf(objectField(emphasisOpt, 'itemStyle'), resolve)
+        const c = emphasisItem?.kind === 'object' ? litString(objectField(emphasisItem, 'color')) : undefined
+        if (c !== undefined) opts.push({ name: 'emphasisColor', value: lit(c) })
+        for (const key of ['label', 'scale', 'lineStyle', 'areaStyle', 'blurScope', 'disabled']) if (objectField(emphasisOpt, key) !== undefined) warn(`<OptionChart option.series[${si}].emphasis.${key}>: has no engine form (the highlighted datum takes emphasis.itemStyle.color and an outline); it was ignored.`)
+      }
+      const selectOpt = stateLiteral('select')
+      if (selectOpt !== undefined) {
+        const selectItem = literalOf(objectField(selectOpt, 'itemStyle'), resolve)
+        const c = selectItem?.kind === 'object' ? litString(objectField(selectItem, 'color')) : undefined
+        if (c !== undefined) opts.push({ name: 'selectColor', value: lit(c) })
+        for (const key of ['label', 'lineStyle', 'areaStyle', 'disabled']) if (objectField(selectOpt, key) !== undefined) warn(`<OptionChart option.series[${si}].select.${key}>: has no engine form (a pinned datum takes select.itemStyle.color and a heavy outline); it was ignored.`)
+      }
+      const blurOpt = stateLiteral('blur')
+      if (blurOpt !== undefined) {
+        const blurItem = literalOf(objectField(blurOpt, 'itemStyle'), resolve)
+        const opacity = blurItem?.kind === 'object' ? litNumber(objectField(blurItem, 'opacity')) : undefined
+        if (opacity !== undefined) opts.push({ name: 'blurOpacity', value: optionDoubleLiteral(Math.max(0, Math.min(1, opacity))) })
+        for (const key of ['label', 'lineStyle', 'areaStyle']) if (objectField(blurOpt, key) !== undefined) warn(`<OptionChart option.series[${si}].blur.${key}>: has no engine form (a blurred datum fades to blur.itemStyle.opacity); it was ignored.`)
+      }
+      const modeRaw = objectField(s, 'selectedMode')
+      if (modeRaw !== undefined && si === 0) {
+        const mode = modeRaw.kind === 'literal' ? modeRaw.value : undefined
+        if (mode === true || mode === 'single') set('selectedMode', lit('single'))
+        else if (mode === 'multiple') set('selectedMode', lit('multiple'))
+        else if (mode !== false) warn(`<OptionChart option.series[0].selectedMode>: only true, single and multiple are supported natively; taps do not pin.`)
+      }
       // The dataset pre-pass materialised `encode.tooltip` as `tooltipExtras`.
       const extras = literalOf(objectField(s, 'tooltipExtras'), resolve)
       if (extras?.kind === 'array' && extras.elements.length > 0) opts.push({ name: 'extras', value: extras })
@@ -1801,6 +1878,32 @@ export function desugarOptionChart(
         const repeat = objectField(s, 'symbolRepeat')
         const repeatValue = repeat?.kind === 'literal' && (repeat.value === true || repeat.value === 'fixed' || (typeof repeat.value === 'number' && repeat.value > 0))
         opts.push({ name: 'symbolRepeat', value: lit(repeatValue) })
+        // The six geometry keys, in px / degrees, like the web facade; percent strings are named.
+        const px = (key: string): number | undefined => {
+          const v = objectField(s, key)
+          if (v === undefined) return undefined
+          const n = litNumber(v)
+          if (n === undefined) warn(`<OptionChart option.series[${si}].${key}>: pictorialBar ${key} takes a number of pixels here (a percent string is not supported); it was ignored.`)
+          return n
+        }
+        const margin = px('symbolMargin')
+        if (margin !== undefined) opts.push({ name: 'symbolMargin', value: optionDoubleLiteral(Math.max(0, margin)) })
+        const offsetRaw = literalOf(objectField(s, 'symbolOffset'), resolve)
+        if (offsetRaw !== undefined) {
+          const dx = offsetRaw.kind === 'array' && offsetRaw.elements.length === 2 ? litNumber(offsetRaw.elements[0]) : undefined
+          const dy = offsetRaw.kind === 'array' && offsetRaw.elements.length === 2 ? litNumber(offsetRaw.elements[1]) : undefined
+          if (dx !== undefined && dy !== undefined) opts.push({ name: 'symbolOffset', value: { kind: 'array', elements: [optionDoubleLiteral(dx), optionDoubleLiteral(dy)] } })
+          else warn(`<OptionChart option.series[${si}].symbolOffset>: symbolOffset takes [dx, dy] in pixels here (a percent string is not supported); it was ignored.`)
+        }
+        const position = litString(objectField(s, 'symbolPosition'))
+        if (position === 'start' || position === 'end' || position === 'center') opts.push({ name: 'symbolPosition', value: lit(position) })
+        else if (objectField(s, 'symbolPosition') !== undefined) warn(`<OptionChart option.series[${si}].symbolPosition>: only start, end and center are supported; it was ignored.`)
+        const rotate = px('symbolRotate')
+        if (rotate !== undefined) opts.push({ name: 'symbolRotate', value: optionDoubleLiteral(rotate) })
+        const clip = objectField(s, 'symbolClip')
+        if (clip !== undefined) opts.push({ name: 'symbolClip', value: lit(clip.kind === 'literal' && clip.value === true) })
+        const bounding = px('symbolBoundingData')
+        if (bounding !== undefined) opts.push({ name: 'symbolBoundingData', value: optionDoubleLiteral(bounding) })
       }
       return {
         kind: 'call',
@@ -2941,7 +3044,7 @@ export const PLOT_MARK_KINDS: Readonly<Record<string, string>> = {
 }
 
 /** Mark options that lower as literal fields of `Series`, with their default when absent. */
-export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'string' | 'number' | 'boolean'; default?: string | number | boolean }> = [
+export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'string' | 'number' | 'boolean' | 'numbers'; default?: string | number | boolean }> = [
   { name: 'color', kind: 'string' },
   { name: 'width', kind: 'number', default: 2 },
   { name: 'radius', kind: 'number', default: 3 },
@@ -2951,7 +3054,17 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'effect', kind: 'boolean' },
   { name: 'symbol', kind: 'string' },
   { name: 'symbolRepeat', kind: 'boolean' },
+  { name: 'symbolMargin', kind: 'number' },
+  { name: 'symbolOffset', kind: 'numbers' },
+  { name: 'symbolPosition', kind: 'string' },
+  { name: 'symbolRotate', kind: 'number' },
+  { name: 'symbolClip', kind: 'boolean' },
+  { name: 'symbolBoundingData', kind: 'number' },
   { name: 'negativeColor', kind: 'string' },
+  { name: 'focus', kind: 'string' },
+  { name: 'emphasisColor', kind: 'string' },
+  { name: 'selectColor', kind: 'string' },
+  { name: 'blurOpacity', kind: 'number' },
 ]
 
 /**

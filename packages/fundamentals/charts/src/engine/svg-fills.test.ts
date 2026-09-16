@@ -103,7 +103,7 @@ describe('svgCommand — a pattern paints OVER the ordinary fill', () => {
 
   it('a gradient id still wins the base fill while the pattern overlays it', () => {
     const cmd = rect({
-      grad: { from: { x: 0, y: 0 }, to: { x: 1, y: 1 }, stops: [{ offset: 0, color: '#000' }] },
+      grad: { from: { x: 0, y: 0 }, to: { x: 1, y: 1 }, stops: [{ offset: 0, color: '#000' }], radial: false },
       pattern: pattern(),
     })
     const out = svgCommand(cmd, 'Inter', 'g-g0', 'p-p0')

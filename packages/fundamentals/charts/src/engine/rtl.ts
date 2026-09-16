@@ -70,7 +70,7 @@ export function mirrorPoint(p: Pt, width: Double): Pt {
 
 function mirrorGrad(g: ChartGradient | undefined, width: Double): ChartGradient | undefined {
   if (g === undefined) return undefined
-  return { from: mirrorPoint(g.from, width), to: mirrorPoint(g.to, width), stops: g.stops }
+  return { from: mirrorPoint(g.from, width), to: mirrorPoint(g.to, width), stops: g.stops, radial: g.radial }
 }
 
 /**

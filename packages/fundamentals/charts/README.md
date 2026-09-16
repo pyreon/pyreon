@@ -102,9 +102,10 @@ build tools — so the series data, the category axis and the tooltip extras
 are the same on iOS and Android. **Tooltip extras**: a series' `extras: [{ label, numbers | texts }]` lists extra
 dimensions under the value in the tooltip and as columns of the accessible
 table — the option facade's `encode.tooltip` over a dataset. **Gradients**: a mark's `gradient: { stops, direction }` ramps its fill across
-the plot; the option facade reads ECharts' linear gradient objects on
-`itemStyle` / `areaStyle` / `lineStyle` / series `color` (a radial gradient
-warns and degrades to its first stop). **Symbols**: `points(y, { symbol: 'diamond' })` draws every datum as that
+the plot (`shape: 'radial'` ramps out from its centre); the option facade
+reads ECharts' linear and radial gradient objects on `itemStyle` /
+`areaStyle` / `lineStyle` / series `color` (an image pattern has no engine
+form and warns by name). **States**: a mark's `emphasisColor` / `selectColor` / `focus` / `blurOpacity` (ECharts' `emphasis.itemStyle.color`, `select.itemStyle.color`, `emphasis.focus` and `blur.itemStyle.opacity`) colour the hovered and pinned datums and fade the others while a highlight is active; `<OptionChart>` hovers and pins (per the series' `selectedMode`) on web and native alike, and names a state's label, symbol scale or whole-series selection instead of dropping them. **Pictorial bars**: `symbolMargin`, `symbolOffset`, `symbolPosition`, `symbolRotate`, `symbolClip` and `symbolBoundingData` are draw-list geometry (a partial cell is dropped, or clipped to the bar with `symbolClip`; a bounding datum sizes the run and the bar shows the fraction it covers), in pixels and degrees — a percent string warns by name. **Symbols**: `points(y, { symbol: 'diamond' })` draws every datum as that
 shape (rect, circle, diamond, triangle; the pictorialBar vocabulary), and
 `line(y, { symbol })` draws a symbol at every datum over the line — the
 facade's `symbol` / `showSymbol` / `symbolSize`, on web, iOS and Android.
@@ -271,7 +272,10 @@ Beyond bars, lines, points, pie, gauge, radar, candlestick and heatmap, `/plot` 
 
 Datasets follow ECharts' own contract: `source` (array or object rows, `sourceHeader`, `dimensions`), `id` / `datasetId` / `fromDatasetId` references, the built-in `filter` and `sort` transforms, and **external transforms** through `registerChartTransform` — the `echarts.registerTransform` shape, with the same `upstream` surface (`cloneRawData`, `getRawData`, `getDimensionInfo`, `cloneAllDimensionInfo`), so an ecStat transform object registers unchanged and a multi-result transform feeds `fromTransformResult`. `encode` resolves `x` / `y` / `value` / `itemName` / `seriesName` by dimension name or index; `encode.tooltip` is not mapped yet and warns by name.
 
-Large data: a series' `sampling` (`lttb` / `average` / `max` / `min` / `sum`) thins it to the pixel width, `large` + `largeThreshold` (2000) and `progressive` + `progressiveThreshold` (3000) bound its point count — all three resolve to the engine's one large-data mechanism, decimation on shared rows (every series and the category axis thinned together, so a hit still names a real datum), and only when every series has the same length. Reactive updates take `setOption`'s own options on `<OptionChart optionUpdate>`: `notMerge`, `replaceMerge` (id-merge, drop what the update does not name), `lazyUpdate` and `silent` (accepted; the host already paints once per frame and emits nothing on apply).
+Large data: a series' `sampling` (`lttb` / `average` / `max` / `min` / `sum`) thins it to the pixel width, `large` + `largeThreshold` (2000) and `progressive` + `progressiveThreshold` (3000) bound its point count — all three resolve to the engine's one large-data mechanism, decimation on shared rows (every series and the category axis thinned together, so a hit still names a real datum), and only when every series has the same length. The native `<OptionChart>`
+runs the same decimation at compile time against the option's static width
+(its `width` prop, or the web's own 640 default), so a thinned chart carries
+the same datums on every target. Reactive updates take `setOption`'s own options on `<OptionChart optionUpdate>`: `notMerge`, `replaceMerge` (id-merge, drop what the update does not name), `lazyUpdate` and `silent` (accepted; the host already paints once per frame and emits nothing on apply).
 
 ```ts
 import { optionToSvg } from '@pyreon/charts/plot'

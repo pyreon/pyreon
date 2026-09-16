@@ -154,16 +154,22 @@ describe('option facade — edge shapes (every branch NAMES its loss)', () => {
   })
 })
 
-describe('pictorialBar accepted-but-unmapped keys', () => {
-  it('names symbolClip / symbolMargin / symbolBoundingData / symbolOffset / symbolPosition / symbolRotate rather than swallowing them', () => {
-    const { warnings } = compileOption({ xAxis: { type: 'category', data: ['a'] }, yAxis: {}, series: [{ type: 'pictorialBar', symbol: 'circle', symbolRepeat: true, symbolClip: true, symbolMargin: 4, symbolBoundingData: 10, symbolOffset: [0, 2], symbolPosition: 'end', symbolRotate: 30, data: [3] }] })
+describe('pictorialBar geometry keys', () => {
+  it('maps symbolClip / symbolMargin / symbolBoundingData / symbolOffset / symbolPosition / symbolRotate to the series with zero warnings', () => {
+    const { spec, warnings } = compileOption({ xAxis: { type: 'category', data: ['a'] }, yAxis: {}, series: [{ type: 'pictorialBar', symbol: 'circle', symbolRepeat: true, symbolClip: true, symbolMargin: 4, symbolBoundingData: 10, symbolOffset: [0, 2], symbolPosition: 'end', symbolRotate: 30, data: [3] }] })
+    expect(warnings).toEqual([])
+    expect(spec.series[0]).toMatchObject({ symbol: 'circle', symbolRepeat: true, symbolClip: true, symbolMargin: 4, symbolBoundingData: 10, symbolOffset: [0, 2], symbolPosition: 'end', symbolRotate: 30 })
+  })
+
+  it('names what has no engine form — percent strings and an unknown position — rather than swallowing them', () => {
+    const { spec, warnings } = compileOption({ xAxis: { type: 'category', data: ['a'] }, yAxis: {}, series: [{ type: 'pictorialBar', symbolMargin: '10%', symbolOffset: ['5%', 0], symbolPosition: 'middle', data: [3] }] })
     expect(warnings.map((w) => w.code + '@' + w.path).sort()).toEqual([
-      'series-option-unsupported@series[0].symbolBoundingData',
-      'series-option-unsupported@series[0].symbolClip',
       'series-option-unsupported@series[0].symbolMargin',
       'series-option-unsupported@series[0].symbolOffset',
       'series-option-unsupported@series[0].symbolPosition',
-      'series-option-unsupported@series[0].symbolRotate',
     ])
+    expect(spec.series[0]!.symbolMargin).toBeUndefined()
+    expect(spec.series[0]!.symbolOffset).toBeUndefined()
+    expect(spec.series[0]!.symbolPosition).toBeUndefined()
   })
 })

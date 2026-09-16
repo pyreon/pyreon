@@ -11866,6 +11866,7 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
     const values = new Map(gradient.fields.map((field) => [field.name, field.value]))
     const stops = values.get('stops')
     const direction = values.get('direction')
+    const shape = values.get('shape')
     if (stops?.kind !== 'array') return false
     const stopArgs: string[] = []
     for (const st of stops.elements) {
@@ -11877,7 +11878,8 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
       stopArgs.push(`PyreonChartGradientStop(offset = ${chartDouble(offset.value)}, color = ${JSON.stringify(color.value)})`)
     }
     if (direction !== undefined && (direction.kind !== 'literal' || typeof direction.value !== 'string')) return false
-    args.push(`gradient = SeriesGradient(stops = listOf(${stopArgs.join(', ')})${direction === undefined ? '' : `, direction = ${JSON.stringify(direction.value)}`})`)
+    if (shape !== undefined && (shape.kind !== 'literal' || typeof shape.value !== 'string')) return false
+    args.push(`gradient = SeriesGradient(stops = listOf(${stopArgs.join(', ')})${direction === undefined ? '' : `, direction = ${JSON.stringify(direction.value)}`}${shape === undefined ? '' : `, shape = ${JSON.stringify(shape.value)}`})`)
     return true
   }
   // `extras` (ECharts' encode.tooltip dimensions) is the LAST Series field:
@@ -11924,6 +11926,14 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
     }
     const v = fields.get(spec.name)
     if (v !== undefined) {
+      if (spec.kind === 'numbers') {
+        if (v.kind !== 'array' || v.elements.some((n) => n.kind !== 'literal' || typeof n.value !== 'number')) {
+          _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`${spec.name}\` must be an array of number literals on native; emitting an empty Box().`)
+          return 'unsupported'
+        }
+        args.push(`${spec.name} = listOf<Double>(${v.elements.map((n) => chartDouble((n as { value: number }).value)).join(', ')})`)
+        continue
+      }
       if (v.kind !== 'literal' || typeof v.value !== spec.kind) {
         _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`${spec.name}\` must be a ${spec.kind} literal on native; emitting an empty Box().`)
         return 'unsupported'

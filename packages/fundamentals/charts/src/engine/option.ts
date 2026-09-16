@@ -13,7 +13,6 @@
 // cross. And it is DATA in, DATA out — no console, no DOM — so it runs on the
 // server and in a test the same way the engine does.
 
-import { lttbIndices } from './decimate-values'
 import { renderChart } from './render'
 import { appendGraphicLayer, graphicCommands, resolveDataset, svgSize } from './option-layer'
 import { visualMapCommands } from './visual-map'
@@ -31,6 +30,8 @@ import type { LegendEntry } from './legend'
 import { measureApprox, renderSvg } from './svg'
 import { compileFamily, familyToSvg } from './option-family'
 import type { CompiledFamily } from './option-family'
+import { decimateShared, samplingRequest } from './sampling'
+import type { SamplingRequest } from './sampling'
 import type { ChartGradientStop, ChartPattern, DrawCmd, Domain, Double, MeasureText, Rect } from './types'
 import type { SeriesGradient } from './gradient'
 
@@ -70,6 +71,8 @@ export interface CompiledOption {
    * its series is a different chart, so the whole option is reported as not
    * rendering faithfully — the conformance metric counts it as a miss.
    */
+  /** ECharts' series `selectedMode` (true / single / multiple): how a click pins a datum in the host. */
+  selectedMode?: 'single' | 'multiple' | undefined
   supported: boolean
 }
 
@@ -95,34 +98,57 @@ const KNOWN_SERIES = new Set([
   'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'rippleEffect', 'showEffectOn',
   'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex', 'tooltipExtras',
   'coordinateSystem', 'polyline', 'effect', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'sampling',
+  'select', 'blur', 'selectedMode',
 ])
+
+/**
+ * ECharts' state options as the engine's series fields: `emphasis.focus` and
+ * `emphasis.itemStyle.color` (the hover state), `select.itemStyle.color` (the
+ * pinned state), `blur.itemStyle.opacity` (what the others fade to). What a
+ * state changes beyond its fill — a label, a symbol scale, a line width — has
+ * no engine form and is named.
+ */
+function stateFields(s: Record<string, unknown>, path: string, warn: (code: OptionWarning['code'], path: string, message: string) => void): Partial<Series> {
+  const out: Partial<Series> = {}
+  const state = (key: 'emphasis' | 'select' | 'blur'): Record<string, unknown> | undefined => (isObj(s[key]) ? (s[key] as Record<string, unknown>) : undefined)
+  const emphasis = state('emphasis')
+  if (emphasis !== undefined) {
+    const focus = emphasis['focus']
+    if (focus === 'self' || focus === 'series') out.focus = focus
+    else if (focus !== undefined && focus !== 'none') warn('series-option-unsupported', `${path}.emphasis.focus`, `emphasis.focus "${String(focus)}" is not supported (self, series and none are); nothing is blurred.`)
+    const item = isObj(emphasis['itemStyle']) ? emphasis['itemStyle'] : {}
+    if (typeof item['color'] === 'string') out.emphasisColor = item['color']
+    for (const key of ['label', 'scale', 'lineStyle', 'areaStyle', 'blurScope', 'disabled']) if (emphasis[key] !== undefined) warn('series-option-unsupported', `${path}.emphasis.${key}`, `emphasis.${key} has no engine form (the highlighted datum takes emphasis.itemStyle.color and an outline); it was ignored.`)
+  }
+  const select = state('select')
+  if (select !== undefined) {
+    const item = isObj(select['itemStyle']) ? select['itemStyle'] : {}
+    if (typeof item['color'] === 'string') out.selectColor = item['color']
+    for (const key of ['label', 'lineStyle', 'areaStyle', 'disabled']) if (select[key] !== undefined) warn('series-option-unsupported', `${path}.select.${key}`, `select.${key} has no engine form (a pinned datum takes select.itemStyle.color and a heavy outline); it was ignored.`)
+  }
+  const blur = state('blur')
+  if (blur !== undefined) {
+    const item = isObj(blur['itemStyle']) ? blur['itemStyle'] : {}
+    const opacity = num(item['opacity'])
+    if (opacity !== null) out.blurOpacity = Math.max(0.0, Math.min(1.0, opacity))
+    for (const key of ['label', 'lineStyle', 'areaStyle']) if (blur[key] !== undefined) warn('series-option-unsupported', `${path}.blur.${key}`, `blur.${key} has no engine form (a blurred datum fades to blur.itemStyle.opacity); it was ignored.`)
+  }
+  return out
+}
+
+/** ECharts' `selectedMode` as the host's pin mode; `series` (whole-series selection) is named. */
+function selectedModeOf(s: Record<string, unknown>, path: string, warn: (code: OptionWarning['code'], path: string, message: string) => void): 'single' | 'multiple' | undefined {
+  const mode = s['selectedMode']
+  if (mode === undefined || mode === false) return undefined
+  if (mode === true || mode === 'single') return 'single'
+  if (mode === 'multiple') return 'multiple'
+  warn('series-option-unsupported', `${path}.selectedMode`, `selectedMode "${String(mode)}" is not supported (true, single and multiple are); clicks do not pin.`)
+  return undefined
+}
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
-type SamplingMethod = 'lttb' | 'average' | 'max' | 'min' | 'sum'
-const SAMPLING_METHODS = new Set<string>(['lttb', 'average', 'max', 'min', 'sum'])
-
-/** What a series' `sampling` / `large` / `progressive` keys ask of the large-data pass, or null when nothing applies. */
-function samplingRequest(
-  s: Record<string, unknown>,
-  count: number,
-  width: number,
-  warn: (code: OptionWarning['code'], path: string, message: string) => void,
-  path: string,
-): { limit: number; method: SamplingMethod } | null {
-  const toNum = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
-  const sampling = s['sampling']
-  if (sampling !== undefined) {
-    if (typeof sampling === 'string' && SAMPLING_METHODS.has(sampling)) return { limit: Math.max(3, Math.floor(width)), method: sampling as SamplingMethod }
-    warn('series-option-unsupported', `${path}.sampling`, `sampling "${String(sampling)}" is not supported (lttb, average, max, min, sum are); the series was not thinned.`)
-  }
-  if (s['large'] === true) return { limit: Math.max(3, toNum(s['largeThreshold']) ?? 2000), method: 'lttb' }
-  const progressive = toNum(s['progressive'])
-  if (progressive !== null && progressive > 0) return { limit: Math.max(3, toNum(s['progressiveThreshold']) ?? 3000), method: 'lttb' }
-  void count
-  return null
-}
 const num = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
   if (typeof v === 'string' && v.trim() !== '') {
@@ -172,20 +198,24 @@ function seriesSymbol(s: Record<string, unknown>, kind: 'line' | 'points', warn:
  * An ECharts gradient colour (`{ type: 'linear', x, y, x2, y2, colorStops }`)
  * as the engine's series gradient. The ramp direction is the dominant axis
  * of the (x, y) → (x2, y2) vector: horizontal when it runs along x, else
- * vertical (the engine draws exactly those two). A radial gradient has no
- * engine form yet: it warns by name and degrades to its first stop.
+ * vertical (the engine draws exactly those two). A radial gradient keeps its
+ * stops and ramps out from the plot's centre.
  */
 function readGradient(raw: unknown, path: string, warn: (code: OptionWarning['code'], path: string, message: string) => void): SeriesGradient | undefined {
-  if (!isObj(raw) || !Array.isArray(raw['colorStops'])) return undefined
+  if (!isObj(raw)) return undefined
+  if (!Array.isArray(raw['colorStops'])) {
+    // ECharts' other colour object: an IMAGE pattern. It has no engine form
+    // (the engine's patterns are the geometric decals), so it is named rather
+    // than silently painting the palette colour.
+    if (raw['image'] !== undefined) warn('series-option-unsupported', path, 'Image patterns are not supported (linear and radial gradients, and geometric decals, are); the palette colour was used.')
+    return undefined
+  }
   const stops: ChartGradientStop[] = []
   for (const st of raw['colorStops'] as unknown[]) {
     if (isObj(st) && num(st['offset']) !== null && typeof st['color'] === 'string') stops.push({ offset: num(st['offset']) as number, color: st['color'] as string })
   }
   if (stops.length === 0) return undefined
-  if (raw['type'] === 'radial') {
-    warn('series-option-unsupported', path, 'Radial gradients are not supported (linear ones are); the first stop is used as a solid colour.')
-    return { stops: [stops[0]!] }
-  }
+  if (raw['type'] === 'radial') return { stops, shape: 'radial' }
   const dx = (num(raw['x2']) ?? 0.0) - (num(raw['x']) ?? 0.0)
   const dy = (num(raw['y2']) ?? 1.0) - (num(raw['y']) ?? 0.0)
   // A ramp read "backwards" (bottom → top, right → left) reverses its stops
@@ -195,7 +225,7 @@ function readGradient(raw: unknown, path: string, warn: (code: OptionWarning['co
   return { stops: ordered, ...(horizontal ? { direction: 'horizontal' } : {}) }
 }
 
-function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning['code'], path: string, message: string) => void, path: string): { symbol: Series['symbol']; symbolRepeat: boolean } {
+function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning['code'], path: string, message: string) => void, path: string): Partial<Series> & { symbol: Series['symbol']; symbolRepeat: boolean } {
   const raw = typeof s['symbol'] === 'string' ? (s['symbol'] as string) : 'rect'
   let symbol: Series['symbol'] = 'rect'
   if (raw === 'circle') symbol = 'circle'
@@ -203,12 +233,33 @@ function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning[
   else if (raw === 'triangle') symbol = 'triangle'
   else if (raw !== 'rect' && raw !== 'roundRect') warn('mark-shape-unsupported', `${path}.symbol`, `pictorialBar symbol "${raw}" is not supported (rect, roundRect, circle, diamond, triangle are); drawn as a rect.`)
   const rep = s['symbolRepeat']
-  // Accepted-but-unmapped pictorial keys are NAMED, not swallowed: each one
-  // changes what ECharts draws, so silence here would be a silent drop.
-  for (const key of ['symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate']) {
-    if (s[key] !== undefined) warn('series-option-unsupported', `${path}.${key}`, `pictorialBar ${key} is not supported (symbol, symbolRepeat and symbolSize are); it was ignored.`)
+  const out: Partial<Series> & { symbol: Series['symbol']; symbolRepeat: boolean } = { symbol, symbolRepeat: rep === true || rep === 'fixed' || (typeof rep === 'number' && rep > 0) }
+  // The six geometry keys, in px / degrees. ECharts also takes percent
+  // strings for margin and offset; those have no engine form and are named.
+  const px = (key: string): Double | undefined => {
+    const v = s[key]
+    if (v === undefined) return undefined
+    const n = num(v)
+    if (n !== null) return n
+    warn('series-option-unsupported', `${path}.${key}`, `pictorialBar ${key} takes a number of pixels here (a percent string is not supported); it was ignored.`)
+    return undefined
   }
-  return { symbol, symbolRepeat: rep === true || rep === 'fixed' || (typeof rep === 'number' && rep > 0) }
+  const margin = px('symbolMargin')
+  if (margin !== undefined) out.symbolMargin = Math.max(0.0, margin)
+  const rotate = px('symbolRotate')
+  if (rotate !== undefined) out.symbolRotate = rotate
+  const bounding = px('symbolBoundingData')
+  if (bounding !== undefined) out.symbolBoundingData = bounding
+  if (s['symbolClip'] !== undefined) out.symbolClip = s['symbolClip'] === true
+  const position = s['symbolPosition']
+  if (position === 'start' || position === 'end' || position === 'center') out.symbolPosition = position
+  else if (position !== undefined) warn('series-option-unsupported', `${path}.symbolPosition`, `symbolPosition "${String(position)}" is not supported (start, end and center are); it was ignored.`)
+  const offset = s['symbolOffset']
+  if (offset !== undefined) {
+    if (Array.isArray(offset) && offset.length === 2 && num(offset[0]) !== null && num(offset[1]) !== null) out.symbolOffset = [num(offset[0]) as number, num(offset[1]) as number]
+    else warn('series-option-unsupported', `${path}.symbolOffset`, 'symbolOffset takes [dx, dy] in pixels here (a percent string is not supported); it was ignored.')
+  }
+  return out
 }
 
 /** The internal renderItem for a `lines` series: a polyline through every [x, y] pair of the flattened datum. */
@@ -293,7 +344,9 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   const markers: PointMarker[] = []
   let xValues: Double[] | undefined = undefined
   // Large-data requests per compiled cartesian series (see the sampling pass).
-  const sampleRequests: { limit: number; method: SamplingMethod }[] = []
+  const sampleRequests: SamplingRequest[] = []
+  // The first series' `selectedMode` decides how the host pins a click.
+  let selectedMode: 'single' | 'multiple' | undefined = undefined
   // Running totals per `stack` name for stacked LINES.
   const lineStacks = new Map<string, Double[]>()
   const barCount = rawSeries.filter((s) => isObj(s) && s['type'] === 'bar' && s['stack'] === undefined).length
@@ -413,7 +466,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       }
     }
     if (xContinuous && xs.length === values.length && xs.length > 0 && xValues === undefined) xValues = xs
-    const request = samplingRequest(s, values.length, opts.width ?? 640.0, warn, path)
+    const request = samplingRequest(s, opts.width ?? 640.0, (message) => warn('series-option-unsupported', `${path}.sampling`, message))
     if (request !== null) sampleRequests.push(request)
     // Stacked LINES: each line sits on the running total of the lines that
     // share its `stack` name (ECharts' stacked line chart). The total is
@@ -470,8 +523,11 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       ...(kind === 'line' || kind === 'points' ? seriesSymbol(s, kind, warn, path) : {}),
       ...(gradient !== undefined && gradient.stops.length > 0 ? { gradient } : {}),
       ...(Array.isArray(s['tooltipExtras']) ? { extras: s['tooltipExtras'] as SeriesExtra[] } : {}),
+      ...stateFields(s, path, warn),
     }
     series.push(entry)
+    const pinMode = selectedModeOf(s, path, warn)
+    if (pinMode !== undefined && selectedMode === undefined) selectedMode = pinMode
     const seriesIndex = series.length - 1
 
     // markLine / markArea → annotations; markPoint → markers.
@@ -647,43 +703,10 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   // cartesian series has the same length: thinning one would misalign the
   // shared x.
   if (sampleRequests.length > 0 && series.length > 0) {
-    const n = series[0]!.values.length
-    const aligned = series.every((entry) => entry.values.length === n)
-    let limit = Infinity
-    for (const r of sampleRequests) if (r.limit < limit) limit = r.limit
-    if (aligned && n > limit && limit >= 3) {
-      const method = sampleRequests[0]!.method
-      if (method === 'lttb') {
-        const keep = lttbIndices(xValues ?? [], series[0]!.values, limit)
-        if (keep.length > 0) {
-          for (const entry of series) entry.values = keep.map((i) => entry.values[i]!)
-          if (categories.length === n) categories.splice(0, n, ...keep.map((i) => categories[i]!))
-          if (xValues !== undefined) xValues = keep.map((i) => xValues![i]!)
-        }
-      } else {
-        const edges: number[] = []
-        for (let b = 0; b <= limit; b++) edges.push(Math.floor((b * n) / limit))
-        const aggregate = (values: Double[]): Double[] => {
-          const out: Double[] = []
-          for (let b = 0; b < limit; b++) {
-            let acc = NaN
-            let count = 0
-            for (let i = edges[b]!; i < edges[b + 1]!; i++) {
-              const v = values[i]!
-              if (Number.isNaN(v)) continue
-              acc = count === 0 ? v : method === 'max' ? Math.max(acc, v) : method === 'min' ? Math.min(acc, v) : acc + v
-              count++
-            }
-            out.push(method === 'average' && count > 0 ? acc / count : acc)
-          }
-          return out
-        }
-        for (const entry of series) entry.values = aggregate(entry.values)
-        const firstOf = <T>(list: T[]): T[] => edges.slice(0, limit).map((start) => list[start]!)
-        if (categories.length === n) categories.splice(0, n, ...firstOf(categories))
-        if (xValues !== undefined) xValues = firstOf(xValues)
-      }
-    }
+    const thinned = decimateShared(sampleRequests, { columns: series.map((entry) => entry.values), categories, xValues })
+    for (let k = 0; k < series.length; k++) series[k]!.values = thinned.columns[k]!
+    if (thinned.categories !== categories) categories.splice(0, categories.length, ...thinned.categories)
+    xValues = thinned.xValues
   }
   const spec: ChartSpec = {
     width: opts.width ?? 640.0,
@@ -706,7 +729,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   }
   if (customY !== undefined && spec.yDomain === undefined) spec.yDomain = customY
   if (customX !== undefined && (spec.xValues === undefined || spec.xValues.length === 0)) spec.xValues = customX
-  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, warnings, supported }
+  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }) }
 }
 
 const defaultPalette = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']

@@ -50,11 +50,21 @@ const ROLE: Readonly<Record<keyof Series, Role>> = {
   effect: 'presentation',
   symbol: 'presentation',
   symbolRepeat: 'presentation',
+  symbolMargin: 'presentation',
+  symbolOffset: 'presentation',
+  symbolPosition: 'presentation',
+  symbolRotate: 'presentation',
+  symbolClip: 'presentation',
+  symbolBoundingData: 'presentation',
   corners: 'presentation',
   gradient: 'presentation',
   pattern: 'presentation',
   dash: 'presentation',
   negativeColor: 'presentation',
+  focus: 'presentation',
+  emphasisColor: 'presentation',
+  selectColor: 'presentation',
+  blurOpacity: 'presentation',
 }
 
 /** A series carrying every data channel at once, so one table shows them all. */

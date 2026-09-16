@@ -39,14 +39,32 @@ describe('gradient colours', () => {
     expect(spec.series.map((s) => [s.color, s.gradient?.stops.length])).toEqual([['#ff0000', 2], ['#123456', 1], ['#abcdef', 1]])
   })
 
-  it('a radial gradient warns by name and degrades to its first stop; a gradient with no usable stops is ignored', () => {
-    const { spec, warnings } = run([
-      { type: 'bar', itemStyle: { color: { type: 'radial', x: 0.5, y: 0.5, r: 0.5, colorStops: [{ offset: 0, color: '#111111' }, { offset: 1, color: '#222222' }] } }, data: [1] },
-      { type: 'bar', itemStyle: { color: { type: 'linear', colorStops: [{ offset: 'x' }] } }, data: [1] },
-    ])
-    expect(warnings.map((w) => w.code + '@' + w.path)).toEqual(['series-option-unsupported@series[0].itemStyle.color'])
-    expect(spec.series[0]!.gradient).toEqual({ stops: [{ offset: 0, color: '#111111' }] })
+  it('a gradient with no usable stops is ignored without a warning', () => {
+    const { spec, warnings } = run([{ type: 'bar', itemStyle: { color: { type: 'linear', colorStops: [{ offset: 'x' }] } }, data: [1] }])
+    expect(warnings).toEqual([])
+    expect(spec.series[0]!.gradient).toBeUndefined()
+  })
+})
+
+describe('radial gradients and image patterns', () => {
+  it('a radial gradient keeps every stop as the radial series gradient with zero warnings', () => {
+    const { spec, warnings } = compileOption({
+      xAxis: { type: 'category', data: ['a', 'b'] },
+      yAxis: {},
+      series: [{ type: 'bar', itemStyle: { color: { type: 'radial', x: 0.5, y: 0.5, r: 0.5, colorStops: [{ offset: 0, color: '#111111' }, { offset: 1, color: '#222222' }] } }, data: [1, 2] }],
+    })
+    expect(warnings).toEqual([])
+    expect(spec.series[0]!.gradient).toEqual({ stops: [{ offset: 0, color: '#111111' }, { offset: 1, color: '#222222' }], shape: 'radial' })
     expect(spec.series[0]!.color).toBe('#111111')
-    expect(spec.series[1]!.gradient).toBeUndefined()
+  })
+
+  it('an image pattern is named and the palette colour is used', () => {
+    const { spec, warnings } = compileOption({
+      xAxis: { type: 'category', data: ['a'] },
+      yAxis: {},
+      series: [{ type: 'bar', itemStyle: { color: { image: 'texture.png', repeat: 'repeat' } }, data: [1] }],
+    })
+    expect(warnings.map((w) => w.code + ' ' + w.path)).toEqual(['series-option-unsupported series[0].itemStyle.color'])
+    expect(spec.series[0]!.gradient).toBeUndefined()
   })
 })

@@ -53,9 +53,13 @@ data class PyreonChartRect(var x: Double, var y: Double, var w: Double, var h: D
 data class PyreonChartGradientStop(var offset: Double, var color: String)
 
 data class PyreonChartGradient(
+    /** Linear: the ramp's start. Radial: the centre. */
     var from: PyreonChartPt,
+    /** Linear: the ramp's end. Radial: a point ON the outer circle — its distance from `from` is the radius. */
     var to: PyreonChartPt,
     var stops: List<PyreonChartGradientStop>,
+    /** A radial ramp instead of a linear one; both shapes are two points, so mirror and transpose move it unchanged. */
+    var radial: Boolean = false,
 )
 
 data class PyreonChartPattern(
@@ -235,7 +239,7 @@ fun pyreonMirrorCmds(cmds: List<PyreonDrawCmd>, width: Double): List<PyreonDrawC
             center = c.center?.let { mp(it) },
             at = c.at?.let { mp(it) },
             corners = c.corners?.let { if (it.size == 4) listOf(it[1], it[0], it[3], it[2]) else it },
-            grad = c.grad?.let { PyreonChartGradient(mp(it.from), mp(it.to), it.stops) },
+            grad = c.grad?.let { PyreonChartGradient(mp(it.from), mp(it.to), it.stops, it.radial) },
             align = c.align?.let { if (it == "start") "end" else if (it == "end") "start" else it },
             rotate = c.rotate?.let { -it },
         )
@@ -260,7 +264,7 @@ fun pyreonTransposeCmds(cmds: List<PyreonDrawCmd>): List<PyreonDrawCmd> {
             at = c.at?.let { tp(it) },
             // Corners run top-left, top-right, bottom-right, bottom-left; the diagonal fixes the first and third and swaps the other two.
             corners = c.corners?.let { if (it.size == 4) listOf(it[0], it[3], it[2], it[1]) else it },
-            grad = c.grad?.let { PyreonChartGradient(tp(it.from), tp(it.to), it.stops) },
+            grad = c.grad?.let { PyreonChartGradient(tp(it.from), tp(it.to), it.stops, it.radial) },
             // Text is anchored, never reflected: the horizontal anchor becomes the vertical one and back.
             align = c.baseline?.let { if (it == "top") "start" else if (it == "bottom") "end" else "middle" } ?: c.align,
             baseline = c.align?.let { if (it == "start") "top" else if (it == "end") "bottom" else "middle" } ?: c.baseline,
@@ -283,6 +287,14 @@ fun pyreonChartBrush(grad: PyreonChartGradient?): Brush? {
                     st.offset.coerceIn(0.0, 1.0).toFloat(), pyreonChartColor(st.color))
             }
             .toTypedArray()
+    if (g.radial) {
+        val dx = g.to.x - g.from.x
+        val dy = g.to.y - g.from.y
+        return Brush.radialGradient(
+            colorStops = stops,
+            center = Offset(g.from.x.toFloat(), g.from.y.toFloat()),
+            radius = kotlin.math.sqrt(dx * dx + dy * dy).toFloat().coerceAtLeast(Float.MIN_VALUE))
+    }
     return Brush.linearGradient(
         colorStops = stops,
         start = Offset(g.from.x.toFloat(), g.from.y.toFloat()),

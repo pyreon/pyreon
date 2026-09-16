@@ -25,7 +25,7 @@ function mixPt(a: Pt, b: Pt, e: Double): Pt {
 
 function mixGrad(a: ChartGradient | undefined, b: ChartGradient | undefined, e: Double): ChartGradient | undefined {
   if (a === undefined || b === undefined) return b
-  return { from: mixPt(a.from, b.from, e), to: mixPt(a.to, b.to, e), stops: b.stops }
+  return { from: mixPt(a.from, b.from, e), to: mixPt(a.to, b.to, e), stops: b.stops, radial: b.radial }
 }
 
 /** True when the two lists can be interpolated command by command. */

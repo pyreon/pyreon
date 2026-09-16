@@ -70,6 +70,11 @@ function traceRoundedRect(
   ctx.closePath()
 }
 
+/** A radial gradient's radius — the distance from its centre to the point on its outer circle. */
+function gradientRadius(grad: ChartGradient): number {
+  return Math.hypot(grad.to.x - grad.from.x, grad.to.y - grad.from.y)
+}
+
 /** A canvas gradient from the engine's stops — or the solid fill when it has none. */
 function fillStyleFor(
   ctx: CanvasRenderingContext2D,
@@ -77,7 +82,9 @@ function fillStyleFor(
   grad: ChartGradient | undefined,
 ): string | CanvasGradient {
   if (grad === undefined || grad.stops.length === 0) return fill
-  const g = ctx.createLinearGradient(grad.from.x, grad.from.y, grad.to.x, grad.to.y)
+  const g = grad.radial
+    ? ctx.createRadialGradient(grad.from.x, grad.from.y, 0, grad.from.x, grad.from.y, gradientRadius(grad))
+    : ctx.createLinearGradient(grad.from.x, grad.from.y, grad.to.x, grad.to.y)
   for (const st of grad.stops) g.addColorStop(Math.min(1, Math.max(0, st.offset)), st.color)
   return g
 }

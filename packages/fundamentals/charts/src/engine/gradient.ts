@@ -11,8 +11,10 @@ import type { ChartGradient, ChartGradientStop, Rect } from './types'
 /** The gradient a mark asks for: stops plus which way the ramp runs. */
 export interface SeriesGradient {
   stops: ChartGradientStop[]
-  /** `vertical` (the default) ramps top → bottom; `horizontal` left → right. */
+  /** `vertical` (the default) ramps top → bottom; `horizontal` left → right. Ignored by a radial ramp. */
   direction?: string | undefined
+  /** `radial` ramps out from the plot's centre; anything else (the default) is linear. */
+  shape?: string | undefined
 }
 
 /**
@@ -32,10 +34,18 @@ const NO_GRADIENT: SeriesGradient = { stops: [] }
  * chart rather than as striping every bar identically.
  */
 export function gradientFor(g: SeriesGradient, plot: Rect): ChartGradient {
+  if (g.shape === 'radial') {
+    // Centred on the plot; the radius reaches the plot's far edge along its
+    // longer side, so the outer stop lands at the boundary rather than short
+    // of it (ECharts' default `r: 0.5` over the bounding box).
+    const center = { x: plot.x + plot.w / 2, y: plot.y + plot.h / 2 }
+    const radius = Math.max(plot.w, plot.h) / 2
+    return { from: center, to: { x: center.x + radius, y: center.y }, stops: g.stops, radial: true }
+  }
   const horizontal = g.direction === 'horizontal'
   const from = { x: plot.x, y: plot.y }
   const to = horizontal ? { x: plot.x + plot.w, y: plot.y } : { x: plot.x, y: plot.y + plot.h }
-  return { from, to, stops: g.stops }
+  return { from, to, stops: g.stops, radial: false }
 }
 
 /**

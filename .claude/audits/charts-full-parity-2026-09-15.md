@@ -174,6 +174,43 @@ for interaction, animation or accessibility parity.
   shapes). Direct ledger after the pass: 31/62 rows. The score is derived
   from the rows; nothing hand-types a headline.
 
+- [x] `data.progressive-large` complete: the native `<OptionChart>` runs the
+  web facade's own decimation (`samplingRequest` / `decimateShared`, exported
+  from `@pyreon/charts/option-layer`) at compile time — `sampling` to the
+  option's static width (its `width` prop, or the web's own 640 default),
+  `large` / `progressive` to their thresholds; a native spec asserts the
+  thinned rows are the rows the web keeps at that width, and both toolchains
+  compile the emit. A negative literal datum used to make the whole option
+  emit nothing on native (`litNumber` read only plain literals); fixed and
+  locked.
+- [x] `presentation.gradients-patterns`: radial gradients are an engine fill
+  (`ChartGradient.radial`, `SeriesGradient.shape: 'radial'`) on the web
+  canvas, SVG, and both native runtimes (mirror / transpose parity corpora
+  carry a radial polygon; real-Chromium pixels are asserted centre vs edge);
+  the option facade keeps every stop of a radial ECharts colour. The row
+  stays partial on IMAGE patterns (`color: { image }`), which now warn by
+  name instead of silently painting the palette colour.
+
+- [x] `presentation.states` (still partial, narrowed): ECharts' `emphasis` /
+  `select` / `blur` FILLS and `emphasis.focus` blur are engine fields
+  (`Series.emphasisColor` / `selectColor` / `focus` / `blurOpacity`, applied
+  through one `stateFill` at every bar and point site, so the generated
+  engines carry them); `<OptionChart>` now hovers (highlight) and pins per the
+  series' `selectedMode` on the web host, and the native desugar lowers the
+  same four fields plus `selectedMode` as the host's tap-to-pin state. Named
+  by name: state labels, symbol scale, `blurScope`, whole-series selection;
+  the engine's highlight is a datum COLUMN, so `focus: 'series'` dims the
+  other columns like `self`. Fixed on the way: `<SingleAxisChart>` mounted no
+  tooltip node at all (the host sweep's one red row on the base branch).
+
+- [x] `series.pictorial-bar` complete: the six accepted-but-unmapped keys are
+  engine geometry (`engine/pictorial.ts` — unit cells with margin, a
+  position along the bar, a rotation about each cell, polygon-∩-rect
+  clipping, and a bounding datum that sizes the run so the bar shows the
+  covered fraction), filled by the facade and lowered by the native desugar
+  (a `numbers` mark-option kind carries `symbolOffset`); percent strings and
+  an unknown position warn by name on both sides.
+
 ## Exit gate
 
 Zero unclassified core inventory rows; green real-browser conformance; green

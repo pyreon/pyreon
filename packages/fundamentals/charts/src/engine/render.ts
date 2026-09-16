@@ -12,6 +12,8 @@ import { polygonCmd, rectCmd } from './corners'
 import { seriesGradient } from './gradient'
 import type { SeriesGradient } from './gradient'
 import { withAlpha } from './radar'
+import { pictorialCommands } from './pictorial'
+import type { PictorialBar } from './pictorial'
 import type { ChartPattern, DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
 
 /** One drawable series. */
@@ -62,6 +64,18 @@ export interface Series {
   symbol?: 'rect' | 'circle' | 'diamond' | 'triangle' | undefined
   /** Repeat the symbol along the bar instead of stretching it. */
   symbolRepeat?: boolean | undefined
+  /** Pictorial: gap between repeated symbols (px). */
+  symbolMargin?: Double | undefined
+  /** Pictorial: `[dx, dy]` px nudge of every symbol. */
+  symbolOffset?: Double[] | undefined
+  /** Pictorial: where the symbol (or run) sits along the bar — `start` (default), `end`, `center`. */
+  symbolPosition?: string | undefined
+  /** Pictorial: degrees of rotation about each cell's centre. */
+  symbolRotate?: Double | undefined
+  /** Pictorial: clip to the bar instead of dropping a partial symbol. */
+  symbolClip?: boolean | undefined
+  /** Pictorial: the datum value a full symbol (or run) spans; with `symbolClip` the bar shows the covered fraction. */
+  symbolBoundingData?: Double | undefined
   /** Corner radii for bar-family series — `[tl, tr, br, bl]`, clamped at paint time. */
   corners?: Double[] | undefined
   /** Linear-gradient fill for bar-family and area series; resolved against the plot box. */
@@ -72,6 +86,19 @@ export interface Series {
   dash?: Double[] | undefined
   /** The fill a `waterfall` step takes when its value is negative; `color` otherwise. */
   negativeColor?: string | undefined
+  /**
+   * ECharts' `emphasis.focus`: `self` / `series` dim every datum that is NOT
+   * the highlighted one while a highlight is active (the blur state). This
+   * engine's highlight is a datum COLUMN across every series, so both spellings
+   * dim the other columns; `none` (the default) dims nothing.
+   */
+  focus?: string | undefined
+  /** ECharts' `emphasis.itemStyle.color`: the fill a highlighted datum takes. */
+  emphasisColor?: string | undefined
+  /** ECharts' `select.itemStyle.color`: the fill a selected (pinned) datum takes. */
+  selectColor?: string | undefined
+  /** ECharts' `blur.itemStyle.opacity`: the opacity a blurred datum fades to (default 0.1). */
+  blurOpacity?: Double | undefined
   /**
    * Error-bar bounds, index-aligned with `values` — a whisker from `errLow[i]`
    * to `errHigh[i]` through each bar centre / point. A gap in either bound
@@ -365,6 +392,31 @@ export function emphasisLevel(spec: ChartSpec, index: number): number {
   const e: Emphasis = spec.emphasis ?? { highlight: -1, selected: [] }
   for (const sel of e.selected) if (sel === index) return 2
   return e.highlight === index ? 1 : 0
+}
+
+/** True when a highlight is active and some series asks to blur the others. */
+export function blurActive(spec: ChartSpec): boolean {
+  const e: Emphasis = spec.emphasis ?? { highlight: -1, selected: [] }
+  if (e.highlight < 0) return false
+  for (const s of spec.series) if (s.focus === 'self' || s.focus === 'series') return true
+  return false
+}
+
+/**
+ * The fill a datum paints with under the spec's states: the series'
+ * `selectColor` when pinned, its `emphasisColor` when highlighted, a faded
+ * `fill` when another datum is highlighted and the chart blurs, else `fill`.
+ */
+export function stateFill(spec: ChartSpec, s: Series, index: number, fill: string): string {
+  const level = emphasisLevel(spec, index)
+  // Coalesced first, never narrowed through the guard: Swift does not narrow
+  // a struct's optional through `!== undefined`, and an empty colour is "none".
+  const selectColor = s.selectColor ?? ''
+  const emphasisColor = s.emphasisColor ?? ''
+  if (level === 2 && selectColor !== '') return selectColor
+  if (level === 1 && emphasisColor !== '') return emphasisColor
+  if (level === 0 && blurActive(spec)) return withAlpha(fill, s.blurOpacity ?? 0.1)
+  return fill
 }
 
 /** The outline a highlighted (1) or selected (2) bar gets — closed, painted over the fill. */
@@ -906,7 +958,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     for (const seg of stackSegs) {
       const rS = growRect(seg.rect, yDomain)
       const gS = seriesGradient(stackedSeries[seg.seriesIndex]!.gradient, plot)
-      out.push(rectCmd(rS, stackedSeries[seg.seriesIndex]!.color, stackedSeries[seg.seriesIndex]!.corners, gS.stops.length === 0 ? undefined : gS, stackedSeries[seg.seriesIndex]!.pattern))
+      out.push(rectCmd(rS, stateFill(spec, stackedSeries[seg.seriesIndex]!, seg.datumIndex, stackedSeries[seg.seriesIndex]!.color), stackedSeries[seg.seriesIndex]!.corners, gS.stops.length === 0 ? undefined : gS, stackedSeries[seg.seriesIndex]!.pattern))
       const lvlS = emphasisLevel(spec, seg.datumIndex)
       if (lvlS > 0) out.push(emphasisOutline(rS, lvlS, t.label))
       // A stacked segment labels INSIDE itself: its value is the segment's
@@ -934,7 +986,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     for (const seg of groupSegs) {
       const rG = growRect(seg.rect, yDomain)
       const gG = seriesGradient(groupedSeries[seg.seriesIndex]!.gradient, plot)
-      out.push(rectCmd(rG, groupedSeries[seg.seriesIndex]!.color, groupedSeries[seg.seriesIndex]!.corners, gG.stops.length === 0 ? undefined : gG, groupedSeries[seg.seriesIndex]!.pattern))
+      out.push(rectCmd(rG, stateFill(spec, groupedSeries[seg.seriesIndex]!, seg.datumIndex, groupedSeries[seg.seriesIndex]!.color), groupedSeries[seg.seriesIndex]!.corners, gG.stops.length === 0 ? undefined : gG, groupedSeries[seg.seriesIndex]!.pattern))
       const lvlG = emphasisLevel(spec, seg.datumIndex)
       if (lvlG > 0) out.push(emphasisOutline(rG, lvlG, t.label))
       // A grouped bar has a free outer edge, so it labels OUTSIDE like a
@@ -1033,32 +1085,14 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       for (let ri = 0; ri < rects.length; ri++) {
         const r = rects[ri]!
         const grown = growRectH(r)
+        const fillH = stateFill(spec, s, ri, s.color)
         if (s.symbol === undefined) {
           /* v8 ignore next — `(s.values[ri] ?? 0.0)` is unreachable: `ri` indexes
              rects built FROM `s.values`, so the read is always in range. Native
              needs the unwrap; the web cannot reach it. */
-          out.push(rectCmd(grown, s.color, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad, s.pattern))
-        } else if (s.symbolRepeat === true) {
-          // Repeat a unit symbol along the bar (left to right); a partial last symbol is dropped.
-          const unit = grown.h
-          let count = 0
-          let acc = unit
-          for (let k = 0; k < 400; k++) {
-            if (unit > 0.0 && acc <= grown.w + 0.001) count = k + 1
-            acc = acc + unit
-          }
-          let kf = 0.0
-          for (let k = 0; k < count; k++) {
-            /* v8 ignore next — `?? 'rect'` is unreachable: this arm sits inside the
-               `else` of `s.symbol === undefined`. It unwraps the optional for the
-               native emit, where that test does not narrow. */
-            out.push(symbolCommand({ x: grown.x + unit * kf, y: grown.y, w: unit, h: unit }, s.symbol ?? 'rect', s.color))
-            kf = kf + 1.0
-          }
+          out.push(rectCmd(grown, fillH, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad, s.pattern))
         } else {
-          /* v8 ignore next — same unreachable native unwrap: `s.symbol` is known
-             defined in this arm. */
-          out.push(symbolCommand(grown, s.symbol ?? 'rect', s.color))
+          for (const c of pictorialCommands(pictorialBar(s, grown, true, s.values[ri] ?? 0.0, fillH))) out.push(c)
         }
       }
       for (let i = 0; i < rects.length; i++) {
@@ -1096,34 +1130,14 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       for (let ri = 0; ri < rects.length; ri++) {
         const r = rects[ri]!
         const grown = growRect(r, sDomain)
+        const fillV = stateFill(spec, s, ri, s.color)
         if (s.symbol === undefined) {
           /* v8 ignore next — `(s.values[ri] ?? 0.0)` is unreachable: `ri` indexes
              rects built FROM `s.values`, so the read is always in range. Native
              needs the unwrap; the web cannot reach it. */
-          out.push(rectCmd(grown, s.color, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad, s.pattern))
-        } else if (s.symbolRepeat === true) {
-          // Repeat a unit symbol up the bar; a partial last symbol is dropped.
-          // (Horizontal charts left this loop above, so the bar is vertical.)
-          const unit = grown.w
-          const length = grown.h
-          let count = 0
-          let acc = unit
-          for (let k = 0; k < 400; k++) {
-            if (unit > 0.0 && acc <= length + 0.001) count = k + 1
-            acc = acc + unit
-          }
-          let kf = 0.0
-          for (let k = 0; k < count; k++) {
-            const cell: Rect = { x: grown.x, y: grown.y + grown.h - unit * (kf + 1.0), w: unit, h: unit }
-            /* v8 ignore next — same unreachable native unwrap: `s.symbol` is known
-             defined in this arm. */
-          out.push(symbolCommand(cell, s.symbol ?? 'rect', s.color))
-            kf = kf + 1.0
-          }
+          out.push(rectCmd(grown, fillV, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad, s.pattern))
         } else {
-          /* v8 ignore next — same unreachable native unwrap: `s.symbol` is known
-             defined in this arm. */
-          out.push(symbolCommand(grown, s.symbol ?? 'rect', s.color))
+          for (const c of pictorialCommands(pictorialBar(s, grown, false, s.values[ri] ?? 0.0, fillV))) out.push(c)
         }
       }
       for (let i = 0; i < rects.length; i++) {
@@ -1155,7 +1169,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       const steps = layoutWaterfall(s.values, plot, sDomain, 0.25)
       for (let si = 0; si < steps.length; si++) {
         const st = steps[si]!
-        const fill = st.value < 0.0 ? s.negativeColor ?? withAlpha(s.color, 0.55) : s.color
+        const fill = stateFill(spec, s, st.datumIndex, st.value < 0.0 ? s.negativeColor ?? withAlpha(s.color, 0.55) : s.color)
         // Grows from its START level, not the axis zero: a step that begins
         // at 40 and adds 5 must rise from 40.
         const startY = scaleLinear(sDomain, plot.y + plot.h, plot.y, st.start)
@@ -1268,10 +1282,11 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         // The datum symbol: a circle unless the series names another shape.
         const r = fullR * progress
         const pointSymbol = s.symbol ?? 'circle'
+        const fillP = stateFill(spec, s, i, s.color)
         if (pointSymbol === 'circle') {
-          out.push({ kind: 'circle', center: pts[i]!, radius: r, fill: s.color })
+          out.push({ kind: 'circle', center: pts[i]!, radius: r, fill: fillP })
         } else {
-          out.push(symbolCommand({ x: pts[i]!.x - r, y: pts[i]!.y - r, w: r * 2.0, h: r * 2.0 }, pointSymbol, s.color))
+          out.push(symbolCommand({ x: pts[i]!.x - r, y: pts[i]!.y - r, w: r * 2.0, h: r * 2.0 }, pointSymbol, fillP))
         }
       }
     }
@@ -1573,6 +1588,30 @@ function symbolCommand(cell: Rect, symbol: 'rect' | 'circle' | 'diamond' | 'tria
     }
   }
   return { kind: 'rect', rect: cell, fill }
+}
+
+/** A series' pictorial keys for one laid-out bar. The bounding run scales linearly with the datum. */
+function pictorialBar(s: Series, bar: Rect, horizontal: boolean, value: Double, fill: string): PictorialBar {
+  const offset = s.symbolOffset ?? []
+  const barLength = horizontal ? bar.w : bar.h
+  const hasBounding = s.symbolBoundingData !== undefined && value !== 0.0
+  const bound = s.symbolBoundingData ?? 0.0
+  const boundingLength = hasBounding ? (barLength * Math.abs(bound)) / Math.abs(value) : 0.0
+  return {
+    bar,
+    horizontal,
+    symbol: s.symbol ?? 'rect',
+    repeat: s.symbolRepeat === true,
+    fill,
+    margin: s.symbolMargin ?? 0.0,
+    offsetX: offset.length > 0 ? offset[0]! : 0.0,
+    offsetY: offset.length > 1 ? offset[1]! : 0.0,
+    position: s.symbolPosition ?? 'start',
+    rotate: s.symbolRotate ?? 0.0,
+    clip: s.symbolClip === true,
+    hasBounding,
+    boundingLength,
+  }
 }
 
 /** Bar rects for a series index — what a hit test runs against. */

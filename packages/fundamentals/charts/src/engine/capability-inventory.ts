@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.20' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.23' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -36,8 +36,10 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('data.dataset', 'data', 'direct', 'complete', 'src/engine/option-layer.ts', '../../native/compiler/src/tests/chart-dataset-native.test.ts'),
   row('data.dimensions-encode', 'data', 'direct', 'complete', 'src/engine/option-encode-tooltip.test.ts', '../../native/compiler/src/tests/chart-dataset-native.test.ts'),
   row('data.transforms', 'data', 'direct', 'partial', 'src/engine/option-transform.test.ts', '../../native/compiler/src/tests/chart-dataset-native.test.ts'), // built-in filter/sort cross; registered transforms run on the web only
-  // sampling / large / progressive resolve to bounded decimation on shared rows.
-  row('data.progressive-large', 'data', 'direct', 'partial', 'src/engine/option-sampling.test.ts'), // web complete; native decimation is `<PlotChart maxPoints>`, the `sampling` / `large` spellings do not cross the OptionChart
+  // sampling / large / progressive resolve to bounded decimation on shared rows;
+  // the native OptionChart runs the SAME decimation at compile time against the
+  // option's static width (its `width` prop, or the web's own 640 default).
+  row('data.progressive-large', 'data', 'direct', 'complete', 'src/engine/option-sampling.test.ts', '../../native/compiler/src/tests/chart-sampling-native.test.ts'),
   row('data.empty-null', 'data', 'direct', 'complete', 'src/engine/gaps.test.ts'),
 
   ...[
@@ -52,7 +54,8 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('series.sankey', 'series', 'direct', 'complete', 'src/engine/option-orient.test.ts', '../../native/compiler/src/tests/chart-orient-native.test.ts'),
   row('series.map', 'series', 'direct', 'partial', 'src/engine/geo-web.ts'),
   row('series.lines', 'series', 'direct', 'partial', 'src/engine/lines-series.test.ts'),
-  row('series.pictorial-bar', 'series', 'direct', 'partial', 'src/engine/option.ts'),
+  // The six geometry keys are draw-list geometry (`engine/pictorial.ts`): px / degree numbers cross; a percent string warns by name.
+  row('series.pictorial-bar', 'series', 'direct', 'complete', 'src/engine/pictorial.test.ts', 'src/engine/option-edges.test.ts', '../../native/compiler/src/tests/chart-pictorial-native.test.ts'),
   row('series.extensions', 'series', 'hosted', 'complete', 'src/webview.ts'),
 
   ...['grid', 'title', 'legend', 'tooltip', 'aria']
@@ -91,9 +94,9 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('runtime.resize', 'runtime', 'direct', 'complete', 'src/engine/canvas-host.tsx'),
 
   row('presentation.labels-rich-text', 'presentation', 'direct', 'partial', 'src/engine/option.ts'),
-  row('presentation.states', 'presentation', 'direct', 'partial', 'src/engine/emphasis.test.ts'),
+  row('presentation.states', 'presentation', 'direct', 'partial', 'src/engine/emphasis.test.ts', 'src/engine/option-states.test.ts', 'src/engine/option-chart-states.test.tsx', '../../native/compiler/src/tests/chart-states-native.test.ts'), // emphasis/select/blur FILLS + focus blur + selectedMode pinning cross; state labels, symbol scale and whole-series selection warn by name, and the hover is a datum column (no per-series focus)
   row('presentation.symbols', 'presentation', 'direct', 'complete', 'src/engine/option-symbols.test.ts', '../../native/compiler/src/tests/chart-symbols-native.test.ts'),
-  row('presentation.gradients-patterns', 'presentation', 'direct', 'partial', 'src/engine/option-gradients.test.ts', '../../native/compiler/src/tests/chart-gradients-native.test.ts'), // linear + decals; radial gradients warn
+  row('presentation.gradients-patterns', 'presentation', 'direct', 'partial', 'src/engine/option-gradients.test.ts', '../../native/compiler/src/tests/chart-gradients-native.test.ts'), // linear + radial gradients and decals cross; IMAGE patterns (`color: { image }`) warn by name
   row('presentation.decals', 'presentation', 'direct', 'partial', 'src/engine/pattern.test.ts'),
   row('presentation.animation', 'presentation', 'direct', 'complete', 'src/engine/cmd-tween.ts', '../../native/compiler/src/tests/native-chart-transition-parity.test.ts'),
   // Compile-time parity only: the completion plan requires native canvas

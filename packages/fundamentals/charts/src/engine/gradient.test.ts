@@ -7,6 +7,8 @@ import { gradientFor, gradientSolid, seriesGradient } from './gradient'
 import { area, bars, resolveMarks, stackedBars } from './marks'
 import { defaultTheme, layoutChart, renderChart } from './render'
 import type { ChartSpec } from './render'
+import { mirrorCmds, transposeCmds } from './rtl'
+import { tweenCmds } from './cmd-tween'
 import { collectGradients, renderSvg, svgCommand } from './svg'
 import type { ChartGradient, DrawCmd } from './types'
 
@@ -47,6 +49,7 @@ describe('gradientFor', () => {
       from: { x: 10, y: 20 },
       to: { x: 10, y: 120 },
       stops: STOPS,
+      radial: false,
     })
   })
 
@@ -69,13 +72,13 @@ describe('seriesGradient', () => {
 
 describe('gradientSolid', () => {
   it('degrades to the first stop, or to the fallback when there are none', () => {
-    expect(gradientSolid({ from: { x: 0, y: 0 }, to: { x: 0, y: 1 }, stops: STOPS }, '#000')).toBe('#2563eb')
-    expect(gradientSolid({ from: { x: 0, y: 0 }, to: { x: 0, y: 1 }, stops: [] }, '#000')).toBe('#000')
+    expect(gradientSolid({ from: { x: 0, y: 0 }, to: { x: 0, y: 1 }, stops: STOPS, radial: false }, '#000')).toBe('#2563eb')
+    expect(gradientSolid({ from: { x: 0, y: 0 }, to: { x: 0, y: 1 }, stops: [], radial: false }, '#000')).toBe('#000')
   })
 })
 
 describe('rectCmd / polygonCmd', () => {
-  const G: ChartGradient = { from: { x: 0, y: 0 }, to: { x: 0, y: 10 }, stops: STOPS }
+  const G: ChartGradient = { from: { x: 0, y: 0 }, to: { x: 0, y: 10 }, stops: STOPS, radial: false }
 
   it('omits both optional keys when neither is asked for', () => {
     const c = rectCmd(PLOT, '#f00', undefined, undefined)
@@ -130,7 +133,7 @@ describe('renderChart carries a mark gradient into the draw list', () => {
 
 describe('svg gradients', () => {
   const F = 'system-ui'
-  const G: ChartGradient = { from: { x: 0, y: 0 }, to: { x: 0, y: 100 }, stops: STOPS }
+  const G: ChartGradient = { from: { x: 0, y: 0 }, to: { x: 0, y: 100 }, stops: STOPS, radial: false }
   const RECT: DrawCmd = { kind: 'rect', rect: { x: 1, y: 2, w: 3, h: 4 }, fill: '#f00', grad: G }
 
   it('collectGradients mints one def per gradient-bearing command and an empty id for the rest', () => {
@@ -154,7 +157,7 @@ describe('svg gradients', () => {
   })
 
   it('a gradient with no stops emits no def and keeps the solid fill', () => {
-    const empty: DrawCmd = { kind: 'rect', rect: PLOT, fill: '#abc', grad: { from: { x: 0, y: 0 }, to: { x: 0, y: 1 }, stops: [] } }
+    const empty: DrawCmd = { kind: 'rect', rect: PLOT, fill: '#abc', grad: { from: { x: 0, y: 0 }, to: { x: 0, y: 1 }, stops: [], radial: false } }
     const { defs, ids } = collectGradients([empty], 'c')
     expect(defs).toBe('')
     expect(ids).toEqual([''])
@@ -166,11 +169,40 @@ describe('svg gradients', () => {
       kind: 'rect',
       rect: PLOT,
       fill: '#000',
-      grad: { from: { x: 0, y: 0 }, to: { x: 0, y: 1 }, stops: [{ offset: -2, color: '#111' }, { offset: 9, color: '#222' }] },
+      grad: { from: { x: 0, y: 0 }, to: { x: 0, y: 1 }, stops: [{ offset: -2, color: '#111' }, { offset: 9, color: '#222' }], radial: false },
     }
     const { defs } = collectGradients([wild], 'c')
     expect(defs).toContain('offset="0"')
     expect(defs).toContain('offset="1"')
     expect(defs).not.toContain('offset="-2"')
+  })
+})
+
+describe('radial gradients', () => {
+  const R: ChartGradient = { from: { x: 50, y: 40 }, to: { x: 80, y: 40 }, stops: STOPS, radial: true }
+
+  it('gradientFor centres a radial ramp on the plot with a radius to its far edge along the longer side', () => {
+    const g = gradientFor({ stops: STOPS, shape: 'radial' }, { x: 10, y: 20, w: 100, h: 60 })
+    expect(g).toEqual({ from: { x: 60, y: 50 }, to: { x: 110, y: 50 }, stops: STOPS, radial: true })
+    // `direction` is ignored by a radial ramp; a non-radial shape stays linear.
+    expect(gradientFor({ stops: STOPS, shape: 'radial', direction: 'horizontal' }, { x: 10, y: 20, w: 100, h: 60 }).radial).toBe(true)
+    expect(gradientFor({ stops: STOPS, shape: 'linear' }, { x: 10, y: 20, w: 100, h: 60 }).radial).toBe(false)
+  })
+
+  it('collectGradients mints a radialGradient def with the centre and the radius', () => {
+    const { defs, ids } = collectGradients([{ kind: 'rect', rect: PLOT, fill: '#f00', grad: R }], 'c')
+    expect(ids).toEqual(['c-g0'])
+    expect(defs).toContain('<radialGradient id="c-g0" gradientUnits="userSpaceOnUse" cx="50" cy="40" r="30">')
+    expect(defs).not.toContain('linearGradient')
+  })
+
+  it('mirroring and transposing keep the ramp radial; the tween carries the target shape', () => {
+    const rect: DrawCmd = { kind: 'rect', rect: { x: 0, y: 0, w: 10, h: 10 }, fill: '#f00', grad: R }
+    const mirrored = mirrorCmds([rect], 200)[0] as DrawCmd & { kind: 'rect' }
+    expect(mirrored.grad).toEqual({ from: { x: 150, y: 40 }, to: { x: 120, y: 40 }, stops: STOPS, radial: true })
+    const transposed = transposeCmds([rect])[0] as DrawCmd & { kind: 'rect' }
+    expect(transposed.grad?.radial).toBe(true)
+    const tweened = tweenCmds([{ ...rect, grad: { ...R, radial: false } }], [rect], 0.5)[0] as DrawCmd & { kind: 'rect' }
+    expect(tweened.grad?.radial).toBe(true)
   })
 })
