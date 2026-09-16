@@ -39,12 +39,33 @@ struct PyreonFlowStateTests {
         check(pyreonFlowEdgeId(source: "1", target: "2") == "e-1-2", "Apple generates missing edge ids like web")
         check(pyreonFlowEdgeId(source: "1", target: "2", sourceHandle: "out", targetHandle: "in") == "e-1-out-2-in", "Apple includes handles in generated edge ids")
         let configured = PyreonFlowState<NodeData>(
-            panOnScroll: true, panOnScrollSpeed: 0.75, zoomOnScroll: false,
+            minZoom: 0.25, maxZoom: 3.5, snapToGrid: true, snapGrid: 20,
+            nodeExtent: PyreonFlowNodeExtent(minX: -10, minY: -20, maxX: 500, maxY: 600),
+            connectionRules: ["source": ["target"]], defaultMarkerEnd: nil,
+            nodesDraggable: false, nodesConnectable: false, nodesSelectable: false, nodesFocusable: false,
+            edgesFocusable: false, disableKeyboardA11y: true, nodesDeletable: false, edgesDeletable: false, edgesReconnectable: false,
+            edgeInteractionWidth: 33, connectionRadius: 12, pannable: false, panOnDrag: false,
+            panOnScroll: true, panOnScrollSpeed: 0.75, zoomable: false, zoomOnScroll: false,
+            zoomOnPinch: false, zoomOnDoubleClick: true, selectionOnDrag: true,
+            selectionMode: "full", multiSelect: false, onlyRenderVisibleElements: true, snapToObjects: false,
+            defaultEdgeType: "straight", connectionLineType: "step",
+            defaultEdgeOptions: PyreonFlowDefaultEdgeOptions(type: "smoothstep", animated: true, interactionWidth: 44),
+            fitView: true, fitViewPadding: 0.2, autoHistory: false,
+            isValidConnection: { $0.source != $0.target },
             reducedMotion: false, deleteKeys: ["ForwardDelete"], multiSelectionKey: "ctrl",
             selectionKey: nil, zoomActivationKey: "meta", preventScrolling: false)
-        check(configured.panOnScroll && configured.panOnScrollSpeed == 0.75, "Apple retains scroll config")
-        check(!configured.zoomOnScroll && configured.deleteKeys == ["ForwardDelete"], "Apple retains zoom/delete config")
+        check(configured.minZoom == 0.25 && configured.maxZoom == 3.5 && configured.snapToGrid && configured.snapGrid == 20, "Apple retains viewport and grid config")
+        check(configured.nodeExtent == PyreonFlowNodeExtent(minX: -10, minY: -20, maxX: 500, maxY: 600) && configured.connectionRules == ["source": ["target"]], "Apple retains extent and connection rules")
+        check(!configured.nodesDraggable && !configured.nodesConnectable && !configured.nodesSelectable && !configured.nodesFocusable, "Apple retains node interaction config")
+        check(!configured.edgesFocusable && configured.disableKeyboardA11y && !configured.nodesDeletable && !configured.edgesDeletable && !configured.edgesReconnectable, "Apple retains accessibility and deletion config")
+        check(configured.edgeInteractionWidth == 33 && configured.connectionRadius == 12 && !configured.pannable && !configured.panOnDrag, "Apple retains pointer config")
+        check(configured.panOnScroll && configured.panOnScrollSpeed == 0.75 && !configured.zoomable && !configured.zoomOnScroll, "Apple retains scroll and zoom config")
         check(configured.multiSelectionKey == "ctrl" && configured.selectionKey == nil && configured.zoomActivationKey == "meta" && !configured.preventScrolling, "Apple retains modifier config")
+        check(!configured.zoomOnPinch && configured.zoomOnDoubleClick && configured.selectionOnDrag && configured.selectionMode == "full" && !configured.multiSelect, "Apple retains direct-manipulation config")
+        check(configured.onlyRenderVisibleElements && !configured.snapToObjects && configured.defaultEdgeType == "straight" && configured.connectionLineType == "step", "Apple retains render and connection config")
+        check(configured.defaultEdgeOptions == PyreonFlowDefaultEdgeOptions(type: "smoothstep", animated: true, interactionWidth: 44) && configured.defaultMarkerEnd == nil, "Apple retains edge defaults")
+        check(configured.fitViewOnLoad && configured.fitViewPadding == 0.2 && !configured.autoHistory && configured.reducedMotion == false, "Apple retains lifecycle config")
+        check(!configured.isValidConnection(PyreonFlowConnection(source: "same", target: "same")) && configured.deleteKeys == ["ForwardDelete"], "Apple retains validation and delete-key config")
         configured.minZoom = 0.75
         configured.pannable = false
         configured.zoomTo(0.1)
@@ -782,9 +803,213 @@ struct PyreonFlowStateTests {
         print("PyreonFlowEdgeCanvasTests: edge canvas checks passed")
     }
 
+    static func runWebViewChecks() {
+        let merged = pyreonFlowWebViewData(
+            graph: #"{"nodes":[],"edges":[]}"#,
+            commands: #"[{"id":"fit","type":"fit-view"}]"#)
+        let mergedObject = try! JSONSerialization.jsonObject(with: Data(merged.utf8)) as! [String: Any]
+        check((mergedObject["__pyreonFlowCommands"] as? [Any])?.count == 1, "webview commands merge into the private bridge field")
+
+        var selected: [String] = []
+        var events: [String] = []
+        var messages = 0
+        pyreonDispatchFlowWebViewMessage(
+            #"{"type":"edge-select","id":"e1","source":"a","target":"b"}"#,
+            onSelect: { selected.append($0.id) },
+            onMessage: { _ in messages += 1 },
+            onEvent: { events.append($0.type) })
+        check(selected == ["e1"], "edge payloads preserve the web onSelect compatibility callback")
+        check(events == ["edge-select"] && messages == 1, "edge payloads reach typed and generic callbacks")
+
+        pyreonDispatchFlowWebViewMessage(
+            #"{"id":"n1","data":{"label":"Node"}}"#,
+            onSelect: { selected.append($0.id) },
+            onEvent: { events.append($0.type) })
+        check(selected.last == "n1" && events.last == "node-select", "node payloads reach both node callbacks")
+
+        var errorMessage = ""
+        pyreonDispatchFlowWebViewMessage(
+            #"{"__pyreonFlowHostError":1,"message":"broken"}"#,
+            onError: { errorMessage = $0.message })
+        check(errorMessage == "broken", "host errors retain their message")
+    }
+
+    /// Model fields that carry with no native RENDER meaning still carry:
+    /// `class` is a browser CSS hook, so the host never reads it, but a node or
+    /// edge round-trips it unchanged (a consumer branching on it natively, or
+    /// serialising the graph back to the web, sees the same value).
+    static func runModelFieldChecks() {
+        let f = PyreonFlowState<NodeData>(
+            nodes: [PyreonFlowNode(id: "tagged", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "Tagged"), className: "highlight custom", style: "opacity: .5")],
+            edges: [PyreonFlowEdge(id: "tagged-edge", source: "tagged", target: "tagged", className: "dashed-edge", pathOffset: 12)])
+        check(f.getNode("tagged")?.className == "highlight custom", "Apple retains a node's browser class name on the model")
+        check(f.getEdge("tagged-edge")?.className == "dashed-edge", "Apple retains an edge's browser class name on the model")
+        f.updateNode("tagged") { $0.position = PyreonXYPosition(x: 5, y: 5) }
+        check(f.getNode("tagged")?.className == "highlight custom", "a node update leaves the class name in place")
+        let explicitTarget = PyreonFlowNode(id: "explicit-target", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "Target"), targetHandles: [PyreonFlowHandleConfig(id: "model-in", type: "target", position: .bottom)])
+        let inferred = [PyreonFlowHandleConfig(id: "out", type: "source", position: .right), PyreonFlowHandleConfig(id: "in", type: "target", position: .left)]
+        check(pyreonFlowEffectiveHandles(explicitTarget, inferred).compactMap { $0.id } == ["model-in", "out"], "explicit target handles come first and replace only the inferred target endpoint")
+    }
+
+    // <flow-parity:start> GENERATED by src/tests/native-parity-fixture.ts — do not edit; PYREON_WRITE_FLOW_PARITY=1 bun run test
+    static func parityNear(_ p: PyreonXYPosition, _ x: Double, _ y: Double) -> Bool { abs(p.x - x) < 1e-6 && abs(p.y - y) < 1e-6 }
+    static func parityNodes(_ f: PyreonFlowState<NodeData>, _ want: [(String, Double, Double)]) -> Bool {
+        let got = f.nodes
+        if got.count != want.count { return false }
+        for i in 0..<got.count { if got[i].id != want[i].0 || abs(got[i].position.x - want[i].1) >= 1e-6 || abs(got[i].position.y - want[i].2) >= 1e-6 { return false } }
+        return true
+    }
+    static func parityEdges(_ f: PyreonFlowState<NodeData>, _ want: [(String, String, String)]) -> Bool {
+        let got = f.edges
+        if got.count != want.count { return false }
+        for i in 0..<got.count { if got[i].id != want[i].0 || got[i].source != want[i].1 || got[i].target != want[i].2 { return false } }
+        return true
+    }
+    /// The web engine ran every scenario first; these are its answers.
+    static func runParityChecks() {
+        do { // node CRUD keeps order, positions and the edges that survive
+            let f = PyreonFlowState<NodeData>(nodes: [PyreonFlowNode(id: "1", position: PyreonXYPosition(x: 0.0, y: 0.0), data: NodeData(label: "1")), PyreonFlowNode(id: "2", position: PyreonXYPosition(x: 200.0, y: 120.0), data: NodeData(label: "2")), PyreonFlowNode(id: "3", position: PyreonXYPosition(x: 400.0, y: 0.0), data: NodeData(label: "3"))], edges: [PyreonFlowEdge(id: "e1", source: "1", target: "2"), PyreonFlowEdge(id: "e2", source: "2", target: "3")])
+            f.addNode(PyreonFlowNode(id: "4", position: PyreonXYPosition(x: 50.0, y: 500.0), data: NodeData(label: "4")))
+            f.updateNodePosition("2", PyreonXYPosition(x: 210.5, y: -30.0))
+            f.addEdge(PyreonFlowEdge(id: "e3", source: "3", target: "4"))
+            f.removeNode("1")
+            check(parityNodes(f, [("2", 210.5, -30.0), ("3", 400.0, 0.0), ("4", 50.0, 500.0)]), "parity: node CRUD keeps order, positions and the edges that survive — nodes")
+            check(parityEdges(f, [("e2", "2", "3"), ("e3", "3", "4")]), "parity: node CRUD keeps order, positions and the edges that survive — edges")
+            check(f.selectedNodes().sorted() == [], "parity: node CRUD keeps order, positions and the edges that survive — selected nodes")
+            check(f.selectedEdges().sorted() == [], "parity: node CRUD keeps order, positions and the edges that survive — selected edges")
+            check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: node CRUD keeps order, positions and the edges that survive — viewport")
+            check(f.getConnectedEdges("3").map { $0.id } == ["e2", "e3"], "parity: node CRUD keeps order, positions and the edges that survive — query 1 connectedEdges")
+            check(f.getIncomers("3").map { $0.id } == ["2"], "parity: node CRUD keeps order, positions and the edges that survive — query 2 incomers")
+            check(f.getOutgoers("3").map { $0.id } == ["4"], "parity: node CRUD keeps order, positions and the edges that survive — query 3 outgoers")
+            check(f.getConnectedEdges("1").map { $0.id } == [], "parity: node CRUD keeps order, positions and the edges that survive — query 4 connectedEdges")
+        }
+        do { // edge CRUD and reconnect
+            let f = PyreonFlowState<NodeData>(nodes: [PyreonFlowNode(id: "1", position: PyreonXYPosition(x: 0.0, y: 0.0), data: NodeData(label: "1")), PyreonFlowNode(id: "2", position: PyreonXYPosition(x: 200.0, y: 120.0), data: NodeData(label: "2")), PyreonFlowNode(id: "3", position: PyreonXYPosition(x: 400.0, y: 0.0), data: NodeData(label: "3")), PyreonFlowNode(id: "4", position: PyreonXYPosition(x: 600.0, y: 120.0), data: NodeData(label: "4"))], edges: [PyreonFlowEdge(id: "e1", source: "1", target: "2"), PyreonFlowEdge(id: "e2", source: "2", target: "3"), PyreonFlowEdge(id: "e3", source: "3", target: "4")])
+            f.reconnectEdge("e1", target: "4")
+            f.removeEdge("e2")
+            f.addEdge(PyreonFlowEdge(id: "e9", source: "4", target: "1"))
+            check(parityNodes(f, [("1", 0.0, 0.0), ("2", 200.0, 120.0), ("3", 400.0, 0.0), ("4", 600.0, 120.0)]), "parity: edge CRUD and reconnect — nodes")
+            check(parityEdges(f, [("e1", "1", "4"), ("e3", "3", "4"), ("e9", "4", "1")]), "parity: edge CRUD and reconnect — edges")
+            check(f.selectedNodes().sorted() == [], "parity: edge CRUD and reconnect — selected nodes")
+            check(f.selectedEdges().sorted() == [], "parity: edge CRUD and reconnect — selected edges")
+            check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: edge CRUD and reconnect — viewport")
+            check(f.getIncomers("4").map { $0.id } == ["1", "3"], "parity: edge CRUD and reconnect — query 1 incomers")
+            check(f.getOutgoers("4").map { $0.id } == ["1"], "parity: edge CRUD and reconnect — query 2 outgoers")
+            check(f.getConnectedEdges("2").map { $0.id } == [], "parity: edge CRUD and reconnect — query 3 connectedEdges")
+        }
+        do { // selection: single, additive, deselect, edges, select all, clear
+            let f = PyreonFlowState<NodeData>(nodes: [PyreonFlowNode(id: "1", position: PyreonXYPosition(x: 0.0, y: 0.0), data: NodeData(label: "1")), PyreonFlowNode(id: "2", position: PyreonXYPosition(x: 200.0, y: 120.0), data: NodeData(label: "2")), PyreonFlowNode(id: "3", position: PyreonXYPosition(x: 400.0, y: 0.0), data: NodeData(label: "3")), PyreonFlowNode(id: "4", position: PyreonXYPosition(x: 600.0, y: 120.0), data: NodeData(label: "4"))], edges: [PyreonFlowEdge(id: "e1", source: "1", target: "2"), PyreonFlowEdge(id: "e2", source: "2", target: "3"), PyreonFlowEdge(id: "e3", source: "3", target: "4")])
+            f.selectNode("1", additive: false)
+            f.selectNode("2", additive: true)
+            f.selectNode("3", additive: false)
+            f.selectNodes(["1", "4"], additive: true)
+            f.deselectNode("1")
+            f.selectEdge("e2", additive: true)
+            check(parityNodes(f, [("1", 0.0, 0.0), ("2", 200.0, 120.0), ("3", 400.0, 0.0), ("4", 600.0, 120.0)]), "parity: selection: single, additive, deselect, edges, select all, clear — nodes")
+            check(parityEdges(f, [("e1", "1", "2"), ("e2", "2", "3"), ("e3", "3", "4")]), "parity: selection: single, additive, deselect, edges, select all, clear — edges")
+            check(f.selectedNodes().sorted() == ["3", "4"], "parity: selection: single, additive, deselect, edges, select all, clear — selected nodes")
+            check(f.selectedEdges().sorted() == ["e2"], "parity: selection: single, additive, deselect, edges, select all, clear — selected edges")
+            check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: selection: single, additive, deselect, edges, select all, clear — viewport")
+        }
+        do { // select all then clear leaves nothing selected
+            let f = PyreonFlowState<NodeData>(nodes: [PyreonFlowNode(id: "1", position: PyreonXYPosition(x: 0.0, y: 0.0), data: NodeData(label: "1")), PyreonFlowNode(id: "2", position: PyreonXYPosition(x: 200.0, y: 120.0), data: NodeData(label: "2")), PyreonFlowNode(id: "3", position: PyreonXYPosition(x: 400.0, y: 0.0), data: NodeData(label: "3"))], edges: [PyreonFlowEdge(id: "e1", source: "1", target: "2"), PyreonFlowEdge(id: "e2", source: "2", target: "3")])
+            f.selectAll()
+            f.clearSelection()
+            f.selectEdge("e1", additive: false)
+            check(parityNodes(f, [("1", 0.0, 0.0), ("2", 200.0, 120.0), ("3", 400.0, 0.0)]), "parity: select all then clear leaves nothing selected — nodes")
+            check(parityEdges(f, [("e1", "1", "2"), ("e2", "2", "3")]), "parity: select all then clear leaves nothing selected — edges")
+            check(f.selectedNodes().sorted() == [], "parity: select all then clear leaves nothing selected — selected nodes")
+            check(f.selectedEdges().sorted() == ["e1"], "parity: select all then clear leaves nothing selected — selected edges")
+            check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: select all then clear leaves nothing selected — viewport")
+        }
+        do { // deleteSelected removes the selected nodes with their edges
+            let f = PyreonFlowState<NodeData>(nodes: [PyreonFlowNode(id: "1", position: PyreonXYPosition(x: 0.0, y: 0.0), data: NodeData(label: "1")), PyreonFlowNode(id: "2", position: PyreonXYPosition(x: 200.0, y: 120.0), data: NodeData(label: "2")), PyreonFlowNode(id: "3", position: PyreonXYPosition(x: 400.0, y: 0.0), data: NodeData(label: "3")), PyreonFlowNode(id: "4", position: PyreonXYPosition(x: 600.0, y: 120.0), data: NodeData(label: "4"))], edges: [PyreonFlowEdge(id: "e1", source: "1", target: "2"), PyreonFlowEdge(id: "e2", source: "2", target: "3"), PyreonFlowEdge(id: "e3", source: "3", target: "4")])
+            f.selectNodes(["2", "3"], additive: false)
+            f.selectEdge("e3", additive: true)
+            f.deleteSelected()
+            check(parityNodes(f, [("1", 0.0, 0.0), ("4", 600.0, 120.0)]), "parity: deleteSelected removes the selected nodes with their edges — nodes")
+            check(parityEdges(f, []), "parity: deleteSelected removes the selected nodes with their edges — edges")
+            check(f.selectedNodes().sorted() == [], "parity: deleteSelected removes the selected nodes with their edges — selected nodes")
+            check(f.selectedEdges().sorted() == [], "parity: deleteSelected removes the selected nodes with their edges — selected edges")
+            check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: deleteSelected removes the selected nodes with their edges — viewport")
+            check(f.getConnectedEdges("1").map { $0.id } == [], "parity: deleteSelected removes the selected nodes with their edges — query 1 connectedEdges")
+            check(f.getConnectedEdges("4").map { $0.id } == [], "parity: deleteSelected removes the selected nodes with their edges — query 2 connectedEdges")
+        }
+        do { // moveSelectedNodes shifts only the selection
+            let f = PyreonFlowState<NodeData>(nodes: [PyreonFlowNode(id: "1", position: PyreonXYPosition(x: 0.0, y: 0.0), data: NodeData(label: "1")), PyreonFlowNode(id: "2", position: PyreonXYPosition(x: 200.0, y: 120.0), data: NodeData(label: "2")), PyreonFlowNode(id: "3", position: PyreonXYPosition(x: 400.0, y: 0.0), data: NodeData(label: "3"))], edges: [])
+            f.selectNodes(["1", "3"], additive: false)
+            f.moveSelectedNodes(7.5, -12.0)
+            check(parityNodes(f, [("1", 7.5, -12.0), ("2", 200.0, 120.0), ("3", 407.5, -12.0)]), "parity: moveSelectedNodes shifts only the selection — nodes")
+            check(parityEdges(f, []), "parity: moveSelectedNodes shifts only the selection — edges")
+            check(f.selectedNodes().sorted() == ["1", "3"], "parity: moveSelectedNodes shifts only the selection — selected nodes")
+            check(f.selectedEdges().sorted() == [], "parity: moveSelectedNodes shifts only the selection — selected edges")
+            check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: moveSelectedNodes shifts only the selection — viewport")
+        }
+        do { // viewport: zoom steps, clamps, pan and set
+            let f = PyreonFlowState<NodeData>(nodes: [PyreonFlowNode(id: "1", position: PyreonXYPosition(x: 0.0, y: 0.0), data: NodeData(label: "1")), PyreonFlowNode(id: "2", position: PyreonXYPosition(x: 200.0, y: 120.0), data: NodeData(label: "2"))], edges: [])
+            f.zoomIn()
+            f.zoomIn()
+            f.zoomOut()
+            f.panTo(PyreonXYPosition(x: -40.0, y: 25.0))
+            f.zoomTo(99.0)
+            f.zoomTo(0.0001)
+            f.setViewport(PyreonFlowViewport(x: 10.0, y: 20.0, zoom: 2.0))
+            check(parityNodes(f, [("1", 0.0, 0.0), ("2", 200.0, 120.0)]), "parity: viewport: zoom steps, clamps, pan and set — nodes")
+            check(parityEdges(f, []), "parity: viewport: zoom steps, clamps, pan and set — edges")
+            check(f.selectedNodes().sorted() == [], "parity: viewport: zoom steps, clamps, pan and set — selected nodes")
+            check(f.selectedEdges().sorted() == [], "parity: viewport: zoom steps, clamps, pan and set — selected edges")
+            check(abs(f.viewport.x - 10.0) < 1e-6 && abs(f.viewport.y - 20.0) < 1e-6 && abs(f.viewport.zoom - 2.0) < 1e-6, "parity: viewport: zoom steps, clamps, pan and set — viewport")
+            check(parityNear(f.screenToFlowPosition(PyreonXYPosition(x: 110.0, y: 220.0)), 50.0, 100.0), "parity: viewport: zoom steps, clamps, pan and set — query 1 screenToFlow")
+            check(parityNear(f.screenToFlowPosition(PyreonXYPosition(x: 0.0, y: 0.0)), -5.0, -10.0), "parity: viewport: zoom steps, clamps, pan and set — query 2 screenToFlow")
+        }
+        do { // connection validation: no self loops, no duplicates, missing nodes
+            let f = PyreonFlowState<NodeData>(nodes: [PyreonFlowNode(id: "1", position: PyreonXYPosition(x: 0.0, y: 0.0), data: NodeData(label: "1")), PyreonFlowNode(id: "2", position: PyreonXYPosition(x: 200.0, y: 120.0), data: NodeData(label: "2")), PyreonFlowNode(id: "3", position: PyreonXYPosition(x: 400.0, y: 0.0), data: NodeData(label: "3"))], edges: [PyreonFlowEdge(id: "e1", source: "1", target: "2"), PyreonFlowEdge(id: "e2", source: "2", target: "3")])
+            check(parityNodes(f, [("1", 0.0, 0.0), ("2", 200.0, 120.0), ("3", 400.0, 0.0)]), "parity: connection validation: no self loops, no duplicates, missing nodes — nodes")
+            check(parityEdges(f, [("e1", "1", "2"), ("e2", "2", "3")]), "parity: connection validation: no self loops, no duplicates, missing nodes — edges")
+            check(f.selectedNodes().sorted() == [], "parity: connection validation: no self loops, no duplicates, missing nodes — selected nodes")
+            check(f.selectedEdges().sorted() == [], "parity: connection validation: no self loops, no duplicates, missing nodes — selected edges")
+            check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: connection validation: no self loops, no duplicates, missing nodes — viewport")
+            check(f.isValidConnection(PyreonFlowConnection(source: "1", target: "3")) == true, "parity: connection validation: no self loops, no duplicates, missing nodes — query 1 isValidConnection")
+            check(f.isValidConnection(PyreonFlowConnection(source: "1", target: "2")) == true, "parity: connection validation: no self loops, no duplicates, missing nodes — query 2 isValidConnection")
+            check(f.isValidConnection(PyreonFlowConnection(source: "2", target: "2")) == true, "parity: connection validation: no self loops, no duplicates, missing nodes — query 3 isValidConnection")
+            check(f.isValidConnection(PyreonFlowConnection(source: "1", target: "ghost")) == true, "parity: connection validation: no self loops, no duplicates, missing nodes — query 4 isValidConnection")
+        }
+        do { // history: undo and redo across CRUD and moves
+            let f = PyreonFlowState<NodeData>(nodes: [PyreonFlowNode(id: "1", position: PyreonXYPosition(x: 0.0, y: 0.0), data: NodeData(label: "1")), PyreonFlowNode(id: "2", position: PyreonXYPosition(x: 200.0, y: 120.0), data: NodeData(label: "2"))], edges: [PyreonFlowEdge(id: "e1", source: "1", target: "2")])
+            f.addNode(PyreonFlowNode(id: "3", position: PyreonXYPosition(x: 400.0, y: 0.0), data: NodeData(label: "3")))
+            f.updateNodePosition("1", PyreonXYPosition(x: 5.0, y: 5.0))
+            f.removeEdge("e1")
+            f.undo()
+            f.undo()
+            f.redo()
+            check(parityNodes(f, [("1", 5.0, 5.0), ("2", 200.0, 120.0), ("3", 400.0, 0.0)]), "parity: history: undo and redo across CRUD and moves — nodes")
+            check(parityEdges(f, [("e1", "1", "2")]), "parity: history: undo and redo across CRUD and moves — edges")
+            check(f.selectedNodes().sorted() == [], "parity: history: undo and redo across CRUD and moves — selected nodes")
+            check(f.selectedEdges().sorted() == [], "parity: history: undo and redo across CRUD and moves — selected edges")
+            check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: history: undo and redo across CRUD and moves — viewport")
+            check(f.getConnectedEdges("1").map { $0.id } == ["e1"], "parity: history: undo and redo across CRUD and moves — query 1 connectedEdges")
+        }
+        do { // node extent clamps a move and answers clampToExtent
+            let f = PyreonFlowState<NodeData>(nodes: [PyreonFlowNode(id: "1", position: PyreonXYPosition(x: 0.0, y: 0.0), data: NodeData(label: "1")), PyreonFlowNode(id: "2", position: PyreonXYPosition(x: 200.0, y: 120.0), data: NodeData(label: "2"))], edges: [])
+            f.setNodeExtent(minX: 0.0, minY: 0.0, maxX: 300.0, maxY: 300.0)
+            f.updateNodePosition("1", PyreonXYPosition(x: -50.0, y: 900.0))
+            check(parityNodes(f, [("1", 0.0, 260.0), ("2", 200.0, 120.0)]), "parity: node extent clamps a move and answers clampToExtent — nodes")
+            check(parityEdges(f, []), "parity: node extent clamps a move and answers clampToExtent — edges")
+            check(f.selectedNodes().sorted() == [], "parity: node extent clamps a move and answers clampToExtent — selected nodes")
+            check(f.selectedEdges().sorted() == [], "parity: node extent clamps a move and answers clampToExtent — selected edges")
+            check(abs(f.viewport.x - 0.0) < 1e-6 && abs(f.viewport.y - 0.0) < 1e-6 && abs(f.viewport.zoom - 1.0) < 1e-6, "parity: node extent clamps a move and answers clampToExtent — viewport")
+            check(parityNear(f.clampToExtent(PyreonXYPosition(x: -10.0, y: 10.0)), 0.0, 10.0), "parity: node extent clamps a move and answers clampToExtent — query 1 clampToExtent")
+            check(parityNear(f.clampToExtent(PyreonXYPosition(x: 250.0, y: 250.0)), 150.0, 250.0), "parity: node extent clamps a move and answers clampToExtent — query 2 clampToExtent")
+        }
+    }
+    // <flow-parity:end>
+
     static func main() {
+        runParityChecks()
         runStateChecks()
         runEdgeCanvasChecks()
+        runWebViewChecks()
+        runModelFieldChecks()
         print("PyreonFlowStateTests: all checks passed")
     }
 }

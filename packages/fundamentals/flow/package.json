@@ -85,7 +85,8 @@
       },
       "kotlinSdkOnly": [
         "PyreonFlowEdgeCanvas.kt",
-        "PyreonFlowView.kt"
+        "PyreonFlowView.kt",
+        "PyreonFlowWebView.kt"
       ]
     }
   }

@@ -14,8 +14,13 @@ describe('buildFlowHostHtml', () => {
     expect(html).toContain('createElementNS') // real SVG renderer, no external engine
     expect(html).toContain("window.addEventListener('pyreondata', schedule)") // forward (coalesced)
     expect(html).toContain('function schedule(')
-    expect(html).toContain('window.pyreonPostMessage(JSON.stringify({ id: n.id, data: n.data }))') // reverse
+    expect(html).toContain('function post(payload)')
+    expect(html).toContain('post({ id: n.id, data: n.data })') // reverse
     expect(html).toContain('function bezier(') // flow's edge geometry inlined
+    expect(html).toContain('function reportHostError(')
+    expect(html).toContain('if (message === lastHostError) return')
+    expect(html).toContain('__pyreonFlowHostError: 1')
+    expect(html).toContain('function safeRender(')
     // No network dependency — fully self-contained.
     expect(html).not.toContain('<script src=')
   })
@@ -44,6 +49,14 @@ describe('<FlowWebView>', () => {
     expect((vnode.props as { data: unknown }).data).toEqual(graph)
   })
 
+  it('embeds reactive once-only commands without changing the command-free graph identity', () => {
+    const commands = [{ id: 'fit-1', type: 'fit-view' as const }]
+    const plain = FlowWebView({ graph })
+    expect((plain.props as { data: unknown }).data).toBe(graph)
+    const commanded = FlowWebView({ graph, commands: () => commands })
+    expect((commanded.props as { data: unknown }).data).toEqual({ ...graph, __pyreonFlowCommands: commands })
+  })
+
   it('wires onSelect through onMessage, parsing {id,data}', () => {
     const onSelect = vi.fn()
     const vnode = FlowWebView({ graph, onSelect })
@@ -57,6 +70,64 @@ describe('<FlowWebView>', () => {
     const onSelect = vi.fn()
     ;(FlowWebView({ graph, onSelect }).props as { onMessage: (m: string) => void }).onMessage('x')
     expect(onSelect).toHaveBeenCalledWith({ id: 'x' })
+  })
+
+  it('delivers arbitrary parsed editor messages without coercing their shape', () => {
+    const onMessage = vi.fn()
+    const onSelect = vi.fn()
+    const vnode = FlowWebView({ graph, onMessage, onSelect })
+    const receive = (vnode.props as { onMessage: (message: string) => void }).onMessage
+    receive(JSON.stringify({ type: 'viewport-change', viewport: { x: 4, y: 5, zoom: 2 } }))
+    receive('editor-ready')
+    expect(onMessage).toHaveBeenNthCalledWith(1, {
+      type: 'viewport-change',
+      viewport: { x: 4, y: 5, zoom: 2 },
+    })
+    expect(onMessage).toHaveBeenNthCalledWith(2, 'editor-ready')
+    expect(onSelect).toHaveBeenCalledTimes(1)
+    expect(onSelect).toHaveBeenCalledWith({ id: 'editor-ready' })
+  })
+
+  it('wires the reverse bridge when only the generic message callback is present', () => {
+    const onMessage = vi.fn()
+    const vnode = FlowWebView({ graph, onMessage })
+    ;(vnode.props as { onMessage: (message: string) => void }).onMessage('{"type":"ready"}')
+    expect(onMessage).toHaveBeenCalledWith({ type: 'ready' })
+  })
+
+  it('routes built-in messages through the typed event channel', () => {
+    const onEvent = vi.fn()
+    const receive = (FlowWebView({ graph, onEvent }).props as { onMessage: (message: string) => void }).onMessage
+    receive(JSON.stringify({ id: 'a', data: { label: 'A' } }))
+    receive(JSON.stringify({ type: 'edge-select', id: 'a-b', source: 'a', target: 'b' }))
+    receive(JSON.stringify({ type: 'viewport-change', viewport: { x: 4, y: 5, zoom: 2 } }))
+    expect(onEvent.mock.calls.map((call) => call[0])).toEqual([
+      { type: 'node-select', id: 'a', data: { label: 'A' } },
+      { type: 'edge-select', id: 'a-b', source: 'a', target: 'b' },
+      { type: 'viewport-change', viewport: { x: 4, y: 5, zoom: 2 } },
+    ])
+  })
+
+  it('routes structured host failures to onError without treating them as selections', () => {
+    const onError = vi.fn()
+    const onSelect = vi.fn()
+    const vnode = FlowWebView({ graph, onError, onSelect })
+    ;(vnode.props as { onMessage: (message: string) => void }).onMessage(
+      JSON.stringify({ __pyreonFlowHostError: 1, message: 'render failed' }),
+    )
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onError.mock.calls[0]![0]).toBeInstanceOf(Error)
+    expect(onError.mock.calls[0]![0].message).toBe('render failed')
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('preserves arbitrary JSON-safe node and edge fields in the forward graph', () => {
+    const richGraph = {
+      nodes: [{ id: 'a', position: { x: 0, y: 0 }, hidden: true, parentId: 'root', custom: { role: 'input' } }],
+      edges: [{ source: 'a', target: 'b', markerEnd: { type: 'closed' }, reconnectable: false }],
+    }
+    const vnode = FlowWebView({ graph: richGraph })
+    expect((vnode.props as { data: unknown }).data).toBe(richGraph)
   })
 })
 

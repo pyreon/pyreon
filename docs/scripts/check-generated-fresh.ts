@@ -23,11 +23,20 @@ const GENERATED = [
   'docs/src/content/docs/examples.md',
   'docs/src/reference-nav.generated.ts',
   'docs/src/troubleshooting-nav.generated.ts',
+  'packages/native/compiler/src/generated-flow-webview-host.ts',
 ]
 
 const gen = spawnSync('bun', [join(HERE, 'gen-all.ts')], { stdio: 'inherit' })
 if (gen.status !== 0) {
   console.error('[check-generated-fresh] a generator failed — see output above')
+  process.exit(1)
+}
+
+const flowHost = spawnSync('bun', [join(REPO_ROOT, 'scripts/gen-flow-webview-host.ts')], {
+  stdio: 'inherit',
+})
+if (flowHost.status !== 0) {
+  console.error('[check-generated-fresh] the Flow WebView host generator failed — see output above')
   process.exit(1)
 }
 
