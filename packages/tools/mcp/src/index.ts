@@ -894,9 +894,9 @@ server.tool(
       page: z
         .number()
         .int()
-        .min(1)
+        .positive()
         .optional()
-        .describe('Compact-index page (categories are packed in file order; page 1 by default, its footer names the rest).'),
+        .describe('Index page (240 entries each). Default 1; the footer names the next.'),
     },
     async ({ category, name, full, page }) => {
       const doc = loadAntiPatternsDoc()
@@ -939,9 +939,8 @@ server.tool(
         )
       }
 
-      // 4. default (no args, or category:'all') → compact index, page 1 —
-      //    paginated by category once the whole index outgrew the
-      //    12,000-token single-response boundary (see INDEX_PAGE_CHAR_BUDGET).
+      // 4. default (no args, or category:'all') → compact index. ~1.5K
+      //    vs ~14K — the ≈90% cut on the common path.
       return textResult(formatAntiPatternsIndex(all, page ?? 1))
     },
   )

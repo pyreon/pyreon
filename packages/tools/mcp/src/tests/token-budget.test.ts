@@ -1,4 +1,5 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { INDEX_PAGE_SIZE } from '../anti-patterns'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { createServer } from '../index'
 
@@ -79,36 +80,9 @@ describe('MCP token budgets', () => {
     })
   })
 
-  /** Every compact-index page, in order (page 1 = the no-arg call). */
-  async function indexPages(client: Client): Promise<string[]> {
-    const first = await callText(client, 'get_anti_patterns', {})
-    const m = /page 1\/(\d+)/.exec(first)
-    const n = m ? Number(m[1]) : 1
-    const rest = await Promise.all(
-      Array.from({ length: n - 1 }, (_, i) => callText(client, 'get_anti_patterns', { page: i + 2 })),
-    )
-    return [first, ...rest]
-  }
-
-  it('the compact-index pages together list EVERY entry exactly once', async () => {
-    await withServer(async (client) => {
-      const pages = await indexPages(client)
-      const total = Number(pages[0]!.match(/\((\d+) total/)?.[1] ?? NaN)
-      expect(total).toBeGreaterThan(0)
-      const lines = pages.flatMap((p) => p.split('\n').filter((l) => l.startsWith('- ')))
-      expect(lines.length).toBe(total)
-      // A later page exists only when the single-response boundary needs it,
-      // and page 1 then names what the rest holds.
-      if (pages.length > 1) expect(pages[0]).toContain('Index continues — page 2/')
-      const out = await callText(client, 'get_anti_patterns', { page: pages.length + 1 })
-      expect(out).toContain('out of range')
-    })
-  })
-
   it('get_anti_patterns({}) index stays DENSE — entry-count-relative budget', async () => {
     await withServer(async (client) => {
-      const pages = await indexPages(client)
-      const text = pages.join('\n')
+      const text = await callText(client, 'get_anti_patterns', {})
       // HISTORY / WHY THIS SHAPE. This used to be an absolute ceiling
       // (5,000 → 5,500). An absolute number couples the gate to ENTRY
       // COUNT, so every legitimate anti-patterns.md addition tripped CI
@@ -130,21 +104,18 @@ describe('MCP token budgets', () => {
       const entryCount = Number(text.match(/\((\d+) total/)?.[1] ?? NaN)
       expect(entryCount).toBeGreaterThan(0) // header shape is load-bearing
       const lines = text.split('\n').filter((l) => l.startsWith('- '))
-      expect(lines.length).toBe(entryCount) // one index line per entry (across pages)
-      expect(tok(text) / entryCount).toBeLessThan(55)
+      // One index line per entry ON THIS PAGE (the header's count is the
+      // whole catalog; the index is paginated at INDEX_PAGE_SIZE).
+      expect(lines.length).toBe(Math.min(entryCount, INDEX_PAGE_SIZE))
+      expect(tok(text) / lines.length).toBeLessThan(55)
       const maxLine = Math.max(...lines.map((l) => tok(l)))
       expect(maxLine).toBeLessThan(100)
     })
   })
 
-  it('no compact-index PAGE has outgrown the single-response form', async () => {
+  it('get_anti_patterns({}) index has not outgrown the single-response form', async () => {
     await withServer(async (client) => {
-      // The structural fix the boundary asked for (2026-09-15, 392 entries,
-      // 12,262 tokens in one response): the index is paginated by category,
-      // so the boundary now holds PER PAGE — and still must never be bumped.
-      const pages = await indexPages(client)
-      for (const text of pages) expect(tok(text)).toBeLessThan(12000)
-      const text = pages[0]!
+      const text = await callText(client, 'get_anti_patterns', {})
       // DESIGN-BOUNDARY tripwire, not a ratchet. Density can be perfect
       // and the index still become huge through sheer entry count (e.g.
       // 300 entries × 43 ≈ 12.9K tokens). At that scale the fix is a

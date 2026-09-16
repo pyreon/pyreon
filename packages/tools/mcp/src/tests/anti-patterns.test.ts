@@ -6,9 +6,9 @@ import {
   type AntiPatternCategory,
   catalogHeadings,
   formatAntiPatterns,
-  antiPatternsIndexPageCount,
   formatAntiPatternsIndex,
   parseAntiPatterns,
+  INDEX_PAGE_SIZE,
 } from '../anti-patterns'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -146,11 +146,17 @@ describe('index hook follows the NEED, not the format', () => {
     expect(shown.slice(0, -1).endsWith(' ')).toBe(false)
   })
 
-  it('every entry still gets exactly one index line (across the category pages)', () => {
-    const n = antiPatternsIndexPageCount(entries)
-    const lines = Array.from({ length: n }, (_, i) => formatAntiPatternsIndex(entries, i + 1))
-      .flatMap((p) => p.split('\n').filter((l) => l.startsWith('- ')))
-    expect(lines.length).toBe(entries.length)
+  it('every entry on the page gets exactly one index line, and the pages cover the catalog', () => {
+    const linesOf = (text: string): string[] => text.split('\n').filter((l) => l.startsWith('- '))
+    expect(linesOf(index).length).toBe(Math.min(entries.length, INDEX_PAGE_SIZE))
+    // Paging is a SPLIT, not a filter: every entry appears on exactly one page.
+    const pages = Math.ceil(entries.length / INDEX_PAGE_SIZE)
+    let total = 0
+    for (let page = 1; page <= pages; page++) total += linesOf(formatAntiPatternsIndex(entries, page)).length
+    expect(total).toBe(entries.length)
+    // Out-of-range pages clamp rather than answering an empty index.
+    expect(linesOf(formatAntiPatternsIndex(entries, pages + 5)).length).toBeGreaterThan(0)
+    expect(linesOf(formatAntiPatternsIndex(entries, 0)).length).toBe(linesOf(formatAntiPatternsIndex(entries, 1)).length)
   })
 })
 
