@@ -290,3 +290,15 @@ describe('buildChartHostHtml — script-context hardening', () => {
     expect(html).not.toContain('alert(1)')
   })
 })
+
+describe('<ChartWebView> — the engine-source props reach the built host', () => {
+  it('an inline engineScript is embedded in the host document', () => {
+    const vnode = ChartWebView({ option: {}, engineScript: 'window.__pyreonEngineMarker = 1' })
+    expect((vnode.props as { html: string }).html).toContain('__pyreonEngineMarker')
+  })
+
+  it('an engineSrc is referenced by the host document rather than inlined', () => {
+    const vnode = ChartWebView({ option: {}, engineSrc: 'https://example.test/engine.js' })
+    expect((vnode.props as { html: string }).html).toContain('https://example.test/engine.js')
+  })
+})

@@ -19,8 +19,8 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import { decimateShared, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
-import type { SamplingRequest } from '@pyreon/charts/option-layer'
+import { decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
+import type { GraphicElement, RichStyle, SamplingRequest } from '@pyreon/charts/option-layer'
 import type { AttrIR, ExprIR } from './types'
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 
@@ -214,6 +214,11 @@ function litString(e: ExprIR | undefined): string | undefined {
  * A literal option IR as the plain value the web facade reads, or `undefined`
  * where anything is not a literal (an identifier, a call, a spread).
  */
+/** A resolved IR value that is a plain object — what the web facade's readers take. */
+function isPlainRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
 function irToValue(e: ExprIR | undefined, resolve: (name: string) => ExprIR | undefined): { ok: true; value: unknown } | { ok: false } {
   const lit = literalOf(e, resolve)
   if (lit === undefined) return { ok: false }
@@ -959,7 +964,7 @@ export function desugarOptionChart(
     return undefined
   }
 
-  optionFields(raw, ['series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'color', 'dataset'], 'option', warn)
+  optionFields(raw, ['series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'color', 'dataset', 'graphic'], 'option', warn)
 
   for (const a of e.attrs) {
     if (a.kind === 'event' && a.name !== 'selectindex') {
@@ -976,6 +981,37 @@ export function desugarOptionChart(
     const attr: AttrIR = { kind: 'attr', name, value }
     if (i < 0) attrs.push(attr)
     else attrs[i] = attr
+  }
+  // `graphic` resolves at COMPILE time through the web facade's own
+  // `graphicElements` (`@pyreon/charts/option-layer`), against the option's
+  // static width/height (its props, or the web host's own 640x320 defaults),
+  // so the native canvas draws the elements the web draws. The engine's
+  // `graphicDrawCommands` then paints them on both targets.
+  const graphicRaw = objectField(raw, 'graphic')
+  if (graphicRaw !== undefined) {
+    const graphicValue = irToValue(graphicRaw, resolve)
+    if (graphicValue.ok !== true) {
+      warn('<OptionChart option.graphic>: native needs literal graphic elements; they were skipped.')
+    } else {
+      const box = { w: litNumber(literalOf(attrOf(e, 'width'), resolve)) ?? 640, h: litNumber(literalOf(attrOf(e, 'height'), resolve)) ?? 320 }
+      const resolved = graphicElements({ graphic: graphicValue.value } as Parameters<typeof graphicElements>[0], box.w, box.h)
+      for (const w of resolved.warnings) warn(`<OptionChart option.${w.path}>: ${w.message}`)
+      if (resolved.elements.length > 0) {
+        set('graphicElements', {
+          kind: 'array',
+          elements: resolved.elements.map((g: GraphicElement) => ({
+            kind: 'object' as const,
+            fields: [
+              { name: 'kind', value: lit(g.kind) },
+              ...(['x', 'y', 'w', 'h', 'lineWidth', 'fontSize', 'cx', 'cy', 'r', 'r0', 'startAngle', 'endAngle'] as const).map((k) => ({ name: k, value: optionDoubleLiteral(g[k]) })),
+              ...(['fill', 'stroke', 'text', 'align'] as const).map((k) => ({ name: k, value: lit(g[k]) })),
+              { name: 'clockwise', value: lit(g.clockwise) },
+              { name: 'points', value: { kind: 'array' as const, elements: g.points.map((p: { x: number; y: number }) => ({ kind: 'object' as const, fields: [{ name: 'x', value: optionDoubleLiteral(p.x) }, { name: 'y', value: optionDoubleLiteral(p.y) }] })) } },
+            ],
+          })),
+        })
+      }
+    }
   }
   const title = literalOf(objectField(raw, 'title'), resolve)
   const titleText = title === undefined ? undefined : objectField(title, 'text')
@@ -1698,7 +1734,7 @@ export function desugarOptionChart(
         warn(`<OptionChart option.series[${si}].type>: this cartesian adapter needs line, bar, pictorialBar, or scatter series; emitting nothing.`)
         return undefined
       }
-      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras', 'sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'emphasis', 'select', 'blur', 'selectedMode', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate'], `option.series[${si}]`, warn)
+      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras', 'sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'emphasis', 'select', 'blur', 'selectedMode', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'label'], `option.series[${si}]`, warn)
       seriesObjects.push(s)
     }
     const xAxis = literalOf(objectField(raw, 'xAxis'), resolve)
@@ -1840,6 +1876,30 @@ export function desugarOptionChart(
         const opacity = blurItem?.kind === 'object' ? litNumber(objectField(blurItem, 'opacity')) : undefined
         if (opacity !== undefined) opts.push({ name: 'blurOpacity', value: optionDoubleLiteral(Math.max(0, Math.min(1, opacity))) })
         for (const key of ['label', 'lineStyle', 'areaStyle']) if (objectField(blurOpt, key) !== undefined) warn(`<OptionChart option.series[${si}].blur.${key}>: has no engine form (a blurred datum fades to blur.itemStyle.opacity); it was ignored.`)
+      }
+      // ECharts' `label`: the facade resolves the {a}/{b}/{c}/{d} template per
+      // datum, so the native side resolves it the SAME way at compile time and
+      // carries the finished strings. The engine owns the rich segmentation.
+      const labelOpt = literalOf(objectField(s, 'label'), resolve)
+      if (labelOpt?.kind === 'object') {
+        const showIR = objectField(labelOpt, 'show')
+        if (showIR?.kind === 'literal' && showIR.value === true) opts.push({ name: 'showValues', value: lit(true) })
+        const labelPlain = irToValue(labelOpt, resolve)
+        if (labelPlain.ok === true && isPlainRecord(labelPlain.value)) {
+          const seriesName = litString(objectField(s, 'name')) ?? `Series ${si + 1}`
+          const resolvedLabel = labelFields(labelPlain.value, seriesName, categoryLiterals.map((x) => String(litString(x) ?? litNumber(x))), seriesValues[si] ?? [], `option.series[${si}].label`, (_code, path, message) => warn(`<OptionChart ${path}>: ${message}`), plain)
+          if (resolvedLabel.labelTexts !== undefined) opts.push({ name: 'labelTexts', value: { kind: 'array', elements: resolvedLabel.labelTexts.map((textValue) => lit(textValue)) } })
+          if (resolvedLabel.labelColor !== undefined) opts.push({ name: 'labelColor', value: lit(resolvedLabel.labelColor) })
+          if (resolvedLabel.labelSize !== undefined) opts.push({ name: 'labelSize', value: optionDoubleLiteral(resolvedLabel.labelSize) })
+          if (resolvedLabel.labelRich !== undefined) {
+            opts.push({
+              name: 'labelRich',
+              value: { kind: 'array', elements: (resolvedLabel.labelRich as RichStyle[]).map((r) => ({ kind: 'object' as const, fields: [{ name: 'name', value: lit(r.name) }, { name: 'color', value: lit(r.color) }, { name: 'fontSize', value: optionDoubleLiteral(r.fontSize) }] })) },
+            })
+          }
+        } else {
+          warn(`<OptionChart option.series[${si}].label>: native needs a literal label object (a FUNCTION formatter cannot run at compile time); the values are shown unformatted.`)
+        }
       }
       const modeRaw = objectField(s, 'selectedMode')
       if (modeRaw !== undefined && si === 0) {
@@ -3044,7 +3104,7 @@ export const PLOT_MARK_KINDS: Readonly<Record<string, string>> = {
 }
 
 /** Mark options that lower as literal fields of `Series`, with their default when absent. */
-export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'string' | 'number' | 'boolean' | 'numbers'; default?: string | number | boolean }> = [
+export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'string' | 'number' | 'boolean' | 'numbers' | 'strings' | 'rich'; default?: string | number | boolean }> = [
   { name: 'color', kind: 'string' },
   { name: 'width', kind: 'number', default: 2 },
   { name: 'radius', kind: 'number', default: 3 },
@@ -3061,6 +3121,10 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'symbolClip', kind: 'boolean' },
   { name: 'symbolBoundingData', kind: 'number' },
   { name: 'negativeColor', kind: 'string' },
+  { name: 'labelTexts', kind: 'strings' },
+  { name: 'labelColor', kind: 'string' },
+  { name: 'labelSize', kind: 'number' },
+  { name: 'labelRich', kind: 'rich' },
   { name: 'focus', kind: 'string' },
   { name: 'emphasisColor', kind: 'string' },
   { name: 'selectColor', kind: 'string' },

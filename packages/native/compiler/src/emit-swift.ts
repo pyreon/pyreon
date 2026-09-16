@@ -14057,6 +14057,30 @@ function swiftMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex:
     }
     const v = fields.get(spec.name)
     if (v !== undefined) {
+      if (spec.kind === 'strings') {
+        if (v.kind !== 'array' || v.elements.some((n) => n.kind !== 'literal' || typeof n.value !== 'string')) {
+          _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`${spec.name}\` must be an array of string literals on native; emitting an EmptyView().`)
+          return 'unsupported'
+        }
+        args.push(`${spec.name}: [${v.elements.map((n) => JSON.stringify((n as { value: string }).value)).join(', ')}]`)
+        continue
+      }
+      if (spec.kind === 'rich') {
+        if (v.kind !== 'array') return 'unsupported'
+        const styles: string[] = []
+        for (const r of v.elements) {
+          if (r.kind !== 'object') return 'unsupported'
+          const rf = new Map(r.fields.map((field) => [field.name, field.value]))
+          const text = (name: string): string => {
+            const raw = rf.get(name)
+            return JSON.stringify(raw?.kind === 'literal' && typeof raw.value === 'string' ? raw.value : '')
+          }
+          const sizeIR = rf.get('fontSize')
+          styles.push(`RichStyle(name: ${text('name')}, color: ${text('color')}, fontSize: ${sizeIR?.kind === 'literal' && typeof sizeIR.value === 'number' ? chartDouble(sizeIR.value) : '0.0'})`)
+        }
+        args.push(`${spec.name}: [${styles.join(', ')}]`)
+        continue
+      }
       if (spec.kind === 'numbers') {
         if (v.kind !== 'array' || v.elements.some((n) => n.kind !== 'literal' || typeof n.value !== 'number')) {
           _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`${spec.name}\` must be an array of number literals on native; emitting an EmptyView().`)
@@ -14419,7 +14443,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       `let pyreonBrushCmds: [PyreonDrawCmd] = pyreonBrushA >= 0.0 ? renderBrushBand(pyreonPlot, min(pyreonBrushA, pyreonBrushB), max(pyreonBrushA, pyreonBrushB), pyreonSpec.theme.axis) : pyreonBrushStart >= 0 ? { () -> [PyreonDrawCmd] in let pyreonBand = brushBand(pyreonPlot, BrushRange(start: pyreonBrushStart, end: pyreonBrushEnd), ${win}, ${data}.count); return pyreonBand.visible ? renderBrushBand(pyreonPlot, pyreonBand.lo, pyreonBand.hi, pyreonSpec.theme.axis) : [] }() : []`,
     )
   }
-  const extraCmds = `${navigating ? ' + pyreonNavigator.cmds' : ''}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'}`
+  const extraCmds = `${navigating ? ' + pyreonNavigator.cmds' : ''}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'}${swiftGraphicCmds(e)}`
   // `tooltip` — the web's pointer tooltip is a TAP here (the family hosts'
   // shape): the same tap that selects reads the crossing `tooltipAt` /
   // `tooltipLines` over the sliced series and categories with the LOCAL hit,
@@ -14913,4 +14937,66 @@ function swiftSpreadResolver(indent: number): SpreadResolver {
     typeKeyOf: named,
     label: (e) => emitSwiftExpr(e, indent),
   }
+}
+
+/**
+ * The compile-time-resolved `graphic` elements as a `graphicDrawCommands(...)`
+ * call, or `''` when the option carried none. The fields are emitted in the
+ * generated struct's DECLARATION order — Swift's memberwise init takes them
+ * positionally even though every one is labelled.
+ */
+function swiftGraphicCmds(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'graphicElements')
+  const value = attr?.kind === 'attr' ? attr.value : undefined
+  if (value?.kind !== 'array' || value.elements.length === 0) return ''
+  const items: string[] = []
+  for (const raw of value.elements) {
+    if (raw.kind !== 'object') return ''
+    const f = new Map(raw.fields.map((field) => [field.name, field.value]))
+    const num = (name: string): string => {
+      const v = f.get(name)
+      return v?.kind === 'literal' && typeof v.value === 'number' ? chartDouble(v.value) : '0.0'
+    }
+    const str = (name: string): string => {
+      const v = f.get(name)
+      return JSON.stringify(v?.kind === 'literal' && typeof v.value === 'string' ? v.value : '')
+    }
+    const clockwise = f.get('clockwise')
+    const pointsIR = f.get('points')
+    const pts: string[] = []
+    if (pointsIR?.kind === 'array') {
+      for (const p of pointsIR.elements) {
+        if (p.kind !== 'object') return ''
+        const pf = new Map(p.fields.map((field) => [field.name, field.value]))
+        const at = (name: string): string => {
+          const v = pf.get(name)
+          return v?.kind === 'literal' && typeof v.value === 'number' ? chartDouble(v.value) : '0.0'
+        }
+        pts.push(`PyreonChartPt(x: ${at('x')}, y: ${at('y')})`)
+      }
+    }
+    const args = [
+      `kind: ${str('kind')}`,
+      `x: ${num('x')}`,
+      `y: ${num('y')}`,
+      `w: ${num('w')}`,
+      `h: ${num('h')}`,
+      `fill: ${str('fill')}`,
+      `stroke: ${str('stroke')}`,
+      `lineWidth: ${num('lineWidth')}`,
+      `text: ${str('text')}`,
+      `fontSize: ${num('fontSize')}`,
+      `align: ${str('align')}`,
+      `cx: ${num('cx')}`,
+      `cy: ${num('cy')}`,
+      `r: ${num('r')}`,
+      `r0: ${num('r0')}`,
+      `startAngle: ${num('startAngle')}`,
+      `endAngle: ${num('endAngle')}`,
+      `clockwise: ${clockwise?.kind === 'literal' && clockwise.value === false ? 'false' : 'true'}`,
+      `points: [${pts.join(', ')}]`,
+    ]
+    items.push(`GraphicElement(${args.join(', ')})`)
+  }
+  return ` + graphicDrawCommands([${items.join(', ')}])`
 }

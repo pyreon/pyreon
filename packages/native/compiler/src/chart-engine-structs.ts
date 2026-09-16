@@ -1474,6 +1474,207 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "GraphicElement",
+    "fields": [
+      {
+        "name": "kind",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "x",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "y",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "w",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "h",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "fill",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "stroke",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "lineWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "text",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "fontSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "align",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "cx",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "cy",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "r",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "r0",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "startAngle",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "endAngle",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "clockwise",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "points",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonChartPt",
+            "args": []
+          }
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "RichStyle",
+    "fields": [
+      {
+        "name": "name",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "fontSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "LabelSegment",
+    "fields": [
+      {
+        "name": "text",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "fontSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "Series",
     "fields": [
       {
@@ -1836,6 +2037,72 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "branches": [
             {
               "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labelTexts",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labelColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labelSize",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labelRich",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "RichStyle",
+                "args": []
+              }
             },
             {
               "kind": "undefined"
@@ -10289,10 +10556,12 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "GraphLink",
   "GraphNode",
   "GraphOptions",
+  "GraphicElement",
   "Gutters",
   "HeatCell",
   "HeatGrid",
   "HeatmapOptions",
+  "LabelSegment",
   "LayoutConfig",
   "LegendEntry",
   "LegendLayout",
@@ -10337,6 +10606,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "RadarHitIndex",
   "RadarOptions",
   "RadarSeries",
+  "RichStyle",
   "RiverLayer",
   "RiverLayout",
   "RiverOptions",

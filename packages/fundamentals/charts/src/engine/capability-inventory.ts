@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.23' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.25' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -66,7 +66,8 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('coordinates.single-axis', 'coordinates', 'direct', 'complete', 'src/engine/single-axis.test.ts'), // scatter / effectScatter + theme river: ECharts' own contract
   row('coordinates.axes', 'coordinates', 'direct', 'partial', 'src/engine/option.ts'), // one x axis, two y axes
   row('coordinates.visual-map', 'coordinates', 'direct', 'partial', 'src/engine/visual-map.ts'), // calculable handle
-  row('coordinates.graphic', 'coordinates', 'direct', 'partial', 'src/engine/option-layer.ts'), // element types
+  // Every element type ECharts draws without a bitmap: text, rect, circle, line, polygon, polyline, bezierCurve, arc, ring, sector and group. An `image` element warns by name.
+  row('coordinates.graphic', 'coordinates', 'direct', 'complete', 'src/engine/graphic-shapes.test.ts', 'src/engine/cov-core-option-layer.test.ts', '../../native/compiler/src/tests/chart-graphic-native.test.ts'),
   row('coordinates.mark-point', 'coordinates', 'direct', 'complete', 'src/engine/option-marks.test.ts', '../../native/compiler/src/tests/chart-marks-native.test.ts'),
   row('coordinates.mark-line', 'coordinates', 'direct', 'complete', 'src/engine/option-marks.test.ts', '../../native/compiler/src/tests/chart-marks-native.test.ts'),
   row('coordinates.geo', 'coordinates', 'direct', 'partial', 'src/engine/geo-web.ts'),
@@ -93,7 +94,8 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('runtime.connected-groups', 'runtime', 'direct', 'complete', 'src/engine/link.ts'),
   row('runtime.resize', 'runtime', 'direct', 'complete', 'src/engine/canvas-host.tsx'),
 
-  row('presentation.labels-rich-text', 'presentation', 'direct', 'partial', 'src/engine/option.ts'),
+  // `{a}`/`{b}`/`{c}`/`{d}` resolve per datum in the facade (the only layer that knows the name, the category and the share); the engine owns `\n` and the rich `{name|text}` segments.
+  row('presentation.labels-rich-text', 'presentation', 'direct', 'complete', 'src/engine/option-labels.test.ts', '../../native/compiler/src/tests/chart-labels-native.test.ts'),
   row('presentation.states', 'presentation', 'direct', 'partial', 'src/engine/emphasis.test.ts', 'src/engine/option-states.test.ts', 'src/engine/option-chart-states.test.tsx', '../../native/compiler/src/tests/chart-states-native.test.ts'), // emphasis/select/blur FILLS + focus blur + selectedMode pinning cross; state labels, symbol scale and whole-series selection warn by name, and the hover is a datum column (no per-series focus)
   row('presentation.symbols', 'presentation', 'direct', 'complete', 'src/engine/option-symbols.test.ts', '../../native/compiler/src/tests/chart-symbols-native.test.ts'),
   row('presentation.gradients-patterns', 'presentation', 'direct', 'partial', 'src/engine/option-gradients.test.ts', '../../native/compiler/src/tests/chart-gradients-native.test.ts'), // linear + radial gradients and decals cross; IMAGE patterns (`color: { image }`) warn by name

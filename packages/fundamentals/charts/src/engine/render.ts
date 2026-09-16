@@ -12,6 +12,8 @@ import { polygonCmd, rectCmd } from './corners'
 import { seriesGradient } from './gradient'
 import type { SeriesGradient } from './gradient'
 import { withAlpha } from './radar'
+import { labelCommands } from './labels'
+import type { RichStyle } from './labels'
 import { pictorialCommands } from './pictorial'
 import type { PictorialBar } from './pictorial'
 import type { ChartPattern, DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
@@ -86,6 +88,19 @@ export interface Series {
   dash?: Double[] | undefined
   /** The fill a `waterfall` step takes when its value is negative; `color` otherwise. */
   negativeColor?: string | undefined
+  /**
+   * ECharts' `label.formatter` resolved per datum — the facade owns the
+   * `{a}`/`{b}`/`{c}`/`{d}` template because it is the only layer that knows
+   * the series name, the category and the percentage. Absent (or an entry
+   * left empty) falls back to the formatted value.
+   */
+  labelTexts?: string[] | undefined
+  /** ECharts' `label.color`; absent takes the theme's label colour. */
+  labelColor?: string | undefined
+  /** ECharts' `label.fontSize`; absent takes the theme's. */
+  labelSize?: Double | undefined
+  /** ECharts' `label.rich` — the named styles a `{name|text}` segment can take. */
+  labelRich?: RichStyle[] | undefined
   /**
    * ECharts' `emphasis.focus`: `self` / `series` dim every datum that is NOT
    * the highlighted one while a highlight is active (the blur state). This
@@ -387,6 +402,46 @@ export const defaultTheme: ChartTheme = {
   updateMs: 350.0,
 }
 
+
+/**
+ * A datum's label text: the series' resolved `labelTexts` entry when it has
+ * one, else the formatted value. Coalesced rather than narrowed — the native
+ * emit does not narrow a struct's optional through a guard.
+ */
+function labelTextAt(s: Series, index: number, fallback: string): string {
+  const texts = s.labelTexts ?? []
+  if (index < 0 || index >= texts.length) return fallback
+  /* v8 ignore next — unreachable: the bounds test above already returned for an
+     out-of-range index. The unwrap is for the native emit, which does not narrow. */
+  const own = texts[index] ?? ''
+  return own === '' ? fallback : own
+}
+
+/** The commands a series' label draws — one text command for a plain label, one per segment for a rich or multi-line one. */
+function seriesLabelCmds(
+  s: Series,
+  index: number,
+  fallback: string,
+  at: Pt,
+  align: string,
+  baseline: string,
+  t: ChartTheme,
+  measure: MeasureText,
+): DrawCmd[] {
+  const color = s.labelColor ?? ''
+  const size = s.labelSize ?? 0.0
+  return labelCommands(
+    labelTextAt(s, index, fallback),
+    s.labelRich ?? [],
+    at,
+    align,
+    baseline,
+    color === '' ? t.label : color,
+    size > 0.0 ? size : t.fontSize,
+    measure,
+  )
+}
+
 /** 0 = plain, 1 = highlighted (a hover or a dispatched `highlight`), 2 = selected. */
 export function emphasisLevel(spec: ChartSpec, index: number): number {
   const e: Emphasis = spec.emphasis ?? { highlight: -1, selected: [] }
@@ -643,6 +698,8 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     height: spec.height,
     xDomain:
       (spec.xValues ?? []).length > 0
+        /* v8 ignore next — the inner `?? []` is unreachable: the test above already
+           established a non-empty list. Native needs the unwrap; the web cannot reach it. */
         ? extent(spec.xValues ?? [])
         : { min: 0.0, max: n > 1 ? n - 1 : 1.0 },
     yDomain: resolveYDomain(spec),
@@ -965,15 +1022,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       // own, not the running total, and there is no outside edge to hang it
       // from that would not collide with the segment above.
       if (stackedSeries[seg.seriesIndex]!.showValues === true && progress >= 1.0) {
-        out.push({
-          kind: 'text',
-          text: fmtS(seg.value),
-          at: { x: rS.x + rS.w / 2.0, y: rS.y + rS.h / 2.0 },
-          fill: t.label,
-          size: t.fontSize,
-          align: 'middle',
-          baseline: 'middle',
-        })
+        for (const c of seriesLabelCmds(stackedSeries[seg.seriesIndex]!, seg.datumIndex, fmtS(seg.value), { x: rS.x + rS.w / 2.0, y: rS.y + rS.h / 2.0 }, 'middle', 'middle', t, measure)) out.push(c)
       }
     }
   }
@@ -992,15 +1041,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       // A grouped bar has a free outer edge, so it labels OUTSIDE like a
       // plain bar — above a positive one, below a negative one.
       if (groupedSeries[seg.seriesIndex]!.showValues === true && progress >= 1.0) {
-        out.push({
-          kind: 'text',
-          text: fmtG(seg.value),
-          at: { x: rG.x + rG.w / 2.0, y: seg.value < 0.0 ? rG.y + rG.h + 4.0 : rG.y - 4.0 },
-          fill: t.label,
-          size: t.fontSize,
-          align: 'middle',
-          baseline: seg.value < 0.0 ? 'top' : 'bottom',
-        })
+        for (const c of seriesLabelCmds(groupedSeries[seg.seriesIndex]!, seg.datumIndex, fmtG(seg.value), { x: rG.x + rG.w / 2.0, y: seg.value < 0.0 ? rG.y + rG.h + 4.0 : rG.y - 4.0 }, 'middle', seg.value < 0.0 ? 'top' : 'bottom', t, measure)) out.push(c)
       }
     }
   }
@@ -1036,15 +1077,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           for (let i = 0; i < upper.length; i++) {
             const v = i < sA.values.length ? sA.values[i]! : 0.0 / 0.0
             if (!isFiniteValue(v)) continue
-            out.push({
-              kind: 'text',
-              text: fmtA(v),
-              at: { x: upper[i]!.x, y: (upper[i]!.y + lower[i]!.y) / 2.0 },
-              fill: t.label,
-              size: t.fontSize,
-              align: 'middle',
-              baseline: 'middle',
-            })
+            for (const c of seriesLabelCmds(sA, i, fmtA(v), { x: upper[i]!.x, y: (upper[i]!.y + lower[i]!.y) / 2.0 }, 'middle', 'middle', t, measure)) out.push(c)
           }
         }
       }
@@ -1092,6 +1125,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
              needs the unwrap; the web cannot reach it. */
           out.push(rectCmd(grown, fillH, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad, s.pattern))
         } else {
+          /* v8 ignore next — `s.values[ri] ?? 0.0` is unreachable: `ri` indexes rects built
+             FROM `s.values`. Native needs the unwrap; the web cannot reach it. */
           for (const c of pictorialCommands(pictorialBar(s, grown, true, s.values[ri] ?? 0.0, fillH))) out.push(c)
         }
       }
@@ -1108,18 +1143,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           if (!isFiniteValue(v)) continue
           // The label sits just past the bar's far end — right of a positive
           // bar, left of a negative one.
-          out.push({
-            kind: 'text',
-            text: fmt(v),
-            at: {
-              x: v < 0.0 ? r.x - 4.0 : r.x + r.w + 4.0,
-              y: r.y + r.h / 2.0,
-            },
-            fill: t.label,
-            size: t.fontSize,
-            align: v < 0.0 ? 'end' : 'start',
-            baseline: 'middle',
-          })
+          for (const c of seriesLabelCmds(s, i, fmt(v), { x: v < 0.0 ? r.x - 4.0 : r.x + r.w + 4.0, y: r.y + r.h / 2.0 }, v < 0.0 ? 'end' : 'start', 'middle', t, measure)) out.push(c)
         }
       }
       continue
@@ -1137,6 +1161,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
              needs the unwrap; the web cannot reach it. */
           out.push(rectCmd(grown, fillV, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad, s.pattern))
         } else {
+          /* v8 ignore next — same unreachable native unwrap: `ri` indexes rects built FROM
+             `s.values`. */
           for (const c of pictorialCommands(pictorialBar(s, grown, false, s.values[ri] ?? 0.0, fillV))) out.push(c)
         }
       }
@@ -1152,15 +1178,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           if (!isFiniteValue(v)) continue
           // A negative bar hangs below the zero line, so its label goes under
           // its bottom edge — above the top would sit ON the zero line.
-          out.push({
-            kind: 'text',
-            text: fmt(v),
-            at: { x: r.x + r.w / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0 },
-            fill: t.label,
-            size: t.fontSize,
-            align: 'middle',
-            baseline: v < 0.0 ? 'top' : 'bottom',
-          })
+          for (const c of seriesLabelCmds(s, i, fmt(v), { x: r.x + r.w / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0 }, 'middle', v < 0.0 ? 'top' : 'bottom', t, measure)) out.push(c)
         }
       }
     } else if (s.kind === 'waterfall') {
@@ -1186,15 +1204,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         if (s.showValues === true && progress >= 1.0) {
           const fmt = spec.yFormat ?? plain
           const v = printed(sIdx, st.datumIndex)
-          out.push({
-            kind: 'text',
-            text: fmt(v),
-            at: { x: st.rect.x + st.rect.w / 2.0, y: v < 0.0 ? st.rect.y + st.rect.h + 4.0 : st.rect.y - 4.0 },
-            fill: t.label,
-            size: t.fontSize,
-            align: 'middle',
-            baseline: v < 0.0 ? 'top' : 'bottom',
-          })
+          for (const c of seriesLabelCmds(s, st.datumIndex, fmt(v), { x: st.rect.x + st.rect.w / 2.0, y: v < 0.0 ? st.rect.y + st.rect.h + 4.0 : st.rect.y - 4.0 }, 'middle', v < 0.0 ? 'top' : 'bottom', t, measure)) out.push(c)
         }
       }
     } else if (s.kind === 'line') {
@@ -1317,16 +1327,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const v = printed(sIdx, i)
         // A gap has no value to print — same rule as the bars.
         if (!isFiniteValue(v)) continue
-        out.push({
-          kind: 'text',
-          text: fmtP(v),
-          // Above the point, clear of a dot of the series' own radius.
-          at: { x: labelPts[i]!.x, y: labelPts[i]!.y - (s.radius + 5.0) },
-          fill: t.label,
-          size: t.fontSize,
-          align: 'middle',
-          baseline: 'bottom',
-        })
+        // Above the point, clear of a dot of the series' own radius.
+        for (const c of seriesLabelCmds(s, i, fmtP(v), { x: labelPts[i]!.x, y: labelPts[i]!.y - (s.radius + 5.0) }, 'middle', 'bottom', t, measure)) out.push(c)
       }
     }
 
@@ -1600,6 +1602,8 @@ function pictorialBar(s: Series, bar: Rect, horizontal: boolean, value: Double, 
   return {
     bar,
     horizontal,
+    /* v8 ignore next — unreachable: `pictorialBar` is only called from the `else` of
+       `s.symbol === undefined`, so the symbol is always set here. Native unwrap. */
     symbol: s.symbol ?? 'rect',
     repeat: s.symbolRepeat === true,
     fill,
