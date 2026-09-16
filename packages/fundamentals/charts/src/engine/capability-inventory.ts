@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.17' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.18' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -91,7 +91,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('presentation.labels-rich-text', 'presentation', 'direct', 'partial', 'src/engine/option.ts'),
   row('presentation.states', 'presentation', 'direct', 'partial', 'src/engine/emphasis.test.ts'),
   row('presentation.symbols', 'presentation', 'direct', 'complete', 'src/engine/option-symbols.test.ts', '../../native/compiler/src/tests/chart-symbols-native.test.ts'),
-  row('presentation.gradients-patterns', 'presentation', 'direct', 'partial', 'src/engine/gradient.ts'),
+  row('presentation.gradients-patterns', 'presentation', 'direct', 'partial', 'src/engine/option-gradients.test.ts', '../../native/compiler/src/tests/chart-gradients-native.test.ts'), // linear + decals; radial gradients warn
   row('presentation.decals', 'presentation', 'direct', 'partial', 'src/engine/pattern.test.ts'),
   row('presentation.animation', 'presentation', 'direct', 'complete', 'src/engine/cmd-tween.ts', '../../native/compiler/src/tests/native-chart-transition-parity.test.ts'),
   // Compile-time parity only: the completion plan requires native canvas

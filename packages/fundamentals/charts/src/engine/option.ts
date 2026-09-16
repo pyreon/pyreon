@@ -31,7 +31,8 @@ import type { LegendEntry } from './legend'
 import { measureApprox, renderSvg } from './svg'
 import { compileFamily, familyToSvg } from './option-family'
 import type { CompiledFamily } from './option-family'
-import type { ChartPattern, DrawCmd, Domain, Double, MeasureText, Rect } from './types'
+import type { ChartGradientStop, ChartPattern, DrawCmd, Domain, Double, MeasureText, Rect } from './types'
+import type { SeriesGradient } from './gradient'
 
 /** An ECharts-shaped option. Loosely typed on purpose: the facade VALIDATES. */
 export type EChartsOption = Record<string, unknown>
@@ -165,6 +166,33 @@ function seriesSymbol(s: Record<string, unknown>, kind: 'line' | 'points', warn:
     return kind === 'line' ? { symbol: 'circle' } : {}
   }
   return kind === 'points' && symbol === 'circle' ? {} : { symbol }
+}
+
+/**
+ * An ECharts gradient colour (`{ type: 'linear', x, y, x2, y2, colorStops }`)
+ * as the engine's series gradient. The ramp direction is the dominant axis
+ * of the (x, y) → (x2, y2) vector: horizontal when it runs along x, else
+ * vertical (the engine draws exactly those two). A radial gradient has no
+ * engine form yet: it warns by name and degrades to its first stop.
+ */
+function readGradient(raw: unknown, path: string, warn: (code: OptionWarning['code'], path: string, message: string) => void): SeriesGradient | undefined {
+  if (!isObj(raw) || !Array.isArray(raw['colorStops'])) return undefined
+  const stops: ChartGradientStop[] = []
+  for (const st of raw['colorStops'] as unknown[]) {
+    if (isObj(st) && num(st['offset']) !== null && typeof st['color'] === 'string') stops.push({ offset: num(st['offset']) as number, color: st['color'] as string })
+  }
+  if (stops.length === 0) return undefined
+  if (raw['type'] === 'radial') {
+    warn('series-option-unsupported', path, 'Radial gradients are not supported (linear ones are); the first stop is used as a solid colour.')
+    return { stops: [stops[0]!] }
+  }
+  const dx = (num(raw['x2']) ?? 0.0) - (num(raw['x']) ?? 0.0)
+  const dy = (num(raw['y2']) ?? 1.0) - (num(raw['y']) ?? 0.0)
+  // A ramp read "backwards" (bottom → top, right → left) reverses its stops
+  // so the colour at offset 0 still sits where the author put it.
+  const horizontal = Math.abs(dx) > Math.abs(dy)
+  const ordered = (horizontal ? dx < 0 : dy < 0) ? stops.map((st) => ({ offset: 1.0 - st.offset, color: st.color })).reverse() : stops
+  return { stops: ordered, ...(horizontal ? { direction: 'horizontal' } : {}) }
 }
 
 function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning['code'], path: string, message: string) => void, path: string): { symbol: Series['symbol']; symbolRepeat: boolean } {
@@ -402,6 +430,10 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
 
     const itemStyle = isObj(s['itemStyle']) ? s['itemStyle'] : {}
     const lineStyle = isObj(s['lineStyle']) ? s['lineStyle'] : {}
+    const areaStyle = isObj(s['areaStyle']) ? s['areaStyle'] : {}
+    // ECharts' gradient objects on any colour slot: the ramp becomes the
+    // series gradient, its first stop the solid colour everything else reads.
+    const gradient = readGradient(itemStyle['color'], `${path}.itemStyle.color`, warn) ?? readGradient(areaStyle['color'], `${path}.areaStyle.color`, warn) ?? readGradient(lineStyle['color'], `${path}.lineStyle.color`, warn) ?? readGradient(s['color'], `${path}.color`, warn)
     const color =
       typeof itemStyle['color'] === 'string'
         ? (itemStyle['color'] as string)
@@ -409,7 +441,9 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
           ? (lineStyle['color'] as string)
           : typeof s['color'] === 'string'
             ? (s['color'] as string)
-            : palette[series.length % Math.max(1, palette.length)] ?? defaultPalette[series.length % defaultPalette.length]!
+            : gradient !== undefined && gradient.stops.length > 0
+              ? gradient.stops[0]!.color
+              : palette[series.length % Math.max(1, palette.length)] ?? defaultPalette[series.length % defaultPalette.length]!
     const label = isObj(s['label']) ? s['label'] : {}
     const yAxisIndex = num(s['yAxisIndex']) ?? 0
     if (yAxisIndex > 1) warn('axis-count-unsupported', `${path}.yAxisIndex`, 'Only yAxisIndex 0 or 1 is supported.')
@@ -429,6 +463,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       ...(type === 'effectScatter' ? { effect: true } : {}),
       ...(type === 'pictorialBar' ? pictorialFields(s, warn, path) : {}),
       ...(kind === 'line' || kind === 'points' ? seriesSymbol(s, kind, warn, path) : {}),
+      ...(gradient !== undefined && gradient.stops.length > 0 ? { gradient } : {}),
     }
     series.push(entry)
     const seriesIndex = series.length - 1

@@ -95,7 +95,10 @@ onto them — `median`, `[from, to]` pairs, category-named `coord`s, per-mark
 `lineStyle` / `itemStyle` colours and `symbolSize` — on web, iOS and Android. **`bubble`** maps its r
 channel by AREA, not radius — radius-proportional bubbles exaggerate the data.
 **`bars(y, { showValues: true })`** labels each bar with its formatted value.
-**Symbols**: `points(y, { symbol: 'diamond' })` draws every datum as that
+**Gradients**: a mark's `gradient: { stops, direction }` ramps its fill across
+the plot; the option facade reads ECharts' linear gradient objects on
+`itemStyle` / `areaStyle` / `lineStyle` / series `color` (a radial gradient
+warns and degrades to its first stop). **Symbols**: `points(y, { symbol: 'diamond' })` draws every datum as that
 shape (rect, circle, diamond, triangle; the pictorialBar vocabulary), and
 `line(y, { symbol })` draws a symbol at every datum over the line — the
 facade's `symbol` / `showSymbol` / `symbolSize`, on web, iOS and Android.

@@ -13195,9 +13195,37 @@ function swiftMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex:
     args.push(`pattern: PyreonChartPattern(kind: ${JSON.stringify(kind.value)}, color: ${JSON.stringify(color.value)}, spacing: ${chartDouble(spacing.value)}, width: ${chartDouble(width.value)})`)
     return true
   }
+  // `gradient` sits right before `pattern` in Series field order: literal
+  // stops (offset + colour) and an optional direction, the same shape the
+  // web grammar and the option facade produce.
+  const gradient = fields.get('gradient')
+  const pushGradient = (): boolean => {
+    if (gradient === undefined) return true
+    if (gradient.kind !== 'object' || (gradient.spreads !== undefined && gradient.spreads.length > 0)) return false
+    const values = new Map(gradient.fields.map((field) => [field.name, field.value]))
+    const stops = values.get('stops')
+    const direction = values.get('direction')
+    if (stops?.kind !== 'array') return false
+    const stopArgs: string[] = []
+    for (const st of stops.elements) {
+      if (st.kind !== 'object') return false
+      const sv = new Map(st.fields.map((field) => [field.name, field.value]))
+      const offset = sv.get('offset')
+      const color = sv.get('color')
+      if (offset?.kind !== 'literal' || typeof offset.value !== 'number' || color?.kind !== 'literal' || typeof color.value !== 'string') return false
+      stopArgs.push(`PyreonChartGradientStop(offset: ${chartDouble(offset.value)}, color: ${JSON.stringify(color.value)})`)
+    }
+    if (direction !== undefined && (direction.kind !== 'literal' || typeof direction.value !== 'string')) return false
+    args.push(`gradient: SeriesGradient(stops: [${stopArgs.join(', ')}]${direction === undefined ? '' : `, direction: ${JSON.stringify(direction.value)}`})`)
+    return true
+  }
   let patternPushed = false
   for (const spec of PLOT_MARK_OPTION_FIELDS) {
     if (spec.name === 'negativeColor' && !patternPushed) {
+      if (!pushGradient()) {
+        _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`gradient\` needs literal stops (offset + color) and an optional direction on native; emitting an EmptyView().`)
+        return 'unsupported'
+      }
       if (!pushPattern()) {
         _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`pattern\` needs literal kind/color/spacing/width fields on native; emitting an EmptyView().`)
         return 'unsupported'
@@ -13217,6 +13245,10 @@ function swiftMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex:
     if (spec.name === 'color') args.push(`color: ${JSON.stringify(palette[seriesIndex % palette.length])}`)
     else if (spec.name === 'label') args.push(`label: ${JSON.stringify(`Series ${seriesIndex + 1}`)}`)
     else if (spec.default !== undefined) args.push(`${spec.name}: ${spec.kind === 'number' ? chartDouble(spec.default as number) : String(spec.default)}`)
+  }
+  if (!patternPushed && !pushGradient()) {
+    _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`gradient\` needs literal stops (offset + color) and an optional direction on native; emitting an EmptyView().`)
+    return 'unsupported'
   }
   if (!patternPushed && !pushPattern()) {
     _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`pattern\` needs literal kind/color/spacing/width fields on native; emitting an EmptyView().`)

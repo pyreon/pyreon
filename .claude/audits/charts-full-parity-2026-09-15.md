@@ -77,6 +77,14 @@ for interaction, animation or accessibility parity.
   transpose exists three times (web `transposeCmds`, `pyreonTransposeCmds` in
   both runtimes) and is locked by execution like the RTL mirror. Rows
   `series.sankey`, `coordinates.calendar`, `coordinates.parallel` complete.
+- [ ] `presentation.gradients-patterns`: ECharts' LINEAR gradient objects on
+  every colour slot now resolve to the series gradient (direction from the
+  dominant axis, a backwards ramp reverses its stops, the first stop is the
+  solid colour) on web and — through the mark `gradient` option the emitters
+  now carry, for `<OptionChart>` and `<PlotChart>` alike — on both native
+  targets. Decals were already complete. Still open: radial gradients, which
+  warn by name and degrade to their first stop (the engine draws linear
+  ramps only; a radial form touches every draw-list executor).
 - [x] `presentation.symbols` complete: the datum symbol vocabulary the
   pictorial bars already had (rect / circle / diamond / triangle) now applies
   to scatter datums and, on `showSymbol: true`, to a line's datums, with

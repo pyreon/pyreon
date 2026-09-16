@@ -1672,6 +1672,37 @@ export function desugarOptionChart(
       const item = literalOf(objectField(s, sk === 'line' ? 'lineStyle' : 'itemStyle'), resolve)
       const color = item === undefined ? undefined : objectField(item, 'color')
       if (litString(color) !== undefined) opts.push({ name: 'color', value: color! })
+      // ECharts' gradient colour object → the mark's `gradient` (stops + direction);
+      // its first stop is the solid colour. A radial gradient warns and degrades.
+      const gradientSlots: [string, ExprIR | undefined][] = [['itemStyle', literalOf(objectField(s, 'itemStyle'), resolve)], ['areaStyle', literalOf(objectField(s, 'areaStyle'), resolve)], ['lineStyle', literalOf(objectField(s, 'lineStyle'), resolve)]]
+      for (const [slot, style] of gradientSlots) {
+        const g = style?.kind === 'object' ? literalOf(objectField(style, 'color'), resolve) : undefined
+        const rawStops = g?.kind === 'object' ? literalOf(objectField(g, 'colorStops'), resolve) : undefined
+        if (g?.kind !== 'object' || rawStops?.kind !== 'array') continue
+        const stops: { offset: number; color: string }[] = []
+        for (const st of rawStops.elements) {
+          const so = literalOf(st, resolve)
+          const offset = so?.kind === 'object' ? litNumber(objectField(so, 'offset')) : undefined
+          const stopColor = so?.kind === 'object' ? litString(objectField(so, 'color')) : undefined
+          if (offset !== undefined && stopColor !== undefined) stops.push({ offset, color: stopColor })
+        }
+        if (stops.length === 0) continue
+        if (litString(objectField(g, 'type')) === 'radial') {
+          warn(`<OptionChart option.series[${si}].${slot}.color>: radial gradients are not supported natively (linear ones are); the first stop is used as a solid colour.`)
+          if (litString(color) === undefined) opts.push({ name: 'color', value: lit(stops[0]!.color) })
+          break
+        }
+        const dx = (litNumber(objectField(g, 'x2')) ?? 0) - (litNumber(objectField(g, 'x')) ?? 0)
+        const dy = (litNumber(objectField(g, 'y2')) ?? 1) - (litNumber(objectField(g, 'y')) ?? 0)
+        const horizontal = Math.abs(dx) > Math.abs(dy)
+        const ordered = (horizontal ? dx < 0 : dy < 0) ? stops.map((st) => ({ offset: 1 - st.offset, color: st.color })).reverse() : stops
+        const stopLiterals: ExprIR[] = ordered.map((st) => ({ kind: 'object', fields: [{ name: 'offset', value: optionDoubleLiteral(st.offset) }, { name: 'color', value: lit(st.color) }] }))
+        const gradientFields: { name: string; value: ExprIR }[] = [{ name: 'stops', value: { kind: 'array', elements: stopLiterals } }]
+        if (horizontal) gradientFields.push({ name: 'direction', value: lit('horizontal') })
+        opts.push({ name: 'gradient', value: { kind: 'object', fields: gradientFields } })
+        if (litString(color) === undefined) opts.push({ name: 'color', value: lit(ordered[0]!.color) })
+        break
+      }
       const pattern = optionPatternLiteral(objectField(s, 'itemStyle'), resolve)
       if (pattern !== undefined) opts.push({ name: 'pattern', value: pattern })
       if (sk === 'line' || sk === 'scatter') {
