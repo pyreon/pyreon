@@ -52,7 +52,7 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 
 ## The full surface
 
-55 hooks across 7 categories.
+65 hooks across 7 categories.
 
 ### State
 
@@ -91,9 +91,6 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 | `useColorScheme()` | `Signal<'light' \| 'dark'>` from `prefers-color-scheme` |
 | `useSizeClass()` | `() => 'compact' \| 'regular'` horizontal size class (`min-width: 600px`); PMTC lowers to iOS `@Environment(\.horizontalSizeClass)` / Android `LocalConfiguration` width |
 | `useReducedMotion()` | `Signal<boolean>` from `prefers-reduced-motion` |
-| `useThemeValue(path)` | Reactive theme lookup by path |
-| `useSpacing(value)` | Reactive theme-spacing accessor |
-| `useRootSize()` | Reactive `<html>` font-size for `rem` math |
 
 ### Timing
 
@@ -110,17 +107,28 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 
 | Hook | Notes |
 |---|---|
+| `useBluetooth()` | `{ available, scanning, devices, error, scan, stopScan }` — reactive BLE device discovery; `devices` are first-seen order, deduped by id. `error` holds a permission denial rather than throwing |
+| `useSafeArea()` | `() => SafeAreaInsets` — `{ top, right, bottom, left }` CSS-pixel insets to keep content clear of the notch / Dynamic Island / home indicator / gesture bar |
+| `useScreenOrientation()` | `{ type, angle }` — `type: () => 'portrait' \| 'landscape'`, `angle: () => number` (0/90/180/270). Read-only: orientation *locking* is deliberately out of scope — it doesn't cross the three targets cleanly |
+| `useDeviceMotion()` | `{ supported, active, start, stop, acceleration, rotationRate }` — accelerometer + gyroscope; `start()` resolves whether it actually started (iOS Safari gates motion behind a user-gesture permission prompt, and a denial is an ordinary `false`) |
+| `useSpeech()` | `{ supported, speaking, speak, stop }` — text-to-speech; web `speechSynthesis`, iOS `AVSpeechSynthesizer`, Android `TextToSpeech` via PMTC |
+| `useDeviceInfo()` | `{ platform, model, osVersion, isTouch, screen }` — `platform` is known at COMPILE time on native; `model`/`osVersion` are empty strings on web |
+| `useCamera()` | `{ capture, isAvailable }` — opens the system camera UI; `capture()` resolves a photo URI or `null` if cancelled, and never rejects |
+| `useAudioRecorder()` | `{ supported, recording, start, stop, error }` — `start()` resolves whether recording actually began (a denied mic permission is an ordinary `false`); `stop()` resolves a URL for the captured audio (an object URL on web, a file URL on iOS/Android) |
+| `useWakeLock()` | `{ active, supported, request, release }` — keep the screen awake for a video/navigation/step-by-step view; `request()` resolves whether the lock was actually acquired |
 | `useClipboard(opts?)` | `{ copy, copied, text }` — `copy` resolves `true`/`false`; `copied` auto-resets after `opts.timeout` (2s) |
 | `useHaptics()` | `{ impact, notification, selection }` — fire-and-forget device haptics; web `navigator.vibrate`, iOS/Android via PMTC (`@pyreon/native-*`). Coarser on web/Android than iOS |
 | `useShare()` | `{ text, url, textUrl, canShare }` — open the platform share sheet; web Web Share API, iOS `UIActivityViewController` / Android `Intent.ACTION_SEND` via PMTC. Android shares URLs as text |
 | `useLinking()` | `{ openUrl }` — open an external URL in the platform browser; web `window.open`, iOS `UIApplication.open` / Android `Intent.ACTION_VIEW` via PMTC |
-| `useNotifications()` | `{ notify, requestPermission }` — post a LOCAL notification; web Notification API, iOS `UNUserNotificationCenter` / Android `NotificationManager` + channel via PMTC. Distinct from remote push |
+| `useNotifications()` | `{ notify, requestPermission }` — post a LOCAL notification; web Notification API, iOS `UNUserNotificationCenter` / Android `NotificationManager` + channel via PMTC. Distinct from remote push (`usePush`) |
 | `useBiometrics()` | `{ authenticate, isAvailable }` — biometric gate; `authenticate(reason)` returns `Promise<boolean>` (the first async-result hook). iOS Face ID / Touch ID (`LAContext`), Android BiometricPrompt via PMTC; web feature-detects `PublicKeyCredential` and resolves `false` (a real WebAuthn assertion needs a server challenge) |
 | `useImagePicker()` | `{ pick, isAvailable }` — pick an image from the photo library; `pick()` returns `Promise<string \| null>` (a URI, or `null` when cancelled). iOS `PHPickerViewController`, Android Photo Picker (`PickVisualMedia`) via PMTC; web uses a hidden file input. Needs NO photo-library permission on either platform (both system pickers run out of process) |
 | `useFilePicker()` | `{ pick, isAvailable }` — pick a document/file (any type) from the device; `pick()` returns `Promise<string \| null>` (a URI, or `null` when cancelled). iOS `UIDocumentPickerViewController`, Android SAF `OpenDocument` via PMTC; web uses a hidden file input. The document sibling of `useImagePicker`. Needs NO storage permission (both system pickers run out of process) |
 | `useDialog(opts?)` | Native `<dialog>` wrapper — `open` signal + `show`/`showModal`/`close`/`toggle`/`ref` |
 | `useKeyboard(key, handler)` | Single-key listener |
 | `useOnline()` | `Signal<boolean>` from `navigator.onLine` |
+| `useAppState()` | `() => 'active' \| 'inactive' \| 'background'` — app lifecycle phase; mirrors SwiftUI `ScenePhase` / Android `ProcessLifecycleOwner` so one shared source reads the same value on web + iOS + Android. Reports `'active'` during SSR |
+| `useCrashReporter()` | `{ lastCrash, hadCrash, recordError, breadcrumb, clear, start }` — captures crashes (`window.onerror` + `unhandledrejection`), persists to `localStorage`, and rehydrates the previous session's report on `start()`. The vendor transport is app-wired via `setCrashTransport` |
 | `useDocumentVisibility()` | `() => 'visible' \| 'hidden'` from the Page Visibility API |
 | `useIdle(timeoutMs?, opts?)` | `Signal<boolean>` — true after `timeoutMs` of no activity |
 
@@ -129,6 +137,14 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 | Hook | Notes |
 |---|---|
 | `useFetch<T>(url)` | Thin reactive JSON fetch — `{ data, error, isPending, refetch }`. Aborts in-flight requests on refetch/unmount. The web half of the multiplatform `useFetch` contract (PMTC compiles the same call to native `PyreonFetch` containers on iOS/Android). No cache/dedup/retries — use `@pyreon/query` for those |
+| `useAuth<User>()` | `{ status, user, error, isAuthenticated, isSigningIn, beginSignIn, signInSucceeded, signInFailed, signOut }` — reactive auth-state container; `status` is `'signedOut' \| 'signingIn' \| 'signedIn' \| 'error'`. Signing out does NOT clear a persisted token — pair with `useSecureStorage().remove` |
+| `useDatabase()` | `{ insert, get, all, delete, find, count }` — namespaced local document store (collection + `id`); `localStorage`-backed with an in-memory fallback during SSR. Method names mirror the native `PyreonDatabase` file-backed store |
+| `useGeolocation(options?)` | `{ latitude, longitude, accuracy, error, isTracking, start, stop }` — reactive GPS position container, `null` fields before the first fix. PLATFORM ASYMMETRY: web + iOS only today (see the hook's own doc comment for the Android gap) |
+| `useMap(options?)` | `{ camera, markers, selectedMarkerId, selectedMarker, setCamera, moveTo, setMarkers, addMarker, removeMarker, selectMarker }` — reactive map-view state (camera + markers + selection); mirrors the native `PyreonMapState` |
+| `useWebSocket(url, options?)` | `{ lastMessage, messages, isConnected, error, connect, send, close }` — reactive socket state; `autoConnect` defaults `true` to match what both native emitters synthesize |
+| `useSecureStorage()` | `{ write, read, remove, contains }` — app-wide secret store (write is KEY-first); web keeps an in-memory `Map` (never persisted), iOS Keychain / Android Keystore via PMTC. `serverSecureStorage` is the SSR-safe per-request alternative |
+| `usePush()` | `{ token, lastNotification, notifications, isAuthorized, error, isRegistered, tokenReceived, notificationReceived, authorize, fail, start, stop }` — push-notification state; mirrors the native `PyreonPushNotifications`. `start(register)` is idempotent |
+| `usePayments()` | `{ products, ownedProductIds, purchasing, error, owns, productsLoaded, purchaseStarted, purchaseSucceeded, purchaseFailed, restored, connect, purchase, restore }` — in-app-purchase state; mirrors the native `PyreonPayments`. `purchase`/`restore` are no-ops until `connect(register)` wires the app's store actions |
 
 ### Composition
 

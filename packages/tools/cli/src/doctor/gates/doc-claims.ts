@@ -290,6 +290,17 @@ const checks: ClaimCheck[] = [
         pattern: /^(\d+) signal-based reactive utilities/m,
       },
       {
+        // The README's own "full surface" table-count line — historically
+        // UNGUARDED and the exact site that drifted to 55 against a real 65
+        // (the prose line above stayed correct because it WAS guarded; this
+        // one wasn't). Guarding both closes the class: a single claim site
+        // is one bump away from drift, but a second unguarded restatement
+        // of the SAME number right next to a guarded one is worse — it
+        // looks doubly-confirmed while only one copy is actually checked.
+        file: 'packages/fundamentals/hooks/README.md',
+        pattern: /^(\d+) hooks across 7 categories\.$/m,
+      },
+      {
         file: 'packages/fundamentals/hooks/src/manifest.ts',
         pattern: /'(\d+) signal-based hooks:/,
       },
