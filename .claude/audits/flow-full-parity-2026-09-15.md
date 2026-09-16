@@ -54,17 +54,17 @@ WebView escape path; silent drops are release blockers.
     overlapped and swallowed each other's taps and drags, and the measured
     size fed edge anchoring the canvas box. Fixed with `fixedSize` —
     shrink-to-fit with a floor, which is what the web's `min-width` box does.
-  - OPEN (F4): SwiftUI reports the `.position` container's frame for every
-    node's accessibility element, so each node's a11y frame is the whole
-    canvas. VoiceOver cannot locate an individual node, and no XCUITest
-    coordinate (the element's own, or one computed on the canvas) reaches a
-    node's drag gesture. Attaching the element before `.position`, giving the
-    node a fixed size, and placing it by `offset` in a top-leading container
-    were each tried and each left the frame unchanged. The iOS drag assertion
-    is therefore NOT claimed; Android covers that half.
+  - FIXED (F4): every node's accessibility frame was the whole canvas,
+    because `.position` gives its child the canvas as layout frame. Two
+    changes were both needed: `fixedSize` must come AFTER `.frame`, and the
+    node is placed by `.offset` in the top-leading ZStack as the LAST
+    modifier — `.offset` does not move layout, so a `contentShape`/gesture
+    attached after it still hit-tests the un-offset box and the drag never
+    lands. Node frames now read 150x40 and the iOS UITest drags node `a`
+    (bisect-verified: offset before the gestures -> label unchanged).
+    Device note: Swift renders a position Double as `25.0`, Android `25`.
 - [ ] F3/F4 remaining: pixel-level renderer parity (connection line, handles,
-  toolbar, resizer, panel, labels, markers, theming, reduced motion), the
-  iOS node-drag accessibility item above, and pan/zoom/connect/reconnect
+  toolbar, resizer, panel, labels, markers, theming, reduced motion), and pan/zoom/connect/reconnect
   gestures on both targets.
 
 ## Exit gate

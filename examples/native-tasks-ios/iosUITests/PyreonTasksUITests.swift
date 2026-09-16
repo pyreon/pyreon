@@ -472,35 +472,44 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(waitForLabel(nodeCount, "3", timeout: 5), "addNode did not reach the native engine (label: \(nodeCount.label))")
         tapAfterScrolling(app.buttons["flow-select"].firstMatch, in: app)
         XCTAssertTrue(waitForLabel(app.staticTexts["flow-selected-count"].firstMatch, "1", timeout: 5), "selectNode did not reach the native engine")
-        tapAfterScrolling(app.buttons["flow-zoom-in"].firstMatch, in: app)
-        XCTAssertTrue(waitForLabel(app.staticTexts["flow-zoom"].firstMatch, "zoom 1.2", timeout: 5), "zoomIn did not reach the native engine (label: \(app.staticTexts["flow-zoom"].firstMatch.label))")
-
-        // The RENDERER half (F3/F4): the <Flow> canvas and its chrome exist on
-        // the device, its Controls drive the same engine the labels read, and a
-        // drag on a node moves it. The zoom is tapped past maxZoom (2) so the
-        // asserted value is the clamp, not a float product.
+        // The RENDERER half (F3/F4): the <Flow> canvas and its chrome, a node
+        // DRAG, and the Controls driving the same engine the labels read.
+        // The drag runs FIRST, at the initial zoom 1: accessibility frames do
+        // not follow the canvas scaleEffect, so at any other zoom a node's
+        // reported frame is distorted and a coordinate drag misses it.
         let canvas = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Task flow")).firstMatch
         XCTAssertTrue(canvas.waitForExistence(timeout: 10), "Flow canvas (ariaLabel) did not render")
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "minimap")).firstMatch.exists, "MiniMap chrome missing")
+        let startNode = app.staticTexts["Start"].firstMatch
+        XCTAssertTrue(startNode.waitForExistence(timeout: 5), "node 'Start' did not render on the canvas")
+        XCTAssertTrue(app.staticTexts["End"].firstMatch.exists, "node 'End' did not render on the canvas")
+        let aPos = app.staticTexts["flow-a-pos"].firstMatch
+        XCTAssertTrue(aPos.waitForExistence(timeout: 5), "flow-a-pos missing")
+        let before = aPos.label
+        // The label reacts to an engine-driven move — the discriminator that
+        // separates "the position channel is live" from "the drag gesture ran".
+        tapAfterScrolling(app.buttons["flow-move"].firstMatch, in: app)
+        // Swift renders a Double as "25.0"; Android as "25". Either is the moved position.
+        XCTAssertTrue(waitForLabel(aPos, "25.0,35.0", timeout: 5) || aPos.label == "25,35", "updateNodePosition did not reach the label (label: \(aPos.label))")
+        let placed = aPos.label
+        let grab = startNode.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        // Slow, with a hold at each end: a fast synthesized drag reaches SwiftUI
+        // as a single jump, and a DragGesture that never sees an intermediate
+        // move does not fire.
+        grab.press(forDuration: 0.3, thenDragTo: grab.withOffset(CGVector(dx: 70, dy: 40)), withVelocity: .slow, thenHoldForDuration: 0.4)
+        let moved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", placed), object: aPos)
+        if XCTWaiter().wait(for: [moved], timeout: 5) != .completed { print("DIAG-HIERARCHY:\n\(app.debugDescription)") }
+        XCTAssertNotEqual(aPos.label, placed, "dragging node 'Start' did not move it in the native engine (still \(aPos.label))")
+
+        tapAfterScrolling(app.buttons["flow-zoom-in"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabel(app.staticTexts["flow-zoom"].firstMatch, "zoom 1.2", timeout: 5), "zoomIn did not reach the native engine (label: \(app.staticTexts["flow-zoom"].firstMatch.label))")
+        // Tapped past maxZoom (2) so the asserted value is the clamp, not a float product.
         let zoomIn = app.buttons["Zoom in"].firstMatch
         XCTAssertTrue(zoomIn.exists, "Controls zoom-in button missing")
         for _ in 0..<4 { zoomIn.tap() }
         XCTAssertTrue(waitForLabel(app.staticTexts["flow-zoom"].firstMatch, "zoom 2.0", timeout: 5), "Controls zoom-in did not clamp the engine at maxZoom (label: \(app.staticTexts["flow-zoom"].firstMatch.label))")
         app.buttons["Fit view"].firstMatch.tap()
-        let aPos = app.staticTexts["flow-a-pos"].firstMatch
-        XCTAssertTrue(aPos.waitForExistence(timeout: 5), "flow-a-pos missing")
-        let before = aPos.label
-        // Both seeded nodes render their labels on the canvas.
-        XCTAssertTrue(app.staticTexts["Start"].firstMatch.waitForExistence(timeout: 5), "node 'Start' did not render on the canvas")
-        XCTAssertTrue(app.staticTexts["End"].firstMatch.exists, "node 'End' did not render on the canvas")
-        // NOT asserted here, and deliberately: a node DRAG. SwiftUI reports the
-        // `.position` container's frame for every node, so each node's
-        // accessibility frame is the whole canvas — neither the element's own
-        // coordinate nor a computed canvas coordinate reaches the node's drag
-        // gesture from XCUITest. The Android lane drags the same node through
-        // Compose and asserts the engine moved it; the iOS half is an open F4
-        // accessibility item in the flow parity audit.
-        XCTAssertEqual(aPos.label, before, "the flow position label changed without a drag")
+
         tapAfterScrolling(app.buttons["flow-back"].firstMatch, in: app)
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 10), "flow-back did not return to tasks")
 
