@@ -13,6 +13,7 @@ import { plain } from './format'
 import type { Formatter } from './format'
 import { isFiniteNumber } from './scale'
 import type { Double } from './types'
+import type { SeriesExtra } from './render'
 
 export interface A11ySeries {
   label: string
@@ -45,6 +46,12 @@ export interface A11ySeries {
    * second cell, like the value it sits beside.
    */
   rValues?: Double[] | undefined
+  /**
+   * Extra dimensions the tooltip shows under the value (ECharts'
+   * `encode.tooltip`) — a dataset's other columns. They are data the sighted
+   * reader gets on hover, so the table prints one column per extra.
+   */
+  extras?: SeriesExtra[] | undefined
 }
 
 export interface A11yInput {
@@ -214,6 +221,8 @@ export function chartTable(input: A11yInput): A11yTable {
       headers.push(s.label)
     }
     if (rs.length > 0) headers.push(`${s.label} (size)`)
+    const extras: SeriesExtra[] = s.extras ?? []
+    for (const e of extras) headers.push(`${s.label} (${e.label})`)
   }
 
   let n = input.categories.length
@@ -230,10 +239,12 @@ export function chartTable(input: A11yInput): A11yTable {
       const rs: Double[] = s.rValues ?? []
       const two = other.length > 0
       const sized = rs.length > 0
+      const extras: SeriesExtra[] = s.extras ?? []
       if (i >= s.values.length) {
         row.push('')
         if (two) row.push('')
         if (sized) row.push('')
+        for (let k = 0; k < extras.length; k++) row.push('')
         continue
       }
       const v = s.values[i]!
@@ -253,6 +264,16 @@ export function chartTable(input: A11yInput): A11yTable {
           const r = rs[i]!
           row.push(isFiniteNumber(r) ? fmt(r) : '')
         }
+      }
+      // One cell per extra: the number formatted like a value, a text as is.
+      for (const e of extras) {
+        const nums: Double[] = e.numbers ?? []
+        const strs: string[] = e.texts ?? []
+        if (i < nums.length) {
+          const ev = nums[i]!
+          row.push(isFiniteNumber(ev) ? fmt(ev) : '')
+        } else if (i < strs.length) row.push(strs[i]!)
+        else row.push('')
       }
     }
     rows.push(row)

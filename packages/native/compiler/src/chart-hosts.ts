@@ -19,6 +19,7 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
+import { resolveDataset } from '@pyreon/charts/option-layer'
 import type { AttrIR, ExprIR } from './types'
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 
@@ -134,6 +135,8 @@ export interface ChartHostArgs {
 export interface ChartHostSpec {
   /** Required data props, in engine argument order. */
   readonly data: readonly string[]
+  /** Optional engine arguments and the target expression used when their prop is absent. */
+  readonly dataDefaults?: Readonly<Record<string, (t: ChartHostTarget) => string>>
   /** The options prop (an `XOptions` struct); optional. */
   readonly options: string
   /** The engine struct the options prop holds — steers an inline literal and names the entrance copy. */
@@ -152,8 +155,17 @@ export interface ChartHostSpec {
   readonly layout: (a: ChartHostArgs, t: ChartHostTarget) => string
   /** Builds the `[PyreonDrawCmd]` expression from a layout expression. */
   readonly render: (layout: string, a: ChartHostArgs, t: ChartHostTarget) => string
+  /** Hoist a layout that the render expression consumes more than once. */
+  readonly reuseLayout?: boolean
+  /** The host takes `orient="vertical"`: its layout runs in the transposed box and its draw list is transposed back (`pyreonTransposeCmds`). */
+  readonly transposable?: boolean
   /** Builds the index-hit expression for a tap at (x, y) — what `onSelectIndex` receives. */
   readonly hit: (layout: string, x: string, y: string, a: ChartHostArgs, t: ChartHostTarget) => string
+  /** Additional index-only events that use the same painted layout. */
+  readonly extraHits?: readonly {
+    event: string
+    hit: (layout: string, x: string, y: string, a: ChartHostArgs, t: ChartHostTarget) => string
+  }[]
   /** Per-prop literal adapters for props whose web shape has no native form (see the adapters below). */
   readonly adapt?: Readonly<Record<string, ChartHostAdapter>>
   /** The `gutter` default when the web host's differs from Sankey's 80. */
@@ -197,6 +209,70 @@ function litString(e: ExprIR | undefined): string | undefined {
   return e !== undefined && e.kind === 'literal' && typeof e.value === 'string' ? e.value : undefined
 }
 
+/**
+ * A literal option IR as the plain value the web facade reads, or `undefined`
+ * where anything is not a literal (an identifier, a call, a spread).
+ */
+function irToValue(e: ExprIR | undefined, resolve: (name: string) => ExprIR | undefined): { ok: true; value: unknown } | { ok: false } {
+  const lit = literalOf(e, resolve)
+  if (lit === undefined) return { ok: false }
+  if (lit.kind === 'literal') return { ok: true, value: lit.value }
+  if (lit.kind === 'array') {
+    const out: unknown[] = []
+    for (const el of lit.elements) {
+      const v = irToValue(el, resolve)
+      if (!v.ok) return v
+      out.push(v.value)
+    }
+    return { ok: true, value: out }
+  }
+  if (lit.kind === 'object') {
+    if (lit.spreads !== undefined && lit.spreads.length > 0) return { ok: false }
+    const out: Record<string, unknown> = {}
+    for (const f of lit.fields) {
+      const v = irToValue(f.value, resolve)
+      if (!v.ok) return v
+      out[f.name] = v.value
+    }
+    return { ok: true, value: out }
+  }
+  return { ok: false }
+}
+
+/** The inverse of `irToValue`: a plain JSON-ish value as literal IR (fractions keep their `float` mark). */
+function valueToIr(v: unknown): ExprIR {
+  if (Array.isArray(v)) return { kind: 'array', elements: v.map(valueToIr) }
+  if (v !== null && typeof v === 'object') {
+    return { kind: 'object', fields: Object.entries(v as Record<string, unknown>).filter(([, val]) => val !== undefined).map(([name, val]) => ({ name, value: valueToIr(val) })) }
+  }
+  if (typeof v === 'number') return Number.isInteger(v) ? { kind: 'literal', value: v } : { kind: 'literal', value: v, float: true }
+  if (typeof v === 'string' || typeof v === 'boolean' || v === null) return { kind: 'literal', value: v }
+  return { kind: 'literal', value: null }
+}
+
+/**
+ * Resolve a literal `dataset` at COMPILE time with the web facade's own
+ * `resolveDataset`: `source` / `dimensions` / `sourceHeader`, `encode`
+ * (x / y / itemName / seriesName / tooltip), `datasetIndex` / `datasetId`,
+ * and the built-in `filter` / `sort` transforms — so the series data and the
+ * category axis a dataset implies are the SAME on every target. Registered
+ * transforms live in the page's registry and cannot run here; the resolver
+ * names them. An option without a dataset passes through untouched.
+ */
+function resolveStaticDataset(raw: Extract<ExprIR, { kind: 'object' }>, resolve: (name: string) => ExprIR | undefined, warn: (m: string) => void): Extract<ExprIR, { kind: 'object' }> {
+  if (objectField(raw, 'dataset') === undefined) return raw
+  const value = irToValue(raw, resolve)
+  if (!value.ok || value.value === null || typeof value.value !== 'object') {
+    warn('<OptionChart option.dataset>: a native dataset needs a fully literal option (source rows, encode and transforms); native renders without the dataset.')
+    return raw
+  }
+  const resolved = resolveDataset(value.value as Record<string, unknown>)
+  for (const w of resolved.warnings) warn(`<OptionChart option.${w.path}>: ${w.message}`)
+  const { dataset: _dropped, ...rest } = resolved.option
+  const out = valueToIr(rest)
+  return out.kind === 'object' ? out : raw
+}
+
 function litNumber(e: ExprIR | undefined): number | undefined {
   return e !== undefined && e.kind === 'literal' && typeof e.value === 'number' ? e.value : undefined
 }
@@ -226,6 +302,59 @@ export const calendarValuesAdapter: ChartHostAdapter = (attrs, t, warn, resolve)
       return 'unsupported'
     }
     items.push(t.struct('CalendarValue', [['date', JSON.stringify(f.name)], ['value', chartDouble(n)]]))
+  }
+  return t.list(items)
+}
+
+const singleAxisSpecAdapter: ChartHostAdapter = (attrs, t, warn, resolve, emit) => {
+  const axis = literalOf(attrs['axis'], resolve)
+  if (axis?.kind !== 'object') return emit(attrs['axis']!)
+  const fields: [string, string][] = []
+  const type = litString(objectField(axis, 'type'))
+  fields.push(['type', type === undefined ? t.nil : JSON.stringify(type)])
+  const categories = literalOf(objectField(axis, 'categories'), resolve)
+  fields.push(['categories', categories?.kind === 'array' ? emit(categories) : t.nil])
+  const domain = literalOf(objectField(axis, 'domain'), resolve)
+  if (domain?.kind === 'object') {
+    const min = litNumber(objectField(domain, 'min'))
+    const max = litNumber(objectField(domain, 'max'))
+    if (min === undefined || max === undefined) {
+      warn('<SingleAxisChart axis.domain>: needs literal min/max numbers on native; emitting nothing.')
+      return 'unsupported'
+    }
+    fields.push(['domain', t.struct('Domain', [['min', chartDouble(min)], ['max', chartDouble(max)]])])
+  } else fields.push(['domain', t.nil])
+  const name = litString(objectField(axis, 'name'))
+  fields.push(['name', name === undefined ? t.nil : JSON.stringify(name)])
+  return t.struct('SingleAxisSpec', fields)
+}
+
+/** Preserve the declared `ParallelAxis[]` element type when optional fields differ between axes. */
+const parallelAxesAdapter: ChartHostAdapter = (attrs, t, warn, resolve, emit) => {
+  const axes = literalOf(attrs['axes'], resolve)
+  if (axes?.kind !== 'array') return emit(attrs['axes']!)
+  const items: string[] = []
+  for (const item of axes.elements) {
+    if (item.kind !== 'object') return emit(attrs['axes']!)
+    const name = litString(objectField(item, 'name')) ?? `Axis ${items.length + 1}`
+    const fields: [string, string][] = [['name', JSON.stringify(name)]]
+    const type = litString(objectField(item, 'type'))
+    fields.push(['type', type === undefined ? t.nil : JSON.stringify(type)])
+    const categories = literalOf(objectField(item, 'categories'), resolve)
+    fields.push(['categories', categories?.kind === 'array' ? emit(categories) : t.nil])
+    const domain = literalOf(objectField(item, 'domain'), resolve)
+    if (domain?.kind === 'object') {
+      const min = litNumber(objectField(domain, 'min'))
+      const max = litNumber(objectField(domain, 'max'))
+      if (min === undefined || max === undefined) {
+        warn('<ParallelChart axes.domain>: needs literal min/max numbers on native; emitting nothing.')
+        return 'unsupported'
+      }
+      fields.push(['domain', t.struct('Domain', [['min', chartDouble(min)], ['max', chartDouble(max)]])])
+    } else fields.push(['domain', t.nil])
+    const inverse = objectField(item, 'inverse')
+    fields.push(['inverse', inverse === undefined ? t.nil : emit(inverse)])
+    items.push(t.struct('ParallelAxis', fields))
   }
   return t.list(items)
 }
@@ -430,6 +559,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     },
     render: (l, a) => `renderSankey(${l}, ${a.options})`,
     hit: (l, x, y) => `hitSankeyIndex(${l}, ${x}, ${y})`,
+    transposable: true,
     legend: (l) => `sankeyLegend(${l})`,
     tooltip: (l, x, y) => `sankeyTip(${l}, ${x}, ${y})`,
     adapt: { nodes: sankeyNodesAdapter, links: sankeyLinksAdapter },
@@ -543,18 +673,26 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     layout: (a, t) => `layoutCalendar(${a.data[0]}, ${a.data[1]}, ${t.rect('4.0', '4.0', `${a.W} - 8.0`, `${a.H} - 8.0`)}, ${a.options})`,
     render: (l, a) => `renderCalendar(${l}, ${a.data[2]}, ${a.options})`,
     hit: (l, x, y) => `hitCalendarIndex(${l}, ${x}, ${y})`,
+    transposable: true,
     tooltip: (l, x, y, a) => `calendarTip(${l}, ${a.data[2]}, ${x}, ${y})`,
     adapt: { values: calendarValuesAdapter },
   },
   MapChart: {
-    data: ['map', 'values'],
+    data: ['map', 'values', 'paths', 'points', 'overlayOptions'],
+    dataDefaults: {
+      paths: (t) => t.list([]),
+      points: (t) => t.list([]),
+      overlayOptions: (t) => t.struct('GeoOverlayOptions', []),
+    },
     options: 'options',
     optionsStruct: 'GeoOptions',
     themeDefaults: ['stops', 'emptyColor', 'borderColor', 'labelColor'],
     defaultHeight: 300,
     layout: (a, t) => `layoutGeoShapes(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
-    render: (l, a) => `renderGeo(${l}, ${a.data[1]}, ${a.options})`,
+    render: (l, a) => `renderGeo(${l}, ${a.data[1]}, ${a.options}) + renderGeoOverlayPaths(${l}, ${a.data[2]}, ${a.data[4]}) + renderGeoOverlayPoints(${l}, ${a.data[3]}, ${a.data[4]})`,
+    reuseLayout: true,
     hit: (l, x, y) => `hitGeoIndex(${l}, ${x}, ${y})`,
+    extraHits: [{ event: 'selectpointindex', hit: (l, x, y, a) => `hitGeoOverlayPoint(${l}, ${a.data[3]}, ${x}, ${y}, (${a.data[4]}).radius)` }],
     tooltip: (l, x, y, a) => `geoTip(${l}, ${a.data[1]}, ${x}, ${y})`,
     adapt: { map: geoShapesAdapter, values: geoValuesAdapter },
   },
@@ -568,8 +706,20 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     layout: (a, t) => `layoutParallel(${a.data[0]}, ${a.data[1]}, ${t.rect(a.gutter, '8.0', t.max0(`${a.W} - ${a.gutter} * 2.0`), t.max0(`${a.H} - 16.0`))}, ${a.options})`,
     render: (l, a) => `renderParallel(${l}, ${a.options})`,
     hit: (l, x, y) => `hitParallelIndex(${l}, ${x}, ${y})`,
-    adapt: { rows: parallelRowsAdapter },
+    transposable: true,
+    adapt: { axes: parallelAxesAdapter, rows: parallelRowsAdapter },
     warnProps: ['rowColor'],
+  },
+  SingleAxisChart: {
+    data: ['axis', 'points'],
+    options: 'singleAxis',
+    optionsStruct: 'SingleAxisOptions',
+    themeDefaults: ['labelColor', 'axisColor'],
+    defaultHeight: 160,
+    layout: (a, t) => `layoutSingleAxis(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
+    render: (l, a) => `renderSingleAxis(${l}, ${a.options})`,
+    hit: (l, x, y) => `hitSingleAxis(${l}, ${x}, ${y})`,
+    adapt: { axis: singleAxisSpecAdapter },
   },
 }
 
@@ -624,6 +774,27 @@ function optionDatumNumber(e: ExprIR | undefined): number | undefined {
   return litNumber(e)
 }
 
+function optionPatternLiteral(style: ExprIR | undefined, resolve: (name: string) => ExprIR | undefined): ExprIR | undefined {
+  const item = literalOf(style, resolve)
+  const raw = item?.kind === 'object' ? literalOf(objectField(item, 'decal'), resolve) : undefined
+  if (raw?.kind !== 'object' || (() => { const show = objectField(raw, 'show'); return show?.kind === 'literal' && show.value === false })()) return undefined
+  const symbol = litString(objectField(raw, 'symbol')) ?? ''
+  const rotation = litNumber(objectField(raw, 'rotation')) ?? 0
+  const firstNumber = (value: ExprIR | undefined): number | undefined => {
+    const resolved = literalOf(value, resolve)
+    return resolved?.kind === 'array' ? litNumber(resolved.elements[0]) : litNumber(resolved)
+  }
+  return {
+    kind: 'object',
+    fields: [
+      { name: 'kind', value: lit(symbol.includes('circle') ? 'dots' : Math.abs(rotation) < 0.01 ? 'cross' : 'diagonal') },
+      { name: 'color', value: lit(litString(objectField(raw, 'color')) ?? 'rgba(255,255,255,0.45)') },
+      { name: 'spacing', value: optionDoubleLiteral(Math.max(2, firstNumber(objectField(raw, 'dashArrayX')) ?? 8)) },
+      { name: 'width', value: optionDoubleLiteral(Math.max(0.5, firstNumber(objectField(raw, 'dashArrayY')) ?? 1)) },
+    ],
+  }
+}
+
 function optionTreeNodes(
   value: ExprIR | undefined,
   resolve: (name: string) => ExprIR | undefined,
@@ -668,6 +839,78 @@ const optionNumberLiteral = (value: number): ExprIR => ({
 
 const optionDoubleLiteral = (value: number): ExprIR => ({ kind: 'literal', value, float: true })
 
+const mergeStaticOptionObjects = (
+  base: Extract<ExprIR, { kind: 'object' }>,
+  override: Extract<ExprIR, { kind: 'object' }>,
+): Extract<ExprIR, { kind: 'object' }> => {
+  const fields = base.fields.map((field) => ({ ...field }))
+  for (const incoming of override.fields) {
+    const index = fields.findIndex((field) => field.name === incoming.name)
+    if (index < 0) {
+      fields.push({ ...incoming })
+      continue
+    }
+    const previous = fields[index]!.value
+    if (previous.kind === 'object' && incoming.value.kind === 'object') {
+      fields[index] = { ...incoming, value: mergeStaticOptionObjects(previous, incoming.value) }
+      continue
+    }
+    if (incoming.name === 'series' && previous.kind === 'array' && incoming.value.kind === 'array') {
+      const elements = previous.elements.slice()
+      for (let item = 0; item < incoming.value.elements.length; item++) {
+        const before = elements[item]
+        const after = incoming.value.elements[item]!
+        elements[item] = before?.kind === 'object' && after.kind === 'object'
+          ? mergeStaticOptionObjects(before, after)
+          : after
+      }
+      fields[index] = { ...incoming, value: { kind: 'array', elements } }
+      continue
+    }
+    fields[index] = { ...incoming }
+  }
+  return { kind: 'object', fields }
+}
+
+const resolveStaticTimelineOption = (
+  option: Extract<ExprIR, { kind: 'object' }>,
+  requestedIndex: number | undefined,
+  resolve: (name: string) => ExprIR | undefined,
+  warn: (message: string) => void,
+): Extract<ExprIR, { kind: 'object' }> => {
+  const base = literalOf(objectField(option, 'baseOption'), resolve)
+  const timeline = literalOf(objectField(option, 'timeline'), resolve) ??
+    (base?.kind === 'object' ? literalOf(objectField(base, 'timeline'), resolve) : undefined)
+  if (base?.kind !== 'object' && timeline?.kind !== 'object') return option
+
+  let merged: Extract<ExprIR, { kind: 'object' }> = base?.kind === 'object'
+    ? { ...base, fields: base.fields.filter((field) => field.name !== 'timeline') }
+    : { kind: 'object', fields: [] }
+  for (const field of option.fields) {
+    if (field.name === 'baseOption' || field.name === 'options' || field.name === 'timeline') continue
+    if (!merged.fields.some((current) => current.name === field.name)) merged.fields.push({ ...field })
+  }
+
+  const steps = literalOf(objectField(option, 'options'), resolve)
+  const current = timeline?.kind === 'object' ? litNumber(objectField(timeline, 'currentIndex')) : undefined
+  const index = Math.floor(requestedIndex ?? current ?? 0)
+  if (steps?.kind !== 'array' || steps.elements.length === 0) {
+    warn('<OptionChart option.options>: timeline has no static steps; native renders the base option.')
+    return merged
+  }
+  if (index < 0 || index >= steps.elements.length) {
+    warn(`<OptionChart timelineIndex>: step ${index} does not exist; native renders the base option.`)
+    return merged
+  }
+  const step = literalOf(steps.elements[index], resolve)
+  if (step?.kind !== 'object') {
+    warn(`<OptionChart option.options[${index}]>: native needs a static option object; native renders the base option.`)
+    return merged
+  }
+  merged = mergeStaticOptionObjects(merged, step)
+  return merged
+}
+
 /**
  * Lower the first static OptionChart families through their existing native
  * hosts. The option facade is intentionally compile-time on native: arbitrary
@@ -680,11 +923,18 @@ export function desugarOptionChart(
   resolve: (name: string) => ExprIR | undefined,
   warn: (m: string) => void,
 ): Extract<ExprIR, { kind: 'jsx-element' }> | undefined {
-  const raw = literalOf(attrOf(e, 'option'), resolve)
+  let raw = literalOf(attrOf(e, 'option'), resolve)
   if (raw === undefined || raw.kind !== 'object' || (raw.spreads !== undefined && raw.spreads.length > 0)) {
     warn('<OptionChart option>: native needs an inline option object; emitting nothing.')
     return undefined
   }
+  const requestedTimeline = literalOf(attrOf(e, 'timelineIndex'), resolve)
+  const timelineIndex = requestedTimeline === undefined ? undefined : litNumber(requestedTimeline)
+  if (requestedTimeline !== undefined && timelineIndex === undefined) {
+    warn('<OptionChart timelineIndex>: native needs a static numeric index; the option currentIndex is used.')
+  }
+  raw = resolveStaticTimelineOption(raw, timelineIndex, resolve, warn)
+  raw = resolveStaticDataset(raw, resolve, warn)
   const rawSeries = literalOf(objectField(raw, 'series'), resolve)
   const series = rawSeries?.kind === 'array' ? literalOf(rawSeries.elements[0], resolve) : literalOf(rawSeries, resolve)
   const type = objectField(series ?? { kind: 'literal', value: null }, 'type')
@@ -694,7 +944,7 @@ export function desugarOptionChart(
     return undefined
   }
 
-  optionFields(raw, ['series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'visualMap', 'color'], 'option', warn)
+  optionFields(raw, ['series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'color', 'dataset'], 'option', warn)
 
   for (const a of e.attrs) {
     if (a.kind === 'event' && a.name !== 'selectindex') {
@@ -723,7 +973,6 @@ export function desugarOptionChart(
   if (tooltip !== undefined && !(tooltipShow?.kind === 'literal' && tooltipShow.value === false)) set('tooltip', lit(true))
   if (attrOf(e, 'theme') !== undefined) warn('<OptionChart theme>: registered ECharts themes do not cross yet; native uses the chart theme.')
   if (attrOf(e, 'locale') !== undefined) warn('<OptionChart locale>: locale formatting for family options is not used by this native adapter.')
-  if (attrOf(e, 'timelineIndex') !== undefined) warn('<OptionChart timelineIndex>: timeline options do not cross yet; native renders the base option.')
 
   if (kind === 'gauge') {
     optionFields(series, ['type', 'data', 'min', 'max', 'detail'], 'option.series[0]', warn)
@@ -828,6 +1077,44 @@ export function desugarOptionChart(
     return { kind: 'jsx-element', tag: 'RadarChart', attrs, children: [] }
   }
 
+  if (kind === 'boxplot') {
+    optionFields(series, ['type', 'name', 'data', 'itemStyle', 'color'], 'option.series[0]', warn)
+    const data = literalOf(objectField(series, 'data'), resolve)
+    const xAxis = literalOf(objectField(raw, 'xAxis'), resolve)
+    const categories = xAxis?.kind === 'object' ? literalOf(objectField(xAxis, 'data'), resolve) : undefined
+    if (data?.kind !== 'array' || categories?.kind !== 'array' || data.elements.length !== categories.elements.length) {
+      warn('<OptionChart option.series[0].data>: native boxplots need literal five-number rows matching xAxis.data; emitting nothing.')
+      return undefined
+    }
+    const rows: ExprIR[] = []
+    for (let i = 0; i < data.elements.length; i++) {
+      const summary = literalOf(data.elements[i], resolve)
+      if (summary?.kind !== 'array' || summary.elements.length < 5 || summary.elements.slice(0, 5).some((value) => litNumber(value) === undefined)) {
+        warn(`<OptionChart option.series[0].data[${i}]>: a native boxplot needs [min, q1, median, q3, max]; emitting nothing.`)
+        return undefined
+      }
+      const category = litString(categories.elements[i]) ?? String(litNumber(categories.elements[i]) ?? i + 1)
+      rows.push({ kind: 'object', fields: [
+        { name: 'x', value: lit(category) },
+        ...['min', 'q1', 'median', 'q3', 'max'].map((name, index) => ({ name, value: optionNumberLiteral(litNumber(summary.elements[index])!) })),
+      ] })
+    }
+    const itemStyle = literalOf(objectField(series, 'itemStyle'), resolve)
+    const boxFields: { name: string; value: ExprIR }[] = []
+    if (itemStyle?.kind === 'object') {
+      optionFields(itemStyle, ['color', 'borderColor'], 'option.series[0].itemStyle', warn)
+      const fill = litString(objectField(itemStyle, 'color'))
+      const stroke = litString(objectField(itemStyle, 'borderColor'))
+      if (fill !== undefined) boxFields.push({ name: 'fill', value: lit(fill) })
+      if (stroke !== undefined) boxFields.push({ name: 'stroke', value: lit(stroke) })
+    }
+    set('data', { kind: 'array', elements: rows })
+    set('summary', { kind: 'arrow', params: ['d'], body: ident('d') })
+    set('x', { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: 'x' } })
+    if (boxFields.length > 0) set('box', { kind: 'object', fields: boxFields })
+    return { kind: 'jsx-element', tag: 'BoxplotChart', attrs, children: [] }
+  }
+
   if (kind === 'candlestick') {
     optionFields(series, ['type', 'name', 'data', 'itemStyle', 'color'], 'option.series[0]', warn)
     const data = literalOf(objectField(series, 'data'), resolve)
@@ -851,6 +1138,379 @@ export function desugarOptionChart(
     set('data', { kind: 'array', elements: rows })
     for (const name of ['open', 'high', 'low', 'close', 'x']) set(name, { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: name } })
     return { kind: 'jsx-element', tag: 'CandlestickChart', attrs, children: [] }
+  }
+
+  if (kind === 'parallel') {
+    optionFields(series, ['type', 'name', 'data', 'lineStyle', 'color'], 'option.series[0]', warn)
+    const rawAxes = literalOf(objectField(raw, 'parallelAxis'), resolve)
+    const data = literalOf(objectField(series, 'data'), resolve)
+    if (rawAxes?.kind !== 'array' || data?.kind !== 'array') {
+      warn('<OptionChart option.parallelAxis>: native parallel coordinates need literal axes and data rows; emitting nothing.')
+      return undefined
+    }
+    const axes: ExprIR[] = []
+    for (let i = 0; i < rawAxes.elements.length; i++) {
+      const axis = literalOf(rawAxes.elements[i], resolve)
+      if (axis?.kind !== 'object') {
+        warn(`<OptionChart option.parallelAxis[${i}]>: a native parallel axis must be a literal object; emitting nothing.`)
+        return undefined
+      }
+      const dim = litNumber(objectField(axis, 'dim')) ?? i
+      if (!Number.isInteger(dim) || dim < 0) {
+        warn(`<OptionChart option.parallelAxis[${i}].dim>: a native parallel dimension must be a non-negative integer; emitting nothing.`)
+        return undefined
+      }
+      optionFields(axis, ['dim', 'name', 'type', 'data', 'min', 'max', 'inverse'], `option.parallelAxis[${i}]`, warn)
+      const fields: { name: string; value: ExprIR }[] = [
+        { name: 'name', value: litString(objectField(axis, 'name')) === undefined ? lit(`dim ${dim}`) : objectField(axis, 'name')! },
+      ]
+      if (litString(objectField(axis, 'type')) === 'category') {
+        const categories = literalOf(objectField(axis, 'data'), resolve)
+        if (categories?.kind !== 'array' || categories.elements.some((v) => litString(v) === undefined)) {
+          warn(`<OptionChart option.parallelAxis[${i}].data>: a native category axis needs literal string categories; emitting nothing.`)
+          return undefined
+        }
+        fields.push({ name: 'type', value: lit('category') }, { name: 'categories', value: categories })
+      } else {
+        const min = litNumber(objectField(axis, 'min'))
+        const max = litNumber(objectField(axis, 'max'))
+        if (min !== undefined && max !== undefined) fields.push({ name: 'domain', value: { kind: 'object', fields: [{ name: 'min', value: optionNumberLiteral(min) }, { name: 'max', value: optionNumberLiteral(max) }] } })
+      }
+      const inverse = objectField(axis, 'inverse')
+      if (inverse?.kind === 'literal' && inverse.value === true) fields.push({ name: 'inverse', value: lit(true) })
+      axes[dim] = { kind: 'object', fields }
+    }
+    if (axes.some((axis) => axis === undefined)) {
+      warn('<OptionChart option.parallelAxis>: native parallel dimensions must be contiguous; emitting nothing.')
+      return undefined
+    }
+    for (let i = 0; i < data.elements.length; i++) {
+      const row = literalOf(data.elements[i], resolve)
+      if (row?.kind !== 'array' || row.elements.length !== axes.length) {
+        warn(`<OptionChart option.series[0].data[${i}]>: a native parallel datum needs one literal value per axis; emitting nothing.`)
+        return undefined
+      }
+    }
+    const lineStyle = literalOf(objectField(series, 'lineStyle'), resolve)
+    const parallelFields: { name: string; value: ExprIR }[] = []
+    if (lineStyle?.kind === 'object') {
+      optionFields(lineStyle, ['width', 'opacity', 'color'], 'option.series[0].lineStyle', warn)
+      const width = litNumber(objectField(lineStyle, 'width'))
+      const opacity = litNumber(objectField(lineStyle, 'opacity'))
+      const color = litString(objectField(lineStyle, 'color'))
+      if (width !== undefined) parallelFields.push({ name: 'lineWidth', value: optionNumberLiteral(width) })
+      if (opacity !== undefined) parallelFields.push({ name: 'lineOpacity', value: optionNumberLiteral(opacity) })
+      if (color !== undefined) parallelFields.push({ name: 'lineColor', value: lit(color) })
+    }
+    const parallel = literalOf(objectField(raw, 'parallel'), resolve)
+    if (parallel?.kind === 'object') {
+      optionFields(parallel, ['layout'], 'option.parallel', warn)
+      if (litString(objectField(parallel, 'layout')) === 'vertical') set('orient', lit('vertical'))
+    }
+    set('axes', { kind: 'array', elements: axes })
+    set('rows', data)
+    if (parallelFields.length > 0) set('parallel', { kind: 'object', fields: parallelFields })
+    return { kind: 'jsx-element', tag: 'ParallelChart', attrs, children: [] }
+  }
+
+  if (kind === 'themeRiver') {
+    optionFields(series, ['type', 'name', 'data', 'coordinateSystem', 'singleAxisIndex', 'boundaryGap', 'label', 'itemStyle', 'emphasis', 'color'], 'option.series[0]', warn)
+    const data = literalOf(objectField(series, 'data'), resolve)
+    if (data?.kind !== 'array') {
+      warn('<OptionChart option.series[0].data>: a native river chart needs literal [category, value, series] rows; emitting nothing.')
+      return undefined
+    }
+    const categories = new Set<string>()
+    const byName = new Map<string, Map<string, number>>()
+    for (let i = 0; i < data.elements.length; i++) {
+      const row = literalOf(data.elements[i], resolve)
+      const category = row?.kind === 'array' ? litString(row.elements[0]) : undefined
+      const value = row?.kind === 'array' ? litNumber(row.elements[1]) : undefined
+      const name = row?.kind === 'array' ? litString(row.elements[2]) : undefined
+      if (category === undefined || value === undefined || name === undefined) {
+        warn(`<OptionChart option.series[0].data[${i}]>: a native river datum needs a literal [category, number, series] tuple; emitting nothing.`)
+        return undefined
+      }
+      categories.add(category)
+      const values = byName.get(name) ?? new Map<string, number>()
+      values.set(category, (values.get(category) ?? 0) + value)
+      byName.set(name, values)
+    }
+    const sortedCategories = [...categories].sort()
+    const riverSeries: ExprIR[] = [...byName].map(([name, values]) => ({
+      kind: 'object',
+      fields: [
+        { name: 'name', value: lit(name) },
+        { name: 'values', value: { kind: 'array', elements: sortedCategories.map((category) => optionDoubleLiteral(values.get(category) ?? 0)) } },
+      ],
+    }))
+    const riverFields: { name: string; value: ExprIR }[] = [
+      { name: 'categories', value: { kind: 'array', elements: sortedCategories.map(lit) } },
+    ]
+    const label = literalOf(objectField(series, 'label'), resolve)
+    if (label?.kind === 'object') {
+      optionFields(label, ['show'], 'option.series[0].label', warn)
+      const show = objectField(label, 'show')
+      if (show?.kind === 'literal' && show.value === false) riverFields.push({ name: 'showLabels', value: lit(false) })
+    }
+    const singleAxis = literalOf(objectField(raw, 'singleAxis'), resolve)
+    if (singleAxis?.kind === 'object') optionFields(singleAxis, ['type'], 'option.singleAxis', warn)
+    set('series', { kind: 'array', elements: riverSeries })
+    set('river', { kind: 'object', fields: riverFields })
+    return { kind: 'jsx-element', tag: 'RiverChart', attrs, children: [] }
+  }
+
+  if (litString(objectField(series, 'coordinateSystem')) === 'singleAxis') {
+    if (kind !== 'scatter' && kind !== 'effectScatter') {
+      warn(`<OptionChart option.series[0].type>: native single-axis charts support scatter series; ${kind} cannot lower.`)
+      return undefined
+    }
+    optionFields(series, ['type', 'name', 'data', 'coordinateSystem', 'singleAxisIndex', 'label', 'itemStyle', 'symbolSize', 'color'], 'option.series[0]', warn)
+    const axis = literalOf(objectField(raw, 'singleAxis'), resolve)
+    const data = literalOf(objectField(series, 'data'), resolve)
+    if (axis?.kind !== 'object' || data?.kind !== 'array') {
+      warn('<OptionChart option.singleAxis>: native single-axis charts need a literal axis and data; emitting nothing.')
+      return undefined
+    }
+    optionFields(axis, ['type', 'data', 'min', 'max', 'name'], 'option.singleAxis', warn)
+    const axisFields: { name: string; value: ExprIR }[] = []
+    const isCategory = litString(objectField(axis, 'type')) === 'category'
+    axisFields.push({ name: 'type', value: lit(isCategory ? 'category' : 'value') })
+    if (isCategory) {
+      const categories = literalOf(objectField(axis, 'data'), resolve)
+      if (categories?.kind !== 'array' || categories.elements.some((value) => litString(value) === undefined)) {
+        warn('<OptionChart option.singleAxis.data>: a native category axis needs literal string categories; emitting nothing.')
+        return undefined
+      }
+      axisFields.push({ name: 'categories', value: categories })
+    } else {
+      const min = litNumber(objectField(axis, 'min'))
+      const max = litNumber(objectField(axis, 'max'))
+      if (min !== undefined && max !== undefined) axisFields.push({ name: 'domain', value: { kind: 'object', fields: [{ name: 'min', value: optionDoubleLiteral(min) }, { name: 'max', value: optionDoubleLiteral(max) }] } })
+    }
+    const axisName = litString(objectField(axis, 'name'))
+    if (axisName !== undefined) axisFields.push({ name: 'name', value: lit(axisName) })
+    const points: ExprIR[] = []
+    for (let i = 0; i < data.elements.length; i++) {
+      const datum = literalOf(data.elements[i], resolve)
+      const values = datum?.kind === 'array' ? datum : datum?.kind === 'object' ? literalOf(objectField(datum, 'value'), resolve) : undefined
+      const x = values?.kind === 'array' ? litNumber(values.elements[0]) : litNumber(datum)
+      if (x === undefined) {
+        warn(`<OptionChart option.series[0].data[${i}]>: a native single-axis datum needs a literal value or [position, size]; emitting nothing.`)
+        return undefined
+      }
+      const fields: { name: string; value: ExprIR }[] = [{ name: 'x', value: optionDoubleLiteral(x) }]
+      const size = values?.kind === 'array' ? litNumber(values.elements[1]) : undefined
+      if (size !== undefined) fields.push({ name: 'size', value: optionDoubleLiteral(size) })
+      if (datum?.kind === 'object') {
+        const name = litString(objectField(datum, 'name'))
+        const itemStyle = literalOf(objectField(datum, 'itemStyle'), resolve)
+        const color = itemStyle?.kind === 'object' ? litString(objectField(itemStyle, 'color')) : undefined
+        if (name !== undefined) fields.push({ name: 'name', value: lit(name) })
+        if (color !== undefined) fields.push({ name: 'color', value: lit(color) })
+      }
+      points.push({ kind: 'object', fields })
+    }
+    const optionFieldsOut: { name: string; value: ExprIR }[] = []
+    const label = literalOf(objectField(series, 'label'), resolve)
+    if (label?.kind === 'object') {
+      optionFields(label, ['show'], 'option.series[0].label', warn)
+      const show = objectField(label, 'show')
+      if (show?.kind === 'literal' && show.value === true) optionFieldsOut.push({ name: 'showLabels', value: lit(true) })
+    }
+    const radius = litNumber(objectField(series, 'symbolSize'))
+    if (radius !== undefined) optionFieldsOut.push({ name: 'radius', value: optionDoubleLiteral(radius / 2) })
+    const itemStyle = literalOf(objectField(series, 'itemStyle'), resolve)
+    const color = itemStyle?.kind === 'object' ? litString(objectField(itemStyle, 'color')) : undefined
+    if (color !== undefined) optionFieldsOut.push({ name: 'color', value: lit(color) })
+    set('axis', { kind: 'object', fields: axisFields })
+    set('points', { kind: 'array', elements: points })
+    if (optionFieldsOut.length > 0) set('singleAxis', { kind: 'object', fields: optionFieldsOut })
+    return { kind: 'jsx-element', tag: 'SingleAxisChart', attrs, children: [] }
+  }
+
+  if (litString(objectField(series, 'coordinateSystem')) === 'polar') {
+    const angleAxis = literalOf(objectField(raw, 'angleAxis'), resolve)
+    const radiusAxis = literalOf(objectField(raw, 'radiusAxis'), resolve)
+    if (angleAxis?.kind !== 'object' || radiusAxis?.kind !== 'object') {
+      warn('<OptionChart option.angleAxis>: native polar charts need literal angleAxis and radiusAxis objects; emitting nothing.')
+      return undefined
+    }
+    optionFields(angleAxis, ['type', 'data', 'min', 'max', 'startAngle', 'clockwise'], 'option.angleAxis', warn)
+    optionFields(radiusAxis, ['type', 'data', 'min', 'max'], 'option.radiusAxis', warn)
+    const categoryOnRadius = litString(objectField(radiusAxis, 'type')) === 'category'
+    const categoryAxis = categoryOnRadius ? radiusAxis : angleAxis
+    const valueAxis = categoryOnRadius ? angleAxis : radiusAxis
+    const categoryData = literalOf(objectField(categoryAxis, 'data'), resolve)
+    if (categoryData?.kind !== 'array' || categoryData.elements.some((value) => litString(value) === undefined)) {
+      warn('<OptionChart polar category axis data>: native polar charts need literal string categories; emitting nothing.')
+      return undefined
+    }
+    // `categoryOn` is always stated: a `categories`-only literal (an option
+    // with no radius max, the common case) is ambiguous to struct selection
+    // and emitted an untyped object that neither toolchain accepted.
+    const axesFields: { name: string; value: ExprIR }[] = [
+      { name: 'categories', value: categoryData },
+      { name: 'categoryOn', value: lit(categoryOnRadius ? 'radius' : 'angle') },
+    ]
+    const min = litNumber(objectField(valueAxis, 'min'))
+    const max = litNumber(objectField(valueAxis, 'max'))
+    if (max !== undefined) axesFields.push({ name: 'valueDomain', value: { kind: 'object', fields: [{ name: 'min', value: optionDoubleLiteral(min ?? 0) }, { name: 'max', value: optionDoubleLiteral(max) }] } })
+    const startAngle = litNumber(objectField(angleAxis, 'startAngle'))
+    if (startAngle !== undefined) axesFields.push({ name: 'startAngle', value: optionDoubleLiteral((-startAngle * Math.PI) / 180) })
+    const clockwise = objectField(angleAxis, 'clockwise')
+    if (clockwise?.kind === 'literal' && clockwise.value === false) axesFields.push({ name: 'clockwise', value: lit(false) })
+
+    const sourceSeries = rawSeries?.kind === 'array' ? rawSeries.elements : [series]
+    const polarSeries: ExprIR[] = []
+    for (let i = 0; i < sourceSeries.length; i++) {
+      const item = literalOf(sourceSeries[i], resolve)
+      const rawKind = item?.kind === 'object' ? litString(objectField(item, 'type')) : undefined
+      const itemKind = rawKind === 'effectScatter' ? 'scatter' : rawKind
+      if (item?.kind !== 'object' || (itemKind !== 'bar' && itemKind !== 'line' && itemKind !== 'scatter') || litString(objectField(item, 'coordinateSystem')) !== 'polar') {
+        warn(`<OptionChart option.series[${i}]>: native polar charts support literal polar bar, line and scatter series; emitting nothing.`)
+        return undefined
+      }
+      optionFields(item, ['type', 'name', 'data', 'coordinateSystem', 'polarIndex', 'stack', 'itemStyle', 'lineStyle', 'label', 'emphasis', 'smooth', 'symbol', 'symbolSize', 'barWidth', 'barGap', 'barCategoryGap', 'roundCap', 'showBackground', 'backgroundStyle', 'areaStyle', 'color'], `option.series[${i}]`, warn)
+      const itemData = literalOf(objectField(item, 'data'), resolve)
+      if (itemData?.kind !== 'array') {
+        warn(`<OptionChart option.series[${i}].data>: a native polar series needs literal numeric data; emitting nothing.`)
+        return undefined
+      }
+      const values: ExprIR[] = []
+      for (let j = 0; j < itemData.elements.length; j++) {
+        const datum = literalOf(itemData.elements[j], resolve)
+        const value = datum?.kind === 'array' ? litNumber(datum.elements[0]) : datum?.kind === 'object' ? litNumber(objectField(datum, 'value')) : litNumber(datum)
+        if (value === undefined) {
+          warn(`<OptionChart option.series[${i}].data[${j}]>: a native polar datum needs a literal number; emitting nothing.`)
+          return undefined
+        }
+        values.push(optionDoubleLiteral(value))
+      }
+      const itemStyle = literalOf(objectField(item, 'itemStyle'), resolve)
+      const lineStyle = literalOf(objectField(item, 'lineStyle'), resolve)
+      const color = itemStyle?.kind === 'object' ? litString(objectField(itemStyle, 'color')) : lineStyle?.kind === 'object' ? litString(objectField(lineStyle, 'color')) : undefined
+      const fields: { name: string; value: ExprIR }[] = [
+        { name: 'name', value: litString(objectField(item, 'name')) === undefined ? lit(`Series ${i + 1}`) : objectField(item, 'name')! },
+        { name: 'kind', value: lit(itemKind) },
+        { name: 'values', value: { kind: 'array', elements: values } },
+      ]
+      if (color !== undefined) fields.push({ name: 'color', value: lit(color) })
+      const symbolSize = litNumber(objectField(item, 'symbolSize'))
+      if (symbolSize !== undefined && itemKind !== 'bar') fields.push({ name: 'radius', value: optionDoubleLiteral(symbolSize / 2) })
+      const stack = litString(objectField(item, 'stack'))
+      if (stack !== undefined) fields.push({ name: 'stack', value: lit(stack) })
+      polarSeries.push({ kind: 'object', fields })
+    }
+
+    const polarFields: { name: string; value: ExprIR }[] = []
+    const polar = literalOf(objectField(raw, 'polar'), resolve)
+    if (polar?.kind === 'object') {
+      optionFields(polar, ['radius'], 'option.polar', warn)
+      const radius = literalOf(objectField(polar, 'radius'), resolve)
+      const inner = radius?.kind === 'array' ? litString(radius.elements[0]) : undefined
+      const outer = radius?.kind === 'array' ? litString(radius.elements[1]) : undefined
+      if (inner?.endsWith('%') && outer?.endsWith('%') && Number.parseFloat(outer) > 0) polarFields.push({ name: 'innerRatio', value: optionDoubleLiteral(Number.parseFloat(inner) / Number.parseFloat(outer)) })
+    }
+    set('axes', { kind: 'object', fields: axesFields })
+    set('series', { kind: 'array', elements: polarSeries })
+    if (polarFields.length > 0) set('polar', { kind: 'object', fields: polarFields })
+    return { kind: 'jsx-element', tag: 'PolarChart', attrs, children: [] }
+  }
+
+  if (kind === 'heatmap' && litString(objectField(series, 'coordinateSystem')) === 'calendar') {
+    optionFields(series, ['type', 'name', 'coordinateSystem', 'data', 'label', 'itemStyle', 'emphasis', 'color'], 'option.series[0]', warn)
+    const calendar = literalOf(objectField(raw, 'calendar'), resolve)
+    const range = calendar?.kind === 'object' ? literalOf(objectField(calendar, 'range'), resolve) : undefined
+    let start: string | undefined
+    let end: string | undefined
+    const year = litString(range) ?? (litNumber(range) !== undefined ? String(litNumber(range)) : undefined)
+    if (year !== undefined && /^\d{4}$/.test(year)) {
+      start = `${year}-01-01`
+      end = `${year}-12-31`
+    } else if (year !== undefined && /^\d{4}-\d{2}$/.test(year)) {
+      const y = Number(year.slice(0, 4))
+      const month = Number(year.slice(5, 7))
+      const leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0)
+      const last = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+      if (last !== undefined) {
+        start = `${year}-01`
+        end = `${year}-${last}`
+      }
+    } else if (year !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(year)) {
+      start = year
+      end = year
+    } else if (range?.kind === 'array' && range.elements.length === 2) {
+      start = litString(range.elements[0])
+      end = litString(range.elements[1])
+    }
+    if (start === undefined || end === undefined) {
+      warn('<OptionChart option.calendar.range>: a native calendar needs a literal year, month, date, or [start, end] ISO-date range; emitting nothing.')
+      return undefined
+    }
+    optionFields(calendar!, ['range', 'orient', 'cellSize', 'dayLabel', 'monthLabel', 'itemStyle'], 'option.calendar', warn)
+    const calendarFields: { name: string; value: ExprIR }[] = []
+    const orient = litString(objectField(calendar!, 'orient'))
+    if (orient === 'vertical') set('orient', lit('vertical'))
+    const cellSizeRaw = literalOf(objectField(calendar!, 'cellSize'), resolve)
+    const cellSize = cellSizeRaw?.kind === 'array' ? litNumber(cellSizeRaw.elements[0]) : litNumber(cellSizeRaw)
+    if (cellSize !== undefined) calendarFields.push({ name: 'cellSize', value: optionDoubleLiteral(cellSize) })
+    const dayLabel = literalOf(objectField(calendar!, 'dayLabel'), resolve)
+    if (dayLabel?.kind === 'object') {
+      optionFields(dayLabel, ['show', 'firstDay'], 'option.calendar.dayLabel', warn)
+      const show = objectField(dayLabel, 'show')
+      if (show?.kind === 'literal' && show.value === false) calendarFields.push({ name: 'showDayLabels', value: lit(false) })
+      const firstDay = litNumber(objectField(dayLabel, 'firstDay'))
+      if (firstDay !== undefined) calendarFields.push({ name: 'firstDay', value: optionDoubleLiteral(firstDay) })
+    }
+    const monthLabel = literalOf(objectField(calendar!, 'monthLabel'), resolve)
+    if (monthLabel?.kind === 'object') {
+      optionFields(monthLabel, ['show'], 'option.calendar.monthLabel', warn)
+      const show = objectField(monthLabel, 'show')
+      if (show?.kind === 'literal' && show.value === false) calendarFields.push({ name: 'showMonthLabels', value: lit(false) })
+    }
+    const itemStyle = literalOf(objectField(calendar!, 'itemStyle'), resolve)
+    if (itemStyle?.kind === 'object') {
+      optionFields(itemStyle, ['color', 'borderWidth'], 'option.calendar.itemStyle', warn)
+      const emptyColor = litString(objectField(itemStyle, 'color'))
+      const gap = litNumber(objectField(itemStyle, 'borderWidth'))
+      if (emptyColor !== undefined) calendarFields.push({ name: 'emptyColor', value: lit(emptyColor) })
+      if (gap !== undefined) calendarFields.push({ name: 'cellGap', value: optionDoubleLiteral(gap) })
+    }
+    const visualMap = literalOf(objectField(raw, 'visualMap'), resolve)
+    if (visualMap?.kind === 'object') {
+      optionFields(visualMap, ['min', 'max', 'inRange'], 'option.visualMap', warn)
+      const min = litNumber(objectField(visualMap, 'min'))
+      const max = litNumber(objectField(visualMap, 'max'))
+      if (min !== undefined && max !== undefined) calendarFields.push({ name: 'domain', value: { kind: 'object', fields: [{ name: 'min', value: optionDoubleLiteral(min) }, { name: 'max', value: optionDoubleLiteral(max) }] } })
+      const inRange = literalOf(objectField(visualMap, 'inRange'), resolve)
+      if (inRange?.kind === 'object') {
+        optionFields(inRange, ['color'], 'option.visualMap.inRange', warn)
+        const colors = literalOf(objectField(inRange, 'color'), resolve)
+        if (colors?.kind === 'array' && colors.elements.length >= 2 && colors.elements.every((color) => litString(color) !== undefined)) calendarFields.push({ name: 'stops', value: colors })
+      }
+    }
+    const data = literalOf(objectField(series, 'data'), resolve)
+    if (data?.kind !== 'array') {
+      warn('<OptionChart option.series[0].data>: a native calendar needs literal [date, value] rows; emitting nothing.')
+      return undefined
+    }
+    const fields: { name: string; value: ExprIR }[] = []
+    for (let i = 0; i < data.elements.length; i++) {
+      const row = literalOf(data.elements[i], resolve)
+      const date = row?.kind === 'array' ? litString(row.elements[0]) : undefined
+      const value = row?.kind === 'array' ? litNumber(row.elements[1]) : undefined
+      if (date === undefined || value === undefined || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        warn(`<OptionChart option.series[0].data[${i}]>: a native calendar cell needs a literal [ISO-date, number]; emitting nothing.`)
+        return undefined
+      }
+      fields.push({ name: date, value: optionNumberLiteral(value) })
+    }
+    set('start', lit(start))
+    set('end', lit(end))
+    set('values', { kind: 'object', fields })
+    if (calendarFields.length > 0) set('calendar', { kind: 'object', fields: calendarFields })
+    return { kind: 'jsx-element', tag: 'CalendarChart', attrs, children: [] }
   }
 
   if (kind === 'heatmap') {
@@ -941,7 +1601,8 @@ export function desugarOptionChart(
   }
 
   if (kind === 'sankey' || kind === 'graph') {
-    optionFields(series, ['type', 'name', 'data', 'nodes', 'links', 'edges', 'label', 'itemStyle', 'lineStyle', 'layout', 'roam', 'symbolSize', 'nodeWidth', 'nodeGap', 'nodeAlign'], 'option.series[0]', warn)
+    optionFields(series, ['type', 'name', 'data', 'nodes', 'links', 'edges', 'label', 'itemStyle', 'lineStyle', 'layout', 'roam', 'symbolSize', 'nodeWidth', 'nodeGap', 'nodeAlign', 'orient'], 'option.series[0]', warn)
+    if (litString(objectField(series, 'orient')) === 'vertical') set('orient', lit('vertical'))
     const rawNodes = literalOf(objectField(series, 'data') ?? objectField(series, 'nodes'), resolve)
     const rawLinks = literalOf(objectField(series, 'links') ?? objectField(series, 'edges'), resolve)
     if (rawNodes?.kind !== 'array' || rawLinks?.kind !== 'array') {
@@ -1008,7 +1669,7 @@ export function desugarOptionChart(
     return { kind: 'jsx-element', tag: kind === 'sankey' ? 'SankeyChart' : 'GraphChart', attrs, children: [] }
   }
 
-  const cartesianKinds = new Set(['line', 'bar', 'scatter'])
+  const cartesianKinds = new Set(['line', 'bar', 'pictorialBar', 'scatter'])
   if (cartesianKinds.has(kind)) {
     if (rawSeries?.kind !== 'array' || rawSeries.elements.length === 0) {
       warn('<OptionChart option.series>: native cartesian options need a non-empty literal series array; emitting nothing.')
@@ -1019,10 +1680,10 @@ export function desugarOptionChart(
       const s = literalOf(rawSeries.elements[si], resolve)
       const sk = s === undefined ? undefined : litString(objectField(s, 'type'))
       if (s?.kind !== 'object' || sk === undefined || !cartesianKinds.has(sk)) {
-        warn(`<OptionChart option.series[${si}].type>: this cartesian adapter needs line, bar, or scatter series; emitting nothing.`)
+        warn(`<OptionChart option.series[${si}].type>: this cartesian adapter needs line, bar, pictorialBar, or scatter series; emitting nothing.`)
         return undefined
       }
-      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle'], `option.series[${si}]`, warn)
+      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras'], `option.series[${si}]`, warn)
       seriesObjects.push(s)
     }
     const xAxis = literalOf(objectField(raw, 'xAxis'), resolve)
@@ -1062,17 +1723,85 @@ export function desugarOptionChart(
     }))
     set('data', { kind: 'array', elements: rows })
     set('x', { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: 'x' } })
-    const barCount = seriesObjects.filter((s) => litString(objectField(s, 'type')) === 'bar').length
+    const barCount = seriesObjects.filter((s) => {
+      const seriesType = litString(objectField(s, 'type'))
+      return seriesType === 'bar' || seriesType === 'pictorialBar'
+    }).length
     const marks: ExprIR[] = seriesObjects.map((s, si) => {
       const sk = litString(objectField(s, 'type'))!
       const stacked = objectField(s, 'stack') !== undefined
-      const factory = sk === 'bar' ? (stacked ? 'stackedBars' : barCount > 1 ? 'groupedBars' : 'bars') : sk === 'scatter' ? 'points' : objectField(s, 'areaStyle') !== undefined ? 'area' : 'line'
+      const barLike = sk === 'bar' || sk === 'pictorialBar'
+      const factory = barLike ? (stacked ? 'stackedBars' : barCount > 1 ? 'groupedBars' : 'bars') : sk === 'scatter' ? 'points' : objectField(s, 'areaStyle') !== undefined ? 'area' : 'line'
       const opts: { name: string; value: ExprIR }[] = []
       const name = objectField(s, 'name')
       if (litString(name) !== undefined) opts.push({ name: 'label', value: name! })
       const item = literalOf(objectField(s, sk === 'line' ? 'lineStyle' : 'itemStyle'), resolve)
       const color = item === undefined ? undefined : objectField(item, 'color')
       if (litString(color) !== undefined) opts.push({ name: 'color', value: color! })
+      // ECharts' gradient colour object → the mark's `gradient` (stops + direction);
+      // its first stop is the solid colour. A radial gradient warns and degrades.
+      const gradientSlots: [string, ExprIR | undefined][] = [['itemStyle', literalOf(objectField(s, 'itemStyle'), resolve)], ['areaStyle', literalOf(objectField(s, 'areaStyle'), resolve)], ['lineStyle', literalOf(objectField(s, 'lineStyle'), resolve)]]
+      for (const [slot, style] of gradientSlots) {
+        const g = style?.kind === 'object' ? literalOf(objectField(style, 'color'), resolve) : undefined
+        const rawStops = g?.kind === 'object' ? literalOf(objectField(g, 'colorStops'), resolve) : undefined
+        if (g?.kind !== 'object' || rawStops?.kind !== 'array') continue
+        const stops: { offset: number; color: string }[] = []
+        for (const st of rawStops.elements) {
+          const so = literalOf(st, resolve)
+          const offset = so?.kind === 'object' ? litNumber(objectField(so, 'offset')) : undefined
+          const stopColor = so?.kind === 'object' ? litString(objectField(so, 'color')) : undefined
+          if (offset !== undefined && stopColor !== undefined) stops.push({ offset, color: stopColor })
+        }
+        if (stops.length === 0) continue
+        if (litString(objectField(g, 'type')) === 'radial') {
+          warn(`<OptionChart option.series[${si}].${slot}.color>: radial gradients are not supported natively (linear ones are); the first stop is used as a solid colour.`)
+          if (litString(color) === undefined) opts.push({ name: 'color', value: lit(stops[0]!.color) })
+          break
+        }
+        const dx = (litNumber(objectField(g, 'x2')) ?? 0) - (litNumber(objectField(g, 'x')) ?? 0)
+        const dy = (litNumber(objectField(g, 'y2')) ?? 1) - (litNumber(objectField(g, 'y')) ?? 0)
+        const horizontal = Math.abs(dx) > Math.abs(dy)
+        const ordered = (horizontal ? dx < 0 : dy < 0) ? stops.map((st) => ({ offset: 1 - st.offset, color: st.color })).reverse() : stops
+        const stopLiterals: ExprIR[] = ordered.map((st) => ({ kind: 'object', fields: [{ name: 'offset', value: optionDoubleLiteral(st.offset) }, { name: 'color', value: lit(st.color) }] }))
+        const gradientFields: { name: string; value: ExprIR }[] = [{ name: 'stops', value: { kind: 'array', elements: stopLiterals } }]
+        if (horizontal) gradientFields.push({ name: 'direction', value: lit('horizontal') })
+        opts.push({ name: 'gradient', value: { kind: 'object', fields: gradientFields } })
+        if (litString(color) === undefined) opts.push({ name: 'color', value: lit(ordered[0]!.color) })
+        break
+      }
+      const pattern = optionPatternLiteral(objectField(s, 'itemStyle'), resolve)
+      if (pattern !== undefined) opts.push({ name: 'pattern', value: pattern })
+      // The dataset pre-pass materialised `encode.tooltip` as `tooltipExtras`.
+      const extras = literalOf(objectField(s, 'tooltipExtras'), resolve)
+      if (extras?.kind === 'array' && extras.elements.length > 0) opts.push({ name: 'extras', value: extras })
+      if (sk === 'line' || sk === 'scatter') {
+        // ECharts' symbol / showSymbol: a scatter datum shape, or a line's opt-in datum symbols.
+        const showSymbol = objectField(s, 'showSymbol')
+        const wantsLineSymbols = sk === 'line' && showSymbol?.kind === 'literal' && showSymbol.value === true
+        const rawSymbol = litString(objectField(s, 'symbol')) ?? (wantsLineSymbols ? 'circle' : '')
+        if (sk === 'scatter' || wantsLineSymbols) {
+          const symbol = rawSymbol === 'circle' || rawSymbol === 'emptyCircle' ? 'circle' : rawSymbol === 'rect' || rawSymbol === 'roundRect' ? 'rect' : rawSymbol === 'diamond' || rawSymbol === 'triangle' ? rawSymbol : undefined
+          if (rawSymbol !== '' && symbol === undefined) warn(`<OptionChart option.series[${si}].symbol>: native series symbols support circle, emptyCircle, rect, roundRect, diamond, or triangle; rendering circles.`)
+          const resolved = symbol ?? (rawSymbol === '' ? undefined : 'circle')
+          if (resolved !== undefined && (sk === 'line' || resolved !== 'circle')) opts.push({ name: 'symbol', value: lit(resolved) })
+        }
+        // ECharts' symbolSize is a diameter; the mark's radius is half of it.
+        const symbolSize = litNumber(objectField(s, 'symbolSize'))
+        if (symbolSize !== undefined) opts.push({ name: 'radius', value: optionDoubleLiteral(symbolSize / 2) })
+      }
+      if (sk === 'pictorialBar') {
+        const rawSymbol = litString(objectField(s, 'symbol')) ?? 'rect'
+        const symbol = rawSymbol === 'roundRect' ? 'rect' : rawSymbol
+        if (symbol === 'rect' || symbol === 'circle' || symbol === 'diamond' || symbol === 'triangle') {
+          opts.push({ name: 'symbol', value: lit(symbol) })
+        } else {
+          warn(`<OptionChart option.series[${si}].symbol>: native pictorial bars support rect, roundRect, circle, diamond, or triangle; rendering rectangles.`)
+          opts.push({ name: 'symbol', value: lit('rect') })
+        }
+        const repeat = objectField(s, 'symbolRepeat')
+        const repeatValue = repeat?.kind === 'literal' && (repeat.value === true || repeat.value === 'fixed' || (typeof repeat.value === 'number' && repeat.value > 0))
+        opts.push({ name: 'symbolRepeat', value: lit(repeatValue) })
+      }
       return {
         kind: 'call',
         callee: ident(factory),
@@ -1083,6 +1812,199 @@ export function desugarOptionChart(
       }
     })
     set('marks', { kind: 'array', elements: marks })
+    const annotations: ExprIR[] = []
+    for (let si = 0; si < seriesObjects.length; si++) {
+      const markArea = literalOf(objectField(seriesObjects[si]!, 'markArea'), resolve)
+      if (markArea === undefined) continue
+      if (markArea.kind !== 'object') {
+        warn(`<OptionChart option.series[${si}].markArea>: native mark areas need a literal object; rendering without it.`)
+        continue
+      }
+      optionFields(markArea, ['data', 'itemStyle'], `option.series[${si}].markArea`, warn)
+      const data = literalOf(objectField(markArea, 'data'), resolve)
+      const style = literalOf(objectField(markArea, 'itemStyle'), resolve)
+      const color = style?.kind === 'object' ? litString(objectField(style, 'color')) : undefined
+      if (style?.kind === 'object') optionFields(style, ['color'], `option.series[${si}].markArea.itemStyle`, warn)
+      if (data?.kind !== 'array') {
+        warn(`<OptionChart option.series[${si}].markArea.data>: native mark areas need a literal boundary-pair array; rendering without it.`)
+        continue
+      }
+      for (let ai = 0; ai < data.elements.length; ai++) {
+        const pair = literalOf(data.elements[ai], resolve)
+        const from = pair?.kind === 'array' ? literalOf(pair.elements[0], resolve) : undefined
+        const to = pair?.kind === 'array' ? literalOf(pair.elements[1], resolve) : undefined
+        if (from?.kind !== 'object' || to?.kind !== 'object') {
+          warn(`<OptionChart option.series[${si}].markArea.data[${ai}]>: native mark areas need two literal boundary objects; rendering without this area.`)
+          continue
+        }
+        const yFrom = litNumber(objectField(from, 'yAxis'))
+        const yTo = litNumber(objectField(to, 'yAxis'))
+        const xFrom = litNumber(objectField(from, 'xAxis'))
+        const xTo = litNumber(objectField(to, 'xAxis'))
+        const fields: { name: string; value: ExprIR }[] = []
+        if (yFrom !== undefined && yTo !== undefined) {
+          fields.push({ name: 'yFrom', value: optionDoubleLiteral(yFrom) }, { name: 'yTo', value: optionDoubleLiteral(yTo) })
+        } else if (xFrom !== undefined && xTo !== undefined) {
+          fields.push({ name: 'xFrom', value: optionDoubleLiteral(xFrom) }, { name: 'xTo', value: optionDoubleLiteral(xTo) })
+        } else {
+          warn(`<OptionChart option.series[${si}].markArea.data[${ai}]>: native mark areas need matching numeric xAxis or yAxis boundaries; rendering without this area.`)
+          continue
+        }
+        const name = litString(objectField(from, 'name'))
+        if (name !== undefined) fields.push({ name: 'label', value: lit(name) })
+        if (color !== undefined) fields.push({ name: 'color', value: lit(color) })
+        annotations.push({ kind: 'object', fields })
+      }
+    }
+    // markLine → annotations (rules and segments), markPoint → markers — the
+    // web facade's resolution run at compile time over the literal series,
+    // so a statistic names the same datum on every target.
+    const markers: ExprIR[] = []
+    const catNames = categories.elements.map((x) => String(litString(x) ?? litNumber(x)))
+    const styleColorOf = (o: Extract<ExprIR, { kind: 'object' }> | undefined, key: string, fallback: string | undefined): string | undefined => {
+      const st = o === undefined ? undefined : literalOf(objectField(o, key), resolve)
+      const c = st?.kind === 'object' ? litString(objectField(st, 'color')) : undefined
+      return c ?? fallback
+    }
+    for (let si = 0; si < seriesObjects.length; si++) {
+      const s = seriesObjects[si]!
+      const values = seriesValues[si]!
+      const argIndex = (which: string): number => {
+        if (values.length === 0) return -1
+        if (which === 'max' || which === 'min') return values.reduce((best, v, j) => (which === 'max' ? v > values[best]! : v < values[best]!) ? j : best, 0)
+        if (which === 'average') {
+          const mean = values.reduce((a, b) => a + b, 0) / values.length
+          return values.reduce((best, v, j) => (Math.abs(v - mean) < Math.abs(values[best]! - mean) ? j : best), 0)
+        }
+        return -1
+      }
+      const statOf = (which: string): number | undefined => {
+        if (values.length === 0) return undefined
+        if (which === 'average') return values.reduce((a, b) => a + b, 0) / values.length
+        if (which === 'max') return Math.max(...values)
+        if (which === 'min') return Math.min(...values)
+        if (which === 'median') {
+          const sorted = [...values].sort((a, b) => a - b)
+          const mid = Math.floor(sorted.length / 2)
+          return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2
+        }
+        return undefined
+      }
+      const xOfCoord = (rawX: ExprIR | undefined): number | undefined => {
+        const name = litString(rawX)
+        if (name !== undefined) {
+          const at = catNames.indexOf(name)
+          return at >= 0 ? at : undefined
+        }
+        return litNumber(rawX)
+      }
+      const endpoint = (end: Extract<ExprIR, { kind: 'object' }>): { x: number; y: number } | undefined => {
+        const endType = litString(objectField(end, 'type'))
+        if (endType !== undefined) {
+          const at = argIndex(endType)
+          return at < 0 ? undefined : { x: at, y: values[at]! }
+        }
+        const coord = literalOf(objectField(end, 'coord'), resolve)
+        if (coord?.kind === 'array') {
+          const cx = xOfCoord(literalOf(coord.elements[0], resolve))
+          const cy = litNumber(literalOf(coord.elements[1], resolve))
+          return cx !== undefined && cy !== undefined ? { x: cx, y: cy } : undefined
+        }
+        const ex = litNumber(objectField(end, 'xAxis'))
+        const ey = litNumber(objectField(end, 'yAxis'))
+        return ex !== undefined && ey !== undefined ? { x: ex, y: ey } : undefined
+      }
+      const markLine = literalOf(objectField(s, 'markLine'), resolve)
+      if (markLine !== undefined) {
+        if (markLine.kind !== 'object') {
+          warn(`<OptionChart option.series[${si}].markLine>: native mark lines need a literal object; rendering without them.`)
+        } else {
+          optionFields(markLine, ['data', 'lineStyle'], `option.series[${si}].markLine`, warn)
+          const mlColor = styleColorOf(markLine, 'lineStyle', undefined)
+          const data = literalOf(objectField(markLine, 'data'), resolve)
+          const items = data?.kind === 'array' ? data.elements : []
+          if (data?.kind !== 'array') warn(`<OptionChart option.series[${si}].markLine.data>: native mark lines need a literal data array; rendering without them.`)
+          for (let k = 0; k < items.length; k++) {
+            const m = literalOf(items[k], resolve)
+            const fields: { name: string; value: ExprIR }[] = []
+            if (m?.kind === 'array') {
+              const from = literalOf(m.elements[0], resolve)
+              const to = literalOf(m.elements[1], resolve)
+              const p1 = from?.kind === 'object' ? endpoint(from) : undefined
+              const p2 = to?.kind === 'object' ? endpoint(to) : undefined
+              if (p1 === undefined || p2 === undefined || from?.kind !== 'object') {
+                warn(`<OptionChart option.series[${si}].markLine.data[${k}]>: a native point-to-point mark line needs two literal endpoints (a type, a coord, or xAxis + yAxis); rendering without it.`)
+                continue
+              }
+              fields.push({ name: 'x1', value: optionDoubleLiteral(p1.x) }, { name: 'y1', value: optionDoubleLiteral(p1.y) }, { name: 'x2', value: optionDoubleLiteral(p2.x) }, { name: 'y2', value: optionDoubleLiteral(p2.y) })
+              const name = litString(objectField(from, 'name'))
+              if (name !== undefined) fields.push({ name: 'label', value: lit(name) })
+              const c = styleColorOf(from, 'lineStyle', mlColor)
+              if (c !== undefined) fields.push({ name: 'color', value: lit(c) })
+              annotations.push({ kind: 'object', fields })
+              continue
+            }
+            if (m?.kind !== 'object') continue
+            const lineType = litString(objectField(m, 'type'))
+            const stat = lineType === undefined ? undefined : statOf(lineType)
+            const yAt = litNumber(objectField(m, 'yAxis'))
+            const xAt = litNumber(objectField(m, 'xAxis'))
+            const name = litString(objectField(m, 'name'))
+            if (stat !== undefined) fields.push({ name: 'y', value: optionDoubleLiteral(stat) }, { name: 'label', value: lit(name ?? lineType!) })
+            else if (yAt !== undefined) fields.push({ name: 'y', value: optionDoubleLiteral(yAt) })
+            else if (xAt !== undefined) fields.push({ name: 'x', value: optionDoubleLiteral(xAt) })
+            else {
+              warn(`<OptionChart option.series[${si}].markLine.data[${k}]>: native mark lines map average/max/min/median, yAxis, xAxis, and point-to-point pairs; rendering without this line.`)
+              continue
+            }
+            if (stat === undefined && name !== undefined) fields.push({ name: 'label', value: lit(name) })
+            const c = styleColorOf(m, 'lineStyle', mlColor)
+            if (c !== undefined) fields.push({ name: 'color', value: lit(c) })
+            annotations.push({ kind: 'object', fields })
+          }
+        }
+      }
+      const markPoint = literalOf(objectField(s, 'markPoint'), resolve)
+      if (markPoint !== undefined) {
+        if (markPoint.kind !== 'object') {
+          warn(`<OptionChart option.series[${si}].markPoint>: native mark points need a literal object; rendering without them.`)
+        } else {
+          optionFields(markPoint, ['data', 'itemStyle', 'symbolSize'], `option.series[${si}].markPoint`, warn)
+          const mpColor = styleColorOf(markPoint, 'itemStyle', undefined)
+          const mpSize = litNumber(objectField(markPoint, 'symbolSize'))
+          const data = literalOf(objectField(markPoint, 'data'), resolve)
+          const items = data?.kind === 'array' ? data.elements : []
+          if (data?.kind !== 'array') warn(`<OptionChart option.series[${si}].markPoint.data>: native mark points need a literal data array; rendering without them.`)
+          for (let k = 0; k < items.length; k++) {
+            const m = literalOf(items[k], resolve)
+            if (m?.kind !== 'object') continue
+            const pointType = litString(objectField(m, 'type'))
+            const fields: { name: string; value: ExprIR }[] = [{ name: 'seriesIndex', value: optionDoubleLiteral(si) }]
+            if (pointType === 'max' || pointType === 'min' || pointType === 'average') fields.push({ name: 'at', value: lit(pointType) })
+            else {
+              const coord = literalOf(objectField(m, 'coord'), resolve)
+              const cx = coord?.kind === 'array' ? xOfCoord(literalOf(coord.elements[0], resolve)) : undefined
+              if (cx === undefined) {
+                warn(`<OptionChart option.series[${si}].markPoint.data[${k}]>: native mark points map max/min/average and coord; rendering without this point.`)
+                continue
+              }
+              fields.push({ name: 'atIndex', value: optionDoubleLiteral(cx) })
+            }
+            const valueField = objectField(m, 'value')
+            const value = litString(valueField) ?? (litNumber(valueField) === undefined ? undefined : String(litNumber(valueField)))
+            const name = litString(objectField(m, 'name')) ?? value
+            if (name !== undefined) fields.push({ name: 'label', value: lit(name) })
+            const c = styleColorOf(m, 'itemStyle', mpColor)
+            if (c !== undefined) fields.push({ name: 'color', value: lit(c) })
+            const size = litNumber(objectField(m, 'symbolSize')) ?? mpSize
+            if (size !== undefined) fields.push({ name: 'radius', value: optionDoubleLiteral(size / 2) })
+            markers.push({ kind: 'object', fields })
+          }
+        }
+      }
+    }
+    if (annotations.length > 0) set('annotations', { kind: 'array', elements: annotations })
+    if (markers.length > 0) set('markers', { kind: 'array', elements: markers })
     const xShow = xAxis === undefined ? undefined : objectField(xAxis, 'show')
     if (xShow?.kind === 'literal' && xShow.value === false) set('showXAxis', lit(false))
     const yAxis = literalOf(objectField(raw, 'yAxis'), resolve)
@@ -1818,7 +2740,7 @@ export const CHART_HOST_PALETTE: readonly string[] = CHART_THEME_DEFAULT.palette
  * cubic ease-out entrance the web host does (`PyreonChartEntrance`). What a
  * target does NOT draw MUST warn by name rather than drop silently.
  */
-export const CHART_CHROME_PROPS: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'legendPosition', 'keyboard', 'updateAnimation', 'updateDuration', 'toolbox', 'onSaveImage', 'accessibleTable', 'rtl']
+export const CHART_CHROME_PROPS: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'legendPosition', 'keyboard', 'updateAnimation', 'updateDuration', 'universalTransition', 'toolbox', 'onSaveImage', 'accessibleTable', 'rtl']
 const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
   PlotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl', 'legendPosition'],
   // Gauge / Candlestick / Heatmap build their canvas without the chrome seam,
@@ -1861,7 +2783,11 @@ export function chartChromeUnlowered(tag: string): readonly string[] {
   // one without it (Parallel — its lines are built from the raw rows on the
   // web) must REPORT `tooltip` rather than pass the policy's "lowered" verdict.
   const familyChrome = FAMILY_CHROME.filter((p) => p !== 'tooltip' || !Object.hasOwn(CHART_HOSTS, tag) || CHART_HOSTS[tag]!.tooltip !== undefined)
-  const lowered = [...(CHROME_LOWERED[tag] ?? (family ? familyChrome : [])), ...(family && chartHostAnimates(tag) ? ['animate'] : [])]
+  const lowered = [
+    ...(CHROME_LOWERED[tag] ?? (family ? familyChrome : [])),
+    ...(family && chartHostAnimates(tag) ? ['animate'] : []),
+    ...(family || tag === 'PlotChart' ? ['updateAnimation', 'updateDuration', 'universalTransition'] : []),
+  ]
   return CHART_CHROME_PROPS.filter((p) => !lowered.includes(p))
 }
 
@@ -1870,6 +2796,49 @@ export function chartRichSelectWarning(tag: string): string {
   return `<${tag} onSelect>: the rich-hit callback is not lowered on native — use \`onSelectIndex\` (the engine's index hit, the shape the tap reports on every target).`
 }
 /** The warning for a chrome prop `<tag>` carries but does not draw — `animate` on an engine with no entrance is inert everywhere, not a native gap. */
+/**
+ * A chart FLAG the native emit can only honour as a literal (`dataZoom`,
+ * `navigator`, `brush`, `horizontal`, `universalTransition`,
+ * `updateAnimation`). A flag that is PRESENT but not statically resolvable —
+ * a signal read, a prop, a computed — used to lower silently as OFF, which is
+ * the one outcome worse than a warning: the web build honours the value and
+ * the device build quietly does not. The emitters route every such read
+ * through here so the drop is named.
+ */
+export function chartStaticFlag(
+  element: { attrs: readonly ({ kind: 'attr'; name: string } | { kind: string })[] },
+  tag: string,
+  prop: string,
+  read: (name: string) => string | number | boolean | undefined,
+  warn: (message: string) => void,
+): boolean {
+  const value = read(prop)
+  if (value === undefined && element.attrs.some((attr) => attr.kind === 'attr' && (attr as { name: string }).name === prop)) {
+    warn(`<${tag} ${prop}={…}>: must be a literal on native — a reactive or computed value lowers as \`false\`, so the chart renders without it. Use a literal, or branch with <Web> / <NativeIOS> / <NativeAndroid>.`)
+    return false
+  }
+  return value === true
+}
+
+/**
+ * `orient="vertical"` on a transposable host: literal `'vertical'` transposes;
+ * a present but non-literal value is named (it would lower as horizontal
+ * silently, the same class as `chartStaticFlag`); anything else is horizontal.
+ */
+export function chartOrientVertical(
+  element: { attrs: readonly ({ kind: 'attr'; name: string } | { kind: string })[] },
+  tag: string,
+  read: (name: string) => string | number | boolean | undefined,
+  warn: (message: string) => void,
+): boolean {
+  const value = read('orient')
+  if (value === undefined && element.attrs.some((attr) => attr.kind === 'attr' && (attr as { name: string }).name === 'orient')) {
+    warn(`<${tag} orient={…}>: must be a literal on native — a reactive or computed value lowers as horizontal. Use a literal, or branch with <Web> / <NativeIOS> / <NativeAndroid>.`)
+    return false
+  }
+  return value === 'vertical'
+}
+
 export function chartChromeWarning(tag: string, prop: string): string {
   if (prop === 'animate' && !chartHostAnimates(tag)) return `<${tag}>: \`animate\` has no effect on any target — its engine draws fully formed; the prop is ignored.`
   return `<${tag}>: \`${prop}\` is not lowered on native yet; the chart renders without it.`
@@ -2054,9 +3023,11 @@ const PLOT_UNLOWERED_REASON: Readonly<Record<string, string>> = {
   // Each of these names what is MISSING, because "not lowered" without that
   // reads as impossible when it is merely unbuilt.
   emphasis: 'it is the HOVER band (`mouseover`/`mouseout`), and a touch target has no hover state to draw it for — the same wall `crosshair` hits. The engine\'s `ChartSpec.emphasis` does cross and IS fed on native, by `selectedMode`: a tap pins a datum and the pinned outline draws. What stays web-only is the hover half',
+  onClick: 'it reports a DOM click by datum; on native a tap is a pick, which is `onSelect`',
+  onDoubleClick: 'it reports a DOM double-click by datum; the native canvas has the tap gesture only',
+  onContextMenu: 'it reports a DOM context-menu gesture by datum; the native canvas has the tap gesture only',
+  onRendered: 'it follows a canvas paint; the SwiftUI / Compose canvas draws with no paint callback to hand back',
   onHighlight: 'it reports the HOVERED datum and -1 when the pointer leaves, so a touch target has nothing to report — a tap is a pick, which is `onSelect`. Firing this on tap would report a hover that did not happen',
-  updateAnimation: 'the update tween interpolates two draw lists through `cmd-tween.ts`, which is web-only; crossing it needs the host to hold the PREVIOUS list',
-  updateDuration: 'it times that same web-only draw-list tween, so it waits on `updateAnimation`',
 }
 
 /** The one warning both emitters raise for the props `<PlotChart>` does not lower. */
@@ -2072,4 +3043,4 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
 // `updateAnimation`, `updateDuration`, `toolbox`, `onSaveImage`,
 // `accessibleTable`) are reported through `chartChromeUnlowered` for the plot
 // host too — listing them here as well would warn twice.
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'onHighlight', 'emphasis', 'crosshair', 'link', 'keyboard', 'updateAnimation', 'updateDuration', 'toolbox', 'onSaveImage', 'accessibleTable', 'facet', 'facetColumns']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'onHighlight', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'crosshair', 'link', 'keyboard', 'toolbox', 'onSaveImage', 'accessibleTable', 'facet', 'facetColumns']

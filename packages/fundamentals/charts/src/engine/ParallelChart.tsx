@@ -16,6 +16,8 @@ export interface ParallelChartProps extends CanvasHostProps {
   /** Space kept beyond the outer axes; default 40. */
   gutter?: Double
   parallel?: ParallelOptions
+  /** `'vertical'` lays the chart out top-to-bottom — the horizontal layout reflected across the diagonal (ECharts `orient` / `layout`). */
+  orient?: 'horizontal' | 'vertical'
   /** Per-row line colour; the theme palette's first colour otherwise. */
   rowColor?: (row: ParallelRow, index: number) => string
   /** Fired with the line under the click, or null for a miss. */
@@ -33,6 +35,7 @@ export function ParallelChart(props: ParallelChartProps): VNode {
   }
   return canvasHost<ParallelLayout>({
     props,
+    transpose: () => props.orient === 'vertical',
     defaultHeight: 300,
     caption: 'Parallel coordinates data',
     track: () => {

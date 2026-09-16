@@ -21,6 +21,104 @@ const num = (v: unknown): number | null => {
 }
 const toArr = (v: unknown): Obj[] => (Array.isArray(v) ? v.filter(isObj) : isObj(v) ? [v] : [])
 
+/**
+ * How a reactive option update lands — `setOption`'s `opts`, in Pyreon's and
+ * in ECharts' spelling (`notMerge`, `replaceMerge`, `lazyUpdate`, `silent`).
+ */
+export interface OptionUpdatePolicy {
+  /** Replace the whole previous option instead of merging the update. */
+  mode?: 'merge' | 'replace'
+  /** ECharts' spelling of `mode: 'replace'`. */
+  notMerge?: boolean
+  /** Top-level component keys replaced as a unit while the rest still merges. */
+  replaceKeys?: string | readonly string[]
+  /**
+   * ECharts' `replaceMerge`: for these component keys, components in the
+   * update merge into their id/name matches and every component the update
+   * does NOT name is removed (a plain merge keeps them). Distinct from
+   * `replaceKeys`, which takes the update's array verbatim.
+   */
+  replaceMerge?: string | readonly string[]
+  /**
+   * ECharts' `lazyUpdate` — defer the redraw to the next frame. The canvas
+   * host already paints once per frame for any number of option writes, so
+   * this is accepted for parity and changes nothing.
+   */
+  lazyUpdate?: boolean
+  /**
+   * ECharts' `silent` — do not emit events for the option change itself.
+   * Applying an option never emits an event in this engine (selection and
+   * hover events are pointer-driven), so this is accepted and changes nothing.
+   */
+  silent?: boolean
+}
+
+const INDEXED_COMPONENTS = new Set([
+  'series', 'xAxis', 'yAxis', 'grid', 'polar', 'radiusAxis', 'angleAxis',
+  'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'dataset', 'visualMap',
+  'dataZoom', 'title', 'legend', 'graphic',
+])
+
+const componentKey = (value: unknown): string | null => {
+  if (!isObj(value)) return null
+  if (typeof value['id'] === 'string' || typeof value['id'] === 'number') return `id:${String(value['id'])}`
+  if (typeof value['name'] === 'string') return `name:${value['name']}`
+  return null
+}
+
+const mergeComponentArray = (before: unknown[], after: unknown[]): unknown[] => {
+  const out = before.slice()
+  const claimed = new Set<number>()
+  for (let i = 0; i < after.length; i++) {
+    const next = after[i]
+    const key = componentKey(next)
+    let at = key === null ? -1 : out.findIndex((candidate, index) => !claimed.has(index) && componentKey(candidate) === key)
+    if (at < 0 && i < out.length && !claimed.has(i)) at = i
+    if (at < 0) {
+      out.push(next)
+      claimed.add(out.length - 1)
+      continue
+    }
+    claimed.add(at)
+    out[at] = isObj(out[at]) && isObj(next) ? mergeObjects(out[at] as Obj, next) : next
+  }
+  return out
+}
+
+/**
+ * Merge a reactive option update without mutating either input. Objects merge
+ * recursively; component arrays match stable ids, then names, then indices.
+ * Ordinary arrays are values and replace as a unit.
+ */
+export function mergeChartOptions(previous: Obj | undefined, update: Obj, policy: OptionUpdatePolicy = {}): Obj {
+  if (previous === undefined || policy.mode === 'replace' || policy.notMerge === true) return update
+  const keys = (v: string | readonly string[] | undefined): Set<string> => new Set(typeof v === 'string' ? [v] : v ?? [])
+  const replace = keys(policy.replaceKeys)
+  const replaceMerge = keys(policy.replaceMerge)
+  const out: Obj = { ...previous }
+  for (const key of Object.keys(update)) {
+    const before = previous[key]
+    const after = update[key]
+    if (replace.has(key)) out[key] = after
+    else if (replaceMerge.has(key) && Array.isArray(before) && Array.isArray(after)) out[key] = replaceMergeComponentArray(before, after)
+    else if (INDEXED_COMPONENTS.has(key) && Array.isArray(before) && Array.isArray(after)) out[key] = mergeComponentArray(before, after)
+    else out[key] = isObj(before) && isObj(after) ? mergeObjects(before, after) : after
+  }
+  return out
+}
+
+/** ECharts `replaceMerge`: the update's components, each merged into its id/name match; unmatched previous components are dropped. */
+const replaceMergeComponentArray = (before: unknown[], after: unknown[]): unknown[] => {
+  const claimed = new Set<number>()
+  return after.map((next) => {
+    const key = componentKey(next)
+    const at = key === null ? -1 : before.findIndex((candidate, index) => !claimed.has(index) && componentKey(candidate) === key)
+    if (at < 0) return next
+    claimed.add(at)
+    return isObj(before[at]) && isObj(next) ? mergeObjects(before[at] as Obj, next) : next
+  })
+}
+
 /** Height reserved under the chart for the timeline strip. */
 export const TIMELINE_HEIGHT = 40.0
 
@@ -49,27 +147,30 @@ export function timelineSteps(option: Obj): TimelineSteps | null {
   return { labels, current, autoPlay: tl['autoPlay'] === true, playInterval: num(tl['playInterval']) ?? 2000.0 }
 }
 
-/** ECharts' timeline merge: a step's top-level objects merge shallowly over the base; series merge BY INDEX. */
-function mergeStep(base: Obj, step: Obj): Obj {
+const mergeObjects = (base: Obj, override: Obj): Obj => {
   const out: Obj = { ...base }
-  for (const key of Object.keys(step)) {
-    const sv = step[key]
-    const bv = base[key]
-    if (key === 'series') {
-      const bs = toArr(bv)
-      const ss = Array.isArray(sv) ? (sv as unknown[]) : isObj(sv) ? [sv] : []
-      const merged: unknown[] = bs.slice()
-      for (let i = 0; i < ss.length; i++) {
-        const s = ss[i]
-        merged[i] = isObj(s) && isObj(merged[i]) ? { ...(merged[i] as Obj), ...s } : s
-      }
-      out[key] = merged
-    } else if (isObj(sv) && isObj(bv)) {
-      out[key] = { ...bv, ...sv }
-    } else {
-      out[key] = sv
-    }
+  for (const key of Object.keys(override)) {
+    const before = base[key]
+    const after = override[key]
+    out[key] = isObj(before) && isObj(after) ? mergeObjects(before, after) : after
   }
+  return out
+}
+
+/** A step recursively merges objects over the base; series entries merge by index. */
+function mergeStep(base: Obj, step: Obj): Obj {
+  const out = mergeObjects(base, step)
+  if (!Object.prototype.hasOwnProperty.call(step, 'series')) return out
+  const baseSeries = toArr(base['series'])
+  const stepValue = step['series']
+  const stepSeries = Array.isArray(stepValue) ? stepValue : isObj(stepValue) ? [stepValue] : []
+  const merged: unknown[] = baseSeries.slice()
+  for (let index = 0; index < stepSeries.length; index++) {
+    const before = merged[index]
+    const after = stepSeries[index]
+    merged[index] = isObj(before) && isObj(after) ? mergeObjects(before, after) : after
+  }
+  out['series'] = merged
   return out
 }
 

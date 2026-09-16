@@ -3052,7 +3052,7 @@ function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
 
 /** The imported names understood by package-specific JSX alias hooks
  *  can intercept. Kept in sync with the guards in emit-swift/emit-kotlin. */
-const ALIAS_TAG_NAMES = new Set(['Element', 'PyreonUI', 'PyreonUIProvider', 'Container', 'Row', 'Col', 'FlowWebView'])
+const ALIAS_TAG_NAMES = new Set(['Element', 'PyreonUI', 'PyreonUIProvider', 'Container', 'Row', 'Col', 'ChartWebView', 'FlowWebView'])
 
 /**
  * Collect each local name with its source package and original imported name.

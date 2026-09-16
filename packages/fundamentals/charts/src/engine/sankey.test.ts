@@ -132,6 +132,8 @@ describe('sankey option mapping', () => {
     expect(f.warnings).toEqual([])
     expect(familyToSvg(f.plan)).toContain('<polygon')
     const vertical = compileFamily({ series: [{ type: 'sankey', orient: 'vertical', data: [{ name: 'a' }], links: [] }] })!
-    expect(vertical.warnings.map((w) => w.code)).toContain('series-option-unsupported')
+    // A vertical sankey is a transposed plan, not an unsupported option.
+    expect(vertical.warnings).toEqual([])
+    expect(vertical.plan).toMatchObject({ kind: 'sankey', orient: 'vertical' })
   })
 })

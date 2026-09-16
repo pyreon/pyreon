@@ -15,6 +15,7 @@ import {
   resolveStaticFlowRendererMap,
   unloweredFlowMemberWarning,
 } from './flow-lowering'
+import { CHART_WEBVIEW_HOST_PROPS, configureChartWebViewHost, legacyChartHostProp } from './chart-webview-lowering'
 import { DEFAULT_FLOW_WEBVIEW_HOST_HTML } from './generated-flow-webview-host'
 import {
   ICON_MAP,
@@ -93,7 +94,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -203,6 +204,9 @@ let _styledComponents: Map<string, StyledComponentIR> = new Map()
 // `rocketstyle()({component})…` components — resolved per use-site (see emitKotlinJsx).
 let _rocketstyleComponents: Map<string, RocketstyleComponentIR> = new Map()
 let _attrsComponents: Map<string, AttrsComponentIR> = new Map()
+// Alias-tag local name → its import package. The Element/PyreonUI/Container/
+// Row/Col hooks intercept a tag ONLY when it resolves from its expected
+// @pyreon package, so a same-named user component isn't mis-lowered.
 // Alias-tag local name → its source + original imported symbol. Package hooks
 // intercept only an exact pair, so renamed imports work without mis-lowering a
 // same-named user component.
@@ -7216,6 +7220,9 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // <WebView> — native host (Android WebView via PyreonWebView) for
   // embedding web-only-rich viz inside a Compose native shell.
   if (tag === 'WebView') return emitKotlinWebView(e)
+  if (canAliasIntercept(tag, '@pyreon/charts', 'ChartWebView') && _aliasImports.get(tag)?.imported === 'ChartWebView') {
+    return emitKotlinChartWebView(e)
+  }
   if (canAliasIntercept(tag, '@pyreon/flow', 'FlowWebView') && _aliasImports.get(tag)?.imported === 'FlowWebView') {
     return emitKotlinFlowWebView(e)
   }
@@ -9113,6 +9120,35 @@ function emitKotlinWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   }
   const args = [content, dataArg, onMsgArg].filter((a) => a !== undefined).join(', ')
   return `PyreonWebView(${args})`
+}
+
+function emitKotlinChartWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const option = dynamicWebViewAttrKotlin(e, 'option')
+  if (option === undefined) _emitWarnings.push('<ChartWebView>: `option` is required on native; emitting an empty option.')
+  const explicitHtml = dynamicWebViewAttrKotlin(e, 'html')
+  if (explicitHtml !== undefined) {
+    for (const prop of CHART_WEBVIEW_HOST_PROPS) {
+      const legacy = legacyChartHostProp(prop)
+      if (e.attrs.some((attr) => attr.kind === 'attr' && (attr.name === prop || attr.name === legacy))) {
+        _emitWarnings.push(`<ChartWebView html={…} ${prop}={…}>: ${prop} is ignored because custom host HTML owns its configuration.`)
+      }
+    }
+  }
+  const html = explicitHtml === undefined
+    ? JSON.stringify(configureChartWebViewHost(e, readStaticAttrKotlin, (warning) => _emitWarnings.push(warning)))
+    : emitKotlinExpr(explicitHtml, 0)
+  const commands = dynamicWebViewAttrKotlin(e, 'commands')
+  const loading = dynamicWebViewAttrKotlin(e, 'loading')
+  const loadingOptions = dynamicWebViewAttrKotlin(e, 'loadingOptions')
+  const group = dynamicWebViewAttrKotlin(e, 'group')
+  const groupArg = group === undefined ? '' : `, group = ${emitKotlinExpr(group, 0)}`
+  const data = `pyreonChartWebViewData(option = ${option === undefined ? '"{}"' : kotlinWebViewDataArg(option)}, commands = ${commands === undefined ? '"[]"' : kotlinWebViewDataArg(commands)}, loading = ${loading === undefined ? 'false' : emitKotlinExpr(loading, 0)}, loadingOptions = ${loadingOptions === undefined ? '"{}"' : kotlinWebViewDataArg(loadingOptions)}${groupArg})`
+  const callbackArgs = (['select', 'event', 'error'] as const).flatMap((name) => {
+    const attr = e.attrs.find((candidate) => candidate.kind === 'event' && candidate.name === name)
+    return attr?.kind === 'event' ? [`on${name[0]!.toUpperCase()}${name.slice(1)} = ${emitKotlinMessageHandler(attr.handler)}`] : []
+  })
+  const onMessage = callbackArgs.length === 0 ? '' : `, onMessage = { pyreonMsg -> pyreonDispatchChartWebViewMessage(pyreonMsg, ${callbackArgs.join(', ')}) }`
+  return `PyreonWebView(html = ${html}, data = ${data}${onMessage})`
 }
 
 function flowWebViewHostHtmlKotlin(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
@@ -11218,6 +11254,17 @@ function kotlinChartDouble(e: Extract<ExprIR, { kind: 'jsx-element' }>, name: st
   return chartDouble(fallback)
 }
 
+/** Select the stateful draw-list host unless update animation is explicitly disabled. */
+function kotlinChartCanvas(e: Extract<ExprIR, { kind: 'jsx-element' }>, cmds: string, modifier: string, indent: number): string {
+  const args = [`cmds = ${cmds}`, `modifier = ${modifier}`]
+  if (chartAttrExprKotlin(e, 'updateDuration') !== undefined) args.push(`durationMs = ${kotlinChartDouble(e, 'updateDuration', 350, indent)}`)
+  const flag = (prop: string): boolean => chartStaticFlag(e, e.tag, prop, (name) => readStaticAttrKotlin(e, name), (w) => _emitWarnings.push(w))
+  if (flag('universalTransition')) args.push('universal = true')
+  if (readStaticAttrKotlin(e, 'updateAnimation') === false) args.push('animated = false')
+  else flag('updateAnimation')
+  return `PyreonChartCanvas(${args.join(', ')})`
+}
+
 /**
  * The body of the tap lambda for `onSelectIndex`: bind the handler's param to
  * the engine's index hit, then run the handler's own body as a zero-arg lambda
@@ -11315,6 +11362,7 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   for (const name of spec.data) {
     const v = chartAttrExprKotlin(e, name)
     if (v === undefined) {
+      if (spec.dataDefaults?.[name] !== undefined) continue
       _emitWarnings.push(`<${tag}>: needs a \`${name}\` attribute on native; emitting an empty Box().`)
       return 'Box {}'
     }
@@ -11322,6 +11370,10 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   }
   const data: string[] = []
   for (const name of spec.data) {
+    if (attrs[name] === undefined) {
+      data.push(spec.dataDefaults![name]!(KOTLIN_CHART_TARGET))
+      continue
+    }
     const adapter = spec.adapt?.[name]
     if (adapter !== undefined) {
       const adapted = adapter(attrs, KOTLIN_CHART_TARGET, (m) => _emitWarnings.push(m), (n) => _moduleConstExprsKotlin.get(n), (x) => emitKotlinExpr(x, indent))
@@ -11359,20 +11411,29 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   const showLegend = spec.legend !== undefined && readStaticAttrKotlin(e, 'showLegend') === true
   const lets: string[] = [...themeLets]
   let entries = 'listOf<LegendEntry>()'
+  const transposed = spec.transposable === true && chartOrientVertical(e, tag, (name) => readStaticAttrKotlin(e, name), (w) => _emitWarnings.push(w))
   if (showLegend) {
-    lets.push(`val pyreonProbe = ${spec.layout(args, KOTLIN_CHART_TARGET)}`)
+    lets.push(`val pyreonProbe = ${spec.layout(transposed ? { ...args, W: args.H, H: args.W } : args, KOTLIN_CHART_TARGET)}`)
     entries = spec.legend!('pyreonProbe', args, KOTLIN_CHART_TARGET)
   }
   const chrome = kotlinChartChrome(e, entries, W, H, indent, true, tf)
   const plotArgs: ChartHostArgs = { ...args, W: chrome.width(W), H: chrome.height(H) }
+  // A transposed host lays out in the box reflected across the diagonal (W and H swapped) and transposes the draw list back; the tap is reflected before its hit.
+  const layoutArgs: ChartHostArgs = transposed ? { ...plotArgs, W: plotArgs.H, H: plotArgs.W } : plotArgs
+  const transpose = (cmds: string): string => (transposed ? `pyreonTransposeCmds(${cmds})` : cmds)
   const withChrome = chrome.top !== '0.0'
   lets.push(...chrome.lets)
   const tooltip = spec.tooltip !== undefined && readStaticAttrKotlin(e, 'tooltip') === true
   const onSel = e.attrs.find((a) => a.kind === 'event' && a.name === 'selectindex')
+  const extraHits = (spec.extraHits ?? []).flatMap((extra) => {
+    const event = e.attrs.find((a) => a.kind === 'event' && a.name === extra.event)
+    return event?.kind === 'event' ? [{ extra, event }] : []
+  })
   if (e.attrs.some((a) => a.kind === 'event' && a.name === 'select')) _emitWarnings.push(chartRichSelectWarning(tag))
-  const tapping = onSel?.kind === 'event' || tooltip
-  const layout = tapping ? 'pyreonLayout' : spec.layout(plotArgs, KOTLIN_CHART_TARGET)
-  if (tapping) lets.push(`val pyreonLayout = ${spec.layout(plotArgs, KOTLIN_CHART_TARGET)}`)
+  const tapping = onSel?.kind === 'event' || extraHits.length > 0 || tooltip
+  const reuseLayout = tapping || spec.reuseLayout === true
+  const layout = reuseLayout ? 'pyreonLayout' : spec.layout(layoutArgs, KOTLIN_CHART_TARGET)
+  if (reuseLayout) lets.push(`val pyreonLayout = ${spec.layout(layoutArgs, KOTLIN_CHART_TARGET)}`)
   // The entrance reaches the RENDER only: the layout, the hit and the tooltip read the user's options.
   const animating = kotlinChartAnimating(e, tag)
   if (animating) lets.push(`val pyreonOpts: ${spec.optionsStruct} = ${KOTLIN_CHART_TARGET.withProgress(options, spec.optionsStruct, 'pyreonEntrance')}`)
@@ -11384,7 +11445,7 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)`
     : ''
-  const cmds = `${chrome.mirror(chrome.wrap(spec.render(layout, renderArgs, KOTLIN_CHART_TARGET)))}${tipCmds}`
+  const cmds = `${chrome.mirror(chrome.wrap(transpose(spec.render(layout, renderArgs, KOTLIN_CHART_TARGET))))}${tipCmds}`
   // `onSelectIndex` → a tap over the engine's index hit. The tap position is
   // in pixels while the draw list is laid out in dp (PyreonChartCanvas scales
   // by the density when it paints), so the position is divided by the density
@@ -11398,9 +11459,14 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     const rawTx = '(pyreonTap.x / pyreonDensity).toDouble()'
     const tx = chrome.plotX(rawTx)
     const tapY = withChrome ? '(pyreonTap.y / pyreonDensity).toDouble() - pyreonTop' : '(pyreonTap.y / pyreonDensity).toDouble()'
+    const hitX = transposed ? tapY : tx
+    const hitY = transposed ? tx : tapY
     const parts: string[] = []
-    if (tooltip) parts.push(`pyreonTip = ${spec.tooltip!(layout, tx, tapY, plotArgs, KOTLIN_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(${rawTx}, (pyreonTap.y / pyreonDensity).toDouble())`)
-    if (onSel?.kind === 'event') parts.push(kotlinChartSelectBody(onSel.handler, spec.hit(layout, tx, tapY, plotArgs, KOTLIN_CHART_TARGET), indent))
+    if (tooltip) parts.push(`pyreonTip = ${spec.tooltip!(layout, hitX, hitY, plotArgs, KOTLIN_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(${rawTx}, (pyreonTap.y / pyreonDensity).toDouble())`)
+    if (onSel?.kind === 'event') parts.push(kotlinChartSelectBody(onSel.handler, spec.hit(layout, hitX, hitY, plotArgs, KOTLIN_CHART_TARGET), indent))
+    for (const { extra, event } of extraHits) {
+      parts.push(`run { ${kotlinChartSelectBody(event.handler, extra.hit(layout, hitX, hitY, plotArgs, KOTLIN_CHART_TARGET), indent)} }`)
+    }
     // Keyed on the layout the lambda captures: a `pointerInput(Unit)` keeps the FIRST composition's val (the plot host's #3294 lesson).
     tap = `.pointerInput(pyreonLayout) { detectTapGestures { pyreonTap -> ${parts.join('; ')} } }`
   }
@@ -11412,7 +11478,7 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   const generic = emitKotlinLayoutModifier(e)
   const titleMod = kotlinChartA11y(e, describe)
   const modifier = size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))
-  const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${modifier})`
+  const canvas = kotlinChartCanvas(e, cmds, modifier, indent)
   // A tap needs the density from a composable scope, so a tappable host always
   // sits in a BoxWithConstraints even when its width is explicit.
   if (hasWidth && tap === '') return canvas
@@ -11510,7 +11576,7 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const generic = emitKotlinLayoutModifier(e)
   const titleMod = kotlinChartA11y(e, describe)
   const modifier = size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))
-  const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${modifier})`
+  const canvas = kotlinChartCanvas(e, cmds, modifier, indent)
   if (hasWidth && tap === '') return canvas
   const pad = ' '.repeat(indent + 2)
   const widthLine = hasWidth ? '' : `${pad}val pyreonW = maxWidth.value.toDouble()\n`
@@ -11541,7 +11607,7 @@ function emitKotlinGaugeHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
   const titleMod = kotlinChartA11y(e, describe)
-  const canvas = `PyreonChartCanvas(cmds = ${kotlinRtl(e, W).mirror(cmds)}, modifier = ${size + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))})`
+  const canvas = kotlinChartCanvas(e, kotlinRtl(e, W).mirror(cmds), size + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, '')), indent)
   if (hasWidth) return canvas
   const pad = ' '.repeat(indent + 2)
   return `BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {\n${pad}val pyreonW = maxWidth.value.toDouble()\n${pad}${canvas}\n${' '.repeat(indent)}}`
@@ -11603,10 +11669,13 @@ function emitKotlinBoxplotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     return 'Box {}'
   }
   const data = emitKotlinExpr(dataV, indent)
-  const rowsM = kotlinChartMap(e, tag, data, 'values', (b) => `fiveNumber((${b}).map { it.toDouble() })`, indent)
+  const summaryV = chartAttrExprKotlin(e, 'summary')
+  const rowsM = summaryV === undefined
+    ? kotlinChartMap(e, tag, data, 'values', (b) => `fiveNumber((${b}).map { it.toDouble() })`, indent)
+    : kotlinChartMap(e, tag, data, 'summary', (b) => `FiveNumber(min = (${b}).min.toDouble(), q1 = (${b}).q1.toDouble(), median = (${b}).median.toDouble(), q3 = (${b}).q3.toDouble(), max = (${b}).max.toDouble(), outliers = listOf())`, indent)
   if (rowsM === 'unsupported') return 'Box {}'
   if (rowsM === null) {
-    _emitWarnings.push(`<${tag}>: needs a \`values\` accessor on native; emitting an empty Box().`)
+    _emitWarnings.push(`<${tag}>: needs a \`values\` or \`summary\` accessor on native; emitting an empty Box().`)
     return 'Box {}'
   }
   const lets = [`val pyreonBoxes: List<FiveNumber> = ${rowsM}`]
@@ -11752,7 +11821,85 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
   }
   if (fields.has('curve')) _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: a \`curve\` callback is not lowered on native; the series draws straight.`)
   const args: string[] = []
+  const pattern = fields.get('pattern')
+  const pushPattern = (): boolean => {
+    if (pattern === undefined) return true
+    if (pattern.kind !== 'object' || (pattern.spreads !== undefined && pattern.spreads.length > 0)) return false
+    const values = new Map(pattern.fields.map((field) => [field.name, field.value]))
+    const kind = values.get('kind')
+    const color = values.get('color')
+    const spacing = values.get('spacing')
+    const width = values.get('width')
+    if (kind?.kind !== 'literal' || typeof kind.value !== 'string' || color?.kind !== 'literal' || typeof color.value !== 'string' || spacing?.kind !== 'literal' || typeof spacing.value !== 'number' || width?.kind !== 'literal' || typeof width.value !== 'number') return false
+    args.push(`pattern = PyreonChartPattern(kind = ${JSON.stringify(kind.value)}, color = ${JSON.stringify(color.value)}, spacing = ${chartDouble(spacing.value)}, width = ${chartDouble(width.value)})`)
+    return true
+  }
+  // `gradient` sits right before `pattern` in Series field order: literal
+  // stops (offset + colour) and an optional direction, the same shape the
+  // web grammar and the option facade produce.
+  const gradient = fields.get('gradient')
+  const pushGradient = (): boolean => {
+    if (gradient === undefined) return true
+    if (gradient.kind !== 'object' || (gradient.spreads !== undefined && gradient.spreads.length > 0)) return false
+    const values = new Map(gradient.fields.map((field) => [field.name, field.value]))
+    const stops = values.get('stops')
+    const direction = values.get('direction')
+    if (stops?.kind !== 'array') return false
+    const stopArgs: string[] = []
+    for (const st of stops.elements) {
+      if (st.kind !== 'object') return false
+      const sv = new Map(st.fields.map((field) => [field.name, field.value]))
+      const offset = sv.get('offset')
+      const color = sv.get('color')
+      if (offset?.kind !== 'literal' || typeof offset.value !== 'number' || color?.kind !== 'literal' || typeof color.value !== 'string') return false
+      stopArgs.push(`PyreonChartGradientStop(offset = ${chartDouble(offset.value)}, color = ${JSON.stringify(color.value)})`)
+    }
+    if (direction !== undefined && (direction.kind !== 'literal' || typeof direction.value !== 'string')) return false
+    args.push(`gradient = SeriesGradient(stops = listOf(${stopArgs.join(', ')})${direction === undefined ? '' : `, direction = ${JSON.stringify(direction.value)}`})`)
+    return true
+  }
+  // `extras` (ECharts' encode.tooltip dimensions) is the LAST Series field:
+  // literal `{ label, numbers? | texts? }` objects, one per extra.
+  const extrasOpt = fields.get('extras')
+  const pushExtras = (): boolean => {
+    if (extrasOpt === undefined) return true
+    if (extrasOpt.kind !== 'array') return false
+    const items: string[] = []
+    for (const ex of extrasOpt.elements) {
+      if (ex.kind !== 'object') return false
+      const ev = new Map(ex.fields.map((field) => [field.name, field.value]))
+      const label = ev.get('label')
+      if (label?.kind !== 'literal' || typeof label.value !== 'string') return false
+      const parts = [`label = ${JSON.stringify(label.value)}`]
+      const numbers = ev.get('numbers')
+      const texts = ev.get('texts')
+      if (numbers !== undefined) {
+        if (numbers.kind !== 'array' || numbers.elements.some((n) => n.kind !== 'literal' || typeof n.value !== 'number')) return false
+        parts.push(`numbers = listOf(${numbers.elements.map((n) => chartDouble((n as { value: number }).value)).join(', ')})`)
+      }
+      if (texts !== undefined) {
+        if (texts.kind !== 'array' || texts.elements.some((n) => n.kind !== 'literal' || typeof n.value !== 'string')) return false
+        parts.push(`texts = listOf(${texts.elements.map((n) => JSON.stringify((n as { value: string }).value)).join(', ')})`)
+      }
+      items.push(`SeriesExtra(${parts.join(', ')})`)
+    }
+    extrasArg = `extras = listOf(${items.join(', ')})`
+    return true
+  }
+  let extrasArg: string | undefined
+  let patternPushed = false
   for (const spec of PLOT_MARK_OPTION_FIELDS) {
+    if (spec.name === 'negativeColor' && !patternPushed) {
+      if (!pushGradient()) {
+        _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`gradient\` needs literal stops (offset + color) and an optional direction on native; emitting an empty Box().`)
+        return 'unsupported'
+      }
+      if (!pushPattern()) {
+        _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`pattern\` needs literal kind/color/spacing/width fields on native; emitting an empty Box().`)
+        return 'unsupported'
+      }
+      patternPushed = true
+    }
     const v = fields.get(spec.name)
     if (v !== undefined) {
       if (v.kind !== 'literal' || typeof v.value !== spec.kind) {
@@ -11767,6 +11914,19 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
     else if (spec.name === 'label') args.push(`label = ${JSON.stringify(`Series ${seriesIndex + 1}`)}`)
     else if (spec.default !== undefined) args.push(`${spec.name} = ${spec.kind === 'number' ? chartDouble(spec.default as number) : String(spec.default)}`)
   }
+  if (!patternPushed && !pushGradient()) {
+    _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`gradient\` needs literal stops (offset + color) and an optional direction on native; emitting an empty Box().`)
+    return 'unsupported'
+  }
+  if (!patternPushed && !pushPattern()) {
+    _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`pattern\` needs literal kind/color/spacing/width fields on native; emitting an empty Box().`)
+    return 'unsupported'
+  }
+  if (!pushExtras()) {
+    _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`extras\` needs literal { label, numbers | texts } entries on native; emitting an empty Box().`)
+    return 'unsupported'
+  }
+  if (extrasArg !== undefined) args.push(extrasArg)
   return args
 }
 
@@ -11783,15 +11943,17 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     return 'Box {}'
   }
   const data = emitKotlinExpr(dataV, indent)
-  const zoomed = readStaticAttrKotlin(e, 'dataZoom') === true
+  const flag = (prop: string): boolean => chartStaticFlag(e, tag, prop, (name) => readStaticAttrKotlin(e, name), (w) => _emitWarnings.push(w))
+  const zoomed = flag('dataZoom')
   const presetsRaw = kotlinZoomPresets(e, tag)
   const presets = presetsRaw === 'unsupported' ? undefined : presetsRaw
-  let navigating = readStaticAttrKotlin(e, 'navigator') === true
+  let navigating = flag('navigator')
   if (navigating && marksV.elements.length === 0) {
     _emitWarnings.push(`<${tag} navigator>: needs at least one mark (the strip shows the first one); the chart renders without the navigator.`)
     navigating = false
   }
-  let brushing = readStaticAttrKotlin(e, 'brush') === true && readStaticAttrKotlin(e, 'horizontal') !== true
+  const horizontal = flag('horizontal')
+  let brushing = flag('brush') && !horizontal
   if (brushing && zoomed) {
     _emitWarnings.push(`<${tag} brush>: with \`dataZoom\` the web brushes on Shift+drag, which touch has not — on native the plain drag pans, so the brush stays web-only in that combination; the chart renders without it.`)
     brushing = false
@@ -12076,9 +12238,9 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   // `tooltip` as a tap — mirror of the Swift emitter (a named `tooltipFormatter` lowers; an inline one is reported).
   const tooltip = readStaticAttrKotlin(e, 'tooltip') === true
   const tipFormatter = chartAttrExprKotlin(e, 'tooltipFormatter')
-  let tipLines = `tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color, values2 = it.values2, rValues = it.rValues) })${yFormat === undefined ? '' : `, ${yFormat}`})`
+  let tipLines = `tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color, values2 = it.values2, rValues = it.rValues, extras = it.extras) })${yFormat === undefined ? '' : `, ${yFormat}`})`
   if (tooltip && tipFormatter !== undefined) {
-    if (tipFormatter.kind === 'identifier') tipLines = `${kotlinIdent(tipFormatter.name)}(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color, values2 = it.values2, rValues = it.rValues) })).split("\\n")`
+    if (tipFormatter.kind === 'identifier') tipLines = `${kotlinIdent(tipFormatter.name)}(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color, values2 = it.values2, rValues = it.rValues, extras = it.extras) })).split("\\n")`
     else _emitWarnings.push('<PlotChart tooltipFormatter>: must be a NAMED function on native — an inline arrow is not lowered; the default lines apply.')
   }
   if (tooltip) {
@@ -12238,7 +12400,7 @@ function kotlinFrameHostLets(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: 
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
   const titleMod = kotlinChartA11y(e, describe)
-  const canvas = `PyreonChartCanvas(cmds = ${mirror(cmds)}, modifier = ${size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))})`
+  const canvas = kotlinChartCanvas(e, mirror(cmds), size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, '')), indent)
   const pad = ' '.repeat(indent + 2)
   const widthLine = hasWidth ? '' : `${pad}val pyreonW = maxWidth.value.toDouble()\n`
   const densityLine = tap === '' ? '' : `${pad}val pyreonDensity = LocalDensity.current.density\n`
@@ -12343,7 +12505,7 @@ function kotlinFrameHostWithTap(e: Extract<ExprIR, { kind: 'jsx-element' }>, let
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
   const titleMod = kotlinChartA11y(e, describe)
-  const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))})`
+  const canvas = kotlinChartCanvas(e, cmds, size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, '')), indent)
   const pad = ' '.repeat(indent + 2)
   const widthLine = hasWidth ? '' : `${pad}val pyreonW = maxWidth.value.toDouble()\n`
   const densityLine = tap === '' ? '' : `${pad}val pyreonDensity = LocalDensity.current.density\n`
@@ -12453,8 +12615,8 @@ function kotlinFrameHostWithDensity(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   // host (modifier order unchanged: size, gestures, identity).
   const canvas =
     overlay === undefined
-      ? `PyreonChartCanvas(cmds = ${cmds}, modifier = ${size + tap + identity})`
-      : `Box(modifier = ${size + identity}) {\n${pad}  PyreonChartCanvas(cmds = ${cmds}, modifier = Modifier.fillMaxSize()${tap})\n${pad}  ${overlay}\n${pad}}`
+      ? kotlinChartCanvas(e, cmds, size + tap + identity, indent)
+      : `Box(modifier = ${size + identity}) {\n${pad}  ${kotlinChartCanvas(e, cmds, `Modifier.fillMaxSize()${tap}`, indent + 2)}\n${pad}  ${overlay}\n${pad}}`
   const widthLine = hasWidth ? '' : `${pad}val pyreonW = maxWidth.value.toDouble()\n`
   const densityLine = needsDensity ? `${pad}val pyreonDensity = LocalDensity.current.density\n` : ''
   const body = lets.map((l) => `${pad}${l}\n`).join('')

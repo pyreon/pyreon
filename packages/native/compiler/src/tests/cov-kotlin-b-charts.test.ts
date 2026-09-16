@@ -75,7 +75,7 @@ describe('the frame hosts decline by name', () => {
     expect(warn(app('CandlestickChart', `<CandlestickChart data={ROWS} high={(d) => d.h} low={(d) => d.l} close={(d) => d.c} />`)))
       .toEqual(['<CandlestickChart>: needs an `open` accessor on native; emitting an empty Box().'])
     expect(warn(app('BoxplotChart', `<BoxplotChart data={ROWS} x={(d) => d.n} />`)))
-      .toEqual(['<BoxplotChart>: needs a `values` accessor on native; emitting an empty Box().'])
+      .toEqual(['<BoxplotChart>: needs a `values` or `summary` accessor on native; emitting an empty Box().'])
     expect(warn(app('HeatmapChart', `<HeatmapChart data={ROWS} x={(d) => d.n} value={(d) => d.v} />`)))
       .toEqual(['<HeatmapChart>: needs a `y` accessor on native; emitting an empty Box().'])
     // `x` is OPTIONAL on both boxplot and candlestick — but a MALFORMED one

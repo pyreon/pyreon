@@ -70,7 +70,7 @@ describe('native chart engine — generated, drift-locked, compile-proven', () =
   it.skipIf(!isSwiftUIAvailable())('iOS: canvas + engine typecheck as one unit', () => {
     const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(SWIFT_OUT))
     expect(r.ok, r.error ?? '').toBe(true)
-  })
+  }, 30_000)
 
   it.skipIf(!isKotlincAvailable())('Android: engine compiles with the canvas-owned types (verbatim)', () => {
     const canvas = read(CANVAS_KT)
@@ -87,5 +87,5 @@ describe('native chart engine — generated, drift-locked, compile-proven', () =
       .join('\n')
     const r = validateKotlin(decls.join('\n') + '\n' + engineBody)
     expect(r.ok, r.error ?? '').toBe(true)
-  })
+  }, 90_000)
 })

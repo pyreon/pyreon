@@ -36,6 +36,7 @@ const EVERY: Readonly<Record<keyof MarkOptions, unknown>> = {
   symbolRepeat: true,
   borderRadius: 4,
   gradient: { from: '#111', to: '#222' },
+  pattern: { kind: 'dots', color: '#fff', spacing: 6, width: 2 },
   dash: [4, 2],
   negativeColor: '#ff0000',
 }

@@ -25,15 +25,20 @@ import { describe, expect, it } from 'vitest'
  * change reverts/breaks the externalization, lib/ jumps back to multi-
  * megabyte territory and this test fails.
  *
- * Threshold: 2.5 MB. The plot surface (eleven families, maps included)
- * sits at ~1.6 MB, leaving headroom for legitimate growth — fonts,
- * generated `.d.ts` chains, additional renderers.
+ * Threshold: 3.5 MB. The plot surface has grown past the original 2.5 MB
+ * with the full ECharts-parity family set: measured 2.76 MB, of which
+ * 1.37 MB is `plot.js.map` — the source map ships by policy
+ * (check-distribution requires the .map files to ship), so it is half the
+ * total and grows with the surface. The guard is unchanged in kind: it catches
+ * echarts being BUNDLED again, whose broken state was 9.2 MB, so 3.5 MB still
+ * fails that loudly (2.6× over) while not reddening on honest growth.
+ * Verified when this moved: no `echarts/*` or `zrender` bytes in `lib/`.
  * Broken state was 9.2 MB (~20× over threshold), so the test fails
  * loudly the moment regression hits, with no false-positives from
  * normal package growth.
  */
 describe('charts — bundle size regression (echarts subpath externalization)', () => {
-  it('lib/ total stays under 2.5 MB (~1.6 MB with the plot surface; the pre-fix duplication was 9.2 MB)', () => {
+  it('lib/ total stays under 3.5 MB (~2.8 MB with the full family surface; the pre-fix duplication was 9.2 MB)', () => {
     const here = dirname(fileURLToPath(import.meta.url))
     const libDir = join(here, '..', '..', 'lib')
 
@@ -64,7 +69,7 @@ describe('charts — bundle size regression (echarts subpath externalization)', 
     // 2.5 MB: the plot subpath ships eleven families with source maps
     // (~1.6 MB total, ~370 KB of .js); the 9.2 MB duplication bug this
     // guards against is still ~4x over the line.
-    const CAP = 2.5 * 1024 * 1024
+    const CAP = 3.5 * 1024 * 1024
     expect(totalBytes).toBeLessThan(CAP)
   })
 })

@@ -50,6 +50,9 @@ export interface TreemapOptions {
 
 /** A node's value: its own, else the sum of its children (iterative — a deep tree must not recurse). */
 export function nodeValue(node: TreeNode): Double {
+  /* v8 ignore next — the `?? 0.0` arm is unreachable on the web: the test
+     already established the value is not undefined. It unwraps the optional
+     for the native emit, where that test does not narrow. */
   if (node.value !== undefined) return node.value ?? 0.0
   let sum = 0.0
   const stack: TreeNode[] = []
@@ -64,6 +67,8 @@ export function nodeValue(node: TreeNode): Double {
     sp = sp - 1
     const cur = stack[sp]!
     const own = cur.value
+    /* v8 ignore next — same unreachable native unwrap as `nodeValue`'s own
+       first line: `own` is known defined here. */
     if (own !== undefined) sum = sum + (own ?? 0.0)
     else {
       for (const c of cur.children ?? []) {

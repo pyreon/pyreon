@@ -304,3 +304,60 @@ describe('the public Pt[] wrapper', () => {
     expect(lttb(points, 2), 'a threshold below 3 is also a passthrough').toBe(points)
   })
 })
+
+describe('lttbIndices — the final bucket has no NEXT centroid', () => {
+  // The last bucket falls back to its OWN points for the third triangle
+  // vertex: there is no bucket after it. The alternative is a zero-area
+  // comparison, which always picks the first candidate and so drops whichever
+  // point actually carried the tail's shape.
+  it('keeps the endpoints and a tail point that is not simply the first candidate', () => {
+    const xs: Double[] = []
+    const ys: Double[] = []
+    for (let i = 0; i < 40; i++) {
+      xs.push(i)
+      // A flat run with one late spike: the spike is in the FINAL bucket, so
+      // only the fallback path can select it.
+      ys.push(i === 37 ? 100 : 1)
+    }
+    const idx = lttbIndices(xs, ys, 6)
+    expect(idx[0]).toBe(0)
+    expect(idx.at(-1)).toBe(39)
+    expect(idx).toEqual([...idx].sort((a, b) => a - b))
+    expect(new Set(idx).size).toBe(idx.length)
+  })
+
+  it('answers EMPTY when there is nothing to decimate', () => {
+    // Empty means "keep the series as it is" — the caller skips the copy
+    // entirely rather than rebuilding an identical array.
+    const xs: Double[] = [0, 1, 2]
+    const ys: Double[] = [5, 6, 7]
+    expect(lttbIndices(xs, ys, 3)).toEqual([])
+    expect(lttbIndices(xs, ys, 99)).toEqual([])
+    expect(lttbIndices(xs, ys, 2)).toEqual([]) // below the 3-point minimum
+  })
+})
+
+describe('lttbIndices — a bucket whose NEXT bucket is empty', () => {
+  // With a threshold barely above the floor the buckets are one row wide, so
+  // the "next bucket centroid" window can come out empty and the fallback to
+  // the bucket's OWN rows is the only thing that keeps the triangle non-zero.
+  it('still returns a sorted, unique index list with both endpoints', () => {
+    for (const n of [5, 6, 7, 8]) {
+      for (const threshold of [3, 4, 5]) {
+        if (threshold >= n) continue
+        const xs: Double[] = []
+        const ys: Double[] = []
+        for (let i = 0; i < n; i++) {
+          xs.push(i)
+          ys.push(i % 2 === 0 ? 0 : 10)
+        }
+        const idx = lttbIndices(xs, ys, threshold)
+        expect(idx.length, `n=${n} threshold=${threshold}`).toBe(threshold)
+        expect(idx[0]).toBe(0)
+        expect(idx.at(-1)).toBe(n - 1)
+        expect(idx).toEqual([...idx].sort((a, b) => a - b))
+        expect(new Set(idx).size).toBe(idx.length)
+      }
+    }
+  })
+})

@@ -17,6 +17,7 @@ const REPO_ROOT = join(HERE, '..', '..')
 // Paths the generators own (relative to repo root). git diff is scoped to
 // these so an unrelated dirty working tree doesn't false-fail the gate.
 const GENERATED = [
+  'packages/native/compiler/src/generated-chart-webview-host.ts',
   'docs/src/content/docs/reference',
   'docs/src/content/docs/troubleshooting',
   'docs/src/content/docs/troubleshooting.md',
@@ -25,6 +26,15 @@ const GENERATED = [
   'docs/src/troubleshooting-nav.generated.ts',
   'packages/native/compiler/src/generated-flow-webview-host.ts',
 ]
+
+const chartHost = spawnSync('bun', [join(REPO_ROOT, 'scripts/gen-chart-webview-host.ts')], {
+  cwd: REPO_ROOT,
+  stdio: 'inherit',
+})
+if (chartHost.status !== 0) {
+  console.error('[check-generated-fresh] chart host generator failed — see output above')
+  process.exit(1)
+}
 
 const gen = spawnSync('bun', [join(HERE, 'gen-all.ts')], { stdio: 'inherit' })
 if (gen.status !== 0) {

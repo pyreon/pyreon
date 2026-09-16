@@ -3,7 +3,7 @@
 // in a real browser next door).
 
 import { describe, expect, it } from 'vitest'
-import { cornerRadii, hasCorners, rectCmd } from './corners'
+import { cornerRadii, hasCorners, polygonCmd, rectCmd } from './corners'
 import { bars, groupedBars, normalizeCorners, resolveMarks, stackedBars } from './marks'
 import { defaultTheme, renderChart } from './render'
 import type { ChartSpec } from './render'
@@ -149,5 +149,38 @@ describe('svgCommand', () => {
   it('falls back to <rect> when the radii clamp to nothing (a zero-height bar)', () => {
     const d = svgCommand({ kind: 'rect', rect: { x: 0, y: 0, w: 10, h: 0 }, fill: '#f00', corners: [6, 6, 6, 6] }, F)
     expect(d.startsWith('<rect ')).toBe(true)
+  })
+})
+
+describe('rectCmd / polygonCmd — every optional-key combination', () => {
+  // Four literals per builder, deliberately: an absent `corners` / `grad` /
+  // `pattern` must serialize exactly as it did before that key existed, on
+  // every backend, and the native subset cannot add a key conditionally. So
+  // each combination is its own shape, and each deserves its own case.
+  const rect = { x: 0, y: 0, w: 10, h: 4 }
+  const grad = { from: { x: 0, y: 0 }, to: { x: 10, y: 0 }, stops: [{ offset: 0, color: '#000' }] }
+  const pattern = { kind: 'dots' as const, color: '#fff', spacing: 4, width: 1 }
+  const corners = [1, 2, 3, 4]
+
+  it('omits every absent key, and carries only the ones supplied', () => {
+    expect(rectCmd(rect, '#f00', undefined, undefined)).toEqual({ kind: 'rect', rect, fill: '#f00' })
+    expect(rectCmd(rect, '#f00', corners, undefined)).toEqual({ kind: 'rect', rect, fill: '#f00', corners })
+    expect(rectCmd(rect, '#f00', undefined, grad)).toEqual({ kind: 'rect', rect, fill: '#f00', grad })
+    expect(rectCmd(rect, '#f00', corners, grad)).toEqual({ kind: 'rect', rect, fill: '#f00', corners, grad })
+  })
+
+  it('does the same with a pattern in play', () => {
+    expect(rectCmd(rect, '#f00', undefined, undefined, pattern)).toEqual({ kind: 'rect', rect, fill: '#f00', pattern })
+    expect(rectCmd(rect, '#f00', corners, undefined, pattern)).toEqual({ kind: 'rect', rect, fill: '#f00', corners, pattern })
+    expect(rectCmd(rect, '#f00', undefined, grad, pattern)).toEqual({ kind: 'rect', rect, fill: '#f00', grad, pattern })
+    expect(rectCmd(rect, '#f00', corners, grad, pattern)).toEqual({ kind: 'rect', rect, fill: '#f00', corners, grad, pattern })
+  })
+
+  it('polygonCmd mirrors it across grad × pattern', () => {
+    const pts = [{ x: 0, y: 0 }, { x: 1, y: 1 }]
+    expect(polygonCmd(pts, '#0f0', undefined, undefined)).toEqual({ kind: 'polygon', points: pts, fill: '#0f0' })
+    expect(polygonCmd(pts, '#0f0', undefined, pattern)).toEqual({ kind: 'polygon', points: pts, fill: '#0f0', pattern })
+    expect(polygonCmd(pts, '#0f0', grad, undefined)).toEqual({ kind: 'polygon', points: pts, fill: '#0f0', grad })
+    expect(polygonCmd(pts, '#0f0', grad, pattern)).toEqual({ kind: 'polygon', points: pts, fill: '#0f0', grad, pattern })
   })
 })

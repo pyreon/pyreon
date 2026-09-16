@@ -205,6 +205,27 @@ describe('ECharts option facade — mappings', () => {
     expect(c.spec.markers!.map((m) => m.at ?? m.atIndex)).toEqual(['max', 1])
   })
 
+  it('maps horizontal and vertical mark areas to engine bands', () => {
+    const option = {
+      xAxis: { type: 'value' }, yAxis: { min: 0, max: 10 },
+      series: [{
+        type: 'line', data: [[0, 2], [10, 8]],
+        markArea: { itemStyle: { color: '#225588' }, data: [
+          [{ name: 'target', yAxis: 3 }, { yAxis: 6 }],
+          [{ xAxis: 2 }, { xAxis: 4 }],
+        ] },
+      }],
+    }
+    const c = compileOption(option)
+    expect(c.spec.annotations).toEqual([
+      { yFrom: 3, yTo: 6, label: 'target', color: '#225588' },
+      { xFrom: 2, xTo: 4, label: undefined, color: '#225588' },
+    ])
+    expect(optionToSvg(option, { width: 300, height: 180 }).match(/fill="rgba\(34, 85, 136, 0\.12\)"/g)).toHaveLength(2)
+    expect(optionToSvg(option, { width: 300, height: 180 })).toContain('target')
+    expect(c.warnings).toEqual([])
+  })
+
   it('never drops silently: unknown top-level keys, series options and types are all NAMED', () => {
     const c = compileOption({
       brush: {}, xAxis: { data: ['a'] }, yAxis: {},

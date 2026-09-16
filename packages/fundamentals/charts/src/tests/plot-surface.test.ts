@@ -8,9 +8,10 @@ const EXPECTED = [
   // The shared host is public — the extension point for a family of your own — with its animation primitives.
   'canvasHost', 'shiftCmds', 'tweenCmds', 'sameCmdShape', 'cmdsEqual', 'easeOutCubic', 'renderChartIn', 'plotHitIndexIn', 'plotHitBarsIn', 'hitRadarIndex',
   'FunnelChart', 'TreemapChart', 'SunburstChart', 'TreeChart', 'SankeyChart', 'GraphChart',
-  'CalendarChart', 'ParallelChart', 'PolarChart', 'RiverChart', 'MapChart',
+  'CalendarChart', 'ParallelChart', 'PolarChart', 'SingleAxisChart', 'RiverChart', 'MapChart',
   'funnelToSvg', 'treemapToSvg', 'sunburstToSvg', 'treeToSvg', 'sankeyToSvg', 'graphToSvg',
   'calendarToSvg', 'parallelToSvg', 'polarToSvg', 'singleAxisToSvg', 'riverToSvg', 'geoToSvg', 'geoPointsToSvg',
+  'chartCapabilityScore',
   'compileOption', 'optionToSvg', 'planOption', 'compileFamily', 'familyToSvg',
   'resolveDataset', 'applyTransforms', 'graphicCommands', 'visualMapCommands', 'customCommands',
   'registerTheme', 'resolveTheme', 'registerLocale', 'numberFormatter', 'registerMap',

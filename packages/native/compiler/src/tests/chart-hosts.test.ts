@@ -418,6 +418,18 @@ export function Revenue() {
 }`
 
 describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
+  it('carries literal pattern fills into both native series', () => {
+    const src = PLOT.replace("{ label: 'Revenue', color: '#0f766e' }", "{ label: 'Revenue', color: '#0f766e', pattern: { kind: 'cross', color: '#ffffff', spacing: 7, width: 1.5 } }")
+    const swift = transform(src, { target: 'swift' })
+    const kotlin = transform(src, { target: 'kotlin' })
+    expect(swift.warnings).toEqual([])
+    expect(kotlin.warnings).toEqual([])
+    expect(swift.code).toContain('pattern: PyreonChartPattern(kind: "cross", color: "#ffffff", spacing: 7.0, width: 1.5)')
+    expect(kotlin.code).toContain('pattern = PyreonChartPattern(kind = "cross", color = "#ffffff", spacing = 7.0, width = 1.5)')
+    expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
+    if (isKotlincAvailable()) expect(validateKotlin(kotlin.code).ok).toBe(true)
+  }, 90_000)
+
   it('Swift: each mark becomes a Series over an inlined accessor; the spec is built inline; onSelect taps plotHitBars', () => {
     const r = transform(PLOT, { target: 'swift' })
     expect(r.warnings).toEqual([])
@@ -1241,23 +1253,27 @@ const PARALLEL_ROW_COLOR = PARALLEL.replace('gutter={30}', "gutter={30} rowColor
 const MAP = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
 import { MapChart } from '@pyreon/charts/plot'
-import type { GeoShape } from '@pyreon/charts/plot'
+import type { GeoOverlayOptions, GeoOverlayPath, GeoOverlayPoint, GeoShape } from '@pyreon/charts/plot'
 const SHAPES: GeoShape[] = [
   { name: 'A', rings: [[{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]] },
   { name: 'B', rings: [[{ x: 12, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 8 }]] },
 ]
+const PATHS: GeoOverlayPath[] = [{ coords: [{ lon: 0, lat: 0 }, { lon: 20, lat: 8 }], width: 2 }]
+const POINTS: GeoOverlayPoint[] = [{ name: 'Capital', lon: 5, lat: 5, value: 3 }]
+const OVERLAY: GeoOverlayOptions = { effect: true, showLabels: true }
 export function Regions() {
   const picked = signal(-1)
   return (
     <Stack>
       <Text>{picked()}</Text>
-      <MapChart animate={false} map={SHAPES} values={{ A: 5, B: 9.5 }} options={{ showLabels: true }} height={280} tooltip onSelectIndex={(i: number) => picked.set(i)} />
+      <MapChart animate={false} map={SHAPES} values={{ A: 5, B: 9.5 }} paths={PATHS} points={POINTS} overlayOptions={OVERLAY} options={{ showLabels: true }} height={280} tooltip onSelectIndex={(i: number) => picked.set(i)} onSelectPointIndex={(i: number) => picked.set(i + 100)} />
     </Stack>
   )
 }`
 const MAP_REGISTRY = MAP.replace('map={SHAPES}', 'map="world"')
 const MAP_GEOJSON = MAP.replace('map={SHAPES}', "map={{ type: 'FeatureCollection', features: [] }}")
-const MAP_VALUE_LIST = MAP.replace("import type { GeoShape } from '@pyreon/charts/plot'", "import type { GeoShape, GeoValue } from '@pyreon/charts/plot'")
+const MAP_NO_OVERLAYS = MAP.replace(' paths={PATHS} points={POINTS} overlayOptions={OVERLAY}', '')
+const MAP_VALUE_LIST = MAP.replace('GeoShape }', 'GeoShape, GeoValue }')
   .replace('export function Regions()', "const VALUES: GeoValue[] = [{ region: 'A', value: 5 }]\nexport function Regions()")
   .replace('values={{ A: 5, B: 9.5 }}', 'values={VALUES}')
 
@@ -1295,11 +1311,11 @@ describe('chart hosts — CalendarChart + ParallelChart lower through literal ad
       expect(r.code).not.toContain('renderCalendar(')
     }
   })
-  it('Swift: parallel rows become [[Double]] — a category resolves to its index through the typed AXES const, a null or an unknown category is NaN; the gutter defaults to the web\'s 40 and is overridable', () => {
+  it('Swift: parallel rows become [[Double]] — the AXES const is inlined as typed ParallelAxis values and a category resolves to its index, a null or an unknown category is NaN; the gutter defaults to the web\'s 40 and is overridable', () => {
     const r = transform(PARALLEL, { target: 'swift' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain(
-      'layoutParallel(AXES, [[0.0, 30.0], [2.0, Double.nan], [Double.nan, 22.0]], PyreonChartRect(x: 30.0, y: 8.0, w: max(0.0, Double(pyreonGeo.size.width) - 30.0 * 2.0), h: max(0.0, 260.0 - 16.0)), pyreonOptions)',
+      'layoutParallel([ParallelAxis(name: "Cyl", type: "category", categories: ["4", "6", "8"], domain: nil, inverse: nil), ParallelAxis(name: "MPG", type: nil, categories: nil, domain: nil, inverse: nil)], [[0.0, 30.0], [2.0, Double.nan], [Double.nan, 22.0]], PyreonChartRect(x: 30.0, y: 8.0, w: max(0.0, Double(pyreonGeo.size.width) - 30.0 * 2.0), h: max(0.0, 260.0 - 16.0)), pyreonOptions)',
     )
     expect(r.code).toContain('renderParallel(pyreonLayout')
     expect(r.code).toContain('hitParallelIndex(pyreonLayout')
@@ -1361,7 +1377,10 @@ describe('chart hosts — MapChart lowers from projected shapes; the registry an
       'private let SHAPES: [GeoShape] = [GeoShape(name: "A", rings: [[PyreonChartPt(x: Double(0), y: Double(0)), PyreonChartPt(x: Double(10), y: Double(0)), PyreonChartPt(x: Double(10), y: Double(10))]])')
     expect(r.code).toContain('layoutGeoShapes(SHAPES, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 280.0), pyreonOptions)')
     expect(r.code).toContain('renderGeo(pyreonLayout, [GeoValue(region: "A", value: 5.0), GeoValue(region: "B", value: 9.5)], pyreonOptions)')
+    expect(r.code).toContain('renderGeoOverlayPaths(pyreonLayout, PATHS, OVERLAY)')
+    expect(r.code).toContain('renderGeoOverlayPoints(pyreonLayout, POINTS, OVERLAY)')
     expect(r.code).toContain('hitGeoIndex(pyreonLayout, Double(pyreonTap.location.x), Double(pyreonTap.location.y))')
+    expect(r.code).toContain('hitGeoOverlayPoint(pyreonLayout, POINTS, Double(pyreonTap.location.x), Double(pyreonTap.location.y), (OVERLAY).radius)')
     expect(r.code).toContain('geoTip(pyreonLayout, [GeoValue(region: "A", value: 5.0), GeoValue(region: "B", value: 9.5)]')
   })
 
@@ -1370,8 +1389,22 @@ describe('chart hosts — MapChart lowers from projected shapes; the registry an
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('layoutGeoShapes(SHAPES, PyreonChartRect(0.0, 0.0, pyreonW, 280.0), pyreonOptions)')
     expect(r.code).toContain('renderGeo(pyreonLayout, listOf(GeoValue(region = "A", value = 5.0), GeoValue(region = "B", value = 9.5)), pyreonOptions)')
+    expect(r.code).toContain('renderGeoOverlayPaths(pyreonLayout, PATHS, OVERLAY)')
+    expect(r.code).toContain('renderGeoOverlayPoints(pyreonLayout, POINTS, OVERLAY)')
     expect(r.code).toContain('hitGeoIndex(pyreonLayout,')
+    expect(r.code).toContain('hitGeoOverlayPoint(pyreonLayout, POINTS,')
     expect(r.code).toContain('geoTip(pyreonLayout, listOf(GeoValue(region = "A", value = 5.0), GeoValue(region = "B", value = 9.5))')
+  })
+
+  it('omitted overlays lower to empty lists and no options on both targets', () => {
+    const swift = transform(MAP_NO_OVERLAYS, { target: 'swift' })
+    expect(swift.warnings).toEqual([])
+    expect(swift.code).toContain('renderGeoOverlayPaths(pyreonLayout, [], GeoOverlayOptions())')
+    expect(swift.code).toContain('renderGeoOverlayPoints(pyreonLayout, [], GeoOverlayOptions())')
+    const kotlin = transform(MAP_NO_OVERLAYS, { target: 'kotlin' })
+    expect(kotlin.warnings).toEqual([])
+    expect(kotlin.code).toContain('renderGeoOverlayPaths(pyreonLayout, listOf(), GeoOverlayOptions())')
+    expect(kotlin.code).toContain('renderGeoOverlayPoints(pyreonLayout, listOf(), GeoOverlayOptions())')
   })
 
   // The border SEPARATES two filled regions, so it reads the page GROUND —
