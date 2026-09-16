@@ -1,4 +1,5 @@
 import type { HeadContextValue } from './context'
+import { isHeadAttrSafe } from './attr-guard'
 
 const ATTR = 'data-pyreon-head'
 
@@ -40,6 +41,13 @@ function createNewTag(tag: {
   const key = tag.key as string
   el.setAttribute(ATTR, key)
   for (const [k, v] of Object.entries(tag.props as Record<string, string>)) {
+    // The CLIENT half of the same guard `serializeHead` runs. Head has two
+    // renderers and the guard existed in neither; fixing only the string one
+    // would leave a hydrated page writing what the server refused — and here a
+    // handler name is not a byte divergence but a live listener, while a
+    // structurally-invalid name makes `setAttribute` THROW and takes the whole
+    // head sync down.
+    if (!isHeadAttrSafe(k, v, tag.tag)) continue
     el.setAttribute(k, v)
   }
   if (tag.children) el.textContent = tag.children
@@ -115,6 +123,7 @@ function patchAttrs(el: Element, props: Record<string, string>): void {
     if (!(attr.name in props)) el.removeAttribute(attr.name)
   }
   for (const [k, v] of Object.entries(props)) {
+    if (!isHeadAttrSafe(k, v, el.tagName.toLowerCase())) continue
     if (el.getAttribute(k) !== v) el.setAttribute(k, v)
   }
 }
@@ -139,6 +148,7 @@ function syncElementAttrs(el: Element, attrs: Record<string, string>): void {
   }
   const keys: string[] = []
   for (const [k, v] of Object.entries(attrs)) {
+    if (!isHeadAttrSafe(k, v, el.tagName.toLowerCase())) continue
     keys.push(k)
     if (el.getAttribute(k) !== v) el.setAttribute(k, v)
   }
