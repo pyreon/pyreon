@@ -1443,6 +1443,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
         ...(s.errLow !== undefined ? { errLow: s.errLow } : {}),
         ...(s.errHigh !== undefined ? { errHigh: s.errHigh } : {}),
         ...(s.rValues !== undefined ? { rValues: s.rValues } : {}),
+        ...(s.onX2 === true && s.xs !== undefined ? { xs: s.xs } : {}),
       })),
     }
     a11yMemo = { rows, marks: props.marks, labels: props.seriesLabels, format: fmtNow, title: props.title, input }

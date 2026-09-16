@@ -384,9 +384,11 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   const x2Axis = xAxisList.length > 1 && isObj(xAxisList[1]) ? (xAxisList[1] as Record<string, unknown>) : undefined
   const x2Data = x2Axis !== undefined && Array.isArray(x2Axis['data']) ? (x2Axis['data'] as unknown[]).map((c) => (isObj(c) ? String(c['value'] ?? '') : String(c))) : []
   const x0Count = Array.isArray(xAxisList[0] as unknown) ? 0 : isObj(xAxisList[0]) && Array.isArray((xAxisList[0] as Record<string, unknown>)['data']) ? ((xAxisList[0] as Record<string, unknown>)['data'] as unknown[]).length : 0
-  const x2Mapped = x2Axis !== undefined && x2Data.length > 0 && x2Data.length === x0Count
+  const x2Type = x2Axis !== undefined && typeof x2Axis['type'] === 'string' ? (x2Axis['type'] as string) : ''
+  const x2Continuous = x2Axis !== undefined && (x2Type === 'value' || x2Type === 'time')
+  const x2Mapped = x2Continuous || (x2Axis !== undefined && x2Data.length > 0 && x2Data.length === x0Count)
   if (xAxisList.length > 2 || (xAxisList.length === 2 && !x2Mapped)) {
-    warn('axis-count-unsupported', 'xAxis', 'A second x axis maps only as a second set of category labels with the same count; other x axes were ignored.')
+    warn('axis-count-unsupported', 'xAxis', 'A second x axis maps as a value axis, or as a second set of category labels with the same count; other x axes were ignored.')
   }
   const xAxis = first(xAxisRaw as Record<string, unknown> | Record<string, unknown>[] | undefined)
   const xType = isObj(xAxis) && typeof xAxis['type'] === 'string' ? (xAxis['type'] as string) : undefined
@@ -568,7 +570,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
         values.push(v ?? 0.0)
       }
     }
-    if (xContinuous && xs.length === values.length && xs.length > 0 && xValues === undefined) xValues = xs
+    const onX2 = x2Continuous && num(s['xAxisIndex']) === 1 && xs.length === values.length && xs.length > 0
+    if (!onX2 && xContinuous && xs.length === values.length && xs.length > 0 && xValues === undefined) xValues = xs
     const request = samplingRequest(s, opts.width ?? 640.0, (message) => warn('series-option-unsupported', `${path}.sampling`, message))
     if (request !== null) sampleRequests.push(request)
     // Stacked LINES: each line sits on the running total of the lines that
@@ -622,6 +625,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       radii: undefined,
       axis: !extraAxis && (yAxisIndex === 1) !== swapY ? 'right' : undefined,
       ...(extraAxis ? { axisExtra: yAxisIndex - 2 } : {}),
+      ...(onX2 ? { onX2: true, xs } : {}),
       pattern: fillPattern(itemStyle),
       ...(type === 'effectScatter' ? { effect: true } : {}),
       ...(type === 'pictorialBar' ? pictorialFields(s, warn, path) : {}),
@@ -808,7 +812,11 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   // and each of those keys resolves to that count. It applies only when every
   // cartesian series has the same length: thinning one would misalign the
   // shared x.
-  if (sampleRequests.length > 0 && series.length > 0) {
+  // A series on a second value x axis carries its own positions, which the
+  // shared thinning does not see, so large-data sampling is skipped (named).
+  const hasOwnXs = series.some((entry) => entry.onX2 === true)
+  if (sampleRequests.length > 0 && hasOwnXs) warn('series-option-unsupported', 'series', 'Large-data sampling is skipped when a series uses a second value x axis.')
+  if (sampleRequests.length > 0 && series.length > 0 && !hasOwnXs) {
     const thinned = decimateShared(sampleRequests, { columns: series.map((entry) => entry.values), categories, xValues })
     for (let k = 0; k < series.length; k++) series[k]!.values = thinned.columns[k]!
     if (thinned.categories !== categories) categories.splice(0, categories.length, ...thinned.categories)
@@ -842,7 +850,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     ...(num(isObj(xAxis) ? xAxis['offset'] : undefined) !== null ? { xOffset: num((xAxis as Record<string, unknown>)['offset']) as number } : {}),
     ...(num(isObj(yAxes[0]) ? yAxes[0]['offset'] : undefined) !== null ? { yOffset: num(yAxes[0]!['offset']) as number } : {}),
     ...(num(isObj(yAxes[1]) ? yAxes[1]['offset'] : undefined) !== null ? { y2Offset: num(yAxes[1]!['offset']) as number } : {}),
-    ...(x2Mapped ? { x2Labels: x2Data } : {}),
+    ...(x2Mapped && !x2Continuous ? { x2Labels: x2Data } : {}),
+    ...(x2Continuous && axisDomain(x2Axis) !== undefined ? { x2Domain: axisDomain(x2Axis) } : {}),
     ...(x2Mapped && typeof x2Axis!['name'] === 'string' ? { x2Title: x2Axis!['name'] as string } : {}),
     ...(yAxes.length > 2
       ? {

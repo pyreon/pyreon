@@ -48,6 +48,8 @@ const ROLE: Readonly<Record<keyof Series, Role>> = {
   showValues: 'presentation',
   axis: 'presentation',
   axisExtra: 'presentation',
+  onX2: 'presentation',
+  xs: 'data',
   effect: 'presentation',
   symbol: 'presentation',
   symbolRepeat: 'presentation',
@@ -84,6 +86,7 @@ function loaded(): Series {
     errLow: [2, 5],
     errHigh: [4, 7],
     rValues: [11, 22],
+    xs: [31, 32],
     extras: [{ label: 'stock', numbers: [7, 8] }, { label: 'region', texts: ['north', 'south'] }],
     color: '#111',
     width: 2,
@@ -99,6 +102,7 @@ const PRINTED: Readonly<Record<string, string[]>> = {
   errLow: ['2', '5'],
   errHigh: ['4', '7'],
   rValues: ['11', '22'],
+  xs: ['31', '32'],
   extras: ['7', '8', 'north', 'south'],
 }
 

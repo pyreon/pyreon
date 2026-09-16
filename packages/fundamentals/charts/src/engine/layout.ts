@@ -60,6 +60,8 @@ export interface PlotLayout {
   gutters: Gutters
   /** Ticks of every extra y axis, tagged with the axis they belong to. */
   extraTicks: ExtraTick[]
+  /** Ticks of a second value x axis; empty otherwise. */
+  x2Ticks: Tick[]
 }
 
 export interface LayoutConfig {
@@ -141,6 +143,8 @@ export interface LayoutConfig {
   /** A second x axis's category labels, drawn on the side opposite the first. */
   x2Labels?: string[] | undefined
   x2Title?: string | undefined
+  /** A second VALUE x axis's domain; its ticks are laid out on the opposite edge. */
+  x2Domain?: Domain | undefined
   /** Pixels an axis sits off its plot edge; its gutter grows by the same. */
   xOffset?: Double | undefined
   yOffset?: Double | undefined
@@ -284,7 +288,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // slim padding the top had.
   const xTop = cfg.xTop === true && cfg.horizontal !== true
   // A second x axis takes a label band (and its title's line) on the other side.
-  const hasX2 = (cfg.x2Labels ?? []).length > 0 && cfg.showXAxis && cfg.horizontal !== true
+  const hasX2 = ((cfg.x2Labels ?? []).length > 0 || cfg.x2Domain !== undefined) && cfg.showXAxis && cfg.horizontal !== true
   const x2Band = hasX2 ? cfg.fontSize + labelGap + tickLen + (cfg.x2Title !== undefined && cfg.x2Title !== '' ? titleH : 0.0) : padTop
   const top = xTop ? xBand : x2Band
   const bottom = xTop ? x2Band : xBand
@@ -314,7 +318,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
       const perLabel = cfg.fontSize + 2.0
       if (bandH < perLabel) yEvery = ceilRatio(perLabel, bandH)
     }
-    return { plot, xTicks, yTicks, y2Ticks: [], xDomainUsed: cfg.xDomain, xLabelRotate: 0.0, xLabelEvery: 1, yLabelEvery: yEvery, gutters, extraTicks: [] }
+    return { plot, xTicks, yTicks, y2Ticks: [], xDomainUsed: cfg.xDomain, xLabelRotate: 0.0, xLabelEvery: 1, yLabelEvery: yEvery, gutters, extraTicks: [], x2Ticks: [] }
   }
 
   // y grows DOWNWARD in screen space, so the domain min maps to the plot's
@@ -341,7 +345,8 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
       ai = ai + 1.0
     }
   }
-  return { plot, xTicks, yTicks, y2Ticks, xDomainUsed: cfg.xDomain, xLabelRotate: rotate, xLabelEvery: every, yLabelEvery: 1, gutters, extraTicks }
+  const x2Ticks: Tick[] = hasX2 && cfg.x2Domain !== undefined ? makeTicks(cfg.x2Domain ?? { min: 0.0, max: 1.0 }, plot.x, plot.x + plot.w, cfg.xTickCount, undefined) : []
+  return { plot, xTicks, yTicks, y2Ticks, xDomainUsed: cfg.xDomain, xLabelRotate: rotate, xLabelEvery: every, yLabelEvery: 1, gutters, extraTicks, x2Ticks }
 }
 
 /**
