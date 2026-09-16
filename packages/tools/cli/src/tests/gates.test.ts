@@ -162,7 +162,14 @@ describe('runDocClaimsGate', () => {
     // which had rotted to "56 rules" against a real 98 because it was the one
     // count surface this gate did not cover — and `.claude/rules/code-style.md`,
     // stale at 97) and +1 lint-category-count site (the same code-style.md).
-    expect(result.meta.scanned).toBe(33)
+    //
+    // 34 as of the README-gaps audit: +1 hook-count site — the hooks
+    // README's OWN "N hooks across 7 categories." table-count line, which
+    // had rotted to 55 against a real 65 while the prose line two lines
+    // above it (a DIFFERENT, already-guarded claim site in the same file)
+    // stayed correct. Two claims in one file, one guarded — see
+    // doc-claims.ts's `hook export count` check.
+    expect(result.meta.scanned).toBe(34)
     // The real repo must be drift-free — this gate runs in CI; if a
     // count claim drifts, EVERY PR's doctor run fails until it's fixed.
     const errs = result.findings.filter((f) => f.severity === 'error')

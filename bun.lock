@@ -813,6 +813,7 @@
       "version": "0.50.0",
       "devDependencies": {
         "@pyreon/core": "workspace:*",
+        "@pyreon/flow": "workspace:*",
         "@pyreon/hooks": "workspace:*",
         "@pyreon/i18n": "workspace:*",
         "@pyreon/machine": "workspace:*",
@@ -3165,8 +3166,6 @@
     "hono": "^4.13.5",
     "playwright": "1.62.1",
     "qs": "^6.16.0",
-    "sigstore": "^5.0.0",
-    "tar": "^7.5.22",
     "uuid": "^11.1.1",
     "vite": "8.2.2",
     "zod": "4.5.4",

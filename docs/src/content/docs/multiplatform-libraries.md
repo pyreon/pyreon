@@ -265,7 +265,7 @@ These packages target a web-only medium where the native equivalent isn't "the s
 |---|---|---|
 | `@pyreon/charts` | ECharts is canvas-based JS | Swift Charts (iOS 16+); Compose-charting or MPAndroidChart |
 | `@pyreon/code` | CodeMirror 6 is a web editor | iOS / Android each have different code-editor SDKs |
-| `@pyreon/flow` | SVG pan/zoom + DOM | SwiftUI `Canvas` or Compose `Canvas` — the state half already ships (`PyreonFlowState`, lowered from `createFlow`) and a hand-wired `PyreonFlowEdgeCanvas` draws segment lists; the `<Flow>` host, gestures and layout are the open part |
+| `@pyreon/flow` | Browser rendering uses SVG/DOM | The same `<Flow>` source lowers directly to the interactive SwiftUI/Compose canvas host, including state, gestures, layouts, chrome, static custom renderers, accessibility, and light/dark/system color modes; browser CSS selectors and arbitrary SVG strings remain explicit platform presentation boundaries |
 | `@pyreon/document` | pdfmake / docx / xlsx — web-native JS libs | iOS `PDFKit` / `PDFDocument`; Android `PdfDocument` |
 | `@pyreon/dnd` | `@atlaskit/pragmatic-drag-and-drop` HTML5 DnD | `DragGesture` SwiftUI; Compose `Modifier.draggable` |
 | `@pyreon/table` | TanStack Table — DOM measurement, web-DOM-aware | SwiftUI `Table` (limited); Compose `LazyColumn` patterns |
@@ -545,7 +545,7 @@ the machine-checked contract.
 | `@pyreon/sync` | the Yjs engine + IndexedDB/WebSocket transports stay web; the engine-neutral PyreonCrdt core + `syncedSignal` lower to a native runtime, cross-device transport tracked |
 | `@pyreon/query` | wraps TanStack Query (a JS runtime cache), so the full client — QueryClient config, devtools, infinite/suspense queries — stays web; `useQuery` itself lowers to the PyreonQuery runtime |
 | `@pyreon/validation` | Standard Schema adapters (zod/valibot/arktype are JS libraries), so the adapters themselves stay web; the declarative schema FORMS lower to native validators (Gap-4 v1) |
-| `@pyreon/flow` | the core state, host, literal custom node maps, layouts, and common overlays lower natively, while `<Handle>`, advanced node chrome, and custom edge renderers still require explicit native follow-ups or the WebView bridge |
+| `@pyreon/flow` | the TypeScript package is a browser package at runtime, while the native compiler lowers its public state/editor surface to SwiftUI and Compose; browser CSS selectors and arbitrary SVG path strings remain platform-specific presentation rather than portable runtime concepts |
 | `@pyreon/lint` | lint tooling — runs at dev time, not app runtime |
 | `@pyreon/lathe` | the code generator — build-time tooling that emits app code, not app runtime itself |
 | `@pyreon/config` | build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target |

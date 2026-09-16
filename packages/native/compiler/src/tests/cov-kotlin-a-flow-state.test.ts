@@ -120,11 +120,10 @@ describe('Kotlin createFlow: nothing silent inside the boundary', () => {
     expect(fit.code).toContain('flow.fitView()')
   })
 
-  it('a WRITE to a read-only flow property is named rather than emitted as a store', () => {
-    const w = kt(
-      `      <Button onPress={() => flow.nodes.set([])}>W</Button>`,
-    ).warnings.join('\n')
-    expect(w).toContain('nodes')
+  it('a WRITE to a flow collection lowers to its native setter, with no warning', () => {
+    const r = kt(`      <Button onPress={() => flow.nodes.set([])}>W</Button>`)
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('flow.setNodes(listOf())')
   })
 })
 

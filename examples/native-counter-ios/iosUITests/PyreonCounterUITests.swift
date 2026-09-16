@@ -56,6 +56,17 @@ final class PyreonCounterUITests: XCTestCase {
         XCUIApplication().terminate()
     }
 
+    func test_directNativeFlowRendersNodes() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        // The native host intentionally exposes each node as one accessible
+        // canvas element, so query all element types instead of relying on the
+        // custom node's internal Text retaining the staticText role.
+        XCTAssertTrue(app.descendants(matching: .any)["Native Flow Start"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.descendants(matching: .any)["Native Flow End"].waitForExistence(timeout: 10))
+    }
+
     /// Maps/geolocation — a BEHAVIORAL proof, not a does-not-crash one.
     ///
     /// The injected coordinate is set by the workflow step
@@ -1060,11 +1071,32 @@ final class PyreonCounterUITests: XCTestCase {
         // (2) Tap Unlock → the async Task { await … } runs and flips the text.
         let unlock = app.buttons["Unlock"]
         XCTAssertTrue(unlock.exists, "Unlock button missing")
-        unlock.tap()
-
+        // The page is an outer vertical Scroll; Unlock sits below the fold, and
+        // tapping a non-hittable element lands on whatever covers its point.
+        // `isHittable` can read true for a row the page has scrolled off screen,
+        // and a tap at an off-window point is silently dropped (observed: three
+        // taps, handler never entered). Scroll until the frame is really inside
+        // the window, not until the element calls itself hittable.
+        var swipes = 0
+        let onScreen = { app.windows.firstMatch.frame.contains(unlock.frame) }
+        while !(unlock.isHittable && onScreen()) && swipes < 10 { app.swipeUp(); swipes += 1 }
+        // Retry the tap: on the CI simulator the first tap after launch can be
+        // absorbed by the page's ScrollView while the Flow canvas above is still
+        // settling (observed: one hittable Unlock button, state still "idle").
+        var denied = false
+        for _ in 0..<3 where !denied {
+            unlock.tap()
+            denied = app.staticTexts["Lock: denied"].waitForExistence(timeout: 7)
+        }
+        // Snapshot only on failure: it walks every text on a long page.
+        let lockTexts = denied ? [] : app.staticTexts.allElementsBoundByIndex
+            .map { $0.label }.filter { $0.hasPrefix("Lock") }
+        let unlockButtons = denied ? 0 : app.buttons.matching(identifier: "Unlock").count
         XCTAssertTrue(
-            app.staticTexts["Lock: denied"].waitForExistence(timeout: 5),
-            "\"Lock: denied\" never appeared after tapping Unlock — the async "
+            denied,
+            "observed Lock texts=\(lockTexts) unlockButtons=\(unlockButtons) hittable=\(unlock.isHittable) "
+                + "frame=\(unlock.frame) window=\(app.windows.firstMatch.frame) swipes=\(swipes) — "
+                + "\"Lock: denied\" never appeared after tapping Unlock — the async "
                 + "handler was not wrapped in a Task (so the awaited "
                 + "bio.authenticate never ran) or the post-await lockStatus "
                 + "re-render did not fire. On an unenrolled Simulator the gate "
