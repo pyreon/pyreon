@@ -34,7 +34,6 @@ const KOTLIN_SRC = join(
   '../../../runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonChartCanvas.kt',
 )
 
-const WIDTH = 400
 
 /**
  * Every field the mirror touches, and the pairs it is easy to get wrong:
