@@ -13,6 +13,7 @@
 // cross. And it is DATA in, DATA out — no console, no DOM — so it runs on the
 // server and in a test the same way the engine does.
 
+import { lttbIndices } from './decimate-values'
 import { renderChart } from './render'
 import { appendGraphicLayer, graphicCommands, resolveDataset, svgSize } from './option-layer'
 import { visualMapCommands } from './visual-map'
@@ -22,7 +23,7 @@ import type { CustomRenderItem, CustomSeriesPlan } from './custom-series'
 import { resolveTheme } from './theme-registry'
 import type { ThemeDefinition } from './theme-registry'
 import { dateFormatter, numberFormatter } from './locale'
-import type { Annotation, ChartSpec, PointMarker, Series } from './render'
+import type { Annotation, ChartSpec, PointMarker, Series, SeriesExtra } from './render'
 import { smooth, step } from './curve'
 import type { Formatter } from './format'
 import { renderLegend } from './legend'
@@ -30,7 +31,8 @@ import type { LegendEntry } from './legend'
 import { measureApprox, renderSvg } from './svg'
 import { compileFamily, familyToSvg } from './option-family'
 import type { CompiledFamily } from './option-family'
-import type { DrawCmd, Domain, Double, MeasureText, Rect } from './types'
+import type { ChartGradientStop, ChartPattern, DrawCmd, Domain, Double, MeasureText, Rect } from './types'
+import type { SeriesGradient } from './gradient'
 
 /** An ECharts-shaped option. Loosely typed on purpose: the facade VALIDATES. */
 export type EChartsOption = Record<string, unknown>
@@ -88,15 +90,39 @@ const KNOWN_TOP = new Set([
 ])
 const KNOWN_SERIES = new Set([
   'type', 'name', 'data', 'stack', 'smooth', 'step', 'areaStyle', 'itemStyle',
-  'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'markLine', 'markPoint',
+  'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'markLine', 'markPoint', 'markArea',
   'color', 'showSymbol', 'symbol', 'emphasis', 'z', 'zlevel', 'silent',
-  'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'rippleEffect', 'showEffectOn',
-  'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex',
-  'coordinateSystem', 'polyline', 'effect', 'large', 'largeThreshold', 'progressive',
+  'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'rippleEffect', 'showEffectOn',
+  'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex', 'tooltipExtras',
+  'coordinateSystem', 'polyline', 'effect', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'sampling',
 ])
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
+
+type SamplingMethod = 'lttb' | 'average' | 'max' | 'min' | 'sum'
+const SAMPLING_METHODS = new Set<string>(['lttb', 'average', 'max', 'min', 'sum'])
+
+/** What a series' `sampling` / `large` / `progressive` keys ask of the large-data pass, or null when nothing applies. */
+function samplingRequest(
+  s: Record<string, unknown>,
+  count: number,
+  width: number,
+  warn: (code: OptionWarning['code'], path: string, message: string) => void,
+  path: string,
+): { limit: number; method: SamplingMethod } | null {
+  const toNum = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+  const sampling = s['sampling']
+  if (sampling !== undefined) {
+    if (typeof sampling === 'string' && SAMPLING_METHODS.has(sampling)) return { limit: Math.max(3, Math.floor(width)), method: sampling as SamplingMethod }
+    warn('series-option-unsupported', `${path}.sampling`, `sampling "${String(sampling)}" is not supported (lttb, average, max, min, sum are); the series was not thinned.`)
+  }
+  if (s['large'] === true) return { limit: Math.max(3, toNum(s['largeThreshold']) ?? 2000), method: 'lttb' }
+  const progressive = toNum(s['progressive'])
+  if (progressive !== null && progressive > 0) return { limit: Math.max(3, toNum(s['progressiveThreshold']) ?? 3000), method: 'lttb' }
+  void count
+  return null
+}
 const num = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
   if (typeof v === 'string' && v.trim() !== '') {
@@ -107,7 +133,68 @@ const num = (v: unknown): number | null => {
 }
 const first = <T,>(v: T | T[] | undefined): T | undefined => (Array.isArray(v) ? v[0] : v)
 
+function fillPattern(style: Record<string, unknown>): ChartPattern | undefined {
+  const raw = isObj(style['decal']) ? style['decal'] : undefined
+  if (raw === undefined || raw['show'] === false) return undefined
+  const symbol = typeof raw['symbol'] === 'string' ? raw['symbol'] : ''
+  const rotation = num(raw['rotation']) ?? 0.0
+  const kind: ChartPattern['kind'] = symbol.includes('circle') ? 'dots' : Math.abs(rotation) < 0.01 ? 'cross' : 'diagonal'
+  return {
+    kind,
+    color: typeof raw['color'] === 'string' ? raw['color'] : 'rgba(255,255,255,0.45)',
+    spacing: Math.max(2.0, num(first(raw['dashArrayX'] as number | number[] | undefined)) ?? 8.0),
+    width: Math.max(0.5, num(first(raw['dashArrayY'] as number | number[] | undefined)) ?? 1.0),
+  }
+}
+
 /** `symbol` + `symbolRepeat` for a pictorialBar series; a path/image symbol falls back to a rect with a warning. */
+/**
+ * ECharts' `symbol` / `showSymbol` on line and scatter series. A scatter
+ * datum is a circle unless named otherwise; a line draws its datum symbols
+ * only when `showSymbol` is true (ECharts' default there is a hover-only
+ * `emptyCircle`, which this engine states as "no symbols"). `roundRect` is a
+ * rect, `emptyCircle` a circle; `pin`, `arrow`, `none` and paths warn by name.
+ */
+function seriesSymbol(s: Record<string, unknown>, kind: 'line' | 'points', warn: (code: OptionWarning['code'], path: string, message: string) => void, path: string): { symbol?: Series['symbol'] } {
+  if (kind === 'line' && s['showSymbol'] !== true) return {}
+  const raw = typeof s['symbol'] === 'string' ? (s['symbol'] as string) : kind === 'line' ? 'circle' : ''
+  if (raw === '') return {}
+  const symbol: Series['symbol'] | undefined =
+    raw === 'circle' || raw === 'emptyCircle' ? 'circle' : raw === 'rect' || raw === 'roundRect' ? 'rect' : raw === 'diamond' ? 'diamond' : raw === 'triangle' ? 'triangle' : undefined
+  if (symbol === undefined) {
+    warn('mark-shape-unsupported', `${path}.symbol`, `symbol "${raw}" is not supported (circle, emptyCircle, rect, roundRect, diamond, triangle are); drawn as a circle.`)
+    return kind === 'line' ? { symbol: 'circle' } : {}
+  }
+  return kind === 'points' && symbol === 'circle' ? {} : { symbol }
+}
+
+/**
+ * An ECharts gradient colour (`{ type: 'linear', x, y, x2, y2, colorStops }`)
+ * as the engine's series gradient. The ramp direction is the dominant axis
+ * of the (x, y) → (x2, y2) vector: horizontal when it runs along x, else
+ * vertical (the engine draws exactly those two). A radial gradient has no
+ * engine form yet: it warns by name and degrades to its first stop.
+ */
+function readGradient(raw: unknown, path: string, warn: (code: OptionWarning['code'], path: string, message: string) => void): SeriesGradient | undefined {
+  if (!isObj(raw) || !Array.isArray(raw['colorStops'])) return undefined
+  const stops: ChartGradientStop[] = []
+  for (const st of raw['colorStops'] as unknown[]) {
+    if (isObj(st) && num(st['offset']) !== null && typeof st['color'] === 'string') stops.push({ offset: num(st['offset']) as number, color: st['color'] as string })
+  }
+  if (stops.length === 0) return undefined
+  if (raw['type'] === 'radial') {
+    warn('series-option-unsupported', path, 'Radial gradients are not supported (linear ones are); the first stop is used as a solid colour.')
+    return { stops: [stops[0]!] }
+  }
+  const dx = (num(raw['x2']) ?? 0.0) - (num(raw['x']) ?? 0.0)
+  const dy = (num(raw['y2']) ?? 1.0) - (num(raw['y']) ?? 0.0)
+  // A ramp read "backwards" (bottom → top, right → left) reverses its stops
+  // so the colour at offset 0 still sits where the author put it.
+  const horizontal = Math.abs(dx) > Math.abs(dy)
+  const ordered = (horizontal ? dx < 0 : dy < 0) ? stops.map((st) => ({ offset: 1.0 - st.offset, color: st.color })).reverse() : stops
+  return { stops: ordered, ...(horizontal ? { direction: 'horizontal' } : {}) }
+}
+
 function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning['code'], path: string, message: string) => void, path: string): { symbol: Series['symbol']; symbolRepeat: boolean } {
   const raw = typeof s['symbol'] === 'string' ? (s['symbol'] as string) : 'rect'
   let symbol: Series['symbol'] = 'rect'
@@ -116,6 +203,11 @@ function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning[
   else if (raw === 'triangle') symbol = 'triangle'
   else if (raw !== 'rect' && raw !== 'roundRect') warn('mark-shape-unsupported', `${path}.symbol`, `pictorialBar symbol "${raw}" is not supported (rect, roundRect, circle, diamond, triangle are); drawn as a rect.`)
   const rep = s['symbolRepeat']
+  // Accepted-but-unmapped pictorial keys are NAMED, not swallowed: each one
+  // changes what ECharts draws, so silence here would be a silent drop.
+  for (const key of ['symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate']) {
+    if (s[key] !== undefined) warn('series-option-unsupported', `${path}.${key}`, `pictorialBar ${key} is not supported (symbol, symbolRepeat and symbolSize are); it was ignored.`)
+  }
   return { symbol, symbolRepeat: rep === true || rep === 'fixed' || (typeof rep === 'number' && rep > 0) }
 }
 
@@ -200,6 +292,10 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   const annotations: Annotation[] = []
   const markers: PointMarker[] = []
   let xValues: Double[] | undefined = undefined
+  // Large-data requests per compiled cartesian series (see the sampling pass).
+  const sampleRequests: { limit: number; method: SamplingMethod }[] = []
+  // Running totals per `stack` name for stacked LINES.
+  const lineStacks = new Map<string, Double[]>()
   const barCount = rawSeries.filter((s) => isObj(s) && s['type'] === 'bar' && s['stack'] === undefined).length
 
   for (let i = 0; i < rawSeries.length; i++) {
@@ -276,16 +372,13 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     }
     let kind: Series['kind']
     if (type === 'bar') kind = s['stack'] !== undefined ? 'stacked' : barCount > 1 ? 'grouped' : 'bars'
-    else if (type === 'line') kind = isObj(s['areaStyle']) || s['areaStyle'] === true ? 'area' : 'line'
+    else if (type === 'line') kind = isObj(s['areaStyle']) || s['areaStyle'] === true ? (s['stack'] !== undefined ? 'stackedArea' : 'area') : 'line'
     else if (type === 'scatter' || type === 'effectScatter') kind = 'points'
     else if (type === 'pictorialBar') kind = s['stack'] !== undefined ? 'stacked' : barCount > 1 ? 'grouped' : 'bars'
     else {
       warn('series-type-unsupported', `${path}.type`, `Series type "${type}" is not mapped by this facade yet (cartesian family only).`)
       supported = false
       continue
-    }
-    if (type === 'line' && s['stack'] !== undefined) {
-      warn('series-option-unsupported', `${path}.stack`, 'Stacked LINES are not supported; the line was drawn unstacked.')
     }
 
     // Data: number[] | {value}[] | [x, y][] (pairs feed a continuous x).
@@ -320,9 +413,32 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       }
     }
     if (xContinuous && xs.length === values.length && xs.length > 0 && xValues === undefined) xValues = xs
+    const request = samplingRequest(s, values.length, opts.width ?? 640.0, warn, path)
+    if (request !== null) sampleRequests.push(request)
+    // Stacked LINES: each line sits on the running total of the lines that
+    // share its `stack` name (ECharts' stacked line chart). The total is
+    // carried across a gap so a missing datum does not drop the lines above
+    // it to zero; the gap itself stays a gap. Stacked AREAS are the engine's
+    // own `stackedArea` kind (fills between levels), so their values stay raw.
+    if (type === 'line' && kind === 'line' && s['stack'] !== undefined) {
+      const key = String(s['stack'])
+      const below = lineStacks.get(key)
+      const total: Double[] = []
+      for (let j = 0; j < values.length; j++) {
+        const under = below?.[j] ?? 0.0
+        const v = values[j]!
+        if (!Number.isNaN(v)) values[j] = v + under
+        total.push(Number.isNaN(v) ? under : v + under)
+      }
+      lineStacks.set(key, total)
+    }
 
     const itemStyle = isObj(s['itemStyle']) ? s['itemStyle'] : {}
     const lineStyle = isObj(s['lineStyle']) ? s['lineStyle'] : {}
+    const areaStyle = isObj(s['areaStyle']) ? s['areaStyle'] : {}
+    // ECharts' gradient objects on any colour slot: the ramp becomes the
+    // series gradient, its first stop the solid colour everything else reads.
+    const gradient = readGradient(itemStyle['color'], `${path}.itemStyle.color`, warn) ?? readGradient(areaStyle['color'], `${path}.areaStyle.color`, warn) ?? readGradient(lineStyle['color'], `${path}.lineStyle.color`, warn) ?? readGradient(s['color'], `${path}.color`, warn)
     const color =
       typeof itemStyle['color'] === 'string'
         ? (itemStyle['color'] as string)
@@ -330,7 +446,9 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
           ? (lineStyle['color'] as string)
           : typeof s['color'] === 'string'
             ? (s['color'] as string)
-            : palette[series.length % Math.max(1, palette.length)] ?? defaultPalette[series.length % defaultPalette.length]!
+            : gradient !== undefined && gradient.stops.length > 0
+              ? gradient.stops[0]!.color
+              : palette[series.length % Math.max(1, palette.length)] ?? defaultPalette[series.length % defaultPalette.length]!
     const label = isObj(s['label']) ? s['label'] : {}
     const yAxisIndex = num(s['yAxisIndex']) ?? 0
     if (yAxisIndex > 1) warn('axis-count-unsupported', `${path}.yAxisIndex`, 'Only yAxisIndex 0 or 1 is supported.')
@@ -346,45 +464,150 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       showValues: label['show'] === true,
       radii: undefined,
       axis: yAxisIndex === 1 ? 'right' : undefined,
+      pattern: fillPattern(itemStyle),
       ...(type === 'effectScatter' ? { effect: true } : {}),
       ...(type === 'pictorialBar' ? pictorialFields(s, warn, path) : {}),
+      ...(kind === 'line' || kind === 'points' ? seriesSymbol(s, kind, warn, path) : {}),
+      ...(gradient !== undefined && gradient.stops.length > 0 ? { gradient } : {}),
+      ...(Array.isArray(s['tooltipExtras']) ? { extras: s['tooltipExtras'] as SeriesExtra[] } : {}),
     }
     series.push(entry)
     const seriesIndex = series.length - 1
 
-    // markLine → annotations; markPoint → markers.
-    const ml = isObj(s['markLine']) && Array.isArray(s['markLine']['data']) ? (s['markLine']['data'] as unknown[]) : []
+    // markLine / markArea → annotations; markPoint → markers.
+    // Datum x in annotation units: the continuous x when the series has one,
+    // else the datum index (the engine's categorical contract).
+    const xOfIndex = (j: number): number => (xs.length === values.length && xs.length > 0 ? xs[j]! : j)
+    const nearestIndex = (target: number): number => {
+      let best = 0
+      for (let j = 1; j < values.length; j++) if (Math.abs(values[j]! - target) < Math.abs(values[best]! - target)) best = j
+      return best
+    }
+    const argIndex = (which: string): number => {
+      if (values.length === 0) return -1
+      if (which === 'max' || which === 'min') {
+        let best = 0
+        for (let j = 1; j < values.length; j++) if (which === 'max' ? values[j]! > values[best]! : values[j]! < values[best]!) best = j
+        return best
+      }
+      if (which === 'average') return nearestIndex(values.reduce((a, b) => a + b, 0.0) / values.length)
+      return -1
+    }
+    const statOf = (which: string): number | null => {
+      if (values.length === 0) return null
+      if (which === 'average') return values.reduce((a, b) => a + b, 0.0) / values.length
+      if (which === 'max') return Math.max(...values)
+      if (which === 'min') return Math.min(...values)
+      if (which === 'median') {
+        const sorted = [...values].sort((a, b) => a - b)
+        const mid = Math.floor(sorted.length / 2)
+        return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2
+      }
+      return null
+    }
+    // A category NAME in a `coord` resolves to its index; a number on a
+    // continuous x resolves to the nearest datum's x (so the mark sits where
+    // that datum was drawn), else it is the index itself.
+    const xOfCoord = (raw: unknown): number | null => {
+      if (typeof raw === 'string') {
+        const at = categories.indexOf(raw)
+        return at >= 0 ? at : null
+      }
+      return num(raw)
+    }
+    // One markLine endpoint: a datum picked by statistic, a `coord`, or an axis pair.
+    const endpoint = (e: Record<string, unknown>): { x: number; y: number } | null => {
+      if (typeof e['type'] === 'string') {
+        const at = argIndex(e['type'] as string)
+        return at < 0 ? null : { x: xOfIndex(at), y: values[at]! }
+      }
+      if (Array.isArray(e['coord'])) {
+        const cx = xOfCoord((e['coord'] as unknown[])[0])
+        const cy = num((e['coord'] as unknown[])[1])
+        return cx !== null && cy !== null ? { x: cx, y: cy } : null
+      }
+      const ex = num(e['xAxis'])
+      const ey = num(e['yAxis'])
+      return ex !== null && ey !== null ? { x: ex, y: ey } : null
+    }
+    const styleColor = (o: Record<string, unknown> | undefined, key: string, fallback: string | undefined): string | undefined => {
+      const st = o !== undefined && isObj(o[key]) ? o[key] : undefined
+      return st !== undefined && typeof st['color'] === 'string' ? (st['color'] as string) : fallback
+    }
+    const markLine = isObj(s['markLine']) ? s['markLine'] : undefined
+    const ml = markLine !== undefined && Array.isArray(markLine['data']) ? (markLine['data'] as unknown[]) : []
+    const mlColor = styleColor(markLine, 'lineStyle', color)
     for (let k = 0; k < ml.length; k++) {
       const m = ml[k]
+      if (Array.isArray(m)) {
+        // Point-to-point: `[{ from }, { to }]` — a segment between two data-space points.
+        const from = isObj(m[0]) ? endpoint(m[0]) : null
+        const to = isObj(m[1]) ? endpoint(m[1]) : null
+        if (from === null || to === null) {
+          warn('mark-shape-unsupported', `${path}.markLine.data[${k}]`, 'A point-to-point markLine needs two endpoints, each a type (max/min/average), a coord, or an xAxis + yAxis pair; it was skipped.')
+          continue
+        }
+        const head = m[0] as Record<string, unknown>
+        annotations.push({ x1: from.x, y1: from.y, x2: to.x, y2: to.y, label: typeof head['name'] === 'string' ? (head['name'] as string) : undefined, color: styleColor(head, 'lineStyle', mlColor) })
+        continue
+      }
       if (!isObj(m)) continue
       const name = typeof m['name'] === 'string' ? (m['name'] as string) : undefined
-      if (m['type'] === 'average' || m['type'] === 'max' || m['type'] === 'min') {
-        const stat =
-          m['type'] === 'average'
-            ? values.reduce((a, b) => a + b, 0.0) / Math.max(1, values.length)
-            : m['type'] === 'max'
-              ? Math.max(...values)
-              : Math.min(...values)
-        annotations.push({ y: stat, label: name ?? String(m['type']), color })
+      const lineColor = styleColor(m, 'lineStyle', mlColor)
+      const stat = typeof m['type'] === 'string' ? statOf(m['type'] as string) : null
+      if (stat !== null) {
+        annotations.push({ y: stat, label: name ?? String(m['type']), color: lineColor })
       } else if (num(m['yAxis']) !== null) {
-        annotations.push({ y: num(m['yAxis']) as number, label: name, color })
+        annotations.push({ y: num(m['yAxis']) as number, label: name, color: lineColor })
       } else if (num(m['xAxis']) !== null) {
-        annotations.push({ x: num(m['xAxis']) as number, label: name, color })
+        annotations.push({ x: num(m['xAxis']) as number, label: name, color: lineColor })
       } else {
-        warn('mark-shape-unsupported', `${path}.markLine.data[${k}]`, 'Only average/max/min, yAxis and xAxis markLines are mapped.')
+        warn('mark-shape-unsupported', `${path}.markLine.data[${k}]`, 'Only average/max/min/median, yAxis, xAxis, and point-to-point markLines are mapped.')
       }
     }
-    const mp = isObj(s['markPoint']) && Array.isArray(s['markPoint']['data']) ? (s['markPoint']['data'] as unknown[]) : []
+    const markArea = isObj(s['markArea']) ? s['markArea'] : undefined
+    const ma = markArea !== undefined && Array.isArray(markArea['data']) ? (markArea['data'] as unknown[]) : []
+    const maColor = styleColor(markArea, 'itemStyle', color)
+    for (let k = 0; k < ma.length; k++) {
+      const pair = ma[k]
+      if (!Array.isArray(pair) || pair.length < 2 || !isObj(pair[0]) || !isObj(pair[1])) {
+        warn('mark-shape-unsupported', `${path}.markArea.data[${k}]`, 'A mark area needs two boundary objects; it was skipped.')
+        continue
+      }
+      const name = typeof pair[0]['name'] === 'string' ? (pair[0]['name'] as string) : undefined
+      const yFrom = num(pair[0]['yAxis'])
+      const yTo = num(pair[1]['yAxis'])
+      const xFrom = num(pair[0]['xAxis'])
+      const xTo = num(pair[1]['xAxis'])
+      if (yFrom !== null && yTo !== null) annotations.push({ yFrom, yTo, label: name, color: maColor })
+      else if (xFrom !== null && xTo !== null) annotations.push({ xFrom, xTo, label: name, color: maColor })
+      else warn('mark-shape-unsupported', `${path}.markArea.data[${k}]`, 'A mark area needs matching numeric xAxis or yAxis boundaries; it was skipped.')
+    }
+    const markPoint = isObj(s['markPoint']) ? s['markPoint'] : undefined
+    const mp = markPoint !== undefined && Array.isArray(markPoint['data']) ? (markPoint['data'] as unknown[]) : []
+    const mpColor = styleColor(markPoint, 'itemStyle', undefined)
+    const mpSize = markPoint !== undefined ? num(markPoint['symbolSize']) : null
     for (let k = 0; k < mp.length; k++) {
       const m = mp[k]
       if (!isObj(m)) continue
-      const name = typeof m['name'] === 'string' ? (m['name'] as string) : undefined
-      if (m['type'] === 'max' || m['type'] === 'min') {
-        markers.push({ seriesIndex, at: m['type'] as 'max' | 'min', label: name })
-      } else if (Array.isArray(m['coord']) && num((m['coord'] as unknown[])[0]) !== null) {
-        markers.push({ seriesIndex, atIndex: num((m['coord'] as unknown[])[0]) as number, label: name })
+      // `name` labels the marker; ECharts shows `value` when there is no name.
+      const name = typeof m['name'] === 'string' ? (m['name'] as string) : m['value'] !== undefined && m['value'] !== null ? String(m['value']) : undefined
+      const pointColor = styleColor(m, 'itemStyle', mpColor)
+      const size = num(m['symbolSize']) ?? mpSize
+      const extra = { label: name, ...(pointColor !== undefined ? { color: pointColor } : {}), ...(size !== null ? { radius: size / 2.0 } : {}) }
+      const dim = m['valueDim'] ?? m['valueIndex']
+      if (dim !== undefined && dim !== 'y' && dim !== 1) {
+        warn('mark-shape-unsupported', `${path}.markPoint.data[${k}].valueDim`, 'markPoint statistics run over the y values only; a valueDim/valueIndex other than y was ignored.')
+      }
+      if (m['type'] === 'max' || m['type'] === 'min' || m['type'] === 'average') {
+        markers.push({ seriesIndex, at: m['type'] as 'max' | 'min' | 'average', ...extra })
+      } else if (Array.isArray(m['coord']) && xOfCoord((m['coord'] as unknown[])[0]) !== null) {
+        const cx = xOfCoord((m['coord'] as unknown[])[0]) as number
+        // On a continuous x the coord names a position; the marker anchors to the nearest datum.
+        const atIndex = xs.length === values.length && xs.length > 0 ? xs.reduce((best, x, j) => (Math.abs(x - cx) < Math.abs(xs[best]! - cx) ? j : best), 0) : cx
+        markers.push({ seriesIndex, atIndex, ...extra })
       } else {
-        warn('mark-shape-unsupported', `${path}.markPoint.data[${k}]`, 'Only max/min and coord markPoints are mapped.')
+        warn('mark-shape-unsupported', `${path}.markPoint.data[${k}]`, 'Only max/min/average and coord markPoints are mapped.')
       }
     }
   }
@@ -411,6 +634,55 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       const ext = customExtents(plan)
       if (ext.y !== null) customY = customY === undefined ? { min: Math.min(0.0, ext.y[0]), max: ext.y[1] } : { min: Math.min(customY.min, ext.y[0]), max: Math.max(customY.max, ext.y[1]) }
       if (ext.x !== null && categories.length === 0) customX = [ext.x[0], ext.x[1]]
+    }
+  }
+  // ---- large data: sampling / large / progressive ----------------------
+  // ECharts thins a `sampling` series to the pixel width, gives a `large`
+  // series past `largeThreshold` (2000) a cheaper draw, and draws a
+  // `progressive` series in chunks past `progressiveThreshold` (3000). This
+  // engine has ONE large-data mechanism — decimation to a bounded point count,
+  // LTTB unless `sampling` names an aggregate, with every series and the
+  // category axis thinned on the SAME rows so a hit still names a real datum —
+  // and each of those keys resolves to that count. It applies only when every
+  // cartesian series has the same length: thinning one would misalign the
+  // shared x.
+  if (sampleRequests.length > 0 && series.length > 0) {
+    const n = series[0]!.values.length
+    const aligned = series.every((entry) => entry.values.length === n)
+    let limit = Infinity
+    for (const r of sampleRequests) if (r.limit < limit) limit = r.limit
+    if (aligned && n > limit && limit >= 3) {
+      const method = sampleRequests[0]!.method
+      if (method === 'lttb') {
+        const keep = lttbIndices(xValues ?? [], series[0]!.values, limit)
+        if (keep.length > 0) {
+          for (const entry of series) entry.values = keep.map((i) => entry.values[i]!)
+          if (categories.length === n) categories.splice(0, n, ...keep.map((i) => categories[i]!))
+          if (xValues !== undefined) xValues = keep.map((i) => xValues![i]!)
+        }
+      } else {
+        const edges: number[] = []
+        for (let b = 0; b <= limit; b++) edges.push(Math.floor((b * n) / limit))
+        const aggregate = (values: Double[]): Double[] => {
+          const out: Double[] = []
+          for (let b = 0; b < limit; b++) {
+            let acc = NaN
+            let count = 0
+            for (let i = edges[b]!; i < edges[b + 1]!; i++) {
+              const v = values[i]!
+              if (Number.isNaN(v)) continue
+              acc = count === 0 ? v : method === 'max' ? Math.max(acc, v) : method === 'min' ? Math.min(acc, v) : acc + v
+              count++
+            }
+            out.push(method === 'average' && count > 0 ? acc / count : acc)
+          }
+          return out
+        }
+        for (const entry of series) entry.values = aggregate(entry.values)
+        const firstOf = <T>(list: T[]): T[] => edges.slice(0, limit).map((start) => list[start]!)
+        if (categories.length === n) categories.splice(0, n, ...firstOf(categories))
+        if (xValues !== undefined) xValues = firstOf(xValues)
+      }
     }
   }
   const spec: ChartSpec = {

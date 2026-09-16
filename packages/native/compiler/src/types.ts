@@ -1993,7 +1993,7 @@ export interface ParseResult {
    * NOT mis-lowered as a coolgrid Row. An untracked name (absent from the map)
    * keeps prior behaviour, so this is a purely additive precision guard.
    */
-  aliasImports: Map<string, string>
+  aliasImports: Map<string, { source: string; imported: string }>
   /** Diagnostic messages produced during IR construction. */
   warnings: string[]
 }

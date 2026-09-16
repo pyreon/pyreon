@@ -86,10 +86,28 @@ family) or `step` (holds each value to the next datum — the honest shape for
 prices). Under the hood a curve is a `(points) => points` densifier, which is
 why it costs zero new backend work on any platform.
 
-**Annotations** are dashed rules and translucent bands with optional labels,
-placed by the same scale the axis is labelled with. **`bubble`** maps its r
+**Annotations** are dashed rules, translucent bands and point-to-point
+segments (`x1`/`y1`/`x2`/`y2`, in data units) with optional labels, placed by
+the same scale the axis is labelled with. **Markers** anchor a point at a
+series' `max`, `min`, `average` (the datum nearest the mean) or a datum index.
+The option facade resolves every ECharts `markLine` / `markPoint` spelling
+onto them — `median`, `[from, to]` pairs, category-named `coord`s, per-mark
+`lineStyle` / `itemStyle` colours and `symbolSize` — on web, iOS and Android. **`bubble`** maps its r
 channel by AREA, not radius — radius-proportional bubbles exaggerate the data.
 **`bars(y, { showValues: true })`** labels each bar with its formatted value.
+**Datasets on native**: a literal `dataset` (with `encode` and the built-in
+`filter` / `sort` transforms) resolves at compile time through the same
+`resolveDataset` the web runs — exposed as `@pyreon/charts/option-layer` for
+build tools — so the series data, the category axis and the tooltip extras
+are the same on iOS and Android. **Tooltip extras**: a series' `extras: [{ label, numbers | texts }]` lists extra
+dimensions under the value in the tooltip and as columns of the accessible
+table — the option facade's `encode.tooltip` over a dataset. **Gradients**: a mark's `gradient: { stops, direction }` ramps its fill across
+the plot; the option facade reads ECharts' linear gradient objects on
+`itemStyle` / `areaStyle` / `lineStyle` / series `color` (a radial gradient
+warns and degrades to its first stop). **Symbols**: `points(y, { symbol: 'diamond' })` draws every datum as that
+shape (rect, circle, diamond, triangle; the pictorialBar vocabulary), and
+`line(y, { symbol })` draws a symbol at every datum over the line — the
+facade's `symbol` / `showSymbol` / `symbolSize`, on web, iOS and Android.
 
 ### Entrance animation
 
@@ -247,9 +265,13 @@ hidden table beside the chart.
 
 ### Families, coordinates and the ECharts option facade
 
-Beyond bars, lines, points, pie, gauge, radar, candlestick and heatmap, `/plot` ships the full ECharts family set as tree-shakeable modules: **funnel, boxplot, treemap, sunburst, tree, sankey, graph** (seeded force / circular), **calendar, parallel, polar, single axis, theme river** and **map** (GeoJSON via `registerMap`, scatter + flight paths on geo). Each is a component (`<TreemapChart>`, `<SankeyChart>`, `<MapChart>`, …), a pure `layout` / `render` / `hit` trio and a server-safe `xToSvg`.
+Beyond bars, lines, points, pie, gauge, radar, candlestick and heatmap, `/plot` ships the full ECharts family set as tree-shakeable modules: **funnel, boxplot, treemap, sunburst, tree, sankey, graph** (seeded force / circular), **calendar, parallel, polar, single axis, theme river** and **map** (GeoJSON via `registerMap`, scatter + flight paths on geo). Each is a component (`<TreemapChart>`, `<SankeyChart>`, `<MapChart>`, …), a pure `layout` / `render` / `hit` trio and a server-safe `xToSvg`. Sankey, calendar and parallel coordinates take `orient="vertical"` — the horizontal layout reflected across the diagonal, on every target. Polar takes bar, line and scatter series (`kind: 'scatter'` draws the points alone, at `symbolSize / 2`).
 
 `optionToSvg` / `compileOption` accept an **ECharts-shaped option** — series, coordinates, `dataset` + transforms, `graphic`, `visualMap`, `custom` `renderItem`, `theme` and `locale` — and name every unmapped key in `warnings` instead of dropping it:
+
+Datasets follow ECharts' own contract: `source` (array or object rows, `sourceHeader`, `dimensions`), `id` / `datasetId` / `fromDatasetId` references, the built-in `filter` and `sort` transforms, and **external transforms** through `registerChartTransform` — the `echarts.registerTransform` shape, with the same `upstream` surface (`cloneRawData`, `getRawData`, `getDimensionInfo`, `cloneAllDimensionInfo`), so an ecStat transform object registers unchanged and a multi-result transform feeds `fromTransformResult`. `encode` resolves `x` / `y` / `value` / `itemName` / `seriesName` by dimension name or index; `encode.tooltip` is not mapped yet and warns by name.
+
+Large data: a series' `sampling` (`lttb` / `average` / `max` / `min` / `sum`) thins it to the pixel width, `large` + `largeThreshold` (2000) and `progressive` + `progressiveThreshold` (3000) bound its point count — all three resolve to the engine's one large-data mechanism, decimation on shared rows (every series and the category axis thinned together, so a hit still names a real datum), and only when every series has the same length. Reactive updates take `setOption`'s own options on `<OptionChart optionUpdate>`: `notMerge`, `replaceMerge` (id-merge, drop what the update does not name), `lazyUpdate` and `silent` (accepted; the host already paints once per frame and emits nothing on apply).
 
 ```ts
 import { optionToSvg } from '@pyreon/charts/plot'
@@ -556,7 +578,8 @@ import { WebView } from '@pyreon/primitives'
 
 - **Forward** — `data={option}` → `window.__pyreonData` + a `pyreondata` event → `chart.setOption(option, true)`, in place. Use a data-driven option (no embedded `formatter`/`renderItem` closures — they don't survive JSON encoding across the native bridge).
 - **Reverse** — a chart tap → `window.pyreonPostMessage(json)` → your `onMessage`. The host resizes via `ResizeObserver` (rotation / late layout).
-- **`<ChartWebView option onSelect>`** is the web-side ergonomic wrapper (it builds the host + emits `<WebView>` for you); on native, use `<WebView html={CHART_HOST} …>` directly (the component's body can't be PMTC-lowered — the host string + `<WebView>` can).
+- **`<ChartWebView option onSelect>`** is the ergonomic wrapper (it builds the host + emits `<WebView>` for you) and lowers natively too: PMTC emits `PyreonWebView(html:data:onMessage:)` with the same envelope (`option`, once-only `commands`, `loading` / `loadingOptions`, `group`) and routes `onSelect` / `onEvent` / `onError` back. Host configuration (`engineScript`, `theme`, `renderer`, `background`, `forwardEvents`, `hostSetupScript`) must be statically resolvable on native.
+- **Connected groups** — `<ChartWebView group="dashboard">` mirrors dataZoom, legend selection, highlight/downplay and the data-anchored tooltip between every hosted chart sharing the name, the same action classes `echarts.connect` shares. Each hosted chart is its own page, so the engine's own `connect()` can never see a sibling host: the page joins the `<WebView>` **host group** of the same name and relays those actions through it, and the host fans them into the sibling pages — identically on web (sibling iframes), iOS (sibling WKWebViews) and Android (sibling WebViews). Pass an accessor to move a chart between groups; a relayed action never echoes back to its origin.
 
 See `examples/native-viz` for a full one-source bar + line + pie + flow app across web/iOS/Android.
 

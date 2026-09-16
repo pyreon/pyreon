@@ -6,7 +6,7 @@
 // command list rather than drawing directly.
 
 import { cornerRadii, hasCorners } from './corners'
-import type { ChartGradient, DrawCmd, MeasureText, Pt } from './types'
+import type { ChartGradient, ChartPattern, DrawCmd, MeasureText, Pt, Rect } from './types'
 
 /**
  * Text measurement backed by the canvas itself, for `computeLayout`.
@@ -88,6 +88,41 @@ function tracePolyline(ctx: CanvasRenderingContext2D, points: Pt[]): void {
   for (let i = 1; i < points.length; i++) ctx.lineTo(points[i]!.x, points[i]!.y)
 }
 
+function paintPattern(ctx: CanvasRenderingContext2D, pattern: ChartPattern | undefined, bounds: Rect): void {
+  if (pattern === undefined) return
+  const spacing = Math.max(2, pattern.spacing)
+  const width = Math.max(0.5, pattern.width)
+  ctx.save()
+  ctx.clip()
+  ctx.strokeStyle = pattern.color
+  ctx.fillStyle = pattern.color
+  ctx.lineWidth = width
+  if (pattern.kind === 'dots') {
+    for (let y = bounds.y; y <= bounds.y + bounds.h; y += spacing) {
+      for (let x = bounds.x; x <= bounds.x + bounds.w; x += spacing) {
+        ctx.beginPath()
+        ctx.arc(x, y, width / 2, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+  } else {
+    const span = bounds.w + bounds.h
+    for (let d = -bounds.h; d <= bounds.w; d += spacing) {
+      ctx.beginPath()
+      ctx.moveTo(bounds.x + d, bounds.y + bounds.h)
+      ctx.lineTo(bounds.x + d + span, bounds.y)
+      ctx.stroke()
+      if (pattern.kind === 'cross') {
+        ctx.beginPath()
+        ctx.moveTo(bounds.x + d, bounds.y)
+        ctx.lineTo(bounds.x + d + span, bounds.y + bounds.h)
+        ctx.stroke()
+      }
+    }
+  }
+  ctx.restore()
+}
+
 /**
  * Paint a command list.
  *
@@ -114,6 +149,14 @@ export function paint(
         ctx.fill()
       } else {
         ctx.fillRect(c.rect.x, c.rect.y, c.rect.w, c.rect.h)
+      }
+      if (c.pattern !== undefined) {
+        if (hasCorners(radii)) traceRoundedRect(ctx, c.rect.x, c.rect.y, c.rect.w, c.rect.h, radii)
+        else {
+          ctx.beginPath()
+          ctx.rect(c.rect.x, c.rect.y, c.rect.w, c.rect.h)
+        }
+        paintPattern(ctx, c.pattern, c.rect)
       }
     } else if (c.kind === 'line') {
       ctx.strokeStyle = c.stroke
@@ -145,6 +188,15 @@ export function paint(
         tracePolyline(ctx, c.points)
         ctx.closePath()
         ctx.fill()
+        if (c.pattern !== undefined) {
+          tracePolyline(ctx, c.points)
+          ctx.closePath()
+          const xs = c.points.map((p) => p.x)
+          const ys = c.points.map((p) => p.y)
+          const x = Math.min(...xs)
+          const y = Math.min(...ys)
+          paintPattern(ctx, c.pattern, { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y })
+        }
       }
     } else if (c.kind === 'circle') {
       ctx.fillStyle = c.fill

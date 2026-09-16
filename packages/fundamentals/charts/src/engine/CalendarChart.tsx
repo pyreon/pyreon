@@ -15,6 +15,8 @@ export interface CalendarChartProps extends CanvasHostProps {
   end: string
   values: Record<string, Double> | (() => Record<string, Double>)
   calendar?: CalendarOptions
+  /** `'vertical'` lays the chart out top-to-bottom — the horizontal layout reflected across the diagonal (ECharts `orient` / `layout`). */
+  orient?: 'horizontal' | 'vertical'
   /** Fired with the day cell under the click, or null for a miss. */
   onSelect?: (cell: CalendarCell | null) => void
   /** The cell's INDEX under the click (into the layout's cells), or -1 — the multiplatform-safe twin of `onSelect`. */
@@ -25,6 +27,7 @@ export function CalendarChart(props: CalendarChartProps): VNode {
   const readValues = (): Record<string, Double> => (typeof props.values === 'function' ? props.values() : props.values)
   return canvasHost<CalendarLayout>({
     props,
+    transpose: () => props.orient === 'vertical',
     defaultHeight: 140,
     caption: 'Calendar data',
     track: () => {

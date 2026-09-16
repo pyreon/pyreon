@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { chartToSvg } from './svg-chart'
 import { bars, line } from './marks'
-import { mirrorCmds, mirrorPoint, mirrorX } from './rtl'
+import { mirrorCmds, mirrorPoint, mirrorX, transposeCmds, transposeRect } from './rtl'
 import type { DrawCmd } from './types'
 
 /**
@@ -139,5 +139,27 @@ describe('rtl — through the static SVG path', () => {
     expect(ltr.length).toBeGreaterThan(0)
     expect(Math.min(...ltr), 'LTR value labels sit in the left gutter').toBeLessThan(60)
     expect(Math.max(...rtl), 'RTL value labels sit in the right gutter').toBeGreaterThan(240)
+  })
+})
+
+describe('transpose — the vertical layout', () => {
+  it('reflects every command across the diagonal, swaps the off-diagonal corners and both text anchors, and round-trips', () => {
+    const cmds: DrawCmd[] = [
+      { kind: 'rect', rect: { x: 10, y: 4, w: 40, h: 20 }, fill: '#123456', corners: [1, 2, 3, 4], grad: { from: { x: 10, y: 0 }, to: { x: 50, y: 0 }, stops: [{ offset: 0, color: '#000' }] } },
+      { kind: 'line', from: { x: 1, y: 2 }, to: { x: 3, y: 4 }, stroke: '#000', width: 1 },
+      { kind: 'polyline', points: [{ x: 1, y: 2 }, { x: 3, y: 4 }], stroke: '#000', width: 1 },
+      { kind: 'polygon', points: [{ x: 1, y: 2 }, { x: 3, y: 4 }, { x: 5, y: 6 }], fill: '#000' },
+      { kind: 'circle', center: { x: 7, y: 8 }, radius: 2, fill: '#000' },
+      { kind: 'text', text: 'A', at: { x: 9, y: 10 }, fill: '#000', size: 11, align: 'end', baseline: 'top', rotate: -35 },
+    ]
+    const t = transposeCmds(cmds)
+    expect(t[0]).toMatchObject({ rect: { x: 4, y: 10, w: 20, h: 40 }, corners: [1, 4, 3, 2], grad: { from: { x: 0, y: 10 }, to: { x: 0, y: 50 } } })
+    expect(t[1]).toMatchObject({ from: { x: 2, y: 1 }, to: { x: 4, y: 3 } })
+    expect(t[2]).toMatchObject({ points: [{ x: 2, y: 1 }, { x: 4, y: 3 }] })
+    expect(t[3]).toMatchObject({ points: [{ x: 2, y: 1 }, { x: 4, y: 3 }, { x: 6, y: 5 }] })
+    expect(t[4]).toMatchObject({ center: { x: 8, y: 7 } })
+    expect(t[5]).toMatchObject({ at: { x: 10, y: 9 }, align: 'start', baseline: 'bottom', rotate: 125, text: 'A' })
+    expect(transposeCmds(t)).toEqual(cmds)
+    expect(transposeRect({ x: 1, y: 2, w: 3, h: 4 })).toEqual({ x: 2, y: 1, w: 4, h: 3 })
   })
 })

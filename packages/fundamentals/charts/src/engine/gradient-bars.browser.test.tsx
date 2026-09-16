@@ -70,6 +70,28 @@ const GRADIENT = {
 }
 
 describe('gradient fills — pixels', () => {
+  it('clips a repeating pattern inside the bar while preserving its base fill', async () => {
+    const { container, unmount } = mountInBrowser(
+      <PlotChart<Row> {...chartProps({ marks: [bars((d: Row) => d.v, { color: TOP, pattern: { kind: 'cross', color: '#ffffff', spacing: 8, width: 2 } })] })} />,
+    )
+    await flush()
+    const canvas = query(container, 'canvas')
+    const box = paintedBox(canvas)
+    let red = 0
+    let white = 0
+    for (let y = box.y + 3; y < box.y + box.h - 3; y += 2) {
+      for (let x = box.x + 3; x < box.x + box.w - 3; x += 2) {
+        const p = rgbaAt(canvas, x, y)
+        if (p[0]! > 220 && p[1]! < 60 && p[2]! < 60) red++
+        if (p[0]! > 220 && p[1]! > 220 && p[2]! > 220) white++
+      }
+    }
+    expect(red).toBeGreaterThan(20)
+    expect(white).toBeGreaterThan(20)
+    expect(rgbaAt(canvas, Math.max(0, box.x - 3), box.y + box.h / 2)[3]).toBe(0)
+    unmount()
+  })
+
   it('a solid bar is one colour top to bottom; a gradient bar is red at the top and blue at the bottom', async () => {
     const solid = mountInBrowser(<PlotChart<Row> {...chartProps()} />)
     await flush()

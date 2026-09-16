@@ -1,14 +1,12 @@
 // Single axis — points along one horizontal axis (category or value), sized by a second dimension.
 
-import { measureApprox, renderSvg } from './svg'
-import type { SvgOptions } from './svg'
-import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
+import type { Domain, Double, DrawCmd, Pt, Rect } from './types'
 
 export interface SingleAxisSpec {
   type?: 'category' | 'value' | undefined
   categories?: string[] | undefined
   /** Fixed extent for a value axis; default the data's min/max. */
-  domain?: [Double, Double] | undefined
+  domain?: Domain | undefined
   name?: string | undefined
 }
 
@@ -21,10 +19,15 @@ export interface SingleAxisPoint {
   color?: string | undefined
 }
 
+export interface SingleAxisTick { x: Double; label: string; index: number }
+export interface SingleAxisLayoutAxis { y: Double; x0: Double; x1: Double; ticks: SingleAxisTick[]; name: string | undefined }
+
 export interface SingleAxisLayout {
-  axis: { y: Double; x0: Double; x1: Double; ticks: { x: Double; label: string }[]; name: string | undefined }
-  points: { index: number; at: Pt; radius: Double; color: string; name: string | undefined }[]
+  axis: SingleAxisLayoutAxis
+  points: SingleAxisLayoutPoint[]
 }
+
+export interface SingleAxisLayoutPoint { index: number; at: Pt; radius: Double; color: string; name: string | undefined }
 
 export interface SingleAxisOptions {
   radius?: Double | undefined
@@ -43,7 +46,11 @@ function niceTicks(lo: Double, hi: Double, count: number): Double[] {
   const norm = raw / mag
   const step = (norm >= 5.0 ? 5.0 : norm >= 2.0 ? 2.0 : 1.0) * mag
   const out: Double[] = []
-  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v = v + step) out.push(Math.round(v * 1e6) / 1e6)
+  let v = Math.ceil(lo / step) * step
+  while (v <= hi + 1e-9) {
+    out.push(Math.round(v * 1e6) / 1e6)
+    v = v + step
+  }
   return out
 }
 
@@ -63,53 +70,66 @@ export function layoutSingleAxis(axis: SingleAxisSpec, points: SingleAxisPoint[]
   let hi: Double
   if (isCat) {
     lo = 0.0
-    hi = Math.max(0, (axis.categories ?? []).length - 1)
+    hi = Math.max(0.0, (axis.categories ?? []).length * 1.0 - 1.0)
   } else if (axis.domain !== undefined) {
-    lo = axis.domain[0]
-    hi = axis.domain[1]
+    const domain: Domain = axis.domain ?? { min: 0.0, max: 1.0 }
+    lo = domain.min
+    hi = domain.max
   } else {
-    lo = Infinity
-    hi = -Infinity
+    lo = 999999999999999.0
+    hi = -999999999999999.0
     for (const p of points) {
       if (p.x < lo) lo = p.x
       if (p.x > hi) hi = p.x
     }
-    if (lo === Infinity) {
+    if (lo === 999999999999999.0) {
       lo = 0.0
       hi = 1.0
     }
   }
   const span = hi - lo
   const px = (v: Double): Double => (span <= 0.0 ? (x0 + x1) / 2.0 : x0 + ((v - lo) / span) * (x1 - x0))
-  const ticks: { x: Double; label: string }[] = []
+  const ticks: SingleAxisTick[] = []
   if (isCat) {
     const cats = axis.categories ?? []
-    for (let i = 0; i < cats.length; i++) ticks.push({ x: px(i), label: cats[i]! })
+    for (let i = 0; i < cats.length; i++) ticks.push({ x: px(i * 1.0), label: cats[i]!, index: i })
   } else {
-    for (const v of niceTicks(lo, hi, 6)) ticks.push({ x: px(v), label: String(v) })
+    let index = 0
+    for (const v of niceTicks(lo, hi, 6)) {
+      ticks.push({ x: px(v), label: String(v), index })
+      index++
+    }
   }
   let maxSize = 0.0
-  for (const p of points) if (p.size !== undefined && p.size > maxSize) maxSize = p.size
+  for (const p of points) {
+    const pointSize = p.size ?? 0.0
+    if (pointSize > maxSize) maxSize = pointSize
+  }
   const color = options?.color ?? '#0f766e'
-  const laid = points.map((p, i) => ({
-    index: i,
-    at: { x: px(p.x), y },
-    radius: p.size === undefined || maxSize <= 0.0 ? base : base * (0.6 + 1.4 * Math.sqrt(Math.max(0.0, p.size) / maxSize)),
-    color: p.color ?? color,
-    name: p.name,
-  }))
+  const laid: SingleAxisLayoutPoint[] = []
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i]!
+    const pointSize = p.size ?? 0.0
+    const hasSize = p.size !== undefined
+    laid.push({
+      index: i,
+      at: { x: px(p.x), y },
+      radius: !hasSize || maxSize <= 0.0 ? base : base * (0.6 + 1.4 * Math.sqrt(Math.max(0.0, pointSize) / maxSize)),
+      color: p.color ?? color,
+      name: p.name,
+    })
+  }
   return { axis: { y, x0, x1, ticks, name: axis.name }, points: laid }
 }
 
 /** Render the axis line + ticks, then the points, then labels. */
-export function renderSingleAxis(layout: SingleAxisLayout, options?: SingleAxisOptions, measure?: MeasureText): DrawCmd[] {
+export function renderSingleAxis(layout: SingleAxisLayout, options?: SingleAxisOptions): DrawCmd[] {
   const out: DrawCmd[] = []
   const fontSize = options?.fontSize ?? 11.0
   const axisColor = options?.axisColor ?? '#94a3b8'
   const labelColor = options?.labelColor ?? '#334155'
   const rawP = options?.progress ?? 1.0
   const progress = rawP < 0.0 ? 0.0 : rawP > 1.0 ? 1.0 : rawP
-  void (measure ?? measureApprox())
   const a = layout.axis
   out.push({ kind: 'line', from: { x: a.x0, y: a.y }, to: { x: a.x1, y: a.y }, stroke: axisColor, width: 1.0 })
   for (const t of a.ticks) {
@@ -129,7 +149,7 @@ export function renderSingleAxis(layout: SingleAxisLayout, options?: SingleAxisO
 /** The point under a pixel (nearest within its symbol + halo), or -1. */
 export function hitSingleAxis(layout: SingleAxisLayout, px: Double, py: Double): number {
   let best = -1
-  let bestD = Infinity
+  let bestD = 999999999999999.0
   for (const p of layout.points) {
     const d = (px - p.at.x) * (px - p.at.x) + (py - p.at.y) * (py - p.at.y)
     const r = p.radius + 3.0
@@ -139,30 +159,4 @@ export function hitSingleAxis(layout: SingleAxisLayout, px: Double, py: Double):
     }
   }
   return best
-}
-
-export interface SingleAxisToSvgOptions {
-  axis: SingleAxisSpec
-  points: SingleAxisPoint[]
-  width?: Double
-  height?: Double
-  options?: SingleAxisOptions
-  measure?: MeasureText
-  title?: string
-  description?: string
-  svg?: Omit<SvgOptions, 'title' | 'description'>
-}
-
-/** Single-axis scatter → `<svg>` string, server-safe. */
-export function singleAxisToSvg(o: SingleAxisToSvgOptions): string {
-  const width = o.width ?? 640.0
-  const height = o.height ?? 120.0
-  const layout = layoutSingleAxis(o.axis, o.points, { x: 0.0, y: 0.0, w: width, h: height }, o.options)
-  const cmds = renderSingleAxis(layout, o.options, o.measure ?? measureApprox())
-  const description = o.description ?? (o.title !== undefined ? `${o.title}: ${o.points.length} points on a ${o.axis.type ?? 'value'} axis.` : undefined)
-  return renderSvg(cmds, width, height, {
-    ...o.svg,
-    ...(o.title !== undefined ? { title: o.title } : {}),
-    ...(description !== undefined && description !== '' ? { description } : {}),
-  })
 }

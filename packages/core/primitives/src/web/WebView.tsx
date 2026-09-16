@@ -17,7 +17,59 @@ import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { collectPassthroughAttrs } from './passthrough'
+import { parseWebHostGroupMessage, WEB_HOST_GROUP_RELAY_FN } from '../web-host-bridge'
 import type { WebViewProps } from '../types/webview'
+
+/** A mounted host taking part in a host group (its iframe, read live). */
+interface HostGroupMember {
+  frame(): HTMLIFrameElement | null
+}
+
+/**
+ * Host-group registry: group name → the hosts currently in it. Module-level
+ * by necessity (siblings live in unrelated subtrees); every entry is removed
+ * by IDENTITY when its host leaves or unmounts, and an emptied group is
+ * deleted, so the map never outgrows the set of live grouped hosts.
+ */
+const hostGroups = new Map<string, Set<HostGroupMember>>()
+
+function leaveHostGroup(member: HostGroupMember, group: string | null): void {
+  if (group === null) return
+  const members = hostGroups.get(group)
+  if (!members) return
+  members.delete(member)
+  if (members.size === 0) hostGroups.delete(group)
+}
+
+function joinHostGroup(member: HostGroupMember, group: string, current: string | null): string {
+  if (current === group) return group
+  leaveHostGroup(member, current)
+  let members = hostGroups.get(group)
+  if (!members) {
+    members = new Set()
+    hostGroups.set(group, members)
+  }
+  members.add(member)
+  return group
+}
+
+/** Deliver `message` to every OTHER member of `group` through the page-level relay entry point. */
+function relayHostGroup(from: HostGroupMember, group: string, message: string): void {
+  const members = hostGroups.get(group)
+  if (!members) return
+  for (const member of members) {
+    if (member === from) continue
+    const win = member.frame()?.contentWindow as
+      | (Window & { [WEB_HOST_GROUP_RELAY_FN]?: (message: string) => void })
+      | null
+      | undefined
+    try {
+      win?.[WEB_HOST_GROUP_RELAY_FN]?.(message)
+    } catch {
+      // Cross-origin sibling — unreachable by design.
+    }
+  }
+}
 
 export function WebView(props: WebViewProps): VNode {
   const attrs: Record<string, unknown> = {
@@ -30,15 +82,21 @@ export function WebView(props: WebViewProps): VNode {
   else if (props.src !== undefined) attrs.src = props.src
 
   const hasData = 'data' in props
-  const hasOnMessage = 'onMessage' in props
 
   // Both bridges share ONE frame ref + onLoad. Same-origin / `srcdoc`
   // only — a cross-origin remote `src` can't be reached from the parent
   // (the native targets cover remote content via evaluateJavaScript / the
   // script-message handler; on web you host same-origin / srcdoc content).
-  if (hasData || hasOnMessage) {
+  // The reverse bridge is ALWAYS installed (the native hosts install theirs
+  // at WebView construction too): a page needs it to join a host group even
+  // when the host itself has no `onMessage`.
+  {
     let frame: HTMLIFrameElement | null = null
     let loaded = false
+    // Host-group membership of THIS host, driven by the page's reserved
+    // messages; cleared on leave and on unmount (identity removal).
+    let group: string | null = null
+    const member: HostGroupMember = { frame: () => frame }
 
     // Live-data bridge — push `data` into the hosted page's
     // `window.__pyreonData` + fire a `pyreondata` event, on load AND
@@ -66,7 +124,20 @@ export function WebView(props: WebViewProps): VNode {
       if (!win) return
       try {
         win.pyreonPostMessage = (m: unknown): void => {
-          ;(props as { onMessage?: (message: string) => void }).onMessage?.(String(m))
+          const message = String(m)
+          // Reserved host-group traffic is consumed here and never forwarded.
+          const groupMessage = parseWebHostGroupMessage(message)
+          if (groupMessage === null) {
+            ;(props as { onMessage?: (message: string) => void }).onMessage?.(message)
+          } else if ('join' in groupMessage) {
+            group = joinHostGroup(member, groupMessage.join, group)
+          } else if ('leave' in groupMessage) {
+            leaveHostGroup(member, group)
+            group = null
+          } else if (groupMessage.group === group) {
+            // A page may only relay into the group it joined.
+            relayHostGroup(member, group, groupMessage.message)
+          }
         }
       } catch {
         // Cross-origin iframe — can't define on the page's window.
@@ -75,6 +146,10 @@ export function WebView(props: WebViewProps): VNode {
 
     attrs.ref = (el: HTMLIFrameElement | null): void => {
       frame = el
+      if (el === null) {
+        leaveHostGroup(member, group)
+        group = null
+      }
     }
     // `onLoad` is wired by the runtime (no raw addEventListener) — run the
     // bridges once the iframe's document exists.
@@ -91,7 +166,7 @@ export function WebView(props: WebViewProps): VNode {
       // push and the injection. Both native runtimes install their message
       // handler at WebView CONSTRUCTION, i.e. before any data can arrive, so
       // this also stops the web from being the odd one out.
-      if (hasOnMessage) injectReverseBridge()
+      injectReverseBridge()
       if (hasData) push()
     }
     // Re-push whenever `data` changes (the read tracks it). On the first

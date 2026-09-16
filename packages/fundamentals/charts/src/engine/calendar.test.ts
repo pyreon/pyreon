@@ -123,6 +123,8 @@ describe('calendar option mapping', () => {
     if (range.plan.kind !== 'calendar') throw new Error('kind')
     expect(range.plan.end).toBe('2024-02-10')
     const bad = compileFamily({ calendar: { range: '2024', orient: 'vertical' }, series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: [['not-a-date', 1]] }] })!
-    expect(bad.warnings.map((w) => w.code)).toEqual(expect.arrayContaining(['series-data-shape', 'series-option-unsupported']))
+    // The bad datum warns; a vertical orient is a transposed plan, not an unsupported option.
+    expect(bad.warnings.map((w) => w.code)).toEqual(['series-data-shape'])
+    expect(bad.plan).toMatchObject({ kind: 'calendar', orient: 'vertical' })
   })
 })

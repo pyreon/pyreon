@@ -6,6 +6,7 @@
  * string/emit contract that must hold on every target.
  */
 import { describe, expect, it, vi } from 'vitest'
+import { signal } from '@pyreon/reactivity'
 import { WebView } from '@pyreon/primitives'
 import { ChartWebView, buildChartHostHtml } from '../webview'
 
@@ -27,6 +28,31 @@ describe('buildChartHostHtml', () => {
     expect(html).toContain('window.pyreonPostMessage(JSON.stringify(payload))')
     // Resize.
     expect(html).toContain("window.addEventListener('resize'")
+  })
+
+  it('installs command dispatch and only the requested additional event listeners', () => {
+    const html = buildChartHostHtml({ forwardEvents: ['legendselectchanged', 'datazoom', 'datazoom', 'click'] })
+    expect(html).toContain('chart.dispatchAction(command)')
+    expect(html).toContain('completedCommands[commandKey]')
+    expect(html).toContain("chart.showLoading('default', loadingOptions)")
+    expect(html).toContain('chart.hideLoading()')
+    expect(html).toContain('["legendselectchanged","datazoom"]')
+    expect(html).toContain('__pyreonChartEvent: 1')
+  })
+
+  it('places a trusted setup script after the engine and before chart creation', () => {
+    const html = buildChartHostHtml({
+      echartsScript: 'window.__engineReady = true',
+      hostSetupScript: 'window.__setupReady = window.__engineReady',
+    })
+    expect(html.indexOf('window.__engineReady = true')).toBeLessThan(html.indexOf('window.__setupReady'))
+    expect(html.indexOf('window.__setupReady')).toBeLessThan(html.indexOf('var chart ='))
+  })
+
+  it('prevents the trusted setup script from terminating its script element', () => {
+    const html = buildChartHostHtml({ hostSetupScript: 'window.x = "</script><p>escaped</p>"' })
+    expect(html).not.toContain('</script><p>escaped</p>')
+    expect(html).toContain('<\\/script><p>escaped<\\/p>')
   })
 
   it('inlines echartsScript (self-contained) and takes precedence over echartsSrc', () => {
@@ -84,6 +110,99 @@ describe('<ChartWebView>', () => {
     expect(onSelect).toHaveBeenCalledWith({ name: 'US', value: 42, dataIndex: 0 })
   })
 
+  it('wraps commands with the option and preserves reactive command reads', () => {
+    let sequence = 0
+    const vnode = ChartWebView({
+      option: { series: [] },
+      commands: () => [{ id: ++sequence, type: 'restore' }],
+    })
+    const props = vnode.props as { data: unknown }
+    expect(props.data).toEqual({
+      __pyreonChartHost: 1,
+      option: { series: [] },
+      commands: [{ id: 1, type: 'restore' }],
+      loading: { visible: false, options: {} },
+    })
+    expect(props.data).toMatchObject({ commands: [{ id: 2 }] })
+  })
+
+  it('carries a connected group in the envelope, statically or through an accessor', () => {
+    const group = signal<string | undefined>('dash')
+    const dataOf = (v: { props: unknown }) => (v.props as { data: { group?: string; commands: unknown[] } }).data
+    expect(dataOf(ChartWebView({ option: { series: [] }, group: 'dash' }))).toEqual({
+      __pyreonChartHost: 1,
+      option: { series: [] },
+      commands: [],
+      loading: { visible: false, options: {} },
+      group: 'dash',
+    })
+    const reactive = ChartWebView({ option: { series: [] }, group: () => group() })
+    expect(dataOf(reactive).group).toBe('dash')
+    group.set(undefined)
+    expect(dataOf(reactive).group, 'leaving the group drops it from the envelope').toBeUndefined()
+    // The relay itself is the <WebView> host group's job: a group message the
+    // page posts is consumed by the host and never reaches onSelect.
+    expect((ChartWebView({ option: {}, group: 'dash' }).props as { onMessage?: unknown }).onMessage).toBeUndefined()
+  })
+
+  it('installs the connected-group protocol in the host page', () => {
+    const html = buildChartHostHtml()
+    expect(html).toContain('echarts.connect(group)')
+    expect(html).toContain('echarts.disconnect(lastGroup)')
+    // Join/leave the <WebView> host group of the same name as the engine group.
+    expect(html).toContain('{ __pyreonWebViewGroup: 1, join: group }')
+    expect(html).toContain('{ __pyreonWebViewGroup: 1, leave: true }')
+    // Outbound: the mirrored action classes echarts.connect() shares.
+    expect(html).toContain("['datazoom', 'legendselectchanged', 'legendselected', 'legendunselected', 'highlight', 'downplay', 'showtip', 'hidetip']")
+    expect(html).toContain('{ __pyreonWebViewGroup: 1, group: lastGroup, message: JSON.stringify(action) }')
+    // Inbound: the host-delivered relay entry point dispatches without echoing.
+    expect(html).toContain('window.__pyreonWebViewGroupMessage = function (message)')
+    expect(html).toContain('if (lastGroup === null || relaying || (p && p.__pyreonGroupRelay === true)) return')
+  })
+
+  it('wraps reactive loading state and options without evaluating them during construction', () => {
+    let visible = false
+    const loading = vi.fn(() => visible)
+    const loadingOptions = vi.fn(() => ({ text: visible ? 'Still working' : 'Ready' }))
+    const vnode = ChartWebView({ option: {}, loading, loadingOptions })
+    expect(loading).not.toHaveBeenCalled()
+    expect(loadingOptions).not.toHaveBeenCalled()
+    visible = true
+    expect((vnode.props as { data: unknown }).data).toMatchObject({
+      loading: { visible: true, options: { text: 'Still working' } },
+    })
+  })
+
+  it('routes structured hosted events separately from selection messages', () => {
+    const onSelect = vi.fn()
+    const onEvent = vi.fn()
+    const vnode = ChartWebView({ option: {}, onSelect, onEvent })
+    const onMessage = (vnode.props as { onMessage: (m: string) => void }).onMessage
+    onMessage(JSON.stringify({ __pyreonChartEvent: 1, name: 'datazoom', payload: { start: 10 } }))
+    expect(onEvent).toHaveBeenCalledWith({ name: 'datazoom', payload: { start: 10 } })
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('wires the reverse bridge when only onEvent is supplied', () => {
+    const vnode = ChartWebView({ option: {}, onEvent: vi.fn() })
+    expect(typeof (vnode.props as { onMessage: unknown }).onMessage).toBe('function')
+  })
+
+  it('routes host failures to onError instead of selection', () => {
+    const onSelect = vi.fn()
+    const onError = vi.fn()
+    const vnode = ChartWebView({ option: {}, onSelect, onError })
+    const onMessage = (vnode.props as { onMessage: (m: string) => void }).onMessage
+    onMessage(JSON.stringify({ error: 'renderer failed' }))
+    expect(onError).toHaveBeenCalledWith({ message: 'renderer failed' })
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('forwards the background into the generated host', () => {
+    const vnode = ChartWebView({ option: {}, background: '#101820' })
+    expect((vnode.props as { html: string }).html).toContain('background:#101820')
+  })
+
   it('a non-JSON reverse message is handed back as { name } (never silently dropped)', () => {
     const onSelect = vi.fn()
     const vnode = ChartWebView({ option: {}, onSelect })
@@ -135,11 +254,15 @@ describe('<ChartWebView>', () => {
       echartsSrc: 'https://example.test/echarts.js',
       theme: 'dark',
       renderer: 'svg',
+      forwardEvents: ['datazoom'],
+      hostSetupScript: 'window.__configured = true',
     })
     const html = (vnode.props as { html: string }).html
     expect(html).toContain('https://example.test/echarts.js')
     expect(html).toContain('dark')
     expect(html).toContain('svg')
+    expect(html).toContain('["datazoom"]')
+    expect(html).toContain('window.__configured = true')
   })
 
   it('forwards an inlined echartsScript through the component', () => {
@@ -149,6 +272,10 @@ describe('<ChartWebView>', () => {
 })
 
 describe('buildChartHostHtml — script-context hardening', () => {
+  it('reports initialization failures through the host bridge', () => {
+    const html = buildChartHostHtml()
+    expect(html).toContain('pyreonReportHostError(window.__pyreonChartError)')
+  })
   it('a theme name with a quote cannot break out of echarts.init(...)', () => {
     const html = buildChartHostHtml({ theme: "x' + alert(1) + '" })
     // NEW: the theme is a JSON-stringified (double-quoted) JS string literal, so

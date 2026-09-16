@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cmdsEqual, sameCmdShape, tweenCmds } from './cmd-tween'
+import { cmdsEqual, sameCmdShape, tweenCmds, universalTweenCmds } from './cmd-tween'
 import type { DrawCmd } from './types'
 
 const A: DrawCmd[] = [
@@ -16,6 +16,23 @@ const B: DrawCmd[] = [
 ]
 
 describe('tweenCmds — the draw-list update animation', () => {
+  it('morphs across command kinds and settles on the exact target', () => {
+    const from: DrawCmd[] = [{ kind: 'rect', rect: { x: 0, y: 10, w: 20, h: 30 }, fill: '#111111' }]
+    const to: DrawCmd[] = [{ kind: 'circle', center: { x: 100, y: 80 }, radius: 12, fill: '#222222' }]
+    expect(universalTweenCmds(from, to, 0.5)).toEqual([
+      { kind: 'circle', center: { x: 55, y: 52.5 }, radius: 13.5, fill: '#222222' },
+    ])
+    expect(universalTweenCmds(from, to, 1)).toBe(to)
+  })
+
+  it('grows inserted commands and collapses removed commands', () => {
+    const a: DrawCmd = { kind: 'circle', center: { x: 10, y: 10 }, radius: 8, fill: '#111111' }
+    const b: DrawCmd = { kind: 'circle', center: { x: 30, y: 30 }, radius: 6, fill: '#222222' }
+    expect(universalTweenCmds([], [b], 0)[0]).toMatchObject({ center: { x: 30, y: 30 }, radius: 0 })
+    const removed = universalTweenCmds([a, b], [b], 0.5)
+    expect(removed).toHaveLength(2)
+    expect(removed[1]).toMatchObject({ center: { x: 30, y: 30 }, radius: 3 })
+  })
   it('interpolates every placing number halfway and snaps colours to the target', () => {
     const f = tweenCmds(A, B, 0.5)
     expect(f[0]).toMatchObject({ kind: 'rect', rect: { x: 0, y: 80, w: 10, h: 40 }, fill: '#999' })

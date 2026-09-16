@@ -17,9 +17,12 @@ const POLAR_TAU = Math.PI * 2.0
 
 export interface PolarSeries {
   name: string
-  kind: 'bar' | 'line'
+  /** `scatter` draws the datum points alone — no polyline between them. */
+  kind: 'bar' | 'line' | 'scatter'
   values: Double[]
   color?: string | undefined
+  /** Point radius for line dots and scatter symbols; default 2.5 / 4. */
+  radius?: Double | undefined
   /** Bars sharing a stack key accumulate along the value axis (angle-category only). */
   stack?: string | undefined
 }
@@ -58,6 +61,9 @@ export interface PolarLine {
   series: number
   color: string
   points: PolarPoint[]
+  /** True for a scatter series: points only, no polyline. */
+  scatter: boolean
+  radius: Double
 }
 
 export interface PolarCategoryLabel {
@@ -254,7 +260,7 @@ export function layoutPolar(axes: PolarAxes, series: PolarSeries[], box: Rect, o
     }
     for (let si = 0; si < series.length; si++) {
       const s = series[si]!
-      if (s.kind !== 'line') continue
+      if (s.kind !== 'line' && s.kind !== 'scatter') continue
       const color = s.color ?? paletteAt(palette, si)
       const points: PolarPoint[] = []
       let iF = 0.0
@@ -268,7 +274,7 @@ export function layoutPolar(axes: PolarAxes, series: PolarSeries[], box: Rect, o
         }
         iF = iF + 1.0
       }
-      lines.push({ series: si, color, points })
+      lines.push({ series: si, color, points, scatter: s.kind === 'scatter', radius: s.radius ?? (s.kind === 'scatter' ? 4.0 : 2.5) })
     }
     let iF = 0.0
     for (let i = 0; i < n; i++) {
@@ -319,7 +325,7 @@ export function layoutPolar(axes: PolarAxes, series: PolarSeries[], box: Rect, o
     }
     for (let si = 0; si < series.length; si++) {
       const s = series[si]!
-      if (s.kind !== 'line') continue
+      if (s.kind !== 'line' && s.kind !== 'scatter') continue
       const color = s.color ?? paletteAt(palette, si)
       const points: PolarPoint[] = []
       let iF = 0.0
@@ -332,7 +338,7 @@ export function layoutPolar(axes: PolarAxes, series: PolarSeries[], box: Rect, o
         }
         iF = iF + 1.0
       }
-      lines.push({ series: si, color, points })
+      lines.push({ series: si, color, points, scatter: s.kind === 'scatter', radius: s.radius ?? (s.kind === 'scatter' ? 4.0 : 2.5) })
     }
     let iF = 0.0
     for (let i = 0; i < n; i++) {
@@ -404,8 +410,8 @@ export function renderPolar(layout: PolarLayout, options?: PolarOptions): DrawCm
       pts.push(l.points[i]!.at)
       iF = iF + 1.0
     }
-    if (pts.length > 1) out.push({ kind: 'polyline', points: pts, stroke: l.color, width: lineWidth })
-    for (const p of pts) out.push({ kind: 'circle', center: p, radius: 2.5, fill: l.color })
+    if (pts.length > 1 && !l.scatter) out.push({ kind: 'polyline', points: pts, stroke: l.color, width: lineWidth })
+    for (const p of pts) out.push({ kind: 'circle', center: p, radius: l.radius, fill: l.color })
   }
   if (options?.showLabels !== false && progress >= 1.0) {
     for (const lab of layout.categoryLabels) out.push({ kind: 'text', text: lab.text, at: lab.at, fill: labelColor, size: fontSize, align: lab.align, baseline: 'middle' })

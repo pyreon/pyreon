@@ -37,6 +37,15 @@ export interface WebViewProps {
    * defines `window.pyreonPostMessage` on the iframe (same-origin /
    * `srcdoc`). The payload is a plain string — JSON-stringify structured
    * data in the page and parse it here.
+   *
+   * HOST GROUPS. A hosted page may post the reserved `__pyreonWebViewGroup`
+   * messages (see `connectWebHost().joinGroup` / `relay`) through this same
+   * channel. The host consumes them — they never reach `onMessage` — and
+   * fans a relayed string into every OTHER hosted page of the same group by
+   * calling its `window.__pyreonWebViewGroupMessage(message)`. Identical on
+   * web (sibling iframes), iOS (sibling WKWebViews) and Android (sibling
+   * WebViews); this is how `<ChartWebView group>` mirrors zoom/legend/tooltip
+   * across separate hosted charts.
    */
   onMessage?: (message: string) => void
   /** Pass-through `data-*` / `aria-*` / `id` / `class` attrs (web). */

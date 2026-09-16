@@ -42,13 +42,20 @@
       "bun": "./src/plot.ts",
       "import": "./lib/plot.js",
       "types": "./lib/types/plot.d.ts"
+    },
+    "./option-layer": {
+      "bun": "./src/option-layer.ts",
+      "import": "./lib/option-layer.js",
+      "types": "./lib/types/option-layer.d.ts"
     }
   },
   "files": [
     "lib",
     "src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "native/swift",
+    "native/kotlin"
   ],
   "scripts": {
     "build": "vl_rolldown_build",
@@ -84,5 +91,13 @@
   },
   "dependencies": {
     "@pyreon/primitives": "workspace:^"
+  },
+  "pyreon": {
+    "native": {
+      "swift": "native/swift",
+      "kotlin": "native/kotlin",
+      "kotlinServices": {},
+      "kotlinSdkOnly": ["PyreonChartWebView.kt"]
+    }
   }
 }

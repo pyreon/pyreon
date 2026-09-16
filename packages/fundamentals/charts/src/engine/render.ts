@@ -12,7 +12,7 @@ import { polygonCmd, rectCmd } from './corners'
 import { seriesGradient } from './gradient'
 import type { SeriesGradient } from './gradient'
 import { withAlpha } from './radar'
-import type { DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
+import type { ChartPattern, DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
 
 /** One drawable series. */
 export interface Series {
@@ -54,7 +54,11 @@ export interface Series {
   axis?: 'left' | 'right' | undefined
   /** Halo rings around each point — the effectScatter look; `points` only. */
   effect?: boolean | undefined
-  /** Draw bars as a symbol instead of a rect — the pictorialBar look; `bars` only. */
+  /**
+   * Draw bars as a symbol instead of a rect — the pictorialBar look — or,
+   * on `points`, the datum symbol (ECharts' `symbol`); on `line`, set it to
+   * draw a symbol at every datum (ECharts' `showSymbol`, off by default here).
+   */
   symbol?: 'rect' | 'circle' | 'diamond' | 'triangle' | undefined
   /** Repeat the symbol along the bar instead of stretching it. */
   symbolRepeat?: boolean | undefined
@@ -62,6 +66,8 @@ export interface Series {
   corners?: Double[] | undefined
   /** Linear-gradient fill for bar-family and area series; resolved against the plot box. */
   gradient?: SeriesGradient | undefined
+  /** Repeating fill overlay for bar-family and area series. */
+  pattern?: ChartPattern | undefined
   /** Dash pattern for a line's stroke (`[on, off]` in px) — the target-line look; `line` only. */
   dash?: Double[] | undefined
   /** The fill a `waterfall` step takes when its value is negative; `color` otherwise. */
@@ -84,15 +90,35 @@ export interface Series {
    * region" the same request.
    */
   values2?: Double[] | undefined
+  /**
+   * Extra per-datum dimensions the TOOLTIP shows under the value — ECharts'
+   * `encode.tooltip`: a dataset's other columns for the hovered row. Drawn by
+   * nothing; read by `tooltipAt` only.
+   */
+  extras?: SeriesExtra[] | undefined
+}
+
+/**
+ * One extra tooltip dimension: a label and either numbers or texts, one per
+ * datum. Two optional arrays rather than a union — a mixed string/number
+ * array has no native form. Named `numbers`, not `values`: struct selection
+ * matches object literals by field NAMES, and `{ label, values }` is the
+ * shape of every plain series literal in the engine — this type must not be
+ * what a `{ label: 'A', values: [80, 60] }` radar row resolves to.
+ */
+export interface SeriesExtra {
+  label: string
+  numbers?: Double[] | undefined
+  texts?: string[] | undefined
 }
 
 /**
  * A reference rule or band — the "target line" every dashboard needs.
  *
- * Exactly one of `y`, `x`, or the `yFrom`/`yTo` pair should be set; an
- * annotation with none is skipped rather than guessed at. Values are in DOMAIN
- * units — for a categorical x axis that is the datum INDEX, matching how the
- * points are placed.
+ * Exactly one of `y`, `x`, `yFrom`/`yTo`, `xFrom`/`xTo`, or the segment
+ * `x1`/`y1`/`x2`/`y2` should be set; an annotation with none is skipped
+ * rather than guessed at. Values are in DOMAIN units — for a categorical x
+ * axis that is the datum INDEX, matching how the points are placed.
  */
 export interface Annotation {
   /** Horizontal rule at this y value. */
@@ -102,6 +128,18 @@ export interface Annotation {
   /** Horizontal band between these two y values. */
   yFrom?: Double | undefined
   yTo?: Double | undefined
+  /** Vertical band between these two x-domain values. */
+  xFrom?: Double | undefined
+  xTo?: Double | undefined
+  /**
+   * Segment between two data-space points — ECharts' point-to-point markLine
+   * (`[{ coord }, { coord }]`, or max→min). All four are required for it to
+   * draw; the label sits at the second point.
+   */
+  x1?: Double | undefined
+  y1?: Double | undefined
+  x2?: Double | undefined
+  y2?: Double | undefined
   label?: string | undefined
   color?: string | undefined
 }
@@ -109,8 +147,9 @@ export interface Annotation {
 /**
  * A datum-anchored point marker — ECharts' markPoint, engine-shaped.
  *
- * Exactly one of `at` ('max' | 'min') or `atIndex` (a concrete datum index)
- * should be set; a marker with neither is skipped rather than guessed at —
+ * Exactly one of `at` ('max' | 'min' | 'average' — the datum NEAREST the
+ * series mean, ECharts' markPoint placement) or `atIndex` (a concrete datum
+ * index) should be set; a marker with neither is skipped rather than guessed at —
  * the Annotation precedent. Split into two fields rather than one
  * `'max' | 'min' | number` union because a mixed string/number union falls
  * outside the native subset the engine compiles in, and the split costs the
@@ -123,8 +162,8 @@ export interface Annotation {
 export interface PointMarker {
   /** Which series the marker reads; default 0. */
   seriesIndex?: Double | undefined
-  /** Anchor at the series' maximum or minimum datum. */
-  at?: 'max' | 'min' | undefined
+  /** Anchor at the series' maximum, minimum, or nearest-to-mean datum. */
+  at?: 'max' | 'min' | 'average' | undefined
   /** Anchor at a concrete datum index (clamped into range). */
   atIndex?: Double | undefined
   label?: string | undefined
@@ -744,6 +783,20 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         rect: { x: plot.x, y: top, w: plot.w, h: Math.abs(y2 - y1) },
         fill: withAlpha(a.color ?? t.axis, 0.12),
       })
+      if (a.label !== undefined) out.push({ kind: 'text', text: a.label, at: { x: plot.x + plot.w - 4.0, y: top + 4.0 }, fill: a.color ?? t.label, size: t.fontSize, align: 'end', baseline: 'top' })
+    }
+    const xFrom = a.xFrom ?? 0.0
+    const xTo = a.xTo ?? 0.0
+    if (a.xFrom !== undefined && a.xTo !== undefined) {
+      const x1 = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xFrom)
+      const x2 = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xTo)
+      const left = x1 < x2 ? x1 : x2
+      out.push({
+        kind: 'rect',
+        rect: { x: left, y: plot.y, w: Math.abs(x2 - x1), h: plot.h },
+        fill: withAlpha(a.color ?? t.axis, 0.12),
+      })
+      if (a.label !== undefined) out.push({ kind: 'text', text: a.label, at: { x: left + 4.0, y: plot.y + 4.0 }, fill: a.color ?? t.label, size: t.fontSize, align: 'start', baseline: 'top' })
     }
   }
   for (const a of notes) {
@@ -795,6 +848,22 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         })
       }
     }
+    // A segment between two data-space points, dashed like the rules. Both
+    // ends scale on the SAME axes the rules use, so a segment from a datum
+    // to a datum lands on the marks the series drew there.
+    const sx1 = a.x1 ?? 0.0
+    const sy1 = a.y1 ?? 0.0
+    const sx2 = a.x2 ?? 0.0
+    const sy2 = a.y2 ?? 0.0
+    if (a.x1 !== undefined && a.y1 !== undefined && a.x2 !== undefined && a.y2 !== undefined) {
+      const p1: Pt = { x: scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, sx1), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy1) }
+      const p2: Pt = { x: scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, sx2), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy2) }
+      out.push({ kind: 'line', from: p1, to: p2, stroke: a.color ?? t.axis, width: 1.0, dash: [4.0, 4.0] })
+      const segLabel = a.label ?? ''
+      if (a.label !== undefined) {
+        out.push({ kind: 'text', text: segLabel, at: { x: p2.x, y: p2.y - 4.0 }, fill: a.color ?? t.label, size: t.fontSize, align: 'middle', baseline: 'bottom' })
+      }
+    }
   }
 
   // Emphasis band: the highlighted datum's column, UNDER every series, so a
@@ -837,7 +906,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     for (const seg of stackSegs) {
       const rS = growRect(seg.rect, yDomain)
       const gS = seriesGradient(stackedSeries[seg.seriesIndex]!.gradient, plot)
-      out.push(rectCmd(rS, stackedSeries[seg.seriesIndex]!.color, stackedSeries[seg.seriesIndex]!.corners, gS.stops.length === 0 ? undefined : gS))
+      out.push(rectCmd(rS, stackedSeries[seg.seriesIndex]!.color, stackedSeries[seg.seriesIndex]!.corners, gS.stops.length === 0 ? undefined : gS, stackedSeries[seg.seriesIndex]!.pattern))
       const lvlS = emphasisLevel(spec, seg.datumIndex)
       if (lvlS > 0) out.push(emphasisOutline(rS, lvlS, t.label))
       // A stacked segment labels INSIDE itself: its value is the segment's
@@ -865,7 +934,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     for (const seg of groupSegs) {
       const rG = growRect(seg.rect, yDomain)
       const gG = seriesGradient(groupedSeries[seg.seriesIndex]!.gradient, plot)
-      out.push(rectCmd(rG, groupedSeries[seg.seriesIndex]!.color, groupedSeries[seg.seriesIndex]!.corners, gG.stops.length === 0 ? undefined : gG))
+      out.push(rectCmd(rG, groupedSeries[seg.seriesIndex]!.color, groupedSeries[seg.seriesIndex]!.corners, gG.stops.length === 0 ? undefined : gG, groupedSeries[seg.seriesIndex]!.pattern))
       const lvlG = emphasisLevel(spec, seg.datumIndex)
       if (lvlG > 0) out.push(emphasisOutline(rG, lvlG, t.label))
       // A grouped bar has a free outer edge, so it labels OUTSIDE like a
@@ -906,7 +975,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         for (const p of upper) poly.push(p)
         for (let i = lower.length - 1; i >= 0; i--) poly.push(lower[i]!)
         const gA = seriesGradient(sA.gradient, plot)
-        out.push(polygonCmd(poly, sA.color, gA.stops.length === 0 ? undefined : gA))
+        out.push(polygonCmd(poly, sA.color, gA.stops.length === 0 ? undefined : gA, sA.pattern))
         // Like a stacked SEGMENT, a stacked band labels inside itself with
         // its OWN value — the running total is what the outline already
         // shows, and a label repeating it would say nothing per series.
@@ -965,7 +1034,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const r = rects[ri]!
         const grown = growRectH(r)
         if (s.symbol === undefined) {
-          out.push(rectCmd(grown, s.color, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad))
+          out.push(rectCmd(grown, s.color, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad, s.pattern))
         } else if (s.symbolRepeat === true) {
           // Repeat a unit symbol along the bar (left to right); a partial last symbol is dropped.
           const unit = grown.h
@@ -1020,7 +1089,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const r = rects[ri]!
         const grown = growRect(r, sDomain)
         if (s.symbol === undefined) {
-          out.push(rectCmd(grown, s.color, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad))
+          out.push(rectCmd(grown, s.color, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad, s.pattern))
         } else if (s.symbolRepeat === true) {
           // Repeat a unit symbol up the bar; a partial last symbol is dropped.
           // (Horizontal charts left this loop above, so the bar is vertical.)
@@ -1077,7 +1146,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const startY = scaleLinear(sDomain, plot.y + plot.h, plot.y, st.start)
         const grownH = st.rect.h * progress
         const grown: Rect = progress >= 1.0 ? st.rect : { x: st.rect.x, y: st.value >= 0.0 ? startY - grownH : startY, w: st.rect.w, h: grownH }
-        out.push(rectCmd(grown, fill, s.corners, sGrad))
+        out.push(rectCmd(grown, fill, s.corners, sGrad, s.pattern))
         const lvlW = emphasisLevel(spec, st.datumIndex)
         if (lvlW > 0) out.push(emphasisOutline(grown, lvlW, t.label))
         if (si + 1 < steps.length && progress >= 1.0) {
@@ -1108,6 +1177,18 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width, dash: s.dash })
         }
       }
+      // A line shows its datum symbols only when asked (ECharts' showSymbol):
+      // one symbol per finite datum, at the line's own radius, over the line.
+      // Coalesced before use: Swift does not narrow `s.symbol` through the guard.
+      const lineSymbol = s.symbol ?? 'circle'
+      if (s.symbol !== undefined && progress >= 1.0) {
+        const dots = place(s.values)
+        for (let i = 0; i < dots.length; i++) {
+          if (!isFiniteValue(s.values[i]!)) continue
+          const d = dots[i]!
+          out.push(symbolCommand({ x: d.x - s.radius, y: d.y - s.radius, w: s.radius * 2.0, h: s.radius * 2.0 }, lineSymbol, s.color))
+        }
+      }
     } else if (s.kind === 'band') {
       // A region between two value channels — a confidence interval, a
       // min/max range, a forecast cone. The polygon runs along the UPPER
@@ -1134,7 +1215,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const poly: Pt[] = []
         for (const p of upper) poly.push(p)
         for (let i = lower.length - 1; i >= 0; i--) poly.push(lower[i]!)
-        if (poly.length > 2) out.push(polygonCmd(poly, s.color, sGrad))
+        if (poly.length > 2) out.push(polygonCmd(poly, s.color, sGrad, s.pattern))
       }
     } else if (s.kind === 'area') {
       // Gap-splitting (a non-finite value breaks the fill into runs, same
@@ -1149,7 +1230,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           // rather than a polygon between the first and last data points.
           poly.push({ x: pts[pts.length - 1]!.x, y: plot.y + plot.h })
           poly.push({ x: pts[0]!.x, y: plot.y + plot.h })
-          out.push(polygonCmd(poly, s.color, sGrad))
+          out.push(polygonCmd(poly, s.color, sGrad, s.pattern))
         }
       }
     } else {
@@ -1169,12 +1250,14 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           // A halo UNDER the dot: emphasis that never hides the value.
           out.push({ kind: 'circle', center: pts[i]!, radius: fullR * progress + (lvlP === 2 ? 4.0 : 3.0), fill: withAlpha(t.label, 0.35) })
         }
-        out.push({
-          kind: 'circle',
-          center: pts[i]!,
-          radius: fullR * progress,
-          fill: s.color,
-        })
+        // The datum symbol: a circle unless the series names another shape.
+        const r = fullR * progress
+        const pointSymbol = s.symbol ?? 'circle'
+        if (pointSymbol === 'circle') {
+          out.push({ kind: 'circle', center: pts[i]!, radius: r, fill: s.color })
+        } else {
+          out.push(symbolCommand({ x: pts[i]!.x - r, y: pts[i]!.y - r, w: r * 2.0, h: r * 2.0 }, pointSymbol, s.color))
+        }
       }
     }
 
@@ -1263,6 +1346,15 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     } else if (m.at === 'min') {
       idx = 0
       for (let i = 1; i < n; i++) if (s.values[i]! < s.values[idx]!) idx = i
+    } else if (m.at === 'average') {
+      // ECharts places an `average` markPoint on the datum NEAREST the mean
+      // (`indicesOfNearest`), not at the mean itself — the mean is rarely a
+      // point the series drew.
+      let sum = 0.0
+      for (let i = 0; i < n; i++) sum = sum + s.values[i]!
+      const mean = sum / n
+      idx = 0
+      for (let i = 1; i < n; i++) if (Math.abs(s.values[i]! - mean) < Math.abs(s.values[idx]! - mean)) idx = i
     } else {
       const rawAt = m.atIndex ?? -1.0
       if (m.atIndex !== undefined) {

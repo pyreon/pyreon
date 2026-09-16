@@ -1446,6 +1446,11 @@ public struct PyreonWebView: View {
   public init(src: String? = nil, html: String? = nil, data: String? = nil, onMessage: ((String) -> Void)? = nil) {}
   public typealias Body = Never
 }
+public struct PyreonChartWebViewSelection { public let name: String? }
+public struct PyreonChartWebViewEvent { public let name: String; public let payload: [String: Any] }
+public struct PyreonChartWebViewError: Error { public let message: String }
+public func pyreonChartWebViewData(option: String, commands: String, loading: Bool, loadingOptions: String, group: String? = nil) -> String { option }
+public func pyreonDispatchChartWebViewMessage(_ message: String, onSelect: ((PyreonChartWebViewSelection) -> Void)? = nil, onEvent: ((PyreonChartWebViewEvent) -> Void)? = nil, onError: ((PyreonChartWebViewError) -> Void)? = nil) {}
 
 // ---- PyreonForm (@pyreon/form -> runtime-swift's PyreonForm, a final class) ----
 // The emit does @State private var form = PyreonForm(initialValues:validators:)
@@ -1871,12 +1876,16 @@ public struct GeometryReader<Content: View>: View {
 public struct PyreonChartCanvas: View {
   public var cmds: [PyreonDrawCmd]
   public var fontFamily: String?
-  public init(cmds: [PyreonDrawCmd], fontFamily: String? = nil) { self.cmds = cmds; self.fontFamily = fontFamily }
+  public var durationMs: Double
+  public var universal: Bool
+  public var animated: Bool
+  public init(cmds: [PyreonDrawCmd], durationMs: Double = 350.0, universal: Bool = false, animated: Bool = true, fontFamily: String? = nil) { self.cmds = cmds; self.fontFamily = fontFamily; self.durationMs = durationMs; self.universal = universal; self.animated = animated }
   public var body: some View { EmptyView() }
 }
 public func pyreonChartColor(_ s: String) -> Color { Color.clear }
 public func pyreonLocaleNumberFormatter(_ tag: String) -> (Double) -> String { { String($0) } }
 public func pyreonLocaleDateFormatter(_ tag: String) -> (Double) -> String { { String($0) } }
+public func pyreonTransposeCmds(_ cmds: [PyreonDrawCmd]) -> [PyreonDrawCmd] { cmds }
 public func pyreonMirrorCmds(_ cmds: [PyreonDrawCmd], _ width: Double) -> [PyreonDrawCmd] { cmds }
 public struct PyreonChartEntrance<Content: View>: View {
   public init(durationMs: Double, @ViewBuilder content: @escaping (Double) -> Content) {}

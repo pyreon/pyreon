@@ -61,6 +61,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import java.lang.ref.WeakReference
+import org.json.JSONObject
 
 /**
  * Host an Android [WebView] in Compose. Supply [html] (inline HTML) OR
@@ -83,8 +85,13 @@ fun PyreonWebView(
     val state = remember { PyreonWebViewState() }
     AndroidView(
         modifier = modifier,
+        onRelease = {
+            PyreonWebViewGroups.leave(state)
+            state.webView = null
+        },
         factory = { context ->
             WebView(context).apply {
+                state.webView = WeakReference(this)
                 @Suppress("SetJavaScriptEnabled")
                 settings.javaScriptEnabled = true
                 // Reverse bridge — the page's `window.pyreonPostMessage(s)`
@@ -132,6 +139,62 @@ private class PyreonWebViewState {
     var loaded: Boolean = false
     var loadedKey: String? = null
     var onMessage: ((String) -> Unit)? = null
+    /** The hosted WebView — a sibling relay evaluates into it. */
+    var webView: WeakReference<WebView>? = null
+    /** The host group this page joined (null = none). */
+    var group: String? = null
+}
+
+/**
+ * Host-group registry — group name → the hosts currently in it. Every hosted
+ * page is its own realm, so two guests can never reach each other; a page that
+ * posted `{"__pyreonWebViewGroup":1,"join":"g"}` receives what its group
+ * siblings relay, through `window.__pyreonWebViewGroupMessage(s)`. Mirrors
+ * the web `<WebView>` host and the iOS runtime byte-for-byte in protocol.
+ * Members are removed by IDENTITY on leave and on `onRelease`; an emptied
+ * group is dropped. Main-thread only (the JS bridge marshals first).
+ */
+private object PyreonWebViewGroups {
+    private val members = HashMap<String, MutableSet<PyreonWebViewState>>()
+
+    /** Consume a reserved host-group message. Returns false for ordinary traffic. */
+    fun handle(message: String, from: PyreonWebViewState): Boolean {
+        if (!message.startsWith("{\"__pyreonWebViewGroup\"")) return false
+        val obj = try { JSONObject(message) } catch (_: Exception) { return false }
+        if (obj.optInt("__pyreonWebViewGroup") != 1) return false
+        val join = obj.optString("join")
+        when {
+            join.isNotEmpty() -> join(from, join)
+            obj.optBoolean("leave") -> leave(from)
+            obj.has("group") && obj.has("message") && obj.optString("group") == from.group ->
+                relay(obj.optString("message"), obj.optString("group"), from)
+        }
+        return true
+    }
+
+    fun join(state: PyreonWebViewState, group: String) {
+        if (state.group == group) return
+        leave(state)
+        members.getOrPut(group) { LinkedHashSet() }.add(state)
+        state.group = group
+    }
+
+    fun leave(state: PyreonWebViewState) {
+        val group = state.group ?: return
+        state.group = null
+        val set = members[group] ?: return
+        set.remove(state)
+        if (set.isEmpty()) members.remove(group)
+    }
+
+    private fun relay(message: String, group: String, from: PyreonWebViewState) {
+        val set = members[group] ?: return
+        val js = "if (typeof window.__pyreonWebViewGroupMessage === 'function') window.__pyreonWebViewGroupMessage(${JSONObject.quote(message)});"
+        for (member in set) {
+            if (member === from) continue
+            member.webView?.get()?.evaluateJavascript(js, null)
+        }
+    }
 }
 
 /**
@@ -147,7 +210,10 @@ private class PyreonJsBridge(private val state: PyreonWebViewState) {
 
     @JavascriptInterface
     fun postMessage(message: String) {
-        mainHandler.post { state.onMessage?.invoke(message) }
+        mainHandler.post {
+            // Reserved host-group traffic is consumed and never forwarded.
+            if (!PyreonWebViewGroups.handle(message, state)) state.onMessage?.invoke(message)
+        }
     }
 }
 
