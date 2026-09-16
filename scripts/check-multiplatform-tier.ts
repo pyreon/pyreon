@@ -306,6 +306,10 @@ async function main(): Promise<number> {
   const doc = readFileSync(docPath, 'utf8')
   const start = doc.indexOf(TABLE_START)
   const end = doc.indexOf(TABLE_END)
+  // Sorted by name: `findManifests` walks the filesystem, whose order differs
+  // between macOS (alphabetical) and the ubuntu runner (ext4 hash order) — an
+  // unsorted table regenerates differently per platform and drifts CI-only.
+  rows.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   const rendered = renderTierTable(rows)
   if (start === -1 || end === -1) {
     failures.push(
@@ -319,10 +323,18 @@ async function main(): Promise<number> {
   } else {
     const current = doc.slice(start, end + TABLE_END.length)
     if (current !== rendered) {
+      // Name the first differing line: this drift has been CI-only (a local
+      // regeneration is a no-op), and a bare "STALE" gives nothing to act on.
+      const had = current.split('\n')
+      const want = rendered.split('\n')
+      let at = 0
+      while (at < had.length && had[at] === want[at]) at++
       failures.push(
         `the tier table in multiplatform-libraries.md is STALE — a manifest's multiplatform ` +
           `declaration changed without regenerating it. Run: ` +
-          `bun scripts/check-multiplatform-tier.ts --write-table`,
+          `bun scripts/check-multiplatform-tier.ts --write-table ` +
+          `(first difference at table line ${at + 1}: committed ${JSON.stringify(had[at] ?? '<end>')}, ` +
+          `generated ${JSON.stringify(want[at] ?? '<end>')}; ${had.length} vs ${want.length} lines)`,
       )
     }
   }

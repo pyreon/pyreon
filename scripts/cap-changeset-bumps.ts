@@ -22,20 +22,41 @@ import { join } from 'node:path'
 
 const CHANGESET_DIR = join(import.meta.dirname, '..', '.changeset')
 
-// Match `'@pyreon/X': major` (and the unquoted form) anywhere on a line.
+// Match `'@pyreon/X': major` (and the unquoted form) on a FRONTMATTER line.
 // Group 1 = the package + colon segment, kept verbatim; we just swap the
 // trailing severity word.
 const MAJOR_LINE = /^(\s*['"]?[^:'"]+['"]?\s*:\s*)major\s*$/gm
 
-const files = readdirSync(CHANGESET_DIR).filter(
-  (f) => f.endsWith('.md') && f !== 'README.md',
-)
+/**
+ * Cap severities in the YAML frontmatter ONLY. The line regex matches English
+ * too (`Impact: major`, `Breaking-change risk: major`), and a changeset BODY is
+ * copied verbatim into `CHANGELOG.md` — running it over the whole file shipped
+ * the OPPOSITE of what the author wrote into the published changelog. The
+ * structure is explicit (`---` fences), so read it instead of inferring it
+ * from line shape. A file without a frontmatter block is returned unchanged.
+ */
+export function capChangesetText(text: string): string {
+  // The opening fence is CAPTURED (`---\n` or `---\r\n`) and its length used
+  // for the splice — a hardcoded 4 was right for LF and, under CRLF, dropped
+  // the fence's newline and duplicated a byte, leaving unparseable frontmatter.
+  const m = /^(---\r?\n)([\s\S]*?)(\r?\n---(?:\r?\n|$))/.exec(text)
+  if (!m) return text
+  const fence = m[1]!
+  const front = m[2]!
+  const capped = front.replace(MAJOR_LINE, '$1minor')
+  if (capped === front) return text
+  return fence + capped + text.slice(fence.length + front.length)
+}
+
+const files = import.meta.main
+  ? readdirSync(CHANGESET_DIR).filter((f) => f.endsWith('.md') && f !== 'README.md')
+  : []
 
 let touched = 0
 for (const f of files) {
   const path = join(CHANGESET_DIR, f)
   const before = readFileSync(path, 'utf8')
-  const after = before.replace(MAJOR_LINE, '$1minor')
+  const after = capChangesetText(before)
   if (before !== after) {
     writeFileSync(path, after)
     // oxlint-disable-next-line no-console
@@ -44,12 +65,12 @@ for (const f of files) {
   }
 }
 
-if (touched > 0) {
-  // oxlint-disable-next-line no-console
-  console.log(
-    `[cap-bumps] capped ${touched} changeset(s) at minor (0.x policy)`,
-  )
-} else {
-  // oxlint-disable-next-line no-console
-  console.log('[cap-bumps] no major bumps to cap — clean')
+if (import.meta.main) {
+  if (touched > 0) {
+    // oxlint-disable-next-line no-console
+    console.log(`[cap-bumps] capped ${touched} changeset(s) at minor (0.x policy)`)
+  } else {
+    // oxlint-disable-next-line no-console
+    console.log('[cap-bumps] no major bumps to cap — clean')
+  }
 }

@@ -54,7 +54,7 @@ const WORKFLOWS_DIR = join(REPO_ROOT, '.github/workflows')
  * Workflows whose comment/issue post IS the deliverable — retries required,
  * swallow-all catch deliberately NOT required (see the header rationale).
  */
-export const NOTIFIER_WORKFLOWS = new Set(['native-device.yml'])
+export const NOTIFIER_WORKFLOWS = new Set(['native-device.yml', 'published-state.yml'])
 
 /** Octokit calls that write a PR comment / issue — the steps this gate covers. */
 const COMMENT_CALL_RE = /issues\.(createComment|updateComment|create)\b/

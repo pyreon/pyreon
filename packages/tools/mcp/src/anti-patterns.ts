@@ -395,6 +395,50 @@ const INDEX_HOOK_TITLE_MAX = 70
  * claim. Prefer this over paginating: the discovery path stays ONE call.
  */
 const INDEX_TITLE_MAX = 120
+/**
+ * PAGINATION — the third lever, reached on 2026-09-15 at 392 entries: with
+ * hooks dropped and titles clamped the whole index measured 12,262 tokens
+ * against the 12,000-token design boundary. Categories are packed IN FILE
+ * ORDER into pages of at most this many characters (~8K tokens; a category
+ * is never split, so a single oversized category is its own page). The
+ * default call returns page 1 and its footer names the categories on the
+ * later pages, so discovery of the FIRST categories stays one call and the
+ * rest costs exactly one more with a known target — the shape
+ * `token-budget.test.ts` asks for instead of a bigger number.
+ */
+const INDEX_PAGE_CHAR_BUDGET = 32_000
+
+/** Categories (file order, grouped) packed into pages by the character budget. */
+function paginateIndexCategories(
+  byCategory: Map<AntiPatternCategory, AntiPatternEntry[]>,
+): Array<Array<[AntiPatternCategory, AntiPatternEntry[]]>> {
+  const pages: Array<Array<[AntiPatternCategory, AntiPatternEntry[]]>> = []
+  let current: Array<[AntiPatternCategory, AntiPatternEntry[]]> = []
+  let size = 0
+  for (const [cat, entries] of byCategory) {
+    const chars = entries.reduce((n, e) => n + clampTitle(e.name).length + 40, 0)
+    if (current.length > 0 && size + chars > INDEX_PAGE_CHAR_BUDGET) {
+      pages.push(current)
+      current = []
+      size = 0
+    }
+    current.push([cat, entries])
+    size += chars
+  }
+  if (current.length > 0) pages.push(current)
+  return pages
+}
+
+/** How many index pages the catalog currently spans (for callers and tests). */
+export function antiPatternsIndexPageCount(entries: AntiPatternEntry[]): number {
+  const byCategory = new Map<AntiPatternCategory, AntiPatternEntry[]>()
+  for (const entry of entries) {
+    if (!byCategory.has(entry.category)) byCategory.set(entry.category, [])
+    byCategory.get(entry.category)!.push(entry)
+  }
+  return Math.max(1, paginateIndexCategories(byCategory).length)
+}
+
 function clampTitle(name: string): string {
   if (name.length <= INDEX_TITLE_MAX) return name
   const slice = name.slice(0, INDEX_TITLE_MAX)
@@ -413,7 +457,7 @@ function indexHook(description: string): string {
   return `${slice.slice(0, lastSpace > 40 ? lastSpace : INDEX_HOOK_MAX).trimEnd()}…`
 }
 
-export function formatAntiPatternsIndex(entries: AntiPatternEntry[]): string {
+export function formatAntiPatternsIndex(entries: AntiPatternEntry[], page = 1): string {
   if (entries.length === 0) {
     return 'No anti-patterns found. Check that `.claude/rules/anti-patterns.md` is reachable.'
   }
@@ -422,13 +466,24 @@ export function formatAntiPatternsIndex(entries: AntiPatternEntry[]): string {
     if (!byCategory.has(entry.category)) byCategory.set(entry.category, [])
     byCategory.get(entry.category)!.push(entry)
   }
+  const pages = paginateIndexCategories(byCategory)
+  if (!Number.isInteger(page) || page < 1 || page > pages.length) {
+    return `Index page ${page} is out of range — the index spans ${pages.length} page${pages.length === 1 ? '' : 's'}. Call get_anti_patterns({ page: 1 }) … { page: ${pages.length} }.`
+  }
+  const onPage = pages[page - 1]!
+  const onPageCount = onPage.reduce((n, [, es]) => n + es.length, 0)
+  const pageNote = pages.length > 1 ? ` — page ${page}/${pages.length} (${onPageCount} entries)` : ''
   const parts: string[] = [
-    `# Pyreon Anti-Patterns — index (${entries.length} total, ${byCategory.size} categor${byCategory.size === 1 ? 'y' : 'ies'})`,
+    `# Pyreon Anti-Patterns — index (${entries.length} total, ${byCategory.size} categor${byCategory.size === 1 ? 'y' : 'ies'})${pageNote}`,
     '',
     'Compact index — one line per entry; a long title is clamped with `…`. For the full body of an entry call `get_anti_patterns({ name: "<any fragment of the title>" })`; for every entry in a category call `get_anti_patterns({ category: "<slug>" })`; for the entire catalog (~14K tokens) call `get_anti_patterns({ full: true })`. Entries tagged `[detector: <code>]` are caught statically by the `validate` tool.',
     '',
   ]
-  for (const [, catEntries] of byCategory) {
+  if (page > 1) {
+    const before = pages.slice(0, page - 1).flatMap((p) => p.map(([, es]) => es[0]!.categoryHeading))
+    parts.push(`(Earlier pages hold: ${before.join(' · ')} — call get_anti_patterns({ page: ${page - 1} }).)`, '')
+  }
+  for (const [, catEntries] of onPage) {
     parts.push(`## ${catEntries[0]!.categoryHeading} (${catEntries.length})`)
     parts.push('')
     for (const entry of catEntries) {
@@ -441,6 +496,12 @@ export function formatAntiPatternsIndex(entries: AntiPatternEntry[]): string {
       parts.push(`- **${clampTitle(entry.name)}**${tag}${hook}`)
     }
     parts.push('')
+  }
+  if (page < pages.length) {
+    const later = pages.slice(page).flatMap((p) => p.map(([, es]) => `${es[0]!.categoryHeading} (${es.length})`))
+    parts.push(
+      `Index continues — page ${page + 1}/${pages.length} holds: ${later.join(' · ')}. Call get_anti_patterns({ page: ${page + 1} }).`,
+    )
   }
   return parts.join('\n').trimEnd()
 }

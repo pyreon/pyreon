@@ -29,6 +29,7 @@
  * themselves here with a reason, and the list is a RATCHET: an entry whose
  * file is gone fails, so it cannot outlive its justification.
  */
+import { CI_COMPLEMENT_INVOCATION, ciComplementIsWired } from './gate-wiring'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
@@ -130,10 +131,19 @@ export function staleExemptions(): string[] {
 
 const unwired = findUnwiredGates()
 const stale = staleExemptions()
+// "Wired" used to mean "referenced by validate-fast, a script, a workflow or a
+// hook" — and validate-fast itself ran only from the pre-push hook, which any
+// `PYREON_SKIP_PRE_PUSH=1` / `--no-verify` / non-local merge bypasses. So a
+// gate listed ONLY in validate-fast was enforced by nobody (26 of 46, 2026-09)
+// while this check reported it wired. CI now runs the hook-only remainder as
+// one Fast Gates step (`validate-fast --ci-complement`); that step being
+// present is what makes "in validate-fast" mean "enforced", so its absence is
+// a failure here, not a silent regression to a hook-only wall.
+const complementWired = ciComplementIsWired(join(REPO_ROOT, '.github', 'workflows'))
 
 if (process.argv.includes('--json')) {
-  console.log(JSON.stringify({ unwired, staleExemptions: stale }, null, 2))
-} else if (unwired.length === 0 && stale.length === 0) {
+  console.log(JSON.stringify({ unwired, staleExemptions: stale, complementWired }, null, 2))
+} else if (unwired.length === 0 && stale.length === 0 && complementWired) {
   const total = readdirSync(join(REPO_ROOT, 'scripts')).filter(
     (f) => f.startsWith('check-') && f.endsWith('.ts'),
   ).length
@@ -148,6 +158,13 @@ if (process.argv.includes('--json')) {
         `  workflow — or add it to EXEMPT in this file with a reason.\n`,
     )
   }
+  if (!complementWired) {
+    console.error(
+      `✗ no workflow runs \`${CI_COMPLEMENT_INVOCATION}\` — every gate that lives only in\n` +
+        `  scripts/validate-fast.ts is then enforced by the pre-push hook alone, which any\n` +
+        `  bypass skips. Restore the Fast Gates step in .github/workflows/ci.yml.\n`,
+    )
+  }
   if (stale.length > 0) {
     console.error(`✗ ${stale.length} EXEMPT entr(y/ies) whose script is gone:\n`)
     for (const g of stale) console.error(`  ${g}`)
@@ -155,4 +172,4 @@ if (process.argv.includes('--json')) {
   }
 }
 
-process.exit(unwired.length + stale.length > 0 ? 1 : 0)
+process.exit(unwired.length + stale.length > 0 || !complementWired ? 1 : 0)

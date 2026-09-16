@@ -284,7 +284,8 @@ describe('deep state — literal object/array initializers lower to signal(creat
     const r = P(
       `${HEADER}let user = state({ name: 'a', age: 1 })\nlet flag = state(false)\neffect(() => { if (flag) log(user.name) })\n`,
     )!
-    expect(r.code).toContain(`void (user(), user().name);`)
+    // Optionally chained: the prologue runs BEFORE the body's own null-guard.
+    expect(r.code).toContain(`void (user(), user()?.name);`)
   })
 
   it('an unconditional path is NOT hoisted; a conditional writer does not hoist its own target', () => {
@@ -395,9 +396,14 @@ describe('effect + total tracking', () => {
     expect(r.code).toContain(`void (a());`)
   })
 
-  it('reads inside a nested function are treated as conditional', () => {
+  it('reads inside a NESTED function are NOT hoisted (classic never subscribes to them)', () => {
+    // A nested callback runs later, in another scope — hoisting its read made
+    // the effect re-run on a signal its body never reads (a timer pile-up on
+    // `setTimeout(() => log(a), …)`, and a cleanup reading state re-ran the
+    // effect forever). The read is rewritten and left where it is.
     const r = P(`${HEADER}let a = state(1)\neffect(() => { const t = () => a; use(t) })\n`)!
-    expect(r.code).toContain(`void (a());`)
+    expect(r.code).toContain(`effect(() => { const t = () => a(); use(t) })`)
+    expect(r.code).not.toContain(`void (`)
   })
 
   it('a WRITE-only binding is never hoisted (no self-retrigger loop)', () => {
@@ -818,5 +824,24 @@ export function Card({ label, size = 2 }) {
 }\n`
     const r = transformPlain(src, 't.tsx')!
     expect(r.code).toContain(`{ label: props.label, size: (props.size ?? (2)) }`)
+  })
+})
+
+describe('effect total tracking — scope discipline (round 2)', () => {
+  it('a binding SHADOWED inside the effect is not mistaken for the outer state', () => {
+    // `const a = 1` inside the effect body shadows the outer `a`; the prologue
+    // hoisted the outer `a` anyway (and, worse, rewrote the inner read to a
+    // call) — the effect re-ran on a signal its body never reads.
+    const r = P(`${HEADER}let a = state(1)\nlet f = state(true)\neffect(() => { const a = 2; if (f) log(a) })\n`)!
+    expect(r.code).not.toContain(`void (a()`)
+    expect(r.code).toContain(`log(a)`)
+  })
+
+  it('a conditionally-read deep path is hoisted OPTIONALLY chained (no TDZ / null throw)', () => {
+    const r = P(
+      `${HEADER}let s = state({ items: [{ id: 1 }] })\nlet f = state(false)\neffect(() => { if (f) log(s.items[0].id) })\n`,
+    )!
+    expect(r.code).toContain(`s()?.items?.[0]?.id`)
+    expect(r.code).not.toMatch(/void \([^;]*s\(\)\.items/)
   })
 })

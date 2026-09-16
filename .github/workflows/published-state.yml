@@ -24,10 +24,91 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: latest
+          # Pinned like every other workflow — `latest` made the daily alarm
+          # the one job whose runtime changed under it without a commit.
+          bun-version-file: .bun-version
       - name: Check published state
         # `--native` ALSO verifies the native compiler binaries (published by
         # release-native.yml AFTER the JS packages). The in-release check in
         # release.yml deliberately omits it — native isn't on npm yet at that
         # point — so this daily run is what guards the native-binary cascade.
         run: bun scripts/check-published-state.ts --native
+
+  # ── Daily-alarm visibility (sticky issue) ──
+  # This check IS the alarm for a partial or missed release, and it runs on a
+  # schedule nobody watches: it was red for DAYS across three broken releases
+  # (v0.46.0 / v0.49.0 / v0.50.0 — see heal-release-chain.ts) before anyone
+  # read the Actions tab. Same sticky-issue pattern as native-device.yml:
+  # one issue, one comment per red day, auto-closed by the next green run.
+  notify:
+    name: Daily status → sticky issue
+    if: always() && github.event_name == 'schedule'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      # `retries: 3` for transient API 5xx, but NO swallow-all catch: the
+      # notification is the deliverable (see check-advisory-comment-steps).
+      - name: Create / update / close the sticky failure issue
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          retries: 3
+          script: |
+            const title = '[published-state] npm does NOT match the released version'
+            // Any non-success result is red (a cancelled/timed-out verify is not green).
+            const result = '${{ needs.verify.result }}'
+            const failed = result !== 'success'
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              creator: 'github-actions[bot]',
+              per_page: 100,
+            })
+            const sticky = issues.find((i) => i.title === title)
+            if (failed) {
+              const line = `Daily check result: **${result}** — ${runUrl}`
+              if (sticky) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: sticky.number,
+                  body: line,
+                })
+              } else {
+                await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title,
+                  body: [
+                    'The daily `check-published-state --native` run is red: a released',
+                    'version is not fully on npm (a JS sentinel, or one of the seven',
+                    '`@pyreon/compiler-*` binaries, lags the repo). Read the run log for',
+                    'the lagging package, then re-run `scripts/publish.ts` for it or',
+                    're-dispatch `release-native.yml` for the tag (heal-release-chain',
+                    'does this automatically on the next Release run).',
+                    '',
+                    'This issue is managed by the workflow: one comment per red day,',
+                    'auto-closed by the next green run.',
+                    '',
+                    line,
+                  ].join('\n'),
+                })
+              }
+            } else if (sticky) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: sticky.number,
+                body: `Daily check is green again: ${runUrl} — auto-closing.`,
+              })
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: sticky.number,
+                state: 'closed',
+              })
+            }

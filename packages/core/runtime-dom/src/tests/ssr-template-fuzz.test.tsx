@@ -50,12 +50,16 @@ const STRINGS = ['plain', 'a<b>', 'x & y', `q"'z`, 'space here', '&amp;', '', '<
 // exercise bake-time escaping (escapeHtmlSsr) on both sides.
 const ATTR_STRINGS = ['plain', 'a<b>', 'x y z', `it's ok`, '', 'space here', '<script>']
 const TAGS = ['div', 'span', 'section', 'p', 'ul', 'li', 'main', 'b', 'em', 'article']
-const ATTR_NAMES = ['class', 'id', 'title', 'data-x', 'role', 'aria-label', 'lang']
+// `onclick` is a LOWERCASE handler the h() path drops by name — the fast
+// path must drop it too (a string value would otherwise bake a live handler).
+const ATTR_NAMES = ['class', 'id', 'title', 'data-x', 'role', 'aria-label', 'lang', 'onclick']
 // camelCase / renamed names exercise `_ssrAttr`'s toAttrName mapping (dynamic
 // attrs only — the compiler can't bake a renamed name).
-const DYN_ATTR_NAMES = ['class', 'id', 'title', 'data-x', 'tabIndex', 'className', 'aria-label']
+const DYN_ATTR_NAMES = ['class', 'id', 'title', 'data-x', 'tabIndex', 'className', 'aria-label', 'onclick']
+// Literal `{false}` attrs: presence attrs OMIT, aria attrs render `="false"`.
+const FALSE_ATTR_NAMES = ['hidden', 'aria-hidden', 'title']
 
-type AttrSpec = { name: string; value: string; dyn: boolean; ref?: string }
+type AttrSpec = { name: string; value: string; dyn: boolean; ref?: string; lit?: 'false' }
 type Node =
   | { k: 'text'; s: string }
   | { k: 'bare'; ref: string }
@@ -84,6 +88,10 @@ function genEl(r: () => number, depth: number, mode: 'recursed' | 'mapitem'): El
     used.add(name)
     if (dyn) attrs.push({ name, value: '', dyn: true, ref: pick(r, ['f0', 'f1', 'f2']) })
     else attrs.push({ name, value: pick(r, ATTR_STRINGS), dyn: false })
+  }
+  if (r() < 0.2) {
+    const name = pick(r, FALSE_ATTR_NAMES)
+    if (!used.has(name)) attrs.push({ name, value: '', dyn: false, lit: 'false' })
   }
   const children: Node[] = []
   const nKids = depth >= 3 ? Math.floor(r() * 2) : 1 + Math.floor(r() * 2)
@@ -126,6 +134,7 @@ function genChild(r: () => number, depth: number, mode: 'recursed' | 'mapitem'):
 // ── spec → JSX source ────────────────────────────────────────────────────────
 // ATTR_STRINGS carries no `"`/`&`, so the value is verbatim-safe in `attr="…"`.
 function attrSrc(a: AttrSpec): string {
+  if (a.lit === 'false') return `${a.name}={false}`
   return a.dyn ? `${a.name}={data.${a.ref}}` : `${a.name}="${a.value}"`
 }
 function elSrc(el: ElNode): string {
@@ -162,7 +171,7 @@ function elOracle(el: ElNode, ctx: FuzzCtx, mode: 'recursed' | 'mapitem', it?: R
   // A dynamic attr is a dep member access (`data.fN`) — NOT wrapped (deps
   // aren't signals), so the h() oracle passes the bare value; renderProp does
   // the escaping/name-map/cx in both paths.
-  for (const a of el.attrs) props[a.name] = a.dyn ? ctx.data[a.ref!] : a.value
+  for (const a of el.attrs) props[a.name] = a.lit === 'false' ? false : a.dyn ? ctx.data[a.ref!] : a.value
   // TEXT FUSION — mirror the compiler's `fuseTextChildren`: children that are
   // ONLY text / literal / `data.fN` / `sN()` parts, with at least one signal
   // read and at least two parts after adjacent-text folding, become ONE

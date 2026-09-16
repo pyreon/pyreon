@@ -184,8 +184,8 @@ describe('the LPIH cache write validates before it touches disk', () => {
     // Re-serializing is what makes the on-disk format stable regardless
     // of how the browser bridge encoded it — the LSP reads this file.
     const path = tmpFile('.pyreon-lpih.json')
-    return writeLpihCacheFile(path, '{ "fires" : [ 1 ] }').then(() => {
-      expect(readFileSync(path, 'utf8')).toBe('{"fires":[1]}')
+    return writeLpihCacheFile(path, '{ "fires" : [ { "id" : 1 } ] }').then(() => {
+      expect(readFileSync(path, 'utf8')).toBe('{"fires":[{"id":1}]}')
     })
   })
 
@@ -243,10 +243,10 @@ describe('the LPIH cache write validates before it touches disk', () => {
     // The bridge posts a full snapshot each interval; appending would
     // grow the file without bound and produce invalid JSON.
     const path = tmpFile()
-    return writeLpihCacheFile(path, '{"fires":[1]}')
-      .then(() => writeLpihCacheFile(path, '{"fires":[2]}'))
+    return writeLpihCacheFile(path, '{"fires":[{"id":1}]}')
+      .then(() => writeLpihCacheFile(path, '{"fires":[{"id":2}]}'))
       .then(() => {
-        expect(readFileSync(path, 'utf8')).toBe('{"fires":[2]}')
+        expect(readFileSync(path, 'utf8')).toBe('{"fires":[{"id":2}]}')
       })
   })
 })

@@ -195,8 +195,10 @@ describe('jsx.ts (SSR) — proven-non-null dynamic attrs bake `name="` + `_esc(v
     expect(s('<div id={Number(x)}>y</div>')).toContain('_esc(Number(x))')
   })
 
-  it('bakes an always-string METHOD call, and declines an arbitrary one', () => {
-    expect(s('<div id={n.toFixed(2)}>y</div>')).toContain('_esc(n.toFixed(2))')
+  it('declines EVERY method call — a name on an untyped receiver proves nothing', () => {
+    // `n.toFixed(2)` used to bake; a user object's `toFixed`/`join` returning
+    // null then baked `id="null"` where the h() path omits (audit round 2).
+    expect(s('<div id={n.toFixed(2)}>y</div>')).toContain('_ssrAttrGen')
     expect(s('<div id={n.whatever()}>y</div>')).toContain('_ssrAttrGen')
   })
 

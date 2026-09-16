@@ -11,7 +11,13 @@
  * ground truth (npm + origin), so these specs pin the decision table.
  */
 import { describe, expect, it } from 'vitest'
-import { parsePublishResult, planHeal, resolveBumpCommit, validateReleaseVersion } from '../../../../../scripts/heal-release-chain'
+import {
+  nativeDispatchBlockedBy,
+  parsePublishResult,
+  planHeal,
+  resolveBumpCommit,
+  validateReleaseVersion,
+} from '../../../../../scripts/heal-release-chain'
 
 const HEALTHY = {
   npmHasVersion: true,
@@ -155,7 +161,7 @@ describe('validateReleaseVersion — the file-data → URL/argv barrier', () => 
 describe('parsePublishResult — phase 1 local truth must be SOUND or absent', () => {
   it('accepts a valid manifest', () => {
     const text = JSON.stringify({ version: '0.51.0', published: ['@pyreon/core'] })
-    expect(parsePublishResult(text)).toEqual({ version: '0.51.0', published: ['@pyreon/core'] })
+    expect(parsePublishResult(text)).toEqual({ version: '0.51.0', published: ['@pyreon/core'], incomplete: [] })
   })
 
   it('absent file → null (the Version-PR path)', () => {
@@ -183,6 +189,20 @@ describe('parsePublishResult — phase 1 local truth must be SOUND or absent', (
   })
 
 
+  it('carries `failed` ∪ `blocked` as `incomplete` — a partial release must not mint a Release', () => {
+    // The 0.51.0 shape: 70 published, 2 failed, 1 blocked. The healer used to
+    // drop both fields and announce "All packages … at 0.51.0" from the
+    // manifest that contradicted it.
+    const text = JSON.stringify({
+      version: '0.51.0',
+      published: ['@pyreon/core'],
+      failed: ['@pyreon/native-compiler', 42],
+      blocked: ['@pyreon/native-cli'],
+      needsBootstrap: ['@pyreon/new-pkg'],
+    })
+    expect(parsePublishResult(text)?.incomplete).toEqual(['@pyreon/native-compiler', '@pyreon/native-cli'])
+  })
+
   it('PRERELEASE version → null — the umbrella chain is stable-only', () => {
     // The prerelease job runs publish.ts too; release-native's tag trigger
     // matches only v[0-9]+.[0-9]+.[0-9]+, so finalizing a snapshot would mint
@@ -192,5 +212,15 @@ describe('parsePublishResult — phase 1 local truth must be SOUND or absent', (
         JSON.stringify({ version: '0.51.1-alpha-20260810', published: ['@pyreon/core'] }),
       ),
     ).toBeNull()
+  })
+})
+
+describe('nativeDispatchBlockedBy — binaries are @pyreon/compiler optionalDependencies', () => {
+  it('blocks when @pyreon/compiler itself did not publish', () => {
+    expect(nativeDispatchBlockedBy(['@pyreon/core', '@pyreon/compiler'])).toBe('@pyreon/compiler')
+  })
+  it('does NOT block for any other incomplete member (PMTC native-compiler included)', () => {
+    expect(nativeDispatchBlockedBy(['@pyreon/native-compiler', '@pyreon/native-cli'])).toBeNull()
+    expect(nativeDispatchBlockedBy([])).toBeNull()
   })
 })

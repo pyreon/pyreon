@@ -1,8 +1,8 @@
-import { URL_ATTRS } from '@pyreon/core'
+import { EVENT_HANDLER_ATTRS, URL_ATTRS } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 
 import { transformJSX } from '../index'
-import { SSR_URL_ATTRS } from '../jsx'
+import { SSR_EVENT_HANDLER_ATTRS, SSR_URL_ATTRS } from '../jsx'
 
 /**
  * The compiler cannot IMPORT core's `URL_ATTRS` at runtime — it is a build-time
@@ -66,4 +66,17 @@ describe('SSR_URL_ATTRS is identity-locked to core URL_ATTRS', () => {
       ).not.toContain('_ssrAttrGen')
     })
   }
+})
+
+describe('SSR_EVENT_HANDLER_ATTRS is identity-locked to core EVENT_HANDLER_ATTRS', () => {
+  it('the mirror is neither missing nor inventing an entry', () => {
+    expect(
+      [...SSR_EVENT_HANDLER_ATTRS].sort(),
+      'packages/core/compiler/src/jsx.ts:SSR_EVENT_HANDLER_ATTRS has drifted from ' +
+        'packages/core/core/src/url-guard.ts:EVENT_HANDLER_ATTRS. A lowercase handler ' +
+        'missing here reaches _ssrAttrGen, which INVOKES a function value during SSR ' +
+        'and bakes a string value as a live inline handler the h() path refuses. ' +
+        'Mirror the Rust copy too (native/src/lib.rs:SSR_EVENT_HANDLER_ATTRS).',
+    ).toEqual([...EVENT_HANDLER_ATTRS].sort())
+  })
 })

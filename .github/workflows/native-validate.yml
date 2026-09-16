@@ -75,7 +75,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-validate-${{ github.workflow }}-${{ github.ref }}
+  # The event name is part of the group: the nightly (UNCACHED, ~2h) and a
+  # push to main (cache-warming, the thing PRs inherit) both run on
+  # `refs/heads/main` and used to queue behind each other — a nightly in
+  # flight held every main push's verdict-cache save for its whole duration.
+  group: native-validate-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:

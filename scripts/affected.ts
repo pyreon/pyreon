@@ -64,6 +64,7 @@
  *   bun run scripts/affected.ts --category=core    # only @pyreon/* under packages/core/
  */
 
+import { gitChangedFilesZ } from './changed-files'
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -75,8 +76,14 @@ const ROOT = resolve(import.meta.dirname, '..')
 export function isRootFile(path: string): boolean {
   if (path === 'package.json') return true
   if (path === 'bun.lock') return true
-  if (path === 'vitest.shared.ts') return true
-  if (path === 'vitest.browser.ts') return true
+  // Every root `vitest.*.ts` — `vitest.setup.ts` is the `setupFiles` of EVERY
+  // package's vitest config (via @pyreon/vitest-config). The two names this
+  // used to list (`vitest.shared.ts` / `vitest.browser.ts`) were absorbed into
+  // that package in #914 and no longer exist, so a root setup-file change
+  // escalated NOTHING.
+  if (/^vitest\.[^/]*\.ts$/.test(path)) return true
+  // The pinned toolchain: a bun bump runs every test under a different runtime.
+  if (path === '.bun-version') return true
   if (/^tsconfig.*\.json$/.test(path)) return true
   if (path.startsWith('.github/workflows/')) return true
   // NOTE: `scripts/` is deliberately NOT a root file. Scripts are standalone
@@ -102,7 +109,12 @@ export function isRootFile(path: string): boolean {
  * structurally un-mergeable. The two deciders MUST agree on `scripts/**`.
  */
 export function isScriptFile(path: string): boolean {
-  return path.startsWith('scripts/') && /\.(ts|tsx|js|mjs|cjs|json)$/.test(path)
+  // ANY file under scripts/ — the same rule `e2e-affected.ts:forcesFullRun`
+  // applies. The two deciders gate the same downstream jobs, and when this
+  // one required a code extension a `scripts/**/*.swift` harness edit (or a
+  // `.sh`) computed `affected=∅` while the e2e decider ran every suite — the
+  // documented fail-closed-aggregator contradiction, from a NEW shape.
+  return path.startsWith('scripts/')
 }
 
 /**
@@ -142,6 +154,10 @@ export const SCRIPT_TEST_PACKAGE = '@pyreon/test-utils'
 export const DOC_INPUT_CONSUMERS: ReadonlyArray<{ match: (p: string) => boolean; pkg: string }> = [
   { match: (p) => p === '.claude/rules/anti-patterns.md', pkg: '@pyreon/mcp' },
   { match: (p) => p.startsWith('docs/patterns/'), pkg: '@pyreon/mcp' },
+  // `@pyreon/lint`'s `require-browser-smoke-test` loads this list at runtime
+  // and its runner tests construct it — a `.claude/**` change is docs-only
+  // for the heavy jobs, but this file's consumer must still run its tests.
+  { match: (p) => p === '.claude/rules/browser-packages.json', pkg: '@pyreon/lint' },
 ]
 
 /** The consuming package for a doc-input file, or undefined if it isn't one. */
@@ -486,8 +502,7 @@ export function computeAffectedFlags(opts: {
 export function gitChangedFiles(base: string, cwd: string = ROOT): string[] | null {
   const tryDiff = (args: string[]): string[] | null => {
     try {
-      const out = execFileSync('git', ['diff', '--name-only', ...args], { cwd, encoding: 'utf-8' })
-      return out.split('\n').filter(Boolean)
+      return gitChangedFilesZ(args[args.length - 1]!, { cwd, args: args.slice(0, -1) })
     } catch {
       return null
     }
