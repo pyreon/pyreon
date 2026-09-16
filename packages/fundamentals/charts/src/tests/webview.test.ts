@@ -198,6 +198,14 @@ describe('<ChartWebView>', () => {
     expect(onSelect).not.toHaveBeenCalled()
   })
 
+  it('a non-string host error is stringified', () => {
+    const onError = vi.fn()
+    const vnode = ChartWebView({ option: {}, onError })
+    const onMessage = (vnode.props as { onMessage: (m: string) => void }).onMessage
+    onMessage(JSON.stringify({ error: 42 }))
+    expect(onError).toHaveBeenCalledWith({ message: '42' })
+  })
+
   it('forwards the background into the generated host', () => {
     const vnode = ChartWebView({ option: {}, background: '#101820' })
     expect((vnode.props as { html: string }).html).toContain('background:#101820')

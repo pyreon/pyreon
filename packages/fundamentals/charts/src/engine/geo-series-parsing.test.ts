@@ -97,3 +97,50 @@ describe('map region data on the geo', () => {
     for (const i of [0, 1, 2]) expect(warned(f, `series[1].data[${i}]`), `datum ${i}`).toBe(true)
   })
 })
+
+describe('what reaches the geo host', () => {
+  it('heat stops from a visualMap, a lines trail, and paths with and without their own colour', async () => {
+    const { familyHostNode } = await import('./family-host')
+    const f = geo(
+      [
+        { type: 'heatmap', coordinateSystem: 'geo', data: [[1, 1, 1]] },
+        {
+          type: 'lines',
+          coordinateSystem: 'geo',
+          effect: { show: true, period: 3 },
+          data: [{ coords: [[1, 1], [9, 9]], lineStyle: { color: '#123456' } }, { coords: [[2, 2], [8, 8]] }],
+        },
+      ],
+      { visualMap: { inRange: { color: ['#000', '#fff'] } } },
+    )
+    const props = familyHostNode(f.plan, { width: 300, height: 200 })!.props as Record<string, unknown>
+    expect(props['heatStops']).toEqual(['#000', '#fff'])
+    expect(props['trail']).toBeDefined()
+    const paths = props['paths'] as { color?: string }[]
+    expect(paths.some((p) => p.color === '#123456')).toBe(true)
+    expect(paths.some((p) => p.color === undefined)).toBe(true)
+  })
+
+  it('without stops or an effect, the host gets neither key', async () => {
+    const { familyHostNode } = await import('./family-host')
+    const props = familyHostNode(geo([]).plan, { width: 300, height: 200 })!.props as Record<string, unknown>
+    expect('heatStops' in props).toBe(false)
+    expect('trail' in props).toBe(false)
+  })
+})
+
+describe('geo series edges', () => {
+  it('a geo series with no data array contributes nothing and does not throw', () => {
+    expect(() => geo([{ type: 'heatmap', coordinateSystem: 'geo' }])).not.toThrow()
+  })
+
+  it('a key with no geo mapping is named', () => {
+    expect(warned(geo([{ type: 'scatter', coordinateSystem: 'geo', data: [[1, 1]], stack: 'x' }]), 'series[1].stack')).toBe(true)
+  })
+
+  it('geo.zoom reaches the map options; without it there is no zoom key', () => {
+    const withZoom = compileFamily({ geo: { map: 'geo-parse-world', zoom: 2 }, series: [ANCHOR] } as EChartsOption)!
+    expect((withZoom.plan as unknown as { map: { zoom?: number } }).map.zoom).toBe(2)
+    expect('zoom' in (plan(geo([]))['map'] as object)).toBe(false)
+  })
+})
