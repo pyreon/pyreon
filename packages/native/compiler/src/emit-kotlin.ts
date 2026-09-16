@@ -12266,7 +12266,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
       `val pyreonBrushCmds: List<PyreonDrawCmd> = if (pyreonBrushA >= 0.0) renderBrushBand(pyreonPlot, minOf(pyreonBrushA, pyreonBrushB), maxOf(pyreonBrushA, pyreonBrushB), pyreonSpec.theme.axis) else if (pyreonBrushStart >= 0) run { val pyreonBand = brushBand(pyreonPlot, BrushRange(start = pyreonBrushStart, end = pyreonBrushEnd), ${win}, ${data}.size); if (pyreonBand.visible) renderBrushBand(pyreonPlot, pyreonBand.lo, pyreonBand.hi, pyreonSpec.theme.axis) else listOf() } else listOf()`,
     )
   }
-  const extraCmds = `${navigating ? ' + pyreonNavigator.cmds' : ''}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'}`
+  const extraCmds = `${navigating ? ' + pyreonNavigator.cmds' : ''}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'}${kotlinGraphicCmds(e)}`
   // `tooltip` as a tap — mirror of the Swift emitter (a named `tooltipFormatter` lowers; an inline one is reported).
   const tooltip = readStaticAttrKotlin(e, 'tooltip') === true
   const tipFormatter = chartAttrExprKotlin(e, 'tooltipFormatter')
@@ -12745,4 +12745,66 @@ function kotlinSpreadResolver(indent: number): SpreadResolver {
     },
     label: (e) => emitKotlinExpr(e, indent),
   }
+}
+
+/**
+ * The compile-time-resolved `graphic` elements as a `graphicDrawCommands(...)`
+ * call, or `''` when the option carried none. The fields are emitted in the
+ * generated struct's DECLARATION order — Swift's memberwise init takes them
+ * positionally even though every one is labelled.
+ */
+function kotlinGraphicCmds(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'graphicElements')
+  const value = attr?.kind === 'attr' ? attr.value : undefined
+  if (value?.kind !== 'array' || value.elements.length === 0) return ''
+  const items: string[] = []
+  for (const raw of value.elements) {
+    if (raw.kind !== 'object') return ''
+    const f = new Map(raw.fields.map((field) => [field.name, field.value]))
+    const num = (name: string): string => {
+      const v = f.get(name)
+      return v?.kind === 'literal' && typeof v.value === 'number' ? chartDouble(v.value) : '0.0'
+    }
+    const str = (name: string): string => {
+      const v = f.get(name)
+      return JSON.stringify(v?.kind === 'literal' && typeof v.value === 'string' ? v.value : '')
+    }
+    const clockwise = f.get('clockwise')
+    const pointsIR = f.get('points')
+    const pts: string[] = []
+    if (pointsIR?.kind === 'array') {
+      for (const p of pointsIR.elements) {
+        if (p.kind !== 'object') return ''
+        const pf = new Map(p.fields.map((field) => [field.name, field.value]))
+        const at = (name: string): string => {
+          const v = pf.get(name)
+          return v?.kind === 'literal' && typeof v.value === 'number' ? chartDouble(v.value) : '0.0'
+        }
+        pts.push(`PyreonChartPt(x = ${at('x')}, y = ${at('y')})`)
+      }
+    }
+    const args = [
+      `kind = ${str('kind')}`,
+      `x = ${num('x')}`,
+      `y = ${num('y')}`,
+      `w = ${num('w')}`,
+      `h = ${num('h')}`,
+      `fill = ${str('fill')}`,
+      `stroke = ${str('stroke')}`,
+      `lineWidth = ${num('lineWidth')}`,
+      `text = ${str('text')}`,
+      `fontSize = ${num('fontSize')}`,
+      `align = ${str('align')}`,
+      `cx = ${num('cx')}`,
+      `cy = ${num('cy')}`,
+      `r = ${num('r')}`,
+      `r0 = ${num('r0')}`,
+      `startAngle = ${num('startAngle')}`,
+      `endAngle = ${num('endAngle')}`,
+      `clockwise = ${clockwise?.kind === 'literal' && clockwise.value === false ? 'false' : 'true'}`,
+      `points = listOf<PyreonChartPt>(${pts.join(', ')})`,
+    ]
+    items.push(`GraphicElement(${args.join(', ')})`)
+  }
+  return ` + graphicDrawCommands(listOf<GraphicElement>(${items.join(', ')}))`
 }

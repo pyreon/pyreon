@@ -51,6 +51,7 @@ export const ENGINE_FILES = [
   'layout',
   'stack',
   'pictorial',
+  'graphic',
   'render',
   'candlestick',
   'heat',

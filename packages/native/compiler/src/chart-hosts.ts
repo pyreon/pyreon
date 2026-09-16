@@ -19,8 +19,8 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import { decimateShared, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
-import type { SamplingRequest } from '@pyreon/charts/option-layer'
+import { decimateShared, graphicElements, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
+import type { GraphicElement, SamplingRequest } from '@pyreon/charts/option-layer'
 import type { AttrIR, ExprIR } from './types'
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 
@@ -959,7 +959,7 @@ export function desugarOptionChart(
     return undefined
   }
 
-  optionFields(raw, ['series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'color', 'dataset'], 'option', warn)
+  optionFields(raw, ['series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'color', 'dataset', 'graphic'], 'option', warn)
 
   for (const a of e.attrs) {
     if (a.kind === 'event' && a.name !== 'selectindex') {
@@ -976,6 +976,37 @@ export function desugarOptionChart(
     const attr: AttrIR = { kind: 'attr', name, value }
     if (i < 0) attrs.push(attr)
     else attrs[i] = attr
+  }
+  // `graphic` resolves at COMPILE time through the web facade's own
+  // `graphicElements` (`@pyreon/charts/option-layer`), against the option's
+  // static width/height (its props, or the web host's own 640x320 defaults),
+  // so the native canvas draws the elements the web draws. The engine's
+  // `graphicDrawCommands` then paints them on both targets.
+  const graphicRaw = objectField(raw, 'graphic')
+  if (graphicRaw !== undefined) {
+    const plain = irToValue(graphicRaw, resolve)
+    if (plain.ok !== true) {
+      warn('<OptionChart option.graphic>: native needs literal graphic elements; they were skipped.')
+    } else {
+      const box = { w: litNumber(literalOf(attrOf(e, 'width'), resolve)) ?? 640, h: litNumber(literalOf(attrOf(e, 'height'), resolve)) ?? 320 }
+      const resolved = graphicElements({ graphic: plain.value } as Parameters<typeof graphicElements>[0], box.w, box.h)
+      for (const w of resolved.warnings) warn(`<OptionChart option.${w.path}>: ${w.message}`)
+      if (resolved.elements.length > 0) {
+        set('graphicElements', {
+          kind: 'array',
+          elements: resolved.elements.map((g: GraphicElement) => ({
+            kind: 'object' as const,
+            fields: [
+              { name: 'kind', value: lit(g.kind) },
+              ...(['x', 'y', 'w', 'h', 'lineWidth', 'fontSize', 'cx', 'cy', 'r', 'r0', 'startAngle', 'endAngle'] as const).map((k) => ({ name: k, value: optionDoubleLiteral(g[k]) })),
+              ...(['fill', 'stroke', 'text', 'align'] as const).map((k) => ({ name: k, value: lit(g[k]) })),
+              { name: 'clockwise', value: lit(g.clockwise) },
+              { name: 'points', value: { kind: 'array' as const, elements: g.points.map((p: { x: number; y: number }) => ({ kind: 'object' as const, fields: [{ name: 'x', value: optionDoubleLiteral(p.x) }, { name: 'y', value: optionDoubleLiteral(p.y) }] })) } },
+            ],
+          })),
+        })
+      }
+    }
   }
   const title = literalOf(objectField(raw, 'title'), resolve)
   const titleText = title === undefined ? undefined : objectField(title, 'text')
