@@ -14,6 +14,8 @@
 // PMTC-compilable canonical-primitive code. Full device builds are the
 // `native-device` CI gate's job (a separate, infra-gated arc).
 
+import { PYREON_DEP_RANGE } from './own-version'
+
 /** A single file the scaffold emits, relative to the project root. */
 export interface FileSpec {
   /** POSIX-style relative path, e.g. `ios/Sources/App.swift`. */
@@ -130,24 +132,24 @@ android/keystore.properties
           'release:android': 'bash scripts/ensure-release-keystore.sh && cd android && gradle assembleRelease',
         },
         dependencies: {
-          '@pyreon/core': 'latest',
-          '@pyreon/primitives': 'latest',
-          '@pyreon/reactivity': 'latest',
-          '@pyreon/runtime-dom': 'latest',
+          '@pyreon/core': PYREON_DEP_RANGE,
+          '@pyreon/primitives': PYREON_DEP_RANGE,
+          '@pyreon/reactivity': PYREON_DEP_RANGE,
+          '@pyreon/runtime-dom': PYREON_DEP_RANGE,
         },
         devDependencies: {
-          '@pyreon/vite-plugin': 'latest',
-          '@pyreon/native-cli': 'latest',
+          '@pyreon/vite-plugin': PYREON_DEP_RANGE,
+          '@pyreon/native-cli': PYREON_DEP_RANGE,
           // Native runtimes — installed into node_modules so the iOS
           // SPM project (project.yml `packages:`) and the Android Gradle
           // source-sets reference them by node_modules path. The emitted
           // Swift `import PyreonRuntime`/`PyreonRouter` + Kotlin
           // `PyreonReactivity`/`PyreonFetch`/… resolve against these.
-          '@pyreon/native-runtime-swift': 'latest',
-          '@pyreon/native-router-swift': 'latest',
-          '@pyreon/native-runtime-kotlin': 'latest',
-          '@pyreon/native-router-kotlin': 'latest',
-          '@pyreon/lint': 'latest',
+          '@pyreon/native-runtime-swift': PYREON_DEP_RANGE,
+          '@pyreon/native-router-swift': PYREON_DEP_RANGE,
+          '@pyreon/native-runtime-kotlin': PYREON_DEP_RANGE,
+          '@pyreon/native-router-kotlin': PYREON_DEP_RANGE,
+          '@pyreon/lint': PYREON_DEP_RANGE,
           typescript: '^6.0.0',
           vite: '^8.0.0',
         },
