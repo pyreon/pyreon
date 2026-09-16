@@ -175,6 +175,9 @@ export function treeTip(layout: TreeLayout, px: Double, py: Double, symbolSize?:
   // what unwraps the optional natively — a ternary over `=== undefined` does
   // not narrow in the emit.
   if (n.value === undefined) return [n.name]
+  /* v8 ignore next — the `?? 0.0` arm is unreachable on the web: the guard
+     above already returned for undefined. It exists to unwrap the optional
+     natively, where a `=== undefined` ternary does not narrow. */
   return [n.name, plain(n.value ?? 0.0)]
 }
 
@@ -213,6 +216,9 @@ export function graphTip(layout: GraphLayout, px: Double, py: Double): string[] 
   // what unwraps the optional natively — a ternary over `=== undefined` does
   // not narrow in the emit.
   if (n.value === undefined) return [n.name]
+  /* v8 ignore next — the `?? 0.0` arm is unreachable on the web: the guard
+     above already returned for undefined. It exists to unwrap the optional
+     natively, where a `=== undefined` ternary does not narrow. */
   return [n.name, plain(n.value ?? 0.0)]
 }
 

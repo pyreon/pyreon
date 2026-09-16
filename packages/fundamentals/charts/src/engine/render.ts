@@ -1034,6 +1034,9 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const r = rects[ri]!
         const grown = growRectH(r)
         if (s.symbol === undefined) {
+          /* v8 ignore next — `(s.values[ri] ?? 0.0)` is unreachable: `ri` indexes
+             rects built FROM `s.values`, so the read is always in range. Native
+             needs the unwrap; the web cannot reach it. */
           out.push(rectCmd(grown, s.color, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad, s.pattern))
         } else if (s.symbolRepeat === true) {
           // Repeat a unit symbol along the bar (left to right); a partial last symbol is dropped.
@@ -1046,10 +1049,15 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           }
           let kf = 0.0
           for (let k = 0; k < count; k++) {
+            /* v8 ignore next — `?? 'rect'` is unreachable: this arm sits inside the
+               `else` of `s.symbol === undefined`. It unwraps the optional for the
+               native emit, where that test does not narrow. */
             out.push(symbolCommand({ x: grown.x + unit * kf, y: grown.y, w: unit, h: unit }, s.symbol ?? 'rect', s.color))
             kf = kf + 1.0
           }
         } else {
+          /* v8 ignore next — same unreachable native unwrap: `s.symbol` is known
+             defined in this arm. */
           out.push(symbolCommand(grown, s.symbol ?? 'rect', s.color))
         }
       }
@@ -1089,6 +1097,9 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const r = rects[ri]!
         const grown = growRect(r, sDomain)
         if (s.symbol === undefined) {
+          /* v8 ignore next — `(s.values[ri] ?? 0.0)` is unreachable: `ri` indexes
+             rects built FROM `s.values`, so the read is always in range. Native
+             needs the unwrap; the web cannot reach it. */
           out.push(rectCmd(grown, s.color, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad, s.pattern))
         } else if (s.symbolRepeat === true) {
           // Repeat a unit symbol up the bar; a partial last symbol is dropped.
@@ -1104,10 +1115,14 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           let kf = 0.0
           for (let k = 0; k < count; k++) {
             const cell: Rect = { x: grown.x, y: grown.y + grown.h - unit * (kf + 1.0), w: unit, h: unit }
-            out.push(symbolCommand(cell, s.symbol ?? 'rect', s.color))
+            /* v8 ignore next — same unreachable native unwrap: `s.symbol` is known
+             defined in this arm. */
+          out.push(symbolCommand(cell, s.symbol ?? 'rect', s.color))
             kf = kf + 1.0
           }
         } else {
+          /* v8 ignore next — same unreachable native unwrap: `s.symbol` is known
+             defined in this arm. */
           out.push(symbolCommand(grown, s.symbol ?? 'rect', s.color))
         }
       }

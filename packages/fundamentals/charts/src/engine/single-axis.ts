@@ -72,6 +72,9 @@ export function layoutSingleAxis(axis: SingleAxisSpec, points: SingleAxisPoint[]
     lo = 0.0
     hi = Math.max(0.0, (axis.categories ?? []).length * 1.0 - 1.0)
   } else if (axis.domain !== undefined) {
+    /* v8 ignore next — unreachable on the web: the `!== undefined` test above
+       already established the domain. It unwraps the optional for the native
+       emit, where that test does not narrow. */
     const domain: Domain = axis.domain ?? { min: 0.0, max: 1.0 }
     lo = domain.min
     hi = domain.max

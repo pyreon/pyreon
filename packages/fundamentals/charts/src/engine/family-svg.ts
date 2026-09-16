@@ -237,6 +237,10 @@ export function gaugeToSvg(options: GaugeToSvgOptions): string {
     })
   }
   return renderSvg(cmds, width, height, svgTail(options.svg, options.title, options.description, () =>
+  /* v8 ignore next — the `?? '<name>'` fallbacks below are unreachable:
+     `svgTail` only calls this deriver when `title` is defined. They are
+     kept as a guard rather than removed, but an UNTITLED chart derives no
+     description at all today, which is worth closing on its own.  */
     `${options.title ?? 'Gauge'}: ${fmt(options.value)} of ${fmt(max)}.`,
   ))
 }
@@ -400,6 +404,10 @@ export function candlestickToSvg<T>(options: CandlestickToSvgOptions<T>): string
 
   const fmt = options.format ?? plain
   return renderSvg(cmds, width, height, svgTail(options.svg, options.title, options.description, () => {
+    /* v8 ignore next 2 — the `?? '<name>'` fallbacks here are unreachable:
+       `svgTail` only calls this deriver when `title` is defined. Kept as a
+       guard; that an UNTITLED chart derives no description at all is a
+       separate a11y gap worth closing on its own. */
     if (candles.length === 0) return `${options.title ?? 'Candlestick chart'}: no data.`
     const ext = ohlcExtent(candles)
     const last = candles[candles.length - 1]!
@@ -453,6 +461,10 @@ export function heatmapToSvg<T>(options: HeatmapToSvgOptions<T>): string {
   const grid: HeatGrid = buildHeatGrid(
     cols,
     yCats,
+    /* v8 ignore next 2 — the `?? -1` misses are unreachable: `cols`/`yCats`
+       are built by `firstSeen` over these same rows with these same accessors,
+       so every lookup hits. Kept as the guard for a non-deterministic
+       accessor. */
     rows.map((d, i) => colIdx.get(options.x(d, i)) ?? -1),
     rows.map((d, i) => rowIdx.get(options.y(d, i)) ?? -1),
     rows.map((d, i) => {
@@ -505,6 +517,10 @@ export function heatmapToSvg<T>(options: HeatmapToSvgOptions<T>): string {
     })
   }
   return renderSvg(cmds, width, height, svgTail(options.svg, options.title, options.description, () => {
+    /* v8 ignore next 2 — the `?? '<name>'` fallbacks here are unreachable:
+       `svgTail` only calls this deriver when `title` is defined. Kept as a
+       guard; that an UNTITLED chart derives no description at all is a
+       separate a11y gap worth closing on its own. */
     if (grid.cells.length === 0) return `${options.title ?? 'Heatmap'}: no data.`
     return `${options.title ?? 'Heatmap'}: ${nc} columns by ${nr} rows, values ${grid.min} to ${grid.max}.`
   }))
