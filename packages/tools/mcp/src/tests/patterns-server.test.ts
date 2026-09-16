@@ -69,7 +69,7 @@ describe('MCP server — get_anti_patterns tool', () => {
     const { client, close } = await newClient()
     try {
       const text = await callTool(client, 'get_anti_patterns', {})
-      expect(text).toMatch(/^# Pyreon Anti-Patterns — index \(\d+ total, \d+ categor(y|ies)\)/)
+      expect(text).toMatch(/^# Pyreon Anti-Patterns — index \(\d+ total, page \d+ of \d+, \d+ categor(y|ies)\)/)
       expect(text).toContain('## Reactivity Mistakes')
       expect(text).toContain('## JSX Mistakes')
       expect(text).toContain('## Architecture Mistakes')
