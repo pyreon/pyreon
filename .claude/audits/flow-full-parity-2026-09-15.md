@@ -98,9 +98,14 @@ native view.
   The pass found two WEB divergences and fixed them there: a nudge
   (`moveSelectedNodes`) added the raw delta instead of snapping, clamping and
   emitting like `updateNodePosition`; `isNodeVisible` read a child node's
-  parent-relative offset. Still hand-written only under F2: the layout
-  algorithms (web lays out through elkjs, the native engines carry their own
-  ports — asserted per target) and the animated `focusNode`/`animateViewport`.
+  parent-relative offset.
+- [x] F2 layouts: all seven algorithms (`layered` DOWN/RIGHT, `tree`, `force`,
+  `stress`, `radial`, `box`, `rectpacking`) are oracle-driven too — the web's
+  first-party `layout-engine.ts` (elkjs is long gone) against the native
+  ports, unanimated, on one 6-node DAG; the iterative solvers agree to ~1e-4
+  px (floating-point order across languages), locked at 0.01 px, the
+  deterministic ones exactly. 27 scenarios. Still hand-written only under F2:
+  the animated `focusNode` / `animateViewport`.
 - [x] The public `@pyreon/flow/webview` component now lowers to the real native
   WebView bridge instead of an unresolved `FlowWebView` symbol. Its generated
   default host is byte-ratcheted against the web builder; graph updates,

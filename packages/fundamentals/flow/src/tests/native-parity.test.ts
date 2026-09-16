@@ -17,28 +17,28 @@ const SWIFT = join(process.cwd(), 'native/tests/PyreonFlowStateTests.swift')
 const KOTLIN = join(process.cwd(), 'native/tests/PyreonFlowStateTest.kt')
 
 describe('flow native parity fixture', () => {
-  it('the web oracle answers every scenario deterministically', () => {
+  it('the web oracle answers every scenario deterministically', async () => {
     for (const s of PARITY_SCENARIOS) {
-      const a = expectationsOf(s)
-      const b = expectationsOf(s)
+      const a = await expectationsOf(s)
+      const b = await expectationsOf(s)
       expect(a).toEqual(b)
       expect(a.answers).toHaveLength(s.queries.length)
     }
-    const crud = expectationsOf(PARITY_SCENARIOS[0]!)
+    const crud = await expectationsOf(PARITY_SCENARIOS[0]!)
     expect(crud.nodes.map((n) => n.id)).toEqual(['2', '3', '4'])
     expect(crud.edges.map((e) => e.id)).toEqual(['e2', 'e3'])
-    const history = expectationsOf(PARITY_SCENARIOS.find((s) => s.name.startsWith('history'))!)
+    const history = await expectationsOf(PARITY_SCENARIOS.find((s) => s.name.startsWith('history'))!)
     expect(history.nodes.map((n) => n.id)).toEqual(['1', '2', '3'])
     // undo ×2 restores the edge and the move; redo re-applies only the move.
     expect(history.edges.map((e) => e.id)).toEqual(['e1'])
     expect(history.nodes[0]).toEqual({ id: '1', x: 5, y: 5 })
   })
 
-  it('both native fixtures carry the generated region byte-for-byte', () => {
+  it('both native fixtures carry the generated region byte-for-byte', async () => {
     const write = process.env['PYREON_WRITE_FLOW_PARITY'] === '1'
     const targets = [
-      { url: SWIFT, markers: SWIFT_MARKERS, region: renderSwift(), anchor: '    static func main() {', call: ['    static func main() {\n', '    static func main() {\n        runParityChecks()\n'] },
-      { url: KOTLIN, markers: KOTLIN_MARKERS, region: renderKotlin(), anchor: 'fun main() {', call: ['fun main() {\n', 'fun main() {\n    runParityChecks()\n'] },
+      { url: SWIFT, markers: SWIFT_MARKERS, region: await renderSwift(), anchor: '    static func main() {', call: ['    static func main() {\n', '    static func main() {\n        runParityChecks()\n'] },
+      { url: KOTLIN, markers: KOTLIN_MARKERS, region: await renderKotlin(), anchor: 'fun main() {', call: ['fun main() {\n', 'fun main() {\n    runParityChecks()\n'] },
     ] as const
     for (const t of targets) {
       const file = readFileSync(t.url, 'utf8')

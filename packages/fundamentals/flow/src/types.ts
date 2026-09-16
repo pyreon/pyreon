@@ -973,13 +973,13 @@ export interface LayoutOptions {
    */
   direction?: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'
   /**
-   * Spacing between nodes — default: 50. **Applies to all
+   * Spacing between nodes — default: 20. **Applies to all
    * algorithms.** Minimum gap between neighbouring nodes, which is a
    * generic spacing option respected by every algorithm in the suite.
    */
   nodeSpacing?: number
   /**
-   * Spacing between layers — default: 80.
+   * Spacing between layers — default: 40.
    *
    * **Applies to**: `layered` only. Gap between layers —
    * `elk.layered.spacing.nodeNodeBetweenLayers` which is namespaced

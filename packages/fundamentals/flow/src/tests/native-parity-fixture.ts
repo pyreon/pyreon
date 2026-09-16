@@ -15,10 +15,12 @@
  *
  * Container-dependent operations (`fitView`, `setCenter`, `isNodeVisible`)
  * run against an explicit `setContainerSize`, so the host measurement is a
- * scenario input rather than an excuse. Deliberately excluded: callbacks,
- * animation (`focusNode`, `animateViewport`) and `layout` — the web engine
- * lays out through elkjs while the native engines carry their own ports, so
- * those are asserted per target by the hand-written fixtures.
+ * scenario input rather than an excuse. Layout runs through the same
+ * first-party algorithms on every target (`layout-engine.ts` is the web's,
+ * the native engines carry ports), so the seven algorithms are oracle-driven
+ * too, unanimated. Deliberately excluded: callbacks and animation
+ * (`focusNode`, `animateViewport`), asserted per target by the hand-written
+ * fixtures.
  */
 import { createFlow } from '../flow'
 
@@ -56,6 +58,7 @@ export type ParityOp =
   | { op: 'addEdgeWaypoint'; id: string; x: number; y: number; index?: number }
   | { op: 'removeEdgeWaypoint'; id: string; index: number }
   | { op: 'updateEdgeWaypoint'; id: string; index: number; x: number; y: number }
+  | { op: 'layout'; algorithm: string; direction?: string; nodeSpacing?: number; layerSpacing?: number }
 
 export type ParityQuery =
   | { q: 'isValidConnection'; source: string; target: string }
@@ -83,6 +86,8 @@ export interface ParityScenario {
   /** Engine configuration the scenario opts into (defaults mirror `createFlow`). */
   snapToGrid?: boolean
   snapGrid?: number
+  /** Position tolerance for the node check (default 1e-6); the iterative layouts accumulate ~1e-4 of floating-point order across languages. */
+  tolerance?: number
 }
 
 export type SnapAnswer = { snapX: number | null; snapY: number | null; x: number; y: number }
@@ -341,12 +346,71 @@ export const PARITY_SCENARIOS: readonly ParityScenario[] = [
     ],
     queries: [{ q: 'overlapping', id: 'a' }],
   },
+  {
+    name: 'layout layered lays the same graph out on every target',
+    nodes: [{ id: 'r', x: 0, y: 0 }, { id: 'a', x: 10, y: 10 }, { id: 'b', x: 20, y: 20 }, { id: 'c', x: 30, y: 30 }, { id: 'd', x: 40, y: 40 }, { id: 'e', x: 50, y: 50 }],
+    edges: [{ id: 'ra', source: 'r', target: 'a' }, { id: 'rb', source: 'r', target: 'b' }, { id: 'ac', source: 'a', target: 'c' }, { id: 'ad', source: 'a', target: 'd' }, { id: 'be', source: 'b', target: 'e' }, { id: 'ce', source: 'c', target: 'e' }],
+    ops: [{ op: 'layout', algorithm: 'layered' }],
+    queries: [{ q: 'incomers', id: 'e' }],
+  },
+  {
+    name: 'layout layereddirection: RIGHT nodeSpacing: 30 layerSpacing: 60 lays the same graph out on every target',
+    nodes: [{ id: 'r', x: 0, y: 0 }, { id: 'a', x: 10, y: 10 }, { id: 'b', x: 20, y: 20 }, { id: 'c', x: 30, y: 30 }, { id: 'd', x: 40, y: 40 }, { id: 'e', x: 50, y: 50 }],
+    edges: [{ id: 'ra', source: 'r', target: 'a' }, { id: 'rb', source: 'r', target: 'b' }, { id: 'ac', source: 'a', target: 'c' }, { id: 'ad', source: 'a', target: 'd' }, { id: 'be', source: 'b', target: 'e' }, { id: 'ce', source: 'c', target: 'e' }],
+    ops: [{ op: 'layout', algorithm: 'layered', direction: 'RIGHT', nodeSpacing: 30, layerSpacing: 60 }],
+    queries: [{ q: 'incomers', id: 'e' }],
+  },
+  {
+    name: 'layout treedirection: UP lays the same graph out on every target',
+    nodes: [{ id: 'r', x: 0, y: 0 }, { id: 'a', x: 10, y: 10 }, { id: 'b', x: 20, y: 20 }, { id: 'c', x: 30, y: 30 }, { id: 'd', x: 40, y: 40 }, { id: 'e', x: 50, y: 50 }],
+    edges: [{ id: 'ra', source: 'r', target: 'a' }, { id: 'rb', source: 'r', target: 'b' }, { id: 'ac', source: 'a', target: 'c' }, { id: 'ad', source: 'a', target: 'd' }, { id: 'be', source: 'b', target: 'e' }, { id: 'ce', source: 'c', target: 'e' }],
+    ops: [{ op: 'layout', algorithm: 'tree', direction: 'UP' }],
+    queries: [{ q: 'incomers', id: 'e' }],
+  },
+  {
+    name: 'layout force lays the same graph out on every target',
+    nodes: [{ id: 'r', x: 0, y: 0 }, { id: 'a', x: 10, y: 10 }, { id: 'b', x: 20, y: 20 }, { id: 'c', x: 30, y: 30 }, { id: 'd', x: 40, y: 40 }, { id: 'e', x: 50, y: 50 }],
+    edges: [{ id: 'ra', source: 'r', target: 'a' }, { id: 'rb', source: 'r', target: 'b' }, { id: 'ac', source: 'a', target: 'c' }, { id: 'ad', source: 'a', target: 'd' }, { id: 'be', source: 'b', target: 'e' }, { id: 'ce', source: 'c', target: 'e' }],
+    tolerance: 0.01,
+    ops: [{ op: 'layout', algorithm: 'force' }],
+    queries: [{ q: 'incomers', id: 'e' }],
+  },
+  {
+    name: 'layout stressnodeSpacing: 25 lays the same graph out on every target',
+    nodes: [{ id: 'r', x: 0, y: 0 }, { id: 'a', x: 10, y: 10 }, { id: 'b', x: 20, y: 20 }, { id: 'c', x: 30, y: 30 }, { id: 'd', x: 40, y: 40 }, { id: 'e', x: 50, y: 50 }],
+    edges: [{ id: 'ra', source: 'r', target: 'a' }, { id: 'rb', source: 'r', target: 'b' }, { id: 'ac', source: 'a', target: 'c' }, { id: 'ad', source: 'a', target: 'd' }, { id: 'be', source: 'b', target: 'e' }, { id: 'ce', source: 'c', target: 'e' }],
+    tolerance: 0.01,
+    ops: [{ op: 'layout', algorithm: 'stress', nodeSpacing: 25 }],
+    queries: [{ q: 'incomers', id: 'e' }],
+  },
+  {
+    name: 'layout radial lays the same graph out on every target',
+    nodes: [{ id: 'r', x: 0, y: 0 }, { id: 'a', x: 10, y: 10 }, { id: 'b', x: 20, y: 20 }, { id: 'c', x: 30, y: 30 }, { id: 'd', x: 40, y: 40 }, { id: 'e', x: 50, y: 50 }],
+    edges: [{ id: 'ra', source: 'r', target: 'a' }, { id: 'rb', source: 'r', target: 'b' }, { id: 'ac', source: 'a', target: 'c' }, { id: 'ad', source: 'a', target: 'd' }, { id: 'be', source: 'b', target: 'e' }, { id: 'ce', source: 'c', target: 'e' }],
+    tolerance: 0.01,
+    ops: [{ op: 'layout', algorithm: 'radial' }],
+    queries: [{ q: 'incomers', id: 'e' }],
+  },
+  {
+    name: 'layout box lays the same graph out on every target',
+    nodes: [{ id: 'r', x: 0, y: 0 }, { id: 'a', x: 10, y: 10 }, { id: 'b', x: 20, y: 20 }, { id: 'c', x: 30, y: 30 }, { id: 'd', x: 40, y: 40 }, { id: 'e', x: 50, y: 50 }],
+    edges: [{ id: 'ra', source: 'r', target: 'a' }, { id: 'rb', source: 'r', target: 'b' }, { id: 'ac', source: 'a', target: 'c' }, { id: 'ad', source: 'a', target: 'd' }, { id: 'be', source: 'b', target: 'e' }, { id: 'ce', source: 'c', target: 'e' }],
+    ops: [{ op: 'layout', algorithm: 'box' }],
+    queries: [{ q: 'incomers', id: 'e' }],
+  },
+  {
+    name: 'layout rectpackingnodeSpacing: 12 lays the same graph out on every target',
+    nodes: [{ id: 'r', x: 0, y: 0 }, { id: 'a', x: 10, y: 10 }, { id: 'b', x: 20, y: 20 }, { id: 'c', x: 30, y: 30 }, { id: 'd', x: 40, y: 40 }, { id: 'e', x: 50, y: 50 }],
+    edges: [{ id: 'ra', source: 'r', target: 'a' }, { id: 'rb', source: 'r', target: 'b' }, { id: 'ac', source: 'a', target: 'c' }, { id: 'ad', source: 'a', target: 'd' }, { id: 'be', source: 'b', target: 'e' }, { id: 'ce', source: 'c', target: 'e' }],
+    ops: [{ op: 'layout', algorithm: 'rectpacking', nodeSpacing: 12 }],
+    queries: [{ q: 'incomers', id: 'e' }],
+  },
 ]
 
 const num = (v: number) => (Number.isFinite(v) ? Math.round(v * 1e9) / 1e9 : v)
 
 /** Run a scenario through the WEB engine and record what it observed. */
-export function expectationsOf(s: ParityScenario): ParityExpectation {
+export async function expectationsOf(s: ParityScenario): Promise<ParityExpectation> {
   const flow = createFlow<{ label: string }>({
     nodes: s.nodes.map((n) => ({ id: n.id, position: { x: n.x, y: n.y }, data: { label: n.id }, ...(n.parentId !== undefined ? { parentId: n.parentId } : {}) })),
     edges: s.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
@@ -388,6 +452,7 @@ export function expectationsOf(s: ParityScenario): ParityExpectation {
       case 'addEdgeWaypoint': flow.addEdgeWaypoint(o.id, { x: o.x, y: o.y }, o.index); break
       case 'removeEdgeWaypoint': flow.removeEdgeWaypoint(o.id, o.index); break
       case 'updateEdgeWaypoint': flow.updateEdgeWaypoint(o.id, o.index, { x: o.x, y: o.y }); break
+      case 'layout': await flow.layout(o.algorithm as 'layered', { animate: false, ...(o.direction !== undefined ? { direction: o.direction as 'DOWN' } : {}), ...(o.nodeSpacing !== undefined ? { nodeSpacing: o.nodeSpacing } : {}), ...(o.layerSpacing !== undefined ? { layerSpacing: o.layerSpacing } : {}) }); break
     }
   }
   const answers: ParityExpectation['answers'] = s.queries.map((q) => {
@@ -471,6 +536,7 @@ function opSwift(o: ParityOp): string {
     case 'addEdgeWaypoint': return `f.addEdgeWaypoint(${str(o.id)}, PyreonXYPosition(x: ${d(o.x)}, y: ${d(o.y)})${o.index !== undefined ? `, ${o.index}` : ''})`
     case 'removeEdgeWaypoint': return `f.removeEdgeWaypoint(${str(o.id)}, ${o.index})`
     case 'updateEdgeWaypoint': return `f.updateEdgeWaypoint(${str(o.id)}, ${o.index}, PyreonXYPosition(x: ${d(o.x)}, y: ${d(o.y)}))`
+    case 'layout': return `f.layout(${str(o.algorithm)}, options: PyreonFlowLayoutOptions(${[o.direction !== undefined ? `direction: ${str(o.direction)}` : '', o.nodeSpacing !== undefined ? `nodeSpacing: ${d(o.nodeSpacing)}` : '', o.layerSpacing !== undefined ? `layerSpacing: ${d(o.layerSpacing)}` : '', 'animate: false'].filter((x) => x !== '').join(', ')}))`
   }
 }
 
@@ -509,6 +575,7 @@ function opKotlin(o: ParityOp): string {
     case 'addEdgeWaypoint': return `f.addEdgeWaypoint(${str(o.id)}, PyreonXYPosition(${d(o.x)}, ${d(o.y)})${o.index !== undefined ? `, index = ${o.index}` : ''})`
     case 'removeEdgeWaypoint': return `f.removeEdgeWaypoint(${str(o.id)}, ${o.index})`
     case 'updateEdgeWaypoint': return `f.updateEdgeWaypoint(${str(o.id)}, ${o.index}, PyreonXYPosition(${d(o.x)}, ${d(o.y)}))`
+    case 'layout': return `f.layout(${str(o.algorithm)}, PyreonFlowLayoutOptions(${[o.direction !== undefined ? `direction = ${str(o.direction)}` : '', o.nodeSpacing !== undefined ? `nodeSpacing = ${d(o.nodeSpacing)}` : '', o.layerSpacing !== undefined ? `layerSpacing = ${d(o.layerSpacing)}` : '', 'animate = false'].filter((x) => x !== '').join(', ')}))`
   }
 }
 
@@ -552,7 +619,7 @@ function answerKotlin(q: ParityQuery, a: ParityExpectation['answers'][number], l
   }
 }
 
-export function renderSwift(scenarios: readonly ParityScenario[] = PARITY_SCENARIOS): string {
+export async function renderSwift(scenarios: readonly ParityScenario[] = PARITY_SCENARIOS): Promise<string> {
   const out: string[] = [SWIFT_MARKERS[0]]
   out.push('    static func parityNear(_ p: PyreonXYPosition, _ x: Double, _ y: Double) -> Bool { abs(p.x - x) < 1e-6 && abs(p.y - y) < 1e-6 }')
   out.push('    static func parityOpt(_ v: Double?, _ want: Double?) -> Bool { switch (v, want) { case (nil, nil): return true; case let (a?, b?): return abs(a - b) < 1e-6; default: return false } }')
@@ -562,10 +629,10 @@ export function renderSwift(scenarios: readonly ParityScenario[] = PARITY_SCENAR
   out.push('        for i in 0..<got.count { if abs(got[i].x - want[i].0) >= 1e-6 || abs(got[i].y - want[i].1) >= 1e-6 { return false } }')
   out.push('        return true')
   out.push('    }')
-  out.push('    static func parityNodes(_ f: PyreonFlowState<NodeData>, _ want: [(String, Double, Double)]) -> Bool {')
+  out.push('    static func parityNodes(_ f: PyreonFlowState<NodeData>, _ want: [(String, Double, Double)], _ tol: Double = 1e-6) -> Bool {')
   out.push('        let got = f.nodes')
   out.push('        if got.count != want.count { return false }')
-  out.push('        for i in 0..<got.count { if got[i].id != want[i].0 || abs(got[i].position.x - want[i].1) >= 1e-6 || abs(got[i].position.y - want[i].2) >= 1e-6 { return false } }')
+  out.push('        for i in 0..<got.count { if got[i].id != want[i].0 || abs(got[i].position.x - want[i].1) >= tol || abs(got[i].position.y - want[i].2) >= tol { return false } }')
   out.push('        return true')
   out.push('    }')
   out.push('    static func parityEdges(_ f: PyreonFlowState<NodeData>, _ want: [(String, String, String)]) -> Bool {')
@@ -577,11 +644,11 @@ export function renderSwift(scenarios: readonly ParityScenario[] = PARITY_SCENAR
   out.push('    /// The web engine ran every scenario first; these are its answers.')
   out.push('    static func runParityChecks() {')
   for (const s of scenarios) {
-    const e = expectationsOf(s)
+    const e = await expectationsOf(s)
     out.push(`        do { // ${s.name}`)
     out.push(`            let f = PyreonFlowState<NodeData>(nodes: [${s.nodes.map((n) => `PyreonFlowNode(id: ${str(n.id)}, position: PyreonXYPosition(x: ${d(n.x)}, y: ${d(n.y)}), data: NodeData(label: ${str(n.id)})${n.parentId !== undefined ? `, parentId: ${str(n.parentId)}` : ''})`).join(', ')}], edges: [${s.edges.map((x) => `PyreonFlowEdge(id: ${str(x.id)}, source: ${str(x.source)}, target: ${str(x.target)})`).join(', ')}]${s.snapToGrid !== undefined ? `, snapToGrid: ${s.snapToGrid}` : ''}${s.snapGrid !== undefined ? `, snapGrid: ${d(s.snapGrid)}` : ''}, searchText: { $0.label })`)
     for (const o of s.ops) out.push(`            ${opSwift(o)}`)
-    out.push(`            check(parityNodes(f, [${e.nodes.map((n) => `(${str(n.id)}, ${d(n.x)}, ${d(n.y)})`).join(', ')}]), ${str(`parity: ${s.name} — nodes`)})`)
+    out.push(`            check(parityNodes(f, [${e.nodes.map((n) => `(${str(n.id)}, ${d(n.x)}, ${d(n.y)})`).join(', ')}]${s.tolerance !== undefined ? `, ${d(s.tolerance)}` : ''}), ${str(`parity: ${s.name} — nodes`)})`)
     out.push(`            check(parityEdges(f, [${e.edges.map((x) => `(${str(x.id)}, ${str(x.source)}, ${str(x.target)})`).join(', ')}]), ${str(`parity: ${s.name} — edges`)})`)
     out.push(`            check(f.selectedNodes().sorted() == ${strList(e.selectedNodes, 'swift')}, ${str(`parity: ${s.name} — selected nodes`)})`)
     out.push(`            check(f.selectedEdges().sorted() == ${strList(e.selectedEdges, 'swift')}, ${str(`parity: ${s.name} — selected edges`)})`)
@@ -594,7 +661,7 @@ export function renderSwift(scenarios: readonly ParityScenario[] = PARITY_SCENAR
   return out.join('\n')
 }
 
-export function renderKotlin(scenarios: readonly ParityScenario[] = PARITY_SCENARIOS): string {
+export async function renderKotlin(scenarios: readonly ParityScenario[] = PARITY_SCENARIOS): Promise<string> {
   const out: string[] = [KOTLIN_MARKERS[0]]
   out.push('private fun parityNear(p: PyreonXYPosition, x: Double, y: Double): Boolean = abs(p.x - x) < 1e-6 && abs(p.y - y) < 1e-6')
   out.push('private fun parityOpt(v: Double?, want: Double?): Boolean = if (v == null || want == null) v == null && want == null else abs(v - want) < 1e-6')
@@ -604,10 +671,10 @@ export function renderKotlin(scenarios: readonly ParityScenario[] = PARITY_SCENA
   out.push('    for (i in got.indices) { if (abs(got[i].x - want[i].first) >= 1e-6 || abs(got[i].y - want[i].second) >= 1e-6) return false }')
   out.push('    return true')
   out.push('}')
-  out.push('private fun parityNodes(f: PyreonFlowState<NodeData>, want: List<Triple<String, Double, Double>>): Boolean {')
+  out.push('private fun parityNodes(f: PyreonFlowState<NodeData>, want: List<Triple<String, Double, Double>>, tol: Double = 1e-6): Boolean {')
   out.push('    val got = f.nodes')
   out.push('    if (got.size != want.size) return false')
-  out.push('    for (i in got.indices) { if (got[i].id != want[i].first || abs(got[i].position.x - want[i].second) >= 1e-6 || abs(got[i].position.y - want[i].third) >= 1e-6) return false }')
+  out.push('    for (i in got.indices) { if (got[i].id != want[i].first || abs(got[i].position.x - want[i].second) >= tol || abs(got[i].position.y - want[i].third) >= tol) return false }')
   out.push('    return true')
   out.push('}')
   out.push('private fun parityEdges(f: PyreonFlowState<NodeData>, want: List<Triple<String, String, String>>): Boolean {')
@@ -619,11 +686,11 @@ export function renderKotlin(scenarios: readonly ParityScenario[] = PARITY_SCENA
   out.push('/** The web engine ran every scenario first; these are its answers. */')
   out.push('private fun runParityChecks() {')
   for (const s of scenarios) {
-    const e = expectationsOf(s)
+    const e = await expectationsOf(s)
     out.push(`    run { // ${s.name}`)
     out.push(`        val f = PyreonFlowState<NodeData>(nodes = listOf<PyreonFlowNode<NodeData>>(${s.nodes.map((n) => `PyreonFlowNode(${str(n.id)}, position = PyreonXYPosition(${d(n.x)}, ${d(n.y)}), data = NodeData(${str(n.id)})${n.parentId !== undefined ? `, parentId = ${str(n.parentId)}` : ''})`).join(', ')}), edges = listOf<PyreonFlowEdge>(${s.edges.map((x) => `PyreonFlowEdge(${str(x.id)}, source = ${str(x.source)}, target = ${str(x.target)})`).join(', ')})${s.snapToGrid !== undefined ? `, snapToGrid = ${s.snapToGrid}` : ''}${s.snapGrid !== undefined ? `, snapGrid = ${d(s.snapGrid)}` : ''}, searchText = { it.label })`)
     for (const o of s.ops) out.push(`        ${opKotlin(o)}`)
-    out.push(`        check(parityNodes(f, listOf<Triple<String, Double, Double>>(${e.nodes.map((n) => `Triple(${str(n.id)}, ${d(n.x)}, ${d(n.y)})`).join(', ')})), ${str(`parity: ${s.name} — nodes`)})`)
+    out.push(`        check(parityNodes(f, listOf<Triple<String, Double, Double>>(${e.nodes.map((n) => `Triple(${str(n.id)}, ${d(n.x)}, ${d(n.y)})`).join(', ')})${s.tolerance !== undefined ? `, ${d(s.tolerance)}` : ''}), ${str(`parity: ${s.name} — nodes`)})`)
     out.push(`        check(parityEdges(f, listOf<Triple<String, String, String>>(${e.edges.map((x) => `Triple(${str(x.id)}, ${str(x.source)}, ${str(x.target)})`).join(', ')})), ${str(`parity: ${s.name} — edges`)})`)
     out.push(`        check(f.selectedNodes().sorted() == ${strList(e.selectedNodes, 'kotlin')}, ${str(`parity: ${s.name} — selected nodes`)})`)
     out.push(`        check(f.selectedEdges().sorted() == ${strList(e.selectedEdges, 'kotlin')}, ${str(`parity: ${s.name} — selected edges`)})`)
