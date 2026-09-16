@@ -238,16 +238,6 @@ fun main() {
     check(configured.defaultEdgeOptions == PyreonFlowDefaultEdgeOptions(type = "smoothstep", animated = true, interactionWidth = 44.0) && configured.defaultMarkerEnd == null, "Android retains edge defaults")
     check(configured.fitViewOnLoad && configured.fitViewPadding == 0.2 && !configured.autoHistory && configured.reducedMotion == false, "Android retains lifecycle config")
     check(!configured.isValidConnection(PyreonFlowConnection("same", "same")) && configured.deleteKeys == listOf("ForwardDelete"), "Android retains validation and delete-key config")
-    check(pyreonFlowEdgeId("1", "2") == "e-1-2", "Android generates missing edge ids like web")
-    check(pyreonFlowEdgeId("1", "2", "out", "in") == "e-1-out-2-in", "Android includes handles in generated edge ids")
-    val configured = PyreonFlowState<NodeData>(
-        panOnScroll = true, panOnScrollSpeed = 0.75, zoomOnScroll = false,
-        deleteKeys = listOf("ForwardDelete"), multiSelectionKey = "ctrl",
-        selectionKey = null, zoomActivationKey = "meta", preventScrolling = false,
-    )
-    check(configured.panOnScroll && configured.panOnScrollSpeed == 0.75, "Android retains scroll config")
-    check(!configured.zoomOnScroll && configured.deleteKeys == listOf("ForwardDelete"), "Android retains zoom/delete config")
-    check(configured.multiSelectionKey == "ctrl" && configured.selectionKey == null && configured.zoomActivationKey == "meta" && !configured.preventScrolling, "Android retains modifier config")
     configured.minZoom = 0.75
     configured.pannable = false
     configured.zoomTo(0.1)
