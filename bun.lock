@@ -813,6 +813,7 @@
       "version": "0.50.0",
       "devDependencies": {
         "@pyreon/core": "workspace:*",
+        "@pyreon/flow": "workspace:*",
         "@pyreon/hooks": "workspace:*",
         "@pyreon/i18n": "workspace:*",
         "@pyreon/machine": "workspace:*",
@@ -1950,6 +1951,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.11.6",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/runtime-server": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/validate": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -1971,6 +1973,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.11.6",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/runtime-server": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitus-labs/tools-lint": "^2.7.1",
@@ -2420,6 +2423,7 @@
         "axios": "^1.20.0",
         "gray-matter": "^4.0.3",
         "ky": "^2.1.0",
+        "oxc-parser": "^0.148.0",
         "zod": "^4.5.4",
       },
       "peerDependencies": {
@@ -3162,8 +3166,6 @@
     "hono": "^4.13.5",
     "playwright": "1.62.1",
     "qs": "^6.16.0",
-    "sigstore": "^5.0.0",
-    "tar": "^7.5.22",
     "uuid": "^11.1.1",
     "vite": "8.2.2",
     "zod": "4.5.4",

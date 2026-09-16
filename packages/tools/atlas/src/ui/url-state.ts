@@ -27,6 +27,14 @@ export interface UrlState {
   /** brand + dark mode: a screenshot of a bug is mode-specific */
   brand?: string
   dark?: boolean
+  /** The view — canvas / docs / lab. Without it a Docs page could not be linked to. */
+  view?: string
+  /** A forced pseudo state (hover / focus / active / disabled). */
+  pseudo?: string
+  /** The Data panel's query state (success / loading / error / empty / refetching). */
+  query?: string
+  /** The Roles panel's active role. */
+  role?: string
 }
 
 /**
@@ -114,6 +122,50 @@ export function componentUrl(base: string, id: string, query: string): string {
   return query ? `${path}?${query}` : path
 }
 
+/**
+ * Can this value travel in a link? Functions cannot; neither can a vnode
+ * (an object whose `type` is a function or symbol) — `JSON.stringify` would
+ * drop the one silently and serialise the other as its plain-object innards.
+ * An authored scenario may carry both (a render-prop child, an `h()` tree),
+ * and they belong to the config, not the URL.
+ */
+export function isLinkable(value: unknown): boolean {
+  if (typeof value === 'function' || typeof value === 'symbol') return false
+  if (typeof value !== 'object' || value === null) return true
+  if (Array.isArray(value)) return value.every(isLinkable)
+  // A vnode as `h()` builds it — `{ type, props, children[] }`, the type may
+  // be a tag string. Kept local rather than imported from core: the UI bundle
+  // is served to the browser and pulls nothing from the node-side core.
+  const v = value as { type?: unknown; props?: unknown; children?: unknown }
+  if (
+    (typeof v.type === 'string' || typeof v.type === 'function' || typeof v.type === 'symbol') &&
+    typeof v.props === 'object' &&
+    Array.isArray(v.children)
+  ) {
+    return false
+  }
+  return Object.values(value).every(isLinkable)
+}
+
+/**
+ * The keys of `current` that DIFFER from `base` — the edits worth carrying in
+ * a link. Absent `current` means no edits. Compared by JSON form, so an
+ * array or object arg counts as unchanged when it is structurally the same.
+ */
+export function editedArgs(
+  current: Record<string, unknown> | undefined,
+  base: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!current) return {}
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(current)) {
+    if (!isLinkable(value)) continue
+    if (key in base && JSON.stringify(base[key]) === JSON.stringify(value)) continue
+    out[key] = value
+  }
+  return out
+}
+
 /** Encode state into a query string (no leading `?`). */
 export function serializeUrlState(state: UrlState): string {
   const params = new URLSearchParams()
@@ -126,6 +178,11 @@ export function serializeUrlState(state: UrlState): string {
   // `dark` is written only when FALSE: the workbench defaults to dark, so
   // omitting the common case keeps a shared link readable.
   if (state.dark === false) params.set('dark', '0')
+  // The canvas is the default view; the others are worth a link of their own.
+  if (state.view && state.view !== 'canvas') params.set('view', state.view)
+  if (state.pseudo) params.set('pseudo', state.pseudo)
+  if (state.query && state.query !== 'success') params.set('query', state.query)
+  if (state.role) params.set('role', state.role)
   if (state.args && Object.keys(state.args).length > 0) {
     params.set(ARGS_KEY, JSON.stringify(state.args))
   }
@@ -158,6 +215,14 @@ export function parseUrlState(query: string): UrlState {
   if (brand) state.brand = brand
   const dark = params.get('dark')
   if (dark !== null) state.dark = dark !== '0'
+  const view = params.get('view')
+  if (view) state.view = view
+  const pseudo = params.get('pseudo')
+  if (pseudo) state.pseudo = pseudo
+  const queryState = params.get('query')
+  if (queryState) state.query = queryState
+  const role = params.get('role')
+  if (role) state.role = role
 
   const args = params.get(ARGS_KEY)
   if (args) {

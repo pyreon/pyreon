@@ -11,6 +11,7 @@
  * line-comment escapes the code emitters carry, in a third syntax.
  */
 import matter from 'gray-matter'
+import { parseSync } from 'oxc-parser'
 import { resolveConfig } from '../core/config'
 import { generate } from '../core/generate'
 
@@ -99,6 +100,23 @@ function mdCells(row: string): string[] {
   // A leading and trailing pipe produce an empty cell at each end.
   return cells.slice(1, -1)
 }
+
+/**
+ * Front-matter is asserted by PARSING it, not by matching the string.
+ *
+ * The assertion here used to be a `toContain` on the doubled-quote spelling,
+ * and it passed against an emitter producing a document gray-matter REJECTS.
+ * Doubling is the CSV and single-quoted-YAML convention; inside double
+ * quotes YAML escapes with a backslash, so the doubled form closes the
+ * scalar and opens another. The test held the emitter to a spelling rather
+ * than to a contract, which is how it locked the bug in.
+ *
+ * `gray-matter` is the parser `@pyreon/zero-content` actually reads these
+ * pages with, so the oracle here is the real consumer instead of a re-typed
+ * literal — the only reason the corrected escape can be trusted.
+ */
+const frontmatterOf = (page: string): Record<string, unknown> =>
+  matter(page).data as Record<string, unknown>
 
 describe('the generated reference pages', () => {
   const pages = docsFor(SPEC)
@@ -232,23 +250,6 @@ paths:
     expect(mdCells(row)).toHaveLength(3)
   })
 
-  /**
-   * Front-matter is asserted by PARSING it, not by matching the string.
-   *
-   * The assertion here used to be a `toContain` on the doubled-quote spelling,
-   * and it passed against an emitter producing a document gray-matter REJECTS.
-   * Doubling is the CSV and single-quoted-YAML convention; inside double
-   * quotes YAML escapes with a backslash, so the doubled form closes the
-   * scalar and opens another. The test held the emitter to a spelling rather
-   * than to a contract, which is how it locked the bug in.
-   *
-   * `gray-matter` is the parser `@pyreon/zero-content` actually reads these
-   * pages with, so the oracle here is the real consumer instead of a re-typed
-   * literal — the only reason the corrected escape can be trusted.
-   */
-  const frontmatterOf = (page: string): Record<string, unknown> =>
-    matter(page).data as Record<string, unknown>
-
   it('emits frontmatter that survives a quote in the title', () => {
     const quoted = docsFor(`
 openapi: 3.0.3
@@ -292,4 +293,147 @@ paths:
     const page = colon.get('docs/index.md') ?? ''
     expect(frontmatterOf(page).title).toBe('Books: the API')
   })
+})
+
+/**
+ * The two surfaces a spec string reaches on a docs page that the escapes above
+ * did not cover.
+ *
+ * Both were live after the escaping pass that produced the specs above, which
+ * is the lesson worth keeping: those specs assert the escape a call site
+ * APPLIES, and can say nothing about a call site that applies none. A SUMMARY
+ * and a TAG went through `md()`; a parameter NAME, in the same table, did not.
+ */
+describe('the surfaces the first escaping pass missed', () => {
+  const NUL = String.fromCharCode(0)
+  const BEL = String.fromCharCode(7)
+  const ESC = String.fromCharCode(27)
+
+  /** A spec with one operation, whose strings the caller chooses. */
+  const specWith = (over: {
+    title?: string
+    version?: string
+    tag?: string
+    queryName?: string
+  }): string =>
+    JSON.stringify({
+      openapi: '3.0.3',
+      info: { title: over.title ?? 'T', version: over.version ?? '1' },
+      servers: [{ url: 'https://api.test/v1' }],
+      paths: {
+        '/x/{id}': {
+          get: {
+            operationId: 'getX',
+            tags: [over.tag ?? 'x'],
+            parameters: [
+              { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+              { name: over.queryName ?? 'q', in: 'query', schema: { type: 'string' } },
+            ],
+            responses: {
+              '200': { content: { 'application/json': { schema: { type: 'string' } } } },
+            },
+          },
+        },
+      },
+    })
+
+  it('a parameter NAME cannot split the row it is rendered into', () => {
+    // A PATH name is normalized to an identifier on its way into the IR, so
+    // the reachable half is the QUERY name -- a WIRE name (`?p|q=1`), which
+    // survives verbatim by design and must therefore be escaped at render.
+    //
+    // Counting cells rather than matching the escaped spelling: the row is
+    // wrong when it disagrees with its HEADER, and only a count says that.
+    const page = docsFor(specWith({ queryName: 'p|q' })).get('docs/x.md') ?? ''
+    expect(page).not.toBe('')
+    const rows = page.split('\n').filter((l) => l.startsWith('| '))
+    const header = rows.find((l) => l.startsWith('| Parameter')) ?? ''
+    expect(header).not.toBe('')
+    const width = mdCells(header).length
+    for (const row of rows.slice(rows.indexOf(header) + 2)) {
+      expect(mdCells(row), `a row disagrees with its header: ${JSON.stringify(row)}`).toHaveLength(
+        width,
+      )
+    }
+  })
+
+  it('a parameter NAME carrying a newline cannot end the row', () => {
+    // The other half of the same cell: a line break ENDS a table row, so the
+    // remainder of the value becomes a paragraph under the table.
+    const page = docsFor(specWith({ queryName: `a${String.fromCharCode(10)}b` })).get('docs/x.md') ?? ''
+    const rows = page.split('\n').filter((l) => l.startsWith('| '))
+    const header = rows.find((l) => l.startsWith('| Parameter')) ?? ''
+    for (const row of rows.slice(rows.indexOf(header) + 2)) {
+      expect(mdCells(row)).toHaveLength(mdCells(header).length)
+    }
+  })
+
+  it('emits a usage snippet that is still a PROGRAM', () => {
+    // The third surface on the page, and the one a reader COPIES. The snippet
+    // interpolated a query parameter's WIRE name straight into an object key
+    // and an enum VALUE straight into a string literal -- so `odd wire-name`
+    // rendered `query: { odd wire-name: '…' }`, and an enum carrying a quote
+    // ended the literal. The client emitter had quoted both since the
+    // parameter-name fix; the page documenting it had not.
+    //
+    // Oracle is a PARSER: a string assertion cannot tell a snippet that reads
+    // plausibly from one that does not compile.
+    const spec = JSON.stringify({
+      openapi: '3.0.3',
+      info: { title: 'T', version: '1' },
+      servers: [{ url: 'https://api.test/v1' }],
+      paths: {
+        '/x': {
+          get: {
+            operationId: 'getX',
+            tags: ['x'],
+            parameters: [
+              {
+                name: 'odd wire-name',
+                in: 'query',
+                required: true,
+                schema: { type: 'string', enum: ["it's", 'b'] },
+              },
+            ],
+            responses: {
+              '200': { content: { 'application/json': { schema: { type: 'string' } } } },
+            },
+          },
+        },
+      },
+    })
+    const page = docsFor(spec).get('docs/x.md') ?? ''
+    expect(page).not.toBe('')
+    const fences = [...page.matchAll(/```ts\n([\s\S]*?)```/g)].map((m) => m[1] as string)
+    expect(fences.length).toBeGreaterThan(0)
+    for (const code of fences) {
+      const errors = parseSync('snippet.ts', code).errors
+      expect(errors.map((e) => e.message), `snippet does not parse: ${code}`).toEqual([])
+    }
+  })
+
+  for (const [label, ch] of [
+    ['NUL', NUL],
+    ['BEL', BEL],
+    ['ESC', ESC],
+  ] as Array<[string, string]>) {
+    it(`frontmatter survives a ${label} in the title, the version and a tag`, () => {
+      // js-yaml -- what gray-matter reads these pages with -- REFUSES a
+      // document containing one of these, naming a line and column in a file
+      // the author never wrote. `yaml()` escaped the quote and the backslash
+      // and collapsed the line breaks; the control characters went through
+      // raw, so a single BEL anywhere in `info` took every page down.
+      //
+      // Asserted by PARSING, for the reason the specs above give: a string
+      // assertion passes against a document the real reader rejects.
+      const pages = docsFor(specWith({ title: `T${ch}itle`, version: `1${ch}0`, tag: `t${ch}g` }))
+      expect(pages.size).toBeGreaterThan(0)
+      for (const [path, page] of pages) {
+        expect(() => frontmatterOf(page), `${path} has unreadable frontmatter`).not.toThrow()
+      }
+      // The strip must not take the rest of the value with it.
+      const index = frontmatterOf(pages.get('docs/index.md') ?? '')
+      expect(index.title).toBe('Title')
+    })
+  }
 })

@@ -81,6 +81,14 @@ export function releaseVerifyDom(): void {
 
 export interface MountPluginOptions {
   /**
+   * Components whose render is gated on a browser — see
+   * `AtlasConfig.browserOnly`. An empty render from one of these is reported
+   * as `browser-only` (skip), not `empty-render` (fail).
+   */
+  browserOnly?: readonly string[]
+  /** Part → parent component name — see `AtlasConfig.parts`. */
+  parts?: Record<string, string>
+  /**
    * Wrap every mounted scenario — the project's providers (theme, router,
    * i18n, a query client).
    *
@@ -157,6 +165,10 @@ interface Exercised {
   args: Record<string, unknown>
   errors: string[]
   clicks: number
+  /** Whether the mount produced any DOM at all — see `MountedScenario.rendered`. */
+  rendered: boolean
+  /** The scenario's provenance — an `auto-edge` scenario is ALLOWED to render nothing. */
+  source: string | undefined
   playFailure?: string
 }
 
@@ -174,7 +186,7 @@ async function exercise(
   dom: DomEnv,
   runtime: MountRuntime,
   component: ComponentRef,
-  scenario: { id: string; args?: Record<string, unknown>; play?: PlayFn; route?: string },
+  scenario: { id: string; args?: Record<string, unknown>; play?: PlayFn; route?: string; source?: string },
   wrapper: ComponentRef | undefined,
 ): Promise<Exercised> {
   const args = scenario.args ?? {}
@@ -187,6 +199,9 @@ async function exercise(
   const tReal = PROFILE ? performance.now() : 0
   let mounted: MountedScenario | undefined = mountScenario(dom, runtime, component, args, wrapper)
   step('real mount', tReal)
+  // Read BEFORE the click-walk: a component that renders its content only
+  // after an interaction (a menu trigger) still rendered the trigger.
+  const rendered = mounted.rendered()
   let clicks = 0
   let playFailure: string | undefined
   try {
@@ -228,8 +243,22 @@ async function exercise(
   // pass: silently rendering unrouted is what made the whole axis decorative.
   if (routed.reason !== undefined) errors.push(routed.reason)
   mounted = undefined
-  return { id: scenario.id, args, errors, clicks, ...(playFailure ? { playFailure } : {}) }
+  return {
+    id: scenario.id,
+    args,
+    errors,
+    clicks,
+    rendered,
+    source: scenario.source,
+    ...(playFailure ? { playFailure } : {}),
+  }
 }
+
+const EMPTY_RENDER_FIX =
+  'The scenario mounted no DOM. Supply what the component needs to show anything — data props (`options`, `data`, `rows`), ' +
+  'an `open: true` state, or a render-prop child — through an authored scenario in atlas.config.ts ' +
+  '(`scenarios: { <Name>: [{ name: "Default", args: { … } }] }`). A part that only renders inside its parent ' +
+  '(a tab panel, an accordion item) belongs in a scenario OF the parent.'
 
 /**
  * Mount and dispose a scenario, exercising NOTHING.
@@ -256,8 +285,34 @@ function probeMount(
 }
 
 /** The interaction verdict for one exercised scenario. */
-function interactionVerdict(ex: Exercised, hasWrapper: boolean): VerifyCheck {
+/**
+ * `gated`: `false` (judge the render), `true` (declared `browserOnly`), or the
+ * PARENT's name (declared a part of it).
+ */
+function interactionVerdict(ex: Exercised, hasWrapper: boolean, gated: boolean | string = false): VerifyCheck {
   if (ex.errors.length === 0 && !ex.playFailure) {
+    if (!ex.rendered) {
+      if (typeof gated === 'string') {
+        return skipped(
+          'part-of',
+          `rendered no DOM standalone — a declared part of <${gated}>, verified through that component's scenarios`,
+        )
+      }
+      if (gated) {
+        return skipped(
+          'browser-only',
+          'rendered no DOM here, and the component is declared `browserOnly` — a Node mount evaluates ' +
+            '`isServer` as true; run `atlas verify-browser` to judge the render.',
+        )
+      }
+      const empty = finding('empty-render', 'mounted cleanly but rendered no DOM at all', EMPTY_RENDER_FIX)
+      // A manufactured edge case (`children: ''`) may legitimately collapse
+      // to nothing — that is the shape being exercised. A scenario the
+      // component OWNS rendering nothing is the empty-preview bug, and
+      // "clicked and unmounted without throwing" was never evidence against
+      // it.
+      return ex.source === 'auto-edge' ? { status: 'pass', findings: [empty] } : { status: 'fail', findings: [empty] }
+    }
     // A zero-click run is still a real verdict — mount + unmount without
     // throwing IS the check's core claim — but the verdict must say what it
     // covered. Silently reporting `pass` for a scenario with nothing to click
@@ -328,6 +383,8 @@ function interactionVerdict(ex: Exercised, hasWrapper: boolean): VerifyCheck {
 const LEAK_BATCH = 256
 
 export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
+  const gated = (name: string): boolean | string =>
+    options.parts?.[name] ?? (options.browserOnly?.includes(name) === true)
   // Memoised HERE rather than written back onto `options`: the caller owns that
   // object and may well pass it to something else, and a plugin quietly adding
   // a field to it is a side effect nobody asked for.
@@ -513,7 +570,7 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
       const byId = new Map<string, ScenarioVerdict>()
       for (const scenario of ci.scenarios) {
         const ex = await exercise(dom, rt, ci.component as ComponentRef, scenario, options.wrapper)
-        byId.set(ex.id, { interaction: interactionVerdict(ex, hasWrapper), leak: { status: 'pass' } })
+        byId.set(ex.id, { interaction: interactionVerdict(ex, hasWrapper, gated(ci.name)), leak: { status: 'pass' } })
       }
       pending.set(ci, byId)
     }
@@ -605,7 +662,7 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
       for (const s of scenarios) {
         const ex = await exercise(dom.env, runtime, component, s, options.wrapper)
         out.set(s.id, {
-          interaction: interactionVerdict(ex, hasWrapper),
+          interaction: interactionVerdict(ex, hasWrapper, gated(ci.name)),
           leak: skipped('no-gc-hook', leakReason),
         })
       }
@@ -642,7 +699,7 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
         // every scenario in the batch — so none of them retained anything. One
         // sweep, one answer, for all of them.
         for (const ex of exercised) {
-          out.set(ex.id, { interaction: interactionVerdict(ex, hasWrapper), leak: { status: 'pass' } })
+          out.set(ex.id, { interaction: interactionVerdict(ex, hasWrapper, gated(ci.name)), leak: { status: 'pass' } })
         }
         baseline = after
         continue
@@ -674,7 +731,7 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
         // is one-time, not per-mount. Every scenario in the batch passes, and
         // the new resting value becomes the floor.
         for (const ex of exercised) {
-          out.set(ex.id, { interaction: interactionVerdict(ex, hasWrapper), leak: { status: 'pass' } })
+          out.set(ex.id, { interaction: interactionVerdict(ex, hasWrapper, gated(ci.name)), leak: { status: 'pass' } })
         }
         baseline = again
         continue
@@ -687,7 +744,7 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
       let floor = again
       for (const ex of exercised) {
         const leak = await bisectLeak(dom.env, runtime!, component, ex, floor, graphSize!, gc!)
-        out.set(ex.id, { interaction: interactionVerdict(ex, hasWrapper), leak: leak.check })
+        out.set(ex.id, { interaction: interactionVerdict(ex, hasWrapper, gated(ci.name)), leak: leak.check })
         floor = leak.resting
       }
       baseline = floor

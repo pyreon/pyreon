@@ -5,7 +5,7 @@
 - Use `bun run test` to run all package tests (runs `bun run --filter='./packages/*' test`)
 - Each package's `vitest.config.ts` MUST use `defineNodeConfig` from `@pyreon/vitest-config`. Browser configs MUST use `defineBrowserConfig`. Both helpers enforce the canonical merge order by construction — `testTimeout: 20_000` + CI `retry: 2` + bun condition + per-category coverage defaults all flow through one canonical merge. Hand-rolled `mergeConfig` chains are forbidden (enforced by lint rule `pyreon/vitest-config-uses-shared`). Pre-migration history (PRs #914-#922): 87 configs mixed three merge-order patterns; 9 silently ran on vitest's 5s default timeout because `sharedConfig` ended up on the wrong side of `mergeConfig`. Canonical shape: `defineNodeConfig({ category: 'core' | 'fundamentals' | 'ui' | 'tools' | 'zero' | 'internals', environment: 'happy-dom' })` — see [`packages/internals/vitest-config/README.md`](../../packages/internals/vitest-config/README.md) for the full surface.
 - Vitest globals enabled — no need to import `describe`, `it`, `expect`, `vi`
-- Each root-level `playwright.*.config.ts` MUST use `definePlaywrightConfig` from `@pyreon/playwright-config` (the Playwright sibling of `@pyreon/vitest-config`). It bakes the shared defaults — `testDir: './e2e'`, `retries: process.env.CI ? 2 : 0`, `use: { headless, browserName: 'chromium' }`, per-webServer `reuseExistingServer: !process.env.CI` + default `timeout` — so each config states only its projects + webServers. A project's `port` becomes its `use.baseURL`; the dominant `bun run --filter=… dev -- --port … --strictPort` webServer is `viteDevServer(filter, port)`; bespoke boots (build-then-serve SSG, `node …/vite`) pass a raw `{ command, port, cwd?, env?, timeout? }` entry. The package exports `src/index.ts` under a `default` exports condition because Playwright's config loader resolves via Node CJS (no build step — Playwright transpiles the workspace `.ts` directly). See [`packages/internals/playwright-config/README.md`](../../packages/internals/playwright-config/README.md). (The root `vitest.shared.ts` is gone — absorbed into `@pyreon/vitest-config/src/internals.ts` in #914; there is no root-level vitest config.)
+- Each root-level `playwright.*.config.ts` MUST use `definePlaywrightConfig` from `@pyreon/playwright-config` (the Playwright sibling of `@pyreon/vitest-config`). It bakes the shared defaults — `testDir: './e2e'`, `retries: process.env.CI ? 2 : 0`, `use: { headless, browserName: 'chromium' }`, per-webServer `reuseExistingServer: !process.env.CI` + default `timeout` — so each config states only its projects + webServers. A project's `port` becomes its `use.baseURL`; the dominant `bun run --filter=… dev -- --port … --strictPort` webServer is `viteDevServer(filter, port)`; bespoke boots (build-then-serve SSG, `node …/vite`) pass a raw `{ command, port, cwd?, env?, timeout? }` entry. The package exports `src/index.ts` under a `default` exports condition because Playwright's config loader resolves via Node CJS (no build step — Playwright transpiles the workspace `.ts` directly). See [`packages/internals/playwright-config/README.md`](../../packages/internals/playwright-config/README.md). (The root `vitest.shared.ts` is gone — absorbed into `@pyreon/vitest-config/src/internals.ts` in #914. The root `vitest.config.mts` is a ROUTER, not a config: its `test.projects` maps every `packages/*/*` and `examples/*` config, so `bunx vitest run <path>` from the repo root runs each file under its OWN package's config. Before it existed a root invocation ran on vitest's defaults — 5,000ms timeout, parallel files — which is how every kotlinc-spawning `@pyreon/native-compiler` spec timed out from the root while passing from inside the package. Totality is locked by `test-utils/src/tests/root-vitest-projects.test.ts`.)
 
 ## DOM Testing
 
@@ -197,6 +197,22 @@ cached intra-run. Note the size of that: 91s on the full suite, NOT the several
 minutes a serial `123 probes x 1.36s` estimate implies — vitest runs files in
 parallel, so probe cost is amortized across workers. Estimating a per-file cost
 serially when the runner is parallel is an easy way to overstate a win by 10x.
+
+**And it is served by ONE warm compiler JVM per run** (`src/kotlin-daemon.ts`,
+2026-09). A cache miss used to cost a cold `kotlinc` per check — JVM start
+plus a re-analysis of the 2,300-line Compose stub file, ~4s here and ~6s on a
+CI runner — and with the stubs edited most days, a miss was the common case
+in CI (16 shards, ~140 runner-minutes per run). The same check against a
+loaded `K2JVMCompiler` with the stubs pre-compiled to a jar is ~78ms. The
+package's vitest `globalSetup` starts the JVM once per run and hands its spool
+directory to the worker processes through `PYREON_KOTLIN_DAEMON_SPOOL`
+(the forks pool starts a process per test FILE, so a per-process daemon
+measured only 2× where the run-wide one measures ~10×). The validator writes
+a request file and sleeps in 1ms `Atomics.wait` slices for the reply, because
+it is synchronous. Every failure path falls back to per-check `kotlinc`, and
+`kotlin-daemon.test.ts` asserts the two paths agree on both an accepted and a
+rejected emit (bisect: a daemon forging acceptance fails it). `PYREON_KOTLIN_DAEMON=0`
+forces the plain path — use it when bisecting a verdict you do not trust.
 
 Consequences you need to know when working in this package:
 

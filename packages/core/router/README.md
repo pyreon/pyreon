@@ -205,6 +205,20 @@ loader: async ({ params, request }) => {
 
 Pair with `<NotFoundBoundary fallback={<NotFoundPage />}>...</NotFoundBoundary>` at your layout root.
 
+### Redirect-target security
+
+`redirect(url)` trusts `url`: a same-origin path is an SPA navigation, an explicit `https://…` URL is a real cross-origin navigation on both server and client. If `url` ever comes from untrusted input (a `?next=` query param, anything a user can influence), validate it first — otherwise `redirect()` is an open redirect. `classifyRedirectTarget(target)` is the classifier the router and the SSR handler both use internally, exported so app code can reuse the same judgment: it returns `{ kind: 'internal' | 'external' | 'block', url }`, blocking protocol-relative targets (`//evil.com`, and the `\\`/`/\`/`\/` variants the URL parser treats identically) and non-`http(s)` schemes (`javascript:`, `data:`, …). `safeRedirectLocation(target)` is the one-line version for the common case — pass it an untrusted target and get back a safe string (block verdicts collapse to `/`).
+
+```ts
+import { safeRedirectLocation } from '@pyreon/router'
+
+// `next` is attacker-controlled (a query param) — never redirect to it raw.
+loader: async ({ request }) => {
+  const next = new URL(request.url).searchParams.get('next') ?? '/'
+  redirect(safeRedirectLocation(next))
+}
+```
+
 ## Pending components
 
 ```ts

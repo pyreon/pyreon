@@ -1,3 +1,4 @@
+import { isServer } from '@pyreon/reactivity'
 import type { SchemaIssue, SchemaParseResult } from '@pyreon/validation'
 import { extractParseFn, formatIssues } from '@pyreon/validation'
 import { createInstance } from './instance'
@@ -14,18 +15,69 @@ import { MODEL_BRAND } from './types'
 
 // ─── Hook registry ────────────────────────────────────────────────────────────
 
-// Module-level singleton registry for `asHook()` — isolated per package import.
-// Use `resetHook(id)` or `resetAllHooks()` to clear entries (useful for tests / HMR).
-const _hookRegistry = new Map<string, unknown>()
+// Default: module-level singleton registry for `asHook()` — correct for a
+// browser, where one process serves one user, and the whole point of the API
+// (Pinia / Zustand style).
+//
+// On a SERVER "singleton" is a cross-request bleed: one process serves
+// everyone, so two concurrent requests calling `Cart.asHook('cart')()` share
+// ONE instance — request B sees request A's cart. `resetHook` exists but
+// nothing on the render path calls it, and nothing upstream could: neither
+// `@pyreon/server` nor `@pyreon/zero` depends on `@pyreon/state-tree`.
+//
+// So this mirrors `@pyreon/store`'s registry EXACTLY: a `getRegistry()`
+// indirection plus, under `isServer`, a `globalThis` setter that
+// @pyreon/runtime-server picks up lazily inside `runWithRequestContext` /
+// `renderToString` / `renderToStream`. Neither package imports the other.
+const _defaultHookRegistry = new Map<string, unknown>()
+let _registryProvider: () => Map<string, unknown> | undefined = () => _defaultHookRegistry
+
+/**
+ * Override the `asHook` registry provider.
+ * Called by @pyreon/runtime-server to inject a per-request isolated registry so
+ * hook singletons never leak between concurrent SSR requests.
+ *
+ * A provider returns `undefined` to mean "no request scope here — use the
+ * process default". That is load-bearing: an ALS-backed provider is out of
+ * scope for every call that is not inside a render, and the obvious spelling
+ * (`() => als.getStore() ?? new Map()`) fabricates a THROWAWAY map for those
+ * calls, so a hook instantiated outside a render would be re-created on every
+ * read — silently breaking the singleton contract exactly where isolation has
+ * nothing to say.
+ */
+export function setHookRegistryProvider(fn: () => Map<string, unknown> | undefined): void {
+  _registryProvider = fn
+}
+
+function getHookRegistry(): Map<string, unknown> {
+  return _registryProvider() ?? _defaultHookRegistry
+}
+
+/**
+ * Publish the setter on a `globalThis` seam so the SSR renderer wires
+ * per-request isolation WITHOUT anyone remembering to — the same shape and the
+ * same reason as `@pyreon/store`'s `__PYREON_STORE_SET_REGISTRY_PROVIDER__`.
+ *
+ * Server-only: in a browser the singleton is the feature.
+ */
+if (isServer) {
+  ;(
+    globalThis as {
+      __PYREON_STATE_TREE_SET_REGISTRY_PROVIDER__?: (
+        fn: () => Map<string, unknown> | undefined,
+      ) => void
+    }
+  ).__PYREON_STATE_TREE_SET_REGISTRY_PROVIDER__ = setHookRegistryProvider
+}
 
 /** Destroy a hook singleton by id so next call re-creates the instance. */
 export function resetHook(id: string): void {
-  _hookRegistry.delete(id)
+  getHookRegistry().delete(id)
 }
 
 /** Destroy all hook singletons. */
 export function resetAllHooks(): void {
-  _hookRegistry.clear()
+  getHookRegistry().clear()
 }
 
 // ─── Config shapes (state OR schema, mutually exclusive) ─────────────────────
@@ -262,6 +314,11 @@ export class ModelDefinition<
    * Returns a hook function that always returns the same singleton instance
    * for the given `id` — Pinia / Zustand style.
    *
+   * "Singleton" means *per process* in a browser and *per REQUEST* on a server
+   * under `@pyreon/runtime-server` (`renderToString` / `renderToStream` /
+   * `runWithRequestContext`), which isolates this registry automatically — a
+   * process-wide singleton would hand two concurrent requests one instance.
+   *
    * @example
    * ```ts
    * const useCounter = Counter.asHook("app-counter")
@@ -270,10 +327,11 @@ export class ModelDefinition<
    */
   asHook(id: string): () => ModelInstance<TState, TViews, TActions, HasSchema, TVolatile> {
     return () => {
-      if (!_hookRegistry.has(id)) {
-        _hookRegistry.set(id, this.create())
+      const registry = getHookRegistry()
+      if (!registry.has(id)) {
+        registry.set(id, this.create())
       }
-      return _hookRegistry.get(id) as ModelInstance<
+      return registry.get(id) as ModelInstance<
         TState,
         TViews,
         TActions,
