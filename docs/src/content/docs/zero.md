@@ -862,6 +862,21 @@ corsMiddleware({ origin: ['https://app.com'], credentials: true, maxAge: 86400 }
 rateLimitMiddleware({ max: 20, window: 60, include: ['/api/*'] })
 ```
 
+**`rateLimitMiddleware` does not read `X-Forwarded-For` unless you tell it a proxy is there.** That header is part of the request, so its first entry is whatever the caller claimed — keying on it lets a rotating header bypass the limit entirely, and lets a prepended victim address spend the victim's bucket. Declare the chain with `trustProxy`, or key on something you control:
+
+```ts
+// Exactly one reverse proxy in front (nginx, a cloud load balancer):
+rateLimitMiddleware({ max: 20, window: 60, trustProxy: true })
+
+// Two trusted hops → the client is the 2nd entry from the right:
+rateLimitMiddleware({ max: 20, window: 60, trustProxy: 2 })
+
+// Or ignore the network entirely and key on a session:
+rateLimitMiddleware({ max: 20, window: 60, keyFn: (ctx) => userIdFrom(ctx) ?? 'anon' })
+```
+
+With no `trustProxy` and no `keyFn`, the limiter uses `ctx.locals.remoteAddress` when a host adapter has set it, and otherwise puts every caller in ONE shared bucket — warning once so the misconfiguration is visible rather than silent.
+
 ### Composing them — `@pyreon/zero/middleware`
 
 Each built-in ships from its own subpath. `@pyreon/zero/middleware` carries the two helpers for combining them.

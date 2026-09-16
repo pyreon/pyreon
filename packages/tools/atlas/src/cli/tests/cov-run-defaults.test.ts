@@ -34,7 +34,7 @@ const write = (rel: string, body: string): void => {
 }
 
 const counter = (): void =>
-  write('src/Counter.tsx', 'export function Counter(props: { count: number }) { return null }\n')
+  write('src/Counter.tsx', 'export function Counter(props: { count: number }) { return 1 }\n')
 
 const outText = () => stdout.join('')
 const errText = () => stderr.join('')

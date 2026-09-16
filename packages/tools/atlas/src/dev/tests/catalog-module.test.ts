@@ -358,11 +358,11 @@ describe('derived scenarios reach the workbench catalog', () => {
       ],
       { root: '/p/src' },
     )
-    expect(code).toContain('"id":"b--ok","name":"Solid","args":{"variant":"solid"},"verdict":"ok"')
-    expect(code).toContain('"id":"b--bad","name":"Empty","args":{"label":""},"verdict":"fail"')
+    expect(code).toContain('{ id: "b--ok", name: "Solid", source: "auto-variant", args: {"variant":"solid"}, verdict: "ok" }')
+    expect(code).toContain('{ id: "b--bad", name: "Empty", source: "auto-variant", args: {"label":""}, verdict: "fail" }')
     // A verdict-less scenario is UNVERIFIED — not a pass. Rendering it as one
     // would be the false-green the three-state verify model exists to prevent.
-    expect(code).toContain('"id":"b--unchecked","name":"Long","args":{},"verdict":"unverified"')
+    expect(code).toContain('{ id: "b--unchecked", name: "Long", source: "auto-variant", args: {}, verdict: "unverified" }')
   })
 
   it('emits no scenarios key when the pipeline produced none', () => {
@@ -395,14 +395,16 @@ describe('content seed in the generated module', () => {
       { root: '/p' },
     )
     expect(code).toContain("import { materializeContent as __content } from '@pyreon/atlas/core'")
-    expect(code).toContain('const merged = { ...{"children":"Button"}, ...props }')
+    // Seed, then the authored Default's live args (none without a config),
+    // then the control values — the order the content plugin verified in.
+    expect(code).toContain('const merged = { ...{"children":"Button"}, ...{}, ...props }')
     expect(code).toContain('const { props: __p, children: __c } = __content(merged, h)')
     expect(code).toContain('return h(Comp, __p, ...__c)')
   })
 
   it('emits an empty seed — not a missing one — for a component without content', () => {
     const code = generateCatalogModule([{ component: ci(), file: '/p/src/Button.tsx' }], { root: '/p' })
-    expect(code).toContain('const merged = { ...{}, ...props }')
+    expect(code).toContain('const merged = { ...{}, ...{}, ...props }')
   })
 
   it('uses the seed as a text control default the panel starts from', () => {

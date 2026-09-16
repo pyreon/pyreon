@@ -78,6 +78,7 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
   let configPath: string | undefined
   let presets: import('../ui/catalog').WorkbenchPresets | undefined
   let pages: Record<string, import('../discover/config').PageMeta> | undefined
+  let parts: Record<string, string> | undefined
   let projects: readonly { name: string; dir: string }[] | undefined
   let configProblem: string | undefined
   let configTitle: string | undefined
@@ -90,6 +91,7 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
     configPath = scan.configPath
     presets = scan.presets
     pages = scan.pages
+    parts = scan.parts
     // Absolute dirs: grouping resolves each component against ITS OWN project
     // root, which a relative path cannot express once there are several roots.
     projects = scan.projects?.map((pr) => ({ name: pr.name, dir: resolve(root, pr.dir) }))
@@ -202,6 +204,11 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
         root,
         scanRoot,
         entries,
+        // The same scan the boot ran, on demand — see `AtlasDevPluginOptions.rescan`.
+        rescan: async () => {
+          const scan = await runScan({ cwd: root, dir: scanDir, write: false })
+          return collectEntries(root, scan.graph.list())
+        },
         // The config file PATH, not the loaded value: the wrapper must wrap
         // the preview in the BROWSER, so the generated module imports it there
         // (through the project's own plugin chain) rather than serializing a
@@ -211,6 +218,7 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
         ...(configPath ? { configPath } : {}),
         ...(presets ? { presets } : {}),
         ...(pages ? { pages } : {}),
+        ...(parts ? { parts } : {}),
         ...(projects ? { projects } : {}),
         title,
         ...(options.methods !== undefined ? { methods: options.methods } : {}),

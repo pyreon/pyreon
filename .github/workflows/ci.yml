@@ -1920,7 +1920,62 @@ jobs:
           # whatever the runner image happens to ship on PATH that day.
           node-version: '24'
       - name: Run full per-package coverage
-        run: bun run coverage
+        # `@pyreon/native-compiler` is measured by `Coverage (Native)` below.
+        # Its suite spawns hundreds of real swiftc/kotlinc processes, and
+        # inside this job's 4-way pool — with NO verdict cache restored and
+        # file parallelism on — it pinned the job at the 15-minute cap on
+        # every main push from #3441 (which brought packages/native into the
+        # scan) onward: `java` orphans at cancel, `Test` red behind it, a
+        # gate that never produced a table. The PR-time `Coverage (changed
+        # packages)` step already drops it for the same reason and says so;
+        # the script fails LOUD if this name stops matching a workspace, so
+        # the skip cannot rot into a silent re-inclusion.
+        run: bun run coverage -- --skip=@pyreon/native-compiler
+
+  coverage-native:
+    name: Coverage (Native)
+    # The toolchain-bound half of `Coverage (Full)`, isolated for the same
+    # reason the native TEST cells are (`NATIVE_ISO`): its wall clock is a
+    # function of the compile-verdict cache, not of the suite, and it must
+    # not share a runner with three other instrumented suites. Restores the
+    # accumulated verdict store the native-compiler shards save (the prefix
+    # picks the most recent save, which is the deepest accumulation — see
+    # the restore-keys comment on the test cells), runs the package ALONE
+    # with its files serial, and saves its own verdicts back under a key
+    # the next run's prefix restore also matches.
+    #
+    # The cap is sized for a mostly-warm cache, not a cold one: warm, the
+    # ~6,500 specs are JS time under V8 instrumentation; a wholly cold cache
+    # is ~2,600s of kotlinc alone and the script's own 30-minute per-package
+    # ceiling reports that as TIMED OUT rather than letting the job cap turn
+    # it into `cancelled` with no table.
+    if: ${{ github.event_name == 'push' || github.event_name == 'merge_group' }}
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-pyreon
+        with:
+          node-version: '24'
+      - name: Restore native compile-verdict cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/pyreon-native-validate
+          key: native-verdicts-ci-${{ runner.os }}-coverage-native-${{ github.sha }}
+          restore-keys: |
+            native-verdicts-ci-${{ runner.os }}-coverage-native-
+            native-verdicts-ci-${{ runner.os }}-native-compiler-
+      - name: Run native-compiler coverage
+        env:
+          PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
+        run: bun run coverage -- --only=@pyreon/native-compiler
+      - name: Save native compile-verdict cache
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/pyreon-native-validate
+          key: native-verdicts-ci-${{ runner.os }}-coverage-native-${{ github.sha }}
 
   # ── Benchmark (push:main only — track perf over time) ────────────────────
   benchmark:

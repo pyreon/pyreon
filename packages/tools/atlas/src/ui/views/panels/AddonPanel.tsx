@@ -5,7 +5,6 @@
  * what any individual panel is. Adding one — a built-in, or a UI-side panel for
  * a pipeline plugin — is a `registerAddonPanel` call, not a change here.
  */
-import { Show } from '@pyreon/core'
 import * as C from '../../components'
 import type { WorkbenchModel } from '../../model'
 import { getAddonPanels, sealAddonPanels } from '../../panels'
@@ -45,11 +44,14 @@ export function AddonPanel(props: { model: WorkbenchModel }) {
 
   return (
     <C.AddonPanel style={() => `width:${m.panelW()}px`}>
-      <C.AddonTabs>
+      <C.AddonTabs role="tablist" aria-label="Addon panels">
         {panels.map((panel) => (
           <C.SegBtn
             data-testid={`addon-tab-${panel.id}`}
             title={panel.hint}
+            role="tab"
+            aria-selected={() => (m.addon() === panel.id ? 'true' : 'false')}
+            aria-controls={`addon-panel-${panel.id}`}
             state={() => (m.addon() === panel.id ? 'active' : 'idle')}
             onClick={() => m.addon.set(panel.id)}
           >
@@ -58,9 +60,38 @@ export function AddonPanel(props: { model: WorkbenchModel }) {
         ))}
       </C.AddonTabs>
       <C.AddonBody>
-        {panels.map((panel) => (
-          <Show when={() => m.addon() === panel.id}>{panel.render(m)}</Show>
-        ))}
+        {/*
+          Each body is built ON DEMAND — the first time its tab is opened —
+          KEPT across tab switches, and REBUILT when the selected component
+          changes. Three constraints, and the middle one is the one that
+          bites: as a plain child every panel's render ran at mount (twelve
+          setups, a reactive-graph baseline walk among them, for a user who
+          opened one tab), and a panel's result signals (an axe run, a Lens
+          verdict) outlived the component they were about; but a body that
+          UNMOUNTS when its tab is hidden loses a recording in progress —
+          start recording coverage, edit a control, come back, and the session
+          is gone. So the body is memoised per (panel, component) and returned
+          BY IDENTITY while inactive: the reactive boundary keeps an identical
+          value mounted, and the wrapper only hides it.
+        */}
+        {panels.map((panel) => {
+          let built: { sel: string; node: unknown } | null = null
+          return (
+            <div
+              id={`addon-panel-${panel.id}`}
+              role="tabpanel"
+              style={() => (m.addon() === panel.id ? 'display:contents' : 'display:none')}
+            >
+              {() => {
+                const sel = m.selId()
+                if (built && built.sel === sel) return built.node as never
+                if (m.addon() !== panel.id) return null
+                built = { sel, node: panel.render(m) }
+                return built.node as never
+              }}
+            </div>
+          )
+        })}
       </C.AddonBody>
     </C.AddonPanel>
   )

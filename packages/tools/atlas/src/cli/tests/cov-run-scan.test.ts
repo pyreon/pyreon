@@ -32,7 +32,7 @@ const write = (rel: string, body: string): void => {
 
 /** A component whose generated scenarios all pass — the control for every spec. */
 const counter = (at = 'src/Counter.tsx'): void =>
-  write(at, 'export function Counter(props: { count: number }) { return null }\n')
+  write(at, 'export function Counter(props: { count: number }) { return 1 }\n')
 
 const run = async (...argv: string[]): Promise<number> => runCli(argv)
 const errText = () => stderr.join('')
@@ -126,7 +126,7 @@ describe('auto-detection says WHY it fired', () => {
     // auto-detection the only way the scan finds anything.
     write('package.json', JSON.stringify({ name: 'root', workspaces: ['packages/*'] }))
     write('packages/core/package.json', JSON.stringify({ name: '@acme/core' }))
-    write('packages/core/src/Button.tsx', 'export function Button(p: { n: number }) { return null }\n')
+    write('packages/core/src/Button.tsx', 'export function Button(p: { n: number }) { return 1 }\n')
   }
 
   it('says "no atlas.config.ts", and points at `atlas init`', async () => {

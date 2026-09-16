@@ -21,6 +21,7 @@ import { makeQueryResult, type FakeQueryResult, type QueryStateId } from './quer
 import {
   componentFromPath,
   componentUrl,
+  editedArgs,
   parseUrlState,
   pathBase,
   serializeUrlState,
@@ -28,8 +29,8 @@ import {
   type UrlState,
 } from './url-state'
 import type { CatalogGroup, WorkbenchCatalog, WorkbenchComponent } from './catalog'
-import { buildSearch, buildSearchIndex, defaultValues, groupComponents } from './catalog'
-import { buildHierarchy, filterHierarchy, type HierarchyNode } from './hierarchy'
+import { buildSearchIndex, defaultValues, groupComponents } from './catalog'
+import { browseOrder, buildHierarchy, filterHierarchy, type HierarchyNode } from './hierarchy'
 import type { BrandTheme, ThemeTokens } from './theme'
 import { THEMES, tokens } from './theme'
 
@@ -64,7 +65,14 @@ export interface WorkbenchModel {
   brandId: Signal<string>
   dark: Signal<boolean>
   selId: Signal<string>
+  /** The ⌘K dialog's transient query — cleared when the dialog closes. */
   query: Signal<string>
+  /**
+   * The sidebar's persistent filter. Distinct from `query` on purpose: the
+   * dialog's query is cleared on every exit, so a tree filtered by it was a
+   * tree that could never stay filtered — 108 rows, always.
+   */
+  filter: Signal<string>
   /** The ⌘K search dialog (docs-site style modal; the top-bar input became a trigger). */
   searchOpen: Signal<boolean>
   // Resizable shell panels — widths in px (drag handles clamp them), open flags
@@ -123,12 +131,19 @@ export interface WorkbenchModel {
    * dropped. `visibleGroups` remains for flat consumers.
    */
   tree: Computed<HierarchyNode[]>
+  /**
+   * Component ids in the order the sidebar SHOWS them (filtered tree, parts
+   * after their parent, collapsed groups skipped) — what ↑↓ walks.
+   */
+  browseIds: Computed<string[]>
   /** Collapsed group PATHS (default: everything expanded). */
   collapsed: Signal<ReadonlySet<string>>
   toggleGroup: (path: string) => void
   noResults: Computed<boolean>
   /** Live a11y verdict for the RENDERED preview (re-probed after each render). */
   a11y: Signal<A11yReport>
+  /** True when the last render left the preview surface with no DOM at all. */
+  previewEmpty: Signal<boolean>
   /** `ref` for the preview surface — attach it so the a11y checks can inspect the real DOM. */
   previewRef: (el: HTMLElement | null) => void
   // actions
@@ -162,8 +177,16 @@ export function createModel(
   opts: { title?: string | undefined; subtitle?: string | undefined },
 ): WorkbenchModel {
   const groups = groupComponents(catalog)
-  const search = buildSearch(catalog)
+  // ONE index. The ranked dialog search and the id-only sidebar filter read
+  // the same structure; building it twice cost two full passes over every
+  // control key, enum option and scenario name at boot, for two structures
+  // that could disagree.
   const searchHits = buildSearchIndex(catalog)
+  const order = new Map(catalog.components.map((c, i) => [c.id, i]))
+  const search = (q: string): string[] =>
+    searchHits(q)
+      .map((hit) => hit.id)
+      .sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0))
   const total = catalog.components.length
 
   // Per-project presets — every omitted family keeps the shipped defaults.
@@ -187,6 +210,15 @@ export function createModel(
   // packages ended up disagreeing about it. It is also the form
   // `pyreon/no-window-in-ssr` recognises.
   const initial: UrlState = isClient ? parseUrlState(location.search) : {}
+  // Chrome preferences survive a reload without a link — brand, appearance,
+  // panel widths, what is open. A link still wins for what it names.
+  const prefs = readPrefs()
+  // On a narrow screen both side panels start CLOSED: sidebar (272px) and
+  // addon panel (352px) are fixed-width flex siblings of the canvas, and
+  // below ~900px they left it no room at all — the canvas disappeared and the
+  // page read as broken. A stored preference still wins.
+  const narrow =
+    isClient && typeof matchMedia === 'function' && matchMedia('(max-width: 900px)').matches
 
   // Path URLs — `/atlas/button/` rather than `/atlas/?c=button`.
   //
@@ -205,8 +237,8 @@ export function createModel(
   if (pathId !== undefined) initial.c = pathId
   const routeBase = hasRoutes ? pathBase(location.pathname, pathId) : ''
 
-  const brandId = signal(initial.brand ?? 'ember')
-  const dark = signal(initial.dark ?? true)
+  const brandId = signal(initial.brand ?? prefs.brand ?? 'ember')
+  const dark = signal(initial.dark ?? prefs.dark ?? true)
   // The link's component id, RESOLVED against the catalog — never used raw.
   //
   // A link naming a component that no longer exists falls back to the first one
@@ -222,13 +254,35 @@ export function createModel(
   // contains means no attacker-chosen string ever names a property.
   const linkedComponent = catalog.components.find((c) => c.id === initial.c)
   const selId = signal(linkedComponent?.id ?? catalog.components[0]?.id ?? '')
+
+  // The state a component OPENS on: its `Default` scenario's args, over the
+  // control defaults.
+  //
+  // A scenario's args are the WHOLE pinned state, not only the editable
+  // controls — a `Tree`'s `data`, a `Combobox`'s `options`, a `Dialog`'s
+  // `open`. Rendering from control defaults alone mounted every data-driven
+  // component with nothing to show, while the sidebar listed a verified
+  // scenario one click away. Every read of a component's values starts here,
+  // so a fresh selection, a reset, and a link that edits one key all keep the
+  // rest of the scenario. Only a scenario NAMED `Default` counts: a derived
+  // catalog always has one, and a hand-written catalog's first scenario is an
+  // extra state, not the opening one — its controls' defaults are.
+  const initialArgs = (c: WorkbenchComponent | undefined): Record<string, unknown> => {
+    const scenario = c?.scenarios?.find((s) => s.name === 'Default')
+    return scenario ? { ...scenario.args } : {}
+  }
   const query = signal('')
+  const filter = signal('')
   const zoomIdx = signal(2) // 100%
-  const view = signal<View>('canvas')
+  const view = signal<View>(
+    initial.view === 'docs' || initial.view === 'lab' ? initial.view : 'canvas',
+  )
   const addon = signal<Addon>(initial.p ?? 'controls')
   // Args from the link belong to the component the link named.
   const values = signal<Record<string, Record<string, unknown>>>(
-    linkedComponent && initial.args ? { [linkedComponent.id]: initial.args } : {},
+    linkedComponent && initial.args
+      ? { [linkedComponent.id]: { ...initialArgs(linkedComponent), ...initial.args } }
+      : {},
   )
   const actions = signal<ActionEntry[]>([])
   // A URL id that names no preset falls back to the first — a stale link must
@@ -239,7 +293,9 @@ export function createModel(
   const background = signal<string>(
     backgrounds.find((b) => b.id === initial.background)?.id ?? backgrounds[0]?.id ?? 'theme',
   )
-  const pseudo = signal<PseudoId | null>(null)
+  const pseudo = signal<PseudoId | null>(
+    (['hover', 'focus', 'active', 'disabled'] as const).find((p) => p === initial.pseudo) ?? null,
+  )
   const outline = signal(false)
   const measure = signal(false)
   const locale = signal<string>(
@@ -249,8 +305,11 @@ export function createModel(
   // changes writing direction, this changes every string's LENGTH. Off by
   // default — it is a deliberate check, not a viewing mode.
   const pseudoLocale = signal(false)
-  const permissionSet = signal(roles[0]?.id ?? 'anonymous')
-  const queryState = signal<QueryStateId>('success')
+  const permissionSet = signal(roles.find((r) => r.id === initial.role)?.id ?? roles[0]?.id ?? 'anonymous')
+  const queryState = signal<QueryStateId>(
+    (['success', 'loading', 'error', 'refetching'] as const).find((q) => q === initial.query) ??
+      'success',
+  )
 
   // Re-created per role AND per selected component: the consulted-key list is
   // an observation of ONE component under ONE role, so carrying it across
@@ -282,20 +341,22 @@ export function createModel(
   const vals = computed(() => {
     const c = sel()
     if (!c) return {}
-    const ov = values()[selId()]
-    const merged = ov ? { ...defaultValues(c), ...ov } : defaultValues(c)
+    const ov = values()[selId()] ?? initialArgs(c)
+    const merged = { ...defaultValues(c), ...ov }
     // Applied at the LAST step, to the values the component actually renders —
     // not to the stored control values. Transforming those would make the
     // Controls panel show accented text as if the user had typed it, and the
     // expansion would compound on every re-read.
     return pseudoLocale() ? pseudoLocalizeValues(merged) : merged
   })
+  // The sidebar filters by `filter`, never by the dialog's `query`.
+  const visibleIds = computed(() => new Set(search(filter())))
   const visibleGroups = computed(() => {
-    const ids = new Set(search(query()))
+    const ids = visibleIds()
     return groups.map((g) => ({ ...g, items: g.items.filter((i) => ids.has(i.id)) })).filter((g) => g.items.length > 0)
   })
   const fullTree = buildHierarchy(catalog.components)
-  const tree = computed(() => filterHierarchy(fullTree, new Set(search(query()))))
+  const tree = computed(() => filterHierarchy(fullTree, visibleIds()))
   // Collapsed rather than expanded state, so the default needs no
   // initialisation pass: an unknown path is expanded.
   const collapsed = signal<ReadonlySet<string>>(new Set())
@@ -305,13 +366,19 @@ export function createModel(
     else next.add(path)
     collapsed.set(next)
   }
-  const noResults = computed(() => visibleGroups().length === 0)
+  const noResults = computed(() => tree().length === 0)
+  const browseIds = computed(() => browseOrder(tree(), collapsed()))
 
   const setValue = (id: string, key: string, v: unknown) => {
-    const cur = values()[id]
-    values.set({ ...values(), [id]: cur ? { ...cur, [key]: v } : { [key]: v } })
+    const cur = values()[id] ?? initialArgs(catalog.components.find((c) => c.id === id))
+    values.set({ ...values(), [id]: { ...cur, [key]: v } })
   }
-  const reset = () => values.set({ ...values(), [selId()]: {} })
+  // Forget the edits; the component falls back to its opening scenario.
+  const reset = () => {
+    const next = { ...values() }
+    delete next[selId()]
+    values.set(next)
+  }
 
   const runPlay = async (compId: string, scenarioId: string) => {
     const comp = catalog.components.find((c) => c.id === compId)
@@ -345,15 +412,11 @@ export function createModel(
     selId.set(compId)
     // REPLACE the component's stored values with the scenario's args (not a
     // merge — a scenario is a complete pinned state, and stale edits bleeding
-    // through would render something the verdict never covered). Only args
-    // with a matching editable control land; the rest (e.g. a generated
-    // handler) are the render's business.
-    const editable = new Set(comp.controls.map((c) => c.key))
-    const next: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(scenario.args)) {
-      if (editable.has(key)) next[key] = value
-    }
-    values.set({ ...values(), [compId]: next })
+    // through would render something the verdict never covered). ALL of the
+    // args, not only the ones with an editable control: a `Tree` scenario is
+    // its `data`, and filtering to controls was how selecting it rendered an
+    // empty tree.
+    values.set({ ...values(), [compId]: { ...scenario.args } })
   }
 
   let actionSeq = 0
@@ -364,10 +427,20 @@ export function createModel(
   const clearActions = () => actions.set([])
 
   const searchOpen = signal(false)
-  const sidebarW = signal(272)
-  const panelW = signal(352)
-  const sidebarOpen = signal(true)
-  const panelOpen = signal(true)
+  const sidebarW = signal(prefs.sidebarW ?? 272)
+  const panelW = signal(prefs.panelW ?? 352)
+  const sidebarOpen = signal(prefs.sidebarOpen ?? !narrow)
+  const panelOpen = signal(prefs.panelOpen ?? !narrow)
+  effect(() => {
+    writePrefs({
+      brand: brandId(),
+      dark: dark(),
+      sidebarW: sidebarW(),
+      panelW: panelW(),
+      sidebarOpen: sidebarOpen(),
+      panelOpen: panelOpen(),
+    })
+  })
 
   let searchEl: HTMLInputElement | null = null
   const searchRef = (el: HTMLInputElement | null) => {
@@ -423,6 +496,26 @@ export function createModel(
   // pass is worse than one that shows nothing, so the checks now read the real
   // element (see ./a11y) and report `unknown` when it cannot be determined.
   const a11y = signal<A11yReport>(analyzeA11y(null))
+  // Written only when a CHECK changed: the observer below fires per mutation,
+  // and a fresh report object on every one re-rendered the panel rows under
+  // the cursor — the highlight the panel paints on hover is itself a mutation
+  // of the observed subtree.
+  const setA11y = (next: A11yReport) => {
+    if (JSON.stringify(next.checks) !== JSON.stringify(a11y.peek().checks)) a11y.set(next)
+  }
+  // Did the last render leave the surface EMPTY — no element, no text? The
+  // canvas says so out loud; a blank stage next to a healthy sidebar read as
+  // "the workbench is broken" when it was the component rendering nothing.
+  const previewEmpty = signal(false)
+  // A component that PORTALS (a dialog, a drawer) leaves the surface empty
+  // while its DOM sits on `document.body` — the runtime brackets portaled
+  // content in `<!--portal-->…<!--/portal-->` markers, and one on the body is
+  // what says the render went somewhere rather than nowhere.
+  const portaled = () =>
+    isClient &&
+    [...document.body.childNodes].some((n) => n.nodeType === 8 && (n as Comment).data === 'portal')
+  const isEmpty = (el: HTMLElement) =>
+    el.childElementCount === 0 && (el.textContent ?? '').trim().length === 0 && !portaled()
   let previewEl: HTMLElement | null = null
   let observer: MutationObserver | null = null
   let stopDir: Effect | null = null
@@ -449,7 +542,8 @@ export function createModel(
       stopDir = null
       return
     }
-    a11y.set(analyzeA11y(el))
+    setA11y(analyzeA11y(el))
+    previewEmpty.set(isEmpty(el))
     // Writing direction is applied IMPERATIVELY to the captured element rather
     // than as a `dir={…}` prop: an accessor-valued generic attribute is not
     // forwarded through rocketstyle → Element (it silently lands as no attribute
@@ -471,8 +565,21 @@ export function createModel(
     })
     if (typeof MutationObserver === 'undefined') return
     observer?.disconnect()
+    // Coalesced into one frame: a component animating through attribute
+    // writes (a progress bar, a toast timer) would otherwise re-analyse the
+    // whole subtree on every tick.
+    let scheduled = false
     observer = new MutationObserver(() => {
-      if (previewEl) a11y.set(analyzeA11y(previewEl))
+      if (scheduled) return
+      scheduled = true
+      const run = () => {
+        scheduled = false
+        if (!previewEl) return
+        setA11y(analyzeA11y(previewEl))
+        previewEmpty.set(isEmpty(previewEl))
+      }
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run)
+      else run()
     })
     observer.observe(el, { childList: true, subtree: true, attributes: true, characterData: true })
   }
@@ -496,15 +603,23 @@ export function createModel(
     const hist = history
     let lastWritten: UrlState = initial
     effect(() => {
+      // Only the EDITS travel in the link — the keys that differ from the
+      // opening scenario. The scenario itself is reconstructable from the
+      // catalog, and a `Tree`'s whole `data` in every URL is not a link
+      // anyone pastes.
       const next: UrlState = {
         c: selId(),
         p: String(addon()),
-        args: values()[selId()] ?? {},
+        args: editedArgs(values()[selId()], initialArgs(sel())),
         viewport: viewport(),
         background: background(),
         locale: locale(),
         brand: brandId(),
         dark: dark(),
+        view: view(),
+        ...(pseudo() ? { pseudo: pseudo() as string } : {}),
+        query: queryState(),
+        role: permissionSet(),
       }
       if (!urlStateChanged(lastWritten, next)) return
       lastWritten = next
@@ -538,12 +653,59 @@ export function createModel(
 
   return {
     catalog, groups, total, title: opts.title ?? 'atlas', subtitle: opts.subtitle ?? '',
-    brandId, dark, selId, query, zoomIdx, view, addon, actions,
+    brandId, dark, selId, query, filter, zoomIdx, view, addon, actions,
     viewport, background, pseudo, outline, measure, locale, pseudoLocale, permissionSet, permissions, queryState, queryResult,
     previewElement: () => previewEl,
     viewports, backgrounds, locales, roles, viewportPreset, backgroundPreset, dir,
-    brand, theme, sel, vals, visibleGroups, tree, collapsed, toggleGroup, noResults, a11y,
+    brand, theme, sel, vals, visibleGroups, tree, browseIds, collapsed, toggleGroup, noResults, a11y, previewEmpty,
     setValue, selectScenario, runPlay, reset, logAction, clearActions, search, searchHits, preview, searchRef, focusSearch, previewRef,
     searchOpen, sidebarW, panelW, sidebarOpen, panelOpen,
+  }
+}
+
+// ── Persisted chrome preferences ──────────────────────────────────────────
+//
+// `localStorage` is a per-viewer convenience, never a source of truth: a read
+// can throw (a private window, blocked site data) and comes back empty on
+// another device, so every read and write is guarded and the model renders
+// identically without it.
+const PREFS_KEY = 'atlas:prefs'
+
+interface Prefs {
+  brand?: string
+  dark?: boolean
+  sidebarW?: number
+  panelW?: number
+  sidebarOpen?: boolean
+  panelOpen?: boolean
+}
+
+function readPrefs(): Prefs {
+  if (!isClient) return {}
+  try {
+    const raw = localStorage.getItem(PREFS_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    const p = parsed as Record<string, unknown>
+    const out: Prefs = {}
+    if (typeof p.brand === 'string') out.brand = p.brand
+    if (typeof p.dark === 'boolean') out.dark = p.dark
+    if (typeof p.sidebarW === 'number' && Number.isFinite(p.sidebarW)) out.sidebarW = p.sidebarW
+    if (typeof p.panelW === 'number' && Number.isFinite(p.panelW)) out.panelW = p.panelW
+    if (typeof p.sidebarOpen === 'boolean') out.sidebarOpen = p.sidebarOpen
+    if (typeof p.panelOpen === 'boolean') out.panelOpen = p.panelOpen
+    return out
+  } catch {
+    return {}
+  }
+}
+
+function writePrefs(prefs: Prefs): void {
+  if (!isClient) return
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs))
+  } catch {
+    // Storage unavailable — the preference simply does not survive a reload.
   }
 }
