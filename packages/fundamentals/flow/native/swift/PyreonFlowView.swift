@@ -739,15 +739,6 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         let fixedWidth = (node.width ?? inlineStyle.width).map { CGFloat($0) }
         let fixedHeight = (node.height ?? inlineStyle.height).map { CGFloat($0) }
         return nodeContent(node, state.isNodeSelected(node.id), nodeDragStart[node.id] != nil)
-            // Shrink-to-fit with a floor, which is what the web node box does
-            // (an absolutely-positioned element with `min-width`). Without
-            // `fixedSize`, `.frame(minWidth:)` GROWS with the proposal, and
-            // `.position` proposes the whole canvas — so every auto-sized node
-            // silently filled the canvas: nodes overlapped and swallowed each
-            // other's taps and drags, the measured size fed edge anchoring the
-            // canvas box, and every node reported the canvas frame to VoiceOver.
-            // Device-found; a fixed width/height keeps the explicit size.
-            .fixedSize(horizontal: fixedWidth == nil, vertical: fixedHeight == nil)
             .frame(
                 minWidth: fixedWidth == nil ? CGFloat(pyreonFlowDefaultNodeWidth) : nil,
                 idealWidth: fixedWidth,
@@ -755,6 +746,15 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 minHeight: fixedHeight == nil ? CGFloat(pyreonFlowDefaultNodeHeight) : nil,
                 idealHeight: fixedHeight,
                 maxHeight: fixedHeight)
+            // Shrink-to-fit with a floor, which is what the web node box does
+            // (an absolutely-positioned element with `min-width`). AFTER the
+            // frame, deliberately: `.frame(minWidth:)` GROWS with the proposal
+            // and `.position` proposes the whole canvas, so without this the
+            // frame — not just its content — filled the canvas. Every node then
+            // overlapped every other, swallowing its taps and drags, fed edge
+            // anchoring the canvas box, and reported the canvas frame to
+            // VoiceOver. A fixed width/height keeps the explicit size.
+            .fixedSize(horizontal: fixedWidth == nil, vertical: fixedHeight == nil)
             .modifier(PyreonFlowNodeInlineStyleModifier(style: inlineStyle))
             .background(GeometryReader { measured in
                 Color.clear.preference(key: PyreonFlowNodeSizePreference.self, value: [node.id: measured.size])
@@ -775,7 +775,15 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 }
             }
             .accessibilityHidden(state.disableKeyboardA11y || !(node.focusable ?? state.nodesFocusable))
-            .position(x: absolute.x + dimensions.width / 2, y: absolute.y + dimensions.height / 2)
+            // Placed by OFFSET in the canvas's top-leading ZStack rather than
+            // by `.position`, which hands its child the whole canvas as its
+            // layout frame — which is then what accessibility and
+            // coordinate-based automation report for EVERY node, so VoiceOver
+            // could not locate one and a drag could not target one. An offset
+            // leaves the node's own box as its frame. The two place it
+            // identically: `.position` centres at (x + w/2, y + h/2); the
+            // stack's top-leading alignment plus this offset puts its top-left
+            // at (x, y). Device-found.
             .contentShape(Rectangle())
             .onTapGesture {
                 if node.selectable ?? state.nodesSelectable { state.selectNode(node.id) }
@@ -787,6 +795,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             .onKeyPress { press in
                 handleKeyPress(press, nodeId: node.id)
             }
+            // Last, so the hit-test shape and gestures move WITH the node.
+            .offset(x: absolute.x, y: absolute.y)
     }
 
     private func handleKeyPress(_ press: KeyPress, nodeId: String? = nil) -> KeyPress.Result {

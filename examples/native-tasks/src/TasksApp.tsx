@@ -412,10 +412,14 @@ function FlowScreen() {
         <Button onPress={() => flow.zoomIn()} data-testid="flow-zoom-in">
           Zoom in
         </Button>
-        <Button onPress={() => navigate('/tasks')} data-testid="flow-back">
-          Back to tasks
+        <Button onPress={() => flow.updateNodePosition('a', { x: 25, y: 35 })} data-testid="flow-move">
+          Move
         </Button>
       </Inline>
+      {/* Its own row: five buttons overflow a phone-width Compose Row. */}
+      <Button onPress={() => navigate('/tasks')} data-testid="flow-back">
+        Back to tasks
+      </Button>
       <Flow instance={flow} ariaLabel="Task flow">
         <Background variant="dots" />
         <Controls />
