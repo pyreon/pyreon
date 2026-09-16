@@ -76,7 +76,7 @@ describe('renderGeoPies', () => {
 describe('renderGeoTrails', () => {
   const trail = (over: Partial<GeoTrail> = {}): GeoTrail => ({ period: 4, trailLength: 0.5, color: '', symbolSize: 6, ...over })
   const path = { coords: [{ lon: 0, lat: 0 }, { lon: 20, lat: 0 }], color: '#f00', width: 2 }
-  const kinds = (t: GeoTrail, time: number, paths = [path]) => renderGeoTrails(layout, paths, t, time, '#999').map((c) => c.kind)
+  const kinds = (t: GeoTrail, time: number, paths: { coords: typeof path.coords; color?: string; width?: number }[] = [path]) => renderGeoTrails(layout, paths, t, time, '#999').map((c) => c.kind)
 
   it('draws a trail and a head per path', () => {
     expect(kinds(trail(), 2)).toEqual(['polyline', 'circle'])
