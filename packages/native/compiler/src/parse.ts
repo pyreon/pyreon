@@ -11925,7 +11925,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // `{ ...t, done: !t.done }` lost the spread data, leaving emit
       // targets unable to produce correct copy-with-overrides shapes.
       const properties = node.properties as AnyNode[]
-      const fields: { name: string; value: ExprIR }[] = []
+      const fields: { name: string; value: ExprIR; afterSpreads?: number }[] = []
       const spreads: ExprIR[] = []
       for (const p of properties) {
         // A COMPUTED key (`{ [k]: v }`) has `computed: true`; its `key` is the
@@ -11962,6 +11962,8 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           fields.push({
             name: (p.key.name as string | undefined) ?? literalKey!,
             value: parsedValue,
+            // Source ORDER against the spreads — the half the IR dropped.
+            afterSpreads: spreads.length,
           })
         } else if (p.type === 'SpreadElement') {
           spreads.push(parseExpr(p.argument, ctx))

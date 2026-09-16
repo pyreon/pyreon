@@ -15,7 +15,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
-import { isSwiftcAvailable, isKotlincAvailable, validateSwift, validateKotlin } from '../validate'
+import { isSwiftUIAvailable, isKotlincAvailable, validateSwiftTypecheck, validateKotlin } from '../validate'
 
 const APP = `import { Stack, Text } from '@pyreon/primitives'
 function Card(props: { title: string; count: number }) {
@@ -72,8 +72,11 @@ function App(props: { gap: number }) { return (<Stack {...props} />) }`,
     expect(res.code).not.toContain('{...}')
   })
 
-  it.skipIf(!isSwiftcAvailable())('Swift: spread expansion typechecks via swiftc', () => {
-    const res = validateSwift(transform(APP, { target: 'swift' }).code)
+  // TYPECHECK, not `-parse`: the parse rung accepts a spread expansion whose
+  // field does not exist on the target type, so it could never have observed
+  // the failure this spec claims to prove.
+  it.skipIf(!isSwiftUIAvailable())('Swift: spread expansion typechecks via swiftc', () => {
+    const res = validateSwiftTypecheck(transform(APP, { target: 'swift' }).code)
     expect(res.ok, res.error ?? '').toBe(true)
   })
 

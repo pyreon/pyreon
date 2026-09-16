@@ -74,9 +74,14 @@ import {
   typeIsOptional,
   unwrapOptionalType,
   synthesizeWebSocketAutoConnect,
+  registerComponentFnReturns,
   widenFloatLocals,
   widenFloatSignals,
 } from './infer-type'
+import { lowerMathCall, lowerMathConstant } from './math-lowering'
+import { buildObjectConstFields, planObjectSpread, resolveSpreadFields } from './spread-lowering'
+import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './jsx-helper-call'
+import type { SpreadResolver } from './spread-lowering'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import { clampExpr } from './pure-state'
@@ -188,6 +193,12 @@ function enumTypeOfExpr(x: ExprIR): string | undefined {
  * (the `onToggle`/`onRemove` event handlers were silently dropped).
  */
 let _componentNames: Set<string> = new Set()
+/**
+ * Names whose VALUE is a JSX-returning function — the file's components plus
+ * component-scope `const row = (x) => <Text/>` arrows. Consulted where a child
+ * expression is about to be STRINGIFIED; see `jsx-helper-call.ts`.
+ */
+let _jsxFnNames: Set<string> = new Set()
 // `styled(Prim)`-wrapped components — a `<X>` use-site is rewritten to `<Prim>`
 // + the captured style injected as a synthetic `style` attr (see emitSwiftJsx).
 let _styledComponents: Map<string, StyledComponentIR> = new Map()
@@ -813,6 +824,14 @@ let _moduleConstExprs: Map<string, ExprIR> = new Map()
  */
 let _componentConstMap: Map<string, string | number | boolean> = new Map()
 /**
+ * Component-scope `const` whose initializer is an OBJECT LITERAL → its field
+ * names. The literal's struct (`__ObjN`) is synthesized at EMIT time, so
+ * `inferType` answers `unknown` for the binding — which left the spread
+ * planner unable to tell an override from an ADDED key for the commonest
+ * source of all, an un-annotated object const.
+ */
+let _componentObjectConsts: Map<string, Set<string>> = new Map()
+/**
  * Per-component: value-const name → its full ExprIR. Component-body value
  * consts (`const base = 10`) emit as body-local `let`s in the ViewBuilder
  * (a stored property can't reference @State at init), so a STRUCT-LEVEL
@@ -1177,6 +1196,7 @@ export function emitSwift(
     if (!_structFieldsToName.has(nameOnly)) _structFieldsToName.set(nameOnly, s.name)
   }
   _componentNames = new Set(components.map((c) => c.name))
+  _jsxFnNames = collectJsxFnNames(components, [], moduleDecls)
   _componentPropsMap = new Map(components.map((c) => [c.name, c.props]))
   _flowComponentHandles = new Map()
   _flowComponentsWithInvalidHandles = new Set()
@@ -1432,6 +1452,7 @@ export function emitSwift(
   // cross-FILE wrong answer. Reset it with its sibling.
   _exprInferCtx = emptyInferenceCtx()
   _componentNames = new Set()
+  _jsxFnNames = new Set()
   _styledComponents = new Map()
   _rocketstyleComponents = new Map()
   _attrsComponents = new Map()
@@ -2418,6 +2439,8 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Component-scope const literals → static-attr resolution (`<Image
   // src={logo}>` where `logo` is a component-body const).
   _componentConstMap = buildComponentConstMap(c.decls)
+  _componentObjectConsts = buildObjectConstFields(c.decls)
+  for (const n of collectJsxFnNames([], c.decls)) _jsxFnNames.add(n)
   // value-const name → ExprIR, for inlining into struct-level computeds AND
   // handler bodies (neither can reference the body-local `let`s — see the
   // field's doc). EXCLUDE any value-const that is REASSIGNED anywhere (a
@@ -2449,6 +2472,10 @@ function emitSwiftComponent(c: ComponentIR): string {
   for (const d of c.decls) {
     if (d.kind === 'function') widenFloatLocals(d.body, inferCtx)
   }
+  // AFTER the widening: register un-annotated component-local function
+  // returns, so a call to one types precisely instead of `Any`. Before the
+  // widening the body still reads `let acc = 0` as Int.
+  registerComponentFnReturns(c.decls, inferCtx)
   _activeInferCtx = inferCtx
   _activePropsParamName = c.propsParamName
   // Build the per-component signal-name → enum-type-name map for use
@@ -5754,6 +5781,22 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.callee.object.kind === 'identifier' &&
         e.callee.object.name === 'Math'
       ) {
+        // TOTALITY seam — every ECMAScript `Math` member the hand-maintained
+        // sets below do NOT carry is lowered (or named) in `math-lowering.ts`.
+        // It returns null for every shape those sets already handle, so this
+        // call is behaviour-preserving for anything that compiles today.
+        if (e.args.every((a) => a.kind !== 'spread')) {
+          const lowered = lowerMathCall({
+            target: 'swift',
+            member: e.callee.property,
+            args: e.args.map((a) => emitSwiftExpr(a, indent)),
+            argIsFloat: e.args.map((a) => isFloatTypeIR(inferType(a, _activeInferCtx))),
+          })
+          if (lowered !== null) {
+            if ('warn' in lowered) _emitWarnings.push(lowered.warn)
+            else return lowered.code
+          }
+        }
         // `Math.max(...arr)` / `Math.min(...arr)` — the SPREAD form bypassed
         // the fixed-arity mapping and emitted the raw `Math.max(arr)`
         // ("cannot find 'Math' in scope" — a SILENT fail; the idiom-sweep
@@ -7574,6 +7617,12 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (e.object.kind === 'identifier' && e.object.name === 'Math' && e.property === 'PI') {
         return 'Double.pi'
       }
+      // Every OTHER Math constant (E / LN2 / LN10 / LOG2E / LOG10E / SQRT2 /
+      // SQRT1_2) fell through verbatim — "cannot find 'Math' in scope".
+      if (e.object.kind === 'identifier' && e.object.name === 'Math') {
+        const k = lowerMathConstant(e.property)
+        if (k !== null) return k
+      }
 
       if (
         e.property === 'size' &&
@@ -7739,6 +7788,16 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           ? recvType.branches.find((b) => b.kind !== 'null' && b.kind !== 'undefined')
           : recvType
         const suffix = lenRecv?.kind === 'string' ? 'utf16.count' : 'count'
+        // RESIDUAL, deliberately SILENT: a receiver nothing can type keeps
+        // `.count`, which is right for an array and wrong for a string with
+        // any non-BMP character. A warning here was written and MEASURED
+        // before being removed: it fires 44 times on the generated chart
+        // engine (whose generator refuses any warning at all) and, across the
+        // ten native example files, 4 of its 7 hits were arrays where
+        // `.count` is already correct. A diagnostic that cannot tell the two
+        // apart is not worth its false-positive rate; the answer is more type
+        // information, which is what the inference fixes in this change
+        // actually deliver. See `.claude/rules/anti-patterns.md`.
         return `${emitSwiftExpr(e.object, indent)}${dot}${suffix}`
       }
       return `${emitSwiftExpr(e.object, indent)}${dot}${swiftIdent(e.property)}`
@@ -8234,6 +8293,42 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // Other shapes (multi-spread, non-identifier spread) fall through
       // to the existing tuple-literal emit — those require richer
       // type-context the Phase 1 inferer doesn't yet carry.
+      // TOTALITY seam for spreads — every spelling the single-identifier
+      // branch below never claimed (a plain copy, a NEW key, several sources,
+      // a field written BEFORE the spread, a non-identifier source) is
+      // decided in `spread-lowering.ts`, shared with the Kotlin emitter so
+      // the two cannot disagree about which field wins.
+      if (e.spreads && e.spreads.length > 0) {
+        const plan = planObjectSpread(e.fields, e.spreads, swiftSpreadResolver(indent))
+        if (plan !== null) {
+          if (plan.warn !== undefined) _emitWarnings.push(plan.warn)
+          // An OPTIONAL source is a warning on EVERY arm, not just the
+          // override one: `let r = o` where `o` is `T?` mistypes exactly as
+          // `var c = o` did, and the copy arm is reachable for the shape the
+          // existing optional-spread lock uses (`{ a: "x", ...o }`, whose
+          // field is dead once the spread wins).
+          if (isNullableType(inferType(plan.source, _activeInferCtx))) {
+            _emitWarnings.push(
+              optionalSpreadWarning(
+                plan.source.kind === 'identifier' ? plan.source.name : emitSwiftExpr(plan.source, indent),
+              ),
+            )
+          }
+          if (plan.kind === 'copy') {
+            // Structs and labelled tuples are VALUE types, so the binding
+            // itself is the copy — and it avoids the empty-statement emit
+            // (`{ var c = p; ; return c }()`) the override form produced with
+            // no overrides left.
+            return emitSwiftExpr(plan.source, indent)
+          } else {
+            const target = emitSwiftExpr(plan.source, indent)
+            const overrides = plan.fields
+              .map((f) => `c.${swiftIdent(f.name)} = ${emitSwiftExpr(f.value, indent)}`)
+              .join('; ')
+            return `{ var c = ${target}; ${overrides}; return c }()`
+          }
+        }
+      }
       if (e.spreads && e.spreads.length === 1 && e.spreads[0]!.kind === 'identifier') {
         const target = emitSwiftExpr(e.spreads[0]!, indent)
         // An OPTIONAL source lowers to `var c = o` where `o` is `T?`, so the
@@ -9071,6 +9166,15 @@ function emitSwiftTextCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
         if (i < t.exprs.length) parts.push(`\\(${emitSwiftExpr(t.exprs[i]!, indent)})`)
       }
     } else {
+      // A CALL to a JSX-returning helper reaches `<Text>{row("a")}</Text>`
+      // through this seam too, not only the container-child one — the same
+      // View-into-a-string interpolation, one emitter function over.
+      const helperInText = jsxHelperCallName(childExpr, _jsxFnNames)
+      if (helperInText !== null) {
+        const w = jsxHelperCallWarning(helperInText, 'swift')
+        if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+        continue
+      }
       parts.push(swiftInterpSegment(childExpr, indent))
     }
   }
@@ -9526,7 +9630,27 @@ function emitSwiftFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
         _fieldArrayNamesSwift.has(each.value.object.name) &&
         each.value.property === 'items'))
   if (isFieldArrayItems) _fieldArrayItemParamsSwift.push(param)
-  const bodyText = emitSwiftExpr(body, indent + 2)
+  // Seed the ROW param with the element type for the body emit. Without it
+  // every type-dependent lowering inside a `<For>` body saw the row as
+  // `unknown` — the load-bearing case being `.length`, where an unknown
+  // receiver silently picks `.count` (grapheme clusters) over `.utf16.count`
+  // (UTF-16 units), so `<For each={names}>{(v) => v.length}` over a
+  // `string[]` answered 3 on iOS where web and Android answer 4. Same
+  // save/restore idiom as the `Array.from({length})` index-param seeding.
+  const rowT = each ? inferType(unwrapAccessorArrow(each.value), _activeInferCtx) : undefined
+  const rowElem = rowT?.kind === 'array' ? rowT.element : undefined
+  const hadRow = _activeInferCtx.locals.has(param)
+  const prevRow = _activeInferCtx.locals.get(param)
+  if (rowElem !== undefined) _activeInferCtx.locals.set(param, rowElem)
+  let bodyText: string
+  try {
+    bodyText = emitSwiftExpr(body, indent + 2)
+  } finally {
+    if (rowElem !== undefined) {
+      if (hadRow) _activeInferCtx.locals.set(param, prevRow!)
+      else _activeInferCtx.locals.delete(param)
+    }
+  }
   if (isFieldArrayItems) _fieldArrayItemParamsSwift.pop()
   return `ForEach(${items}, id: \\.${idPath}) { ${param} in\n${pad}${bodyText}\n${' '.repeat(indent)}}`
 }
@@ -12618,6 +12742,15 @@ function emitSwiftChild(c: ChildIR, indent: number): string {
       const w = jsxInStringifiedChildWarning('swift')
       if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
     }
+    // A CALL to a JSX-returning helper. `exprContainsJsx` cannot see it (the
+    // JSX is in the helper's body, not in this expression), which is why the
+    // View was silently interpolated into the Text below.
+    const jsxHelper = jsxHelperCallName(c.expr, _jsxFnNames)
+    if (jsxHelper !== null) {
+      const w = jsxHelperCallWarning(jsxHelper, 'swift')
+      if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+      return 'EmptyView()'
+    }
     // Value expression child of a container (`<Button>{t.done ? 'done'
     // : 'todo'}</Button>`, `<Stack>{count}</Stack>`) — wrap in Text
     // string-interpolation, the same shape `<Text>{expr}</Text>` emits.
@@ -14539,3 +14672,26 @@ function swiftBrushHandler(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: str
 }
 
 /** `<PlotChart data marks x? xValue? … dataZoom? zoomPresets? navigator? brush? onBrush? showLegend? legendToggle? legendMaxRows? showTitle? onSelect? …>` */
+
+/**
+ * Type resolution for `planObjectSpread`, against the Swift emitter's active
+ * inference ctx. `fieldsOf` returns null (not an empty set) when the source's
+ * shape cannot be resolved — an empty set would read as "adds every key".
+ */
+function swiftSpreadResolver(indent: number): SpreadResolver {
+  const named = (e: ExprIR): string | null => {
+    const t = inferType(e, _activeInferCtx)
+    if (t.kind === 'typeRef') return t.name
+    // An un-annotated object const has no nominal type yet; its FIELD SET is
+    // the identity that matters for "do these sources share a shape?".
+    const f = resolveSpreadFields(e, t, _structDefs, _componentObjectConsts, _activeInferCtx)
+    return f === null ? null : `{${[...f].sort().join(',')}}`
+  }
+  return {
+    fieldsOf(e) {
+      return resolveSpreadFields(e, inferType(e, _activeInferCtx), _structDefs, _componentObjectConsts, _activeInferCtx)
+    },
+    typeKeyOf: named,
+    label: (e) => emitSwiftExpr(e, indent),
+  }
+}

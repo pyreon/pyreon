@@ -20,6 +20,7 @@
 
 import { exprReferencesIdent, isReReadableExpr } from './expr-utils'
 import type { ComponentIR, DeclIR, ExprIR, StatementIR, StoreDefnIR, StructIR, TypeIR } from './types'
+import { ECMASCRIPT_MATH_CONSTANTS } from './math-lowering'
 
 export interface InferenceCtx {
   /** Signal name → declared type. Filled from the component's decls. */
@@ -434,6 +435,56 @@ const SERVICE_METHOD_RETURNS: ReadonlyMap<string, ReadonlyMap<string, TypeIR>> =
   ],
 ])
 
+/**
+ * File-scope helper return types, overlaid with the component's OWN nested
+ * `function` declarations that carry a DECLARED return type (component-local
+ * shadows file-scope, as in JS). An un-annotated one is registered later, by
+ * `registerComponentFnReturns`, because its type can only be read off the
+ * body AFTER the emitters' float-widening pass has run over it.
+ *
+ * Returns the original map untouched when the component declares none, so the
+ * dominant shape allocates nothing.
+ */
+function componentFnReturns(
+  decls: DeclIR[],
+  helperReturns: Map<string, TypeIR> | undefined,
+): Map<string, TypeIR> | undefined {
+  const local = decls.filter((d) => d.kind === 'function')
+  if (local.length === 0) return helperReturns
+  const merged = new Map(helperReturns ?? [])
+  for (const d of local) {
+    if (d.kind !== 'function') continue
+    if (d.returnType !== undefined && d.returnType.kind !== 'unknown') {
+      merged.set(d.name, d.returnType)
+    }
+  }
+  return merged
+}
+
+/**
+ * Register the return type of every component-local `function` whose
+ * annotation was absent, inferring it from the (already float-widened) body.
+ *
+ * ORDER IS THE WHOLE POINT. Doing this at PARSE time, or inside
+ * `buildInferenceCtx`, reads the body before `widenFloatLocals` has run over
+ * it, so a `let acc = 0` later `+=`-ed a Double infers Int and PINS the
+ * signature — measured as `private func total() -> Int { var acc = 0.0 … }`.
+ * Call this immediately after the widening pass, with the component's full
+ * ctx, and never overwrite a type the annotation already gave.
+ */
+export function registerComponentFnReturns(decls: DeclIR[], ctx: InferenceCtx): void {
+  const local = decls.filter((d) => d.kind === 'function')
+  if (local.length === 0) return
+  const map = ctx.helperReturns ?? new Map<string, TypeIR>()
+  for (const d of local) {
+    if (d.kind !== 'function') continue
+    if (d.returnType !== undefined && d.returnType.kind !== 'unknown') continue
+    const inferred = inferReturnType(d.params, d.body, ctx)
+    if (inferred.kind !== 'unknown') map.set(d.name, inferred)
+  }
+  ctx.helperReturns = map
+}
+
 export function buildInferenceCtx(
   decls: DeclIR[],
   storeDefs: StoreDefnIR[] = [],
@@ -452,7 +503,17 @@ export function buildInferenceCtx(
     // `computed(() => dbl(21))` infers the helper's return type — assigning it
     // AFTER buildInferenceCtx returns would be too late (the computed type is
     // already cached as `Any`).
-    helperReturns,
+    //
+    // …and the component's OWN nested `function` declarations, which were
+    // NOT in this map: only FILE-SCOPE helpers were registered, so a call to
+    // a helper declared inside the component body typed `unknown`. That is
+    // not merely a cosmetic `private var n: Any` — an unknown receiver
+    // silently picks the WRONG `.length` spelling on Swift (`.count` counts
+    // grapheme clusters, `.utf16.count` counts UTF-16 units, and `"a👍b"` is
+    // 3 vs 4), so a nested helper made the same source answer differently on
+    // iOS than on web and Android. A component-local name SHADOWS a
+    // file-scope one, as in JS.
+    helperReturns: componentFnReturns(decls, helperReturns),
     props: new Map(props.map((p) => [p.name, p.type])),
     propsParamName,
     structs: new Map(
@@ -1263,9 +1324,14 @@ function inferMathCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | null {
     // made every `Math.floor(a/b) * b` a 'Int * Double' Swift error.
     return { kind: 'number', float: true }
   }
+  // Every Double-VALUED Math function. The second row is the set
+  // `math-lowering.ts` added: before it they inferred `unknown`, so a
+  // `const s = Math.sign(x)` bound as `Any`/`let s: Any` and every downstream
+  // numeric use of it mistyped.
   const DOUBLE = new Set([
     'sqrt', 'pow', 'cbrt', 'hypot', 'sin', 'cos', 'tan', 'asin', 'acos',
     'atan', 'atan2', 'sinh', 'cosh', 'tanh', 'log', 'log10', 'log2', 'exp',
+    'sign', 'expm1', 'log1p', 'asinh', 'acosh', 'atanh', 'fround', 'random',
   ])
   if (DOUBLE.has(fn)) return { kind: 'number', float: true }
   if (fn === 'abs') {
@@ -1402,6 +1468,13 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         if (sig) return sig
         const cmp = ctx.computeds.get(expr.callee.name)
         if (cmp) return cmp
+        // …and a zero-arg HELPER call. The helper lookup below was gated on
+        // `args.length >= 1`, so `f()` on a no-argument helper fell through
+        // to `unknown` — the arity gate was an accident of where the helper
+        // branch was written, not a rule: the signal/computed lookups above
+        // already claim the shapes a zero-arg call can shadow.
+        const zeroArgHelper = ctx.helperReturns?.get(expr.callee.name)
+        if (zeroArgHelper) return zeroArgHelper
       }
       // Numeric-cast globals: `parseInt(x)` → Int, `parseFloat(x)` /
       // `Number(x)` → Double. Without this they degraded to `Any` (the emit
@@ -1752,8 +1825,14 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       return { kind: 'unknown' }
     }
     case 'member': {
-      // `Math.PI` is a Double constant on both targets.
-      if (expr.object.kind === 'identifier' && expr.object.name === 'Math' && expr.property === 'PI') {
+      // EVERY Math constant is a Double on both targets (`PI` was the only
+      // one inferred before `math-lowering.ts` taught the emitters the rest;
+      // the others bound as `Any`/`let x: Any`).
+      if (
+        expr.object.kind === 'identifier' &&
+        expr.object.name === 'Math' &&
+        ECMASCRIPT_MATH_CONSTANTS.includes(expr.property)
+      ) {
         return { kind: 'number', float: true }
       }
       // Standalone-validation: `s.object({ … }).safeParse(x).success` is a Bool

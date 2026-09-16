@@ -322,7 +322,10 @@ export function App() {
     // String is wrapped. The For render-param's element type is not seeded
     // into the expression ctx, so even a `string[]` list takes the wrap —
     // redundant but correct (interpolating a String is the identity).
-    expect(src('string', '(i) => i', 'item')).toContain('key: "\\(item)"')
+    // A String row passes through un-coerced now that the `<For>` row param
+    // is typed from `each`; the INTERPOLATION arm is what the Row case below
+    // exercises, and that is the arm this spec is about.
+    expect(src('string', '(i) => i', 'item')).toContain('key: item')
     expect(src('Row', '(t) => t.id', 'item.id')).toContain('key: "\\(item.id)"')
     // The CONTAINER ref takes the other branch of the same classifier.
     expect(src('string', '(i) => i', 'item')).toContain('.pyreonSortableContainer(s)')
