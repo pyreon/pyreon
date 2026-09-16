@@ -38,4 +38,12 @@ describe('versioned chart capability inventory', () => {
       new Set(['data', 'series', 'coordinates', 'runtime', 'presentation']),
     )
   })
+
+  it('an unknown mode scores zero rather than dividing by an empty set', () => {
+    // The `rows.length === 0` arm: a mode with no rows must answer 0%, not NaN
+    // — a NaN would render as a blank cell in the ledger and read as "unknown"
+    // rather than "nothing claimed".
+    const empty = chartCapabilityScore('nope' as never)
+    expect(empty).toEqual({ complete: 0, total: 0, percent: 0 })
+  })
 })

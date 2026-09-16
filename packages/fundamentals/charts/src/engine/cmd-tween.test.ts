@@ -88,3 +88,40 @@ describe('cmdsEqual — the "nothing moved" test the host snaps on', () => {
     expect((tweenCmds([A[0]!], [g1], 0.5)[0] as DrawCmd & { kind: 'rect' }).grad).toEqual(g1.grad)
   })
 })
+
+describe('universalTweenCmds — entering and leaving marks', () => {
+  // The universal transition grows an ENTERING command out of its own centre
+  // and collapses a LEAVING one back into it, so a chart whose series changes
+  // shape animates instead of cutting. Every command kind has its own arm,
+  // and a kind with no case would silently pop.
+  const kinds: DrawCmd[] = [
+    { kind: 'rect', rect: { x: 0, y: 0, w: 10, h: 4 }, fill: '#111' },
+    { kind: 'line', from: { x: 0, y: 0 }, to: { x: 10, y: 4 }, stroke: '#222', width: 1 },
+    { kind: 'polyline', points: [{ x: 0, y: 0 }, { x: 8, y: 6 }], stroke: '#333', width: 1 },
+    { kind: 'polygon', points: [{ x: 0, y: 0 }, { x: 8, y: 6 }, { x: 2, y: 9 }], fill: '#444' },
+    { kind: 'circle', center: { x: 4, y: 4 }, radius: 3, fill: '#555' },
+    { kind: 'text', text: 'Jan', at: { x: 1, y: 2 }, fill: '#666', size: 10, align: 'start', baseline: 'top' },
+  ]
+
+  it('grows each kind in from nothing and lands exactly on the target', () => {
+    for (const cmd of kinds) {
+      const mid = universalTweenCmds([], [cmd], 0.5)
+      expect(mid).toHaveLength(1)
+      expect(universalTweenCmds([], [cmd], 1)).toEqual([cmd])
+    }
+  })
+
+  it('collapses each kind on the way out', () => {
+    for (const cmd of kinds) {
+      const mid = universalTweenCmds([cmd], [], 0.5)
+      expect(mid).toHaveLength(1)
+      // At the END of a leave the command is gone entirely — a collapsed
+      // zero-size shape would still paint a dot at the centre.
+      expect(universalTweenCmds([cmd], [], 1)).toEqual([])
+    }
+  })
+
+  it('a same-shape list still tweens pairwise', () => {
+    expect(universalTweenCmds(A, B, 0)).toEqual(tweenCmds(A, B, 0))
+  })
+})

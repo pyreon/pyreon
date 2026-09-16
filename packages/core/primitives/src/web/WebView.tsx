@@ -36,6 +36,8 @@ const hostGroups = new Map<string, Set<HostGroupMember>>()
 function leaveHostGroup(member: HostGroupMember, group: string | null): void {
   if (group === null) return
   const members = hostGroups.get(group)
+  /* v8 ignore next — defensive: a member only ever holds a group name it
+     joined, so the registry always has the entry by the time it leaves. */
   if (!members) return
   members.delete(member)
   if (members.size === 0) hostGroups.delete(group)
@@ -56,6 +58,8 @@ function joinHostGroup(member: HostGroupMember, group: string, current: string |
 /** Deliver `message` to every OTHER member of `group` through the page-level relay entry point. */
 function relayHostGroup(from: HostGroupMember, group: string, message: string): void {
   const members = hostGroups.get(group)
+  /* v8 ignore next — defensive: the caller relays only into the group it
+     joined, which put the entry there. */
   if (!members) return
   for (const member of members) {
     if (member === from) continue
