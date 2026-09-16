@@ -1001,28 +1001,14 @@ export interface LayoutOptions {
 
 // ─── Component props ─────────────────────────────────────────────────────────
 
-export interface FlowProps {
-  /**
-   * The flow instance. Typed as `FlowInstance<any>` rather than a
-   * generic on the prop type because Pyreon JSX components cannot
-   * be parameterised at the call site (`<Flow<MyData> />` is not
-   * valid JSX). Typed consumers pass their `FlowInstance<MyData>`
-   * here without needing to cast.
-   */
-  instance: FlowInstance<any>
-  style?: string
-  class?: string
-  children?: VNodeChild
-  /**
-   * Accessible name for the flow canvas. The container is a focusable
-   * (`tabindex=0`), keyboard-interactive region, so a screen reader needs a
-   * name to announce when it receives focus — without one it's an unlabeled
-   * focus stop. Rendered as `aria-label` on the `role="group"` container.
-   * Defaults to `"Flow diagram"`; override with something specific like
-   * `"Pipeline editor"`.
-   */
-  ariaLabel?: string
-}
+/**
+ * Props accepted by the main `<Flow>` component.
+ *
+ * This aliases the component's canonical definition so the public `FlowProps`
+ * export cannot drift from `FlowComponentProps` when host capabilities are
+ * added. The import is type-only and is erased from the runtime module graph.
+ */
+export type FlowProps = import('./components/flow-component').FlowComponentProps
 
 export interface BackgroundProps {
   variant?: 'dots' | 'lines' | 'cross'
@@ -1059,6 +1045,11 @@ export interface MiniMapProps {
 }
 
 export interface ControlsProps {
+  /**
+   * Flow instance to control when `<Controls>` is rendered outside `<Flow>`.
+   * Inside a flow host this is optional because the instance comes from context.
+   */
+  instance?: FlowInstance<any>
   showZoomIn?: boolean
   showZoomOut?: boolean
   showFitView?: boolean

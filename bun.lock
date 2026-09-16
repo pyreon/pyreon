@@ -813,6 +813,7 @@
       "version": "0.50.0",
       "devDependencies": {
         "@pyreon/core": "workspace:*",
+        "@pyreon/flow": "workspace:*",
         "@pyreon/hooks": "workspace:*",
         "@pyreon/i18n": "workspace:*",
         "@pyreon/machine": "workspace:*",
@@ -1950,6 +1951,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.11.6",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/runtime-server": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/validate": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -1971,6 +1973,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.11.6",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/runtime-server": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitus-labs/tools-lint": "^2.7.1",
