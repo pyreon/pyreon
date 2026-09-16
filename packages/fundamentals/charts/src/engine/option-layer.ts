@@ -4,6 +4,8 @@
 
 import { renderSvg } from './svg'
 import type { OptionWarning } from './option'
+import { graphicDrawCommands } from './graphic'
+import type { GraphicElement } from './graphic'
 import type { Double, DrawCmd, Pt } from './types'
 
 export type EChartsOptionLike = Record<string, unknown>
@@ -451,10 +453,16 @@ function place(v: unknown, size: Double, extent: Double): Double | null {
 
 /** Free-form shapes from `option.graphic` as draw commands, in document order. */
 export function graphicCommands(option: EChartsOptionLike, width: Double, height: Double): { cmds: DrawCmd[]; warnings: OptionWarning[] } {
-  const cmds: DrawCmd[] = []
+  const parsed = graphicElements(option, width, height)
+  return { cmds: graphicDrawCommands(parsed.elements), warnings: parsed.warnings }
+}
+
+/** Every `graphic` element, positioned against the canvas — the engine draws them. */
+export function graphicElements(option: EChartsOptionLike, width: Double, height: Double): { elements: GraphicElement[]; warnings: OptionWarning[] } {
+  const elementsOut: GraphicElement[] = []
   const warnings: OptionWarning[] = []
   const raw = option['graphic']
-  const elements = Array.isArray(raw) ? raw : isObj(raw) && Array.isArray(raw['elements']) ? (raw['elements'] as unknown[]) : isObj(raw) ? [raw] : []
+  const roots = Array.isArray(raw) ? raw : isObj(raw) && Array.isArray(raw['elements']) ? (raw['elements'] as unknown[]) : isObj(raw) ? [raw] : []
   const walk = (els: unknown[], ox: Double, oy: Double, path: string): void => {
     for (let i = 0; i < els.length; i++) {
       const e = els[i]
@@ -462,13 +470,14 @@ export function graphicCommands(option: EChartsOptionLike, width: Double, height
       if (!isObj(e)) continue
       const style = isObj(e['style']) ? e['style'] : {}
       const shape = isObj(e['shape']) ? e['shape'] : {}
-      const type = e['type']
+      const type = String(e['type'] ?? '')
       const fill = typeof style['fill'] === 'string' ? (style['fill'] as string) : '#334155'
       const stroke = typeof style['stroke'] === 'string' ? (style['stroke'] as string) : fill
       const lineWidth = num(style['lineWidth']) ?? 1.0
+      const radius = num(shape['r']) ?? 0.0
       // Position: explicit x/y, else left/top (right/bottom anchored from the far edge).
-      const w = num(shape['width']) ?? (type === 'circle' ? (num(shape['r']) ?? 0.0) * 2.0 : 0.0)
-      const hgt = num(shape['height']) ?? (type === 'circle' ? (num(shape['r']) ?? 0.0) * 2.0 : 0.0)
+      const w = num(shape['width']) ?? (type === 'circle' ? radius * 2.0 : 0.0)
+      const hgt = num(shape['height']) ?? (type === 'circle' ? radius * 2.0 : 0.0)
       let x = num(e['x']) ?? 0.0
       let y = num(e['y']) ?? 0.0
       const left = place(e['left'], width, w)
@@ -485,30 +494,62 @@ export function graphicCommands(option: EChartsOptionLike, width: Double, height
         walk(Array.isArray(e['children']) ? (e['children'] as unknown[]) : [], x, y, p + '.children')
         continue
       }
-      if (type === 'text') {
-        const text = typeof style['text'] === 'string' ? (style['text'] as string) : String(style['text'] ?? '')
-        const size = num(style['fontSize']) ?? 12.0
-        const align = style['textAlign'] === 'center' ? 'middle' : style['textAlign'] === 'right' ? 'end' : 'start'
-        cmds.push({ kind: 'text', text, at: { x, y }, fill, size, align, baseline: 'top' })
-      } else if (type === 'rect') {
-        cmds.push({ kind: 'rect', rect: { x: x + (num(shape['x']) ?? 0.0), y: y + (num(shape['y']) ?? 0.0), w, h: hgt }, fill })
-      } else if (type === 'circle') {
-        cmds.push({ kind: 'circle', center: { x: x + (num(shape['cx']) ?? 0.0), y: y + (num(shape['cy']) ?? 0.0) }, radius: num(shape['r']) ?? 0.0, fill })
-      } else if (type === 'line') {
-        cmds.push({ kind: 'line', from: { x: x + (num(shape['x1']) ?? 0.0), y: y + (num(shape['y1']) ?? 0.0) }, to: { x: x + (num(shape['x2']) ?? 0.0), y: y + (num(shape['y2']) ?? 0.0) }, stroke, width: lineWidth })
-      } else if (type === 'polygon' || type === 'polyline') {
-        const pts: Pt[] = []
-        for (const q of Array.isArray(shape['points']) ? (shape['points'] as unknown[]) : []) {
-          if (Array.isArray(q) && num(q[0]) !== null && num(q[1]) !== null) pts.push({ x: x + (num(q[0]) as number), y: y + (num(q[1]) as number) })
-        }
-        if (pts.length >= 2) cmds.push(type === 'polygon' ? { kind: 'polygon', points: pts, fill } : { kind: 'polyline', points: pts, stroke, width: lineWidth })
-      } else {
-        warnings.push({ code: 'mark-shape-unsupported', path: p + '.type', message: 'graphic type "' + String(type) + '" is not supported yet (text, rect, circle, line, polygon, polyline, group are); it was ignored.' })
+      const pts: Pt[] = []
+      const pushPair = (a: unknown, b: unknown): void => {
+        if (num(a) !== null && num(b) !== null) pts.push({ x: num(a) as number, y: num(b) as number })
       }
+      let kind = type
+      if (type === 'line') {
+        pushPair(shape['x1'], shape['y1'])
+        pushPair(shape['x2'], shape['y2'])
+      } else if (type === 'polygon' || type === 'polyline') {
+        for (const q of Array.isArray(shape['points']) ? (shape['points'] as unknown[]) : []) {
+          if (Array.isArray(q)) pushPair(q[0], q[1])
+        }
+      } else if (type === 'bezierCurve') {
+        kind = 'bezier'
+        pushPair(shape['x1'], shape['y1'])
+        pushPair(shape['cpx1'], shape['cpy1'])
+        if (num(shape['cpx2']) !== null && num(shape['cpy2']) !== null) pushPair(shape['cpx2'], shape['cpy2'])
+        pushPair(shape['x2'], shape['y2'])
+      } else if (type !== 'text' && type !== 'rect' && type !== 'circle' && type !== 'arc' && type !== 'ring' && type !== 'sector') {
+        warnings.push({
+          code: 'mark-shape-unsupported',
+          path: p + '.type',
+          message:
+            type === 'image'
+              ? 'graphic image elements are not supported (they need a loaded bitmap, which the draw list has no form for); the element was skipped.'
+              : 'graphic type "' + type + '" is not supported yet (text, rect, circle, line, polygon, polyline, bezierCurve, arc, ring, sector and group are); the element was skipped.',
+        })
+        continue
+      }
+      elementsOut.push({
+        kind,
+        x,
+        y,
+        w,
+        h: hgt,
+        fill,
+        stroke,
+        lineWidth,
+        text: type === 'text' ? (typeof style['text'] === 'string' ? (style['text'] as string) : String(style['text'] ?? '')) : '',
+        fontSize: num(style['fontSize']) ?? 12.0,
+        align: style['textAlign'] === 'center' ? 'middle' : style['textAlign'] === 'right' ? 'end' : 'start',
+        // `rect` carries its shape offset in the same two fields the round
+        // shapes use for their centre: one struct, no per-kind optionals.
+        cx: type === 'rect' ? num(shape['x']) ?? 0.0 : num(shape['cx']) ?? 0.0,
+        cy: type === 'rect' ? num(shape['y']) ?? 0.0 : num(shape['cy']) ?? 0.0,
+        r: radius,
+        r0: num(shape['r0']) ?? 0.0,
+        startAngle: num(shape['startAngle']) ?? 0.0,
+        endAngle: num(shape['endAngle']) ?? 0.0,
+        clockwise: shape['clockwise'] !== false,
+        points: pts,
+      })
     }
   }
-  walk(elements, 0.0, 0.0, 'graphic')
-  return { cmds, warnings }
+  walk(roots, 0.0, 0.0, 'graphic')
+  return { elements: elementsOut, warnings }
 }
 
 /** Splice a graphic layer into an already-rendered `<svg>` string, above the chart. */

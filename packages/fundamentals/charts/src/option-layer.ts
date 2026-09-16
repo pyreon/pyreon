@@ -12,7 +12,9 @@
  * Deliberately NOT the `/plot` barrel: that entry pulls the components and
  * the JSX runtime, which a build tool has no use for.
  */
-export { applyTransforms, applyTransformsAll, listChartTransforms, readSource, registerChartTransform, resolveDataset, unregisterChartTransform } from './engine/option-layer'
+export { applyTransforms, applyTransformsAll, graphicElements, listChartTransforms, readSource, registerChartTransform, resolveDataset, unregisterChartTransform } from './engine/option-layer'
+export { graphicDrawCommands, graphicElementCommands } from './engine/graphic'
+export type { GraphicElement } from './engine/graphic'
 export type { ChartTransform, ChartTransformDimension, ChartTransformParams, ChartTransformResult, ChartTransformUpstream, Table } from './engine/option-layer'
 export type { OptionWarning } from './engine/option'
 export { LARGE_THRESHOLD, PROGRESSIVE_THRESHOLD, decimateShared, samplingRequest } from './engine/sampling'

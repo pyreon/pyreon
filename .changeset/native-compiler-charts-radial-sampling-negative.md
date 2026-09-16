@@ -7,3 +7,5 @@
 `<OptionChart>`'s `emphasis` / `select` / `blur` states lower to the mark's `focus` / `emphasisColor` / `selectColor` / `blurOpacity`, and `selectedMode` to the host's tap-to-pin state; state labels, symbol scale and whole-series selection are named. `PlotChart` marks accept the same four options.
 
 The six pictorialBar geometry keys lower natively (`symbolOffset` through a new array-valued mark-option kind); percent strings and an unknown `symbolPosition` are named.
+
+`<OptionChart option.graphic>` crosses: the elements are positioned at compile time through the web facade's own resolver and painted by the engine's `graphicDrawCommands` on both targets; a non-literal `graphic` is named rather than dropped.

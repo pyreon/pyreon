@@ -211,6 +211,19 @@ for interaction, animation or accessibility parity.
   (a `numbers` mark-option kind carries `symbolOffset`); percent strings and
   an unknown position warn by name on both sides.
 
+- [x] `coordinates.graphic` complete: the element geometry moved into its own
+  engine module (`engine/graphic.ts`) and gained the shapes ECharts draws
+  without a bitmap — `arc` (an open stroked edge, not a closed sector),
+  `ring`, `sector` and `bezierCurve` (quadratic and cubic, sampled). The
+  facade resolves each element's position and hands the engine a flat,
+  absolute description; the native desugar resolves the SAME way at compile
+  time through `@pyreon/charts/option-layer` and both emitters append
+  `graphicDrawCommands(...)` to the host's draw list. An `image` element
+  warns by name. Two native-subset lessons: a second module-level `TAU`
+  collides once every engine module is flattened into one namespace, and
+  `Math.floor(list.length / 2)` is a Double, so an Int loop bound has to come
+  from the list itself.
+
 ## Exit gate
 
 Zero unclassified core inventory rows; green real-browser conformance; green
