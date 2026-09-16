@@ -1,4 +1,4 @@
-// Regenerate the CHART_HOST / FLOW_HOST / CODE_HOST / RICHTEXT_HOST literals
+// Regenerate the CHART_HOST / CODE_HOST / RICHTEXT_HOST literals
 // embedded in src/VizApp.tsx.
 //
 // They must be LOCAL const string literals in the App file (PMTC const-ref
@@ -8,26 +8,33 @@
 //
 //   bun scripts/gen-hosts.ts
 //
-// CHART_HOST uses the ECharts CDN; FLOW_HOST is self-contained. CODE_HOST /
+// CHART_HOST uses the configured development renderer. CODE_HOST /
 // RICHTEXT_HOST reference the app-bundled editor globals (`window.CM` /
 // `window.TT`) via `<script src="./assets/{cm,tt}.js">` — produce those assets
 // with `bun scripts/gen-editors.ts` (see the App-file comment).
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { buildChartHostHtml } from '@pyreon/charts/webview'
-import { buildFlowHostHtml } from '@pyreon/flow/webview'
 import { buildCodeHostHtml } from '@pyreon/code/webview'
 import { buildRichTextHostHtml } from '@pyreon/rich-text/webview'
 
 const appPath = join(import.meta.dir, '..', 'src', 'VizApp.tsx')
-let src = readFileSync(appPath, 'utf8')
+const original = readFileSync(appPath, 'utf8')
+let src = original
 const chart = JSON.stringify(buildChartHostHtml())
-const flow = JSON.stringify(buildFlowHostHtml())
 const code = JSON.stringify(buildCodeHostHtml({ codemirrorSrc: './assets/cm.js' }))
 const richtext = JSON.stringify(buildRichTextHostHtml({ tiptapSrc: './assets/tt.js' }))
 src = src.replace(/const CHART_HOST = .*/, `const CHART_HOST = ${chart}`)
-src = src.replace(/const FLOW_HOST = .*/, `const FLOW_HOST = ${flow}`)
+src = src.replace(/^const FLOW_HOST = .*\n/m, '')
 src = src.replace(/const CODE_HOST = .*/, `const CODE_HOST = ${code}`)
 src = src.replace(/const RICHTEXT_HOST = .*/, `const RICHTEXT_HOST = ${richtext}`)
-writeFileSync(appPath, src)
-console.log('[gen-hosts] regenerated CHART_HOST + FLOW_HOST + CODE_HOST + RICHTEXT_HOST in src/VizApp.tsx')
+if (process.argv.includes('--check')) {
+  if (src !== original) {
+    console.error('[gen-hosts] embedded hosts are stale; run `bun scripts/gen-hosts.ts`')
+    process.exit(1)
+  }
+  console.log('[gen-hosts] embedded hosts are fresh')
+} else {
+  writeFileSync(appPath, src)
+  console.log('[gen-hosts] regenerated CHART_HOST + CODE_HOST + RICHTEXT_HOST in src/VizApp.tsx')
+}

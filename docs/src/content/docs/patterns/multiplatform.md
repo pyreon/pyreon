@@ -1,6 +1,6 @@
 ---
 title: 'Multiplatform app (one source → web + iOS + Android)'
-summary: 'Write ONE .tsx that PMTC compiles to SwiftUI + Compose. Stay inside the supported declarative subset + the 15 canonical primitives; web-only packages (charts/flow/editor) run only via a <WebView>. Knowing the boundary is how you build native correctly first-try.'
+summary: 'Write ONE .tsx that PMTC compiles to SwiftUI + Compose. Stay inside the supported declarative subset + the 15 canonical primitives; web-only packages (the ECharts facade, the code/rich-text editors) run only via a <WebView>; @pyreon/flow and the @pyreon/charts/plot engine render natively. Knowing the boundary is how you build native correctly first-try.'
 seeAlso: [routing-setup, state-management, data-fetching]
 ---
 
@@ -100,7 +100,7 @@ Native-ported: reactivity, the 15 primitives, `store`, `machine`, `state-tree`, 
 
 ## Web-only packages — only via a `<WebView>` bridge
 
-These can NOT be native-rendered (they're bound to canvas/DOM/vendors): **`@pyreon/charts`** (echarts), **`@pyreon/flow`** (elkjs+SVG), **`@pyreon/code`** (CodeMirror), **`@pyreon/dnd`**, **`@pyreon/document`**, **`@pyreon/query`**, **`@pyreon/table`/`virtual`**, and the whole CSS-in-JS UI stack (`elements`/`styler`/`rocketstyle`/`coolgrid`/`kinetic`).
+These can NOT be native-rendered (they're bound to canvas/DOM/vendors): **`@pyreon/charts`**'s ECharts facade (`<Chart>` / `<OptionChart>` — its `@pyreon/charts/plot` engine renders natively), **`@pyreon/code`** (CodeMirror), **`@pyreon/dnd`**, **`@pyreon/document`**, **`@pyreon/query`**, **`@pyreon/table`/`virtual`**, and the whole CSS-in-JS UI stack (`elements`/`styler`/`rocketstyle`/`coolgrid`/`kinetic`).
 
 You CAN still use them — host the web component in a **`<WebView>`** (a real browser engine) with the bidirectional bridge:
 

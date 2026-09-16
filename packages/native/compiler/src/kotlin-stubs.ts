@@ -978,6 +978,12 @@ fun PyreonLink(to: String, content: @Composable (navigate: () -> Unit) -> Unit) 
 @Composable
 @Suppress("UNUSED_PARAMETER")
 fun PyreonWebView(html: String? = null, src: String? = null, data: String? = null, onMessage: ((String) -> Unit)? = null, modifier: Modifier = Modifier) {}
+data class PyreonFlowWebViewSelection(val id: String, val data: Any? = null)
+data class PyreonFlowWebViewViewport(val x: Double, val y: Double, val zoom: Double)
+data class PyreonFlowWebViewEvent(val type: String, val id: String? = null, val data: Any? = null, val source: String? = null, val target: String? = null, val viewport: PyreonFlowWebViewViewport? = null)
+data class PyreonFlowWebViewError(val message: String)
+fun pyreonFlowWebViewData(graph: String, commands: String): String = graph
+fun pyreonDispatchFlowWebViewMessage(message: String, onSelect: ((PyreonFlowWebViewSelection) -> Unit)? = null, onMessage: ((Any?) -> Unit)? = null, onEvent: ((PyreonFlowWebViewEvent) -> Unit)? = null, onError: ((PyreonFlowWebViewError) -> Unit)? = null) {}
 
 // PyreonJson — mirror of @pyreon/native-runtime-kotlin's PyreonJson.kt.
 // Stub so the kotlinc validate gate resolves \`PyreonJson.encode(signal)\`

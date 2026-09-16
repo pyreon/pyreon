@@ -1539,6 +1539,12 @@ public struct PyreonWebView: View {
   public init(src: String? = nil, html: String? = nil, data: String? = nil, onMessage: ((String) -> Void)? = nil) {}
   public typealias Body = Never
 }
+public struct PyreonFlowWebViewSelection { public let id: String; public let data: Any? }
+public struct PyreonFlowWebViewViewport { public let x: Double; public let y: Double; public let zoom: Double }
+public struct PyreonFlowWebViewEvent { public let type: String; public let id: String?; public let data: Any?; public let source: String?; public let target: String?; public let viewport: PyreonFlowWebViewViewport? }
+public struct PyreonFlowWebViewError: Error { public let message: String }
+public func pyreonFlowWebViewData(graph: String, commands: String) -> String { graph }
+public func pyreonDispatchFlowWebViewMessage(_ message: String, onSelect: ((PyreonFlowWebViewSelection) -> Void)? = nil, onMessage: ((Any?) -> Void)? = nil, onEvent: ((PyreonFlowWebViewEvent) -> Void)? = nil, onError: ((PyreonFlowWebViewError) -> Void)? = nil) {}
 
 // ---- PyreonForm (@pyreon/form -> runtime-swift's PyreonForm, a final class) ----
 // The emit does @State private var form = PyreonForm(initialValues:validators:)

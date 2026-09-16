@@ -1920,6 +1920,25 @@ const geometry = () => props.shape
     }),
   },
   {
+    // Appended at the END of the array deliberately: an open PR edits the
+    // `ErrorPattern` interface at the top of this file, and a new entry here
+    // cannot conflict with it.
+    //
+    // The dev warning the handler-attribute refusal emits. A user hitting this
+    // has written (or spread) a LOWERCASE handler name, which is HTML's inline
+    // spelling rather than Pyreon's prop spelling, so the fix is a rename — but
+    // the reachable way to get here is a spread of a user-keyed object, and then
+    // the fix is an allowlist at the boundary.
+    pattern: /Refused to write event-handler attribute "([^"]+)"/,
+    diagnose: (m) => ({
+      cause:
+        `An event-handler ATTRIBUTE reached a DOM sink. \`${m[1] ?? 'the name'}\` is HTML's inline-handler spelling, which is executable markup: written as an attribute, the browser compiles its value and runs it. Pyreon's own spelling is camelCase (\`onClick\`), which binds a real listener and never becomes an attribute, so a lowercase name is either a typo or — the reachable case — a spread of an object whose KEYS came from user data.`,
+      fix: 'Use the camelCase prop (`onClick={fn}`) to attach a handler. If the props come from a spread of a user-keyed object, validate the keys against an allowlist before spreading — an attacker-chosen key is the whole threat model here, and the same spread can inject a URL or a structurally-invalid attribute name too.',
+      fixCode:
+        "// refused — an inline handler attribute is executable markup\n<button onclick={`alert(1)`}>x</button>\n\n// bind a listener instead\n<button onClick={() => alert(1)}>x</button>\n\n// spreading user-keyed data? allowlist the keys first\nconst SAFE = new Set(['id', 'title', 'class'])\nconst safe = Object.fromEntries(Object.entries(userProps).filter(([k]) => SAFE.has(k)))\n<button {...safe}>x</button>",
+    }),
+  },
+  {
     // Appended at the END on purpose: the catalog is matched in ORDER and a
     // broad `/(\w+) is not defined/` entry already sits above, so the V8
     // spelling of this error can never reach a rule added here. The JSC /

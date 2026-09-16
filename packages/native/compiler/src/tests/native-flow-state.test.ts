@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { transform } from '../index'
-import { HANDLED_FLOW_HOST_PROPS, LOWERED_FLOW_CONFIG_PROPERTIES, LOWERED_FLOW_METHODS, LOWERED_FLOW_PROPERTY_READS } from '../flow-lowering'
+import { HANDLED_FLOW_COMPONENT_PROPS, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, HANDLED_FLOW_HOST_PROPS, HANDLED_FLOW_WEBVIEW_PROPS, LOWERED_FLOW_CONFIG_PROPERTIES, LOWERED_FLOW_METHODS, LOWERED_FLOW_PROPERTY_READS, LOWERED_FLOW_RUNTIME_EXPORTS, WEB_ONLY_FLOW_RUNTIME_EXPORTS } from '../flow-lowering'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,
@@ -32,6 +32,71 @@ it('tracks every public mutable FlowConfig field in native lowering', () => {
     .filter((key) => key !== 'nodes' && key !== 'edges')
     .sort()
   expect([...LOWERED_FLOW_CONFIG_PROPERTIES.keys()].sort()).toEqual(publicKeys)
+})
+
+it('asserts every lowered mutable FlowConfig field in both native behaviour fixtures', () => {
+  const fixtures = [
+    readFileSync(new URL('../../../../fundamentals/flow/native/tests/PyreonFlowStateTests.swift', import.meta.url), 'utf8'),
+    readFileSync(new URL('../../../../fundamentals/flow/native/tests/PyreonFlowStateTest.kt', import.meta.url), 'utf8'),
+  ]
+  for (const [publicName, nativeName] of LOWERED_FLOW_CONFIG_PROPERTIES) {
+    for (const fixture of fixtures) {
+      const asserted = fixture.split('\n').some((line) =>
+        line.includes('check(') && (line.includes(publicName) || line.includes(nativeName)),
+      )
+      expect(asserted, `${publicName} must be asserted in ${fixture.includes('struct PyreonFlowStateTests') ? 'Swift' : 'Kotlin'}`).toBe(true)
+    }
+  }
+})
+
+it('executes every lowered FlowInstance operation in both native behaviour fixtures', () => {
+  const fixtures = [
+    ['Swift', readFileSync(new URL('../../../../fundamentals/flow/native/tests/PyreonFlowStateTests.swift', import.meta.url), 'utf8')],
+    ['Kotlin', readFileSync(new URL('../../../../fundamentals/flow/native/tests/PyreonFlowStateTest.kt', import.meta.url), 'utf8')],
+  ] as const
+  // These public calls intentionally rewrite to native properties or internal
+  // measurement names, so their executable proof lives in the compiler matrix
+  // below rather than under the public spelling in the runtime fixtures.
+  const compilerRewrites = new Set([
+    'getNodes', 'getEdges', 'getViewport', '_setNodeMeasurement', '_clearNodeMeasurement',
+  ])
+  const thisTest = readFileSync(new URL(import.meta.url), 'utf8')
+  const compilerEvidence = thisTest.slice(thisTest.indexOf('const workflowFlow'))
+
+  for (const method of LOWERED_FLOW_METHODS) {
+    if (compilerRewrites.has(method)) {
+      expect(compilerEvidence, `${method} must remain covered by compiler emit tests`).toContain(`flow.${method}(`)
+      continue
+    }
+    for (const [target, fixture] of fixtures) {
+      const invoked = fixture.includes(`.${method}(`) || fixture.includes(`.${method} {`)
+      expect(invoked, `${method} must execute in the ${target} behaviour fixture`).toBe(true)
+    }
+  }
+})
+
+it('asserts every handled node and edge field in both native behaviour fixtures', () => {
+  // A field in HANDLED_FLOW_NODE_FIELDS / _EDGE_FIELDS is a carry claim: the
+  // native model retains it and the host reads it. Membership alone proved
+  // that for neither target — the Swift fixture never touched `class`, the
+  // Kotlin one never touched `class` or `targetHandles`. Every field must be
+  // exercised under its NATIVE spelling in that target's fixtures (state or
+  // host), so a field added to the registry fails here until both prove it.
+  const fixtures = [
+    ['Swift', ['PyreonFlowStateTests.swift']],
+    ['Kotlin', ['PyreonFlowStateTest.kt', 'PyreonFlowHostTest.kt', 'PyreonFlowEdgeGeometryTest.kt']],
+  ] as const
+  const nativeSpellings = (field: string): readonly string[] =>
+    field === 'class' ? ['className'] : field === 'pathOptions' ? ['curvature', 'borderRadius', 'pathOffset'] : [field]
+  for (const [target, files] of fixtures) {
+    const source = files
+      .map((file) => readFileSync(new URL(`../../../../fundamentals/flow/native/tests/${file}`, import.meta.url), 'utf8'))
+      .join('\n')
+    for (const field of [...HANDLED_FLOW_NODE_FIELDS, ...HANDLED_FLOW_EDGE_FIELDS]) {
+      const exercised = nativeSpellings(field).some((name) => new RegExp(`[.(, ]${name}\\b`).test(source))
+      expect(exercised, `${field} must be exercised in the ${target} behaviour fixtures`).toBe(true)
+    }
+  }
 })
 
 it('tracks every public FlowInstance member in native lowering', () => {
@@ -59,6 +124,52 @@ it('tracks every public Flow host prop in native lowering or boundary diagnostic
   const body = source.slice(source.indexOf('export interface FlowComponentProps'), source.indexOf('/**\n * The main Flow component'))
   const publicProps = [...body.matchAll(/^  ([A-Za-z_]\w*)\??:/gm)].map((match) => match[1]!).sort()
   expect([...HANDLED_FLOW_HOST_PROPS].sort()).toEqual(publicProps)
+})
+
+it('tracks every public FlowWebView prop in both native emitters', () => {
+  const source = readFileSync(new URL('../../../../fundamentals/flow/src/webview.ts', import.meta.url), 'utf8')
+  const start = source.indexOf('export interface FlowWebViewProps')
+  const body = source.slice(start, source.indexOf('\n}', start))
+  const publicProps = [...body.matchAll(/^  ([A-Za-z_]\w*)\??:/gm)].map((match) => match[1]!).sort()
+  expect([...HANDLED_FLOW_WEBVIEW_PROPS].sort()).toEqual(publicProps)
+})
+
+it('tracks every public Flow supporting-component prop in native lowering or boundary diagnostics', () => {
+  const sources = [
+    readFileSync(new URL('../../../../fundamentals/flow/src/types.ts', import.meta.url), 'utf8'),
+    readFileSync(new URL('../../../../fundamentals/flow/src/components/node-resizer.tsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('../../../../fundamentals/flow/src/components/node-toolbar.tsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('../../../../fundamentals/flow/src/components/edge-label-renderer.tsx', import.meta.url), 'utf8'),
+  ].join('\n')
+  for (const [name, handled] of HANDLED_FLOW_COMPONENT_PROPS) {
+    const start = sources.indexOf(`export interface ${name}`)
+    expect(start, `${name} must remain exported`).toBeGreaterThanOrEqual(0)
+    const body = sources.slice(start, sources.indexOf('\n}', start))
+    const publicProps = [...body.matchAll(/^  ([A-Za-z_]\w*)\??:/gm)].map((match) => match[1]!).sort()
+    expect([...handled].sort(), name).toEqual(publicProps)
+  }
+})
+
+it('classifies every public Flow runtime export as native-portable or web-only', () => {
+  const source = readFileSync(new URL('../../../../fundamentals/flow/src/index.ts', import.meta.url), 'utf8')
+  const exports = [...source.matchAll(/^export \{([\s\S]*?)\} from/gm)]
+    .flatMap((match) => match[1]!.split(',').map((name) => name.trim()).filter(Boolean))
+    .sort()
+  const portable = [...LOWERED_FLOW_RUNTIME_EXPORTS]
+  const webOnly = [...WEB_ONLY_FLOW_RUNTIME_EXPORTS]
+  expect(portable.filter((name) => WEB_ONLY_FLOW_RUNTIME_EXPORTS.has(name)), 'classifications must not overlap').toEqual([])
+  expect([...portable, ...webOnly].sort()).toEqual(exports)
+})
+
+it('uses the Flow runtime inventory for exact import-boundary diagnostics', () => {
+  for (const name of WEB_ONLY_FLOW_RUNTIME_EXPORTS) {
+    const result = transform(`import { ${name} } from '@pyreon/flow'; export function App() { return null }`, { target: 'swift' })
+    expect(result.warnings.join('\n'), name).toContain(name)
+  }
+  for (const name of LOWERED_FLOW_RUNTIME_EXPORTS) {
+    const result = transform(`import { ${name} } from '@pyreon/flow'; export function App() { return null }`, { target: 'swift' })
+    expect(result.warnings.join('\n'), name).not.toContain(`\`${name}\``)
+  }
 })
 
 const workflowFlow = `

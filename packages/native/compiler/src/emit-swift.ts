@@ -20,6 +20,7 @@ import {
   resolveStaticFlowRendererMap,
   unloweredFlowMemberWarning,
 } from './flow-lowering'
+import { DEFAULT_FLOW_WEBVIEW_HOST_HTML } from './generated-flow-webview-host'
 import {
   ICON_MAP,
   isCanonicalPrimitive,
@@ -198,10 +199,10 @@ let _styledComponents: Map<string, StyledComponentIR> = new Map()
 // variant merged) and rewritten to `<Prim style={merged}>` (see emitSwiftJsx).
 let _rocketstyleComponents: Map<string, RocketstyleComponentIR> = new Map()
 let _attrsComponents: Map<string, AttrsComponentIR> = new Map()
-// Alias-tag local name → its import package. The Element/PyreonUI/Container/
-// Row/Col hooks intercept a tag ONLY when it resolves from its expected
-// @pyreon package, so a same-named user component isn't mis-lowered.
-let _aliasImports: Map<string, string> = new Map()
+// Alias-tag local name → its source + original imported symbol. Package hooks
+// intercept only an exact pair, so renamed imports work without mis-lowering a
+// same-named user component.
+let _aliasImports: Map<string, { source: string; imported: string }> = new Map()
 
 /**
  * True when `tag` is eligible for an alias hook (Element/PyreonUI/Container/
@@ -211,7 +212,7 @@ let _aliasImports: Map<string, string> = new Map()
  * prior behaviour, so this only SUPPRESSES a tag imported from another package
  * (e.g. `import { Row } from './my-components'` is no longer a coolgrid Row).
  */
-function canAliasIntercept(tag: string, expectedPkg: string): boolean {
+function canAliasIntercept(tag: string, expectedPkg: string, expectedImport = tag): boolean {
   if (
     _componentNames.has(tag) ||
     _styledComponents.has(tag) ||
@@ -220,7 +221,7 @@ function canAliasIntercept(tag: string, expectedPkg: string): boolean {
   )
     return false
   const src = _aliasImports.get(tag)
-  return src === undefined || src === expectedPkg
+  return src === undefined || (src.source === expectedPkg && src.imported === expectedImport)
 }
 
 /** Component name → its declared props, for expanding `<Comp {...src} />`
@@ -1113,7 +1114,7 @@ export function emitSwift(
   styledComponents: StyledComponentIR[] = [],
   rocketstyleComponents: RocketstyleComponentIR[] = [],
   attrsComponents: AttrsComponentIR[] = [],
-  aliasImports: Map<string, string> = new Map(),
+  aliasImports: Map<string, { source: string; imported: string }> = new Map(),
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   // Per-FILE hook-binding-name sets. They are populated by the pre-pass
@@ -8577,6 +8578,9 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // <WebView> — native host (WKWebView via PyreonWebView) for embedding
   // web-only-rich viz (charts / flow / tables) inside a native shell.
   if (tag === 'WebView') return emitSwiftWebView(e)
+  if (canAliasIntercept(tag, '@pyreon/flow', 'FlowWebView') && _aliasImports.get(tag)?.imported === 'FlowWebView') {
+    return emitSwiftFlowWebView(e)
+  }
   if (tag === 'Flow' && canAliasIntercept(tag, '@pyreon/flow')) return emitSwiftFlowHost(e)
   if (tag === 'Controls' && canAliasIntercept(tag, '@pyreon/flow')) return emitSwiftStandaloneFlowControls(e, indent)
   // `@pyreon/charts/plot` family hosts → PyreonChartCanvas over the generated
@@ -10864,6 +10868,74 @@ function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   }
   const args = [content, dataArg, onMsgArg].filter((a) => a !== undefined).join(', ')
   return `PyreonWebView(${args})`
+}
+
+function flowWebViewHostHtml(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  read: (e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string) => unknown,
+): string {
+  let html = DEFAULT_FLOW_WEBVIEW_HOST_HTML
+  for (const prop of ['nodeWidth', 'nodeHeight', 'nodeFill', 'nodeStroke', 'labelColor', 'edgeColor', 'background']) {
+    const present = e.attrs.some((a) => a.kind === 'attr' && a.name === prop)
+    if (present && read(e, prop) === undefined) {
+      _emitWarnings.push(`<FlowWebView ${prop}={…}>: native host styling must be statically resolvable; using the documented default.`)
+    }
+  }
+  const nodeWidth = read(e, 'nodeWidth')
+  const nodeHeight = read(e, 'nodeHeight')
+  if (typeof nodeWidth === 'number' || typeof nodeHeight === 'number') {
+    html = html.replace(
+      'var NODE_W = 150, NODE_H = 44;',
+      `var NODE_W = ${typeof nodeWidth === 'number' && Number.isFinite(nodeWidth) ? nodeWidth : 150}, NODE_H = ${typeof nodeHeight === 'number' && Number.isFinite(nodeHeight) ? nodeHeight : 44};`,
+    )
+  }
+  const safeColor = (value: string): string => value.replace(/[^#a-zA-Z0-9(),.%\s-]/g, '')
+  const colors = [
+    ['nodeFill', '#ffffff'],
+    ['nodeStroke', '#c9ced6'],
+    ['labelColor', '#1f2933'],
+    ['edgeColor', '#98a2b3'],
+  ] as const
+  for (const [prop, fallback] of colors) {
+    const value = read(e, prop)
+    if (typeof value === 'string') html = html.replaceAll(fallback, safeColor(value))
+  }
+  const background = read(e, 'background')
+  if (typeof background === 'string') {
+    html = html.replace('background:transparent}', `background:${background.replace(/[<>"']/g, '')}}`)
+  }
+  return html
+}
+
+function emitSwiftFlowWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const graph = dynamicWebViewAttr(e, 'graph')
+  if (graph === undefined) {
+    _emitWarnings.push('<FlowWebView>: `graph` is required on native; emitting an empty host.')
+  }
+  const explicitHtml = dynamicWebViewAttr(e, 'html')
+  const generatedHtml = flowWebViewHostHtml(e, readStaticAttr)
+  if (explicitHtml !== undefined) {
+    for (const prop of ['nodeWidth', 'nodeHeight', 'nodeFill', 'nodeStroke', 'labelColor', 'edgeColor', 'background']) {
+      if (e.attrs.some((a) => a.kind === 'attr' && a.name === prop)) {
+        _emitWarnings.push(`<FlowWebView html={…} ${prop}={…}>: ${prop} is ignored because custom host HTML owns its presentation.`)
+      }
+    }
+  }
+  const html = explicitHtml === undefined ? JSON.stringify(generatedHtml) : emitSwiftExpr(explicitHtml, 0)
+  const graphJson = graph === undefined ? '"{\\"nodes\\":[],\\"edges\\":[]}"' : swiftWebViewDataArg(graph)
+  const commands = dynamicWebViewAttr(e, 'commands')
+  const data = commands === undefined
+    ? graphJson
+    : `pyreonFlowWebViewData(graph: ${graphJson}, commands: ${swiftWebViewDataArg(commands)})`
+  const callbacks = ['select', 'message', 'event', 'error'] as const
+  const callbackArgs = callbacks.flatMap((name) => {
+    const attr = e.attrs.find((a) => a.kind === 'event' && a.name === name)
+    return attr?.kind === 'event' ? [`on${name[0]!.toUpperCase()}${name.slice(1)}: ${emitSwiftMessageHandler(attr.handler)}`] : []
+  })
+  const onMessage = callbackArgs.length === 0
+    ? undefined
+    : `onMessage: { pyreonMsg in pyreonDispatchFlowWebViewMessage(pyreonMsg, ${callbackArgs.join(', ')}) }`
+  return `PyreonWebView(html: ${html}, data: ${data}${onMessage ? `, ${onMessage}` : ''})`
 }
 
 /**

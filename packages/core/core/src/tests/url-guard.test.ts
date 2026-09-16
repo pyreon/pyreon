@@ -151,9 +151,24 @@ describe('url-guard — isSafeImageDataUri (allowed)', () => {
     expect(isSafeImageDataUri('img', 'src', 'data:image/svg+xml,<svg><rect/></svg>')).toBe(true)
   })
 
-  it('poster on <video> and srcset on <source> pass', () => {
+  it('poster on <video> passes', () => {
     expect(isSafeImageDataUri('video', 'poster', 'data:image/png;base64,abc')).toBe(true)
-    expect(isSafeImageDataUri('source', 'srcset', 'data:image/webp;base64,abc')).toBe(true)
+  })
+
+  it('srcset does NOT — the old allowance was an unreachable branch', () => {
+    // This spec used to assert `srcset on <source>` passed, which was true of
+    // the function in isolation and false of the system: `isSafeImageDataUri` is
+    // only ever reached through `isUrlAttr`/`URL_ATTRS`, and `srcset` is not in
+    // `URL_ATTRS`, so no value with that key ever arrived. The INVARIANT the
+    // spec protected — an image data URI on an image-source attribute of an
+    // image-context element is allowed — is kept above by the `poster` case.
+    //
+    // Wiring `srcset` up instead of removing it was weighed and declined: a
+    // `srcset` value is a CANDIDATE LIST, and splitting one is genuinely hard in
+    // the presence of data URIs (`data:image/svg+xml,<svg ...>` contains commas,
+    // the candidate separator), while an image-candidate slot executes neither
+    // `javascript:` nor a scripted SVG. Re-add BOTH halves together or neither.
+    expect(isSafeImageDataUri('source', 'srcset', 'data:image/webp;base64,abc')).toBe(false)
   })
 })
 
