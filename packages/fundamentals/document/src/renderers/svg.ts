@@ -1,6 +1,7 @@
 import { escapeXml, sanitizeColor, sanitizeHref, sanitizeImageSrc } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
 import { getTextContent, warnUnknownNodeType } from '../nodes'
+import { sanitizeNumber } from './css'
 
 /**
  * SVG renderer — generates a standalone SVG document from the node tree.
@@ -56,7 +57,10 @@ function renderNode(node: DocNode, ctx: RenderContext): string {
     }
 
     case 'text': {
-      const size = (p.size as number) ?? 14
+      // Numerically-typed fields land in SVG ATTRIBUTES, so a string closes
+      // them exactly as in the html/email renderers — and a non-number also
+      // poisons `ctx.y` with NaN, collapsing every later coordinate.
+      const size = sanitizeNumber(p.size, 14)
       const color = sanitizeColor((p.color as string) ?? '#333333')
       const weight = p.bold ? 'bold' : 'normal'
       const style = p.italic ? 'italic' : 'normal'
@@ -78,8 +82,8 @@ function renderNode(node: DocNode, ctx: RenderContext): string {
     }
 
     case 'image': {
-      const width = (p.width as number) ?? Math.min(contentWidth, 400)
-      const height = (p.height as number) ?? 200
+      const width = sanitizeNumber(p.width, Math.min(contentWidth, 400))
+      const height = sanitizeNumber(p.height, 200)
       const src = sanitizeImageSrc(p.src as string)
 
       if (src.startsWith('data:') || src.startsWith('http')) {
@@ -168,7 +172,7 @@ function renderNode(node: DocNode, ctx: RenderContext): string {
 
     case 'divider': {
       const color = sanitizeColor((p.color as string) ?? '#ddd')
-      const thickness = (p.thickness as number) ?? 1
+      const thickness = sanitizeNumber(p.thickness, 1)
       ctx.y += 12
       svg += `<line x1="${ctx.padding}" y1="${ctx.y}" x2="${ctx.padding + contentWidth}" y2="${ctx.y}" stroke="${color}" stroke-width="${thickness}" />`
       ctx.y += 12
@@ -182,7 +186,7 @@ function renderNode(node: DocNode, ctx: RenderContext): string {
       break
 
     case 'spacer':
-      ctx.y += (p.height as number) ?? 12
+      ctx.y += sanitizeNumber(p.height, 12)
       break
 
     case 'button': {
