@@ -77,6 +77,13 @@ for interaction, animation or accessibility parity.
   transpose exists three times (web `transposeCmds`, `pyreonTransposeCmds` in
   both runtimes) and is locked by execution like the RTL mirror. Rows
   `series.sankey`, `coordinates.calendar`, `coordinates.parallel` complete.
+- [x] `presentation.symbols` complete: the datum symbol vocabulary the
+  pictorial bars already had (rect / circle / diamond / triangle) now applies
+  to scatter datums and, on `showSymbol: true`, to a line's datums, with
+  `symbolSize` as the diameter; `roundRect` and `emptyCircle` alias, the
+  path / `pin` / `arrow` / `none` spellings warn by name and draw circles.
+  Same engine branch on every target (regenerated; Swift builds, the Kotlin
+  runtime verifies uncached).
 - [x] `coordinates.single-axis` complete: ECharts itself places only scatter /
   effectScatter and the theme river on a single axis, and the arm now honours
   exactly that. Found on the way: a theme river declared with

@@ -147,6 +147,26 @@ function fillPattern(style: Record<string, unknown>): ChartPattern | undefined {
 }
 
 /** `symbol` + `symbolRepeat` for a pictorialBar series; a path/image symbol falls back to a rect with a warning. */
+/**
+ * ECharts' `symbol` / `showSymbol` on line and scatter series. A scatter
+ * datum is a circle unless named otherwise; a line draws its datum symbols
+ * only when `showSymbol` is true (ECharts' default there is a hover-only
+ * `emptyCircle`, which this engine states as "no symbols"). `roundRect` is a
+ * rect, `emptyCircle` a circle; `pin`, `arrow`, `none` and paths warn by name.
+ */
+function seriesSymbol(s: Record<string, unknown>, kind: 'line' | 'points', warn: (code: OptionWarning['code'], path: string, message: string) => void, path: string): { symbol?: Series['symbol'] } {
+  if (kind === 'line' && s['showSymbol'] !== true) return {}
+  const raw = typeof s['symbol'] === 'string' ? (s['symbol'] as string) : kind === 'line' ? 'circle' : ''
+  if (raw === '') return {}
+  const symbol: Series['symbol'] | undefined =
+    raw === 'circle' || raw === 'emptyCircle' ? 'circle' : raw === 'rect' || raw === 'roundRect' ? 'rect' : raw === 'diamond' ? 'diamond' : raw === 'triangle' ? 'triangle' : undefined
+  if (symbol === undefined) {
+    warn('mark-shape-unsupported', `${path}.symbol`, `symbol "${raw}" is not supported (circle, emptyCircle, rect, roundRect, diamond, triangle are); drawn as a circle.`)
+    return kind === 'line' ? { symbol: 'circle' } : {}
+  }
+  return kind === 'points' && symbol === 'circle' ? {} : { symbol }
+}
+
 function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning['code'], path: string, message: string) => void, path: string): { symbol: Series['symbol']; symbolRepeat: boolean } {
   const raw = typeof s['symbol'] === 'string' ? (s['symbol'] as string) : 'rect'
   let symbol: Series['symbol'] = 'rect'
@@ -408,6 +428,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       pattern: fillPattern(itemStyle),
       ...(type === 'effectScatter' ? { effect: true } : {}),
       ...(type === 'pictorialBar' ? pictorialFields(s, warn, path) : {}),
+      ...(kind === 'line' || kind === 'points' ? seriesSymbol(s, kind, warn, path) : {}),
     }
     series.push(entry)
     const seriesIndex = series.length - 1

@@ -4159,6 +4159,17 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
                 out.append(PyreonDrawCmd(kind: "polyline", stroke: s.color, width: s.width, dash: s.dash, points: pts))
               }
             }
+            let lineSymbol = (s.symbol ?? "circle")
+            if s.symbol != nil && progress >= 1.0 {
+              let dots = place(s.values)
+              for i in 0..<dots.count {
+                if !isFiniteValue(s.values[i]) {
+                  continue
+                }
+                let d = dots[i]
+                out.append(symbolCommand(PyreonChartRect(x: d.x - s.radius, y: d.y - s.radius, w: s.radius * 2.0, h: s.radius * 2.0), lineSymbol, s.color))
+              }
+            }
           } else {
             if s.kind == "band" {
               let lows = (s.values2 ?? [])
@@ -4219,7 +4230,13 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
                   if lvlP > 0 {
                     out.append(PyreonDrawCmd(kind: "circle", fill: withAlpha(t.label, 0.35), center: pts[i], radius: fullR * progress + (lvlP == 2 ? 4.0 : 3.0)))
                   }
-                  out.append(PyreonDrawCmd(kind: "circle", fill: s.color, center: pts[i], radius: fullR * progress))
+                  let r = fullR * progress
+                  let pointSymbol = (s.symbol ?? "circle")
+                  if pointSymbol == "circle" {
+                    out.append(PyreonDrawCmd(kind: "circle", fill: s.color, center: pts[i], radius: r))
+                  } else {
+                    out.append(symbolCommand(PyreonChartRect(x: pts[i].x - r, y: pts[i].y - r, w: r * 2.0, h: r * 2.0), pointSymbol, s.color))
+                  }
                 }
               }
             }

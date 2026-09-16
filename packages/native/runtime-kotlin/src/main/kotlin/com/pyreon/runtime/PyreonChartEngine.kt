@@ -2132,6 +2132,17 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
                 out.add(PyreonDrawCmd(kind = "polyline", stroke = s.color, width = s.width, dash = s.dash, points = pts))
               }
             }
+            val lineSymbol = (s.symbol ?: "circle")
+            if (s.symbol != null && progress >= 1.0) {
+              val dots = place(s.values)
+              for (i in 0 until dots.length) {
+                if (!isFiniteValue(s.values[i])) {
+                  continue
+                }
+                val d = dots[i]
+                out.add(symbolCommand(PyreonChartRect(x = d.x - s.radius, y = d.y - s.radius, w = s.radius * 2.0, h = s.radius * 2.0), lineSymbol, s.color))
+              }
+            }
           } else {
             if (s.kind == "band") {
               val lows = (s.values2 ?: listOf())
@@ -2192,7 +2203,13 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
                   if (lvlP > 0) {
                     out.add(PyreonDrawCmd(kind = "circle", fill = withAlpha(t.label, 0.35), center = pts[i], radius = fullR * progress + (if (lvlP == 2) 4.0 else 3.0)))
                   }
-                  out.add(PyreonDrawCmd(kind = "circle", fill = s.color, center = pts[i], radius = fullR * progress))
+                  val r = fullR * progress
+                  val pointSymbol = (s.symbol ?: "circle")
+                  if (pointSymbol == "circle") {
+                    out.add(PyreonDrawCmd(kind = "circle", fill = s.color, center = pts[i], radius = r))
+                  } else {
+                    out.add(symbolCommand(PyreonChartRect(x = pts[i].x - r, y = pts[i].y - r, w = r * 2.0, h = r * 2.0), pointSymbol, s.color))
+                  }
                 }
               }
             }

@@ -1617,7 +1617,7 @@ export function desugarOptionChart(
         warn(`<OptionChart option.series[${si}].type>: this cartesian adapter needs line, bar, pictorialBar, or scatter series; emitting nothing.`)
         return undefined
       }
-      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat'], `option.series[${si}]`, warn)
+      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize'], `option.series[${si}]`, warn)
       seriesObjects.push(s)
     }
     const xAxis = literalOf(objectField(raw, 'xAxis'), resolve)
@@ -1674,6 +1674,21 @@ export function desugarOptionChart(
       if (litString(color) !== undefined) opts.push({ name: 'color', value: color! })
       const pattern = optionPatternLiteral(objectField(s, 'itemStyle'), resolve)
       if (pattern !== undefined) opts.push({ name: 'pattern', value: pattern })
+      if (sk === 'line' || sk === 'scatter') {
+        // ECharts' symbol / showSymbol: a scatter datum shape, or a line's opt-in datum symbols.
+        const showSymbol = objectField(s, 'showSymbol')
+        const wantsLineSymbols = sk === 'line' && showSymbol?.kind === 'literal' && showSymbol.value === true
+        const rawSymbol = litString(objectField(s, 'symbol')) ?? (wantsLineSymbols ? 'circle' : '')
+        if (sk === 'scatter' || wantsLineSymbols) {
+          const symbol = rawSymbol === 'circle' || rawSymbol === 'emptyCircle' ? 'circle' : rawSymbol === 'rect' || rawSymbol === 'roundRect' ? 'rect' : rawSymbol === 'diamond' || rawSymbol === 'triangle' ? rawSymbol : undefined
+          if (rawSymbol !== '' && symbol === undefined) warn(`<OptionChart option.series[${si}].symbol>: native series symbols support circle, emptyCircle, rect, roundRect, diamond, or triangle; rendering circles.`)
+          const resolved = symbol ?? (rawSymbol === '' ? undefined : 'circle')
+          if (resolved !== undefined && (sk === 'line' || resolved !== 'circle')) opts.push({ name: 'symbol', value: lit(resolved) })
+        }
+        // ECharts' symbolSize is a diameter; the mark's radius is half of it.
+        const symbolSize = litNumber(objectField(s, 'symbolSize'))
+        if (symbolSize !== undefined) opts.push({ name: 'radius', value: optionDoubleLiteral(symbolSize / 2) })
+      }
       if (sk === 'pictorialBar') {
         const rawSymbol = litString(objectField(s, 'symbol')) ?? 'rect'
         const symbol = rawSymbol === 'roundRect' ? 'rect' : rawSymbol

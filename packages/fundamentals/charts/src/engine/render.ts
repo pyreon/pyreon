@@ -54,7 +54,11 @@ export interface Series {
   axis?: 'left' | 'right' | undefined
   /** Halo rings around each point — the effectScatter look; `points` only. */
   effect?: boolean | undefined
-  /** Draw bars as a symbol instead of a rect — the pictorialBar look; `bars` only. */
+  /**
+   * Draw bars as a symbol instead of a rect — the pictorialBar look — or,
+   * on `points`, the datum symbol (ECharts' `symbol`); on `line`, set it to
+   * draw a symbol at every datum (ECharts' `showSymbol`, off by default here).
+   */
   symbol?: 'rect' | 'circle' | 'diamond' | 'triangle' | undefined
   /** Repeat the symbol along the bar instead of stretching it. */
   symbolRepeat?: boolean | undefined
@@ -1153,6 +1157,18 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width, dash: s.dash })
         }
       }
+      // A line shows its datum symbols only when asked (ECharts' showSymbol):
+      // one symbol per finite datum, at the line's own radius, over the line.
+      // Coalesced before use: Swift does not narrow `s.symbol` through the guard.
+      const lineSymbol = s.symbol ?? 'circle'
+      if (s.symbol !== undefined && progress >= 1.0) {
+        const dots = place(s.values)
+        for (let i = 0; i < dots.length; i++) {
+          if (!isFiniteValue(s.values[i]!)) continue
+          const d = dots[i]!
+          out.push(symbolCommand({ x: d.x - s.radius, y: d.y - s.radius, w: s.radius * 2.0, h: s.radius * 2.0 }, lineSymbol, s.color))
+        }
+      }
     } else if (s.kind === 'band') {
       // A region between two value channels — a confidence interval, a
       // min/max range, a forecast cone. The polygon runs along the UPPER
@@ -1214,12 +1230,14 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           // A halo UNDER the dot: emphasis that never hides the value.
           out.push({ kind: 'circle', center: pts[i]!, radius: fullR * progress + (lvlP === 2 ? 4.0 : 3.0), fill: withAlpha(t.label, 0.35) })
         }
-        out.push({
-          kind: 'circle',
-          center: pts[i]!,
-          radius: fullR * progress,
-          fill: s.color,
-        })
+        // The datum symbol: a circle unless the series names another shape.
+        const r = fullR * progress
+        const pointSymbol = s.symbol ?? 'circle'
+        if (pointSymbol === 'circle') {
+          out.push({ kind: 'circle', center: pts[i]!, radius: r, fill: s.color })
+        } else {
+          out.push(symbolCommand({ x: pts[i]!.x - r, y: pts[i]!.y - r, w: r * 2.0, h: r * 2.0 }, pointSymbol, s.color))
+        }
       }
     }
 
