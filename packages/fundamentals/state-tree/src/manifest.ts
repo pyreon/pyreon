@@ -6,7 +6,7 @@ export default defineManifest({
   tagline:
     'Structured reactive state tree — composable models with snapshots, patches, and middleware',
   description:
-    'MobX-State-Tree-inspired structured state management built on Pyreon signals. Models compose state (signals), views (computeds), and actions into self-contained units that support typed snapshots, JSON-patch record/replay, and action interception middleware. Models can nest other models for tree-shaped state, and `.asHook(id)` provides singleton instances scoped to a store-like registry.',
+    'MobX-State-Tree-inspired structured state management built on Pyreon signals. Models compose state (signals), views (computeds), and actions into self-contained units that support typed snapshots, JSON-patch record/replay, and action interception middleware. Models can nest other models for tree-shaped state, and `.asHook(id)` provides singleton instances scoped to a store-like registry — per process in a browser, and per REQUEST on a server under `@pyreon/runtime-server`, which isolates that registry automatically.',
   category: 'universal',
   multiplatform: {
     tier: 'service-backend',
@@ -413,12 +413,12 @@ post.author.id()   // 'u-42'`,
       kind: 'function',
       signature: 'resetHook(id: string) => void; resetAllHooks() => void',
       summary:
-        'Destroy `.asHook(id)` singletons. `.asHook(id)` stores ONE instance per id in a MODULE-LEVEL registry (created lazily on first call, shared for the process), so every consumer of `useX = Model.asHook("x")` gets the SAME instance — great for app-global state, a hazard for tests. `resetHook(id)` deletes that one singleton so the next `asHook(id)` call re-creates a fresh instance; `resetAllHooks()` clears the whole registry. Both are for TEST isolation (and hot-reload).',
+        'Destroy `.asHook(id)` singletons. `.asHook(id)` stores ONE instance per id in a MODULE-LEVEL registry (created lazily on first call, shared for the process — or for the REQUEST, when rendering under `@pyreon/runtime-server`, which isolates the registry so concurrent requests never share an instance), so every consumer of `useX = Model.asHook("x")` gets the SAME instance — great for app-global state, a hazard for tests. `resetHook(id)` deletes that one singleton so the next `asHook(id)` call re-creates a fresh instance; `resetAllHooks()` clears the whole registry. Both are for TEST isolation (and hot-reload).',
       example: `const useTodos = TodoList.asHook('todos')
 // tests:
 afterEach(() => resetAllHooks())   // else a mutation in one test leaks to the next`,
       mistakes: [
-        'Not resetting between tests — the `asHook` singleton lives in a module-level Map for the whole process, NOT per-test. State mutated in one test persists into the next; call `resetAllHooks()` (or `resetHook(id)`) in `afterEach`.',
+        'Not resetting between tests — the `asHook` singleton lives in a module-level Map for the whole process (per REQUEST only inside an SSR render), NOT per-test. State mutated in one test persists into the next; call `resetAllHooks()` (or `resetHook(id)`) in `afterEach`.',
         'Expecting `resetHook` to `destroy()` the old instance\'s subscriptions — it only DROPS the registry entry so the next `asHook` re-creates. If code still holds the old reference, call `destroy()` on it yourself.',
       ],
       seeAlso: ['model', 'destroy'],
