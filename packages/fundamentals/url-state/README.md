@@ -121,10 +121,36 @@ The `UrlRouter` interface is minimal:
 ```ts
 interface UrlRouter {
   replace(path: string): void | Promise<void>
+  push?(path: string): void | Promise<void>
+  mode?: 'hash' | 'history'
+  _base?: string
 }
 ```
 
 Any object satisfying it works (you don't strictly need `@pyreon/router`).
+
+### The router decides WHERE the params live
+
+`@pyreon/router` defaults to `mode: 'hash'`, where the whole route — **query
+included** — lives in the fragment and `location.search` stays empty:
+
+```
+https://app.example/#/products?page=3
+                     ^^^^^^^^^^^^^^^^ the router owns all of this
+```
+
+So once a router is registered, `useUrlState` reads and writes the query on the
+side of the URL that router owns: inside the fragment in hash mode, in
+`location.search` in history mode (where it also preserves any `#fragment` and
+hands the router a path relative to its `base`). `useRouter()` exposes `mode`, so
+`setUrlRouter(useRouter())` picks this up with no extra configuration.
+
+One consequence worth stating: in a hash-routed app, **do not read the params
+with `new URLSearchParams(location.search)`** — that string is empty. Read
+through `useUrlState` (or `getParam`), which asks the registered router.
+
+Without a registered router nothing changes: `useUrlState` owns
+`location.search` and writes it with `history.replaceState` / `pushState`.
 
 ## SSR safety
 
