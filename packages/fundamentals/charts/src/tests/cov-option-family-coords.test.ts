@@ -204,11 +204,11 @@ describe('polar', () => {
     // A non-object axis behaves like an absent one.
     expect(axes({ angleAxis: 'x', radiusAxis: 'x' })).toEqual({ categories: [], categoryOn: 'angle' })
   })
-  it('only bar and line render; every other series warns by INDEX and is skipped', () => {
-    const c = compileFamily({ angleAxis: { data: ['a'] }, series: [{ type: 'bar', coordinateSystem: 'polar', data: [1] }, { type: 'scatter', coordinateSystem: 'polar', data: [2] }, 'x', { type: 'line', coordinateSystem: 'polar', data: [3] }] })!
-    expect((c.plan as unknown as { series: { name: string; kind: string }[] }).series.map((x) => [x.name, x.kind])).toEqual([['Series 1', 'bar'], ['Series 4', 'line']])
+  it('bar, line and scatter render; every other series warns by INDEX and is skipped', () => {
+    const c = compileFamily({ angleAxis: { data: ['a'] }, series: [{ type: 'bar', coordinateSystem: 'polar', data: [1] }, { type: 'gauge', coordinateSystem: 'polar', data: [2] }, 'x', { type: 'line', coordinateSystem: 'polar', data: [3] }, { type: 'scatter', coordinateSystem: 'polar', data: [4] }] })!
+    expect((c.plan as unknown as { series: { name: string; kind: string }[] }).series.map((x) => [x.name, x.kind])).toEqual([['Series 1', 'bar'], ['Series 4', 'line'], ['Series 5', 'scatter']])
     expect(c.warnings.map((w) => w.path)).toEqual(['series[1].type'])
-    expect(c.warnings[0]!.message).toContain('scatter')
+    expect(c.warnings[0]!.message).toContain('gauge')
   })
   it('a value may be a scalar, a [value, ...] tuple or an object; a bad one becomes NaN', () => {
     const vals = (data: unknown[]): number[] => (p([{ type: 'bar', data }]) as { series: { values: number[] }[] }).series[0]!.values

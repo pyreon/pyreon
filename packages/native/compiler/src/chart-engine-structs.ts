@@ -4650,6 +4650,22 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "radius",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "stack",
         "type": {
           "kind": "union",
@@ -4869,6 +4885,20 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             "name": "PolarPoint",
             "args": []
           }
+        }
+      },
+      {
+        "name": "scatter",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "radius",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
         }
       }
     ],

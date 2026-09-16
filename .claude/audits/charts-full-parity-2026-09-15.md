@@ -77,6 +77,12 @@ for interaction, animation or accessibility parity.
   transpose exists three times (web `transposeCmds`, `pyreonTransposeCmds` in
   both runtimes) and is locked by execution like the RTL mirror. Rows
   `series.sankey`, `coordinates.calendar`, `coordinates.parallel` complete.
+- [x] `coordinates.polar` complete: scatter / effectScatter join bar and line
+  on the polar coordinate (points at the line placement, circles only, the
+  symbol radius) on web, iOS and Android. Found on the way: a polar option
+  with no value extent emitted a `categories`-only axes literal that struct
+  selection could not type, so the native emit did not compile — `categoryOn`
+  is now always stated.
 - [x] `coordinates.mark-line` / `coordinates.mark-point` complete: the engine
   gains segment annotations (`x1`/`y1`/`x2`/`y2`) and `average` markers (the
   datum nearest the mean, ECharts' placement), regenerated into both native

@@ -500,11 +500,12 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
     for (let k = 0; k < seriesArr.length; k++) {
       const ser = seriesArr[k]
       if (!isObj(ser)) continue
-      const st = ser['type']
-      if (st !== 'bar' && st !== 'line') {
-        warn('series-type-unsupported', 'series[' + String(k) + '].type', 'Only bar and line series render on the polar coordinate; ' + String(st) + ' was skipped.')
+      const st = ser['type'] === 'effectScatter' ? 'scatter' : ser['type']
+      if (st !== 'bar' && st !== 'line' && st !== 'scatter') {
+        warn('series-type-unsupported', 'series[' + String(k) + '].type', 'Only bar, line and scatter series render on the polar coordinate; ' + String(ser['type']) + ' was skipped.')
         continue
       }
+      const symbolSize = num(ser['symbolSize'])
       const rows = Array.isArray(ser['data']) ? (ser['data'] as unknown[]) : []
       const values: Double[] = []
       for (const d of rows) {
@@ -519,6 +520,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
         kind: st,
         values,
         ...(color !== undefined ? { color } : {}),
+        ...(symbolSize !== null && st !== 'bar' ? { radius: symbolSize / 2.0 } : {}),
         ...(typeof ser['stack'] === 'string' ? { stack: ser['stack'] as string } : {}),
       })
     }

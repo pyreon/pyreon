@@ -1006,12 +1006,14 @@ public struct PolarSeries: Codable {
   public var kind: String
   public var values: [Double]
   public var color: String? = nil
+  public var radius: Double? = nil
   public var stack: String? = nil
-  public init(name: String, kind: String, values: [Double], color: String? = nil, stack: String? = nil) {
+  public init(name: String, kind: String, values: [Double], color: String? = nil, radius: Double? = nil, stack: String? = nil) {
     self.name = name
     self.kind = kind
     self.values = values
     self.color = color
+    self.radius = radius
     self.stack = stack
   }
 }
@@ -1071,10 +1073,14 @@ public struct PolarLine: Codable {
   public var series: Int
   public var color: String
   public var points: [PolarPoint]
-  public init(series: Int, color: String, points: [PolarPoint]) {
+  public var scatter: Bool
+  public var radius: Double
+  public init(series: Int, color: String, points: [PolarPoint], scatter: Bool, radius: Double) {
     self.series = series
     self.color = color
     self.points = points
+    self.scatter = scatter
+    self.radius = radius
   }
 }
 
@@ -6241,7 +6247,7 @@ public func layoutPolar(_ axes: PolarAxes, _ series: [PolarSeries], _ box: Pyreo
       }
       for si in 0..<series.count {
         let s = series[si]
-        if s.kind != "line" {
+        if s.kind != "line" && s.kind != "scatter" {
           continue
         }
         let color = (s.color ?? paletteAt(palette, si))
@@ -6257,7 +6263,7 @@ public func layoutPolar(_ axes: PolarAxes, _ series: [PolarSeries], _ box: Pyreo
           }
           iF = iF + 1.0
         }
-        lines.append(PolarLine(series: si, color: color, points: points))
+        lines.append(PolarLine(series: si, color: color, points: points, scatter: s.kind == "scatter", radius: (s.radius ?? (s.kind == "scatter" ? 4.0 : 2.5))))
       }
       var iF = 0.0
       for i in 0..<n {
@@ -6303,7 +6309,7 @@ public func layoutPolar(_ axes: PolarAxes, _ series: [PolarSeries], _ box: Pyreo
       }
       for si in 0..<series.count {
         let s = series[si]
-        if s.kind != "line" {
+        if s.kind != "line" && s.kind != "scatter" {
           continue
         }
         let color = (s.color ?? paletteAt(palette, si))
@@ -6318,7 +6324,7 @@ public func layoutPolar(_ axes: PolarAxes, _ series: [PolarSeries], _ box: Pyreo
           }
           iF = iF + 1.0
         }
-        lines.append(PolarLine(series: si, color: color, points: points))
+        lines.append(PolarLine(series: si, color: color, points: points, scatter: s.kind == "scatter", radius: (s.radius ?? (s.kind == "scatter" ? 4.0 : 2.5))))
       }
       var iF = 0.0
       for i in 0..<n {
@@ -6404,11 +6410,11 @@ public func renderPolar(_ layout: PolarLayout, _ options: PolarOptions? = nil) -
         pts.append(l.points[i].at)
         iF = iF + 1.0
       }
-      if pts.count > 1 {
+      if pts.count > 1 && !l.scatter {
         out.append(PyreonDrawCmd(kind: "polyline", stroke: l.color, width: lineWidth, points: pts))
       }
       for p in pts {
-        out.append(PyreonDrawCmd(kind: "circle", fill: l.color, center: p, radius: 2.5))
+        out.append(PyreonDrawCmd(kind: "circle", fill: l.color, center: p, radius: l.radius))
       }
     }
     if options?.showLabels != false && progress >= 1.0 {

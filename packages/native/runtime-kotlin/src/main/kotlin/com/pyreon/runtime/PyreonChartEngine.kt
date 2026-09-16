@@ -132,7 +132,7 @@ data class ChordLayout(var arcs: List<ChordArc>, var ribbons: List<ChordRibbon>,
 
 data class ChordOptions(var palette: List<String>? = null, var padAngle: Double? = null, var ringRatio: Double? = null, var linkOpacity: Double? = null, var showLabels: Boolean? = null, var fontSize: Double? = null, var labelColor: String? = null, var progress: Double? = null)
 
-data class PolarSeries(var name: String, var kind: String, var values: List<Double>, var color: String? = null, var stack: String? = null)
+data class PolarSeries(var name: String, var kind: String, var values: List<Double>, var color: String? = null, var radius: Double? = null, var stack: String? = null)
 
 data class PolarAxes(var categories: List<String>, var categoryOn: String? = null, var valueDomain: Domain? = null, var startAngle: Double? = null, var clockwise: Boolean? = null)
 
@@ -140,7 +140,7 @@ data class PolarSector(var series: Int, var index: Int, var start: Double, var e
 
 data class PolarPoint(var series: Int, var index: Int, var at: PyreonChartPt, var color: String, var value: Double)
 
-data class PolarLine(var series: Int, var color: String, var points: List<PolarPoint>)
+data class PolarLine(var series: Int, var color: String, var points: List<PolarPoint>, var scatter: Boolean, var radius: Double)
 
 data class PolarCategoryLabel(var text: String, var at: PyreonChartPt, var align: String)
 
@@ -4220,7 +4220,7 @@ fun layoutPolar(axes: PolarAxes, series: List<PolarSeries>, box: PyreonChartRect
       }
       for (si in 0 until series.length) {
         val s = series[si]
-        if (s.kind != "line") {
+        if (s.kind != "line" && s.kind != "scatter") {
           continue
         }
         val color = (s.color ?: paletteAt(palette, si))
@@ -4236,7 +4236,7 @@ fun layoutPolar(axes: PolarAxes, series: List<PolarSeries>, box: PyreonChartRect
           }
           iF = iF + 1.0
         }
-        lines.add(PolarLine(series = si, color = color, points = points))
+        lines.add(PolarLine(series = si, color = color, points = points, scatter = s.kind == "scatter", radius = (s.radius ?: (if (s.kind == "scatter") 4.0 else 2.5))))
       }
       var iF = 0.0
       for (i in 0 until n) {
@@ -4282,7 +4282,7 @@ fun layoutPolar(axes: PolarAxes, series: List<PolarSeries>, box: PyreonChartRect
       }
       for (si in 0 until series.length) {
         val s = series[si]
-        if (s.kind != "line") {
+        if (s.kind != "line" && s.kind != "scatter") {
           continue
         }
         val color = (s.color ?: paletteAt(palette, si))
@@ -4297,7 +4297,7 @@ fun layoutPolar(axes: PolarAxes, series: List<PolarSeries>, box: PyreonChartRect
           }
           iF = iF + 1.0
         }
-        lines.add(PolarLine(series = si, color = color, points = points))
+        lines.add(PolarLine(series = si, color = color, points = points, scatter = s.kind == "scatter", radius = (s.radius ?: (if (s.kind == "scatter") 4.0 else 2.5))))
       }
       var iF = 0.0
       for (i in 0 until n) {
@@ -4383,11 +4383,11 @@ fun renderPolar(layout: PolarLayout, options: PolarOptions? = null): List<Pyreon
         pts.add(l.points[i].at)
         iF = iF + 1.0
       }
-      if (pts.length > 1) {
+      if (pts.length > 1 && !l.scatter) {
         out.add(PyreonDrawCmd(kind = "polyline", stroke = l.color, width = lineWidth, points = pts))
       }
       for (p in pts) {
-        out.add(PyreonDrawCmd(kind = "circle", fill = l.color, center = p, radius = 2.5))
+        out.add(PyreonDrawCmd(kind = "circle", fill = l.color, center = p, radius = l.radius))
       }
     }
     if (options?.showLabels != false && progress >= 1.0) {

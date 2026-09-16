@@ -252,7 +252,7 @@ hidden table beside the chart.
 
 ### Families, coordinates and the ECharts option facade
 
-Beyond bars, lines, points, pie, gauge, radar, candlestick and heatmap, `/plot` ships the full ECharts family set as tree-shakeable modules: **funnel, boxplot, treemap, sunburst, tree, sankey, graph** (seeded force / circular), **calendar, parallel, polar, single axis, theme river** and **map** (GeoJSON via `registerMap`, scatter + flight paths on geo). Each is a component (`<TreemapChart>`, `<SankeyChart>`, `<MapChart>`, …), a pure `layout` / `render` / `hit` trio and a server-safe `xToSvg`. Sankey, calendar and parallel coordinates take `orient="vertical"` — the horizontal layout reflected across the diagonal, on every target.
+Beyond bars, lines, points, pie, gauge, radar, candlestick and heatmap, `/plot` ships the full ECharts family set as tree-shakeable modules: **funnel, boxplot, treemap, sunburst, tree, sankey, graph** (seeded force / circular), **calendar, parallel, polar, single axis, theme river** and **map** (GeoJSON via `registerMap`, scatter + flight paths on geo). Each is a component (`<TreemapChart>`, `<SankeyChart>`, `<MapChart>`, …), a pure `layout` / `render` / `hit` trio and a server-safe `xToSvg`. Sankey, calendar and parallel coordinates take `orient="vertical"` — the horizontal layout reflected across the diagonal, on every target. Polar takes bar, line and scatter series (`kind: 'scatter'` draws the points alone, at `symbolSize / 2`).
 
 `optionToSvg` / `compileOption` accept an **ECharts-shaped option** — series, coordinates, `dataset` + transforms, `graphic`, `visualMap`, `custom` `renderItem`, `theme` and `locale` — and name every unmapped key in `warnings` instead of dropping it:
 

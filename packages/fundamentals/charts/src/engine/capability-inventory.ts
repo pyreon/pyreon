@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.14' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.15' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -55,7 +55,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
 
   ...['grid', 'title', 'legend', 'tooltip', 'aria']
     .map((name) => row(`coordinates.${name}`, 'coordinates', 'direct', 'complete', 'src/engine/option.test.ts')),
-  row('coordinates.polar', 'coordinates', 'direct', 'partial', 'src/engine/option-family.ts'), // bar + line only
+  row('coordinates.polar', 'coordinates', 'direct', 'complete', 'src/engine/polar.test.ts', '../../native/compiler/src/tests/chart-polar-scatter-native.test.ts'),
   row('coordinates.calendar', 'coordinates', 'direct', 'complete', 'src/engine/option-orient.test.ts', '../../native/compiler/src/tests/chart-orient-native.test.ts'),
   row('coordinates.parallel', 'coordinates', 'direct', 'complete', 'src/engine/option-orient.test.ts', '../../native/compiler/src/tests/chart-orient-native.test.ts'),
   row('coordinates.single-axis', 'coordinates', 'direct', 'partial', 'src/engine/option-family.ts'), // scatter only

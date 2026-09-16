@@ -1280,10 +1280,13 @@ export function desugarOptionChart(
       warn('<OptionChart polar category axis data>: native polar charts need literal string categories; emitting nothing.')
       return undefined
     }
+    // `categoryOn` is always stated: a `categories`-only literal (an option
+    // with no radius max, the common case) is ambiguous to struct selection
+    // and emitted an untyped object that neither toolchain accepted.
     const axesFields: { name: string; value: ExprIR }[] = [
       { name: 'categories', value: categoryData },
+      { name: 'categoryOn', value: lit(categoryOnRadius ? 'radius' : 'angle') },
     ]
-    if (categoryOnRadius) axesFields.push({ name: 'categoryOn', value: lit('radius') })
     const min = litNumber(objectField(valueAxis, 'min'))
     const max = litNumber(objectField(valueAxis, 'max'))
     if (max !== undefined) axesFields.push({ name: 'valueDomain', value: { kind: 'object', fields: [{ name: 'min', value: optionDoubleLiteral(min ?? 0) }, { name: 'max', value: optionDoubleLiteral(max) }] } })
@@ -1296,9 +1299,10 @@ export function desugarOptionChart(
     const polarSeries: ExprIR[] = []
     for (let i = 0; i < sourceSeries.length; i++) {
       const item = literalOf(sourceSeries[i], resolve)
-      const itemKind = item?.kind === 'object' ? litString(objectField(item, 'type')) : undefined
-      if (item?.kind !== 'object' || (itemKind !== 'bar' && itemKind !== 'line') || litString(objectField(item, 'coordinateSystem')) !== 'polar') {
-        warn(`<OptionChart option.series[${i}]>: native polar charts support literal polar bar and line series; emitting nothing.`)
+      const rawKind = item?.kind === 'object' ? litString(objectField(item, 'type')) : undefined
+      const itemKind = rawKind === 'effectScatter' ? 'scatter' : rawKind
+      if (item?.kind !== 'object' || (itemKind !== 'bar' && itemKind !== 'line' && itemKind !== 'scatter') || litString(objectField(item, 'coordinateSystem')) !== 'polar') {
+        warn(`<OptionChart option.series[${i}]>: native polar charts support literal polar bar, line and scatter series; emitting nothing.`)
         return undefined
       }
       optionFields(item, ['type', 'name', 'data', 'coordinateSystem', 'polarIndex', 'stack', 'itemStyle', 'lineStyle', 'label', 'emphasis', 'smooth', 'symbol', 'symbolSize', 'barWidth', 'barGap', 'barCategoryGap', 'roundCap', 'showBackground', 'backgroundStyle', 'areaStyle', 'color'], `option.series[${i}]`, warn)
@@ -1326,6 +1330,8 @@ export function desugarOptionChart(
         { name: 'values', value: { kind: 'array', elements: values } },
       ]
       if (color !== undefined) fields.push({ name: 'color', value: lit(color) })
+      const symbolSize = litNumber(objectField(item, 'symbolSize'))
+      if (symbolSize !== undefined && itemKind !== 'bar') fields.push({ name: 'radius', value: optionDoubleLiteral(symbolSize / 2) })
       const stack = litString(objectField(item, 'stack'))
       if (stack !== undefined) fields.push({ name: 'stack', value: lit(stack) })
       polarSeries.push({ kind: 'object', fields })
