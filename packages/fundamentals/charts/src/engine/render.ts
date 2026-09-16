@@ -411,6 +411,8 @@ export const defaultTheme: ChartTheme = {
 function labelTextAt(s: Series, index: number, fallback: string): string {
   const texts = s.labelTexts ?? []
   if (index < 0 || index >= texts.length) return fallback
+  /* v8 ignore next — unreachable: the bounds test above already returned for an
+     out-of-range index. The unwrap is for the native emit, which does not narrow. */
   const own = texts[index] ?? ''
   return own === '' ? fallback : own
 }
@@ -696,6 +698,8 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     height: spec.height,
     xDomain:
       (spec.xValues ?? []).length > 0
+        /* v8 ignore next — the inner `?? []` is unreachable: the test above already
+           established a non-empty list. Native needs the unwrap; the web cannot reach it. */
         ? extent(spec.xValues ?? [])
         : { min: 0.0, max: n > 1 ? n - 1 : 1.0 },
     yDomain: resolveYDomain(spec),
@@ -1121,6 +1125,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
              needs the unwrap; the web cannot reach it. */
           out.push(rectCmd(grown, fillH, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad, s.pattern))
         } else {
+          /* v8 ignore next — `s.values[ri] ?? 0.0` is unreachable: `ri` indexes rects built
+             FROM `s.values`. Native needs the unwrap; the web cannot reach it. */
           for (const c of pictorialCommands(pictorialBar(s, grown, true, s.values[ri] ?? 0.0, fillH))) out.push(c)
         }
       }
@@ -1155,6 +1161,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
              needs the unwrap; the web cannot reach it. */
           out.push(rectCmd(grown, fillV, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad, s.pattern))
         } else {
+          /* v8 ignore next — same unreachable native unwrap: `ri` indexes rects built FROM
+             `s.values`. */
           for (const c of pictorialCommands(pictorialBar(s, grown, false, s.values[ri] ?? 0.0, fillV))) out.push(c)
         }
       }
@@ -1594,6 +1602,8 @@ function pictorialBar(s: Series, bar: Rect, horizontal: boolean, value: Double, 
   return {
     bar,
     horizontal,
+    /* v8 ignore next — unreachable: `pictorialBar` is only called from the `else` of
+       `s.symbol === undefined`, so the symbol is always set here. Native unwrap. */
     symbol: s.symbol ?? 'rect',
     repeat: s.symbolRepeat === true,
     fill,
