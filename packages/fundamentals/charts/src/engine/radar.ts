@@ -134,6 +134,9 @@ export function renderRadar(
  */
 export function withAlpha(color: string, alpha: Double): string {
   const a = Math.max(0.0, Math.min(1.0, alpha))
+  // `rgb(r, g, b)` — what the ramp returns — takes the alpha too; leaving it
+  // alone made every ramp-coloured translucent fill fully opaque.
+  if (color.startsWith('rgb(') && color.endsWith(')')) return `rgba(${color.slice(4, color.length - 1)}, ${a})`
   if (!color.startsWith('#')) return color
   const hex = color.slice(1)
   // charCodeAt-based hex decode — no String Int-subscripts, no parseInt

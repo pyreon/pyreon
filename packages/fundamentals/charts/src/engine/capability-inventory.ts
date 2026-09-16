@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-17.28' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-17.29' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -70,7 +70,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('coordinates.graphic', 'coordinates', 'direct', 'complete', 'src/engine/graphic-shapes.test.ts', 'src/engine/cov-core-option-layer.test.ts', '../../native/compiler/src/tests/chart-graphic-native.test.ts'),
   row('coordinates.mark-point', 'coordinates', 'direct', 'complete', 'src/engine/option-marks.test.ts', '../../native/compiler/src/tests/chart-marks-native.test.ts'),
   row('coordinates.mark-line', 'coordinates', 'direct', 'complete', 'src/engine/option-marks.test.ts', '../../native/compiler/src/tests/chart-marks-native.test.ts'),
-  row('coordinates.geo', 'coordinates', 'direct', 'partial', 'src/engine/geo-roam.test.ts', 'src/engine/geo.browser.test.tsx'), // roam crosses; open: series types other than scatter / effectScatter / lines on a geo
+  row('coordinates.geo', 'coordinates', 'direct', 'partial', 'src/engine/geo-roam.test.ts', 'src/engine/geo-series.test.ts', 'src/engine/geo.browser.test.tsx', '../../native/compiler/src/tests/chart-map-roam-native.test.ts'), // roam + scatter/effectScatter/lines/heatmap/pie/map layers cross; open: an animated trail on geo lines
   row('coordinates.data-zoom', 'coordinates', 'direct', 'partial', 'src/engine/navigator.ts'),
   row('coordinates.timeline', 'coordinates', 'direct', 'partial', 'src/engine/option-composite.ts', '../../native/compiler/src/tests/chart-option-family-native.test.ts'),
   row('coordinates.toolbox', 'coordinates', 'direct', 'partial', 'src/engine/toolbox.ts'),

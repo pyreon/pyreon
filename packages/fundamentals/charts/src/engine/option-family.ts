@@ -26,6 +26,8 @@ import type { GeoOptions } from './geo'
 import type { GeoJson } from './geo-web'
 import { geoPointsToSvg } from './geo-points'
 import type { GeoPath, GeoPoint, GeoPointsOptions } from './geo-points'
+import type { GeoHeatPoint, GeoPie } from './geo-overlay'
+import type { Slice } from './arc'
 import { singleAxisToSvg } from './single-axis-web'
 import type { SingleAxisOptions, SingleAxisPoint, SingleAxisSpec } from './single-axis'
 import type { FunnelOptions } from './funnel'
@@ -51,7 +53,7 @@ export type FamilyPlan =
   | { kind: 'themeRiver'; series: RiverSeries[]; river: RiverOptions; title: string | undefined }
   | { kind: 'boxplot'; rows: (FiveNumber & { x: string })[]; fill: string | undefined; stroke: string | undefined; title: string | undefined }
   | { kind: 'map'; geo: GeoJson; values: Record<string, Double>; options: GeoOptions; title: string | undefined; roam: RoamMode; scaleLimit: { min: Double; max: Double } }
-  | { kind: 'geoPoints'; geo: GeoJson; points: GeoPoint[]; paths: GeoPath[]; map: GeoOptions; options: GeoPointsOptions; title: string | undefined; roam: RoamMode; scaleLimit: { min: Double; max: Double } }
+  | { kind: 'geoPoints'; geo: GeoJson; points: GeoPoint[]; paths: GeoPath[]; heat: GeoHeatPoint[]; heatRadius: Double; heatStops: string[]; pies: GeoPie[]; values: Record<string, Double>; map: GeoOptions; options: GeoPointsOptions; title: string | undefined; roam: RoamMode; scaleLimit: { min: Double; max: Double } }
   | { kind: 'singleAxis'; axis: SingleAxisSpec; points: SingleAxisPoint[]; options: SingleAxisOptions; title: string | undefined }
 
 import type { ChordLink, ChordNode, ChordOptions } from './chord'
@@ -139,7 +141,7 @@ const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   tree: new Set(['type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'leaves', 'roam', 'expandAndCollapse', 'emphasis', 'top', 'left', 'right', 'bottom']),
   sankey: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'nodeWidth', 'nodeGap', 'nodeAlign', 'layoutIterations', 'orient', 'draggable', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'levels', 'top', 'left', 'right', 'bottom']),
   singleAxis: new Set(['type', 'name', 'data', 'coordinateSystem', 'singleAxisIndex', 'symbolSize', 'symbol', 'label', 'itemStyle', 'emphasis', 'color', 'animation']),
-  geo: new Set(['type', 'name', 'data', 'coordinateSystem', 'geoIndex', 'symbolSize', 'symbol', 'label', 'itemStyle', 'lineStyle', 'effect', 'polyline', 'emphasis', 'rippleEffect', 'showEffectOn', 'color', 'animation', 'zlevel', 'z']),
+  geo: new Set(['type', 'name', 'data', 'coordinateSystem', 'geoIndex', 'pointSize', 'blurSize', 'map', 'symbolSize', 'symbol', 'label', 'itemStyle', 'lineStyle', 'effect', 'polyline', 'emphasis', 'rippleEffect', 'showEffectOn', 'color', 'animation', 'zlevel', 'z']),
   map: new Set(['type', 'name', 'data', 'map', 'roam', 'scaleLimit', 'label', 'itemStyle', 'emphasis', 'select', 'selectedMode', 'nameProperty', 'projection', 'zoom', 'center', 'aspectScale', 'layoutCenter', 'layoutSize', 'showLegendSymbol', 'geoIndex', 'left', 'top', 'right', 'bottom']),
   themeRiver: new Set(['type', 'name', 'data', 'coordinateSystem', 'singleAxisIndex', 'boundaryGap', 'label', 'itemStyle', 'emphasis', 'color', 'animation']),
   polar: new Set(['type', 'name', 'data', 'coordinateSystem', 'polarIndex', 'stack', 'itemStyle', 'lineStyle', 'label', 'emphasis', 'smooth', 'symbol', 'symbolSize', 'barWidth', 'barGap', 'barCategoryGap', 'roundCap', 'showBackground', 'backgroundStyle', 'areaStyle', 'animation', 'color']),
@@ -174,9 +176,12 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   // A theme river is keyed by TYPE: ECharts requires `coordinateSystem:
   // 'singleAxis'` on it, and keying on the coordinate first sent every
   // canonical theme river into the single-axis scatter arm, which skipped it.
-  const familyKey = type === 'themeRiver' ? 'themeRiver' : s['coordinateSystem'] === 'polar' ? 'polar' : s['coordinateSystem'] === 'geo' ? 'geo' : s['coordinateSystem'] === 'singleAxis' ? 'singleAxis' : type
+  // A geo chart is keyed by ANY of its series sitting on the geo: its first
+  // series may be the map layer (geoIndex) or a pie centred on a lon/lat.
+  const anyOnGeo = seriesArr.some((ser) => isObj(ser) && (ser['coordinateSystem'] === 'geo' || (ser['type'] === 'map' && ser['geoIndex'] !== undefined)))
+  const familyKey = type === 'themeRiver' ? 'themeRiver' : s['coordinateSystem'] === 'polar' ? 'polar' : anyOnGeo ? 'geo' : s['coordinateSystem'] === 'singleAxis' ? 'singleAxis' : type
   for (const key of Object.keys(option)) if (!KNOWN_TOP.has(key)) warn('option-key-unsupported', key, `"${key}" has no mapping yet; it was ignored.`)
-  for (const key of Object.keys(s)) if (!KNOWN_BY_FAMILY[familyKey]!.has(key)) warn('series-option-unsupported', `series[0].${key}`, `"${key}" has no mapping for ${type} yet; it was ignored.`)
+  if (familyKey !== 'geo') for (const key of Object.keys(s)) if (!KNOWN_BY_FAMILY[familyKey]!.has(key)) warn('series-option-unsupported', `series[0].${key}`, `"${key}" has no mapping for ${type} yet; it was ignored.`)
   // This guard has collided across the whole charts wave — polar, boxplot,
   // and now geo each legitimately render more than one series per option.
   // Both sides carved an exception out of this guard — polar on this branch,
@@ -368,9 +373,6 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   }
 
   if (familyKey === 'geo') {
-    if (type !== 'scatter' && type !== 'effectScatter' && type !== 'lines') {
-      warn('series-type-unsupported', 'series[0].type', 'Only scatter, effectScatter and lines render on the geo coordinate; ' + type + ' was skipped.')
-    }
     const geoCfg = first(option['geo'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
     const geoObj = isObj(geoCfg) ? geoCfg : {}
     const mapName = typeof geoObj['map'] === 'string' ? (geoObj['map'] as string) : ''
@@ -384,61 +386,145 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       ...(typeof geoItem['borderColor'] === 'string' ? { borderColor: geoItem['borderColor'] as string } : {}),
       ...(typeof geoItem['areaColor'] === 'string' ? { emptyColor: geoItem['areaColor'] as string } : {}),
     }
+    const vm = first(option['visualMap'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const heatStops = isObj(vm) && isObj(vm['inRange']) && Array.isArray(vm['inRange']['color'])
+      ? (vm['inRange']['color'] as unknown[]).filter((c): c is string => typeof c === 'string')
+      : []
     const points: GeoPoint[] = []
-    if (type === 'scatter' || type === 'effectScatter') {
-      for (let i = 0; i < data.length; i++) {
-        const d = data[i]
-        const arr = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['value']) ? (d['value'] as unknown[]) : null
-        const lon = arr === null ? null : num(arr[0])
-        const lat = arr === null ? null : num(arr[1])
-        if (arr === null || lon === null || lat === null) {
-          warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A geo scatter datum must be [lon, lat, value?]; it was skipped.')
-          continue
-        }
-        const v = num(arr[2])
-        const item = isObj(d) && isObj(d['itemStyle']) ? d['itemStyle'] : {}
-        points.push({
-          lon,
-          lat,
-          ...(isObj(d) && typeof d['name'] === 'string' ? { name: d['name'] as string } : {}),
-          ...(v !== null ? { value: v } : {}),
-          ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
-        })
-      }
-    }
     const paths: GeoPath[] = []
-    if (type === 'lines') {
-      const ls = isObj(s['lineStyle']) ? s['lineStyle'] : {}
-      for (let i = 0; i < data.length; i++) {
-        const d = data[i]
-        const coords = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['coords']) ? (d['coords'] as unknown[]) : null
-        const pairs: [Double, Double][] = []
-        for (const c of coords ?? []) {
-          const lon = Array.isArray(c) ? num(c[0]) : null
-          const lat = Array.isArray(c) ? num(c[1]) : null
-          if (lon !== null && lat !== null) pairs.push([lon, lat])
+    const heat: GeoHeatPoint[] = []
+    const pies: GeoPie[] = []
+    const values: Record<string, Double> = {}
+    let options: GeoPointsOptions = {}
+    let heatRadius = 20.0
+    let pointsSeen = false
+    // Every series that sits on the geo draws; the map is shared.
+    for (let si = 0; si < seriesArr.length; si++) {
+      const ser = seriesArr[si]
+      const path = 'series[' + String(si) + ']'
+      if (!isObj(ser)) continue
+      const stype = typeof ser['type'] === 'string' ? (ser['type'] as string) : ''
+      const onGeo = ser['coordinateSystem'] === 'geo' || (stype === 'map' && ser['geoIndex'] !== undefined) || (stype === 'pie' && ser['coordinateSystem'] === 'geo')
+      if (!onGeo) {
+        warn('series-type-unsupported', path + '.coordinateSystem', 'A series beside a geo chart must sit on the geo (coordinateSystem: geo, or a map with geoIndex); it was skipped.')
+        continue
+      }
+      const sdata = Array.isArray(ser['data']) ? (ser['data'] as unknown[]) : []
+      for (const key of Object.keys(ser)) if (!KNOWN_BY_FAMILY['geo']!.has(key) && !(stype === 'pie' && (key === 'center' || key === 'radius'))) warn('series-option-unsupported', path + '.' + key, '"' + key + '" has no mapping for ' + stype + ' yet; it was ignored.')
+      if (stype === 'scatter' || stype === 'effectScatter') {
+        for (let i = 0; i < sdata.length; i++) {
+          const d = sdata[i]
+          const arr = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['value']) ? (d['value'] as unknown[]) : null
+          const lon = arr === null ? null : num(arr[0])
+          const lat = arr === null ? null : num(arr[1])
+          if (arr === null || lon === null || lat === null) {
+            warn('series-data-shape', path + '.data[' + String(i) + ']', 'A geo scatter datum must be [lon, lat, value?]; it was skipped.')
+            continue
+          }
+          const v = num(arr[2])
+          const item = isObj(d) && isObj(d['itemStyle']) ? d['itemStyle'] : {}
+          const sitem = isObj(ser['itemStyle']) ? ser['itemStyle'] : {}
+          // The FIRST points series styles through the shared options; a later one carries its colour per point.
+          const color = typeof item['color'] === 'string' ? (item['color'] as string) : pointsSeen && typeof sitem['color'] === 'string' ? (sitem['color'] as string) : undefined
+          points.push({
+            lon,
+            lat,
+            ...(isObj(d) && typeof d['name'] === 'string' ? { name: d['name'] as string } : {}),
+            ...(v !== null ? { value: v } : {}),
+            ...(color !== undefined ? { color } : {}),
+            ...(stype === 'effectScatter' ? { effect: true } : {}),
+          })
         }
-        if (pairs.length < 2) {
-          warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A geo lines datum needs coords with at least two [lon, lat] pairs; it was skipped.')
+        if (!pointsSeen) {
+          pointsSeen = true
+          const label = isObj(ser['label']) ? ser['label'] : {}
+          const item = isObj(ser['itemStyle']) ? ser['itemStyle'] : {}
+          const size = num(ser['symbolSize'])
+          options = {
+            showLabels: label['show'] === true,
+            effect: false,
+            ...(size !== null ? { radius: size / 2.0 } : {}),
+            ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
+          }
+        }
+      } else if (stype === 'lines') {
+        const ls = isObj(ser['lineStyle']) ? ser['lineStyle'] : {}
+        if (isObj(ser['effect']) && ser['effect']['show'] === true) warn('series-option-unsupported', path + '.effect', 'A trail on geo lines is not animated yet; the lines are drawn static.')
+        for (let i = 0; i < sdata.length; i++) {
+          const d = sdata[i]
+          const coords = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['coords']) ? (d['coords'] as unknown[]) : null
+          const pairs: [Double, Double][] = []
+          for (const c of coords ?? []) {
+            const lon = Array.isArray(c) ? num(c[0]) : null
+            const lat = Array.isArray(c) ? num(c[1]) : null
+            if (lon !== null && lat !== null) pairs.push([lon, lat])
+          }
+          if (pairs.length < 2) {
+            warn('series-data-shape', path + '.data[' + String(i) + ']', 'A geo lines datum needs coords with at least two [lon, lat] pairs; it was skipped.')
+            continue
+          }
+          const dls = isObj(d) && isObj(d['lineStyle']) ? d['lineStyle'] : {}
+          const color = typeof dls['color'] === 'string' ? (dls['color'] as string) : typeof ls['color'] === 'string' ? (ls['color'] as string) : undefined
+          const width = num(dls['width']) ?? num(ls['width'])
+          paths.push({ coords: pairs, ...(color !== undefined ? { color } : {}), ...(width !== null ? { width } : {}) })
+        }
+      } else if (stype === 'heatmap') {
+        const pr = num(ser['pointSize']) ?? num(ser['blurSize'])
+        if (pr !== null) heatRadius = pr
+        for (let i = 0; i < sdata.length; i++) {
+          const d = sdata[i]
+          const arr = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['value']) ? (d['value'] as unknown[]) : null
+          const lon = arr === null ? null : num(arr[0])
+          const lat = arr === null ? null : num(arr[1])
+          const v = arr === null ? null : num(arr[2])
+          if (lon === null || lat === null || v === null) {
+            warn('series-data-shape', path + '.data[' + String(i) + ']', 'A geo heatmap datum must be [lon, lat, value]; it was skipped.')
+            continue
+          }
+          heat.push({ lon, lat, value: v })
+        }
+      } else if (stype === 'pie') {
+        const center = Array.isArray(ser['center']) ? (ser['center'] as unknown[]) : []
+        const lon = num(center[0])
+        const lat = num(center[1])
+        if (lon === null || lat === null) {
+          warn('series-data-shape', path + '.center', 'A pie on the geo needs center: [lon, lat]; it was skipped.')
           continue
         }
-        const dls = isObj(d) && isObj(d['lineStyle']) ? d['lineStyle'] : {}
-        const color = typeof dls['color'] === 'string' ? (dls['color'] as string) : typeof ls['color'] === 'string' ? (ls['color'] as string) : undefined
-        const width = num(dls['width']) ?? num(ls['width'])
-        paths.push({ coords: pairs, ...(color !== undefined ? { color } : {}), ...(width !== null ? { width } : {}) })
+        const rad = ser['radius']
+        const outer = Array.isArray(rad) ? num(rad[1]) : num(rad)
+        const inner = Array.isArray(rad) ? num(rad[0]) : null
+        const slices: Slice[] = []
+        for (let i = 0; i < sdata.length; i++) {
+          const d = sdata[i]
+          const v = isObj(d) ? num(d['value']) : num(d)
+          if (v === null) {
+            warn('series-data-shape', path + '.data[' + String(i) + ']', 'A pie datum needs a numeric value; it was skipped.')
+            continue
+          }
+          const item = isObj(d) && isObj(d['itemStyle']) ? d['itemStyle'] : {}
+          slices.push({ value: v, label: isObj(d) && typeof d['name'] === 'string' ? (d['name'] as string) : '', color: typeof item['color'] === 'string' ? (item['color'] as string) : paletteAt(palette, i) })
+        }
+        const r = outer ?? 20.0
+        pies.push({ lon, lat, radius: r, innerRadius: inner !== null && r > 0.0 ? inner / r : 0.0, slices })
+      } else if (stype === 'map') {
+        for (let i = 0; i < sdata.length; i++) {
+          const d = sdata[i]
+          const v = isObj(d) ? num(d['value']) : null
+          if (!isObj(d) || typeof d['name'] !== 'string' || v === null) {
+            warn('series-data-shape', path + '.data[' + String(i) + ']', 'A map datum must be { name, value }; it was skipped.')
+            continue
+          }
+          values[d['name'] as string] = v
+        }
+      } else {
+        warn('series-type-unsupported', path + '.type', 'Only scatter, effectScatter, lines, heatmap, pie and map render on the geo coordinate; ' + stype + ' was skipped.')
       }
     }
-    const label = isObj(s['label']) ? s['label'] : {}
-    const item = isObj(s['itemStyle']) ? s['itemStyle'] : {}
-    const size = num(s['symbolSize'])
-    const options: GeoPointsOptions = {
-      showLabels: label['show'] === true,
-      effect: type === 'effectScatter',
-      ...(size !== null ? { radius: size / 2.0 } : {}),
-      ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
-    }
-    return { plan: { kind: 'geoPoints', geo, points, paths, map, options, title, roam: geoRoam.roam, scaleLimit: geoRoam.scaleLimit }, warnings, supported }
+    if (heatStops.length >= 2) map.stops = heatStops
+    return { plan: { kind: 'geoPoints', geo, points, paths, heat, heatRadius, heatStops, pies, values, map, options, title, roam: geoRoam.roam, scaleLimit: geoRoam.scaleLimit }, warnings, supported }
   }
+
 
   if (type === 'map') {
     const mapName = typeof s['map'] === 'string' ? (s['map'] as string) : ''
@@ -1081,6 +1167,11 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         geo: plan.geo,
         points: plan.points,
         paths: plan.paths,
+        heat: plan.heat,
+        heatRadius: plan.heatRadius,
+        heatStops: plan.heatStops,
+        pies: plan.pies,
+        values: plan.values,
         map: plan.map,
         options: plan.options,
         width,

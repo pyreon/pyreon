@@ -101,6 +101,8 @@ import {
 } from '@pyreon/charts/plot'
 import type {
   BrushRange,
+  GeoHeatPoint,
+  GeoPie,
   RadarAxis,
   RadarHitIndex,
   SankeyHitIndex,
@@ -712,6 +714,9 @@ const GEO: GeoShape[] = [
   },
 ]
 const GEO_VALUES: Record<string, Double> = { West: 3, East: 8 }
+// A heat sample and a pie on the map — the geo layers beyond points and paths.
+const GEO_HEAT: GeoHeatPoint[] = [{ lon: 2, lat: 3, value: 9 }]
+const GEO_PIES: GeoPie[] = [{ lon: 7, lat: 3, radius: 18, innerRadius: 0, slices: [{ value: 2, label: 'a', color: '#0f766e' }, { value: 1, label: 'b', color: '#f59e0b' }] }]
 // `rows` is typed `(Double | string | null)[]` on the web for a CATEGORY axis;
 // a homogeneous `Double[][]` is the shape that lowers, and is what a numeric
 // parallel plot uses anyway.
@@ -763,7 +768,7 @@ function GalleryPage() {
         />
         <GanttChart tasks={GANTT_TASKS} height={160} data-testid="gal-gantt" />
         <GraphChart nodes={GRAPH_NODES} links={GRAPH_LINKS} height={200} data-testid="gal-graph" />
-        <MapChart map={GEO} values={GEO_VALUES} height={180} roam data-testid="gal-map" />
+        <MapChart map={GEO} values={GEO_VALUES} heat={GEO_HEAT} pies={GEO_PIES} height={180} roam data-testid="gal-map" />
         <ParallelChart
           axes={PARALLEL_AXES}
           rows={PARALLEL_ROWS}

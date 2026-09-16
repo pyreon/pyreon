@@ -3,6 +3,9 @@
 
 import { geoProject } from './geo'
 import type { GeoLayout } from './geo'
+import { arcPolygon, layoutArcs } from './arc'
+import type { Slice } from './arc'
+import { rampColor } from './heat'
 import { withAlpha } from './radar'
 import type { Double, DrawCmd, Pt } from './types'
 
@@ -12,6 +15,24 @@ export interface GeoOverlayPoint {
   lat: Double
   value?: Double | undefined
   color?: string | undefined
+  /** This point draws the effectScatter halo, whatever the shared option says. */
+  effect?: boolean | undefined
+}
+
+/** A weighted sample of a geo heatmap. */
+export interface GeoHeatPoint {
+  lon: Double
+  lat: Double
+  value: Double
+}
+
+/** A pie placed at a geographic point (ECharts' pie with `coordinateSystem: 'geo'`). */
+export interface GeoPie {
+  lon: Double
+  lat: Double
+  radius: Double
+  innerRadius: Double
+  slices: Slice[]
 }
 
 export interface GeoCoordinate {
@@ -64,7 +85,7 @@ export function renderGeoOverlayPoints(layout: GeoLayout, points: GeoOverlayPoin
     const at = geoProject(layout.transform, p.lon, p.lat)
     const r = radii[i]! * progress
     const fill = p.color ?? color
-    if (options?.effect === true) {
+    if (options?.effect === true || p.effect === true) {
       out.push({ kind: 'circle', center: at, radius: r * 2.6, fill: withAlpha(fill, 0.12) })
       out.push({ kind: 'circle', center: at, radius: r * 1.7, fill: withAlpha(fill, 0.25) })
     }
@@ -112,4 +133,58 @@ export function hitGeoOverlayPoint(layout: GeoLayout, points: GeoOverlayPoint[],
     }
   }
   return best
+}
+
+/**
+ * A geo heatmap: one soft blob per sample, coloured by its value on the ramp
+ * and fading to transparent at `radius` — so dense samples read hot where they
+ * overlap. The blob is a radial gradient over a circle polygon, which every
+ * backend paints; its solid fill is the fallback.
+ */
+export function renderGeoHeat(layout: GeoLayout, points: GeoHeatPoint[], stops: readonly string[], radius: Double, progress: Double): DrawCmd[] {
+  const out: DrawCmd[] = []
+  let lo = 0.0
+  let hi = 0.0
+  let seen = 0
+  for (const p of points) {
+    if (seen === 0 || p.value < lo) lo = p.value
+    if (seen === 0 || p.value > hi) hi = p.value
+    seen = seen + 1
+  }
+  const span = hi - lo
+  const alpha = progress < 0.0 ? 0.0 : progress > 1.0 ? 1.0 : progress
+  const ramp: readonly string[] = stops.length > 0 ? stops : ['#3b82f6', '#facc15', '#ef4444']
+  for (const p of points) {
+    const at = geoProject(layout.transform, p.lon, p.lat)
+    const color = rampColor(ramp, span > 0.0 ? (p.value - lo) / span : 1.0)
+    const ring = arcPolygon(at, radius, 0.0, 0.0, Math.PI * 2.0)
+    out.push({
+      kind: 'polygon',
+      points: ring,
+      fill: withAlpha(color, 0.5 * alpha),
+      grad: { from: at, to: { x: at.x + radius, y: at.y }, stops: [{ offset: 0.0, color: withAlpha(color, 0.85 * alpha) }, { offset: 1.0, color: withAlpha(color, 0.0) }], radial: true },
+    })
+  }
+  return out
+}
+
+/** The heat ramp: the layer's own stops, else the map's (the theme ramp), else the engine default. */
+export function geoHeatStops(stops: string[], fallback: string[] | undefined): string[] {
+  if (stops.length > 0) return stops
+  return fallback ?? []
+}
+
+/** Pies centred on geographic points, each `radius` pixels, sweeping as `progress` grows. */
+export function renderGeoPies(layout: GeoLayout, pies: GeoPie[], progress: Double): DrawCmd[] {
+  const out: DrawCmd[] = []
+  const t = progress < 0.0 ? 0.0 : progress > 1.0 ? 1.0 : progress
+  for (const pie of pies) {
+    const at = geoProject(layout.transform, pie.lon, pie.lat)
+    const inner = pie.radius * (pie.innerRadius < 0.0 ? 0.0 : pie.innerRadius > 0.95 ? 0.95 : pie.innerRadius)
+    for (const a of layoutArcs(pie.slices)) {
+      if (!(a.end > a.start)) continue
+      out.push({ kind: 'polygon', points: arcPolygon(at, pie.radius, inner, a.start * t, a.end * t), fill: a.slice.color })
+    }
+  }
+  return out
 }

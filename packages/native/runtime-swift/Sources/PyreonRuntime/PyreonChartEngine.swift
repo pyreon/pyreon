@@ -1833,12 +1833,40 @@ public struct GeoOverlayPoint: Codable {
   public var lat: Double
   public var value: Double? = nil
   public var color: String? = nil
-  public init(name: String? = nil, lon: Double, lat: Double, value: Double? = nil, color: String? = nil) {
+  public var effect: Bool? = nil
+  public init(name: String? = nil, lon: Double, lat: Double, value: Double? = nil, color: String? = nil, effect: Bool? = nil) {
     self.name = name
     self.lon = lon
     self.lat = lat
     self.value = value
     self.color = color
+    self.effect = effect
+  }
+}
+
+public struct GeoHeatPoint: Codable {
+  public var lon: Double
+  public var lat: Double
+  public var value: Double
+  public init(lon: Double, lat: Double, value: Double) {
+    self.lon = lon
+    self.lat = lat
+    self.value = value
+  }
+}
+
+public struct GeoPie: Codable {
+  public var lon: Double
+  public var lat: Double
+  public var radius: Double
+  public var innerRadius: Double
+  public var slices: [Slice]
+  public init(lon: Double, lat: Double, radius: Double, innerRadius: Double, slices: [Slice]) {
+    self.lon = lon
+    self.lat = lat
+    self.radius = radius
+    self.innerRadius = innerRadius
+    self.slices = slices
   }
 }
 
@@ -3296,6 +3324,9 @@ public func renderRadar(_ axes: [RadarAxis], _ series: [RadarSeries], _ box: Pyr
 
 public func withAlpha(_ color: String, _ alpha: Double) -> String {
     let a = max(0.0, min(1.0, alpha))
+    if color.hasPrefix("rgb(") && color.hasSuffix(")") {
+      return "rgba(\(String(color.dropFirst(4).prefix(max(0, (color.utf16.count - 1) - (4))))), \(a))"
+    }
     if !color.hasPrefix("#") {
       return color
     }
@@ -8859,7 +8890,7 @@ public func renderGeoOverlayPoints(_ layout: GeoLayout, _ points: [GeoOverlayPoi
       let at = geoProject(layout.transform, p.lon, p.lat)
       let r = radii[i] * progress
       let fill = (p.color ?? color)
-      if options?.effect == true {
+      if options?.effect == true || p.effect == true {
         out.append(PyreonDrawCmd(kind: "circle", fill: withAlpha(fill, 0.12), center: at, radius: r * 2.6))
         out.append(PyreonDrawCmd(kind: "circle", fill: withAlpha(fill, 0.25), center: at, radius: r * 1.7))
       }
@@ -8913,6 +8944,55 @@ public func hitGeoOverlayPoint(_ layout: GeoLayout, _ points: [GeoOverlayPoint],
       }
     }
     return best
+  }
+
+public func renderGeoHeat(_ layout: GeoLayout, _ points: [GeoHeatPoint], _ stops: [String], _ radius: Double, _ progress: Double) -> [PyreonDrawCmd] {
+    var out: [PyreonDrawCmd] = []
+    var lo = 0.0
+    var hi = 0.0
+    var seen = 0
+    for p in points {
+      if seen == 0 || p.value < lo {
+        lo = p.value
+      }
+      if seen == 0 || p.value > hi {
+        hi = p.value
+      }
+      seen = seen + 1
+    }
+    let span = hi - lo
+    let alpha = progress < 0.0 ? 0.0 : progress > 1.0 ? 1.0 : progress
+    let ramp = stops.count > 0 ? stops : ["#3b82f6", "#facc15", "#ef4444"]
+    for p in points {
+      let at = geoProject(layout.transform, p.lon, p.lat)
+      let color = rampColor(ramp, span > 0.0 ? (p.value - lo) / span : 1.0)
+      let ring = arcPolygon(at, radius, 0.0, 0.0, Double.pi * 2.0)
+      out.append(PyreonDrawCmd(kind: "polygon", fill: withAlpha(color, 0.5 * alpha), grad: PyreonChartGradient(from: at, to: PyreonChartPt(x: at.x + radius, y: at.y), stops: [PyreonChartGradientStop(offset: 0.0, color: withAlpha(color, 0.85 * alpha)), PyreonChartGradientStop(offset: 1.0, color: withAlpha(color, 0.0))], radial: true), points: ring))
+    }
+    return out
+  }
+
+public func geoHeatStops(_ stops: [String], _ fallback: [String]?) -> [String] {
+    if stops.count > 0 {
+      return stops
+    }
+    return (fallback ?? [])
+  }
+
+public func renderGeoPies(_ layout: GeoLayout, _ pies: [GeoPie], _ progress: Double) -> [PyreonDrawCmd] {
+    var out: [PyreonDrawCmd] = []
+    let t = progress < 0.0 ? 0.0 : progress > 1.0 ? 1.0 : progress
+    for pie in pies {
+      let at = geoProject(layout.transform, pie.lon, pie.lat)
+      let inner = pie.radius * (pie.innerRadius < 0.0 ? 0.0 : pie.innerRadius > 0.95 ? 0.95 : pie.innerRadius)
+      for a in layoutArcs(pie.slices) {
+        if !(a.end > a.start) {
+          continue
+        }
+        out.append(PyreonDrawCmd(kind: "polygon", fill: a.slice.color, points: arcPolygon(at, pie.radius, inner, a.start * t, a.end * t)))
+      }
+    }
+    return out
   }
 
 public func ganttUnitFor(_ spanDays: Double) -> String {

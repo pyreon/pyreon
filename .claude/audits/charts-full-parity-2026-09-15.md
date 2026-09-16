@@ -278,8 +278,12 @@ for interaction, animation or accessibility parity.
   device lanes drag the gallery map and assert its pixels change; a no-op pan
   fails each. Device lesson: the first iOS failure was the test, not the
   gesture — the gallery was scrolled past the map (frame y -600), so the drag
-  landed off screen. `coordinates.geo` stays partial on series types other
-  than scatter / effectScatter / lines.
+  landed off screen.
+- [ ] `coordinates.geo` narrowed: the planner read series[0] only (a second
+  geo series vanished silently); it now walks every series — heatmap blobs,
+  pies at a lon/lat and a geoIndex map layer included — on web and native,
+  and withAlpha stopped painting rgb() ramp colours opaque. Open: an animated
+  trail on geo lines (warned by name).
 
 ## Exit gate
 

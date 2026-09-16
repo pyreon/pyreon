@@ -99,9 +99,13 @@ export function familyHostNode(plan: FamilyPlan, o: FamilyHostOptions): VNode | 
     case 'geoPoints':
       return h(MapChart, {
         map: plan.geo,
-        values: {},
+        values: plan.values,
         options: plan.map,
         points: plan.points,
+        heat: plan.heat,
+        heatRadius: plan.heatRadius,
+        ...(plan.heatStops.length > 0 ? { heatStops: plan.heatStops } : {}),
+        pies: plan.pies,
         paths: plan.paths.map((p) => ({ coords: p.coords.map(([lon, lat]) => ({ lon, lat })), ...(p.color === undefined ? {} : { color: p.color }), ...(p.width === undefined ? {} : { width: p.width }) })),
         overlayOptions: plan.options,
         roam: plan.roam,

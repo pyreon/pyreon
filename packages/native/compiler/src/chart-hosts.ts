@@ -712,23 +712,35 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
   },
   MapChart: {
     roam: true,
-    data: ['map', 'values', 'paths', 'points', 'overlayOptions'],
+    data: ['map', 'values', 'paths', 'points', 'overlayOptions', 'heat', 'pies', 'heatRadius', 'heatStops'],
     dataDefaults: {
       paths: (t) => t.list([]),
       points: (t) => t.list([]),
       overlayOptions: (t) => t.struct('GeoOverlayOptions', []),
+      heat: (t) => t.list([]),
+      pies: (t) => t.list([]),
+      heatRadius: () => '20.0',
+      heatStops: (t) => t.list([]),
     },
     options: 'options',
     optionsStruct: 'GeoOptions',
     themeDefaults: ['stops', 'emptyColor', 'borderColor', 'labelColor'],
     defaultHeight: 300,
     layout: (a, t) => `layoutGeoShapes(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
-    render: (l, a) => `renderGeo(${l}, ${a.data[1]}, ${a.options}) + renderGeoOverlayPaths(${l}, ${a.data[2]}, ${a.data[4]}) + renderGeoOverlayPoints(${l}, ${a.data[3]}, ${a.data[4]})`,
+    render: (l, a, t) => `renderGeo(${l}, ${a.data[1]}, ${a.options}) + renderGeoHeat(${l}, ${a.data[5]}, geoHeatStops(${a.data[8]}, ${optField(a, t, 'stops')}), ${a.data[7]}, 1.0) + renderGeoOverlayPaths(${l}, ${a.data[2]}, ${a.data[4]}) + renderGeoPies(${l}, ${a.data[6]}, 1.0) + renderGeoOverlayPoints(${l}, ${a.data[3]}, ${a.data[4]})`,
     reuseLayout: true,
     hit: (l, x, y) => `hitGeoIndex(${l}, ${x}, ${y})`,
     extraHits: [{ event: 'selectpointindex', hit: (l, x, y, a) => `hitGeoOverlayPoint(${l}, ${a.data[3]}, ${x}, ${y}, (${a.data[4]}).radius)` }],
     tooltip: (l, x, y, a) => `geoTip(${l}, ${a.data[1]}, ${x}, ${y})`,
-    adapt: { map: geoShapesAdapter, values: geoValuesAdapter },
+    adapt: {
+      map: geoShapesAdapter,
+      values: geoValuesAdapter,
+      // A literal radius crosses as a Double (Kotlin rejects an Int where a Double is expected).
+      heatRadius: (attrs, _t, _warn, resolve, emit) => {
+        const n = litNumber(literalOf(attrs['heatRadius']!, resolve))
+        return n === undefined ? emit(attrs['heatRadius']!) : chartDouble(n)
+      },
+    },
   },
   ParallelChart: {
     data: ['axes', 'rows'],

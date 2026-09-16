@@ -23,6 +23,30 @@ const pixel = (c: HTMLCanvasElement, x: number, y: number): string => {
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 120))
 
 describe('MapChart (real browser)', () => {
+  it('paints a heat layer and pies over the regions', async () => {
+    const { container } = mountInBrowser(() =>
+      MapChart({
+        animate: false,
+        map: WORLD,
+        values: {},
+        width: 400,
+        height: 300,
+        heat: [{ lon: 5, lat: 5, value: 9 }],
+        heatRadius: 30,
+        heatStops: ['#0000ff', '#ff0000'],
+        pies: [{ lon: 15, lat: 5, radius: 40, innerRadius: 0, slices: [{ value: 1, label: 'a', color: '#00ff00' }] }],
+      }),
+    )
+    await flush()
+    const c = container.querySelector('canvas')!
+    const l = layoutGeo(WORLD, { x: 0, y: 0, w: 400, h: 300 })
+    const heatAt = l.regions[0]!.centroid
+    const pieAt = l.regions[1]!.centroid
+    const [r, , b] = pixel(c, heatAt.x, heatAt.y).split(',').map(Number)
+    expect(r!).toBeGreaterThan(b!)
+    expect(pixel(c, pieAt.x, pieAt.y)).toBe('0,255,0')
+  })
+
   it('roams: a drag pans the map and does not select, the wheel zooms about the pointer, and roam off keeps it static', async () => {
     const picked: (GeoRegion | null)[] = []
     const { container } = mountInBrowser(() => MapChart({ animate: false, map: WORLD, values: { A: 1, B: 9 }, width: 400, height: 300, roam: true, onSelect: (r) => picked.push(r) }))

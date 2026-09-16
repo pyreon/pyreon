@@ -45,3 +45,24 @@ describe.each(['swift', 'kotlin'] as const)('MapChart roam on %s', (target) => {
     expect(r.code).not.toContain('pyreonView')
   })
 })
+
+describe.each(['swift', 'kotlin'] as const)('MapChart heat and pies on %s', (target) => {
+  it('draws the heat layer through the theme ramp and the pies, and compiles', () => {
+    const r = transform(`
+import { MapChart } from '@pyreon/charts/plot'
+import type { GeoHeatPoint, GeoPie, GeoShape } from '@pyreon/charts/plot'
+const SHAPES: GeoShape[] = [{ name: 'A', rings: [[{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]] }]
+const HEAT: GeoHeatPoint[] = [{ lon: 3, lat: 3, value: 5 }]
+const PIES: GeoPie[] = [{ lon: 5, lat: 5, radius: 20, innerRadius: 0, slices: [{ value: 1, label: 'a', color: '#00ff00' }] }]
+export function App() {
+  return <MapChart map={SHAPES} values={{ A: 1 }} heat={HEAT} heatRadius={14} pies={PIES} height={200} />
+}`, { target })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('renderGeoHeat(')
+    expect(r.code).toContain('geoHeatStops(')
+    expect(r.code).toContain('renderGeoPies(')
+    expect(r.code).toContain('14.0')
+    if (target === 'swift' && isSwiftcAvailable()) expect(validateSwiftWithStubs(r.code)).toMatchObject({ ok: true })
+    if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
+  })
+})

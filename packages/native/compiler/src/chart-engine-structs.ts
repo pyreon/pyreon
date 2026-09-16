@@ -8217,6 +8217,99 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             }
           ]
         }
+      },
+      {
+        "name": "effect",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "GeoHeatPoint",
+    "fields": [
+      {
+        "name": "lon",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "lat",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "value",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "GeoPie",
+    "fields": [
+      {
+        "name": "lon",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "lat",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "radius",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "innerRadius",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "slices",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "Slice",
+            "args": []
+          }
+        }
       }
     ],
     "external": true
@@ -11233,11 +11326,13 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "GanttTickUnit",
   "GaugeOptions",
   "GeoCoordinate",
+  "GeoHeatPoint",
   "GeoLayout",
   "GeoOptions",
   "GeoOverlayOptions",
   "GeoOverlayPath",
   "GeoOverlayPoint",
+  "GeoPie",
   "GeoProjection",
   "GeoRegion",
   "GeoShape",

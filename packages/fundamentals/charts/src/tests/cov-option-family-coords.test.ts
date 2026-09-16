@@ -131,8 +131,8 @@ describe('geo (scatter / lines on a geo coordinate)', () => {
     // With no styling at all neither key is emitted.
     expect((geo({ type: 'lines', data: [{ coords: [[0, 0], [1, 1]] }] }) as { paths: unknown[] }).paths).toEqual([{ coords: [[0, 0], [1, 1]] }])
   })
-  it('effectScatter flips the effect flag; an unsupported type warns and draws nothing', () => {
-    expect((geo({ type: 'effectScatter', data: [[1, 2]] }) as { options: { effect: boolean }; points: unknown[] })).toMatchObject({ options: { effect: true }, points: [{ lon: 1, lat: 2 }] })
+  it('effectScatter flips the effect flag on its points; an unsupported type warns and draws nothing', () => {
+    expect((geo({ type: 'effectScatter', data: [[1, 2]] }) as { points: unknown[] })).toMatchObject({ points: [{ lon: 1, lat: 2, effect: true }] })
     expect((geo({ type: 'scatter', data: [] }) as { options: { effect: boolean } }).options.effect).toBe(false)
     const c = compileFamily(series({ type: 'bar', coordinateSystem: 'geo', data: [[1, 2]] }, { geo: { map: 'cov-family-world' } }))!
     expect(c.warnings.map((w) => w.path)).toContain('series[0].type')

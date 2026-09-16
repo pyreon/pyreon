@@ -14,10 +14,10 @@ import { canvasHost, orNull } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
 import { geoTip } from './chrome'
 import { geoDomain, geoRoamPan, geoRoamZoom, geoValueOf, hitGeoIndex, layoutGeoShapes, renderGeo } from './geo'
-import { hitGeoOverlayPoint, renderGeoOverlayPaths, renderGeoOverlayPoints } from './geo-overlay'
+import { geoHeatStops, hitGeoOverlayPoint, renderGeoHeat, renderGeoOverlayPaths, renderGeoOverlayPoints, renderGeoPies } from './geo-overlay'
 import { geoShapes, geoValues, getMap } from './geo-web'
 import type { GeoLayout, GeoOptions, GeoRegion, GeoShape, GeoValue, GeoView } from './geo'
-import type { GeoOverlayOptions, GeoOverlayPath, GeoOverlayPoint } from './geo-overlay'
+import type { GeoHeatPoint, GeoOverlayOptions, GeoOverlayPath, GeoOverlayPoint, GeoPie } from './geo-overlay'
 import type { GeoJson } from './geo-web'
 import type { Double, Rect } from './types'
 
@@ -36,6 +36,13 @@ export interface MapChartProps extends CanvasHostProps {
   points?: GeoOverlayPoint[]
   /** Native-safe geographic paths drawn below `points`. */
   paths?: GeoOverlayPath[]
+  /** A heat layer: weighted samples drawn as soft blobs over the regions. */
+  heat?: GeoHeatPoint[]
+  /** The heat blob radius in pixels (default 20) and its colour ramp (default the theme's). */
+  heatRadius?: Double
+  heatStops?: readonly string[]
+  /** Pies placed at geographic points. */
+  pies?: GeoPie[]
   /** Appearance shared by the point and path overlays. */
   overlayOptions?: GeoOverlayOptions
   /** Fired with the region under the click, or null for a miss. */
@@ -89,6 +96,8 @@ export function MapChart(props: MapChartProps): VNode {
       readValues()
       void props.points
       void props.paths
+      void props.heat
+      void props.pies
       view()
     },
     layout: (box) => {
@@ -114,7 +123,9 @@ export function MapChart(props: MapChartProps): VNode {
         },
         measure,
       ),
+      ...renderGeoHeat(layout, props.heat ?? [], geoHeatStops([...(props.heatStops ?? [])], [...(props.options?.stops ?? theme.ramp)]), props.heatRadius ?? 20.0, progress),
       ...renderGeoOverlayPaths(layout, props.paths ?? [], { ...props.overlayOptions, progress }),
+      ...renderGeoPies(layout, props.pies ?? [], progress),
       ...renderGeoOverlayPoints(layout, props.points ?? [], { labelColor: theme.label, ...props.overlayOptions, progress }),
     ],
     select: (layout, px, py) => {

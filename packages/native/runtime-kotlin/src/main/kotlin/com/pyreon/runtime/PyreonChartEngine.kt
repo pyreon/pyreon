@@ -224,7 +224,11 @@ data class GeoOptions(var projection: GeoProjection? = null, var padding: Double
 
 data class GeoView(var zoom: Double, var panX: Double, var panY: Double)
 
-data class GeoOverlayPoint(var name: String? = null, var lon: Double, var lat: Double, var value: Double? = null, var color: String? = null)
+data class GeoOverlayPoint(var name: String? = null, var lon: Double, var lat: Double, var value: Double? = null, var color: String? = null, var effect: Boolean? = null)
+
+data class GeoHeatPoint(var lon: Double, var lat: Double, var value: Double)
+
+data class GeoPie(var lon: Double, var lat: Double, var radius: Double, var innerRadius: Double, var slices: List<Slice>)
 
 data class GeoCoordinate(var lon: Double, var lat: Double)
 
@@ -1022,6 +1026,9 @@ fun renderRadar(axes: List<RadarAxis>, series: List<RadarSeries>, box: PyreonCha
 
 fun withAlpha(color: String, alpha: Double): String {
     val a = Math.max(0.0, Math.min(1.0, alpha))
+    if (color.startsWith("rgb(") && color.endsWith(")")) {
+      return "rgba(${color.drop(4).take(maxOf(0, (color.length - 1) - (4)))}, ${a})"
+    }
     if (!color.startsWith("#")) {
       return color
     }
@@ -6585,7 +6592,7 @@ fun renderGeoOverlayPoints(layout: GeoLayout, points: List<GeoOverlayPoint>, opt
       val at = geoProject(layout.transform, p.lon, p.lat)
       val r = radii[i] * progress
       val fill = (p.color ?: color)
-      if (options?.effect == true) {
+      if (options?.effect == true || p.effect == true) {
         out.add(PyreonDrawCmd(kind = "circle", fill = withAlpha(fill, 0.12), center = at, radius = r * 2.6))
         out.add(PyreonDrawCmd(kind = "circle", fill = withAlpha(fill, 0.25), center = at, radius = r * 1.7))
       }
@@ -6639,6 +6646,55 @@ fun hitGeoOverlayPoint(layout: GeoLayout, points: List<GeoOverlayPoint>, px: Dou
       }
     }
     return best
+  }
+
+fun renderGeoHeat(layout: GeoLayout, points: List<GeoHeatPoint>, stops: List<String>, radius: Double, progress: Double): List<PyreonDrawCmd> {
+    val out: MutableList<PyreonDrawCmd> = mutableListOf()
+    var lo = 0.0
+    var hi = 0.0
+    var seen = 0
+    for (p in points) {
+      if (seen == 0 || p.value < lo) {
+        lo = p.value
+      }
+      if (seen == 0 || p.value > hi) {
+        hi = p.value
+      }
+      seen = seen + 1
+    }
+    val span = hi - lo
+    val alpha = if (progress < 0.0) 0.0 else if (progress > 1.0) 1.0 else progress
+    val ramp = if (stops.length > 0) stops else listOf("#3b82f6", "#facc15", "#ef4444")
+    for (p in points) {
+      val at = geoProject(layout.transform, p.lon, p.lat)
+      val color = rampColor(ramp, if (span > 0.0) ((p.value - lo)).toDouble() / (span).toDouble() else 1.0)
+      val ring = arcPolygon(at, radius, 0.0, 0.0, kotlin.math.PI * 2.0)
+      out.add(PyreonDrawCmd(kind = "polygon", fill = withAlpha(color, 0.5 * alpha), grad = PyreonChartGradient(from = at, to = PyreonChartPt(x = at.x + radius, y = at.y), stops = listOf(PyreonChartGradientStop(offset = 0.0, color = withAlpha(color, 0.85 * alpha)), PyreonChartGradientStop(offset = 1.0, color = withAlpha(color, 0.0))), radial = true), points = ring))
+    }
+    return out
+  }
+
+fun geoHeatStops(stops: List<String>, fallback: List<String>?): List<String> {
+    if (stops.length > 0) {
+      return stops
+    }
+    return (fallback ?: listOf())
+  }
+
+fun renderGeoPies(layout: GeoLayout, pies: List<GeoPie>, progress: Double): List<PyreonDrawCmd> {
+    val out: MutableList<PyreonDrawCmd> = mutableListOf()
+    val t = if (progress < 0.0) 0.0 else if (progress > 1.0) 1.0 else progress
+    for (pie in pies) {
+      val at = geoProject(layout.transform, pie.lon, pie.lat)
+      val inner = pie.radius * (if (pie.innerRadius < 0.0) 0.0 else if (pie.innerRadius > 0.95) 0.95 else pie.innerRadius)
+      for (a in layoutArcs(pie.slices)) {
+        if (!(a.end > a.start)) {
+          continue
+        }
+        out.add(PyreonDrawCmd(kind = "polygon", fill = a.slice.color, points = arcPolygon(at, pie.radius, inner, a.start * t, a.end * t)))
+      }
+    }
+    return out
   }
 
 fun ganttUnitFor(spanDays: Double): String {
