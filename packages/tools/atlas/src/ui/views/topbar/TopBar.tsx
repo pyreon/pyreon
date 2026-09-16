@@ -30,10 +30,23 @@ export function TopBar(props: { model: WorkbenchModel }) {
         </C.Col>
       </C.BrandRow>
 
-      <C.Segment>
-        <C.SegBtn state={() => (m.view() === 'canvas' ? 'active' : 'idle')} onClick={() => m.view.set('canvas')}>Canvas</C.SegBtn>
-        <C.SegBtn state={() => (m.view() === 'docs' ? 'active' : 'idle')} onClick={() => m.view.set('docs')}>Docs</C.SegBtn>
-        <C.SegBtn state={() => (m.view() === 'lab' ? 'active' : 'idle')} onClick={() => m.view.set('lab')}>Theme Lab</C.SegBtn>
+      <C.Segment role="tablist" aria-label="View">
+        {(
+          [
+            ['canvas', 'Canvas'],
+            ['docs', 'Docs'],
+            ['lab', 'Theme Lab'],
+          ] as const
+        ).map(([id, label]) => (
+          <C.SegBtn
+            role="tab"
+            aria-selected={() => (m.view() === id ? 'true' : 'false')}
+            state={() => (m.view() === id ? 'active' : 'idle')}
+            onClick={() => m.view.set(id)}
+          >
+            {label}
+          </C.SegBtn>
+        ))}
       </C.Segment>
 
       <C.SearchWrap>
@@ -49,6 +62,8 @@ export function TopBar(props: { model: WorkbenchModel }) {
           <C.Avatar
             data-testid="profile-btn"
             aria-label="Workspace settings"
+            aria-haspopup="menu"
+            aria-expanded={() => (menuOpen() ? 'true' : 'false')}
             onClick={() => menuOpen.set(!menuOpen())}
           >
             DS
