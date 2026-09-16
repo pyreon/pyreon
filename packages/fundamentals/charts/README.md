@@ -251,6 +251,8 @@ Beyond bars, lines, points, pie, gauge, radar, candlestick and heatmap, `/plot` 
 
 `optionToSvg` / `compileOption` accept an **ECharts-shaped option** — series, coordinates, `dataset` + transforms, `graphic`, `visualMap`, `custom` `renderItem`, `theme` and `locale` — and name every unmapped key in `warnings` instead of dropping it:
 
+Datasets follow ECharts' own contract: `source` (array or object rows, `sourceHeader`, `dimensions`), `id` / `datasetId` / `fromDatasetId` references, the built-in `filter` and `sort` transforms, and **external transforms** through `registerChartTransform` — the `echarts.registerTransform` shape, with the same `upstream` surface (`cloneRawData`, `getRawData`, `getDimensionInfo`, `cloneAllDimensionInfo`), so an ecStat transform object registers unchanged and a multi-result transform feeds `fromTransformResult`. `encode` resolves `x` / `y` / `value` / `itemName` / `seriesName` by dimension name or index; `encode.tooltip` is not mapped yet and warns by name.
+
 ```ts
 import { optionToSvg } from '@pyreon/charts/plot'
 const svg = optionToSvg({ xAxis: { data: ['Mon', 'Tue'] }, yAxis: {}, series: [{ type: 'bar', data: [120, 200] }] }, { theme: 'dark' })

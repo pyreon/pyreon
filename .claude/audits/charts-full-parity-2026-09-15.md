@@ -69,6 +69,12 @@ for interaction, animation or accessibility parity.
   `<WebView>` host group (web iframes, WKWebViews, Android WebViews all speak
   the same reserved protocol); real-Chromium proof across separate pages,
   compiler proof on both targets. Hosted ledger: 11/11.
+- [x] C1 `data.transforms` complete: the ECharts dataset contract end to end —
+  built-in filter/sort, `registerChartTransform` in the `echarts.registerTransform`
+  shape (ecStat transform objects register unchanged), multi-result transforms
+  through `fromTransformResult`, `id` / `datasetId` / `fromDatasetId`.
+  `data.dimensions-encode` gains `seriesName` and `itemName`; it stays partial
+  on `encode.tooltip`, which now warns by name instead of vanishing.
 - [x] Silent-drop class closed for the literal-only chart flags: `dataZoom`,
   `navigator`, `brush`, `horizontal`, `universalTransition` and
   `updateAnimation` warn by name on both targets when present but not
