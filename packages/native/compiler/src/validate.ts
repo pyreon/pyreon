@@ -178,7 +178,7 @@ function validateSwiftUncached(source: string): ValidationResult {
   writeFileSync(filename, source, 'utf8')
 
   try {
-    execFileSync('swiftc', ['-parse', filename], { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS })
+    execFileSync('swiftc', ['-module-cache-path', join(tempDir, 'module-cache'), '-parse', filename], { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS })
     return { ok: true }
   } catch (err) {
     return processFailure(err, 'swiftc -parse failed with no output')
@@ -220,7 +220,7 @@ export function isSwiftUIAvailable(): boolean {
   const filename = join(tempDir, 'probe.swift')
   writeFileSync(filename, 'import SwiftUI\nlet _pyreonSwiftUIProbe = 0\n', 'utf8')
   try {
-    execFileSync('swiftc', ['-typecheck', filename], { stdio: 'ignore', timeout: PROBE_TIMEOUT_MS })
+    execFileSync('swiftc', ['-module-cache-path', join(tempDir, 'module-cache'), '-typecheck', filename], { stdio: 'ignore', timeout: PROBE_TIMEOUT_MS })
     _swiftUIAvailable = true
   } catch {
     _swiftUIAvailable = false
@@ -277,7 +277,7 @@ export function isObservationAvailable(): boolean {
     'utf8',
   )
   try {
-    execFileSync('swiftc', ['-typecheck', filename], { stdio: 'ignore', timeout: PROBE_TIMEOUT_MS })
+    execFileSync('swiftc', ['-module-cache-path', join(tempDir, 'module-cache'), '-typecheck', filename], { stdio: 'ignore', timeout: PROBE_TIMEOUT_MS })
     _observationAvailable = true
   } catch {
     _observationAvailable = false
@@ -370,7 +370,7 @@ function validateSwiftTypecheckUncached(source: string): ValidationResult {
   writeFileSync(filename, preamble + source, 'utf8')
 
   try {
-    execFileSync('swiftc', ['-typecheck', filename], { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS })
+    execFileSync('swiftc', ['-module-cache-path', join(tempDir, 'module-cache'), '-typecheck', filename], { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS })
     return { ok: true }
   } catch (err) {
     return processFailure(err, 'swiftc -typecheck failed with no output')

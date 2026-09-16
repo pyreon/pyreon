@@ -13,7 +13,7 @@ function fixture(name: string, files: Record<string, string>): string {
 describe('runScan', () => {
   it('discovers components, builds a verified catalog, and writes assets', async () => {
     const dir = fixture('scan', {
-      'Button.tsx': `export function Button(props: { label: string; variant: 'solid' | 'ghost' }) { return null }`,
+      'Button.tsx': `export function Button(props: { label: string; variant: 'solid' | 'ghost' }) { return 1 }`,
     })
     try {
       const r = await runScan({ cwd: dir })
@@ -32,7 +32,7 @@ describe('runScan', () => {
   })
 
   it('does not write files when write:false', async () => {
-    const dir = fixture('nowrite', { 'A.tsx': `export function A(props: { x: string }) { return null }` })
+    const dir = fixture('nowrite', { 'A.tsx': `export function A(props: { x: string }) { return 1 }` })
     try {
       const r = await runScan({ cwd: dir, write: false })
       expect(r.components).toBe(1)
@@ -76,7 +76,7 @@ describe('runCli', () => {
     // `title` OPTIONAL on purpose: a REQUIRED name prop makes the generated
     // Empty edge-case scenario fail the static a11y check — the red-exit spec
     // below covers that path.
-    const dir = fixture('cli', { 'Card.tsx': `export function Card(props: { title?: string }) { return null }` })
+    const dir = fixture('cli', { 'Card.tsx': `export function Card(props: { title?: string }) { return 1 }` })
     try {
       expect(await runCli(['scan', dir])).toBe(0)
       expect(stdout).toContain('discovered 1 component')
@@ -91,7 +91,7 @@ describe('runCli', () => {
     // (an empty string is a legal value for `string`, so a caller CAN pass it)
     // and the static a11y check fails it. A red scan must be a red exit —
     // otherwise wiring `atlas scan` into CI gates nothing.
-    const dir = fixture('cli', { 'Card.tsx': `export function Card(props: { title: string }) { return null }` })
+    const dir = fixture('cli', { 'Card.tsx': `export function Card(props: { title: string }) { return 1 }` })
     try {
       expect(await runCli(['scan', dir])).toBe(1)
       expect(stdout).toContain('1 failing')
@@ -111,7 +111,7 @@ describe('runCli', () => {
 
   it('scan names WHICH check failed in the per-check tally', async () => {
     // The line that answers "which check?" without a second command.
-    const dir = fixture('cli', { 'Card.tsx': `export function Card(props: { title: string }) { return null }` })
+    const dir = fixture('cli', { 'Card.tsx': `export function Card(props: { title: string }) { return 1 }` })
     try {
       await runCli(['scan', dir])
       expect(stdout).toContain('checks:')
@@ -124,7 +124,7 @@ describe('runCli', () => {
   it('scan reports the checks that did NOT run, rather than omitting them', async () => {
     // A check that is structurally unavailable in a Node scan is a different
     // statement from one that ran and passed; silence conflates them.
-    const dir = fixture('cli', { 'Card.tsx': `export function Card(props: { title?: string }) { return null }` })
+    const dir = fixture('cli', { 'Card.tsx': `export function Card(props: { title?: string }) { return 1 }` })
     try {
       await runCli(['scan', dir])
       expect(stdout).toContain('not run:')
@@ -138,8 +138,8 @@ describe('runCli', () => {
     // The point of the command: decoration and verification are where the cost
     // is, and a question about Button should not verify Card.
     const dir = fixture('verify-scope', {
-      'Button.tsx': `export function Button(props: { label?: string }) { return null }`,
-      'Card.tsx': `export function Card(props: { title?: string }) { return null }`,
+      'Button.tsx': `export function Button(props: { label?: string }) { return 1 }`,
+      'Card.tsx': `export function Card(props: { title?: string }) { return 1 }`,
     })
     try {
       expect(await runCli(['verify', 'Button', '--cwd', dir])).toBe(0)
@@ -155,8 +155,8 @@ describe('runCli', () => {
     // agent guide, the MCP tools and `atlas check` for every other component
     // until the next full scan.
     const dir = fixture('verify-nowrite', {
-      'Button.tsx': `export function Button(props: { label?: string }) { return null }`,
-      'Card.tsx': `export function Card(props: { title?: string }) { return null }`,
+      'Button.tsx': `export function Button(props: { label?: string }) { return 1 }`,
+      'Card.tsx': `export function Card(props: { title?: string }) { return 1 }`,
     })
     try {
       await runCli(['scan', dir])
@@ -173,7 +173,7 @@ describe('runCli', () => {
     // The failure this command most has to get right: filtering to nothing
     // reports zero scenarios and zero failures, which reads as a pass.
     const dir = fixture('verify-typo', {
-      'Button.tsx': `export function Button(props: { label?: string }) { return null }`,
+      'Button.tsx': `export function Button(props: { label?: string }) { return 1 }`,
     })
     try {
       expect(await runCli(['verify', 'Buton', '--cwd', dir])).toBe(1)
@@ -186,7 +186,7 @@ describe('runCli', () => {
 
   it('verify --json emits a machine report an agent can branch on', async () => {
     const dir = fixture('verify-json', {
-      'Button.tsx': `export function Button(props: { label?: string }) { return null }`,
+      'Button.tsx': `export function Button(props: { label?: string }) { return 1 }`,
     })
     try {
       await runCli(['verify', 'Button', '--cwd', dir, '--json'])
@@ -202,7 +202,7 @@ describe('runCli', () => {
 
   it('verify --json reports an unmatched name as ok:false, not an empty pass', async () => {
     const dir = fixture('verify-json-typo', {
-      'Button.tsx': `export function Button(props: { label?: string }) { return null }`,
+      'Button.tsx': `export function Button(props: { label?: string }) { return 1 }`,
     })
     try {
       expect(await runCli(['verify', 'Nope', '--cwd', dir, '--json'])).toBe(1)
@@ -216,7 +216,7 @@ describe('runCli', () => {
 
   it('verify returns 1 and names the failing check', async () => {
     const dir = fixture('verify-fail', {
-      'Card.tsx': `export function Card(props: { title: string }) { return null }`,
+      'Card.tsx': `export function Card(props: { title: string }) { return 1 }`,
     })
     try {
       expect(await runCli(['verify', 'Card', '--cwd', dir])).toBe(1)
@@ -232,8 +232,8 @@ describe('runCli', () => {
 
   it('verify with no name reports the whole catalog', async () => {
     const dir = fixture('verify-all', {
-      'Button.tsx': `export function Button(props: { label?: string }) { return null }`,
-      'Card.tsx': `export function Card(props: { title?: string }) { return null }`,
+      'Button.tsx': `export function Button(props: { label?: string }) { return 1 }`,
+      'Card.tsx': `export function Card(props: { title?: string }) { return 1 }`,
     })
     try {
       expect(await runCli(['verify', '--cwd', dir])).toBe(0)
@@ -245,7 +245,7 @@ describe('runCli', () => {
 
   it('scan --check reports no movement and exits 0 when nothing changed', async () => {
     const dir = fixture('ratchet-same', {
-      'Button.tsx': `export function Button(props: { label?: string }) { return null }`,
+      'Button.tsx': `export function Button(props: { label?: string }) { return 1 }`,
     })
     try {
       await runCli(['scan', dir])
@@ -258,7 +258,7 @@ describe('runCli', () => {
 
   it('scan --check exits 1 when a check starts failing', async () => {
     const dir = fixture('ratchet-worse', {
-      'Card.tsx': `export function Card(props: { title?: string }) { return null }`,
+      'Card.tsx': `export function Card(props: { title?: string }) { return 1 }`,
     })
     try {
       await runCli(['scan', dir])
@@ -266,7 +266,7 @@ describe('runCli', () => {
       // edge case starts failing the static a11y check.
       writeFileSync(
         join(dir, 'src', 'Card.tsx'),
-        `export function Card(props: { title: string }) { return null }`,
+        `export function Card(props: { title: string }) { return 1 }`,
       )
       expect(await runCli(['scan', dir, '--check'])).toBe(1)
       expect(stdout).toContain('REGRESSED')
@@ -301,7 +301,7 @@ describe('runCli', () => {
     // A ratchet that overwrites its own baseline compares a run to itself and
     // can never report a regression again.
     const dir = fixture('ratchet-nowrite', {
-      'Button.tsx': `export function Button(props: { label?: string }) { return null }`,
+      'Button.tsx': `export function Button(props: { label?: string }) { return 1 }`,
     })
     try {
       await runCli(['scan', dir])
@@ -317,7 +317,7 @@ describe('runCli', () => {
     // Making the very first --check run red for everybody is how a ratchet
     // gets disabled on day one.
     const dir = fixture('ratchet-first', {
-      'Button.tsx': `export function Button(props: { label?: string }) { return null }`,
+      'Button.tsx': `export function Button(props: { label?: string }) { return 1 }`,
     })
     try {
       expect(await runCli(['scan', dir, '--check'])).toBe(0)

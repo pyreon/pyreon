@@ -5,7 +5,7 @@
  * dedupe by scenario id so an authored/AI scenario is never overwritten.
  */
 import type { AtlasPlugin } from './types'
-import { componentKey, makeScenario } from '../core'
+import { componentKey, isContentKey, makeScenario } from '../core'
 import { defineAtlasPlugin } from './define'
 
 /** Append scenarios to a component, skipping any whose id already exists. */
@@ -56,18 +56,26 @@ function appendScenarios(
 }
 
 /**
- * Ensures every component has at least one scenario. Runs late (after the
- * generators) so it only fills a component that produced none of its own.
+ * Ensures every component has a `Default` scenario — the state the canvas
+ * opens on, and the one that restores the seeded content after an edge case
+ * has been applied.
+ *
+ * UNCONDITIONAL, deduped by id. The previous rule ("only when a component
+ * produced no scenarios") depended on running LAST in the bundle, and the
+ * bundle ran the edge-case generator before it: any component with a text
+ * control but no axes got exactly `Empty` + `Long content` — both
+ * deliberately degenerate — and no way back. Measured on
+ * `@pyreon/ui-components`: 95 of 108 components had no `Default`, 28 had
+ * only the two edge cases. A guarantee that holds only under one plugin
+ * order is not a guarantee.
  */
 export function defaultScenarioPlugin(): AtlasPlugin {
   return defineAtlasPlugin({
     name: 'atlas:default-scenario',
     decorate(ci) {
-      if (ci.scenarios.length > 0) return ci
-      return {
-        ...ci,
-        scenarios: [makeScenario({ component: componentKey(ci), name: 'Default', source: 'auto-default' })],
-      }
+      return appendScenarios(ci, () => [
+        makeScenario({ component: componentKey(ci), name: 'Default', source: 'auto-default' }),
+      ])
     },
   })
 }
@@ -97,7 +105,11 @@ export function statesPlugin(options: StatesOptions = {}): AtlasPlugin {
   return defineAtlasPlugin({
     name: 'atlas:states',
     decorate(ci) {
-      const stateControls = ci.controls.filter((c) => c.kind === 'boolean' && watch.has(c.name))
+      // A state the content seed already pins TRUE (`open` on a modal base) is
+      // the Default scenario, not a second one with the same args.
+      const stateControls = ci.controls.filter(
+        (c) => c.kind === 'boolean' && watch.has(c.name) && ci.content?.[c.name] !== true,
+      )
       if (stateControls.length === 0) return ci
       return appendScenarios(ci, () =>
         stateControls.map((c) =>
@@ -121,13 +133,23 @@ export interface EdgeCaseOptions {
 const DEFAULT_LONG =
   'The quick brown fox jumps over the lazy dog, and keeps going well past the edge to exercise wrapping and overflow.'
 
-/** Empty + long-content scenarios for the component's primary text prop. */
+/**
+ * Empty + long-content scenarios for the component's CONTENT prop.
+ *
+ * Content, not "the first text control": an `<img>` seeds `src` + `alt` as
+ * text controls, and the first-text rule blanked `src` and then overflowed
+ * it — the browser requesting `./The%20quick%20brown%20fox…` is not a
+ * wrapping check. `children` wins when present; otherwise the first control
+ * whose name reads as content (`CONTENT_KEYS`). A component with no content
+ * channel gets no edge cases, which is the honest count.
+ */
 export function edgeCasesPlugin(options: EdgeCaseOptions = {}): AtlasPlugin {
   const long = options.longText ?? DEFAULT_LONG
   return defineAtlasPlugin({
     name: 'atlas:edge-cases',
     decorate(ci) {
-      const text = ci.controls.find((c) => c.kind === 'text')
+      const texts = ci.controls.filter((c) => c.kind === 'text' && isContentKey(c.name))
+      const text = texts.find((c) => c.name === 'children') ?? texts[0]
       if (!text) return ci
       return appendScenarios(ci, () => [
         makeScenario({ component: componentKey(ci), name: 'Empty', args: { [text.name]: '' }, source: 'auto-edge' }),

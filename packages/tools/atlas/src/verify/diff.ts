@@ -148,7 +148,17 @@ export function diffVerdicts(
     added,
     removed,
     changed,
-    regressed: changed.some((d) => d.nowFailing.length > 0 || d.checksLost.length > 0),
+    // A scenario that DISAPPEARED is the same event as a check that stopped
+    // running, one level up: losing it makes the counts improve. The
+    // dominant real cause is a whole component vanishing — one broken
+    // upstream `exports` map made every file throw, discovery returned 0,
+    // and `removed` held the entire baseline while `regressed` (which read
+    // only `changed`) stayed false. A rename or a deliberate matrix change
+    // removes ids too; those accept the new baseline by re-running `atlas
+    // scan` — the ratchet never rewrites its own.
+    regressed:
+      removed.length > 0 ||
+      changed.some((d) => d.nowFailing.length > 0 || d.checksLost.length > 0),
     improved: changed.some((d) => d.nowPassing.length > 0 || d.checksGained.length > 0),
   }
 }

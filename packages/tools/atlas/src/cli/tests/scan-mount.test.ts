@@ -84,12 +84,13 @@ describe('atlas scan mounts the example', () => {
     // blanked by the edge-cases plugin's own Empty scenario is not a finding —
     // GuardedDelete's `label?` stays green.)
     //
-    // 53 scenarios: the content seed gives every rocketstyle text component a
-    // `children` text control, and the edge-cases plugin then derives an Empty
-    // and a Long-content scenario per text control — the states a label-less
-    // preview could never have exercised.
+    // 44 scenarios: every component carries a Default; the content seed gives
+    // every rocketstyle text component a `children` text control, and the
+    // edge-cases plugin derives an Empty and a Long-content scenario per
+    // CONTENT control; the variant axes fan one value at a time rather than
+    // crossing (53 → 44 on this fixture, 1,230 → 494 on ui-components).
     expect(run.stdout).toMatch(
-      /11 component\(s\), 53 scenario\(s\) — 51 verified, 2 failing, 0 unverified/,
+      /11 component\(s\), 44 scenario\(s\) — 42 verified, 2 failing, 0 unverified/,
     )
     // 320s: the spawn's own descriptive killer is timeout: 300_000 above;
     // the vitest backstop must EXCEED the composed inner budget (the ws-relay

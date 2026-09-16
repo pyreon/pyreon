@@ -109,13 +109,13 @@ optional: children(text), size(large|medium|small)
 optional: children(text), size(large|medium|small)
 
 ## Dialog [overlay]
-optional: children(text), size(medium|small)
+optional: children(text), open(boolean), size(medium|small)
 
 ## Divider [layout]
 optional: size(large|medium|small), variant(dashed|dotted|solid)
 
 ## Drawer [navigation]
-optional: children(text), size(large|medium|small|xLarge), variant(bottom|left|right|top)
+optional: children(text), open(boolean), size(large|medium|small|xLarge), variant(bottom|left|right|top)
 
 ## FieldDescription [form]
 optional: children(text)
@@ -173,7 +173,7 @@ optional: children(text)
 optional: children(text), size(medium|small)
 
 ## Modal [overlay]
-optional: children(text), size(full|large|medium|small|xLarge)
+optional: children(text), open(boolean), size(full|large|medium|small|xLarge)
 
 ## MonthPicker
 optional: children(text)
@@ -258,7 +258,7 @@ optional: children(text), size(large|medium|small)
 optional: children(text), size(large|medium|small), state(active)
 
 ## Select [form]
-optional: children(text), size(large|medium|small), state(error)
+optional: size(large|medium|small), state(error)
 
 ## Skeleton [feedback]
 optional: children(text), variant(circle|rect|text)

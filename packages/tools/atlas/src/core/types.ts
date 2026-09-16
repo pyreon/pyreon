@@ -148,6 +148,19 @@ export type FindingCode =
   | 'play-failed'
   /** Nothing interactive to drive — a pass, stated so it is not read as one. */
   | 'nothing-to-drive'
+  /**
+   * The scenario mounted cleanly and produced NO DOM — no element, no text.
+   * A fail for a scenario the component owns (it needs data, an `open`
+   * state, or a render-prop child the seed cannot manufacture); reported as
+   * a finding on a manufactured `auto-edge` scenario, where an empty result
+   * is the point.
+   */
+  | 'empty-render'
+  /**
+   * The component is a declared PART of another (`AtlasConfig.parts`) and
+   * renders nothing standalone by design — the parent's scenarios verify it.
+   */
+  | 'part-of'
   // ── ssrParity ────────────────────────────────────────────────────────────
   | 'ssr-render-threw'
   | 'hydrate-threw'
@@ -323,6 +336,14 @@ export interface ComponentIntelligence {
    * at mount. See `core/content.ts` for why derived scenarios need it.
    */
   content?: Readonly<Record<string, unknown>>
+  /**
+   * The base COMPONENT a rocketstyle chain renders through
+   * (`el.config({ component: ModalBase })`), by display name. Absent for a
+   * chain that renders a tag and for plain function components. It is what
+   * the content seed keys on when there is no tag to read, and what the
+   * agent guide names when a component renders nothing standalone.
+   */
+  base?: string
 }
 
 /** The serialized whole-catalog shape — the machine surface agents consume. */

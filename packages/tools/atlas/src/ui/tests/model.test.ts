@@ -148,14 +148,15 @@ describe('createModel — search + visible groups', () => {
 
   it('filters groups down and drops emptied ones', () => {
     const m = model()
-    m.query.set('badge')
+    // The sidebar filters by `filter`; the ⌘K query is the dialog's own.
+    m.filter.set('badge')
     expect(m.visibleGroups().map((g) => g.group)).toEqual(['Data Display'])
     expect(m.noResults()).toBe(false)
   })
 
   it('flags noResults for a query matching nothing', () => {
     const m = model()
-    m.query.set('zzzz-nope')
+    m.filter.set('zzzz-nope')
     expect(m.visibleGroups()).toEqual([])
     expect(m.noResults()).toBe(true)
   })
@@ -372,8 +373,10 @@ describe('createModel — selectScenario', () => {
     m.selectScenario('button', 'button--soft')
     expect(m.selId()).toBe('button')
     expect(m.vals().variant).toBe('soft')
-    // args without a matching editable control never land in the value store
-    expect('onClick' in m.vals()).toBe(false)
+    // EVERY arg lands, editable control or not — a scenario is the whole
+    // pinned state (a Tree's `data`), and filtering to controls rendered it
+    // empty. A function arg is kept for the render and dropped from the link.
+    expect('onClick' in m.vals()).toBe(true)
   })
 
   it('REPLACES stale edits — a scenario is a complete pinned state', () => {

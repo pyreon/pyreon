@@ -313,8 +313,20 @@ atlas: discovered 9 component(s), 43 scenario(s) — 41 verified, 2 failing, 0 u
 ```
 
 That line matters more than it looks. On a package where `@pyreon/runtime-server`
-does not resolve, the scan reports **1090 of 1090 scenarios verified** having run
+does not resolve, the scan reports **every scenario verified** having run
 exactly two of the six checks — true, and completely misleading without the tally.
+
+The same discipline applies to a scenario that mounts NOTHING. "Mounts, clicks
+and unmounts without throwing" and "SSR agrees with the client" are both true
+of an empty container, which is how 1,090 scenarios once verified while 24
+components rendered no DOM on the deployed workbench. A scenario the component
+owns that produces no element, no text and nothing portaled now FAILS the
+interaction check with `empty-render`, and the fix names where the missing
+data or render-prop child belongs. Two declarations downgrade it honestly:
+`browserOnly: ['Modal']` for a component that returns `null` on the server (a
+Node scan evaluates `isServer` before any DOM exists), and `parts: { TabPanel:
+'Tabs' }` for a part that only renders inside its parent — the canvas then
+shows it there.
 
 `atlas verify <Component>` is the loop for iterating on one component:
 
@@ -331,8 +343,9 @@ atlas verify Button: 1 component(s), 15 scenario(s)
 
 Discovery still walks the project — a component's file is not known until it
 does — but mounting, exercising, hydrating and GC-probing run only for the
-match. Measured on `@pyreon/ui-components` (108 components, 1090 scenarios):
-1.35s full scan against 0.90s scoped to one component's 60 scenarios. The verify
+match. Measured on `@pyreon/ui-components` (108 components, 1090 scenarios at
+the time — the axis fan below has since cut that to ~490): 1.35s full scan
+against 0.90s scoped to one component's 60 scenarios. The verify
 work drops ~18×; discovery dominates the residual, so this is a **focus** tool
 first and a speed tool second.
 
@@ -428,7 +441,8 @@ of them retained a node.
 Components are grouped until a group holds ~256 scenarios, and each group gets
 one sweep — so the run costs a handful of collections rather than thousands, and
 scan time is dominated by discovery and mounting rather than by GC. Measured on
-a 108-component, 1090-scenario design system, the collection count fell from
+a 108-component, 1090-scenario design system (the cross-product era; the same
+library is ~490 scenarios under the axis fan), the collection count fell from
 2767 to 8 and the scan from ~41s to ~2s.
 
 Take the collection count as the real figure: it is the same on any machine. The

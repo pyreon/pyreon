@@ -94,3 +94,15 @@ mergeConfig(
 ```
 
 Documented + locked by [src/tests/equivalence.test.ts](src/tests/equivalence.test.ts).
+
+## Running tests from the repo root
+
+Each package's config applies only when vitest starts inside that package.
+The root `vitest.config.mts` is a router — `test.projects` lists every
+`packages/*/*` and `examples/*` config — so `bunx vitest run <path>` from the
+repo root runs each file under its owning package's config (aliases, setup
+file, timeouts, `fileParallelism`). Without it a root invocation ran on
+vitest's defaults (5,000ms timeout, parallel files), which timed out every
+kotlinc-spawning `@pyreon/native-compiler` spec that passes from the package
+directory. `test-utils/src/tests/root-vitest-projects.test.ts` locks that
+every per-package config is covered.
