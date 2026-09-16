@@ -17,6 +17,8 @@ export interface SankeyChartProps extends CanvasHostProps {
   /** Space kept for labels on both sides; default 80. */
   gutter?: Double
   sankey?: SankeyOptions
+  /** `'vertical'` lays the chart out top-to-bottom — the horizontal layout reflected across the diagonal (ECharts `orient` / `layout`). */
+  orient?: 'horizontal' | 'vertical'
   /** Fired with the node or link under the click, or null for a miss. */
   onSelect?: (hit: SankeyHit) => void
   /** The engine's INDEX hit — the multiplatform-safe twin of `onSelect` (what the native tap gesture reports). */
@@ -29,6 +31,7 @@ export function SankeyChart(props: SankeyChartProps): VNode {
   const opts = (t: ChartTheme): SankeyOptions => ({ palette: t.palette, labelColor: t.label, ...props.sankey })
   return canvasHost<SankeyLayout>({
     props,
+    transpose: () => props.orient === 'vertical',
     defaultHeight: 300,
     caption: 'Flow data',
     track: () => {

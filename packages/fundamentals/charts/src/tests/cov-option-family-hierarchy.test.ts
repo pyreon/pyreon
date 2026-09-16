@@ -205,9 +205,11 @@ describe('sankey and chord share one node/link parser', () => {
     expect(sk({ nodeWidth: 'x', nodeGap: null, layoutIterations: undefined, nodeAlign: 'right' })).toEqual({ showLabels: true })
     expect(sk({})).toEqual({ showLabels: true })
   })
-  it('sankey: a vertical orient warns and renders horizontally', () => {
-    expect(warns(series({ type: 'sankey', data: [], nodes: [], orient: 'vertical' }))).toEqual(['series[0].orient'])
+  it('sankey: a vertical orient carries into the plan (the host lays out transposed) and never warns', () => {
+    expect(warns(series({ type: 'sankey', data: [], nodes: [], orient: 'vertical' }))).toEqual([])
+    expect(plan(series({ type: 'sankey', data: [], nodes: [], orient: 'vertical' }))).toMatchObject({ orient: 'vertical' })
     expect(warns(series({ type: 'sankey', data: [], nodes: [], orient: 'horizontal' }))).toEqual([])
+    expect(plan(series({ type: 'sankey', data: [], nodes: [] }))).not.toHaveProperty('orient')
   })
   it('chord: padAngle and ringSize pass through only when numeric', () => {
     const ch = (s: Record<string, unknown>): Record<string, unknown> => (plan(series({ type: 'chord', nodes: [], ...s })) as unknown as { chord: Record<string, unknown> }).chord

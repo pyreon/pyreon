@@ -80,15 +80,15 @@ export function familyHostNode(plan: FamilyPlan, o: FamilyHostOptions): VNode | 
     case 'tree':
       return h(TreeChart, { data: plan.nodes, tree: plan.tree, ...size, ...title, ...sel('tree') })
     case 'sankey':
-      return h(SankeyChart, { nodes: plan.nodes, links: plan.links, sankey: plan.sankey, ...size, ...title, ...sel('sankey') })
+      return h(SankeyChart, { nodes: plan.nodes, links: plan.links, sankey: plan.sankey, ...(plan.orient === undefined ? {} : { orient: plan.orient }), ...size, ...title, ...sel('sankey') })
     case 'graph':
       return h(GraphChart, { nodes: plan.nodes, links: plan.links, graph: plan.graph, ...size, ...title, ...sel('graph') })
     case 'chord':
       return h(ChordChart, { nodes: plan.nodes, links: plan.links, chord: plan.chord, ...size, ...title, ...sel('chord') })
     case 'calendar':
-      return h(CalendarChart, { start: plan.start, end: plan.end, values: plan.values, calendar: plan.calendar, ...size, ...title, ...sel('calendar') })
+      return h(CalendarChart, { start: plan.start, end: plan.end, values: plan.values, calendar: plan.calendar, ...(plan.orient === undefined ? {} : { orient: plan.orient }), ...size, ...title, ...sel('calendar') })
     case 'parallel':
-      return h(ParallelChart, { axes: plan.axes, rows: plan.rows, parallel: plan.parallel, ...size, ...title, ...sel('parallel') })
+      return h(ParallelChart, { axes: plan.axes, rows: plan.rows, parallel: plan.parallel, ...(plan.orient === undefined ? {} : { orient: plan.orient }), ...size, ...title, ...sel('parallel') })
     case 'polar':
       return h(PolarChart, { axes: plan.axes, series: plan.series, polar: plan.polar, ...size, ...title, ...sel('polar') })
     case 'themeRiver':

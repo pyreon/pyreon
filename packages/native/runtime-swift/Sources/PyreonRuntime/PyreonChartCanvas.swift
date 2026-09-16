@@ -255,6 +255,39 @@ public func pyreonMirrorCmds(_ cmds: [PyreonDrawCmd], _ width: Double) -> [Pyreo
     return out
 }
 
+/// Transpose a draw list — a VERTICAL sankey / calendar / parallel is the
+/// horizontal one reflected across the diagonal. The twin of the web engine's
+/// `transposeCmds`; parity is asserted by EXECUTION, so every field it touches
+/// must match the web switch field for field.
+public func pyreonTransposeCmds(_ cmds: [PyreonDrawCmd]) -> [PyreonDrawCmd] {
+    func tp(_ p: PyreonChartPt) -> PyreonChartPt { PyreonChartPt(x: p.y, y: p.x) }
+    var out: [PyreonDrawCmd] = []
+    out.reserveCapacity(cmds.count)
+    for c in cmds {
+        var m = c
+        if let r = c.rect { m.rect = PyreonChartRect(x: r.y, y: r.x, w: r.h, h: r.w) }
+        if let f = c.from { m.from = tp(f) }
+        if let t = c.to { m.to = tp(t) }
+        if let pts = c.points { m.points = pts.map { tp($0) } }
+        if let ctr = c.center { m.center = tp(ctr) }
+        if let at = c.at { m.at = tp(at) }
+        // Corners run top-left, top-right, bottom-right, bottom-left; the
+        // diagonal fixes the first and third and swaps the other two.
+        if let cs = c.corners, cs.count == 4 { m.corners = [cs[0], cs[3], cs[2], cs[1]] }
+        if let g = c.grad {
+            m.grad = PyreonChartGradient(from: tp(g.from), to: tp(g.to), stops: g.stops)
+        }
+        // Text is anchored, never reflected: the horizontal anchor becomes the vertical one and back.
+        let a = c.align
+        let b = c.baseline
+        if b != nil { m.align = b == "top" ? "start" : b == "bottom" ? "end" : "middle" }
+        if a != nil { m.baseline = a == "start" ? "top" : a == "end" ? "bottom" : "middle" }
+        if let r = c.rotate { m.rotate = 90.0 - r }
+        out.append(m)
+    }
+    return out
+}
+
 public func pyreonChartColor(_ s: String) -> Color {
     let str = s.trimmingCharacters(in: .whitespaces)
     if str.hasPrefix("#") {

@@ -268,9 +268,11 @@ describe('parallel', () => {
     expect((c.plan as unknown as { rows: unknown[] }).rows).toEqual([[1, 'a', null], [2, 3]])
     expect(c.warnings.map((w) => w.path)).toEqual(['series[0].data[2]', 'series[0].data[3]'])
   })
-  it('a vertical parallel layout warns; a horizontal one does not', () => {
-    expect(warns(series({ type: 'parallel', data: [] }, { parallel: { layout: 'vertical' } }))).toEqual(['parallel.layout'])
+  it('a vertical parallel layout carries into the plan (the host lays out transposed); a horizontal one is the default', () => {
+    expect(warns(series({ type: 'parallel', data: [] }, { parallel: { layout: 'vertical' } }))).toEqual([])
+    expect(plan(series({ type: 'parallel', data: [] }, { parallel: { layout: 'vertical' } }))).toMatchObject({ orient: 'vertical' })
     expect(warns(series({ type: 'parallel', data: [] }, { parallel: { layout: 'horizontal' } }))).toEqual([])
+    expect(plan(series({ type: 'parallel', data: [] }, { parallel: { layout: 'horizontal' } }))).not.toHaveProperty('orient')
     expect(warns(series({ type: 'parallel', data: [] }, { parallel: 'x' }))).toEqual([])
   })
   it('lineStyle width / opacity / colour pass through only in their declared types', () => {
@@ -315,9 +317,12 @@ describe('calendar heatmap', () => {
     expect(warns(series({ type: 'heatmap', coordinateSystem: 'calendar', data: [] }))).toEqual(['calendar.range'])
     expect(warns(series({ type: 'heatmap', coordinateSystem: 'calendar', data: [] }, { calendar: 'x' }))).toEqual(['calendar.range'])
   })
-  it('a vertical calendar warns and renders horizontally', () => {
-    expect(warns(series({ type: 'heatmap', coordinateSystem: 'calendar', data: [] }, { calendar: { range: 2024, orient: 'vertical' } }))).toEqual(['calendar.orient'])
+  it('a vertical calendar carries its orient into the plan (the host lays out transposed) and never warns', () => {
+    const vertical = series({ type: 'heatmap', coordinateSystem: 'calendar', data: [] }, { calendar: { range: 2024, orient: 'vertical' } })
+    expect(warns(vertical)).toEqual([])
+    expect(compileFamily(vertical)!.plan).toMatchObject({ kind: 'calendar', orient: 'vertical' })
     expect(warns(series({ type: 'heatmap', coordinateSystem: 'calendar', data: [] }, { calendar: { range: 2024, orient: 'horizontal' } }))).toEqual([])
+    expect(compileFamily(series({ type: 'heatmap', coordinateSystem: 'calendar', data: [] }, { calendar: { range: 2024 } }))!.plan).not.toHaveProperty('orient')
   })
   it('a datum must be [YYYY-MM-DD, value] in array or object form; anything else is skipped', () => {
     const c = compileFamily(series({ type: 'heatmap', coordinateSystem: 'calendar', data: [['2024-01-02', 3], { value: ['2024-01-03', 4] }, ['2024-1-2', 5], [7, 1], ['2024-01-04', 'x'], 'nope'] }, { calendar: { range: 2024 } }))!

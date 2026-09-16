@@ -243,6 +243,33 @@ fun pyreonMirrorCmds(cmds: List<PyreonDrawCmd>, width: Double): List<PyreonDrawC
 }
 
 /**
+ * Transpose a draw list — a VERTICAL sankey / calendar / parallel is the
+ * horizontal one reflected across the diagonal. The twin of the web engine's
+ * `transposeCmds` and the iOS runtime's `pyreonTransposeCmds`; parity is
+ * asserted by EXECUTION, so every field it touches must match field for field.
+ */
+fun pyreonTransposeCmds(cmds: List<PyreonDrawCmd>): List<PyreonDrawCmd> {
+    fun tp(p: PyreonChartPt): PyreonChartPt = PyreonChartPt(p.y, p.x)
+    return cmds.map { c ->
+        c.copy(
+            rect = c.rect?.let { PyreonChartRect(it.y, it.x, it.h, it.w) },
+            from = c.from?.let { tp(it) },
+            to = c.to?.let { tp(it) },
+            points = c.points?.map { tp(it) },
+            center = c.center?.let { tp(it) },
+            at = c.at?.let { tp(it) },
+            // Corners run top-left, top-right, bottom-right, bottom-left; the diagonal fixes the first and third and swaps the other two.
+            corners = c.corners?.let { if (it.size == 4) listOf(it[0], it[3], it[2], it[1]) else it },
+            grad = c.grad?.let { PyreonChartGradient(tp(it.from), tp(it.to), it.stops) },
+            // Text is anchored, never reflected: the horizontal anchor becomes the vertical one and back.
+            align = c.baseline?.let { if (it == "top") "start" else if (it == "bottom") "end" else "middle" } ?: c.align,
+            baseline = c.align?.let { if (it == "start") "top" else if (it == "end") "bottom" else "middle" } ?: c.baseline,
+            rotate = c.rotate?.let { 90.0 - it },
+        )
+    }
+}
+
+/**
  * A Compose brush from the engine's gradient, or null when there is none (the
  * caller then paints the solid colour).
  */

@@ -69,6 +69,14 @@ for interaction, animation or accessibility parity.
   `<WebView>` host group (web iframes, WKWebViews, Android WebViews all speak
   the same reserved protocol); real-Chromium proof across separate pages,
   compiler proof on both targets. Hosted ledger: 11/11.
+- [x] Vertical orient on every target: `<SankeyChart>` / `<CalendarChart>` /
+  `<ParallelChart>` take `orient="vertical"` (and the option facade's
+  `series.orient` / `calendar.orient` / `parallel.layout`), implemented as ONE
+  mechanism — the horizontal layout in the box reflected across the diagonal,
+  the draw list reflected back, the pointer reflected before its hit. The
+  transpose exists three times (web `transposeCmds`, `pyreonTransposeCmds` in
+  both runtimes) and is locked by execution like the RTL mirror. Rows
+  `series.sankey`, `coordinates.calendar`, `coordinates.parallel` complete.
 - [x] C2 `series.line` complete: stacked lines sit on the running total of
   their `stack` group (gaps carry the total), stacked areas are the engine's
   `stackedArea` kind — the last live warning on that row is gone.

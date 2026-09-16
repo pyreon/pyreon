@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.12' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.13' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -47,7 +47,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   // contract member are PARTIAL, whatever else they render. The path cited
   // is the warning site; the row closes when the warning goes.
   row('series.line', 'series', 'direct', 'complete', 'src/engine/option-edges.test.ts'),
-  row('series.sankey', 'series', 'direct', 'partial', 'src/engine/option-family.ts'), // vertical orient
+  row('series.sankey', 'series', 'direct', 'complete', 'src/engine/option-orient.test.ts', '../../native/compiler/src/tests/chart-orient-native.test.ts'),
   row('series.map', 'series', 'direct', 'partial', 'src/engine/geo-web.ts'),
   row('series.lines', 'series', 'direct', 'partial', 'src/engine/lines-series.test.ts'),
   row('series.pictorial-bar', 'series', 'direct', 'partial', 'src/engine/option.ts'),
@@ -56,8 +56,8 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   ...['grid', 'title', 'legend', 'tooltip', 'aria']
     .map((name) => row(`coordinates.${name}`, 'coordinates', 'direct', 'complete', 'src/engine/option.test.ts')),
   row('coordinates.polar', 'coordinates', 'direct', 'partial', 'src/engine/option-family.ts'), // bar + line only
-  row('coordinates.calendar', 'coordinates', 'direct', 'partial', 'src/engine/option-family.ts'), // vertical orient
-  row('coordinates.parallel', 'coordinates', 'direct', 'partial', 'src/engine/option-family.ts'), // vertical layout
+  row('coordinates.calendar', 'coordinates', 'direct', 'complete', 'src/engine/option-orient.test.ts', '../../native/compiler/src/tests/chart-orient-native.test.ts'),
+  row('coordinates.parallel', 'coordinates', 'direct', 'complete', 'src/engine/option-orient.test.ts', '../../native/compiler/src/tests/chart-orient-native.test.ts'),
   row('coordinates.single-axis', 'coordinates', 'direct', 'partial', 'src/engine/option-family.ts'), // scatter only
   row('coordinates.axes', 'coordinates', 'direct', 'partial', 'src/engine/option.ts'), // one x axis, two y axes
   row('coordinates.visual-map', 'coordinates', 'direct', 'partial', 'src/engine/visual-map.ts'), // calculable handle

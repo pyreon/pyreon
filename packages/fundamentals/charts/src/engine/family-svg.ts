@@ -10,6 +10,7 @@
 // heat + layout/scale), never the canvas components: the components own
 // pointer handlers and reactivity, which have no meaning on a server.
 
+import { transposeCmds, transposeRect } from './rtl'
 import { fitCircle, layoutArcs, renderGauge, renderPie } from './arc'
 import { paletteAt } from './palette'
 import type { GaugeOptions } from './arc'
@@ -776,6 +777,8 @@ export interface SankeyToSvgOptions {
   width?: Double
   height?: Double
   sankey?: SankeyOptions
+  /** `'vertical'` — the horizontal layout reflected across the diagonal. */
+  orient?: 'horizontal' | 'vertical'
   measure?: MeasureText
   /** Chart theme; the canvas host reads the same fields. */
   theme?: Partial<ChartTheme>
@@ -790,8 +793,11 @@ export function sankeyToSvg(options: SankeyToSvgOptions): string {
   const width = options.width ?? 640.0
   const height = options.height ?? 400.0
   const gutter = 80.0
-  const layout = layoutSankey(options.nodes, options.links, { x: gutter, y: 8.0, w: Math.max(0.0, width - gutter * 2.0), h: Math.max(0.0, height - 16.0) }, { palette: t.palette, labelColor: t.label, ...options.sankey })
-  const cmds = renderSankey(layout, { palette: t.palette, labelColor: t.label, ...options.sankey })
+  const vertical = options.orient === 'vertical'
+  const box = vertical ? transposeRect({ x: 0.0, y: 0.0, w: width, h: height }) : { x: 0.0, y: 0.0, w: width, h: height }
+  const layout = layoutSankey(options.nodes, options.links, { x: box.x + gutter, y: box.y + 8.0, w: Math.max(0.0, box.w - gutter * 2.0), h: Math.max(0.0, box.h - 16.0) }, { palette: t.palette, labelColor: t.label, ...options.sankey })
+  const drawn = renderSankey(layout, { palette: t.palette, labelColor: t.label, ...options.sankey })
+  const cmds = vertical ? transposeCmds(drawn) : drawn
   void (options.measure ?? measureApprox())
   let total = 0.0
   for (const l of layout.links) total = total + l.value
@@ -849,6 +855,8 @@ export interface CalendarToSvgOptions {
   width?: Double
   height?: Double
   calendar?: CalendarOptions
+  /** `'vertical'` — the horizontal layout reflected across the diagonal. */
+  orient?: 'horizontal' | 'vertical'
   measure?: MeasureText
   /** Chart theme; the canvas host reads the same fields. */
   theme?: Partial<ChartTheme>
@@ -862,9 +870,12 @@ export function calendarToSvg(options: CalendarToSvgOptions): string {
   const t = themeOf(options.theme)
   const width = options.width ?? 720.0
   const height = options.height ?? 140.0
-  const layout = layoutCalendar(options.start, options.end, { x: 4.0, y: 4.0, w: width - 8.0, h: height - 8.0 }, { labelColor: t.label, emptyColor: t.muted, stops: t.ramp, ...options.calendar })
+  const vertical = options.orient === 'vertical'
+  const box = vertical ? transposeRect({ x: 0.0, y: 0.0, w: width, h: height }) : { x: 0.0, y: 0.0, w: width, h: height }
+  const layout = layoutCalendar(options.start, options.end, { x: box.x + 4.0, y: box.y + 4.0, w: box.w - 8.0, h: box.h - 8.0 }, { labelColor: t.label, emptyColor: t.muted, stops: t.ramp, ...options.calendar })
   const vals = calendarValues(options.values)
-  const cmds = renderCalendar(layout, vals, { labelColor: t.label, emptyColor: t.muted, stops: t.ramp, ...options.calendar })
+  const drawnCal = renderCalendar(layout, vals, { labelColor: t.label, emptyColor: t.muted, stops: t.ramp, ...options.calendar })
+  const cmds = vertical ? transposeCmds(drawnCal) : drawnCal
   void (options.measure ?? measureApprox())
   let filled = 0
   for (const c of layout.cells) if (options.values[c.date] !== undefined) filled++
@@ -922,6 +933,8 @@ export interface ParallelToSvgOptions {
   width?: Double
   height?: Double
   parallel?: ParallelOptions
+  /** `'vertical'` — the horizontal layout reflected across the diagonal. */
+  orient?: 'horizontal' | 'vertical'
   measure?: MeasureText
   /** Chart theme; the canvas host reads the same fields. */
   theme?: Partial<ChartTheme>
@@ -936,8 +949,11 @@ export function parallelToSvg(options: ParallelToSvgOptions): string {
   const width = options.width ?? 640.0
   const height = options.height ?? 360.0
   const gutter = 40.0
-  const layout = layoutParallel(options.axes, parallelRows(options.axes, options.rows), { x: gutter, y: 8.0, w: Math.max(0.0, width - gutter * 2.0), h: Math.max(0.0, height - 16.0) }, { palette: t.palette, labelColor: t.label, axisColor: t.axis, ...options.parallel })
-  const cmds = renderParallel(layout, { palette: t.palette, labelColor: t.label, axisColor: t.axis, highlightColor: t.negative, ...options.parallel })
+  const vertical = options.orient === 'vertical'
+  const box = vertical ? transposeRect({ x: 0.0, y: 0.0, w: width, h: height }) : { x: 0.0, y: 0.0, w: width, h: height }
+  const layout = layoutParallel(options.axes, parallelRows(options.axes, options.rows), { x: box.x + gutter, y: box.y + 8.0, w: Math.max(0.0, box.w - gutter * 2.0), h: Math.max(0.0, box.h - 16.0) }, { palette: t.palette, labelColor: t.label, axisColor: t.axis, ...options.parallel })
+  const drawnPar = renderParallel(layout, { palette: t.palette, labelColor: t.label, axisColor: t.axis, highlightColor: t.negative, ...options.parallel })
+  const cmds = vertical ? transposeCmds(drawnPar) : drawnPar
   void (options.measure ?? measureApprox())
   const description =
     options.description ??

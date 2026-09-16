@@ -156,6 +156,8 @@ export interface ChartHostSpec {
   readonly render: (layout: string, a: ChartHostArgs, t: ChartHostTarget) => string
   /** Hoist a layout that the render expression consumes more than once. */
   readonly reuseLayout?: boolean
+  /** The host takes `orient="vertical"`: its layout runs in the transposed box and its draw list is transposed back (`pyreonTransposeCmds`). */
+  readonly transposable?: boolean
   /** Builds the index-hit expression for a tap at (x, y) — what `onSelectIndex` receives. */
   readonly hit: (layout: string, x: string, y: string, a: ChartHostArgs, t: ChartHostTarget) => string
   /** Additional index-only events that use the same painted layout. */
@@ -492,6 +494,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     },
     render: (l, a) => `renderSankey(${l}, ${a.options})`,
     hit: (l, x, y) => `hitSankeyIndex(${l}, ${x}, ${y})`,
+    transposable: true,
     legend: (l) => `sankeyLegend(${l})`,
     tooltip: (l, x, y) => `sankeyTip(${l}, ${x}, ${y})`,
     adapt: { nodes: sankeyNodesAdapter, links: sankeyLinksAdapter },
@@ -605,6 +608,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     layout: (a, t) => `layoutCalendar(${a.data[0]}, ${a.data[1]}, ${t.rect('4.0', '4.0', `${a.W} - 8.0`, `${a.H} - 8.0`)}, ${a.options})`,
     render: (l, a) => `renderCalendar(${l}, ${a.data[2]}, ${a.options})`,
     hit: (l, x, y) => `hitCalendarIndex(${l}, ${x}, ${y})`,
+    transposable: true,
     tooltip: (l, x, y, a) => `calendarTip(${l}, ${a.data[2]}, ${x}, ${y})`,
     adapt: { values: calendarValuesAdapter },
   },
@@ -637,6 +641,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     layout: (a, t) => `layoutParallel(${a.data[0]}, ${a.data[1]}, ${t.rect(a.gutter, '8.0', t.max0(`${a.W} - ${a.gutter} * 2.0`), t.max0(`${a.H} - 16.0`))}, ${a.options})`,
     render: (l, a) => `renderParallel(${l}, ${a.options})`,
     hit: (l, x, y) => `hitParallelIndex(${l}, ${x}, ${y})`,
+    transposable: true,
     adapt: { axes: parallelAxesAdapter, rows: parallelRowsAdapter },
     warnProps: ['rowColor'],
   },
@@ -1134,7 +1139,7 @@ export function desugarOptionChart(
     const parallel = literalOf(objectField(raw, 'parallel'), resolve)
     if (parallel?.kind === 'object') {
       optionFields(parallel, ['layout'], 'option.parallel', warn)
-      if (litString(objectField(parallel, 'layout')) === 'vertical') warn('<OptionChart option.parallel.layout>: vertical native parallel coordinates are not supported; rendering horizontally.')
+      if (litString(objectField(parallel, 'layout')) === 'vertical') set('orient', lit('vertical'))
     }
     set('axes', { kind: 'array', elements: axes })
     set('rows', data)
@@ -1374,7 +1379,7 @@ export function desugarOptionChart(
     optionFields(calendar!, ['range', 'orient', 'cellSize', 'dayLabel', 'monthLabel', 'itemStyle'], 'option.calendar', warn)
     const calendarFields: { name: string; value: ExprIR }[] = []
     const orient = litString(objectField(calendar!, 'orient'))
-    if (orient === 'vertical') warn('<OptionChart option.calendar.orient>: vertical native calendars are not supported; rendering horizontally.')
+    if (orient === 'vertical') set('orient', lit('vertical'))
     const cellSizeRaw = literalOf(objectField(calendar!, 'cellSize'), resolve)
     const cellSize = cellSizeRaw?.kind === 'array' ? litNumber(cellSizeRaw.elements[0]) : litNumber(cellSizeRaw)
     if (cellSize !== undefined) calendarFields.push({ name: 'cellSize', value: optionDoubleLiteral(cellSize) })
@@ -1524,7 +1529,8 @@ export function desugarOptionChart(
   }
 
   if (kind === 'sankey' || kind === 'graph') {
-    optionFields(series, ['type', 'name', 'data', 'nodes', 'links', 'edges', 'label', 'itemStyle', 'lineStyle', 'layout', 'roam', 'symbolSize', 'nodeWidth', 'nodeGap', 'nodeAlign'], 'option.series[0]', warn)
+    optionFields(series, ['type', 'name', 'data', 'nodes', 'links', 'edges', 'label', 'itemStyle', 'lineStyle', 'layout', 'roam', 'symbolSize', 'nodeWidth', 'nodeGap', 'nodeAlign', 'orient'], 'option.series[0]', warn)
+    if (litString(objectField(series, 'orient')) === 'vertical') set('orient', lit('vertical'))
     const rawNodes = literalOf(objectField(series, 'data') ?? objectField(series, 'nodes'), resolve)
     const rawLinks = literalOf(objectField(series, 'links') ?? objectField(series, 'edges'), resolve)
     if (rawNodes?.kind !== 'array' || rawLinks?.kind !== 'array') {
@@ -2543,6 +2549,25 @@ export function chartStaticFlag(
     return false
   }
   return value === true
+}
+
+/**
+ * `orient="vertical"` on a transposable host: literal `'vertical'` transposes;
+ * a present but non-literal value is named (it would lower as horizontal
+ * silently, the same class as `chartStaticFlag`); anything else is horizontal.
+ */
+export function chartOrientVertical(
+  element: { attrs: readonly ({ kind: 'attr'; name: string } | { kind: string })[] },
+  tag: string,
+  read: (name: string) => string | number | boolean | undefined,
+  warn: (message: string) => void,
+): boolean {
+  const value = read('orient')
+  if (value === undefined && element.attrs.some((attr) => attr.kind === 'attr' && (attr as { name: string }).name === 'orient')) {
+    warn(`<${tag} orient={…}>: must be a literal on native — a reactive or computed value lowers as horizontal. Use a literal, or branch with <Web> / <NativeIOS> / <NativeAndroid>.`)
+    return false
+  }
+  return value === 'vertical'
 }
 
 export function chartChromeWarning(tag: string, prop: string): string {

@@ -42,11 +42,11 @@ export type FamilyPlan =
   | { kind: 'treemap'; nodes: TreeNode[]; treemap: TreemapOptions; title: string | undefined }
   | { kind: 'sunburst'; nodes: TreeNode[]; innerRatio: Double; sunburst: SunburstOptions; title: string | undefined }
   | { kind: 'tree'; nodes: TreeNode[]; tree: TreeOptions; title: string | undefined }
-  | { kind: 'sankey'; nodes: SankeyNode[]; links: SankeyLink[]; sankey: SankeyOptions; title: string | undefined }
+  | { kind: 'sankey'; nodes: SankeyNode[]; links: SankeyLink[]; sankey: SankeyOptions; orient?: 'vertical'; title: string | undefined }
   | { kind: 'chord'; nodes: ChordNode[]; links: ChordLink[]; chord: ChordOptions; title: string | undefined }
   | { kind: 'graph'; nodes: GraphNode[]; links: GraphLink[]; graph: GraphOptions; title: string | undefined }
-  | { kind: 'calendar'; start: string; end: string; values: Record<string, Double>; calendar: CalendarOptions; title: string | undefined }
-  | { kind: 'parallel'; axes: ParallelAxis[]; rows: ParallelRow[]; parallel: ParallelOptions; title: string | undefined }
+  | { kind: 'calendar'; start: string; end: string; values: Record<string, Double>; calendar: CalendarOptions; orient?: 'vertical'; title: string | undefined }
+  | { kind: 'parallel'; axes: ParallelAxis[]; rows: ParallelRow[]; parallel: ParallelOptions; orient?: 'vertical'; title: string | undefined }
   | { kind: 'polar'; axes: PolarAxes; series: PolarSeries[]; polar: PolarOptions; title: string | undefined }
   | { kind: 'themeRiver'; series: RiverSeries[]; river: RiverOptions; title: string | undefined }
   | { kind: 'boxplot'; rows: (FiveNumber & { x: string })[]; fill: string | undefined; stroke: string | undefined; title: string | undefined }
@@ -554,7 +554,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
     }
     for (let i = 0; i < axes.length; i++) if (axes[i] === undefined) axes[i] = { name: 'dim ' + String(i) }
     const par = first(option['parallel'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
-    if (isObj(par) && par['layout'] === 'vertical') warn('series-option-unsupported', 'parallel.layout', 'A vertical parallel layout is not supported yet; rendered horizontally.')
+    const parallelVertical = isObj(par) && par['layout'] === 'vertical'
     const rows: ParallelRow[] = []
     for (let i = 0; i < data.length; i++) {
       const d = data[i]
@@ -573,7 +573,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       ...(lo !== null ? { lineOpacity: lo } : {}),
       ...(typeof ls['color'] === 'string' ? { lineColor: ls['color'] as string } : {}),
     }
-    return { plan: { kind: 'parallel', axes, rows, parallel, title }, warnings, supported }
+    return { plan: { kind: 'parallel', axes, rows, parallel, ...(parallelVertical ? { orient: 'vertical' as const } : {}), title }, warnings, supported }
   }
 
   if (type === 'heatmap' && s['coordinateSystem'] === 'calendar') {
@@ -594,7 +594,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
     } else if (typeof range === 'string') [start, end] = [range, range]
     else if (Array.isArray(range) && range.length === 2 && typeof range[0] === 'string' && typeof range[1] === 'string') [start, end] = [range[0], range[1]]
     else warn('series-option-unsupported', 'calendar.range', 'calendar.range must be a year, a "YYYY-MM", a date, or [start, end]; nothing was laid out.')
-    if (calObj['orient'] === 'vertical') warn('series-option-unsupported', 'calendar.orient', 'A vertical calendar is not supported yet; rendered horizontally.')
+    const calendarVertical = calObj['orient'] === 'vertical'
     const values: Record<string, Double> = {}
     for (let i = 0; i < data.length; i++) {
       const d = data[i]
@@ -626,7 +626,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       ...(stops.length >= 2 ? { stops } : {}),
       ...(vmMin !== null && vmMax !== null ? { domain: { min: vmMin, max: vmMax } } : {}),
     }
-    return { plan: { kind: 'calendar', start, end, values, calendar, title }, warnings, supported }
+    return { plan: { kind: 'calendar', start, end, values, calendar, ...(calendarVertical ? { orient: 'vertical' as const } : {}), title }, warnings, supported }
   }
 
   if (type === 'graph') {
@@ -712,7 +712,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       }
       links.push({ source: d['source'] as string, target: d['target'] as string, value: v })
     }
-    if (s['orient'] === 'vertical') warn('series-option-unsupported', 'series[0].orient', 'Vertical sankey is not supported yet; rendered horizontally.')
+    const sankeyVertical = s['orient'] === 'vertical'
     const label = isObj(s['label']) ? s['label'] : {}
     const nodeWidth = num(s['nodeWidth'])
     const nodeGap = num(s['nodeGap'])
@@ -724,7 +724,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       ...(iterations !== null ? { iterations } : {}),
       ...(s['nodeAlign'] === 'left' ? { align: 'left' as const } : {}),
     }
-    return { plan: { kind: 'sankey', nodes, links, sankey, title }, warnings, supported }
+    return { plan: { kind: 'sankey', nodes, links, sankey, ...(sankeyVertical ? { orient: 'vertical' as const } : {}), title }, warnings, supported }
   }
 
   if (type === 'chord') {
@@ -1093,6 +1093,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         axes: plan.axes,
         rows: plan.rows,
         parallel: plan.parallel,
+        ...(plan.orient === undefined ? {} : { orient: plan.orient }),
         width,
         height,
         ...(plan.title !== undefined ? { title: plan.title } : {}),
@@ -1103,6 +1104,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         end: plan.end,
         values: plan.values,
         calendar: plan.calendar,
+        ...(plan.orient === undefined ? {} : { orient: plan.orient }),
         width,
         height,
         ...(plan.title !== undefined ? { title: plan.title } : {}),
@@ -1121,6 +1123,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         nodes: plan.nodes,
         links: plan.links,
         sankey: plan.sankey,
+        ...(plan.orient === undefined ? {} : { orient: plan.orient }),
         width,
         height,
         ...(plan.title !== undefined ? { title: plan.title } : {}),
