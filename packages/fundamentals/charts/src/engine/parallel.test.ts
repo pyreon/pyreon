@@ -114,6 +114,8 @@ describe('parallel option mapping', () => {
     expect(f.warnings).toEqual([])
     expect(familyToSvg(f.plan)).toContain('<polyline')
     const vert = compileFamily({ parallel: { layout: 'vertical' }, parallelAxis: [{ dim: 0 }], series: [{ type: 'parallel', data: [[1]] }] })!
-    expect(vert.warnings.map((w) => w.code)).toContain('series-option-unsupported')
+    // A vertical layout is a transposed plan, not an unsupported option.
+    expect(vert.warnings).toEqual([])
+    expect(vert.plan).toMatchObject({ kind: 'parallel', orient: 'vertical' })
   })
 })
