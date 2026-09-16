@@ -656,6 +656,55 @@ export interface MetricShortfall {
  * Deliberately small: it absorbs noise, not a real regression. A package losing
  * a whole percentage point of coverage still fails.
  */
+/** `a, b,,c` → `['a','b','c']` — the shape both `--only` and `--skip` take. */
+export function parseNameList(raw: string): Set<string> {
+  return new Set(
+    raw
+      .split(',')
+      .map((n) => n.trim())
+      .filter(Boolean),
+  )
+}
+
+export interface PackageSelection<T extends { name: string }> {
+  /** What this run measures. */
+  selected: T[]
+  /** Names removed by `--skip` that DID match — printed so the omission is visible. */
+  skipped: string[]
+  /** `--skip` names matching no testable workspace — a misconfiguration, not a no-op. */
+  unknownSkips: string[]
+}
+
+/**
+ * Apply `--only=` then `--skip=` to the collected package list.
+ *
+ * `--skip` exists so a package whose suite is toolchain-bound
+ * (`@pyreon/native-compiler`: hundreds of real swiftc/kotlinc spawns) can be
+ * measured in its OWN job with the verdict cache restored and an honest cap,
+ * while `Coverage (Full)` keeps its 15-minute budget for the other ~80. Before
+ * it, that one package sat inside the shared 4-way pool with a cold cache and
+ * pinned the whole job at its cap on every main push — a dead gate.
+ *
+ * An unknown `--skip` name is reported rather than ignored: the caller meant to
+ * move a package elsewhere, and silently keeping it here would recreate the
+ * exact cap-pinning the flag was added to end.
+ */
+export function selectPackages<T extends { name: string }>(
+  all: readonly T[],
+  onlyArg: string | null,
+  skipArg: string | null,
+): PackageSelection<T> {
+  const onlyNames = onlyArg ? parseNameList(onlyArg.slice('--only='.length)) : null
+  const skipNames = skipArg ? parseNameList(skipArg.slice('--skip='.length)) : new Set<string>()
+  const afterOnly = onlyNames ? all.filter((p) => onlyNames.has(p.name)) : [...all]
+  const known = new Set(all.map((p) => p.name))
+  return {
+    selected: afterOnly.filter((p) => !skipNames.has(p.name)),
+    skipped: afterOnly.filter((p) => skipNames.has(p.name)).map((p) => p.name),
+    unknownSkips: [...skipNames].filter((n) => !known.has(n)),
+  }
+}
+
 export const FLOOR_TOLERANCE_PP = 0.5
 
 export function findShortfalls(
@@ -772,7 +821,16 @@ function runCoverage(
         // vitest exposes no env var for "coverage is on", so guessing one
         // silently never skips (verified — neither VITEST_COVERAGE nor
         // NODE_V8_COVERAGE is set by vitest).
-        env: { ...process.env, PYREON_COVERAGE_RUN: '1' },
+        env: {
+          ...process.env,
+          PYREON_COVERAGE_RUN: '1',
+          // The native-compiler suite spawns real swiftc/kotlinc per file.
+          // Its vitest config runs files serially only under this flag (the
+          // native TEST cells set it); a coverage run that leaves it unset
+          // starts one JVM per worker on top of V8 instrumentation, and
+          // that stampede is what pinned `Coverage (Full)` at its cap.
+          ...(pkgName === '@pyreon/native-compiler' ? { PYREON_NATIVE_COMPILER_SERIAL: '1' } : {}),
+        },
       },
     )
 
@@ -1230,18 +1288,24 @@ const isFloorOnly = process.argv.includes('--floor-only')
  * main, where a red gate blocks nobody and gets re-run past.
  */
 const onlyArg = process.argv.find((a) => a.startsWith('--only='))
-const onlyNames = onlyArg
-  ? new Set(
-      onlyArg
-        .slice('--only='.length)
-        .split(',')
-        .map((n) => n.trim())
-        .filter(Boolean),
-    )
-  : null
+const skipArg = process.argv.find((a) => a.startsWith('--skip='))
+const onlyNames = onlyArg ? parseNameList(onlyArg.slice('--only='.length)) : null
 
 const allPackages = collectPackages()
-const packages = onlyNames ? allPackages.filter((p) => onlyNames.has(p.name)) : allPackages
+const selection = selectPackages(allPackages, onlyArg ?? null, skipArg ?? null)
+const packages = selection.selected
+if (selection.skipped.length > 0) {
+  // Name the omission so a smaller table is never mistaken for a full one.
+  console.log(`  Skipped by --skip (measured by their own job): ${selection.skipped.join(', ')}`)
+}
+if (selection.unknownSkips.length > 0) {
+  // A `--skip` naming nothing is a misconfiguration, not a no-op: the
+  // package the caller meant to move to its own job is still in THIS run.
+  console.error(
+    `[check-coverage] FAILED — --skip names no testable workspace: ${selection.unknownSkips.join(', ')}`,
+  )
+  process.exit(1)
+}
 
 if (onlyNames && packages.length === 0) {
   // Nothing to measure is a legitimate outcome here (a docs-only PR), but say

@@ -204,6 +204,11 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
         root,
         scanRoot,
         entries,
+        // The same scan the boot ran, on demand — see `AtlasDevPluginOptions.rescan`.
+        rescan: async () => {
+          const scan = await runScan({ cwd: root, dir: scanDir, write: false })
+          return collectEntries(root, scan.graph.list())
+        },
         // The config file PATH, not the loaded value: the wrapper must wrap
         // the preview in the BROWSER, so the generated module imports it there
         // (through the project's own plugin chain) rather than serializing a
