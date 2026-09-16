@@ -49,14 +49,16 @@ export function isHeadAttrSafe(name: string, value: string, tagName: string): bo
   return true
 }
 
-const warnDroppedHeadAttr: (name: string, tagName: string, why: string) => void =
-  process.env.NODE_ENV === 'production'
-    ? () => {}
-    : (name, tagName, why) => {
-        // oxlint-disable-next-line no-console
-        console.warn(
-          `[Pyreon Head] Attribute "${name}" on <${tagName}> ${why} and was DROPPED. ` +
-            `If user-supplied data drives a head attribute name or a URL, validate it ` +
-            `against an allowlist before passing it to useHead().`,
-        )
-      }
+function warnDroppedHeadAttr(name: string, tagName: string, why: string): void {
+  // The guard is written INLINE rather than as a ternary-selected const: only
+  // this form folds to a literal for every consumer's bundler (and it is the
+  // shape `pyreon/dev-guard-warnings` recognises).
+  if (process.env.NODE_ENV !== 'production') {
+    // oxlint-disable-next-line no-console
+    console.warn(
+      `[Pyreon Head] Attribute "${name}" on <${tagName}> ${why} and was DROPPED. ` +
+        `If user-supplied data drives a head attribute name or a URL, validate it ` +
+        `against an allowlist before passing it to useHead().`,
+    )
+  }
+}
