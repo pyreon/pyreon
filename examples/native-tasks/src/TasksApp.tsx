@@ -125,7 +125,7 @@ import {
   WebView,
 } from '@pyreon/primitives'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
-import { createFlow } from '@pyreon/flow'
+import { Background, Controls, Flow, MiniMap, createFlow } from '@pyreon/flow'
 
 type Task = { id: number; title: string; done: boolean }
 type Quote = { id: number; text: string; author: string }
@@ -358,8 +358,10 @@ function FlowScreen() {
   // device assertion touched @pyreon/flow — the port was unit-tested and
   // stub-typechecked, never proven to run. Every value below is read from
   // the native engine: node count after addNode, zoom after zoomIn, the
-  // selection count after selectNode. Only the lowered v1 surface is used —
-  // `<Flow>`, gestures and layout warn by name and stay off this screen.
+  // selection count after selectNode. The `<Flow>` canvas below (with its
+  // Background / Controls / MiniMap chrome) is the RENDERER half: the device
+  // tests tap its controls, drag a node, and read the engine back through
+  // the labels — the F3/F4 evidence the flow parity plan asks for.
   const flow = createFlow({
     nodes: [
       { id: 'a', position: { x: 0, y: 0 }, data: { label: 'Start' } },
@@ -373,6 +375,20 @@ function FlowScreen() {
   const edgeCount = computed(() => flow.edges().length)
   const selectedCount = computed(() => flow.selectedNodes().length)
   const zoomLabel = computed(() => `zoom ${flow.zoom()}`)
+  // Where node `a` sits, rounded — a drag on the canvas moves it, and the
+  // device tests read the move back through this label.
+  // A loop rather than `.find(...)`: the native emit does not narrow an
+  // optional through `=== undefined`, so the lookup stays a plain scan. The
+  // accumulator is the LABEL, not the coordinates — a numeric local would be
+  // seeded `0` and typed Int by the native emit, against the Double it then
+  // receives.
+  const aPos = computed(() => {
+    let label = 'gone'
+    for (const n of flow.nodes()) {
+      if (n.id === 'a') label = `${Math.round(n.position.x)},${Math.round(n.position.y)}`
+    }
+    return label
+  })
   return (
     <Stack gap={3} padding={4} data-testid="flow-page">
       <Text>Flow</Text>
@@ -380,6 +396,7 @@ function FlowScreen() {
       <Text data-testid="flow-edge-count">{edgeCount}</Text>
       <Text data-testid="flow-selected-count">{selectedCount}</Text>
       <Text data-testid="flow-zoom">{zoomLabel}</Text>
+      <Text data-testid="flow-a-pos">{aPos}</Text>
       <Inline gap={2}>
         <Button
           onPress={() =>
@@ -395,10 +412,19 @@ function FlowScreen() {
         <Button onPress={() => flow.zoomIn()} data-testid="flow-zoom-in">
           Zoom in
         </Button>
-        <Button onPress={() => navigate('/tasks')} data-testid="flow-back">
-          Back to tasks
+        <Button onPress={() => flow.updateNodePosition('a', { x: 25, y: 35 })} data-testid="flow-move">
+          Move
         </Button>
       </Inline>
+      {/* Its own row: five buttons overflow a phone-width Compose Row. */}
+      <Button onPress={() => navigate('/tasks')} data-testid="flow-back">
+        Back to tasks
+      </Button>
+      <Flow instance={flow} ariaLabel="Task flow">
+        <Background variant="dots" />
+        <Controls />
+        <MiniMap />
+      </Flow>
     </Stack>
   )
 }

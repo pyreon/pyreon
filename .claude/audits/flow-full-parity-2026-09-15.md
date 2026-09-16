@@ -42,6 +42,31 @@ WebView escape path; silent drops are release blockers.
 - [ ] **F7 — documentation/manifest truth.** Update the manifest, package docs,
   multiplatform matrix and generated references from the measured inventory.
 
+- [x] F3/F4 first device evidence: the tasks example now renders a real
+  `<Flow>` canvas with `<Background>` / `<Controls>` / `<MiniMap>`, and BOTH
+  device lanes assert it — the canvas and minimap exist by accessibility
+  name, the Controls' zoom-in drives the engine to its `maxZoom` clamp
+  (read back through the app's own label), and Fit view runs. Android
+  additionally DRAGS a node through Compose and asserts the engine moved it.
+  Two renderer bugs fell out, both device-found:
+  - an auto-sized node FILLED the canvas on iOS (`.frame(minWidth:)` grows
+    with the proposal and `.position` proposes the whole canvas), so nodes
+    overlapped and swallowed each other's taps and drags, and the measured
+    size fed edge anchoring the canvas box. Fixed with `fixedSize` —
+    shrink-to-fit with a floor, which is what the web's `min-width` box does.
+  - FIXED (F4): every node's accessibility frame was the whole canvas,
+    because `.position` gives its child the canvas as layout frame. Two
+    changes were both needed: `fixedSize` must come AFTER `.frame`, and the
+    node is placed by `.offset` in the top-leading ZStack as the LAST
+    modifier — `.offset` does not move layout, so a `contentShape`/gesture
+    attached after it still hit-tests the un-offset box and the drag never
+    lands. Node frames now read 150x40 and the iOS UITest drags node `a`
+    (bisect-verified: offset before the gestures -> label unchanged).
+    Device note: Swift renders a position Double as `25.0`, Android `25`.
+- [ ] F3/F4 remaining: pixel-level renderer parity (connection line, handles,
+  toolbar, resizer, panel, labels, markers, theming, reduced motion), and pan/zoom/connect/reconnect
+  gestures on both targets.
+
 ## Exit gate
 
 The completion audit must show zero unclassified public surfaces, zero silent
