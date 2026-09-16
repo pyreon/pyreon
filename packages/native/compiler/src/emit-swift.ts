@@ -14431,7 +14431,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       _emitWarnings.push(`<${tag}>: \`${p.name}\` must be a ${p.kind} literal on native; the prop is ignored.`)
       continue
     }
-    specArgs.push(`${p.name}: ${p.kind === 'string' ? swiftStr(raw) : String(raw)}`)
+    specArgs.push(`${p.name}: ${p.kind === 'string' ? swiftStr(raw) : p.kind === 'number' ? (Number.isInteger(raw) ? `${String(raw)}.0` : String(raw)) : String(raw)}`)
   }
   lets.push(`let pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
   if (brushing) {

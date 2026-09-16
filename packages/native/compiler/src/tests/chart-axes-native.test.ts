@@ -63,6 +63,16 @@ describe.each(['swift', 'kotlin'] as const)('option axes on %s', (target) => {
     if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(top.code)).toMatchObject({ ok: true })
   })
 
+  it('carries axis offsets as Double literals, and compiles', () => {
+    const r = transform(app(`yAxis: [{ offset: 11 }, { offset: 13 }]`).replace("name: 'Day' }", "name: 'Day', offset: 7 }"), { target })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain(`xOffset${sep}7.0`)
+    expect(r.code).toContain(`yOffset${sep}11.0`)
+    expect(r.code).toContain(`y2Offset${sep}13.0`)
+    if (target === 'swift' && isSwiftcAvailable()) expect(validateSwiftWithStubs(r.code)).toMatchObject({ ok: true })
+    if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
+  })
+
   it('names a third y axis and an unsupported yAxisIndex', () => {
     const r = transform(app(`yAxis: [{}, {}, {}]`, `{ type: 'bar', yAxisIndex: 2, data: [1, 2] }`), { target })
     expect(r.warnings).toEqual([expect.stringContaining('yAxisIndex'), expect.stringContaining('at most two y axes')])

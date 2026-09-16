@@ -374,6 +374,10 @@ export interface ChartSpec {
   xTop?: boolean | undefined
   /** Draws a lone y axis right of the plot — ECharts' `yAxis.position: 'right'`. */
   yRight?: boolean | undefined
+  /** Pixels each axis sits away from the plot edge — ECharts' `offset`. */
+  xOffset?: Double | undefined
+  yOffset?: Double | undefined
+  y2Offset?: Double | undefined
 }
 
 /**
@@ -855,6 +859,9 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     xLabels: spec.xLabels,
     xTop: spec.xTop,
     yRight: spec.yRight,
+    xOffset: spec.xOffset,
+    yOffset: spec.yOffset,
+    y2Offset: spec.y2Offset,
   }
   return computeLayout(cfg, measure)
 }
@@ -971,7 +978,10 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   }
 
   const yRight = spec.yRight === true && !useY2 && spec.horizontal !== true
-  const yAxisX = yRight ? plot.x + plot.w : plot.x
+  const yOff = spec.yOffset ?? 0.0
+  const y2Off = spec.y2Offset ?? 0.0
+  const xOff = spec.xOffset ?? 0.0
+  const yAxisX = yRight ? plot.x + plot.w + yOff : plot.x - yOff
   if (spec.showYAxis) {
     out.push({
       kind: 'line',
@@ -982,7 +992,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     })
   }
   const xTop = spec.xTop === true && spec.horizontal !== true
-  const xAxisY = xTop ? plot.y : plot.y + plot.h
+  const xAxisY = xTop ? plot.y - xOff : plot.y + plot.h + xOff
   if (spec.showXAxis) {
     out.push({
       kind: 'line',
@@ -995,8 +1005,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   if (spec.showYAxis && useY2) {
     out.push({
       kind: 'line',
-      from: { x: plot.x + plot.w, y: plot.y },
-      to: { x: plot.x + plot.w, y: plot.y + plot.h },
+      from: { x: plot.x + plot.w + y2Off, y: plot.y },
+      to: { x: plot.x + plot.w + y2Off, y: plot.y + plot.h },
       stroke: t.axis,
       width: 1.0,
     })
@@ -1585,7 +1595,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     out.push({
       kind: 'text',
       text: tick.label,
-      at: { x: yRight ? plot.x + plot.w + 6.0 : plot.x - 6.0, y: tick.pos },
+      at: { x: yRight ? yAxisX + 6.0 : yAxisX - 6.0, y: tick.pos },
       fill: t.label,
       size: t.fontSize,
       align: yRight ? 'start' : 'end',
@@ -1596,7 +1606,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     out.push({
       kind: 'text',
       text: tick.label,
-      at: { x: plot.x + plot.w + 6.0, y: tick.pos },
+      at: { x: plot.x + plot.w + y2Off + 6.0, y: tick.pos },
       fill: t.label,
       size: t.fontSize,
       align: 'start',
@@ -1613,7 +1623,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       out.push({
         kind: 'text',
         text: tick.label,
-        at: { x: tick.pos, y: xTop ? plot.y - 6.0 : plot.y + plot.h + 6.0 },
+        at: { x: tick.pos, y: xTop ? xAxisY - 6.0 : xAxisY + 6.0 },
         fill: t.label,
         size: t.fontSize,
         align: 'end',
@@ -1624,7 +1634,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       out.push({
         kind: 'text',
         text: tick.label,
-        at: { x: tick.pos, y: xTop ? plot.y - 6.0 : plot.y + plot.h + 6.0 },
+        at: { x: tick.pos, y: xTop ? xAxisY - 6.0 : xAxisY + 6.0 },
         fill: t.label,
         size: t.fontSize,
         align: 'middle',

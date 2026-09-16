@@ -1743,7 +1743,9 @@ export function desugarOptionChart(
       warn('<OptionChart option.xAxis.data>: native cartesian options need a literal category array; emitting nothing.')
       return undefined
     }
-    optionFields(xAxis!, ['type', 'data', 'show', 'name', 'inverse', 'position'], 'option.xAxis', warn)
+    optionFields(xAxis!, ['type', 'data', 'show', 'name', 'inverse', 'position', 'offset'], 'option.xAxis', warn)
+    const xOffsetLit = litNumber(objectField(xAxis!, 'offset'))
+    if (xOffsetLit !== undefined) set('xOffset', lit(xOffsetLit))
     if (litString(objectField(xAxis!, 'position')) === 'top') set('xTop', lit(true))
     const xInverseRaw = objectField(xAxis!, 'inverse')
     if (xInverseRaw?.kind === 'literal' && xInverseRaw.value === true) set('xInverse', lit(true))
@@ -2205,8 +2207,10 @@ export function desugarOptionChart(
       const yAxis = yAxisList[ai]!
       if (yAxis.kind !== 'object') continue
       const path = yAxisRaw?.kind === 'array' ? `option.yAxis[${ai}]` : 'option.yAxis'
-      optionFields(yAxis, ['type', 'show', 'name', 'min', 'max', 'splitLine', 'inverse', 'position'], path, warn)
+      optionFields(yAxis, ['type', 'show', 'name', 'min', 'max', 'splitLine', 'inverse', 'position', 'offset'], path, warn)
       const right = ai === 1
+      const yOffsetLit = litNumber(objectField(yAxis, 'offset'))
+      if (yOffsetLit !== undefined) set(right ? 'y2Offset' : 'yOffset', lit(yOffsetLit))
       const yShow = objectField(yAxis, 'show')
       if (!right && yShow?.kind === 'literal' && yShow.value === false) set('showYAxis', lit(false))
       if (!right && litString(objectField(yAxis, 'type')) === 'log') set('yScale', lit('log'))
@@ -3191,7 +3195,7 @@ export const PLOT_MARK_ACCESSOR_OPTIONS: readonly string[] = ['errorLow', 'error
  * switches (the log view, calendar y labels, the 100% stack, axis titles,
  * the label mode) lower on every target through the generated engine.
  */
-export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'string' | 'boolean' }> = [
+export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'string' | 'boolean' | 'number' }> = [
   { name: 'yScale', kind: 'string' },
   { name: 'yTime', kind: 'boolean' },
   { name: 'stackNormalize', kind: 'boolean' },
@@ -3203,6 +3207,9 @@ export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'xInverse', kind: 'boolean' },
   { name: 'xTop', kind: 'boolean' },
   { name: 'yRight', kind: 'boolean' },
+  { name: 'xOffset', kind: 'number' },
+  { name: 'yOffset', kind: 'number' },
+  { name: 'y2Offset', kind: 'number' },
 ]
 
 /**

@@ -116,6 +116,10 @@ export interface LayoutConfig {
   xTop?: boolean | undefined
   /** A lone y axis sits right of the plot — ECharts' `yAxis.position: 'right'`. */
   yRight?: boolean | undefined
+  /** Pixels an axis sits off its plot edge; its gutter grows by the same. */
+  xOffset?: Double | undefined
+  yOffset?: Double | undefined
+  y2Offset?: Double | undefined
 }
 
 /**
@@ -171,7 +175,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   }
 
   const yTitleH = cfg.yTitle !== undefined && cfg.yTitle !== '' && cfg.showYAxis ? titleH : 0.0
-  const yBand = (cfg.showYAxis ? widest + labelGap + tickLen : 0.0) + yTitleH
+  const yBand = (cfg.showYAxis ? widest + labelGap + tickLen + (cfg.yOffset ?? 0.0) : 0.0) + yTitleH
   const xTitleH = cfg.xTitle !== undefined && cfg.xTitle !== '' && cfg.showXAxis ? titleH : 0.0
 
   // Coalesced before the guard (the Swift-narrowing idiom used throughout):
@@ -189,7 +193,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // A lone y axis placed on the right swaps its band with the slim padding.
   const yRight = cfg.yRight === true && !hasY2 && cfg.horizontal !== true
   const left = yRight ? padRight : yBand
-  const right = yRight ? yBand : (hasY2 ? widest2 + labelGap + tickLen : padRight) + y2TitleH
+  const right = yRight ? yBand : (hasY2 ? widest2 + labelGap + tickLen + (cfg.y2Offset ?? 0.0) : padRight) + y2TitleH
 
   // The x labels get the room that is left. Whether they FIT decides the
   // bottom gutter — a rotated label needs its slant's height — so the
@@ -229,7 +233,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     }
   }
 
-  const xBand = (cfg.showXAxis ? cfg.fontSize + labelGap + tickLen + slantH : 0.0) + xTitleH
+  const xBand = (cfg.showXAxis ? cfg.fontSize + labelGap + tickLen + slantH + (cfg.xOffset ?? 0.0) : 0.0) + xTitleH
   // A top x axis takes the label band above the plot; the bottom keeps the
   // slim padding the top had.
   const xTop = cfg.xTop === true && cfg.horizontal !== true

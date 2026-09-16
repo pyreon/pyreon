@@ -42,8 +42,8 @@ describe('option axes', () => {
   })
 
   it('names an unmapped axis key and a one-sided domain instead of dropping them silently', () => {
-    const { warnings } = compileOption({ ...base, yAxis: { offset: 8, min: 0 } })
-    expect(warnings.map((w) => w.path)).toEqual(['yAxis.offset', 'yAxis.min'])
+    const { warnings } = compileOption({ ...base, yAxis: { nameGap: 8, min: 0 } })
+    expect(warnings.map((w) => w.path)).toEqual(['yAxis.nameGap', 'yAxis.min'])
   })
 })
 
@@ -185,5 +185,25 @@ describe('axis position', () => {
   it('two axes on the same side are named', () => {
     const { warnings } = compileOption({ xAxis: { type: 'category', data: cats }, yAxis: [{}, { position: 'left' }], series: [{ type: 'line', data: [1, 2] }] })
     expect(warnings.map((w) => w.path)).toEqual(['yAxis[1].position'])
+  })
+})
+
+describe('axis offset', () => {
+  const measure = (t: string): number => t.length * 6
+  it('moves each axis line and its labels off the plot edge, and grows its gutter by the same', () => {
+    const series = [{ type: 'line', data: [1, 2] }, { type: 'line', yAxisIndex: 1, data: [10, 20] }]
+    const base = compileOption({ xAxis: { type: 'category', data: ['a', 'b'] }, yAxis: [{}, {}], series })
+    const off = compileOption({ xAxis: { type: 'category', data: ['a', 'b'], offset: 7 }, yAxis: [{ offset: 11 }, { offset: 13 }], series })
+    expect(off.warnings).toEqual([])
+    const lb = layoutChart(base.spec, measure)
+    const lo = layoutChart(off.spec, measure)
+    expect(lo.gutters.left - lb.gutters.left).toBeCloseTo(11)
+    expect(lo.gutters.right - lb.gutters.right).toBeCloseTo(13)
+    expect(lo.gutters.bottom - lb.gutters.bottom).toBeCloseTo(7)
+    const p = lo.plot
+    const lines = renderChart(off.spec, measure).filter((c) => c.kind === 'line')
+    expect(lines.some((c) => c.kind === 'line' && c.from.x === p.x - 11 && c.to.x === p.x - 11)).toBe(true)
+    expect(lines.some((c) => c.kind === 'line' && c.from.x === p.x + p.w + 13 && c.to.x === p.x + p.w + 13)).toBe(true)
+    expect(lines.some((c) => c.kind === 'line' && c.from.y === p.y + p.h + 7 && c.to.y === p.y + p.h + 7)).toBe(true)
   })
 })
