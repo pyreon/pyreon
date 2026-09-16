@@ -15,7 +15,7 @@
 import type { IrDocument, IrField, IrOperation, IrType } from '../core/ir'
 import { byTag, CLIENT_FILE, endpointSpec, tagFile } from './client'
 import type { ClientName } from './client-runtime'
-import { jsonLiteral, q, relativeSpecifier, SourceFile } from './writer'
+import { jsonLiteral, q, regexLiteral, relativeSpecifier, SourceFile } from './writer'
 
 /**
  * Emit `mocks.ts` — a deterministic route table plus the installer.
@@ -131,6 +131,15 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
  * The generated adapters do not have this problem. Their seam is handed the
  * DECLARED path alongside the resolved one, so matching is exact string
  * equality and no pattern is involved.
+ *
+ * The literal is spelled by `regexLiteral`, not by a template here. This used
+ * to escape regex METACHARACTERS and no line terminator, which is a different
+ * question from the one the emit asks: a `/` and all four JavaScript line
+ * terminators END a literal, so a spec path carrying a newline produced
+ * `Unterminated regular expression` and took the whole `mocks.ts` module with
+ * it -- under the DEFAULT config, for every operation in the file. The
+ * metacharacter escape is still needed and still here; it just is not the
+ * lexical half.
  */
 function mockPath(op: IrOperation, pyreon: boolean): string {
   if (!pyreon || op.pathParams.length === 0) return q(op.path)
@@ -138,7 +147,7 @@ function mockPath(op: IrOperation, pyreon: boolean): string {
     .split('/')
     .map((seg) => (seg.startsWith(':') ? '[^/?#]+' : seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
     .join('\\/')
-  return `/${source}(?:\\?|$)/`
+  return regexLiteral(`${source}(?:\\?|$)`)
 }
 
 /** A deterministic sample value for a type. */
