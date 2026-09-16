@@ -1,3 +1,4 @@
+import { isServer } from '@pyreon/reactivity'
 import type { StorageOptions, StorageSignal } from './types'
 
 // ─── Signal Registry ─────────────────────────────────────────────────────────
@@ -25,21 +26,110 @@ interface RegistryEntry<T = unknown> {
   refCount: number
 }
 
-const registry = new Map<string, RegistryEntry>()
+// Default: module-level singleton — correct for a browser, where one process
+// serves one user. On a SERVER it is a cross-request bleed: this registry
+// caches the RESOLVED SIGNAL per key, so request B's `useCookie('session')`
+// returns the signal request A created, holding A's value. `useCookie`'s
+// accessor-shaped `setCookieSource` seam was built for exactly that
+// concurrency case, and this cache sat ABOVE it and short-circuited the read —
+// the seam was correct and unreachable past request #1.
+//
+// So this mirrors `@pyreon/store`'s registry EXACTLY: a `getRegistry()`
+// indirection plus, under `isServer`, a `globalThis` setter that
+// @pyreon/runtime-server picks up lazily inside `runWithRequestContext` /
+// `renderToString` / `renderToStream`. Neither package imports the other.
+const _defaultRegistry = new Map<string, unknown>()
+let _registryProvider: () => Map<string, unknown> | undefined = () => _defaultRegistry
+
+/**
+ * Override the storage registry provider.
+ * Called by @pyreon/runtime-server to inject a per-request isolated registry so
+ * cached storage/cookie signals never leak between concurrent SSR requests.
+ *
+ * A provider returns `undefined` to mean "no request scope here — use the
+ * process default". That is load-bearing, not a detail: an ALS-backed provider
+ * is out of scope for every call that is not inside a render, and the obvious
+ * spelling (`() => als.getStore() ?? new Map()`) fabricates a THROWAWAY map for
+ * those calls, so a signal created outside a render would be dropped on the
+ * next read — breaking the refcount contract `retainEntry`/`releaseEntry` rely
+ * on. `undefined` keeps the pre-isolation behaviour exactly where isolation has
+ * nothing to say.
+ */
+export function setRegistryProvider(
+  fn: () => Map<string, unknown> | undefined,
+): void {
+  _registryProvider = fn
+}
+
+function getRegistry(): Map<string, unknown> {
+  return _registryProvider() ?? _defaultRegistry
+}
+
+/**
+ * Publish the setter on a `globalThis` seam so the SSR renderer wires
+ * per-request isolation WITHOUT anyone remembering to. Same shape and same
+ * reason as `@pyreon/store`'s `__PYREON_STORE_SET_REGISTRY_PROVIDER__` and
+ * styler's `__PYREON_STYLER_COLLECT__`: an opt-in hook that N call sites must
+ * remember to wire is a silent-hole generator, so the safe behaviour is the
+ * DEFAULT at the shared choke point. `@pyreon/server` and `@pyreon/zero` own
+ * the server and neither depends on `@pyreon/storage`, so nobody upstream
+ * COULD have opted in.
+ *
+ * Server-only: in a browser one process serves one user, so the module-level
+ * registry is correct and this costs nothing.
+ */
+if (isServer) {
+  ;(
+    globalThis as {
+      __PYREON_STORAGE_SET_REGISTRY_PROVIDER__?: (
+        fn: () => Map<string, unknown> | undefined,
+      ) => void
+    }
+  ).__PYREON_STORAGE_SET_REGISTRY_PROVIDER__ = setRegistryProvider
+}
+
+// The per-request map holds TWO kinds of value, under disjoint key prefixes:
+// registry entries (`entry:<backend>:<key>`) and the scoped sub-maps a backend
+// uses for its own module-level state (`scope:<namespace>`). One map rather
+// than two seams because both must be isolated by the SAME request boundary —
+// isolating the signal while its bytes stay process-global just moves the
+// bleed one layer down (see `useMemoryStorage`).
+const ENTRY_PREFIX = 'entry:'
+const SCOPE_PREFIX = 'scope:'
 
 /**
  * Build a composite key from backend type + storage key to avoid
  * collisions between different backends using the same key name.
  */
 function registryKey(backend: string, key: string): string {
-  return `${backend}:${key}`
+  return `${ENTRY_PREFIX}${backend}:${key}`
+}
+
+/**
+ * A request-scoped `Map` for a backend's OWN state, living inside whichever
+ * registry is active — so it is per-request on a server and process-wide in a
+ * browser, exactly like the entries beside it.
+ *
+ * `useMemoryStorage`'s byte store is the reason this exists: isolating the
+ * cached SIGNAL is not enough on its own, because a fresh signal seeded from a
+ * process-global byte store still reads the previous request's value.
+ */
+export function getScopedMap<V>(namespace: string): Map<string, V> {
+  const registry = getRegistry()
+  const key = SCOPE_PREFIX + namespace
+  let scoped = registry.get(key) as Map<string, V> | undefined
+  if (scoped === undefined) {
+    scoped = new Map<string, V>()
+    registry.set(key, scoped)
+  }
+  return scoped
 }
 
 /**
  * Get an existing signal from the registry.
  */
 export function getEntry<T>(backend: string, key: string): RegistryEntry<T> | undefined {
-  return registry.get(registryKey(backend, key)) as RegistryEntry<T> | undefined
+  return getRegistry().get(registryKey(backend, key)) as RegistryEntry<T> | undefined
 }
 
 /**
@@ -59,7 +149,7 @@ export function setEntry<T>(
   // assignable to the map's `StorageOptions<unknown>` slot under
   // `exactOptionalPropertyTypes` — the registry is internally untyped by design
   // (`getEntry<T>` casts back on read).
-  registry.set(registryKey(backend, key), {
+  getRegistry().set(registryKey(backend, key), {
     signal,
     defaultValue,
     backend,
@@ -74,7 +164,7 @@ export function setEntry<T>(
  * destroy the entry while siblings still hold the signal.
  */
 export function retainEntry(backend: string, key: string): void {
-  const entry = registry.get(registryKey(backend, key))
+  const entry = getRegistry().get(registryKey(backend, key)) as RegistryEntry | undefined
   /* v8 ignore next — defensive null entry guard; caller chain always has live entry */
   if (entry) entry.refCount++
 }
@@ -87,7 +177,8 @@ export function retainEntry(backend: string, key: string): void {
  */
 export function releaseEntry(backend: string, key: string): boolean {
   const composite = registryKey(backend, key)
-  const entry = registry.get(composite)
+  const registry = getRegistry()
+  const entry = registry.get(composite) as RegistryEntry | undefined
   /* v8 ignore next — defensive null entry guard; release pairs with retain */
   if (!entry) return false
   entry.refCount--
@@ -105,7 +196,7 @@ export function releaseEntry(backend: string, key: string): boolean {
  * through `releaseEntry` instead.
  */
 export function removeEntry(backend: string, key: string): void {
-  registry.delete(registryKey(backend, key))
+  getRegistry().delete(registryKey(backend, key))
 }
 
 /**
@@ -113,7 +204,11 @@ export function removeEntry(backend: string, key: string): void {
  */
 export function getEntriesByBackend(backend: string): RegistryEntry[] {
   const entries: RegistryEntry[] = []
-  for (const entry of registry.values()) {
+  for (const [key, value] of getRegistry()) {
+    // Skip the `scope:` sub-maps that share this registry — they carry no
+    // `backend` field, and reading one as an entry would be a silent lie.
+    if (!key.startsWith(ENTRY_PREFIX)) continue
+    const entry = value as RegistryEntry
     if (entry.backend === backend) entries.push(entry)
   }
   return entries
@@ -123,5 +218,5 @@ export function getEntriesByBackend(backend: string): RegistryEntry[] {
  * Clear all entries from the registry. Used for testing.
  */
 export function _resetRegistry(): void {
-  registry.clear()
+  getRegistry().clear()
 }

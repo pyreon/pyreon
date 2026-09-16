@@ -181,12 +181,46 @@ const _fallbackStack: Map<symbol, unknown>[] = []
 /* v8 ignore next */
 setContextStackProvider(() => _contextAls.getStore() ?? _fallbackStack)
 
-// ─── Store isolation (optional) ───────────────────────────────────────────────
-// A second ALS isolates store registries between concurrent requests.
-// Activated only when the user calls configureStoreIsolation().
+// ─── Per-request registry isolation ──────────────────────────────────────────
+// A fundamentals package whose public API is keyed by a USER-CHOSEN key
+// (`defineStore('cart')`, `useCookie('session')`, `Model.asHook('cart')`) keeps
+// a module-level registry so the same key resolves to the same value. That is
+// correct in a browser — one process, one user — and a cross-request bleed on a
+// server, where one process serves everyone.
+//
+// Each such registry gets its OWN AsyncLocalStorage here (own = no key
+// collisions between packages) and is wired from the `globalThis` seam that
+// package publishes when it loads on a server. `@pyreon/store` was fixed this
+// way first; `@pyreon/storage` and `@pyreon/state-tree` had the identical shape
+// and were not swept with it.
+//
+// Activated lazily, per render — see `tryAutoWireRegistryIsolation`.
+
+interface RegistrySeam {
+  /** The `globalThis` property the owning package publishes its setter on. */
+  readonly seamKey: string
+  readonly als: AsyncLocalStorage<Map<string, unknown>>
+  active: boolean
+}
 
 const _storeAls = new AsyncLocalStorage<Map<string, unknown>>()
-let _storeIsolationActive = false
+
+const _registrySeams: RegistrySeam[] = [
+  { seamKey: '__PYREON_STORE_SET_REGISTRY_PROVIDER__', als: _storeAls, active: false },
+  {
+    seamKey: '__PYREON_STORAGE_SET_REGISTRY_PROVIDER__',
+    als: new AsyncLocalStorage<Map<string, unknown>>(),
+    active: false,
+  },
+  {
+    seamKey: '__PYREON_STATE_TREE_SET_REGISTRY_PROVIDER__',
+    als: new AsyncLocalStorage<Map<string, unknown>>(),
+    active: false,
+  },
+]
+
+/** The store's seam — `configureStoreIsolation` is its public, explicit path. */
+const _storeSeam = _registrySeams[0] as RegistrySeam
 
 /**
  * Wire up per-request store isolation.
@@ -205,7 +239,7 @@ export function configureStoreIsolation(
   // read. `undefined` tells the registry to use its process default, so
   // isolation applies exactly where it has something to say.
   setStoreRegistryProvider(() => _storeAls.getStore())
-  _storeIsolationActive = true
+  _storeSeam.active = true
 }
 
 /**
@@ -224,20 +258,38 @@ export function configureStoreIsolation(
  * imports `@pyreon/store`. One `globalThis` property read per render call is
  * not measurable against rendering a page.
  */
-function tryAutoWireStoreIsolation(): void {
-  const seam = (
-    globalThis as {
-      __PYREON_STORE_SET_REGISTRY_PROVIDER__?: (fn: () => Map<string, unknown> | undefined) => void
-    }
-  ).__PYREON_STORE_SET_REGISTRY_PROVIDER__
-  if (typeof seam === 'function') configureStoreIsolation(seam)
+function tryAutoWireRegistryIsolation(seam: RegistrySeam): void {
+  const setProvider = (
+    globalThis as unknown as Record<
+      string,
+      undefined | ((fn: () => Map<string, unknown> | undefined) => void)
+    >
+  )[seam.seamKey]
+  if (typeof setProvider !== 'function') return
+  // Return the ALS store, or `undefined` — NOT a fresh Map. See
+  // `configureStoreIsolation`'s note: fabricating a throwaway map outside a
+  // request silently drops whatever was written there.
+  setProvider(() => seam.als.getStore())
+  seam.active = true
 }
 
-/** Wrap a function call in a fresh store registry (no-op when @pyreon/store is absent). */
-function withStoreContext<T>(fn: () => T): T {
-  if (!_storeIsolationActive) tryAutoWireStoreIsolation()
-  if (!_storeIsolationActive) return fn()
-  return _storeAls.run(new Map(), fn)
+/**
+ * Wrap a call in a fresh per-request registry for every isolatable package that
+ * is actually loaded (a no-op for each one that is absent).
+ *
+ * Nested `als.run` rather than one shared Map: a single map would let two
+ * packages collide on the same user key, and each package's provider must be
+ * able to answer `undefined` for its own scope independently.
+ */
+function withIsolatedRegistries<T>(fn: () => T): T {
+  let call = fn
+  for (const seam of _registrySeams) {
+    if (!seam.active) tryAutoWireRegistryIsolation(seam)
+    if (!seam.active) continue
+    const inner = call
+    call = () => seam.als.run(new Map(), inner)
+  }
+  return call()
 }
 
 // ─── Per-request styler SSR scope ───────────────────────────────────────────
@@ -388,7 +440,7 @@ export async function renderToString(root: VNode | null): Promise<string> {
   // NOT `withStylerSSRScope` — see its doc comment. String-mode SSR reads the
   // buffer AFTER this returns, which is the documented pattern; scoping here
   // hides every rule from that read.
-  return withStoreContext(() => _contextAls.run([], () => renderNode(root)))
+  return withIsolatedRegistries(() => _contextAls.run([], () => renderNode(root)))
 }
 
 /**
@@ -397,7 +449,7 @@ export async function renderToString(root: VNode | null): Promise<string> {
  * outside of renderToString but still want per-request isolation.
  */
 export function runWithRequestContext<T>(fn: () => Promise<T>): Promise<T> {
-  return withStoreContext(() => _contextAls.run([], fn))
+  return withIsolatedRegistries(() => _contextAls.run([], fn))
 }
 
 /**
@@ -555,7 +607,7 @@ export function renderToStream(
           })
       return _contextAls.getStore() !== undefined
         ? streamBody()
-        : withStylerSSRScope(() => withStoreContext(() => _contextAls.run([], streamBody)))
+        : withStylerSSRScope(() => withIsolatedRegistries(() => _contextAls.run([], streamBody)))
     },
     cancel(reason) {
       // Consumer (browser fetch reader) closed the stream — propagate to

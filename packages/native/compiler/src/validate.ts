@@ -19,6 +19,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { compileKotlinViaDaemon } from './kotlin-daemon'
 import { KOTLIN_CHART_VIEW_STUBS, KOTLIN_COMPOSE_STUBS } from './kotlin-stubs'
 import { SWIFT_CHART_VIEW_STUBS, SWIFT_UI_STUBS } from './swift-stubs'
 import {
@@ -691,6 +692,11 @@ function kotlincVersion(): string {
   return _kotlincVersion
 }
 
+/** The kotlinc version string, for the run-wide daemon's artefact keys (see kotlin-daemon.ts). */
+export function kotlincVersionForDaemon(): string {
+  return kotlincVersion()
+}
+
 /** For testing: reset the cached detection result. */
 export function _resetKotlincCache(): void {
   _kotlincAvailable = undefined
@@ -737,6 +743,17 @@ function validateKotlinUncached(source: string): ValidationResult {
       }
     }
     return { ok: true, skipped: true, skipReason: 'kotlinc not on PATH' }
+  }
+
+  // The warm path: one compiler JVM per process, the stubs pre-compiled to a
+  // jar, ~80ms per check instead of a ~4-6s cold `kotlinc` (see
+  // kotlin-daemon.ts). Null means the daemon cannot run here (or died on
+  // this request), and the per-check `kotlinc` below answers instead — the
+  // verdict is the same either way; only the cost differs.
+  const augmentation = kotlinChartAugmentation(source)
+  const warm = compileKotlinViaDaemon(source, KOTLIN_COMPOSE_STUBS, augmentation, kotlincVersion(), COMPILE_TIMEOUT_MS)
+  if (warm) {
+    return warm.code === 0 ? { ok: true } : { ok: false, error: warm.output.trim() || 'kotlinc failed with no output' }
   }
 
   // Set up a temp directory containing the stubs + the input. kotlinc
