@@ -11,7 +11,7 @@ import { topoSortModels } from '../core/graph'
 import type { IrDocument, IrField, IrType } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
 import { dialectOf, type ValidatorName } from './validator'
-import { q, relativeSpecifier, SourceFile } from './writer'
+import { q, regexLiteral, relativeSpecifier, SourceFile } from './writer'
 
 export const SCHEMA_FILE = 'schemas.ts'
 
@@ -196,7 +196,7 @@ function fieldSchema(field: IrField, opts: SchemaExprOptions, depth: number): st
   if (field.type.kind === 'string') {
     if (typeof field.min === 'number') expr += `.min(${field.min})`
     if (typeof field.max === 'number') expr += `.max(${field.max})`
-    if (field.pattern && portableRegex(field.pattern)) expr += `.regex(/${field.pattern}/)`
+    if (field.pattern && portableRegex(field.pattern)) expr += `.regex(${regexLiteral(field.pattern)})`
   } else if (field.type.kind === 'number') {
     if (typeof field.min === 'number') expr += `.min(${field.min})`
     if (typeof field.max === 'number') expr += `.max(${field.max})`
@@ -226,7 +226,10 @@ function fieldSchema(field: IrField, opts: SchemaExprOptions, depth: number): st
  * The package already knows this class in three other contexts -- `q()`
  * escapes all four for a string literal, `safeLineComment` collapses them for a
  * `//` comment, `jsonLiteral` re-escapes the two `JSON.stringify` leaves raw.
- * The regex literal is the fifth surface.
+ * The regex literal is the fifth CONTEXT -- and, as the mock emitter later
+ * proved, the first of two SITES. Both now spell the literal through
+ * `regexLiteral`, which escapes what this predicate refuses; the refusal below
+ * stays because it is about PORTABILITY as well, not only about lexing.
  */
 const REGEX_LITERAL_TERMINATOR = /[/\r\n\u2028\u2029]/
 
@@ -240,9 +243,11 @@ const REGEX_LITERAL_TERMINATOR = /[/\r\n\u2028\u2029]/
  */
 function portableRegex(pattern: string): boolean {
   if (/\(\?<|\\[pPk]|\(\?\(|\\Z|\\z|\\A/.test(pattern)) return false
-  // Refuse, rather than escape: `/` has always been refused here and a
-  // constraint silently dropped is the documented cost of this predicate,
-  // while a pattern that cannot be SPELLED as a literal is a broken module.
+  // Refuse, rather than lean on `regexLiteral`'s escaping: a constraint
+  // silently dropped is the documented cost of this predicate, and a `pattern`
+  // is SEMANTIC input -- rewriting a user's regex to make it spellable is a
+  // different act from spelling a structural one the emitter built itself.
+  // `regexLiteral` still runs on what survives, as defence in depth.
   if (REGEX_LITERAL_TERMINATOR.test(pattern)) return false
   try {
     new RegExp(pattern)
