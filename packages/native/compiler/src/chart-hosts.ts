@@ -19,6 +19,7 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
+import { resolveDataset } from '@pyreon/charts/option-layer'
 import type { AttrIR, ExprIR } from './types'
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 
@@ -206,6 +207,70 @@ export type ChartHostAdapter = (
 
 function litString(e: ExprIR | undefined): string | undefined {
   return e !== undefined && e.kind === 'literal' && typeof e.value === 'string' ? e.value : undefined
+}
+
+/**
+ * A literal option IR as the plain value the web facade reads, or `undefined`
+ * where anything is not a literal (an identifier, a call, a spread).
+ */
+function irToValue(e: ExprIR | undefined, resolve: (name: string) => ExprIR | undefined): { ok: true; value: unknown } | { ok: false } {
+  const lit = literalOf(e, resolve)
+  if (lit === undefined) return { ok: false }
+  if (lit.kind === 'literal') return { ok: true, value: lit.value }
+  if (lit.kind === 'array') {
+    const out: unknown[] = []
+    for (const el of lit.elements) {
+      const v = irToValue(el, resolve)
+      if (!v.ok) return v
+      out.push(v.value)
+    }
+    return { ok: true, value: out }
+  }
+  if (lit.kind === 'object') {
+    if (lit.spreads !== undefined && lit.spreads.length > 0) return { ok: false }
+    const out: Record<string, unknown> = {}
+    for (const f of lit.fields) {
+      const v = irToValue(f.value, resolve)
+      if (!v.ok) return v
+      out[f.name] = v.value
+    }
+    return { ok: true, value: out }
+  }
+  return { ok: false }
+}
+
+/** The inverse of `irToValue`: a plain JSON-ish value as literal IR (fractions keep their `float` mark). */
+function valueToIr(v: unknown): ExprIR {
+  if (Array.isArray(v)) return { kind: 'array', elements: v.map(valueToIr) }
+  if (v !== null && typeof v === 'object') {
+    return { kind: 'object', fields: Object.entries(v as Record<string, unknown>).filter(([, val]) => val !== undefined).map(([name, val]) => ({ name, value: valueToIr(val) })) }
+  }
+  if (typeof v === 'number') return Number.isInteger(v) ? { kind: 'literal', value: v } : { kind: 'literal', value: v, float: true }
+  if (typeof v === 'string' || typeof v === 'boolean' || v === null) return { kind: 'literal', value: v }
+  return { kind: 'literal', value: null }
+}
+
+/**
+ * Resolve a literal `dataset` at COMPILE time with the web facade's own
+ * `resolveDataset`: `source` / `dimensions` / `sourceHeader`, `encode`
+ * (x / y / itemName / seriesName / tooltip), `datasetIndex` / `datasetId`,
+ * and the built-in `filter` / `sort` transforms — so the series data and the
+ * category axis a dataset implies are the SAME on every target. Registered
+ * transforms live in the page's registry and cannot run here; the resolver
+ * names them. An option without a dataset passes through untouched.
+ */
+function resolveStaticDataset(raw: Extract<ExprIR, { kind: 'object' }>, resolve: (name: string) => ExprIR | undefined, warn: (m: string) => void): Extract<ExprIR, { kind: 'object' }> {
+  if (objectField(raw, 'dataset') === undefined) return raw
+  const value = irToValue(raw, resolve)
+  if (!value.ok || value.value === null || typeof value.value !== 'object') {
+    warn('<OptionChart option.dataset>: a native dataset needs a fully literal option (source rows, encode and transforms); native renders without the dataset.')
+    return raw
+  }
+  const resolved = resolveDataset(value.value as Record<string, unknown>)
+  for (const w of resolved.warnings) warn(`<OptionChart option.${w.path}>: ${w.message}`)
+  const { dataset: _dropped, ...rest } = resolved.option
+  const out = valueToIr(rest)
+  return out.kind === 'object' ? out : raw
 }
 
 function litNumber(e: ExprIR | undefined): number | undefined {
@@ -869,6 +934,7 @@ export function desugarOptionChart(
     warn('<OptionChart timelineIndex>: native needs a static numeric index; the option currentIndex is used.')
   }
   raw = resolveStaticTimelineOption(raw, timelineIndex, resolve, warn)
+  raw = resolveStaticDataset(raw, resolve, warn)
   const rawSeries = literalOf(objectField(raw, 'series'), resolve)
   const series = rawSeries?.kind === 'array' ? literalOf(rawSeries.elements[0], resolve) : literalOf(rawSeries, resolve)
   const type = objectField(series ?? { kind: 'literal', value: null }, 'type')
@@ -878,7 +944,7 @@ export function desugarOptionChart(
     return undefined
   }
 
-  optionFields(raw, ['series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'color'], 'option', warn)
+  optionFields(raw, ['series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'color', 'dataset'], 'option', warn)
 
   for (const a of e.attrs) {
     if (a.kind === 'event' && a.name !== 'selectindex') {
@@ -1617,7 +1683,7 @@ export function desugarOptionChart(
         warn(`<OptionChart option.series[${si}].type>: this cartesian adapter needs line, bar, pictorialBar, or scatter series; emitting nothing.`)
         return undefined
       }
-      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize'], `option.series[${si}]`, warn)
+      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras'], `option.series[${si}]`, warn)
       seriesObjects.push(s)
     }
     const xAxis = literalOf(objectField(raw, 'xAxis'), resolve)
@@ -1705,6 +1771,9 @@ export function desugarOptionChart(
       }
       const pattern = optionPatternLiteral(objectField(s, 'itemStyle'), resolve)
       if (pattern !== undefined) opts.push({ name: 'pattern', value: pattern })
+      // The dataset pre-pass materialised `encode.tooltip` as `tooltipExtras`.
+      const extras = literalOf(objectField(s, 'tooltipExtras'), resolve)
+      if (extras?.kind === 'array' && extras.elements.length > 0) opts.push({ name: 'extras', value: extras })
       if (sk === 'line' || sk === 'scatter') {
         // ECharts' symbol / showSymbol: a scatter datum shape, or a line's opt-in datum symbols.
         const showSymbol = objectField(s, 'showSymbol')

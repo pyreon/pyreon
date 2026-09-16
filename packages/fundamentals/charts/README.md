@@ -95,7 +95,11 @@ onto them — `median`, `[from, to]` pairs, category-named `coord`s, per-mark
 `lineStyle` / `itemStyle` colours and `symbolSize` — on web, iOS and Android. **`bubble`** maps its r
 channel by AREA, not radius — radius-proportional bubbles exaggerate the data.
 **`bars(y, { showValues: true })`** labels each bar with its formatted value.
-**Tooltip extras**: a series' `extras: [{ label, numbers | texts }]` lists extra
+**Datasets on native**: a literal `dataset` (with `encode` and the built-in
+`filter` / `sort` transforms) resolves at compile time through the same
+`resolveDataset` the web runs — exposed as `@pyreon/charts/option-layer` for
+build tools — so the series data, the category axis and the tooltip extras
+are the same on iOS and Android. **Tooltip extras**: a series' `extras: [{ label, numbers | texts }]` lists extra
 dimensions under the value in the tooltip and as columns of the accessible
 table — the option facade's `encode.tooltip` over a dataset. **Gradients**: a mark's `gradient: { stops, direction }` ramps its fill across
 the plot; the option facade reads ECharts' linear gradient objects on

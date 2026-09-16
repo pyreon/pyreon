@@ -83,15 +83,20 @@ for interaction, animation or accessibility parity.
   column per extra, so the reader who cannot hover gets the same numbers.
   Both are generated into the native engines and the emitters carry
   `extras` through `TooltipSeries`.
-- [ ] Ledger honesty: the four dataset-pipeline rows (`data.dataset`,
-  `data.dimensions-encode`, `data.transforms`, `data.progressive-large`) were
-  marked complete on the strength of the web facade, but the native
-  `<OptionChart>` desugar takes literal series data only — `option.dataset`,
-  `encode`, transforms and `sampling` are named as not crossing and the chart
-  emits nothing. They are `partial` now, with the reason on the row. Closing
-  them means resolving a literal dataset (source + dimensions + encode +
-  the built-in filter/sort transforms) at compile time in the desugar;
-  registered transforms and `sampling` would still need a runtime path.
+- [x] Datasets cross natively: the `<OptionChart>` desugar runs the web
+  facade's own `resolveDataset` (the new `@pyreon/charts/option-layer`
+  subpath, a pure module) over a literal option at compile time — `source` /
+  `dimensions` / `sourceHeader`, `datasetIndex` / `datasetId`, `encode`
+  (x / y / itemName / seriesName / tooltip) and the built-in `filter` /
+  `sort` transforms — and hands the materialised series, category axis and
+  tooltip extras to the existing lowering. One resolver, three targets.
+  `data.dataset` and `data.dimensions-encode` are complete on that proof;
+  `data.transforms` stays partial (a REGISTERED transform lives in the page's
+  registry and is named as web-only), as does `data.progressive-large` (the
+  `sampling` / `large` spellings do not cross; `<PlotChart maxPoints>` is the
+  native decimation). Before this, all four rows had been marked complete on
+  the strength of the web facade alone while the native desugar named
+  `option.dataset` as not crossing and emitted nothing.
 - [ ] `presentation.gradients-patterns`: ECharts' LINEAR gradient objects on
   every colour slot now resolve to the series gradient (direction from the
   dominant axis, a backwards ramp reverses its stops, the first stop is the

@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.19' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.20' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -31,15 +31,13 @@ const row = (
 
 export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('data.option-merge', 'data', 'direct', 'complete', 'src/engine/option-composite.test.ts'),
-  // The four dataset-pipeline rows resolve on the WEB facade; the native
-  // OptionChart takes literal series data only (`option.dataset`, `encode`,
-  // transforms and `sampling` are named as not crossing). Partial until the
-  // desugar resolves a literal dataset at compile time.
-  row('data.dataset', 'data', 'direct', 'partial', 'src/engine/option-layer.ts'),
-  row('data.dimensions-encode', 'data', 'direct', 'partial', 'src/engine/option-encode-tooltip.test.ts'), // web complete incl. encode.tooltip; native: see above
-  row('data.transforms', 'data', 'direct', 'partial', 'src/engine/option-transform.test.ts'), // web complete; native: see above
+  // A literal dataset resolves at COMPILE time in the native desugar through
+  // the same `resolveDataset` the web runs (`@pyreon/charts/option-layer`).
+  row('data.dataset', 'data', 'direct', 'complete', 'src/engine/option-layer.ts', '../../native/compiler/src/tests/chart-dataset-native.test.ts'),
+  row('data.dimensions-encode', 'data', 'direct', 'complete', 'src/engine/option-encode-tooltip.test.ts', '../../native/compiler/src/tests/chart-dataset-native.test.ts'),
+  row('data.transforms', 'data', 'direct', 'partial', 'src/engine/option-transform.test.ts', '../../native/compiler/src/tests/chart-dataset-native.test.ts'), // built-in filter/sort cross; registered transforms run on the web only
   // sampling / large / progressive resolve to bounded decimation on shared rows.
-  row('data.progressive-large', 'data', 'direct', 'partial', 'src/engine/option-sampling.test.ts'), // web complete; native decimation is `<PlotChart maxPoints>`, the option spellings do not cross
+  row('data.progressive-large', 'data', 'direct', 'partial', 'src/engine/option-sampling.test.ts'), // web complete; native decimation is `<PlotChart maxPoints>`, the `sampling` / `large` spellings do not cross the OptionChart
   row('data.empty-null', 'data', 'direct', 'complete', 'src/engine/gaps.test.ts'),
 
   ...[

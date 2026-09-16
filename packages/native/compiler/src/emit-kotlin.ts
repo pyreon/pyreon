@@ -11145,6 +11145,35 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
     args.push(`gradient = SeriesGradient(stops = listOf(${stopArgs.join(', ')})${direction === undefined ? '' : `, direction = ${JSON.stringify(direction.value)}`})`)
     return true
   }
+  // `extras` (ECharts' encode.tooltip dimensions) is the LAST Series field:
+  // literal `{ label, numbers? | texts? }` objects, one per extra.
+  const extrasOpt = fields.get('extras')
+  const pushExtras = (): boolean => {
+    if (extrasOpt === undefined) return true
+    if (extrasOpt.kind !== 'array') return false
+    const items: string[] = []
+    for (const ex of extrasOpt.elements) {
+      if (ex.kind !== 'object') return false
+      const ev = new Map(ex.fields.map((field) => [field.name, field.value]))
+      const label = ev.get('label')
+      if (label?.kind !== 'literal' || typeof label.value !== 'string') return false
+      const parts = [`label = ${JSON.stringify(label.value)}`]
+      const numbers = ev.get('numbers')
+      const texts = ev.get('texts')
+      if (numbers !== undefined) {
+        if (numbers.kind !== 'array' || numbers.elements.some((n) => n.kind !== 'literal' || typeof n.value !== 'number')) return false
+        parts.push(`numbers = listOf(${numbers.elements.map((n) => chartDouble((n as { value: number }).value)).join(', ')})`)
+      }
+      if (texts !== undefined) {
+        if (texts.kind !== 'array' || texts.elements.some((n) => n.kind !== 'literal' || typeof n.value !== 'string')) return false
+        parts.push(`texts = listOf(${texts.elements.map((n) => JSON.stringify((n as { value: string }).value)).join(', ')})`)
+      }
+      items.push(`SeriesExtra(${parts.join(', ')})`)
+    }
+    extrasArg = `extras = listOf(${items.join(', ')})`
+    return true
+  }
+  let extrasArg: string | undefined
   let patternPushed = false
   for (const spec of PLOT_MARK_OPTION_FIELDS) {
     if (spec.name === 'negativeColor' && !patternPushed) {
@@ -11180,6 +11209,11 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
     _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`pattern\` needs literal kind/color/spacing/width fields on native; emitting an empty Box().`)
     return 'unsupported'
   }
+  if (!pushExtras()) {
+    _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`extras\` needs literal { label, numbers | texts } entries on native; emitting an empty Box().`)
+    return 'unsupported'
+  }
+  if (extrasArg !== undefined) args.push(extrasArg)
   return args
 }
 

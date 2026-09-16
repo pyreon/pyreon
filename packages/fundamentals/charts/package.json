@@ -42,6 +42,11 @@
       "bun": "./src/plot.ts",
       "import": "./lib/plot.js",
       "types": "./lib/types/plot.d.ts"
+    },
+    "./option-layer": {
+      "bun": "./src/option-layer.ts",
+      "import": "./lib/option-layer.js",
+      "types": "./lib/types/option-layer.d.ts"
     }
   },
   "files": [
