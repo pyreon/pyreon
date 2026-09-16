@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { compileOption } from './option'
-import { layoutChart, renderChart } from './render'
+import { barsFor, categoryIndex, layoutChart, renderChart } from './render'
+import { plotHitIndex } from './plot-hit'
 import type { DrawCmd } from './types'
 
 const base = { xAxis: { type: 'category', data: ['a', 'b'] }, series: [{ type: 'line', data: [1, 2] }, { type: 'bar', yAxisIndex: 1, data: [100, 200] }] }
@@ -86,5 +87,56 @@ describe('yAxis.inverse', () => {
     const bottom = ticks.reduce((a, b) => (a.pos > b.pos ? a : b))
     expect(top.value).toBe(0)
     expect(bottom.value).toBe(10)
+  })
+})
+
+describe('xAxis.inverse', () => {
+  const measure = (t: string): number => t.length * 6
+  const cats = ['a', 'b', 'c', 'd']
+  const kinds: Record<string, unknown>[] = [
+    { type: 'line', data: [1, 5, 3, 2] },
+    { type: 'bar', data: [1, -5, 3, 2] },
+    { type: 'line', areaStyle: {}, data: [1, 5, 3, 2] },
+    { type: 'bar', stack: 's', data: [1, 5, 3, 2] },
+    { type: 'scatter', data: [1, 5, 3, 2] },
+  ]
+  const build = (series: Record<string, unknown>[], inverse: boolean) =>
+    compileOption({ xAxis: { type: 'category', data: cats, ...(inverse ? { inverse: true } : {}) }, yAxis: {}, series })
+  it.each(kinds.flatMap((k) => [[k, 1], [k, 2]] as const))('%j ×%i draws the left-right mirror of the upright chart', (kind, count) => {
+    const series = count === 1 ? [kind] : [kind, { ...kind, name: 'b' }]
+    const upright = build(series, false)
+    const inverted = build(series, true)
+    expect(inverted.warnings).toEqual([])
+    const p = layoutChart(upright.spec, measure).plot
+    const r = (n: number): number => Math.round(n * 10) / 10
+    const sig = (c: DrawCmd, flip: boolean): string | null => {
+      const X = (x: number): number => r(flip ? 2 * p.x + p.w - x : x)
+      if (c.kind === 'rect' && c.rect.w > 0 && c.rect.x >= p.x - 1 && c.rect.x + c.rect.w <= p.x + p.w + 1 && c.rect.h < p.h) return `rect ${X(flip ? c.rect.x + c.rect.w : c.rect.x)} ${r(c.rect.y)} ${r(c.rect.w)}`
+      if (c.kind === 'circle') return `circle ${X(c.center.x)} ${r(c.center.y)}`
+      if (c.kind === 'polyline' || c.kind === 'polygon') return `${c.kind} ${c.points.map((q) => `${X(q.x)},${r(q.y)}`).sort().join(' ')}`
+      return null
+    }
+    const expected = renderChart(upright.spec, measure).map((c) => sig(c, true)).filter((x) => x !== null).sort()
+    const actual = renderChart(inverted.spec, measure).map((c) => sig(c, false)).filter((x) => x !== null).sort()
+    expect(expected.length).toBeGreaterThan(0)
+    expect(actual).toEqual(expected)
+  })
+
+  it('labels the categories right to left and a hit still names the ORIGINAL datum', () => {
+    const { spec } = build([{ type: 'bar', data: [10, 20, 30, 40] }], true)
+    const l = layoutChart(spec, measure)
+    expect([...l.xTicks].sort((a, b) => a.pos - b.pos).map((t) => t.label)).toEqual(['d', 'c', 'b', 'a'])
+    // The leftmost bar is datum 3 ('d').
+    const bars = barsFor(spec, 0, measure)
+    const leftmost = bars.reduce((a, b) => (a.x < b.x ? a : b))
+    expect(plotHitIndex(spec, measure, leftmost.x + leftmost.w / 2, leftmost.y + leftmost.h - 1)).toBe(3)
+    expect(categoryIndex(spec, 0)).toBe(3)
+  })
+
+  it('a continuous x axis inverts through its domain', () => {
+    const { spec } = compileOption({ xAxis: { type: 'value', inverse: true }, yAxis: {}, series: [{ type: 'scatter', data: [[0, 1], [10, 2]] }] })
+    const l = layoutChart(spec, measure)
+    const first = l.xTicks.reduce((a, b) => (a.pos < b.pos ? a : b))
+    expect(first.value).toBe(10)
   })
 })

@@ -819,6 +819,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     y2Title: axisName(yAxes[1]),
     ...(isObj(yAxes[0]) && yAxes[0]['type'] === 'log' ? { yScale: 'log' as const } : {}),
     ...(isObj(yAxes[0]) && yAxes[0]['inverse'] === true ? { yInverse: true } : {}),
+    ...(isObj(xAxis) && xAxis['inverse'] === true ? { xInverse: true } : {}),
   }
   if (customY !== undefined && spec.yDomain === undefined) spec.yDomain = customY
   if (customX !== undefined && (spec.xValues === undefined || spec.xValues.length === 0)) spec.xValues = customX

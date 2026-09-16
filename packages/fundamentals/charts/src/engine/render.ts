@@ -368,6 +368,8 @@ export interface ChartSpec {
   xLabels?: 'auto' | 'rotate' | 'thin' | 'all' | undefined
   /** Draws the left value axis upside down — ECharts' `yAxis.inverse`. */
   yInverse?: boolean | undefined
+  /** Runs the x axis right to left — ECharts' `xAxis.inverse`. */
+  xInverse?: boolean | undefined
 }
 
 /**
@@ -552,7 +554,8 @@ export function logBounds(spec: ChartSpec): Domain {
  * entry point calls, rather than in each host: the tooltip and the table
  * read the ORIGINAL spec, which is how they keep showing real values.
  */
-export function geometrySpec(spec: ChartSpec): ChartSpec {
+export function geometrySpec(raw: ChartSpec): ChartSpec {
+  const spec = invertCategories(raw)
   const isLog = spec.yScale === 'log'
   const norm = spec.stackNormalize === true
   if (!isLog && !norm) return spec
@@ -602,6 +605,118 @@ export function geometrySpec(spec: ChartSpec): ChartSpec {
   // view spans its decades; the two together stay a log view of shares.
   const yDomain: Domain = isLog ? { min: 0.0, max: viewMax } : { min: 0.0, max: 1.0 }
   return { ...spec, series, yDomain, annotations: spec.annotations === undefined ? undefined : notes, yScale: 'linear', stackNormalize: false }
+}
+
+
+/**
+ * True when the x axis runs right to left over CATEGORIES (or index-spaced
+ * points). A continuous x inverts through its domain instead, and the
+ * horizontal frame's x is the value axis, so neither reverses the data.
+ */
+/** A domain carrying the inverse flag when asked. */
+export function invertedDomain(d: Domain, inverse: boolean): Domain {
+  return inverse ? { min: d.min, max: d.max, inverse: true } : d
+}
+
+export function categoriesInverted(spec: ChartSpec): boolean {
+  return spec.xInverse === true && spec.horizontal !== true && (spec.xValues ?? []).length === 0
+}
+
+/** The number of category slots an inverted axis reflects over. */
+export function categorySlots(spec: ChartSpec): number {
+  const m = seriesMaxLength(spec.series)
+  return spec.categories.length > m ? spec.categories.length : m
+}
+
+/**
+ * A view index as the datum index the caller's data uses, and back — the
+ * reflection is its own inverse. Identity unless the categories are inverted;
+ * a miss (-1) stays a miss.
+ */
+export function categoryIndex(spec: ChartSpec, index: number): number {
+  if (!categoriesInverted(spec) || index < 0) return index
+  return categorySlots(spec) - 1 - index
+}
+
+function reversedDoubles(a: Double[] | undefined, n: number): Double[] | undefined {
+  const src = a ?? []
+  const out: Double[] = []
+  for (let i = 0; i < n; i++) {
+    const j = n - 1 - i
+    out.push(j < src.length ? src[j]! : 0.0 / 0.0)
+  }
+  return a === undefined ? undefined : out
+}
+
+function reversedStrings(a: string[] | undefined, n: number): string[] | undefined {
+  const src = a ?? []
+  const out: string[] = []
+  for (let i = 0; i < n; i++) {
+    const j = n - 1 - i
+    out.push(j < src.length ? src[j]! : '')
+  }
+  return a === undefined ? undefined : out
+}
+
+/**
+ * ECharts' `xAxis.inverse` over categories: the same chart with its data read
+ * right to left. Every per-datum channel reverses together, so bars, points,
+ * labels, whiskers, markers and hit geometry all agree; index-valued inputs
+ * (a marker's `atIndex`, an annotation's x, the emphasis) reflect with them.
+ */
+export function invertCategories(spec: ChartSpec): ChartSpec {
+  if (!categoriesInverted(spec)) return spec
+  const n = categorySlots(spec)
+  const last = n - 1.0
+  const series: Series[] = []
+  for (const s of spec.series) {
+    const extras: SeriesExtra[] = []
+    for (const e of s.extras ?? []) extras.push({ label: e.label, numbers: reversedDoubles(e.numbers, n), texts: reversedStrings(e.texts, n) })
+    series.push({
+      ...s,
+      values: reversedDoubles(s.values, n) ?? [],
+      rValues: reversedDoubles(s.rValues, n),
+      radii: reversedDoubles(s.radii, n),
+      labelTexts: reversedStrings(s.labelTexts, n),
+      errLow: reversedDoubles(s.errLow, n),
+      errHigh: reversedDoubles(s.errHigh, n),
+      values2: reversedDoubles(s.values2, n),
+      extras: s.extras === undefined ? undefined : extras,
+    })
+  }
+  const notes: Annotation[] = []
+  for (const a of spec.annotations ?? []) {
+    const ax = a.x ?? 0.0
+    const xf = a.xFrom ?? 0.0
+    const xt = a.xTo ?? 0.0
+    const x1 = a.x1 ?? 0.0
+    const x2 = a.x2 ?? 0.0
+    notes.push({
+      ...a,
+      x: a.x === undefined ? undefined : last - ax,
+      xFrom: a.xTo === undefined ? undefined : last - xt,
+      xTo: a.xFrom === undefined ? undefined : last - xf,
+      x1: a.x1 === undefined ? undefined : last - x1,
+      x2: a.x2 === undefined ? undefined : last - x2,
+    })
+  }
+  const marks: PointMarker[] = []
+  for (const m of spec.markers ?? []) {
+    const at = m.atIndex ?? 0.0
+    marks.push({ ...m, atIndex: m.atIndex === undefined ? undefined : last - at })
+  }
+  const em = spec.emphasis
+  const selected: number[] = []
+  for (const k of em?.selected ?? []) selected.push(n - 1 - k)
+  const highlight = em?.highlight ?? -1
+  return {
+    ...spec,
+    series,
+    categories: reversedStrings(spec.categories, spec.categories.length === 0 ? 0 : n) ?? [],
+    annotations: spec.annotations === undefined ? undefined : notes,
+    markers: spec.markers === undefined ? undefined : marks,
+    emphasis: em === undefined ? undefined : { highlight: highlight < 0 ? highlight : n - 1 - highlight, selected },
+  }
 }
 
 /**
@@ -703,7 +818,7 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
       (spec.xValues ?? []).length > 0
         /* v8 ignore next — the inner `?? []` is unreachable: the test above already
            established a non-empty list. Native needs the unwrap; the web cannot reach it. */
-        ? extent(spec.xValues ?? [])
+        ? invertedDomain(extent(spec.xValues ?? []), spec.xInverse === true && spec.horizontal !== true)
         : { min: 0.0, max: n > 1 ? n - 1 : 1.0 },
     yDomain: resolveYDomain(spec),
     categories: spec.categories,
@@ -764,8 +879,9 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // original series through `printed`, so a log chart labels a bar "1000",
   // not "3".
   const spec = geometrySpec(raw)
+  const printedView = invertCategories(raw)
   const printed = (k: number, i: number): Double => {
-    const sv = raw.series[k]!.values
+    const sv = printedView.series[k]!.values
     return i < sv.length ? sv[i]! : 0.0 / 0.0
   }
   const yDomain = resolveYDomain(spec)
@@ -1758,7 +1874,7 @@ export function stackedHitIn(raw: ChartSpec, plot: Rect, px: Double, py: Double)
           : layoutGroupedBars(values, plot, yDomain, 0.25)
     for (const seg of segs) {
       const r = seg.rect
-      if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return seg.datumIndex
+      if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return categoryIndex(raw, seg.datumIndex)
     }
   }
   return -1

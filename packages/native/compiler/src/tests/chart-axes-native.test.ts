@@ -42,6 +42,14 @@ describe.each(['swift', 'kotlin'] as const)('option axes on %s', (target) => {
     if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
   })
 
+  it('carries xAxis.inverse', () => {
+    const r = transform(app(`xAxis: undefined, yAxis: {}`, `{ type: 'line', data: [3, 4] }`).replace("name: 'Day' }", "name: 'Day', inverse: true }").replace('xAxis: undefined, ', ''), { target })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain(`xInverse${sep}true`)
+    if (target === 'swift' && isSwiftcAvailable()) expect(validateSwiftWithStubs(r.code)).toMatchObject({ ok: true })
+    if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
+  })
+
   it('names a third y axis and an unsupported yAxisIndex', () => {
     const r = transform(app(`yAxis: [{}, {}, {}]`, `{ type: 'bar', yAxisIndex: 2, data: [1, 2] }`), { target })
     expect(r.warnings).toEqual([expect.stringContaining('yAxisIndex'), expect.stringContaining('at most two y axes')])

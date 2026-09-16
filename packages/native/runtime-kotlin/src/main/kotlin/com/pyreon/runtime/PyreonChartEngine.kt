@@ -76,7 +76,7 @@ data class ChartTheme(var palette: List<String>, var background: String, var sur
 
 data class Emphasis(var highlight: Int, var selected: List<Int>)
 
-data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var yInverse: Boolean? = null)
+data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var yInverse: Boolean? = null, var xInverse: Boolean? = null)
 
 data class Ohlc(var open: Double, var high: Double, var low: Double, var close: Double)
 
@@ -2134,7 +2134,8 @@ fun logBounds(spec: ChartSpec): Domain {
     return Domain(min = floor, max = ceil)
   }
 
-fun geometrySpec(spec: ChartSpec): ChartSpec {
+fun geometrySpec(raw: ChartSpec): ChartSpec {
+    val spec = invertCategories(raw)
     val isLog = spec.yScale == "log"
     val norm = spec.stackNormalize == true
     if (!isLog && !norm) {
@@ -2182,6 +2183,79 @@ fun geometrySpec(spec: ChartSpec): ChartSpec {
     }
     val yDomain = if (isLog) Domain(min = 0.0, max = viewMax) else Domain(min = 0.0, max = 1.0)
     return spec.copy(series = series, yDomain = yDomain, annotations = if (spec.annotations == null) null else notes, yScale = "linear", stackNormalize = false)
+  }
+
+fun invertedDomain(d: Domain, inverse: Boolean): Domain = if (inverse) Domain(min = d.min, max = d.max, inverse = true) else d
+
+fun categoriesInverted(spec: ChartSpec): Boolean = spec.xInverse == true && spec.horizontal != true && ((spec.xValues ?: listOf())).length == 0
+
+fun categorySlots(spec: ChartSpec): Int {
+    val m = seriesMaxLength(spec.series)
+    return if (spec.categories.length > m) spec.categories.length else m
+  }
+
+fun categoryIndex(spec: ChartSpec, index: Int): Int {
+    if (!categoriesInverted(spec) || index < 0) {
+      return index
+    }
+    return categorySlots(spec) - 1 - index
+  }
+
+fun reversedDoubles(a: List<Double>?, n: Int): List<Double>? {
+    val src = (a ?: listOf())
+    val out: MutableList<Double> = mutableListOf()
+    for (i in 0 until n) {
+      val j = n - 1 - i
+      out.add(if (j < src.length) src[j] else (0.0).toDouble() / (0.0).toDouble())
+    }
+    return if (a == null) null else out
+  }
+
+fun reversedStrings(a: List<String>?, n: Int): List<String>? {
+    val src = (a ?: listOf())
+    val out: MutableList<String> = mutableListOf()
+    for (i in 0 until n) {
+      val j = n - 1 - i
+      out.add(if (j < src.length) src[j] else "")
+    }
+    return if (a == null) null else out
+  }
+
+fun invertCategories(spec: ChartSpec): ChartSpec {
+    if (!categoriesInverted(spec)) {
+      return spec
+    }
+    val n = categorySlots(spec)
+    val last = n - 1.0
+    val series: MutableList<Series> = mutableListOf()
+    for (s in spec.series) {
+      val extras: MutableList<SeriesExtra> = mutableListOf()
+      for (e in (s.extras ?: listOf())) {
+        extras.add(SeriesExtra(label = e.label, numbers = reversedDoubles(e.numbers, n), texts = reversedStrings(e.texts, n)))
+      }
+      series.add(s.copy(values = (reversedDoubles(s.values, n) ?: listOf()), rValues = reversedDoubles(s.rValues, n), radii = reversedDoubles(s.radii, n), labelTexts = reversedStrings(s.labelTexts, n), errLow = reversedDoubles(s.errLow, n), errHigh = reversedDoubles(s.errHigh, n), values2 = reversedDoubles(s.values2, n), extras = if (s.extras == null) null else extras))
+    }
+    val notes: MutableList<Annotation> = mutableListOf()
+    for (a in (spec.annotations ?: listOf())) {
+      val ax = (a.x ?: 0.0)
+      val xf = (a.xFrom ?: 0.0)
+      val xt = (a.xTo ?: 0.0)
+      val x1 = (a.x1 ?: 0.0)
+      val x2 = (a.x2 ?: 0.0)
+      notes.add(a.copy(x = if (a.x == null) null else last - ax, xFrom = if (a.xTo == null) null else last - xt, xTo = if (a.xFrom == null) null else last - xf, x1 = if (a.x1 == null) null else last - x1, x2 = if (a.x2 == null) null else last - x2))
+    }
+    val marks: MutableList<PointMarker> = mutableListOf()
+    for (m in (spec.markers ?: listOf())) {
+      val at = (m.atIndex ?: 0.0)
+      marks.add(m.copy(atIndex = if (m.atIndex == null) null else last - at))
+    }
+    val em = spec.emphasis
+    val selected: MutableList<Int> = mutableListOf()
+    for (k in (em?.selected ?: listOf())) {
+      selected.add(n - 1 - k)
+    }
+    val highlight = (em?.highlight ?: -1)
+    return spec.copy(series = series, categories = (reversedStrings(spec.categories, if (spec.categories.length == 0) 0 else n) ?: listOf()), annotations = if (spec.annotations == null) null else notes, markers = if (spec.markers == null) null else marks, emphasis = if (em == null) null else Emphasis(highlight = if (highlight < 0) highlight else n - 1 - highlight, selected = selected))
   }
 
 fun seriesOnRightAxis(s: Series, spec: ChartSpec): Boolean {
@@ -2289,7 +2363,7 @@ fun layoutChart(raw: ChartSpec, measure: (String, Double) -> Double): PlotLayout
     val n = seriesMaxLength(spec.series)
     val isLog = raw.yScale == "log"
     val lb = if (isLog) logBounds(raw) else Domain(min = 1.0, max = 10.0)
-    val cfg = LayoutConfig(width = spec.width, height = spec.height, xDomain = if (((spec.xValues ?: listOf())).length > 0) extent((spec.xValues ?: listOf())) else Domain(min = 0.0, max = if (n > 1) (n - 1).toDouble() else 1.0), yDomain = resolveYDomain(spec), categories = spec.categories, fontSize = spec.theme.fontSize, xTickCount = 5.0, yTickCount = 5.0, showXAxis = spec.showXAxis, showYAxis = spec.showYAxis, yFormat = (spec.yFormat ?: (if (raw.stackNormalize == true) percent(0) else null)), xFormat = spec.xFormat, xTime = spec.xTime == true, y2Domain = if (hasRightAxis(spec)) resolveY2Domain(spec) else null, y2Format = spec.y2Format, horizontal = spec.horizontal == true, xTitle = spec.xTitle, yTitle = spec.yTitle, y2Title = spec.y2Title, yLog = isLog, yLogMin = lb.min, yLogMax = lb.max, yTime = spec.yTime == true, xLabels = spec.xLabels)
+    val cfg = LayoutConfig(width = spec.width, height = spec.height, xDomain = if (((spec.xValues ?: listOf())).length > 0) invertedDomain(extent((spec.xValues ?: listOf())), spec.xInverse == true && spec.horizontal != true) else Domain(min = 0.0, max = if (n > 1) (n - 1).toDouble() else 1.0), yDomain = resolveYDomain(spec), categories = spec.categories, fontSize = spec.theme.fontSize, xTickCount = 5.0, yTickCount = 5.0, showXAxis = spec.showXAxis, showYAxis = spec.showYAxis, yFormat = (spec.yFormat ?: (if (raw.stackNormalize == true) percent(0) else null)), xFormat = spec.xFormat, xTime = spec.xTime == true, y2Domain = if (hasRightAxis(spec)) resolveY2Domain(spec) else null, y2Format = spec.y2Format, horizontal = spec.horizontal == true, xTitle = spec.xTitle, yTitle = spec.yTitle, y2Title = spec.y2Title, yLog = isLog, yLogMin = lb.min, yLogMax = lb.max, yTime = spec.yTime == true, xLabels = spec.xLabels)
     return computeLayout(cfg, measure)
   }
 
@@ -2297,8 +2371,9 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
 
 fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLayout): List<PyreonDrawCmd> {
     val spec = geometrySpec(raw)
+    val printedView = invertCategories(raw)
     val printed = fun(k: Int, i: Int): Double {
-      val sv = raw.series[k].values
+      val sv = printedView.series[k].values
       return if (i < sv.length) sv[i] else (0.0).toDouble() / (0.0).toDouble()
     }
     val yDomain = resolveYDomain(spec)
@@ -3024,7 +3099,7 @@ fun stackedHitIn(raw: ChartSpec, plot: PyreonChartRect, px: Double, py: Double):
       for (seg in segs) {
         val r = seg.rect
         if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
-          return seg.datumIndex
+          return categoryIndex(raw, seg.datumIndex)
         }
       }
     }
@@ -7276,7 +7351,7 @@ fun plotHitBarsIn(spec: ChartSpec, l: PlotLayout, px: Double, py: Double): Int {
       }
       val idx = hitBar(barsForIn(spec, i, l.plot), px, py)
       if (idx >= 0) {
-        return idx
+        return categoryIndex(spec, idx)
       }
     }
     return stackedHitIn(spec, l.plot, px, py)
@@ -7297,7 +7372,7 @@ fun plotHitIndexIn(raw: ChartSpec, l: PlotLayout, px: Double, py: Double): Int {
     if (first.kind == "bars" || first.kind == "stacked" || first.kind == "grouped" || first.kind == "waterfall") {
       return -1
     }
-    return hitNearestX(layoutSeriesPoints(first.values, l.plot, resolveYDomain(spec)), px)
+    return categoryIndex(raw, hitNearestX(layoutSeriesPoints(first.values, l.plot, resolveYDomain(spec)), px))
   }
 
 fun renderTitle(text: String, subtitle: String?, box: PyreonChartRect, opts: TitleOptions): TitleLayout {

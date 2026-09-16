@@ -590,7 +590,8 @@ public struct ChartSpec {
   public var y2Title: String? = nil
   public var xLabels: String? = nil
   public var yInverse: Bool? = nil
-  public init(width: Double, height: Double, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, yInverse: Bool? = nil) {
+  public var xInverse: Bool? = nil
+  public init(width: Double, height: Double, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, yInverse: Bool? = nil, xInverse: Bool? = nil) {
     self.width = width
     self.height = height
     self.series = series
@@ -619,6 +620,7 @@ public struct ChartSpec {
     self.y2Title = y2Title
     self.xLabels = xLabels
     self.yInverse = yInverse
+    self.xInverse = xInverse
   }
 }
 
@@ -4300,7 +4302,8 @@ public func logBounds(_ spec: ChartSpec) -> Domain {
     return Domain(min: floor, max: ceil)
   }
 
-public func geometrySpec(_ spec: ChartSpec) -> ChartSpec {
+public func geometrySpec(_ raw: ChartSpec) -> ChartSpec {
+    let spec = invertCategories(raw)
     let isLog = spec.yScale == "log"
     let norm = spec.stackNormalize == true
     if !isLog && !norm {
@@ -4348,6 +4351,79 @@ public func geometrySpec(_ spec: ChartSpec) -> ChartSpec {
     }
     let yDomain = isLog ? Domain(min: 0.0, max: viewMax) : Domain(min: 0.0, max: 1.0)
     return { var c = spec; c.series = series; c.yDomain = yDomain; c.annotations = spec.annotations == nil ? nil : notes; c.yScale = "linear"; c.stackNormalize = false; return c }()
+  }
+
+public func invertedDomain(_ d: Domain, _ inverse: Bool) -> Domain { inverse ? Domain(min: d.min, max: d.max, inverse: true) : d }
+
+public func categoriesInverted(_ spec: ChartSpec) -> Bool { spec.xInverse == true && spec.horizontal != true && ((spec.xValues ?? [])).count == 0 }
+
+public func categorySlots(_ spec: ChartSpec) -> Int {
+    let m = seriesMaxLength(spec.series)
+    return spec.categories.count > m ? spec.categories.count : m
+  }
+
+public func categoryIndex(_ spec: ChartSpec, _ index: Int) -> Int {
+    if !categoriesInverted(spec) || index < 0 {
+      return index
+    }
+    return categorySlots(spec) - 1 - index
+  }
+
+public func reversedDoubles(_ a: [Double]?, _ n: Int) -> [Double]? {
+    let src = (a ?? [])
+    var out: [Double] = []
+    for i in 0..<n {
+      let j = n - 1 - i
+      out.append(j < src.count ? src[j] : 0.0 / 0.0)
+    }
+    return a == nil ? nil : out
+  }
+
+public func reversedStrings(_ a: [String]?, _ n: Int) -> [String]? {
+    let src = (a ?? [])
+    var out: [String] = []
+    for i in 0..<n {
+      let j = n - 1 - i
+      out.append(j < src.count ? src[j] : "")
+    }
+    return a == nil ? nil : out
+  }
+
+public func invertCategories(_ spec: ChartSpec) -> ChartSpec {
+    if !categoriesInverted(spec) {
+      return spec
+    }
+    let n = categorySlots(spec)
+    let last = Double(n) - 1.0
+    var series: [Series] = []
+    for s in spec.series {
+      var extras: [SeriesExtra] = []
+      for e in (s.extras ?? []) {
+        extras.append(SeriesExtra(label: e.label, numbers: reversedDoubles(e.numbers, n), texts: reversedStrings(e.texts, n)))
+      }
+      series.append({ var c = s; c.values = (reversedDoubles(s.values, n) ?? []); c.rValues = reversedDoubles(s.rValues, n); c.radii = reversedDoubles(s.radii, n); c.labelTexts = reversedStrings(s.labelTexts, n); c.errLow = reversedDoubles(s.errLow, n); c.errHigh = reversedDoubles(s.errHigh, n); c.values2 = reversedDoubles(s.values2, n); c.extras = s.extras == nil ? nil : extras; return c }())
+    }
+    var notes: [Annotation] = []
+    for a in (spec.annotations ?? []) {
+      let ax = (a.x ?? 0.0)
+      let xf = (a.xFrom ?? 0.0)
+      let xt = (a.xTo ?? 0.0)
+      let x1 = (a.x1 ?? 0.0)
+      let x2 = (a.x2 ?? 0.0)
+      notes.append({ var c = a; c.x = a.x == nil ? nil : last - ax; c.xFrom = a.xTo == nil ? nil : last - xt; c.xTo = a.xFrom == nil ? nil : last - xf; c.x1 = a.x1 == nil ? nil : last - x1; c.x2 = a.x2 == nil ? nil : last - x2; return c }())
+    }
+    var marks: [PointMarker] = []
+    for m in (spec.markers ?? []) {
+      let at = (m.atIndex ?? 0.0)
+      marks.append({ var c = m; c.atIndex = m.atIndex == nil ? nil : last - at; return c }())
+    }
+    let em = spec.emphasis
+    var selected: [Int] = []
+    for k in (em?.selected ?? []) {
+      selected.append(n - 1 - k)
+    }
+    let highlight = (em?.highlight ?? -1)
+    return { var c = spec; c.series = series; c.categories = (reversedStrings(spec.categories, spec.categories.count == 0 ? 0 : n) ?? []); c.annotations = spec.annotations == nil ? nil : notes; c.markers = spec.markers == nil ? nil : marks; c.emphasis = em == nil ? nil : Emphasis(highlight: highlight < 0 ? highlight : n - 1 - highlight, selected: selected); return c }()
   }
 
 public func seriesOnRightAxis(_ s: Series, _ spec: ChartSpec) -> Bool {
@@ -4455,7 +4531,7 @@ public func layoutChart(_ raw: ChartSpec, _ measure: (String, Double) -> Double)
     let n = seriesMaxLength(spec.series)
     let isLog = raw.yScale == "log"
     let lb = isLog ? logBounds(raw) : Domain(min: 1.0, max: 10.0)
-    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? extent((spec.xValues ?? [])) : Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, fontSize: spec.theme.fontSize, xTickCount: 5.0, yTickCount: 5.0, showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yTime: spec.yTime == true, xLabels: spec.xLabels)
+    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? invertedDomain(extent((spec.xValues ?? [])), spec.xInverse == true && spec.horizontal != true) : Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, fontSize: spec.theme.fontSize, xTickCount: 5.0, yTickCount: 5.0, showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yTime: spec.yTime == true, xLabels: spec.xLabels)
     return computeLayout(cfg, measure)
   }
 
@@ -4463,8 +4539,9 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
 
 public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Double, _ l: PlotLayout) -> [PyreonDrawCmd] {
     let spec = geometrySpec(raw)
+    let printedView = invertCategories(raw)
     let printed = { (k: Int, i: Int) in
-      let sv = raw.series[k].values
+      let sv = printedView.series[k].values
       return i < sv.count ? sv[i] : 0.0 / 0.0
     }
     let yDomain = resolveYDomain(spec)
@@ -5190,7 +5267,7 @@ public func stackedHitIn(_ raw: ChartSpec, _ plot: PyreonChartRect, _ px: Double
       for seg in segs {
         let r = seg.rect
         if px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h {
-          return seg.datumIndex
+          return categoryIndex(raw, seg.datumIndex)
         }
       }
     }
@@ -9442,7 +9519,7 @@ public func plotHitBarsIn(_ spec: ChartSpec, _ l: PlotLayout, _ px: Double, _ py
       }
       let idx = hitBar(barsForIn(spec, i, l.plot), px, py)
       if idx >= 0 {
-        return idx
+        return categoryIndex(spec, idx)
       }
     }
     return stackedHitIn(spec, l.plot, px, py)
@@ -9463,7 +9540,7 @@ public func plotHitIndexIn(_ raw: ChartSpec, _ l: PlotLayout, _ px: Double, _ py
     if first.kind == "bars" || first.kind == "stacked" || first.kind == "grouped" || first.kind == "waterfall" {
       return -1
     }
-    return hitNearestX(layoutSeriesPoints(first.values, l.plot, resolveYDomain(spec)), px)
+    return categoryIndex(raw, hitNearestX(layoutSeriesPoints(first.values, l.plot, resolveYDomain(spec)), px))
   }
 
 public func renderTitle(_ text: String, _ subtitle: String?, _ box: PyreonChartRect, _ opts: TitleOptions) -> TitleLayout {

@@ -247,8 +247,10 @@ for interaction, animation or accessibility parity.
   silently ignored. yAxis.inverse is an engine feature: Domain.inverse makes
   scaleLinear map min to the far end, so marks, ticks and hit-tests invert
   together and native gets it through the generated engine. A stacked bar and
-  an area built geometry without the scale and were fixed. Open: xAxis
-  inverse, position, offset, a third y axis and a second x axis.
+  an area built geometry without the scale and were fixed. xAxis.inverse over
+  categories reverses the data once in geometrySpec and maps hit indices back
+  (categoryIndex); a continuous x uses the domain flag. Open: position,
+  offset, a third y axis and a second x axis.
 
 ## Exit gate
 

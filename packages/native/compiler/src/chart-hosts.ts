@@ -1743,7 +1743,9 @@ export function desugarOptionChart(
       warn('<OptionChart option.xAxis.data>: native cartesian options need a literal category array; emitting nothing.')
       return undefined
     }
-    optionFields(xAxis!, ['type', 'data', 'show', 'name'], 'option.xAxis', warn)
+    optionFields(xAxis!, ['type', 'data', 'show', 'name', 'inverse'], 'option.xAxis', warn)
+    const xInverseRaw = objectField(xAxis!, 'inverse')
+    if (xInverseRaw?.kind === 'literal' && xInverseRaw.value === true) set('xInverse', lit(true))
     const seriesValues: number[][] = []
     for (let si = 0; si < seriesObjects.length; si++) {
       const data = literalOf(objectField(seriesObjects[si]!, 'data'), resolve)
@@ -3183,6 +3185,7 @@ export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'y2Title', kind: 'string' },
   { name: 'xLabels', kind: 'string' },
   { name: 'yInverse', kind: 'boolean' },
+  { name: 'xInverse', kind: 'boolean' },
 ]
 
 /**
