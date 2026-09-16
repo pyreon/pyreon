@@ -54,7 +54,12 @@ describe.runIf(isKotlincAvailable())('kotlin daemon — parity with per-check ko
   })
 
   const both = (source: string) => {
-    // The verdict cache would otherwise answer the second call from the first.
+    // The verdict cache would otherwise answer the second call from the first —
+    // and `_resetValidateCache` clears only the in-memory tier, so a RESTORED
+    // on-disk cache (CI) answers both calls, no compiler runs, and the daemon
+    // reads inactive with no reason. Bypass both tiers for the comparison.
+    const prevNoCache = process.env.PYREON_VALIDATE_NO_CACHE
+    process.env.PYREON_VALIDATE_NO_CACHE = '1'
     _resetValidateCache()
     _resetKotlinDaemon()
     delete process.env.PYREON_KOTLIN_DAEMON
@@ -66,6 +71,9 @@ describe.runIf(isKotlincAvailable())('kotlin daemon — parity with per-check ko
     process.env.PYREON_KOTLIN_DAEMON = '0'
     const viaCli = validateKotlin(source)
     delete process.env.PYREON_KOTLIN_DAEMON
+    if (prevNoCache === undefined) delete process.env.PYREON_VALIDATE_NO_CACHE
+    else process.env.PYREON_VALIDATE_NO_CACHE = prevNoCache
+    _resetValidateCache()
     return { viaDaemon, viaCli, daemonActive, daemonDisabled }
   }
 
