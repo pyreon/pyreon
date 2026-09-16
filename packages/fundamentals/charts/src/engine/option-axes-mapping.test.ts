@@ -31,9 +31,13 @@ describe('a second x axis', () => {
     expect(c.warnings.some((w) => w.path === 'xAxis')).toBe(true)
   })
 
-  it('a second axis with no data, or a non-object second axis, is named', () => {
-    expect(warnsOn({ xAxis: [cats, { type: 'value' }], yAxis: {} }, 'xAxis')).toBe(true)
+  it('a non-object second axis is named', () => {
     expect(warnsOn({ xAxis: [cats, 7], yAxis: {} }, 'xAxis')).toBe(true)
+  })
+
+  it('a VALUE second x axis is a supported mapping, not a loss', () => {
+    // This used to be named as unsupported; a second value x axis now maps.
+    expect(warnsOn({ xAxis: [cats, { type: 'value' }], yAxis: {} }, 'xAxis')).toBe(false)
   })
 
   it('a THIRD x axis is always named', () => {
