@@ -402,6 +402,13 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   const y2Domain = axisDomain(yAxes[1])
   const yFormat = axisFormatter(yAxes[0], 'yAxis[0]', warn)
   const y2Format = axisFormatter(yAxes[1], 'yAxis[1]', warn)
+  // Per-axis keys: name, show and the grid switch map; anything else is named
+  // rather than silently dropped.
+  if (isObj(xAxis)) axisKeys(xAxis, 'xAxis', warn)
+  for (let ai = 0; ai < Math.min(2, yAxes.length); ai++) axisKeys(yAxes[ai]!, Array.isArray(yAxisRaw) ? `yAxis[${ai}]` : 'yAxis', warn)
+  const axisName = (axis: Record<string, unknown> | undefined): string | undefined => (isObj(axis) && typeof axis['name'] === 'string' ? (axis['name'] as string) : undefined)
+  const shown = (axis: Record<string, unknown> | undefined): boolean => !(isObj(axis) && axis['show'] === false)
+  const gridShown = !(isObj(yAxes[0]) && isObj(yAxes[0]['splitLine']) && yAxes[0]['splitLine']['show'] === false)
 
   // ---- palette --------------------------------------------------------
   const themed = resolveTheme(opts.theme, warnings)
@@ -795,9 +802,9 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     series,
     categories,
     theme: themed.chartTheme,
-    showXAxis: true,
-    showYAxis: true,
-    showGrid: true,
+    showXAxis: shown(xAxis),
+    showYAxis: shown(yAxes[0]),
+    showGrid: gridShown,
     yDomain,
     y2Domain,
     yFormat: yFormat ?? localeNumber,
@@ -807,6 +814,10 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     xTime: xTime ? true : undefined,
     annotations: annotations.length > 0 ? annotations : undefined,
     markers: markers.length > 0 ? markers : undefined,
+    xTitle: axisName(xAxis),
+    yTitle: axisName(yAxes[0]),
+    y2Title: axisName(yAxes[1]),
+    ...(isObj(yAxes[0]) && yAxes[0]['type'] === 'log' ? { yScale: 'log' as const } : {}),
   }
   if (customY !== undefined && spec.yDomain === undefined) spec.yDomain = customY
   if (customX !== undefined && (spec.xValues === undefined || spec.xValues.length === 0)) spec.xValues = customX
@@ -814,6 +825,21 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
 }
 
 const defaultPalette = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
+
+const AXIS_KEYS = new Set(['type', 'data', 'name', 'show', 'min', 'max', 'splitLine', 'axisLabel', 'boundaryGap', 'gridIndex'])
+
+function axisKeys(
+  axis: Record<string, unknown>,
+  path: string,
+  warn: (code: OptionWarning['code'], path: string, message: string) => void,
+): void {
+  for (const key of Object.keys(axis)) {
+    if (!AXIS_KEYS.has(key)) warn('option-key-unsupported', `${path}.${key}`, `"${key}" has no axis mapping yet; it was ignored.`)
+  }
+  if ((axis['min'] === undefined) !== (axis['max'] === undefined)) {
+    warn('option-key-unsupported', `${path}.${axis['min'] === undefined ? 'max' : 'min'}`, 'An axis domain needs both min and max; the data range is used.')
+  }
+}
 
 function axisDomain(axis: Record<string, unknown> | undefined): Domain | undefined {
   if (axis === undefined) return undefined

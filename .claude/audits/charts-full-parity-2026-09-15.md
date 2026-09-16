@@ -238,6 +238,15 @@ for interaction, animation or accessibility parity.
   Kotlin `val` — so it can never be REASSIGNED (the scanner became a per-line
   helper that only ever pushes).
 
+- [ ] `coordinates.axes` narrowed (still partial): an axis `name` is its
+  title, `show: false` hides it, `yAxis.splitLine.show: false` drops the
+  grid, and `type: 'log'` is the log scale, on web and native. Natively the
+  right axis now crosses — `yAxis` as an array carries index 1's domain and
+  title, and `yAxisIndex: 1` scales a series on it (it was a warned drop).
+  Unmapped per-axis keys and a one-sided min/max are named, where they were
+  silently ignored. Open: `inverse`, `position`, `offset`, a third y axis and
+  a second x axis, which need per-axis layout in the engine.
+
 ## Exit gate
 
 Zero unclassified core inventory rows; green real-browser conformance; green

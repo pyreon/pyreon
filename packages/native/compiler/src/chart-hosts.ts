@@ -1734,7 +1734,7 @@ export function desugarOptionChart(
         warn(`<OptionChart option.series[${si}].type>: this cartesian adapter needs line, bar, pictorialBar, or scatter series; emitting nothing.`)
         return undefined
       }
-      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras', 'sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'emphasis', 'select', 'blur', 'selectedMode', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'label'], `option.series[${si}]`, warn)
+      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras', 'sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'emphasis', 'select', 'blur', 'selectedMode', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'label', 'yAxisIndex'], `option.series[${si}]`, warn)
       seriesObjects.push(s)
     }
     const xAxis = literalOf(objectField(raw, 'xAxis'), resolve)
@@ -1843,6 +1843,13 @@ export function desugarOptionChart(
         opts.push({ name: 'gradient', value: { kind: 'object', fields: gradientFields } })
         if (litString(color) === undefined) opts.push({ name: 'color', value: lit(ordered[0]!.color) })
         break
+      }
+      // ECharts' yAxisIndex: 1 scales the series on the right y axis.
+      const axisIndexRaw = objectField(s, 'yAxisIndex')
+      if (axisIndexRaw !== undefined) {
+        const axisIndex = litNumber(axisIndexRaw)
+        if (axisIndex === 1) opts.push({ name: 'axis', value: lit('right') })
+        else if (axisIndex !== 0) warn(`<OptionChart option.series[${si}].yAxisIndex>: only yAxisIndex 0 or 1 is supported natively; the series uses the left axis.`)
       }
       const pattern = optionPatternLiteral(objectField(s, 'itemStyle'), resolve)
       if (pattern !== undefined) opts.push({ name: 'pattern', value: pattern })
@@ -2170,15 +2177,31 @@ export function desugarOptionChart(
     if (markers.length > 0) set('markers', { kind: 'array', elements: markers })
     const xShow = xAxis === undefined ? undefined : objectField(xAxis, 'show')
     if (xShow?.kind === 'literal' && xShow.value === false) set('showXAxis', lit(false))
-    const yAxis = literalOf(objectField(raw, 'yAxis'), resolve)
-    if (yAxis !== undefined) {
-      optionFields(yAxis, ['show', 'name', 'min', 'max'], 'option.yAxis', warn)
+    const xName = xAxis === undefined ? undefined : litString(objectField(xAxis, 'name'))
+    if (xName !== undefined) set('xTitle', lit(xName))
+    // ECharts' yAxis is one axis object or an array of them; index 1 is the
+    // right axis a series selects with yAxisIndex: 1.
+    const yAxisRaw = literalOf(objectField(raw, 'yAxis'), resolve)
+    const yAxisList: ExprIR[] = yAxisRaw === undefined ? [] : yAxisRaw.kind === 'array' ? yAxisRaw.elements.map((el) => literalOf(el, resolve)).filter((el): el is ExprIR => el !== undefined) : [yAxisRaw]
+    if (yAxisList.length > 2) warn('<OptionChart option.yAxis>: at most two y axes are supported natively; extras were ignored.')
+    for (let ai = 0; ai < Math.min(2, yAxisList.length); ai++) {
+      const yAxis = yAxisList[ai]!
+      if (yAxis.kind !== 'object') continue
+      const path = yAxisRaw?.kind === 'array' ? `option.yAxis[${ai}]` : 'option.yAxis'
+      optionFields(yAxis, ['type', 'show', 'name', 'min', 'max', 'splitLine'], path, warn)
+      const right = ai === 1
       const yShow = objectField(yAxis, 'show')
-      if (yShow?.kind === 'literal' && yShow.value === false) set('showYAxis', lit(false))
+      if (!right && yShow?.kind === 'literal' && yShow.value === false) set('showYAxis', lit(false))
+      if (!right && litString(objectField(yAxis, 'type')) === 'log') set('yScale', lit('log'))
+      const yName = litString(objectField(yAxis, 'name'))
+      if (yName !== undefined) set(right ? 'y2Title' : 'yTitle', lit(yName))
+      const split = literalOf(objectField(yAxis, 'splitLine'), resolve)
+      const splitShow = split?.kind === 'object' ? objectField(split, 'show') : undefined
+      if (!right && splitShow?.kind === 'literal' && splitShow.value === false) set('showGrid', lit(false))
       const ymin = litNumber(objectField(yAxis, 'min'))
       const ymax = litNumber(objectField(yAxis, 'max'))
       if (ymin !== undefined && ymax !== undefined) {
-        set('yDomain', {
+        set(right ? 'y2Domain' : 'yDomain', {
           kind: 'object',
           fields: [
             { name: 'min', value: { kind: 'literal', value: ymin, float: true } },
