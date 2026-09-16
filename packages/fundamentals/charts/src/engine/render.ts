@@ -370,6 +370,10 @@ export interface ChartSpec {
   yInverse?: boolean | undefined
   /** Runs the x axis right to left — ECharts' `xAxis.inverse`. */
   xInverse?: boolean | undefined
+  /** Draws the x axis above the plot — ECharts' `xAxis.position: 'top'`. */
+  xTop?: boolean | undefined
+  /** Draws a lone y axis right of the plot — ECharts' `yAxis.position: 'right'`. */
+  yRight?: boolean | undefined
 }
 
 /**
@@ -849,6 +853,8 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     yLogMax: lb.max,
     yTime: spec.yTime === true,
     xLabels: spec.xLabels,
+    xTop: spec.xTop,
+    yRight: spec.yRight,
   }
   return computeLayout(cfg, measure)
 }
@@ -964,20 +970,24 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     }
   }
 
+  const yRight = spec.yRight === true && !useY2 && spec.horizontal !== true
+  const yAxisX = yRight ? plot.x + plot.w : plot.x
   if (spec.showYAxis) {
     out.push({
       kind: 'line',
-      from: { x: plot.x, y: plot.y },
-      to: { x: plot.x, y: plot.y + plot.h },
+      from: { x: yAxisX, y: plot.y },
+      to: { x: yAxisX, y: plot.y + plot.h },
       stroke: t.axis,
       width: 1.0,
     })
   }
+  const xTop = spec.xTop === true && spec.horizontal !== true
+  const xAxisY = xTop ? plot.y : plot.y + plot.h
   if (spec.showXAxis) {
     out.push({
       kind: 'line',
-      from: { x: plot.x, y: plot.y + plot.h },
-      to: { x: plot.x + plot.w, y: plot.y + plot.h },
+      from: { x: plot.x, y: xAxisY },
+      to: { x: plot.x + plot.w, y: xAxisY },
       stroke: t.axis,
       width: 1.0,
     })
@@ -1575,10 +1585,10 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     out.push({
       kind: 'text',
       text: tick.label,
-      at: { x: plot.x - 6.0, y: tick.pos },
+      at: { x: yRight ? plot.x + plot.w + 6.0 : plot.x - 6.0, y: tick.pos },
       fill: t.label,
       size: t.fontSize,
-      align: 'end',
+      align: yRight ? 'start' : 'end',
       baseline: 'middle',
     })
   }
@@ -1599,25 +1609,26 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     if (l.xLabelRotate !== 0.0) {
       // Slanted: the label's END sits at the tick and the text hangs
       // down-left along the rotation, which is where the gutter made room.
+      // Above the plot the slant mirrors: the text rises up-left instead.
       out.push({
         kind: 'text',
         text: tick.label,
-        at: { x: tick.pos, y: plot.y + plot.h + 6.0 },
+        at: { x: tick.pos, y: xTop ? plot.y - 6.0 : plot.y + plot.h + 6.0 },
         fill: t.label,
         size: t.fontSize,
         align: 'end',
         baseline: 'middle',
-        rotate: l.xLabelRotate,
+        rotate: xTop ? -l.xLabelRotate : l.xLabelRotate,
       })
     } else {
       out.push({
         kind: 'text',
         text: tick.label,
-        at: { x: tick.pos, y: plot.y + plot.h + 6.0 },
+        at: { x: tick.pos, y: xTop ? plot.y - 6.0 : plot.y + plot.h + 6.0 },
         fill: t.label,
         size: t.fontSize,
         align: 'middle',
-        baseline: 'top',
+        baseline: xTop ? 'bottom' : 'top',
       })
     }
   }
@@ -1627,11 +1638,11 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // along their axes.
   const xTitle = spec.xTitle ?? ''
   if (xTitle !== '' && spec.showXAxis) {
-    out.push({ kind: 'text', text: xTitle, at: { x: plot.x + plot.w / 2.0, y: spec.height - 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: 'bottom' })
+    out.push({ kind: 'text', text: xTitle, at: { x: plot.x + plot.w / 2.0, y: xTop ? 2.0 : spec.height - 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: xTop ? 'top' : 'bottom' })
   }
   const yTitle = spec.yTitle ?? ''
   if (yTitle !== '' && spec.showYAxis) {
-    out.push({ kind: 'text', text: yTitle, at: { x: t.fontSize * 0.9, y: plot.y + plot.h / 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: 'middle', rotate: -90.0 })
+    out.push({ kind: 'text', text: yTitle, at: { x: yRight ? spec.width - t.fontSize * 0.9 : t.fontSize * 0.9, y: plot.y + plot.h / 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: 'middle', rotate: yRight ? 90.0 : -90.0 })
   }
   const y2Title = spec.y2Title ?? ''
   if (y2Title !== '' && useY2 && spec.showYAxis) {

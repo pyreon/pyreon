@@ -50,6 +50,19 @@ describe.each(['swift', 'kotlin'] as const)('option axes on %s', (target) => {
     if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
   })
 
+  it('carries axis positions and swaps two axes whose first sits right', () => {
+    const top = transform(app(`yAxis: { position: 'right' }`, `{ type: 'line', data: [3, 4] }`).replace("name: 'Day' }", "name: 'Day', position: 'top' }"), { target })
+    expect(top.warnings).toEqual([])
+    expect(top.code).toContain(`xTop${sep}true`)
+    expect(top.code).toContain(`yRight${sep}true`)
+    const swapped = transform(app(`yAxis: [{ position: 'right', name: 'R' }, { position: 'left', name: 'L' }]`), { target })
+    expect(swapped.warnings).toEqual([])
+    expect(swapped.code).toContain(`yTitle${sep}"L"`)
+    expect(swapped.code).toContain(`y2Title${sep}"R"`)
+    if (target === 'swift' && isSwiftcAvailable()) expect(validateSwiftWithStubs(top.code)).toMatchObject({ ok: true })
+    if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(top.code)).toMatchObject({ ok: true })
+  })
+
   it('names a third y axis and an unsupported yAxisIndex', () => {
     const r = transform(app(`yAxis: [{}, {}, {}]`, `{ type: 'bar', yAxisIndex: 2, data: [1, 2] }`), { target })
     expect(r.warnings).toEqual([expect.stringContaining('yAxisIndex'), expect.stringContaining('at most two y axes')])

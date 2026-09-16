@@ -1743,7 +1743,8 @@ export function desugarOptionChart(
       warn('<OptionChart option.xAxis.data>: native cartesian options need a literal category array; emitting nothing.')
       return undefined
     }
-    optionFields(xAxis!, ['type', 'data', 'show', 'name', 'inverse'], 'option.xAxis', warn)
+    optionFields(xAxis!, ['type', 'data', 'show', 'name', 'inverse', 'position'], 'option.xAxis', warn)
+    if (litString(objectField(xAxis!, 'position')) === 'top') set('xTop', lit(true))
     const xInverseRaw = objectField(xAxis!, 'inverse')
     if (xInverseRaw?.kind === 'literal' && xInverseRaw.value === true) set('xInverse', lit(true))
     const seriesValues: number[][] = []
@@ -1798,6 +1799,9 @@ export function desugarOptionChart(
       const seriesType = litString(objectField(s, 'type'))
       return seriesType === 'bar' || seriesType === 'pictorialBar'
     }).length
+    const yAxisTop = literalOf(objectField(raw, 'yAxis'), resolve)
+    const yAxisPair = yAxisTop?.kind === 'array' ? yAxisTop.elements.map((el) => literalOf(el, resolve)) : []
+    const swapYAxes = yAxisPair.length >= 2 && yAxisPair[0]?.kind === 'object' && litString(objectField(yAxisPair[0], 'position')) === 'right' && !(yAxisPair[1]?.kind === 'object' && litString(objectField(yAxisPair[1], 'position')) === 'right')
     const marks: ExprIR[] = seriesObjects.map((s, si) => {
       const sk = litString(objectField(s, 'type'))!
       const stacked = objectField(s, 'stack') !== undefined
@@ -1848,10 +1852,11 @@ export function desugarOptionChart(
       }
       // ECharts' yAxisIndex: 1 scales the series on the right y axis.
       const axisIndexRaw = objectField(s, 'yAxisIndex')
+      if (axisIndexRaw === undefined && swapYAxes) opts.push({ name: 'axis', value: lit('right') })
       if (axisIndexRaw !== undefined) {
         const axisIndex = litNumber(axisIndexRaw)
-        if (axisIndex === 1) opts.push({ name: 'axis', value: lit('right') })
-        else if (axisIndex !== 0) warn(`<OptionChart option.series[${si}].yAxisIndex>: only yAxisIndex 0 or 1 is supported natively; the series uses the left axis.`)
+        if ((axisIndex === 1) !== swapYAxes && (axisIndex === 0 || axisIndex === 1)) opts.push({ name: 'axis', value: lit('right') })
+        else if (axisIndex !== 0 && axisIndex !== 1) warn(`<OptionChart option.series[${si}].yAxisIndex>: only yAxisIndex 0 or 1 is supported natively; the series uses the left axis.`)
       }
       const pattern = optionPatternLiteral(objectField(s, 'itemStyle'), resolve)
       if (pattern !== undefined) opts.push({ name: 'pattern', value: pattern })
@@ -2184,13 +2189,23 @@ export function desugarOptionChart(
     // ECharts' yAxis is one axis object or an array of them; index 1 is the
     // right axis a series selects with yAxisIndex: 1.
     const yAxisRaw = literalOf(objectField(raw, 'yAxis'), resolve)
-    const yAxisList: ExprIR[] = yAxisRaw === undefined ? [] : yAxisRaw.kind === 'array' ? yAxisRaw.elements.map((el) => literalOf(el, resolve)).filter((el): el is ExprIR => el !== undefined) : [yAxisRaw]
+    const yAxisDeclared: ExprIR[] = yAxisRaw === undefined ? [] : yAxisRaw.kind === 'array' ? yAxisRaw.elements.map((el) => literalOf(el, resolve)).filter((el): el is ExprIR => el !== undefined) : [yAxisRaw]
+    const positionOf = (el: ExprIR | undefined): string | undefined => (el?.kind === 'object' ? litString(objectField(el, 'position')) : undefined)
+    // The same side rules as the web facade: a lone axis may sit right, and two
+    // axes whose first is placed right swap (yAxisIndex follows).
+    const yAxisList: ExprIR[] = swapYAxes ? [yAxisDeclared[1]!, yAxisDeclared[0]!, ...yAxisDeclared.slice(2)] : yAxisDeclared
+    if (yAxisDeclared.length === 1 && positionOf(yAxisDeclared[0]) === 'right') set('yRight', lit(true))
+    for (let ai = 0; ai < Math.min(2, yAxisDeclared.length); ai++) {
+      const pos = positionOf(yAxisDeclared[ai])
+      const natural = ai === 0 ? 'left' : 'right'
+      if (pos !== undefined && pos !== natural && !swapYAxes && !(yAxisDeclared.length === 1 && pos === 'right')) warn(`<OptionChart option.yAxis[${ai}].position>: both y axes cannot share a side; the axis keeps its default side.`)
+    }
     if (yAxisList.length > 2) warn('<OptionChart option.yAxis>: at most two y axes are supported natively; extras were ignored.')
     for (let ai = 0; ai < Math.min(2, yAxisList.length); ai++) {
       const yAxis = yAxisList[ai]!
       if (yAxis.kind !== 'object') continue
       const path = yAxisRaw?.kind === 'array' ? `option.yAxis[${ai}]` : 'option.yAxis'
-      optionFields(yAxis, ['type', 'show', 'name', 'min', 'max', 'splitLine', 'inverse'], path, warn)
+      optionFields(yAxis, ['type', 'show', 'name', 'min', 'max', 'splitLine', 'inverse', 'position'], path, warn)
       const right = ai === 1
       const yShow = objectField(yAxis, 'show')
       if (!right && yShow?.kind === 'literal' && yShow.value === false) set('showYAxis', lit(false))
@@ -3186,6 +3201,8 @@ export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'xLabels', kind: 'string' },
   { name: 'yInverse', kind: 'boolean' },
   { name: 'xInverse', kind: 'boolean' },
+  { name: 'xTop', kind: 'boolean' },
+  { name: 'yRight', kind: 'boolean' },
 ]
 
 /**

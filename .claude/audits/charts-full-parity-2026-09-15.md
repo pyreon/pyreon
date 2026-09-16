@@ -249,8 +249,10 @@ for interaction, animation or accessibility parity.
   together and native gets it through the generated engine. A stacked bar and
   an area built geometry without the scale and were fixed. xAxis.inverse over
   categories reverses the data once in geometrySpec and maps hit indices back
-  (categoryIndex); a continuous x uses the domain flag. Open: position,
-  offset, a third y axis and a second x axis.
+  (categoryIndex); a continuous x uses the domain flag. Position: x top and a
+  lone y right move the label band in layout; two y axes with the first placed
+  right swap and yAxisIndex follows. Open: offset, a third y axis and a second
+  x axis.
 
 ## Exit gate
 

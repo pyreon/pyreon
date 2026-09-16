@@ -392,11 +392,21 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   const xFormat = axisFormatter(xAxis, 'xAxis', warn)
 
   const yAxisRaw = option['yAxis']
-  const yAxes: Record<string, unknown>[] = Array.isArray(yAxisRaw)
+  const yAxesDeclared: Record<string, unknown>[] = Array.isArray(yAxisRaw)
     ? (yAxisRaw as unknown[]).filter(isObj)
     : isObj(yAxisRaw)
       ? [yAxisRaw]
       : []
+  // Two axes whose first is placed on the right swap sides: the engine's left
+  // axis is the one ECharts put on the left, and yAxisIndex follows the swap.
+  const swapY = yAxesDeclared.length >= 2 && yAxesDeclared[0]!['position'] === 'right' && yAxesDeclared[1]!['position'] !== 'right'
+  const yAxes: Record<string, unknown>[] = swapY ? [yAxesDeclared[1]!, yAxesDeclared[0]!, ...yAxesDeclared.slice(2)] : yAxesDeclared
+  for (let ai = 0; ai < Math.min(2, yAxesDeclared.length); ai++) {
+    const pos = yAxesDeclared[ai]!['position']
+    const natural = ai === 0 ? 'left' : 'right'
+    const honoured = pos === undefined || pos === natural || swapY || (ai === 0 && yAxesDeclared.length === 1 && pos === 'right')
+    if (!honoured) warn('option-key-unsupported', Array.isArray(yAxisRaw) ? `yAxis[${ai}].position` : 'yAxis.position', 'Both y axes cannot share a side; the axis keeps its default side.')
+  }
   if (yAxes.length > 2) warn('axis-count-unsupported', 'yAxis', 'At most two y axes are supported; extras were ignored.')
   const yDomain = axisDomain(yAxes[0])
   const y2Domain = axisDomain(yAxes[1])
@@ -603,7 +613,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       curve: s['smooth'] === true || (num(s['smooth']) ?? 0) > 0 ? smooth : s['step'] !== undefined && s['step'] !== false ? step : undefined,
       showValues: label['show'] === true,
       radii: undefined,
-      axis: yAxisIndex === 1 ? 'right' : undefined,
+      axis: (yAxisIndex === 1) !== swapY ? 'right' : undefined,
       pattern: fillPattern(itemStyle),
       ...(type === 'effectScatter' ? { effect: true } : {}),
       ...(type === 'pictorialBar' ? pictorialFields(s, warn, path) : {}),
@@ -820,6 +830,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     ...(isObj(yAxes[0]) && yAxes[0]['type'] === 'log' ? { yScale: 'log' as const } : {}),
     ...(isObj(yAxes[0]) && yAxes[0]['inverse'] === true ? { yInverse: true } : {}),
     ...(isObj(xAxis) && xAxis['inverse'] === true ? { xInverse: true } : {}),
+    ...(isObj(xAxis) && xAxis['position'] === 'top' ? { xTop: true } : {}),
+    ...(yAxes.length === 1 && yAxes[0]!['position'] === 'right' ? { yRight: true } : {}),
   }
   if (customY !== undefined && spec.yDomain === undefined) spec.yDomain = customY
   if (customX !== undefined && (spec.xValues === undefined || spec.xValues.length === 0)) spec.xValues = customX
@@ -828,7 +840,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
 
 const defaultPalette = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
-const AXIS_KEYS = new Set(['type', 'data', 'name', 'show', 'min', 'max', 'splitLine', 'axisLabel', 'boundaryGap', 'gridIndex', 'inverse'])
+const AXIS_KEYS = new Set(['type', 'data', 'name', 'show', 'min', 'max', 'splitLine', 'axisLabel', 'boundaryGap', 'gridIndex', 'inverse', 'position'])
 
 function axisKeys(
   axis: Record<string, unknown>,

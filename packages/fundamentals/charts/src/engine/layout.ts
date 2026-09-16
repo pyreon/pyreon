@@ -112,6 +112,10 @@ export interface LayoutConfig {
    * `all` draws every label upright and lets them overlap.
    */
   xLabels?: 'auto' | 'rotate' | 'thin' | 'all' | undefined
+  /** The x axis sits above the plot — ECharts' `xAxis.position: 'top'`. */
+  xTop?: boolean | undefined
+  /** A lone y axis sits right of the plot — ECharts' `yAxis.position: 'right'`. */
+  yRight?: boolean | undefined
 }
 
 /**
@@ -167,7 +171,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   }
 
   const yTitleH = cfg.yTitle !== undefined && cfg.yTitle !== '' && cfg.showYAxis ? titleH : 0.0
-  const left = (cfg.showYAxis ? widest + labelGap + tickLen : 0.0) + yTitleH
+  const yBand = (cfg.showYAxis ? widest + labelGap + tickLen : 0.0) + yTitleH
   const xTitleH = cfg.xTitle !== undefined && cfg.xTitle !== '' && cfg.showXAxis ? titleH : 0.0
 
   // Coalesced before the guard (the Swift-narrowing idiom used throughout):
@@ -182,7 +186,10 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     }
   }
   const y2TitleH = hasY2 && cfg.y2Title !== undefined && cfg.y2Title !== '' ? titleH : 0.0
-  const right = (hasY2 ? widest2 + labelGap + tickLen : padRight) + y2TitleH
+  // A lone y axis placed on the right swaps its band with the slim padding.
+  const yRight = cfg.yRight === true && !hasY2 && cfg.horizontal !== true
+  const left = yRight ? padRight : yBand
+  const right = yRight ? yBand : (hasY2 ? widest2 + labelGap + tickLen : padRight) + y2TitleH
 
   // The x labels get the room that is left. Whether they FIT decides the
   // bottom gutter — a rotated label needs its slant's height — so the
@@ -222,14 +229,19 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     }
   }
 
-  const bottom = (cfg.showXAxis ? cfg.fontSize + labelGap + tickLen + slantH : 0.0) + xTitleH
-  const gutters: Gutters = { left, right, top: padTop, bottom }
+  const xBand = (cfg.showXAxis ? cfg.fontSize + labelGap + tickLen + slantH : 0.0) + xTitleH
+  // A top x axis takes the label band above the plot; the bottom keeps the
+  // slim padding the top had.
+  const xTop = cfg.xTop === true && cfg.horizontal !== true
+  const top = xTop ? xBand : padTop
+  const bottom = xTop ? padTop : xBand
+  const gutters: Gutters = { left, right, top, bottom }
 
   const plot: Rect = {
     x: left,
-    y: padTop,
+    y: top,
     w: Math.max(0.0, cfg.width - left - right),
-    h: Math.max(0.0, cfg.height - padTop - bottom),
+    h: Math.max(0.0, cfg.height - top - bottom),
   }
 
   if (cfg.horizontal === true) {

@@ -140,3 +140,50 @@ describe('xAxis.inverse', () => {
     expect(first.value).toBe(10)
   })
 })
+
+describe('axis position', () => {
+  const measure = (t: string): number => t.length * 6
+  const cats = ['alpha', 'beta']
+  it("xAxis.position: 'top' moves the axis, its labels and title above the plot", () => {
+    const { spec, warnings } = compileOption({ xAxis: { type: 'category', data: cats, position: 'top', name: 'Day' }, yAxis: {}, series: [{ type: 'bar', data: [1, 2] }] })
+    expect(warnings).toEqual([])
+    const l = layoutChart(spec, measure)
+    expect(l.gutters.top).toBeGreaterThan(l.gutters.bottom)
+    const cmds = renderChart(spec, measure)
+    const label = cmds.find((c) => c.kind === 'text' && c.text === 'alpha')
+    expect(label?.kind === 'text' && label.at.y < l.plot.y).toBe(true)
+    const title = cmds.find((c) => c.kind === 'text' && c.text === 'Day')
+    expect(title?.kind === 'text' && title.at.y < l.plot.y).toBe(true)
+    expect(cmds.some((c) => c.kind === 'line' && c.from.y === l.plot.y && c.to.y === l.plot.y && c.to.x - c.from.x === l.plot.w)).toBe(true)
+  })
+
+  it("a lone yAxis.position: 'right' moves the value labels and title to the right gutter", () => {
+    const { spec, warnings } = compileOption({ xAxis: { type: 'category', data: cats }, yAxis: { position: 'right', name: 'Units' }, series: [{ type: 'bar', data: [1, 200] }] })
+    expect(warnings).toEqual([])
+    const l = layoutChart(spec, measure)
+    expect(l.gutters.right).toBeGreaterThan(l.gutters.left)
+    const cmds = renderChart(spec, measure)
+    const tickText = cmds.filter((c) => c.kind === 'text' && l.yTicks.some((tk) => tk.label === c.text))
+    expect(tickText.length).toBeGreaterThan(0)
+    for (const c of tickText) expect(c.kind === 'text' && c.at.x > l.plot.x + l.plot.w).toBe(true)
+  })
+
+  it('two axes whose first is placed right swap sides, and yAxisIndex follows', () => {
+    const { spec, warnings } = compileOption({
+      xAxis: { type: 'category', data: cats },
+      yAxis: [{ position: 'right', name: 'R', min: 0, max: 5 }, { position: 'left', name: 'L', min: 0, max: 500 }],
+      series: [{ type: 'line', data: [1, 2] }, { type: 'bar', yAxisIndex: 1, data: [100, 400] }],
+    })
+    expect(warnings).toEqual([])
+    expect(spec.yTitle).toBe('L')
+    expect(spec.y2Title).toBe('R')
+    expect(spec.yDomain).toEqual({ min: 0, max: 500 })
+    expect(spec.series[0]!.axis).toBe('right')
+    expect(spec.series[1]!.axis).toBeUndefined()
+  })
+
+  it('two axes on the same side are named', () => {
+    const { warnings } = compileOption({ xAxis: { type: 'category', data: cats }, yAxis: [{}, { position: 'left' }], series: [{ type: 'line', data: [1, 2] }] })
+    expect(warnings.map((w) => w.path)).toEqual(['yAxis[1].position'])
+  })
+})
