@@ -9,6 +9,14 @@ description: "Reactive permissions — RBAC, ABAC, feature flags, subscription t
 
 Universal reactive permissions for Pyreon. A permission is a boolean or a predicate function — check with `can(key, context?)` which reads as a reactive signal in effects, computeds, and JSX. Supports wildcard matching (`posts.*` for one segment, `posts.**` for any depth below, `*` for everything — most-specific-first so a `**`/exact deny overrides a broader grant), inverse and multi-checks, throw-on-deny via `can.assert()`, and runtime updates via `can.set()` / `can.patch()` / `can.clear()`. Works for any authorization model: RBAC, ABAC, feature flags, subscription tiers. PermissionsProvider/usePermissions context pattern enables SSR and testing isolation.
 
+## Multiplatform
+
+**Tier:** Service backend — the API is shared; the native runtimes host it
+
+usePermissions read surface lowers to PyreonPermissions (callable can/all/any)
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - createPermissions(initial) — callable reactive permissions instance

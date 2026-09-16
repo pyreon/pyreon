@@ -9,6 +9,14 @@ description: "Chainable HOC factory — default props (.attrs), base swaps (.con
 
 Chainable HOC factory for Pyreon components. `attrs({ name, component })` wraps a component in an immutable builder that accumulates default props (`.attrs()`), reconfigures the base (`.config()`), composes named HOCs (`.compose()`), and attaches static metadata (`.statics()`). Every chain method returns a NEW component — the original is never mutated — and `.attrs<P>()` generics accumulate into the component's prop type. It is the chaining foundation `@pyreon/rocketstyle` builds on; use it directly for default-prop composition without the dimension-styling layer.
 
+## Multiplatform
+
+**Tier:** Shared — the same source runs on web, iOS and Android
+
+attrs(&#123; name, component &#125;) default-prop HOC lowers via attrs-native (use-site wins)
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - attrs(&#123; name, component &#125;) factory — immutable chainable builder, every method returns a new component

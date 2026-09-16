@@ -11,6 +11,16 @@ The request/response layer beneath @pyreon/query. It owns how a request is made 
 
 > **Peer dependencies:** `@pyreon/validation` — install alongside this package.
 
+## Multiplatform
+
+**Tier:** Web-only — the browser package; the native story is stated below
+
+universal web/node HTTP client (WHATWG fetch); the transport (middleware, interceptors, streaming) stays web — native networking is the PyreonFetch/PyreonHttp runtime layer
+
+**What crosses natively:** same-file endpoint calls resolve to PyreonFetch/PyreonQuery — `useFetch<T>(getUser({ params: { id: '1' } }))` lowers to a native fetch of the templated URL from `createHttp({ baseUrl })` + `api.endpoint('GET /users/:id')`, and `useQuery<T>(() => getUser.query({ params: { id: '1' } }))` lowers to a cached PyreonQuery (literal params only; reactive params and a computed baseUrl stay web)
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - Onion middleware `(req, next) => res` — retry, auth-refresh and short-circuit are ordinary middleware, which axios interceptor arrays structurally cannot express

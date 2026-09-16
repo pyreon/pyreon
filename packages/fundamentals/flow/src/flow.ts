@@ -576,17 +576,19 @@ export function createFlow<TData = Record<string, unknown>>(
     )
   }
 
-  function updateNodePosition(id: string, position: XYPosition): void {
-    let pos = snapToGrid
+  function snapPosition(position: XYPosition): XYPosition {
+    return snapToGrid
       ? {
           x: Math.round(position.x / snapGrid) * snapGrid,
           y: Math.round(position.y / snapGrid) * snapGrid,
         }
       : position
+  }
 
+  function updateNodePosition(id: string, position: XYPosition): void {
     // Apply extent clamping
     const node = getNode(id)
-    pos = clampToExtent(pos, node?.width, node?.height)
+    const pos = clampToExtent(snapPosition(position), node?.width, node?.height)
 
     nodes.update((nds) => nds.map((n) => (n.id === id ? { ...n, position: pos } : n)))
     emitNodeChanges([{ type: 'position', id, position: pos }])
@@ -944,11 +946,14 @@ export function createFlow<TData = Record<string, unknown>>(
   function isNodeVisible(id: string): boolean {
     const node = getNode(id)
     if (!node) return false
-    // Simplified check — actual implementation would use container dimensions
     const v = viewport.peek()
     const { width: w, height: h } = nodeDims(node)
-    const screenX = node.position.x * v.zoom + v.x
-    const screenY = node.position.y * v.zoom + v.y
+    // A child node's `position` is relative to its parent; visibility is a
+    // question about where it is on screen, so resolve the parent chain like
+    // fitView/focusNode (and the native engines) do.
+    const abs = node.parentId ? getAbsolutePosition(id) : node.position
+    const screenX = abs.x * v.zoom + v.x
+    const screenY = abs.y * v.zoom + v.y
     const screenW = w * v.zoom
     const screenH = h * v.zoom
     const { width: cw, height: ch } = containerSize.peek()
@@ -1241,22 +1246,30 @@ export function createFlow<TData = Record<string, unknown>>(
 
   // ── Multi-node drag ────────────────────────────────────────────────────
 
+  // A nudge is a positioned move: it snaps to the grid and clamps to the node
+  // extent exactly like `updateNodePosition`, and it reports each moved node
+  // through `onNodesChange`. The native engines route a nudge through their
+  // `updateNodePosition`; the web engine used to add the raw delta, so a
+  // keyboard nudge escaped the grid and the extent on web only (caught by the
+  // shared native-parity fixture).
   function moveSelectedNodes(dx: number, dy: number): void {
     const selected = selectedNodeIds.peek()
     if (selected.size === 0) return
 
+    const changes: NodeChange[] = []
     nodes.update((nds) =>
       nds.map((n) => {
         if (!selected.has(n.id)) return n
-        return {
-          ...n,
-          position: {
-            x: n.position.x + dx,
-            y: n.position.y + dy,
-          },
-        }
+        const position = clampToExtent(
+          snapPosition({ x: n.position.x + dx, y: n.position.y + dy }),
+          n.width,
+          n.height,
+        )
+        changes.push({ type: 'position', id: n.id, position })
+        return { ...n, position }
       }),
     )
+    if (changes.length > 0) emitNodeChanges(changes)
   }
 
   // ── Helper lines (snap guides) ─────────────────────────────────────────

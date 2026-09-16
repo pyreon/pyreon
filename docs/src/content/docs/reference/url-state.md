@@ -9,6 +9,16 @@ description: "URL-synced state — useUrlState(key, default) or schema mode, aut
 
 Reactive URL search-param state for Pyreon. Each search parameter is a signal synced with the browser URL. Supports single-param mode (`useUrlState("page", 1)`) and schema mode (`useUrlState({ page: 1, sort: "name" })`). Auto-coerces types (numbers, booleans, arrays), uses `replaceState` to avoid history spam, supports configurable debounce for high-frequency updates, and is SSR-safe (signals initialize to the default value on the server — it does NOT read the request URL; reads `window.location` on the client).
 
+## Multiplatform
+
+**Tier:** Web-only — the browser package; the native story is stated below
+
+the address bar is the web's own surface — history entries, `popstate`, `batchUrlUpdates` and the pluggable serializers stay web; on native the equivalent is the router's search parameters
+
+**What crosses natively:** `useUrlState(key, default)` with a STRING, NUMBER or BOOLEAN default, bound to the native router's query (PyreonRouter.query / setQueryParam); the codec mirrors the web's `inferSerializer` (JS `ToNumber` for numbers, exact `'true'` match for booleans), and an integer default lowers to Int while a fractional one lowers to Double. Array and object defaults, a non-literal default or key, and the `clearOnDefault` / `debounce` / custom-serializer options stay web
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - useUrlState(key, default) — single-param signal synced to URL

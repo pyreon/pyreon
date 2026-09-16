@@ -122,6 +122,13 @@ function renderGotcha(g: any): string {
   return `> **${escFlow(g.label)}:** ${escFlow(g.note)}`
 }
 
+/** The tier vocabulary, spelled for a reader rather than a gate. */
+const TIER_LABEL: Record<string, string> = {
+  shared: 'Shared — the same source runs on web, iOS and Android',
+  'service-backend': 'Service backend — the API is shared; the native runtimes host it',
+  'web-only': 'Web-only — the browser package; the native story is stated below',
+}
+
 function renderPage(m: any): string {
   const slug = slugOf(m.name)
   const api = Array.isArray(m.api) ? m.api : []
@@ -145,6 +152,27 @@ function renderPage(m: any): string {
     out.push(
       `> **Peer dependencies:** ${m.peerDeps.map((d: string) => `\`${d}\``).join(', ')} — install alongside this package.`,
     )
+    out.push('')
+  }
+  // The package's declared multiplatform story — the same `multiplatform`
+  // field `check-multiplatform-tier` gates and the native compiler derives
+  // its WEB-ONLY warnings from, so the reference page says what crosses to
+  // iOS/Android and what stays web, from the one source that decides it.
+  if (m.multiplatform && typeof m.multiplatform === 'object' && typeof m.multiplatform.tier === 'string') {
+    const mp = m.multiplatform as { tier: string; rationale?: string; nativeFrontend?: string }
+    out.push('## Multiplatform')
+    out.push('')
+    out.push(`**Tier:** ${TIER_LABEL[mp.tier] ?? mp.tier}`)
+    out.push('')
+    if (mp.rationale) {
+      out.push(escFlow(mp.rationale))
+      out.push('')
+    }
+    if (mp.nativeFrontend) {
+      out.push(`**What crosses natively:** ${escFlow(mp.nativeFrontend)}`)
+      out.push('')
+    }
+    out.push('See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package\'s tier.')
     out.push('')
   }
   if (Array.isArray(m.features) && m.features.length) {

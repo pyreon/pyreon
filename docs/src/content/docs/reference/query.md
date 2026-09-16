@@ -9,6 +9,16 @@ description: "TanStack Query adapter with signal-driven results + WebSocket subs
 
 Pyreon adapter for TanStack Query. Fine-grained signals per observer field (data, error, isFetching) so effects only re-run for the fields they read. Re-exports TanStack core (QueryClient, dehydrate/hydrate, etc.) so users import everything from `@pyreon/query`. Real-time hooks `useSubscription` (WebSocket, auto-reconnect, bidirectional) and `useSSE` (Server-Sent Events, read-only) share the QueryClient so cache invalidation from push updates is one line.
 
+## Multiplatform
+
+**Tier:** Web-only — the browser package; the native story is stated below
+
+wraps TanStack Query (a JS runtime cache), so the full client — QueryClient config, devtools, infinite/suspense queries — stays web; `useQuery` itself lowers to the PyreonQuery runtime
+
+**What crosses natively:** PyreonQuery — `useQuery` (key + fetcher, loading/error/data state)
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - Fine-grained signals per observer field (data, error, isFetching independent)

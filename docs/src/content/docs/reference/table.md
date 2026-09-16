@@ -9,6 +9,16 @@ description: "Pyreon adapter for TanStack Table — reactive options, signal-dri
 
 Reactive TanStack Table v9 adapter for Pyreon. Options are passed as a function so signal reads inside (data, columns, state) automatically re-sync the table when any tracked signal changes. Returns the Table instance directly: its state lives in Pyreon signals through v9's pluggable reactivity seam, so reads track natively inside templates and effects. Re-exports the TanStack Table author surface — all 16 features, every row model and built-in fn — as an explicit, curated list.
 
+## Multiplatform
+
+**Tier:** Web-only — the browser package; the native story is stated below
+
+the TanStack-backed `useTable` (row model / faceting / virtual sizing) stays web; the dependency-free `createTableState` engine lowers to the native PyreonTableState port, rendered with `<For>` + primitives
+
+**What crosses natively:** PyreonTableState — `createTableState({ data, columns, pageSize })` (sort / filter / paginate / select over `<For each={t.rows()}>`); scalar columns with the default row[id] accessor
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - useTable(optionsFn) with reactive signal-driven options

@@ -777,7 +777,11 @@ export interface FlowInstance<TData = Record<string, unknown>> {
 
   // ── Multi-node drag ─────────────────────────────────────────────────────
 
-  /** Move all selected nodes by dx/dy */
+  /**
+   * Nudge every selected node by a delta. A positioned move like
+   * `updateNodePosition`: snaps to the grid when `snapToGrid` is on, clamps
+   * to the node extent, and reports each moved node through `onNodesChange`.
+   */
   moveSelectedNodes: (dx: number, dy: number) => void
 
   // ── Helper lines ────────────────────────────────────────────────────────
@@ -969,13 +973,13 @@ export interface LayoutOptions {
    */
   direction?: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'
   /**
-   * Spacing between nodes — default: 50. **Applies to all
+   * Spacing between nodes — default: 20. **Applies to all
    * algorithms.** Minimum gap between neighbouring nodes, which is a
    * generic spacing option respected by every algorithm in the suite.
    */
   nodeSpacing?: number
   /**
-   * Spacing between layers — default: 80.
+   * Spacing between layers — default: 40.
    *
    * **Applies to**: `layered` only. Gap between layers —
    * `elk.layered.spacing.nodeNodeBetweenLayers` which is namespaced

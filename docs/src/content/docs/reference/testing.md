@@ -11,6 +11,14 @@ The official test kit for Pyreon — a thin adapter over `@testing-library/dom` 
 
 > **Peer dependencies:** `@pyreon/runtime-dom`, `@pyreon/reactivity` — install alongside this package.
 
+## Multiplatform
+
+**Tier:** Web-only — the browser package; the native story is stated below
+
+the web testing kit (Testing-Library parity over the DOM renderer); native testing is XCUITest/Compose-test territory
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - render(ui, options?) — mount a Pyreon component, query-bound (Testing-Library API)

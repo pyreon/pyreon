@@ -9,6 +9,14 @@ description: "Context-cascading responsive grid — Container, Row, Col with cus
 
 Bootstrap-style flexbox grid for Pyreon where every numeric prop is responsive (single value, mobile-first array, or breakpoint-keyed object). Configuration (`columns`, `gap`, `gutter`, `padding`, `contentAlignX`) cascades through Pyreon context — set it on `Container` and every nested `Row` / `Col` inherits, with per-element overrides for that subtree only. Breakpoint names and column counts are theme-driven, not hardcoded: ship with the default Bootstrap-4 theme (12 columns, xs–xl) or define your own (`{ phone: 0, tablet: 600 }` × `columns: 24`). Built on `@pyreon/unistyle` + `@pyreon/styler`.
 
+## Multiplatform
+
+**Tier:** Shared — the same source runs on web, iOS and Android
+
+Container/Row/Col lower (equal-fill + literal fractional Col spans)
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - Container / Row / Col with context-cascading grid config — set once on Container, everything inherits

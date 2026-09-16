@@ -68,8 +68,13 @@ native view.
 - [x] F7 first pass: the manifest, README, multiplatform pattern doc and
   multiplatform page state what is proven where, name the browser-only
   members (`FlowLayersContext`, `flowStyles`), and no longer list the package
-  among those that cannot render natively. Still open under F7: the generated
-  reference page carries no native-tier section (a generator change).
+  among those that cannot render natively.
+- [x] F7 second pass: every generated reference page (57 packages) now
+  carries a `## Multiplatform` section rendered from the manifest's
+  `multiplatform` field — the tier, its rationale, and `nativeFrontend`
+  ("what crosses natively") — the same field `check-multiplatform-tier`
+  gates and the native compiler derives its web-only warnings from, so the
+  reference says what crosses from the one source that decides it.
 - [x] F2 shared fixture: the web engine is now the ORACLE for native state
   parity. `src/tests/native-parity-fixture.ts` holds ten scenarios as data
   (node/edge CRUD, reconnect, single/additive/edge selection, select-all,
@@ -82,9 +87,25 @@ native view.
   spec locks both regions byte-for-byte and `PYREON_WRITE_FLOW_PARITY=1`
   regenerates them. Bisect-verified on both targets (a flipped
   `screenToFlowPosition` fails `parity: … query 1 screenToFlow`). Parity
-  runs FIRST in each main, so a shared divergence is reported as one. Still
-  hand-written only under F2: snapping, serialization round-trips, layout
-  algorithms and the container-size-dependent `fitView` / `setCenter`.
+  runs FIRST in each main, so a shared divergence is reported as one.
+- [x] F2 shared fixture, second pass: grid snapping, object snap lines,
+  `toJSON`/`fromJSON` round-trips, clipboard copy/paste (id remapping and
+  edge re-targeting), edge waypoints (append/insert/update/remove + undo),
+  `fitView`/`setCenter` against an explicit container size,
+  `flowToScreenPosition`, `isNodeVisible`, absolute positions through parent
+  chains, child nodes, overlaps, proximity connections, `searchNodes` and
+  `resolveCollisions` are oracle-driven on all three targets (19 scenarios).
+  The pass found two WEB divergences and fixed them there: a nudge
+  (`moveSelectedNodes`) added the raw delta instead of snapping, clamping and
+  emitting like `updateNodePosition`; `isNodeVisible` read a child node's
+  parent-relative offset.
+- [x] F2 layouts: all seven algorithms (`layered` DOWN/RIGHT, `tree`, `force`,
+  `stress`, `radial`, `box`, `rectpacking`) are oracle-driven too — the web's
+  first-party `layout-engine.ts` (elkjs is long gone) against the native
+  ports, unanimated, on one 6-node DAG; the iterative solvers agree to ~1e-4
+  px (floating-point order across languages), locked at 0.01 px, the
+  deterministic ones exactly. 27 scenarios. Still hand-written only under F2:
+  the animated `focusNode` / `animateViewport`.
 - [x] The public `@pyreon/flow/webview` component now lowers to the real native
   WebView bridge instead of an unresolved `FlowWebView` symbol. Its generated
   default host is byte-ratcheted against the web builder; graph updates,

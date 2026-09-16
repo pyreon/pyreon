@@ -430,6 +430,59 @@ describe('createFlow — advanced', () => {
       flow.moveSelectedNodes(100, 100)
       expect(flow.getNode('1')!.position).toEqual({ x: 0, y: 0 })
     })
+
+    // A nudge is a positioned move (the native engines route it through
+    // updateNodePosition): it snaps to the grid, clamps to the node extent and
+    // reports the moved nodes through onNodesChange. Locked by the shared
+    // native-parity fixture; this is the web-side unit lock.
+    it('snaps a nudge to the grid like updateNodePosition', () => {
+      const flow = createFlow({
+        snapToGrid: true,
+        snapGrid: 20,
+        nodes: [{ id: '1', position: { x: 7, y: 7 }, data: {} }],
+      })
+      flow.selectNode('1')
+      flow.moveSelectedNodes(3, 4)
+      expect(flow.getNode('1')!.position).toEqual({ x: 20, y: 20 })
+    })
+
+    it('clamps a nudge to the node extent and emits position changes', () => {
+      const flow = createFlow({
+        nodeExtent: [
+          [0, 0],
+          [300, 100],
+        ],
+        nodes: [
+          { id: '1', position: { x: 140, y: 50 }, data: {} },
+          { id: '2', position: { x: 0, y: 0 }, data: {} },
+        ],
+      })
+      const seen: unknown[] = []
+      flow.onNodesChange((changes) => seen.push(...changes))
+      flow.selectNodes(['1', '2'])
+      flow.moveSelectedNodes(50, 30)
+      // width 150 / height 40 defaults: x ≤ 150, y ≤ 60
+      expect(flow.getNode('1')!.position).toEqual({ x: 150, y: 60 })
+      expect(flow.getNode('2')!.position).toEqual({ x: 50, y: 30 })
+      expect(seen).toEqual([
+        { type: 'position', id: '1', position: { x: 150, y: 60 } },
+        { type: 'position', id: '2', position: { x: 50, y: 30 } },
+      ])
+    })
+  })
+
+  describe('isNodeVisible', () => {
+    it('resolves a child node through its parent chain', () => {
+      const flow = createFlow({
+        nodes: [
+          { id: 'root', position: { x: 100, y: 100 }, data: {} },
+          // relative (-200, 0) → absolute (-100, 100): its right half is on screen
+          { id: 'peek', position: { x: -200, y: 0 }, parentId: 'root', data: {} },
+        ],
+      })
+      expect(flow.isNodeVisible('peek')).toBe(true)
+      expect(flow.isNodeVisible('missing')).toBe(false)
+    })
   })
 
   describe('getSnapLines', () => {
