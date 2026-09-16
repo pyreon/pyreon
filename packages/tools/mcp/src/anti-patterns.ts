@@ -413,17 +413,36 @@ function indexHook(description: string): string {
   return `${slice.slice(0, lastSpace > 40 ? lastSpace : INDEX_HOOK_MAX).trimEnd()}…`
 }
 
-export function formatAntiPatternsIndex(entries: AntiPatternEntry[]): string {
+/**
+ * Entries per index PAGE.
+ *
+ * The index is one line per entry, so its size follows the ENTRY COUNT rather
+ * than any entry's density — at 383 entries it crossed the 12,000-token
+ * single-response boundary `token-budget.test.ts` guards, and from then on a PR
+ * that added one entry failed a test about a file it had not made worse. The
+ * budget test names this remedy: paginate rather than raise the number.
+ *
+ * Capped by COUNT, not measured tokens, so the split is stable: an entry stays
+ * on the same page until the catalog itself changes.
+ */
+export const INDEX_PAGE_SIZE = 240
+
+export function formatAntiPatternsIndex(entries: AntiPatternEntry[], page = 1): string {
   if (entries.length === 0) {
     return 'No anti-patterns found. Check that `.claude/rules/anti-patterns.md` is reachable.'
   }
+  // Page BEFORE grouping: categories are very uneven, so paging per category
+  // would make the page size unpredictable.
+  const pageCount = Math.max(1, Math.ceil(entries.length / INDEX_PAGE_SIZE))
+  const current = Math.min(Math.max(1, Math.trunc(page)), pageCount)
+  const shown = entries.slice((current - 1) * INDEX_PAGE_SIZE, current * INDEX_PAGE_SIZE)
   const byCategory = new Map<AntiPatternCategory, AntiPatternEntry[]>()
-  for (const entry of entries) {
+  for (const entry of shown) {
     if (!byCategory.has(entry.category)) byCategory.set(entry.category, [])
     byCategory.get(entry.category)!.push(entry)
   }
   const parts: string[] = [
-    `# Pyreon Anti-Patterns — index (${entries.length} total, ${byCategory.size} categor${byCategory.size === 1 ? 'y' : 'ies'})`,
+    `# Pyreon Anti-Patterns — index (${entries.length} total, page ${current} of ${pageCount}, ${byCategory.size} categor${byCategory.size === 1 ? 'y' : 'ies'})`,
     '',
     'Compact index — one line per entry; a long title is clamped with `…`. For the full body of an entry call `get_anti_patterns({ name: "<any fragment of the title>" })`; for every entry in a category call `get_anti_patterns({ category: "<slug>" })`; for the entire catalog (~14K tokens) call `get_anti_patterns({ full: true })`. Entries tagged `[detector: <code>]` are caught statically by the `validate` tool.',
     '',
@@ -441,6 +460,13 @@ export function formatAntiPatternsIndex(entries: AntiPatternEntry[]): string {
       parts.push(`- **${clampTitle(entry.name)}**${tag}${hook}`)
     }
     parts.push('')
+  }
+  if (pageCount > 1) {
+    parts.push(
+      current < pageCount
+        ? `Showing entries ${(current - 1) * INDEX_PAGE_SIZE + 1}-${(current - 1) * INDEX_PAGE_SIZE + shown.length} of ${entries.length}. Next: get_anti_patterns({ page: ${current + 1} }).`
+        : `Showing entries ${(current - 1) * INDEX_PAGE_SIZE + 1}-${entries.length} of ${entries.length} — the last page.`,
+    )
   }
   return parts.join('\n').trimEnd()
 }
