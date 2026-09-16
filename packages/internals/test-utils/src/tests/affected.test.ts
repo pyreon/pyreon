@@ -85,14 +85,19 @@ describe('isRootFile', () => {
     'bun.lock',
     'tsconfig.json',
     'tsconfig.base.json',
-    'vitest.shared.ts',
-    'vitest.browser.ts',
+    // the root setup file every package's vitest config loads — the two
+    // names this list used to carry (`vitest.shared.ts` / `vitest.browser.ts`)
+    // were deleted in #914, so the classifier matched nothing at the root
+    'vitest.setup.ts',
+    'vitest.workspace.ts',
+    '.bun-version',
     '.github/workflows/ci.yml',
   ])('treats %s as a root file (forces full suite)', (path) => {
     expect(isRootFile(path)).toBe(true)
   })
 
   it.each([
+    'packages/core/runtime-dom/vitest.config.ts', // a PACKAGE vitest config is not root
     'packages/core/reactivity/src/signal.ts',
     'examples/playground/src/App.tsx',
     'docs/src/content/docs/zero.md',
@@ -326,10 +331,14 @@ describe('isScriptFile — must AGREE with e2e-affected on scripts/**', () => {
     expect(isScriptFile('lint-baseline.json')).toBe(false) // root ratchet file — not scripts/
   })
 
-  it('still classifies script code files and rejects non-script paths', () => {
+  it('classifies ANY file under scripts/ (aligned with e2e-affected\'s forcesFullRun) and rejects other paths', () => {
     expect(isScriptFile('scripts/affected.ts')).toBe(true)
     expect(isScriptFile('scripts/bench/core/router.ts')).toBe(true)
-    expect(isScriptFile('scripts/README.md')).toBe(false)
+    // A non-code file under scripts/ is a script input too: e2e-affected already
+    // escalated on it, and this decider computing ∅ for the same path was the
+    // fail-closed-aggregator contradiction (a `.swift` harness, a `.sh`).
+    expect(isScriptFile('scripts/phase0/harness.swift')).toBe(true)
+    expect(isScriptFile('scripts/README.md')).toBe(true)
     expect(isScriptFile('packages/core/core/src/index.ts')).toBe(false)
   })
 })
@@ -571,6 +580,7 @@ describe('computeAffectedFlags', () => {
     it('docInputConsumer identifies the parser package', () => {
       expect(docInputConsumer('.claude/rules/anti-patterns.md')).toBe('@pyreon/mcp')
       expect(docInputConsumer('docs/patterns/keyed-lists.md')).toBe('@pyreon/mcp')
+      expect(docInputConsumer('.claude/rules/browser-packages.json')).toBe('@pyreon/lint')
       expect(docInputConsumer('docs/guides/routing.md')).toBeUndefined()
       expect(docInputConsumer('packages/tools/mcp/src/index.ts')).toBeUndefined()
     })

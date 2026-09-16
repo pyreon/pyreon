@@ -124,6 +124,14 @@ export interface CacheStep {
   paths: string[]
   /** The literal text before the first `${{` in `key:` — '' when the key is pure expression. */
   prefix: string
+  /** The whole `key:` template with every `${{ … }}` normalised to `<expr>` —
+   * the identity the path-list invariant compares on (two keys that share a
+   * literal prefix but differ after it are DIFFERENT entries). */
+  keyTemplate: string
+  /** Every `restore-keys:` entry's literal prefix — the OTHER prefixes this
+   * site can hit an entry through (a restore under a pure-expression key
+   * still falls back to these). */
+  restorePrefixes: string[]
 }
 
 /**
@@ -145,6 +153,8 @@ export function extractCacheSteps(text: string, file: string): CacheStep[] {
       : findStepIndent(lines, i)
     const paths: string[] = []
     let prefix = ''
+    let keyTemplate = ''
+    const restorePrefixes: string[] = []
     for (let j = i + 1; j < lines.length; j++) {
       const l = lines[j]!
       const indent = l.length - l.trimStart().length
@@ -161,9 +171,24 @@ export function extractCacheSteps(text: string, file: string): CacheStep[] {
         } else paths.push(pm[1]!.trim())
       }
       const km = /^\s*key:\s*(.*)$/.exec(l)
-      if (km) prefix = km[1]!.split('${{')[0]!.trim()
+      if (km) {
+        prefix = km[1]!.split('${{')[0]!.trim()
+        keyTemplate = km[1]!.trim().replace(/\$\{\{[^}]*\}\}/g, '<expr>')
+      }
+      const rm = /^\s*restore-keys:\s*(.*)$/.exec(l)
+      if (rm) {
+        const literal = (v: string) => v.trim().replace(/\$\{\{[^}]*\}\}/g, '<expr>')
+        if (rm[1]!.trim() === '|' || rm[1]!.trim() === '') {
+          for (let k = j + 1; k < lines.length; k++) {
+            const rl = lines[k]!
+            const rind = rl.length - rl.trimStart().length
+            if (rl.trim() === '' || rind <= indent) break
+            restorePrefixes.push(literal(rl))
+          }
+        } else restorePrefixes.push(literal(rm[1]!))
+      }
     }
-    out.push({ file, line: i + 1, kind, paths: [...paths].sort(), prefix })
+    out.push({ file, line: i + 1, kind, paths: [...paths].sort(), prefix, keyTemplate, restorePrefixes })
   }
   return out
 }
@@ -206,6 +231,63 @@ export function findDuplicateWriters(steps: CacheStep[]): PathDuplicate[] {
   return out.sort((a, b) => a.paths[0]!.localeCompare(b.paths[0]!))
 }
 
+export interface PathListMismatch {
+  prefix: string
+  variants: Array<{ paths: string[]; sites: string[] }>
+}
+
+/**
+ * The RECIPROCAL of `findDuplicateWriters`: every site touching one key prefix
+ * must declare the IDENTICAL sorted path list. `actions/cache` versions an
+ * entry by key AND path list, so a restore whose `path:` differs from the
+ * saver's cannot match it — a documented `restore-keys` prefix fallback that
+ * disagreed on `.bootstrap-cache.json` was inert on every cache-service
+ * degradation it existed for. `findDuplicateWriters` groups BY path list, so
+ * it cannot see this: it asks "one artifact under many prefixes", this asks
+ * "one prefix over many artifacts". Pure-expression keys (`prefix === ''`)
+ * are not comparable and are skipped.
+ */
+export function findPathListMismatches(steps: CacheStep[]): PathListMismatch[] {
+  // Two dimensions, compared correctly: a site's `key:` participates by its
+  // full normalised TEMPLATE (`cache-<expr>-alpha` and `cache-<expr>-beta` are
+  // different entries although they share the literal prefix `cache-` — a
+  // prefix-keyed comparison false-positived on them), and a `restore-keys`
+  // entry is genuinely a PREFIX: it can hit any SAVED template it prefixes,
+  // so its site is compared against every one of those. A save never
+  // participates through `restore-keys` (`actions/cache/save` ignores them).
+  const byTemplate = new Map<string, Map<string, string[]>>()
+  const add = (template: string, s: CacheStep) => {
+    const variants = byTemplate.get(template) ?? new Map<string, string[]>()
+    byTemplate.set(template, variants)
+    const id = s.paths.join('\n')
+    const sites = variants.get(id) ?? []
+    sites.push(`${s.file}:${s.line}`)
+    variants.set(id, sites)
+  }
+  const savedTemplates = new Set(
+    steps.filter((s) => s.kind !== 'restore' && s.keyTemplate !== '' && s.keyTemplate !== '<expr>').map((s) => s.keyTemplate),
+  )
+  for (const s of steps) {
+    if (s.keyTemplate !== '' && s.keyTemplate !== '<expr>') add(s.keyTemplate, s)
+    if (s.kind === 'save') continue
+    for (const p of s.restorePrefixes) {
+      if (p === '' || p === '<expr>') continue
+      for (const t of savedTemplates) if (t.startsWith(p)) add(t, s)
+    }
+  }
+  const out: PathListMismatch[] = []
+  for (const [prefix, variants] of byTemplate) {
+    if (variants.size < 2) continue
+    out.push({
+      prefix,
+      variants: [...variants.entries()]
+        .map(([id, sites]) => ({ paths: id.split('\n'), sites: [...new Set(sites)] }))
+        .sort((a, b) => a.paths.join().localeCompare(b.paths.join())),
+    })
+  }
+  return out.sort((a, b) => a.prefix.localeCompare(b.prefix))
+}
+
 export interface OrphanRestore {
   prefix: string
   sites: string[]
@@ -224,6 +306,41 @@ export function findOrphanRestores(steps: CacheStep[]): OrphanRestore[] {
   return [...byPrefix.entries()]
     .map(([prefix, sites]) => ({ prefix, sites }))
     .sort((a, b) => a.prefix.localeCompare(b.prefix))
+}
+
+export interface OrphanSave {
+  keyTemplate: string
+  sites: string[]
+}
+
+/**
+ * A save-only (`actions/cache/save`) site whose key template NO restore site
+ * can ever hit — neither an exact `key:` nor a `restore-keys` prefix of it.
+ * The reciprocal of `findOrphanRestores`: such a save is pure write traffic
+ * against the repository's 10 GB cache budget, and every byte it writes
+ * evicts an entry a restore WOULD have hit. (`actions/cache` restores its own
+ * key, so a combined step is never an orphan.)
+ */
+export function findOrphanSaves(steps: CacheStep[]): OrphanSave[] {
+  const restoreTemplates = new Set<string>()
+  const restorePrefixes = new Set<string>()
+  for (const s of steps) {
+    if (s.kind === 'save') continue
+    if (s.keyTemplate !== '') restoreTemplates.add(s.keyTemplate)
+    for (const p of s.restorePrefixes) if (p !== '' && p !== '<expr>') restorePrefixes.add(p)
+  }
+  const bySite = new Map<string, string[]>()
+  for (const s of steps) {
+    if (s.kind !== 'save' || s.keyTemplate === '' || s.keyTemplate === '<expr>') continue
+    if (restoreTemplates.has(s.keyTemplate)) continue
+    if ([...restorePrefixes].some((p) => s.keyTemplate.startsWith(p))) continue
+    const sites = bySite.get(s.keyTemplate) ?? []
+    sites.push(`${s.file}:${s.line}`)
+    bySite.set(s.keyTemplate, sites)
+  }
+  return [...bySite.entries()]
+    .map(([keyTemplate, sites]) => ({ keyTemplate, sites }))
+    .sort((a, b) => a.keyTemplate.localeCompare(b.keyTemplate))
 }
 
 // ─── main ─────────────────────────────────────────────────────────────────
@@ -293,6 +410,35 @@ and LRU then evicts the small entries every PR depends on. Keep ONE writer
 (ci.yml's Install job for the shared stores) and make every other site an
 \`actions/cache/restore\` under that exact prefix.`,
   )
+  process.exit(1)
+}
+
+const mismatches = findPathListMismatches(steps)
+if (mismatches.length > 0) {
+  console.error(
+    `[check-cache-key-sync] FAILED — ${mismatches.length} key prefix(es) are used with DIFFERENT path lists (an entry is versioned by key AND path list, so these sites can never hit each other):`,
+  )
+  for (const m of mismatches) {
+    console.error(`\n  ${m.prefix}`)
+    for (const v of m.variants) {
+      console.error(`    ${v.paths.join(' + ')}`)
+      for (const s of v.sites) console.error(`      at ${s}`)
+    }
+  }
+  console.error(`\nMake every site under a prefix declare the same \`path:\` block.`)
+  process.exit(1)
+}
+
+const orphanSaves = findOrphanSaves(steps)
+if (orphanSaves.length > 0) {
+  console.error(
+    `[check-cache-key-sync] FAILED — ${orphanSaves.length} save-only key(s) that NO step ever restores (pure eviction pressure):`,
+  )
+  for (const o of orphanSaves) {
+    console.error(`  ${o.keyTemplate}`)
+    for (const site of o.sites) console.error(`      at ${site}`)
+  }
+  console.error('\nRestore the key somewhere (actions/cache/restore with the same key or a restore-keys prefix), or delete the save.')
   process.exit(1)
 }
 

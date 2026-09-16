@@ -117,6 +117,10 @@ interface TrackFrame {
   conditionalPaths: Set<string>
   /** Function nesting depth at which the frame was opened. */
   funcDepth: number
+  /** `scopes.length` when the frame opened — a binding resolved at an index
+   *  ≥ this was declared INSIDE the frame's body and must not be hoisted
+   *  above its own declaration (TDZ). */
+  scopeDepth: number
   /** Offset where the prologue is inserted (after the callback body's `{`),
    *  or null for an expression-bodied arrow (wrapped instead). */
   prologueAt: number | null
@@ -254,21 +258,45 @@ export function transformPlain(
   // and a first run that takes the branch would never subscribe to it.
   let exitSeen = 0
 
+  /** Index of the scope that resolves `name`, or -1. */
+  const scopeIndexOf = (name: string): number => {
+    for (let i = scopes.length - 1; i >= 0; i--) if (scopes[i]!.has(name)) return i
+    return -1
+  }
+
+  /**
+   * Is a read of `name` one the prologue may hoist at all? Two shapes are
+   * NOT, and both used to be classified as merely "conditional":
+   *
+   * - a read inside a NESTED function (`setTimeout(() => log(b))`, a
+   *   listener, the effect's own cleanup) — classic Pyreon never subscribes
+   *   the effect to it (the callback runs later, in another scope); hoisting
+   *   it made the effect re-run on every change of a signal its body never
+   *   reads — a timer pile-up / add-remove churn on the canonical listener
+   *   effect, and a cleanup that reads state re-ran the effect forever;
+   * - a binding DECLARED inside the frame (`let local = state(0)` in the
+   *   body) — hoisting it above its own declaration is a TDZ
+   *   ReferenceError on every run, from mount, so the effect never
+   *   subscribed to anything.
+   *
+   * Both leave the read where it is: classic semantics, no prologue entry.
+   */
+  const hoistable = (frame: TrackFrame, name: string): boolean =>
+    funcDepth === frame.funcDepth && scopeIndexOf(name) < frame.scopeDepth
+
   const recordRead = (name: string): void => {
     const frame = trackStack[trackStack.length - 1]
-    if (!frame) return
-    const unconditional =
-      funcDepth === frame.funcDepth && condDepth === 0 && awaitSeen === 0 && exitSeen === 0
+    if (!frame || !hoistable(frame, name)) return
+    const unconditional = condDepth === 0 && awaitSeen === 0 && exitSeen === 0
     if (unconditional) frame.unconditional.add(name)
     else frame.conditional.add(name)
   }
 
-  /** Record a deep-state member path (rewritten text, e.g. `user().name`). */
-  const recordPath = (expr: string): void => {
+  /** Record a deep-state member path (rewritten text, e.g. `user()?.name`) rooted at `root`. */
+  const recordPath = (root: string, expr: string): void => {
     const frame = trackStack[trackStack.length - 1]
-    if (!frame) return
-    const unconditional =
-      funcDepth === frame.funcDepth && condDepth === 0 && awaitSeen === 0 && exitSeen === 0
+    if (!frame || !hoistable(frame, root)) return
+    const unconditional = condDepth === 0 && awaitSeen === 0 && exitSeen === 0
     if (unconditional) frame.unconditionalPaths.add(expr)
     else frame.conditionalPaths.add(expr)
   }
@@ -284,6 +312,16 @@ export function transformPlain(
    */
   function recordStorePathIfStatic(node: N): void {
     if (trackStack.length === 0) return
+    // The hoisted text is OPTIONALLY chained at every step (`u()?.a?.b`):
+    // the prologue runs before the body, i.e. before whatever null-guard the
+    // body wraps the read in (`if (u.a) log(u.a.b)`, `u.a && …`, an early
+    // return, `items[0].id` on an empty list — the initial state of every
+    // list). A plain chain threw on the nullish case, before the guard's own
+    // signal was ever read, so the effect never subscribed and was dead. `?.`
+    // still fires each EXISTING level's store `get` trap, so the per-key
+    // subscription is identical; where a level is null there is no key to
+    // subscribe to. Both backends emit the identical text.
+    const segments: string[] = []
     let cur: N = node
     while (cur?.type === 'MemberExpression') {
       if (cur.optional) return
@@ -291,7 +329,10 @@ export function transformPlain(
         const p = cur.property
         const lit = p?.type === 'Literal' && (typeof p.value === 'number' || typeof p.value === 'string')
         if (!lit) return
-      } else if (cur.property?.type !== 'Identifier') {
+        segments.push(`?.[${code.slice(p.start, p.end)}]`)
+      } else if (cur.property?.type === 'Identifier') {
+        segments.push(`?.${cur.property.name}`)
+      } else {
         return
       }
       cur = cur.object
@@ -299,7 +340,8 @@ export function transformPlain(
     if (cur?.type !== 'Identifier') return
     const b = lookup(cur.name)
     if (!b || b.kind !== 'store') return
-    recordPath(`${cur.name}()${code.slice(cur.end, node.end)}`)
+    segments.reverse()
+    recordPath(cur.name, `${cur.name}()${segments.join('')}`)
   }
 
   /** Rewrite a READ of a tracked binding at an Identifier node. */
@@ -992,6 +1034,7 @@ export function transformPlain(
       unconditionalPaths: new Set(),
       conditionalPaths: new Set(),
       funcDepth: funcDepth + 1,
+      scopeDepth: scopes.length,
       prologueAt: body?.type === 'BlockStatement' ? body.start + 1 : null,
       exprBody: body && body.type !== 'BlockStatement' ? { start: body.start, end: body.end } : null,
     }
@@ -1015,6 +1058,7 @@ export function transformPlain(
       unconditionalPaths: new Set(),
       conditionalPaths: new Set(),
       funcDepth,
+      scopeDepth: scopes.length,
       prologueAt: null,
       exprBody: { start: arg.start, end: arg.end },
     })

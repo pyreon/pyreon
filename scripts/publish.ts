@@ -634,7 +634,15 @@ if (needsBootstrap.length > 0) {
       `\n## ⚠️ First-publish bootstrap needed (${needsBootstrap.length})\n\n` +
         needsBootstrap.map((n) => `- \`${n}\``).join('\n') +
         `\n\nOIDC trusted publishing cannot CREATE a package. One-time, per package:\n` +
-        `1. from the REPO ROOT: \`bun scripts/publish.ts --only=${name}\` (your npm auth)\n` +
+        // NOT `${name}`: the loop variable is out of scope here, and a Node
+        // script inheriting the DOM lib resolves the bare identifier to
+        // `window.name` at typecheck and to a ReferenceError at runtime — a
+        // crash reachable ONLY under Actions (`GITHUB_STEP_SUMMARY` is unset
+        // locally), which failed the release step this block is documented as
+        // non-blocking for.
+        needsBootstrap
+          .map((n) => `1. from the REPO ROOT: \`bun scripts/publish.ts --only=${n}\` (your npm auth)\n`)
+          .join('') +
         `   Do NOT run a bare \`bun publish\` from the package directory — it skips\n` +
         `   this script's manifest rewrite, so the tarball ships \`workspace:*\`\n` +
         `   dependencies (\`npm i\` then fails with EUNSUPPORTEDPROTOCOL), the \`bun\`\n` +

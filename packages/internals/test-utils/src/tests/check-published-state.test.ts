@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -181,5 +181,18 @@ describe('classifyLag — the partial-release class, over EVERY package', () => 
   })
   it('does not flag npm AHEAD of the repo (a release cut from a branch)', () => {
     expect(classifyLag([{ pkg: '@pyreon/core', npm: '0.52.0' }], repo)).toEqual([])
+  })
+})
+
+describe('check-published-state — NATIVE_SENTINELS covers EVERY binary target', () => {
+  // The publish matrix is per-target with fail-fast: false, so a single
+  // representative binary hides a partially-published native release.
+  it('equals the parent package optionalDependencies (all 7 targets)', () => {
+    const pkg = JSON.parse(readFileSync(join(REPO_ROOT, 'packages/core/compiler/package.json'), 'utf8')) as {
+      optionalDependencies: Record<string, string>
+    }
+    const expected = Object.keys(pkg.optionalDependencies).filter((n) => n.startsWith('@pyreon/compiler-')).sort()
+    expect(expected.length).toBeGreaterThanOrEqual(7)
+    expect([...NATIVE_SENTINELS]).toEqual(expected)
   })
 })

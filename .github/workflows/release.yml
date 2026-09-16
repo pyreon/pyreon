@@ -439,9 +439,14 @@ jobs:
     timeout-minutes: 45
     # Accepted-risk job-scoped writes — same justification as the
     # `stable` job above. The prerelease branch publishes a `next` npm
-    # tag (provenance-signed via OIDC) and pushes the snapshot tag /
-    # records the release entry; broad writes are confined to the
-    # publish job, gated by the `refs/heads/release/**` ref check.
+    # tag (provenance-signed via OIDC — the npm trusted publisher is
+    # registered per WORKFLOW FILE, so the one that serves `stable`
+    # serves this job too; there is deliberately NO `NODE_AUTH_TOKEN`
+    # here, exactly as release-native.yml documents: a standing token
+    # both bypasses provenance and survives the run, and `release/**`
+    # is an UNPROTECTED ref) and pushes the snapshot tag / records the
+    # release entry; broad writes are confined to the publish job,
+    # gated by the `refs/heads/release/**` ref check.
     permissions:
       contents: write
       pull-requests: write
@@ -494,8 +499,6 @@ jobs:
         run: git config core.hooksPath /dev/null
 
       - name: Publish snapshot
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           # Snapshot tag derives from the branch name: `release/0.15.x` →

@@ -48,10 +48,11 @@
  *   source touched since its last build.
  */
 
-import { execFileSync, execSync } from 'node:child_process'
+import { execSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
+import { attributeBuildFailures, spawnBatchAttributed } from './bootstrap-attribution'
 
 const ROOT = resolve(import.meta.dirname, '..')
 
@@ -199,7 +200,7 @@ function writeManifest(manifest: Record<string, string>): void {
 interface MissingPackage {
   name: string
   path: string
-  reason: 'missing' | 'stale'
+  reason: 'missing' | 'stale' | 'failed'
 }
 
 interface BuildablePackage {
@@ -492,7 +493,24 @@ for (const pkg of dirty) {
 // build days later, far from the cause.
 const isPostinstall = process.env.npm_lifecycle_event === 'postinstall'
 
+/**
+ * Run the batched build, STREAMING its output (a cold build takes minutes —
+ * a silent pipe would be a UX regression) while also CAPTURING it, so the
+ * batch exit can be attributed per package (`attributeBuildFailures`). The
+ * spawn/exit contract lives in `bootstrap-attribution.ts` (unit-tested).
+ */
+function runBuildAttributed(args: string[], timeoutMs: number): Promise<{ ok: boolean; output: string }> {
+  return spawnBatchAttributed('bun', args, {
+    cwd: ROOT,
+    timeoutMs,
+    stdout: (d) => process.stdout.write(d),
+    stderr: (d) => process.stderr.write(d),
+  })
+}
+
 let buildThrew = false
+/** Packages the batch build REPORTED as failed (`<name> build: Exited with code N`). */
+let failedInBatch = new Set<string>()
 try {
   if (forceFail) {
     // Test-only injection — see PYREON_BOOTSTRAP_FORCE_FAIL above.
@@ -518,11 +536,9 @@ try {
   // execFileSync (argv array, no shell) — package names come from
   // workspace package.json and flow straight to bun as args.
   const buildFilters = dirty.map((p) => `--filter=${p.name}`)
-  execFileSync('bun', ['run', ...buildFilters, 'build'], {
-    cwd: ROOT,
-    stdio: 'inherit',
-    timeout: 300_000, // 5 min max
-  })
+  const batch = await runBuildAttributed(['run', ...buildFilters, 'build'], 300_000 /* 5 min max */)
+  failedInBatch = attributeBuildFailures(batch.output)
+  if (!batch.ok) throw new Error('build subprocess exited nonzero')
   // oxlint-disable-next-line no-console
   console.log(`[bootstrap] Build complete (${dirty.length} package(s)).`)
 } catch {
@@ -584,7 +600,12 @@ function checkPostcondition(pkg: MissingPackage): MissingPackage | null {
 
 let stillDirty: MissingPackage[] = []
 for (const pkg of dirty) {
-  const result = checkPostcondition(pkg)
+  // A package the batch REPORTED as failed is dirty regardless of what the
+  // lib/ postcondition says: that check is mtime-based and blind whenever
+  // lib/ was stamped newer than src/ (CI `checkout` + `cache/restore`), and
+  // it returns null outright for packages that produce no lib/ — so a failed
+  // build used to be recorded in the manifest as built and skipped forever.
+  const result = failedInBatch.has(pkg.name) ? { ...pkg, reason: 'failed' as const } : checkPostcondition(pkg)
   if (result) stillDirty.push(result)
 }
 
@@ -635,23 +656,18 @@ if (stillDirty.length > 0 && !forceFail) {
   const retried = [...stillDirty]
   stillDirty = []
   for (const pkg of retried) {
-    try {
-      // execFileSync (argv array) — pkg.name comes from workspace
-      // package.json (semi-trusted, but a hypothetical malicious
-      // `"name": "@x'; rm -rf / '#"` in any installed dep's package.json
-      // would otherwise execute). Defensive consistency with the rest
-      // of the script's git/bun invocations.
-      execFileSync('bun', ['run', `--filter=${pkg.name}`, 'build'], {
-        cwd: ROOT,
-        stdio: 'inherit',
-        timeout: 120_000, // 2 min per package on retry
-      })
-    } catch {
-      // Per-package retry failure is expected for genuinely-broken
-      // packages — fall through to postcondition check, which will
-      // re-flag them as still-dirty.
-    }
-    const result = checkPostcondition(pkg)
+    // spawnSync (argv array) — pkg.name comes from workspace package.json
+    // (semi-trusted, but a hypothetical malicious `"name": "@x'; rm -rf / '#"`
+    // in any installed dep's package.json would otherwise execute).
+    // The per-package exit status IS the verdict here: a non-zero build is a
+    // failure even when the lib/ postcondition cannot see it (mtime-blind, or
+    // a package that produces no lib/ at all).
+    const r = spawnSync('bun', ['run', `--filter=${pkg.name}`, 'build'], {
+      cwd: ROOT,
+      stdio: 'inherit',
+      timeout: 120_000, // 2 min per package on retry
+    })
+    const result = r.status === 0 ? checkPostcondition(pkg) : { ...pkg, reason: 'failed' as const }
     if (result) {
       stillDirty.push(result)
     } else {
@@ -671,7 +687,15 @@ if (stillDirty.length > 0 && !forceFail) {
 // still in `stillDirty` failed to build — leave its manifest entry untouched
 // so it stays dirty next run. Skipped under the test-only force injections
 // (no real build ran, so the manifest must not be polluted).
-if (!forceFail && !forceBuildThrew) {
+//
+// A batch that exited non-zero WITHOUT naming a package (bun killed on the
+// timeout, a crash before any per-package line) leaves every dirty package
+// unproven: record NOTHING, so the next run rebuilds them — a withheld hash
+// costs one rebuild, a wrongly-recorded one skips a broken package forever.
+// Regardless of `stillDirty`: a SIGKILL'd batch under a mtime-blind lib/ can
+// put SOME packages in stillDirty while the rest never built either.
+const unattributedFailure = buildThrew && failedInBatch.size === 0
+if (!forceFail && !forceBuildThrew && !unattributedFailure) {
   const stillDirtyNames = new Set(stillDirty.map((p) => p.name))
   let manifestChanged = false
   for (const pkg of dirty) {
@@ -738,11 +762,11 @@ if (stillDirty.length > 0) {
   // before they hit a confusing build failure later in unrelated work.
   // oxlint-disable-next-line no-console
   console.warn(
-    `\n[bootstrap] ⚠ Build subprocess emitted nonzero exit code but ALL originally-dirty packages built successfully.`,
+    `\n[bootstrap] ⚠ Build subprocess exited nonzero but named no failing package and every originally-dirty package passed its lib/ postcondition.`,
   )
   // oxlint-disable-next-line no-console
   console.warn(
-    `[bootstrap] Bootstrap's contract (lib/ for the ${dirty.length} dirty package(s)) IS satisfied; the install will succeed.`,
+    `[bootstrap] Bootstrap's contract (lib/ for the ${dirty.length} dirty package(s)) appears satisfied; the install will succeed — but NO build hashes were recorded, so the next run rebuilds these packages rather than trusting an unattributed exit.`,
   )
   // oxlint-disable-next-line no-console
   console.warn(

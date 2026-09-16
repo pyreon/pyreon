@@ -54,8 +54,12 @@ describe('.regex() reaches the emit instead of vanishing', () => {
   it('Kotlin emits containsMatchIn, not matches', () => {
     const out = transform(APP, { target: 'kotlin' }).code
     // `matches` requires a FULL match and would reject strings the web accepts.
-    expect(out).toContain('Regex("^[a-z0-9-]+$").containsMatchIn(slugVal)')
-    expect(out).not.toContain('Regex("^[a-z0-9-]+$").matches(')
+    // `\$`: every Kotlin string literal goes through `kotlinStr`, which escapes
+    // `$` unconditionally (Kotlin's interpolation marker — `^$name` in a
+    // pattern would otherwise READ a binding); `\$` and a trailing `$` spell
+    // the same regex.
+    expect(out).toContain('Regex("^[a-z0-9-]+\\$").containsMatchIn(slugVal)')
+    expect(out).not.toContain('Regex("^[a-z0-9-]+\\$").matches(')
   })
 
   it('the `i` flag carries to both engines', () => {

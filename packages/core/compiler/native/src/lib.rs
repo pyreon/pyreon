@@ -129,6 +129,15 @@ fn is_delegated_event(name: &str) -> bool {
     )
 }
 
+/// Raw-text elements — the parser never decodes character references inside
+/// them. Mirrors JS `RAW_TEXT_ELEMENTS`.
+fn is_raw_text_element(tag: &str) -> bool {
+    matches!(
+        tag,
+        "script" | "style" | "xmp" | "noembed" | "noframes" | "plaintext" | "noscript"
+    )
+}
+
 fn is_void_element(tag: &str) -> bool {
     matches!(
         tag,
@@ -292,8 +301,55 @@ fn is_lower_case(s: &str) -> bool {
 /// literal NUL is avoided here: it breaks grep, formatters and diff tooling).
 const HOLE_SENTINEL: char = '\u{0}';
 
+/// A JSX attribute STRING value (`title="…"`) baked into the `<template>` HTML.
+/// Mirrors the JS backend's `escapeHtmlAttr` byte-for-byte: a well-formed
+/// entity is preserved (oxc keeps entities literal in `.value`; the downstream
+/// JSX transform and the `<template>` parser decode them identically), a bare
+/// `&` and `"` are escaped, and line terminators become numeric entities (the
+/// template HTML is a double-quoted JS string that escapes only `\\` and `"`).
 fn escape_html_attr(s: &str) -> String {
-    s.replace('&', "&amp;").replace('"', "&quot;")
+    let mut out = String::with_capacity(s.len());
+    for (i, ch) in s.char_indices() {
+        match ch {
+            '&' => {
+                // Already a valid HTML entity `&...;`? Leave the `&` as-is.
+                let valid = s[i + 1..]
+                    .find(';')
+                    .is_some_and(|semi_pos| is_valid_entity(&s[i + 1..i + 1 + semi_pos]));
+                if valid {
+                    out.push('&');
+                } else {
+                    out.push_str("&amp;");
+                }
+            }
+            c => push_attr_char(&mut out, c),
+        }
+    }
+    out
+}
+
+/// Unconditional twin of `escape_html_attr` for a JS string literal
+/// (`title={"…"}`) — `&` is always data. Mirrors JS `escapeLiteralAttr`.
+fn escape_literal_attr(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            c => push_attr_char(&mut out, c),
+        }
+    }
+    out
+}
+
+fn push_attr_char(out: &mut String, ch: char) {
+    match ch {
+        '"' => out.push_str("&quot;"),
+        '\n' => out.push_str("&#10;"),
+        '\r' => out.push_str("&#13;"),
+        '\u{2028}' => out.push_str("&#8232;"),
+        '\u{2029}' => out.push_str("&#8233;"),
+        c => out.push(c),
+    }
 }
 
 /// Serialize a string as a double-quoted JS string literal — mirrors the JS
@@ -549,6 +605,9 @@ struct Hoist {
 struct Ctx<'a> {
     source: &'a str,
     program: &'a Program<'a>,
+    /// `String` / `Number` are provably the globals (see `ssr_global_intact`).
+    string_global_intact: bool,
+    number_global_intact: bool,
     line_index: LineIndex,
     ssr: bool,
     /// Compile-to-string SSR fast path (`options.ssrTemplate`). Only true when
@@ -755,6 +814,8 @@ impl<'a> Ctx<'a> {
         Ctx {
             source,
             program,
+            string_global_intact: ssr_global_intact(source, "String"),
+            number_global_intact: ssr_global_intact(source, "Number"),
             collapse,
             ssr_template,
             templatize_component_children,
@@ -1486,107 +1547,175 @@ fn is_pure_primitive_method(name: &str) -> bool {
     )
 }
 
-/// Find variable declarations and parameters in a function that shadow signal names.
+/// Every name a binding PATTERN introduces — nested object/array patterns,
+/// defaults, rest. Mirrors the JS backend's `collectPatternNames`.
+fn collect_pattern_names(p: &BindingPattern, out: &mut Vec<String>) {
+    match p {
+        BindingPattern::BindingIdentifier(id) => out.push(id.name.to_string()),
+        BindingPattern::ObjectPattern(obj) => {
+            for prop in &obj.properties {
+                collect_pattern_names(&prop.value, out);
+            }
+            if let Some(rest) = &obj.rest {
+                collect_pattern_names(&rest.argument, out);
+            }
+        }
+        BindingPattern::ArrayPattern(arr) => {
+            for el in arr.elements.iter().flatten() {
+                collect_pattern_names(el, out);
+            }
+            if let Some(rest) = &arr.rest {
+                collect_pattern_names(&rest.argument, out);
+            }
+        }
+        BindingPattern::AssignmentPattern(asg) => collect_pattern_names(&asg.left, out),
+    }
+}
+
+/// A name a function binds plus, for a plain `const x = …` declarator, its
+/// initializer (so callers can apply their "re-declared as the same kind"
+/// carve-out). Mirrors the JS backend's `FunctionBinding`.
+struct FunctionBinding<'a, 'b> {
+    name: String,
+    init: Option<&'b Expression<'a>>,
+}
+
+/// Every name a FUNCTION binds — params plus every declaration in its body at
+/// ANY block depth (variable declarations of any pattern, function/class
+/// declarations, `catch (e)`, `for` heads, and the same inside
+/// `if`/`try`/`switch`/loops/labels). Nested function and class BODIES are
+/// not descended — they get their own scope pass. Block scoping is
+/// deliberately flattened (a name bound anywhere shadows for the whole
+/// function): that can only SKIP an auto-call, never mis-call a non-signal.
+/// Mirrors the JS backend's `collectFunctionBindings` — both backends walk
+/// the identical statement set.
+fn collect_function_bindings<'a, 'b>(
+    params: &'b oxc_ast::ast::FormalParameters<'a>,
+    body: Option<&'b oxc_ast::ast::FunctionBody<'a>>,
+) -> Vec<FunctionBinding<'a, 'b>> {
+    let mut out = Vec::new();
+    let mut names = Vec::new();
+    for param in &params.items {
+        collect_pattern_names(&param.pattern, &mut names);
+    }
+    if let Some(rest) = &params.rest {
+        collect_pattern_names(&rest.rest.argument, &mut names);
+    }
+    for name in names {
+        out.push(FunctionBinding { name, init: None });
+    }
+    if let Some(body) = body {
+        collect_statement_bindings(&body.statements, &mut out);
+    }
+    out
+}
+
+fn collect_statement_bindings<'a, 'b>(stmts: &'b [Statement<'a>], out: &mut Vec<FunctionBinding<'a, 'b>>) {
+    for stmt in stmts {
+        collect_statement_binding(stmt, out);
+    }
+}
+
+fn collect_variable_declaration<'a, 'b>(
+    decl: &'b oxc_ast::ast::VariableDeclaration<'a>,
+    out: &mut Vec<FunctionBinding<'a, 'b>>,
+) {
+    for declarator in &decl.declarations {
+        if let BindingPattern::BindingIdentifier(id) = &declarator.id {
+            out.push(FunctionBinding { name: id.name.to_string(), init: declarator.init.as_ref() });
+        } else {
+            let mut names = Vec::new();
+            collect_pattern_names(&declarator.id, &mut names);
+            for name in names {
+                out.push(FunctionBinding { name, init: None });
+            }
+        }
+    }
+}
+
+fn collect_statement_binding<'a, 'b>(stmt: &'b Statement<'a>, out: &mut Vec<FunctionBinding<'a, 'b>>) {
+    match stmt {
+        Statement::VariableDeclaration(decl) => collect_variable_declaration(decl, out),
+        Statement::FunctionDeclaration(func) => {
+            if let Some(id) = &func.id {
+                out.push(FunctionBinding { name: id.name.to_string(), init: None });
+            }
+        }
+        Statement::ClassDeclaration(class) => {
+            if let Some(id) = &class.id {
+                out.push(FunctionBinding { name: id.name.to_string(), init: None });
+            }
+        }
+        Statement::BlockStatement(block) => collect_statement_bindings(&block.body, out),
+        Statement::IfStatement(if_stmt) => {
+            collect_statement_binding(&if_stmt.consequent, out);
+            if let Some(alt) = &if_stmt.alternate {
+                collect_statement_binding(alt, out);
+            }
+        }
+        Statement::ForStatement(for_stmt) => {
+            if let Some(oxc_ast::ast::ForStatementInit::VariableDeclaration(decl)) = &for_stmt.init {
+                collect_variable_declaration(decl, out);
+            }
+            collect_statement_binding(&for_stmt.body, out);
+        }
+        Statement::ForInStatement(for_in) => {
+            if let oxc_ast::ast::ForStatementLeft::VariableDeclaration(decl) = &for_in.left {
+                collect_variable_declaration(decl, out);
+            }
+            collect_statement_binding(&for_in.body, out);
+        }
+        Statement::ForOfStatement(for_of) => {
+            if let oxc_ast::ast::ForStatementLeft::VariableDeclaration(decl) = &for_of.left {
+                collect_variable_declaration(decl, out);
+            }
+            collect_statement_binding(&for_of.body, out);
+        }
+        Statement::WhileStatement(w) => collect_statement_binding(&w.body, out),
+        Statement::DoWhileStatement(d) => collect_statement_binding(&d.body, out),
+        Statement::LabeledStatement(l) => collect_statement_binding(&l.body, out),
+        Statement::TryStatement(t) => {
+            collect_statement_bindings(&t.block.body, out);
+            if let Some(handler) = &t.handler {
+                if let Some(param) = &handler.param {
+                    let mut names = Vec::new();
+                    collect_pattern_names(&param.pattern, &mut names);
+                    for name in names {
+                        out.push(FunctionBinding { name, init: None });
+                    }
+                }
+                collect_statement_bindings(&handler.body.body, out);
+            }
+            if let Some(fin) = &t.finalizer {
+                collect_statement_bindings(&fin.body, out);
+            }
+        }
+        Statement::SwitchStatement(sw) => {
+            for case in &sw.cases {
+                collect_statement_bindings(&case.consequent, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Find declarations/params in a function that shadow signal names — a
+/// same-named re-declaration that is ITSELF `signal(...)` is not a shadow.
+/// Mirrors JS `findShadowingNames`.
 fn find_shadowing_names(node: &oxc_ast::ast::Function, ctx: &Ctx) -> Vec<String> {
-    let mut shadows = Vec::new();
-    // Check function parameters
-    for param in &node.params.items {
-        match &param.pattern {
-            BindingPattern::BindingIdentifier(id) => {
-                if ctx.signal_vars.contains(id.name.as_str()) {
-                    shadows.push(id.name.to_string());
-                }
-            }
-            BindingPattern::ObjectPattern(obj) => {
-                for prop in &obj.properties {
-                    if let BindingPattern::BindingIdentifier(id) = &prop.value {
-                        if ctx.signal_vars.contains(id.name.as_str()) {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
-                }
-            }
-            BindingPattern::ArrayPattern(arr) => {
-                for el in arr.elements.iter().flatten() {
-                    if let BindingPattern::BindingIdentifier(id) = el {
-                        if ctx.signal_vars.contains(id.name.as_str()) {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    // Check top-level variable declarations in the function body
-    if let Some(body) = &node.body {
-        for stmt in &body.statements {
-            if let Statement::VariableDeclaration(decl) = stmt {
-                for declarator in &decl.declarations {
-                    if let BindingPattern::BindingIdentifier(id) = &declarator.id {
-                        if ctx.signal_vars.contains(id.name.as_str()) {
-                            if let Some(init) = &declarator.init {
-                                if !is_signal_call_expr(init) {
-                                    shadows.push(id.name.to_string());
-                                }
-                            } else {
-                                shadows.push(id.name.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    shadows
+    shadowing_signal_names(collect_function_bindings(&node.params, node.body.as_deref()), ctx)
 }
 
 /// Arrow function variant of find_shadowing_names.
 fn find_shadowing_names_arrow(node: &ArrowFunctionExpression, ctx: &Ctx) -> Vec<String> {
+    shadowing_signal_names(collect_function_bindings(&node.params, node.get_function_body()), ctx)
+}
+
+fn shadowing_signal_names(bindings: Vec<FunctionBinding>, ctx: &Ctx) -> Vec<String> {
     let mut shadows = Vec::new();
-    for param in &node.params.items {
-        match &param.pattern {
-            BindingPattern::BindingIdentifier(id) => {
-                if ctx.signal_vars.contains(id.name.as_str()) {
-                    shadows.push(id.name.to_string());
-                }
-            }
-            BindingPattern::ObjectPattern(obj) => {
-                for prop in &obj.properties {
-                    if let BindingPattern::BindingIdentifier(id) = &prop.value {
-                        if ctx.signal_vars.contains(id.name.as_str()) {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
-                }
-            }
-            BindingPattern::ArrayPattern(arr) => {
-                for el in arr.elements.iter().flatten() {
-                    if let BindingPattern::BindingIdentifier(id) = el {
-                        if ctx.signal_vars.contains(id.name.as_str()) {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    for stmt in node.get_function_body().map_or(&[][..], |b| &b.statements) {
-        if let Statement::VariableDeclaration(decl) = stmt {
-            for declarator in &decl.declarations {
-                if let BindingPattern::BindingIdentifier(id) = &declarator.id {
-                    if ctx.signal_vars.contains(id.name.as_str()) {
-                        if let Some(init) = &declarator.init {
-                            if !is_signal_call_expr(init) {
-                                shadows.push(id.name.to_string());
-                            }
-                        } else {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
-                }
-            }
+    for b in bindings {
+        if ctx.signal_vars.contains(b.name.as_str()) && !b.init.is_some_and(is_signal_call_expr) {
+            shadows.push(b.name);
         }
     }
     shadows
@@ -1757,102 +1886,23 @@ fn maybe_register_jsx_fn_decl(func: &oxc_ast::ast::Function, ctx: &mut Ctx) {
     }
 }
 
-/// `find_shadowing_names` applied to `jsx_fn_vars` (params + body-top-level
-/// variable declarations; a same-named re-decl that is ITSELF a
-/// JSX-returning fn is not a shadow — mirrors the `is_signal_call_expr`
-/// carve-out). Mirrors JS `findShadowingJsxFnNames` (PZ-02).
+/// `find_shadowing_names` applied to `jsx_fn_vars` — a same-named re-decl
+/// that is ITSELF a JSX-returning fn is not a shadow (mirrors the
+/// `is_signal_call_expr` carve-out). Mirrors JS `findShadowingJsxFnNames` (PZ-02).
 fn find_shadowing_jsx_fn_names(node: &oxc_ast::ast::Function, ctx: &Ctx) -> Vec<String> {
-    let mut shadows = Vec::new();
-    for param in &node.params.items {
-        match &param.pattern {
-            BindingPattern::BindingIdentifier(id) => {
-                if ctx.jsx_fn_vars.contains(id.name.as_str()) {
-                    shadows.push(id.name.to_string());
-                }
-            }
-            BindingPattern::ObjectPattern(obj) => {
-                for prop in &obj.properties {
-                    if let BindingPattern::BindingIdentifier(id) = &prop.value {
-                        if ctx.jsx_fn_vars.contains(id.name.as_str()) {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
-                }
-            }
-            BindingPattern::ArrayPattern(arr) => {
-                for el in arr.elements.iter().flatten() {
-                    if let BindingPattern::BindingIdentifier(id) = el {
-                        if ctx.jsx_fn_vars.contains(id.name.as_str()) {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    if let Some(body) = &node.body {
-        for stmt in &body.statements {
-            if let Statement::VariableDeclaration(decl) = stmt {
-                for declarator in &decl.declarations {
-                    if let BindingPattern::BindingIdentifier(id) = &declarator.id {
-                        if ctx.jsx_fn_vars.contains(id.name.as_str()) {
-                            match &declarator.init {
-                                Some(init) if is_jsx_fn_init(init) => {}
-                                _ => shadows.push(id.name.to_string()),
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    shadows
+    shadowing_jsx_fn_names(collect_function_bindings(&node.params, node.body.as_deref()), ctx)
 }
 
 /// Arrow variant of `find_shadowing_jsx_fn_names`.
 fn find_shadowing_jsx_fn_names_arrow(node: &ArrowFunctionExpression, ctx: &Ctx) -> Vec<String> {
+    shadowing_jsx_fn_names(collect_function_bindings(&node.params, node.get_function_body()), ctx)
+}
+
+fn shadowing_jsx_fn_names(bindings: Vec<FunctionBinding>, ctx: &Ctx) -> Vec<String> {
     let mut shadows = Vec::new();
-    for param in &node.params.items {
-        match &param.pattern {
-            BindingPattern::BindingIdentifier(id) => {
-                if ctx.jsx_fn_vars.contains(id.name.as_str()) {
-                    shadows.push(id.name.to_string());
-                }
-            }
-            BindingPattern::ObjectPattern(obj) => {
-                for prop in &obj.properties {
-                    if let BindingPattern::BindingIdentifier(id) = &prop.value {
-                        if ctx.jsx_fn_vars.contains(id.name.as_str()) {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
-                }
-            }
-            BindingPattern::ArrayPattern(arr) => {
-                for el in arr.elements.iter().flatten() {
-                    if let BindingPattern::BindingIdentifier(id) = el {
-                        if ctx.jsx_fn_vars.contains(id.name.as_str()) {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    for stmt in node.get_function_body().map_or(&[][..], |b| &b.statements) {
-        if let Statement::VariableDeclaration(decl) = stmt {
-            for declarator in &decl.declarations {
-                if let BindingPattern::BindingIdentifier(id) = &declarator.id {
-                    if ctx.jsx_fn_vars.contains(id.name.as_str()) {
-                        match &declarator.init {
-                            Some(init) if is_jsx_fn_init(init) => {}
-                            _ => shadows.push(id.name.to_string()),
-                        }
-                    }
-                }
-            }
+    for b in bindings {
+        if ctx.jsx_fn_vars.contains(b.name.as_str()) && !b.init.is_some_and(is_jsx_fn_init) {
+            shadows.push(b.name);
         }
     }
     shadows
@@ -2656,10 +2706,8 @@ fn resolve_var_to_string(var_name: &str, ctx: &mut Ctx) -> String {
     let program = ctx.program;
     let resolved = if let Some(init_expr) = find_init_expression_by_span(program, span) {
         // AST-based resolution: find identifier references to prop-derived vars
-        let prop_derived_vars_snapshot: FxHashMap<String, Span> =
-            ctx.prop_derived_vars.clone();
         let mut idents: Vec<(u32, u32, String, bool)> = Vec::new();
-        collect_prop_derived_idents(init_expr, &prop_derived_vars_snapshot, &mut idents);
+        collect_prop_derived_idents(init_expr, &ctx.prop_derived_vars, &mut idents);
 
         if idents.is_empty() {
             ctx.source[span.start as usize..span.end as usize].to_string()
@@ -3948,7 +3996,12 @@ fn slice_span(span: Span, ctx: &Ctx) -> String {
 
 // ─── Main entry ──────────────────────────────────────────────────────────────
 
-#[napi]
+// `catch_unwind`: the JS side documents that a native PANIC falls back to
+// the JS backend instead of crashing the dev server — without this attribute
+// napi-rs does NOT catch unwinds, so a panic aborted the Vite process. (A
+// stack OVERFLOW is not an unwind and stays uncatchable; the JS backend is
+// the guard for pathological nesting.)
+#[napi(catch_unwind)]
 pub fn transform_jsx(
     code: String,
     filename: String,
@@ -3959,10 +4012,19 @@ pub fn transform_jsx(
     ssr_template: Option<bool>,
     templatize_component_children: Option<bool>,
 ) -> TransformResult {
-    let source_type = SourceType::from_path(&filename)
-        .unwrap_or_default()
-        .with_module(true)
-        .with_jsx(true);
+    // Mirror the JS backend's `getLang` EXACTLY: `.jsx` parses as JSX, every
+    // other filename as TSX. Deriving the dialect from the path
+    // (`SourceType::from_path`) fell back to plain JavaScript for any name
+    // oxc did not recognise — a Vite id carrying a `?v=` query, `.pyreon`, an
+    // uppercase extension — so TypeScript syntax failed to parse, `panicked`
+    // hit, and the source was returned UNCHANGED as a success: raw JSX shipped
+    // to the browser with no error and no JS fallback. The JS backend never
+    // consulted the path, so the two disagreed on the same input.
+    let source_type = if filename.ends_with(".jsx") {
+        SourceType::jsx()
+    } else {
+        SourceType::tsx()
+    };
 
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, &code, source_type).parse();
@@ -4850,6 +4912,12 @@ fn handle_jsx_expression_child(container: &JSXExpressionContainer, ctx: &mut Ctx
                 let unwrapped = unwrap_type_layers(expr);
                 let sliced = slice_expr(unwrapped, ctx);
                 ctx.add_replacement(sp.start, sp.end, format!("() => {}", sliced));
+                ctx.lens(
+                    sp.start,
+                    sp.end,
+                    "reactive",
+                    "live — re-evaluates whenever its signals change".to_string(),
+                );
                 return;
             }
             // Skip the carve-out for signal references — `<Comp>{count}</Comp>`
@@ -5155,27 +5223,218 @@ fn ssr_is_url_attr(name: &str) -> bool {
     )
 }
 
-/// Methods that ALWAYS return a string on an unambiguous receiver — used to
-/// prove a dynamic attr value is non-null-non-boolean. Mirrors JS
-/// `SSR_STRING_METHODS`.
-fn ssr_is_string_method(name: &str) -> bool {
-    matches!(
-        name,
-        "toFixed"
-            | "toString"
-            | "toLocaleString"
-            | "join"
-            | "padStart"
-            | "padEnd"
-            | "trim"
-            | "trimStart"
-            | "trimEnd"
-            | "toUpperCase"
-            | "toLowerCase"
-            | "repeat"
-            | "charAt"
-    )
+/// Is the global `name` (`String`/`Number`) provably NOT rebound in the
+/// module? Any occurrence of the identifier that is not immediately a call is
+/// treated as a rebinding (conservative: forgoes a bake, never correctness).
+/// Mirrors JS `ssrGlobalIntact`.
+fn ssr_global_intact(source: &str, name: &str) -> bool {
+    let bytes = source.as_bytes();
+    let n = name.len();
+    let mut i = 0;
+    while let Some(pos) = source[i..].find(name) {
+        let start = i + pos;
+        let end = start + n;
+        i = end;
+        // word boundary on the left (and not a member read `.String`)
+        if start > 0 {
+            let p = bytes[start - 1];
+            if p.is_ascii_alphanumeric() || p == b'_' || p == b'$' || p == b'.' {
+                continue;
+            }
+        }
+        // word boundary on the right
+        if let Some(&q) = bytes.get(end) {
+            if q.is_ascii_alphanumeric() || q == b'_' || q == b'$' {
+                continue;
+            }
+        }
+        // a `function`/`class` declaration is followed by `(`/`{` like a
+        // call and must still count as a rebinding
+        let before = source[..start].trim_end();
+        if before.ends_with("function") || before.ends_with("class") {
+            let kw_start = before.len() - if before.ends_with("function") { 8 } else { 5 };
+            let boundary = kw_start == 0
+                || !(bytes[kw_start - 1].is_ascii_alphanumeric() || bytes[kw_start - 1] == b'_' || bytes[kw_start - 1] == b'$');
+            if boundary && before.len() < start {
+                return false;
+            }
+        }
+        // immediately a call → the global usage the bake relies on
+        let mut k = end;
+        while k < bytes.len() && bytes[k].is_ascii_whitespace() {
+            k += 1;
+        }
+        if bytes.get(k) == Some(&b'(') {
+            continue;
+        }
+        return false;
+    }
+    true
 }
+
+/// The LOWERCASE handler names `renderPropSkipped` drops — mirrors JS
+/// `SSR_EVENT_HANDLER_ATTRS` (core's `EVENT_HANDLER_ATTRS`).
+fn ssr_is_lowercase_event_handler(name: &str) -> bool {
+    SSR_EVENT_HANDLER_ATTRS.binary_search(&name).is_ok()
+}
+
+const SSR_EVENT_HANDLER_ATTRS: &[&str] = &[
+    "onabort",
+    "onactivate",
+    "onafterprint",
+    "onanimationcancel",
+    "onanimationend",
+    "onanimationiteration",
+    "onanimationstart",
+    "onappinstalled",
+    "onauxclick",
+    "onbeforecopy",
+    "onbeforecut",
+    "onbeforeinput",
+    "onbeforeinstallprompt",
+    "onbeforematch",
+    "onbeforepaste",
+    "onbeforeprint",
+    "onbeforetoggle",
+    "onbeforeunload",
+    "onbeforexrselect",
+    "onbegin",
+    "onblur",
+    "oncancel",
+    "oncanplay",
+    "oncanplaythrough",
+    "onchange",
+    "onclick",
+    "onclose",
+    "oncommand",
+    "oncontentvisibilityautostatechange",
+    "oncontextlost",
+    "oncontextmenu",
+    "oncontextrestored",
+    "oncopy",
+    "oncuechange",
+    "oncut",
+    "ondblclick",
+    "ondevicemotion",
+    "ondeviceorientation",
+    "ondeviceorientationabsolute",
+    "ondrag",
+    "ondragend",
+    "ondragenter",
+    "ondragexit",
+    "ondragleave",
+    "ondragover",
+    "ondragstart",
+    "ondrop",
+    "ondurationchange",
+    "onemptied",
+    "onencrypted",
+    "onend",
+    "onended",
+    "onenterpictureinpicture",
+    "onerror",
+    "onfocus",
+    "onfocusin",
+    "onfocusout",
+    "onformdata",
+    "onfullscreenchange",
+    "onfullscreenerror",
+    "ongamepadconnected",
+    "ongamepaddisconnected",
+    "ongotpointercapture",
+    "onhashchange",
+    "oninput",
+    "oninvalid",
+    "onkeydown",
+    "onkeypress",
+    "onkeyup",
+    "onlanguagechange",
+    "onleavepictureinpicture",
+    "onload",
+    "onloadeddata",
+    "onloadedmetadata",
+    "onloadstart",
+    "onlostpointercapture",
+    "onmessage",
+    "onmessageerror",
+    "onmousedown",
+    "onmouseenter",
+    "onmouseleave",
+    "onmousemove",
+    "onmouseout",
+    "onmouseover",
+    "onmouseup",
+    "onmousewheel",
+    "onmozfullscreenchange",
+    "onmozfullscreenerror",
+    "onoffline",
+    "ononline",
+    "onoverflow",
+    "onpagehide",
+    "onpagereveal",
+    "onpageshow",
+    "onpageswap",
+    "onpaste",
+    "onpause",
+    "onplay",
+    "onplaying",
+    "onpointercancel",
+    "onpointerdown",
+    "onpointerenter",
+    "onpointerleave",
+    "onpointermove",
+    "onpointerout",
+    "onpointerover",
+    "onpointerrawupdate",
+    "onpointerup",
+    "onpopstate",
+    "onprogress",
+    "onratechange",
+    "onrejectionhandled",
+    "onrepeat",
+    "onreset",
+    "onresize",
+    "onscroll",
+    "onscrollend",
+    "onscrollsnapchange",
+    "onscrollsnapchanging",
+    "onsearch",
+    "onsecuritypolicyviolation",
+    "onseeked",
+    "onseeking",
+    "onselect",
+    "onselectionchange",
+    "onselectstart",
+    "onslotchange",
+    "onstalled",
+    "onstorage",
+    "onsubmit",
+    "onsuspend",
+    "ontimeupdate",
+    "ontoggle",
+    "ontouchcancel",
+    "ontouchend",
+    "ontouchmove",
+    "ontouchstart",
+    "ontransitioncancel",
+    "ontransitionend",
+    "ontransitionrun",
+    "ontransitionstart",
+    "onunderflow",
+    "onunhandledrejection",
+    "onunload",
+    "onvolumechange",
+    "onwaiting",
+    "onwaitingforkey",
+    "onwebkitanimationend",
+    "onwebkitanimationiteration",
+    "onwebkitanimationstart",
+    "onwebkitfullscreenchange",
+    "onwebkitfullscreenerror",
+    "onwebkittransitionend",
+    "onwheel",
+    "onzoom",
+];
 
 /// JS regex `\s` char set (for `SSR_UNSAFE_URL_RE = /^\s*(?:javascript|data):/i`).
 /// Faithful to ECMAScript's `\s`: ASCII ws + NBSP + the Unicode-space set +
@@ -5247,20 +5506,21 @@ fn ssr_url_char_safe(c: u32) -> bool {
 
 /// The expression provably evaluates to a STRING (never null/bool). Mirrors JS
 /// `ssrProvablyString`.
-fn ssr_provably_string(node: &Expression) -> bool {
+fn ssr_provably_string(node: &Expression, ctx: &Ctx) -> bool {
     let node = unwrap_type_layers(node);
     match node {
         Expression::StringLiteral(_) | Expression::TemplateLiteral(_) => true,
+        // `String(x)` — only while `String` is the global; a method call proves
+        // nothing about an untyped receiver (see JS `ssrProvablyString`).
         Expression::CallExpression(call) => match &call.callee {
-            Expression::Identifier(id) if id.name.as_str() == "String" => true,
-            Expression::StaticMemberExpression(m) => ssr_is_string_method(m.property.name.as_str()),
+            Expression::Identifier(id) if id.name.as_str() == "String" => ctx.string_global_intact,
             _ => false,
         },
         Expression::BinaryExpression(b) if b.operator == BinaryOperator::Addition => {
-            ssr_provably_string(&b.left) || ssr_provably_string(&b.right)
+            ssr_provably_string(&b.left, ctx) || ssr_provably_string(&b.right, ctx)
         }
         Expression::ConditionalExpression(c) => {
-            ssr_provably_string(&c.consequent) && ssr_provably_string(&c.alternate)
+            ssr_provably_string(&c.consequent, ctx) && ssr_provably_string(&c.alternate, ctx)
         }
         _ => false,
     }
@@ -5268,23 +5528,24 @@ fn ssr_provably_string(node: &Expression) -> bool {
 
 /// The expression provably evaluates to a string OR number (never null/bool).
 /// Mirrors JS `ssrProvablyNonNullNonBoolean`.
-fn ssr_provably_non_null_non_boolean(node: &Expression) -> bool {
+fn ssr_provably_non_null_non_boolean(node: &Expression, ctx: &Ctx) -> bool {
     let node = unwrap_type_layers(node);
-    if ssr_provably_string(node) {
+    if ssr_provably_string(node, ctx) {
         return true;
     }
     match node {
         Expression::NumericLiteral(_) => true,
         Expression::CallExpression(call) => {
             matches!(&call.callee, Expression::Identifier(id) if id.name.as_str() == "Number")
+                && ctx.number_global_intact
         }
         Expression::BinaryExpression(b) if b.operator == BinaryOperator::Addition => {
-            ssr_provably_non_null_non_boolean(&b.left)
-                && ssr_provably_non_null_non_boolean(&b.right)
+            ssr_provably_non_null_non_boolean(&b.left, ctx)
+                && ssr_provably_non_null_non_boolean(&b.right, ctx)
         }
         Expression::ConditionalExpression(c) => {
-            ssr_provably_non_null_non_boolean(&c.consequent)
-                && ssr_provably_non_null_non_boolean(&c.alternate)
+            ssr_provably_non_null_non_boolean(&c.consequent, ctx)
+                && ssr_provably_non_null_non_boolean(&c.alternate, ctx)
         }
         _ => false,
     }
@@ -5425,7 +5686,7 @@ fn ssr_try_bake_dynamic_attr(
     if !generic && !url {
         return false;
     }
-    if !ssr_provably_non_null_non_boolean(expr) {
+    if !ssr_provably_non_null_non_boolean(expr, ctx) {
         return false;
     }
     if url && !ssr_provably_safe_url(expr) {
@@ -5489,6 +5750,11 @@ fn ssr_serialize_attr(
     if is_event_handler(name) {
         return true;
     }
+    // Lowercase handler names — the same name set the runtime skips. Mirrors
+    // JS `SSR_EVENT_HANDLER_ATTRS`.
+    if ssr_is_lowercase_event_handler(name) {
+        return true;
+    }
     // innerHTML / dangerouslySetInnerHTML are INNER CONTENT, not attrs → bail.
     if name == "innerHTML" || name == "dangerouslySetInnerHTML" {
         return false;
@@ -5540,6 +5806,12 @@ fn ssr_serialize_attr(
                 None => return false, // empty / non-expression → bail
             };
             let expr = unwrap_type_layers(raw);
+            // A boolean ARIA attribute is a string enum — a literal `false`
+            // renders `aria-x="false"` (mirrors JS + `renderPropValue`).
+            if is_aria && !has_upper && matches!(expr, Expression::BooleanLiteral(b) if !b.value) {
+                buf.emit_static(&format!(" {}=\"false\"", name));
+                return true;
+            }
             // false / null / undefined → omit.
             if is_false_null_undefined(expr) {
                 return true;
@@ -6105,6 +6377,11 @@ fn ssr_serialize_element(buf: &mut SsrBuf, el: &JSXElement, mode: SsrMode, ctx: 
     if tag == "select" || tag == "option" {
         return false; // PZ-09 complexity → bail
     }
+    // Raw-text content is serialized by the runtime with a raw-text-safe
+    // escape, not `escape_html` — bail so the bake can't drift (mirrors JS).
+    if is_raw_text_element(tag) && !self_closing {
+        return false;
+    }
     // Duplicate plain attrs (JSX last-wins) — baking both is parser-first-wins.
     let mut seen: FxHashSet<String> = FxHashSet::default();
     for a in &el.opening_element.attributes {
@@ -6584,15 +6861,24 @@ fn try_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
 }
 
 fn has_bail_attr(el: &JSXElement, is_root: bool) -> bool {
+    let mut saw_spread = false;
     for attr in &el.opening_element.attributes {
         match attr {
             JSXAttributeItem::SpreadAttribute(_) => {
                 if is_root {
+                    saw_spread = true;
                     continue;
                 }
                 return true;
             }
             JSXAttributeItem::Attribute(a) => {
+                // A plain attribute AFTER a spread must win over the spread's
+                // key (JSX object semantics); the template path applied the
+                // spread LAST. Bail to h(), which is correct by construction.
+                // Mirrors `hasBailAttr` in `src/jsx.ts`.
+                if saw_spread {
+                    return true;
+                }
                 // A NAMESPACED name (`xlink:href`) is NOT a bail any more: every
                 // reader in this backend goes through `jsx_attr_name`, so the
                 // qualified name reaches the static bake, the dynamic `_setAttr`
@@ -6722,6 +7008,11 @@ fn template_element_count(el: &JSXElement, is_root: bool, tpl_components: bool) 
     }
     if is_self_closing(el) {
         return 1;
+    }
+    // Raw-text content never decodes a baked entity; a void element with
+    // children parses them as siblings. Both keep the h() path (mirrors JS).
+    if (is_raw_text_element(tag) || is_void_element(tag)) && !el.children.is_empty() {
+        return -1;
     }
     let mut count = 1;
     // Decided ONCE per element and threaded down, including through fragment
@@ -7552,7 +7843,7 @@ fn static_attr_to_html(expr: &Expression, html_attr_name: &str, tag: &str) -> Op
             if is_select_value {
                 return None;
             }
-            Some(format!(" {}=\"{}\"", html_attr_name, escape_html_attr(&s.value)))
+            Some(format!(" {}=\"{}\"", html_attr_name, escape_literal_attr(&s.value)))
         }
         Expression::NumericLiteral(n) => {
             if is_select_value {
@@ -7576,15 +7867,16 @@ fn static_attr_to_html(expr: &Expression, html_attr_name: &str, tag: &str) -> Op
             if is_select_value {
                 return None;
             }
-            // No-substitution template literal: use the raw text
-            if let Some(quasi) = t.quasis.first() {
-                Some(format!(
+            // No-substitution template literal: bake the COOKED text (the value
+            // the runtime sees); an absent cooked value is an invalid escape →
+            // the runtime path. Mirrors the JS backend.
+            match t.quasis.first().and_then(|q| q.value.cooked.as_ref()) {
+                Some(cooked) => Some(format!(
                     " {}=\"{}\"",
                     html_attr_name,
-                    escape_html_attr(quasi.value.raw.as_str())
-                ))
-            } else {
-                Some(String::new())
+                    escape_literal_attr(cooked.as_str())
+                )),
+                None => None,
             }
         }
         // Signed numeric literal: `tabIndex={-1}` — trivially foldable, bake.

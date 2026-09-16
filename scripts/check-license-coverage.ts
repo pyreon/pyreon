@@ -217,6 +217,13 @@ function installedLicense(name: string, index: Map<string, string[]>): string | 
 function auditDependencies(disclosed: Set<string>): LicenseFinding[] {
   const index = indexInstalled()
   if (index.size === 0) {
+    // Under CI the store ALWAYS exists (the job ran `bun install`), so an
+    // empty index there is a broken scan — and a skipped scan that exits 0
+    // is exactly the vacuous-pass shape this gate is meant to close.
+    if (process.env.CI) {
+      console.error('[check-license-coverage] ✗ dependency scan found NO installed store under CI — the scan is broken, refusing to pass vacuously')
+      process.exit(1)
+    }
     console.log('[check-license-coverage] · dependency scan skipped — no installed store')
     return []
   }

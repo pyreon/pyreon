@@ -4,6 +4,7 @@
 // `var x by remember { mutableStateOf(initial) }`, computeds to
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
+import { kotlinStr } from './string-literals'
 import {
   HANDLED_FLOW_EDGE_FIELDS,
   HANDLED_FLOW_NODE_FIELDS,
@@ -76,11 +77,11 @@ import {
 import { clampExpr } from './pure-state'
 import { permissionsProviderSeed } from './permissions-provider'
 import type { InferenceCtx } from './infer-type'
+import { kotlinIdent, kotlinMember, safeIdent } from './identifier-safety'
 import { lowerMathCall, lowerMathConstant } from './math-lowering'
 import { buildObjectConstFields, planObjectSpread, resolveSpreadFields } from './spread-lowering'
 import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './jsx-helper-call'
 import type { SpreadResolver } from './spread-lowering'
-import { kotlinIdent, safeIdent } from './identifier-safety'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import type { AttrsComponentIR } from './attrs-native'
 import { elementToStack } from './elements-native'
@@ -1183,7 +1184,7 @@ function emitKotlinFieldMeta(fm: FieldMetaDefnIR): string {
   const lines: string[] = []
   lines.push(`data class PyreonFieldMeta_${fm.bindingName}(`)
   for (const m of fm.meta) {
-    lines.push(`    val ${m.name}: String = ${JSON.stringify(m.value)},`)
+    lines.push(`    val ${m.name}: String = ${kotlinStr(m.value)},`)
   }
   lines.push(`)`)
   lines.push(``)
@@ -1223,7 +1224,7 @@ function emitKotlinFeature(f: FeatureDefnIR): string {
   lines.push(`)`)
   lines.push(``)
   lines.push(`object PyreonFeature_${f.bindingName} {`)
-  lines.push(`    const val name = ${JSON.stringify(f.featureName)}`)
+  lines.push(`    const val name = ${kotlinStr(f.featureName)}`)
   lines.push(
     `    val initialValues = PyreonFeatureSchema_${f.bindingName}()`,
   )
@@ -1310,29 +1311,29 @@ function emitKotlinScalarConstraints(
     if (c.min !== undefined) {
       if (nullableTarget) {
         lines.push(
-          `${ind}if (${targetName} != null && ${lenAccess}!! < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "min length ${c.min}${ruleSuffix}")`,
+          `${ind}if (${targetName} != null && ${lenAccess}!! < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${kotlinStr(fieldName)}, "min length ${c.min}${ruleSuffix}")`,
         )
       } else {
         lines.push(
-          `${ind}if (${lenAccess} < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "min length ${c.min}${ruleSuffix}")`,
+          `${ind}if (${lenAccess} < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${kotlinStr(fieldName)}, "min length ${c.min}${ruleSuffix}")`,
         )
       }
     }
     if (c.max !== undefined) {
       if (nullableTarget) {
         lines.push(
-          `${ind}if (${targetName} != null && ${lenAccess}!! > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "max length ${c.max}${ruleSuffix}")`,
+          `${ind}if (${targetName} != null && ${lenAccess}!! > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${kotlinStr(fieldName)}, "max length ${c.max}${ruleSuffix}")`,
         )
       } else {
         lines.push(
-          `${ind}if (${lenAccess} > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "max length ${c.max}${ruleSuffix}")`,
+          `${ind}if (${lenAccess} > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${kotlinStr(fieldName)}, "max length ${c.max}${ruleSuffix}")`,
         )
       }
     }
     if (c.email) {
       const guard = nullableTarget ? `${targetName} != null && ` : ''
       lines.push(
-        `${ind}if (${guard}!Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}$").matches(${targetName}${nullableTarget ? '!!' : ''})) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "email${ruleSuffix}")`,
+        `${ind}if (${guard}!Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}$").matches(${targetName}${nullableTarget ? '!!' : ''})) throw PyreonSchemaError.ConstraintViolation(${kotlinStr(fieldName)}, "email${ruleSuffix}")`,
       )
     }
     if (c.url) {
@@ -1342,7 +1343,7 @@ function emitKotlinScalarConstraints(
       // scheme reproduces zod's rule (an absolute URL) while still
       // accepting "mailto:a@b.co" and "ftp://x.com" as zod does.
       lines.push(
-        `${ind}${guard}if ((try { java.net.URI(${targetName}${nullableTarget ? '!!' : ''}).scheme } catch (_: Throwable) { null }) == null) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "url${ruleSuffix}")`,
+        `${ind}${guard}if ((try { java.net.URI(${targetName}${nullableTarget ? '!!' : ''}).scheme } catch (_: Throwable) { null }) == null) throw PyreonSchemaError.ConstraintViolation(${kotlinStr(fieldName)}, "url${ruleSuffix}")`,
       )
     }
     if (c.regex) {
@@ -1350,37 +1351,37 @@ function emitKotlinScalarConstraints(
       // `containsMatchIn`, not `matches` — `RegExp.test()` is a PARTIAL
       // match on the web, and an anchored pattern still anchors.
       const opts = c.regex.ignoreCase ? ', RegexOption.IGNORE_CASE' : ''
-      const pattern = JSON.stringify(c.regex.source)
+      const pattern = kotlinStr(c.regex.source)
       lines.push(
-        `${ind}${guard}if (!Regex(${pattern}${opts}).containsMatchIn(${targetName}${nullableTarget ? '!!' : ''})) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "regex${ruleSuffix}")`,
+        `${ind}${guard}if (!Regex(${pattern}${opts}).containsMatchIn(${targetName}${nullableTarget ? '!!' : ''})) throw PyreonSchemaError.ConstraintViolation(${kotlinStr(fieldName)}, "regex${ruleSuffix}")`,
       )
     }
     if (c.uuid) {
       const guard = nullableTarget ? `if (${targetName} != null) ` : ''
       lines.push(
-        `${ind}${guard}try { java.util.UUID.fromString(${targetName}${nullableTarget ? '!!' : ''}) } catch (_: Throwable) { throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "uuid${ruleSuffix}") }`,
+        `${ind}${guard}try { java.util.UUID.fromString(${targetName}${nullableTarget ? '!!' : ''}) } catch (_: Throwable) { throw PyreonSchemaError.ConstraintViolation(${kotlinStr(fieldName)}, "uuid${ruleSuffix}") }`,
       )
     }
   } else if (isNumber) {
     if (c.min !== undefined) {
       if (nullableTarget) {
         lines.push(
-          `${ind}if (${targetName} != null && ${targetName}!! < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "min ${c.min}${ruleSuffix}")`,
+          `${ind}if (${targetName} != null && ${targetName}!! < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${kotlinStr(fieldName)}, "min ${c.min}${ruleSuffix}")`,
         )
       } else {
         lines.push(
-          `${ind}if (${targetName} < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "min ${c.min}${ruleSuffix}")`,
+          `${ind}if (${targetName} < ${c.min}) throw PyreonSchemaError.ConstraintViolation(${kotlinStr(fieldName)}, "min ${c.min}${ruleSuffix}")`,
         )
       }
     }
     if (c.max !== undefined) {
       if (nullableTarget) {
         lines.push(
-          `${ind}if (${targetName} != null && ${targetName}!! > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "max ${c.max}${ruleSuffix}")`,
+          `${ind}if (${targetName} != null && ${targetName}!! > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${kotlinStr(fieldName)}, "max ${c.max}${ruleSuffix}")`,
         )
       } else {
         lines.push(
-          `${ind}if (${targetName} > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(fieldName)}, "max ${c.max}${ruleSuffix}")`,
+          `${ind}if (${targetName} > ${c.max}) throw PyreonSchemaError.ConstraintViolation(${kotlinStr(fieldName)}, "max ${c.max}${ruleSuffix}")`,
         )
       }
     }
@@ -1459,19 +1460,19 @@ function emitKotlinDiscriminatedUnion(zs: ZodSchemaDefnIR): string {
   lines.push(`        @Throws(PyreonSchemaError::class)`)
   lines.push(`        fun parse(input: Map<String, Any?>): ${typeName} {`)
   lines.push(
-    `            val discr = (input[${JSON.stringify(d.field)}] as? String)`,
+    `            val discr = (input[${kotlinStr(d.field)}] as? String)`,
   )
   lines.push(
-    `                ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(d.field)}, "String")`,
+    `                ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(d.field)}, "String")`,
   )
   lines.push(`            return when (discr) {`)
   for (const v of d.variants) {
     lines.push(
-      `                ${JSON.stringify(v.literal)} -> ${v.caseName}(PyreonZodSchema_${v.schemaName}.parse(input))`,
+      `                ${kotlinStr(v.literal)} -> ${v.caseName}(PyreonZodSchema_${v.schemaName}.parse(input))`,
     )
   }
   lines.push(
-    `                else -> throw PyreonSchemaError.ConstraintViolation(${JSON.stringify(d.field)}, "unknown discriminator value")`,
+    `                else -> throw PyreonSchemaError.ConstraintViolation(${kotlinStr(d.field)}, "unknown discriminator value")`,
   )
   lines.push(`            }`)
   lines.push(`        }`)
@@ -1521,19 +1522,19 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
       const nestedType = `PyreonZodSchema_${f.type.schemaName}`
       if (f.optional) {
         lines.push(
-          `            val ${f.name}Val: ${nestedType}? = if (input.containsKey(${JSON.stringify(f.name)})) {`,
+          `            val ${f.name}Val: ${nestedType}? = if (input.containsKey(${kotlinStr(f.name)})) {`,
         )
         lines.push(
-          `                val raw = (input[${JSON.stringify(f.name)}] as? Map<String, Any?>) ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(f.name)}, ${JSON.stringify(nestedType)})`,
+          `                val raw = (input[${kotlinStr(f.name)}] as? Map<String, Any?>) ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(nestedType)})`,
         )
         lines.push(`                ${nestedType}.parse(raw)`)
         lines.push(`            } else null`)
       } else {
         lines.push(
-          `            val ${f.name}Raw = (input[${JSON.stringify(f.name)}] as? Map<String, Any?>)`,
+          `            val ${f.name}Raw = (input[${kotlinStr(f.name)}] as? Map<String, Any?>)`,
         )
         lines.push(
-          `                ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(f.name)}, ${JSON.stringify(nestedType)})`,
+          `                ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(nestedType)})`,
         )
         lines.push(
           `            val ${f.name}Val = ${nestedType}.parse(${f.name}Raw)`,
@@ -1552,19 +1553,19 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
       const arrayType = `List<${nestedType}>`
       if (f.optional) {
         lines.push(
-          `            val ${f.name}Val: ${arrayType}? = if (input.containsKey(${JSON.stringify(f.name)})) {`,
+          `            val ${f.name}Val: ${arrayType}? = if (input.containsKey(${kotlinStr(f.name)})) {`,
         )
         lines.push(
-          `                val raw = (input[${JSON.stringify(f.name)}] as? List<Map<String, Any?>>) ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(f.name)}, ${JSON.stringify(arrayType)})`,
+          `                val raw = (input[${kotlinStr(f.name)}] as? List<Map<String, Any?>>) ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(arrayType)})`,
         )
         lines.push(`                raw.map { ${nestedType}.parse(it) }`)
         lines.push(`            } else null`)
       } else {
         lines.push(
-          `            val ${f.name}Raw = (input[${JSON.stringify(f.name)}] as? List<Map<String, Any?>>)`,
+          `            val ${f.name}Raw = (input[${kotlinStr(f.name)}] as? List<Map<String, Any?>>)`,
         )
         lines.push(
-          `                ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(f.name)}, ${JSON.stringify(arrayType)})`,
+          `                ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(arrayType)})`,
         )
         lines.push(
           `            val ${f.name}Val = ${f.name}Raw.map { ${nestedType}.parse(it) }`,
@@ -1575,7 +1576,7 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
     if (f.optional) {
       // Optional field: missing → null, present-but-wrong-type → throw
       lines.push(
-        `            val ${f.name}Val: ${t}? = if (input.containsKey(${JSON.stringify(f.name)})) (input[${JSON.stringify(f.name)}] as? ${t}) ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(f.name)}, ${JSON.stringify(t)}) else null`,
+        `            val ${f.name}Val: ${t}? = if (input.containsKey(${kotlinStr(f.name)})) (input[${kotlinStr(f.name)}] as? ${t}) ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(t)}) else null`,
       )
       // Gap 4 v3 — constraints on optional fields apply ONLY when present;
       // the null branch above leaves the field null untouched.
@@ -1601,10 +1602,10 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
       continue
     }
     lines.push(
-      `            val ${f.name}Val = (input[${JSON.stringify(f.name)}] as? ${t})`,
+      `            val ${f.name}Val = (input[${kotlinStr(f.name)}] as? ${t})`,
     )
     lines.push(
-      `                ?: throw PyreonSchemaError.MissingOrWrongType(${JSON.stringify(f.name)}, ${JSON.stringify(t)})`,
+      `                ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(t)})`,
     )
     // Gap 4 v2.1 — scalar constraints.
     emitKotlinScalarConstraints(
@@ -1657,7 +1658,7 @@ function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
     lines.push(`            try {`)
     lines.push(`                when (field) {`)
     for (const f of _kStringFields) {
-      lines.push(`                    ${JSON.stringify(f.name)} -> {`)
+      lines.push(`                    ${kotlinStr(f.name)} -> {`)
       const guards: string[] = []
       emitKotlinScalarConstraints(guards, 'value', 'string', f.constraints, f.name, 24, false)
       if (guards.length === 0) guards.push(`                        Unit`)
@@ -1851,7 +1852,10 @@ const KOTLIN_PARSE_RESULT = `data class PyreonParseResult<T>(val success: Boolea
 
 /** Emit a Kotlin `enum class X { a, b, c }`. */
 function emitKotlinEnum(e: EnumIR): string {
-  return `enum class ${e.name} { ${e.cases.join(', ')} }`
+  // Each entry is a valid Kotlin name: a kebab-case / keyword union member
+  // (`'top-left' | 'class'`) is backtick-quoted, which keeps the serialized
+  // name byte-identical to the JS string (no `@SerialName` needed).
+  return `enum class ${e.name} { ${e.cases.map(kotlinMember).join(', ')} }`
 }
 
 /**
@@ -1909,7 +1913,7 @@ function emitKotlinStruct(s: StructIR): string {
   const params = s.fields
     .map((f) => {
       const suffix = typeIsOptional(f.type) ? ' = null' : ''
-      return `var ${kotlinIdent(f.name)}: ${kotlinType(f.type, undefined, f.name)}${suffix}`
+      return `var ${kotlinMember(f.name)}: ${kotlinType(f.type, undefined, f.name)}${suffix}`
     })
     .join(', ')
   // A FUNCTION-typed property can't be @Serializable — the kotlinx
@@ -2373,15 +2377,15 @@ function emitKotlinComponent(c: ComponentIR): string {
       // `readText()` below cannot express any of the three.
       const parts = [
         `method = PyreonHttpMethod.${(d.method ?? 'GET').toUpperCase()}`,
-        `url = ${JSON.stringify(d.url)}`,
+        `url = ${kotlinStr(d.url)}`,
       ]
       if (d.headers) {
         const pairs = Object.entries(d.headers)
-          .map(([k, v]) => `${JSON.stringify(k)} to ${JSON.stringify(v)}`)
+          .map(([k, v]) => `${kotlinStr(k)} to ${kotlinStr(v)}`)
           .join(', ')
         parts.push(`headers = mapOf(${pairs})`)
       }
-      if (d.body !== undefined) parts.push(`body = ${JSON.stringify(d.body)}`)
+      if (d.body !== undefined) parts.push(`body = ${kotlinStr(d.body)}`)
       lines.push(`      val __response = withContext(Dispatchers.IO) {`)
       lines.push(`        PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}))`)
       lines.push(`      }`)
@@ -2393,7 +2397,7 @@ function emitKotlinComponent(c: ComponentIR): string {
       )
     } else {
       lines.push(
-        `      val body = withContext(Dispatchers.IO) { java.net.URL(${JSON.stringify(d.url)}).readText() }`,
+        `      val body = withContext(Dispatchers.IO) { java.net.URL(${kotlinStr(d.url)}).readText() }`,
       )
       lines.push(`      ${name}.resolve(PyreonFetchJson.decodeFromString<${kotlinType(d.type, ctx)}>(body))`)
     }
@@ -2415,7 +2419,7 @@ function emitKotlinComponent(c: ComponentIR): string {
       d.queryKeyExpr !== undefined || d.urlExpr !== undefined || d.valueExpr !== undefined
     if (runtimeQuery) {
       const keyExpr =
-        d.queryKeyExpr !== undefined ? emitKotlinExpr(d.queryKeyExpr, 0) : JSON.stringify(d.queryKey)
+        d.queryKeyExpr !== undefined ? emitKotlinExpr(d.queryKeyExpr, 0) : kotlinStr(d.queryKey)
       lines.push(`  LaunchedEffect(${keyExpr}) {`)
       lines.push(`    ${name}.setKey(${keyExpr})`)
     } else {
@@ -2429,7 +2433,7 @@ function emitKotlinComponent(c: ComponentIR): string {
       lines.push(`      ${name}.resolve(${emitKotlinExpr(d.valueExpr, 0)})`)
     } else {
       const kotlinUrl =
-        d.urlExpr !== undefined ? emitKotlinExpr(d.urlExpr, 0) : JSON.stringify(d.url)
+        d.urlExpr !== undefined ? emitKotlinExpr(d.urlExpr, 0) : kotlinStr(d.url)
       lines.push(`      try {`)
       if (d.method || d.headers || d.body) {
         // Mirrors the Swift PyreonHttp branch: a request with a VERB, headers, or
@@ -2440,11 +2444,11 @@ function emitKotlinComponent(c: ComponentIR): string {
         ]
         if (d.headers) {
           const pairs = Object.entries(d.headers)
-            .map(([k, v]) => `${JSON.stringify(k)} to ${JSON.stringify(v)}`)
+            .map(([k, v]) => `${kotlinStr(k)} to ${kotlinStr(v)}`)
             .join(', ')
           parts.push(`headers = mapOf(${pairs})`)
         }
-        if (d.body !== undefined) parts.push(`body = ${JSON.stringify(d.body)}`)
+        if (d.body !== undefined) parts.push(`body = ${kotlinStr(d.body)}`)
         lines.push(`        val __response = withContext(Dispatchers.IO) {`)
         lines.push(`          PyreonHttp.send(PyreonHttpRequest(${parts.join(', ')}))`)
         lines.push(`        }`)
@@ -2568,7 +2572,11 @@ function emitKotlinDataClass(synth: {
   fields: { name: string; type: TypeIR }[]
 }): string {
   const params = synth.fields
-    .map((f) => `val ${f.name}: ${kotlinType(f.type)}${typeIsOptional(f.type) ? ' = null' : ''}`)
+    // `kotlinMember`, not the bare name: a quoted object key (`'my-key'`,
+    // `'class'`) reaches this synth path unescaped, and the named data
+    // class beside it (`emitKotlinStruct`) escapes — two contradictory
+    // declarations of one shape.
+    .map((f) => `val ${kotlinMember(f.name)}: ${kotlinType(f.type)}${typeIsOptional(f.type) ? ' = null' : ''}`)
     .join(', ')
   // `@Serializable` for consistency with emitKotlinStruct (named `type X
   // = {...}` structs always carry it). Without it, a synthesized class
@@ -2655,7 +2663,7 @@ function syncedInitialKotlin(
   scalar: 'string' | 'double' | 'bool',
   value: string | number | boolean,
 ): string {
-  if (scalar === 'string') return JSON.stringify(String(value))
+  if (scalar === 'string') return kotlinStr(String(value))
   if (scalar === 'bool') return value ? 'true' : 'false'
   // A Double literal so `PyreonSyncedSignal<Double>` is inferred (JS number).
   return Number.isInteger(value as number) ? `${value}.0` : String(value)
@@ -2738,9 +2746,9 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     // contract.
     if (usesPyreonRuntime) {
       if (d.type.kind === 'array' && d.initial.kind === 'array' && d.initial.elements.length === 0) {
-        return `var ${kotlinIdent(d.name)} by rememberPyreonStorage<${typeStr}>(${JSON.stringify(d.storageKey)}, listOf())`
+        return `var ${kotlinIdent(d.name)} by rememberPyreonStorage<${typeStr}>(${kotlinStr(d.storageKey)}, listOf())`
       }
-      return `var ${kotlinIdent(d.name)} by rememberPyreonStorage<${typeStr}>(${JSON.stringify(d.storageKey)}, ${initial})`
+      return `var ${kotlinIdent(d.name)} by rememberPyreonStorage<${typeStr}>(${kotlinStr(d.storageKey)}, ${initial})`
     }
 
     // Native types continue to use the direct shape — no Pyreon runtime
@@ -2811,7 +2819,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     const key =
       d.queryKeyExpr !== undefined || d.urlExpr !== undefined || d.valueExpr !== undefined
         ? '""'
-        : JSON.stringify(d.queryKey)
+        : kotlinStr(d.queryKey)
     return `val ${kotlinIdent(d.name)} = remember { PyreonQuery<${kotlinType(d.type, ctx)}>(queryKey = ${key}, staleMillis = ${d.staleMillis}L) }`
   }
   // Phase 4.2: `const form = useForm({ initialValues })` → a remembered
@@ -2821,7 +2829,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     if (d.initialValues.length) {
       parts.push(
         `initialValues = mapOf(${d.initialValues
-          .map((p) => `${JSON.stringify(p.key)} to ${JSON.stringify(p.value)}`)
+          .map((p) => `${kotlinStr(p.key)} to ${kotlinStr(p.value)}`)
           .join(', ')})`,
       )
     }
@@ -2830,7 +2838,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       const entries = d.validators
         .map(
           (v) =>
-            `${JSON.stringify(v.key)} to { ${kotlinIdent(v.param)}: String -> ${emitKotlinExpr(v.body, 0)} }`,
+            `${kotlinStr(v.key)} to { ${kotlinIdent(v.param)}: String -> ${emitKotlinExpr(v.body, 0)} }`,
         )
         .join(', ')
       parts.push(`validators = mapOf(${entries})`)
@@ -2850,7 +2858,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
           .filter((f) => !explicit.has(f))
           .map(
             (f) =>
-              `${JSON.stringify(f)} to { v: String -> PyreonZodSchema_${d.schemaName}.validateField(${JSON.stringify(f)}, v) }`,
+              `${kotlinStr(f)} to { v: String -> PyreonZodSchema_${d.schemaName}.validateField(${kotlinStr(f)}, v) }`,
           )
         if (entries.length > 0) {
           const existing = parts.findIndex((p) => p.startsWith('validators = mapOf('))
@@ -2938,7 +2946,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   }
   if (d.kind === 'fieldArray') {
     _fieldArrayNamesKotlin.add(d.name)
-    const init = d.initial.length === 0 ? '' : `listOf(${d.initial.map((v) => JSON.stringify(v)).join(', ')})`
+    const init = d.initial.length === 0 ? '' : `listOf(${d.initial.map((v) => kotlinStr(v)).join(', ')})`
     return `val ${kotlinIdent(d.name)} = remember { PyreonFieldArray(${init}) }`
   }
   if (d.kind === 'push') {
@@ -2978,7 +2986,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // the active router's params map (useParams() reads LocalPyreonRouter).
   if (d.kind === 'params-destructure') {
     return d.params
-      .map((p) => `val ${kotlinIdent(p.local)} = useParams()[${JSON.stringify(p.key)}] ?: ""`)
+      .map((p) => `val ${kotlinIdent(p.local)} = useParams()[${kotlinStr(p.key)}] ?: ""`)
       .join('\n  ')
   }
   // Phase 4: `const can = usePermissions([...])` → a remembered
@@ -3056,7 +3064,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     if (d.grants.length === 0) {
       return `val ${kotlinIdent(d.name)} = LocalPyreonPermissions.current`
     }
-    const seed = `setOf(${d.grants.map((g) => JSON.stringify(g)).join(', ')})`
+    const seed = `setOf(${d.grants.map((g) => kotlinStr(g)).join(', ')})`
     return `val ${kotlinIdent(d.name)} = remember { PyreonPermissions(${seed}) }`
   }
   // Phase 4: `const cb = useClipboard()` → a remembered PyreonClipboard.
@@ -3214,17 +3222,17 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     const entries = Object.entries(d.messages)
       .map(([loc, kv]) => {
         const inner = Object.entries(kv)
-          .map(([k, v]) => `${JSON.stringify(k)} to ${JSON.stringify(v)}`)
+          .map(([k, v]) => `${kotlinStr(k)} to ${kotlinStr(v)}`)
           .join(', ')
-        return `${JSON.stringify(loc)} to ${inner === '' ? 'mapOf()' : `mapOf(${inner})`}`
+        return `${kotlinStr(loc)} to ${inner === '' ? 'mapOf()' : `mapOf(${inner})`}`
       })
       .join(', ')
     const msgLit = entries === '' ? 'mapOf()' : `mapOf(${entries})`
     const fbArg =
       d.fallbackLocale !== undefined
-        ? `, fallbackLocale = ${JSON.stringify(d.fallbackLocale)}`
+        ? `, fallbackLocale = ${kotlinStr(d.fallbackLocale)}`
         : ''
-    return `val ${kotlinIdent(d.name)} = remember { PyreonI18n(initialLocale = ${JSON.stringify(d.locale)}, messages = ${msgLit}${fbArg}) }`
+    return `val ${kotlinIdent(d.name)} = remember { PyreonI18n(initialLocale = ${kotlinStr(d.locale)}, messages = ${msgLit}${fbArg}) }`
   }
   // Gap 4 PR-2: `const m = createMachine({ initial, states })` →
   // `val m = remember { PyreonMachine(initial = "idle",
@@ -3238,15 +3246,15 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
         const ev = Object.entries(events)
           .map(
             ([event, next]) =>
-              `${JSON.stringify(event)} to ${JSON.stringify(next)}`,
+              `${kotlinStr(event)} to ${kotlinStr(next)}`,
           )
           .join(', ')
         const inner = ev === '' ? 'mapOf()' : `mapOf(${ev})`
-        return `${JSON.stringify(state)} to ${inner}`
+        return `${kotlinStr(state)} to ${inner}`
       })
       .join(', ')
     const transLit = entries === '' ? 'mapOf()' : `mapOf(${entries})`
-    return `val ${kotlinIdent(d.name)} = remember { PyreonMachine(initial = ${JSON.stringify(d.initial)}, transitions = ${transLit}) }`
+    return `val ${kotlinIdent(d.name)} = remember { PyreonMachine(initial = ${kotlinStr(d.initial)}, transitions = ${transLit}) }`
   }
   // `@pyreon/sync` — `remember { }` blocks run sequentially in composition, so
   // (unlike Swift's @State) the doc and its signals can reference each other
@@ -3255,14 +3263,14 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   if (d.kind === 'crdt-doc') {
     const actor =
       d.actorLiteral !== undefined
-        ? JSON.stringify(d.actorLiteral)
+        ? kotlinStr(d.actorLiteral)
         : 'java.util.UUID.randomUUID().toString()'
     return `val ${kotlinIdent(d.name)} = remember { PyreonCrdtDoc(${actor}) }`
   }
   if (d.kind === 'synced-signal') {
     const initial = syncedInitialKotlin(d.scalarType, d.initialValue)
-    const mapArg = d.map !== undefined ? `, ${JSON.stringify(d.map)}` : ''
-    return `val ${kotlinIdent(d.name)} = remember { PyreonSyncedSignal(${kotlinIdent(d.docBinding)}, ${JSON.stringify(d.key)}, ${initial}${mapArg}) }`
+    const mapArg = d.map !== undefined ? `, ${kotlinStr(d.map)}` : ''
+    return `val ${kotlinIdent(d.name)} = remember { PyreonSyncedSignal(${kotlinIdent(d.docBinding)}, ${kotlinStr(d.key)}, ${initial}${mapArg}) }`
   }
   // `@pyreon/table` — Compose's sequential `remember` lets the data lambda
   // reference the row signal directly (no @State cross-ref like Swift), so it's
@@ -3276,7 +3284,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     const cols = d.columns
       .map((c) => {
         const f = fields.find((x) => x.name === c.id)
-        return `PyreonTableColumn(${JSON.stringify(c.id)}) { ${kotlinTableCell(f?.type, `it.${kotlinIdent(c.id)}`)} }`
+        return `PyreonTableColumn(${kotlinStr(c.id)}) { ${kotlinTableCell(f?.type, `it.${kotlinIdent(c.id)}`)} }`
       })
       .join(', ')
     const pageArg = d.pageSize > 0 ? `, ${d.pageSize}` : ''
@@ -3359,8 +3367,8 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     const nodeLits = d.nodes
       .map((n) => {
         const parts = [
-          `id = ${JSON.stringify(n.id)}`,
-          ...(n.type !== undefined ? [`type = ${JSON.stringify(n.type)}`] : []),
+          `id = ${kotlinStr(n.id)}`,
+          ...(n.type !== undefined ? [`type = ${kotlinStr(n.type)}`] : []),
           `position = PyreonXYPosition(${ktChartDouble(emitKotlinExpr(n.positionX, 0))}, ${ktChartDouble(emitKotlinExpr(n.positionY, 0))})`,
           `data = ${withExpectedTypeKotlin(expectedRowType, () => emitKotlinExpr(n.data, 0))}`,
           ...(n.width !== undefined ? [`width = ${ktChartDouble(emitKotlinExpr(n.width, 0))}`] : []),
@@ -3369,12 +3377,12 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
           ...(n.selectable !== undefined ? [`selectable = ${n.selectable}`] : []),
           ...(n.connectable !== undefined ? [`connectable = ${n.connectable}`] : []),
           ...(n.focusable !== undefined ? [`focusable = ${n.focusable}`] : []),
-          ...(n.ariaLabel !== undefined ? [`ariaLabel = ${JSON.stringify(n.ariaLabel)}`] : []),
+          ...(n.ariaLabel !== undefined ? [`ariaLabel = ${kotlinStr(n.ariaLabel)}`] : []),
           ...(n.hidden !== undefined ? [`hidden = ${n.hidden}`] : []),
           ...(n.deletable !== undefined ? [`deletable = ${n.deletable}`] : []),
-          ...(n.cssClass !== undefined ? [`className = ${JSON.stringify(n.cssClass)}`] : []),
-          ...(n.style !== undefined ? [`style = ${JSON.stringify(n.style)}`] : []),
-          ...(n.parentId !== undefined ? [`parentId = ${JSON.stringify(n.parentId)}`] : []),
+          ...(n.cssClass !== undefined ? [`className = ${kotlinStr(n.cssClass)}`] : []),
+          ...(n.style !== undefined ? [`style = ${kotlinStr(n.style)}`] : []),
+          ...(n.parentId !== undefined ? [`parentId = ${kotlinStr(n.parentId)}`] : []),
           ...(n.extent !== undefined ? [`extent = PyreonFlowNodeExtent(${n.extent.map((value) => ktChartDouble(String(value))).join(', ')})`] : []),
           ...(n.extentParent === true ? ['extentParent = true'] : []),
           ...(n.expandParent !== undefined ? [`expandParent = ${n.expandParent}`] : []),
@@ -3388,16 +3396,16 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     const edgeLits = d.edges
       .map((e) => {
         const parts = [
-          `id = ${JSON.stringify(e.id)}`,
-          `source = ${JSON.stringify(e.source)}`,
-          `target = ${JSON.stringify(e.target)}`,
-          ...(e.sourceHandle !== undefined ? [`sourceHandle = ${JSON.stringify(e.sourceHandle)}`] : []),
-          ...(e.targetHandle !== undefined ? [`targetHandle = ${JSON.stringify(e.targetHandle)}`] : []),
-          ...(e.type !== undefined ? [`type = ${JSON.stringify(e.type)}`] : []),
-          ...(e.label !== undefined ? [`label = ${JSON.stringify(e.label)}`] : []),
+          `id = ${kotlinStr(e.id)}`,
+          `source = ${kotlinStr(e.source)}`,
+          `target = ${kotlinStr(e.target)}`,
+          ...(e.sourceHandle !== undefined ? [`sourceHandle = ${kotlinStr(e.sourceHandle)}`] : []),
+          ...(e.targetHandle !== undefined ? [`targetHandle = ${kotlinStr(e.targetHandle)}`] : []),
+          ...(e.type !== undefined ? [`type = ${kotlinStr(e.type)}`] : []),
+          ...(e.label !== undefined ? [`label = ${kotlinStr(e.label)}`] : []),
           ...(e.animated !== undefined ? [`animated = ${e.animated ? 'true' : 'false'}`, 'animatedSpecified = true'] : []),
           ...(e.focusable !== undefined ? [`focusable = ${e.focusable}`] : []),
-          ...(e.ariaLabel !== undefined ? [`ariaLabel = ${JSON.stringify(e.ariaLabel)}`] : []),
+          ...(e.ariaLabel !== undefined ? [`ariaLabel = ${kotlinStr(e.ariaLabel)}`] : []),
           ...(e.hidden !== undefined ? [`hidden = ${e.hidden}`] : []),
           ...(e.deletable !== undefined ? [`deletable = ${e.deletable}`] : []),
           ...(e.reconnectable !== undefined ? [`reconnectable = ${e.reconnectable}`] : []),
@@ -3433,19 +3441,19 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       ...(d.defaultMarkerEnd !== undefined ? [`defaultMarkerEnd = ${d.defaultMarkerEnd === null ? 'null' : kotlinFlowMarker(d.defaultMarkerEnd)}`] : []),
       ...(['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'disableKeyboardA11y', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'panOnDrag', 'panOnScroll', 'zoomable', 'zoomOnScroll', 'zoomOnPinch', 'zoomOnDoubleClick', 'selectionOnDrag', 'multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory', 'reducedMotion', 'preventScrolling'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key} = ${d[key]}`]),
       ...(d.panOnScrollSpeed !== undefined ? [`panOnScrollSpeed = ${ktDouble(d.panOnScrollSpeed)}`] : []),
-      ...(d.deleteKeys !== undefined ? [`deleteKeys = ${d.deleteKeys === null ? 'null' : `listOf(${d.deleteKeys.map((key) => JSON.stringify(key)).join(', ')})`}`] : []),
-      ...(['multiSelectionKey', 'selectionKey', 'zoomActivationKey'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key} = ${d[key] === null ? 'null' : JSON.stringify(d[key])}`]),
-      ...(d.selectionMode !== undefined ? [`selectionMode = ${JSON.stringify(d.selectionMode)}`] : []),
+      ...(d.deleteKeys !== undefined ? [`deleteKeys = ${d.deleteKeys === null ? 'null' : `listOf(${d.deleteKeys.map((key) => kotlinStr(key)).join(', ')})`}`] : []),
+      ...(['multiSelectionKey', 'selectionKey', 'zoomActivationKey'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key} = ${d[key] === null ? 'null' : kotlinStr(d[key])}`]),
+      ...(d.selectionMode !== undefined ? [`selectionMode = ${kotlinStr(d.selectionMode)}`] : []),
       ...(d.edgeInteractionWidth !== undefined ? [`edgeInteractionWidth = ${ktDouble(d.edgeInteractionWidth)}`] : []),
       ...(d.connectionRadius !== undefined ? [`connectionRadius = ${ktDouble(d.connectionRadius)}`] : []),
-      ...(d.defaultEdgeType !== undefined ? [`defaultEdgeType = ${JSON.stringify(d.defaultEdgeType)}`] : []),
-      ...(d.connectionLineType !== undefined ? [`connectionLineType = ${JSON.stringify(d.connectionLineType)}`] : []),
+      ...(d.defaultEdgeType !== undefined ? [`defaultEdgeType = ${kotlinStr(d.defaultEdgeType)}`] : []),
+      ...(d.connectionLineType !== undefined ? [`connectionLineType = ${kotlinStr(d.connectionLineType)}`] : []),
       ...(d.defaultEdgeOptions !== undefined ? [`defaultEdgeOptions = PyreonFlowDefaultEdgeOptions(${[
-        ...(d.defaultEdgeOptions.type !== undefined ? [`type = ${JSON.stringify(d.defaultEdgeOptions.type)}`] : []),
-        ...(d.defaultEdgeOptions.label !== undefined ? [`label = ${JSON.stringify(d.defaultEdgeOptions.label)}`] : []),
+        ...(d.defaultEdgeOptions.type !== undefined ? [`type = ${kotlinStr(d.defaultEdgeOptions.type)}`] : []),
+        ...(d.defaultEdgeOptions.label !== undefined ? [`label = ${kotlinStr(d.defaultEdgeOptions.label)}`] : []),
         ...(d.defaultEdgeOptions.animated !== undefined ? [`animated = ${d.defaultEdgeOptions.animated}`] : []),
         ...(d.defaultEdgeOptions.focusable !== undefined ? [`focusable = ${d.defaultEdgeOptions.focusable}`] : []),
-        ...(d.defaultEdgeOptions.ariaLabel !== undefined ? [`ariaLabel = ${JSON.stringify(d.defaultEdgeOptions.ariaLabel)}`] : []),
+        ...(d.defaultEdgeOptions.ariaLabel !== undefined ? [`ariaLabel = ${kotlinStr(d.defaultEdgeOptions.ariaLabel)}`] : []),
         ...(d.defaultEdgeOptions.hidden !== undefined ? [`hidden = ${d.defaultEdgeOptions.hidden}`] : []),
         ...(d.defaultEdgeOptions.deletable !== undefined ? [`deletable = ${d.defaultEdgeOptions.deletable}`] : []),
         ...(d.defaultEdgeOptions.reconnectable !== undefined ? [`reconnectable = ${d.defaultEdgeOptions.reconnectable}`] : []),
@@ -3458,7 +3466,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       ].join(', ')})`] : []),
       ...(d.fitView !== undefined ? [`fitViewOnLoad = ${d.fitView}`] : []),
       ...(d.fitViewPadding !== undefined ? [`fitViewPadding = ${ktDouble(d.fitViewPadding)}`] : []),
-      ...(d.connectionRules !== undefined ? [`connectionRules = mapOf(${Object.entries(d.connectionRules).map(([key, outputs]) => `${JSON.stringify(key)} to listOf(${outputs.map((output) => JSON.stringify(output)).join(', ')})`).join(', ')})`] : []),
+      ...(d.connectionRules !== undefined ? [`connectionRules = mapOf(${Object.entries(d.connectionRules).map(([key, outputs]) => `${kotlinStr(key)} to listOf(${outputs.map((output) => kotlinStr(output)).join(', ')})`).join(', ')})`] : []),
       ...(d.connectionValidator !== undefined ? [`connectionValidator = ${emitKotlinExpr(d.connectionValidator, 0)}`] : []),
       ...(rowFields.some((field) => field.name === 'label') ? ['searchText = { it.label }'] : []),
     ].join(', ')
@@ -3480,7 +3488,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     // with `Unresolved reference 'useRouter'` -- a superset stub masking a real
     // emit bug, which is the exact failure mode a stub is supposed to prevent.
     const helper = KOTLIN_URL_STATE_TYPES[d.valueType]
-    return `val ${kotlinIdent(d.name)} = ${helper}(LocalPyreonRouter.current, ${JSON.stringify(d.key)}, ${d.defaultValue})`
+    return `val ${kotlinIdent(d.name)} = ${helper}(LocalPyreonRouter.current, ${kotlinStr(d.key)}, ${d.defaultValue})`
   }
   if (d.kind === 'router-hook') {
     const fn = d.hook === 'navigate' ? 'useNavigate' : 'useParams'
@@ -3577,12 +3585,12 @@ function kotlinFlowNodeExtentArgs(expr: ExprIR): string[] | null {
 
 function kotlinFlowParsedHandles(handles: StaticFlowHandle[]): string {
   const positionName = (position: string) => position[0]!.toUpperCase() + position.slice(1)
-  return `listOf(${handles.map((h) => `PyreonFlowHandleConfig(${h.id === undefined ? '' : `id = ${JSON.stringify(h.id)}, `}type = ${JSON.stringify(h.type)}, position = PyreonFlowPosition.${positionName(h.position)}${'offset' in h && typeof h.offset === 'number' ? `, offset = ${ktChartDouble(String(h.offset))}` : ''})`).join(', ')})`
+  return `listOf(${handles.map((h) => `PyreonFlowHandleConfig(${h.id === undefined ? '' : `id = ${kotlinStr(h.id)}, `}type = ${kotlinStr(h.type)}, position = PyreonFlowPosition.${positionName(h.position)}${'offset' in h && typeof h.offset === 'number' ? `, offset = ${ktChartDouble(String(h.offset))}` : ''})`).join(', ')})`
 }
 
 function kotlinFlowMarker(marker: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number }): string {
-  const args = [JSON.stringify(marker.type)]
-  if (marker.color !== undefined) args.push(`color = ${JSON.stringify(marker.color)}`)
+  const args = [kotlinStr(marker.type)]
+  if (marker.color !== undefined) args.push(`color = ${kotlinStr(marker.color)}`)
   if (marker.width !== undefined) args.push(`width = ${ktChartDouble(String(marker.width))}`)
   if (marker.height !== undefined) args.push(`height = ${ktChartDouble(String(marker.height))}`)
   if (marker.strokeWidth !== undefined) args.push(`strokeWidth = ${ktChartDouble(String(marker.strokeWidth))}`)
@@ -3598,7 +3606,7 @@ function kotlinFlowMarkerLiteral(expr: ExprIR): string | null {
   const type = field('type')
   const typeName = type?.kind === 'literal' && typeof type.value === 'string' ? type.value.toLowerCase() : type?.kind === 'member' ? type.property.toLowerCase() : null
   if (typeName !== 'arrow' && typeName !== 'arrowclosed') return null
-  const args = [JSON.stringify(typeName)]
+  const args = [kotlinStr(typeName)]
   const color = field('color'); if (color) args.push(`color = ${emitKotlinExpr(color, 0)}`)
   for (const name of ['width', 'height', 'strokeWidth'] as const) { const value = field(name); if (value) args.push(`${name} = ${ktChartDouble(emitKotlinExpr(value, 0))}`) }
   return `PyreonFlowMarker(${args.join(', ')})`
@@ -4543,7 +4551,7 @@ function emitKotlinDynamicValue(e: ExprIR, indent: number): string {
   if (e.kind === 'object' && (!e.spreads || e.spreads.length === 0)) {
     if (e.fields.length === 0) return `mapOf<String, Any?>()`
     const entries = e.fields
-      .map((f) => `${JSON.stringify(f.name)} to ${emitKotlinDynamicValue(f.value, indent)}`)
+      .map((f) => `${kotlinStr(f.name)} to ${emitKotlinDynamicValue(f.value, indent)}`)
       .join(', ')
     return `mapOf<String, Any?>(${entries})`
   }
@@ -4563,9 +4571,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         // known enum-typed context. Kotlin requires the enum-name
         // qualifier (vs Swift's `.case` type-inferred shorthand).
         if (_activeEnumType !== undefined) {
-          return `${_activeEnumType}.${e.value}`
+          return `${_activeEnumType}.${kotlinMember(e.value)}`
         }
-        return JSON.stringify(e.value)
+        return kotlinStr(e.value)
       }
       if (typeof e.value === 'boolean') return e.value ? 'true' : 'false'
       // Nullish literal (JS null, or `undefined` lowered by the
@@ -4595,7 +4603,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // `toast("x")` / `toast.success("x")` → PyreonToast.add("x", "…").
       // A literal duration (ms) sets the auto-dismiss (Long).
       const durArg = e.durationMillis !== undefined ? `, ${e.durationMillis}L` : ''
-      return `PyreonToast.add(${emitKotlinExpr(e.message, indent)}, ${JSON.stringify(e.toastType)}${durArg})`
+      return `PyreonToast.add(${emitKotlinExpr(e.message, indent)}, ${kotlinStr(e.toastType)}${durArg})`
     }
     case 'announce-call':
       // Imperative @pyreon/a11y announce → PyreonA11y (the registered announcer).
@@ -4790,7 +4798,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           if (fieldsField) {
             if (fieldsField.value.kind === 'object') {
               const entries = fieldsField.value.fields
-                .map((f) => `${JSON.stringify(f.name)} to ${emitKotlinExpr(f.value, indent)}`)
+                .map((f) => `${kotlinStr(f.name)} to ${emitKotlinExpr(f.value, indent)}`)
                 .join(', ')
               parts.push(entries === '' ? 'emptyMap()' : `mapOf(${entries})`)
             } else {
@@ -5051,7 +5059,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         _websocketUrlsKotlin.has(e.callee.object.name) &&
         e.args.length === 0
       ) {
-        return `${kotlinIdent(e.callee.object.name)}.connect(${JSON.stringify(_websocketUrlsKotlin.get(e.callee.object.name)!)})`
+        return `${kotlinIdent(e.callee.object.name)}.connect(${kotlinStr(_websocketUrlsKotlin.get(e.callee.object.name)!)})`
       }
       // `Boolean(x)` — JS truthiness coercion as a VALUE. Kotlin has no
       // `Boolean(x)` function (the raw emit fails "unresolved reference"),
@@ -5579,9 +5587,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.args.length >= 1
       ) {
         const arg = emitKotlinExpr(e.args[0]!, indent)
-        return e.callee.name === 'parseInt'
-          ? `((${arg}).toIntOrNull() ?: 0)`
-          : `((${arg}).toDoubleOrNull() ?: 0.0)`
+        if (e.callee.name === 'parseInt') {
+          // The radix used to be DROPPED: `parseInt(hex, 16)` decoded as base
+          // 10 and returned 0 for `'ff'` — a plausible number that flowed on.
+          const radix = e.args[1]
+          if (radix !== undefined) {
+            const r = radix.kind === 'literal' && typeof radix.value === 'number' ? String(radix.value) : emitKotlinExpr(radix, indent)
+            return `((${arg}).toIntOrNull(${r}) ?: 0)`
+          }
+          return `((${arg}).toIntOrNull() ?: 0)`
+        }
+        return `((${arg}).toDoubleOrNull() ?: 0.0)`
       }
       // Fetch-arc: zero-arg call on a fetch FIELD — `quotes.data()` /
       // `quotes.isPending()` (the web signal-read shape) → MutableState
@@ -5645,7 +5661,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const keyArg = emitKotlinExpr(e.args[0]!, indent)
         const obj = e.args[1]! as Extract<ExprIR, { kind: 'object' }>
         const entries = obj.fields
-          .map((f) => `${JSON.stringify(f.name)} to ${emitKotlinExpr(f.value, indent)}`)
+          .map((f) => `${kotlinStr(f.name)} to ${emitKotlinExpr(f.value, indent)}`)
           .join(', ')
         return `${kotlinIdent(e.callee.object.name)}.t(${keyArg}, mapOf(${entries}))`
       }
@@ -6343,7 +6359,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.object.kind === 'identifier' &&
         _formSubmitParamsKotlin.includes(e.object.name)
       ) {
-        return `(${kotlinIdent(e.object.name)}[${JSON.stringify(e.property)}] ?: "")`
+        return `(${kotlinIdent(e.object.name)}[${kotlinStr(e.property)}] ?: "")`
       }
       if (
         _formAccessorObj.kind === 'member' &&
@@ -6354,7 +6370,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           _formAccessorObj.property === 'touched')
       ) {
         const dflt = _formAccessorObj.property === 'touched' ? 'false' : '""'
-        return `(${kotlinIdent(_formAccessorObj.object.name)}.${_formAccessorObj.property}.value[${JSON.stringify(e.property)}] ?: ${dflt})`
+        return `(${kotlinIdent(_formAccessorObj.object.name)}.${_formAccessorObj.property}.value[${kotlinStr(e.property)}] ?: ${dflt})`
       }
       // Gap 4 v1: rewrite `<useFoo>().store.X` → `PyreonStore_foo.X`.
       // Same chain-shape recognition as emit-swift's; Kotlin's `object`
@@ -6487,8 +6503,14 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           inferType(e.right, _kotlinExprInferCtx).kind === 'string')
       ) {
         const coerce = (sub: ExprIR, emitted: string): string => {
-          const k = inferType(sub, _kotlinExprInferCtx).kind
-          return k === 'number' || k === 'boolean' ? `(${emitted}).toString()` : emitted
+          const t = inferType(sub, _kotlinExprInferCtx)
+          // A DOUBLE operand takes the JS-faithful formatter (`250.0` →
+          // `"250"`, as JS prints it) — see the Swift twin.
+          if (t.kind === 'number' && t.float === true) {
+            _needsKotlinNumString = true
+            return `pyreonNumString(${emitted})`
+          }
+          return t.kind === 'number' || t.kind === 'boolean' ? `(${emitted}).toString()` : emitted
         }
         return `${coerce(e.left, bl)} + ${coerce(e.right, br)}`
       }
@@ -6846,7 +6868,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (_expectedTypeKotlin?.kind === 'map' && (!e.spreads || e.spreads.length === 0)) {
         const vT = _expectedTypeKotlin.value
         const entries = e.fields
-          .map((f) => `${JSON.stringify(f.name)} to ${withExpectedTypeKotlin(vT, () => emitKotlinExpr(asFloatLiteral(f.value, vT), indent))}`)
+          .map((f) => `${kotlinStr(f.name)} to ${withExpectedTypeKotlin(vT, () => emitKotlinExpr(asFloatLiteral(f.value, vT), indent))}`)
           .join(', ')
         return `mutableMapOf(${entries})`
       }
@@ -6894,7 +6916,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           _emitWarnings.push(optionalSpreadWarning((e.spreads[0]! as Extract<ExprIR, { kind: 'identifier' }>).name))
         }
         const overrides = e.fields
-          .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
+          .map((f) => `${kotlinMember(f.name)} = ${emitKotlinExpr(f.value, indent)}`)
           .join(', ')
         return `${target}.copy(${overrides})`
       }
@@ -6948,7 +6970,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         )
         if (synthName !== null) {
           const args = e.fields
-            .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
+            .map((f) => `${kotlinMember(f.name)} = ${emitKotlinExpr(f.value, indent)}`)
             .join(', ')
           return `${kotlinIdent(synthName)}(${args})`
         }
@@ -6970,7 +6992,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         )
         if (byNames !== undefined) {
           const args = e.fields
-            .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
+            .map((f) => `${kotlinMember(f.name)} = ${emitKotlinExpr(f.value, indent)}`)
             .join(', ')
           return `${kotlinIdent(byNames.name)}(${args})`
         }
@@ -7113,7 +7135,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     // colToStack's `dropTestId`. The id is emitted here as part of the Box's
     // modifier chain so exactly one node carries it.
     const colTestId = readStaticAttrKotlin(e, 'data-testid')
-    const idMod = typeof colTestId === 'string' ? `.testTag(${JSON.stringify(colTestId)})` : ''
+    const idMod = typeof colTestId === 'string' ? `.testTag(${kotlinStr(colTestId)})` : ''
     const inner = `${' '.repeat(indent + 2)}${emitKotlinJsx(colToStack(e, true), indent + 2)}`
     const size = colSizeLiteral(e)
     if (size !== null) {
@@ -7428,7 +7450,7 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
     ? 'Text(text = pyreonNode.data.label.toString())'
     : 'Text(text = pyreonNode.id)'
   const renderer = nodeTypes && nodeTypes.length > 0
-    ? `when (pyreonNode.type) {\n${nodeTypes.map(({ type, component }) => `    ${JSON.stringify(type)} -> ${kotlinIdent(component)}(id = pyreonNode.id, data = { pyreonNode.data }, selected = { pyreonSelected }, dragging = { pyreonDragging })`).join('\n')}\n    else -> ${nodeText}\n  }`
+    ? `when (pyreonNode.type) {\n${nodeTypes.map(({ type, component }) => `    ${kotlinStr(type)} -> ${kotlinIdent(component)}(id = pyreonNode.id, data = { pyreonNode.data }, selected = { pyreonSelected }, dragging = { pyreonDragging })`).join('\n')}\n    else -> ${nodeText}\n  }`
     : nodeText
   const rendererParams = nodeTypes && nodeTypes.length > 0 ? 'pyreonNode, pyreonSelected, pyreonDragging' : 'pyreonNode'
   const host = `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}${controlsArg}${controlsContentArg}${miniMapArg}${miniMapNodeColorArg}${ariaLabelArg}${colorModeArg}${nodeHandlesArg}${nodeResizerArg}${nodeToolbarConfigArg}${nodeToolbarArg}${customEdgeTypesArg}${customEdgeArg}${customConnectionLineArg}) { ${rendererParams} ->\n  ${renderer}\n}`
@@ -7493,7 +7515,7 @@ function emitKotlinFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): str
     const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
     const value = attr?.kind === 'attr' ? attr.value : undefined
     const callback = value?.kind === 'arrow' || (value?.kind === 'identifier' && (_functionNames.has(value.name) || _moduleConstExprsKotlin.get(value.name)?.kind === 'arrow'))
-    return callback ? JSON.stringify(fallback) : expr(name, JSON.stringify(fallback))
+    return callback ? kotlinStr(fallback) : expr(name, kotlinStr(fallback))
   }
   const num = (name: string, fallback: number): string => {
     const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
@@ -7569,7 +7591,7 @@ function emitKotlinTextField(
     // Placeholder maps to Compose's `placeholder = { Text(...) }` slot.
     const placeholder =
       placeholderAttr && placeholderAttr.value.kind === 'literal'
-        ? `, placeholder = { Text(${JSON.stringify(String(placeholderAttr.value.value))}) }`
+        ? `, placeholder = { Text(${kotlinStr(String(placeholderAttr.value.value))}) }`
         : ''
     // G2 — pattern-match onKeyDown={(e) => e.key === 'Enter' && action()}
     // and pair Compose's `keyboardOptions` (so the IME shows "Done") with
@@ -7666,7 +7688,7 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   const font = readStaticAttrKotlin(e, 'font')
   const fontArg =
     typeof font === 'string'
-      ? `, fontFamily = pyreonFont(${JSON.stringify(sanitizeKotlinFontName(font))})`
+      ? `, fontFamily = pyreonFont(${kotlinStr(sanitizeKotlinFontName(font))})`
       : ''
   // `size` / `weight` — documented props on the canonical Text that produced NO
   // emit on either target, with no warning, exactly like `truncate` above did.
@@ -7700,7 +7722,7 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     weightVal !== undefined && !typoArgs.includes('fontWeight') ? `, fontWeight = ${weightVal}` : ''
   if (e.children.length === 0) return `Text(text = ""${typoArgs}${colorArg}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
   if (e.children.length === 1 && e.children[0]!.kind === 'text') {
-    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${typoArgs}${colorArg}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
+    return `Text(text = ${kotlinStr(e.children[0]!.value)}${typoArgs}${colorArg}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
   }
   const parts: string[] = []
   for (const c of e.children) {
@@ -7803,7 +7825,7 @@ function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   const buttonArgs = args.join(', ')
   const pad = ' '.repeat(indent + 2)
   if (labelText !== null) {
-    return `${variant.composable}(${buttonArgs}) {\n${pad}Text(${JSON.stringify(labelText)})\n${' '.repeat(indent)}}`
+    return `${variant.composable}(${buttonArgs}) {\n${pad}Text(${kotlinStr(labelText)})\n${' '.repeat(indent)}}`
   }
   const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   return `${variant.composable}(${buttonArgs}) {\n${contentLines}\n${' '.repeat(indent)}}`
@@ -7844,7 +7866,7 @@ function kotlinButtonVariant(e: Extract<ExprIR, { kind: 'jsx-element' }>): {
       }
     default:
       _emitWarnings.push(
-        `<Button variant=${JSON.stringify(v)}>: not one of primary | secondary | ghost | danger — the button falls back to the default style.`,
+        `<Button variant=${kotlinStr(v)}>: not one of primary | secondary | ghost | danger — the button falls back to the default style.`,
       )
       return plain
   }
@@ -8604,7 +8626,7 @@ function readStringAttrExprKotlin(
   indent: number,
 ): string | undefined {
   const stat = readStaticAttrKotlin(e, name)
-  if (stat !== undefined) return JSON.stringify(String(stat))
+  if (stat !== undefined) return kotlinStr(String(stat))
   for (const a of e.attrs) {
     if (a.kind === 'attr' && a.name === name) {
       if (a.value.kind === 'template') return emitKotlinExpr(a.value, indent)
@@ -8957,7 +8979,7 @@ function kotlinTextArg(
 ): string {
   if (e.children.length === 0) return '""'
   if (e.children.length === 1 && e.children[0]!.kind === 'text') {
-    return JSON.stringify(e.children[0]!.value)
+    return kotlinStr(e.children[0]!.value)
   }
   const parts: string[] = []
   for (const c of e.children) {
@@ -9043,12 +9065,12 @@ function emitKotlinIcon(
   const mapped = ICON_MAP[name]
   if (!mapped) {
     _emitWarnings.push(
-      `<Icon name=${JSON.stringify(name)}>: not in the canonical icon map — rendering the warning placeholder on Android (raw SF id pass-through is iOS-only). See ICON_MAP in canonical-primitives.ts.`,
+      `<Icon name=${kotlinStr(name)}>: not in the canonical icon map — rendering the warning placeholder on Android (raw SF id pass-through is iOS-only). See ICON_MAP in canonical-primitives.ts.`,
     )
   }
   const args = [
     `imageVector = Icons.Filled.${mapped ? mapped.material : 'Warning'}`,
-    `contentDescription = ${JSON.stringify(name)}`,
+    `contentDescription = ${kotlinStr(name)}`,
   ]
   // `color` (tint) / `size` accept a static token OR a ternary of two literal
   // tokens (`color={on() ? "primary" : "muted"}`) — pre-fix static-only, so a
@@ -9267,11 +9289,11 @@ function kotlinWebViewContentArg(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
 ): string | undefined {
   const html = readStaticAttrKotlin(e, 'html')
-  if (typeof html === 'string') return `html = ${JSON.stringify(html)}`
+  if (typeof html === 'string') return `html = ${kotlinStr(html)}`
   const dynHtml = dynamicWebViewAttrKotlin(e, 'html')
   if (dynHtml !== undefined) return `html = ${emitKotlinExpr(dynHtml, 0)}`
   const src = readStaticAttrKotlin(e, 'src')
-  if (typeof src === 'string') return `src = ${JSON.stringify(src)}`
+  if (typeof src === 'string') return `src = ${kotlinStr(src)}`
   const dynSrc = dynamicWebViewAttrKotlin(e, 'src')
   if (dynSrc !== undefined) return `src = ${emitKotlinExpr(dynSrc, 0)}`
   return undefined
@@ -9332,7 +9354,7 @@ function emitKotlinAudio(
 ): string {
   const src = readStaticAttrKotlin(e, 'src')
   if (typeof src !== 'string') return emitKotlinGeneric(e, indent)
-  const args = [`url = ${JSON.stringify(src)}`]
+  const args = [`url = ${kotlinStr(src)}`]
   if (readStaticAttrKotlin(e, 'autoPlay') === true) args.push('autoPlay = true')
   {
     const _w = bakedPropDynamicWarning(
@@ -9398,7 +9420,7 @@ function emitKotlinVideo(
 ): string {
   const src = readStaticAttrKotlin(e, 'src')
   if (typeof src !== 'string') return emitKotlinGeneric(e, indent)
-  const args = [`url = ${JSON.stringify(src)}`]
+  const args = [`url = ${kotlinStr(src)}`]
   if (readStaticAttrKotlin(e, 'autoPlay') === true) args.push('autoPlay = true')
   if (readStaticAttrKotlin(e, 'loop') === true) args.push('loop = true')
   if (readStaticAttrKotlin(e, 'muted') === true) args.push('muted = true')
@@ -9473,7 +9495,7 @@ function emitKotlinImage(
   const srcAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'src')
   if (typeof src === 'string' && imageSrcKindKotlin(src) === 'path') {
     _emitWarnings.push(
-      `<Image src=${JSON.stringify(src)}>: path-style src is web-only — use a bare asset name (bundled via the assets pipeline) or a full http(s) URL on native.`,
+      `<Image src=${kotlinStr(src)}>: path-style src is web-only — use a bare asset name (bundled via the assets pipeline) or a full http(s) URL on native.`,
     )
   }
   const alt = readStaticAttrKotlin(e, 'alt')
@@ -9508,8 +9530,8 @@ function emitKotlinImage(
     // emitted file doesn't depend on the host's namespace and the
     // kotlinc validate stubs stay fixture-agnostic.
     const args = [
-      `painter = painterResource(pyreonDrawable(${JSON.stringify(bundledAssetNameKotlin(src))}))`,
-      `contentDescription = ${JSON.stringify(typeof alt === 'string' ? alt : '')}`,
+      `painter = painterResource(pyreonDrawable(${kotlinStr(bundledAssetNameKotlin(src))}))`,
+      `contentDescription = ${kotlinStr(typeof alt === 'string' ? alt : '')}`,
       `contentScale = ${KOTLIN_CONTENT_SCALE[typeof fit === 'string' ? fit : 'cover'] ?? 'ContentScale.Crop'}`,
     ]
     if (modifier !== '') args.push(`modifier = ${modifier}`)
@@ -9522,7 +9544,7 @@ function emitKotlinImage(
   // `AsyncImage(model = <expr>)` just like a static URL.
   let model: string
   if (typeof src === 'string') {
-    model = JSON.stringify(src)
+    model = kotlinStr(src)
   } else if (srcAttr !== undefined && srcAttr.kind === 'attr' && srcAttr.value.kind !== 'identifier') {
     // Genuine runtime read (signal call / member / index) — see the Swift
     // twin. A bare `identifier` is excluded: it's the unresolvable
@@ -9533,7 +9555,7 @@ function emitKotlinImage(
   }
   const args = [
     `model = ${model}`,
-    `contentDescription = ${JSON.stringify(typeof alt === 'string' ? alt : '')}`,
+    `contentDescription = ${kotlinStr(typeof alt === 'string' ? alt : '')}`,
   ]
   // An ABSENT `fit` is `cover`, not Compose's default.
   //
@@ -9919,7 +9941,7 @@ function kotlinFieldPlaceholder(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
 ): string | undefined {
   const stat = readStaticAttrKotlin(e, 'placeholder')
-  if (typeof stat === 'string') return JSON.stringify(stat)
+  if (typeof stat === 'string') return kotlinStr(stat)
   const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'placeholder')
   if (attr !== undefined && attr.kind === 'attr' && attr.value.kind !== 'literal') {
     // Unwrap a zero-arg accessor arrow: `placeholder={() => hint()}` is a
@@ -10039,7 +10061,7 @@ let formBinding: { value: string; onChange: string } | undefined
     _formNames.has(_fieldValue.object.object.name)
   ) {
     const formName = kotlinIdent(_fieldValue.object.object.name)
-    const field = JSON.stringify(_fieldValue.property)
+    const field = kotlinStr(_fieldValue.property)
     formBinding = {
       value: `${formName}.values.value[${field}] ?: ""`,
       onChange: `{ ${formName}.setValue(${field}, it) }`,
@@ -10321,12 +10343,12 @@ function emitKotlinPermissionsProvider(
     // in silence. A wrong-direction authz divergence must be loud.
     _emitWarnings.push(
       `<PermissionsProvider>: ${seed.deniedUnderWildcard
-        .map((d) => JSON.stringify(d))
+        .map((d) => kotlinStr(d))
         .join(', ')} ${seed.deniedUnderWildcard.length === 1 ? 'is' : 'are'} set to false under a wildcard grant, and the native permissions container is GRANT-ONLY — so those keys are DENIED on the web and GRANTED on device. Split the wildcard into the exact keys you mean to grant, or gate the check in app code.`,
     )
   }
   const pad = ' '.repeat(indent + 2)
-  const set = `PyreonPermissions(setOf(${seed.granted.map((g) => JSON.stringify(g)).join(', ')}))`
+  const set = `PyreonPermissions(setOf(${seed.granted.map((g) => kotlinStr(g)).join(', ')}))`
   const content = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   return `CompositionLocalProvider(LocalPyreonPermissions provides ${set}) {\n${content}\n${' '.repeat(indent)}}`
 }
@@ -10476,7 +10498,7 @@ function emitKotlinRouteDispatch(
       // v1 supports literal source AND literal target only.
       if (route.path.includes(':') || target.path.includes(':')) continue
       lines.push(
-        `${innerPad}PyreonRouter.matchPath(currentPath, ${JSON.stringify(route.path)}) != null -> ${emitKotlinExpr(target.component, indent + 4)}()`,
+        `${innerPad}PyreonRouter.matchPath(currentPath, ${kotlinStr(route.path)}) != null -> ${emitKotlinExpr(target.component, indent + 4)}()`,
       )
       continue
     }
@@ -10495,14 +10517,14 @@ function emitKotlinRouteDispatch(
       // (the bug that kept native-router-demo-android red).
       const inv = kotlinRouteParamsInvocation(target.component, indent + 4)
       lines.push(
-        `${innerPad}PyreonRouter.matchPath(currentPath, ${JSON.stringify(route.path)}) != null -> {`,
+        `${innerPad}PyreonRouter.matchPath(currentPath, ${kotlinStr(route.path)}) != null -> {`,
       )
       // Bind `params` when the COMPONENT uses it OR the route's `loader`
       // reads `ctx.params.*` (lowered to `params["…"]`) — the loader body
       // emits inside this branch, so `params` must be in scope.
       if (inv.usesParams || route.loaderUsesParams === true) {
         lines.push(
-          `${innerPad}  val params = PyreonRouter.matchPath(currentPath, ${JSON.stringify(route.path)}) ?: emptyMap()`,
+          `${innerPad}  val params = PyreonRouter.matchPath(currentPath, ${kotlinStr(route.path)}) ?: emptyMap()`,
         )
       }
       lines.push(`${innerPad}  ${guardWrap(route, loaderWrap(route, inv.call))}`)
@@ -10510,7 +10532,7 @@ function emitKotlinRouteDispatch(
     } else {
       // Literal route — direct == comparison.
       lines.push(
-        `${innerPad}PyreonRouter.matchPath(currentPath, ${JSON.stringify(route.path)}) != null -> ${guardWrap(route, loaderWrap(route, `${componentExpr}()`))}`,
+        `${innerPad}PyreonRouter.matchPath(currentPath, ${kotlinStr(route.path)}) != null -> ${guardWrap(route, loaderWrap(route, `${componentExpr}()`))}`,
       )
     }
   }
@@ -10533,7 +10555,7 @@ function emitKotlinRouteDispatch(
  * the wire); number/boolean fields coerce with safe defaults.
  */
 function kotlinParamFieldExpr(f: { name: string; type: TypeIR }): string {
-  const read = `params[${JSON.stringify(f.name)}] ?: ""`
+  const read = `params[${kotlinStr(f.name)}] ?: ""`
   if (f.type.kind === 'number') return `(${read}).toIntOrNull() ?: 0`
   if (f.type.kind === 'boolean') return `(${read}) == "true"`
   return read
@@ -10626,11 +10648,11 @@ function emitKotlinNestedRouteDispatch(
           }
         : kotlinRouteParamsInvocation(entry.component, indent + 4)
       lines.push(
-        `${innerPad}PyreonRouter.matchPath(currentPath, ${JSON.stringify(entry.path)}) != null -> {`,
+        `${innerPad}PyreonRouter.matchPath(currentPath, ${kotlinStr(entry.path)}) != null -> {`,
       )
       if (inv.usesParams) {
         lines.push(
-          `${innerPad}  val params = PyreonRouter.matchPath(currentPath, ${JSON.stringify(entry.path)}) ?: emptyMap()`,
+          `${innerPad}  val params = PyreonRouter.matchPath(currentPath, ${kotlinStr(entry.path)}) ?: emptyMap()`,
         )
       }
       lines.push(`${innerPad}  ${guardWrap(entry.guard, wrap(entry.layoutChain, inv.call))}`)
@@ -10641,7 +10663,7 @@ function emitKotlinNestedRouteDispatch(
         emitKotlinLayoutAwareInvocation(entry.component, indent + 4),
       )
       lines.push(
-        `${innerPad}PyreonRouter.matchPath(currentPath, ${JSON.stringify(entry.path)}) != null -> ${guardWrap(entry.guard, render)}`,
+        `${innerPad}PyreonRouter.matchPath(currentPath, ${kotlinStr(entry.path)}) != null -> ${guardWrap(entry.guard, render)}`,
       )
     }
   }
@@ -10818,7 +10840,7 @@ function kotlinExprProducesView(e: ExprIR): boolean {
 }
 
 function emitKotlinChild(c: ChildIR, indent: number): string {
-  if (c.kind === 'text') return `Text(text = ${JSON.stringify(c.value)})`
+  if (c.kind === 'text') return `Text(text = ${kotlinStr(c.value)})`
   if (!kotlinExprProducesView(c.expr)) {
     // Swift twin's rationale. Compose is the WORSE half of this bug: the
     // stringified list compiles and renders a debug description, where Swift
@@ -11145,7 +11167,7 @@ const KOTLIN_CHART_TARGET: ChartHostTarget = {
       ? `${struct}(${fields.map(([f, v]) => `${f} = ${v}`).join(', ')})`
       : `(${options}).let { it.copy(${fields.map(([f, v]) => `${f} = it.${f} ?: ${v}`).join(', ')}) }`,
   pieOptions: (a) => `PieOptions(innerRadius = ${a.innerRatio}, showLabels = ${a.showLabels ?? 'true'}, labelColor = "#ffffff", fontSize = ${a.fontSize ?? '11.0'})`,
-  theme: () => `ChartTheme(axis = ${JSON.stringify(CHART_THEME_DEFAULT.axis)}, grid = ${JSON.stringify(CHART_THEME_DEFAULT.grid)}, label = ${JSON.stringify(CHART_THEME_DEFAULT.label)}, fontSize = ${CHART_THEME_DEFAULT.fontSize})`,
+  theme: () => `ChartTheme(axis = ${kotlinStr(CHART_THEME_DEFAULT.axis)}, grid = ${kotlinStr(CHART_THEME_DEFAULT.grid)}, label = ${kotlinStr(CHART_THEME_DEFAULT.label)}, fontSize = ${CHART_THEME_DEFAULT.fontSize})`,
 }
 
 /** The `values` expression for a derived (indicator) mark — mirror of `swiftIndicatorValues`. */
@@ -11347,7 +11369,7 @@ function emitKotlinChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
 function kotlinChartA11y(e: Extract<ExprIR, { kind: 'jsx-element' }>, describe: string | undefined): string {
   const explicit = readStringAttrExprKotlin(e, 'accessibilityLabel', 0)
   const titleRaw = readStaticAttrKotlin(e, 'title')
-  const label = explicit ?? describe ?? (typeof titleRaw === 'string' ? JSON.stringify(titleRaw) : JSON.stringify(chartDefaultLabel(e.tag)))
+  const label = explicit ?? describe ?? (typeof titleRaw === 'string' ? kotlinStr(titleRaw) : kotlinStr(chartDefaultLabel(e.tag)))
   return `.semantics { contentDescription = ${label} }`
 }
 
@@ -11532,7 +11554,7 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
         _emitWarnings.push(`<${tag}>: needs a \`${f.prop}\` accessor on native; emitting an empty Box().`)
         return 'Box {}'
       }
-      value = themed ? `${tf.palette}[pyreonI % ${tf.palette}.size]` : `listOf(${CHART_HOST_PALETTE.map((c) => JSON.stringify(c)).join(', ')})[pyreonI % ${CHART_HOST_PALETTE.length}]`
+      value = themed ? `${tf.palette}[pyreonI % ${tf.palette}.size]` : `listOf(${CHART_HOST_PALETTE.map((c) => kotlinStr(c)).join(', ')})[pyreonI % ${CHART_HOST_PALETTE.length}]`
     } else {
       value = f.double === true ? `(${acc}).toDouble()` : acc
     }
@@ -11598,7 +11620,7 @@ function emitKotlinGaugeHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const W = hasWidth ? kotlinChartDouble(e, 'width', 240, indent) : 'pyreonW'
   const track = readStaticAttrKotlin(e, 'trackColor')
   const valueColor = readStaticAttrKotlin(e, 'valueColor')
-  const opts = `GaugeOptions(min = ${kotlinChartDouble(e, 'min', 0, indent)}, max = ${kotlinChartDouble(e, 'max', 100, indent)}, sweep = Math.PI, thickness = ${kotlinChartDouble(e, 'thickness', 22, indent)}, trackColor = ${typeof track === 'string' ? JSON.stringify(track) : '"rgba(132,150,165,0.22)"'}, valueColor = ${typeof valueColor === 'string' ? JSON.stringify(valueColor) : '"#0f766e"'})`
+  const opts = `GaugeOptions(min = ${kotlinChartDouble(e, 'min', 0, indent)}, max = ${kotlinChartDouble(e, 'max', 100, indent)}, sweep = Math.PI, thickness = ${kotlinChartDouble(e, 'thickness', 22, indent)}, trackColor = ${typeof track === 'string' ? kotlinStr(track) : '"rgba(132,150,165,0.22)"'}, valueColor = ${typeof valueColor === 'string' ? kotlinStr(valueColor) : '"#0f766e"'})`
   const showValue = readStaticAttrKotlin(e, 'showValue') !== false
   const text = showValue
     ? ` + listOf(PyreonDrawCmd(kind = "text", fill = "#10161d", text = plain(${value}), at = PyreonChartPt(${W} / 2.0, ${H} - 6.0), size = 20.0, align = "middle", baseline = "bottom"))`
@@ -11749,7 +11771,7 @@ function emitKotlinRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const colorAcc = kotlinChartAccessor(e, tag, 'color', indent)
   if (colorAcc === 'unsupported') return 'Box {}'
   const tf = kotlinChartThemeFields(e, tag)
-  const color = colorAcc ?? (kotlinChartThemed(e) ? `${tf.palette}[pyreonI % ${tf.palette}.size]` : `listOf(${CHART_HOST_PALETTE.map((c) => JSON.stringify(c)).join(', ')})[pyreonI % ${CHART_HOST_PALETTE.length}]`)
+  const color = colorAcc ?? (kotlinChartThemed(e) ? `${tf.palette}[pyreonI % ${tf.palette}.size]` : `listOf(${CHART_HOST_PALETTE.map((c) => kotlinStr(c)).join(', ')})[pyreonI % ${CHART_HOST_PALETTE.length}]`)
   const fillAlpha = kotlinChartDouble(e, 'fillAlpha', 0.25, indent)
   const lets = [`val pyreonSeries: List<RadarSeries> = ${data}.mapIndexed { pyreonI, pyreonD -> RadarSeries(values = (${values}).map { it.toDouble() }, color = ${color}, fillAlpha = ${fillAlpha}) }`]
   const H = kotlinChartDouble(e, 'height', 260, indent)
@@ -11906,12 +11928,12 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
         _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`${spec.name}\` must be a ${spec.kind} literal on native; emitting an empty Box().`)
         return 'unsupported'
       }
-      const lit = spec.kind === 'number' ? chartDouble(v.value as number) : JSON.stringify(v.value)
+      const lit = spec.kind === 'number' ? chartDouble(v.value as number) : kotlinStr(v.value)
       args.push(`${spec.name} = ${lit}`)
       continue
     }
-    if (spec.name === 'color') args.push(`color = ${JSON.stringify(palette[seriesIndex % palette.length])}`)
-    else if (spec.name === 'label') args.push(`label = ${JSON.stringify(`Series ${seriesIndex + 1}`)}`)
+    if (spec.name === 'color') args.push(`color = ${kotlinStr(palette[seriesIndex % palette.length])}`)
+    else if (spec.name === 'label') args.push(`label = ${kotlinStr(`Series ${seriesIndex + 1}`)}`)
     else if (spec.default !== undefined) args.push(`${spec.name} = ${spec.kind === 'number' ? chartDouble(spec.default as number) : String(spec.default)}`)
   }
   if (!patternPushed && !pushGradient()) {
@@ -12114,8 +12136,8 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
         fullA11ySeries.push(`Series(kind = "band", values = pyreonA11yValues${k}, ${[...opts, ...a11yErrArgs, `values2 = pyreonA11yLow${k}`].join(', ')})`)
       }
     } else {
-      series.push(`Series(kind = ${JSON.stringify(kind)}, values = pyreonValues${k}, ${[...opts, ...errArgs].join(', ')})`)
-      if (fullA11y) fullA11ySeries.push(`Series(kind = ${JSON.stringify(kind)}, values = pyreonA11yValues${k}, ${[...opts, ...a11yErrArgs].join(', ')})`)
+      series.push(`Series(kind = ${kotlinStr(kind)}, values = pyreonValues${k}, ${[...opts, ...errArgs].join(', ')})`)
+      if (fullA11y) fullA11ySeries.push(`Series(kind = ${kotlinStr(kind)}, values = pyreonA11yValues${k}, ${[...opts, ...a11yErrArgs].join(', ')})`)
     }
   }
   if (legend.toggling) {
@@ -12225,7 +12247,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
       _emitWarnings.push(`<${tag}>: \`${p.name}\` must be a ${p.kind} literal on native; the prop is ignored.`)
       continue
     }
-    specArgs.push(`${p.name} = ${p.kind === 'string' ? JSON.stringify(raw) : String(raw)}`)
+    specArgs.push(`${p.name} = ${p.kind === 'string' ? kotlinStr(raw) : String(raw)}`)
   }
   lets.push(`val pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
   if (brushing) {
@@ -12366,7 +12388,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const a11ySeries = labels === undefined
     ? `${a11ySource}.map { A11ySeries(label = it.label, values = it.values, kind = it.kind, values2 = it.values2, errLow = it.errLow, errHigh = it.errHigh, rValues = it.rValues) }`
     : `${a11ySource}.mapIndexed { pyreonI, pyreonS -> A11ySeries(label = pyreonSeriesLabels.getOrElse(pyreonI) { pyreonS.label }, values = pyreonS.values, kind = pyreonS.kind, values2 = pyreonS.values2, errLow = pyreonS.errLow, errHigh = pyreonS.errHigh, rValues = pyreonS.rValues) }`
-  const describe = `describeChart(A11yInput(title = ${typeof plotTitleRaw === 'string' ? JSON.stringify(plotTitleRaw) : 'null'}, categories = ${fullA11y ? 'pyreonA11yCats' : 'pyreonCats'}, series = ${a11ySeries}, format = ${yFormat ?? 'null'}))`
+  const describe = `describeChart(A11yInput(title = ${typeof plotTitleRaw === 'string' ? kotlinStr(plotTitleRaw) : 'null'}, categories = ${fullA11y ? 'pyreonA11yCats' : 'pyreonCats'}, series = ${a11ySeries}, format = ${yFormat ?? 'null'}))`
   return kotlinFrameHostWithDensity(e, lets, cmds, tap, W, H, hasWidth, indent, windowed || tap !== '', overlay, describe)
 }
 
@@ -12441,8 +12463,8 @@ function kotlinChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries:
   const lets: string[] = []
   if (showTitle) {
     const subRaw = readStaticAttrKotlin(e, 'subtitle')
-    const subtitle = typeof subRaw === 'string' ? JSON.stringify(subRaw) : 'null'
-    lets.push(`val pyreonTitle: TitleLayout = renderTitle(${JSON.stringify(titleRaw)}, ${subtitle}, PyreonChartRect(0.0, 0.0, ${W}, ${H}), TitleOptions(fontSize = ${t.titleSize}, color = ${t.text}, align = "start"))`)
+    const subtitle = typeof subRaw === 'string' ? kotlinStr(subRaw) : 'null'
+    lets.push(`val pyreonTitle: TitleLayout = renderTitle(${kotlinStr(titleRaw)}, ${subtitle}, PyreonChartRect(0.0, 0.0, ${W}, ${H}), TitleOptions(fontSize = ${t.titleSize}, color = ${t.text}, align = "start"))`)
   } else {
     lets.push('val pyreonTitle: TitleLayout = TitleLayout(cmds = listOf(), height = 0.0)')
   }
@@ -12641,7 +12663,7 @@ function kotlinZoomPresets(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: str
     const label = el.fields.find((f) => f.name === 'label')?.value
     const count = el.fields.find((f) => f.name === 'count')?.value
     if (label?.kind !== 'literal' || typeof label.value !== 'string' || count?.kind !== 'literal' || typeof count.value !== 'number') return unsupportedZoomPresetsKotlin(tag)
-    out.push(`ZoomPreset(label = ${JSON.stringify(label.value)}, count = ${Math.trunc(count.value)})`)
+    out.push(`ZoomPreset(label = ${kotlinStr(label.value)}, count = ${Math.trunc(count.value)})`)
   }
   return out.length === 0 ? undefined : out
 }

@@ -400,15 +400,28 @@ describe('event-handler attributes — compiled ≡ h() ≡ SSR', () => {
     expect(called, 'a function-valued handler name must never be called').toBe(false)
   })
 
-  it('C2 a lowercase handler reaches `_ssrAttrGen` at all (the compiler bail is camelCase-only)', () => {
-    // Pins the PREMISE of the case above: if the compiler ever starts bailing on
-    // lowercase `on*`, this spec says so rather than leaving a guard that looks
-    // load-bearing but is unreachable.
+  it('C2 the compiler now BAILS on a lowercase handler — it never reaches `_ssrAttrGen`', () => {
+    // This spec exists to notice the moment the routing changes, and it has:
+    // it used to pin that a lowercase `on*` REACHED `_ssrAttrGen`, so that the
+    // refusal above was demonstrably on a live path. The compiler now skips
+    // lowercase handlers at the attribute seam (`SSR_EVENT_HANDLER_ATTRS`,
+    // identity-locked to core's `EVENT_HANDLER_ATTRS`), which is strictly
+    // better — the handler is dropped BEFORE any helper sees it, so it can
+    // never be invoked during a render.
+    //
+    // The invariant is unchanged: say out loud which path is live. So the
+    // assertion is inverted rather than deleted, and the case above is
+    // re-read as defence in depth — `_ssrAttrGen` is exported, and a backend
+    // composing its own document can still call it directly.
     const { code } = transformJSX('const N = <div onclick={hx}>x</div>', 'case.tsx', {
       ssr: true,
       ssrTemplate: true,
     })
-    expect(code).toContain('_ssrAttrGen("onclick"')
+    expect(code, 'a lowercase handler must not reach the lean SSR attr helper').not.toContain(
+      '_ssrAttrGen("onclick"',
+    )
+    // And it is DROPPED, not re-routed to some other sink that would emit it.
+    expect(code, 'nor any other sink that would serialize it').not.toContain('onclick')
   })
 
   it('camelCase `onClick` still binds a real listener (control)', () => {
