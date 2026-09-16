@@ -122,6 +122,8 @@ function splitHashRoute(): { path: string; search: string } {
   // SSR guard for the same reason `currentParams` carries one: the callers are
   // already `isClient`-guarded, but the guard is cross-function and the
   // no-window-in-ssr rule cannot trace it.
+  /* v8 ignore next — the SSR arm: `isClient` is true under happy-dom, so this
+     guard is unreachable in tests; it exists so the helper is SSR-safe. */
   if (!isClient) return { path: '/', search: '' }
   const raw = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : ''
   const q = raw.indexOf('?')
@@ -146,6 +148,7 @@ function currentParams(): URLSearchParams {
   // SSR guard: callers funnel through the public `isClient`-guarded entries,
   // but guard here too so the helper is SSR-safe by construction (and the
   // no-window-in-ssr rule can't trace the cross-function guard).
+  /* v8 ignore next — the SSR arm, unreachable under happy-dom (see above). */
   if (!isClient) return new URLSearchParams()
   return new URLSearchParams(routeOwnsHash() ? splitHashRoute().search : window.location.search)
 }
@@ -163,6 +166,7 @@ function currentParams(): URLSearchParams {
  * does not by itself make the two agree about what the call means.
  */
 function commit(params: URLSearchParams, replace: boolean): void {
+  /* v8 ignore next — the SSR arm, unreachable under happy-dom (see above). */
   if (!isClient) return
   const search = params.toString()
   const qs = search ? `?${search}` : ''

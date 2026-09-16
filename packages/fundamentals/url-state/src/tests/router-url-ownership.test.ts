@@ -192,3 +192,16 @@ describe('history mode — the fragment is not url-state`s to drop', () => {
     expect(calls).toEqual(['/products?page=3'])
   })
 })
+
+describe('hash mode — a fragment carrying no query', () => {
+  it('reads as the route with an EMPTY query, not as a query string', () => {
+    // `#/products` has no `?`, the branch a fragment WITH a query never takes.
+    // Reading a param here must answer null rather than mis-parsing the path.
+    const { router } = hashRouterShim()
+    setUrlRouter(router)
+    history.replaceState(null, '', '#/products')
+    expect(getParam('page')).toBeNull()
+    history.replaceState(null, '', '#/products?page=3')
+    expect(getParam('page')).toBe('3')
+  })
+})
