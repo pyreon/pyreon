@@ -7,9 +7,12 @@ import com.pyreon.runtime.PyreonFlowConnection
 import com.pyreon.runtime.PyreonFlowDefaultEdgeOptions
 import com.pyreon.runtime.PyreonFlowDimensions
 import com.pyreon.runtime.PyreonFlowNodeMeasurement
+import com.pyreon.runtime.PyreonFlowMeasuredHandle
+import com.pyreon.runtime.PyreonFlowPosition
 import com.pyreon.runtime.PyreonFlowNode
 import com.pyreon.runtime.PyreonFlowNodeExtent
 import com.pyreon.runtime.PyreonFlowLayoutOptions
+import com.pyreon.runtime.PyreonFlowMarker
 import com.pyreon.runtime.PyreonFlowState
 import com.pyreon.runtime.PyreonFlowSnapshot
 import com.pyreon.runtime.PyreonFlowSnapLines
@@ -22,6 +25,11 @@ import com.pyreon.runtime.pyreonFlowRadialLayout
 import com.pyreon.runtime.pyreonFlowStressLayout
 import com.pyreon.runtime.pyreonFlowTreeLayout
 import com.pyreon.runtime.pyreonEffectiveDimensions
+import com.pyreon.runtime.pyreonCollectFlowEdgeMarkers
+import com.pyreon.runtime.pyreonFlowDefaultMarkerEnd
+import com.pyreon.runtime.pyreonFlowMarkerId
+import com.pyreon.runtime.pyreonFlowEdgeId
+import com.pyreon.runtime.pyreonResolveFlowEdgeMarkers
 import kotlin.math.abs
 
 private data class NodeData(val label: String)
@@ -44,10 +52,62 @@ private fun seedFlow(): PyreonFlowState<NodeData> = PyreonFlowState(
 )
 
 fun main() {
+    check(pyreonFlowEdgeId("1", "2") == "e-1-2", "Android generates missing edge ids like web")
+    check(pyreonFlowEdgeId("1", "2", "out", "in") == "e-1-out-2-in", "Android includes handles in generated edge ids")
+    val configured = PyreonFlowState<NodeData>(
+        panOnScroll = true, panOnScrollSpeed = 0.75, zoomOnScroll = false,
+        deleteKeys = listOf("ForwardDelete"), multiSelectionKey = "ctrl",
+        selectionKey = null, zoomActivationKey = "meta", preventScrolling = false,
+    )
+    check(configured.panOnScroll && configured.panOnScrollSpeed == 0.75, "Android retains scroll config")
+    check(!configured.zoomOnScroll && configured.deleteKeys == listOf("ForwardDelete"), "Android retains zoom/delete config")
+    check(configured.multiSelectionKey == "ctrl" && configured.selectionKey == null && configured.zoomActivationKey == "meta" && !configured.preventScrolling, "Android retains modifier config")
+    configured.minZoom = 0.75
+    configured.pannable = false
+    configured.zoomTo(0.1)
+    check(configured.viewport.zoom == 0.75 && !configured.pannable, "Android applies live mutable Flow config")
+    val markerEdge = PyreonFlowEdge(id = "marker", source = "1", target = "2", markerStart = PyreonFlowMarker("arrow", color = "#F00"))
+    val resolvedMarker = pyreonResolveFlowEdgeMarkers(markerEdge, pyreonFlowDefaultMarkerEnd)
+    check(resolvedMarker.start?.color == "#F00" && resolvedMarker.end?.type == "arrowclosed", "Android resolves per-edge and default markers")
+    check(pyreonFlowMarkerId(PyreonFlowMarker("arrow", color = "#F00")) == "pyreon-flow-marker-arrow-f00-10x7-1", "Android marker ids match web formatting")
+    check(pyreonCollectFlowEdgeMarkers(listOf(markerEdge, markerEdge), pyreonFlowDefaultMarkerEnd).size == 2, "Android marker collection deduplicates equal markers")
     val measuredDimensions = pyreonEffectiveDimensions(PyreonFlowNode("dims", position = PyreonXYPosition(0.0, 0.0), data = NodeData("D"), width = 90.0), PyreonFlowNodeMeasurement(80.0, 30.0))
     check(measuredDimensions.width == 90.0 && measuredDimensions.height == 30.0, "effective dimensions preserve explicit-measured-default precedence")
     // 1. Seed + basic reads.
     val f = seedFlow()
+    f.updateNodeMeasurement("1", 240.0, 72.0)
+    check(f.measurements["1"] == PyreonFlowNodeMeasurement(240.0, 72.0), "Compose host measurements are observable")
+    f.updateNodeMeasurement("1", 240.0, 72.0, listOf(PyreonFlowMeasuredHandle("out", "source", PyreonFlowPosition.Right, 240.0, 36.0)))
+    check(f.measurements["1"]?.handles?.size == 1, "Compose host records measured handle anchors")
+    f.updateNodeMeasurement("1", 240.0, 72.0)
+    check(f.measurements["1"]?.handles?.isEmpty() == true, "an omitted handle list clears stale anchors like the web engine")
+    f.clearNodeMeasurement("1")
+    check(!f.measurements.containsKey("1"), "explicit measurement cleanup removes the native entry")
+    f.updateNodeMeasurement("1", 240.0, 72.0)
+    f.updateMeasurements { it }
+    check(f.measurements["1"]?.width == 240.0, "measurement callback replacement preserves entries")
+    f.replaceMeasurements(emptyMap())
+    check(f.measurements.isEmpty(), "measurement signal replacement clears stale entries")
+    f.updateNodeMeasurement("1", 240.0, 72.0)
+    check(f.nodeLookup["1"]?.data?.label == "Start" && f.edgeLookup["e1"]?.source == "1", "FlowInstance lookup maps stay reactive and addressable")
+    check(f.getNodeDimensions("1") == PyreonFlowDimensions(240.0, 72.0), "intrinsic host measurements drive effective geometry")
+    f.addNode(PyreonFlowNode("intrinsic", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Intrinsic"), width = 100.0, height = 40.0))
+    f.updateNodeMeasurement("intrinsic", 240.0, 72.0)
+    check(f.getNodeDimensions("intrinsic") == PyreonFlowDimensions(100.0, 40.0), "explicit node dimensions win over host measurements")
+    f.removeNode("intrinsic")
+    check(!f.measurements.containsKey("intrinsic"), "removed nodes release their measurements")
+    val keyboard = seedFlow()
+    check(keyboard.handleKeyboardCommand("Enter", nodeId = "1"), "Android keyboard Enter selects a focused node")
+    check(keyboard.isNodeSelected("1"), "Android keyboard selection is observable")
+    val keyboardStart = keyboard.getNode("1")!!.position
+    check(keyboard.handleKeyboardCommand("ArrowRight", nodeId = "1"), "Android keyboard arrows are consumed")
+    check(keyboard.getNode("1")!!.position.x == keyboardStart.x + 10.0, "Android keyboard arrows move by ten")
+    check(keyboard.handleKeyboardCommand("ArrowDown", nodeId = "1", shift = true), "Android Shift+arrow is consumed")
+    check(keyboard.getNode("1")!!.position.y == keyboardStart.y + 100.0, "Android Shift+arrow moves by one hundred")
+    check(keyboard.handleKeyboardCommand("a", command = true) && keyboard.selectedNodes().size == keyboard.nodes.size, "Android Control-A selects all")
+    check(keyboard.handleKeyboardCommand("Escape") && keyboard.selectedNodes().isEmpty(), "Android Escape clears selection")
+    keyboard.selectNode("1")
+    check(keyboard.handleKeyboardCommand("Delete") && keyboard.getNode("1") == null, "Android configured delete key removes selection")
     val packingNodes = listOf(
         PyreonFlowNode("a", position = PyreonXYPosition(9.0, 9.0), data = NodeData("A"), width = 100.0, height = 30.0),
         PyreonFlowNode("b", position = PyreonXYPosition(9.0, 9.0), data = NodeData("B"), width = 80.0, height = 70.0),
@@ -206,6 +266,8 @@ fun main() {
     stopStart(); stopEnd(); stopPane()
     f.updateNodeData("1") { it.copy(label = "Updated") }
     check(f.getNode("1")?.data?.label == "Updated", "updateNodeData replaces the native payload observably")
+    f.updateNodeDataFromNode("1") { it.data.copy(label = "${it.id}:${it.data.label}") }
+    check(f.getNode("1")?.data?.label == "1:Updated", "callback node-data update receives the complete Android node")
     f.updateNode("1") { it.copy(id = "ignored", hidden = true) }
     check(f.getNode("1")?.hidden == true && f.getNode("ignored") == null, "updateNode patches fields while preserving indexed identity")
     f.updateNode("1") { it.copy(hidden = false) }
@@ -464,6 +526,14 @@ fun main() {
     check(q.selectedNodes().isEmpty() && q.getEdge("nn") == null, "setNodes prunes selection and newly disconnected edges")
     q.setEdges(listOf(PyreonFlowEdge(id = "fresh", source = "x", target = "x")))
     check(q.edges.map { it.id } == listOf("fresh") && q.getEdge("fresh")?.type == "bezier" && q.selectedEdges().isEmpty(), "setEdges normalizes and prunes selection")
+    q.setNodes { nodes -> nodes + PyreonFlowNode(id = "callback", position = PyreonXYPosition(2.0, 3.0), data = NodeData("Callback")) }
+    q.setEdges { edges -> edges + PyreonFlowEdge(id = "callback-edge", source = "x", target = "callback") }
+    check(q.nodes.map { it.id } == listOf("x", "callback") && q.edges.map { it.id } == listOf("fresh", "callback-edge"), "setNodes and setEdges callbacks receive and replace current collections")
+    q.setViewport(PyreonFlowViewport(1.0, 2.0, 2.0))
+    q.setViewport { PyreonFlowViewport(it.x + 3.0, it.y, it.zoom) }
+    q.replaceContainerSize(com.pyreon.runtime.PyreonFlowContainerSize(640.0, 480.0))
+    q.updateContainerSize { com.pyreon.runtime.PyreonFlowContainerSize(it.width, it.height + 20.0) }
+    check(q.viewport == PyreonFlowViewport(4.0, 2.0, 2.0) && q.containerSize == com.pyreon.runtime.PyreonFlowContainerSize(640.0, 500.0), "signal-compatible viewport and container updates use current values")
     q.setNodeExtent(minX = 0.0, minY = 10.0, maxX = 200.0, maxY = 300.0)
     check(q.clampToExtent(PyreonXYPosition(500.0, -2.0), 20.0, 30.0) == PyreonXYPosition(180.0, 10.0), "clampToExtent applies node dimensions")
     q.updateNodePosition("x", PyreonXYPosition(500.0, 500.0))
@@ -473,6 +543,18 @@ fun main() {
     val snapped = PyreonFlowState(nodes = listOf(PyreonFlowNode(id = "s", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Snap"))), snapToGrid = true, snapGrid = 10.0, nodeExtent = PyreonFlowNodeExtent(-100.0, -100.0, 200.0, 200.0))
     snapped.updateNodePosition("s", PyreonXYPosition(-5.0, 16.0))
     check(snapped.getNode("s")?.position == PyreonXYPosition(0.0, 20.0), "grid snapping matches JavaScript Math.round, including negative halves")
+    val nested = PyreonFlowState(nodes = listOf(
+        PyreonFlowNode(id = "parent", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Parent"), width = 100.0, height = 100.0),
+        PyreonFlowNode(id = "child", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Child"), width = 30.0, height = 20.0, parentId = "parent", extentParent = true, expandParent = true),
+        PyreonFlowNode(id = "boxed", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Boxed"), width = 30.0, height = 20.0, extent = PyreonFlowNodeExtent(10.0, 20.0, 100.0, 90.0)),
+    ))
+    nested.updateNodePosition("child", PyreonXYPosition(120.0, 110.0))
+    check(nested.getNode("child")?.position == PyreonXYPosition(70.0, 80.0), "parent extent constrains child positions using child dimensions")
+    nested.updateNode("child") { it.copy(extentParent = false) }
+    nested.updateNodePosition("child", PyreonXYPosition(120.0, 110.0))
+    check(nested.getNode("parent")?.width == 150.0 && nested.getNode("parent")?.height == 130.0, "expandParent grows the parent when an unconstrained child moves beyond it")
+    nested.updateNodePosition("boxed", PyreonXYPosition(500.0, -10.0))
+    check(nested.getNode("boxed")?.position == PyreonXYPosition(70.0, 20.0), "a node-specific numeric extent overrides the flow extent")
     // Per-id storage: a position write must not disturb order or the other nodes.
     et.updateNodePosition("2", PyreonXYPosition(50.0, 50.0))
     check(et.nodes.map { it.id } == listOf("1", "2", "3"), "updateNodePosition keeps insertion order")

@@ -19,7 +19,8 @@ public struct PyreonFlowHandleConfig: Equatable {
     public var id: String?
     public var type: String
     public var position: PyreonFlowPosition
-    public init(id: String? = nil, type: String, position: PyreonFlowPosition) { self.id = id; self.type = type; self.position = position }
+    public var offset: Double
+    public init(id: String? = nil, type: String, position: PyreonFlowPosition, offset: Double = 50) { self.id = id; self.type = type; self.position = position; self.offset = min(100, max(0, offset)) }
 }
 
 public struct PyreonFlowMeasuredHandle: Equatable {
@@ -30,6 +31,21 @@ public struct PyreonFlowMeasuredHandle: Equatable {
 public struct PyreonFlowNodeMeasurement: Equatable {
     public var width: Double; public var height: Double; public var handles: [PyreonFlowMeasuredHandle]
     public init(width: Double, height: Double, handles: [PyreonFlowMeasuredHandle] = []) { self.width = width; self.height = height; self.handles = handles }
+}
+
+public struct PyreonFlowNodeBoxDimensions: Equatable {
+    public var sourceW: Double; public var sourceH: Double; public var targetW: Double; public var targetH: Double
+    public init(sourceW: Double, sourceH: Double, targetW: Double, targetH: Double) { self.sourceW = sourceW; self.sourceH = sourceH; self.targetW = targetW; self.targetH = targetH }
+}
+
+public struct PyreonFlowFloatingEndpoints: Equatable {
+    public var source: PyreonFlowHandleAnchor; public var target: PyreonFlowHandleAnchor
+    public init(source: PyreonFlowHandleAnchor, target: PyreonFlowHandleAnchor) { self.source = source; self.target = target }
+}
+
+public struct PyreonFlowSmartPositions: Equatable {
+    public var sourcePosition: PyreonFlowPosition; public var targetPosition: PyreonFlowPosition
+    public init(sourcePosition: PyreonFlowPosition, targetPosition: PyreonFlowPosition) { self.sourcePosition = sourcePosition; self.targetPosition = targetPosition }
 }
 
 public func pyreonEffectiveDimensions<T>(_ node: PyreonFlowNode<T>, measurement: PyreonFlowNodeMeasurement? = nil) -> PyreonFlowDimensions {
@@ -80,7 +96,7 @@ public struct PyreonFlowInteractiveHandle: Equatable {
 
 public func pyreonFlowInteractiveHandles(nodeId: String, node: PyreonFlowRect, handles: [PyreonFlowHandleConfig]) -> [PyreonFlowInteractiveHandle] {
     handles.map { handle in
-        let point = pyreonHandlePosition(handle.position, nodeX: node.x, nodeY: node.y, nodeWidth: node.width, nodeHeight: node.height)
+        let point = pyreonHandlePosition(handle.position, nodeX: node.x, nodeY: node.y, nodeWidth: node.width, nodeHeight: node.height, offset: handle.offset)
         return PyreonFlowInteractiveHandle(nodeId: nodeId, handleId: handle.id, type: handle.type, position: handle.position, x: point.x, y: point.y)
     }
 }
@@ -92,12 +108,13 @@ public func pyreonNearestFlowHandle(_ handles: [PyreonFlowInteractiveHandle], po
         .min { hypot($0.x - point.x, $0.y - point.y) < hypot($1.x - point.x, $1.y - point.y) }
 }
 
-public func pyreonHandlePosition(_ position: PyreonFlowPosition, nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double) -> PyreonXYPosition {
+public func pyreonHandlePosition(_ position: PyreonFlowPosition, nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double, offset: Double = 50) -> PyreonXYPosition {
+    let ratio = min(100, max(0, offset)) / 100
     switch position {
-    case .top: return PyreonXYPosition(x: nodeX + nodeWidth / 2, y: nodeY)
-    case .right: return PyreonXYPosition(x: nodeX + nodeWidth, y: nodeY + nodeHeight / 2)
-    case .bottom: return PyreonXYPosition(x: nodeX + nodeWidth / 2, y: nodeY + nodeHeight)
-    case .left: return PyreonXYPosition(x: nodeX, y: nodeY + nodeHeight / 2)
+    case .top: return PyreonXYPosition(x: nodeX + nodeWidth * ratio, y: nodeY)
+    case .right: return PyreonXYPosition(x: nodeX + nodeWidth, y: nodeY + nodeHeight * ratio)
+    case .bottom: return PyreonXYPosition(x: nodeX + nodeWidth * ratio, y: nodeY + nodeHeight)
+    case .left: return PyreonXYPosition(x: nodeX, y: nodeY + nodeHeight * ratio)
     }
 }
 
@@ -125,6 +142,13 @@ public func pyreonFloatingEndpoints(source: PyreonFlowRect, target: PyreonFlowRe
     return (PyreonFlowHandleAnchor(x: sp.x, y: sp.y, position: pyreonSideOfPoint(source, sp)), PyreonFlowHandleAnchor(x: tp.x, y: tp.y, position: pyreonSideOfPoint(target, tp)))
 }
 
+public func pyreonGetFloatingEndpoints<S, T>(_ sourceNode: PyreonFlowNode<S>, targetNode: PyreonFlowNode<T>, dimensions: PyreonFlowNodeBoxDimensions) -> PyreonFlowFloatingEndpoints {
+    let endpoints = pyreonFloatingEndpoints(
+        source: PyreonFlowRect(x: sourceNode.position.x, y: sourceNode.position.y, width: dimensions.sourceW, height: dimensions.sourceH),
+        target: PyreonFlowRect(x: targetNode.position.x, y: targetNode.position.y, width: dimensions.targetW, height: dimensions.targetH))
+    return PyreonFlowFloatingEndpoints(source: endpoints.source, target: endpoints.target)
+}
+
 public func pyreonResolveHandleAnchor(nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double, handleId: String?, type: String, config: [PyreonFlowHandleConfig], measurement: PyreonFlowNodeMeasurement?) -> PyreonFlowHandleAnchor? {
     let measured = measurement?.handles.filter { $0.type == type } ?? []
     if let handleId {
@@ -132,13 +156,13 @@ public func pyreonResolveHandleAnchor(nodeX: Double, nodeY: Double, nodeWidth: D
             return PyreonFlowHandleAnchor(x: nodeX + handle.x, y: nodeY + handle.y, position: handle.position)
         }
         if let handle = config.first(where: { $0.id == handleId }) {
-            let point = pyreonHandlePosition(handle.position, nodeX: nodeX, nodeY: nodeY, nodeWidth: nodeWidth, nodeHeight: nodeHeight)
+            let point = pyreonHandlePosition(handle.position, nodeX: nodeX, nodeY: nodeY, nodeWidth: nodeWidth, nodeHeight: nodeHeight, offset: handle.offset)
             return PyreonFlowHandleAnchor(x: point.x, y: point.y, position: handle.position)
         }
     }
     if let handle = measured.first { return PyreonFlowHandleAnchor(x: nodeX + handle.x, y: nodeY + handle.y, position: handle.position) }
     if let handle = config.first {
-        let point = pyreonHandlePosition(handle.position, nodeX: nodeX, nodeY: nodeY, nodeWidth: nodeWidth, nodeHeight: nodeHeight)
+        let point = pyreonHandlePosition(handle.position, nodeX: nodeX, nodeY: nodeY, nodeWidth: nodeWidth, nodeHeight: nodeHeight, offset: handle.offset)
         return PyreonFlowHandleAnchor(x: point.x, y: point.y, position: handle.position)
     }
     return nil
@@ -151,6 +175,17 @@ public func pyreonSmartHandlePositions(source: PyreonFlowRect, target: PyreonFlo
     let sourceSide = sourceHandles.first?.position ?? (horizontal ? (dx > 0 ? .right : .left) : (dy > 0 ? .bottom : .top))
     let targetSide = targetHandles.first?.position ?? (horizontal ? (dx > 0 ? .left : .right) : (dy > 0 ? .top : .bottom))
     return (sourceSide, targetSide)
+}
+
+public func pyreonGetSmartHandlePositions<S, T>(_ sourceNode: PyreonFlowNode<S>, targetNode: PyreonFlowNode<T>, dimensions: PyreonFlowNodeBoxDimensions? = nil) -> PyreonFlowSmartPositions {
+    let source = PyreonFlowRect(x: sourceNode.position.x, y: sourceNode.position.y, width: dimensions?.sourceW ?? sourceNode.width ?? pyreonFlowDefaultNodeWidth, height: dimensions?.sourceH ?? sourceNode.height ?? pyreonFlowDefaultNodeHeight)
+    let target = PyreonFlowRect(x: targetNode.position.x, y: targetNode.position.y, width: dimensions?.targetW ?? targetNode.width ?? pyreonFlowDefaultNodeWidth, height: dimensions?.targetH ?? targetNode.height ?? pyreonFlowDefaultNodeHeight)
+    let positions = pyreonSmartHandlePositions(source: source, target: target, sourceHandles: sourceNode.sourceHandles, targetHandles: targetNode.targetHandles)
+    return PyreonFlowSmartPositions(sourcePosition: positions.source, targetPosition: positions.target)
+}
+
+public func pyreonResolveHandleAnchor<T>(_ node: PyreonFlowNode<T>, handleId: String?, type: String, dimensions: PyreonFlowDimensions, measurement: PyreonFlowNodeMeasurement? = nil) -> PyreonFlowHandleAnchor? {
+    pyreonResolveHandleAnchor(nodeX: node.position.x, nodeY: node.position.y, nodeWidth: dimensions.width, nodeHeight: dimensions.height, handleId: handleId, type: type, config: type == "source" ? node.sourceHandles : node.targetHandles, measurement: measurement)
 }
 
 public func pyreonComputeEdgePath(type: String, source: PyreonFlowRect, target: PyreonFlowRect, sourceHandleId: String? = nil, targetHandleId: String? = nil, sourceHandles: [PyreonFlowHandleConfig] = [], targetHandles: [PyreonFlowHandleConfig] = [], sourceMeasurement: PyreonFlowNodeMeasurement? = nil, targetMeasurement: PyreonFlowNodeMeasurement? = nil, waypoints: [PyreonXYPosition] = [], borderRadius: Double = 5, offset: Double = 20, curvature: Double = 0.25) -> PyreonFlowPathResult {
@@ -525,5 +560,26 @@ public struct PyreonFlowEdgeCanvas: View, Equatable {
                 }
             }
         }
+    }
+}
+
+/// A compiler target for a shared-source custom edge's SVG `<path>`. The
+/// compiler passes the path helper result itself (not the serialized `d`), so
+/// native keeps the exact move/line/cubic/quad geometry without parsing SVG.
+public struct PyreonFlowCustomEdgePath: View {
+    public var result: PyreonFlowPathResult
+    public var color: String
+    public var width: Double
+    public var dash: [Double]?
+    public init(result: PyreonFlowPathResult, color: String = "#999999", width: Double = 1.5, dash: [Double]? = nil) {
+        self.result = result; self.color = color; self.width = width; self.dash = dash
+    }
+    public var body: some View {
+        Canvas { context, _ in
+            var style = StrokeStyle(lineWidth: CGFloat(width), lineJoin: .round)
+            if let dash { style.dash = dash.map { CGFloat($0) } }
+            context.stroke(pyreonFlowEdgePath(result.segments), with: .color(pyreonFlowEdgeColor(color)), style: style)
+        }
+        .allowsHitTesting(false)
     }
 }

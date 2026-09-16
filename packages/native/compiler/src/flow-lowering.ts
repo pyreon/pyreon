@@ -11,11 +11,73 @@
  */
 
 /** Signal/Computed reads that lower to native properties (parens dropped). */
-export const LOWERED_FLOW_PROPERTY_READS: ReadonlySet<string> = new Set(['nodes', 'edges', 'viewport', 'zoom', 'containerSize'])
+import type { ExprIR } from './types'
+
+export function resolveStaticFlowRendererMap(
+  expression: ExprIR | undefined,
+  lookup: (name: string) => ExprIR | undefined,
+  seen: ReadonlySet<string> = new Set(),
+): { type: string; component: string }[] | undefined {
+  if (expression?.kind === 'identifier') {
+    if (seen.has(expression.name)) return undefined
+    return resolveStaticFlowRendererMap(lookup(expression.name), lookup, new Set([...seen, expression.name]))
+  }
+  if (expression?.kind !== 'object') return undefined
+  const entries = new Map<string, string>()
+  for (const spread of expression.spreads ?? []) {
+    const resolved = resolveStaticFlowRendererMap(spread, lookup, seen)
+    if (resolved === undefined) return undefined
+    for (const entry of resolved) entries.set(entry.type, entry.component)
+  }
+  for (const field of expression.fields) {
+    if (field.value.kind !== 'identifier') return undefined
+    entries.set(field.name, field.value.name)
+  }
+  return [...entries].map(([type, component]) => ({ type, component }))
+}
+
+export const LOWERED_FLOW_PROPERTY_READS: ReadonlySet<string> = new Set([
+  'nodes', 'edges', 'viewport', 'zoom', 'containerSize',
+  'nodeMap', 'edgeMap', 'measurements',
+])
+
+/** Every public `<Flow>` prop is either lowered or diagnosed as an explicit
+ * browser-presentation boundary. Kept beside the state surface registries so
+ * adding a web prop cannot silently bypass the native completeness audit. */
+export const HANDLED_FLOW_HOST_PROPS: ReadonlySet<string> = new Set([
+  'instance', 'nodeTypes', 'edgeTypes', 'connectionLine',
+  'style', 'class', 'ariaLabel', 'colorMode', 'children',
+])
+
+/** Mutable `FlowConfig` fields retained by both native state engines. */
+export const LOWERED_FLOW_CONFIG_PROPERTIES: ReadonlyMap<string, string> = new Map([
+  ['defaultEdgeType', 'defaultEdgeType'], ['defaultEdgeOptions', 'defaultEdgeOptions'],
+  ['minZoom', 'minZoom'], ['maxZoom', 'maxZoom'], ['snapToGrid', 'snapToGrid'],
+  ['snapGrid', 'snapGrid'], ['snapToObjects', 'snapToObjects'],
+  ['connectionRules', 'connectionRules'], ['nodesDraggable', 'nodesDraggable'],
+  ['nodesConnectable', 'nodesConnectable'], ['nodesSelectable', 'nodesSelectable'],
+  ['nodesFocusable', 'nodesFocusable'], ['edgesFocusable', 'edgesFocusable'],
+  ['disableKeyboardA11y', 'disableKeyboardA11y'], ['reducedMotion', 'reducedMotion'],
+  ['nodesDeletable', 'nodesDeletable'], ['edgesDeletable', 'edgesDeletable'],
+  ['isValidConnection', 'connectionValidator'], ['connectionRadius', 'connectionRadius'],
+  ['autoHistory', 'autoHistory'], ['multiSelect', 'multiSelect'], ['nodeExtent', 'nodeExtent'],
+  ['pannable', 'pannable'], ['zoomable', 'zoomable'], ['panOnDrag', 'panOnDrag'],
+  ['panOnScroll', 'panOnScroll'], ['panOnScrollSpeed', 'panOnScrollSpeed'],
+  ['zoomOnScroll', 'zoomOnScroll'], ['zoomOnPinch', 'zoomOnPinch'],
+  ['zoomOnDoubleClick', 'zoomOnDoubleClick'], ['selectionOnDrag', 'selectionOnDrag'],
+  ['selectionMode', 'selectionMode'], ['deleteKeys', 'deleteKeys'],
+  ['multiSelectionKey', 'multiSelectionKey'], ['selectionKey', 'selectionKey'],
+  ['zoomActivationKey', 'zoomActivationKey'], ['edgesReconnectable', 'edgesReconnectable'],
+  ['edgeInteractionWidth', 'edgeInteractionWidth'], ['connectionLineType', 'connectionLineType'],
+  ['preventScrolling', 'preventScrolling'], ['fitView', 'fitViewOnLoad'],
+  ['fitViewPadding', 'fitViewPadding'], ['defaultMarkerEnd', 'defaultMarkerEnd'],
+  ['onlyRenderVisibleElements', 'onlyRenderVisibleElements'],
+])
 
 /** Methods `PyreonFlowState` implements on BOTH targets (v1 surface). */
 export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([
   'getNode', 'getNodeDimensions', 'getNodes', 'addNode', 'addNodes', 'setNodes', 'removeNode', 'removeNodes', 'updateNode', 'updateNodePosition', 'updateNodeData',
+  '_setNodeMeasurement', '_clearNodeMeasurement',
   'getEdge', 'getEdges', 'addEdge', 'addEdges', 'setEdges', 'removeEdge', 'removeEdges', 'updateEdge',
   'isNodeSelected', 'isEdgeSelected', 'selectedNodes', 'selectedEdges',
   'selectNode', 'selectNodes', 'deselectNode', 'selectEdge', 'clearSelection', 'selectAll', 'deleteSelected',
@@ -42,7 +104,8 @@ export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([
 export const HANDLED_FLOW_NODE_FIELDS: ReadonlySet<string> = new Set([
   'id', 'type', 'position', 'data', 'width', 'height',
   'draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel',
-  'hidden', 'deletable', 'parentId', 'expandParent', 'group',
+  'hidden', 'deletable', 'parentId', 'extent', 'expandParent', 'group',
+  'class', 'style',
   'sourceHandles', 'targetHandles',
 ])
 /** `FlowEdge` fields the native `PyreonFlowEdge` carries. */
@@ -50,6 +113,8 @@ export const HANDLED_FLOW_EDGE_FIELDS: ReadonlySet<string> = new Set([
   'id', 'source', 'target', 'sourceHandle', 'targetHandle', 'type', 'label',
   'animated', 'focusable', 'ariaLabel', 'hidden', 'deletable',
   'reconnectable', 'interactionWidth', 'waypoints',
+  'data',
+  'class', 'style',
   'pathOptions',
   'markerStart', 'markerEnd',
 ])

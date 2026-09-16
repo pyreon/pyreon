@@ -1,11 +1,13 @@
 package com.pyreon.runtime
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 
@@ -62,5 +64,25 @@ fun PyreonFlowEdgeCanvas(
                 }
             }
         }
+    }
+}
+
+/** Compiler target for a shared-source custom edge SVG `<path>`. */
+@Composable
+fun PyreonFlowCustomEdgePath(
+    result: PyreonFlowPathResult,
+    color: String = "#999999",
+    width: Double = 1.5,
+    dash: List<Double>? = null,
+    modifier: Modifier = Modifier,
+) {
+    val resolved = pyreonFlowEdgeColor(color)
+    val effect = dash?.let { PathEffect.dashPathEffect(it.map(Double::toFloat).toFloatArray()) }
+    Canvas(modifier.fillMaxSize()) {
+        drawPath(
+            pyreonFlowEdgePath(result.segments),
+            resolved,
+            style = Stroke(width = width.toFloat(), pathEffect = effect),
+        )
     }
 }

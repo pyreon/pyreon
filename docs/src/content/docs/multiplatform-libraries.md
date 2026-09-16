@@ -265,7 +265,7 @@ These packages target a web-only medium where the native equivalent isn't "the s
 |---|---|---|
 | `@pyreon/charts` | ECharts is canvas-based JS | Swift Charts (iOS 16+); Compose-charting or MPAndroidChart |
 | `@pyreon/code` | CodeMirror 6 is a web editor | iOS / Android each have different code-editor SDKs |
-| `@pyreon/flow` | SVG pan/zoom + DOM | SwiftUI `Canvas` or Compose `Canvas` — the state half already ships (`PyreonFlowState`, lowered from `createFlow`) and a hand-wired `PyreonFlowEdgeCanvas` draws segment lists; the `<Flow>` host, gestures and layout are the open part |
+| `@pyreon/flow` | Browser rendering uses SVG/DOM | The same `<Flow>` source lowers directly to the interactive SwiftUI/Compose canvas host, including state, gestures, layouts, chrome, static custom renderers, accessibility, and light/dark/system color modes; browser CSS selectors and arbitrary SVG strings remain explicit platform presentation boundaries |
 | `@pyreon/document` | pdfmake / docx / xlsx — web-native JS libs | iOS `PDFKit` / `PDFDocument`; Android `PdfDocument` |
 | `@pyreon/dnd` | `@atlaskit/pragmatic-drag-and-drop` HTML5 DnD | `DragGesture` SwiftUI; Compose `Modifier.draggable` |
 | `@pyreon/table` | TanStack Table — DOM measurement, web-DOM-aware | SwiftUI `Table` (limited); Compose `LazyColumn` patterns |
@@ -534,7 +534,7 @@ the machine-checked contract.
 | `@pyreon/document` | wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering |
 | `@pyreon/document-primitives` | document-authoring primitives feeding the pdfmake/docx renderers |
 | `@pyreon/feature` | CRUD composite over query/form/store/validation. The RUNTIME half stays web — the generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher, and validator/form integration all lower only when every dependency does. The DECLARATION half already crosses (see nativeFrontend) |
-| `@pyreon/flow` | the core state, host, literal custom node maps, layouts, and common overlays lower natively, while `<Handle>`, advanced node chrome, and custom edge renderers still require explicit native follow-ups or the WebView bridge |
+| `@pyreon/flow` | the TypeScript package is a browser package at runtime, while the native compiler lowers its public state/editor surface to SwiftUI and Compose; browser CSS selectors and arbitrary SVG path strings remain platform-specific presentation rather than portable runtime concepts |
 | `@pyreon/head` | document `<head>` management — no equivalent surface exists on iOS/Android |
 | `@pyreon/hotkeys` | keyboard-shortcut layer over DOM KeyboardEvent. The REGISTRY half (registerHotkey / scopes / conflict reporting) is web; the `useHotkey` authoring hook lowers — see nativeFrontend |
 | `@pyreon/http` | universal web/node HTTP client (WHATWG fetch); the transport (middleware, interceptors, streaming) stays web — native networking is the PyreonFetch/PyreonHttp runtime layer |

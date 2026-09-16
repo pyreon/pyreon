@@ -8,6 +8,7 @@ data class PyreonFlowHandleConfig(
     val id: String? = null,
     val type: String,
     val position: PyreonFlowPosition,
+    val offset: Double = 50.0,
 )
 
 data class PyreonFlowMeasuredHandle(
@@ -33,4 +34,8 @@ data class PyreonFlowInteractiveHandle(
     val y: Double,
 )
 
-data class PyreonFlowSmartPositions(val source: PyreonFlowPosition, val target: PyreonFlowPosition)
+data class PyreonFlowSmartPositions(val source: PyreonFlowPosition, val target: PyreonFlowPosition) {
+    val sourcePosition: PyreonFlowPosition get() = source
+    val targetPosition: PyreonFlowPosition get() = target
+}
+data class PyreonFlowNodeBoxDimensions(val sourceW: Double, val sourceH: Double, val targetW: Double, val targetH: Double)
