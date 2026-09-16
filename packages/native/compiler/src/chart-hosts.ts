@@ -1698,7 +1698,7 @@ export function desugarOptionChart(
         warn(`<OptionChart option.series[${si}].type>: this cartesian adapter needs line, bar, pictorialBar, or scatter series; emitting nothing.`)
         return undefined
       }
-      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras', 'sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'emphasis', 'select', 'blur', 'selectedMode'], `option.series[${si}]`, warn)
+      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras', 'sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'emphasis', 'select', 'blur', 'selectedMode', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate'], `option.series[${si}]`, warn)
       seriesObjects.push(s)
     }
     const xAxis = literalOf(objectField(raw, 'xAxis'), resolve)
@@ -1878,6 +1878,32 @@ export function desugarOptionChart(
         const repeat = objectField(s, 'symbolRepeat')
         const repeatValue = repeat?.kind === 'literal' && (repeat.value === true || repeat.value === 'fixed' || (typeof repeat.value === 'number' && repeat.value > 0))
         opts.push({ name: 'symbolRepeat', value: lit(repeatValue) })
+        // The six geometry keys, in px / degrees, like the web facade; percent strings are named.
+        const px = (key: string): number | undefined => {
+          const v = objectField(s, key)
+          if (v === undefined) return undefined
+          const n = litNumber(v)
+          if (n === undefined) warn(`<OptionChart option.series[${si}].${key}>: pictorialBar ${key} takes a number of pixels here (a percent string is not supported); it was ignored.`)
+          return n
+        }
+        const margin = px('symbolMargin')
+        if (margin !== undefined) opts.push({ name: 'symbolMargin', value: optionDoubleLiteral(Math.max(0, margin)) })
+        const offsetRaw = literalOf(objectField(s, 'symbolOffset'), resolve)
+        if (offsetRaw !== undefined) {
+          const dx = offsetRaw.kind === 'array' && offsetRaw.elements.length === 2 ? litNumber(offsetRaw.elements[0]) : undefined
+          const dy = offsetRaw.kind === 'array' && offsetRaw.elements.length === 2 ? litNumber(offsetRaw.elements[1]) : undefined
+          if (dx !== undefined && dy !== undefined) opts.push({ name: 'symbolOffset', value: { kind: 'array', elements: [optionDoubleLiteral(dx), optionDoubleLiteral(dy)] } })
+          else warn(`<OptionChart option.series[${si}].symbolOffset>: symbolOffset takes [dx, dy] in pixels here (a percent string is not supported); it was ignored.`)
+        }
+        const position = litString(objectField(s, 'symbolPosition'))
+        if (position === 'start' || position === 'end' || position === 'center') opts.push({ name: 'symbolPosition', value: lit(position) })
+        else if (objectField(s, 'symbolPosition') !== undefined) warn(`<OptionChart option.series[${si}].symbolPosition>: only start, end and center are supported; it was ignored.`)
+        const rotate = px('symbolRotate')
+        if (rotate !== undefined) opts.push({ name: 'symbolRotate', value: optionDoubleLiteral(rotate) })
+        const clip = objectField(s, 'symbolClip')
+        if (clip !== undefined) opts.push({ name: 'symbolClip', value: lit(clip.kind === 'literal' && clip.value === true) })
+        const bounding = px('symbolBoundingData')
+        if (bounding !== undefined) opts.push({ name: 'symbolBoundingData', value: optionDoubleLiteral(bounding) })
       }
       return {
         kind: 'call',
@@ -3018,7 +3044,7 @@ export const PLOT_MARK_KINDS: Readonly<Record<string, string>> = {
 }
 
 /** Mark options that lower as literal fields of `Series`, with their default when absent. */
-export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'string' | 'number' | 'boolean'; default?: string | number | boolean }> = [
+export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'string' | 'number' | 'boolean' | 'numbers'; default?: string | number | boolean }> = [
   { name: 'color', kind: 'string' },
   { name: 'width', kind: 'number', default: 2 },
   { name: 'radius', kind: 'number', default: 3 },
@@ -3028,6 +3054,12 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'effect', kind: 'boolean' },
   { name: 'symbol', kind: 'string' },
   { name: 'symbolRepeat', kind: 'boolean' },
+  { name: 'symbolMargin', kind: 'number' },
+  { name: 'symbolOffset', kind: 'numbers' },
+  { name: 'symbolPosition', kind: 'string' },
+  { name: 'symbolRotate', kind: 'number' },
+  { name: 'symbolClip', kind: 'boolean' },
+  { name: 'symbolBoundingData', kind: 'number' },
   { name: 'negativeColor', kind: 'string' },
   { name: 'focus', kind: 'string' },
   { name: 'emphasisColor', kind: 'string' },

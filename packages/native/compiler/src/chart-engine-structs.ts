@@ -1378,6 +1378,102 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "PictorialBar",
+    "fields": [
+      {
+        "name": "bar",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartRect",
+          "args": []
+        }
+      },
+      {
+        "name": "horizontal",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "symbol",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "repeat",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "fill",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "margin",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "offsetX",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "offsetY",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "position",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "rotate",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "clip",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "hasBounding",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "boundingLength",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "Series",
     "fields": [
       {
@@ -1561,6 +1657,101 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "branches": [
             {
               "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "symbolMargin",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "symbolOffset",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "symbolPosition",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "symbolRotate",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "symbolClip",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "symbolBoundingData",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
             },
             {
               "kind": "undefined"
@@ -10119,6 +10310,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "ParallelOptions",
   "ParallelPlaced",
   "ParallelTick",
+  "PictorialBar",
   "PieOptions",
   "Placed",
   "PlotLayout",

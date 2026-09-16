@@ -12,6 +12,8 @@ import { polygonCmd, rectCmd } from './corners'
 import { seriesGradient } from './gradient'
 import type { SeriesGradient } from './gradient'
 import { withAlpha } from './radar'
+import { pictorialCommands } from './pictorial'
+import type { PictorialBar } from './pictorial'
 import type { ChartPattern, DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
 
 /** One drawable series. */
@@ -62,6 +64,18 @@ export interface Series {
   symbol?: 'rect' | 'circle' | 'diamond' | 'triangle' | undefined
   /** Repeat the symbol along the bar instead of stretching it. */
   symbolRepeat?: boolean | undefined
+  /** Pictorial: gap between repeated symbols (px). */
+  symbolMargin?: Double | undefined
+  /** Pictorial: `[dx, dy]` px nudge of every symbol. */
+  symbolOffset?: Double[] | undefined
+  /** Pictorial: where the symbol (or run) sits along the bar — `start` (default), `end`, `center`. */
+  symbolPosition?: string | undefined
+  /** Pictorial: degrees of rotation about each cell's centre. */
+  symbolRotate?: Double | undefined
+  /** Pictorial: clip to the bar instead of dropping a partial symbol. */
+  symbolClip?: boolean | undefined
+  /** Pictorial: the datum value a full symbol (or run) spans; with `symbolClip` the bar shows the covered fraction. */
+  symbolBoundingData?: Double | undefined
   /** Corner radii for bar-family series — `[tl, tr, br, bl]`, clamped at paint time. */
   corners?: Double[] | undefined
   /** Linear-gradient fill for bar-family and area series; resolved against the plot box. */
@@ -1077,27 +1091,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
              rects built FROM `s.values`, so the read is always in range. Native
              needs the unwrap; the web cannot reach it. */
           out.push(rectCmd(grown, fillH, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad, s.pattern))
-        } else if (s.symbolRepeat === true) {
-          // Repeat a unit symbol along the bar (left to right); a partial last symbol is dropped.
-          const unit = grown.h
-          let count = 0
-          let acc = unit
-          for (let k = 0; k < 400; k++) {
-            if (unit > 0.0 && acc <= grown.w + 0.001) count = k + 1
-            acc = acc + unit
-          }
-          let kf = 0.0
-          for (let k = 0; k < count; k++) {
-            /* v8 ignore next — `?? 'rect'` is unreachable: this arm sits inside the
-               `else` of `s.symbol === undefined`. It unwraps the optional for the
-               native emit, where that test does not narrow. */
-            out.push(symbolCommand({ x: grown.x + unit * kf, y: grown.y, w: unit, h: unit }, s.symbol ?? 'rect', fillH))
-            kf = kf + 1.0
-          }
         } else {
-          /* v8 ignore next — same unreachable native unwrap: `s.symbol` is known
-             defined in this arm. */
-          out.push(symbolCommand(grown, s.symbol ?? 'rect', fillH))
+          for (const c of pictorialCommands(pictorialBar(s, grown, true, s.values[ri] ?? 0.0, fillH))) out.push(c)
         }
       }
       for (let i = 0; i < rects.length; i++) {
@@ -1141,29 +1136,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
              rects built FROM `s.values`, so the read is always in range. Native
              needs the unwrap; the web cannot reach it. */
           out.push(rectCmd(grown, fillV, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad, s.pattern))
-        } else if (s.symbolRepeat === true) {
-          // Repeat a unit symbol up the bar; a partial last symbol is dropped.
-          // (Horizontal charts left this loop above, so the bar is vertical.)
-          const unit = grown.w
-          const length = grown.h
-          let count = 0
-          let acc = unit
-          for (let k = 0; k < 400; k++) {
-            if (unit > 0.0 && acc <= length + 0.001) count = k + 1
-            acc = acc + unit
-          }
-          let kf = 0.0
-          for (let k = 0; k < count; k++) {
-            const cell: Rect = { x: grown.x, y: grown.y + grown.h - unit * (kf + 1.0), w: unit, h: unit }
-            /* v8 ignore next — same unreachable native unwrap: `s.symbol` is known
-             defined in this arm. */
-          out.push(symbolCommand(cell, s.symbol ?? 'rect', fillV))
-            kf = kf + 1.0
-          }
         } else {
-          /* v8 ignore next — same unreachable native unwrap: `s.symbol` is known
-             defined in this arm. */
-          out.push(symbolCommand(grown, s.symbol ?? 'rect', fillV))
+          for (const c of pictorialCommands(pictorialBar(s, grown, false, s.values[ri] ?? 0.0, fillV))) out.push(c)
         }
       }
       for (let i = 0; i < rects.length; i++) {
@@ -1614,6 +1588,30 @@ function symbolCommand(cell: Rect, symbol: 'rect' | 'circle' | 'diamond' | 'tria
     }
   }
   return { kind: 'rect', rect: cell, fill }
+}
+
+/** A series' pictorial keys for one laid-out bar. The bounding run scales linearly with the datum. */
+function pictorialBar(s: Series, bar: Rect, horizontal: boolean, value: Double, fill: string): PictorialBar {
+  const offset = s.symbolOffset ?? []
+  const barLength = horizontal ? bar.w : bar.h
+  const hasBounding = s.symbolBoundingData !== undefined && value !== 0.0
+  const bound = s.symbolBoundingData ?? 0.0
+  const boundingLength = hasBounding ? (barLength * Math.abs(bound)) / Math.abs(value) : 0.0
+  return {
+    bar,
+    horizontal,
+    symbol: s.symbol ?? 'rect',
+    repeat: s.symbolRepeat === true,
+    fill,
+    margin: s.symbolMargin ?? 0.0,
+    offsetX: offset.length > 0 ? offset[0]! : 0.0,
+    offsetY: offset.length > 1 ? offset[1]! : 0.0,
+    position: s.symbolPosition ?? 'start',
+    rotate: s.symbolRotate ?? 0.0,
+    clip: s.symbolClip === true,
+    hasBounding,
+    boundingLength,
+  }
 }
 
 /** Bar rects for a series index — what a hit test runs against. */

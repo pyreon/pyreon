@@ -50,6 +50,7 @@ export const ENGINE_FILES = [
   'radar',
   'layout',
   'stack',
+  'pictorial',
   'render',
   'candlestick',
   'heat',

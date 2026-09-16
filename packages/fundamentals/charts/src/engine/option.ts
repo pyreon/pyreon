@@ -225,7 +225,7 @@ function readGradient(raw: unknown, path: string, warn: (code: OptionWarning['co
   return { stops: ordered, ...(horizontal ? { direction: 'horizontal' } : {}) }
 }
 
-function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning['code'], path: string, message: string) => void, path: string): { symbol: Series['symbol']; symbolRepeat: boolean } {
+function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning['code'], path: string, message: string) => void, path: string): Partial<Series> & { symbol: Series['symbol']; symbolRepeat: boolean } {
   const raw = typeof s['symbol'] === 'string' ? (s['symbol'] as string) : 'rect'
   let symbol: Series['symbol'] = 'rect'
   if (raw === 'circle') symbol = 'circle'
@@ -233,12 +233,33 @@ function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning[
   else if (raw === 'triangle') symbol = 'triangle'
   else if (raw !== 'rect' && raw !== 'roundRect') warn('mark-shape-unsupported', `${path}.symbol`, `pictorialBar symbol "${raw}" is not supported (rect, roundRect, circle, diamond, triangle are); drawn as a rect.`)
   const rep = s['symbolRepeat']
-  // Accepted-but-unmapped pictorial keys are NAMED, not swallowed: each one
-  // changes what ECharts draws, so silence here would be a silent drop.
-  for (const key of ['symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate']) {
-    if (s[key] !== undefined) warn('series-option-unsupported', `${path}.${key}`, `pictorialBar ${key} is not supported (symbol, symbolRepeat and symbolSize are); it was ignored.`)
+  const out: Partial<Series> & { symbol: Series['symbol']; symbolRepeat: boolean } = { symbol, symbolRepeat: rep === true || rep === 'fixed' || (typeof rep === 'number' && rep > 0) }
+  // The six geometry keys, in px / degrees. ECharts also takes percent
+  // strings for margin and offset; those have no engine form and are named.
+  const px = (key: string): Double | undefined => {
+    const v = s[key]
+    if (v === undefined) return undefined
+    const n = num(v)
+    if (n !== null) return n
+    warn('series-option-unsupported', `${path}.${key}`, `pictorialBar ${key} takes a number of pixels here (a percent string is not supported); it was ignored.`)
+    return undefined
   }
-  return { symbol, symbolRepeat: rep === true || rep === 'fixed' || (typeof rep === 'number' && rep > 0) }
+  const margin = px('symbolMargin')
+  if (margin !== undefined) out.symbolMargin = Math.max(0.0, margin)
+  const rotate = px('symbolRotate')
+  if (rotate !== undefined) out.symbolRotate = rotate
+  const bounding = px('symbolBoundingData')
+  if (bounding !== undefined) out.symbolBoundingData = bounding
+  if (s['symbolClip'] !== undefined) out.symbolClip = s['symbolClip'] === true
+  const position = s['symbolPosition']
+  if (position === 'start' || position === 'end' || position === 'center') out.symbolPosition = position
+  else if (position !== undefined) warn('series-option-unsupported', `${path}.symbolPosition`, `symbolPosition "${String(position)}" is not supported (start, end and center are); it was ignored.`)
+  const offset = s['symbolOffset']
+  if (offset !== undefined) {
+    if (Array.isArray(offset) && offset.length === 2 && num(offset[0]) !== null && num(offset[1]) !== null) out.symbolOffset = [num(offset[0]) as number, num(offset[1]) as number]
+    else warn('series-option-unsupported', `${path}.symbolOffset`, 'symbolOffset takes [dx, dy] in pixels here (a percent string is not supported); it was ignored.')
+  }
+  return out
 }
 
 /** The internal renderItem for a `lines` series: a polyline through every [x, y] pair of the flattened datum. */

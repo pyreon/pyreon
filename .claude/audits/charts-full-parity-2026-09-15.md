@@ -203,6 +203,14 @@ for interaction, animation or accessibility parity.
   other columns like `self`. Fixed on the way: `<SingleAxisChart>` mounted no
   tooltip node at all (the host sweep's one red row on the base branch).
 
+- [x] `series.pictorial-bar` complete: the six accepted-but-unmapped keys are
+  engine geometry (`engine/pictorial.ts` — unit cells with margin, a
+  position along the bar, a rotation about each cell, polygon-∩-rect
+  clipping, and a bounding datum that sizes the run so the bar shows the
+  covered fraction), filled by the facade and lowered by the native desugar
+  (a `numbers` mark-option kind carries `symbolOffset`); percent strings and
+  an unknown position warn by name on both sides.
+
 ## Exit gate
 
 Zero unclassified core inventory rows; green real-browser conformance; green

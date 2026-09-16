@@ -11926,6 +11926,14 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
     }
     const v = fields.get(spec.name)
     if (v !== undefined) {
+      if (spec.kind === 'numbers') {
+        if (v.kind !== 'array' || v.elements.some((n) => n.kind !== 'literal' || typeof n.value !== 'number')) {
+          _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`${spec.name}\` must be an array of number literals on native; emitting an empty Box().`)
+          return 'unsupported'
+        }
+        args.push(`${spec.name} = listOf<Double>(${v.elements.map((n) => chartDouble((n as { value: number }).value)).join(', ')})`)
+        continue
+      }
       if (v.kind !== 'literal' || typeof v.value !== spec.kind) {
         _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`${spec.name}\` must be a ${spec.kind} literal on native; emitting an empty Box().`)
         return 'unsupported'

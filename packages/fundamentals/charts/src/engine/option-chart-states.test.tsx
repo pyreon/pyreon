@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mount } from '@pyreon/runtime-dom'
 import { query } from '@pyreon/test-utils'
 import { OptionChart } from './OptionChart'
+import type { EChartsOption } from './option'
 
 /**
  * The compiled option's states on the shared host: the hovered datum is the
@@ -24,7 +25,7 @@ function recordingContext(): { ctx: CanvasRenderingContext2D; fills: () => strin
   return { ctx, fills: () => fills, reset: () => { fills = [] } }
 }
 
-const OPTION = {
+const OPTION: EChartsOption = {
   xAxis: { type: 'category', data: ['a', 'b', 'c'] },
   yAxis: {},
   series: [{ type: 'bar', data: [3, 5, 2], itemStyle: { color: '#111111' }, selectedMode: 'multiple', emphasis: { focus: 'self', itemStyle: { color: '#ee0000' } }, select: { itemStyle: { color: '#0000ee' } }, blur: { itemStyle: { opacity: 0.5 } } }],
@@ -37,7 +38,7 @@ describe('OptionChart states', () => {
     HTMLCanvasElement.prototype.getContext = (() => rec.ctx) as unknown as HTMLCanvasElement['getContext']
     const root = document.createElement('div')
     document.body.appendChild(root)
-    const dispose = mount(<OptionChart option={OPTION} width={300} height={200} animate={false} />, root)
+    const dispose = mount(<OptionChart option={OPTION} width={300} height={200} />, root)
     try {
       const canvas = query<HTMLCanvasElement>(root, 'canvas')
       canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 300, height: 200, right: 300, bottom: 200, x: 0, y: 0, toJSON: () => ({}) })
@@ -80,8 +81,8 @@ describe('OptionChart states', () => {
     const root = document.createElement('div')
     document.body.appendChild(root)
     const picks: number[] = []
-    const { selectedMode: _m, ...plain } = OPTION.series[0]!
-    const dispose = mount(<OptionChart option={{ ...OPTION, series: [plain] }} width={300} height={200} animate={false} onSelectIndex={(i) => picks.push(i)} />, root)
+    const { selectedMode: _m, ...plain } = (OPTION['series'] as Record<string, unknown>[])[0]!
+    const dispose = mount(<OptionChart option={{ ...OPTION, series: [plain] }} width={300} height={200} onSelectIndex={(i) => picks.push(i)} />, root)
     try {
       const canvas = query<HTMLCanvasElement>(root, 'canvas')
       canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 300, height: 200, right: 300, bottom: 200, x: 0, y: 0, toJSON: () => ({}) })
