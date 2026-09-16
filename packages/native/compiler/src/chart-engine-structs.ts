@@ -1082,6 +1082,17 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             "args": []
           }
         }
+      },
+      {
+        "name": "x2Ticks",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "Tick",
+            "args": []
+          }
+        }
       }
     ],
     "external": true
@@ -1478,6 +1489,22 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "branches": [
             {
               "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "x2Domain",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Domain",
+              "args": []
             },
             {
               "kind": "undefined"
@@ -2069,6 +2096,39 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
               "kind": "typeRef",
               "name": "Double",
               "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "onX2",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xs",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
             },
             {
               "kind": "undefined"
@@ -3523,6 +3583,22 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "branches": [
             {
               "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "x2Domain",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Domain",
+              "args": []
             },
             {
               "kind": "undefined"
@@ -10724,6 +10800,25 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       },
       {
         "name": "rValues",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xs",
         "type": {
           "kind": "union",
           "branches": [

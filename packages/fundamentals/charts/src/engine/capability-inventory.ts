@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.25' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.26' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -64,7 +64,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('coordinates.calendar', 'coordinates', 'direct', 'complete', 'src/engine/option-orient.test.ts', '../../native/compiler/src/tests/chart-orient-native.test.ts'),
   row('coordinates.parallel', 'coordinates', 'direct', 'complete', 'src/engine/option-orient.test.ts', '../../native/compiler/src/tests/chart-orient-native.test.ts'),
   row('coordinates.single-axis', 'coordinates', 'direct', 'complete', 'src/engine/single-axis.test.ts'), // scatter / effectScatter + theme river: ECharts' own contract
-  row('coordinates.axes', 'coordinates', 'direct', 'partial', 'src/engine/option-axes.test.ts', '../../native/compiler/src/tests/chart-axes-native.test.ts'), // names, show, grid, log, inverse x and y, position, offset, dual and extra y axes, a second category x axis on both targets; open: a second x axis with its own value domain
+  row('coordinates.axes', 'coordinates', 'direct', 'complete', 'src/engine/option-axes.test.ts', '../../native/compiler/src/tests/chart-axes-native.test.ts'),
   row('coordinates.visual-map', 'coordinates', 'direct', 'partial', 'src/engine/visual-map.ts'), // calculable handle
   // Every element type ECharts draws without a bitmap: text, rect, circle, line, polygon, polyline, bezierCurve, arc, ring, sector and group. An `image` element warns by name.
   row('coordinates.graphic', 'coordinates', 'direct', 'complete', 'src/engine/graphic-shapes.test.ts', 'src/engine/cov-core-option-layer.test.ts', '../../native/compiler/src/tests/chart-graphic-native.test.ts'),

@@ -14440,6 +14440,8 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   if (x2Labels !== undefined) specArgs.push(`x2Labels: ${emitSwiftExpr(x2Labels, indent)}`)
   const x2Title = readStaticAttr(e, 'x2Title')
   if (typeof x2Title === 'string') specArgs.push(`x2Title: ${swiftStr(x2Title)}`)
+  const x2Dom = chartAttrExpr(e, 'x2Domain')
+  if (x2Dom !== undefined) specArgs.push(`x2Domain: ${emitSwiftExpr(x2Dom, indent)}`)
   lets.push(`let pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
   if (brushing) {
     // The band lives in PLOT space: the live span while dragging, else the
@@ -14584,7 +14586,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   if (labels !== undefined) lets.push(`let pyreonSeriesLabels: [String] = ${emitSwiftExpr(labels, indent)}`)
   const a11ySource = fullA11y ? 'pyreonA11ySeriesSource' : legend.toggling ? 'pyreonSeriesAll' : 'pyreonSeries'
   const a11ySeries = labels === undefined
-    ? `${a11ySource}.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues) }`
+    ? `${a11ySource}.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues, xs: $0.onX2 == true ? $0.xs : nil) }`
     : `${a11ySource}.enumerated().map { (pyreonI, pyreonS) in A11ySeries(label: pyreonI < pyreonSeriesLabels.count ? pyreonSeriesLabels[pyreonI] : pyreonS.label, values: pyreonS.values, kind: pyreonS.kind, values2: pyreonS.values2, errLow: pyreonS.errLow, errHigh: pyreonS.errHigh, rValues: pyreonS.rValues) }`
   const describe = `describeChart(A11yInput(title: ${plotTitle ?? 'nil'}, categories: ${fullA11y ? 'pyreonA11yCats' : 'pyreonCats'}, series: ${a11ySeries}, format: ${yFormat ?? 'nil'}))`
   if (!navigating) return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent, describe)

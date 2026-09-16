@@ -96,6 +96,22 @@ export function App() {
     if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
   })
 
+  it('lowers a value x axis and a second value x axis, and compiles', () => {
+    const r = transform(`
+import { OptionChart } from '@pyreon/charts/plot'
+export function App() {
+  return <OptionChart option={{ xAxis: [{ type: 'value' }, { type: 'value', min: 0, max: 1000, name: 'Metres' }], yAxis: {}, series: [{ type: 'scatter', data: [[0, 1], [10, 2]] }, { type: 'scatter', xAxisIndex: 1, data: [[250, 1], [1000, 2]] }] }} />
+}`, { target })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('xValue')
+    expect(r.code).toContain(`onX2${sep}true`)
+    expect(r.code).toContain('250.0')
+    expect(r.code).toContain(`x2Title${sep}"Metres"`)
+    expect(r.code).toContain('x2Domain')
+    if (target === 'swift' && isSwiftcAvailable()) expect(validateSwiftWithStubs(r.code)).toMatchObject({ ok: true })
+    if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
+  })
+
   it('names a yAxisIndex that points at no declared axis', () => {
     const r = transform(app(`yAxis: [{}, {}]`, `{ type: 'bar', yAxisIndex: 3, data: [1, 2] }`), { target })
     expect(r.warnings).toEqual([expect.stringContaining('names no declared y axis')])

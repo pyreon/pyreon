@@ -58,6 +58,9 @@ export interface Series {
   axis?: 'left' | 'right' | undefined
   /** Index into `ChartSpec.extraYAxes` when the series scales on a third or later y axis. */
   axisExtra?: Double | undefined
+  /** The series scales on the second x axis at its own x positions `xs`. */
+  onX2?: boolean | undefined
+  xs?: Double[] | undefined
   /** Halo rings around each point — the effectScatter look; `points` only. */
   effect?: boolean | undefined
   /**
@@ -385,6 +388,8 @@ export interface ChartSpec {
   /** A second x axis's category labels — ECharts' `xAxis[1].data` — on the side opposite the first. */
   x2Labels?: string[] | undefined
   x2Title?: string | undefined
+  /** Pins the second x axis's value domain; derived from its series' xs when absent. */
+  x2Domain?: Domain | undefined
 }
 
 /**
@@ -735,6 +740,26 @@ export function invertCategories(spec: ChartSpec): ChartSpec {
 }
 
 
+
+/** True when a series places its points on the second x axis. */
+export function seriesOnX2(s: Series, spec: ChartSpec): boolean {
+  return s.onX2 === true && spec.horizontal !== true && (s.xs ?? []).length > 0
+}
+
+/** True when any series uses the second x axis. */
+export function hasX2Axis(spec: ChartSpec): boolean {
+  for (const s of spec.series) if (seriesOnX2(s, spec)) return true
+  return false
+}
+
+/** The second x axis's domain: pinned, or the extent of its series' positions. */
+export function resolveX2Domain(spec: ChartSpec): Domain {
+  if (spec.x2Domain !== undefined) return spec.x2Domain ?? { min: 0.0, max: 1.0 }
+  const all: Double[] = []
+  for (const s of spec.series) if (seriesOnX2(s, spec)) for (const x of s.xs ?? []) all.push(x)
+  return all.length > 0 ? extent(all) : { min: 0.0, max: 1.0 }
+}
+
 /** True when a series scales on an extra y axis that exists. */
 function onExtraAxis(s: Series, spec: ChartSpec): boolean {
   const k = s.axisExtra ?? -1.0
@@ -907,6 +932,7 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     extraYAxes: resolvedExtraAxes(spec),
     x2Labels: spec.x2Labels,
     x2Title: spec.x2Title,
+    x2Domain: hasX2Axis(spec) ? resolveX2Domain(spec) : undefined,
   }
   return computeLayout(cfg, measure)
 }
@@ -1286,9 +1312,12 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     // Each independent series scales against ITS axis — the whole point of a
     // dual-axis chart, and the line that decides it.
     const sDomain = seriesDomain(s, spec, yDomain, y2Domain)
+    const onX2 = seriesOnX2(s, spec)
+    const sXs = onX2 ? s.xs ?? [] : xs
+    const sXDomain = onX2 ? resolveX2Domain(spec) : l.xDomainUsed
     const place = (values: Double[]): Pt[] =>
-      xs.length > 0
-        ? layoutSeriesPointsAt(values, xs, plot, sDomain, l.xDomainUsed)
+      sXs.length > 0
+        ? layoutSeriesPointsAt(values, sXs, plot, sDomain, sXDomain)
         : layoutSeriesPoints(values, plot, sDomain)
 
     // The curve shapes line AND area from the same densified points — an
@@ -1617,7 +1646,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         : spec.horizontal === true
           ? layoutSeriesPointsH(s.values, plot, mDomain)[idx]
           : xsM.length > 0
-            ? layoutSeriesPointsAt(s.values, xsM, plot, mDomain, l.xDomainUsed)[idx]
+            ? layoutSeriesPointsAt(s.values, seriesOnX2(s, spec) ? s.xs ?? [] : xsM, plot, mDomain, seriesOnX2(s, spec) ? resolveX2Domain(spec) : l.xDomainUsed)[idx]
             : layoutSeriesPoints(s.values, plot, mDomain)[idx]
     if (p === undefined) continue
     const mColor = m.color ?? s.color
@@ -1667,9 +1696,10 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // A second x axis: its labels at the first axis's tick positions, on the
   // opposite edge, reversed with the categories when the axis is inverted.
   const x2 = spec.x2Labels ?? []
-  if (x2.length > 0 && spec.showXAxis && spec.horizontal !== true) {
+  if ((x2.length > 0 || l.x2Ticks.length > 0) && spec.showXAxis && spec.horizontal !== true) {
     const edgeY = xTop ? plot.y + plot.h : plot.y
     out.push({ kind: 'line', from: { x: plot.x, y: edgeY }, to: { x: plot.x + plot.w, y: edgeY }, stroke: t.axis, width: 1.0 })
+    for (const tk of l.x2Ticks) out.push({ kind: 'text', text: tk.label, at: { x: tk.pos, y: xTop ? edgeY + 6.0 : edgeY - 6.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: xTop ? 'top' : 'bottom' })
     const inv = categoriesInverted(spec)
     for (let ti = 0; ti < l.xTicks.length; ti++) {
       const tick = l.xTicks[ti]!

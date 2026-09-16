@@ -46,6 +46,8 @@ export interface A11ySeries {
    * second cell, like the value it sits beside.
    */
   rValues?: Double[] | undefined
+  /** The series' own x positions, when it scales on a second x axis. */
+  xs?: Double[] | undefined
   /**
    * Extra dimensions the tooltip shows under the value (ECharts'
    * `encode.tooltip`) — a dataset's other columns. They are data the sighted
@@ -221,6 +223,8 @@ export function chartTable(input: A11yInput): A11yTable {
       headers.push(s.label)
     }
     if (rs.length > 0) headers.push(`${s.label} (size)`)
+    const sx: Double[] = s.xs ?? []
+    if (sx.length > 0) headers.push(`${s.label} (x)`)
     const extras: SeriesExtra[] = s.extras ?? []
     for (const e of extras) headers.push(`${s.label} (${e.label})`)
   }
@@ -239,11 +243,14 @@ export function chartTable(input: A11yInput): A11yTable {
       const rs: Double[] = s.rValues ?? []
       const two = other.length > 0
       const sized = rs.length > 0
+      const sx: Double[] = s.xs ?? []
+      const hasX = sx.length > 0
       const extras: SeriesExtra[] = s.extras ?? []
       if (i >= s.values.length) {
         row.push('')
         if (two) row.push('')
         if (sized) row.push('')
+        if (hasX) row.push('')
         for (let k = 0; k < extras.length; k++) row.push('')
         continue
       }
@@ -263,6 +270,13 @@ export function chartTable(input: A11yInput): A11yTable {
         else {
           const r = rs[i]!
           row.push(isFiniteNumber(r) ? fmt(r) : '')
+        }
+      }
+      if (hasX) {
+        if (i >= sx.length) row.push('')
+        else {
+          const xv = sx[i]!
+          row.push(isFiniteNumber(xv) ? fmt(xv) : '')
         }
       }
       // One cell per extra: the number formatted like a value, a text as is.

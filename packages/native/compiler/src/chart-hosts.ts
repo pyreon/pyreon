@@ -1743,16 +1743,69 @@ export function desugarOptionChart(
     const xAxisEntries = xAxisTop?.kind === 'array' ? xAxisTop.elements.map((el) => literalOf(el, resolve)) : []
     const xAxis = xAxisTop?.kind === 'array' ? xAxisEntries[0] : xAxisTop
     const x2AxisLit = xAxisEntries.length > 1 ? xAxisEntries[1] : undefined
-    const categories = xAxis === undefined ? undefined : literalOf(objectField(xAxis, 'data'), resolve)
+    // A value or time x axis: series data are [x, y] pairs. Series on the first
+    // axis share one list of x positions (the engine's xValues); a series on a
+    // second value axis (xAxisIndex: 1) carries its own.
+    const xTypeLit = xAxis?.kind === 'object' ? litString(objectField(xAxis, 'type')) : undefined
+    const valueX = xTypeLit === 'value' || xTypeLit === 'time'
+    const x2TypeLit = x2AxisLit?.kind === 'object' ? litString(objectField(x2AxisLit, 'type')) : undefined
+    const x2Value = valueX && (x2TypeLit === 'value' || x2TypeLit === 'time')
+    const pairXs: (number[] | undefined)[] = []
+    const pairYs: (number[] | undefined)[] = []
+    let sharedXs: number[] | undefined = undefined
+    if (valueX) {
+      for (let si = 0; si < seriesObjects.length; si++) {
+        const data = literalOf(objectField(seriesObjects[si]!, 'data'), resolve)
+        const xsOut: number[] = []
+        const ysOut: number[] = []
+        const ok = data?.kind === 'array' && data.elements.every((d) => {
+          const pair = literalOf(d, resolve)
+          const px = pair?.kind === 'array' && pair.elements.length >= 2 ? litNumber(literalOf(pair.elements[0], resolve)) : undefined
+          const py = pair?.kind === 'array' && pair.elements.length >= 2 ? litNumber(literalOf(pair.elements[1], resolve)) : undefined
+          if (px === undefined || py === undefined) return false
+          xsOut.push(px)
+          ysOut.push(py)
+          return true
+        })
+        if (!ok) {
+          warn(`<OptionChart option.series[${si}].data>: a native value x axis needs literal [x, y] pairs; emitting nothing.`)
+          return undefined
+        }
+        pairXs.push(xsOut)
+        pairYs.push(ysOut)
+        const onSecond = x2Value && litNumber(objectField(seriesObjects[si]!, 'xAxisIndex')) === 1
+        if (onSecond && pairXs[0] !== undefined && xsOut.length !== pairXs[0].length) {
+          warn(`<OptionChart option.series[${si}].data>: a native series on the second value x axis needs as many points as the first series; emitting nothing.`)
+          return undefined
+        }
+        if (onSecond) continue
+        if (sharedXs === undefined) sharedXs = xsOut
+        else if (sharedXs.length !== xsOut.length || sharedXs.some((v, k) => v !== xsOut[k])) {
+          warn(`<OptionChart option.series[${si}].data>: native series on one value x axis must share their x positions; emitting nothing.`)
+          return undefined
+        }
+      }
+      if (xTypeLit === 'time') set('xTime', lit(true))
+    }
+    const categories: ExprIR | undefined = valueX
+      ? { kind: 'array', elements: (sharedXs ?? pairXs.find((v) => v !== undefined) ?? []).map((v) => lit(String(v))) }
+      : xAxis === undefined ? undefined : literalOf(objectField(xAxis, 'data'), resolve)
     if (categories?.kind !== 'array' || !categories.elements.every((x) => litString(x) !== undefined || litNumber(x) !== undefined)) {
       warn('<OptionChart option.xAxis.data>: native cartesian options need a literal category array; emitting nothing.')
       return undefined
     }
     optionFields(xAxis!, ['type', 'data', 'show', 'name', 'inverse', 'position', 'offset'], 'option.xAxis', warn)
     const x2Data = x2AxisLit?.kind === 'object' ? literalOf(objectField(x2AxisLit, 'data'), resolve) : undefined
-    const x2Mapped = x2Data?.kind === 'array' && x2Data.elements.length === categories.elements.length && x2Data.elements.every((x) => litString(x) !== undefined || litNumber(x) !== undefined)
-    if (xAxisEntries.length > 2 || (xAxisEntries.length === 2 && !x2Mapped)) warn('<OptionChart option.xAxis>: a second x axis maps only as a second set of category labels with the same count; other x axes were ignored.')
-    if (x2Mapped && x2Data?.kind === 'array') {
+    const x2Mapped = x2Value || (!valueX && x2Data?.kind === 'array' && x2Data.elements.length === categories.elements.length && x2Data.elements.every((x) => litString(x) !== undefined || litNumber(x) !== undefined))
+    if (xAxisEntries.length > 2 || (xAxisEntries.length === 2 && !x2Mapped)) warn('<OptionChart option.xAxis>: a second x axis maps as a value axis, or as a second set of category labels with the same count; other x axes were ignored.')
+    if (x2Value && x2AxisLit?.kind === 'object') {
+      const x2Name = litString(objectField(x2AxisLit, 'name'))
+      if (x2Name !== undefined) set('x2Title', lit(x2Name))
+      const x2min = litNumber(objectField(x2AxisLit, 'min'))
+      const x2max = litNumber(objectField(x2AxisLit, 'max'))
+      if (x2min !== undefined && x2max !== undefined) set('x2Domain', { kind: 'object', fields: [{ name: 'min', value: optionDoubleLiteral(x2min) }, { name: 'max', value: optionDoubleLiteral(x2max) }] })
+    }
+    if (!valueX && x2Mapped && x2Data?.kind === 'array') {
       set('x2Labels', { kind: 'array', elements: x2Data.elements.map((x) => lit(litString(x) ?? String(litNumber(x)))) })
       const x2Name = x2AxisLit?.kind === 'object' ? litString(objectField(x2AxisLit, 'name')) : undefined
       if (x2Name !== undefined) set('x2Title', lit(x2Name))
@@ -1764,6 +1817,10 @@ export function desugarOptionChart(
     if (xInverseRaw?.kind === 'literal' && xInverseRaw.value === true) set('xInverse', lit(true))
     const seriesValues: number[][] = []
     for (let si = 0; si < seriesObjects.length; si++) {
+      if (valueX) {
+        seriesValues.push(pairYs[si]!)
+        continue
+      }
       const data = literalOf(objectField(seriesObjects[si]!, 'data'), resolve)
       if (data?.kind !== 'array' || data.elements.length !== categories.elements.length || data.elements.some((d) => optionDatumNumber(literalOf(d, resolve)) === undefined)) {
         warn(`<OptionChart option.series[${si}].data>: native cartesian series need one literal numeric value per xAxis category; emitting nothing.`)
@@ -1798,6 +1855,7 @@ export function desugarOptionChart(
       kind: 'object',
       fields: [
         { name: 'x', value: lit(String(litString(x) ?? litNumber(x))) },
+        ...(valueX && sharedXs !== undefined ? [{ name: 'xv', value: { kind: 'literal' as const, value: sharedXs[i] ?? 0, ...(sharedXs.some((v) => !Number.isInteger(v)) ? { float: true } : {}) } }] : []),
         ...seriesValues.map((values, si) => ({
           name: `s${si}`,
           value: {
@@ -1810,6 +1868,7 @@ export function desugarOptionChart(
     }))
     set('data', { kind: 'array', elements: rows })
     set('x', { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: 'x' } })
+    if (valueX && sharedXs !== undefined) set('xValue', { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: 'xv' } })
     const barCount = seriesObjects.filter((s) => {
       const seriesType = litString(objectField(s, 'type'))
       return seriesType === 'bar' || seriesType === 'pictorialBar'
@@ -1873,6 +1932,10 @@ export function desugarOptionChart(
         if ((axisIndex === 1) !== swapYAxes && (axisIndex === 0 || axisIndex === 1)) opts.push({ name: 'axis', value: lit('right') })
         else if (axisIndex !== undefined && axisIndex >= 2 && axisIndex < yAxisPair.length) opts.push({ name: 'axisExtra', value: optionDoubleLiteral(axisIndex - 2) })
         else if (axisIndex !== 0 && axisIndex !== 1) warn(`<OptionChart option.series[${si}].yAxisIndex>: yAxisIndex ${axisIndex} names no declared y axis; the series uses the left axis.`)
+      }
+      if (x2Value && litNumber(objectField(s, 'xAxisIndex')) === 1) {
+        opts.push({ name: 'onX2', value: lit(true) })
+        opts.push({ name: 'xs', value: { kind: 'array', elements: (pairXs[si] ?? []).map((v) => optionDoubleLiteral(v)) } })
       }
       const pattern = optionPatternLiteral(objectField(s, 'itemStyle'), resolve)
       if (pattern !== undefined) opts.push({ name: 'pattern', value: pattern })
@@ -3188,6 +3251,8 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'showValues', kind: 'boolean', default: false },
   { name: 'axis', kind: 'string' },
   { name: 'axisExtra', kind: 'number' },
+  { name: 'onX2', kind: 'boolean' },
+  { name: 'xs', kind: 'numbers' },
   { name: 'effect', kind: 'boolean' },
   { name: 'symbol', kind: 'string' },
   { name: 'symbolRepeat', kind: 'boolean' },

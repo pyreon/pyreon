@@ -261,3 +261,28 @@ describe('a second x axis', () => {
     expect(spec.x2Labels).toBeUndefined()
   })
 })
+
+describe('a second value x axis', () => {
+  const measure = (t: string): number => t.length * 6
+  it('places its series at their own x positions over their own domain, with ticks on the opposite edge', () => {
+    const { spec, warnings } = compileOption({
+      xAxis: [{ type: 'value', min: 0, max: 10 }, { type: 'value', min: 0, max: 1000, name: 'Metres' }],
+      yAxis: {},
+      series: [{ type: 'scatter', data: [[0, 1], [10, 2]] }, { type: 'scatter', xAxisIndex: 1, data: [[250, 1], [1000, 2]] }],
+    })
+    expect(warnings).toEqual([])
+    expect(spec.series[1]!.onX2).toBe(true)
+    expect(spec.series[1]!.xs).toEqual([250, 1000])
+    expect(spec.x2Domain).toEqual({ min: 0, max: 1000 })
+    const l = layoutChart(spec, measure)
+    const circles = renderChart(spec, measure).filter((c) => c.kind === 'circle')
+    // 250 of the second axis's 0..1000 sits a quarter across; 1000 at the right edge, where 10 of 0..10 also sits.
+    const xs = circles.map((c) => (c.kind === 'circle' ? c.center.x : 0))
+    expect(xs[2]).toBeCloseTo(l.plot.x + l.plot.w * 0.25, 5)
+    expect(xs[3]).toBeCloseTo(xs[1]!, 5)
+    expect(l.x2Ticks.map((tk) => tk.value)).toContain(1000)
+    const cmds = renderChart(spec, measure)
+    expect(cmds.some((c) => c.kind === 'text' && c.text === l.x2Ticks[0]!.label && c.at.y < l.plot.y)).toBe(true)
+    expect(cmds.some((c) => c.kind === 'text' && c.text === 'Metres' && c.at.y < l.plot.y)).toBe(true)
+  })
+})

@@ -238,7 +238,7 @@ for interaction, animation or accessibility parity.
   Kotlin `val` — so it can never be REASSIGNED (the scanner became a per-line
   helper that only ever pushes).
 
-- [ ] `coordinates.axes` narrowed (still partial): an axis `name` is its
+- [x] `coordinates.axes` complete: an axis `name` is its
   title, `show: false` hides it, `yAxis.splitLine.show: false` drops the
   grid, and `type: 'log'` is the log scale, on web and native. Natively the
   right axis now crosses — `yAxis` as an array carries index 1's domain and
@@ -254,9 +254,10 @@ for interaction, animation or accessibility parity.
   right swap and yAxisIndex follows. Offset moves each axis off its edge and
   grows the gutter. A third and later y axis is ChartSpec.extraYAxes; every
   left/right domain choice goes through seriesDomain. A second x axis over the
-  same categories draws as labels on the opposite edge. Open (the only residual
-  in this row): a second x axis with its own value domain, which needs a second
-  x scale per series.
+  same categories draws as labels on the opposite edge; a second VALUE x axis
+  places its series at their own xs (Series.onX2/xs) over ChartSpec.x2Domain.
+  Native option charts now lower value/time x axes at all (they emitted
+  nothing). Row complete.
 
 ## Exit gate
 
