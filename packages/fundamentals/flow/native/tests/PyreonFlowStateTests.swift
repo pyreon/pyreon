@@ -66,6 +66,12 @@ struct PyreonFlowStateTests {
         check(configured.defaultEdgeOptions == PyreonFlowDefaultEdgeOptions(type: "smoothstep", animated: true, interactionWidth: 44) && configured.defaultMarkerEnd == nil, "Apple retains edge defaults")
         check(configured.fitViewOnLoad && configured.fitViewPadding == 0.2 && !configured.autoHistory && configured.reducedMotion == false, "Apple retains lifecycle config")
         check(!configured.isValidConnection(PyreonFlowConnection(source: "same", target: "same")) && configured.deleteKeys == ["ForwardDelete"], "Apple retains validation and delete-key config")
+            panOnScroll: true, panOnScrollSpeed: 0.75, zoomOnScroll: false,
+            reducedMotion: false, deleteKeys: ["ForwardDelete"], multiSelectionKey: "ctrl",
+            selectionKey: nil, zoomActivationKey: "meta", preventScrolling: false)
+        check(configured.panOnScroll && configured.panOnScrollSpeed == 0.75, "Apple retains scroll config")
+        check(!configured.zoomOnScroll && configured.deleteKeys == ["ForwardDelete"], "Apple retains zoom/delete config")
+        check(configured.multiSelectionKey == "ctrl" && configured.selectionKey == nil && configured.zoomActivationKey == "meta" && !configured.preventScrolling, "Apple retains modifier config")
         configured.minZoom = 0.75
         configured.pannable = false
         configured.zoomTo(0.1)

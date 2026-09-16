@@ -27,18 +27,70 @@
  * so `pyreon doctor` can call it too. Don't add logic here — add it
  * to the gate.
  *
+ * ONE exception, checked here and not in the gate: the PUBLISH-STRIP
+ * invariant (`orphanedByPublishStrip`). `scripts/publish.ts` rewrites
+ * each manifest before `npm publish` — stripping the `bun` export
+ * condition and, for a `lib/`-building package, `src` from `files` — so
+ * a workspace `files` array can be correct while the published tarball
+ * is missing something the package needs. Gating that requires the
+ * repo's own publish transform, which a consumer's `pyreon doctor` has
+ * no equivalent of (there is no publish.ts in their repo), so it lives
+ * in this repo-scoped wrapper and imports the SAME functions publish.ts
+ * uses — the gate and the publisher cannot drift.
+ *
  * Run:
  *   bun run check-distribution         # report violations, exit non-zero
  *   bun run check-distribution --json  # machine-readable output
  */
 
-import { resolve } from 'node:path'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join, relative, resolve } from 'node:path'
 import { runDistributionGate } from '../packages/tools/cli/src/doctor/gates/distribution'
+import { orphanedByPublishStrip } from './strip-bun-condition'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
 const json = process.argv.includes('--json')
 
 const result = await runDistributionGate({ cwd: REPO_ROOT })
+
+// Publish-strip invariant — see the docblock. Walks the same
+// `packages/<category>/<pkg>` layout the gate does.
+const packagesRoot = join(REPO_ROOT, 'packages')
+for (const cat of readdirSync(packagesRoot)) {
+  let pkgs: string[]
+  try {
+    pkgs = readdirSync(join(packagesRoot, cat))
+  } catch {
+    continue
+  }
+  for (const pkg of pkgs) {
+    const pjPath = join(packagesRoot, cat, pkg, 'package.json')
+    let pj: Record<string, unknown>
+    try {
+      pj = JSON.parse(readFileSync(pjPath, 'utf8'))
+    } catch {
+      continue
+    }
+    if (pj.private || typeof pj.name !== 'string') continue
+    for (const orphan of orphanedByPublishStrip(pj)) {
+      result.findings.push({
+        category: 'architecture',
+        severity: 'error',
+        code: 'distribution/orphaned-by-publish-strip',
+        gate: 'distribution',
+        message:
+          `${pj.name} needs \`${orphan}\` in its tarball, but scripts/publish.ts ` +
+          `strips that directory from \`files\` at publish time — the published ` +
+          `package would not contain it. Either stop stripping it (see ` +
+          `\`packageBuildsToLib\` in scripts/strip-bun-condition.ts) or stop ` +
+          `depending on it post-publish.`,
+        location: { path: pjPath, relPath: relative(REPO_ROOT, pjPath) },
+        fix: `Make scripts/publish.ts preserve \`${orphan}\` for ${pj.name}`,
+      })
+    }
+  }
+}
+
 const errorCount = result.findings.filter((f) => f.severity === 'error').length
 
 if (json) {
