@@ -4,8 +4,8 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
 
 /**
  * ECharts' gradient colour objects lower to the mark's `gradient` (stops +
- * direction) on native, with the first stop as the solid colour; a radial
- * gradient is named and degrades to its first stop.
+ * direction, or the radial shape) on native, with the first stop as the solid
+ * colour; an image pattern is named.
  */
 const OPTION = `
 import { OptionChart } from '@pyreon/charts/plot'
@@ -37,15 +37,30 @@ describe.each(['swift', 'kotlin'] as const)('gradient colours on %s', (target) =
     if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
   })
 
-  it('a radial gradient is named and degrades to its first stop', () => {
+  it('a radial gradient lowers to the radial mark gradient with zero warnings, and compiles', () => {
     const r = transform(`
 import { OptionChart } from '@pyreon/charts/plot'
 export function App() {
   return <OptionChart option={{ xAxis: { type: 'category', data: ['a'] }, yAxis: {}, series: [{ type: 'bar', itemStyle: { color: { type: 'radial', x: 0.5, y: 0.5, r: 0.5, colorStops: [{ offset: 0, color: '#111111' }, { offset: 1, color: '#222222' }] } }, data: [1] }] }} />
 }`, { target })
-    expect(r.warnings).toEqual([expect.stringContaining('option.series[0].itemStyle.color>: radial gradients are not supported natively')])
+    expect(r.warnings).toEqual([])
+    const sep = target === 'swift' ? ': ' : ' = '
+    expect(r.code).toContain(`shape${sep}"radial"`)
+    expect(r.code).toContain(`color${sep}"#222222"`)
+    // The solid colour is the first stop.
+    expect(r.code).toContain(`color${sep}"#111111"`)
+    if (target === 'swift' && isSwiftcAvailable()) expect(validateSwiftWithStubs(r.code)).toMatchObject({ ok: true })
+    if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
+  })
+
+  it('an image pattern is named and the palette colour is used', () => {
+    const r = transform(`
+import { OptionChart } from '@pyreon/charts/plot'
+export function App() {
+  return <OptionChart option={{ xAxis: { type: 'category', data: ['a'] }, yAxis: {}, series: [{ type: 'bar', itemStyle: { color: { image: 'texture.png', repeat: 'repeat' } }, data: [1] }] }} />
+}`, { target })
+    expect(r.warnings).toEqual([expect.stringContaining('option.series[0].itemStyle.color>: image patterns are not supported natively')])
     expect(r.code).not.toContain('gradient')
-    expect(r.code).toContain('"#111111"')
   })
 })
 

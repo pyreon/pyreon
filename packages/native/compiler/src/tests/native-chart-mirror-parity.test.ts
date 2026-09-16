@@ -49,9 +49,11 @@ const CORPUS: DrawCmd[] = [
     kind: 'rect',
     rect: { x: 100, y: 10, w: 25, h: 60 },
     fill: '#f00',
-    grad: { from: { x: 100, y: 0 }, to: { x: 125, y: 0 }, stops: [{ offset: 0, color: '#000' }] },
+    grad: { from: { x: 100, y: 0 }, to: { x: 125, y: 0 }, stops: [{ offset: 0, color: '#000' }], radial: false },
     pattern: { kind: 'cross', color: '#fff', spacing: 7, width: 1.5 },
   },
+  // A radial ramp is two points too: the centre and a point on its circle.
+  { kind: 'polygon', points: [{ x: 12, y: 3 }, { x: 44, y: 9 }, { x: 300, y: 1 }], fill: '#123', grad: { from: { x: 120, y: 5 }, to: { x: 150, y: 5 }, stops: [{ offset: 0, color: '#000' }, { offset: 1, color: '#fff' }], radial: true } },
   { kind: 'line', from: { x: 5, y: 1 }, to: { x: 395, y: 2 }, stroke: '#0f0', width: 1.5 },
   { kind: 'polyline', points: [{ x: 12, y: 3 }, { x: 44, y: 9 }, { x: 300, y: 1 }], stroke: '#00f', width: 2 },
   { kind: 'polygon', points: [{ x: 12, y: 3 }, { x: 44, y: 9 }, { x: 300, y: 1 }], fill: '#fff' },

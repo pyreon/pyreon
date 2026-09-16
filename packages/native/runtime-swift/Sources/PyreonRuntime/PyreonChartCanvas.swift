@@ -39,13 +39,19 @@ public struct PyreonChartGradientStop: Codable, Equatable {
 
 /// A linear gradient in the shape's own coordinate space.
 public struct PyreonChartGradient: Codable, Equatable {
+    /// Linear: the ramp's start. Radial: the centre.
     public var from: PyreonChartPt
+    /// Linear: the ramp's end. Radial: a point ON the outer circle — its distance from `from` is the radius.
     public var to: PyreonChartPt
     public var stops: [PyreonChartGradientStop]
-    public init(from: PyreonChartPt, to: PyreonChartPt, stops: [PyreonChartGradientStop]) {
+    /// A radial ramp instead of a linear one. Both shapes are two points, so
+    /// the mirror / transpose passes move a radial gradient unchanged.
+    public var radial: Bool
+    public init(from: PyreonChartPt, to: PyreonChartPt, stops: [PyreonChartGradientStop], radial: Bool = false) {
         self.from = from
         self.to = to
         self.stops = stops
+        self.radial = radial
     }
 }
 
@@ -246,7 +252,7 @@ public func pyreonMirrorCmds(_ cmds: [PyreonDrawCmd], _ width: Double) -> [Pyreo
         if let at = c.at { m.at = mp(at) }
         if let cs = c.corners, cs.count == 4 { m.corners = [cs[1], cs[0], cs[3], cs[2]] }
         if let g = c.grad {
-            m.grad = PyreonChartGradient(from: mp(g.from), to: mp(g.to), stops: g.stops)
+            m.grad = PyreonChartGradient(from: mp(g.from), to: mp(g.to), stops: g.stops, radial: g.radial)
         }
         if let a = c.align { m.align = a == "start" ? "end" : a == "end" ? "start" : a }
         if let r = c.rotate { m.rotate = -r }
@@ -275,7 +281,7 @@ public func pyreonTransposeCmds(_ cmds: [PyreonDrawCmd]) -> [PyreonDrawCmd] {
         // diagonal fixes the first and third and swaps the other two.
         if let cs = c.corners, cs.count == 4 { m.corners = [cs[0], cs[3], cs[2], cs[1]] }
         if let g = c.grad {
-            m.grad = PyreonChartGradient(from: tp(g.from), to: tp(g.to), stops: g.stops)
+            m.grad = PyreonChartGradient(from: tp(g.from), to: tp(g.to), stops: g.stops, radial: g.radial)
         }
         // Text is anchored, never reflected: the horizontal anchor becomes the vertical one and back.
         let a = c.align
@@ -335,6 +341,14 @@ func pyreonChartShading(_ fill: String, _ grad: PyreonChartGradient?) -> Graphic
     let stops = g.stops.map {
         Gradient.Stop(
             color: pyreonChartColor($0.color), location: CGFloat(min(1.0, max(0.0, $0.offset))))
+    }
+    if g.radial {
+        let radius = ((g.to.x - g.from.x) * (g.to.x - g.from.x) + (g.to.y - g.from.y) * (g.to.y - g.from.y)).squareRoot()
+        return .radialGradient(
+            Gradient(stops: stops),
+            center: CGPoint(x: g.from.x, y: g.from.y),
+            startRadius: 0,
+            endRadius: CGFloat(radius))
     }
     return .linearGradient(
         Gradient(stops: stops),

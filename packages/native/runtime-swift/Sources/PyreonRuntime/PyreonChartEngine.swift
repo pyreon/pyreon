@@ -45,9 +45,11 @@ public struct Domain: Codable {
 public struct SeriesGradient: Codable {
   public var stops: [PyreonChartGradientStop]
   public var direction: String? = nil
-  public init(stops: [PyreonChartGradientStop], direction: String? = nil) {
+  public var shape: String? = nil
+  public init(stops: [PyreonChartGradientStop], direction: String? = nil, shape: String? = nil) {
     self.stops = stops
     self.direction = direction
+    self.shape = shape
   }
 }
 
@@ -2505,10 +2507,15 @@ public func polygonCmd(_ points: [PyreonChartPt], _ fill: String, _ grad: Pyreon
   }
 
 public func gradientFor(_ g: SeriesGradient, _ plot: PyreonChartRect) -> PyreonChartGradient {
+    if g.shape == "radial" {
+      let center = PyreonChartPt(x: plot.x + plot.w / Double(2), y: plot.y + plot.h / Double(2))
+      let radius = Double(max(plot.w, plot.h)) / Double(2)
+      return PyreonChartGradient(from: center, to: PyreonChartPt(x: center.x + radius, y: center.y), stops: g.stops, radial: true)
+    }
     let horizontal = g.direction == "horizontal"
     let from = PyreonChartPt(x: plot.x, y: plot.y)
     let to = horizontal ? PyreonChartPt(x: plot.x + plot.w, y: plot.y) : PyreonChartPt(x: plot.x, y: plot.y + plot.h)
-    return PyreonChartGradient(from: from, to: to, stops: g.stops)
+    return PyreonChartGradient(from: from, to: to, stops: g.stops, radial: false)
   }
 
 public func seriesGradient(_ g: SeriesGradient?, _ plot: PyreonChartRect) -> PyreonChartGradient {

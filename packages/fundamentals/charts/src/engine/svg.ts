@@ -126,7 +126,9 @@ export function collectGradients(cmds: DrawCmd[], prefix: string): { defs: strin
     // of each shape's bounding box (the SVG default) — which is exactly what
     // makes one ramp span the plot instead of repeating per bar.
     parts.push(
-      `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${n(g.from.x)}" y1="${n(g.from.y)}" x2="${n(g.to.x)}" y2="${n(g.to.y)}">${stops}</linearGradient>`,
+      g.radial
+        ? `<radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="${n(g.from.x)}" cy="${n(g.from.y)}" r="${n(Math.hypot(g.to.x - g.from.x, g.to.y - g.from.y))}">${stops}</radialGradient>`
+        : `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${n(g.from.x)}" y1="${n(g.from.y)}" x2="${n(g.to.x)}" y2="${n(g.to.y)}">${stops}</linearGradient>`,
     )
   }
   return { defs: parts.length === 0 ? '' : `<defs>${parts.join('')}</defs>`, ids }

@@ -59,10 +59,10 @@ describe('tweenCmds — the draw-list update animation', () => {
   })
 
   it('interpolates a gradient axis and keeps the target stops', () => {
-    const g0: DrawCmd = { kind: 'rect', rect: { x: 0, y: 0, w: 1, h: 1 }, fill: '#000', grad: { from: { x: 0, y: 0 }, to: { x: 0, y: 100 }, stops: [{ offset: 0, color: '#a' }] } }
-    const g1: DrawCmd = { kind: 'rect', rect: { x: 0, y: 0, w: 1, h: 1 }, fill: '#000', grad: { from: { x: 0, y: 0 }, to: { x: 0, y: 50 }, stops: [{ offset: 0, color: '#b' }] } }
+    const g0: DrawCmd = { kind: 'rect', rect: { x: 0, y: 0, w: 1, h: 1 }, fill: '#000', grad: { from: { x: 0, y: 0 }, to: { x: 0, y: 100 }, stops: [{ offset: 0, color: '#a' }], radial: false } }
+    const g1: DrawCmd = { kind: 'rect', rect: { x: 0, y: 0, w: 1, h: 1 }, fill: '#000', grad: { from: { x: 0, y: 0 }, to: { x: 0, y: 50 }, stops: [{ offset: 0, color: '#b' }], radial: false } }
     const f = tweenCmds([g0], [g1], 0.5)[0] as DrawCmd & { kind: 'rect' }
-    expect(f.grad).toEqual({ from: { x: 0, y: 0 }, to: { x: 0, y: 75 }, stops: [{ offset: 0, color: '#b' }] })
+    expect(f.grad).toEqual({ from: { x: 0, y: 0 }, to: { x: 0, y: 75 }, stops: [{ offset: 0, color: '#b' }], radial: false })
   })
 })
 
@@ -84,7 +84,7 @@ describe('cmdsEqual — the "nothing moved" test the host snaps on', () => {
     const f = tweenCmds([L, P], [{ ...L, to: { x: 3, y: 1 } }, { ...P, points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 3, y: 1 } ] }], 0.5)
     expect(f[0]).toMatchObject({ kind: 'line', to: { x: 2, y: 1 } })
     expect(f[1]).toMatchObject({ kind: 'polygon', points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 1 }] })
-    const g1: DrawCmd = { kind: 'rect', rect: { x: 0, y: 0, w: 1, h: 1 }, fill: '#000', grad: { from: { x: 0, y: 0 }, to: { x: 0, y: 50 }, stops: [] } }
+    const g1: DrawCmd = { kind: 'rect', rect: { x: 0, y: 0, w: 1, h: 1 }, fill: '#000', grad: { from: { x: 0, y: 0 }, to: { x: 0, y: 50 }, stops: [], radial: false } }
     expect((tweenCmds([A[0]!], [g1], 0.5)[0] as DrawCmd & { kind: 'rect' }).grad).toEqual(g1.grad)
   })
 })

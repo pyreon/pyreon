@@ -19,7 +19,8 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import { resolveDataset } from '@pyreon/charts/option-layer'
+import { decimateShared, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
+import type { SamplingRequest } from '@pyreon/charts/option-layer'
 import type { AttrIR, ExprIR } from './types'
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 
@@ -274,7 +275,11 @@ function resolveStaticDataset(raw: Extract<ExprIR, { kind: 'object' }>, resolve:
 }
 
 function litNumber(e: ExprIR | undefined): number | undefined {
-  return e !== undefined && e.kind === 'literal' && typeof e.value === 'number' ? e.value : undefined
+  if (e === undefined) return undefined
+  // A negative datum parses as unary minus over a literal (`-2`), which an
+  // option is full of; folding it here keeps every literal reader honest.
+  if (e.kind === 'unary' && (e.op === '-' || e.op === '+') && e.argument.kind === 'literal' && typeof e.argument.value === 'number') return e.op === '-' ? -e.argument.value : e.argument.value
+  return e.kind === 'literal' && typeof e.value === 'number' ? e.value : undefined
 }
 
 function litNull(e: ExprIR): boolean {
@@ -767,6 +772,16 @@ function optionFields(
   for (const field of e.fields) {
     if (!allowed.includes(field.name)) warn(`<OptionChart ${path}.${field.name}>: this option field does not cross yet; native renders without it.`)
   }
+}
+
+/** A few literal fields of an object IR as the plain record the web facade's readers take. */
+function optionLiteralRecord(o: Extract<ExprIR, { kind: 'object' }>, keys: readonly string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const key of keys) {
+    const v = objectField(o, key)
+    if (v?.kind === 'literal') out[key] = v.value
+  }
+  return out
 }
 
 function optionDatumNumber(e: ExprIR | undefined): number | undefined {
@@ -1683,7 +1698,7 @@ export function desugarOptionChart(
         warn(`<OptionChart option.series[${si}].type>: this cartesian adapter needs line, bar, pictorialBar, or scatter series; emitting nothing.`)
         return undefined
       }
-      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras'], `option.series[${si}]`, warn)
+      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras', 'sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold'], `option.series[${si}]`, warn)
       seriesObjects.push(s)
     }
     const xAxis = literalOf(objectField(raw, 'xAxis'), resolve)
@@ -1702,12 +1717,30 @@ export function desugarOptionChart(
       }
       seriesValues.push(data.elements.map((d) => optionDatumNumber(literalOf(d, resolve))!))
     }
+    // Large data at COMPILE time, through the web facade's own decimation
+    // (`sampling` thins to the option's static `width` — the same 640 the web
+    // uses when nothing measured it — `large` / `progressive` to their
+    // thresholds), so the native chart carries the same datums the web draws.
+    const sampleRequests: SamplingRequest[] = []
+    const staticWidth = litNumber(literalOf(attrOf(e, 'width'), resolve)) ?? 640
+    for (let si = 0; si < seriesObjects.length; si++) {
+      const request = samplingRequest(optionLiteralRecord(seriesObjects[si]!, ['sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold']), staticWidth, (message) => warn(`<OptionChart option.series[${si}].sampling>: ${message}`))
+      if (request !== null) sampleRequests.push(request)
+    }
+    let categoryLiterals = categories.elements
+    if (sampleRequests.length > 0) {
+      const thinned = decimateShared(sampleRequests, { columns: seriesValues, categories: categoryLiterals.map((x) => String(litString(x) ?? litNumber(x))), xValues: undefined })
+      if (thinned.columns !== seriesValues) {
+        for (let si = 0; si < seriesValues.length; si++) seriesValues[si] = thinned.columns[si]!
+        categoryLiterals = thinned.categories.map((c) => lit(c))
+      }
+    }
     // Synthesised row structs infer each field from their first occurrence.
     // Keep an all-integral series as Int (the mark accessor converts it), but
     // make EVERY value Double when any row is fractional so later rows cannot
     // disagree with the first row's generated Swift/Kotlin field type.
     const seriesFloat = seriesValues.map((values) => values.some((n) => !Number.isInteger(n)))
-    const rows: ExprIR[] = categories.elements.map((x, i) => ({
+    const rows: ExprIR[] = categoryLiterals.map((x, i) => ({
       kind: 'object',
       fields: [
         { name: 'x', value: lit(String(litString(x) ?? litNumber(x))) },
@@ -1738,12 +1771,17 @@ export function desugarOptionChart(
       const item = literalOf(objectField(s, sk === 'line' ? 'lineStyle' : 'itemStyle'), resolve)
       const color = item === undefined ? undefined : objectField(item, 'color')
       if (litString(color) !== undefined) opts.push({ name: 'color', value: color! })
-      // ECharts' gradient colour object → the mark's `gradient` (stops + direction);
-      // its first stop is the solid colour. A radial gradient warns and degrades.
+      // ECharts' gradient colour object → the mark's `gradient` (stops + direction,
+      // or the radial shape); its first stop is the solid colour. An IMAGE
+      // pattern (`color: { image }`) has no native form and is named.
       const gradientSlots: [string, ExprIR | undefined][] = [['itemStyle', literalOf(objectField(s, 'itemStyle'), resolve)], ['areaStyle', literalOf(objectField(s, 'areaStyle'), resolve)], ['lineStyle', literalOf(objectField(s, 'lineStyle'), resolve)]]
       for (const [slot, style] of gradientSlots) {
         const g = style?.kind === 'object' ? literalOf(objectField(style, 'color'), resolve) : undefined
         const rawStops = g?.kind === 'object' ? literalOf(objectField(g, 'colorStops'), resolve) : undefined
+        if (g?.kind === 'object' && rawStops === undefined && objectField(g, 'image') !== undefined) {
+          warn(`<OptionChart option.series[${si}].${slot}.color>: image patterns are not supported natively (linear and radial gradients, and decals, are); the palette colour is used.`)
+          continue
+        }
         if (g?.kind !== 'object' || rawStops?.kind !== 'array') continue
         const stops: { offset: number; color: string }[] = []
         for (const st of rawStops.elements) {
@@ -1754,7 +1792,8 @@ export function desugarOptionChart(
         }
         if (stops.length === 0) continue
         if (litString(objectField(g, 'type')) === 'radial') {
-          warn(`<OptionChart option.series[${si}].${slot}.color>: radial gradients are not supported natively (linear ones are); the first stop is used as a solid colour.`)
+          const stopLiterals: ExprIR[] = stops.map((st) => ({ kind: 'object', fields: [{ name: 'offset', value: optionDoubleLiteral(st.offset) }, { name: 'color', value: lit(st.color) }] }))
+          opts.push({ name: 'gradient', value: { kind: 'object', fields: [{ name: 'stops', value: { kind: 'array', elements: stopLiterals } }, { name: 'shape', value: lit('radial') }] } })
           if (litString(color) === undefined) opts.push({ name: 'color', value: lit(stops[0]!.color) })
           break
         }

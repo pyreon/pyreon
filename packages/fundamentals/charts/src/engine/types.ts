@@ -92,9 +92,17 @@ export interface ChartGradientStop {
  * nothing.
  */
 export interface ChartGradient {
+  /** Linear: the ramp's start. Radial: the centre. */
   from: Pt
+  /** Linear: the ramp's end. Radial: a point ON the outer circle (its distance from `from` is the radius). */
   to: Pt
   stops: ChartGradientStop[]
+  /**
+   * A radial ramp instead of a linear one. Both shapes are two points, so
+   * every geometry pass (mirror, transpose, shift, tween) moves a radial
+   * gradient without knowing it is one.
+   */
+  radial: boolean
 }
 
 /** A repeating, backend-neutral fill overlay. */

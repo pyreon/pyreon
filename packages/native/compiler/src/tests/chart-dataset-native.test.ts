@@ -64,3 +64,15 @@ export function App() {
     expect(r.warnings.some((w) => w.includes('option.dataset[1].transform[0].type>') && w.includes('is not registered'))).toBe(true)
   })
 })
+
+describe.each(['swift', 'kotlin'] as const)('negative datums on %s', (target) => {
+  it('a negative literal datum lowers like a positive one (a unary minus over a literal is a literal)', () => {
+    const r = transform(`
+import { OptionChart } from '@pyreon/charts/plot'
+export function App() {
+  return <OptionChart option={{ xAxis: { type: 'category', data: ['a', 'b'] }, yAxis: {}, series: [{ type: 'line', data: [1, -2.5] }] }} />
+}`, { target })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('-2.5')
+  })
+})

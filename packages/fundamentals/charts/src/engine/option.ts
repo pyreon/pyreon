@@ -13,7 +13,6 @@
 // cross. And it is DATA in, DATA out — no console, no DOM — so it runs on the
 // server and in a test the same way the engine does.
 
-import { lttbIndices } from './decimate-values'
 import { renderChart } from './render'
 import { appendGraphicLayer, graphicCommands, resolveDataset, svgSize } from './option-layer'
 import { visualMapCommands } from './visual-map'
@@ -31,6 +30,8 @@ import type { LegendEntry } from './legend'
 import { measureApprox, renderSvg } from './svg'
 import { compileFamily, familyToSvg } from './option-family'
 import type { CompiledFamily } from './option-family'
+import { decimateShared, samplingRequest } from './sampling'
+import type { SamplingRequest } from './sampling'
 import type { ChartGradientStop, ChartPattern, DrawCmd, Domain, Double, MeasureText, Rect } from './types'
 import type { SeriesGradient } from './gradient'
 
@@ -100,29 +101,6 @@ const KNOWN_SERIES = new Set([
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
-type SamplingMethod = 'lttb' | 'average' | 'max' | 'min' | 'sum'
-const SAMPLING_METHODS = new Set<string>(['lttb', 'average', 'max', 'min', 'sum'])
-
-/** What a series' `sampling` / `large` / `progressive` keys ask of the large-data pass, or null when nothing applies. */
-function samplingRequest(
-  s: Record<string, unknown>,
-  count: number,
-  width: number,
-  warn: (code: OptionWarning['code'], path: string, message: string) => void,
-  path: string,
-): { limit: number; method: SamplingMethod } | null {
-  const toNum = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
-  const sampling = s['sampling']
-  if (sampling !== undefined) {
-    if (typeof sampling === 'string' && SAMPLING_METHODS.has(sampling)) return { limit: Math.max(3, Math.floor(width)), method: sampling as SamplingMethod }
-    warn('series-option-unsupported', `${path}.sampling`, `sampling "${String(sampling)}" is not supported (lttb, average, max, min, sum are); the series was not thinned.`)
-  }
-  if (s['large'] === true) return { limit: Math.max(3, toNum(s['largeThreshold']) ?? 2000), method: 'lttb' }
-  const progressive = toNum(s['progressive'])
-  if (progressive !== null && progressive > 0) return { limit: Math.max(3, toNum(s['progressiveThreshold']) ?? 3000), method: 'lttb' }
-  void count
-  return null
-}
 const num = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
   if (typeof v === 'string' && v.trim() !== '') {
@@ -172,20 +150,24 @@ function seriesSymbol(s: Record<string, unknown>, kind: 'line' | 'points', warn:
  * An ECharts gradient colour (`{ type: 'linear', x, y, x2, y2, colorStops }`)
  * as the engine's series gradient. The ramp direction is the dominant axis
  * of the (x, y) → (x2, y2) vector: horizontal when it runs along x, else
- * vertical (the engine draws exactly those two). A radial gradient has no
- * engine form yet: it warns by name and degrades to its first stop.
+ * vertical (the engine draws exactly those two). A radial gradient keeps its
+ * stops and ramps out from the plot's centre.
  */
 function readGradient(raw: unknown, path: string, warn: (code: OptionWarning['code'], path: string, message: string) => void): SeriesGradient | undefined {
-  if (!isObj(raw) || !Array.isArray(raw['colorStops'])) return undefined
+  if (!isObj(raw)) return undefined
+  if (!Array.isArray(raw['colorStops'])) {
+    // ECharts' other colour object: an IMAGE pattern. It has no engine form
+    // (the engine's patterns are the geometric decals), so it is named rather
+    // than silently painting the palette colour.
+    if (raw['image'] !== undefined) warn('series-option-unsupported', path, 'Image patterns are not supported (linear and radial gradients, and geometric decals, are); the palette colour was used.')
+    return undefined
+  }
   const stops: ChartGradientStop[] = []
   for (const st of raw['colorStops'] as unknown[]) {
     if (isObj(st) && num(st['offset']) !== null && typeof st['color'] === 'string') stops.push({ offset: num(st['offset']) as number, color: st['color'] as string })
   }
   if (stops.length === 0) return undefined
-  if (raw['type'] === 'radial') {
-    warn('series-option-unsupported', path, 'Radial gradients are not supported (linear ones are); the first stop is used as a solid colour.')
-    return { stops: [stops[0]!] }
-  }
+  if (raw['type'] === 'radial') return { stops, shape: 'radial' }
   const dx = (num(raw['x2']) ?? 0.0) - (num(raw['x']) ?? 0.0)
   const dy = (num(raw['y2']) ?? 1.0) - (num(raw['y']) ?? 0.0)
   // A ramp read "backwards" (bottom → top, right → left) reverses its stops
@@ -293,7 +275,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   const markers: PointMarker[] = []
   let xValues: Double[] | undefined = undefined
   // Large-data requests per compiled cartesian series (see the sampling pass).
-  const sampleRequests: { limit: number; method: SamplingMethod }[] = []
+  const sampleRequests: SamplingRequest[] = []
   // Running totals per `stack` name for stacked LINES.
   const lineStacks = new Map<string, Double[]>()
   const barCount = rawSeries.filter((s) => isObj(s) && s['type'] === 'bar' && s['stack'] === undefined).length
@@ -413,7 +395,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       }
     }
     if (xContinuous && xs.length === values.length && xs.length > 0 && xValues === undefined) xValues = xs
-    const request = samplingRequest(s, values.length, opts.width ?? 640.0, warn, path)
+    const request = samplingRequest(s, opts.width ?? 640.0, (message) => warn('series-option-unsupported', `${path}.sampling`, message))
     if (request !== null) sampleRequests.push(request)
     // Stacked LINES: each line sits on the running total of the lines that
     // share its `stack` name (ECharts' stacked line chart). The total is
@@ -647,43 +629,10 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   // cartesian series has the same length: thinning one would misalign the
   // shared x.
   if (sampleRequests.length > 0 && series.length > 0) {
-    const n = series[0]!.values.length
-    const aligned = series.every((entry) => entry.values.length === n)
-    let limit = Infinity
-    for (const r of sampleRequests) if (r.limit < limit) limit = r.limit
-    if (aligned && n > limit && limit >= 3) {
-      const method = sampleRequests[0]!.method
-      if (method === 'lttb') {
-        const keep = lttbIndices(xValues ?? [], series[0]!.values, limit)
-        if (keep.length > 0) {
-          for (const entry of series) entry.values = keep.map((i) => entry.values[i]!)
-          if (categories.length === n) categories.splice(0, n, ...keep.map((i) => categories[i]!))
-          if (xValues !== undefined) xValues = keep.map((i) => xValues![i]!)
-        }
-      } else {
-        const edges: number[] = []
-        for (let b = 0; b <= limit; b++) edges.push(Math.floor((b * n) / limit))
-        const aggregate = (values: Double[]): Double[] => {
-          const out: Double[] = []
-          for (let b = 0; b < limit; b++) {
-            let acc = NaN
-            let count = 0
-            for (let i = edges[b]!; i < edges[b + 1]!; i++) {
-              const v = values[i]!
-              if (Number.isNaN(v)) continue
-              acc = count === 0 ? v : method === 'max' ? Math.max(acc, v) : method === 'min' ? Math.min(acc, v) : acc + v
-              count++
-            }
-            out.push(method === 'average' && count > 0 ? acc / count : acc)
-          }
-          return out
-        }
-        for (const entry of series) entry.values = aggregate(entry.values)
-        const firstOf = <T>(list: T[]): T[] => edges.slice(0, limit).map((start) => list[start]!)
-        if (categories.length === n) categories.splice(0, n, ...firstOf(categories))
-        if (xValues !== undefined) xValues = firstOf(xValues)
-      }
-    }
+    const thinned = decimateShared(sampleRequests, { columns: series.map((entry) => entry.values), categories, xValues })
+    for (let k = 0; k < series.length; k++) series[k]!.values = thinned.columns[k]!
+    if (thinned.categories !== categories) categories.splice(0, categories.length, ...thinned.categories)
+    xValues = thinned.xValues
   }
   const spec: ChartSpec = {
     width: opts.width ?? 640.0,

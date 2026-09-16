@@ -58,7 +58,7 @@ describe('rtl — the mirror', () => {
         kind: 'rect',
         rect: { x: 0, y: 0, w: 10, h: 10 },
         fill: '#f00',
-        grad: { from: { x: 0, y: 0 }, to: { x: 100, y: 0 }, stops: [{ offset: 0, color: '#000' }] },
+        grad: { from: { x: 0, y: 0 }, to: { x: 100, y: 0 }, stops: [{ offset: 0, color: '#000' }], radial: false },
       }],
       W,
     )
@@ -145,7 +145,7 @@ describe('rtl — through the static SVG path', () => {
 describe('transpose — the vertical layout', () => {
   it('reflects every command across the diagonal, swaps the off-diagonal corners and both text anchors, and round-trips', () => {
     const cmds: DrawCmd[] = [
-      { kind: 'rect', rect: { x: 10, y: 4, w: 40, h: 20 }, fill: '#123456', corners: [1, 2, 3, 4], grad: { from: { x: 10, y: 0 }, to: { x: 50, y: 0 }, stops: [{ offset: 0, color: '#000' }] } },
+      { kind: 'rect', rect: { x: 10, y: 4, w: 40, h: 20 }, fill: '#123456', corners: [1, 2, 3, 4], grad: { from: { x: 10, y: 0 }, to: { x: 50, y: 0 }, stops: [{ offset: 0, color: '#000' }], radial: false } },
       { kind: 'line', from: { x: 1, y: 2 }, to: { x: 3, y: 4 }, stroke: '#000', width: 1 },
       { kind: 'polyline', points: [{ x: 1, y: 2 }, { x: 3, y: 4 }], stroke: '#000', width: 1 },
       { kind: 'polygon', points: [{ x: 1, y: 2 }, { x: 3, y: 4 }, { x: 5, y: 6 }], fill: '#000' },

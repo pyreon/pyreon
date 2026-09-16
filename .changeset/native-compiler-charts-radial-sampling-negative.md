@@ -1,0 +1,5 @@
+---
+"@pyreon/native-compiler": minor
+---
+
+`<OptionChart>` on native: an ECharts radial gradient lowers to the radial mark gradient (it used to warn and degrade to a solid colour); the large-data keys `sampling` / `large` / `largeThreshold` / `progressive` / `progressiveThreshold` thin the literal rows at compile time through the web facade's own decimation, against the option's static `width` (or the web's 640 default), so the native chart carries the datums the web draws; an image pattern colour is named. Fixed: a negative literal datum (`data: [1, -2]`) made the whole option emit nothing — a unary minus over a numeric literal now reads as the literal it is. `PlotChart` marks accept `gradient.shape`.

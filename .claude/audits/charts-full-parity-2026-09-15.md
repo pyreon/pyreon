@@ -174,6 +174,23 @@ for interaction, animation or accessibility parity.
   shapes). Direct ledger after the pass: 31/62 rows. The score is derived
   from the rows; nothing hand-types a headline.
 
+- [x] `data.progressive-large` complete: the native `<OptionChart>` runs the
+  web facade's own decimation (`samplingRequest` / `decimateShared`, exported
+  from `@pyreon/charts/option-layer`) at compile time — `sampling` to the
+  option's static width (its `width` prop, or the web's own 640 default),
+  `large` / `progressive` to their thresholds; a native spec asserts the
+  thinned rows are the rows the web keeps at that width, and both toolchains
+  compile the emit. A negative literal datum used to make the whole option
+  emit nothing on native (`litNumber` read only plain literals); fixed and
+  locked.
+- [x] `presentation.gradients-patterns`: radial gradients are an engine fill
+  (`ChartGradient.radial`, `SeriesGradient.shape: 'radial'`) on the web
+  canvas, SVG, and both native runtimes (mirror / transpose parity corpora
+  carry a radial polygon; real-Chromium pixels are asserted centre vs edge);
+  the option facade keeps every stop of a radial ECharts colour. The row
+  stays partial on IMAGE patterns (`color: { image }`), which now warn by
+  name instead of silently painting the palette colour.
+
 ## Exit gate
 
 Zero unclassified core inventory rows; green real-browser conformance; green

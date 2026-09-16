@@ -15,3 +15,5 @@
 export { applyTransforms, applyTransformsAll, listChartTransforms, readSource, registerChartTransform, resolveDataset, unregisterChartTransform } from './engine/option-layer'
 export type { ChartTransform, ChartTransformDimension, ChartTransformParams, ChartTransformResult, ChartTransformUpstream, Table } from './engine/option-layer'
 export type { OptionWarning } from './engine/option'
+export { LARGE_THRESHOLD, PROGRESSIVE_THRESHOLD, decimateShared, samplingRequest } from './engine/sampling'
+export type { SamplingMethod, SamplingRequest, SharedRows } from './engine/sampling'

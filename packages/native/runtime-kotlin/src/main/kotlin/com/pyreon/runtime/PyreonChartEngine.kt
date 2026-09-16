@@ -26,7 +26,7 @@ data class Domain(var min: Double, var max: Double)
 
 
 
-data class SeriesGradient(var stops: List<PyreonChartGradientStop>, var direction: String? = null)
+data class SeriesGradient(var stops: List<PyreonChartGradientStop>, var direction: String? = null, var shape: String? = null)
 
 data class Slice(var value: Double, var label: String, var color: String)
 
@@ -461,10 +461,15 @@ fun polygonCmd(points: List<PyreonChartPt>, fill: String, grad: PyreonChartGradi
   }
 
 fun gradientFor(g: SeriesGradient, plot: PyreonChartRect): PyreonChartGradient {
+    if (g.shape == "radial") {
+      val center = PyreonChartPt(x = plot.x + (plot.w).toDouble() / (2).toDouble(), y = plot.y + (plot.h).toDouble() / (2).toDouble())
+      val radius = (Math.max(plot.w, plot.h)).toDouble() / (2).toDouble()
+      return PyreonChartGradient(from = center, to = PyreonChartPt(x = center.x + radius, y = center.y), stops = g.stops, radial = true)
+    }
     val horizontal = g.direction == "horizontal"
     val from = PyreonChartPt(x = plot.x, y = plot.y)
     val to = if (horizontal) PyreonChartPt(x = plot.x + plot.w, y = plot.y) else PyreonChartPt(x = plot.x, y = plot.y + plot.h)
-    return PyreonChartGradient(from = from, to = to, stops = g.stops)
+    return PyreonChartGradient(from = from, to = to, stops = g.stops, radial = false)
   }
 
 fun seriesGradient(g: SeriesGradient?, plot: PyreonChartRect): PyreonChartGradient {

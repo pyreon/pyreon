@@ -165,6 +165,12 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             "args": []
           }
         }
+      },
+      {
+        "name": "radial",
+        "type": {
+          "kind": "boolean"
+        }
       }
     ],
     "external": true
@@ -534,6 +540,20 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       },
       {
         "name": "direction",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "shape",
         "type": {
           "kind": "union",
           "branches": [
