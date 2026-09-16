@@ -53,6 +53,8 @@ function warnDroppedHeadAttr(name: string, tagName: string, why: string): void {
   // The guard is written INLINE rather than as a ternary-selected const: only
   // this form folds to a literal for every consumer's bundler (and it is the
   // shape `pyreon/dev-guard-warnings` recognises).
+  /* v8 ignore next — the production arm never runs under vitest (NODE_ENV is
+     'test'); the gate exists so the strings fold out of consumer builds. */
   if (process.env.NODE_ENV !== 'production') {
     // oxlint-disable-next-line no-console
     console.warn(
