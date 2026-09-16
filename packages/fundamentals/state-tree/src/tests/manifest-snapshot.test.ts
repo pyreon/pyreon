@@ -14,7 +14,7 @@ describe('gen-docs — state-tree snapshot', () => {
     expect(renderLlmsFullSection(manifest)).toMatchInlineSnapshot(`
       "## @pyreon/state-tree — State Tree
 
-      MobX-State-Tree-inspired structured state management built on Pyreon signals. Models compose state (signals), views (computeds), and actions into self-contained units that support typed snapshots, JSON-patch record/replay, and action interception middleware. Models can nest other models for tree-shaped state, and \`.asHook(id)\` provides singleton instances scoped to a store-like registry.
+      MobX-State-Tree-inspired structured state management built on Pyreon signals. Models compose state (signals), views (computeds), and actions into self-contained units that support typed snapshots, JSON-patch record/replay, and action interception middleware. Models can nest other models for tree-shaped state, and \`.asHook(id)\` provides singleton instances scoped to a store-like registry — per process in a browser, and per REQUEST on a server under \`@pyreon/runtime-server\`, which isolates that registry automatically.
 
       \`\`\`typescript
       import { model, getSnapshot, applySnapshot, onPatch, applyPatch, addMiddleware } from '@pyreon/state-tree'

@@ -1016,6 +1016,23 @@ return <input ref={inputRef} />`,
     notes: 'Create a mutable ref object (`{ current: T | null }`) for holding DOM element references. Pass as the `ref` prop on JSX elements — the runtime sets `.current` after mount and clears it on unmount. Callback refs (`(el: T | null) => void`) are also supported via `RefProp<T>`. See also: onMount.',
   },
 
+  'core/elementRef': {
+    signature: 'elementRef<T = HTMLElement>(): ElementRef<T>',
+    example: `import { elementRef } from '@pyreon/core'
+import { useElementSize } from '@pyreon/hooks'
+
+function Card() {
+  const el = elementRef<HTMLDivElement>()
+  const size = useElementSize(el)   // el IS the () => T | null accessor
+  return <div ref={el}>{size().width}px</div>
+}`,
+    notes: 'A single value that is BOTH a ref and the `() => T | null` accessor element-consuming hooks take (`useElementSize`, `useClickOutside`, `useDraggable`, and ten others across `@pyreon/hooks`/`@pyreon/dnd`). The runtime already invokes a function ref as `ref(el)` on mount and `ref(null)` on unmount, so `elementRef` reads that call shape directly: called WITH an argument means SET (a ref attach/detach), called with NO argument means READ (the accessor hooks want). Without it, wiring N hooks to one element costs three touchpoints (a local variable, a hand-written `() => el` thunk per hook, a callback ref wiring the local back) — `elementRef` collapses that to two, and N hooks on the same element add none of them. `.current` is kept so it drops into code written against `createRef`. See also: createRef, use.',
+    mistakes: `- Using \`elementRef\` where TWO different elements are involved — it is one value FOR one element; a second element needs its own \`elementRef()\`, not a second read of the same one.
+- Treating \`null\` as a "no value yet" read — \`null\` is a legal SET (exactly what unmount passes). The discriminator is \`undefined\` (zero-arg call), not truthiness — \`el()\` reads, \`el(null)\` still writes.
+- Passing \`elementRef()\` to a hook that expects a PLAIN \`T | null\` value instead of an accessor — it is callable, not a value; hooks that take \`() => T | null\` (the convention every element-consuming hook in \`@pyreon/hooks\`/\`@pyreon/dnd\` follows) accept it directly, a hook expecting a raw element needs \`el()\`.
+- Re-declaring a local \`let\` + manual thunk alongside \`elementRef\` "to be safe" — that reintroduces the exact three-touchpoint duplication \`elementRef\` exists to remove.`,
+  },
+
   'core/nativeCompat': {
     signature: '<T>(fn: T) => T',
     example: `// In a framework package:
@@ -2380,7 +2397,7 @@ import { setStoreRegistryProvider } from "@pyreon/store"
 
 // once, at server startup:
 configureStoreIsolation(setStoreRegistryProvider)`,
-    notes: 'OVERRIDE per-request `@pyreon/store` isolation with a provider of your own. You do NOT need to call this to be isolated: `@pyreon/store` publishes its setter on a `globalThis` seam when it loads on a server, and the renderer wires it at its own choke point, so every `renderToString` / `renderToStream` / `runWithRequestContext` call already gets a fresh registry via ALS. It was opt-in before, which meant unisolated by default — the two layers that own the server (`@pyreon/server`, `@pyreon/zero`) cannot call it, because neither depends on `@pyreon/store`, so the only party who could opt in was the application author. Reach for it to supply a custom registry (a shared build-time cache across SSG pages, a test double); the last call wins. See also: runWithRequestContext, renderToString.',
+    notes: `OVERRIDE per-request \`@pyreon/store\` isolation with a provider of your own. You do NOT need to call this to be isolated: \`@pyreon/store\` publishes its setter on a \`globalThis\` seam when it loads on a server, and the renderer wires it at its own choke point, so every \`renderToString\` / \`renderToStream\` / \`runWithRequestContext\` call already gets a fresh registry via ALS. \`@pyreon/storage\` and \`@pyreon/state-tree\` are wired through the same choke point via their own seams; this function overrides the STORE's provider only. It was opt-in before, which meant unisolated by default — the two layers that own the server (\`@pyreon/server\`, \`@pyreon/zero\`) cannot call it, because neither depends on \`@pyreon/store\`, so the only party who could opt in was the application author. Reach for it to supply a custom registry (a shared build-time cache across SSG pages, a test double); the last call wins. See also: runWithRequestContext, renderToString.`,
     mistakes: `- Believing you must call it — isolation is automatic as of the seam; this is the override, not the switch. A pre-seam app that DID call it keeps working unchanged
 - Calling it per request instead of once at startup — it only needs to wire the provider once; the per-request fresh \`Map\` is handled internally by the ALS run
 - Passing something other than the \`setStoreRegistryProvider\` exported by \`@pyreon/store\` — the contract is specifically that provider-setter shape`,
@@ -2904,8 +2921,8 @@ post.author.id()   // 'u-42'`,
     example: `const useTodos = TodoList.asHook('todos')
 // tests:
 afterEach(() => resetAllHooks())   // else a mutation in one test leaks to the next`,
-    notes: 'Destroy `.asHook(id)` singletons. `.asHook(id)` stores ONE instance per id in a MODULE-LEVEL registry (created lazily on first call, shared for the process), so every consumer of `useX = Model.asHook("x")` gets the SAME instance — great for app-global state, a hazard for tests. `resetHook(id)` deletes that one singleton so the next `asHook(id)` call re-creates a fresh instance; `resetAllHooks()` clears the whole registry. Both are for TEST isolation (and hot-reload). See also: model, destroy.',
-    mistakes: `- Not resetting between tests — the \`asHook\` singleton lives in a module-level Map for the whole process, NOT per-test. State mutated in one test persists into the next; call \`resetAllHooks()\` (or \`resetHook(id)\`) in \`afterEach\`.
+    notes: 'Destroy `.asHook(id)` singletons. `.asHook(id)` stores ONE instance per id in a MODULE-LEVEL registry (created lazily on first call, shared for the process — or for the REQUEST, when rendering under `@pyreon/runtime-server`, which isolates the registry so concurrent requests never share an instance), so every consumer of `useX = Model.asHook("x")` gets the SAME instance — great for app-global state, a hazard for tests. `resetHook(id)` deletes that one singleton so the next `asHook(id)` call re-creates a fresh instance; `resetAllHooks()` clears the whole registry. Both are for TEST isolation (and hot-reload). See also: model, destroy.',
+    mistakes: `- Not resetting between tests — the \`asHook\` singleton lives in a module-level Map for the whole process (per REQUEST only inside an SSR render), NOT per-test. State mutated in one test persists into the next; call \`resetAllHooks()\` (or \`resetHook(id)\`) in \`afterEach\`.
 - Expecting \`resetHook\` to \`destroy()\` the old instance's subscriptions — it only DROPS the registry entry so the next \`asHook\` re-creates. If code still holds the old reference, call \`destroy()\` on it yourself.`,
   },
   // <gen-docs:api-reference:end @pyreon/state-tree>
@@ -4821,7 +4838,7 @@ filter.set({ query: 'pyreon', page: 1 })
     example: `const draft = useMemoryStorage('draft-id-42', '')
 draft.set('typing...')
 // → reactive, but cleared on reload`,
-    notes: 'In-memory reactive signal that mimics the storage hook shape — useful as an SSR-safe fallback or in environments without `localStorage`/`sessionStorage` (sandbox iframes, web workers without DOM, some embedded WebViews). Same `StorageSignal<T>` shape with `.remove()`. Values are lost on page reload; no persistence. See also: useStorage, useSessionStorage.',
+    notes: 'In-memory reactive signal that mimics the storage hook shape — useful as an SSR-safe fallback (its byte store is request-scoped on a server, so nothing written during one render is visible to the next) or in environments without `localStorage`/`sessionStorage` (sandbox iframes, web workers without DOM, some embedded WebViews). Same `StorageSignal<T>` shape with `.remove()`. Values are lost on page reload; no persistence. See also: useStorage, useSessionStorage.',
     mistakes: `- Reaching for useMemoryStorage when a plain \`signal()\` would do — if you don't need the StorageSignal \`.remove()\` shape or the cross-storage-backend interchangeability, a plain \`signal(defaultValue)\` is simpler.
 - Expecting persistence — values vanish on reload by design. If persistence is needed, swap to \`useStorage\` / \`useSessionStorage\` / \`useIndexedDB\`.`,
   },
@@ -4833,7 +4850,7 @@ draft.set('typing...')
 // Inside an SSR handler:
 setCookieSource(request.headers.get('cookie') ?? '')
 const html = await renderToString(<App />)`,
-    notes: `Tell \`useCookie\` how to read cookies during SSR. Pass the raw cookie header string, an accessor \`() => string\` returning it, or \`null\` to clear. The source is a single module-level slot: a bare STRING is shared across concurrent requests (safe only when rendering is serialized per process), so on a server handling concurrent requests pass an ACCESSOR bound to your per-request context (e.g. reading the current request's \`Cookie\` header out of \`runWithRequestContext\`'s AsyncLocalStorage) — the accessor is evaluated LAZILY at each cookie read, so each request resolves its own cookies without this module holding per-request state. See also: useCookie.`,
+    notes: `Tell \`useCookie\` how to read cookies during SSR. Pass the raw cookie header string, an accessor \`() => string\` returning it, or \`null\` to clear. The source is a single module-level slot: a bare STRING is shared across concurrent requests (safe only when rendering is serialized per process), so on a server handling concurrent requests pass an ACCESSOR bound to your per-request context (e.g. reading the current request's \`Cookie\` header out of \`runWithRequestContext\`'s AsyncLocalStorage) — the accessor is evaluated LAZILY at each cookie read, so each request resolves its own cookies without this module holding per-request state. The signal registry that caches cookie signals per key is itself isolated per request under \`@pyreon/runtime-server\`, which is what makes the accessor reachable on every request rather than only the first. See also: useCookie.`,
     mistakes: `- Forgetting to call setCookieSource on SSR — \`useCookie\` falls back to \`defaultValue\` on every request, ignoring the user's real cookie state. The page hydrates correctly on the client but flashes the default first.
 - Passing a bare STRING source on a CONCURRENTLY-rendering server — the source is one module-level slot, so request A's string can leak into request B's render. Pass an accessor \`() => currentRequest().cookieHeader\` bound to your per-request context (it's evaluated lazily at read time) so each request resolves its own cookies.
 - Passing a stale cookie source after redirect or login — the source is captured once; re-call after any operation that should change the cookie set.
@@ -9204,6 +9221,84 @@ sa.set(5) // sb() becomes 5`,
     example: `const link = connectFakeDocs(a, b)
 link.disconnect() // simulate offline`,
     notes: 'Link two in-memory FakeCrdtDocs so a write to one propagates to the other — the test analog of a transport. Returns a `disconnect()` to simulate going offline. See also: FakeCrdtAdapter.',
+  },
+
+  'sync/pyreonAdapter': {
+    signature: '(actor?: string) => PyreonCrdtAdapter',
+    example: `import { pyreonAdapter, syncedSignal } from "@pyreon/sync"
+const adapter = pyreonAdapter()          // dependency-free scalar-map CRDT
+const doc = adapter.createDoc()
+const title = syncedSignal({ doc, key: "title", initial: "Untitled" })
+title.set("Roadmap")`,
+    notes: 'Convenience factory for the pure-TS LWW (last-writer-wins) engine — the MULTIPLATFORM counterpart to the Yjs adapter. Where Yjs is a web-only npm engine, this one is pure logic (Map, numbers, comparisons) with no external dependency, so the Pyreon Multi-Target Compiler lowers the SAME source to SwiftUI + Compose: a web peer and a native peer run byte-identical merge math and converge over one shared wire protocol. Generates a fresh `createActorId()` when `actor` is omitted — pass your own to persist a stable device identity across restarts. Matches the v1 seam exactly: a `CrdtMap` is a flat key → scalar register; rich collaborative text/lists stay on the Yjs engine until a native sequence-CRDT engine lands. See also: PyreonCrdtAdapter, createActorId, createNativeSyncHost.',
+    mistakes: `- Reaching for this when you need collaborative TEXT or LIST merge — it's scalar-only (last-writer-wins); use the Yjs engine's \`syncedText\`/\`syncedList\` for character/positional merge
+- Generating a fresh actor id on every mount instead of persisting one — a stable per-install id is what makes the LWW tie-break behave like a stable "this device" identity rather than a coin flip on every reload
+- Sharing one actor id across two LIVE peers — the id is the LWW tie-breaker; two peers with the same id can't be distinguished when they conflict`,
+  },
+
+  'sync/PyreonCrdtAdapter': {
+    signature: 'class PyreonCrdtAdapter implements CrdtAdapter { constructor(actor: string); createDoc(): CrdtDoc }',
+    example: `const adapter = new PyreonCrdtAdapter("device-1")
+const doc = adapter.createDoc()`,
+    notes: `The pure-TS LWW engine's CrdtAdapter implementation — usually reached through the \`pyreonAdapter()\` factory rather than constructed directly. Each \`createDoc()\` returns a \`PyreonCrdtDoc\` stamped with this adapter's \`actor\` id, so every doc it produces shares one peer identity. Implements the exact \`CrdtAdapter\` seam the reactive bridge (\`syncedSignal\`/\`syncedStore\`) is written against, so it's a drop-in swap for \`FakeCrdtAdapter\` or the Yjs adapter — nothing above the seam knows which engine it's talking to. See also: pyreonAdapter, PyreonCrdtDoc, CrdtAdapter.`,
+  },
+
+  'sync/PyreonCrdtDoc': {
+    signature: 'class PyreonCrdtDoc implements CrdtDoc { constructor(actor: string); readonly actor: string; getMap(name): CrdtMap; transact(fn, origin?): void; applyOps(ops, origin?): void; encodeState(): PyreonCrdtOp[]; destroy(): void }',
+    example: `const doc = new PyreonCrdtDoc("device-1")
+const map = doc.getMap("todos")
+doc.transact(() => map.set("title", "Buy milk"))
+const state = doc.encodeState() // ship this to a fresh peer to seed it`,
+    notes: `A state-based (CvRDT) LWW register-map document. Each register carries a Lamport-clock timestamp plus the writing \`actor\` id; a local write bumps the doc's monotonic clock, and a receive advances it to \`max(local, incoming)\` so a later local write always out-ranks anything already seen. Merge is deterministic — a higher clock wins, an equal clock is broken by the higher actor id — so \`applyOps\` (or a full \`encodeState()\` dump) converges regardless of order, duplicates, or partial delivery, which is what makes offline-then-reconnect 'just another merge' rather than a special case. \`applyOps\` fires observers but never re-emits ops, which is the structural half of loop-prevention (the transport's REMOTE-origin skip is the other half). See also: PyreonCrdtAdapter, connectPyreonSync, createNativeSyncHost.`,
+    mistakes: `- Calling \`applyOps\` from inside an in-progress local \`transact\` — it is guarded to no-op there; remote merges are meant to land at rest, which is how the transport always calls it
+- Assuming \`encodeState()\` is a diff — it is the FULL state (every register, every map); sending it on every change instead of relaying incremental ops (what \`connectPyreonSync\` actually does) wastes bandwidth
+- Constructing two docs with the SAME actor id and treating them as independent peers — the LWW tie-break can no longer distinguish their writes`,
+  },
+
+  'sync/createActorId': {
+    signature: '() => string',
+    example: `import { createActorId, pyreonAdapter } from "@pyreon/sync"
+// Generate once, persist it, and reuse on every subsequent launch.
+const actor = loadPersistedActorId() ?? createActorId()
+savePersistedActorId(actor)
+const adapter = pyreonAdapter(actor)`,
+    notes: 'Mint a per-peer actor id — the LWW tie-breaker `PyreonCrdtDoc` uses to deterministically resolve a concurrent write. Prefers `crypto.randomUUID()`; falls back to `crypto.getRandomValues` (hex-encoded) on runtimes without `randomUUID` (older/non-secure-context), and as a last resort mixes a per-process monotonic counter with `Date.now()`/`Math.random()` so two ids minted in the SAME process can never collide even under degraded entropy. Two LIVE peers must never share an id — generate once per doc/session and persist it (e.g. to `useSecureStorage`) for a stable per-install device identity across restarts. See also: pyreonAdapter, PyreonCrdtDoc.',
+    mistakes: `- Calling it fresh on every mount instead of persisting the result — a new id each launch means the LWW tie-break can no longer recognize "this is the same device that wrote last time"
+- Assuming it's cryptographically unique across ALL environments — the fallback path (no \`crypto.randomUUID\`/\`getRandomValues\`) only guarantees uniqueness WITHIN one process; that path is a last resort, not the common case`,
+  },
+
+  'sync/connectPyreonSync': {
+    signature: '(doc: PyreonCrdtDoc, channel: SyncChannel) => { disconnect(): void }',
+    example: `import { connectPyreonSync, webSocketChannel } from "@pyreon/sync"
+const channel = webSocketChannel("wss://sync.example.com/my-room")
+const { disconnect } = connectPyreonSync(doc, channel)
+// later:
+disconnect()`,
+    notes: `Wire a \`PyreonCrdtDoc\` to a peer over a \`SyncChannel\` — the pure-TS engine's transport, JSON-over-any-string-duplex with no binary framing, so the SAME code runs on web AND inside a native JS runtime bridged to native signals. On open it sends the doc's full state (\`encodeState()\`); thereafter it relays only LOCAL ops as they commit (\`doc._onOps\`). Inbound messages merge under \`REMOTE_ORIGIN\`; a malformed or foreign message is silently ignored rather than thrown. Echo-prevention is structural, not a filter: \`PyreonCrdtDoc.applyOps\` fires observers but emits NO ops, so a received update is never picked up by the local-ops relay and re-broadcast. See also: webSocketChannel, PyreonCrdtDoc, createNativeSyncHost.`,
+    mistakes: `- Writing a custom \`SyncChannel\` that re-delivers its OWN sent messages back through \`onMessage\` — that reintroduces an echo the doc-level guard can't see, because from the doc's perspective it looks like a genuine (if redundant) remote update
+- Expecting \`disconnect()\` to tear down the doc — it only stops relaying ops and closes the channel; call \`doc.destroy()\` separately for a full local teardown`,
+  },
+
+  'sync/webSocketChannel': {
+    signature: '(url: string, WebSocketImpl?: WebSocketCtor) => SyncChannel',
+    example: `import { connectPyreonSync, webSocketChannel } from "@pyreon/sync"
+const channel = webSocketChannel("wss://sync.example.com/room", MyWsPolyfill)
+connectPyreonSync(doc, channel)`,
+    notes: 'The WebSocket implementation of `SyncChannel` for `connectPyreonSync`. Defaults to `globalThis.WebSocket` (browsers + Node 21+); pass `WebSocketImpl` to inject the `ws` package (older Node relay tests) or a native-runtime socket shim — the same seam `createNativeSyncHost` uses to accept a platform-bridged `WebSocket`. Throws a clear `[Pyreon]`-prefixed error immediately (not a bare `ReferenceError`) when no implementation is available and none was injected, so a missing global fails loud at the call site instead of deep inside a send. See also: connectPyreonSync, createNativeSyncHost.',
+    mistakes: `- Assuming it works on older Node without passing \`WebSocketImpl\` — global \`WebSocket\` is Node 21+; pass the \`ws\` package's constructor on older runtimes`,
+  },
+
+  'sync/createNativeSyncHost': {
+    signature: '(options: { actor: string; url?: string; WebSocketImpl?: WebSocketCtor }) => NativeSyncHost',
+    example: `import { createNativeSyncHost } from "@pyreon/sync"
+const host = createNativeSyncHost({ actor: "device-1", url: "wss://sync.example.com/room" })
+const unobserve = host.observe("doc", "title", (value) => { /* set native @State */ })
+host.set("doc", "title", "Hello") // a native UI edit
+host.destroy() // tears down the transport + document`,
+    notes: `The JS side of the contract a native runtime host (iOS JavaScriptCore, an Android JS engine) drives to make a native app a real peer in the sync graph. The host evaluates the \`@pyreon/sync\` bundle, injects a platform-socket-backed \`WebSocketCtor\` (the same \`PyreonWebSocket\` \`useWebSocket\` uses), and calls this once. For each synced key the native UI binds, it calls \`host.observe(map, key, cb)\` — the callback fires IMMEDIATELY with the current value (seeding the native signal) and again on every change, local or remote; a native UI edit calls \`host.set(map, key, value)\`. Everything underneath — the LWW engine, the JSON transport, this bridge — is pure JS, so identical code runs on web and native; the host's only job is JS↔native value marshalling. \`url\` is optional: omit it for a local-only doc with no transport. v1 values crossing the boundary are scalars (string/number/boolean/null). See also: connectPyreonSync, webSocketChannel, pyreonAdapter.`,
+    mistakes: `- Forgetting to call \`unobserve()\` per key — each \`observe\` call registers a callback the host must release when the native view unmounts, or it keeps receiving updates for a view that's gone
+- Passing a non-scalar value through \`host.set\` — v1 only marshals string/number/boolean/null across the JS↔native boundary
+- Omitting \`url\` and expecting cross-device sync — without it the doc is LOCAL-ONLY; the native host still needs to inject a real \`WebSocketImpl\` for the transport to actually reach a relay`,
   },
 
   'sync/createYjsDoc': {

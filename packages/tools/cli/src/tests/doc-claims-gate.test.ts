@@ -60,14 +60,32 @@ const forCheck = (r: GateResult, id: string): Finding[] =>
 const hooksIndex = (...names: string[]): string =>
   `${names.map((n) => `export { ${n} } from './${n}'`).join('\n')}\n`
 
-/** The five files that carry the hook count, all claiming `n`. */
+/**
+ * The six claim sites that carry the hook count, all claiming `n` — TWO of
+ * them (the prose line and the "full surface" table-count line) live in the
+ * SAME README, which is exactly the shape that let one drift while the
+ * other stayed correct (see `hookClaimsStaleTableCount` below).
+ */
 const hookClaims = (n: number): Record<string, string> => ({
-  'packages/fundamentals/hooks/README.md': `# hooks\n\n${n} signal-based reactive utilities\n`,
+  'packages/fundamentals/hooks/README.md':
+    `# hooks\n\n${n} signal-based reactive utilities\n\n${n} hooks across 7 categories.\n`,
   'packages/fundamentals/hooks/src/manifest.ts':
     `export default { summary: '${n} signal-based hooks: useHover, …',\n` +
     `  description: 'Signal-based hooks for Pyreon — ${n} reactive primitives' }\n`,
   'docs/src/content/docs/index.md': `| ${n} signal-based hooks for common UI patterns |\n`,
   'README.md': `| ${n} hooks — useHover, useToggle |\n`,
+})
+
+/**
+ * The exact real-world shape that shipped: the prose line ("N signal-based
+ * reactive utilities") is correct, but the table-count line a few lines
+ * below it ("M hooks across 7 categories.") is stale. One claim site
+ * catching drift does NOT mean its neighbour in the same file does.
+ */
+const hookClaimsStaleTableCount = (correct: number, stale: number): Record<string, string> => ({
+  ...hookClaims(correct),
+  'packages/fundamentals/hooks/README.md':
+    `# hooks\n\n${correct} signal-based reactive utilities\n\n${stale} hooks across 7 categories.\n`,
 })
 
 beforeEach(() => {
@@ -157,6 +175,27 @@ describe('a drifted number is reported, and a correct one is not', () => {
       expect(drift[0]?.message).toContain('claims 2')
       expect(drift[0]?.message).toContain('actual 3')
       expect(drift[0]?.fix, 'and say what to write instead').toContain('3')
+    })
+  })
+
+  it('catches a stale TABLE-count line even when the prose line above it is correct', () => {
+    // The real shape that shipped: `packages/fundamentals/hooks/README.md`
+    // carries the count TWICE — once in the opening prose ("65
+    // signal-based reactive utilities"), once a few lines further down in
+    // "## The full surface" ("N hooks across 7 categories."). Only the
+    // first was a guarded claim site, so it caught drift while the second
+    // silently rotted to a wrong number right next to a correct one. This
+    // asserts BOTH are now independently checked against the same file.
+    build({
+      'packages/fundamentals/hooks/src/index.ts': hooksIndex('useHover', 'useToggle', 'useDebounce'),
+      ...hookClaimsStaleTableCount(3, 2),
+    })
+    return run().then((r) => {
+      const drift = forCheck(r, 'hook-count').filter((f) => f.code.endsWith('-drift'))
+      expect(drift.length, 'the prose line is fine; only the table line should drift').toBe(1)
+      expect(drift[0]?.location?.relPath).toBe('packages/fundamentals/hooks/README.md')
+      expect(drift[0]?.message).toContain('claims 2')
+      expect(drift[0]?.message).toContain('actual 3')
     })
   })
 
