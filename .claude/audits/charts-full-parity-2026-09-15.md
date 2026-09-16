@@ -224,6 +224,20 @@ for interaction, animation or accessibility parity.
   `Math.floor(list.length / 2)` is a Double, so an Int loop bound has to come
   from the list itself.
 
+- [x] `presentation.labels-rich-text` complete: labels are an engine module
+  (`engine/labels.ts`) — `\n` breaks a line, `{name|text}` takes a named rich
+  style, and a block of lines anchors where a one-line label would. A PLAIN
+  label still emits exactly one text command, so nothing regresses for the
+  common case. The facade resolves the `{a}`/`{b}`/`{c}`/`{d}` template (and
+  calls a function formatter) per datum, because it is the only layer that
+  knows the series name, the category and the share; the native desugar
+  resolves the SAME way at compile time and carries the finished strings plus
+  the colour, size and rich styles. A function formatter cannot run at compile
+  time and is named. Two more native-subset lessons: there is no two-argument
+  `indexOf` and no zero-argument local-closure call, and an array local is a
+  Kotlin `val` — so it can never be REASSIGNED (the scanner became a per-line
+  helper that only ever pushes).
+
 ## Exit gate
 
 Zero unclassified core inventory rows; green real-browser conformance; green

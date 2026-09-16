@@ -11926,6 +11926,30 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
     }
     const v = fields.get(spec.name)
     if (v !== undefined) {
+      if (spec.kind === 'strings') {
+        if (v.kind !== 'array' || v.elements.some((n) => n.kind !== 'literal' || typeof n.value !== 'string')) {
+          _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`${spec.name}\` must be an array of string literals on native; emitting an empty Box().`)
+          return 'unsupported'
+        }
+        args.push(`${spec.name} = listOf<String>(${v.elements.map((n) => JSON.stringify((n as { value: string }).value)).join(', ')})`)
+        continue
+      }
+      if (spec.kind === 'rich') {
+        if (v.kind !== 'array') return 'unsupported'
+        const styles: string[] = []
+        for (const r of v.elements) {
+          if (r.kind !== 'object') return 'unsupported'
+          const rf = new Map(r.fields.map((field) => [field.name, field.value]))
+          const text = (name: string): string => {
+            const raw = rf.get(name)
+            return JSON.stringify(raw?.kind === 'literal' && typeof raw.value === 'string' ? raw.value : '')
+          }
+          const sizeIR = rf.get('fontSize')
+          styles.push(`RichStyle(name = ${text('name')}, color = ${text('color')}, fontSize = ${sizeIR?.kind === 'literal' && typeof sizeIR.value === 'number' ? chartDouble(sizeIR.value) : '0.0'})`)
+        }
+        args.push(`${spec.name} = listOf<RichStyle>(${styles.join(', ')})`)
+        continue
+      }
       if (spec.kind === 'numbers') {
         if (v.kind !== 'array' || v.elements.some((n) => n.kind !== 'literal' || typeof n.value !== 'number')) {
           _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`${spec.name}\` must be an array of number literals on native; emitting an empty Box().`)

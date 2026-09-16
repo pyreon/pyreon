@@ -61,6 +61,13 @@ const ROLE: Readonly<Record<keyof Series, Role>> = {
   pattern: 'presentation',
   dash: 'presentation',
   negativeColor: 'presentation',
+  // Presentation, not data: a label RENDERS a value the accessible table
+  // already carries (ECharts' `label.formatter` over the same datum), so it
+  // adds no channel a reader would otherwise miss.
+  labelTexts: 'presentation',
+  labelColor: 'presentation',
+  labelSize: 'presentation',
+  labelRich: 'presentation',
   focus: 'presentation',
   emphasisColor: 'presentation',
   selectColor: 'presentation',

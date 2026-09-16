@@ -22,8 +22,10 @@ import type { CustomRenderItem, CustomSeriesPlan } from './custom-series'
 import { resolveTheme } from './theme-registry'
 import type { ThemeDefinition } from './theme-registry'
 import { dateFormatter, numberFormatter } from './locale'
+import type { RichStyle } from './labels'
 import type { Annotation, ChartSpec, PointMarker, Series, SeriesExtra } from './render'
 import { smooth, step } from './curve'
+import { plain } from './format'
 import type { Formatter } from './format'
 import { renderLegend } from './legend'
 import type { LegendEntry } from './legend'
@@ -259,6 +261,84 @@ function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning[
     if (Array.isArray(offset) && offset.length === 2 && num(offset[0]) !== null && num(offset[1]) !== null) out.symbolOffset = [num(offset[0]) as number, num(offset[1]) as number]
     else warn('series-option-unsupported', `${path}.symbolOffset`, 'symbolOffset takes [dx, dy] in pixels here (a percent string is not supported); it was ignored.')
   }
+  return out
+}
+
+
+/**
+ * A series' `label` as the engine's label fields.
+ *
+ * The `{a}` / `{b}` / `{c}` / `{d}` template is resolved HERE, per datum,
+ * because this is the only layer that knows the series name, the category and
+ * the share of the total. A FUNCTION formatter is called with ECharts'
+ * callback params. Rich styles pass through to the engine, which owns the
+ * `{name|text}` segmentation and the line breaks.
+ */
+export function labelFields(
+  label: Record<string, unknown>,
+  seriesName: string,
+  categories: string[],
+  values: Double[],
+  path: string,
+  warn: (code: OptionWarning['code'], path: string, message: string) => void,
+  fmt: Formatter,
+): Partial<Series> {
+  const out: Partial<Series> = {}
+  if (typeof label['color'] === 'string') out.labelColor = label['color'] as string
+  const size = num(label['fontSize'])
+  if (size !== null) out.labelSize = size
+  const rich = isObj(label['rich']) ? (label['rich'] as Record<string, unknown>) : undefined
+  if (rich !== undefined) {
+    const styles: RichStyle[] = []
+    for (const name of Object.keys(rich)) {
+      const spec = isObj(rich[name]) ? (rich[name] as Record<string, unknown>) : {}
+      styles.push({
+        name,
+        color: typeof spec['color'] === 'string' ? (spec['color'] as string) : '',
+        fontSize: num(spec['fontSize']) ?? 0.0,
+      })
+      for (const key of Object.keys(spec)) {
+        if (key !== 'color' && key !== 'fontSize') warn('series-option-unsupported', `${path}.rich.${name}.${key}`, `label.rich ${key} has no engine form (a rich segment takes a colour and a size); it was ignored.`)
+      }
+    }
+    if (styles.length > 0) out.labelRich = styles
+  }
+  const formatter = label['formatter']
+  if (formatter === undefined) return out
+  let total = 0.0
+  for (const v of values) if (Number.isFinite(v)) total = total + Math.abs(v)
+  const texts: string[] = []
+  if (typeof formatter === 'function') {
+    const fn = formatter as (params: { seriesName: string; name: string; value: Double; dataIndex: number; percent: Double }) => unknown
+    for (let i = 0; i < values.length; i++) {
+      const v = values[i]!
+      texts.push(String(fn({ seriesName, name: categories[i] ?? String(i), value: v, dataIndex: i, percent: total > 0.0 ? (Math.abs(v) / total) * 100.0 : 0.0 })))
+    }
+    out.labelTexts = texts
+    return out
+  }
+  if (typeof formatter !== 'string') {
+    warn('series-option-unsupported', `${path}.formatter`, 'label.formatter takes a template string or a function; it was ignored.')
+    return out
+  }
+  const tpl = formatter as string
+  // ECharts' label placeholders. `{d}` is a percentage of the series total,
+  // which is what it means for a pie and the closest honest reading here.
+  for (const key of ['{a1}', '{b1}', '{c1}', '{e}', '{f}', '{g}']) {
+    if (tpl.includes(key)) warn('series-option-unsupported', `${path}.formatter`, `label.formatter placeholder "${key}" is not supported ({a}, {b}, {c} and {d} are); it was left as written.`)
+  }
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i]!
+    const percent = total > 0.0 ? (Math.abs(v) / total) * 100.0 : 0.0
+    texts.push(
+      tpl
+        .split('{a}').join(seriesName)
+        .split('{b}').join(categories[i] ?? String(i))
+        .split('{c}').join(fmt(v))
+        .split('{d}').join(fmt(Math.round(percent * 10.0) / 10.0)),
+    )
+  }
+  out.labelTexts = texts
   return out
 }
 
@@ -524,6 +604,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       ...(gradient !== undefined && gradient.stops.length > 0 ? { gradient } : {}),
       ...(Array.isArray(s['tooltipExtras']) ? { extras: s['tooltipExtras'] as SeriesExtra[] } : {}),
       ...stateFields(s, path, warn),
+      ...labelFields(label, typeof s['name'] === 'string' ? (s['name'] as string) : `Series ${i + 1}`, categories, values, `${path}.label`, warn, localeNumber ?? plain),
     }
     series.push(entry)
     const pinMode = selectedModeOf(s, path, warn)
