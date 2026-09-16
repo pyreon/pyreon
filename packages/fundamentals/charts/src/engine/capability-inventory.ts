@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.13' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.14' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -62,8 +62,8 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('coordinates.axes', 'coordinates', 'direct', 'partial', 'src/engine/option.ts'), // one x axis, two y axes
   row('coordinates.visual-map', 'coordinates', 'direct', 'partial', 'src/engine/visual-map.ts'), // calculable handle
   row('coordinates.graphic', 'coordinates', 'direct', 'partial', 'src/engine/option-layer.ts'), // element types
-  row('coordinates.mark-point', 'coordinates', 'direct', 'partial', 'src/engine/option.ts'), // max/min/coord only
-  row('coordinates.mark-line', 'coordinates', 'direct', 'partial', 'src/engine/option.ts'), // avg/max/min/axis only
+  row('coordinates.mark-point', 'coordinates', 'direct', 'complete', 'src/engine/option-marks.test.ts', '../../native/compiler/src/tests/chart-marks-native.test.ts'),
+  row('coordinates.mark-line', 'coordinates', 'direct', 'complete', 'src/engine/option-marks.test.ts', '../../native/compiler/src/tests/chart-marks-native.test.ts'),
   row('coordinates.geo', 'coordinates', 'direct', 'partial', 'src/engine/geo-web.ts'),
   row('coordinates.data-zoom', 'coordinates', 'direct', 'partial', 'src/engine/navigator.ts'),
   row('coordinates.timeline', 'coordinates', 'direct', 'partial', 'src/engine/option-composite.ts', '../../native/compiler/src/tests/chart-option-family-native.test.ts'),

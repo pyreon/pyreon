@@ -333,15 +333,23 @@ public struct Annotation: Codable {
   public var yTo: Double? = nil
   public var xFrom: Double? = nil
   public var xTo: Double? = nil
+  public var x1: Double? = nil
+  public var y1: Double? = nil
+  public var x2: Double? = nil
+  public var y2: Double? = nil
   public var label: String? = nil
   public var color: String? = nil
-  public init(y: Double? = nil, x: Double? = nil, yFrom: Double? = nil, yTo: Double? = nil, xFrom: Double? = nil, xTo: Double? = nil, label: String? = nil, color: String? = nil) {
+  public init(y: Double? = nil, x: Double? = nil, yFrom: Double? = nil, yTo: Double? = nil, xFrom: Double? = nil, xTo: Double? = nil, x1: Double? = nil, y1: Double? = nil, x2: Double? = nil, y2: Double? = nil, label: String? = nil, color: String? = nil) {
     self.y = y
     self.x = x
     self.yFrom = yFrom
     self.yTo = yTo
     self.xFrom = xFrom
     self.xTo = xTo
+    self.x1 = x1
+    self.y1 = y1
+    self.x2 = x2
+    self.y2 = y2
     self.label = label
     self.color = color
   }
@@ -3903,6 +3911,19 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           out.append(PyreonDrawCmd(kind: "text", fill: (a.color ?? t.label), text: xLabel, at: PyreonChartPt(x: xPos + 4.0, y: plot.y), size: t.fontSize, align: "start", baseline: "top"))
         }
       }
+      let sx1 = (a.x1 ?? 0.0)
+      let sy1 = (a.y1 ?? 0.0)
+      let sx2 = (a.x2 ?? 0.0)
+      let sy2 = (a.y2 ?? 0.0)
+      if a.x1 != nil && a.y1 != nil && a.x2 != nil && a.y2 != nil {
+        let p1 = PyreonChartPt(x: scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, sx1), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy1))
+        let p2 = PyreonChartPt(x: scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, sx2), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy2))
+        out.append(PyreonDrawCmd(kind: "line", from: p1, to: p2, stroke: (a.color ?? t.axis), width: 1.0, dash: [4.0, 4.0]))
+        let segLabel = (a.label ?? "")
+        if a.label != nil {
+          out.append(PyreonDrawCmd(kind: "text", fill: (a.color ?? t.label), text: segLabel, at: PyreonChartPt(x: p2.x, y: p2.y - 4.0), size: t.fontSize, align: "middle", baseline: "bottom"))
+        }
+      }
     }
     let emph = (spec.emphasis ?? Emphasis(highlight: -1, selected: []))
     if emph.highlight >= 0 && spec.horizontal != true {
@@ -4267,17 +4288,31 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             }
           }
         } else {
-          let rawAt = (m.atIndex ?? -1.0)
-          if m.atIndex != nil {
-            var jf = 0.0
-            for j in 0..<n {
-              if jf <= rawAt {
-                idx = j
-              }
-              jf = jf + 1.0
+          if m.at == "average" {
+            var sum = 0.0
+            for i in 0..<n {
+              sum = sum + s.values[i]
             }
-            if idx < 0 {
-              idx = 0
+            let mean = Double(sum) / Double(n)
+            idx = 0
+            for i in 1..<n {
+              if abs(s.values[i] - mean) < abs(s.values[idx] - mean) {
+                idx = i
+              }
+            }
+          } else {
+            let rawAt = (m.atIndex ?? -1.0)
+            if m.atIndex != nil {
+              var jf = 0.0
+              for j in 0..<n {
+                if jf <= rawAt {
+                  idx = j
+                }
+                jf = jf + 1.0
+              }
+              if idx < 0 {
+                idx = 0
+              }
             }
           }
         }

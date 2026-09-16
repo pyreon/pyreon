@@ -58,7 +58,7 @@ data class WaterfallStep(var rect: PyreonChartRect, var datumIndex: Int, var val
 
 data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null)
 
-data class Annotation(var y: Double? = null, var x: Double? = null, var yFrom: Double? = null, var yTo: Double? = null, var xFrom: Double? = null, var xTo: Double? = null, var label: String? = null, var color: String? = null)
+data class Annotation(var y: Double? = null, var x: Double? = null, var yFrom: Double? = null, var yTo: Double? = null, var xFrom: Double? = null, var xTo: Double? = null, var x1: Double? = null, var y1: Double? = null, var x2: Double? = null, var y2: Double? = null, var label: String? = null, var color: String? = null)
 
 data class PointMarker(var seriesIndex: Double? = null, var at: String? = null, var atIndex: Double? = null, var label: String? = null, var color: String? = null, var radius: Double? = null)
 
@@ -1890,6 +1890,19 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           out.add(PyreonDrawCmd(kind = "text", fill = (a.color ?: t.label), text = xLabel, at = PyreonChartPt(x = xPos + 4.0, y = plot.y), size = t.fontSize, align = "start", baseline = "top"))
         }
       }
+      val sx1 = (a.x1 ?: 0.0)
+      val sy1 = (a.y1 ?: 0.0)
+      val sx2 = (a.x2 ?: 0.0)
+      val sy2 = (a.y2 ?: 0.0)
+      if (a.x1 != null && a.y1 != null && a.x2 != null && a.y2 != null) {
+        val p1 = PyreonChartPt(x = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, sx1), y = scaleLinear(yDomain, plot.y + plot.h, plot.y, sy1))
+        val p2 = PyreonChartPt(x = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, sx2), y = scaleLinear(yDomain, plot.y + plot.h, plot.y, sy2))
+        out.add(PyreonDrawCmd(kind = "line", from = p1, to = p2, stroke = (a.color ?: t.axis), width = 1.0, dash = listOf(4.0, 4.0)))
+        val segLabel = (a.label ?: "")
+        if (a.label != null) {
+          out.add(PyreonDrawCmd(kind = "text", fill = (a.color ?: t.label), text = segLabel, at = PyreonChartPt(x = p2.x, y = p2.y - 4.0), size = t.fontSize, align = "middle", baseline = "bottom"))
+        }
+      }
     }
     val emph = (spec.emphasis ?: Emphasis(highlight = -1, selected = listOf()))
     if (emph.highlight >= 0 && spec.horizontal != true) {
@@ -2254,17 +2267,31 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
             }
           }
         } else {
-          val rawAt = (m.atIndex ?: -1.0)
-          if (m.atIndex != null) {
-            var jf = 0.0
-            for (j in 0 until n) {
-              if (jf <= rawAt) {
-                idx = j
-              }
-              jf = jf + 1.0
+          if (m.at == "average") {
+            var sum = 0.0
+            for (i in 0 until n) {
+              sum = sum + s.values[i]
             }
-            if (idx < 0) {
-              idx = 0
+            val mean = (sum).toDouble() / (n).toDouble()
+            idx = 0
+            for (i in 1 until n) {
+              if (Math.abs(s.values[i] - mean) < Math.abs(s.values[idx] - mean)) {
+                idx = i
+              }
+            }
+          } else {
+            val rawAt = (m.atIndex ?: -1.0)
+            if (m.atIndex != null) {
+              var jf = 0.0
+              for (j in 0 until n) {
+                if (jf <= rawAt) {
+                  idx = j
+                }
+                jf = jf + 1.0
+              }
+              if (idx < 0) {
+                idx = 0
+              }
             }
           }
         }

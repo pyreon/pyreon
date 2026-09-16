@@ -91,10 +91,10 @@ export interface Series {
 /**
  * A reference rule or band — the "target line" every dashboard needs.
  *
- * Exactly one of `y`, `x`, `yFrom`/`yTo`, or `xFrom`/`xTo` should be set; an
- * annotation with none is skipped rather than guessed at. Values are in DOMAIN
- * units — for a categorical x axis that is the datum INDEX, matching how the
- * points are placed.
+ * Exactly one of `y`, `x`, `yFrom`/`yTo`, `xFrom`/`xTo`, or the segment
+ * `x1`/`y1`/`x2`/`y2` should be set; an annotation with none is skipped
+ * rather than guessed at. Values are in DOMAIN units — for a categorical x
+ * axis that is the datum INDEX, matching how the points are placed.
  */
 export interface Annotation {
   /** Horizontal rule at this y value. */
@@ -107,6 +107,15 @@ export interface Annotation {
   /** Vertical band between these two x-domain values. */
   xFrom?: Double | undefined
   xTo?: Double | undefined
+  /**
+   * Segment between two data-space points — ECharts' point-to-point markLine
+   * (`[{ coord }, { coord }]`, or max→min). All four are required for it to
+   * draw; the label sits at the second point.
+   */
+  x1?: Double | undefined
+  y1?: Double | undefined
+  x2?: Double | undefined
+  y2?: Double | undefined
   label?: string | undefined
   color?: string | undefined
 }
@@ -114,8 +123,9 @@ export interface Annotation {
 /**
  * A datum-anchored point marker — ECharts' markPoint, engine-shaped.
  *
- * Exactly one of `at` ('max' | 'min') or `atIndex` (a concrete datum index)
- * should be set; a marker with neither is skipped rather than guessed at —
+ * Exactly one of `at` ('max' | 'min' | 'average' — the datum NEAREST the
+ * series mean, ECharts' markPoint placement) or `atIndex` (a concrete datum
+ * index) should be set; a marker with neither is skipped rather than guessed at —
  * the Annotation precedent. Split into two fields rather than one
  * `'max' | 'min' | number` union because a mixed string/number union falls
  * outside the native subset the engine compiles in, and the split costs the
@@ -128,8 +138,8 @@ export interface Annotation {
 export interface PointMarker {
   /** Which series the marker reads; default 0. */
   seriesIndex?: Double | undefined
-  /** Anchor at the series' maximum or minimum datum. */
-  at?: 'max' | 'min' | undefined
+  /** Anchor at the series' maximum, minimum, or nearest-to-mean datum. */
+  at?: 'max' | 'min' | 'average' | undefined
   /** Anchor at a concrete datum index (clamped into range). */
   atIndex?: Double | undefined
   label?: string | undefined
@@ -814,6 +824,22 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         })
       }
     }
+    // A segment between two data-space points, dashed like the rules. Both
+    // ends scale on the SAME axes the rules use, so a segment from a datum
+    // to a datum lands on the marks the series drew there.
+    const sx1 = a.x1 ?? 0.0
+    const sy1 = a.y1 ?? 0.0
+    const sx2 = a.x2 ?? 0.0
+    const sy2 = a.y2 ?? 0.0
+    if (a.x1 !== undefined && a.y1 !== undefined && a.x2 !== undefined && a.y2 !== undefined) {
+      const p1: Pt = { x: scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, sx1), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy1) }
+      const p2: Pt = { x: scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, sx2), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy2) }
+      out.push({ kind: 'line', from: p1, to: p2, stroke: a.color ?? t.axis, width: 1.0, dash: [4.0, 4.0] })
+      const segLabel = a.label ?? ''
+      if (a.label !== undefined) {
+        out.push({ kind: 'text', text: segLabel, at: { x: p2.x, y: p2.y - 4.0 }, fill: a.color ?? t.label, size: t.fontSize, align: 'middle', baseline: 'bottom' })
+      }
+    }
   }
 
   // Emphasis band: the highlighted datum's column, UNDER every series, so a
@@ -1282,6 +1308,15 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     } else if (m.at === 'min') {
       idx = 0
       for (let i = 1; i < n; i++) if (s.values[i]! < s.values[idx]!) idx = i
+    } else if (m.at === 'average') {
+      // ECharts places an `average` markPoint on the datum NEAREST the mean
+      // (`indicesOfNearest`), not at the mean itself — the mean is rarely a
+      // point the series drew.
+      let sum = 0.0
+      for (let i = 0; i < n; i++) sum = sum + s.values[i]!
+      const mean = sum / n
+      idx = 0
+      for (let i = 1; i < n; i++) if (Math.abs(s.values[i]! - mean) < Math.abs(s.values[idx]! - mean)) idx = i
     } else {
       const rawAt = m.atIndex ?? -1.0
       if (m.atIndex !== undefined) {

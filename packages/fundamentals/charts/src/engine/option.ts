@@ -413,31 +413,99 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     const seriesIndex = series.length - 1
 
     // markLine / markArea → annotations; markPoint → markers.
-    const ml = isObj(s['markLine']) && Array.isArray(s['markLine']['data']) ? (s['markLine']['data'] as unknown[]) : []
+    // Datum x in annotation units: the continuous x when the series has one,
+    // else the datum index (the engine's categorical contract).
+    const xOfIndex = (j: number): number => (xs.length === values.length && xs.length > 0 ? xs[j]! : j)
+    const nearestIndex = (target: number): number => {
+      let best = 0
+      for (let j = 1; j < values.length; j++) if (Math.abs(values[j]! - target) < Math.abs(values[best]! - target)) best = j
+      return best
+    }
+    const argIndex = (which: string): number => {
+      if (values.length === 0) return -1
+      if (which === 'max' || which === 'min') {
+        let best = 0
+        for (let j = 1; j < values.length; j++) if (which === 'max' ? values[j]! > values[best]! : values[j]! < values[best]!) best = j
+        return best
+      }
+      if (which === 'average') return nearestIndex(values.reduce((a, b) => a + b, 0.0) / values.length)
+      return -1
+    }
+    const statOf = (which: string): number | null => {
+      if (values.length === 0) return null
+      if (which === 'average') return values.reduce((a, b) => a + b, 0.0) / values.length
+      if (which === 'max') return Math.max(...values)
+      if (which === 'min') return Math.min(...values)
+      if (which === 'median') {
+        const sorted = [...values].sort((a, b) => a - b)
+        const mid = Math.floor(sorted.length / 2)
+        return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2
+      }
+      return null
+    }
+    // A category NAME in a `coord` resolves to its index; a number on a
+    // continuous x resolves to the nearest datum's x (so the mark sits where
+    // that datum was drawn), else it is the index itself.
+    const xOfCoord = (raw: unknown): number | null => {
+      if (typeof raw === 'string') {
+        const at = categories.indexOf(raw)
+        return at >= 0 ? at : null
+      }
+      return num(raw)
+    }
+    // One markLine endpoint: a datum picked by statistic, a `coord`, or an axis pair.
+    const endpoint = (e: Record<string, unknown>): { x: number; y: number } | null => {
+      if (typeof e['type'] === 'string') {
+        const at = argIndex(e['type'] as string)
+        return at < 0 ? null : { x: xOfIndex(at), y: values[at]! }
+      }
+      if (Array.isArray(e['coord'])) {
+        const cx = xOfCoord((e['coord'] as unknown[])[0])
+        const cy = num((e['coord'] as unknown[])[1])
+        return cx !== null && cy !== null ? { x: cx, y: cy } : null
+      }
+      const ex = num(e['xAxis'])
+      const ey = num(e['yAxis'])
+      return ex !== null && ey !== null ? { x: ex, y: ey } : null
+    }
+    const styleColor = (o: Record<string, unknown> | undefined, key: string, fallback: string | undefined): string | undefined => {
+      const st = o !== undefined && isObj(o[key]) ? o[key] : undefined
+      return st !== undefined && typeof st['color'] === 'string' ? (st['color'] as string) : fallback
+    }
+    const markLine = isObj(s['markLine']) ? s['markLine'] : undefined
+    const ml = markLine !== undefined && Array.isArray(markLine['data']) ? (markLine['data'] as unknown[]) : []
+    const mlColor = styleColor(markLine, 'lineStyle', color)
     for (let k = 0; k < ml.length; k++) {
       const m = ml[k]
+      if (Array.isArray(m)) {
+        // Point-to-point: `[{ from }, { to }]` — a segment between two data-space points.
+        const from = isObj(m[0]) ? endpoint(m[0]) : null
+        const to = isObj(m[1]) ? endpoint(m[1]) : null
+        if (from === null || to === null) {
+          warn('mark-shape-unsupported', `${path}.markLine.data[${k}]`, 'A point-to-point markLine needs two endpoints, each a type (max/min/average), a coord, or an xAxis + yAxis pair; it was skipped.')
+          continue
+        }
+        const head = m[0] as Record<string, unknown>
+        annotations.push({ x1: from.x, y1: from.y, x2: to.x, y2: to.y, label: typeof head['name'] === 'string' ? (head['name'] as string) : undefined, color: styleColor(head, 'lineStyle', mlColor) })
+        continue
+      }
       if (!isObj(m)) continue
       const name = typeof m['name'] === 'string' ? (m['name'] as string) : undefined
-      if (m['type'] === 'average' || m['type'] === 'max' || m['type'] === 'min') {
-        const stat =
-          m['type'] === 'average'
-            ? values.reduce((a, b) => a + b, 0.0) / Math.max(1, values.length)
-            : m['type'] === 'max'
-              ? Math.max(...values)
-              : Math.min(...values)
-        annotations.push({ y: stat, label: name ?? String(m['type']), color })
+      const lineColor = styleColor(m, 'lineStyle', mlColor)
+      const stat = typeof m['type'] === 'string' ? statOf(m['type'] as string) : null
+      if (stat !== null) {
+        annotations.push({ y: stat, label: name ?? String(m['type']), color: lineColor })
       } else if (num(m['yAxis']) !== null) {
-        annotations.push({ y: num(m['yAxis']) as number, label: name, color })
+        annotations.push({ y: num(m['yAxis']) as number, label: name, color: lineColor })
       } else if (num(m['xAxis']) !== null) {
-        annotations.push({ x: num(m['xAxis']) as number, label: name, color })
+        annotations.push({ x: num(m['xAxis']) as number, label: name, color: lineColor })
       } else {
-        warn('mark-shape-unsupported', `${path}.markLine.data[${k}]`, 'Only average/max/min, yAxis and xAxis markLines are mapped.')
+        warn('mark-shape-unsupported', `${path}.markLine.data[${k}]`, 'Only average/max/min/median, yAxis, xAxis, and point-to-point markLines are mapped.')
       }
     }
     const markArea = isObj(s['markArea']) ? s['markArea'] : undefined
     const ma = markArea !== undefined && Array.isArray(markArea['data']) ? (markArea['data'] as unknown[]) : []
-    const maStyle = markArea !== undefined && isObj(markArea['itemStyle']) ? markArea['itemStyle'] : undefined
-    const maColor = maStyle !== undefined && typeof maStyle['color'] === 'string' ? (maStyle['color'] as string) : color
+    const maColor = styleColor(markArea, 'itemStyle', color)
     for (let k = 0; k < ma.length; k++) {
       const pair = ma[k]
       if (!Array.isArray(pair) || pair.length < 2 || !isObj(pair[0]) || !isObj(pair[1])) {
@@ -453,17 +521,31 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       else if (xFrom !== null && xTo !== null) annotations.push({ xFrom, xTo, label: name, color: maColor })
       else warn('mark-shape-unsupported', `${path}.markArea.data[${k}]`, 'A mark area needs matching numeric xAxis or yAxis boundaries; it was skipped.')
     }
-    const mp = isObj(s['markPoint']) && Array.isArray(s['markPoint']['data']) ? (s['markPoint']['data'] as unknown[]) : []
+    const markPoint = isObj(s['markPoint']) ? s['markPoint'] : undefined
+    const mp = markPoint !== undefined && Array.isArray(markPoint['data']) ? (markPoint['data'] as unknown[]) : []
+    const mpColor = styleColor(markPoint, 'itemStyle', undefined)
+    const mpSize = markPoint !== undefined ? num(markPoint['symbolSize']) : null
     for (let k = 0; k < mp.length; k++) {
       const m = mp[k]
       if (!isObj(m)) continue
-      const name = typeof m['name'] === 'string' ? (m['name'] as string) : undefined
-      if (m['type'] === 'max' || m['type'] === 'min') {
-        markers.push({ seriesIndex, at: m['type'] as 'max' | 'min', label: name })
-      } else if (Array.isArray(m['coord']) && num((m['coord'] as unknown[])[0]) !== null) {
-        markers.push({ seriesIndex, atIndex: num((m['coord'] as unknown[])[0]) as number, label: name })
+      // `name` labels the marker; ECharts shows `value` when there is no name.
+      const name = typeof m['name'] === 'string' ? (m['name'] as string) : m['value'] !== undefined && m['value'] !== null ? String(m['value']) : undefined
+      const pointColor = styleColor(m, 'itemStyle', mpColor)
+      const size = num(m['symbolSize']) ?? mpSize
+      const extra = { label: name, ...(pointColor !== undefined ? { color: pointColor } : {}), ...(size !== null ? { radius: size / 2.0 } : {}) }
+      const dim = m['valueDim'] ?? m['valueIndex']
+      if (dim !== undefined && dim !== 'y' && dim !== 1) {
+        warn('mark-shape-unsupported', `${path}.markPoint.data[${k}].valueDim`, 'markPoint statistics run over the y values only; a valueDim/valueIndex other than y was ignored.')
+      }
+      if (m['type'] === 'max' || m['type'] === 'min' || m['type'] === 'average') {
+        markers.push({ seriesIndex, at: m['type'] as 'max' | 'min' | 'average', ...extra })
+      } else if (Array.isArray(m['coord']) && xOfCoord((m['coord'] as unknown[])[0]) !== null) {
+        const cx = xOfCoord((m['coord'] as unknown[])[0]) as number
+        // On a continuous x the coord names a position; the marker anchors to the nearest datum.
+        const atIndex = xs.length === values.length && xs.length > 0 ? xs.reduce((best, x, j) => (Math.abs(x - cx) < Math.abs(xs[best]! - cx) ? j : best), 0) : cx
+        markers.push({ seriesIndex, atIndex, ...extra })
       } else {
-        warn('mark-shape-unsupported', `${path}.markPoint.data[${k}]`, 'Only max/min and coord markPoints are mapped.')
+        warn('mark-shape-unsupported', `${path}.markPoint.data[${k}]`, 'Only max/min/average and coord markPoints are mapped.')
       }
     }
   }

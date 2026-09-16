@@ -77,6 +77,14 @@ for interaction, animation or accessibility parity.
   transpose exists three times (web `transposeCmds`, `pyreonTransposeCmds` in
   both runtimes) and is locked by execution like the RTL mirror. Rows
   `series.sankey`, `coordinates.calendar`, `coordinates.parallel` complete.
+- [x] `coordinates.mark-line` / `coordinates.mark-point` complete: the engine
+  gains segment annotations (`x1`/`y1`/`x2`/`y2`) and `average` markers (the
+  datum nearest the mean, ECharts' placement), regenerated into both native
+  engines; the facade resolves `median`, `[from, to]` pairs (statistics,
+  coords, axis pairs), category-named coords, `value` labels, per-mark and
+  mark-level colours and sizes; the native OptionChart desugar runs the same
+  resolution at compile time over the literal series. Unplaceable marks are
+  named on every target.
 - [x] C2 `series.line` complete: stacked lines sit on the running total of
   their `stack` group (gaps carry the total), stacked areas are the engine's
   `stackedArea` kind — the last live warning on that row is gone.

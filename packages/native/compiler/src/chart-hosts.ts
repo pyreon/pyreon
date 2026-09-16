@@ -1611,7 +1611,7 @@ export function desugarOptionChart(
         warn(`<OptionChart option.series[${si}].type>: this cartesian adapter needs line, bar, pictorialBar, or scatter series; emitting nothing.`)
         return undefined
       }
-      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'symbol', 'symbolRepeat'], `option.series[${si}]`, warn)
+      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat'], `option.series[${si}]`, warn)
       seriesObjects.push(s)
     }
     const xAxis = literalOf(objectField(raw, 'xAxis'), resolve)
@@ -1735,7 +1735,155 @@ export function desugarOptionChart(
         annotations.push({ kind: 'object', fields })
       }
     }
+    // markLine → annotations (rules and segments), markPoint → markers — the
+    // web facade's resolution run at compile time over the literal series,
+    // so a statistic names the same datum on every target.
+    const markers: ExprIR[] = []
+    const catNames = categories.elements.map((x) => String(litString(x) ?? litNumber(x)))
+    const styleColorOf = (o: Extract<ExprIR, { kind: 'object' }> | undefined, key: string, fallback: string | undefined): string | undefined => {
+      const st = o === undefined ? undefined : literalOf(objectField(o, key), resolve)
+      const c = st?.kind === 'object' ? litString(objectField(st, 'color')) : undefined
+      return c ?? fallback
+    }
+    for (let si = 0; si < seriesObjects.length; si++) {
+      const s = seriesObjects[si]!
+      const values = seriesValues[si]!
+      const argIndex = (which: string): number => {
+        if (values.length === 0) return -1
+        if (which === 'max' || which === 'min') return values.reduce((best, v, j) => (which === 'max' ? v > values[best]! : v < values[best]!) ? j : best, 0)
+        if (which === 'average') {
+          const mean = values.reduce((a, b) => a + b, 0) / values.length
+          return values.reduce((best, v, j) => (Math.abs(v - mean) < Math.abs(values[best]! - mean) ? j : best), 0)
+        }
+        return -1
+      }
+      const statOf = (which: string): number | undefined => {
+        if (values.length === 0) return undefined
+        if (which === 'average') return values.reduce((a, b) => a + b, 0) / values.length
+        if (which === 'max') return Math.max(...values)
+        if (which === 'min') return Math.min(...values)
+        if (which === 'median') {
+          const sorted = [...values].sort((a, b) => a - b)
+          const mid = Math.floor(sorted.length / 2)
+          return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2
+        }
+        return undefined
+      }
+      const xOfCoord = (rawX: ExprIR | undefined): number | undefined => {
+        const name = litString(rawX)
+        if (name !== undefined) {
+          const at = catNames.indexOf(name)
+          return at >= 0 ? at : undefined
+        }
+        return litNumber(rawX)
+      }
+      const endpoint = (end: Extract<ExprIR, { kind: 'object' }>): { x: number; y: number } | undefined => {
+        const endType = litString(objectField(end, 'type'))
+        if (endType !== undefined) {
+          const at = argIndex(endType)
+          return at < 0 ? undefined : { x: at, y: values[at]! }
+        }
+        const coord = literalOf(objectField(end, 'coord'), resolve)
+        if (coord?.kind === 'array') {
+          const cx = xOfCoord(literalOf(coord.elements[0], resolve))
+          const cy = litNumber(literalOf(coord.elements[1], resolve))
+          return cx !== undefined && cy !== undefined ? { x: cx, y: cy } : undefined
+        }
+        const ex = litNumber(objectField(end, 'xAxis'))
+        const ey = litNumber(objectField(end, 'yAxis'))
+        return ex !== undefined && ey !== undefined ? { x: ex, y: ey } : undefined
+      }
+      const markLine = literalOf(objectField(s, 'markLine'), resolve)
+      if (markLine !== undefined) {
+        if (markLine.kind !== 'object') {
+          warn(`<OptionChart option.series[${si}].markLine>: native mark lines need a literal object; rendering without them.`)
+        } else {
+          optionFields(markLine, ['data', 'lineStyle'], `option.series[${si}].markLine`, warn)
+          const mlColor = styleColorOf(markLine, 'lineStyle', undefined)
+          const data = literalOf(objectField(markLine, 'data'), resolve)
+          const items = data?.kind === 'array' ? data.elements : []
+          if (data?.kind !== 'array') warn(`<OptionChart option.series[${si}].markLine.data>: native mark lines need a literal data array; rendering without them.`)
+          for (let k = 0; k < items.length; k++) {
+            const m = literalOf(items[k], resolve)
+            const fields: { name: string; value: ExprIR }[] = []
+            if (m?.kind === 'array') {
+              const from = literalOf(m.elements[0], resolve)
+              const to = literalOf(m.elements[1], resolve)
+              const p1 = from?.kind === 'object' ? endpoint(from) : undefined
+              const p2 = to?.kind === 'object' ? endpoint(to) : undefined
+              if (p1 === undefined || p2 === undefined || from?.kind !== 'object') {
+                warn(`<OptionChart option.series[${si}].markLine.data[${k}]>: a native point-to-point mark line needs two literal endpoints (a type, a coord, or xAxis + yAxis); rendering without it.`)
+                continue
+              }
+              fields.push({ name: 'x1', value: optionDoubleLiteral(p1.x) }, { name: 'y1', value: optionDoubleLiteral(p1.y) }, { name: 'x2', value: optionDoubleLiteral(p2.x) }, { name: 'y2', value: optionDoubleLiteral(p2.y) })
+              const name = litString(objectField(from, 'name'))
+              if (name !== undefined) fields.push({ name: 'label', value: lit(name) })
+              const c = styleColorOf(from, 'lineStyle', mlColor)
+              if (c !== undefined) fields.push({ name: 'color', value: lit(c) })
+              annotations.push({ kind: 'object', fields })
+              continue
+            }
+            if (m?.kind !== 'object') continue
+            const lineType = litString(objectField(m, 'type'))
+            const stat = lineType === undefined ? undefined : statOf(lineType)
+            const yAt = litNumber(objectField(m, 'yAxis'))
+            const xAt = litNumber(objectField(m, 'xAxis'))
+            const name = litString(objectField(m, 'name'))
+            if (stat !== undefined) fields.push({ name: 'y', value: optionDoubleLiteral(stat) }, { name: 'label', value: lit(name ?? lineType!) })
+            else if (yAt !== undefined) fields.push({ name: 'y', value: optionDoubleLiteral(yAt) })
+            else if (xAt !== undefined) fields.push({ name: 'x', value: optionDoubleLiteral(xAt) })
+            else {
+              warn(`<OptionChart option.series[${si}].markLine.data[${k}]>: native mark lines map average/max/min/median, yAxis, xAxis, and point-to-point pairs; rendering without this line.`)
+              continue
+            }
+            if (stat === undefined && name !== undefined) fields.push({ name: 'label', value: lit(name) })
+            const c = styleColorOf(m, 'lineStyle', mlColor)
+            if (c !== undefined) fields.push({ name: 'color', value: lit(c) })
+            annotations.push({ kind: 'object', fields })
+          }
+        }
+      }
+      const markPoint = literalOf(objectField(s, 'markPoint'), resolve)
+      if (markPoint !== undefined) {
+        if (markPoint.kind !== 'object') {
+          warn(`<OptionChart option.series[${si}].markPoint>: native mark points need a literal object; rendering without them.`)
+        } else {
+          optionFields(markPoint, ['data', 'itemStyle', 'symbolSize'], `option.series[${si}].markPoint`, warn)
+          const mpColor = styleColorOf(markPoint, 'itemStyle', undefined)
+          const mpSize = litNumber(objectField(markPoint, 'symbolSize'))
+          const data = literalOf(objectField(markPoint, 'data'), resolve)
+          const items = data?.kind === 'array' ? data.elements : []
+          if (data?.kind !== 'array') warn(`<OptionChart option.series[${si}].markPoint.data>: native mark points need a literal data array; rendering without them.`)
+          for (let k = 0; k < items.length; k++) {
+            const m = literalOf(items[k], resolve)
+            if (m?.kind !== 'object') continue
+            const pointType = litString(objectField(m, 'type'))
+            const fields: { name: string; value: ExprIR }[] = [{ name: 'seriesIndex', value: optionDoubleLiteral(si) }]
+            if (pointType === 'max' || pointType === 'min' || pointType === 'average') fields.push({ name: 'at', value: lit(pointType) })
+            else {
+              const coord = literalOf(objectField(m, 'coord'), resolve)
+              const cx = coord?.kind === 'array' ? xOfCoord(literalOf(coord.elements[0], resolve)) : undefined
+              if (cx === undefined) {
+                warn(`<OptionChart option.series[${si}].markPoint.data[${k}]>: native mark points map max/min/average and coord; rendering without this point.`)
+                continue
+              }
+              fields.push({ name: 'atIndex', value: optionDoubleLiteral(cx) })
+            }
+            const valueField = objectField(m, 'value')
+            const value = litString(valueField) ?? (litNumber(valueField) === undefined ? undefined : String(litNumber(valueField)))
+            const name = litString(objectField(m, 'name')) ?? value
+            if (name !== undefined) fields.push({ name: 'label', value: lit(name) })
+            const c = styleColorOf(m, 'itemStyle', mpColor)
+            if (c !== undefined) fields.push({ name: 'color', value: lit(c) })
+            const size = litNumber(objectField(m, 'symbolSize')) ?? mpSize
+            if (size !== undefined) fields.push({ name: 'radius', value: optionDoubleLiteral(size / 2) })
+            markers.push({ kind: 'object', fields })
+          }
+        }
+      }
+    }
     if (annotations.length > 0) set('annotations', { kind: 'array', elements: annotations })
+    if (markers.length > 0) set('markers', { kind: 'array', elements: markers })
     const xShow = xAxis === undefined ? undefined : objectField(xAxis, 'show')
     if (xShow?.kind === 'literal' && xShow.value === false) set('showXAxis', lit(false))
     const yAxis = literalOf(objectField(raw, 'yAxis'), resolve)
