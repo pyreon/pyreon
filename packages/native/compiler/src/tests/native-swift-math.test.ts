@@ -25,7 +25,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
-import { isSwiftcAvailable, validateSwift } from '../validate'
+import { isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
 
 const app = (expr: string) =>
   `import { Stack, Text } from '@pyreon/primitives'
@@ -59,7 +59,12 @@ describe('Swift Math.* Double-domain mapping', () => {
     expect(sw('Math.max(1, 2)')).toContain('max(1, 2)')
   })
 
-  it.skipIf(!isSwiftcAvailable())('Swift: the new mappings parse via swiftc -parse', () => {
+  // The TYPECHECK rung, not `swiftc -parse`. `Math.sign(-3)` PARSES fine —
+  // the parse rung cannot observe "cannot find 'Math' in scope", which is the
+  // entire failure mode this file exists to lock. It ran on the parse rung
+  // for its whole life while ten Math members were silently broken; see
+  // `native-math-totality.test.ts`.
+  it.skipIf(!isSwiftUIAvailable())('Swift: the new mappings TYPECHECK via swiftc', () => {
     const out = transform(
       `import { Stack, Text } from '@pyreon/primitives'
 function App() {
@@ -71,7 +76,7 @@ function App() {
 }`,
       { target: 'swift' },
     ).code
-    const res = validateSwift(out)
+    const res = validateSwiftTypecheck(out)
     expect(res.ok, res.error ?? '').toBe(true)
   })
 })

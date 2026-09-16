@@ -123,6 +123,32 @@ function safeSend(socket: WsSocket, frame: Uint8Array): void {
  * a reconnecting client re-syncs from whichever peer still holds the room.
  */
 export function createSyncServer(options: SyncServerOptions): Promise<SyncServer> {
+  // No `authorize` hook means every connection is accepted, so ANY client that
+  // can reach the port can join ANY room and read + mutate its document — an
+  // open relay. The default is documented as local/dev-only, but a default that
+  // is only ever stated in a doc comment is the one that ships: nothing at
+  // runtime distinguished `localhost` from a public deploy.
+  //
+  // Fires in PRODUCTION too (this is a LIVE misconfiguration the operator must
+  // see, not a developer-time nicety — the same call the ISR `cacheKey`
+  // auth-refusal warning makes), and once per server instance rather than once
+  // per connection, so a busy relay does not spam its logs.
+  if (!options.authorize) {
+    // Deliberately NOT wrapped in a `process.env.NODE_ENV !== 'production'`
+    // gate: the whole point is that the operator of a PRODUCTION relay hears
+    // it. `dev-guard-warnings` is right for a warning that teaches an API and
+    // wrong for one that reports an unsafe running system — the same call the
+    // ISR `cacheKey` auth-refusal warning makes.
+    // pyreon-lint-disable-next-line pyreon/dev-guard-warnings
+    console.warn(
+      '[Pyreon sync] createSyncServer() was called without an `authorize` hook, '
+      + 'so EVERY connection is accepted: any client that can reach this port can '
+      + 'join any room and read and modify its document. That default is for local '
+      + 'development only. To fix: pass `authorize: ({ room, token, req }) => ...` '
+      + 'returning false (or throwing) for a caller that may not access `room`.',
+    )
+  }
+
   const rooms = new Map<string, Room>()
   const getRoom = (name: string): Room => {
     let r = rooms.get(name)

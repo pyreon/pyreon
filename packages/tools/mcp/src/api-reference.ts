@@ -7727,7 +7727,8 @@ tags.set(['a', 'b'])  // ?tags=a&tags=b`,
 - Forgetting the default value — the type is inferred from it and determines the auto-coercion strategy (number default = coerce to number, boolean default = coerce to boolean)
 - Reading useUrlState in a non-reactive scope at component setup — the signal reads the URL once; wrap in a reactive scope to track URL changes
 - Calling setUrlRouter before the router is available — SSR renders may not have a router instance yet
-- Assuming a hand-rolled router object with only \`replace\` honours \`{ replace: false }\` — it cannot, so the update is downgraded to a replace and Back will not undo it. Give it a \`push(path)\`; a dev warning fires once if you do not.`,
+- Assuming a hand-rolled router object with only \`replace\` honours \`{ replace: false }\` — it cannot, so the update is downgraded to a replace and Back will not undo it. Give it a \`push(path)\`; a dev warning fires once if you do not.
+- Assuming the params live in \`location.search\` in a hash-routed app — they do not. \`@pyreon/router\` defaults to \`mode: "hash"\`, so a registered router puts the whole route, query included, in the fragment (\`#/products?page=3\`) and leaves \`location.search\` empty. url-state follows the REGISTERED router: read the value through \`useUrlState\` / \`getParam\` rather than \`new URLSearchParams(location.search)\`.`,
   },
 
   'url-state/setUrlRouter': {
@@ -7738,8 +7739,12 @@ import { setUrlRouter } from '@pyreon/url-state'
 const router = useRouter()
 setUrlRouter(router)
 // Now useUrlState routes through the router: replace() by default,
-// push() for a { replace: false } update (so Back undoes it)`,
-    notes: `Configure useUrlState to use a @pyreon/router instance for URL updates instead of the raw history API. When set, URL changes go through the router's navigation system, ensuring route guards, middleware, and scroll management integrate correctly. The router needs \`replace(path)\`; \`push(path)\` is optional but is what makes \`{ replace: false }\` mean anything — without it a push-intent update falls back to \`replace\` and dev-warns once, so Back will not undo it. \`@pyreon/router\` has both. See also: useUrlState.`,
+// push() for a { replace: false } update (so Back undoes it).
+// The router also decides WHERE the params live: in the router's default
+// hash mode they ride inside the fragment (#/products?page=3), not in
+// location.search — read them through useUrlState, never location.search.`,
+    notes: `Configure useUrlState to use a @pyreon/router instance for URL updates instead of the raw history API. When set, URL changes go through the router's navigation system, ensuring route guards, middleware, and scroll management integrate correctly. The router needs \`replace(path)\`; \`push(path)\` is optional but is what makes \`{ replace: false }\` mean anything — without it a push-intent update falls back to \`replace\` and dev-warns once, so Back will not undo it. \`@pyreon/router\` has both. The registered router also decides WHERE the params live: its \`mode\` (\`@pyreon/router\` defaults to \`hash\`) puts the query inside the fragment beside the route (\`#/products?page=3\`) rather than in \`location.search\`, and its \`base\` is re-applied by the router itself, so url-state hands it a base-relative path. Without a registered router, url-state owns \`location.search\` and preserves whatever fragment is there. See also: useUrlState.`,
+    mistakes: '- Reading the params back with `new URLSearchParams(location.search)` in a hash-routed app — the router owns the fragment, so `location.search` is empty and the read returns nothing. `getParam` / `useUrlState` ask the registered router which half of the URL the route lives in.',
   },
 
   'url-state/batchUrlUpdates': {
@@ -9414,8 +9419,8 @@ const relay = await createSyncServer({
   authorize: ({ room, token }) => token === secretFor(room), // REQUIRED in prod
 })
 // later: await relay.close()`,
-    notes: `Start a Node/Bun WebSocket relay that brokers Yjs sync between clients sharing a room. Keeps one authoritative Y.Doc per room (so a late-joiner catches up), applies each inbound update, and broadcasts to the room's OTHER clients. Server-only (\`@pyreon/sync/server\` — imports \`ws\` + \`node:http\`, never enters a client bundle). The \`authorize(ctx)\` hook is the per-room/per-doc access gate: return false (or throw) to reject with close code 4401 before any data flows. Rooms are GC'd when the last client leaves — the relay is ephemeral (no persistence); clients keep their own copy. Pass \`server\` to attach to an existing http.Server instead of opening a port. See also: connectViaWebSocket, AuthorizeContext.`,
-    mistakes: `- Deploying without an \`authorize\` hook — the default allows EVERY connection (dev-only); a real deployment MUST supply it or anyone with the room id can read/write
+    notes: `Start a Node/Bun WebSocket relay that brokers Yjs sync between clients sharing a room. Keeps one authoritative Y.Doc per room (so a late-joiner catches up), applies each inbound update, and broadcasts to the room's OTHER clients. Server-only (\`@pyreon/sync/server\` — imports \`ws\` + \`node:http\`, never enters a client bundle). The \`authorize(ctx)\` hook is the per-room/per-doc access gate: return false (or throw) to reject with close code 4401 before any data flows. Omitting it accepts EVERY connection (an open relay) and warns once at startup, in production too. Rooms are GC'd when the last client leaves — the relay is ephemeral (no persistence); clients keep their own copy. Pass \`server\` to attach to an existing http.Server instead of opening a port. See also: connectViaWebSocket, AuthorizeContext.`,
+    mistakes: `- Deploying without an \`authorize\` hook — the default allows EVERY connection (dev-only); a real deployment MUST supply it or anyone with the room id can read/write. \`createSyncServer\` warns once at startup when the hook is absent, in production as well as development, because an open relay is a live misconfiguration rather than a developer-time nicety.
 - Importing \`@pyreon/sync/server\` into client code — it pulls \`ws\` + \`node:http\`; it is the server-only subpath by design
 - Expecting the relay to persist data — it is ephemeral; durability lives on the clients (persistViaIndexedDB) or an external store`,
   },

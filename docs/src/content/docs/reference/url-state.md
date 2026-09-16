@@ -67,6 +67,8 @@ a.set(5)  // b() is now 5 too, and b's onChange fires
 import { useRouter } from '@pyreon/router'
 const router = useRouter()
 setUrlRouter(router)  // replace() by default; push() honours { replace: false }
+// The router also says WHERE params live: in its default hash mode they ride
+// inside the fragment (#/products?page=3), not in location.search.
 
 // SSR-safe — initializes to the default on the server, reads window.location on the client
 // No typeof window checks needed in your components
@@ -115,6 +117,7 @@ tags.set(['a', 'b'])  // ?tags=a&tags=b
 - Reading useUrlState in a non-reactive scope at component setup — the signal reads the URL once; wrap in a reactive scope to track URL changes
 - Calling setUrlRouter before the router is available — SSR renders may not have a router instance yet
 - Assuming a hand-rolled router object with only `replace` honours `{ replace: false }` — it cannot, so the update is downgraded to a replace and Back will not undo it. Give it a `push(path)`; a dev warning fires once if you do not.
+- Assuming the params live in `location.search` in a hash-routed app — they do not. `@pyreon/router` defaults to `mode: "hash"`, so a registered router puts the whole route, query included, in the fragment (`#/products?page=3`) and leaves `location.search` empty. url-state follows the REGISTERED router: read the value through `useUrlState` / `getParam` rather than `new URLSearchParams(location.search)`.
 
 **See also:** `setUrlRouter`
 
@@ -126,7 +129,7 @@ tags.set(['a', 'b'])  // ?tags=a&tags=b
 (router: UrlRouter) => void
 ```
 
-Configure useUrlState to use a @pyreon/router instance for URL updates instead of the raw history API. When set, URL changes go through the router's navigation system, ensuring route guards, middleware, and scroll management integrate correctly. The router needs `replace(path)`; `push(path)` is optional but is what makes `{ replace: false }` mean anything — without it a push-intent update falls back to `replace` and dev-warns once, so Back will not undo it. `@pyreon/router` has both.
+Configure useUrlState to use a @pyreon/router instance for URL updates instead of the raw history API. When set, URL changes go through the router's navigation system, ensuring route guards, middleware, and scroll management integrate correctly. The router needs `replace(path)`; `push(path)` is optional but is what makes `{ replace: false }` mean anything — without it a push-intent update falls back to `replace` and dev-warns once, so Back will not undo it. `@pyreon/router` has both. The registered router also decides WHERE the params live: its `mode` (`@pyreon/router` defaults to `hash`) puts the query inside the fragment beside the route (`#/products?page=3`) rather than in `location.search`, and its `base` is re-applied by the router itself, so url-state hands it a base-relative path. Without a registered router, url-state owns `location.search` and preserves whatever fragment is there.
 
 **Example**
 
@@ -137,8 +140,15 @@ import { setUrlRouter } from '@pyreon/url-state'
 const router = useRouter()
 setUrlRouter(router)
 // Now useUrlState routes through the router: replace() by default,
-// push() for a { replace: false } update (so Back undoes it)
+// push() for a { replace: false } update (so Back undoes it).
+// The router also decides WHERE the params live: in the router's default
+// hash mode they ride inside the fragment (#/products?page=3), not in
+// location.search — read them through useUrlState, never location.search.
 ```
+
+**Common mistakes**
+
+- Reading the params back with `new URLSearchParams(location.search)` in a hash-routed app — the router owns the fragment, so `location.search` is empty and the read returns nothing. `getParam` / `useUrlState` ask the registered router which half of the URL the route lives in.
 
 **See also:** `useUrlState`
 

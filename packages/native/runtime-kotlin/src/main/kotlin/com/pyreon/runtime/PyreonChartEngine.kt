@@ -2261,7 +2261,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
     val markers = (spec.markers ?: listOf())
     for (m in markers) {
       val rawSeriesIndex = (m.seriesIndex ?: 0.0)
-      val s = spec.series[(Math.floor(rawSeriesIndex)).toInt()]
+      val s = spec.series[(Math.floor((rawSeriesIndex).toDouble())).toInt()]
       if (s == null) {
         continue
       }
@@ -5848,8 +5848,8 @@ fun ganttTicks(lo: Double, hi: Double, unit: String): List<GanttTick> {
       if (t >= lo) {
         val c = civilFromDays(t)
         val q = Math.floor(((c.month - 1.0)).toDouble() / (3.0).toDouble()) + 1.0
-        val year = "${Math.round(c.year)}"
-        val label = if (unit == "day" || unit == "week") "${Math.round(c.day)} ${ganttMonthName(c.month)}" else if (unit == "month") (if (sameYear) ganttMonthName(c.month) else "${ganttMonthName(c.month)} ${year}") else if (unit == "quarter") "Q${Math.round(q)} ${year}" else year
+        val year = "${Math.round((c.year).toDouble())}"
+        val label = if (unit == "day" || unit == "week") "${Math.round((c.day).toDouble())} ${ganttMonthName(c.month)}" else if (unit == "month") (if (sameYear) ganttMonthName(c.month) else "${ganttMonthName(c.month)} ${year}") else if (unit == "quarter") "Q${Math.round((q).toDouble())} ${year}" else year
         out.add(GanttTick(at = t, x = 0.0, label = label))
       }
       t = ganttNextTick(t, unit)

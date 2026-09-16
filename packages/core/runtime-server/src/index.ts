@@ -38,7 +38,8 @@ import {
   Suspense,
   setContextStackProvider,
   isUrlAttr,
-  EVENT_HANDLER_ATTRS,
+  isEventHandlerAttr,
+  UNSAFE_ATTR_NAME_RE,
 } from '@pyreon/core'
 
 // Dev-mode perf counter sink — zero coupling to @pyreon/perf-harness; we just
@@ -1346,6 +1347,15 @@ export function _ssrAttr(tag: string, name: string, value: unknown): string {
  * `_ssrAttr` purely from the (statically-known) attribute NAME.
  */
 export function _ssrAttrGen(name: string, value: unknown): string {
+  // `renderProp`'s SKIP branch, and the other half of the byte-identity claim.
+  // The lean path is chosen from the NAME, and the compiler's own `on*` bail is
+  // `/^on[A-Z]/` — camelCase only — so a LOWERCASE handler (`<div onclick={e}>`)
+  // is routed straight here, where `renderProp` would have dropped it. That made
+  // the compiled SSR emit carry `onclick="…"` bytes the h() renderer refuses:
+  // live markup in the response, executed before any framework code. Above the
+  // resolution below for the same reason `_ssrAttrUrl` guards above its own: a
+  // function-valued handler would otherwise be CALLED to build the string.
+  if (isEventHandlerAttr(name)) return ''
   // `renderProp`'s function branch, which the byte-identity claim above depends
   // on. The lean path is selected from the attribute NAME alone, but whether
   // `renderProp` resolves depends on the VALUE'S TYPE — so the name-based
@@ -1809,17 +1819,13 @@ function renderPropSkipped(key: string): boolean {
   //
   // Dropping an unknown `on*` matches React, which refuses to render a
   // lowercase handler prop for the same reason.
-  if (key.length > 2 && key.charCodeAt(0) === 111 && key.charCodeAt(1) === 110) {
-    const c = key.charCodeAt(2)
-    // camelCase (`onClick`) is Pyreon's own spelling: any of them is a handler
-    // prop, so the shape alone is enough.
-    if (c >= 65 && c <= 90) return true
-    // lowercase is HTML's spelling, where only the REAL handler names are
-    // executable markup — `once` and `onyx` are ordinary attributes and must
-    // still render, which is why this is a name set and not `/^on[a-z]/`.
-    if (c >= 97 && c <= 122 && EVENT_HANDLER_ATTRS.has(key)) return true
-  }
-  return false
+  //
+  // The probe itself now lives in `@pyreon/core`'s `isEventHandlerAttr` — the
+  // ONE predicate the client sinks (`setStaticProp`, `applyAttrProp`) and the
+  // compiled SSR sink (`_ssrAttrGen`) call too. Open-coded here, it guarded a
+  // single cell of the renderer x namespace x vocabulary matrix while the other
+  // three wrote the attribute verbatim.
+  return isEventHandlerAttr(key)
 }
 
 function renderPropValue(key: string, value: unknown): string | null {
@@ -2152,7 +2158,8 @@ const SVG_ATTRIBUTE_MAP: Record<string, string> = {
 // A control char in an attribute name is a parser-significant breakout vector, so
 // matching control chars IS the point here.
 // oxlint-disable-next-line no-control-regex
-const UNSAFE_ATTR_NAME_RE = /[\s/>="'<\u0000-\u001F\u007F]/
+// Single-sourced in `@pyreon/core` — `@pyreon/head` serializes attributes too
+// and had no name check at all, which is the drift this move closes.
 
 const warnIfUnsafeAttrName: (key: string) => void =
   process.env.NODE_ENV === 'production'
