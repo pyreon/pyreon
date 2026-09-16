@@ -70,6 +70,21 @@ native view.
   members (`FlowLayersContext`, `flowStyles`), and no longer list the package
   among those that cannot render natively. Still open under F7: the generated
   reference page carries no native-tier section (a generator change).
+- [x] F2 shared fixture: the web engine is now the ORACLE for native state
+  parity. `src/tests/native-parity-fixture.ts` holds ten scenarios as data
+  (node/edge CRUD, reconnect, single/additive/edge selection, select-all,
+  deleteSelected, moveSelectedNodes, zoom steps + clamps + pan + setViewport,
+  connection validation, undo/redo across CRUD, node extent + clamping;
+  queries over connected edges, incomers, outgoers, screenToFlow,
+  clampToExtent). `createFlow` runs them and its observations are emitted
+  as literal assertions into marker-delimited regions of BOTH native
+  behaviour fixtures, which the co-source gate compiles and runs; the TS
+  spec locks both regions byte-for-byte and `PYREON_WRITE_FLOW_PARITY=1`
+  regenerates them. Bisect-verified on both targets (a flipped
+  `screenToFlowPosition` fails `parity: … query 1 screenToFlow`). Parity
+  runs FIRST in each main, so a shared divergence is reported as one. Still
+  hand-written only under F2: snapping, serialization round-trips, layout
+  algorithms and the container-size-dependent `fitView` / `setCenter`.
 - [x] The public `@pyreon/flow/webview` component now lowers to the real native
   WebView bridge instead of an unresolved `FlowWebView` symbol. Its generated
   default host is byte-ratcheted against the web builder; graph updates,
