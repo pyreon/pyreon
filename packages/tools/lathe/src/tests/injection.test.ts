@@ -15,9 +15,10 @@
  * the one nobody wrote a sanitizer for.
  */
 import { s } from '@pyreon/validate'
+import { parseSync } from 'oxc-parser'
 import { resolveConfig } from '../core/config'
 import { generate } from '../core/generate'
-import { q, safeBlockComment, safeLineComment } from '../emit/writer'
+import { q, regexLiteral, safeBlockComment, safeLineComment } from '../emit/writer'
 
 const CR = String.fromCharCode(13)
 const LS = String.fromCharCode(0x2028)
@@ -329,5 +330,192 @@ describe('spec-controlled strings cannot inject code', () => {
         expect(safeLineComment(`a${t}b`)).toBe('a b')
       }
     })
+  })
+})
+
+/**
+ * The REGEX literal, whose sanitizer covered one of its two SITES.
+ *
+ * `portableRegex` closed the `pattern` constraint and its comment called the
+ * regex literal "the fifth surface", singular. It is the fifth CONTEXT, and
+ * `mockPath` was already emitting one too -- escaping regex METACHARACTERS,
+ * which is a different question from what ENDS a literal. So a spec path
+ * carrying a line terminator emitted an unterminated literal and took the
+ * whole `mocks.ts` module with it, under the DEFAULT config.
+ *
+ * The lesson generalises past this package: a sanitizer written for a context
+ * has to be applied at every SITE that reaches it, and "the fifth surface" is
+ * the sentence that made the second site invisible. Both sites now spell the
+ * literal through `regexLiteral`.
+ */
+describe('a regex literal cannot be broken from either site that emits one', () => {
+  const TERMINATORS: Array<[string, string]> = [
+    ['LF', String.fromCharCode(10)],
+    ['CR', CR],
+    ['LS', LS],
+    ['PS', PS],
+  ]
+
+  const specWithPath = (path: string): string =>
+    JSON.stringify({
+      openapi: '3.0.3',
+      info: { title: 'T', version: '1' },
+      servers: [{ url: 'https://e.test' }],
+      paths: {
+        [path]: {
+          get: {
+            operationId: 'getX',
+            tags: ['x'],
+            parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+            responses: {
+              '200': { content: { 'application/json': { schema: { type: 'string' } } } },
+            },
+          },
+        },
+      },
+    })
+
+  for (const [label, t] of TERMINATORS) {
+    it(`a spec PATH carrying ${label} still emits a parseable mocks.ts`, () => {
+      const out = generate(
+        specWithPath(`/x/{id}/a${t}b`),
+        resolveConfig({ input: 'x', plugins: ['client', 'mocks'] }),
+      )
+      const mocks = out.files.find((f) => f.path === 'mocks.ts')
+      expect(mocks).toBeDefined()
+      // The oracle is a PARSER, not a string match: pre-fix this file read
+      // entirely plausibly and threw `Unterminated regular expression`.
+      const errors = parseSync('mocks.ts', (mocks as { contents: string }).contents).errors
+      expect(errors.map((e) => e.message)).toEqual([])
+    })
+  }
+
+  it('still matches the request it describes after escaping', () => {
+    // Escaping must not change what the route MATCHES -- a literal that parses
+    // and matches nothing is the bug this emitter was fixed for once already.
+    const out = generate(
+      specWithPath('/x/{id}/detail'),
+      resolveConfig({ input: 'x', plugins: ['client', 'mocks'] }),
+    )
+    const text = out.files.find((f) => f.path === 'mocks.ts')?.contents ?? ''
+    const open = text.indexOf('[', text.indexOf('export const routes'))
+    const literal = text.slice(open, text.indexOf('\n]', open) + 2)
+    // eslint-disable-next-line no-new-func
+    const routes = new Function(`return ${literal}`)() as Array<{ path: string | RegExp }>
+    const re = routes.map((r) => r.path).find((x): x is RegExp => x instanceof RegExp)
+    expect(re).toBeDefined()
+    expect((re as RegExp).test('https://e.test/x/b1/detail')).toBe(true)
+    expect((re as RegExp).test('https://e.test/x/b1/detail?q=1')).toBe(true)
+    expect((re as RegExp).test('https://e.test/x/b1/detail/more')).toBe(false)
+  })
+
+  describe('regexLiteral itself', () => {
+    it('escapes every character that ends a literal', () => {
+      for (const [, t] of TERMINATORS) {
+        expect(regexLiteral(`a${t}b`)).not.toContain(t)
+      }
+      expect(regexLiteral('a/b')).toBe('/a\\/b/')
+    })
+
+    it('does NOT re-escape an already-escaped one', () => {
+      // The "escape the escape character first" trap in a third syntax. A
+      // blind `/` -> `\/` pass turns the `\/` `mockPath` joins segments with
+      // into an escaped BACKSLASH followed by a LIVE `/`, which ends the
+      // literal anyway -- the same shape `mdCell` and `q()` document.
+      expect(regexLiteral('a\\/b')).toBe('/a\\/b/')
+      expect(regexLiteral('a\\\\b')).toBe('/a\\\\b/')
+      expect(regexLiteral('a\\db')).toBe('/a\\db/')
+    })
+
+    it('preserves what the source MATCHES', () => {
+      // A literal that parses but matches something else is a silent wrong
+      // answer, which is worse than the SyntaxError it replaced.
+      //
+      // The oracle is BEHAVIOUR, not `.source`: escaping a `/` inside a
+      // character class is unnecessary (a class char is never a terminator)
+      // and harmless, so the emitted text legitimately differs from the input
+      // while matching exactly the same strings.
+      const probes = ['a/b', 'ab', 'a\\b', `a${LS}b`, 'xnb', 'x', '/', '?', '#', '']
+      for (const source of ['a/b', 'a\\/b', '[^/?#]+', `a${LS}b`, 'x\\nb']) {
+        // eslint-disable-next-line no-new-func
+        const emitted = new Function(`return ${regexLiteral(source)}`)() as RegExp
+        const expected = new RegExp(source)
+        for (const probe of probes) {
+          expect(emitted.test(probe), `${source} vs ${JSON.stringify(probe)}`).toBe(
+            expected.test(probe),
+          )
+        }
+      }
+    })
+
+    it('does not end the literal one character early on a trailing backslash', () => {
+      expect(() =>
+        // eslint-disable-next-line no-new-func
+        new Function(`return ${regexLiteral('a\\')}`)(),
+      ).not.toThrow()
+    })
+  })
+})
+
+/**
+ * The totality guard: every emitted MODULE parses, for a spec hostile in every
+ * string it controls.
+ *
+ * On the OUTPUT rather than on the emitter source, deliberately. A grep for
+ * regex-literal construction sites was tried and is not usable here -- the
+ * emitters build file PATHS with `/${...}` on twenty lines, so the pattern
+ * that finds a regex literal finds those too, and one tuned to miss them
+ * missed `mockPath` as well. A parser needs no pattern: it is
+ * lexical-context-agnostic, so a sixth context nobody has thought of fails
+ * this spec the day it is written.
+ */
+describe('every emitted module parses', () => {
+  it('for a spec hostile in its title, paths, params, patterns and enums', () => {
+    const NL = String.fromCharCode(10)
+    const spec = JSON.stringify({
+      openapi: '3.0.3',
+      info: { title: `T${NL}globalThis.__PWN = 1;//`, version: `1${CR}0` },
+      servers: [{ url: 'https://e.test' }],
+      paths: {
+        [`/x/{id}/a${NL}b${CR}c${LS}d${PS}e`]: {
+          get: {
+            operationId: 'getX',
+            tags: ['x'],
+            summary: `s */ globalThis.__PWN = 1; /*`,
+            parameters: [
+              { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+              { name: `q${NL}n`, in: 'query', schema: { type: 'string' } },
+            ],
+            responses: {
+              '200': { content: { 'application/json': { schema: { $ref: '#/components/schemas/E' } } } },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          E: {
+            type: 'object',
+            required: ['a'],
+            properties: {
+              a: { type: 'string', pattern: `a${NL}b`, enum: [`e${LS}1`, "'); x('"] },
+            },
+          },
+        },
+      },
+    })
+    const out = generate(
+      spec,
+      resolveConfig({
+        input: 'x',
+        plugins: ['types', 'schemas', 'client', 'queries', 'mocks', 'faker', 'atlas', 'docs'],
+      }),
+    )
+    const modules = out.files.filter((f) => f.path.endsWith('.ts') || f.path.endsWith('.tsx'))
+    expect(modules.length).toBeGreaterThan(4)
+    for (const f of modules) {
+      const errors = parseSync(f.path, f.contents).errors
+      expect(errors.map((e) => e.message), `${f.path} does not parse`).toEqual([])
+    }
   })
 })
