@@ -87,6 +87,32 @@ const PACKAGES: PackageSpec[] = [
 
 // ─── Bundle + measure ───────────────────────────────────────────────────────
 
+/**
+ * Every package entry reads its own manifest as
+ * `import { name, version } from '../package.json' with { type: 'json' }`.
+ * Per the import-attributes spec a JSON module has ONLY a default export,
+ * and esbuild enforces that when the attribute is present — so every entry
+ * failed to bundle and the bench reported the four core packages UNMEASURED
+ * (the `Benchmark` job red on main). The shipped `lib/` is built by rolldown,
+ * which inlines the two named fields; this loader does the same for the
+ * bench: the manifest becomes a JS module exporting `name` and `version`
+ * (plus the whole object as default), so the measurement matches what
+ * consumers bundle rather than failing on a spec technicality.
+ */
+const jsonNamedExports: esbuild.Plugin = {
+  name: 'json-named-exports',
+  setup(build) {
+    build.onLoad({ filter: /package\.json$/ }, (args) => {
+      const json = JSON.parse(readFileSync(args.path, 'utf8')) as Record<string, unknown>
+      const named = ['name', 'version']
+        .filter((k) => k in json)
+        .map((k) => `export const ${k} = ${JSON.stringify(json[k])};`)
+        .join('\n')
+      return { contents: `${named}\nexport default ${JSON.stringify(json)};`, loader: 'js' }
+    })
+  },
+}
+
 async function measurePackage(pkg: PackageSpec): Promise<SizeEntry | null> {
   const entryPath = resolve(ROOT, pkg.entry)
   const tmpDir = mkdtempSync(join(tmpdir(), 'pyreon-bench-'))
@@ -108,6 +134,7 @@ async function measurePackage(pkg: PackageSpec): Promise<SizeEntry | null> {
       // Resolve workspace packages using bun condition
       conditions: ['bun'],
       logLevel: 'silent',
+      plugins: [jsonNamedExports],
     })
 
     const raw = readFileSync(outFile)
