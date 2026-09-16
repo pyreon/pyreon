@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { hitSingleAxis, layoutSingleAxis, renderSingleAxis } from './single-axis'
+import { singleAxisTip } from './chrome'
 import { singleAxisToSvg } from './single-axis-web'
 import { compileFamily, familyToSvg, isFamilyOption } from './option-family'
 
@@ -83,5 +84,29 @@ describe('single axis — routing by ECharts contract', () => {
     const bar = compileFamily({ singleAxis: { type: 'value' }, series: [{ type: 'bar', coordinateSystem: 'singleAxis', data: [1] }] })!
     expect(bar.warnings.map((w) => w.code + '@' + w.path)).toEqual(['series-type-unsupported@series[0].type'])
     expect(bar.warnings[0]!.message).toContain('ECharts allows no other series there')
+  })
+})
+
+describe('singleAxisTip — what the pointer reads off a point', () => {
+  const points = [{ x: 1, name: 'a' }, { x: 8, name: 'b' }, { x: 4 }]
+  const layout = layoutSingleAxis({ name: 'v' }, points, { x: 0, y: 0, w: 200, h: 80 })
+
+  it('answers the hit point with its name and value', () => {
+    const p = layout.points[0]!
+    expect(singleAxisTip(layout, points, p.at.x, p.at.y)).toEqual(['a', '1'])
+  })
+
+  it('an UNNAMED point reads as its value alone, not as a blank line', () => {
+    const p = layout.points[2]!
+    expect(singleAxisTip(layout, points, p.at.x, p.at.y)).toEqual(['4'])
+  })
+
+  it('a miss answers nothing', () => {
+    expect(singleAxisTip(layout, points, -50, -50)).toEqual([])
+  })
+
+  it('a points list SHORTER than the layout answers nothing rather than reading past it', () => {
+    const p = layout.points[1]!
+    expect(singleAxisTip(layout, [points[0]!], p.at.x, p.at.y)).toEqual([])
   })
 })

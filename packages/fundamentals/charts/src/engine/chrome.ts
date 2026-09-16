@@ -33,6 +33,8 @@ import type { LegendEntry } from './legend'
 import { paletteAt } from './palette'
 import { hitPolarIndex } from './polar'
 import type { PolarLayout, PolarSeries } from './polar'
+import { hitSingleAxis } from './single-axis'
+import type { SingleAxisLayout, SingleAxisPoint } from './single-axis'
 import { hitRiverIndex } from './river'
 import { hitChordIndex } from './chord'
 import type { ChordLayout } from './chord'
@@ -243,6 +245,22 @@ export function calendarTip(layout: CalendarLayout, values: CalendarValue[], px:
   const date = layout.cells[i]!.date
   for (const v of values) if (v.date === date) return [date, plain(v.value)]
   return [date]
+}
+
+/**
+ * The point's name and its position on the axis.
+ *
+ * A single-axis plot carries ONE number per point, and the layout keeps only
+ * where it was drawn — so the caller's own points supply the value, the way
+ * `calendarTip` and `geoTip` take theirs.
+ */
+export function singleAxisTip(layout: SingleAxisLayout, points: SingleAxisPoint[], px: Double, py: Double): string[] {
+  const i = hitSingleAxis(layout, px, py)
+  if (i < 0) return []
+  const point = points[i]
+  if (point === undefined) return []
+  const name = point.name
+  return name === undefined ? [plain(point.x)] : [name, plain(point.x)]
 }
 
 /** The region's name, and its value when one was recorded for that region. */

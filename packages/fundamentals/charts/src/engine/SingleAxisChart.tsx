@@ -1,5 +1,6 @@
 import type { VNode } from '@pyreon/core'
-import { canvasHost } from './canvas-host'
+import { canvasHost, orNull } from './canvas-host'
+import { singleAxisTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
 import { hitSingleAxis, layoutSingleAxis, renderSingleAxis } from './single-axis'
 import type { SingleAxisLayout, SingleAxisOptions, SingleAxisPoint, SingleAxisSpec } from './single-axis'
@@ -22,6 +23,7 @@ export function SingleAxisChart(props: SingleAxisChartProps): VNode {
     layout: (box, _measure, theme) => layoutSingleAxis(props.axis, readPoints(), box, { labelColor: theme.label, axisColor: theme.axis, ...props.singleAxis }),
     animates: true,
     render: (layout, _measure, theme, progress) => renderSingleAxis(layout, { labelColor: theme.label, axisColor: theme.axis, ...props.singleAxis, progress }),
+    tooltip: (layout, px, py) => orNull(singleAxisTip(layout, readPoints(), px, py)),
     select: (layout, px, py) => {
       const index = hitSingleAxis(layout, px, py)
       props.onSelect?.(index)
