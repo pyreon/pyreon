@@ -52,6 +52,8 @@ export interface Tick {
 export interface Domain {
   min: Double
   max: Double
+  /** Maps `min` to the far end of the range — ECharts' `axis.inverse`. */
+  inverse?: boolean | undefined
 }
 
 /**

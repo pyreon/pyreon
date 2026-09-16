@@ -20,7 +20,7 @@ enum class LegendPosition { top, bottom, left, right }
 
 data class Tick(var value: Double, var pos: Double, var label: String)
 
-data class Domain(var min: Double, var max: Double)
+data class Domain(var min: Double, var max: Double, var inverse: Boolean? = null)
 
 
 
@@ -76,7 +76,7 @@ data class ChartTheme(var palette: List<String>, var background: String, var sur
 
 data class Emphasis(var highlight: Int, var selected: List<Int>)
 
-data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null)
+data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var yInverse: Boolean? = null)
 
 data class Ohlc(var open: Double, var high: Double, var low: Double, var close: Double)
 
@@ -559,6 +559,9 @@ fun scaleLinear(d: Domain, r0: Double, r1: Double, v: Double): Double {
     if (span == 0.0) {
       return ((r0 + r1)).toDouble() / (2.0).toDouble()
     }
+    if (d.inverse == true) {
+      return r1 + (((v - d.min)).toDouble() / (span).toDouble()) * (r0 - r1)
+    }
     return r0 + (((v - d.min)).toDouble() / (span).toDouble()) * (r1 - r0)
   }
 
@@ -710,7 +713,7 @@ fun timeTicks(d: Domain, r0: Double, r1: Double, target: Double, format: ((Doubl
       if (v > d.max) {
         break
       }
-      out.add(Tick(value = v, pos = r0 + (((v - d.min)).toDouble() / (span).toDouble()) * (r1 - r0), label = fmt(v)))
+      out.add(Tick(value = v, pos = scaleLinear(d, r0, r1, v), label = fmt(v)))
       i = i + 1
     }
     return out
@@ -1073,7 +1076,7 @@ fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotL
     val isLog = cfg.yLog == true
     val logMin = (cfg.yLogMin ?: 1.0)
     val logMax = (cfg.yLogMax ?: 10.0)
-    val valueTicksY = { r0: Double, r1: Double -> if (isLog) logViewTicks(logMin, logMax, r0, r1, cfg.yFormat) else if (cfg.yTime == true) timeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat) else makeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat) }
+    val valueTicksY = { r0: Double, r1: Double -> if (isLog) logViewTicks(logMin, logMax, if (cfg.yDomain.inverse == true) r1 else r0, if (cfg.yDomain.inverse == true) r0 else r1, cfg.yFormat) else if (cfg.yTime == true) timeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat) else makeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat) }
     val provisionalLabels = if (cfg.horizontal == true) if (cfg.showYAxis) cfg.categories else listOf() else if (cfg.showYAxis) valueTicksY(cfg.height, 0.0).map({ t -> t.label }) else listOf()
     var widest = 0.0
     for (label in provisionalLabels) {
@@ -1328,7 +1331,7 @@ fun layoutStackedBars(seriesValues: List<List<Double>>, plot: PyreonChartRect, y
         }
         val yTop = scaleLinear(yDomain, plot.y + plot.h, plot.y, acc + v)
         val yBot = scaleLinear(yDomain, plot.y + plot.h, plot.y, acc)
-        out.add(StackSegment(rect = PyreonChartRect(x = plot.x + band * i + ((band - bw)).toDouble() / (2.0).toDouble(), y = yTop, w = bw, h = (Math.abs(yBot - yTop)).toDouble()), seriesIndex = s, datumIndex = i, value = v))
+        out.add(StackSegment(rect = PyreonChartRect(x = plot.x + band * i + ((band - bw)).toDouble() / (2.0).toDouble(), y = if (yTop < yBot) yTop else yBot, w = bw, h = (Math.abs(yBot - yTop)).toDouble()), seriesIndex = s, datumIndex = i, value = v))
         acc = acc + v
       }
     }
@@ -2093,7 +2096,10 @@ fun stateFill(spec: ChartSpec, s: Series, index: Int, fill: String): String {
 
 fun emphasisOutline(r: PyreonChartRect, level: Int, stroke: String): PyreonDrawCmd = PyreonDrawCmd(kind = "polyline", stroke = stroke, width = if (level == 2) 2.5 else 1.5, points = listOf(PyreonChartPt(x = r.x, y = r.y), PyreonChartPt(x = r.x + r.w, y = r.y), PyreonChartPt(x = r.x + r.w, y = r.y + r.h), PyreonChartPt(x = r.x, y = r.y + r.h), PyreonChartPt(x = r.x, y = r.y)))
 
-fun resolveYDomain(spec: ChartSpec): Domain = (spec.yDomain ?: deriveOver(leftAxisSeries(spec)))
+fun resolveYDomain(spec: ChartSpec): Domain {
+    val d = (spec.yDomain ?: deriveOver(leftAxisSeries(spec)))
+    return if (spec.yInverse == true) Domain(min = d.min, max = d.max, inverse = true) else d
+  }
 
 fun resolveY2Domain(spec: ChartSpec): Domain = (spec.y2Domain ?: deriveOver(rightAxisSeries(spec)))
 
@@ -2678,8 +2684,9 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
                     for (p in pts) {
                       poly.add(p)
                     }
-                    poly.add(PyreonChartPt(x = pts[pts.length - 1].x, y = plot.y + plot.h))
-                    poly.add(PyreonChartPt(x = pts[0].x, y = plot.y + plot.h))
+                    val baseY = scaleLinear(sDomain, plot.y + plot.h, plot.y, sDomain.min)
+                    poly.add(PyreonChartPt(x = pts[pts.length - 1].x, y = baseY))
+                    poly.add(PyreonChartPt(x = pts[0].x, y = baseY))
                     out.add(polygonCmd(poly, s.color, sGrad, s.pattern))
                   }
                 }

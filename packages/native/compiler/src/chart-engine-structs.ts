@@ -112,6 +112,20 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "name": "Double",
           "args": []
         }
+      },
+      {
+        "name": "inverse",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
       }
     ],
     "external": true
@@ -3116,6 +3130,20 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "branches": [
             {
               "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yInverse",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
             },
             {
               "kind": "undefined"

@@ -143,7 +143,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // the final pass cannot disagree.
   const valueTicksY = (r0: Double, r1: Double): Tick[] =>
     isLog
-      ? logViewTicks(logMin, logMax, r0, r1, cfg.yFormat)
+      ? logViewTicks(logMin, logMax, cfg.yDomain.inverse === true ? r1 : r0, cfg.yDomain.inverse === true ? r0 : r1, cfg.yFormat)
       : cfg.yTime === true
         ? timeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat)
         : makeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat)

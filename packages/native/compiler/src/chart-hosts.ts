@@ -2188,11 +2188,13 @@ export function desugarOptionChart(
       const yAxis = yAxisList[ai]!
       if (yAxis.kind !== 'object') continue
       const path = yAxisRaw?.kind === 'array' ? `option.yAxis[${ai}]` : 'option.yAxis'
-      optionFields(yAxis, ['type', 'show', 'name', 'min', 'max', 'splitLine'], path, warn)
+      optionFields(yAxis, ['type', 'show', 'name', 'min', 'max', 'splitLine', 'inverse'], path, warn)
       const right = ai === 1
       const yShow = objectField(yAxis, 'show')
       if (!right && yShow?.kind === 'literal' && yShow.value === false) set('showYAxis', lit(false))
       if (!right && litString(objectField(yAxis, 'type')) === 'log') set('yScale', lit('log'))
+      const inverse = objectField(yAxis, 'inverse')
+      if (!right && inverse?.kind === 'literal' && inverse.value === true) set('yInverse', lit(true))
       const yName = litString(objectField(yAxis, 'name'))
       if (yName !== undefined) set(right ? 'y2Title' : 'yTitle', lit(yName))
       const split = literalOf(objectField(yAxis, 'splitLine'), resolve)
@@ -3180,6 +3182,7 @@ export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'yTitle', kind: 'string' },
   { name: 'y2Title', kind: 'string' },
   { name: 'xLabels', kind: 'string' },
+  { name: 'yInverse', kind: 'boolean' },
 ]
 
 /**

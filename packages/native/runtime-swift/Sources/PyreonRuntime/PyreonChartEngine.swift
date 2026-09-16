@@ -36,9 +36,11 @@ public struct Tick: Codable {
 public struct Domain: Codable {
   public var min: Double
   public var max: Double
-  public init(min: Double, max: Double) {
+  public var inverse: Bool? = nil
+  public init(min: Double, max: Double, inverse: Bool? = nil) {
     self.min = min
     self.max = max
+    self.inverse = inverse
   }
 }
 
@@ -587,7 +589,8 @@ public struct ChartSpec {
   public var yTitle: String? = nil
   public var y2Title: String? = nil
   public var xLabels: String? = nil
-  public init(width: Double, height: Double, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil) {
+  public var yInverse: Bool? = nil
+  public init(width: Double, height: Double, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, yInverse: Bool? = nil) {
     self.width = width
     self.height = height
     self.series = series
@@ -615,6 +618,7 @@ public struct ChartSpec {
     self.yTitle = yTitle
     self.y2Title = y2Title
     self.xLabels = xLabels
+    self.yInverse = yInverse
   }
 }
 
@@ -2721,6 +2725,9 @@ public func scaleLinear(_ d: Domain, _ r0: Double, _ r1: Double, _ v: Double) ->
     if span == 0.0 {
       return (r0 + r1) / 2.0
     }
+    if d.inverse == true {
+      return r1 + ((v - d.min) / span) * (r0 - r1)
+    }
     return r0 + ((v - d.min) / span) * (r1 - r0)
   }
 
@@ -2872,7 +2879,7 @@ public func timeTicks(_ d: Domain, _ r0: Double, _ r1: Double, _ target: Double,
       if v > d.max {
         break
       }
-      out.append(Tick(value: v, pos: r0 + ((v - d.min) / span) * (r1 - r0), label: fmt(v)))
+      out.append(Tick(value: v, pos: scaleLinear(d, r0, r1, v), label: fmt(v)))
       i = i + 1
     }
     return out
@@ -3235,7 +3242,7 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
     let isLog = cfg.yLog == true
     let logMin = (cfg.yLogMin ?? 1.0)
     let logMax = (cfg.yLogMax ?? 10.0)
-    let valueTicksY = { (r0: Double, r1: Double) in isLog ? logViewTicks(logMin, logMax, r0, r1, cfg.yFormat) : cfg.yTime == true ? timeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat) : makeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat) }
+    let valueTicksY = { (r0: Double, r1: Double) in isLog ? logViewTicks(logMin, logMax, cfg.yDomain.inverse == true ? r1 : r0, cfg.yDomain.inverse == true ? r0 : r1, cfg.yFormat) : cfg.yTime == true ? timeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat) : makeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat) }
     let provisionalLabels = cfg.horizontal == true ? cfg.showYAxis ? cfg.categories : [] : cfg.showYAxis ? valueTicksY(cfg.height, 0.0).map({ t in t.label }) : []
     var widest = 0.0
     for label in provisionalLabels {
@@ -3490,7 +3497,7 @@ public func layoutStackedBars(_ seriesValues: [[Double]], _ plot: PyreonChartRec
         }
         let yTop = scaleLinear(yDomain, plot.y + plot.h, plot.y, acc + v)
         let yBot = scaleLinear(yDomain, plot.y + plot.h, plot.y, acc)
-        out.append(StackSegment(rect: PyreonChartRect(x: plot.x + band * Double(i) + (band - bw) / 2.0, y: yTop, w: bw, h: Double(abs(yBot - yTop))), seriesIndex: s, datumIndex: i, value: v))
+        out.append(StackSegment(rect: PyreonChartRect(x: plot.x + band * Double(i) + (band - bw) / 2.0, y: yTop < yBot ? yTop : yBot, w: bw, h: Double(abs(yBot - yTop))), seriesIndex: s, datumIndex: i, value: v))
         acc = acc + v
       }
     }
@@ -4255,7 +4262,10 @@ public func stateFill(_ spec: ChartSpec, _ s: Series, _ index: Int, _ fill: Stri
 
 public func emphasisOutline(_ r: PyreonChartRect, _ level: Int, _ stroke: String) -> PyreonDrawCmd { PyreonDrawCmd(kind: "polyline", stroke: stroke, width: level == 2 ? 2.5 : 1.5, points: [PyreonChartPt(x: r.x, y: r.y), PyreonChartPt(x: r.x + r.w, y: r.y), PyreonChartPt(x: r.x + r.w, y: r.y + r.h), PyreonChartPt(x: r.x, y: r.y + r.h), PyreonChartPt(x: r.x, y: r.y)]) }
 
-public func resolveYDomain(_ spec: ChartSpec) -> Domain { (spec.yDomain ?? deriveOver(leftAxisSeries(spec))) }
+public func resolveYDomain(_ spec: ChartSpec) -> Domain {
+    let d = (spec.yDomain ?? deriveOver(leftAxisSeries(spec)))
+    return spec.yInverse == true ? Domain(min: d.min, max: d.max, inverse: true) : d
+  }
 
 public func resolveY2Domain(_ spec: ChartSpec) -> Domain { (spec.y2Domain ?? deriveOver(rightAxisSeries(spec))) }
 
@@ -4297,7 +4307,7 @@ public func geometrySpec(_ spec: ChartSpec) -> ChartSpec {
       return spec
     }
     let lb = isLog ? logBounds(spec) : Domain(min: 1.0, max: 10.0)
-    let viewMax = isLog ? log10(Double(lb.max / lb.min)) : 1.0
+    let viewMax = isLog ? log10(Double(Double(lb.max) / Double(lb.min))) : 1.0
     let stacked = norm ? normalizeStack(spec.series.filter({ s in s.kind == "stacked" }).map({ s in s.values })) : []
     var si = 0
     var series: [Series] = []
@@ -4309,15 +4319,15 @@ public func geometrySpec(_ spec: ChartSpec) -> ChartSpec {
         if isLog && !seriesOnRightAxis(s, spec) {
           var values: [Double] = []
           for v in s.values {
-            values.append(v > 0.0 ? log10(Double(Double(v) / lb.min)) : (0.0 / 0.0))
+            values.append(v > 0.0 ? log10(Double(Double(v) / Double(lb.min))) : (0.0 / 0.0))
           }
           var lows: [Double] = []
           var highs: [Double] = []
           for v in (s.errLow ?? []) {
-            lows.append(v > 0.0 ? log10(Double(Double(v) / lb.min)) : (0.0 / 0.0))
+            lows.append(v > 0.0 ? log10(Double(Double(v) / Double(lb.min))) : (0.0 / 0.0))
           }
           for v in (s.errHigh ?? []) {
-            highs.append(v > 0.0 ? log10(Double(Double(v) / lb.min)) : (0.0 / 0.0))
+            highs.append(v > 0.0 ? log10(Double(Double(v) / Double(lb.min))) : (0.0 / 0.0))
           }
           series.append({ var c = s; c.values = values; c.errLow = s.errLow == nil ? nil : lows; c.errHigh = s.errHigh == nil ? nil : highs; return c }())
         } else {
@@ -4334,7 +4344,7 @@ public func geometrySpec(_ spec: ChartSpec) -> ChartSpec {
       let ay = (a.y ?? 0.0)
       let yF = (a.yFrom ?? 0.0)
       let yT = (a.yTo ?? 0.0)
-      notes.append({ var c = a; c.y = a.y != nil && ay > 0.0 ? log10(Double(Double(ay) / lb.min)) : nil; c.yFrom = a.yFrom != nil && yF > 0.0 ? log10(Double(Double(yF) / lb.min)) : nil; c.yTo = a.yTo != nil && yT > 0.0 ? log10(Double(Double(yT) / lb.min)) : nil; return c }())
+      notes.append({ var c = a; c.y = a.y != nil && ay > 0.0 ? log10(Double(Double(ay) / Double(lb.min))) : nil; c.yFrom = a.yFrom != nil && yF > 0.0 ? log10(Double(Double(yF) / Double(lb.min))) : nil; c.yTo = a.yTo != nil && yT > 0.0 ? log10(Double(Double(yT) / Double(lb.min))) : nil; return c }())
     }
     let yDomain = isLog ? Domain(min: 0.0, max: viewMax) : Domain(min: 0.0, max: 1.0)
     return { var c = spec; c.series = series; c.yDomain = yDomain; c.annotations = spec.annotations == nil ? nil : notes; c.yScale = "linear"; c.stackNormalize = false; return c }()
@@ -4840,8 +4850,9 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
                     for p in pts {
                       poly.append(p)
                     }
-                    poly.append(PyreonChartPt(x: pts[pts.count - 1].x, y: plot.y + plot.h))
-                    poly.append(PyreonChartPt(x: pts[0].x, y: plot.y + plot.h))
+                    let baseY = scaleLinear(sDomain, plot.y + plot.h, plot.y, sDomain.min)
+                    poly.append(PyreonChartPt(x: pts[pts.count - 1].x, y: baseY))
+                    poly.append(PyreonChartPt(x: pts[0].x, y: baseY))
                     out.append(polygonCmd(poly, s.color, sGrad, s.pattern))
                   }
                 }

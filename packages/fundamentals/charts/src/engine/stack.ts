@@ -51,7 +51,7 @@ export function layoutStackedBars(
       out.push({
         rect: {
           x: plot.x + band * i + (band - bw) / 2.0,
-          y: yTop,
+          y: yTop < yBot ? yTop : yBot,
           w: bw,
           h: Math.abs(yBot - yTop),
         },

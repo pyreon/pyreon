@@ -366,6 +366,8 @@ export interface ChartSpec {
   y2Title?: string | undefined
   /** How the x tick labels react to running out of room — see `LayoutConfig.xLabels`. */
   xLabels?: 'auto' | 'rotate' | 'thin' | 'all' | undefined
+  /** Draws the left value axis upside down — ECharts' `yAxis.inverse`. */
+  yInverse?: boolean | undefined
 }
 
 /**
@@ -496,7 +498,8 @@ export function emphasisOutline(r: Rect, level: number, stroke: string): DrawCmd
 export function resolveYDomain(spec: ChartSpec): Domain {
   // `?? derive` rather than an early return: Swift does not narrow
   // `spec.yDomain` through the guard, and the coalesce is the same contract.
-  return spec.yDomain ?? deriveOver(leftAxisSeries(spec))
+  const d = spec.yDomain ?? deriveOver(leftAxisSeries(spec))
+  return spec.yInverse === true ? { min: d.min, max: d.max, inverse: true } : d
 }
 
 /**
@@ -1267,8 +1270,10 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           for (const p of pts) poly.push(p)
           // Close down to the baseline so the fill is a band under the line
           // rather than a polygon between the first and last data points.
-          poly.push({ x: pts[pts.length - 1]!.x, y: plot.y + plot.h })
-          poly.push({ x: pts[0]!.x, y: plot.y + plot.h })
+          // The baseline is the domain's minimum, so an inverted axis fills upward.
+          const baseY = scaleLinear(sDomain, plot.y + plot.h, plot.y, sDomain.min)
+          poly.push({ x: pts[pts.length - 1]!.x, y: baseY })
+          poly.push({ x: pts[0]!.x, y: baseY })
           out.push(polygonCmd(poly, s.color, sGrad, s.pattern))
         }
       }

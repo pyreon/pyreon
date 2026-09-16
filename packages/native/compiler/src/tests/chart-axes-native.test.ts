@@ -34,6 +34,14 @@ describe.each(['swift', 'kotlin'] as const)('option axes on %s', (target) => {
     expect(r.code).toContain('"log"')
   })
 
+  it('carries yAxis.inverse, and compiles against the generated engine', () => {
+    const r = transform(app(`yAxis: { inverse: true }`, `{ type: 'line', data: [3, 4] }`), { target })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain(`yInverse${sep}true`)
+    if (target === 'swift' && isSwiftcAvailable()) expect(validateSwiftWithStubs(r.code)).toMatchObject({ ok: true })
+    if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
+  })
+
   it('names a third y axis and an unsupported yAxisIndex', () => {
     const r = transform(app(`yAxis: [{}, {}, {}]`, `{ type: 'bar', yAxisIndex: 2, data: [1, 2] }`), { target })
     expect(r.warnings).toEqual([expect.stringContaining('yAxisIndex'), expect.stringContaining('at most two y axes')])

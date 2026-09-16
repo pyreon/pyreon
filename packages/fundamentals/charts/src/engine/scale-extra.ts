@@ -104,7 +104,7 @@ export function timeTicks(
     if (v > d.max) break
     out.push({
       value: v,
-      pos: r0 + ((v - d.min) / span) * (r1 - r0),
+      pos: scaleLinear(d, r0, r1, v),
       label: fmt(v),
     })
     i = i + 1

@@ -244,8 +244,11 @@ for interaction, animation or accessibility parity.
   right axis now crosses — `yAxis` as an array carries index 1's domain and
   title, and `yAxisIndex: 1` scales a series on it (it was a warned drop).
   Unmapped per-axis keys and a one-sided min/max are named, where they were
-  silently ignored. Open: `inverse`, `position`, `offset`, a third y axis and
-  a second x axis, which need per-axis layout in the engine.
+  silently ignored. yAxis.inverse is an engine feature: Domain.inverse makes
+  scaleLinear map min to the far end, so marks, ticks and hit-tests invert
+  together and native gets it through the generated engine. A stacked bar and
+  an area built geometry without the scale and were fixed. Open: xAxis
+  inverse, position, offset, a third y axis and a second x axis.
 
 ## Exit gate
 
