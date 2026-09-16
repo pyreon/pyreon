@@ -37,18 +37,22 @@ function getCommitHash(): string {
 /**
  * Run a benchmark script and return its stdout.
  */
-function runBench(scriptPath: string): string {
+/** A bench that could not run — recorded by name so the run FAILS instead of quietly omitting rows. */
+const failed: string[] = []
+
+function runBench(scriptPath: string, args: string[] = [], timeoutMs = 120_000): string {
   const fullPath = resolve(ROOT, scriptPath)
   try {
-    return execSync(`bun ${fullPath}`, {
+    return execSync(`bun ${fullPath} ${args.join(' ')}`.trim(), {
       cwd: ROOT,
       encoding: 'utf-8',
-      timeout: 120_000,
+      timeout: timeoutMs,
       env: { ...process.env, NODE_ENV: 'production' },
     })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[bench] Failed to run ${scriptPath}: ${msg}`)
+    failed.push(scriptPath)
     return ''
   }
 }
@@ -288,7 +292,20 @@ const results: Record<string, BenchMetric> = {}
 const benchmarks = [
   { script: 'scripts/bench/core/reactivity.ts', extractor: extractReactivity, name: 'reactivity' },
   { script: 'scripts/bench/core/compiler.ts', extractor: extractCompiler, name: 'compiler' },
-  { script: 'scripts/bench/core/router.ts', extractor: extractRouter, name: 'router' },
+  {
+    script: 'scripts/bench/core/router.ts',
+    extractor: extractRouter,
+    name: 'router',
+    // The router bench's FULL protocol is process-isolated per cell and
+    // documented at ~6-9 minutes, so it never fit the shared 120s budget:
+    // every main run's Benchmark job hit `spawnSync /bin/sh ETIMEDOUT` here
+    // and silently shipped an artefact with no router rows. The aggregate
+    // run takes `--quick` (one process per cell, fewer windows) with a
+    // budget sized for a contended two-core runner; the full protocol is
+    // the manual `bun run bench:router`.
+    args: ['--quick'],
+    timeoutMs: 420_000,
+  },
   {
     script: 'scripts/bench/core/runtime-server.ts',
     extractor: extractSSR,
@@ -300,9 +317,15 @@ const benchmarks = [
   { script: 'scripts/bench/core/unistyle.ts', extractor: extractUnistyle, name: 'unistyle' },
 ]
 
-for (const { script, extractor, name } of benchmarks) {
+for (const { script, extractor, name, args, timeoutMs } of benchmarks as {
+  script: string
+  extractor: (output: string, results: Record<string, BenchMetric>) => void
+  name: string
+  args?: string[]
+  timeoutMs?: number
+}[]) {
   console.error(`[bench] Running ${name}...`)
-  const output = runBench(script)
+  const output = runBench(script, args, timeoutMs)
   if (output) {
     extractor(output, results)
     console.error(`[bench] ${name} done — ${Object.keys(results).length} metrics total`)
@@ -317,3 +340,12 @@ const output: BenchOutput = {
 
 // Output JSON to stdout (stderr was used for progress)
 console.log(JSON.stringify(output, null, 2))
+
+// A bench that did not run is an UNMEASURED row, not a missing one: the
+// artefact above is still written (every row that ran is real), but the
+// run says which benches are absent and exits non-zero — the same contract
+// bundle-size.ts adopted after four packages printed as 0 B.
+if (failed.length > 0) {
+  console.error(`[bench] ${failed.length} bench(es) did not run and are ABSENT from the output: ${failed.join(', ')}`)
+  process.exit(1)
+}
