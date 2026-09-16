@@ -119,6 +119,10 @@ describe('the option facade', () => {
   it('a label with no formatter still shows the value, as before', () => {
     const { spec } = compileOption({ ...base, series: [{ type: 'bar', data: [4, 6], label: { show: true } }] }, { width: 300, height: 200 })
     expect(spec.series[0]!.labelTexts).toBeUndefined()
-    expect(texts(renderChart(spec, measure)).map((c) => c.text)).toContain('4')
+    const value = texts(renderChart(spec, measure)).find((c) => c.text === '4')
+    expect(value).toBeDefined()
+    // An unstyled label takes the THEME label colour — the counterpart of the
+    // explicit-colour spec above, and what `defaultTheme` was imported for.
+    expect(value!.fill).toBe(defaultTheme.label)
   })
 })
