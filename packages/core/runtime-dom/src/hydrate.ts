@@ -1135,11 +1135,22 @@ function hydrateChild(
         const rest = (domNode as Text).splitText(expected.length)
         return [() => (domNode as Text).remove(), rest]
       }
-      // Genuine content mismatch (server/client divergence).
+      // Genuine content mismatch (server/client divergence). REPLACE the
+      // stale node and advance past it, exactly as the reactive twin
+      // (`hydrateReactiveText`) does twelve lines down — `data` does not even
+      // START with `expected`, so this is not the merged-adjacent-text case
+      // handled above and no later sibling can legitimately claim it. Leaving
+      // it at the cursor made the NEXT sibling mismatch against a text node
+      // and mount a second copy of itself, so `['fresh', <b/>]` over
+      // `['stale', <b/>]` lost the server `<b>`'s identity (it was swept at the
+      // boundary instead of adopted). Advancing hands that `<b>` to the sibling
+      // it belongs to.
       warnHydrationMismatch('text', expected, data, `${path} > text`)
+      const after = nextReal(domNode)
       const tn = document.createTextNode(expected)
       parent.insertBefore(tn, domNode)
-      return [() => tn.remove(), domNode]
+      domNode.remove()
+      return [() => tn.remove(), after]
     }
     warnHydrationMismatch('text', 'TextNode', domNode?.nodeType ?? 'null', `${path} > text`)
     // Recover AT THE CURSOR (not at the parent-level anchor) so sibling
@@ -1203,6 +1214,68 @@ function hydrateChild(
   return hydrateVNode(child as VNode, domNode, parent, anchor, path)
 }
 
+// ─── Boundary sweep ───────────────────────────────────────────────────────────
+
+/**
+ * Remove every server node from `cursor` to the END of `parent`'s child list —
+ * the DOM the vnode walk did not claim.
+ *
+ * `adoptReactiveRange` has swept its own extent since #3351, and the
+ * tag-mismatch recovery in `hydrateElement` was written against a sibling
+ * sweep that did not exist: it offers the unmatched server node to the NEXT
+ * sibling (client `[<b>, <i>]` over server `[<i>]` — the `<i>` still adopts)
+ * and its comment claimed "whatever no sibling claims is swept at the
+ * element/root boundary". Nothing swept there. `hydrateElement` destructured
+ * `[childCleanup] = hydrateChildren(...)` and DISCARDED the residual cursor;
+ * `hydrateRoot` did the same with `hydrateChild`. So a tag mismatch, a static
+ * text mismatch nothing downstream could claim, or simply MORE children on the
+ * server than on the client left that DOM standing: `<div><b>a</b><i>a</i></div>`
+ * where a fresh mount gives `<div><b>a</b></div>`. Visible, countable, and
+ * carrying no handler — the same class #3466 fixed one layer in, where the
+ * `<!--$-->…<!--/$-->` extent made the sweep obvious. React and Vue both delete
+ * the extra hydratable nodes.
+ *
+ * WHY THE TAIL IS THE RIGHT EXTENT. Both call sites pass a null `anchor`, so
+ * the region the walk owns runs to the closing tag (or the container's end).
+ * The cursor only ever moves FORWARD and every recovery mounts AT it
+ * (`parent.insertBefore(fresh, domNode ?? anchor)`), so everything before the
+ * residual cursor is adopted or freshly mounted and everything from it on is
+ * unclaimed. Do NOT reach for this where a live anchor terminates the region —
+ * `adoptReactiveRange` has to stop at `mountReactive`'s own marker, and
+ * sweeping past it detaches the boundary so the accessor can never render
+ * again.
+ *
+ * Costs nothing in the steady state: a fully-claimed child list ends with a
+ * null cursor, which is the first branch. The `parentNode` guard is for a
+ * cursor a nested hydration already detached (a nested accessor removes its
+ * own `$` markers as it adopts) — a walk from a detached node claims the wrong
+ * chain, so decline rather than guess.
+ */
+function sweepUnclaimed(parent: Node, cursor: ChildNode | null): void {
+  if (cursor === null || cursor.parentNode !== parent) return
+  // DEGRADE, DON'T DESTROY. If nothing at all precedes the cursor, the client
+  // neither adopted nor mounted anything here — which is not a divergence, it
+  // is hydration not having HAPPENED. `hydrateComponent` catches a setup throw
+  // per component precisely so one broken component does not take the page
+  // down: it logs, returns an unadvanced cursor, and the server's markup stays
+  // visible (present, un-interactive, better than nothing). Sweeping there
+  // converts that degraded page into a BLANK one, and blanking is not what
+  // parity buys you — a cold mount of the same throwing component renders
+  // nothing either, so the "correct" DOM here is empty and strictly less
+  // useful. The same reasoning covers a root whose component legitimately
+  // returns `null` over server content. Every real divergence puts the
+  // client's own node before the cursor (recovery mounts AT it), so this
+  // declines exactly the nothing-happened case and nothing else. The scan runs
+  // only once the cursor is non-null, i.e. on the divergence path.
+  if (firstReal(parent.firstChild as ChildNode | null) === cursor) return
+  let n: ChildNode | null = cursor
+  while (n) {
+    const nx: ChildNode | null = n.nextSibling
+    n.remove()
+    n = nx
+  }
+}
+
 // ─── Element hydration ────────────────────────────────────────────────────────
 
 function hydrateElement(
@@ -1262,7 +1335,20 @@ function hydrateElement(
     } else {
       const fc = el.firstChild as ChildNode | null
       const firstChild = fc !== null && fc.nodeType === 1 ? fc : firstReal(fc)
-      ;[childCleanup] = hydrateChildren(vnode.children ?? [], firstChild, el, null, elPath)
+      const kids = vnode.children ?? []
+      const residual = hydrateChildren(kids, firstChild, el, null, elPath)
+      childCleanup = residual[0]
+      // ELEMENT BOUNDARY SWEEP. The closing tag is the extent — see
+      // `sweepUnclaimed`. Gated on the walk having actually walked: with NO
+      // vnode children the cursor is still the element's FIRST child, and
+      // "nothing was claimed" is then indistinguishable from "a prop owns this
+      // content" — `innerHTML` (written by `applyProps` just above, so the
+      // sweep would delete the client's own sanitized output) and an adopted
+      // `dangerouslySetInnerHTML` (whose server children ARE the payload) are
+      // both that shape. A childless vnode over server children therefore
+      // keeps today's behavior; the sweep is for divergence INSIDE a walked
+      // child list, which is where every reported cell lives.
+      if (kids.length > 0) sweepUnclaimed(el, residual[1])
     }
 
     // The cleanup slots are statically known (props / children / select-value /
@@ -1310,8 +1396,12 @@ function hydrateElement(
   const cleanup = mountChild(vnode, parent, domNode ?? anchor)
   // The server node is deliberately NOT removed here: it is offered to the
   // NEXT sibling, which frequently adopts it (client [<b>, <i>] against
-  // server [<i>] — the <i> still matches). Whatever no sibling claims is
-  // swept at the element/root boundary, where the extent is known.
+  // server [<i>] — the <i> still matches). Whatever no sibling claims is swept
+  // by `sweepUnclaimed` at the enclosing element's closing tag or the
+  // hydration root's container, which is where the extent is known. That sweep
+  // is what makes this offer safe; it did not exist until #3505, so an
+  // unclaimed node simply stayed (`<div><b>a</b><i>a</i></div>` where a fresh
+  // mount gives `<div><b>a</b></div>`).
   return [cleanup, domNode]
 }
 
@@ -1583,7 +1673,12 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
   // the eager (armed-or-clone) behavior.
   const prevHydrationActive = _setHydrationActive(true)
   try {
-    const [cleanup] = hydrateChild(vnode, firstChild, container, null)
+    const [cleanup, residual] = hydrateChild(vnode, firstChild, container, null)
+    // ROOT BOUNDARY SWEEP — the container's end is the extent, exactly as a
+    // closing tag is for an element (see `sweepUnclaimed`). A null/false tree
+    // claims nothing and says nothing about the container, so it declines
+    // rather than emptying it.
+    if (vnode != null && vnode !== false) sweepUnclaimed(container, residual)
     return cleanup
   } finally {
     _setHydrationActive(prevHydrationActive)
