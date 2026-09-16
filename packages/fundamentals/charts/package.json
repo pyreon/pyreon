@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/charts",
-  "version": "0.51.0",
-  "description": "Charts for Pyreon \u2014 a first-party multiplatform engine (`@pyreon/charts/plot`: 21 chart families over a flat draw list, on the web, iOS and Android) plus a reactive, lazy-loaded ECharts bridge",
+  "version": "0.52.0",
+  "description": "Charts for Pyreon — a first-party multiplatform engine (`@pyreon/charts/plot`: 21 chart families over a flat draw list, on the web, iOS and Android) plus a reactive, lazy-loaded ECharts bridge",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/charts#readme",
   "bugs": {

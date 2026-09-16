@@ -1,5 +1,119 @@
 # @pyreon/permissions
 
+## 0.52.0
+
+### Minor Changes
+
+- Co-locate native runtimes into their own packages. (ed6518a)
+
+  The Swift/Kotlin runtimes for form, store, state-tree, machine, i18n, permissions,
+  and query move out of the `@pyreon/native-runtime-*` monolith into each package's
+  `native/{swift,kotlin}/` (declared via the `pyreon.native` package.json field,
+  aggregated by `pyreon-native wire`). Framework-base runtimes (reactivity/styling/JSON
+  helpers) stay in the monolith. A new `scripts/check-native-cosource.ts` gate compiles
+  and smoke-runs every co-located `.swift`/`.kt` against the stub harness so a relocated
+  runtime can't rot silently. No API change — this is a source-location move.
+
+- `usePermissions(['posts.edit'])` works on the web, so a permission-gated screen can be written once (07f0ac8)
+
+  The seeded form is what `@pyreon/native-compiler` lowers to — it becomes a
+  `PyreonPermissions` seeded with the same literal keys, and the compiler's own
+  diagnostics point authors at it. On the web that identical call threw
+  `usePermissions() must be used within <PermissionsProvider>`, so a screen using
+  it ran on iOS and Android and died in a browser.
+
+  A seeded call is self-contained by definition: it says what it grants, so there
+  is nothing for a provider to contribute. It now builds a local instance and
+  needs no provider. The bare `usePermissions()` contract is unchanged — it still
+  reads the nearest provider and still throws without one, and the message now
+  names the seeded form as the other way out.
+
+  Found by rendering a shared multi-target source in a real browser.
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Ship the MIT LICENSE file in the package tarball (8aeffe0)
+
+  These eight published packages were missing a `LICENSE` file. The repo's
+  own rule has always been that every package carries one ("Every package
+  MUST have `LICENSE` (MIT) and `README.md` — no exceptions"), but nothing
+  enforced it, so the gap went unnoticed.
+
+  No runtime change. It matters anyway: consumers, vendoring tools and
+  licence scanners read the file from the tarball, and its absence makes an
+  MIT-licensed package look unlicensed at the point where that question is
+  actually asked. A gate now keeps every workspace covered.
+
+- Native `.*` granted more than the web did (4be7791)
+
+  `PyreonPermissions.can()` resolved a `"prefix.*"` grant with a bare prefix
+  match on both platforms, so granting `"posts.*"` also granted
+  `"posts.comments.edit"` — a key the web **denies**. A permission check that
+  grants more on device than in the browser, from the same source, is the wrong
+  direction to be wrong in. Neither runtime recognised `.**` or `*` at all, so
+  the two wildcards that _should_ widen a grant were silently ignored.
+
+  The two native runtimes agreed with each other and disagreed with the web:
+  both were written from one belief about what `.*` means. `can()` now resolves
+  in the web's order — exact, then one-segment `.*`, then recursive `.**`
+  most-specific-ancestor-first, then global `*`.
+
+  Measured three ways rather than mirrored: the web resolver via
+  `native-parity.test.ts`, and both runtimes compiled and **run** against the
+  same nine cases.
+
+  ## The call site was inverted too
+
+  Web `usePermissions()` takes no arguments — the grants come from
+  `<PermissionsProvider>`, which has no native lowering. So the correct web call
+  emitted an empty native set in which every check denies, silently: guarded
+  views simply never appeared on device. The only way to get a non-empty native
+  set is `usePermissions([...])`, a call the web API rejects.
+
+  Seeding the provider natively is a larger arc. What changes here is the
+  silence — the empty-set case now says so and names the shape that works, and
+  the provider's own advice no longer tells an author already holding the hook
+  to "use the hook instead", which changed nothing.
+
+  Still web-only: predicate permissions (`(context) => boolean`) and explicit
+  `false` values, both of which need a value-carrying granted set rather than
+  the current `Set<String>`. The web arm pins them so the gap is visible.
+
+  ## `<PermissionsProvider>` now lowers
+
+  Web `usePermissions()` takes no arguments — the grants come from the provider
+  above it, which had no native lowering. A literal
+  `<PermissionsProvider permissions={{ 'posts.*': true }}>` now injects them
+  into the SwiftUI environment / Compose `CompositionLocal` that a bare
+  `usePermissions()` reads, so the web-correct call works unchanged instead of
+  denying everything.
+
+  The plumbing is emitted INLINE rather than shipped in the co-located runtime,
+  for the reason `PyreonUrlState` already is: it needs SwiftUI's environment
+  machinery / Compose's CompositionLocal, and a runtime that pulls those in
+  stops being self-contained (and stops verifying against the compile gate's
+  stub set).
+
+  A NON-literal map (`permissions={fromServer}`) cannot be baked into the emit
+  and declines from the emitter, which is the only layer that knows whether the
+  injection happened — the blanket import warning is suppressed once the tag is
+  present, so without this a provider that injects nothing would have gone
+  silent.
+
+  One more silent drop fixed on the way: an object literal with a STRING key
+  (`{ 'posts.*': true }` — ordinary TS) was dropped by the parser with no field
+  and no warning, unlike the computed-key case beside it which warns. String
+  keys are now preserved.
+
+- fix(permissions): predicate evaluation is fail-CLOSED — only an explicit `true` grants (c9f3c6c)
+
+  `evaluate()` returned the raw predicate result, so a predicate that returned a truthy NON-boolean granted access it should deny. A predicate is typed `(context?) => boolean`, but a body reading an `any`-typed context (`(u: any) => u.permissions.edit`) returns `any` with no type error — so at runtime it could yield a truthy string/number/object, or (worst) a `Promise`, which is ALWAYS truthy, so an accidentally-async predicate ALWAYS granted. `can()` now returns `true` only when the predicate returns exactly `true` (matching the fail-closed posture the throw path already uses). A genuine `false` deny and all boolean predicates are unchanged. Bisect-verified.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

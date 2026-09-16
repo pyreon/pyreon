@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/native-compiler",
-  "version": "0.51.0",
-  "description": "PRIVATE / EXPERIMENTAL \u2014 Pyreon Multi-Target Compiler (PMTC). Transforms Pyreon JSX source to native Swift (SwiftUI) and Kotlin (Jetpack Compose). Not published. See .claude/plans/native-platforms.md for strategic direction.",
+  "version": "0.52.0",
+  "description": "PRIVATE / EXPERIMENTAL — Pyreon Multi-Target Compiler (PMTC). Transforms Pyreon JSX source to native Swift (SwiftUI) and Kotlin (Jetpack Compose). Not published. See .claude/plans/native-platforms.md for strategic direction.",
   "license": "MIT",
   "repository": {
     "type": "git",
