@@ -92,7 +92,7 @@ const KNOWN_SERIES = new Set([
   'type', 'name', 'data', 'stack', 'smooth', 'step', 'areaStyle', 'itemStyle',
   'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'markLine', 'markPoint', 'markArea',
   'color', 'showSymbol', 'symbol', 'emphasis', 'z', 'zlevel', 'silent',
-  'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'rippleEffect', 'showEffectOn',
+  'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'rippleEffect', 'showEffectOn',
   'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex', 'tooltipExtras',
   'coordinateSystem', 'polyline', 'effect', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'sampling',
 ])
@@ -203,6 +203,11 @@ function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning[
   else if (raw === 'triangle') symbol = 'triangle'
   else if (raw !== 'rect' && raw !== 'roundRect') warn('mark-shape-unsupported', `${path}.symbol`, `pictorialBar symbol "${raw}" is not supported (rect, roundRect, circle, diamond, triangle are); drawn as a rect.`)
   const rep = s['symbolRepeat']
+  // Accepted-but-unmapped pictorial keys are NAMED, not swallowed: each one
+  // changes what ECharts draws, so silence here would be a silent drop.
+  for (const key of ['symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate']) {
+    if (s[key] !== undefined) warn('series-option-unsupported', `${path}.${key}`, `pictorialBar ${key} is not supported (symbol, symbolRepeat and symbolSize are); it was ignored.`)
+  }
   return { symbol, symbolRepeat: rep === true || rep === 'fixed' || (typeof rep === 'number' && rep > 0) }
 }
 

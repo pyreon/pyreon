@@ -97,6 +97,11 @@ for interaction, animation or accessibility parity.
   native decimation). Before this, all four rows had been marked complete on
   the strength of the web facade alone while the native desugar named
   `option.dataset` as not crossing and emitted nothing.
+- [ ] `series.pictorial-bar` (silent-drop closed, row still partial): the
+  accepted-but-unmapped pictorial keys (`symbolClip`, `symbolMargin`,
+  `symbolBoundingData`, `symbolOffset`, `symbolPosition`, `symbolRotate`)
+  warn by name now; mapping them needs engine work in both bar orientations
+  (clipped partial symbols, margins, a bounding reference for the repeat).
 - [ ] `presentation.gradients-patterns`: ECharts' LINEAR gradient objects on
   every colour slot now resolve to the series gradient (direction from the
   dominant axis, a backwards ramp reverses its stops, the first stop is the

@@ -153,3 +153,17 @@ describe('option facade — edge shapes (every branch NAMES its loss)', () => {
     expect(compileOption({ xAxis: { data: [{ value: 'q' }, { name: 'n' }, 3] }, yAxis: {}, series: [] }).spec.categories).toEqual(['q', '', '3'])
   })
 })
+
+describe('pictorialBar accepted-but-unmapped keys', () => {
+  it('names symbolClip / symbolMargin / symbolBoundingData / symbolOffset / symbolPosition / symbolRotate rather than swallowing them', () => {
+    const { warnings } = compileOption({ xAxis: { type: 'category', data: ['a'] }, yAxis: {}, series: [{ type: 'pictorialBar', symbol: 'circle', symbolRepeat: true, symbolClip: true, symbolMargin: 4, symbolBoundingData: 10, symbolOffset: [0, 2], symbolPosition: 'end', symbolRotate: 30, data: [3] }] })
+    expect(warnings.map((w) => w.code + '@' + w.path).sort()).toEqual([
+      'series-option-unsupported@series[0].symbolBoundingData',
+      'series-option-unsupported@series[0].symbolClip',
+      'series-option-unsupported@series[0].symbolMargin',
+      'series-option-unsupported@series[0].symbolOffset',
+      'series-option-unsupported@series[0].symbolPosition',
+      'series-option-unsupported@series[0].symbolRotate',
+    ])
+  })
+})
