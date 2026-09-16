@@ -890,21 +890,12 @@ export type DeclIR =
    * — the emit is a fully self-contained `@State`/`remember` initializer,
    * no `.onAppear`/post-init wiring needed (closer to `machine`'s shape).
    *
-   * v1: every node's `data` must share the SAME field set (so ONE row
-   * struct is synthesized, the same uniform-row assumption `table-state`
-   * makes) — `swiftType(inferType({ kind: 'array', elements: nodes.map(n
-   * => n.data) }, ctx).element, synth)` at emit time gets the row type,
-   * mirroring how `table-state`'s `dataBody` resolves its row type. Edge
-   * `id` is required (not auto-generated, unlike the web engine's
-   * `edgeId()` fallback) — a v1 narrowing, like `table-state`'s explicit
-   * `columns: [{ id }]`.
+   * Node `data` literals synthesize one native union model; a field absent
+   * from any node type becomes optional. An absent edge `id` uses the same
+   * deterministic source/handle/target fallback as the web engine.
    *
-   * `minZoom`/`maxZoom` ARE recognized (both native constructors already take
-   * them, so threading them through was pure compiler-side work). Every OTHER
-   * `FlowConfig` key still lowers to nothing — but now WARNS by name instead of
-   * dropping silently, because a dropped `fitView: true` or `snapToGrid` is a
-   * behavioural divergence from the same source line, and silence is what makes
-   * that expensive to find.
+   * Portable literal `FlowConfig` fields are carried in this declaration;
+   * unsupported dynamic/browser-specific shapes are diagnosed by name.
    */
   | {
       kind: 'flow-state'
@@ -918,7 +909,7 @@ export type DeclIR =
         type?: string
         positionX: ExprIR
         positionY: ExprIR
-        /** The node's `data: {...}` object literal — uniform across every node. */
+        /** The node's `data: {...}` object literal; emitters union heterogeneous field sets. */
         data: ExprIR
         width?: ExprIR
         height?: ExprIR
@@ -929,11 +920,15 @@ export type DeclIR =
         ariaLabel?: string
         hidden?: boolean
         deletable?: boolean
+        cssClass?: string
+        style?: string
         parentId?: string
+        extent?: [number, number, number, number]
+        extentParent?: boolean
         expandParent?: boolean
         group?: boolean
-        sourceHandles?: { id?: string; type: string; position: string }[]
-        targetHandles?: { id?: string; type: string; position: string }[]
+        sourceHandles?: { id?: string; type: string; position: string; offset?: number }[]
+        targetHandles?: { id?: string; type: string; position: string; offset?: number }[]
       }[]
       edges: {
         id: string
@@ -950,6 +945,9 @@ export type DeclIR =
         deletable?: boolean
         reconnectable?: boolean
         interactionWidth?: number
+        data?: ExprIR
+        cssClass?: string
+        style?: string
         pathOptions?: { curvature?: number; borderRadius?: number; offset?: number }
         markerStart?: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number }
         markerEnd?: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number } | null
@@ -979,6 +977,9 @@ export type DeclIR =
       zoomable?: boolean
       zoomOnPinch?: boolean
       zoomOnDoubleClick?: boolean
+      panOnScroll?: boolean
+      panOnScrollSpeed?: number
+      zoomOnScroll?: boolean
       selectionOnDrag?: boolean
       selectionMode?: string
       multiSelect?: boolean
@@ -986,6 +987,11 @@ export type DeclIR =
       snapToObjects?: boolean
       autoHistory?: boolean
       reducedMotion?: boolean
+      deleteKeys?: string[] | null
+      multiSelectionKey?: string | null
+      selectionKey?: string | null
+      zoomActivationKey?: string | null
+      preventScrolling?: boolean
       defaultEdgeType?: string
       connectionLineType?: string
       defaultEdgeOptions?: {
@@ -1986,14 +1992,13 @@ export interface ParseResult {
    */
   attrsComponents: AttrsComponentIR[]
   /**
-   * Local-name → `@pyreon` package for the alias-tag names (Element, PyreonUI,
-   * PyreonUIProvider, Container, Row, Col). The emit's alias hooks intercept a
-   * tag ONLY when it is imported from its expected package — so a user
+   * Local-name → source package + original imported name for package-specific
+   * JSX hooks. The emit intercepts a tag ONLY when both match — so a user
    * component that happens to share a name (`Row` from `./my-components`) is
    * NOT mis-lowered as a coolgrid Row. An untracked name (absent from the map)
    * keeps prior behaviour, so this is a purely additive precision guard.
    */
-  aliasImports: Map<string, string>
+  aliasImports: Map<string, { source: string; imported: string }>
   /** Diagnostic messages produced during IR construction. */
   warnings: string[]
 }

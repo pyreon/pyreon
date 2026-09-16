@@ -1,6 +1,6 @@
 import { useContext, type VNodeChild } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import type { ControlsProps, FlowInstance } from '../types'
+import type { ControlsProps } from '../types'
 import { FlowContext } from './flow-context'
 
 const positionStyles: Record<string, string> = {
@@ -93,7 +93,7 @@ const LockIcon = () => (
  * </Flow>
  * ```
  */
-export function Controls(props: ControlsProps & { instance?: FlowInstance }): VNodeChild {
+export function Controls(props: ControlsProps): VNodeChild {
   // KNOWN LIMITATION — do not "fix" this destructure without a real-Chromium
   // e2e run. Components run once, so `position` and the `show*` toggles are
   // captured at setup and a signal-driven `<Controls position={corner()} />`
