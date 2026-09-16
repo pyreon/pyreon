@@ -1,5 +1,13 @@
 # @pyreon/example-native-finance
 
+## 0.50.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - @pyreon/hooks@1.0.0
+  - @pyreon/charts@1.0.0
+
 ## 0.50.1
 
 ### Patch Changes

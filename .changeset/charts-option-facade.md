@@ -1,5 +1,0 @@
----
-'@pyreon/charts': minor
----
-
-ECharts option-compat facade. `compileOption(option)` accepts an ECharts-shaped option and compiles it onto the plot engine — bar / stacked / grouped / line / area / step / smooth / scatter series (number, `{value}` and `[x, y]` pair data), category / value / time x axes, one or two y axes (`yAxisIndex: 1` → the right axis, `min`/`max` → pinned domains, function and `{value}`-template formatters), `markLine` (average/max/min, yAxis, xAxis) → annotations, `markPoint` (max/min, coord) → markers, `color` palette, `itemStyle`/`lineStyle` colours, `title`/`legend`/`tooltip` host hints. Nothing is dropped silently: every unmapped key, series option, series type or data shape becomes a named `OptionWarning` with a path, and an unmappable series flips `supported` to false. `optionToSvg(option)` composes title + legend + chart into a server-safe `<svg>` string. A gallery-shaped conformance corpus is the parity metric — its clean pass count is locked as a floor that only ratchets up.
