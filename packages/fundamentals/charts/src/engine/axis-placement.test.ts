@@ -135,11 +135,14 @@ describe('placement combinations', () => {
   const many = { categories: Array.from({ length: 30 }, (_, i) => `category-${i}`), series: [series({ values: Array.from({ length: 30 }, (_, i) => i) })] }
 
   it('rotated labels on a TOP axis slant the other way', () => {
-    const rot = (xTop: boolean) =>
-      draw({ ...many, xLabels: 'rotate', xTop }).find((c) => c.kind === 'text' && c.text === 'category-0')
-    const bottom = rot(false)
-    const top = rot(true)
-    expect(bottom!.kind === 'text' && top!.kind === 'text' && Math.sign(bottom.rotate ?? 0)).toBe(-Math.sign((top as { rotate?: number }).rotate ?? 0))
+    const rotation = (xTop: boolean): number => {
+      const cmd = draw({ ...many, xLabels: 'rotate', xTop }).find(
+        (c): c is Extract<DrawCmd, { kind: 'text' }> => c.kind === 'text' && c.text === 'category-0',
+      )
+      return cmd?.rotate ?? 0
+    }
+    expect(rotation(false)).not.toBe(0)
+    expect(rotation(true)).toBe(-rotation(false))
   })
 
   it('a second x axis title sits at the bottom edge when the first axis is on top', () => {
