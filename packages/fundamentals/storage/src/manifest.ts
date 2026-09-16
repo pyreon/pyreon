@@ -5,7 +5,7 @@ export default defineManifest({
   title: 'Reactive Storage',
   tagline: 'Reactive client-side storage — localStorage, sessionStorage, cookies, IndexedDB',
   description:
-    'Signal-backed persistence for Pyreon. Every stored value is a reactive signal that persists writes automatically to the underlying storage backend. `useStorage` (localStorage, cross-tab synced), `useSessionStorage`, `useCookie` (SSR-readable, configurable expiry), `useIndexedDB` (large data, debounced writes), and `useMemoryStorage` (ephemeral, SSR-safe). All hooks return `StorageSignal<T>` which extends `Signal<T>` with `.remove()`. Calling the same hook with the same key ANYWHERE returns the SAME signal, refcounted across every backend — so one consumer calling `.remove()` clears the stored value without orphaning the siblings still holding it; the entry is destroyed on the last release. `createStorage(backend)` enables custom backends (encrypted, remote, etc.). SSR-safe — browser-API hooks return the default value on the server.',
+    'Signal-backed persistence for Pyreon. Every stored value is a reactive signal that persists writes automatically to the underlying storage backend. `useStorage` (localStorage, cross-tab synced), `useSessionStorage`, `useCookie` (SSR-readable, configurable expiry), `useIndexedDB` (large data, debounced writes), and `useMemoryStorage` (ephemeral, SSR-safe). All hooks return `StorageSignal<T>` which extends `Signal<T>` with `.remove()`. Calling the same hook with the same key ANYWHERE returns the SAME signal, refcounted across every backend — so one consumer calling `.remove()` clears the stored value without orphaning the siblings still holding it; the entry is destroyed on the last release. `createStorage(backend)` enables custom backends (encrypted, remote, etc.). SSR-safe — browser-API hooks return the default value on the server, and the signal registry is isolated PER REQUEST under `@pyreon/runtime-server`, so a cached `useCookie` / `useMemoryStorage` signal is never handed to the next visitor.',
   category: 'universal',
   multiplatform: {
     tier: 'service-backend',
@@ -119,7 +119,7 @@ filter.set({ query: 'pyreon', page: 1 })
       kind: 'hook',
       signature: '<T>(key: string, defaultValue: T) => StorageSignal<T>',
       summary:
-        'In-memory reactive signal that mimics the storage hook shape — useful as an SSR-safe fallback or in environments without `localStorage`/`sessionStorage` (sandbox iframes, web workers without DOM, some embedded WebViews). Same `StorageSignal<T>` shape with `.remove()`. Values are lost on page reload; no persistence.',
+        'In-memory reactive signal that mimics the storage hook shape — useful as an SSR-safe fallback (its byte store is request-scoped on a server, so nothing written during one render is visible to the next) or in environments without `localStorage`/`sessionStorage` (sandbox iframes, web workers without DOM, some embedded WebViews). Same `StorageSignal<T>` shape with `.remove()`. Values are lost on page reload; no persistence.',
       example: `const draft = useMemoryStorage('draft-id-42', '')
 draft.set('typing...')
 // → reactive, but cleared on reload`,
@@ -134,7 +134,7 @@ draft.set('typing...')
       kind: 'function',
       signature: 'setCookieSource(source: string | (() => string) | null) => void',
       summary:
-        "Tell `useCookie` how to read cookies during SSR. Pass the raw cookie header string, an accessor `() => string` returning it, or `null` to clear. The source is a single module-level slot: a bare STRING is shared across concurrent requests (safe only when rendering is serialized per process), so on a server handling concurrent requests pass an ACCESSOR bound to your per-request context (e.g. reading the current request's `Cookie` header out of `runWithRequestContext`'s AsyncLocalStorage) — the accessor is evaluated LAZILY at each cookie read, so each request resolves its own cookies without this module holding per-request state.",
+        "Tell `useCookie` how to read cookies during SSR. Pass the raw cookie header string, an accessor `() => string` returning it, or `null` to clear. The source is a single module-level slot: a bare STRING is shared across concurrent requests (safe only when rendering is serialized per process), so on a server handling concurrent requests pass an ACCESSOR bound to your per-request context (e.g. reading the current request's `Cookie` header out of `runWithRequestContext`'s AsyncLocalStorage) — the accessor is evaluated LAZILY at each cookie read, so each request resolves its own cookies without this module holding per-request state. The signal registry that caches cookie signals per key is itself isolated per request under `@pyreon/runtime-server`, which is what makes the accessor reachable on every request rather than only the first.",
       example: `import { setCookieSource } from '@pyreon/storage'
 
 // Inside an SSR handler:
@@ -226,7 +226,7 @@ clearStorage('all')     // every backend`,
   gotchas: [
     {
       label: 'SSR safety',
-      note: 'Browser-backed hooks (`useStorage`, `useSessionStorage`, `useIndexedDB`) return the default value on the server. `useCookie` is SSR-readable via `setCookieSource()` which reads from the request headers.',
+      note: 'Browser-backed hooks (`useStorage`, `useSessionStorage`, `useIndexedDB`) return the default value on the server. `useCookie` is SSR-readable via `setCookieSource()` which reads from the request headers. Under `@pyreon/runtime-server` the signal registry is isolated per request automatically, so concurrent renders never share a cached signal — pass an ACCESSOR cookie source bound to your request context to make use of it.',
     },
     {
       label: 'Cross-tab sync',
