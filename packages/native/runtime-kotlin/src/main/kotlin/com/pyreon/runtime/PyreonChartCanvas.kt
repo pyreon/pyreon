@@ -6,7 +6,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.withFrameNanos
+import androidx.compose.animation.core.withInfiniteAnimationFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -751,8 +751,11 @@ fun PyreonChartClock(content: @Composable (Double) -> Unit) {
     var seconds by remember { mutableStateOf(0.0) }
     LaunchedEffect(Unit) {
         var start = -1L
+        // The INFINITE-animation frame API: it is what lets a UI test (and any
+        // idling policy) treat a never-ending loop as settled. A plain
+        // withFrameNanos loop kept the Compose test harness busy forever.
         while (true) {
-            withFrameNanos { now ->
+            withInfiniteAnimationFrameNanos { now ->
                 if (start < 0L) start = now
                 seconds = (now - start) / 1_000_000_000.0
             }

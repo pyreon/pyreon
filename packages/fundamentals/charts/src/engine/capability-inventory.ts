@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.26' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-17.27' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -53,7 +53,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('series.line', 'series', 'direct', 'complete', 'src/engine/option-edges.test.ts'),
   row('series.sankey', 'series', 'direct', 'complete', 'src/engine/option-orient.test.ts', '../../native/compiler/src/tests/chart-orient-native.test.ts'),
   row('series.map', 'series', 'direct', 'partial', 'src/engine/geo-web.ts'),
-  row('series.lines', 'series', 'direct', 'partial', 'src/engine/lines-series.test.ts', '../../native/compiler/src/tests/chart-lines-native.test.ts'), // engine lines + trails on web and native; open: device proof the native trail moves
+  row('series.lines', 'series', 'direct', 'complete', 'src/engine/lines-series.test.ts', '../../native/compiler/src/tests/chart-lines-native.test.ts'),
   // The six geometry keys are draw-list geometry (`engine/pictorial.ts`): px / degree numbers cross; a percent string warns by name.
   row('series.pictorial-bar', 'series', 'direct', 'complete', 'src/engine/pictorial.test.ts', 'src/engine/option-edges.test.ts', '../../native/compiler/src/tests/chart-pictorial-native.test.ts'),
   row('series.extensions', 'series', 'hosted', 'complete', 'src/webview.ts'),

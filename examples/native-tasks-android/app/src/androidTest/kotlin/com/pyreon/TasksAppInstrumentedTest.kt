@@ -842,6 +842,13 @@ class TasksAppInstrumentedTest {
         )) {
             composeRule.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
         }
+        // The lines trail renders. Its MOTION is proven on the iOS device lane
+        // and in real Chromium; here it cannot be: the trail runs on
+        // withInfiniteAnimationFrameNanos (a plain frame loop kept this harness
+        // busy forever), and the Compose test harness suspends infinite
+        // animations by design, so two captures are identical whatever the
+        // runtime does.
+        composeRule.onNodeWithTag("gal-lines").performScrollTo().assertIsDisplayed()
         composeRule
             .onNodeWithTag("gal-back")
             .performScrollTo()

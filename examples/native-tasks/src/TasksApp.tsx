@@ -85,6 +85,7 @@ import {
   MapChart,
   ParallelChart,
   PieChart,
+  OptionChart,
   PlotChart,
   PolarChart,
   RadarChart,
@@ -773,6 +774,24 @@ function GalleryPage() {
         <RiverChart series={RIVER_SERIES} height={180} data-testid="gal-river" />
         <SunburstChart data={SUNBURST} height={200} data-testid="gal-sunburst" />
         <TreeChart data={SUNBURST} height={200} data-testid="gal-tree" />
+        {/* An ECharts lines series with its animated trail — the device tests
+            capture this canvas twice and assert the frames differ. */}
+        <OptionChart
+          option={{
+            xAxis: {},
+            yAxis: {},
+            series: [
+              {
+                type: 'lines',
+                lineStyle: { color: '#123456', width: 2 },
+                effect: { show: true, period: 2, trailLength: 0.3, color: '#ff0000', symbolSize: 10 },
+                data: [{ coords: [[0, 0], [10, 10]] }, { coords: [[0, 10], [5, 5], [10, 0]] }],
+              },
+            ],
+          }}
+          height={180}
+          data-testid="gal-lines"
+        />
         <Button onPress={() => navigate('/tasks')} data-testid="gal-back">
           Back to tasks
         </Button>

@@ -830,6 +830,15 @@ final class PyreonTasksUITests: XCTestCase {
             XCTAssertTrue(canvas.waitForExistence(timeout: 10), "\(id) canvas missing on the gallery")
             XCTAssertFalse(canvas.frame.isEmpty, "\(id) rendered with an empty frame — it laid out to nothing")
         }
+        // The lines trail MOVES: two screenshots of its canvas half a second
+        // apart differ (the simulator runs with Reduce Motion off).
+        let linesChart = app.descendants(matching: .any).matching(identifier: "gal-lines").firstMatch
+        scrollIntoView(linesChart, in: app)
+        XCTAssertTrue(linesChart.waitForExistence(timeout: 10), "gal-lines canvas missing on the gallery")
+        let framesBefore = linesChart.screenshot().pngRepresentation
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        let framesAfter = linesChart.screenshot().pngRepresentation
+        XCTAssertNotEqual(framesBefore, framesAfter, "gal-lines trail did not move between frames")
         app.buttons["gal-back"].firstMatch.tap()
         XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after gallery Back")
 
