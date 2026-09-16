@@ -1858,7 +1858,8 @@ export function desugarOptionChart(
       if (axisIndexRaw !== undefined) {
         const axisIndex = litNumber(axisIndexRaw)
         if ((axisIndex === 1) !== swapYAxes && (axisIndex === 0 || axisIndex === 1)) opts.push({ name: 'axis', value: lit('right') })
-        else if (axisIndex !== 0 && axisIndex !== 1) warn(`<OptionChart option.series[${si}].yAxisIndex>: only yAxisIndex 0 or 1 is supported natively; the series uses the left axis.`)
+        else if (axisIndex !== undefined && axisIndex >= 2 && axisIndex < yAxisPair.length) opts.push({ name: 'axisExtra', value: optionDoubleLiteral(axisIndex - 2) })
+        else if (axisIndex !== 0 && axisIndex !== 1) warn(`<OptionChart option.series[${si}].yAxisIndex>: yAxisIndex ${axisIndex} names no declared y axis; the series uses the left axis.`)
       }
       const pattern = optionPatternLiteral(objectField(s, 'itemStyle'), resolve)
       if (pattern !== undefined) opts.push({ name: 'pattern', value: pattern })
@@ -2202,7 +2203,23 @@ export function desugarOptionChart(
       const natural = ai === 0 ? 'left' : 'right'
       if (pos !== undefined && pos !== natural && !swapYAxes && !(yAxisDeclared.length === 1 && pos === 'right')) warn(`<OptionChart option.yAxis[${ai}].position>: both y axes cannot share a side; the axis keeps its default side.`)
     }
-    if (yAxisList.length > 2) warn('<OptionChart option.yAxis>: at most two y axes are supported natively; extras were ignored.')
+    // Third and later y axes: side, pinned domain, title and offset.
+    const extraAxes: ExprIR[] = []
+    for (let ai = 2; ai < yAxisList.length; ai++) {
+      const a = yAxisList[ai]!
+      if (a.kind !== 'object') continue
+      optionFields(a, ['type', 'show', 'name', 'min', 'max', 'position', 'offset', 'splitLine'], `option.yAxis[${ai}]`, warn)
+      const fields: { name: string; value: ExprIR }[] = [{ name: 'side', value: lit(litString(objectField(a, 'position')) === 'left' ? 'left' : 'right') }]
+      const amin = litNumber(objectField(a, 'min'))
+      const amax = litNumber(objectField(a, 'max'))
+      if (amin !== undefined && amax !== undefined) fields.push({ name: 'domain', value: { kind: 'object', fields: [{ name: 'min', value: optionDoubleLiteral(amin) }, { name: 'max', value: optionDoubleLiteral(amax) }] } })
+      const aname = litString(objectField(a, 'name'))
+      if (aname !== undefined) fields.push({ name: 'title', value: lit(aname) })
+      const aoff = litNumber(objectField(a, 'offset'))
+      if (aoff !== undefined) fields.push({ name: 'offset', value: optionDoubleLiteral(aoff) })
+      extraAxes.push({ kind: 'object', fields })
+    }
+    if (extraAxes.length > 0) set('extraYAxes', { kind: 'array', elements: extraAxes })
     for (let ai = 0; ai < Math.min(2, yAxisList.length); ai++) {
       const yAxis = yAxisList[ai]!
       if (yAxis.kind !== 'object') continue
@@ -3157,6 +3174,7 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'label', kind: 'string' },
   { name: 'showValues', kind: 'boolean', default: false },
   { name: 'axis', kind: 'string' },
+  { name: 'axisExtra', kind: 'number' },
   { name: 'effect', kind: 'boolean' },
   { name: 'symbol', kind: 'string' },
   { name: 'symbolRepeat', kind: 'boolean' },

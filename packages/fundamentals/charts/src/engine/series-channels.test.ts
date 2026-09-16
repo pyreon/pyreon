@@ -47,6 +47,7 @@ const ROLE: Readonly<Record<keyof Series, Role>> = {
   curve: 'presentation',
   showValues: 'presentation',
   axis: 'presentation',
+  axisExtra: 'presentation',
   effect: 'presentation',
   symbol: 'presentation',
   symbolRepeat: 'presentation',

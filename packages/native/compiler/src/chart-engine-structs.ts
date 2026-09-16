@@ -907,6 +907,92 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "ExtraYAxis",
+    "fields": [
+      {
+        "name": "side",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "domain",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Domain",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "title",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "offset",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "ExtraTick",
+    "fields": [
+      {
+        "name": "axis",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "pos",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "label",
+        "type": {
+          "kind": "string"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "PlotLayout",
     "fields": [
       {
@@ -984,6 +1070,17 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "kind": "typeRef",
           "name": "Gutters",
           "args": []
+        }
+      },
+      {
+        "name": "extraTicks",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "ExtraTick",
+            "args": []
+          }
         }
       }
     ],
@@ -1331,6 +1428,25 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "branches": [
             {
               "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "extraYAxes",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "ExtraYAxis",
+                "args": []
+              }
             },
             {
               "kind": "undefined"
@@ -1906,6 +2022,22 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "branches": [
             {
               "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "axisExtra",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
             },
             {
               "kind": "undefined"
@@ -3310,6 +3442,25 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
               "kind": "typeRef",
               "name": "Double",
               "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "extraYAxes",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "ExtraYAxis",
+                "args": []
+              }
             },
             {
               "kind": "undefined"
@@ -10719,6 +10870,8 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "Circle",
   "Domain",
   "Emphasis",
+  "ExtraTick",
+  "ExtraYAxis",
   "FiveNumber",
   "FunnelOptions",
   "FunnelStage",

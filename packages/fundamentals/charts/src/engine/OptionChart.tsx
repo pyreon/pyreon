@@ -20,7 +20,7 @@ import { TIMELINE_HEIGHT, mergeChartOptions, resolveTimeline, timelineCommands, 
 import type { OptionUpdatePolicy } from './option-composite'
 import { graphicCommands } from './option-layer'
 import { visualMapCommands } from './visual-map'
-import { barsFor, categoryIndex, invertCategories, layoutChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
+import { barsFor, categoryIndex, invertCategories, layoutChart, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
 import type { ChartSpec, Emphasis } from './render'
 import { hitBar, hitNearestX, layoutSeriesPoints } from './layout'
 import { plain } from './format'
@@ -313,7 +313,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     for (let i = 0; i < spec.series.length; i++) {
       const s = view.series[i]!
       if (s.kind === 'bars' || s.kind === 'stacked' || s.kind === 'grouped') continue
-      const pts = layoutSeriesPoints(s.values, plot, seriesOnRightAxis(s, spec) ? resolveY2Domain(spec) : resolveYDomain(spec))
+      const pts = layoutSeriesPoints(s.values, plot, seriesDomain(s, spec, resolveYDomain(spec), resolveY2Domain(spec)))
       const vi = hitNearestX(pts, px)
       if (vi < 0) continue
       const d = Math.abs(pts[vi]!.x - px)
@@ -479,7 +479,7 @@ export function OptionChart(props: OptionChartProps): VNode {
         return r === undefined ? null : { x: r.x + f.dx, y: r.y + f.dy + f.top, w: r.w, h: r.h }
       }
       const plot = layoutChart(f.spec, g.measure).plot
-      const p = layoutSeriesPoints(invertCategories(f.spec).series[0]!.values, plot, seriesOnRightAxis(s, f.spec) ? resolveY2Domain(f.spec) : resolveYDomain(f.spec))[vi]
+      const p = layoutSeriesPoints(invertCategories(f.spec).series[0]!.values, plot, seriesDomain(s, f.spec, resolveYDomain(f.spec), resolveY2Domain(f.spec)))[vi]
       return p === undefined ? null : { x: p.x + f.dx - 6.0, y: p.y + f.dy + f.top - 6.0, w: 12.0, h: 12.0 }
     },
     a11y: () => a11y(),

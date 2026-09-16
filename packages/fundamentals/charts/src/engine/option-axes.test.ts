@@ -207,3 +207,30 @@ describe('axis offset', () => {
     expect(lines.some((c) => c.kind === 'line' && c.from.y === p.y + p.h + 7 && c.to.y === p.y + p.h + 7)).toBe(true)
   })
 })
+
+describe('a third y axis', () => {
+  const measure = (t: string): number => t.length * 6
+  const option = (offset: number) => ({
+    xAxis: { type: 'category', data: ['a', 'b'] },
+    yAxis: [{ min: 0, max: 10 }, { min: 0, max: 100 }, { name: 'Wind', min: 0, max: 1000, offset, position: 'right' }],
+    series: [{ type: 'line', data: [5, 5] }, { type: 'line', yAxisIndex: 1, data: [50, 50] }, { type: 'line', yAxisIndex: 2, data: [500, 500] }],
+  })
+  it('scales its series on its own domain, draws its line and labels at its offset, and widens the gutter', () => {
+    const { spec, warnings } = compileOption(option(60))
+    expect(warnings).toEqual([])
+    expect(spec.extraYAxes).toEqual([{ side: 'right', domain: { min: 0, max: 1000 }, title: 'Wind', offset: 60 }])
+    expect(spec.series[2]!.axisExtra).toBe(0)
+    expect(spec.series[2]!.axis).toBeUndefined()
+    const l = layoutChart(spec, measure)
+    const p = l.plot
+    // All three series sit at the middle of their own domain, so on one line.
+    const mids = renderChart(spec, measure).filter((c) => c.kind === 'polyline').map((c) => (c.kind === 'polyline' ? Math.round(c.points[0]!.y) : 0))
+    expect(mids).toEqual([Math.round(p.y + p.h / 2), Math.round(p.y + p.h / 2), Math.round(p.y + p.h / 2)])
+    const cmds = renderChart(spec, measure)
+    expect(cmds.some((c) => c.kind === 'line' && c.from.x === p.x + p.w + 60 && c.to.x === p.x + p.w + 60)).toBe(true)
+    const top = l.extraTicks.reduce((a, b) => (a.pos < b.pos ? a : b))
+    expect(cmds.some((c) => c.kind === 'text' && c.text === top.label && c.at.x > p.x + p.w + 60)).toBe(true)
+    expect(cmds.some((c) => c.kind === 'text' && c.text === 'Wind')).toBe(true)
+    expect(l.gutters.right).toBeGreaterThan(layoutChart(compileOption(option(0)).spec, measure).gutters.right)
+  })
+})

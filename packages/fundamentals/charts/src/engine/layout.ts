@@ -13,6 +13,24 @@ export interface Gutters {
   bottom: Double
 }
 
+/**
+ * A third or later y axis — ECharts' `yAxis[k]` for k >= 2. It sits on a side,
+ * `offset` pixels out from the plot edge, and scales the series that name it.
+ */
+export interface ExtraYAxis {
+  side: string
+  domain?: Domain | undefined
+  title?: string | undefined
+  offset?: Double | undefined
+}
+
+/** One tick of an extra y axis; `axis` is its index into the extra axes. */
+export interface ExtraTick {
+  axis: Double
+  pos: Double
+  label: string
+}
+
 export interface PlotLayout {
   /** The drawable data area, inside the gutters. */
   plot: Rect
@@ -40,6 +58,8 @@ export interface PlotLayout {
   yLabelEvery: number
   /** The gutters the plot sits inside — where axis titles are placed. */
   gutters: Gutters
+  /** Ticks of every extra y axis, tagged with the axis they belong to. */
+  extraTicks: ExtraTick[]
 }
 
 export interface LayoutConfig {
@@ -116,6 +136,8 @@ export interface LayoutConfig {
   xTop?: boolean | undefined
   /** A lone y axis sits right of the plot — ECharts' `yAxis.position: 'right'`. */
   yRight?: boolean | undefined
+  /** Third and later y axes, each with its domain already resolved. */
+  extraYAxes?: ExtraYAxis[] | undefined
   /** Pixels an axis sits off its plot edge; its gutter grows by the same. */
   xOffset?: Double | undefined
   yOffset?: Double | undefined
@@ -192,8 +214,29 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   const y2TitleH = hasY2 && cfg.y2Title !== undefined && cfg.y2Title !== '' ? titleH : 0.0
   // A lone y axis placed on the right swaps its band with the slim padding.
   const yRight = cfg.yRight === true && !hasY2 && cfg.horizontal !== true
-  const left = yRight ? padRight : yBand
-  const right = yRight ? yBand : (hasY2 ? widest2 + labelGap + tickLen + (cfg.y2Offset ?? 0.0) : padRight) + y2TitleH
+  const leftBase = yRight ? padRight : yBand
+  const rightBase = yRight ? yBand : (hasY2 ? widest2 + labelGap + tickLen + (cfg.y2Offset ?? 0.0) : padRight) + y2TitleH
+  // Extra y axes: each needs its offset plus its labels (and title) of room on
+  // its side; the side's gutter is the widest of what it already had and them.
+  let leftExtra = 0.0
+  let rightExtra = 0.0
+  if (cfg.horizontal !== true && cfg.showYAxis) {
+    for (const a of cfg.extraYAxes ?? []) {
+      let w = 0.0
+      for (const tk of makeTicks(a.domain ?? { min: 0.0, max: 1.0 }, cfg.height, 0.0, cfg.yTickCount, undefined)) {
+        const lw = measure(tk.label, cfg.fontSize)
+        if (lw > w) w = lw
+      }
+      const band = (a.offset ?? 0.0) + w + labelGap + tickLen + (a.title !== undefined && a.title !== '' ? titleH : 0.0)
+      if (a.side === 'left') {
+        if (band > leftExtra) leftExtra = band
+      } else if (band > rightExtra) {
+        rightExtra = band
+      }
+    }
+  }
+  const left = leftBase > leftExtra ? leftBase : leftExtra
+  const right = rightBase > rightExtra ? rightBase : rightExtra
 
   // The x labels get the room that is left. Whether they FIT decides the
   // bottom gutter — a rotated label needs its slant's height — so the
@@ -265,7 +308,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
       const perLabel = cfg.fontSize + 2.0
       if (bandH < perLabel) yEvery = ceilRatio(perLabel, bandH)
     }
-    return { plot, xTicks, yTicks, y2Ticks: [], xDomainUsed: cfg.xDomain, xLabelRotate: 0.0, xLabelEvery: 1, yLabelEvery: yEvery, gutters }
+    return { plot, xTicks, yTicks, y2Ticks: [], xDomainUsed: cfg.xDomain, xLabelRotate: 0.0, xLabelEvery: 1, yLabelEvery: yEvery, gutters, extraTicks: [] }
   }
 
   // y grows DOWNWARD in screen space, so the domain min maps to the plot's
@@ -284,7 +327,15 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     ? makeTicks(y2dom, plot.y + plot.h, plot.y, cfg.yTickCount, cfg.y2Format)
     : []
 
-  return { plot, xTicks, yTicks, y2Ticks, xDomainUsed: cfg.xDomain, xLabelRotate: rotate, xLabelEvery: every, yLabelEvery: 1, gutters }
+  const extraTicks: ExtraTick[] = []
+  if (cfg.showYAxis) {
+    let ai = 0.0
+    for (const a of cfg.extraYAxes ?? []) {
+      for (const tk of makeTicks(a.domain ?? { min: 0.0, max: 1.0 }, plot.y + plot.h, plot.y, cfg.yTickCount, undefined)) extraTicks.push({ axis: ai, pos: tk.pos, label: tk.label })
+      ai = ai + 1.0
+    }
+  }
+  return { plot, xTicks, yTicks, y2Ticks, xDomainUsed: cfg.xDomain, xLabelRotate: rotate, xLabelEvery: every, yLabelEvery: 1, gutters, extraTicks }
 }
 
 /**

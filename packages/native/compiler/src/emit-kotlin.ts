@@ -12283,6 +12283,9 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     }
     specArgs.push(`${p.name} = ${p.kind === 'string' ? kotlinStr(raw) : p.kind === 'number' ? (Number.isInteger(raw) ? `${String(raw)}.0` : String(raw)) : String(raw)}`)
   }
+  // Third and later y axes — the LAST ChartSpec field, so it follows the literal switches.
+  const extraAxes = chartAttrExprKotlin(e, 'extraYAxes')
+  if (extraAxes !== undefined) specArgs.push(`extraYAxes = ${withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'ExtraYAxis', args: [] } }, () => emitKotlinExpr(extraAxes, indent))}`)
   lets.push(`val pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
   if (brushing) {
     lets.push('val pyreonPlot: PyreonChartRect = layoutChart(pyreonSpec, ::pyreonChartMeasure).plot')

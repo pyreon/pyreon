@@ -407,7 +407,6 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     const honoured = pos === undefined || pos === natural || swapY || (ai === 0 && yAxesDeclared.length === 1 && pos === 'right')
     if (!honoured) warn('option-key-unsupported', Array.isArray(yAxisRaw) ? `yAxis[${ai}].position` : 'yAxis.position', 'Both y axes cannot share a side; the axis keeps its default side.')
   }
-  if (yAxes.length > 2) warn('axis-count-unsupported', 'yAxis', 'At most two y axes are supported; extras were ignored.')
   const yDomain = axisDomain(yAxes[0])
   const y2Domain = axisDomain(yAxes[1])
   const yFormat = axisFormatter(yAxes[0], 'yAxis[0]', warn)
@@ -415,7 +414,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   // Per-axis keys: name, show and the grid switch map; anything else is named
   // rather than silently dropped.
   if (isObj(xAxis)) axisKeys(xAxis, 'xAxis', warn)
-  for (let ai = 0; ai < Math.min(2, yAxes.length); ai++) axisKeys(yAxes[ai]!, Array.isArray(yAxisRaw) ? `yAxis[${ai}]` : 'yAxis', warn)
+  for (let ai = 0; ai < yAxes.length; ai++) axisKeys(yAxes[ai]!, Array.isArray(yAxisRaw) ? `yAxis[${ai}]` : 'yAxis', warn)
   const axisName = (axis: Record<string, unknown> | undefined): string | undefined => (isObj(axis) && typeof axis['name'] === 'string' ? (axis['name'] as string) : undefined)
   const shown = (axis: Record<string, unknown> | undefined): boolean => !(isObj(axis) && axis['show'] === false)
   const gridShown = !(isObj(yAxes[0]) && isObj(yAxes[0]['splitLine']) && yAxes[0]['splitLine']['show'] === false)
@@ -601,7 +600,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
               : palette[series.length % Math.max(1, palette.length)] ?? defaultPalette[series.length % defaultPalette.length]!
     const label = isObj(s['label']) ? s['label'] : {}
     const yAxisIndex = num(s['yAxisIndex']) ?? 0
-    if (yAxisIndex > 1) warn('axis-count-unsupported', `${path}.yAxisIndex`, 'Only yAxisIndex 0 or 1 is supported.')
+    const extraAxis = yAxisIndex >= 2 && yAxisIndex < yAxes.length
+    if (yAxisIndex >= yAxes.length && yAxisIndex > 1) warn('axis-count-unsupported', `${path}.yAxisIndex`, `yAxisIndex ${yAxisIndex} names no declared y axis; the series uses the left axis.`)
 
     const entry: Series = {
       kind,
@@ -613,7 +613,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       curve: s['smooth'] === true || (num(s['smooth']) ?? 0) > 0 ? smooth : s['step'] !== undefined && s['step'] !== false ? step : undefined,
       showValues: label['show'] === true,
       radii: undefined,
-      axis: (yAxisIndex === 1) !== swapY ? 'right' : undefined,
+      axis: !extraAxis && (yAxisIndex === 1) !== swapY ? 'right' : undefined,
+      ...(extraAxis ? { axisExtra: yAxisIndex - 2 } : {}),
       pattern: fillPattern(itemStyle),
       ...(type === 'effectScatter' ? { effect: true } : {}),
       ...(type === 'pictorialBar' ? pictorialFields(s, warn, path) : {}),
@@ -834,6 +835,16 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     ...(num(isObj(xAxis) ? xAxis['offset'] : undefined) !== null ? { xOffset: num((xAxis as Record<string, unknown>)['offset']) as number } : {}),
     ...(num(isObj(yAxes[0]) ? yAxes[0]['offset'] : undefined) !== null ? { yOffset: num(yAxes[0]!['offset']) as number } : {}),
     ...(num(isObj(yAxes[1]) ? yAxes[1]['offset'] : undefined) !== null ? { y2Offset: num(yAxes[1]!['offset']) as number } : {}),
+    ...(yAxes.length > 2
+      ? {
+          extraYAxes: yAxes.slice(2).map((a) => ({
+            side: a['position'] === 'left' ? 'left' : 'right',
+            domain: axisDomain(a),
+            title: axisName(a),
+            offset: num(a['offset']) ?? undefined,
+          })),
+        }
+      : {}),
     ...(yAxes.length === 1 && yAxes[0]!['position'] === 'right' ? { yRight: true } : {}),
   }
   if (customY !== undefined && spec.yDomain === undefined) spec.yDomain = customY

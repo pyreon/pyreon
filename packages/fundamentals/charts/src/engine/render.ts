@@ -4,7 +4,7 @@ import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSerie
 import { DEFAULT_PALETTE } from './palette'
 import { layoutGroupedBars, layoutGroupedBarsH, layoutStackedBars, layoutStackedBarsH, layoutWaterfall, normalizeStack, stackCumulative, stackedExtent, waterfallExtent } from './stack'
 import type { Formatter } from './format'
-import type { LayoutConfig, PlotLayout } from './layout'
+import type { ExtraYAxis, LayoutConfig, PlotLayout } from './layout'
 import { extent, isFiniteNumber, niceDomain, scaleLinear } from './scale'
 import { percent, plain } from './format'
 import { countToDouble } from './brush'
@@ -56,6 +56,8 @@ export interface Series {
   radii?: Double[] | undefined
   /** Which y axis the series scales against; absent = left. See `seriesOnRightAxis`. */
   axis?: 'left' | 'right' | undefined
+  /** Index into `ChartSpec.extraYAxes` when the series scales on a third or later y axis. */
+  axisExtra?: Double | undefined
   /** Halo rings around each point — the effectScatter look; `points` only. */
   effect?: boolean | undefined
   /**
@@ -378,6 +380,8 @@ export interface ChartSpec {
   xOffset?: Double | undefined
   yOffset?: Double | undefined
   y2Offset?: Double | undefined
+  /** Third and later y axes — ECharts' `yAxis[2..]`. */
+  extraYAxes?: ExtraYAxis[] | undefined
 }
 
 /**
@@ -578,7 +582,7 @@ export function geometrySpec(raw: ChartSpec): ChartSpec {
     if (norm && s.kind === 'stacked') {
       series.push({ ...s, values: si < stacked.length ? stacked[si]! : s.values })
       si = si + 1
-    } else if (isLog && !seriesOnRightAxis(s, spec)) {
+    } else if (isLog && !seriesOnRightAxis(s, spec) && !onExtraAxis(s, spec)) {
       const values: Double[] = []
       for (const v of s.values) values.push(v > 0.0 ? Math.log10(v / lb.min) : (0.0 / 0.0))
       const lows: Double[] = []
@@ -727,6 +731,40 @@ export function invertCategories(spec: ChartSpec): ChartSpec {
   }
 }
 
+
+/** True when a series scales on an extra y axis that exists. */
+function onExtraAxis(s: Series, spec: ChartSpec): boolean {
+  const k = s.axisExtra ?? -1.0
+  return spec.horizontal !== true && k >= 0.0 && k < (spec.extraYAxes ?? []).length
+}
+
+/** The resolved domain of extra axis `k`: its pinned range, or its series' extent. */
+export function extraAxisDomain(spec: ChartSpec, k: Double): Domain {
+  let i = 0.0
+  for (const a of spec.extraYAxes ?? []) {
+    if (i === k) return a.domain ?? deriveOver(spec.series.filter((q) => (q.axisExtra ?? -1.0) === k))
+    i = i + 1.0
+  }
+  return { min: 0.0, max: 1.0 }
+}
+
+/** Every extra axis with its domain resolved — what the layout measures. */
+export function resolvedExtraAxes(spec: ChartSpec): ExtraYAxis[] {
+  const out: ExtraYAxis[] = []
+  let i = 0.0
+  for (const a of spec.extraYAxes ?? []) {
+    out.push({ side: a.side, domain: extraAxisDomain(spec, i), title: a.title, offset: a.offset })
+    i = i + 1.0
+  }
+  return out
+}
+
+/** The domain a series scales against: an extra axis, the right axis, or the left. */
+export function seriesDomain(s: Series, spec: ChartSpec, yDomain: Domain, y2Domain: Domain): Domain {
+  if (onExtraAxis(s, spec)) return extraAxisDomain(spec, s.axisExtra ?? 0.0)
+  return seriesOnRightAxis(s, spec) ? y2Domain : yDomain
+}
+
 /**
  * Does this series scale on the RIGHT axis?
  *
@@ -738,12 +776,13 @@ export function invertCategories(spec: ChartSpec): ChartSpec {
  */
 export function seriesOnRightAxis(s: Series, spec: ChartSpec): boolean {
   if (spec.horizontal === true) return false
+  if (s.axisExtra !== undefined) return false
   if (s.kind === 'stacked' || s.kind === 'grouped' || s.kind === 'stackedArea') return false
   if (s.axis !== 'right') return false
   let hasLeft = false
   for (const q of spec.series) {
     const qRight = q.axis === 'right' && q.kind !== 'stacked' && q.kind !== 'grouped' && q.kind !== 'stackedArea'
-    if (!qRight) hasLeft = true
+    if (!qRight && q.axisExtra === undefined) hasLeft = true
   }
   return hasLeft
 }
@@ -755,7 +794,7 @@ export function hasRightAxis(spec: ChartSpec): boolean {
 }
 
 function leftAxisSeries(spec: ChartSpec): Series[] {
-  return spec.series.filter((s) => !seriesOnRightAxis(s, spec))
+  return spec.series.filter((s) => !seriesOnRightAxis(s, spec) && (s.axisExtra === undefined || spec.horizontal === true))
 }
 
 function rightAxisSeries(spec: ChartSpec): Series[] {
@@ -862,6 +901,7 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     xOffset: spec.xOffset,
     yOffset: spec.yOffset,
     y2Offset: spec.y2Offset,
+    extraYAxes: resolvedExtraAxes(spec),
   }
   return computeLayout(cfg, measure)
 }
@@ -1001,6 +1041,12 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       stroke: t.axis,
       width: 1.0,
     })
+  }
+  if (spec.showYAxis && spec.horizontal !== true) {
+    for (const a of spec.extraYAxes ?? []) {
+      const ax = a.side === 'left' ? plot.x - (a.offset ?? 0.0) : plot.x + plot.w + (a.offset ?? 0.0)
+      out.push({ kind: 'line', from: { x: ax, y: plot.y }, to: { x: ax, y: plot.y + plot.h }, stroke: t.axis, width: 1.0 })
+    }
   }
   if (spec.showYAxis && useY2) {
     out.push({
@@ -1234,7 +1280,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     const xs = spec.xValues ?? []
     // Each independent series scales against ITS axis — the whole point of a
     // dual-axis chart, and the line that decides it.
-    const sDomain = seriesOnRightAxis(s, spec) ? y2Domain : yDomain
+    const sDomain = seriesDomain(s, spec, yDomain, y2Domain)
     const place = (values: Double[]): Pt[] =>
       xs.length > 0
         ? layoutSeriesPointsAt(values, xs, plot, sDomain, l.xDomainUsed)
@@ -1549,7 +1595,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       }
     }
     if (idx < 0) continue
-    const mDomain = seriesOnRightAxis(s, spec) ? y2Domain : yDomain
+    const mDomain = seriesDomain(s, spec, yDomain, y2Domain)
     const xsM = spec.xValues ?? []
     // The anchor is whatever the mark's own geometry put there. Markers used
     // to skip the flipped frame and the set-laid-out kinds entirely — a
@@ -1612,6 +1658,26 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       align: 'start',
       baseline: 'middle',
     })
+  }
+  // Extra y axes: their tick labels outside their own line, and a title
+  // outside the widest of them.
+  let extraIndex = 0.0
+  for (const a of spec.extraYAxes ?? []) {
+    const left = a.side === 'left'
+    const ax = left ? plot.x - (a.offset ?? 0.0) : plot.x + plot.w + (a.offset ?? 0.0)
+    let widest = 0.0
+    for (const tk of l.extraTicks) {
+      if (tk.axis !== extraIndex) continue
+      out.push({ kind: 'text', text: tk.label, at: { x: left ? ax - 6.0 : ax + 6.0, y: tk.pos }, fill: t.label, size: t.fontSize, align: left ? 'end' : 'start', baseline: 'middle' })
+      const w = measure(tk.label, t.fontSize)
+      if (w > widest) widest = w
+    }
+    const title = a.title ?? ''
+    if (title !== '' && spec.showYAxis) {
+      const tx = left ? ax - 6.0 - widest - t.fontSize * 0.9 : ax + 6.0 + widest + t.fontSize * 0.9
+      out.push({ kind: 'text', text: title, at: { x: tx, y: plot.y + plot.h / 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: 'middle', rotate: left ? -90.0 : 90.0 })
+    }
+    extraIndex = extraIndex + 1.0
   }
   for (let ti = 0; ti < l.xTicks.length; ti++) {
     const tick = l.xTicks[ti]!
@@ -1772,7 +1838,7 @@ export function barsForIn(raw: ChartSpec, index: number, plot: Rect): Rect[] {
   if (s === undefined || (s.kind !== 'bars' && s.kind !== 'waterfall')) return []
   // The hit rects must come from the SAME domain the bars were drawn with,
   // or a right-axis bar reports hits where the left-axis geometry would be.
-  const dom = seriesOnRightAxis(s, spec) ? resolveY2Domain(spec) : resolveYDomain(spec)
+  const dom = seriesDomain(s, spec, resolveYDomain(spec), resolveY2Domain(spec))
   if (s.kind === 'waterfall') {
     // Index-aligned with the values: a gap's slot is an empty rect nothing
     // can land in, so the datum index a hit reports stays the row's.

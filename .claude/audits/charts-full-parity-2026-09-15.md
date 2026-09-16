@@ -252,7 +252,8 @@ for interaction, animation or accessibility parity.
   (categoryIndex); a continuous x uses the domain flag. Position: x top and a
   lone y right move the label band in layout; two y axes with the first placed
   right swap and yAxisIndex follows. Offset moves each axis off its edge and
-  grows the gutter. Open: a third y axis and a second x axis.
+  grows the gutter. A third and later y axis is ChartSpec.extraYAxes; every
+  left/right domain choice goes through seriesDomain. Open: a second x axis.
 
 ## Exit gate
 

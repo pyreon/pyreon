@@ -14433,6 +14433,9 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     }
     specArgs.push(`${p.name}: ${p.kind === 'string' ? swiftStr(raw) : p.kind === 'number' ? (Number.isInteger(raw) ? `${String(raw)}.0` : String(raw)) : String(raw)}`)
   }
+  // Third and later y axes — the LAST ChartSpec field, so it follows the literal switches.
+  const extraAxes = chartAttrExpr(e, 'extraYAxes')
+  if (extraAxes !== undefined) specArgs.push(`extraYAxes: ${withExpectedType({ kind: 'array', element: { kind: 'typeRef', name: 'ExtraYAxis', args: [] } }, () => emitSwiftExpr(extraAxes, indent))}`)
   lets.push(`let pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
   if (brushing) {
     // The band lives in PLOT space: the live span while dragging, else the

@@ -73,9 +73,19 @@ describe.each(['swift', 'kotlin'] as const)('option axes on %s', (target) => {
     if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
   })
 
-  it('names a third y axis and an unsupported yAxisIndex', () => {
-    const r = transform(app(`yAxis: [{}, {}, {}]`, `{ type: 'bar', yAxisIndex: 2, data: [1, 2] }`), { target })
-    expect(r.warnings).toEqual([expect.stringContaining('yAxisIndex'), expect.stringContaining('at most two y axes')])
-    expect(r.code).not.toContain(`axis${sep}"right"`)
+  it('carries a third y axis and the series on it, and compiles', () => {
+    const r = transform(app(`yAxis: [{}, {}, { name: 'Wind', min: 0, max: 50, offset: 40 }]`, `{ type: 'line', yAxisIndex: 2, data: [10, 20] }`), { target })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('extraYAxes')
+    expect(r.code).toContain('"Wind"')
+    expect(r.code).toContain(`axisExtra${sep}0.0`)
+    if (target === 'swift' && isSwiftcAvailable()) expect(validateSwiftWithStubs(r.code)).toMatchObject({ ok: true })
+    if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
+  })
+
+  it('names a yAxisIndex that points at no declared axis', () => {
+    const r = transform(app(`yAxis: [{}, {}]`, `{ type: 'bar', yAxisIndex: 3, data: [1, 2] }`), { target })
+    expect(r.warnings).toEqual([expect.stringContaining('names no declared y axis')])
+    expect(r.code).not.toContain('axisExtra')
   })
 })
