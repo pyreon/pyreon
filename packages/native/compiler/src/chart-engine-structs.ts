@@ -1939,6 +1939,82 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "LinesSeries",
+    "fields": [
+      {
+        "name": "coords",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "array",
+            "element": {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            }
+          }
+        }
+      },
+      {
+        "name": "colors",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "string"
+          }
+        }
+      },
+      {
+        "name": "widths",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "Double",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "effect",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "period",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "trailLength",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "effectColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "symbolSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "Series",
     "fields": [
       {
@@ -3598,6 +3674,41 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             {
               "kind": "typeRef",
               "name": "Domain",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "lines",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "LinesSeries",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "effectTime",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
               "args": []
             },
             {
@@ -11074,6 +11185,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "LegendPlacement",
   "LegendPlan",
   "LegendPosition",
+  "LinesSeries",
   "NavigatorLayout",
   "Ohlc",
   "ParallelAxis",

@@ -3,6 +3,7 @@
 // series' encode shapes, and the composition path where a title shifts every
 // drawn command down. Paired with the input each arm must leave alone.
 import { describe, expect, it } from 'vitest'
+import { linesCommands } from './lines'
 import { compileOption, compiledCommands, optionToSvg, planOption } from './option'
 import { customCommands } from './custom-series'
 import { measureApprox } from './svg'
@@ -70,45 +71,29 @@ describe('the `lines` series', () => {
   it('a non-numeric coordinate reads as 0 rather than poisoning the polyline', () => {
     const c = compileOption({ ...XY, series: [{ type: 'lines', data: [{ coords: [['x', null], [3, 4]] }] }] })
     expect(c.warnings).toEqual([])
-    expect(c.custom[0]!.data[0]).toEqual([0, 0, 3, 4])
+    expect(c.spec.lines![0]!.coords[0]).toEqual([0, 0, 3, 4])
   })
 
-  it('a series with no readable data compiles to an empty plan and no name of its own', () => {
-    const c = compileOption({ ...XY, series: [{ type: 'lines' }] })
-    expect(c.custom[0]!.data).toEqual([])
-    // Unnamed series are numbered by position.
-    expect(c.custom[0]!.name).toBe('Series 1')
-    const named = compileOption({ ...XY, series: [{ type: 'lines', name: 'Routes', data: [] }] })
-    expect(named.custom[0]!.name).toBe('Routes')
+  it('a series with no readable data compiles to empty lines', () => {
+    expect(compileOption({ ...XY, series: [{ type: 'lines' }] }).spec.lines![0]!.coords).toEqual([])
+    expect(compileOption({ ...XY, series: [{ type: 'lines', name: 'Routes', data: [] }] }).spec.lines![0]!.coords).toEqual([])
   })
 
-  it('its renderItem draws nothing for a datum with fewer than two points, and takes a per-datum style', () => {
+  it('draws nothing for a line with fewer than two points, takes a per-datum style, and falls back past the recorded styles', () => {
     const c = compileOption({
       ...XY,
       series: [{ type: 'lines', lineStyle: { color: '#123456', width: 3 }, data: [{ coords: [[0, 0], [1, 1]] }, { coords: [[2, 2], [3, 3]], lineStyle: { color: '#abcdef', width: 9 } }] }],
     }, { width: 400, height: 300 })
-    const out = customCommands(c.custom, c.spec, measureApprox(), 400, 300)
-    const lines = out.cmds.filter((k) => k.kind === 'polyline')
+    const lines = linesCommands(c.spec.lines![0]!, { x: 0, y: 0, w: 100, h: 100 }, { min: 0, max: 3 }, { min: 0, max: 3 }, 0).filter((k) => k.kind === 'polyline')
     expect(lines).toHaveLength(2)
     expect(lines[0]!.kind === 'polyline' && lines[0]!.stroke).toBe('#123456')
     expect(lines[1]!.kind === 'polyline' && lines[1]!.width).toBe(9)
-
-    // Called directly with an api that yields ONE point, the renderItem
-    // declines rather than emitting a degenerate polyline.
-    const ri = c.custom[0]!.renderItem
-    const oneApi: CustomRenderApi = {
-      value: (dim?: number) => ((dim ?? 0) < 2 ? dim : undefined),
-      coord: (v: [unknown, unknown]) => [Number(v[0]), Number(v[1])] as [number, number],
-      size: () => [1, 1] as [number, number],
-      style: () => ({}),
-      visual: () => undefined,
-    }
-    expect(ri({ dataIndex: 0, seriesIndex: 0 } as CustomRenderParams, oneApi)).toBeNull()
-    // A datum index beyond the recorded styles still draws, in the fallback ink.
-    const twoApi: CustomRenderApi = { ...oneApi, value: (dim?: number) => ((dim ?? 0) < 4 ? dim : undefined) }
-    const far = ri({ dataIndex: 99, seriesIndex: 0 } as CustomRenderParams, twoApi) as { style: { stroke: string } } | null
-    expect(far).not.toBeNull()
-    expect(far!.style.stroke).toBe('#334155')
+    const plot = { x: 0, y: 0, w: 10, h: 10 }
+    const d = { min: 0, max: 1 }
+    const base = { colors: [], widths: [], effect: false, period: 4, trailLength: 0.2, effectColor: '', symbolSize: 3 }
+    expect(linesCommands({ ...base, coords: [[0, 0]] }, plot, d, d, 0)).toEqual([])
+    const far = linesCommands({ ...base, coords: [[0, 0, 1, 1]] }, plot, d, d, 0)[0]!
+    expect(far.kind === 'polyline' && far.stroke).toBe('#334155')
   })
 })
 

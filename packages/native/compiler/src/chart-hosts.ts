@@ -19,7 +19,7 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import { decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
+import { compileOption, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
 import type { GraphicElement, RichStyle, SamplingRequest } from '@pyreon/charts/option-layer'
 import type { AttrIR, ExprIR } from './types'
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
@@ -1718,6 +1718,47 @@ export function desugarOptionChart(
     }
     if (optionValues.length > 0) set(optionName, { kind: 'object', fields: optionValues })
     return { kind: 'jsx-element', tag: kind === 'sankey' ? 'SankeyChart' : 'GraphChart', attrs, children: [] }
+  }
+
+  if (kind === 'lines') {
+    // ECharts' lines series: compiled by the web facade itself at compile time,
+    // so native draws the same coordinates, styles and trail parameters. The
+    // plot carries the x extent as two value rows and no marks.
+    const plainOption = irToValue(raw, resolve)
+    if (plainOption.ok !== true || !isPlainRecord(plainOption.value)) {
+      warn('<OptionChart option>: native lines series need a literal option; emitting nothing.')
+      return undefined
+    }
+    const plainSeries = plainOption.value['series']
+    if (!Array.isArray(plainSeries) || plainSeries.some((ps) => !isPlainRecord(ps) || ps['type'] !== 'lines')) {
+      warn('<OptionChart option.series>: native lines charts need every series to be a lines series; emitting nothing.')
+      return undefined
+    }
+    const compiledLines = compileOption(plainOption.value as never)
+    for (const w of compiledLines.warnings) warn(`<OptionChart option.${w.path}>: ${w.message}`)
+    const linesSpec = compiledLines.spec
+    const xs = linesSpec.xValues ?? [0, 1]
+    const xsFloat = xs.some((v) => !Number.isInteger(v))
+    set('data', { kind: 'array', elements: xs.map((v) => ({ kind: 'object', fields: [{ name: 'xv', value: { kind: 'literal', value: v, ...(xsFloat ? { float: true } : {}) } }] })) })
+    set('xValue', { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: 'xv' } })
+    set('marks', { kind: 'array', elements: [] })
+    if (linesSpec.yDomain !== undefined) set('yDomain', { kind: 'object', fields: [{ name: 'min', value: optionDoubleLiteral(linesSpec.yDomain.min) }, { name: 'max', value: optionDoubleLiteral(linesSpec.yDomain.max) }] })
+    const lineLits: ExprIR[] = (linesSpec.lines ?? []).map((ls) => ({
+      kind: 'object',
+      fields: [
+        { name: 'coords', value: { kind: 'array', elements: ls.coords.map((row) => ({ kind: 'array' as const, elements: row.map((v) => optionDoubleLiteral(v)) })) } },
+        { name: 'colors', value: { kind: 'array', elements: ls.colors.map((c) => lit(c)) } },
+        { name: 'widths', value: { kind: 'array', elements: ls.widths.map((v) => optionDoubleLiteral(v)) } },
+        { name: 'effect', value: lit(ls.effect) },
+        { name: 'period', value: optionDoubleLiteral(ls.period) },
+        { name: 'trailLength', value: optionDoubleLiteral(ls.trailLength) },
+        { name: 'effectColor', value: lit(ls.effectColor) },
+        { name: 'symbolSize', value: optionDoubleLiteral(ls.symbolSize) },
+      ],
+    }))
+    set('lines', { kind: 'array', elements: lineLits })
+    if ((linesSpec.lines ?? []).some((ls) => ls.effect)) set('effectClock', lit(true))
+    return { kind: 'jsx-element', tag: 'PlotChart', attrs, children: [] }
   }
 
   const cartesianKinds = new Set(['line', 'bar', 'pictorialBar', 'scatter'])

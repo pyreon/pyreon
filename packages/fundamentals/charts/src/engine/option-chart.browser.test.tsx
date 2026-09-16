@@ -16,6 +16,36 @@ const inked = (c: HTMLCanvasElement): number => {
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 describe('OptionChart (real browser)', () => {
+  it('animates a lines trail on a frame clock: the canvas changes between frames, and holds still under reduced motion', async () => {
+    const option: EChartsOption = { xAxis: {}, yAxis: {}, series: [{ type: 'lines', effect: { show: true, period: 1, trailLength: 0.3, color: '#ff0000', symbolSize: 10 }, data: [{ coords: [[0, 0], [10, 10]] }] }] }
+    const snapshot = (c: HTMLCanvasElement): string => {
+      const ctx = c.getContext('2d')!
+      return Array.from(ctx.getImageData(0, 0, c.width, c.height).data).join(',')
+    }
+    const moving = mountInBrowser(h(OptionChart, { option, width: 300, height: 160 }))
+    await flush()
+    const c = moving.container.querySelector('canvas')!
+    const a = snapshot(c)
+    await wait(250)
+    const b = snapshot(c)
+    expect(b).not.toBe(a)
+    moving.unmount()
+    // Under prefers-reduced-motion the clock never starts and the trail holds at its first frame.
+    const realMatch = window.matchMedia
+    window.matchMedia = ((q: string) => ({ ...realMatch.call(window, q), matches: q.includes('reduce') })) as typeof window.matchMedia
+    try {
+      const still = mountInBrowser(h(OptionChart, { option, width: 300, height: 160 }))
+      await flush()
+      const s = still.container.querySelector('canvas')!
+      const first = snapshot(s)
+      await wait(250)
+      expect(snapshot(s)).toBe(first)
+      still.unmount()
+    } finally {
+      window.matchMedia = realMatch
+    }
+  })
+
   it('retains omitted option fields across reactive updates and can replace selected components', async () => {
     const option = signal<EChartsOption>({
       xAxis: { data: ['a', 'b'] },

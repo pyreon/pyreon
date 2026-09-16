@@ -18,6 +18,7 @@ import { appendGraphicLayer, graphicCommands, resolveDataset, svgSize } from './
 import { visualMapCommands } from './visual-map'
 import { TIMELINE_HEIGHT, composeSvg, resolveTimeline, splitGrids, timelineCommands, timelineSteps } from './option-composite'
 import { customCommands, customExtents } from './custom-series'
+import type { LinesSeries } from './lines'
 import type { CustomRenderItem, CustomSeriesPlan } from './custom-series'
 import { resolveTheme } from './theme-registry'
 import type { ThemeDefinition } from './theme-registry'
@@ -343,20 +344,6 @@ export function labelFields(
 }
 
 /** The internal renderItem for a `lines` series: a polyline through every [x, y] pair of the flattened datum. */
-function linesRenderItem(styles: { color: string; width: number }[]): CustomRenderItem {
-  return (params, api) => {
-    const pts: [number, number][] = []
-    for (let d = 0; ; d = d + 2) {
-      const x = api.value(d)
-      const y = api.value(d + 1)
-      if (x === undefined || y === undefined) break
-      pts.push(api.coord([x, y]))
-    }
-    if (pts.length < 2) return null
-    const st = styles[params.dataIndex] ?? { color: '#334155', width: 1.5 }
-    return { type: 'polyline', shape: { points: pts }, style: { stroke: st.color, lineWidth: st.width } }
-  }
-}
 
 /** Compile an ECharts-shaped option onto the engine. Pure. */
 export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {}): CompiledOption {
@@ -445,6 +432,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       : []
   const series: Series[] = []
   const customPlans: CustomSeriesPlan[] = []
+  const linesList: LinesSeries[] = []
   const annotations: Annotation[] = []
   const markers: PointMarker[] = []
   let xValues: Double[] | undefined = undefined
@@ -469,41 +457,45 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     }
     const type = typeof s['type'] === 'string' ? (s['type'] as string) : ''
     if (type === 'lines') {
-      if (isObj(s['effect']) && s['effect']['show'] === true) warn('series-option-unsupported', path + '.effect', 'Animated line trails are not supported; the lines are drawn static.')
       const lineStyle = isObj(s['lineStyle']) ? s['lineStyle'] : {}
       const seriesColor = typeof lineStyle['color'] === 'string' ? (lineStyle['color'] as string) : palette[i % Math.max(1, palette.length)] ?? defaultPalette[i % defaultPalette.length]!
       const seriesWidth = num(lineStyle['width']) ?? 1.5
       const rows = Array.isArray(s['data']) ? (s['data'] as unknown[]) : []
-      const flat: unknown[] = []
-      const styles: { color: string; width: number }[] = []
+      const coords: Double[][] = []
+      const colors: string[] = []
+      const widths: Double[] = []
       for (let j = 0; j < rows.length; j++) {
         const d = rows[j]
-        const coords = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['coords']) ? (d['coords'] as unknown[]) : null
-        const pairs = coords === null ? [] : coords.filter((c): c is unknown[] => Array.isArray(c) && c.length >= 2)
-        if (coords === null || pairs.length < 2) {
+        const raw = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['coords']) ? (d['coords'] as unknown[]) : null
+        const pairs = raw === null ? [] : raw.filter((c): c is unknown[] => Array.isArray(c) && c.length >= 2)
+        if (raw === null || pairs.length < 2) {
           warn('series-data-shape', `${path}.data[${j}]`, 'A lines datum needs coords with at least two [x, y] pairs; it was skipped.')
           continue
         }
-        const row: unknown[] = []
+        const row: Double[] = []
         for (const c of pairs) {
           row.push(num(c[0]) ?? 0)
           row.push(num(c[1]) ?? 0)
         }
-        flat.push(row)
+        coords.push(row)
         const ls = isObj(d) && isObj(d['lineStyle']) ? d['lineStyle'] : {}
-        styles.push({ color: typeof ls['color'] === 'string' ? (ls['color'] as string) : seriesColor, width: num(ls['width']) ?? seriesWidth })
+        colors.push(typeof ls['color'] === 'string' ? (ls['color'] as string) : seriesColor)
+        widths.push(num(ls['width']) ?? seriesWidth)
       }
-      const yDims: number[] = []
-      let longest = 0
-      for (const r of flat) if ((r as unknown[]).length > longest) longest = (r as unknown[]).length
-      for (let d = 1; d < longest; d = d + 2) yDims.push(d)
-      customPlans.push({
-        name: typeof s['name'] === 'string' ? (s['name'] as string) : 'Series ' + String(i + 1),
-        color: seriesColor,
-        data: flat,
-        renderItem: linesRenderItem(styles),
-        yDims,
-        xDim: 0,
+      const effect = isObj(s['effect']) ? s['effect'] : {}
+      for (const key of Object.keys(effect)) {
+        if (!['show', 'period', 'trailLength', 'color', 'symbolSize', 'symbol', 'loop'].includes(key)) warn('series-option-unsupported', `${path}.effect.${key}`, `"${key}" has no trail mapping yet; it was ignored.`)
+      }
+      if (typeof effect['symbol'] === 'string' && effect['symbol'] !== 'circle') warn('series-option-unsupported', `${path}.effect.symbol`, 'The trail head is drawn as a circle.')
+      linesList.push({
+        coords,
+        colors,
+        widths,
+        effect: effect['show'] === true,
+        period: num(effect['period']) ?? 4.0,
+        trailLength: num(effect['trailLength']) ?? 0.2,
+        effectColor: typeof effect['color'] === 'string' ? (effect['color'] as string) : '',
+        symbolSize: num(effect['symbolSize']) ?? 3.0,
       })
       continue
     }
@@ -795,6 +787,19 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   // A custom-only chart still needs axes: seed them from the custom extents.
   let customY: { min: Double; max: Double } | undefined = undefined
   let customX: Double[] | undefined = undefined
+  // A lines series seeds the axes from every vertex, like a custom plan does.
+  if (series.length === 0) {
+    for (const ls of linesList) {
+      for (const row of ls.coords) {
+        for (let k = 0; k + 1 < row.length; k = k + 2) {
+          const x = row[k]!
+          const y = row[k + 1]!
+          customY = customY === undefined ? { min: Math.min(0.0, y), max: y } : { min: Math.min(customY.min, y), max: Math.max(customY.max, y) }
+          if (categories.length === 0) customX = customX === undefined ? [x, x] : [Math.min(customX[0]!, x), Math.max(customX[1]!, x)]
+        }
+      }
+    }
+  }
   if (series.length === 0 && customPlans.length > 0) {
     for (const plan of customPlans) {
       const ext = customExtents(plan)
@@ -840,6 +845,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     xTime: xTime ? true : undefined,
     annotations: annotations.length > 0 ? annotations : undefined,
     markers: markers.length > 0 ? markers : undefined,
+    lines: linesList.length > 0 ? linesList : undefined,
     xTitle: axisName(xAxis),
     yTitle: axisName(yAxes[0]),
     y2Title: axisName(yAxes[1]),

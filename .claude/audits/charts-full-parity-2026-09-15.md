@@ -259,6 +259,13 @@ for interaction, animation or accessibility parity.
   Native option charts now lower value/time x axes at all (they emitted
   nothing). Row complete.
 
+- [ ] `series.lines` narrowed (still partial): lines are ChartSpec.lines drawn by
+  engine/lines.ts, and effect trails are a pure function of effectTime. The
+  web canvas host runs an effect clock (real-Chromium test: frames differ,
+  still under reduced motion); native gains PyreonChartClock and the
+  OptionChart adapter lowers lines series (they emitted nothing). Open: a
+  device run showing the native trail moving.
+
 ## Exit gate
 
 Zero unclassified core inventory rows; green real-browser conformance; green

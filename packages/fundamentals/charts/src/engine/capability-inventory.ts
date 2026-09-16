@@ -53,7 +53,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('series.line', 'series', 'direct', 'complete', 'src/engine/option-edges.test.ts'),
   row('series.sankey', 'series', 'direct', 'complete', 'src/engine/option-orient.test.ts', '../../native/compiler/src/tests/chart-orient-native.test.ts'),
   row('series.map', 'series', 'direct', 'partial', 'src/engine/geo-web.ts'),
-  row('series.lines', 'series', 'direct', 'partial', 'src/engine/lines-series.test.ts'),
+  row('series.lines', 'series', 'direct', 'partial', 'src/engine/lines-series.test.ts', '../../native/compiler/src/tests/chart-lines-native.test.ts'), // engine lines + trails on web and native; open: device proof the native trail moves
   // The six geometry keys are draw-list geometry (`engine/pictorial.ts`): px / degree numbers cross; a percent string warns by name.
   row('series.pictorial-bar', 'series', 'direct', 'complete', 'src/engine/pictorial.test.ts', 'src/engine/option-edges.test.ts', '../../native/compiler/src/tests/chart-pictorial-native.test.ts'),
   row('series.extensions', 'series', 'hosted', 'complete', 'src/webview.ts'),

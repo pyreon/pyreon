@@ -5,6 +5,8 @@ import { DEFAULT_PALETTE } from './palette'
 import { layoutGroupedBars, layoutGroupedBarsH, layoutStackedBars, layoutStackedBarsH, layoutWaterfall, normalizeStack, stackCumulative, stackedExtent, waterfallExtent } from './stack'
 import type { Formatter } from './format'
 import type { ExtraYAxis, LayoutConfig, PlotLayout } from './layout'
+import { linesCommands } from './lines'
+import type { LinesSeries } from './lines'
 import { extent, isFiniteNumber, niceDomain, scaleLinear } from './scale'
 import { percent, plain } from './format'
 import { countToDouble } from './brush'
@@ -390,6 +392,10 @@ export interface ChartSpec {
   x2Title?: string | undefined
   /** Pins the second x axis's value domain; derived from its series' xs when absent. */
   x2Domain?: Domain | undefined
+  /** ECharts' `lines` series — polylines in data space, with optional trails. */
+  lines?: LinesSeries[] | undefined
+  /** Seconds on the host's effect clock; drives the trails. Absent = 0. */
+  effectTime?: Double | undefined
 }
 
 /**
@@ -1582,6 +1588,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       }
     }
   }
+
+  for (const ls of spec.lines ?? []) for (const c of linesCommands(ls, plot, l.xDomainUsed, yDomain, spec.effectTime ?? 0.0)) out.push(c)
 
   // Point markers draw OVER the series (painter's order — a marker buried
   // under an area fill marks nothing) and UNDER the axis labels.

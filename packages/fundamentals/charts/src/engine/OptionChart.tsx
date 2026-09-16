@@ -406,12 +406,16 @@ export function OptionChart(props: OptionChartProps): VNode {
   // compiled commands as before.
   const hoverIndex = signal(-1)
   const pinned = signal<number[]>([])
-  const stateCmds = (g: OptionGeometry): DrawCmd[] => {
+  /** True when a cartesian option draws an animated `lines` trail. */
+  const linesEffectOn = (g: OptionGeometry): boolean =>
+    g.plan.kind === 'cartesian' && (g.plan.compiled.spec.lines ?? []).some((ls) => ls.effect)
+  const stateCmds = (g: OptionGeometry, time = 0.0): DrawCmd[] => {
     const highlight = hoverIndex()
     const selected = pinned()
-    if (highlight < 0 && selected.length === 0) return g.cmds
+    const clocked = linesEffectOn(g)
+    if (highlight < 0 && selected.length === 0 && !clocked) return g.cmds
     const emphasis: Emphasis = { highlight, selected }
-    if (g.plan.kind === 'cartesian') return compiledCommands({ ...g.plan.compiled, spec: { ...g.plan.compiled.spec, emphasis } }, g.option, g.measure).cmds
+    if (g.plan.kind === 'cartesian') return compiledCommands({ ...g.plan.compiled, spec: { ...g.plan.compiled.spec, ...(highlight < 0 && selected.length === 0 ? {} : { emphasis }), effectTime: time } }, g.option, g.measure).cmds
     if (g.plan.kind === 'grids') {
       const cmds: DrawCmd[] = []
       let first = true
@@ -445,7 +449,8 @@ export function OptionChart(props: OptionChartProps): VNode {
       pinned()
     },
     layout: (box, measure) => cartesian(box.w, box.h, measure),
-    render: (g) => stateCmds(g),
+    render: (g, _measure, _theme, _progress, time) => stateCmds(g, time),
+    effectClock: (g) => linesEffectOn(g),
     select: (g, px, py) => {
       const h1 = hitAt(g, px, py)
       const pin = pinMode(g)

@@ -13410,6 +13410,11 @@ function emitSwiftChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
   if (tag === 'BoxplotChart') return swiftChartEntrance(e, tag, indent, (i) => emitSwiftBoxplotHost(e, i))
   if (tag === 'HeatmapChart') return swiftChartEntrance(e, tag, indent, (i) => emitSwiftHeatmapHost(e, i))
   if (tag === 'RadarChart') return emitSwiftRadarHost(e, indent)
+  if (tag === 'PlotChart' && readStaticAttr(e, 'effectClock') === true) {
+    // A lines trail: the clock wraps the entrance so every frame re-renders with a new effectTime.
+    const pad = ' '.repeat(indent + 2)
+    return `PyreonChartClock { pyreonClock in\n${pad}${swiftChartEntrance(e, tag, indent + 2, (i) => emitSwiftPlotHost(e, i))}\n${' '.repeat(indent)}}`
+  }
   if (tag === 'PlotChart') return swiftChartEntrance(e, tag, indent, (i) => emitSwiftPlotHost(e, i))
   if (Object.hasOwn(ACCESSOR_CHART_HOSTS, tag)) return swiftChartEntrance(e, tag, indent, (i) => emitSwiftAccessorHost(e, i))
   const unlowered = UNLOWERED_CHART_HOSTS[tag]
@@ -14442,6 +14447,9 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   if (typeof x2Title === 'string') specArgs.push(`x2Title: ${swiftStr(x2Title)}`)
   const x2Dom = chartAttrExpr(e, 'x2Domain')
   if (x2Dom !== undefined) specArgs.push(`x2Domain: ${emitSwiftExpr(x2Dom, indent)}`)
+  const linesAttr = chartAttrExpr(e, 'lines')
+  if (linesAttr !== undefined) specArgs.push(`lines: ${withExpectedType({ kind: 'array', element: { kind: 'typeRef', name: 'LinesSeries', args: [] } }, () => emitSwiftExpr(linesAttr, indent))}`)
+  if (readStaticAttr(e, 'effectClock') === true) specArgs.push(`effectTime: pyreonClock`)
   lets.push(`let pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
   if (brushing) {
     // The band lives in PLOT space: the live span while dragging, else the

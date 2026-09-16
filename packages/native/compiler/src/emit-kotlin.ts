@@ -11354,6 +11354,11 @@ function emitKotlinChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
   if (tag === 'BoxplotChart') return kotlinChartEntrance(e, tag, indent, (i) => emitKotlinBoxplotHost(e, i))
   if (tag === 'HeatmapChart') return kotlinChartEntrance(e, tag, indent, (i) => emitKotlinHeatmapHost(e, i))
   if (tag === 'RadarChart') return emitKotlinRadarHost(e, indent)
+  if (tag === 'PlotChart' && readStaticAttrKotlin(e, 'effectClock') === true) {
+    // A lines trail: the clock wraps the entrance so every frame re-renders with a new effectTime.
+    const pad = ' '.repeat(indent + 2)
+    return `PyreonChartClock { pyreonClock ->\n${pad}${kotlinChartEntrance(e, tag, indent + 2, (i) => emitKotlinPlotHost(e, i))}\n${' '.repeat(indent)}}`
+  }
   if (tag === 'PlotChart') return kotlinChartEntrance(e, tag, indent, (i) => emitKotlinPlotHost(e, i))
   if (Object.hasOwn(ACCESSOR_CHART_HOSTS, tag)) return kotlinChartEntrance(e, tag, indent, (i) => emitKotlinAccessorHost(e, i))
   const unlowered = UNLOWERED_CHART_HOSTS[tag]
@@ -12292,6 +12297,9 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   if (typeof x2Title === 'string') specArgs.push(`x2Title = ${kotlinStr(x2Title)}`)
   const x2Dom = chartAttrExprKotlin(e, 'x2Domain')
   if (x2Dom !== undefined) specArgs.push(`x2Domain = ${emitKotlinExpr(x2Dom, indent)}`)
+  const linesAttr = chartAttrExprKotlin(e, 'lines')
+  if (linesAttr !== undefined) specArgs.push(`lines = ${withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'LinesSeries', args: [] } }, () => emitKotlinExpr(linesAttr, indent))}`)
+  if (readStaticAttrKotlin(e, 'effectClock') === true) specArgs.push(`effectTime = pyreonClock`)
   lets.push(`val pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
   if (brushing) {
     lets.push('val pyreonPlot: PyreonChartRect = layoutChart(pyreonSpec, ::pyreonChartMeasure).plot')

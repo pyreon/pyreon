@@ -152,7 +152,15 @@ export interface CanvasHostSpec<L> {
   /** Lay the family out in the box left after the chrome. */
   layout: (box: Rect, measure: MeasureText, theme: ChartTheme) => L
   /** Paint a layout; `progress` is 0..1 during the entrance (families that cannot grow ignore it). */
-  render: (layout: L, measure: MeasureText, theme: ChartTheme, progress: Double) => DrawCmd[]
+  render: (layout: L, measure: MeasureText, theme: ChartTheme, progress: Double, time: Double) => DrawCmd[]
+  /**
+   * Whether this layout draws a continuous effect (a `lines` trail) that
+   * `render` reads from `time`. While true, the host runs a frame clock —
+   * stopped under `prefers-reduced-motion`, where time holds at 0 and the
+   * chart is still. (It is not the entrance: an option chart's `animate` is
+   * off, and a trail is the chart's content, not its arrival.)
+   */
+  effectClock?: ((layout: L) => boolean) | undefined
   /** Legend entries for this layout, when the family has named series. */
   legend?: ((layout: L, theme: ChartTheme) => LegendEntry[]) | undefined
   /** Report the click through the family's own callbacks (rich hit and/or engine index). */
@@ -266,6 +274,27 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     }
     entrance = 0.0
     entranceFrame = requestAnimationFrame(tick)
+  }
+
+  // Effect clock: seconds since the effect first painted, advanced once per frame.
+  let effectTime = 0.0
+  let effectStart = -1.0
+  let effectFrame = 0
+  const clockWanted = (layout: L): boolean =>
+    spec.effectClock !== undefined && spec.effectClock(layout) && !prefersReducedMotion() && hasRaf()
+  const syncClock = (layout: L): void => {
+    if (!clockWanted(layout)) {
+      cancelFrame(effectFrame)
+      effectFrame = 0
+      return
+    }
+    if (effectFrame !== 0) return
+    effectFrame = requestAnimationFrame((now: number) => {
+      effectFrame = 0
+      if (effectStart < 0.0) effectStart = now
+      effectTime = (now - effectStart) / 1000.0
+      draw()
+    })
   }
 
   // Update tween: from → to over `updateMs`, painted from the cached frame.
@@ -399,8 +428,13 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     const measure = canvasMeasure(ctx, FONT)
     const f = frame(w, hgt, measure, t)
     last = f
-    const family = transposed() ? transposeCmds(spec.render(f.layout, measure, t, entrance)) : spec.render(f.layout, measure, t, entrance)
-    if (entrance >= 1.0) {
+    const family = transposed() ? transposeCmds(spec.render(f.layout, measure, t, entrance, effectTime)) : spec.render(f.layout, measure, t, entrance, effectTime)
+    // A clock-driven frame changes every tick by design; it is never an update to tween.
+    const clockDriven = clockWanted(f.layout)
+    syncClock(f.layout)
+    if (entrance >= 1.0 && clockDriven) {
+      lastFamily = family
+    } else if (entrance >= 1.0) {
       const enabled = props.updateAnimation !== false && hasRaf() && !prefersReducedMotion() && (props.updateDuration ?? t.updateMs) > 0
       const transitionable = lastFamily !== null && (sameCmdShape(lastFamily, family) || props.universalTransition === true)
       if (enabled && transitionable && lastFamily !== null && !cmdsEqual(lastFamily, family)) {
@@ -583,8 +617,10 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
         // Unmounted mid-animation: the frames must not keep the closure alive.
         cancelFrame(entranceFrame)
         cancelFrame(tweenFrame)
+        cancelFrame(effectFrame)
         entranceFrame = 0
         tweenFrame = 0
+        effectFrame = 0
         last = null
         return
       }

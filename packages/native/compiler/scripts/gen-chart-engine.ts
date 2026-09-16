@@ -53,6 +53,7 @@ export const ENGINE_FILES = [
   'pictorial',
   'graphic',
   'labels',
+  'lines',
   'render',
   'candlestick',
   'heat',

@@ -868,6 +868,30 @@ public func pyreonEntranceProgress(_ elapsedMs: Double, _ durationMs: Double) ->
 /// `prefers-reduced-motion` twin) by rendering fully formed at once. The
 /// timeline is PAUSED once the tween has finished, so a settled chart costs
 /// nothing per frame; a Canvas inside the closure re-evaluates on each tick.
+/// The effect clock: hands a chart the seconds since it appeared, advanced
+/// every frame, so a `lines` trail moves. Under Reduce Motion the clock holds
+/// at 0 and the chart is still — the same rule the web host applies.
+public struct PyreonChartClock<Content: View>: View {
+    public var content: (Double) -> Content
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var start: Date = Date()
+
+    public init(@ViewBuilder content: @escaping (Double) -> Content) {
+        self.content = content
+    }
+
+    public var body: some View {
+        if reduceMotion {
+            content(0.0)
+        } else {
+            TimelineView(.animation) { context in
+                content(max(0.0, context.date.timeIntervalSince(start)))
+            }
+            .onAppear { start = Date() }
+        }
+    }
+}
+
 public struct PyreonChartEntrance<Content: View>: View {
     public var durationMs: Double
     public var content: (Double) -> Content
