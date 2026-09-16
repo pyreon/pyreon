@@ -69,10 +69,11 @@ describe('colour stops — a radial ramp is NAMED as unsupported, not silently d
     return { g: c.spec.series[0]!.gradient, warnings: c.warnings }
   }
 
-  it('a radial ramp warns and degrades to its FIRST stop as a solid', () => {
+  it('a radial ramp keeps every stop as the radial series gradient and warns about nothing', () => {
     const { g, warnings } = grad({ type: 'radial', colorStops: [{ offset: 0, color: '#000' }, { offset: 1, color: '#fff' }] })
-    expect(warnings.some((w) => w.code === 'series-option-unsupported')).toBe(true)
-    expect(g!.stops).toHaveLength(1)
+    expect(warnings.filter((w) => w.code === 'series-option-unsupported')).toHaveLength(0)
+    expect(g!.stops).toHaveLength(2)
+    expect(g!.shape).toBe('radial')
   })
 
   it('a linear ramp keeps both stops and warns about nothing', () => {
