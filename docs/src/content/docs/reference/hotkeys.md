@@ -9,6 +9,16 @@ description: "Keyboard shortcut management — scope-aware, modifier keys, confl
 
 Reactive keyboard shortcut management for Pyreon. Register global or scoped shortcuts with automatic lifecycle management. Supports `mod` alias (Command on Mac, Ctrl elsewhere), multi-key combos, comma-separated lists (`ctrl+s, mod+p`), sequential combos (`g t`, Gmail/vim-style), keyup bindings, `once` / `ignoreRepeat`, reference-counted scope activation, element-scoped targets, selective input filtering, shifted-symbol shortcuts (`?` fires on Shift+/), pressed-key introspection, programmatic `trigger`, and conflict detection. Dispatch is KEY-BUCKETED — a keystroke touches only the entries bound to that exact key, so the miss path (every non-shortcut keypress) is one Map lookup regardless of how many hotkeys are registered. Component-scoped hooks auto-unregister on unmount; ONE shared listener per (target, event-type) backs every shortcut. SSR-safe.
 
+## Multiplatform
+
+**Tier:** Web-only — the browser package; the native story is stated below
+
+keyboard-shortcut layer over DOM KeyboardEvent. The REGISTRY half (registerHotkey / scopes / conflict reporting) is web; the `useHotkey` authoring hook lowers — see nativeFrontend
+
+**What crosses natively:** `useHotkey('mod+s', () => { … })` with a LITERAL shortcut and an inline zero-arg handler — lowers to a SwiftUI `.keyboardShortcut` on a hidden zero-size Button and a Compose focused key handler on the component root. `mod` resolves per platform (Command on iOS, Ctrl on Android). A computed shortcut, a handler taking the KeyboardEvent, or a comma-separated combo LIST each warn by name and are dropped
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - useHotkey(shortcut, handler, options?) — component-scoped, auto-unregisters on unmount

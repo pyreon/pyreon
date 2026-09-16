@@ -9,6 +9,14 @@ description: "Reactive client-side storage — localStorage, sessionStorage, coo
 
 Signal-backed persistence for Pyreon. Every stored value is a reactive signal that persists writes automatically to the underlying storage backend. `useStorage` (localStorage, cross-tab synced), `useSessionStorage`, `useCookie` (SSR-readable, configurable expiry), `useIndexedDB` (large data, debounced writes), and `useMemoryStorage` (ephemeral, SSR-safe). All hooks return `StorageSignal<T>` which extends `Signal<T>` with `.remove()`. Calling the same hook with the same key ANYWHERE returns the SAME signal, refcounted across every backend — so one consumer calling `.remove()` clears the stored value without orphaning the siblings still holding it; the entry is destroyed on the last release. `createStorage(backend)` enables custom backends (encrypted, remote, etc.). SSR-safe — browser-API hooks return the default value on the server, and the signal registry is isolated PER REQUEST under `@pyreon/runtime-server`, so a cached `useCookie` / `useMemoryStorage` signal is never handed to the next visitor.
 
+## Multiplatform
+
+**Tier:** Service backend — the API is shared; the native runtimes host it
+
+useStorage family over @PyreonAppStorage (Swift) / rememberPyreonStorage (Kotlin); persistence device-proven
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - useStorage — localStorage-backed with cross-tab sync via storage events

@@ -9,6 +9,14 @@ description: "Structured reactive state tree — composable models with snapshot
 
 MobX-State-Tree-inspired structured state management built on Pyreon signals. Models compose state (signals), views (computeds), and actions into self-contained units that support typed snapshots, JSON-patch record/replay, and action interception middleware. Models can nest other models for tree-shaped state, and `.asHook(id)` provides singleton instances scoped to a store-like registry — per process in a browser, and per REQUEST on a server under `@pyreon/runtime-server`, which isolates that registry automatically.
 
+## Multiplatform
+
+**Tier:** Service backend — the API is shared; the native runtimes host it
+
+model() lowers to PyreonModel singletons on both targets
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - model(&#123; state &#125;) or model(&#123; schema &#125;) — chainable builder

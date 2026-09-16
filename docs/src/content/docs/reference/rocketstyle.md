@@ -9,6 +9,14 @@ description: "Multi-dimensional component styling — states, sizes, variants, c
 
 Multi-dimensional style composition for Pyreon components — the styling engine the `@pyreon/ui-components` library builds on. Organize styles by named DIMENSIONS (`state`, `size`, `variant`, plus custom ones) instead of flat boolean props: each dimension is a chainable definition method (`.states({...})`, `.sizes({...})`) that auto-generates the matching consumer prop. Base styles go through `.theme()`, dark/light values through the `mode(light, dark)` helper, raw CSS through `.styles()`. Built on `@pyreon/attrs` + `@pyreon/styler`; per-definition WeakMap caches (`_rsMemo` LRU 128/theme) keep per-mount cost near zero for same-definition components.
 
+## Multiplatform
+
+**Tier:** Shared — the same source runs on web, iOS and Android
+
+rocketstyle-over-primitive chains lower (static cascade + one dynamic dimension) via rocketstyle-native
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - Chainable immutable builder — every method returns a NEW component, bases fork cleanly into variants

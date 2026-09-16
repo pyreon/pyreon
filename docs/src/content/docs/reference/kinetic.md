@@ -11,6 +11,16 @@ CSS-transition animation engine for Pyreon. One factory — `kinetic(tag)` — p
 
 > **Peer dependencies:** `@pyreon/core`, `@pyreon/reactivity`, `@pyreon/runtime-dom` — install alongside this package.
 
+## Multiplatform
+
+**Tier:** Web-only — the browser package; the native story is stated below
+
+CSS-transition animation engine (classes + rAF over real CSSOM). The CLASS/style machinery is web; the PRESET vocabulary crosses — see nativeFrontend
+
+**What crosses natively:** `kinetic(tag).preset(...)` with a known preset (fade / scale-in / slide-up|down|left|right) — the preset names an animation both targets know, so the box lowers through the same `<Transition>` path the primitive uses, with a synthesized mount flag driving the ENTER (a constant `show` compiles and never animates). A chain with NO `.preset()` has no animation vocabulary to carry, degrades to a plain container and warns by name. `<Transition name>` from `@pyreon/primitives` remains the portable spelling
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - kinetic(tag) factory — renderable component + immutable chain in one value

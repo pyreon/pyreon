@@ -9,6 +9,14 @@ description: "Fine-grained reactivity: signal, computed, effect, batch, onCleanu
 
 Standalone reactive primitives — no DOM, no JSX, no framework dependency. Signals are callable functions (`count()` to read, `count.set(5)` to write, `count.update(n => n + 1)` to derive). Direct subscribers use a single-subscriber inline slot (`_d1`) promoting to a `Set` only on the 2nd subscriber (a 10k-row `<For>` allocates zero subscriber Sets); effect subscribers use a lazy `Set`; batch uses pointer swap for zero-allocation grouping. Every other Pyreon package builds on this foundation but `@pyreon/reactivity` can be used independently in Node, Bun, or browser scripts without any framework overhead. `wrapSignal(base, { set, update? })` builds a writable side-effect facade (persistence, patch emission, validation) that forwards the internal `_v` field and `.direct` by construction, so the bind-fast-path contract cannot be silently broken.
 
+## Multiplatform
+
+**Tier:** Shared — the same source runs on web, iOS and Android
+
+L0 of the shared-code model: signal/computed/effect lower as-is; PyreonReactivity runtime ports on both native targets
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - signal&lt;T&gt;() — callable function with .set(), .update(), .trigger()

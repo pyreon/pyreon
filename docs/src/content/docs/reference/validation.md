@@ -9,6 +9,16 @@ description: "The library-agnostic validation gate — Standard Schema bridge + 
 
 The stack-wide validation gate — the library-agnostic contract every Pyreon data package (`@pyreon/form`, `@pyreon/store`, `@pyreon/state-tree`, `@pyreon/feature`) consumes. Owns the validation contract types (`ValidationError` / `ValidateFn` / `SchemaValidateFn`) and the Standard Schema bridge, with ZERO pyreon dependencies (the consumers depend on it, not the reverse). Accept a RAW Standard Schema (Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, `@pyreon/validate` `s`) directly — no wrapper, no cast — via `standardSchemaToValidator`, or use the duck-typed `zodSchema` / `valibotSchema` / `arktypeSchema` adapters (which add the `_infer` brand + a sync `parse` for schema-driven state). Zero dependencies — schema libraries are detected by duck-typing the `~standard` contract, with no peer-dependency records declared.
 
+## Multiplatform
+
+**Tier:** Web-only — the browser package; the native story is stated below
+
+Standard Schema adapters (zod/valibot/arktype are JS libraries), so the adapters themselves stay web; the declarative schema FORMS lower to native validators (Gap-4 v1)
+
+**What crosses natively:** the `zodSchema(z.object({…}))` / `valibotSchema(...)` / `arkTypeSchema(...)` declaration forms, emitted as native field validators
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - Universal, library-agnostic validation gate — owns the contract types (ValidationError / ValidateFn / SchemaValidateFn) with ZERO pyreon deps

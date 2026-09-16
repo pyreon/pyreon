@@ -11,6 +11,16 @@ Imperative toast notifications for Pyreon. Call `toast()` from anywhere in your 
 
 > **Peer dependencies:** `@pyreon/runtime-dom` — install alongside this package.
 
+## Multiplatform
+
+**Tier:** Web-only — the browser package; the native story is stated below
+
+the core `toast(...)` + `<Toaster>` now lower to the native PyreonToast runtime (v1); the rich surface (toast.promise/update, options, animation) stays web
+
+**What crosses natively:** PyreonToast — the imperative `toast(...)` calls and `<Toaster />`
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - toast() imperative API — call from anywhere, no provider needed

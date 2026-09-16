@@ -68,8 +68,13 @@ native view.
 - [x] F7 first pass: the manifest, README, multiplatform pattern doc and
   multiplatform page state what is proven where, name the browser-only
   members (`FlowLayersContext`, `flowStyles`), and no longer list the package
-  among those that cannot render natively. Still open under F7: the generated
-  reference page carries no native-tier section (a generator change).
+  among those that cannot render natively.
+- [x] F7 second pass: every generated reference page (57 packages) now
+  carries a `## Multiplatform` section rendered from the manifest's
+  `multiplatform` field — the tier, its rationale, and `nativeFrontend`
+  ("what crosses natively") — the same field `check-multiplatform-tier`
+  gates and the native compiler derives its web-only warnings from, so the
+  reference says what crosses from the one source that decides it.
 - [x] F2 shared fixture: the web engine is now the ORACLE for native state
   parity. `src/tests/native-parity-fixture.ts` holds ten scenarios as data
   (node/edge CRUD, reconnect, single/additive/edge selection, select-all,

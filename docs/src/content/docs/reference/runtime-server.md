@@ -9,6 +9,14 @@ description: "SSR/SSG VNode→HTML renderer — renderToString, renderToStream (
 
 Pyreon's server-side renderer: walks a VNode tree and produces HTML. Signal accessors are called synchronously to SNAPSHOT their current value — no effects, no reactivity on the server (reactivity resumes post-hydration on the client). Async component functions are awaited. `renderToStream` flushes progressively and resolves Suspense boundaries out-of-order (fallback first, then a `<template>` + inline swap script). Concurrency-safe: every `renderToString` / `renderToStream` / `runWithRequestContext` call runs in its own `AsyncLocalStorage` store so concurrent requests never share context frames; the key-addressed registries in `@pyreon/store`, `@pyreon/storage` and `@pyreon/state-tree` are isolated the same way AUTOMATICALLY — each publishes its setter on a `globalThis` seam when it loads on a server and this renderer picks it up per render, so a consumer cannot forget to wire it; `configureStoreIsolation()` stays as the explicit override for a custom provider. Most apps consume this transitively through `@pyreon/server` (`createHandler` / `prerender`) rather than calling it directly.
 
+## Multiplatform
+
+**Tier:** Web-only — the browser package; the native story is stated below
+
+server-side HTML rendering (SSR/streaming) — a web-platform concern with no native analogue
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - renderToString(vnode) → Promise&lt;string&gt; — one-shot HTML, awaits async components

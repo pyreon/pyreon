@@ -9,6 +9,16 @@ description: "Signal-driven drag and drop over @atlaskit/pragmatic-drag-and-drop
 
 Signal-driven drag and drop for Pyreon. A thin wrapper over Atlassian's `pragmatic-drag-and-drop` (the engine behind Trello / Jira): pdnd owns the native-event lifecycle, hit-testing, and edge detection; `@pyreon/dnd` adapts every state field into a Pyreon signal accessor (`isDragging` / `isOver` / `activeId` / `overId` / `overEdge` / `dragData`) and wires every pdnd teardown into `onCleanup`. Five hooks cover the common surfaces — single draggable, single drop target, sortable list with edge detection + auto-scroll + keyboard reordering + opt-in cross-list boards, native-file drop with MIME / count filtering, and a page-global drag monitor.
 
+## Multiplatform
+
+**Tier:** Web-only — the browser package; the native story is stated below
+
+`useSortable` now lowers to the native PyreonSortableState engine (list reorder, the highest-value case); the element-getter hooks (useDraggable/useDroppable), the page-global useDragMonitor and the OS-file useFileDrop stay web — they are pdnd/DOM-shaped, not gesture-shaped
+
+**What crosses natively:** PyreonSortableState — `useSortable` list reorder, via SwiftUI .draggable/.dropDestination and Compose long-press drag
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - useDraggable / useDroppable / useSortable / useFileDrop / useDragMonitor — five hooks over pragmatic-drag-and-drop

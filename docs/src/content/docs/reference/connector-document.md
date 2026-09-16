@@ -9,6 +9,14 @@ description: "Bridge between ui-system JSX trees and @pyreon/document — extrac
 
 The bridge between Pyreon's component layer and the `@pyreon/document` rendering pipeline. `extractDocumentTree(vnode)` walks a Pyreon JSX tree, finds components carrying a `_documentType` marker (the 18 `@pyreon/document-primitives`, or your own marked components), resolves their `_documentProps` and `$rocketstyle` CSS-in-JS styles, and produces a serializable `DocNode` tree that `@pyreon/document` renders to PDF, DOCX, XLSX, email, Markdown, and the other output formats. The hot path is fast: real rocketstyle primitives expose their accumulated `.attrs()` chain as `__rs_attrs`, and the extractor runs that chain directly — no styled-wrapper invocation, no dimension resolution.
 
+## Multiplatform
+
+**Tier:** Web-only — the browser package; the native story is stated below
+
+bridges ui-components to @pyreon/document extraction — both ends are web/document engines
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - extractDocumentTree(vnode, options?) — walk a Pyreon JSX tree into a DocNode tree
