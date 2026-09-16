@@ -17,6 +17,40 @@ data class PyreonFlowMiniMapNode(val id: String, val x: Double, val y: Double, v
 data class PyreonFlowMiniMapLayout(val nodes: List<PyreonFlowMiniMapNode>, val viewport: PyreonFlowNodeBox, val scale: Double, val minX: Double, val minY: Double)
 data class PyreonFlowEdgeLabel(val id: String, val text: String?, val accessibilityLabel: String, val x: Double, val y: Double, val focusable: Boolean)
 data class PyreonFlowEdgeUpdater(val edgeId: String, val end: String, val x: Double, val y: Double)
+data class PyreonFlowNodeResizerConfig(val minWidth: Double = 50.0, val minHeight: Double = 30.0, val handleSize: Double = 8.0, val showEdgeHandles: Boolean = false) {
+    val directions: List<String> get() = if (showEdgeHandles) listOf("nw", "ne", "sw", "se", "n", "s", "e", "w") else listOf("nw", "ne", "sw", "se")
+}
+data class PyreonFlowNodeToolbarConfig(val position: String = "top", val align: String = "center", val offset: Double = 8.0, val showOnSelect: Boolean = true, val selectedOverride: Boolean? = false, val nodeIdOverride: String? = null)
+data class PyreonFlowNodeToolbarPlacement(val x: Double, val y: Double, val anchorX: Double, val anchorY: Double)
+
+/** Screen-space twin of the web NodeToolbar portal placement. */
+fun pyreonFlowNodeToolbarPlacement(node: PyreonFlowNodeBox, viewport: PyreonFlowViewport, config: PyreonFlowNodeToolbarConfig = PyreonFlowNodeToolbarConfig()): PyreonFlowNodeToolbarPlacement {
+    val factor = if (config.align == "start") 0.0 else if (config.align == "end") 1.0 else 0.5
+    val sx = node.x * viewport.zoom + viewport.x; val sy = node.y * viewport.zoom + viewport.y
+    val width = node.width * viewport.zoom; val height = node.height * viewport.zoom
+    return when (config.position) {
+        "bottom" -> PyreonFlowNodeToolbarPlacement(sx + width * factor, sy + height + config.offset, factor, 0.0)
+        "left" -> PyreonFlowNodeToolbarPlacement(sx - config.offset, sy + height * factor, 1.0, factor)
+        "right" -> PyreonFlowNodeToolbarPlacement(sx + width + config.offset, sy + height * factor, 0.0, factor)
+        else -> PyreonFlowNodeToolbarPlacement(sx + width * factor, sy - config.offset, factor, 1.0)
+    }
+}
+data class PyreonFlowResizeFrame(val position: PyreonXYPosition, val width: Double, val height: Double)
+
+fun pyreonFlowResizeFrame(start: PyreonFlowResizeFrame, direction: String, dx: Double, dy: Double, minWidth: Double = 50.0, minHeight: Double = 30.0): PyreonFlowResizeFrame {
+    var width = start.width; var height = start.height; var x = start.position.x; var y = start.position.y
+    if ('e' in direction) width = maxOf(minWidth, start.width + dx)
+    if ('w' in direction) { width = maxOf(minWidth, start.width - dx); x = start.position.x + start.width - width }
+    if ('s' in direction) height = maxOf(minHeight, start.height + dy)
+    if ('n' in direction) { height = maxOf(minHeight, start.height - dy); y = start.position.y + start.height - height }
+    return PyreonFlowResizeFrame(PyreonXYPosition(x, y), width, height)
+}
+
+fun <T> pyreonFlowEffectiveHandles(node: PyreonFlowNode<T>, rendered: List<PyreonFlowHandleConfig>): List<PyreonFlowHandleConfig> = buildList {
+    addAll(node.sourceHandles); addAll(node.targetHandles)
+    if (node.sourceHandles.isEmpty()) addAll(rendered.filter { it.type == "source" })
+    if (node.targetHandles.isEmpty()) addAll(rendered.filter { it.type == "target" })
+}
 
 fun <T> pyreonFlowMiniMapLayout(state: PyreonFlowState<T>, width: Double = 200.0, height: Double = 150.0, padding: Double = 40.0): PyreonFlowMiniMapLayout {
     val visible = state.nodes.filter { it.hidden != true }
@@ -45,6 +79,7 @@ fun <T> pyreonFlowEdgeStrokes(
     state: PyreonFlowState<T>,
     color: String = "#999999",
     width: Double = 1.5,
+    nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
 ): List<PyreonFlowEdgeStroke> {
     val nodes = state.nodes.filter { it.hidden != true }.associateBy { it.id }
     return state.edges.mapNotNull { edge ->
@@ -53,47 +88,53 @@ fun <T> pyreonFlowEdgeStrokes(
         val target = nodes[edge.target] ?: return@mapNotNull null
         val sourcePosition = state.getAbsolutePosition(source.id)
         val targetPosition = state.getAbsolutePosition(target.id)
+        val sourceDimensions = state.getNodeDimensions(source.id)
+        val targetDimensions = state.getNodeDimensions(target.id)
         val path = pyreonComputeEdgePath(
             type = edge.type ?: PYREON_FLOW_DEFAULT_EDGE_TYPE,
             source = PyreonFlowNodeBox(
                 sourcePosition.x, sourcePosition.y,
-                source.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH,
-                source.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT),
+                sourceDimensions.width, sourceDimensions.height),
             target = PyreonFlowNodeBox(
                 targetPosition.x, targetPosition.y,
-                target.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH,
-                target.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT),
+                targetDimensions.width, targetDimensions.height),
             sourceHandleId = edge.sourceHandle,
             targetHandleId = edge.targetHandle,
-            sourceHandles = source.sourceHandles,
-            targetHandles = target.targetHandles,
+            sourceHandles = pyreonFlowEffectiveHandles(source, nodeHandles(source)),
+            targetHandles = pyreonFlowEffectiveHandles(target, nodeHandles(target)),
+            sourceMeasurement = state.measurements[source.id],
+            targetMeasurement = state.measurements[target.id],
             waypoints = edge.waypoints.map { PyreonFlowPathPoint(it.x, it.y) },
             borderRadius = edge.borderRadius ?: 5.0,
             offset = edge.pathOffset ?: 20.0,
             curvature = edge.curvature ?: 0.25,
         )
         val markers = state.resolvedMarkers(edge)
+        val resolvedColor = pyreonFlowStyleValue(edge.style, "stroke") ?: color
+        val resolvedWidth = pyreonFlowStyleNumber(edge.style, "stroke-width") ?: width
         PyreonFlowEdgeStroke(
-            edge.id, path.segments, color, width, if (edge.animated) listOf(5.0, 5.0) else null,
-            markers.first?.let { pyreonFlowMarkerGlyph(it, path.segments, true, color) },
-            markers.second?.let { pyreonFlowMarkerGlyph(it, path.segments, false, color) },
+            edge.id, path.segments, resolvedColor, resolvedWidth, if (edge.animated) listOf(5.0, 5.0) else null,
+            markers.first?.let { pyreonFlowMarkerGlyph(it, path.segments, true, resolvedColor) },
+            markers.second?.let { pyreonFlowMarkerGlyph(it, path.segments, false, resolvedColor) },
             edge.interactionWidth ?: state.edgeInteractionWidth,
         )
     }
 }
 
-fun <T> pyreonFlowEdgeLabels(state: PyreonFlowState<T>): List<PyreonFlowEdgeLabel> {
+fun <T> pyreonFlowEdgeLabels(state: PyreonFlowState<T>, nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() }): List<PyreonFlowEdgeLabel> {
     val nodes = state.nodes.filter { it.hidden != true }.associateBy { it.id }
     return state.edges.mapNotNull { edge ->
         if (edge.hidden == true) return@mapNotNull null
         val source = nodes[edge.source] ?: return@mapNotNull null
         val target = nodes[edge.target] ?: return@mapNotNull null
         val sp = state.getAbsolutePosition(source.id); val tp = state.getAbsolutePosition(target.id)
+        val sd = state.getNodeDimensions(source.id); val td = state.getNodeDimensions(target.id)
         val path = pyreonComputeEdgePath(
             edge.type ?: PYREON_FLOW_DEFAULT_EDGE_TYPE,
-            PyreonFlowNodeBox(sp.x, sp.y, source.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, source.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT),
-            PyreonFlowNodeBox(tp.x, tp.y, target.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, target.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT),
-            edge.sourceHandle, edge.targetHandle, source.sourceHandles, target.targetHandles,
+            PyreonFlowNodeBox(sp.x, sp.y, sd.width, sd.height),
+            PyreonFlowNodeBox(tp.x, tp.y, td.width, td.height),
+            edge.sourceHandle, edge.targetHandle, pyreonFlowEffectiveHandles(source, nodeHandles(source)), pyreonFlowEffectiveHandles(target, nodeHandles(target)),
+            sourceMeasurement = state.measurements[source.id], targetMeasurement = state.measurements[target.id],
             waypoints = edge.waypoints.map { PyreonFlowPathPoint(it.x, it.y) },
             borderRadius = edge.borderRadius ?: 5.0,
             offset = edge.pathOffset ?: 20.0,

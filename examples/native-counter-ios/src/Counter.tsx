@@ -24,6 +24,7 @@ import {
 } from '@pyreon/hooks'
 import { createI18n } from '@pyreon/i18n/core'
 import { createMachine } from '@pyreon/machine'
+import { Background, Controls, createFlow, Flow, Handle, NodeResizer, Position, type NodeComponentProps } from '@pyreon/flow'
 import {
   Button,
   Inline,
@@ -76,8 +77,40 @@ const SizedRule = rocketstyle()({ component: Stack }).sizes(() => ({
   wide: { width: 240 },
 }))
 
+// A named size is intentional here: PMTC currently lowers rocketstyle
+// dimensions to native frame constraints, while a base-only height would leave
+// SwiftUI's GeometryReader without a bounded height and collapse the canvas.
+const NativeFlowFrame = rocketstyle()({ component: Stack }).sizes(() => ({
+  device: { height: 260 },
+}))
+
+type NativeFlowData = { label: string }
+
+function NativeFlowNode(props: NodeComponentProps<NativeFlowData>) {
+  return (
+    <Stack>
+      <Handle id="in" type="target" position={Position.Left} />
+      <Text>{props.data().label}</Text>
+      <Handle id="out" type="source" position={Position.Right} />
+      <NodeResizer minWidth={80} minHeight={44} />
+    </Stack>
+  )
+}
+
 export function Counter() {
   const count = signal<number>(0)
+  // Direct native Flow device proof. This is intentionally NOT the /webview
+  // bridge: PMTC emits PyreonFlowView and the app links the package's actual
+  // SwiftUI/Compose host, state, geometry, handles, and resize sources. The
+  // same declaration is mounted by XCUITest and Android Compose tests.
+  const nativeFlow = createFlow<NativeFlowData>({
+    nodes: [
+      { id: 'native-start', type: 'native', position: { x: 20, y: 30 }, data: { label: 'Native Flow Start' }, width: 150, height: 60, ariaLabel: 'Native Flow Start' },
+      { id: 'native-end', type: 'native', position: { x: 250, y: 130 }, data: { label: 'Native Flow End' }, width: 150, height: 60, ariaLabel: 'Native Flow End' },
+    ],
+    edges: [{ id: 'native-edge', source: 'native-start', target: 'native-end', sourceHandle: 'out', targetHandle: 'in' }],
+    fitView: true,
+  })
   // M2.7 animations proof — a `<Transition show>` animates a child's
   // visibility. Native: iOS `.transition(.opacity)` on an `if show { … }`
   // gate driven by `.animation(.default, value:)` on a stable ZStack; Android
@@ -258,8 +291,15 @@ export function Counter() {
     states: { off: { on: { TOGGLE: 'on' } }, on: { on: { TOGGLE: 'off' } } },
   })
   return (
+    <Scroll axis="vertical">
     <Stack>
       <Text>Count: {count}</Text>
+      <NativeFlowFrame size="device" data-testid="native-flow-frame">
+        <Flow instance={nativeFlow} nodeTypes={{ native: NativeFlowNode }} ariaLabel="Native Flow device proof">
+          <Background variant="dots" />
+          <Controls showLock={true} />
+        </Flow>
+      </NativeFlowFrame>
       {/* ui-system device proof — a rocketstyle component with a REACTIVE
           dimension. The text flips with the same signal that drives the colour,
           so the device test can assert the flip actually re-rendered (XCUITest
@@ -350,6 +390,9 @@ export function Counter() {
           proving the async scope executed AND the post-await re-render fired. */}
       <Button
         onPress={async () => {
+          // Set BEFORE the await so a device test can tell a tap that never
+          // reached the handler ("idle") from an await that never returned.
+          lockStatus.set('checking')
           const ok = await bio.authenticate('Unlock')
           lockStatus.set(ok ? 'unlocked' : 'denied')
         }}
@@ -422,14 +465,21 @@ export function Counter() {
         </Button>
       </Modal>
 
-      {/* Scroll → iOS `ScrollView` / Android `verticalScroll`. A container is
+      {/* Scroll → iOS `ScrollView` / Android `verticalScroll`. The explicit
+          bounded viewport is required because this proof lives inside the
+          page's outer vertical Scroll; Compose rejects same-axis nested
+          scrollers when the inner one is measured with infinite height.
+          A container is
           flattened out of the iOS a11y tree unless it carries
           `.accessibilityElement(children: .contain)`, which the emitter adds
           for container tags — so querying the container itself is the
           load-bearing part of this assertion. */}
-      <Scroll axis="vertical" data-testid="core-scroll">
-        <Text data-testid="core-scroll-child">Scrolled child</Text>
-      </Scroll>
+      <Stack style={{ height: 64 }}>
+        <Scroll axis="vertical" data-testid="core-scroll">
+          <Text data-testid="core-scroll-child">Scrolled child</Text>
+        </Scroll>
+      </Stack>
     </Stack>
+    </Scroll>
   )
 }

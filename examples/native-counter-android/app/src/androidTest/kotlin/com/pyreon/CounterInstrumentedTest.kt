@@ -46,6 +46,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import android.content.Context
@@ -64,6 +65,13 @@ import org.junit.runner.RunWith
 class CounterInstrumentedTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
+
+    @Test
+    fun directNativeFlowRendersNodes() {
+        composeRule.onNodeWithText("Native Flow Start").assertIsDisplayed()
+        composeRule.onNodeWithText("Native Flow End").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Native Flow device proof").assertExists()
+    }
 
     @Test
     fun appLaunchesAndIncrementsCounter() {
@@ -403,9 +411,9 @@ class CounterInstrumentedTest {
     // becomes "Power: on" (a dropped/broken machine would stay "off").
     @Test
     fun stateMachineTransitionsOnTap() {
-        composeRule.onNodeWithText("Power: off").assertIsDisplayed()
-        composeRule.onNodeWithText("Toggle Power").performClick()
-        composeRule.onNodeWithText("Power: on").assertIsDisplayed()
+        composeRule.onNodeWithText("Power: off").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Toggle Power").performScrollTo().performClick()
+        composeRule.onNodeWithText("Power: on").performScrollTo().assertIsDisplayed()
     }
 
     // M2.7 — ANIMATIONS (<Transition show>) asserted in the REAL Compose
@@ -421,13 +429,13 @@ class CounterInstrumentedTest {
     // (AnimatedVisibility exit → removed); a second click brings it back.
     @Test
     fun transitionAnimatesShowHide() {
-        composeRule.onNodeWithText("Animated Box").assertIsDisplayed()
-        composeRule.onNodeWithText("Toggle Box").performClick()
+        composeRule.onNodeWithText("Animated Box").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Toggle Box").performScrollTo().performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Animated Box").assertDoesNotExist()
-        composeRule.onNodeWithText("Toggle Box").performClick()
+        composeRule.onNodeWithText("Toggle Box").performScrollTo().performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Animated Box").assertIsDisplayed()
+        composeRule.onNodeWithText("Animated Box").performScrollTo().assertIsDisplayed()
     }
 
     // M4.5 — the ASYNC-AWAIT LOWERING asserted in the REAL Compose semantics
@@ -473,9 +481,9 @@ class CounterInstrumentedTest {
     // iOS = full behavioural round trip; Android = registration + render.
     @Test
     fun imagePickerLauncherRegistersOnDevice() {
-        composeRule.onNodeWithText("Photo: idle").assertIsDisplayed()
+        composeRule.onNodeWithText("Photo: idle").performScrollTo().assertIsDisplayed()
         // The trigger exists and is reachable — the button the launcher backs.
-        composeRule.onNodeWithText("Pick Photo").assertIsDisplayed()
+        composeRule.onNodeWithText("Pick Photo").performScrollTo().assertIsDisplayed()
     }
 
     // M3.8 — the file picker's composable-scope OpenDocument launcher registers
@@ -495,9 +503,9 @@ class CounterInstrumentedTest {
     // (`test_filePickerPresentsAndCancelFlowsBackOnDevice`).
     @Test
     fun filePickerLauncherRegistersOnDevice() {
-        composeRule.onNodeWithText("File: idle").assertIsDisplayed()
+        composeRule.onNodeWithText("File: idle").performScrollTo().assertIsDisplayed()
         // The trigger exists and is reachable — the button the launcher backs.
-        composeRule.onNodeWithText("Pick File").assertIsDisplayed()
+        composeRule.onNodeWithText("Pick File").performScrollTo().assertIsDisplayed()
     }
 
     // Core-UI row closure, ANDROID halves — the iOS device assertions for
@@ -584,12 +592,12 @@ class CounterInstrumentedTest {
 
     @Test
     fun biometricAsyncGateRunsOnDevice() {
-        composeRule.onNodeWithText("Lock: idle").assertIsDisplayed()
-        composeRule.onNodeWithText("Unlock").performClick()
+        composeRule.onNodeWithText("Lock: idle").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Unlock").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithText("Lock: denied").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText("Lock: denied").assertIsDisplayed()
+        composeRule.onNodeWithText("Lock: denied").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Lock: idle").assertDoesNotExist()
     }
 
