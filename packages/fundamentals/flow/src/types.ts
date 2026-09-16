@@ -777,7 +777,11 @@ export interface FlowInstance<TData = Record<string, unknown>> {
 
   // ── Multi-node drag ─────────────────────────────────────────────────────
 
-  /** Move all selected nodes by dx/dy */
+  /**
+   * Nudge every selected node by a delta. A positioned move like
+   * `updateNodePosition`: snaps to the grid when `snapToGrid` is on, clamps
+   * to the node extent, and reports each moved node through `onNodesChange`.
+   */
   moveSelectedNodes: (dx: number, dy: number) => void
 
   // ── Helper lines ────────────────────────────────────────────────────────

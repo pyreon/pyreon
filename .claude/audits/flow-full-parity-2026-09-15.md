@@ -82,9 +82,20 @@ native view.
   spec locks both regions byte-for-byte and `PYREON_WRITE_FLOW_PARITY=1`
   regenerates them. Bisect-verified on both targets (a flipped
   `screenToFlowPosition` fails `parity: … query 1 screenToFlow`). Parity
-  runs FIRST in each main, so a shared divergence is reported as one. Still
-  hand-written only under F2: snapping, serialization round-trips, layout
-  algorithms and the container-size-dependent `fitView` / `setCenter`.
+  runs FIRST in each main, so a shared divergence is reported as one.
+- [x] F2 shared fixture, second pass: grid snapping, object snap lines,
+  `toJSON`/`fromJSON` round-trips, clipboard copy/paste (id remapping and
+  edge re-targeting), edge waypoints (append/insert/update/remove + undo),
+  `fitView`/`setCenter` against an explicit container size,
+  `flowToScreenPosition`, `isNodeVisible`, absolute positions through parent
+  chains, child nodes, overlaps, proximity connections, `searchNodes` and
+  `resolveCollisions` are oracle-driven on all three targets (19 scenarios).
+  The pass found two WEB divergences and fixed them there: a nudge
+  (`moveSelectedNodes`) added the raw delta instead of snapping, clamping and
+  emitting like `updateNodePosition`; `isNodeVisible` read a child node's
+  parent-relative offset. Still hand-written only under F2: the layout
+  algorithms (web lays out through elkjs, the native engines carry their own
+  ports — asserted per target) and the animated `focusNode`/`animateViewport`.
 - [x] The public `@pyreon/flow/webview` component now lowers to the real native
   WebView bridge instead of an unresolved `FlowWebView` symbol. Its generated
   default host is byte-ratcheted against the web builder; graph updates,

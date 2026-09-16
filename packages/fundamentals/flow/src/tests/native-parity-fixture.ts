@@ -13,10 +13,12 @@
  * this generator, so a scenario, an oracle result or an emit shape cannot
  * drift silently; `PYREON_WRITE_FLOW_PARITY=1` rewrites the regions.
  *
- * Deliberately excluded: anything reading the container size (`fitView`,
- * `setCenter`) — it is a host measurement on every target — and every
- * callback / animation / layout operation, which the hand-written fixtures
- * cover under their own semantics.
+ * Container-dependent operations (`fitView`, `setCenter`, `isNodeVisible`)
+ * run against an explicit `setContainerSize`, so the host measurement is a
+ * scenario input rather than an excuse. Deliberately excluded: callbacks,
+ * animation (`focusNode`, `animateViewport`) and `layout` — the web engine
+ * lays out through elkjs while the native engines carry their own ports, so
+ * those are asserted per target by the hand-written fixtures.
  */
 import { createFlow } from '../flow'
 
@@ -44,6 +46,16 @@ export type ParityOp =
   | { op: 'undo' }
   | { op: 'redo' }
   | { op: 'setNodeExtent'; minX: number; minY: number; maxX: number; maxY: number }
+  | { op: 'setContainerSize'; width: number; height: number }
+  | { op: 'fitView'; ids?: string[]; padding?: number }
+  | { op: 'setCenter'; x: number; y: number; zoom?: number }
+  | { op: 'copySelected' }
+  | { op: 'paste'; dx: number; dy: number }
+  | { op: 'resolveCollisions'; id: string; spacing: number }
+  | { op: 'roundTripJSON' }
+  | { op: 'addEdgeWaypoint'; id: string; x: number; y: number; index?: number }
+  | { op: 'removeEdgeWaypoint'; id: string; index: number }
+  | { op: 'updateEdgeWaypoint'; id: string; index: number; x: number; y: number }
 
 export type ParityQuery =
   | { q: 'isValidConnection'; source: string; target: string }
@@ -52,14 +64,28 @@ export type ParityQuery =
   | { q: 'outgoers'; id: string }
   | { q: 'screenToFlow'; x: number; y: number }
   | { q: 'clampToExtent'; x: number; y: number }
+  | { q: 'flowToScreen'; x: number; y: number }
+  | { q: 'isNodeVisible'; id: string }
+  | { q: 'snapLines'; id: string; x: number; y: number }
+  | { q: 'absolutePosition'; id: string }
+  | { q: 'childNodes'; id: string }
+  | { q: 'overlapping'; id: string }
+  | { q: 'proximity'; id: string; threshold: number }
+  | { q: 'search'; query: string }
+  | { q: 'waypoints'; id: string }
 
 export interface ParityScenario {
   name: string
-  nodes: { id: string; x: number; y: number }[]
+  nodes: { id: string; x: number; y: number; parentId?: string }[]
   edges: { id: string; source: string; target: string }[]
   ops: ParityOp[]
   queries: ParityQuery[]
+  /** Engine configuration the scenario opts into (defaults mirror `createFlow`). */
+  snapToGrid?: boolean
+  snapGrid?: number
 }
+
+export type SnapAnswer = { snapX: number | null; snapY: number | null; x: number; y: number }
 
 export interface ParityExpectation {
   nodes: { id: string; x: number; y: number }[]
@@ -67,7 +93,7 @@ export interface ParityExpectation {
   selectedNodes: string[]
   selectedEdges: string[]
   viewport: { x: number; y: number; zoom: number }
-  answers: (boolean | string[] | { x: number; y: number })[]
+  answers: (boolean | string[] | { x: number; y: number } | { x: number; y: number }[] | SnapAnswer)[]
 }
 
 const grid = (n: number) => Array.from({ length: n }, (_, i) => ({ id: String(i + 1), x: i * 200, y: (i % 2) * 120 }))
@@ -172,6 +198,149 @@ export const PARITY_SCENARIOS: readonly ParityScenario[] = [
     ops: [{ op: 'setNodeExtent', minX: 0, minY: 0, maxX: 300, maxY: 300 }, { op: 'updateNodePosition', id: '1', x: -50, y: 900 }],
     queries: [{ q: 'clampToExtent', x: -10, y: 10 }, { q: 'clampToExtent', x: 250, y: 250 }],
   },
+  {
+    name: 'grid snapping rounds every positioned move but not a relative drag',
+    snapToGrid: true,
+    snapGrid: 20,
+    nodes: grid(2),
+    edges: [],
+    ops: [
+      { op: 'updateNodePosition', id: '1', x: 33, y: 47 },
+      { op: 'updateNodePosition', id: '2', x: -29, y: 10.5 },
+      { op: 'addNode', id: '3', x: 7, y: 7 },
+      { op: 'selectNode', id: '3', additive: false },
+      { op: 'moveSelectedNodes', dx: 3, dy: 4 },
+    ],
+    queries: [{ q: 'snapLines', id: '1', x: 40, y: 50 }],
+  },
+  {
+    name: 'object snap lines: centre, left, right, top and bottom within the threshold',
+    nodes: [{ id: 'a', x: 100, y: 100 }, { id: 'b', x: 400, y: 300 }, { id: 'drag', x: 0, y: 0 }],
+    edges: [],
+    ops: [],
+    queries: [
+      { q: 'snapLines', id: 'drag', x: 103, y: 500 },
+      { q: 'snapLines', id: 'drag', x: 700, y: 297 },
+      { q: 'snapLines', id: 'drag', x: 254, y: 143 },
+      { q: 'snapLines', id: 'drag', x: 96, y: 800 },
+      { q: 'snapLines', id: 'missing', x: 1, y: 2 },
+    ],
+  },
+  {
+    name: 'serialization: a toJSON/fromJSON round-trip keeps the graph and viewport and clears the selection',
+    nodes: grid(3),
+    edges: chain(3),
+    ops: [
+      { op: 'setViewport', x: 12, y: -8, zoom: 1.5 },
+      { op: 'selectNodes', ids: ['1', '3'], additive: false },
+      { op: 'selectEdge', id: 'e1', additive: true },
+      { op: 'addEdgeWaypoint', id: 'e2', x: 5, y: 6 },
+      { op: 'roundTripJSON' },
+      { op: 'undo' },
+    ],
+    queries: [{ q: 'waypoints', id: 'e2' }, { q: 'connectedEdges', id: '2' }],
+  },
+  {
+    name: 'clipboard: copy and paste offsets the copies and remaps their edges',
+    nodes: grid(3),
+    edges: chain(3),
+    ops: [
+      { op: 'paste', dx: 1, dy: 1 },
+      { op: 'selectNodes', ids: ['1', '2'], additive: false },
+      { op: 'copySelected' },
+      { op: 'paste', dx: 50, dy: 50 },
+      { op: 'paste', dx: -10, dy: 20 },
+      { op: 'clearSelection' },
+      { op: 'copySelected' },
+      { op: 'paste', dx: 0, dy: 0 },
+    ],
+    queries: [{ q: 'connectedEdges', id: '1-copy-1' }, { q: 'outgoers', id: '1-copy-3' }],
+  },
+  {
+    name: 'waypoints: append, insert, update and remove, then undo',
+    nodes: grid(2),
+    edges: chain(2),
+    ops: [
+      { op: 'addEdgeWaypoint', id: 'e1', x: 10, y: 20 },
+      { op: 'addEdgeWaypoint', id: 'e1', x: 30, y: 40 },
+      { op: 'addEdgeWaypoint', id: 'e1', x: 1, y: 2, index: 0 },
+      { op: 'updateEdgeWaypoint', id: 'e1', index: 1, x: 11, y: 22 },
+      { op: 'updateEdgeWaypoint', id: 'e1', index: 9, x: 99, y: 99 },
+      { op: 'removeEdgeWaypoint', id: 'e1', index: 2 },
+      { op: 'addEdgeWaypoint', id: 'missing', x: 0, y: 0 },
+    ],
+    queries: [{ q: 'waypoints', id: 'e1' }, { q: 'waypoints', id: 'missing' }],
+  },
+  {
+    name: 'viewport framing: fitView and setCenter against a measured container',
+    nodes: [{ id: '1', x: 0, y: 0 }, { id: '2', x: 600, y: 0 }, { id: '3', x: 300, y: 500 }],
+    edges: [],
+    ops: [
+      { op: 'setContainerSize', width: 800, height: 600 },
+      { op: 'fitView' },
+      { op: 'fitView', ids: ['1'], padding: 0.25 },
+      { op: 'setCenter', x: 100, y: 100, zoom: 2 },
+      { op: 'setCenter', x: -50, y: 20 },
+    ],
+    queries: [
+      { q: 'flowToScreen', x: 10, y: 10 },
+      { q: 'isNodeVisible', id: '1' },
+      { q: 'isNodeVisible', id: '2' },
+      { q: 'isNodeVisible', id: 'missing' },
+    ],
+  },
+  {
+    name: 'fitView on a subset and on nothing',
+    nodes: grid(2),
+    edges: [],
+    ops: [
+      { op: 'setContainerSize', width: 400, height: 300 },
+      { op: 'fitView', ids: ['missing'] },
+      { op: 'fitView', ids: ['2'], padding: 0 },
+    ],
+    queries: [{ q: 'isNodeVisible', id: '1' }, { q: 'isNodeVisible', id: '2' }],
+  },
+  {
+    name: 'graph queries: parent chains, children, overlaps, proximity and search',
+    nodes: [
+      { id: 'root', x: 100, y: 100 },
+      { id: 'child', x: 10, y: 20, parentId: 'root' },
+      { id: 'grandchild', x: 1, y: 2, parentId: 'child' },
+      { id: 'near', x: 220, y: 105 },
+      { id: 'far', x: 900, y: 900 },
+      { id: 'overlap', x: 150, y: 110 },
+      { id: 'peek', x: -200, y: 0, parentId: 'root' },
+    ],
+    edges: [{ id: 'e1', source: 'root', target: 'near' }],
+    ops: [{ op: 'setContainerSize', width: 800, height: 600 }],
+    queries: [
+      { q: 'absolutePosition', id: 'grandchild' },
+      { q: 'absolutePosition', id: 'missing' },
+      { q: 'childNodes', id: 'root' },
+      { q: 'childNodes', id: 'far' },
+      { q: 'overlapping', id: 'root' },
+      { q: 'overlapping', id: 'far' },
+      { q: 'proximity', id: 'overlap', threshold: 200 },
+      { q: 'proximity', id: 'root', threshold: 200 },
+      { q: 'proximity', id: 'far', threshold: 10 },
+      { q: 'search', query: 'AR' },
+      { q: 'search', query: 'zzz' },
+      { q: 'isNodeVisible', id: 'grandchild' },
+      { q: 'isNodeVisible', id: 'peek' },
+      { q: 'absolutePosition', id: 'peek' },
+    ],
+  },
+  {
+    name: 'resolveCollisions pushes the overlapping neighbour away',
+    nodes: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 100, y: 5 }, { id: 'c', x: 20, y: 30 }, { id: 'd', x: 500, y: 500 }],
+    edges: [],
+    ops: [
+      { op: 'resolveCollisions', id: 'a', spacing: 10 },
+      { op: 'resolveCollisions', id: 'd', spacing: 10 },
+      { op: 'resolveCollisions', id: 'missing', spacing: 10 },
+    ],
+    queries: [{ q: 'overlapping', id: 'a' }],
+  },
 ]
 
 const num = (v: number) => (Number.isFinite(v) ? Math.round(v * 1e9) / 1e9 : v)
@@ -179,8 +348,10 @@ const num = (v: number) => (Number.isFinite(v) ? Math.round(v * 1e9) / 1e9 : v)
 /** Run a scenario through the WEB engine and record what it observed. */
 export function expectationsOf(s: ParityScenario): ParityExpectation {
   const flow = createFlow<{ label: string }>({
-    nodes: s.nodes.map((n) => ({ id: n.id, position: { x: n.x, y: n.y }, data: { label: n.id } })),
+    nodes: s.nodes.map((n) => ({ id: n.id, position: { x: n.x, y: n.y }, data: { label: n.id }, ...(n.parentId !== undefined ? { parentId: n.parentId } : {}) })),
     edges: s.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+    ...(s.snapToGrid !== undefined ? { snapToGrid: s.snapToGrid } : {}),
+    ...(s.snapGrid !== undefined ? { snapGrid: s.snapGrid } : {}),
   })
   for (const o of s.ops) {
     switch (o.op) {
@@ -207,6 +378,16 @@ export function expectationsOf(s: ParityScenario): ParityExpectation {
       case 'undo': flow.undo(); break
       case 'redo': flow.redo(); break
       case 'setNodeExtent': flow.setNodeExtent([[o.minX, o.minY], [o.maxX, o.maxY]]); break
+      case 'setContainerSize': flow.containerSize.set({ width: o.width, height: o.height }); break
+      case 'fitView': flow.fitView(o.ids, o.padding); break
+      case 'setCenter': flow.setCenter(o.x, o.y, o.zoom !== undefined ? { zoom: o.zoom } : undefined); break
+      case 'copySelected': flow.copySelected(); break
+      case 'paste': flow.paste({ x: o.dx, y: o.dy }); break
+      case 'resolveCollisions': flow.resolveCollisions(o.id, o.spacing); break
+      case 'roundTripJSON': flow.fromJSON(JSON.parse(JSON.stringify(flow.toJSON()))); break
+      case 'addEdgeWaypoint': flow.addEdgeWaypoint(o.id, { x: o.x, y: o.y }, o.index); break
+      case 'removeEdgeWaypoint': flow.removeEdgeWaypoint(o.id, o.index); break
+      case 'updateEdgeWaypoint': flow.updateEdgeWaypoint(o.id, o.index, { x: o.x, y: o.y }); break
     }
   }
   const answers: ParityExpectation['answers'] = s.queries.map((q) => {
@@ -217,6 +398,15 @@ export function expectationsOf(s: ParityScenario): ParityExpectation {
       case 'outgoers': return flow.getOutgoers(q.id).map((n) => n.id)
       case 'screenToFlow': { const p = flow.screenToFlowPosition({ x: q.x, y: q.y }); return { x: num(p.x), y: num(p.y) } }
       case 'clampToExtent': { const p = flow.clampToExtent({ x: q.x, y: q.y }); return { x: num(p.x), y: num(p.y) } }
+      case 'flowToScreen': { const p = flow.flowToScreenPosition({ x: q.x, y: q.y }); return { x: num(p.x), y: num(p.y) } }
+      case 'isNodeVisible': return flow.isNodeVisible(q.id)
+      case 'snapLines': { const r = flow.getSnapLines(q.id, { x: q.x, y: q.y }); return { snapX: r.x === null ? null : num(r.x), snapY: r.y === null ? null : num(r.y), x: num(r.snappedPosition.x), y: num(r.snappedPosition.y) } }
+      case 'absolutePosition': { const p = flow.getAbsolutePosition(q.id); return { x: num(p.x), y: num(p.y) } }
+      case 'childNodes': return flow.getChildNodes(q.id).map((n) => n.id)
+      case 'overlapping': return flow.getOverlappingNodes(q.id).map((n) => n.id)
+      case 'proximity': { const c = flow.getProximityConnection(q.id, q.threshold); return c ? [c.source, c.target] : [] }
+      case 'search': return flow.searchNodes(q.query).map((n) => n.id)
+      case 'waypoints': return (flow.getEdge(q.id)?.waypoints ?? []).map((p) => ({ x: num(p.x), y: num(p.y) }))
     }
   })
   const vp = flow.getViewport()
@@ -239,6 +429,9 @@ const d = (v: number): string => {
 const str = (s: string) => JSON.stringify(s)
 // Kotlin lists are always explicitly typed: an EMPTY `listOf()` cannot infer T.
 const strList = (xs: string[], lang: 'swift' | 'kotlin') => (lang === 'swift' ? `[${xs.map(str).join(', ')}]` : `listOf<String>(${xs.map(str).join(', ')})`)
+const optD = (v: number | null, lang: 'swift' | 'kotlin') => (v === null ? 'nil'.replace('nil', lang === 'swift' ? 'nil' : 'null') : d(v))
+const pointList = (ps: { x: number; y: number }[], lang: 'swift' | 'kotlin') =>
+  lang === 'swift' ? `[${ps.map((p) => `(${d(p.x)}, ${d(p.y)})`).join(', ')}]` : `listOf<Pair<Double, Double>>(${ps.map((p) => `Pair(${d(p.x)}, ${d(p.y)})`).join(', ')})`
 
 export const SWIFT_MARKERS = ['    // <flow-parity:start> GENERATED by src/tests/native-parity-fixture.ts — do not edit; PYREON_WRITE_FLOW_PARITY=1 bun run test', '    // <flow-parity:end>'] as const
 export const KOTLIN_MARKERS = ['// <flow-parity:start> GENERATED by src/tests/native-parity-fixture.ts — do not edit; PYREON_WRITE_FLOW_PARITY=1 bun run test', '// <flow-parity:end>'] as const
@@ -268,6 +461,16 @@ function opSwift(o: ParityOp): string {
     case 'undo': return 'f.undo()'
     case 'redo': return 'f.redo()'
     case 'setNodeExtent': return `f.setNodeExtent(minX: ${d(o.minX)}, minY: ${d(o.minY)}, maxX: ${d(o.maxX)}, maxY: ${d(o.maxY)})`
+    case 'setContainerSize': return `f.replaceContainerSize(PyreonFlowContainerSize(width: ${d(o.width)}, height: ${d(o.height)}))`
+    case 'fitView': return `f.fitView(${o.ids ? strList(o.ids, 'swift') : 'nil'}${o.padding !== undefined ? `, padding: ${d(o.padding)}` : ''})`
+    case 'setCenter': return `f.setCenter(${d(o.x)}, ${d(o.y)}${o.zoom !== undefined ? `, zoom: ${d(o.zoom)}` : ''})`
+    case 'copySelected': return 'f.copySelected()'
+    case 'paste': return `f.paste(PyreonXYPosition(x: ${d(o.dx)}, y: ${d(o.dy)}))`
+    case 'resolveCollisions': return `f.resolveCollisions(${str(o.id)}, ${d(o.spacing)})`
+    case 'roundTripJSON': return 'f.fromJSON(f.toJSON())'
+    case 'addEdgeWaypoint': return `f.addEdgeWaypoint(${str(o.id)}, PyreonXYPosition(x: ${d(o.x)}, y: ${d(o.y)})${o.index !== undefined ? `, ${o.index}` : ''})`
+    case 'removeEdgeWaypoint': return `f.removeEdgeWaypoint(${str(o.id)}, ${o.index})`
+    case 'updateEdgeWaypoint': return `f.updateEdgeWaypoint(${str(o.id)}, ${o.index}, PyreonXYPosition(x: ${d(o.x)}, y: ${d(o.y)}))`
   }
 }
 
@@ -296,6 +499,16 @@ function opKotlin(o: ParityOp): string {
     case 'undo': return 'f.undo()'
     case 'redo': return 'f.redo()'
     case 'setNodeExtent': return `f.setNodeExtent(minX = ${d(o.minX)}, minY = ${d(o.minY)}, maxX = ${d(o.maxX)}, maxY = ${d(o.maxY)})`
+    case 'setContainerSize': return `f.replaceContainerSize(PyreonFlowContainerSize(${d(o.width)}, ${d(o.height)}))`
+    case 'fitView': return `f.fitView(${o.ids ? strList(o.ids, 'kotlin') : 'null'}${o.padding !== undefined ? `, padding = ${d(o.padding)}` : ''})`
+    case 'setCenter': return `f.setCenter(${d(o.x)}, ${d(o.y)}${o.zoom !== undefined ? `, zoom = ${d(o.zoom)}` : ''})`
+    case 'copySelected': return 'f.copySelected()'
+    case 'paste': return `f.paste(PyreonXYPosition(${d(o.dx)}, ${d(o.dy)}))`
+    case 'resolveCollisions': return `f.resolveCollisions(${str(o.id)}, ${d(o.spacing)})`
+    case 'roundTripJSON': return 'f.fromJSON(f.toJSON())'
+    case 'addEdgeWaypoint': return `f.addEdgeWaypoint(${str(o.id)}, PyreonXYPosition(${d(o.x)}, ${d(o.y)})${o.index !== undefined ? `, index = ${o.index}` : ''})`
+    case 'removeEdgeWaypoint': return `f.removeEdgeWaypoint(${str(o.id)}, ${o.index})`
+    case 'updateEdgeWaypoint': return `f.updateEdgeWaypoint(${str(o.id)}, ${o.index}, PyreonXYPosition(${d(o.x)}, ${d(o.y)}))`
   }
 }
 
@@ -307,6 +520,15 @@ function answerSwift(q: ParityQuery, a: ParityExpectation['answers'][number], la
     case 'outgoers': return `check(f.getOutgoers(${str(q.id)}).map { $0.id } == ${strList(a as string[], 'swift')}, ${str(label)})`
     case 'screenToFlow': { const p = a as { x: number; y: number }; return `check(parityNear(f.screenToFlowPosition(PyreonXYPosition(x: ${d(q.x)}, y: ${d(q.y)})), ${d(p.x)}, ${d(p.y)}), ${str(label)})` }
     case 'clampToExtent': { const p = a as { x: number; y: number }; return `check(parityNear(f.clampToExtent(PyreonXYPosition(x: ${d(q.x)}, y: ${d(q.y)})), ${d(p.x)}, ${d(p.y)}), ${str(label)})` }
+    case 'flowToScreen': { const p = a as { x: number; y: number }; return `check(parityNear(f.flowToScreenPosition(PyreonXYPosition(x: ${d(q.x)}, y: ${d(q.y)})), ${d(p.x)}, ${d(p.y)}), ${str(label)})` }
+    case 'isNodeVisible': return `check(f.isNodeVisible(${str(q.id)}) == ${String(a)}, ${str(label)})`
+    case 'snapLines': { const r = a as SnapAnswer; return `check(paritySnap(f.getSnapLines(${str(q.id)}, PyreonXYPosition(x: ${d(q.x)}, y: ${d(q.y)})), ${optD(r.snapX, 'swift')}, ${optD(r.snapY, 'swift')}, ${d(r.x)}, ${d(r.y)}), ${str(label)})` }
+    case 'absolutePosition': { const p = a as { x: number; y: number }; return `check(parityNear(f.getAbsolutePosition(${str(q.id)}), ${d(p.x)}, ${d(p.y)}), ${str(label)})` }
+    case 'childNodes': return `check(f.getChildNodes(${str(q.id)}).map { $0.id } == ${strList(a as string[], 'swift')}, ${str(label)})`
+    case 'overlapping': return `check(f.getOverlappingNodes(${str(q.id)}).map { $0.id } == ${strList(a as string[], 'swift')}, ${str(label)})`
+    case 'proximity': return `check((f.getProximityConnection(${str(q.id)}, ${d(q.threshold)}).map { [$0.source, $0.target] } ?? []) == ${strList(a as string[], 'swift')}, ${str(label)})`
+    case 'search': return `check(f.searchNodes(${str(q.query)}).map { $0.id } == ${strList(a as string[], 'swift')}, ${str(label)})`
+    case 'waypoints': return `check(parityPoints(f.getEdge(${str(q.id)})?.waypoints ?? [], ${pointList(a as { x: number; y: number }[], 'swift')}), ${str(label)})`
   }
 }
 
@@ -318,12 +540,28 @@ function answerKotlin(q: ParityQuery, a: ParityExpectation['answers'][number], l
     case 'outgoers': return `check(f.getOutgoers(${str(q.id)}).map { it.id } == ${strList(a as string[], 'kotlin')}, ${str(label)})`
     case 'screenToFlow': { const p = a as { x: number; y: number }; return `check(parityNear(f.screenToFlowPosition(PyreonXYPosition(${d(q.x)}, ${d(q.y)})), ${d(p.x)}, ${d(p.y)}), ${str(label)})` }
     case 'clampToExtent': { const p = a as { x: number; y: number }; return `check(parityNear(f.clampToExtent(PyreonXYPosition(${d(q.x)}, ${d(q.y)})), ${d(p.x)}, ${d(p.y)}), ${str(label)})` }
+    case 'flowToScreen': { const p = a as { x: number; y: number }; return `check(parityNear(f.flowToScreenPosition(PyreonXYPosition(${d(q.x)}, ${d(q.y)})), ${d(p.x)}, ${d(p.y)}), ${str(label)})` }
+    case 'isNodeVisible': return `check(f.isNodeVisible(${str(q.id)}) == ${String(a)}, ${str(label)})`
+    case 'snapLines': { const r = a as SnapAnswer; return `check(paritySnap(f.getSnapLines(${str(q.id)}, PyreonXYPosition(${d(q.x)}, ${d(q.y)})), ${optD(r.snapX, 'kotlin')}, ${optD(r.snapY, 'kotlin')}, ${d(r.x)}, ${d(r.y)}), ${str(label)})` }
+    case 'absolutePosition': { const p = a as { x: number; y: number }; return `check(parityNear(f.getAbsolutePosition(${str(q.id)}), ${d(p.x)}, ${d(p.y)}), ${str(label)})` }
+    case 'childNodes': return `check(f.getChildNodes(${str(q.id)}).map { it.id } == ${strList(a as string[], 'kotlin')}, ${str(label)})`
+    case 'overlapping': return `check(f.getOverlappingNodes(${str(q.id)}).map { it.id } == ${strList(a as string[], 'kotlin')}, ${str(label)})`
+    case 'proximity': return `check((f.getProximityConnection(${str(q.id)}, ${d(q.threshold)})?.let { listOf<String>(it.source, it.target) } ?: listOf<String>()) == ${strList(a as string[], 'kotlin')}, ${str(label)})`
+    case 'search': return `check(f.searchNodes(${str(q.query)}).map { it.id } == ${strList(a as string[], 'kotlin')}, ${str(label)})`
+    case 'waypoints': return `check(parityPoints(f.getEdge(${str(q.id)})?.waypoints ?: emptyList(), ${pointList(a as { x: number; y: number }[], 'kotlin')}), ${str(label)})`
   }
 }
 
 export function renderSwift(scenarios: readonly ParityScenario[] = PARITY_SCENARIOS): string {
   const out: string[] = [SWIFT_MARKERS[0]]
   out.push('    static func parityNear(_ p: PyreonXYPosition, _ x: Double, _ y: Double) -> Bool { abs(p.x - x) < 1e-6 && abs(p.y - y) < 1e-6 }')
+  out.push('    static func parityOpt(_ v: Double?, _ want: Double?) -> Bool { switch (v, want) { case (nil, nil): return true; case let (a?, b?): return abs(a - b) < 1e-6; default: return false } }')
+  out.push('    static func paritySnap(_ s: PyreonFlowSnapLines, _ x: Double?, _ y: Double?, _ px: Double, _ py: Double) -> Bool { parityOpt(s.x, x) && parityOpt(s.y, y) && parityNear(s.snappedPosition, px, py) }')
+  out.push('    static func parityPoints(_ got: [PyreonXYPosition], _ want: [(Double, Double)]) -> Bool {')
+  out.push('        if got.count != want.count { return false }')
+  out.push('        for i in 0..<got.count { if abs(got[i].x - want[i].0) >= 1e-6 || abs(got[i].y - want[i].1) >= 1e-6 { return false } }')
+  out.push('        return true')
+  out.push('    }')
   out.push('    static func parityNodes(_ f: PyreonFlowState<NodeData>, _ want: [(String, Double, Double)]) -> Bool {')
   out.push('        let got = f.nodes')
   out.push('        if got.count != want.count { return false }')
@@ -341,7 +579,7 @@ export function renderSwift(scenarios: readonly ParityScenario[] = PARITY_SCENAR
   for (const s of scenarios) {
     const e = expectationsOf(s)
     out.push(`        do { // ${s.name}`)
-    out.push(`            let f = PyreonFlowState<NodeData>(nodes: [${s.nodes.map((n) => `PyreonFlowNode(id: ${str(n.id)}, position: PyreonXYPosition(x: ${d(n.x)}, y: ${d(n.y)}), data: NodeData(label: ${str(n.id)}))`).join(', ')}], edges: [${s.edges.map((x) => `PyreonFlowEdge(id: ${str(x.id)}, source: ${str(x.source)}, target: ${str(x.target)})`).join(', ')}])`)
+    out.push(`            let f = PyreonFlowState<NodeData>(nodes: [${s.nodes.map((n) => `PyreonFlowNode(id: ${str(n.id)}, position: PyreonXYPosition(x: ${d(n.x)}, y: ${d(n.y)}), data: NodeData(label: ${str(n.id)})${n.parentId !== undefined ? `, parentId: ${str(n.parentId)}` : ''})`).join(', ')}], edges: [${s.edges.map((x) => `PyreonFlowEdge(id: ${str(x.id)}, source: ${str(x.source)}, target: ${str(x.target)})`).join(', ')}]${s.snapToGrid !== undefined ? `, snapToGrid: ${s.snapToGrid}` : ''}${s.snapGrid !== undefined ? `, snapGrid: ${d(s.snapGrid)}` : ''}, searchText: { $0.label })`)
     for (const o of s.ops) out.push(`            ${opSwift(o)}`)
     out.push(`            check(parityNodes(f, [${e.nodes.map((n) => `(${str(n.id)}, ${d(n.x)}, ${d(n.y)})`).join(', ')}]), ${str(`parity: ${s.name} — nodes`)})`)
     out.push(`            check(parityEdges(f, [${e.edges.map((x) => `(${str(x.id)}, ${str(x.source)}, ${str(x.target)})`).join(', ')}]), ${str(`parity: ${s.name} — edges`)})`)
@@ -359,6 +597,13 @@ export function renderSwift(scenarios: readonly ParityScenario[] = PARITY_SCENAR
 export function renderKotlin(scenarios: readonly ParityScenario[] = PARITY_SCENARIOS): string {
   const out: string[] = [KOTLIN_MARKERS[0]]
   out.push('private fun parityNear(p: PyreonXYPosition, x: Double, y: Double): Boolean = abs(p.x - x) < 1e-6 && abs(p.y - y) < 1e-6')
+  out.push('private fun parityOpt(v: Double?, want: Double?): Boolean = if (v == null || want == null) v == null && want == null else abs(v - want) < 1e-6')
+  out.push('private fun paritySnap(s: PyreonFlowSnapLines, x: Double?, y: Double?, px: Double, py: Double): Boolean = parityOpt(s.x, x) && parityOpt(s.y, y) && parityNear(s.snappedPosition, px, py)')
+  out.push('private fun parityPoints(got: List<PyreonXYPosition>, want: List<Pair<Double, Double>>): Boolean {')
+  out.push('    if (got.size != want.size) return false')
+  out.push('    for (i in got.indices) { if (abs(got[i].x - want[i].first) >= 1e-6 || abs(got[i].y - want[i].second) >= 1e-6) return false }')
+  out.push('    return true')
+  out.push('}')
   out.push('private fun parityNodes(f: PyreonFlowState<NodeData>, want: List<Triple<String, Double, Double>>): Boolean {')
   out.push('    val got = f.nodes')
   out.push('    if (got.size != want.size) return false')
@@ -376,7 +621,7 @@ export function renderKotlin(scenarios: readonly ParityScenario[] = PARITY_SCENA
   for (const s of scenarios) {
     const e = expectationsOf(s)
     out.push(`    run { // ${s.name}`)
-    out.push(`        val f = PyreonFlowState<NodeData>(nodes = listOf<PyreonFlowNode<NodeData>>(${s.nodes.map((n) => `PyreonFlowNode(${str(n.id)}, position = PyreonXYPosition(${d(n.x)}, ${d(n.y)}), data = NodeData(${str(n.id)}))`).join(', ')}), edges = listOf<PyreonFlowEdge>(${s.edges.map((x) => `PyreonFlowEdge(${str(x.id)}, source = ${str(x.source)}, target = ${str(x.target)})`).join(', ')}))`)
+    out.push(`        val f = PyreonFlowState<NodeData>(nodes = listOf<PyreonFlowNode<NodeData>>(${s.nodes.map((n) => `PyreonFlowNode(${str(n.id)}, position = PyreonXYPosition(${d(n.x)}, ${d(n.y)}), data = NodeData(${str(n.id)})${n.parentId !== undefined ? `, parentId = ${str(n.parentId)}` : ''})`).join(', ')}), edges = listOf<PyreonFlowEdge>(${s.edges.map((x) => `PyreonFlowEdge(${str(x.id)}, source = ${str(x.source)}, target = ${str(x.target)})`).join(', ')})${s.snapToGrid !== undefined ? `, snapToGrid = ${s.snapToGrid}` : ''}${s.snapGrid !== undefined ? `, snapGrid = ${d(s.snapGrid)}` : ''}, searchText = { it.label })`)
     for (const o of s.ops) out.push(`        ${opKotlin(o)}`)
     out.push(`        check(parityNodes(f, listOf<Triple<String, Double, Double>>(${e.nodes.map((n) => `Triple(${str(n.id)}, ${d(n.x)}, ${d(n.y)})`).join(', ')})), ${str(`parity: ${s.name} — nodes`)})`)
     out.push(`        check(parityEdges(f, listOf<Triple<String, String, String>>(${e.edges.map((x) => `Triple(${str(x.id)}, ${str(x.source)}, ${str(x.target)})`).join(', ')})), ${str(`parity: ${s.name} — edges`)})`)
