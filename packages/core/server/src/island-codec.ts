@@ -39,6 +39,20 @@
  *
  * **Functions, symbols, `undefined`**: still dropped silently — that's
  * the documented "not portable across a JSON wire" contract.
+ *
+ * **Cycles, and only cycles**: the "byte-identically" claim above is about
+ * SHAPE, and it used to be false in one direction that mattered. Detection
+ * tracked every object ever VISITED and never pruned it, so a DAG — one object
+ * referenced twice, which `JSON.stringify` serializes perfectly well — was
+ * reported as a circular reference. `{ author: user, lastEditor: user }`,
+ * `{ current: tags, all: tags }`, a row list whose entries share a lookup
+ * object: all ordinary island props, all rejected. And because both callers
+ * CATCH (they must not 500 the SSR), the failure was not an error a user saw —
+ * production hydrated the island with EMPTY PROPS and only a dev-mode
+ * `console.error` said why. Detection now tracks the ANCESTOR PATH: add on
+ * descend, DELETE on ascend, so a sibling or a shared reference is not a
+ * cycle and only a genuine self-reference throws. Same fix, same reasoning as
+ * `@pyreon/router`'s `stringifyLoaderData`, which had this defect first.
  */
 
 export class IslandPropEncodeError extends Error {
@@ -69,13 +83,15 @@ export function encodeIslandProps(
   value: unknown,
   islandName: string,
 ): Encoded {
-  const seen = new WeakSet<object>()
-  return walk(value, seen, '$', islandName, 0)
+  // ANCESTORS, not all-seen: see the cycle note in the module docblock.
+  const ancestors = new Set<object>()
+  return walk(value, ancestors, '$', islandName, 0)
 }
 
 function walk(
   value: unknown,
-  seen: WeakSet<object>,
+  /** The objects on the path from the ROOT to here — never all objects seen. */
+  ancestors: Set<object>,
   path: string,
   islandName: string,
   depth: number,
@@ -100,15 +116,34 @@ function walk(
 
   // Objects from here on.
   const obj = value as object
-  if (seen.has(obj)) {
+  if (ancestors.has(obj)) {
     throw new IslandPropEncodeError(
       `Circular reference at "${path}".`,
       path,
       islandName,
     )
   }
-  seen.add(obj)
+  // ADD on descend / DELETE on ascend, bracketed structurally rather than at
+  // each `return`: the body has SIX exits (Date, RegExp, Map, Set, Array, and
+  // two for a plain object), and a per-exit delete is the shape that leaves one
+  // behind — a Date or RegExp reached the `return` with no recursion at all, so
+  // the simple reading ("only containers need to ascend") is wrong and a SHARED
+  // Date would have kept throwing.
+  ancestors.add(obj)
+  try {
+    return walkObject(obj, ancestors, path, islandName, depth)
+  } finally {
+    ancestors.delete(obj)
+  }
+}
 
+function walkObject(
+  obj: object,
+  ancestors: Set<object>,
+  path: string,
+  islandName: string,
+  depth: number,
+): Encoded {
   if (obj instanceof Date) {
     return { [TAG]: 'd', [VALUE]: obj.toISOString() }
   }
@@ -120,8 +155,8 @@ function walk(
     let i = 0
     for (const [k, v] of obj) {
       entries.push([
-        walk(k, seen, `${path}.<map-key:${i}>`, islandName, depth + 1),
-        walk(v, seen, `${path}.<map-value:${i}>`, islandName, depth + 1),
+        walk(k, ancestors, `${path}.<map-key:${i}>`, islandName, depth + 1),
+        walk(v, ancestors, `${path}.<map-value:${i}>`, islandName, depth + 1),
       ])
       i++
     }
@@ -131,7 +166,7 @@ function walk(
     const arr: Encoded[] = []
     let i = 0
     for (const v of obj) {
-      arr.push(walk(v, seen, `${path}.<set:${i}>`, islandName, depth + 1))
+      arr.push(walk(v, ancestors, `${path}.<set:${i}>`, islandName, depth + 1))
       i++
     }
     return { [TAG]: 's', [VALUE]: arr }
@@ -149,7 +184,7 @@ function walk(
         arr.push(null)
         continue
       }
-      arr.push(walk(item, seen, `${path}[${i}]`, islandName, depth + 1))
+      arr.push(walk(item, ancestors, `${path}[${i}]`, islandName, depth + 1))
     }
     return arr
   }
@@ -178,7 +213,7 @@ function walk(
       // Silently dropped — JSON.stringify does the same.
       continue
     }
-    result[key] = walk(val, seen, `${path}.${key}`, islandName, depth + 1)
+    result[key] = walk(val, ancestors, `${path}.${key}`, islandName, depth + 1)
   }
 
   // If the user's plain object literally has `__pyreon_t` as an own key,

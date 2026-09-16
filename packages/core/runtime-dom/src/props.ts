@@ -1,5 +1,5 @@
 import type { ClassValue, Props } from '@pyreon/core'
-import { cx, isSafeImageDataUri, isUnsafeUrl, normalizeStyleValue, toKebabCase, isUrlAttr } from '@pyreon/core'
+import { cx, isEventHandlerAttr, isSafeImageDataUri, isUnsafeUrl, normalizeStyleValue, toKebabCase, isUrlAttr } from '@pyreon/core'
 
 import { batch, renderEffect } from '@pyreon/reactivity'
 import { DELEGATED_EVENTS, delegatedPropName } from './delegate'
@@ -707,6 +707,14 @@ function setAttrNsAware(el: Element, key: string, value: string): void {
  * `applyClassProp`→`_setClass` extractions.
  */
 export function applyAttrProp(el: Element, key: string, value: unknown): void {
+  // Event-handler NAMES first — BEFORE the accessor resolution below, which is
+  // the load-bearing ordering. `_setAttr` is the compiled sink for every generic
+  // dynamic attribute, and a lowercase handler name reaches it (the compiler's
+  // own `on*` skip is `/^on[A-Z]/`, camelCase-only), so `onclick={expr}` wrote a
+  // live handler on plain HTML — and a FUNCTION-valued one was CALLED here to
+  // produce the string, executing user code during render exactly as the SSR
+  // half of this bug did. Refusing above the call closes both.
+  if (isBlockedHandlerAttr(key, value)) return
   if (typeof value === 'function') {
     // Callable-as-accessor, mirroring `applyProp`'s function branch and SSR's
     // `renderProp`. A BARE IDENTIFIER holding an accessor —
@@ -844,6 +852,29 @@ function isBlockedUrl(el: Element, key: string, value: unknown): boolean {
   return false
 }
 
+/**
+ * Refuse an event-handler NAME at an attribute sink — the client twin of SSR's
+ * `renderPropSkipped` skip, sharing `@pyreon/core`'s `isEventHandlerAttr` so the
+ * two renderers cannot drift on WHICH names are handlers.
+ *
+ * Writing one is not a cosmetic divergence, it is script execution: measured in
+ * real Chromium, `setAttribute('onclick', 'window.x = 1')` on an HTML div AND on
+ * an SVG `<rect>` both ran the string on the next click. Returning silently
+ * (no write, last value kept) mirrors `isBlockedUrl`'s early return and SSR's
+ * drop, so the three paths agree on the absent attribute.
+ */
+function isBlockedHandlerAttr(key: string, value: unknown): boolean {
+  if (!isEventHandlerAttr(key)) return false
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn(
+      `[Pyreon] Refused to write event-handler attribute "${key}" (${typeof value}). ` +
+        `An inline handler attribute is executable markup. Use the camelCase prop ` +
+        `(onClick={fn}) — it binds a real listener instead of serializing a string.`,
+    )
+  }
+  return true
+}
+
 // INVARIANT (every `_setX` the compiler emits): `applyAttrProp` (`_setAttr`),
 // `applyValueProp` (`_setValue`), `applyStyleProp` (`_setStyle`),
 // `applyClassProp` (`_setClass`) and `applyDangerousHtml` (`_setHtml`) are each
@@ -856,6 +887,18 @@ function isBlockedUrl(el: Element, key: string, value: unknown): boolean {
 function setStaticProp(el: Element, key: string, value: unknown): void {
   // Block javascript:/data: URI injection in URL-bearing attributes.
   if (isBlockedUrl(el, key, value)) return
+
+  // Event-handler NAMES, at the TOP rather than beside each attribute branch.
+  // This function writes an attribute from FOUR places (the foreign-namespace
+  // branch, `data-`/`aria-`, the `key in el` catch fallback, and the tail), and
+  // the bug this closes was precisely a branch that returns before the later
+  // checks: the SVG/MathML branch below `setAttrNsAware`s any name it is given,
+  // so `<rect onclick="...">` was a live handler on the h() path while SSR
+  // dropped it. Guarding each sink instead would be the same shape that failed.
+  // The property routes are unaffected in practice: assigning a string to an
+  // `EventHandler` IDL property is a no-op (WebIDL treats a non-object as null),
+  // so nothing that worked stops working.
+  if (isBlockedHandlerAttr(key, value)) return
 
   if (key === 'class' || key === 'className') {
     applyClassProp(el, value)
