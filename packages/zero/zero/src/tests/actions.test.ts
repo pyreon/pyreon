@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   _resetActions,
   createActionMiddleware,
@@ -326,5 +326,214 @@ describe('PR-S2: createActionMiddleware CSRF baseline (Origin / Referer same-ori
     )
     const res = await mw(ctx as never)
     expect(res?.status).toBe(403)
+  })
+})
+
+// ─── Origin comparison is EQUALITY, never a prefix ───────────────────────────
+//
+// `headerOrigin.startsWith(reqUrl.origin)` accepted every origin that merely
+// BEGINS with ours, which is the whole point of a suffix-registerable domain:
+// an attacker buys `localhost.evil.net` (or appends userinfo) and the CSRF
+// baseline waves them through.
+//
+// Bisect-verify: restore the two `startsWith` compares in actions.ts and the
+// four attacker origins below return 200 with the handler run.
+
+describe('CSRF origin check compares ORIGINS, not prefixes', () => {
+  beforeEach(() => {
+    _resetActions()
+  })
+
+  // Requests in this file are made against `http://localhost`, so each of
+  // these merely starts with the request's own origin.
+  const attackerOrigins = [
+    'http://localhost.evil.net', // subdomain-suffix registration
+    'http://localhostevil.net', // no delimiter at all
+    'http://localhost@evil.net', // userinfo — real origin is evil.net
+    'http://localhost.evil.net:8443', // suffix + port
+  ]
+
+  for (const attacker of attackerOrigins) {
+    it(`REJECTS ${attacker} (403, handler not run)`, async () => {
+      let ran = false
+      const action = defineAction(async () => {
+        ran = true
+        return { ok: true }
+      })
+      const mw = createActionMiddleware()
+      const ctx = mockCtx(`/_zero/actions/${action.actionId}`, 'POST', 'null', {
+        Origin: attacker,
+      })
+      const res = await mw(ctx as never)
+      expect(res?.status).toBe(403)
+      expect(ran).toBe(false)
+    })
+
+    it(`REJECTS ${attacker} sent as a Referer (403)`, async () => {
+      const action = defineAction(async () => ({ ok: true }))
+      const mw = createActionMiddleware()
+      const ctx = mockCtx(`/_zero/actions/${action.actionId}`, 'POST', 'null', {
+        Referer: `${attacker}/attack/page`,
+      })
+      const res = await mw(ctx as never)
+      expect(res?.status).toBe(403)
+    })
+  }
+
+  it('ALLOWS the exact request origin', async () => {
+    const action = defineAction(async () => ({ ok: true }))
+    const mw = createActionMiddleware()
+    const ctx = mockCtx(`/_zero/actions/${action.actionId}`, 'POST', 'null', {
+      Origin: 'http://localhost',
+    })
+    const res = await mw(ctx as never)
+    expect(res?.status).toBe(200)
+  })
+
+  it('ALLOWS a same-origin Referer (reduced to its origin)', async () => {
+    const action = defineAction(async () => ({ ok: true }))
+    const mw = createActionMiddleware()
+    const ctx = mockCtx(`/_zero/actions/${action.actionId}`, 'POST', 'null', {
+      Referer: 'http://localhost/some/deep/page?q=1',
+    })
+    const res = await mw(ctx as never)
+    expect(res?.status).toBe(200)
+  })
+
+  it('ALLOWS a corsOrigins entry matched EXACTLY', async () => {
+    const action = defineAction(async () => ({ ok: true }))
+    const mw = createActionMiddleware({ corsOrigins: ['https://admin.example.com'] })
+    const ctx = mockCtx(`/_zero/actions/${action.actionId}`, 'POST', 'null', {
+      Origin: 'https://admin.example.com',
+    })
+    const res = await mw(ctx as never)
+    expect(res?.status).toBe(200)
+  })
+
+  it('REJECTS an origin that only EXTENDS a corsOrigins entry', async () => {
+    const action = defineAction(async () => ({ ok: true }))
+    const mw = createActionMiddleware({ corsOrigins: ['https://admin.example.com'] })
+    for (const attacker of [
+      'https://admin.example.com.evil.net',
+      'https://admin.example.comevil.net',
+      'https://admin.example.com@evil.net',
+    ]) {
+      const ctx = mockCtx(`/_zero/actions/${action.actionId}`, 'POST', 'null', {
+        Origin: attacker,
+      })
+      const res = await mw(ctx as never)
+      expect(res?.status, attacker).toBe(403)
+    }
+  })
+
+  it('REJECTS an unparseable Origin (the literal "null" a sandboxed iframe sends)', async () => {
+    const action = defineAction(async () => ({ ok: true }))
+    const mw = createActionMiddleware()
+    const ctx = mockCtx(`/_zero/actions/${action.actionId}`, 'POST', 'null', {
+      Origin: 'null',
+    })
+    const res = await mw(ctx as never)
+    expect(res?.status).toBe(403)
+  })
+})
+
+// ─── A handler throw must not narrate itself to the client ───────────────────
+//
+// Bisect-verify: restore `const message = err instanceof Error ? err.message : ...`
+// and the production case returns the connection-string message verbatim.
+
+describe('handler errors do not leak detail in production', () => {
+  const prevEnv = process.env.NODE_ENV
+
+  beforeEach(() => {
+    _resetActions()
+  })
+
+  afterEach(() => {
+    process.env.NODE_ENV = prevEnv
+  })
+
+  const SECRET = 'pg: password authentication failed for user "admin" at 10.0.0.7:5432'
+
+  it('returns a generic message in production, and still logs the real one', async () => {
+    process.env.NODE_ENV = 'production'
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const action = defineAction(async () => {
+      throw new Error(SECRET)
+    })
+    const mw = createActionMiddleware()
+    const res = await mw(mockCtx(`/_zero/actions/${action.actionId}`, 'POST', 'null') as never)
+    expect(res?.status).toBe(500)
+    const body = (await res!.json()) as { error: string }
+    expect(body.error).toBe('Internal server error')
+    expect(JSON.stringify(body)).not.toContain('password')
+    expect(logged).toHaveBeenCalled()
+    expect(String(logged.mock.calls[0]?.[1])).toContain('password authentication failed')
+    logged.mockRestore()
+  })
+
+  it('keeps the detail outside production, where a developer is reading it', async () => {
+    process.env.NODE_ENV = 'development'
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const action = defineAction(async () => {
+      throw new Error(SECRET)
+    })
+    const mw = createActionMiddleware()
+    const res = await mw(mockCtx(`/_zero/actions/${action.actionId}`, 'POST', 'null') as never)
+    expect(res?.status).toBe(500)
+    const body = (await res!.json()) as { error: string }
+    expect(body.error).toBe(SECRET)
+    logged.mockRestore()
+  })
+
+  it('a non-Error throw is generic in every environment', async () => {
+    process.env.NODE_ENV = 'development'
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const action = defineAction(async () => {
+      throw SECRET
+    })
+    const mw = createActionMiddleware()
+    const res = await mw(mockCtx(`/_zero/actions/${action.actionId}`, 'POST', 'null') as never)
+    const body = (await res!.json()) as { error: string }
+    expect(body.error).toBe('Internal server error')
+    logged.mockRestore()
+  })
+})
+
+describe('corsOrigins entries are normalized at construction', () => {
+  beforeEach(() => {
+    _resetActions()
+  })
+
+  // The match is equality, so an entry spelled with a trailing slash or an
+  // explicit default port would silently never fire. Normalizing once at
+  // construction keeps both spellings working.
+  for (const entry of [
+    'https://admin.example.com',
+    'https://admin.example.com/',
+    'https://admin.example.com:443',
+  ]) {
+    it(`accepts the origin for an entry written as ${entry}`, async () => {
+      const action = defineAction(async () => ({ ok: true }))
+      const mw = createActionMiddleware({ corsOrigins: [entry] })
+      const ctx = mockCtx(`/_zero/actions/${action.actionId}`, 'POST', 'null', {
+        Origin: 'https://admin.example.com',
+      })
+      const res = await mw(ctx as never)
+      expect(res?.status, entry).toBe(200)
+    })
+  }
+
+  it('drops an unparseable entry with a warning instead of matching nothing silently', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const action = defineAction(async () => ({ ok: true }))
+    const mw = createActionMiddleware({ corsOrigins: ['admin.example.com'] })
+    expect(warn).toHaveBeenCalled()
+    expect(String(warn.mock.calls[0]?.[0])).toContain('corsOrigins')
+    const ctx = mockCtx(`/_zero/actions/${action.actionId}`, 'POST', 'null', {
+      Origin: 'https://admin.example.com',
+    })
+    expect((await mw(ctx as never))?.status).toBe(403)
+    warn.mockRestore()
   })
 })
