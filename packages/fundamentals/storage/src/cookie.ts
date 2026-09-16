@@ -11,6 +11,12 @@ import { deserialize, isBrowser, serialize } from './utils'
 // request's `Cookie` header out of `runWithRequestContext`'s AsyncLocalStorage),
 // so concurrent requests each resolve their own cookies without this module
 // holding per-request state. `null` clears it.
+//
+// The accessor form only became REACHABLE past request #1 once the signal
+// registry was isolated per request (see `registry.ts`): the registry caches
+// the resolved signal per key, so request B used to be handed request A's
+// signal — holding A's cookie value — and this source was never consulted.
+// Correct seam, unreachable. Both halves are required.
 let serverCookieSource: string | (() => string) | null = null
 
 /**
@@ -22,6 +28,11 @@ let serverCookieSource: string | (() => string) | null = null
  * concurrent requests — safe only when rendering is serialized per process. For
  * a server handling concurrent requests, pass an ACCESSOR that reads the current
  * request's cookies from your request context.
+ *
+ * The registry that caches cookie signals is isolated per request automatically
+ * under `@pyreon/runtime-server` (`renderToString` / `renderToStream` /
+ * `runWithRequestContext`), so an accessor source is honoured on EVERY request,
+ * not only the first.
  *
  * @example
  * ```ts
@@ -118,8 +129,9 @@ function deleteCookie<T>(key: string, options: CookieOptions<T>): void {
 // ─── useCookie ───────────────────────────────────────────────────────────────
 
 /**
- * Reactive signal backed by a browser cookie. SSR-compatible when
- * used with setCookieSource().
+ * Reactive signal backed by a browser cookie. SSR-compatible when used with
+ * `setCookieSource()` — and per-request under `@pyreon/runtime-server`, which
+ * isolates the signal registry for each render (see `registry.ts`).
  *
  * @example
  * ```ts

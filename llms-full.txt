@@ -376,7 +376,7 @@ deriveIslandName("Counter", islandRelPath(root, "/app/src/islands.ts"))
 
 ## @pyreon/runtime-server — SSR Renderer
 
-Pyreon's server-side renderer: walks a VNode tree and produces HTML. Signal accessors are called synchronously to SNAPSHOT their current value — no effects, no reactivity on the server (reactivity resumes post-hydration on the client). Async component functions are awaited. `renderToStream` flushes progressively and resolves Suspense boundaries out-of-order (fallback first, then a `<template>` + inline swap script). Concurrency-safe: every `renderToString` / `renderToStream` / `runWithRequestContext` call runs in its own `AsyncLocalStorage` store so concurrent requests never share context frames; the `@pyreon/store` registry is isolated the same way AUTOMATICALLY — the store publishes its setter on a `globalThis` seam when it loads on a server and this renderer picks it up, so a consumer cannot forget to wire it; `configureStoreIsolation()` stays as the explicit override for a custom provider. Most apps consume this transitively through `@pyreon/server` (`createHandler` / `prerender`) rather than calling it directly.
+Pyreon's server-side renderer: walks a VNode tree and produces HTML. Signal accessors are called synchronously to SNAPSHOT their current value — no effects, no reactivity on the server (reactivity resumes post-hydration on the client). Async component functions are awaited. `renderToStream` flushes progressively and resolves Suspense boundaries out-of-order (fallback first, then a `<template>` + inline swap script). Concurrency-safe: every `renderToString` / `renderToStream` / `runWithRequestContext` call runs in its own `AsyncLocalStorage` store so concurrent requests never share context frames; the key-addressed registries in `@pyreon/store`, `@pyreon/storage` and `@pyreon/state-tree` are isolated the same way AUTOMATICALLY — each publishes its setter on a `globalThis` seam when it loads on a server and this renderer picks it up per render, so a consumer cannot forget to wire it; `configureStoreIsolation()` stays as the explicit override for a custom provider. Most apps consume this transitively through `@pyreon/server` (`createHandler` / `prerender`) rather than calling it directly.
 
 ```typescript
 import { renderToString } from "@pyreon/runtime-server"
@@ -1165,7 +1165,7 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())
 
 ## @pyreon/state-tree — State Tree
 
-MobX-State-Tree-inspired structured state management built on Pyreon signals. Models compose state (signals), views (computeds), and actions into self-contained units that support typed snapshots, JSON-patch record/replay, and action interception middleware. Models can nest other models for tree-shaped state, and `.asHook(id)` provides singleton instances scoped to a store-like registry.
+MobX-State-Tree-inspired structured state management built on Pyreon signals. Models compose state (signals), views (computeds), and actions into self-contained units that support typed snapshots, JSON-patch record/replay, and action interception middleware. Models can nest other models for tree-shaped state, and `.asHook(id)` provides singleton instances scoped to a store-like registry — per process in a browser, and per REQUEST on a server under `@pyreon/runtime-server`, which isolates that registry automatically.
 
 ```typescript
 import { model, getSnapshot, applySnapshot, onPatch, applyPatch, addMiddleware } from '@pyreon/state-tree'
@@ -1755,7 +1755,7 @@ flow.fromJSON({ nodes, edges })    // restore from saved state
 
 ## @pyreon/storage — Reactive Storage
 
-Signal-backed persistence for Pyreon. Every stored value is a reactive signal that persists writes automatically to the underlying storage backend. `useStorage` (localStorage, cross-tab synced), `useSessionStorage`, `useCookie` (SSR-readable, configurable expiry), `useIndexedDB` (large data, debounced writes), and `useMemoryStorage` (ephemeral, SSR-safe). All hooks return `StorageSignal<T>` which extends `Signal<T>` with `.remove()`. Calling the same hook with the same key ANYWHERE returns the SAME signal, refcounted across every backend — so one consumer calling `.remove()` clears the stored value without orphaning the siblings still holding it; the entry is destroyed on the last release. `createStorage(backend)` enables custom backends (encrypted, remote, etc.). SSR-safe — browser-API hooks return the default value on the server.
+Signal-backed persistence for Pyreon. Every stored value is a reactive signal that persists writes automatically to the underlying storage backend. `useStorage` (localStorage, cross-tab synced), `useSessionStorage`, `useCookie` (SSR-readable, configurable expiry), `useIndexedDB` (large data, debounced writes), and `useMemoryStorage` (ephemeral, SSR-safe). All hooks return `StorageSignal<T>` which extends `Signal<T>` with `.remove()`. Calling the same hook with the same key ANYWHERE returns the SAME signal, refcounted across every backend — so one consumer calling `.remove()` clears the stored value without orphaning the siblings still holding it; the entry is destroyed on the last release. `createStorage(backend)` enables custom backends (encrypted, remote, etc.). SSR-safe — browser-API hooks return the default value on the server, and the signal registry is isolated PER REQUEST under `@pyreon/runtime-server`, so a cached `useCookie` / `useMemoryStorage` signal is never handed to the next visitor.
 
 ```typescript
 import { useStorage, useSessionStorage, useCookie, useIndexedDB, useMemoryStorage, createStorage } from '@pyreon/storage'
@@ -1797,7 +1797,7 @@ const useEncrypted = createStorage(encryptedBackend)
 const secret = useEncrypted('api-key', '')
 ```
 
-> **SSR safety**: Browser-backed hooks (`useStorage`, `useSessionStorage`, `useIndexedDB`) return the default value on the server. `useCookie` is SSR-readable via `setCookieSource()` which reads from the request headers.
+> **SSR safety**: Browser-backed hooks (`useStorage`, `useSessionStorage`, `useIndexedDB`) return the default value on the server. `useCookie` is SSR-readable via `setCookieSource()` which reads from the request headers. Under `@pyreon/runtime-server` the signal registry is isolated per request automatically, so concurrent renders never share a cached signal — pass an ACCESSOR cookie source bound to your request context to make use of it.
 >
 > **Cross-tab sync**: Only `useStorage` (localStorage) syncs across tabs via `storage` events. `useSessionStorage` is per-tab. Cookies and IndexedDB have no built-in cross-tab notification.
 >
