@@ -57,7 +57,7 @@ describe('every series on a geo draws', () => {
     expect(svg).toContain('<polygon')
   })
 
-  it('names what it cannot draw: a series off the geo, a pie with no centre, an unknown type, a trail on geo lines', () => {
+  it('names what it cannot draw: a series off the geo, a pie with no centre, an unknown type, an unmapped trail key', () => {
     const f = compileFamily({
       geo: { map: 'geo-series-world' },
       series: [
@@ -65,10 +65,10 @@ describe('every series on a geo draws', () => {
         { type: 'line', data: [1, 2] },
         { type: 'pie', coordinateSystem: 'geo', data: [{ value: 1 }] },
         { type: 'bar', coordinateSystem: 'geo', data: [] },
-        { type: 'lines', coordinateSystem: 'geo', effect: { show: true }, data: [] },
+        { type: 'lines', coordinateSystem: 'geo', effect: { show: true, delay: 2 }, data: [] },
       ],
     })!
-    expect(f.warnings.map((w) => w.path)).toEqual(['series[1].coordinateSystem', 'series[2].center', 'series[3].type', 'series[4].effect'])
+    expect(f.warnings.map((w) => w.path)).toEqual(['series[1].coordinateSystem', 'series[2].center', 'series[3].type', 'series[4].effect.delay'])
   })
 })
 
@@ -91,5 +91,23 @@ describe('geo heat and pie overlays', () => {
     const half = renderGeoPies(layout, [pie], 0.5)
     expect(half).toHaveLength(2)
     expect(JSON.stringify(half)).not.toBe(JSON.stringify(full))
+  })
+})
+
+describe('geo lines trail', () => {
+  it('an effect on geo lines becomes the plan trail, and the head runs along the projected path with time', async () => {
+    const f = compileFamily({ geo: { map: 'geo-series-world' }, series: [{ type: 'lines', coordinateSystem: 'geo', effect: { show: true, period: 2, trailLength: 0.25, color: '#ff0000', symbolSize: 8 }, data: [{ coords: [[0, 5], [20, 5]] }] }] })!
+    expect(f.warnings).toEqual([])
+    if (f.plan.kind !== 'geoPoints') throw new Error('kind')
+    expect(f.plan.trail).toEqual({ period: 2, trailLength: 0.25, color: '#ff0000', symbolSize: 8 })
+    const { renderGeoTrails } = await import('./geo-overlay')
+    const { geoProject } = await import('./geo')
+    const layout = layoutGeoShapes(geoShapes(world), { x: 0, y: 0, w: 200, h: 100 })
+    const a = geoProject(layout.transform, 0, 5)
+    const b = geoProject(layout.transform, 20, 5)
+    const heads = (time: number) => renderGeoTrails(layout, [{ coords: [{ lon: 0, lat: 5 }, { lon: 20, lat: 5 }] }], f.plan.kind === 'geoPoints' ? f.plan.trail! : ({} as never), time, '#000').filter((c): c is Extract<DrawCmd, { kind: 'circle' }> => c.kind === 'circle')
+    expect(heads(1)[0]!.center.x).toBeCloseTo((a.x + b.x) / 2, 5)
+    expect(heads(3)[0]!.center.x).toBeCloseTo(heads(1)[0]!.center.x, 5)
+    expect(heads(1)[0]!.fill).toBe('#ff0000')
   })
 })

@@ -136,6 +136,11 @@ export interface ChartHostArgs {
 export interface ChartHostSpec {
   /** The host accepts `roam` (pan / pinch-zoom over a `GeoView` merged into its `GeoOptions`). */
   readonly roam?: boolean
+  /**
+   * A prop that, when present, animates the host: the emit wraps it in the
+   * effect clock and feeds the clock's seconds to the `effectTime` data slot.
+   */
+  readonly clock?: string
   /** Required data props, in engine argument order. */
   readonly data: readonly string[]
   /** Optional engine arguments and the target expression used when their prop is absent. */
@@ -712,7 +717,8 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
   },
   MapChart: {
     roam: true,
-    data: ['map', 'values', 'paths', 'points', 'overlayOptions', 'heat', 'pies', 'heatRadius', 'heatStops'],
+    data: ['map', 'values', 'paths', 'points', 'overlayOptions', 'heat', 'pies', 'heatRadius', 'heatStops', 'trail', 'effectTime'],
+    clock: 'trail',
     dataDefaults: {
       paths: (t) => t.list([]),
       points: (t) => t.list([]),
@@ -721,13 +727,15 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
       pies: (t) => t.list([]),
       heatRadius: () => '20.0',
       heatStops: (t) => t.list([]),
+      trail: (t) => t.nil,
+      effectTime: () => '0.0',
     },
     options: 'options',
     optionsStruct: 'GeoOptions',
     themeDefaults: ['stops', 'emptyColor', 'borderColor', 'labelColor'],
     defaultHeight: 300,
     layout: (a, t) => `layoutGeoShapes(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
-    render: (l, a, t) => `renderGeo(${l}, ${a.data[1]}, ${a.options}) + renderGeoHeat(${l}, ${a.data[5]}, geoHeatStops(${a.data[8]}, ${optField(a, t, 'stops')}), ${a.data[7]}, 1.0) + renderGeoOverlayPaths(${l}, ${a.data[2]}, ${a.data[4]}) + renderGeoPies(${l}, ${a.data[6]}, 1.0) + renderGeoOverlayPoints(${l}, ${a.data[3]}, ${a.data[4]})`,
+    render: (l, a, t) => `renderGeo(${l}, ${a.data[1]}, ${a.options}) + renderGeoHeat(${l}, ${a.data[5]}, geoHeatStops(${a.data[8]}, ${optField(a, t, 'stops')}), ${a.data[7]}, 1.0) + renderGeoOverlayPaths(${l}, ${a.data[2]}, ${a.data[4]}) + renderGeoPies(${l}, ${a.data[6]}, 1.0) + renderGeoTrailsIfAny(${l}, ${a.data[2]}, ${a.data[9]}, ${a.data[10]}, "#b42318") + renderGeoOverlayPoints(${l}, ${a.data[3]}, ${a.data[4]})`,
     reuseLayout: true,
     hit: (l, x, y) => `hitGeoIndex(${l}, ${x}, ${y})`,
     extraHits: [{ event: 'selectpointindex', hit: (l, x, y, a) => `hitGeoOverlayPoint(${l}, ${a.data[3]}, ${x}, ${y}, (${a.data[4]}).radius)` }],

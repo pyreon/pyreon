@@ -13422,6 +13422,12 @@ function emitSwiftChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
     _emitWarnings.push(`<${tag}> has no native lowering yet — ${unlowered}. Emitting an EmptyView().`)
     return 'EmptyView()'
   }
+  const clockProp = CHART_HOSTS[tag]?.clock
+  if (clockProp !== undefined && chartAttrExpr(e, clockProp) !== undefined) {
+    // An animated host: the clock wraps the entrance so every frame re-renders with a new time.
+    const pad = ' '.repeat(indent + 2)
+    return `PyreonChartClock { pyreonClock in\n${pad}${swiftChartEntrance(e, tag, indent + 2, (i) => emitSwiftGenericChartHost(e, i))}\n${' '.repeat(indent)}}`
+  }
   return swiftChartEntrance(e, tag, indent, (i) => emitSwiftGenericChartHost(e, i))
 }
 
@@ -13443,7 +13449,12 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     attrs[name] = v
   }
   const data: string[] = []
+  const clocked = spec.clock !== undefined && chartAttrExpr(e, spec.clock) !== undefined
   for (const name of spec.data) {
+    if (name === 'effectTime' && clocked) {
+      data.push('pyreonClock')
+      continue
+    }
     if (attrs[name] === undefined) {
       data.push(spec.dataDefaults![name]!(SWIFT_CHART_TARGET))
       continue

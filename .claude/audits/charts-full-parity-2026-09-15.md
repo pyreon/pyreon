@@ -279,11 +279,12 @@ for interaction, animation or accessibility parity.
   fails each. Device lesson: the first iOS failure was the test, not the
   gesture — the gallery was scrolled past the map (frame y -600), so the drag
   landed off screen.
-- [ ] `coordinates.geo` narrowed: the planner read series[0] only (a second
+- [x] `coordinates.geo` complete: the planner read series[0] only (a second
   geo series vanished silently); it now walks every series — heatmap blobs,
   pies at a lon/lat and a geoIndex map layer included — on web and native,
-  and withAlpha stopped painting rgb() ramp colours opaque. Open: an animated
-  trail on geo lines (warned by name).
+  and withAlpha stopped painting rgb() ramp colours opaque. Geo lines trails
+  run on the same clocks as cartesian lines (iOS device screenshot diff; a
+  frozen time fails it).
 
 ## Exit gate
 

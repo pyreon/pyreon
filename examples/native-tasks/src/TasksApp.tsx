@@ -102,7 +102,9 @@ import {
 import type {
   BrushRange,
   GeoHeatPoint,
+  GeoOverlayPath,
   GeoPie,
+  GeoTrail,
   RadarAxis,
   RadarHitIndex,
   SankeyHitIndex,
@@ -717,6 +719,9 @@ const GEO_VALUES: Record<string, Double> = { West: 3, East: 8 }
 // A heat sample and a pie on the map — the geo layers beyond points and paths.
 const GEO_HEAT: GeoHeatPoint[] = [{ lon: 2, lat: 3, value: 9 }]
 const GEO_PIES: GeoPie[] = [{ lon: 7, lat: 3, radius: 18, innerRadius: 0, slices: [{ value: 2, label: 'a', color: '#0f766e' }, { value: 1, label: 'b', color: '#f59e0b' }] }]
+// A route with an animated trail — the device tests capture it twice and assert the frames differ.
+const GEO_ROUTES: GeoOverlayPath[] = [{ coords: [{ lon: 0, lat: 1 }, { lon: 9, lat: 5 }], width: 2 }]
+const GEO_TRAIL: GeoTrail = { period: 2, trailLength: 0.3, color: '#dc2626', symbolSize: 10 }
 // `rows` is typed `(Double | string | null)[]` on the web for a CATEGORY axis;
 // a homogeneous `Double[][]` is the shape that lowers, and is what a numeric
 // parallel plot uses anyway.
@@ -769,6 +774,7 @@ function GalleryPage() {
         <GanttChart tasks={GANTT_TASKS} height={160} data-testid="gal-gantt" />
         <GraphChart nodes={GRAPH_NODES} links={GRAPH_LINKS} height={200} data-testid="gal-graph" />
         <MapChart map={GEO} values={GEO_VALUES} heat={GEO_HEAT} pies={GEO_PIES} height={180} roam data-testid="gal-map" />
+        <MapChart map={GEO} values={GEO_VALUES} paths={GEO_ROUTES} trail={GEO_TRAIL} height={160} data-testid="gal-geo-trail" />
         <ParallelChart
           axes={PARALLEL_AXES}
           rows={PARALLEL_ROWS}

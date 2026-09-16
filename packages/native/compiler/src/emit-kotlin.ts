@@ -11366,6 +11366,12 @@ function emitKotlinChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
     _emitWarnings.push(`<${tag}> has no native lowering yet — ${unlowered}. Emitting an empty Box().`)
     return 'Box {}'
   }
+  const clockProp = CHART_HOSTS[tag]?.clock
+  if (clockProp !== undefined && chartAttrExprKotlin(e, clockProp) !== undefined) {
+    // An animated host: the clock wraps the entrance so every frame re-renders with a new time.
+    const pad = ' '.repeat(indent + 2)
+    return `PyreonChartClock { pyreonClock ->\n${pad}${kotlinChartEntrance(e, tag, indent + 2, (i) => emitKotlinGenericChartHost(e, i))}\n${' '.repeat(indent)}}`
+  }
   return kotlinChartEntrance(e, tag, indent, (i) => emitKotlinGenericChartHost(e, i))
 }
 
@@ -11396,7 +11402,12 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     attrs[name] = v
   }
   const data: string[] = []
+  const clocked = spec.clock !== undefined && chartAttrExprKotlin(e, spec.clock) !== undefined
   for (const name of spec.data) {
+    if (name === 'effectTime' && clocked) {
+      data.push('pyreonClock')
+      continue
+    }
     if (attrs[name] === undefined) {
       data.push(spec.dataDefaults![name]!(KOTLIN_CHART_TARGET))
       continue

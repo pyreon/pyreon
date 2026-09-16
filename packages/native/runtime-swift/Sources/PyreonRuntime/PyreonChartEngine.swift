@@ -1909,6 +1909,19 @@ public struct GeoOverlayOptions: Codable {
   }
 }
 
+public struct GeoTrail: Codable {
+  public var period: Double
+  public var trailLength: Double
+  public var color: String
+  public var symbolSize: Double
+  public init(period: Double, trailLength: Double, color: String, symbolSize: Double) {
+    self.period = period
+    self.trailLength = trailLength
+    self.color = color
+    self.symbolSize = symbolSize
+  }
+}
+
 public struct GanttTask: Codable {
   public var id: String
   public var name: String
@@ -8993,6 +9006,40 @@ public func renderGeoPies(_ layout: GeoLayout, _ pies: [GeoPie], _ progress: Dou
       }
     }
     return out
+  }
+
+public func renderGeoTrails(_ layout: GeoLayout, _ paths: [GeoOverlayPath], _ trail: GeoTrail, _ time: Double, _ fallbackColor: String) -> [PyreonDrawCmd] {
+    var out: [PyreonDrawCmd] = []
+    let period = trail.period > 0.0 ? trail.period : 4.0
+    let cycles = time / period
+    let phase = cycles - floor(Double(cycles))
+    let share = trail.trailLength < 0.0 ? 0.0 : trail.trailLength > 1.0 ? 1.0 : trail.trailLength
+    for path in paths {
+      let pts = path.coords.map({ c in geoProject(layout.transform, c.lon, c.lat) })
+      if pts.count < 2 {
+        continue
+      }
+      let total = pathLength(pts)
+      if !(total > 0.0) {
+        continue
+      }
+      let color = trail.color != "" ? trail.color : (path.color ?? fallbackColor)
+      let head = phase * total
+      let tail = head - share * total > 0.0 ? head - share * total : 0.0
+      if share > 0.0 && head > tail {
+        out.append(PyreonDrawCmd(kind: "polyline", stroke: withAlpha(color, 0.85), width: ((path.width ?? 1.5)) + 1.0, points: subPath(pts, tail, head)))
+      }
+      out.append(PyreonDrawCmd(kind: "circle", fill: color, center: pointAlong(pts, head), radius: trail.symbolSize / 2.0))
+    }
+    return out
+  }
+
+public func renderGeoTrailsIfAny(_ layout: GeoLayout, _ paths: [GeoOverlayPath], _ trail: GeoTrail?, _ time: Double, _ fallbackColor: String) -> [PyreonDrawCmd] {
+    let t = (trail ?? GeoTrail(period: 4.0, trailLength: 0.0, color: "", symbolSize: 0.0))
+    if trail == nil {
+      return []
+    }
+    return renderGeoTrails(layout, paths, t, time, fallbackColor)
   }
 
 public func ganttUnitFor(_ spanDays: Double) -> String {

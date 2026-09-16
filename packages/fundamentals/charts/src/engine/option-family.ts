@@ -26,7 +26,7 @@ import type { GeoOptions } from './geo'
 import type { GeoJson } from './geo-web'
 import { geoPointsToSvg } from './geo-points'
 import type { GeoPath, GeoPoint, GeoPointsOptions } from './geo-points'
-import type { GeoHeatPoint, GeoPie } from './geo-overlay'
+import type { GeoHeatPoint, GeoPie, GeoTrail } from './geo-overlay'
 import type { Slice } from './arc'
 import { singleAxisToSvg } from './single-axis-web'
 import type { SingleAxisOptions, SingleAxisPoint, SingleAxisSpec } from './single-axis'
@@ -53,7 +53,7 @@ export type FamilyPlan =
   | { kind: 'themeRiver'; series: RiverSeries[]; river: RiverOptions; title: string | undefined }
   | { kind: 'boxplot'; rows: (FiveNumber & { x: string })[]; fill: string | undefined; stroke: string | undefined; title: string | undefined }
   | { kind: 'map'; geo: GeoJson; values: Record<string, Double>; options: GeoOptions; title: string | undefined; roam: RoamMode; scaleLimit: { min: Double; max: Double } }
-  | { kind: 'geoPoints'; geo: GeoJson; points: GeoPoint[]; paths: GeoPath[]; heat: GeoHeatPoint[]; heatRadius: Double; heatStops: string[]; pies: GeoPie[]; values: Record<string, Double>; map: GeoOptions; options: GeoPointsOptions; title: string | undefined; roam: RoamMode; scaleLimit: { min: Double; max: Double } }
+  | { kind: 'geoPoints'; geo: GeoJson; points: GeoPoint[]; paths: GeoPath[]; heat: GeoHeatPoint[]; heatRadius: Double; heatStops: string[]; pies: GeoPie[]; trail?: GeoTrail | undefined; values: Record<string, Double>; map: GeoOptions; options: GeoPointsOptions; title: string | undefined; roam: RoamMode; scaleLimit: { min: Double; max: Double } }
   | { kind: 'singleAxis'; axis: SingleAxisSpec; points: SingleAxisPoint[]; options: SingleAxisOptions; title: string | undefined }
 
 import type { ChordLink, ChordNode, ChordOptions } from './chord'
@@ -397,6 +397,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
     const values: Record<string, Double> = {}
     let options: GeoPointsOptions = {}
     let heatRadius = 20.0
+    let trail: GeoTrail | undefined = undefined
     let pointsSeen = false
     // Every series that sits on the geo draws; the map is shared.
     for (let si = 0; si < seriesArr.length; si++) {
@@ -449,7 +450,16 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
         }
       } else if (stype === 'lines') {
         const ls = isObj(ser['lineStyle']) ? ser['lineStyle'] : {}
-        if (isObj(ser['effect']) && ser['effect']['show'] === true) warn('series-option-unsupported', path + '.effect', 'A trail on geo lines is not animated yet; the lines are drawn static.')
+        const eff = isObj(ser['effect']) ? ser['effect'] : {}
+        if (eff['show'] === true) {
+          trail = {
+            period: num(eff['period']) ?? 4.0,
+            trailLength: num(eff['trailLength']) ?? 0.2,
+            color: typeof eff['color'] === 'string' ? (eff['color'] as string) : '',
+            symbolSize: num(eff['symbolSize']) ?? 3.0,
+          }
+          for (const key of Object.keys(eff)) if (!['show', 'period', 'trailLength', 'color', 'symbolSize', 'symbol', 'loop'].includes(key)) warn('series-option-unsupported', path + '.effect.' + key, '"' + key + '" has no trail mapping yet; it was ignored.')
+        }
         for (let i = 0; i < sdata.length; i++) {
           const d = sdata[i]
           const coords = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['coords']) ? (d['coords'] as unknown[]) : null
@@ -522,7 +532,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       }
     }
     if (heatStops.length >= 2) map.stops = heatStops
-    return { plan: { kind: 'geoPoints', geo, points, paths, heat, heatRadius, heatStops, pies, values, map, options, title, roam: geoRoam.roam, scaleLimit: geoRoam.scaleLimit }, warnings, supported }
+    return { plan: { kind: 'geoPoints', geo, points, paths, heat, heatRadius, heatStops, pies, values, ...(trail === undefined ? {} : { trail }), map, options, title, roam: geoRoam.roam, scaleLimit: geoRoam.scaleLimit }, warnings, supported }
   }
 
 

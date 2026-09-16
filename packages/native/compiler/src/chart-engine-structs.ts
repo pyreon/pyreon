@@ -8494,6 +8494,42 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "GeoTrail",
+    "fields": [
+      {
+        "name": "period",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "trailLength",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "symbolSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "GanttTask",
     "fields": [
       {
@@ -11336,6 +11372,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "GeoProjection",
   "GeoRegion",
   "GeoShape",
+  "GeoTrail",
   "GeoTransform",
   "GeoValue",
   "GeoView",

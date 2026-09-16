@@ -23,6 +23,19 @@ const pixel = (c: HTMLCanvasElement, x: number, y: number): string => {
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 120))
 
 describe('MapChart (real browser)', () => {
+  it('a trail along the paths animates on the frame clock', async () => {
+    const { container } = mountInBrowser(() =>
+      MapChart({ animate: false, map: WORLD, values: {}, width: 400, height: 300, paths: [{ coords: [{ lon: 0, lat: 5 }, { lon: 20, lat: 5 }], width: 2 }], trail: { period: 1, trailLength: 0.3, color: '#ff0000', symbolSize: 12 } }),
+    )
+    await flush()
+    const c = container.querySelector('canvas')!
+    const snap = (): string => Array.from(c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data).join(',')
+    const a = snap()
+    await settle()
+    await settle()
+    expect(snap()).not.toBe(a)
+  })
+
   it('paints a heat layer and pies over the regions', async () => {
     const { container } = mountInBrowser(() =>
       MapChart({

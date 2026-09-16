@@ -236,6 +236,8 @@ data class GeoOverlayPath(var coords: List<GeoCoordinate>, var color: String? = 
 
 data class GeoOverlayOptions(var radius: Double? = null, var color: String? = null, var effect: Boolean? = null, var showLabels: Boolean? = null, var fontSize: Double? = null, var labelColor: String? = null, var progress: Double? = null)
 
+data class GeoTrail(var period: Double, var trailLength: Double, var color: String, var symbolSize: Double)
+
 data class GanttTask(var id: String, var name: String, var start: String, var end: String? = null, var progress: Double? = null, var dependencies: List<String>? = null, var group: String? = null, var color: String? = null, var milestone: Boolean? = null)
 
 data class GanttTick(var at: Double, var x: Double, var label: String)
@@ -6695,6 +6697,40 @@ fun renderGeoPies(layout: GeoLayout, pies: List<GeoPie>, progress: Double): List
       }
     }
     return out
+  }
+
+fun renderGeoTrails(layout: GeoLayout, paths: List<GeoOverlayPath>, trail: GeoTrail, time: Double, fallbackColor: String): List<PyreonDrawCmd> {
+    val out: MutableList<PyreonDrawCmd> = mutableListOf()
+    val period = if (trail.period > 0.0) trail.period else 4.0
+    val cycles = (time).toDouble() / (period).toDouble()
+    val phase = cycles - Math.floor(cycles)
+    val share = if (trail.trailLength < 0.0) 0.0 else if (trail.trailLength > 1.0) 1.0 else trail.trailLength
+    for (path in paths) {
+      val pts = path.coords.map({ c -> geoProject(layout.transform, c.lon, c.lat) })
+      if (pts.length < 2) {
+        continue
+      }
+      val total = pathLength(pts)
+      if (!(total > 0.0)) {
+        continue
+      }
+      val color = if (trail.color != "") trail.color else (path.color ?: fallbackColor)
+      val head = phase * total
+      val tail = if (head - share * total > 0.0) head - share * total else 0.0
+      if (share > 0.0 && head > tail) {
+        out.add(PyreonDrawCmd(kind = "polyline", stroke = withAlpha(color, 0.85), width = ((path.width ?: 1.5)) + 1.0, points = subPath(pts, tail, head)))
+      }
+      out.add(PyreonDrawCmd(kind = "circle", fill = color, center = pointAlong(pts, head), radius = (trail.symbolSize).toDouble() / (2.0).toDouble()))
+    }
+    return out
+  }
+
+fun renderGeoTrailsIfAny(layout: GeoLayout, paths: List<GeoOverlayPath>, trail: GeoTrail?, time: Double, fallbackColor: String): List<PyreonDrawCmd> {
+    val t = (trail ?: GeoTrail(period = 4.0, trailLength = 0.0, color = "", symbolSize = 0.0))
+    if (trail == null) {
+      return listOf()
+    }
+    return renderGeoTrails(layout, paths, t, time, fallbackColor)
   }
 
 fun ganttUnitFor(spanDays: Double): String {

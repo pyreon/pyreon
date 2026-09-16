@@ -66,3 +66,34 @@ export function App() {
     if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
   })
 })
+
+describe.each(['swift', 'kotlin'] as const)('MapChart trail on %s', (target) => {
+  it('a trail wraps the host in the effect clock and draws it at the clock time, and compiles', () => {
+    const r = transform(`
+import { MapChart } from '@pyreon/charts/plot'
+import type { GeoOverlayPath, GeoShape, GeoTrail } from '@pyreon/charts/plot'
+const SHAPES: GeoShape[] = [{ name: 'A', rings: [[{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]] }]
+const ROUTES: GeoOverlayPath[] = [{ coords: [{ lon: 0, lat: 0 }, { lon: 10, lat: 10 }] }]
+const TRAIL: GeoTrail = { period: 2, trailLength: 0.3, color: '#ff0000', symbolSize: 6 }
+export function App() {
+  return <MapChart map={SHAPES} values={{ A: 1 }} paths={ROUTES} trail={TRAIL} height={200} />
+}`, { target })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('PyreonChartClock')
+    expect(r.code).toMatch(/renderGeoTrailsIfAny\([^)]*pyreonClock/)
+    if (target === 'swift' && isSwiftcAvailable()) expect(validateSwiftWithStubs(r.code)).toMatchObject({ ok: true })
+    if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
+  })
+
+  it('no trail, no clock', () => {
+    const r = transform(`
+import { MapChart } from '@pyreon/charts/plot'
+import type { GeoShape } from '@pyreon/charts/plot'
+const SHAPES: GeoShape[] = [{ name: 'A', rings: [[{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]] }]
+export function App() {
+  return <MapChart map={SHAPES} values={{ A: 1 }} height={200} />
+}`, { target })
+    expect(r.code).not.toContain('PyreonChartClock')
+    expect(r.code).toContain('renderGeoTrailsIfAny(')
+  })
+})

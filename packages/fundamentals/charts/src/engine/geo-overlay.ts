@@ -6,6 +6,7 @@ import type { GeoLayout } from './geo'
 import { arcPolygon, layoutArcs } from './arc'
 import type { Slice } from './arc'
 import { rampColor } from './heat'
+import { pathLength, pointAlong, subPath } from './lines'
 import { withAlpha } from './radar'
 import type { Double, DrawCmd, Pt } from './types'
 
@@ -187,4 +188,44 @@ export function renderGeoPies(layout: GeoLayout, pies: GeoPie[], progress: Doubl
     }
   }
   return out
+}
+
+/** ECharts' `effect` on geo lines: a trail running head-first along every path. */
+export interface GeoTrail {
+  /** Seconds per trip along a path. */
+  period: Double
+  /** The trail's share of a path, 0..1. */
+  trailLength: Double
+  /** Trail colour; empty takes each path's own. */
+  color: string
+  /** Head diameter in pixels. */
+  symbolSize: Double
+}
+
+/** The trail and head on each projected path at `time` seconds — the cartesian lines trail, over the geo projection. */
+export function renderGeoTrails(layout: GeoLayout, paths: GeoOverlayPath[], trail: GeoTrail, time: Double, fallbackColor: string): DrawCmd[] {
+  const out: DrawCmd[] = []
+  const period = trail.period > 0.0 ? trail.period : 4.0
+  const cycles = time / period
+  const phase = cycles - Math.floor(cycles)
+  const share = trail.trailLength < 0.0 ? 0.0 : trail.trailLength > 1.0 ? 1.0 : trail.trailLength
+  for (const path of paths) {
+    const pts = path.coords.map((c) => geoProject(layout.transform, c.lon, c.lat))
+    if (pts.length < 2) continue
+    const total = pathLength(pts)
+    if (!(total > 0.0)) continue
+    const color = trail.color !== '' ? trail.color : path.color ?? fallbackColor
+    const head = phase * total
+    const tail = head - share * total > 0.0 ? head - share * total : 0.0
+    if (share > 0.0 && head > tail) out.push({ kind: 'polyline', points: subPath(pts, tail, head), stroke: withAlpha(color, 0.85), width: (path.width ?? 1.5) + 1.0 })
+    out.push({ kind: 'circle', center: pointAlong(pts, head), radius: trail.symbolSize / 2.0, fill: color })
+  }
+  return out
+}
+
+/** `renderGeoTrails` when a trail is set, nothing otherwise — the one call a host emits either way. */
+export function renderGeoTrailsIfAny(layout: GeoLayout, paths: GeoOverlayPath[], trail: GeoTrail | undefined, time: Double, fallbackColor: string): DrawCmd[] {
+  const t = trail ?? { period: 4.0, trailLength: 0.0, color: '', symbolSize: 0.0 }
+  if (trail === undefined) return []
+  return renderGeoTrails(layout, paths, t, time, fallbackColor)
 }

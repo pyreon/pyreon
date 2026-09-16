@@ -106,6 +106,7 @@ export function familyHostNode(plan: FamilyPlan, o: FamilyHostOptions): VNode | 
         heatRadius: plan.heatRadius,
         ...(plan.heatStops.length > 0 ? { heatStops: plan.heatStops } : {}),
         pies: plan.pies,
+        ...(plan.trail === undefined ? {} : { trail: plan.trail }),
         paths: plan.paths.map((p) => ({ coords: p.coords.map(([lon, lat]) => ({ lon, lat })), ...(p.color === undefined ? {} : { color: p.color }), ...(p.width === undefined ? {} : { width: p.width }) })),
         overlayOptions: plan.options,
         roam: plan.roam,

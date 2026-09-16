@@ -14,10 +14,10 @@ import { canvasHost, orNull } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
 import { geoTip } from './chrome'
 import { geoDomain, geoRoamPan, geoRoamZoom, geoValueOf, hitGeoIndex, layoutGeoShapes, renderGeo } from './geo'
-import { geoHeatStops, hitGeoOverlayPoint, renderGeoHeat, renderGeoOverlayPaths, renderGeoOverlayPoints, renderGeoPies } from './geo-overlay'
+import { geoHeatStops, hitGeoOverlayPoint, renderGeoHeat, renderGeoTrails, renderGeoOverlayPaths, renderGeoOverlayPoints, renderGeoPies } from './geo-overlay'
 import { geoShapes, geoValues, getMap } from './geo-web'
 import type { GeoLayout, GeoOptions, GeoRegion, GeoShape, GeoValue, GeoView } from './geo'
-import type { GeoHeatPoint, GeoOverlayOptions, GeoOverlayPath, GeoOverlayPoint, GeoPie } from './geo-overlay'
+import type { GeoHeatPoint, GeoOverlayOptions, GeoOverlayPath, GeoOverlayPoint, GeoPie, GeoTrail } from './geo-overlay'
 import type { GeoJson } from './geo-web'
 import type { Double, Rect } from './types'
 
@@ -43,6 +43,11 @@ export interface MapChartProps extends CanvasHostProps {
   heatStops?: readonly string[]
   /** Pies placed at geographic points. */
   pies?: GeoPie[]
+  /**
+   * An animated trail along every path (ECharts' `effect` on geo lines). The
+   * canvas runs a frame clock while it is set, held still under reduced motion.
+   */
+  trail?: GeoTrail
   /** Appearance shared by the point and path overlays. */
   overlayOptions?: GeoOverlayOptions
   /** Fired with the region under the click, or null for a miss. */
@@ -109,7 +114,8 @@ export function MapChart(props: MapChartProps): VNode {
     // followed no theme at all. The border SEPARATES filled regions, so it
     // reads the ground rather than a token of its own; `background: ''` means
     // "inherit the page", whose realistic value is white.
-    render: (layout, measure, theme, progress) => [
+    effectClock: () => props.trail !== undefined && (props.paths ?? []).length > 0,
+    render: (layout, measure, theme, progress, time) => [
       ...renderGeo(
         layout,
         readValues(),
@@ -126,6 +132,7 @@ export function MapChart(props: MapChartProps): VNode {
       ...renderGeoHeat(layout, props.heat ?? [], geoHeatStops([...(props.heatStops ?? [])], [...(props.options?.stops ?? theme.ramp)]), props.heatRadius ?? 20.0, progress),
       ...renderGeoOverlayPaths(layout, props.paths ?? [], { ...props.overlayOptions, progress }),
       ...renderGeoPies(layout, props.pies ?? [], progress),
+      ...(props.trail === undefined ? [] : renderGeoTrails(layout, props.paths ?? [], props.trail, time, props.overlayOptions?.color ?? '#b42318')),
       ...renderGeoOverlayPoints(layout, props.points ?? [], { labelColor: theme.label, ...props.overlayOptions, progress }),
     ],
     select: (layout, px, py) => {

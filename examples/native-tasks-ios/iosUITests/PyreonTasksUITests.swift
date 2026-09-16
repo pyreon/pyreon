@@ -847,6 +847,25 @@ final class PyreonTasksUITests: XCTestCase {
         mapGrab.press(forDuration: 0.1, thenDragTo: mapGrab.withOffset(CGVector(dx: 90, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         XCTAssertNotEqual(mapBefore, roamMap.screenshot().pngRepresentation, "dragging the roaming map did not pan it")
+        // The geo route trail MOVES too: two screenshots half a second apart differ.
+        let geoTrail = app.descendants(matching: .any).matching(identifier: "gal-geo-trail").firstMatch
+        XCTAssertTrue(geoTrail.waitForExistence(timeout: 10), "gal-geo-trail canvas missing on the gallery")
+        var trailTries = 0
+        // On screen in either direction: an off-screen element's screenshot never changes.
+        while trailTries < 12 {
+            let window = app.windows.firstMatch.frame
+            if geoTrail.frame.minY < window.minY + 120 {
+                app.scrollViews["gal-scroll"].firstMatch.swipeDown()
+            } else if geoTrail.frame.maxY > window.maxY - 60 {
+                app.scrollViews["gal-scroll"].firstMatch.swipeUp()
+            } else {
+                break
+            }
+            trailTries += 1
+        }
+        let geoTrailBefore = geoTrail.screenshot().pngRepresentation
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertNotEqual(geoTrailBefore, geoTrail.screenshot().pngRepresentation, "gal-geo-trail did not move between frames")
         // The lines trail MOVES: two screenshots of its canvas half a second
         // apart differ (the simulator runs with Reduce Motion off).
         let linesChart = app.descendants(matching: .any).matching(identifier: "gal-lines").firstMatch
