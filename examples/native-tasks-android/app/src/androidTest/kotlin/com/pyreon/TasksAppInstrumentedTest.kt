@@ -855,6 +855,7 @@ class TasksAppInstrumentedTest {
         composeRule.waitForIdle()
         assertFalse("dragging the roaming map did not pan it", mapBefore.sameAs(roamMap.captureToImage().asAndroidBitmap()))
         composeRule.onNodeWithTag("gal-geo-trail").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("gal-decal").performScrollTo().assertIsDisplayed()
         // The lines trail renders. Its MOTION is proven on the iOS device lane
         // and in real Chromium; here it cannot be: the trail runs on
         // withInfiniteAnimationFrameNanos (a plain frame loop kept this harness

@@ -109,14 +109,20 @@ export interface ChartGradient {
 
 /** A repeating, backend-neutral fill overlay. */
 export interface ChartPattern {
-  /** Stripe, crossed-stripe, or dot texture. */
-  kind: 'diagonal' | 'cross' | 'dots'
+  /** Stripe, crossed-stripe, dot, or tiled-symbol texture. */
+  kind: 'diagonal' | 'cross' | 'dots' | 'symbols'
   /** Foreground colour painted over the command's ordinary fill. */
   color: string
-  /** Distance between repeated marks, in engine units. */
+  /** Distance between repeated marks, in engine units (horizontal for symbols). */
   spacing: Double
-  /** Stripe width or dot diameter, in engine units. */
+  /** Stripe width, dot diameter, or symbol size, in engine units. */
   width: Double
+  /** Rotation of the texture in degrees; stripes default to 45. */
+  angle?: Double | undefined
+  /** The tiled symbol: rect, circle, triangle, diamond, pin or arrow. */
+  symbol?: string | undefined
+  /** Vertical distance between symbol rows; defaults to `spacing`. */
+  spacingY?: Double | undefined
 }
 
 export type DrawCmd =

@@ -16,6 +16,24 @@ const inked = (c: HTMLCanvasElement): number => {
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 describe('OptionChart (real browser)', () => {
+  it('paints a tiled decal inside a bar: decal-coloured pixels over the bar fill', async () => {
+    const option: EChartsOption = { animation: false, xAxis: { data: ['a'] }, yAxis: { min: 0, max: 10 }, series: [{ type: 'bar', itemStyle: { color: '#0000ff', decal: { symbol: 'rect', color: '#ff0000', dashArrayX: [4, 4], dashArrayY: [4, 4] } }, data: [10] }] }
+    const plain: EChartsOption = { ...option, series: [{ type: 'bar', itemStyle: { color: '#0000ff' }, data: [10] }] }
+    const count = async (o: EChartsOption): Promise<number> => {
+      const m = mountInBrowser(h(OptionChart, { option: o, width: 300, height: 200 }))
+      await flush()
+      await wait(900)
+      const c = m.container.querySelector('canvas')!
+      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
+      let red = 0
+      for (let i = 0; i < d.length; i += 4) if (d[i]! > 200 && d[i + 2]! < 60 && d[i + 1]! < 60) red++
+      m.unmount()
+      return red
+    }
+    expect(await count(plain)).toBe(0)
+    expect(await count(option)).toBeGreaterThan(50)
+  })
+
   it('animates a lines trail on a frame clock: the canvas changes between frames, and holds still under reduced motion', async () => {
     const option: EChartsOption = { xAxis: {}, yAxis: {}, series: [{ type: 'lines', effect: { show: true, period: 1, trailLength: 0.3, color: '#ff0000', symbolSize: 10 }, data: [{ coords: [[0, 0], [10, 10]] }] }] }
     const snapshot = (c: HTMLCanvasElement): string => {

@@ -11886,7 +11886,7 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
     const spacing = values.get('spacing')
     const width = values.get('width')
     if (kind?.kind !== 'literal' || typeof kind.value !== 'string' || color?.kind !== 'literal' || typeof color.value !== 'string' || spacing?.kind !== 'literal' || typeof spacing.value !== 'number' || width?.kind !== 'literal' || typeof width.value !== 'number') return false
-    args.push(`pattern = PyreonChartPattern(kind = ${JSON.stringify(kind.value)}, color = ${JSON.stringify(color.value)}, spacing = ${chartDouble(spacing.value)}, width = ${chartDouble(width.value)})`)
+    args.push(`pattern = PyreonChartPattern(kind = ${JSON.stringify(kind.value)}, color = ${JSON.stringify(color.value)}, spacing = ${chartDouble(spacing.value)}, width = ${chartDouble(width.value)}${patternExtras(values, ' = ')})`)
     return true
   }
   // `gradient` sits right before `pattern` in Series field order: literal
@@ -12876,4 +12876,16 @@ function kotlinGraphicCmds(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     items.push(`GraphicElement(${args.join(', ')})`)
   }
   return ` + graphicDrawCommands(listOf<GraphicElement>(${items.join(', ')}))`
+}
+
+/** A pattern's optional texture fields (angle, symbol, spacingY), in struct order, when present as literals. */
+function patternExtras(values: Map<string, ExprIR>, sep: string): string {
+  const out: string[] = []
+  const angle = values.get('angle')
+  if (angle?.kind === 'literal' && typeof angle.value === 'number') out.push(`, angle${sep}${chartDouble(angle.value)}`)
+  const symbol = values.get('symbol')
+  if (symbol?.kind === 'literal' && typeof symbol.value === 'string') out.push(`, symbol${sep}${JSON.stringify(symbol.value)}`)
+  const spacingY = values.get('spacingY')
+  if (spacingY?.kind === 'literal' && typeof spacingY.value === 'number') out.push(`, spacingY${sep}${chartDouble(spacingY.value)}`)
+  return out.join('')
 }

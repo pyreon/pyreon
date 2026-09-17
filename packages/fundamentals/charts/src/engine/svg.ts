@@ -16,7 +16,8 @@
 // rendering context), which is why `measureApprox` exists — see its note.
 
 import { cornerRadii, hasCorners } from './corners'
-import type { ChartGradient, ChartPattern, DrawCmd, Double, MeasureText, Pt } from './types'
+import { patternMarks } from './pattern'
+import type { ChartGradient, DrawCmd, Double, MeasureText, Pt, Rect } from './types'
 
 /**
  * Round to at most 2 decimals and drop a trailing `.0`.
@@ -143,20 +144,35 @@ export function collectPatterns(cmds: DrawCmd[], prefix: string): { defs: string
     if (p === undefined) { ids.push(''); continue }
     const id = `${prefix}-p${i++}`
     ids.push(id)
-    const spacing = Math.max(2, p.spacing)
-    const width = Math.max(0.5, p.width)
-    const mark = patternSvg(p, spacing, width)
-    parts.push(`<pattern id="${id}" width="${n(spacing)}" height="${n(spacing)}" patternUnits="userSpaceOnUse">${mark}</pattern>`)
+    // One tile the size of the shape's box, holding the engine's marks for it —
+    // the same geometry every other painter draws.
+    const box = c.kind === 'rect' ? c.rect : boundsOf(c.kind === 'polygon' ? c.points : [])
+    const marks = patternMarks(p, box).map(markSvg).join('')
+    parts.push(`<pattern id="${id}" x="${n(box.x)}" y="${n(box.y)}" width="${n(Math.max(box.w, 0.01))}" height="${n(Math.max(box.h, 0.01))}" patternUnits="userSpaceOnUse"><g transform="translate(${n(-box.x)} ${n(-box.y)})">${marks}</g></pattern>`)
   }
   return { defs: parts.length === 0 ? '' : `<defs>${parts.join('')}</defs>`, ids }
 }
 
-function patternSvg(p: ChartPattern, spacing: Double, width: Double): string {
-  const color = esc(p.color)
-  if (p.kind === 'dots') return `<circle cx="${n(spacing / 2)}" cy="${n(spacing / 2)}" r="${n(width / 2)}" fill="${color}"/>`
-  const first = `<path d="M-${n(spacing)} ${n(spacing)}L${n(spacing)} -${n(spacing)}M0 ${n(spacing * 2)}L${n(spacing * 2)} 0" stroke="${color}" stroke-width="${n(width)}"/>`
-  if (p.kind === 'diagonal') return first
-  return first + `<path d="M-${n(spacing)} 0L${n(spacing)} ${n(spacing * 2)}M0 -${n(spacing)}L${n(spacing * 2)} ${n(spacing)}" stroke="${color}" stroke-width="${n(width)}"/>`
+function boundsOf(points: Pt[]): Rect {
+  if (points.length === 0) return { x: 0, y: 0, w: 0, h: 0 }
+  let x0 = points[0]!.x
+  let y0 = points[0]!.y
+  let x1 = x0
+  let y1 = y0
+  for (const q of points) {
+    if (q.x < x0) x0 = q.x
+    if (q.y < y0) y0 = q.y
+    if (q.x > x1) x1 = q.x
+    if (q.y > y1) y1 = q.y
+  }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+}
+
+function markSvg(m: DrawCmd): string {
+  if (m.kind === 'line') return `<line x1="${n(m.from.x)}" y1="${n(m.from.y)}" x2="${n(m.to.x)}" y2="${n(m.to.y)}" stroke="${esc(m.stroke)}" stroke-width="${n(m.width)}"/>`
+  if (m.kind === 'circle') return `<circle cx="${n(m.center.x)}" cy="${n(m.center.y)}" r="${n(m.radius)}" fill="${esc(m.fill)}"/>`
+  if (m.kind === 'polygon') return `<polygon points="${m.points.map((q) => `${n(q.x)},${n(q.y)}`).join(' ')}" fill="${esc(m.fill)}"/>`
+  return ''
 }
 
 /**

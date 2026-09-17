@@ -60,8 +60,12 @@ public struct PyreonChartPattern: Codable, Equatable {
     public var color: String
     public var spacing: Double
     public var width: Double
-    public init(kind: String, color: String, spacing: Double, width: Double) {
+    public var angle: Double?
+    public var symbol: String?
+    public var spacingY: Double?
+    public init(kind: String, color: String, spacing: Double, width: Double, angle: Double? = nil, symbol: String? = nil, spacingY: Double? = nil) {
         self.kind = kind; self.color = color; self.spacing = spacing; self.width = width
+        self.angle = angle; self.symbol = symbol; self.spacingY = spacingY
     }
 }
 
@@ -401,36 +405,26 @@ func pyreonRoundedRectPath(_ r: PyreonChartRect, _ radii: [Double]) -> Path {
 /// canvas-web's renderer (same dispatch, same text-anchor semantics).
 private func pyreonPaintPattern(_ context: inout GraphicsContext, _ pattern: PyreonChartPattern?, _ clip: Path, _ bounds: CGRect) {
     guard let pattern else { return }
-    let spacing = max(2.0, pattern.spacing)
-    let width = max(0.5, pattern.width)
+    // The marks come from the engine's `patternMarks`, the geometry every
+    // target paints; this only clips to the shape and draws them.
+    let marks = patternMarks(pattern, PyreonChartRect(x: Double(bounds.minX), y: Double(bounds.minY), w: Double(bounds.width), h: Double(bounds.height)))
     context.drawLayer { layer in
         layer.clip(to: clip)
-        let shade = GraphicsContext.Shading.color(pyreonChartColor(pattern.color))
-        if pattern.kind == "dots" {
-            var y = bounds.minY
-            while y <= bounds.maxY {
-                var x = bounds.minX
-                while x <= bounds.maxX {
-                    layer.fill(Path(ellipseIn: CGRect(x: x - width / 2.0, y: y - width / 2.0, width: width, height: width)), with: shade)
-                    x += spacing
-                }
-                y += spacing
-            }
-        } else {
-            let span = bounds.width + bounds.height
-            var d = -bounds.height
-            while d <= bounds.width {
+        for m in marks {
+            if m.kind == "line", let a = m.from, let b = m.to {
                 var p = Path()
-                p.move(to: CGPoint(x: bounds.minX + d, y: bounds.maxY))
-                p.addLine(to: CGPoint(x: bounds.minX + d + span, y: bounds.minY))
-                layer.stroke(p, with: shade, lineWidth: width)
-                if pattern.kind == "cross" {
-                    var q = Path()
-                    q.move(to: CGPoint(x: bounds.minX + d, y: bounds.minY))
-                    q.addLine(to: CGPoint(x: bounds.minX + d + span, y: bounds.maxY))
-                    layer.stroke(q, with: shade, lineWidth: width)
-                }
-                d += spacing
+                p.move(to: CGPoint(x: a.x, y: a.y))
+                p.addLine(to: CGPoint(x: b.x, y: b.y))
+                layer.stroke(p, with: .color(pyreonChartColor(m.stroke ?? pattern.color)), lineWidth: m.width ?? 1.0)
+            } else if m.kind == "circle", let c = m.center {
+                let r = m.radius ?? 1.0
+                layer.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2.0, height: r * 2.0)), with: .color(pyreonChartColor(m.fill ?? pattern.color)))
+            } else if m.kind == "polygon", let pts = m.points, let first = pts.first {
+                var p = Path()
+                p.move(to: CGPoint(x: first.x, y: first.y))
+                for q in pts.dropFirst() { p.addLine(to: CGPoint(x: q.x, y: q.y)) }
+                p.closeSubpath()
+                layer.fill(p, with: .color(pyreonChartColor(m.fill ?? pattern.color)))
             }
         }
     }

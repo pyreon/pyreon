@@ -6,6 +6,7 @@
 // command list rather than drawing directly.
 
 import { cornerRadii, hasCorners } from './corners'
+import { patternMarks } from './pattern'
 import type { ChartGradient, ChartPattern, DrawCmd, MeasureText, Pt, Rect } from './types'
 
 /**
@@ -97,34 +98,27 @@ function tracePolyline(ctx: CanvasRenderingContext2D, points: Pt[]): void {
 
 function paintPattern(ctx: CanvasRenderingContext2D, pattern: ChartPattern | undefined, bounds: Rect): void {
   if (pattern === undefined) return
-  const spacing = Math.max(2, pattern.spacing)
-  const width = Math.max(0.5, pattern.width)
   ctx.save()
   ctx.clip()
-  ctx.strokeStyle = pattern.color
-  ctx.fillStyle = pattern.color
-  ctx.lineWidth = width
-  if (pattern.kind === 'dots') {
-    for (let y = bounds.y; y <= bounds.y + bounds.h; y += spacing) {
-      for (let x = bounds.x; x <= bounds.x + bounds.w; x += spacing) {
-        ctx.beginPath()
-        ctx.arc(x, y, width / 2, 0, Math.PI * 2)
-        ctx.fill()
-      }
-    }
-  } else {
-    const span = bounds.w + bounds.h
-    for (let d = -bounds.h; d <= bounds.w; d += spacing) {
+  for (const m of patternMarks(pattern, bounds)) {
+    if (m.kind === 'line') {
+      ctx.strokeStyle = m.stroke
+      ctx.lineWidth = m.width
       ctx.beginPath()
-      ctx.moveTo(bounds.x + d, bounds.y + bounds.h)
-      ctx.lineTo(bounds.x + d + span, bounds.y)
+      ctx.moveTo(m.from.x, m.from.y)
+      ctx.lineTo(m.to.x, m.to.y)
       ctx.stroke()
-      if (pattern.kind === 'cross') {
-        ctx.beginPath()
-        ctx.moveTo(bounds.x + d, bounds.y)
-        ctx.lineTo(bounds.x + d + span, bounds.y + bounds.h)
-        ctx.stroke()
-      }
+    } else if (m.kind === 'circle') {
+      ctx.fillStyle = m.fill
+      ctx.beginPath()
+      ctx.arc(m.center.x, m.center.y, m.radius, 0, Math.PI * 2)
+      ctx.fill()
+    } else if (m.kind === 'polygon') {
+      ctx.fillStyle = m.fill
+      ctx.beginPath()
+      tracePolyline(ctx, m.points)
+      ctx.closePath()
+      ctx.fill()
     }
   }
   ctx.restore()

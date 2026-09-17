@@ -847,6 +847,7 @@ final class PyreonTasksUITests: XCTestCase {
         mapGrab.press(forDuration: 0.1, thenDragTo: mapGrab.withOffset(CGVector(dx: 90, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         XCTAssertNotEqual(mapBefore, roamMap.screenshot().pngRepresentation, "dragging the roaming map did not pan it")
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "gal-decal").firstMatch.waitForExistence(timeout: 10), "gal-decal canvas missing on the gallery")
         // The geo route trail MOVES too: two screenshots half a second apart differ.
         let geoTrail = app.descendants(matching: .any).matching(identifier: "gal-geo-trail").firstMatch
         XCTAssertTrue(geoTrail.waitForExistence(timeout: 10), "gal-geo-trail canvas missing on the gallery")

@@ -68,6 +68,9 @@ data class PyreonChartPattern(
     var color: String,
     var spacing: Double,
     var width: Double,
+    var angle: Double? = null,
+    var symbol: String? = null,
+    var spacingY: Double? = null,
 )
 
 data class PyreonDrawCmd(
@@ -332,29 +335,24 @@ fun pyreonRoundedRectPath(r: PyreonChartRect, radii: List<Double>): Path {
 
 private fun DrawScope.pyreonPaintPattern(pattern: PyreonChartPattern?, clip: Path, bounds: PyreonChartRect) {
     pattern ?: return
-    val spacing = pattern.spacing.coerceAtLeast(2.0).toFloat()
-    val width = pattern.width.coerceAtLeast(0.5).toFloat()
-    val color = pyreonChartColor(pattern.color)
+    // Engine geometry (`patternMarks`) — the same marks every target paints; this only clips and draws.
+    val marks = patternMarks(pattern, bounds)
     clipPath(clip) {
-        if (pattern.kind == "dots") {
-            var y = bounds.y.toFloat()
-            while (y <= (bounds.y + bounds.h).toFloat()) {
-                var x = bounds.x.toFloat()
-                while (x <= (bounds.x + bounds.w).toFloat()) {
-                    drawCircle(color = color, radius = width / 2f, center = Offset(x, y))
-                    x += spacing
-                }
-                y += spacing
-            }
-        } else {
-            val span = (bounds.w + bounds.h).toFloat()
-            var d = -bounds.h.toFloat()
-            while (d <= bounds.w.toFloat()) {
-                drawLine(color, Offset(bounds.x.toFloat() + d, (bounds.y + bounds.h).toFloat()), Offset(bounds.x.toFloat() + d + span, bounds.y.toFloat()), width)
-                if (pattern.kind == "cross") {
-                    drawLine(color, Offset(bounds.x.toFloat() + d, bounds.y.toFloat()), Offset(bounds.x.toFloat() + d + span, (bounds.y + bounds.h).toFloat()), width)
-                }
-                d += spacing
+        for (m in marks) {
+            val from = m.from
+            val to = m.to
+            val center = m.center
+            val pts = m.points
+            if (m.kind == "line" && from != null && to != null) {
+                drawLine(pyreonChartColor(m.stroke ?: pattern.color), Offset(from.x.toFloat(), from.y.toFloat()), Offset(to.x.toFloat(), to.y.toFloat()), (m.width ?: 1.0).toFloat())
+            } else if (m.kind == "circle" && center != null) {
+                drawCircle(color = pyreonChartColor(m.fill ?: pattern.color), radius = (m.radius ?: 1.0).toFloat(), center = Offset(center.x.toFloat(), center.y.toFloat()))
+            } else if (m.kind == "polygon" && pts != null && pts.isNotEmpty()) {
+                val poly = Path()
+                poly.moveTo(pts[0].x.toFloat(), pts[0].y.toFloat())
+                for (q in pts.drop(1)) poly.lineTo(q.x.toFloat(), q.y.toFloat())
+                poly.close()
+                drawPath(poly, pyreonChartColor(m.fill ?: pattern.color))
             }
         }
     }

@@ -803,6 +803,21 @@ function GalleryPage() {
           height={180}
           data-testid="gal-lines"
         />
+        {/* aria.decal: each series gets a distinct texture so the bars stay tellable apart without colour. */}
+        <OptionChart
+          option={{
+            aria: { decal: { show: true } },
+            xAxis: { data: ['Q1', 'Q2', 'Q3'] },
+            yAxis: {},
+            series: [
+              { type: 'bar', data: [3, 5, 4] },
+              { type: 'bar', data: [4, 2, 6] },
+              { type: 'bar', itemStyle: { decal: { symbol: 'triangle', dashArrayX: [6, 4], dashArrayY: 8 } }, data: [2, 4, 3] },
+            ],
+          }}
+          height={180}
+          data-testid="gal-decal"
+        />
         <Button onPress={() => navigate('/tasks')} data-testid="gal-back">
           Back to tasks
         </Button>

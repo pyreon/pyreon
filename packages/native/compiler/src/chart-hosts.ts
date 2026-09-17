@@ -19,8 +19,8 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import { compileOption, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
-import type { GraphicElement, RichStyle, SamplingRequest } from '@pyreon/charts/option-layer'
+import { compileOption, DEFAULT_DECALS, fillPattern, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
+import type { ChartPattern, GraphicElement, RichStyle, SamplingRequest } from '@pyreon/charts/option-layer'
 import type { AttrIR, ExprIR } from './types'
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 
@@ -838,25 +838,31 @@ function optionDatumNumber(e: ExprIR | undefined): number | undefined {
   return litNumber(e)
 }
 
-function optionPatternLiteral(style: ExprIR | undefined, resolve: (name: string) => ExprIR | undefined): ExprIR | undefined {
+/** A ChartPattern value as its engine-struct literal. */
+function patternLiteral(p: ChartPattern): ExprIR {
+  const fields: { name: string; value: ExprIR }[] = [
+    { name: 'kind', value: lit(p.kind) },
+    { name: 'color', value: lit(p.color) },
+    { name: 'spacing', value: optionDoubleLiteral(p.spacing) },
+    { name: 'width', value: optionDoubleLiteral(p.width) },
+  ]
+  if (p.angle !== undefined) fields.push({ name: 'angle', value: optionDoubleLiteral(p.angle === 0 ? 0 : p.angle) })
+  if (p.symbol !== undefined) fields.push({ name: 'symbol', value: lit(p.symbol) })
+  if (p.spacingY !== undefined) fields.push({ name: 'spacingY', value: optionDoubleLiteral(p.spacingY) })
+  return { kind: 'object', fields }
+}
+
+/**
+ * An itemStyle's decal, mapped by the web facade's own `fillPattern` at compile
+ * time (so the tiled symbol, pitch and rotation are the ones the web draws),
+ * or the `aria.decal` default for the series when it has none.
+ */
+function optionPatternLiteral(style: ExprIR | undefined, resolve: (name: string) => ExprIR | undefined, warn: (m: string) => void = () => {}, path = 'itemStyle', ariaIndex = -1): ExprIR | undefined {
   const item = literalOf(style, resolve)
-  const raw = item?.kind === 'object' ? literalOf(objectField(item, 'decal'), resolve) : undefined
-  if (raw?.kind !== 'object' || (() => { const show = objectField(raw, 'show'); return show?.kind === 'literal' && show.value === false })()) return undefined
-  const symbol = litString(objectField(raw, 'symbol')) ?? ''
-  const rotation = litNumber(objectField(raw, 'rotation')) ?? 0
-  const firstNumber = (value: ExprIR | undefined): number | undefined => {
-    const resolved = literalOf(value, resolve)
-    return resolved?.kind === 'array' ? litNumber(resolved.elements[0]) : litNumber(resolved)
-  }
-  return {
-    kind: 'object',
-    fields: [
-      { name: 'kind', value: lit(symbol.includes('circle') ? 'dots' : Math.abs(rotation) < 0.01 ? 'cross' : 'diagonal') },
-      { name: 'color', value: lit(litString(objectField(raw, 'color')) ?? 'rgba(255,255,255,0.45)') },
-      { name: 'spacing', value: optionDoubleLiteral(Math.max(2, firstNumber(objectField(raw, 'dashArrayX')) ?? 8)) },
-      { name: 'width', value: optionDoubleLiteral(Math.max(0.5, firstNumber(objectField(raw, 'dashArrayY')) ?? 1)) },
-    ],
-  }
+  const plainStyle = item === undefined ? undefined : irToValue(item, resolve)
+  const record = plainStyle !== undefined && plainStyle.ok === true && isPlainRecord(plainStyle.value) ? plainStyle.value : {}
+  const p = fillPattern(record, `${path}.decal`, (_code, at, message) => warn(`<OptionChart option.${at}>: ${message}`)) ?? (ariaIndex >= 0 ? DEFAULT_DECALS[ariaIndex % DEFAULT_DECALS.length] : undefined)
+  return p === undefined ? undefined : patternLiteral(p)
 }
 
 function optionTreeNodes(
@@ -1008,7 +1014,7 @@ export function desugarOptionChart(
     return undefined
   }
 
-  optionFields(raw, ['series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'color', 'dataset', 'graphic'], 'option', warn)
+  optionFields(raw, ['aria', 'series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'color', 'dataset', 'graphic'], 'option', warn)
 
   for (const a of e.attrs) {
     if (a.kind === 'event' && a.name !== 'selectindex') {
@@ -2022,7 +2028,10 @@ export function desugarOptionChart(
         opts.push({ name: 'onX2', value: lit(true) })
         opts.push({ name: 'xs', value: { kind: 'array', elements: (pairXs[si] ?? []).map((v) => optionDoubleLiteral(v)) } })
       }
-      const pattern = optionPatternLiteral(objectField(s, 'itemStyle'), resolve)
+      const ariaLit = literalOf(objectField(raw, 'aria'), resolve)
+      const ariaDecal = ariaLit?.kind === 'object' ? literalOf(objectField(ariaLit, 'decal'), resolve) : undefined
+      const ariaShow = ariaDecal?.kind === 'object' ? objectField(ariaDecal, 'show') : undefined
+      const pattern = optionPatternLiteral(objectField(s, 'itemStyle'), resolve, warn, `series[${si}].itemStyle`, ariaShow?.kind === 'literal' && ariaShow.value === true ? si : -1)
       if (pattern !== undefined) opts.push({ name: 'pattern', value: pattern })
       // ECharts' states: `emphasis.focus` / `emphasis.itemStyle.color`,
       // `select.itemStyle.color`, `blur.itemStyle.opacity` — the same four

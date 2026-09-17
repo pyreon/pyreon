@@ -16,19 +16,13 @@ const patternOf = (itemStyle: unknown) => {
 }
 
 describe('decal → pattern fill', () => {
-  it('a circle symbol is dots; a zero rotation is cross; any other rotation is diagonal', () => {
-    expect(patternOf({ decal: { symbol: 'circle' } })!.kind).toBe('dots')
-    expect(patternOf({ decal: { symbol: 'rect' } })!.kind).toBe('cross')
-    expect(patternOf({ decal: { symbol: 'rect', rotation: 0.8 } })!.kind).toBe('diagonal')
-    // A circle wins regardless of rotation — the symbol decides the mark.
-    expect(patternOf({ decal: { symbol: 'circle', rotation: 0.8 } })!.kind).toBe('dots')
-  })
-
-  it('an absent symbol still resolves a kind from the rotation alone', () => {
-    expect(patternOf({ decal: {} })!.kind).toBe('cross')
-    expect(patternOf({ decal: { rotation: 1 } })!.kind).toBe('diagonal')
+  it('a decal tiles its symbol — rect by default, circle / triangle / diamond as named, roundRect as rect — rotated by -rotation in degrees', () => {
+    expect(patternOf({ decal: {} })).toMatchObject({ kind: 'symbols', symbol: 'rect', angle: -0 })
+    for (const symbol of ['circle', 'triangle', 'diamond']) expect(patternOf({ decal: { symbol } })!.symbol).toBe(symbol)
+    expect(patternOf({ decal: { symbol: 'roundRect' } })!.symbol).toBe('rect')
+    expect(patternOf({ decal: { symbol: 'rect', rotation: Math.PI / 4 } })!.angle).toBeCloseTo(-45, 6)
     // A non-string symbol is treated as absent rather than stringified.
-    expect(patternOf({ decal: { symbol: 7 } })!.kind).toBe('cross')
+    expect(patternOf({ decal: { symbol: 7 } })!.symbol).toBe('rect')
   })
 
   it('`show: false` means no pattern at all, and so does no decal', () => {
@@ -37,30 +31,30 @@ describe('decal → pattern fill', () => {
     expect(patternOf(undefined)).toBeUndefined()
   })
 
-  it('colour, spacing and width come from the decal, with defaults and clamps', () => {
+  it('colour, cell pitch and symbol size come from the decal, with ECharts defaults and clamps', () => {
+    // Defaults: rgba(0,0,0,0.2), dashArrayX = dashArrayY = 5 (dash 5 + gap 5), symbolSize 1.
     const d = patternOf({ decal: {} })!
-    expect(d.color).toBe('rgba(255,255,255,0.45)')
-    expect(d.spacing).toBe(8)
-    expect(d.width).toBe(1)
+    expect(d.color).toBe('rgba(0, 0, 0, 0.2)')
+    expect(d.spacing).toBe(10)
+    expect(d.spacingY).toBe(10)
+    expect(d.width).toBe(5)
 
-    const explicit = patternOf({ decal: { color: '#f00', dashArrayX: 12, dashArrayY: 3 } })!
-    expect(explicit.color).toBe('#f00')
-    expect(explicit.spacing).toBe(12)
-    expect(explicit.width).toBe(3)
+    // [dash, gap]: the pitch is their sum, the symbol fits the dash, scaled by symbolSize.
+    const arrays = patternOf({ decal: { color: '#f00', dashArrayX: [20, 5], dashArrayY: [4, 1], symbolSize: 0.5 } })!
+    expect(arrays.color).toBe('#f00')
+    expect(arrays.spacing).toBe(25)
+    expect(arrays.spacingY).toBe(5)
+    expect(arrays.width).toBe(2)
 
-    // ECharts allows the dash arrays to BE arrays — the first entry is taken.
-    const arrays = patternOf({ decal: { dashArrayX: [20, 5], dashArrayY: [4, 1] } })!
-    expect(arrays.spacing).toBe(20)
-    expect(arrays.width).toBe(4)
+    // A nested dash array uses its first row.
+    expect(patternOf({ decal: { dashArrayX: [[3, 3], [0, 6]] } })!.spacing).toBe(6)
 
-    // A zero would paint nothing, so both are clamped.
+    // A zero would paint nothing, so the pitch and the size are clamped.
     const clamped = patternOf({ decal: { dashArrayX: 0, dashArrayY: 0 } })!
     expect(clamped.spacing).toBe(2)
     expect(clamped.width).toBe(0.5)
-
-    // A non-numeric colour falls back rather than stringifying.
-    expect(patternOf({ decal: { color: 7 } })!.color).toBe('rgba(255,255,255,0.45)')
   })
+
 })
 
 describe('colour stops — a radial ramp is NAMED as unsupported, not silently dropped', () => {

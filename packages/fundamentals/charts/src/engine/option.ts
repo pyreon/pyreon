@@ -91,6 +91,7 @@ export interface CompileOptions {
 }
 
 const KNOWN_TOP = new Set([
+  'aria',
   'series', 'xAxis', 'yAxis', 'title', 'legend', 'tooltip', 'color', 'grid',
   'animation', 'backgroundColor', 'textStyle', 'dataset', 'graphic', 'visualMap',
 ])
@@ -162,19 +163,64 @@ const num = (v: unknown): number | null => {
 }
 const first = <T,>(v: T | T[] | undefined): T | undefined => (Array.isArray(v) ? v[0] : v)
 
-function fillPattern(style: Record<string, unknown>): ChartPattern | undefined {
-  const raw = isObj(style['decal']) ? style['decal'] : undefined
-  if (raw === undefined || raw['show'] === false) return undefined
-  const symbol = typeof raw['symbol'] === 'string' ? raw['symbol'] : ''
+/** ECharts `dashArray`: a number n is dash n + gap n; [dash, gap] as given; a nested array uses its first row. */
+function dashPeriod(v: unknown, fallback: Double): { dash: Double; period: Double } {
+  const row = Array.isArray(v) && Array.isArray(v[0]) ? (v[0] as unknown[]) : v
+  if (Array.isArray(row)) {
+    const nums = row.map((x) => num(x) ?? 0)
+    const dash = nums[0] ?? fallback
+    const gap = nums.length > 1 ? nums.slice(1).reduce((a, b) => a + b, 0) : dash
+    return { dash, period: Math.max(2.0, dash + gap) }
+  }
+  const n = num(v) ?? fallback
+  return { dash: n, period: Math.max(2.0, n * 2.0) }
+}
+
+const DECAL_SYMBOLS = new Set(['rect', 'roundRect', 'circle', 'triangle', 'diamond', 'pin', 'arrow'])
+
+/**
+ * An ECharts decal as the engine's tiled-symbol texture: the dash arrays give
+ * the cell pitch, `symbolSize` scales the symbol within its dash, `rotation`
+ * (radians, counter-clockwise) turns the whole texture. Symbols the engine
+ * cannot draw (pin, arrow, a path or image) are named and drawn as rects.
+ */
+function decalPattern(raw: Record<string, unknown>, path: string, warn?: (code: OptionWarning['code'], path: string, message: string) => void): ChartPattern {
+  const symbolRaw = typeof raw['symbol'] === 'string' ? (raw['symbol'] as string) : 'rect'
+  if (!DECAL_SYMBOLS.has(symbolRaw)) warn?.('series-option-unsupported', path + '.symbol', 'Decal symbol "' + symbolRaw + '" has no engine shape; rects were tiled instead.')
+  const x = dashPeriod(raw['dashArrayX'], 5.0)
+  const y = dashPeriod(raw['dashArrayY'], 5.0)
+  const size = Math.max(0.5, Math.min(x.dash, y.dash) * (num(raw['symbolSize']) ?? 1.0))
   const rotation = num(raw['rotation']) ?? 0.0
-  const kind: ChartPattern['kind'] = symbol.includes('circle') ? 'dots' : Math.abs(rotation) < 0.01 ? 'cross' : 'diagonal'
   return {
-    kind,
-    color: typeof raw['color'] === 'string' ? raw['color'] : 'rgba(255,255,255,0.45)',
-    spacing: Math.max(2.0, num(first(raw['dashArrayX'] as number | number[] | undefined)) ?? 8.0),
-    width: Math.max(0.5, num(first(raw['dashArrayY'] as number | number[] | undefined)) ?? 1.0),
+    kind: 'symbols',
+    color: typeof raw['color'] === 'string' ? (raw['color'] as string) : 'rgba(0, 0, 0, 0.2)',
+    spacing: x.period,
+    width: size,
+    angle: -rotation * (180.0 / Math.PI),
+    symbol: symbolRaw === 'roundRect' ? 'rect' : DECAL_SYMBOLS.has(symbolRaw) ? symbolRaw : 'rect',
+    spacingY: y.period,
   }
 }
+
+export function fillPattern(style: Record<string, unknown>, path = 'itemStyle.decal', warn?: (code: OptionWarning['code'], path: string, message: string) => void): ChartPattern | undefined {
+  const raw = isObj(style['decal']) ? style['decal'] : undefined
+  if (raw === undefined || raw['show'] === false) return undefined
+  return decalPattern(raw, path, warn)
+}
+
+/**
+ * The textures `aria.decal.show` hands series that have no decal of their own —
+ * distinct at a glance (angle, symbol, pitch) so series stay tellable apart
+ * without colour. Pyreon's set, not a pixel copy of ECharts' default list.
+ */
+export const DEFAULT_DECALS: readonly ChartPattern[] = [
+  { kind: 'diagonal', color: 'rgba(0, 0, 0, 0.22)', spacing: 6.0, width: 1.5 },
+  { kind: 'symbols', color: 'rgba(0, 0, 0, 0.22)', spacing: 7.0, width: 2.5, symbol: 'circle', spacingY: 7.0 },
+  { kind: 'diagonal', color: 'rgba(0, 0, 0, 0.22)', spacing: 6.0, width: 1.5, angle: -45.0 },
+  { kind: 'symbols', color: 'rgba(0, 0, 0, 0.22)', spacing: 9.0, width: 5.0, symbol: 'triangle', spacingY: 8.0 },
+  { kind: 'cross', color: 'rgba(0, 0, 0, 0.18)', spacing: 7.0, width: 1.0 },
+  { kind: 'symbols', color: 'rgba(0, 0, 0, 0.22)', spacing: 8.0, width: 4.0, symbol: 'diamond', spacingY: 8.0 },
+]
 
 /** `symbol` + `symbolRepeat` for a pictorialBar series; a path/image symbol falls back to a rect with a warning. */
 /**
@@ -430,6 +476,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     : isObj(option['series'])
       ? [option['series']]
       : []
+  // `aria.decal.show`: every series without its own decal gets a distinct default texture.
+  const ariaDecals = isObj(option['aria']) && isObj(option['aria']['decal']) && option['aria']['decal']['show'] === true
   const series: Series[] = []
   const customPlans: CustomSeriesPlan[] = []
   const linesList: LinesSeries[] = []
@@ -618,7 +666,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       axis: !extraAxis && (yAxisIndex === 1) !== swapY ? 'right' : undefined,
       ...(extraAxis ? { axisExtra: yAxisIndex - 2 } : {}),
       ...(onX2 ? { onX2: true, xs } : {}),
-      pattern: fillPattern(itemStyle),
+      pattern: fillPattern(itemStyle, `${path}.itemStyle.decal`, warn) ?? (ariaDecals ? DEFAULT_DECALS[series.length % DEFAULT_DECALS.length] : undefined),
       ...(type === 'effectScatter' ? { effect: true } : {}),
       ...(type === 'pictorialBar' ? pictorialFields(s, warn, path) : {}),
       ...(kind === 'line' || kind === 'points' ? seriesSymbol(s, kind, warn, path) : {}),

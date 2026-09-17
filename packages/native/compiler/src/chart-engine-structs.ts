@@ -219,6 +219,52 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "name": "Double",
           "args": []
         }
+      },
+      {
+        "name": "angle",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "symbol",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "spacingY",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
       }
     ],
     "external": true
