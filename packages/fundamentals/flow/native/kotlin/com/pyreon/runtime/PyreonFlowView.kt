@@ -586,7 +586,10 @@ fun <T> PyreonFlowView(
                     Modifier
                         .offset { IntOffset((handle.x - diameter / 2).roundToInt(), (handle.y - diameter / 2).roundToInt()) }
                         .requiredSize(with(density) { diameter.toFloat().toDp() })
-                        .semantics { contentDescription = "${handle.type} handle ${handle.handleId ?: "default"}" }
+                        .semantics {
+                            contentDescription = "${handle.type} handle ${handle.handleId ?: "default"}"
+                            role = androidx.compose.ui.semantics.Role.Button
+                        }
                         .pointerInput(handle, interactionsLocked, state.viewport.zoom) {
                             if (interactionsLocked || handle.type != "source") return@pointerInput
                             var current = PyreonFlowPathPoint(handle.x, handle.y)

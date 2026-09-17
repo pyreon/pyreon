@@ -900,6 +900,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             .contentShape(SwiftUI.Circle())
             .gesture(handle.type == "source" ? connectionGesture(handle) : nil)
             .accessibilityLabel(Text(label))
+            .accessibilityAddTraits(.isButton)
             .accessibilityHidden(state.disableKeyboardA11y)
     }
 
