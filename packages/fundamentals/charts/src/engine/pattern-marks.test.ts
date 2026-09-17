@@ -48,9 +48,21 @@ describe('patternMarks — the one geometry every painter draws', () => {
 
 describe('decals from the option', () => {
   it('names a decal symbol the engine cannot draw and tiles rects instead', () => {
-    const c = compileOption({ xAxis: { data: ['a'] }, yAxis: {}, series: [{ type: 'bar', itemStyle: { decal: { symbol: 'path://M0 0L1 1' } }, data: [1] }] })
+    const c = compileOption({ xAxis: { data: ['a'] }, yAxis: {}, series: [{ type: 'bar', itemStyle: { decal: { symbol: 'star' } }, data: [1] }] })
     expect(c.warnings.map((w) => w.path)).toEqual(['series[0].itemStyle.decal.symbol'])
     expect(c.spec.series[0]!.pattern!.symbol).toBe('rect')
+  })
+
+  it('path:// and image:// decal symbols map to a path symbol and an image grid', () => {
+    const c = compileOption({ xAxis: { data: ['a', 'b'] }, yAxis: {}, series: [
+      { type: 'bar', itemStyle: { decal: { symbol: 'path://M0 0L10 0L5 10Z' } }, data: [1] },
+      { type: 'bar', itemStyle: { decal: { symbol: 'image://data:image/png;base64,AAAA' } }, data: [2] },
+    ] })
+    expect(c.warnings).toEqual([])
+    expect(c.spec.series[0]!.pattern).toMatchObject({ kind: 'symbols', symbol: 'path', shapeRings: [3] })
+    // Fitted into a unit box centred on 0, aspect kept.
+    expect(c.spec.series[0]!.pattern!.shape).toEqual([{ x: -0.5, y: -0.5 }, { x: 0.5, y: -0.5 }, { x: 0, y: 0.5 }])
+    expect(c.spec.series[1]!.pattern).toMatchObject({ kind: 'image', repeat: 'grid', image: 'data:image/png;base64,AAAA' })
   })
 
   it('aria.decal.show gives every series without its own decal a distinct default; an explicit decal still wins', () => {

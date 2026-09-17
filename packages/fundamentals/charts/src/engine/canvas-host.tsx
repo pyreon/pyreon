@@ -20,7 +20,7 @@ import type { VNode } from '@pyreon/core'
 import { batch, effect, isClient, signal } from '@pyreon/reactivity'
 import { chartTable, describeChart } from './a11y'
 import type { A11yInput } from './a11y'
-import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas } from './canvas-web'
+import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas, trackChartImages } from './canvas-web'
 import { cmdsEqual, sameCmdShape, tweenCmds, universalTweenCmds } from './cmd-tween'
 import { placeLegend } from './legend'
 import type { LegendEntry, LegendPosition } from './legend'
@@ -471,6 +471,7 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
   effect(() => {
     spec.track()
     theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
+    trackChartImages() // a pattern image that finishes loading repaints
     // `peek`, not a read: reading the version here would subscribe this
     // effect to its own write and re-run it once per batch pass (32 times,
     // cancelling the update tween on every pass) — the intentional

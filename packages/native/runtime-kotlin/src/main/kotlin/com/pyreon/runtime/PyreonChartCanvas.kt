@@ -29,6 +29,15 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.nativeCanvas
 import android.graphics.Paint
+import android.graphics.BitmapFactory
+import android.os.Handler
+import android.os.Looper
+import android.util.Base64
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.dp
 import java.text.NumberFormat
@@ -71,6 +80,12 @@ data class PyreonChartPattern(
     var angle: Double? = null,
     var symbol: String? = null,
     var spacingY: Double? = null,
+    /** Image patterns: a URL or data URI and the tiling mode. */
+    var image: String? = null,
+    var repeat: String? = null,
+    /** A `symbol: path` decal: unit-box points, rings flattened, with each ring's point count. */
+    var shape: List<PyreonChartPt>? = null,
+    var shapeRings: List<Double>? = null,
 )
 
 data class PyreonDrawCmd(
@@ -333,8 +348,61 @@ fun pyreonRoundedRectPath(r: PyreonChartRect, radii: List<Double>): Path {
     return p
 }
 
+/**
+ * Pattern images, decoded once per source on a background thread. The map is
+ * Compose state, so a canvas that read a missing entry redraws when it lands.
+ * Bounded — a chart names a handful of textures.
+ */
+object PyreonChartImages {
+    private val images = mutableStateMapOf<String, ImageBitmap>()
+    private val pending = mutableSetOf<String>()
+    private val order = ArrayDeque<String>()
+    private const val LIMIT = 64
+    private val main = Handler(Looper.getMainLooper())
+
+    fun image(src: String): ImageBitmap? {
+        images[src]?.let { return it }
+        if (!pending.add(src)) return null
+        Thread {
+            val bitmap = try {
+                val bytes = if (src.startsWith("data:")) {
+                    val comma = src.indexOf(',')
+                    val meta = src.substring(0, maxOf(comma, 0))
+                    val body = src.substring(comma + 1)
+                    if (meta.endsWith(";base64")) Base64.decode(body, Base64.DEFAULT) else java.net.URLDecoder.decode(body, "UTF-8").toByteArray()
+                } else {
+                    java.net.URL(src).openStream().use { it.readBytes() }
+                }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            } catch (e: Exception) {
+                null
+            }
+            main.post {
+                pending.remove(src)
+                if (bitmap != null) {
+                    images[src] = bitmap.asImageBitmap()
+                    order.addLast(src)
+                    if (order.size > LIMIT) images.remove(order.removeFirst())
+                }
+            }
+        }.start()
+        return null
+    }
+}
+
 private fun DrawScope.pyreonPaintPattern(pattern: PyreonChartPattern?, clip: Path, bounds: PyreonChartRect) {
     pattern ?: return
+    val src = pattern.image
+    if (pattern.kind == "image" && src != null) {
+        val img = PyreonChartImages.image(src) ?: return
+        val cells = patternImageCells(pattern, bounds, img.width.toDouble(), img.height.toDouble())
+        clipPath(clip) {
+            for (r in cells) {
+                drawImage(img, dstOffset = IntOffset(r.x.toInt(), r.y.toInt()), dstSize = IntSize(maxOf(r.w.toInt(), 1), maxOf(r.h.toInt(), 1)))
+            }
+        }
+        return
+    }
     // Engine geometry (`patternMarks`) — the same marks every target paints; this only clips and draws.
     val marks = patternMarks(pattern, bounds)
     clipPath(clip) {

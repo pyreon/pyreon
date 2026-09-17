@@ -34,6 +34,37 @@ describe('OptionChart (real browser)', () => {
     expect(await count(option)).toBeGreaterThan(50)
   })
 
+  it('paints image fills, image:// decals and path:// decals once the texture loads', async () => {
+    const tile = document.createElement('canvas')
+    tile.width = 8
+    tile.height = 8
+    const tctx = tile.getContext('2d')!
+    tctx.fillStyle = '#00ff00'
+    tctx.fillRect(0, 0, 8, 8)
+    const green = tile.toDataURL('image/png')
+    const count = async (o: EChartsOption, match: (r: number, g: number, b: number) => boolean): Promise<number> => {
+      const m = mountInBrowser(h(OptionChart, { option: o, width: 300, height: 200 }))
+      await flush()
+      await wait(900)
+      const c = m.container.querySelector('canvas')!
+      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
+      let n = 0
+      for (let i = 0; i < d.length; i += 4) if (match(d[i]!, d[i + 1]!, d[i + 2]!)) n++
+      m.unmount()
+      return n
+    }
+    const isGreen = (r: number, g: number, b: number) => g > 200 && r < 60 && b < 60
+    const isRed = (r: number, g: number, b: number) => r > 200 && g < 60 && b < 60
+    const bar = (itemStyle: Record<string, unknown>): EChartsOption => ({ animation: false, xAxis: { data: ['a'] }, yAxis: { min: 0, max: 10 }, series: [{ type: 'bar', itemStyle: { color: '#0000ff', ...itemStyle }, data: [10] }] })
+    expect(await count(bar({}), isGreen)).toBe(0)
+    // An image fill: the loaded texture replaces the bar's colour.
+    expect(await count(bar({ color: { image: green, repeat: 'repeat' } }), isGreen)).toBeGreaterThan(500)
+    // An image:// decal tiles the texture on the decal pitch.
+    expect(await count(bar({ decal: { symbol: 'image://' + green, dashArrayX: [6, 4], dashArrayY: [6, 4] } }), isGreen)).toBeGreaterThan(50)
+    // A path:// decal draws the path's shape in the decal colour.
+    expect(await count(bar({ decal: { symbol: 'path://M0 0L10 0L5 10Z', color: '#ff0000', dashArrayX: [8, 4], dashArrayY: [8, 4] } }), isRed)).toBeGreaterThan(50)
+  })
+
   it('animates a lines trail on a frame clock: the canvas changes between frames, and holds still under reduced motion', async () => {
     const option: EChartsOption = { xAxis: {}, yAxis: {}, series: [{ type: 'lines', effect: { show: true, period: 1, trailLength: 0.3, color: '#ff0000', symbolSize: 10 }, data: [{ coords: [[0, 0], [10, 10]] }] }] }
     const snapshot = (c: HTMLCanvasElement): string => {

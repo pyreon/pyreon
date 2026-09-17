@@ -22,6 +22,7 @@ export function patternMarks(p: ChartPattern, bounds: Rect): DrawCmd[] {
   const center: Pt = { x: bounds.x + bounds.w / 2.0, y: bounds.y + bounds.h / 2.0 }
   // Half the box's diagonal plus a cell: rotated rows still cover every corner.
   const reach = Math.sqrt(bounds.w * bounds.w + bounds.h * bounds.h) / 2.0 + spacing
+  if (p.kind === 'image') return out
   if (p.kind === 'dots') {
     let y = bounds.y
     while (y <= bounds.y + bounds.h) {
@@ -41,6 +42,8 @@ export function patternMarks(p: ChartPattern, bounds: Rect): DrawCmd[] {
     const stepY = (p.spacingY ?? spacing) > 2.0 ? p.spacingY ?? spacing : 2.0
     const half = width / 2.0
     const symbol = p.symbol ?? 'rect'
+    const shape = p.shape ?? []
+    const rings = p.shapeRings ?? []
     let gy = -reach
     while (gy <= reach) {
       let gx = -reach
@@ -50,6 +53,20 @@ export function patternMarks(p: ChartPattern, bounds: Rect): DrawCmd[] {
           out.push({ kind: 'circle', center: c, radius: half, fill: p.color })
         } else if (symbol === 'triangle') {
           out.push({ kind: 'polygon', points: [rotated(center, gx, gy - half, cosA, sinA), rotated(center, gx + half, gy + half, cosA, sinA), rotated(center, gx - half, gy + half, cosA, sinA)], fill: p.color })
+        } else if (symbol === 'path') {
+          // Unit-box rings, flattened: `shapeRings` holds each ring's point count.
+          let at = 0
+          for (const count of rings) {
+            const pts: Pt[] = []
+            let k = 0.0
+            while (k < count && at < shape.length) {
+              const q = shape[at]!
+              pts.push(rotated(center, gx + q.x * width, gy + q.y * width, cosA, sinA))
+              at = at + 1
+              k = k + 1.0
+            }
+            if (pts.length >= 3) out.push({ kind: 'polygon', points: pts, fill: p.color })
+          }
         } else if (symbol === 'pin') {
           // A map pin: a round head over a point, ECharts' teardrop, as one polygon.
           const pts: Pt[] = []
@@ -90,6 +107,51 @@ export function patternMarks(p: ChartPattern, bounds: Rect): DrawCmd[] {
       out.push({ kind: 'line', from: rotated(center, -reach, k, cosA, -sinA), to: rotated(center, reach, k, cosA, -sinA), stroke: p.color, width })
       k = k + spacing
     }
+  }
+  return out
+}
+
+/**
+ * Where an image pattern's copies go over a box. A fill image (ECharts'
+ * `color: { image, repeat }`) tiles at its natural size from the canvas origin,
+ * along both axes, one, or neither; an image decal (`repeat: 'grid'`) is drawn
+ * at `width` on the pitch, centred in each cell. The painter clips to the shape
+ * and draws the image into each rect, so tiling is decided here, once.
+ */
+export function patternImageCells(p: ChartPattern, bounds: Rect, imageW: Double, imageH: Double): Rect[] {
+  const out: Rect[] = []
+  const repeat = p.repeat ?? 'repeat'
+  if (repeat === 'grid') {
+    const sx = p.spacing > 2.0 ? p.spacing : 2.0
+    const sy = (p.spacingY ?? sx) > 2.0 ? p.spacingY ?? sx : 2.0
+    const size = p.width > 0.5 ? p.width : 0.5
+    const aspect = imageW > 0.0 && imageH > 0.0 ? imageH / imageW : 1.0
+    const w = aspect <= 1.0 ? size : size / aspect
+    const h = aspect <= 1.0 ? size * aspect : size
+    let y = Math.floor(bounds.y / sy) * sy
+    while (y < bounds.y + bounds.h) {
+      let x = Math.floor(bounds.x / sx) * sx
+      while (x < bounds.x + bounds.w) {
+        out.push({ x: x + (sx - w) / 2.0, y: y + (sy - h) / 2.0, w, h })
+        x = x + sx
+      }
+      y = y + sy
+    }
+    return out
+  }
+  if (!(imageW > 0.0) || !(imageH > 0.0)) return out
+  const tileX = repeat === 'repeat' || repeat === 'repeat-x'
+  const tileY = repeat === 'repeat' || repeat === 'repeat-y'
+  let y = tileY ? Math.floor(bounds.y / imageH) * imageH : 0.0
+  const yEnd = tileY ? bounds.y + bounds.h : 0.5
+  while (y < yEnd) {
+    let x = tileX ? Math.floor(bounds.x / imageW) * imageW : 0.0
+    const xEnd = tileX ? bounds.x + bounds.w : 0.5
+    while (x < xEnd) {
+      out.push({ x, y, w: imageW, h: imageH })
+      x = x + imageW
+    }
+    y = y + imageH
   }
   return out
 }

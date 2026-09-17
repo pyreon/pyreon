@@ -16,7 +16,7 @@ export { applyTransforms, applyTransformsAll, graphicElements, listChartTransfor
 export { graphicDrawCommands, graphicElementCommands } from './engine/graphic'
 export type { GraphicElement } from './engine/graphic'
 export type { ChartTransform, ChartTransformDimension, ChartTransformParams, ChartTransformResult, ChartTransformUpstream, Table } from './engine/option-layer'
-export { compileOption, DEFAULT_DECALS, fillPattern, labelFields } from './engine/option'
+export { compileOption, DEFAULT_DECALS, fillPattern, imageFill, labelFields } from './engine/option'
 export { plain } from './engine/format'
 export type { RichStyle } from './engine/labels'
 export type { LinesSeries } from './engine/lines'

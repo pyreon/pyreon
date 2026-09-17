@@ -19,7 +19,7 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import { compileOption, DEFAULT_DECALS, fillPattern, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
+import { compileOption, DEFAULT_DECALS, fillPattern, imageFill, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
 import type { ChartPattern, GraphicElement, RichStyle, SamplingRequest } from '@pyreon/charts/option-layer'
 import type { AttrIR, ExprIR } from './types'
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
@@ -849,6 +849,12 @@ function patternLiteral(p: ChartPattern): ExprIR {
   if (p.angle !== undefined) fields.push({ name: 'angle', value: optionDoubleLiteral(p.angle === 0 ? 0 : p.angle) })
   if (p.symbol !== undefined) fields.push({ name: 'symbol', value: lit(p.symbol) })
   if (p.spacingY !== undefined) fields.push({ name: 'spacingY', value: optionDoubleLiteral(p.spacingY) })
+  if (p.image !== undefined) fields.push({ name: 'image', value: lit(p.image) })
+  if (p.repeat !== undefined) fields.push({ name: 'repeat', value: lit(p.repeat) })
+  if (p.shape !== undefined) {
+    fields.push({ name: 'shape', value: { kind: 'array', elements: p.shape.map((q) => ({ kind: 'object', fields: [{ name: 'x', value: optionDoubleLiteral(q.x) }, { name: 'y', value: optionDoubleLiteral(q.y) }] }) as ExprIR) } })
+  }
+  if (p.shapeRings !== undefined) fields.push({ name: 'shapeRings', value: { kind: 'array', elements: p.shapeRings.map((c) => optionDoubleLiteral(c)) } })
   return { kind: 'object', fields }
 }
 
@@ -857,11 +863,19 @@ function patternLiteral(p: ChartPattern): ExprIR {
  * time (so the tiled symbol, pitch and rotation are the ones the web draws),
  * or the `aria.decal` default for the series when it has none.
  */
-function optionPatternLiteral(style: ExprIR | undefined, resolve: (name: string) => ExprIR | undefined, warn: (m: string) => void = () => {}, path = 'itemStyle', ariaIndex = -1): ExprIR | undefined {
-  const item = literalOf(style, resolve)
-  const plainStyle = item === undefined ? undefined : irToValue(item, resolve)
-  const record = plainStyle !== undefined && plainStyle.ok === true && isPlainRecord(plainStyle.value) ? plainStyle.value : {}
-  const p = fillPattern(record, `${path}.decal`, (_code, at, message) => warn(`<OptionChart option.${at}>: ${message}`)) ?? (ariaIndex >= 0 ? DEFAULT_DECALS[ariaIndex % DEFAULT_DECALS.length] : undefined)
+function optionPatternLiteral(style: ExprIR | undefined, resolve: (name: string) => ExprIR | undefined, warn: (m: string) => void = () => {}, path = 'itemStyle', ariaIndex = -1, series?: ExprIR): ExprIR | undefined {
+  const plainOf = (e: ExprIR | undefined): Record<string, unknown> => {
+    const lit = literalOf(e, resolve)
+    const v = lit === undefined ? undefined : irToValue(lit, resolve)
+    return v !== undefined && v.ok === true && isPlainRecord(v.value) ? v.value : {}
+  }
+  const record = plainOf(style)
+  const seriesRecord = plainOf(series)
+  const areaRecord = isPlainRecord(seriesRecord['areaStyle']) ? seriesRecord['areaStyle'] : {}
+  const seriesPath = path.replace(/\.itemStyle$/, '')
+  const w = (_code: string, at: string, message: string): void => warn(`<OptionChart option.${at}>: ${message}`)
+  // The web's own order: an item fill image, then an area fill image, then the series colour, then the decal.
+  const p = imageFill(record['color'], `${path}.color`, w) ?? imageFill(areaRecord['color'], `${seriesPath}.areaStyle.color`, w) ?? imageFill(seriesRecord['color'], `${seriesPath}.color`, w) ?? fillPattern(record, `${path}.decal`, (_code, at, message) => warn(`<OptionChart option.${at}>: ${message}`)) ?? (ariaIndex >= 0 ? DEFAULT_DECALS[ariaIndex % DEFAULT_DECALS.length] : undefined)
   return p === undefined ? undefined : patternLiteral(p)
 }
 
@@ -1986,7 +2000,8 @@ export function desugarOptionChart(
         const g = style?.kind === 'object' ? literalOf(objectField(style, 'color'), resolve) : undefined
         const rawStops = g?.kind === 'object' ? literalOf(objectField(g, 'colorStops'), resolve) : undefined
         if (g?.kind === 'object' && rawStops === undefined && objectField(g, 'image') !== undefined) {
-          warn(`<OptionChart option.series[${si}].${slot}.color>: image patterns are not supported natively (linear and radial gradients, and decals, are); the palette colour is used.`)
+          // A fill image is the mark's pattern (optionPatternLiteral); a stroke cannot carry one.
+          if (slot === 'lineStyle') warn(`<OptionChart option.series[${si}].lineStyle.color>: A line stroke cannot be an image pattern (fills can); the palette colour is used.`)
           continue
         }
         if (g?.kind !== 'object' || rawStops?.kind !== 'array') continue
@@ -2031,7 +2046,7 @@ export function desugarOptionChart(
       const ariaLit = literalOf(objectField(raw, 'aria'), resolve)
       const ariaDecal = ariaLit?.kind === 'object' ? literalOf(objectField(ariaLit, 'decal'), resolve) : undefined
       const ariaShow = ariaDecal?.kind === 'object' ? objectField(ariaDecal, 'show') : undefined
-      const pattern = optionPatternLiteral(objectField(s, 'itemStyle'), resolve, warn, `series[${si}].itemStyle`, ariaShow?.kind === 'literal' && ariaShow.value === true ? si : -1)
+      const pattern = optionPatternLiteral(objectField(s, 'itemStyle'), resolve, warn, `series[${si}].itemStyle`, ariaShow?.kind === 'literal' && ariaShow.value === true ? si : -1, s)
       if (pattern !== undefined) opts.push({ name: 'pattern', value: pattern })
       // ECharts' states: `emphasis.focus` / `emphasis.itemStyle.color`,
       // `select.itemStyle.color`, `blur.itemStyle.opacity` — the same four

@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-17.31' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-17.32' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -98,8 +98,8 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('presentation.labels-rich-text', 'presentation', 'direct', 'complete', 'src/engine/option-labels.test.ts', '../../native/compiler/src/tests/chart-labels-native.test.ts'),
   row('presentation.states', 'presentation', 'direct', 'partial', 'src/engine/emphasis.test.ts', 'src/engine/option-states.test.ts', 'src/engine/option-chart-states.test.tsx', '../../native/compiler/src/tests/chart-states-native.test.ts'), // emphasis/select/blur FILLS + focus blur + selectedMode pinning cross; state labels, symbol scale and whole-series selection warn by name, and the hover is a datum column (no per-series focus)
   row('presentation.symbols', 'presentation', 'direct', 'complete', 'src/engine/option-symbols.test.ts', '../../native/compiler/src/tests/chart-symbols-native.test.ts'),
-  row('presentation.gradients-patterns', 'presentation', 'direct', 'partial', 'src/engine/option-gradients.test.ts', '../../native/compiler/src/tests/chart-gradients-native.test.ts'), // linear + radial gradients and decals cross; IMAGE patterns (`color: { image }`) warn by name
-  row('presentation.decals', 'presentation', 'direct', 'partial', 'src/engine/pattern-marks.test.ts', 'src/engine/option-fills-marks.test.ts', '../../native/compiler/src/tests/chart-decals-native.test.ts'), // symbols / pitch / rotation / aria.decal cross; open: path:// and image:// decal symbols
+  row('presentation.gradients-patterns', 'presentation', 'direct', 'complete', 'src/engine/option-gradients.test.ts', 'src/engine/svg-path.test.ts', '../../native/compiler/src/tests/chart-gradients-native.test.ts'), // linear + radial gradients, decals and image fills cross; a line STROKE image is named (ECharts strokes take no pattern either)
+  row('presentation.decals', 'presentation', 'direct', 'complete', 'src/engine/pattern-marks.test.ts', 'src/engine/svg-path.test.ts', 'src/engine/option-fills-marks.test.ts', '../../native/compiler/src/tests/chart-decals-native.test.ts'), // symbols incl. path:// and image://, pitch, rotation, aria.decal
   row('presentation.animation', 'presentation', 'direct', 'complete', 'src/engine/cmd-tween.ts', '../../native/compiler/src/tests/native-chart-transition-parity.test.ts'),
   // Compile-time parity only: the completion plan requires native canvas
   // state/timing plus device evidence before this row closes.

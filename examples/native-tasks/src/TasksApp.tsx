@@ -813,6 +813,8 @@ function GalleryPage() {
               { type: 'bar', data: [3, 5, 4] },
               { type: 'bar', data: [4, 2, 6] },
               { type: 'bar', itemStyle: { decal: { symbol: 'triangle', dashArrayX: [6, 4], dashArrayY: 8 } }, data: [2, 4, 3] },
+              { type: 'bar', itemStyle: { decal: { symbol: 'path://M0 0L10 0L5 10Z', dashArrayX: [8, 4], dashArrayY: 8 } }, data: [5, 3, 2] },
+              { type: 'bar', itemStyle: { color: { image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAEklEQVR4nGN44ODwHxkzkC4AAAeHJfENXDGsAAAAAElFTkSuQmCC', repeat: 'repeat' } }, data: [1, 6, 5] },
             ],
           }}
           height={180}

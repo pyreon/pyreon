@@ -109,8 +109,8 @@ export interface ChartGradient {
 
 /** A repeating, backend-neutral fill overlay. */
 export interface ChartPattern {
-  /** Stripe, crossed-stripe, dot, or tiled-symbol texture. */
-  kind: 'diagonal' | 'cross' | 'dots' | 'symbols'
+  /** Stripe, crossed-stripe, dot, tiled-symbol, or image texture. */
+  kind: 'diagonal' | 'cross' | 'dots' | 'symbols' | 'image'
   /** Foreground colour painted over the command's ordinary fill. */
   color: string
   /** Distance between repeated marks, in engine units (horizontal for symbols). */
@@ -119,10 +119,22 @@ export interface ChartPattern {
   width: Double
   /** Rotation of the texture in degrees; stripes default to 45. */
   angle?: Double | undefined
-  /** The tiled symbol: rect, circle, triangle, diamond, pin or arrow. */
+  /** The tiled symbol: rect, circle, triangle, diamond, pin, arrow, or path (with `path`). */
   symbol?: string | undefined
   /** Vertical distance between symbol rows; defaults to `spacing`. */
   spacingY?: Double | undefined
+  /** `kind: 'image'`: the image URL (http(s) or a data: URI). */
+  image?: string | undefined
+  /**
+   * `kind: 'image'`: how it tiles — ECharts' `repeat` / `repeat-x` /
+   * `repeat-y` / `no-repeat` at the image's natural size from the canvas
+   * origin, or `grid` (an image decal symbol) at `width` on the pitch.
+   */
+  repeat?: string | undefined
+  /** A `symbol: 'path'` decal's shape: unit-box points, rings flattened. */
+  shape?: Pt[] | undefined
+  /** Point count of each ring in `shape`. */
+  shapeRings?: Double[] | undefined
 }
 
 export type DrawCmd =

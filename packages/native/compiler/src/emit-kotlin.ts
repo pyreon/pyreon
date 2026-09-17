@@ -12887,5 +12887,27 @@ function patternExtras(values: Map<string, ExprIR>, sep: string): string {
   if (symbol?.kind === 'literal' && typeof symbol.value === 'string') out.push(`, symbol${sep}${JSON.stringify(symbol.value)}`)
   const spacingY = values.get('spacingY')
   if (spacingY?.kind === 'literal' && typeof spacingY.value === 'number') out.push(`, spacingY${sep}${chartDouble(spacingY.value)}`)
+  const image = values.get('image')
+  if (image?.kind === 'literal' && typeof image.value === 'string') out.push(`, image${sep}${JSON.stringify(image.value)}`)
+  const repeat = values.get('repeat')
+  if (repeat?.kind === 'literal' && typeof repeat.value === 'string') out.push(`, repeat${sep}${JSON.stringify(repeat.value)}`)
+  const shape = values.get('shape')
+  if (shape?.kind === 'array') {
+    const pts: string[] = []
+    for (const e of shape.elements) {
+      if (e.kind !== 'object') continue
+      const xv = e.fields.find((f) => f.name === 'x')?.value
+      const yv = e.fields.find((f) => f.name === 'y')?.value
+      const x = xv?.kind === 'literal' && typeof xv.value === 'number' ? xv.value : 0
+      const y = yv?.kind === 'literal' && typeof yv.value === 'number' ? yv.value : 0
+      pts.push(`PyreonChartPt(${chartDouble(x)}, ${chartDouble(y)})`)
+    }
+    out.push(`, shape${sep}listOf(${pts.join(', ')})`)
+  }
+  const rings = values.get('shapeRings')
+  if (rings?.kind === 'array') {
+    const counts = rings.elements.map((e) => (e.kind === 'literal' && typeof e.value === 'number' ? chartDouble(e.value) : '0.0'))
+    out.push(`, shapeRings${sep}listOf(${counts.join(', ')})`)
+  }
   return out.join('')
 }

@@ -118,3 +118,14 @@ describe('svgCommand — a pattern paints OVER the ordinary fill', () => {
     expect(out).toContain('fill="url(#p-p0)"')
   })
 })
+
+describe('collectPatterns — image patterns', () => {
+  it('tiles an <image> per cell: a fill image at its tile size, an image decal on its grid', () => {
+    const fill: DrawCmd = { kind: 'rect', rect: { x: 0, y: 0, w: 40, h: 20 }, fill: '#000', pattern: { kind: 'image', color: '', spacing: 0, width: 20, spacingY: 20, image: 'a.png', repeat: 'repeat' } }
+    const decal: DrawCmd = { kind: 'rect', rect: { x: 0, y: 0, w: 10, h: 10 }, fill: '#000', pattern: { kind: 'image', color: '', spacing: 10, spacingY: 10, width: 4, image: 'b"<.png', repeat: 'grid' } }
+    const { defs } = collectPatterns([fill, decal], 'c')
+    expect(defs.match(/href="a\.png"/g)?.length).toBe(2)
+    expect(defs).toContain('<image href="b&quot;&lt;.png" x="3" y="3" width="4" height="4"')
+  })
+})
+

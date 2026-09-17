@@ -2723,6 +2723,9 @@ public func patternMarks(_ p: PyreonChartPattern, _ bounds: PyreonChartRect) -> 
     let width = p.width > 0.5 ? p.width : 0.5
     let center = PyreonChartPt(x: bounds.x + bounds.w / 2.0, y: bounds.y + bounds.h / 2.0)
     let reach = sqrt(Double(bounds.w * bounds.w + bounds.h * bounds.h)) / 2.0 + spacing
+    if p.kind == "image" {
+      return out
+    }
     if p.kind == "dots" {
       var y = bounds.y
       while y <= bounds.y + bounds.h {
@@ -2742,6 +2745,8 @@ public func patternMarks(_ p: PyreonChartPattern, _ bounds: PyreonChartRect) -> 
       let stepY = ((p.spacingY ?? spacing)) > 2.0 ? (p.spacingY ?? spacing) : 2.0
       let half = width / 2.0
       let symbol = (p.symbol ?? "rect")
+      let shape = (p.shape ?? [])
+      let rings = (p.shapeRings ?? [])
       var gy = -reach
       while gy <= reach {
         var gx = -reach
@@ -2753,26 +2758,43 @@ public func patternMarks(_ p: PyreonChartPattern, _ bounds: PyreonChartRect) -> 
             if symbol == "triangle" {
               out.append(PyreonDrawCmd(kind: "polygon", fill: p.color, points: [rotated(center, gx, gy - half, cosA, sinA), rotated(center, gx + half, gy + half, cosA, sinA), rotated(center, gx - half, gy + half, cosA, sinA)]))
             } else {
-              if symbol == "pin" {
-                var pts: [PyreonChartPt] = []
-                let headR = half * 0.62
-                let headY = gy - half + headR
-                var t = 0.0
-                while t <= 1.0 {
-                  let a = Double.pi * (0.8 + 1.4 * t)
-                  pts.append(rotated(center, gx + headR * cos(Double(a)), headY + headR * sin(Double(a)), cosA, sinA))
-                  t = t + 0.125
+              if symbol == "path" {
+                var at = 0
+                for count in rings {
+                  var pts: [PyreonChartPt] = []
+                  var k = 0.0
+                  while k < count && at < shape.count {
+                    let q = shape[at]
+                    pts.append(rotated(center, gx + q.x * width, gy + q.y * width, cosA, sinA))
+                    at = at + 1
+                    k = k + 1.0
+                  }
+                  if pts.count >= 3 {
+                    out.append(PyreonDrawCmd(kind: "polygon", fill: p.color, points: pts))
+                  }
                 }
-                pts.append(rotated(center, gx, gy + half, cosA, sinA))
-                out.append(PyreonDrawCmd(kind: "polygon", fill: p.color, points: pts))
               } else {
-                if symbol == "arrow" {
-                  out.append(PyreonDrawCmd(kind: "polygon", fill: p.color, points: [rotated(center, gx, gy - half, cosA, sinA), rotated(center, gx + half * 0.8, gy + half, cosA, sinA), rotated(center, gx, gy + half * 0.45, cosA, sinA), rotated(center, gx - half * 0.8, gy + half, cosA, sinA)]))
+                if symbol == "pin" {
+                  var pts: [PyreonChartPt] = []
+                  let headR = half * 0.62
+                  let headY = gy - half + headR
+                  var t = 0.0
+                  while t <= 1.0 {
+                    let a = Double.pi * (0.8 + 1.4 * t)
+                    pts.append(rotated(center, gx + headR * cos(Double(a)), headY + headR * sin(Double(a)), cosA, sinA))
+                    t = t + 0.125
+                  }
+                  pts.append(rotated(center, gx, gy + half, cosA, sinA))
+                  out.append(PyreonDrawCmd(kind: "polygon", fill: p.color, points: pts))
                 } else {
-                  if symbol == "diamond" {
-                    out.append(PyreonDrawCmd(kind: "polygon", fill: p.color, points: [rotated(center, gx, gy - half, cosA, sinA), rotated(center, gx + half, gy, cosA, sinA), rotated(center, gx, gy + half, cosA, sinA), rotated(center, gx - half, gy, cosA, sinA)]))
+                  if symbol == "arrow" {
+                    out.append(PyreonDrawCmd(kind: "polygon", fill: p.color, points: [rotated(center, gx, gy - half, cosA, sinA), rotated(center, gx + half * 0.8, gy + half, cosA, sinA), rotated(center, gx, gy + half * 0.45, cosA, sinA), rotated(center, gx - half * 0.8, gy + half, cosA, sinA)]))
                   } else {
-                    out.append(PyreonDrawCmd(kind: "polygon", fill: p.color, points: [rotated(center, gx - half, gy - half, cosA, sinA), rotated(center, gx + half, gy - half, cosA, sinA), rotated(center, gx + half, gy + half, cosA, sinA), rotated(center, gx - half, gy + half, cosA, sinA)]))
+                    if symbol == "diamond" {
+                      out.append(PyreonDrawCmd(kind: "polygon", fill: p.color, points: [rotated(center, gx, gy - half, cosA, sinA), rotated(center, gx + half, gy, cosA, sinA), rotated(center, gx, gy + half, cosA, sinA), rotated(center, gx - half, gy, cosA, sinA)]))
+                    } else {
+                      out.append(PyreonDrawCmd(kind: "polygon", fill: p.color, points: [rotated(center, gx - half, gy - half, cosA, sinA), rotated(center, gx + half, gy - half, cosA, sinA), rotated(center, gx + half, gy + half, cosA, sinA), rotated(center, gx - half, gy + half, cosA, sinA)]))
+                    }
                   }
                 }
               }
@@ -2795,6 +2817,46 @@ public func patternMarks(_ p: PyreonChartPattern, _ bounds: PyreonChartRect) -> 
         out.append(PyreonDrawCmd(kind: "line", from: rotated(center, -reach, k, cosA, -sinA), to: rotated(center, reach, k, cosA, -sinA), stroke: p.color, width: width))
         k = k + spacing
       }
+    }
+    return out
+  }
+
+public func patternImageCells(_ p: PyreonChartPattern, _ bounds: PyreonChartRect, _ imageW: Double, _ imageH: Double) -> [PyreonChartRect] {
+    var out: [PyreonChartRect] = []
+    let `repeat` = (p.`repeat` ?? "repeat")
+    if `repeat` == "grid" {
+      let sx = p.spacing > 2.0 ? p.spacing : 2.0
+      let sy = ((p.spacingY ?? sx)) > 2.0 ? (p.spacingY ?? sx) : 2.0
+      let size = p.width > 0.5 ? p.width : 0.5
+      let aspect = imageW > 0.0 && imageH > 0.0 ? imageH / imageW : 1.0
+      let w = aspect <= 1.0 ? size : Double(size) / Double(aspect)
+      let h = aspect <= 1.0 ? size * aspect : size
+      var y = floor(Double(bounds.y / Double(sy))) * sy
+      while y < bounds.y + bounds.h {
+        var x = floor(Double(bounds.x / Double(sx))) * sx
+        while x < bounds.x + bounds.w {
+          out.append(PyreonChartRect(x: x + Double((sx - w)) / 2.0, y: y + Double((sy - h)) / 2.0, w: w, h: h))
+          x = x + sx
+        }
+        y = y + sy
+      }
+      return out
+    }
+    if !(imageW > 0.0) || !(imageH > 0.0) {
+      return out
+    }
+    let tileX = `repeat` == "repeat" || `repeat` == "repeat-x"
+    let tileY = `repeat` == "repeat" || `repeat` == "repeat-y"
+    var y = tileY ? floor(Double(bounds.y / imageH)) * imageH : 0.0
+    let yEnd = tileY ? bounds.y + bounds.h : 0.5
+    while y < yEnd {
+      var x = tileX ? floor(Double(bounds.x / imageW)) * imageW : 0.0
+      let xEnd = tileX ? bounds.x + bounds.w : 0.5
+      while x < xEnd {
+        out.append(PyreonChartRect(x: x, y: y, w: imageW, h: imageH))
+        x = x + imageW
+      }
+      y = y + imageH
     }
     return out
   }

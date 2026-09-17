@@ -5,8 +5,9 @@
 // SwiftUI `Canvas` and Compose `Canvas`, which is the point of emitting a flat
 // command list rather than drawing directly.
 
+import { signal } from '@pyreon/reactivity'
 import { cornerRadii, hasCorners } from './corners'
-import { patternMarks } from './pattern'
+import { patternImageCells, patternMarks } from './pattern'
 import type { ChartGradient, ChartPattern, DrawCmd, MeasureText, Pt, Rect } from './types'
 
 /**
@@ -96,10 +97,54 @@ function tracePolyline(ctx: CanvasRenderingContext2D, points: Pt[]): void {
   for (let i = 1; i < points.length; i++) ctx.lineTo(points[i]!.x, points[i]!.y)
 }
 
+/** Bounded: a chart names a handful of textures; an unbounded map would grow with every URL ever drawn. */
+const IMAGE_CACHE_LIMIT = 64
+const imageCache = new Map<string, HTMLImageElement>()
+/**
+ * Bumped when a pattern image finishes loading. `chartImage` reads it, so the
+ * canvas host's draw effect — the only tracked caller — repaints once the
+ * texture exists instead of leaving the first, image-less frame on screen.
+ */
+const imageVersion = signal(0)
+
+/**
+ * Subscribe the caller to pattern-image loads. The canvas host's draw effect
+ * calls this so a frame first painted before its texture arrived repaints —
+ * the first paint can run outside the effect (when the canvas ref attaches),
+ * where the read inside `chartImage` would track nothing.
+ */
+export function trackChartImages(): void {
+  imageVersion()
+}
+
+function chartImage(src: string): HTMLImageElement | null {
+  let img = imageCache.get(src)
+  if (img === undefined) {
+    if (typeof Image !== 'function') return null
+    img = new Image()
+    img.onload = () => imageVersion.set(imageVersion.peek() + 1)
+    img.src = src
+    imageCache.set(src, img)
+    if (imageCache.size > IMAGE_CACHE_LIMIT) {
+      const oldest = imageCache.keys().next().value
+      if (oldest !== undefined) imageCache.delete(oldest)
+    }
+  }
+  return img.complete && img.naturalWidth > 0 ? img : null
+}
+
 function paintPattern(ctx: CanvasRenderingContext2D, pattern: ChartPattern | undefined, bounds: Rect): void {
   if (pattern === undefined) return
   ctx.save()
   ctx.clip()
+  if (pattern.kind === 'image' && pattern.image !== undefined) {
+    const img = chartImage(pattern.image)
+    if (img !== null) {
+      for (const cell of patternImageCells(pattern, bounds, img.naturalWidth, img.naturalHeight)) {
+        ctx.drawImage(img, cell.x, cell.y, cell.w, cell.h)
+      }
+    }
+  }
   for (const m of patternMarks(pattern, bounds)) {
     if (m.kind === 'line') {
       ctx.strokeStyle = m.stroke

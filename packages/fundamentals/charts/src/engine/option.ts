@@ -19,6 +19,7 @@ import { visualMapCommands } from './visual-map'
 import { TIMELINE_HEIGHT, composeSvg, resolveTimeline, splitGrids, timelineCommands, timelineSteps } from './option-composite'
 import { customCommands, customExtents } from './custom-series'
 import type { LinesSeries } from './lines'
+import { unitPolygons } from './svg-path'
 import type { CustomRenderItem, CustomSeriesPlan } from './custom-series'
 import { resolveTheme } from './theme-registry'
 import type { ThemeDefinition } from './theme-registry'
@@ -35,7 +36,7 @@ import { compileFamily, familyToSvg } from './option-family'
 import type { CompiledFamily } from './option-family'
 import { decimateShared, samplingRequest } from './sampling'
 import type { SamplingRequest } from './sampling'
-import type { ChartGradientStop, ChartPattern, DrawCmd, Domain, Double, MeasureText, Rect } from './types'
+import type { ChartGradientStop, ChartPattern, DrawCmd, Domain, Double, MeasureText, Pt, Rect } from './types'
 import type { SeriesGradient } from './gradient'
 
 /** An ECharts-shaped option. Loosely typed on purpose: the facade VALIDATES. */
@@ -178,6 +179,42 @@ function dashPeriod(v: unknown, fallback: Double): { dash: Double; period: Doubl
 
 const DECAL_SYMBOLS = new Set(['rect', 'roundRect', 'circle', 'triangle', 'diamond', 'pin', 'arrow'])
 
+/** Unit rings as the pattern's flat `shape` + per-ring counts. */
+function flatShape(rings: Pt[][]): { shape: Pt[]; shapeRings: Double[] } {
+  const shape: Pt[] = []
+  const shapeRings: Double[] = []
+  for (const r of rings) {
+    for (const q of r) shape.push(q)
+    shapeRings.push(r.length)
+  }
+  return { shape, shapeRings }
+}
+
+/**
+ * An image as the engine's URL: a string as given, or — for the element forms
+ * ECharts accepts on the web — the image's `src` or the canvas's data URL.
+ */
+function imageSource(v: unknown): string | undefined {
+  if (typeof v === 'string') return v
+  if (isObj(v) && typeof v['src'] === 'string' && (v['src'] as string) !== '') return v['src'] as string
+  if (isObj(v) && typeof v['toDataURL'] === 'function') return (v['toDataURL'] as () => string)()
+  return undefined
+}
+
+/** ECharts' image fill (`color: { image, repeat }`) as an image pattern, or undefined. */
+export function imageFill(raw: unknown, path: string, warn?: (code: OptionWarning['code'], path: string, message: string) => void): ChartPattern | undefined {
+  if (!isObj(raw) || raw['image'] === undefined) return undefined
+  const image = imageSource(raw['image'])
+  if (image === undefined) {
+    warn?.('series-option-unsupported', path + '.image', 'An image fill needs a URL, a data URI, an <img> or a <canvas>; the palette colour was used.')
+    return undefined
+  }
+  const repeatRaw = typeof raw['repeat'] === 'string' ? (raw['repeat'] as string) : 'repeat'
+  const repeat = ['repeat', 'repeat-x', 'repeat-y', 'no-repeat'].includes(repeatRaw) ? repeatRaw : 'repeat'
+  if (repeat !== repeatRaw) warn?.('series-option-unsupported', path + '.repeat', 'repeat must be repeat, repeat-x, repeat-y or no-repeat; it repeats.')
+  return { kind: 'image', color: '', spacing: 0.0, width: 0.0, image, repeat }
+}
+
 /**
  * An ECharts decal as the engine's tiled-symbol texture: the dash arrays give
  * the cell pitch, `symbolSize` scales the symbol within its dash, `rotation`
@@ -186,19 +223,26 @@ const DECAL_SYMBOLS = new Set(['rect', 'roundRect', 'circle', 'triangle', 'diamo
  */
 function decalPattern(raw: Record<string, unknown>, path: string, warn?: (code: OptionWarning['code'], path: string, message: string) => void): ChartPattern {
   const symbolRaw = typeof raw['symbol'] === 'string' ? (raw['symbol'] as string) : 'rect'
-  if (!DECAL_SYMBOLS.has(symbolRaw)) warn?.('series-option-unsupported', path + '.symbol', 'Decal symbol "' + symbolRaw + '" has no engine shape; rects were tiled instead.')
+  const isPath = symbolRaw.startsWith('path://')
+  const isImage = symbolRaw.startsWith('image://')
+  if (!DECAL_SYMBOLS.has(symbolRaw) && !isPath && !isImage) warn?.('series-option-unsupported', path + '.symbol', 'Decal symbol "' + symbolRaw + '" has no engine shape; rects were tiled instead.')
   const x = dashPeriod(raw['dashArrayX'], 5.0)
   const y = dashPeriod(raw['dashArrayY'], 5.0)
   const size = Math.max(0.5, Math.min(x.dash, y.dash) * (num(raw['symbolSize']) ?? 1.0))
   const rotation = num(raw['rotation']) ?? 0.0
+  if (isImage) {
+    if (rotation !== 0.0) warn?.('series-option-unsupported', path + '.rotation', 'An image decal is drawn upright; rotation was ignored.')
+    return { kind: 'image', color: '', spacing: x.period, width: size, spacingY: y.period, image: symbolRaw.slice('image://'.length), repeat: 'grid' }
+  }
   return {
     kind: 'symbols',
     color: typeof raw['color'] === 'string' ? (raw['color'] as string) : 'rgba(0, 0, 0, 0.2)',
     spacing: x.period,
     width: size,
     angle: -rotation * (180.0 / Math.PI),
-    symbol: symbolRaw === 'roundRect' ? 'rect' : DECAL_SYMBOLS.has(symbolRaw) ? symbolRaw : 'rect',
+    symbol: isPath ? 'path' : symbolRaw === 'roundRect' ? 'rect' : DECAL_SYMBOLS.has(symbolRaw) ? symbolRaw : 'rect',
     spacingY: y.period,
+    ...(isPath ? flatShape(unitPolygons(symbolRaw.slice('path://'.length))) : {}),
   }
 }
 
@@ -256,7 +300,8 @@ function readGradient(raw: unknown, path: string, warn: (code: OptionWarning['co
     // ECharts' other colour object: an IMAGE pattern. It has no engine form
     // (the engine's patterns are the geometric decals), so it is named rather
     // than silently painting the palette colour.
-    if (raw['image'] !== undefined) warn('series-option-unsupported', path, 'Image patterns are not supported (linear and radial gradients, and geometric decals, are); the palette colour was used.')
+    // ECharts' other colour object — an IMAGE pattern — is read by `imageFill`.
+    if (raw['image'] !== undefined && path.endsWith('lineStyle.color')) warn('series-option-unsupported', path, 'A line stroke cannot be an image pattern (fills can); the palette colour was used.')
     return undefined
   }
   const stops: ChartGradientStop[] = []
@@ -666,7 +711,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       axis: !extraAxis && (yAxisIndex === 1) !== swapY ? 'right' : undefined,
       ...(extraAxis ? { axisExtra: yAxisIndex - 2 } : {}),
       ...(onX2 ? { onX2: true, xs } : {}),
-      pattern: fillPattern(itemStyle, `${path}.itemStyle.decal`, warn) ?? (ariaDecals ? DEFAULT_DECALS[series.length % DEFAULT_DECALS.length] : undefined),
+      pattern: imageFill(itemStyle['color'], `${path}.itemStyle.color`, warn) ?? imageFill(areaStyle['color'], `${path}.areaStyle.color`, warn) ?? imageFill(s['color'], `${path}.color`, warn) ?? fillPattern(itemStyle, `${path}.itemStyle.decal`, warn) ?? (ariaDecals ? DEFAULT_DECALS[series.length % DEFAULT_DECALS.length] : undefined),
       ...(type === 'effectScatter' ? { effect: true } : {}),
       ...(type === 'pictorialBar' ? pictorialFields(s, warn, path) : {}),
       ...(kind === 'line' || kind === 'points' ? seriesSymbol(s, kind, warn, path) : {}),

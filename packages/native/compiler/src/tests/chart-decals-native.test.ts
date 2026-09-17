@@ -35,7 +35,23 @@ describe.each(['swift', 'kotlin'] as const)('decals on %s', (target) => {
   })
 
   it('names an undrawable decal symbol, like the web', () => {
-    const r = transform(app(`{ xAxis: { data: ['a'] }, yAxis: {}, series: [{ type: 'bar', itemStyle: { decal: { symbol: 'path://M0 0L1 1' } }, data: [1] }] }`), { target })
-    expect(r.warnings).toEqual([expect.stringContaining('Decal symbol "path://')])
+    const r = transform(app(`{ xAxis: { data: ['a'] }, yAxis: {}, series: [{ type: 'bar', itemStyle: { decal: { symbol: 'star' } }, data: [1] }] }`), { target })
+    expect(r.warnings).toEqual([expect.stringContaining('Decal symbol "star"')])
+  })
+
+  it('path:// and image:// decal symbols and an image fill cross pre-parsed, and compile', () => {
+    const r = transform(app(`{ xAxis: { data: ['a', 'b', 'c'] }, yAxis: {}, series: [
+      { type: 'bar', itemStyle: { decal: { symbol: 'path://M0 0L10 0L5 10Z' } }, data: [1, 2, 3] },
+      { type: 'bar', itemStyle: { decal: { symbol: 'image://data:image/png;base64,iVBORw0KGgo=' } }, data: [2, 3, 4] },
+      { type: 'bar', itemStyle: { color: { image: 'https://example.com/t.png', repeat: 'repeat-x' } }, data: [3, 4, 5] },
+    ] }`), { target })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain(`symbol${sep}"path"`)
+    expect(r.code).toContain(`shapeRings${sep}${target === 'swift' ? '[3.0]' : 'listOf(3.0)'}`)
+    expect(r.code).toContain(`repeat${sep}"grid"`)
+    expect(r.code).toContain(`image${sep}"https://example.com/t.png"`)
+    expect(r.code).toContain(`repeat${sep}"repeat-x"`)
+    if (target === 'swift' && isSwiftcAvailable()) expect(validateSwiftWithStubs(r.code)).toMatchObject({ ok: true })
+    if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
   })
 })

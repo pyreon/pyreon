@@ -16,7 +16,7 @@
 // rendering context), which is why `measureApprox` exists — see its note.
 
 import { cornerRadii, hasCorners } from './corners'
-import { patternMarks } from './pattern'
+import { patternImageCells, patternMarks } from './pattern'
 import type { ChartGradient, DrawCmd, Double, MeasureText, Pt, Rect } from './types'
 
 /**
@@ -135,6 +135,9 @@ export function collectGradients(cmds: DrawCmd[], prefix: string): { defs: strin
   return { defs: parts.length === 0 ? '' : `<defs>${parts.join('')}</defs>`, ids }
 }
 
+/** Tile size for a fill image in SVG, where the natural size is unknowable at render time. */
+const SVG_IMAGE_TILE = 32.0
+
 export function collectPatterns(cmds: DrawCmd[], prefix: string): { defs: string; ids: string[] } {
   const parts: string[] = []
   const ids: string[] = []
@@ -147,6 +150,17 @@ export function collectPatterns(cmds: DrawCmd[], prefix: string): { defs: string
     // One tile the size of the shape's box, holding the engine's marks for it —
     // the same geometry every other painter draws.
     const box = c.kind === 'rect' ? c.rect : boundsOf(c.kind === 'polygon' ? c.points : [])
+    if (p.kind === 'image' && p.image !== undefined) {
+      // SVG cannot read an image's natural size, so a fill image tiles at
+      // SVG_IMAGE_TILE (or the pattern's own width / spacingY when it has them);
+      // an image decal keeps its grid geometry exactly.
+      const tw = p.repeat === 'grid' ? p.spacing : p.width > 0.0 ? p.width : SVG_IMAGE_TILE
+      const th = p.repeat === 'grid' ? p.spacingY ?? p.spacing : p.spacingY ?? tw
+      const cells = p.repeat === 'grid' ? patternImageCells(p, box, 0.0, 0.0) : patternImageCells(p, box, tw, th)
+      const imgs = cells.map((r) => `<image href="${esc(p.image ?? '')}" x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" preserveAspectRatio="xMidYMid meet"/>`).join('')
+      parts.push(`<pattern id="${id}" x="0" y="0" width="${n(Math.max(box.x + box.w, 0.01))}" height="${n(Math.max(box.y + box.h, 0.01))}" patternUnits="userSpaceOnUse">${imgs}</pattern>`)
+      continue
+    }
     const marks = patternMarks(p, box).map(markSvg).join('')
     parts.push(`<pattern id="${id}" x="${n(box.x)}" y="${n(box.y)}" width="${n(Math.max(box.w, 0.01))}" height="${n(Math.max(box.h, 0.01))}" patternUnits="userSpaceOnUse"><g transform="translate(${n(-box.x)} ${n(-box.y)})">${marks}</g></pattern>`)
   }

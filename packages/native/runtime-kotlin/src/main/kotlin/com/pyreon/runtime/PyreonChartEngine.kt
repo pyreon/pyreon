@@ -414,6 +414,9 @@ fun patternMarks(p: PyreonChartPattern, bounds: PyreonChartRect): List<PyreonDra
     val width = if (p.width > 0.5) p.width else 0.5
     val center = PyreonChartPt(x = bounds.x + (bounds.w).toDouble() / (2.0).toDouble(), y = bounds.y + (bounds.h).toDouble() / (2.0).toDouble())
     val reach = (Math.sqrt((bounds.w * bounds.w + bounds.h * bounds.h).toDouble())).toDouble() / (2.0).toDouble() + spacing
+    if (p.kind == "image") {
+      return out
+    }
     if (p.kind == "dots") {
       var y = bounds.y
       while (y <= bounds.y + bounds.h) {
@@ -433,6 +436,8 @@ fun patternMarks(p: PyreonChartPattern, bounds: PyreonChartRect): List<PyreonDra
       val stepY = if (((p.spacingY ?: spacing)) > 2.0) (p.spacingY ?: spacing) else 2.0
       val half = (width).toDouble() / (2.0).toDouble()
       val symbol = (p.symbol ?: "rect")
+      val shape = (p.shape ?: listOf())
+      val rings = (p.shapeRings ?: listOf())
       var gy = -reach
       while (gy <= reach) {
         var gx = -reach
@@ -444,26 +449,43 @@ fun patternMarks(p: PyreonChartPattern, bounds: PyreonChartRect): List<PyreonDra
             if (symbol == "triangle") {
               out.add(PyreonDrawCmd(kind = "polygon", fill = p.color, points = listOf(rotated(center, gx, gy - half, cosA, sinA), rotated(center, gx + half, gy + half, cosA, sinA), rotated(center, gx - half, gy + half, cosA, sinA))))
             } else {
-              if (symbol == "pin") {
-                val pts: MutableList<PyreonChartPt> = mutableListOf()
-                val headR = half * 0.62
-                val headY = gy - half + headR
-                var t = 0.0
-                while (t <= 1.0) {
-                  val a = kotlin.math.PI * (0.8 + 1.4 * t)
-                  pts.add(rotated(center, gx + headR * Math.cos((a).toDouble()), headY + headR * Math.sin((a).toDouble()), cosA, sinA))
-                  t = t + 0.125
+              if (symbol == "path") {
+                var at = 0
+                for (count in rings) {
+                  val pts: MutableList<PyreonChartPt> = mutableListOf()
+                  var k = 0.0
+                  while (k < count && at < shape.length) {
+                    val q = shape[at]
+                    pts.add(rotated(center, gx + q.x * width, gy + q.y * width, cosA, sinA))
+                    at = at + 1
+                    k = k + 1.0
+                  }
+                  if (pts.length >= 3) {
+                    out.add(PyreonDrawCmd(kind = "polygon", fill = p.color, points = pts))
+                  }
                 }
-                pts.add(rotated(center, gx, gy + half, cosA, sinA))
-                out.add(PyreonDrawCmd(kind = "polygon", fill = p.color, points = pts))
               } else {
-                if (symbol == "arrow") {
-                  out.add(PyreonDrawCmd(kind = "polygon", fill = p.color, points = listOf(rotated(center, gx, gy - half, cosA, sinA), rotated(center, gx + half * 0.8, gy + half, cosA, sinA), rotated(center, gx, gy + half * 0.45, cosA, sinA), rotated(center, gx - half * 0.8, gy + half, cosA, sinA))))
+                if (symbol == "pin") {
+                  val pts: MutableList<PyreonChartPt> = mutableListOf()
+                  val headR = half * 0.62
+                  val headY = gy - half + headR
+                  var t = 0.0
+                  while (t <= 1.0) {
+                    val a = kotlin.math.PI * (0.8 + 1.4 * t)
+                    pts.add(rotated(center, gx + headR * Math.cos((a).toDouble()), headY + headR * Math.sin((a).toDouble()), cosA, sinA))
+                    t = t + 0.125
+                  }
+                  pts.add(rotated(center, gx, gy + half, cosA, sinA))
+                  out.add(PyreonDrawCmd(kind = "polygon", fill = p.color, points = pts))
                 } else {
-                  if (symbol == "diamond") {
-                    out.add(PyreonDrawCmd(kind = "polygon", fill = p.color, points = listOf(rotated(center, gx, gy - half, cosA, sinA), rotated(center, gx + half, gy, cosA, sinA), rotated(center, gx, gy + half, cosA, sinA), rotated(center, gx - half, gy, cosA, sinA))))
+                  if (symbol == "arrow") {
+                    out.add(PyreonDrawCmd(kind = "polygon", fill = p.color, points = listOf(rotated(center, gx, gy - half, cosA, sinA), rotated(center, gx + half * 0.8, gy + half, cosA, sinA), rotated(center, gx, gy + half * 0.45, cosA, sinA), rotated(center, gx - half * 0.8, gy + half, cosA, sinA))))
                   } else {
-                    out.add(PyreonDrawCmd(kind = "polygon", fill = p.color, points = listOf(rotated(center, gx - half, gy - half, cosA, sinA), rotated(center, gx + half, gy - half, cosA, sinA), rotated(center, gx + half, gy + half, cosA, sinA), rotated(center, gx - half, gy + half, cosA, sinA))))
+                    if (symbol == "diamond") {
+                      out.add(PyreonDrawCmd(kind = "polygon", fill = p.color, points = listOf(rotated(center, gx, gy - half, cosA, sinA), rotated(center, gx + half, gy, cosA, sinA), rotated(center, gx, gy + half, cosA, sinA), rotated(center, gx - half, gy, cosA, sinA))))
+                    } else {
+                      out.add(PyreonDrawCmd(kind = "polygon", fill = p.color, points = listOf(rotated(center, gx - half, gy - half, cosA, sinA), rotated(center, gx + half, gy - half, cosA, sinA), rotated(center, gx + half, gy + half, cosA, sinA), rotated(center, gx - half, gy + half, cosA, sinA))))
+                    }
                   }
                 }
               }
@@ -486,6 +508,46 @@ fun patternMarks(p: PyreonChartPattern, bounds: PyreonChartRect): List<PyreonDra
         out.add(PyreonDrawCmd(kind = "line", from = rotated(center, -reach, k, cosA, -sinA), to = rotated(center, reach, k, cosA, -sinA), stroke = p.color, width = width))
         k = k + spacing
       }
+    }
+    return out
+  }
+
+fun patternImageCells(p: PyreonChartPattern, bounds: PyreonChartRect, imageW: Double, imageH: Double): List<PyreonChartRect> {
+    val out: MutableList<PyreonChartRect> = mutableListOf()
+    val repeat = (p.repeat ?: "repeat")
+    if (repeat == "grid") {
+      val sx = if (p.spacing > 2.0) p.spacing else 2.0
+      val sy = if (((p.spacingY ?: sx)) > 2.0) (p.spacingY ?: sx) else 2.0
+      val size = if (p.width > 0.5) p.width else 0.5
+      val aspect = if (imageW > 0.0 && imageH > 0.0) (imageH).toDouble() / (imageW).toDouble() else 1.0
+      val w = if (aspect <= 1.0) size else (size).toDouble() / (aspect).toDouble()
+      val h = if (aspect <= 1.0) size * aspect else size
+      var y = Math.floor((bounds.y).toDouble() / (sy).toDouble()) * sy
+      while (y < bounds.y + bounds.h) {
+        var x = Math.floor((bounds.x).toDouble() / (sx).toDouble()) * sx
+        while (x < bounds.x + bounds.w) {
+          out.add(PyreonChartRect(x = x + ((sx - w)).toDouble() / (2.0).toDouble(), y = y + ((sy - h)).toDouble() / (2.0).toDouble(), w = w, h = h))
+          x = x + sx
+        }
+        y = y + sy
+      }
+      return out
+    }
+    if (!(imageW > 0.0) || !(imageH > 0.0)) {
+      return out
+    }
+    val tileX = repeat == "repeat" || repeat == "repeat-x"
+    val tileY = repeat == "repeat" || repeat == "repeat-y"
+    var y = if (tileY) Math.floor((bounds.y).toDouble() / (imageH).toDouble()) * imageH else 0.0
+    val yEnd = if (tileY) bounds.y + bounds.h else 0.5
+    while (y < yEnd) {
+      var x = if (tileX) Math.floor((bounds.x).toDouble() / (imageW).toDouble()) * imageW else 0.0
+      val xEnd = if (tileX) bounds.x + bounds.w else 0.5
+      while (x < xEnd) {
+        out.add(PyreonChartRect(x = x, y = y, w = imageW, h = imageH))
+        x = x + imageW
+      }
+      y = y + imageH
     }
     return out
   }

@@ -63,9 +63,16 @@ public struct PyreonChartPattern: Codable, Equatable {
     public var angle: Double?
     public var symbol: String?
     public var spacingY: Double?
-    public init(kind: String, color: String, spacing: Double, width: Double, angle: Double? = nil, symbol: String? = nil, spacingY: Double? = nil) {
+    /// Image patterns: a URL or data URI and the tiling mode.
+    public var image: String?
+    public var `repeat`: String?
+    /// A `symbol: path` decal: unit-box points, rings flattened, with each ring's point count.
+    public var shape: [PyreonChartPt]?
+    public var shapeRings: [Double]?
+    public init(kind: String, color: String, spacing: Double, width: Double, angle: Double? = nil, symbol: String? = nil, spacingY: Double? = nil, image: String? = nil, `repeat`: String? = nil, shape: [PyreonChartPt]? = nil, shapeRings: [Double]? = nil) {
         self.kind = kind; self.color = color; self.spacing = spacing; self.width = width
         self.angle = angle; self.symbol = symbol; self.spacingY = spacingY
+        self.image = image; self.`repeat` = `repeat`; self.shape = shape; self.shapeRings = shapeRings
     }
 }
 
@@ -403,8 +410,51 @@ func pyreonRoundedRectPath(_ r: PyreonChartRect, _ radii: [Double]) -> Path {
 
 /// A SwiftUI Canvas walking the engine's flat draw list — the native twin of
 /// canvas-web's renderer (same dispatch, same text-anchor semantics).
+#if canImport(UIKit)
+/// Pattern images, loaded once per source and published so a canvas that
+/// asked before the bytes arrived redraws when they do. Bounded — a chart
+/// names a handful of textures.
+public final class PyreonChartImages: ObservableObject {
+    public static let shared = PyreonChartImages()
+    @Published public private(set) var images: [String: UIImage] = [:]
+    private var pending = Set<String>()
+    private var order: [String] = []
+    private let limit = 64
+
+    public func image(_ src: String) -> UIImage? {
+        if let img = images[src] { return img }
+        if pending.contains(src) { return nil }
+        guard let url = URL(string: src) else { return nil }
+        pending.insert(src)
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            let img = data.flatMap { UIImage(data: $0) }
+            DispatchQueue.main.async {
+                self.pending.remove(src)
+                guard let img else { return }
+                self.images[src] = img
+                self.order.append(src)
+                if self.order.count > self.limit { self.images.removeValue(forKey: self.order.removeFirst()) }
+            }
+        }.resume()
+        return nil
+    }
+}
+#endif
+
 private func pyreonPaintPattern(_ context: inout GraphicsContext, _ pattern: PyreonChartPattern?, _ clip: Path, _ bounds: CGRect) {
     guard let pattern else { return }
+    #if canImport(UIKit)
+    if pattern.kind == "image", let src = pattern.image {
+        guard let img = PyreonChartImages.shared.image(src) else { return }
+        let cells = patternImageCells(pattern, PyreonChartRect(x: Double(bounds.minX), y: Double(bounds.minY), w: Double(bounds.width), h: Double(bounds.height)), Double(img.size.width), Double(img.size.height))
+        let resolved = context.resolve(Image(uiImage: img))
+        context.drawLayer { layer in
+            layer.clip(to: clip)
+            for r in cells { layer.draw(resolved, in: CGRect(x: r.x, y: r.y, width: r.w, height: r.h)) }
+        }
+        return
+    }
+    #endif
     // The marks come from the engine's `patternMarks`, the geometry every
     // target paints; this only clips to the shape and draws them.
     let marks = patternMarks(pattern, PyreonChartRect(x: Double(bounds.minX), y: Double(bounds.minY), w: Double(bounds.width), h: Double(bounds.height)))
@@ -546,6 +596,10 @@ public func pyreonUniversalTweenChartCommands(_ from: [PyreonDrawCmd], _ to: [Py
 private struct PyreonStaticChartCanvas: View {
     public var cmds: [PyreonDrawCmd]
     public var fontFamily: String?
+    #if canImport(UIKit)
+    // Observed so a pattern image that finishes loading repaints the canvas.
+    @ObservedObject private var images = PyreonChartImages.shared
+    #endif
     public init(cmds: [PyreonDrawCmd], fontFamily: String? = nil) {
         self.cmds = cmds
         self.fontFamily = fontFamily
