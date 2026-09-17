@@ -92,6 +92,11 @@ final class PyreonTasksUITests: XCTestCase {
         }
     }
 
+    private func waitForValue(_ element: XCUIElement, _ value: String, timeout: TimeInterval) -> Bool {
+        let predicate = NSPredicate(format: "value == %@", value)
+        return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: element)], timeout: timeout) == .completed
+    }
+
     private func redPixels(_ png: Data) -> Int { colorPixels(png, 255, 0, 0) }
     private func greyPixels(_ png: Data) -> Int { colorPixels(png, 204, 204, 204) }
 
@@ -910,6 +915,17 @@ final class PyreonTasksUITests: XCTestCase {
         let redAfter = redPixels(zoomChart.screenshot().pngRepresentation)
         XCTAssertGreaterThan(redBefore, 100, "the zoomed bar chart painted no red bars before the drag")
         XCTAssertGreaterThan(redAfter, redBefore * 3, "dragging the dataZoom band did not move the window to the tall bars (red before \(redBefore), after \(redAfter))")
+        // The timeline: a tap on the last checkpoint shows that step; next wraps to the first.
+        let timeline = app.descendants(matching: .any).matching(identifier: "gal-timeline").firstMatch
+        XCTAssertTrue(timeline.waitForExistence(timeout: 10), "gal-timeline missing on the gallery")
+        scrollFullyOnScreen(timeline, in: app)
+        XCTAssertEqual(timeline.value as? String, "2019", "the timeline did not open on its first step")
+        let tlOrigin = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let tlY = timeline.frame.height - 40 + 16
+        tlOrigin.withOffset(CGVector(dx: timeline.frame.width - 48, dy: tlY)).tap()
+        XCTAssertTrue(waitForValue(timeline, "2021", timeout: 5), "tapping the last checkpoint did not show it (value: \(String(describing: timeline.value)))")
+        tlOrigin.withOffset(CGVector(dx: timeline.frame.width - 33, dy: tlY)).tap()
+        XCTAssertTrue(waitForValue(timeline, "2019", timeout: 5), "next did not wrap to the first step (value: \(String(describing: timeline.value)))")
         // The geo route trail MOVES too: two screenshots half a second apart differ.
         let geoTrail = app.descendants(matching: .any).matching(identifier: "gal-geo-trail").firstMatch
         XCTAssertTrue(geoTrail.waitForExistence(timeout: 10), "gal-geo-trail canvas missing on the gallery")
@@ -932,7 +948,7 @@ final class PyreonTasksUITests: XCTestCase {
         // The lines trail MOVES: two screenshots of its canvas half a second
         // apart differ (the simulator runs with Reduce Motion off).
         let linesChart = app.descendants(matching: .any).matching(identifier: "gal-lines").firstMatch
-        scrollIntoView(linesChart, in: app)
+        scrollFullyOnScreen(linesChart, in: app)
         XCTAssertTrue(linesChart.waitForExistence(timeout: 10), "gal-lines canvas missing on the gallery")
         let framesBefore = linesChart.screenshot().pngRepresentation
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))

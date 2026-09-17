@@ -477,6 +477,7 @@ class Role {
 // property) + heading() (extension fn) back the accessibilityRole vocabulary.
 class SemanticsPropertyReceiver {
   var contentDescription: String = ""
+  var stateDescription: String = ""
   var role: Role = Role.Button
   fun heading() {}
 }

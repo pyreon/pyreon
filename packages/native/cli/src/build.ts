@@ -321,6 +321,10 @@ export function conditionalKotlinImports(emitted: string): string {
   }
   // `contentDescription` (accessibilityLabel) — gated precisely so a role-only
   // `.semantics { role = … }` emit doesn't pull an unused import.
+  // A timeline OptionChart states its current step as the node's stateDescription.
+  if (emitted.includes('stateDescription =')) {
+    imports.push('import androidx.compose.ui.semantics.stateDescription')
+  }
   if (emitted.includes('contentDescription =')) {
     imports.push('import androidx.compose.ui.semantics.contentDescription')
   }

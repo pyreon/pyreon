@@ -101,6 +101,59 @@ describe('OptionChart (real browser)', () => {
     m.unmount()
   })
 
+  it('timeline: a checkpoint click jumps, prev / next step and wrap, play runs to the end without loop and stops', async () => {
+    const option: EChartsOption = {
+      baseOption: { animation: false, timeline: { data: ['2019', '2020', '2021'], loop: false, playInterval: 60 }, xAxis: { type: 'category', data: ['a', 'b'] }, yAxis: {}, series: [{ type: 'bar' }] },
+      options: [{ series: [{ data: [1, 2] }] }, { series: [{ data: [3, 4] }] }, { series: [{ data: [5, 6] }] }],
+    }
+    const changes: number[] = []
+    const m = mountInBrowser(h(OptionChart, { option, width: 400, height: 240, onTimelineChange: (i: number) => changes.push(i) }))
+    await flush()
+    const c = m.container.querySelector('canvas')!
+    const r = c.getBoundingClientRect()
+    const root = m.container.querySelector('[data-pyreon-step]')!
+    const click = (x: number) => c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + x, clientY: r.top + 240 - 24 }))
+    // The axis runs from x 72 (after play + prev) to 352 (before next); the last checkpoint sits at 352.
+    click(352)
+    await flush()
+    expect(changes).toEqual([2])
+    expect(root.getAttribute('data-pyreon-step')).toBe('2')
+    // Next wraps from the last step to the first; previous wraps back.
+    click(400 - 24 - 9)
+    await flush()
+    expect(changes[changes.length - 1]).toBe(0)
+    click(24 + 18 + 6 + 9)
+    await flush()
+    expect(changes[changes.length - 1]).toBe(2)
+    // Play from step 0: it runs to the last step and, without loop, stops there.
+    click(212)
+    click(24 + 9)
+    await wait(400)
+    expect(changes.slice(-2)).toEqual([1, 2])
+    const settled = changes.length
+    await wait(200)
+    expect(changes.length).toBe(settled)
+    m.unmount()
+  })
+
+  it('timeline on a family chart: the strip is its own canvas under the host, and a click jumps', async () => {
+    const option: EChartsOption = {
+      baseOption: { animation: false, timeline: { data: ['q1', 'q2'] }, series: [{ type: 'pie' }] },
+      options: [{ series: [{ data: [{ name: 'x', value: 1 }, { name: 'y', value: 2 }] }] }, { series: [{ data: [{ name: 'x', value: 5 }, { name: 'y', value: 1 }] }] }],
+    }
+    const changes: number[] = []
+    const m = mountInBrowser(h(OptionChart, { option, width: 400, height: 240, onTimelineChange: (i: number) => changes.push(i) }))
+    await flush()
+    const canvases = m.container.querySelectorAll('canvas')
+    const bar = canvases[canvases.length - 1]!
+    expect(bar.getAttribute('aria-hidden')).toBe('true')
+    const r = bar.getBoundingClientRect()
+    bar.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 352, clientY: r.top + 16 }))
+    await flush()
+    expect(changes).toEqual([1])
+    m.unmount()
+  })
+
   it('animates a lines trail on a frame clock: the canvas changes between frames, and holds still under reduced motion', async () => {
     const option: EChartsOption = { xAxis: {}, yAxis: {}, series: [{ type: 'lines', effect: { show: true, period: 1, trailLength: 0.3, color: '#ff0000', symbolSize: 10 }, data: [{ coords: [[0, 0], [10, 10]] }] }] }
     const snapshot = (c: HTMLCanvasElement): string => {

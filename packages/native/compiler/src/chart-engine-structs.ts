@@ -4318,6 +4318,129 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "TimelineStrip",
+    "fields": [
+      {
+        "name": "labels",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "string"
+          }
+        }
+      },
+      {
+        "name": "loop",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "rewind",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "showPlay",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "showPrev",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "showNext",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "label",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "accent",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "line",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "fontSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "TimelineHit",
+    "fields": [
+      {
+        "name": "kind",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "index",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "TimelineAxis",
+    "fields": [
+      {
+        "name": "x0",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "x1",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "cy",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "FunnelStage",
     "fields": [
       {
@@ -12019,6 +12142,9 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "SunburstFrame",
   "SunburstOptions",
   "Tick",
+  "TimelineAxis",
+  "TimelineHit",
+  "TimelineStrip",
   "TitleLayout",
   "TitleOptions",
   "TooltipContent",

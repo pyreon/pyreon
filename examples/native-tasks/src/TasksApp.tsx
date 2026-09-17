@@ -840,6 +840,14 @@ function GalleryPage() {
           height={220}
           data-testid="gal-datazoom"
         />
+        <OptionChart
+          option={{
+            baseOption: { timeline: { data: ['2019', '2020', '2021'] }, xAxis: { type: 'category', data: ['a', 'b', 'c'] }, yAxis: { min: 0, max: 10 }, series: [{ type: 'bar' }] },
+            options: [{ series: [{ data: [2, 3, 1] }] }, { series: [{ data: [5, 6, 4] }] }, { series: [{ data: [9, 8, 10] }] }],
+          }}
+          height={240}
+          data-testid="gal-timeline"
+        />
         <Button onPress={() => navigate('/tasks')} data-testid="gal-back">
           Back to tasks
         </Button>

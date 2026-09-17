@@ -561,6 +561,7 @@ extension View {
   public func tint(_ color: Color?) -> some View { self }
   public func accessibilityIdentifier(_ id: String) -> some View { self }
   public func accessibilityLabel(_ label: String) -> some View { self }
+  public func accessibilityValue(_ value: String) -> some View { self }
   public func accessibilityElement(children: AccessibilityChildBehavior) -> some View { self }
   public func accessibilityAddTraits(_ traits: AccessibilityTraits) -> some View { self }
   public func keyboardType(_ type: UIKeyboardType) -> some View { self }

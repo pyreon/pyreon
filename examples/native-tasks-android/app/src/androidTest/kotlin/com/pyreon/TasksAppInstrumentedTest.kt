@@ -57,6 +57,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -897,6 +898,15 @@ class TasksAppInstrumentedTest {
         composeRule.waitForIdle()
         val redAfter = redPixels(zoomChart.captureToImage().asAndroidBitmap())
         assertTrue("dragging the dataZoom band did not move the window to the tall bars (red before $redBefore, after $redAfter)", redAfter > redBefore * 3)
+        // The timeline: a tap on the last checkpoint shows that step; next wraps to the first.
+        val timeline = composeRule.onNodeWithTag("gal-timeline").performScrollTo()
+        timeline.assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2019"))
+        timeline.performTouchInput { click(Offset(width - 48.dp.toPx(), height - (40 - 16).dp.toPx())) }
+        composeRule.waitForIdle()
+        timeline.assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2021"))
+        timeline.performTouchInput { click(Offset(width - 33.dp.toPx(), height - (40 - 16).dp.toPx())) }
+        composeRule.waitForIdle()
+        timeline.assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2019"))
         // The lines trail renders. Its MOTION is proven on the iOS device lane
         // and in real Chromium; here it cannot be: the trail runs on
         // withInfiniteAnimationFrameNanos (a plain frame loop kept this harness

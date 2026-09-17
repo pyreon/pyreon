@@ -103,7 +103,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -13376,7 +13376,57 @@ function swiftChartSelectBody(handler: ExprIR, hitExpr: string, indent: number):
   return `(${emitSwiftExpr(handler, indent)})(${hitExpr})`
 }
 
+let _swiftTimelineSeq = 0
+
+/**
+ * A timeline OptionChart: every step's host, the current one shown, over a
+ * tappable strip (checkpoints, play / previous / next) drawn and hit-tested
+ * by the engine's `timeline-strip`. Auto-play is a task keyed on the play
+ * state; the step and play state are host state.
+ */
+function emitSwiftChartTimeline(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const strip = chartTimelineStripLiteral(chartAttrExpr(e, 'timelineStrip'), SWIFT_CHART_TARGET)
+  if (strip === null) return 'EmptyView()'
+  const k = _swiftTimelineSeq++
+  const step = `pyreonTl${k}`
+  const playing = `pyreonTlPlay${k}`
+  const cur = readStaticAttr(e, 'timelineCurrent')
+  const autoPlay = readStaticAttr(e, 'timelineAutoPlay') === true
+  const interval = readStaticAttr(e, 'timelineInterval')
+  const ms = typeof interval === 'number' && interval > 0 ? interval : 2000
+  _hostStateDecls.push(`@State private var ${step}: Int = ${typeof cur === 'number' ? cur : 0}`)
+  _hostStateDecls.push(`@State private var ${playing}: Bool = ${autoPlay}`)
+  // A member, not a local: the auto-play task and the accessibility value read it outside the stack.
+  _hostStateDecls.push(`private var pyreonTlStrip${k}: TimelineStrip { ${strip} }`)
+  const pad = ' '.repeat(indent + 2)
+  const children = e.children.flatMap((c) => (c.kind === 'expr' && c.expr.kind === 'jsx-element' ? [c.expr] : []))
+  const branches = children.map((c, i) => `${i === 0 ? 'if' : ' else if'} ${step} == ${i} {\n${pad}  ${emitSwiftChartHost(c, indent + 2)}\n${pad}}`).join('')
+  const onChange = e.attrs.find((a) => a.kind === 'event' && a.name === 'timelinechange')
+  const notify = onChange?.kind === 'event' ? `.onChange(of: ${step}) { ${swiftChartSelectBody(onChange.handler, step, indent)} }` : ''
+  const labels = `pyreonTlStrip${k}.labels`
+  const box = 'PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonTlGeo.size.width), h: 40.0)'
+  const tap =
+    `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonT in ` +
+    `let pyreonHit = timelineHit(pyreonTlStrip${k}, ${box}, Double(pyreonT.location.x), Double(pyreonT.location.y)); ` +
+    `if pyreonHit.kind == 2.0 { ${playing}.toggle() } else if pyreonHit.kind > 0.0 { ${playing} = false; ` +
+    `let pyreonNext = pyreonHit.kind == 1.0 ? pyreonHit.index : timelineAdvance(pyreonTlStrip${k}, Double(${step}), pyreonHit.kind == 3.0 ? -1.0 : 1.0, true); ` +
+    `if pyreonNext >= 0.0 { ${step} = Int(pyreonNext) } } })`
+  const task =
+    `.task(id: ${playing}) { while ${playing} { try? await _Concurrency.Task.sleep(nanoseconds: UInt64(${ms}) * 1_000_000); if !${playing} { break }; ` +
+    `let pyreonNext = timelineTick(pyreonTlStrip${k}, Double(${step})); if pyreonNext < 0.0 { ${playing} = false } else { ${step} = Int(pyreonNext) } } }`
+  const idAttr = readStaticAttr(e, 'data-testid')
+  const id = typeof idAttr === 'string' ? `.accessibilityElement(children: .contain).accessibilityIdentifier(${JSON.stringify(idAttr)})` : ''
+  return (
+    `VStack(spacing: 0) {\n` +
+    `${pad}${branches}\n` +
+    `${pad}GeometryReader { pyreonTlGeo in PyreonChartCanvas(cmds: renderTimeline(pyreonTlStrip${k}, ${box}, Double(${step}), ${playing}), animated: false)${tap} }.frame(height: 40.0)\n` +
+    // The value AFTER the container: `.accessibilityElement(children: .contain)` starts a new element and drops what came before it.
+    `${' '.repeat(indent)}}${task}${notify}${id}.accessibilityValue(${step} < ${labels}.count ? ${labels}[${step}] : "")`
+  )
+}
+
 function emitSwiftChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  if (e.tag === CHART_TIMELINE_TAG) return emitSwiftChartTimeline(e, indent)
   const inner = emitSwiftChartHostInner(e, indent)
   // `theme.background` — the web host paints the canvas ground with it (the
   // default is transparent, so a host without a theme is emitted as before).

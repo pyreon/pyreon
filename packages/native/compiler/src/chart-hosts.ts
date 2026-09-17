@@ -19,9 +19,9 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import { compileOption, resolveYDomain, DEFAULT_DECALS, visualMapSpec, visualStripOf, fillPattern, imageFill, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
+import { compileOption, defaultTimelineStrip, resolveYDomain, timelineSteps, DEFAULT_DECALS, visualMapSpec, visualStripOf, fillPattern, imageFill, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
 import type { ChartPattern, VisualMapSpec, GraphicElement, RichStyle, SamplingRequest } from '@pyreon/charts/option-layer'
-import type { AttrIR, ExprIR } from './types'
+import type { AttrIR, ChildIR, ExprIR } from './types'
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 
 /** Per-target expression helpers the host specs build their draw list with. */
@@ -960,6 +960,85 @@ const mergeStaticOptionObjects = (
   return { kind: 'object', fields }
 }
 
+/** The height the web OptionChart defaults to. */
+const OPTION_CHART_HEIGHT = 320
+/** The strip's height — the web's `TIMELINE_HEIGHT`. */
+const TIMELINE_STRIP_H = 40
+
+function lowerTimelineSteps(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  raw: Extract<ExprIR, { kind: 'object' }>,
+  resolve: (name: string) => ExprIR | undefined,
+  warn: (m: string) => void,
+): Extract<ExprIR, { kind: 'jsx-element' }> | null {
+  const base = literalOf(objectField(raw, 'baseOption'), resolve)
+  const timeline = literalOf(objectField(raw, 'timeline'), resolve) ?? (base?.kind === 'object' ? literalOf(objectField(base, 'timeline'), resolve) : undefined)
+  const steps = literalOf(objectField(raw, 'options'), resolve)
+  if (timeline?.kind !== 'object' || steps?.kind !== 'array' || steps.elements.length === 0) return null
+  const timelineValue = irToValue(timeline, resolve)
+  if (!timelineValue.ok || !isPlainRecord(timelineValue.value)) {
+    warn('<OptionChart option.timeline>: a native timeline needs a literal timeline object; native renders one step.')
+    return null
+  }
+  const read = timelineSteps({ timeline: timelineValue.value })
+  if (read === null) return null
+  const n = steps.elements.length
+  const labels = read.labels.length >= n ? read.labels.slice(0, n) : [...read.labels, ...Array.from({ length: n - read.labels.length }, (_, i) => String(read.labels.length + i))]
+  const heightAttr = litNumber(literalOf(attrOf(e, 'height'), resolve))
+  const total = heightAttr ?? OPTION_CHART_HEIGHT
+  // Each step is its own option: the same element, pinned to step i, in the height the strip leaves.
+  const seen = new Set<string>()
+  const once = (m: string): void => {
+    if (seen.has(m)) return
+    seen.add(m)
+    warn(m)
+  }
+  const children: ChildIR[] = []
+  for (let i = 0; i < n; i++) {
+    const attrs: AttrIR[] = e.attrs.filter((a) => !(a.kind === 'attr' && (a.name === 'height' || a.name === 'data-testid' || a.name === 'timelineIndex')) && !(a.kind === 'event' && a.name === 'timelinechange'))
+    attrs.push({ kind: 'attr', name: 'timelineIndex', value: lit(i) })
+    attrs.push({ kind: 'attr', name: 'height', value: lit(Math.max(0, total - TIMELINE_STRIP_H)) })
+    const child = desugarOptionChart({ ...e, attrs }, resolve, once)
+    if (child === undefined) return null
+    children.push({ kind: 'expr', expr: child })
+  }
+  const strip = { ...(read.strip ?? defaultTimelineStrip(labels)), labels }
+  const outer: AttrIR[] = [
+    { kind: 'attr', name: 'timelineStrip', value: valueToIr(strip) },
+    { kind: 'attr', name: 'timelineCurrent', value: lit(Math.min(n - 1, read.current)) },
+    { kind: 'attr', name: 'timelineAutoPlay', value: lit(read.autoPlay) },
+    { kind: 'attr', name: 'timelineInterval', value: lit(read.playInterval) },
+    { kind: 'attr', name: 'height', value: lit(total) },
+  ]
+  for (const a of e.attrs) if ((a.kind === 'attr' && a.name === 'data-testid') || (a.kind === 'event' && a.name === 'timelinechange')) outer.push(a)
+  return { kind: 'jsx-element', tag: CHART_TIMELINE_TAG, attrs: outer, children }
+}
+
+/** The synthetic element a timeline OptionChart lowers to. */
+export const CHART_TIMELINE_TAG = 'ChartTimeline'
+
+/** A `TimelineStrip` literal IR as target source. */
+export function chartTimelineStripLiteral(expr: ExprIR | undefined, t: ChartHostTarget): string | null {
+  if (expr === undefined) return null
+  const v = irToValue(expr, () => undefined)
+  if (!v.ok || !isPlainRecord(v.value)) return null
+  const s = v.value
+  const str = (x: unknown): string => JSON.stringify(String(x))
+  const labels = Array.isArray(s['labels']) ? (s['labels'] as unknown[]).map(str) : []
+  return t.struct('TimelineStrip', [
+    ['labels', t.list(labels)],
+    ['loop', String(s['loop'] === true)],
+    ['rewind', String(s['rewind'] === true)],
+    ['showPlay', String(s['showPlay'] === true)],
+    ['showPrev', String(s['showPrev'] === true)],
+    ['showNext', String(s['showNext'] === true)],
+    ['label', str(s['label'])],
+    ['accent', str(s['accent'])],
+    ['line', str(s['line'])],
+    ['fontSize', chartDouble(typeof s['fontSize'] === 'number' ? (s['fontSize'] as number) : 11)],
+  ])
+}
+
 const resolveStaticTimelineOption = (
   option: Extract<ExprIR, { kind: 'object' }>,
   requestedIndex: number | undefined,
@@ -1023,6 +1102,14 @@ export function desugarOptionChart(
   const timelineIndex = requestedTimeline === undefined ? undefined : litNumber(requestedTimeline)
   if (requestedTimeline !== undefined && timelineIndex === undefined) {
     warn('<OptionChart timelineIndex>: native needs a static numeric index; the option currentIndex is used.')
+  }
+  // A timeline with static steps and no pinned `timelineIndex`: every step
+  // lowers to its own host, and `ChartTimeline` switches between them under a
+  // tappable strip with play / previous / next — the web's timeline, not a
+  // frozen first step.
+  if (requestedTimeline === undefined) {
+    const lowered = lowerTimelineSteps(e, raw, resolve, warn)
+    if (lowered !== null) return lowered
   }
   raw = resolveStaticTimelineOption(raw, timelineIndex, resolve, warn)
   raw = resolveStaticDataset(raw, resolve, warn)

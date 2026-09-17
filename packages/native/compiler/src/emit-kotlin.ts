@@ -95,7 +95,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -11320,7 +11320,63 @@ function kotlinChartSelectBody(handler: ExprIR, hitExpr: string, indent: number)
   return `(${emitKotlinExpr(handler, indent)})(${hitExpr})`
 }
 
+let _kotlinTimelineSeq = 0
+
+/** Mirror of the Swift timeline: every step's host, the current one shown, over the engine-drawn strip. */
+function emitKotlinChartTimeline(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const strip = chartTimelineStripLiteral(chartAttrExprKotlin(e, 'timelineStrip'), KOTLIN_CHART_TARGET)
+  if (strip === null) return 'Box {}'
+  const k = _kotlinTimelineSeq++
+  const step = `pyreonTl${k}`
+  const playing = `pyreonTlPlay${k}`
+  const cur = readStaticAttrKotlin(e, 'timelineCurrent')
+  const autoPlay = readStaticAttrKotlin(e, 'timelineAutoPlay') === true
+  const interval = readStaticAttrKotlin(e, 'timelineInterval')
+  const ms = typeof interval === 'number' && interval > 0 ? Math.round(interval) : 2000
+  const pad = ' '.repeat(indent + 2)
+  const children = e.children.flatMap((c) => (c.kind === 'expr' && c.expr.kind === 'jsx-element' ? [c.expr] : []))
+  const branches = children.map((c, i) => `${pad}  ${i} -> {\n${pad}    ${emitKotlinChartHost(c, indent + 4)}\n${pad}  }\n`).join('')
+  const onChange = e.attrs.find((a) => a.kind === 'event' && a.name === 'timelinechange')
+  const idAttr = readStaticAttrKotlin(e, 'data-testid')
+  const tag = typeof idAttr === 'string' ? `.testTag(${JSON.stringify(idAttr)})` : ''
+  const labels = `pyreonTlStrip${k}.labels`
+  const box = 'PyreonChartRect(0.0, 0.0, pyreonTlW, 40.0)'
+  const tap =
+    `detectTapGestures { pyreonT -> ` +
+    `val pyreonHit = timelineHit(pyreonTlStrip${k}, ${box}, (pyreonT.x / pyreonTlDensity).toDouble(), (pyreonT.y / pyreonTlDensity).toDouble()); ` +
+    `if (pyreonHit.kind == 2.0) { ${playing} = !${playing} } else if (pyreonHit.kind > 0.0) { ${playing} = false; ` +
+    `val pyreonNext = if (pyreonHit.kind == 1.0) pyreonHit.index else timelineAdvance(pyreonTlStrip${k}, ${step}.toDouble(), if (pyreonHit.kind == 3.0) -1.0 else 1.0, true); ` +
+    `if (pyreonNext >= 0.0) ${step} = pyreonNext.toInt() } }`
+  const lines = [
+    `run {`,
+    `${pad}var ${step} by remember { mutableStateOf(${typeof cur === 'number' ? cur : 0}) }`,
+    `${pad}var ${playing} by remember { mutableStateOf(${autoPlay}) }`,
+    `${pad}val pyreonTlStrip${k}: TimelineStrip = ${strip}`,
+    `${pad}LaunchedEffect(${playing}) { while (${playing}) { delay(${ms}L); if (!${playing}) break; val pyreonNext = timelineTick(pyreonTlStrip${k}, ${step}.toDouble()); if (pyreonNext < 0.0) ${playing} = false else ${step} = pyreonNext.toInt() } }`,
+  ]
+  if (onChange?.kind === 'event') {
+    // Like the web: a change is reported, the opening step is not.
+    lines.push(`${pad}val pyreonTlSeen${k} = remember { mutableStateOf(false) }`)
+    lines.push(`${pad}LaunchedEffect(${step}) { if (pyreonTlSeen${k}.value) { ${kotlinChartSelectBody(onChange.handler, step, indent)} } else pyreonTlSeen${k}.value = true }`)
+  }
+  lines.push(
+    `${pad}Column(modifier = Modifier.fillMaxWidth()${tag}.semantics { stateDescription = if (${step} < ${labels}.size) ${labels}[${step}] else "" }) {`,
+    `${pad}  when (${step}) {`,
+    `${branches}${pad}    else -> {}`,
+    `${pad}  }`,
+    `${pad}  BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(40.dp)) {`,
+    `${pad}    val pyreonTlW = maxWidth.value.toDouble()`,
+    `${pad}    val pyreonTlDensity = LocalDensity.current.density`,
+    `${pad}    PyreonChartCanvas(cmds = renderTimeline(pyreonTlStrip${k}, ${box}, ${step}.toDouble(), ${playing}), modifier = Modifier.fillMaxSize().pointerInput(pyreonTlW, ${step}, ${playing}) { ${tap} }, animated = false)`,
+    `${pad}  }`,
+    `${pad}}`,
+    `${' '.repeat(indent)}}`,
+  )
+  return lines.join('\n')
+}
+
 function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  if (e.tag === CHART_TIMELINE_TAG) return emitKotlinChartTimeline(e, indent)
   const inner = emitKotlinChartHostInner(e, indent)
   // `theme.background` — the ground the web host paints; see the Swift emitter. A Box carries it, since the host is a composable call.
   if (e.tag === GRAMMAR_CHART_HOST || inner === 'Box {}') return inner

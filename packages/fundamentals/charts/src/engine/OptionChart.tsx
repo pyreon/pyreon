@@ -20,7 +20,9 @@ import type { ZoomWindow } from './zoom'
 import type { CompiledOption, EChartsOption, OptionPlan } from './option'
 import { familyHostNode } from './family-host'
 import type { FamilyPlan } from './option-family'
-import { TIMELINE_HEIGHT, mergeChartOptions, resolveTimeline, timelineCommands, timelineSteps } from './option-composite'
+import { TIMELINE_HEIGHT, defaultTimelineStrip, mergeChartOptions, resolveTimeline, timelineCommands, timelineSteps } from './option-composite'
+import { timelineAdvance, timelineHit, timelineTick } from './timeline-strip'
+import { paint, prepareCanvas } from './canvas-web'
 import type { OptionUpdatePolicy } from './option-composite'
 import { graphicCommands } from './option-layer'
 import { visualMapCommands } from './visual-map'
@@ -211,25 +213,38 @@ export function OptionChart(props: OptionChartProps): VNode {
   // option change, null when nothing plays) into a signal. The interval itself
   // is imperative work and is owned by onMount below — a server render never
   // starts one, and the mount cleanup stops it.
-  const autoPlan = signal<{ n: number; start: number; interval: Double } | null>(null)
+  // The play button's choice; null = the option's `autoPlay`.
+  const playOverride = signal<boolean | null>(null)
+  const autoPlan = signal<{ n: number; start: number; interval: Double; strip: ReturnType<typeof defaultTimelineStrip> } | null>(null)
   effect(() => {
     const opt = readOption()
     const steps = timelineSteps(opt)
+    const wantPlay = steps !== null && (playOverride() ?? steps.autoPlay)
     autoPlan.set(
-      steps === null || !steps.autoPlay || props.timelineIndex !== undefined || steps.labels.length < 2
+      steps === null || !wantPlay || props.timelineIndex !== undefined || steps.labels.length < 2
         ? null
-        : { n: steps.labels.length, start: steps.current, interval: steps.playInterval },
+        : { n: steps.labels.length, start: steps.current, interval: steps.playInterval, strip: { ...(steps.strip ?? defaultTimelineStrip(steps.labels)), labels: steps.labels } },
     )
   })
+  /** Whether the strip shows the pause control. */
+  const isPlaying = (): boolean => autoPlan() !== null
   onMount(() => {
     const play = (): void => {
       stopTimer()
       const plan = autoPlan()
       if (plan === null) return
-      let cur = plan.start
+      // Resume from where the user left the step, not from the option's index.
+      let cur = step.peek() >= 0 ? step.peek() : plan.start
       step.set(cur)
       timer = setInterval(() => {
-        cur = (cur + 1) % plan.n
+        const next = timelineTick(plan.strip, cur)
+        if (next < 0) {
+          // Past the end without `loop`: auto-play stops, like ECharts.
+          stopTimer()
+          playOverride.set(false)
+          return
+        }
+        cur = next
         step.set(cur)
         props.onTimelineChange?.(cur)
       }, plan.interval)
@@ -241,6 +256,28 @@ export function OptionChart(props: OptionChartProps): VNode {
       stopTimer()
     }
   })
+
+  /** A click on the timeline strip along the bottom of a `w × hgt` box: a checkpoint jumps, the controls play / pause / step. */
+  const timelineClick = (w: Double, hgt: Double, px: Double, py: Double): boolean => {
+    const steps = timelineSteps(readOption())
+    if (steps === null) return false
+    const strip = { ...(steps.strip ?? defaultTimelineStrip(steps.labels)), labels: steps.labels }
+    const hit = timelineHit(strip, { x: 0.0, y: hgt - TIMELINE_HEIGHT, w, h: TIMELINE_HEIGHT }, px, py)
+    if (hit.kind === 0) return false
+    const cur = stepIndex() ?? steps.current
+    const go = (i: number): void => {
+      if (i < 0) return
+      step.set(i)
+      props.onTimelineChange?.(i)
+    }
+    if (hit.kind === 2) {
+      playOverride.set(!isPlaying())
+    } else {
+      playOverride.set(false)
+      go(hit.kind === 1 ? hit.index : timelineAdvance(strip, cur, hit.kind === 3 ? -1 : 1, true))
+    }
+    return true
+  }
 
   // One batch per draw: the mode and host-node writes of a family host, or the
   // mode flip to svg/canvas, must repaint the surface once, not per write.
@@ -297,7 +334,7 @@ export function OptionChart(props: OptionChartProps): VNode {
       for (const c of visualMapCommands(resolved, w, hgt - stripH).cmds) cmds.push(c)
       for (const c of graphicCommands(resolved, w, hgt - stripH).cmds) cmds.push(c)
     }
-    if (steps !== null) for (const c of timelineCommands({ ...steps, current: idx ?? steps.current }, w, hgt - stripH, stripH)) cmds.push(c)
+    if (steps !== null) for (const c of timelineCommands({ ...steps, current: idx ?? steps.current }, w, hgt - stripH, stripH, isPlaying())) cmds.push(c)
     return { cmds, plan, option: resolved, measure, w, hgt, zoom }
   }
 
@@ -477,6 +514,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     track: () => {
       readOption()
       step()
+      autoPlan()
       void props.timelineIndex
       hoverIndex()
       pinned()
@@ -526,6 +564,7 @@ export function OptionChart(props: OptionChartProps): VNode {
       },
     },
     select: (g, px, py) => {
+      if (timelineClick(g.w, g.hgt, px, py)) return
       const h1 = hitAt(g, px, py)
       const pin = pinMode(g)
       if (pin !== undefined && h1 !== null) pinned.set(pinSelection(pinned(), h1.dataIndex, pin === 'multiple'))
@@ -566,11 +605,44 @@ export function OptionChart(props: OptionChartProps): VNode {
   const canvasSlot = (): VNode | null => (mode() === 'canvas' ? canvasNode : null)
   const svgNode = h('div', {
     style: () => (mode() === 'svg' ? '' : 'display:none'),
+    onClick: (ev: MouseEvent) => {
+      const r = (ev.currentTarget as HTMLElement).getBoundingClientRect()
+      timelineClick(width(), height(), ev.clientX - r.left, ev.clientY - r.top)
+    },
     ref: (el: HTMLDivElement | null) => {
       svgHost = el
       if (el !== null) draw()
     },
   })
+  // A family chart renders through its own host, which has no timeline: the strip is its own canvas under it.
+  let barCanvas: HTMLCanvasElement | null = null
+  const paintBar = (): void => {
+    const el = barCanvas
+    const steps = timelineSteps(readOption())
+    if (el === null || steps === null) return
+    const ctx = prepareCanvas(el, width(), TIMELINE_HEIGHT)
+    if (ctx !== null) paint(ctx, timelineCommands({ ...steps, current: stepIndex() ?? steps.current }, width(), 0.0, TIMELINE_HEIGHT, isPlaying()), width(), TIMELINE_HEIGHT, 'system-ui, sans-serif')
+  }
+  effect(() => {
+    readOption()
+    step()
+    autoPlan()
+    mode()
+    void props.timelineIndex
+    paintBar()
+  })
+  const barNode = h('canvas', {
+    'aria-hidden': 'true',
+    ref: (el: HTMLCanvasElement | null) => {
+      barCanvas = el
+      paintBar()
+    },
+    onClick: (ev: MouseEvent) => {
+      const r = (ev.currentTarget as HTMLElement).getBoundingClientRect()
+      timelineClick(width(), TIMELINE_HEIGHT, ev.clientX - r.left, ev.clientY - r.top)
+    },
+  })
   const hostSlot = (): VNode | null => (mode() === 'host' ? hostNode() : null)
-  return h('div', { style: 'position:relative', 'data-pyreon-step': () => String(stepIndex() ?? -1) }, canvasSlot, svgNode, hostSlot)
+  const barSlot = (): VNode | null => (mode() === 'host' && timelineSteps(readOption()) !== null ? barNode : null)
+  return h('div', { style: 'position:relative', 'data-pyreon-step': () => String(stepIndex() ?? -1) }, canvasSlot, svgNode, hostSlot, barSlot)
 }
