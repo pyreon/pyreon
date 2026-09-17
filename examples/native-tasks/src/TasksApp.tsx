@@ -369,10 +369,10 @@ function FlowScreen() {
   // the labels — the F3/F4 evidence the flow parity plan asks for.
   const flow = createFlow({
     nodes: [
-      { id: 'a', position: { x: 0, y: 0 }, data: { label: 'Start' } },
-      { id: 'b', position: { x: 200, y: 0 }, data: { label: 'End' } },
+      { id: 'a', position: { x: 0, y: 0 }, data: { label: 'Start' }, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }] },
+      { id: 'b', position: { x: 200, y: 0 }, data: { label: 'End' }, targetHandles: [{ id: 'in', type: 'target', position: 'left' }] },
     ],
-    edges: [{ id: 'e1', source: 'a', target: 'b' }],
+    edges: [{ id: 'e1', source: 'a', target: 'b', sourceHandle: 'out', targetHandle: 'in' }],
     minZoom: 0.5,
     maxZoom: 2,
   })

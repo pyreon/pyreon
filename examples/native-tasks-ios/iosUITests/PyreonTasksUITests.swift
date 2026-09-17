@@ -483,6 +483,8 @@ final class PyreonTasksUITests: XCTestCase {
         let startNode = app.staticTexts["Start"].firstMatch
         XCTAssertTrue(startNode.waitForExistence(timeout: 5), "node 'Start' did not render on the canvas")
         XCTAssertTrue(app.staticTexts["End"].firstMatch.exists, "node 'End' did not render on the canvas")
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "source handle out")).firstMatch.waitForExistence(timeout: 5), "source handle did not render")
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "target handle in")).firstMatch.exists, "target handle did not render")
         let aPos = app.staticTexts["flow-a-pos"].firstMatch
         XCTAssertTrue(aPos.waitForExistence(timeout: 5), "flow-a-pos missing")
         let before = aPos.label
