@@ -16,7 +16,8 @@ import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas } from './canvas-w
 import { placeLegend } from './legend'
 import type { LegendPager } from './legend'
 import { renderTitle } from './title'
-import { sameShape, sameValues, tweenValues } from './tween'
+import { easeOutCubic, sameShape, sameValues, tweenValues } from './tween'
+import { cmdsEqual, universalTweenCmds } from './cmd-tween'
 import { hitToolbox, renderToolbox } from './toolbox'
 import { toolboxTools } from './toolbox-config'
 import { renderSvg } from './svg'
@@ -202,6 +203,16 @@ export interface PlotChartProps<T> {
   updateAnimation?: boolean
   /** Tween duration in ms; default 400. */
   updateDuration?: Double
+  /**
+   * Tween a data change that adds/removes a series or a row instead of
+   * snapping (ECharts' `universalTransition`). Off by default: interpolating
+   * mismatched shapes is more work per frame than the same-shape path, and
+   * most updates ARE same-shape (`updateAnimation` alone covers them). With
+   * this on, a series count or row-count change morphs the previous frame's
+   * geometry into the new one — a shrinking bar rather than a bar vanishing
+   * and a new one appearing elsewhere.
+   */
+  universalTransition?: boolean
   /**
    * The slider dataZoom: a navigator strip under the plot showing the first
    * series over ALL rows with the zoom window as a draggable band — drag the
@@ -573,9 +584,15 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     tweenT = 0.0
     tweenFrame = requestAnimationFrame(tick)
   }
+  // A shape change (series added/removed, row count changed) that the
+  // value-level tween above cannot interpolate — mismatched arrays have no
+  // per-index correspondence. Set by `tweened` below, read once per frame by
+  // `draw` to decide whether to hand off to the command-level morph.
+  let shapeChangedThisFrame = false
   /** The spec actually painted: mid-tween values when a data update is animating. */
   const tweened = (spec: ChartSpec): ChartSpec => {
     const cur = spec.series.map((x) => x.values)
+    shapeChangedThisFrame = false
     if (tweenT >= 1.0 || tweenFrom === null) {
       const enabled = props.updateAnimation !== false && !prefersReducedMotion() && entrance >= 1.0 && (props.updateDuration ?? theme().updateMs) > 0.0
       if (enabled && lastValues !== null && sameShape(lastValues, cur) && !sameValues(lastValues, cur)) {
@@ -585,11 +602,71 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
         // The first tween frame is painted synchronously at t = 0.
         return { ...spec, series: spec.series.map((x, i) => ({ ...x, values: tweenValues(tweenFrom!, cur, 0.0)[i]! })) }
       }
+      if (enabled && lastValues !== null && !sameShape(lastValues, cur)) shapeChangedThisFrame = true
       lastValues = cur
       return spec
     }
     const frame = tweenValues(tweenFrom, cur, tweenT)
     return { ...spec, series: spec.series.map((x, i) => ({ ...x, values: frame[i]! })) }
+  }
+  // Command-level tween for a shape change under `universalTransition`: the
+  // previous frame's rendered geometry (not values — the arrays don't line
+  // up) morphs into the new frame's, the same `cmd-tween.ts` machinery
+  // `OptionChart`'s canvas host uses. `lastCoreCmds` is the last SETTLED
+  // (fully-resolved) plot geometry, before the legend/nav/crosshair shift —
+  // the same scope `canvas-host.tsx` calls `family`.
+  let lastCoreCmds: DrawCmd[] | null = null
+  let coreTweenFrom: DrawCmd[] | null = null
+  let coreTweenTo: DrawCmd[] | null = null
+  let coreTweenT = 1.0
+  let coreTweenFrame = 0.0
+  const startCoreTween = (): void => {
+    if (typeof requestAnimationFrame !== 'function') {
+      coreTweenT = 1.0
+      coreTweenFrom = null
+      coreTweenTo = null
+      return
+    }
+    const duration = props.updateDuration ?? theme().updateMs
+    let start = -1.0
+    if (coreTweenFrame !== 0.0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(coreTweenFrame)
+    const tick = (now: number): void => {
+      if (start < 0.0) start = now
+      coreTweenT = Math.min(1.0, (now - start) / duration)
+      if (coreTweenT >= 1.0) {
+        coreTweenFrom = null
+        coreTweenTo = null
+      }
+      draw()
+      if (coreTweenT < 1.0) coreTweenFrame = requestAnimationFrame(tick)
+      else coreTweenFrame = 0.0
+    }
+    coreTweenT = 0.0
+    coreTweenFrame = requestAnimationFrame(tick)
+  }
+  /**
+   * The plot geometry to paint this frame: mid-morph commands while a
+   * shape-change tween runs, else the freshly-rendered target commands
+   * (starting a new tween first when this frame's shape differs from the
+   * last settled one). A no-op — `cmds` returned unchanged — unless
+   * `universalTransition` is on.
+   */
+  const coreCmdsFor = (cmds: DrawCmd[]): DrawCmd[] => {
+    if (props.universalTransition !== true) return cmds
+    if (coreTweenFrom !== null && coreTweenTo !== null && coreTweenT < 1.0) {
+      const out = universalTweenCmds(coreTweenFrom, coreTweenTo, easeOutCubic(coreTweenT))
+      lastCoreCmds = cmds
+      return out
+    }
+    let out = cmds
+    if (shapeChangedThisFrame && lastCoreCmds !== null && !cmdsEqual(lastCoreCmds, cmds)) {
+      coreTweenFrom = lastCoreCmds
+      coreTweenTo = cmds
+      startCoreTween()
+      out = universalTweenCmds(coreTweenFrom, coreTweenTo, 0.0)
+    }
+    lastCoreCmds = cmds
+    return out
   }
   // Toolbox state: the magicType override, and last-draw hit boxes.
   // magicType: the line / bar switch and the stack / tiled switch, independent as in ECharts ('' = off).
@@ -886,7 +963,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const areasNow = areaDrag === null ? brushAreas() : [...brushAreas(), areaDrag]
     const spec = applyBrushSelection(built, brushOnlySeries(brushSelection(built, l, areasNow), props.brushSeriesIndex ?? []), areasNow.length > 0, props.outOfBrushOpacity ?? 0.1)
     frameCache = { spec, layout: l, w, hgt }
-    const cmds = renderChartIn(spec, measure, l)
+    const cmds = coreCmdsFor(renderChartIn(spec, measure, l))
     const navCmds = shiftCmds(navigatorCmds(rows, pw, hgt - presetH - navH - legendBottom, navH), legendLeft, 0.0)
     if (navRect !== null && legendLeft !== 0.0) navRect = { ...navRect, x: navRect.x + legendLeft }
     const navStr = JSON.stringify(navRect)
@@ -1632,13 +1709,15 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       sizeObserver?.disconnect()
       sizeObserver = null
       if (el === null) {
-        // Unmounted mid-animation: neither frame may keep the closure alive.
+        // Unmounted mid-animation: no frame may keep the closure alive.
         if (typeof cancelAnimationFrame === 'function') {
           if (entranceFrame !== 0.0) cancelAnimationFrame(entranceFrame)
           if (tweenFrame !== 0.0) cancelAnimationFrame(tweenFrame)
+          if (coreTweenFrame !== 0.0) cancelAnimationFrame(coreTweenFrame)
         }
         entranceFrame = 0.0
         tweenFrame = 0.0
+        coreTweenFrame = 0.0
         frameCache = null
         return
       }

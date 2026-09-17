@@ -956,6 +956,14 @@ class TasksAppInstrumentedTest {
         seriesChart.performTouchInput { click(Offset(width * 0.15f, height * 0.82f)) }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("gal-series-select-datum").performScrollTo().assert(androidx.compose.ui.test.SemanticsMatcher("a series-mode tap reports a datum") { n -> (n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.joinToString("") { it.text } ?: "") != "none" })
+        // universalTransition: toggling from 3 to 5 rows morphs instead of crashing, and settles on the new count.
+        composeRule.onNodeWithTag("gal-growth").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("gal-growth-toggle").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-growth-count").performScrollTo().assertTextEquals("5")
+        composeRule.onNodeWithTag("gal-growth-toggle").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-growth-count").performScrollTo().assertTextEquals("3")
         // The lines trail renders. Its MOTION is proven on the iOS device lane
         // and in real Chromium; here it cannot be: the trail runs on
         // withInfiniteAnimationFrameNanos (a plain frame loop kept this harness

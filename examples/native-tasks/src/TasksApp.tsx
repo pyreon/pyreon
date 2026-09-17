@@ -590,6 +590,22 @@ const TWO_SERIES_ROWS: TwoSeriesRow[] = [
   { a: 5, b: 3 },
   { a: 4, b: 4 },
 ]
+interface GrowthRow {
+  month: string
+  total: number
+}
+const GROWTH_ROWS_A: GrowthRow[] = [
+  { month: 'Jan', total: 12 },
+  { month: 'Feb', total: 18 },
+  { month: 'Mar', total: 9 },
+]
+const GROWTH_ROWS_B: GrowthRow[] = [
+  { month: 'Jan', total: 12 },
+  { month: 'Feb', total: 18 },
+  { month: 'Mar', total: 9 },
+  { month: 'Apr', total: 22 },
+  { month: 'May', total: 15 },
+]
 const FLOW_LINKS: SankeyLink[] = [
   { source: 'Backlog', target: 'Doing', value: 8 },
   { source: 'Doing', target: 'Done', value: 5 },
@@ -765,6 +781,8 @@ function GalleryPage() {
   const tbSaved = signal('none')
   const brushCount = signal('none')
   const seriesPickCount = signal('none')
+  const growthRows = signal<GrowthRow[]>(GROWTH_ROWS_A)
+  const growthCount = signal(`${GROWTH_ROWS_A.length}`)
   // Imperative handles (ECharts dispatchAction) for the toolbox chart and the timeline.
   const tbHandle = createChartHandle()
   const tlHandle = createChartHandle()
@@ -904,6 +922,25 @@ function GalleryPage() {
           onSelectIndex={(i: number) => seriesPickCount.set(`${i}`)}
         />
         <Text data-testid="gal-series-select-datum">{seriesPickCount()}</Text>
+        <PlotChart
+          data={() => growthRows()}
+          marks={[bars((d: GrowthRow) => d.total)]}
+          universalTransition
+          updateDuration={250}
+          height={200}
+          data-testid="gal-growth"
+        />
+        <Button
+          onPress={() => {
+            const next = growthRows().length === GROWTH_ROWS_A.length ? GROWTH_ROWS_B : GROWTH_ROWS_A
+            growthRows.set(next)
+            growthCount.set(`${next.length}`)
+          }}
+          data-testid="gal-growth-toggle"
+        >
+          Toggle rows
+        </Button>
+        <Text data-testid="gal-growth-count">{growthCount()}</Text>
         <PieChart
           data={SLICES}
           value={(d: PieSlice) => d.total}

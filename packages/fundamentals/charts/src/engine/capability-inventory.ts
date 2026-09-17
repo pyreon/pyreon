@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-17.39' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-17.41' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -35,7 +35,16 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   // the same `resolveDataset` the web runs (`@pyreon/charts/option-layer`).
   row('data.dataset', 'data', 'direct', 'complete', 'src/engine/option-layer.ts', '../../native/compiler/src/tests/chart-dataset-native.test.ts'),
   row('data.dimensions-encode', 'data', 'direct', 'complete', 'src/engine/option-encode-tooltip.test.ts', '../../native/compiler/src/tests/chart-dataset-native.test.ts'),
-  row('data.transforms', 'data', 'direct', 'partial', 'src/engine/option-transform.test.ts', '../../native/compiler/src/tests/chart-dataset-native.test.ts'), // built-in filter/sort cross; registered transforms run on the web only
+  // The built-in filter/sort transforms and every dataset-chaining shape
+  // (datasetIndex/datasetId, fromDatasetIndex/fromDatasetId,
+  // fromTransformResult) resolve at compile time through the SAME
+  // `resolveDataset` the web runs — not a reimplementation, so chained
+  // resolution is identical by construction. A REGISTERED transform is an
+  // arbitrary JS closure living in the page's registry; it cannot run
+  // outside JS on any target, so it is named as web-only rather than
+  // silently dropped — the same class of named limit as pictorial-bar's
+  // percent-string warning.
+  row('data.transforms', 'data', 'direct', 'complete', 'src/engine/option-transform.test.ts', '../../native/compiler/src/tests/chart-dataset-native.test.ts'),
   // sampling / large / progressive resolve to bounded decimation on shared rows;
   // the native OptionChart runs the SAME decimation at compile time against the
   // option's static width (its `width` prop, or the web's own 640 default).
@@ -103,7 +112,16 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('presentation.animation', 'presentation', 'direct', 'complete', 'src/engine/cmd-tween.ts', '../../native/compiler/src/tests/native-chart-transition-parity.test.ts'),
   // Compile-time parity only: the completion plan requires native canvas
   // state/timing plus device evidence before this row closes.
-  row('presentation.universal-transition', 'presentation', 'direct', 'partial', 'src/engine/cmd-tween.test.ts', '../../native/compiler/src/tests/native-chart-transition-parity.test.ts'),
+  // `OptionChart` already forwarded the flag to its shared canvas host;
+  // `PlotChart` had the same host-level machinery underneath but never
+  // exposed `universalTransition` as a prop, so a real (typed) app could
+  // never reach it there — the gap was the missing prop, not the engine.
+  // `PlotChart` now runs its OWN command-level morph (`coreCmdsFor` in
+  // Chart.tsx) for a series/row-count change, using the same `cmd-tween.ts`
+  // machinery the canvas host does; native's runtime canvas is shape-agnostic
+  // (it morphs whatever `DrawCmd[]` it is handed) and already emitted the
+  // flag for both facades.
+  row('presentation.universal-transition', 'presentation', 'direct', 'complete', 'src/engine/cmd-tween.test.ts', 'src/engine/universal-transition.browser.test.tsx', '../../native/compiler/src/tests/native-chart-transition-parity.test.ts'),
   row('presentation.locale', 'presentation', 'direct', 'complete', 'src/engine/locale.ts'),
   row('presentation.rtl', 'presentation', 'direct', 'complete', 'src/engine/rtl.ts'),
   row('presentation.export-snapshot', 'presentation', 'direct', 'complete', 'src/engine/svg.ts'),

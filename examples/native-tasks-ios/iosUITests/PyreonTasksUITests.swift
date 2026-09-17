@@ -985,6 +985,14 @@ final class PyreonTasksUITests: XCTestCase {
         seriesOrigin.withOffset(CGVector(dx: seriesChart.frame.width * 0.15, dy: seriesChart.frame.height * 0.82)).tap()
         let seriesPicked = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", "none"), object: seriesDatum)
         XCTAssertEqual(XCTWaiter().wait(for: [seriesPicked], timeout: 5), .completed, "selectedMode series did not report a datum on tap (label: \(seriesDatum.label))")
+        // universalTransition: toggling from 3 to 5 rows morphs instead of crashing, and settles on the new count.
+        let growthChart = app.descendants(matching: .any).matching(identifier: "gal-growth").firstMatch
+        XCTAssertTrue(growthChart.waitForExistence(timeout: 10), "gal-growth missing on the gallery")
+        scrollFullyOnScreen(app.buttons["gal-growth-toggle"].firstMatch, in: app)
+        app.buttons["gal-growth-toggle"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(app.staticTexts["gal-growth-count"].firstMatch, "5", timeout: 5), "universalTransition row-count toggle did not settle on 5 (label: \(app.staticTexts["gal-growth-count"].firstMatch.label))")
+        app.buttons["gal-growth-toggle"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(app.staticTexts["gal-growth-count"].firstMatch, "3", timeout: 5), "universalTransition row-count toggle did not settle back on 3 (label: \(app.staticTexts["gal-growth-count"].firstMatch.label))")
         // The geo route trail MOVES too: two screenshots half a second apart differ.
         let geoTrail = app.descendants(matching: .any).matching(identifier: "gal-geo-trail").firstMatch
         XCTAssertTrue(geoTrail.waitForExistence(timeout: 10), "gal-geo-trail canvas missing on the gallery")
