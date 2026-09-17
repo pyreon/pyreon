@@ -12,7 +12,11 @@ import { batch, effect, signal } from '@pyreon/reactivity'
 import { canvasHost } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
 import { pinSelection } from './legend-toggle'
-import { compiledCommands, optionToSvg, planOption } from './option'
+import { compiledCommands, optionToSvg, planOption, zoomedView } from './option'
+import { limitWindow } from './option-zoom'
+import { navigatorDrag, navigatorHit } from './navigator'
+import { isFullWindow, panWindow, zoomWindow } from './zoom'
+import type { ZoomWindow } from './zoom'
 import type { CompiledOption, EChartsOption, OptionPlan } from './option'
 import { familyHostNode } from './family-host'
 import type { FamilyPlan } from './option-family'
@@ -57,6 +61,8 @@ export interface OptionChartProps extends Omit<CanvasHostProps, 'theme' | 'showT
   timelineIndex?: number
   /** Fired when auto-play advances the step. */
   onTimelineChange?: (index: number) => void
+  /** Fired as the `dataZoom` window moves, in ECharts' percent (`start` / `end` 0–100). */
+  onDataZoom?: (window: { start: number; end: number }) => void
   /** Fired with the datum under a click (cartesian plans), or null for a miss. */
   onSelect?: (hit: OptionHit | null) => void
   /** The datum INDEX under a click (or the keyboard's pick), -1 for a miss — the multiplatform-safe twin of `onSelect`. */
@@ -93,6 +99,8 @@ interface OptionGeometry {
   measure: MeasureText
   w: Double
   hgt: Double
+  /** The zoomed cartesian view: the title/legend offset, the first visible row, the plot and the slider strip in canvas coordinates. */
+  zoom: { top: Double; offset: number; plot: Rect; strip: Rect | null; win: ZoomWindow } | null
 }
 
 /** The `CanvasHostProps` keys `OptionChartProps` does NOT take (its own `theme`, and the chrome the compiled option draws itself). */
@@ -177,6 +185,9 @@ export function OptionChart(props: OptionChartProps): VNode {
     return retainedOption
   }
   const stepIndex = (): number | undefined => props.timelineIndex ?? (step() >= 0 ? step() : undefined)
+  // The dataZoom window the user has moved to; null = the option's own start/end.
+  const zoomWin = signal<ZoomWindow | null>(null)
+  const winOf = (compiled: CompiledOption): ZoomWindow | undefined => zoomWin() ?? compiled.zoom?.window
   const width = (): Double => props.width ?? 640.0
   const height = (): Double => props.height ?? 320.0
   const compileOpts = (w: Double, hgt: Double, idx: number | undefined) => ({
@@ -268,8 +279,16 @@ export function OptionChart(props: OptionChartProps): VNode {
     const plan = planOption(opt, compileOpts(w, hgt - stripH, idx))
     const resolved = resolveTimeline(opt, idx).option as EChartsOption
     const cmds: DrawCmd[] = []
+    let zoom: OptionGeometry['zoom'] = null
     if (plan.kind === 'cartesian') {
-      for (const c of compiledCommands(plan.compiled, resolved, measure).cmds) cmds.push(c)
+      const composed = compiledCommands(plan.compiled, resolved, measure, winOf(plan.compiled))
+      for (const c of composed.cmds) cmds.push(c)
+      if (plan.compiled.zoom !== undefined) {
+        const win = winOf(plan.compiled)!
+        const view = zoomedView(plan.compiled, composed.top, win)
+        const p = layoutChart(view.spec, measure).plot
+        zoom = { top: composed.top, offset: view.offset, plot: { x: p.x, y: p.y + composed.top, w: p.w, h: p.h }, strip: view.navigator?.strip ?? null, win }
+      }
     } else if (plan.kind === 'grids') {
       for (const part of plan.parts) {
         if (part.plan.kind !== 'cartesian') continue
@@ -279,7 +298,7 @@ export function OptionChart(props: OptionChartProps): VNode {
       for (const c of graphicCommands(resolved, w, hgt - stripH).cmds) cmds.push(c)
     }
     if (steps !== null) for (const c of timelineCommands({ ...steps, current: idx ?? steps.current }, w, hgt - stripH, stripH)) cmds.push(c)
-    return { cmds, plan, option: resolved, measure, w, hgt }
+    return { cmds, plan, option: resolved, measure, w, hgt, zoom }
   }
 
   effect(() => {
@@ -293,11 +312,13 @@ export function OptionChart(props: OptionChartProps): VNode {
 
   const hitIn = (compiled: CompiledOption, option: EChartsOption, measure: MeasureText, px: Double, py: Double): OptionHit | null => {
     const top = compiledCommands(compiled, option, measure).top
-    const spec: ChartSpec = { ...compiled.spec, height: Math.max(0.0, compiled.spec.height - top) }
+    // Under a dataZoom the hit runs on the rows in view; the reported index is global.
+    const zoomed = zoomedView(compiled, top, winOf(compiled))
+    const spec: ChartSpec = zoomed.spec
     const ly = py - top
     const mk = (i: number, di: number): OptionHit => ({
       seriesIndex: i,
-      dataIndex: di,
+      dataIndex: di + zoomed.offset,
       name: spec.categories[di] ?? String(di),
       value: spec.series[i]!.values[di] ?? NaN,
     })
@@ -342,7 +363,7 @@ export function OptionChart(props: OptionChartProps): VNode {
   const firstSpec = (g: OptionGeometry): { spec: ChartSpec; top: Double; dx: Double; dy: Double } | null => {
     if (g.plan.kind === 'cartesian') {
       const top = compiledCommands(g.plan.compiled, g.option, g.measure).top
-      return { spec: { ...g.plan.compiled.spec, height: Math.max(0.0, g.plan.compiled.spec.height - top) }, top, dx: 0.0, dy: 0.0 }
+      return { spec: zoomedView(g.plan.compiled, top, winOf(g.plan.compiled)).spec, top, dx: 0.0, dy: 0.0 }
     }
     if (g.plan.kind === 'grids') {
       const part = g.plan.parts.find((p) => p.plan.kind === 'cartesian')
@@ -396,7 +417,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     if (f === null || i < 0) return null
     const s = f.spec.series[0]
     if (s === undefined || i >= s.values.length) return null
-    return { seriesIndex: 0, dataIndex: i, name: f.spec.categories[i] ?? String(i), value: s.values[i] ?? NaN }
+    return { seriesIndex: 0, dataIndex: i + (g.zoom?.offset ?? 0), name: f.spec.categories[i] ?? String(i), value: s.values[i] ?? NaN }
   }
   // ECharts' states on the compiled option: the hovered datum is the
   // highlight (`emphasis`), a click pins per the option's `selectedMode`
@@ -414,8 +435,10 @@ export function OptionChart(props: OptionChartProps): VNode {
     const selected = pinned()
     const clocked = linesEffectOn(g)
     if (highlight < 0 && selected.length === 0 && !clocked) return g.cmds
-    const emphasis: Emphasis = { highlight, selected }
-    if (g.plan.kind === 'cartesian') return compiledCommands({ ...g.plan.compiled, spec: { ...g.plan.compiled.spec, ...(highlight < 0 && selected.length === 0 ? {} : { emphasis }), effectTime: time } }, g.option, g.measure).cmds
+    // Emphasis indices are global; the zoomed spec counts from its first visible row.
+    const off = g.zoom?.offset ?? 0
+    const emphasis: Emphasis = { highlight: highlight < 0 ? highlight : highlight - off, selected: selected.map((k) => k - off) }
+    if (g.plan.kind === 'cartesian') return compiledCommands({ ...g.plan.compiled, spec: { ...g.plan.compiled.spec, ...(highlight < 0 && selected.length === 0 ? {} : { emphasis }), effectTime: time } }, g.option, g.measure, winOf(g.plan.compiled)).cmds
     if (g.plan.kind === 'grids') {
       const cmds: DrawCmd[] = []
       let first = true
@@ -437,6 +460,16 @@ export function OptionChart(props: OptionChartProps): VNode {
     }
     return undefined
   }
+  let lastGeometry: OptionGeometry | null = null
+  let lastZoom: CompiledOption['zoom'] = undefined
+  let navGrab: { kind: number; x: Double; win: ZoomWindow } | null = null
+  const setWindow = (prev: ZoomWindow, next: ZoomWindow): void => {
+    const z = lastZoom
+    if (z === undefined) return
+    const w = limitWindow(z, prev, next)
+    zoomWin.set(w)
+    props.onDataZoom?.(isFullWindow(w) ? { start: 0, end: 100 } : { start: w.start * 100, end: w.end * 100 })
+  }
   const canvasNode = canvasHost<OptionGeometry>({
     props: hostProps,
     defaultHeight: 320,
@@ -447,10 +480,51 @@ export function OptionChart(props: OptionChartProps): VNode {
       void props.timelineIndex
       hoverIndex()
       pinned()
+      zoomWin()
     },
-    layout: (box, measure) => cartesian(box.w, box.h, measure),
+    layout: (box, measure) => {
+      const g = cartesian(box.w, box.h, measure)
+      lastGeometry = g
+      lastZoom = g.plan.kind === 'cartesian' ? g.plan.compiled.zoom : undefined
+      return g
+    },
     render: (g, _measure, _theme, _progress, time) => stateCmds(g, time),
     effectClock: (g) => linesEffectOn(g),
+    // ECharts' inside dataZoom: the wheel zooms the window about the pointer, a drag pans it.
+    roam: {
+      move: () => lastZoom?.inside === true && lastZoom.move,
+      scale: () => lastZoom?.inside === true && lastZoom.wheel && !lastZoom.lock,
+      zoom: (factor, px) => {
+        const g = lastGeometry
+        if (g?.zoom == null || lastZoom === undefined) return
+        const frac = g.zoom.plot.w <= 0.0 ? 0.5 : (px - g.zoom.plot.x) / g.zoom.plot.w
+        setWindow(g.zoom.win, zoomWindow(g.zoom.win, 1.0 / factor, frac))
+      },
+      pan: (dx) => {
+        const g = lastGeometry
+        if (g?.zoom == null || g.zoom.plot.w <= 0.0) return
+        setWindow(g.zoom.win, panWindow(g.zoom.win, -dx / g.zoom.plot.w))
+      },
+    },
+    // The slider: a press in the strip grabs a handle or the band; the drag is absolute from where it started.
+    drag: {
+      start: (g, px, py) => {
+        const z = g.zoom
+        if (z === null || z.strip === null) return false
+        const r = z.strip
+        if (px < r.x - 8.0 || px > r.x + r.w + 8.0 || py < r.y - 4.0 || py > r.y + r.h + 4.0) return false
+        navGrab = { kind: navigatorHit(r, z.win, px), x: px, win: z.win }
+        return true
+      },
+      move: (g, px) => {
+        const z = g.zoom
+        if (z === null || z.strip === null || navGrab === null || z.strip.w <= 0.0) return
+        setWindow(navGrab.win, navigatorDrag(navGrab.kind, navGrab.win, (px - navGrab.x) / z.strip.w))
+      },
+      end: () => {
+        navGrab = null
+      },
+    },
     select: (g, px, py) => {
       const h1 = hitAt(g, px, py)
       const pin = pinMode(g)
@@ -471,7 +545,7 @@ export function OptionChart(props: OptionChartProps): VNode {
       const h1 = hit(g, i)
       if (h1 === null) return
       props.onSelect?.(h1)
-      props.onSelectIndex?.(i)
+      props.onSelectIndex?.(h1.dataIndex)
     },
     focusRect: (g, i): Rect | null => {
       const f = firstSpec(g)

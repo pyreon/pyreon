@@ -2607,6 +2607,17 @@ public struct SliceRange: Codable {
   }
 }
 
+public struct ZoomLimits: Codable {
+  public var lock: Bool
+  public var minSpan: Double
+  public var maxSpan: Double
+  public init(lock: Bool, minSpan: Double, maxSpan: Double) {
+    self.lock = lock
+    self.minSpan = minSpan
+    self.maxSpan = maxSpan
+  }
+}
+
 public struct ZoomPreset: Codable {
   public var label: String
   public var count: Int
@@ -11149,6 +11160,33 @@ public func zoomWindow(_ win: ZoomWindow, _ factor: Double, _ centerFrac: Double
 public func panWindow(_ win: ZoomWindow, _ deltaFrac: Double) -> ZoomWindow {
     let span = win.end - win.start
     return clampWindow(ZoomWindow(start: win.start + deltaFrac * span, end: win.end + deltaFrac * span))
+  }
+
+public func limitZoomWindow(_ limits: ZoomLimits, _ prev: ZoomWindow, _ next: ZoomWindow) -> ZoomWindow {
+    let w = clampWindow(next)
+    let span = w.end - w.start
+    let lo = limits.minSpan
+    let hi = limits.maxSpan > 0.0 ? limits.maxSpan : 1.0
+    var target = span < lo ? lo : span > hi ? hi : span
+    if limits.lock {
+      target = prev.end - prev.start
+    }
+    let diff = target - span
+    if (diff < 0.0 ? 0.0 - diff : diff) <= 1e-9 {
+      return w
+    }
+    let center = (w.start + w.end) / 2.0
+    var start = center - target / 2.0
+    var end = center + target / 2.0
+    if start < 0.0 {
+      end = end - start
+      start = 0.0
+    }
+    if end > 1.0 {
+      start = start - (end - 1.0)
+      end = 1.0
+    }
+    return clampWindow(ZoomWindow(start: start < 0.0 ? 0.0 : start, end: end > 1.0 ? 1.0 : end))
   }
 
 public func isFullWindow(_ win: ZoomWindow) -> Bool { win.start <= 0.0 && win.end >= 1.0 }

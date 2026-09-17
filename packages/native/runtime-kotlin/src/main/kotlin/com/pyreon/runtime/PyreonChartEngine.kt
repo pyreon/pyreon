@@ -328,6 +328,8 @@ data class ZoomWindow(var start: Double, var end: Double)
 
 data class SliceRange(var from: Int, var to: Int)
 
+data class ZoomLimits(var lock: Boolean, var minSpan: Double, var maxSpan: Double)
+
 data class ZoomPreset(var label: String, var count: Int)
 
 data class PresetOptions(var fontSize: Double, var padX: Double, var padY: Double, var gap: Double, var inset: Double, var activeFill: String, var idleFill: String, var activeText: String, var idleText: String)
@@ -8760,6 +8762,33 @@ fun zoomWindow(win: ZoomWindow, factor: Double, centerFrac: Double): ZoomWindow 
 fun panWindow(win: ZoomWindow, deltaFrac: Double): ZoomWindow {
     val span = win.end - win.start
     return clampWindow(ZoomWindow(start = win.start + deltaFrac * span, end = win.end + deltaFrac * span))
+  }
+
+fun limitZoomWindow(limits: ZoomLimits, prev: ZoomWindow, next: ZoomWindow): ZoomWindow {
+    val w = clampWindow(next)
+    val span = w.end - w.start
+    val lo = limits.minSpan
+    val hi = if (limits.maxSpan > 0.0) limits.maxSpan else 1.0
+    var target = if (span < lo) lo else if (span > hi) hi else span
+    if (limits.lock) {
+      target = prev.end - prev.start
+    }
+    val diff = target - span
+    if ((if (diff < 0.0) 0.0 - diff else diff) <= 1e-9) {
+      return w
+    }
+    val center = ((w.start + w.end)).toDouble() / (2.0).toDouble()
+    var start = center - (target).toDouble() / (2.0).toDouble()
+    var end = center + (target).toDouble() / (2.0).toDouble()
+    if (start < 0.0) {
+      end = end - start
+      start = 0.0
+    }
+    if (end > 1.0) {
+      start = start - (end - 1.0)
+      end = 1.0
+    }
+    return clampWindow(ZoomWindow(start = if (start < 0.0) 0.0 else start, end = if (end > 1.0) 1.0 else end))
   }
 
 fun isFullWindow(win: ZoomWindow): Boolean = win.start <= 0.0 && win.end >= 1.0

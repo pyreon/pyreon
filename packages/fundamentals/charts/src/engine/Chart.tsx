@@ -38,7 +38,7 @@ import { brushBand, brushRange, renderBrushBand } from './brush'
 import { hideHiddenSeries, legendHitIndex, legendToggle, pagerHit, pinSelection } from './legend-toggle'
 import { navigatorDrag, navigatorHit, renderNavigator } from './navigator'
 import { presetHit, presetWindow, renderPresets } from './presets'
-import { isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
+import { clampWindow, isFullWindow, limitZoomWindow, panWindow, sliceRange, zoomWindow } from './zoom'
 import type { ZoomWindow } from './zoom'
 import type { ChartHandle, ChartLink } from './link'
 import type { Formatter } from './format'
@@ -189,6 +189,10 @@ export interface PlotChartProps<T> {
    * inside `dataZoom` (wheel + pan).
    */
   navigator?: boolean
+  /** The zoom window the chart opens on, as fractions of the rows (`{ start: 0.5, end: 1 }` = the second half). */
+  initialZoom?: { start: Double; end: Double }
+  /** ECharts' `zoomLock` / `minSpan` / `maxSpan` for every zoom gesture, as fractions of the rows. */
+  zoomLimits?: { lock?: boolean; minSpan?: Double; maxSpan?: Double }
   /**
    * Draw at most this many rows: past it the visible slice is thinned with
    * LTTB on the first mark (rows stay aligned across marks), so a 100k-point
@@ -432,7 +436,14 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   // The hovered datum for the crosshair; -1 = no hover.
   const hoverIdx = props.handle?.hover ?? props.link?.hover ?? signal(-1)
   // The dataZoom window; null = everything (the untouched state).
-  const zoomWin = props.handle?.zoom ?? props.link?.zoom ?? signal<ZoomWindow | null>(null)
+  const zoomWin = props.handle?.zoom ?? props.link?.zoom ?? signal<ZoomWindow | null>(props.initialZoom === undefined || isFullWindow(props.initialZoom) ? null : clampWindow(props.initialZoom))
+  /** Every gesture's window goes through the limits; the full window is stored as null. */
+  const setZoom = (next: ZoomWindow): void => {
+    const l = props.zoomLimits
+    const prev = zoomWin() ?? { start: 0.0, end: 1.0 }
+    const w = l === undefined ? next : limitZoomWindow({ lock: l.lock === true, minSpan: l.minSpan ?? 0.0, maxSpan: l.maxSpan ?? 1.0 }, prev, next)
+    zoomWin.set(isFullWindow(w) ? null : w)
+  }
   // Pinned datums, GLOBAL indices (they survive a zoom); the handle owns them when given.
   const selected = props.handle?.selected ?? signal<number[]>([])
   const eventsOn = props.selectedMode !== undefined || props.handle !== undefined || props.onHighlight !== undefined
@@ -1102,7 +1113,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const frac = plot.w <= 0.0 ? 0.5 : (px - plot.x) / plot.w
     const win = zoomWin() ?? { start: 0.0, end: 1.0 }
     const next = zoomWindow(win, ev.deltaY > 0 ? 1.25 : 0.8, frac)
-    zoomWin.set(isFullWindow(next) ? null : next)
+    setZoom(next)
   }
 
   // Touch: every pointer currently down on the canvas, for the pinch. Two
@@ -1210,7 +1221,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       if (plot !== null && d > 0.0 && pinch.dist > 0.0) {
         // Fingers apart = zoom in = a narrower window.
         const next = zoomWindow(pinch.win, pinch.dist / d, pinchCenterFrac(plot))
-        zoomWin.set(isFullWindow(next) ? null : next)
+        setZoom(next)
       }
       ev.preventDefault()
       return
@@ -1222,7 +1233,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       if (dragMode === 'nav') {
         if (navDrag !== null && navRect !== null && navRect.w > 0.0) {
           const next = navigatorDrag(navDrag.kind, navDrag.startWin, (x - dragStartX) / navRect.w)
-          zoomWin.set(isFullWindow(next) ? null : next)
+          setZoom(next)
         }
         dragLastX = x
         return
@@ -1233,7 +1244,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
           const win = zoomWin() ?? { start: 0.0, end: 1.0 }
           // Dragging right moves the window LEFT — the data follows the hand.
           const next = panWindow(win, (dragLastX - x) / plot.w)
-          zoomWin.set(isFullWindow(next) ? null : next)
+          setZoom(next)
         }
       } else {
         brushDrag = { a: dragStartX, b: x }
@@ -1304,7 +1315,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       if (hit >= 0) {
         const it = props.zoomPresets?.[hit]
         const next = presetWindow(it === undefined ? 0 : it.count, readData().length)
-        zoomWin.set(isFullWindow(next) ? null : next)
+        setZoom(next)
         return
       }
     }

@@ -830,6 +830,16 @@ function GalleryPage() {
           height={220}
           data-testid="gal-visualmap"
         />
+        <OptionChart
+          option={{
+            xAxis: { type: 'category', data: ['1', '2', '3', '4', '5', '6', '7', '8'] },
+            yAxis: {},
+            dataZoom: [{ type: 'slider', start: 0, end: 50, filterMode: 'none' }],
+            series: [{ type: 'bar', itemStyle: { color: '#ff0000' }, data: [1, 1, 1, 1, 9, 9, 9, 9] }],
+          }}
+          height={220}
+          data-testid="gal-datazoom"
+        />
         <Button onPress={() => navigate('/tasks')} data-testid="gal-back">
           Back to tasks
         </Button>

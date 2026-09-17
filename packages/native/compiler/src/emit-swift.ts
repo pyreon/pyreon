@@ -103,7 +103,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -14240,13 +14240,18 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   }
   const onBrush = brushing ? swiftBrushHandler(e, tag) : undefined
   // The window state exists whenever something writes it: a gesture, a preset, the navigator.
-  const windowed = zoomed || presets !== undefined || navigating
-  const win = windowed ? 'pyreonZoom' : 'ZoomWindow(start: 0.0, end: 1.0)'
+  const zoomCfg = chartZoomConfig((n) => chartAttrExpr(e, n), (n) => _moduleConstExprs.get(n), SWIFT_CHART_TARGET, (m) => _emitWarnings.push(m), tag)
+  // An opening window slices the rows even with no gesture to move it.
+  const windowed = zoomed || presets !== undefined || navigating || zoomCfg.initial !== null
+  const initialWin = zoomCfg.initial ?? 'ZoomWindow(start: 0.0, end: 1.0)'
+  /** A gesture's window, held to `zoomLimits` when the chart has them. */
+  const lim = (expr: string): string => (zoomCfg.limits === null ? expr : `limitZoomWindow(${zoomCfg.limits}, pyreonZoom, ${expr})`)
+  const win = windowed ? 'pyreonZoom' : initialWin
   const legend = swiftLegendInteraction(e)
   const lets: string[] = []
   if (windowed) {
-    _hostStateDecls.push('@State private var pyreonZoom: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
-    if (zoomed) _hostStateDecls.push('@State private var pyreonZoomAnchor: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
+    _hostStateDecls.push(`@State private var pyreonZoom: ZoomWindow = ${initialWin}`)
+    if (zoomed) _hostStateDecls.push(`@State private var pyreonZoomAnchor: ZoomWindow = ${initialWin}`)
     lets.push(`let pyreonRange: SliceRange = sliceRange(pyreonZoom, ${data}.count)`)
     lets.push(`let pyreonSourceRows = Array(${data}[pyreonRange.from..<pyreonRange.to])`)
   }
@@ -14638,7 +14643,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     }
     if (presets !== undefined) {
       decls.push(`let pyreonPreset = presetHit(pyreonPresetStrip.boxes, ${cx}, ${cy})`)
-      branches.push(`if pyreonPreset >= 0 { pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, ${data}.count)${zoomed ? '; pyreonZoomAnchor = pyreonZoom' : ''} }`)
+      branches.push(`if pyreonPreset >= 0 { pyreonZoom = ${lim(`presetWindow(pyreonPresets[pyreonPreset].count, ${data}.count)`)}${zoomed ? '; pyreonZoomAnchor = pyreonZoom' : ''} }`)
     }
     if (brushing) {
       branches.push(`if pyreonBrushStart >= 0 { pyreonBrushStart = -1; pyreonBrushEnd = -1${onBrush === undefined ? '' : `; ${onBrush}(nil)`} }`)
@@ -14655,8 +14660,8 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   }
   if (zoomed) {
     gesture +=
-      `.simultaneousGesture(MagnificationGesture().onChanged { pyreonScale in pyreonZoom = zoomWindow(pyreonZoomAnchor, 1.0 / Double(pyreonScale), 0.5) }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })` +
-      `.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonDrag in pyreonZoom = panWindow(pyreonZoomAnchor, -Double(pyreonDrag.translation.width) / ${W}) }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })`
+      `.simultaneousGesture(MagnificationGesture().onChanged { pyreonScale in pyreonZoom = ${lim('zoomWindow(pyreonZoomAnchor, 1.0 / Double(pyreonScale), 0.5)')} }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })` +
+      `.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonDrag in pyreonZoom = ${lim(`panWindow(pyreonZoomAnchor, -Double(pyreonDrag.translation.width) / ${W})`)} }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })`
   }
   if (brushing) {
     gesture +=
@@ -14691,7 +14696,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   // from the window it started on — the web's model.
   const overlay =
     `Color.clear.contentShape(Rectangle()).frame(height: pyreonNavigator.height)${presets === undefined ? '' : '.padding(.bottom, pyreonPresetStrip.height)'}` +
-    `.gesture(DragGesture(minimumDistance: 0).onChanged { pyreonNav in if pyreonNavKind == 0 { pyreonNavAnchor = pyreonZoom; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, Double(pyreonNav.startLocation.x)) }; pyreonZoom = navigatorDrag(pyreonNavKind, pyreonNavAnchor, Double(pyreonNav.translation.width) / pyreonNavigator.strip.w) }` +
+    `.gesture(DragGesture(minimumDistance: 0).onChanged { pyreonNav in if pyreonNavKind == 0 { pyreonNavAnchor = pyreonZoom; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, Double(pyreonNav.startLocation.x)) }; pyreonZoom = ${lim('navigatorDrag(pyreonNavKind, pyreonNavAnchor, Double(pyreonNav.translation.width) / pyreonNavigator.strip.w)')} }` +
     `.onEnded { _ in pyreonNavKind = 0${zoomed ? '; pyreonZoomAnchor = pyreonZoom' : ''} })`
   return swiftFrameHost(e, lets, `ZStack(alignment: .bottom) { ${canvas}${gesture}; ${overlay} }`, '', W, H, hasWidth, indent, describe)
 }

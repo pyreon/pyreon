@@ -19,7 +19,7 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import { compileOption, DEFAULT_DECALS, visualMapSpec, visualStripOf, fillPattern, imageFill, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
+import { compileOption, resolveYDomain, DEFAULT_DECALS, visualMapSpec, visualStripOf, fillPattern, imageFill, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
 import type { ChartPattern, VisualMapSpec, GraphicElement, RichStyle, SamplingRequest } from '@pyreon/charts/option-layer'
 import type { AttrIR, ExprIR } from './types'
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
@@ -1035,7 +1035,7 @@ export function desugarOptionChart(
     return undefined
   }
 
-  optionFields(raw, ['aria', 'series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'color', 'dataset', 'graphic'], 'option', warn)
+  optionFields(raw, ['aria', 'series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'dataZoom', 'color', 'dataset', 'graphic'], 'option', warn)
 
   for (const a of e.attrs) {
     if (a.kind === 'event' && a.name !== 'selectindex') {
@@ -2461,6 +2461,33 @@ export function desugarOptionChart(
         })
       }
     }
+    // `dataZoom` resolves through the web's own reader: inside → the pinch/pan
+    // zoom, slider → the navigator, start/end → the opening window, zoomLock /
+    // minSpan / maxSpan → the limits, and filterMode none/empty pins the y
+    // extent of every row.
+    if (objectField(raw, 'dataZoom') !== undefined) {
+      const plainOption = irToValue(raw, resolve)
+      if (!plainOption.ok || !isPlainRecord(plainOption.value)) {
+        warn('<OptionChart option.dataZoom>: a native dataZoom needs a fully literal option; native renders without the zoom.')
+      } else {
+        const compiled = compileOption(plainOption.value)
+        for (const w of compiled.warnings) if (w.path.startsWith('dataZoom')) warn(`<OptionChart option.${w.path}>: ${w.message}`)
+        const z = compiled.zoom
+        if (z !== undefined) {
+          if (z.inside) set('dataZoom', lit(true))
+          if (z.slider) set('navigator', lit(true))
+          const win = (a: number, b: number): ExprIR => ({ kind: 'object', fields: [{ name: 'start', value: optionDoubleLiteral(a) }, { name: 'end', value: optionDoubleLiteral(b) }] })
+          if (z.window.start > 0 || z.window.end < 1) set('initialZoom', win(z.window.start, z.window.end))
+          if (z.lock || z.minSpan > 0 || z.maxSpan < 1) {
+            set('zoomLimits', { kind: 'object', fields: [{ name: 'lock', value: lit(z.lock) }, { name: 'minSpan', value: optionDoubleLiteral(z.minSpan) }, { name: 'maxSpan', value: optionDoubleLiteral(z.maxSpan) }] })
+          }
+          if (z.keepY && attrOf({ kind: 'jsx-element', tag: 'PlotChart', attrs, children: [] }, 'yDomain') === undefined) {
+            const d = resolveYDomain(compiled.spec)
+            set('yDomain', { kind: 'object', fields: [{ name: 'min', value: optionDoubleLiteral(d.min) }, { name: 'max', value: optionDoubleLiteral(d.max) }] })
+          }
+        }
+      }
+    }
     return { kind: 'jsx-element', tag: 'PlotChart', attrs, children: [] }
   }
 
@@ -3548,5 +3575,36 @@ export function chartVisualMap(
     ['outColor', str(s.outColor)],
   ])
   return { strip, lo: chartDouble(spec.range[0]), hi: chartDouble(spec.range[1]), selected: t.list(spec.selected.map(String)) }
+}
+
+/**
+ * `<PlotChart initialZoom zoomLimits>` on native: the window the chart opens
+ * on and the span limits every gesture is held to, as target literals. A
+ * non-literal value is named and ignored.
+ */
+export function chartZoomConfig(
+  readExpr: (name: string) => ExprIR | undefined,
+  resolve: (name: string) => ExprIR | undefined,
+  t: ChartHostTarget,
+  warn: (m: string) => void,
+  tag: string,
+): { initial: string | null; limits: string | null } {
+  const plainOf = (name: string): Record<string, unknown> | null | undefined => {
+    const e = readExpr(name)
+    if (e === undefined) return undefined
+    const literal = literalOf(e, resolve)
+    const v = literal === undefined ? undefined : irToValue(literal, resolve)
+    if (v === undefined || !v.ok || !isPlainRecord(v.value)) {
+      warn(`<${tag} ${name}>: native needs a literal object; the chart ignores it.`)
+      return null
+    }
+    return v.value
+  }
+  const init = plainOf('initialZoom')
+  const lim = plainOf('zoomLimits')
+  const n = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d)
+  const initial = init == null ? null : t.struct('ZoomWindow', [['start', chartDouble(Math.max(0, Math.min(1, n(init['start'], 0))))], ['end', chartDouble(Math.max(0, Math.min(1, n(init['end'], 1))))]])
+  const limits = lim == null ? null : t.struct('ZoomLimits', [['lock', String(lim['lock'] === true)], ['minSpan', chartDouble(n(lim['minSpan'], 0))], ['maxSpan', chartDouble(n(lim['maxSpan'], 1))]])
+  return { initial, limits }
 }
 

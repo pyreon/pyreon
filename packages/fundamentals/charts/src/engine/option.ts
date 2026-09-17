@@ -16,6 +16,11 @@
 import { renderChart } from './render'
 import { appendGraphicLayer, graphicCommands, resolveDataset, svgSize } from './option-layer'
 import { visualMapCommands } from './visual-map'
+import { readDataZoom, windowSpec } from './option-zoom'
+import type { OptionZoom } from './option-zoom'
+import { renderNavigator } from './navigator'
+import type { NavigatorLayout } from './navigator'
+import type { ZoomWindow } from './zoom'
 import { TIMELINE_HEIGHT, composeSvg, resolveTimeline, splitGrids, timelineCommands, timelineSteps } from './option-composite'
 import { customCommands, customExtents } from './custom-series'
 import type { LinesSeries } from './lines'
@@ -77,6 +82,8 @@ export interface CompiledOption {
    */
   /** ECharts' series `selectedMode` (true / single / multiple): how a click pins a datum in the host. */
   selectedMode?: 'single' | 'multiple' | undefined
+  /** `dataZoom` over the category x axis: the initial window, the slider, and the gestures. */
+  zoom?: OptionZoom | undefined
   supported: boolean
 }
 
@@ -94,7 +101,7 @@ export interface CompileOptions {
 const KNOWN_TOP = new Set([
   'aria',
   'series', 'xAxis', 'yAxis', 'title', 'legend', 'tooltip', 'color', 'grid',
-  'animation', 'backgroundColor', 'textStyle', 'dataset', 'graphic', 'visualMap',
+  'animation', 'backgroundColor', 'textStyle', 'dataset', 'graphic', 'visualMap', 'dataZoom',
 ])
 const KNOWN_SERIES = new Set([
   'type', 'name', 'data', 'stack', 'smooth', 'step', 'areaStyle', 'itemStyle',
@@ -966,7 +973,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   }
   if (customY !== undefined && spec.yDomain === undefined) spec.yDomain = customY
   if (customX !== undefined && (spec.xValues === undefined || spec.xValues.length === 0)) spec.xValues = customX
-  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }) }
+  const zoom = option['dataZoom'] === undefined ? undefined : readDataZoom(option as Record<string, unknown>, spec.categories, warn)
+  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }) }
 }
 
 const defaultPalette = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
@@ -1112,7 +1120,24 @@ function optionToSvgSingle(option: EChartsOption, opts: OptionToSvgOptions): str
  * y offset, which a host needs to hit-test against the same geometry.
  * `optionToSvg` and `<OptionChart>` both paint exactly this.
  */
-export function compiledCommands(compiled: CompiledOption, option: EChartsOption, measure: MeasureText): { cmds: DrawCmd[]; top: Double } {
+/**
+ * The chart the option draws under a zoom window: the rows in view, the
+ * global index of the first (`offset`), and the navigator strip the slider
+ * takes from the bottom. Without a `dataZoom` it is the compiled spec itself.
+ */
+export function zoomedView(compiled: CompiledOption, top: Double, win?: ZoomWindow): { spec: ChartSpec; offset: number; navigator: NavigatorLayout | null } {
+  const zoom = compiled.zoom
+  const height = Math.max(0.0, compiled.spec.height - top)
+  if (zoom === undefined) return { spec: { ...compiled.spec, height }, offset: 0, navigator: null }
+  const w = win ?? zoom.window
+  const lead = compiled.spec.series[0]
+  const t = compiled.spec.theme
+  const navigator = zoom.slider ? renderNavigator(lead?.values ?? [], lead?.color ?? t.palette[0] ?? '#5470c6', w, { x: 0.0, y: top, w: compiled.spec.width, h: height }, t.grid) : null
+  const view = windowSpec({ ...compiled.spec, height: Math.max(0.0, height - (navigator?.height ?? 0.0)) }, w, zoom.keepY)
+  return { spec: view.spec, offset: view.offset, navigator }
+}
+
+export function compiledCommands(compiled: CompiledOption, option: EChartsOption, measure: MeasureText, win?: ZoomWindow): { cmds: DrawCmd[]; top: Double } {
   const width = compiled.spec.width
   const height = compiled.spec.height
   const t = compiled.spec.theme
@@ -1133,9 +1158,11 @@ export function compiledCommands(compiled: CompiledOption, option: EChartsOption
     for (const c of l.cmds) cmds.push(c)
     top = top + l.height
   }
-  const chart = renderChart({ ...compiled.spec, height: Math.max(0.0, height - top) }, measure)
+  const view = zoomedView(compiled, top, win)
+  const chart = renderChart(view.spec, measure)
   for (const c of chart) cmds.push(top === 0.0 ? c : shift(c, top))
-  const customOut = customCommands(compiled.custom, { ...compiled.spec, height: Math.max(0.0, height - top) }, measure, width, height)
+  if (view.navigator !== null) for (const c of view.navigator.cmds) cmds.push(c)
+  const customOut = customCommands(compiled.custom, view.spec, measure, width, height)
   for (const c of customOut.cmds) cmds.push(top === 0.0 ? c : shift(c, top))
   for (const c of visualMapCommands(option, width, height).cmds) cmds.push(c)
   for (const c of graphicCommands(option, width, height).cmds) cmds.push(c)

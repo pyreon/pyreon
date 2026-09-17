@@ -77,7 +77,25 @@ final class PyreonTasksUITests: XCTestCase {
     /// how the boxplot band assertion first failed on the simulator.
     @discardableResult
     /** Pixels within a few units of #cccccc — the visualMap's inactive colour. */
-    private func greyPixels(_ png: Data) -> Int {
+    /** Scroll the gallery until the WHOLE element is inside the window: a gesture on an off-screen part lands on nothing. */
+    private func scrollFullyOnScreen(_ element: XCUIElement, in app: XCUIApplication) {
+        let scroll = app.scrollViews["gal-scroll"].firstMatch
+        for _ in 0..<16 {
+            let window = app.windows.firstMatch.frame
+            if element.frame.minY < window.minY + 100 {
+                scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65)))
+            } else if element.frame.maxY > window.maxY - 80 {
+                scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65)).press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)))
+            } else {
+                return
+            }
+        }
+    }
+
+    private func redPixels(_ png: Data) -> Int { colorPixels(png, 255, 0, 0) }
+    private func greyPixels(_ png: Data) -> Int { colorPixels(png, 204, 204, 204) }
+
+    private func colorPixels(_ png: Data, _ r: Int, _ g: Int, _ b: Int) -> Int {
         // Redrawn into a known RGBA8 buffer: a screenshot's own pixel format varies by device.
         guard let image = UIImage(data: png)?.cgImage else { return 0 }
         let w = image.width, h = image.height
@@ -87,7 +105,7 @@ final class PyreonTasksUITests: XCTestCase {
         var n = 0
         var i = 0
         while i + 3 < buf.count {
-            if abs(Int(buf[i]) - 204) <= 4 && abs(Int(buf[i + 1]) - 204) <= 4 && abs(Int(buf[i + 2]) - 204) <= 4 { n += 1 }
+            if abs(Int(buf[i]) - r) <= 6 && abs(Int(buf[i + 1]) - g) <= 6 && abs(Int(buf[i + 2]) - b) <= 6 { n += 1 }
             i += 4
         }
         return n
@@ -869,7 +887,7 @@ final class PyreonTasksUITests: XCTestCase {
         // The calculable visualMap: dragging its high handle (bottom-left strip) left greys the hottest cells.
         let visualMap = app.descendants(matching: .any).matching(identifier: "gal-visualmap").firstMatch
         XCTAssertTrue(visualMap.waitForExistence(timeout: 10), "gal-visualmap canvas missing on the gallery")
-        scrollIntoView(visualMap, in: app)
+        scrollFullyOnScreen(visualMap, in: app)
         let vmBefore = visualMap.screenshot().pngRepresentation
         let vmOrigin = visualMap.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
         let vmHandleY = visualMap.frame.height - 41 + 16 + 4
@@ -879,6 +897,19 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertLessThan(greyPixels(vmBefore), 50, "the visualMap greyed cells before any drag")
         let vmGrey = greyPixels(visualMap.screenshot().pngRepresentation)
         XCTAssertGreaterThan(vmGrey, 400, "dragging the visualMap handle did not grey the out-of-range cells (grey pixels: \(vmGrey))")
+        // The slider dataZoom opens on the low half; dragging the band right shows the tall bars (y extent pinned).
+        let zoomChart = app.descendants(matching: .any).matching(identifier: "gal-datazoom").firstMatch
+        XCTAssertTrue(zoomChart.waitForExistence(timeout: 10), "gal-datazoom canvas missing on the gallery")
+        scrollFullyOnScreen(zoomChart, in: app)
+        let redBefore = redPixels(zoomChart.screenshot().pngRepresentation)
+        let zoomOrigin = zoomChart.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let zoomStripW = zoomChart.frame.width - 16
+        let zoomStripY = zoomChart.frame.height - 18
+        zoomOrigin.withOffset(CGVector(dx: 8 + zoomStripW * 0.25, dy: zoomStripY)).press(forDuration: 0.2, thenDragTo: zoomOrigin.withOffset(CGVector(dx: 8 + zoomStripW * 0.75, dy: zoomStripY)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        let redAfter = redPixels(zoomChart.screenshot().pngRepresentation)
+        XCTAssertGreaterThan(redBefore, 100, "the zoomed bar chart painted no red bars before the drag")
+        XCTAssertGreaterThan(redAfter, redBefore * 3, "dragging the dataZoom band did not move the window to the tall bars (red before \(redBefore), after \(redAfter))")
         // The geo route trail MOVES too: two screenshots half a second apart differ.
         let geoTrail = app.descendants(matching: .any).matching(identifier: "gal-geo-trail").firstMatch
         XCTAssertTrue(geoTrail.waitForExistence(timeout: 10), "gal-geo-trail canvas missing on the gallery")

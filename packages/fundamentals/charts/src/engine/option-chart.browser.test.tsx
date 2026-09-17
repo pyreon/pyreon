@@ -65,6 +65,42 @@ describe('OptionChart (real browser)', () => {
     expect(await count(bar({ decal: { symbol: 'path://M0 0L10 0L5 10Z', color: '#ff0000', dashArrayX: [8, 4], dashArrayY: [8, 4] } }), isRed)).toBeGreaterThan(50)
   })
 
+  it('dataZoom: the slider band drags the window, the wheel zooms it, and a click reports the GLOBAL index', async () => {
+    const cats = Array.from({ length: 20 }, (_, i) => `c${i}`)
+    const option: EChartsOption = { animation: false, xAxis: { type: 'category', data: cats }, yAxis: {}, dataZoom: [{ type: 'inside', start: 0, end: 50 }, { type: 'slider' }], series: [{ type: 'bar', data: cats.map((_, i) => i + 1) }] }
+    const windows: { start: number; end: number }[] = []
+    const picked: number[] = []
+    const m = mountInBrowser(h(OptionChart, { option, width: 400, height: 260, onDataZoom: (w: { start: number; end: number }) => windows.push(w), onSelectIndex: (i: number) => picked.push(i) }))
+    await flush()
+    await wait(300)
+    const c = m.container.querySelector('canvas')!
+    const r = c.getBoundingClientRect()
+    const fire = (type: string, x: number, y: number) => c.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: r.left + x, clientY: r.top + y, pointerId: 7 }))
+    // The strip sits in the bottom 36px; the band covers its left half. Drag the band right by a quarter of the strip.
+    const stripY = 260 - 18
+    fire('pointerdown', 100, stripY)
+    fire('pointermove', 100 + 96, stripY)
+    fire('pointerup', 100 + 96, stripY)
+    // The click a browser fires at the end of that drag is swallowed, not a selection.
+    c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 196, clientY: r.top + stripY }))
+    await flush()
+    expect(picked).toEqual([])
+    expect(windows.length).toBeGreaterThan(0)
+    const moved = windows[windows.length - 1]!
+    expect(moved.start).toBeGreaterThan(15)
+    expect(moved.end - moved.start).toBeCloseTo(50, 0)
+    // A click on the first visible bar reports its index in the full data.
+    await wait(50)
+    c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 70, clientY: r.top + 150 }))
+    expect(picked[picked.length - 1]).toBeGreaterThanOrEqual(Math.floor((moved.start / 100) * 20))
+    // The wheel zooms in about the pointer: the span narrows.
+    c.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -400, clientX: r.left + 200, clientY: r.top + 100 }))
+    await flush()
+    const zoomed = windows[windows.length - 1]!
+    expect(zoomed.end - zoomed.start).toBeLessThan(50)
+    m.unmount()
+  })
+
   it('animates a lines trail on a frame clock: the canvas changes between frames, and holds still under reduced motion', async () => {
     const option: EChartsOption = { xAxis: {}, yAxis: {}, series: [{ type: 'lines', effect: { show: true, period: 1, trailLength: 0.3, color: '#ff0000', symbolSize: 10 }, data: [{ coords: [[0, 0], [10, 10]] }] }] }
     const snapshot = (c: HTMLCanvasElement): string => {

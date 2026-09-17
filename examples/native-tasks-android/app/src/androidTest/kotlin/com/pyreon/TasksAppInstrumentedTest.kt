@@ -878,6 +878,25 @@ class TasksAppInstrumentedTest {
         assertTrue("the visualMap greyed cells before any drag", greyPixels(vmBefore) < 50)
         val vmGrey = greyPixels(visualMap.captureToImage().asAndroidBitmap())
         assertTrue("dragging the visualMap handle did not grey the out-of-range cells (grey pixels: $vmGrey)", vmGrey > 400)
+        // The slider dataZoom opens on the low half; dragging the band right shows the tall bars (y extent pinned).
+        fun redPixels(b: android.graphics.Bitmap): Int {
+            var n = 0
+            for (y in 0 until b.height) for (x in 0 until b.width) {
+                val c = b.getPixel(x, y)
+                if (android.graphics.Color.red(c) >= 249 && android.graphics.Color.green(c) <= 6 && android.graphics.Color.blue(c) <= 6) n++
+            }
+            return n
+        }
+        val zoomChart = composeRule.onNodeWithTag("gal-datazoom").performScrollTo()
+        val redBefore = redPixels(zoomChart.captureToImage().asAndroidBitmap())
+        zoomChart.performTouchInput {
+            val stripW = width - 16.dp.toPx()
+            val y = height - 18.dp.toPx()
+            swipe(start = Offset(8.dp.toPx() + stripW * 0.25f, y), end = Offset(8.dp.toPx() + stripW * 0.75f, y), durationMillis = 700)
+        }
+        composeRule.waitForIdle()
+        val redAfter = redPixels(zoomChart.captureToImage().asAndroidBitmap())
+        assertTrue("dragging the dataZoom band did not move the window to the tall bars (red before $redBefore, after $redAfter)", redAfter > redBefore * 3)
         // The lines trail renders. Its MOTION is proven on the iOS device lane
         // and in real Chromium; here it cannot be: the trail runs on
         // withInfiniteAnimationFrameNanos (a plain frame loop kept this harness

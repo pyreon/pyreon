@@ -27,3 +27,4 @@ export type { SamplingMethod, SamplingRequest, SharedRows } from './engine/sampl
 export { visualMapSpec, visualStripOf } from './engine/visual-map'
 export type { VisualMapSpec } from './engine/visual-map'
 export type { VisualStrip } from './engine/visual-strip'
+export { resolveYDomain } from './engine/render'

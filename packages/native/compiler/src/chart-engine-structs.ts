@@ -11357,6 +11357,34 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "ZoomLimits",
+    "fields": [
+      {
+        "name": "lock",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "minSpan",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "maxSpan",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "ZoomPreset",
     "fields": [
       {
@@ -12011,6 +12039,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "VisualStrip",
   "VisualStripPlacement",
   "WaterfallStep",
+  "ZoomLimits",
   "ZoomPreset",
   "ZoomWindow"
 ]

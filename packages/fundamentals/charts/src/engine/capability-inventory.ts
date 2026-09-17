@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-17.33' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-17.34' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -71,7 +71,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('coordinates.mark-point', 'coordinates', 'direct', 'complete', 'src/engine/option-marks.test.ts', '../../native/compiler/src/tests/chart-marks-native.test.ts'),
   row('coordinates.mark-line', 'coordinates', 'direct', 'complete', 'src/engine/option-marks.test.ts', '../../native/compiler/src/tests/chart-marks-native.test.ts'),
   row('coordinates.geo', 'coordinates', 'direct', 'complete', 'src/engine/geo-roam.test.ts', 'src/engine/geo-series.test.ts', 'src/engine/geo.browser.test.tsx', '../../native/compiler/src/tests/chart-map-roam-native.test.ts'),
-  row('coordinates.data-zoom', 'coordinates', 'direct', 'partial', 'src/engine/navigator.ts'),
+  row('coordinates.data-zoom', 'coordinates', 'direct', 'complete', 'src/engine/option-zoom.test.ts', 'src/engine/zoom.browser.test.tsx', 'src/engine/option-chart.browser.test.tsx', '../../native/compiler/src/tests/chart-option-datazoom-native.test.ts'), // inside + slider on the category x axis: start/end or startValue/endValue, filterMode, zoomLock, minSpan/maxSpan; a y-axis zoom is named
   row('coordinates.timeline', 'coordinates', 'direct', 'partial', 'src/engine/option-composite.ts', '../../native/compiler/src/tests/chart-option-family-native.test.ts'),
   row('coordinates.toolbox', 'coordinates', 'direct', 'partial', 'src/engine/toolbox.ts'),
   row('coordinates.brush', 'coordinates', 'direct', 'partial', 'src/engine/brush.ts'),
