@@ -907,6 +907,10 @@ class TasksAppInstrumentedTest {
         timeline.performTouchInput { click(Offset(width - 33.dp.toPx(), height - (40 - 16).dp.toPx())) }
         composeRule.waitForIdle()
         timeline.assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2019"))
+        // dispatchAction: the handle's timelineChange moves the same step a tap does.
+        composeRule.onNodeWithTag("gal-tl-last").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-timeline").performScrollTo().assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2021"))
         // The toolbox (dataZoom, back, dataView, line, bar, restore — right-aligned, 25dp apart at the top).
         val toolbox = composeRule.onNodeWithTag("gal-toolbox").performScrollTo()
         val tool = { i: Int -> toolbox.performTouchInput { click(Offset(width - (9.5f + 25f * (5 - i)).dp.toPx(), 9.5.dp.toPx())) } }
@@ -927,6 +931,13 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("pyreon-dataview-close").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("pyreon-dataview").assertDoesNotExist()
+        // dispatchAction: the handle's dataZoom and restore move the window the toolbox moves.
+        composeRule.onNodeWithTag("gal-h-zoom").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-toolbox-zoom").performScrollTo().assertTextEquals("0-50")
+        composeRule.onNodeWithTag("gal-h-reset").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-toolbox-zoom").performScrollTo().assertTextEquals("0-100")
         // saveAsImage on a family chart: the offscreen PNG reaches onSaveImage.
         composeRule.onNodeWithTag("gal-save").performScrollTo()
         composeRule.onNodeWithTag("pyreon-save-image").performClick()

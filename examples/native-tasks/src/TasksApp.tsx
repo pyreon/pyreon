@@ -96,6 +96,7 @@ import {
   TreemapChart,
   bars,
   bollinger,
+  createChartHandle,
   line,
   sma,
 } from '@pyreon/charts/plot'
@@ -754,6 +755,9 @@ function GalleryPage() {
   const tbZoom = signal('0-100')
   const tbSaved = signal('none')
   const brushCount = signal('none')
+  // Imperative handles (ECharts dispatchAction) for the toolbox chart and the timeline.
+  const tbHandle = createChartHandle()
+  const tlHandle = createChartHandle()
   return (
     <Scroll direction="vertical" data-testid="gal-scroll">
       <Stack gap={3} padding={4} data-testid="gal-page">
@@ -850,17 +854,28 @@ function GalleryPage() {
             options: [{ series: [{ data: [2, 3, 1] }] }, { series: [{ data: [5, 6, 4] }] }, { series: [{ data: [9, 8, 10] }] }],
           }}
           height={240}
+          handle={tlHandle}
           data-testid="gal-timeline"
         />
+        <Button onPress={() => tlHandle.dispatch({ type: 'timelineChange', index: 2 })} data-testid="gal-tl-last">
+          Last step
+        </Button>
         <PlotChart
           data={SCORE_ROWS}
           marks={[bars((d: ScoreRow) => d.score)]}
           toolbox={{ dataZoom: true, dataView: true, magicType: ['line', 'bar'], restore: true }}
           height={220}
+          handle={tbHandle}
           data-testid="gal-toolbox"
           onZoom={(w: ZoomWindow) => tbZoom.set(`${(w.start * 100).toFixed(0)}-${(w.end * 100).toFixed(0)}`)}
         />
         <Text data-testid="gal-toolbox-zoom">{tbZoom()}</Text>
+        <Button onPress={() => tbHandle.dispatch({ type: 'dataZoom', start: 0, end: 0.5 })} data-testid="gal-h-zoom">
+          Zoom to half
+        </Button>
+        <Button onPress={() => tbHandle.dispatch({ type: 'restore' })} data-testid="gal-h-reset">
+          Reset
+        </Button>
         <PlotChart
           data={LOAD_ROWS}
           marks={[bars((d: WeekRow) => d.load)]}

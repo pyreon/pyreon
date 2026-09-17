@@ -11893,6 +11893,142 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "ChartActionInput",
+    "fields": [
+      {
+        "name": "type",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "index",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "series",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "start",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "end",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "brushType",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "areas",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "BrushArea",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "playing",
+        "type": {
+          "kind": "boolean"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "ChartActionState",
+    "fields": [
+      {
+        "name": "zoom",
+        "type": {
+          "kind": "typeRef",
+          "name": "ZoomWindow",
+          "args": []
+        }
+      },
+      {
+        "name": "hover",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "selected",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "number"
+          }
+        }
+      },
+      {
+        "name": "hidden",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "number"
+          }
+        }
+      },
+      {
+        "name": "seriesCount",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "brushType",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "areas",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "BrushArea",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "step",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "playing",
+        "type": {
+          "kind": "boolean"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "A11ySeries",
     "fields": [
       {
@@ -12195,6 +12331,8 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "CalendarValue",
   "CandleOptions",
   "CandlestickFrame",
+  "ChartActionInput",
+  "ChartActionState",
   "ChartSpec",
   "ChartTheme",
   "ChordArc",

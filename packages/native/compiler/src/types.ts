@@ -594,6 +594,8 @@ export type DeclIR =
    * shared application.
    */
   | { kind: 'linking'; name: string }
+  /** `const chart = createChartHandle()` — a PyreonChartHandle (Swift @Observable class / Kotlin state holder). */
+  | { kind: 'chart-handle'; name: string }
   /**
    * M3.3 — local notifications via `const notifs = useNotifications()` from
    * `@pyreon/hooks`. Emits the PyreonNotifications wrapper:

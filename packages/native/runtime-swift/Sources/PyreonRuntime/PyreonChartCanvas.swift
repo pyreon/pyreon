@@ -1,4 +1,5 @@
 import SwiftUI
+import Observation
 import Foundation
 #if canImport(UIKit)
 import UIKit
@@ -1007,3 +1008,42 @@ public func pyreonChartDataUrl(_ cmds: [PyreonDrawCmd], _ width: Double, _ heigh
 
 public func pyreonShareChartImage(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double, _ name: String) {}
 #endif
+
+// ── Chart handle (ECharts `dispatchAction`) ───────────────────────────────
+//
+// `createChartHandle()` lowers to one of these. Its fields ARE the bound
+// chart's state (the plot host reads and writes `handle.selected`, not a
+// private copy), so a dispatched action and a gesture move the same values.
+// `dispatch` runs the crossing `applyChartAction` reducer — the web handle's
+// function — and writes back only what changed.
+
+@available(iOS 17.0, macOS 14.0, *)
+@Observable
+public final class PyreonChartHandle {
+    public var zoom = ZoomWindow(start: 0.0, end: 1.0)
+    public var hover: Int = -1
+    public var selected: [Int] = []
+    public var hidden: [Int] = []
+    public var seriesCount: Int = 0
+    public var brushType: String = ""
+    public var areas: [BrushArea] = []
+    public var step: Int = -1
+    public var playing: Bool = false
+
+    public init(seriesCount: Int = 0) { self.seriesCount = seriesCount }
+
+    public func dispatch(_ action: ChartActionInput) {
+        let next = applyChartAction(
+            ChartActionState(zoom: zoom, hover: hover, selected: selected, hidden: hidden, seriesCount: seriesCount, brushType: brushType, areas: areas, step: step, playing: playing),
+            action
+        )
+        if next.zoom.start != zoom.start || next.zoom.end != zoom.end { zoom = next.zoom }
+        if next.hover != hover { hover = next.hover }
+        if next.selected != selected { selected = next.selected }
+        if next.hidden != hidden { hidden = next.hidden }
+        if next.brushType != brushType { brushType = next.brushType }
+        if next.areas.count != areas.count || action.type == "brush" { areas = next.areas }
+        if next.step != step { step = next.step }
+        if next.playing != playing { playing = next.playing }
+    }
+}

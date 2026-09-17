@@ -93,6 +93,7 @@ export const ENGINE_FILES = [
   'navigator',
   'brush',
   'brush-area',
+  'chart-actions',
   'a11y',
   'indicator-values',
   'decimate-values',

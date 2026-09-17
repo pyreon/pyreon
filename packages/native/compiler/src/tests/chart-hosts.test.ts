@@ -733,7 +733,7 @@ describe('chart hosts — <PlotChart dataZoom> as pinch + pan over a fraction wi
     expect(r.code).toContain('let pyreonValues1: [Double] = pyreonSourceRows.enumerated().map { (pyreonJ, pyreonD) -> Double in let pyreonI = pyreonJ + pyreonRange.from; return pyreonChartDouble(pyreonD.avg + pyreonI) }')
     expect(r.code).toContain('let pyreonCats: [String] = pyreonSourceRows.enumerated().map { (_, pyreonD) -> String in pyreonD.label }')
     expect(r.code).toContain('.simultaneousGesture(MagnificationGesture().onChanged { pyreonScale in pyreonZoom = zoomWindow(pyreonZoomAnchor, 1.0 / Double(pyreonScale), 0.5) }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })')
-    expect(r.code).toContain('.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonDrag in pyreonZoom = panWindow(pyreonZoomAnchor, -Double(pyreonDrag.translation.width) / Double(pyreonGeo.size.width)) }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })')
+    expect(r.code).toContain('.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonDragG in pyreonZoom = panWindow(pyreonZoomAnchor, -Double(pyreonDragG.translation.width) / Double(pyreonGeo.size.width)) }.onEnded { pyreonDragG in pyreonZoomAnchor = pyreonZoom })')
     expect(r.code).toContain('if abs(pyreonTap.translation.width) < 6.0 && abs(pyreonTap.translation.height) < 6.0 { let i = { () -> Int in let pyreonHit = plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); return pyreonHit < 0 ? -1 : pyreonHit + pyreonRange.from }()')
   })
   it('Kotlin: the window is remembered in the host, the rows are a subList, and detectTransformGestures drives pan + zoom incrementally', () => {
@@ -1154,7 +1154,7 @@ describe('chart hosts — <PlotChart brush onBrush> as a plain drag over the eng
     expect(r.code).toContain('PyreonChartCanvas(cmds: renderChart(pyreonSpec, pyreonChartMeasure) + pyreonBrushCmds)')
     expect(r.code).toContain('if abs(pyreonTap.translation.width) < 6.0 && abs(pyreonTap.translation.height) < 6.0 { if pyreonBrushStart >= 0 { pyreonBrushStart = -1; pyreonBrushEnd = -1; onBrush(nil) } else {')
     expect(r.code).toContain(
-      '.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonBrushDrag in pyreonBrushA = Double(pyreonBrushDrag.startLocation.x); pyreonBrushB = Double(pyreonBrushDrag.location.x) }.onEnded { pyreonBrushDrag in let pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, Double(pyreonBrushDrag.startLocation.x), Double(pyreonBrushDrag.location.x), ZoomWindow(start: 0.0, end: 1.0), DAYS.count); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0; onBrush(pyreonSel) })',
+      '.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonDragG in pyreonBrushA = Double(pyreonDragG.startLocation.x); pyreonBrushB = Double(pyreonDragG.location.x) }.onEnded { pyreonDragG in let pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, Double(pyreonDragG.startLocation.x), Double(pyreonDragG.location.x), ZoomWindow(start: 0.0, end: 1.0), DAYS.count); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0; onBrush(pyreonSel) })',
     )
     // The named handler narrows its optional through the null compare.
     expect(r.code).toContain('private func onBrush(_ r: BrushRange?) {\n    if let r {')
@@ -1197,7 +1197,7 @@ describe('chart hosts — <PlotChart brush onBrush> as a plain drag over the eng
   it('with presets the brush maps through the host window and the tap order is preset → brush clear → selection', () => {
     const s = transform(BRUSH_PRESETS, { target: 'swift' })
     expect(s.warnings).toEqual([])
-    expect(s.code).toContain('brushRange(pyreonPlot.x, pyreonPlot.w, Double(pyreonBrushDrag.startLocation.x), Double(pyreonBrushDrag.location.x), pyreonZoom, DAYS.count)')
+    expect(s.code).toContain('brushRange(pyreonPlot.x, pyreonPlot.w, Double(pyreonDragG.startLocation.x), Double(pyreonDragG.location.x), pyreonZoom, DAYS.count)')
     expect(s.code).toContain('} else if pyreonBrushStart >= 0 { pyreonBrushStart = -1; pyreonBrushEnd = -1; onBrush(nil) } else {')
     const k = transform(BRUSH_PRESETS, { target: 'kotlin' })
     expect(k.code).toContain('} else if (pyreonBrushStart >= 0) { pyreonBrushStart = -1; pyreonBrushEnd = -1; onBrush(null) } else {')

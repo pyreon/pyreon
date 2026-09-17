@@ -1010,7 +1010,7 @@ function lowerTimelineSteps(
     { kind: 'attr', name: 'timelineInterval', value: lit(read.playInterval) },
     { kind: 'attr', name: 'height', value: lit(total) },
   ]
-  for (const a of e.attrs) if ((a.kind === 'attr' && a.name === 'data-testid') || (a.kind === 'event' && a.name === 'timelinechange')) outer.push(a)
+  for (const a of e.attrs) if ((a.kind === 'attr' && (a.name === 'data-testid' || a.name === 'handle')) || (a.kind === 'event' && a.name === 'timelinechange')) outer.push(a)
   return { kind: 'jsx-element', tag: CHART_TIMELINE_TAG, attrs: outer, children }
 }
 
@@ -3665,7 +3665,6 @@ export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'strin
  */
 const PLOT_UNLOWERED_REASON: Readonly<Record<string, string>> = {
   // ── Mechanism is the web platform ──────────────────────────────────────
-  handle: '`createChartHandle().dispatch` is an imperative channel into a mounted DOM host; a native chart is a stateless expression with no handle to hold',
   crosshair: 'it is a HOVER readout, and a touch target has no hover state to read',
   link: 'it couples two charts through a shared DOM-side controller',
   keyboard: 'it makes the canvas focusable and announces through a DOM live region; the native canvas is named for VoiceOver / TalkBack instead (`describeChart`, which does cross)',
@@ -3696,7 +3695,7 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
 // `updateAnimation`, `updateDuration`, `toolbox`, `onSaveImage`,
 // `accessibleTable`) are reported through `chartChromeUnlowered` for the plot
 // host too — listing them here as well would warn twice.
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'onHighlight', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'crosshair', 'link', 'keyboard', 'accessibleTable', 'facet', 'facetColumns']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['onHighlight', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'crosshair', 'link', 'keyboard', 'accessibleTable', 'facet', 'facetColumns']
 
 /**
  * A host's `visualMap` at COMPILE time: the web `VisualMapSpec` (as the web
@@ -3821,3 +3820,20 @@ export function chartToolboxConfig(
   return { tools, dataZoom: cfg['dataZoom'] === true, magic: magic.length > 0, dataView: cfg['dataView'] === true, save, brush }
 }
 
+
+/**
+ * `handle.dispatch({ type, ... })` — the action literal as the crossing
+ * reducer's flat `ChartActionInput` fields (`legendInverseSelect`'s `count`
+ * rides in `series`, as the web handle's `toActionInput` puts it). A field the
+ * action does not name is absent here and takes the reducer's default at emit.
+ * Returns null when the argument is not an inline object with a string `type`.
+ */
+export function chartActionFields(arg: ExprIR | undefined): Partial<Record<'type' | 'index' | 'series' | 'start' | 'end' | 'brushType' | 'areas' | 'playing', ExprIR>> | null {
+  if (arg === undefined || arg.kind !== 'object' || (arg.spreads !== undefined && arg.spreads.length > 0)) return null
+  const out: Partial<Record<'type' | 'index' | 'series' | 'start' | 'end' | 'brushType' | 'areas' | 'playing', ExprIR>> = {}
+  for (const f of arg.fields) {
+    if (f.name === 'count') out.series = f.value
+    else if (f.name === 'type' || f.name === 'index' || f.name === 'series' || f.name === 'start' || f.name === 'end' || f.name === 'brushType' || f.name === 'areas' || f.name === 'playing') out[f.name] = f.value
+  }
+  return out.type === undefined ? null : out
+}

@@ -95,7 +95,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -732,6 +732,8 @@ export function emitKotlin(
     }
   }
   _moduleConstExprsKotlin = new Map()
+  // Per module: a handle name from a previous file must not make this file's `x.dispatch(...)` lower.
+  _chartHandleNamesKotlin.clear()
   for (const md of moduleDecls) {
     if (!md.mutable) _moduleConstExprsKotlin.set(md.name, md.initial)
   }
@@ -3130,6 +3132,12 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // sibling val (can't live in the non-Composable `remember` lambda) and
   // injected, the same shape clipboard uses. Methods (`share.text("hi")`)
   // flow through unchanged.
+  // `const chart = createChartHandle()` → a remembered PyreonChartHandle (Compose state fields); its
+  // name is remembered so `chart.dispatch({...})` lowers to the reducer's full action record.
+  if (d.kind === 'chart-handle') {
+    _chartHandleNamesKotlin.add(d.name)
+    return `val ${kotlinIdent(d.name)} = remember { PyreonChartHandle() }`
+  }
   if (d.kind === 'linking') {
     const id = kotlinIdent(d.name)
     return [
@@ -4623,6 +4631,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // conditionalKotlinImports); the kotlinc stub fakes it as a Json member.
       return `Json.encodeToString(${emitKotlinExpr(e.arg, indent)})`
     case 'call': {
+      if (e.callee.kind === 'member' && e.callee.property === 'dispatch' && e.callee.object.kind === 'identifier' && _chartHandleNamesKotlin.has(e.callee.object.name)) {
+        const f = chartActionFields(e.args[0])
+        if (f === null) {
+          _emitWarnings.push(`<${e.callee.object.name}.dispatch>: native needs an inline action object with a literal \`type\` ({ type: 'select', index: 2 }); the call is skipped.`)
+          return 'Unit'
+        }
+        const int = (x: ExprIR | undefined): string => (x === undefined ? '-1' : `(${emitKotlinExpr(x, indent)}).toInt()`)
+        const dbl = (x: ExprIR | undefined, d: string): string => (x === undefined ? d : `(${emitKotlinExpr(x, indent)}).toDouble()`)
+        const areas = f.areas === undefined ? 'listOf()' : withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'BrushArea', args: [] } }, () => emitKotlinExpr(f.areas!, indent))
+        return `${kotlinIdent(e.callee.object.name)}.dispatch(ChartActionInput(type = ${emitKotlinExpr(f.type!, indent)}, index = ${int(f.index)}, series = ${int(f.series)}, start = ${dbl(f.start, '0.0')}, end = ${dbl(f.end, '1.0')}, brushType = ${f.brushType === undefined ? '""' : emitKotlinExpr(f.brushType, indent)}, areas = ${areas}, playing = ${f.playing === undefined ? 'false' : emitKotlinExpr(f.playing, indent)}))`
+      }
       if (e.callee.kind === 'identifier') {
         const paramTypes = _helperParamTypesKotlin.get(e.callee.name)
         if (paramTypes !== undefined) {
@@ -11321,6 +11340,9 @@ function kotlinToolboxSaves(e: Extract<ExprIR, { kind: 'jsx-element' }>): boolea
  * exact match silently returns undefined, which emits a chart that toggles
  * its legend and never calls the handler.
  */
+/** Names declared `createChartHandle()` in the module being emitted — their `dispatch` calls lower to `ChartActionInput`. */
+const _chartHandleNamesKotlin = new Set<string>()
+
 function chartEventHandler(e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string): ExprIR | undefined {
   const want = name.toLowerCase()
   const a = e.attrs.find((x) => x.kind === 'event' && x.name.toLowerCase() === want)
@@ -11365,10 +11387,21 @@ function emitKotlinChartTimeline(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
     `if (pyreonHit.kind == 2.0) { ${playing} = !${playing} } else if (pyreonHit.kind > 0.0) { ${playing} = false; ` +
     `val pyreonNext = if (pyreonHit.kind == 1.0) pyreonHit.index else timelineAdvance(pyreonTlStrip${k}, ${step}.toDouble(), if (pyreonHit.kind == 3.0) -1.0 else 1.0, true); ` +
     `if (pyreonNext >= 0.0) ${step} = pyreonNext.toInt() } }`
+  // A handle (`timelineChange` / `timelinePlayChange`) owns the step and play state: the locals delegate
+  // to its fields, seeded once from the option (its -1 step means "the option's own").
+  const handleAttr = chartAttrExprKotlin(e, 'handle')
+  const handle = handleAttr?.kind === 'identifier' && _chartHandleNamesKotlin.has(handleAttr.name) ? kotlinIdent(handleAttr.name) : undefined
+  if (handleAttr !== undefined && handle === undefined) _emitWarnings.push('<OptionChart handle>: native needs a `const chart = createChartHandle()` declared in the same component; the timeline runs without the handle.')
+  const curN = typeof cur === 'number' ? cur : 0
   const lines = [
     `run {`,
-    `${pad}var ${step} by remember { mutableStateOf(${typeof cur === 'number' ? cur : 0}) }`,
-    `${pad}var ${playing} by remember { mutableStateOf(${autoPlay}) }`,
+    ...(handle === undefined
+      ? [`${pad}var ${step} by remember { mutableStateOf(${curN}) }`, `${pad}var ${playing} by remember { mutableStateOf(${autoPlay}) }`]
+      : [
+          `${pad}remember { if (${handle}.step < 0) { ${handle}.step = ${curN}; ${handle}.playing = ${autoPlay} }; true }`,
+          `${pad}var ${step} by ${handle}::step`,
+          `${pad}var ${playing} by ${handle}::playing`,
+        ]),
     `${pad}val pyreonTlStrip${k}: TimelineStrip = ${strip}`,
     `${pad}LaunchedEffect(${playing}) { while (${playing}) { delay(${ms}L); if (!${playing}) break; val pyreonNext = timelineTick(pyreonTlStrip${k}, ${step}.toDouble()); if (pyreonNext < 0.0) ${playing} = false else ${step} = pyreonNext.toInt() } }`,
   ]
@@ -12129,7 +12162,29 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
   return args
 }
 
+/**
+ * `handle={chart}` binds the host to a `createChartHandle()` — the Compose
+ * twin of the Swift wrapper: the core emits with the window, pins, hidden
+ * series and area brush on; this drops their `remember` state and points the
+ * names at the handle's state fields.
+ */
 function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const handleAttr = chartAttrExprKotlin(e, 'handle')
+  if (handleAttr === undefined) return emitKotlinPlotHostCore(e, indent, undefined)
+  if (handleAttr.kind !== 'identifier' || !_chartHandleNamesKotlin.has(handleAttr.name)) {
+    _emitWarnings.push('<PlotChart handle>: native needs a `const chart = createChartHandle()` declared in the same component; the chart renders without the handle.')
+    return emitKotlinPlotHostCore(e, indent, undefined)
+  }
+  const h = kotlinIdent(handleAttr.name)
+  const bound: Readonly<Record<string, string>> = { pyreonZoom: 'zoom', pyreonSelected: 'selected', pyreonHidden: 'hidden', pyreonAreaType: 'brushType', pyreonAreas: 'areas', pyreonHover: 'hover' }
+  return emitKotlinPlotHostCore(e, indent, h)
+    .split('\n')
+    .filter((l) => !/^\s*var pyreon(Zoom|Selected|Hidden|AreaType|Areas|Hover) by remember/.test(l))
+    .join('\n')
+    .replace(/\bpyreon(Zoom|Selected|Hidden|AreaType|Areas|Hover)\b/g, (m) => `${h}.${bound[m]}`)
+}
+
+function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number, handle: string | undefined): string {
   const tag = 'PlotChart'
   const dataV = chartAttrExprKotlin(e, 'data')
   const marksV = chartAttrExprKotlin(e, 'marks')
@@ -12162,12 +12217,15 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   // An opening window slices the rows even with no gesture to move it.
   const toolbox = chartToolboxConfig(chartAttrExprKotlin(e, 'toolbox'), (n) => _moduleConstExprsKotlin.get(n), (m) => _emitWarnings.push(m), tag)
   // ECharts' area brush (rect / polygon / lineX / lineY), shared with the web through `brush-area`.
-  const area = chartAreaBrushConfig((n) => readStaticAttrKotlin(e, n), (n) => chartAttrExprKotlin(e, n) !== undefined, toolbox?.brush ?? [], (m) => _emitWarnings.push(m), tag, (n) => chartAttrExprKotlin(e, n), (n) => _moduleConstExprsKotlin.get(n))
-  const windowed = zoomed || presets !== undefined || navigating || zoomCfgK.initial !== null || toolbox?.dataZoom === true
+  const areaCfg = chartAreaBrushConfig((n) => readStaticAttrKotlin(e, n), (n) => chartAttrExprKotlin(e, n) !== undefined, toolbox?.brush ?? [], (m) => _emitWarnings.push(m), tag, (n) => chartAttrExprKotlin(e, n), (n) => _moduleConstExprsKotlin.get(n))
+  const area = handle === undefined ? areaCfg : { ...areaCfg, on: true }
+  const windowed = zoomed || presets !== undefined || navigating || zoomCfgK.initial !== null || toolbox?.dataZoom === true || handle !== undefined
   /** A gesture's window, held to `zoomLimits` when the chart has them. */
   const lim = (expr: string): string => (zoomCfgK.limits === null ? expr : `limitZoomWindow(${zoomCfgK.limits}, pyreonZoom, ${expr})`)
   const win = windowed ? 'pyreonZoom' : zoomCfgK.initial ?? 'ZoomWindow(start = 0.0, end = 1.0)'
-  const legend = kotlinLegendInteraction(e)
+  const legendBase = kotlinLegendInteraction(e)
+  // A handle's legend actions hide series whether or not a legend is drawn to tap.
+  const legend = { ...legendBase, hiding: legendBase.toggling || handle !== undefined }
   const lets: string[] = []
   if (windowed) {
     lets.push(`var pyreonZoom by remember { mutableStateOf(${zoomCfgK.initial ?? 'ZoomWindow(start = 0.0, end = 1.0)'}) }`)
@@ -12209,7 +12267,9 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     lets.push('var pyreonAreas by remember { mutableStateOf(listOf<BrushArea>()) }')
     lets.push('var pyreonAreaLive by remember { mutableStateOf<BrushArea?>(null) }')
   }
-  if (legend.toggling) lets.push('var pyreonHidden by remember { mutableStateOf(listOf<Int>()) }')
+  if (legend.hiding) lets.push('var pyreonHidden by remember { mutableStateOf(listOf<Int>()) }')
+  // The handle's `legendInverseSelect` flips over the series this chart draws.
+  if (handle !== undefined) lets.push(`LaunchedEffect(Unit) { ${handle}.seriesCount = ${marksV.elements.length} }`)
   // `selectedMode` — the Swift half's twin. A TAP pins a datum, which is the
   // half of the events model a touch target actually has; `emphasis`'s hover
   // band and `onHighlight` are mouseover-driven and stay declined. The engine
@@ -12218,7 +12278,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   // the state from `lets`, which is emitted before the spec is built.
   const pinMode = readStaticAttrKotlin(e, 'selectedMode')
   const pinning = pinMode === 'single' || pinMode === 'multiple'
-  if (pinning) lets.push('var pyreonSelected by remember { mutableStateOf(listOf<Int>()) }')
+  if (pinning || handle !== undefined) lets.push('var pyreonSelected by remember { mutableStateOf(listOf<Int>()) }')
   if (legend.paging) lets.push('var pyreonLegendPage by remember { mutableStateOf(0.0) }')
   const maxPoints = chartAttrExprKotlin(e, 'maxPoints')
   const fullA11y = windowed || maxPoints !== undefined
@@ -12344,7 +12404,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
       if (fullA11y) fullA11ySeries.push(`Series(kind = ${kotlinStr(kind)}, values = pyreonA11yValues${k}, ${[...opts, ...a11yErrArgs].join(', ')})`)
     }
   }
-  if (legend.toggling) {
+  if (legend.hiding) {
     lets.push(`val pyreonSeriesAll: List<Series> = listOf(${series.join(', ')})`)
     lets.push('val pyreonSeries: List<Series> = hideHiddenSeries(pyreonSeriesAll, pyreonHidden)')
   } else {
@@ -12434,13 +12494,13 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const mk = chartAttrExprKotlin(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers = ${withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'PointMarker', args: [] } }, () => emitKotlinExpr(mk, indent))}`)
   if (kotlinChartAnimating(e, 'PlotChart')) specArgs.push('progress = pyreonEntrance')
-  if (pinning) {
+  if (pinning || handle !== undefined) {
     const selected = decimated
       ? `pyreonSelected.mapNotNull { pyreonGlobal -> pyreonKeep.indexOf(pyreonGlobal${windowed ? ' - pyreonRange.from' : ''}).takeIf { it >= 0 } }`
       : windowed
-        ? 'pyreonSelected.map { it - pyreonRange.from }.filter { it >= 0 && it < pyreonRows.size }'
+        ? `pyreonSelected.map { it - pyreonRange.from }.filter { it >= 0 && it < ${rows}.size }`
         : 'pyreonSelected'
-    specArgs.push(`emphasis = Emphasis(highlight = -1, selected = ${selected})`)
+    specArgs.push(`emphasis = Emphasis(highlight = ${handle === undefined ? '-1' : 'pyreonHover'}, selected = ${selected})`)
   }
   // The batch-2 spec switches: a literal each, straight onto the spec.
   for (const p of PLOT_SPEC_LITERAL_PROPS) {
@@ -12689,7 +12749,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const plotTitleRaw = readStaticAttrKotlin(e, 'title')
   const labels = chartAttrExprKotlin(e, 'seriesLabels')
   if (labels !== undefined) lets.push(`val pyreonSeriesLabels: List<String> = ${emitKotlinExpr(labels, indent)}`)
-  const a11ySource = fullA11y ? 'pyreonA11ySeriesSource' : legend.toggling ? 'pyreonSeriesAll' : 'pyreonSeries'
+  const a11ySource = fullA11y ? 'pyreonA11ySeriesSource' : legend.hiding ? 'pyreonSeriesAll' : 'pyreonSeries'
   const a11ySeries = labels === undefined
     ? `${a11ySource}.map { A11ySeries(label = it.label, values = it.values, kind = it.kind, values2 = it.values2, errLow = it.errLow, errHigh = it.errHigh, rValues = it.rValues, xs = if (it.onX2 == true) it.xs else null) }`
     : `${a11ySource}.mapIndexed { pyreonI, pyreonS -> A11ySeries(label = pyreonSeriesLabels.getOrElse(pyreonI) { pyreonS.label }, values = pyreonS.values, kind = pyreonS.kind, values2 = pyreonS.values2, errLow = pyreonS.errLow, errHigh = pyreonS.errHigh, rValues = pyreonS.rValues) }`

@@ -6,8 +6,9 @@
 
 import { batch, signal } from '@pyreon/reactivity'
 import type { Signal } from '@pyreon/reactivity'
-import { legendToggle } from './legend-toggle'
-import { clampWindow, isFullWindow } from './zoom'
+import { applyChartAction, chartAction } from './chart-actions'
+import type { ChartActionInput, ChartActionState } from './chart-actions'
+import type { BrushArea } from './brush-area'
 import type { ZoomWindow } from './zoom'
 
 export interface ChartLink {
@@ -23,7 +24,9 @@ export interface ChartLink {
  * crosshair's space; -1 clears, as `downplay` does); `select` / `unselect` /
  * `toggleSelect` take the GLOBAL datum index `onSelect` reports; the legend
  * actions take a series (mark) index; `dataZoom` takes the window as fractions
- * of the data (a full window reads back as null); `restore` clears all four.
+ * of the data (a full window reads back as null); `restore` clears zoom, hover,
+ * selection, legend and brush areas; `takeGlobalCursor` / `brush` drive the area
+ * brush and `timelineChange` / `timelinePlayChange` an `OptionChart` timeline.
  */
 export type ChartAction =
   | { type: 'highlight'; index: number }
@@ -43,6 +46,14 @@ export type ChartAction =
   | { type: 'legendAllSelect' }
   /** Flip every series; `count` overrides the bound chart's series count (needed with no chart bound). */
   | { type: 'legendInverseSelect'; count?: number }
+  /** Arm the area brush with a type ('' disarms) — ECharts' `takeGlobalCursor` with `brushOption.brushType`. */
+  | { type: 'takeGlobalCursor'; brushType: '' | 'rect' | 'polygon' | 'lineX' | 'lineY' }
+  /** Show these brush areas (plot pixels; `[]` clears) — ECharts' `brush` action. */
+  | { type: 'brush'; areas: BrushArea[] }
+  /** Jump an `OptionChart` timeline to a step. */
+  | { type: 'timelineChange'; index: number }
+  /** Play or pause an `OptionChart` timeline. */
+  | { type: 'timelinePlayChange'; playing: boolean }
 
 export interface ChartHandle extends ChartLink {
   /** Pinned datums (GLOBAL indices), in selection order. */
@@ -51,6 +62,12 @@ export interface ChartHandle extends ChartLink {
   hidden: Signal<number[]>
   /** The bound chart's series count, kept by the chart (0 until one binds) — what `legendInverseSelect` flips over. */
   seriesCount: Signal<number>
+  /** The area brush's armed type ('' = none) and its areas — what `takeGlobalCursor` and `brush` move. */
+  brushType: Signal<string>
+  brushAreas: Signal<BrushArea[]>
+  /** An `OptionChart` timeline's step (-1 = the option's own) and play state (null = the option's autoPlay). */
+  step: Signal<number>
+  playing: Signal<boolean | null>
   /** Apply an action; every write lands in one batch, so the chart repaints once. */
   dispatch(action: ChartAction): void
 }
@@ -67,7 +84,6 @@ export function createChartLink(): ChartLink {
   return { zoom: signal<ZoomWindow | null>(null), hover: signal(-1) }
 }
 
-const without = (xs: number[], i: number): number[] => xs.filter((x) => x !== i)
 
 /**
  * Create a handle: a link plus selection, legend state and `dispatch`. Pass it
@@ -87,58 +103,65 @@ export function createChartHandle(): ChartHandle {
   const selected = signal<number[]>([])
   const hidden = signal<number[]>([])
   const seriesCount = signal(0)
-  const dispatch = (a: ChartAction): void =>
+  const brushType = signal('')
+  const brushAreas = signal<BrushArea[]>([])
+  const step = signal(-1)
+  const playing = signal<boolean | null>(null)
+  // One reducer for every target (`chart-actions.ts`): read the state, apply, write back only what moved.
+  const dispatch = (a: ChartAction): void => {
+    const z = zoom.peek()
+    const before: ChartActionState = {
+      zoom: z ?? { start: 0.0, end: 1.0 },
+      hover: hover.peek(),
+      selected: selected.peek(),
+      hidden: hidden.peek(),
+      seriesCount: seriesCount.peek(),
+      brushType: brushType.peek(),
+      areas: brushAreas.peek(),
+      step: step.peek(),
+      playing: playing.peek() === true,
+    }
+    const after = applyChartAction(before, toActionInput(a))
     batch(() => {
-      switch (a.type) {
-        case 'highlight':
-        case 'showTip':
-          hover.set(a.index)
-          break
-        case 'downplay':
-        case 'hideTip':
-          hover.set(-1)
-          break
-        case 'legendAllSelect':
-          if (hidden().length > 0) hidden.set([])
-          break
-        case 'legendInverseSelect': {
-          const n = a.count ?? seriesCount()
-          const was = hidden()
-          const next: number[] = []
-          for (let i = 0; i < n; i++) if (!was.includes(i)) next.push(i)
-          hidden.set(next)
-          break
-        }
-        case 'select':
-          if (!selected().includes(a.index)) selected.set([...selected(), a.index])
-          break
-        case 'unselect':
-          if (selected().includes(a.index)) selected.set(without(selected(), a.index))
-          break
-        case 'toggleSelect':
-          selected.set(selected().includes(a.index) ? without(selected(), a.index) : [...selected(), a.index])
-          break
-        case 'legendSelect':
-          if (hidden().includes(a.series)) hidden.set(without(hidden(), a.series))
-          break
-        case 'legendUnselect':
-          if (!hidden().includes(a.series)) hidden.set([...hidden(), a.series])
-          break
-        case 'legendToggle':
-          hidden.set(legendToggle(hidden(), a.series))
-          break
-        case 'dataZoom': {
-          const w = clampWindow({ start: a.start, end: a.end })
-          zoom.set(isFullWindow(w) ? null : w)
-          break
-        }
-        case 'restore':
-          zoom.set(null)
-          hover.set(-1)
-          selected.set([])
-          hidden.set([])
-          break
-      }
+      if (after.zoom !== before.zoom) zoom.set(after.zoom.start <= 0.0 && after.zoom.end >= 1.0 ? null : after.zoom)
+      if (after.hover !== before.hover) hover.set(after.hover)
+      if (after.selected !== before.selected) selected.set(after.selected)
+      if (after.hidden !== before.hidden) hidden.set(after.hidden)
+      if (after.brushType !== before.brushType) brushType.set(after.brushType)
+      if (after.areas !== before.areas) brushAreas.set(after.areas)
+      if (after.step !== before.step) step.set(after.step)
+      if (a.type === 'timelinePlayChange') playing.set(a.playing)
     })
-  return { zoom, hover, selected, hidden, seriesCount, dispatch }
+  }
+  return { zoom, hover, selected, hidden, seriesCount, brushType, brushAreas, step, playing, dispatch }
+}
+
+/** A typed action as the reducer's flat record. */
+export function toActionInput(a: ChartAction): ChartActionInput {
+  const base = chartAction(a.type)
+  switch (a.type) {
+    case 'highlight':
+    case 'showTip':
+    case 'select':
+    case 'unselect':
+    case 'toggleSelect':
+    case 'timelineChange':
+      return { ...base, index: a.index }
+    case 'legendSelect':
+    case 'legendUnselect':
+    case 'legendToggle':
+      return { ...base, series: a.series }
+    case 'legendInverseSelect':
+      return { ...base, series: a.count ?? -1 }
+    case 'dataZoom':
+      return { ...base, start: a.start, end: a.end }
+    case 'takeGlobalCursor':
+      return { ...base, brushType: a.brushType }
+    case 'brush':
+      return { ...base, areas: a.areas }
+    case 'timelinePlayChange':
+      return { ...base, playing: a.playing }
+    default:
+      return base
+  }
 }

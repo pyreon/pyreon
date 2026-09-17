@@ -8,7 +8,7 @@
 
 import { h, onMount } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { batch, effect, signal } from '@pyreon/reactivity'
+import { batch, effect, signal, untrack } from '@pyreon/reactivity'
 import { canvasHost } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
 import { pinSelection } from './legend-toggle'
@@ -19,6 +19,7 @@ import { hitToolbox, renderToolbox } from './toolbox'
 import { toolboxTools } from './toolbox-config'
 import type { ToolboxTool } from './toolbox-config'
 import { brushAreaFromDrag, brushAreaUsable, brushPolygonAdd } from './brush-area'
+import type { ChartHandle } from './link'
 import type { BrushArea } from './brush-area'
 import { brushRange, renderBrushBand } from './brush'
 import { chartTable } from './a11y'
@@ -79,6 +80,13 @@ export interface OptionChartProps extends Omit<CanvasHostProps, 'theme' | 'showT
    * view). ECharts' `brushselected` batch, flattened.
    */
   onBrushSelected?: (selected: { seriesIndex: number; dataIndex: number[] }[]) => void
+  /**
+   * The imperative handle (`createChartHandle()`): its zoom, hover, pinned
+   * datums, brush and timeline step / play state ARE this chart's, so
+   * `handle.dispatch({ type: 'timelineChange', index: 2 })` moves it, and the
+   * change callbacks fire as they would for a pointer.
+   */
+  handle?: ChartHandle | undefined
   /** Fired with the datum under a click (cartesian plans), or null for a miss. */
   onSelect?: (hit: OptionHit | null) => void
   /** The datum INDEX under a click (or the keyboard's pick), -1 for a miss — the multiplatform-safe twin of `onSelect`. */
@@ -187,7 +195,7 @@ export function hostPropsFor(props: OptionChartProps): CanvasHostProps {
 export function OptionChart(props: OptionChartProps): VNode {
   let svgHost: HTMLDivElement | null = null
   // The auto-played step; -1 = not started (use the option's currentIndex).
-  const step = signal(-1)
+  const step = props.handle?.step ?? signal(-1)
   // Which surface shows: the built-in canvas, a family host, or the svg fallback.
   const mode = signal<'canvas' | 'host' | 'svg'>('canvas')
   const hostNode = signal<VNode | null>(null)
@@ -202,7 +210,7 @@ export function OptionChart(props: OptionChartProps): VNode {
   }
   const stepIndex = (): number | undefined => props.timelineIndex ?? (step() >= 0 ? step() : undefined)
   // The dataZoom window the user has moved to; null = the option's own start/end.
-  const zoomWin = signal<ZoomWindow | null>(null)
+  const zoomWin = props.handle?.zoom ?? signal<ZoomWindow | null>(null)
   // Toolbox state: the magicType switches, the box-select zoom (mode, live band, undo stack) and the data view.
   const magicKind = signal<'' | 'line' | 'bar'>('')
   const magicStack = signal<'' | 'stack' | 'tiled'>('')
@@ -211,9 +219,9 @@ export function OptionChart(props: OptionChartProps): VNode {
   let zoomHistory: (ZoomWindow | null)[] = []
   const dataView = signal(false)
   // The brush: the type a tool took up ('' = none), keep mode, committed areas in plot-frame pixels, the one being drawn.
-  const brushType = signal<string>('')
+  const brushType = props.handle?.brushType ?? signal<string>('')
   const brushKeep = signal<boolean | null>(null)
-  const brushAreas = signal<BrushArea[]>([])
+  const brushAreas = props.handle?.brushAreas ?? signal<BrushArea[]>([])
   const brushLive = signal<BrushArea | null>(null)
   let brushOrigin: { x: Double; y: Double; top: Double; plot: Rect } | null = null
   const brushTool = (t: string): ToolboxTool => (t === 'rect' ? 'brushRect' : t === 'polygon' ? 'brushPolygon' : t === 'lineX' ? 'brushLineX' : 'brushLineY')
@@ -255,7 +263,7 @@ export function OptionChart(props: OptionChartProps): VNode {
   // is imperative work and is owned by onMount below — a server render never
   // starts one, and the mount cleanup stops it.
   // The play button's choice; null = the option's `autoPlay`.
-  const playOverride = signal<boolean | null>(null)
+  const playOverride = props.handle?.playing ?? signal<boolean | null>(null)
   const autoPlan = signal<{ n: number; start: number; interval: Double; strip: ReturnType<typeof defaultTimelineStrip> } | null>(null)
   effect(() => {
     const opt = readOption()
@@ -506,8 +514,8 @@ export function OptionChart(props: OptionChartProps): VNode {
   // signals the draw effect tracks; the commands are re-rendered with the
   // `emphasis` set only while a state is active, so a plain chart paints the
   // compiled commands as before.
-  const hoverIndex = signal(-1)
-  const pinned = signal<number[]>([])
+  const hoverIndex = props.handle?.hover ?? signal(-1)
+  const pinned = props.handle?.selected ?? signal<number[]>([])
   /** True when a cartesian option draws an animated `lines` trail. */
   const linesEffectOn = (g: OptionGeometry): boolean =>
     g.plan.kind === 'cartesian' && (g.plan.compiled.spec.lines ?? []).some((ls) => ls.effect)
@@ -614,10 +622,20 @@ export function OptionChart(props: OptionChartProps): VNode {
       } else if (tool === 'dataView') dataView.set(!dataView())
       else if (tool === 'saveAsImage') saveImage(tb)
     })
-    if (tool === 'brushClear' || tool === 'restore') reportBrush(g)
     return true
   }
   let lastGeometry: OptionGeometry | null = null
+  // Every change to the brush areas reports — a drag, a clear, a restore, or a dispatched `brush` action alike.
+  if (props.onBrushSelected !== undefined) {
+    let prevAreas = brushAreas.peek()
+    effect(() => {
+      const next = brushAreas()
+      if (next === prevAreas) return
+      prevAreas = next
+      const g = lastGeometry
+      if (g !== null) untrack(() => reportBrush(g))
+    })
+  }
   let lastZoom: CompiledOption['zoom'] = undefined
   let navGrab: { kind: number; x: Double; win: ZoomWindow } | null = null
   const setWindow = (prev: ZoomWindow, next: ZoomWindow): void => {
@@ -731,7 +749,6 @@ export function OptionChart(props: OptionChartProps): VNode {
             if (area !== null && brushAreaUsable(area)) brushAreas.set(keep ? [...brushAreas.peek(), area] : [area])
             else if (!keep) brushAreas.set([])
           })
-          if (g0 !== null) reportBrush(g0)
           return
         }
         const band = selectBand()

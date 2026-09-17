@@ -478,7 +478,6 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   }
   const clearBrushAreas = (): void => {
     brushAreas.set([])
-    reportBrushSelected()
   }
   // Pinned datums, GLOBAL indices (they survive a zoom); the handle owns them when given.
   const selected = props.handle?.selected ?? signal<number[]>([])
@@ -489,10 +488,12 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   // The area brush: its type ('' = off; the toolbox can switch it), keep mode,
   // committed areas in PLOT pixels, and the one being drawn.
   // Whether any area brush can run — a static prop or a toolbox brush tool; decides the pointer listeners.
-  const areaBrushOn = props.brushType !== undefined || (props.toolbox?.brush ?? []).length > 0
-  const areaType = signal<string>(props.brushType ?? '')
+  const areaBrushOn = props.brushType !== undefined || (props.toolbox?.brush ?? []).length > 0 || props.handle !== undefined
+  // A handle owns the brush state (its `takeGlobalCursor` / `brush` actions move it); the prop seeds it.
+  const areaType = props.handle?.brushType ?? signal<string>(props.brushType ?? '')
+  if (props.handle !== undefined && props.brushType !== undefined && props.handle.brushType.peek() === '') props.handle.brushType.set(props.brushType)
   const areaKeep = signal(props.brushMode === 'multiple')
-  const brushAreas = signal<BrushArea[]>([])
+  const brushAreas = props.handle?.brushAreas ?? signal<BrushArea[]>([])
   let areaDrag: BrushArea | null = null
   let dragStartY = 0.0
   // In-flight drag bookkeeping. Plain locals, not signals: nothing should
@@ -1125,6 +1126,9 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     magicStack()
     zoomSelect()
     dataView()
+    // A dispatched `brush` / `takeGlobalCursor` changes these from outside a pointer handler.
+    brushAreas()
+    areaType()
     // The theme in scope — a provider mode flip repaints; touched HERE because
     // draw() bails before reading it while the canvas ref is still unattached.
     theme()
@@ -1275,7 +1279,6 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       if (dragMoved && area !== null && brushAreaUsable(area)) {
         brushAreas.set(areaKeep() ? [...brushAreas.peek(), area] : [area])
         draw()
-        reportBrushSelected()
       } else if (!dragMoved && !areaKeep() && brushAreas.peek().length > 0) {
         clearBrushAreas()
       }
@@ -1453,7 +1456,6 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
             areaKeep.set(props.brushMode === 'multiple')
             brushAreas.set([])
           })
-          reportBrushSelected()
         } else if (tool === 'magicLine') {
           magicKind.set(magicKind() === 'line' ? '' : 'line')
         } else if (tool === 'magicBar') {
@@ -1696,6 +1698,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       untrack(() => cb(v))
     })
   }
+  // Every change to the brush areas reports — a drag, a clear, a restore, or a dispatched `brush` action alike.
+  fireOnChange(() => brushAreas(), (a, b) => a === b, props.onBrushSelected === undefined ? undefined : () => reportBrushSelected())
   fireOnChange(
     () => {
       const i = hoverIdx()

@@ -103,7 +103,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -1188,6 +1188,9 @@ export function emitSwift(
     }
   }
   _moduleConstExprs = new Map()
+  // Per module: a handle name from a previous file must not make this file's `x.dispatch(...)` lower.
+  _chartHandleNames.clear()
+  _chartHandleSeries.clear()
   for (const md of moduleDecls) {
     if (!md.mutable) _moduleConstExprs.set(md.name, md.initial)
   }
@@ -3252,7 +3255,10 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.splice(pyreonHostStateAt, 0, ..._hostStateDecls.map((l) => `  ${l}`))
     _hostStateDecls = []
   }
-  return lines.join('\n')
+  // A handle's series count comes from the chart bound to it, known only once the body has emitted.
+  const joined = lines.join('\n').replace(/__PYREON_HANDLE_SERIES_(\w+)__/g, (_m, name: string) => String(_chartHandleSeries.get(name) ?? 0))
+  _chartHandleSeries.clear()
+  return joined
 }
 
 /**
@@ -4035,6 +4041,12 @@ function emitSwiftDecl(
   // (iOS uses the shared application).
   if (d.kind === 'linking') {
     return `@State private var ${swiftIdent(d.name)} = PyreonLinking()`
+  }
+  // `const chart = createChartHandle()` → an @Observable PyreonChartHandle; its name is
+  // remembered so `chart.dispatch({...})` lowers to the reducer's full action record.
+  if (d.kind === 'chart-handle') {
+    _chartHandleNames.add(d.name)
+    return `@State private var ${swiftIdent(d.name)} = PyreonChartHandle(seriesCount: __PYREON_HANDLE_SERIES_${d.name}__)`
   }
   // M3.3: `const notifs = useNotifications()` → an @State
   // PyreonNotifications. Methods (`notifs.notify("t","b")`) flow through
@@ -5631,6 +5643,17 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // somehow fails (it cannot for JSONEncoder output) so the type stays String.
       return `(String(data: try! JSONEncoder().encode(${emitSwiftExpr(e.arg, indent)}), encoding: .utf8) ?? "")`
     case 'call': {
+      if (e.callee.kind === 'member' && e.callee.property === 'dispatch' && e.callee.object.kind === 'identifier' && _chartHandleNames.has(e.callee.object.name)) {
+        const f = chartActionFields(e.args[0])
+        if (f === null) {
+          _emitWarnings.push(`<${e.callee.object.name}.dispatch>: native needs an inline action object with a literal \`type\` ({ type: 'select', index: 2 }); the call is skipped.`)
+          return '()'
+        }
+        const int = (x: ExprIR | undefined): string => (x === undefined ? '-1' : `Int(${emitSwiftExpr(x, indent)})`)
+        const dbl = (x: ExprIR | undefined, d: string): string => (x === undefined ? d : `Double(${emitSwiftExpr(x, indent)})`)
+        const areas = f.areas === undefined ? '[]' : withExpectedType({ kind: 'array', element: { kind: 'typeRef', name: 'BrushArea', args: [] } }, () => emitSwiftExpr(f.areas!, indent))
+        return `${swiftIdent(e.callee.object.name)}.dispatch(ChartActionInput(type: ${emitSwiftExpr(f.type!, indent)}, index: ${int(f.index)}, series: ${int(f.series)}, start: ${dbl(f.start, '0.0')}, end: ${dbl(f.end, '1.0')}, brushType: ${f.brushType === undefined ? '""' : emitSwiftExpr(f.brushType, indent)}, areas: ${areas}, playing: ${f.playing === undefined ? 'false' : emitSwiftExpr(f.playing, indent)}))`
+      }
       if (e.callee.kind === 'identifier') {
         const paramTypes = _helperParamTypes.get(e.callee.name)
         if (paramTypes !== undefined) {
@@ -13396,6 +13419,11 @@ function swiftChartSelectBody(handler: ExprIR, hitExpr: string, indent: number):
   return `(${emitSwiftExpr(handler, indent)})(${hitExpr})`
 }
 
+/** Names declared `createChartHandle()` in the module being emitted — their `dispatch` calls lower to `ChartActionInput`. */
+const _chartHandleNames = new Set<string>()
+/** Handle name → the series count of the chart bound to it (substituted into the declaration at component end). */
+const _chartHandleSeries = new Map<string, number>()
+
 let _swiftTimelineSeq = 0
 
 /**
@@ -13408,21 +13436,29 @@ function emitSwiftChartTimeline(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const strip = chartTimelineStripLiteral(chartAttrExpr(e, 'timelineStrip'), SWIFT_CHART_TARGET)
   if (strip === null) return 'EmptyView()'
   const k = _swiftTimelineSeq++
-  const step = `pyreonTl${k}`
-  const playing = `pyreonTlPlay${k}`
   const cur = readStaticAttr(e, 'timelineCurrent')
+  const curN = typeof cur === 'number' ? cur : 0
   const autoPlay = readStaticAttr(e, 'timelineAutoPlay') === true
   const interval = readStaticAttr(e, 'timelineInterval')
   const ms = typeof interval === 'number' && interval > 0 ? interval : 2000
-  _hostStateDecls.push(`@State private var ${step}: Int = ${typeof cur === 'number' ? cur : 0}`)
-  _hostStateDecls.push(`@State private var ${playing}: Bool = ${autoPlay}`)
+  // A handle (`timelineChange` / `timelinePlayChange`) owns the step and play state; its -1 step reads as the option's own.
+  const handleAttr = chartAttrExpr(e, 'handle')
+  const handle = handleAttr?.kind === 'identifier' && _chartHandleNames.has(handleAttr.name) ? swiftIdent(handleAttr.name) : undefined
+  if (handleAttr !== undefined && handle === undefined) _emitWarnings.push('<OptionChart handle>: native needs a `const chart = createChartHandle()` declared in the same component; the timeline runs without the handle.')
+  const stepVar = handle === undefined ? `pyreonTl${k}` : `${handle}.step`
+  const step = handle === undefined ? stepVar : `(${handle}.step < 0 ? ${curN} : ${handle}.step)`
+  const playing = handle === undefined ? `pyreonTlPlay${k}` : `${handle}.playing`
+  if (handle === undefined) {
+    _hostStateDecls.push(`@State private var ${stepVar}: Int = ${curN}`)
+    _hostStateDecls.push(`@State private var ${playing}: Bool = ${autoPlay}`)
+  }
   // A member, not a local: the auto-play task and the accessibility value read it outside the stack.
   _hostStateDecls.push(`private var pyreonTlStrip${k}: TimelineStrip { ${strip} }`)
   const pad = ' '.repeat(indent + 2)
   const children = e.children.flatMap((c) => (c.kind === 'expr' && c.expr.kind === 'jsx-element' ? [c.expr] : []))
   const branches = children.map((c, i) => `${i === 0 ? 'if' : ' else if'} ${step} == ${i} {\n${pad}  ${emitSwiftChartHost(c, indent + 2)}\n${pad}}`).join('')
   const onChange = e.attrs.find((a) => a.kind === 'event' && a.name === 'timelinechange')
-  const notify = onChange?.kind === 'event' ? `.onChange(of: ${step}) { ${swiftChartSelectBody(onChange.handler, step, indent)} }` : ''
+  const notify = (onChange?.kind === 'event' ? `.onChange(of: ${stepVar}) { ${swiftChartSelectBody(onChange.handler, step, indent)} }` : '') + (handle === undefined ? '' : `.onAppear { if ${handle}.step < 0 { ${handle}.step = ${curN}; ${handle}.playing = ${autoPlay} } }`)
   const labels = `pyreonTlStrip${k}.labels`
   const box = 'PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonTlGeo.size.width), h: 40.0)'
   const tap =
@@ -13430,10 +13466,10 @@ function emitSwiftChartTimeline(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     `let pyreonHit = timelineHit(pyreonTlStrip${k}, ${box}, Double(pyreonT.location.x), Double(pyreonT.location.y)); ` +
     `if pyreonHit.kind == 2.0 { ${playing}.toggle() } else if pyreonHit.kind > 0.0 { ${playing} = false; ` +
     `let pyreonNext = pyreonHit.kind == 1.0 ? pyreonHit.index : timelineAdvance(pyreonTlStrip${k}, Double(${step}), pyreonHit.kind == 3.0 ? -1.0 : 1.0, true); ` +
-    `if pyreonNext >= 0.0 { ${step} = Int(pyreonNext) } } })`
+    `if pyreonNext >= 0.0 { ${stepVar} = Int(pyreonNext) } } })`
   const task =
     `.task(id: ${playing}) { while ${playing} { try? await _Concurrency.Task.sleep(nanoseconds: UInt64(${ms}) * 1_000_000); if !${playing} { break }; ` +
-    `let pyreonNext = timelineTick(pyreonTlStrip${k}, Double(${step})); if pyreonNext < 0.0 { ${playing} = false } else { ${step} = Int(pyreonNext) } } }`
+    `let pyreonNext = timelineTick(pyreonTlStrip${k}, Double(${step})); if pyreonNext < 0.0 { ${playing} = false } else { ${stepVar} = Int(pyreonNext) } } }`
   const idAttr = readStaticAttr(e, 'data-testid')
   const id = typeof idAttr === 'string' ? `.accessibilityElement(children: .contain).accessibilityIdentifier(${JSON.stringify(idAttr)})` : ''
   return (
@@ -14311,7 +14347,31 @@ function swiftMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex:
 }
 
 /** `<PlotChart data marks x? xValue? showXAxis? showYAxis? showGrid? horizontal? xTime? annotations? markers? y2Domain? onSelect? …>` */
+/**
+ * `handle={chart}` binds the host to a `createChartHandle()`: the window, the
+ * pinned datums, the hidden series and the area brush become the handle's
+ * fields (`chart.zoom`, `chart.selected`, …) instead of private `@State`, so a
+ * dispatched action and a gesture move the same values. The core emits with
+ * those features on; this wrapper drops their private declarations and points
+ * the names at the handle.
+ */
 function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const handleAttr = chartAttrExpr(e, 'handle')
+  if (handleAttr === undefined) return emitSwiftPlotHostCore(e, indent, undefined)
+  if (handleAttr.kind !== 'identifier' || !_chartHandleNames.has(handleAttr.name)) {
+    _emitWarnings.push('<PlotChart handle>: native needs a `const chart = createChartHandle()` declared in the same component; the chart renders without the handle.')
+    return emitSwiftPlotHostCore(e, indent, undefined)
+  }
+  const h = swiftIdent(handleAttr.name)
+  const before = _hostStateDecls.length
+  const out = emitSwiftPlotHostCore(e, indent, h)
+  const bound: Readonly<Record<string, string>> = { pyreonZoom: 'zoom', pyreonSelected: 'selected', pyreonHidden: 'hidden', pyreonAreaType: 'brushType', pyreonAreas: 'areas', pyreonHover: 'hover' }
+  const kept = _hostStateDecls.slice(before).filter((d) => !Object.keys(bound).some((n) => new RegExp(`var ${n}:`).test(d)))
+  _hostStateDecls.splice(before, _hostStateDecls.length - before, ...kept)
+  return out.replace(/\bpyreon(Zoom|Selected|Hidden|AreaType|Areas|Hover)\b/g, (m) => `${h}.${bound[m]}`)
+}
+
+function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number, handle: string | undefined): string {
   const tag = 'PlotChart'
   const dataV = chartAttrExpr(e, 'data')
   const marksV = chartAttrExpr(e, 'marks')
@@ -14345,14 +14405,17 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const zoomCfg = chartZoomConfig((n) => chartAttrExpr(e, n), (n) => _moduleConstExprs.get(n), SWIFT_CHART_TARGET, (m) => _emitWarnings.push(m), tag)
   // An opening window slices the rows even with no gesture to move it.
   const toolbox = chartToolboxConfig(chartAttrExpr(e, 'toolbox'), (n) => _moduleConstExprs.get(n), (m) => _emitWarnings.push(m), tag)
-  // ECharts' area brush (rect / polygon / lineX / lineY), shared with the web through `brush-area`.
-  const area = chartAreaBrushConfig((n) => readStaticAttr(e, n), (n) => chartAttrExpr(e, n) !== undefined, toolbox?.brush ?? [], (m) => _emitWarnings.push(m), tag, (n) => chartAttrExpr(e, n), (n) => _moduleConstExprs.get(n))
-  const windowed = zoomed || presets !== undefined || navigating || zoomCfg.initial !== null || toolbox?.dataZoom === true
+  // ECharts' area brush (rect / polygon / lineX / lineY), shared with the web through `brush-area`. A handle arms it (takeGlobalCursor).
+  const areaCfg = chartAreaBrushConfig((n) => readStaticAttr(e, n), (n) => chartAttrExpr(e, n) !== undefined, toolbox?.brush ?? [], (m) => _emitWarnings.push(m), tag, (n) => chartAttrExpr(e, n), (n) => _moduleConstExprs.get(n))
+  const area = handle === undefined ? areaCfg : { ...areaCfg, on: true }
+  const windowed = zoomed || presets !== undefined || navigating || zoomCfg.initial !== null || toolbox?.dataZoom === true || handle !== undefined
   const initialWin = zoomCfg.initial ?? 'ZoomWindow(start: 0.0, end: 1.0)'
   /** A gesture's window, held to `zoomLimits` when the chart has them. */
   const lim = (expr: string): string => (zoomCfg.limits === null ? expr : `limitZoomWindow(${zoomCfg.limits}, pyreonZoom, ${expr})`)
   const win = windowed ? 'pyreonZoom' : initialWin
-  const legend = swiftLegendInteraction(e)
+  const legendBase = swiftLegendInteraction(e)
+  // A handle's legend actions hide series whether or not a legend is drawn to tap.
+  const legend = { ...legendBase, hiding: legendBase.toggling || handle !== undefined }
   const lets: string[] = []
   if (windowed) {
     _hostStateDecls.push(`@State private var pyreonZoom: ZoomWindow = ${initialWin}`)
@@ -14389,7 +14452,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     _hostStateDecls.push('@State private var pyreonAreas: [BrushArea] = []')
     _hostStateDecls.push('@State private var pyreonAreaLive: BrushArea? = nil')
   }
-  if (legend.toggling) _hostStateDecls.push('@State private var pyreonHidden: [Int] = []')
+  if (legend.hiding) _hostStateDecls.push('@State private var pyreonHidden: [Int] = []')
   if (legend.paging) _hostStateDecls.push('@State private var pyreonLegendPage: Double = 0.0')
   const maxPoints = chartAttrExpr(e, 'maxPoints')
   const fullA11y = windowed || maxPoints !== undefined
@@ -14527,7 +14590,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       if (fullA11y) fullA11ySeries.push(`Series(kind: ${swiftStr(kind)}, values: pyreonA11yValues${k}, ${[...opts, ...a11yErrArgs].join(', ')})`)
     }
   }
-  if (legend.toggling) {
+  if (legend.hiding) {
     // The legend lists every series; the plot draws what the hidden set leaves.
     lets.push(`let pyreonSeriesAll: [Series] = [${series.join(', ')}]`)
     lets.push('let pyreonSeries: [Series] = hideHiddenSeries(pyreonSeriesAll, pyreonHidden)')
@@ -14633,14 +14696,16 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   // is positional and `emphasis` follows `progress` in the struct.
   const pinMode = readStaticAttr(e, 'selectedMode')
   const pinning = pinMode === 'single' || pinMode === 'multiple'
-  if (pinning) {
+  // A handle's pins and highlight draw whether or not a tap pins (`select` / `highlight` actions).
+  if (pinning || handle !== undefined) {
     _hostStateDecls.push('@State private var pyreonSelected: [Int] = []')
+    if (handle !== undefined) _hostStateDecls.push('@State private var pyreonHover: Int = -1')
     const selected = decimated
       ? `pyreonSelected.compactMap { pyreonGlobal in pyreonKeep.firstIndex(of: pyreonGlobal${windowed ? ' - pyreonRange.from' : ''}) }`
       : windowed
-        ? 'pyreonSelected.map { $0 - pyreonRange.from }.filter { $0 >= 0 && $0 < pyreonRows.count }'
+        ? `pyreonSelected.map { $0 - pyreonRange.from }.filter { $0 >= 0 && $0 < ${rows}.count }`
         : 'pyreonSelected'
-    specArgs.push(`emphasis: Emphasis(highlight: -1, selected: ${selected})`)
+    specArgs.push(`emphasis: Emphasis(highlight: ${handle === undefined ? '-1' : 'pyreonHover'}, selected: ${selected})`)
   }
   // The batch-2 spec switches: a literal each, AFTER `progress` (Swift's init order is the struct's field order).
   for (const p of PLOT_SPEC_LITERAL_PROPS) {
@@ -14859,11 +14924,15 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     const guarded = zoomed || brushing || area.on ? `if abs(pyreonTap.translation.width) < 6.0 && abs(pyreonTap.translation.height) < 6.0 { ${body} }` : body
     gesture = `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${guarded} })`
   }
+  // Every plot drag — the box zoom, the area brush, the pan, the range brush — shares ONE DragGesture. SwiftUI
+  // runs only one of several `.simultaneousGesture(DragGesture)` modifiers chained on a view: a device run showed
+  // the box zoom never firing once the handle added the area brush's drag beside it.
+  const dragChanged: string[] = []
+  const dragEnded: string[] = []
   if (toolbox?.dataZoom === true) {
     // The box zoom: while the tool is on, a drag over the plot selects the rows to zoom to; back undoes it.
-    gesture +=
-      `.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonSel in if pyreonZoomSelect { pyreonSelA = Double(pyreonSel.startLocation.x); pyreonSelB = Double(pyreonSel.location.x) } }` +
-      `.onEnded { pyreonSel in if pyreonZoomSelect && pyreonSelA >= 0.0 { let pyreonRows: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, Double(pyreonSel.startLocation.x), Double(pyreonSel.location.x), pyreonZoom, ${data}.count); pyreonZoomHistory.append(pyreonZoom); pyreonZoom = ${lim(`windowOfRows(pyreonRows.start, pyreonRows.end, ${data}.count)`)}${zoomed ? '; pyreonZoomAnchor = pyreonZoom' : ''} }; pyreonSelA = -1.0; pyreonSelB = -1.0 })`
+    dragChanged.push('if pyreonZoomSelect { pyreonSelA = Double(pyreonDragG.startLocation.x); pyreonSelB = Double(pyreonDragG.location.x) }')
+    dragEnded.push(`if pyreonZoomSelect && pyreonSelA >= 0.0 { let pyreonRows: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, Double(pyreonDragG.startLocation.x), Double(pyreonDragG.location.x), pyreonZoom, ${data}.count); pyreonZoomHistory.append(pyreonZoom); pyreonZoom = ${lim(`windowOfRows(pyreonRows.start, pyreonRows.end, ${data}.count)`)}${zoomed ? '; pyreonZoomAnchor = pyreonZoom' : ''} }; pyreonSelA = -1.0; pyreonSelB = -1.0`)
   }
   if (area.on) {
     // Simultaneous, not high priority: a `brushType` chart is always armed, and a high-priority drag would take every
@@ -14871,26 +14940,33 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     // The end rebuilds a rect / line area from the gesture's own points, so the committed area never depends on the
     // last onChanged having landed in state first; only a polygon (which accumulates vertices) reads the live area.
     // The area brush: a drag while a type is on builds the area in PLOT space; its end commits (or keeps) it.
-    const dx = (v: string): string => chrome.plotX(`Double(pyreonAreaG.${v}.x)`)
-    const dy = (v: string): string => (chrome.top === '0.0' ? `Double(pyreonAreaG.${v}.y)` : `Double(pyreonAreaG.${v}.y) - pyreonTop`)
-    gesture +=
-      `.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonAreaG in if pyreonAreaType != "" { pyreonAreaLive = pyreonAreaType == "polygon" ? brushPolygonAdd(pyreonAreaLive ?? brushAreaFromDrag("polygon", pyreonAreaPlot, ${dx('startLocation')}, ${dy('startLocation')}, ${dx('startLocation')}, ${dy('startLocation')}), pyreonAreaPlot, ${dx('location')}, ${dy('location')}) : brushAreaFromDrag(pyreonAreaType, pyreonAreaPlot, ${dx('startLocation')}, ${dy('startLocation')}, ${dx('location')}, ${dy('location')}) } }` +
-      `.onEnded { pyreonAreaG in let pyreonEnded: BrushArea? = pyreonAreaType == "" ? nil : pyreonAreaType == "polygon" ? pyreonAreaLive : brushAreaFromDrag(pyreonAreaType, pyreonAreaPlot, ${dx('startLocation')}, ${dy('startLocation')}, ${dx('location')}, ${dy('location')}); if let pyreonA = pyreonEnded, brushAreaUsable(pyreonA) { let pyreonNextAreas: [BrushArea] = pyreonAreaKeep ? pyreonAreas + [pyreonA] : [pyreonA]; pyreonAreas = pyreonNextAreas${areaReport('pyreonNextAreas')} }; pyreonAreaLive = nil })`
+    const dx = (v: string): string => chrome.plotX(`Double(pyreonDragG.${v}.x)`)
+    const dy = (v: string): string => (chrome.top === '0.0' ? `Double(pyreonDragG.${v}.y)` : `Double(pyreonDragG.${v}.y) - pyreonTop`)
+    dragChanged.push(`if pyreonAreaType != "" { pyreonAreaLive = pyreonAreaType == "polygon" ? brushPolygonAdd(pyreonAreaLive ?? brushAreaFromDrag("polygon", pyreonAreaPlot, ${dx('startLocation')}, ${dy('startLocation')}, ${dx('startLocation')}, ${dy('startLocation')}), pyreonAreaPlot, ${dx('location')}, ${dy('location')}) : brushAreaFromDrag(pyreonAreaType, pyreonAreaPlot, ${dx('startLocation')}, ${dy('startLocation')}, ${dx('location')}, ${dy('location')}) }`)
+    dragEnded.push(`if pyreonAreaType != "" { let pyreonEnded: BrushArea? = pyreonAreaType == "polygon" ? pyreonAreaLive : brushAreaFromDrag(pyreonAreaType, pyreonAreaPlot, ${dx('startLocation')}, ${dy('startLocation')}, ${dx('location')}, ${dy('location')}); if let pyreonA = pyreonEnded, brushAreaUsable(pyreonA) { let pyreonNextAreas: [BrushArea] = pyreonAreaKeep ? pyreonAreas + [pyreonA] : [pyreonA]; pyreonAreas = pyreonNextAreas${areaReport('pyreonNextAreas')} } }; pyreonAreaLive = nil`)
   }
   if (zoomed) {
-    gesture +=
-      `.simultaneousGesture(MagnificationGesture().onChanged { pyreonScale in pyreonZoom = ${lim('zoomWindow(pyreonZoomAnchor, 1.0 / Double(pyreonScale), 0.5)')} }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })` +
-      `.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonDrag in ${toolbox?.dataZoom === true || area.on ? `if ${[toolbox?.dataZoom === true ? '!pyreonZoomSelect' : '', area.on ? 'pyreonAreaType == ""' : ''].filter((x) => x !== '').join(' && ')} { ` : ''}pyreonZoom = ${lim(`panWindow(pyreonZoomAnchor, -Double(pyreonDrag.translation.width) / ${W})`)}${toolbox?.dataZoom === true || area.on ? ' }' : ''} }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })`
+    gesture += `.simultaneousGesture(MagnificationGesture().onChanged { pyreonScale in pyreonZoom = ${lim('zoomWindow(pyreonZoomAnchor, 1.0 / Double(pyreonScale), 0.5)')} }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })`
+    const panGuard = [toolbox?.dataZoom === true ? '!pyreonZoomSelect' : '', area.on ? 'pyreonAreaType == ""' : ''].filter((x) => x !== '').join(' && ')
+    const pan = `pyreonZoom = ${lim(`panWindow(pyreonZoomAnchor, -Double(pyreonDragG.translation.width) / ${W})`)}`
+    dragChanged.push(panGuard === '' ? pan : `if ${panGuard} { ${pan} }`)
+    dragEnded.push('pyreonZoomAnchor = pyreonZoom')
   }
   if (brushing) {
-    gesture +=
-      `.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonBrushDrag in pyreonBrushA = Double(pyreonBrushDrag.startLocation.x); pyreonBrushB = Double(pyreonBrushDrag.location.x) }` +
-      `.onEnded { pyreonBrushDrag in let pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, Double(pyreonBrushDrag.startLocation.x), Double(pyreonBrushDrag.location.x), ${win}, ${data}.count); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0${onBrush === undefined ? '' : `; ${onBrush}(pyreonSel)`} })`
+    dragChanged.push('pyreonBrushA = Double(pyreonDragG.startLocation.x); pyreonBrushB = Double(pyreonDragG.location.x)')
+    dragEnded.push(`let pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, Double(pyreonDragG.startLocation.x), Double(pyreonDragG.location.x), ${win}, ${data}.count); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0${onBrush === undefined ? '' : `; ${onBrush}(pyreonSel)`}`)
+  }
+  if (dragChanged.length > 0) {
+    gesture += `.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonDragG in ${dragChanged.join('; ')} }.onEnded { pyreonDragG in ${dragEnded.join('; ')} })`
   }
   // `onZoom` — the web fires it whenever the window changes, whatever moved
   // it (pinch, pan, a preset, the navigator). One observer over the window
   // state covers every source here too. The array form keeps the observed
   // value Equatable without conforming the engine's struct.
+  // The handle's `legendInverseSelect` flips over the series this chart draws. The count is baked into the handle's
+  // declaration at compile time rather than written from the chart: a device run showed that writing the @Observable
+  // handle from the host's `.onAppear` stopped the host's drag gestures from ever firing.
+  if (handle !== undefined) _chartHandleSeries.set(handle, marksV.elements.length)
   const onZoom = e.attrs.find((a) => a.kind === 'event' && a.name === 'zoom')
   if (onZoom?.kind === 'event') {
     if (windowed) gesture += `.onChange(of: [pyreonZoom.start, pyreonZoom.end]) { ${swiftChartSelectBody(onZoom.handler, 'pyreonZoom', indent)} }`
@@ -14902,7 +14978,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const plotTitle = readStringAttrExpr(e, 'title', indent)
   const labels = chartAttrExpr(e, 'seriesLabels')
   if (labels !== undefined) lets.push(`let pyreonSeriesLabels: [String] = ${emitSwiftExpr(labels, indent)}`)
-  const a11ySource = fullA11y ? 'pyreonA11ySeriesSource' : legend.toggling ? 'pyreonSeriesAll' : 'pyreonSeries'
+  const a11ySource = fullA11y ? 'pyreonA11ySeriesSource' : legend.hiding ? 'pyreonSeriesAll' : 'pyreonSeries'
   const a11ySeries = labels === undefined
     ? `${a11ySource}.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues, xs: $0.onX2 == true ? $0.xs : nil) }`
     : `${a11ySource}.enumerated().map { (pyreonI, pyreonS) in A11ySeries(label: pyreonI < pyreonSeriesLabels.count ? pyreonSeriesLabels[pyreonI] : pyreonS.label, values: pyreonS.values, kind: pyreonS.kind, values2: pyreonS.values2, errLow: pyreonS.errLow, errHigh: pyreonS.errHigh, rValues: pyreonS.rValues) }`

@@ -1981,6 +1981,19 @@ export const SWIFT_CHART_VIEW_STUBS = `
 public struct GeometryProxy { public var size: CGSize = CGSize() }
 public func pyreonChartDataUrl(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double) -> String { "" }
 public func pyreonShareChartImage(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double, _ name: String) {}
+public final class PyreonChartHandle {
+  public var zoom = ZoomWindow(start: 0.0, end: 1.0)
+  public var hover: Int = -1
+  public var selected: [Int] = []
+  public var hidden: [Int] = []
+  public var seriesCount: Int = 0
+  public var brushType: String = ""
+  public var areas: [BrushArea] = []
+  public var step: Int = -1
+  public var playing: Bool = false
+  public init(seriesCount: Int = 0) { self.seriesCount = seriesCount }
+  public func dispatch(_ action: ChartActionInput) {}
+}
 public struct GeometryReader<Content: View>: View {
   public init(@ViewBuilder content: @escaping (GeometryProxy) -> Content) {}
   public typealias Body = Never

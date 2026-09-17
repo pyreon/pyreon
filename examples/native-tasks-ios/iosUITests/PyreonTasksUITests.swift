@@ -926,6 +926,11 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(waitForValue(timeline, "2021", timeout: 5), "tapping the last checkpoint did not show it (value: \(String(describing: timeline.value)))")
         tlOrigin.withOffset(CGVector(dx: timeline.frame.width - 33, dy: tlY)).tap()
         XCTAssertTrue(waitForValue(timeline, "2019", timeout: 5), "next did not wrap to the first step (value: \(String(describing: timeline.value)))")
+        // dispatchAction: the handle's timelineChange moves the same step a tap does.
+        let tlLast = app.buttons["gal-tl-last"].firstMatch
+        scrollFullyOnScreen(tlLast, in: app)
+        tlLast.tap()
+        XCTAssertTrue(waitForValue(timeline, "2021", timeout: 5), "the handle's timelineChange did not move the step (value: \(String(describing: timeline.value)))")
         // The toolbox (dataZoom, back, dataView, line, bar, restore — right-aligned, 25pt apart at the top).
         let toolbox = app.descendants(matching: .any).matching(identifier: "gal-toolbox").firstMatch
         XCTAssertTrue(toolbox.waitForExistence(timeout: 10), "gal-toolbox missing on the gallery")
@@ -945,6 +950,15 @@ final class PyreonTasksUITests: XCTestCase {
         app.buttons["pyreon-dataview-close"].firstMatch.tap()
         let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: dataView)
         XCTAssertEqual(XCTWaiter().wait(for: [closed], timeout: 5), .completed, "the data view did not close")
+        // dispatchAction: the handle's dataZoom and restore move the window the toolbox moves.
+        let hZoom = app.buttons["gal-h-zoom"].firstMatch
+        scrollFullyOnScreen(hZoom, in: app)
+        hZoom.tap()
+        XCTAssertTrue(waitForLabel(tbZoom, "0-50", timeout: 5), "the handle's dataZoom did not move the window (label: \(tbZoom.label))")
+        let hReset = app.buttons["gal-h-reset"].firstMatch
+        scrollFullyOnScreen(hReset, in: app)
+        hReset.tap()
+        XCTAssertTrue(waitForLabel(tbZoom, "0-100", timeout: 5), "the handle's restore did not reset the window (label: \(tbZoom.label))")
         // saveAsImage on a family chart: the offscreen PNG reaches onSaveImage.
         let saveChart = app.descendants(matching: .any).matching(identifier: "gal-save").firstMatch
         XCTAssertTrue(saveChart.waitForExistence(timeout: 10), "gal-save missing on the gallery")

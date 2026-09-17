@@ -903,3 +903,37 @@ fun pyreonShareChartImage(context: android.content.Context, cmds: List<PyreonDra
     context.startActivity(chooser)
 }
 
+
+// ── Chart handle (ECharts `dispatchAction`) ───────────────────────────────
+//
+// `createChartHandle()` lowers to one of these, held in `remember`. Each field
+// is Compose state, so the bound plot host reads and writes `handle.selected`
+// in place of a private copy and recomposes on a dispatch as on a gesture.
+// `dispatch` runs the crossing `applyChartAction` reducer — the web handle's
+// function — and writes back only what changed.
+class PyreonChartHandle {
+    var zoom by mutableStateOf(ZoomWindow(start = 0.0, end = 1.0))
+    var hover by mutableStateOf(-1)
+    var selected by mutableStateOf(listOf<Int>())
+    var hidden by mutableStateOf(listOf<Int>())
+    var seriesCount by mutableStateOf(0)
+    var brushType by mutableStateOf("")
+    var areas by mutableStateOf(listOf<BrushArea>())
+    var step by mutableStateOf(-1)
+    var playing by mutableStateOf(false)
+
+    fun dispatch(action: ChartActionInput) {
+        val next = applyChartAction(
+            ChartActionState(zoom = zoom, hover = hover, selected = selected, hidden = hidden, seriesCount = seriesCount, brushType = brushType, areas = areas, step = step, playing = playing),
+            action,
+        )
+        if (next.zoom != zoom) zoom = next.zoom
+        if (next.hover != hover) hover = next.hover
+        if (next.selected != selected) selected = next.selected
+        if (next.hidden != hidden) hidden = next.hidden
+        if (next.brushType != brushType) brushType = next.brushType
+        if (next.areas != areas) areas = next.areas
+        if (next.step != step) step = next.step
+        if (next.playing != playing) playing = next.playing
+    }
+}

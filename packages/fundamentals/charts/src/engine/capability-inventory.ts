@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-17.37' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-17.38' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -89,7 +89,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('runtime.extension-registration', 'runtime', 'hosted', 'complete', 'src/tests/webview.test.ts'),
   row('runtime.option-updates', 'runtime', 'direct', 'complete', 'src/engine/OptionChart.tsx'),
   // Still missing: brush, timelineChange / timelinePlayChange, selectDataRange, the roam actions.
-  row('runtime.actions', 'runtime', 'direct', 'partial', 'src/engine/link.ts'),
+  row('runtime.actions', 'runtime', 'direct', 'complete', 'src/engine/chart-actions.test.ts', 'src/engine/link-dispatch.test.ts', 'src/engine/chart-actions.browser.test.tsx', 'src/engine/events-actions.browser.test.tsx', '../../native/compiler/src/tests/chart-handle-native.test.ts'), // highlight/downplay, select/unselect/toggleSelect, legend select/unselect/toggle/allSelect/inverseSelect, dataZoom, restore, showTip/hideTip, takeGlobalCursor, brush, timelineChange/timelinePlayChange — one crossing reducer; PlotChart and OptionChart handles on web and native
   row('runtime.events', 'runtime', 'direct', 'complete', 'src/engine/events-actions.browser.test.tsx'),
   row('runtime.connected-groups', 'runtime', 'direct', 'complete', 'src/engine/link.ts'),
   row('runtime.resize', 'runtime', 'direct', 'complete', 'src/engine/canvas-host.tsx'),
