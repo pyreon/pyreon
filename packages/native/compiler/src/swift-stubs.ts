@@ -1990,4 +1990,8 @@ public struct PyreonChartEntrance<Content: View>: View {
   public init(durationMs: Double, @ViewBuilder content: @escaping (Double) -> Content) {}
   public typealias Body = Never
 }
+public struct PyreonChartClock<Content: View>: View {
+  public init(@ViewBuilder content: @escaping (Double) -> Content) {}
+  public typealias Body = Never
+}
 `

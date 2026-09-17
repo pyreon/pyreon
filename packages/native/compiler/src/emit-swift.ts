@@ -103,7 +103,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -13410,12 +13410,23 @@ function emitSwiftChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
   if (tag === 'BoxplotChart') return swiftChartEntrance(e, tag, indent, (i) => emitSwiftBoxplotHost(e, i))
   if (tag === 'HeatmapChart') return swiftChartEntrance(e, tag, indent, (i) => emitSwiftHeatmapHost(e, i))
   if (tag === 'RadarChart') return emitSwiftRadarHost(e, indent)
+  if (tag === 'PlotChart' && readStaticAttr(e, 'effectClock') === true) {
+    // A lines trail: the clock wraps the entrance so every frame re-renders with a new effectTime.
+    const pad = ' '.repeat(indent + 2)
+    return `PyreonChartClock { pyreonClock in\n${pad}${swiftChartEntrance(e, tag, indent + 2, (i) => emitSwiftPlotHost(e, i))}\n${' '.repeat(indent)}}`
+  }
   if (tag === 'PlotChart') return swiftChartEntrance(e, tag, indent, (i) => emitSwiftPlotHost(e, i))
   if (Object.hasOwn(ACCESSOR_CHART_HOSTS, tag)) return swiftChartEntrance(e, tag, indent, (i) => emitSwiftAccessorHost(e, i))
   const unlowered = UNLOWERED_CHART_HOSTS[tag]
   if (unlowered !== undefined) {
     _emitWarnings.push(`<${tag}> has no native lowering yet — ${unlowered}. Emitting an EmptyView().`)
     return 'EmptyView()'
+  }
+  const clockProp = CHART_HOSTS[tag]?.clock
+  if (clockProp !== undefined && chartAttrExpr(e, clockProp) !== undefined) {
+    // An animated host: the clock wraps the entrance so every frame re-renders with a new time.
+    const pad = ' '.repeat(indent + 2)
+    return `PyreonChartClock { pyreonClock in\n${pad}${swiftChartEntrance(e, tag, indent + 2, (i) => emitSwiftGenericChartHost(e, i))}\n${' '.repeat(indent)}}`
   }
   return swiftChartEntrance(e, tag, indent, (i) => emitSwiftGenericChartHost(e, i))
 }
@@ -13438,7 +13449,12 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     attrs[name] = v
   }
   const data: string[] = []
+  const clocked = spec.clock !== undefined && chartAttrExpr(e, spec.clock) !== undefined
   for (const name of spec.data) {
+    if (name === 'effectTime' && clocked) {
+      data.push('pyreonClock')
+      continue
+    }
     if (attrs[name] === undefined) {
       data.push(spec.dataDefaults![name]!(SWIFT_CHART_TARGET))
       continue
@@ -13469,6 +13485,17 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
   const H = swiftChartDouble(e, 'height', spec.defaultHeight, indent)
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
+  // `roam`: the view lives in host state and is merged into the options every
+  // render, so the layout, the paint and the hit all see the roamed map.
+  const roamCfg = spec.roam === true ? chartRoamConfig((n) => readStaticAttr(e, n), (m) => _emitWarnings.push(m), tag, (n) => chartAttrExpr(e, n)) : null
+  if (roamCfg !== null) {
+    _hostStateDecls.push('@State private var pyreonView: GeoView = GeoView(zoom: 1.0, panX: 0.0, panY: 0.0)')
+    _hostStateDecls.push('@State private var pyreonPanFrom: PyreonChartPt = PyreonChartPt(x: 0.0, y: 0.0)')
+    _hostStateDecls.push('@State private var pyreonPinchFrom: Double = 1.0')
+    const base = options === 'nil' ? `${spec.optionsStruct}()` : options
+    themeLets.push(`let pyreonRoamed: ${spec.optionsStruct} = { () -> ${spec.optionsStruct} in var pyreonO = ${base}; pyreonO.zoom = pyreonView.zoom; pyreonO.panX = pyreonView.panX; pyreonO.panY = pyreonView.panY; return pyreonO }()`)
+    options = 'pyreonRoamed'
+  }
   const args: ChartHostArgs = {
     data,
     options,
@@ -13544,6 +13571,16 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
       parts.push(`do { ${swiftChartSelectBody(event.handler, extra.hit(layout, hitX, hitY, plotArgs, SWIFT_CHART_TARGET), indent)} }`)
     }
     gesture = `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${parts.join('; ')} })`
+  }
+  if (roamCfg !== null) {
+    const box = SWIFT_CHART_TARGET.rect('0.0', '0.0', plotArgs.W, plotArgs.H)
+    const pan = `DragGesture(minimumDistance: 3).onChanged { pyreonG in let pyreonD = PyreonChartPt(x: Double(pyreonG.translation.width), y: Double(pyreonG.translation.height)); pyreonView = geoRoamPan(pyreonView, pyreonD.x - pyreonPanFrom.x, pyreonD.y - pyreonPanFrom.y); pyreonPanFrom = pyreonD }.onEnded { _ in pyreonPanFrom = PyreonChartPt(x: 0.0, y: 0.0) }`
+    const pinch = `MagnificationGesture().onChanged { pyreonS in pyreonView = geoRoamZoom(pyreonView, Double(pyreonS) / pyreonPinchFrom, (${plotArgs.W}) / 2.0, (${plotArgs.H}) / 2.0, ${box}, ${chartDouble(roamCfg.min)}, ${chartDouble(roamCfg.max)}); pyreonPinchFrom = Double(pyreonS) }.onEnded { _ in pyreonPinchFrom = 1.0 }`
+    // Simultaneous, so a vertical drag over the map still scrolls an enclosing
+    // page, and a select tap keeps working beside the pan.
+    if (gesture === '') gesture = '.contentShape(Rectangle())'
+    if (roamCfg.move) gesture += `.simultaneousGesture(${pan})`
+    if (roamCfg.scale) gesture += `.simultaneousGesture(${pinch})`
   }
   if (lets.length === 0) {
     const tail = swiftChartA11y(e, undefined, indent) + emitSwiftLayoutModifiers(e)
@@ -14431,8 +14468,20 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       _emitWarnings.push(`<${tag}>: \`${p.name}\` must be a ${p.kind} literal on native; the prop is ignored.`)
       continue
     }
-    specArgs.push(`${p.name}: ${p.kind === 'string' ? swiftStr(raw) : String(raw)}`)
+    specArgs.push(`${p.name}: ${p.kind === 'string' ? swiftStr(raw) : p.kind === 'number' ? (Number.isInteger(raw) ? `${String(raw)}.0` : String(raw)) : String(raw)}`)
   }
+  // Third and later y axes — the LAST ChartSpec field, so it follows the literal switches.
+  const extraAxes = chartAttrExpr(e, 'extraYAxes')
+  if (extraAxes !== undefined) specArgs.push(`extraYAxes: ${withExpectedType({ kind: 'array', element: { kind: 'typeRef', name: 'ExtraYAxis', args: [] } }, () => emitSwiftExpr(extraAxes, indent))}`)
+  const x2Labels = chartAttrExpr(e, 'x2Labels')
+  if (x2Labels !== undefined) specArgs.push(`x2Labels: ${emitSwiftExpr(x2Labels, indent)}`)
+  const x2Title = readStaticAttr(e, 'x2Title')
+  if (typeof x2Title === 'string') specArgs.push(`x2Title: ${swiftStr(x2Title)}`)
+  const x2Dom = chartAttrExpr(e, 'x2Domain')
+  if (x2Dom !== undefined) specArgs.push(`x2Domain: ${emitSwiftExpr(x2Dom, indent)}`)
+  const linesAttr = chartAttrExpr(e, 'lines')
+  if (linesAttr !== undefined) specArgs.push(`lines: ${withExpectedType({ kind: 'array', element: { kind: 'typeRef', name: 'LinesSeries', args: [] } }, () => emitSwiftExpr(linesAttr, indent))}`)
+  if (readStaticAttr(e, 'effectClock') === true) specArgs.push(`effectTime: pyreonClock`)
   lets.push(`let pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
   if (brushing) {
     // The band lives in PLOT space: the live span while dragging, else the
@@ -14577,7 +14626,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   if (labels !== undefined) lets.push(`let pyreonSeriesLabels: [String] = ${emitSwiftExpr(labels, indent)}`)
   const a11ySource = fullA11y ? 'pyreonA11ySeriesSource' : legend.toggling ? 'pyreonSeriesAll' : 'pyreonSeries'
   const a11ySeries = labels === undefined
-    ? `${a11ySource}.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues) }`
+    ? `${a11ySource}.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues, xs: $0.onX2 == true ? $0.xs : nil) }`
     : `${a11ySource}.enumerated().map { (pyreonI, pyreonS) in A11ySeries(label: pyreonI < pyreonSeriesLabels.count ? pyreonSeriesLabels[pyreonI] : pyreonS.label, values: pyreonS.values, kind: pyreonS.kind, values2: pyreonS.values2, errLow: pyreonS.errLow, errHigh: pyreonS.errHigh, rValues: pyreonS.rValues) }`
   const describe = `describeChart(A11yInput(title: ${plotTitle ?? 'nil'}, categories: ${fullA11y ? 'pyreonA11yCats' : 'pyreonCats'}, series: ${a11ySeries}, format: ${yFormat ?? 'nil'}))`
   if (!navigating) return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent, describe)

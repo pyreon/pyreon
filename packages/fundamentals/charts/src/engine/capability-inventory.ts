@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-16.25' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-17.30' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -52,8 +52,8 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   // is the warning site; the row closes when the warning goes.
   row('series.line', 'series', 'direct', 'complete', 'src/engine/option-edges.test.ts'),
   row('series.sankey', 'series', 'direct', 'complete', 'src/engine/option-orient.test.ts', '../../native/compiler/src/tests/chart-orient-native.test.ts'),
-  row('series.map', 'series', 'direct', 'partial', 'src/engine/geo-web.ts'),
-  row('series.lines', 'series', 'direct', 'partial', 'src/engine/lines-series.test.ts'),
+  row('series.map', 'series', 'direct', 'complete', 'src/engine/geo-roam.test.ts', 'src/engine/geo.browser.test.tsx', '../../native/compiler/src/tests/chart-map-roam-native.test.ts'),
+  row('series.lines', 'series', 'direct', 'complete', 'src/engine/lines-series.test.ts', '../../native/compiler/src/tests/chart-lines-native.test.ts'),
   // The six geometry keys are draw-list geometry (`engine/pictorial.ts`): px / degree numbers cross; a percent string warns by name.
   row('series.pictorial-bar', 'series', 'direct', 'complete', 'src/engine/pictorial.test.ts', 'src/engine/option-edges.test.ts', '../../native/compiler/src/tests/chart-pictorial-native.test.ts'),
   row('series.extensions', 'series', 'hosted', 'complete', 'src/webview.ts'),
@@ -64,13 +64,13 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('coordinates.calendar', 'coordinates', 'direct', 'complete', 'src/engine/option-orient.test.ts', '../../native/compiler/src/tests/chart-orient-native.test.ts'),
   row('coordinates.parallel', 'coordinates', 'direct', 'complete', 'src/engine/option-orient.test.ts', '../../native/compiler/src/tests/chart-orient-native.test.ts'),
   row('coordinates.single-axis', 'coordinates', 'direct', 'complete', 'src/engine/single-axis.test.ts'), // scatter / effectScatter + theme river: ECharts' own contract
-  row('coordinates.axes', 'coordinates', 'direct', 'partial', 'src/engine/option.ts'), // one x axis, two y axes
+  row('coordinates.axes', 'coordinates', 'direct', 'complete', 'src/engine/option-axes.test.ts', '../../native/compiler/src/tests/chart-axes-native.test.ts'),
   row('coordinates.visual-map', 'coordinates', 'direct', 'partial', 'src/engine/visual-map.ts'), // calculable handle
   // Every element type ECharts draws without a bitmap: text, rect, circle, line, polygon, polyline, bezierCurve, arc, ring, sector and group. An `image` element warns by name.
   row('coordinates.graphic', 'coordinates', 'direct', 'complete', 'src/engine/graphic-shapes.test.ts', 'src/engine/cov-core-option-layer.test.ts', '../../native/compiler/src/tests/chart-graphic-native.test.ts'),
   row('coordinates.mark-point', 'coordinates', 'direct', 'complete', 'src/engine/option-marks.test.ts', '../../native/compiler/src/tests/chart-marks-native.test.ts'),
   row('coordinates.mark-line', 'coordinates', 'direct', 'complete', 'src/engine/option-marks.test.ts', '../../native/compiler/src/tests/chart-marks-native.test.ts'),
-  row('coordinates.geo', 'coordinates', 'direct', 'partial', 'src/engine/geo-web.ts'),
+  row('coordinates.geo', 'coordinates', 'direct', 'complete', 'src/engine/geo-roam.test.ts', 'src/engine/geo-series.test.ts', 'src/engine/geo.browser.test.tsx', '../../native/compiler/src/tests/chart-map-roam-native.test.ts'),
   row('coordinates.data-zoom', 'coordinates', 'direct', 'partial', 'src/engine/navigator.ts'),
   row('coordinates.timeline', 'coordinates', 'direct', 'partial', 'src/engine/option-composite.ts', '../../native/compiler/src/tests/chart-option-family-native.test.ts'),
   row('coordinates.toolbox', 'coordinates', 'direct', 'partial', 'src/engine/toolbox.ts'),

@@ -19,7 +19,7 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import { decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
+import { compileOption, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
 import type { GraphicElement, RichStyle, SamplingRequest } from '@pyreon/charts/option-layer'
 import type { AttrIR, ExprIR } from './types'
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
@@ -134,6 +134,13 @@ export interface ChartHostArgs {
 }
 
 export interface ChartHostSpec {
+  /** The host accepts `roam` (pan / pinch-zoom over a `GeoView` merged into its `GeoOptions`). */
+  readonly roam?: boolean
+  /**
+   * A prop that, when present, animates the host: the emit wraps it in the
+   * effect clock and feeds the clock's seconds to the `effectTime` data slot.
+   */
+  readonly clock?: string
   /** Required data props, in engine argument order. */
   readonly data: readonly string[]
   /** Optional engine arguments and the target expression used when their prop is absent. */
@@ -552,6 +559,27 @@ export const geoValuesAdapter: ChartHostAdapter = (attrs, t, warn, resolve, emit
 
 const box00 = (a: ChartHostArgs, t: ChartHostTarget): string => t.rect('0.0', '0.0', a.W, a.H)
 
+/**
+ * `<MapChart roam>` on native: which gestures it wants and its zoom bounds,
+ * read off static attributes (true / 'scale' / 'move' / 'pan', and a literal
+ * `scaleLimit`), the same vocabulary and defaults as the web host.
+ */
+export function chartRoamConfig(read: (name: string) => unknown, warn: (m: string) => void, tag: string, readExpr: (name: string) => ExprIR | undefined = () => undefined): { move: boolean; scale: boolean; min: number; max: number } | null {
+  const roam = read('roam')
+  if (roam === undefined || roam === false) return null
+  const move = roam === true || roam === 'move' || roam === 'pan'
+  const scale = roam === true || roam === 'scale'
+  if (!move && !scale) {
+    warn(`<${tag} roam>: roam must be a literal true, 'scale', 'move' or 'pan' on native; the map is static.`)
+    return null
+  }
+  const lim = readExpr('scaleLimit')
+  if (lim !== undefined && lim.kind !== 'object') warn(`<${tag} scaleLimit>: scaleLimit must be a literal { min, max } on native; the default 0.5 … 20 applies.`)
+  const min = lim?.kind === 'object' ? litNumber(objectField(lim, 'min')) : undefined
+  const max = lim?.kind === 'object' ? litNumber(objectField(lim, 'max')) : undefined
+  return { move, scale, min: min ?? 0.5, max: max ?? 20 }
+}
+
 /** `options?.field` — or the target's nil when no options were given (`nil?.x` is not Swift). */
 const optField = (a: ChartHostArgs, t: ChartHostTarget, field: string): string =>
   a.options === t.nil ? t.nil : `(${a.options}).${field}`
@@ -688,23 +716,39 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     adapt: { values: calendarValuesAdapter },
   },
   MapChart: {
-    data: ['map', 'values', 'paths', 'points', 'overlayOptions'],
+    roam: true,
+    data: ['map', 'values', 'paths', 'points', 'overlayOptions', 'heat', 'pies', 'heatRadius', 'heatStops', 'trail', 'effectTime'],
+    clock: 'trail',
     dataDefaults: {
       paths: (t) => t.list([]),
       points: (t) => t.list([]),
       overlayOptions: (t) => t.struct('GeoOverlayOptions', []),
+      heat: (t) => t.list([]),
+      pies: (t) => t.list([]),
+      heatRadius: () => '20.0',
+      heatStops: (t) => t.list([]),
+      trail: (t) => t.nil,
+      effectTime: () => '0.0',
     },
     options: 'options',
     optionsStruct: 'GeoOptions',
     themeDefaults: ['stops', 'emptyColor', 'borderColor', 'labelColor'],
     defaultHeight: 300,
     layout: (a, t) => `layoutGeoShapes(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
-    render: (l, a) => `renderGeo(${l}, ${a.data[1]}, ${a.options}) + renderGeoOverlayPaths(${l}, ${a.data[2]}, ${a.data[4]}) + renderGeoOverlayPoints(${l}, ${a.data[3]}, ${a.data[4]})`,
+    render: (l, a, t) => `renderGeo(${l}, ${a.data[1]}, ${a.options}) + renderGeoHeat(${l}, ${a.data[5]}, geoHeatStops(${a.data[8]}, ${optField(a, t, 'stops')}), ${a.data[7]}, 1.0) + renderGeoOverlayPaths(${l}, ${a.data[2]}, ${a.data[4]}) + renderGeoPies(${l}, ${a.data[6]}, 1.0) + renderGeoTrailsIfAny(${l}, ${a.data[2]}, ${a.data[9]}, ${a.data[10]}, "#b42318") + renderGeoOverlayPoints(${l}, ${a.data[3]}, ${a.data[4]})`,
     reuseLayout: true,
     hit: (l, x, y) => `hitGeoIndex(${l}, ${x}, ${y})`,
     extraHits: [{ event: 'selectpointindex', hit: (l, x, y, a) => `hitGeoOverlayPoint(${l}, ${a.data[3]}, ${x}, ${y}, (${a.data[4]}).radius)` }],
     tooltip: (l, x, y, a) => `geoTip(${l}, ${a.data[1]}, ${x}, ${y})`,
-    adapt: { map: geoShapesAdapter, values: geoValuesAdapter },
+    adapt: {
+      map: geoShapesAdapter,
+      values: geoValuesAdapter,
+      // A literal radius crosses as a Double (Kotlin rejects an Int where a Double is expected).
+      heatRadius: (attrs, _t, _warn, resolve, emit) => {
+        const n = litNumber(literalOf(attrs['heatRadius']!, resolve))
+        return n === undefined ? emit(attrs['heatRadius']!) : chartDouble(n)
+      },
+    },
   },
   ParallelChart: {
     data: ['axes', 'rows'],
@@ -1720,6 +1764,47 @@ export function desugarOptionChart(
     return { kind: 'jsx-element', tag: kind === 'sankey' ? 'SankeyChart' : 'GraphChart', attrs, children: [] }
   }
 
+  if (kind === 'lines') {
+    // ECharts' lines series: compiled by the web facade itself at compile time,
+    // so native draws the same coordinates, styles and trail parameters. The
+    // plot carries the x extent as two value rows and no marks.
+    const plainOption = irToValue(raw, resolve)
+    if (plainOption.ok !== true || !isPlainRecord(plainOption.value)) {
+      warn('<OptionChart option>: native lines series need a literal option; emitting nothing.')
+      return undefined
+    }
+    const plainSeries = plainOption.value['series']
+    if (!Array.isArray(plainSeries) || plainSeries.some((ps) => !isPlainRecord(ps) || ps['type'] !== 'lines')) {
+      warn('<OptionChart option.series>: native lines charts need every series to be a lines series; emitting nothing.')
+      return undefined
+    }
+    const compiledLines = compileOption(plainOption.value as never)
+    for (const w of compiledLines.warnings) warn(`<OptionChart option.${w.path}>: ${w.message}`)
+    const linesSpec = compiledLines.spec
+    const xs = linesSpec.xValues ?? [0, 1]
+    const xsFloat = xs.some((v) => !Number.isInteger(v))
+    set('data', { kind: 'array', elements: xs.map((v) => ({ kind: 'object', fields: [{ name: 'xv', value: { kind: 'literal', value: v, ...(xsFloat ? { float: true } : {}) } }] })) })
+    set('xValue', { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: 'xv' } })
+    set('marks', { kind: 'array', elements: [] })
+    if (linesSpec.yDomain !== undefined) set('yDomain', { kind: 'object', fields: [{ name: 'min', value: optionDoubleLiteral(linesSpec.yDomain.min) }, { name: 'max', value: optionDoubleLiteral(linesSpec.yDomain.max) }] })
+    const lineLits: ExprIR[] = (linesSpec.lines ?? []).map((ls) => ({
+      kind: 'object',
+      fields: [
+        { name: 'coords', value: { kind: 'array', elements: ls.coords.map((row) => ({ kind: 'array' as const, elements: row.map((v) => optionDoubleLiteral(v)) })) } },
+        { name: 'colors', value: { kind: 'array', elements: ls.colors.map((c) => lit(c)) } },
+        { name: 'widths', value: { kind: 'array', elements: ls.widths.map((v) => optionDoubleLiteral(v)) } },
+        { name: 'effect', value: lit(ls.effect) },
+        { name: 'period', value: optionDoubleLiteral(ls.period) },
+        { name: 'trailLength', value: optionDoubleLiteral(ls.trailLength) },
+        { name: 'effectColor', value: lit(ls.effectColor) },
+        { name: 'symbolSize', value: optionDoubleLiteral(ls.symbolSize) },
+      ],
+    }))
+    set('lines', { kind: 'array', elements: lineLits })
+    if ((linesSpec.lines ?? []).some((ls) => ls.effect)) set('effectClock', lit(true))
+    return { kind: 'jsx-element', tag: 'PlotChart', attrs, children: [] }
+  }
+
   const cartesianKinds = new Set(['line', 'bar', 'pictorialBar', 'scatter'])
   if (cartesianKinds.has(kind)) {
     if (rawSeries?.kind !== 'array' || rawSeries.elements.length === 0) {
@@ -1734,18 +1819,93 @@ export function desugarOptionChart(
         warn(`<OptionChart option.series[${si}].type>: this cartesian adapter needs line, bar, pictorialBar, or scatter series; emitting nothing.`)
         return undefined
       }
-      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras', 'sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'emphasis', 'select', 'blur', 'selectedMode', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'label'], `option.series[${si}]`, warn)
+      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras', 'sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'emphasis', 'select', 'blur', 'selectedMode', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'label', 'yAxisIndex', 'xAxisIndex'], `option.series[${si}]`, warn)
       seriesObjects.push(s)
     }
-    const xAxis = literalOf(objectField(raw, 'xAxis'), resolve)
-    const categories = xAxis === undefined ? undefined : literalOf(objectField(xAxis, 'data'), resolve)
+    const xAxisTop = literalOf(objectField(raw, 'xAxis'), resolve)
+    // ECharts' xAxis may be an array: the first axis places the bands, and a
+    // second labels the SAME bands on the opposite edge when its count matches.
+    const xAxisEntries = xAxisTop?.kind === 'array' ? xAxisTop.elements.map((el) => literalOf(el, resolve)) : []
+    const xAxis = xAxisTop?.kind === 'array' ? xAxisEntries[0] : xAxisTop
+    const x2AxisLit = xAxisEntries.length > 1 ? xAxisEntries[1] : undefined
+    // A value or time x axis: series data are [x, y] pairs. Series on the first
+    // axis share one list of x positions (the engine's xValues); a series on a
+    // second value axis (xAxisIndex: 1) carries its own.
+    const xTypeLit = xAxis?.kind === 'object' ? litString(objectField(xAxis, 'type')) : undefined
+    const valueX = xTypeLit === 'value' || xTypeLit === 'time'
+    const x2TypeLit = x2AxisLit?.kind === 'object' ? litString(objectField(x2AxisLit, 'type')) : undefined
+    const x2Value = valueX && (x2TypeLit === 'value' || x2TypeLit === 'time')
+    const pairXs: (number[] | undefined)[] = []
+    const pairYs: (number[] | undefined)[] = []
+    let sharedXs: number[] | undefined = undefined
+    if (valueX) {
+      for (let si = 0; si < seriesObjects.length; si++) {
+        const data = literalOf(objectField(seriesObjects[si]!, 'data'), resolve)
+        const xsOut: number[] = []
+        const ysOut: number[] = []
+        const ok = data?.kind === 'array' && data.elements.every((d) => {
+          const pair = literalOf(d, resolve)
+          const px = pair?.kind === 'array' && pair.elements.length >= 2 ? litNumber(literalOf(pair.elements[0], resolve)) : undefined
+          const py = pair?.kind === 'array' && pair.elements.length >= 2 ? litNumber(literalOf(pair.elements[1], resolve)) : undefined
+          if (px === undefined || py === undefined) return false
+          xsOut.push(px)
+          ysOut.push(py)
+          return true
+        })
+        if (!ok) {
+          warn(`<OptionChart option.series[${si}].data>: a native value x axis needs literal [x, y] pairs; emitting nothing.`)
+          return undefined
+        }
+        pairXs.push(xsOut)
+        pairYs.push(ysOut)
+        const onSecond = x2Value && litNumber(objectField(seriesObjects[si]!, 'xAxisIndex')) === 1
+        if (onSecond && pairXs[0] !== undefined && xsOut.length !== pairXs[0].length) {
+          warn(`<OptionChart option.series[${si}].data>: a native series on the second value x axis needs as many points as the first series; emitting nothing.`)
+          return undefined
+        }
+        if (onSecond) continue
+        if (sharedXs === undefined) sharedXs = xsOut
+        else if (sharedXs.length !== xsOut.length || sharedXs.some((v, k) => v !== xsOut[k])) {
+          warn(`<OptionChart option.series[${si}].data>: native series on one value x axis must share their x positions; emitting nothing.`)
+          return undefined
+        }
+      }
+      if (xTypeLit === 'time') set('xTime', lit(true))
+    }
+    const categories: ExprIR | undefined = valueX
+      ? { kind: 'array', elements: (sharedXs ?? pairXs.find((v) => v !== undefined) ?? []).map((v) => lit(String(v))) }
+      : xAxis === undefined ? undefined : literalOf(objectField(xAxis, 'data'), resolve)
     if (categories?.kind !== 'array' || !categories.elements.every((x) => litString(x) !== undefined || litNumber(x) !== undefined)) {
       warn('<OptionChart option.xAxis.data>: native cartesian options need a literal category array; emitting nothing.')
       return undefined
     }
-    optionFields(xAxis!, ['type', 'data', 'show', 'name'], 'option.xAxis', warn)
+    optionFields(xAxis!, ['type', 'data', 'show', 'name', 'inverse', 'position', 'offset'], 'option.xAxis', warn)
+    const x2Data = x2AxisLit?.kind === 'object' ? literalOf(objectField(x2AxisLit, 'data'), resolve) : undefined
+    const x2Mapped = x2Value || (!valueX && x2Data?.kind === 'array' && x2Data.elements.length === categories.elements.length && x2Data.elements.every((x) => litString(x) !== undefined || litNumber(x) !== undefined))
+    if (xAxisEntries.length > 2 || (xAxisEntries.length === 2 && !x2Mapped)) warn('<OptionChart option.xAxis>: a second x axis maps as a value axis, or as a second set of category labels with the same count; other x axes were ignored.')
+    if (x2Value && x2AxisLit?.kind === 'object') {
+      const x2Name = litString(objectField(x2AxisLit, 'name'))
+      if (x2Name !== undefined) set('x2Title', lit(x2Name))
+      const x2min = litNumber(objectField(x2AxisLit, 'min'))
+      const x2max = litNumber(objectField(x2AxisLit, 'max'))
+      if (x2min !== undefined && x2max !== undefined) set('x2Domain', { kind: 'object', fields: [{ name: 'min', value: optionDoubleLiteral(x2min) }, { name: 'max', value: optionDoubleLiteral(x2max) }] })
+    }
+    if (!valueX && x2Mapped && x2Data?.kind === 'array') {
+      set('x2Labels', { kind: 'array', elements: x2Data.elements.map((x) => lit(litString(x) ?? String(litNumber(x)))) })
+      const x2Name = x2AxisLit?.kind === 'object' ? litString(objectField(x2AxisLit, 'name')) : undefined
+      if (x2Name !== undefined) set('x2Title', lit(x2Name))
+    }
+    const xOffsetLit = litNumber(objectField(xAxis!, 'offset'))
+    if (xOffsetLit !== undefined) set('xOffset', lit(xOffsetLit))
+    if (litString(objectField(xAxis!, 'position')) === 'top') set('xTop', lit(true))
+    const xInverseRaw = objectField(xAxis!, 'inverse')
+    if (xInverseRaw?.kind === 'literal' && xInverseRaw.value === true) set('xInverse', lit(true))
     const seriesValues: number[][] = []
     for (let si = 0; si < seriesObjects.length; si++) {
+      if (valueX) {
+        seriesValues.push(pairYs[si]!)
+        continue
+      }
       const data = literalOf(objectField(seriesObjects[si]!, 'data'), resolve)
       if (data?.kind !== 'array' || data.elements.length !== categories.elements.length || data.elements.some((d) => optionDatumNumber(literalOf(d, resolve)) === undefined)) {
         warn(`<OptionChart option.series[${si}].data>: native cartesian series need one literal numeric value per xAxis category; emitting nothing.`)
@@ -1780,6 +1940,7 @@ export function desugarOptionChart(
       kind: 'object',
       fields: [
         { name: 'x', value: lit(String(litString(x) ?? litNumber(x))) },
+        ...(valueX && sharedXs !== undefined ? [{ name: 'xv', value: { kind: 'literal' as const, value: sharedXs[i] ?? 0, ...(sharedXs.some((v) => !Number.isInteger(v)) ? { float: true } : {}) } }] : []),
         ...seriesValues.map((values, si) => ({
           name: `s${si}`,
           value: {
@@ -1792,10 +1953,14 @@ export function desugarOptionChart(
     }))
     set('data', { kind: 'array', elements: rows })
     set('x', { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: 'x' } })
+    if (valueX && sharedXs !== undefined) set('xValue', { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: 'xv' } })
     const barCount = seriesObjects.filter((s) => {
       const seriesType = litString(objectField(s, 'type'))
       return seriesType === 'bar' || seriesType === 'pictorialBar'
     }).length
+    const yAxisTop = literalOf(objectField(raw, 'yAxis'), resolve)
+    const yAxisPair = yAxisTop?.kind === 'array' ? yAxisTop.elements.map((el) => literalOf(el, resolve)) : []
+    const swapYAxes = yAxisPair.length >= 2 && yAxisPair[0]?.kind === 'object' && litString(objectField(yAxisPair[0], 'position')) === 'right' && !(yAxisPair[1]?.kind === 'object' && litString(objectField(yAxisPair[1], 'position')) === 'right')
     const marks: ExprIR[] = seriesObjects.map((s, si) => {
       const sk = litString(objectField(s, 'type'))!
       const stacked = objectField(s, 'stack') !== undefined
@@ -1843,6 +2008,19 @@ export function desugarOptionChart(
         opts.push({ name: 'gradient', value: { kind: 'object', fields: gradientFields } })
         if (litString(color) === undefined) opts.push({ name: 'color', value: lit(ordered[0]!.color) })
         break
+      }
+      // ECharts' yAxisIndex: 1 scales the series on the right y axis.
+      const axisIndexRaw = objectField(s, 'yAxisIndex')
+      if (axisIndexRaw === undefined && swapYAxes) opts.push({ name: 'axis', value: lit('right') })
+      if (axisIndexRaw !== undefined) {
+        const axisIndex = litNumber(axisIndexRaw)
+        if ((axisIndex === 1) !== swapYAxes && (axisIndex === 0 || axisIndex === 1)) opts.push({ name: 'axis', value: lit('right') })
+        else if (axisIndex !== undefined && axisIndex >= 2 && axisIndex < yAxisPair.length) opts.push({ name: 'axisExtra', value: optionDoubleLiteral(axisIndex - 2) })
+        else if (axisIndex !== 0 && axisIndex !== 1) warn(`<OptionChart option.series[${si}].yAxisIndex>: yAxisIndex ${axisIndex} names no declared y axis; the series uses the left axis.`)
+      }
+      if (x2Value && litNumber(objectField(s, 'xAxisIndex')) === 1) {
+        opts.push({ name: 'onX2', value: lit(true) })
+        opts.push({ name: 'xs', value: { kind: 'array', elements: (pairXs[si] ?? []).map((v) => optionDoubleLiteral(v)) } })
       }
       const pattern = optionPatternLiteral(objectField(s, 'itemStyle'), resolve)
       if (pattern !== undefined) opts.push({ name: 'pattern', value: pattern })
@@ -2170,15 +2348,61 @@ export function desugarOptionChart(
     if (markers.length > 0) set('markers', { kind: 'array', elements: markers })
     const xShow = xAxis === undefined ? undefined : objectField(xAxis, 'show')
     if (xShow?.kind === 'literal' && xShow.value === false) set('showXAxis', lit(false))
-    const yAxis = literalOf(objectField(raw, 'yAxis'), resolve)
-    if (yAxis !== undefined) {
-      optionFields(yAxis, ['show', 'name', 'min', 'max'], 'option.yAxis', warn)
+    const xName = xAxis === undefined ? undefined : litString(objectField(xAxis, 'name'))
+    if (xName !== undefined) set('xTitle', lit(xName))
+    // ECharts' yAxis is one axis object or an array of them; index 1 is the
+    // right axis a series selects with yAxisIndex: 1.
+    const yAxisRaw = literalOf(objectField(raw, 'yAxis'), resolve)
+    const yAxisDeclared: ExprIR[] = yAxisRaw === undefined ? [] : yAxisRaw.kind === 'array' ? yAxisRaw.elements.map((el) => literalOf(el, resolve)).filter((el): el is ExprIR => el !== undefined) : [yAxisRaw]
+    const positionOf = (el: ExprIR | undefined): string | undefined => (el?.kind === 'object' ? litString(objectField(el, 'position')) : undefined)
+    // The same side rules as the web facade: a lone axis may sit right, and two
+    // axes whose first is placed right swap (yAxisIndex follows).
+    const yAxisList: ExprIR[] = swapYAxes ? [yAxisDeclared[1]!, yAxisDeclared[0]!, ...yAxisDeclared.slice(2)] : yAxisDeclared
+    if (yAxisDeclared.length === 1 && positionOf(yAxisDeclared[0]) === 'right') set('yRight', lit(true))
+    for (let ai = 0; ai < Math.min(2, yAxisDeclared.length); ai++) {
+      const pos = positionOf(yAxisDeclared[ai])
+      const natural = ai === 0 ? 'left' : 'right'
+      if (pos !== undefined && pos !== natural && !swapYAxes && !(yAxisDeclared.length === 1 && pos === 'right')) warn(`<OptionChart option.yAxis[${ai}].position>: both y axes cannot share a side; the axis keeps its default side.`)
+    }
+    // Third and later y axes: side, pinned domain, title and offset.
+    const extraAxes: ExprIR[] = []
+    for (let ai = 2; ai < yAxisList.length; ai++) {
+      const a = yAxisList[ai]!
+      if (a.kind !== 'object') continue
+      optionFields(a, ['type', 'show', 'name', 'min', 'max', 'position', 'offset', 'splitLine'], `option.yAxis[${ai}]`, warn)
+      const fields: { name: string; value: ExprIR }[] = [{ name: 'side', value: lit(litString(objectField(a, 'position')) === 'left' ? 'left' : 'right') }]
+      const amin = litNumber(objectField(a, 'min'))
+      const amax = litNumber(objectField(a, 'max'))
+      if (amin !== undefined && amax !== undefined) fields.push({ name: 'domain', value: { kind: 'object', fields: [{ name: 'min', value: optionDoubleLiteral(amin) }, { name: 'max', value: optionDoubleLiteral(amax) }] } })
+      const aname = litString(objectField(a, 'name'))
+      if (aname !== undefined) fields.push({ name: 'title', value: lit(aname) })
+      const aoff = litNumber(objectField(a, 'offset'))
+      if (aoff !== undefined) fields.push({ name: 'offset', value: optionDoubleLiteral(aoff) })
+      extraAxes.push({ kind: 'object', fields })
+    }
+    if (extraAxes.length > 0) set('extraYAxes', { kind: 'array', elements: extraAxes })
+    for (let ai = 0; ai < Math.min(2, yAxisList.length); ai++) {
+      const yAxis = yAxisList[ai]!
+      if (yAxis.kind !== 'object') continue
+      const path = yAxisRaw?.kind === 'array' ? `option.yAxis[${ai}]` : 'option.yAxis'
+      optionFields(yAxis, ['type', 'show', 'name', 'min', 'max', 'splitLine', 'inverse', 'position', 'offset'], path, warn)
+      const right = ai === 1
+      const yOffsetLit = litNumber(objectField(yAxis, 'offset'))
+      if (yOffsetLit !== undefined) set(right ? 'y2Offset' : 'yOffset', lit(yOffsetLit))
       const yShow = objectField(yAxis, 'show')
-      if (yShow?.kind === 'literal' && yShow.value === false) set('showYAxis', lit(false))
+      if (!right && yShow?.kind === 'literal' && yShow.value === false) set('showYAxis', lit(false))
+      if (!right && litString(objectField(yAxis, 'type')) === 'log') set('yScale', lit('log'))
+      const inverse = objectField(yAxis, 'inverse')
+      if (!right && inverse?.kind === 'literal' && inverse.value === true) set('yInverse', lit(true))
+      const yName = litString(objectField(yAxis, 'name'))
+      if (yName !== undefined) set(right ? 'y2Title' : 'yTitle', lit(yName))
+      const split = literalOf(objectField(yAxis, 'splitLine'), resolve)
+      const splitShow = split?.kind === 'object' ? objectField(split, 'show') : undefined
+      if (!right && splitShow?.kind === 'literal' && splitShow.value === false) set('showGrid', lit(false))
       const ymin = litNumber(objectField(yAxis, 'min'))
       const ymax = litNumber(objectField(yAxis, 'max'))
       if (ymin !== undefined && ymax !== undefined) {
-        set('yDomain', {
+        set(right ? 'y2Domain' : 'yDomain', {
           kind: 'object',
           fields: [
             { name: 'min', value: { kind: 'literal', value: ymin, float: true } },
@@ -3111,6 +3335,9 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'label', kind: 'string' },
   { name: 'showValues', kind: 'boolean', default: false },
   { name: 'axis', kind: 'string' },
+  { name: 'axisExtra', kind: 'number' },
+  { name: 'onX2', kind: 'boolean' },
+  { name: 'xs', kind: 'numbers' },
   { name: 'effect', kind: 'boolean' },
   { name: 'symbol', kind: 'string' },
   { name: 'symbolRepeat', kind: 'boolean' },
@@ -3149,7 +3376,7 @@ export const PLOT_MARK_ACCESSOR_OPTIONS: readonly string[] = ['errorLow', 'error
  * switches (the log view, calendar y labels, the 100% stack, axis titles,
  * the label mode) lower on every target through the generated engine.
  */
-export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'string' | 'boolean' }> = [
+export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'string' | 'boolean' | 'number' }> = [
   { name: 'yScale', kind: 'string' },
   { name: 'yTime', kind: 'boolean' },
   { name: 'stackNormalize', kind: 'boolean' },
@@ -3157,6 +3384,13 @@ export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'yTitle', kind: 'string' },
   { name: 'y2Title', kind: 'string' },
   { name: 'xLabels', kind: 'string' },
+  { name: 'yInverse', kind: 'boolean' },
+  { name: 'xInverse', kind: 'boolean' },
+  { name: 'xTop', kind: 'boolean' },
+  { name: 'yRight', kind: 'boolean' },
+  { name: 'xOffset', kind: 'number' },
+  { name: 'yOffset', kind: 'number' },
+  { name: 'y2Offset', kind: 'number' },
 ]
 
 /**

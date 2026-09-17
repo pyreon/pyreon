@@ -238,6 +238,54 @@ for interaction, animation or accessibility parity.
   Kotlin `val` — so it can never be REASSIGNED (the scanner became a per-line
   helper that only ever pushes).
 
+- [x] `coordinates.axes` complete: an axis `name` is its
+  title, `show: false` hides it, `yAxis.splitLine.show: false` drops the
+  grid, and `type: 'log'` is the log scale, on web and native. Natively the
+  right axis now crosses — `yAxis` as an array carries index 1's domain and
+  title, and `yAxisIndex: 1` scales a series on it (it was a warned drop).
+  Unmapped per-axis keys and a one-sided min/max are named, where they were
+  silently ignored. yAxis.inverse is an engine feature: Domain.inverse makes
+  scaleLinear map min to the far end, so marks, ticks and hit-tests invert
+  together and native gets it through the generated engine. A stacked bar and
+  an area built geometry without the scale and were fixed. xAxis.inverse over
+  categories reverses the data once in geometrySpec and maps hit indices back
+  (categoryIndex); a continuous x uses the domain flag. Position: x top and a
+  lone y right move the label band in layout; two y axes with the first placed
+  right swap and yAxisIndex follows. Offset moves each axis off its edge and
+  grows the gutter. A third and later y axis is ChartSpec.extraYAxes; every
+  left/right domain choice goes through seriesDomain. A second x axis over the
+  same categories draws as labels on the opposite edge; a second VALUE x axis
+  places its series at their own xs (Series.onX2/xs) over ChartSpec.x2Domain.
+  Native option charts now lower value/time x axes at all (they emitted
+  nothing). Row complete.
+
+- [x] `series.lines` complete: lines are ChartSpec.lines drawn by
+  engine/lines.ts, and effect trails are a pure function of effectTime. The
+  web canvas host runs an effect clock (real-Chromium test: frames differ,
+  still under reduced motion); native gains PyreonChartClock and the
+  OptionChart adapter lowers lines series (they emitted nothing). Device: the
+  iOS UI test screenshots the gallery trail twice and asserts the frames
+  differ (freezing the clock fails it). Android renders it; its motion is not
+  observable there because the Compose test harness suspends infinite
+  animations, which the Kotlin clock must use (a plain frame loop hung the
+  harness).
+
+- [x] `series.map` complete (roam): GeoOptions carries zoom/panX/panY and
+  layoutGeoShapes applies them, so every geo pixel follows the view;
+  geoRoamZoom holds the point under the pointer. Web canvas host: wheel zoom,
+  drag pan, no click after a drag; native MapChart: GeoView host state with a
+  simultaneous drag + pinch (iOS) and detectTransformGestures (Android). Both
+  device lanes drag the gallery map and assert its pixels change; a no-op pan
+  fails each. Device lesson: the first iOS failure was the test, not the
+  gesture — the gallery was scrolled past the map (frame y -600), so the drag
+  landed off screen.
+- [x] `coordinates.geo` complete: the planner read series[0] only (a second
+  geo series vanished silently); it now walks every series — heatmap blobs,
+  pies at a lon/lat and a geoIndex map layer included — on web and native,
+  and withAlpha stopped painting rgb() ramp colours opaque. Geo lines trails
+  run on the same clocks as cartesian lines (iOS device screenshot diff; a
+  frozen time fails it).
+
 ## Exit gate
 
 Zero unclassified core inventory rows; green real-browser conformance; green

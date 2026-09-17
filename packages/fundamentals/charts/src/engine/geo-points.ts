@@ -4,6 +4,8 @@ import { renderGeo, geoProject } from './geo'
 import { layoutGeo } from './geo-web'
 import type { GeoLayout, GeoOptions } from './geo'
 import type { GeoJson } from './geo-web'
+import { renderGeoHeat, renderGeoPies } from './geo-overlay'
+import type { GeoHeatPoint, GeoPie } from './geo-overlay'
 import { withAlpha } from './radar'
 import { measureApprox, renderSvg } from './svg'
 import type { SvgOptions } from './svg'
@@ -15,6 +17,8 @@ export interface GeoPoint {
   lat: Double
   value?: Double | undefined
   color?: string | undefined
+  /** This point draws the effectScatter halo. */
+  effect?: boolean | undefined
 }
 
 export interface GeoPath {
@@ -59,7 +63,7 @@ export function renderGeoPoints(layout: GeoLayout, points: GeoPoint[], options?:
     const at = geoProject(layout.transform, p.lon, p.lat)
     const r = radii[i]! * progress
     const fill = p.color ?? color
-    if (options?.effect === true) {
+    if (options?.effect === true || p.effect === true) {
       out.push({ kind: 'circle', center: at, radius: r * 2.6, fill: withAlpha(fill, 0.12) })
       out.push({ kind: 'circle', center: at, radius: r * 1.7, fill: withAlpha(fill, 0.25) })
     }
@@ -107,6 +111,12 @@ export interface GeoPointsToSvgOptions {
   geo: GeoJson
   points: GeoPoint[]
   paths?: GeoPath[] | undefined
+  heat?: GeoHeatPoint[] | undefined
+  heatRadius?: Double | undefined
+  heatStops?: readonly string[] | undefined
+  pies?: GeoPie[] | undefined
+  /** Region values from a map series on the geo (`geoIndex`). */
+  values?: Record<string, Double> | undefined
   width?: Double
   height?: Double
   map?: GeoOptions
@@ -124,7 +134,8 @@ export function geoPointsToSvg(o: GeoPointsToSvgOptions): string {
   const layout = layoutGeo(o.geo, { x: 0.0, y: 0.0, w: width, h: height }, o.map)
   const m = o.measure ?? measureApprox()
   const paths = o.paths ?? []
-  const cmds = [...renderGeo(layout, [], o.map, m), ...renderGeoPaths(layout, paths, o.options), ...renderGeoPoints(layout, o.points, o.options, m)]
+  const regionValues = Object.entries(o.values ?? {}).map(([region, value]) => ({ region, value }))
+  const cmds = [...renderGeo(layout, regionValues, o.map, m), ...renderGeoHeat(layout, o.heat ?? [], o.heatStops ?? [], o.heatRadius ?? 20.0, 1.0), ...renderGeoPaths(layout, paths, o.options), ...renderGeoPies(layout, o.pies ?? [], 1.0), ...renderGeoPoints(layout, o.points, o.options, m)]
   const description = o.description ?? (o.title !== undefined ? `${o.title}: ${o.points.length} points and ${paths.length} paths over ${layout.regions.length} regions.` : undefined)
   return renderSvg(cmds, width, height, {
     ...o.svg,

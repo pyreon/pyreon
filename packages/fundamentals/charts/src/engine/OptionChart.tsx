@@ -20,7 +20,7 @@ import { TIMELINE_HEIGHT, mergeChartOptions, resolveTimeline, timelineCommands, 
 import type { OptionUpdatePolicy } from './option-composite'
 import { graphicCommands } from './option-layer'
 import { visualMapCommands } from './visual-map'
-import { barsFor, layoutChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
+import { barsFor, categoryIndex, invertCategories, layoutChart, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
 import type { ChartSpec, Emphasis } from './render'
 import { hitBar, hitNearestX, layoutSeriesPoints } from './layout'
 import { plain } from './format'
@@ -303,22 +303,23 @@ export function OptionChart(props: OptionChartProps): VNode {
     })
     for (let i = 0; i < spec.series.length; i++) {
       if (spec.series[i]!.kind !== 'bars') continue
-      const di = hitBar(barsFor(spec, i, measure), px, ly)
+      const di = categoryIndex(spec, hitBar(barsFor(spec, i, measure), px, ly))
       if (di >= 0) return mk(i, di)
     }
     const plot = layoutChart(spec, measure).plot
     let best: OptionHit | null = null
     let bestD = 12.0
+    const view = invertCategories(spec)
     for (let i = 0; i < spec.series.length; i++) {
-      const s = spec.series[i]!
+      const s = view.series[i]!
       if (s.kind === 'bars' || s.kind === 'stacked' || s.kind === 'grouped') continue
-      const pts = layoutSeriesPoints(s.values, plot, seriesOnRightAxis(s, spec) ? resolveY2Domain(spec) : resolveYDomain(spec))
-      const di = hitNearestX(pts, px)
-      if (di < 0) continue
-      const d = Math.abs(pts[di]!.x - px)
+      const pts = layoutSeriesPoints(s.values, plot, seriesDomain(s, spec, resolveYDomain(spec), resolveY2Domain(spec)))
+      const vi = hitNearestX(pts, px)
+      if (vi < 0) continue
+      const d = Math.abs(pts[vi]!.x - px)
       if (d < bestD) {
         bestD = d
-        best = mk(i, di)
+        best = mk(i, categoryIndex(spec, vi))
       }
     }
     return best
@@ -405,12 +406,16 @@ export function OptionChart(props: OptionChartProps): VNode {
   // compiled commands as before.
   const hoverIndex = signal(-1)
   const pinned = signal<number[]>([])
-  const stateCmds = (g: OptionGeometry): DrawCmd[] => {
+  /** True when a cartesian option draws an animated `lines` trail. */
+  const linesEffectOn = (g: OptionGeometry): boolean =>
+    g.plan.kind === 'cartesian' && (g.plan.compiled.spec.lines ?? []).some((ls) => ls.effect)
+  const stateCmds = (g: OptionGeometry, time = 0.0): DrawCmd[] => {
     const highlight = hoverIndex()
     const selected = pinned()
-    if (highlight < 0 && selected.length === 0) return g.cmds
+    const clocked = linesEffectOn(g)
+    if (highlight < 0 && selected.length === 0 && !clocked) return g.cmds
     const emphasis: Emphasis = { highlight, selected }
-    if (g.plan.kind === 'cartesian') return compiledCommands({ ...g.plan.compiled, spec: { ...g.plan.compiled.spec, emphasis } }, g.option, g.measure).cmds
+    if (g.plan.kind === 'cartesian') return compiledCommands({ ...g.plan.compiled, spec: { ...g.plan.compiled.spec, ...(highlight < 0 && selected.length === 0 ? {} : { emphasis }), effectTime: time } }, g.option, g.measure).cmds
     if (g.plan.kind === 'grids') {
       const cmds: DrawCmd[] = []
       let first = true
@@ -444,7 +449,8 @@ export function OptionChart(props: OptionChartProps): VNode {
       pinned()
     },
     layout: (box, measure) => cartesian(box.w, box.h, measure),
-    render: (g) => stateCmds(g),
+    render: (g, _measure, _theme, _progress, time) => stateCmds(g, time),
+    effectClock: (g) => linesEffectOn(g),
     select: (g, px, py) => {
       const h1 = hitAt(g, px, py)
       const pin = pinMode(g)
@@ -472,12 +478,13 @@ export function OptionChart(props: OptionChartProps): VNode {
       if (f === null) return null
       const s = f.spec.series[0]
       if (s === undefined || i < 0 || i >= s.values.length) return null
+      const vi = categoryIndex(f.spec, i)
       if (s.kind === 'bars') {
-        const r = barsFor(f.spec, 0, g.measure)[i]
+        const r = barsFor(f.spec, 0, g.measure)[vi]
         return r === undefined ? null : { x: r.x + f.dx, y: r.y + f.dy + f.top, w: r.w, h: r.h }
       }
       const plot = layoutChart(f.spec, g.measure).plot
-      const p = layoutSeriesPoints(s.values, plot, seriesOnRightAxis(s, f.spec) ? resolveY2Domain(f.spec) : resolveYDomain(f.spec))[i]
+      const p = layoutSeriesPoints(invertCategories(f.spec).series[0]!.values, plot, seriesDomain(s, f.spec, resolveYDomain(f.spec), resolveY2Domain(f.spec)))[vi]
       return p === undefined ? null : { x: p.x + f.dx - 6.0, y: p.y + f.dy + f.top - 6.0, w: 12.0, h: 12.0 }
     },
     a11y: () => a11y(),

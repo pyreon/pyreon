@@ -22,7 +22,7 @@ import { renderSvg } from './svg'
 import type { ToolboxTool } from './toolbox'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
-import { geometrySpec, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
+import { geometrySpec, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
 import { mirrorCmds, screenRectX } from './rtl'
 import { layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
 import type { PlotLayout } from './layout'
@@ -991,7 +991,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       if (sr.kind !== 'line' && sr.kind !== 'area' && sr.kind !== 'points') continue
       if (idx >= sr.values.length) continue
       // A right-axis series places its marker on ITS domain.
-      const dom = seriesOnRightAxis(sr, g) ? y2Domain : yDomain
+      const dom = seriesDomain(sr, g, yDomain, y2Domain)
       const pts =
         g.xValues !== undefined && g.xValues.length > 0
           ? layoutSeriesPointsAt(sr.values, g.xValues, plot, dom, l.xDomainUsed)
@@ -1443,6 +1443,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
         ...(s.errLow !== undefined ? { errLow: s.errLow } : {}),
         ...(s.errHigh !== undefined ? { errHigh: s.errHigh } : {}),
         ...(s.rValues !== undefined ? { rValues: s.rValues } : {}),
+        ...(s.onX2 === true && s.xs !== undefined ? { xs: s.xs } : {}),
       })),
     }
     a11yMemo = { rows, marks: props.marks, labels: props.seriesLabels, format: fmtNow, title: props.title, input }

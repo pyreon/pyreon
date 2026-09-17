@@ -830,6 +830,51 @@ final class PyreonTasksUITests: XCTestCase {
             XCTAssertTrue(canvas.waitForExistence(timeout: 10), "\(id) canvas missing on the gallery")
             XCTAssertFalse(canvas.frame.isEmpty, "\(id) rendered with an empty frame — it laid out to nothing")
         }
+        // The map ROAMS: a horizontal drag pans it, so its canvas differs.
+        let roamMap = app.descendants(matching: .any).matching(identifier: "gal-map").firstMatch
+        XCTAssertTrue(roamMap.waitForExistence(timeout: 10), "gal-map canvas missing on the gallery")
+        // The gallery loop above left the page scrolled PAST the map (its frame
+        // sits above the window), and a drag at off-screen coordinates lands on
+        // nothing — so scroll back up until the map is fully on screen.
+        let galScroll = app.scrollViews["gal-scroll"].firstMatch
+        var upTries = 0
+        while roamMap.frame.minY < app.windows.firstMatch.frame.minY + 120 && upTries < 12 {
+            galScroll.swipeDown()
+            upTries += 1
+        }
+        let mapBefore = roamMap.screenshot().pngRepresentation
+        let mapGrab = roamMap.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5))
+        mapGrab.press(forDuration: 0.1, thenDragTo: mapGrab.withOffset(CGVector(dx: 90, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        XCTAssertNotEqual(mapBefore, roamMap.screenshot().pngRepresentation, "dragging the roaming map did not pan it")
+        // The geo route trail MOVES too: two screenshots half a second apart differ.
+        let geoTrail = app.descendants(matching: .any).matching(identifier: "gal-geo-trail").firstMatch
+        XCTAssertTrue(geoTrail.waitForExistence(timeout: 10), "gal-geo-trail canvas missing on the gallery")
+        var trailTries = 0
+        // On screen in either direction: an off-screen element's screenshot never changes.
+        while trailTries < 12 {
+            let window = app.windows.firstMatch.frame
+            if geoTrail.frame.minY < window.minY + 120 {
+                app.scrollViews["gal-scroll"].firstMatch.swipeDown()
+            } else if geoTrail.frame.maxY > window.maxY - 60 {
+                app.scrollViews["gal-scroll"].firstMatch.swipeUp()
+            } else {
+                break
+            }
+            trailTries += 1
+        }
+        let geoTrailBefore = geoTrail.screenshot().pngRepresentation
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertNotEqual(geoTrailBefore, geoTrail.screenshot().pngRepresentation, "gal-geo-trail did not move between frames")
+        // The lines trail MOVES: two screenshots of its canvas half a second
+        // apart differ (the simulator runs with Reduce Motion off).
+        let linesChart = app.descendants(matching: .any).matching(identifier: "gal-lines").firstMatch
+        scrollIntoView(linesChart, in: app)
+        XCTAssertTrue(linesChart.waitForExistence(timeout: 10), "gal-lines canvas missing on the gallery")
+        let framesBefore = linesChart.screenshot().pngRepresentation
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        let framesAfter = linesChart.screenshot().pngRepresentation
+        XCTAssertNotEqual(framesBefore, framesAfter, "gal-lines trail did not move between frames")
         app.buttons["gal-back"].firstMatch.tap()
         XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after gallery Back")
 

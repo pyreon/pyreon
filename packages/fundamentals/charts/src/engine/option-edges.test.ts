@@ -12,15 +12,17 @@ describe('option facade — edge shapes (every branch NAMES its loss)', () => {
     expect(c.warnings.map((w) => w.path)).toContain('series[0].data[1]')
   })
 
-  it('axes: extra x axes and a third y axis warn; min/max (even as strings) become the domain; a lone min does not', () => {
+  it('axes: extra x axes warn, a third y axis is carried; min/max (even as strings) become the domain; a lone min or max does not', () => {
     const c = compileOption({
-      xAxis: [{ data: ['a'] }, { data: ['b'] }],
+      xAxis: [{ data: ['a'] }, { data: ['b', 'c'] }],
       yAxis: [{ min: '0', max: '10' }, { min: 1 }, { max: 9 }],
       series: [{ type: 'bar', data: [1] }],
     })
     const w = c.warnings.map((x) => `${x.code}@${x.path}`)
     expect(w).toContain('axis-count-unsupported@xAxis')
-    expect(w).toContain('axis-count-unsupported@yAxis')
+    expect(w).toContain('option-key-unsupported@yAxis[1].min')
+    expect(w).toContain('option-key-unsupported@yAxis[2].max')
+    expect(c.spec.extraYAxes).toEqual([{ side: 'right', domain: undefined, title: undefined, offset: undefined }])
     expect(c.spec.yDomain).toEqual({ min: 0, max: 10 })
     expect(c.spec.y2Domain).toBeUndefined()
     // A single y-axis object and no y axis at all both compile.

@@ -18,6 +18,7 @@ import { appendGraphicLayer, graphicCommands, resolveDataset, svgSize } from './
 import { visualMapCommands } from './visual-map'
 import { TIMELINE_HEIGHT, composeSvg, resolveTimeline, splitGrids, timelineCommands, timelineSteps } from './option-composite'
 import { customCommands, customExtents } from './custom-series'
+import type { LinesSeries } from './lines'
 import type { CustomRenderItem, CustomSeriesPlan } from './custom-series'
 import { resolveTheme } from './theme-registry'
 import type { ThemeDefinition } from './theme-registry'
@@ -95,7 +96,7 @@ const KNOWN_TOP = new Set([
 ])
 const KNOWN_SERIES = new Set([
   'type', 'name', 'data', 'stack', 'smooth', 'step', 'areaStyle', 'itemStyle',
-  'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'markLine', 'markPoint', 'markArea',
+  'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'xAxisIndex', 'markLine', 'markPoint', 'markArea',
   'color', 'showSymbol', 'symbol', 'emphasis', 'z', 'zlevel', 'silent',
   'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'rippleEffect', 'showEffectOn',
   'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex', 'tooltipExtras',
@@ -343,20 +344,6 @@ export function labelFields(
 }
 
 /** The internal renderItem for a `lines` series: a polyline through every [x, y] pair of the flattened datum. */
-function linesRenderItem(styles: { color: string; width: number }[]): CustomRenderItem {
-  return (params, api) => {
-    const pts: [number, number][] = []
-    for (let d = 0; ; d = d + 2) {
-      const x = api.value(d)
-      const y = api.value(d + 1)
-      if (x === undefined || y === undefined) break
-      pts.push(api.coord([x, y]))
-    }
-    if (pts.length < 2) return null
-    const st = styles[params.dataIndex] ?? { color: '#334155', width: 1.5 }
-    return { type: 'polyline', shape: { points: pts }, style: { stroke: st.color, lineWidth: st.width } }
-  }
-}
 
 /** Compile an ECharts-shaped option onto the engine. Pure. */
 export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {}): CompiledOption {
@@ -378,8 +365,17 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
 
   // ---- axes -----------------------------------------------------------
   const xAxisRaw = option['xAxis']
-  if (Array.isArray(xAxisRaw) && xAxisRaw.length > 1) {
-    warn('axis-count-unsupported', 'xAxis', 'Only one x axis is supported; extra axes were ignored.')
+  // A second x axis maps when it labels the SAME categories count (a second
+  // naming of the same bands); a value axis or a different count is named.
+  const xAxisList: unknown[] = Array.isArray(xAxisRaw) ? (xAxisRaw as unknown[]) : []
+  const x2Axis = xAxisList.length > 1 && isObj(xAxisList[1]) ? (xAxisList[1] as Record<string, unknown>) : undefined
+  const x2Data = x2Axis !== undefined && Array.isArray(x2Axis['data']) ? (x2Axis['data'] as unknown[]).map((c) => (isObj(c) ? String(c['value'] ?? '') : String(c))) : []
+  const x0Count = Array.isArray(xAxisList[0] as unknown) ? 0 : isObj(xAxisList[0]) && Array.isArray((xAxisList[0] as Record<string, unknown>)['data']) ? ((xAxisList[0] as Record<string, unknown>)['data'] as unknown[]).length : 0
+  const x2Type = x2Axis !== undefined && typeof x2Axis['type'] === 'string' ? (x2Axis['type'] as string) : ''
+  const x2Continuous = x2Axis !== undefined && (x2Type === 'value' || x2Type === 'time')
+  const x2Mapped = x2Continuous || (x2Axis !== undefined && x2Data.length > 0 && x2Data.length === x0Count)
+  if (xAxisList.length > 2 || (xAxisList.length === 2 && !x2Mapped)) {
+    warn('axis-count-unsupported', 'xAxis', 'A second x axis maps as a value axis, or as a second set of category labels with the same count; other x axes were ignored.')
   }
   const xAxis = first(xAxisRaw as Record<string, unknown> | Record<string, unknown>[] | undefined)
   const xType = isObj(xAxis) && typeof xAxis['type'] === 'string' ? (xAxis['type'] as string) : undefined
@@ -392,16 +388,32 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   const xFormat = axisFormatter(xAxis, 'xAxis', warn)
 
   const yAxisRaw = option['yAxis']
-  const yAxes: Record<string, unknown>[] = Array.isArray(yAxisRaw)
+  const yAxesDeclared: Record<string, unknown>[] = Array.isArray(yAxisRaw)
     ? (yAxisRaw as unknown[]).filter(isObj)
     : isObj(yAxisRaw)
       ? [yAxisRaw]
       : []
-  if (yAxes.length > 2) warn('axis-count-unsupported', 'yAxis', 'At most two y axes are supported; extras were ignored.')
+  // Two axes whose first is placed on the right swap sides: the engine's left
+  // axis is the one ECharts put on the left, and yAxisIndex follows the swap.
+  const swapY = yAxesDeclared.length >= 2 && yAxesDeclared[0]!['position'] === 'right' && yAxesDeclared[1]!['position'] !== 'right'
+  const yAxes: Record<string, unknown>[] = swapY ? [yAxesDeclared[1]!, yAxesDeclared[0]!, ...yAxesDeclared.slice(2)] : yAxesDeclared
+  for (let ai = 0; ai < Math.min(2, yAxesDeclared.length); ai++) {
+    const pos = yAxesDeclared[ai]!['position']
+    const natural = ai === 0 ? 'left' : 'right'
+    const honoured = pos === undefined || pos === natural || swapY || (ai === 0 && yAxesDeclared.length === 1 && pos === 'right')
+    if (!honoured) warn('option-key-unsupported', Array.isArray(yAxisRaw) ? `yAxis[${ai}].position` : 'yAxis.position', 'Both y axes cannot share a side; the axis keeps its default side.')
+  }
   const yDomain = axisDomain(yAxes[0])
   const y2Domain = axisDomain(yAxes[1])
   const yFormat = axisFormatter(yAxes[0], 'yAxis[0]', warn)
   const y2Format = axisFormatter(yAxes[1], 'yAxis[1]', warn)
+  // Per-axis keys: name, show and the grid switch map; anything else is named
+  // rather than silently dropped.
+  if (isObj(xAxis)) axisKeys(xAxis, 'xAxis', warn)
+  for (let ai = 0; ai < yAxes.length; ai++) axisKeys(yAxes[ai]!, Array.isArray(yAxisRaw) ? `yAxis[${ai}]` : 'yAxis', warn)
+  const axisName = (axis: Record<string, unknown> | undefined): string | undefined => (isObj(axis) && typeof axis['name'] === 'string' ? (axis['name'] as string) : undefined)
+  const shown = (axis: Record<string, unknown> | undefined): boolean => !(isObj(axis) && axis['show'] === false)
+  const gridShown = !(isObj(yAxes[0]) && isObj(yAxes[0]['splitLine']) && yAxes[0]['splitLine']['show'] === false)
 
   // ---- palette --------------------------------------------------------
   const themed = resolveTheme(opts.theme, warnings)
@@ -420,6 +432,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       : []
   const series: Series[] = []
   const customPlans: CustomSeriesPlan[] = []
+  const linesList: LinesSeries[] = []
   const annotations: Annotation[] = []
   const markers: PointMarker[] = []
   let xValues: Double[] | undefined = undefined
@@ -444,41 +457,45 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     }
     const type = typeof s['type'] === 'string' ? (s['type'] as string) : ''
     if (type === 'lines') {
-      if (isObj(s['effect']) && s['effect']['show'] === true) warn('series-option-unsupported', path + '.effect', 'Animated line trails are not supported; the lines are drawn static.')
       const lineStyle = isObj(s['lineStyle']) ? s['lineStyle'] : {}
       const seriesColor = typeof lineStyle['color'] === 'string' ? (lineStyle['color'] as string) : palette[i % Math.max(1, palette.length)] ?? defaultPalette[i % defaultPalette.length]!
       const seriesWidth = num(lineStyle['width']) ?? 1.5
       const rows = Array.isArray(s['data']) ? (s['data'] as unknown[]) : []
-      const flat: unknown[] = []
-      const styles: { color: string; width: number }[] = []
+      const coords: Double[][] = []
+      const colors: string[] = []
+      const widths: Double[] = []
       for (let j = 0; j < rows.length; j++) {
         const d = rows[j]
-        const coords = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['coords']) ? (d['coords'] as unknown[]) : null
-        const pairs = coords === null ? [] : coords.filter((c): c is unknown[] => Array.isArray(c) && c.length >= 2)
-        if (coords === null || pairs.length < 2) {
+        const raw = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['coords']) ? (d['coords'] as unknown[]) : null
+        const pairs = raw === null ? [] : raw.filter((c): c is unknown[] => Array.isArray(c) && c.length >= 2)
+        if (raw === null || pairs.length < 2) {
           warn('series-data-shape', `${path}.data[${j}]`, 'A lines datum needs coords with at least two [x, y] pairs; it was skipped.')
           continue
         }
-        const row: unknown[] = []
+        const row: Double[] = []
         for (const c of pairs) {
           row.push(num(c[0]) ?? 0)
           row.push(num(c[1]) ?? 0)
         }
-        flat.push(row)
+        coords.push(row)
         const ls = isObj(d) && isObj(d['lineStyle']) ? d['lineStyle'] : {}
-        styles.push({ color: typeof ls['color'] === 'string' ? (ls['color'] as string) : seriesColor, width: num(ls['width']) ?? seriesWidth })
+        colors.push(typeof ls['color'] === 'string' ? (ls['color'] as string) : seriesColor)
+        widths.push(num(ls['width']) ?? seriesWidth)
       }
-      const yDims: number[] = []
-      let longest = 0
-      for (const r of flat) if ((r as unknown[]).length > longest) longest = (r as unknown[]).length
-      for (let d = 1; d < longest; d = d + 2) yDims.push(d)
-      customPlans.push({
-        name: typeof s['name'] === 'string' ? (s['name'] as string) : 'Series ' + String(i + 1),
-        color: seriesColor,
-        data: flat,
-        renderItem: linesRenderItem(styles),
-        yDims,
-        xDim: 0,
+      const effect = isObj(s['effect']) ? s['effect'] : {}
+      for (const key of Object.keys(effect)) {
+        if (!['show', 'period', 'trailLength', 'color', 'symbolSize', 'symbol', 'loop'].includes(key)) warn('series-option-unsupported', `${path}.effect.${key}`, `"${key}" has no trail mapping yet; it was ignored.`)
+      }
+      if (typeof effect['symbol'] === 'string' && effect['symbol'] !== 'circle') warn('series-option-unsupported', `${path}.effect.symbol`, 'The trail head is drawn as a circle.')
+      linesList.push({
+        coords,
+        colors,
+        widths,
+        effect: effect['show'] === true,
+        period: num(effect['period']) ?? 4.0,
+        trailLength: num(effect['trailLength']) ?? 0.2,
+        effectColor: typeof effect['color'] === 'string' ? (effect['color'] as string) : '',
+        symbolSize: num(effect['symbolSize']) ?? 3.0,
       })
       continue
     }
@@ -545,7 +562,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
         values.push(v ?? 0.0)
       }
     }
-    if (xContinuous && xs.length === values.length && xs.length > 0 && xValues === undefined) xValues = xs
+    const onX2 = x2Continuous && num(s['xAxisIndex']) === 1 && xs.length === values.length && xs.length > 0
+    if (!onX2 && xContinuous && xs.length === values.length && xs.length > 0 && xValues === undefined) xValues = xs
     const request = samplingRequest(s, opts.width ?? 640.0, (message) => warn('series-option-unsupported', `${path}.sampling`, message))
     if (request !== null) sampleRequests.push(request)
     // Stacked LINES: each line sits on the running total of the lines that
@@ -584,7 +602,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
               : palette[series.length % Math.max(1, palette.length)] ?? defaultPalette[series.length % defaultPalette.length]!
     const label = isObj(s['label']) ? s['label'] : {}
     const yAxisIndex = num(s['yAxisIndex']) ?? 0
-    if (yAxisIndex > 1) warn('axis-count-unsupported', `${path}.yAxisIndex`, 'Only yAxisIndex 0 or 1 is supported.')
+    const extraAxis = yAxisIndex >= 2 && yAxisIndex < yAxes.length
+    if (yAxisIndex >= yAxes.length && yAxisIndex > 1) warn('axis-count-unsupported', `${path}.yAxisIndex`, `yAxisIndex ${yAxisIndex} names no declared y axis; the series uses the left axis.`)
 
     const entry: Series = {
       kind,
@@ -596,7 +615,9 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       curve: s['smooth'] === true || (num(s['smooth']) ?? 0) > 0 ? smooth : s['step'] !== undefined && s['step'] !== false ? step : undefined,
       showValues: label['show'] === true,
       radii: undefined,
-      axis: yAxisIndex === 1 ? 'right' : undefined,
+      axis: !extraAxis && (yAxisIndex === 1) !== swapY ? 'right' : undefined,
+      ...(extraAxis ? { axisExtra: yAxisIndex - 2 } : {}),
+      ...(onX2 ? { onX2: true, xs } : {}),
       pattern: fillPattern(itemStyle),
       ...(type === 'effectScatter' ? { effect: true } : {}),
       ...(type === 'pictorialBar' ? pictorialFields(s, warn, path) : {}),
@@ -766,6 +787,19 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   // A custom-only chart still needs axes: seed them from the custom extents.
   let customY: { min: Double; max: Double } | undefined = undefined
   let customX: Double[] | undefined = undefined
+  // A lines series seeds the axes from every vertex, like a custom plan does.
+  if (series.length === 0) {
+    for (const ls of linesList) {
+      for (const row of ls.coords) {
+        for (let k = 0; k + 1 < row.length; k = k + 2) {
+          const x = row[k]!
+          const y = row[k + 1]!
+          customY = customY === undefined ? { min: Math.min(0.0, y), max: y } : { min: Math.min(customY.min, y), max: Math.max(customY.max, y) }
+          if (categories.length === 0) customX = customX === undefined ? [x, x] : [Math.min(customX[0]!, x), Math.max(customX[1]!, x)]
+        }
+      }
+    }
+  }
   if (series.length === 0 && customPlans.length > 0) {
     for (const plan of customPlans) {
       const ext = customExtents(plan)
@@ -783,7 +817,11 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   // and each of those keys resolves to that count. It applies only when every
   // cartesian series has the same length: thinning one would misalign the
   // shared x.
-  if (sampleRequests.length > 0 && series.length > 0) {
+  // A series on a second value x axis carries its own positions, which the
+  // shared thinning does not see, so large-data sampling is skipped (named).
+  const hasOwnXs = series.some((entry) => entry.onX2 === true)
+  if (sampleRequests.length > 0 && hasOwnXs) warn('series-option-unsupported', 'series', 'Large-data sampling is skipped when a series uses a second value x axis.')
+  if (sampleRequests.length > 0 && series.length > 0 && !hasOwnXs) {
     const thinned = decimateShared(sampleRequests, { columns: series.map((entry) => entry.values), categories, xValues })
     for (let k = 0; k < series.length; k++) series[k]!.values = thinned.columns[k]!
     if (thinned.categories !== categories) categories.splice(0, categories.length, ...thinned.categories)
@@ -795,9 +833,9 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     series,
     categories,
     theme: themed.chartTheme,
-    showXAxis: true,
-    showYAxis: true,
-    showGrid: true,
+    showXAxis: shown(xAxis),
+    showYAxis: shown(yAxes[0]),
+    showGrid: gridShown,
     yDomain,
     y2Domain,
     yFormat: yFormat ?? localeNumber,
@@ -807,6 +845,31 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     xTime: xTime ? true : undefined,
     annotations: annotations.length > 0 ? annotations : undefined,
     markers: markers.length > 0 ? markers : undefined,
+    lines: linesList.length > 0 ? linesList : undefined,
+    xTitle: axisName(xAxis),
+    yTitle: axisName(yAxes[0]),
+    y2Title: axisName(yAxes[1]),
+    ...(isObj(yAxes[0]) && yAxes[0]['type'] === 'log' ? { yScale: 'log' as const } : {}),
+    ...(isObj(yAxes[0]) && yAxes[0]['inverse'] === true ? { yInverse: true } : {}),
+    ...(isObj(xAxis) && xAxis['inverse'] === true ? { xInverse: true } : {}),
+    ...(isObj(xAxis) && xAxis['position'] === 'top' ? { xTop: true } : {}),
+    ...(num(isObj(xAxis) ? xAxis['offset'] : undefined) !== null ? { xOffset: num((xAxis as Record<string, unknown>)['offset']) as number } : {}),
+    ...(num(isObj(yAxes[0]) ? yAxes[0]['offset'] : undefined) !== null ? { yOffset: num(yAxes[0]!['offset']) as number } : {}),
+    ...(num(isObj(yAxes[1]) ? yAxes[1]['offset'] : undefined) !== null ? { y2Offset: num(yAxes[1]!['offset']) as number } : {}),
+    ...(x2Mapped && !x2Continuous ? { x2Labels: x2Data } : {}),
+    ...(x2Continuous && axisDomain(x2Axis) !== undefined ? { x2Domain: axisDomain(x2Axis) } : {}),
+    ...(x2Mapped && typeof x2Axis!['name'] === 'string' ? { x2Title: x2Axis!['name'] as string } : {}),
+    ...(yAxes.length > 2
+      ? {
+          extraYAxes: yAxes.slice(2).map((a) => ({
+            side: a['position'] === 'left' ? 'left' : 'right',
+            domain: axisDomain(a),
+            title: axisName(a),
+            offset: num(a['offset']) ?? undefined,
+          })),
+        }
+      : {}),
+    ...(yAxes.length === 1 && yAxes[0]!['position'] === 'right' ? { yRight: true } : {}),
   }
   if (customY !== undefined && spec.yDomain === undefined) spec.yDomain = customY
   if (customX !== undefined && (spec.xValues === undefined || spec.xValues.length === 0)) spec.xValues = customX
@@ -814,6 +877,21 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
 }
 
 const defaultPalette = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
+
+const AXIS_KEYS = new Set(['type', 'data', 'name', 'show', 'min', 'max', 'splitLine', 'axisLabel', 'boundaryGap', 'gridIndex', 'inverse', 'position', 'offset'])
+
+function axisKeys(
+  axis: Record<string, unknown>,
+  path: string,
+  warn: (code: OptionWarning['code'], path: string, message: string) => void,
+): void {
+  for (const key of Object.keys(axis)) {
+    if (!AXIS_KEYS.has(key)) warn('option-key-unsupported', `${path}.${key}`, `"${key}" has no axis mapping yet; it was ignored.`)
+  }
+  if ((axis['min'] === undefined) !== (axis['max'] === undefined)) {
+    warn('option-key-unsupported', `${path}.${axis['min'] === undefined ? 'max' : 'min'}`, 'An axis domain needs both min and max; the data range is used.')
+  }
+}
 
 function axisDomain(axis: Record<string, unknown> | undefined): Domain | undefined {
   if (axis === undefined) return undefined

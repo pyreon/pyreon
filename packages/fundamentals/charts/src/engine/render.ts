@@ -4,7 +4,9 @@ import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSerie
 import { DEFAULT_PALETTE } from './palette'
 import { layoutGroupedBars, layoutGroupedBarsH, layoutStackedBars, layoutStackedBarsH, layoutWaterfall, normalizeStack, stackCumulative, stackedExtent, waterfallExtent } from './stack'
 import type { Formatter } from './format'
-import type { LayoutConfig, PlotLayout } from './layout'
+import type { ExtraYAxis, LayoutConfig, PlotLayout } from './layout'
+import { linesCommands } from './lines'
+import type { LinesSeries } from './lines'
 import { extent, isFiniteNumber, niceDomain, scaleLinear } from './scale'
 import { percent, plain } from './format'
 import { countToDouble } from './brush'
@@ -56,6 +58,11 @@ export interface Series {
   radii?: Double[] | undefined
   /** Which y axis the series scales against; absent = left. See `seriesOnRightAxis`. */
   axis?: 'left' | 'right' | undefined
+  /** Index into `ChartSpec.extraYAxes` when the series scales on a third or later y axis. */
+  axisExtra?: Double | undefined
+  /** The series scales on the second x axis at its own x positions `xs`. */
+  onX2?: boolean | undefined
+  xs?: Double[] | undefined
   /** Halo rings around each point — the effectScatter look; `points` only. */
   effect?: boolean | undefined
   /**
@@ -366,6 +373,29 @@ export interface ChartSpec {
   y2Title?: string | undefined
   /** How the x tick labels react to running out of room — see `LayoutConfig.xLabels`. */
   xLabels?: 'auto' | 'rotate' | 'thin' | 'all' | undefined
+  /** Draws the left value axis upside down — ECharts' `yAxis.inverse`. */
+  yInverse?: boolean | undefined
+  /** Runs the x axis right to left — ECharts' `xAxis.inverse`. */
+  xInverse?: boolean | undefined
+  /** Draws the x axis above the plot — ECharts' `xAxis.position: 'top'`. */
+  xTop?: boolean | undefined
+  /** Draws a lone y axis right of the plot — ECharts' `yAxis.position: 'right'`. */
+  yRight?: boolean | undefined
+  /** Pixels each axis sits away from the plot edge — ECharts' `offset`. */
+  xOffset?: Double | undefined
+  yOffset?: Double | undefined
+  y2Offset?: Double | undefined
+  /** Third and later y axes — ECharts' `yAxis[2..]`. */
+  extraYAxes?: ExtraYAxis[] | undefined
+  /** A second x axis's category labels — ECharts' `xAxis[1].data` — on the side opposite the first. */
+  x2Labels?: string[] | undefined
+  x2Title?: string | undefined
+  /** Pins the second x axis's value domain; derived from its series' xs when absent. */
+  x2Domain?: Domain | undefined
+  /** ECharts' `lines` series — polylines in data space, with optional trails. */
+  lines?: LinesSeries[] | undefined
+  /** Seconds on the host's effect clock; drives the trails. Absent = 0. */
+  effectTime?: Double | undefined
 }
 
 /**
@@ -496,7 +526,8 @@ export function emphasisOutline(r: Rect, level: number, stroke: string): DrawCmd
 export function resolveYDomain(spec: ChartSpec): Domain {
   // `?? derive` rather than an early return: Swift does not narrow
   // `spec.yDomain` through the guard, and the coalesce is the same contract.
-  return spec.yDomain ?? deriveOver(leftAxisSeries(spec))
+  const d = spec.yDomain ?? deriveOver(leftAxisSeries(spec))
+  return spec.yInverse === true ? { min: d.min, max: d.max, inverse: true } : d
 }
 
 /**
@@ -549,7 +580,8 @@ export function logBounds(spec: ChartSpec): Domain {
  * entry point calls, rather than in each host: the tooltip and the table
  * read the ORIGINAL spec, which is how they keep showing real values.
  */
-export function geometrySpec(spec: ChartSpec): ChartSpec {
+export function geometrySpec(raw: ChartSpec): ChartSpec {
+  const spec = invertCategories(raw)
   const isLog = spec.yScale === 'log'
   const norm = spec.stackNormalize === true
   if (!isLog && !norm) return spec
@@ -564,7 +596,7 @@ export function geometrySpec(spec: ChartSpec): ChartSpec {
     if (norm && s.kind === 'stacked') {
       series.push({ ...s, values: si < stacked.length ? stacked[si]! : s.values })
       si = si + 1
-    } else if (isLog && !seriesOnRightAxis(s, spec)) {
+    } else if (isLog && !seriesOnRightAxis(s, spec) && !onExtraAxis(s, spec)) {
       const values: Double[] = []
       for (const v of s.values) values.push(v > 0.0 ? Math.log10(v / lb.min) : (0.0 / 0.0))
       const lows: Double[] = []
@@ -601,6 +633,172 @@ export function geometrySpec(spec: ChartSpec): ChartSpec {
   return { ...spec, series, yDomain, annotations: spec.annotations === undefined ? undefined : notes, yScale: 'linear', stackNormalize: false }
 }
 
+
+/**
+ * True when the x axis runs right to left over CATEGORIES (or index-spaced
+ * points). A continuous x inverts through its domain instead, and the
+ * horizontal frame's x is the value axis, so neither reverses the data.
+ */
+/** A domain carrying the inverse flag when asked. */
+export function invertedDomain(d: Domain, inverse: boolean): Domain {
+  return inverse ? { min: d.min, max: d.max, inverse: true } : d
+}
+
+export function categoriesInverted(spec: ChartSpec): boolean {
+  return spec.xInverse === true && spec.horizontal !== true && (spec.xValues ?? []).length === 0
+}
+
+/** The number of category slots an inverted axis reflects over. */
+export function categorySlots(spec: ChartSpec): number {
+  const m = seriesMaxLength(spec.series)
+  return spec.categories.length > m ? spec.categories.length : m
+}
+
+/**
+ * A view index as the datum index the caller's data uses, and back — the
+ * reflection is its own inverse. Identity unless the categories are inverted;
+ * a miss (-1) stays a miss.
+ */
+export function categoryIndex(spec: ChartSpec, index: number): number {
+  if (!categoriesInverted(spec) || index < 0) return index
+  return categorySlots(spec) - 1 - index
+}
+
+function reversedDoubles(a: Double[] | undefined, n: number): Double[] | undefined {
+  const src = a ?? []
+  const out: Double[] = []
+  for (let i = 0; i < n; i++) {
+    const j = n - 1 - i
+    out.push(j < src.length ? src[j]! : 0.0 / 0.0)
+  }
+  return a === undefined ? undefined : out
+}
+
+function reversedStrings(a: string[] | undefined, n: number): string[] | undefined {
+  const src = a ?? []
+  const out: string[] = []
+  for (let i = 0; i < n; i++) {
+    const j = n - 1 - i
+    out.push(j < src.length ? src[j]! : '')
+  }
+  return a === undefined ? undefined : out
+}
+
+/**
+ * ECharts' `xAxis.inverse` over categories: the same chart with its data read
+ * right to left. Every per-datum channel reverses together, so bars, points,
+ * labels, whiskers, markers and hit geometry all agree; index-valued inputs
+ * (a marker's `atIndex`, an annotation's x, the emphasis) reflect with them.
+ */
+export function invertCategories(spec: ChartSpec): ChartSpec {
+  if (!categoriesInverted(spec)) return spec
+  const n = categorySlots(spec)
+  const last = n - 1.0
+  const series: Series[] = []
+  for (const s of spec.series) {
+    const extras: SeriesExtra[] = []
+    for (const e of s.extras ?? []) extras.push({ label: e.label, numbers: reversedDoubles(e.numbers, n), texts: reversedStrings(e.texts, n) })
+    series.push({
+      ...s,
+      values: reversedDoubles(s.values, n) ?? [],
+      rValues: reversedDoubles(s.rValues, n),
+      radii: reversedDoubles(s.radii, n),
+      labelTexts: reversedStrings(s.labelTexts, n),
+      errLow: reversedDoubles(s.errLow, n),
+      errHigh: reversedDoubles(s.errHigh, n),
+      values2: reversedDoubles(s.values2, n),
+      extras: s.extras === undefined ? undefined : extras,
+    })
+  }
+  const notes: Annotation[] = []
+  for (const a of spec.annotations ?? []) {
+    const ax = a.x ?? 0.0
+    const xf = a.xFrom ?? 0.0
+    const xt = a.xTo ?? 0.0
+    const x1 = a.x1 ?? 0.0
+    const x2 = a.x2 ?? 0.0
+    notes.push({
+      ...a,
+      x: a.x === undefined ? undefined : last - ax,
+      xFrom: a.xTo === undefined ? undefined : last - xt,
+      xTo: a.xFrom === undefined ? undefined : last - xf,
+      x1: a.x1 === undefined ? undefined : last - x1,
+      x2: a.x2 === undefined ? undefined : last - x2,
+    })
+  }
+  const marks: PointMarker[] = []
+  for (const m of spec.markers ?? []) {
+    const at = m.atIndex ?? 0.0
+    marks.push({ ...m, atIndex: m.atIndex === undefined ? undefined : last - at })
+  }
+  const em = spec.emphasis
+  const selected: number[] = []
+  for (const k of em?.selected ?? []) selected.push(n - 1 - k)
+  const highlight = em?.highlight ?? -1
+  return {
+    ...spec,
+    series,
+    categories: reversedStrings(spec.categories, spec.categories.length === 0 ? 0 : n) ?? [],
+    annotations: spec.annotations === undefined ? undefined : notes,
+    markers: spec.markers === undefined ? undefined : marks,
+    emphasis: em === undefined ? undefined : { highlight: highlight < 0 ? highlight : n - 1 - highlight, selected },
+  }
+}
+
+
+
+/** True when a series places its points on the second x axis. */
+export function seriesOnX2(s: Series, spec: ChartSpec): boolean {
+  return s.onX2 === true && spec.horizontal !== true && (s.xs ?? []).length > 0
+}
+
+/** True when any series uses the second x axis. */
+export function hasX2Axis(spec: ChartSpec): boolean {
+  for (const s of spec.series) if (seriesOnX2(s, spec)) return true
+  return false
+}
+
+/** The second x axis's domain: pinned, or the extent of its series' positions. */
+export function resolveX2Domain(spec: ChartSpec): Domain {
+  if (spec.x2Domain !== undefined) return spec.x2Domain ?? { min: 0.0, max: 1.0 }
+  const all: Double[] = []
+  for (const s of spec.series) if (seriesOnX2(s, spec)) for (const x of s.xs ?? []) all.push(x)
+  return all.length > 0 ? extent(all) : { min: 0.0, max: 1.0 }
+}
+
+/** True when a series scales on an extra y axis that exists. */
+function onExtraAxis(s: Series, spec: ChartSpec): boolean {
+  const k = s.axisExtra ?? -1.0
+  return spec.horizontal !== true && k >= 0.0 && k < (spec.extraYAxes ?? []).length
+}
+
+/** The resolved domain of extra axis `k`: its pinned range, or its series' extent. */
+export function extraAxisDomain(spec: ChartSpec, k: Double): Domain {
+  let i = 0.0
+  for (const a of spec.extraYAxes ?? []) {
+    if (i === k) return a.domain ?? deriveOver(spec.series.filter((q) => (q.axisExtra ?? -1.0) === k))
+    i = i + 1.0
+  }
+  return { min: 0.0, max: 1.0 }
+}
+
+/** Every extra axis with its domain resolved — what the layout measures. */
+export function resolvedExtraAxes(spec: ChartSpec): ExtraYAxis[] {
+  const out: ExtraYAxis[] = []
+  let i = 0.0
+  for (const a of spec.extraYAxes ?? []) {
+    out.push({ side: a.side, domain: extraAxisDomain(spec, i), title: a.title, offset: a.offset })
+    i = i + 1.0
+  }
+  return out
+}
+
+/** The domain a series scales against: an extra axis, the right axis, or the left. */
+export function seriesDomain(s: Series, spec: ChartSpec, yDomain: Domain, y2Domain: Domain): Domain {
+  if (onExtraAxis(s, spec)) return extraAxisDomain(spec, s.axisExtra ?? 0.0)
+  return seriesOnRightAxis(s, spec) ? y2Domain : yDomain
+}
+
 /**
  * Does this series scale on the RIGHT axis?
  *
@@ -612,12 +810,13 @@ export function geometrySpec(spec: ChartSpec): ChartSpec {
  */
 export function seriesOnRightAxis(s: Series, spec: ChartSpec): boolean {
   if (spec.horizontal === true) return false
+  if (s.axisExtra !== undefined) return false
   if (s.kind === 'stacked' || s.kind === 'grouped' || s.kind === 'stackedArea') return false
   if (s.axis !== 'right') return false
   let hasLeft = false
   for (const q of spec.series) {
     const qRight = q.axis === 'right' && q.kind !== 'stacked' && q.kind !== 'grouped' && q.kind !== 'stackedArea'
-    if (!qRight) hasLeft = true
+    if (!qRight && q.axisExtra === undefined) hasLeft = true
   }
   return hasLeft
 }
@@ -629,7 +828,7 @@ export function hasRightAxis(spec: ChartSpec): boolean {
 }
 
 function leftAxisSeries(spec: ChartSpec): Series[] {
-  return spec.series.filter((s) => !seriesOnRightAxis(s, spec))
+  return spec.series.filter((s) => !seriesOnRightAxis(s, spec) && (s.axisExtra === undefined || spec.horizontal === true))
 }
 
 function rightAxisSeries(spec: ChartSpec): Series[] {
@@ -700,7 +899,7 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
       (spec.xValues ?? []).length > 0
         /* v8 ignore next — the inner `?? []` is unreachable: the test above already
            established a non-empty list. Native needs the unwrap; the web cannot reach it. */
-        ? extent(spec.xValues ?? [])
+        ? invertedDomain(extent(spec.xValues ?? []), spec.xInverse === true && spec.horizontal !== true)
         : { min: 0.0, max: n > 1 ? n - 1 : 1.0 },
     yDomain: resolveYDomain(spec),
     categories: spec.categories,
@@ -731,6 +930,15 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     yLogMax: lb.max,
     yTime: spec.yTime === true,
     xLabels: spec.xLabels,
+    xTop: spec.xTop,
+    yRight: spec.yRight,
+    xOffset: spec.xOffset,
+    yOffset: spec.yOffset,
+    y2Offset: spec.y2Offset,
+    extraYAxes: resolvedExtraAxes(spec),
+    x2Labels: spec.x2Labels,
+    x2Title: spec.x2Title,
+    x2Domain: hasX2Axis(spec) ? resolveX2Domain(spec) : undefined,
   }
   return computeLayout(cfg, measure)
 }
@@ -761,8 +969,9 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // original series through `printed`, so a log chart labels a bar "1000",
   // not "3".
   const spec = geometrySpec(raw)
+  const printedView = invertCategories(raw)
   const printed = (k: number, i: number): Double => {
-    const sv = raw.series[k]!.values
+    const sv = printedView.series[k]!.values
     return i < sv.length ? sv[i]! : 0.0 / 0.0
   }
   const yDomain = resolveYDomain(spec)
@@ -845,29 +1054,42 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     }
   }
 
+  const yRight = spec.yRight === true && !useY2 && spec.horizontal !== true
+  const yOff = spec.yOffset ?? 0.0
+  const y2Off = spec.y2Offset ?? 0.0
+  const xOff = spec.xOffset ?? 0.0
+  const yAxisX = yRight ? plot.x + plot.w + yOff : plot.x - yOff
   if (spec.showYAxis) {
     out.push({
       kind: 'line',
-      from: { x: plot.x, y: plot.y },
-      to: { x: plot.x, y: plot.y + plot.h },
+      from: { x: yAxisX, y: plot.y },
+      to: { x: yAxisX, y: plot.y + plot.h },
       stroke: t.axis,
       width: 1.0,
     })
   }
+  const xTop = spec.xTop === true && spec.horizontal !== true
+  const xAxisY = xTop ? plot.y - xOff : plot.y + plot.h + xOff
   if (spec.showXAxis) {
     out.push({
       kind: 'line',
-      from: { x: plot.x, y: plot.y + plot.h },
-      to: { x: plot.x + plot.w, y: plot.y + plot.h },
+      from: { x: plot.x, y: xAxisY },
+      to: { x: plot.x + plot.w, y: xAxisY },
       stroke: t.axis,
       width: 1.0,
     })
+  }
+  if (spec.showYAxis && spec.horizontal !== true) {
+    for (const a of spec.extraYAxes ?? []) {
+      const ax = a.side === 'left' ? plot.x - (a.offset ?? 0.0) : plot.x + plot.w + (a.offset ?? 0.0)
+      out.push({ kind: 'line', from: { x: ax, y: plot.y }, to: { x: ax, y: plot.y + plot.h }, stroke: t.axis, width: 1.0 })
+    }
   }
   if (spec.showYAxis && useY2) {
     out.push({
       kind: 'line',
-      from: { x: plot.x + plot.w, y: plot.y },
-      to: { x: plot.x + plot.w, y: plot.y + plot.h },
+      from: { x: plot.x + plot.w + y2Off, y: plot.y },
+      to: { x: plot.x + plot.w + y2Off, y: plot.y + plot.h },
       stroke: t.axis,
       width: 1.0,
     })
@@ -1095,10 +1317,13 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     const xs = spec.xValues ?? []
     // Each independent series scales against ITS axis — the whole point of a
     // dual-axis chart, and the line that decides it.
-    const sDomain = seriesOnRightAxis(s, spec) ? y2Domain : yDomain
+    const sDomain = seriesDomain(s, spec, yDomain, y2Domain)
+    const onX2 = seriesOnX2(s, spec)
+    const sXs = onX2 ? s.xs ?? [] : xs
+    const sXDomain = onX2 ? resolveX2Domain(spec) : l.xDomainUsed
     const place = (values: Double[]): Pt[] =>
-      xs.length > 0
-        ? layoutSeriesPointsAt(values, xs, plot, sDomain, l.xDomainUsed)
+      sXs.length > 0
+        ? layoutSeriesPointsAt(values, sXs, plot, sDomain, sXDomain)
         : layoutSeriesPoints(values, plot, sDomain)
 
     // The curve shapes line AND area from the same densified points — an
@@ -1267,8 +1492,10 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           for (const p of pts) poly.push(p)
           // Close down to the baseline so the fill is a band under the line
           // rather than a polygon between the first and last data points.
-          poly.push({ x: pts[pts.length - 1]!.x, y: plot.y + plot.h })
-          poly.push({ x: pts[0]!.x, y: plot.y + plot.h })
+          // The baseline is the domain's minimum, so an inverted axis fills upward.
+          const baseY = scaleLinear(sDomain, plot.y + plot.h, plot.y, sDomain.min)
+          poly.push({ x: pts[pts.length - 1]!.x, y: baseY })
+          poly.push({ x: pts[0]!.x, y: baseY })
           out.push(polygonCmd(poly, s.color, sGrad, s.pattern))
         }
       }
@@ -1362,6 +1589,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     }
   }
 
+  for (const ls of spec.lines ?? []) for (const c of linesCommands(ls, plot, l.xDomainUsed, yDomain, spec.effectTime ?? 0.0)) out.push(c)
+
   // Point markers draw OVER the series (painter's order — a marker buried
   // under an area fill marks nothing) and UNDER the axis labels.
   const markers = spec.markers ?? []
@@ -1408,7 +1637,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       }
     }
     if (idx < 0) continue
-    const mDomain = seriesOnRightAxis(s, spec) ? y2Domain : yDomain
+    const mDomain = seriesDomain(s, spec, yDomain, y2Domain)
     const xsM = spec.xValues ?? []
     // The anchor is whatever the mark's own geometry put there. Markers used
     // to skip the flipped frame and the set-laid-out kinds entirely — a
@@ -1425,7 +1654,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         : spec.horizontal === true
           ? layoutSeriesPointsH(s.values, plot, mDomain)[idx]
           : xsM.length > 0
-            ? layoutSeriesPointsAt(s.values, xsM, plot, mDomain, l.xDomainUsed)[idx]
+            ? layoutSeriesPointsAt(s.values, seriesOnX2(s, spec) ? s.xs ?? [] : xsM, plot, mDomain, seriesOnX2(s, spec) ? resolveX2Domain(spec) : l.xDomainUsed)[idx]
             : layoutSeriesPoints(s.values, plot, mDomain)[idx]
     if (p === undefined) continue
     const mColor = m.color ?? s.color
@@ -1454,10 +1683,10 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     out.push({
       kind: 'text',
       text: tick.label,
-      at: { x: plot.x - 6.0, y: tick.pos },
+      at: { x: yRight ? yAxisX + 6.0 : yAxisX - 6.0, y: tick.pos },
       fill: t.label,
       size: t.fontSize,
-      align: 'end',
+      align: yRight ? 'start' : 'end',
       baseline: 'middle',
     })
   }
@@ -1465,12 +1694,50 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     out.push({
       kind: 'text',
       text: tick.label,
-      at: { x: plot.x + plot.w + 6.0, y: tick.pos },
+      at: { x: plot.x + plot.w + y2Off + 6.0, y: tick.pos },
       fill: t.label,
       size: t.fontSize,
       align: 'start',
       baseline: 'middle',
     })
+  }
+  // A second x axis: its labels at the first axis's tick positions, on the
+  // opposite edge, reversed with the categories when the axis is inverted.
+  const x2 = spec.x2Labels ?? []
+  if ((x2.length > 0 || l.x2Ticks.length > 0) && spec.showXAxis && spec.horizontal !== true) {
+    const edgeY = xTop ? plot.y + plot.h : plot.y
+    out.push({ kind: 'line', from: { x: plot.x, y: edgeY }, to: { x: plot.x + plot.w, y: edgeY }, stroke: t.axis, width: 1.0 })
+    for (const tk of l.x2Ticks) out.push({ kind: 'text', text: tk.label, at: { x: tk.pos, y: xTop ? edgeY + 6.0 : edgeY - 6.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: xTop ? 'top' : 'bottom' })
+    const inv = categoriesInverted(spec)
+    for (let ti = 0; ti < l.xTicks.length; ti++) {
+      const tick = l.xTicks[ti]!
+      const j = inv ? x2.length - 1 - ti : ti
+      if (j < 0 || j >= x2.length) continue
+      out.push({ kind: 'text', text: x2[j]!, at: { x: tick.pos, y: xTop ? edgeY + 6.0 : edgeY - 6.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: xTop ? 'top' : 'bottom' })
+    }
+    const x2Title = spec.x2Title ?? ''
+    if (x2Title !== '') out.push({ kind: 'text', text: x2Title, at: { x: plot.x + plot.w / 2.0, y: xTop ? spec.height - 2.0 : 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: xTop ? 'bottom' : 'top' })
+  }
+
+  // Extra y axes: their tick labels outside their own line, and a title
+  // outside the widest of them.
+  let extraIndex = 0.0
+  for (const a of spec.extraYAxes ?? []) {
+    const left = a.side === 'left'
+    const ax = left ? plot.x - (a.offset ?? 0.0) : plot.x + plot.w + (a.offset ?? 0.0)
+    let widest = 0.0
+    for (const tk of l.extraTicks) {
+      if (tk.axis !== extraIndex) continue
+      out.push({ kind: 'text', text: tk.label, at: { x: left ? ax - 6.0 : ax + 6.0, y: tk.pos }, fill: t.label, size: t.fontSize, align: left ? 'end' : 'start', baseline: 'middle' })
+      const w = measure(tk.label, t.fontSize)
+      if (w > widest) widest = w
+    }
+    const title = a.title ?? ''
+    if (title !== '' && spec.showYAxis) {
+      const tx = left ? ax - 6.0 - widest - t.fontSize * 0.9 : ax + 6.0 + widest + t.fontSize * 0.9
+      out.push({ kind: 'text', text: title, at: { x: tx, y: plot.y + plot.h / 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: 'middle', rotate: left ? -90.0 : 90.0 })
+    }
+    extraIndex = extraIndex + 1.0
   }
   for (let ti = 0; ti < l.xTicks.length; ti++) {
     const tick = l.xTicks[ti]!
@@ -1478,25 +1745,26 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     if (l.xLabelRotate !== 0.0) {
       // Slanted: the label's END sits at the tick and the text hangs
       // down-left along the rotation, which is where the gutter made room.
+      // Above the plot the slant mirrors: the text rises up-left instead.
       out.push({
         kind: 'text',
         text: tick.label,
-        at: { x: tick.pos, y: plot.y + plot.h + 6.0 },
+        at: { x: tick.pos, y: xTop ? xAxisY - 6.0 : xAxisY + 6.0 },
         fill: t.label,
         size: t.fontSize,
         align: 'end',
         baseline: 'middle',
-        rotate: l.xLabelRotate,
+        rotate: xTop ? -l.xLabelRotate : l.xLabelRotate,
       })
     } else {
       out.push({
         kind: 'text',
         text: tick.label,
-        at: { x: tick.pos, y: plot.y + plot.h + 6.0 },
+        at: { x: tick.pos, y: xTop ? xAxisY - 6.0 : xAxisY + 6.0 },
         fill: t.label,
         size: t.fontSize,
         align: 'middle',
-        baseline: 'top',
+        baseline: xTop ? 'bottom' : 'top',
       })
     }
   }
@@ -1506,11 +1774,11 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // along their axes.
   const xTitle = spec.xTitle ?? ''
   if (xTitle !== '' && spec.showXAxis) {
-    out.push({ kind: 'text', text: xTitle, at: { x: plot.x + plot.w / 2.0, y: spec.height - 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: 'bottom' })
+    out.push({ kind: 'text', text: xTitle, at: { x: plot.x + plot.w / 2.0, y: xTop ? 2.0 : spec.height - 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: xTop ? 'top' : 'bottom' })
   }
   const yTitle = spec.yTitle ?? ''
   if (yTitle !== '' && spec.showYAxis) {
-    out.push({ kind: 'text', text: yTitle, at: { x: t.fontSize * 0.9, y: plot.y + plot.h / 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: 'middle', rotate: -90.0 })
+    out.push({ kind: 'text', text: yTitle, at: { x: yRight ? spec.width - t.fontSize * 0.9 : t.fontSize * 0.9, y: plot.y + plot.h / 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: 'middle', rotate: yRight ? 90.0 : -90.0 })
   }
   const y2Title = spec.y2Title ?? ''
   if (y2Title !== '' && useY2 && spec.showYAxis) {
@@ -1630,7 +1898,7 @@ export function barsForIn(raw: ChartSpec, index: number, plot: Rect): Rect[] {
   if (s === undefined || (s.kind !== 'bars' && s.kind !== 'waterfall')) return []
   // The hit rects must come from the SAME domain the bars were drawn with,
   // or a right-axis bar reports hits where the left-axis geometry would be.
-  const dom = seriesOnRightAxis(s, spec) ? resolveY2Domain(spec) : resolveYDomain(spec)
+  const dom = seriesDomain(s, spec, resolveYDomain(spec), resolveY2Domain(spec))
   if (s.kind === 'waterfall') {
     // Index-aligned with the values: a gap's slot is an empty rect nothing
     // can land in, so the datum index a hit reports stays the row's.
@@ -1753,7 +2021,7 @@ export function stackedHitIn(raw: ChartSpec, plot: Rect, px: Double, py: Double)
           : layoutGroupedBars(values, plot, yDomain, 0.25)
     for (const seg of segs) {
       const r = seg.rect
-      if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return seg.datumIndex
+      if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return categoryIndex(raw, seg.datumIndex)
     }
   }
   return -1

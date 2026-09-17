@@ -100,7 +100,7 @@ describe('the family hosts play the entrance', () => {
       const takesProgress = /progress\?: Double/.test(mod![1])
       expect(src.includes('animates: true'), `${f} (${fn} in ${mod![0]}.ts takes a progress: ${takesProgress})`).toBe(takesProgress)
       if (takesProgress) {
-        expect(/render: \([^)]*\bprogress\)/.test(src), `${f}: render must receive progress`).toBe(true)
+        expect(/render: \([^)]*\bprogress\b[^)]*\)/.test(src), `${f}: render must receive progress`).toBe(true)
         expect(/[,{ ]progress\b[ }),]/.test(src.slice(src.indexOf('render: ('))), `${f}: render must pass progress on`).toBe(true)
         seen.push(f)
       }

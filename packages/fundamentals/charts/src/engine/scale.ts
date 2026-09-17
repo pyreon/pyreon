@@ -14,6 +14,7 @@ import type { Domain, Tick, Double } from './types'
 export function scaleLinear(d: Domain, r0: Double, r1: Double, v: Double): Double {
   const span = d.max - d.min
   if (span === 0.0) return (r0 + r1) / 2.0
+  if (d.inverse === true) return r1 + ((v - d.min) / span) * (r0 - r1)
   return r0 + ((v - d.min) / span) * (r1 - r0)
 }
 

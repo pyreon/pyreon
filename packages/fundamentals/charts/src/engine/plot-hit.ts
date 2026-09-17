@@ -2,7 +2,7 @@
 // the web host's click / tooltip and the native tap ask the SAME question.
 
 import { hitBar, hitNearestX, layoutSeriesPoints } from './layout'
-import { barsForIn, geometrySpec, layoutChart, resolveYDomain, stackedHitIn } from './render'
+import { barsForIn, categoryIndex, geometrySpec, layoutChart, resolveYDomain, stackedHitIn } from './render'
 import type { ChartSpec } from './render'
 import type { PlotLayout } from './layout'
 import type { Double, MeasureText } from './types'
@@ -23,7 +23,7 @@ export function plotHitBarsIn(spec: ChartSpec, l: PlotLayout, px: Double, py: Do
     const kind = spec.series[i]!.kind
     if (kind !== 'bars' && kind !== 'waterfall') continue
     const idx = hitBar(barsForIn(spec, i, l.plot), px, py)
-    if (idx >= 0) return idx
+    if (idx >= 0) return categoryIndex(spec, idx)
   }
   return stackedHitIn(spec, l.plot, px, py)
 }
@@ -47,5 +47,5 @@ export function plotHitIndexIn(raw: ChartSpec, l: PlotLayout, px: Double, py: Do
   if (spec.series.length === 0) return -1
   const first = spec.series[0]!
   if (first.kind === 'bars' || first.kind === 'stacked' || first.kind === 'grouped' || first.kind === 'waterfall') return -1
-  return hitNearestX(layoutSeriesPoints(first.values, l.plot, resolveYDomain(spec)), px)
+  return categoryIndex(raw, hitNearestX(layoutSeriesPoints(first.values, l.plot, resolveYDomain(spec)), px))
 }

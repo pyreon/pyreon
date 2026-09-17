@@ -19,7 +19,91 @@ const pixel = (c: HTMLCanvasElement, x: number, y: number): string => {
   return String(d[0]) + ',' + String(d[1]) + ',' + String(d[2])
 }
 
+// A roam repaint lands on the draw effect's next pass, after `flush`.
+const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 120))
+
 describe('MapChart (real browser)', () => {
+  it('a trail along the paths animates on the frame clock', async () => {
+    const { container } = mountInBrowser(() =>
+      MapChart({ animate: false, map: WORLD, values: {}, width: 400, height: 300, paths: [{ coords: [{ lon: 0, lat: 5 }, { lon: 20, lat: 5 }], width: 2 }], trail: { period: 1, trailLength: 0.3, color: '#ff0000', symbolSize: 12 } }),
+    )
+    await flush()
+    const c = container.querySelector('canvas')!
+    const snap = (): string => Array.from(c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data).join(',')
+    const a = snap()
+    await settle()
+    await settle()
+    expect(snap()).not.toBe(a)
+  })
+
+  it('paints a heat layer and pies over the regions', async () => {
+    const { container } = mountInBrowser(() =>
+      MapChart({
+        animate: false,
+        map: WORLD,
+        values: {},
+        width: 400,
+        height: 300,
+        heat: [{ lon: 5, lat: 5, value: 9 }],
+        heatRadius: 30,
+        heatStops: ['#0000ff', '#ff0000'],
+        pies: [{ lon: 15, lat: 5, radius: 40, innerRadius: 0, slices: [{ value: 1, label: 'a', color: '#00ff00' }] }],
+      }),
+    )
+    await flush()
+    const c = container.querySelector('canvas')!
+    const l = layoutGeo(WORLD, { x: 0, y: 0, w: 400, h: 300 })
+    const heatAt = l.regions[0]!.centroid
+    const pieAt = l.regions[1]!.centroid
+    const [r, , b] = pixel(c, heatAt.x, heatAt.y).split(',').map(Number)
+    expect(r!).toBeGreaterThan(b!)
+    expect(pixel(c, pieAt.x, pieAt.y)).toBe('0,255,0')
+  })
+
+  it('roams: a drag pans the map and does not select, the wheel zooms about the pointer, and roam off keeps it static', async () => {
+    const picked: (GeoRegion | null)[] = []
+    const { container } = mountInBrowser(() => MapChart({ animate: false, map: WORLD, values: { A: 1, B: 9 }, width: 400, height: 300, roam: true, onSelect: (r) => picked.push(r) }))
+    await flush()
+    const c = container.querySelector('canvas')!
+    const r = c.getBoundingClientRect()
+    const l = layoutGeo(WORLD, { x: 0, y: 0, w: 400, h: 300 })
+    const a = l.regions[0]!.centroid
+    const aBefore = pixel(c, a.x, a.y)
+    // Drag A's centroid 150px right: the empty ground there becomes A's colour.
+    const target = { x: a.x + 150, y: a.y }
+    const groundBefore = pixel(c, 5, 5)
+    c.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, clientX: r.left + a.x, clientY: r.top + a.y, bubbles: true }))
+    for (let k = 1; k <= 5; k++) c.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, clientX: r.left + a.x + 30 * k, clientY: r.top + a.y, bubbles: true }))
+    c.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, clientX: r.left + target.x, clientY: r.top + target.y, bubbles: true }))
+    c.dispatchEvent(new MouseEvent('click', { clientX: r.left + target.x, clientY: r.top + target.y, bubbles: true }))
+    await flush()
+    await settle()
+    expect(picked).toHaveLength(0)
+    expect(pixel(c, target.x, target.y)).toBe(aBefore)
+    // Wheel-zoom in at the new centre of A: the region still sits under the pointer,
+    // and a point just past A's old edge is inside A now.
+    const pastEdge = pixel(c, target.x + 110, target.y)
+    expect(pastEdge).not.toBe(aBefore)
+    // (then)-zoom in at the new centre of A: the region still sits under the pointer.
+    c.dispatchEvent(new WheelEvent('wheel', { deltaY: -400, clientX: r.left + target.x, clientY: r.top + target.y, bubbles: true, cancelable: true }))
+    await flush()
+    await settle()
+    expect(pixel(c, target.x, target.y)).toBe(aBefore)
+    expect(pixel(c, target.x + 110, target.y)).toBe(aBefore)
+    expect(pixel(c, 5, 5)).toBe(groundBefore)
+
+    const still = mountInBrowser(() => MapChart({ animate: false, map: WORLD, values: { A: 1, B: 9 }, width: 400, height: 300 }))
+    await flush()
+    const s = still.container.querySelector('canvas')!
+    const rs = s.getBoundingClientRect()
+    const sBefore = pixel(s, a.x + 150, a.y)
+    s.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2, clientX: rs.left + a.x, clientY: rs.top + a.y, bubbles: true }))
+    s.dispatchEvent(new PointerEvent('pointermove', { pointerId: 2, clientX: rs.left + a.x + 150, clientY: rs.top + a.y, bubbles: true }))
+    await flush()
+    await settle()
+    expect(pixel(s, a.x + 150, a.y)).toBe(sBefore)
+  })
+
   it('paints regions, selects the one under the click, recolours reactively', async () => {
     const values = signal<Record<string, number>>({ A: 1, B: 9 })
     const picked: (GeoRegion | null)[] = []
