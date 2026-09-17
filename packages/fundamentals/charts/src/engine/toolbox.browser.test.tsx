@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
+import { query, queryOptional } from '@pyreon/test-utils'
 import { bars } from './marks'
 import { PlotChart } from './Chart'
 
@@ -76,11 +77,11 @@ describe('toolbox (real browser)', () => {
     const ink = inked(c)
     click(c, at(2), 9)
     await flush()
-    const view = container.querySelector('[data-pyreon-dataview]') as HTMLElement
+    const view = queryOptional<HTMLElement>(container, '[data-pyreon-dataview]')
     expect(view).not.toBeNull()
-    expect(view.querySelectorAll('tbody tr')).toHaveLength(10)
-    expect(view.getBoundingClientRect().width).toBeGreaterThan(300)
-    ;(view.querySelector('button') as HTMLButtonElement).click()
+    expect(view!.querySelectorAll('tbody tr')).toHaveLength(10)
+    expect(view!.getBoundingClientRect().width).toBeGreaterThan(300)
+    query(view!, 'button').click()
     await flush()
     expect(container.querySelector('[data-pyreon-dataview]')).toBeNull()
     // Stack: the two bar series share one bar per row, so less of the canvas is bar.

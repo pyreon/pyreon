@@ -8,7 +8,7 @@
 
 import { h, onMount } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { batch, effect, signal, untrack } from '@pyreon/reactivity'
+import { batch, effect, isServer, signal, untrack } from '@pyreon/reactivity'
 import { canvasHost } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
 import { pinSelection } from './legend-toggle'
@@ -567,7 +567,7 @@ export function OptionChart(props: OptionChartProps): VNode {
       props.onSaveImage(data)
       return
     }
-    if (typeof document === 'undefined') return
+    if (isServer) return
     const a = document.createElement('a')
     const svgUrl = tb.imageType === 'svg' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function' ? URL.createObjectURL(new Blob([data], { type: 'image/svg+xml' })) : ''
     a.href = tb.imageType === 'svg' ? svgUrl : data

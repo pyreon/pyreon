@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { brushRange } from './brush'
-import { clampWindow, isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
+import { clampWindow, isFullWindow, limitZoomWindow, panWindow, sliceRange, windowOfRows, zoomWindow } from './zoom'
 
 describe('zoom window math', () => {
   it('clamps into [0,1] preserving span', () => {
@@ -82,5 +82,39 @@ describe('zoom window edge cases (coverage of the clamps)', () => {
     const r = brushRange(10, 0, 50, 90, { start: 0.5, end: 1 }, 10)
     expect(r.start).toBe(5)
     expect(r.end).toBe(5)
+  })
+})
+
+describe('limitZoomWindow and windowOfRows', () => {
+  it('locks the span to the PREVIOUS window and only lets it pan', () => {
+    const prev = { start: 0.2, end: 0.5 } // span 0.3
+    const next = { start: 0.1, end: 0.9 } // span 0.8, unlocked — the lock must override this
+    const w = limitZoomWindow({ lock: true, minSpan: 0, maxSpan: 0 }, prev, next)
+    expect(w.end - w.start).toBeCloseTo(0.3, 9)
+  })
+  it('clamps a span below minSpan up, and above maxSpan down', () => {
+    const prev = { start: 0.4, end: 0.6 }
+    const tooNarrow = limitZoomWindow({ lock: false, minSpan: 0.2, maxSpan: 0.9 }, prev, { start: 0.45, end: 0.46 })
+    expect(tooNarrow.end - tooNarrow.start).toBeCloseTo(0.2, 9)
+    const tooWide = limitZoomWindow({ lock: false, minSpan: 0.05, maxSpan: 0.3 }, prev, { start: 0, end: 1 })
+    expect(tooWide.end - tooWide.start).toBeCloseTo(0.3, 9)
+  })
+  it('a span already within limits is returned as-is (the tiny-diff early return)', () => {
+    const w = limitZoomWindow({ lock: false, minSpan: 0.1, maxSpan: 0.9 }, { start: 0, end: 0.5 }, { start: 0.2, end: 0.5 })
+    expect(w).toEqual({ start: 0.2, end: 0.5 })
+  })
+  it('a resized window recentres and slides back inside the rows at either edge', () => {
+    // Near the LEFT edge: recentring at the enforced minSpan would push start below 0.
+    const left = limitZoomWindow({ lock: false, minSpan: 0.6, maxSpan: 1 }, { start: 0, end: 0.1 }, { start: 0, end: 0.1 })
+    expect(left.start).toBeCloseTo(0, 9)
+    expect(left.end - left.start).toBeCloseTo(0.6, 9)
+    // Near the RIGHT edge: recentring would push end past 1.
+    const right = limitZoomWindow({ lock: false, minSpan: 0.6, maxSpan: 1 }, { start: 0.9, end: 1 }, { start: 0.9, end: 1 })
+    expect(right.end).toBeCloseTo(1, 9)
+    expect(right.end - right.start).toBeCloseTo(0.6, 9)
+  })
+  it('windowOfRows covers rows first..last inclusive; n<=0 is the full window', () => {
+    expect(windowOfRows(2, 5, 10)).toEqual({ start: 0.2, end: 0.6 })
+    expect(windowOfRows(0, 0, 0)).toEqual({ start: 0, end: 1 })
   })
 })
