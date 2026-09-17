@@ -18,6 +18,11 @@ import { appendGraphicLayer, graphicCommands, resolveDataset, svgSize } from './
 import { visualMapCommands } from './visual-map'
 import { readDataZoom, windowSpec } from './option-zoom'
 import type { OptionZoom } from './option-zoom'
+import { readToolbox } from './option-toolbox'
+import type { OptionToolbox } from './option-toolbox'
+import { renderToolbox } from './toolbox'
+import { toolboxTools } from './toolbox-config'
+import type { ToolboxTool } from './toolbox-config'
 import { renderNavigator } from './navigator'
 import type { NavigatorLayout } from './navigator'
 import type { ZoomWindow } from './zoom'
@@ -84,6 +89,8 @@ export interface CompiledOption {
   selectedMode?: 'single' | 'multiple' | undefined
   /** `dataZoom` over the category x axis: the initial window, the slider, and the gestures. */
   zoom?: OptionZoom | undefined
+  /** `toolbox.feature`, host-shaped. */
+  toolbox?: OptionToolbox | undefined
   supported: boolean
 }
 
@@ -101,7 +108,7 @@ export interface CompileOptions {
 const KNOWN_TOP = new Set([
   'aria',
   'series', 'xAxis', 'yAxis', 'title', 'legend', 'tooltip', 'color', 'grid',
-  'animation', 'backgroundColor', 'textStyle', 'dataset', 'graphic', 'visualMap', 'dataZoom',
+  'animation', 'backgroundColor', 'textStyle', 'dataset', 'graphic', 'visualMap', 'dataZoom', 'toolbox',
 ])
 const KNOWN_SERIES = new Set([
   'type', 'name', 'data', 'stack', 'smooth', 'step', 'areaStyle', 'itemStyle',
@@ -973,8 +980,11 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   }
   if (customY !== undefined && spec.yDomain === undefined) spec.yDomain = customY
   if (customX !== undefined && (spec.xValues === undefined || spec.xValues.length === 0)) spec.xValues = customX
-  const zoom = option['dataZoom'] === undefined ? undefined : readDataZoom(option as Record<string, unknown>, spec.categories, warn)
-  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }) }
+  const toolbox = option['toolbox'] === undefined ? undefined : readToolbox(option as Record<string, unknown>, warn)
+  let zoom = option['dataZoom'] === undefined ? undefined : readDataZoom(option as Record<string, unknown>, spec.categories, warn)
+  // The toolbox's box zoom needs a window even when the option has no dataZoom component.
+  if (zoom === undefined && toolbox?.dataZoom === true) zoom = { inside: false, slider: false, window: { start: 0.0, end: 1.0 }, keepY: false, lock: false, minSpan: 0.0, maxSpan: 1.0, wheel: false, move: false }
+  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }) }
 }
 
 const defaultPalette = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
@@ -1137,7 +1147,7 @@ export function zoomedView(compiled: CompiledOption, top: Double, win?: ZoomWind
   return { spec: view.spec, offset: view.offset, navigator }
 }
 
-export function compiledCommands(compiled: CompiledOption, option: EChartsOption, measure: MeasureText, win?: ZoomWindow): { cmds: DrawCmd[]; top: Double } {
+export function compiledCommands(compiled: CompiledOption, option: EChartsOption, measure: MeasureText, win?: ZoomWindow, actives: ToolboxTool[] = []): { cmds: DrawCmd[]; top: Double } {
   const width = compiled.spec.width
   const height = compiled.spec.height
   const t = compiled.spec.theme
@@ -1166,5 +1176,7 @@ export function compiledCommands(compiled: CompiledOption, option: EChartsOption
   for (const c of customOut.cmds) cmds.push(top === 0.0 ? c : shift(c, top))
   for (const c of visualMapCommands(option, width, height).cmds) cmds.push(c)
   for (const c of graphicCommands(option, width, height).cmds) cmds.push(c)
+  // ECharts' toolbox sits over the chart's top-right corner; it reserves no room.
+  if (compiled.toolbox !== undefined) for (const c of renderToolbox(toolboxTools(compiled.toolbox), { x: 0.0, y: 0.0, w: width, h: height }, { fontSize: t.fontSize, color: t.label, actives }).cmds) cmds.push(c)
   return { cmds, top }
 }

@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-17.35' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-17.36' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -73,7 +73,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('coordinates.geo', 'coordinates', 'direct', 'complete', 'src/engine/geo-roam.test.ts', 'src/engine/geo-series.test.ts', 'src/engine/geo.browser.test.tsx', '../../native/compiler/src/tests/chart-map-roam-native.test.ts'),
   row('coordinates.data-zoom', 'coordinates', 'direct', 'complete', 'src/engine/option-zoom.test.ts', 'src/engine/zoom.browser.test.tsx', 'src/engine/option-chart.browser.test.tsx', '../../native/compiler/src/tests/chart-option-datazoom-native.test.ts'), // inside + slider on the category x axis: start/end or startValue/endValue, filterMode, zoomLock, minSpan/maxSpan; a y-axis zoom is named
   row('coordinates.timeline', 'coordinates', 'direct', 'complete', 'src/engine/timeline-strip.test.ts', 'src/engine/option-chart.browser.test.tsx', '../../native/compiler/src/tests/chart-option-timeline-native.test.ts'), // checkpoints, play / prev / next, autoPlay with loop / rewind, on cartesian and family charts; native lowers every static step
-  row('coordinates.toolbox', 'coordinates', 'direct', 'partial', 'src/engine/toolbox.ts'),
+  row('coordinates.toolbox', 'coordinates', 'direct', 'complete', 'src/engine/toolbox.test.ts', 'src/engine/option-toolbox.test.ts', 'src/engine/toolbox.browser.test.tsx', '../../native/compiler/src/tests/chart-toolbox-native.test.ts'), // saveAsImage, restore, dataView, box dataZoom with back, magicType line / bar / stack / tiled, on PlotChart, OptionChart and family charts; a function-carrying myTool and a y-axis box zoom are named
   row('coordinates.brush', 'coordinates', 'direct', 'partial', 'src/engine/brush.ts'),
   row('coordinates.mark-area', 'coordinates', 'direct', 'complete', 'src/engine/option.test.ts', '../../native/compiler/src/tests/chart-option-family-native.test.ts'),
 

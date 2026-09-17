@@ -36,6 +36,7 @@ import android.util.Base64
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.foundation.layout.size
@@ -537,8 +538,16 @@ private fun PyreonStaticChartCanvas(
     // canvas paints in CSS px and SwiftUI in points — so scale by the density
     // once here rather than converting every coordinate and font size.
     val density = LocalDensity.current.density
-    Canvas(modifier = modifier) {
-        scale(scale = density, pivot = Offset.Zero) {
+    Canvas(modifier = modifier) { pyreonPaintChart(cmds, density) }
+}
+
+/**
+ * Paint a draw list in density-independent units. The canvas composable and
+ * the offscreen image renderer (`pyreonChartBitmap`) share it, so a saved
+ * image is the chart on screen.
+ */
+fun DrawScope.pyreonPaintChart(cmds: List<PyreonDrawCmd>, density: Float) {
+    scale(scale = density, pivot = Offset.Zero) {
         for (c in cmds) {
             when (c.kind) {
                 "rect" -> {
@@ -661,7 +670,6 @@ private fun PyreonStaticChartCanvas(
                     }
                 }
             }
-        }
         }
     }
 }
@@ -846,3 +854,52 @@ fun PyreonChartEntrance(durationMs: Double, content: @Composable (Double) -> Uni
     }
     content(pyreonEntranceProgress(t.value.toDouble()))
 }
+
+/** A draw list rendered offscreen on white, `width` × `height` in dp at `density`. */
+fun pyreonChartBitmap(cmds: List<PyreonDrawCmd>, width: Double, height: Double, density: Float): android.graphics.Bitmap {
+    val w = maxOf(1, (width * density).toInt())
+    val h = maxOf(1, (height * density).toInt())
+    val image = androidx.compose.ui.graphics.ImageBitmap(w, h)
+    val canvas = androidx.compose.ui.graphics.Canvas(image)
+    androidx.compose.ui.graphics.drawscope.CanvasDrawScope().draw(androidx.compose.ui.unit.Density(density), androidx.compose.ui.unit.LayoutDirection.Ltr, canvas, Size(w.toFloat(), h.toFloat())) {
+        drawRect(Color.White)
+        pyreonPaintChart(cmds, density)
+    }
+    return image.asAndroidBitmap()
+}
+
+/** The chart as a PNG data URL — what `onSaveImage` receives on Android, as on the web. */
+fun pyreonChartDataUrl(cmds: List<PyreonDrawCmd>, width: Double, height: Double, density: Float): String {
+    val out = java.io.ByteArrayOutputStream()
+    pyreonChartBitmap(cmds, width, height, density).compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+    return "data:image/png;base64," + android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+}
+
+/**
+ * ECharts' `saveAsImage` on a phone: the PNG goes to Pictures (MediaStore, no
+ * permission on Android 10+) and the share sheet opens on it. Below Android 10
+ * writing Pictures needs a storage permission the chart does not ask for, so
+ * the image is only shared as a data URL through `onSaveImage` there.
+ */
+fun pyreonShareChartImage(context: android.content.Context, cmds: List<PyreonDrawCmd>, width: Double, height: Double, density: Float, name: String) {
+    if (android.os.Build.VERSION.SDK_INT < 29) {
+        android.util.Log.w("Pyreon", "saveAsImage needs Android 10+ without a storage permission; pass onSaveImage to receive the PNG instead.")
+        return
+    }
+    val bitmap = pyreonChartBitmap(cmds, width, height, density)
+    val values = android.content.ContentValues().apply {
+        put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "$name.png")
+        put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+        put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, android.os.Environment.DIRECTORY_PICTURES)
+    }
+    val uri = context.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return
+    context.contentResolver.openOutputStream(uri)?.use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+        type = "image/png"
+        putExtra(android.content.Intent.EXTRA_STREAM, uri)
+        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    val chooser = android.content.Intent.createChooser(send, name).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
+    context.startActivity(chooser)
+}
+

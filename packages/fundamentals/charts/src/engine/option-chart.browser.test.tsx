@@ -154,6 +154,58 @@ describe('OptionChart (real browser)', () => {
     m.unmount()
   })
 
+  it('toolbox: magicType, box zoom with back, dataView, restore and saveAsImage from option.toolbox', async () => {
+    const cats = Array.from({ length: 10 }, (_, i) => `c${i}`)
+    const option: EChartsOption = {
+      animation: false,
+      toolbox: { feature: { dataZoom: {}, dataView: {}, magicType: { type: ['line', 'bar', 'stack'] }, restore: {}, saveAsImage: { name: 'sales' } } },
+      xAxis: { type: 'category', data: cats },
+      yAxis: {},
+      series: [{ type: 'bar', data: cats.map((_, i) => i + 1) }, { type: 'bar', data: cats.map((_, i) => 10 - i) }],
+    }
+    const windows: { start: number; end: number }[] = []
+    const saved: string[] = []
+    const m = mountInBrowser(h(OptionChart, { option, width: 400, height: 260, onDataZoom: (w: { start: number; end: number }) => windows.push(w), onSaveImage: (d: string) => saved.push(d) }))
+    await flush()
+    await wait(200)
+    const c = m.container.querySelector('canvas')!
+    const r = c.getBoundingClientRect()
+    const click = (x: number, y: number) => c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + x, clientY: r.top + y }))
+    const ink = (): string => Array.from(c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data).join(',')
+    // Tools right-aligned 25px apart: dataZoom, back, dataView, line, bar, stack, restore, saveAsImage.
+    const at = (k: number) => 390.5 - 25 * (7 - k)
+    const base = ink()
+    click(at(3), 9)
+    await flush()
+    expect(ink()).not.toBe(base)
+    click(at(6), 9)
+    await flush()
+    expect(ink()).toBe(base)
+    // The box zoom: select mode, a drag over the plot, then back.
+    click(at(0), 9)
+    await flush()
+    const fire = (type: string, x: number) => c.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: r.left + x, clientY: r.top + 140, pointerId: 5 }))
+    fire('pointerdown', 120)
+    fire('pointermove', 180)
+    fire('pointermove', 240)
+    fire('pointerup', 240)
+    click(240, 140)
+    await flush()
+    const zoomed = windows[windows.length - 1]!
+    expect(zoomed.end - zoomed.start).toBeLessThan(80)
+    click(at(1), 9)
+    await flush()
+    expect(windows[windows.length - 1]).toEqual({ start: 0, end: 100 })
+    click(at(2), 9)
+    await flush()
+    const view = m.container.querySelector('[data-pyreon-dataview]')!
+    expect(view.querySelectorAll('tbody tr')).toHaveLength(10)
+    click(at(7), 9)
+    await flush()
+    expect(saved[0]!.startsWith('data:image/png')).toBe(true)
+    m.unmount()
+  })
+
   it('animates a lines trail on a frame clock: the canvas changes between frames, and holds still under reduced motion', async () => {
     const option: EChartsOption = { xAxis: {}, yAxis: {}, series: [{ type: 'lines', effect: { show: true, period: 1, trailLength: 0.3, color: '#ff0000', symbolSize: 10 }, data: [{ coords: [[0, 0], [10, 10]] }] }] }
     const snapshot = (c: HTMLCanvasElement): string => {

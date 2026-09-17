@@ -967,3 +967,43 @@ public struct PyreonChartEntrance<Content: View>: View {
         }
     }
 }
+
+#if canImport(UIKit)
+/// A draw list rendered offscreen on white, `width` × `height` in points — the chart on screen as an image.
+@MainActor
+public func pyreonChartImage(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double) -> UIImage? {
+    let renderer = ImageRenderer(content: PyreonChartCanvas(cmds: cmds, animated: false).frame(width: width, height: height).background(Color.white))
+    renderer.scale = UITraitCollection.current.displayScale
+    return renderer.uiImage
+}
+
+/// The chart as a PNG data URL — what `onSaveImage` receives on iOS, as on the web. Called from a gesture, on the main thread.
+public func pyreonChartDataUrl(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double) -> String {
+    MainActor.assumeIsolated {
+        guard let data = pyreonChartImage(cmds, width, height)?.pngData() else { return "" }
+        return "data:image/png;base64," + data.base64EncodedString()
+    }
+}
+
+/// ECharts' `saveAsImage` on a phone: the share sheet, over the chart image (Save Image is one of its actions).
+public func pyreonShareChartImage(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double, _ name: String) {
+    MainActor.assumeIsolated { pyreonPresentChartShare(cmds, width, height, name) }
+}
+
+@MainActor
+private func pyreonPresentChartShare(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double, _ name: String) {
+    guard let image = pyreonChartImage(cmds, width, height) else { return }
+    let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+    guard var top = scene?.windows.first(where: { $0.isKeyWindow })?.rootViewController ?? scene?.windows.first?.rootViewController else { return }
+    while let presented = top.presentedViewController { top = presented }
+    let sheet = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+    sheet.title = name
+    sheet.popoverPresentationController?.sourceView = top.view
+    top.present(sheet, animated: true)
+}
+#else
+/// No UIKit (a macOS build of the runtime): there is no image renderer to hand back.
+public func pyreonChartDataUrl(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double) -> String { "" }
+
+public func pyreonShareChartImage(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double, _ name: String) {}
+#endif

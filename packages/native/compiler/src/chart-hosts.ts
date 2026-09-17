@@ -19,7 +19,7 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import { compileOption, defaultTimelineStrip, resolveYDomain, timelineSteps, DEFAULT_DECALS, visualMapSpec, visualStripOf, fillPattern, imageFill, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
+import { compileOption, readToolbox, defaultTimelineStrip, resolveYDomain, timelineSteps, DEFAULT_DECALS, visualMapSpec, visualStripOf, fillPattern, imageFill, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
 import type { ChartPattern, VisualMapSpec, GraphicElement, RichStyle, SamplingRequest } from '@pyreon/charts/option-layer'
 import type { AttrIR, ChildIR, ExprIR } from './types'
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
@@ -1093,6 +1093,34 @@ export function desugarOptionChart(
   resolve: (name: string) => ExprIR | undefined,
   warn: (m: string) => void,
 ): Extract<ExprIR, { kind: 'jsx-element' }> | undefined {
+  const lowered = desugarOptionChartHost(e, resolve, warn)
+  if (lowered === undefined || lowered.tag === CHART_TIMELINE_TAG) return lowered
+  // `option.toolbox` through the web's own reader: the plot host lowers the
+  // whole toolbox, a family host its save button.
+  const raw = literalOf(attrOf(e, 'option'), resolve)
+  if (raw?.kind !== 'object' || objectField(raw, 'toolbox') === undefined) return lowered
+  const plainOption = irToValue(raw, resolve)
+  if (!plainOption.ok || !isPlainRecord(plainOption.value)) {
+    warn('<OptionChart option.toolbox>: a native toolbox needs a literal toolbox object; native renders without it.')
+    return lowered
+  }
+  const tb = readToolbox(plainOption.value, (_c, path, message) => warn(`<OptionChart option.${path}>: ${message}`))
+  if (tb === undefined) return lowered
+  const cfg: Record<string, unknown> = lowered.tag === 'PlotChart'
+    ? { ...(tb.dataZoom === true ? { dataZoom: true } : {}), ...(tb.dataView === true ? { dataView: true } : {}), ...(tb.magicType !== undefined ? { magicType: tb.magicType } : {}), ...(tb.restore === true ? { restore: true } : {}), ...(tb.saveAsImage === true ? { saveAsImage: true } : {}) }
+    : tb.saveAsImage === true ? { saveAsImage: true } : {}
+  if (lowered.tag !== 'PlotChart' && (tb.dataZoom === true || tb.dataView === true || tb.magicType !== undefined || tb.restore === true)) {
+    warn(`<OptionChart option.toolbox>: this ${lowered.tag} lowers the toolbox's saveAsImage on native; its other tools act on a cartesian chart.`)
+  }
+  if (Object.keys(cfg).length === 0) return lowered
+  return { ...lowered, attrs: [...lowered.attrs.filter((a) => !(a.kind === 'attr' && a.name === 'toolbox')), { kind: 'attr', name: 'toolbox', value: valueToIr(cfg) }] }
+}
+
+function desugarOptionChartHost(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  resolve: (name: string) => ExprIR | undefined,
+  warn: (m: string) => void,
+): Extract<ExprIR, { kind: 'jsx-element' }> | undefined {
   let raw = literalOf(attrOf(e, 'option'), resolve)
   if (raw === undefined || raw.kind !== 'object' || (raw.spreads !== undefined && raw.spreads.length > 0)) {
     warn('<OptionChart option>: native needs an inline option object; emitting nothing.')
@@ -1122,7 +1150,7 @@ export function desugarOptionChart(
     return undefined
   }
 
-  optionFields(raw, ['aria', 'series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'dataZoom', 'color', 'dataset', 'graphic'], 'option', warn)
+  optionFields(raw, ['aria', 'series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'dataZoom', 'toolbox', 'color', 'dataset', 'graphic'], 'option', warn)
 
   for (const a of e.attrs) {
     if (a.kind === 'event' && a.name !== 'selectindex') {
@@ -3293,17 +3321,17 @@ export const CHART_HOST_PALETTE: readonly string[] = CHART_THEME_DEFAULT.palette
  */
 export const CHART_CHROME_PROPS: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'legendPosition', 'keyboard', 'updateAnimation', 'updateDuration', 'universalTransition', 'toolbox', 'onSaveImage', 'accessibleTable', 'rtl']
 const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
-  PlotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl', 'legendPosition'],
+  PlotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl', 'legendPosition', 'toolbox', 'onSaveImage'],
   // Gauge / Candlestick / Heatmap build their canvas without the chrome seam,
   // so they take the RTL pair from `swiftRtl` / `kotlinRtl` directly. Their
   // lists stay spelled out: adding a prop to `FAMILY_CHROME` must never
   // silently claim a host whose emitter does not read it, which is exactly
   // what happened when `rtl` first went in there.
-  GaugeChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl'],
-  CandlestickChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl'],
-  HeatmapChart: ['animate', 'rtl'],
-  BoxplotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl'],
-  RadarChart: ['showLegend', 'rtl', 'legendPosition'],
+  GaugeChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl', 'toolbox', 'onSaveImage'],
+  CandlestickChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl', 'toolbox', 'onSaveImage'],
+  HeatmapChart: ['animate', 'rtl', 'toolbox', 'onSaveImage'],
+  BoxplotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl', 'toolbox', 'onSaveImage'],
+  RadarChart: ['showLegend', 'rtl', 'legendPosition', 'toolbox', 'onSaveImage'],
 }
 /**
  * Title + legend + tap tooltip — what the generic and accessor hosts draw
@@ -3314,7 +3342,7 @@ const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
  * their own frame), so nothing there reads the prop. Claiming it per-CLASS is
  * exactly the mistake the `CHROME_LOWERED` comment above records.
  */
-const FAMILY_CHROME: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl', 'legendPosition']
+const FAMILY_CHROME: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl', 'legendPosition', 'toolbox', 'onSaveImage']
 /**
  * Whether `<tag>`'s engine takes an entrance `progress` — the same set the web
  * canvas host tweens (`animates: true`). A host outside it (Pie, Radar,
@@ -3589,8 +3617,6 @@ const PLOT_UNLOWERED_REASON: Readonly<Record<string, string>> = {
   crosshair: 'it is a HOVER readout, and a touch target has no hover state to read',
   link: 'it couples two charts through a shared DOM-side controller',
   keyboard: 'it makes the canvas focusable and announces through a DOM live region; the native canvas is named for VoiceOver / TalkBack instead (`describeChart`, which does cross)',
-  toolbox: 'it draws a DOWNLOAD button, and a phone has nowhere to download to',
-  onSaveImage: 'it fires when that download button is pressed',
   accessibleTable: 'it renders a hidden DOM `<table>`; the native canvas carries `describeChart`\'s sentence instead',
   facet: 'it renders a GRID of sub-plots rather than a chart setting; compose the panels yourself',
   facetColumns: 'it sizes the `facet` grid, which is web-only',
@@ -3618,7 +3644,7 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
 // `updateAnimation`, `updateDuration`, `toolbox`, `onSaveImage`,
 // `accessibleTable`) are reported through `chartChromeUnlowered` for the plot
 // host too — listing them here as well would warn twice.
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'onHighlight', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'crosshair', 'link', 'keyboard', 'toolbox', 'onSaveImage', 'accessibleTable', 'facet', 'facetColumns']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'onHighlight', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'crosshair', 'link', 'keyboard', 'accessibleTable', 'facet', 'facetColumns']
 
 /**
  * A host's `visualMap` at COMPILE time: the web `VisualMapSpec` (as the web
@@ -3693,5 +3719,41 @@ export function chartZoomConfig(
   const initial = init == null ? null : t.struct('ZoomWindow', [['start', chartDouble(Math.max(0, Math.min(1, n(init['start'], 0))))], ['end', chartDouble(Math.max(0, Math.min(1, n(init['end'], 1))))]])
   const limits = lim == null ? null : t.struct('ZoomLimits', [['lock', String(lim['lock'] === true)], ['minSpan', chartDouble(n(lim['minSpan'], 0))], ['maxSpan', chartDouble(n(lim['maxSpan'], 1))]])
   return { initial, limits }
+}
+
+/**
+ * `<PlotChart toolbox>` on native, read at compile time: the ordered tool
+ * names the engine lays out (the web's `toolboxTools` order) and whether a
+ * saved image was asked for as SVG, which a phone saves as PNG.
+ */
+export function chartToolboxConfig(
+  expr: ExprIR | undefined,
+  resolve: (name: string) => ExprIR | undefined,
+  warn: (m: string) => void,
+  tag: string,
+): { tools: string[]; dataZoom: boolean; magic: boolean; dataView: boolean; save: boolean } | null {
+  if (expr === undefined) return null
+  const literal = literalOf(expr, resolve)
+  const v = literal === undefined ? undefined : irToValue(literal, resolve)
+  if (v === undefined || !v.ok || !isPlainRecord(v.value)) {
+    warn(`<${tag} toolbox>: native needs a literal toolbox object; the chart renders without it.`)
+    return null
+  }
+  const cfg = v.value
+  const tools: string[] = []
+  if (cfg['dataZoom'] === true) tools.push('dataZoom', 'dataZoomBack')
+  if (cfg['dataView'] === true) tools.push('dataView')
+  const magic = Array.isArray(cfg['magicType']) ? (cfg['magicType'] as unknown[]) : []
+  for (const t of magic) {
+    if (t === 'line') tools.push('magicLine')
+    else if (t === 'bar') tools.push('magicBar')
+    else if (t === 'stack') tools.push('magicStack')
+    else if (t === 'tiled') tools.push('magicTiled')
+  }
+  if (cfg['restore'] === true) tools.push('restore')
+  const save = cfg['saveAsImage'] === true || cfg['saveAsImage'] === 'png' || cfg['saveAsImage'] === 'svg'
+  if (cfg['saveAsImage'] === 'svg') warn(`<${tag} toolbox.saveAsImage>: a phone saves the chart as a PNG, not an SVG.`)
+  if (save) tools.push('saveAsImage')
+  return { tools, dataZoom: cfg['dataZoom'] === true, magic: magic.length > 0, dataView: cfg['dataView'] === true, save }
 }
 

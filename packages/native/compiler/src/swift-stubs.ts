@@ -588,6 +588,7 @@ extension View {
   // runtime does is how a broken emit slips through — the same trap the
   // lineLimit note above records, in the opposite direction.
   public func background<V: View>(_ background: V) -> some View { self }
+  public func overlay<V: View>(alignment: Alignment = .center, @ViewBuilder content: () -> V) -> some View { self }
   // useHotkey -> .keyboardShortcut on a hidden Button. Mirrors SwiftUI's real
   // signature including the modifiers-defaults-to-command DEFAULT: the emit always
   // passes modifiers explicitly (even an empty set), so the default is never
@@ -1969,6 +1970,8 @@ public struct AsyncImage: View {
 export const SWIFT_CHART_VIEW_STUBS = `
 // ---- @pyreon/charts/plot hosts (chart-hosts.ts emit) ----
 public struct GeometryProxy { public var size: CGSize = CGSize() }
+public func pyreonChartDataUrl(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double) -> String { "" }
+public func pyreonShareChartImage(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double, _ name: String) {}
 public struct GeometryReader<Content: View>: View {
   public init(@ViewBuilder content: @escaping (GeometryProxy) -> Content) {}
   public typealias Body = Never

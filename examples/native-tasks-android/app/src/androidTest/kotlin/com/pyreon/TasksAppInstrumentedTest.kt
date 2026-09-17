@@ -907,6 +907,31 @@ class TasksAppInstrumentedTest {
         timeline.performTouchInput { click(Offset(width - 33.dp.toPx(), height - (40 - 16).dp.toPx())) }
         composeRule.waitForIdle()
         timeline.assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2019"))
+        // The toolbox (dataZoom, back, dataView, line, bar, restore — right-aligned, 25dp apart at the top).
+        val toolbox = composeRule.onNodeWithTag("gal-toolbox").performScrollTo()
+        val tool = { i: Int -> toolbox.performTouchInput { click(Offset(width - (9.5f + 25f * (5 - i)).dp.toPx(), 9.5.dp.toPx())) } }
+        tool(0)
+        composeRule.waitForIdle()
+        toolbox.performTouchInput { swipe(start = Offset(width * 0.5f, height * 0.5f), end = Offset(width * 0.58f, height * 0.5f), durationMillis = 600) }
+        composeRule.waitForIdle()
+        val zoomText = composeRule.onNodeWithTag("gal-toolbox-zoom").performScrollTo()
+        zoomText.assert(androidx.compose.ui.test.SemanticsMatcher("zoomed away from 0-100") { n -> n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.joinToString("") { it.text } != "0-100" })
+        composeRule.onNodeWithTag("gal-toolbox").performScrollTo()
+        tool(1)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-toolbox-zoom").performScrollTo().assertTextEquals("0-100")
+        composeRule.onNodeWithTag("gal-toolbox").performScrollTo()
+        tool(2)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("pyreon-dataview").assertExists()
+        composeRule.onNodeWithTag("pyreon-dataview-close").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("pyreon-dataview").assertDoesNotExist()
+        // saveAsImage on a family chart: the offscreen PNG reaches onSaveImage.
+        composeRule.onNodeWithTag("gal-save").performScrollTo()
+        composeRule.onNodeWithTag("pyreon-save-image").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-saved").performScrollTo().assertTextEquals("data:image/png;")
         // The lines trail renders. Its MOTION is proven on the iOS device lane
         // and in real Chromium; here it cannot be: the trail runs on
         // withInfiniteAnimationFrameNanos (a plain frame loop kept this harness

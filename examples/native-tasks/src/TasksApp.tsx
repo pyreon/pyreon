@@ -750,6 +750,9 @@ const SUNBURST: TreeNode[] = [
 
 function GalleryPage() {
   const navigate = useNavigate()
+  // The toolbox's box zoom reports its window here; the save button its PNG's prefix.
+  const tbZoom = signal('0-100')
+  const tbSaved = signal('none')
   return (
     <Scroll direction="vertical" data-testid="gal-scroll">
       <Stack gap={3} padding={4} data-testid="gal-page">
@@ -848,6 +851,25 @@ function GalleryPage() {
           height={240}
           data-testid="gal-timeline"
         />
+        <PlotChart
+          data={SCORE_ROWS}
+          marks={[bars((d: ScoreRow) => d.score)]}
+          toolbox={{ dataZoom: true, dataView: true, magicType: ['line', 'bar'], restore: true }}
+          height={220}
+          data-testid="gal-toolbox"
+          onZoom={(w: ZoomWindow) => tbZoom.set(`${(w.start * 100).toFixed(0)}-${(w.end * 100).toFixed(0)}`)}
+        />
+        <Text data-testid="gal-toolbox-zoom">{tbZoom()}</Text>
+        <PieChart
+          data={SLICES}
+          value={(d: PieSlice) => d.total}
+          label={(d: PieSlice) => d.name}
+          height={180}
+          toolbox={{ saveAsImage: true }}
+          onSaveImage={(url: string) => tbSaved.set(url.startsWith('data:image/png;') ? 'data:image/png;' : url)}
+          data-testid="gal-save"
+        />
+        <Text data-testid="gal-saved">{tbSaved()}</Text>
         <Button onPress={() => navigate('/tasks')} data-testid="gal-back">
           Back to tasks
         </Button>

@@ -14,8 +14,14 @@ import type { CanvasHostProps } from './canvas-host'
 import { pinSelection } from './legend-toggle'
 import { compiledCommands, optionToSvg, planOption, zoomedView } from './option'
 import { limitWindow } from './option-zoom'
+import { applyMagicType } from './magic-type'
+import { hitToolbox, renderToolbox } from './toolbox'
+import { toolboxTools } from './toolbox-config'
+import type { ToolboxTool } from './toolbox-config'
+import { brushRange, renderBrushBand } from './brush'
+import { chartTable } from './a11y'
 import { navigatorDrag, navigatorHit } from './navigator'
-import { isFullWindow, panWindow, zoomWindow } from './zoom'
+import { isFullWindow, panWindow, windowOfRows, zoomWindow } from './zoom'
 import type { ZoomWindow } from './zoom'
 import type { CompiledOption, EChartsOption, OptionPlan } from './option'
 import { familyHostNode } from './family-host'
@@ -189,6 +195,24 @@ export function OptionChart(props: OptionChartProps): VNode {
   const stepIndex = (): number | undefined => props.timelineIndex ?? (step() >= 0 ? step() : undefined)
   // The dataZoom window the user has moved to; null = the option's own start/end.
   const zoomWin = signal<ZoomWindow | null>(null)
+  // Toolbox state: the magicType switches, the box-select zoom (mode, live band, undo stack) and the data view.
+  const magicKind = signal<'' | 'line' | 'bar'>('')
+  const magicStack = signal<'' | 'stack' | 'tiled'>('')
+  const zoomSelect = signal(false)
+  const selectBand = signal<{ a: Double; b: Double } | null>(null)
+  let zoomHistory: (ZoomWindow | null)[] = []
+  const dataView = signal(false)
+  const toolActives = (): ToolboxTool[] => {
+    const out: ToolboxTool[] = []
+    if (magicKind() !== '') out.push(magicKind() === 'bar' ? 'magicBar' : 'magicLine')
+    if (magicStack() !== '') out.push(magicStack() === 'stack' ? 'magicStack' : 'magicTiled')
+    if (zoomSelect()) out.push('dataZoom')
+    if (dataView()) out.push('dataView')
+    return out
+  }
+  /** The compiled option with the magicType switches applied to its series. */
+  const magicOf = (compiled: CompiledOption): CompiledOption =>
+    magicKind() === '' && magicStack() === '' ? compiled : { ...compiled, spec: applyMagicType(compiled.spec, magicKind(), magicStack()) }
   const winOf = (compiled: CompiledOption): ZoomWindow | undefined => zoomWin() ?? compiled.zoom?.window
   const width = (): Double => props.width ?? 640.0
   const height = (): Double => props.height ?? 320.0
@@ -313,12 +337,13 @@ export function OptionChart(props: OptionChartProps): VNode {
     const idx = stepIndex()
     const steps = timelineSteps(opt)
     const stripH = steps === null ? 0.0 : TIMELINE_HEIGHT
-    const plan = planOption(opt, compileOpts(w, hgt - stripH, idx))
+    const planned = planOption(opt, compileOpts(w, hgt - stripH, idx))
+    const plan: OptionPlan = planned.kind === 'cartesian' ? { ...planned, compiled: magicOf(planned.compiled) } : planned
     const resolved = resolveTimeline(opt, idx).option as EChartsOption
     const cmds: DrawCmd[] = []
     let zoom: OptionGeometry['zoom'] = null
     if (plan.kind === 'cartesian') {
-      const composed = compiledCommands(plan.compiled, resolved, measure, winOf(plan.compiled))
+      const composed = compiledCommands(plan.compiled, resolved, measure, winOf(plan.compiled), toolActives())
       for (const c of composed.cmds) cmds.push(c)
       if (plan.compiled.zoom !== undefined) {
         const win = winOf(plan.compiled)!
@@ -475,7 +500,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     // Emphasis indices are global; the zoomed spec counts from its first visible row.
     const off = g.zoom?.offset ?? 0
     const emphasis: Emphasis = { highlight: highlight < 0 ? highlight : highlight - off, selected: selected.map((k) => k - off) }
-    if (g.plan.kind === 'cartesian') return compiledCommands({ ...g.plan.compiled, spec: { ...g.plan.compiled.spec, ...(highlight < 0 && selected.length === 0 ? {} : { emphasis }), effectTime: time } }, g.option, g.measure, winOf(g.plan.compiled)).cmds
+    if (g.plan.kind === 'cartesian') return compiledCommands({ ...g.plan.compiled, spec: { ...g.plan.compiled.spec, ...(highlight < 0 && selected.length === 0 ? {} : { emphasis }), effectTime: time } }, g.option, g.measure, winOf(g.plan.compiled), toolActives()).cmds
     if (g.plan.kind === 'grids') {
       const cmds: DrawCmd[] = []
       let first = true
@@ -497,6 +522,60 @@ export function OptionChart(props: OptionChartProps): VNode {
     }
     return undefined
   }
+  let rootEl: HTMLDivElement | null = null
+  /** ECharts' `saveAsImage`: the canvas as PNG / JPEG, or the option as SVG — handed to `onSaveImage`, else downloaded. */
+  const saveImage = (tb: NonNullable<CompiledOption['toolbox']>): void => {
+    let data = ''
+    if (tb.imageType === 'svg') data = optionToSvg(readOption(), compileOpts(width(), height(), stepIndex()))
+    else {
+      const canvas = rootEl?.querySelector('canvas')
+      if (canvas == null) return
+      data = canvas.toDataURL(tb.imageType === 'jpeg' ? 'image/jpeg' : 'image/png')
+    }
+    if (props.onSaveImage !== undefined) {
+      props.onSaveImage(data)
+      return
+    }
+    if (typeof document === 'undefined') return
+    const a = document.createElement('a')
+    const svgUrl = tb.imageType === 'svg' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function' ? URL.createObjectURL(new Blob([data], { type: 'image/svg+xml' })) : ''
+    a.href = tb.imageType === 'svg' ? svgUrl : data
+    a.download = `${tb.name}.${tb.imageType === 'jpeg' ? 'jpg' : tb.imageType}`
+    a.click()
+    if (svgUrl !== '') URL.revokeObjectURL(svgUrl)
+  }
+  /** A click on the option's toolbox, top-right: true when a tool took it. */
+  const toolboxClick = (g: OptionGeometry, px: Double, py: Double): boolean => {
+    if (g.plan.kind !== 'cartesian' || g.plan.compiled.toolbox === undefined) return false
+    const tb = g.plan.compiled.toolbox
+    const tools = toolboxTools(tb)
+    const layout = renderToolbox(tools, { x: 0.0, y: 0.0, w: g.w, h: g.hgt }, { fontSize: g.plan.compiled.spec.theme.fontSize, color: '' })
+    const tool = hitToolbox(tools, layout.boxes, px, py)
+    if (tool === null) return false
+    batch(() => {
+      if (tool === 'restore') {
+        zoomWin.set(null)
+        magicKind.set('')
+        magicStack.set('')
+        zoomSelect.set(false)
+        dataView.set(false)
+        pinned.set([])
+        zoomHistory = []
+      } else if (tool === 'magicLine') magicKind.set(magicKind() === 'line' ? '' : 'line')
+      else if (tool === 'magicBar') magicKind.set(magicKind() === 'bar' ? '' : 'bar')
+      else if (tool === 'magicStack') magicStack.set(magicStack() === 'stack' ? '' : 'stack')
+      else if (tool === 'magicTiled') magicStack.set(magicStack() === 'tiled' ? '' : 'tiled')
+      else if (tool === 'dataZoom') zoomSelect.set(!zoomSelect())
+      else if (tool === 'dataZoomBack') {
+        const prev = zoomHistory.length > 0 ? zoomHistory[zoomHistory.length - 1]! : null
+        zoomHistory = zoomHistory.slice(0, -1)
+        zoomWin.set(prev)
+        props.onDataZoom?.(prev === null ? { start: 0, end: 100 } : { start: prev.start * 100, end: prev.end * 100 })
+      } else if (tool === 'dataView') dataView.set(!dataView())
+      else if (tool === 'saveAsImage') saveImage(tb)
+    })
+    return true
+  }
   let lastGeometry: OptionGeometry | null = null
   let lastZoom: CompiledOption['zoom'] = undefined
   let navGrab: { kind: number; x: Double; win: ZoomWindow } | null = null
@@ -516,6 +595,11 @@ export function OptionChart(props: OptionChartProps): VNode {
       step()
       autoPlan()
       void props.timelineIndex
+      magicKind()
+      magicStack()
+      zoomSelect()
+      selectBand()
+      dataView()
       hoverIndex()
       pinned()
       zoomWin()
@@ -526,7 +610,13 @@ export function OptionChart(props: OptionChartProps): VNode {
       lastZoom = g.plan.kind === 'cartesian' ? g.plan.compiled.zoom : undefined
       return g
     },
-    render: (g, _measure, _theme, _progress, time) => stateCmds(g, time),
+    render: (g, _measure, _theme, _progress, time) => {
+      const band = selectBand()
+      if (band === null || g.zoom === null) return stateCmds(g, time)
+      const out = stateCmds(g, time).slice()
+      for (const c of renderBrushBand(g.zoom.plot, Math.min(band.a, band.b), Math.max(band.a, band.b), '#6366f1')) out.push(c)
+      return out
+    },
     effectClock: (g) => linesEffectOn(g),
     // ECharts' inside dataZoom: the wheel zooms the window about the pointer, a drag pans it.
     roam: {
@@ -548,6 +638,11 @@ export function OptionChart(props: OptionChartProps): VNode {
     drag: {
       start: (g, px, py) => {
         const z = g.zoom
+        // The toolbox box zoom, while on, takes a drag that starts over the plot.
+        if (z !== null && zoomSelect() && px >= z.plot.x && px <= z.plot.x + z.plot.w && py >= z.plot.y && py <= z.plot.y + z.plot.h) {
+          selectBand.set({ a: px, b: px })
+          return true
+        }
         if (z === null || z.strip === null) return false
         const r = z.strip
         if (px < r.x - 8.0 || px > r.x + r.w + 8.0 || py < r.y - 4.0 || py > r.y + r.h + 4.0) return false
@@ -555,15 +650,30 @@ export function OptionChart(props: OptionChartProps): VNode {
         return true
       },
       move: (g, px) => {
+        const band = selectBand()
+        if (band !== null) {
+          selectBand.set({ a: band.a, b: px })
+          return
+        }
         const z = g.zoom
         if (z === null || z.strip === null || navGrab === null || z.strip.w <= 0.0) return
         setWindow(navGrab.win, navigatorDrag(navGrab.kind, navGrab.win, (px - navGrab.x) / z.strip.w))
       },
       end: () => {
         navGrab = null
+        const band = selectBand()
+        const g = lastGeometry
+        if (band === null) return
+        selectBand.set(null)
+        if (g?.zoom == null || Math.abs(band.b - band.a) < 3.0 || g.plan.kind !== 'cartesian') return
+        const n = g.plan.compiled.spec.categories.length
+        const range = brushRange(g.zoom.plot.x, g.zoom.plot.w, band.a, band.b, g.zoom.win, n)
+        zoomHistory = [...zoomHistory, zoomWin()]
+        setWindow(g.zoom.win, windowOfRows(range.start, range.end, n))
       },
     },
     select: (g, px, py) => {
+      if (toolboxClick(g, px, py)) return
       if (timelineClick(g.w, g.hgt, px, py)) return
       const h1 = hitAt(g, px, py)
       const pin = pinMode(g)
@@ -644,5 +754,21 @@ export function OptionChart(props: OptionChartProps): VNode {
   })
   const hostSlot = (): VNode | null => (mode() === 'host' ? hostNode() : null)
   const barSlot = (): VNode | null => (mode() === 'host' && timelineSteps(readOption()) !== null ? barNode : null)
-  return h('div', { style: 'position:relative', 'data-pyreon-step': () => String(stepIndex() ?? -1) }, canvasSlot, svgNode, hostSlot, barSlot)
+  // The toolbox data view: the option's data as a visible table over the chart.
+  const dataViewSlot = (): VNode | null => {
+    if (!dataView()) return null
+    const t = chartTable(a11y())
+    return h(
+      'div',
+      { 'data-pyreon-dataview': '', style: 'position:absolute;inset:0;overflow:auto;background:#ffffff;color:#1f2937;font:12px system-ui,sans-serif;padding:8px;box-sizing:border-box' },
+      h('button', { type: 'button', style: 'float:right', onClick: () => dataView.set(false) }, 'Close'),
+      h(
+        'table',
+        { style: 'border-collapse:collapse' },
+        h('thead', null, h('tr', null, ...t.headers.map((x) => h('th', { style: 'text-align:left;padding:2px 8px;border-bottom:1px solid #d1d5db' }, x)))),
+        h('tbody', null, ...t.rows.map((r) => h('tr', null, ...r.map((c) => h('td', { style: 'padding:2px 8px' }, c))))),
+      ),
+    )
+  }
+  return h('div', { style: 'position:relative', 'data-pyreon-step': () => String(stepIndex() ?? -1), ref: (el: HTMLDivElement | null) => { rootEl = el } }, canvasSlot, svgNode, hostSlot, barSlot, dataViewSlot)
 }

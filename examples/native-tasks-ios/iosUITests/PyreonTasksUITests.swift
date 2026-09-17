@@ -926,6 +926,31 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(waitForValue(timeline, "2021", timeout: 5), "tapping the last checkpoint did not show it (value: \(String(describing: timeline.value)))")
         tlOrigin.withOffset(CGVector(dx: timeline.frame.width - 33, dy: tlY)).tap()
         XCTAssertTrue(waitForValue(timeline, "2019", timeout: 5), "next did not wrap to the first step (value: \(String(describing: timeline.value)))")
+        // The toolbox (dataZoom, back, dataView, line, bar, restore — right-aligned, 25pt apart at the top).
+        let toolbox = app.descendants(matching: .any).matching(identifier: "gal-toolbox").firstMatch
+        XCTAssertTrue(toolbox.waitForExistence(timeout: 10), "gal-toolbox missing on the gallery")
+        scrollFullyOnScreen(toolbox, in: app)
+        let tbOrigin = toolbox.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let tool = { (i: Int) -> XCUICoordinate in tbOrigin.withOffset(CGVector(dx: toolbox.frame.width - 9.5 - 25.0 * Double(5 - i), dy: 9.5)) }
+        let tbZoom = app.staticTexts["gal-toolbox-zoom"].firstMatch
+        tool(0).tap()
+        tbOrigin.withOffset(CGVector(dx: toolbox.frame.width * 0.5, dy: toolbox.frame.height * 0.5)).press(forDuration: 0.1, thenDragTo: tbOrigin.withOffset(CGVector(dx: toolbox.frame.width * 0.58, dy: toolbox.frame.height * 0.5)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        let zoomedAway = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", "0-100"), object: tbZoom)
+        XCTAssertEqual(XCTWaiter().wait(for: [zoomedAway], timeout: 5), .completed, "the toolbox box zoom did not zoom (label: \(tbZoom.label))")
+        tool(1).tap()
+        XCTAssertTrue(waitForLabel(tbZoom, "0-100", timeout: 5), "back did not undo the box zoom (label: \(tbZoom.label))")
+        tool(2).tap()
+        let dataView = app.descendants(matching: .any).matching(identifier: "pyreon-dataview").firstMatch
+        XCTAssertTrue(dataView.waitForExistence(timeout: 5), "the data view did not open")
+        app.buttons["pyreon-dataview-close"].firstMatch.tap()
+        let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: dataView)
+        XCTAssertEqual(XCTWaiter().wait(for: [closed], timeout: 5), .completed, "the data view did not close")
+        // saveAsImage on a family chart: the offscreen PNG reaches onSaveImage.
+        let saveChart = app.descendants(matching: .any).matching(identifier: "gal-save").firstMatch
+        XCTAssertTrue(saveChart.waitForExistence(timeout: 10), "gal-save missing on the gallery")
+        scrollFullyOnScreen(saveChart, in: app)
+        app.buttons["pyreon-save-image"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(app.staticTexts["gal-saved"].firstMatch, "data:image/png;", timeout: 5), "saveAsImage did not hand onSaveImage a PNG (label: \(app.staticTexts["gal-saved"].firstMatch.label))")
         // The geo route trail MOVES too: two screenshots half a second apart differ.
         let geoTrail = app.descendants(matching: .any).matching(identifier: "gal-geo-trail").firstMatch
         XCTAssertTrue(geoTrail.waitForExistence(timeout: 10), "gal-geo-trail canvas missing on the gallery")

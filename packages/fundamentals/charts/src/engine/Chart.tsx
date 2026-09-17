@@ -17,9 +17,10 @@ import { placeLegend } from './legend'
 import type { LegendPager } from './legend'
 import { renderTitle } from './title'
 import { sameShape, sameValues, tweenValues } from './tween'
-import { hitToolbox, renderToolbox, toolboxTools } from './toolbox'
+import { hitToolbox, renderToolbox } from './toolbox'
+import { toolboxTools } from './toolbox-config'
 import { renderSvg } from './svg'
-import type { ToolboxTool } from './toolbox'
+import type { ToolboxConfig, ToolboxTool } from './toolbox-config'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
 import { geometrySpec, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
@@ -38,7 +39,8 @@ import { brushBand, brushRange, renderBrushBand } from './brush'
 import { hideHiddenSeries, legendHitIndex, legendToggle, pagerHit, pinSelection } from './legend-toggle'
 import { navigatorDrag, navigatorHit, renderNavigator } from './navigator'
 import { presetHit, presetWindow, renderPresets } from './presets'
-import { clampWindow, isFullWindow, limitZoomWindow, panWindow, sliceRange, zoomWindow } from './zoom'
+import { clampWindow, isFullWindow, limitZoomWindow, panWindow, sliceRange, windowOfRows, zoomWindow } from './zoom'
+import { applyMagicType } from './magic-type'
 import type { ZoomWindow } from './zoom'
 import type { ChartHandle, ChartLink } from './link'
 import type { Formatter } from './format'
@@ -296,7 +298,7 @@ export interface PlotChartProps<T> {
    * toggles and any magicType override; `magicType` offers line / bar
    * switches for the independent marks.
    */
-  toolbox?: { saveAsImage?: boolean | 'svg' | 'png'; restore?: boolean; magicType?: ('line' | 'bar')[] }
+  toolbox?: ToolboxConfig
   /** Called with the image (an SVG string, or a PNG data URL) on saveAsImage instead of triggering a download. */
   onSaveImage?: (data: string, format: 'svg' | 'png') => void
   /**
@@ -453,7 +455,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   // In-flight drag bookkeeping. Plain locals, not signals: nothing should
   // repaint on every intermediate pixel except the overlay, which the move
   // handler drives through `draw()` itself.
-  let dragMode: 'pan' | 'brush' | 'nav' | null = null
+  let dragMode: 'pan' | 'brush' | 'nav' | 'zoomSelect' | null = null
   let dragStartX = 0.0
   let dragLastX = 0.0
   let dragMoved = false
@@ -541,7 +543,14 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     return { ...spec, series: spec.series.map((x, i) => ({ ...x, values: frame[i]! })) }
   }
   // Toolbox state: the magicType override, and last-draw hit boxes.
-  const typeOverride = signal<'line' | 'bar' | null>(null)
+  // magicType: the line / bar switch and the stack / tiled switch, independent as in ECharts ('' = off).
+  const magicKind = signal<'' | 'line' | 'bar'>('')
+  const magicStack = signal<'' | 'stack' | 'tiled'>('')
+  // Toolbox dataZoom: the box-select mode and the windows it replaced (for back).
+  const zoomSelect = signal(false)
+  let zoomHistory: (ZoomWindow | null)[] = []
+  // Toolbox dataView: the data as a table over the chart.
+  const dataView = signal(false)
   let toolboxBoxes: Rect[] = []
   let toolList: ToolboxTool[] = []
   // The last painted frame's commands, for saveAsImage.
@@ -625,7 +634,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     props.xFormat ?? (props.locale === undefined ? undefined : props.xTime === true ? localeFmts(props.locale).date : undefined)
 
   const buildSpec = (allRows: T[], w: Double, hgt: Double): ChartSpec => {
-    const built = buildSpecInner(allRows, w, hgt)
+    const built = applyMagicType(buildSpecInner(allRows, w, hgt), magicKind(), magicStack())
     // The handle's `legendInverseSelect` flips over the series the chart drew.
     if (props.handle !== undefined && props.handle.seriesCount.peek() !== built.series.length) props.handle.seriesCount.set(built.series.length)
     return built
@@ -650,9 +659,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       ...m,
       // magicType: a line/bar switch retypes the INDEPENDENT marks only —
       // stacked/grouped/points keep their geometry (a stack is not a line).
-      kind: typeOverride() !== null && (m.kind === 'bars' || m.kind === 'line' || m.kind === 'area')
-        ? (typeOverride() === 'bar' ? 'bars' : 'line')
-        : m.kind,
+      kind: m.kind,
       y: (d: T, i: number) => m.y(d, gi(i)),
       ...(m.r !== undefined ? { r: (d: T, i: number) => m.r!(d, gi(i)) } : {}),
     })), theme().palette)),
@@ -712,11 +719,15 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     toolboxBoxes = []
     toolList = props.toolbox === undefined ? [] : toolboxTools(props.toolbox)
     if (toolList.length > 0) {
-      const ov = typeOverride()
+      const actives: ToolboxTool[] = []
+      if (magicKind() !== '') actives.push(magicKind() === 'bar' ? 'magicBar' : 'magicLine')
+      if (magicStack() !== '') actives.push(magicStack() === 'stack' ? 'magicStack' : 'magicTiled')
+      if (zoomSelect()) actives.push('dataZoom')
+      if (dataView()) actives.push('dataView')
       const tb = renderToolbox(toolList, { x: 0, y: 0, w, h: hgt }, {
         fontSize: theme().fontSize,
         color: theme().label,
-        active: ov === null ? undefined : ov === 'bar' ? 'magicBar' : 'magicLine',
+        actives,
       })
       for (const c of tb.cmds) legendCmds.push(c)
       toolboxBoxes = tb.boxes
@@ -1016,9 +1027,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
 
   /** The brush band — the live drag, or the committed selection projected through the window (engine-drawn; iOS and Android paint the same band). */
   const brushCmds = (spec: ChartSpec, l: PlotLayout): DrawCmd[] => {
-    if (props.brush !== true || props.horizontal === true) return []
     const plot = l.plot
     const live = brushDrag
+    if (zoomSelect() && live !== null) return renderBrushBand(plot, live.a < live.b ? live.a : live.b, live.a < live.b ? live.b : live.a, spec.theme.axis)
+    if (props.brush !== true || props.horizontal === true) return []
     if (live !== null) return renderBrushBand(plot, live.a < live.b ? live.a : live.b, live.a < live.b ? live.b : live.a, spec.theme.axis)
     const committed = brushSel()
     if (committed === null) return []
@@ -1060,7 +1072,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     brushSel()
     legendPage()
     focusIdx()
-    typeOverride()
+    magicKind()
+    magicStack()
+    zoomSelect()
+    dataView()
     // The theme in scope — a provider mode flip repaints; touched HERE because
     // draw() bails before reading it while the canvas ref is still unattached.
     theme()
@@ -1136,7 +1151,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   }
 
   const handleDown = (ev: PointerEvent): void => {
-    if (props.dataZoom !== true && props.brush !== true && props.navigator !== true) return
+    if (props.dataZoom !== true && props.brush !== true && props.navigator !== true && props.toolbox?.dataZoom !== true) return
     const el = canvas
     if (el === null) return
     const rect = el.getBoundingClientRect()
@@ -1179,8 +1194,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     suppressClick = false
     // With both gestures on, Shift picks the brush and plain drag pans; with
     // only one on, the drag is that one. Precedence over guesswork.
-    dragMode =
-      props.brush === true && (props.dataZoom !== true || ev.shiftKey) ? 'brush' : props.dataZoom === true ? 'pan' : null
+    // The toolbox's box-select zoom, while on, owns the plain drag.
+    dragMode = zoomSelect()
+      ? 'zoomSelect'
+      : props.brush === true && (props.dataZoom !== true || ev.shiftKey) ? 'brush' : props.dataZoom === true ? 'pan' : null
     if (dragMode !== null) ev.preventDefault()
   }
 
@@ -1190,6 +1207,15 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       // The pinch ends when the second finger lifts; the remaining finger does not start a pan.
       if (pointers.size < 2) pinch = null
       return
+    }
+    if (dragMode === 'zoomSelect' && dragMoved) {
+      const plot = plotNow()
+      const rows = readData()
+      if (plot !== null && rows.length > 0) {
+        const range = brushRange(plot.x, plot.w, dragStartX - leftOffset, dragLastX - leftOffset, zoomWin() ?? { start: 0.0, end: 1.0 }, rows.length)
+        zoomHistory = [...zoomHistory, zoomWin()]
+        setZoom(windowOfRows(range.start, range.end, rows.length))
+      }
     }
     if (dragMode === 'brush' && dragMoved) {
       const plot = plotNow()
@@ -1339,12 +1365,29 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
             brushSel.set(null)
             hiddenSeries.set([])
             legendPage.set(0)
-            typeOverride.set(null)
+            magicKind.set('')
+            magicStack.set('')
+            zoomSelect.set(false)
+            dataView.set(false)
+            zoomHistory = []
           })
         } else if (tool === 'magicLine') {
-          typeOverride.set(typeOverride() === 'line' ? null : 'line')
+          magicKind.set(magicKind() === 'line' ? '' : 'line')
         } else if (tool === 'magicBar') {
-          typeOverride.set(typeOverride() === 'bar' ? null : 'bar')
+          magicKind.set(magicKind() === 'bar' ? '' : 'bar')
+        } else if (tool === 'magicStack') {
+          magicStack.set(magicStack() === 'stack' ? '' : 'stack')
+        } else if (tool === 'magicTiled') {
+          magicStack.set(magicStack() === 'tiled' ? '' : 'tiled')
+        } else if (tool === 'dataZoom') {
+          zoomSelect.set(!zoomSelect())
+        } else if (tool === 'dataZoomBack') {
+          // Back undoes the last box-select zoom; with nothing to undo it shows everything.
+          const prev = zoomHistory.length > 0 ? zoomHistory[zoomHistory.length - 1]! : null
+          zoomHistory = zoomHistory.slice(0, -1)
+          zoomWin.set(prev)
+        } else if (tool === 'dataView') {
+          dataView.set(!dataView())
         } else {
           // Static, and deliberately not dynamic: `@pyreon/charts/plot` is
           // ONE package entry (rolldown builds it as a single-chunk bundle —
@@ -1535,10 +1578,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     ...(props.onContextMenu !== undefined ? { onContextMenu: (ev: MouseEvent) => props.onContextMenu!(datumOfEvent(ev)) } : {}),
     // Pointer events, not mouse events: a finger drags, pans, brushes and
     // pinches exactly as a mouse does — and the tooltip follows a touch.
-    ...(props.dataZoom === true || props.brush === true || props.navigator === true
+    ...(props.dataZoom === true || props.brush === true || props.navigator === true || props.toolbox?.dataZoom === true
       ? { onPointerDown: handleDown, onPointerUp: endDrag, onPointerCancel: handleLeave }
       : {}),
-    ...(props.tooltip === true || props.crosshair === true || props.dataZoom === true || props.brush === true || props.navigator === true || eventsOn
+    ...(props.tooltip === true || props.crosshair === true || props.dataZoom === true || props.brush === true || props.navigator === true || props.toolbox?.dataZoom === true || eventsOn
       ? { onPointerMove: handleMove, onPointerLeave: handleLeave }
       : {}),
   })
@@ -1594,7 +1637,27 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       style: 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;margin:-1px;padding:0',
     }, () => announce())
 
-  if (props.accessibleTable === false && props.tooltip !== true && !keyboardOn) return canvasNode
+  // The toolbox data view: the chart's table, visible, over the canvas, with its own close button.
+  const dataViewNode = (): VNode | null => {
+    if (!dataView()) return null
+    const t = chartTable(a11yInput())
+    return h(
+      'div',
+      {
+        'data-pyreon-dataview': '',
+        style: 'position:absolute;inset:0;overflow:auto;background:#ffffff;color:#1f2937;font:12px system-ui,sans-serif;padding:8px;box-sizing:border-box',
+      },
+      h('button', { type: 'button', style: 'float:right', onClick: () => dataView.set(false) }, 'Close'),
+      h(
+        'table',
+        { style: 'border-collapse:collapse' },
+        h('thead', null, h('tr', null, ...t.headers.map((x) => h('th', { style: 'text-align:left;padding:2px 8px;border-bottom:1px solid #d1d5db' }, x)))),
+        h('tbody', null, ...t.rows.map((r) => h('tr', null, ...r.map((c) => h('td', { style: 'padding:2px 8px' }, c))))),
+      ),
+    )
+  }
+
+  if (props.accessibleTable === false && props.tooltip !== true && !keyboardOn && props.toolbox?.dataView !== true) return canvasNode
 
   // A real table rather than a longer label: a label is read as one
   // unstructured string, while a table can be navigated by row and column.
@@ -1636,6 +1699,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     'div',
     { style: 'position:relative' },
     canvasNode,
+    dataViewNode,
     ...(props.tooltip === true ? [tooltipNode()] : []),
     ...(keyboardOn ? [liveNode()] : []),
     ...(props.accessibleTable === false ? [] : [() => table()]),

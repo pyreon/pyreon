@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { hitToolbox, renderToolbox, toolboxTools } from './toolbox'
+import { hitToolbox, renderToolbox } from './toolbox'
+import { toolboxTools } from './toolbox-config'
 
 describe('toolbox layout', () => {
   it('expands the config in ECharts order: magicType, restore, saveAsImage', () => {

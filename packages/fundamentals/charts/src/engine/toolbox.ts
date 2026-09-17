@@ -8,13 +8,13 @@
 
 import type { DrawCmd, Double, Rect } from './types'
 
-export type ToolboxTool = 'saveAsImage' | 'restore' | 'magicLine' | 'magicBar'
-
 export interface ToolboxOptions {
   fontSize: Double
   color: string
   /** The active magicType, drawn emphasized. */
-  active?: ToolboxTool | undefined
+  active?: string | undefined
+  /** Every tool drawn emphasized (the magic kind, the stack mode, the zoom-select mode). */
+  actives?: string[] | undefined
   /** Gap between buttons. */
   gap?: Double | undefined
 }
@@ -27,44 +27,54 @@ export interface ToolboxLayout {
   height: Double
 }
 
-const GLYPH: Record<ToolboxTool, string> = {
-  saveAsImage: '⤓',
-  restore: '↺',
-  magicLine: '∿',
-  magicBar: '▥',
+/** A tool's glyph — a function rather than a record, so the table crosses to native. */
+export function toolboxGlyph(tool: string): string {
+  if (tool === 'saveAsImage') return '⤓'
+  if (tool === 'restore') return '↺'
+  if (tool === 'magicLine') return '∿'
+  if (tool === 'magicBar') return '▥'
+  if (tool === 'magicStack') return '☰'
+  if (tool === 'magicTiled') return '▦'
+  if (tool === 'dataZoom') return '⊕'
+  if (tool === 'dataZoomBack') return '⊖'
+  return '▤'
 }
 
 /** Lay out the tools right-aligned in `box`'s top row. */
-export function renderToolbox(tools: ToolboxTool[], box: Rect, opts: ToolboxOptions): ToolboxLayout {
+export function renderToolbox(tools: string[], box: Rect, opts: ToolboxOptions): ToolboxLayout {
   const cmds: DrawCmd[] = []
   const boxes: Rect[] = []
   if (tools.length === 0) return { cmds, boxes, height: 0.0 }
   const gap = opts.gap ?? 6.0
   const size = opts.fontSize + 8.0
-  let x = box.x + box.w - size
-  for (let i = tools.length - 1; i >= 0; i--) {
-    const tool = tools[i]!
-    const active = opts.active === tool
-    boxes[i] = { x, y: box.y, w: size, h: size }
+  let n = 0.0
+  for (const _t of tools) n = n + 1.0
+  // Left to right, so the hit boxes stay index-aligned with the tools; the last tool sits at the right edge.
+  let i = 0.0
+  for (const tool of tools) {
+    const x = box.x + box.w - size - (n - 1.0 - i) * (size + gap)
+    let active = opts.active === tool
+    for (const a of opts.actives ?? []) if (a === tool) active = true
+    boxes.push({ x, y: box.y, w: size, h: size })
     if (active) {
       cmds.push({ kind: 'rect', rect: { x, y: box.y, w: size, h: size }, fill: 'rgba(99,102,241,0.18)' })
     }
     cmds.push({
       kind: 'text',
-      text: GLYPH[tool],
+      text: toolboxGlyph(tool),
       at: { x: x + size / 2.0, y: box.y + size / 2.0 },
       fill: opts.color,
       size: opts.fontSize + 2.0,
       align: 'middle',
       baseline: 'middle',
     })
-    x = x - size - gap
+    i = i + 1.0
   }
   return { cmds, boxes, height: size + gap }
 }
 
 /** Which tool a point hits, or null. */
-export function hitToolbox(tools: ToolboxTool[], boxes: Rect[], px: Double, py: Double): ToolboxTool | null {
+export function hitToolbox(tools: string[], boxes: Rect[], px: Double, py: Double): string | null {
   for (let i = 0; i < boxes.length; i++) {
     const b = boxes[i]
     if (b === undefined) continue
@@ -73,11 +83,3 @@ export function hitToolbox(tools: ToolboxTool[], boxes: Rect[], px: Double, py: 
   return null
 }
 
-/** Expand a toolbox config into the ordered tool list the layout draws. */
-export function toolboxTools(cfg: { saveAsImage?: boolean | 'svg' | 'png' | undefined; restore?: boolean | undefined; magicType?: ('line' | 'bar')[] | undefined }): ToolboxTool[] {
-  const out: ToolboxTool[] = []
-  for (const t of cfg.magicType ?? []) out.push(t === 'line' ? 'magicLine' : 'magicBar')
-  if (cfg.restore === true) out.push('restore')
-  if (cfg.saveAsImage === true || cfg.saveAsImage === 'svg' || cfg.saveAsImage === 'png') out.push('saveAsImage')
-  return out
-}

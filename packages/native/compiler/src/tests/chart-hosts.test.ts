@@ -754,9 +754,15 @@ describe('chart hosts — <PlotChart dataZoom> as pinch + pan over a fraction wi
     const k = transform(PLOT, { target: 'kotlin' })
     expect(k.code).not.toContain('detectTransformGestures')
   })
-  it('two zoomed hosts in one component get one pair of state properties each (the collector drains per component)', () => {
+  it('two zoomed hosts in one component get one pair of state properties each, under distinct names, and compile', () => {
+    // This asserted two `pyreonZoom` declarations — a redeclaration swiftc rejects, so a
+    // component with two zoomable charts never built. Each host still owns its pair; the
+    // second is renamed in its declarations and its code alike.
     const r = transform(ZOOM.replace('<PlotChart animate={false} data', '<PlotChart animate={false} data={DAYS} marks={[bars((d) => d.hits)]} dataZoom={true} height={100} /><PlotChart data'), { target: 'swift' })
-    expect(r.code.split('@State private var pyreonZoom:').length - 1).toBe(2)
+    expect(r.code.split('@State private var pyreonZoom:').length - 1).toBe(1)
+    expect(r.code).toMatch(/@State private var pyreonZoom_\d+:/)
+    expect(r.code).toMatch(/@State private var pyreonZoomAnchor_\d+:/)
+    if (isSwiftcAvailable()) expect(validateSwiftWithStubs(r.code)).toMatchObject({ ok: true })
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine + gestures) accepts the dataZoom emit', () => {
     const r = validateSwiftWithStubs(transform(ZOOM, { target: 'swift' }).code)
