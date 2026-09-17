@@ -37,6 +37,12 @@ export function toolboxGlyph(tool: string): string {
   if (tool === 'magicTiled') return '▦'
   if (tool === 'dataZoom') return '⊕'
   if (tool === 'dataZoomBack') return '⊖'
+  if (tool === 'brushRect') return '▭'
+  if (tool === 'brushPolygon') return '⬠'
+  if (tool === 'brushLineX') return '⇹'
+  if (tool === 'brushLineY') return '⇳'
+  if (tool === 'brushKeep') return '⧉'
+  if (tool === 'brushClear') return '⌫'
   return '▤'
 }
 

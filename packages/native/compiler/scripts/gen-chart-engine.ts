@@ -92,6 +92,7 @@ export const ENGINE_FILES = [
   'legend-toggle',
   'navigator',
   'brush',
+  'brush-area',
   'a11y',
   'indicator-values',
   'decimate-values',

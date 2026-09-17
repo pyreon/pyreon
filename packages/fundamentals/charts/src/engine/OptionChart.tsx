@@ -12,12 +12,14 @@ import { batch, effect, signal } from '@pyreon/reactivity'
 import { canvasHost } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
 import { pinSelection } from './legend-toggle'
-import { compiledCommands, optionToSvg, planOption, zoomedView } from './option'
+import { compiledCommands, optionBrushSelection, optionToSvg, planOption, zoomedView } from './option'
 import { limitWindow } from './option-zoom'
 import { applyMagicType } from './magic-type'
 import { hitToolbox, renderToolbox } from './toolbox'
 import { toolboxTools } from './toolbox-config'
 import type { ToolboxTool } from './toolbox-config'
+import { brushAreaFromDrag, brushAreaUsable, brushPolygonAdd } from './brush-area'
+import type { BrushArea } from './brush-area'
 import { brushRange, renderBrushBand } from './brush'
 import { chartTable } from './a11y'
 import { navigatorDrag, navigatorHit } from './navigator'
@@ -71,6 +73,12 @@ export interface OptionChartProps extends Omit<CanvasHostProps, 'theme' | 'showT
   onTimelineChange?: (index: number) => void
   /** Fired as the `dataZoom` window moves, in ECharts' percent (`start` / `end` 0–100). */
   onDataZoom?: (window: { start: number; end: number }) => void
+  /**
+   * Fired as a brush (taken up through a toolbox brush tool) settles or
+   * clears: per series, the data indices inside it (all rows, not the zoomed
+   * view). ECharts' `brushselected` batch, flattened.
+   */
+  onBrushSelected?: (selected: { seriesIndex: number; dataIndex: number[] }[]) => void
   /** Fired with the datum under a click (cartesian plans), or null for a miss. */
   onSelect?: (hit: OptionHit | null) => void
   /** The datum INDEX under a click (or the keyboard's pick), -1 for a miss — the multiplatform-safe twin of `onSelect`. */
@@ -202,12 +210,21 @@ export function OptionChart(props: OptionChartProps): VNode {
   const selectBand = signal<{ a: Double; b: Double } | null>(null)
   let zoomHistory: (ZoomWindow | null)[] = []
   const dataView = signal(false)
+  // The brush: the type a tool took up ('' = none), keep mode, committed areas in plot-frame pixels, the one being drawn.
+  const brushType = signal<string>('')
+  const brushKeep = signal<boolean | null>(null)
+  const brushAreas = signal<BrushArea[]>([])
+  const brushLive = signal<BrushArea | null>(null)
+  let brushOrigin: { x: Double; y: Double; top: Double; plot: Rect } | null = null
+  const brushTool = (t: string): ToolboxTool => (t === 'rect' ? 'brushRect' : t === 'polygon' ? 'brushPolygon' : t === 'lineX' ? 'brushLineX' : 'brushLineY')
   const toolActives = (): ToolboxTool[] => {
     const out: ToolboxTool[] = []
     if (magicKind() !== '') out.push(magicKind() === 'bar' ? 'magicBar' : 'magicLine')
     if (magicStack() !== '') out.push(magicStack() === 'stack' ? 'magicStack' : 'magicTiled')
     if (zoomSelect()) out.push('dataZoom')
     if (dataView()) out.push('dataView')
+    if (brushType() !== '') out.push(brushTool(brushType()))
+    if (brushKeep() === true) out.push('brushKeep')
     return out
   }
   /** The compiled option with the magicType switches applied to its series. */
@@ -343,7 +360,9 @@ export function OptionChart(props: OptionChartProps): VNode {
     const cmds: DrawCmd[] = []
     let zoom: OptionGeometry['zoom'] = null
     if (plan.kind === 'cartesian') {
-      const composed = compiledCommands(plan.compiled, resolved, measure, winOf(plan.compiled), toolActives())
+      const live = brushLive()
+      const areas = live === null ? brushAreas() : [...brushAreas(), live]
+      const composed = compiledCommands(plan.compiled, resolved, measure, winOf(plan.compiled), toolActives(), areas)
       for (const c of composed.cmds) cmds.push(c)
       if (plan.compiled.zoom !== undefined) {
         const win = winOf(plan.compiled)!
@@ -544,6 +563,16 @@ export function OptionChart(props: OptionChartProps): VNode {
     a.click()
     if (svgUrl !== '') URL.revokeObjectURL(svgUrl)
   }
+  /** Report the brush's selection, per series, as data indices over every row. */
+  const reportBrush = (g: OptionGeometry): void => {
+    const cb = props.onBrushSelected
+    if (cb === undefined || g.plan.kind !== 'cartesian') return
+    const compiled = g.plan.compiled
+    const top = compiledCommands(compiled, g.option, g.measure).top
+    const view = zoomedView(compiled, top, winOf(compiled))
+    const sel = optionBrushSelection(compiled, view.spec, g.measure, brushAreas.peek())
+    cb(sel.map((x) => ({ seriesIndex: x.seriesIndex, dataIndex: x.dataIndex.map((v) => categoryIndex(view.spec, v) + view.offset) })))
+  }
   /** A click on the option's toolbox, top-right: true when a tool took it. */
   const toolboxClick = (g: OptionGeometry, px: Double, py: Double): boolean => {
     if (g.plan.kind !== 'cartesian' || g.plan.compiled.toolbox === undefined) return false
@@ -561,11 +590,22 @@ export function OptionChart(props: OptionChartProps): VNode {
         dataView.set(false)
         pinned.set([])
         zoomHistory = []
+        brushType.set('')
+        brushKeep.set(null)
+        brushAreas.set([])
       } else if (tool === 'magicLine') magicKind.set(magicKind() === 'line' ? '' : 'line')
       else if (tool === 'magicBar') magicKind.set(magicKind() === 'bar' ? '' : 'bar')
       else if (tool === 'magicStack') magicStack.set(magicStack() === 'stack' ? '' : 'stack')
       else if (tool === 'magicTiled') magicStack.set(magicStack() === 'tiled' ? '' : 'tiled')
-      else if (tool === 'dataZoom') zoomSelect.set(!zoomSelect())
+      else if (tool === 'dataZoom') {
+        zoomSelect.set(!zoomSelect())
+        brushType.set('')
+      } else if (tool === 'brushRect' || tool === 'brushPolygon' || tool === 'brushLineX' || tool === 'brushLineY') {
+        const type = tool === 'brushRect' ? 'rect' : tool === 'brushPolygon' ? 'polygon' : tool === 'brushLineX' ? 'lineX' : 'lineY'
+        brushType.set(brushType() === type ? '' : type)
+        zoomSelect.set(false)
+      } else if (tool === 'brushKeep') brushKeep.set(!(brushKeep() ?? (g.plan.kind === 'cartesian' && g.plan.compiled.brush?.multiple === true)))
+      else if (tool === 'brushClear') brushAreas.set([])
       else if (tool === 'dataZoomBack') {
         const prev = zoomHistory.length > 0 ? zoomHistory[zoomHistory.length - 1]! : null
         zoomHistory = zoomHistory.slice(0, -1)
@@ -574,6 +614,7 @@ export function OptionChart(props: OptionChartProps): VNode {
       } else if (tool === 'dataView') dataView.set(!dataView())
       else if (tool === 'saveAsImage') saveImage(tb)
     })
+    if (tool === 'brushClear' || tool === 'restore') reportBrush(g)
     return true
   }
   let lastGeometry: OptionGeometry | null = null
@@ -600,6 +641,10 @@ export function OptionChart(props: OptionChartProps): VNode {
       zoomSelect()
       selectBand()
       dataView()
+      brushType()
+      brushKeep()
+      brushAreas()
+      brushLive()
       hoverIndex()
       pinned()
       zoomWin()
@@ -637,6 +682,15 @@ export function OptionChart(props: OptionChartProps): VNode {
     // The slider: a press in the strip grabs a handle or the band; the drag is absolute from where it started.
     drag: {
       start: (g, px, py) => {
+        if (brushType() !== '' && g.plan.kind === 'cartesian') {
+          const top = compiledCommands(g.plan.compiled, g.option, g.measure).top
+          const plot = layoutChart(zoomedView(g.plan.compiled, top, winOf(g.plan.compiled)).spec, g.measure).plot
+          if (px >= plot.x && px <= plot.x + plot.w && py - top >= plot.y && py - top <= plot.y + plot.h) {
+            brushOrigin = { x: px, y: py - top, top, plot }
+            brushLive.set(brushAreaFromDrag(brushType(), plot, px, py - top, px, py - top))
+            return true
+          }
+        }
         const z = g.zoom
         // The toolbox box zoom, while on, takes a drag that starts over the plot.
         if (z !== null && zoomSelect() && px >= z.plot.x && px <= z.plot.x + z.plot.w && py >= z.plot.y && py <= z.plot.y + z.plot.h) {
@@ -649,7 +703,13 @@ export function OptionChart(props: OptionChartProps): VNode {
         navGrab = { kind: navigatorHit(r, z.win, px), x: px, win: z.win }
         return true
       },
-      move: (g, px) => {
+      move: (g, px, py) => {
+        const o = brushOrigin
+        if (o !== null) {
+          const live = brushLive()
+          brushLive.set(brushType() === 'polygon' && live !== null ? brushPolygonAdd(live, o.plot, px, py - o.top) : brushAreaFromDrag(brushType(), o.plot, o.x, o.y, px, py - o.top))
+          return
+        }
         const band = selectBand()
         if (band !== null) {
           selectBand.set({ a: band.a, b: px })
@@ -661,6 +721,19 @@ export function OptionChart(props: OptionChartProps): VNode {
       },
       end: () => {
         navGrab = null
+        if (brushOrigin !== null) {
+          brushOrigin = null
+          const area = brushLive()
+          const g0 = lastGeometry
+          const keep = brushKeep() ?? (g0?.plan.kind === 'cartesian' && g0.plan.compiled.brush?.multiple === true)
+          batch(() => {
+            brushLive.set(null)
+            if (area !== null && brushAreaUsable(area)) brushAreas.set(keep ? [...brushAreas.peek(), area] : [area])
+            else if (!keep) brushAreas.set([])
+          })
+          if (g0 !== null) reportBrush(g0)
+          return
+        }
         const band = selectBand()
         const g = lastGeometry
         if (band === null) return

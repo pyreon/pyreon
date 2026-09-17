@@ -95,7 +95,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -12161,6 +12161,8 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const zoomCfgK = chartZoomConfig((n) => chartAttrExprKotlin(e, n), (n) => _moduleConstExprsKotlin.get(n), KOTLIN_CHART_TARGET, (m) => _emitWarnings.push(m), tag)
   // An opening window slices the rows even with no gesture to move it.
   const toolbox = chartToolboxConfig(chartAttrExprKotlin(e, 'toolbox'), (n) => _moduleConstExprsKotlin.get(n), (m) => _emitWarnings.push(m), tag)
+  // ECharts' area brush (rect / polygon / lineX / lineY), shared with the web through `brush-area`.
+  const area = chartAreaBrushConfig((n) => readStaticAttrKotlin(e, n), (n) => chartAttrExprKotlin(e, n) !== undefined, toolbox?.brush ?? [], (m) => _emitWarnings.push(m), tag, (n) => chartAttrExprKotlin(e, n), (n) => _moduleConstExprsKotlin.get(n))
   const windowed = zoomed || presets !== undefined || navigating || zoomCfgK.initial !== null || toolbox?.dataZoom === true
   /** A gesture's window, held to `zoomLimits` when the chart has them. */
   const lim = (expr: string): string => (zoomCfgK.limits === null ? expr : `limitZoomWindow(${zoomCfgK.limits}, pyreonZoom, ${expr})`)
@@ -12200,6 +12202,12 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     }
     if (toolbox.dataView) lets.push('var pyreonDataView by remember { mutableStateOf(false) }')
     if (toolbox.save) lets.push('val pyreonContext = LocalContext.current')
+  }
+  if (area.on) {
+    lets.push(`var pyreonAreaType by remember { mutableStateOf(${JSON.stringify(area.initial)}) }`)
+    lets.push(`var pyreonAreaKeep by remember { mutableStateOf(${area.keep}) }`)
+    lets.push('var pyreonAreas by remember { mutableStateOf(listOf<BrushArea>()) }')
+    lets.push('var pyreonAreaLive by remember { mutableStateOf<BrushArea?>(null) }')
   }
   if (legend.toggling) lets.push('var pyreonHidden by remember { mutableStateOf(listOf<Int>()) }')
   // `selectedMode` — the Swift half's twin. A TAP pins a datum, which is the
@@ -12457,13 +12465,23 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const linesAttr = chartAttrExprKotlin(e, 'lines')
   if (linesAttr !== undefined) specArgs.push(`lines = ${withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'LinesSeries', args: [] } }, () => emitKotlinExpr(linesAttr, indent))}`)
   if (readStaticAttrKotlin(e, 'effectClock') === true) specArgs.push(`effectTime = pyreonClock`)
-  lets.push(toolbox?.magic === true ? `val pyreonSpec: ChartSpec = applyMagicType(ChartSpec(${specArgs.join(', ')}), pyreonMagicKind, pyreonMagicStack)` : `val pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
+  const specBuilt = toolbox?.magic === true ? `applyMagicType(ChartSpec(${specArgs.join(', ')}), pyreonMagicKind, pyreonMagicStack)` : `ChartSpec(${specArgs.join(', ')})`
+  if (area.on) {
+    // The brush only re-colours datums: the base spec's layout is the brushed spec's layout.
+    lets.push(`val pyreonSpecBase: ChartSpec = ${specBuilt}`)
+    lets.push('val pyreonAreasNow: List<BrushArea> = pyreonAreaLive?.let { pyreonAreas + it } ?: pyreonAreas')
+    lets.push('val pyreonAreaPlot: PyreonChartRect = layoutChart(pyreonSpecBase, ::pyreonChartMeasure).plot')
+    lets.push(`val pyreonSpec: ChartSpec = applyBrushSelection(pyreonSpecBase, ${area.only.length === 0 ? '' : 'brushOnlySeries('}brushSelection(pyreonSpecBase, layoutChart(pyreonSpecBase, ::pyreonChartMeasure), pyreonAreasNow)${area.only.length === 0 ? '' : `, listOf(${area.only.map((x) => `${x}.0`).join(', ')}))`}, pyreonAreasNow.isNotEmpty(), ${Number.isInteger(area.opacity) ? `${area.opacity}.0` : String(area.opacity)})`)
+  } else {
+    lets.push(`val pyreonSpec: ChartSpec = ${specBuilt}`)
+  }
   if (toolbox !== null) {
     const actives = [
       toolbox.magic ? 'if (pyreonMagicKind == "bar") "magicBar" else if (pyreonMagicKind == "line") "magicLine" else ""' : '""',
       toolbox.magic ? 'if (pyreonMagicStack == "stack") "magicStack" else if (pyreonMagicStack == "tiled") "magicTiled" else ""' : '""',
       toolbox.dataZoom ? 'if (pyreonZoomSelect) "dataZoom" else ""' : '""',
       toolbox.dataView ? 'if (pyreonDataView) "dataView" else ""' : '""',
+      ...(area.on ? ['if (pyreonAreaType == "rect") "brushRect" else if (pyreonAreaType == "polygon") "brushPolygon" else if (pyreonAreaType == "lineX") "brushLineX" else if (pyreonAreaType == "lineY") "brushLineY" else ""', 'if (pyreonAreaKeep) "brushKeep" else ""'] : []),
     ]
     lets.push(`val pyreonTools: List<String> = listOf(${toolbox.tools.map((t) => JSON.stringify(t)).join(', ')})`)
     lets.push(`val pyreonToolbox: ToolboxLayout = renderToolbox(pyreonTools, PyreonChartRect(0.0, 0.0, ${W}, ${H}), ToolboxOptions(fontSize = 11.0, color = pyreonSpec.theme.label, actives = listOf(${actives.join(', ')})))`)
@@ -12495,7 +12513,8 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   // is deliberately NOT mirrored — it is drawn at the raw tap point, which is
   // already a visual coordinate.
   const selectBand = toolbox?.dataZoom === true ? ' + (if (pyreonSelA >= 0.0) renderBrushBand(pyreonPlot, minOf(pyreonSelA, pyreonSelB), maxOf(pyreonSelA, pyreonSelB), "#6366f1") else listOf())' : ''
-  const painted = `${chrome.wrap(`renderChart(pyreonSpec, ::pyreonChartMeasure)${brushing ? ' + pyreonBrushCmds' : ''}${selectBand}`)}${extraCmds}`
+  const areaCovers = area.on ? ' + renderBrushAreas(pyreonAreasNow, "rgba(120,120,140,0.18)", pyreonSpec.theme.axis)' : ''
+  const painted = `${chrome.wrap(`renderChart(pyreonSpec, ::pyreonChartMeasure)${brushing ? ' + pyreonBrushCmds' : ''}${selectBand}${areaCovers}`)}${extraCmds}`
   const cmds = `${chrome.mirror(painted)}${tipCmds}`
   // saveAsImage reads the chart as drawn, bound once in composition (the tap lambda cannot call the composables it may contain).
   if (toolbox?.save === true) lets.push(`val pyreonPaintedNow: List<PyreonDrawCmd> = ${chrome.mirror(painted)}`)
@@ -12507,6 +12526,14 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     if (tooltip) return `(if (${local} < 0) -1 else ${global})`
     if (!windowed && !decimated) return localHit(x, y)
     return `run { val pyreonHit = ${localHit(x, y)}; if (pyreonHit < 0) -1 else ${global} }`
+  }
+  // `onBrushSelected`: the areas' datums per series, each index GLOBAL (the window's and decimation's mapping, as a tap's).
+  const onAreaSel = chartEventHandler(e, 'brushselected')
+  const areaReport = (areasExpr: string): string => {
+    if (onAreaSel === undefined) return ''
+    const mapped = decimated ? 'pyreonKeep[categoryIndex(pyreonSpec, pyreonV)]' : 'categoryIndex(pyreonSpec, pyreonV)'
+    const global = windowed ? `${mapped} + pyreonRange.from` : mapped
+    return `; ${kotlinChartSelectBody(onAreaSel, `${area.only.length === 0 ? '' : 'brushOnlySeries('}brushSelection(pyreonSpec, layoutChart(pyreonSpec, ::pyreonChartMeasure), ${areasExpr})${area.only.length === 0 ? '' : `, listOf(${area.only.map((x) => `${x}.0`).join(', ')}))`}.map { pyreonS -> BrushSeriesSelection(seriesIndex = pyreonS.seriesIndex, dataIndex = pyreonS.dataIndex.map { pyreonV -> ${global} }) }`, indent)}`
   }
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   // Two x's, because the chrome and the plot are laid out in different
@@ -12521,7 +12548,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   let tap = ''
   // `pinning` joins the gate: a chart with ONLY `selectedMode` has no other
   // reason to install a tap, and without it the pin never runs.
-  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip || pinning || toolbox !== null) {
+  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip || pinning || toolbox !== null || area.on) {
     // With pinning on, the hit is computed ONCE into a local: the pin, the
     // change callback and `onSelect` all name the same pick.
     const pick = pinning ? 'pyreonPick' : hit(plotX, tapYExpr)
@@ -12547,6 +12574,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
         toolbox.dataView ? 'pyreonDataView = false' : '',
         legend.toggling ? 'pyreonHidden = listOf()' : '',
         brushing ? 'pyreonBrushStart = -1; pyreonBrushEnd = -1' : '',
+        area.on ? `pyreonAreaType = ${JSON.stringify(area.initial)}; pyreonAreaKeep = ${area.keep}; pyreonAreas = listOf()${areaReport('listOf()')}` : '',
       ].filter((x) => x !== '')
       acts.push(`"restore" -> { ${reset.join('; ')} }`)
       if (toolbox.magic) {
@@ -12556,10 +12584,17 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
         acts.push('"magicTiled" -> { pyreonMagicStack = if (pyreonMagicStack == "tiled") "" else "tiled" }')
       }
       if (toolbox.dataZoom) {
-        acts.push('"dataZoom" -> { pyreonZoomSelect = !pyreonZoomSelect }')
+        acts.push(`"dataZoom" -> { pyreonZoomSelect = !pyreonZoomSelect${area.on ? '; pyreonAreaType = ""' : ''} }`)
         acts.push('"dataZoomBack" -> { pyreonZoom = pyreonZoomHistory.lastOrNull() ?: ZoomWindow(start = 0.0, end = 1.0); pyreonZoomHistory = pyreonZoomHistory.dropLast(1) }')
       }
       if (toolbox.dataView) acts.push('"dataView" -> { pyreonDataView = !pyreonDataView }')
+      if (area.on) {
+        for (const [tool, type] of [['brushRect', 'rect'], ['brushPolygon', 'polygon'], ['brushLineX', 'lineX'], ['brushLineY', 'lineY']] as const) {
+          if (toolbox.brush.includes(tool)) acts.push(`"${tool}" -> { pyreonAreaType = if (pyreonAreaType == "${type}") "" else "${type}"${toolbox.dataZoom ? '; pyreonZoomSelect = false' : ''} }`)
+        }
+        if (toolbox.brush.includes('brushKeep')) acts.push('"brushKeep" -> { pyreonAreaKeep = !pyreonAreaKeep }')
+        if (toolbox.brush.includes('brushClear')) acts.push(`"brushClear" -> { pyreonAreas = listOf()${areaReport('listOf()')} }`)
+      }
       if (toolbox.save) {
         const onSave = e.attrs.find((a) => a.kind === 'event' && a.name === 'saveimage')
         const cmdsNow = 'pyreonPaintedNow'
@@ -12588,6 +12623,10 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
       decls.push(`val pyreonPreset = presetHit(pyreonPresetStrip.boxes, ${tapX}, ${tapYExpr})`)
       branches.push(`if (pyreonPreset >= 0) { pyreonZoom = ${lim(`presetWindow(pyreonPresets[pyreonPreset].count, ${data}.size)`)} }`)
     }
+    if (area.on) {
+      // A tap over the plot clears a single-mode brush, as a click does on the web.
+      branches.push(`if (pyreonAreaType != "" && !pyreonAreaKeep && pyreonAreas.isNotEmpty()) { pyreonAreas = listOf()${areaReport('listOf()')} }`)
+    }
     if (brushing) {
       branches.push(`if (pyreonBrushStart >= 0) { pyreonBrushStart = -1; pyreonBrushEnd = -1${onBrush === undefined ? '' : `; ${onBrush}(null)`} }`)
     }
@@ -12604,8 +12643,14 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     const tapKeys = ['pyreonSpec', ...(windowed ? ['pyreonZoom'] : []), ...(legend.toggling ? ['pyreonHidden'] : []), ...(legend.paging ? ['pyreonLegendPage'] : []), ...(toolbox === null ? [] : ['pyreonToolbox'])]
     tap = `.pointerInput(${tapKeys.join(', ')}) { detectTapGestures { pyreonTap -> ${body} } }`
   }
+  if (area.on) {
+    // The area brush: a drag while a type is on builds the area in PLOT space from the DOWN point; its end commits (or keeps) it.
+    const px = (raw: string): string => chrome.plotX(`(${raw}.x / pyreonDensity).toDouble()`)
+    const py = (raw: string): string => (chrome.top === '0.0' ? `(${raw}.y / pyreonDensity).toDouble()` : `(${raw}.y / pyreonDensity).toDouble() - pyreonTop`)
+    tap += `.pointerInput(pyreonAreaPlot, pyreonSpec) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); if (pyreonAreaType != "") { val pyreonSx = ${px('pyreonDown.position')}; val pyreonSy = ${py('pyreonDown.position')}; drag(pyreonDown.id) { pyreonChange -> val pyreonPx = ${px('pyreonChange.position')}; val pyreonPy = ${py('pyreonChange.position')}; pyreonChange.consume(); pyreonAreaLive = if (pyreonAreaType == "polygon") brushPolygonAdd(pyreonAreaLive ?: brushAreaFromDrag("polygon", pyreonAreaPlot, pyreonSx, pyreonSy, pyreonSx, pyreonSy), pyreonAreaPlot, pyreonPx, pyreonPy) else brushAreaFromDrag(pyreonAreaType, pyreonAreaPlot, pyreonSx, pyreonSy, pyreonPx, pyreonPy) }; val pyreonA = pyreonAreaLive; if (pyreonA != null && brushAreaUsable(pyreonA)) { val pyreonNextAreas: List<BrushArea> = if (pyreonAreaKeep) pyreonAreas + pyreonA else listOf(pyreonA); pyreonAreas = pyreonNextAreas${areaReport('pyreonNextAreas')} }; pyreonAreaLive = null } } }`
+  }
   if (zoomed) {
-    const guard = toolbox?.dataZoom === true ? 'if (!pyreonZoomSelect) ' : ''
+    const guard = [toolbox?.dataZoom === true ? 'if (!pyreonZoomSelect) ' : '', area.on ? 'if (pyreonAreaType == "") ' : ''].join('')
     tap += `.pointerInput(Unit) { detectTransformGestures { _, pyreonPan, pyreonZoomBy, _ -> ${guard}pyreonZoom = ${lim(`panWindow(zoomWindow(pyreonZoom, 1.0 / pyreonZoomBy.toDouble(), 0.5), -(pyreonPan.x / pyreonDensity).toDouble() / ${W})`)} } }`
   }
   if (toolbox?.dataZoom === true) {

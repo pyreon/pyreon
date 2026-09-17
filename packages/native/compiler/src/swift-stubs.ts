@@ -485,6 +485,14 @@ public enum Edge {
 }
 public protocol Shape {}
 public struct Rectangle: Shape { public init() {} }
+public struct GestureMask: OptionSet {
+  public let rawValue: UInt32
+  public init(rawValue: UInt32) { self.rawValue = rawValue }
+  public static let none = GestureMask([])
+  public static let gesture = GestureMask(rawValue: 1)
+  public static let subviews = GestureMask(rawValue: 2)
+  public static let all = GestureMask(rawValue: 3)
+}
 public protocol Gesture {}
 public struct LongPressGesture: Gesture {
   public init(minimumDuration: Double = 0.5) {}
@@ -568,6 +576,7 @@ extension View {
   public func accessibilityHidden(_ hidden: Bool) -> some View { self }
   public func simultaneousGesture<G: Gesture>(_ gesture: G) -> some View { self }
   public func highPriorityGesture<G: Gesture>(_ gesture: G) -> some View { self }
+  public func highPriorityGesture<G: Gesture>(_ gesture: G, including mask: GestureMask) -> some View { self }
   // .gesture / .contentShape(Rectangle()) — the chart-host tap emit (chart-hosts.ts).
   public func gesture<G: Gesture>(_ gesture: G) -> some View { self }
   public func contentShape<S: Shape>(_ shape: S) -> some View { self }

@@ -932,6 +932,14 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("pyreon-save-image").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("gal-saved").performScrollTo().assertTextEquals("data:image/png;")
+        // The area brush: a lineX drag over the middle bars reports some of them; a tap clears it.
+        val brushChart = composeRule.onNodeWithTag("gal-brush").performScrollTo()
+        brushChart.performTouchInput { swipe(start = Offset(width * 0.4f, height * 0.5f), end = Offset(width * 0.66f, height * 0.5f), durationMillis = 600) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-brush-count").performScrollTo().assert(androidx.compose.ui.test.SemanticsMatcher("a partial brush selection") { n -> (n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.joinToString("") { it.text } ?: "") in listOf("1:1", "1:2", "1:3", "1:4", "1:5") })
+        composeRule.onNodeWithTag("gal-brush").performScrollTo().performTouchInput { click(Offset(width * 0.5f, height * 0.5f)) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-brush-count").performScrollTo().assertTextEquals("1:0")
         // The lines trail renders. Its MOTION is proven on the iOS device lane
         // and in real Chromium; here it cannot be: the trail runs on
         // withInfiniteAnimationFrameNanos (a plain frame loop kept this harness

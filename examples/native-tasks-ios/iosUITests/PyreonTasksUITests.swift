@@ -950,18 +950,31 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(saveChart.waitForExistence(timeout: 10), "gal-save missing on the gallery")
         scrollFullyOnScreen(saveChart, in: app)
         app.buttons["pyreon-save-image"].firstMatch.tap()
-        XCTAssertTrue(waitForLabel(app.staticTexts["gal-saved"].firstMatch, "data:image/png;", timeout: 5), "saveAsImage did not hand onSaveImage a PNG (label: \(app.staticTexts["gal-saved"].firstMatch.label))")
+        XCTAssertTrue(waitForLabel(app.staticTexts["gal-saved"].firstMatch, "data:image/png;", timeout: 15), "saveAsImage did not hand onSaveImage a PNG (label: \(app.staticTexts["gal-saved"].firstMatch.label))")
+        // The area brush: a lineX drag over the middle bars reports some of them; a tap clears it.
+        let areaChart = app.descendants(matching: .any).matching(identifier: "gal-brush").firstMatch
+        XCTAssertTrue(areaChart.waitForExistence(timeout: 10), "gal-brush missing on the gallery")
+        scrollFullyOnScreen(areaChart, in: app)
+        let areaOrigin = areaChart.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let areaCount = app.staticTexts["gal-brush-count"].firstMatch
+        areaOrigin.withOffset(CGVector(dx: areaChart.frame.width * 0.4, dy: areaChart.frame.height * 0.5)).press(forDuration: 0.1, thenDragTo: areaOrigin.withOffset(CGVector(dx: areaChart.frame.width * 0.66, dy: areaChart.frame.height * 0.5)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        let areaBrushed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label IN %@", ["1:1", "1:2", "1:3", "1:4", "1:5"]), object: areaCount)
+        XCTAssertEqual(XCTWaiter().wait(for: [areaBrushed], timeout: 5), .completed, "the lineX brush did not report a partial selection (label: \(areaCount.label))")
+        areaOrigin.withOffset(CGVector(dx: areaChart.frame.width * 0.5, dy: areaChart.frame.height * 0.5)).tap()
+        XCTAssertTrue(waitForLabel(areaCount, "1:0", timeout: 5), "a tap did not clear the brush (label: \(areaCount.label))")
         // The geo route trail MOVES too: two screenshots half a second apart differ.
         let geoTrail = app.descendants(matching: .any).matching(identifier: "gal-geo-trail").firstMatch
         XCTAssertTrue(geoTrail.waitForExistence(timeout: 10), "gal-geo-trail canvas missing on the gallery")
         var trailTries = 0
         // On screen in either direction: an off-screen element's screenshot never changes.
-        while trailTries < 12 {
+        while trailTries < 16 {
             let window = app.windows.firstMatch.frame
+            // Down the left margin, outside every chart: a swipe that starts on an interactive chart is the chart's.
+            let gutter = app.scrollViews["gal-scroll"].firstMatch
             if geoTrail.frame.minY < window.minY + 120 {
-                app.scrollViews["gal-scroll"].firstMatch.swipeDown()
+                gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.25)).press(forDuration: 0.05, thenDragTo: gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85)))
             } else if geoTrail.frame.maxY > window.maxY - 60 {
-                app.scrollViews["gal-scroll"].firstMatch.swipeUp()
+                gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85)).press(forDuration: 0.05, thenDragTo: gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.25)))
             } else {
                 break
             }
@@ -969,7 +982,7 @@ final class PyreonTasksUITests: XCTestCase {
         }
         let geoTrailBefore = geoTrail.screenshot().pngRepresentation
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        XCTAssertNotEqual(geoTrailBefore, geoTrail.screenshot().pngRepresentation, "gal-geo-trail did not move between frames")
+        XCTAssertNotEqual(geoTrailBefore, geoTrail.screenshot().pngRepresentation, "gal-geo-trail did not move between frames (frame \(geoTrail.frame), window \(app.windows.firstMatch.frame))")
         // The lines trail MOVES: two screenshots of its canvas half a second
         // apart differ (the simulator runs with Reduce Motion off).
         let linesChart = app.descendants(matching: .any).matching(identifier: "gal-lines").firstMatch

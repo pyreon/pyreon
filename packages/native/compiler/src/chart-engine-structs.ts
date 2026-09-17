@@ -2670,6 +2670,39 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "inBrush",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "number"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "brushOpacity",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "errLow",
         "type": {
           "kind": "union",
@@ -11814,6 +11847,52 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "BrushArea",
+    "fields": [
+      {
+        "name": "type",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "points",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonChartPt",
+            "args": []
+          }
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "BrushSeriesSelection",
+    "fields": [
+      {
+        "name": "seriesIndex",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "dataIndex",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "number"
+          }
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "A11ySeries",
     "fields": [
       {
@@ -12102,8 +12181,10 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "Bin",
   "BoxplotFrame",
   "BoxplotOptions",
+  "BrushArea",
   "BrushBand",
   "BrushRange",
+  "BrushSeriesSelection",
   "CalendarCell",
   "CalendarCellValues",
   "CalendarDate",

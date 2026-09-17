@@ -13,7 +13,11 @@
 // cross. And it is DATA in, DATA out — no console, no DOM — so it runs on the
 // server and in a test the same way the engine does.
 
-import { renderChart } from './render'
+import { applyBrushSelection, brushOnlySeries, brushSelection, renderBrushAreas } from './brush-area'
+import type { BrushArea, BrushSeriesSelection } from './brush-area'
+import { readBrush } from './option-brush'
+import type { OptionBrush } from './option-brush'
+import { layoutChart, renderChart } from './render'
 import { appendGraphicLayer, graphicCommands, resolveDataset, svgSize } from './option-layer'
 import { visualMapCommands } from './visual-map'
 import { readDataZoom, windowSpec } from './option-zoom'
@@ -91,6 +95,8 @@ export interface CompiledOption {
   zoom?: OptionZoom | undefined
   /** `toolbox.feature`, host-shaped. */
   toolbox?: OptionToolbox | undefined
+  /** `option.brush`, read. */
+  brush?: OptionBrush | undefined
   supported: boolean
 }
 
@@ -108,7 +114,7 @@ export interface CompileOptions {
 const KNOWN_TOP = new Set([
   'aria',
   'series', 'xAxis', 'yAxis', 'title', 'legend', 'tooltip', 'color', 'grid',
-  'animation', 'backgroundColor', 'textStyle', 'dataset', 'graphic', 'visualMap', 'dataZoom', 'toolbox',
+  'animation', 'backgroundColor', 'textStyle', 'dataset', 'graphic', 'visualMap', 'dataZoom', 'toolbox', 'brush',
 ])
 const KNOWN_SERIES = new Set([
   'type', 'name', 'data', 'stack', 'smooth', 'step', 'areaStyle', 'itemStyle',
@@ -980,11 +986,21 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   }
   if (customY !== undefined && spec.yDomain === undefined) spec.yDomain = customY
   if (customX !== undefined && (spec.xValues === undefined || spec.xValues.length === 0)) spec.xValues = customX
-  const toolbox = option['toolbox'] === undefined ? undefined : readToolbox(option as Record<string, unknown>, warn)
+  const brush = option['brush'] === undefined ? undefined : readBrush(option as Record<string, unknown>, warn)
+  const toolbox = option['toolbox'] === undefined ? undefined : readToolbox(option as Record<string, unknown>, warn, brush)
   let zoom = option['dataZoom'] === undefined ? undefined : readDataZoom(option as Record<string, unknown>, spec.categories, warn)
   // The toolbox's box zoom needs a window even when the option has no dataZoom component.
   if (zoom === undefined && toolbox?.dataZoom === true) zoom = { inside: false, slider: false, window: { start: 0.0, end: 1.0 }, keepY: false, lock: false, minSpan: 0.0, maxSpan: 1.0, wheel: false, move: false }
-  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }) }
+  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }), ...(brush === undefined ? {} : { brush }) }
+}
+
+/** The selection a compiled option's brush makes over `spec`, restricted to `brush.seriesIndex`. */
+export function optionBrushSelection(compiled: CompiledOption, spec: ChartSpec, measure: MeasureText, areas: BrushArea[]): BrushSeriesSelection[] {
+  return brushOnlySeries(brushSelection(spec, layoutChart(spec, measure), areas), compiled.brush?.seriesIndex ?? [])
+}
+
+function applyOptionBrush(compiled: CompiledOption, spec: ChartSpec, measure: MeasureText, areas: BrushArea[]): ChartSpec {
+  return applyBrushSelection(spec, optionBrushSelection(compiled, spec, measure, areas), true, compiled.brush?.outOpacity ?? 0.1)
 }
 
 const defaultPalette = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
@@ -1147,7 +1163,7 @@ export function zoomedView(compiled: CompiledOption, top: Double, win?: ZoomWind
   return { spec: view.spec, offset: view.offset, navigator }
 }
 
-export function compiledCommands(compiled: CompiledOption, option: EChartsOption, measure: MeasureText, win?: ZoomWindow, actives: ToolboxTool[] = []): { cmds: DrawCmd[]; top: Double } {
+export function compiledCommands(compiled: CompiledOption, option: EChartsOption, measure: MeasureText, win?: ZoomWindow, actives: ToolboxTool[] = [], areas: BrushArea[] = []): { cmds: DrawCmd[]; top: Double } {
   const width = compiled.spec.width
   const height = compiled.spec.height
   const t = compiled.spec.theme
@@ -1169,8 +1185,11 @@ export function compiledCommands(compiled: CompiledOption, option: EChartsOption
     top = top + l.height
   }
   const view = zoomedView(compiled, top, win)
-  const chart = renderChart(view.spec, measure)
+  // Brush areas are in PLOT-frame pixels (above the title / legend offset): they dim what they miss.
+  const brushed = areas.length === 0 ? view.spec : applyOptionBrush(compiled, view.spec, measure, areas)
+  const chart = renderChart(brushed, measure)
   for (const c of chart) cmds.push(top === 0.0 ? c : shift(c, top))
+  for (const c of renderBrushAreas(areas, 'rgba(120,120,140,0.18)', t.axis)) cmds.push(top === 0.0 ? c : shift(c, top))
   if (view.navigator !== null) for (const c of view.navigator.cmds) cmds.push(c)
   const customOut = customCommands(compiled.custom, view.spec, measure, width, height)
   for (const c of customOut.cmds) cmds.push(top === 0.0 ? c : shift(c, top))

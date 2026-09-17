@@ -753,6 +753,7 @@ function GalleryPage() {
   // The toolbox's box zoom reports its window here; the save button its PNG's prefix.
   const tbZoom = signal('0-100')
   const tbSaved = signal('none')
+  const brushCount = signal('none')
   return (
     <Scroll direction="vertical" data-testid="gal-scroll">
       <Stack gap={3} padding={4} data-testid="gal-page">
@@ -860,6 +861,15 @@ function GalleryPage() {
           onZoom={(w: ZoomWindow) => tbZoom.set(`${(w.start * 100).toFixed(0)}-${(w.end * 100).toFixed(0)}`)}
         />
         <Text data-testid="gal-toolbox-zoom">{tbZoom()}</Text>
+        <PlotChart
+          data={LOAD_ROWS}
+          marks={[bars((d: WeekRow) => d.load)]}
+          brushType="lineX"
+          height={200}
+          data-testid="gal-brush"
+          onBrushSelected={(s: { seriesIndex: number; dataIndex: number[] }[]) => brushCount.set(`${s.length}:${s.length > 0 ? s[0]!.dataIndex.length : 0}`)}
+        />
+        <Text data-testid="gal-brush-count">{brushCount()}</Text>
         <PieChart
           data={SLICES}
           value={(d: PieSlice) => d.total}

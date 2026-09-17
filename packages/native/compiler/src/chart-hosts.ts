@@ -19,7 +19,7 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import { compileOption, readToolbox, defaultTimelineStrip, resolveYDomain, timelineSteps, DEFAULT_DECALS, visualMapSpec, visualStripOf, fillPattern, imageFill, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
+import { compileOption, readBrush, readToolbox, defaultTimelineStrip, resolveYDomain, timelineSteps, DEFAULT_DECALS, visualMapSpec, visualStripOf, fillPattern, imageFill, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
 import type { ChartPattern, VisualMapSpec, GraphicElement, RichStyle, SamplingRequest } from '@pyreon/charts/option-layer'
 import type { AttrIR, ChildIR, ExprIR } from './types'
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
@@ -1104,16 +1104,24 @@ export function desugarOptionChart(
     warn('<OptionChart option.toolbox>: a native toolbox needs a literal toolbox object; native renders without it.')
     return lowered
   }
-  const tb = readToolbox(plainOption.value, (_c, path, message) => warn(`<OptionChart option.${path}>: ${message}`))
+  const optWarn = (_c: string, path: string, message: string): void => warn(`<OptionChart option.${path}>: ${message}`)
+  const brush = plainOption.value['brush'] === undefined ? undefined : readBrush(plainOption.value, optWarn)
+  const tb = readToolbox(plainOption.value, optWarn, brush)
   if (tb === undefined) return lowered
   const cfg: Record<string, unknown> = lowered.tag === 'PlotChart'
-    ? { ...(tb.dataZoom === true ? { dataZoom: true } : {}), ...(tb.dataView === true ? { dataView: true } : {}), ...(tb.magicType !== undefined ? { magicType: tb.magicType } : {}), ...(tb.restore === true ? { restore: true } : {}), ...(tb.saveAsImage === true ? { saveAsImage: true } : {}) }
+    ? { ...(tb.dataZoom === true ? { dataZoom: true } : {}), ...(tb.dataView === true ? { dataView: true } : {}), ...(tb.magicType !== undefined ? { magicType: tb.magicType } : {}), ...(tb.brush !== undefined ? { brush: tb.brush } : {}), ...(tb.restore === true ? { restore: true } : {}), ...(tb.saveAsImage === true ? { saveAsImage: true } : {}) }
     : tb.saveAsImage === true ? { saveAsImage: true } : {}
-  if (lowered.tag !== 'PlotChart' && (tb.dataZoom === true || tb.dataView === true || tb.magicType !== undefined || tb.restore === true)) {
+  const brushAttrs: AttrIR[] = []
+  if (lowered.tag === 'PlotChart' && tb.brush !== undefined && brush !== undefined) {
+    if (brush.multiple) brushAttrs.push({ kind: 'attr', name: 'brushMode', value: valueToIr('multiple') })
+    if (brush.outOpacity !== 0.1) brushAttrs.push({ kind: 'attr', name: 'outOfBrushOpacity', value: valueToIr(brush.outOpacity) })
+    if (brush.seriesIndex.length > 0) brushAttrs.push({ kind: 'attr', name: 'brushSeriesIndex', value: valueToIr(brush.seriesIndex) })
+  }
+  if (lowered.tag !== 'PlotChart' && (tb.dataZoom === true || tb.dataView === true || tb.magicType !== undefined || tb.restore === true || tb.brush !== undefined)) {
     warn(`<OptionChart option.toolbox>: this ${lowered.tag} lowers the toolbox's saveAsImage on native; its other tools act on a cartesian chart.`)
   }
   if (Object.keys(cfg).length === 0) return lowered
-  return { ...lowered, attrs: [...lowered.attrs.filter((a) => !(a.kind === 'attr' && a.name === 'toolbox')), { kind: 'attr', name: 'toolbox', value: valueToIr(cfg) }] }
+  return { ...lowered, attrs: [...lowered.attrs.filter((a) => !(a.kind === 'attr' && a.name === 'toolbox')), { kind: 'attr', name: 'toolbox', value: valueToIr(cfg) }, ...brushAttrs] }
 }
 
 function desugarOptionChartHost(
@@ -1150,16 +1158,16 @@ function desugarOptionChartHost(
     return undefined
   }
 
-  optionFields(raw, ['aria', 'series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'dataZoom', 'toolbox', 'color', 'dataset', 'graphic'], 'option', warn)
+  optionFields(raw, ['aria', 'series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'dataZoom', 'toolbox', 'brush', 'color', 'dataset', 'graphic'], 'option', warn)
 
   for (const a of e.attrs) {
-    if (a.kind === 'event' && a.name !== 'selectindex') {
+    if (a.kind === 'event' && a.name !== 'selectindex' && a.name !== 'brushselected') {
       const prop = a.name === 'select' ? 'onSelect' : a.name === 'familyselect' ? 'onFamilySelect' : a.name === 'timelinechange' ? 'onTimelineChange' : `on${a.name}`
       warn(`<OptionChart ${prop}>: this rich callback shape does not cross yet; native renders without it.`)
     }
   }
   const attrs: AttrIR[] = e.attrs.filter((a) => {
-    if (a.kind !== 'attr') return a.kind === 'event' && a.name === 'selectindex'
+    if (a.kind !== 'attr') return a.kind === 'event' && (a.name === 'selectindex' || a.name === 'brushselected')
     return a.name !== 'option' && a.name !== 'theme' && a.name !== 'locale' && a.name !== 'timelineIndex'
   })
   const set = (name: string, value: ExprIR): void => {
@@ -3370,6 +3378,50 @@ export function chartChromeUnlowered(tag: string): readonly string[] {
   return CHART_CHROME_PROPS.filter((p) => !lowered.includes(p))
 }
 
+/**
+ * The area brush a `<PlotChart>` asks for: a literal `brushType` (or a toolbox
+ * brush tool to take one up), `brushMode`, `outOfBrushOpacity`. Non-literal
+ * values warn and fall back, as every chart flag does.
+ */
+export function chartAreaBrushConfig(
+  read: (name: string) => unknown,
+  has: (name: string) => boolean,
+  toolboxBrush: readonly string[],
+  warn: (m: string) => void,
+  tag: string,
+  expr: (name: string) => ExprIR | undefined,
+  resolve: (name: string) => ExprIR | undefined,
+): { on: boolean; initial: string; keep: boolean; opacity: number; only: number[] } {
+  let initial = ''
+  if (has('brushType')) {
+    const t = read('brushType')
+    if (t === 'rect' || t === 'polygon' || t === 'lineX' || t === 'lineY') initial = t
+    else warn(`<${tag} brushType>: native needs a literal 'rect' | 'polygon' | 'lineX' | 'lineY'; the brush starts off.`)
+  }
+  let keep = false
+  if (has('brushMode')) {
+    const m = read('brushMode')
+    if (m === 'single' || m === 'multiple') keep = m === 'multiple'
+    else warn(`<${tag} brushMode>: native needs a literal 'single' | 'multiple'; single applies.`)
+  }
+  let opacity = 0.1
+  if (has('outOfBrushOpacity')) {
+    const o = read('outOfBrushOpacity')
+    if (typeof o === 'number') opacity = Math.max(0, Math.min(1, o))
+    else warn(`<${tag} outOfBrushOpacity>: native needs a literal number; 0.1 applies.`)
+  }
+  const only: number[] = []
+  const seriesExpr = expr('brushSeriesIndex')
+  if (seriesExpr !== undefined) {
+    const seriesLit = literalOf(seriesExpr, resolve)
+    const v = seriesLit === undefined ? undefined : irToValue(seriesLit, resolve)
+    const o = v !== undefined && v.ok ? v.value : undefined
+    if (Array.isArray(o) && o.every((x) => typeof x === 'number')) for (const x of o as number[]) only.push(x)
+    else warn(`<${tag} brushSeriesIndex>: native needs a literal number array; every series is brushed.`)
+  }
+  return { on: initial !== '' || toolboxBrush.length > 0, initial, keep, opacity, only }
+}
+
 /** The warning for a rich-hit `onSelect` on a host whose native tap can only report the engine's INDEX hit. */
 export function chartRichSelectWarning(tag: string): string {
   return `<${tag} onSelect>: the rich-hit callback is not lowered on native — use \`onSelectIndex\` (the engine's index hit, the shape the tap reports on every target).`
@@ -3731,7 +3783,7 @@ export function chartToolboxConfig(
   resolve: (name: string) => ExprIR | undefined,
   warn: (m: string) => void,
   tag: string,
-): { tools: string[]; dataZoom: boolean; magic: boolean; dataView: boolean; save: boolean } | null {
+): { tools: string[]; dataZoom: boolean; magic: boolean; dataView: boolean; save: boolean; brush: string[] } | null {
   if (expr === undefined) return null
   const literal = literalOf(expr, resolve)
   const v = literal === undefined ? undefined : irToValue(literal, resolve)
@@ -3750,10 +3802,22 @@ export function chartToolboxConfig(
     else if (t === 'stack') tools.push('magicStack')
     else if (t === 'tiled') tools.push('magicTiled')
   }
+  // The area-brush tools, as the web toolbox names them.
+  const brush: string[] = []
+  const BRUSH_TOOLS: Readonly<Record<string, string>> = { rect: 'brushRect', polygon: 'brushPolygon', lineX: 'brushLineX', lineY: 'brushLineY', keep: 'brushKeep', clear: 'brushClear' }
+  for (const b of Array.isArray(cfg['brush']) ? (cfg['brush'] as unknown[]) : []) {
+    const t = typeof b === 'string' ? BRUSH_TOOLS[b] : undefined
+    if (t === undefined) {
+      warn(`<${tag} toolbox.brush>: "${String(b)}" is not a brush tool (rect, polygon, lineX, lineY, keep, clear); it was skipped.`)
+      continue
+    }
+    tools.push(t)
+    brush.push(t)
+  }
   if (cfg['restore'] === true) tools.push('restore')
   const save = cfg['saveAsImage'] === true || cfg['saveAsImage'] === 'png' || cfg['saveAsImage'] === 'svg'
   if (cfg['saveAsImage'] === 'svg') warn(`<${tag} toolbox.saveAsImage>: a phone saves the chart as a PNG, not an SVG.`)
   if (save) tools.push('saveAsImage')
-  return { tools, dataZoom: cfg['dataZoom'] === true, magic: magic.length > 0, dataView: cfg['dataView'] === true, save }
+  return { tools, dataZoom: cfg['dataZoom'] === true, magic: magic.length > 0, dataView: cfg['dataView'] === true, save, brush }
 }
 

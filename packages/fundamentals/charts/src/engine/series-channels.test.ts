@@ -75,6 +75,8 @@ const ROLE: Readonly<Record<keyof Series, Role>> = {
   emphasisColor: 'presentation',
   selectColor: 'presentation',
   blurOpacity: 'presentation',
+  inBrush: 'presentation',
+  brushOpacity: 'presentation',
 }
 
 /** A series carrying every data channel at once, so one table shows them all. */

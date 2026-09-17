@@ -2,6 +2,8 @@
 
 import type { OptionWarning } from './option'
 import type { ToolboxConfig } from './toolbox-config'
+import { brushToolList } from './option-brush'
+import type { OptionBrush } from './option-brush'
 
 export interface OptionToolbox extends ToolboxConfig {
   /** `saveAsImage.name` — the file name without its extension. */
@@ -18,7 +20,7 @@ const on = (v: unknown): boolean => isObj(v) && v['show'] !== false
  * `myTool` (its `onclick` is a function a host cannot run from data) and a
  * y-axis box zoom are named; every other feature maps.
  */
-export function readToolbox(option: Record<string, unknown>, warn: (code: OptionWarning['code'], path: string, message: string) => void): OptionToolbox | undefined {
+export function readToolbox(option: Record<string, unknown>, warn: (code: OptionWarning['code'], path: string, message: string) => void, brush?: OptionBrush): OptionToolbox | undefined {
   const raw = option['toolbox']
   const tb = Array.isArray(raw) ? raw[0] : raw
   if (!isObj(tb) || tb['show'] === false) return undefined
@@ -50,6 +52,10 @@ export function readToolbox(option: Record<string, unknown>, warn: (code: Option
         else warn('series-option-unsupported', path + '.type', `magicType "${String(t)}" is not a switch ECharts defines; it was skipped.`)
       }
       if (list.length > 0) out.magicType = list
+    } else if (key === 'brush') {
+      // Its own `type` list, else the brush component's `toolbox`, else ECharts' full set.
+      const list = brushToolList((v as Record<string, unknown>)['type'], path + '.type', warn) ?? brush?.tools ?? ['rect', 'polygon', 'lineX', 'lineY', 'keep', 'clear']
+      if (list.length > 0) out.brush = list
     } else if (key.startsWith('my')) {
       warn('series-option-unsupported', path, 'A custom toolbox tool runs a function the option cannot carry; it was skipped.')
     } else {

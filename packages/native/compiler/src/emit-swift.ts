@@ -103,7 +103,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -14345,6 +14345,8 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const zoomCfg = chartZoomConfig((n) => chartAttrExpr(e, n), (n) => _moduleConstExprs.get(n), SWIFT_CHART_TARGET, (m) => _emitWarnings.push(m), tag)
   // An opening window slices the rows even with no gesture to move it.
   const toolbox = chartToolboxConfig(chartAttrExpr(e, 'toolbox'), (n) => _moduleConstExprs.get(n), (m) => _emitWarnings.push(m), tag)
+  // ECharts' area brush (rect / polygon / lineX / lineY), shared with the web through `brush-area`.
+  const area = chartAreaBrushConfig((n) => readStaticAttr(e, n), (n) => chartAttrExpr(e, n) !== undefined, toolbox?.brush ?? [], (m) => _emitWarnings.push(m), tag, (n) => chartAttrExpr(e, n), (n) => _moduleConstExprs.get(n))
   const windowed = zoomed || presets !== undefined || navigating || zoomCfg.initial !== null || toolbox?.dataZoom === true
   const initialWin = zoomCfg.initial ?? 'ZoomWindow(start: 0.0, end: 1.0)'
   /** A gesture's window, held to `zoomLimits` when the chart has them. */
@@ -14380,6 +14382,12 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       _hostStateDecls.push('@State private var pyreonSelB: Double = -1.0')
     }
     if (toolbox.dataView) _hostStateDecls.push('@State private var pyreonDataView: Bool = false')
+  }
+  if (area.on) {
+    _hostStateDecls.push(`@State private var pyreonAreaType: String = ${JSON.stringify(area.initial)}`)
+    _hostStateDecls.push(`@State private var pyreonAreaKeep: Bool = ${area.keep}`)
+    _hostStateDecls.push('@State private var pyreonAreas: [BrushArea] = []')
+    _hostStateDecls.push('@State private var pyreonAreaLive: BrushArea? = nil')
   }
   if (legend.toggling) _hostStateDecls.push('@State private var pyreonHidden: [Int] = []')
   if (legend.paging) _hostStateDecls.push('@State private var pyreonLegendPage: Double = 0.0')
@@ -14658,13 +14666,23 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   if (linesAttr !== undefined) specArgs.push(`lines: ${withExpectedType({ kind: 'array', element: { kind: 'typeRef', name: 'LinesSeries', args: [] } }, () => emitSwiftExpr(linesAttr, indent))}`)
   if (readStaticAttr(e, 'effectClock') === true) specArgs.push(`effectTime: pyreonClock`)
   // magicType rewrites the series kinds on every render, as the web host does.
-  lets.push(toolbox?.magic === true ? `let pyreonSpec: ChartSpec = applyMagicType(ChartSpec(${specArgs.join(', ')}), pyreonMagicKind, pyreonMagicStack)` : `let pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
+  const specBuilt = toolbox?.magic === true ? `applyMagicType(ChartSpec(${specArgs.join(', ')}), pyreonMagicKind, pyreonMagicStack)` : `ChartSpec(${specArgs.join(', ')})`
+  if (area.on) {
+    // The brush only re-colours datums: the base spec's layout is the brushed spec's layout.
+    lets.push(`let pyreonSpecBase: ChartSpec = ${specBuilt}`)
+    lets.push('let pyreonAreasNow: [BrushArea] = pyreonAreaLive.map { pyreonAreas + [$0] } ?? pyreonAreas')
+    lets.push('let pyreonAreaPlot: PyreonChartRect = layoutChart(pyreonSpecBase, pyreonChartMeasure).plot')
+    lets.push(`let pyreonSpec: ChartSpec = applyBrushSelection(pyreonSpecBase, ${area.only.length === 0 ? '' : 'brushOnlySeries('}brushSelection(pyreonSpecBase, layoutChart(pyreonSpecBase, pyreonChartMeasure), pyreonAreasNow)${area.only.length === 0 ? '' : `, [${area.only.map((x) => `${x}.0`).join(', ')}])`}, !pyreonAreasNow.isEmpty, ${Number.isInteger(area.opacity) ? `${area.opacity}.0` : String(area.opacity)})`)
+  } else {
+    lets.push(`let pyreonSpec: ChartSpec = ${specBuilt}`)
+  }
   if (toolbox !== null) {
     const actives = [
       toolbox.magic ? 'pyreonMagicKind == "bar" ? "magicBar" : pyreonMagicKind == "line" ? "magicLine" : ""' : '""',
       toolbox.magic ? 'pyreonMagicStack == "stack" ? "magicStack" : pyreonMagicStack == "tiled" ? "magicTiled" : ""' : '""',
       toolbox.dataZoom ? 'pyreonZoomSelect ? "dataZoom" : ""' : '""',
       toolbox.dataView ? 'pyreonDataView ? "dataView" : ""' : '""',
+      ...(area.on ? ['pyreonAreaType == "rect" ? "brushRect" : pyreonAreaType == "polygon" ? "brushPolygon" : pyreonAreaType == "lineX" ? "brushLineX" : pyreonAreaType == "lineY" ? "brushLineY" : ""', 'pyreonAreaKeep ? "brushKeep" : ""'] : []),
     ]
     lets.push(`let pyreonTools: [String] = [${toolbox.tools.map((t) => JSON.stringify(t)).join(', ')}]`)
     lets.push(`let pyreonToolbox: ToolboxLayout = renderToolbox(pyreonTools, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H}), ToolboxOptions(fontSize: 11.0, color: ${themed ? 'pyreonTheme.label' : `${theme}.label`}, actives: [${actives.join(', ')}]))`)
@@ -14704,7 +14722,8 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   // tooltip is deliberately NOT mirrored: it is drawn at the raw tap point,
   // which is already a visual coordinate.
   const selectBand = toolbox?.dataZoom === true ? ' + (pyreonSelA >= 0.0 ? renderBrushBand(pyreonPlot, min(pyreonSelA, pyreonSelB), max(pyreonSelA, pyreonSelB), "#6366f1") : [])' : ''
-  const painted = `${chrome.wrap(`renderChart(pyreonSpec, pyreonChartMeasure)${brushing ? ' + pyreonBrushCmds' : ''}${selectBand}`)}${extraCmds}`
+  const areaCovers = area.on ? ' + renderBrushAreas(pyreonAreasNow, "rgba(120,120,140,0.18)", pyreonSpec.theme.axis)' : ''
+  const painted = `${chrome.wrap(`renderChart(pyreonSpec, pyreonChartMeasure)${brushing ? ' + pyreonBrushCmds' : ''}${selectBand}${areaCovers}`)}${extraCmds}`
   const canvas = swiftChartCanvas(e, `${chrome.mirror(painted)}${tipCmds}`, indent)
   const tapY = chrome.top === '0.0' ? 'Double(pyreonTap.location.y)' : 'Double(pyreonTap.location.y) - pyreonTop'
   // The hit test speaks the UNMIRRORED geometry the engine laid out, so an
@@ -14720,6 +14739,14 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     const global = windowed ? `${mapped} + pyreonRange.from` : mapped
     return `${local} < 0 ? -1 : ${global}`
   }
+  // `onBrushSelected`: the areas' datums per series, each index GLOBAL (the window's and decimation's mapping, as a tap's).
+  const onAreaSel = chartEventHandler(e, 'brushselected')
+  const areaReport = (areasExpr: string): string => {
+    if (onAreaSel === undefined) return ''
+    const mapped = decimated ? 'pyreonKeep[categoryIndex(pyreonSpec, $0)]' : 'categoryIndex(pyreonSpec, $0)'
+    const global = windowed ? `${mapped} + pyreonRange.from` : mapped
+    return `; ${swiftChartSelectBody(onAreaSel, `${area.only.length === 0 ? '' : 'brushOnlySeries('}brushSelection(pyreonSpec, layoutChart(pyreonSpec, pyreonChartMeasure), ${areasExpr})${area.only.length === 0 ? '' : `, [${area.only.map((x) => `${x}.0`).join(', ')}])`}.map { BrushSeriesSelection(seriesIndex: $0.seriesIndex, dataIndex: $0.dataIndex.map { ${global} }) }`, indent)}`
+  }
   const hit = tooltip
     ? `(${globalHit('pyreonLocal')})`
     : windowed || decimated
@@ -14729,7 +14756,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   let gesture = ''
   // `pinning` joins the gate: a chart with ONLY `selectedMode` has no other
   // reason to install a tap, and without it the pin never runs.
-  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip || pinning || toolbox !== null) {
+  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip || pinning || toolbox !== null || area.on) {
     // With pinning on, the hit is computed ONCE into a local: the pin, the
     // change callback and `onSelect` all name the same pick.
     const pick = pinning ? 'pyreonPick' : hit
@@ -14765,6 +14792,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
         toolbox.dataView ? 'pyreonDataView = false' : '',
         legend.toggling ? 'pyreonHidden = []' : '',
         brushing ? 'pyreonBrushStart = -1; pyreonBrushEnd = -1' : '',
+        area.on ? `pyreonAreaType = ${JSON.stringify(area.initial)}; pyreonAreaKeep = ${area.keep}; pyreonAreas = []${areaReport('[]')}` : '',
       ].filter((x) => x !== '').join('; ') + ' }')
       if (toolbox.magic) {
         acts.push('if pyreonTool == "magicLine" { pyreonMagicKind = pyreonMagicKind == "line" ? "" : "line" }')
@@ -14777,6 +14805,14 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
         acts.push(`if pyreonTool == "dataZoomBack" { pyreonZoom = pyreonZoomHistory.last ?? ZoomWindow(start: 0.0, end: 1.0); if !pyreonZoomHistory.isEmpty { pyreonZoomHistory.removeLast() }${zoomed ? '; pyreonZoomAnchor = pyreonZoom' : ''} }`)
       }
       if (toolbox.dataView) acts.push('if pyreonTool == "dataView" { pyreonDataView.toggle() }')
+      if (area.on) {
+        for (const [tool, type] of [['brushRect', 'rect'], ['brushPolygon', 'polygon'], ['brushLineX', 'lineX'], ['brushLineY', 'lineY']] as const) {
+          if (toolbox.brush.includes(tool)) acts.push(`if pyreonTool == "${tool}" { pyreonAreaType = pyreonAreaType == "${type}" ? "" : "${type}"${toolbox.dataZoom ? '; pyreonZoomSelect = false' : ''} }`)
+        }
+        if (toolbox.brush.includes('brushKeep')) acts.push('if pyreonTool == "brushKeep" { pyreonAreaKeep.toggle() }')
+        if (toolbox.brush.includes('brushClear')) acts.push(`if pyreonTool == "brushClear" { pyreonAreas = []${areaReport('[]')} }`)
+        if (toolbox.dataZoom) acts.push('if pyreonTool == "dataZoom" { pyreonAreaType = "" }')
+      }
       if (toolbox.save) {
         const onSave = e.attrs.find((a) => a.kind === 'event' && a.name === 'saveimage')
         const cmdsNow = `${chrome.mirror(painted)}`
@@ -14806,6 +14842,10 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       decls.push(`let pyreonPreset = presetHit(pyreonPresetStrip.boxes, ${cx}, ${cy})`)
       branches.push(`if pyreonPreset >= 0 { pyreonZoom = ${lim(`presetWindow(pyreonPresets[pyreonPreset].count, ${data}.count)`)}${zoomed ? '; pyreonZoomAnchor = pyreonZoom' : ''} }`)
     }
+    if (area.on) {
+      // A tap over the plot clears a single-mode brush, as a click does on the web.
+      branches.push(`if pyreonAreaType != "" && !pyreonAreaKeep && !pyreonAreas.isEmpty { pyreonAreas = []${areaReport('[]')} }`)
+    }
     if (brushing) {
       branches.push(`if pyreonBrushStart >= 0 { pyreonBrushStart = -1; pyreonBrushEnd = -1${onBrush === undefined ? '' : `; ${onBrush}(nil)`} }`)
     }
@@ -14816,7 +14856,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       body = `${decls.length === 0 ? '' : `${decls.join('; ')}; `}${branches.join(' else ')}${select === '' ? '' : ` else { ${select} }`}`
     }
     // With pan, pinch or a brush drag live, a tap is a drag that did not move: guard by translation.
-    const guarded = zoomed || brushing ? `if abs(pyreonTap.translation.width) < 6.0 && abs(pyreonTap.translation.height) < 6.0 { ${body} }` : body
+    const guarded = zoomed || brushing || area.on ? `if abs(pyreonTap.translation.width) < 6.0 && abs(pyreonTap.translation.height) < 6.0 { ${body} }` : body
     gesture = `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${guarded} })`
   }
   if (toolbox?.dataZoom === true) {
@@ -14825,10 +14865,22 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       `.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonSel in if pyreonZoomSelect { pyreonSelA = Double(pyreonSel.startLocation.x); pyreonSelB = Double(pyreonSel.location.x) } }` +
       `.onEnded { pyreonSel in if pyreonZoomSelect && pyreonSelA >= 0.0 { let pyreonRows: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, Double(pyreonSel.startLocation.x), Double(pyreonSel.location.x), pyreonZoom, ${data}.count); pyreonZoomHistory.append(pyreonZoom); pyreonZoom = ${lim(`windowOfRows(pyreonRows.start, pyreonRows.end, ${data}.count)`)}${zoomed ? '; pyreonZoomAnchor = pyreonZoom' : ''} }; pyreonSelA = -1.0; pyreonSelB = -1.0 })`
   }
+  if (area.on) {
+    // Simultaneous, not high priority: a `brushType` chart is always armed, and a high-priority drag would take every
+    // scroll that starts over it (a device run could not scroll the gallery past one).
+    // The end rebuilds a rect / line area from the gesture's own points, so the committed area never depends on the
+    // last onChanged having landed in state first; only a polygon (which accumulates vertices) reads the live area.
+    // The area brush: a drag while a type is on builds the area in PLOT space; its end commits (or keeps) it.
+    const dx = (v: string): string => chrome.plotX(`Double(pyreonAreaG.${v}.x)`)
+    const dy = (v: string): string => (chrome.top === '0.0' ? `Double(pyreonAreaG.${v}.y)` : `Double(pyreonAreaG.${v}.y) - pyreonTop`)
+    gesture +=
+      `.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonAreaG in if pyreonAreaType != "" { pyreonAreaLive = pyreonAreaType == "polygon" ? brushPolygonAdd(pyreonAreaLive ?? brushAreaFromDrag("polygon", pyreonAreaPlot, ${dx('startLocation')}, ${dy('startLocation')}, ${dx('startLocation')}, ${dy('startLocation')}), pyreonAreaPlot, ${dx('location')}, ${dy('location')}) : brushAreaFromDrag(pyreonAreaType, pyreonAreaPlot, ${dx('startLocation')}, ${dy('startLocation')}, ${dx('location')}, ${dy('location')}) } }` +
+      `.onEnded { pyreonAreaG in let pyreonEnded: BrushArea? = pyreonAreaType == "" ? nil : pyreonAreaType == "polygon" ? pyreonAreaLive : brushAreaFromDrag(pyreonAreaType, pyreonAreaPlot, ${dx('startLocation')}, ${dy('startLocation')}, ${dx('location')}, ${dy('location')}); if let pyreonA = pyreonEnded, brushAreaUsable(pyreonA) { let pyreonNextAreas: [BrushArea] = pyreonAreaKeep ? pyreonAreas + [pyreonA] : [pyreonA]; pyreonAreas = pyreonNextAreas${areaReport('pyreonNextAreas')} }; pyreonAreaLive = nil })`
+  }
   if (zoomed) {
     gesture +=
       `.simultaneousGesture(MagnificationGesture().onChanged { pyreonScale in pyreonZoom = ${lim('zoomWindow(pyreonZoomAnchor, 1.0 / Double(pyreonScale), 0.5)')} }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })` +
-      `.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonDrag in ${toolbox?.dataZoom === true ? 'if !pyreonZoomSelect { ' : ''}pyreonZoom = ${lim(`panWindow(pyreonZoomAnchor, -Double(pyreonDrag.translation.width) / ${W})`)}${toolbox?.dataZoom === true ? ' }' : ''} }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })`
+      `.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonDrag in ${toolbox?.dataZoom === true || area.on ? `if ${[toolbox?.dataZoom === true ? '!pyreonZoomSelect' : '', area.on ? 'pyreonAreaType == ""' : ''].filter((x) => x !== '').join(' && ')} { ` : ''}pyreonZoom = ${lim(`panWindow(pyreonZoomAnchor, -Double(pyreonDrag.translation.width) / ${W})`)}${toolbox?.dataZoom === true || area.on ? ' }' : ''} }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })`
   }
   if (brushing) {
     gesture +=

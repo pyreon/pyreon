@@ -121,6 +121,10 @@ export interface Series {
   selectColor?: string | undefined
   /** ECharts' `blur.itemStyle.opacity`: the opacity a blurred datum fades to (default 0.1). */
   blurOpacity?: Double | undefined
+  /** The brushed datums, in VISUAL indices; set with `brushOpacity` by `applyBrushSelection`. */
+  inBrush?: number[] | undefined
+  /** ECharts' `outOfBrush.colorAlpha`: the opacity a datum outside the brush fades to. */
+  brushOpacity?: Double | undefined
   /**
    * Error-bar bounds, index-aligned with `values` — a whisker from `errLow[i]`
    * to `errHigh[i]` through each bar centre / point. A gap in either bound
@@ -501,6 +505,13 @@ export function stateFill(spec: ChartSpec, s: Series, index: number, fill: strin
   if (level === 2 && selectColor !== '') return selectColor
   if (level === 1 && emphasisColor !== '') return emphasisColor
   if (level === 0 && blurActive(spec)) return withAlpha(fill, s.blurOpacity ?? 0.1)
+  const brushed = s.inBrush ?? []
+  const brushAlpha = s.brushOpacity ?? -1.0
+  if (brushAlpha >= 0.0) {
+    let inside = false
+    for (const b of brushed) if (b === index) inside = true
+    if (!inside) return withAlpha(fill, brushAlpha)
+  }
   return fill
 }
 
