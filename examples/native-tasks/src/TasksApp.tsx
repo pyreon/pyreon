@@ -581,6 +581,15 @@ const LOAD_ROWS: WeekRow[] = [
   { day: 'Fri', load: 47 },
   { day: 'Sat', load: 71 },
 ]
+interface TwoSeriesRow {
+  a: number
+  b: number
+}
+const TWO_SERIES_ROWS: TwoSeriesRow[] = [
+  { a: 6, b: 2 },
+  { a: 5, b: 3 },
+  { a: 4, b: 4 },
+]
 const FLOW_LINKS: SankeyLink[] = [
   { source: 'Backlog', target: 'Doing', value: 8 },
   { source: 'Doing', target: 'Done', value: 5 },
@@ -755,6 +764,7 @@ function GalleryPage() {
   const tbZoom = signal('0-100')
   const tbSaved = signal('none')
   const brushCount = signal('none')
+  const seriesPickCount = signal('none')
   // Imperative handles (ECharts dispatchAction) for the toolbox chart and the timeline.
   const tbHandle = createChartHandle()
   const tlHandle = createChartHandle()
@@ -885,6 +895,15 @@ function GalleryPage() {
           onBrushSelected={(s: { seriesIndex: number; dataIndex: number[] }[]) => brushCount.set(`${s.length}:${s.length > 0 ? s[0]!.dataIndex.length : 0}`)}
         />
         <Text data-testid="gal-brush-count">{brushCount()}</Text>
+        <PlotChart
+          data={TWO_SERIES_ROWS}
+          marks={[bars((d: TwoSeriesRow) => d.a), bars((d: TwoSeriesRow) => d.b)]}
+          selectedMode="series"
+          height={200}
+          data-testid="gal-series-select"
+          onSelectIndex={(i: number) => seriesPickCount.set(`${i}`)}
+        />
+        <Text data-testid="gal-series-select-datum">{seriesPickCount()}</Text>
         <PieChart
           data={SLICES}
           value={(d: PieSlice) => d.total}

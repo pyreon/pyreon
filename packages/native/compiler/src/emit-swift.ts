@@ -13462,7 +13462,7 @@ function emitSwiftChartTimeline(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const labels = `pyreonTlStrip${k}.labels`
   const box = 'PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonTlGeo.size.width), h: 40.0)'
   const tap =
-    `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonT in ` +
+    `.contentShape(Rectangle()).simultaneousGesture(SpatialTapGesture().onEnded { pyreonT in ` +
     `let pyreonHit = timelineHit(pyreonTlStrip${k}, ${box}, Double(pyreonT.location.x), Double(pyreonT.location.y)); ` +
     `if pyreonHit.kind == 2.0 { ${playing}.toggle() } else if pyreonHit.kind > 0.0 { ${playing} = false; ` +
     `let pyreonNext = pyreonHit.kind == 1.0 ? pyreonHit.index : timelineAdvance(pyreonTlStrip${k}, Double(${step}), pyreonHit.kind == 3.0 ? -1.0 : 1.0, true); ` +
@@ -13717,7 +13717,7 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     for (const { extra, event } of extraHits) {
       parts.push(`do { ${swiftChartSelectBody(event.handler, extra.hit(layout, hitX, hitY, plotArgs, SWIFT_CHART_TARGET), indent)} }`)
     }
-    gesture = `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${parts.join('; ')} })`
+    gesture = `.contentShape(Rectangle()).simultaneousGesture(SpatialTapGesture().onEnded { pyreonTap in ${parts.join('; ')} })`
   }
   if (roamCfg !== null) {
     const box = SWIFT_CHART_TARGET.rect('0.0', '0.0', plotArgs.W, plotArgs.H)
@@ -13831,7 +13831,7 @@ function emitSwiftAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     parts.push(`pyreonTip = ${spec.tooltip(items, chrome.plotX('Double(pyreonTap.location.x)'), tapY, args, SWIFT_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))`)
   }
   if (onSel?.kind === 'event') parts.push(swiftChartSelectBody(onSel.handler, spec.hit(items, chrome.plotX('Double(pyreonTap.location.x)'), tapY, args, SWIFT_CHART_TARGET), indent))
-  const gesture = parts.length === 0 ? '' : `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${parts.join('; ')} })`
+  const gesture = parts.length === 0 ? '' : `.contentShape(Rectangle()).simultaneousGesture(SpatialTapGesture().onEnded { pyreonTap in ${parts.join('; ')} })`
   const tail = swiftChartA11y(e, undefined, indent) + emitSwiftLayoutModifiers(e)
   if (!hoist) {
     if (hasWidth) return `${canvas}${gesture}.frame(width: ${W}, height: ${H})${tail}`
@@ -13970,7 +13970,7 @@ function swiftFrameHost(
 function swiftChartGesture(e: Extract<ExprIR, { kind: 'jsx-element' }>, hit: (x: string, y: string) => string, indent: number, names: readonly string[] = ['selectindex', 'select'], tapX: (raw: string) => string = (raw) => raw): string {
   const onSel = e.attrs.find((a) => a.kind === 'event' && names.includes(a.name))
   if (onSel?.kind !== 'event') return ''
-  return `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${swiftChartSelectBody(onSel.handler, hit(tapX('Double(pyreonTap.location.x)'), 'Double(pyreonTap.location.y)'), indent)} })`
+  return `.contentShape(Rectangle()).simultaneousGesture(SpatialTapGesture().onEnded { pyreonTap in ${swiftChartSelectBody(onSel.handler, hit(tapX('Double(pyreonTap.location.x)'), 'Double(pyreonTap.location.y)'), indent)} })`
 }
 
 /** `<CandlestickChart data open high low close x? candle? height width title>` → the shared frame over the mapped candles. */
@@ -14696,6 +14696,10 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   // is positional and `emphasis` follows `progress` in the struct.
   const pinMode = readStaticAttr(e, 'selectedMode')
   const pinning = pinMode === 'single' || pinMode === 'multiple'
+  // `selectedMode: 'series'` pins the WHOLE series a tap lands on, not a datum — its own state, host-local
+  // (a handle's `.selected` stays datum indices; series pins have no handle vocabulary yet).
+  const seriesPinning = pinMode === 'series'
+  if (seriesPinning) _hostStateDecls.push('@State private var pyreonSelectedSeries: [Int] = []')
   // A handle's pins and highlight draw whether or not a tap pins (`select` / `highlight` actions).
   if (pinning || handle !== undefined) {
     _hostStateDecls.push('@State private var pyreonSelected: [Int] = []')
@@ -14731,7 +14735,10 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   if (linesAttr !== undefined) specArgs.push(`lines: ${withExpectedType({ kind: 'array', element: { kind: 'typeRef', name: 'LinesSeries', args: [] } }, () => emitSwiftExpr(linesAttr, indent))}`)
   if (readStaticAttr(e, 'effectClock') === true) specArgs.push(`effectTime: pyreonClock`)
   // magicType rewrites the series kinds on every render, as the web host does.
-  const specBuilt = toolbox?.magic === true ? `applyMagicType(ChartSpec(${specArgs.join(', ')}), pyreonMagicKind, pyreonMagicStack)` : `ChartSpec(${specArgs.join(', ')})`
+  const magicBuilt = toolbox?.magic === true ? `applyMagicType(ChartSpec(${specArgs.join(', ')}), pyreonMagicKind, pyreonMagicStack)` : `ChartSpec(${specArgs.join(', ')})`
+  // `selectedMode: 'series'` tints every datum of the series a tap pins — applied before the brush, which
+  // only re-colours OUT-of-brush datums and must see the series pins already in the fills it starts from.
+  const specBuilt = seriesPinning ? `applySeriesSelection(${magicBuilt}, pyreonSelectedSeries)` : magicBuilt
   if (area.on) {
     // The brush only re-colours datums: the base spec's layout is the brushed spec's layout.
     lets.push(`let pyreonSpecBase: ChartSpec = ${specBuilt}`)
@@ -14821,7 +14828,7 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   let gesture = ''
   // `pinning` joins the gate: a chart with ONLY `selectedMode` has no other
   // reason to install a tap, and without it the pin never runs.
-  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip || pinning || toolbox !== null || area.on) {
+  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip || pinning || seriesPinning || toolbox !== null || area.on) {
     // With pinning on, the hit is computed ONCE into a local: the pin, the
     // change callback and `onSelect` all name the same pick.
     const pick = pinning ? 'pyreonPick' : hit
@@ -14831,10 +14838,16 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
       ? `let pyreonPick = ${hit}; let pyreonNextSel = pinSelection(pyreonSelected, pyreonPick, ${pinMode === 'multiple'}); pyreonSelected = pyreonNextSel` +
         (onSelChange === undefined ? '' : `; ${swiftChartSelectBody(onSelChange, 'pyreonNextSel', indent)}`)
       : ''
+    // A series pin ADDS to whatever `onSelect`/pinning does with the datum hit — it does not replace it, as ECharts'
+    // `selectedMode: 'series'` pins the whole series while a click still reports the datum under it.
+    const seriesPinBody = seriesPinning
+      ? `let pyreonHitSeries = plotHitSeriesIn(pyreonSpec, layoutChart(pyreonSpec, pyreonChartMeasure), ${plotX}, ${tapY}, 14.0); if pyreonHitSeries >= 0 { pyreonSelectedSeries = pinSelection(pyreonSelectedSeries, pyreonHitSeries, true) }`
+      : ''
+    const pinBodyFull = [pinBody, seriesPinBody].filter((x) => x !== '').join('; ')
     const selectBase = tooltip
       ? `let pyreonLocal = ${localHit}; pyreonTip = pyreonLocal < 0 ? [] : ${tipLines}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))${selectOnly === '' ? '' : `; ${selectOnly}`}`
       : selectOnly
-    const select = pinBody === '' ? selectBase : selectBase === '' ? pinBody : `${pinBody}; ${selectBase}`
+    const select = pinBodyFull === '' ? selectBase : selectBase === '' ? pinBodyFull : `${pinBodyFull}; ${selectBase}`
     // One tap, several surfaces, in canvas coordinates: the legend pager, a
     // legend entry, a preset button, a committed brush (a plain tap clears it),
     // then the plot. First hit wins — the web's order.
@@ -14920,9 +14933,11 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     } else {
       body = `${decls.length === 0 ? '' : `${decls.join('; ')}; `}${branches.join(' else ')}${select === '' ? '' : ` else { ${select} }`}`
     }
-    // With pan, pinch or a brush drag live, a tap is a drag that did not move: guard by translation.
-    const guarded = zoomed || brushing || area.on ? `if abs(pyreonTap.translation.width) < 6.0 && abs(pyreonTap.translation.height) < 6.0 { ${body} }` : body
-    gesture = `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${guarded} })`
+    // A SPATIAL TAP, not a zero-distance DragGesture: a `.gesture(DragGesture(minimumDistance: 0))` claims the touch
+    // the moment a finger lands, so a swipe that STARTS over a chart never scrolled the page it sits in (a device run
+    // could not scroll the gallery past a chart). A tap gesture yields the drag and still carries `location`, and it
+    // never fires mid-drag — which is what the old translation guard was for.
+    gesture = `.contentShape(Rectangle()).simultaneousGesture(SpatialTapGesture().onEnded { pyreonTap in ${body} })`
   }
   // Every plot drag — the box zoom, the area brush, the pan, the range brush — shares ONE DragGesture. SwiftUI
   // runs only one of several `.simultaneousGesture(DragGesture)` modifiers chained on a view: a device run showed

@@ -189,7 +189,7 @@ describe('chart hosts — onSelectIndex (tap → the engine index hit)', () => {
       'let pyreonLayout = layoutSankey(nodes, links, PyreonChartRect(x: 80.0, y: 8.0, w: max(0.0, Double(pyreonGeo.size.width) - 80.0 * 2.0), h: max(0.0, 240.0 - 16.0)), pyreonOptions)')
     // The layout is laid out ONCE and shared by the paint and the hit (it used to be computed twice).
     expect(r.code).toContain(
-      '.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in let hit = hitSankeyIndex(pyreonLayout, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); ({ picked = hit.node })() })',
+      '.contentShape(Rectangle()).simultaneousGesture(SpatialTapGesture().onEnded { pyreonTap in let hit = hitSankeyIndex(pyreonLayout, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); ({ picked = hit.node })() })',
     )
     expect(r.code).toContain('let pyreonLayout = layoutTreemap(CELLS, PyreonChartRect(x: 0.0, y: 0.0, w: 200.0, h: 100.0), pyreonOptions)')
     expect(r.code).toContain('let i = hitTreemapIndex(pyreonLayout, Double(pyreonTap.location.x), Double(pyreonTap.location.y))')
@@ -734,7 +734,7 @@ describe('chart hosts — <PlotChart dataZoom> as pinch + pan over a fraction wi
     expect(r.code).toContain('let pyreonCats: [String] = pyreonSourceRows.enumerated().map { (_, pyreonD) -> String in pyreonD.label }')
     expect(r.code).toContain('.simultaneousGesture(MagnificationGesture().onChanged { pyreonScale in pyreonZoom = zoomWindow(pyreonZoomAnchor, 1.0 / Double(pyreonScale), 0.5) }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })')
     expect(r.code).toContain('.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonDragG in pyreonZoom = panWindow(pyreonZoomAnchor, -Double(pyreonDragG.translation.width) / Double(pyreonGeo.size.width)) }.onEnded { pyreonDragG in pyreonZoomAnchor = pyreonZoom })')
-    expect(r.code).toContain('if abs(pyreonTap.translation.width) < 6.0 && abs(pyreonTap.translation.height) < 6.0 { let i = { () -> Int in let pyreonHit = plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); return pyreonHit < 0 ? -1 : pyreonHit + pyreonRange.from }()')
+    expect(r.code).toContain('let i = { () -> Int in let pyreonHit = plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); return pyreonHit < 0 ? -1 : pyreonHit + pyreonRange.from }()')
   })
   it('Kotlin: the window is remembered in the host, the rows are a subList, and detectTransformGestures drives pan + zoom incrementally', () => {
     const r = transform(ZOOM, { target: 'kotlin' })
@@ -838,7 +838,7 @@ describe('chart hosts — <PlotChart zoomPresets> as the engine-laid-out preset 
   it('presets without onSelect still get a tap (there is a button to press) and no selection branch', () => {
     const s = transform(PRESETS_NO_SELECT, { target: 'swift' })
     expect(s.warnings).toEqual([])
-    expect(s.code).toContain('DragGesture(minimumDistance: 0).onEnded { pyreonTap in let pyreonPreset = presetHit(')
+    expect(s.code).toContain('SpatialTapGesture().onEnded { pyreonTap in let pyreonPreset = presetHit(')
     expect(s.code).not.toContain(' else {')
     const k = transform(PRESETS_NO_SELECT, { target: 'kotlin' })
     expect(k.warnings).toEqual([])
@@ -1152,7 +1152,7 @@ describe('chart hosts — <PlotChart brush onBrush> as a plain drag over the eng
       'let pyreonBrushCmds: [PyreonDrawCmd] = pyreonBrushA >= 0.0 ? renderBrushBand(pyreonPlot, min(pyreonBrushA, pyreonBrushB), max(pyreonBrushA, pyreonBrushB), pyreonSpec.theme.axis) : pyreonBrushStart >= 0 ? { () -> [PyreonDrawCmd] in let pyreonBand = brushBand(pyreonPlot, BrushRange(start: pyreonBrushStart, end: pyreonBrushEnd), ZoomWindow(start: 0.0, end: 1.0), DAYS.count); return pyreonBand.visible ? renderBrushBand(pyreonPlot, pyreonBand.lo, pyreonBand.hi, pyreonSpec.theme.axis) : [] }() : []',
     )
     expect(r.code).toContain('PyreonChartCanvas(cmds: renderChart(pyreonSpec, pyreonChartMeasure) + pyreonBrushCmds)')
-    expect(r.code).toContain('if abs(pyreonTap.translation.width) < 6.0 && abs(pyreonTap.translation.height) < 6.0 { if pyreonBrushStart >= 0 { pyreonBrushStart = -1; pyreonBrushEnd = -1; onBrush(nil) } else {')
+    expect(r.code).toContain('if pyreonBrushStart >= 0 { pyreonBrushStart = -1; pyreonBrushEnd = -1; onBrush(nil) } else {')
     expect(r.code).toContain(
       '.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonDragG in pyreonBrushA = Double(pyreonDragG.startLocation.x); pyreonBrushB = Double(pyreonDragG.location.x) }.onEnded { pyreonDragG in let pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, Double(pyreonDragG.startLocation.x), Double(pyreonDragG.location.x), ZoomWindow(start: 0.0, end: 1.0), DAYS.count); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0; onBrush(pyreonSel) })',
     )

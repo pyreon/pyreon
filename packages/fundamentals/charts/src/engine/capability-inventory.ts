@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-17.38' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-17.39' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -96,7 +96,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
 
   // `{a}`/`{b}`/`{c}`/`{d}` resolve per datum in the facade (the only layer that knows the name, the category and the share); the engine owns `\n` and the rich `{name|text}` segments.
   row('presentation.labels-rich-text', 'presentation', 'direct', 'complete', 'src/engine/option-labels.test.ts', '../../native/compiler/src/tests/chart-labels-native.test.ts'),
-  row('presentation.states', 'presentation', 'direct', 'partial', 'src/engine/emphasis.test.ts', 'src/engine/option-states.test.ts', 'src/engine/option-chart-states.test.tsx', '../../native/compiler/src/tests/chart-states-native.test.ts'), // emphasis/select/blur FILLS + focus blur + selectedMode pinning cross; state labels, symbol scale and whole-series selection warn by name, and the hover is a datum column (no per-series focus)
+  row('presentation.states', 'presentation', 'direct', 'complete', 'src/engine/emphasis.test.ts', 'src/engine/states-render.test.ts', 'src/engine/option-states.test.ts', 'src/engine/option-chart-states.test.tsx', 'src/engine/states.browser.test.tsx', '../../native/compiler/src/tests/chart-states-native.test.ts'), // emphasis/select/blur fills, state stroke/area opacity/scale/labels, emphasis.disabled, blurScope, and selectedMode 'series' (whole-series pin, on PlotChart and OptionChart, web and native) all cross; the hover stays a datum column (no per-series focus — an architectural limit of the shared highlight index), and select.lineStyle/areaStyle, select.disabled, blur.label and a state label's own styling are named
   row('presentation.symbols', 'presentation', 'direct', 'complete', 'src/engine/option-symbols.test.ts', '../../native/compiler/src/tests/chart-symbols-native.test.ts'),
   row('presentation.gradients-patterns', 'presentation', 'direct', 'complete', 'src/engine/option-gradients.test.ts', 'src/engine/svg-path.test.ts', '../../native/compiler/src/tests/chart-gradients-native.test.ts'), // linear + radial gradients, decals and image fills cross; a line STROKE image is named (ECharts strokes take no pattern either)
   row('presentation.decals', 'presentation', 'direct', 'complete', 'src/engine/pattern-marks.test.ts', 'src/engine/svg-path.test.ts', 'src/engine/option-fills-marks.test.ts', '../../native/compiler/src/tests/chart-decals-native.test.ts'), // symbols incl. path:// and image://, pitch, rotation, aria.decal

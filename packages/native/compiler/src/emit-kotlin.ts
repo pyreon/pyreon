@@ -12278,6 +12278,9 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   // the state from `lets`, which is emitted before the spec is built.
   const pinMode = readStaticAttrKotlin(e, 'selectedMode')
   const pinning = pinMode === 'single' || pinMode === 'multiple'
+  // `selectedMode: 'series'` pins the WHOLE series a tap lands on — its own host-local state (no handle vocabulary yet).
+  const seriesPinning = pinMode === 'series'
+  if (seriesPinning) lets.push('var pyreonSelectedSeries by remember { mutableStateOf(listOf<Int>()) }')
   if (pinning || handle !== undefined) lets.push('var pyreonSelected by remember { mutableStateOf(listOf<Int>()) }')
   if (legend.paging) lets.push('var pyreonLegendPage by remember { mutableStateOf(0.0) }')
   const maxPoints = chartAttrExprKotlin(e, 'maxPoints')
@@ -12525,7 +12528,9 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const linesAttr = chartAttrExprKotlin(e, 'lines')
   if (linesAttr !== undefined) specArgs.push(`lines = ${withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'LinesSeries', args: [] } }, () => emitKotlinExpr(linesAttr, indent))}`)
   if (readStaticAttrKotlin(e, 'effectClock') === true) specArgs.push(`effectTime = pyreonClock`)
-  const specBuilt = toolbox?.magic === true ? `applyMagicType(ChartSpec(${specArgs.join(', ')}), pyreonMagicKind, pyreonMagicStack)` : `ChartSpec(${specArgs.join(', ')})`
+  const magicBuilt = toolbox?.magic === true ? `applyMagicType(ChartSpec(${specArgs.join(', ')}), pyreonMagicKind, pyreonMagicStack)` : `ChartSpec(${specArgs.join(', ')})`
+  // Applied before the brush, which only re-colours out-of-brush datums and must see the series pins already in the fills it starts from.
+  const specBuilt = seriesPinning ? `applySeriesSelection(${magicBuilt}, pyreonSelectedSeries)` : magicBuilt
   if (area.on) {
     // The brush only re-colours datums: the base spec's layout is the brushed spec's layout.
     lets.push(`val pyreonSpecBase: ChartSpec = ${specBuilt}`)
@@ -12608,7 +12613,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   let tap = ''
   // `pinning` joins the gate: a chart with ONLY `selectedMode` has no other
   // reason to install a tap, and without it the pin never runs.
-  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip || pinning || toolbox !== null || area.on) {
+  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip || pinning || seriesPinning || toolbox !== null || area.on) {
     // With pinning on, the hit is computed ONCE into a local: the pin, the
     // change callback and `onSelect` all name the same pick.
     const pick = pinning ? 'pyreonPick' : hit(plotX, tapYExpr)
@@ -12618,10 +12623,16 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
       ? `val pyreonPick = ${hit(plotX, tapYExpr)}; val pyreonNextSel = pinSelection(pyreonSelected, pyreonPick, ${pinMode === 'multiple'}); pyreonSelected = pyreonNextSel` +
         (onSelChange === undefined ? '' : `; ${kotlinChartSelectBody(onSelChange, 'pyreonNextSel', indent)}`)
       : ''
+    // A series pin ADDS to whatever onSelect/pinning does with the datum hit — ECharts' `selectedMode:
+    // 'series'` pins the whole series while a click still reports the datum under it.
+    const seriesPinBody = seriesPinning
+      ? `val pyreonHitSeries = plotHitSeriesIn(pyreonSpec, layoutChart(pyreonSpec, ::pyreonChartMeasure), ${plotX}, ${tapYExpr}, 14.0); if (pyreonHitSeries >= 0) { pyreonSelectedSeries = pinSelection(pyreonSelectedSeries, pyreonHitSeries, true) }`
+      : ''
+    const pinBodyFull = [pinBody, seriesPinBody].filter((x) => x !== '').join('; ')
     const selectBase = tooltip
       ? `val pyreonLocal = ${localHit(plotX, tapYExpr)}; pyreonTip = if (pyreonLocal < 0) listOf() else ${tipLines}; pyreonTipAt = PyreonChartPt(${rawTapX}, ${tapYExpr})${selectOnly === '' ? '' : `; ${selectOnly}`}`
       : selectOnly
-    const select = pinBody === '' ? selectBase : selectBase === '' ? pinBody : `${pinBody}; ${selectBase}`
+    const select = pinBodyFull === '' ? selectBase : selectBase === '' ? pinBodyFull : `${pinBodyFull}; ${selectBase}`
     const decls: string[] = []
     const branches: string[] = []
     if (toolbox !== null) {

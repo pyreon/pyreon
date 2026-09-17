@@ -35,7 +35,7 @@ import { paint, prepareCanvas } from './canvas-web'
 import type { OptionUpdatePolicy } from './option-composite'
 import { graphicCommands } from './option-layer'
 import { visualMapCommands } from './visual-map'
-import { barsFor, categoryIndex, invertCategories, layoutChart, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
+import { applySeriesSelection, barsFor, categoryIndex, invertCategories, layoutChart, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
 import type { ChartSpec, Emphasis } from './render'
 import { hitBar, hitNearestX, layoutSeriesPoints } from './layout'
 import { plain } from './format'
@@ -363,7 +363,9 @@ export function OptionChart(props: OptionChartProps): VNode {
     const steps = timelineSteps(opt)
     const stripH = steps === null ? 0.0 : TIMELINE_HEIGHT
     const planned = planOption(opt, compileOpts(w, hgt - stripH, idx))
-    const plan: OptionPlan = planned.kind === 'cartesian' ? { ...planned, compiled: magicOf(planned.compiled) } : planned
+    // `selectedMode: 'series'` tints every datum of a pinned series.
+    const withSeriesPins = (c: CompiledOption): CompiledOption => (pinnedSeries().length === 0 ? c : { ...c, spec: applySeriesSelection(c.spec, pinnedSeries()) })
+    const plan: OptionPlan = planned.kind === 'cartesian' ? { ...planned, compiled: withSeriesPins(magicOf(planned.compiled)) } : planned
     const resolved = resolveTimeline(opt, idx).option as EChartsOption
     const cmds: DrawCmd[] = []
     let zoom: OptionGeometry['zoom'] = null
@@ -516,6 +518,8 @@ export function OptionChart(props: OptionChartProps): VNode {
   // compiled commands as before.
   const hoverIndex = props.handle?.hover ?? signal(-1)
   const pinned = props.handle?.selected ?? signal<number[]>([])
+  // `selectedMode: 'series'` pins SERIES indices rather than datums.
+  const pinnedSeries = signal<number[]>([])
   /** True when a cartesian option draws an animated `lines` trail. */
   const linesEffectOn = (g: OptionGeometry): boolean =>
     g.plan.kind === 'cartesian' && (g.plan.compiled.spec.lines ?? []).some((ls) => ls.effect)
@@ -541,7 +545,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     }
     return g.cmds
   }
-  const pinMode = (g: OptionGeometry): 'single' | 'multiple' | undefined => {
+  const pinMode = (g: OptionGeometry): 'single' | 'multiple' | 'series' | undefined => {
     if (g.plan.kind === 'cartesian') return g.plan.compiled.selectedMode
     if (g.plan.kind === 'grids') {
       const part = g.plan.parts.find((p) => p.plan.kind === 'cartesian')
@@ -665,6 +669,7 @@ export function OptionChart(props: OptionChartProps): VNode {
       brushLive()
       hoverIndex()
       pinned()
+      pinnedSeries()
       zoomWin()
     },
     layout: (box, measure) => {
@@ -767,7 +772,9 @@ export function OptionChart(props: OptionChartProps): VNode {
       if (timelineClick(g.w, g.hgt, px, py)) return
       const h1 = hitAt(g, px, py)
       const pin = pinMode(g)
-      if (pin !== undefined && h1 !== null) pinned.set(pinSelection(pinned(), h1.dataIndex, pin === 'multiple'))
+      // `series` pins the whole series the hit belongs to; the other modes pin the datum.
+      if (pin === 'series' && h1 !== null) pinnedSeries.set(pinSelection(pinnedSeries(), h1.seriesIndex, true))
+      else if (pin !== undefined && h1 !== null) pinned.set(pinSelection(pinned(), h1.dataIndex, pin === 'multiple'))
       props.onSelect?.(h1)
       props.onSelectIndex?.(h1 === null ? -1 : h1.dataIndex)
     },

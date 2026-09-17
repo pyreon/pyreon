@@ -951,6 +951,11 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("gal-brush").performScrollTo().performTouchInput { click(Offset(width * 0.5f, height * 0.5f)) }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("gal-brush-count").performScrollTo().assertTextEquals("1:0")
+        // selectedMode="series": a tap pins the whole series it lands on and still reports the datum under it.
+        val seriesChart = composeRule.onNodeWithTag("gal-series-select").performScrollTo()
+        seriesChart.performTouchInput { click(Offset(width * 0.15f, height * 0.82f)) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-series-select-datum").performScrollTo().assert(androidx.compose.ui.test.SemanticsMatcher("a series-mode tap reports a datum") { n -> (n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.joinToString("") { it.text } ?: "") != "none" })
         // The lines trail renders. Its MOTION is proven on the iOS device lane
         // and in real Chromium; here it cannot be: the trail runs on
         // withInfiniteAnimationFrameNanos (a plain frame loop kept this harness

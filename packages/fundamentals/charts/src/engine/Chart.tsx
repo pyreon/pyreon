@@ -23,7 +23,7 @@ import { renderSvg } from './svg'
 import type { ToolboxConfig, ToolboxTool } from './toolbox-config'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
-import { categoryIndex, geometrySpec, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
+import { applySeriesSelection, categoryIndex, geometrySpec, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
 import { mirrorCmds, screenRectX } from './rtl'
 import { layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
 import type { PlotLayout } from './layout'
@@ -31,7 +31,7 @@ import { dateFormatter, numberFormatter } from './locale'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker, Series } from './render'
 import { scaleLinear } from './scale'
 import { resolveCategories, resolveMarks } from './marks'
-import { plotHitBarsIn, plotHitIndexIn } from './plot-hit'
+import { plotHitBarsIn, plotHitIndexIn, plotHitSeriesIn } from './plot-hit'
 import type { Mark } from './marks'
 import { chartTable, describeChart } from './a11y'
 import type { A11yInput } from './a11y'
@@ -115,7 +115,8 @@ export interface PlotChartProps<T> {
    * indices. `onSelect` still fires for the pick itself; a miss leaves the
    * selection alone (clearing is an explicit `unselect` / `restore`).
    */
-  selectedMode?: 'single' | 'multiple'
+  /** ECharts' `selectedMode`. `series` pins WHOLE series: a click tints every datum of the one it lands on. */
+  selectedMode?: 'single' | 'multiple' | 'series'
   /** Fired with the selected datums (GLOBAL indices) whenever the set changes — a pick, a dispatch, a `restore`. */
   onSelectChange?: (selected: number[]) => void
   /**
@@ -481,6 +482,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   }
   // Pinned datums, GLOBAL indices (they survive a zoom); the handle owns them when given.
   const selected = props.handle?.selected ?? signal<number[]>([])
+  // `selectedMode: 'series'` pins SERIES, not datums: the same signal, read as mark indices.
+  const seriesMode = props.selectedMode === 'series'
+  // A SEPARATE signal from the datum pin `selected`: series indices and global row indices must never share one array.
+  const selectedSeries = signal<number[]>([])
   const eventsOn = props.selectedMode !== undefined || props.handle !== undefined || props.onHighlight !== undefined
   const emphasisOn = props.emphasis ?? eventsOn
   // A committed brush band, in GLOBAL datum indices; null = none.
@@ -678,7 +683,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     props.xFormat ?? (props.locale === undefined ? undefined : props.xTime === true ? localeFmts(props.locale).date : undefined)
 
   const buildSpec = (allRows: T[], w: Double, hgt: Double): ChartSpec => {
-    const built = applyMagicType(buildSpecInner(allRows, w, hgt), magicKind(), magicStack())
+    const withStates = applyMagicType(buildSpecInner(allRows, w, hgt), magicKind(), magicStack())
+    const built = seriesMode ? applySeriesSelection(withStates, selectedSeries()) : withStates
     // The handle's `legendInverseSelect` flips over the series the chart drew.
     if (props.handle !== undefined && props.handle.seriesCount.peek() !== built.series.length) props.handle.seriesCount.set(built.series.length)
     return built
@@ -997,7 +1003,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // still re-run the effect that watches `selected`, and this path is a tap.
     // The helper keeps its own guard for the native hosts, which call it
     // unconditionally.
-    if (mode !== undefined && global >= 0) selected.set(pinSelection(selected(), global, mode === 'multiple'))
+    // `series` pins whole series, and its pick comes from the pointer (a datum index cannot name a series).
+    if (mode !== undefined && mode !== 'series' && global >= 0) selected.set(pinSelection(selected(), global, mode === 'multiple'))
     if (props.onSelect !== undefined) props.onSelect(global)
     if (props.onSelectIndex !== undefined) props.onSelectIndex(global)
   }
@@ -1119,6 +1126,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     hoverIdx()
     zoomWin()
     selected()
+    selectedSeries()
     brushSel()
     legendPage()
     focusIdx()
@@ -1556,6 +1564,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const idx = plotHitBarsIn(f.spec, f.layout, px, py)
     const global = idx < 0 ? idx : globalOf(idx, off)
     if (props.onClick !== undefined) props.onClick(global)
+    if (seriesMode) {
+      const hitSeries = plotHitSeriesIn(f.spec, f.layout, px, py, 14.0)
+      if (hitSeries >= 0) selectedSeries.set(pinSelection(selectedSeries(), hitSeries, true))
+    }
     pickDatum(global)
   })
 

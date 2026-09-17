@@ -90,7 +90,7 @@ export interface CompiledOption {
    * rendering faithfully — the conformance metric counts it as a miss.
    */
   /** ECharts' series `selectedMode` (true / single / multiple): how a click pins a datum in the host. */
-  selectedMode?: 'single' | 'multiple' | undefined
+  selectedMode?: 'single' | 'multiple' | 'series' | undefined
   /** `dataZoom` over the category x axis: the initial window, the slider, and the gestures. */
   zoom?: OptionZoom | undefined
   /** `toolbox.feature`, host-shaped. */
@@ -143,30 +143,67 @@ function stateFields(s: Record<string, unknown>, path: string, warn: (code: Opti
     else if (focus !== undefined && focus !== 'none') warn('series-option-unsupported', `${path}.emphasis.focus`, `emphasis.focus "${String(focus)}" is not supported (self, series and none are); nothing is blurred.`)
     const item = isObj(emphasis['itemStyle']) ? emphasis['itemStyle'] : {}
     if (typeof item['color'] === 'string') out.emphasisColor = item['color']
-    for (const key of ['label', 'scale', 'lineStyle', 'areaStyle', 'blurScope', 'disabled']) if (emphasis[key] !== undefined) warn('series-option-unsupported', `${path}.emphasis.${key}`, `emphasis.${key} has no engine form (the highlighted datum takes emphasis.itemStyle.color and an outline); it was ignored.`)
+    // `scale`: true is ECharts' own 1.1; a number is the factor.
+    const scale = emphasis['scale']
+    if (scale === true) out.emphasisScale = 1.1
+    else if (typeof scale === 'number') out.emphasisScale = Math.max(0.0, scale)
+    else if (scale !== undefined && scale !== false) warn('series-option-unsupported', `${path}.emphasis.scale`, 'emphasis.scale takes true or a number; it was ignored.')
+    if (emphasis['disabled'] === true) out.emphasisDisabled = true
+    const eLine = isObj(emphasis['lineStyle']) ? emphasis['lineStyle'] : {}
+    const eWidth = num(eLine['width'])
+    if (eWidth !== null) out.emphasisWidth = Math.max(0.0, eWidth)
+    const eArea = isObj(emphasis['areaStyle']) ? emphasis['areaStyle'] : {}
+    const eOpacity = num(eArea['opacity'])
+    if (eOpacity !== null) out.emphasisAreaOpacity = Math.max(0.0, Math.min(1.0, eOpacity))
+    if (stateLabelShow(emphasis['label'], `${path}.emphasis.label`, warn)) out.emphasisLabel = true
+    // `blurScope`: this engine draws ONE grid, so every scope blurs the same datums.
+    const scope = emphasis['blurScope']
+    if (scope !== undefined && scope !== 'coordinateSystem' && scope !== 'series' && scope !== 'global') {
+      warn('series-option-unsupported', `${path}.emphasis.blurScope`, `emphasis.blurScope "${String(scope)}" is not one ECharts defines; it was ignored.`)
+    }
   }
   const select = state('select')
   if (select !== undefined) {
     const item = isObj(select['itemStyle']) ? select['itemStyle'] : {}
     if (typeof item['color'] === 'string') out.selectColor = item['color']
-    for (const key of ['label', 'lineStyle', 'areaStyle', 'disabled']) if (select[key] !== undefined) warn('series-option-unsupported', `${path}.select.${key}`, `select.${key} has no engine form (a pinned datum takes select.itemStyle.color and a heavy outline); it was ignored.`)
+    if (stateLabelShow(select['label'], `${path}.select.label`, warn)) out.selectLabel = true
+    if (select['disabled'] === true) warn('series-option-unsupported', `${path}.select.disabled`, 'select.disabled is not supported; leave selectedMode off to stop a datum pinning.')
+    for (const key of ['lineStyle', 'areaStyle']) if (select[key] !== undefined) warn('series-option-unsupported', `${path}.select.${key}`, `select.${key} has no engine form (a pinned DATUM takes select.itemStyle.color and a heavy outline, and a stroke belongs to the whole line); it was ignored.`)
   }
   const blur = state('blur')
   if (blur !== undefined) {
     const item = isObj(blur['itemStyle']) ? blur['itemStyle'] : {}
     const opacity = num(item['opacity'])
     if (opacity !== null) out.blurOpacity = Math.max(0.0, Math.min(1.0, opacity))
-    for (const key of ['label', 'lineStyle', 'areaStyle']) if (blur[key] !== undefined) warn('series-option-unsupported', `${path}.blur.${key}`, `blur.${key} has no engine form (a blurred datum fades to blur.itemStyle.opacity); it was ignored.`)
+    const bLine = isObj(blur['lineStyle']) ? blur['lineStyle'] : {}
+    const bWidth = num(bLine['width'])
+    if (bWidth !== null) out.blurWidth = Math.max(0.0, bWidth)
+    const bArea = isObj(blur['areaStyle']) ? blur['areaStyle'] : {}
+    const bOpacity = num(bArea['opacity'])
+    if (bOpacity !== null) out.blurAreaOpacity = Math.max(0.0, Math.min(1.0, bOpacity))
+    if (blur['label'] !== undefined) warn('series-option-unsupported', `${path}.blur.label`, 'blur.label has no engine form (a blurred datum keeps its own label); it was ignored.')
   }
   return out
 }
 
-/** ECharts' `selectedMode` as the host's pin mode; `series` (whole-series selection) is named. */
-function selectedModeOf(s: Record<string, unknown>, path: string, warn: (code: OptionWarning['code'], path: string, message: string) => void): 'single' | 'multiple' | undefined {
+/** Whether a state's `label` asks to be shown; its own styling is named. */
+function stateLabelShow(raw: unknown, path: string, warn: (code: OptionWarning['code'], path: string, message: string) => void): boolean {
+  if (raw === undefined) return false
+  if (!isObj(raw)) return raw === true
+  for (const key of Object.keys(raw)) {
+    if (key === 'show') continue
+    warn('series-option-unsupported', `${path}.${key}`, `a state label takes the series' own label style; ${key} was ignored.`)
+  }
+  return raw['show'] !== false
+}
+
+/** ECharts' `selectedMode` as the host's pin mode. */
+function selectedModeOf(s: Record<string, unknown>, path: string, warn: (code: OptionWarning['code'], path: string, message: string) => void): 'single' | 'multiple' | 'series' | undefined {
   const mode = s['selectedMode']
   if (mode === undefined || mode === false) return undefined
   if (mode === true || mode === 'single') return 'single'
   if (mode === 'multiple') return 'multiple'
+  if (mode === 'series') return 'series'
   warn('series-option-unsupported', `${path}.selectedMode`, `selectedMode "${String(mode)}" is not supported (true, single and multiple are); clicks do not pin.`)
   return undefined
 }
@@ -552,7 +589,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   // Large-data requests per compiled cartesian series (see the sampling pass).
   const sampleRequests: SamplingRequest[] = []
   // The first series' `selectedMode` decides how the host pins a click.
-  let selectedMode: 'single' | 'multiple' | undefined = undefined
+  let selectedMode: 'single' | 'multiple' | 'series' | undefined = undefined
   // Running totals per `stack` name for stacked LINES.
   const lineStacks = new Map<string, Double[]>()
   const barCount = rawSeries.filter((s) => isObj(s) && s['type'] === 'bar' && s['stack'] === undefined).length

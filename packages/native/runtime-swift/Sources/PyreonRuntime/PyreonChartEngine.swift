@@ -481,13 +481,22 @@ public struct Series {
   public var emphasisColor: String? = nil
   public var selectColor: String? = nil
   public var blurOpacity: Double? = nil
+  public var emphasisScale: Double? = nil
+  public var emphasisDisabled: Bool? = nil
+  public var emphasisWidth: Double? = nil
+  public var blurWidth: Double? = nil
+  public var emphasisAreaOpacity: Double? = nil
+  public var blurAreaOpacity: Double? = nil
+  public var emphasisLabel: Bool? = nil
+  public var selectLabel: Bool? = nil
+  public var seriesSelected: Bool? = nil
   public var inBrush: [Int]? = nil
   public var brushOpacity: Double? = nil
   public var errLow: [Double]? = nil
   public var errHigh: [Double]? = nil
   public var values2: [Double]? = nil
   public var extras: [SeriesExtra]? = nil
-  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, axisExtra: Double? = nil, onX2: Bool? = nil, xs: [Double]? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, symbolMargin: Double? = nil, symbolOffset: [Double]? = nil, symbolPosition: String? = nil, symbolRotate: Double? = nil, symbolClip: Bool? = nil, symbolBoundingData: Double? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, labelTexts: [String]? = nil, labelColor: String? = nil, labelSize: Double? = nil, labelRich: [RichStyle]? = nil, focus: String? = nil, emphasisColor: String? = nil, selectColor: String? = nil, blurOpacity: Double? = nil, inBrush: [Int]? = nil, brushOpacity: Double? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil, extras: [SeriesExtra]? = nil) {
+  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, axisExtra: Double? = nil, onX2: Bool? = nil, xs: [Double]? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, symbolMargin: Double? = nil, symbolOffset: [Double]? = nil, symbolPosition: String? = nil, symbolRotate: Double? = nil, symbolClip: Bool? = nil, symbolBoundingData: Double? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, labelTexts: [String]? = nil, labelColor: String? = nil, labelSize: Double? = nil, labelRich: [RichStyle]? = nil, focus: String? = nil, emphasisColor: String? = nil, selectColor: String? = nil, blurOpacity: Double? = nil, emphasisScale: Double? = nil, emphasisDisabled: Bool? = nil, emphasisWidth: Double? = nil, blurWidth: Double? = nil, emphasisAreaOpacity: Double? = nil, blurAreaOpacity: Double? = nil, emphasisLabel: Bool? = nil, selectLabel: Bool? = nil, seriesSelected: Bool? = nil, inBrush: [Int]? = nil, brushOpacity: Double? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil, extras: [SeriesExtra]? = nil) {
     self.kind = kind
     self.values = values
     self.color = color
@@ -524,6 +533,15 @@ public struct Series {
     self.emphasisColor = emphasisColor
     self.selectColor = selectColor
     self.blurOpacity = blurOpacity
+    self.emphasisScale = emphasisScale
+    self.emphasisDisabled = emphasisDisabled
+    self.emphasisWidth = emphasisWidth
+    self.blurWidth = blurWidth
+    self.emphasisAreaOpacity = emphasisAreaOpacity
+    self.blurAreaOpacity = blurAreaOpacity
+    self.emphasisLabel = emphasisLabel
+    self.selectLabel = selectLabel
+    self.seriesSelected = seriesSelected
     self.inBrush = inBrush
     self.brushOpacity = brushOpacity
     self.errLow = errLow
@@ -4928,6 +4946,82 @@ public func emphasisLevel(_ spec: ChartSpec, _ index: Int) -> Int {
     return e.highlight == index ? 1 : 0
   }
 
+public func brushLikeAnchors(_ spec: ChartSpec, _ s: Series, _ sIdx: Int, _ plot: PyreonChartRect, _ yDomain: Domain, _ l: PlotLayout, _ place: ([Double]) -> [PyreonChartPt]) -> [PyreonChartPt] {
+    var out: [PyreonChartPt] = []
+    if s.kind == "bars" || s.kind == "waterfall" {
+      for r in barsForIn(spec, sIdx, plot) {
+        out.append(PyreonChartPt(x: r.x + Double(r.w) / 2.0, y: r.w < 0.0 ? -1000000.0 : r.y))
+      }
+      return out
+    }
+    if s.kind == "stacked" || s.kind == "grouped" {
+      var kf = 0.0
+      for i in 0..<sIdx {
+        kf = kf + 1.0
+      }
+      for i in 0..<s.values.count {
+        let at = markerAnchor(spec, kf, i, plot, yDomain)
+        out.append(at.count > 0 ? at[0] : PyreonChartPt(x: -1000000.0, y: -1000000.0))
+      }
+      return out
+    }
+    return place(s.values)
+  }
+
+public func applySeriesSelection(_ spec: ChartSpec, _ selected: [Int]) -> ChartSpec {
+    var series: [Series] = []
+    var k = 0
+    for s in spec.series {
+      var on = false
+      for i in selected {
+        if i == k {
+          on = true
+        }
+      }
+      series.append(on ? { var c = s; c.seriesSelected = true; return c }() : s)
+      k = k + 1
+    }
+    return { var c = spec; c.series = series; return c }()
+  }
+
+public func seriesEmphasisLevel(_ spec: ChartSpec, _ s: Series, _ index: Int) -> Int {
+    if s.seriesSelected == true {
+      return 2
+    }
+    let level = emphasisLevel(spec, index)
+    return level == 1 && s.emphasisDisabled == true ? 0 : level
+  }
+
+public func stateWidth(_ spec: ChartSpec, _ s: Series) -> Double {
+    let e = (spec.emphasis ?? Emphasis(highlight: -1, selected: []))
+    if e.highlight >= 0 && s.emphasisDisabled != true {
+      return (s.emphasisWidth ?? s.width)
+    }
+    if blurActive(spec) {
+      return (s.blurWidth ?? s.width)
+    }
+    return s.width
+  }
+
+public func stateAreaOpacity(_ spec: ChartSpec, _ s: Series) -> Double {
+    let e = (spec.emphasis ?? Emphasis(highlight: -1, selected: []))
+    if e.highlight >= 0 && s.emphasisDisabled != true {
+      return (s.emphasisAreaOpacity ?? -1.0)
+    }
+    if blurActive(spec) {
+      return (s.blurAreaOpacity ?? -1.0)
+    }
+    return -1.0
+  }
+
+public func stateLabelShown(_ spec: ChartSpec, _ s: Series, _ index: Int) -> Bool {
+    let level = seriesEmphasisLevel(spec, s, index)
+    if level == 2 {
+      return s.selectLabel == true
+    }
+    return level == 1 && s.emphasisLabel == true
+  }
+
 public func blurActive(_ spec: ChartSpec) -> Bool {
     let e = (spec.emphasis ?? Emphasis(highlight: -1, selected: []))
     if e.highlight < 0 {
@@ -4942,7 +5036,7 @@ public func blurActive(_ spec: ChartSpec) -> Bool {
   }
 
 public func stateFill(_ spec: ChartSpec, _ s: Series, _ index: Int, _ fill: String) -> String {
-    let level = emphasisLevel(spec, index)
+    let level = seriesEmphasisLevel(spec, s, index)
     let selectColor = (s.selectColor ?? "")
     let emphasisColor = (s.emphasisColor ?? "")
     if level == 2 && selectColor != "" {
@@ -5473,7 +5567,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         let rS = growRect(seg.rect, yDomain)
         let gS = seriesGradient(stackedSeries[seg.seriesIndex].gradient, plot)
         out.append(rectCmd(rS, stateFill(spec, stackedSeries[seg.seriesIndex], seg.datumIndex, stackedSeries[seg.seriesIndex].color), stackedSeries[seg.seriesIndex].corners, gS.stops.count == 0 ? nil : gS, stackedSeries[seg.seriesIndex].pattern))
-        let lvlS = emphasisLevel(spec, seg.datumIndex)
+        let lvlS = seriesEmphasisLevel(spec, stackedSeries[seg.seriesIndex], seg.datumIndex)
         if lvlS > 0 {
           out.append(emphasisOutline(rS, lvlS, t.label))
         }
@@ -5492,7 +5586,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         let rG = growRect(seg.rect, yDomain)
         let gG = seriesGradient(groupedSeries[seg.seriesIndex].gradient, plot)
         out.append(rectCmd(rG, stateFill(spec, groupedSeries[seg.seriesIndex], seg.datumIndex, groupedSeries[seg.seriesIndex].color), groupedSeries[seg.seriesIndex].corners, gG.stops.count == 0 ? nil : gG, groupedSeries[seg.seriesIndex].pattern))
-        let lvlG = emphasisLevel(spec, seg.datumIndex)
+        let lvlG = seriesEmphasisLevel(spec, groupedSeries[seg.seriesIndex], seg.datumIndex)
         if lvlG > 0 {
           out.append(emphasisOutline(rG, lvlG, t.label))
         }
@@ -5575,7 +5669,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           }
         }
         for i in 0..<rects.count {
-          let lvl = emphasisLevel(spec, i)
+          let lvl = seriesEmphasisLevel(spec, s, i)
           if lvl > 0 {
             out.append(emphasisOutline(growRectH(rects[i]), lvl, t.label))
           }
@@ -5610,7 +5704,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           }
         }
         for i in 0..<rects.count {
-          let lvl = emphasisLevel(spec, i)
+          let lvl = seriesEmphasisLevel(spec, s, i)
           if lvl > 0 {
             out.append(emphasisOutline(growRect(rects[i], sDomain), lvl, t.label))
           }
@@ -5638,7 +5732,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             let grownH = st.rect.h * progress
             let grown = progress >= 1.0 ? st.rect : PyreonChartRect(x: st.rect.x, y: st.value >= 0.0 ? startY - grownH : startY, w: st.rect.w, h: grownH)
             out.append(rectCmd(grown, fill, s.corners, sGrad, s.pattern))
-            let lvlW = emphasisLevel(spec, st.datumIndex)
+            let lvlW = seriesEmphasisLevel(spec, s, st.datumIndex)
             if lvlW > 0 {
               out.append(emphasisOutline(grown, lvlW, t.label))
             }
@@ -5660,7 +5754,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             for run in splitRuns(s.values, place) {
               let pts = reveal(shape(run))
               if pts.count > 1 {
-                out.append(PyreonDrawCmd(kind: "polyline", stroke: s.color, width: s.width, dash: s.dash, points: pts))
+                out.append(PyreonDrawCmd(kind: "polyline", stroke: s.color, width: stateWidth(spec, s), dash: s.dash, points: pts))
               }
             }
             let lineSymbol = (s.symbol ?? "circle")
@@ -5716,7 +5810,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
                     let baseY = scaleLinear(sDomain, plot.y + plot.h, plot.y, sDomain.min)
                     poly.append(PyreonChartPt(x: pts[pts.count - 1].x, y: baseY))
                     poly.append(PyreonChartPt(x: pts[0].x, y: baseY))
-                    out.append(polygonCmd(poly, s.color, sGrad, s.pattern))
+                    let areaAlpha = stateAreaOpacity(spec, s)
+                    out.append(polygonCmd(poly, areaAlpha < 0.0 ? s.color : withAlpha(s.color, areaAlpha), sGrad, s.pattern))
                   }
                 }
               } else {
@@ -5731,11 +5826,12 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
                     out.append(PyreonDrawCmd(kind: "circle", fill: withAlpha(s.color, 0.12), center: pts[i], radius: fullR * 2.6 * progress))
                     out.append(PyreonDrawCmd(kind: "circle", fill: withAlpha(s.color, 0.25), center: pts[i], radius: fullR * 1.7 * progress))
                   }
-                  let lvlP = emphasisLevel(spec, i)
+                  let lvlP = seriesEmphasisLevel(spec, s, i)
                   if lvlP > 0 {
                     out.append(PyreonDrawCmd(kind: "circle", fill: withAlpha(t.label, 0.35), center: pts[i], radius: fullR * progress + (lvlP == 2 ? 4.0 : 3.0)))
                   }
-                  let r = fullR * progress
+                  let scaled = lvlP == 1 ? fullR * ((s.emphasisScale ?? 1.0)) : fullR
+                  let r = scaled * progress
                   let pointSymbol = (s.symbol ?? "circle")
                   let fillP = stateFill(spec, s, i, s.color)
                   if pointSymbol == "circle" {
@@ -5758,6 +5854,23 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             continue
           }
           for c in seriesLabelCmds(s, i, fmtP(v), PyreonChartPt(x: labelPts[i].x, y: labelPts[i].y - (s.radius + 5.0)), "middle", "bottom", t, measure) {
+            out.append(c)
+          }
+        }
+      }
+      if (s.emphasisLabel == true || s.selectLabel == true) && progress >= 1.0 {
+        let fmtS = (spec.yFormat ?? plain)
+        let anchors = brushLikeAnchors(spec, s, sIdx, plot, yDomain, l, place)
+        for i in 0..<anchors.count {
+          if !stateLabelShown(spec, s, i) {
+            continue
+          }
+          let v = printed(sIdx, i)
+          if !isFiniteValue(v) {
+            continue
+          }
+          let at = anchors[i]
+          for c in seriesLabelCmds(s, i, fmtS(v), PyreonChartPt(x: at.x, y: at.y - 6.0), "middle", "bottom", t, measure) {
             out.append(c)
           }
         }
@@ -10947,6 +11060,58 @@ public func plotHitIndexIn(_ raw: ChartSpec, _ l: PlotLayout, _ px: Double, _ py
       return -1
     }
     return categoryIndex(raw, hitNearestX(layoutSeriesPoints(first.values, l.plot, resolveYDomain(spec)), px))
+  }
+
+public func plotHitSeriesIn(_ spec: ChartSpec, _ l: PlotLayout, _ px: Double, _ py: Double, _ reach: Double) -> Int {
+    let geo = geometrySpec(spec)
+    var bars = -1
+    var bi = 0
+    for s in geo.series {
+      if (s.kind == "bars" || s.kind == "waterfall") && bars < 0 {
+        if hitBar(barsForIn(spec, bi, l.plot), px, py) >= 0 {
+          bars = bi
+        }
+      }
+      bi = bi + 1
+    }
+    if bars >= 0 {
+      return bars
+    }
+    var sets = -1
+    var si = 0
+    for s in geo.series {
+      if (s.kind == "stacked" || s.kind == "grouped") && sets < 0 {
+        for p in brushDatumPoints(spec, l, si) {
+          let dxs = px - p.x
+          let dys = py - p.y
+          if dxs * dxs + dys * dys <= reach * reach && sets < 0 {
+            sets = si
+          }
+        }
+      }
+      si = si + 1
+    }
+    if sets >= 0 {
+      return sets
+    }
+    var best = -1
+    var bestD = reach * reach
+    var pi = 0
+    for s in geo.series {
+      if s.kind != "bars" && s.kind != "waterfall" && s.kind != "stacked" && s.kind != "grouped" {
+        for p in brushDatumPoints(spec, l, pi) {
+          let dx = px - p.x
+          let dy = py - p.y
+          let d = dx * dx + dy * dy
+          if d <= bestD {
+            bestD = d
+            best = pi
+          }
+        }
+      }
+      pi = pi + 1
+    }
+    return best
   }
 
 public func renderTitle(_ text: String, _ subtitle: String?, _ box: PyreonChartRect, _ opts: TitleOptions) -> TitleLayout {

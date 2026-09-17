@@ -70,7 +70,7 @@ data class LabelSegment(var text: String, var color: String, var fontSize: Doubl
 
 data class LinesSeries(var coords: List<List<Double>>, var colors: List<String>, var widths: List<Double>, var effect: Boolean, var period: Double, var trailLength: Double, var effectColor: String, var symbolSize: Double)
 
-data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var axisExtra: Double? = null, var onX2: Boolean? = null, var xs: List<Double>? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var symbolMargin: Double? = null, var symbolOffset: List<Double>? = null, var symbolPosition: String? = null, var symbolRotate: Double? = null, var symbolClip: Boolean? = null, var symbolBoundingData: Double? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var labelTexts: List<String>? = null, var labelColor: String? = null, var labelSize: Double? = null, var labelRich: List<RichStyle>? = null, var focus: String? = null, var emphasisColor: String? = null, var selectColor: String? = null, var blurOpacity: Double? = null, var inBrush: List<Int>? = null, var brushOpacity: Double? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null, var extras: List<SeriesExtra>? = null)
+data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var axisExtra: Double? = null, var onX2: Boolean? = null, var xs: List<Double>? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var symbolMargin: Double? = null, var symbolOffset: List<Double>? = null, var symbolPosition: String? = null, var symbolRotate: Double? = null, var symbolClip: Boolean? = null, var symbolBoundingData: Double? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var labelTexts: List<String>? = null, var labelColor: String? = null, var labelSize: Double? = null, var labelRich: List<RichStyle>? = null, var focus: String? = null, var emphasisColor: String? = null, var selectColor: String? = null, var blurOpacity: Double? = null, var emphasisScale: Double? = null, var emphasisDisabled: Boolean? = null, var emphasisWidth: Double? = null, var blurWidth: Double? = null, var emphasisAreaOpacity: Double? = null, var blurAreaOpacity: Double? = null, var emphasisLabel: Boolean? = null, var selectLabel: Boolean? = null, var seriesSelected: Boolean? = null, var inBrush: List<Int>? = null, var brushOpacity: Double? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null, var extras: List<SeriesExtra>? = null)
 
 data class SeriesExtra(var label: String, var numbers: List<Double>? = null, var texts: List<String>? = null)
 
@@ -2411,6 +2411,82 @@ fun emphasisLevel(spec: ChartSpec, index: Int): Int {
     return if (e.highlight == index) 1 else 0
   }
 
+fun brushLikeAnchors(spec: ChartSpec, s: Series, sIdx: Int, plot: PyreonChartRect, yDomain: Domain, l: PlotLayout, place: (List<Double>) -> List<PyreonChartPt>): List<PyreonChartPt> {
+    val out: MutableList<PyreonChartPt> = mutableListOf()
+    if (s.kind == "bars" || s.kind == "waterfall") {
+      for (r in barsForIn(spec, sIdx, plot)) {
+        out.add(PyreonChartPt(x = r.x + (r.w).toDouble() / (2.0).toDouble(), y = if (r.w < 0.0) -1000000.0 else r.y))
+      }
+      return out
+    }
+    if (s.kind == "stacked" || s.kind == "grouped") {
+      var kf = 0.0
+      for (i in 0 until sIdx) {
+        kf = kf + 1.0
+      }
+      for (i in 0 until s.values.length) {
+        val at = markerAnchor(spec, kf, i, plot, yDomain)
+        out.add(if (at.length > 0) at[0] else PyreonChartPt(x = -1000000.0, y = -1000000.0))
+      }
+      return out
+    }
+    return place(s.values)
+  }
+
+fun applySeriesSelection(spec: ChartSpec, selected: List<Int>): ChartSpec {
+    val series: MutableList<Series> = mutableListOf()
+    var k = 0
+    for (s in spec.series) {
+      var on = false
+      for (i in selected) {
+        if (i == k) {
+          on = true
+        }
+      }
+      series.add(if (on) s.copy(seriesSelected = true) else s)
+      k = k + 1
+    }
+    return spec.copy(series = series)
+  }
+
+fun seriesEmphasisLevel(spec: ChartSpec, s: Series, index: Int): Int {
+    if (s.seriesSelected == true) {
+      return 2
+    }
+    val level = emphasisLevel(spec, index)
+    return if (level == 1 && s.emphasisDisabled == true) 0 else level
+  }
+
+fun stateWidth(spec: ChartSpec, s: Series): Double {
+    val e = (spec.emphasis ?: Emphasis(highlight = -1, selected = listOf()))
+    if (e.highlight >= 0 && s.emphasisDisabled != true) {
+      return (s.emphasisWidth ?: s.width)
+    }
+    if (blurActive(spec)) {
+      return (s.blurWidth ?: s.width)
+    }
+    return s.width
+  }
+
+fun stateAreaOpacity(spec: ChartSpec, s: Series): Double {
+    val e = (spec.emphasis ?: Emphasis(highlight = -1, selected = listOf()))
+    if (e.highlight >= 0 && s.emphasisDisabled != true) {
+      return (s.emphasisAreaOpacity ?: -1.0)
+    }
+    if (blurActive(spec)) {
+      return (s.blurAreaOpacity ?: -1.0)
+    }
+    return -1.0
+  }
+
+fun stateLabelShown(spec: ChartSpec, s: Series, index: Int): Boolean {
+    val level = seriesEmphasisLevel(spec, s, index)
+    if (level == 2) {
+      return s.selectLabel == true
+    }
+    return level == 1 && s.emphasisLabel == true
+  }
+
 fun blurActive(spec: ChartSpec): Boolean {
     val e = (spec.emphasis ?: Emphasis(highlight = -1, selected = listOf()))
     if (e.highlight < 0) {
@@ -2425,7 +2501,7 @@ fun blurActive(spec: ChartSpec): Boolean {
   }
 
 fun stateFill(spec: ChartSpec, s: Series, index: Int, fill: String): String {
-    val level = emphasisLevel(spec, index)
+    val level = seriesEmphasisLevel(spec, s, index)
     val selectColor = (s.selectColor ?: "")
     val emphasisColor = (s.emphasisColor ?: "")
     if (level == 2 && selectColor != "") {
@@ -2956,7 +3032,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         val rS = growRect(seg.rect, yDomain)
         val gS = seriesGradient(stackedSeries[seg.seriesIndex].gradient, plot)
         out.add(rectCmd(rS, stateFill(spec, stackedSeries[seg.seriesIndex], seg.datumIndex, stackedSeries[seg.seriesIndex].color), stackedSeries[seg.seriesIndex].corners, if (gS.stops.length == 0) null else gS, stackedSeries[seg.seriesIndex].pattern))
-        val lvlS = emphasisLevel(spec, seg.datumIndex)
+        val lvlS = seriesEmphasisLevel(spec, stackedSeries[seg.seriesIndex], seg.datumIndex)
         if (lvlS > 0) {
           out.add(emphasisOutline(rS, lvlS, t.label))
         }
@@ -2975,7 +3051,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         val rG = growRect(seg.rect, yDomain)
         val gG = seriesGradient(groupedSeries[seg.seriesIndex].gradient, plot)
         out.add(rectCmd(rG, stateFill(spec, groupedSeries[seg.seriesIndex], seg.datumIndex, groupedSeries[seg.seriesIndex].color), groupedSeries[seg.seriesIndex].corners, if (gG.stops.length == 0) null else gG, groupedSeries[seg.seriesIndex].pattern))
-        val lvlG = emphasisLevel(spec, seg.datumIndex)
+        val lvlG = seriesEmphasisLevel(spec, groupedSeries[seg.seriesIndex], seg.datumIndex)
         if (lvlG > 0) {
           out.add(emphasisOutline(rG, lvlG, t.label))
         }
@@ -3058,7 +3134,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           }
         }
         for (i in 0 until rects.length) {
-          val lvl = emphasisLevel(spec, i)
+          val lvl = seriesEmphasisLevel(spec, s, i)
           if (lvl > 0) {
             out.add(emphasisOutline(growRectH(rects[i]), lvl, t.label))
           }
@@ -3093,7 +3169,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           }
         }
         for (i in 0 until rects.length) {
-          val lvl = emphasisLevel(spec, i)
+          val lvl = seriesEmphasisLevel(spec, s, i)
           if (lvl > 0) {
             out.add(emphasisOutline(growRect(rects[i], sDomain), lvl, t.label))
           }
@@ -3121,7 +3197,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
             val grownH = st.rect.h * progress
             val grown = if (progress >= 1.0) st.rect else PyreonChartRect(x = st.rect.x, y = if (st.value >= 0.0) startY - grownH else startY, w = st.rect.w, h = grownH)
             out.add(rectCmd(grown, fill, s.corners, sGrad, s.pattern))
-            val lvlW = emphasisLevel(spec, st.datumIndex)
+            val lvlW = seriesEmphasisLevel(spec, s, st.datumIndex)
             if (lvlW > 0) {
               out.add(emphasisOutline(grown, lvlW, t.label))
             }
@@ -3143,7 +3219,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
             for (run in splitRuns(s.values, place)) {
               val pts = reveal(shape(run))
               if (pts.length > 1) {
-                out.add(PyreonDrawCmd(kind = "polyline", stroke = s.color, width = s.width, dash = s.dash, points = pts))
+                out.add(PyreonDrawCmd(kind = "polyline", stroke = s.color, width = stateWidth(spec, s), dash = s.dash, points = pts))
               }
             }
             val lineSymbol = (s.symbol ?: "circle")
@@ -3199,7 +3275,8 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
                     val baseY = scaleLinear(sDomain, plot.y + plot.h, plot.y, sDomain.min)
                     poly.add(PyreonChartPt(x = pts[pts.length - 1].x, y = baseY))
                     poly.add(PyreonChartPt(x = pts[0].x, y = baseY))
-                    out.add(polygonCmd(poly, s.color, sGrad, s.pattern))
+                    val areaAlpha = stateAreaOpacity(spec, s)
+                    out.add(polygonCmd(poly, if (areaAlpha < 0.0) s.color else withAlpha(s.color, areaAlpha), sGrad, s.pattern))
                   }
                 }
               } else {
@@ -3214,11 +3291,12 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
                     out.add(PyreonDrawCmd(kind = "circle", fill = withAlpha(s.color, 0.12), center = pts[i], radius = fullR * 2.6 * progress))
                     out.add(PyreonDrawCmd(kind = "circle", fill = withAlpha(s.color, 0.25), center = pts[i], radius = fullR * 1.7 * progress))
                   }
-                  val lvlP = emphasisLevel(spec, i)
+                  val lvlP = seriesEmphasisLevel(spec, s, i)
                   if (lvlP > 0) {
                     out.add(PyreonDrawCmd(kind = "circle", fill = withAlpha(t.label, 0.35), center = pts[i], radius = fullR * progress + (if (lvlP == 2) 4.0 else 3.0)))
                   }
-                  val r = fullR * progress
+                  val scaled = if (lvlP == 1) fullR * ((s.emphasisScale ?: 1.0)) else fullR
+                  val r = scaled * progress
                   val pointSymbol = (s.symbol ?: "circle")
                   val fillP = stateFill(spec, s, i, s.color)
                   if (pointSymbol == "circle") {
@@ -3241,6 +3319,23 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
             continue
           }
           for (c in seriesLabelCmds(s, i, fmtP(v), PyreonChartPt(x = labelPts[i].x, y = labelPts[i].y - (s.radius + 5.0)), "middle", "bottom", t, measure)) {
+            out.add(c)
+          }
+        }
+      }
+      if ((s.emphasisLabel == true || s.selectLabel == true) && progress >= 1.0) {
+        val fmtS = (spec.yFormat ?: ::plain)
+        val anchors = brushLikeAnchors(spec, s, sIdx, plot, yDomain, l, place)
+        for (i in 0 until anchors.length) {
+          if (!stateLabelShown(spec, s, i)) {
+            continue
+          }
+          val v = printed(sIdx, i)
+          if (!isFiniteValue(v)) {
+            continue
+          }
+          val at = anchors[i]
+          for (c in seriesLabelCmds(s, i, fmtS(v), PyreonChartPt(x = at.x, y = at.y - 6.0), "middle", "bottom", t, measure)) {
             out.add(c)
           }
         }
@@ -8430,6 +8525,58 @@ fun plotHitIndexIn(raw: ChartSpec, l: PlotLayout, px: Double, py: Double): Int {
       return -1
     }
     return categoryIndex(raw, hitNearestX(layoutSeriesPoints(first.values, l.plot, resolveYDomain(spec)), px))
+  }
+
+fun plotHitSeriesIn(spec: ChartSpec, l: PlotLayout, px: Double, py: Double, reach: Double): Int {
+    val geo = geometrySpec(spec)
+    var bars = -1
+    var bi = 0
+    for (s in geo.series) {
+      if ((s.kind == "bars" || s.kind == "waterfall") && bars < 0) {
+        if (hitBar(barsForIn(spec, bi, l.plot), px, py) >= 0) {
+          bars = bi
+        }
+      }
+      bi = bi + 1
+    }
+    if (bars >= 0) {
+      return bars
+    }
+    var sets = -1
+    var si = 0
+    for (s in geo.series) {
+      if ((s.kind == "stacked" || s.kind == "grouped") && sets < 0) {
+        for (p in brushDatumPoints(spec, l, si)) {
+          val dxs = px - p.x
+          val dys = py - p.y
+          if (dxs * dxs + dys * dys <= reach * reach && sets < 0) {
+            sets = si
+          }
+        }
+      }
+      si = si + 1
+    }
+    if (sets >= 0) {
+      return sets
+    }
+    var best = -1
+    var bestD = reach * reach
+    var pi = 0
+    for (s in geo.series) {
+      if (s.kind != "bars" && s.kind != "waterfall" && s.kind != "stacked" && s.kind != "grouped") {
+        for (p in brushDatumPoints(spec, l, pi)) {
+          val dx = px - p.x
+          val dy = py - p.y
+          val d = dx * dx + dy * dy
+          if (d <= bestD) {
+            bestD = d
+            best = pi
+          }
+        }
+      }
+      pi = pi + 1
+    }
+    return best
   }
 
 fun renderTitle(text: String, subtitle: String?, box: PyreonChartRect, opts: TitleOptions): TitleLayout {

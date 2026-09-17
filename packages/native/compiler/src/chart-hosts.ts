@@ -288,6 +288,10 @@ function resolveStaticDataset(raw: Extract<ExprIR, { kind: 'object' }>, resolve:
   return out.kind === 'object' ? out : raw
 }
 
+function litBoolean(e: ExprIR | undefined): boolean | undefined {
+  return e !== undefined && e.kind === 'literal' && typeof e.value === 'boolean' ? e.value : undefined
+}
+
 function litNumber(e: ExprIR | undefined): number | undefined {
   if (e === undefined) return undefined
   // A negative datum parses as unary minus over a literal (`-2`), which an
@@ -2212,21 +2216,42 @@ function desugarOptionChartHost(
         const emphasisItem = literalOf(objectField(emphasisOpt, 'itemStyle'), resolve)
         const c = emphasisItem?.kind === 'object' ? litString(objectField(emphasisItem, 'color')) : undefined
         if (c !== undefined) opts.push({ name: 'emphasisColor', value: lit(c) })
-        for (const key of ['label', 'scale', 'lineStyle', 'areaStyle', 'blurScope', 'disabled']) if (objectField(emphasisOpt, key) !== undefined) warn(`<OptionChart option.series[${si}].emphasis.${key}>: has no engine form (the highlighted datum takes emphasis.itemStyle.color and an outline); it was ignored.`)
+        const scaleIR = objectField(emphasisOpt, 'scale')
+        const scaleN = litNumber(scaleIR)
+        if (scaleIR?.kind === 'literal' && scaleIR.value === true) opts.push({ name: 'emphasisScale', value: optionDoubleLiteral(1.1) })
+        else if (scaleN !== undefined) opts.push({ name: 'emphasisScale', value: optionDoubleLiteral(Math.max(0, scaleN)) })
+        if (litBoolean(objectField(emphasisOpt, 'disabled')) === true) opts.push({ name: 'emphasisDisabled', value: lit(true) })
+        const eLine = literalOf(objectField(emphasisOpt, 'lineStyle'), resolve)
+        const eWidth = eLine?.kind === 'object' ? litNumber(objectField(eLine, 'width')) : undefined
+        if (eWidth !== undefined) opts.push({ name: 'emphasisWidth', value: optionDoubleLiteral(Math.max(0, eWidth)) })
+        const eArea = literalOf(objectField(emphasisOpt, 'areaStyle'), resolve)
+        const eOpacity = eArea?.kind === 'object' ? litNumber(objectField(eArea, 'opacity')) : undefined
+        if (eOpacity !== undefined) opts.push({ name: 'emphasisAreaOpacity', value: optionDoubleLiteral(Math.max(0, Math.min(1, eOpacity))) })
+        if (stateLabelShows(emphasisOpt, `emphasis`, si, resolve, warn)) opts.push({ name: 'emphasisLabel', value: lit(true) })
+        const scope = litString(objectField(emphasisOpt, 'blurScope'))
+        if (scope !== undefined && scope !== 'coordinateSystem' && scope !== 'series' && scope !== 'global') warn(`<OptionChart option.series[${si}].emphasis.blurScope>: "${scope}" is not one ECharts defines; it was ignored.`)
       }
       const selectOpt = stateLiteral('select')
       if (selectOpt !== undefined) {
         const selectItem = literalOf(objectField(selectOpt, 'itemStyle'), resolve)
         const c = selectItem?.kind === 'object' ? litString(objectField(selectItem, 'color')) : undefined
         if (c !== undefined) opts.push({ name: 'selectColor', value: lit(c) })
-        for (const key of ['label', 'lineStyle', 'areaStyle', 'disabled']) if (objectField(selectOpt, key) !== undefined) warn(`<OptionChart option.series[${si}].select.${key}>: has no engine form (a pinned datum takes select.itemStyle.color and a heavy outline); it was ignored.`)
+        if (stateLabelShows(selectOpt, `select`, si, resolve, warn)) opts.push({ name: 'selectLabel', value: lit(true) })
+        if (litBoolean(objectField(selectOpt, 'disabled')) === true) warn(`<OptionChart option.series[${si}].select.disabled>: not supported; leave selectedMode off to stop a datum pinning.`)
+        for (const key of ['lineStyle', 'areaStyle']) if (objectField(selectOpt, key) !== undefined) warn(`<OptionChart option.series[${si}].select.${key}>: has no engine form (a pinned DATUM takes select.itemStyle.color and a heavy outline, and a stroke belongs to the whole line); it was ignored.`)
       }
       const blurOpt = stateLiteral('blur')
       if (blurOpt !== undefined) {
         const blurItem = literalOf(objectField(blurOpt, 'itemStyle'), resolve)
         const opacity = blurItem?.kind === 'object' ? litNumber(objectField(blurItem, 'opacity')) : undefined
         if (opacity !== undefined) opts.push({ name: 'blurOpacity', value: optionDoubleLiteral(Math.max(0, Math.min(1, opacity))) })
-        for (const key of ['label', 'lineStyle', 'areaStyle']) if (objectField(blurOpt, key) !== undefined) warn(`<OptionChart option.series[${si}].blur.${key}>: has no engine form (a blurred datum fades to blur.itemStyle.opacity); it was ignored.`)
+        const bLine = literalOf(objectField(blurOpt, 'lineStyle'), resolve)
+        const bWidth = bLine?.kind === 'object' ? litNumber(objectField(bLine, 'width')) : undefined
+        if (bWidth !== undefined) opts.push({ name: 'blurWidth', value: optionDoubleLiteral(Math.max(0, bWidth)) })
+        const bArea = literalOf(objectField(blurOpt, 'areaStyle'), resolve)
+        const bOpacity = bArea?.kind === 'object' ? litNumber(objectField(bArea, 'opacity')) : undefined
+        if (bOpacity !== undefined) opts.push({ name: 'blurAreaOpacity', value: optionDoubleLiteral(Math.max(0, Math.min(1, bOpacity))) })
+        if (objectField(blurOpt, 'label') !== undefined) warn(`<OptionChart option.series[${si}].blur.label>: has no engine form (a blurred datum keeps its own label); it was ignored.`)
       }
       // ECharts' `label`: the facade resolves the {a}/{b}/{c}/{d} template per
       // datum, so the native side resolves it the SAME way at compile time and
@@ -2257,7 +2282,8 @@ function desugarOptionChartHost(
         const mode = modeRaw.kind === 'literal' ? modeRaw.value : undefined
         if (mode === true || mode === 'single') set('selectedMode', lit('single'))
         else if (mode === 'multiple') set('selectedMode', lit('multiple'))
-        else if (mode !== false) warn(`<OptionChart option.series[0].selectedMode>: only true, single and multiple are supported natively; taps do not pin.`)
+        else if (mode === 'series') set('selectedMode', lit('series'))
+        else if (mode !== false) warn(`<OptionChart option.series[0].selectedMode>: only true, single, multiple and series are supported natively; taps do not pin.`)
       }
       // The dataset pre-pass materialised `encode.tooltip` as `tooltipExtras`.
       const extras = literalOf(objectField(s, 'tooltipExtras'), resolve)
@@ -3572,6 +3598,20 @@ export const PLOT_MARK_KINDS: Readonly<Record<string, string>> = {
 }
 
 /** Mark options that lower as literal fields of `Series`, with their default when absent. */
+/** Whether a state's `label` asks to be shown; its own styling is named, as the web reader names it. */
+function stateLabelShows(state: Extract<ExprIR, { kind: 'object' }>, name: string, si: number, resolve: (n: string) => ExprIR | undefined, warn: (m: string) => void): boolean {
+  const raw = objectField(state, 'label')
+  if (raw === undefined) return false
+  if (raw.kind === 'literal') return raw.value === true
+  const obj = literalOf(raw, resolve)
+  if (obj?.kind !== 'object') return false
+  for (const f of obj.fields) {
+    if (f.name === 'show') continue
+    warn(`<OptionChart option.series[${si}].${name}.label.${f.name}>: a state label takes the series' own label style; it was ignored.`)
+  }
+  return litBoolean(objectField(obj, 'show')) !== false
+}
+
 export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'string' | 'number' | 'boolean' | 'numbers' | 'strings' | 'rich'; default?: string | number | boolean }> = [
   { name: 'color', kind: 'string' },
   { name: 'width', kind: 'number', default: 2 },
@@ -3600,6 +3640,14 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'emphasisColor', kind: 'string' },
   { name: 'selectColor', kind: 'string' },
   { name: 'blurOpacity', kind: 'number' },
+  { name: 'emphasisScale', kind: 'number' },
+  { name: 'emphasisDisabled', kind: 'boolean' },
+  { name: 'emphasisWidth', kind: 'number' },
+  { name: 'blurWidth', kind: 'number' },
+  { name: 'emphasisAreaOpacity', kind: 'number' },
+  { name: 'blurAreaOpacity', kind: 'number' },
+  { name: 'emphasisLabel', kind: 'boolean' },
+  { name: 'selectLabel', kind: 'boolean' },
 ]
 
 /**

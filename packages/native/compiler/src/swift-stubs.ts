@@ -485,6 +485,11 @@ public enum Edge {
 }
 public protocol Shape {}
 public struct Rectangle: Shape { public init() {} }
+public struct SpatialTapValue { public var location: CGPoint = CGPoint() }
+public struct SpatialTapGesture: Gesture {
+  public init(count: Int = 1) {}
+  public func onEnded(_ action: @escaping (SpatialTapValue) -> Void) -> SpatialTapGesture { self }
+}
 public struct GestureMask: OptionSet {
   public let rawValue: UInt32
   public init(rawValue: UInt32) { self.rawValue = rawValue }

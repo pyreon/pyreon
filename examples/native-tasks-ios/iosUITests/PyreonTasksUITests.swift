@@ -976,19 +976,33 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter().wait(for: [areaBrushed], timeout: 5), .completed, "the lineX brush did not report a partial selection (label: \(areaCount.label))")
         areaOrigin.withOffset(CGVector(dx: areaChart.frame.width * 0.5, dy: areaChart.frame.height * 0.5)).tap()
         XCTAssertTrue(waitForLabel(areaCount, "1:0", timeout: 5), "a tap did not clear the brush (label: \(areaCount.label))")
+        // selectedMode="series": a tap pins the whole series it lands on and still reports the datum under it.
+        let seriesChart = app.descendants(matching: .any).matching(identifier: "gal-series-select").firstMatch
+        XCTAssertTrue(seriesChart.waitForExistence(timeout: 10), "gal-series-select missing on the gallery")
+        scrollFullyOnScreen(seriesChart, in: app)
+        let seriesOrigin = seriesChart.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let seriesDatum = app.staticTexts["gal-series-select-datum"].firstMatch
+        seriesOrigin.withOffset(CGVector(dx: seriesChart.frame.width * 0.15, dy: seriesChart.frame.height * 0.82)).tap()
+        let seriesPicked = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", "none"), object: seriesDatum)
+        XCTAssertEqual(XCTWaiter().wait(for: [seriesPicked], timeout: 5), .completed, "selectedMode series did not report a datum on tap (label: \(seriesDatum.label))")
         // The geo route trail MOVES too: two screenshots half a second apart differ.
         let geoTrail = app.descendants(matching: .any).matching(identifier: "gal-geo-trail").firstMatch
         XCTAssertTrue(geoTrail.waitForExistence(timeout: 10), "gal-geo-trail canvas missing on the gallery")
         var trailTries = 0
-        // On screen in either direction: an off-screen element's screenshot never changes.
-        while trailTries < 16 {
+        // On screen in either direction: an off-screen element's screenshot never changes. This step revisits an
+        // EARLY chart from near the page's bottom (every later chart's own scrollFullyOnScreen ran first), so it
+        // needs many more iterations than a one-chart-at-a-time scroll — but the SAME proven gesture shape (a
+        // 0.05s press, the margin so an interactive chart's own drag never intercepts it).
+        while trailTries < 80 {
             let window = app.windows.firstMatch.frame
-            // Down the left margin, outside every chart: a swipe that starts on an interactive chart is the chart's.
+            // Down the left margin, outside every chart. A chart's TAP no longer takes the page's scroll (it is a
+            // SpatialTapGesture, not a zero-distance drag), but one that also carries a DRAG — dataZoom, brush,
+            // navigator — still claims a swipe that starts on it.
             let gutter = app.scrollViews["gal-scroll"].firstMatch
             if geoTrail.frame.minY < window.minY + 120 {
-                gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.25)).press(forDuration: 0.05, thenDragTo: gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85)))
+                gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.2)).press(forDuration: 0.05, thenDragTo: gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85)))
             } else if geoTrail.frame.maxY > window.maxY - 60 {
-                gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85)).press(forDuration: 0.05, thenDragTo: gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.25)))
+                gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85)).press(forDuration: 0.05, thenDragTo: gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.2)))
             } else {
                 break
             }
