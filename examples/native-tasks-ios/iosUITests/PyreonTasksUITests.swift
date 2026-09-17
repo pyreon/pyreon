@@ -29,6 +29,7 @@
 // path + nightly schedule. Promote to required once green across
 // multiple consecutive nightly runs (Gap 7's streak prerequisite).
 
+import UIKit
 import XCTest
 
 final class PyreonTasksUITests: XCTestCase {
@@ -75,6 +76,23 @@ final class PyreonTasksUITests: XCTestCase {
     /// test rather than a test that never touched the chart. That is exactly
     /// how the boxplot band assertion first failed on the simulator.
     @discardableResult
+    /** Pixels within a few units of #cccccc — the visualMap's inactive colour. */
+    private func greyPixels(_ png: Data) -> Int {
+        // Redrawn into a known RGBA8 buffer: a screenshot's own pixel format varies by device.
+        guard let image = UIImage(data: png)?.cgImage else { return 0 }
+        let w = image.width, h = image.height
+        var buf = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &buf, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return 0 }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var n = 0
+        var i = 0
+        while i + 3 < buf.count {
+            if abs(Int(buf[i]) - 204) <= 4 && abs(Int(buf[i + 1]) - 204) <= 4 && abs(Int(buf[i + 2]) - 204) <= 4 { n += 1 }
+            i += 4
+        }
+        return n
+    }
+
     private func scrollIntoView(
         _ element: XCUIElement,
         in app: XCUIApplication,
@@ -848,6 +866,19 @@ final class PyreonTasksUITests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         XCTAssertNotEqual(mapBefore, roamMap.screenshot().pngRepresentation, "dragging the roaming map did not pan it")
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "gal-decal").firstMatch.waitForExistence(timeout: 10), "gal-decal canvas missing on the gallery")
+        // The calculable visualMap: dragging its high handle (bottom-left strip) left greys the hottest cells.
+        let visualMap = app.descendants(matching: .any).matching(identifier: "gal-visualmap").firstMatch
+        XCTAssertTrue(visualMap.waitForExistence(timeout: 10), "gal-visualmap canvas missing on the gallery")
+        scrollIntoView(visualMap, in: app)
+        let vmBefore = visualMap.screenshot().pngRepresentation
+        let vmOrigin = visualMap.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let vmHandleY = visualMap.frame.height - 41 + 16 + 4
+        vmOrigin.withOffset(CGVector(dx: 159, dy: vmHandleY)).press(forDuration: 0.2, thenDragTo: vmOrigin.withOffset(CGVector(dx: 80, dy: vmHandleY)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        // Out-of-range values take the inactive #cccccc: none before the drag, a block of it after.
+        XCTAssertLessThan(greyPixels(vmBefore), 50, "the visualMap greyed cells before any drag")
+        let vmGrey = greyPixels(visualMap.screenshot().pngRepresentation)
+        XCTAssertGreaterThan(vmGrey, 400, "dragging the visualMap handle did not grey the out-of-range cells (grey pixels: \(vmGrey))")
         // The geo route trail MOVES too: two screenshots half a second apart differ.
         let geoTrail = app.descendants(matching: .any).matching(identifier: "gal-geo-trail").firstMatch
         XCTAssertTrue(geoTrail.waitForExistence(timeout: 10), "gal-geo-trail canvas missing on the gallery")

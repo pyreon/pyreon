@@ -19,8 +19,8 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import { compileOption, DEFAULT_DECALS, fillPattern, imageFill, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
-import type { ChartPattern, GraphicElement, RichStyle, SamplingRequest } from '@pyreon/charts/option-layer'
+import { compileOption, DEFAULT_DECALS, visualMapSpec, visualStripOf, fillPattern, imageFill, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
+import type { ChartPattern, VisualMapSpec, GraphicElement, RichStyle, SamplingRequest } from '@pyreon/charts/option-layer'
 import type { AttrIR, ExprIR } from './types'
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 
@@ -136,6 +136,8 @@ export interface ChartHostArgs {
 export interface ChartHostSpec {
   /** The host accepts `roam` (pan / pinch-zoom over a `GeoView` merged into its `GeoOptions`). */
   readonly roam?: boolean
+  /** The host accepts `visualMap` (the strip, its dragged range / toggled pieces merged into the options). */
+  readonly visualMap?: boolean
   /**
    * A prop that, when present, animates the host: the emit wraps it in the
    * effect clock and feeds the clock's seconds to the `effectTime` data slot.
@@ -703,6 +705,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     tooltip: (l, x, y, a) => `polarTip(${l}, ${a.data[1]}, ${x}, ${y})`,
   },
   CalendarChart: {
+    visualMap: true,
     data: ['start', 'end', 'values'],
     options: 'calendar',
     optionsStruct: 'CalendarOptions',
@@ -717,6 +720,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
   },
   MapChart: {
     roam: true,
+    visualMap: true,
     data: ['map', 'values', 'paths', 'points', 'overlayOptions', 'heat', 'pies', 'heatRadius', 'heatStops', 'trail', 'effectTime'],
     clock: 'trail',
     dataDefaults: {
@@ -1002,6 +1006,9 @@ const resolveStaticTimelineOption = (
  * ECharts-shaped literal can be validated without silently dropping fields.
  * More families are added here as explicit adapters.
  */
+/** The `visualMap` fields `visualMapSpec` reads — every one crosses. */
+const VISUAL_MAP_FIELDS = ['min', 'max', 'inRange', 'calculable', 'range', 'type', 'pieces', 'categories', 'splitNumber', 'orient', 'text', 'textStyle', 'itemWidth', 'itemHeight', 'left', 'right', 'top', 'bottom', 'show', 'selected', 'inactiveColor']
+
 export function desugarOptionChart(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   resolve: (name: string) => ExprIR | undefined,
@@ -1052,6 +1059,23 @@ export function desugarOptionChart(
   // so the native canvas draws the elements the web draws. The engine's
   // `graphicDrawCommands` then paints them on both targets.
   const graphicRaw = objectField(raw, 'graphic')
+
+  // `visualMap` resolves at COMPILE time through the web's own `visualMapSpec`
+  // (domain from the data when unset, pieces, `range`, `selected`), and the
+  // value host draws the strip and owns the drag.
+  const optionVisualMap = (): void => {
+    if (objectField(raw!, 'visualMap') === undefined) return
+    const plainOption = irToValue(raw!, resolve)
+    if (!plainOption.ok || !isPlainRecord(plainOption.value)) {
+      warn('<OptionChart option.visualMap>: a native visualMap needs a fully literal option; native renders without the strip.')
+      return
+    }
+    const read = visualMapSpec(plainOption.value)
+    if (read === null) return
+    for (const w of read.warnings) warn(`<OptionChart option.${w.path}>: ${w.message}`)
+    set('visualMap', valueToIr(read.spec))
+  }
+
   if (graphicRaw !== undefined) {
     const graphicValue = irToValue(graphicRaw, resolve)
     if (graphicValue.ok !== true) {
@@ -1594,7 +1618,7 @@ export function desugarOptionChart(
     }
     const visualMap = literalOf(objectField(raw, 'visualMap'), resolve)
     if (visualMap?.kind === 'object') {
-      optionFields(visualMap, ['min', 'max', 'inRange'], 'option.visualMap', warn)
+      optionFields(visualMap, VISUAL_MAP_FIELDS, 'option.visualMap', warn)
       const min = litNumber(objectField(visualMap, 'min'))
       const max = litNumber(objectField(visualMap, 'max'))
       if (min !== undefined && max !== undefined) calendarFields.push({ name: 'domain', value: { kind: 'object', fields: [{ name: 'min', value: optionDoubleLiteral(min) }, { name: 'max', value: optionDoubleLiteral(max) }] } })
@@ -1625,10 +1649,12 @@ export function desugarOptionChart(
     set('end', lit(end))
     set('values', { kind: 'object', fields })
     if (calendarFields.length > 0) set('calendar', { kind: 'object', fields: calendarFields })
+    optionVisualMap()
     return { kind: 'jsx-element', tag: 'CalendarChart', attrs, children: [] }
   }
 
   if (kind === 'heatmap') {
+    optionVisualMap()
     optionFields(series, ['type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color'], 'option.series[0]', warn)
     const data = literalOf(objectField(series, 'data'), resolve)
     const xAxis = literalOf(objectField(raw, 'xAxis'), resolve)
@@ -3479,3 +3505,48 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
 // `accessibleTable`) are reported through `chartChromeUnlowered` for the plot
 // host too — listing them here as well would warn twice.
 export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'onHighlight', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'crosshair', 'link', 'keyboard', 'toolbox', 'onSaveImage', 'accessibleTable', 'facet', 'facetColumns']
+
+/**
+ * A host's `visualMap` at COMPILE time: the web `VisualMapSpec` (as the web
+ * host takes it), or an ECharts `visualMap` object read through the web's own
+ * `visualMapSpec`, as the engine's `VisualStrip` literal plus the initial
+ * selection. Null when absent; a non-literal value is named.
+ */
+export function chartVisualMap(
+  expr: ExprIR | undefined,
+  resolve: (name: string) => ExprIR | undefined,
+  t: ChartHostTarget,
+  warn: (m: string) => void,
+  tag: string,
+): { strip: string; lo: string; hi: string; selected: string } | null {
+  if (expr === undefined) return null
+  const literal = literalOf(expr, resolve)
+  const v = literal === undefined ? undefined : irToValue(literal, resolve)
+  if (v === undefined || !v.ok || !isPlainRecord(v.value)) {
+    warn(`<${tag} visualMap>: native needs a literal visualMap; the chart renders without the strip.`)
+    return null
+  }
+  const raw = v.value
+  const spec: VisualMapSpec | undefined = Array.isArray(raw['domain']) && Array.isArray(raw['range']) ? (raw as unknown as VisualMapSpec) : visualMapSpec({ visualMap: raw, series: [] })?.spec
+  if (spec === undefined) return null
+  const s = visualStripOf(spec)
+  const str = (x: string): string => JSON.stringify(x)
+  const pieces = s.pieces.map((p) => t.struct('VisualPiece', [['label', str(p.label)], ['color', str(p.color)], ...(p.min !== undefined ? [['min', chartDouble(p.min)] as const] : []), ...(p.max !== undefined ? [['max', chartDouble(p.max)] as const] : [])]))
+  const strip = t.struct('VisualStrip', [
+    ['piecewise', String(s.piecewise)],
+    ['stops', t.list(s.stops.map(str))],
+    ['domain', t.struct('Domain', [['min', chartDouble(s.domain.min)], ['max', chartDouble(s.domain.max)]])],
+    ['pieces', t.list(pieces)],
+    ['vertical', String(s.vertical)],
+    ['highText', str(s.highText)],
+    ['lowText', str(s.lowText)],
+    ['fontSize', chartDouble(s.fontSize)],
+    ['labelColor', str(s.labelColor)],
+    ['itemSize', chartDouble(s.itemSize)],
+    ['itemLength', chartDouble(s.itemLength)],
+    ['calculable', String(s.calculable)],
+    ['outColor', str(s.outColor)],
+  ])
+  return { strip, lo: chartDouble(spec.range[0]), hi: chartDouble(spec.range[1]), selected: t.list(spec.selected.map(String)) }
+}
+

@@ -103,7 +103,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -13496,6 +13496,17 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     themeLets.push(`let pyreonRoamed: ${spec.optionsStruct} = { () -> ${spec.optionsStruct} in var pyreonO = ${base}; pyreonO.zoom = pyreonView.zoom; pyreonO.panX = pyreonView.panX; pyreonO.panY = pyreonView.panY; return pyreonO }()`)
     options = 'pyreonRoamed'
   }
+  // `visualMap`: the strip is a compile-time literal; its range, piece
+  // selection and the handle being dragged live in host state, merged into the
+  // options every render so the values and the strip agree.
+  const vm = spec.visualMap === true ? chartVisualMap(chartAttrExpr(e, 'visualMap'), (n) => _moduleConstExprs.get(n), SWIFT_CHART_TARGET, (m) => _emitWarnings.push(m), tag) : null
+  if (vm !== null) {
+    swiftVisualMapState(vm)
+    themeLets.push(`let pyreonStrip: VisualStrip = ${vm.strip}`)
+    const base = options === 'nil' ? `${spec.optionsStruct}()` : options
+    themeLets.push(`let pyreonVmOptions: ${spec.optionsStruct} = { () -> ${spec.optionsStruct} in var pyreonO = ${base}; pyreonO.stops = pyreonStrip.stops; pyreonO.domain = pyreonStrip.domain; pyreonO.inRange = pyreonStrip.piecewise ? nil : pyreonVmRange; pyreonO.outBands = visualOutBands(pyreonStrip, pyreonVmSelected); pyreonO.outColor = pyreonStrip.outColor; return pyreonO }()`)
+    options = 'pyreonVmOptions'
+  }
   const args: ChartHostArgs = {
     data,
     options,
@@ -13520,12 +13531,13 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     entries = spec.legend!('pyreonProbe', args, SWIFT_CHART_TARGET)
   }
   const chrome = swiftChartChrome(e, entries, W, H, indent, true, tf)
-  const plotArgs: ChartHostArgs = { ...args, W: chrome.width(W), H: chrome.height(H) }
+  const plotArgs: ChartHostArgs = vm === null ? { ...args, W: chrome.width(W), H: chrome.height(H) } : { ...args, W: 'pyreonVmPlace.chartW', H: 'pyreonVmPlace.chartH' }
   // A transposed host lays out in the box reflected across the diagonal (W and H swapped) and transposes the draw list back; the tap is reflected before its hit.
   const layoutArgs: ChartHostArgs = transposed ? { ...plotArgs, W: plotArgs.H, H: plotArgs.W } : plotArgs
   const transpose = (cmds: string): string => (transposed ? `pyreonTransposeCmds(${cmds})` : cmds)
   const withChrome = chrome.top !== '0.0'
   lets.push(...chrome.lets)
+  if (vm !== null) lets.push(`let pyreonVmPlace = visualStripPlace(pyreonStrip, ${chrome.width(W)}, ${chrome.height(H)})`)
   // A hoisted layout `let` only when something else reads it (the tap); the
   // chrome-free, tap-free host keeps its inline `render(layout(...))`.
   const tooltip = spec.tooltip !== undefined && readStaticAttr(e, 'tooltip') === true
@@ -13548,7 +13560,8 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)`
     : ''
-  const canvas = swiftChartCanvas(e, `${chrome.mirror(chrome.wrap(transpose(spec.render(layout, renderArgs, SWIFT_CHART_TARGET))))}${tipCmds}`, indent)
+  const stripCmds = vm === null ? '' : ' + renderVisualStrip(pyreonStrip, pyreonVmPlace.at, pyreonVmRange, pyreonVmSelected)'
+  const canvas = swiftChartCanvas(e, `${chrome.mirror(chrome.wrap(`${transpose(spec.render(layout, renderArgs, SWIFT_CHART_TARGET))}${stripCmds}`))}${tipCmds}`, indent)
   // `onSelectIndex` → a tap (a zero-distance drag, which reports its location)
   // over the engine's index hit, computed against the same layout the canvas
   // painted. `.contentShape` makes the whole canvas — not only its painted
@@ -13581,6 +13594,11 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     if (gesture === '') gesture = '.contentShape(Rectangle())'
     if (roamCfg.move) gesture += `.simultaneousGesture(${pan})`
     if (roamCfg.scale) gesture += `.simultaneousGesture(${pinch})`
+  }
+  if (vm !== null) {
+    // A handle drag moves its end of the range; a tap on a piece toggles it. Simultaneous, so a page still scrolls.
+    if (gesture === '') gesture = '.contentShape(Rectangle())'
+    gesture += swiftVisualMapGesture((loc) => [chrome.plotX(`Double(${loc}.x)`), withChrome ? `Double(${loc}.y) - pyreonTop` : `Double(${loc}.y)`])
   }
   if (lets.length === 0) {
     const tail = swiftChartA11y(e, undefined, indent) + emitSwiftLayoutModifiers(e)
@@ -13767,6 +13785,20 @@ function swiftChartA11y(e: Extract<ExprIR, { kind: 'jsx-element' }>, describe: s
  * for right-to-left users. Handing them out separately is how one of six
  * emitters ends up with half.
  */
+/** The visualMap drag + piece tap, as a simultaneous gesture; `at` maps a gesture location to plot space. */
+function swiftVisualMapGesture(at: (loc: string) => [string, string]): string {
+  const [sx, sy] = at('pyreonV.startLocation')
+  const [mx, my] = at('pyreonV.location')
+  return `.simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { pyreonV in if pyreonVmHandle == -2.0 { pyreonVmHandle = visualStripHandleAt(pyreonStrip, pyreonVmPlace.at, pyreonVmRange, ${sx}, ${sy}) }; if pyreonVmHandle >= 0.0 { pyreonVmRange = visualStripDrag(pyreonStrip, pyreonVmRange, pyreonVmHandle, visualStripValueAt(pyreonStrip, pyreonVmPlace.at, ${mx}, ${my})) } }.onEnded { pyreonV in if pyreonVmHandle < 0.0 { let pyreonP = visualStripPieceAt(pyreonStrip, pyreonVmPlace.at, ${sx}, ${sy}); if pyreonP >= 0.0 { pyreonVmSelected = visualStripToggle(pyreonStrip, pyreonVmSelected, pyreonP) } }; pyreonVmHandle = -2.0 })`
+}
+
+/** The visualMap's host state (Swift `@State`). */
+function swiftVisualMapState(vm: { lo: string; hi: string; selected: string }): void {
+  _hostStateDecls.push(`@State private var pyreonVmRange: Domain = Domain(min: ${vm.lo}, max: ${vm.hi})`)
+  _hostStateDecls.push(`@State private var pyreonVmSelected: [Bool] = ${vm.selected}`)
+  _hostStateDecls.push('@State private var pyreonVmHandle: Double = -2.0')
+}
+
 function swiftRtl(e: Extract<ExprIR, { kind: 'jsx-element' }>, W: string): { mirror: (cmds: string) => string; tapX: (raw: string) => string } {
   const rtl = readStaticAttr(e, 'rtl') === true
   return {
@@ -13917,8 +13949,30 @@ function emitSwiftHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
   const rtlH = swiftRtl(e, W)
-  const canvas = swiftChartCanvas(e, rtlH.mirror(`renderHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme, ${stops}, ${gap}, pyreonChartMeasure${swiftChartAnimating(e, tag) ? ', pyreonEntrance' : ''})`), indent)
-  const gesture = swiftChartGesture(e, (x, y) => `hitHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme.fontSize, ${gap}, pyreonChartMeasure, ${x}, ${y})`, indent, ['selectindex'], rtlH.tapX)
+  // `visualMap`: the strip takes its edge of the box; the grid, its hit and its colours read the selection.
+  const vm = chartVisualMap(chartAttrExpr(e, 'visualMap'), (n) => _moduleConstExprs.get(n), SWIFT_CHART_TARGET, (m) => _emitWarnings.push(m), tag)
+  let gW = W
+  let gH = H
+  let cellStops = stops
+  let selection = ''
+  let stripCmds = ''
+  if (vm !== null) {
+    swiftVisualMapState(vm)
+    lets.push(`let pyreonStrip: VisualStrip = ${vm.strip}`)
+    lets.push(`let pyreonVmPlace = visualStripPlace(pyreonStrip, ${W}, ${H})`)
+    gW = 'pyreonVmPlace.chartW'
+    gH = 'pyreonVmPlace.chartH'
+    if (colorsV === undefined) cellStops = 'pyreonStrip.stops'
+    selection = ', HeatSelection(domain: pyreonStrip.domain, inRange: pyreonStrip.piecewise ? nil : pyreonVmRange, outBands: visualOutBands(pyreonStrip, pyreonVmSelected), outColor: pyreonStrip.outColor)'
+    stripCmds = ' + renderVisualStrip(pyreonStrip, pyreonVmPlace.at, pyreonVmRange, pyreonVmSelected)'
+  }
+  const progress = swiftChartAnimating(e, tag) ? ', pyreonEntrance' : selection === '' ? '' : ', 1.0'
+  const canvas = swiftChartCanvas(e, rtlH.mirror(`renderHeatChart(pyreonGrid, ${gW}, ${gH}, pyreonTheme, ${cellStops}, ${gap}, pyreonChartMeasure${progress}${selection})${stripCmds}`), indent)
+  let gesture = swiftChartGesture(e, (x, y) => `hitHeatChart(pyreonGrid, ${gW}, ${gH}, pyreonTheme.fontSize, ${gap}, pyreonChartMeasure, ${x}, ${y})`, indent, ['selectindex'], rtlH.tapX)
+  if (vm !== null) {
+    if (gesture === '') gesture = '.contentShape(Rectangle())'
+    gesture += swiftVisualMapGesture((loc) => [rtlH.tapX(`Double(${loc}.x)`), `Double(${loc}.y)`])
+  }
   return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }
 

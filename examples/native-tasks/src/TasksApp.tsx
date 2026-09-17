@@ -820,6 +820,16 @@ function GalleryPage() {
           height={180}
           data-testid="gal-decal"
         />
+        <OptionChart
+          option={{
+            xAxis: { type: 'category', data: ['Mon', 'Tue', 'Wed'] },
+            yAxis: { type: 'category', data: ['am', 'pm'] },
+            visualMap: { min: 0, max: 10, calculable: true, orient: 'horizontal', inRange: { color: ['#dbeafe', '#1d4ed8'] } },
+            series: [{ type: 'heatmap', data: [[0, 0, 2], [1, 0, 9], [2, 0, 5], [0, 1, 7], [1, 1, 1], [2, 1, 10]] }],
+          }}
+          height={220}
+          data-testid="gal-visualmap"
+        />
         <Button onPress={() => navigate('/tasks')} data-testid="gal-back">
           Back to tasks
         </Button>

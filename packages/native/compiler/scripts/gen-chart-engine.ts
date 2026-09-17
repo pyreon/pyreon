@@ -58,6 +58,7 @@ export const ENGINE_FILES = [
   'render',
   'candlestick',
   'heat',
+  'visual-strip',
   'funnel',
   'treemap',
   'sunburst',

@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-17.32' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-17.33' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -65,7 +65,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('coordinates.parallel', 'coordinates', 'direct', 'complete', 'src/engine/option-orient.test.ts', '../../native/compiler/src/tests/chart-orient-native.test.ts'),
   row('coordinates.single-axis', 'coordinates', 'direct', 'complete', 'src/engine/single-axis.test.ts'), // scatter / effectScatter + theme river: ECharts' own contract
   row('coordinates.axes', 'coordinates', 'direct', 'complete', 'src/engine/option-axes.test.ts', '../../native/compiler/src/tests/chart-axes-native.test.ts'),
-  row('coordinates.visual-map', 'coordinates', 'direct', 'partial', 'src/engine/visual-map.ts'), // calculable handle
+  row('coordinates.visual-map', 'coordinates', 'direct', 'complete', 'src/engine/visual-strip.test.ts', 'src/engine/visual-map.test.ts', 'src/engine/heatmap.browser.test.tsx', '../../native/compiler/src/tests/chart-visual-map-native.test.ts'), // continuous + piecewise strips, calculable handles, piece toggles, range / selected, on heatmap, calendar and map hosts
   // Every element type ECharts draws without a bitmap: text, rect, circle, line, polygon, polyline, bezierCurve, arc, ring, sector and group. An `image` element warns by name.
   row('coordinates.graphic', 'coordinates', 'direct', 'complete', 'src/engine/graphic-shapes.test.ts', 'src/engine/cov-core-option-layer.test.ts', '../../native/compiler/src/tests/chart-graphic-native.test.ts'),
   row('coordinates.mark-point', 'coordinates', 'direct', 'complete', 'src/engine/option-marks.test.ts', '../../native/compiler/src/tests/chart-marks-native.test.ts'),

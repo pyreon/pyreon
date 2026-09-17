@@ -173,6 +173,17 @@ export interface CanvasHostSpec<L> {
     zoom: (factor: Double, px: Double, py: Double) => void
     pan: (dx: Double, dy: Double) => void
   } | undefined
+  /**
+   * A pointer drag the chart owns (a visualMap handle). `start` answers
+   * whether the press lands on something draggable; while it does, every move
+   * goes to `move` in the layout's coordinates and roam stays out of it. The
+   * click that ends a drag is swallowed.
+   */
+  drag?: {
+    start: (layout: L, px: Double, py: Double) => boolean
+    move: (layout: L, px: Double, py: Double) => void
+    end?: (() => void) | undefined
+  } | undefined
   /** Legend entries for this layout, when the family has named series. */
   legend?: ((layout: L, theme: ChartTheme) => LegendEntry[]) | undefined
   /** Report the click through the family's own callbacks (rich hit and/or engine index). */
@@ -624,6 +635,35 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     const p = localPoint(el, ev)
     roam.zoom(Math.exp(-ev.deltaY * 0.0015), p.x, p.y)
   }
+  const chartDrag = spec.drag
+  let chartDragId = -1
+  const dragDown = (ev: PointerEvent): boolean => {
+    const el = canvas
+    if (chartDrag === undefined || el === null) return false
+    const f = layoutNow(el)
+    const p = localPoint(el, ev)
+    if (f === null || !chartDrag.start(f.layout, p.x, p.y)) return false
+    chartDragId = ev.pointerId
+    dragMoved = false
+    if (typeof el.setPointerCapture === 'function') {
+      try {
+        el.setPointerCapture(ev.pointerId)
+      } catch {
+        // not capturable — drag without it
+      }
+    }
+    return true
+  }
+  const dragMove = (ev: PointerEvent): boolean => {
+    const el = canvas
+    if (chartDrag === undefined || el === null || chartDragId !== ev.pointerId) return false
+    const f = layoutNow(el)
+    if (f === null) return true
+    const p = localPoint(el, ev)
+    dragMoved = true
+    chartDrag.move(f.layout, p.x, p.y)
+    return true
+  }
   const roamDown = (ev: PointerEvent): void => {
     const el = canvas
     if (roam === undefined || el === null || !roam.move()) return
@@ -653,13 +693,19 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
   }
   const roamUp = (): void => {
     dragFrom = null
+    if (chartDragId >= 0) {
+      chartDragId = -1
+      chartDrag?.end?.()
+    }
   }
   const tooltipOn = props.tooltip === true && spec.tooltip !== undefined
   const onPointerDown = (ev: PointerEvent): void => {
+    if (dragDown(ev)) return
     roamDown(ev)
     if (tooltipOn) handleMove(ev)
   }
   const onPointerMove = (ev: PointerEvent): void => {
+    if (dragMove(ev)) return
     roamMove(ev)
     if (tooltipOn && !dragMoved) handleMove(ev)
   }
@@ -710,12 +756,13 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
       sizeObserver.observe(box)
     },
     onClick: onClickRoamAware,
-    ...(roam !== undefined ? { onWheel: handleWheel, onPointerUp: roamUp } : {}),
+    ...(roam !== undefined ? { onWheel: handleWheel } : {}),
+    ...(roam !== undefined || chartDrag !== undefined ? { onPointerUp: roamUp } : {}),
     ...(keyboardOn ? { tabIndex: 0, onKeyDown: handleKeyDown, onBlur: () => { batch(() => { focusIdx.set(-1); announce.set('') }); paintCached() } } : {}),
     // Pointer events, not mouse events: a finger gets the tooltip on tap
     // (pointerdown) and on drag (pointermove) exactly as a mouse does on hover.
-    ...(tooltipOn || roam !== undefined ? { onPointerMove, onPointerDown } : {}),
-    ...(tooltipOn ? { onPointerLeave: handleLeave, onPointerCancel: () => { roamUp(); handleLeave() } } : roam !== undefined ? { onPointerCancel: roamUp } : {}),
+    ...(tooltipOn || roam !== undefined || chartDrag !== undefined ? { onPointerMove, onPointerDown } : {}),
+    ...(tooltipOn ? { onPointerLeave: handleLeave, onPointerCancel: () => { roamUp(); handleLeave() } } : roam !== undefined || chartDrag !== undefined ? { onPointerCancel: roamUp } : {}),
   })
 
   const tipNode = (): VNode | null =>

@@ -36,6 +36,7 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.swipe
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.printToString
@@ -56,6 +57,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.pyreon.runtime.PyreonToast
@@ -856,6 +858,26 @@ class TasksAppInstrumentedTest {
         assertFalse("dragging the roaming map did not pan it", mapBefore.sameAs(roamMap.captureToImage().asAndroidBitmap()))
         composeRule.onNodeWithTag("gal-geo-trail").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("gal-decal").performScrollTo().assertIsDisplayed()
+        // The calculable visualMap: dragging its high handle (bottom-left strip) left greys the hottest cells.
+        val visualMap = composeRule.onNodeWithTag("gal-visualmap").performScrollTo()
+        val vmBefore = visualMap.captureToImage().asAndroidBitmap()
+        visualMap.performTouchInput {
+            val y = height - (41 - 16 - 4).dp.toPx()
+            swipe(start = Offset(159.dp.toPx(), y), end = Offset(80.dp.toPx(), y), durationMillis = 600)
+        }
+        composeRule.waitForIdle()
+        // Out-of-range values take the inactive #cccccc: none before the drag, a block of it after.
+        fun greyPixels(b: android.graphics.Bitmap): Int {
+            var n = 0
+            for (y in 0 until b.height) for (x in 0 until b.width) {
+                val c = b.getPixel(x, y)
+                if (kotlin.math.abs(android.graphics.Color.red(c) - 204) <= 3 && kotlin.math.abs(android.graphics.Color.green(c) - 204) <= 3 && kotlin.math.abs(android.graphics.Color.blue(c) - 204) <= 3) n++
+            }
+            return n
+        }
+        assertTrue("the visualMap greyed cells before any drag", greyPixels(vmBefore) < 50)
+        val vmGrey = greyPixels(visualMap.captureToImage().asAndroidBitmap())
+        assertTrue("dragging the visualMap handle did not grey the out-of-range cells (grey pixels: $vmGrey)", vmGrey > 400)
         // The lines trail renders. Its MOTION is proven on the iOS device lane
         // and in real Chromium; here it cannot be: the trail runs on
         // withInfiniteAnimationFrameNanos (a plain frame loop kept this harness

@@ -5,7 +5,7 @@
 import { buildHeatGrid, hitHeatCell, renderHeat } from './heat'
 import type { HeatGrid } from './heat'
 import type { ChartTheme } from './render'
-import type { Double, DrawCmd, MeasureText, Rect } from './types'
+import type { Domain, Double, DrawCmd, MeasureText, Rect } from './types'
 import { isFiniteNumber } from './scale'
 
 /**
@@ -68,6 +68,14 @@ export function heatPlotFor(grid: HeatGrid, w: Double, h: Double, fontSize: Doub
   return { x: left, y: 4.0, w: Math.max(0.0, w - left - 4.0), h: Math.max(0.0, h - 4.0 - bottom) }
 }
 
+/** A visualMap's hold on the cells: its value domain and its selection. */
+export interface HeatSelection {
+  domain?: Domain | undefined
+  inRange?: Domain | undefined
+  outBands?: Double[] | undefined
+  outColor?: string | undefined
+}
+
 /** The cells, then the row labels down the left and the column labels along the bottom. */
 export function renderHeatChart(
   grid: HeatGrid,
@@ -78,12 +86,13 @@ export function renderHeatChart(
   gap: Double,
   measure: MeasureText,
   progress?: Double,
+  selection?: HeatSelection,
 ): DrawCmd[] {
   const plot = heatPlotFor(grid, w, h, theme.fontSize, measure)
   // A fresh array: on Kotlin an array RETURNED by a function is an immutable
   // List, so the labels below could not be pushed onto the cells' own list.
   const cmds: DrawCmd[] = []
-  const cells = renderHeat({ grid, plot, stops, gap, progress: progress ?? 1.0 })
+  const cells = renderHeat({ grid, plot, stops, gap, progress: progress ?? 1.0, inRange: selection?.inRange, outBands: selection?.outBands, outColor: selection?.outColor, domain: selection?.domain })
   for (const c of cells) cmds.push(c)
   let nrF = 0.0
   for (let i = 0; i < grid.rows.length; i++) nrF += 1.0

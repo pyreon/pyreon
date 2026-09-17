@@ -95,7 +95,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -11443,6 +11443,15 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     themeLets.push(`val pyreonRoamed: ${spec.optionsStruct} = (${base}).copy(zoom = pyreonView.zoom, panX = pyreonView.panX, panY = pyreonView.panY)`)
     options = 'pyreonRoamed'
   }
+  // `visualMap` (mirror of the Swift host): the strip literal, and its selection in remembered state merged into the options.
+  const vm = spec.visualMap === true ? chartVisualMap(chartAttrExprKotlin(e, 'visualMap'), (n) => _moduleConstExprsKotlin.get(n), KOTLIN_CHART_TARGET, (m) => _emitWarnings.push(m), tag) : null
+  if (vm !== null) {
+    themeLets.push(...kotlinVisualMapState(vm))
+    themeLets.push(`val pyreonStrip: VisualStrip = ${vm.strip}`)
+    const base = options === 'null' ? `${spec.optionsStruct}()` : options
+    themeLets.push(`val pyreonVmOptions: ${spec.optionsStruct} = (${base}).copy(stops = pyreonStrip.stops, domain = pyreonStrip.domain, inRange = if (pyreonStrip.piecewise) null else pyreonVmRange, outBands = visualOutBands(pyreonStrip, pyreonVmSelected), outColor = pyreonStrip.outColor)`)
+    options = 'pyreonVmOptions'
+  }
   const args: ChartHostArgs = {
     data,
     options,
@@ -11463,12 +11472,13 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     entries = spec.legend!('pyreonProbe', args, KOTLIN_CHART_TARGET)
   }
   const chrome = kotlinChartChrome(e, entries, W, H, indent, true, tf)
-  const plotArgs: ChartHostArgs = { ...args, W: chrome.width(W), H: chrome.height(H) }
+  const plotArgs: ChartHostArgs = vm === null ? { ...args, W: chrome.width(W), H: chrome.height(H) } : { ...args, W: 'pyreonVmPlace.chartW', H: 'pyreonVmPlace.chartH' }
   // A transposed host lays out in the box reflected across the diagonal (W and H swapped) and transposes the draw list back; the tap is reflected before its hit.
   const layoutArgs: ChartHostArgs = transposed ? { ...plotArgs, W: plotArgs.H, H: plotArgs.W } : plotArgs
   const transpose = (cmds: string): string => (transposed ? `pyreonTransposeCmds(${cmds})` : cmds)
   const withChrome = chrome.top !== '0.0'
   lets.push(...chrome.lets)
+  if (vm !== null) lets.push(`val pyreonVmPlace = visualStripPlace(pyreonStrip, ${chrome.width(W)}, ${chrome.height(H)})`)
   const tooltip = spec.tooltip !== undefined && readStaticAttrKotlin(e, 'tooltip') === true
   const onSel = e.attrs.find((a) => a.kind === 'event' && a.name === 'selectindex')
   const extraHits = (spec.extraHits ?? []).flatMap((extra) => {
@@ -11491,7 +11501,8 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)`
     : ''
-  const cmds = `${chrome.mirror(chrome.wrap(transpose(spec.render(layout, renderArgs, KOTLIN_CHART_TARGET))))}${tipCmds}`
+  const stripCmds = vm === null ? '' : ' + renderVisualStrip(pyreonStrip, pyreonVmPlace.at, pyreonVmRange, pyreonVmSelected)'
+  const cmds = `${chrome.mirror(chrome.wrap(`${transpose(spec.render(layout, renderArgs, KOTLIN_CHART_TARGET))}${stripCmds}`))}${tipCmds}`
   // `onSelectIndex` → a tap over the engine's index hit. The tap position is
   // in pixels while the draw list is laid out in dp (PyreonChartCanvas scales
   // by the density when it paints), so the position is divided by the density
@@ -11524,6 +11535,10 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
       : panPart
     // Keyed on the box, which the gesture lambda captures.
     tap += `.pointerInput(${plotArgs.W}, ${plotArgs.H}) { detectTransformGestures { pyreonC, pyreonPan, pyreonZoom, _ -> pyreonView = ${next} } }`
+  }
+  if (vm !== null) {
+    // A handle drag moves its end of the range; a tap on a piece toggles it.
+    tap += kotlinVisualMapGesture((o) => [chrome.plotX(`(${o}.x / pyreonDensity).toDouble()`), withChrome ? `(${o}.y / pyreonDensity).toDouble() - pyreonTop` : `(${o}.y / pyreonDensity).toDouble()`])
   }
   if (lets.length > 0) return kotlinFrameHostWithTap(e, lets, cmds, tap, W, H, hasWidth, indent)
   // Size modifiers first (they are the host's own layout), then the tap, the
@@ -11782,8 +11797,29 @@ function emitKotlinHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const H = kotlinChartDouble(e, 'height', 200, indent)
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
-  const cmds = `renderHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme, ${stops}, ${gap}, ::pyreonChartMeasure${kotlinChartAnimating(e, tag) ? ', pyreonEntrance' : ''})`
-  return kotlinFrameHostLets(e, lets, cmds, (x, y) => `hitHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme.fontSize, ${gap}, ::pyreonChartMeasure, ${x}, ${y})`, W, H, hasWidth, indent, ['selectindex'])
+  // `visualMap` (mirror of the Swift host).
+  const vm = chartVisualMap(chartAttrExprKotlin(e, 'visualMap'), (n) => _moduleConstExprsKotlin.get(n), KOTLIN_CHART_TARGET, (m) => _emitWarnings.push(m), tag)
+  let gW = W
+  let gH = H
+  let cellStops = stops
+  let selection = ''
+  let stripCmds = ''
+  let extra = ''
+  if (vm !== null) {
+    lets.push(...kotlinVisualMapState(vm))
+    lets.push(`val pyreonStrip: VisualStrip = ${vm.strip}`)
+    lets.push(`val pyreonVmPlace = visualStripPlace(pyreonStrip, ${W}, ${H})`)
+    gW = 'pyreonVmPlace.chartW'
+    gH = 'pyreonVmPlace.chartH'
+    if (colorsV === undefined) cellStops = 'pyreonStrip.stops'
+    selection = ', HeatSelection(domain = pyreonStrip.domain, inRange = if (pyreonStrip.piecewise) null else pyreonVmRange, outBands = visualOutBands(pyreonStrip, pyreonVmSelected), outColor = pyreonStrip.outColor)'
+    stripCmds = ' + renderVisualStrip(pyreonStrip, pyreonVmPlace.at, pyreonVmRange, pyreonVmSelected)'
+    const { tapX } = kotlinRtl(e, W)
+    extra = kotlinVisualMapGesture((o) => [tapX(`(${o}.x / pyreonDensity).toDouble()`), `(${o}.y / pyreonDensity).toDouble()`])
+  }
+  const progress = kotlinChartAnimating(e, tag) ? ', pyreonEntrance' : selection === '' ? '' : ', 1.0'
+  const cmds = `renderHeatChart(pyreonGrid, ${gW}, ${gH}, pyreonTheme, ${cellStops}, ${gap}, ::pyreonChartMeasure${progress}${selection})${stripCmds}`
+  return kotlinFrameHostLets(e, lets, cmds, (x, y) => `hitHeatChart(pyreonGrid, ${gW}, ${gH}, pyreonTheme.fontSize, ${gap}, ::pyreonChartMeasure, ${x}, ${y})`, W, H, hasWidth, indent, ['selectindex'], undefined, extra)
 }
 
 function emitKotlinRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -12486,7 +12522,25 @@ function kotlinRtl(e: Extract<ExprIR, { kind: 'jsx-element' }>, W: string): { mi
   }
 }
 
-function kotlinFrameHostLets(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: readonly string[], cmds: string, hit: ((x: string, y: string) => string) | null, W: string, H: string, hasWidth: boolean, indent: number, names: readonly string[] = ['selectindex', 'select'], describe?: string): string {
+/** The visualMap drag + piece tap as Compose pointer inputs; `at` maps an offset to plot space. */
+function kotlinVisualMapGesture(at: (o: string) => [string, string]): string {
+  const [sx, sy] = at('pyreonO')
+  const [mx, my] = at('pyreonC.position')
+  const [tx, ty] = at('pyreonT')
+  return `.pointerInput(pyreonVmPlace) { detectDragGestures(onDragStart = { pyreonO -> pyreonVmHandle = visualStripHandleAt(pyreonStrip, pyreonVmPlace.at, pyreonVmRange, ${sx}, ${sy}) }, onDragEnd = { pyreonVmHandle = -2.0 }, onDragCancel = { pyreonVmHandle = -2.0 }) { pyreonC, _ -> if (pyreonVmHandle >= 0.0) pyreonVmRange = visualStripDrag(pyreonStrip, pyreonVmRange, pyreonVmHandle, visualStripValueAt(pyreonStrip, pyreonVmPlace.at, ${mx}, ${my})) } }` +
+    `.pointerInput(pyreonVmPlace) { detectTapGestures { pyreonT -> val pyreonP = visualStripPieceAt(pyreonStrip, pyreonVmPlace.at, ${tx}, ${ty}); if (pyreonP >= 0.0) pyreonVmSelected = visualStripToggle(pyreonStrip, pyreonVmSelected, pyreonP) } }`
+}
+
+/** The visualMap's remembered state (Compose). */
+function kotlinVisualMapState(vm: { lo: string; hi: string; selected: string }): string[] {
+  return [
+    `var pyreonVmRange by remember { mutableStateOf(Domain(${vm.lo}, ${vm.hi})) }`,
+    `var pyreonVmSelected by remember { mutableStateOf<List<Boolean>>(${vm.selected}) }`,
+    'var pyreonVmHandle by remember { mutableStateOf(-2.0) }',
+  ]
+}
+
+function kotlinFrameHostLets(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: readonly string[], cmds: string, hit: ((x: string, y: string) => string) | null, W: string, H: string, hasWidth: boolean, indent: number, names: readonly string[] = ['selectindex', 'select'], describe?: string, extraModifier = ''): string {
   const { mirror, tapX } = kotlinRtl(e, W)
   const onSel = hit === null ? undefined : e.attrs.find((a) => a.kind === 'event' && names.includes(a.name))
   // Keyed on every hoisted `val` (the grid, the candles, the series, the
@@ -12495,9 +12549,9 @@ function kotlinFrameHostLets(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: 
   // host's #3294 lesson, which this shared frame host had not learned.
   const keys = lets.map((l) => /^val (\w+)/.exec(l)?.[1]).filter((k): k is string => k !== undefined)
   const tap =
-    onSel?.kind === 'event' && hit !== null
+    (onSel?.kind === 'event' && hit !== null
       ? `.pointerInput(${keys.length === 0 ? 'Unit' : keys.join(', ')}) { detectTapGestures { pyreonTap -> ${kotlinChartSelectBody(onSel.handler, hit(tapX('(pyreonTap.x / pyreonDensity).toDouble()'), '(pyreonTap.y / pyreonDensity).toDouble()'), indent)} } }`
-      : ''
+      : '') + extraModifier
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
   const titleMod = kotlinChartA11y(e, describe)
