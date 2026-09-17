@@ -543,6 +543,8 @@ class TasksAppInstrumentedTest {
         // it and no reset is needed.
         composeRule.onNodeWithContentDescription("Task flow").assertExists()
         composeRule.onNodeWithContentDescription("minimap").assertExists()
+        composeRule.onNodeWithContentDescription("source handle out").assertExists()
+        composeRule.onNodeWithContentDescription("target handle in").assertExists()
         val before = textOf("flow-a-pos")
         composeRule.onNodeWithText("Start").performTouchInput {
             down(center)
