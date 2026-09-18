@@ -76,7 +76,6 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("Native flow tools").assertIsDisplayed()
         composeRule.onAllNodesWithContentDescription("source handle out").assertCountEquals(2)
         composeRule.onAllNodesWithContentDescription("target handle in").assertCountEquals(2)
-
         composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
         // Connect end -> start so this gesture creates a distinct reverse edge.
         val source = composeRule.onAllNodesWithContentDescription("source handle out")[1]
