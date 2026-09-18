@@ -24,7 +24,7 @@ import {
 } from '@pyreon/hooks'
 import { createI18n } from '@pyreon/i18n/core'
 import { createMachine } from '@pyreon/machine'
-import { Background, Controls, createFlow, Flow, Handle, NodeResizer, Position, type NodeComponentProps } from '@pyreon/flow'
+import { Background, Controls, createFlow, Flow, Handle, NodeResizer, NodeToolbar, Position, type NodeComponentProps } from '@pyreon/flow'
 import {
   Button,
   Inline,
@@ -91,6 +91,9 @@ function NativeFlowNode(props: NodeComponentProps<NativeFlowData>) {
     <Stack>
       <Handle id="in" type="target" position={Position.Left} />
       <Text>{props.data().label}</Text>
+      <NodeToolbar nodeId={props.id} showOnSelect={false} position="top">
+        <Text>Native flow tools</Text>
+      </NodeToolbar>
       <Handle id="out" type="source" position={Position.Right} />
       <NodeResizer minWidth={80} minHeight={44} />
     </Stack>

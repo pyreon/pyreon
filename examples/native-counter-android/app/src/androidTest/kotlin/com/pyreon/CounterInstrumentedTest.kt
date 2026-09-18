@@ -71,6 +71,9 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("Native Flow Start").assertIsDisplayed()
         composeRule.onNodeWithText("Native Flow End").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Native Flow device proof").assertExists()
+        composeRule.onNodeWithText("Native flow tools").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("source handle out").assertExists()
+        composeRule.onNodeWithContentDescription("target handle in").assertExists()
     }
 
     @Test
