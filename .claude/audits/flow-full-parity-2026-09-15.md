@@ -165,3 +165,6 @@ native view.
   beginning over graph content was swallowed; it now runs simultaneously on
   the canvas container. Gesture-driven selection and keyboard/a11y equivalents
   remain F4 work.
+- [x] F4 node-selection gestures now tap a rendered node in both native device
+  suites and assert the engine's selected-node set changes through a reactive
+  label. Edge-pointer selection and keyboard/a11y equivalents remain F4 work.

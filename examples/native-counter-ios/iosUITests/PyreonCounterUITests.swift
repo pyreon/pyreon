@@ -69,6 +69,13 @@ final class PyreonCounterUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["source handle out"].firstMatch.exists)
         XCTAssertTrue(app.descendants(matching: .any)["target handle in"].firstMatch.exists)
 
+        let selectedNodeCount = app.staticTexts["native-flow-selected-node-count"].firstMatch
+        XCTAssertTrue(selectedNodeCount.waitForExistence(timeout: 10))
+        XCTAssertEqual(selectedNodeCount.label, "0")
+        app.descendants(matching: .any)["Native Flow Start"].firstMatch.tap()
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: selectedNodeCount)
+        XCTAssertEqual(XCTWaiter().wait(for: [selected], timeout: 5), .completed, "tapping a rendered native node did not select it")
+
         let edgeCount = app.staticTexts["native-flow-edge-count"].firstMatch
         XCTAssertTrue(edgeCount.waitForExistence(timeout: 10))
         XCTAssertEqual(edgeCount.label, "1")

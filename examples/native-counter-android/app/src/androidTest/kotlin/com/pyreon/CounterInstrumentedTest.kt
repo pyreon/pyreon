@@ -78,6 +78,10 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("Native flow tools").assertIsDisplayed()
         composeRule.onAllNodesWithContentDescription("source handle out").assertCountEquals(2)
         composeRule.onAllNodesWithContentDescription("target handle in").assertCountEquals(2)
+
+        composeRule.onNodeWithTag("native-flow-selected-node-count").assertTextEquals("0")
+        composeRule.onNodeWithContentDescription("Native Flow Start").performClick()
+        composeRule.onNodeWithTag("native-flow-selected-node-count").assertTextEquals("1")
         composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
         // Connect end -> start before exposing the selected seed edge's
         // endpoint controls for the independent reconnect gesture below.
