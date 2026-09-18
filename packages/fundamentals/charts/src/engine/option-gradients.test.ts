@@ -58,13 +58,14 @@ describe('radial gradients and image patterns', () => {
     expect(spec.series[0]!.color).toBe('#111111')
   })
 
-  it('an image pattern is named and the palette colour is used', () => {
+  it('an image fill becomes an image pattern with its repeat', () => {
     const { spec, warnings } = compileOption({
       xAxis: { type: 'category', data: ['a'] },
       yAxis: {},
-      series: [{ type: 'bar', itemStyle: { color: { image: 'texture.png', repeat: 'repeat' } }, data: [1] }],
+      series: [{ type: 'bar', itemStyle: { color: { image: 'texture.png', repeat: 'repeat-x' } }, data: [1] }],
     })
-    expect(warnings.map((w) => w.code + ' ' + w.path)).toEqual(['series-option-unsupported series[0].itemStyle.color'])
-    expect(spec.series[0]!.gradient).toBeUndefined()
+    expect(warnings).toEqual([])
+    expect(spec.series[0]!.pattern).toMatchObject({ kind: 'image', image: 'texture.png', repeat: 'repeat-x' })
   })
+
 })

@@ -63,6 +63,33 @@ export function App() {
 }`, { target })
     expect(r.warnings.some((w) => w.includes('option.dataset[1].transform[0].type>') && w.includes('is not registered'))).toBe(true)
   })
+
+  it('fromDatasetIndex chains a derived dataset through a built-in transform, the same as the web', () => {
+    const r = transform(`
+import { OptionChart } from '@pyreon/charts/plot'
+export function App() {
+  return (
+    <OptionChart option={{
+      dataset: [
+        { source: [['name', 'score', 'team'], ['a', 5, 'x'], ['b', 9, 'y'], ['c', 1, 'x'], ['d', 7, 'y']] },
+        { fromDatasetIndex: 0, transform: { type: 'filter', config: { dimension: 'team', '=': 'x' } } },
+        { fromDatasetIndex: 1, transform: { type: 'sort', config: { dimension: 'score', order: 'desc' } } },
+      ],
+      xAxis: { type: 'category' },
+      yAxis: {},
+      series: [{ type: 'bar', datasetIndex: 2, encode: { x: 'name', y: 'score' } }],
+    }} />
+  )
+}`, { target })
+    expect(r.warnings).toEqual([])
+    // team=x rows are a (5) and c (1); sorted desc by score: a then c.
+    expect(r.code.indexOf('"a"')).toBeGreaterThan(0)
+    expect(r.code.indexOf('"a"')).toBeLessThan(r.code.indexOf('"c"'))
+    expect(r.code).not.toContain('"b"')
+    expect(r.code).not.toContain('"d"')
+    if (target === 'swift' && isSwiftcAvailable()) expect(validateSwiftWithStubs(r.code)).toMatchObject({ ok: true })
+    if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
+  })
 })
 
 describe.each(['swift', 'kotlin'] as const)('negative datums on %s', (target) => {

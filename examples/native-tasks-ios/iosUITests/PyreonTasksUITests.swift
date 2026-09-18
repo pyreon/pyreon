@@ -29,6 +29,7 @@
 // path + nightly schedule. Promote to required once green across
 // multiple consecutive nightly runs (Gap 7's streak prerequisite).
 
+import UIKit
 import XCTest
 
 final class PyreonTasksUITests: XCTestCase {
@@ -75,6 +76,46 @@ final class PyreonTasksUITests: XCTestCase {
     /// test rather than a test that never touched the chart. That is exactly
     /// how the boxplot band assertion first failed on the simulator.
     @discardableResult
+    /** Pixels within a few units of #cccccc — the visualMap's inactive colour. */
+    /** Scroll the gallery until the WHOLE element is inside the window: a gesture on an off-screen part lands on nothing. */
+    private func scrollFullyOnScreen(_ element: XCUIElement, in app: XCUIApplication) {
+        let scroll = app.scrollViews["gal-scroll"].firstMatch
+        for _ in 0..<16 {
+            let window = app.windows.firstMatch.frame
+            if element.frame.minY < window.minY + 100 {
+                scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65)))
+            } else if element.frame.maxY > window.maxY - 80 {
+                scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65)).press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)))
+            } else {
+                return
+            }
+        }
+    }
+
+    private func waitForValue(_ element: XCUIElement, _ value: String, timeout: TimeInterval) -> Bool {
+        let predicate = NSPredicate(format: "value == %@", value)
+        return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: element)], timeout: timeout) == .completed
+    }
+
+    private func redPixels(_ png: Data) -> Int { colorPixels(png, 255, 0, 0) }
+    private func greyPixels(_ png: Data) -> Int { colorPixels(png, 204, 204, 204) }
+
+    private func colorPixels(_ png: Data, _ r: Int, _ g: Int, _ b: Int) -> Int {
+        // Redrawn into a known RGBA8 buffer: a screenshot's own pixel format varies by device.
+        guard let image = UIImage(data: png)?.cgImage else { return 0 }
+        let w = image.width, h = image.height
+        var buf = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &buf, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return 0 }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var n = 0
+        var i = 0
+        while i + 3 < buf.count {
+            if abs(Int(buf[i]) - r) <= 6 && abs(Int(buf[i + 1]) - g) <= 6 && abs(Int(buf[i + 2]) - b) <= 6 { n += 1 }
+            i += 4
+        }
+        return n
+    }
+
     private func scrollIntoView(
         _ element: XCUIElement,
         in app: XCUIApplication,
@@ -849,17 +890,129 @@ final class PyreonTasksUITests: XCTestCase {
         mapGrab.press(forDuration: 0.1, thenDragTo: mapGrab.withOffset(CGVector(dx: 90, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         XCTAssertNotEqual(mapBefore, roamMap.screenshot().pngRepresentation, "dragging the roaming map did not pan it")
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "gal-decal").firstMatch.waitForExistence(timeout: 10), "gal-decal canvas missing on the gallery")
+        // The calculable visualMap: dragging its high handle (bottom-left strip) left greys the hottest cells.
+        let visualMap = app.descendants(matching: .any).matching(identifier: "gal-visualmap").firstMatch
+        XCTAssertTrue(visualMap.waitForExistence(timeout: 10), "gal-visualmap canvas missing on the gallery")
+        scrollFullyOnScreen(visualMap, in: app)
+        let vmBefore = visualMap.screenshot().pngRepresentation
+        let vmOrigin = visualMap.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let vmHandleY = visualMap.frame.height - 41 + 16 + 4
+        vmOrigin.withOffset(CGVector(dx: 159, dy: vmHandleY)).press(forDuration: 0.2, thenDragTo: vmOrigin.withOffset(CGVector(dx: 80, dy: vmHandleY)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        // Out-of-range values take the inactive #cccccc: none before the drag, a block of it after.
+        XCTAssertLessThan(greyPixels(vmBefore), 50, "the visualMap greyed cells before any drag")
+        let vmGrey = greyPixels(visualMap.screenshot().pngRepresentation)
+        XCTAssertGreaterThan(vmGrey, 400, "dragging the visualMap handle did not grey the out-of-range cells (grey pixels: \(vmGrey))")
+        // The slider dataZoom opens on the low half; dragging the band right shows the tall bars (y extent pinned).
+        let zoomChart = app.descendants(matching: .any).matching(identifier: "gal-datazoom").firstMatch
+        XCTAssertTrue(zoomChart.waitForExistence(timeout: 10), "gal-datazoom canvas missing on the gallery")
+        scrollFullyOnScreen(zoomChart, in: app)
+        let redBefore = redPixels(zoomChart.screenshot().pngRepresentation)
+        let zoomOrigin = zoomChart.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let zoomStripW = zoomChart.frame.width - 16
+        let zoomStripY = zoomChart.frame.height - 18
+        zoomOrigin.withOffset(CGVector(dx: 8 + zoomStripW * 0.25, dy: zoomStripY)).press(forDuration: 0.2, thenDragTo: zoomOrigin.withOffset(CGVector(dx: 8 + zoomStripW * 0.75, dy: zoomStripY)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        let redAfter = redPixels(zoomChart.screenshot().pngRepresentation)
+        XCTAssertGreaterThan(redBefore, 100, "the zoomed bar chart painted no red bars before the drag")
+        XCTAssertGreaterThan(redAfter, redBefore * 3, "dragging the dataZoom band did not move the window to the tall bars (red before \(redBefore), after \(redAfter))")
+        // The timeline: a tap on the last checkpoint shows that step; next wraps to the first.
+        let timeline = app.descendants(matching: .any).matching(identifier: "gal-timeline").firstMatch
+        XCTAssertTrue(timeline.waitForExistence(timeout: 10), "gal-timeline missing on the gallery")
+        scrollFullyOnScreen(timeline, in: app)
+        XCTAssertEqual(timeline.value as? String, "2019", "the timeline did not open on its first step")
+        let tlOrigin = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let tlY = timeline.frame.height - 40 + 16
+        tlOrigin.withOffset(CGVector(dx: timeline.frame.width - 48, dy: tlY)).tap()
+        XCTAssertTrue(waitForValue(timeline, "2021", timeout: 5), "tapping the last checkpoint did not show it (value: \(String(describing: timeline.value)))")
+        tlOrigin.withOffset(CGVector(dx: timeline.frame.width - 33, dy: tlY)).tap()
+        XCTAssertTrue(waitForValue(timeline, "2019", timeout: 5), "next did not wrap to the first step (value: \(String(describing: timeline.value)))")
+        // dispatchAction: the handle's timelineChange moves the same step a tap does.
+        let tlLast = app.buttons["gal-tl-last"].firstMatch
+        scrollFullyOnScreen(tlLast, in: app)
+        tlLast.tap()
+        XCTAssertTrue(waitForValue(timeline, "2021", timeout: 5), "the handle's timelineChange did not move the step (value: \(String(describing: timeline.value)))")
+        // The toolbox (dataZoom, back, dataView, line, bar, restore — right-aligned, 25pt apart at the top).
+        let toolbox = app.descendants(matching: .any).matching(identifier: "gal-toolbox").firstMatch
+        XCTAssertTrue(toolbox.waitForExistence(timeout: 10), "gal-toolbox missing on the gallery")
+        scrollFullyOnScreen(toolbox, in: app)
+        let tbOrigin = toolbox.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let tool = { (i: Int) -> XCUICoordinate in tbOrigin.withOffset(CGVector(dx: toolbox.frame.width - 9.5 - 25.0 * Double(5 - i), dy: 9.5)) }
+        let tbZoom = app.staticTexts["gal-toolbox-zoom"].firstMatch
+        tool(0).tap()
+        tbOrigin.withOffset(CGVector(dx: toolbox.frame.width * 0.5, dy: toolbox.frame.height * 0.5)).press(forDuration: 0.1, thenDragTo: tbOrigin.withOffset(CGVector(dx: toolbox.frame.width * 0.58, dy: toolbox.frame.height * 0.5)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        let zoomedAway = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", "0-100"), object: tbZoom)
+        XCTAssertEqual(XCTWaiter().wait(for: [zoomedAway], timeout: 5), .completed, "the toolbox box zoom did not zoom (label: \(tbZoom.label))")
+        tool(1).tap()
+        XCTAssertTrue(waitForLabel(tbZoom, "0-100", timeout: 5), "back did not undo the box zoom (label: \(tbZoom.label))")
+        tool(2).tap()
+        let dataView = app.descendants(matching: .any).matching(identifier: "pyreon-dataview").firstMatch
+        XCTAssertTrue(dataView.waitForExistence(timeout: 5), "the data view did not open")
+        app.buttons["pyreon-dataview-close"].firstMatch.tap()
+        let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: dataView)
+        XCTAssertEqual(XCTWaiter().wait(for: [closed], timeout: 5), .completed, "the data view did not close")
+        // dispatchAction: the handle's dataZoom and restore move the window the toolbox moves.
+        let hZoom = app.buttons["gal-h-zoom"].firstMatch
+        scrollFullyOnScreen(hZoom, in: app)
+        hZoom.tap()
+        XCTAssertTrue(waitForLabel(tbZoom, "0-50", timeout: 5), "the handle's dataZoom did not move the window (label: \(tbZoom.label))")
+        let hReset = app.buttons["gal-h-reset"].firstMatch
+        scrollFullyOnScreen(hReset, in: app)
+        hReset.tap()
+        XCTAssertTrue(waitForLabel(tbZoom, "0-100", timeout: 5), "the handle's restore did not reset the window (label: \(tbZoom.label))")
+        // saveAsImage on a family chart: the offscreen PNG reaches onSaveImage.
+        let saveChart = app.descendants(matching: .any).matching(identifier: "gal-save").firstMatch
+        XCTAssertTrue(saveChart.waitForExistence(timeout: 10), "gal-save missing on the gallery")
+        scrollFullyOnScreen(saveChart, in: app)
+        app.buttons["pyreon-save-image"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(app.staticTexts["gal-saved"].firstMatch, "data:image/png;", timeout: 15), "saveAsImage did not hand onSaveImage a PNG (label: \(app.staticTexts["gal-saved"].firstMatch.label))")
+        // The area brush: a lineX drag over the middle bars reports some of them; a tap clears it.
+        let areaChart = app.descendants(matching: .any).matching(identifier: "gal-brush").firstMatch
+        XCTAssertTrue(areaChart.waitForExistence(timeout: 10), "gal-brush missing on the gallery")
+        scrollFullyOnScreen(areaChart, in: app)
+        let areaOrigin = areaChart.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let areaCount = app.staticTexts["gal-brush-count"].firstMatch
+        areaOrigin.withOffset(CGVector(dx: areaChart.frame.width * 0.4, dy: areaChart.frame.height * 0.5)).press(forDuration: 0.1, thenDragTo: areaOrigin.withOffset(CGVector(dx: areaChart.frame.width * 0.66, dy: areaChart.frame.height * 0.5)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        let areaBrushed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label IN %@", ["1:1", "1:2", "1:3", "1:4", "1:5"]), object: areaCount)
+        XCTAssertEqual(XCTWaiter().wait(for: [areaBrushed], timeout: 5), .completed, "the lineX brush did not report a partial selection (label: \(areaCount.label))")
+        areaOrigin.withOffset(CGVector(dx: areaChart.frame.width * 0.5, dy: areaChart.frame.height * 0.5)).tap()
+        XCTAssertTrue(waitForLabel(areaCount, "1:0", timeout: 5), "a tap did not clear the brush (label: \(areaCount.label))")
+        // selectedMode="series": a tap pins the whole series it lands on and still reports the datum under it.
+        let seriesChart = app.descendants(matching: .any).matching(identifier: "gal-series-select").firstMatch
+        XCTAssertTrue(seriesChart.waitForExistence(timeout: 10), "gal-series-select missing on the gallery")
+        scrollFullyOnScreen(seriesChart, in: app)
+        let seriesOrigin = seriesChart.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let seriesDatum = app.staticTexts["gal-series-select-datum"].firstMatch
+        seriesOrigin.withOffset(CGVector(dx: seriesChart.frame.width * 0.15, dy: seriesChart.frame.height * 0.82)).tap()
+        let seriesPicked = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", "none"), object: seriesDatum)
+        XCTAssertEqual(XCTWaiter().wait(for: [seriesPicked], timeout: 5), .completed, "selectedMode series did not report a datum on tap (label: \(seriesDatum.label))")
+        // universalTransition: toggling from 3 to 5 rows morphs instead of crashing, and settles on the new count.
+        let growthChart = app.descendants(matching: .any).matching(identifier: "gal-growth").firstMatch
+        XCTAssertTrue(growthChart.waitForExistence(timeout: 10), "gal-growth missing on the gallery")
+        scrollFullyOnScreen(app.buttons["gal-growth-toggle"].firstMatch, in: app)
+        app.buttons["gal-growth-toggle"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(app.staticTexts["gal-growth-count"].firstMatch, "5", timeout: 5), "universalTransition row-count toggle did not settle on 5 (label: \(app.staticTexts["gal-growth-count"].firstMatch.label))")
+        app.buttons["gal-growth-toggle"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(app.staticTexts["gal-growth-count"].firstMatch, "3", timeout: 5), "universalTransition row-count toggle did not settle back on 3 (label: \(app.staticTexts["gal-growth-count"].firstMatch.label))")
         // The geo route trail MOVES too: two screenshots half a second apart differ.
         let geoTrail = app.descendants(matching: .any).matching(identifier: "gal-geo-trail").firstMatch
         XCTAssertTrue(geoTrail.waitForExistence(timeout: 10), "gal-geo-trail canvas missing on the gallery")
         var trailTries = 0
-        // On screen in either direction: an off-screen element's screenshot never changes.
-        while trailTries < 12 {
+        // On screen in either direction: an off-screen element's screenshot never changes. This step revisits an
+        // EARLY chart from near the page's bottom (every later chart's own scrollFullyOnScreen ran first), so it
+        // needs many more iterations than a one-chart-at-a-time scroll — but the SAME proven gesture shape (a
+        // 0.05s press, the margin so an interactive chart's own drag never intercepts it).
+        while trailTries < 80 {
             let window = app.windows.firstMatch.frame
+            // Down the left margin, outside every chart. A chart's TAP no longer takes the page's scroll (it is a
+            // SpatialTapGesture, not a zero-distance drag), but one that also carries a DRAG — dataZoom, brush,
+            // navigator — still claims a swipe that starts on it.
+            let gutter = app.scrollViews["gal-scroll"].firstMatch
             if geoTrail.frame.minY < window.minY + 120 {
-                app.scrollViews["gal-scroll"].firstMatch.swipeDown()
+                gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.2)).press(forDuration: 0.05, thenDragTo: gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85)))
             } else if geoTrail.frame.maxY > window.maxY - 60 {
-                app.scrollViews["gal-scroll"].firstMatch.swipeUp()
+                gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85)).press(forDuration: 0.05, thenDragTo: gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.2)))
             } else {
                 break
             }
@@ -867,11 +1020,11 @@ final class PyreonTasksUITests: XCTestCase {
         }
         let geoTrailBefore = geoTrail.screenshot().pngRepresentation
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        XCTAssertNotEqual(geoTrailBefore, geoTrail.screenshot().pngRepresentation, "gal-geo-trail did not move between frames")
+        XCTAssertNotEqual(geoTrailBefore, geoTrail.screenshot().pngRepresentation, "gal-geo-trail did not move between frames (frame \(geoTrail.frame), window \(app.windows.firstMatch.frame))")
         // The lines trail MOVES: two screenshots of its canvas half a second
         // apart differ (the simulator runs with Reduce Motion off).
         let linesChart = app.descendants(matching: .any).matching(identifier: "gal-lines").firstMatch
-        scrollIntoView(linesChart, in: app)
+        scrollFullyOnScreen(linesChart, in: app)
         XCTAssertTrue(linesChart.waitForExistence(timeout: 10), "gal-lines canvas missing on the gallery")
         let framesBefore = linesChart.screenshot().pngRepresentation
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))

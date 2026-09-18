@@ -209,7 +209,8 @@ describe('timelineCommands + composeSvg', () => {
     const one = timelineCommands({ labels: ['only'], current: 0, autoPlay: false, playInterval: 0 }, 400, 200, 40)
     const dot = one.find((c) => c.kind === 'circle')!
     if (dot.kind !== 'circle') throw new Error('circle')
-    expect(dot.center.x).toBeCloseTo(200, 9)
+    // Centred on the axis, which the play + previous buttons shorten on the left and next on the right: (72 + 352) / 2.
+    expect(dot.center.x).toBeCloseTo(212, 9)
     expect(Number.isNaN(dot.center.x)).toBe(false)
     // Two steps span the strip instead.
     const two = timelineCommands({ labels: ['a', 'b'], current: 0, autoPlay: false, playInterval: 0 }, 400, 200, 40)

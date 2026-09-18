@@ -27,9 +27,14 @@ describe('versioned chart capability inventory', () => {
       CHART_CAPABILITIES.filter((row) => row.mode === mode).every((row) => row.status === 'complete')
     expect(direct.percent === 100).toBe(allComplete('direct'))
     expect(hosted.percent === 100).toBe(allComplete('hosted'))
-    // Direct-native still carries open rows; hosted (the unchanged engine in
-    // the supported native host) has none left.
-    expect(CHART_CAPABILITIES.some((row) => row.mode === 'direct' && row.status !== 'complete')).toBe(true)
+    // Every direct-native row closed (data.transforms, then
+    // presentation.universal-transition, were the last two) — 100 is a
+    // reachable, honest score now, not a hand-typed one: it falls out of
+    // `allComplete('direct')` being true, the same derivation as `hosted`
+    // below always used. A NEW row that ships partial (or a regression that
+    // reopens one) flips `allComplete` back to false and this back to a
+    // guard against claiming 100 early.
+    expect(allComplete('direct')).toBe(true)
     expect(allComplete('hosted')).toBe(true)
   })
 

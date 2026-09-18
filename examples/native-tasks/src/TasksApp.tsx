@@ -96,6 +96,7 @@ import {
   TreemapChart,
   bars,
   bollinger,
+  createChartHandle,
   line,
   sma,
 } from '@pyreon/charts/plot'
@@ -580,6 +581,31 @@ const LOAD_ROWS: WeekRow[] = [
   { day: 'Fri', load: 47 },
   { day: 'Sat', load: 71 },
 ]
+interface TwoSeriesRow {
+  a: number
+  b: number
+}
+const TWO_SERIES_ROWS: TwoSeriesRow[] = [
+  { a: 6, b: 2 },
+  { a: 5, b: 3 },
+  { a: 4, b: 4 },
+]
+interface GrowthRow {
+  month: string
+  total: number
+}
+const GROWTH_ROWS_A: GrowthRow[] = [
+  { month: 'Jan', total: 12 },
+  { month: 'Feb', total: 18 },
+  { month: 'Mar', total: 9 },
+]
+const GROWTH_ROWS_B: GrowthRow[] = [
+  { month: 'Jan', total: 12 },
+  { month: 'Feb', total: 18 },
+  { month: 'Mar', total: 9 },
+  { month: 'Apr', total: 22 },
+  { month: 'May', total: 15 },
+]
 const FLOW_LINKS: SankeyLink[] = [
   { source: 'Backlog', target: 'Doing', value: 8 },
   { source: 'Doing', target: 'Done', value: 5 },
@@ -750,6 +776,16 @@ const SUNBURST: TreeNode[] = [
 
 function GalleryPage() {
   const navigate = useNavigate()
+  // The toolbox's box zoom reports its window here; the save button its PNG's prefix.
+  const tbZoom = signal('0-100')
+  const tbSaved = signal('none')
+  const brushCount = signal('none')
+  const seriesPickCount = signal('none')
+  const growthRows = signal<GrowthRow[]>(GROWTH_ROWS_A)
+  const growthCount = signal(`${GROWTH_ROWS_A.length}`)
+  // Imperative handles (ECharts dispatchAction) for the toolbox chart and the timeline.
+  const tbHandle = createChartHandle()
+  const tlHandle = createChartHandle()
   return (
     <Scroll direction="vertical" data-testid="gal-scroll">
       <Stack gap={3} padding={4} data-testid="gal-page">
@@ -803,6 +839,118 @@ function GalleryPage() {
           height={180}
           data-testid="gal-lines"
         />
+        {/* aria.decal: each series gets a distinct texture so the bars stay tellable apart without colour. */}
+        <OptionChart
+          option={{
+            aria: { decal: { show: true } },
+            xAxis: { data: ['Q1', 'Q2', 'Q3'] },
+            yAxis: {},
+            series: [
+              { type: 'bar', data: [3, 5, 4] },
+              { type: 'bar', data: [4, 2, 6] },
+              { type: 'bar', itemStyle: { decal: { symbol: 'triangle', dashArrayX: [6, 4], dashArrayY: 8 } }, data: [2, 4, 3] },
+              { type: 'bar', itemStyle: { decal: { symbol: 'path://M0 0L10 0L5 10Z', dashArrayX: [8, 4], dashArrayY: 8 } }, data: [5, 3, 2] },
+              { type: 'bar', itemStyle: { color: { image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAEklEQVR4nGN44ODwHxkzkC4AAAeHJfENXDGsAAAAAElFTkSuQmCC', repeat: 'repeat' } }, data: [1, 6, 5] },
+            ],
+          }}
+          height={180}
+          data-testid="gal-decal"
+        />
+        <OptionChart
+          option={{
+            xAxis: { type: 'category', data: ['Mon', 'Tue', 'Wed'] },
+            yAxis: { type: 'category', data: ['am', 'pm'] },
+            visualMap: { min: 0, max: 10, calculable: true, orient: 'horizontal', inRange: { color: ['#dbeafe', '#1d4ed8'] } },
+            series: [{ type: 'heatmap', data: [[0, 0, 2], [1, 0, 9], [2, 0, 5], [0, 1, 7], [1, 1, 1], [2, 1, 10]] }],
+          }}
+          height={220}
+          data-testid="gal-visualmap"
+        />
+        <OptionChart
+          option={{
+            xAxis: { type: 'category', data: ['1', '2', '3', '4', '5', '6', '7', '8'] },
+            yAxis: {},
+            dataZoom: [{ type: 'slider', start: 0, end: 50, filterMode: 'none' }],
+            series: [{ type: 'bar', itemStyle: { color: '#ff0000' }, data: [1, 1, 1, 1, 9, 9, 9, 9] }],
+          }}
+          height={220}
+          data-testid="gal-datazoom"
+        />
+        <OptionChart
+          option={{
+            baseOption: { timeline: { data: ['2019', '2020', '2021'] }, xAxis: { type: 'category', data: ['a', 'b', 'c'] }, yAxis: { min: 0, max: 10 }, series: [{ type: 'bar' }] },
+            options: [{ series: [{ data: [2, 3, 1] }] }, { series: [{ data: [5, 6, 4] }] }, { series: [{ data: [9, 8, 10] }] }],
+          }}
+          height={240}
+          handle={tlHandle}
+          data-testid="gal-timeline"
+        />
+        <Button onPress={() => tlHandle.dispatch({ type: 'timelineChange', index: 2 })} data-testid="gal-tl-last">
+          Last step
+        </Button>
+        <PlotChart
+          data={SCORE_ROWS}
+          marks={[bars((d: ScoreRow) => d.score)]}
+          toolbox={{ dataZoom: true, dataView: true, magicType: ['line', 'bar'], restore: true }}
+          height={220}
+          handle={tbHandle}
+          data-testid="gal-toolbox"
+          onZoom={(w: ZoomWindow) => tbZoom.set(`${(w.start * 100).toFixed(0)}-${(w.end * 100).toFixed(0)}`)}
+        />
+        <Text data-testid="gal-toolbox-zoom">{tbZoom()}</Text>
+        <Button onPress={() => tbHandle.dispatch({ type: 'dataZoom', start: 0, end: 0.5 })} data-testid="gal-h-zoom">
+          Zoom to half
+        </Button>
+        <Button onPress={() => tbHandle.dispatch({ type: 'restore' })} data-testid="gal-h-reset">
+          Reset
+        </Button>
+        <PlotChart
+          data={LOAD_ROWS}
+          marks={[bars((d: WeekRow) => d.load)]}
+          brushType="lineX"
+          height={200}
+          data-testid="gal-brush"
+          onBrushSelected={(s: { seriesIndex: number; dataIndex: number[] }[]) => brushCount.set(`${s.length}:${s.length > 0 ? s[0]!.dataIndex.length : 0}`)}
+        />
+        <Text data-testid="gal-brush-count">{brushCount()}</Text>
+        <PlotChart
+          data={TWO_SERIES_ROWS}
+          marks={[bars((d: TwoSeriesRow) => d.a), bars((d: TwoSeriesRow) => d.b)]}
+          selectedMode="series"
+          height={200}
+          data-testid="gal-series-select"
+          onSelectIndex={(i: number) => seriesPickCount.set(`${i}`)}
+        />
+        <Text data-testid="gal-series-select-datum">{seriesPickCount()}</Text>
+        <PlotChart
+          data={() => growthRows()}
+          marks={[bars((d: GrowthRow) => d.total)]}
+          universalTransition
+          updateDuration={250}
+          height={200}
+          data-testid="gal-growth"
+        />
+        <Button
+          onPress={() => {
+            const next = growthRows().length === GROWTH_ROWS_A.length ? GROWTH_ROWS_B : GROWTH_ROWS_A
+            growthRows.set(next)
+            growthCount.set(`${next.length}`)
+          }}
+          data-testid="gal-growth-toggle"
+        >
+          Toggle rows
+        </Button>
+        <Text data-testid="gal-growth-count">{growthCount()}</Text>
+        <PieChart
+          data={SLICES}
+          value={(d: PieSlice) => d.total}
+          label={(d: PieSlice) => d.name}
+          height={180}
+          toolbox={{ saveAsImage: true }}
+          onSaveImage={(url: string) => tbSaved.set(url.startsWith('data:image/png;') ? 'data:image/png;' : url)}
+          data-testid="gal-save"
+        />
+        <Text data-testid="gal-saved">{tbSaved()}</Text>
         <Button onPress={() => navigate('/tasks')} data-testid="gal-back">
           Back to tasks
         </Button>

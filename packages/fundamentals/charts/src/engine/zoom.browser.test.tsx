@@ -181,4 +181,21 @@ describe('dataZoom + brush (real browser)', () => {
     // small; the GLOBAL one cannot be.
     expect(picked[0]!).toBeGreaterThan(9)
   })
+
+  it('initialZoom opens on a window; zoomLimits holds the span under a wheel zoom', async () => {
+    const windows: ({ start: number; end: number } | null)[] = []
+    const { container } = mountInBrowser(() =>
+      PlotChart<Row>({ data: rows, marks: [bars((d: Row) => d.v)], width: 400, height: 200, dataZoom: true, animate: false, initialZoom: { start: 0.5, end: 1 }, zoomLimits: { minSpan: 0.4 }, onZoom: (w) => windows.push(w) }),
+    )
+    await flush()
+    const el = canvasOf(container)
+    // Wheel in hard: without the limit the span would shrink well under 0.4.
+    for (let i = 0; i < 6; i++) wheelAt(el, 200, -100)
+    await flush()
+    const last = windows[windows.length - 1]
+    expect(last).not.toBeNull()
+    expect(last!.end - last!.start).toBeCloseTo(0.4, 6)
+    expect(last!.start).toBeGreaterThanOrEqual(0.5 - 1e-9)
+  })
 })
+

@@ -29,6 +29,16 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.nativeCanvas
 import android.graphics.Paint
+import android.graphics.BitmapFactory
+import android.os.Handler
+import android.os.Looper
+import android.util.Base64
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.dp
 import java.text.NumberFormat
@@ -68,6 +78,15 @@ data class PyreonChartPattern(
     var color: String,
     var spacing: Double,
     var width: Double,
+    var angle: Double? = null,
+    var symbol: String? = null,
+    var spacingY: Double? = null,
+    /** Image patterns: a URL or data URI and the tiling mode. */
+    var image: String? = null,
+    var repeat: String? = null,
+    /** A `symbol: path` decal: unit-box points, rings flattened, with each ring's point count. */
+    var shape: List<PyreonChartPt>? = null,
+    var shapeRings: List<Double>? = null,
 )
 
 data class PyreonDrawCmd(
@@ -330,31 +349,79 @@ fun pyreonRoundedRectPath(r: PyreonChartRect, radii: List<Double>): Path {
     return p
 }
 
+/**
+ * Pattern images, decoded once per source on a background thread. The map is
+ * Compose state, so a canvas that read a missing entry redraws when it lands.
+ * Bounded — a chart names a handful of textures.
+ */
+object PyreonChartImages {
+    private val images = mutableStateMapOf<String, ImageBitmap>()
+    private val pending = mutableSetOf<String>()
+    private val order = ArrayDeque<String>()
+    private const val LIMIT = 64
+    private val main = Handler(Looper.getMainLooper())
+
+    fun image(src: String): ImageBitmap? {
+        images[src]?.let { return it }
+        if (!pending.add(src)) return null
+        Thread {
+            val bitmap = try {
+                val bytes = if (src.startsWith("data:")) {
+                    val comma = src.indexOf(',')
+                    val meta = src.substring(0, maxOf(comma, 0))
+                    val body = src.substring(comma + 1)
+                    if (meta.endsWith(";base64")) Base64.decode(body, Base64.DEFAULT) else java.net.URLDecoder.decode(body, "UTF-8").toByteArray()
+                } else {
+                    java.net.URL(src).openStream().use { it.readBytes() }
+                }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            } catch (e: Exception) {
+                null
+            }
+            main.post {
+                pending.remove(src)
+                if (bitmap != null) {
+                    images[src] = bitmap.asImageBitmap()
+                    order.addLast(src)
+                    if (order.size > LIMIT) images.remove(order.removeFirst())
+                }
+            }
+        }.start()
+        return null
+    }
+}
+
 private fun DrawScope.pyreonPaintPattern(pattern: PyreonChartPattern?, clip: Path, bounds: PyreonChartRect) {
     pattern ?: return
-    val spacing = pattern.spacing.coerceAtLeast(2.0).toFloat()
-    val width = pattern.width.coerceAtLeast(0.5).toFloat()
-    val color = pyreonChartColor(pattern.color)
-    clipPath(clip) {
-        if (pattern.kind == "dots") {
-            var y = bounds.y.toFloat()
-            while (y <= (bounds.y + bounds.h).toFloat()) {
-                var x = bounds.x.toFloat()
-                while (x <= (bounds.x + bounds.w).toFloat()) {
-                    drawCircle(color = color, radius = width / 2f, center = Offset(x, y))
-                    x += spacing
-                }
-                y += spacing
+    val src = pattern.image
+    if (pattern.kind == "image" && src != null) {
+        val img = PyreonChartImages.image(src) ?: return
+        val cells = patternImageCells(pattern, bounds, img.width.toDouble(), img.height.toDouble())
+        clipPath(clip) {
+            for (r in cells) {
+                drawImage(img, dstOffset = IntOffset(r.x.toInt(), r.y.toInt()), dstSize = IntSize(maxOf(r.w.toInt(), 1), maxOf(r.h.toInt(), 1)))
             }
-        } else {
-            val span = (bounds.w + bounds.h).toFloat()
-            var d = -bounds.h.toFloat()
-            while (d <= bounds.w.toFloat()) {
-                drawLine(color, Offset(bounds.x.toFloat() + d, (bounds.y + bounds.h).toFloat()), Offset(bounds.x.toFloat() + d + span, bounds.y.toFloat()), width)
-                if (pattern.kind == "cross") {
-                    drawLine(color, Offset(bounds.x.toFloat() + d, bounds.y.toFloat()), Offset(bounds.x.toFloat() + d + span, (bounds.y + bounds.h).toFloat()), width)
-                }
-                d += spacing
+        }
+        return
+    }
+    // Engine geometry (`patternMarks`) — the same marks every target paints; this only clips and draws.
+    val marks = patternMarks(pattern, bounds)
+    clipPath(clip) {
+        for (m in marks) {
+            val from = m.from
+            val to = m.to
+            val center = m.center
+            val pts = m.points
+            if (m.kind == "line" && from != null && to != null) {
+                drawLine(pyreonChartColor(m.stroke ?: pattern.color), Offset(from.x.toFloat(), from.y.toFloat()), Offset(to.x.toFloat(), to.y.toFloat()), (m.width ?: 1.0).toFloat())
+            } else if (m.kind == "circle" && center != null) {
+                drawCircle(color = pyreonChartColor(m.fill ?: pattern.color), radius = (m.radius ?: 1.0).toFloat(), center = Offset(center.x.toFloat(), center.y.toFloat()))
+            } else if (m.kind == "polygon" && pts != null && pts.isNotEmpty()) {
+                val poly = Path()
+                poly.moveTo(pts[0].x.toFloat(), pts[0].y.toFloat())
+                for (q in pts.drop(1)) poly.lineTo(q.x.toFloat(), q.y.toFloat())
+                poly.close()
+                drawPath(poly, pyreonChartColor(m.fill ?: pattern.color))
             }
         }
     }
@@ -471,8 +538,16 @@ private fun PyreonStaticChartCanvas(
     // canvas paints in CSS px and SwiftUI in points — so scale by the density
     // once here rather than converting every coordinate and font size.
     val density = LocalDensity.current.density
-    Canvas(modifier = modifier) {
-        scale(scale = density, pivot = Offset.Zero) {
+    Canvas(modifier = modifier) { pyreonPaintChart(cmds, density) }
+}
+
+/**
+ * Paint a draw list in density-independent units. The canvas composable and
+ * the offscreen image renderer (`pyreonChartBitmap`) share it, so a saved
+ * image is the chart on screen.
+ */
+fun DrawScope.pyreonPaintChart(cmds: List<PyreonDrawCmd>, density: Float) {
+    scale(scale = density, pivot = Offset.Zero) {
         for (c in cmds) {
             when (c.kind) {
                 "rect" -> {
@@ -595,7 +670,6 @@ private fun PyreonStaticChartCanvas(
                     }
                 }
             }
-        }
         }
     }
 }
@@ -779,4 +853,87 @@ fun PyreonChartEntrance(durationMs: Double, content: @Composable (Double) -> Uni
         t.animateTo(1f, tween(durationMs.toInt(), easing = LinearEasing))
     }
     content(pyreonEntranceProgress(t.value.toDouble()))
+}
+
+/** A draw list rendered offscreen on white, `width` × `height` in dp at `density`. */
+fun pyreonChartBitmap(cmds: List<PyreonDrawCmd>, width: Double, height: Double, density: Float): android.graphics.Bitmap {
+    val w = maxOf(1, (width * density).toInt())
+    val h = maxOf(1, (height * density).toInt())
+    val image = androidx.compose.ui.graphics.ImageBitmap(w, h)
+    val canvas = androidx.compose.ui.graphics.Canvas(image)
+    androidx.compose.ui.graphics.drawscope.CanvasDrawScope().draw(androidx.compose.ui.unit.Density(density), androidx.compose.ui.unit.LayoutDirection.Ltr, canvas, Size(w.toFloat(), h.toFloat())) {
+        drawRect(Color.White)
+        pyreonPaintChart(cmds, density)
+    }
+    return image.asAndroidBitmap()
+}
+
+/** The chart as a PNG data URL — what `onSaveImage` receives on Android, as on the web. */
+fun pyreonChartDataUrl(cmds: List<PyreonDrawCmd>, width: Double, height: Double, density: Float): String {
+    val out = java.io.ByteArrayOutputStream()
+    pyreonChartBitmap(cmds, width, height, density).compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+    return "data:image/png;base64," + android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+}
+
+/**
+ * ECharts' `saveAsImage` on a phone: the PNG goes to Pictures (MediaStore, no
+ * permission on Android 10+) and the share sheet opens on it. Below Android 10
+ * writing Pictures needs a storage permission the chart does not ask for, so
+ * the image is only shared as a data URL through `onSaveImage` there.
+ */
+fun pyreonShareChartImage(context: android.content.Context, cmds: List<PyreonDrawCmd>, width: Double, height: Double, density: Float, name: String) {
+    if (android.os.Build.VERSION.SDK_INT < 29) {
+        android.util.Log.w("Pyreon", "saveAsImage needs Android 10+ without a storage permission; pass onSaveImage to receive the PNG instead.")
+        return
+    }
+    val bitmap = pyreonChartBitmap(cmds, width, height, density)
+    val values = android.content.ContentValues().apply {
+        put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "$name.png")
+        put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+        put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, android.os.Environment.DIRECTORY_PICTURES)
+    }
+    val uri = context.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return
+    context.contentResolver.openOutputStream(uri)?.use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+        type = "image/png"
+        putExtra(android.content.Intent.EXTRA_STREAM, uri)
+        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    val chooser = android.content.Intent.createChooser(send, name).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
+    context.startActivity(chooser)
+}
+
+
+// ── Chart handle (ECharts `dispatchAction`) ───────────────────────────────
+//
+// `createChartHandle()` lowers to one of these, held in `remember`. Each field
+// is Compose state, so the bound plot host reads and writes `handle.selected`
+// in place of a private copy and recomposes on a dispatch as on a gesture.
+// `dispatch` runs the crossing `applyChartAction` reducer — the web handle's
+// function — and writes back only what changed.
+class PyreonChartHandle {
+    var zoom by mutableStateOf(ZoomWindow(start = 0.0, end = 1.0))
+    var hover by mutableStateOf(-1)
+    var selected by mutableStateOf(listOf<Int>())
+    var hidden by mutableStateOf(listOf<Int>())
+    var seriesCount by mutableStateOf(0)
+    var brushType by mutableStateOf("")
+    var areas by mutableStateOf(listOf<BrushArea>())
+    var step by mutableStateOf(-1)
+    var playing by mutableStateOf(false)
+
+    fun dispatch(action: ChartActionInput) {
+        val next = applyChartAction(
+            ChartActionState(zoom = zoom, hover = hover, selected = selected, hidden = hidden, seriesCount = seriesCount, brushType = brushType, areas = areas, step = step, playing = playing),
+            action,
+        )
+        if (next.zoom != zoom) zoom = next.zoom
+        if (next.hover != hover) hover = next.hover
+        if (next.selected != selected) selected = next.selected
+        if (next.hidden != hidden) hidden = next.hidden
+        if (next.brushType != brushType) brushType = next.brushType
+        if (next.areas != areas) areas = next.areas
+        if (next.step != step) step = next.step
+        if (next.playing != playing) playing = next.playing
+    }
 }

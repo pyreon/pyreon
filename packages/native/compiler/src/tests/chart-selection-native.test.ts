@@ -88,7 +88,7 @@ describe('<PlotChart selectedMode> lowers', () => {
     // was emitted into a chart that never taps.
     const bare = transform(chart('selectedMode="single"'), { target: 'swift' })
     expect(bare.warnings).toEqual([])
-    expect(bare.code).toContain('DragGesture(minimumDistance: 0)')
+    expect(bare.code).toContain('SpatialTapGesture()')
     expect(bare.code).toContain('pinSelection(')
   })
 
