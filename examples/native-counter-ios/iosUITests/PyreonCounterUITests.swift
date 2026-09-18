@@ -68,6 +68,37 @@ final class PyreonCounterUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Native flow tools"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.descendants(matching: .any)["source handle out"].firstMatch.exists)
         XCTAssertTrue(app.descendants(matching: .any)["target handle in"].firstMatch.exists)
+
+        let edgeCount = app.staticTexts["native-flow-edge-count"].firstMatch
+        XCTAssertTrue(edgeCount.waitForExistence(timeout: 10))
+        XCTAssertEqual(edgeCount.label, "1")
+        // Connect end -> start so this gesture creates a distinct reverse edge.
+        let source = app.descendants(matching: .any).matching(identifier: "source handle out").element(boundBy: 1)
+        let target = app.descendants(matching: .any)["target handle in"].firstMatch
+        let sourceGrab = source.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        sourceGrab.press(
+            forDuration: 0.3,
+            thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)),
+            withVelocity: .slow,
+            thenHoldForDuration: 0.3
+        )
+        let connected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "2"), object: edgeCount)
+        XCTAssertEqual(XCTWaiter().wait(for: [connected], timeout: 5), .completed, "connecting the rendered handles did not add an edge")
+
+        let size = app.staticTexts["native-flow-start-size"].firstMatch
+        XCTAssertTrue(size.waitForExistence(timeout: 10))
+        XCTAssertEqual(size.label, "150.0,60.0")
+        let resize = app.descendants(matching: .any)["Resize se for node native-start"].firstMatch
+        XCTAssertTrue(resize.waitForExistence(timeout: 5))
+        let resizeGrab = resize.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        resizeGrab.press(
+            forDuration: 0.3,
+            thenDragTo: resizeGrab.withOffset(CGVector(dx: 40, dy: 30)),
+            withVelocity: .slow,
+            thenHoldForDuration: 0.3
+        )
+        let resized = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", "150.0,60.0"), object: size)
+        XCTAssertEqual(XCTWaiter().wait(for: [resized], timeout: 5), .completed, "dragging the southeast resizer did not change the native node dimensions")
     }
 
     /// Maps/geolocation — a BEHAVIORAL proof, not a does-not-crash one.

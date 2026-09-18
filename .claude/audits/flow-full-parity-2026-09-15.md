@@ -143,3 +143,13 @@ native view.
   the same TSX source. The generated SwiftUI and Compose apps compile for their
   real SDKs, and both device suites assert the toolbar content and accessible
   handle names. Connect/reconnect and resize gestures remain F4 work.
+- [x] F4 connect/resize device coverage is wired from the shared counter source
+  into both native suites: a handle drag adds an edge and a southeast-resizer
+  drag changes the node dimensions. The iOS scenario passes on Simulator; the
+  paired Android assertion is gated by the PR device lane. The iOS pass found
+  and fixed a real accessibility/input defect: handles, resizers and reconnect
+  controls used `.position`, which exposed the whole canvas as every control's
+  accessibility frame, while their 12pt hit area was below the native minimum.
+  They now retain independent finite frames with 44pt hit targets while keeping
+  the same visual size. Pan/zoom, reconnect, selection and keyboard/a11y
+  equivalents remain F4 work.

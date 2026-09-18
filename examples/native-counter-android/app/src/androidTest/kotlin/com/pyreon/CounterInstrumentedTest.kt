@@ -34,6 +34,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getBoundsInRoot
@@ -42,6 +43,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -72,8 +74,33 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("Native Flow End").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Native Flow device proof").assertExists()
         composeRule.onNodeWithText("Native flow tools").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("source handle out").assertExists()
-        composeRule.onNodeWithContentDescription("target handle in").assertExists()
+        composeRule.onAllNodesWithContentDescription("source handle out").assertCountEquals(2)
+        composeRule.onAllNodesWithContentDescription("target handle in").assertCountEquals(2)
+
+        composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
+        // Connect end -> start so this gesture creates a distinct reverse edge.
+        val source = composeRule.onAllNodesWithContentDescription("source handle out")[1]
+        val targetCenter = composeRule.onAllNodesWithContentDescription("target handle in")[0].fetchSemanticsNode().boundsInRoot.center
+        val sourceCenter = source.fetchSemanticsNode().boundsInRoot.center
+        source.performTouchInput {
+            down(center)
+            moveBy((targetCenter - sourceCenter) * 0.4f)
+            moveBy((targetCenter - sourceCenter) * 0.4f)
+            moveBy((targetCenter - sourceCenter) * 0.2f)
+            up()
+        }
+        composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("2")
+
+        composeRule.onNodeWithTag("native-flow-start-size").assertTextEquals("150,60")
+        composeRule.onNodeWithContentDescription("Resize se for node native-start").performTouchInput {
+            down(center)
+            moveBy(androidx.compose.ui.geometry.Offset(24f, 18f))
+            moveBy(androidx.compose.ui.geometry.Offset(40f, 30f))
+            up()
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-start-size").fetchSemanticsNode().config[SemanticsProperties.Text].first().text != "150,60"
+        }
     }
 
     @Test
