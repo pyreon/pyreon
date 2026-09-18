@@ -115,6 +115,13 @@ export function Counter() {
     fitView: true,
   })
   const nativeFlowEdgeCount = computed(() => nativeFlow.edges().length)
+  const nativeFlowEdgeTarget = computed(() => {
+    let target = 'gone'
+    for (const edge of nativeFlow.edges()) {
+      if (edge.id === 'native-edge') target = edge.target
+    }
+    return target
+  })
   const nativeFlowStartSize = computed(() => {
     let label = 'gone'
     for (const node of nativeFlow.nodes()) {
@@ -312,7 +319,12 @@ export function Counter() {
         </Flow>
       </NativeFlowFrame>
       <Text data-testid="native-flow-edge-count">{nativeFlowEdgeCount}</Text>
+      <Text data-testid="native-flow-edge-target">{nativeFlowEdgeTarget}</Text>
       <Text data-testid="native-flow-start-size">{nativeFlowStartSize}</Text>
+      <Button data-testid="native-flow-prepare-reconnect" onPress={() => {
+        nativeFlow.addNode({ id: 'native-third', type: 'native', position: { x: 250, y: 230 }, data: { label: 'Native Flow Third' }, width: 150, height: 60, ariaLabel: 'Native Flow Third' })
+        nativeFlow.selectEdge('native-edge')
+      }}>Prepare native reconnect</Button>
       {/* ui-system device proof — a rocketstyle component with a REACTIVE
           dimension. The text flips with the same signal that drives the colour,
           so the device test can assert the flip actually re-rendered (XCUITest

@@ -72,9 +72,22 @@ final class PyreonCounterUITests: XCTestCase {
         let edgeCount = app.staticTexts["native-flow-edge-count"].firstMatch
         XCTAssertTrue(edgeCount.waitForExistence(timeout: 10))
         XCTAssertEqual(edgeCount.label, "1")
-        // Connect end -> start so this gesture creates a distinct reverse edge.
-        let source = app.descendants(matching: .any).matching(identifier: "source handle out").element(boundBy: 1)
-        let target = app.descendants(matching: .any)["target handle in"].firstMatch
+        // Connect end -> start before exposing the selected seed edge's
+        // endpoint controls for the independent reconnect gesture below.
+        let startNode = app.descendants(matching: .any)["Native Flow Start"].firstMatch
+        let connectionSourceNode = app.descendants(matching: .any)["Native Flow End"].firstMatch
+        let source = try XCTUnwrap(
+            app.descendants(matching: .any).matching(identifier: "source handle out").allElementsBoundByIndex.min {
+                abs($0.frame.midX - connectionSourceNode.frame.maxX) + abs($0.frame.midY - connectionSourceNode.frame.midY)
+                    < abs($1.frame.midX - connectionSourceNode.frame.maxX) + abs($1.frame.midY - connectionSourceNode.frame.midY)
+            }
+        )
+        let target = try XCTUnwrap(
+            app.descendants(matching: .any).matching(identifier: "target handle in").allElementsBoundByIndex.min {
+                abs($0.frame.midX - startNode.frame.minX) + abs($0.frame.midY - startNode.frame.midY)
+                    < abs($1.frame.midX - startNode.frame.minX) + abs($1.frame.midY - startNode.frame.midY)
+            }
+        )
         XCTAssertGreaterThanOrEqual(source.frame.width, 43.5, "source handle touch target is below the native minimum")
         let sourceGrab = source.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         sourceGrab.press(
@@ -101,6 +114,33 @@ final class PyreonCounterUITests: XCTestCase {
         )
         let resized = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", "150.0,60.0"), object: size)
         XCTAssertEqual(XCTWaiter().wait(for: [resized], timeout: 5), .completed, "dragging the southeast resizer did not change the native node dimensions")
+
+        let edgeTarget = app.staticTexts["native-flow-edge-target"].firstMatch
+        XCTAssertTrue(edgeTarget.waitForExistence(timeout: 10))
+        XCTAssertEqual(edgeTarget.label, "native-end")
+        let prepareReconnect = app.buttons["native-flow-prepare-reconnect"].firstMatch
+        XCTAssertTrue(prepareReconnect.waitForExistence(timeout: 10))
+        prepareReconnect.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["Native Flow Third"].waitForExistence(timeout: 10))
+        let reconnect = app.descendants(matching: .any)["Reconnect target of edge native-edge"].firstMatch
+        XCTAssertTrue(reconnect.waitForExistence(timeout: 10))
+        XCTAssertGreaterThanOrEqual(reconnect.frame.width, 43.5, "reconnect touch target is below the native minimum")
+        let thirdNode = app.descendants(matching: .any)["Native Flow Third"].firstMatch
+        let thirdTarget = try XCTUnwrap(
+            app.descendants(matching: .any).matching(identifier: "target handle in").allElementsBoundByIndex.min {
+                abs($0.frame.midX - thirdNode.frame.minX) + abs($0.frame.midY - thirdNode.frame.midY)
+                    < abs($1.frame.midX - thirdNode.frame.minX) + abs($1.frame.midY - thirdNode.frame.midY)
+            }
+        )
+        let reconnectGrab = reconnect.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        reconnectGrab.press(
+            forDuration: 0.3,
+            thenDragTo: thirdTarget.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)),
+            withVelocity: .slow,
+            thenHoldForDuration: 0.3
+        )
+        let reconnected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "native-third"), object: edgeTarget)
+        XCTAssertEqual(XCTWaiter().wait(for: [reconnected], timeout: 5), .completed, "dragging the selected edge endpoint did not reconnect its target")
     }
 
     /// Maps/geolocation — a BEHAVIORAL proof, not a does-not-crash one.

@@ -153,3 +153,8 @@ native view.
   Both native renderers now retain independent finite frames with platform-sized
   hit targets while keeping the same visual size. Pan/zoom, reconnect, selection and keyboard/a11y
   equivalents remain F4 work.
+- [x] F4 reconnect coverage now drags the selected seed edge's target endpoint
+  onto a third node from the same source app and asserts the changed target in
+  both native device suites. The scenario also measures each platform's
+  reconnect hit target. Pan/zoom, gesture-driven selection and keyboard/a11y
+  equivalents remain F4 work.

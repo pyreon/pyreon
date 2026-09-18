@@ -78,7 +78,8 @@ class CounterInstrumentedTest {
         composeRule.onAllNodesWithContentDescription("source handle out").assertCountEquals(2)
         composeRule.onAllNodesWithContentDescription("target handle in").assertCountEquals(2)
         composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
-        // Connect end -> start so this gesture creates a distinct reverse edge.
+        // Connect end -> start before exposing the selected seed edge's
+        // endpoint controls for the independent reconnect gesture below.
         val source = composeRule.onAllNodesWithContentDescription("source handle out")[1]
         val sourceBounds = source.getBoundsInRoot()
         check(sourceBounds.right - sourceBounds.left >= 47.dp) { "source handle touch target is below the native minimum" }
@@ -106,6 +107,23 @@ class CounterInstrumentedTest {
         composeRule.waitUntil(5_000) {
             composeRule.onNodeWithTag("native-flow-start-size").fetchSemanticsNode().config[SemanticsProperties.Text].first().text != "150,60"
         }
+
+        composeRule.onNodeWithTag("native-flow-edge-target").assertTextEquals("native-end")
+        composeRule.onNodeWithTag("native-flow-prepare-reconnect").performClick()
+        composeRule.onNodeWithText("Native Flow Third").assertIsDisplayed()
+        val reconnect = composeRule.onNodeWithContentDescription("Reconnect target of edge native-edge")
+        val reconnectBounds = reconnect.getBoundsInRoot()
+        check(reconnectBounds.right - reconnectBounds.left >= 47.dp) { "reconnect touch target is below the native minimum" }
+        val thirdTargetCenter = composeRule.onAllNodesWithContentDescription("target handle in")[2].fetchSemanticsNode().boundsInRoot.center
+        val reconnectCenter = reconnect.fetchSemanticsNode().boundsInRoot.center
+        reconnect.performTouchInput {
+            down(center)
+            moveBy((thirdTargetCenter - reconnectCenter) * 0.4f)
+            moveBy((thirdTargetCenter - reconnectCenter) * 0.4f)
+            moveBy((thirdTargetCenter - reconnectCenter) * 0.2f)
+            up()
+        }
+        composeRule.onNodeWithTag("native-flow-edge-target").assertTextEquals("native-third")
     }
 
     @Test
