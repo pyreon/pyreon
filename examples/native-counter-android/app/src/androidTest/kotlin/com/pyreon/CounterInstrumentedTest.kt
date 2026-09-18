@@ -34,6 +34,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getBoundsInRoot
@@ -42,6 +43,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -72,8 +74,8 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("Native Flow End").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Native Flow device proof").assertExists()
         composeRule.onNodeWithText("Native flow tools").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("source handle out").assertExists()
-        composeRule.onNodeWithContentDescription("target handle in").assertExists()
+        composeRule.onAllNodesWithContentDescription("source handle out").assertCountEquals(2)
+        composeRule.onAllNodesWithContentDescription("target handle in").assertCountEquals(2)
     }
 
     @Test
