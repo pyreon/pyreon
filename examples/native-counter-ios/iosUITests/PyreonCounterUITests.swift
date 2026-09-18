@@ -141,6 +141,23 @@ final class PyreonCounterUITests: XCTestCase {
         )
         let reconnected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "native-third"), object: edgeTarget)
         XCTAssertEqual(XCTWaiter().wait(for: [reconnected], timeout: 5), .completed, "dragging the selected edge endpoint did not reconnect its target")
+
+        let canvas = app.descendants(matching: .any)["Native Flow device proof"].firstMatch
+        let viewportX = app.staticTexts["native-flow-viewport-x"].firstMatch
+        XCTAssertTrue(canvas.exists)
+        XCTAssertTrue(viewportX.waitForExistence(timeout: 5))
+        let xBeforePan = viewportX.label
+        let panStart = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05))
+        panStart.press(forDuration: 0.2, thenDragTo: panStart.withOffset(CGVector(dx: 45, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        let panned = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", xBeforePan), object: viewportX)
+        XCTAssertEqual(XCTWaiter().wait(for: [panned], timeout: 5), .completed, "dragging empty canvas space did not pan the native viewport")
+
+        let zoom = app.staticTexts["native-flow-zoom-percent"].firstMatch
+        XCTAssertTrue(zoom.waitForExistence(timeout: 5))
+        let zoomBeforePinch = zoom.label
+        canvas.pinch(withScale: 1.5, velocity: 1)
+        let pinched = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", zoomBeforePinch), object: zoom)
+        XCTAssertEqual(XCTWaiter().wait(for: [pinched], timeout: 5), .completed, "pinching the native canvas did not change viewport zoom")
     }
 
     /// Maps/geolocation — a BEHAVIORAL proof, not a does-not-crash one.

@@ -115,6 +115,8 @@ export function Counter() {
     fitView: true,
   })
   const nativeFlowEdgeCount = computed(() => nativeFlow.edges().length)
+  const nativeFlowViewportX = computed(() => Math.round(nativeFlow.viewport().x))
+  const nativeFlowZoomPercent = computed(() => Math.round(nativeFlow.viewport().zoom * 100))
   const nativeFlowEdgeTarget = computed(() => {
     let target = 'gone'
     for (const edge of nativeFlow.edges()) {
@@ -319,6 +321,8 @@ export function Counter() {
         </Flow>
       </NativeFlowFrame>
       <Text data-testid="native-flow-edge-count">{nativeFlowEdgeCount}</Text>
+      <Text data-testid="native-flow-viewport-x">{nativeFlowViewportX}</Text>
+      <Text data-testid="native-flow-zoom-percent">{nativeFlowZoomPercent}</Text>
       <Text data-testid="native-flow-edge-target">{nativeFlowEdgeTarget}</Text>
       <Text data-testid="native-flow-start-size">{nativeFlowStartSize}</Text>
       <Button data-testid="native-flow-prepare-reconnect" onPress={() => {

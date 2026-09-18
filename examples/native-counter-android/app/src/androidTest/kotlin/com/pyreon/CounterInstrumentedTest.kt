@@ -51,6 +51,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.pinch
 import androidx.compose.ui.unit.dp
 import android.content.Context
 import android.location.Location
@@ -124,6 +125,32 @@ class CounterInstrumentedTest {
             up()
         }
         composeRule.onNodeWithTag("native-flow-edge-target").assertTextEquals("native-third")
+
+        val canvas = composeRule.onNodeWithContentDescription("Native Flow device proof")
+        val xBeforePan = composeRule.onNodeWithTag("native-flow-viewport-x").fetchSemanticsNode().config[SemanticsProperties.Text].first().text
+        canvas.performTouchInput {
+            down(androidx.compose.ui.geometry.Offset(center.x, 10f))
+            moveBy(androidx.compose.ui.geometry.Offset(24f, 0f))
+            moveBy(androidx.compose.ui.geometry.Offset(40f, 0f))
+            up()
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-viewport-x").fetchSemanticsNode().config[SemanticsProperties.Text].first().text != xBeforePan
+        }
+
+        val zoomBeforePinch = composeRule.onNodeWithTag("native-flow-zoom-percent").fetchSemanticsNode().config[SemanticsProperties.Text].first().text
+        canvas.performTouchInput {
+            pinch(
+                start0 = center + androidx.compose.ui.geometry.Offset(-30f, 0f),
+                start1 = center + androidx.compose.ui.geometry.Offset(30f, 0f),
+                end0 = center + androidx.compose.ui.geometry.Offset(-70f, 0f),
+                end1 = center + androidx.compose.ui.geometry.Offset(70f, 0f),
+                durationMillis = 500,
+            )
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-zoom-percent").fetchSemanticsNode().config[SemanticsProperties.Text].first().text != zoomBeforePinch
+        }
     }
 
     @Test

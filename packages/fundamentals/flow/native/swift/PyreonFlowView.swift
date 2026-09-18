@@ -659,7 +659,6 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                     .fill(Color.clear)
                     .contentShape(Rectangle())
                     .gesture(panGesture)
-                    .simultaneousGesture(zoomGesture)
                     .simultaneousGesture(doubleClickZoomGesture)
                     .simultaneousGesture(edgeTapGesture)
 
@@ -714,6 +713,9 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             }
             .clipped()
             .coordinateSpace(name: "PyreonFlowCanvas")
+            // Zoom belongs to the canvas container so a pinch that begins on
+            // a node, edge control, or other child still transforms the graph.
+            .simultaneousGesture(zoomGesture)
             .onPreferenceChange(PyreonFlowNodeSizePreference.self) { sizes in
                 for (id, size) in sizes { state.updateNodeMeasurement(id, width: size.width, height: size.height) }
             }

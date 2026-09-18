@@ -158,3 +158,10 @@ native view.
   both native device suites. The scenario also measures each platform's
   reconnect hit target. Pan/zoom, gesture-driven selection and keyboard/a11y
   equivalents remain F4 work.
+- [x] F4 viewport gesture coverage now pans empty canvas space and pinch-zooms
+  the direct-native Flow in both device suites, asserting the live viewport
+  coordinates and zoom emitted from the shared source app. The iOS device pass
+  found that magnification lived only on the background sibling, so a pinch
+  beginning over graph content was swallowed; it now runs simultaneously on
+  the canvas container. Gesture-driven selection and keyboard/a11y equivalents
+  remain F4 work.
