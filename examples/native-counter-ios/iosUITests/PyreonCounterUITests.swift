@@ -72,9 +72,29 @@ final class PyreonCounterUITests: XCTestCase {
         let selectedNodeCount = app.staticTexts["native-flow-selected-node-count"].firstMatch
         XCTAssertTrue(selectedNodeCount.waitForExistence(timeout: 10))
         XCTAssertEqual(selectedNodeCount.label, "0")
-        app.descendants(matching: .any)["Native Flow Start"].firstMatch.tap()
+        let keyboardNode = app.descendants(matching: .any)["Native Flow Start"].firstMatch
+        keyboardNode.tap()
         let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: selectedNodeCount)
         XCTAssertEqual(XCTWaiter().wait(for: [selected], timeout: 5), .completed, "tapping a rendered native node did not select it")
+        let startPosition = app.staticTexts["native-flow-start-position"].firstMatch
+        XCTAssertTrue(startPosition.waitForExistence(timeout: 5))
+        let positionBeforeKey = startPosition.label
+        keyboardNode.typeKey(.rightArrow, modifierFlags: [])
+        let keyboardMoved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", positionBeforeKey), object: startPosition)
+        XCTAssertEqual(XCTWaiter().wait(for: [keyboardMoved], timeout: 5), .completed, "Right Arrow did not move the focused native Flow node")
+
+        let selectedEdgeCount = app.staticTexts["native-flow-selected-edge-count"].firstMatch
+        XCTAssertTrue(selectedEdgeCount.waitForExistence(timeout: 5))
+        let keyboardEdge = app.descendants(matching: .any)["Native flow edge"].firstMatch
+        XCTAssertTrue(keyboardEdge.waitForExistence(timeout: 5))
+        keyboardEdge.tap()
+        keyboardEdge.typeKey(.escape, modifierFlags: [])
+        let edgeCleared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: selectedEdgeCount)
+        XCTAssertEqual(XCTWaiter().wait(for: [edgeCleared], timeout: 5), .completed, "Escape did not clear native Flow edge selection")
+        keyboardEdge.typeKey(.return, modifierFlags: [])
+        let edgeSelectedByKey = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: selectedEdgeCount)
+        XCTAssertEqual(XCTWaiter().wait(for: [edgeSelectedByKey], timeout: 5), .completed, "Enter did not select the focused native Flow edge")
+        keyboardEdge.typeKey(.escape, modifierFlags: [])
 
         let edgeCount = app.staticTexts["native-flow-edge-count"].firstMatch
         XCTAssertTrue(edgeCount.waitForExistence(timeout: 10))

@@ -168,3 +168,8 @@ native view.
 - [x] F4 node-selection gestures now tap a rendered node in both native device
   suites and assert the engine's selected-node set changes through a reactive
   label. Edge-pointer selection and keyboard/a11y equivalents remain F4 work.
+- [x] F4 hardware-keyboard coverage now focuses a rendered node, sends an arrow
+  key and asserts the engine moved it in both native device suites. The suites
+  also focus an edge label, select it with Enter, and clear it with Escape;
+  native edge labels are active focus stops rather than passive names.
+  Edge-pointer selection and the remaining focus/action matrix remain F4 work.

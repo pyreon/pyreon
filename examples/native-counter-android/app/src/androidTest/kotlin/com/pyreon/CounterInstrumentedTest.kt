@@ -48,11 +48,13 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pinch
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.input.key.Key
 import android.content.Context
 import android.location.Location
 import android.location.LocationManager
@@ -80,8 +82,32 @@ class CounterInstrumentedTest {
         composeRule.onAllNodesWithContentDescription("target handle in").assertCountEquals(2)
 
         composeRule.onNodeWithTag("native-flow-selected-node-count").assertTextEquals("0")
-        composeRule.onNodeWithContentDescription("Native Flow Start").performClick()
+        val keyboardNode = composeRule.onNodeWithContentDescription("Native Flow Start")
+        keyboardNode.performClick()
         composeRule.onNodeWithTag("native-flow-selected-node-count").assertTextEquals("1")
+        val positionBeforeKey = composeRule.onNodeWithTag("native-flow-start-position").fetchSemanticsNode().config[SemanticsProperties.Text].first().text
+        keyboardNode.performSemanticsAction(SemanticsActions.RequestFocus)
+        keyboardNode.performKeyInput {
+            keyDown(Key.DirectionRight)
+            keyUp(Key.DirectionRight)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-start-position").fetchSemanticsNode().config[SemanticsProperties.Text].first().text != positionBeforeKey
+        }
+
+        composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("0")
+        val keyboardEdge = composeRule.onNodeWithContentDescription("Native flow edge")
+        keyboardEdge.performSemanticsAction(SemanticsActions.RequestFocus)
+        keyboardEdge.performKeyInput {
+            keyDown(Key.Enter)
+            keyUp(Key.Enter)
+        }
+        composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("1")
+        keyboardEdge.performKeyInput {
+            keyDown(Key.Escape)
+            keyUp(Key.Escape)
+        }
+        composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("0")
         composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
         // Connect end -> start before exposing the selected seed edge's
         // endpoint controls for the independent reconnect gesture below.

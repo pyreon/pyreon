@@ -111,11 +111,19 @@ export function Counter() {
       { id: 'native-start', type: 'native', position: { x: 20, y: 30 }, data: { label: 'Native Flow Start' }, width: 150, height: 60, ariaLabel: 'Native Flow Start' },
       { id: 'native-end', type: 'native', position: { x: 250, y: 130 }, data: { label: 'Native Flow End' }, width: 150, height: 60, ariaLabel: 'Native Flow End' },
     ],
-    edges: [{ id: 'native-edge', source: 'native-start', target: 'native-end', sourceHandle: 'out', targetHandle: 'in' }],
+    edges: [{ id: 'native-edge', source: 'native-start', target: 'native-end', sourceHandle: 'out', targetHandle: 'in', label: 'Native edge', ariaLabel: 'Native flow edge' }],
     fitView: true,
   })
   const nativeFlowEdgeCount = computed(() => nativeFlow.edges().length)
   const nativeFlowSelectedNodeCount = computed(() => nativeFlow.selectedNodes().length)
+  const nativeFlowSelectedEdgeCount = computed(() => nativeFlow.selectedEdges().length)
+  const nativeFlowStartPosition = computed(() => {
+    let position = 'gone'
+    for (const node of nativeFlow.nodes()) {
+      if (node.id === 'native-start') position = `${Math.round(node.position.x)},${Math.round(node.position.y)}`
+    }
+    return position
+  })
   const nativeFlowViewportX = computed(() => Math.round(nativeFlow.viewport().x))
   const nativeFlowZoomPercent = computed(() => Math.round(nativeFlow.viewport().zoom * 100))
   const nativeFlowEdgeTarget = computed(() => {
@@ -323,6 +331,8 @@ export function Counter() {
       </NativeFlowFrame>
       <Text data-testid="native-flow-edge-count">{nativeFlowEdgeCount}</Text>
       <Text data-testid="native-flow-selected-node-count">{nativeFlowSelectedNodeCount}</Text>
+      <Text data-testid="native-flow-selected-edge-count">{nativeFlowSelectedEdgeCount}</Text>
+      <Text data-testid="native-flow-start-position">{nativeFlowStartPosition}</Text>
       <Text data-testid="native-flow-viewport-x">{nativeFlowViewportX}</Text>
       <Text data-testid="native-flow-zoom-percent">{nativeFlowZoomPercent}</Text>
       <Text data-testid="native-flow-edge-target">{nativeFlowEdgeTarget}</Text>

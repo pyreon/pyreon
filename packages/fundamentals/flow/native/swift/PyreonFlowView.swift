@@ -567,6 +567,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     @State private var reconnectDraft: PyreonFlowReconnectDraft?
     @State private var resizeDrafts: [String: PyreonFlowResizeDraft] = [:]
     @State private var didInitialFit = false
+    @FocusState private var focusedNodeId: String?
+    @FocusState private var focusedEdgeId: String?
 
     public init(
         state: PyreonFlowState<T>,
@@ -774,6 +776,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 if node.selectable ?? state.nodesSelectable {
                     state.selectNode(node.id)
                     state.emitNodeClick(node.id)
+                    focusedNodeId = node.id
                 }
             }
             .accessibilityHidden(state.disableKeyboardA11y || !(node.focusable ?? state.nodesFocusable))
@@ -788,12 +791,16 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             // at (x, y). Device-found.
             .contentShape(Rectangle())
             .onTapGesture {
-                if node.selectable ?? state.nodesSelectable { state.selectNode(node.id) }
+                if node.selectable ?? state.nodesSelectable {
+                    state.selectNode(node.id)
+                    focusedNodeId = node.id
+                }
                 state.emitNodeClick(node.id)
             }
             .onTapGesture(count: 2) { state.emitNodeDoubleClick(node.id) }
             .gesture(nodeDragGesture(node))
             .focusable(!state.disableKeyboardA11y && (node.focusable ?? state.nodesFocusable))
+            .focused($focusedNodeId, equals: node.id)
             .onKeyPress { press in
                 handleKeyPress(press, nodeId: node.id)
             }
@@ -839,14 +846,30 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             .background(edge.text == nil ? Color.clear : Color.white.opacity(0.9))
             .position(x: edge.x, y: edge.y)
             .contentShape(Rectangle())
-            .onTapGesture { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) }
+            .onTapGesture {
+                state.selectEdge(edge.id)
+                state.emitEdgeClick(edge.id)
+                focusedEdgeId = edge.id
+            }
             .accessibilityLabel(Text(edge.accessibilityLabel))
             .accessibilityAddTraits(state.isEdgeSelected(edge.id) ? [.isSelected] : [])
             .accessibilityAction {
                 state.selectEdge(edge.id)
                 state.emitEdgeClick(edge.id)
+                focusedEdgeId = edge.id
             }
             .accessibilityHidden(!edge.focusable)
+            .focusable(edge.focusable)
+            .focused($focusedEdgeId, equals: edge.id)
+            .onKeyPress { press in
+                guard edge.focusable, let key = flowKeyName(press.key) else { return .ignored }
+                if key == "Enter" || key == " " {
+                    state.selectEdge(edge.id, additive: press.modifiers.contains(.shift))
+                    state.emitEdgeClick(edge.id)
+                    return .handled
+                }
+                return handleKeyPress(press)
+            }
     }
 
     private var visibleEdgeLabels: [PyreonFlowEdgeLabel] {

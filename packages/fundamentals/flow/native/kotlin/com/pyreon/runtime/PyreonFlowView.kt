@@ -503,6 +503,12 @@ fun <T> PyreonFlowView(
                 edgeModifier = if (edge.focusable) edgeModifier.semantics {
                     contentDescription = edge.accessibilityLabel
                     selected = state.isEdgeSelected(edge.id)
+                }.focusable().onKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter || event.key == Key.Spacebar)) {
+                        state.selectEdge(edge.id, event.isShiftPressed)
+                        state.emitEdgeClick(edge.id)
+                        true
+                    } else state.handleKeyEvent(event)
                 } else edgeModifier.clearAndSetSemantics { }
                 Text(
                     edge.text ?: "",
