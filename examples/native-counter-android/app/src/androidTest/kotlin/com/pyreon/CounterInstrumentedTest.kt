@@ -77,7 +77,10 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("Native Flow Start").assertIsDisplayed()
         composeRule.onNodeWithText("Native Flow End").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Native Flow device proof").assertExists()
-        composeRule.onNodeWithText("Native flow tools").assertIsDisplayed()
+        // Every node owns a toolbar, so this label is intentionally repeated.
+        // Assert that at least the first toolbar is rendered instead of using
+        // the single-node matcher, which rejects the valid two-node result.
+        composeRule.onAllNodesWithText("Native flow tools")[0].assertIsDisplayed()
         composeRule.onAllNodesWithContentDescription("source handle out").assertCountEquals(2)
         composeRule.onAllNodesWithContentDescription("target handle in").assertCountEquals(2)
 
