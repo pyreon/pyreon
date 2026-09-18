@@ -138,3 +138,33 @@ native view.
   callbacks, renamed imports, and explicit custom HTML are covered by compiler
   and Swift behaviour tests. Android runtime compilation and both device
   behaviour scenarios remain required before F5 can be checked complete.
+- [x] F3 direct-native chrome proof now includes a custom node's explicit
+  source/target handles, `NodeResizer`, and always-visible `NodeToolbar` from
+  the same TSX source. The generated SwiftUI and Compose apps compile for their
+  real SDKs, and both device suites assert the toolbar content and accessible
+  handle names. Connect/reconnect and resize gestures remain F4 work.
+- [x] F4 connect/resize device coverage is wired from the shared counter source
+  into both native suites: a handle drag adds an edge and a southeast-resizer
+  drag changes the node dimensions. The iOS scenario passes on Simulator; the
+  paired Android assertion is gated by the PR device lane. The iOS pass found
+  and fixed a real accessibility/input defect: handles, resizers and reconnect
+  controls used `.position`, which exposed the whole canvas as every control's
+  accessibility frame, while their 12pt hit area was below the native minimum.
+  Both native renderers now retain independent finite frames with platform-sized
+  hit targets while keeping the same visual size. Pan/zoom, reconnect, selection and keyboard/a11y
+  equivalents remain F4 work.
+- [x] F4 reconnect coverage now drags the selected seed edge's target endpoint
+  onto a third node from the same source app and asserts the changed target in
+  both native device suites. The scenario also measures each platform's
+  reconnect hit target. Pan/zoom, gesture-driven selection and keyboard/a11y
+  equivalents remain F4 work.
+- [x] F4 viewport gesture coverage now pans empty canvas space and pinch-zooms
+  the direct-native Flow in both device suites, asserting the live viewport
+  coordinates and zoom emitted from the shared source app. The iOS device pass
+  found that magnification lived only on the background sibling, so a pinch
+  beginning over graph content was swallowed; it now runs simultaneously on
+  the canvas container. Gesture-driven selection and keyboard/a11y equivalents
+  remain F4 work.
+- [x] F4 node-selection gestures now tap a rendered node in both native device
+  suites and assert the engine's selected-node set changes through a reactive
+  label. Edge-pointer selection and keyboard/a11y equivalents remain F4 work.

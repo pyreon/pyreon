@@ -659,7 +659,6 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                     .fill(Color.clear)
                     .contentShape(Rectangle())
                     .gesture(panGesture)
-                    .simultaneousGesture(zoomGesture)
                     .simultaneousGesture(doubleClickZoomGesture)
                     .simultaneousGesture(edgeTapGesture)
 
@@ -714,6 +713,9 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             }
             .clipped()
             .coordinateSpace(name: "PyreonFlowCanvas")
+            // Zoom belongs to the canvas container so a pinch that begins on
+            // a node, edge control, or other child still transforms the graph.
+            .simultaneousGesture(zoomGesture)
             .onPreferenceChange(PyreonFlowNodeSizePreference.self) { sizes in
                 for (id, size) in sizes { state.updateNodeMeasurement(id, width: size.width, height: size.height) }
             }
@@ -892,15 +894,21 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
 
     private func handleView(_ handle: PyreonFlowInteractiveHandle) -> some View {
         let label = "\(handle.type) handle \(handle.handleId ?? "default")"
+        let diameter = 12 / state.viewport.zoom
+        let hitSize = max(diameter, 44 / state.viewport.zoom)
         return SwiftUI.Circle()
             .fill(handle.type == "source" ? Color.blue : Color.green)
             .overlay(SwiftUI.Circle().stroke(Color.white, lineWidth: 1))
-            .frame(width: 12 / state.viewport.zoom, height: 12 / state.viewport.zoom)
-            .position(x: handle.x, y: handle.y)
-            .contentShape(SwiftUI.Circle())
+            .frame(width: diameter, height: diameter)
+            .frame(width: hitSize, height: hitSize)
+            .contentShape(SwiftUI.Rectangle())
             .gesture(handle.type == "source" ? connectionGesture(handle) : nil)
             .accessibilityLabel(Text(label))
             .accessibilityHidden(state.disableKeyboardA11y)
+            // Keep a finite layout frame. `.position` proposes the entire
+            // canvas to an accessible child, so every handle reports the same
+            // canvas-sized frame. The outer frame is the native 44pt target.
+            .offset(x: handle.x - hitSize / 2, y: handle.y - hitSize / 2)
     }
 
     private var resizersLayer: some View {
@@ -914,14 +922,18 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     }
 
     private func resizerView(_ node: PyreonFlowNode<T>, config: PyreonFlowNodeResizerConfig, direction: String) -> some View {
-        SwiftUI.RoundedRectangle(cornerRadius: 2 / state.viewport.zoom)
+        let size = config.handleSize / state.viewport.zoom
+        let hitSize = max(size, 44 / state.viewport.zoom)
+        let position = resizerPosition(node, direction: direction)
+        return SwiftUI.RoundedRectangle(cornerRadius: 2 / state.viewport.zoom)
             .fill(Color.white)
             .overlay(SwiftUI.RoundedRectangle(cornerRadius: 2 / state.viewport.zoom).stroke(Color.blue, lineWidth: 1.5 / state.viewport.zoom))
-            .frame(width: config.handleSize / state.viewport.zoom, height: config.handleSize / state.viewport.zoom)
-            .position(resizerPosition(node, direction: direction))
+            .frame(width: size, height: size)
+            .frame(width: hitSize, height: hitSize)
             .contentShape(SwiftUI.Rectangle())
             .gesture(resizeGesture(node, config: config, direction: direction))
             .accessibilityLabel(Text("Resize \(direction) for node \(node.id)"))
+            .offset(x: position.x - hitSize / 2, y: position.y - hitSize / 2)
     }
 
     private var edgeUpdatersLayer: some View {
@@ -932,15 +944,18 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
 
     private func edgeUpdaterView(_ updater: PyreonFlowEdgeUpdater) -> some View {
         let label = "Reconnect \(updater.end) of edge \(updater.edgeId)"
+        let diameter = 12 / state.viewport.zoom
+        let hitSize = max(diameter, 44 / state.viewport.zoom)
         return SwiftUI.Circle()
             .fill(Color.blue.opacity(0.35))
             .overlay(SwiftUI.Circle().stroke(Color.blue, lineWidth: 1.5 / state.viewport.zoom))
-            .frame(width: 12 / state.viewport.zoom, height: 12 / state.viewport.zoom)
-            .position(x: updater.x, y: updater.y)
-            .contentShape(SwiftUI.Circle())
+            .frame(width: diameter, height: diameter)
+            .frame(width: hitSize, height: hitSize)
+            .contentShape(SwiftUI.Rectangle())
             .gesture(reconnectGesture(updater))
             .accessibilityLabel(Text(label))
             .accessibilityHidden(state.disableKeyboardA11y)
+            .offset(x: updater.x - hitSize / 2, y: updater.y - hitSize / 2)
     }
 
     private var interactiveHandles: [PyreonFlowInteractiveHandle] {
