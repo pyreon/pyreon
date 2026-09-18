@@ -34,6 +34,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getBoundsInRoot
@@ -42,13 +43,18 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.pinch
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.input.key.Key
 import android.content.Context
 import android.location.Location
 import android.location.LocationManager
@@ -71,6 +77,106 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("Native Flow Start").assertIsDisplayed()
         composeRule.onNodeWithText("Native Flow End").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Native Flow device proof").assertExists()
+        // Every node owns a toolbar, so this label is intentionally repeated.
+        // Assert that at least the first toolbar is rendered instead of using
+        // the single-node matcher, which rejects the valid two-node result.
+        composeRule.onAllNodesWithText("Native flow tools")[0].assertIsDisplayed()
+        composeRule.onAllNodesWithContentDescription("source handle out").assertCountEquals(2)
+        composeRule.onAllNodesWithContentDescription("target handle in").assertCountEquals(2)
+
+        composeRule.onNodeWithTag("native-flow-selected-node-count").assertTextEquals("0")
+        val keyboardNode = composeRule.onNodeWithContentDescription("Native Flow Start")
+        keyboardNode.performClick()
+        composeRule.onNodeWithTag("native-flow-selected-node-count").assertTextEquals("1")
+        val positionBeforeKey = composeRule.onNodeWithTag("native-flow-start-position").fetchSemanticsNode().config[SemanticsProperties.Text].first().text
+        keyboardNode.performSemanticsAction(SemanticsActions.RequestFocus)
+        keyboardNode.performKeyInput {
+            keyDown(Key.DirectionRight)
+            keyUp(Key.DirectionRight)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-start-position").fetchSemanticsNode().config[SemanticsProperties.Text].first().text != positionBeforeKey
+        }
+
+        composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("0")
+        val keyboardEdge = composeRule.onNodeWithContentDescription("Native flow edge")
+        keyboardEdge.performClick()
+        composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("1")
+        composeRule.onNodeWithTag("native-flow-clear-selection").performClick()
+        composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("0")
+        composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
+        // Connect end -> start before exposing the selected seed edge's
+        // endpoint controls for the independent reconnect gesture below.
+        val source = composeRule.onAllNodesWithContentDescription("source handle out")[1]
+        val sourceBounds = source.getBoundsInRoot()
+        check(sourceBounds.right - sourceBounds.left >= 47.dp) { "source handle touch target is below the native minimum" }
+        val targetCenter = composeRule.onAllNodesWithContentDescription("target handle in")[0].fetchSemanticsNode().boundsInRoot.center
+        val sourceCenter = source.fetchSemanticsNode().boundsInRoot.center
+        source.performTouchInput {
+            down(center)
+            moveBy((targetCenter - sourceCenter) * 0.4f)
+            moveBy((targetCenter - sourceCenter) * 0.4f)
+            moveBy((targetCenter - sourceCenter) * 0.2f)
+            up()
+        }
+        composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("2")
+
+        composeRule.onNodeWithTag("native-flow-start-size").assertTextEquals("150,60")
+        val resize = composeRule.onNodeWithContentDescription("Resize se for node native-start")
+        val resizeBounds = resize.getBoundsInRoot()
+        check(resizeBounds.right - resizeBounds.left >= 47.dp) { "resizer touch target is below the native minimum" }
+        resize.performTouchInput {
+            down(center)
+            moveBy(androidx.compose.ui.geometry.Offset(24f, 18f))
+            moveBy(androidx.compose.ui.geometry.Offset(40f, 30f))
+            up()
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-start-size").fetchSemanticsNode().config[SemanticsProperties.Text].first().text != "150,60"
+        }
+
+        composeRule.onNodeWithTag("native-flow-edge-target").assertTextEquals("native-end")
+        composeRule.onNodeWithTag("native-flow-prepare-reconnect").performClick()
+        composeRule.onNodeWithText("Native Flow Third").assertIsDisplayed()
+        val reconnect = composeRule.onNodeWithContentDescription("Reconnect target of edge native-edge")
+        val reconnectBounds = reconnect.getBoundsInRoot()
+        check(reconnectBounds.right - reconnectBounds.left >= 47.dp) { "reconnect touch target is below the native minimum" }
+        val thirdTargetCenter = composeRule.onAllNodesWithContentDescription("target handle in")[2].fetchSemanticsNode().boundsInRoot.center
+        val reconnectCenter = reconnect.fetchSemanticsNode().boundsInRoot.center
+        reconnect.performTouchInput {
+            down(center)
+            moveBy((thirdTargetCenter - reconnectCenter) * 0.4f)
+            moveBy((thirdTargetCenter - reconnectCenter) * 0.4f)
+            moveBy((thirdTargetCenter - reconnectCenter) * 0.2f)
+            up()
+        }
+        composeRule.onNodeWithTag("native-flow-edge-target").assertTextEquals("native-third")
+
+        val canvas = composeRule.onNodeWithContentDescription("Native Flow device proof")
+        val xBeforePan = composeRule.onNodeWithTag("native-flow-viewport-x").fetchSemanticsNode().config[SemanticsProperties.Text].first().text
+        canvas.performTouchInput {
+            down(androidx.compose.ui.geometry.Offset(center.x, 10f))
+            moveBy(androidx.compose.ui.geometry.Offset(24f, 0f))
+            moveBy(androidx.compose.ui.geometry.Offset(40f, 0f))
+            up()
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-viewport-x").fetchSemanticsNode().config[SemanticsProperties.Text].first().text != xBeforePan
+        }
+
+        val zoomBeforePinch = composeRule.onNodeWithTag("native-flow-zoom-percent").fetchSemanticsNode().config[SemanticsProperties.Text].first().text
+        canvas.performTouchInput {
+            pinch(
+                start0 = center + androidx.compose.ui.geometry.Offset(-30f, 0f),
+                start1 = center + androidx.compose.ui.geometry.Offset(30f, 0f),
+                end0 = center + androidx.compose.ui.geometry.Offset(-70f, 0f),
+                end1 = center + androidx.compose.ui.geometry.Offset(70f, 0f),
+                durationMillis = 500,
+            )
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-zoom-percent").fetchSemanticsNode().config[SemanticsProperties.Text].first().text != zoomBeforePinch
+        }
     }
 
     @Test
