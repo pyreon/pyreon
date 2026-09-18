@@ -1,5 +1,120 @@
 # @pyreon/styler
 
+## 0.52.0
+
+### Minor Changes
+
+- fix(ssr): ship the styler CSS for the class names SSR emits (9dafed7)
+
+  Server-rendered HTML carried styler class names (`pyr-1abc23`) with **no
+  `<style>` tag at all** on two of the three SSR paths: `@pyreon/zero`'s dev SSR
+  middleware and its production `createServer`. Measured on `examples/ui-showcase`
+  before the fix: 23 of 23 styler classes on `/button` had zero matching CSS
+  rules, on every route. The page hydrated to the correct DOM, so only the FIRST
+  PAINT was wrong — every SSR page flashed unstyled.
+
+  The cause was that `renderPage`'s `collectStyles` hook is opt-in, and of its
+  three consumers only zero's SSG prerender entry ever passed one. SSG had been
+  fixed for exactly this bug ("prerendered HTML carried styler-generated class
+  names … but had ZERO `<style>` tags in the head"), and the sibling call sites
+  were left behind — a fix applied to one call site rather than to the class.
+
+  `renderPage` now defaults `collectStyles` to a `globalThis.__PYREON_STYLER_COLLECT__`
+  collector that `@pyreon/styler`'s singleton registers on SSR init — the
+  string-mode twin of the `__PYREON_STYLER_FLUSH__` seam the streaming pipeline
+  already used, so there is still no `@pyreon/server` → `@pyreon/styler`
+  dependency. Fixing the one choke point covers all three consumers plus any bare
+  `@pyreon/server` user, so no caller can forget it again.
+
+  Unchanged: an explicit `collectStyles` still wins (SSG is byte-identical);
+  apps without styler get no global and no `<style>`; the streaming path keeps
+  its per-boundary watermarked flush, which `getStyleTag()` never disturbs.
+
+  Why it survived this long: a second bug hid it. Hydration was discarding the
+  server DOM and rebuilding it, so users saw _nothing_ for ~300ms rather than
+  seeing the content unstyled. The mask made the defect symptomless — it only
+  becomes visible once hydration correctly adopts the server DOM.
+
+### Patch Changes
+
+- Three correctness residuals from the pre-release audit: (ed98e38)
+
+  - **`@pyreon/state-tree` — a cyclic parent chain is now LOUD instead of a wrong answer.** `getRoot` / `getPath` bound their ancestor walk with a depth counter (the allocation win over a per-call `Set` is real and is kept), but reaching the bound exited SILENTLY: `getRoot` returned whatever node it was holding — a wrong root, on every call of the hot `reference()` resolve path — and `getPath` returned a 600,000-character garbage string built by 100,000 `unshift`s (~700ms per call). A cycle is reachable through the public API (`a.child.set(b)` then `b.child.set(a)` makes each the other's parent), so this was not hypothetical. Hitting the bound means the acyclicity invariant these walks rest on is already broken and there is no correct answer left to return, so both now throw a `[Pyreon]`-prefixed error naming the node and the fix. `getPath` also collects leaf-to-root and reverses instead of `unshift`ing, which was what made the failure O(n²).
+
+  - **`@pyreon/styler` — prop forwarding iterated the prototype chain but copied own descriptors.** `filterProps` and `buildProps` (4 loops) enumerated with `for...in` while `keep`/`copyDescriptor` read an OWN descriptor, so an INHERITED enumerable prop was iterated and then silently dropped. They now iterate own keys, which makes the two halves agree by construction and matches the rest of the layer (`@pyreon/ui-core`'s `omit`/`pick` and `@pyreon/core`'s `mergeProps`/`splitProps` are all own-key operations). Output is unchanged — the drop was already happening; what changes is that it can no longer be "fixed" the other way, since copying an inherited accessor onto the target would sever the prototype link and rebind its `this`. Measured: `Object.keys` costs the same as `for...in` here (983 ns/call both), so the clarity is free. **Behaviour change:** both helpers now force `configurable: true` on copied descriptors, mirroring `mergeProps`. A source getter defined via `Object.defineProperty` without an explicit flag is non-configurable, and copying it verbatim made the key impossible to redefine downstream (`TypeError: Cannot redefine property`).
+
+  - **`@pyreon/http` — the static-header semantic is now stated and pinned.** The client folds its leading run of static header sources once and memoizes it, so a caller passing a mutable record sees the value captured at the first request rather than the current one. That is the intended semantic — it is this module's immutability rule, and a function source is the supported seam for a per-request value — but it shipped with no test in either direction and no mention in the prop's docs. Both are now explicit. No behaviour change.
+
+- fix(styler): preserve reactive props through `filterProps`, and never lose the streaming-SSR `@layer` ordering statement (57f0480)
+
+  Two correctness fixes surfaced by a styler audit:
+
+  - **`filterProps` value-copied** (`filtered[key] = props[key]`), firing a getter-shaped reactive `_rp` prop (what the compiler emits for `<X title={sig()} />`) at copy time and freezing it — silently killing reactivity for any consumer using this public helper to forward props. It now descriptor-copies (mirrors the internal `buildProps.copyDescriptor`), which is also what the manifest documents it as doing. Static props are unaffected.
+
+  - **Streaming SSR `@layer` ordering** (`flushSSRPending`) emitted the `@layer elements, rocketstyle;` order statement only on the FIRST flush of a stream. A stream whose opening Suspense boundary flushed only keyframes/global CSS (neither is a layered rule) emitted it nowhere, and if a later boundary carried the first layered rule its cascade fell to stream first-appearance order — risking an `elements`-beats-`rocketstyle` inversion. The statement is now deferred (via a persistent per-stream flag) to the first flush that actually carries a layered rule, so it precedes that rule. A configured custom `layer` still decides upfront (unchanged).
+
+  Both bisect-verified; full `@pyreon/styler` suite (607) green.
+
+- `normalizeCSS` builds its output by copying verbatim runs (`css.slice`) instead (e690309)
+  of appending one character at a time.
+
+  The single-pass scanner classified characters with `charCodeAt` (correct — the
+  discipline the sibling scanners in this file already follow), but built its
+  result with per-char `out += css[i]` — the exact allocation anti-pattern those
+  scanners' own comments warn against (a fresh 1-char string per iteration, and a
+  rope the downstream `hash()` / insertCache must flatten). This finishes that
+  discipline: runs are copied with `slice`, and when nothing is skipped or inserted
+  the input string is returned by identity (no allocation).
+
+  Behavior is BYTE-IDENTICAL — proven by a differential fuzz test that asserts the
+  new implementation matches a pinned copy of the original on hand-picked edge
+  cases (comments, `://` in URLs, redundant semicolons, whitespace collapse,
+  leading/trailing) plus 20,000 random inputs.
+
+  Perf: an A/B on the CSS-in-JS cold-insert bench is CI95-disjoint faster
+  (~1.3×), though the machine was under elevated load when measured, so treat the
+  exact ratio as directional. Note the honest scope: cold insert runs once per
+  unique rule per sheet lifetime (≈zero in the no-reset production SSG shape), so
+  this is primarily a code-hygiene fix + a bench-headline improvement, not a
+  user-perceivable speedup. Warm dedup / dynamic resolve / SSR collect were
+  measured at their architectural floor and are unchanged.
+
+- Fix a cross-request bug in concurrent streaming SSR: the styler's SSR rule buffer (f84675f)
+  and streaming flush watermark are now scoped per request.
+
+  `@pyreon/styler`'s `sheet` is a module-level singleton, and its SSR accumulation
+  state (`ssrBuffer` + the streaming `flushSSRPending()` watermark) lived on the
+  instance. Under `renderToStream` / `mode: 'stream'`, two CONCURRENT streaming
+  renders therefore shared one buffer and one watermark — request A's per-boundary
+  flush advanced the watermark past request B's rules, so a boundary could ship
+  missing or another request's CSS (FOUC / cross-request styles).
+
+  `@pyreon/runtime-server` (which owns the request lifecycle and can use
+  `AsyncLocalStorage` — the styler is browser-safe and cannot import
+  `node:async_hooks`) now establishes a per-request styler scope around every
+  render and exposes an opaque per-request bag via
+  `globalThis.__PYREON_STYLER_REQUEST_STATE__`. The styler stashes its SSR state
+  in that bag when a scope is active, and falls back to its instance state
+  otherwise — so string SSR, SSG, direct callers and the client are unchanged
+  (the change is strictly additive; it only ISOLATES concurrent streams).
+
+  Bisect-verified: neutering the styler's scope getter leaks request A's rules into
+  request B's flush; reverting the runtime-server scope wrap leaves renders with no
+  per-request bag. String mode was already synchronous-safe; the caches (which are
+  content-addressed) stay correctly shared.
+
+- Three silent-wrong-answer fixes, one per package. (47dfb62)
+
+  **`@pyreon/validate` — `.strict()` short-circuited on a key COUNT, which is not a membership test.** Both strict emitters reduced "no unknown keys" to `Object.keys(x).length === N`, on the premise that the field checks had proven all N declared keys present — but a field check reads `x.name`, which walks the prototype chain. So `Object.create({ name, age })` (and any class instance whose fields are prototype getters) had `is()` return `false` while `parse().ok` was `true`, breaking the locked `is() ⇔ parse().ok` invariant; and `{ nmae: 'Ada', age: 36 }` — a typo'd key in place of a real one, keeping the own-key count at N — never reported `Unrecognized key "nmae"`, which is the case `.strict()` exists for. The short-circuit now proves membership in the same set the count came from (`|Object.keys(x)| === N` **and** every declared key is in `Object.keys(x)`, tested with `Object.prototype.propertyIsEnumerable.call`) before skipping the scan; anything else falls through to the interpreter's own per-key predicate. `Object.hasOwn` is deliberately NOT the test: it is true for an own non-enumerable property, which `Object.keys` does not return, and that leaves the same hole one shape over.
+
+  **`@pyreon/kinetic` — `show={signal}` rendered permanently invisible.** Every kinetic surface normalized `props.show` to an accessor at component setup. The compiler emits `show={isOpen}` as an `_rp` getter, so that single read fired the getter outside any tracking scope and froze the "accessor" on a snapshot: the element mounted hidden and never left — silently, since children stay mounted and nothing throws. On the EXPORTED surface the reproduction is `kinetic('div').preset(fade)` with `show={sig}`, or `useTransitionState` passed a getter-bearing options object. `show` is now read from its holder inside the accessor, per call, at all six call sites (`kinetic(tag)`, `useTransitionState`, and the internal `Transition` ×2, `Collapse`, `Stagger`), matching `<Show>`'s `callWhen(props.when)`. Sibling props read at setup off the same holders (`transition`, `timeout`, the callbacks) carry the same freeze and are NOT changed here — the reason `show` is singled out is recorded in `show-accessor.ts`.
+
+  **`@pyreon/styler` — the second streaming SSR request shipped class names with no CSS.** The per-request bag scoped the SSR buffer and its flush watermark, but the className dedup stayed per-instance and `insert()` returned on a cache hit before any buffer push. So a request rendering a class an earlier request had already inserted flushed an empty `<style>`. Buffer dedup is now scoped like the buffer, and every SSR emit path — the scoped insert, both cache-hit returns, `insertKeyframes`, `insertGlobal`, and `injectRules` (collapsed rocketstyle bundles, which had the identical hole through its own per-instance `injectedBundles` dedup) — pushes through one predicate. `getStyleTag()`, the seam `renderPage` collects string-mode SSR through, was affected the same way and is covered.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes

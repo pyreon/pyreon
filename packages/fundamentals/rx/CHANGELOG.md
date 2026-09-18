@@ -1,5 +1,38 @@
 # @pyreon/rx
 
+## 0.52.0
+
+### Patch Changes
+
+- Eight README examples are now typechecked in CI. (e0e0dc0)
+
+  `check-doc-examples` only ever looked at `docs/src/content/docs/**`; package READMEs carry ~550 `ts`/`tsx` blocks and nothing verified any of them. The gate now walks package READMEs too, and each of these packages has one verified-clean example opted in with the `// @check` marker.
+
+  Each was compiled before being marked, not marked and then debugged. No content changed — the marker is a comment inside the fence.
+
+- perf: arity-specialize `combine` to drop per-emit allocations (bc71a6d)
+
+  `combine(...sources, fn)` recomputes on every input change (e.g. per keystroke
+  for a derived field), and the variadic body `fn(...sources.map((s) => s()))`
+  allocated a fresh `map` array plus a spread arguments object on every emit.
+
+  Read the fixed 2–4 sources directly (`fn(a(), b())`), capturing the signals once
+  at setup instead of mapping per emit. Behavior-identical — every arity (2–6
+  sources) is covered by the existing tests, and the 5+ case keeps the variadic
+  fallback.
+
+- fix(rx): `sortBy` with a string key sorts numeric fields numerically (was lexicographic); `last(x, 0)` returns `[]` (fc7d62d)
+
+  Two collection-op correctness fixes:
+
+  - **`sortBy(items, 'field')`** resolved the key through the shared `resolveKey`, which `String()`-coerces, then compared the stringified keys directly — so a numeric field sorted lexicographically: `sortBy(products, 'price')` on `[2, 10, 1, 9]` returned `[1, 10, 2, 9]` instead of `[1, 2, 9, 10]`. `sortBy` now compares the RAW `item[key]` value (a number stays a number); the function-key form was already correct. `resolveKey` stays coercive for `groupBy`/`keyBy`/`countBy`/`uniqBy`, which genuinely want string record keys. Single-digit test fixtures masked this (lexicographic == numeric order for single digits).
+  - **`last(items, 0)`** returned the whole array — `slice(-0)` === `slice(0)`. It now returns `[]`.
+
+  Both bisect-verified with multi-digit / zero fixtures.
+
+- Updated dependencies:
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes
