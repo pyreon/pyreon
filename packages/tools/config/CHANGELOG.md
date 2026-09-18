@@ -1,5 +1,49 @@
 # @pyreon/config
 
+## 0.52.0
+
+### Minor Changes
+
+- Add `@pyreon/lathe` — spec-to-client code generation for the Pyreon stack. (69c191f)
+
+  Reads an OpenAPI 3.x document and emits `@pyreon/validate` schemas,
+  `@pyreon/http` endpoints, `@pyreon/query` hooks, deterministic mock fixtures and
+  `@pyreon/atlas` scenarios. Available as `pyreon lathe generate` alongside
+  `pyreon atlas` and `pyreon loom`, and configured from a `lathe` section in
+  `pyreon.config.*`.
+
+  The `multiplatform` target is the part without a direct analogue elsewhere. The
+  native compiler lowers only a subset of TypeScript and has no module graph — it
+  recognises a client, a schema and a call only when they share one file's top
+  level — so Lathe emits an additional self-contained module per tag, a layout no
+  human would maintain and exactly the one the compiler wants. It then runs the
+  real compiler over its own output and checks for the POSITIVE marker, because
+  zero warnings is not evidence of lowering: a standalone hook wrapping `useQuery`
+  produces no warnings and emits Swift that cannot find the symbol.
+
+  Spec parsing is first-party, including a YAML reader scoped to the OpenAPI
+  subset that refuses anchors, merge keys, explicit tags and tab indentation with
+  a line number rather than mis-reading them.
+
+### Patch Changes
+
+- Add multi-project generation, and make the native layout follow the plugin (69c191f)
+  selection.
+
+  `lathe.projects: [{ name, input, output }]` runs several specs in one pass, each
+  to its own output path — typically another package in the workspace, which is
+  the intended use. `target` and `plugins` are written once at the top level and
+  overridable per project. `lathe check` covers every project and fails if any is
+  stale. A CLI `--out` or spec path alongside `projects` is REFUSED rather than
+  applied to all of them: one path cannot address one project among many, and
+  writing every client into a single directory is never what was meant.
+
+  **Bug fix:** the native modules were emitted whenever `target` was
+  `multiplatform`, ignoring `plugins` entirely — so `--plugins schemas` still
+  produced a client and a data component. They are the `client`/`queries`
+  emitters' native LAYOUT, not a separate output, and now follow the same
+  selection.
+
 ## 0.51.0
 
 ### Minor Changes

@@ -1,5 +1,38 @@
 # @pyreon/storybook
 
+## 0.52.0
+
+### Patch Changes
+
+- Extract the preset's `preview` path resolution into an internal `previewPathFor(url)` helper. (278d429)
+
+  `previewAnnotations` was computed at module scope from `import.meta.url`, so the
+  `file:` vs `http:` decision was a top-level expression no test could reach either
+  arm of — it ran once at import, whichever way the loader happened to resolve.
+  The helper makes both arms testable without changing what the preset emits:
+  `previewAnnotations` is byte-identical, and `previewPathFor` is marked
+  `@internal` rather than added to the public surface.
+
+- The framework preset now actually loads for consumers — three bugs, each (d196b0a)
+  sufficient to break every `storybook build`/`dev`, reported from a real
+  downstream project:
+
+  - `lib/preset.js` is ESM (`"type": "module"`) but computed its preview path
+    with CJS `__dirname` → `SB_CORE-SERVER_0002 CriticalPresetLoadError` at
+    config load. Now `fileURLToPath(new URL('preview', import.meta.url))`,
+    scheme-guarded so the module stays total under non-file ESM loaders.
+  - No builder was exported → `SB_CORE-SERVER_0003 MissingBuilderError` once
+    the preset loaded. `core.builder` is now `@storybook/builder-vite`,
+    declared as a peer (`>=8.0.0`) so it version-aligns with your storybook.
+  - The `./preview` subpath carried only `bun`/`import`/`types` conditions, so
+    Storybook's CJS preset loader died with `ERR_PACKAGE_PATH_NOT_EXPORTED`.
+    Every subpath now also carries `default`.
+
+- Updated dependencies:
+  - @pyreon/runtime-dom@0.52.0
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

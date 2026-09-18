@@ -1,5 +1,145 @@
 # create-zero
 
+## 0.52.0
+
+### Patch Changes
+
+- Closes every open finding from the lint audit, and adds the leak class nothing (ec0aff6)
+  caught.
+
+  **The 280 `querySelector(…) as HTMLX` casts are gone.** They were ratcheted
+  because 92 files across 12 packages is not a safe hand-edit; a codemod with
+  paren-balancing did it, and the conversion is verified rather than assumed —
+  `query()` THROWS where a cast silently returned null, so a wrong conversion
+  fails loudly. Typecheck clean across all 17 packages, node tests green, and
+  **476 browser tests in real Chromium** covering the sites that only exist
+  there. The doctor grade goes **F → A**, the ratchet drops **284 → 9**, and
+  `no-query-selector-cast-in-test` is back at `error` rather than the `warn` it
+  was demoted to in order to fire at all.
+
+  **A ReDoS I introduced, caught by CodeQL.** `js/polynomial-redos`, high
+  severity: `/(?:^|\/)routes\/(.+)$/` backtracks on paths with many `/routes/a`
+  repetitions, and a linter is handed whatever paths its caller has. Replaced
+  with linear string slicing — which also fixed a real misclassification, since
+  the greedy regex anchored on the FIRST `/routes/` and mis-resolved nested
+  paths. Both halves are pinned.
+
+  **New rule — `pyreon/no-unguarded-async-signal-write`** (opt-in), for memory
+  leak class F, which the catalog lists as caught by nothing. A slow earlier
+  response resolves last and overwrites newer data: not a crash, not visible in
+  a heap snapshot, just the wrong answer intermittently. Precision came from
+  measuring — 42 findings became 9 after two narrowings the corpus taught:
+  tests and benches cannot race with themselves, and `Map.set(key, value)` takes
+  two arguments where a signal write takes one.
+
+  It found two real bugs, both fixed: `<Mermaid>` and `<Math>` wrote their
+  rendered output after an await with no cancellation, so unmounting mid-render
+  kept the whole closure alive for a signal nothing reads.
+
+  **Two rules stopped keying on what a thing is NAMED.** `no-mutate-store-state`
+  fired only when a variable name contained "store" — renaming `cartStore` to
+  `cart` disabled it silently. It now tracks the binding. `toast-a11y` exempted
+  the literal spelling `Toaster`, so `import { Toaster as AppToast }` was
+  reported for missing a11y it already has; the exemption follows the import.
+
+  **`<Icon svg>` now states its contract.** It renders raw and cannot sanitize —
+  the sanitized `innerHTML` prop needs a `DOMParser` and so cannot run during
+  SSR, which an icon must. Rather than change that, the prop documents that it
+  takes markup you control, and the new lint rule flags misuse in consumer code.
+
+  **A bundle-budget failure now explains itself.** gzip differs between macOS and
+  the ubuntu runner — measured ~177 B on a 16.5 KB package — so a budget with
+  less headroom than that fails on CI while passing locally. The overage message
+  now says when it is inside that band.
+
+  Also fixes an untimed `fetch()` in `lathe pull` that could hang the CLI
+  forever against a server that accepts and never answers.
+
+  **The ratchet is now empty.** Every advisory finding is resolved rather than
+  carried:
+
+  - The five leak-class-F sites got real guards, and three were genuine
+    concurrency bugs rather than style issues: `useWakeLock` and
+    `useAudioRecorder` both checked their "already running" flag BEFORE the
+    await, so two calls arriving during it each acquired a resource and orphaned
+    the first — a wake lock held with nothing able to release it, a microphone
+    stream left open. `useDeviceMotion` would attach its listener twice.
+    `useClipboard` and atlas's source viewer could land a stale value.
+  - `<CodeBlock>`'s line-number gutter no longer builds an HTML string at all. It
+    was a workaround for a compiler bug that has since been fixed, so it was a
+    raw sink in a component that never needed one; it renders real nodes now.
+  - The three remaining sinks cannot be routed through the sanitized `innerHTML`
+    prop, and that is verified rather than assumed: the allowlist deliberately
+    excludes `foreignObject` and `<style>` (which mermaid emits for labels and
+    theming) and does not cover MathML at all (which is all KaTeX emits), so
+    sanitizing would strip working output. They are hardened at the library
+    layer instead — `securityLevel: 'strict'` for mermaid, `trust: false` for
+    KaTeX — and exempted with that reasoning recorded at each call site.
+
+  The rule that found them also learned two things from being wrong: an in-flight
+  promise shared between callers is a staleness guard just as much as a version
+  counter, and a guard may live one scope out from the `async` function that
+  writes.
+
+- Role-aware rule tiers — one config now covers server, client, isomorphic and (ec0aff6)
+  multiplatform code, with no glob `overrides`.
+
+  A general-purpose linter splits backend from frontend with hand-written globs
+  the user keeps in sync. A framework does not have to guess: an fs-router API
+  route, a `node:` import, an `island()` call and an entry file each PROVE where
+  a file runs. `resolveFileRole()` reads them, strongest signal first, and
+  defaults to `shared` — the strict answer, because an isomorphic file must
+  satisfy both sides and guessing either one silently disables the other's rules.
+
+  **This was already happening, badly.** Two rules classified server files with
+  `filePath.includes('server')`, and `observer` contains `server` — so
+  `use-intersection-observer.ts`, a client hook, was treated as a server file by
+  both. Reproduced against `lintFile`, then fixed. A third rule re-implemented
+  `isTestFile` inline, omitting `/__tests__/`.
+
+  **Eleven new rules across five new groups** (113 rules, 25 categories,
+  10 groups). Every one gated by the RUNNER via `appliesTo`, never by the rule —
+  `exemptPaths` was opt-in per rule and 55 of 102 silently ignored it, and a role
+  gate written rule-by-rule would repeat that exactly.
+
+  - **`isomorphic`** — `no-locale-dependent-format`, `no-timezone-dependent-date`,
+    `no-unstable-render-id`, `no-node-builtin-in-component`. Hydration mismatches
+    that are correct in every unit test and wrong for some users in production.
+  - **`backend`** — `no-sync-fs-in-request-path`, `no-floating-promise-in-handler`.
+  - **`web-perf`** — `prefer-passive-listener`, `no-unbounded-raf-loop`.
+  - **`portable`** — `no-out-of-subset-construct`, `no-platform-branch-without-fallback`.
+    PMTC warns about these too, but only for files a native app's entry graph
+    reaches; the catalog names that gap directly ("a feature no example uses is
+    one no gate ever compiles"). These fire at authoring time instead.
+  - **`js`** — `require-error-cause`.
+
+  **Precision came from measurement, not taste.** Run unscoped against this repo
+  the first cut produced **over 5,000 findings**; reading them produced five
+  narrowings, and the final count is **11**:
+
+  | finding              | cause                                                            | narrowing                                                |
+  | -------------------- | ---------------------------------------------------------------- | -------------------------------------------------------- |
+  | 4,388 subset         | web-only internals are entitled to the whole language            | fires only where `portablePaths` says a file must travel |
+  | 469 floating promise | a shared util is not a request handler                           | the file must EXPORT a handler                           |
+  | 149 sync fs          | Vite plugins and the compiler are server-role, not request paths | same handler gate                                        |
+  | 14 raf               | a one-shot frame is ordinary                                     | must schedule ITSELF                                     |
+  | 1 raf                | a double-rAF terminates                                          | self-REFERENCE, not merely nested                        |
+  | 11 locale            | benches print to a console                                       | `bench/` and `e2e/` are build role                       |
+  | 2 timezone           | `new Date(y, m, d).getDate()` is timezone-independent arithmetic | only Dates representing an INSTANT                       |
+  | 2 error-cause        | a custom error class has no options slot                         | built-in error constructors only                         |
+
+  **Two real bugs found and fixed by the new rules.** The scaffolded dashboard
+  template formatted money and dates with no locale in 14 places — every
+  generated app shipped a hydration mismatch on its own front page. Fixed with a
+  `lib/format.ts` that pins locale AND timezone, which is also the pattern users
+  should copy. And five `throw new Error(msg)` sites inside `catch` now pass
+  `{ cause }`, so the stack points at what actually broke.
+
+  Also closes the review finding on `no-unsanitized-inner-html`: a dead
+  assignment was a half-written hop loop, and finishing it fixed a real
+  false positive — a sanitized value that had been renamed once
+  (`const body = clean`) was flagged.
+
 ## 0.51.0
 
 ### Patch Changes
