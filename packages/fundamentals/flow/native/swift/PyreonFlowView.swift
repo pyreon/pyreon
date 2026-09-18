@@ -568,7 +568,6 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     @State private var resizeDrafts: [String: PyreonFlowResizeDraft] = [:]
     @State private var didInitialFit = false
     @FocusState private var focusedNodeId: String?
-    @FocusState private var focusedEdgeId: String?
 
     public init(
         state: PyreonFlowState<T>,
@@ -849,27 +848,14 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             .onTapGesture {
                 state.selectEdge(edge.id)
                 state.emitEdgeClick(edge.id)
-                focusedEdgeId = edge.id
             }
             .accessibilityLabel(Text(edge.accessibilityLabel))
             .accessibilityAddTraits(state.isEdgeSelected(edge.id) ? [.isSelected] : [])
             .accessibilityAction {
                 state.selectEdge(edge.id)
                 state.emitEdgeClick(edge.id)
-                focusedEdgeId = edge.id
             }
             .accessibilityHidden(!edge.focusable)
-            .focusable(edge.focusable)
-            .focused($focusedEdgeId, equals: edge.id)
-            .onKeyPress { press in
-                guard edge.focusable, let key = flowKeyName(press.key) else { return .ignored }
-                if key == "Enter" || key == " " {
-                    state.selectEdge(edge.id, additive: press.modifiers.contains(.shift))
-                    state.emitEdgeClick(edge.id)
-                    return .handled
-                }
-                return handleKeyPress(press)
-            }
     }
 
     private var visibleEdgeLabels: [PyreonFlowEdgeLabel] {

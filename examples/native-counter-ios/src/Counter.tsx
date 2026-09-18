@@ -341,6 +341,7 @@ export function Counter() {
         nativeFlow.addNode({ id: 'native-third', type: 'native', position: { x: 250, y: 230 }, data: { label: 'Native Flow Third' }, width: 150, height: 60, ariaLabel: 'Native Flow Third' })
         nativeFlow.selectEdge('native-edge')
       }}>Prepare native reconnect</Button>
+      <Button data-testid="native-flow-clear-selection" onPress={() => nativeFlow.clearSelection()}>Clear native selection</Button>
       {/* ui-system device proof — a rocketstyle component with a REACTIVE
           dimension. The text flips with the same signal that drives the colour,
           so the device test can assert the flip actually re-rendered (XCUITest

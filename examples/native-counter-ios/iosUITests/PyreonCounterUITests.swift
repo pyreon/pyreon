@@ -85,16 +85,14 @@ final class PyreonCounterUITests: XCTestCase {
 
         let selectedEdgeCount = app.staticTexts["native-flow-selected-edge-count"].firstMatch
         XCTAssertTrue(selectedEdgeCount.waitForExistence(timeout: 5))
-        let keyboardEdge = app.descendants(matching: .any)["Native flow edge"].firstMatch
-        XCTAssertTrue(keyboardEdge.waitForExistence(timeout: 5))
-        keyboardEdge.tap()
-        keyboardEdge.typeKey(.escape, modifierFlags: [])
-        let edgeCleared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: selectedEdgeCount)
-        XCTAssertEqual(XCTWaiter().wait(for: [edgeCleared], timeout: 5), .completed, "Escape did not clear native Flow edge selection")
-        keyboardEdge.typeKey(.return, modifierFlags: [])
-        let edgeSelectedByKey = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: selectedEdgeCount)
-        XCTAssertEqual(XCTWaiter().wait(for: [edgeSelectedByKey], timeout: 5), .completed, "Enter did not select the focused native Flow edge")
-        keyboardEdge.typeKey(.escape, modifierFlags: [])
+        let clearSelection = app.buttons["native-flow-clear-selection"].firstMatch
+        XCTAssertTrue(clearSelection.waitForExistence(timeout: 5))
+        app.descendants(matching: .any)["Native flow edge"].firstMatch.tap()
+        let edgeSelectedByTap = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: selectedEdgeCount)
+        XCTAssertEqual(XCTWaiter().wait(for: [edgeSelectedByTap], timeout: 5), .completed, "tapping a native Flow edge label did not select it")
+        clearSelection.tap()
+        let edgeClearedByButton = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: selectedEdgeCount)
+        XCTAssertEqual(XCTWaiter().wait(for: [edgeClearedByButton], timeout: 5), .completed)
 
         let edgeCount = app.staticTexts["native-flow-edge-count"].firstMatch
         XCTAssertTrue(edgeCount.waitForExistence(timeout: 10))

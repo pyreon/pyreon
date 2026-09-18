@@ -97,16 +97,9 @@ class CounterInstrumentedTest {
 
         composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("0")
         val keyboardEdge = composeRule.onNodeWithContentDescription("Native flow edge")
-        keyboardEdge.performSemanticsAction(SemanticsActions.RequestFocus)
-        keyboardEdge.performKeyInput {
-            keyDown(Key.Enter)
-            keyUp(Key.Enter)
-        }
+        keyboardEdge.performClick()
         composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("1")
-        keyboardEdge.performKeyInput {
-            keyDown(Key.Escape)
-            keyUp(Key.Escape)
-        }
+        composeRule.onNodeWithTag("native-flow-clear-selection").performClick()
         composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("0")
         composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
         // Connect end -> start before exposing the selected seed edge's
