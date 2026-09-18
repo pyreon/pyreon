@@ -65,6 +65,9 @@ final class PyreonCounterUITests: XCTestCase {
         // custom node's internal Text retaining the staticText role.
         XCTAssertTrue(app.descendants(matching: .any)["Native Flow Start"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.descendants(matching: .any)["Native Flow End"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Native flow tools"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["source handle out"].firstMatch.exists)
+        XCTAssertTrue(app.descendants(matching: .any)["target handle in"].firstMatch.exists)
     }
 
     /// Maps/geolocation — a BEHAVIORAL proof, not a does-not-crash one.

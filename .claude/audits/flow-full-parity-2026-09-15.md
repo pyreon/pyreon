@@ -138,3 +138,8 @@ native view.
   callbacks, renamed imports, and explicit custom HTML are covered by compiler
   and Swift behaviour tests. Android runtime compilation and both device
   behaviour scenarios remain required before F5 can be checked complete.
+- [x] F3 direct-native chrome proof now includes a custom node's explicit
+  source/target handles, `NodeResizer`, and always-visible `NodeToolbar` from
+  the same TSX source. The generated SwiftUI and Compose apps compile for their
+  real SDKs, and both device suites assert the toolbar content and accessible
+  handle names. Connect/reconnect and resize gestures remain F4 work.
