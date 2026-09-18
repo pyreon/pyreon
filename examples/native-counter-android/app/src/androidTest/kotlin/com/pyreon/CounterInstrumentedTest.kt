@@ -51,6 +51,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.dp
 import android.content.Context
 import android.location.Location
 import android.location.LocationManager
@@ -79,6 +80,8 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
         // Connect end -> start so this gesture creates a distinct reverse edge.
         val source = composeRule.onAllNodesWithContentDescription("source handle out")[1]
+        val sourceBounds = source.getBoundsInRoot()
+        check(sourceBounds.right - sourceBounds.left >= 47.dp) { "source handle touch target is below the native minimum" }
         val targetCenter = composeRule.onAllNodesWithContentDescription("target handle in")[0].fetchSemanticsNode().boundsInRoot.center
         val sourceCenter = source.fetchSemanticsNode().boundsInRoot.center
         source.performTouchInput {
@@ -91,7 +94,10 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("2")
 
         composeRule.onNodeWithTag("native-flow-start-size").assertTextEquals("150,60")
-        composeRule.onNodeWithContentDescription("Resize se for node native-start").performTouchInput {
+        val resize = composeRule.onNodeWithContentDescription("Resize se for node native-start")
+        val resizeBounds = resize.getBoundsInRoot()
+        check(resizeBounds.right - resizeBounds.left >= 47.dp) { "resizer touch target is below the native minimum" }
+        resize.performTouchInput {
             down(center)
             moveBy(androidx.compose.ui.geometry.Offset(24f, 18f))
             moveBy(androidx.compose.ui.geometry.Offset(40f, 30f))

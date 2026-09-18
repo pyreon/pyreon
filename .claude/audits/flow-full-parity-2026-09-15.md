@@ -150,6 +150,6 @@ native view.
   and fixed a real accessibility/input defect: handles, resizers and reconnect
   controls used `.position`, which exposed the whole canvas as every control's
   accessibility frame, while their 12pt hit area was below the native minimum.
-  They now retain independent finite frames with 44pt hit targets while keeping
-  the same visual size. Pan/zoom, reconnect, selection and keyboard/a11y
+  Both native renderers now retain independent finite frames with platform-sized
+  hit targets while keeping the same visual size. Pan/zoom, reconnect, selection and keyboard/a11y
   equivalents remain F4 work.

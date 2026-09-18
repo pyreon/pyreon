@@ -582,10 +582,11 @@ fun <T> PyreonFlowView(
             }
             for (handle in interactiveHandles) {
                 val diameter = 12.0 / state.viewport.zoom
+                val hitSize = maxOf(diameter, 48.0 / state.viewport.zoom)
                 Canvas(
                     Modifier
-                        .offset { IntOffset((handle.x - diameter / 2).roundToInt(), (handle.y - diameter / 2).roundToInt()) }
-                        .requiredSize(with(density) { diameter.toFloat().toDp() })
+                        .offset { IntOffset((handle.x - hitSize / 2).roundToInt(), (handle.y - hitSize / 2).roundToInt()) }
+                        .requiredSize(with(density) { hitSize.toFloat().toDp() })
                         .semantics { contentDescription = "${handle.type} handle ${handle.handleId ?: "default"}" }
                         .pointerInput(handle, interactionsLocked, state.viewport.zoom) {
                             if (interactionsLocked || handle.type != "source") return@pointerInput
@@ -610,7 +611,10 @@ fun <T> PyreonFlowView(
                             }
                         },
                 ) {
-                    drawCircle(if (handle.type == "source") androidx.compose.ui.graphics.Color.Blue else androidx.compose.ui.graphics.Color.Green)
+                    drawCircle(
+                        if (handle.type == "source") androidx.compose.ui.graphics.Color.Blue else androidx.compose.ui.graphics.Color.Green,
+                        radius = (diameter / 2).toFloat(),
+                    )
                 }
             }
             for (node in visibleNodes) {
@@ -624,10 +628,11 @@ fun <T> PyreonFlowView(
                     val x = if ('w' in direction) absolute.x else if ('e' in direction) absolute.x + width else absolute.x + width / 2
                     val y = if ('n' in direction) absolute.y else if ('s' in direction) absolute.y + height else absolute.y + height / 2
                     val diameter = config.handleSize / state.viewport.zoom
+                    val hitSize = maxOf(diameter, 48.0 / state.viewport.zoom)
                     Canvas(
                         Modifier
-                            .offset { IntOffset((x - diameter / 2).roundToInt(), (y - diameter / 2).roundToInt()) }
-                            .requiredSize(with(density) { diameter.toFloat().toDp() })
+                            .offset { IntOffset((x - hitSize / 2).roundToInt(), (y - hitSize / 2).roundToInt()) }
+                            .requiredSize(with(density) { hitSize.toFloat().toDp() })
                             .semantics { contentDescription = "Resize $direction for node ${node.id}" }
                             .pointerInput(node.id, direction, config, state.viewport.zoom, interactionsLocked) {
                                 if (interactionsLocked) return@pointerInput
@@ -642,17 +647,20 @@ fun <T> PyreonFlowView(
                                 }
                             },
                     ) {
-                        drawRect(androidx.compose.ui.graphics.Color.White)
-                        drawRect(androidx.compose.ui.graphics.Color.Blue, style = Stroke(width = (1.5 / state.viewport.zoom).toFloat()))
+                        val topLeft = Offset(((hitSize - diameter) / 2).toFloat(), ((hitSize - diameter) / 2).toFloat())
+                        val visualSize = androidx.compose.ui.geometry.Size(diameter.toFloat(), diameter.toFloat())
+                        drawRect(androidx.compose.ui.graphics.Color.White, topLeft = topLeft, size = visualSize)
+                        drawRect(androidx.compose.ui.graphics.Color.Blue, topLeft = topLeft, size = visualSize, style = Stroke(width = (1.5 / state.viewport.zoom).toFloat()))
                     }
                 }
             }
             for (updater in pyreonFlowEdgeUpdaters(state, edgeStrokes)) {
                 val diameter = 12.0 / state.viewport.zoom
+                val hitSize = maxOf(diameter, 48.0 / state.viewport.zoom)
                 Canvas(
                     Modifier
-                        .offset { IntOffset((updater.x - diameter / 2).roundToInt(), (updater.y - diameter / 2).roundToInt()) }
-                        .requiredSize(with(density) { diameter.toFloat().toDp() })
+                        .offset { IntOffset((updater.x - hitSize / 2).roundToInt(), (updater.y - hitSize / 2).roundToInt()) }
+                        .requiredSize(with(density) { hitSize.toFloat().toDp() })
                         .semantics { contentDescription = "Reconnect ${updater.end} of edge ${updater.edgeId}" }
                         .pointerInput(updater, interactionsLocked, state.viewport.zoom) {
                             if (interactionsLocked) return@pointerInput
@@ -685,7 +693,12 @@ fun <T> PyreonFlowView(
                                 reconnectDraft = PyreonFlowReconnectDraft(updater, fixed, current)
                             }
                         },
-                ) { drawCircle(androidx.compose.ui.graphics.Color.Blue.copy(alpha = 0.35f)) }
+                ) {
+                    drawCircle(
+                        androidx.compose.ui.graphics.Color.Blue.copy(alpha = 0.35f),
+                        radius = (diameter / 2).toFloat(),
+                    )
+                }
             }
         }
 

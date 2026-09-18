@@ -75,6 +75,7 @@ final class PyreonCounterUITests: XCTestCase {
         // Connect end -> start so this gesture creates a distinct reverse edge.
         let source = app.descendants(matching: .any).matching(identifier: "source handle out").element(boundBy: 1)
         let target = app.descendants(matching: .any)["target handle in"].firstMatch
+        XCTAssertGreaterThanOrEqual(source.frame.width, 43.5, "source handle touch target is below the native minimum")
         let sourceGrab = source.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         sourceGrab.press(
             forDuration: 0.3,
@@ -90,6 +91,7 @@ final class PyreonCounterUITests: XCTestCase {
         XCTAssertEqual(size.label, "150.0,60.0")
         let resize = app.descendants(matching: .any)["Resize se for node native-start"].firstMatch
         XCTAssertTrue(resize.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(resize.frame.width, 43.5, "resizer touch target is below the native minimum")
         let resizeGrab = resize.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         resizeGrab.press(
             forDuration: 0.3,
