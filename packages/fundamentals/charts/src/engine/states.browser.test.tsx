@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
-import { bars, line } from './marks'
+import { bars } from './marks'
 import { PlotChart } from './Chart'
 import { OptionChart } from './OptionChart'
 import type { EChartsOption } from './option'
@@ -9,18 +9,6 @@ import type { EChartsOption } from './option'
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 interface Row { a: number; b: number }
 const ROWS: Row[] = [{ a: 6, b: 2 }, { a: 5, b: 3 }, { a: 4, b: 4 }]
-/** How many pixels carry a colour, by its red channel — the two series are pure red and pure green. */
-const pixels = (c: HTMLCanvasElement, red: boolean): number => {
-  const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
-  let n = 0
-  for (let i = 0; i < d.length; i += 4) {
-    const r = d[i]!
-    const g = d[i + 1]!
-    if (red ? r > 180 && g < 90 : g > 180 && r < 90) n++
-  }
-  return n
-}
-
 describe('states (real browser)', () => {
   it('selectedMode "series" outlines every datum of the series a click lands on, and a second click clears it', async () => {
     const picks: number[] = []
