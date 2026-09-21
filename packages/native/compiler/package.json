@@ -29,7 +29,7 @@
   "dependencies": {
     "@pyreon/charts": "workspace:^",
     "@pyreon/compiler": "workspace:*",
-    "oxc-parser": "^0.148.0"
+    "oxc-parser": "^0.150.0"
   },
   "devDependencies": {
     "@pyreon/http": "workspace:^",

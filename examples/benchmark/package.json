@@ -26,7 +26,7 @@
     "@pyreon/runtime-dom": "workspace:*",
     "@vue/server-renderer": "^3.5.42",
     "@xyflow/react": "^12.8.0",
-    "octane": "0.2.2",
+    "octane": "0.2.14",
     "preact": "^10.29.8",
     "preact-render-to-string": "^6.7.0",
     "react": "^19.2.8",
@@ -37,7 +37,7 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.11.6",
-    "@octanejs/vite-plugin": "0.1.52",
+    "@octanejs/vite-plugin": "0.1.55",
     "@pyreon/compiler": "workspace:*",
     "@pyreon/runtime-server": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
@@ -48,8 +48,8 @@
     "@types/react-dom": "^19.2.7",
     "@vue/compiler-dom": "^3.5.42",
     "esbuild": "^0.28.2",
-    "oxc-parser": "^0.148.0",
-    "playwright": "^1.62.1",
+    "oxc-parser": "^0.150.0",
+    "playwright": "^1.63.0",
     "typescript": "^6.0.3",
     "vite": "^8.2.2"
   }

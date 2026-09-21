@@ -28,7 +28,7 @@
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@types/chrome": "^0.2.8",
-    "playwright": "^1.62.1"
+    "@types/chrome": "^0.3.0",
+    "playwright": "^1.63.0"
   }
 }
