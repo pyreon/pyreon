@@ -6,7 +6,7 @@ plugins {
     id("com.android.application")
     kotlin("android")
     kotlin("plugin.serialization")
-    id("org.jetbrains.kotlin.plugin.compose") version "2.4.10"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.4.20"
 }
 
 android {
@@ -75,7 +75,7 @@ dependencies {
     // compile. Verified from the artifacts: compose-bom 2026.08.00 ships
     // compose 1.12 (needs 37) and androidx.core 1.19.0 needs 37, so both are
     // held one release back. Raising either requires AGP 9 + compileSdk 37.
-    implementation(platform("androidx.compose:compose-bom:2026.06.01"))
+    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
@@ -83,25 +83,25 @@ dependencies {
     implementation("androidx.compose.runtime:runtime-saveable")
     // Deps required by the runtime-kotlin srcDir sources + M2 material
     // for the emit header's `import androidx.compose.material.*`.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     // PyreonWebSocketOkHttp.kt (in the runtime-kotlin srcDir above) imports
     // okhttp3 — the default websocket transport backing the TS-side
     // ws.connect(). Every app compiling the runtime srcDir needs the dep,
     // websockets used or not (the srcDir compiles all runtime sources).
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.0")
     // media3 — PyreonVideoPlayerAndroid.kt (in the runtime-kotlin srcDir
     // above) imports androidx.media3.* for the <Video> primitive. Same deal
     // as okhttp: every app compiling the srcDir needs the artifacts, video
     // used or not; R8 strips the unused classes from release builds.
-    implementation("androidx.media3:media3-exoplayer:1.11.0")
-    implementation("androidx.media3:media3-ui:1.11.0")
+    implementation("androidx.media3:media3-exoplayer:1.11.1")
+    implementation("androidx.media3:media3-ui:1.11.1")
     // <Icon> emit references Icons.Filled.* at compile time — the small
     // core set only (never -extended; PR-1.3's curated map is core-only).
     implementation("androidx.compose.material:material-icons-core")
     // Remote <Image src="http…"> → Coil's AsyncImage.
     implementation("io.coil-kt:coil-compose:2.7.0")
-    implementation("androidx.core:core-ktx:1.18.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("androidx.core:core-ktx:1.19.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("androidx.compose.material:material")
 
     // The BOM pins versions PER CONFIGURATION — the implementation-
@@ -109,7 +109,7 @@ dependencies {
     // so without this line ui-test-junit4 resolves VERSIONLESS
     // ("Could not find androidx.compose.ui:ui-test-junit4:" — the
     // first device-CI run to reach dependency resolution caught it).
-    androidTestImplementation(platform("androidx.compose:compose-bom:2026.06.01"))
+    androidTestImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
