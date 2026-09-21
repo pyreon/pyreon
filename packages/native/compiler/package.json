@@ -36,7 +36,7 @@
     "@pyreon/query": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.1"
   },
   "main": "./lib/index.js",
   "module": "./lib/index.js",
