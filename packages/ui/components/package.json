@@ -52,7 +52,7 @@
     "@pyreon/typescript": "workspace:^",
     "@pyreon/ui-core": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^4.1.11"
+    "@vitest/browser-playwright": "^5.0.1"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
