@@ -21,7 +21,7 @@ WebView escape path; silent drops are release blockers.
 - [x] **F1 — machine-readable public-surface inventory.** Derive the Flow
   instance, config, node, edge, host, chrome and helper inventories from source.
   Fail when a new public item is neither lowered nor explicitly routed.
-- [ ] **F2 — direct state/algorithm parity.** Prove every portable method and
+- [x] **F2 — direct state/algorithm parity.** Prove every portable method and
   mutable config field against shared fixtures: CRUD, selection, viewport,
   snapping, connection validation, history, serialization, layout and graph
   queries.
@@ -131,6 +131,24 @@ native view.
   px (floating-point order across languages), locked at 0.01 px, the
   deterministic ones exactly. 27 scenarios. Still hand-written only under F2:
   the animated `focusNode` / `animateViewport`.
+- [x] F2 sweep, closing pass: the fixture gained the remaining portable
+  methods (bulk add/set/remove for nodes and edges, `updateNode`,
+  `updateNodeData`, measurement set/clear, `batch`) and a config vocabulary it
+  translates per target: zoom limits, `multiSelect`, deletability, `autoHistory`,
+  `connectionRules` (typed nodes), `defaultEdgeType`, `defaultEdgeOptions`,
+  `nodeExtent`, `fitViewPadding` and a user `isValidConnection`. 46 scenarios.
+  Two machine gates in `native/compiler/src/tests/flow-parity-coverage.test.ts`
+  now fail closed: every lowered method must be called in the oracle region or
+  be HAND_ASSERTED (callbacks, animation, `dispose`) and called in both
+  fixtures; every native constructor field (read from the Kotlin constructor)
+  must be set by a scenario on BOTH targets or classified, and a field
+  classified as gesture/renderer-only fails the moment `createFlow` starts
+  reading it. The sweep found one real divergence: web `multiSelect: false`
+  only gated the drag-select box, so an additive `selectNode(s)`/`selectEdge`
+  still multi-selected while both native engines replaced. Fixed on web.
+  Known, deliberate limit: native fixtures set config as properties after
+  construction, so an INITIAL edge is normalized with that moment's defaults;
+  the edge-default scenarios therefore only query edges added afterwards.
 - [x] The public `@pyreon/flow/webview` component now lowers to the real native
   WebView bridge instead of an unresolved `FlowWebView` symbol. Its generated
   default host is byte-ratcheted against the web builder; graph updates,
