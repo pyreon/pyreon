@@ -49,6 +49,53 @@ export function panWindow(win: ZoomWindow, deltaFrac: Double): ZoomWindow {
   return clampWindow({ start: win.start + deltaFrac * span, end: win.end + deltaFrac * span })
 }
 
+/** ECharts' `zoomLock` / `minSpan` / `maxSpan`, as fractions of the rows. */
+export interface ZoomLimits {
+  lock: boolean
+  minSpan: Double
+  maxSpan: Double
+}
+
+/**
+ * A window held to its limits: under `lock` the span stays that of `prev`
+ * (the window only pans), otherwise it is bounded by `minSpan` / `maxSpan`.
+ * A resized window keeps its centre and slides back inside the rows.
+ */
+export function limitZoomWindow(limits: ZoomLimits, prev: ZoomWindow, next: ZoomWindow): ZoomWindow {
+  const w = clampWindow(next)
+  const span = w.end - w.start
+  const lo = limits.minSpan
+  const hi = limits.maxSpan > 0.0 ? limits.maxSpan : 1.0
+  let target = span < lo ? lo : span > hi ? hi : span
+  if (limits.lock) target = prev.end - prev.start
+  const diff = target - span
+  if ((diff < 0.0 ? 0.0 - diff : diff) <= 0.000000001) return w
+  const center = (w.start + w.end) / 2.0
+  let start = center - target / 2.0
+  let end = center + target / 2.0
+  if (start < 0.0) {
+    end = end - start
+    start = 0.0
+  }
+  if (end > 1.0) {
+    start = start - (end - 1.0)
+    end = 1.0
+  }
+  return clampWindow({ start: start < 0.0 ? 0.0 : start, end: end > 1.0 ? 1.0 : end })
+}
+
+/** The window covering rows `first`…`last` (inclusive) of `n` — what a box-select zoom sets. */
+export function windowOfRows(first: number, last: number, n: number): ZoomWindow {
+  if (n <= 0) return { start: 0.0, end: 1.0 }
+  let nF = 0.0
+  for (let i = 0; i < n; i++) nF = nF + 1.0
+  let a = 0.0
+  for (let i = 0; i < first; i++) a = a + 1.0
+  let b = 0.0
+  for (let i = 0; i <= last; i++) b = b + 1.0
+  return clampWindow({ start: a / nF, end: b / nF })
+}
+
 export function isFullWindow(win: ZoomWindow): boolean {
   return win.start <= 0.0 && win.end >= 1.0
 }

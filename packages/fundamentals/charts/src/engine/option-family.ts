@@ -14,6 +14,8 @@ import type { TreeOptions, TreeOrient } from './tree'
 import type { SankeyLink, SankeyNode, SankeyOptions } from './sankey'
 import type { GraphLink, GraphNode, GraphOptions } from './graph'
 import type { CalendarOptions } from './calendar'
+import { visualMapSpec, visualSelectionOptions } from './visual-map'
+import type { VisualMapSpec } from './visual-map'
 import type { ParallelAxis, ParallelOptions } from './parallel'
 import type { ParallelRow } from './parallel-web'
 import type { PolarAxes, PolarOptions, PolarSeries } from './polar'
@@ -39,20 +41,20 @@ export type FamilyPlan =
   | { kind: 'gauge'; value: Double; min: Double; max: Double; showValue: boolean; thickness: Double | undefined; valueColor: string | undefined; title: string | undefined }
   | { kind: 'radar'; axes: RadarAxis[]; rows: { values: Double[]; name: string; color: string | undefined }[]; fillAlpha: Double; showLegend: boolean; title: string | undefined }
   | { kind: 'candlestick'; rows: { x: string; open: Double; high: Double; low: Double; close: Double }[]; upColor: string | undefined; downColor: string | undefined; title: string | undefined }
-  | { kind: 'heatmap'; rows: { x: string; y: string; value: Double }[]; colors: string[] | undefined; title: string | undefined }
+  | { kind: 'heatmap'; rows: { x: string; y: string; value: Double }[]; colors: string[] | undefined; title: string | undefined; visualMap?: VisualMapSpec | undefined }
   | { kind: 'funnel'; rows: { value: Double; name: string; color: string | undefined }[]; funnel: FunnelOptions; title: string | undefined }
   | { kind: 'treemap'; nodes: TreeNode[]; treemap: TreemapOptions; title: string | undefined }
   | { kind: 'sunburst'; nodes: TreeNode[]; innerRatio: Double; sunburst: SunburstOptions; title: string | undefined }
   | { kind: 'tree'; nodes: TreeNode[]; tree: TreeOptions; title: string | undefined }
-  | { kind: 'sankey'; nodes: SankeyNode[]; links: SankeyLink[]; sankey: SankeyOptions; orient?: 'vertical'; title: string | undefined }
+  | { kind: 'sankey'; nodes: SankeyNode[]; links: SankeyLink[]; sankey: SankeyOptions; orient?: 'vertical'; title: string | undefined; visualMap?: VisualMapSpec | undefined }
   | { kind: 'chord'; nodes: ChordNode[]; links: ChordLink[]; chord: ChordOptions; title: string | undefined }
   | { kind: 'graph'; nodes: GraphNode[]; links: GraphLink[]; graph: GraphOptions; title: string | undefined }
-  | { kind: 'calendar'; start: string; end: string; values: Record<string, Double>; calendar: CalendarOptions; orient?: 'vertical'; title: string | undefined }
+  | { kind: 'calendar'; start: string; end: string; values: Record<string, Double>; calendar: CalendarOptions; orient?: 'vertical'; title: string | undefined; visualMap?: VisualMapSpec | undefined }
   | { kind: 'parallel'; axes: ParallelAxis[]; rows: ParallelRow[]; parallel: ParallelOptions; orient?: 'vertical'; title: string | undefined }
   | { kind: 'polar'; axes: PolarAxes; series: PolarSeries[]; polar: PolarOptions; title: string | undefined }
   | { kind: 'themeRiver'; series: RiverSeries[]; river: RiverOptions; title: string | undefined }
   | { kind: 'boxplot'; rows: (FiveNumber & { x: string })[]; fill: string | undefined; stroke: string | undefined; title: string | undefined }
-  | { kind: 'map'; geo: GeoJson; values: Record<string, Double>; options: GeoOptions; title: string | undefined; roam: RoamMode; scaleLimit: { min: Double; max: Double } }
+  | { kind: 'map'; geo: GeoJson; values: Record<string, Double>; options: GeoOptions; title: string | undefined; roam: RoamMode; scaleLimit: { min: Double; max: Double }; visualMap?: VisualMapSpec | undefined }
   | { kind: 'geoPoints'; geo: GeoJson; points: GeoPoint[]; paths: GeoPath[]; heat: GeoHeatPoint[]; heatRadius: Double; heatStops: string[]; pies: GeoPie[]; trail?: GeoTrail | undefined; values: Record<string, Double>; map: GeoOptions; options: GeoPointsOptions; title: string | undefined; roam: RoamMode; scaleLimit: { min: Double; max: Double } }
   | { kind: 'singleAxis'; axis: SingleAxisSpec; points: SingleAxisPoint[]; options: SingleAxisOptions; title: string | undefined }
 
@@ -569,7 +571,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       ...(stops.length >= 2 ? { stops } : {}),
       ...(vmMin !== null && vmMax !== null ? { domain: { min: vmMin, max: vmMax } } : {}),
     }
-    return { plan: { kind: 'map', geo, values, options, title, roam: mapRoam.roam, scaleLimit: mapRoam.scaleLimit }, warnings, supported }
+    return { plan: { kind: 'map', geo, values, options, title, roam: mapRoam.roam, scaleLimit: mapRoam.scaleLimit, ...(visualMapSpec(option) === null ? {} : { visualMap: visualMapSpec(option)!.spec }) }, warnings, supported }
   }
 
   if (type === 'themeRiver') {
@@ -747,7 +749,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       ...(stops.length >= 2 ? { stops } : {}),
       ...(vmMin !== null && vmMax !== null ? { domain: { min: vmMin, max: vmMax } } : {}),
     }
-    return { plan: { kind: 'calendar', start, end, values, calendar, ...(calendarVertical ? { orient: 'vertical' as const } : {}), title }, warnings, supported }
+    return { plan: { kind: 'calendar', start, end, values, calendar, ...(calendarVertical ? { orient: 'vertical' as const } : {}), title, ...(visualMapSpec(option) === null ? {} : { visualMap: visualMapSpec(option)!.spec }) }, warnings, supported }
   }
 
   if (type === 'graph') {
@@ -1087,7 +1089,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   const colors = isObj(vm) && isObj(vm['inRange']) && Array.isArray(vm['inRange']['color'])
     ? (vm['inRange']['color'] as unknown[]).filter((c): c is string => typeof c === 'string')
     : undefined
-  return { plan: { kind: 'heatmap', rows, colors, title }, warnings, supported }
+  return { plan: { kind: 'heatmap', rows, colors, title, ...(visualMapSpec(option) === null ? {} : { visualMap: visualMapSpec(option)!.spec }) }, warnings, supported }
 }
 
 /** Render a compiled family plan to an `<svg>` string. */
@@ -1192,7 +1194,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       return geoToSvg({
         geo: plan.geo,
         values: plan.values,
-        options: plan.options,
+        options: plan.visualMap === undefined ? plan.options : { ...plan.options, ...visualSelectionOptions(plan.visualMap) },
         width,
         height,
         ...(plan.title !== undefined ? { title: plan.title } : {}),
@@ -1229,7 +1231,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         start: plan.start,
         end: plan.end,
         values: plan.values,
-        calendar: plan.calendar,
+        calendar: plan.visualMap === undefined ? plan.calendar : { ...plan.calendar, ...visualSelectionOptions(plan.visualMap) },
         ...(plan.orient === undefined ? {} : { orient: plan.orient }),
         width,
         height,
@@ -1307,6 +1309,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         y: (d) => d.y,
         value: (d) => d.value,
         ...(plan.colors !== undefined && plan.colors.length > 1 ? { colors: plan.colors } : {}),
+        ...(plan.visualMap === undefined ? {} : { selection: { domain: { min: plan.visualMap.domain[0], max: plan.visualMap.domain[1] }, ...visualSelectionOptions(plan.visualMap) } }),
         width,
         height,
         ...(plan.title !== undefined ? { title: plan.title } : {}),

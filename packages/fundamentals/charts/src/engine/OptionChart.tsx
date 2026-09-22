@@ -8,19 +8,34 @@
 
 import { h, onMount } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { batch, effect, signal } from '@pyreon/reactivity'
+import { batch, effect, isServer, signal, untrack } from '@pyreon/reactivity'
 import { canvasHost } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
 import { pinSelection } from './legend-toggle'
-import { compiledCommands, optionToSvg, planOption } from './option'
+import { compiledCommands, optionBrushSelection, optionToSvg, planOption, zoomedView } from './option'
+import { limitWindow } from './option-zoom'
+import { applyMagicType } from './magic-type'
+import { hitToolbox, renderToolbox } from './toolbox'
+import { toolboxTools } from './toolbox-config'
+import type { ToolboxTool } from './toolbox-config'
+import { brushAreaFromDrag, brushAreaUsable, brushPolygonAdd } from './brush-area'
+import type { ChartHandle } from './link'
+import type { BrushArea } from './brush-area'
+import { brushRange, renderBrushBand } from './brush'
+import { chartTable } from './a11y'
+import { navigatorDrag, navigatorHit } from './navigator'
+import { isFullWindow, panWindow, windowOfRows, zoomWindow } from './zoom'
+import type { ZoomWindow } from './zoom'
 import type { CompiledOption, EChartsOption, OptionPlan } from './option'
 import { familyHostNode } from './family-host'
 import type { FamilyPlan } from './option-family'
-import { TIMELINE_HEIGHT, mergeChartOptions, resolveTimeline, timelineCommands, timelineSteps } from './option-composite'
+import { TIMELINE_HEIGHT, defaultTimelineStrip, mergeChartOptions, resolveTimeline, timelineCommands, timelineSteps } from './option-composite'
+import { timelineAdvance, timelineHit, timelineTick } from './timeline-strip'
+import { paint, prepareCanvas } from './canvas-web'
 import type { OptionUpdatePolicy } from './option-composite'
 import { graphicCommands } from './option-layer'
 import { visualMapCommands } from './visual-map'
-import { barsFor, categoryIndex, invertCategories, layoutChart, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
+import { applySeriesSelection, barsFor, categoryIndex, invertCategories, layoutChart, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
 import type { ChartSpec, Emphasis } from './render'
 import { hitBar, hitNearestX, layoutSeriesPoints } from './layout'
 import { plain } from './format'
@@ -57,6 +72,21 @@ export interface OptionChartProps extends Omit<CanvasHostProps, 'theme' | 'showT
   timelineIndex?: number
   /** Fired when auto-play advances the step. */
   onTimelineChange?: (index: number) => void
+  /** Fired as the `dataZoom` window moves, in ECharts' percent (`start` / `end` 0–100). */
+  onDataZoom?: (window: { start: number; end: number }) => void
+  /**
+   * Fired as a brush (taken up through a toolbox brush tool) settles or
+   * clears: per series, the data indices inside it (all rows, not the zoomed
+   * view). ECharts' `brushselected` batch, flattened.
+   */
+  onBrushSelected?: (selected: { seriesIndex: number; dataIndex: number[] }[]) => void
+  /**
+   * The imperative handle (`createChartHandle()`): its zoom, hover, pinned
+   * datums, brush and timeline step / play state ARE this chart's, so
+   * `handle.dispatch({ type: 'timelineChange', index: 2 })` moves it, and the
+   * change callbacks fire as they would for a pointer.
+   */
+  handle?: ChartHandle | undefined
   /** Fired with the datum under a click (cartesian plans), or null for a miss. */
   onSelect?: (hit: OptionHit | null) => void
   /** The datum INDEX under a click (or the keyboard's pick), -1 for a miss — the multiplatform-safe twin of `onSelect`. */
@@ -93,6 +123,8 @@ interface OptionGeometry {
   measure: MeasureText
   w: Double
   hgt: Double
+  /** The zoomed cartesian view: the title/legend offset, the first visible row, the plot and the slider strip in canvas coordinates. */
+  zoom: { top: Double; offset: number; plot: Rect; strip: Rect | null; win: ZoomWindow } | null
 }
 
 /** The `CanvasHostProps` keys `OptionChartProps` does NOT take (its own `theme`, and the chrome the compiled option draws itself). */
@@ -163,7 +195,7 @@ export function hostPropsFor(props: OptionChartProps): CanvasHostProps {
 export function OptionChart(props: OptionChartProps): VNode {
   let svgHost: HTMLDivElement | null = null
   // The auto-played step; -1 = not started (use the option's currentIndex).
-  const step = signal(-1)
+  const step = props.handle?.step ?? signal(-1)
   // Which surface shows: the built-in canvas, a family host, or the svg fallback.
   const mode = signal<'canvas' | 'host' | 'svg'>('canvas')
   const hostNode = signal<VNode | null>(null)
@@ -177,6 +209,36 @@ export function OptionChart(props: OptionChartProps): VNode {
     return retainedOption
   }
   const stepIndex = (): number | undefined => props.timelineIndex ?? (step() >= 0 ? step() : undefined)
+  // The dataZoom window the user has moved to; null = the option's own start/end.
+  const zoomWin = props.handle?.zoom ?? signal<ZoomWindow | null>(null)
+  // Toolbox state: the magicType switches, the box-select zoom (mode, live band, undo stack) and the data view.
+  const magicKind = signal<'' | 'line' | 'bar'>('')
+  const magicStack = signal<'' | 'stack' | 'tiled'>('')
+  const zoomSelect = signal(false)
+  const selectBand = signal<{ a: Double; b: Double } | null>(null)
+  let zoomHistory: (ZoomWindow | null)[] = []
+  const dataView = signal(false)
+  // The brush: the type a tool took up ('' = none), keep mode, committed areas in plot-frame pixels, the one being drawn.
+  const brushType = props.handle?.brushType ?? signal<string>('')
+  const brushKeep = signal<boolean | null>(null)
+  const brushAreas = props.handle?.brushAreas ?? signal<BrushArea[]>([])
+  const brushLive = signal<BrushArea | null>(null)
+  let brushOrigin: { x: Double; y: Double; top: Double; plot: Rect } | null = null
+  const brushTool = (t: string): ToolboxTool => (t === 'rect' ? 'brushRect' : t === 'polygon' ? 'brushPolygon' : t === 'lineX' ? 'brushLineX' : 'brushLineY')
+  const toolActives = (): ToolboxTool[] => {
+    const out: ToolboxTool[] = []
+    if (magicKind() !== '') out.push(magicKind() === 'bar' ? 'magicBar' : 'magicLine')
+    if (magicStack() !== '') out.push(magicStack() === 'stack' ? 'magicStack' : 'magicTiled')
+    if (zoomSelect()) out.push('dataZoom')
+    if (dataView()) out.push('dataView')
+    if (brushType() !== '') out.push(brushTool(brushType()))
+    if (brushKeep() === true) out.push('brushKeep')
+    return out
+  }
+  /** The compiled option with the magicType switches applied to its series. */
+  const magicOf = (compiled: CompiledOption): CompiledOption =>
+    magicKind() === '' && magicStack() === '' ? compiled : { ...compiled, spec: applyMagicType(compiled.spec, magicKind(), magicStack()) }
+  const winOf = (compiled: CompiledOption): ZoomWindow | undefined => zoomWin() ?? compiled.zoom?.window
   const width = (): Double => props.width ?? 640.0
   const height = (): Double => props.height ?? 320.0
   const compileOpts = (w: Double, hgt: Double, idx: number | undefined) => ({
@@ -200,25 +262,38 @@ export function OptionChart(props: OptionChartProps): VNode {
   // option change, null when nothing plays) into a signal. The interval itself
   // is imperative work and is owned by onMount below — a server render never
   // starts one, and the mount cleanup stops it.
-  const autoPlan = signal<{ n: number; start: number; interval: Double } | null>(null)
+  // The play button's choice; null = the option's `autoPlay`.
+  const playOverride = props.handle?.playing ?? signal<boolean | null>(null)
+  const autoPlan = signal<{ n: number; start: number; interval: Double; strip: ReturnType<typeof defaultTimelineStrip> } | null>(null)
   effect(() => {
     const opt = readOption()
     const steps = timelineSteps(opt)
+    const wantPlay = steps !== null && (playOverride() ?? steps.autoPlay)
     autoPlan.set(
-      steps === null || !steps.autoPlay || props.timelineIndex !== undefined || steps.labels.length < 2
+      steps === null || !wantPlay || props.timelineIndex !== undefined || steps.labels.length < 2
         ? null
-        : { n: steps.labels.length, start: steps.current, interval: steps.playInterval },
+        : { n: steps.labels.length, start: steps.current, interval: steps.playInterval, strip: { ...(steps.strip ?? defaultTimelineStrip(steps.labels)), labels: steps.labels } },
     )
   })
+  /** Whether the strip shows the pause control. */
+  const isPlaying = (): boolean => autoPlan() !== null
   onMount(() => {
     const play = (): void => {
       stopTimer()
       const plan = autoPlan()
       if (plan === null) return
-      let cur = plan.start
+      // Resume from where the user left the step, not from the option's index.
+      let cur = step.peek() >= 0 ? step.peek() : plan.start
       step.set(cur)
       timer = setInterval(() => {
-        cur = (cur + 1) % plan.n
+        const next = timelineTick(plan.strip, cur)
+        if (next < 0) {
+          // Past the end without `loop`: auto-play stops, like ECharts.
+          stopTimer()
+          playOverride.set(false)
+          return
+        }
+        cur = next
         step.set(cur)
         props.onTimelineChange?.(cur)
       }, plan.interval)
@@ -230,6 +305,28 @@ export function OptionChart(props: OptionChartProps): VNode {
       stopTimer()
     }
   })
+
+  /** A click on the timeline strip along the bottom of a `w × hgt` box: a checkpoint jumps, the controls play / pause / step. */
+  const timelineClick = (w: Double, hgt: Double, px: Double, py: Double): boolean => {
+    const steps = timelineSteps(readOption())
+    if (steps === null) return false
+    const strip = { ...(steps.strip ?? defaultTimelineStrip(steps.labels)), labels: steps.labels }
+    const hit = timelineHit(strip, { x: 0.0, y: hgt - TIMELINE_HEIGHT, w, h: TIMELINE_HEIGHT }, px, py)
+    if (hit.kind === 0) return false
+    const cur = stepIndex() ?? steps.current
+    const go = (i: number): void => {
+      if (i < 0) return
+      step.set(i)
+      props.onTimelineChange?.(i)
+    }
+    if (hit.kind === 2) {
+      playOverride.set(!isPlaying())
+    } else {
+      playOverride.set(false)
+      go(hit.kind === 1 ? hit.index : timelineAdvance(strip, cur, hit.kind === 3 ? -1 : 1, true))
+    }
+    return true
+  }
 
   // One batch per draw: the mode and host-node writes of a family host, or the
   // mode flip to svg/canvas, must repaint the surface once, not per write.
@@ -265,11 +362,24 @@ export function OptionChart(props: OptionChartProps): VNode {
     const idx = stepIndex()
     const steps = timelineSteps(opt)
     const stripH = steps === null ? 0.0 : TIMELINE_HEIGHT
-    const plan = planOption(opt, compileOpts(w, hgt - stripH, idx))
+    const planned = planOption(opt, compileOpts(w, hgt - stripH, idx))
+    // `selectedMode: 'series'` tints every datum of a pinned series.
+    const withSeriesPins = (c: CompiledOption): CompiledOption => (pinnedSeries().length === 0 ? c : { ...c, spec: applySeriesSelection(c.spec, pinnedSeries()) })
+    const plan: OptionPlan = planned.kind === 'cartesian' ? { ...planned, compiled: withSeriesPins(magicOf(planned.compiled)) } : planned
     const resolved = resolveTimeline(opt, idx).option as EChartsOption
     const cmds: DrawCmd[] = []
+    let zoom: OptionGeometry['zoom'] = null
     if (plan.kind === 'cartesian') {
-      for (const c of compiledCommands(plan.compiled, resolved, measure).cmds) cmds.push(c)
+      const live = brushLive()
+      const areas = live === null ? brushAreas() : [...brushAreas(), live]
+      const composed = compiledCommands(plan.compiled, resolved, measure, winOf(plan.compiled), toolActives(), areas)
+      for (const c of composed.cmds) cmds.push(c)
+      if (plan.compiled.zoom !== undefined) {
+        const win = winOf(plan.compiled)!
+        const view = zoomedView(plan.compiled, composed.top, win)
+        const p = layoutChart(view.spec, measure).plot
+        zoom = { top: composed.top, offset: view.offset, plot: { x: p.x, y: p.y + composed.top, w: p.w, h: p.h }, strip: view.navigator?.strip ?? null, win }
+      }
     } else if (plan.kind === 'grids') {
       for (const part of plan.parts) {
         if (part.plan.kind !== 'cartesian') continue
@@ -278,8 +388,8 @@ export function OptionChart(props: OptionChartProps): VNode {
       for (const c of visualMapCommands(resolved, w, hgt - stripH).cmds) cmds.push(c)
       for (const c of graphicCommands(resolved, w, hgt - stripH).cmds) cmds.push(c)
     }
-    if (steps !== null) for (const c of timelineCommands({ ...steps, current: idx ?? steps.current }, w, hgt - stripH, stripH)) cmds.push(c)
-    return { cmds, plan, option: resolved, measure, w, hgt }
+    if (steps !== null) for (const c of timelineCommands({ ...steps, current: idx ?? steps.current }, w, hgt - stripH, stripH, isPlaying())) cmds.push(c)
+    return { cmds, plan, option: resolved, measure, w, hgt, zoom }
   }
 
   effect(() => {
@@ -293,11 +403,13 @@ export function OptionChart(props: OptionChartProps): VNode {
 
   const hitIn = (compiled: CompiledOption, option: EChartsOption, measure: MeasureText, px: Double, py: Double): OptionHit | null => {
     const top = compiledCommands(compiled, option, measure).top
-    const spec: ChartSpec = { ...compiled.spec, height: Math.max(0.0, compiled.spec.height - top) }
+    // Under a dataZoom the hit runs on the rows in view; the reported index is global.
+    const zoomed = zoomedView(compiled, top, winOf(compiled))
+    const spec: ChartSpec = zoomed.spec
     const ly = py - top
     const mk = (i: number, di: number): OptionHit => ({
       seriesIndex: i,
-      dataIndex: di,
+      dataIndex: di + zoomed.offset,
       name: spec.categories[di] ?? String(di),
       value: spec.series[i]!.values[di] ?? NaN,
     })
@@ -342,7 +454,7 @@ export function OptionChart(props: OptionChartProps): VNode {
   const firstSpec = (g: OptionGeometry): { spec: ChartSpec; top: Double; dx: Double; dy: Double } | null => {
     if (g.plan.kind === 'cartesian') {
       const top = compiledCommands(g.plan.compiled, g.option, g.measure).top
-      return { spec: { ...g.plan.compiled.spec, height: Math.max(0.0, g.plan.compiled.spec.height - top) }, top, dx: 0.0, dy: 0.0 }
+      return { spec: zoomedView(g.plan.compiled, top, winOf(g.plan.compiled)).spec, top, dx: 0.0, dy: 0.0 }
     }
     if (g.plan.kind === 'grids') {
       const part = g.plan.parts.find((p) => p.plan.kind === 'cartesian')
@@ -396,7 +508,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     if (f === null || i < 0) return null
     const s = f.spec.series[0]
     if (s === undefined || i >= s.values.length) return null
-    return { seriesIndex: 0, dataIndex: i, name: f.spec.categories[i] ?? String(i), value: s.values[i] ?? NaN }
+    return { seriesIndex: 0, dataIndex: i + (g.zoom?.offset ?? 0), name: f.spec.categories[i] ?? String(i), value: s.values[i] ?? NaN }
   }
   // ECharts' states on the compiled option: the hovered datum is the
   // highlight (`emphasis`), a click pins per the option's `selectedMode`
@@ -404,8 +516,10 @@ export function OptionChart(props: OptionChartProps): VNode {
   // signals the draw effect tracks; the commands are re-rendered with the
   // `emphasis` set only while a state is active, so a plain chart paints the
   // compiled commands as before.
-  const hoverIndex = signal(-1)
-  const pinned = signal<number[]>([])
+  const hoverIndex = props.handle?.hover ?? signal(-1)
+  const pinned = props.handle?.selected ?? signal<number[]>([])
+  // `selectedMode: 'series'` pins SERIES indices rather than datums.
+  const pinnedSeries = signal<number[]>([])
   /** True when a cartesian option draws an animated `lines` trail. */
   const linesEffectOn = (g: OptionGeometry): boolean =>
     g.plan.kind === 'cartesian' && (g.plan.compiled.spec.lines ?? []).some((ls) => ls.effect)
@@ -414,8 +528,10 @@ export function OptionChart(props: OptionChartProps): VNode {
     const selected = pinned()
     const clocked = linesEffectOn(g)
     if (highlight < 0 && selected.length === 0 && !clocked) return g.cmds
-    const emphasis: Emphasis = { highlight, selected }
-    if (g.plan.kind === 'cartesian') return compiledCommands({ ...g.plan.compiled, spec: { ...g.plan.compiled.spec, ...(highlight < 0 && selected.length === 0 ? {} : { emphasis }), effectTime: time } }, g.option, g.measure).cmds
+    // Emphasis indices are global; the zoomed spec counts from its first visible row.
+    const off = g.zoom?.offset ?? 0
+    const emphasis: Emphasis = { highlight: highlight < 0 ? highlight : highlight - off, selected: selected.map((k) => k - off) }
+    if (g.plan.kind === 'cartesian') return compiledCommands({ ...g.plan.compiled, spec: { ...g.plan.compiled.spec, ...(highlight < 0 && selected.length === 0 ? {} : { emphasis }), effectTime: time } }, g.option, g.measure, winOf(g.plan.compiled), toolActives()).cmds
     if (g.plan.kind === 'grids') {
       const cmds: DrawCmd[] = []
       let first = true
@@ -429,13 +545,109 @@ export function OptionChart(props: OptionChartProps): VNode {
     }
     return g.cmds
   }
-  const pinMode = (g: OptionGeometry): 'single' | 'multiple' | undefined => {
+  const pinMode = (g: OptionGeometry): 'single' | 'multiple' | 'series' | undefined => {
     if (g.plan.kind === 'cartesian') return g.plan.compiled.selectedMode
     if (g.plan.kind === 'grids') {
       const part = g.plan.parts.find((p) => p.plan.kind === 'cartesian')
       if (part !== undefined && part.plan.kind === 'cartesian') return part.plan.compiled.selectedMode
     }
     return undefined
+  }
+  let rootEl: HTMLDivElement | null = null
+  /** ECharts' `saveAsImage`: the canvas as PNG / JPEG, or the option as SVG — handed to `onSaveImage`, else downloaded. */
+  const saveImage = (tb: NonNullable<CompiledOption['toolbox']>): void => {
+    let data = ''
+    if (tb.imageType === 'svg') data = optionToSvg(readOption(), compileOpts(width(), height(), stepIndex()))
+    else {
+      const canvas = rootEl?.querySelector('canvas')
+      if (canvas == null) return
+      data = canvas.toDataURL(tb.imageType === 'jpeg' ? 'image/jpeg' : 'image/png')
+    }
+    if (props.onSaveImage !== undefined) {
+      props.onSaveImage(data)
+      return
+    }
+    if (isServer) return
+    const a = document.createElement('a')
+    const svgUrl = tb.imageType === 'svg' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function' ? URL.createObjectURL(new Blob([data], { type: 'image/svg+xml' })) : ''
+    a.href = tb.imageType === 'svg' ? svgUrl : data
+    a.download = `${tb.name}.${tb.imageType === 'jpeg' ? 'jpg' : tb.imageType}`
+    a.click()
+    if (svgUrl !== '') URL.revokeObjectURL(svgUrl)
+  }
+  /** Report the brush's selection, per series, as data indices over every row. */
+  const reportBrush = (g: OptionGeometry): void => {
+    const cb = props.onBrushSelected
+    if (cb === undefined || g.plan.kind !== 'cartesian') return
+    const compiled = g.plan.compiled
+    const top = compiledCommands(compiled, g.option, g.measure).top
+    const view = zoomedView(compiled, top, winOf(compiled))
+    const sel = optionBrushSelection(compiled, view.spec, g.measure, brushAreas.peek())
+    cb(sel.map((x) => ({ seriesIndex: x.seriesIndex, dataIndex: x.dataIndex.map((v) => categoryIndex(view.spec, v) + view.offset) })))
+  }
+  /** A click on the option's toolbox, top-right: true when a tool took it. */
+  const toolboxClick = (g: OptionGeometry, px: Double, py: Double): boolean => {
+    if (g.plan.kind !== 'cartesian' || g.plan.compiled.toolbox === undefined) return false
+    const tb = g.plan.compiled.toolbox
+    const tools = toolboxTools(tb)
+    const layout = renderToolbox(tools, { x: 0.0, y: 0.0, w: g.w, h: g.hgt }, { fontSize: g.plan.compiled.spec.theme.fontSize, color: '' })
+    const tool = hitToolbox(tools, layout.boxes, px, py)
+    if (tool === null) return false
+    batch(() => {
+      if (tool === 'restore') {
+        zoomWin.set(null)
+        magicKind.set('')
+        magicStack.set('')
+        zoomSelect.set(false)
+        dataView.set(false)
+        pinned.set([])
+        zoomHistory = []
+        brushType.set('')
+        brushKeep.set(null)
+        brushAreas.set([])
+      } else if (tool === 'magicLine') magicKind.set(magicKind() === 'line' ? '' : 'line')
+      else if (tool === 'magicBar') magicKind.set(magicKind() === 'bar' ? '' : 'bar')
+      else if (tool === 'magicStack') magicStack.set(magicStack() === 'stack' ? '' : 'stack')
+      else if (tool === 'magicTiled') magicStack.set(magicStack() === 'tiled' ? '' : 'tiled')
+      else if (tool === 'dataZoom') {
+        zoomSelect.set(!zoomSelect())
+        brushType.set('')
+      } else if (tool === 'brushRect' || tool === 'brushPolygon' || tool === 'brushLineX' || tool === 'brushLineY') {
+        const type = tool === 'brushRect' ? 'rect' : tool === 'brushPolygon' ? 'polygon' : tool === 'brushLineX' ? 'lineX' : 'lineY'
+        brushType.set(brushType() === type ? '' : type)
+        zoomSelect.set(false)
+      } else if (tool === 'brushKeep') brushKeep.set(!(brushKeep() ?? (g.plan.kind === 'cartesian' && g.plan.compiled.brush?.multiple === true)))
+      else if (tool === 'brushClear') brushAreas.set([])
+      else if (tool === 'dataZoomBack') {
+        const prev = zoomHistory.length > 0 ? zoomHistory[zoomHistory.length - 1]! : null
+        zoomHistory = zoomHistory.slice(0, -1)
+        zoomWin.set(prev)
+        props.onDataZoom?.(prev === null ? { start: 0, end: 100 } : { start: prev.start * 100, end: prev.end * 100 })
+      } else if (tool === 'dataView') dataView.set(!dataView())
+      else if (tool === 'saveAsImage') saveImage(tb)
+    })
+    return true
+  }
+  let lastGeometry: OptionGeometry | null = null
+  // Every change to the brush areas reports — a drag, a clear, a restore, or a dispatched `brush` action alike.
+  if (props.onBrushSelected !== undefined) {
+    let prevAreas = brushAreas.peek()
+    effect(() => {
+      const next = brushAreas()
+      if (next === prevAreas) return
+      prevAreas = next
+      const g = lastGeometry
+      if (g !== null) untrack(() => reportBrush(g))
+    })
+  }
+  let lastZoom: CompiledOption['zoom'] = undefined
+  let navGrab: { kind: number; x: Double; win: ZoomWindow } | null = null
+  const setWindow = (prev: ZoomWindow, next: ZoomWindow): void => {
+    const z = lastZoom
+    if (z === undefined) return
+    const w = limitWindow(z, prev, next)
+    zoomWin.set(w)
+    props.onDataZoom?.(isFullWindow(w) ? { start: 0, end: 100 } : { start: w.start * 100, end: w.end * 100 })
   }
   const canvasNode = canvasHost<OptionGeometry>({
     props: hostProps,
@@ -444,17 +656,125 @@ export function OptionChart(props: OptionChartProps): VNode {
     track: () => {
       readOption()
       step()
+      autoPlan()
       void props.timelineIndex
+      magicKind()
+      magicStack()
+      zoomSelect()
+      selectBand()
+      dataView()
+      brushType()
+      brushKeep()
+      brushAreas()
+      brushLive()
       hoverIndex()
       pinned()
+      pinnedSeries()
+      zoomWin()
     },
-    layout: (box, measure) => cartesian(box.w, box.h, measure),
-    render: (g, _measure, _theme, _progress, time) => stateCmds(g, time),
+    layout: (box, measure) => {
+      const g = cartesian(box.w, box.h, measure)
+      lastGeometry = g
+      lastZoom = g.plan.kind === 'cartesian' ? g.plan.compiled.zoom : undefined
+      return g
+    },
+    render: (g, _measure, _theme, _progress, time) => {
+      const band = selectBand()
+      if (band === null || g.zoom === null) return stateCmds(g, time)
+      const out = stateCmds(g, time).slice()
+      for (const c of renderBrushBand(g.zoom.plot, Math.min(band.a, band.b), Math.max(band.a, band.b), '#6366f1')) out.push(c)
+      return out
+    },
     effectClock: (g) => linesEffectOn(g),
+    // ECharts' inside dataZoom: the wheel zooms the window about the pointer, a drag pans it.
+    roam: {
+      move: () => lastZoom?.inside === true && lastZoom.move,
+      scale: () => lastZoom?.inside === true && lastZoom.wheel && !lastZoom.lock,
+      zoom: (factor, px) => {
+        const g = lastGeometry
+        if (g?.zoom == null || lastZoom === undefined) return
+        const frac = g.zoom.plot.w <= 0.0 ? 0.5 : (px - g.zoom.plot.x) / g.zoom.plot.w
+        setWindow(g.zoom.win, zoomWindow(g.zoom.win, 1.0 / factor, frac))
+      },
+      pan: (dx) => {
+        const g = lastGeometry
+        if (g?.zoom == null || g.zoom.plot.w <= 0.0) return
+        setWindow(g.zoom.win, panWindow(g.zoom.win, -dx / g.zoom.plot.w))
+      },
+    },
+    // The slider: a press in the strip grabs a handle or the band; the drag is absolute from where it started.
+    drag: {
+      start: (g, px, py) => {
+        if (brushType() !== '' && g.plan.kind === 'cartesian') {
+          const top = compiledCommands(g.plan.compiled, g.option, g.measure).top
+          const plot = layoutChart(zoomedView(g.plan.compiled, top, winOf(g.plan.compiled)).spec, g.measure).plot
+          if (px >= plot.x && px <= plot.x + plot.w && py - top >= plot.y && py - top <= plot.y + plot.h) {
+            brushOrigin = { x: px, y: py - top, top, plot }
+            brushLive.set(brushAreaFromDrag(brushType(), plot, px, py - top, px, py - top))
+            return true
+          }
+        }
+        const z = g.zoom
+        // The toolbox box zoom, while on, takes a drag that starts over the plot.
+        if (z !== null && zoomSelect() && px >= z.plot.x && px <= z.plot.x + z.plot.w && py >= z.plot.y && py <= z.plot.y + z.plot.h) {
+          selectBand.set({ a: px, b: px })
+          return true
+        }
+        if (z === null || z.strip === null) return false
+        const r = z.strip
+        if (px < r.x - 8.0 || px > r.x + r.w + 8.0 || py < r.y - 4.0 || py > r.y + r.h + 4.0) return false
+        navGrab = { kind: navigatorHit(r, z.win, px), x: px, win: z.win }
+        return true
+      },
+      move: (g, px, py) => {
+        const o = brushOrigin
+        if (o !== null) {
+          const live = brushLive()
+          brushLive.set(brushType() === 'polygon' && live !== null ? brushPolygonAdd(live, o.plot, px, py - o.top) : brushAreaFromDrag(brushType(), o.plot, o.x, o.y, px, py - o.top))
+          return
+        }
+        const band = selectBand()
+        if (band !== null) {
+          selectBand.set({ a: band.a, b: px })
+          return
+        }
+        const z = g.zoom
+        if (z === null || z.strip === null || navGrab === null || z.strip.w <= 0.0) return
+        setWindow(navGrab.win, navigatorDrag(navGrab.kind, navGrab.win, (px - navGrab.x) / z.strip.w))
+      },
+      end: () => {
+        navGrab = null
+        if (brushOrigin !== null) {
+          brushOrigin = null
+          const area = brushLive()
+          const g0 = lastGeometry
+          const keep = brushKeep() ?? (g0?.plan.kind === 'cartesian' && g0.plan.compiled.brush?.multiple === true)
+          batch(() => {
+            brushLive.set(null)
+            if (area !== null && brushAreaUsable(area)) brushAreas.set(keep ? [...brushAreas.peek(), area] : [area])
+            else if (!keep) brushAreas.set([])
+          })
+          return
+        }
+        const band = selectBand()
+        const g = lastGeometry
+        if (band === null) return
+        selectBand.set(null)
+        if (g?.zoom == null || Math.abs(band.b - band.a) < 3.0 || g.plan.kind !== 'cartesian') return
+        const n = g.plan.compiled.spec.categories.length
+        const range = brushRange(g.zoom.plot.x, g.zoom.plot.w, band.a, band.b, g.zoom.win, n)
+        zoomHistory = [...zoomHistory, zoomWin()]
+        setWindow(g.zoom.win, windowOfRows(range.start, range.end, n))
+      },
+    },
     select: (g, px, py) => {
+      if (toolboxClick(g, px, py)) return
+      if (timelineClick(g.w, g.hgt, px, py)) return
       const h1 = hitAt(g, px, py)
       const pin = pinMode(g)
-      if (pin !== undefined && h1 !== null) pinned.set(pinSelection(pinned(), h1.dataIndex, pin === 'multiple'))
+      // `series` pins the whole series the hit belongs to; the other modes pin the datum.
+      if (pin === 'series' && h1 !== null) pinnedSeries.set(pinSelection(pinnedSeries(), h1.seriesIndex, true))
+      else if (pin !== undefined && h1 !== null) pinned.set(pinSelection(pinned(), h1.dataIndex, pin === 'multiple'))
       props.onSelect?.(h1)
       props.onSelectIndex?.(h1 === null ? -1 : h1.dataIndex)
     },
@@ -471,7 +791,7 @@ export function OptionChart(props: OptionChartProps): VNode {
       const h1 = hit(g, i)
       if (h1 === null) return
       props.onSelect?.(h1)
-      props.onSelectIndex?.(i)
+      props.onSelectIndex?.(h1.dataIndex)
     },
     focusRect: (g, i): Rect | null => {
       const f = firstSpec(g)
@@ -492,11 +812,60 @@ export function OptionChart(props: OptionChartProps): VNode {
   const canvasSlot = (): VNode | null => (mode() === 'canvas' ? canvasNode : null)
   const svgNode = h('div', {
     style: () => (mode() === 'svg' ? '' : 'display:none'),
+    onClick: (ev: MouseEvent) => {
+      const r = (ev.currentTarget as HTMLElement).getBoundingClientRect()
+      timelineClick(width(), height(), ev.clientX - r.left, ev.clientY - r.top)
+    },
     ref: (el: HTMLDivElement | null) => {
       svgHost = el
       if (el !== null) draw()
     },
   })
+  // A family chart renders through its own host, which has no timeline: the strip is its own canvas under it.
+  let barCanvas: HTMLCanvasElement | null = null
+  const paintBar = (): void => {
+    const el = barCanvas
+    const steps = timelineSteps(readOption())
+    if (el === null || steps === null) return
+    const ctx = prepareCanvas(el, width(), TIMELINE_HEIGHT)
+    if (ctx !== null) paint(ctx, timelineCommands({ ...steps, current: stepIndex() ?? steps.current }, width(), 0.0, TIMELINE_HEIGHT, isPlaying()), width(), TIMELINE_HEIGHT, 'system-ui, sans-serif')
+  }
+  effect(() => {
+    readOption()
+    step()
+    autoPlan()
+    mode()
+    void props.timelineIndex
+    paintBar()
+  })
+  const barNode = h('canvas', {
+    'aria-hidden': 'true',
+    ref: (el: HTMLCanvasElement | null) => {
+      barCanvas = el
+      paintBar()
+    },
+    onClick: (ev: MouseEvent) => {
+      const r = (ev.currentTarget as HTMLElement).getBoundingClientRect()
+      timelineClick(width(), TIMELINE_HEIGHT, ev.clientX - r.left, ev.clientY - r.top)
+    },
+  })
   const hostSlot = (): VNode | null => (mode() === 'host' ? hostNode() : null)
-  return h('div', { style: 'position:relative', 'data-pyreon-step': () => String(stepIndex() ?? -1) }, canvasSlot, svgNode, hostSlot)
+  const barSlot = (): VNode | null => (mode() === 'host' && timelineSteps(readOption()) !== null ? barNode : null)
+  // The toolbox data view: the option's data as a visible table over the chart.
+  const dataViewSlot = (): VNode | null => {
+    if (!dataView()) return null
+    const t = chartTable(a11y())
+    return h(
+      'div',
+      { 'data-pyreon-dataview': '', style: 'position:absolute;inset:0;overflow:auto;background:#ffffff;color:#1f2937;font:12px system-ui,sans-serif;padding:8px;box-sizing:border-box' },
+      h('button', { type: 'button', style: 'float:right', onClick: () => dataView.set(false) }, 'Close'),
+      h(
+        'table',
+        { style: 'border-collapse:collapse' },
+        h('thead', null, h('tr', null, ...t.headers.map((x) => h('th', { style: 'text-align:left;padding:2px 8px;border-bottom:1px solid #d1d5db' }, x)))),
+        h('tbody', null, ...t.rows.map((r) => h('tr', null, ...r.map((c) => h('td', { style: 'padding:2px 8px' }, c))))),
+      ),
+    )
+  }
+  return h('div', { style: 'position:relative', 'data-pyreon-step': () => String(stepIndex() ?? -1), ref: (el: HTMLDivElement | null) => { rootEl = el } }, canvasSlot, svgNode, hostSlot, barSlot, dataViewSlot)
 }

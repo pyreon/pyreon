@@ -97,7 +97,9 @@ describe('family chrome — title, legend and tap tooltip lower on both targets'
     // `legendPosition` left this list when placement moved into the engine
     // (`placeLegend`) — the four hosts whose engines draw their own frame keep
     // it, and chart-legend-position.test.ts pins that split.
-    const webOnly = ['keyboard', 'toolbox', 'onSaveImage', 'accessibleTable']
+    // `toolbox` / `onSaveImage` left it too: the plot host lowers the whole
+    // toolbox and every family host a save button (chart-toolbox-native.test.ts).
+    const webOnly = ['keyboard', 'accessibleTable']
     // `rtl` lowers wherever the chrome seam builds the canvas — which is every
     // host here. The three that bypass it (Gauge, Candlestick, Heatmap) name
     // it instead; see chart-rtl-native.test.ts.

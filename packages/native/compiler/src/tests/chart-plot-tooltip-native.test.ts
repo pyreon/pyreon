@@ -68,7 +68,7 @@ describe('<PlotChart tooltip> — a tap tooltip on both targets', () => {
   })
   it('a tooltip alone installs the tap; under a window the select maps the local hit to the global index', () => {
     const s = transform(TIP_ONLY, { target: 'swift' })
-    expect(s.code).toContain('.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in let pyreonLocal =')
+    expect(s.code).toContain('.contentShape(Rectangle()).simultaneousGesture(SpatialTapGesture().onEnded { pyreonTap in let pyreonLocal =')
     const w = transform(WINDOWED, { target: 'swift' })
     expect(w.code).toContain('let i = (pyreonLocal < 0 ? -1 : pyreonLocal + pyreonRange.from)')
     const k = transform(WINDOWED, { target: 'kotlin' })

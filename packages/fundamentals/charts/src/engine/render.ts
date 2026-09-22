@@ -121,6 +121,29 @@ export interface Series {
   selectColor?: string | undefined
   /** ECharts' `blur.itemStyle.opacity`: the opacity a blurred datum fades to (default 0.1). */
   blurOpacity?: Double | undefined
+  /** ECharts' `emphasis.scale`: the factor a highlighted point's radius takes (`true` reads as 1.1). */
+  emphasisScale?: Double | undefined
+  /** ECharts' `emphasis.disabled`: this series never highlights. */
+  emphasisDisabled?: boolean | undefined
+  /**
+   * ECharts' `emphasis.lineStyle.width` / `blur.lineStyle.width` and
+   * `emphasis.areaStyle.opacity` / `blur.areaStyle.opacity`. This engine's
+   * highlight is a datum COLUMN across every series, so a state's stroke and
+   * fill apply to the whole line while that state is active.
+   */
+  emphasisWidth?: Double | undefined
+  blurWidth?: Double | undefined
+  emphasisAreaOpacity?: Double | undefined
+  blurAreaOpacity?: Double | undefined
+  /** ECharts' `emphasis.label.show` / `select.label.show`: the datum's label appears in that state. */
+  emphasisLabel?: boolean | undefined
+  selectLabel?: boolean | undefined
+  /** `selectedMode: 'series'`: every datum of this series takes `select.itemStyle.color`. */
+  seriesSelected?: boolean | undefined
+  /** The brushed datums, in VISUAL indices; set with `brushOpacity` by `applyBrushSelection`. */
+  inBrush?: number[] | undefined
+  /** ECharts' `outOfBrush.colorAlpha`: the opacity a datum outside the brush fades to. */
+  brushOpacity?: Double | undefined
   /**
    * Error-bar bounds, index-aligned with `values` — a whisker from `errLow[i]`
    * to `errHigh[i]` through each bar centre / point. A gap in either bound
@@ -479,6 +502,71 @@ export function emphasisLevel(spec: ChartSpec, index: number): number {
   return e.highlight === index ? 1 : 0
 }
 
+/**
+ * Where each datum of a series sits for a LABEL: a bar's top, a stacked or
+ * grouped segment's far edge, else the placed point.
+ */
+function brushLikeAnchors(spec: ChartSpec, s: Series, sIdx: number, plot: Rect, yDomain: Domain, l: PlotLayout, place: (values: Double[]) => Pt[]): Pt[] {
+  const out: Pt[] = []
+  if (s.kind === 'bars' || s.kind === 'waterfall') {
+    for (const r of barsForIn(spec, sIdx, plot)) out.push({ x: r.x + r.w / 2.0, y: r.w < 0.0 ? -1000000.0 : r.y })
+    return out
+  }
+  if (s.kind === 'stacked' || s.kind === 'grouped') {
+    let kf = 0.0
+    for (let i = 0; i < sIdx; i++) kf = kf + 1.0
+    for (let i = 0; i < s.values.length; i++) {
+      const at = markerAnchor(spec, kf, i, plot, yDomain)
+      out.push(at.length > 0 ? at[0]! : { x: -1000000.0, y: -1000000.0 })
+    }
+    return out
+  }
+  return place(s.values)
+}
+
+/** The spec with whole-series selection applied (`selectedMode: 'series'`): every datum of a listed series takes its select colour. */
+export function applySeriesSelection(spec: ChartSpec, selected: number[]): ChartSpec {
+  const series: Series[] = []
+  let k = 0
+  for (const s of spec.series) {
+    let on = false
+    for (const i of selected) if (i === k) on = true
+    series.push(on ? { ...s, seriesSelected: true } : s)
+    k = k + 1
+  }
+  return { ...spec, series }
+}
+
+/** `emphasisLevel` for a SERIES' datum: its own `emphasis.disabled` and whole-series selection apply. */
+export function seriesEmphasisLevel(spec: ChartSpec, s: Series, index: number): number {
+  if (s.seriesSelected === true) return 2
+  const level = emphasisLevel(spec, index)
+  return level === 1 && s.emphasisDisabled === true ? 0 : level
+}
+
+/** The stroke width a series draws with under the active state. */
+export function stateWidth(spec: ChartSpec, s: Series): Double {
+  const e: Emphasis = spec.emphasis ?? { highlight: -1, selected: [] }
+  if (e.highlight >= 0 && s.emphasisDisabled !== true) return s.emphasisWidth ?? s.width
+  if (blurActive(spec)) return s.blurWidth ?? s.width
+  return s.width
+}
+
+/** The area-fill opacity a series draws with under the active state; -1 = the renderer's own. */
+export function stateAreaOpacity(spec: ChartSpec, s: Series): Double {
+  const e: Emphasis = spec.emphasis ?? { highlight: -1, selected: [] }
+  if (e.highlight >= 0 && s.emphasisDisabled !== true) return s.emphasisAreaOpacity ?? -1.0
+  if (blurActive(spec)) return s.blurAreaOpacity ?? -1.0
+  return -1.0
+}
+
+/** Whether a series shows its datum label in the state `index` is in (`emphasis.label` / `select.label`). */
+export function stateLabelShown(spec: ChartSpec, s: Series, index: number): boolean {
+  const level = seriesEmphasisLevel(spec, s, index)
+  if (level === 2) return s.selectLabel === true
+  return level === 1 && s.emphasisLabel === true
+}
+
 /** True when a highlight is active and some series asks to blur the others. */
 export function blurActive(spec: ChartSpec): boolean {
   const e: Emphasis = spec.emphasis ?? { highlight: -1, selected: [] }
@@ -493,7 +581,7 @@ export function blurActive(spec: ChartSpec): boolean {
  * `fill` when another datum is highlighted and the chart blurs, else `fill`.
  */
 export function stateFill(spec: ChartSpec, s: Series, index: number, fill: string): string {
-  const level = emphasisLevel(spec, index)
+  const level = seriesEmphasisLevel(spec, s, index)
   // Coalesced first, never narrowed through the guard: Swift does not narrow
   // a struct's optional through `!== undefined`, and an empty colour is "none".
   const selectColor = s.selectColor ?? ''
@@ -501,6 +589,13 @@ export function stateFill(spec: ChartSpec, s: Series, index: number, fill: strin
   if (level === 2 && selectColor !== '') return selectColor
   if (level === 1 && emphasisColor !== '') return emphasisColor
   if (level === 0 && blurActive(spec)) return withAlpha(fill, s.blurOpacity ?? 0.1)
+  const brushed = s.inBrush ?? []
+  const brushAlpha = s.brushOpacity ?? -1.0
+  if (brushAlpha >= 0.0) {
+    let inside = false
+    for (const b of brushed) if (b === index) inside = true
+    if (!inside) return withAlpha(fill, brushAlpha)
+  }
   return fill
 }
 
@@ -1238,7 +1333,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       const rS = growRect(seg.rect, yDomain)
       const gS = seriesGradient(stackedSeries[seg.seriesIndex]!.gradient, plot)
       out.push(rectCmd(rS, stateFill(spec, stackedSeries[seg.seriesIndex]!, seg.datumIndex, stackedSeries[seg.seriesIndex]!.color), stackedSeries[seg.seriesIndex]!.corners, gS.stops.length === 0 ? undefined : gS, stackedSeries[seg.seriesIndex]!.pattern))
-      const lvlS = emphasisLevel(spec, seg.datumIndex)
+      const lvlS = seriesEmphasisLevel(spec, stackedSeries[seg.seriesIndex]!, seg.datumIndex)
       if (lvlS > 0) out.push(emphasisOutline(rS, lvlS, t.label))
       // A stacked segment labels INSIDE itself: its value is the segment's
       // own, not the running total, and there is no outside edge to hang it
@@ -1258,7 +1353,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       const rG = growRect(seg.rect, yDomain)
       const gG = seriesGradient(groupedSeries[seg.seriesIndex]!.gradient, plot)
       out.push(rectCmd(rG, stateFill(spec, groupedSeries[seg.seriesIndex]!, seg.datumIndex, groupedSeries[seg.seriesIndex]!.color), groupedSeries[seg.seriesIndex]!.corners, gG.stops.length === 0 ? undefined : gG, groupedSeries[seg.seriesIndex]!.pattern))
-      const lvlG = emphasisLevel(spec, seg.datumIndex)
+      const lvlG = seriesEmphasisLevel(spec, groupedSeries[seg.seriesIndex]!, seg.datumIndex)
       if (lvlG > 0) out.push(emphasisOutline(rG, lvlG, t.label))
       // A grouped bar has a free outer edge, so it labels OUTSIDE like a
       // plain bar — above a positive one, below a negative one.
@@ -1356,7 +1451,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         }
       }
       for (let i = 0; i < rects.length; i++) {
-        const lvl = emphasisLevel(spec, i)
+        const lvl = seriesEmphasisLevel(spec, s, i)
         if (lvl > 0) out.push(emphasisOutline(growRectH(rects[i]!), lvl, t.label))
       }
       if (s.showValues === true && progress >= 1.0) {
@@ -1392,7 +1487,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         }
       }
       for (let i = 0; i < rects.length; i++) {
-        const lvl = emphasisLevel(spec, i)
+        const lvl = seriesEmphasisLevel(spec, s, i)
         if (lvl > 0) out.push(emphasisOutline(growRect(rects[i]!, sDomain), lvl, t.label))
       }
       if (s.showValues === true && progress >= 1.0) {
@@ -1419,7 +1514,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const grownH = st.rect.h * progress
         const grown: Rect = progress >= 1.0 ? st.rect : { x: st.rect.x, y: st.value >= 0.0 ? startY - grownH : startY, w: st.rect.w, h: grownH }
         out.push(rectCmd(grown, fill, s.corners, sGrad, s.pattern))
-        const lvlW = emphasisLevel(spec, st.datumIndex)
+        const lvlW = seriesEmphasisLevel(spec, s, st.datumIndex)
         if (lvlW > 0) out.push(emphasisOutline(grown, lvlW, t.label))
         if (si + 1 < steps.length && progress >= 1.0) {
           const next = steps[si + 1]!
@@ -1438,7 +1533,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       for (const run of splitRuns(s.values, place)) {
         const pts = reveal(shape(run))
         if (pts.length > 1) {
-          out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width, dash: s.dash })
+          out.push({ kind: 'polyline', points: pts, stroke: s.color, width: stateWidth(spec, s), dash: s.dash })
         }
       }
       // A line shows its datum symbols only when asked (ECharts' showSymbol):
@@ -1496,7 +1591,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           const baseY = scaleLinear(sDomain, plot.y + plot.h, plot.y, sDomain.min)
           poly.push({ x: pts[pts.length - 1]!.x, y: baseY })
           poly.push({ x: pts[0]!.x, y: baseY })
-          out.push(polygonCmd(poly, s.color, sGrad, s.pattern))
+          const areaAlpha = stateAreaOpacity(spec, s)
+          out.push(polygonCmd(poly, areaAlpha < 0.0 ? s.color : withAlpha(s.color, areaAlpha), sGrad, s.pattern))
         }
       }
     } else {
@@ -1511,13 +1607,15 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           out.push({ kind: 'circle', center: pts[i]!, radius: fullR * 2.6 * progress, fill: withAlpha(s.color, 0.12) })
           out.push({ kind: 'circle', center: pts[i]!, radius: fullR * 1.7 * progress, fill: withAlpha(s.color, 0.25) })
         }
-        const lvlP = emphasisLevel(spec, i)
+        const lvlP = seriesEmphasisLevel(spec, s, i)
         if (lvlP > 0) {
           // A halo UNDER the dot: emphasis that never hides the value.
           out.push({ kind: 'circle', center: pts[i]!, radius: fullR * progress + (lvlP === 2 ? 4.0 : 3.0), fill: withAlpha(t.label, 0.35) })
         }
         // The datum symbol: a circle unless the series names another shape.
-        const r = fullR * progress
+        // `emphasis.scale` grows the highlighted symbol, as ECharts does.
+        const scaled = lvlP === 1 ? fullR * (s.emphasisScale ?? 1.0) : fullR
+        const r = scaled * progress
         const pointSymbol = s.symbol ?? 'circle'
         const fillP = stateFill(spec, s, i, s.color)
         if (pointSymbol === 'circle') {
@@ -1556,6 +1654,22 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         if (!isFiniteValue(v)) continue
         // Above the point, clear of a dot of the series' own radius.
         for (const c of seriesLabelCmds(s, i, fmtP(v), { x: labelPts[i]!.x, y: labelPts[i]!.y - (s.radius + 5.0) }, 'middle', 'bottom', t, measure)) out.push(c)
+      }
+    }
+
+    // `emphasis.label` / `select.label`: the datum's own label, shown only in
+    // that state. The anchor is the mark's own geometry — a bar's top, a
+    // stacked segment's far edge, a point — so it lands where the reader is
+    // pointing rather than at the raw value.
+    if ((s.emphasisLabel === true || s.selectLabel === true) && progress >= 1.0) {
+      const fmtS = spec.yFormat ?? plain
+      const anchors = brushLikeAnchors(spec, s, sIdx, plot, yDomain, l, place)
+      for (let i = 0; i < anchors.length; i++) {
+        if (!stateLabelShown(spec, s, i)) continue
+        const v = printed(sIdx, i)
+        if (!isFiniteValue(v)) continue
+        const at = anchors[i]!
+        for (const c of seriesLabelCmds(s, i, fmtS(v), { x: at.x, y: at.y - 6.0 }, 'middle', 'bottom', t, measure)) out.push(c)
       }
     }
 

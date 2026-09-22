@@ -19,9 +19,9 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import { compileOption, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
-import type { GraphicElement, RichStyle, SamplingRequest } from '@pyreon/charts/option-layer'
-import type { AttrIR, ExprIR } from './types'
+import { compileOption, readBrush, readToolbox, defaultTimelineStrip, resolveYDomain, timelineSteps, DEFAULT_DECALS, visualMapSpec, visualStripOf, fillPattern, imageFill, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
+import type { ChartPattern, VisualMapSpec, GraphicElement, RichStyle, SamplingRequest } from '@pyreon/charts/option-layer'
+import type { AttrIR, ChildIR, ExprIR } from './types'
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 
 /** Per-target expression helpers the host specs build their draw list with. */
@@ -136,6 +136,8 @@ export interface ChartHostArgs {
 export interface ChartHostSpec {
   /** The host accepts `roam` (pan / pinch-zoom over a `GeoView` merged into its `GeoOptions`). */
   readonly roam?: boolean
+  /** The host accepts `visualMap` (the strip, its dragged range / toggled pieces merged into the options). */
+  readonly visualMap?: boolean
   /**
    * A prop that, when present, animates the host: the emit wraps it in the
    * effect clock and feeds the clock's seconds to the `effectTime` data slot.
@@ -284,6 +286,10 @@ function resolveStaticDataset(raw: Extract<ExprIR, { kind: 'object' }>, resolve:
   const { dataset: _dropped, ...rest } = resolved.option
   const out = valueToIr(rest)
   return out.kind === 'object' ? out : raw
+}
+
+function litBoolean(e: ExprIR | undefined): boolean | undefined {
+  return e !== undefined && e.kind === 'literal' && typeof e.value === 'boolean' ? e.value : undefined
 }
 
 function litNumber(e: ExprIR | undefined): number | undefined {
@@ -703,6 +709,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     tooltip: (l, x, y, a) => `polarTip(${l}, ${a.data[1]}, ${x}, ${y})`,
   },
   CalendarChart: {
+    visualMap: true,
     data: ['start', 'end', 'values'],
     options: 'calendar',
     optionsStruct: 'CalendarOptions',
@@ -717,6 +724,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
   },
   MapChart: {
     roam: true,
+    visualMap: true,
     data: ['map', 'values', 'paths', 'points', 'overlayOptions', 'heat', 'pies', 'heatRadius', 'heatStops', 'trail', 'effectTime'],
     clock: 'trail',
     dataDefaults: {
@@ -838,25 +846,45 @@ function optionDatumNumber(e: ExprIR | undefined): number | undefined {
   return litNumber(e)
 }
 
-function optionPatternLiteral(style: ExprIR | undefined, resolve: (name: string) => ExprIR | undefined): ExprIR | undefined {
-  const item = literalOf(style, resolve)
-  const raw = item?.kind === 'object' ? literalOf(objectField(item, 'decal'), resolve) : undefined
-  if (raw?.kind !== 'object' || (() => { const show = objectField(raw, 'show'); return show?.kind === 'literal' && show.value === false })()) return undefined
-  const symbol = litString(objectField(raw, 'symbol')) ?? ''
-  const rotation = litNumber(objectField(raw, 'rotation')) ?? 0
-  const firstNumber = (value: ExprIR | undefined): number | undefined => {
-    const resolved = literalOf(value, resolve)
-    return resolved?.kind === 'array' ? litNumber(resolved.elements[0]) : litNumber(resolved)
+/** A ChartPattern value as its engine-struct literal. */
+function patternLiteral(p: ChartPattern): ExprIR {
+  const fields: { name: string; value: ExprIR }[] = [
+    { name: 'kind', value: lit(p.kind) },
+    { name: 'color', value: lit(p.color) },
+    { name: 'spacing', value: optionDoubleLiteral(p.spacing) },
+    { name: 'width', value: optionDoubleLiteral(p.width) },
+  ]
+  if (p.angle !== undefined) fields.push({ name: 'angle', value: optionDoubleLiteral(p.angle === 0 ? 0 : p.angle) })
+  if (p.symbol !== undefined) fields.push({ name: 'symbol', value: lit(p.symbol) })
+  if (p.spacingY !== undefined) fields.push({ name: 'spacingY', value: optionDoubleLiteral(p.spacingY) })
+  if (p.image !== undefined) fields.push({ name: 'image', value: lit(p.image) })
+  if (p.repeat !== undefined) fields.push({ name: 'repeat', value: lit(p.repeat) })
+  if (p.shape !== undefined) {
+    fields.push({ name: 'shape', value: { kind: 'array', elements: p.shape.map((q) => ({ kind: 'object', fields: [{ name: 'x', value: optionDoubleLiteral(q.x) }, { name: 'y', value: optionDoubleLiteral(q.y) }] }) as ExprIR) } })
   }
-  return {
-    kind: 'object',
-    fields: [
-      { name: 'kind', value: lit(symbol.includes('circle') ? 'dots' : Math.abs(rotation) < 0.01 ? 'cross' : 'diagonal') },
-      { name: 'color', value: lit(litString(objectField(raw, 'color')) ?? 'rgba(255,255,255,0.45)') },
-      { name: 'spacing', value: optionDoubleLiteral(Math.max(2, firstNumber(objectField(raw, 'dashArrayX')) ?? 8)) },
-      { name: 'width', value: optionDoubleLiteral(Math.max(0.5, firstNumber(objectField(raw, 'dashArrayY')) ?? 1)) },
-    ],
+  if (p.shapeRings !== undefined) fields.push({ name: 'shapeRings', value: { kind: 'array', elements: p.shapeRings.map((c) => optionDoubleLiteral(c)) } })
+  return { kind: 'object', fields }
+}
+
+/**
+ * An itemStyle's decal, mapped by the web facade's own `fillPattern` at compile
+ * time (so the tiled symbol, pitch and rotation are the ones the web draws),
+ * or the `aria.decal` default for the series when it has none.
+ */
+function optionPatternLiteral(style: ExprIR | undefined, resolve: (name: string) => ExprIR | undefined, warn: (m: string) => void = () => {}, path = 'itemStyle', ariaIndex = -1, series?: ExprIR): ExprIR | undefined {
+  const plainOf = (e: ExprIR | undefined): Record<string, unknown> => {
+    const lit = literalOf(e, resolve)
+    const v = lit === undefined ? undefined : irToValue(lit, resolve)
+    return v !== undefined && v.ok === true && isPlainRecord(v.value) ? v.value : {}
   }
+  const record = plainOf(style)
+  const seriesRecord = plainOf(series)
+  const areaRecord = isPlainRecord(seriesRecord['areaStyle']) ? seriesRecord['areaStyle'] : {}
+  const seriesPath = path.replace(/\.itemStyle$/, '')
+  const w = (_code: string, at: string, message: string): void => warn(`<OptionChart option.${at}>: ${message}`)
+  // The web's own order: an item fill image, then an area fill image, then the series colour, then the decal.
+  const p = imageFill(record['color'], `${path}.color`, w) ?? imageFill(areaRecord['color'], `${seriesPath}.areaStyle.color`, w) ?? imageFill(seriesRecord['color'], `${seriesPath}.color`, w) ?? fillPattern(record, `${path}.decal`, (_code, at, message) => warn(`<OptionChart option.${at}>: ${message}`)) ?? (ariaIndex >= 0 ? DEFAULT_DECALS[ariaIndex % DEFAULT_DECALS.length] : undefined)
+  return p === undefined ? undefined : patternLiteral(p)
 }
 
 function optionTreeNodes(
@@ -936,6 +964,85 @@ const mergeStaticOptionObjects = (
   return { kind: 'object', fields }
 }
 
+/** The height the web OptionChart defaults to. */
+const OPTION_CHART_HEIGHT = 320
+/** The strip's height — the web's `TIMELINE_HEIGHT`. */
+const TIMELINE_STRIP_H = 40
+
+function lowerTimelineSteps(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  raw: Extract<ExprIR, { kind: 'object' }>,
+  resolve: (name: string) => ExprIR | undefined,
+  warn: (m: string) => void,
+): Extract<ExprIR, { kind: 'jsx-element' }> | null {
+  const base = literalOf(objectField(raw, 'baseOption'), resolve)
+  const timeline = literalOf(objectField(raw, 'timeline'), resolve) ?? (base?.kind === 'object' ? literalOf(objectField(base, 'timeline'), resolve) : undefined)
+  const steps = literalOf(objectField(raw, 'options'), resolve)
+  if (timeline?.kind !== 'object' || steps?.kind !== 'array' || steps.elements.length === 0) return null
+  const timelineValue = irToValue(timeline, resolve)
+  if (!timelineValue.ok || !isPlainRecord(timelineValue.value)) {
+    warn('<OptionChart option.timeline>: a native timeline needs a literal timeline object; native renders one step.')
+    return null
+  }
+  const read = timelineSteps({ timeline: timelineValue.value })
+  if (read === null) return null
+  const n = steps.elements.length
+  const labels = read.labels.length >= n ? read.labels.slice(0, n) : [...read.labels, ...Array.from({ length: n - read.labels.length }, (_, i) => String(read.labels.length + i))]
+  const heightAttr = litNumber(literalOf(attrOf(e, 'height'), resolve))
+  const total = heightAttr ?? OPTION_CHART_HEIGHT
+  // Each step is its own option: the same element, pinned to step i, in the height the strip leaves.
+  const seen = new Set<string>()
+  const once = (m: string): void => {
+    if (seen.has(m)) return
+    seen.add(m)
+    warn(m)
+  }
+  const children: ChildIR[] = []
+  for (let i = 0; i < n; i++) {
+    const attrs: AttrIR[] = e.attrs.filter((a) => !(a.kind === 'attr' && (a.name === 'height' || a.name === 'data-testid' || a.name === 'timelineIndex')) && !(a.kind === 'event' && a.name === 'timelinechange'))
+    attrs.push({ kind: 'attr', name: 'timelineIndex', value: lit(i) })
+    attrs.push({ kind: 'attr', name: 'height', value: lit(Math.max(0, total - TIMELINE_STRIP_H)) })
+    const child = desugarOptionChart({ ...e, attrs }, resolve, once)
+    if (child === undefined) return null
+    children.push({ kind: 'expr', expr: child })
+  }
+  const strip = { ...(read.strip ?? defaultTimelineStrip(labels)), labels }
+  const outer: AttrIR[] = [
+    { kind: 'attr', name: 'timelineStrip', value: valueToIr(strip) },
+    { kind: 'attr', name: 'timelineCurrent', value: lit(Math.min(n - 1, read.current)) },
+    { kind: 'attr', name: 'timelineAutoPlay', value: lit(read.autoPlay) },
+    { kind: 'attr', name: 'timelineInterval', value: lit(read.playInterval) },
+    { kind: 'attr', name: 'height', value: lit(total) },
+  ]
+  for (const a of e.attrs) if ((a.kind === 'attr' && (a.name === 'data-testid' || a.name === 'handle')) || (a.kind === 'event' && a.name === 'timelinechange')) outer.push(a)
+  return { kind: 'jsx-element', tag: CHART_TIMELINE_TAG, attrs: outer, children }
+}
+
+/** The synthetic element a timeline OptionChart lowers to. */
+export const CHART_TIMELINE_TAG = 'ChartTimeline'
+
+/** A `TimelineStrip` literal IR as target source. */
+export function chartTimelineStripLiteral(expr: ExprIR | undefined, t: ChartHostTarget): string | null {
+  if (expr === undefined) return null
+  const v = irToValue(expr, () => undefined)
+  if (!v.ok || !isPlainRecord(v.value)) return null
+  const s = v.value
+  const str = (x: unknown): string => JSON.stringify(String(x))
+  const labels = Array.isArray(s['labels']) ? (s['labels'] as unknown[]).map(str) : []
+  return t.struct('TimelineStrip', [
+    ['labels', t.list(labels)],
+    ['loop', String(s['loop'] === true)],
+    ['rewind', String(s['rewind'] === true)],
+    ['showPlay', String(s['showPlay'] === true)],
+    ['showPrev', String(s['showPrev'] === true)],
+    ['showNext', String(s['showNext'] === true)],
+    ['label', str(s['label'])],
+    ['accent', str(s['accent'])],
+    ['line', str(s['line'])],
+    ['fontSize', chartDouble(typeof s['fontSize'] === 'number' ? (s['fontSize'] as number) : 11)],
+  ])
+}
+
 const resolveStaticTimelineOption = (
   option: Extract<ExprIR, { kind: 'object' }>,
   requestedIndex: number | undefined,
@@ -982,7 +1089,46 @@ const resolveStaticTimelineOption = (
  * ECharts-shaped literal can be validated without silently dropping fields.
  * More families are added here as explicit adapters.
  */
+/** The `visualMap` fields `visualMapSpec` reads — every one crosses. */
+const VISUAL_MAP_FIELDS = ['min', 'max', 'inRange', 'calculable', 'range', 'type', 'pieces', 'categories', 'splitNumber', 'orient', 'text', 'textStyle', 'itemWidth', 'itemHeight', 'left', 'right', 'top', 'bottom', 'show', 'selected', 'inactiveColor']
+
 export function desugarOptionChart(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  resolve: (name: string) => ExprIR | undefined,
+  warn: (m: string) => void,
+): Extract<ExprIR, { kind: 'jsx-element' }> | undefined {
+  const lowered = desugarOptionChartHost(e, resolve, warn)
+  if (lowered === undefined || lowered.tag === CHART_TIMELINE_TAG) return lowered
+  // `option.toolbox` through the web's own reader: the plot host lowers the
+  // whole toolbox, a family host its save button.
+  const raw = literalOf(attrOf(e, 'option'), resolve)
+  if (raw?.kind !== 'object' || objectField(raw, 'toolbox') === undefined) return lowered
+  const plainOption = irToValue(raw, resolve)
+  if (!plainOption.ok || !isPlainRecord(plainOption.value)) {
+    warn('<OptionChart option.toolbox>: a native toolbox needs a literal toolbox object; native renders without it.')
+    return lowered
+  }
+  const optWarn = (_c: string, path: string, message: string): void => warn(`<OptionChart option.${path}>: ${message}`)
+  const brush = plainOption.value['brush'] === undefined ? undefined : readBrush(plainOption.value, optWarn)
+  const tb = readToolbox(plainOption.value, optWarn, brush)
+  if (tb === undefined) return lowered
+  const cfg: Record<string, unknown> = lowered.tag === 'PlotChart'
+    ? { ...(tb.dataZoom === true ? { dataZoom: true } : {}), ...(tb.dataView === true ? { dataView: true } : {}), ...(tb.magicType !== undefined ? { magicType: tb.magicType } : {}), ...(tb.brush !== undefined ? { brush: tb.brush } : {}), ...(tb.restore === true ? { restore: true } : {}), ...(tb.saveAsImage === true ? { saveAsImage: true } : {}) }
+    : tb.saveAsImage === true ? { saveAsImage: true } : {}
+  const brushAttrs: AttrIR[] = []
+  if (lowered.tag === 'PlotChart' && tb.brush !== undefined && brush !== undefined) {
+    if (brush.multiple) brushAttrs.push({ kind: 'attr', name: 'brushMode', value: valueToIr('multiple') })
+    if (brush.outOpacity !== 0.1) brushAttrs.push({ kind: 'attr', name: 'outOfBrushOpacity', value: valueToIr(brush.outOpacity) })
+    if (brush.seriesIndex.length > 0) brushAttrs.push({ kind: 'attr', name: 'brushSeriesIndex', value: valueToIr(brush.seriesIndex) })
+  }
+  if (lowered.tag !== 'PlotChart' && (tb.dataZoom === true || tb.dataView === true || tb.magicType !== undefined || tb.restore === true || tb.brush !== undefined)) {
+    warn(`<OptionChart option.toolbox>: this ${lowered.tag} lowers the toolbox's saveAsImage on native; its other tools act on a cartesian chart.`)
+  }
+  if (Object.keys(cfg).length === 0) return lowered
+  return { ...lowered, attrs: [...lowered.attrs.filter((a) => !(a.kind === 'attr' && a.name === 'toolbox')), { kind: 'attr', name: 'toolbox', value: valueToIr(cfg) }, ...brushAttrs] }
+}
+
+function desugarOptionChartHost(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   resolve: (name: string) => ExprIR | undefined,
   warn: (m: string) => void,
@@ -997,6 +1143,14 @@ export function desugarOptionChart(
   if (requestedTimeline !== undefined && timelineIndex === undefined) {
     warn('<OptionChart timelineIndex>: native needs a static numeric index; the option currentIndex is used.')
   }
+  // A timeline with static steps and no pinned `timelineIndex`: every step
+  // lowers to its own host, and `ChartTimeline` switches between them under a
+  // tappable strip with play / previous / next — the web's timeline, not a
+  // frozen first step.
+  if (requestedTimeline === undefined) {
+    const lowered = lowerTimelineSteps(e, raw, resolve, warn)
+    if (lowered !== null) return lowered
+  }
   raw = resolveStaticTimelineOption(raw, timelineIndex, resolve, warn)
   raw = resolveStaticDataset(raw, resolve, warn)
   const rawSeries = literalOf(objectField(raw, 'series'), resolve)
@@ -1008,16 +1162,16 @@ export function desugarOptionChart(
     return undefined
   }
 
-  optionFields(raw, ['series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'color', 'dataset', 'graphic'], 'option', warn)
+  optionFields(raw, ['aria', 'series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'dataZoom', 'toolbox', 'brush', 'color', 'dataset', 'graphic'], 'option', warn)
 
   for (const a of e.attrs) {
-    if (a.kind === 'event' && a.name !== 'selectindex') {
+    if (a.kind === 'event' && a.name !== 'selectindex' && a.name !== 'brushselected') {
       const prop = a.name === 'select' ? 'onSelect' : a.name === 'familyselect' ? 'onFamilySelect' : a.name === 'timelinechange' ? 'onTimelineChange' : `on${a.name}`
       warn(`<OptionChart ${prop}>: this rich callback shape does not cross yet; native renders without it.`)
     }
   }
   const attrs: AttrIR[] = e.attrs.filter((a) => {
-    if (a.kind !== 'attr') return a.kind === 'event' && a.name === 'selectindex'
+    if (a.kind !== 'attr') return a.kind === 'event' && (a.name === 'selectindex' || a.name === 'brushselected')
     return a.name !== 'option' && a.name !== 'theme' && a.name !== 'locale' && a.name !== 'timelineIndex'
   })
   const set = (name: string, value: ExprIR): void => {
@@ -1032,6 +1186,23 @@ export function desugarOptionChart(
   // so the native canvas draws the elements the web draws. The engine's
   // `graphicDrawCommands` then paints them on both targets.
   const graphicRaw = objectField(raw, 'graphic')
+
+  // `visualMap` resolves at COMPILE time through the web's own `visualMapSpec`
+  // (domain from the data when unset, pieces, `range`, `selected`), and the
+  // value host draws the strip and owns the drag.
+  const optionVisualMap = (): void => {
+    if (objectField(raw!, 'visualMap') === undefined) return
+    const plainOption = irToValue(raw!, resolve)
+    if (!plainOption.ok || !isPlainRecord(plainOption.value)) {
+      warn('<OptionChart option.visualMap>: a native visualMap needs a fully literal option; native renders without the strip.')
+      return
+    }
+    const read = visualMapSpec(plainOption.value)
+    if (read === null) return
+    for (const w of read.warnings) warn(`<OptionChart option.${w.path}>: ${w.message}`)
+    set('visualMap', valueToIr(read.spec))
+  }
+
   if (graphicRaw !== undefined) {
     const graphicValue = irToValue(graphicRaw, resolve)
     if (graphicValue.ok !== true) {
@@ -1574,7 +1745,7 @@ export function desugarOptionChart(
     }
     const visualMap = literalOf(objectField(raw, 'visualMap'), resolve)
     if (visualMap?.kind === 'object') {
-      optionFields(visualMap, ['min', 'max', 'inRange'], 'option.visualMap', warn)
+      optionFields(visualMap, VISUAL_MAP_FIELDS, 'option.visualMap', warn)
       const min = litNumber(objectField(visualMap, 'min'))
       const max = litNumber(objectField(visualMap, 'max'))
       if (min !== undefined && max !== undefined) calendarFields.push({ name: 'domain', value: { kind: 'object', fields: [{ name: 'min', value: optionDoubleLiteral(min) }, { name: 'max', value: optionDoubleLiteral(max) }] } })
@@ -1605,10 +1776,12 @@ export function desugarOptionChart(
     set('end', lit(end))
     set('values', { kind: 'object', fields })
     if (calendarFields.length > 0) set('calendar', { kind: 'object', fields: calendarFields })
+    optionVisualMap()
     return { kind: 'jsx-element', tag: 'CalendarChart', attrs, children: [] }
   }
 
   if (kind === 'heatmap') {
+    optionVisualMap()
     optionFields(series, ['type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color'], 'option.series[0]', warn)
     const data = literalOf(objectField(series, 'data'), resolve)
     const xAxis = literalOf(objectField(raw, 'xAxis'), resolve)
@@ -1980,7 +2153,8 @@ export function desugarOptionChart(
         const g = style?.kind === 'object' ? literalOf(objectField(style, 'color'), resolve) : undefined
         const rawStops = g?.kind === 'object' ? literalOf(objectField(g, 'colorStops'), resolve) : undefined
         if (g?.kind === 'object' && rawStops === undefined && objectField(g, 'image') !== undefined) {
-          warn(`<OptionChart option.series[${si}].${slot}.color>: image patterns are not supported natively (linear and radial gradients, and decals, are); the palette colour is used.`)
+          // A fill image is the mark's pattern (optionPatternLiteral); a stroke cannot carry one.
+          if (slot === 'lineStyle') warn(`<OptionChart option.series[${si}].lineStyle.color>: A line stroke cannot be an image pattern (fills can); the palette colour is used.`)
           continue
         }
         if (g?.kind !== 'object' || rawStops?.kind !== 'array') continue
@@ -2022,7 +2196,10 @@ export function desugarOptionChart(
         opts.push({ name: 'onX2', value: lit(true) })
         opts.push({ name: 'xs', value: { kind: 'array', elements: (pairXs[si] ?? []).map((v) => optionDoubleLiteral(v)) } })
       }
-      const pattern = optionPatternLiteral(objectField(s, 'itemStyle'), resolve)
+      const ariaLit = literalOf(objectField(raw, 'aria'), resolve)
+      const ariaDecal = ariaLit?.kind === 'object' ? literalOf(objectField(ariaLit, 'decal'), resolve) : undefined
+      const ariaShow = ariaDecal?.kind === 'object' ? objectField(ariaDecal, 'show') : undefined
+      const pattern = optionPatternLiteral(objectField(s, 'itemStyle'), resolve, warn, `series[${si}].itemStyle`, ariaShow?.kind === 'literal' && ariaShow.value === true ? si : -1, s)
       if (pattern !== undefined) opts.push({ name: 'pattern', value: pattern })
       // ECharts' states: `emphasis.focus` / `emphasis.itemStyle.color`,
       // `select.itemStyle.color`, `blur.itemStyle.opacity` — the same four
@@ -2039,21 +2216,42 @@ export function desugarOptionChart(
         const emphasisItem = literalOf(objectField(emphasisOpt, 'itemStyle'), resolve)
         const c = emphasisItem?.kind === 'object' ? litString(objectField(emphasisItem, 'color')) : undefined
         if (c !== undefined) opts.push({ name: 'emphasisColor', value: lit(c) })
-        for (const key of ['label', 'scale', 'lineStyle', 'areaStyle', 'blurScope', 'disabled']) if (objectField(emphasisOpt, key) !== undefined) warn(`<OptionChart option.series[${si}].emphasis.${key}>: has no engine form (the highlighted datum takes emphasis.itemStyle.color and an outline); it was ignored.`)
+        const scaleIR = objectField(emphasisOpt, 'scale')
+        const scaleN = litNumber(scaleIR)
+        if (scaleIR?.kind === 'literal' && scaleIR.value === true) opts.push({ name: 'emphasisScale', value: optionDoubleLiteral(1.1) })
+        else if (scaleN !== undefined) opts.push({ name: 'emphasisScale', value: optionDoubleLiteral(Math.max(0, scaleN)) })
+        if (litBoolean(objectField(emphasisOpt, 'disabled')) === true) opts.push({ name: 'emphasisDisabled', value: lit(true) })
+        const eLine = literalOf(objectField(emphasisOpt, 'lineStyle'), resolve)
+        const eWidth = eLine?.kind === 'object' ? litNumber(objectField(eLine, 'width')) : undefined
+        if (eWidth !== undefined) opts.push({ name: 'emphasisWidth', value: optionDoubleLiteral(Math.max(0, eWidth)) })
+        const eArea = literalOf(objectField(emphasisOpt, 'areaStyle'), resolve)
+        const eOpacity = eArea?.kind === 'object' ? litNumber(objectField(eArea, 'opacity')) : undefined
+        if (eOpacity !== undefined) opts.push({ name: 'emphasisAreaOpacity', value: optionDoubleLiteral(Math.max(0, Math.min(1, eOpacity))) })
+        if (stateLabelShows(emphasisOpt, `emphasis`, si, resolve, warn)) opts.push({ name: 'emphasisLabel', value: lit(true) })
+        const scope = litString(objectField(emphasisOpt, 'blurScope'))
+        if (scope !== undefined && scope !== 'coordinateSystem' && scope !== 'series' && scope !== 'global') warn(`<OptionChart option.series[${si}].emphasis.blurScope>: "${scope}" is not one ECharts defines; it was ignored.`)
       }
       const selectOpt = stateLiteral('select')
       if (selectOpt !== undefined) {
         const selectItem = literalOf(objectField(selectOpt, 'itemStyle'), resolve)
         const c = selectItem?.kind === 'object' ? litString(objectField(selectItem, 'color')) : undefined
         if (c !== undefined) opts.push({ name: 'selectColor', value: lit(c) })
-        for (const key of ['label', 'lineStyle', 'areaStyle', 'disabled']) if (objectField(selectOpt, key) !== undefined) warn(`<OptionChart option.series[${si}].select.${key}>: has no engine form (a pinned datum takes select.itemStyle.color and a heavy outline); it was ignored.`)
+        if (stateLabelShows(selectOpt, `select`, si, resolve, warn)) opts.push({ name: 'selectLabel', value: lit(true) })
+        if (litBoolean(objectField(selectOpt, 'disabled')) === true) warn(`<OptionChart option.series[${si}].select.disabled>: not supported; leave selectedMode off to stop a datum pinning.`)
+        for (const key of ['lineStyle', 'areaStyle']) if (objectField(selectOpt, key) !== undefined) warn(`<OptionChart option.series[${si}].select.${key}>: has no engine form (a pinned DATUM takes select.itemStyle.color and a heavy outline, and a stroke belongs to the whole line); it was ignored.`)
       }
       const blurOpt = stateLiteral('blur')
       if (blurOpt !== undefined) {
         const blurItem = literalOf(objectField(blurOpt, 'itemStyle'), resolve)
         const opacity = blurItem?.kind === 'object' ? litNumber(objectField(blurItem, 'opacity')) : undefined
         if (opacity !== undefined) opts.push({ name: 'blurOpacity', value: optionDoubleLiteral(Math.max(0, Math.min(1, opacity))) })
-        for (const key of ['label', 'lineStyle', 'areaStyle']) if (objectField(blurOpt, key) !== undefined) warn(`<OptionChart option.series[${si}].blur.${key}>: has no engine form (a blurred datum fades to blur.itemStyle.opacity); it was ignored.`)
+        const bLine = literalOf(objectField(blurOpt, 'lineStyle'), resolve)
+        const bWidth = bLine?.kind === 'object' ? litNumber(objectField(bLine, 'width')) : undefined
+        if (bWidth !== undefined) opts.push({ name: 'blurWidth', value: optionDoubleLiteral(Math.max(0, bWidth)) })
+        const bArea = literalOf(objectField(blurOpt, 'areaStyle'), resolve)
+        const bOpacity = bArea?.kind === 'object' ? litNumber(objectField(bArea, 'opacity')) : undefined
+        if (bOpacity !== undefined) opts.push({ name: 'blurAreaOpacity', value: optionDoubleLiteral(Math.max(0, Math.min(1, bOpacity))) })
+        if (objectField(blurOpt, 'label') !== undefined) warn(`<OptionChart option.series[${si}].blur.label>: has no engine form (a blurred datum keeps its own label); it was ignored.`)
       }
       // ECharts' `label`: the facade resolves the {a}/{b}/{c}/{d} template per
       // datum, so the native side resolves it the SAME way at compile time and
@@ -2084,7 +2282,8 @@ export function desugarOptionChart(
         const mode = modeRaw.kind === 'literal' ? modeRaw.value : undefined
         if (mode === true || mode === 'single') set('selectedMode', lit('single'))
         else if (mode === 'multiple') set('selectedMode', lit('multiple'))
-        else if (mode !== false) warn(`<OptionChart option.series[0].selectedMode>: only true, single and multiple are supported natively; taps do not pin.`)
+        else if (mode === 'series') set('selectedMode', lit('series'))
+        else if (mode !== false) warn(`<OptionChart option.series[0].selectedMode>: only true, single, multiple and series are supported natively; taps do not pin.`)
       }
       // The dataset pre-pass materialised `encode.tooltip` as `tooltipExtras`.
       const extras = literalOf(objectField(s, 'tooltipExtras'), resolve)
@@ -2409,6 +2608,33 @@ export function desugarOptionChart(
             { name: 'max', value: { kind: 'literal', value: ymax, float: true } },
           ],
         })
+      }
+    }
+    // `dataZoom` resolves through the web's own reader: inside → the pinch/pan
+    // zoom, slider → the navigator, start/end → the opening window, zoomLock /
+    // minSpan / maxSpan → the limits, and filterMode none/empty pins the y
+    // extent of every row.
+    if (objectField(raw, 'dataZoom') !== undefined) {
+      const plainOption = irToValue(raw, resolve)
+      if (!plainOption.ok || !isPlainRecord(plainOption.value)) {
+        warn('<OptionChart option.dataZoom>: a native dataZoom needs a fully literal option; native renders without the zoom.')
+      } else {
+        const compiled = compileOption(plainOption.value)
+        for (const w of compiled.warnings) if (w.path.startsWith('dataZoom')) warn(`<OptionChart option.${w.path}>: ${w.message}`)
+        const z = compiled.zoom
+        if (z !== undefined) {
+          if (z.inside) set('dataZoom', lit(true))
+          if (z.slider) set('navigator', lit(true))
+          const win = (a: number, b: number): ExprIR => ({ kind: 'object', fields: [{ name: 'start', value: optionDoubleLiteral(a) }, { name: 'end', value: optionDoubleLiteral(b) }] })
+          if (z.window.start > 0 || z.window.end < 1) set('initialZoom', win(z.window.start, z.window.end))
+          if (z.lock || z.minSpan > 0 || z.maxSpan < 1) {
+            set('zoomLimits', { kind: 'object', fields: [{ name: 'lock', value: lit(z.lock) }, { name: 'minSpan', value: optionDoubleLiteral(z.minSpan) }, { name: 'maxSpan', value: optionDoubleLiteral(z.maxSpan) }] })
+          }
+          if (z.keepY && attrOf({ kind: 'jsx-element', tag: 'PlotChart', attrs, children: [] }, 'yDomain') === undefined) {
+            const d = resolveYDomain(compiled.spec)
+            set('yDomain', { kind: 'object', fields: [{ name: 'min', value: optionDoubleLiteral(d.min) }, { name: 'max', value: optionDoubleLiteral(d.max) }] })
+          }
+        }
       }
     }
     return { kind: 'jsx-element', tag: 'PlotChart', attrs, children: [] }
@@ -3129,17 +3355,17 @@ export const CHART_HOST_PALETTE: readonly string[] = CHART_THEME_DEFAULT.palette
  */
 export const CHART_CHROME_PROPS: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'legendPosition', 'keyboard', 'updateAnimation', 'updateDuration', 'universalTransition', 'toolbox', 'onSaveImage', 'accessibleTable', 'rtl']
 const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
-  PlotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl', 'legendPosition'],
+  PlotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl', 'legendPosition', 'toolbox', 'onSaveImage'],
   // Gauge / Candlestick / Heatmap build their canvas without the chrome seam,
   // so they take the RTL pair from `swiftRtl` / `kotlinRtl` directly. Their
   // lists stay spelled out: adding a prop to `FAMILY_CHROME` must never
   // silently claim a host whose emitter does not read it, which is exactly
   // what happened when `rtl` first went in there.
-  GaugeChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl'],
-  CandlestickChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl'],
-  HeatmapChart: ['animate', 'rtl'],
-  BoxplotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl'],
-  RadarChart: ['showLegend', 'rtl', 'legendPosition'],
+  GaugeChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl', 'toolbox', 'onSaveImage'],
+  CandlestickChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl', 'toolbox', 'onSaveImage'],
+  HeatmapChart: ['animate', 'rtl', 'toolbox', 'onSaveImage'],
+  BoxplotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl', 'toolbox', 'onSaveImage'],
+  RadarChart: ['showLegend', 'rtl', 'legendPosition', 'toolbox', 'onSaveImage'],
 }
 /**
  * Title + legend + tap tooltip — what the generic and accessor hosts draw
@@ -3150,7 +3376,7 @@ const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
  * their own frame), so nothing there reads the prop. Claiming it per-CLASS is
  * exactly the mistake the `CHROME_LOWERED` comment above records.
  */
-const FAMILY_CHROME: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl', 'legendPosition']
+const FAMILY_CHROME: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl', 'legendPosition', 'toolbox', 'onSaveImage']
 /**
  * Whether `<tag>`'s engine takes an entrance `progress` — the same set the web
  * canvas host tweens (`animates: true`). A host outside it (Pie, Radar,
@@ -3176,6 +3402,50 @@ export function chartChromeUnlowered(tag: string): readonly string[] {
     ...(family || tag === 'PlotChart' ? ['updateAnimation', 'updateDuration', 'universalTransition'] : []),
   ]
   return CHART_CHROME_PROPS.filter((p) => !lowered.includes(p))
+}
+
+/**
+ * The area brush a `<PlotChart>` asks for: a literal `brushType` (or a toolbox
+ * brush tool to take one up), `brushMode`, `outOfBrushOpacity`. Non-literal
+ * values warn and fall back, as every chart flag does.
+ */
+export function chartAreaBrushConfig(
+  read: (name: string) => unknown,
+  has: (name: string) => boolean,
+  toolboxBrush: readonly string[],
+  warn: (m: string) => void,
+  tag: string,
+  expr: (name: string) => ExprIR | undefined,
+  resolve: (name: string) => ExprIR | undefined,
+): { on: boolean; initial: string; keep: boolean; opacity: number; only: number[] } {
+  let initial = ''
+  if (has('brushType')) {
+    const t = read('brushType')
+    if (t === 'rect' || t === 'polygon' || t === 'lineX' || t === 'lineY') initial = t
+    else warn(`<${tag} brushType>: native needs a literal 'rect' | 'polygon' | 'lineX' | 'lineY'; the brush starts off.`)
+  }
+  let keep = false
+  if (has('brushMode')) {
+    const m = read('brushMode')
+    if (m === 'single' || m === 'multiple') keep = m === 'multiple'
+    else warn(`<${tag} brushMode>: native needs a literal 'single' | 'multiple'; single applies.`)
+  }
+  let opacity = 0.1
+  if (has('outOfBrushOpacity')) {
+    const o = read('outOfBrushOpacity')
+    if (typeof o === 'number') opacity = Math.max(0, Math.min(1, o))
+    else warn(`<${tag} outOfBrushOpacity>: native needs a literal number; 0.1 applies.`)
+  }
+  const only: number[] = []
+  const seriesExpr = expr('brushSeriesIndex')
+  if (seriesExpr !== undefined) {
+    const seriesLit = literalOf(seriesExpr, resolve)
+    const v = seriesLit === undefined ? undefined : irToValue(seriesLit, resolve)
+    const o = v !== undefined && v.ok ? v.value : undefined
+    if (Array.isArray(o) && o.every((x) => typeof x === 'number')) for (const x of o as number[]) only.push(x)
+    else warn(`<${tag} brushSeriesIndex>: native needs a literal number array; every series is brushed.`)
+  }
+  return { on: initial !== '' || toolboxBrush.length > 0, initial, keep, opacity, only }
 }
 
 /** The warning for a rich-hit `onSelect` on a host whose native tap can only report the engine's INDEX hit. */
@@ -3328,6 +3598,20 @@ export const PLOT_MARK_KINDS: Readonly<Record<string, string>> = {
 }
 
 /** Mark options that lower as literal fields of `Series`, with their default when absent. */
+/** Whether a state's `label` asks to be shown; its own styling is named, as the web reader names it. */
+function stateLabelShows(state: Extract<ExprIR, { kind: 'object' }>, name: string, si: number, resolve: (n: string) => ExprIR | undefined, warn: (m: string) => void): boolean {
+  const raw = objectField(state, 'label')
+  if (raw === undefined) return false
+  if (raw.kind === 'literal') return raw.value === true
+  const obj = literalOf(raw, resolve)
+  if (obj?.kind !== 'object') return false
+  for (const f of obj.fields) {
+    if (f.name === 'show') continue
+    warn(`<OptionChart option.series[${si}].${name}.label.${f.name}>: a state label takes the series' own label style; it was ignored.`)
+  }
+  return litBoolean(objectField(obj, 'show')) !== false
+}
+
 export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'string' | 'number' | 'boolean' | 'numbers' | 'strings' | 'rich'; default?: string | number | boolean }> = [
   { name: 'color', kind: 'string' },
   { name: 'width', kind: 'number', default: 2 },
@@ -3356,6 +3640,14 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'emphasisColor', kind: 'string' },
   { name: 'selectColor', kind: 'string' },
   { name: 'blurOpacity', kind: 'number' },
+  { name: 'emphasisScale', kind: 'number' },
+  { name: 'emphasisDisabled', kind: 'boolean' },
+  { name: 'emphasisWidth', kind: 'number' },
+  { name: 'blurWidth', kind: 'number' },
+  { name: 'emphasisAreaOpacity', kind: 'number' },
+  { name: 'blurAreaOpacity', kind: 'number' },
+  { name: 'emphasisLabel', kind: 'boolean' },
+  { name: 'selectLabel', kind: 'boolean' },
 ]
 
 /**
@@ -3421,12 +3713,9 @@ export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'strin
  */
 const PLOT_UNLOWERED_REASON: Readonly<Record<string, string>> = {
   // ── Mechanism is the web platform ──────────────────────────────────────
-  handle: '`createChartHandle().dispatch` is an imperative channel into a mounted DOM host; a native chart is a stateless expression with no handle to hold',
   crosshair: 'it is a HOVER readout, and a touch target has no hover state to read',
   link: 'it couples two charts through a shared DOM-side controller',
   keyboard: 'it makes the canvas focusable and announces through a DOM live region; the native canvas is named for VoiceOver / TalkBack instead (`describeChart`, which does cross)',
-  toolbox: 'it draws a DOWNLOAD button, and a phone has nowhere to download to',
-  onSaveImage: 'it fires when that download button is pressed',
   accessibleTable: 'it renders a hidden DOM `<table>`; the native canvas carries `describeChart`\'s sentence instead',
   facet: 'it renders a GRID of sub-plots rather than a chart setting; compose the panels yourself',
   facetColumns: 'it sizes the `facet` grid, which is web-only',
@@ -3454,4 +3743,145 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
 // `updateAnimation`, `updateDuration`, `toolbox`, `onSaveImage`,
 // `accessibleTable`) are reported through `chartChromeUnlowered` for the plot
 // host too — listing them here as well would warn twice.
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'onHighlight', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'crosshair', 'link', 'keyboard', 'toolbox', 'onSaveImage', 'accessibleTable', 'facet', 'facetColumns']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['onHighlight', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'crosshair', 'link', 'keyboard', 'accessibleTable', 'facet', 'facetColumns']
+
+/**
+ * A host's `visualMap` at COMPILE time: the web `VisualMapSpec` (as the web
+ * host takes it), or an ECharts `visualMap` object read through the web's own
+ * `visualMapSpec`, as the engine's `VisualStrip` literal plus the initial
+ * selection. Null when absent; a non-literal value is named.
+ */
+export function chartVisualMap(
+  expr: ExprIR | undefined,
+  resolve: (name: string) => ExprIR | undefined,
+  t: ChartHostTarget,
+  warn: (m: string) => void,
+  tag: string,
+): { strip: string; lo: string; hi: string; selected: string } | null {
+  if (expr === undefined) return null
+  const literal = literalOf(expr, resolve)
+  const v = literal === undefined ? undefined : irToValue(literal, resolve)
+  if (v === undefined || !v.ok || !isPlainRecord(v.value)) {
+    warn(`<${tag} visualMap>: native needs a literal visualMap; the chart renders without the strip.`)
+    return null
+  }
+  const raw = v.value
+  const spec: VisualMapSpec | undefined = Array.isArray(raw['domain']) && Array.isArray(raw['range']) ? (raw as unknown as VisualMapSpec) : visualMapSpec({ visualMap: raw, series: [] })?.spec
+  if (spec === undefined) return null
+  const s = visualStripOf(spec)
+  const str = (x: string): string => JSON.stringify(x)
+  const pieces = s.pieces.map((p) => t.struct('VisualPiece', [['label', str(p.label)], ['color', str(p.color)], ...(p.min !== undefined ? [['min', chartDouble(p.min)] as const] : []), ...(p.max !== undefined ? [['max', chartDouble(p.max)] as const] : [])]))
+  const strip = t.struct('VisualStrip', [
+    ['piecewise', String(s.piecewise)],
+    ['stops', t.list(s.stops.map(str))],
+    ['domain', t.struct('Domain', [['min', chartDouble(s.domain.min)], ['max', chartDouble(s.domain.max)]])],
+    ['pieces', t.list(pieces)],
+    ['vertical', String(s.vertical)],
+    ['highText', str(s.highText)],
+    ['lowText', str(s.lowText)],
+    ['fontSize', chartDouble(s.fontSize)],
+    ['labelColor', str(s.labelColor)],
+    ['itemSize', chartDouble(s.itemSize)],
+    ['itemLength', chartDouble(s.itemLength)],
+    ['calculable', String(s.calculable)],
+    ['outColor', str(s.outColor)],
+  ])
+  return { strip, lo: chartDouble(spec.range[0]), hi: chartDouble(spec.range[1]), selected: t.list(spec.selected.map(String)) }
+}
+
+/**
+ * `<PlotChart initialZoom zoomLimits>` on native: the window the chart opens
+ * on and the span limits every gesture is held to, as target literals. A
+ * non-literal value is named and ignored.
+ */
+export function chartZoomConfig(
+  readExpr: (name: string) => ExprIR | undefined,
+  resolve: (name: string) => ExprIR | undefined,
+  t: ChartHostTarget,
+  warn: (m: string) => void,
+  tag: string,
+): { initial: string | null; limits: string | null } {
+  const plainOf = (name: string): Record<string, unknown> | null | undefined => {
+    const e = readExpr(name)
+    if (e === undefined) return undefined
+    const literal = literalOf(e, resolve)
+    const v = literal === undefined ? undefined : irToValue(literal, resolve)
+    if (v === undefined || !v.ok || !isPlainRecord(v.value)) {
+      warn(`<${tag} ${name}>: native needs a literal object; the chart ignores it.`)
+      return null
+    }
+    return v.value
+  }
+  const init = plainOf('initialZoom')
+  const lim = plainOf('zoomLimits')
+  const n = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d)
+  const initial = init == null ? null : t.struct('ZoomWindow', [['start', chartDouble(Math.max(0, Math.min(1, n(init['start'], 0))))], ['end', chartDouble(Math.max(0, Math.min(1, n(init['end'], 1))))]])
+  const limits = lim == null ? null : t.struct('ZoomLimits', [['lock', String(lim['lock'] === true)], ['minSpan', chartDouble(n(lim['minSpan'], 0))], ['maxSpan', chartDouble(n(lim['maxSpan'], 1))]])
+  return { initial, limits }
+}
+
+/**
+ * `<PlotChart toolbox>` on native, read at compile time: the ordered tool
+ * names the engine lays out (the web's `toolboxTools` order) and whether a
+ * saved image was asked for as SVG, which a phone saves as PNG.
+ */
+export function chartToolboxConfig(
+  expr: ExprIR | undefined,
+  resolve: (name: string) => ExprIR | undefined,
+  warn: (m: string) => void,
+  tag: string,
+): { tools: string[]; dataZoom: boolean; magic: boolean; dataView: boolean; save: boolean; brush: string[] } | null {
+  if (expr === undefined) return null
+  const literal = literalOf(expr, resolve)
+  const v = literal === undefined ? undefined : irToValue(literal, resolve)
+  if (v === undefined || !v.ok || !isPlainRecord(v.value)) {
+    warn(`<${tag} toolbox>: native needs a literal toolbox object; the chart renders without it.`)
+    return null
+  }
+  const cfg = v.value
+  const tools: string[] = []
+  if (cfg['dataZoom'] === true) tools.push('dataZoom', 'dataZoomBack')
+  if (cfg['dataView'] === true) tools.push('dataView')
+  const magic = Array.isArray(cfg['magicType']) ? (cfg['magicType'] as unknown[]) : []
+  for (const t of magic) {
+    if (t === 'line') tools.push('magicLine')
+    else if (t === 'bar') tools.push('magicBar')
+    else if (t === 'stack') tools.push('magicStack')
+    else if (t === 'tiled') tools.push('magicTiled')
+  }
+  // The area-brush tools, as the web toolbox names them.
+  const brush: string[] = []
+  const BRUSH_TOOLS: Readonly<Record<string, string>> = { rect: 'brushRect', polygon: 'brushPolygon', lineX: 'brushLineX', lineY: 'brushLineY', keep: 'brushKeep', clear: 'brushClear' }
+  for (const b of Array.isArray(cfg['brush']) ? (cfg['brush'] as unknown[]) : []) {
+    const t = typeof b === 'string' ? BRUSH_TOOLS[b] : undefined
+    if (t === undefined) {
+      warn(`<${tag} toolbox.brush>: "${String(b)}" is not a brush tool (rect, polygon, lineX, lineY, keep, clear); it was skipped.`)
+      continue
+    }
+    tools.push(t)
+    brush.push(t)
+  }
+  if (cfg['restore'] === true) tools.push('restore')
+  const save = cfg['saveAsImage'] === true || cfg['saveAsImage'] === 'png' || cfg['saveAsImage'] === 'svg'
+  if (cfg['saveAsImage'] === 'svg') warn(`<${tag} toolbox.saveAsImage>: a phone saves the chart as a PNG, not an SVG.`)
+  if (save) tools.push('saveAsImage')
+  return { tools, dataZoom: cfg['dataZoom'] === true, magic: magic.length > 0, dataView: cfg['dataView'] === true, save, brush }
+}
+
+
+/**
+ * `handle.dispatch({ type, ... })` — the action literal as the crossing
+ * reducer's flat `ChartActionInput` fields (`legendInverseSelect`'s `count`
+ * rides in `series`, as the web handle's `toActionInput` puts it). A field the
+ * action does not name is absent here and takes the reducer's default at emit.
+ * Returns null when the argument is not an inline object with a string `type`.
+ */
+export function chartActionFields(arg: ExprIR | undefined): Partial<Record<'type' | 'index' | 'series' | 'start' | 'end' | 'brushType' | 'areas' | 'playing', ExprIR>> | null {
+  if (arg === undefined || arg.kind !== 'object' || (arg.spreads !== undefined && arg.spreads.length > 0)) return null
+  const out: Partial<Record<'type' | 'index' | 'series' | 'start' | 'end' | 'brushType' | 'areas' | 'playing', ExprIR>> = {}
+  for (const f of arg.fields) {
+    if (f.name === 'count') out.series = f.value
+    else if (f.name === 'type' || f.name === 'index' || f.name === 'series' || f.name === 'start' || f.name === 'end' || f.name === 'brushType' || f.name === 'areas' || f.name === 'playing') out[f.name] = f.value
+  }
+  return out.type === undefined ? null : out
+}

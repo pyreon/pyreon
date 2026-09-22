@@ -218,7 +218,7 @@ export function C() {
   })
 
   it('NO tap handler emits no gesture at all', () => {
-    expect(plot(``).code).not.toContain('DragGesture(minimumDistance: 0)')
+    expect(plot(``).code).not.toContain('SpatialTapGesture()')
   })
 })
 

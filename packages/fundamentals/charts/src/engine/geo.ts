@@ -4,7 +4,7 @@
 // once at startup (ECharts' registerMap shape), bounded by the app's map
 // count, and looked up by name from the option facade.
 
-import { HEAT_RAMP, rampColor } from './heat'
+import { HEAT_RAMP, rampColor, visualOutside } from './heat'
 import { approxTextWidth } from './treemap'
 import type { Domain, Double, DrawCmd, MeasureText, Pt, Rect } from './types'
 import { isFiniteNumber } from './scale'
@@ -113,6 +113,10 @@ export interface GeoOptions {
   /** Roam view: pixel offset applied after the zoom. */
   panX?: Double | undefined
   panY?: Double | undefined
+  /** visualMap selection: values outside it paint `outColor` (see `visualOutside`). */
+  inRange?: Domain | undefined
+  outBands?: Double[] | undefined
+  outColor?: string | undefined
 }
 
 export function projectLonLat(lon: Double, lat: Double, projection: GeoProjection): Pt {
@@ -302,7 +306,7 @@ export function renderGeo(layout: GeoLayout, values: GeoValue[], options?: GeoOp
     const v = geoValueOf(values, r.name)
     const has = isFiniteNumber(v) && progress > 0.0
     const t = !has ? 0.0 : span <= 0.0 ? 1.0 : ((v - lo) / span) * progress
-    const fill = has ? rampColor(stops, t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t) : emptyColor
+    const fill = !has ? emptyColor : visualOutside(v, options?.inRange, options?.outBands) ? options?.outColor ?? '#cccccc' : rampColor(stops, t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t)
     for (const ring of r.rings) out.push({ kind: 'polygon', points: ring, fill })
   }
   for (const r of layout.regions) {

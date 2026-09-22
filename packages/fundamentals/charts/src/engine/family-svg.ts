@@ -10,6 +10,7 @@
 // heat + layout/scale), never the canvas components: the components own
 // pointer handlers and reactivity, which have no meaning on a server.
 
+import type { HeatSelection } from './heat-chart'
 import { transposeCmds, transposeRect } from './rtl'
 import { fitCircle, layoutArcs, renderGauge, renderPie } from './arc'
 import { paletteAt } from './palette'
@@ -428,6 +429,8 @@ export interface HeatmapToSvgOptions<T> {
   /** `#rrggbb` ramp stops, cold to hot. */
   colors?: string[]
   gap?: Double
+  /** A visualMap's domain and selection (see `HeatSelection`). */
+  selection?: HeatSelection
   theme?: Partial<ChartTheme>
   measure?: MeasureText
   title?: string
@@ -491,6 +494,10 @@ export function heatmapToSvg<T>(options: HeatmapToSvgOptions<T>): string {
     plot,
     stops: options.colors ?? t.ramp,
     gap: options.gap,
+    domain: options.selection?.domain,
+    inRange: options.selection?.inRange,
+    outBands: options.selection?.outBands,
+    outColor: options.selection?.outColor,
   })
   const nc = grid.cols.length
   const nr = grid.rows.length
