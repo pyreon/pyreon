@@ -182,7 +182,7 @@ palettes.okabeIto }}>` pins or tracks a mode for everything below it; the
 
 ### Every host, one surface
 
-The seventeen family hosts share one canvas host: `title` / `subtitle` /
+The 20 family hosts share one canvas host: `title` / `subtitle` /
 `showTitle`, `showLegend`, `tooltip`, `animate`, `theme`, `onSelect` (the
 family's rich hit) and `onSelectIndex` (the engine's index — what the native
 tap reports) mean the same thing on every one of them. Bars round from
@@ -304,11 +304,19 @@ const sound = sonifyValues(price.map((d) => d.close), { duration: 3000, link }) 
 
 ## Install
 
+The two engines install differently. For Pyreon's own engine (`@pyreon/charts/plot`, every target) nothing else is needed:
+
+```bash
+bun add @pyreon/charts @pyreon/core @pyreon/reactivity
+```
+
+For the ECharts bridge (the default `@pyreon/charts` entry and `@pyreon/charts/webview`), add `echarts` too:
+
 ```bash
 bun add @pyreon/charts echarts @pyreon/core @pyreon/reactivity
 ```
 
-`echarts` is a peer dep (`>=5.6.0`). **You must add the [tslib alias](#bundler-fix-tslib-alias) to your `vite.config.ts`** or the page throws on ECharts load. The same alias is needed for browser tests; see `vitest.browser.ts` / `tslibBrowserAlias()` in `@pyreon/test-utils` for the test-side variant.
+`echarts` is an OPTIONAL peer (`>=5.6.0`): `/plot` never imports it, so a plot-only app leaves it out. **With the bridge you must add the [tslib alias](#bundler-fix-tslib-alias) to your `vite.config.ts`** or the page throws on ECharts load. The same alias is needed for browser tests; see `vitest.browser.ts` / `tslibBrowserAlias()` in `@pyreon/test-utils` for the test-side variant.
 
 ## Quick start
 

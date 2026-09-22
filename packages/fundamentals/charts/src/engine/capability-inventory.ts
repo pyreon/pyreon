@@ -1,140 +1,710 @@
 /**
- * Versioned capability ledger for the public option and runtime contracts.
+ * Versioned capability ledger for the ECharts option contract and the runtime
+ * contract around it.
  *
- * `direct` means the first-party draw-list engine has equivalent web,
- * SwiftUI and Compose paths. `hosted` means the unchanged browser renderer is
- * available through the supported native host. The two scores are deliberately
- * separate: hosted coverage never inflates the direct-native score.
+ * `direct` means the first-party draw-list engine (`<OptionChart>` over the
+ * generated engine). `hosted` means the unchanged ECharts renderer inside the
+ * supported native `<WebView>` host. The two scores are deliberately separate:
+ * hosted coverage never inflates the direct score.
+ *
+ * Every row carries a status PER TARGET (web, iOS, Android). A row is complete
+ * only when it is complete on all three; a row complete on the web and
+ * warning on a phone is not complete. Three rules keep the ledger honest, and
+ * `capability-inventory.test.ts` enforces each of them, so the score cannot
+ * drift upward on its own:
+ *
+ *  1. Evidence is a TEST. A source file proves nothing about behaviour, so a
+ *     row may only cite `*.test.ts(x)` files or a device UI test.
+ *  2. A native target other than `pending` cites at least one native-compiler
+ *     test; with none, nothing on that target is proven at all.
+ *  3. A live "unsupported" warning is a gap. Every such `warn()` site in the
+ *     option facade carries a `// ledger: <row-id>` tag, and a tagged row can
+ *     not be complete on the web. A site whose input is outside ECharts' own
+ *     contract (an unregistered map, a malformed markLine) is tagged
+ *     `invalid-input` instead, which never counts against a row.
+ *
+ *  4. The ECharts contract caps the row. Every key ECharts' own types define
+ *     is read, inert, or filed under a row in `echarts-contract.ts`
+ *     (enforced by `option-key-totality.test.ts`); while a row has an
+ *     unmapped key, no target of it can be complete, and the keys are listed
+ *     in its gaps.
+ *
+ * Any target short of `complete` must say why in `gaps`, in words a user can
+ * act on. The headline percentages are derived from these rows by
+ * `chartCapabilityScore`; nothing types a number by hand.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-17.41' as const
+import { ECHARTS_CONTRACT_VERSION, ECHARTS_SERIES_GAPS, ECHARTS_TOP_GAPS } from './echarts-contract'
+
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-22.3' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
 export type ChartCapabilityStatus = 'complete' | 'partial' | 'pending'
+export type ChartCapabilityTarget = 'web' | 'ios' | 'android'
+
+export const CHART_CAPABILITY_TARGETS: readonly ChartCapabilityTarget[] = ['web', 'ios', 'android']
 
 export interface ChartCapability {
   id: string
   area: ChartCapabilityArea
   mode: ChartCapabilityMode
+  /** Status on each target. */
+  targets: Readonly<Record<ChartCapabilityTarget, ChartCapabilityStatus>>
+  /** The weakest target's status — what the row is overall. */
   status: ChartCapabilityStatus
-  /** Package-relative proof; native compiler evidence may traverse to its sibling package. */
+  /** Why a target falls short of complete; required whenever one does. */
+  gaps: readonly string[]
+  /** Package-relative test files. Native-compiler and device tests traverse to their packages. */
   evidence: readonly string[]
 }
 
-const row = (
-  id: string,
-  area: ChartCapabilityArea,
-  mode: ChartCapabilityMode,
-  status: ChartCapabilityStatus,
-  ...evidence: string[]
-): ChartCapability => ({ id, area, mode, status, evidence })
+const RANK: Record<ChartCapabilityStatus, number> = { pending: 0, partial: 1, complete: 2 }
 
-export const CHART_CAPABILITIES: readonly ChartCapability[] = [
-  row('data.option-merge', 'data', 'direct', 'complete', 'src/engine/option-composite.test.ts'),
-  // A literal dataset resolves at COMPILE time in the native desugar through
-  // the same `resolveDataset` the web runs (`@pyreon/charts/option-layer`).
-  row('data.dataset', 'data', 'direct', 'complete', 'src/engine/option-layer.ts', '../../native/compiler/src/tests/chart-dataset-native.test.ts'),
-  row('data.dimensions-encode', 'data', 'direct', 'complete', 'src/engine/option-encode-tooltip.test.ts', '../../native/compiler/src/tests/chart-dataset-native.test.ts'),
-  // The built-in filter/sort transforms and every dataset-chaining shape
-  // (datasetIndex/datasetId, fromDatasetIndex/fromDatasetId,
-  // fromTransformResult) resolve at compile time through the SAME
-  // `resolveDataset` the web runs — not a reimplementation, so chained
-  // resolution is identical by construction. A REGISTERED transform is an
-  // arbitrary JS closure living in the page's registry; it cannot run
-  // outside JS on any target, so it is named as web-only rather than
-  // silently dropped — the same class of named limit as pictorial-bar's
-  // percent-string warning.
-  row('data.transforms', 'data', 'direct', 'complete', 'src/engine/option-transform.test.ts', '../../native/compiler/src/tests/chart-dataset-native.test.ts'),
-  // sampling / large / progressive resolve to bounded decimation on shared rows;
-  // the native OptionChart runs the SAME decimation at compile time against the
-  // option's static width (its `width` prop, or the web's own 640 default).
-  row('data.progressive-large', 'data', 'direct', 'complete', 'src/engine/option-sampling.test.ts', '../../native/compiler/src/tests/chart-sampling-native.test.ts'),
-  row('data.empty-null', 'data', 'direct', 'complete', 'src/engine/gaps.test.ts'),
+interface RowSpec {
+  web: ChartCapabilityStatus
+  /** iOS and Android together — they share one emitter pair and one engine. */
+  native: ChartCapabilityStatus
+  gaps?: readonly string[]
+  evidence: readonly string[]
+}
 
-  ...[
-    'bar', 'pie', 'scatter', 'effect-scatter', 'radar', 'tree',
-    'treemap', 'sunburst', 'boxplot', 'candlestick', 'heatmap', 'graph',
-    'funnel', 'gauge', 'river', 'custom',
-  ].map((name) => row(`series.${name}`, 'series', 'direct', 'complete', 'src/engine/option.test.ts')),
-  // Rows whose engine still emits a live "not supported" warning for a
-  // contract member are PARTIAL, whatever else they render. The path cited
-  // is the warning site; the row closes when the warning goes.
-  row('series.line', 'series', 'direct', 'complete', 'src/engine/option-edges.test.ts'),
-  row('series.sankey', 'series', 'direct', 'complete', 'src/engine/option-orient.test.ts', '../../native/compiler/src/tests/chart-orient-native.test.ts'),
-  row('series.map', 'series', 'direct', 'complete', 'src/engine/geo-roam.test.ts', 'src/engine/geo.browser.test.tsx', '../../native/compiler/src/tests/chart-map-roam-native.test.ts'),
-  row('series.lines', 'series', 'direct', 'complete', 'src/engine/lines-series.test.ts', '../../native/compiler/src/tests/chart-lines-native.test.ts'),
-  // The six geometry keys are draw-list geometry (`engine/pictorial.ts`): px / degree numbers cross; a percent string warns by name.
-  row('series.pictorial-bar', 'series', 'direct', 'complete', 'src/engine/pictorial.test.ts', 'src/engine/option-edges.test.ts', '../../native/compiler/src/tests/chart-pictorial-native.test.ts'),
-  row('series.extensions', 'series', 'hosted', 'complete', 'src/webview.ts'),
+/**
+ * The ECharts keys still unmapped for a row, from the measured contract
+ * (`echarts-contract.ts`): top-level keys by name, series keys as
+ * `type.key` — or by bare name when every series type shares the gap.
+ */
+function contractGapsFor(id: string): string[] {
+  const top = Object.entries(ECHARTS_TOP_GAPS).filter(([, r]) => r === id).map(([k]) => k)
+  const byKey = new Map<string, string[]>()
+  for (const [type, gaps] of Object.entries(ECHARTS_SERIES_GAPS)) {
+    for (const [k, r] of Object.entries(gaps)) if (r === id) byKey.set(k, [...(byKey.get(k) ?? []), type])
+  }
+  const typeCount = Object.keys(ECHARTS_SERIES_GAPS).length
+  const series = [...byKey].map(([k, types]) => (types.length === typeCount || types.length > 3 ? `series.${k}` : types.map((t) => `${t}.${k}`).join(', ')))
+  return [...top, ...series]
+}
 
-  ...['grid', 'title', 'legend', 'tooltip', 'aria']
-    .map((name) => row(`coordinates.${name}`, 'coordinates', 'direct', 'complete', 'src/engine/option.test.ts')),
-  row('coordinates.polar', 'coordinates', 'direct', 'complete', 'src/engine/polar.test.ts', '../../native/compiler/src/tests/chart-polar-scatter-native.test.ts'),
-  row('coordinates.calendar', 'coordinates', 'direct', 'complete', 'src/engine/option-orient.test.ts', '../../native/compiler/src/tests/chart-orient-native.test.ts'),
-  row('coordinates.parallel', 'coordinates', 'direct', 'complete', 'src/engine/option-orient.test.ts', '../../native/compiler/src/tests/chart-orient-native.test.ts'),
-  row('coordinates.single-axis', 'coordinates', 'direct', 'complete', 'src/engine/single-axis.test.ts'), // scatter / effectScatter + theme river: ECharts' own contract
-  row('coordinates.axes', 'coordinates', 'direct', 'complete', 'src/engine/option-axes.test.ts', '../../native/compiler/src/tests/chart-axes-native.test.ts'),
-  row('coordinates.visual-map', 'coordinates', 'direct', 'complete', 'src/engine/visual-strip.test.ts', 'src/engine/visual-map.test.ts', 'src/engine/heatmap.browser.test.tsx', '../../native/compiler/src/tests/chart-visual-map-native.test.ts'), // continuous + piecewise strips, calculable handles, piece toggles, range / selected, on heatmap, calendar and map hosts
-  // Every element type ECharts draws without a bitmap: text, rect, circle, line, polygon, polyline, bezierCurve, arc, ring, sector and group. An `image` element warns by name.
-  row('coordinates.graphic', 'coordinates', 'direct', 'complete', 'src/engine/graphic-shapes.test.ts', 'src/engine/cov-core-option-layer.test.ts', '../../native/compiler/src/tests/chart-graphic-native.test.ts'),
-  row('coordinates.mark-point', 'coordinates', 'direct', 'complete', 'src/engine/option-marks.test.ts', '../../native/compiler/src/tests/chart-marks-native.test.ts'),
-  row('coordinates.mark-line', 'coordinates', 'direct', 'complete', 'src/engine/option-marks.test.ts', '../../native/compiler/src/tests/chart-marks-native.test.ts'),
-  row('coordinates.geo', 'coordinates', 'direct', 'complete', 'src/engine/geo-roam.test.ts', 'src/engine/geo-series.test.ts', 'src/engine/geo.browser.test.tsx', '../../native/compiler/src/tests/chart-map-roam-native.test.ts'),
-  row('coordinates.data-zoom', 'coordinates', 'direct', 'complete', 'src/engine/option-zoom.test.ts', 'src/engine/zoom.browser.test.tsx', 'src/engine/option-chart.browser.test.tsx', '../../native/compiler/src/tests/chart-option-datazoom-native.test.ts'), // inside + slider on the category x axis: start/end or startValue/endValue, filterMode, zoomLock, minSpan/maxSpan; a y-axis zoom is named
-  row('coordinates.timeline', 'coordinates', 'direct', 'complete', 'src/engine/timeline-strip.test.ts', 'src/engine/option-chart.browser.test.tsx', '../../native/compiler/src/tests/chart-option-timeline-native.test.ts'), // checkpoints, play / prev / next, autoPlay with loop / rewind, on cartesian and family charts; native lowers every static step
-  row('coordinates.toolbox', 'coordinates', 'direct', 'complete', 'src/engine/toolbox.test.ts', 'src/engine/option-toolbox.test.ts', 'src/engine/toolbox.browser.test.tsx', '../../native/compiler/src/tests/chart-toolbox-native.test.ts'), // saveAsImage, restore, dataView, box dataZoom with back, magicType line / bar / stack / tiled, on PlotChart, OptionChart and family charts; a function-carrying myTool and a y-axis box zoom are named
-  row('coordinates.brush', 'coordinates', 'direct', 'complete', 'src/engine/brush-area.test.ts', 'src/engine/option-brush.test.ts', 'src/engine/brush-area.browser.test.tsx', 'src/engine/option-brush.browser.test.tsx', '../../native/compiler/src/tests/chart-brush-native.test.ts'), // rect / polygon / lineX / lineY, single or multiple, outOfBrush colorAlpha, seriesIndex, keep / clear tools, per-series report; the range brush (`brush` prop) too. Out-of-brush visuals other than colorAlpha, and inBrush styles, are named
-  row('coordinates.mark-area', 'coordinates', 'direct', 'complete', 'src/engine/option.test.ts', '../../native/compiler/src/tests/chart-option-family-native.test.ts'),
+const cap = (s: ChartCapabilityStatus, max: ChartCapabilityStatus): ChartCapabilityStatus => (RANK[s] > RANK[max] ? max : s)
 
-  row('runtime.init-dispose-resize', 'runtime', 'hosted', 'complete', 'src/webview.ts'),
-  row('runtime.option-updates', 'runtime', 'hosted', 'complete', 'src/webview.ts'),
-  row('runtime.actions', 'runtime', 'hosted', 'complete', 'src/webview.browser.test.tsx'),
-  row('runtime.events', 'runtime', 'hosted', 'complete', 'src/webview.browser.test.tsx'),
-  row('runtime.connected-groups', 'runtime', 'hosted', 'complete', 'src/webview-group.browser.test.tsx', '../../native/compiler/src/tests/chart-webview-native.test.ts'),
-  row('runtime.loading', 'runtime', 'hosted', 'complete', 'src/webview.browser.test.tsx'),
-  row('runtime.themes', 'runtime', 'hosted', 'complete', 'src/tests/webview.test.ts'),
-  row('runtime.maps', 'runtime', 'hosted', 'complete', 'src/tests/webview.test.ts'),
-  row('runtime.renderer-options', 'runtime', 'hosted', 'complete', 'src/webview.ts'),
-  row('runtime.extension-registration', 'runtime', 'hosted', 'complete', 'src/tests/webview.test.ts'),
-  row('runtime.option-updates', 'runtime', 'direct', 'complete', 'src/engine/OptionChart.tsx'),
-  // Still missing: brush, timelineChange / timelinePlayChange, selectDataRange, the roam actions.
-  row('runtime.actions', 'runtime', 'direct', 'complete', 'src/engine/chart-actions.test.ts', 'src/engine/link-dispatch.test.ts', 'src/engine/chart-actions.browser.test.tsx', 'src/engine/events-actions.browser.test.tsx', '../../native/compiler/src/tests/chart-handle-native.test.ts'), // highlight/downplay, select/unselect/toggleSelect, legend select/unselect/toggle/allSelect/inverseSelect, dataZoom, restore, showTip/hideTip, takeGlobalCursor, brush, timelineChange/timelinePlayChange — one crossing reducer; PlotChart and OptionChart handles on web and native
-  row('runtime.events', 'runtime', 'direct', 'complete', 'src/engine/events-actions.browser.test.tsx'),
-  row('runtime.connected-groups', 'runtime', 'direct', 'complete', 'src/engine/link.ts'),
-  row('runtime.resize', 'runtime', 'direct', 'complete', 'src/engine/canvas-host.tsx'),
+/**
+ * A row as declared, capped by the contract: while ANY ECharts key filed
+ * under the row is unmapped, no target can be complete, and the unmapped keys
+ * are named in the row's gaps. The declared status is therefore "complete
+ * apart from the keys the contract lists", and it takes effect only once that
+ * list is empty.
+ */
+const row = (id: string, area: ChartCapabilityArea, mode: ChartCapabilityMode, spec: RowSpec): ChartCapability => {
+  const unmapped = mode === 'direct' ? contractGapsFor(id) : []
+  const ceiling: ChartCapabilityStatus = unmapped.length > 0 ? 'partial' : 'complete'
+  const targets = { web: cap(spec.web, ceiling), ios: cap(spec.native, ceiling), android: cap(spec.native, ceiling) }
+  const status = CHART_CAPABILITY_TARGETS.map((t) => targets[t]).reduce((a, b) => (RANK[b] < RANK[a] ? b : a))
+  const gaps = [...(spec.gaps ?? []), ...(unmapped.length > 0 ? [`ECharts ${ECHARTS_CONTRACT_VERSION} keys not yet mapped (${unmapped.length}): ${unmapped.join(', ')}`] : [])]
+  return { id, area, mode, targets, status, gaps, evidence: spec.evidence }
+}
 
-  // `{a}`/`{b}`/`{c}`/`{d}` resolve per datum in the facade (the only layer that knows the name, the category and the share); the engine owns `\n` and the rich `{name|text}` segments.
-  row('presentation.labels-rich-text', 'presentation', 'direct', 'complete', 'src/engine/option-labels.test.ts', '../../native/compiler/src/tests/chart-labels-native.test.ts'),
-  row('presentation.states', 'presentation', 'direct', 'complete', 'src/engine/emphasis.test.ts', 'src/engine/states-render.test.ts', 'src/engine/option-states.test.ts', 'src/engine/option-chart-states.test.tsx', 'src/engine/states.browser.test.tsx', '../../native/compiler/src/tests/chart-states-native.test.ts'), // emphasis/select/blur fills, state stroke/area opacity/scale/labels, emphasis.disabled, blurScope, and selectedMode 'series' (whole-series pin, on PlotChart and OptionChart, web and native) all cross; the hover stays a datum column (no per-series focus — an architectural limit of the shared highlight index), and select.lineStyle/areaStyle, select.disabled, blur.label and a state label's own styling are named
-  row('presentation.symbols', 'presentation', 'direct', 'complete', 'src/engine/option-symbols.test.ts', '../../native/compiler/src/tests/chart-symbols-native.test.ts'),
-  row('presentation.gradients-patterns', 'presentation', 'direct', 'complete', 'src/engine/option-gradients.test.ts', 'src/engine/svg-path.test.ts', '../../native/compiler/src/tests/chart-gradients-native.test.ts'), // linear + radial gradients, decals and image fills cross; a line STROKE image is named (ECharts strokes take no pattern either)
-  row('presentation.decals', 'presentation', 'direct', 'complete', 'src/engine/pattern-marks.test.ts', 'src/engine/svg-path.test.ts', 'src/engine/option-fills-marks.test.ts', '../../native/compiler/src/tests/chart-decals-native.test.ts'), // symbols incl. path:// and image://, pitch, rotation, aria.decal
-  row('presentation.animation', 'presentation', 'direct', 'complete', 'src/engine/cmd-tween.ts', '../../native/compiler/src/tests/native-chart-transition-parity.test.ts'),
-  // Compile-time parity only: the completion plan requires native canvas
-  // state/timing plus device evidence before this row closes.
-  // `OptionChart` already forwarded the flag to its shared canvas host;
-  // `PlotChart` had the same host-level machinery underneath but never
-  // exposed `universalTransition` as a prop, so a real (typed) app could
-  // never reach it there — the gap was the missing prop, not the engine.
-  // `PlotChart` now runs its OWN command-level morph (`coreCmdsFor` in
-  // Chart.tsx) for a series/row-count change, using the same `cmd-tween.ts`
-  // machinery the canvas host does; native's runtime canvas is shape-agnostic
-  // (it morphs whatever `DrawCmd[]` it is handed) and already emitted the
-  // flag for both facades.
-  row('presentation.universal-transition', 'presentation', 'direct', 'complete', 'src/engine/cmd-tween.test.ts', 'src/engine/universal-transition.browser.test.tsx', '../../native/compiler/src/tests/native-chart-transition-parity.test.ts'),
-  row('presentation.locale', 'presentation', 'direct', 'complete', 'src/engine/locale.ts'),
-  row('presentation.rtl', 'presentation', 'direct', 'complete', 'src/engine/rtl.ts'),
-  row('presentation.export-snapshot', 'presentation', 'direct', 'complete', 'src/engine/svg.ts'),
-] as const
+const NATIVE = '../../native/compiler/src/tests/'
+const IOS_DEVICE = '../../../examples/native-tasks-ios/iosUITests/PyreonTasksUITests.swift'
+const ANDROID_DEVICE = '../../../examples/native-tasks-android/app/src/androidTest/kotlin/com/pyreon/TasksAppInstrumentedTest.kt'
+const DEVICE = [IOS_DEVICE, ANDROID_DEVICE]
+
+/**
+ * The one gap every option row shares on native today: `<OptionChart>` is
+ * lowered by a COMPILE-TIME desugar, so the option has to be a literal. A
+ * signal-driven or fetched option warns and renders nothing, which the web
+ * handles as a matter of course.
+ */
+const LITERAL_ONLY =
+  'native: the option is resolved at compile time, so it must be a literal; a signal-driven or fetched option warns and renders nothing'
+/** Native `<OptionChart>` reads `series[0]` only. */
+const FIRST_SERIES_ONLY = 'native: only series[0] is lowered'
+
+// Built inside a PURE IIFE: every `row(...)` is a module-level call, which a
+// bundler must otherwise keep in every bundle that imports this entry — the
+// ledger then ships in `plot-minimal` whether or not an app reads it.
+export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ (() => [
+  // ── data ──────────────────────────────────────────────────────────────
+  row('data.option-merge', 'data', 'direct', {
+    web: 'complete',
+    native: 'pending',
+    gaps: ['native: there is no runtime setOption, so merge, replaceMerge and notMerge have nothing to act on'],
+    evidence: ['src/engine/option-composite.test.ts', 'src/engine/option-composite-merge.test.ts'],
+  }),
+  row('data.dataset', 'data', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/option-layer.test.ts', NATIVE + 'chart-dataset-native.test.ts'],
+  }),
+  row('data.dimensions-encode', 'data', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/option-encode-tooltip.test.ts', 'src/engine/option-layer-encode-arrays.test.ts', NATIVE + 'chart-dataset-native.test.ts'],
+  }),
+  row('data.transforms', 'data', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: [
+      'the ECharts built-in `boxplot` and `regression` transform types are not registered (filter and sort are)',
+      LITERAL_ONLY,
+      'native: a transform registered with registerChartTransform lives in the page registry and does not cross',
+    ],
+    evidence: ['src/engine/option-transform.test.ts', NATIVE + 'chart-dataset-native.test.ts'],
+  }),
+  row('data.progressive-large', 'data', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['sampling is skipped when a series sits on a second value x axis, and some sampling spellings are named instead of honoured', LITERAL_ONLY],
+    evidence: ['src/engine/option-sampling.test.ts', NATIVE + 'chart-sampling-native.test.ts'],
+  }),
+  row('data.empty-null', 'data', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: ['native: no native test asserts that a null datum renders as a gap'],
+    evidence: ['src/engine/gaps.test.ts', NATIVE + 'chart-hosts.test.ts'],
+  }),
+  row('data.key-totality', 'data', 'direct', {
+    web: 'pending',
+    native: 'pending',
+    gaps: [
+      'no test enumerates the ECharts 6.1 option keys: a key the facade does not know falls to a generic "has no mapping yet" warning, so the size of that set is unmeasured',
+    ],
+    evidence: ['src/engine/option.test.ts'],
+  }),
+
+  // ── series ────────────────────────────────────────────────────────────
+  row('series.line', 'series', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['`connectNulls` is not a known series key and is ignored with a warning', LITERAL_ONLY],
+    evidence: ['src/engine/option-edges.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+  }),
+  row('series.bar', 'series', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['`barWidth`, `barGap`, `barCategoryGap` and `barMaxWidth` are read on the polar coordinate only; on a grid they are ignored with a warning', LITERAL_ONLY],
+    evidence: ['src/engine/option.test.ts', 'src/engine/horizontal.test.ts', NATIVE + 'chart-axes-native.test.ts'],
+  }),
+  row('series.pie', 'series', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['`roseType`, `startAngle`, `padAngle`, `minAngle`, `avoidLabelOverlap` and `labelLine` are unmapped', LITERAL_ONLY],
+    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+  }),
+  row('series.scatter', 'series', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+  }),
+  row('series.effect-scatter', 'series', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['`rippleEffect` period, scale and brushType are not drawn — the ripple is one fixed shape', LITERAL_ONLY],
+    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-polar-scatter-native.test.ts'],
+  }),
+  row('series.radar', 'series', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['radar `shape: "circle"`, `axisName`, `splitArea` and `splitLine` styling are unmapped', LITERAL_ONLY],
+    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+  }),
+  row('series.tree', 'series', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+  }),
+  row('series.treemap', 'series', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['`levels`, `upperLabel`, `visualDimension` and `childrenVisibleMin` are unmapped', LITERAL_ONLY],
+    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+  }),
+  row('series.sunburst', 'series', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+  }),
+  row('series.boxplot', 'series', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['an option boxplot renders as a static SVG on the web — no hit test, tooltip or keyboard — because `<BoxplotChart>` takes raw observations, not five-number summaries', LITERAL_ONLY],
+    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+  }),
+  row('series.candlestick', 'series', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['`itemStyle.color0` / `borderColor0` are unmapped; a volume overlay needs a second series (see series.multi-series)', LITERAL_ONLY],
+    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+  }),
+  row('series.heatmap', 'series', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/option.test.ts', 'src/engine/heatmap.browser.test.tsx', NATIVE + 'chart-option-family-native.test.ts'],
+  }),
+  row('series.graph', 'series', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['a `symbolSize` FUNCTION is not supported', LITERAL_ONLY],
+    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+  }),
+  row('series.sankey', 'series', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/option-orient.test.ts', NATIVE + 'chart-orient-native.test.ts'],
+  }),
+  row('series.funnel', 'series', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+  }),
+  row('series.gauge', 'series', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['one value per gauge; `pointer`, `anchor`, `axisTick`, `splitLine`, `axisLabel` and `title` styling are unmapped', LITERAL_ONLY],
+    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+  }),
+  row('series.river', 'series', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+  }),
+  row('series.custom', 'series', 'direct', {
+    web: 'complete',
+    native: 'pending',
+    gaps: ['native: `renderItem` is a function run per datum at render time, and no native path lowers it'],
+    evidence: ['src/engine/custom-series.test.ts'],
+  }),
+  row('series.map', 'series', 'direct', {
+    web: 'complete',
+    native: 'pending',
+    gaps: ['native: an `<OptionChart>` map series does not lower (the typed `<MapChart>` host does, from a precomputed GeoShape[])'],
+    evidence: ['src/engine/geo-roam.test.ts', 'src/engine/geo.browser.test.tsx'],
+  }),
+  row('series.lines', 'series', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['the trail head is always a circle, and effect keys outside show/period/trailLength/color/symbolSize/loop are ignored with a warning', LITERAL_ONLY],
+    evidence: ['src/engine/lines-series.test.ts', NATIVE + 'chart-lines-native.test.ts', IOS_DEVICE],
+  }),
+  row('series.pictorial-bar', 'series', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['percent strings for symbolSize and symbolOffset are not supported, and path:// / image:// symbols draw as a rect', LITERAL_ONLY],
+    evidence: ['src/engine/pictorial.test.ts', 'src/engine/option-edges.test.ts', NATIVE + 'chart-pictorial-native.test.ts'],
+  }),
+  row('series.multi-series', 'series', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: [
+      'only radar, polar, boxplot, geo and single-axis families render more than one series; every other family draws series[0] and warns',
+      'a family series never shares a chart with a cartesian series (candlestick + volume, pie beside a line)',
+      FIRST_SERIES_ONLY,
+    ],
+    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+  }),
+  row('series.chord', 'series', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/chord.test.ts', NATIVE + 'chart-chord-native.test.ts'],
+  }),
+  row('series.parallel', 'series', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/parallel.test.ts', NATIVE + 'chart-orient-native.test.ts'],
+  }),
+  row('series.extensions', 'series', 'hosted', {
+    web: 'complete',
+    native: 'partial',
+    gaps: ['native: the WebView bridge is emit- and compile-proven only; no device test drives it'],
+    evidence: ['src/tests/webview.test.ts', 'src/webview.browser.test.tsx', NATIVE + 'chart-webview-native.test.ts'],
+  }),
+
+  // ── coordinates & components ──────────────────────────────────────────
+  row('coordinates.grid', 'coordinates', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/option-composite.test.ts', NATIVE + 'chart-axes-native.test.ts'],
+  }),
+  row('coordinates.title', 'coordinates', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/title-edges.test.ts', NATIVE + 'chart-chrome-native.test.ts'],
+  }),
+  row('coordinates.legend', 'coordinates', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/legend-toggle.test.ts', 'src/engine/legend-scroll.test.ts', NATIVE + 'chart-legend-change-native.test.ts'],
+  }),
+  row('coordinates.tooltip', 'coordinates', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: [
+      '`appendToBody` / `appendTo`, the richText render mode and `displayMode: "multipleByCoordSys"` are named and not honoured',
+      'a FAMILY option chart (pie, sankey, …) shows its host\'s own tooltip; the option\'s `formatter` / `position` apply to cartesian charts only',
+      LITERAL_ONLY,
+    ],
+    evidence: ['src/engine/option-tooltip.test.ts', 'src/engine/tooltip-format.test.ts', 'src/engine/tooltip-html.test.ts', 'src/engine/option-tooltip.browser.test.tsx', NATIVE + 'chart-plot-tooltip-native.test.ts'],
+  }),
+  row('coordinates.axis-pointer', 'coordinates', 'direct', {
+    web: 'partial',
+    native: 'pending',
+    gaps: [
+      '`tooltip.axisPointer` (line / shadow / cross with axis labels) draws on a vertical category axis; the top-level `axisPointer` component, `xAxis.axisPointer` and horizontal (category-on-y) charts are not covered',
+      'native: the axis pointer follows a hover, which a touch target does not have',
+    ],
+    evidence: ['src/engine/axis-pointer.test.ts', 'src/engine/option-tooltip.browser.test.tsx'],
+  }),
+  row('coordinates.aria', 'coordinates', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['only `aria.decal.show` is read; `aria.enabled` and the `aria.label` templates are ignored (the engine writes its own description)', LITERAL_ONLY],
+    evidence: ['src/engine/option-fills-marks.test.ts', NATIVE + 'chart-decals-native.test.ts'],
+  }),
+  row('coordinates.polar', 'coordinates', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['a `custom` series on the polar coordinate is skipped with a warning', LITERAL_ONLY],
+    evidence: ['src/engine/polar.test.ts', NATIVE + 'chart-polar-scatter-native.test.ts'],
+  }),
+  row('coordinates.calendar', 'coordinates', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/option-orient.test.ts', NATIVE + 'chart-orient-native.test.ts'],
+  }),
+  row('coordinates.parallel', 'coordinates', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/option-orient.test.ts', NATIVE + 'chart-orient-native.test.ts'],
+  }),
+  row('coordinates.single-axis', 'coordinates', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['an option single-axis chart renders as a static SVG on the web (no interactive host)', LITERAL_ONLY, 'native: SingleAxisChart has no device test'],
+    evidence: ['src/engine/single-axis.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+  }),
+  row('coordinates.axes', 'coordinates', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: [
+      'a log scale applies to the first y axis only',
+      'two y axes cannot share a side (ECharts offsets them); a third x axis is ignored',
+      'axis keys outside the mapped set are ignored with a warning, and an axis label formatter takes a function or the {value} template only',
+      LITERAL_ONLY,
+    ],
+    evidence: ['src/engine/option-axes.test.ts', 'src/engine/option-axes-mapping.test.ts', NATIVE + 'chart-axes-native.test.ts'],
+  }),
+  row('coordinates.visual-map', 'coordinates', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/visual-strip.test.ts', 'src/engine/visual-map.test.ts', 'src/engine/heatmap.browser.test.tsx', NATIVE + 'chart-visual-map-native.test.ts', ...DEVICE],
+  }),
+  row('coordinates.graphic', 'coordinates', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['graphic `image` elements are skipped (the draw list has no bitmap command)', LITERAL_ONLY],
+    evidence: ['src/engine/graphic-shapes.test.ts', 'src/engine/cov-core-option-layer.test.ts', NATIVE + 'chart-graphic-native.test.ts'],
+  }),
+  row('coordinates.mark-point', 'coordinates', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['markPoint statistics run over the y values only (`valueDim` is ignored)', LITERAL_ONLY],
+    evidence: ['src/engine/option-marks.test.ts', NATIVE + 'chart-marks-native.test.ts'],
+  }),
+  row('coordinates.mark-line', 'coordinates', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['markLine data outside average/max/min/median, xAxis, yAxis and point-to-point is skipped', LITERAL_ONLY],
+    evidence: ['src/engine/option-marks.test.ts', NATIVE + 'chart-marks-native.test.ts'],
+  }),
+  row('coordinates.mark-area', 'coordinates', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['a markArea bound by a statistic (`type: "min"`) or a coord pair is skipped; only numeric xAxis/yAxis bounds draw', LITERAL_ONLY],
+    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+  }),
+  row('coordinates.geo', 'coordinates', 'direct', {
+    web: 'partial',
+    native: 'pending',
+    gaps: [
+      '`center`, `aspectScale`, `layoutCenter` and `layoutSize` are ignored (the map fits the box), and graph/custom series on the geo are skipped',
+      'native: an `<OptionChart>` geo option does not lower (the typed `<MapChart>` host does)',
+    ],
+    evidence: ['src/engine/geo-roam.test.ts', 'src/engine/geo-series.test.ts', 'src/engine/geo.browser.test.tsx'],
+  }),
+  row('coordinates.data-zoom', 'coordinates', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['only the category x axis zooms, and only the first x axis; a y-axis or value-axis dataZoom is ignored with a warning', LITERAL_ONLY],
+    evidence: ['src/engine/option-zoom.test.ts', 'src/engine/zoom.browser.test.tsx', NATIVE + 'chart-option-datazoom-native.test.ts', ...DEVICE],
+  }),
+  row('coordinates.timeline', 'coordinates', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/timeline-strip.test.ts', 'src/engine/option-chart.browser.test.tsx', NATIVE + 'chart-option-timeline-native.test.ts', ...DEVICE],
+  }),
+  row('coordinates.toolbox', 'coordinates', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['a custom tool (`myTool*`) and features outside the mapped set are skipped, and the box zoom ignores its y axis', LITERAL_ONLY],
+    evidence: ['src/engine/toolbox.test.ts', 'src/engine/option-toolbox.test.ts', 'src/engine/toolbox.browser.test.tsx', NATIVE + 'chart-toolbox-native.test.ts', ...DEVICE],
+  }),
+  row('coordinates.brush', 'coordinates', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['out-of-brush visuals other than colorAlpha and every in-brush visual are ignored; brush binds the one grid only', LITERAL_ONLY],
+    evidence: ['src/engine/brush-area.test.ts', 'src/engine/option-brush.test.ts', 'src/engine/brush-area.browser.test.tsx', NATIVE + 'chart-brush-native.test.ts', ...DEVICE],
+  }),
+  row('coordinates.matrix', 'coordinates', 'direct', {
+    web: 'pending',
+    native: 'pending',
+    gaps: ['the ECharts 6 `matrix` coordinate system (a grid of cells series are placed into) is not implemented'],
+    evidence: ['src/engine/option.test.ts'],
+  }),
+  row('coordinates.thumbnail', 'coordinates', 'direct', {
+    web: 'pending',
+    native: 'pending',
+    gaps: ['the ECharts 6 `thumbnail` component (an overview of a roamed chart) is not implemented'],
+    evidence: ['src/engine/option.test.ts'],
+  }),
+  row('coordinates.media', 'coordinates', 'direct', {
+    web: 'pending',
+    native: 'pending',
+    gaps: ['`media` responsive queries are not read at all'],
+    evidence: ['src/engine/option.test.ts'],
+  }),
+
+  // ── runtime ───────────────────────────────────────────────────────────
+  row('runtime.init-dispose-resize', 'runtime', 'hosted', {
+    web: 'complete',
+    native: 'partial',
+    gaps: ['native: the WebView bridge is emit- and compile-proven only; no device test drives it'],
+    evidence: ['src/webview.browser.test.tsx', NATIVE + 'chart-webview-native.test.ts'],
+  }),
+  row('runtime.option-updates', 'runtime', 'hosted', {
+    web: 'complete',
+    native: 'partial',
+    gaps: ['native: the WebView bridge is emit- and compile-proven only; no device test drives it'],
+    evidence: ['src/webview.browser.test.tsx', NATIVE + 'chart-webview-native.test.ts'],
+  }),
+  row('runtime.actions', 'runtime', 'hosted', {
+    web: 'complete',
+    native: 'partial',
+    gaps: ['native: the WebView bridge is emit- and compile-proven only; no device test drives it'],
+    evidence: ['src/webview.browser.test.tsx', NATIVE + 'chart-webview-native.test.ts'],
+  }),
+  row('runtime.events', 'runtime', 'hosted', {
+    web: 'complete',
+    native: 'partial',
+    gaps: ['native: the WebView bridge is emit- and compile-proven only; no device test drives it'],
+    evidence: ['src/webview.browser.test.tsx', NATIVE + 'chart-webview-native.test.ts'],
+  }),
+  row('runtime.connected-groups', 'runtime', 'hosted', {
+    web: 'complete',
+    native: 'partial',
+    gaps: ['native: the WebView bridge is emit- and compile-proven only; no device test drives it'],
+    evidence: ['src/webview-group.browser.test.tsx', NATIVE + 'chart-webview-native.test.ts'],
+  }),
+  row('runtime.loading', 'runtime', 'hosted', {
+    web: 'complete',
+    native: 'partial',
+    gaps: ['native: the WebView bridge is emit- and compile-proven only; no device test drives it'],
+    evidence: ['src/webview.browser.test.tsx', NATIVE + 'chart-webview-native.test.ts'],
+  }),
+  row('runtime.themes', 'runtime', 'hosted', {
+    web: 'complete',
+    native: 'partial',
+    gaps: ['native: the WebView bridge is emit- and compile-proven only; no device test drives it'],
+    evidence: ['src/tests/webview.test.ts', NATIVE + 'chart-webview-native.test.ts'],
+  }),
+  row('runtime.maps', 'runtime', 'hosted', {
+    web: 'complete',
+    native: 'partial',
+    gaps: ['native: the WebView bridge is emit- and compile-proven only; no device test drives it'],
+    evidence: ['src/tests/webview.test.ts', NATIVE + 'chart-webview-native.test.ts'],
+  }),
+  row('runtime.renderer-options', 'runtime', 'hosted', {
+    web: 'complete',
+    native: 'partial',
+    gaps: ['native: the WebView bridge is emit- and compile-proven only; no device test drives it'],
+    evidence: ['src/tests/webview.test.ts', NATIVE + 'chart-webview-native.test.ts'],
+  }),
+  row('runtime.extension-registration', 'runtime', 'hosted', {
+    web: 'complete',
+    native: 'partial',
+    gaps: ['native: the WebView bridge is emit- and compile-proven only; no device test drives it'],
+    evidence: ['src/tests/webview.test.ts', NATIVE + 'chart-webview-native.test.ts'],
+  }),
+  row('runtime.option-updates', 'runtime', 'direct', {
+    web: 'complete',
+    native: 'pending',
+    gaps: ['native: the option is fixed at compile time, so there is nothing to update'],
+    evidence: ['src/engine/option-chart.test.ts', 'src/engine/option-chart-states.test.tsx'],
+  }),
+  row('runtime.actions', 'runtime', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: ['native: the dispatch handle lowers for the typed hosts; `<OptionChart handle>` actions are proven by emit only'],
+    evidence: ['src/engine/chart-actions.test.ts', 'src/engine/link-dispatch.test.ts', 'src/engine/chart-actions.browser.test.tsx', 'src/engine/events-actions.browser.test.tsx', NATIVE + 'chart-handle-native.test.ts'],
+  }),
+  row('runtime.events', 'runtime', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: ['native: a tap reports onSelectIndex; onClick, onDoubleClick, onContextMenu, onHighlight and onRendered are named and dropped'],
+    evidence: ['src/engine/events-actions.browser.test.tsx', NATIVE + 'chart-selection-native.test.ts', ...DEVICE],
+  }),
+  row('runtime.connected-groups', 'runtime', 'direct', {
+    web: 'complete',
+    native: 'pending',
+    gaps: ['native: `link` couples charts through a DOM-side controller and is named and dropped'],
+    evidence: ['src/engine/link.browser.test.tsx', 'src/engine/link-dispatch.test.ts'],
+  }),
+  row('runtime.resize', 'runtime', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: ['native: the canvas lays out in its frame, but no native test changes the frame and asserts a re-layout'],
+    evidence: ['src/engine/canvas-host.test.tsx', NATIVE + 'chart-hosts.test.ts'],
+  }),
+
+  // ── presentation ──────────────────────────────────────────────────────
+  row('presentation.labels-rich-text', 'presentation', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['a rich segment takes colour and size only (no weight, background, padding); formatter placeholders beyond {a} {b} {c} {d} are left as written', LITERAL_ONLY],
+    evidence: ['src/engine/option-labels.test.ts', 'src/engine/option-label-formatter.test.ts', NATIVE + 'chart-labels-native.test.ts'],
+  }),
+  row('presentation.states', 'presentation', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: [
+      '`emphasis.focus` ancestor/descendant/adjacency, `select.disabled`, `select.lineStyle`/`areaStyle`, `blur.label`, state labels and `selectedMode: "series"` are named and ignored',
+      'native: the hover half of emphasis does not cross (a tap pins instead)',
+      LITERAL_ONLY,
+    ],
+    evidence: ['src/engine/emphasis.test.ts', 'src/engine/states-render.test.ts', 'src/engine/option-states.test.ts', 'src/engine/option-chart-states.test.tsx', 'src/engine/states.browser.test.tsx', NATIVE + 'chart-states-native.test.ts'],
+  }),
+  row('presentation.symbols', 'presentation', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['`path://`, `image://`, `pin`, `arrow` and `none` symbols draw as a circle', LITERAL_ONLY],
+    evidence: ['src/engine/option-symbols.test.ts', NATIVE + 'chart-symbols-native.test.ts'],
+  }),
+  row('presentation.gradients-patterns', 'presentation', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['a line STROKE cannot be an image pattern (fills can)', LITERAL_ONLY],
+    evidence: ['src/engine/option-gradients.test.ts', 'src/engine/svg-path.test.ts', NATIVE + 'chart-gradients-native.test.ts'],
+  }),
+  row('presentation.decals', 'presentation', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['`path://` and `image://` decal symbols are not drawn', LITERAL_ONLY],
+    evidence: ['src/engine/pattern-marks.test.ts', 'src/engine/option-fills-marks.test.ts', NATIVE + 'chart-decals-native.test.ts', ...DEVICE],
+  }),
+  row('presentation.layering', 'presentation', 'direct', {
+    web: 'pending',
+    native: 'pending',
+    gaps: ['series are drawn in declaration order; `z`, `zlevel` and `blendMode` do not reorder or composite them'],
+    evidence: ['src/engine/option.test.ts'],
+  }),
+  row('presentation.palette', 'presentation', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/presets.test.ts', 'src/engine/theme.test.ts', NATIVE + 'chart-theme-native.test.ts'],
+  }),
+  row('presentation.theme', 'presentation', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/theme.test.ts', 'src/engine/theme-locale.test.ts', NATIVE + 'chart-theme-native.test.ts'],
+  }),
+  row('presentation.animation', 'presentation', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: [
+      'per-datum FUNCTION durations and delays (ECharts\' staggered entrance) fall back to one timeline, and series that ask for different timings share the first one',
+      '`stateAnimation` (the hover / select state transition) and pie / sunburst `animationType` are not played',
+      'native: the easing table and the option\'s timings do not cross yet (the native entrance is the fixed cubic ease-out)',
+      LITERAL_ONLY,
+    ],
+    evidence: ['src/engine/easing.test.ts', 'src/engine/animation-option.test.ts', 'src/engine/option-animation.browser.test.tsx', 'src/engine/cmd-tween.test.ts', NATIVE + 'native-chart-transition-parity.test.ts', NATIVE + 'chart-entrance-native.test.ts'],
+  }),
+  row('presentation.universal-transition', 'presentation', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/cmd-tween.test.ts', 'src/engine/universal-transition.browser.test.tsx', NATIVE + 'native-chart-transition-parity.test.ts', ...DEVICE],
+  }),
+  row('presentation.locale', 'presentation', 'direct', {
+    web: 'partial',
+    native: 'partial',
+    gaps: ['no ECharts locale packs ship; a locale is registered by hand with registerLocale', LITERAL_ONLY],
+    evidence: ['src/engine/theme-locale.test.ts', NATIVE + 'chart-locale-native.test.ts'],
+  }),
+  row('presentation.rtl', 'presentation', 'direct', {
+    web: 'complete',
+    native: 'complete',
+    evidence: ['src/engine/rtl.test.ts', 'src/engine/rtl.browser.test.tsx', NATIVE + 'chart-rtl-native.test.ts', NATIVE + 'native-chart-mirror-parity.test.ts'],
+  }),
+  row('presentation.export-snapshot', 'presentation', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: ['native: saveAsImage hands back a PNG; the SVG export is named and dropped'],
+    evidence: ['src/engine/svg.test.ts', 'src/engine/toolbox.browser.test.tsx', NATIVE + 'chart-toolbox-native.test.ts', ...DEVICE],
+  }),
+  row('presentation.a11y-keyboard', 'presentation', 'direct', {
+    web: 'complete',
+    native: 'pending',
+    gaps: ['native: `keyboard` is named and dropped — the canvas is not focusable and there are no accessibility actions to step through datums'],
+    evidence: ['src/engine/interaction.browser.test.tsx', 'src/engine/host-sweep.browser.test.tsx'],
+  }),
+  row('presentation.a11y-table', 'presentation', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: ['native: the canvas carries the describeChart sentence; `accessibleTable` (the per-datum table) is named and dropped'],
+    evidence: ['src/engine/canvas-host.test.tsx', 'src/engine/a11y-extras-cells.test.ts', NATIVE + 'chart-native-a11y.test.ts', NATIVE + 'chart-a11y-full-data-native.test.ts'],
+  }),
+] as const)()
 
 export interface ChartCapabilityScore {
   complete: number
+  partial: number
+  pending: number
   total: number
   percent: number
 }
 
-export function chartCapabilityScore(mode: ChartCapabilityMode): ChartCapabilityScore {
+/**
+ * The share of `mode` rows that are complete — on one `target`, or on EVERY
+ * target when none is given (a row counts only once it is complete on all
+ * three).
+ */
+export function chartCapabilityScore(mode: ChartCapabilityMode, target?: ChartCapabilityTarget): ChartCapabilityScore {
   const rows = CHART_CAPABILITIES.filter((item) => item.mode === mode)
-  const complete = rows.filter((item) => item.status === 'complete').length
-  return { complete, total: rows.length, percent: rows.length === 0 ? 0 : Math.floor((complete * 100) / rows.length) }
+  const statusOf = (item: ChartCapability): ChartCapabilityStatus => (target === undefined ? item.status : item.targets[target])
+  const count = (s: ChartCapabilityStatus): number => rows.filter((item) => statusOf(item) === s).length
+  const complete = count('complete')
+  return {
+    complete,
+    partial: count('partial'),
+    pending: count('pending'),
+    total: rows.length,
+    percent: rows.length === 0 ? 0 : Math.floor((complete * 100) / rows.length),
+  }
 }

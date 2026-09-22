@@ -1030,7 +1030,31 @@ final class PyreonTasksUITests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         let framesAfter = linesChart.screenshot().pngRepresentation
         XCTAssertNotEqual(framesBefore, framesAfter, "gal-lines trail did not move between frames")
-        app.buttons["gal-back"].firstMatch.tap()
+        // Runs AFTER the two moving-canvas checks on purpose: the hosted flow is a full-width
+        // pannable canvas, so once it is on screen a gutter swipe that starts on it PANS the
+        // graph instead of scrolling the page, and the geo-trail scroll-back loop above never
+        // brings its chart back into view (device-found: 80 futile tries, frame y -1829).
+        // `@pyreon/flow/webview` on device: the graph + `fit-view` command are pushed
+        // INTO the WKWebView, the hosted renderer fits and posts `viewport-change`
+        // BACK over the reverse bridge into native Text — page→host proven without
+        // asserting inside the WebView. The button pushes a NEW command id, so the
+        // count moving 1→2 (not 3) proves the reactive push AND that `initial-fit`
+        // ran once only.
+        let flowWebView = app.descendants(matching: .any).matching(identifier: "gal-flow-webview").firstMatch
+        XCTAssertTrue(flowWebView.waitForExistence(timeout: 10), "gal-flow-webview missing on the gallery")
+        let flowWebEvent = app.staticTexts["gal-flow-webview-event"].firstMatch
+        XCTAssertTrue(waitForLabel(flowWebEvent, "viewport-change", timeout: 20), "the hosted flow's initial fit-view never reached the host (label: \(flowWebEvent.label))")
+        let flowWebEvents = app.staticTexts["gal-flow-webview-events"].firstMatch
+        XCTAssertTrue(waitForLabel(flowWebEvents, "1", timeout: 5), "expected exactly one hosted flow event after load (label: \(flowWebEvents.label))")
+        scrollFullyOnScreen(app.buttons["gal-flow-webview-fit"].firstMatch, in: app)
+        app.buttons["gal-flow-webview-fit"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(flowWebEvents, "2", timeout: 10), "pushing a second fit-view command did not round-trip (label: \(flowWebEvents.label))")
+        // gal-back is the LAST element on the gallery; the checks above leave the page
+        // scrolled wherever their subject sat, so a bare tap can land off-screen on
+        // nothing (intermittent "Did not return to tasks"). Android scrolls to it too.
+        let galBack = app.buttons["gal-back"].firstMatch
+        scrollFullyOnScreen(galBack, in: app)
+        galBack.tap()
         XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after gallery Back")
 
         // Phase 5b: the TOOLKIT screen — the one place eleven packages that had
