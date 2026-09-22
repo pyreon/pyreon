@@ -241,6 +241,15 @@ jobs:
         # competing for CPU with every later UITest step. One UDID, used by
         # every step, closes both.
         #
+        # WHICH iPhone matters, not just which runtime: the UITests include
+        # drag gestures between on-screen targets (flow handle → handle), so
+        # they are geometry-sensitive. `sort_by` is STABLE, so within the newest
+        # runtime this keeps simctl's own device order — whose first iPhone is
+        # the model the suites have always run on (iPhone 16 Pro on macos-15).
+        # A `.name` tie-break once picked `iPhone 16` instead, and the counter
+        # suite's handle-drag test failed all three iterations on the smaller
+        # screen (run on PR #3574). Do not reorder by name.
+        #
         # Booting starts HERE, right after checkout, so the ~3-minute cold boot
         # overlaps install + bootstrap + the Swift unit tests + the app build
         # instead of stalling the first `xcodebuild test`. `simctl boot` returns
@@ -255,7 +264,7 @@ jobs:
               | .value[]
               | select(.name | startswith("iPhone"))
               | { udid, name, maj: ($v.maj | tonumber), min: ($v.min | tonumber) } ]
-            | sort_by(-.maj, -.min, .name) | first // empty
+            | sort_by(-.maj, -.min) | first // empty
             | "\(.udid)\t\(.name)\t\(.maj).\(.min)"')
           if [ -z "$PICK" ]; then
             echo "::error::No available iPhone simulator on this runner image:"
