@@ -187,6 +187,12 @@ The compiler lowers any DOM subtree with ≥1 element to `_tpl("<html-string>")`
 
 ---
 
+### A dp constant fed to `.toDp()` — the flow-unit/px/dp unit mix in a Compose layer scaled by `graphicsLayer`
+
+(2026-09, the flow handle hit targets). The native 48dp touch floor was written as `48.0 / zoom` in FLOW units and then sized with `.requiredSize(with(density) { hitSize.toFloat().toDp() })` — which treats the value as PX. On an mdpi device 48px IS 48dp and the device assertion passes; on CI's pixel_6 (420dpi) the same target is 18dp and the `>= 47.dp` assertion failed — and the stack's Android job had been CANCELLED on every earlier push, so the first completed run was the first to say so. Convert the floor `dp → px` FIRST (`with(density) { 48.dp.toPx() } / zoom`) so the layer's zoom scale brings it back to 48dp on screen. **General rule: in a layer whose geometry is flow px scaled by zoom, every constant that means "screen dp" must cross into px through `density` before it joins the flow-unit arithmetic — and a device assertion that passed only on one density profile is not a proof.**
+
+---
+
 ### An unsized native WebView has no viewport, so a hosted `height: 100%` page draws into nothing
 
 (the `<FlowWebView>` node-tap instance, 2026-09). `AndroidView` gives the `WebView` WRAP_CONTENT params, and a WebView in that mode sizes its viewport to its CONTENT, so the page measured `clientHeight = 0` inside a 150dp Compose slot: fit-view scaled the graph to nothing and a centre tap hit no node. A Compose `defaultMinSize` does not reach the View, because AndroidView measures it EXACTLY only when min == max. Fix: `MATCH_PARENT` params in the factory plus an exact default height (150, the web `<iframe>`'s fallback) when nothing upstream sized the host; iOS gets the same default as an `idealHeight`. Three probes lied on the way: the semantics size is CLIPPED to the visible part, `performTouchInput { center }` is the centre of the visible part, and a padded slot around an 18dp View looks right in `layoutInfo`. **Read the page itself before theorising** — WebView DevTools over `adb forward … localabstract:webview_devtools_remote_<pid>` answered in one probe. Reference: `hooks/native/kotlin/.../PyreonWebView.kt`; bisect-verified on the tasks device lane.
