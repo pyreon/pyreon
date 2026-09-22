@@ -29,6 +29,7 @@
   },
   "files": [
     "lib",
+    "!lib/analysis",
     "src",
     "content",
     "README.md",
