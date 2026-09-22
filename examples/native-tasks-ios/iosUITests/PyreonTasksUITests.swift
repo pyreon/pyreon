@@ -1049,7 +1049,12 @@ final class PyreonTasksUITests: XCTestCase {
         scrollFullyOnScreen(app.buttons["gal-flow-webview-fit"].firstMatch, in: app)
         app.buttons["gal-flow-webview-fit"].firstMatch.tap()
         XCTAssertTrue(waitForLabel(flowWebEvents, "2", timeout: 10), "pushing a second fit-view command did not round-trip (label: \(flowWebEvents.label))")
-        app.buttons["gal-back"].firstMatch.tap()
+        // gal-back is the LAST element on the gallery; the checks above leave the page
+        // scrolled wherever their subject sat, so a bare tap can land off-screen on
+        // nothing (intermittent "Did not return to tasks"). Android scrolls to it too.
+        let galBack = app.buttons["gal-back"].firstMatch
+        scrollFullyOnScreen(galBack, in: app)
+        galBack.tap()
         XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after gallery Back")
 
         // Phase 5b: the TOOLKIT screen — the one place eleven packages that had
