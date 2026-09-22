@@ -19,8 +19,9 @@ import {
   flowSignalWriteWarning,
   resolveStaticFlowRendererMap,
   unloweredFlowMemberWarning,
+  HANDLED_FLOW_WEBVIEW_PROPS,
 } from './flow-lowering'
-import { CHART_WEBVIEW_HOST_PROPS, configureChartWebViewHost, legacyChartHostProp } from './chart-webview-lowering'
+import { CHART_WEBVIEW_HOST_PROPS, configureChartWebViewHost, legacyChartHostProp, HANDLED_CHART_WEBVIEW_PROPS } from './chart-webview-lowering'
 import { DEFAULT_FLOW_WEBVIEW_HOST_HTML } from './generated-flow-webview-host'
 import {
   ICON_MAP,
@@ -10458,29 +10459,35 @@ function swiftAccessibilityModifiers(
  * plus the inline `style={{…}}` connector. Margin is real now — this line
  * claimed it for a long time while nothing implemented it.
  */
+const EMPTY_OMIT: ReadonlySet<string> = new Set()
+
 function emitSwiftLayoutModifiers(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  // Attrs the HOST consumes itself (a hosted `<FlowWebView background>` is
+  // the PAGE's background, not a view styling token). Skipped here so the
+  // generic tail never double-lowers a prop the host already lowered.
+  omit: ReadonlySet<string> = EMPTY_OMIT,
 ): string {
   const parts: string[] = []
-  const padding = swiftStylingValue(e, 'padding', resolveSpace)
+  const padding = (omit.has('padding') ? undefined : swiftStylingValue(e, 'padding', resolveSpace))
   if (padding !== undefined) {
     parts.push(`.padding(${padding})`)
   }
-  const paddingX = swiftStylingValue(e, 'paddingX', resolveSpace)
+  const paddingX = (omit.has('paddingX') ? undefined : swiftStylingValue(e, 'paddingX', resolveSpace))
   if (paddingX !== undefined) {
     parts.push(`.padding(.horizontal, ${paddingX})`)
   }
-  const paddingY = swiftStylingValue(e, 'paddingY', resolveSpace)
+  const paddingY = (omit.has('paddingY') ? undefined : swiftStylingValue(e, 'paddingY', resolveSpace))
   if (paddingY !== undefined) {
     parts.push(`.padding(.vertical, ${paddingY})`)
   }
-  const background = swiftStylingValue(e, 'background', (v) =>
+  const background = (omit.has('background') ? undefined : swiftStylingValue(e, 'background', (v) =>
     resolveColor(String(v), 'swift'),
-  )
+  ))
   if (background !== undefined) {
     parts.push(`.background(${background})`)
   }
-  const radius = swiftStylingValue(e, 'radius', (v) => resolveRadius(String(v)))
+  const radius = (omit.has('radius') ? undefined : swiftStylingValue(e, 'radius', (v) => resolveRadius(String(v))))
   if (radius !== undefined) {
     parts.push(`.cornerRadius(${radius})`)
   }
@@ -10526,15 +10533,15 @@ function emitSwiftLayoutModifiers(
   // outside-IN, so there margin is PREPENDED. Same semantics, reversed
   // position — the kind of asymmetry that reads as a bug in whichever file you
   // are not looking at.
-  const margin = swiftStylingValue(e, 'margin', resolveSpace)
+  const margin = (omit.has('margin') ? undefined : swiftStylingValue(e, 'margin', resolveSpace))
   if (margin !== undefined) {
     parts.push(`.padding(${margin})`)
   }
-  const marginX = swiftStylingValue(e, 'marginX', resolveSpace)
+  const marginX = (omit.has('marginX') ? undefined : swiftStylingValue(e, 'marginX', resolveSpace))
   if (marginX !== undefined) {
     parts.push(`.padding(.horizontal, ${marginX})`)
   }
-  const marginY = swiftStylingValue(e, 'marginY', resolveSpace)
+  const marginY = (omit.has('marginY') ? undefined : swiftStylingValue(e, 'marginY', resolveSpace))
   if (marginY !== undefined) {
     parts.push(`.padding(.vertical, ${marginY})`)
   }
@@ -11018,10 +11025,14 @@ function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
     _emitWarnings.push(
       '<WebView>: needs an `html` or `src` attribute on native; emitting an empty PyreonWebView().',
     )
-    return 'PyreonWebView()'
+    return `PyreonWebView()${emitSwiftLayoutModifiers(e)}`
   }
   const args = [content, dataArg, onMsgArg].filter((a) => a !== undefined).join(', ')
-  return `PyreonWebView(${args})`
+  // The generic tail (`padding`/`margin`, `data-testid` →
+  // `.accessibilityIdentifier`, a11y props) every primitive gets. A WebView
+  // host that returned before it was structurally unassertable by XCUITest —
+  // the same class the `<Link>`/`<Toggle>` emitters had.
+  return `PyreonWebView(${args})${emitSwiftLayoutModifiers(e)}`
 }
 
 function emitSwiftChartWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
@@ -11050,7 +11061,7 @@ function emitSwiftChartWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): str
     return attr?.kind === 'event' ? [`on${name[0]!.toUpperCase()}${name.slice(1)}: ${emitSwiftMessageHandler(attr.handler)}`] : []
   })
   const onMessage = callbackArgs.length === 0 ? '' : `, onMessage: { pyreonMsg in pyreonDispatchChartWebViewMessage(pyreonMsg, ${callbackArgs.join(', ')}) }`
-  return `PyreonWebView(html: ${html}, data: ${data}${onMessage})`
+  return `PyreonWebView(html: ${html}, data: ${data}${onMessage})${emitSwiftLayoutModifiers(e, HANDLED_CHART_WEBVIEW_PROPS)}`
 }
 
 function flowWebViewHostHtml(
@@ -11118,7 +11129,7 @@ function emitSwiftFlowWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): stri
   const onMessage = callbackArgs.length === 0
     ? undefined
     : `onMessage: { pyreonMsg in pyreonDispatchFlowWebViewMessage(pyreonMsg, ${callbackArgs.join(', ')}) }`
-  return `PyreonWebView(html: ${html}, data: ${data}${onMessage ? `, ${onMessage}` : ''})`
+  return `PyreonWebView(html: ${html}, data: ${data}${onMessage ? `, ${onMessage}` : ''})${emitSwiftLayoutModifiers(e, HANDLED_FLOW_WEBVIEW_PROPS)}`
 }
 
 /**
@@ -11129,6 +11140,17 @@ function emitSwiftFlowWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): stri
  */
 function emitSwiftMessageHandler(handler: ExprIR): string {
   if (handler.kind === 'arrow') {
+    // A BLOCK body (`(event) => { a.set(x); b.set(y) }`) parses to an empty
+    // `body` with its statements in `stmts`. Reading `body` alone emitted
+    // `{ _ in }` — the whole handler silently DROPPED on both targets (found
+    // by the first real device consumer of `<FlowWebView onEvent>`). Route it
+    // through the generic action emitter, which already handles multi-
+    // statement bodies, `async`, and handler-local consts, and bind the
+    // closure parameter it does not know about.
+    if (handler.stmts !== undefined && handler.stmts.length > 0) {
+      const param = handler.params.length > 0 ? swiftIdent(handler.params[0]!) : '_'
+      return `{ ${param} in${emitSwiftAction(handler, 0).slice(1)}`
+    }
     if (handler.body.kind === 'literal' && handler.body.value === '') {
       return '{ _ in }'
     }

@@ -114,6 +114,14 @@ export function Counter() {
     edges: [{ id: 'native-edge', source: 'native-start', target: 'native-end', sourceHandle: 'out', targetHandle: 'in' }],
     fitView: true,
   })
+  const nativeFlowEdgeCount = computed(() => nativeFlow.edges().length)
+  const nativeFlowStartSize = computed(() => {
+    let label = 'gone'
+    for (const node of nativeFlow.nodes()) {
+      if (node.id === 'native-start') label = `${Math.round(node.width ?? 0)},${Math.round(node.height ?? 0)}`
+    }
+    return label
+  })
   // M2.7 animations proof — a `<Transition show>` animates a child's
   // visibility. Native: iOS `.transition(.opacity)` on an `if show { … }`
   // gate driven by `.animation(.default, value:)` on a stable ZStack; Android
@@ -303,6 +311,8 @@ export function Counter() {
           <Controls showLock={true} />
         </Flow>
       </NativeFlowFrame>
+      <Text data-testid="native-flow-edge-count">{nativeFlowEdgeCount}</Text>
+      <Text data-testid="native-flow-start-size">{nativeFlowStartSize}</Text>
       {/* ui-system device proof — a rocketstyle component with a REACTIVE
           dimension. The text flips with the same signal that drives the colour,
           so the device test can assert the flip actually re-rendered (XCUITest
