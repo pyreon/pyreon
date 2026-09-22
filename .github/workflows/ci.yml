@@ -134,6 +134,11 @@ jobs:
   install:
     name: Install
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # `checks: write` + `actions: read`: the no-cells `Test` post (last step).
+      checks: write
+      actions: read
     # Derived, not guessed: install ~50s + decide ~20s + lib/ build 90-280s
     # (prefix-hit incremental vs cold, measured 2026-09) + two cache saves.
     # 15 is ~2× the cold case.
@@ -541,6 +546,24 @@ jobs:
             .bootstrap-cache.json
           key: ${{ env.BOOTSTRAP_KEY }}
 
+      # Every matrix empty (a docs-only PR): no cell will run, so none can post
+      # `Test`. Post it here rather than leave it to `Test (fallback)`, which
+      # would wait for a runner after an otherwise-finished run.
+      - name: Post the Test verdict (no cells selected)
+        if: >-
+          github.event.pull_request.head.repo.fork != true &&
+          steps.matrices.outputs.typecheck-has == 'false' &&
+          steps.matrices.outputs.test-has == 'false' &&
+          steps.e2e.outputs.has == 'false' &&
+          steps.scaffold.outputs.has == 'false'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          E2E_SELECTED: 'false'
+          SELF_OUTCOME: success
+        run: bun scripts/ci-aggregate.ts
+
   # ── Fast Gates: every lib-free gate, one runner ──────────────────────────
   # Consolidated 2026-08 (eleven singleton jobs → one) and again 2026-09
   # (Lint, PR targets main, Secrets Scan, Dependency Audit, Release
@@ -793,6 +816,11 @@ jobs:
     needs: install
     if: ${{ (success() && needs.install.outputs.typecheck-has == 'true') || (failure() && needs.install.result != 'success') }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # `checks: write` posts `Test`; `actions: read` lists this run's jobs.
+      checks: write
+      actions: read
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -935,6 +963,20 @@ jobs:
             examples/*/.cache/tsbuildinfo
           key: tsbuildinfo-${{ runner.os }}-${{ github.run_id }}-${{ matrix.name }}
 
+      # Post the required `Test` check if this is the LAST aggregated job to
+      # finish (scripts/ci-aggregate.ts), instead of leaving it to a separate
+      # 3-second job that waited up to 78 min for a runner. Never changes this
+      # job's outcome; if it cannot post, `Test (fallback)` does.
+      - name: Post the Test verdict (if this is the last aggregated job)
+        if: always() && github.event.pull_request.head.repo.fork != true
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          E2E_SELECTED: ${{ needs.install.outputs.e2e-has }}
+          SELF_OUTCOME: ${{ job.status }}
+        run: bun scripts/ci-aggregate.ts
+
   # ── Test: per-category matrix (P3b) ──────────────────────────────────
   # Same shard shape as `typecheck-cell` above (8 cells, per-category).
   # The `Test` aggregator (level 3) keeps the stable `Test` required check
@@ -974,6 +1016,11 @@ jobs:
     needs: install
     if: ${{ (success() && needs.install.outputs.test-has == 'true') || (failure() && needs.install.result != 'success') }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # `checks: write` posts `Test`; `actions: read` lists this run's jobs.
+      checks: write
+      actions: read
     # `@pyreon/native-compiler` is NOT run here. It lives in ONE job:
     # native-validate.yml's required `Validate emitted Swift + Kotlin`
     # (pinned swiftc/kotlinc, PYREON_REQUIRE_NATIVE_VALIDATE=1), whose decide
@@ -1155,6 +1202,20 @@ jobs:
           path: .cache/pyreon-native-validate
           key: native-verdicts-ci-${{ runner.os }}-${{ matrix.name }}-${{ github.sha }}
 
+      # Post the required `Test` check if this is the LAST aggregated job to
+      # finish (scripts/ci-aggregate.ts), instead of leaving it to a separate
+      # 3-second job that waited up to 78 min for a runner. Never changes this
+      # job's outcome; if it cannot post, `Test (fallback)` does.
+      - name: Post the Test verdict (if this is the last aggregated job)
+        if: always() && github.event.pull_request.head.repo.fork != true
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          E2E_SELECTED: ${{ needs.install.outputs.e2e-has }}
+          SELF_OUTCOME: ${{ job.status }}
+        run: bun scripts/ci-aggregate.ts
+
   # ── E2E: real-Chromium app-level tests against example apps ──────────
   # Parallel, flake-resilient matrix. Before 2026-05 this was ONE runner
   # executing 11 suites SEQUENTIALLY — wall-clock = the SUM (~6-10 min),
@@ -1186,6 +1247,11 @@ jobs:
     needs: install
     if: needs.install.outputs.e2e-has == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # `checks: write` posts `Test`; `actions: read` lists this run's jobs.
+      checks: write
+      actions: read
     # A cell runs a BATCH of suites now, so the cap covers the batch, not one
     # suite. Full serial e2e is ~8-20 min across every suite; at 4 batches the
     # heaviest lands well under 10 min, and 25 leaves real headroom for a slow
@@ -1317,6 +1383,20 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
+      # Post the required `Test` check if this is the LAST aggregated job to
+      # finish (scripts/ci-aggregate.ts), instead of leaving it to a separate
+      # 3-second job that waited up to 78 min for a runner. Never changes this
+      # job's outcome; if it cannot post, `Test (fallback)` does.
+      - name: Post the Test verdict (if this is the last aggregated job)
+        if: always() && github.event.pull_request.head.repo.fork != true
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          E2E_SELECTED: ${{ needs.install.outputs.e2e-has }}
+          SELF_OUTCOME: ${{ job.status }}
+        run: bun scripts/ci-aggregate.ts
+
   # ── Scaffold smoke: end-to-end gate against create-pyreon-app ──────────
   # Runs the actual scaffolder + bun install + bun run build for every
   # cell defined in scripts/scaffold-smoke.ts (template × adapter ×
@@ -1351,6 +1431,11 @@ jobs:
     needs: install
     if: ${{ needs.install.outputs.scaffold-has == 'true' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # `checks: write` posts `Test`; `actions: read` lists this run's jobs.
+      checks: write
+      actions: read
     # Three cells of ~6 min in one batch, plus setup. Derived, not guessed:
     # measured cells run 222-373s; the heaviest LPT bin is 3 × ~370s.
     timeout-minutes: 25
@@ -1380,6 +1465,20 @@ jobs:
         env:
           MEMBERS: ${{ matrix.members }}
         run: bun scripts/scaffold-smoke.ts $MEMBERS
+
+      # Post the required `Test` check if this is the LAST aggregated job to
+      # finish (scripts/ci-aggregate.ts), instead of leaving it to a separate
+      # 3-second job that waited up to 78 min for a runner. Never changes this
+      # job's outcome; if it cannot post, `Test (fallback)` does.
+      - name: Post the Test verdict (if this is the last aggregated job)
+        if: always() && github.event.pull_request.head.repo.fork != true
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          E2E_SELECTED: ${{ needs.install.outputs.e2e-has }}
+          SELF_OUTCOME: ${{ job.status }}
+        run: bun scripts/ci-aggregate.ts
   # ── Test: the ONE aggregator for every dynamic matrix ────────────────────
   # Branch protection pins a stable name; matrix cells have dynamic names.
   # This used to be four aggregator jobs (Test, Typecheck, E2E, Scaffold
@@ -1396,51 +1495,39 @@ jobs:
   # Fail-closed on Install: if the decide job did not succeed, cell selection
   # is unknown and this is red regardless of what did run.
   test:
-    name: Test
+    # The FALLBACK for the required `Test` check. The primary path is the last
+    # aggregated job to finish posting `Test` itself (scripts/ci-aggregate.ts):
+    # as a separate job, this 3-second verdict waited 56-78 min for a runner on
+    # a busy pool after everything it needs had finished (measured 2026-09-22).
+    # It still runs after them with `always()`, so a race (two cells finishing
+    # together, neither seeing itself as last) or an Install failure (no cell
+    # runs at all) still gets a verdict — merely late, as before.
+    #
+    # Fork PRs get a read-only token and cannot post a check run, so for them
+    # this job keeps the name `Test` and its own conclusion IS the check, as it
+    # was before the split.
+    name: ${{ github.event.pull_request.head.repo.fork && 'Test' || 'Test (fallback)' }}
     needs: [install, typecheck-cell, test-cell, e2e-suite, scaffold-smoke-cell]
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      checks: write
+      actions: read
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
       - name: Aggregate typecheck / test / e2e / scaffold matrices
         env:
-          INSTALL: ${{ needs.install.result }}
-          TYPECHECK: ${{ needs.typecheck-cell.result }}
-          TEST: ${{ needs.test-cell.result }}
-          E2E: ${{ needs.e2e-suite.result }}
-          E2E_HAS: ${{ needs.install.outputs.e2e-has }}
-          SCAFFOLD: ${{ needs.scaffold-smoke-cell.result }}
-        run: |
-          echo "install=$INSTALL  typecheck=$TYPECHECK  test=$TEST  e2e=$E2E (selected=$E2E_HAS)  scaffold=$SCAFFOLD"
-          fail=0
-          ok() { [ "$1" = "success" ] || [ "$1" = "skipped" ]; }
-          if [ "$INSTALL" != "success" ]; then
-            echo "::error::Install (decide) did not succeed ($INSTALL) — cell selection is unknown"
-            fail=1
-          fi
-          ok "$TYPECHECK" || { echo "::error::typecheck cell(s) failed ($TYPECHECK)"; fail=1; }
-          ok "$TEST" || { echo "::error::test cell(s) failed ($TEST)"; fail=1; }
-          ok "$SCAFFOLD" || { echo "::error::scaffold-smoke batch(es) failed ($SCAFFOLD)"; fail=1; }
-          if [ "$E2E_HAS" = "true" ]; then
-            [ "$E2E" = "success" ] || { echo "::error::e2e suites were selected but the matrix did not succeed ($E2E)"; fail=1; }
-          else
-            echo "No e2e-relevant changes — matrix empty, green skip."
-          fi
-          if [ "$fail" -eq 0 ]; then echo "All matrices passed (or were correctly skipped)."; fi
-          exit $fail
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          E2E_SELECTED: ${{ needs.install.outputs.e2e-has }}
+          NO_POST: ${{ github.event.pull_request.head.repo.fork && '1' || '0' }}
+        run: bun scripts/ci-aggregate.ts --force
 
-  # ── Build: every lib-needing singleton gate, one runner ──────────────────
-  # Was SEVEN jobs — Build, Verify Modes, Check Bundle Budgets, Check Import
-  # Budgets, Check Distribution, Check Bin Liveness, Coverage — plus Test
-  # (Rust binary). All needed the same restored lib/, all did 20-110s of
-  # work, and each paid its own checkout + setup + a 20-50 minute slot wait
-  # (measured 2026-09-01). Their check names were dropped from branch
-  # protection; the gates themselves are unchanged and now report as named
-  # steps of this one required job. Every step runs even after an earlier
-  # failure (`!cancelled()`) so a push shows every red gate at once.
-  #
-  # Gated on `code` (a docs-only PR changes no build output), fail-closed
-  # on an Install failure.
   build:
     name: Build
     needs: install
