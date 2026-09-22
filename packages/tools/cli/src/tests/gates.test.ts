@@ -169,7 +169,12 @@ describe('runDocClaimsGate', () => {
     // above it (a DIFFERENT, already-guarded claim site in the same file)
     // stayed correct. Two claims in one file, one guarded — see
     // doc-claims.ts's `hook export count` check.
-    expect(result.meta.scanned).toBe(34)
+    //
+    // 37 as of the chart-ledger honesty pass: +1 chart-host-count site (the
+    // charts package.json description) and +2 chart-family-host-count sites
+    // (the charts README and charts-plot.md), which had drifted to
+    // "seventeen" and "twenty" against a real 20 family hosts.
+    expect(result.meta.scanned).toBe(37)
     // The real repo must be drift-free — this gate runs in CI; if a
     // count claim drifts, EVERY PR's doctor run fails until it's fixed.
     const errs = result.findings.filter((f) => f.severity === 'error')
