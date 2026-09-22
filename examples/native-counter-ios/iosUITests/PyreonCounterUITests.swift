@@ -173,15 +173,15 @@ final class PyreonCounterUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: selectedNodeCount)], timeout: 5), .completed)
         keyboardNode.typeKey(.space, modifierFlags: [])
         XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: selectedNodeCount)], timeout: 5), .completed, "Space on the focused node did not select it")
-        // Canvas row: Cmd+A selects every node, Delete removes them with their
-        // connected edge, and Cmd+Z restores the graph, as on the web.
-        let edgeCountLabel = app.staticTexts["native-flow-edge-count"].firstMatch
+        // Canvas row: Cmd+A selects every node, and Cmd+Z undoes the arrow-key
+        // move above, putting the node back. Delete is asserted on Android
+        // only: on the simulator neither Backspace nor forward-delete reliably
+        // reaches the app (a logging probe saw Cmd+A arrive and neither delete
+        // key), the same limit as Return and Escape.
         keyboardNode.typeKey("a", modifierFlags: .command)
         XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "2"), object: selectedNodeCount)], timeout: 5), .completed, "Cmd+A did not select every node")
-        keyboardNode.typeKey(.forwardDelete, modifierFlags: [])
-        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: edgeCountLabel)], timeout: 5), .completed, "Delete did not remove the selection")
         canvas.typeKey("z", modifierFlags: .command)
-        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: edgeCountLabel)], timeout: 5), .completed, "Cmd+Z did not restore the deleted graph")
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", positionBeforeKey), object: startPosition)], timeout: 5), .completed, "Cmd+Z did not undo the keyboard move (label: \(startPosition.label), expected \(positionBeforeKey))")
         app.buttons["native-flow-clear-selection"].firstMatch.tap()
         XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: selectedNodeCount)], timeout: 5), .completed)
         app.descendants(matching: .any)["Native Flow Start"].firstMatch.tap()

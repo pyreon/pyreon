@@ -251,13 +251,13 @@ native view.
   | edge | Enter | selects the edge | asserted | not deliverable |
   | edge | Space | selects the edge | covered by Enter | asserted |
   | canvas | Ctrl/Cmd+A | selects every node | asserted | asserted |
-  | canvas | Delete | removes the selection and its edges | asserted | asserted (forward-delete) |
-  | canvas | Ctrl/Cmd+Z | restores the deleted graph | asserted | asserted |
+  | canvas | Delete | removes the selection and its edges | asserted | not deliverable |
+  | canvas | Ctrl/Cmd+Z | undoes the last change | asserted (restores the deletion) | asserted (undoes the arrow move) |
 - **iOS test-harness limit, measured rather than assumed.** XCUITest cannot
   deliver Return or Escape to the app on the simulator. A logging probe saw
   Right Arrow and Space reach both the node and the canvas, and never those two
   keys, whether sent to the element or the application, and whether handled by
-  `onKeyPress` or a `.keyboardShortcut`. Backspace does not arrive either;
-  forward-delete does. The iOS rows therefore drive Space and forward-delete, the
+  `onKeyPress` or a `.keyboardShortcut`. Backspace and forward-delete do not
+  reliably arrive either. The iOS rows therefore drive Space and Cmd+Z, the
   web's other activation key, and the Android suite owns Enter and Escape.
   Nothing was shipped for Return/Escape on iOS, because it could not be verified.
