@@ -140,6 +140,7 @@ function stateFields(s: Record<string, unknown>, path: string, warn: (code: Opti
   if (emphasis !== undefined) {
     const focus = emphasis['focus']
     if (focus === 'self' || focus === 'series') out.focus = focus
+    // ledger: presentation.states
     else if (focus !== undefined && focus !== 'none') warn('series-option-unsupported', `${path}.emphasis.focus`, `emphasis.focus "${String(focus)}" is not supported (self, series and none are); nothing is blurred.`)
     const item = isObj(emphasis['itemStyle']) ? emphasis['itemStyle'] : {}
     if (typeof item['color'] === 'string') out.emphasisColor = item['color']
@@ -147,6 +148,7 @@ function stateFields(s: Record<string, unknown>, path: string, warn: (code: Opti
     const scale = emphasis['scale']
     if (scale === true) out.emphasisScale = 1.1
     else if (typeof scale === 'number') out.emphasisScale = Math.max(0.0, scale)
+    // ledger: invalid-input
     else if (scale !== undefined && scale !== false) warn('series-option-unsupported', `${path}.emphasis.scale`, 'emphasis.scale takes true or a number; it was ignored.')
     if (emphasis['disabled'] === true) out.emphasisDisabled = true
     const eLine = isObj(emphasis['lineStyle']) ? emphasis['lineStyle'] : {}
@@ -159,6 +161,7 @@ function stateFields(s: Record<string, unknown>, path: string, warn: (code: Opti
     // `blurScope`: this engine draws ONE grid, so every scope blurs the same datums.
     const scope = emphasis['blurScope']
     if (scope !== undefined && scope !== 'coordinateSystem' && scope !== 'series' && scope !== 'global') {
+      // ledger: invalid-input
       warn('series-option-unsupported', `${path}.emphasis.blurScope`, `emphasis.blurScope "${String(scope)}" is not one ECharts defines; it was ignored.`)
     }
   }
@@ -167,7 +170,9 @@ function stateFields(s: Record<string, unknown>, path: string, warn: (code: Opti
     const item = isObj(select['itemStyle']) ? select['itemStyle'] : {}
     if (typeof item['color'] === 'string') out.selectColor = item['color']
     if (stateLabelShow(select['label'], `${path}.select.label`, warn)) out.selectLabel = true
+    // ledger: presentation.states
     if (select['disabled'] === true) warn('series-option-unsupported', `${path}.select.disabled`, 'select.disabled is not supported; leave selectedMode off to stop a datum pinning.')
+    // ledger: presentation.states
     for (const key of ['lineStyle', 'areaStyle']) if (select[key] !== undefined) warn('series-option-unsupported', `${path}.select.${key}`, `select.${key} has no engine form (a pinned DATUM takes select.itemStyle.color and a heavy outline, and a stroke belongs to the whole line); it was ignored.`)
   }
   const blur = state('blur')
@@ -181,6 +186,7 @@ function stateFields(s: Record<string, unknown>, path: string, warn: (code: Opti
     const bArea = isObj(blur['areaStyle']) ? blur['areaStyle'] : {}
     const bOpacity = num(bArea['opacity'])
     if (bOpacity !== null) out.blurAreaOpacity = Math.max(0.0, Math.min(1.0, bOpacity))
+    // ledger: presentation.states
     if (blur['label'] !== undefined) warn('series-option-unsupported', `${path}.blur.label`, 'blur.label has no engine form (a blurred datum keeps its own label); it was ignored.')
   }
   return out
@@ -192,6 +198,7 @@ function stateLabelShow(raw: unknown, path: string, warn: (code: OptionWarning['
   if (!isObj(raw)) return raw === true
   for (const key of Object.keys(raw)) {
     if (key === 'show') continue
+    // ledger: presentation.states
     warn('series-option-unsupported', `${path}.${key}`, `a state label takes the series' own label style; ${key} was ignored.`)
   }
   return raw['show'] !== false
@@ -204,6 +211,7 @@ function selectedModeOf(s: Record<string, unknown>, path: string, warn: (code: O
   if (mode === true || mode === 'single') return 'single'
   if (mode === 'multiple') return 'multiple'
   if (mode === 'series') return 'series'
+  // ledger: presentation.states
   warn('series-option-unsupported', `${path}.selectedMode`, `selectedMode "${String(mode)}" is not supported (true, single and multiple are); clicks do not pin.`)
   return undefined
 }
@@ -338,6 +346,7 @@ function seriesSymbol(s: Record<string, unknown>, kind: 'line' | 'points', warn:
   const symbol: Series['symbol'] | undefined =
     raw === 'circle' || raw === 'emptyCircle' ? 'circle' : raw === 'rect' || raw === 'roundRect' ? 'rect' : raw === 'diamond' ? 'diamond' : raw === 'triangle' ? 'triangle' : undefined
   if (symbol === undefined) {
+    // ledger: presentation.symbols
     warn('mark-shape-unsupported', `${path}.symbol`, `symbol "${raw}" is not supported (circle, emptyCircle, rect, roundRect, diamond, triangle are); drawn as a circle.`)
     return kind === 'line' ? { symbol: 'circle' } : {}
   }
@@ -358,6 +367,7 @@ function readGradient(raw: unknown, path: string, warn: (code: OptionWarning['co
     // (the engine's patterns are the geometric decals), so it is named rather
     // than silently painting the palette colour.
     // ECharts' other colour object — an IMAGE pattern — is read by `imageFill`.
+    // ledger: presentation.gradients-patterns
     if (raw['image'] !== undefined && path.endsWith('lineStyle.color')) warn('series-option-unsupported', path, 'A line stroke cannot be an image pattern (fills can); the palette colour was used.')
     return undefined
   }
@@ -382,6 +392,7 @@ function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning[
   if (raw === 'circle') symbol = 'circle'
   else if (raw === 'diamond') symbol = 'diamond'
   else if (raw === 'triangle') symbol = 'triangle'
+  // ledger: series.pictorial-bar
   else if (raw !== 'rect' && raw !== 'roundRect') warn('mark-shape-unsupported', `${path}.symbol`, `pictorialBar symbol "${raw}" is not supported (rect, roundRect, circle, diamond, triangle are); drawn as a rect.`)
   const rep = s['symbolRepeat']
   const out: Partial<Series> & { symbol: Series['symbol']; symbolRepeat: boolean } = { symbol, symbolRepeat: rep === true || rep === 'fixed' || (typeof rep === 'number' && rep > 0) }
@@ -392,6 +403,7 @@ function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning[
     if (v === undefined) return undefined
     const n = num(v)
     if (n !== null) return n
+    // ledger: series.pictorial-bar
     warn('series-option-unsupported', `${path}.${key}`, `pictorialBar ${key} takes a number of pixels here (a percent string is not supported); it was ignored.`)
     return undefined
   }
@@ -404,10 +416,12 @@ function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning[
   if (s['symbolClip'] !== undefined) out.symbolClip = s['symbolClip'] === true
   const position = s['symbolPosition']
   if (position === 'start' || position === 'end' || position === 'center') out.symbolPosition = position
+  // ledger: invalid-input
   else if (position !== undefined) warn('series-option-unsupported', `${path}.symbolPosition`, `symbolPosition "${String(position)}" is not supported (start, end and center are); it was ignored.`)
   const offset = s['symbolOffset']
   if (offset !== undefined) {
     if (Array.isArray(offset) && offset.length === 2 && num(offset[0]) !== null && num(offset[1]) !== null) out.symbolOffset = [num(offset[0]) as number, num(offset[1]) as number]
+    // ledger: series.pictorial-bar
     else warn('series-option-unsupported', `${path}.symbolOffset`, 'symbolOffset takes [dx, dy] in pixels here (a percent string is not supported); it was ignored.')
   }
   return out
@@ -447,6 +461,7 @@ export function labelFields(
         fontSize: num(spec['fontSize']) ?? 0.0,
       })
       for (const key of Object.keys(spec)) {
+        // ledger: presentation.labels-rich-text
         if (key !== 'color' && key !== 'fontSize') warn('series-option-unsupported', `${path}.rich.${name}.${key}`, `label.rich ${key} has no engine form (a rich segment takes a colour and a size); it was ignored.`)
       }
     }
@@ -467,6 +482,7 @@ export function labelFields(
     return out
   }
   if (typeof formatter !== 'string') {
+    // ledger: invalid-input
     warn('series-option-unsupported', `${path}.formatter`, 'label.formatter takes a template string or a function; it was ignored.')
     return out
   }
@@ -474,6 +490,7 @@ export function labelFields(
   // ECharts' label placeholders. `{d}` is a percentage of the series total,
   // which is what it means for a pie and the closest honest reading here.
   for (const key of ['{a1}', '{b1}', '{c1}', '{e}', '{f}', '{g}']) {
+    // ledger: presentation.labels-rich-text
     if (tpl.includes(key)) warn('series-option-unsupported', `${path}.formatter`, `label.formatter placeholder "${key}" is not supported ({a}, {b}, {c} and {d} are); it was left as written.`)
   }
   for (let i = 0; i < values.length; i++) {
@@ -507,6 +524,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
 
   for (const key of Object.keys(option)) {
     if (!KNOWN_TOP.has(key)) {
+      // ledger: data.key-totality
       warn('option-key-unsupported', key, `"${key}" has no mapping yet; it was ignored.`)
     }
   }
@@ -523,6 +541,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   const x2Continuous = x2Axis !== undefined && (x2Type === 'value' || x2Type === 'time')
   const x2Mapped = x2Continuous || (x2Axis !== undefined && x2Data.length > 0 && x2Data.length === x0Count)
   if (xAxisList.length > 2 || (xAxisList.length === 2 && !x2Mapped)) {
+    // ledger: coordinates.axes
     warn('axis-count-unsupported', 'xAxis', 'A second x axis maps as a value axis, or as a second set of category labels with the same count; other x axes were ignored.')
   }
   const xAxis = first(xAxisRaw as Record<string, unknown> | Record<string, unknown>[] | undefined)
@@ -549,6 +568,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     const pos = yAxesDeclared[ai]!['position']
     const natural = ai === 0 ? 'left' : 'right'
     const honoured = pos === undefined || pos === natural || swapY || (ai === 0 && yAxesDeclared.length === 1 && pos === 'right')
+    // ledger: coordinates.axes
     if (!honoured) warn('option-key-unsupported', Array.isArray(yAxisRaw) ? `yAxis[${ai}].position` : 'yAxis.position', 'Both y axes cannot share a side; the axis keeps its default side.')
   }
   const yDomain = axisDomain(yAxes[0])
@@ -603,6 +623,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       continue
     }
     for (const key of Object.keys(s)) {
+      // ledger: data.key-totality
       if (!KNOWN_SERIES.has(key)) warn('series-option-unsupported', `${path}.${key}`, `"${key}" has no mapping yet; it was ignored.`)
     }
     const type = typeof s['type'] === 'string' ? (s['type'] as string) : ''
@@ -634,8 +655,10 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       }
       const effect = isObj(s['effect']) ? s['effect'] : {}
       for (const key of Object.keys(effect)) {
+        // ledger: series.lines
         if (!['show', 'period', 'trailLength', 'color', 'symbolSize', 'symbol', 'loop'].includes(key)) warn('series-option-unsupported', `${path}.effect.${key}`, `"${key}" has no trail mapping yet; it was ignored.`)
       }
+      // ledger: series.lines
       if (typeof effect['symbol'] === 'string' && effect['symbol'] !== 'circle') warn('series-option-unsupported', `${path}.effect.symbol`, 'The trail head is drawn as a circle.')
       linesList.push({
         coords,
@@ -676,6 +699,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     else if (type === 'scatter' || type === 'effectScatter') kind = 'points'
     else if (type === 'pictorialBar') kind = s['stack'] !== undefined ? 'stacked' : barCount > 1 ? 'grouped' : 'bars'
     else {
+      // ledger: invalid-input
       warn('series-type-unsupported', `${path}.type`, `Series type "${type}" is not mapped by this facade yet (cartesian family only).`)
       supported = false
       continue
@@ -714,6 +738,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     }
     const onX2 = x2Continuous && num(s['xAxisIndex']) === 1 && xs.length === values.length && xs.length > 0
     if (!onX2 && xContinuous && xs.length === values.length && xs.length > 0 && xValues === undefined) xValues = xs
+    // ledger: data.progressive-large
     const request = samplingRequest(s, opts.width ?? 640.0, (message) => warn('series-option-unsupported', `${path}.sampling`, message))
     if (request !== null) sampleRequests.push(request)
     // Stacked LINES: each line sits on the running total of the lines that
@@ -753,6 +778,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     const label = isObj(s['label']) ? s['label'] : {}
     const yAxisIndex = num(s['yAxisIndex']) ?? 0
     const extraAxis = yAxisIndex >= 2 && yAxisIndex < yAxes.length
+    // ledger: invalid-input
     if (yAxisIndex >= yAxes.length && yAxisIndex > 1) warn('axis-count-unsupported', `${path}.yAxisIndex`, `yAxisIndex ${yAxisIndex} names no declared y axis; the series uses the left axis.`)
 
     const entry: Series = {
@@ -852,6 +878,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
         const from = isObj(m[0]) ? endpoint(m[0]) : null
         const to = isObj(m[1]) ? endpoint(m[1]) : null
         if (from === null || to === null) {
+          // ledger: invalid-input
           warn('mark-shape-unsupported', `${path}.markLine.data[${k}]`, 'A point-to-point markLine needs two endpoints, each a type (max/min/average), a coord, or an xAxis + yAxis pair; it was skipped.')
           continue
         }
@@ -870,6 +897,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       } else if (num(m['xAxis']) !== null) {
         annotations.push({ x: num(m['xAxis']) as number, label: name, color: lineColor })
       } else {
+        // ledger: coordinates.mark-line
         warn('mark-shape-unsupported', `${path}.markLine.data[${k}]`, 'Only average/max/min/median, yAxis, xAxis, and point-to-point markLines are mapped.')
       }
     }
@@ -879,6 +907,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     for (let k = 0; k < ma.length; k++) {
       const pair = ma[k]
       if (!Array.isArray(pair) || pair.length < 2 || !isObj(pair[0]) || !isObj(pair[1])) {
+        // ledger: invalid-input
         warn('mark-shape-unsupported', `${path}.markArea.data[${k}]`, 'A mark area needs two boundary objects; it was skipped.')
         continue
       }
@@ -889,6 +918,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       const xTo = num(pair[1]['xAxis'])
       if (yFrom !== null && yTo !== null) annotations.push({ yFrom, yTo, label: name, color: maColor })
       else if (xFrom !== null && xTo !== null) annotations.push({ xFrom, xTo, label: name, color: maColor })
+      // ledger: coordinates.mark-area
       else warn('mark-shape-unsupported', `${path}.markArea.data[${k}]`, 'A mark area needs matching numeric xAxis or yAxis boundaries; it was skipped.')
     }
     const markPoint = isObj(s['markPoint']) ? s['markPoint'] : undefined
@@ -905,6 +935,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       const extra = { label: name, ...(pointColor !== undefined ? { color: pointColor } : {}), ...(size !== null ? { radius: size / 2.0 } : {}) }
       const dim = m['valueDim'] ?? m['valueIndex']
       if (dim !== undefined && dim !== 'y' && dim !== 1) {
+        // ledger: coordinates.mark-point
         warn('mark-shape-unsupported', `${path}.markPoint.data[${k}].valueDim`, 'markPoint statistics run over the y values only; a valueDim/valueIndex other than y was ignored.')
       }
       if (m['type'] === 'max' || m['type'] === 'min' || m['type'] === 'average') {
@@ -915,6 +946,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
         const atIndex = xs.length === values.length && xs.length > 0 ? xs.reduce((best, x, j) => (Math.abs(x - cx) < Math.abs(xs[best]! - cx) ? j : best), 0) : cx
         markers.push({ seriesIndex, atIndex, ...extra })
       } else {
+        // ledger: coordinates.mark-point
         warn('mark-shape-unsupported', `${path}.markPoint.data[${k}]`, 'Only max/min/average and coord markPoints are mapped.')
       }
     }
@@ -970,6 +1002,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   // A series on a second value x axis carries its own positions, which the
   // shared thinning does not see, so large-data sampling is skipped (named).
   const hasOwnXs = series.some((entry) => entry.onX2 === true)
+  // ledger: data.progressive-large
   if (sampleRequests.length > 0 && hasOwnXs) warn('series-option-unsupported', 'series', 'Large-data sampling is skipped when a series uses a second value x axis.')
   if (sampleRequests.length > 0 && series.length > 0 && !hasOwnXs) {
     const thinned = decimateShared(sampleRequests, { columns: series.map((entry) => entry.values), categories, xValues })
@@ -1050,9 +1083,11 @@ function axisKeys(
   warn: (code: OptionWarning['code'], path: string, message: string) => void,
 ): void {
   for (const key of Object.keys(axis)) {
+    // ledger: coordinates.axes
     if (!AXIS_KEYS.has(key)) warn('option-key-unsupported', `${path}.${key}`, `"${key}" has no axis mapping yet; it was ignored.`)
   }
   if ((axis['min'] === undefined) !== (axis['max'] === undefined)) {
+    // ledger: coordinates.axes
     warn('option-key-unsupported', `${path}.${axis['min'] === undefined ? 'max' : 'min'}`, 'An axis domain needs both min and max; the data range is used.')
   }
 }
@@ -1077,6 +1112,7 @@ function axisFormatter(
     // The `{value}` template is the common case and maps exactly.
     const tpl = f
     if (tpl.includes('{value}')) return (v: Double): string => tpl.replace('{value}', String(v))
+    // ledger: coordinates.axes
     warn('axis-formatter-template', `${path}.axisLabel.formatter`, 'Only function formatters and the {value} template are supported.')
   }
   return undefined

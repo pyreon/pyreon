@@ -222,10 +222,12 @@ export function resolveTimeline(option: Obj, index?: number): { option: Obj; war
   // The timeline component itself never reaches the compilers.
   delete base['timeline']
   if (options.length === 0) {
+    // ledger: invalid-input
     if (hasBase || (steps !== null && steps.labels.length > 0)) warnings.push({ code: 'timeline-step-out-of-range', path: 'options', message: 'timeline has no options[] steps; the base option was rendered.' })
     return { option: base, warnings }
   }
   if (idx < 0 || idx >= options.length) {
+    // ledger: invalid-input
     warnings.push({ code: 'timeline-step-out-of-range', path: 'options[' + String(idx) + ']', message: 'timeline step ' + String(idx) + ' does not exist (' + String(options.length) + ' steps); the base option was rendered.' })
     return { option: base, warnings }
   }

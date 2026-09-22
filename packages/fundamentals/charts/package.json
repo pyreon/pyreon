@@ -72,6 +72,11 @@
     "@pyreon/reactivity": "workspace:^",
     "echarts": ">=5.6.0"
   },
+  "peerDependenciesMeta": {
+    "echarts": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",

@@ -1547,6 +1547,9 @@
         "@pyreon/reactivity": "workspace:^",
         "echarts": ">=5.6.0",
       },
+      "optionalPeers": [
+        "echarts",
+      ],
     },
     "packages/fundamentals/code": {
       "name": "@pyreon/code",

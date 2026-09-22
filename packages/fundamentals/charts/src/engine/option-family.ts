@@ -117,9 +117,11 @@ export type RoamMode = false | true | 'scale' | 'move'
 function roamOf(o: Record<string, unknown>, path: string, warn: (code: OptionWarning['code'], path: string, message: string) => void): { roam: RoamMode; scaleLimit: { min: Double; max: Double }; zoom: Double | null } {
   const r = o['roam']
   const roam: RoamMode = r === true ? true : r === 'scale' || r === 'zoom' ? 'scale' : r === 'move' || r === 'pan' ? 'move' : false
+  // ledger: invalid-input
   if (r !== undefined && r !== false && roam === false) warn('series-option-unsupported', path + '.roam', 'roam must be true, "scale"/"zoom" or "move"/"pan"; the map is static.')
   const lim = isObj(o['scaleLimit']) ? o['scaleLimit'] : {}
   for (const key of ['center', 'aspectScale', 'layoutCenter', 'layoutSize']) {
+    // ledger: coordinates.geo
     if (o[key] !== undefined) warn('series-option-unsupported', path + '.' + key, '"' + key + '" has no mapping yet; the map is fitted to the box.')
   }
   return { roam, scaleLimit: { min: num(lim['min']) ?? 0.5, max: num(lim['max']) ?? 20.0 }, zoom: num(o['zoom']) }
@@ -182,7 +184,9 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   // series may be the map layer (geoIndex) or a pie centred on a lon/lat.
   const anyOnGeo = seriesArr.some((ser) => isObj(ser) && (ser['coordinateSystem'] === 'geo' || (ser['type'] === 'map' && ser['geoIndex'] !== undefined)))
   const familyKey = type === 'themeRiver' ? 'themeRiver' : s['coordinateSystem'] === 'polar' ? 'polar' : anyOnGeo ? 'geo' : s['coordinateSystem'] === 'singleAxis' ? 'singleAxis' : type
+  // ledger: data.key-totality
   for (const key of Object.keys(option)) if (!KNOWN_TOP.has(key)) warn('option-key-unsupported', key, `"${key}" has no mapping yet; it was ignored.`)
+  // ledger: data.key-totality
   if (familyKey !== 'geo') for (const key of Object.keys(s)) if (!KNOWN_BY_FAMILY[familyKey]!.has(key)) warn('series-option-unsupported', `series[0].${key}`, `"${key}" has no mapping for ${type} yet; it was ignored.`)
   // This guard has collided across the whole charts wave — polar, boxplot,
   // and now geo each legitimately render more than one series per option.
@@ -194,6 +198,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   // in every branch. (Worth turning into a set membership test rather than a
   // chain — it has collided three times in this wave alone.)
   if (seriesArr.length > 1 && !MULTI_SERIES_FAMILIES.has(familyKey) && !MULTI_SERIES_FAMILIES.has(type)) {
+    // ledger: series.multi-series
     warn('series-option-unsupported', 'series[1]', `Only one ${type} series is rendered per chart; extra series were ignored.`)
   }
   const titleRaw = first(option['title'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
@@ -330,6 +335,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
 
   if (familyKey === 'singleAxis') {
     // ECharts' own contract: a single axis hosts scatter / effectScatter (and the theme river, keyed by type above).
+    // ledger: invalid-input
     if (type !== 'scatter' && type !== 'effectScatter') warn('series-type-unsupported', 'series[0].type', 'Only scatter and effectScatter render on a single axis (ECharts allows no other series there); ' + type + ' was skipped.')
     const axRaw = first(option['singleAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
     const ax = isObj(axRaw) ? axRaw : {}
@@ -379,6 +385,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
     const geoObj = isObj(geoCfg) ? geoCfg : {}
     const mapName = typeof geoObj['map'] === 'string' ? (geoObj['map'] as string) : ''
     const found = getMap(mapName)
+    // ledger: invalid-input
     if (found === null) warn('series-option-unsupported', 'geo.map', 'Map "' + mapName + '" is not registered (call registerMap first); nothing was drawn.')
     const geo: GeoJson = found ?? { type: 'FeatureCollection', features: [] }
     const geoItem = isObj(geoObj['itemStyle']) ? geoObj['itemStyle'] : {}
@@ -409,10 +416,12 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       const stype = typeof ser['type'] === 'string' ? (ser['type'] as string) : ''
       const onGeo = ser['coordinateSystem'] === 'geo' || (stype === 'map' && ser['geoIndex'] !== undefined) || (stype === 'pie' && ser['coordinateSystem'] === 'geo')
       if (!onGeo) {
+        // ledger: series.multi-series
         warn('series-type-unsupported', path + '.coordinateSystem', 'A series beside a geo chart must sit on the geo (coordinateSystem: geo, or a map with geoIndex); it was skipped.')
         continue
       }
       const sdata = Array.isArray(ser['data']) ? (ser['data'] as unknown[]) : []
+      // ledger: data.key-totality
       for (const key of Object.keys(ser)) if (!KNOWN_BY_FAMILY['geo']!.has(key) && !(stype === 'pie' && (key === 'center' || key === 'radius'))) warn('series-option-unsupported', path + '.' + key, '"' + key + '" has no mapping for ' + stype + ' yet; it was ignored.')
       if (stype === 'scatter' || stype === 'effectScatter') {
         for (let i = 0; i < sdata.length; i++) {
@@ -460,6 +469,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
             color: typeof eff['color'] === 'string' ? (eff['color'] as string) : '',
             symbolSize: num(eff['symbolSize']) ?? 3.0,
           }
+          // ledger: series.lines
           for (const key of Object.keys(eff)) if (!['show', 'period', 'trailLength', 'color', 'symbolSize', 'symbol', 'loop'].includes(key)) warn('series-option-unsupported', path + '.effect.' + key, '"' + key + '" has no trail mapping yet; it was ignored.')
         }
         for (let i = 0; i < sdata.length; i++) {
@@ -530,6 +540,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
           values[d['name'] as string] = v
         }
       } else {
+        // ledger: coordinates.geo
         warn('series-type-unsupported', path + '.type', 'Only scatter, effectScatter, lines, heatmap, pie and map render on the geo coordinate; ' + stype + ' was skipped.')
       }
     }
@@ -541,6 +552,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   if (type === 'map') {
     const mapName = typeof s['map'] === 'string' ? (s['map'] as string) : ''
     const found = getMap(mapName)
+    // ledger: invalid-input
     if (found === null) warn('series-option-unsupported', 'series[0].map', 'Map "' + mapName + '" is not registered (call registerMap first); nothing was drawn.')
     const geo: GeoJson = found ?? { type: 'FeatureCollection', features: [] }
     const values: Record<string, Double> = {}
@@ -623,6 +635,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       if (!isObj(ser)) continue
       const st = ser['type'] === 'effectScatter' ? 'scatter' : ser['type']
       if (st !== 'bar' && st !== 'line' && st !== 'scatter') {
+        // ledger: coordinates.polar
         warn('series-type-unsupported', 'series[' + String(k) + '].type', 'Only bar, line and scatter series render on the polar coordinate; ' + String(ser['type']) + ' was skipped.')
         continue
       }
@@ -716,6 +729,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       end = range + '-' + (lastDay < 10 ? '0' : '') + String(lastDay)
     } else if (typeof range === 'string') [start, end] = [range, range]
     else if (Array.isArray(range) && range.length === 2 && typeof range[0] === 'string' && typeof range[1] === 'string') [start, end] = [range[0], range[1]]
+    // ledger: invalid-input
     else warn('series-option-unsupported', 'calendar.range', 'calendar.range must be a year, a "YYYY-MM", a date, or [start, end]; nothing was laid out.')
     const calendarVertical = calObj['orient'] === 'vertical'
     const values: Record<string, Double> = {}
@@ -793,6 +807,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
     }
     const label = isObj(s['label']) ? s['label'] : {}
     const cats = Array.isArray(s['categories']) ? (s['categories'] as unknown[]).map((c, i) => (isObj(c) && typeof c['name'] === 'string' ? (c['name'] as string) : typeof c === 'string' ? c : 'Category ' + String(i + 1))) : undefined
+    // ledger: series.graph
     if (typeof s['symbolSize'] === 'function') warn('series-option-unsupported', 'series[0].symbolSize', 'A symbolSize FUNCTION is not supported; pass a number or per-node values.')
     const symbolSize = num(s['symbolSize'])
     const force = isObj(s['force']) ? s['force'] : {}

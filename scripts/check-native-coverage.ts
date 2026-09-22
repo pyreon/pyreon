@@ -262,14 +262,16 @@ export const REGISTRY: RegistryEntry[] = [
   // <GraphChart>, <TreemapChart>, <SunburstChart>, <TreeChart>, <RiverChart>,
   // <GanttChart>, <PolarChart>) and the accessor / frame hosts (PlotChart,
   // Pie, Gauge, Radar, Funnel, Heatmap, Candlestick, Boxplot, Calendar,
-  // Parallel) all lower to PyreonChartCanvas over that engine — a NATIVE view,
-  // not a hosted web page; OptionChart and MapChart decline BY NAME. A subpath
+  // Parallel), <ChordChart>, <SingleAxisChart> and <MapChart> (from a
+  // precomputed GeoShape[]) all lower to PyreonChartCanvas over that engine — a
+  // NATIVE view, not a hosted web page. <OptionChart> lowers too, from a LITERAL
+  // option resolved at compile time; a signal-driven option warns. A subpath
   // import is skipped by the export check by design.
   {
     name: '@pyreon/charts/plot',
     mechanism: 'pmtc-lowers',
     rationale:
-      'the plot engine is generated into the native runtimes and every host but OptionChart / MapChart lowers to PyreonChartCanvas (a native Canvas over the same draw list); a bare host follows the runtime colour scheme',
+      'the plot engine is generated into the native runtimes and every host lowers to PyreonChartCanvas (a native Canvas over the same draw list); <OptionChart> needs a literal option and <MapChart> a precomputed GeoShape[]; a bare host follows the runtime colour scheme',
     snippet: `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
 import { BoxplotChart, SankeyChart } from '@pyreon/charts/plot'
