@@ -65,6 +65,13 @@ export function RadarChart<T>(props: RadarChartProps<T>): VNode {
       const v = g.series[hit.series]!.values[hit.axis]
       return [g.labels[hit.series] ?? `Series ${hit.series + 1}`, `${g.axes[hit.axis]?.label ?? ''}: ${plain(v ?? 0)}`]
     },
+    // A radar item is one polygon (ECharts): its name and every axis value.
+    item: (g, px, py) => {
+      const hit = hitRadarIndex(g.axes, g.series, g.box, g.opts, px, py)
+      const s = g.series[hit.series]
+      if (s === undefined) return null
+      return { seriesIndex: 0, dataIndex: hit.series, name: g.labels[hit.series] ?? '', value: s.values, color: s.color }
+    },
     // The keyboard walks the AXES (the table's rows): Enter picks the first
     // series' vertex on the focused axis, the ring wraps that vertex.
     pick: (g, i) => {

@@ -85,6 +85,14 @@ export function CalendarChart(props: CalendarChartProps): VNode {
       const values = readValues()
       return layout.cells.filter((c) => values[c.date] !== undefined)[i]?.rect ?? null
     },
+    // ECharts' calendar heatmap datum: [date, value].
+    item: (layout, px, py) => {
+      const i = hitCalendarIndex(layout, px, py)
+      const c = layout.cells[i]
+      if (c === undefined) return null
+      const v = readValues()[c.date]
+      return { seriesIndex: 0, dataIndex: i, name: c.date, value: v === undefined ? [c.date] : [c.date, v] }
+    },
     tooltip: (layout, px, py) => {
       const c = hitCalendar(layout, px, py)
       if (c === null) return null

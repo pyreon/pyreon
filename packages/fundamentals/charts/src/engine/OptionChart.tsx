@@ -11,6 +11,7 @@ import type { VNode } from '@pyreon/core'
 import { batch, computed, effect, isServer, signal, untrack } from '@pyreon/reactivity'
 import { canvasHost } from './canvas-host'
 import { readTooltipOption } from './option-tooltip'
+import { tooltipPlace } from './tooltip-place'
 import type { TooltipSpec } from './option-tooltip'
 import { formatTooltipTemplate, orderTooltipEntries, tooltipBreaks, tooltipMarker } from './tooltip-format'
 import type { TooltipEntry } from './tooltip-format'
@@ -41,6 +42,7 @@ import type { ZoomWindow } from './zoom'
 import type { CompiledOption, EChartsOption, OptionPlan } from './option'
 import { familyHostNode, familyHostShape } from './family-host'
 import type { FamilyHostOptions } from './family-host'
+import { familyItemCursor, familyItemSilent, familyItemTooltip } from './family-tooltip'
 import type { FamilyPlan } from './option-family'
 import { TIMELINE_HEIGHT, defaultTimelineStrip, mergeChartOptions, resolveTimeline, timelineCommands, timelineSteps } from './option-composite'
 import { timelineAdvance, timelineHit, timelineTick } from './timeline-strip'
@@ -53,7 +55,7 @@ import type { ChartSpec, Emphasis } from './render'
 import { hitBar, hitNearestX, layoutSeriesPoints } from './layout'
 import { plain } from './format'
 import type { ThemeDefinition } from './theme-registry'
-import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
+import type { Double, DrawCmd, MeasureText, Rect } from './types'
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : v === undefined ? [] : [v])
@@ -136,7 +138,7 @@ function offsetCmd(c: DrawCmd, dx: Double, dy: Double): DrawCmd {
  */
 interface FlatLayers {
   cartesian: { plan: OptionPlan; rect: Rect }[]
-  families: { plan: FamilyPlan; rect: Rect }[]
+  families: { plan: FamilyPlan; rect: Rect; source: EChartsOption; animation: ChartAnimation }[]
   /** A family that has no host (it renders as SVG only): the whole option falls back to SVG. */
   hostless: boolean
 }
@@ -146,7 +148,7 @@ function flattenLayers(p: OptionPlan): FlatLayers {
     if (plan.kind === 'cartesian') out.cartesian.push({ plan, rect: { x: rect.x + dx, y: rect.y + dy, w: rect.w, h: rect.h } })
     else if (plan.kind === 'family') {
       if (familyHostShape(plan.compiled.plan, { width: rect.w, height: rect.h }) === null) out.hostless = true
-      out.families.push({ plan: plan.compiled.plan, rect: { x: rect.x + dx, y: rect.y + dy, w: rect.w, h: rect.h } })
+      out.families.push({ plan: plan.compiled.plan, rect: { x: rect.x + dx, y: rect.y + dy, w: rect.w, h: rect.h }, source: plan.compiled.source, animation: plan.compiled.animation })
     } else for (const part of plan.parts) walk(part.plan, dx + (plan.kind === 'grids' || plan.kind === 'layers' ? rect.x : 0.0), dy + (plan.kind === 'grids' || plan.kind === 'layers' ? rect.y : 0.0), part.rect)
   }
   if (p.kind === 'layers' || p.kind === 'grids') for (const part of p.parts) walk(part.plan, 0.0, 0.0, part.rect)
@@ -172,7 +174,7 @@ interface OptionGeometry {
 }
 
 /** The `CanvasHostProps` keys `OptionChartProps` does NOT take (its own `theme`, and the chrome the compiled option draws itself). */
-type HostOmitted = 'theme' | 'showTitle' | 'subtitle' | 'showLegend' | 'legendPosition' | 'animate' | 'updateAnimation' | 'updateDuration' | 'enterDuration' | 'enterDelay' | 'updateDelay' | 'enterEasing' | 'updateEasing'
+type HostOmitted = 'itemTooltip' | 'itemCursor' | 'itemSilent' | 'theme' | 'showTitle' | 'subtitle' | 'showLegend' | 'legendPosition' | 'animate' | 'updateAnimation' | 'updateDuration' | 'enterDuration' | 'enterDelay' | 'updateDelay' | 'enterEasing' | 'updateEasing'
 /** Every host key the facade forwards verbatim — the host's whole surface minus the omitted set and the defaulted `height`. */
 type HostPassthrough = Exclude<keyof CanvasHostProps, HostOmitted | 'height'>
 /**
@@ -392,12 +394,50 @@ export function OptionChart(props: OptionChartProps): VNode {
     return true
   }
 
+  /**
+   * What an option-driven family host carries beyond its plan: the facade's
+   * forwarded host props (so `rtl`, `toolbox`, `keyboard`, `accessibleTable`
+   * and the tooltip switch reach a pie as they reach a line chart) and the
+   * item hooks applying the option's `tooltip` and each series' `cursor` /
+   * `silent`. Live getters over the props and the family's source option.
+   */
+  const familyExtras = (source: () => Record<string, unknown>, kind: () => FamilyPlan['kind'], size: () => { w: Double; h: Double }): Record<string, unknown> => ({
+    get tooltip() {
+      return props.tooltip !== false
+    },
+    get keyboard() {
+      return props.keyboard !== false
+    },
+    get accessibleTable() {
+      return props.accessibleTable !== false
+    },
+    get rtl() {
+      return props.rtl === true
+    },
+    get toolbox() {
+      return props.toolbox ?? {}
+    },
+    get onSaveImage() {
+      return props.onSaveImage
+    },
+    itemTooltip: familyItemTooltip({ option: source, kind, tooltipProp: () => props.tooltip, size }),
+    itemCursor: familyItemCursor(source),
+    itemSilent: familyItemSilent(source),
+  })
+
   // The family host's live inputs, read by the mounted node's prop getters.
   const familyPlan = signal<FamilyPlan | null>(null)
   const familyBox = signal({ w: 0.0, h: 0.0 })
   const familyAnimation = signal<ChartAnimation>(ECHARTS_ANIMATION_DEFAULTS)
+  const familySource = signal<Record<string, unknown>>({})
   let familyShape: string | null = null
+  const familyExtrasSingle = familyExtras(
+    () => familySource(),
+    () => familyPlan()?.kind ?? 'pie',
+    () => familyBox(),
+  )
   const familyOptions: FamilyHostOptions = {
+    host: familyExtrasSingle,
     get width() {
       return familyBox().w
     },
@@ -422,15 +462,12 @@ export function OptionChart(props: OptionChartProps): VNode {
     plan: ReturnType<typeof signal<FamilyPlan>>
     box: ReturnType<typeof signal<Rect>>
     animation: ReturnType<typeof signal<ChartAnimation>>
+    source: ReturnType<typeof signal<Record<string, unknown>>>
     node: VNode
   }
   let liveLayers: LiveLayer[] = []
   const layerNodes = signal<VNode[]>([])
-  const syncLayers = (parts: { plan: FamilyPlan; rect: Rect }[], planned: OptionPlan[]): void => {
-    const animationOf = (i: number): ChartAnimation => {
-      const q = planned.find((p) => p.kind === 'family' && p.compiled.plan === parts[i]!.plan)
-      return q !== undefined && q.kind === 'family' ? q.compiled.animation : optionAnimation()
-    }
+  const syncLayers = (parts: FlatLayers['families']): void => {
     const next = parts.map((part, i): LiveLayer | null => {
       const shape = untrack(() => familyHostShape(part.plan, { width: part.rect.w, height: part.rect.h, transparent: true }))
       if (shape === null) return null
@@ -439,14 +476,17 @@ export function OptionChart(props: OptionChartProps): VNode {
         batch(() => {
           prev.plan.set(part.plan)
           prev.box.set(part.rect)
-          prev.animation.set(animationOf(i))
+          prev.animation.set(part.animation)
+          prev.source.set(part.source)
         })
         return prev
       }
       const plan = signal(part.plan)
       const box = signal(part.rect)
-      const animation = signal(animationOf(i))
+      const animation = signal(part.animation)
+      const source = signal<Record<string, unknown>>(part.source)
       const options: FamilyHostOptions = {
+        host: familyExtras(() => source(), () => plan().kind, () => box()),
         get width() {
           return box().w
         },
@@ -463,8 +503,10 @@ export function OptionChart(props: OptionChartProps): VNode {
       }
       const host = untrack(() => familyHostNode(() => plan(), options))
       if (host === null) return null
-      const node = h('div', { 'data-pyreon-chart-layer': String(i), style: () => `position:absolute;left:${box().x}px;top:${box().y}px;width:${box().w}px;height:${box().h}px` }, host)
-      return { shape, plan, box, animation, node }
+      // Under `rtl` the layer's box mirrors with the chart, as its content does.
+      const left = (): Double => (props.rtl === true ? width() - box().x - box().w : box().x)
+      const node = h('div', { 'data-pyreon-chart-layer': String(i), style: () => `position:absolute;left:${left()}px;top:${box().y}px;width:${box().w}px;height:${box().h}px` }, host)
+      return { shape, plan, box, animation, source, node }
     })
     const kept = next.filter((l): l is LiveLayer => l !== null)
     const changed = kept.length !== liveLayers.length || kept.some((l, i) => l !== liveLayers[i])
@@ -485,9 +527,12 @@ export function OptionChart(props: OptionChartProps): VNode {
     const plan = planOption(opt, compileOpts(w, hgt - stripH, idx))
     if (!canvasable(plan)) {
       if (plan.kind === 'family') {
-        familyPlan.set(plan.compiled.plan)
-        familyBox.set({ w, h: hgt - stripH })
-        familyAnimation.set(plan.compiled.animation)
+        batch(() => {
+          familyPlan.set(plan.compiled.plan)
+          familyBox.set({ w, h: hgt - stripH })
+          familyAnimation.set(plan.compiled.animation)
+          familySource.set(plan.compiled.source as Record<string, unknown>)
+        })
         // One LIVE node per host shape: an option update of the same shape
         // feeds the mounted host new props, so it TWEENS (ECharts' update
         // animation) instead of remounting and replaying the entrance. The
@@ -512,7 +557,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     // A cartesian plan paints through the shared host below; a layered one
     // also mounts each family layer's own host over it.
     const flat = hasFamilyParts(plan) ? flattenLayers(plan) : null
-    syncLayers(flat === null ? [] : flat.families, plan.kind === 'layers' || plan.kind === 'grids' ? plan.parts.map((part) => part.plan) : [])
+    syncLayers(flat === null ? [] : flat.families)
     mode.set('canvas')
   })
 
@@ -856,40 +901,7 @@ export function OptionChart(props: OptionChartProps): VNode {
   }
 
   /** Where a view goes, per the option's `position`. */
-  const placeFor = (g: OptionGeometry, spec: TooltipSpec, anchor: Rect | null, params: unknown): TooltipView['place'] => {
-    const pos = spec.position
-    if (pos.kind === 'follow') return undefined
-    const coord = (v: string | number, extent: Double, box: Double): Double => {
-      if (typeof v === 'number') return v
-      if (v.startsWith('r:')) return extent - box - Number.parseFloat(v.slice(2))
-      if (v.startsWith('b:')) return extent - box - Number.parseFloat(v.slice(2))
-      if (v.endsWith('%')) return (Number.parseFloat(v) / 100.0) * extent
-      const n = Number.parseFloat(v)
-      return Number.isFinite(n) ? n : 0.0
-    }
-    const side = (name: string, size: { w: Double; h: Double }, at: Pt): Pt => {
-      const r = anchor ?? { x: at.x, y: at.y, w: 0.0, h: 0.0 }
-      const gap = 10.0
-      if (name === 'inside') return { x: r.x + r.w / 2.0 - size.w / 2.0, y: r.y + r.h / 2.0 - size.h / 2.0 }
-      if (name === 'top') return { x: r.x + r.w / 2.0 - size.w / 2.0, y: r.y - size.h - gap }
-      if (name === 'bottom') return { x: r.x + r.w / 2.0 - size.w / 2.0, y: r.y + r.h + gap }
-      if (name === 'left') return { x: r.x - size.w - gap, y: r.y + r.h / 2.0 - size.h / 2.0 }
-      return { x: r.x + r.w + gap, y: r.y + r.h / 2.0 - size.h / 2.0 }
-    }
-    return (at, size) => {
-      if (pos.kind === 'side') return side(pos.side, size, at)
-      if (pos.kind === 'point') return { x: coord(pos.x, g.w, size.w), y: coord(pos.y, g.hgt, size.h) }
-      const out = pos.fn([at.x, at.y], params, null, anchor === null ? undefined : { x: anchor.x, y: anchor.y, width: anchor.w, height: anchor.h }, { contentSize: [size.w, size.h], viewSize: [g.w, g.hgt] })
-      if (typeof out === 'string') return side(out, size, at)
-      if (Array.isArray(out) && out.length === 2) return { x: coord(out[0] as string | number, g.w, size.w), y: coord(out[1] as string | number, g.hgt, size.h) }
-      if (isRecord(out)) {
-        const x = out['left'] !== undefined ? coord(out['left'] as string | number, g.w, size.w) : out['right'] !== undefined ? g.w - size.w - coord(out['right'] as string | number, g.w, size.w) : at.x
-        const y = out['top'] !== undefined ? coord(out['top'] as string | number, g.hgt, size.h) : out['bottom'] !== undefined ? g.hgt - size.h - coord(out['bottom'] as string | number, g.hgt, size.h) : at.y
-        return { x, y }
-      }
-      return at
-    }
-  }
+  const placeFor = (g: OptionGeometry, spec: TooltipSpec, anchor: Rect | null, params: unknown): TooltipView['place'] => tooltipPlace(spec, anchor, params, { w: g.w, h: g.hgt })
 
   /**
    * The tooltip for a pointer position, as the option's `tooltip` asks. The

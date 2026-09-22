@@ -42,6 +42,13 @@ export interface FamilyHostOptions {
    * in the corner of a line chart), whose own canvas already paints the ground.
    */
   transparent?: boolean | undefined
+  /**
+   * Host props an option chart forwards beyond the plan — its tooltip switch,
+   * keyboard, accessible table, `rtl` and toolbox, and the item hooks that
+   * apply the option's `tooltip` / `cursor` / `silent`. A live-getter object:
+   * it is read inside the host's props computation, so a change re-applies.
+   */
+  host?: Record<string, unknown> | undefined
 }
 
 /** A resolved animation as canvas-host props. */
@@ -102,7 +109,7 @@ export function familyHostShape(plan: FamilyPlan, o: FamilyHostOptions): string 
 
 function familyHostFor(plan: FamilyPlan, o: FamilyHostOptions): VNode | null {
   const size = { width: o.width, height: o.height }
-  const chrome = { ...(plan.title !== undefined ? { title: plan.title } : {}), ...animationProps(o.animation), ...(o.transparent === true ? { theme: { background: '' } } : {}) }
+  const chrome = { ...(plan.title !== undefined ? { title: plan.title } : {}), ...animationProps(o.animation), ...(o.transparent === true ? { theme: { background: '' } } : {}), ...o.host }
   const sel = (kind: FamilyPlan['kind']) => (o.onSelect === undefined ? {} : { onSelect: (hit: unknown) => o.onSelect!(kind, hit) })
   switch (plan.kind) {
     case 'pie': {

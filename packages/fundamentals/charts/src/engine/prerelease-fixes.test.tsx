@@ -211,7 +211,7 @@ describe('OptionChart — the host passthrough is TOTAL over CanvasHostProps (fi
     expect(off).toMatchObject({ animate: false, updateAnimation: false })
     // The type is the load-bearing lock (a new CanvasHostProps key must be listed or omitted);
     // this assignment is where it would fail to compile.
-    const check: Record<Exclude<keyof CanvasHostProps, 'theme' | 'showTitle' | 'subtitle' | 'showLegend' | 'legendPosition' | 'animate' | 'updateAnimation' | 'updateDuration' | 'enterDuration' | 'enterDelay' | 'updateDelay' | 'enterEasing' | 'updateEasing' | 'height'>, true> = HOST_PASSTHROUGH_KEYS
+    const check: Record<Exclude<keyof CanvasHostProps, 'itemTooltip' | 'itemCursor' | 'itemSilent' | 'theme' | 'showTitle' | 'subtitle' | 'showLegend' | 'legendPosition' | 'animate' | 'updateAnimation' | 'updateDuration' | 'enterDuration' | 'enterDelay' | 'updateDelay' | 'enterEasing' | 'updateEasing' | 'height'>, true> = HOST_PASSTHROUGH_KEYS
     expect(Object.keys(check)).toContain('rtl')
   })
 })

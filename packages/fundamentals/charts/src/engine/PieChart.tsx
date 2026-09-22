@@ -9,6 +9,7 @@
 import { canvasHost, orNull } from './canvas-host'
 import { pieLegend, pieTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
+import { pieItem } from './host-item'
 import { paletteAt } from './palette'
 import type { VNode } from '@pyreon/core'
 import { fitCircle, hitArc, layoutArcs, renderGauge, renderPie } from './arc'
@@ -54,6 +55,7 @@ export function PieChart<T>(props: PieChartProps<T>): VNode {
       props.onSelectIndex?.(i)
     },
     tooltip: (g, px, py) => orNull(pieTip(g.slices, g.box, props.innerRadius ?? 0, px, py)),
+    item: (g, px, py) => pieItem(g.slices, hitAt(g, px, py, props.innerRadius ?? 0)),
     pick: (_g, i) => {
       props.onSelect?.(i)
       props.onSelectIndex?.(i)
@@ -135,6 +137,11 @@ export function GaugeChart(props: GaugeChartProps): VNode {
       }
       return cmds
     },
+    // The whole dial is the one item (ECharts' gauge has one datum per pointer).
+    item: (g, px, py) =>
+      px >= g.box.x && px <= g.box.x + g.box.w && py >= g.box.y && py <= g.box.y + g.box.h
+        ? { seriesIndex: 0, dataIndex: 0, name: props.title ?? '', value: g.value, color: props.valueColor }
+        : null,
     describe: (g) => `${props.title ?? 'Gauge'}: ${plain(g.value)} of ${plain(g.max)}`,
     a11y: (g) => ({
       title: props.title,

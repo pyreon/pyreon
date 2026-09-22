@@ -352,10 +352,10 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     native: 'partial',
     gaps: [
       '`appendToBody` / `appendTo`, the richText render mode and `displayMode: "multipleByCoordSys"` are named and not honoured',
-      'a FAMILY option chart (pie, sankey, …) shows its host\'s own tooltip; the option\'s `formatter` / `position` apply to cartesian charts only',
+      'a boxplot or single-axis option chart renders as SVG, so the option\'s tooltip does not reach it (every other family applies `formatter`, `position`, `trigger` and the series\' own `tooltip` through its host)',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/option-tooltip.test.ts', 'src/engine/tooltip-format.test.ts', 'src/engine/tooltip-html.test.ts', 'src/engine/option-tooltip.browser.test.tsx', NATIVE + 'chart-plot-tooltip-native.test.ts'],
+    evidence: ['src/engine/option-tooltip.test.ts', 'src/engine/tooltip-format.test.ts', 'src/engine/tooltip-html.test.ts', 'src/engine/option-tooltip.browser.test.tsx', 'src/engine/family-tooltip.test.ts', 'src/engine/option-family-interaction.browser.test.tsx', NATIVE + 'chart-plot-tooltip-native.test.ts'],
   }),
   row('coordinates.axis-pointer', 'coordinates', 'direct', {
     web: 'partial',

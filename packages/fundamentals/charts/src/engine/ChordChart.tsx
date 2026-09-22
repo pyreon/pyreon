@@ -42,6 +42,11 @@ export function ChordChart(props: ChordChartProps): VNode {
       props.onSelectIndex?.(i)
     },
     tooltip: (layout, px, py) => orNull(chordTip(layout, px, py)),
+    item: (layout, px, py) => {
+      const i = hitChordIndex(layout, px, py)
+      const a = layout.arcs[i]
+      return a === undefined ? null : { seriesIndex: 0, dataIndex: i, name: a.name, value: a.total, color: a.color, dataType: 'node' }
+    },
     // The keyboard walks the node ARCS, one table row each — not the ribbons.
     // A ribbon belongs to two arcs, so walking ribbons would visit every flow
     // twice and give the reader no stable order to hold on to.

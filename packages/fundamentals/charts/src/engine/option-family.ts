@@ -64,6 +64,13 @@ import type { ChordLink, ChordNode, ChordOptions } from './chord'
 
 export interface CompiledFamily {
   plan: FamilyPlan
+  /**
+   * The option the plan was compiled from, its dataset already resolved into
+   * each series' `data` — what the host reads a series' own `tooltip`,
+   * `cursor` and `silent` from, whether the family is the whole chart or one
+   * layer of it.
+   */
+  source: EChartsOption
   /** The animation the option asks for (ECharts' `animation*` keys). */
   animation: ChartAnimation
   warnings: OptionWarning[]
@@ -137,31 +144,37 @@ export function isFamilyOption(option: EChartsOption): boolean {
 }
 
 export const FAMILY_KNOWN_TOP: ReadonlySet<string> = new Set([...ANIMATION_KEYS, 'series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'backgroundColor', 'textStyle', 'grid', 'calendar', 'parallel', 'parallelAxis', 'polar', 'angleAxis', 'radiusAxis', 'singleAxis', 'dataset', 'graphic', 'geo'])
+/**
+ * Series keys a family honours through its host: the series' own `tooltip`,
+ * `cursor` and `silent` (see `family-tooltip.ts`). Not boxplot or a
+ * single-axis scatter: those option charts render as SVG, with no host.
+ */
+const FAMILY_ITEM_KEYS = ['tooltip', 'cursor', 'silent'] as const
 export const KNOWN_BY_FAMILY: Readonly<Record<string, ReadonlySet<string>>> = {
-  pie: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
-  gauge: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'min', 'max', 'detail', 'axisLine', 'progress', 'itemStyle', 'color']),
-  radar: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'areaStyle', 'itemStyle', 'lineStyle', 'symbol', 'color']),
-  candlestick: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'itemStyle', 'color']),
-  heatmap: new Set([...ANIMATION_KEYS, 'id', 'coordinateSystem', 'type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
-  funnel: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis']),
-  treemap: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'leafDepth', 'label', 'itemStyle', 'color', 'emphasis', 'roam']),
-  sunburst: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis']),
-  tree: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'roam', 'emphasis', 'top', 'left', 'right', 'bottom']),
-  sankey: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'nodes', 'links', 'edges', 'nodeWidth', 'nodeGap', 'nodeAlign', 'layoutIterations', 'orient', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'top', 'left', 'right', 'bottom']),
+  pie: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
+  gauge: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'min', 'max', 'detail', 'axisLine', 'progress', 'itemStyle', 'color']),
+  radar: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'areaStyle', 'itemStyle', 'lineStyle', 'symbol', 'color']),
+  candlestick: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'itemStyle', 'color']),
+  heatmap: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'coordinateSystem', 'type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
+  funnel: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis']),
+  treemap: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'leafDepth', 'label', 'itemStyle', 'color', 'emphasis', 'roam']),
+  sunburst: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis']),
+  tree: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'roam', 'emphasis', 'top', 'left', 'right', 'bottom']),
+  sankey: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'nodes', 'links', 'edges', 'nodeWidth', 'nodeGap', 'nodeAlign', 'layoutIterations', 'orient', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'top', 'left', 'right', 'bottom']),
   singleAxis: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'coordinateSystem', 'symbolSize', 'symbol', 'label', 'itemStyle', 'emphasis', 'color']),
-  geo: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'coordinateSystem', 'geoIndex', 'pointSize', 'blurSize', 'map', 'symbolSize', 'symbol', 'label', 'itemStyle', 'lineStyle', 'effect', 'polyline', 'emphasis', 'color']),
-  map: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'map', 'roam', 'scaleLimit', 'label', 'itemStyle', 'emphasis', 'select', 'selectedMode', 'nameProperty', 'projection', 'zoom', 'center', 'aspectScale', 'layoutCenter', 'layoutSize', 'geoIndex', 'left', 'top', 'right', 'bottom']),
-  themeRiver: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'coordinateSystem', 'boundaryGap', 'label', 'itemStyle', 'emphasis', 'color']),
-  polar: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'coordinateSystem', 'stack', 'itemStyle', 'lineStyle', 'label', 'emphasis', 'smooth', 'symbol', 'symbolSize', 'areaStyle', 'color']),
-  parallel: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'coordinateSystem', 'lineStyle', 'emphasis', 'smooth', 'progressive']),
-  graph: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'nodes', 'links', 'edges', 'categories', 'layout', 'symbol', 'symbolSize', 'force', 'circular', 'roam', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'zoom', 'center', 'left', 'top', 'right', 'bottom', 'width', 'height', 'coordinateSystem']),
+  geo: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'geoIndex', 'pointSize', 'blurSize', 'map', 'symbolSize', 'symbol', 'label', 'itemStyle', 'lineStyle', 'effect', 'polyline', 'emphasis', 'color']),
+  map: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'map', 'roam', 'scaleLimit', 'label', 'itemStyle', 'emphasis', 'select', 'selectedMode', 'nameProperty', 'projection', 'zoom', 'center', 'aspectScale', 'layoutCenter', 'layoutSize', 'geoIndex', 'left', 'top', 'right', 'bottom']),
+  themeRiver: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'boundaryGap', 'label', 'itemStyle', 'emphasis', 'color']),
+  polar: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'stack', 'itemStyle', 'lineStyle', 'label', 'emphasis', 'smooth', 'symbol', 'symbolSize', 'areaStyle', 'color']),
+  parallel: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'lineStyle', 'emphasis', 'smooth', 'progressive']),
+  graph: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'nodes', 'links', 'edges', 'categories', 'layout', 'symbol', 'symbolSize', 'force', 'circular', 'roam', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'zoom', 'center', 'left', 'top', 'right', 'bottom', 'width', 'height', 'coordinateSystem']),
   boxplot: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'itemStyle', 'color', 'emphasis']),
   // Sankey's keys, minus the ones only an axis layout has (nodeWidth /
   // nodeGap / nodeAlign / layoutIterations / orient), plus the two a ring
   // needs. Deliberately a SUBSET rather than a copy: a spec that carries
   // `nodeAlign` onto a chord is telling us it was written for a sankey, and
   // that is worth a named warning rather than a silent no-op.
-  chord: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'nodes', 'links', 'edges', 'padAngle', 'ringSize', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'top', 'left', 'right', 'bottom']),
+  chord: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'nodes', 'links', 'edges', 'padAngle', 'ringSize', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'top', 'left', 'right', 'bottom']),
 }
 
 /**
@@ -169,19 +182,20 @@ export const KNOWN_BY_FAMILY: Readonly<Record<string, ReadonlySet<string>>> = {
  * (`compileOption` owns those) so `planOption` can route without guessing.
  */
 export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
-  const compiled = compileFamilyPlan(rawOption)
+  if (!isFamilyOption(rawOption)) return null
+  const resolved = resolveDataset(rawOption)
+  const compiled = compileFamilyPlan(rawOption, resolved)
   if (compiled === null) return null
   const animation = resolveAnimation(rawOption as Record<string, unknown>, (code, path, message) => compiled.warnings.push({ code, path, message }))
-  return { ...compiled, animation }
+  return { ...compiled, animation, source: resolved.option as EChartsOption }
 }
 
-function compileFamilyPlan(rawOption: EChartsOption): Omit<CompiledFamily, 'animation'> | null {
+function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof resolveDataset>): Omit<CompiledFamily, 'animation' | 'source'> | null {
   if (!isFamilyOption(rawOption)) return null
   const warnings: OptionWarning[] = []
   const warn = (code: OptionWarning['code'], path: string, message: string): void => {
     warnings.push({ code, path, message })
   }
-  const resolved = resolveDataset(rawOption)
   for (const w of resolved.warnings) warnings.push(w)
   const option = resolved.option as EChartsOption
   let supported = true

@@ -117,6 +117,27 @@ export interface TooltipView {
   transition?: Double | undefined
 }
 
+/**
+ * The item under the pointer, described the way ECharts describes it to a
+ * tooltip formatter. A family reports it through its spec's `item` hook so the
+ * option facade can apply the option's own `tooltip`, `cursor` and `silent` to
+ * any family without knowing its geometry.
+ */
+export interface HostItem {
+  /** The series the item belongs to; 0 for a family that draws one series. */
+  seriesIndex: number
+  seriesName?: string | undefined
+  /** The item's index in its series' data (a node or a link index for a graph-like family). */
+  dataIndex: number
+  name: string
+  value: unknown
+  color?: string | undefined
+  /** A slice's share of its whole, 0..100 (pie, funnel). */
+  percent?: Double | undefined
+  /** Which kind of element, for the families that have two (graph, sankey, chord). */
+  dataType?: 'node' | 'edge' | undefined
+}
+
 export interface CanvasHostProps {
 
   width?: Double
@@ -190,6 +211,17 @@ export interface CanvasHostProps {
   /** Render the hidden data table (default on). */
   accessibleTable?: boolean
   class?: string
+  /**
+   * Rewrite the tooltip for the item under the pointer: the family's own
+   * lines come in, a box (or null for none) goes out. Only a family that
+   * reports items (its spec's `item` hook) calls it; `<OptionChart>` uses it to
+   * apply the option's `tooltip` component to every family.
+   */
+  itemTooltip?: ((item: HostItem, lines: string[], press: boolean) => string[] | TooltipView | null) | undefined
+  /** The CSS cursor over an item; absent keeps the family's own. */
+  itemCursor?: ((item: HostItem) => string) | undefined
+  /** An item that ignores the pointer: no tooltip, no cursor, no selection (ECharts' `silent`). */
+  itemSilent?: ((item: HostItem) => boolean) | undefined
 }
 
 /** What a family gives the host. `L` is its layout; the host never looks inside it. */
@@ -253,6 +285,8 @@ export interface CanvasHostSpec<L> {
   tooltip?: ((layout: L, px: Double, py: Double, theme: ChartTheme, press: boolean) => string[] | TooltipView | null) | undefined
   /** The CSS cursor for a pointer position (ECharts' per-series `cursor`); '' is the default. */
   cursor?: ((layout: L, px: Double, py: Double) => string) | undefined
+  /** The item under a pointer position, or null — what `itemTooltip` / `itemCursor` / `itemSilent` are applied to. */
+  item?: ((layout: L, px: Double, py: Double) => HostItem | null) | undefined
   /** The pointer left the canvas (or the gesture was cancelled): whatever `tooltip` set as the hover is over. */
   leave?: (() => void) | undefined
   /** The accessible description + table input. */
@@ -307,7 +341,50 @@ function focusRing(r: Rect): DrawCmd {
   }
 }
 
-export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
+/**
+ * Apply the item hooks (`itemTooltip`, `itemCursor`, `itemSilent`) over a
+ * family's own tooltip, cursor and selection. The props are read at call time,
+ * so a host whose props are live getters follows them.
+ */
+function withItemHooks<L>(spec: CanvasHostSpec<L>): CanvasHostSpec<L> {
+  const item = spec.item
+  if (item === undefined) return spec
+  const { props } = spec
+  const quiet = (it: HostItem | null): boolean => it !== null && props.itemSilent?.(it) === true
+  const hooked = (): boolean => props.itemTooltip !== undefined || props.itemCursor !== undefined || props.itemSilent !== undefined
+  const tooltip = spec.tooltip
+  const cursor = spec.cursor
+  const select = spec.select
+  return {
+    ...spec,
+    // A family with no tooltip of its own (the gauge) gains one only when an
+    // `itemTooltip` is supplied: otherwise it would mount a box that never answers.
+    tooltip: tooltip === undefined && props.itemTooltip === undefined ? undefined : (layout, px, py, theme, press) => {
+      const base = tooltip === undefined ? null : tooltip(layout, px, py, theme, press)
+      if (!hooked()) return base
+      const it = item(layout, px, py)
+      if (quiet(it)) return null
+      if (props.itemTooltip === undefined) return base
+      if (it === null) return null
+      const lines = base === null ? [] : Array.isArray(base) ? base : (base.lines ?? [])
+      return props.itemTooltip(it, lines, press)
+    },
+    cursor: (layout, px, py) => {
+      const own = cursor === undefined ? '' : cursor(layout, px, py)
+      if (props.itemCursor === undefined && props.itemSilent === undefined) return own
+      const it = item(layout, px, py)
+      if (it === null || quiet(it)) return ''
+      return props.itemCursor === undefined ? own : props.itemCursor(it)
+    },
+    select: select === undefined ? undefined : (layout, px, py) => {
+      if (quiet(item(layout, px, py))) return
+      select(layout, px, py)
+    },
+  }
+}
+
+export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
+  const spec = withItemHooks(rawSpec)
   const transposed = (): boolean => spec.transpose?.() === true
   /** The family's layout, in the box reflected across the diagonal when transposed (the render reflects it back). */
   const lay = (box: Rect, measure: MeasureText, t: ChartTheme): L => spec.layout(transposed() ? transposeRect(box) : box, measure, t)

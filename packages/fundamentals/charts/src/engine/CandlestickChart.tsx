@@ -71,6 +71,13 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
       const label = g.categories[idx] ?? `#${idx + 1}`
       return [label, `O ${fmt(c.open)}`, `H ${fmt(c.high)}`, `L ${fmt(c.low)}`, `C ${fmt(c.close)}`]
     },
+    // ECharts' candlestick datum: [open, close, lowest, highest].
+    item: (g, px, py) => {
+      const idx = hitAt(g, px, py)
+      const c = g.candles[idx]
+      if (c === undefined) return null
+      return { seriesIndex: 0, dataIndex: idx, name: g.categories[idx] ?? '', value: [c.open, c.close, c.low, c.high] }
+    },
     describe: (g) => {
       const title = props.title ?? 'Candlestick chart'
       if (g.candles.length === 0) return `${title}: no data.`
