@@ -1,3 +1,4 @@
+import { paletteAt } from '../engine/palette'
 import { describe, expect, it } from 'vitest'
 import { compileFamily } from '../engine/option-family'
 import type { FamilyPlan } from '../engine/option-family'
@@ -228,12 +229,15 @@ describe('graph', () => {
   const g = (s: Record<string, unknown>): Record<string, unknown> => (plan(series({ type: 'graph', ...s })) as unknown as { graph: Record<string, unknown> }).graph
   it('a node id falls back name → index label, and x/y/value/category ride along only when numeric', () => {
     const p = plan(series({ type: 'graph', data: [{ id: 'n1', value: 3, category: 1, x: 10, y: 20, itemStyle: { color: '#c' } }, { id: 7 }, { name: 'byName' }, {}, { id: 'n5', value: 'x', category: 'x', x: 'x', y: null }] })) as unknown as { nodes: Record<string, unknown>[] }
+    // An uncategorised node without its own colour takes the series colour
+    // (ECharts' graph default, `colorBy: 'series'`); `c` is that colour here.
+    const c = paletteAt([], 0)
     expect(p.nodes).toEqual([
       { id: 'n1', value: 3, category: 1, color: '#c', x: 10, y: 20 },
-      { id: '7' },
-      { id: 'byName', name: 'byName' },
-      { id: 'Node 4' },
-      { id: 'n5' },
+      { id: '7', color: c },
+      { id: 'byName', name: 'byName', color: c },
+      { id: 'Node 4', color: c },
+      { id: 'n5', color: c },
     ])
   })
   it('a non-object node is skipped by name', () => {

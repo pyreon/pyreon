@@ -626,7 +626,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'complete',
     native: 'partial',
     gaps: [LITERAL_ONLY],
-    evidence: ['src/engine/presets.test.ts', 'src/engine/theme.test.ts', NATIVE + 'chart-theme-native.test.ts'],
+    evidence: ['src/engine/presets.test.ts', 'src/engine/theme.test.ts', 'src/engine/option-family-colorby.test.ts', NATIVE + 'chart-theme-native.test.ts'],
   }),
   row('presentation.theme', 'presentation', 'direct', {
     web: 'complete',
@@ -649,7 +649,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'complete',
     native: 'partial',
     gaps: [LITERAL_ONLY],
-    evidence: ['src/engine/cmd-tween.test.ts', 'src/engine/universal-transition.browser.test.tsx', NATIVE + 'native-chart-transition-parity.test.ts', ...DEVICE],
+    evidence: ['src/engine/cmd-tween.test.ts', 'src/engine/universal-transition.browser.test.tsx', 'src/engine/option-family-universal.browser.test.tsx', NATIVE + 'native-chart-transition-parity.test.ts', ...DEVICE],
   }),
   row('presentation.locale', 'presentation', 'direct', {
     web: 'partial',

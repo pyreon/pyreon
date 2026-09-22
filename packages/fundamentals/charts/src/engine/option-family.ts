@@ -146,10 +146,11 @@ export function isFamilyOption(option: EChartsOption): boolean {
 export const FAMILY_KNOWN_TOP: ReadonlySet<string> = new Set([...ANIMATION_KEYS, 'series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'backgroundColor', 'textStyle', 'grid', 'calendar', 'parallel', 'parallelAxis', 'polar', 'angleAxis', 'radiusAxis', 'singleAxis', 'dataset', 'graphic', 'geo'])
 /**
  * Series keys a family honours through its host: the series' own `tooltip`,
- * `cursor` and `silent` (see `family-tooltip.ts`). Not boxplot or a
+ * `cursor` and `silent` (see `family-tooltip.ts`), and `universalTransition`
+ * (the host morphs an update that changes the item count). Not boxplot or a
  * single-axis scatter: those option charts render as SVG, with no host.
  */
-const FAMILY_ITEM_KEYS = ['tooltip', 'cursor', 'silent'] as const
+const FAMILY_ITEM_KEYS = ['tooltip', 'cursor', 'silent', 'universalTransition'] as const
 /**
  * The dataset keys the dataset pre-pass (`resolveDataset`) consumes for a
  * family it can encode: which dataset, how it is laid out, the series' own
@@ -157,12 +158,12 @@ const FAMILY_ITEM_KEYS = ['tooltip', 'cursor', 'silent'] as const
  */
 const FAMILY_DATASET_KEYS = ['datasetIndex', 'datasetId', 'seriesLayoutBy', 'dimensions', 'encode'] as const
 export const KNOWN_BY_FAMILY: Readonly<Record<string, ReadonlySet<string>>> = {
-  pie: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
+  pie: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'colorBy', 'type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
   gauge: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'min', 'max', 'detail', 'axisLine', 'progress', 'itemStyle', 'color']),
-  radar: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'areaStyle', 'itemStyle', 'lineStyle', 'symbol', 'color']),
+  radar: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'colorBy', 'type', 'name', 'data', 'areaStyle', 'itemStyle', 'lineStyle', 'symbol', 'color']),
   candlestick: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'itemStyle', 'color']),
   heatmap: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'coordinateSystem', 'type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
-  funnel: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis']),
+  funnel: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'colorBy', 'type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis']),
   treemap: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'leafDepth', 'label', 'itemStyle', 'color', 'emphasis', 'roam']),
   sunburst: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis']),
   tree: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'roam', 'emphasis', 'top', 'left', 'right', 'bottom']),
@@ -170,17 +171,17 @@ export const KNOWN_BY_FAMILY: Readonly<Record<string, ReadonlySet<string>>> = {
   singleAxis: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'coordinateSystem', 'symbolSize', 'symbol', 'label', 'itemStyle', 'emphasis', 'color']),
   geo: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'geoIndex', 'pointSize', 'blurSize', 'map', 'symbolSize', 'symbol', 'label', 'itemStyle', 'lineStyle', 'effect', 'polyline', 'emphasis', 'color']),
   map: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'map', 'roam', 'scaleLimit', 'label', 'itemStyle', 'emphasis', 'select', 'selectedMode', 'nameProperty', 'projection', 'zoom', 'center', 'aspectScale', 'layoutCenter', 'layoutSize', 'geoIndex', 'left', 'top', 'right', 'bottom']),
-  themeRiver: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'boundaryGap', 'label', 'itemStyle', 'emphasis', 'color']),
+  themeRiver: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'colorBy', 'type', 'name', 'data', 'coordinateSystem', 'boundaryGap', 'label', 'itemStyle', 'emphasis', 'color']),
   polar: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'stack', 'itemStyle', 'lineStyle', 'label', 'emphasis', 'smooth', 'symbol', 'symbolSize', 'areaStyle', 'color']),
   parallel: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'lineStyle', 'emphasis', 'smooth', 'progressive']),
-  graph: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'nodes', 'links', 'edges', 'categories', 'layout', 'symbol', 'symbolSize', 'force', 'circular', 'roam', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'zoom', 'center', 'left', 'top', 'right', 'bottom', 'width', 'height', 'coordinateSystem']),
+  graph: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'colorBy', 'type', 'name', 'data', 'nodes', 'links', 'edges', 'categories', 'layout', 'symbol', 'symbolSize', 'force', 'circular', 'roam', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'zoom', 'center', 'left', 'top', 'right', 'bottom', 'width', 'height', 'coordinateSystem']),
   boxplot: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, 'type', 'name', 'data', 'itemStyle', 'color', 'emphasis']),
   // Sankey's keys, minus the ones only an axis layout has (nodeWidth /
   // nodeGap / nodeAlign / layoutIterations / orient), plus the two a ring
   // needs. Deliberately a SUBSET rather than a copy: a spec that carries
   // `nodeAlign` onto a chord is telling us it was written for a sankey, and
   // that is worth a named warning rather than a silent no-op.
-  chord: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'nodes', 'links', 'edges', 'padAngle', 'ringSize', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'top', 'left', 'right', 'bottom']),
+  chord: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'colorBy', 'type', 'name', 'data', 'nodes', 'links', 'edges', 'padAngle', 'ringSize', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'top', 'left', 'right', 'bottom']),
 }
 
 /**
@@ -237,6 +238,12 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
   const legendRaw = option['legend']
   const showLegend = legendRaw !== undefined && !(isObj(legendRaw) && legendRaw['show'] === false)
   const palette: readonly string[] = Array.isArray(option['color']) ? (option['color'] as unknown[]).filter((c): c is string => typeof c === 'string') : []
+  // ECharts' `colorBy`: 'data' gives each datum its own palette colour, 'series'
+  // gives every datum the series' one colour. Each family's default is ECharts'
+  // own (pie, funnel, radar, chord, theme river: 'data'; graph: 'series').
+  const colorByOf = (ser: Record<string, unknown>, byDefault: 'data' | 'series'): 'data' | 'series' => (ser['colorBy'] === 'data' || ser['colorBy'] === 'series' ? (ser['colorBy'] as 'data' | 'series') : byDefault)
+  const seriesColor = (si: number): string => paletteAt(palette, si)
+  const colorBy = colorByOf(s, type === 'graph' ? 'series' : 'data')
   const data = Array.isArray(s['data']) ? (s['data'] as unknown[]) : []
   if (!Array.isArray(s['data'])) {
     warn('series-data-shape', 'series[0].data', 'Series data must be an array; treated as empty.')
@@ -255,7 +262,7 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
       rows.push({
         value: v,
         name: isObj(d) && typeof d['name'] === 'string' ? (d['name'] as string) : `Slice ${i + 1}`,
-        color: typeof item['color'] === 'string' ? (item['color'] as string) : palette[i % Math.max(1, palette.length)],
+        color: typeof item['color'] === 'string' ? (item['color'] as string) : colorBy === 'series' ? seriesColor(0) : palette[i % Math.max(1, palette.length)],
       })
     }
     // radius: '60%' | ['40%', '70%'] → the hole as a fraction of the outer radius.
@@ -329,7 +336,7 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
         rows.push({
           values: raw.map((v) => num(v) ?? 0.0),
           name: isObj(d) && typeof d['name'] === 'string' ? (d['name'] as string) : `Series ${rows.length + 1}`,
-          color: typeof item['color'] === 'string' ? (item['color'] as string) : palette[rows.length % Math.max(1, palette.length)],
+          color: typeof item['color'] === 'string' ? (item['color'] as string) : colorByOf(rs, 'data') === 'series' ? seriesColor(si) : palette[rows.length % Math.max(1, palette.length)],
         })
       }
     }
@@ -636,7 +643,7 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
     }
     const categories = Array.from(dates).sort()
     const series: RiverSeries[] = []
-    for (const [name, row] of byName) series.push({ name, values: categories.map((c) => row.get(c) ?? 0.0) })
+    for (const [name, row] of byName) series.push({ name, values: categories.map((c) => row.get(c) ?? 0.0), ...(colorBy === 'series' ? { color: seriesColor(0) } : {}) })
     const label = isObj(s['label']) ? s['label'] : {}
     const river: RiverOptions = { categories, showLabels: label['show'] !== false }
     return { plan: { kind: 'themeRiver', series, river, title }, warnings, supported }
@@ -798,6 +805,8 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
   }
 
   if (type === 'graph') {
+    const seriesItem = isObj(s['itemStyle']) ? s['itemStyle'] : {}
+    const graphSeriesColor = typeof seriesItem['color'] === 'string' ? (seriesItem['color'] as string) : seriesColor(0)
     const rawNodes = Array.isArray(s['nodes']) ? (s['nodes'] as unknown[]) : data
     const nodes: GraphNode[] = []
     for (let i = 0; i < rawNodes.length; i++) {
@@ -817,7 +826,13 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
         ...(typeof d['name'] === 'string' ? { name: d['name'] as string } : {}),
         ...(v !== null ? { value: v } : {}),
         ...(cat !== null ? { category: cat } : {}),
-        ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
+        ...(typeof item['color'] === 'string'
+          ? { color: item['color'] as string }
+          : // ECharts' graph colours an uncategorised node with the series colour
+            // unless colorBy is 'data'; a category's colour comes from the category.
+            cat === null && colorBy === 'series'
+            ? { color: graphSeriesColor }
+            : {}),
         ...(x !== null ? { x } : {}),
         ...(y !== null ? { y } : {}),
       })
@@ -909,7 +924,8 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
         continue
       }
       const item = isObj(d['itemStyle']) ? d['itemStyle'] : {}
-      nodes.push({ name: d['name'] as string, ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}) })
+      const nodeColor = typeof item['color'] === 'string' ? (item['color'] as string) : colorBy === 'series' ? seriesColor(0) : undefined
+      nodes.push({ name: d['name'] as string, ...(nodeColor === undefined ? {} : { color: nodeColor }) })
     }
     const rawLinks = Array.isArray(s['links']) ? (s['links'] as unknown[]) : Array.isArray(s['edges']) ? (s['edges'] as unknown[]) : []
     const links: ChordLink[] = []
@@ -1051,7 +1067,7 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
       rows.push({
         value: v,
         name: isObj(d) && typeof d['name'] === 'string' ? (d['name'] as string) : `Stage ${i + 1}`,
-        color: typeof item['color'] === 'string' ? (item['color'] as string) : palette[i % Math.max(1, palette.length)],
+        color: typeof item['color'] === 'string' ? (item['color'] as string) : colorBy === 'series' ? seriesColor(0) : palette[i % Math.max(1, palette.length)],
       })
     }
     const sortRaw = s['sort']

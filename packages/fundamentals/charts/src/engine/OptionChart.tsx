@@ -154,6 +154,10 @@ function flattenLayers(p: OptionPlan): FlatLayers {
   if (p.kind === 'layers' || p.kind === 'grids') for (const part of p.parts) walk(part.plan, 0.0, 0.0, part.rect)
   return out
 }
+/** Whether any series of an option turns ECharts' `universalTransition` on (`true` or `{ enabled: true }`). */
+function wantsUniversalTransition(option: unknown): boolean {
+  return asArray(isRecord(option) ? option['series'] : undefined).some((s) => isRecord(s) && (s['universalTransition'] === true || (isRecord(s['universalTransition']) && s['universalTransition']['enabled'] === true)))
+}
 /** Whether a plan draws on the canvas (its family parts, if any, mounting hosts over it) rather than as SVG. */
 const canvasable = (p: OptionPlan): boolean => p.kind === 'cartesian' || ((p.kind === 'grids' || p.kind === 'layers') && !flattenLayers(p).hostless)
 /** Whether a plan has family parts that mount as hosts over the canvas. */
@@ -419,6 +423,11 @@ export function OptionChart(props: OptionChartProps): VNode {
     },
     get onSaveImage() {
       return props.onSaveImage
+    },
+    // A series' `universalTransition` lets its host morph an update that
+    // changes the item count, as it does on the cartesian canvas.
+    get universalTransition() {
+      return props.universalTransition ?? wantsUniversalTransition(source())
     },
     itemTooltip: familyItemTooltip({ option: source, kind, tooltipProp: () => props.tooltip, size }),
     itemCursor: familyItemCursor(source),
@@ -771,8 +780,7 @@ export function OptionChart(props: OptionChartProps): VNode {
   // has one timeline); the prop, when given, wins.
   Object.defineProperty(hostProps, 'universalTransition', {
     get: () =>
-      props.universalTransition ??
-      asArray(readOption()['series']).some((s) => isRecord(s) && (s['universalTransition'] === true || (isRecord(s['universalTransition']) && s['universalTransition']['enabled'] === true))),
+      props.universalTransition ?? wantsUniversalTransition(readOption()),
     enumerable: true,
     configurable: true,
   })
