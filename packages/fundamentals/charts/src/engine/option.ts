@@ -39,7 +39,7 @@ import { resolveTheme } from './theme-registry'
 import type { ThemeDefinition } from './theme-registry'
 import { dateFormatter, numberFormatter } from './locale'
 import type { RichStyle } from './labels'
-import type { Annotation, ChartSpec, PointMarker, Series, SeriesExtra } from './render'
+import type { Annotation, ChartSpec, PointMarker, Series, SeriesExtra, BarLength } from './render'
 import { smooth, step } from './curve'
 import { plain } from './format'
 import type { Formatter } from './format'
@@ -155,6 +155,8 @@ export const KNOWN_SERIES: ReadonlySet<string> = new Set([
   'select', 'blur', 'selectedMode', 'selectedMap',
   // Paint order (the draw order below).
   'z', 'zlevel',
+  // Bar sizing (the engine's ECharts column solver).
+  'barWidth', 'barMaxWidth', 'barMinWidth', 'barGap', 'barCategoryGap',
 ])
 
 /**
@@ -855,6 +857,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       ...(gradient !== undefined && gradient.stops.length > 0 ? { gradient } : {}),
       ...(Array.isArray(s['tooltipExtras']) ? { extras: s['tooltipExtras'] as SeriesExtra[] } : {}),
       ...(itemColors.some((c) => c !== '') ? { itemColors } : {}),
+      // ECharts' bar sizing: the engine solves the columns at layout (`barColumns`).
+      ...(kind === 'bars' || kind === 'stacked' || kind === 'grouped' ? barSizing(s) : {}),
       ...stateFields(s, path, warn),
       ...labelFields(label, typeof s['name'] === 'string' ? (s['name'] as string) : `Series ${i + 1}`, categories, values, `${path}.label`, warn, localeNumber ?? plain),
     }
@@ -1068,6 +1072,9 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     height: opts.height ?? 320.0,
     series,
     categories,
+    // Bars lay out as ECharts' columns; the gaps come from the LAST bar series that sets them, as in ECharts.
+    barLayout: true,
+    ...lastBarGaps(rawSeries),
     // A single `grid`'s position fixes the plot rect, as in ECharts.
     ...optionGridInsets(option['grid'], opts.width ?? 640.0, opts.height ?? 320.0),
     // ECharts' category-axis `boundaryGap: false`: lines run edge to edge, labels on the points.
@@ -1180,6 +1187,41 @@ export function axisNumber(v: Double): string {
   const frac = dot < 0 ? '' : body.slice(dot)
   const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
   return (neg ? '-' : '') + grouped + frac
+}
+
+/** An ECharts length: a number of pixels, or a `'30%'` percent; undefined otherwise. */
+function barLength(v: unknown): BarLength | undefined {
+  if (typeof v === 'number' && Number.isFinite(v)) return { value: v, percent: false }
+  if (typeof v !== 'string') return undefined
+  const n = Number.parseFloat(v)
+  if (!Number.isFinite(n)) return undefined
+  return { value: n, percent: v.trim().endsWith('%') }
+}
+
+/** A bar series' sizing keys, as the engine's column solver takes them. */
+function barSizing(s: Record<string, unknown>): Partial<Series> {
+  const out: Partial<Series> = {}
+  const w = barLength(s['barWidth'])
+  const max = barLength(s['barMaxWidth'])
+  const min = barLength(s['barMinWidth'])
+  if (w !== undefined) out.barWidth = w
+  if (max !== undefined) out.barMaxWidth = max
+  if (min !== undefined) out.barMinWidth = min
+  if (typeof s['stack'] === 'string') out.barStack = 'stack:' + (s['stack'] as string)
+  return out
+}
+
+/** `barGap` / `barCategoryGap` from the last bar series that sets each (ECharts' rule). */
+function lastBarGaps(rawSeries: unknown[]): { barGap?: BarLength; barCategoryGap?: BarLength } {
+  const out: { barGap?: BarLength; barCategoryGap?: BarLength } = {}
+  for (const s of rawSeries) {
+    if (!isObj(s) || (s['type'] !== 'bar' && s['type'] !== 'pictorialBar')) continue
+    const g = barLength(s['barGap'])
+    const c = barLength(s['barCategoryGap'])
+    if (g !== undefined) out.barGap = g.percent ? g : { value: g.value, percent: true }
+    if (c !== undefined) out.barCategoryGap = c
+  }
+  return out
 }
 
 function axisDomain(axis: Record<string, unknown> | undefined): Domain | undefined {

@@ -182,8 +182,11 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
   row('series.bar', 'series', 'direct', {
     web: 'partial',
     native: 'partial',
-    gaps: ['`barWidth`, `barGap`, `barCategoryGap` and `barMaxWidth` are read on the polar coordinate only; on a grid they are ignored with a warning', LITERAL_ONLY],
-    evidence: ['src/engine/option.test.ts', 'src/engine/horizontal.test.ts', NATIVE + 'chart-axes-native.test.ts'],
+    gaps: [
+      'bars lay out as ECharts columns (differential-tested) on a vertical grid; a horizontal bar chart keeps the engine gap, and two DIFFERENT `stack` groups share one accumulating stack',
+      LITERAL_ONLY,
+    ],
+    evidence: ['src/engine/option.test.ts', 'src/engine/horizontal.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-axes-native.test.ts'],
   }),
   row('series.pie', 'series', 'direct', {
     web: 'partial',

@@ -42,6 +42,10 @@ const ROLE: Readonly<Record<keyof Series, Role>> = {
   radii: 'presentation',
   // A per-datum fill: how a datum is drawn, not a number about it.
   itemColors: 'presentation',
+  barWidth: 'presentation',
+  barMaxWidth: 'presentation',
+  barMinWidth: 'presentation',
+  barStack: 'presentation',
   color: 'presentation',
   width: 'presentation',
   radius: 'presentation',

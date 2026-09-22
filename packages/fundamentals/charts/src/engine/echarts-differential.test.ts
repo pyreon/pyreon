@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest'
 import * as echarts from 'echarts'
 import { compileOption } from './option'
 import type { EChartsOption } from './option'
-import { layoutChart } from './render'
+import { barsFor, layoutChart } from './render'
 
 const W = 400
 const H = 300
@@ -66,6 +66,65 @@ describe('ECharts differential: value-axis ticks', () => {
   for (const [name, option] of CASES) {
     it(name, () => {
       expect(ourYTicks(option)).toEqual(echartsYTicks(option))
+    })
+  }
+})
+
+/**
+ * Bar columns: each bar's centre as a fraction of the plot width (plot rects
+ * differ: ECharts' default grid is not the facade's label-sized one) and its
+ * width, as a fraction for a percent/auto layout and in pixels where the
+ * option sizes a bar in pixels. ECharts rounds bar edges to a tenth of a
+ * pixel, hence the tolerance.
+ */
+interface BarFact { key: string; c: number; w: number; wPx: number }
+function echartsBars(option: object): BarFact[] {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: W, height: H })
+  chart.setOption({ animation: false, ...option })
+  const svg = chart.renderToSVGString()
+  chart.dispose()
+  const grid = [...svg.matchAll(/<path d="M([\d.]+) [\d.]+L([\d.]+) [\d.]+" fill="none"[^>]*stroke="#dbdee4"/g)][0]!
+  const x0 = Number(grid[1]), x1 = Number(grid[2])
+  return [...svg.matchAll(/<path d="M([\d.]+) ([\d.]+)l([\d.]+) 0l0 (-?[\d.]+)[^"]*"[^>]*ecmeta_series_index="(\d+)" ecmeta_data_index="(\d+)"/g)]
+    .map((m) => ({ key: m[5]! + '/' + m[6]!, c: (Number(m[1]) + Number(m[3]) / 2 - x0) / (x1 - x0), w: Number(m[3]) / (x1 - x0), wPx: Number(m[3]) }))
+    .sort((a, b) => (a.key < b.key ? -1 : 1))
+}
+function ourBars(option: object): BarFact[] {
+  const c = compileOption(option as EChartsOption, { width: W, height: H })
+  const m = (t: string) => t.length * 7
+  const plot = layoutChart(c.spec, m).plot
+  const out: BarFact[] = []
+  const fact = (k: number, d: number, r: { x: number; w: number }) => out.push({ key: String(k) + '/' + String(d), c: (r.x + r.w / 2 - plot.x) / plot.w, w: r.w / plot.w, wPx: r.w })
+  c.spec.series.forEach((s, k) => {
+    if (s.kind === 'bars' || s.kind === 'grouped' || s.kind === 'stacked') barsFor(c.spec, k, m).forEach((r, d) => { if (r.w > 0) fact(k, d, r) })
+  })
+  return out.sort((a, b) => (a.key < b.key ? -1 : 1))
+}
+
+const cat = { xAxis: { type: 'category', data: ['a', 'b', 'c', 'd'] }, yAxis: { type: 'value' } }
+const BAR_CASES: [string, object, 'fraction' | 'px'][] = [
+  ['one series: 31% category gap', { ...cat, series: [{ type: 'bar', data: [2, 1, 3, 2] }] }, 'fraction'],
+  ['barWidth in pixels', { ...cat, series: [{ type: 'bar', barWidth: 20, data: [2, 1, 3, 2] }] }, 'px'],
+  ['barWidth as a percent', { ...cat, series: [{ type: 'bar', barWidth: '40%', data: [2, 1, 3, 2] }] }, 'fraction'],
+  ['barCategoryGap', { ...cat, series: [{ type: 'bar', barCategoryGap: '50%', data: [2, 1, 3, 2] }] }, 'fraction'],
+  ['barMaxWidth caps the auto width', { ...cat, series: [{ type: 'bar', barMaxWidth: 10, data: [2, 1, 3, 2] }] }, 'px'],
+  ['two grouped series: 27% gap, 10% bar gap', { ...cat, series: [{ type: 'bar', data: [2, 1, 3, 2] }, { type: 'bar', data: [1, 2, 1, 3] }] }, 'fraction'],
+  ['three grouped series', { ...cat, series: [{ type: 'bar', data: [2, 1, 3, 2] }, { type: 'bar', data: [1, 2, 1, 3] }, { type: 'bar', data: [1, 1, 1, 1] }] }, 'fraction'],
+  ['barGap', { ...cat, series: [{ type: 'bar', data: [2, 1, 3, 2] }, { type: 'bar', barGap: '-100%', data: [1, 2, 1, 3] }] }, 'fraction'],
+  ['one stack is one column', { ...cat, series: [{ type: 'bar', stack: 's', data: [2, 1, 3, 2] }, { type: 'bar', stack: 's', data: [1, 2, 1, 3] }] }, 'fraction'],
+]
+
+describe('ECharts differential: bar columns', () => {
+  for (const [name, option, unit] of BAR_CASES) {
+    it(name, () => {
+      const e = echartsBars(option)
+      const u = ourBars(option)
+      expect(u.map((b) => b.key)).toEqual(e.map((b) => b.key))
+      u.forEach((b, i) => {
+        expect(b.c).toBeCloseTo(e[i]!.c, 2)
+        if (unit === 'px') expect(b.wPx).toBeCloseTo(e[i]!.wPx, 0)
+        else expect(Math.abs(b.w - e[i]!.w)).toBeLessThan(0.002)
+      })
     })
   }
 })

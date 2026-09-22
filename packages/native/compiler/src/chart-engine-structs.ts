@@ -3024,6 +3024,68 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             }
           ]
         }
+      },
+      {
+        "name": "barWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "BarLength",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barMaxWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "BarLength",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barMinWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "BarLength",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barStack",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
       }
     ],
     "external": true
@@ -3512,6 +3574,26 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "BarLength",
+    "fields": [
+      {
+        "name": "value",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "percent",
+        "type": {
+          "kind": "boolean"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "ChartSpec",
     "fields": [
       {
@@ -3594,6 +3676,52 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             {
               "kind": "typeRef",
               "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barLayout",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barGap",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "BarLength",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barCategoryGap",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "BarLength",
               "args": []
             },
             {
@@ -12746,6 +12874,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "A11yTable",
   "Annotation",
   "ArcGeometry",
+  "BarLength",
   "Bin",
   "BoxplotFrame",
   "BoxplotOptions",

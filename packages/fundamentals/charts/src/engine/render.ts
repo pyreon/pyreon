@@ -3,6 +3,7 @@
 import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt, layoutSeriesPointsEdge, layoutSeriesPointsH } from './layout'
 import { DEFAULT_PALETTE } from './palette'
 import { layoutGroupedBars, layoutGroupedBarsH, layoutStackedBars, layoutStackedBarsH, layoutWaterfall, normalizeStack, stackCumulative, stackedExtent, waterfallExtent } from './stack'
+import type { StackSegment } from './stack'
 import type { Formatter } from './format'
 import type { ExtraYAxis, LayoutConfig, PlotLayout } from './layout'
 import { linesCommands } from './lines'
@@ -176,6 +177,15 @@ export interface Series {
    * hover / select / blur states act on the datum's own colour.
    */
   itemColors?: string[] | undefined
+  /**
+   * ECharts' bar sizing for this series (used when the spec's `barLayout` is
+   * on): `barWidth`, `barMaxWidth`, `barMinWidth` as pixels or percents of the
+   * band, and the stack it shares a column with.
+   */
+  barWidth?: BarLength | undefined
+  barMaxWidth?: BarLength | undefined
+  barMinWidth?: BarLength | undefined
+  barStack?: string | undefined
 }
 
 /**
@@ -325,6 +335,12 @@ export interface Emphasis {
   selected: number[]
 }
 
+/** A length as ECharts writes it: pixels, or a percent of a reference. */
+export interface BarLength {
+  value: Double
+  percent: boolean
+}
+
 export interface ChartSpec {
   width: Double
   height: Double
@@ -354,6 +370,15 @@ export interface ChartSpec {
    * ceiled to it, and ticks at that step. Unset keeps the engine's own ticks.
    */
   ySplit?: Double | undefined
+  /**
+   * Lay bars out the way ECharts does: each stack (or lone bar series) is a
+   * column, sized by the series' `barWidth` / `barMaxWidth` / `barMinWidth`,
+   * the gap between columns `barGap` (default 10%) and the gap around the
+   * group `barCategoryGap` (default `max(35 - 4 × columns, 15)%`).
+   */
+  barLayout?: boolean | undefined
+  barGap?: BarLength | undefined
+  barCategoryGap?: BarLength | undefined
   /**
    * One pinned bound of the left value axis (ECharts' `min` / `max` given
    * alone): the other is derived from the data. `yMinData` / `yMaxData` pin a
@@ -1170,6 +1195,145 @@ export function categoryPoints(spec: ChartSpec, values: Double[], plot: Rect, do
   return edgeCategoryPoints(spec) ? layoutSeriesPointsEdge(values, plot, dom) : layoutSeriesPoints(values, plot, dom)
 }
 
+/** A length in pixels against `ref` (a percent of it, or pixels as written); `fallback` when unset. */
+function barPx(raw: BarLength | undefined, ref: Double, fallback: Double): Double {
+  // Coalesced before use: Swift does not narrow an optional through the guard.
+  const has = raw !== undefined
+  const l = raw ?? NO_LENGTH
+  if (!has) return fallback
+  return l.percent ? (l.value / 100.0) * ref : l.value
+}
+
+const NO_LENGTH: BarLength = { value: 0.0, percent: false }
+
+/**
+ * ECharts' bar columns (`calcBarWidthAndOffset`): per series index, the left
+ * edge from the band centre and the width, in pixels. Empty when the spec does
+ * not ask for ECharts' layout; a series not a bar gets width -1.
+ */
+export function barColumns(spec: ChartSpec, band: Double): Pt[] {
+  const out: Pt[] = []
+  if (spec.barLayout !== true) return out
+  const ids: string[] = []
+  const widths: Double[] = []
+  const maxes: Double[] = []
+  const mins: Double[] = []
+  for (let k = 0; k < spec.series.length; k++) {
+    const s = spec.series[k]!
+    if (s.kind !== 'bars' && s.kind !== 'stacked' && s.kind !== 'grouped') continue
+    const id = s.barStack ?? (s.kind === 'stacked' ? '__stack' : 'series' + String(k))
+    let at = -1
+    for (let q = 0; q < ids.length; q++) if (ids[q] === id) at = q
+    if (at < 0) {
+      ids.push(id)
+      widths.push(0.0)
+      maxes.push(0.0)
+      mins.push(0.0)
+      at = ids.length - 1
+    }
+    if (s.barWidth !== undefined && widths[at]! === 0.0) widths[at] = barPx(s.barWidth, band, 0.0)
+    if (s.barMaxWidth !== undefined) maxes[at] = barPx(s.barMaxWidth, band, 0.0)
+    mins[at] = barPx(s.barMinWidth, band, 1.0)
+  }
+  const cols = countToDouble(ids.length)
+  const gapLength = spec.barGap ?? NO_LENGTH
+  const gapPct = spec.barGap === undefined ? 0.1 : gapLength.value / 100.0
+  const catGap = spec.barCategoryGap === undefined ? (Math.max(35.0 - cols * 4.0, 15.0) / 100.0) * band : barPx(spec.barCategoryGap, band, 0.0)
+  let remained = band
+  let autoCount = cols
+  for (let q = 0; q < ids.length; q++) if (widths[q]! > 0.0) remained = remained - Math.min(remained, widths[q]!)
+  const auto = Math.max(0.0, (remained - catGap) / (autoCount + (autoCount - 1.0) * gapPct))
+  const finals: Double[] = []
+  for (let q = 0; q < ids.length; q++) {
+    let w = widths[q]!
+    if (w === 0.0) {
+      let f = auto
+      if (maxes[q]! > 0.0 && maxes[q]! < f) f = Math.min(maxes[q]!, remained)
+      if (mins[q]! > f) f = mins[q]!
+      if (f !== auto) {
+        w = f
+        remained = remained - (f + gapPct * f)
+        autoCount = autoCount - 1.0
+      }
+    } else {
+      if (maxes[q]! > 0.0) w = Math.min(w, maxes[q]!)
+      if (mins[q]! > 0.0) w = Math.max(w, mins[q]!)
+      remained = remained - (w + gapPct * w)
+      autoCount = autoCount - 1.0
+    }
+    finals.push(w)
+  }
+  // Recalculated once the fixed columns have taken their share (ECharts does the same).
+  const auto2 = Math.max(0.0, (remained - catGap) / (autoCount + (autoCount - 1.0) * gapPct))
+  let sum = 0.0
+  for (let q = 0; q < finals.length; q++) {
+    if (finals[q]! === 0.0) finals[q] = auto2
+    sum = sum + finals[q]! * (1.0 + gapPct)
+  }
+  const total = finals.length > 0 ? sum - finals[finals.length - 1]! * gapPct : sum
+  const offsets: Double[] = []
+  let off = -total / 2.0
+  for (let q = 0; q < finals.length; q++) {
+    offsets.push(off)
+    off = off + finals[q]! * (1.0 + gapPct)
+  }
+  for (let k = 0; k < spec.series.length; k++) {
+    const s = spec.series[k]!
+    if (s.kind !== 'bars' && s.kind !== 'stacked' && s.kind !== 'grouped') {
+      out.push({ x: 0.0, y: -1.0 })
+      continue
+    }
+    const id = s.barStack ?? (s.kind === 'stacked' ? '__stack' : 'series' + String(k))
+    let at = 0
+    for (let q = 0; q < ids.length; q++) if (ids[q] === id) at = q
+    out.push({ x: offsets[at]!, y: finals[at]! })
+  }
+  return out
+}
+
+/** A bar rect moved into series `k`'s ECharts column, when the spec lays bars out that way. */
+function inColumn(spec: ChartSpec, cols: Pt[], k: number, r: Rect, i: number, n: number, plot: Rect): Rect {
+  const c = cols[k]
+  if (c === undefined || c.y < 0.0 || n === 0) return r
+  const band = plot.w / countToDouble(n)
+  return { x: plot.x + band * countToDouble(i) + band / 2.0 + c.x, y: r.y, w: c.y, h: r.h }
+}
+
+/** The band width for a series count over a plot. */
+function bandOf(plot: Rect, n: number): Double {
+  return n === 0 ? 0.0 : plot.w / countToDouble(n)
+}
+
+/** `layoutBars` for series `k`, in its column. */
+function barsLaid(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] {
+  const s = spec.series[k]!
+  const rects = layoutBars(s.values, plot, dom, 0.25)
+  const cols = barColumns(spec, bandOf(plot, rects.length))
+  const out: Rect[] = []
+  for (let i = 0; i < rects.length; i++) out.push(inColumn(spec, cols, k, rects[i]!, i, rects.length, plot))
+  return out
+}
+
+/** The global series indices of a kind, in order. */
+function indicesOf(spec: ChartSpec, kind: string): number[] {
+  const out: number[] = []
+  for (let k = 0; k < spec.series.length; k++) if (spec.series[k]!.kind === kind) out.push(k)
+  return out
+}
+
+/** `layoutStackedBars` / `layoutGroupedBars` for a kind, each segment in its series' column. */
+function setLaid(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackSegment[] {
+  const idx = indicesOf(spec, kind)
+  const values = idx.map((k) => spec.series[k]!.values)
+  let n = 0
+  for (const v of values) if (v.length > n) n = v.length
+  const cols = barColumns(spec, bandOf(plot, n))
+  const segs = kind === 'stacked' ? layoutStackedBars(values, plot, dom, 0.25) : layoutGroupedBars(values, plot, dom, 0.25)
+  const out: StackSegment[] = []
+  for (const seg of segs) out.push({ rect: inColumn(spec, cols, idx[seg.seriesIndex]!, seg.rect, seg.datumIndex, n, plot), seriesIndex: seg.seriesIndex, datumIndex: seg.datumIndex, value: seg.value })
+  return out
+}
+
 export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   return renderChartIn(spec, measure, layoutChart(spec, measure))
 }
@@ -1453,7 +1617,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   if (stackedSeries.length > 0) {
     const stackSegs = spec.horizontal === true
       ? layoutStackedBarsH(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)
-      : layoutStackedBars(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)
+      : setLaid(spec, 'stacked', plot, yDomain)
     const fmtS = spec.yFormat ?? plain
     for (const seg of stackSegs) {
       const rS = growRect(seg.rect, yDomain)
@@ -1473,7 +1637,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   if (groupedSeries.length > 0) {
     const groupSegs = spec.horizontal === true
       ? layoutGroupedBarsH(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)
-      : layoutGroupedBars(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)
+      : setLaid(spec, 'grouped', plot, yDomain)
     const fmtG = spec.yFormat ?? plain
     for (const seg of groupSegs) {
       const rG = growRect(seg.rect, yDomain)
@@ -1600,7 +1764,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     }
 
     if (s.kind === 'bars') {
-      const rects = layoutBars(s.values, plot, sDomain, 0.25)
+      const rects = barsLaid(spec, sIdx, plot, sDomain)
       for (let ri = 0; ri < rects.length; ri++) {
         const r = rects[ri]!
         const grown = growRect(r, sDomain)
@@ -1812,7 +1976,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     if (eLow.length > 0 && eHigh.length > 0 && progress >= 1.0 && s.kind !== 'waterfall') {
       const centres: Double[] = []
       if (s.kind === 'bars') {
-        for (const r of layoutBars(s.values, plot, sDomain, 0.25)) centres.push(r.x + r.w / 2.0)
+        for (const r of barsLaid(spec, sIdx, plot, sDomain)) centres.push(r.x + r.w / 2.0)
       } else {
         for (const p of place(s.values)) centres.push(p.x)
       }
@@ -2139,7 +2303,20 @@ export function barsFor(spec: ChartSpec, index: number, measure: MeasureText): R
 export function barsForIn(raw: ChartSpec, index: number, plot: Rect): Rect[] {
   const spec = geometrySpec(raw)
   const s = spec.series[index]
-  if (s === undefined || (s.kind !== 'bars' && s.kind !== 'waterfall')) return []
+  if (s === undefined) return []
+  // A stacked or grouped series' own segments, index-aligned with its values
+  // (a datum with no segment — a gap, a non-positive stack value — gets an
+  // empty rect nothing can land in).
+  if ((s.kind === 'stacked' || s.kind === 'grouped') && spec.horizontal !== true) {
+    const idx = indicesOf(spec, s.kind)
+    let local = -1
+    for (let q = 0; q < idx.length; q++) if (idx[q] === index) local = q
+    const rects: Rect[] = []
+    for (let i = 0; i < s.values.length; i++) rects.push({ x: 0.0, y: 0.0, w: -1.0, h: -1.0 })
+    for (const seg of setLaid(spec, s.kind, plot, resolveYDomain(spec))) if (seg.seriesIndex === local && seg.datumIndex < rects.length) rects[seg.datumIndex] = seg.rect
+    return rects
+  }
+  if (s.kind !== 'bars' && s.kind !== 'waterfall') return []
   // The hit rects must come from the SAME domain the bars were drawn with,
   // or a right-axis bar reports hits where the left-axis geometry would be.
   const dom = seriesDomain(s, spec, resolveYDomain(spec), resolveY2Domain(spec))
@@ -2151,7 +2328,7 @@ export function barsForIn(raw: ChartSpec, index: number, plot: Rect): Rect[] {
     for (const st of layoutWaterfall(s.values, plot, dom, 0.25)) rects[st.datumIndex] = st.rect
     return rects
   }
-  return layoutBars(s.values, plot, dom, 0.25)
+  return barsLaid(spec, index, plot, dom)
 }
 
 /**
@@ -2223,16 +2400,17 @@ export function markerAnchor(spec: ChartSpec, seriesIdx: Double, idx: number, pl
     g = g + 1.0
   }
   if (which < 0) return out
-  const values = spec.series.filter((q) => q.kind === kind).map((q) => q.values)
+  const members = spec.series.filter((q) => q.kind === kind)
+  const values = members.map((q) => q.values)
   const flipped = spec.horizontal === true
   const segs =
     kind === 'stacked'
       ? flipped
         ? layoutStackedBarsH(values, plot, yDomain, 0.25)
-        : layoutStackedBars(values, plot, yDomain, 0.25)
+        : setLaid(spec, 'stacked', plot, yDomain)
       : flipped
         ? layoutGroupedBarsH(values, plot, yDomain, 0.25)
-        : layoutGroupedBars(values, plot, yDomain, 0.25)
+        : setLaid(spec, 'grouped', plot, yDomain)
   for (const seg of segs) {
     if (seg.seriesIndex !== which) continue
     if (seg.datumIndex !== idx) continue
@@ -2259,10 +2437,10 @@ export function stackedHitIn(raw: ChartSpec, plot: Rect, px: Double, py: Double)
       kind === 'stacked'
         ? flipped
           ? layoutStackedBarsH(values, plot, yDomain, 0.25)
-          : layoutStackedBars(values, plot, yDomain, 0.25)
+          : setLaid(spec, 'stacked', plot, yDomain)
         : flipped
           ? layoutGroupedBarsH(values, plot, yDomain, 0.25)
-          : layoutGroupedBars(values, plot, yDomain, 0.25)
+          : setLaid(spec, 'grouped', plot, yDomain)
     for (const seg of segs) {
       const r = seg.rect
       if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return categoryIndex(raw, seg.datumIndex)

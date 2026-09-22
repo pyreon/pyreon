@@ -62,13 +62,8 @@ export const ECHARTS_TOP_GAPS: Readonly<Record<string, string>> = {
 export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   bar: {
     backgroundStyle: 'series.bar',
-    barCategoryGap: 'series.bar',
-    barGap: 'series.bar',
-    barMaxWidth: 'series.bar',
     barMinAngle: 'series.bar',
     barMinHeight: 'series.bar',
-    barMinWidth: 'series.bar',
-    barWidth: 'series.bar',
     blendMode: 'presentation.layering',
     colorLayer: 'presentation.palette',
     coord: 'coordinates.matrix',
@@ -553,13 +548,8 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     stateAnimation: 'presentation.animation',
   },
   pictorialBar: {
-    barCategoryGap: 'series.pictorial-bar',
-    barGap: 'series.pictorial-bar',
-    barMaxWidth: 'series.pictorial-bar',
     barMinAngle: 'series.pictorial-bar',
     barMinHeight: 'series.pictorial-bar',
-    barMinWidth: 'series.pictorial-bar',
-    barWidth: 'series.pictorial-bar',
     blendMode: 'presentation.layering',
     colorLayer: 'presentation.palette',
     coord: 'coordinates.matrix',
