@@ -73,7 +73,9 @@ describe('every portable Flow method has a behavioural proof on both native engi
 
 const kotlinEngine = engineSource('native/kotlin/com/pyreon/runtime/PyreonFlowState.kt')
 const swiftEngine = engineSource('native/swift/PyreonFlowState.swift')
-const webEngine = engineSource('src/flow.ts')
+// Comments stripped: prose that NAMES a field ("the lock toggle writes
+// `instance.config.nodesDraggable`") is not the engine reading it.
+const webEngine = engineSource('src/flow.ts').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
 
 function engineConfigFields(): string[] {
   const start = kotlinEngine.indexOf('class PyreonFlowState<T>(')
