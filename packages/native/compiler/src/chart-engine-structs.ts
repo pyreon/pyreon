@@ -219,6 +219,118 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "name": "Double",
           "args": []
         }
+      },
+      {
+        "name": "angle",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "symbol",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "spacingY",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "image",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "repeat",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "shape",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "PyreonChartPt",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "shapeRings",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
       }
     ],
     "external": true
@@ -2558,6 +2670,175 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "emphasisScale",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "emphasisDisabled",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "emphasisWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "blurWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "emphasisAreaOpacity",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "blurAreaOpacity",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "emphasisLabel",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "selectLabel",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "seriesSelected",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "inBrush",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "number"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "brushOpacity",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "errLow",
         "type": {
           "kind": "union",
@@ -3955,6 +4236,374 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
               "kind": "undefined"
             }
           ]
+        }
+      },
+      {
+        "name": "inRange",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Domain",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "outBands",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "outColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "domain",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Domain",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "VisualPiece",
+    "fields": [
+      {
+        "name": "label",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "min",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "max",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "VisualStrip",
+    "fields": [
+      {
+        "name": "piecewise",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "stops",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "string"
+          }
+        }
+      },
+      {
+        "name": "domain",
+        "type": {
+          "kind": "typeRef",
+          "name": "Domain",
+          "args": []
+        }
+      },
+      {
+        "name": "pieces",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "VisualPiece",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "vertical",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "highText",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "lowText",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "fontSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "labelColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "itemSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "itemLength",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "calculable",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "outColor",
+        "type": {
+          "kind": "string"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "VisualStripPlacement",
+    "fields": [
+      {
+        "name": "at",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartPt",
+          "args": []
+        }
+      },
+      {
+        "name": "chartW",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "chartH",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "TimelineStrip",
+    "fields": [
+      {
+        "name": "labels",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "string"
+          }
+        }
+      },
+      {
+        "name": "loop",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "rewind",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "showPlay",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "showPrev",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "showNext",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "label",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "accent",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "line",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "fontSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "TimelineHit",
+    "fields": [
+      {
+        "name": "kind",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "index",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "TimelineAxis",
+    "fields": [
+      {
+        "name": "x0",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "x1",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "cy",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
         }
       }
     ],
@@ -7641,6 +8290,55 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             }
           ]
         }
+      },
+      {
+        "name": "inRange",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Domain",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "outBands",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "outColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
       }
     ],
     "external": true
@@ -8115,6 +8813,55 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
               "kind": "typeRef",
               "name": "Double",
               "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "inRange",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Domain",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "outBands",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "outColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
             },
             {
               "kind": "undefined"
@@ -10115,6 +10862,77 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "HeatSelection",
+    "fields": [
+      {
+        "name": "domain",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Domain",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "inRange",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Domain",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "outBands",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "outColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "TitleOptions",
     "fields": [
       {
@@ -10743,6 +11561,109 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "ToolboxOptions",
+    "fields": [
+      {
+        "name": "fontSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "active",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "actives",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "gap",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "ToolboxLayout",
+    "fields": [
+      {
+        "name": "cmds",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonDrawCmd",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "boxes",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonChartRect",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "height",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "TooltipOptions",
     "fields": [
       {
@@ -10825,6 +11746,34 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         "name": "to",
         "type": {
           "kind": "number"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "ZoomLimits",
+    "fields": [
+      {
+        "name": "lock",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "minSpan",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "maxSpan",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
         }
       }
     ],
@@ -11028,6 +11977,188 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "kind": "typeRef",
           "name": "Double",
           "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "BrushArea",
+    "fields": [
+      {
+        "name": "type",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "points",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonChartPt",
+            "args": []
+          }
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "BrushSeriesSelection",
+    "fields": [
+      {
+        "name": "seriesIndex",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "dataIndex",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "number"
+          }
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "ChartActionInput",
+    "fields": [
+      {
+        "name": "type",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "index",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "series",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "start",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "end",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "brushType",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "areas",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "BrushArea",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "playing",
+        "type": {
+          "kind": "boolean"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "ChartActionState",
+    "fields": [
+      {
+        "name": "zoom",
+        "type": {
+          "kind": "typeRef",
+          "name": "ZoomWindow",
+          "args": []
+        }
+      },
+      {
+        "name": "hover",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "selected",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "number"
+          }
+        }
+      },
+      {
+        "name": "hidden",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "number"
+          }
+        }
+      },
+      {
+        "name": "seriesCount",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "brushType",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "areas",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "BrushArea",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "step",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "playing",
+        "type": {
+          "kind": "boolean"
         }
       }
     ],
@@ -11322,8 +12453,10 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "Bin",
   "BoxplotFrame",
   "BoxplotOptions",
+  "BrushArea",
   "BrushBand",
   "BrushRange",
+  "BrushSeriesSelection",
   "CalendarCell",
   "CalendarCellValues",
   "CalendarDate",
@@ -11334,6 +12467,8 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "CalendarValue",
   "CandleOptions",
   "CandlestickFrame",
+  "ChartActionInput",
+  "ChartActionState",
   "ChartSpec",
   "ChartTheme",
   "ChordArc",
@@ -11386,6 +12521,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "Gutters",
   "HeatCell",
   "HeatGrid",
+  "HeatSelection",
   "HeatmapOptions",
   "LabelSegment",
   "LayoutConfig",
@@ -11464,8 +12600,13 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "SunburstFrame",
   "SunburstOptions",
   "Tick",
+  "TimelineAxis",
+  "TimelineHit",
+  "TimelineStrip",
   "TitleLayout",
   "TitleOptions",
+  "ToolboxLayout",
+  "ToolboxOptions",
   "TooltipContent",
   "TooltipOptions",
   "TooltipRow",
@@ -11480,7 +12621,11 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "TreemapCell",
   "TreemapFrame",
   "TreemapOptions",
+  "VisualPiece",
+  "VisualStrip",
+  "VisualStripPlacement",
   "WaterfallStep",
+  "ZoomLimits",
   "ZoomPreset",
   "ZoomWindow"
 ]

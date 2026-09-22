@@ -1,4 +1,5 @@
 import SwiftUI
+import Observation
 import Foundation
 #if canImport(UIKit)
 import UIKit
@@ -60,8 +61,19 @@ public struct PyreonChartPattern: Codable, Equatable {
     public var color: String
     public var spacing: Double
     public var width: Double
-    public init(kind: String, color: String, spacing: Double, width: Double) {
+    public var angle: Double?
+    public var symbol: String?
+    public var spacingY: Double?
+    /// Image patterns: a URL or data URI and the tiling mode.
+    public var image: String?
+    public var `repeat`: String?
+    /// A `symbol: path` decal: unit-box points, rings flattened, with each ring's point count.
+    public var shape: [PyreonChartPt]?
+    public var shapeRings: [Double]?
+    public init(kind: String, color: String, spacing: Double, width: Double, angle: Double? = nil, symbol: String? = nil, spacingY: Double? = nil, image: String? = nil, `repeat`: String? = nil, shape: [PyreonChartPt]? = nil, shapeRings: [Double]? = nil) {
         self.kind = kind; self.color = color; self.spacing = spacing; self.width = width
+        self.angle = angle; self.symbol = symbol; self.spacingY = spacingY
+        self.image = image; self.`repeat` = `repeat`; self.shape = shape; self.shapeRings = shapeRings
     }
 }
 
@@ -399,38 +411,71 @@ func pyreonRoundedRectPath(_ r: PyreonChartRect, _ radii: [Double]) -> Path {
 
 /// A SwiftUI Canvas walking the engine's flat draw list — the native twin of
 /// canvas-web's renderer (same dispatch, same text-anchor semantics).
+#if canImport(UIKit)
+/// Pattern images, loaded once per source and published so a canvas that
+/// asked before the bytes arrived redraws when they do. Bounded — a chart
+/// names a handful of textures.
+public final class PyreonChartImages: ObservableObject {
+    public static let shared = PyreonChartImages()
+    @Published public private(set) var images: [String: UIImage] = [:]
+    private var pending = Set<String>()
+    private var order: [String] = []
+    private let limit = 64
+
+    public func image(_ src: String) -> UIImage? {
+        if let img = images[src] { return img }
+        if pending.contains(src) { return nil }
+        guard let url = URL(string: src) else { return nil }
+        pending.insert(src)
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            let img = data.flatMap { UIImage(data: $0) }
+            DispatchQueue.main.async {
+                self.pending.remove(src)
+                guard let img else { return }
+                self.images[src] = img
+                self.order.append(src)
+                if self.order.count > self.limit { self.images.removeValue(forKey: self.order.removeFirst()) }
+            }
+        }.resume()
+        return nil
+    }
+}
+#endif
+
 private func pyreonPaintPattern(_ context: inout GraphicsContext, _ pattern: PyreonChartPattern?, _ clip: Path, _ bounds: CGRect) {
     guard let pattern else { return }
-    let spacing = max(2.0, pattern.spacing)
-    let width = max(0.5, pattern.width)
+    #if canImport(UIKit)
+    if pattern.kind == "image", let src = pattern.image {
+        guard let img = PyreonChartImages.shared.image(src) else { return }
+        let cells = patternImageCells(pattern, PyreonChartRect(x: Double(bounds.minX), y: Double(bounds.minY), w: Double(bounds.width), h: Double(bounds.height)), Double(img.size.width), Double(img.size.height))
+        let resolved = context.resolve(Image(uiImage: img))
+        context.drawLayer { layer in
+            layer.clip(to: clip)
+            for r in cells { layer.draw(resolved, in: CGRect(x: r.x, y: r.y, width: r.w, height: r.h)) }
+        }
+        return
+    }
+    #endif
+    // The marks come from the engine's `patternMarks`, the geometry every
+    // target paints; this only clips to the shape and draws them.
+    let marks = patternMarks(pattern, PyreonChartRect(x: Double(bounds.minX), y: Double(bounds.minY), w: Double(bounds.width), h: Double(bounds.height)))
     context.drawLayer { layer in
         layer.clip(to: clip)
-        let shade = GraphicsContext.Shading.color(pyreonChartColor(pattern.color))
-        if pattern.kind == "dots" {
-            var y = bounds.minY
-            while y <= bounds.maxY {
-                var x = bounds.minX
-                while x <= bounds.maxX {
-                    layer.fill(Path(ellipseIn: CGRect(x: x - width / 2.0, y: y - width / 2.0, width: width, height: width)), with: shade)
-                    x += spacing
-                }
-                y += spacing
-            }
-        } else {
-            let span = bounds.width + bounds.height
-            var d = -bounds.height
-            while d <= bounds.width {
+        for m in marks {
+            if m.kind == "line", let a = m.from, let b = m.to {
                 var p = Path()
-                p.move(to: CGPoint(x: bounds.minX + d, y: bounds.maxY))
-                p.addLine(to: CGPoint(x: bounds.minX + d + span, y: bounds.minY))
-                layer.stroke(p, with: shade, lineWidth: width)
-                if pattern.kind == "cross" {
-                    var q = Path()
-                    q.move(to: CGPoint(x: bounds.minX + d, y: bounds.minY))
-                    q.addLine(to: CGPoint(x: bounds.minX + d + span, y: bounds.maxY))
-                    layer.stroke(q, with: shade, lineWidth: width)
-                }
-                d += spacing
+                p.move(to: CGPoint(x: a.x, y: a.y))
+                p.addLine(to: CGPoint(x: b.x, y: b.y))
+                layer.stroke(p, with: .color(pyreonChartColor(m.stroke ?? pattern.color)), lineWidth: m.width ?? 1.0)
+            } else if m.kind == "circle", let c = m.center {
+                let r = m.radius ?? 1.0
+                layer.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2.0, height: r * 2.0)), with: .color(pyreonChartColor(m.fill ?? pattern.color)))
+            } else if m.kind == "polygon", let pts = m.points, let first = pts.first {
+                var p = Path()
+                p.move(to: CGPoint(x: first.x, y: first.y))
+                for q in pts.dropFirst() { p.addLine(to: CGPoint(x: q.x, y: q.y)) }
+                p.closeSubpath()
+                layer.fill(p, with: .color(pyreonChartColor(m.fill ?? pattern.color)))
             }
         }
     }
@@ -552,6 +597,10 @@ public func pyreonUniversalTweenChartCommands(_ from: [PyreonDrawCmd], _ to: [Py
 private struct PyreonStaticChartCanvas: View {
     public var cmds: [PyreonDrawCmd]
     public var fontFamily: String?
+    #if canImport(UIKit)
+    // Observed so a pattern image that finishes loading repaints the canvas.
+    @ObservedObject private var images = PyreonChartImages.shared
+    #endif
     public init(cmds: [PyreonDrawCmd], fontFamily: String? = nil) {
         self.cmds = cmds
         self.fontFamily = fontFamily
@@ -917,5 +966,84 @@ public struct PyreonChartEntrance<Content: View>: View {
                 finished = true
             }
         }
+    }
+}
+
+#if canImport(UIKit)
+/// A draw list rendered offscreen on white, `width` × `height` in points — the chart on screen as an image.
+@MainActor
+public func pyreonChartImage(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double) -> UIImage? {
+    let renderer = ImageRenderer(content: PyreonChartCanvas(cmds: cmds, animated: false).frame(width: width, height: height).background(Color.white))
+    renderer.scale = UITraitCollection.current.displayScale
+    return renderer.uiImage
+}
+
+/// The chart as a PNG data URL — what `onSaveImage` receives on iOS, as on the web. Called from a gesture, on the main thread.
+public func pyreonChartDataUrl(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double) -> String {
+    MainActor.assumeIsolated {
+        guard let data = pyreonChartImage(cmds, width, height)?.pngData() else { return "" }
+        return "data:image/png;base64," + data.base64EncodedString()
+    }
+}
+
+/// ECharts' `saveAsImage` on a phone: the share sheet, over the chart image (Save Image is one of its actions).
+public func pyreonShareChartImage(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double, _ name: String) {
+    MainActor.assumeIsolated { pyreonPresentChartShare(cmds, width, height, name) }
+}
+
+@MainActor
+private func pyreonPresentChartShare(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double, _ name: String) {
+    guard let image = pyreonChartImage(cmds, width, height) else { return }
+    let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+    guard var top = scene?.windows.first(where: { $0.isKeyWindow })?.rootViewController ?? scene?.windows.first?.rootViewController else { return }
+    while let presented = top.presentedViewController { top = presented }
+    let sheet = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+    sheet.title = name
+    sheet.popoverPresentationController?.sourceView = top.view
+    top.present(sheet, animated: true)
+}
+#else
+/// No UIKit (a macOS build of the runtime): there is no image renderer to hand back.
+public func pyreonChartDataUrl(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double) -> String { "" }
+
+public func pyreonShareChartImage(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double, _ name: String) {}
+#endif
+
+// ── Chart handle (ECharts `dispatchAction`) ───────────────────────────────
+//
+// `createChartHandle()` lowers to one of these. Its fields ARE the bound
+// chart's state (the plot host reads and writes `handle.selected`, not a
+// private copy), so a dispatched action and a gesture move the same values.
+// `dispatch` runs the crossing `applyChartAction` reducer — the web handle's
+// function — and writes back only what changed.
+
+@available(iOS 17.0, macOS 14.0, *)
+@Observable
+public final class PyreonChartHandle {
+    public var zoom = ZoomWindow(start: 0.0, end: 1.0)
+    public var hover: Int = -1
+    public var selected: [Int] = []
+    public var hidden: [Int] = []
+    public var seriesCount: Int = 0
+    public var brushType: String = ""
+    public var areas: [BrushArea] = []
+    public var step: Int = -1
+    public var playing: Bool = false
+
+    public init(seriesCount: Int = 0) { self.seriesCount = seriesCount }
+
+    public func dispatch(_ action: ChartActionInput) {
+        let next = applyChartAction(
+            ChartActionState(zoom: zoom, hover: hover, selected: selected, hidden: hidden, seriesCount: seriesCount, brushType: brushType, areas: areas, step: step, playing: playing),
+            action
+        )
+        if next.zoom.start != zoom.start || next.zoom.end != zoom.end { zoom = next.zoom }
+        if next.hover != hover { hover = next.hover }
+        if next.selected != selected { selected = next.selected }
+        if next.hidden != hidden { hidden = next.hidden }
+        if next.brushType != brushType { brushType = next.brushType }
+        if next.areas.count != areas.count || action.type == "brush" { areas = next.areas }
+        if next.step != step { step = next.step }
+        if next.playing != playing { playing = next.playing }
     }
 }

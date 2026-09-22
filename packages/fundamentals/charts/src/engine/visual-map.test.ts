@@ -20,7 +20,9 @@ describe('visualMap spec', () => {
     const txt = visualMapSpec({ visualMap: { text: ['Hot', 'Cold'], orient: 'horizontal', calculable: true }, series: heat.series })!
     expect(txt.spec.text).toEqual(['Hot', 'Cold'])
     expect(txt.spec.orient).toBe('horizontal')
-    expect(txt.warnings.map((w) => w.code)).toEqual(['series-option-unsupported'])
+    expect(txt.warnings).toEqual([])
+    expect(txt.spec.calculable).toBe(true)
+    expect(txt.spec.range).toEqual([2, 9])
   })
   it('piecewise: explicit pieces, categories, or splitNumber over the domain (high first)', () => {
     const explicit = visualMapSpec({ visualMap: { type: 'piecewise', pieces: [{ min: 5, max: 10, label: 'high', color: '#ff0000' }, { max: 5 }] }, series: heat.series })!

@@ -45,21 +45,28 @@ describe('collectPatterns — one <pattern> def per pattern-bearing command', ()
     expect(ids).toEqual([''])
   })
 
-  it('dots draw a centred circle; diagonal one stripe path; cross two', () => {
+  it('each pattern tile is the shape box holding the engine marks: dots as circles, a diagonal as one stripe direction, a cross as two', () => {
     const dots = collectPatterns([rect({ pattern: pattern({ kind: 'dots', spacing: 8, width: 2 }) })], 'p').defs
-    expect(dots).toContain('<circle cx="4" cy="4" r="1"')
-
-    const diagonal = collectPatterns([rect({ pattern: pattern({ kind: 'diagonal' }) })], 'p').defs
-    expect(diagonal.match(/<path /g)).toHaveLength(1)
-
-    const cross = collectPatterns([rect({ pattern: pattern({ kind: 'cross' }) })], 'p').defs
-    expect(cross.match(/<path /g)).toHaveLength(2)
+    expect(dots).toContain('<circle ')
+    expect(dots).toContain('r="1"')
+    const slope = (defs: string): Set<string> => {
+      const out = new Set<string>()
+      for (const m of defs.matchAll(/<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)"/g)) {
+        const dx = Number(m[3]) - Number(m[1])
+        const dy = Number(m[4]) - Number(m[2])
+        out.add((Math.round((dy / dx) * 100) / 100).toString())
+      }
+      return out
+    }
+    expect([...slope(collectPatterns([rect({ pattern: pattern({ kind: 'diagonal' }) })], 'p').defs)]).toEqual(['-1'])
+    expect([...slope(collectPatterns([rect({ pattern: pattern({ kind: 'cross' }) })], 'p').defs)].sort()).toEqual(['-1', '1'])
   })
 
   it('clamps spacing to a 2-unit minimum and width to 0.5 — a 0 would paint nothing', () => {
     const { defs } = collectPatterns([rect({ pattern: pattern({ kind: 'dots', spacing: 0, width: 0 }) })], 'p')
-    expect(defs).toContain('width="2" height="2"')
     expect(defs).toContain('r="0.25"')
+    const xs = [...defs.matchAll(/<circle cx="([-\d.]+)" cy="([-\d.]+)"/g)].filter((m) => m[2] === [...defs.matchAll(/<circle cx="([-\d.]+)" cy="([-\d.]+)"/g)][0]![2]).map((m) => Number(m[1]))
+    expect(xs[1]! - xs[0]!).toBeCloseTo(2, 6)
   })
 
   it('escapes the pattern colour rather than interpolating it raw', () => {
@@ -111,3 +118,14 @@ describe('svgCommand — a pattern paints OVER the ordinary fill', () => {
     expect(out).toContain('fill="url(#p-p0)"')
   })
 })
+
+describe('collectPatterns — image patterns', () => {
+  it('tiles an <image> per cell: a fill image at its tile size, an image decal on its grid', () => {
+    const fill: DrawCmd = { kind: 'rect', rect: { x: 0, y: 0, w: 40, h: 20 }, fill: '#000', pattern: { kind: 'image', color: '', spacing: 0, width: 20, spacingY: 20, image: 'a.png', repeat: 'repeat' } }
+    const decal: DrawCmd = { kind: 'rect', rect: { x: 0, y: 0, w: 10, h: 10 }, fill: '#000', pattern: { kind: 'image', color: '', spacing: 10, spacingY: 10, width: 4, image: 'b"<.png', repeat: 'grid' } }
+    const { defs } = collectPatterns([fill, decal], 'c')
+    expect(defs.match(/href="a\.png"/g)?.length).toBe(2)
+    expect(defs).toContain('<image href="b&quot;&lt;.png" x="3" y="3" width="4" height="4"')
+  })
+})
+

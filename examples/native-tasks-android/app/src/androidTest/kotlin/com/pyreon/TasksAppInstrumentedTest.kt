@@ -36,6 +36,7 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.swipe
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.printToString
@@ -56,6 +57,8 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.pyreon.runtime.PyreonToast
@@ -857,6 +860,112 @@ class TasksAppInstrumentedTest {
         composeRule.waitForIdle()
         assertFalse("dragging the roaming map did not pan it", mapBefore.sameAs(roamMap.captureToImage().asAndroidBitmap()))
         composeRule.onNodeWithTag("gal-geo-trail").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("gal-decal").performScrollTo().assertIsDisplayed()
+        // The calculable visualMap: dragging its high handle (bottom-left strip) left greys the hottest cells.
+        val visualMap = composeRule.onNodeWithTag("gal-visualmap").performScrollTo()
+        val vmBefore = visualMap.captureToImage().asAndroidBitmap()
+        visualMap.performTouchInput {
+            val y = height - (41 - 16 - 4).dp.toPx()
+            swipe(start = Offset(159.dp.toPx(), y), end = Offset(80.dp.toPx(), y), durationMillis = 600)
+        }
+        composeRule.waitForIdle()
+        // Out-of-range values take the inactive #cccccc: none before the drag, a block of it after.
+        fun greyPixels(b: android.graphics.Bitmap): Int {
+            var n = 0
+            for (y in 0 until b.height) for (x in 0 until b.width) {
+                val c = b.getPixel(x, y)
+                if (kotlin.math.abs(android.graphics.Color.red(c) - 204) <= 3 && kotlin.math.abs(android.graphics.Color.green(c) - 204) <= 3 && kotlin.math.abs(android.graphics.Color.blue(c) - 204) <= 3) n++
+            }
+            return n
+        }
+        assertTrue("the visualMap greyed cells before any drag", greyPixels(vmBefore) < 50)
+        val vmGrey = greyPixels(visualMap.captureToImage().asAndroidBitmap())
+        assertTrue("dragging the visualMap handle did not grey the out-of-range cells (grey pixels: $vmGrey)", vmGrey > 400)
+        // The slider dataZoom opens on the low half; dragging the band right shows the tall bars (y extent pinned).
+        fun redPixels(b: android.graphics.Bitmap): Int {
+            var n = 0
+            for (y in 0 until b.height) for (x in 0 until b.width) {
+                val c = b.getPixel(x, y)
+                if (android.graphics.Color.red(c) >= 249 && android.graphics.Color.green(c) <= 6 && android.graphics.Color.blue(c) <= 6) n++
+            }
+            return n
+        }
+        val zoomChart = composeRule.onNodeWithTag("gal-datazoom").performScrollTo()
+        val redBefore = redPixels(zoomChart.captureToImage().asAndroidBitmap())
+        zoomChart.performTouchInput {
+            val stripW = width - 16.dp.toPx()
+            val y = height - 18.dp.toPx()
+            swipe(start = Offset(8.dp.toPx() + stripW * 0.25f, y), end = Offset(8.dp.toPx() + stripW * 0.75f, y), durationMillis = 700)
+        }
+        composeRule.waitForIdle()
+        val redAfter = redPixels(zoomChart.captureToImage().asAndroidBitmap())
+        assertTrue("dragging the dataZoom band did not move the window to the tall bars (red before $redBefore, after $redAfter)", redAfter > redBefore * 3)
+        // The timeline: a tap on the last checkpoint shows that step; next wraps to the first.
+        val timeline = composeRule.onNodeWithTag("gal-timeline").performScrollTo()
+        timeline.assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2019"))
+        timeline.performTouchInput { click(Offset(width - 48.dp.toPx(), height - (40 - 16).dp.toPx())) }
+        composeRule.waitForIdle()
+        timeline.assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2021"))
+        timeline.performTouchInput { click(Offset(width - 33.dp.toPx(), height - (40 - 16).dp.toPx())) }
+        composeRule.waitForIdle()
+        timeline.assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2019"))
+        // dispatchAction: the handle's timelineChange moves the same step a tap does.
+        composeRule.onNodeWithTag("gal-tl-last").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-timeline").performScrollTo().assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2021"))
+        // The toolbox (dataZoom, back, dataView, line, bar, restore — right-aligned, 25dp apart at the top).
+        val toolbox = composeRule.onNodeWithTag("gal-toolbox").performScrollTo()
+        val tool = { i: Int -> toolbox.performTouchInput { click(Offset(width - (9.5f + 25f * (5 - i)).dp.toPx(), 9.5.dp.toPx())) } }
+        tool(0)
+        composeRule.waitForIdle()
+        toolbox.performTouchInput { swipe(start = Offset(width * 0.5f, height * 0.5f), end = Offset(width * 0.58f, height * 0.5f), durationMillis = 600) }
+        composeRule.waitForIdle()
+        val zoomText = composeRule.onNodeWithTag("gal-toolbox-zoom").performScrollTo()
+        zoomText.assert(androidx.compose.ui.test.SemanticsMatcher("zoomed away from 0-100") { n -> n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.joinToString("") { it.text } != "0-100" })
+        composeRule.onNodeWithTag("gal-toolbox").performScrollTo()
+        tool(1)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-toolbox-zoom").performScrollTo().assertTextEquals("0-100")
+        composeRule.onNodeWithTag("gal-toolbox").performScrollTo()
+        tool(2)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("pyreon-dataview").assertExists()
+        composeRule.onNodeWithTag("pyreon-dataview-close").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("pyreon-dataview").assertDoesNotExist()
+        // dispatchAction: the handle's dataZoom and restore move the window the toolbox moves.
+        composeRule.onNodeWithTag("gal-h-zoom").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-toolbox-zoom").performScrollTo().assertTextEquals("0-50")
+        composeRule.onNodeWithTag("gal-h-reset").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-toolbox-zoom").performScrollTo().assertTextEquals("0-100")
+        // saveAsImage on a family chart: the offscreen PNG reaches onSaveImage.
+        composeRule.onNodeWithTag("gal-save").performScrollTo()
+        composeRule.onNodeWithTag("pyreon-save-image").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-saved").performScrollTo().assertTextEquals("data:image/png;")
+        // The area brush: a lineX drag over the middle bars reports some of them; a tap clears it.
+        val brushChart = composeRule.onNodeWithTag("gal-brush").performScrollTo()
+        brushChart.performTouchInput { swipe(start = Offset(width * 0.4f, height * 0.5f), end = Offset(width * 0.66f, height * 0.5f), durationMillis = 600) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-brush-count").performScrollTo().assert(androidx.compose.ui.test.SemanticsMatcher("a partial brush selection") { n -> (n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.joinToString("") { it.text } ?: "") in listOf("1:1", "1:2", "1:3", "1:4", "1:5") })
+        composeRule.onNodeWithTag("gal-brush").performScrollTo().performTouchInput { click(Offset(width * 0.5f, height * 0.5f)) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-brush-count").performScrollTo().assertTextEquals("1:0")
+        // selectedMode="series": a tap pins the whole series it lands on and still reports the datum under it.
+        val seriesChart = composeRule.onNodeWithTag("gal-series-select").performScrollTo()
+        seriesChart.performTouchInput { click(Offset(width * 0.15f, height * 0.82f)) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-series-select-datum").performScrollTo().assert(androidx.compose.ui.test.SemanticsMatcher("a series-mode tap reports a datum") { n -> (n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.joinToString("") { it.text } ?: "") != "none" })
+        // universalTransition: toggling from 3 to 5 rows morphs instead of crashing, and settles on the new count.
+        composeRule.onNodeWithTag("gal-growth").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("gal-growth-toggle").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-growth-count").performScrollTo().assertTextEquals("5")
+        composeRule.onNodeWithTag("gal-growth-toggle").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-growth-count").performScrollTo().assertTextEquals("3")
         // The lines trail renders. Its MOTION is proven on the iOS device lane
         // and in real Chromium; here it cannot be: the trail runs on
         // withInfiniteAnimationFrameNanos (a plain frame loop kept this harness

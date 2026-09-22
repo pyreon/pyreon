@@ -162,7 +162,8 @@ describe('OptionChart family options lower to native hosts', () => {
       expect(r.code).toContain('#3366ff')
       expect(r.code).toContain('#ff6633')
       expect(r.code).toContain('#224466')
-      expect(r.code).toContain(target === 'swift' ? 'pattern: PyreonChartPattern(kind: "dots", color: "#ffffff", spacing: 9.0, width: 2.0)' : 'pattern = PyreonChartPattern(kind = "dots", color = "#ffffff", spacing = 9.0, width = 2.0)')
+      // The web facade's own decal mapping, run at compile time: a circle symbol tiled on the dash pitch.
+      expect(r.code).toContain(target === 'swift' ? 'pattern: PyreonChartPattern(kind: "symbols", color: "#ffffff", spacing: 18.0, width: 2.0, angle: 0.0, symbol: "circle", spacingY: 4.0)' : 'pattern = PyreonChartPattern(kind = "symbols", color = "#ffffff", spacing = 18.0, width = 2.0, angle = 0.0, symbol = "circle", spacingY = 4.0)')
       expect(r.code).toContain(target === 'swift' ? 'yFrom: 30.0, yTo: 60.0' : 'yFrom = 30.0, yTo = 60.0')
       expect(r.code).toContain(target === 'swift' ? 'xFrom: 0.5, xTo: 1.5' : 'xFrom = 0.5, xTo = 1.5')
       expect(r.code).toContain(target === 'swift' ? 'yDomain: Domain(min: 0.0, max: 100.0)' : 'yDomain = Domain(min = 0.0, max = 100.0)')

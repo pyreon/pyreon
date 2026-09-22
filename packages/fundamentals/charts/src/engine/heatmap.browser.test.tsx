@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { query } from '@pyreon/test-utils'
 import { HeatmapChart } from './HeatmapChart'
+import { visualMapSpec } from './visual-map'
 
 interface Obs {
   day: string
@@ -66,4 +67,43 @@ describe('HeatmapChart', () => {
       'Traffic: 2 columns by 2 rows, values 1 to 50.',
     )
   })
+
+  it('a calculable visualMap: dragging a handle greys the cells it leaves out, and reports the range', async () => {
+    const rows = [
+      { day: 'Mon', hour: '09', n: 10 },
+      { day: 'Tue', hour: '09', n: 90 },
+    ]
+    const spec = visualMapSpec({ visualMap: { min: 0, max: 100, calculable: true, inRange: { color: ['#000000', '#0000ff'] } }, series: [{ data: [[0, 0, 10], [1, 0, 90]] }] })!.spec
+    const ranges: [number, number][] = []
+    const { container } = mountInBrowser(() =>
+      HeatmapChart({ animate: false, data: rows, x: (d) => d.day, y: (d) => d.hour, value: (d) => d.n, width: 300, height: 220, visualMap: spec, onVisualMapChange: (s) => ranges.push(s.range) }),
+    )
+    await flush()
+    const canvas = query<HTMLCanvasElement>(container, 'canvas')
+    const grey = (): number => {
+      const d = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data
+      let n = 0
+      for (let i = 0; i < d.length; i += 4) if (d[i] === 204 && d[i + 1] === 204 && d[i + 2] === 204) n++
+      return n
+    }
+    expect(grey()).toBe(0)
+    const r = canvas.getBoundingClientRect()
+    // The high handle starts at the top of the bar; find it by probing the canvas.
+    const fire = (type: string, x: number, y: number) => canvas.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: r.left + x, clientY: r.top + y, pointerId: 1 }))
+    let grabbed = false
+    for (let y = 0; y < 220 && !grabbed; y += 2) {
+      for (let x = 200; x < 300 && !grabbed; x += 2) {
+        fire('pointerdown', x, y)
+        fire('pointermove', x, y + 80)
+        fire('pointerup', x, y + 80)
+        if (ranges.length > 0) grabbed = true
+      }
+    }
+    await flush()
+    expect(grabbed).toBe(true)
+    expect(ranges[ranges.length - 1]![1]).toBeLessThan(90)
+    // The 90 cell is out of range now: a large grey block appears.
+    expect(grey()).toBeGreaterThan(500)
+  })
 })
+
