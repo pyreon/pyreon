@@ -132,6 +132,7 @@ import {
 } from '@pyreon/primitives'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
 import { Background, Controls, Flow, MiniMap, createFlow } from '@pyreon/flow'
+import { FlowWebView } from '@pyreon/flow/webview'
 
 type Task = { id: number; title: string; done: boolean }
 type Quote = { id: number; text: string; author: string }
@@ -606,6 +607,22 @@ const GROWTH_ROWS_B: GrowthRow[] = [
   { month: 'Apr', total: 22 },
   { month: 'May', total: 15 },
 ]
+
+// The hosted flow (`@pyreon/flow/webview`) on device: a graph pushed INTO the
+// WKWebView / Android WebView, and its events delivered BACK over the reverse
+// bridge into native Text. `fit-view` makes the hosted renderer emit
+// `viewport-change`, so the initial command proves page→host on load and the
+// second (new id) proves the reactive command push — and that `initial-fit`
+// does not run twice.
+interface FlowFitCommand {
+  id: string
+  type: 'fit-view'
+}
+const FLOW_WEB_FIT_ONCE: FlowFitCommand[] = [{ id: 'initial-fit', type: 'fit-view' }]
+const FLOW_WEB_FIT_TWICE: FlowFitCommand[] = [
+  { id: 'initial-fit', type: 'fit-view' },
+  { id: 'second-fit', type: 'fit-view' },
+]
 const FLOW_LINKS: SankeyLink[] = [
   { source: 'Backlog', target: 'Doing', value: 8 },
   { source: 'Doing', target: 'Done', value: 5 },
@@ -783,6 +800,9 @@ function GalleryPage() {
   const seriesPickCount = signal('none')
   const growthRows = signal<GrowthRow[]>(GROWTH_ROWS_A)
   const growthCount = signal(`${GROWTH_ROWS_A.length}`)
+  const flowWebEvent = signal('none')
+  const flowWebEventCount = signal(0)
+  const flowWebFitAgain = signal(false)
   // Imperative handles (ECharts dispatchAction) for the toolbox chart and the timeline.
   const tbHandle = createChartHandle()
   const tlHandle = createChartHandle()
@@ -941,6 +961,32 @@ function GalleryPage() {
           Toggle rows
         </Button>
         <Text data-testid="gal-growth-count">{growthCount()}</Text>
+        <FlowWebView
+          graph={{
+            nodes: [
+              { id: 'ingest', position: { x: 0, y: 0 }, data: { label: 'Ingest' } },
+              { id: 'transform', position: { x: 220, y: 0 }, data: { label: 'Transform' } },
+              { id: 'serve', position: { x: 110, y: 130 }, data: { label: 'Serve' } },
+            ],
+            edges: [
+              { source: 'ingest', target: 'transform' },
+              { source: 'transform', target: 'serve' },
+            ],
+          }}
+          commands={() => (flowWebFitAgain() ? FLOW_WEB_FIT_TWICE : FLOW_WEB_FIT_ONCE)}
+          onEvent={(event) => {
+            flowWebEvent.set(event.type)
+            flowWebEventCount.set(flowWebEventCount() + 1)
+          }}
+          onSelect={(node) => flowWebEvent.set('select:' + node.id)}
+          onError={(error) => flowWebEvent.set('error:' + error.message)}
+          data-testid="gal-flow-webview"
+        />
+        <Button onPress={() => flowWebFitAgain.set(true)} data-testid="gal-flow-webview-fit">
+          Fit again
+        </Button>
+        <Text data-testid="gal-flow-webview-event">{flowWebEvent()}</Text>
+        <Text data-testid="gal-flow-webview-events">{String(flowWebEventCount())}</Text>
         <PieChart
           data={SLICES}
           value={(d: PieSlice) => d.total}

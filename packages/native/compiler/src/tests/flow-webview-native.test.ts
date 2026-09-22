@@ -61,4 +61,40 @@ describe('@pyreon/flow/webview native lowering', () => {
       expect(result.warnings.join('\n')).toContain('nodeFill')
     },
   )
+
+  it.each(['swift', 'kotlin'] as const)(
+    'emits EVERY statement of a block-bodied handler, and the generic tail (data-testid) without double-lowering host props, on %s',
+    (target) => {
+      // Found by the first real device consumer (`examples/native-tasks`): a
+      // two-statement `onEvent` lowered to an EMPTY closure — the handler was
+      // silently dropped on both targets — and `data-testid` never reached the
+      // host, so XCUITest / `onNodeWithTag` could not select it. `background`
+      // is the hosted PAGE's background (a host prop), so the generic tail must
+      // not lower it a second time as a view background.
+      const result = transform(
+        `
+      import { FlowWebView } from '@pyreon/flow/webview'
+      import { signal } from '@pyreon/reactivity'
+      export function App() {
+        const last = signal('none')
+        const count = signal(0)
+        return <FlowWebView graph={{ nodes: [], edges: [] }} background="#101820" data-testid="gal-flow-webview"
+          onEvent={(event) => {
+            last.set(event.type)
+            count.set(count() + 1)
+          }} />
+      }`,
+        { target },
+      )
+      expect(result.warnings).toEqual([])
+      const sep = target === 'swift' ? ': ' : ' = '
+      expect(result.code).not.toContain(`onEvent${sep}{ _ ${target === 'swift' ? 'in' : '->'} }`)
+      expect(result.code).toContain('last = event.type')
+      expect(result.code).toContain('count = count + 1')
+      expect(result.code).toContain(target === 'swift' ? '.accessibilityIdentifier("gal-flow-webview")' : 'modifier = Modifier.testTag("gal-flow-webview")')
+      expect(result.code).not.toContain(target === 'swift' ? '.background(' : '.background(')
+      if (target === 'swift' && isSwiftcAvailable()) expect(validateSwiftWithStubs(result.code)).toMatchObject({ ok: true })
+      if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(result.code)).toMatchObject({ ok: true })
+    },
+  )
 })
