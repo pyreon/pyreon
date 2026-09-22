@@ -809,7 +809,7 @@ export function C() {
     name: '@pyreon/flow',
     mechanism: 'pmtc-lowers',
     rationale:
-      'createFlow/useFlow and the interactive Flow host lower to PyreonFlowState + SwiftUI/Compose on both targets: complete public state operations, all seven layouts, gestures, built-in/static custom renderers, handles, resizing, multiple toolbars, custom edges/connection lines, background, controls, minimap, panels, accessibility, and portable inline styles. Native device builds are exercised by the native-tasks applications; browser-only CSS selectors and arbitrary SVG strings remain explicit platform boundaries.',
+      'createFlow/useFlow and the interactive Flow host lower to PyreonFlowState + SwiftUI/Compose on both targets: complete public state operations, all seven layouts, gestures, built-in/static custom renderers, handles, resizing, multiple toolbars, custom edges/connection lines, background, controls, minimap, panels, accessibility, and portable inline styles. Device-proven on iOS Simulator and Android Emulator by the native-counter and native-tasks apps (rendered chrome read from pixels and frames, every gesture, the keyboard commands, colorMode including system, a 400-node culled scale scenario); the state surface is replayed against the web engine as oracle. Browser-only CSS selectors, raw DOM/SVG renderers and runtime renderer maps remain explicit platform boundaries that warn by name.',
     snippet: `import { createFlow, Flow, Background, Controls, MiniMap } from '@pyreon/flow'
 import { Stack, Text, Button } from '@pyreon/primitives'
 export function C() {
@@ -840,7 +840,7 @@ export function C() {
     name: '@pyreon/flow/webview',
     mechanism: 'webview-host',
     rationale:
-      'Optional compatibility bridge for applications that deliberately need the browser SVG/DOM/CSS renderer unchanged inside WKWebView or Android WebView; the regular @pyreon/flow editor has a direct SwiftUI/Compose lowering path. Bridge proven in real Chromium; native host is emit + stub-typecheck proven, NOT device-proven.',
+      'Optional compatibility bridge for applications that deliberately need the browser SVG/DOM/CSS renderer unchanged inside WKWebView or Android WebView; the regular @pyreon/flow editor has a direct SwiftUI/Compose lowering path. Bridge proven in real Chromium and on both devices by native-tasks: graph and command push in, selection and viewport events back out, once-only commands, and a reactive html swap that re-injects the bridge.',
     snippet: `import { signal } from '@pyreon/reactivity'
 import { Stack, Text, WebView } from '@pyreon/primitives'
 export function C() {

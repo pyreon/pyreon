@@ -1200,6 +1200,78 @@ flow.dispose() // cancel in-flight animations + clear all listeners
 
 `useFlow` calls this automatically on unmount. For a `createFlow` instance owned outside a component tree, call it yourself at the right lifecycle point.
 
+## iOS and Android
+
+The same `@pyreon/flow` source compiles to a native flow editor on iOS
+(SwiftUI) and Android (Jetpack Compose). It is a native view tree, not a
+web page in a WebView.
+
+### What renders natively
+
+| Web | Native |
+| --- | --- |
+| `createFlow(config)` / `useFlow(config)` | `PyreonFlowState`, an observable engine with the same state and the same `FlowInstance` methods |
+| `<Flow instance={flow}>` | `PyreonFlowView`, with `<Background>`, `<Controls>`, `<MiniMap>`, `<Panel>`, `<Handle>`, `<NodeResizer>`, `<NodeToolbar>` and `<EdgeLabelRenderer>` |
+| `nodeTypes` / `edgeTypes` | Custom node and edge components. The map must be statically resolvable. |
+| `connectionLine` | A custom connection line, shown only while a connection is being dragged |
+| `colorMode` | `'light'`, `'dark'` and `'system'`, using the web palette's colours |
+| The seven layout algorithms | Native ports of the built-in layout engine |
+
+Gestures:
+
+- Drag, pan and pinch-zoom.
+- Connect and reconnect.
+- Resize.
+- Tap to select a node or an edge.
+
+Keyboard:
+
+- **Arrow keys** move the focused node. Hold **Shift** for larger steps.
+- **Enter** or **Space** selects the focused node or edge.
+- **Escape** clears the selection.
+- The delete keys remove the selection.
+- **Cmd/Ctrl + A / C / V / Z** select all, copy, paste and undo. Add **Shift** to **Z** to redo.
+
+`onlyRenderVisibleElements` culls off-screen nodes on native too.
+
+### What does not cross, and what to use instead
+
+A few parts of the web package are tied to the DOM, and the compiler names
+each one when it meets it:
+
+- `FlowLayersContext` and `flowStyles`, the DOM renderer's layer context and CSS custom properties.
+- A custom renderer that draws with raw DOM or SVG elements (`<path d=…>`, `<div>`), or styles with browser CSS selectors.
+- A renderer map computed at runtime, rather than one the compiler can resolve statically.
+
+If a diagram needs any of those, host the unchanged web renderer with
+`@pyreon/flow/webview`:
+
+```tsx
+import { FlowWebView } from '@pyreon/flow/webview'
+
+<FlowWebView graph={graph} onSelect={(e) => select(e.id)} />
+```
+
+That is a WebView. It has the same costs as any hosted web content:
+
+- Start-up time.
+- Every update crosses a JSON bridge.
+- The diagram is opaque to native gestures and the platform accessibility tree.
+
+Give it an explicit height where you can. Without one, it defaults to 150 points (iOS) or 150dp (Android), so it never collapses to zero.
+
+### How this is verified
+
+- **State and algorithms.** Native test fixtures replay shared scenarios against both native engines, with the web engine's own answers as the oracle. Two checks fail when a portable method, or a native config field, has no scenario and no stated reason.
+- **Rendering and interaction.** The iOS Simulator and Android Emulator suites for the example apps read what the renderer painted or placed. They check marker colours, dark-mode canvas pixels, panel placement and the custom connection line. They also drive the gestures and keyboard commands above.
+- **Scale.** A 400-node graph with culling mounts at most 40 nodes on web, iOS and Android. It keeps those bounds while panning, dragging and pinching. On web, garbage-collection tests check that a disposed flow and its removed nodes are actually released.
+
+Known platform limits:
+
+- On iOS, XCUITest cannot send Return, Escape or Delete to a simulator app. Those three keys are therefore asserted on Android; iOS asserts Space, the arrow keys and Cmd shortcuts.
+- iPhone 16-family simulators never pass an appearance change to the app. On those devices the `colorMode="system"` dark check is recorded as not run. It runs on newer simulators and always on Android.
+- Android apps keep their state across rotation and dark-mode switches, because the activity handles those configuration changes itself. They still lose in-memory state if the system kills the process in the background.
+
 ## API Reference
 
 ### Core functions

@@ -194,34 +194,53 @@ Position.Left // 'left'
 
 ## Multiplatform
 
-The native compiler lowers `createFlow` / `useFlow` and `<Flow>` to `PyreonFlowState` plus an interactive SwiftUI or Compose host. The same source provides node/edge CRUD, selection, history, all seven layouts, built-in and static custom node/edge renderers, handles, connection/reconnection gestures, resizing, multiple toolbars, background, controls, minimap, panels, accessibility names, viewport gestures, and portable inline node/edge styles on web, iOS, and Android. What is PROVEN where: the state/algorithm surface by matching Swift and Kotlin behaviour fixtures; the emit by both real toolchains; on device (`examples/native-counter-ios` / `-android`) the rendered host, node/edge counts, zoom and selection. Pointer/touch gestures, keyboard equivalents and reduced motion are not yet device-asserted — see `.claude/audits/flow-full-parity-2026-09-15.md` for the open items.
+On iOS and Android the native compiler lowers `createFlow` / `useFlow` and `<Flow>` to `PyreonFlowState` plus an interactive SwiftUI or Compose host. This is a native view tree, not a WebView.
 
-Browser-only, by member: `FlowLayersContext` and `flowStyles` (the DOM renderer's layer context and CSS custom properties) never lower and warn by name; use them inside a `<Web>` branch or take the `@pyreon/flow/webview` route below.
-The native compiler lowers `createFlow` / `useFlow` and `<Flow>` to `PyreonFlowState` plus an interactive SwiftUI or Compose host. The same source provides node/edge CRUD, selection, history, all seven layouts, built-in and static custom node/edge renderers, handles, connection/reconnection gestures, resizing, multiple toolbars, background, controls, minimap, panels, accessibility, viewport gestures, and portable inline node/edge styles on web, iOS, and Android.
+The same source provides all of these on web, iOS and Android:
 
-Renderer maps and structural renderer configuration must be statically discoverable by the native compiler. Browser CSS classes and arbitrary SVG path strings have no automatic native meaning; keep genuinely platform-specific presentation in `NativeIOS` / `NativeAndroid` branches. Supported inline node styles (`width`, `height`, `padding`, hex `background`/`background-color`, hex `border-color`, `border-width`, `border-radius`, `opacity`) and edge styles (`stroke`, `stroke-width`) lower directly.
+- Node and edge CRUD, selection, history and all seven layouts.
+- Built-in and static custom node and edge renderers, and custom connection lines.
+- Handles, connect and reconnect gestures, resizing, and toolbars.
+- `<Background>`, `<Controls>`, `<MiniMap>` and `<Panel>`, plus `colorMode` including `'system'`.
+- Pan, pinch-zoom and drag.
+- Keyboard commands and accessibility names.
+- Culling with `onlyRenderVisibleElements`.
 
-`@pyreon/flow/webview` remains an optional compatibility route when an application deliberately needs its browser CSS/DOM renderer unchanged. `buildFlowHostHtml()` returns a self-contained SVG renderer (no external bundle):
+**How it is verified:**
+
+- The native engines replay shared scenarios whose expected answers come from the web engine. Two checks fail when a portable method or a native config field has neither a scenario nor a stated exemption.
+- Both real toolchains compile the emitted code.
+- The example apps' iOS and Android device suites assert what the renderer draws, the gestures, the keyboard commands and a 400-node scale scenario.
+
+The full list, including the platform limits, is in the [docs](https://pyreon.dev/docs/flow#ios-and-android).
+
+**What stays browser-only.** The compiler reports each of these by name:
+
+- `FlowLayersContext` and `flowStyles`, the DOM renderer's layer context and CSS custom properties.
+- Custom renderers that draw raw DOM or SVG elements, or use browser CSS selectors.
+- Renderer maps computed at runtime.
+
+Keep that presentation in `NativeIOS` / `NativeAndroid` branches, or use the WebView route below. These inline styles lower directly:
+
+- Node styles: `width`, `height`, `padding`, hex `background`/`background-color`, hex `border-color`, `border-width`, `border-radius` and `opacity`.
+- Edge styles: `stroke` and `stroke-width`.
+
+**`@pyreon/flow/webview`** hosts the unchanged browser renderer when an app needs it. `<FlowWebView>` is the same JSX on every target. It lowers to the native `PyreonWebView` bridge, which provides:
+
+- A generated default host.
+- Reactive graph updates and a reactive `html` swap.
+- Once-only commands.
+- Selection, event, message and error callbacks.
 
 ```tsx
-import { buildFlowHostHtml } from '@pyreon/flow/webview'
-import { WebView } from '@pyreon/primitives'
+import { FlowWebView } from '@pyreon/flow/webview'
 
-const FLOW_HOST = buildFlowHostHtml()
-
-<WebView
-  html={FLOW_HOST}
-  data={{ nodes: nodes(), edges: edges() }}   // the same flow model
-  onMessage={(m) => selected.set(m)}           // tapped node → JSON { id, data }
-/>
+<FlowWebView graph={{ nodes: nodes(), edges: edges() }} onSelect={(e) => selected.set(e.id)} />
 ```
 
-- Compiles to WKWebView / Android WebView / an `<iframe srcdoc>` — the same bridge (forward `data` push, reverse `pyreonPostMessage`) on every target.
-- **`<FlowWebView graph onSelect>`** is the wrapper on every target: it lowers to the native `PyreonWebView` bridge itself (a generated default host, graph updates, once-only commands, selection/event/message/error callbacks), so the same JSX hosts the unchanged renderer on web, iOS and Android.
-- **`<FlowWebView graph onSelect>`** is the web-side wrapper; native uses `<WebView html={FLOW_HOST} …>` directly.
-- Use this bridge only when retaining browser-only CSS/DOM behavior is more important than a native SwiftUI/Compose host.
+It is still a WebView, with a JSON bridge. The diagram is opaque to native gestures and to the platform accessibility tree, so prefer the native host unless the browser renderer itself is the requirement. Without an explicit height it defaults to 150pt (iOS) or 150dp (Android). `buildFlowHostHtml()` returns the self-contained host page, for hosting it in a plain `<WebView>` yourself.
 
-See `examples/native-viz` for a one-source multiplatform app.
+See `examples/native-tasks` (native `<Flow>` and `<FlowWebView>` side by side) and `examples/native-viz` for one-source multiplatform apps.
 
 ## Documentation
 

@@ -505,10 +505,11 @@ the machine-checked contract.
 | `@pyreon/styler` | styled(Prim) + defineTheme tokens lower via the styler-native frontend; the CSS-in-JS runtime is web, the authored patterns compile |
 | `@pyreon/ui-core` | `<PyreonUI>` lowers transparently on native (theme is compile-time; dark mode is the system read) |
 
-### `service-backend` — one API, per-target runtime backends (9)
+### `service-backend` — one API, per-target runtime backends (10)
 
 | Package | Why |
 | --- | --- |
+| `@pyreon/flow` | one API with a web engine and a Swift/Kotlin port: `createFlow`/`useFlow`, the whole FlowInstance surface and all seven layouts lower to `PyreonFlowState`, and `<Flow instance>` lowers to the interactive `PyreonFlowView` (static custom node/edge maps, connection lines, handles, resizing, toolbars, background, controls, minimap, panels, colorMode including system, gestures, keyboard commands, culling, portable inline styles). The native engines replay shared scenarios against the web engine as oracle, and the iOS/Android device suites assert the rendered chrome and interactions. Browser-only by member and warned by name: `FlowLayersContext`, `flowStyles`, custom renderers built from raw DOM/SVG elements or CSS selectors, and renderer maps computed at runtime; `@pyreon/flow/webview` hosts the unchanged browser renderer for those. |
 | `@pyreon/form` | useForm v2 + useFieldArray lower to PyreonForm/PyreonFieldArray; device-proven both platforms |
 | `@pyreon/hooks` | the L2 service-hook layer: every hook in PMTC's NATIVE_LOWERED_HOOKS has a web implementation and Swift/Kotlin runtime ports; the remaining hooks are web conveniences |
 | `@pyreon/i18n` | createI18n core (t(), interpolation, one/other plurals) lowers to PyreonI18n; translation device-proven both platforms |
@@ -519,7 +520,7 @@ the machine-checked contract.
 | `@pyreon/storage` | useStorage family over @PyreonAppStorage (Swift) / rememberPyreonStorage (Kotlin); persistence device-proven |
 | `@pyreon/store` | defineStore lowers to @Observable singleton (Swift) / mutableStateOf object (Kotlin); cross-screen state device-proven |
 
-### `web-only` — architecturally coupled to the web platform (37)
+### `web-only` — architecturally coupled to the web platform (36)
 
 | Package | Why |
 | --- | --- |
@@ -534,7 +535,6 @@ the machine-checked contract.
 | `@pyreon/document` | wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering |
 | `@pyreon/document-primitives` | document-authoring primitives feeding the pdfmake/docx renderers |
 | `@pyreon/feature` | CRUD composite over query/form/store/validation. The RUNTIME half stays web — the generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher, and validator/form integration all lower only when every dependency does. The DECLARATION half already crosses (see nativeFrontend) |
-| `@pyreon/flow` | the TypeScript package is a browser package at runtime, while the native compiler lowers its public state/editor surface to SwiftUI and Compose; browser CSS selectors and arbitrary SVG path strings remain platform-specific presentation rather than portable runtime concepts |
 | `@pyreon/head` | document `<head>` management — no equivalent surface exists on iOS/Android |
 | `@pyreon/hotkeys` | keyboard-shortcut layer over DOM KeyboardEvent. The REGISTRY half (registerHotkey / scopes / conflict reporting) is web; the `useHotkey` authoring hook lowers — see nativeFrontend |
 | `@pyreon/http` | universal web/node HTTP client (WHATWG fetch); the transport (middleware, interceptors, streaming) stays web — native networking is the PyreonFetch/PyreonHttp runtime layer |

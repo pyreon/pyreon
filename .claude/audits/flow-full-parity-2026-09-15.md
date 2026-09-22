@@ -39,7 +39,7 @@ WebView escape path; silent drops are release blockers.
   mixed gestures in web Chromium, iOS Simulator and Android Emulator; add
   deterministic performance and memory ceilings without claiming benchmark
   numbers until measured.
-- [ ] **F7 — documentation/manifest truth.** Update the manifest, package docs,
+- [x] **F7 — documentation/manifest truth.** Update the manifest, package docs,
   multiplatform matrix and generated references from the measured inventory.
 
 - [x] F3/F4 first device evidence: the tasks example now renders a real
@@ -357,3 +357,22 @@ native view.
   the dark half is gated on `useColorScheme`'s own "Theme: dark" probe and logs
   a NOTE instead of asserting. It runs in full on an iPhone 17 Pro (verified),
   and the Android half always runs.
+- [x] F7 documentation/manifest truth, written against the union of the
+  F2–F6 PRs rather than main alone:
+  - Manifest: `@pyreon/flow` moves from `web-only` + `nativeFrontend` to
+    `service-backend`. The default surface is one API with a web engine and a
+    Swift/Kotlin port; the browser-only remainder is two named exports plus DOM
+    renderers, all warned by name. Tier table regenerated.
+  - `docs/flow.md`: a new "iOS and Android" section covering what renders
+    natively, what does not cross and the WebView route, how it is verified,
+    and the platform limits. Those limits are: iOS keys XCUITest cannot send,
+    iPhone 16-family appearance propagation, and process death on Android.
+  - README: the Multiplatform section rewritten. It said gestures, keyboard and
+    reduced motion were not device-asserted, repeated its own paragraph, and
+    contradicted itself about how native hosts `FlowWebView`.
+  - `check-native-coverage`: the flow rationale cites the device evidence;
+    `@pyreon/flow/webview` is no longer described as "NOT device-proven".
+  - Found while integrating: the F2 config gate matched comments, so a comment
+    naming `nodesDraggable` read as an engine read. It now strips comments
+    first (#3576).
+
