@@ -23,14 +23,14 @@ describe('option facade — edge shapes (every branch NAMES its loss)', () => {
     expect(w).toContain('option-key-unsupported@yAxis[1].min')
     expect(w).toContain('option-key-unsupported@yAxis[2].max')
     expect(c.spec.extraYAxes).toEqual([{ side: 'right', domain: undefined, title: undefined, offset: undefined }])
-    expect(c.spec.yDomain).toEqual({ min: 0, max: 10 })
+    expect(c.spec.yDomain).toMatchObject({ min: 0, max: 10 })
     expect(c.spec.y2Domain).toBeUndefined()
     // A single y-axis object and no y axis at all both compile.
-    expect(compileOption(cat({ yAxis: { min: 1, max: 5 }, series: [{ type: 'bar', data: [1] }] })).spec.yDomain).toEqual({ min: 1, max: 5 })
+    expect(compileOption(cat({ yAxis: { min: 1, max: 5 }, series: [{ type: 'bar', data: [1] }] })).spec.yDomain).toMatchObject({ min: 1, max: 5 })
     expect(compileOption({ series: [{ type: 'bar', data: [1] }] }).spec.yDomain).toBeUndefined()
   })
 
-  it('axis formatters: a function passes through, the {value} template maps, any other template warns, no axisLabel means none', () => {
+  it('axis formatters: a function passes through, the {value} template maps, any other template warns, no axisLabel means the ECharts default grouping', () => {
     const c = compileOption({
       xAxis: { data: ['a'], axisLabel: { formatter: 'nope' } },
       yAxis: [{ axisLabel: { formatter: (v: number) => `v${v}` } }, { axisLabel: { formatter: '{value}%' } }],
@@ -40,8 +40,9 @@ describe('option facade — edge shapes (every branch NAMES its loss)', () => {
     expect(c.spec.xFormat).toBeUndefined()
     expect(c.spec.yFormat!(1)).toBe('v1')
     expect(c.spec.y2Format!(5)).toBe('5%')
-    expect(compileOption(cat({ yAxis: { axisLabel: {} }, series: [] })).spec.yFormat).toBeUndefined()
-    expect(compileOption(cat({ yAxis: { axisLabel: 'x' }, series: [] })).spec.yFormat).toBeUndefined()
+    // No formatter of the author's: ECharts' default label, grouped by thousands.
+    expect(compileOption(cat({ yAxis: { axisLabel: {} }, series: [] })).spec.yFormat!(12500)).toBe('12,500')
+    expect(compileOption(cat({ yAxis: { axisLabel: 'x' }, series: [] })).spec.yFormat!(-1234.5)).toBe('-1,234.5')
   })
 
   it('series shapes: a single object, a non-object entry (unsupported), garbage, stacked lines, areaStyle forms, missing data', () => {

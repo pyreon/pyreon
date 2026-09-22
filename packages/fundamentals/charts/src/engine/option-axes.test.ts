@@ -17,7 +17,8 @@ describe('option axes', () => {
     expect(spec.xTitle).toBe('Day')
     expect(spec.yTitle).toBe('Temp')
     expect(spec.y2Title).toBe('Rain')
-    expect(spec.yDomain).toEqual({ min: 0, max: 10 })
+    // The given bounds, ticked at ECharts' interval for the span (10 / 5 → 2).
+    expect(spec.yDomain).toEqual({ min: 0, max: 10, step: 2 })
     expect(spec.y2Domain).toEqual({ min: 0, max: 300 })
     expect(spec.series[1]!.axis).toBe('right')
   })
@@ -177,7 +178,7 @@ describe('axis position', () => {
     expect(warnings).toEqual([])
     expect(spec.yTitle).toBe('L')
     expect(spec.y2Title).toBe('R')
-    expect(spec.yDomain).toEqual({ min: 0, max: 500 })
+    expect(spec.yDomain).toMatchObject({ min: 0, max: 500 })
     expect(spec.series[0]!.axis).toBe('right')
     expect(spec.series[1]!.axis).toBeUndefined()
   })

@@ -47,6 +47,7 @@ import type { LegendEntry } from './legend'
 import { placeOptionLegend, readOptionLegend } from './option-legend'
 import { optionTitleCommands, readOptionTitle } from './option-title'
 import { optionGridInsets } from './option-grid'
+import { echartsNice, formatTick } from './scale'
 import type { OptionTitle } from './option-title'
 import type { LegendSelectedMode, OptionLegendLayout } from './option-legend'
 import { measureApprox, renderSvg } from './svg'
@@ -601,7 +602,18 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     // ledger: coordinates.axes
     if (!honoured) warn('option-key-unsupported', Array.isArray(yAxisRaw) ? `yAxis[${ai}].position` : 'yAxis.position', 'Both y axes cannot share a side; the axis keeps its default side.')
   }
-  const yDomain = axisDomain(yAxes[0])
+  const ySplit = isObj(yAxes[0]) && typeof yAxes[0]['splitNumber'] === 'number' ? (yAxes[0]['splitNumber'] as number) : 5.0
+  // Both bounds fixed: that domain, ticked at ECharts' interval for its span.
+  const yFixed = axisDomain(yAxes[0])
+  const yDomain = yFixed === undefined ? undefined : { ...yFixed, step: echartsNice((yFixed.max - yFixed.min) / ySplit, true) }
+  // One bound, or `dataMin` / `dataMax`: the engine derives the other side.
+  const yBound = (key: 'min' | 'max'): Record<string, unknown> => {
+    const v = isObj(yAxes[0]) ? yAxes[0][key] : undefined
+    if (yFixed !== undefined || v === undefined) return {}
+    if (v === 'dataMin' || v === 'dataMax') return key === 'min' ? { yMinData: true } : { yMaxData: true }
+    const n = num(v)
+    return n === null ? {} : key === 'min' ? { yMin: n } : { yMax: n }
+  }
   const y2Domain = axisDomain(yAxes[1])
   const yFormat = axisFormatter(yAxes[0], 'yAxis[0]', warn)
   const y2Format = axisFormatter(yAxes[1], 'yAxis[1]', warn)
@@ -1066,8 +1078,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     showGrid: gridShown,
     yDomain,
     y2Domain,
-    yFormat: yFormat ?? localeNumber,
-    y2Format: y2Format ?? localeNumber,
+    yFormat: yFormat ?? localeNumber ?? axisNumber,
+    y2Format: y2Format ?? localeNumber ?? axisNumber,
     xFormat: xFormat ?? (xTime ? localeDate : undefined),
     xValues,
     xTime: xTime ? true : undefined,
@@ -1079,6 +1091,12 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     y2Title: axisName(yAxes[1]),
     ...(isObj(yAxes[0]) && yAxes[0]['type'] === 'log' ? { yScale: 'log' as const } : {}),
     ...(isObj(yAxes[0]) && yAxes[0]['inverse'] === true ? { yInverse: true } : {}),
+    // ECharts' value axis keeps zero in view unless it is told to fit the data (`scale: true`).
+    ...(yAxes.every((a) => !isObj(a) || ((a['type'] === undefined || a['type'] === 'value') && a['scale'] !== true)) ? { yZero: true } : {}),
+    // ECharts' value-axis ticks: `nice(span / splitNumber)`, 5 by default.
+    ySplit,
+    ...yBound('min'),
+    ...yBound('max'),
     ...(isObj(xAxis) && xAxis['inverse'] === true ? { xInverse: true } : {}),
     ...(isObj(xAxis) && xAxis['position'] === 'top' ? { xTop: true } : {}),
     ...(num(isObj(xAxis) ? xAxis['offset'] : undefined) !== null ? { xOffset: num((xAxis as Record<string, unknown>)['offset']) as number } : {}),
@@ -1132,7 +1150,7 @@ function applyOptionBrush(compiled: CompiledOption, spec: ChartSpec, measure: Me
 
 const defaultPalette = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
-const AXIS_KEYS = new Set(['type', 'data', 'name', 'show', 'min', 'max', 'splitLine', 'axisLabel', 'boundaryGap', 'gridIndex', 'inverse', 'position', 'offset'])
+const AXIS_KEYS = new Set(['type', 'data', 'name', 'show', 'min', 'max', 'scale', 'splitNumber', 'splitLine', 'axisLabel', 'boundaryGap', 'gridIndex', 'inverse', 'position', 'offset'])
 
 function axisKeys(
   axis: Record<string, unknown>,
@@ -1147,6 +1165,21 @@ function axisKeys(
     // ledger: coordinates.axes
     warn('option-key-unsupported', `${path}.${axis['min'] === undefined ? 'max' : 'min'}`, 'An axis domain needs both min and max; the data range is used.')
   }
+}
+
+/**
+ * ECharts' default value-axis label: the number with its integer part grouped
+ * by thousands (`addCommas`) — `1,500`, `-20`, `0.05`.
+ */
+export function axisNumber(v: Double): string {
+  const text = formatTick(v)
+  const neg = text.startsWith('-')
+  const body = neg ? text.slice(1) : text
+  const dot = body.indexOf('.')
+  const int = dot < 0 ? body : body.slice(0, dot)
+  const frac = dot < 0 ? '' : body.slice(dot)
+  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return (neg ? '-' : '') + grouped + frac
 }
 
 function axisDomain(axis: Record<string, unknown> | undefined): Domain | undefined {

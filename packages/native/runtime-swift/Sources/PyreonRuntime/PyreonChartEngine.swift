@@ -37,10 +37,12 @@ public struct Domain: Codable {
   public var min: Double
   public var max: Double
   public var inverse: Bool? = nil
-  public init(min: Double, max: Double, inverse: Bool? = nil) {
+  public var step: Double? = nil
+  public init(min: Double, max: Double, inverse: Bool? = nil, step: Double? = nil) {
     self.min = min
     self.max = max
     self.inverse = inverse
+    self.step = step
   }
 }
 
@@ -674,6 +676,12 @@ public struct ChartSpec {
   public var series: [Series]
   public var drawOrder: [Int]? = nil
   public var boundaryGap: Bool? = nil
+  public var yZero: Bool? = nil
+  public var ySplit: Double? = nil
+  public var yMin: Double? = nil
+  public var yMax: Double? = nil
+  public var yMinData: Bool? = nil
+  public var yMaxData: Bool? = nil
   public var gridLeft: Double? = nil
   public var gridTop: Double? = nil
   public var gridRight: Double? = nil
@@ -715,12 +723,18 @@ public struct ChartSpec {
   public var x2Domain: Domain? = nil
   public var lines: [LinesSeries]? = nil
   public var effectTime: Double? = nil
-  public init(width: Double, height: Double, series: [Series], drawOrder: [Int]? = nil, boundaryGap: Bool? = nil, gridLeft: Double? = nil, gridTop: Double? = nil, gridRight: Double? = nil, gridBottom: Double? = nil, categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, yInverse: Bool? = nil, xInverse: Bool? = nil, xTop: Bool? = nil, yRight: Bool? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, lines: [LinesSeries]? = nil, effectTime: Double? = nil) {
+  public init(width: Double, height: Double, series: [Series], drawOrder: [Int]? = nil, boundaryGap: Bool? = nil, yZero: Bool? = nil, ySplit: Double? = nil, yMin: Double? = nil, yMax: Double? = nil, yMinData: Bool? = nil, yMaxData: Bool? = nil, gridLeft: Double? = nil, gridTop: Double? = nil, gridRight: Double? = nil, gridBottom: Double? = nil, categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, yInverse: Bool? = nil, xInverse: Bool? = nil, xTop: Bool? = nil, yRight: Bool? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, lines: [LinesSeries]? = nil, effectTime: Double? = nil) {
     self.width = width
     self.height = height
     self.series = series
     self.drawOrder = drawOrder
     self.boundaryGap = boundaryGap
+    self.yZero = yZero
+    self.ySplit = ySplit
+    self.yMin = yMin
+    self.yMax = yMax
+    self.yMinData = yMinData
+    self.yMaxData = yMaxData
     self.gridLeft = gridLeft
     self.gridTop = gridTop
     self.gridRight = gridRight
@@ -3357,6 +3371,82 @@ public func niceDomain(_ d: Domain, _ targetCount: Double) -> Domain {
     return Domain(min: floor(Double(d.min / step)) * step, max: ceil(Double(d.max / step)) * step)
   }
 
+public func echartsNice(_ val: Double, _ round: Bool) -> Double {
+    if !(val > 0.0) {
+      return 1.0
+    }
+    let exponent = floor(Double(log10(Double(val))))
+    let exp10 = pow(Double(10.0), Double(exponent))
+    let f = val / exp10
+    var nf = 10.0
+    if round {
+      if f < 1.5 {
+        nf = 1.0
+      } else {
+        if f < 2.5 {
+          nf = 2.0
+        } else {
+          if f < 4.0 {
+            nf = 3.0
+          } else {
+            if f < 7.0 {
+              nf = 5.0
+            }
+          }
+        }
+      }
+    } else {
+      if f < 1.0 {
+        nf = 1.0
+      } else {
+        if f < 2.0 {
+          nf = 2.0
+        } else {
+          if f < 3.0 {
+            nf = 3.0
+          } else {
+            if f < 5.0 {
+              nf = 5.0
+            }
+          }
+        }
+      }
+    }
+    let out = nf * exp10
+    return exponent >= 0.0 ? out : roundTo(out, -exponent)
+  }
+
+public func roundTo(_ v: Double, _ digits: Double) -> Double {
+    let k = pow(Double(10.0), Double(digits))
+    return floor(Double(v * k + 0.5)) / k
+  }
+
+public func stepPrecision(_ step: Double) -> Double {
+    if !(step > 0.0) {
+      return 0.0
+    }
+    let e = floor(Double(log10(Double(step))))
+    return e >= 0.0 ? 0.0 : -e + 1.0
+  }
+
+public func echartsNiceDomain(_ d: Domain, _ splitNumber: Double, _ fixMin: Bool, _ fixMax: Bool) -> Domain {
+    var lo = d.min
+    var hi = d.max
+    if hi == lo {
+      if lo == 0.0 {
+        hi = 1.0
+      } else {
+        let half = Double(abs(lo)) / 2.0
+        lo = lo - half
+        hi = hi + half
+      }
+    }
+    let split = splitNumber > 0.0 ? splitNumber : 5.0
+    let step = echartsNice((hi - lo) / split, true)
+    let p = stepPrecision(step)
+    return Domain(min: fixMin ? d.min : roundTo(floor(Double(lo / step)) * step, p), max: fixMax ? d.max : roundTo(ceil(Double(hi / step)) * step, p), step: step)
+  }
+
 public func isFiniteNumber(_ v: Double) -> Bool { v == v && v - v == 0.0 }
 
 public func makeTicks(_ d: Domain, _ r0: Double, _ r1: Double, _ count: Double, _ format: ((Double) -> String)? = nil) -> [Tick] {
@@ -3373,17 +3463,27 @@ public func makeTicks(_ d: Domain, _ r0: Double, _ r1: Double, _ count: Double, 
       out.append(Tick(value: d.min, pos: scaleLinear(d, r0, r1, d.min), label: fmt(d.min)))
       return out
     }
-    let step = niceStep(span / count)
+    let fixed = (d.step ?? 0.0)
+    let step = fixed > 0.0 ? fixed : niceStep(span / count)
     let first = ceil(Double(d.min / step)) * step
+    let eps = step * 0.000001
+    if fixed > 0.0 && first > d.min + eps {
+      out.append(Tick(value: d.min, pos: scaleLinear(d, r0, r1, d.min), label: fmt(d.min)))
+    }
     let maxTicks = 1000
     var i = 0
+    var last = d.min
     while i < maxTicks {
       let v = first + step * Double(i)
-      if v > d.max + step * 0.000001 {
+      if v > d.max + eps {
         break
       }
       out.append(Tick(value: v, pos: scaleLinear(d, r0, r1, v), label: fmt(v)))
+      last = v
       i = i + 1
+    }
+    if fixed > 0.0 && last < d.max - eps {
+      out.append(Tick(value: d.max, pos: scaleLinear(d, r0, r1, d.max), label: fmt(d.max)))
     }
     return out
   }
@@ -5120,11 +5220,11 @@ public func stateFill(_ spec: ChartSpec, _ s: Series, _ index: Int, _ seriesFill
 public func emphasisOutline(_ r: PyreonChartRect, _ level: Int, _ stroke: String) -> PyreonDrawCmd { PyreonDrawCmd(kind: "polyline", stroke: stroke, width: level == 2 ? 2.5 : 1.5, points: [PyreonChartPt(x: r.x, y: r.y), PyreonChartPt(x: r.x + r.w, y: r.y), PyreonChartPt(x: r.x + r.w, y: r.y + r.h), PyreonChartPt(x: r.x, y: r.y + r.h), PyreonChartPt(x: r.x, y: r.y)]) }
 
 public func resolveYDomain(_ spec: ChartSpec) -> Domain {
-    let d = (spec.yDomain ?? deriveOver(leftAxisSeries(spec)))
+    let d = (spec.yDomain ?? pinDomain(spec, leftAxisSeries(spec)))
     return spec.yInverse == true ? Domain(min: d.min, max: d.max, inverse: true) : d
   }
 
-public func resolveY2Domain(_ spec: ChartSpec) -> Domain { (spec.y2Domain ?? deriveOver(rightAxisSeries(spec))) }
+public func resolveY2Domain(_ spec: ChartSpec) -> Domain { (spec.y2Domain ?? deriveOver(rightAxisSeries(spec), spec.yZero == true, (spec.ySplit ?? 0.0))) }
 
 public func logBounds(_ spec: ChartSpec) -> Domain {
     let pinned = (spec.yDomain ?? Domain(min: 0.0, max: 0.0))
@@ -5316,7 +5416,7 @@ public func extraAxisDomain(_ spec: ChartSpec, _ k: Double) -> Domain {
     var i = 0.0
     for a in (spec.extraYAxes ?? []) {
       if i == k {
-        return (a.domain ?? deriveOver(spec.series.filter({ q in ((q.axisExtra ?? -1.0)) == k })))
+        return (a.domain ?? deriveOver(spec.series.filter({ q in ((q.axisExtra ?? -1.0)) == k }), spec.yZero == true, (spec.ySplit ?? 0.0)))
       }
       i = i + 1.0
     }
@@ -5376,7 +5476,30 @@ public func leftAxisSeries(_ spec: ChartSpec) -> [Series] { spec.series.filter({
 
 public func rightAxisSeries(_ spec: ChartSpec) -> [Series] { spec.series.filter({ s in seriesOnRightAxis(s, spec) }) }
 
-public func deriveOver(_ series: [Series]) -> Domain {
+public func pinDomain(_ spec: ChartSpec, _ series: [Series]) -> Domain {
+    let fixMin = spec.yMin != nil || spec.yMinData == true
+    let fixMax = spec.yMax != nil || spec.yMaxData == true
+    let zero = spec.yZero == true && spec.yMinData != true && spec.yMaxData != true
+    let raw = rawExtentOver(series, zero)
+    let data = rawExtentOver(series, false)
+    let lo = spec.yMinData == true ? data.min : (spec.yMin ?? raw.min)
+    let hi = spec.yMaxData == true ? data.max : (spec.yMax ?? raw.max)
+    let split = (spec.ySplit ?? 0.0)
+    if split > 0.0 {
+      return echartsNiceDomain(Domain(min: lo, max: hi), split, fixMin, fixMax)
+    }
+    if fixMin || fixMax {
+      return niceDomain(Domain(min: lo, max: hi), 5.0)
+    }
+    return niceDomain(raw, 5.0)
+  }
+
+public func deriveOver(_ series: [Series], _ zero: Bool, _ split: Double) -> Domain {
+    let raw = rawExtentOver(series, zero)
+    return split > 0.0 ? echartsNiceDomain(raw, split, false, false) : niceDomain(raw, 5.0)
+  }
+
+public func rawExtentOver(_ series: [Series], _ zero: Bool) -> Domain {
     let stacked = series.filter({ s in s.kind == "stacked" || s.kind == "stackedArea" })
     if stacked.count > 0 {
       let e = stackedExtent(stacked.map({ s in s.values }))
@@ -5391,7 +5514,7 @@ public func deriveOver(_ series: [Series]) -> Domain {
         }
       }
       let max = others.count > 0 ? Double(max(e.max, extent(others).max)) : e.max
-      return niceDomain(Domain(min: 0.0, max: max), 5.0)
+      return Domain(min: 0.0, max: max)
     }
     var all: [Double] = []
     var hasBars = false
@@ -5427,8 +5550,7 @@ public func deriveOver(_ series: [Series]) -> Domain {
       }
     }
     let e = extent(all)
-    let withZero = hasBars ? Domain(min: e.min > 0.0 ? 0.0 : e.min, max: e.max < 0.0 ? 0.0 : e.max) : e
-    return niceDomain(withZero, 5.0)
+    return hasBars || (zero && all.count > 0) ? Domain(min: e.min > 0.0 ? 0.0 : e.min, max: e.max < 0.0 ? 0.0 : e.max) : e
   }
 
 public func isFiniteValue(_ v: Double) -> Bool { isFiniteNumber(v) }

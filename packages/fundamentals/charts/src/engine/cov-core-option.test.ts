@@ -155,7 +155,7 @@ describe('the `custom` series', () => {
       xAxis: {}, yAxis: { min: -5, max: 100 },
       series: [{ type: 'custom', renderItem: box, encode: { x: 0, y: 1 }, data: [[0, 5]] }],
     })
-    expect(pinned.spec.yDomain).toEqual({ min: -5, max: 100 })
+    expect(pinned.spec.yDomain).toMatchObject({ min: -5, max: 100 })
   })
 
   it('a custom series beside a CATEGORY axis does not overwrite the categories with x values', () => {

@@ -7,7 +7,7 @@ import type { Formatter } from './format'
 import type { ExtraYAxis, LayoutConfig, PlotLayout } from './layout'
 import { linesCommands } from './lines'
 import type { LinesSeries } from './lines'
-import { extent, isFiniteNumber, niceDomain, scaleLinear } from './scale'
+import { extent, isFiniteNumber, echartsNiceDomain, niceDomain, scaleLinear } from './scale'
 import { percent, plain } from './format'
 import { countToDouble } from './brush'
 import { polygonCmd, rectCmd } from './corners'
@@ -343,6 +343,26 @@ export interface ChartSpec {
    */
   boundaryGap?: boolean | undefined
   /** Fixed plot insets in pixels (ECharts' `grid` position); an unset side is sized to its labels. */
+  /**
+   * Keep zero inside the value axes even for lines and points (ECharts'
+   * value-axis default, `scale: false`). Bars and areas always include it.
+   */
+  yZero?: boolean | undefined
+  /**
+   * Nice the value axes the way ECharts does: a step of `nice(span /
+   * ySplit)` (1, 2, 3, 5 or 10 at a power of ten), the extent floored and
+   * ceiled to it, and ticks at that step. Unset keeps the engine's own ticks.
+   */
+  ySplit?: Double | undefined
+  /**
+   * One pinned bound of the left value axis (ECharts' `min` / `max` given
+   * alone): the other is derived from the data. `yMinData` / `yMaxData` pin a
+   * bound to the data's own extent (`'dataMin'` / `'dataMax'`).
+   */
+  yMin?: Double | undefined
+  yMax?: Double | undefined
+  yMinData?: boolean | undefined
+  yMaxData?: boolean | undefined
   gridLeft?: Double | undefined
   gridTop?: Double | undefined
   gridRight?: Double | undefined
@@ -649,7 +669,7 @@ export function emphasisOutline(r: Rect, level: number, stroke: string): DrawCmd
 export function resolveYDomain(spec: ChartSpec): Domain {
   // `?? derive` rather than an early return: Swift does not narrow
   // `spec.yDomain` through the guard, and the coalesce is the same contract.
-  const d = spec.yDomain ?? deriveOver(leftAxisSeries(spec))
+  const d = spec.yDomain ?? pinDomain(spec, leftAxisSeries(spec))
   return spec.yInverse === true ? { min: d.min, max: d.max, inverse: true } : d
 }
 
@@ -662,7 +682,7 @@ export function resolveYDomain(spec: ChartSpec): Domain {
  * it anyway.
  */
 export function resolveY2Domain(spec: ChartSpec): Domain {
-  return spec.y2Domain ?? deriveOver(rightAxisSeries(spec))
+  return spec.y2Domain ?? deriveOver(rightAxisSeries(spec), spec.yZero === true, spec.ySplit ?? 0.0)
 }
 
 /**
@@ -900,7 +920,7 @@ function onExtraAxis(s: Series, spec: ChartSpec): boolean {
 export function extraAxisDomain(spec: ChartSpec, k: Double): Domain {
   let i = 0.0
   for (const a of spec.extraYAxes ?? []) {
-    if (i === k) return a.domain ?? deriveOver(spec.series.filter((q) => (q.axisExtra ?? -1.0) === k))
+    if (i === k) return a.domain ?? deriveOver(spec.series.filter((q) => (q.axisExtra ?? -1.0) === k), spec.yZero === true, spec.ySplit ?? 0.0)
     i = i + 1.0
   }
   return { min: 0.0, max: 1.0 }
@@ -959,7 +979,33 @@ function rightAxisSeries(spec: ChartSpec): Series[] {
   return spec.series.filter((s) => seriesOnRightAxis(s, spec))
 }
 
-function deriveOver(series: Series[]): Domain {
+/**
+ * The left axis' domain: its data extent (stack totals and all), any pinned
+ * bound applied, niced the way the spec asks — ECharts' interval when
+ * `ySplit` is set, the engine's own otherwise.
+ */
+function pinDomain(spec: ChartSpec, series: Series[]): Domain {
+  const fixMin = spec.yMin !== undefined || spec.yMinData === true
+  const fixMax = spec.yMax !== undefined || spec.yMaxData === true
+  // A bound pinned to the data (`dataMin` / `dataMax`) turns ECharts' zero-inclusion off.
+  const zero = spec.yZero === true && spec.yMinData !== true && spec.yMaxData !== true
+  const raw = rawExtentOver(series, zero)
+  const data = rawExtentOver(series, false)
+  const lo = spec.yMinData === true ? data.min : spec.yMin ?? raw.min
+  const hi = spec.yMaxData === true ? data.max : spec.yMax ?? raw.max
+  const split = spec.ySplit ?? 0.0
+  if (split > 0.0) return echartsNiceDomain({ min: lo, max: hi }, split, fixMin, fixMax)
+  if (fixMin || fixMax) return niceDomain({ min: lo, max: hi }, 5.0)
+  return niceDomain(raw, 5.0)
+}
+
+function deriveOver(series: Series[], zero: boolean, split: Double): Domain {
+  const raw = rawExtentOver(series, zero)
+  return split > 0.0 ? echartsNiceDomain(raw, split, false, false) : niceDomain(raw, 5.0)
+}
+
+/** The un-niced extent a set of series spans: stack totals, waterfall running totals, band floors and error bars; zero included for bars (and for all when `zero`). */
+function rawExtentOver(series: Series[], zero: boolean): Domain {
   // A STACK's domain is its tallest TOTAL, not its tallest value — taking the
   // max of the individual series would clip the stack at the top.
   const stacked = series.filter((s) => s.kind === 'stacked' || s.kind === 'stackedArea')
@@ -968,7 +1014,7 @@ function deriveOver(series: Series[]): Domain {
     const others: Double[] = []
     for (const s of series) if (s.kind !== 'stacked' && s.kind !== 'stackedArea') for (const v of s.values) if (isFiniteValue(v)) others.push(v)
     const max = others.length > 0 ? Math.max(e.max, extent(others).max) : e.max
-    return niceDomain({ min: 0.0, max }, 5.0)
+    return { min: 0.0, max }
   }
   const all: Double[] = []
   let hasBars = false
@@ -992,10 +1038,9 @@ function deriveOver(series: Series[]): Domain {
     for (const v of s.errHigh ?? []) if (isFiniteValue(v)) all.push(v)
   }
   const e = extent(all)
-  const withZero: Domain = hasBars
+  return hasBars || (zero && all.length > 0)
     ? { min: e.min > 0.0 ? 0.0 : e.min, max: e.max < 0.0 ? 0.0 : e.max }
     : e
-  return niceDomain(withZero, 5.0)
 }
 
 /** Finite check — `isFiniteNumber` from `./scale` (NaN AND infinity are gaps; `Number.*` has no native lowering). */

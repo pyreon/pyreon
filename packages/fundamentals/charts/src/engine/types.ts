@@ -54,6 +54,8 @@ export interface Domain {
   max: Double
   /** Maps `min` to the far end of the range — ECharts' `axis.inverse`. */
   inverse?: boolean | undefined
+  /** A fixed tick step (ECharts' axis interval); unset, the ticks pick their own. */
+  step?: Double | undefined
 }
 
 /**

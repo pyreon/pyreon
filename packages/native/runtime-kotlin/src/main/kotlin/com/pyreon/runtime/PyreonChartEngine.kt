@@ -20,7 +20,7 @@ enum class LegendPosition { top, bottom, left, right }
 
 data class Tick(var value: Double, var pos: Double, var label: String)
 
-data class Domain(var min: Double, var max: Double, var inverse: Boolean? = null)
+data class Domain(var min: Double, var max: Double, var inverse: Boolean? = null, var step: Double? = null)
 
 
 
@@ -82,7 +82,7 @@ data class ChartTheme(var palette: List<String>, var background: String, var sur
 
 data class Emphasis(var highlight: Int, var selected: List<Int>)
 
-data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var drawOrder: List<Int>? = null, var boundaryGap: Boolean? = null, var gridLeft: Double? = null, var gridTop: Double? = null, var gridRight: Double? = null, var gridBottom: Double? = null, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var yInverse: Boolean? = null, var xInverse: Boolean? = null, var xTop: Boolean? = null, var yRight: Boolean? = null, var xOffset: Double? = null, var yOffset: Double? = null, var y2Offset: Double? = null, var extraYAxes: List<ExtraYAxis>? = null, var x2Labels: List<String>? = null, var x2Title: String? = null, var x2Domain: Domain? = null, var lines: List<LinesSeries>? = null, var effectTime: Double? = null)
+data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var drawOrder: List<Int>? = null, var boundaryGap: Boolean? = null, var yZero: Boolean? = null, var ySplit: Double? = null, var yMin: Double? = null, var yMax: Double? = null, var yMinData: Boolean? = null, var yMaxData: Boolean? = null, var gridLeft: Double? = null, var gridTop: Double? = null, var gridRight: Double? = null, var gridBottom: Double? = null, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var yInverse: Boolean? = null, var xInverse: Boolean? = null, var xTop: Boolean? = null, var yRight: Boolean? = null, var xOffset: Double? = null, var yOffset: Double? = null, var y2Offset: Double? = null, var extraYAxes: List<ExtraYAxis>? = null, var x2Labels: List<String>? = null, var x2Title: String? = null, var x2Domain: Domain? = null, var lines: List<LinesSeries>? = null, var effectTime: Double? = null)
 
 data class Ohlc(var open: Double, var high: Double, var low: Double, var close: Double)
 
@@ -798,6 +798,82 @@ fun niceDomain(d: Domain, targetCount: Double): Domain {
     return Domain(min = Math.floor((d.min).toDouble() / (step).toDouble()) * step, max = Math.ceil((d.max).toDouble() / (step).toDouble()) * step)
   }
 
+fun echartsNice(`val`: Double, round: Boolean): Double {
+    if (!(`val` > 0.0)) {
+      return 1.0
+    }
+    val exponent = Math.floor(Math.log10((`val`).toDouble()))
+    val exp10 = Math.pow((10.0).toDouble(), (exponent).toDouble())
+    val f = (`val`).toDouble() / (exp10).toDouble()
+    var nf = 10.0
+    if (round) {
+      if (f < 1.5) {
+        nf = 1.0
+      } else {
+        if (f < 2.5) {
+          nf = 2.0
+        } else {
+          if (f < 4.0) {
+            nf = 3.0
+          } else {
+            if (f < 7.0) {
+              nf = 5.0
+            }
+          }
+        }
+      }
+    } else {
+      if (f < 1.0) {
+        nf = 1.0
+      } else {
+        if (f < 2.0) {
+          nf = 2.0
+        } else {
+          if (f < 3.0) {
+            nf = 3.0
+          } else {
+            if (f < 5.0) {
+              nf = 5.0
+            }
+          }
+        }
+      }
+    }
+    val out = nf * exp10
+    return if (exponent >= 0.0) out else roundTo(out, -exponent)
+  }
+
+fun roundTo(v: Double, digits: Double): Double {
+    val k = Math.pow((10.0).toDouble(), (digits).toDouble())
+    return (Math.floor(v * k + 0.5)).toDouble() / (k).toDouble()
+  }
+
+fun stepPrecision(step: Double): Double {
+    if (!(step > 0.0)) {
+      return 0.0
+    }
+    val e = Math.floor(Math.log10((step).toDouble()))
+    return if (e >= 0.0) 0.0 else -e + 1.0
+  }
+
+fun echartsNiceDomain(d: Domain, splitNumber: Double, fixMin: Boolean, fixMax: Boolean): Domain {
+    var lo = d.min
+    var hi = d.max
+    if (hi == lo) {
+      if (lo == 0.0) {
+        hi = 1.0
+      } else {
+        val half = (Math.abs(lo)).toDouble() / (2.0).toDouble()
+        lo = lo - half
+        hi = hi + half
+      }
+    }
+    val split = if (splitNumber > 0.0) splitNumber else 5.0
+    val step = echartsNice(((hi - lo)).toDouble() / (split).toDouble(), true)
+    val p = stepPrecision(step)
+    return Domain(min = if (fixMin) d.min else roundTo(Math.floor((lo).toDouble() / (step).toDouble()) * step, p), max = if (fixMax) d.max else roundTo(Math.ceil((hi).toDouble() / (step).toDouble()) * step, p), step = step)
+  }
+
 fun isFiniteNumber(v: Double): Boolean = v == v && v - v == 0.0
 
 fun makeTicks(d: Domain, r0: Double, r1: Double, count: Double, format: ((Double) -> String)? = null): List<Tick> {
@@ -814,17 +890,27 @@ fun makeTicks(d: Domain, r0: Double, r1: Double, count: Double, format: ((Double
       out.add(Tick(value = d.min, pos = scaleLinear(d, r0, r1, d.min), label = fmt(d.min)))
       return out
     }
-    val step = niceStep((span).toDouble() / (count).toDouble())
+    val fixed = (d.step ?: 0.0)
+    val step = if (fixed > 0.0) fixed else niceStep((span).toDouble() / (count).toDouble())
     val first = Math.ceil((d.min).toDouble() / (step).toDouble()) * step
+    val eps = step * 0.000001
+    if (fixed > 0.0 && first > d.min + eps) {
+      out.add(Tick(value = d.min, pos = scaleLinear(d, r0, r1, d.min), label = fmt(d.min)))
+    }
     val maxTicks = 1000
     var i = 0
+    var last = d.min
     while (i < maxTicks) {
       val v = first + step * i
-      if (v > d.max + step * 0.000001) {
+      if (v > d.max + eps) {
         break
       }
       out.add(Tick(value = v, pos = scaleLinear(d, r0, r1, v), label = fmt(v)))
+      last = v
       i = i + 1
+    }
+    if (fixed > 0.0 && last < d.max - eps) {
+      out.add(Tick(value = d.max, pos = scaleLinear(d, r0, r1, d.max), label = fmt(d.max)))
     }
     return out
   }
@@ -2561,11 +2647,11 @@ fun stateFill(spec: ChartSpec, s: Series, index: Int, seriesFill: String): Strin
 fun emphasisOutline(r: PyreonChartRect, level: Int, stroke: String): PyreonDrawCmd = PyreonDrawCmd(kind = "polyline", stroke = stroke, width = if (level == 2) 2.5 else 1.5, points = listOf(PyreonChartPt(x = r.x, y = r.y), PyreonChartPt(x = r.x + r.w, y = r.y), PyreonChartPt(x = r.x + r.w, y = r.y + r.h), PyreonChartPt(x = r.x, y = r.y + r.h), PyreonChartPt(x = r.x, y = r.y)))
 
 fun resolveYDomain(spec: ChartSpec): Domain {
-    val d = (spec.yDomain ?: deriveOver(leftAxisSeries(spec)))
+    val d = (spec.yDomain ?: pinDomain(spec, leftAxisSeries(spec)))
     return if (spec.yInverse == true) Domain(min = d.min, max = d.max, inverse = true) else d
   }
 
-fun resolveY2Domain(spec: ChartSpec): Domain = (spec.y2Domain ?: deriveOver(rightAxisSeries(spec)))
+fun resolveY2Domain(spec: ChartSpec): Domain = (spec.y2Domain ?: deriveOver(rightAxisSeries(spec), spec.yZero == true, (spec.ySplit ?: 0.0)))
 
 fun logBounds(spec: ChartSpec): Domain {
     val pinned = (spec.yDomain ?: Domain(min = 0.0, max = 0.0))
@@ -2757,7 +2843,7 @@ fun extraAxisDomain(spec: ChartSpec, k: Double): Domain {
     var i = 0.0
     for (a in (spec.extraYAxes ?: listOf())) {
       if (i == k) {
-        return (a.domain ?: deriveOver(spec.series.filter({ q -> ((q.axisExtra ?: -1.0)) == k })))
+        return (a.domain ?: deriveOver(spec.series.filter({ q -> ((q.axisExtra ?: -1.0)) == k }), spec.yZero == true, (spec.ySplit ?: 0.0)))
       }
       i = i + 1.0
     }
@@ -2817,7 +2903,30 @@ fun leftAxisSeries(spec: ChartSpec): List<Series> = spec.series.filter({ s -> !s
 
 fun rightAxisSeries(spec: ChartSpec): List<Series> = spec.series.filter({ s -> seriesOnRightAxis(s, spec) })
 
-fun deriveOver(series: List<Series>): Domain {
+fun pinDomain(spec: ChartSpec, series: List<Series>): Domain {
+    val fixMin = spec.yMin != null || spec.yMinData == true
+    val fixMax = spec.yMax != null || spec.yMaxData == true
+    val zero = spec.yZero == true && spec.yMinData != true && spec.yMaxData != true
+    val raw = rawExtentOver(series, zero)
+    val data = rawExtentOver(series, false)
+    val lo = if (spec.yMinData == true) data.min else (spec.yMin ?: raw.min)
+    val hi = if (spec.yMaxData == true) data.max else (spec.yMax ?: raw.max)
+    val split = (spec.ySplit ?: 0.0)
+    if (split > 0.0) {
+      return echartsNiceDomain(Domain(min = lo, max = hi), split, fixMin, fixMax)
+    }
+    if (fixMin || fixMax) {
+      return niceDomain(Domain(min = lo, max = hi), 5.0)
+    }
+    return niceDomain(raw, 5.0)
+  }
+
+fun deriveOver(series: List<Series>, zero: Boolean, split: Double): Domain {
+    val raw = rawExtentOver(series, zero)
+    return if (split > 0.0) echartsNiceDomain(raw, split, false, false) else niceDomain(raw, 5.0)
+  }
+
+fun rawExtentOver(series: List<Series>, zero: Boolean): Domain {
     val stacked = series.filter({ s -> s.kind == "stacked" || s.kind == "stackedArea" })
     if (stacked.length > 0) {
       val e = stackedExtent(stacked.map({ s -> s.values }))
@@ -2832,7 +2941,7 @@ fun deriveOver(series: List<Series>): Domain {
         }
       }
       val max = if (others.length > 0) Math.max(e.max, extent(others).max) else e.max
-      return niceDomain(Domain(min = 0.0, max = max), 5.0)
+      return Domain(min = 0.0, max = max)
     }
     val all: MutableList<Double> = mutableListOf()
     var hasBars = false
@@ -2868,8 +2977,7 @@ fun deriveOver(series: List<Series>): Domain {
       }
     }
     val e = extent(all)
-    val withZero = if (hasBars) Domain(min = if (e.min > 0.0) 0.0 else e.min, max = if (e.max < 0.0) 0.0 else e.max) else e
-    return niceDomain(withZero, 5.0)
+    return if (hasBars || (zero && all.length > 0)) Domain(min = if (e.min > 0.0) 0.0 else e.min, max = if (e.max < 0.0) 0.0 else e.max) else e
   }
 
 fun isFiniteValue(v: Double): Boolean = isFiniteNumber(v)
