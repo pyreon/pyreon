@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
+import { query } from '@pyreon/test-utils'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { OptionChart } from './OptionChart'
 import type { EChartsOption } from './option'
@@ -12,7 +13,7 @@ const at = (c: HTMLCanvasElement, type: string, x: number, y: number): void => {
   const r = c.getBoundingClientRect()
   c.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: r.left + x, clientY: r.top + y, pointerId: 4 }))
 }
-const box = (container: HTMLElement): HTMLElement => container.querySelector('[data-pyreon-chart-tooltip]') as HTMLElement
+const box = (container: HTMLElement): HTMLElement => query(container, '[data-pyreon-chart-tooltip]')
 /** The centre of bar `i` of `n` in a 400-wide chart with the default 40 px left gutter. */
 const barX = (c: HTMLCanvasElement, i: number, n: number): number => {
   const w = c.getBoundingClientRect().width
