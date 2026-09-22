@@ -583,7 +583,7 @@ fun <T> PyreonFlowView(
             }
             for (handle in interactiveHandles) {
                 val diameter = 12.0 / state.viewport.zoom
-                val hitSize = maxOf(diameter, 48.0 / state.viewport.zoom)
+                val hitSize = maxOf(diameter, with(density) { 48.dp.toPx() }.toDouble() / state.viewport.zoom)
                 Canvas(
                     Modifier
                         .offset { IntOffset((handle.x - hitSize / 2).roundToInt(), (handle.y - hitSize / 2).roundToInt()) }
@@ -632,7 +632,7 @@ fun <T> PyreonFlowView(
                     val x = if ('w' in direction) absolute.x else if ('e' in direction) absolute.x + width else absolute.x + width / 2
                     val y = if ('n' in direction) absolute.y else if ('s' in direction) absolute.y + height else absolute.y + height / 2
                     val diameter = config.handleSize / state.viewport.zoom
-                    val hitSize = maxOf(diameter, 48.0 / state.viewport.zoom)
+                    val hitSize = maxOf(diameter, with(density) { 48.dp.toPx() }.toDouble() / state.viewport.zoom)
                     Canvas(
                         Modifier
                             .offset { IntOffset((x - hitSize / 2).roundToInt(), (y - hitSize / 2).roundToInt()) }
@@ -660,7 +660,7 @@ fun <T> PyreonFlowView(
             }
             for (updater in pyreonFlowEdgeUpdaters(state, edgeStrokes)) {
                 val diameter = 12.0 / state.viewport.zoom
-                val hitSize = maxOf(diameter, 48.0 / state.viewport.zoom)
+                val hitSize = maxOf(diameter, with(density) { 48.dp.toPx() }.toDouble() / state.viewport.zoom)
                 Canvas(
                     Modifier
                         .offset { IntOffset((updater.x - hitSize / 2).roundToInt(), (updater.y - hitSize / 2).roundToInt()) }
