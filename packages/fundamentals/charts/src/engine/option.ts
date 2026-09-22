@@ -46,6 +46,8 @@ import type { Formatter } from './format'
 import { renderLegend } from './legend'
 import type { LegendEntry } from './legend'
 import { readOptionLegend } from './option-legend'
+import { optionTitleCommands, readOptionTitle } from './option-title'
+import type { OptionTitle } from './option-title'
 import type { LegendSelectedMode } from './option-legend'
 import { measureApprox, renderSvg } from './svg'
 import { compileFamily, familyToSvg } from './option-family'
@@ -87,7 +89,7 @@ export interface CompiledOption {
   /** Background colour from the theme, painted first by `optionToSvg`; undefined = transparent. */
   background: string | undefined
   /** Title text + sub-text, when the option carries them. */
-  title: { text: string; subtext: string | undefined } | null
+  title: OptionTitle | null
   /** Legend entries, or null when the option hides the legend. */
   legend: LegendEntry[] | null
   /** ECharts' `legend.selectedMode` (a click toggles, keeps one on, or does nothing) and the names `legend.selected` starts off. */
@@ -995,10 +997,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
 
   // ---- title / legend / tooltip ----------------------------------------
   const titleRaw = first(option['title'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
-  const title =
-    isObj(titleRaw) && typeof titleRaw['text'] === 'string'
-      ? { text: titleRaw['text'] as string, subtext: typeof titleRaw['subtext'] === 'string' ? (titleRaw['subtext'] as string) : undefined }
-      : null
+  const title = readOptionTitle(titleRaw)
   const optionLegend = readOptionLegend(option['legend'], series)
   const legend = optionLegend === null ? null : optionLegend.entries
   const tooltipRaw = option['tooltip']
@@ -1323,13 +1322,9 @@ export function compiledCommands(compiled: CompiledOption, option: EChartsOption
   const cmds: DrawCmd[] = []
   if (compiled.background !== undefined) cmds.push({ kind: 'rect', rect: { x: 0.0, y: 0.0, w: width, h: height }, fill: compiled.background })
   if (compiled.title !== null) {
-    cmds.push({ kind: 'text', text: compiled.title.text, at: { x: 0.0, y: 0.0 }, fill: t.label, size: t.fontSize + 4.0, align: 'start', baseline: 'top' })
-    top = top + t.fontSize + 4.0
-    if (compiled.title.subtext !== undefined) {
-      cmds.push({ kind: 'text', text: compiled.title.subtext, at: { x: 0.0, y: top + 2.0 }, fill: t.label, size: t.fontSize, align: 'start', baseline: 'top' })
-      top = top + t.fontSize + 2.0
-    }
-    top = top + 8.0
+    const tl = optionTitleCommands(compiled.title, width, t)
+    for (const c of tl.cmds) cmds.push(c)
+    top = top + tl.height
   }
   if (compiled.legend !== null && compiled.legend.length > 0) {
     const l = renderLegend(compiled.legend, { x: 0.0, y: top, w: width, h: height - top }, { fontSize: t.fontSize, labelColor: t.label, swatch: 10.0, gap: 12.0, orientation: 'horizontal' }, measure)

@@ -161,7 +161,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'complete',
     native: 'partial',
     gaps: ['native: no native test asserts that a null datum renders as a gap'],
-    evidence: ['src/engine/gaps.test.ts', NATIVE + 'chart-hosts.test.ts'],
+    evidence: ['src/engine/gaps.test.ts', 'src/engine/option-path-evidence.browser.test.tsx', NATIVE + 'chart-hosts.test.ts'],
   }),
   row('data.key-totality', 'data', 'direct', {
     web: 'pending',
@@ -336,10 +336,13 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     evidence: ['src/engine/option-composite.test.ts', NATIVE + 'chart-axes-native.test.ts'],
   }),
   row('coordinates.title', 'coordinates', 'direct', {
-    web: 'complete',
+    web: 'partial',
     native: 'partial',
-    gaps: [LITERAL_ONLY],
-    evidence: ['src/engine/title-edges.test.ts', NATIVE + 'chart-chrome-native.test.ts'],
+    gaps: [
+      'an option title reads `text`, `subtext`, `left`/`right`, `textAlign`, `textStyle` and `subtextStyle` color and size, and `itemGap`; `link`/`sublink`, `top`/`bottom`, `textVerticalAlign`, `padding`, `backgroundColor`, borders, shadows and several titles are not read',
+      LITERAL_ONLY,
+    ],
+    evidence: ['src/engine/title-edges.test.ts', 'src/engine/option-title.test.ts', NATIVE + 'chart-chrome-native.test.ts'],
   }),
   row('coordinates.legend', 'coordinates', 'direct', {
     web: 'partial',
@@ -577,13 +580,13 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'complete',
     native: 'pending',
     gaps: ['native: `link` couples charts through a DOM-side controller and is named and dropped'],
-    evidence: ['src/engine/link.browser.test.tsx', 'src/engine/link-dispatch.test.ts'],
+    evidence: ['src/engine/link.browser.test.tsx', 'src/engine/link-dispatch.test.ts', 'src/engine/option-path-evidence.browser.test.tsx'],
   }),
   row('runtime.resize', 'runtime', 'direct', {
     web: 'complete',
     native: 'partial',
     gaps: ['native: the canvas lays out in its frame, but no native test changes the frame and asserts a re-layout'],
-    evidence: ['src/engine/canvas-host.test.tsx', NATIVE + 'chart-hosts.test.ts'],
+    evidence: ['src/engine/canvas-host.test.tsx', 'src/engine/option-path-evidence.browser.test.tsx', NATIVE + 'chart-hosts.test.ts'],
   }),
 
   // ── presentation ──────────────────────────────────────────────────────
@@ -670,13 +673,13 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
   row('presentation.rtl', 'presentation', 'direct', {
     web: 'complete',
     native: 'complete',
-    evidence: ['src/engine/rtl.test.ts', 'src/engine/rtl.browser.test.tsx', NATIVE + 'chart-rtl-native.test.ts', NATIVE + 'native-chart-mirror-parity.test.ts'],
+    evidence: ['src/engine/rtl.test.ts', 'src/engine/rtl.browser.test.tsx', 'src/engine/option-path-evidence.browser.test.tsx', NATIVE + 'chart-rtl-native.test.ts', NATIVE + 'native-chart-mirror-parity.test.ts'],
   }),
   row('presentation.export-snapshot', 'presentation', 'direct', {
     web: 'complete',
     native: 'partial',
     gaps: ['native: saveAsImage hands back a PNG; the SVG export is named and dropped'],
-    evidence: ['src/engine/svg.test.ts', 'src/engine/toolbox.browser.test.tsx', NATIVE + 'chart-toolbox-native.test.ts', ...DEVICE],
+    evidence: ['src/engine/svg.test.ts', 'src/engine/toolbox.browser.test.tsx', 'src/engine/option-path-evidence.browser.test.tsx', NATIVE + 'chart-toolbox-native.test.ts', ...DEVICE],
   }),
   row('presentation.a11y-keyboard', 'presentation', 'direct', {
     web: 'complete',
@@ -688,7 +691,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'complete',
     native: 'partial',
     gaps: ['native: the canvas carries the describeChart sentence; `accessibleTable` (the per-datum table) is named and dropped'],
-    evidence: ['src/engine/canvas-host.test.tsx', 'src/engine/a11y-extras-cells.test.ts', NATIVE + 'chart-native-a11y.test.ts', NATIVE + 'chart-a11y-full-data-native.test.ts'],
+    evidence: ['src/engine/canvas-host.test.tsx', 'src/engine/a11y-extras-cells.test.ts', 'src/engine/option-path-evidence.browser.test.tsx', NATIVE + 'chart-native-a11y.test.ts', NATIVE + 'chart-a11y-full-data-native.test.ts'],
   }),
 ] as const)()
 

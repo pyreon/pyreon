@@ -33,7 +33,7 @@ import { hitToolbox, renderToolbox } from './toolbox'
 import { toolboxTools } from './toolbox-config'
 import type { ToolboxTool } from './toolbox-config'
 import { brushAreaFromDrag, brushAreaUsable, brushPolygonAdd } from './brush-area'
-import type { ChartHandle } from './link'
+import type { ChartHandle, ChartLink } from './link'
 import type { BrushArea } from './brush-area'
 import { brushRange, renderBrushBand } from './brush'
 import { chartTable } from './a11y'
@@ -107,6 +107,11 @@ export interface OptionChartProps extends Omit<CanvasHostProps, 'theme' | 'showT
    * change callbacks fire as they would for a pointer.
    */
   handle?: ChartHandle | undefined
+  /**
+   * Couple this chart to others (ECharts' `echarts.connect`): every chart given
+   * the same `createChartLink()` shares one zoom window and one hovered datum.
+   */
+  link?: ChartLink | undefined
   /** Fired with the datum under a click (cartesian plans), or null for a miss. */
   onSelect?: (hit: OptionHit | null) => void
   /** The datum INDEX under a click (or the keyboard's pick), -1 for a miss — the multiplatform-safe twin of `onSelect`. */
@@ -289,7 +294,7 @@ export function OptionChart(props: OptionChartProps): VNode {
   }
   const stepIndex = (): number | undefined => props.timelineIndex ?? (step() >= 0 ? step() : undefined)
   // The dataZoom window the user has moved to; null = the option's own start/end.
-  const zoomWin = props.handle?.zoom ?? signal<ZoomWindow | null>(null)
+  const zoomWin = props.handle?.zoom ?? props.link?.zoom ?? signal<ZoomWindow | null>(null)
   // Toolbox state: the magicType switches, the box-select zoom (mode, live band, undo stack) and the data view.
   const magicKind = signal<'' | 'line' | 'bar'>('')
   const magicStack = signal<'' | 'stack' | 'tiled'>('')
@@ -858,7 +863,7 @@ export function OptionChart(props: OptionChartProps): VNode {
   // signals the draw effect tracks; the commands are re-rendered with the
   // `emphasis` set only while a state is active, so a plain chart paints the
   // compiled commands as before.
-  const hoverIndex = props.handle?.hover ?? signal(-1)
+  const hoverIndex = props.handle?.hover ?? props.link?.hover ?? signal(-1)
   /** True when a cartesian option draws an animated `lines` trail. */
   const linesEffectOn = (g: OptionGeometry): boolean =>
     g.plan.kind === 'cartesian' && (g.plan.compiled.spec.lines ?? []).some((ls) => ls.effect)
