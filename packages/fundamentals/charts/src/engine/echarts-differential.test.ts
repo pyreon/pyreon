@@ -20,6 +20,8 @@ import { fitCircle, layoutArcsWith } from './arc'
 import { layoutPieLabels } from './pie-labels'
 import { renderDial } from './gauge-dial'
 import { optionTitleCommands, readOptionTitle } from './option-title'
+import { echartsBeziers } from './curve'
+import type { Pt } from './types'
 
 const W = 400
 const H = 300
@@ -630,6 +632,87 @@ describe('ECharts differential: the plot rect', () => {
       expect(Math.abs(u.x1 - e.x1)).toBeLessThan(1.5)
       expect(Math.abs(u.y0 - e.y0)).toBeLessThan(1.5)
       expect(Math.abs(u.y1 - e.y1)).toBeLessThan(1.5)
+    })
+  }
+})
+
+/**
+ * Line shape: `smooth` and `step`. ECharts draws a smoothed line as one cubic
+ * Bézier per segment and a stepped one as straight turns; both are compared
+ * on the numbers in its path. Ours: the series' raw pixel points put through
+ * the same Bézier rule, and the stepped polyline as drawn.
+ */
+const nums = (d: string): number[] => (d.match(/-?[\d.]+/g) ?? []).map(Number)
+function echartsLinePath(option: object): string {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: W, height: H })
+  chart.setOption({ animation: false, ...option })
+  const svg = chart.renderToSVGString()
+  chart.dispose()
+  return /<path d="([^"]*)"[^>]*stroke="#5070dd"/.exec(svg)![1]!
+}
+function ourLinePoints(option: EChartsOption): Pt[] {
+  const c = compileOption(option, { width: W, height: H })
+  const m = (t: string, size: number): number => echarts.format.getTextRect(t, String(size) + 'px sans-serif').width
+  // Every run of the series, in order: a gap breaks the line into several.
+  return renderChart(c.spec, m).flatMap((d) => (d.kind === 'polyline' && d.stroke === c.spec.series[0]!.color ? d.points : []))
+}
+function ourLineRuns(option: EChartsOption): number {
+  const c = compileOption(option, { width: W, height: H })
+  const m = (t: string, size: number): number => echarts.format.getTextRect(t, String(size) + 'px sans-serif').width
+  return renderChart(c.spec, m).filter((d) => d.kind === 'polyline' && d.stroke === c.spec.series[0]!.color).length
+}
+const shaped = (series: object): EChartsOption => ({
+  xAxis: { type: 'category', data: ['a', 'b', 'c', 'd', 'e'] },
+  yAxis: { type: 'value' },
+  series: [{ type: 'line', data: [3, 9, 2, 8, 5], showSymbol: false, ...series }],
+}) as EChartsOption
+const SMOOTH_CASES: [string, object][] = [
+  ['smooth: true (0.5)', { smooth: true }],
+  ['smooth: 0.2', { smooth: 0.2 }],
+  ["smoothMonotone: 'x'", { smooth: 0.3, smoothMonotone: 'x' }],
+  ["smoothMonotone: 'y'", { smooth: 0.4, smoothMonotone: 'y' }],
+]
+/** Straight-segment shapes: steps, and the gaps a null leaves (or bridges). */
+const STEP_CASES: [string, object][] = [
+  ['step: true turns at the start', { step: true }],
+  ["step: 'middle'", { step: 'middle' }],
+  ["step: 'end'", { step: 'end' }],
+  ['a null breaks the line', { data: [3, 9, null, 8, 5] }],
+  ['connectNulls bridges it', { data: [3, 9, null, 8, 5], connectNulls: true }],
+  ['connectNulls under a step', { data: [3, null, 2, 8, 5], connectNulls: true, step: true }],
+]
+/** A point sequence with repeats dropped and coordinates at ECharts' 0.1 precision. */
+const pairs = (xs: number[]): string[] => {
+  const out: string[] = []
+  for (let i = 0; i + 1 < xs.length; i += 2) {
+    const p = (Math.round(xs[i]! * 10) / 10).toFixed(1) + ',' + (Math.round(xs[i + 1]! * 10) / 10).toFixed(1)
+    if (out[out.length - 1] !== p) out.push(p)
+  }
+  return out
+}
+
+describe('ECharts differential: line shape', () => {
+  for (const [name, series] of SMOOTH_CASES) {
+    it(name, () => {
+      const e = nums(echartsLinePath(shaped(series)))
+      const raw = ourLinePoints(shaped({}))
+      const s = series as { smooth: boolean | number; smoothMonotone?: string }
+      const u = [raw[0]!.x, raw[0]!.y, ...echartsBeziers(raw, s.smooth === true ? 0.5 : (s.smooth as number), s.smoothMonotone ?? '')]
+      expect(u.length).toBe(e.length)
+      for (let i = 0; i < e.length; i++) expect(Math.abs(u[i]! - e[i]!)).toBeLessThan(0.11)
+      // And the line drawn really is that curve: its samples end on each datum.
+      const drawn = ourLinePoints(shaped(series))
+      expect(drawn.length).toBe(1 + 16 * (raw.length - 1))
+    })
+  }
+  for (const [name, series] of STEP_CASES) {
+    it(name, () => {
+      const path = echartsLinePath(shaped(series))
+      const e = pairs(nums(path))
+      const u = pairs(ourLinePoints(shaped(series)).flatMap((p) => [p.x, p.y]))
+      expect(u).toEqual(e)
+      // The same points could be one bridged line or two broken ones: count the runs too.
+      expect(ourLineRuns(shaped(series))).toBe((path.match(/M/g) ?? []).length)
     })
   }
 })

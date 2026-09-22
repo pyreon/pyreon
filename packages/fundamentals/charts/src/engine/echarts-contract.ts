@@ -419,7 +419,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
   line: {
     blendMode: 'presentation.layering',
     colorLayer: 'presentation.palette',
-    connectNulls: 'series.line',
     coord: 'coordinates.matrix',
     coordinateSystemUsage: 'coordinates.matrix',
     dataGroupId: 'presentation.universal-transition',
@@ -429,7 +428,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     legendHoverLink: 'runtime.events',
     polarId: 'coordinates.polar',
     polarIndex: 'coordinates.polar',
-    smoothMonotone: 'series.line',
     sourceHeader: 'data.dimensions-encode',
     stackOrder: 'series.line',
     stackStrategy: 'series.line',

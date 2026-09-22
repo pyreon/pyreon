@@ -1,5 +1,6 @@
 // Marks → draw commands. The whole chart, as plain data.
 
+import { echartsSmooth } from './curve'
 import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt, layoutSeriesPointsEdge, layoutSeriesPointsH } from './layout'
 import { DEFAULT_PALETTE } from './palette'
 import { layoutGroupedBars, layoutGroupedBarsH, layoutStackedBars, layoutStackedBarsH, layoutWaterfall, normalizeStack, stackCumulative, stackedExtent, waterfallExtent } from './stack'
@@ -34,6 +35,12 @@ export interface Series {
   label: string
   /** Densifier applied to line/area points — `smooth`/`step` from ./curve. */
   curve?: ((points: Pt[]) => Pt[]) | undefined
+  /** ECharts' `smooth` amount (0.5 for `true`): shapes the line with ECharts' own Béziers, over `curve`. */
+  smoothAmount?: Double | undefined
+  /** ECharts' `smoothMonotone`: 'x', 'y', or unset. */
+  smoothMonotone?: string | undefined
+  /** ECharts' `connectNulls`: bridge a missing value instead of breaking the line. */
+  connectNulls?: boolean | undefined
   /**
    * Label each datum with its value.
    *
@@ -1771,7 +1778,9 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     // Resolved once per series: the ramp spans the plot, not the shape.
     const sGradAll = seriesGradient(s.gradient, plot)
     const sGrad = sGradAll.stops.length === 0 ? undefined : sGradAll
-    const shape = (pts: Pt[]): Pt[] => curveFn(pts)
+    const smoothAmt = s.smoothAmount ?? 0.0
+    const smoothMono = s.smoothMonotone ?? ''
+    const shape = (pts: Pt[]): Pt[] => (smoothAmt > 0.0 ? echartsSmooth(pts, smoothAmt, smoothMono) : curveFn(pts))
 
     if (spec.horizontal === true) {
       if (s.kind !== 'bars') continue
@@ -1870,8 +1879,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       }
     } else if (s.kind === 'line') {
       // A non-finite value is a GAP: the line breaks into runs rather than
-      // drawing a zero or bridging the hole (ECharts' connectNulls: false).
-      for (const run of splitRuns(s.values, place)) {
+      // drawing a zero — or, under ECharts' `connectNulls`, bridges it.
+      for (const run of splitRuns(s.values, place, s.connectNulls)) {
         const pts = reveal(shape(run))
         if (pts.length > 1) {
           out.push({ kind: 'polyline', points: pts, stroke: s.color, width: stateWidth(spec, s), dash: s.dash })
@@ -1926,7 +1935,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       // Gap-splitting (a non-finite value breaks the fill into runs, same
       // as the line branch above) combined with gradient fill support — two
       // independent fixes to this branch that landed as separate PRs.
-      for (const run of splitRuns(s.values, place)) {
+      for (const run of splitRuns(s.values, place, s.connectNulls)) {
         const pts = reveal(shape(run))
         if (pts.length > 1) {
           const poly: Pt[] = []
@@ -2257,7 +2266,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
  * every point at the x it would have had, so a gap removes a segment without
  * shifting its neighbours.
  */
-function splitRuns(values: Double[], place: (values: Double[]) => Pt[]): Pt[][] {
+function splitRuns(values: Double[], place: (values: Double[]) => Pt[], connect?: boolean): Pt[][] {
   const runs: Pt[][] = []
   let hasGap = false
   for (const v of values) if (!isFiniteValue(v)) hasGap = true
@@ -2270,6 +2279,13 @@ function splitRuns(values: Double[], place: (values: Double[]) => Pt[]): Pt[][] 
   const filled: Double[] = []
   for (const v of values) filled.push(isFiniteValue(v) ? v : 0.0)
   const pts = place(filled)
+  // ECharts' `connectNulls`: one run over the finite points, bridging each hole.
+  if (connect === true) {
+    const joined: Pt[] = []
+    for (let i = 0; i < pts.length; i++) if (isFiniteValue(values[i]!)) joined.push(pts[i]!)
+    runs.push(joined)
+    return runs
+  }
   // Track each run by its start index rather than re-assigning a fresh array
   // (a reassigned array binding has no native lowering).
   let runStart = -1

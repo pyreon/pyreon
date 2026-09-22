@@ -90,7 +90,7 @@ data class LabelSegment(var text: String, var color: String, var fontSize: Doubl
 
 data class LinesSeries(var coords: List<List<Double>>, var colors: List<String>, var widths: List<Double>, var effect: Boolean, var period: Double, var trailLength: Double, var effectColor: String, var symbolSize: Double)
 
-data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var axisExtra: Double? = null, var onX2: Boolean? = null, var xs: List<Double>? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var symbolMargin: Double? = null, var symbolOffset: List<Double>? = null, var symbolPosition: String? = null, var symbolRotate: Double? = null, var symbolHollow: Boolean? = null, var symbolShow: String? = null, var symbolClip: Boolean? = null, var symbolBoundingData: Double? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var labelTexts: List<String>? = null, var labelColor: String? = null, var labelSize: Double? = null, var labelRich: List<RichStyle>? = null, var focus: String? = null, var emphasisColor: String? = null, var selectColor: String? = null, var blurOpacity: Double? = null, var emphasisScale: Double? = null, var emphasisDisabled: Boolean? = null, var emphasisWidth: Double? = null, var blurWidth: Double? = null, var emphasisAreaOpacity: Double? = null, var blurAreaOpacity: Double? = null, var emphasisLabel: Boolean? = null, var selectLabel: Boolean? = null, var seriesSelected: Boolean? = null, var inBrush: List<Int>? = null, var brushOpacity: Double? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null, var extras: List<SeriesExtra>? = null, var itemColors: List<String>? = null, var barWidth: BarLength? = null, var barMaxWidth: BarLength? = null, var barMinWidth: BarLength? = null, var barStack: String? = null)
+data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var smoothAmount: Double? = null, var smoothMonotone: String? = null, var connectNulls: Boolean? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var axisExtra: Double? = null, var onX2: Boolean? = null, var xs: List<Double>? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var symbolMargin: Double? = null, var symbolOffset: List<Double>? = null, var symbolPosition: String? = null, var symbolRotate: Double? = null, var symbolHollow: Boolean? = null, var symbolShow: String? = null, var symbolClip: Boolean? = null, var symbolBoundingData: Double? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var labelTexts: List<String>? = null, var labelColor: String? = null, var labelSize: Double? = null, var labelRich: List<RichStyle>? = null, var focus: String? = null, var emphasisColor: String? = null, var selectColor: String? = null, var blurOpacity: Double? = null, var emphasisScale: Double? = null, var emphasisDisabled: Boolean? = null, var emphasisWidth: Double? = null, var blurWidth: Double? = null, var emphasisAreaOpacity: Double? = null, var blurAreaOpacity: Double? = null, var emphasisLabel: Boolean? = null, var selectLabel: Boolean? = null, var seriesSelected: Boolean? = null, var inBrush: List<Int>? = null, var brushOpacity: Double? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null, var extras: List<SeriesExtra>? = null, var itemColors: List<String>? = null, var barWidth: BarLength? = null, var barMaxWidth: BarLength? = null, var barMinWidth: BarLength? = null, var barStack: String? = null)
 
 data class SeriesExtra(var label: String, var numbers: List<Double>? = null, var texts: List<String>? = null)
 
@@ -1151,6 +1151,144 @@ fun step(points: List<PyreonChartPt>): List<PyreonChartPt> {
     val out = mutableListOf(points[0])
     for (i in 1 until n) {
       out.add(PyreonChartPt(x = points[i].x, y = points[i - 1].y))
+      out.add(points[i])
+    }
+    return out
+  }
+
+fun echartsBeziers(points: List<PyreonChartPt>, amount: Double, monotone: String): List<Double> {
+    val out: MutableList<Double> = mutableListOf()
+    val n = points.length
+    if (n < 2) {
+      return out
+    }
+    var prevX = points[0].x
+    var prevY = points[0].y
+    var cpx0 = prevX
+    var cpy0 = prevY
+    for (i in 1 until n) {
+      val x = points[i].x
+      val y = points[i].y
+      val ddx = x - prevX
+      val ddy = y - prevY
+      if (ddx * ddx + ddy * ddy < 0.5) {
+        continue
+      }
+      var cpx1 = x
+      var cpy1 = y
+      var nextCpx0 = x
+      var nextCpy0 = y
+      if (i + 1 < n) {
+        val nextX = points[i + 1].x
+        val nextY = points[i + 1].y
+        var vx = nextX - prevX
+        var vy = nextY - prevY
+        val dx0 = x - prevX
+        val dx1 = nextX - x
+        val dy0 = y - prevY
+        val dy1 = nextY - y
+        if (monotone == "x") {
+          val lenPrev = Math.abs(dx0)
+          val lenNext = Math.abs(dx1)
+          val dirX = if (vx > 0.0) 1.0 else -1.0
+          cpx1 = x - dirX * lenPrev * amount
+          nextCpx0 = x + dirX * lenNext * amount
+        } else {
+          if (monotone == "y") {
+            val lenPrev = Math.abs(dy0)
+            val lenNext = Math.abs(dy1)
+            val dirY = if (vy > 0.0) 1.0 else -1.0
+            cpy1 = y - dirY * lenPrev * amount
+            nextCpy0 = y + dirY * lenNext * amount
+          } else {
+            val lenPrev = Math.sqrt((dx0 * dx0 + dy0 * dy0).toDouble())
+            val lenNext = Math.sqrt((dx1 * dx1 + dy1 * dy1).toDouble())
+            val ratio = (lenNext).toDouble() / ((lenNext + lenPrev)).toDouble()
+            nextCpx0 = x + vx * amount * ratio
+            nextCpy0 = y + vy * amount * ratio
+            nextCpx0 = Math.max(Math.min(nextCpx0, Math.max(nextX, x)), Math.min(nextX, x))
+            nextCpy0 = Math.max(Math.min(nextCpy0, Math.max(nextY, y)), Math.min(nextY, y))
+            vx = nextCpx0 - x
+            vy = nextCpy0 - y
+            cpx1 = x - ((vx * lenPrev)).toDouble() / (lenNext).toDouble()
+            cpy1 = y - ((vy * lenPrev)).toDouble() / (lenNext).toDouble()
+            cpx1 = Math.max(Math.min(cpx1, Math.max(prevX, x)), Math.min(prevX, x))
+            cpy1 = Math.max(Math.min(cpy1, Math.max(prevY, y)), Math.min(prevY, y))
+            vx = x - cpx1
+            vy = y - cpy1
+            nextCpx0 = x + ((vx * lenNext)).toDouble() / (lenPrev).toDouble()
+            nextCpy0 = y + ((vy * lenNext)).toDouble() / (lenPrev).toDouble()
+          }
+        }
+      }
+      out.add(cpx0)
+      out.add(cpy0)
+      out.add(cpx1)
+      out.add(cpy1)
+      out.add(x)
+      out.add(y)
+      cpx0 = nextCpx0
+      cpy0 = nextCpy0
+      prevX = x
+      prevY = y
+    }
+    return out
+  }
+
+fun echartsSmooth(points: List<PyreonChartPt>, amount: Double, monotone: String): List<PyreonChartPt> {
+    if (points.length < 2 || amount <= 0.0) {
+      return points
+    }
+    val bz = echartsBeziers(points, amount, monotone)
+    val out = mutableListOf(points[0])
+    var x0 = points[0].x
+    var y0 = points[0].y
+    val segs = Math.floor((bz.length).toDouble() / (6).toDouble())
+    for (s in 0 until Math.ceil(segs).toInt()) {
+      val c0x = bz[s * 6]
+      val c0y = bz[s * 6 + 1]
+      val c1x = bz[s * 6 + 2]
+      val c1y = bz[s * 6 + 3]
+      val x1 = bz[s * 6 + 4]
+      val y1 = bz[s * 6 + 5]
+      for (k in 1..16) {
+        val t = (k).toDouble() / (16.0).toDouble()
+        val u = 1.0 - t
+        val a = u * u * u
+        val b = 3.0 * u * u * t
+        val c = 3.0 * u * t * t
+        val d = t * t * t
+        out.add(PyreonChartPt(x = a * x0 + b * c0x + c * c1x + d * x1, y = a * y0 + b * c0y + c * c1y + d * y1))
+      }
+      x0 = x1
+      y0 = y1
+    }
+    return out
+  }
+
+fun stepStart(points: List<PyreonChartPt>): List<PyreonChartPt> {
+    val n = points.length
+    if (n < 2) {
+      return points
+    }
+    val out = mutableListOf(points[0])
+    for (i in 1 until n) {
+      out.add(PyreonChartPt(x = points[i - 1].x, y = points[i].y))
+      out.add(points[i])
+    }
+    return out
+  }
+
+fun stepMiddle(points: List<PyreonChartPt>): List<PyreonChartPt> {
+    val n = points.length
+    if (n < 2) {
+      return points
+    }
+    val out = mutableListOf(points[0])
+    for (i in 1 until n) {
+      val mid = ((points[i - 1].x + points[i].x)).toDouble() / (2.0).toDouble()
+      out.add(PyreonChartPt(x = mid, y = points[i - 1].y))
+      out.add(PyreonChartPt(x = mid, y = points[i].y))
       out.add(points[i])
     }
     return out
@@ -4393,7 +4531,9 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
       val curveFn = (s.curve ?: ({ q -> q }))
       val sGradAll = seriesGradient(s.gradient, plot)
       val sGrad = if (sGradAll.stops.length == 0) null else sGradAll
-      val shape = { pts: List<PyreonChartPt> -> curveFn(pts) }
+      val smoothAmt = (s.smoothAmount ?: 0.0)
+      val smoothMono = (s.smoothMonotone ?: "")
+      val shape = { pts: List<PyreonChartPt> -> (if (smoothAmt > 0.0) echartsSmooth(pts, smoothAmt, smoothMono) else curveFn(pts)) }
       if (spec.horizontal == true) {
         if (s.kind != "bars") {
           continue
@@ -4494,7 +4634,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           }
         } else {
           if (s.kind == "line") {
-            for (run in splitRuns(s.values, place)) {
+            for (run in splitRuns(s.values, place, s.connectNulls)) {
               val pts = reveal(shape(run))
               if (pts.length > 1) {
                 out.add(PyreonDrawCmd(kind = "polyline", stroke = s.color, width = stateWidth(spec, s), dash = s.dash, points = pts))
@@ -4554,7 +4694,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
               }
             } else {
               if (s.kind == "area") {
-                for (run in splitRuns(s.values, place)) {
+                for (run in splitRuns(s.values, place, s.connectNulls)) {
                   val pts = reveal(shape(run))
                   if (pts.length > 1) {
                     val poly: MutableList<PyreonChartPt> = mutableListOf()
@@ -4822,7 +4962,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
     return out
   }
 
-fun splitRuns(values: List<Double>, place: (List<Double>) -> List<PyreonChartPt>): List<List<PyreonChartPt>> {
+fun splitRuns(values: List<Double>, place: (List<Double>) -> List<PyreonChartPt>, connect: Boolean? = null): List<List<PyreonChartPt>> {
     val runs: MutableList<List<PyreonChartPt>> = mutableListOf()
     var hasGap = false
     for (v in values) {
@@ -4839,6 +4979,16 @@ fun splitRuns(values: List<Double>, place: (List<Double>) -> List<PyreonChartPt>
       filled.add(if (isFiniteValue(v)) v else 0.0)
     }
     val pts = place(filled)
+    if (connect == true) {
+      val joined: MutableList<PyreonChartPt> = mutableListOf()
+      for (i in 0 until pts.length) {
+        if (isFiniteValue(values[i])) {
+          joined.add(pts[i])
+        }
+      }
+      runs.add(joined)
+      return runs
+    }
     var runStart = -1
     for (i in 0 until pts.length) {
       if (isFiniteValue(values[i])) {

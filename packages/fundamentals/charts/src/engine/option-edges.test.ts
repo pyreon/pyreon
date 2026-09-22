@@ -113,7 +113,7 @@ describe('option facade — edge shapes (every branch NAMES its loss)', () => {
     }))
     const [a, b, d] = c.spec.series
     expect(a!.radius).toBe(5)
-    expect(a!.curve).toBeDefined()
+    expect(a!.smoothAmount).toBe(0.5)
     expect(a!.width).toBe(3)
     expect(a!.showValues).toBe(true)
     expect(a!.axis).toBe('right')

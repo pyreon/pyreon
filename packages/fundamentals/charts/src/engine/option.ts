@@ -40,7 +40,7 @@ import type { ThemeDefinition } from './theme-registry'
 import { dateFormatter, numberFormatter } from './locale'
 import type { RichStyle } from './labels'
 import type { Annotation, ChartSpec, PointMarker, Series, SeriesExtra, BarLength } from './render'
-import { smooth, step } from './curve'
+import { step, stepMiddle, stepStart } from './curve'
 import { plain } from './format'
 import type { Formatter } from './format'
 import type { LegendEntry } from './legend'
@@ -152,7 +152,7 @@ export const KNOWN_SERIES: ReadonlySet<string> = new Set([
   // pair by the dataset pre-pass, `cursor` / `tooltip` / `universalTransition`
   // by the host (see OptionChart).
   'id', 'seriesLayoutBy', 'datasetId', 'colorBy', 'cursor', 'tooltip', 'universalTransition',
-  'type', 'name', 'data', 'stack', 'smooth', 'step', 'areaStyle', 'itemStyle',
+  'type', 'name', 'data', 'stack', 'smooth', 'smoothMonotone', 'connectNulls', 'step', 'areaStyle', 'itemStyle',
   'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'xAxisIndex', 'markLine', 'markPoint', 'markArea',
   'color', 'showSymbol', 'showAllSymbol', 'symbol', 'emphasis', 'silent',
   'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex', 'tooltipExtras',
@@ -855,7 +855,12 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       width: num(lineStyle['width']) ?? 2.0,
       radius: num(s['symbolSize']) !== null ? (num(s['symbolSize']) as number) / 2.0 : 3.0,
       label: typeof s['name'] === 'string' ? (s['name'] as string) : `Series ${i + 1}`,
-      curve: s['smooth'] === true || (num(s['smooth']) ?? 0) > 0 ? smooth : s['step'] !== undefined && s['step'] !== false ? step : undefined,
+      // ECharts' `step`: true / 'start' rises first, 'middle' turns halfway, 'end' holds first.
+      curve: s['step'] === 'end' ? step : s['step'] === 'middle' ? stepMiddle : s['step'] !== undefined && s['step'] !== false ? stepStart : undefined,
+      // ECharts' own smoothing: `true` is 0.5, a number is the amount.
+      smoothAmount: s['smooth'] === true ? 0.5 : (num(s['smooth']) ?? 0) > 0 ? (num(s['smooth']) as number) : undefined,
+      connectNulls: s['connectNulls'] === true ? true : undefined,
+      smoothMonotone: s['smoothMonotone'] === 'x' || s['smoothMonotone'] === 'y' ? (s['smoothMonotone'] as string) : undefined,
       showValues: label['show'] === true,
       radii: undefined,
       axis: !extraAxis && (yAxisIndex === 1) !== swapY ? 'right' : undefined,

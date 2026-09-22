@@ -778,6 +778,9 @@ public struct Series {
   public var radius: Double
   public var label: String
   public var curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil
+  public var smoothAmount: Double? = nil
+  public var smoothMonotone: String? = nil
+  public var connectNulls: Bool? = nil
   public var showValues: Bool? = nil
   public var rValues: [Double]? = nil
   public var radii: [Double]? = nil
@@ -829,7 +832,7 @@ public struct Series {
   public var barMaxWidth: BarLength? = nil
   public var barMinWidth: BarLength? = nil
   public var barStack: String? = nil
-  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, axisExtra: Double? = nil, onX2: Bool? = nil, xs: [Double]? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, symbolMargin: Double? = nil, symbolOffset: [Double]? = nil, symbolPosition: String? = nil, symbolRotate: Double? = nil, symbolHollow: Bool? = nil, symbolShow: String? = nil, symbolClip: Bool? = nil, symbolBoundingData: Double? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, labelTexts: [String]? = nil, labelColor: String? = nil, labelSize: Double? = nil, labelRich: [RichStyle]? = nil, focus: String? = nil, emphasisColor: String? = nil, selectColor: String? = nil, blurOpacity: Double? = nil, emphasisScale: Double? = nil, emphasisDisabled: Bool? = nil, emphasisWidth: Double? = nil, blurWidth: Double? = nil, emphasisAreaOpacity: Double? = nil, blurAreaOpacity: Double? = nil, emphasisLabel: Bool? = nil, selectLabel: Bool? = nil, seriesSelected: Bool? = nil, inBrush: [Int]? = nil, brushOpacity: Double? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil, extras: [SeriesExtra]? = nil, itemColors: [String]? = nil, barWidth: BarLength? = nil, barMaxWidth: BarLength? = nil, barMinWidth: BarLength? = nil, barStack: String? = nil) {
+  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, smoothAmount: Double? = nil, smoothMonotone: String? = nil, connectNulls: Bool? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, axisExtra: Double? = nil, onX2: Bool? = nil, xs: [Double]? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, symbolMargin: Double? = nil, symbolOffset: [Double]? = nil, symbolPosition: String? = nil, symbolRotate: Double? = nil, symbolHollow: Bool? = nil, symbolShow: String? = nil, symbolClip: Bool? = nil, symbolBoundingData: Double? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, labelTexts: [String]? = nil, labelColor: String? = nil, labelSize: Double? = nil, labelRich: [RichStyle]? = nil, focus: String? = nil, emphasisColor: String? = nil, selectColor: String? = nil, blurOpacity: Double? = nil, emphasisScale: Double? = nil, emphasisDisabled: Bool? = nil, emphasisWidth: Double? = nil, blurWidth: Double? = nil, emphasisAreaOpacity: Double? = nil, blurAreaOpacity: Double? = nil, emphasisLabel: Bool? = nil, selectLabel: Bool? = nil, seriesSelected: Bool? = nil, inBrush: [Int]? = nil, brushOpacity: Double? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil, extras: [SeriesExtra]? = nil, itemColors: [String]? = nil, barWidth: BarLength? = nil, barMaxWidth: BarLength? = nil, barMinWidth: BarLength? = nil, barStack: String? = nil) {
     self.kind = kind
     self.values = values
     self.color = color
@@ -837,6 +840,9 @@ public struct Series {
     self.radius = radius
     self.label = label
     self.curve = curve
+    self.smoothAmount = smoothAmount
+    self.smoothMonotone = smoothMonotone
+    self.connectNulls = connectNulls
     self.showValues = showValues
     self.rValues = rValues
     self.radii = radii
@@ -4063,6 +4069,144 @@ public func step(_ points: [PyreonChartPt]) -> [PyreonChartPt] {
     var out = [points[0]]
     for i in 1..<n {
       out.append(PyreonChartPt(x: points[i].x, y: points[i - 1].y))
+      out.append(points[i])
+    }
+    return out
+  }
+
+public func echartsBeziers(_ points: [PyreonChartPt], _ amount: Double, _ monotone: String) -> [Double] {
+    var out: [Double] = []
+    let n = points.count
+    if n < 2 {
+      return out
+    }
+    var prevX = points[0].x
+    var prevY = points[0].y
+    var cpx0 = prevX
+    var cpy0 = prevY
+    for i in 1..<n {
+      let x = points[i].x
+      let y = points[i].y
+      let ddx = x - prevX
+      let ddy = y - prevY
+      if ddx * ddx + ddy * ddy < 0.5 {
+        continue
+      }
+      var cpx1 = x
+      var cpy1 = y
+      var nextCpx0 = x
+      var nextCpy0 = y
+      if i + 1 < n {
+        let nextX = points[i + 1].x
+        let nextY = points[i + 1].y
+        var vx = nextX - prevX
+        var vy = nextY - prevY
+        let dx0 = x - prevX
+        let dx1 = nextX - x
+        let dy0 = y - prevY
+        let dy1 = nextY - y
+        if monotone == "x" {
+          let lenPrev = abs(dx0)
+          let lenNext = abs(dx1)
+          let dirX = vx > 0.0 ? 1.0 : -1.0
+          cpx1 = x - dirX * lenPrev * amount
+          nextCpx0 = x + dirX * lenNext * amount
+        } else {
+          if monotone == "y" {
+            let lenPrev = abs(dy0)
+            let lenNext = abs(dy1)
+            let dirY = vy > 0.0 ? 1.0 : -1.0
+            cpy1 = y - dirY * lenPrev * amount
+            nextCpy0 = y + dirY * lenNext * amount
+          } else {
+            let lenPrev = sqrt(Double(dx0 * dx0 + dy0 * dy0))
+            let lenNext = sqrt(Double(dx1 * dx1 + dy1 * dy1))
+            let ratio = Double(lenNext) / Double((lenNext + lenPrev))
+            nextCpx0 = x + vx * amount * ratio
+            nextCpy0 = y + vy * amount * ratio
+            nextCpx0 = max(min(nextCpx0, max(nextX, x)), min(nextX, x))
+            nextCpy0 = max(min(nextCpy0, max(nextY, y)), min(nextY, y))
+            vx = nextCpx0 - x
+            vy = nextCpy0 - y
+            cpx1 = x - Double((vx * lenPrev)) / Double(lenNext)
+            cpy1 = y - Double((vy * lenPrev)) / Double(lenNext)
+            cpx1 = max(min(cpx1, max(prevX, x)), min(prevX, x))
+            cpy1 = max(min(cpy1, max(prevY, y)), min(prevY, y))
+            vx = x - cpx1
+            vy = y - cpy1
+            nextCpx0 = x + Double((vx * lenNext)) / Double(lenPrev)
+            nextCpy0 = y + Double((vy * lenNext)) / Double(lenPrev)
+          }
+        }
+      }
+      out.append(cpx0)
+      out.append(cpy0)
+      out.append(cpx1)
+      out.append(cpy1)
+      out.append(x)
+      out.append(y)
+      cpx0 = nextCpx0
+      cpy0 = nextCpy0
+      prevX = x
+      prevY = y
+    }
+    return out
+  }
+
+public func echartsSmooth(_ points: [PyreonChartPt], _ amount: Double, _ monotone: String) -> [PyreonChartPt] {
+    if points.count < 2 || amount <= 0.0 {
+      return points
+    }
+    let bz = echartsBeziers(points, amount, monotone)
+    var out = [points[0]]
+    var x0 = points[0].x
+    var y0 = points[0].y
+    let segs = floor(Double(Double(bz.count) / Double(6)))
+    for s in 0..<Int(ceil(Double(segs))) {
+      let c0x = bz[s * 6]
+      let c0y = bz[s * 6 + 1]
+      let c1x = bz[s * 6 + 2]
+      let c1y = bz[s * 6 + 3]
+      let x1 = bz[s * 6 + 4]
+      let y1 = bz[s * 6 + 5]
+      for k in 1...16 {
+        let t = Double(k) / 16.0
+        let u = 1.0 - t
+        let a = u * u * u
+        let b = 3.0 * u * u * t
+        let c = 3.0 * u * t * t
+        let d = t * t * t
+        out.append(PyreonChartPt(x: a * x0 + b * c0x + c * c1x + d * x1, y: a * y0 + b * c0y + c * c1y + d * y1))
+      }
+      x0 = x1
+      y0 = y1
+    }
+    return out
+  }
+
+public func stepStart(_ points: [PyreonChartPt]) -> [PyreonChartPt] {
+    let n = points.count
+    if n < 2 {
+      return points
+    }
+    var out = [points[0]]
+    for i in 1..<n {
+      out.append(PyreonChartPt(x: points[i - 1].x, y: points[i].y))
+      out.append(points[i])
+    }
+    return out
+  }
+
+public func stepMiddle(_ points: [PyreonChartPt]) -> [PyreonChartPt] {
+    let n = points.count
+    if n < 2 {
+      return points
+    }
+    var out = [points[0]]
+    for i in 1..<n {
+      let mid = (points[i - 1].x + points[i].x) / 2.0
+      out.append(PyreonChartPt(x: mid, y: points[i - 1].y))
+      out.append(PyreonChartPt(x: mid, y: points[i].y))
       out.append(points[i])
     }
     return out
@@ -7305,7 +7449,9 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       let curveFn = (s.curve ?? ({ q in q }))
       let sGradAll = seriesGradient(s.gradient, plot)
       let sGrad = sGradAll.stops.count == 0 ? nil : sGradAll
-      let shape = { (pts: [PyreonChartPt]) in curveFn(pts) }
+      let smoothAmt = (s.smoothAmount ?? 0.0)
+      let smoothMono = (s.smoothMonotone ?? "")
+      let shape = { (pts: [PyreonChartPt]) in (smoothAmt > 0.0 ? echartsSmooth(pts, smoothAmt, smoothMono) : curveFn(pts)) }
       if spec.horizontal == true {
         if s.kind != "bars" {
           continue
@@ -7406,7 +7552,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           }
         } else {
           if s.kind == "line" {
-            for run in splitRuns(s.values, place) {
+            for run in splitRuns(s.values, place, s.connectNulls) {
               let pts = reveal(shape(run))
               if pts.count > 1 {
                 out.append(PyreonDrawCmd(kind: "polyline", stroke: s.color, width: stateWidth(spec, s), dash: s.dash, points: pts))
@@ -7466,7 +7612,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
               }
             } else {
               if s.kind == "area" {
-                for run in splitRuns(s.values, place) {
+                for run in splitRuns(s.values, place, s.connectNulls) {
                   let pts = reveal(shape(run))
                   if pts.count > 1 {
                     var poly: [PyreonChartPt] = []
@@ -7734,7 +7880,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
     return out
   }
 
-public func splitRuns(_ values: [Double], _ place: ([Double]) -> [PyreonChartPt]) -> [[PyreonChartPt]] {
+public func splitRuns(_ values: [Double], _ place: ([Double]) -> [PyreonChartPt], _ connect: Bool? = nil) -> [[PyreonChartPt]] {
     var runs: [[PyreonChartPt]] = []
     var hasGap = false
     for v in values {
@@ -7751,6 +7897,16 @@ public func splitRuns(_ values: [Double], _ place: ([Double]) -> [PyreonChartPt]
       filled.append(isFiniteValue(v) ? v : 0.0)
     }
     let pts = place(filled)
+    if connect == true {
+      var joined: [PyreonChartPt] = []
+      for i in 0..<pts.count {
+        if isFiniteValue(values[i]) {
+          joined.append(pts[i])
+        }
+      }
+      runs.append(joined)
+      return runs
+    }
     var runStart = -1
     for i in 0..<pts.count {
       if isFiniteValue(values[i]) {

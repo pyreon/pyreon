@@ -176,8 +176,8 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
   row('series.line', 'series', 'direct', {
     web: 'partial',
     native: 'partial',
-    gaps: ['`connectNulls` is not a known series key and is ignored with a warning', LITERAL_ONLY],
-    evidence: ['src/engine/option-edges.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/option-edges.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
   }),
   row('series.bar', 'series', 'direct', {
     web: 'partial',
