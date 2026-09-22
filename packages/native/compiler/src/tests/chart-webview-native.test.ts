@@ -93,4 +93,20 @@ describe('@pyreon/charts/webview native lowering', () => {
       expect(result.code).not.toContain('pyreonChartWebViewData(')
     },
   )
+
+  it.each(['swift', 'kotlin'] as const)('carries data-testid to the host without double-lowering `background` on %s', (target) => {
+    const result = transform(
+      `
+      import { ChartWebView } from '@pyreon/charts/webview'
+      export function App() {
+        return <ChartWebView option={{ series: [] }} background="#101820" data-testid="gal-chart-webview" />
+      }`,
+      { target },
+    )
+    expect(result.warnings).toEqual([])
+    expect(result.code).toContain(target === 'swift' ? '.accessibilityIdentifier("gal-chart-webview")' : 'modifier = Modifier.testTag("gal-chart-webview")')
+    expect(result.code).not.toContain('.background(')
+    if (target === 'swift' && isSwiftcAvailable()) expect(validateSwiftWithStubs(result.code)).toMatchObject({ ok: true })
+    if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(result.code)).toMatchObject({ ok: true })
+  })
 })

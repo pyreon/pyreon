@@ -15,8 +15,9 @@ import {
   flowSignalWriteWarning,
   resolveStaticFlowRendererMap,
   unloweredFlowMemberWarning,
+  HANDLED_FLOW_WEBVIEW_PROPS,
 } from './flow-lowering'
-import { CHART_WEBVIEW_HOST_PROPS, configureChartWebViewHost, legacyChartHostProp } from './chart-webview-lowering'
+import { CHART_WEBVIEW_HOST_PROPS, configureChartWebViewHost, legacyChartHostProp, HANDLED_CHART_WEBVIEW_PROPS } from './chart-webview-lowering'
 import { DEFAULT_FLOW_WEBVIEW_HOST_HTML } from './generated-flow-webview-host'
 import {
   ICON_MAP,
@@ -8744,8 +8745,14 @@ function kotlinAccessibilityHiddenModifier(
  * key per-target difference. Both consume the same canonical input
  * via the shared `resolveSpace`/`resolveColor`/`resolveRadius` helpers.
  */
+const EMPTY_OMIT: ReadonlySet<string> = new Set()
+
 function emitKotlinLayoutModifier(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  // Attrs the HOST consumes itself (a hosted `<FlowWebView background>` is
+  // the PAGE's background, not a view styling token). Skipped here so the
+  // generic tail never double-lowers a prop the host already lowered.
+  omit: ReadonlySet<string> = EMPTY_OMIT,
 ): string {
   const parts: string[] = []
   // `margin` — the OUTERMOST inset, so it goes FIRST.
@@ -8759,37 +8766,37 @@ function emitKotlinLayoutModifier(
   // Never implemented until now, though the Swift twin's docblock claimed it
   // was in scope. `margin` is on the shared `BaseLayoutProps`, so this was
   // silently dropped on Stack, Inline, Layer and Scroll, on both targets.
-  const margin = kotlinStylingValue(e, 'margin', resolveSpace)
+  const margin = (omit.has('margin') ? undefined : kotlinStylingValue(e, 'margin', resolveSpace))
   if (margin !== undefined) {
     parts.push(`.padding(${margin}.dp)`)
   }
-  const marginX = kotlinStylingValue(e, 'marginX', resolveSpace)
+  const marginX = (omit.has('marginX') ? undefined : kotlinStylingValue(e, 'marginX', resolveSpace))
   if (marginX !== undefined) {
     parts.push(`.padding(horizontal = ${marginX}.dp)`)
   }
-  const marginY = kotlinStylingValue(e, 'marginY', resolveSpace)
+  const marginY = (omit.has('marginY') ? undefined : kotlinStylingValue(e, 'marginY', resolveSpace))
   if (marginY !== undefined) {
     parts.push(`.padding(vertical = ${marginY}.dp)`)
   }
-  const padding = kotlinStylingValue(e, 'padding', resolveSpace)
+  const padding = (omit.has('padding') ? undefined : kotlinStylingValue(e, 'padding', resolveSpace))
   if (padding !== undefined) {
     parts.push(`.padding(${padding}.dp)`)
   }
-  const paddingX = kotlinStylingValue(e, 'paddingX', resolveSpace)
+  const paddingX = (omit.has('paddingX') ? undefined : kotlinStylingValue(e, 'paddingX', resolveSpace))
   if (paddingX !== undefined) {
     parts.push(`.padding(horizontal = ${paddingX}.dp)`)
   }
-  const paddingY = kotlinStylingValue(e, 'paddingY', resolveSpace)
+  const paddingY = (omit.has('paddingY') ? undefined : kotlinStylingValue(e, 'paddingY', resolveSpace))
   if (paddingY !== undefined) {
     parts.push(`.padding(vertical = ${paddingY}.dp)`)
   }
-  const background = kotlinStylingValue(e, 'background', (v) =>
+  const background = (omit.has('background') ? undefined : kotlinStylingValue(e, 'background', (v) =>
     resolveColor(String(v), 'kotlin'),
-  )
+  ))
   if (background !== undefined) {
     parts.push(`.background(${background})`)
   }
-  const radius = kotlinStylingValue(e, 'radius', (v) => resolveRadius(String(v)))
+  const radius = (omit.has('radius') ? undefined : kotlinStylingValue(e, 'radius', (v) => resolveRadius(String(v))))
   if (radius !== undefined) {
     // Bare `RoundedCornerShape` — consumer imports from
     // androidx.compose.foundation.shape. Same convention as Color +
@@ -9157,10 +9164,10 @@ function emitKotlinWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     _emitWarnings.push(
       '<WebView>: needs an `html` or `src` attribute on native; emitting an empty PyreonWebView().',
     )
-    return 'PyreonWebView()'
+    return `PyreonWebView(${kotlinWebViewModifierArg(e).replace(/^, /, '')})`
   }
   const args = [content, dataArg, onMsgArg].filter((a) => a !== undefined).join(', ')
-  return `PyreonWebView(${args})`
+  return `PyreonWebView(${args}${kotlinWebViewModifierArg(e)})`
 }
 
 function emitKotlinChartWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
@@ -9189,7 +9196,7 @@ function emitKotlinChartWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): st
     return attr?.kind === 'event' ? [`on${name[0]!.toUpperCase()}${name.slice(1)} = ${emitKotlinMessageHandler(attr.handler)}`] : []
   })
   const onMessage = callbackArgs.length === 0 ? '' : `, onMessage = { pyreonMsg -> pyreonDispatchChartWebViewMessage(pyreonMsg, ${callbackArgs.join(', ')}) }`
-  return `PyreonWebView(html = ${html}, data = ${data}${onMessage})`
+  return `PyreonWebView(html = ${html}, data = ${data}${onMessage}${kotlinWebViewModifierArg(e, HANDLED_CHART_WEBVIEW_PROPS)})`
 }
 
 function flowWebViewHostHtmlKotlin(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
@@ -9250,7 +9257,7 @@ function emitKotlinFlowWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): str
   const onMessage = callbackArgs.length === 0
     ? undefined
     : `onMessage = { pyreonMsg -> pyreonDispatchFlowWebViewMessage(pyreonMsg, ${callbackArgs.join(', ')}) }`
-  return `PyreonWebView(html = ${html}, data = ${data}${onMessage ? `, ${onMessage}` : ''})`
+  return `PyreonWebView(html = ${html}, data = ${data}${onMessage ? `, ${onMessage}` : ''}${kotlinWebViewModifierArg(e, HANDLED_FLOW_WEBVIEW_PROPS)})`
 }
 
 /**
@@ -9259,8 +9266,27 @@ function emitKotlinFlowWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): str
  * param keeps it (`{ m -> … }`); a zero-param arrow ignores it
  * (`{ _ -> … }`); a bare function reference is called with the message.
  */
+/**
+ * The `modifier = …` arg for a WebView-family host: the generic layout tail
+ * (`padding`/`margin`, `data-testid` → `Modifier.testTag`, a11y props) every
+ * primitive gets. `PyreonWebView` accepts `modifier` on the real runtime AND
+ * the stub; a host that omitted it was unselectable by `onNodeWithTag` — the
+ * same class the `<Toggle>` emitter had. Empty when nothing applies.
+ */
+function kotlinWebViewModifierArg(e: Extract<ExprIR, { kind: 'jsx-element' }>, omit?: ReadonlySet<string>): string {
+  const chain = emitKotlinLayoutModifier(e, omit)
+  return chain === '' ? '' : `, modifier = ${chain}`
+}
+
 function emitKotlinMessageHandler(handler: ExprIR): string {
   if (handler.kind === 'arrow') {
+    // A BLOCK body parses to an empty `body` with its statements in `stmts`;
+    // reading `body` alone emitted `{ _ -> }` and DROPPED the handler (mirror
+    // of the Swift fix). The generic action emitter already binds the lambda
+    // parameters and handles multi-statement / `async` bodies.
+    if (handler.stmts !== undefined && handler.stmts.length > 0) {
+      return emitKotlinAction(handler, 0)
+    }
     if (handler.body.kind === 'literal' && handler.body.value === '') {
       return '{ _ -> }'
     }
