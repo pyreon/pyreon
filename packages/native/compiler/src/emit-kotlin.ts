@@ -30,6 +30,7 @@ import {
   resolveRadius,
   resolveSpace,
 } from './canonical-primitives'
+import { FLOW_ARBITRARY_PATH_WARNING, intrinsicElementWarning, isIntrinsicElementTag } from './intrinsic-element-warning'
 import {
   buildComponentConstMap,
   chainHasOptional,
@@ -7513,7 +7514,7 @@ function emitKotlinFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
       ? emitKotlinExpr(value, indent)
       : undefined
   if (resultCode === undefined) {
-    _emitWarnings.push('A native Flow <path> requires a structured path helper result (`get*Path({...}).path`) or the custom connection-line `path()` accessor; arbitrary SVG path strings need a NativeIOS/NativeAndroid renderer.')
+    _emitWarnings.push(FLOW_ARBITRARY_PATH_WARNING)
     return 'Box {}'
   }
   const style = readStaticAttrKotlin(e, 'style')
@@ -10815,6 +10816,10 @@ function warnCanonicalPrimitiveFellThrough(tag: string): void {
 function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   if (isCanonicalPrimitive(e.tag) && !_componentNames.has(e.tag)) {
     warnCanonicalPrimitiveFellThrough(e.tag)
+  }
+  if (isIntrinsicElementTag(e.tag) && !_componentNames.has(e.tag)) {
+    const note = intrinsicElementWarning(e.tag)
+    if (!_emitWarnings.includes(note)) _emitWarnings.push(note)
   }
   const pad = ' '.repeat(indent + 2)
   const isUserComponent = _componentNames.has(e.tag)

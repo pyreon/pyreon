@@ -660,6 +660,13 @@ const FLOW_WEB_GRAPH_B: FlowRowGraph = {
 // host failure path (`safeRender` -> `__pyreonFlowHostError` -> `onError`).
 type BrokenFlowNode = { id: string; data: FlowRowLabel }
 type BrokenFlowGraph = { nodes: BrokenFlowNode[]; edges: FlowRowEdge[] }
+// Two tiny hosts for the RELOAD proof. Swapping `html` must reload the page,
+// and the NEW page must receive the graph again and answer over the reverse
+// bridge: each reports `<host>:<node count>` as a selection.
+const FLOW_RELOAD_HOST_A =
+  '<!doctype html><html><body><script>(function(){function send(){var d=window.__pyreonData;if(typeof d==="string"){try{d=JSON.parse(d)}catch(e){return}}if(!d||!d.nodes||typeof window.pyreonPostMessage!=="function")return;window.pyreonPostMessage(JSON.stringify({id:"a:"+d.nodes.length}))}window.addEventListener("pyreondata",send);send()})()</script></body></html>'
+const FLOW_RELOAD_HOST_B =
+  '<!doctype html><html><body><script>(function(){function send(){var d=window.__pyreonData;if(typeof d==="string"){try{d=JSON.parse(d)}catch(e){return}}if(!d||!d.nodes||typeof window.pyreonPostMessage!=="function")return;window.pyreonPostMessage(JSON.stringify({id:"b:"+d.nodes.length}))}window.addEventListener("pyreondata",send);send()})()</script></body></html>'
 const FLOW_WEB_BROKEN: BrokenFlowGraph = {
   nodes: [{ id: 'orphan', data: { label: 'Orphan' } }],
   edges: [{ source: 'orphan', target: 'orphan' }],
@@ -847,6 +854,8 @@ function GalleryPage() {
   const flowWebSelected = signal('none')
   const flowWebSwapped = signal(false)
   const flowWebFailure = signal('none')
+  const flowWebReloadB = signal(false)
+  const flowWebReloadStatus = signal('none')
   // Imperative handles (ECharts dispatchAction) for the toolbox chart and the timeline.
   const tbHandle = createChartHandle()
   const tlHandle = createChartHandle()
@@ -1031,6 +1040,16 @@ function GalleryPage() {
           data-testid="gal-flow-webview-broken"
         />
         <Text data-testid="gal-flow-webview-failure">{flowWebFailure()}</Text>
+        <FlowWebView
+          html={flowWebReloadB() ? FLOW_RELOAD_HOST_B : FLOW_RELOAD_HOST_A}
+          graph={FLOW_WEB_GRAPH_A}
+          onSelect={(node) => flowWebReloadStatus.set(node.id)}
+          data-testid="gal-flow-webview-reload"
+        />
+        <Button onPress={() => flowWebReloadB.set(true)} data-testid="gal-flow-webview-reload-swap">
+          Reload host
+        </Button>
+        <Text data-testid="gal-flow-webview-reload-status">{flowWebReloadStatus()}</Text>
         <PieChart
           data={SLICES}
           value={(d: PieSlice) => d.total}

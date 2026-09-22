@@ -1082,6 +1082,15 @@ final class PyreonTasksUITests: XCTestCase {
         // native `onError` through the host-error bridge instead of failing silently.
         let flowWebFailure = app.staticTexts["gal-flow-webview-failure"].firstMatch
         XCTAssertTrue(waitForLabel(flowWebFailure, "error", timeout: 20), "the hosted flow's render failure never reached onError (label: \(flowWebFailure.label))")
+        // RELOAD: swapping `html` reloads the hosted page, and the NEW page must
+        // receive the graph again and answer over the reverse bridge. Each host
+        // reports `<host>:<node count>` as a selection.
+        let flowReloadStatus = app.staticTexts["gal-flow-webview-reload-status"].firstMatch
+        XCTAssertTrue(waitForLabel(flowReloadStatus, "a:3", timeout: 20), "the first hosted page never reported the pushed graph (label: \(flowReloadStatus.label))")
+        let flowReloadSwap = app.buttons["gal-flow-webview-reload-swap"].firstMatch
+        scrollFullyOnScreen(flowReloadSwap, in: app)
+        flowReloadSwap.tap()
+        XCTAssertTrue(waitForLabel(flowReloadStatus, "b:3", timeout: 20), "the reloaded page never received the graph and answered (label: \(flowReloadStatus.label))")
         app.buttons["gal-back"].firstMatch.tap()
         XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after gallery Back")
 

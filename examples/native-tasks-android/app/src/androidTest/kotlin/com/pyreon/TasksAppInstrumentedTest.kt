@@ -1019,6 +1019,12 @@ class TasksAppInstrumentedTest {
         // A graph the hosted renderer cannot draw reaches native `onError`.
         composeRule.onNodeWithTag("gal-flow-webview-broken").performScrollTo().assertExists()
         waitForTagText("gal-flow-webview-failure", "error")
+        // RELOAD: swapping `html` reloads the hosted page, and the NEW page must
+        // receive the graph again and answer over the reverse bridge.
+        composeRule.onNodeWithTag("gal-flow-webview-reload-status").performScrollTo()
+        waitForTagText("gal-flow-webview-reload-status", "a:3")
+        composeRule.onNodeWithTag("gal-flow-webview-reload-swap").performScrollTo().performClick()
+        waitForTagText("gal-flow-webview-reload-status", "b:3")
         // The lines trail renders. Its MOTION is proven on the iOS device lane
         // and in real Chromium; here it cannot be: the trail runs on
         // withInfiniteAnimationFrameNanos (a plain frame loop kept this harness

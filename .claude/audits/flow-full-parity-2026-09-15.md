@@ -31,7 +31,7 @@ WebView escape path; silent drops are release blockers.
 - [ ] **F4 — interaction and accessibility parity.** Device-test pointer/touch,
   pan/zoom, connect/reconnect, selection, keyboard equivalents, focus,
   accessibility names/roles and reduced motion on both targets.
-- [ ] **F5 — dynamic/browser-rich contract.** Make arbitrary renderer maps,
+- [x] **F5 — dynamic/browser-rich contract.** Make arbitrary renderer maps,
   arbitrary SVG paths and DOM/CSS custom renderers select the supported
   `@pyreon/flow/webview` path without semantic loss. Device-test messages,
   graph updates, selection callbacks, reload/reconnect and failure states.
@@ -180,5 +180,21 @@ native view.
   nothing; on iOS it got no ideal height inside a ScrollView. Both hosts now
   default to the 150pt/dp the web `<iframe>` falls back to, and an explicit
   height still wins. Bisect: reverting only the Android `MATCH_PARENT` fails
-  the node-tap assertion. Still open under F5: a full page RELOAD (new
-  `html`) and arbitrary renderer maps / SVG paths selecting the WebView path.
+  the node-tap assertion. Still open under F5 at this point: a full page
+  RELOAD (new `html`) and arbitrary renderer maps / SVG paths selecting the
+  WebView path. Both closed in the third pass below.
+- [x] F5 device proof, third pass:
+  - **Reload/reconnect.** A tasks-gallery `FlowWebView` swaps its `html`
+    between two small hosts. Each reports `<host>:<node count>` through
+    `onSelect`, so `a:3` then `b:3` proves the page reloaded, received the
+    graph again, and answered over a fresh reverse bridge. Both device lanes
+    assert it. On web the swap did nothing: the web `<WebView>` and all four
+    wrappers (flow, charts, code, rich-text) read `html` once at setup. They
+    now forward it reactively; real-Chromium specs in primitives and flow lock
+    it, each bisect-verified.
+  - **Renderer routing.** A `<Flow>` custom node built from DOM (`<div
+    style=…>`) was emitted as `div(…)`, which exists on neither platform, with
+    no warning; the same held for any raw element anywhere. Both emitters now
+    warn by name and point at `<FlowWebView>` from `@pyreon/flow/webview`, and
+    the arbitrary-SVG-path warning names the same route. No example emits the
+    new warning, so nothing that lowered is affected.
