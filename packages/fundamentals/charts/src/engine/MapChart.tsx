@@ -20,6 +20,9 @@ import type { GeoLayout, GeoOptions, GeoRegion, GeoShape, GeoValue, GeoView } fr
 import type { GeoHeatPoint, GeoOverlayOptions, GeoOverlayPath, GeoOverlayPoint, GeoPie, GeoTrail } from './geo-overlay'
 import type { GeoJson } from './geo-web'
 import type { Double, Rect } from './types'
+import type { VisualMapSpec } from './visual-map'
+import { visualMapHost } from './visual-map-host'
+import type { VisualMapSelection } from './visual-map-host'
 
 /** Region values as a record (`{ DE: 83 }`) or as the crossing list. */
 export type MapChartValues = Record<string, Double> | GeoValue[]
@@ -64,6 +67,14 @@ export interface MapChartProps extends CanvasHostProps {
   roam?: boolean | 'scale' | 'move' | 'pan'
   /** Zoom bounds for roaming; defaults 0.5 … 20. */
   scaleLimit?: { min?: Double; max?: Double }
+  /**
+   * An ECharts-style visualMap beside the chart: its domain drives the ramp,
+   * a `calculable` strip's handles drag the in-range interval and a piecewise
+   * strip's swatches toggle; values outside the selection take the inactive colour.
+   */
+  visualMap?: VisualMapSpec | (() => VisualMapSpec | undefined) | undefined
+  /** Fired as the visualMap selection changes. */
+  onVisualMapChange?: (selection: VisualMapSelection) => void
 }
 
 const isShapes = (m: GeoShape[] | GeoJson | string): m is GeoShape[] => Array.isArray(m)
@@ -84,9 +95,20 @@ export function MapChart(props: MapChartProps): VNode {
   let lastBox: Rect = { x: 0.0, y: 0.0, w: 0.0, h: 0.0 }
   const roamMove = (): boolean => props.roam === true || props.roam === 'move' || props.roam === 'pan'
   const roamScale = (): boolean => props.roam === true || props.roam === 'scale'
+  const vm = visualMapHost(
+    () => (typeof props.visualMap === 'function' ? props.visualMap() : props.visualMap),
+    (sel) => props.onVisualMapChange?.(sel),
+  )
+  let outer: Rect = { x: 0.0, y: 0.0, w: 0.0, h: 0.0 }
+  const dragSpec = {
+    start: (_l: unknown, px: Double, py: Double) => vm.start(outer, px, py),
+    move: (_l: unknown, px: Double, py: Double) => vm.move(outer, px, py),
+    end: () => vm.end(),
+  }
   const viewed = (): GeoOptions => ({ ...props.options, ...view() })
   return canvasHost<GeoLayout>({
     props,
+    drag: dragSpec,
     roam: props.roam === undefined || props.roam === false
       ? undefined
       : {
@@ -104,8 +126,11 @@ export function MapChart(props: MapChartProps): VNode {
       void props.heat
       void props.pies
       view()
+      vm.track()
     },
-    layout: (box) => {
+    layout: (rawBox) => {
+      outer = rawBox
+      const box = vm.chartBox(rawBox)
       lastBox = box
       return layoutGeoShapes(shapes(), box, viewed())
     },
@@ -122,9 +147,10 @@ export function MapChart(props: MapChartProps): VNode {
         {
           emptyColor: theme.muted,
           borderColor: theme.background === '' ? '#ffffff' : theme.background,
-          stops: theme.ramp,
+          stops: vm.current()?.stops ?? theme.ramp,
           labelColor: theme.label,
           ...viewed(),
+          ...vm.selection(),
           progress,
         },
         measure,
@@ -134,8 +160,10 @@ export function MapChart(props: MapChartProps): VNode {
       ...renderGeoPies(layout, props.pies ?? [], progress),
       ...(props.trail === undefined ? [] : renderGeoTrails(layout, props.paths ?? [], props.trail, time, props.overlayOptions?.color ?? '#b42318')),
       ...renderGeoOverlayPoints(layout, props.points ?? [], { labelColor: theme.label, ...props.overlayOptions, progress }),
+      ...vm.cmds(outer),
     ],
     select: (layout, px, py) => {
+      if (vm.click(outer, px, py)) return
       const i = hitGeoIndex(layout, px, py)
       props.onSelectPointIndex?.(hitGeoOverlayPoint(layout, props.points ?? [], px, py, props.overlayOptions?.radius))
       props.onSelect?.(i < 0 ? null : layout.regions[i]!)

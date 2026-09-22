@@ -9,7 +9,7 @@
 // closure factory; the closure form (`colorRamp`) lives in heat-ramp.ts for
 // the web callers that want one.
 
-import type { Double, DrawCmd, Rect } from './types'
+import type { Domain, Double, DrawCmd, Rect } from './types'
 
 /** The default ramp — a perceptually reasonable cool-to-warm. */
 export const HEAT_RAMP = ['#eff6ff', '#93c5fd', '#3b82f6', '#1e40af']
@@ -133,6 +133,25 @@ export function rampColor(stops: readonly string[], t: Double): string {
   return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(bl)})`
 }
 
+/**
+ * Whether a value falls outside a visualMap selection: below or above the
+ * dragged `inRange`, or inside one of the unselected piece bands
+ * (`outBands`, flat `[lo, hi, lo, hi, …]`). Outside values take the
+ * visualMap's inactive colour; every value renderer asks this one rule.
+ */
+export function visualOutside(v: Double, inRange: Domain | undefined, outBands: Double[] | undefined): boolean {
+  const lo = inRange?.min ?? v
+  const hi = inRange?.max ?? v
+  if (v < lo || v > hi) return true
+  const bands = outBands ?? []
+  let i = 0
+  while (i + 1 < bands.length) {
+    if (v >= bands[i]! && v <= bands[i + 1]!) return true
+    i = i + 2
+  }
+  return false
+}
+
 export interface HeatmapOptions {
   grid: HeatGrid
   plot: Rect
@@ -142,6 +161,12 @@ export interface HeatmapOptions {
   gap?: Double | undefined
   /** Entrance progress 0..1; cells scale up from their centres. */
   progress?: Double | undefined
+  /** visualMap selection: values outside it paint `outColor` (see `visualOutside`). */
+  inRange?: Domain | undefined
+  outBands?: Double[] | undefined
+  outColor?: string | undefined
+  /** visualMap value domain for the ramp; default the grid's min/max. */
+  domain?: Domain | undefined
 }
 
 /**
@@ -171,17 +196,20 @@ export function renderHeat(options: HeatmapOptions): DrawCmd[] {
   for (let i = 0; i < nr; i++) nrF = nrF + 1.0
   const cw = plot.w / ncF
   const ch = plot.h / nrF
-  const span = grid.max - grid.min
+  const lo = options.domain?.min ?? grid.min
+  const span = (options.domain?.max ?? grid.max) - lo
+  const outColor = options.outColor ?? '#cccccc'
   for (const cell of grid.cells) {
     if (cell.col >= ncF || cell.row >= nrF) continue
-    const t = span <= 0.0 ? 1.0 : (cell.value - grid.min) / span
+    const rawT = span <= 0.0 ? 1.0 : (cell.value - lo) / span
+    const t = rawT < 0.0 ? 0.0 : rawT > 1.0 ? 1.0 : rawT
     const fullW = cw - gap
     const fullH = ch - gap
     const w = fullW * progress
     const h = fullH * progress
     const x = plot.x + cell.col * cw + gap / 2.0 + (fullW - w) / 2.0
     const y = plot.y + cell.row * ch + gap / 2.0 + (fullH - h) / 2.0
-    out.push({ kind: 'rect', rect: { x, y, w, h }, fill: rampColor(stops, t) })
+    out.push({ kind: 'rect', rect: { x, y, w, h }, fill: visualOutside(cell.value, options.inRange, options.outBands) ? outColor : rampColor(stops, t) })
   }
   return out
 }

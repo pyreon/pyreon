@@ -50,6 +50,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.IntOffset
@@ -587,7 +588,10 @@ fun <T> PyreonFlowView(
                     Modifier
                         .offset { IntOffset((handle.x - hitSize / 2).roundToInt(), (handle.y - hitSize / 2).roundToInt()) }
                         .requiredSize(with(density) { hitSize.toFloat().toDp() })
-                        .semantics { contentDescription = "${handle.type} handle ${handle.handleId ?: "default"}" }
+                        .semantics {
+                            contentDescription = "${handle.type} handle ${handle.handleId ?: "default"}"
+                            role = androidx.compose.ui.semantics.Role.Button
+                        }
                         .pointerInput(handle, interactionsLocked, state.viewport.zoom) {
                             if (interactionsLocked || handle.type != "source") return@pointerInput
                             var current = PyreonFlowPathPoint(handle.x, handle.y)
