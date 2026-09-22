@@ -149,6 +149,10 @@ export function Counter() {
   // `colorMode` is reactive: the suites toggle it and count the web's dark
   // canvas colour (#0b1220) in a screenshot — zero before, many after, zero again.
   const nativeFlowDark = signal(false)
+  // `colorMode="system"` follows the device appearance; the suites switch the
+  // SYSTEM appearance, not this app, and count the same dark pixels.
+  const nativeFlowSystem = signal(false)
+  const nativeFlowColorMode = computed(() => (nativeFlowSystem() ? 'system' : nativeFlowDark() ? 'dark' : 'light'))
   const nativeFlowProbe = useNativeFlowProbe()
   // Connect-start count: separates "no drag ever started" from "the custom
   // connection line did not render" when a device suite fails.
@@ -363,7 +367,7 @@ export function Counter() {
     <Stack>
       <Text>Count: {count}</Text>
       <NativeFlowFrame size="device" data-testid="native-flow-frame">
-        <Flow instance={nativeFlow} nodeTypes={{ native: NativeFlowNode }} connectionLine={NativeConnectionLine} colorMode={nativeFlowDark() ? 'dark' : 'light'} ariaLabel="Native Flow device proof">
+        <Flow instance={nativeFlow} nodeTypes={{ native: NativeFlowNode }} connectionLine={NativeConnectionLine} colorMode={nativeFlowColorMode()} ariaLabel="Native Flow device proof">
           <Background variant="dots" />
           <Controls showLock={true} />
           <Panel position="bottom-right"><Text data-testid="native-flow-panel">Native panel</Text></Panel>
@@ -565,10 +569,11 @@ export function Counter() {
           row added above the counter pushes controls the other device tests
           click without scrolling below the fold (Compose's performClick does
           not scroll). The F3 tests scroll to what they need. */}
-      <Text data-testid="native-flow-color-mode">{nativeFlowDark() ? 'dark' : 'light'}</Text>
+      <Text data-testid="native-flow-color-mode">{nativeFlowColorMode()}</Text>
       <Text data-testid="native-flow-custom-line-mounts">{nativeFlowProbe.store.customLineMounts()}</Text>
       <Text data-testid="native-flow-connect-starts">{nativeFlowConnectStarts()}</Text>
       <Button data-testid="native-flow-toggle-dark" onPress={() => nativeFlowDark.set(!nativeFlowDark())}>Toggle native dark</Button>
+      <Button data-testid="native-flow-toggle-system" onPress={() => nativeFlowSystem.set(!nativeFlowSystem())}>Toggle native system mode</Button>
       <Button data-testid="native-flow-animate-zoom" onPress={() => nativeFlow.setViewport({ zoom: 0.5 }, { duration: 3000 })}>Zoom native out slowly</Button>
       <Button data-testid="native-flow-allow-motion" onPress={() => { nativeFlow.config.reducedMotion = false }}>Allow native motion</Button>
       <Button data-testid="native-flow-animate-zoom-back" onPress={() => nativeFlow.setViewport({ zoom: 1 }, { duration: 3000 })}>Zoom native back slowly</Button>

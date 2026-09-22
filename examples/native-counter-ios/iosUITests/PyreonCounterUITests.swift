@@ -149,6 +149,46 @@ final class PyreonCounterUITests: XCTestCase {
         bringFullyOnScreen(canvas, in: app)
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         XCTAssertEqual(colorPixels(canvas.screenshot().pngRepresentation, 11, 18, 32), 0, "the dark canvas colour outlived colorMode=\"dark\"")
+        // colorMode="system" follows the DEVICE appearance: switch the simulator,
+        // not the app, and count the same dark pixels.
+        let device = XCUIDevice.shared
+        let originalAppearance = device.appearance
+        defer { device.appearance = originalAppearance }
+        device.appearance = .light
+        let toggleSystem = app.buttons["native-flow-toggle-system"].firstMatch
+        XCTAssertTrue(toggleSystem.waitForExistence(timeout: 5))
+        toggleSystem.tap()
+        XCTAssertTrue(waitForLabel(colorMode, "system", timeout: 5))
+        bringFullyOnScreen(canvas, in: app)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        XCTAssertEqual(colorPixels(canvas.screenshot().pngRepresentation, 11, 18, 32), 0, "colorMode=\"system\" painted dark on a light device")
+        device.appearance = .dark
+        // Some simulators (the iPhone 16 family, which CI resolves) never pass an
+        // appearance flip to the app; see test_colorSchemeTracksSimulatorAppearance.
+        // `useColorScheme`'s own "Theme: dark" text is the probe: when it never
+        // appears, the device cannot show this app a dark appearance at all, so
+        // the dark half has nothing to observe and is not asserted there. On a
+        // propagating simulator (iPhone 17 Pro, verified) it runs in full.
+        if app.staticTexts["Theme: dark"].waitForExistence(timeout: 15) {
+            bringFullyOnScreen(canvas, in: app)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+            XCTAssertGreaterThan(colorPixels(canvas.screenshot().pngRepresentation, 11, 18, 32), 1000, "colorMode=\"system\" did not follow the device into dark")
+            device.appearance = .light
+            XCTAssertTrue(app.staticTexts["Theme: light"].waitForExistence(timeout: 15))
+            bringFullyOnScreen(canvas, in: app)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+            XCTAssertEqual(colorPixels(canvas.screenshot().pngRepresentation, 11, 18, 32), 0, "colorMode=\"system\" stayed dark after the device went light")
+        } else {
+            // Loud, not silent: the run log says which half did not execute.
+            XCTContext.runActivity(named: "colorMode=system dark half NOT asserted: this simulator does not propagate appearance flips") { _ in }
+            print("NOTE: colorMode=\"system\" dark half not asserted on this simulator (appearance flip did not propagate)")
+            device.appearance = .light
+        }
+        toggleSystem.tap()
+        XCTAssertTrue(waitForLabel(colorMode, "light", timeout: 5))
+        // The toggle sits at the bottom of the page; the gestures below need
+        // the canvas back on screen (a smaller device scrolls it away).
+        bringFullyOnScreen(canvas, in: app)
 
         let selectedNodeCount = app.staticTexts["native-flow-selected-node-count"].firstMatch
         XCTAssertTrue(selectedNodeCount.waitForExistence(timeout: 10))

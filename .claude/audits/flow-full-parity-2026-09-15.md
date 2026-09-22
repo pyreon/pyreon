@@ -25,7 +25,7 @@ WebView escape path; silent drops are release blockers.
   mutable config field against shared fixtures: CRUD, selection, viewport,
   snapping, connection validation, history, serialization, layout and graph
   queries.
-- [ ] **F3 — renderer/chrome parity.** Close static node/edge renderer,
+- [x] **F3 — renderer/chrome parity.** Close static node/edge renderer,
   connection-line, handle, toolbar, resizer, minimap, controls, panel, label,
   marker, theming and animation differences.
 - [x] **F4 — interaction and accessibility parity.** Device-test pointer/touch,
@@ -341,3 +341,19 @@ native view.
   reliably arrive either. The iOS rows therefore drive Space and Cmd+Z, the
   web's other activation key, and the Android suite owns Enter and Escape.
   Nothing was shipped for Return/Escape on iOS, because it could not be verified.
+- [x] F3 closed: `colorMode="system"` is device-proven. The counter source cycles
+  a third mode, and both suites switch the DEVICE appearance (not the app) and
+  count the web's dark canvas colour #0b1220: zero on a light device, over 1000
+  after the device goes dark, zero again after it returns to light. Android
+  switches with `UiModeManager.setApplicationNightMode`, which takes a uiMode
+  configuration change. That only works because the activity now declares
+  `android:configChanges` (#3577); without it the switch recreated the activity
+  and reset the app. iOS uses `XCUIDevice.shared.appearance`. Bisect: making the
+  `"system"` branch of the palette resolve to light fails both targets with
+  "did not follow the device into dark". On Kotlin that means BOTH `resolve()`
+  and `isDark()`, since the canvas reads the resolved palette. Honest limit: the
+  iPhone 16-family simulator CI resolves never passes an appearance flip to the
+  app (the same finding as `test_colorSchemeTracksSimulatorAppearance`). There
+  the dark half is gated on `useColorScheme`'s own "Theme: dark" probe and logs
+  a NOTE instead of asserting. It runs in full on an iPhone 17 Pro (verified),
+  and the Android half always runs.
