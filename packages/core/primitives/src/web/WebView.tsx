@@ -82,8 +82,13 @@ export function WebView(props: WebViewProps): VNode {
     // embed.
     style: 'border: 0; width: 100%; height: 100%',
   }
-  if (props.html !== undefined) attrs.srcdoc = props.html
-  else if (props.src !== undefined) attrs.src = props.src
+  // Accessors, not values: a changed `html`/`src` reloads the page, as the
+  // native hosts do, and `onLoad` below re-installs the bridge and re-pushes
+  // `data` for the new document. `html` wins over `src`, at every change.
+  if (props.html !== undefined || props.src !== undefined) {
+    attrs.srcdoc = (): string | undefined => props.html
+    attrs.src = (): string | undefined => (props.html === undefined ? props.src : undefined)
+  }
 
   const hasData = 'data' in props
 

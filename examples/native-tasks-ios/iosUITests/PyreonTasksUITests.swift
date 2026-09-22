@@ -124,11 +124,13 @@ final class PyreonTasksUITests: XCTestCase {
         let scroller = app.scrollViews.firstMatch
         var swipes = 0
         while swipes < maxSwipes && !(element.exists && element.isHittable) {
-            if scroller.exists {
-                scroller.swipeUp()
-            } else {
-                app.swipeUp()
-            }
+            // Swipe TOWARD the element. Always swiping up could only ever reach
+            // content below; once a taller row above (a hosted WebView) shifted
+            // the layout, a target could end up ABOVE the screen and every
+            // further swipe carried it further away.
+            let above = element.exists && element.frame.maxY < app.windows.firstMatch.frame.minY
+            let target: XCUIElement = scroller.exists ? scroller : app
+            if above { target.swipeDown() } else { target.swipeUp() }
             swipes += 1
         }
         return swipes
@@ -1093,10 +1095,50 @@ final class PyreonTasksUITests: XCTestCase {
         let flowWebEvent = app.staticTexts["gal-flow-webview-event"].firstMatch
         XCTAssertTrue(waitForLabel(flowWebEvent, "viewport-change", timeout: 20), "the hosted flow's initial fit-view never reached the host (label: \(flowWebEvent.label))")
         let flowWebEvents = app.staticTexts["gal-flow-webview-events"].firstMatch
-        XCTAssertTrue(waitForLabel(flowWebEvents, "1", timeout: 5), "expected exactly one hosted flow event after load (label: \(flowWebEvents.label))")
+        // A baseline, not a fixed "1": the WebView is tall enough now that the
+        // swipes scrolling the gallery can cross it, and a drag over the hosted
+        // flow is a pan that legitimately reports its own viewport-change.
         scrollFullyOnScreen(app.buttons["gal-flow-webview-fit"].firstMatch, in: app)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        let eventsBeforeFit = Int(flowWebEvents.label) ?? 0
+        XCTAssertGreaterThanOrEqual(eventsBeforeFit, 1, "the initial fit-view never reported (label: \(flowWebEvents.label))")
         app.buttons["gal-flow-webview-fit"].firstMatch.tap()
-        XCTAssertTrue(waitForLabel(flowWebEvents, "2", timeout: 10), "pushing a second fit-view command did not round-trip (label: \(flowWebEvents.label))")
+        // Exactly ONE more: the new command id runs, and `initial-fit` does not
+        // run a second time.
+        XCTAssertTrue(waitForLabel(flowWebEvents, String(eventsBeforeFit + 1), timeout: 10), "pushing a second fit-view command did not round-trip exactly once (label: \(flowWebEvents.label), before: \(eventsBeforeFit))")
+        // F5: a node tap INSIDE the WebView reaches native `onSelect`. The graph is
+        // one symmetric row, so fit-view centres the middle node and a tap at the
+        // WebView's centre hits it on every device.
+        let flowWebSelected = app.staticTexts["gal-flow-webview-selected"].firstMatch
+        XCTAssertEqual(flowWebSelected.label, "none")
+        scrollFullyOnScreen(flowWebView, in: app)
+        // An unsized WebView used to collapse to a sliver, leaving the fitted graph
+        // no room and the centre tap nowhere to land. It now takes the web
+        // `<iframe>`'s 150pt default.
+        XCTAssertGreaterThanOrEqual(flowWebView.frame.height, 149, "an unsized FlowWebView must get the iframe's 150pt default height (frame: \(flowWebView.frame))")
+        flowWebView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(waitForLabel(flowWebSelected, "transform", timeout: 10), "tapping the hosted flow's middle node did not reach onSelect (label: \(flowWebSelected.label), frame: \(flowWebView.frame))")
+        // Swapping the graph re-renders IN PLACE: the same tap now lands on the new
+        // middle node, so the update reached the page and its handlers.
+        scrollFullyOnScreen(app.buttons["gal-flow-webview-swap"].firstMatch, in: app)
+        app.buttons["gal-flow-webview-swap"].firstMatch.tap()
+        scrollFullyOnScreen(flowWebView, in: app)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        flowWebView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(waitForLabel(flowWebSelected, "enrich", timeout: 10), "after swapping the graph the tap did not select the new middle node (label: \(flowWebSelected.label))")
+        // A graph the hosted renderer cannot draw (a node with no position) reaches
+        // native `onError` through the host-error bridge instead of failing silently.
+        let flowWebFailure = app.staticTexts["gal-flow-webview-failure"].firstMatch
+        XCTAssertTrue(waitForLabel(flowWebFailure, "error", timeout: 20), "the hosted flow's render failure never reached onError (label: \(flowWebFailure.label))")
+        // RELOAD: swapping `html` reloads the hosted page, and the NEW page must
+        // receive the graph again and answer over the reverse bridge. Each host
+        // reports `<host>:<node count>` as a selection.
+        let flowReloadStatus = app.staticTexts["gal-flow-webview-reload-status"].firstMatch
+        XCTAssertTrue(waitForLabel(flowReloadStatus, "a:3", timeout: 20), "the first hosted page never reported the pushed graph (label: \(flowReloadStatus.label))")
+        let flowReloadSwap = app.buttons["gal-flow-webview-reload-swap"].firstMatch
+        scrollFullyOnScreen(flowReloadSwap, in: app)
+        flowReloadSwap.tap()
+        XCTAssertTrue(waitForLabel(flowReloadStatus, "b:3", timeout: 20), "the reloaded page never received the graph and answered (label: \(flowReloadStatus.label))")
         app.buttons["gal-back"].firstMatch.tap()
         XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after gallery Back")
 

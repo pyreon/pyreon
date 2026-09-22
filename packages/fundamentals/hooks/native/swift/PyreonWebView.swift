@@ -85,9 +85,19 @@ public struct PyreonWebView: View {
     }
 
     public var body: some View {
+        // An unsized WebView inside a ScrollView gets no height to lay out in,
+        // so a hosted chart or flow page has nothing to draw into and a tap at
+        // its centre lands on nothing. The web `<iframe>` falls back to the CSS
+        // replaced-element default of 150px in the same spot, so that is the
+        // IDEAL height here: used only when the parent proposes none, which
+        // leaves an explicit `.frame(height:)` from the caller in charge.
         _PyreonWebViewBridge(html: html, src: src, data: data, onMessage: onMessage)
+            .frame(idealHeight: pyreonWebViewDefaultHeight)
     }
 }
+
+/// The CSS replaced-element default height the web `<iframe>` falls back to.
+let pyreonWebViewDefaultHeight: CGFloat = 150
 
 /// The script-message handler name the injected `window.pyreonPostMessage`
 /// shim forwards to (`window.webkit.messageHandlers.pyreonNative`).

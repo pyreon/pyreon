@@ -65,6 +65,31 @@ describe('<WebView> bridges', () => {
     expect(win().__loads).toBe(1)
   })
 
+  it('RELOAD: a changed html reloads the page, and the new page gets the bridge and data', async () => {
+    // Native hosts reload when `html` changes. The web host read `html` once,
+    // so a reactive swap left the first page running forever.
+    const page = signal<'a' | 'b'>('a')
+    const onMessage = vi.fn()
+    const host = (id: string): string => `<!doctype html><body><script>
+      var send = function () {
+        if (typeof window.pyreonPostMessage !== 'function') return;
+        window.pyreonPostMessage('${id}:' + String(window.__pyreonData));
+      };
+      window.addEventListener('pyreondata', send);
+      setTimeout(send, 0);
+    </script></body>`
+    const props: Record<string, unknown> = { data: 'graph', onMessage }
+    Object.defineProperty(props, 'html', { get: () => host(page()), enumerable: true })
+
+    mountInBrowser(() => h(WebView as never, props as never))
+    await waitFor(() => onMessage.mock.calls.some(([m]) => m === 'a:graph'))
+
+    page.set('b')
+    // The NEW document must receive the forward bridge's data AND a working
+    // reverse bridge, or it could never answer.
+    await waitFor(() => onMessage.mock.calls.some(([m]) => m === 'b:graph'))
+  })
+
   it('REVERSE: the hosted page drives onMessage through pyreonPostMessage', async () => {
     const onMessage = vi.fn()
     const html = `<!doctype html><body><script>

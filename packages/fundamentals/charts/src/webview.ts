@@ -499,9 +499,17 @@ export function ChartWebView(props: ChartWebViewProps): VNode {
   if (props.background !== undefined) built.background = props.background
   if (props.forwardEvents !== undefined) built.forwardEvents = props.forwardEvents
   if (props.hostSetupScript !== undefined) built.hostSetupScript = props.hostSetupScript
-  const html = props.html ?? buildChartHostHtml(built)
+  // `html` is forwarded as a GETTER, not read once here: native hosts reload
+  // when `html` changes, and an eager read froze the web host on its first
+  // page. The default host is built lazily, once, and only if needed.
+  let defaultHtml: string | undefined
 
-  const webViewProps: Record<string, unknown> = { html }
+  const webViewProps: Record<string, unknown> = {}
+  Object.defineProperty(webViewProps, 'html', {
+    enumerable: true,
+    configurable: true,
+    get: (): string => props.html ?? (defaultHtml ??= buildChartHostHtml(built)),
+  })
   const hasGroup = props.group !== undefined
   // Forward `option` to `<WebView data>` PRESERVING reactivity — a getter that
   // re-reads `props.option` on every access. Reading it eagerly (`data:
