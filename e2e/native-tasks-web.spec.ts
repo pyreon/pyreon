@@ -231,6 +231,9 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     // The same ceiling the device lanes hold: a few columns of 200px-spaced
     // nodes. Mounting all 400 would mean culling is off.
     expect(mounted, `culling mounted ${mounted} of 400 nodes`).toBeLessThanOrEqual(40)
+    // The grid renders through a CUSTOM node with its own handles, so its
+    // renderer is culled too: one target handle per mounted node, no more.
+    await expect(page.locator('.pyreon-flow-handle[data-handletype="target"]')).toHaveCount(mounted)
 
     // Node 170 sits exactly at the new viewport origin after the pan.
     await page.getByTestId('flow-scale-pan').click()

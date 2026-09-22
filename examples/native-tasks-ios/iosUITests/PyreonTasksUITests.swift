@@ -575,6 +575,10 @@ final class PyreonTasksUITests: XCTestCase {
         let mountedAtOrigin = gridNodes.count
         XCTAssertGreaterThan(mountedAtOrigin, 1, "culling kept too few nodes")
         XCTAssertLessThanOrEqual(mountedAtOrigin, 40, "culling mounted \(mountedAtOrigin) of 400 nodes at the origin viewport")
+        // The grid renders through a CUSTOM node with its own handles, so its
+        // renderer is culled too: one target handle per mounted node, no more.
+        let targetHandles = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "target handle in"))
+        XCTAssertEqual(targetHandles.count, mountedAtOrigin, "custom-node handles are not culled with their nodes")
         // Panning swaps WHICH nodes are mounted: node 0 leaves, node 170 (row 8,
         // column 10, placed exactly at the new viewport origin) arrives.
         app.buttons["flow-scale-pan"].firstMatch.tap()

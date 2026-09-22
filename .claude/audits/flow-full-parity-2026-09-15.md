@@ -35,7 +35,7 @@ WebView escape path; silent drops are release blockers.
   arbitrary SVG paths and DOM/CSS custom renderers select the supported
   `@pyreon/flow/webview` path without semantic loss. Device-test messages,
   graph updates, selection callbacks, reload/reconnect and failure states.
-- [ ] **F6 — real-app and scale proof.** Exercise large graphs, custom nodes and
+- [x] **F6 — real-app and scale proof.** Exercise large graphs, custom nodes and
   mixed gestures in web Chromium, iOS Simulator and Android Emulator; add
   deterministic performance and memory ceilings without claiming benchmark
   numbers until measured.
@@ -258,6 +258,7 @@ native view.
   an integer coordinate expression reached the Double position unconverted.
 - Existing complexity locks still cover the per-frame cost: `drag-frame-complexity`,
   `drag-fanout`, `selection-fanout`, `pointer-hot-path`, `measurement-write-cost`.
-- Still open under F6: custom node renderers at scale (the grid uses the
-  default node), and a mixed-gesture pass on the direct-native canvas with the
-  keyboard involved.
+- [x] **Custom renderers at scale.** The grid renders through a custom node
+  type with its own handles, and all three targets assert one target handle per
+  mounted node, so a user renderer and its handles are culled with the node.
+- Keyboard interaction is tracked under F4, where the focus/action matrix lives.

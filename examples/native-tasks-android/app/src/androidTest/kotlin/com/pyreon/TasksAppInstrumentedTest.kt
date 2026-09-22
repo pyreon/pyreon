@@ -585,6 +585,12 @@ class TasksAppInstrumentedTest {
         // Mounting all 400 would mean culling is off.
         val mountedAtOrigin = mountedGridNodes()
         check(mountedAtOrigin in 2..40) { "culling mounted $mountedAtOrigin of 400 nodes at the origin viewport" }
+        // The grid renders through a CUSTOM node with its own handles, so its
+        // renderer is culled too: one target handle per mounted node, no more.
+        val targetHandles = composeRule
+            .onAllNodes(hasContentDescription("target handle in"), useUnmergedTree = true)
+            .fetchSemanticsNodes().size
+        check(targetHandles == mountedAtOrigin) { "custom-node handles are not culled with their nodes: $targetHandles handles for $mountedAtOrigin nodes" }
         // Panning swaps WHICH nodes are mounted: node 0 leaves, node 170 (row 8,
         // column 10, placed exactly at the new viewport origin) arrives.
         composeRule.onNodeWithTag("flow-scale-pan").performClick()

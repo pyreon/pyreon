@@ -131,7 +131,8 @@ import {
   WebView,
 } from '@pyreon/primitives'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
-import { Background, Controls, Flow, MiniMap, createFlow } from '@pyreon/flow'
+import { Background, Controls, Flow, Handle, MiniMap, Position, createFlow } from '@pyreon/flow'
+import type { NodeComponentProps } from '@pyreon/flow'
 import { FlowWebView } from '@pyreon/flow/webview'
 
 type Task = { id: number; title: string; done: boolean }
@@ -439,6 +440,22 @@ function FlowScreen() {
   )
 }
 
+interface GridNodeData {
+  label: string
+}
+
+// The scale grid renders through a CUSTOM node, so culling is proven for a
+// user renderer and its handles, not just the default box.
+function GridNode(props: NodeComponentProps<GridNodeData>) {
+  return (
+    <Stack>
+      <Handle id="in" type="target" position={Position.Left} />
+      <Text>{props.data().label}</Text>
+      <Handle id="out" type="source" position={Position.Right} />
+    </Stack>
+  )
+}
+
 function FlowScaleScreen() {
   const navigate = useNavigate()
   // F6 scale proof: a 20x20 grid of nodes with culling on. Both device lanes
@@ -446,7 +463,7 @@ function FlowScaleScreen() {
   // panning swaps which ones are, and that a drag still reaches the engine on
   // a node that scrolled in. Counts, not timings: a count is deterministic on
   // every device, a timing is not.
-  const flow = createFlow<{ label: string }>({
+  const flow = createFlow<GridNodeData>({
     nodes: [],
     edges: [],
     onlyRenderVisibleElements: true,
@@ -475,6 +492,7 @@ function FlowScaleScreen() {
                 const index = row * 20 + col
                 flow.addNode({
                   id: `g${index}`,
+                  type: 'grid',
                   position: { x: col * 200, y: row * 100 },
                   data: { label: `N${index}` },
                   ariaLabel: `grid node ${index}`,
@@ -493,7 +511,7 @@ function FlowScaleScreen() {
           Back
         </Button>
       </Inline>
-      <Flow instance={flow} ariaLabel="Scale flow">
+      <Flow instance={flow} nodeTypes={{ grid: GridNode }} ariaLabel="Scale flow">
         <Background variant="dots" />
       </Flow>
     </Stack>
