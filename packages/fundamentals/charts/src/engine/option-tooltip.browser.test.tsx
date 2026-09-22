@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
+import { query, queryOptional } from '@pyreon/test-utils'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { OptionChart } from './OptionChart'
 import type { EChartsOption } from './option'
@@ -41,7 +42,7 @@ const column = (c: HTMLCanvasElement, i: number): [number, number] => {
   return [x, 200]
 }
 
-const box = (container: HTMLElement): HTMLElement => container.querySelector('[data-pyreon-chart-tooltip]') as HTMLElement
+const box = (container: HTMLElement): HTMLElement => query(container, '[data-pyreon-chart-tooltip]')
 
 describe('<OptionChart> tooltip component (real browser)', () => {
   it('no tooltip component, no box — as ECharts', async () => {
@@ -50,7 +51,7 @@ describe('<OptionChart> tooltip component (real browser)', () => {
     const c = container.querySelector('canvas')!
     at(c, 'pointermove', ...column(c, 1))
     await flush()
-    expect(box(container)?.style.display ?? 'none').toBe('none')
+    expect(queryOptional(container, '[data-pyreon-chart-tooltip]')?.style.display ?? 'none').toBe('none')
   })
 
   it('an axis trigger lists every series at the hovered column', async () => {
