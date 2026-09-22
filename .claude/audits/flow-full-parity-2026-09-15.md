@@ -167,3 +167,18 @@ native view.
   Still open under F5: a node-tap `onSelect` and a host FAILURE state on
   device (both need a gesture/fault INSIDE the WebView that neither test
   harness can drive reliably), and `reload`/reconnect.
+- [x] F5 device proof, second pass: both device lanes now tap INSIDE the
+  hosted flow and assert the tap reached native `onSelect`, swap the graph and
+  assert the same tap selects the NEW middle node (an in-place re-render, the
+  graph-update half of reload), and host a graph the renderer cannot draw and
+  assert `onError` fires through the host-error bridge. The fixture graphs are
+  one symmetric row, so fit-view centres the middle node and a centre tap is
+  deterministic without asserting inside the WebView. Writing the tap found a
+  real host bug on both targets: an UNSIZED `<WebView>` had no height. On
+  Android the View gets WRAP_CONTENT params, so a `height: 100%` page measured
+  `clientHeight = 0` (read over WebView DevTools) and fitted the graph into
+  nothing; on iOS it got no ideal height inside a ScrollView. Both hosts now
+  default to the 150pt/dp the web `<iframe>` falls back to, and an explicit
+  height still wins. Bisect: reverting only the Android `MATCH_PARENT` fails
+  the node-tap assertion. Still open under F5: a full page RELOAD (new
+  `html`) and arbitrary renderer maps / SVG paths selecting the WebView path.

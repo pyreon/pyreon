@@ -132,7 +132,7 @@ import {
 } from '@pyreon/primitives'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
 import { Background, Controls, Flow, MiniMap, createFlow } from '@pyreon/flow'
-import { FlowWebView } from '@pyreon/flow/webview'
+import { FlowWebView, type FlowWebViewGraph } from '@pyreon/flow/webview'
 
 type Task = { id: number; title: string; done: boolean }
 type Quote = { id: number; text: string; author: string }
@@ -623,6 +623,47 @@ const FLOW_WEB_FIT_TWICE: FlowFitCommand[] = [
   { id: 'initial-fit', type: 'fit-view' },
   { id: 'second-fit', type: 'fit-view' },
 ]
+// Both graphs are ONE symmetric row, so fit-view centres the middle node in the
+// WebView and a tap at the WebView's centre deterministically hits it on every
+// target. Swapping the graph must re-render in place: the same tap then selects
+// the NEW middle node. The shapes are LOCAL named types: PMTC synthesizes a
+// Codable struct for each, and a named position cannot be claimed by an
+// engine struct of the same field shape.
+type FlowRowPosition = { x: number; y: number }
+type FlowRowLabel = { label: string }
+type FlowRowNode = { id: string; position: FlowRowPosition; data: FlowRowLabel }
+type FlowRowEdge = { source: string; target: string }
+type FlowRowGraph = { nodes: FlowRowNode[]; edges: FlowRowEdge[] }
+const FLOW_WEB_GRAPH_A: FlowRowGraph = {
+  nodes: [
+    { id: 'ingest', position: { x: 0, y: 0 }, data: { label: 'Ingest' } },
+    { id: 'transform', position: { x: 220, y: 0 }, data: { label: 'Transform' } },
+    { id: 'serve', position: { x: 440, y: 0 }, data: { label: 'Serve' } },
+  ],
+  edges: [
+    { source: 'ingest', target: 'transform' },
+    { source: 'transform', target: 'serve' },
+  ],
+}
+const FLOW_WEB_GRAPH_B: FlowRowGraph = {
+  nodes: [
+    { id: 'collect', position: { x: 0, y: 0 }, data: { label: 'Collect' } },
+    { id: 'enrich', position: { x: 220, y: 0 }, data: { label: 'Enrich' } },
+    { id: 'publish', position: { x: 440, y: 0 }, data: { label: 'Publish' } },
+  ],
+  edges: [
+    { source: 'collect', target: 'enrich' },
+    { source: 'enrich', target: 'publish' },
+  ],
+}
+// A node with NO position: the hosted renderer throws reading it, which is the
+// host failure path (`safeRender` -> `__pyreonFlowHostError` -> `onError`).
+type BrokenFlowNode = { id: string; data: FlowRowLabel }
+type BrokenFlowGraph = { nodes: BrokenFlowNode[]; edges: FlowRowEdge[] }
+const FLOW_WEB_BROKEN: BrokenFlowGraph = {
+  nodes: [{ id: 'orphan', data: { label: 'Orphan' } }],
+  edges: [{ source: 'orphan', target: 'orphan' }],
+}
 const FLOW_LINKS: SankeyLink[] = [
   { source: 'Backlog', target: 'Doing', value: 8 },
   { source: 'Doing', target: 'Done', value: 5 },
@@ -803,6 +844,9 @@ function GalleryPage() {
   const flowWebEvent = signal('none')
   const flowWebEventCount = signal(0)
   const flowWebFitAgain = signal(false)
+  const flowWebSelected = signal('none')
+  const flowWebSwapped = signal(false)
+  const flowWebFailure = signal('none')
   // Imperative handles (ECharts dispatchAction) for the toolbox chart and the timeline.
   const tbHandle = createChartHandle()
   const tlHandle = createChartHandle()
@@ -962,23 +1006,13 @@ function GalleryPage() {
         </Button>
         <Text data-testid="gal-growth-count">{growthCount()}</Text>
         <FlowWebView
-          graph={{
-            nodes: [
-              { id: 'ingest', position: { x: 0, y: 0 }, data: { label: 'Ingest' } },
-              { id: 'transform', position: { x: 220, y: 0 }, data: { label: 'Transform' } },
-              { id: 'serve', position: { x: 110, y: 130 }, data: { label: 'Serve' } },
-            ],
-            edges: [
-              { source: 'ingest', target: 'transform' },
-              { source: 'transform', target: 'serve' },
-            ],
-          }}
+          graph={() => (flowWebSwapped() ? FLOW_WEB_GRAPH_B : FLOW_WEB_GRAPH_A)}
           commands={() => (flowWebFitAgain() ? FLOW_WEB_FIT_TWICE : FLOW_WEB_FIT_ONCE)}
           onEvent={(event) => {
             flowWebEvent.set(event.type)
             flowWebEventCount.set(flowWebEventCount() + 1)
           }}
-          onSelect={(node) => flowWebEvent.set('select:' + node.id)}
+          onSelect={(node) => flowWebSelected.set(node.id)}
           onError={(error) => flowWebEvent.set('error:' + error.message)}
           data-testid="gal-flow-webview"
         />
@@ -987,6 +1021,16 @@ function GalleryPage() {
         </Button>
         <Text data-testid="gal-flow-webview-event">{flowWebEvent()}</Text>
         <Text data-testid="gal-flow-webview-events">{String(flowWebEventCount())}</Text>
+        <Text data-testid="gal-flow-webview-selected">{flowWebSelected()}</Text>
+        <Button onPress={() => flowWebSwapped.set(true)} data-testid="gal-flow-webview-swap">
+          Swap graph
+        </Button>
+        <FlowWebView
+          graph={FLOW_WEB_BROKEN as unknown as FlowWebViewGraph}
+          onError={(error) => flowWebFailure.set(error.message.length > 0 ? 'error' : 'empty')}
+          data-testid="gal-flow-webview-broken"
+        />
+        <Text data-testid="gal-flow-webview-failure">{flowWebFailure()}</Text>
         <PieChart
           data={SLICES}
           value={(d: PieSlice) => d.total}

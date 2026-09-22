@@ -46,12 +46,14 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import android.os.SystemClock
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.click
@@ -123,6 +125,21 @@ class TasksAppInstrumentedTest {
      * ("done", toolkit-filter not found mid-remount) — one class, two
      * lines. Fix the class, not the line.
      */
+    /**
+     * Tap the hosted flow at the centre of its LAYOUT. `performTouchInput`'s
+     * `center` is the centre of the VISIBLE part, so a WebView only partly on
+     * screen after `performScrollTo` took the tap in its top strip, missing the
+     * fitted graph. Scrolling to the button right below brings the whole WebView
+     * on screen first.
+     */
+    private fun tapFlowWebViewCentre() {
+        composeRule.onNodeWithTag("gal-flow-webview-fit").performScrollTo()
+        val info = composeRule.onNodeWithTag("gal-flow-webview").fetchSemanticsNode().layoutInfo
+        val origin = info.coordinates.positionInRoot()
+        val target = Offset(origin.x + info.width / 2f, origin.y + info.height / 2f)
+        composeRule.onRoot().performTouchInput { click(target) }
+    }
+
     private fun waitForTagText(tag: String, text: String) {
         try {
             composeRule.waitUntil(timeoutMillis = 20_000) {
@@ -974,6 +991,34 @@ class TasksAppInstrumentedTest {
         waitForTagText("gal-flow-webview-events", "1")
         composeRule.onNodeWithTag("gal-flow-webview-fit").performScrollTo().performClick()
         waitForTagText("gal-flow-webview-events", "2")
+        // F5: a node tap INSIDE the WebView reaches native `onSelect`. The graph is
+        // one symmetric row, so fit-view centres the middle node and a tap at the
+        // WebView's centre hits it; the touch is injected into the Compose root and
+        // routed to the embedded WebView like a finger would be.
+        waitForTagText("gal-flow-webview-selected", "none")
+        // An unsized WebView used to collapse to ~18dp, leaving the fitted graph no
+        // room and the centre tap nowhere to land. It now takes the web
+        // `<iframe>`'s 150dp default.
+        // Semantics size is CLIPPED to what is on screen, so measure the LAYOUT.
+        // The View itself is the thing that must be tall: a padded Compose slot
+        // around an 18dp WebView looks right here and still misses the tap.
+        composeRule.onNodeWithTag("gal-flow-webview").performScrollTo()
+        val webHeight = composeRule.onNodeWithTag("gal-flow-webview").fetchSemanticsNode().layoutInfo.height
+        check(webHeight >= with(composeRule.density) { 149.dp.roundToPx() }) {
+            "an unsized FlowWebView must get the iframe's 150dp default height, measured ${webHeight}px"
+        }
+        tapFlowWebViewCentre()
+        waitForTagText("gal-flow-webview-selected", "transform")
+        // Swapping the graph re-renders IN PLACE: the same tap now selects the new
+        // middle node.
+        composeRule.onNodeWithTag("gal-flow-webview-swap").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        SystemClock.sleep(500)
+        tapFlowWebViewCentre()
+        waitForTagText("gal-flow-webview-selected", "enrich")
+        // A graph the hosted renderer cannot draw reaches native `onError`.
+        composeRule.onNodeWithTag("gal-flow-webview-broken").performScrollTo().assertExists()
+        waitForTagText("gal-flow-webview-failure", "error")
         // The lines trail renders. Its MOTION is proven on the iOS device lane
         // and in real Chromium; here it cannot be: the trail runs on
         // withInfiniteAnimationFrameNanos (a plain frame loop kept this harness
