@@ -82,6 +82,8 @@ export interface LayoutConfig {
   insetTop?: Double | undefined
   insetRight?: Double | undefined
   insetBottom?: Double | undefined
+  /** Room kept free at the chart's left edge BEFORE the plot's own left gutter (a vertical legend on the left takes its column). */
+  reserveLeft?: Double | undefined
   fontSize: Double
   /** Target tick counts; the nice-step algorithm decides the actual number. */
   xTickCount: Double
@@ -303,7 +305,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   const x2Band = hasX2 ? cfg.fontSize + labelGap + tickLen + (cfg.x2Title !== undefined && cfg.x2Title !== '' ? titleH : 0.0) : padTop
   const top = cfg.insetTop ?? (xTop ? xBand : x2Band)
   const bottom = cfg.insetBottom ?? (xTop ? x2Band : xBand)
-  const gLeft = cfg.insetLeft ?? left
+  const gLeft = cfg.insetLeft ?? left + (cfg.reserveLeft ?? 0.0)
   const gRight = cfg.insetRight ?? right
   const gutters: Gutters = { left: gLeft, right: gRight, top, bottom }
 

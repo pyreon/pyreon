@@ -1,5 +1,7 @@
 ---
 '@pyreon/charts': minor
+'@pyreon/native-runtime-swift': patch
+'@pyreon/native-runtime-kotlin': patch
 ---
 
 OptionChart and optionToSvg now lay the legend out the way ECharts 6 does.

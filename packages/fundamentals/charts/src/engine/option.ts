@@ -1427,6 +1427,8 @@ export interface OptionChrome {
   top: Double
   bottom: Double
   right: Double
+  /** A vertical legend's column at the left, kept free before the plot's own gutter. */
+  left?: Double | undefined
 }
 
 export function zoomedView(compiled: CompiledOption, reserved: Double | OptionChrome, win?: ZoomWindow): { spec: ChartSpec; offset: number; navigator: NavigatorLayout | null } {
@@ -1434,14 +1436,16 @@ export function zoomedView(compiled: CompiledOption, reserved: Double | OptionCh
   const top = typeof reserved === 'number' ? reserved : reserved.top
   const below = typeof reserved === 'number' ? 0.0 : reserved.bottom
   const beside = typeof reserved === 'number' ? 0.0 : reserved.right
+  const lead = typeof reserved === 'number' ? 0.0 : reserved.left ?? 0.0
   const height = Math.max(0.0, compiled.spec.height - top - below)
   const width = Math.max(0.0, compiled.spec.width - beside)
-  if (zoom === undefined) return { spec: { ...compiled.spec, height, width }, offset: 0, navigator: null }
+  const base = lead > 0.0 ? { ...compiled.spec, reserveLeft: lead } : compiled.spec
+  if (zoom === undefined) return { spec: { ...base, height, width }, offset: 0, navigator: null }
   const w = win ?? zoom.window
-  const lead = compiled.spec.series[0]
+  const leadSeries = compiled.spec.series[0]
   const t = compiled.spec.theme
-  const navigator = zoom.slider ? renderNavigator(lead?.values ?? [], lead?.color ?? t.palette[0] ?? '#5470c6', w, { x: 0.0, y: top, w: width, h: height }, t.grid) : null
-  const view = windowSpec({ ...compiled.spec, width, height: Math.max(0.0, height - (navigator?.height ?? 0.0)) }, w, zoom.keepY)
+  const navigator = zoom.slider ? renderNavigator(leadSeries?.values ?? [], leadSeries?.color ?? t.palette[0] ?? '#5470c6', w, { x: 0.0, y: top, w: width, h: height }, t.grid) : null
+  const view = windowSpec({ ...base, width, height: Math.max(0.0, height - (navigator?.height ?? 0.0)) }, w, zoom.keepY)
   return { spec: view.spec, offset: view.offset, navigator }
 }
 
@@ -1466,6 +1470,7 @@ export function compiledCommands(compiled: CompiledOption, option: EChartsOption
   const gridOwnsTop = compiled.spec.gridTop !== undefined
   let below = 0.0
   let beside = 0.0
+  let aside = 0.0
   if (compiled.legend !== null && compiled.legend.length > 0) {
     // ECharts places the legend in the whole chart, as it does the title.
     const placed = placeOptionLegend(compiled.legend, compiled.legendLayout, { x: 0.0, y: 0.0, w: width, h: height }, t, measure, compiled.legendIcons ?? {}, compiled.legendLineWidths ?? {})
@@ -1477,9 +1482,10 @@ export function compiledCommands(compiled: CompiledOption, option: EChartsOption
     if (placed.side === 'top') top = Math.max(top, placed.rect.y + placed.rect.h + lpad[2]!)
     else if (placed.side === 'bottom' && compiled.spec.gridBottom === undefined) below = height - placed.rect.y + lpad[0]!
     else if (placed.side === 'right' && compiled.spec.gridRight === undefined) beside = width - placed.rect.x
+    else if (placed.side === 'left' && compiled.spec.gridLeft === undefined) aside = placed.rect.x + placed.rect.w + lpad[1]!
   }
   if (gridOwnsTop) top = 0.0
-  const chrome: OptionChrome = { top, bottom: below, right: beside }
+  const chrome: OptionChrome = aside > 0.0 ? { top, bottom: below, right: beside, left: aside } : { top, bottom: below, right: beside }
   const view = zoomedView(compiled, chrome, win)
   // Brush areas are in PLOT-frame pixels (above the title / legend offset): they dim what they miss.
   const brushed = areas.length === 0 ? view.spec : applyOptionBrush(compiled, view.spec, measure, areas)

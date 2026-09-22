@@ -54,6 +54,13 @@ describe('legend reservations', () => {
     expect(r.cc.chrome.right).toBeGreaterThan(0)
     expect(r.plot.x + r.plot.w).toBeLessThanOrEqual(Math.min(...r.cc.legendBoxes.map((b) => b.x)))
   })
+  it('a vertical legend on the left takes its column off the left: the plot starts past it', () => {
+    const l = plotOf({ legend: { orient: 'vertical', left: 0, top: 'middle' } })
+    expect(l.cc.chrome.left).toBeGreaterThan(0)
+    const legendRight = Math.max(...l.cc.legendBoxes.map((b) => b.x + b.w))
+    expect(l.plot.x).toBeGreaterThan(legendRight)
+    expect(plotOf({ legend: { orient: 'vertical', left: 0 }, grid: { left: 80 } }).cc.chrome.left).toBeUndefined()
+  })
   it('a grid that sets the side keeps it (the legend overlays)', () => {
     expect(plotOf({ legend: { bottom: 0 }, grid: { bottom: 40 } }).cc.chrome.bottom).toBe(0)
     expect(plotOf({ legend: { orient: 'vertical', right: 0 }, grid: { right: 80 } }).cc.chrome.right).toBe(0)

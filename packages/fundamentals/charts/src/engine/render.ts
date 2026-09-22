@@ -396,6 +396,8 @@ export interface ChartSpec {
   yMinData?: boolean | undefined
   yMaxData?: boolean | undefined
   gridLeft?: Double | undefined
+  /** Room kept free at the left edge before the plot's own gutter; the option facade sets it for a vertical legend on the left. */
+  reserveLeft?: Double | undefined
   gridTop?: Double | undefined
   gridRight?: Double | undefined
   gridBottom?: Double | undefined
@@ -1147,6 +1149,7 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     yLogMax: lb.max,
     yTime: spec.yTime === true,
     insetLeft: spec.gridLeft,
+    reserveLeft: spec.reserveLeft,
     insetTop: spec.gridTop,
     insetRight: spec.gridRight,
     insetBottom: spec.gridBottom,

@@ -363,7 +363,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'partial',
     native: 'partial',
     gaps: [
-      'a vertical legend on the LEFT overlays the plot rather than taking its column (right, top and bottom legends do take their band); `type: "scroll"` paging and the `selector` buttons are not drawn',
+      '`type: "scroll"` paging and the `selector` buttons are not drawn',
       'series `legendHoverLink` (hovering an entry emphasises its series) is not honoured',
       'a family option chart (pie, funnel, …) draws its host\'s own legend, which a click does not toggle; a multi-grid option\'s legend does not toggle either',
       LITERAL_ONLY,
