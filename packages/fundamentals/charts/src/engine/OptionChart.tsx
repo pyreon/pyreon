@@ -24,7 +24,8 @@ import { ECHARTS_ANIMATION_DEFAULTS, resolveAnimation } from './animation-option
 import type { ChartAnimation } from './animation-option'
 import { ease } from './easing'
 import type { CanvasHostProps, TooltipView } from './canvas-host'
-import { pinSelection } from './legend-toggle'
+import { legendHitIndex, pinSelection } from './legend-toggle'
+import { applyLegendHidden, legendClick } from './option-legend'
 import { compiledCommands, optionBrushSelection, optionToSvg, planOption, zoomedView } from './option'
 import { limitWindow } from './option-zoom'
 import { applyMagicType } from './magic-type'
@@ -110,6 +111,11 @@ export interface OptionChartProps extends Omit<CanvasHostProps, 'theme' | 'showT
   onSelect?: (hit: OptionHit | null) => void
   /** The datum INDEX under a click (or the keyboard's pick), -1 for a miss — the multiplatform-safe twin of `onSelect`. */
   onSelectIndex?: (index: number) => void
+  /**
+   * A legend click changed which series show (ECharts' `legendselectchanged`):
+   * every entry's name, true when its series is on.
+   */
+  onLegendSelectChange?: (selected: Record<string, boolean>) => void
   /** Fired by a family host (pie, sankey, treemap, …) with ITS hit value, tagged with the family kind. */
   onFamilySelect?: (kind: FamilyPlan['kind'], hit: unknown) => void
 }
@@ -176,6 +182,8 @@ interface OptionGeometry {
   hgt: Double
   /** The zoomed cartesian view: the title/legend offset, the first visible row, the plot and the slider strip in canvas coordinates. */
   zoom: { top: Double; offset: number; plot: Rect; strip: Rect | null; win: ZoomWindow } | null
+  /** The legend entries' boxes in canvas coordinates, in entry order (empty without a legend). */
+  legendBoxes: Rect[]
 }
 
 /** The `CanvasHostProps` keys `OptionChartProps` does NOT take (its own `theme`, and the chrome the compiled option draws itself). */
@@ -540,6 +548,8 @@ export function OptionChart(props: OptionChartProps): VNode {
   const pinned = props.handle?.selected ?? signal<number[]>([])
   // `selectedMode: 'series'` pins SERIES indices rather than datums.
   const pinnedSeries = signal<number[]>([])
+  // The legend's hidden series, by name (ECharts' `legend.selected`).
+  const legendHidden = signal<string[]>([])
   let seededFrom: unknown = null
   const draw = (): void => batch(() => {
     const opt = readOption()
@@ -591,6 +601,7 @@ export function OptionChart(props: OptionChartProps): VNode {
         pinned.set(seed.data)
         pinnedSeries.set(seed.series)
       }
+      legendHidden.set(cart?.legendHidden ?? [])
     }
     mode.set('canvas')
   })
@@ -603,7 +614,7 @@ export function OptionChart(props: OptionChartProps): VNode {
    * visualMap strip, graphic elements and the timeline stay on screen while a
    * state is active (they used to drop out whenever a datum was hovered).
    */
-  const compose = (plan: OptionPlan, resolved: EChartsOption, measure: MeasureText, w: Double, hgt: Double, over: { emphasis?: Emphasis | undefined; time: Double; progress: Double }): { cmds: DrawCmd[]; zoom: OptionGeometry['zoom'] } => {
+  const compose = (plan: OptionPlan, resolved: EChartsOption, measure: MeasureText, w: Double, hgt: Double, over: { emphasis?: Emphasis | undefined; time: Double; progress: Double }): { cmds: DrawCmd[]; zoom: OptionGeometry['zoom']; legendBoxes: Rect[] } => {
     const idx = stepIndex()
     const steps = timelineSteps(readOption())
     const stripH = steps === null ? 0.0 : TIMELINE_HEIGHT
@@ -615,12 +626,14 @@ export function OptionChart(props: OptionChartProps): VNode {
     })
     const cmds: DrawCmd[] = []
     let zoom: OptionGeometry['zoom'] = null
+    let legendBoxes: Rect[] = []
     if (plan.kind === 'cartesian') {
       const liveBrush = brushLive()
       const areas = liveBrush === null ? brushAreas() : [...brushAreas(), liveBrush]
       const compiled = { ...plan.compiled, spec: live(plan.compiled.spec, over.emphasis) }
       const composed = compiledCommands(compiled, resolved, measure, winOf(plan.compiled), toolActives(), areas)
       for (const c of composed.cmds) cmds.push(c)
+      legendBoxes = composed.legendBoxes
       for (const c of pointerCmds(plan.compiled, resolved, measure, composed.top)) cmds.push(c)
       if (plan.compiled.zoom !== undefined) {
         const win = winOf(plan.compiled)!
@@ -644,7 +657,7 @@ export function OptionChart(props: OptionChartProps): VNode {
       for (const c of graphicCommands(resolved, w, hgt - stripH).cmds) cmds.push(c)
     }
     if (steps !== null) for (const c of timelineCommands({ ...steps, current: idx ?? steps.current }, w, hgt - stripH, stripH, isPlaying())) cmds.push(c)
-    return { cmds, zoom }
+    return { cmds, zoom, legendBoxes }
   }
 
   /**
@@ -694,10 +707,16 @@ export function OptionChart(props: OptionChartProps): VNode {
     const planned = canvasPlan(planOption(opt, compileOpts(w, hgt - stripH, idx)))
     // `selectedMode: 'series'` tints every datum of a pinned series.
     const withSeriesPins = (c: CompiledOption): CompiledOption => (pinnedSeries().length === 0 ? c : { ...c, spec: applySeriesSelection(c.spec, pinnedSeries()) })
-    const plan: OptionPlan = planned.kind === 'cartesian' ? { ...planned, compiled: withSeriesPins(magicOf(planned.compiled)) } : planned
+    // A legend-hidden series keeps its slot but draws, hits and tooltips nothing.
+    const withLegend = (c: CompiledOption): CompiledOption => {
+      if (c.legend === null || legendHidden().length === 0) return c
+      const applied = applyLegendHidden(c.spec.series, c.legend, legendHidden())
+      return { ...c, legend: applied.entries, spec: { ...c.spec, series: applied.series } }
+    }
+    const plan: OptionPlan = planned.kind === 'cartesian' ? { ...planned, compiled: withLegend(withSeriesPins(magicOf(planned.compiled))) } : planned
     const resolved = resolveTimeline(opt, idx).option as EChartsOption
-    const { cmds, zoom } = compose(plan, resolved, measure, w, hgt, { time: 0.0, progress: 1.0 })
-    return { cmds, plan, option: resolved, measure, w, hgt, zoom }
+    const { cmds, zoom, legendBoxes } = compose(plan, resolved, measure, w, hgt, { time: 0.0, progress: 1.0 })
+    return { cmds, plan, option: resolved, measure, w, hgt, zoom, legendBoxes }
   }
 
   effect(() => {
@@ -986,6 +1005,22 @@ export function OptionChart(props: OptionChartProps): VNode {
     return { ...view, lines: axis ? [title, ...ordered.map((e) => `${e.seriesName}: ${e.value}`)] : [ordered[0]!.seriesName, `${title}: ${ordered[0]!.value}`] }
   }
 
+  /** A click on a legend entry toggles its series (ECharts' `legend.selectedMode`); true when it landed on one. */
+  const legendClickAt = (g: OptionGeometry, px: Double, py: Double): boolean => {
+    if (g.plan.kind !== 'cartesian' || g.plan.compiled.legend === null) return false
+    const i = legendHitIndex(g.legendBoxes, px, py)
+    const entry = g.plan.compiled.legend[i]
+    if (entry === undefined) return false
+    const names = g.plan.compiled.legend.map((e) => e.label)
+    const next = legendClick(legendHidden(), entry.label, names, g.plan.compiled.legendMode ?? 'multiple')
+    if (next === legendHidden()) return true
+    legendHidden.set(next)
+    const selected: Record<string, boolean> = {}
+    for (const n of names) selected[n] = !next.includes(n)
+    props.onLegendSelectChange?.(selected)
+    return true
+  }
+
   const pinMode = (g: OptionGeometry): 'single' | 'multiple' | 'series' | undefined => {
     if (g.plan.kind === 'cartesian') return g.plan.compiled.selectedMode
     if (g.plan.kind === 'grids') {
@@ -1111,6 +1146,7 @@ export function OptionChart(props: OptionChartProps): VNode {
       hoverIndex()
       pinned()
       pinnedSeries()
+      legendHidden()
       zoomWin()
     },
     layout: (box, measure) => {
@@ -1220,6 +1256,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     select: (g, px, py) => {
       if (toolboxClick(g, px, py)) return
       if (timelineClick(g.w, g.hgt, px, py)) return
+      if (legendClickAt(g, px, py)) return
       const h1 = hitAt(g, px, py)
       const pin = pinMode(g)
       // `series` pins the whole series the hit belongs to; the other modes pin the datum.

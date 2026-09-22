@@ -342,10 +342,15 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     evidence: ['src/engine/title-edges.test.ts', NATIVE + 'chart-chrome-native.test.ts'],
   }),
   row('coordinates.legend', 'coordinates', 'direct', {
-    web: 'complete',
+    web: 'partial',
     native: 'partial',
-    gaps: [LITERAL_ONLY],
-    evidence: ['src/engine/legend-toggle.test.ts', 'src/engine/legend-scroll.test.ts', NATIVE + 'chart-legend-change-native.test.ts'],
+    gaps: [
+      'an option legend lays out horizontally at the top: `orient`, `left`/`right`/`top`/`bottom`, `type: "scroll"`, `formatter`, `icon` and `textStyle` are not read',
+      'series `legendHoverLink` (hovering an entry emphasises its series) is not honoured',
+      'a family option chart (pie, funnel, …) draws its host\'s own legend, which a click does not toggle; a multi-grid option\'s legend does not toggle either',
+      LITERAL_ONLY,
+    ],
+    evidence: ['src/engine/legend-toggle.test.ts', 'src/engine/legend-scroll.test.ts', 'src/engine/option-legend.test.ts', 'src/engine/option-legend.browser.test.tsx', NATIVE + 'chart-legend-change-native.test.ts'],
   }),
   row('coordinates.tooltip', 'coordinates', 'direct', {
     web: 'partial',

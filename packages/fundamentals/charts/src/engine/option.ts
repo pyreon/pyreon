@@ -45,6 +45,8 @@ import { plain } from './format'
 import type { Formatter } from './format'
 import { renderLegend } from './legend'
 import type { LegendEntry } from './legend'
+import { readOptionLegend } from './option-legend'
+import type { LegendSelectedMode } from './option-legend'
 import { measureApprox, renderSvg } from './svg'
 import { compileFamily, familyToSvg } from './option-family'
 import type { CompiledFamily } from './option-family'
@@ -88,6 +90,9 @@ export interface CompiledOption {
   title: { text: string; subtext: string | undefined } | null
   /** Legend entries, or null when the option hides the legend. */
   legend: LegendEntry[] | null
+  /** ECharts' `legend.selectedMode` (a click toggles, keeps one on, or does nothing) and the names `legend.selected` starts off. */
+  legendMode?: LegendSelectedMode | undefined
+  legendHidden?: string[] | undefined
   tooltip: boolean
   /** ECharts' whole `tooltip` component, read (null when the option declares none). */
   tooltipSpec: TooltipSpec | null
@@ -994,11 +999,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     isObj(titleRaw) && typeof titleRaw['text'] === 'string'
       ? { text: titleRaw['text'] as string, subtext: typeof titleRaw['subtext'] === 'string' ? (titleRaw['subtext'] as string) : undefined }
       : null
-  const legendRaw = option['legend']
-  const legend =
-    legendRaw === undefined || (isObj(legendRaw) && legendRaw['show'] === false)
-      ? null
-      : series.map((s) => ({ label: s.label, color: s.color }))
+  const optionLegend = readOptionLegend(option['legend'], series)
+  const legend = optionLegend === null ? null : optionLegend.entries
   const tooltipRaw = option['tooltip']
   const tooltipSpec = readTooltipOption(tooltipRaw, warn)
   const tooltip = tooltipSpec !== null && tooltipSpec.show
@@ -1110,7 +1112,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   // The toolbox's box zoom needs a window even when the option has no dataZoom component.
   if (zoom === undefined && toolbox?.dataZoom === true) zoom = { inside: false, slider: false, window: { start: 0.0, end: 1.0 }, keepY: false, lock: false, minSpan: 0.0, maxSpan: 1.0, wheel: false, move: false }
   const animation = resolveAnimation(option as Record<string, unknown>, warn)
-  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, tooltipSpec, silent, seriesSource, animation, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }), ...(brush === undefined ? {} : { brush }) }
+  return { spec, custom: customPlans, background: themed.background, title, legend, ...(optionLegend === null ? {} : { legendMode: optionLegend.selectedMode, legendHidden: optionLegend.hidden }), tooltip, tooltipSpec, silent, seriesSource, animation, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }), ...(brush === undefined ? {} : { brush }) }
 }
 
 /** The selection a compiled option's brush makes over `spec`, restricted to `brush.seriesIndex`. */
@@ -1312,11 +1314,12 @@ export function zoomedView(compiled: CompiledOption, top: Double, win?: ZoomWind
   return { spec: view.spec, offset: view.offset, navigator }
 }
 
-export function compiledCommands(compiled: CompiledOption, option: EChartsOption, measure: MeasureText, win?: ZoomWindow, actives: ToolboxTool[] = [], areas: BrushArea[] = []): { cmds: DrawCmd[]; top: Double } {
+export function compiledCommands(compiled: CompiledOption, option: EChartsOption, measure: MeasureText, win?: ZoomWindow, actives: ToolboxTool[] = [], areas: BrushArea[] = []): { cmds: DrawCmd[]; top: Double; legendBoxes: Rect[] } {
   const width = compiled.spec.width
   const height = compiled.spec.height
   const t = compiled.spec.theme
   let top = 0.0
+  let legendBoxes: Rect[] = []
   const cmds: DrawCmd[] = []
   if (compiled.background !== undefined) cmds.push({ kind: 'rect', rect: { x: 0.0, y: 0.0, w: width, h: height }, fill: compiled.background })
   if (compiled.title !== null) {
@@ -1331,6 +1334,7 @@ export function compiledCommands(compiled: CompiledOption, option: EChartsOption
   if (compiled.legend !== null && compiled.legend.length > 0) {
     const l = renderLegend(compiled.legend, { x: 0.0, y: top, w: width, h: height - top }, { fontSize: t.fontSize, labelColor: t.label, swatch: 10.0, gap: 12.0, orientation: 'horizontal' }, measure)
     for (const c of l.cmds) cmds.push(c)
+    legendBoxes = l.boxes
     top = top + l.height
   }
   const view = zoomedView(compiled, top, win)
@@ -1346,5 +1350,5 @@ export function compiledCommands(compiled: CompiledOption, option: EChartsOption
   for (const c of graphicCommands(option, width, height).cmds) cmds.push(c)
   // ECharts' toolbox sits over the chart's top-right corner; it reserves no room.
   if (compiled.toolbox !== undefined) for (const c of renderToolbox(toolboxTools(compiled.toolbox), { x: 0.0, y: 0.0, w: width, h: height }, { fontSize: t.fontSize, color: t.label, actives }).cmds) cmds.push(c)
-  return { cmds, top }
+  return { cmds, top, legendBoxes }
 }
