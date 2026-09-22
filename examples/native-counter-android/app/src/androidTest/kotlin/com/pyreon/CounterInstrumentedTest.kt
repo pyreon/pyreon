@@ -51,6 +51,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.dp
 import android.content.Context
 import android.location.Location
 import android.location.LocationManager
@@ -79,6 +80,35 @@ class CounterInstrumentedTest {
         composeRule.onAllNodesWithText("Native flow tools")[0].assertIsDisplayed()
         composeRule.onAllNodesWithContentDescription("source handle out").assertCountEquals(2)
         composeRule.onAllNodesWithContentDescription("target handle in").assertCountEquals(2)
+        composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
+        // Connect end -> start so this gesture creates a distinct reverse edge.
+        val source = composeRule.onAllNodesWithContentDescription("source handle out")[1]
+        val sourceBounds = source.getBoundsInRoot()
+        check(sourceBounds.right - sourceBounds.left >= 47.dp) { "source handle touch target is below the native minimum" }
+        val targetCenter = composeRule.onAllNodesWithContentDescription("target handle in")[0].fetchSemanticsNode().boundsInRoot.center
+        val sourceCenter = source.fetchSemanticsNode().boundsInRoot.center
+        source.performTouchInput {
+            down(center)
+            moveBy((targetCenter - sourceCenter) * 0.4f)
+            moveBy((targetCenter - sourceCenter) * 0.4f)
+            moveBy((targetCenter - sourceCenter) * 0.2f)
+            up()
+        }
+        composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("2")
+
+        composeRule.onNodeWithTag("native-flow-start-size").assertTextEquals("150,60")
+        val resize = composeRule.onNodeWithContentDescription("Resize se for node native-start")
+        val resizeBounds = resize.getBoundsInRoot()
+        check(resizeBounds.right - resizeBounds.left >= 47.dp) { "resizer touch target is below the native minimum" }
+        resize.performTouchInput {
+            down(center)
+            moveBy(androidx.compose.ui.geometry.Offset(24f, 18f))
+            moveBy(androidx.compose.ui.geometry.Offset(40f, 30f))
+            up()
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-start-size").fetchSemanticsNode().config[SemanticsProperties.Text].first().text != "150,60"
+        }
     }
 
     @Test
@@ -177,10 +207,10 @@ class CounterInstrumentedTest {
             .text
         val before = label.removePrefix("Notes: ").trim().toInt()
 
-        composeRule.onNodeWithText("Save Note").performClick()
+        composeRule.onNodeWithText("Save Note").performScrollTo().performClick()
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("Notes: ${before + 1}").assertIsDisplayed()
+        composeRule.onNodeWithText("Notes: ${before + 1}").performScrollTo().assertIsDisplayed()
     }
 
     // useDatabase — the record is on the DEVICE'S DISK, not in a cache.
@@ -216,9 +246,9 @@ class CounterInstrumentedTest {
             .trim()
             .toInt()
 
-        composeRule.onNodeWithText("Save Note").performClick()
+        composeRule.onNodeWithText("Save Note").performScrollTo().performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Notes: ${before + 1}").assertIsDisplayed()
+        composeRule.onNodeWithText("Notes: ${before + 1}").performScrollTo().assertIsDisplayed()
 
         // A cold reader over the same app-private directory. The context comes
         // from the rule's own activity rather than InstrumentationRegistry:

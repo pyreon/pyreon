@@ -36,9 +36,12 @@ fun PyreonFlowEdgeCanvas(
     modifier: Modifier = Modifier,
 ) {
     Canvas(modifier = modifier) {
+        // Graph and viewport units are dp (iOS points, web CSS px); the canvas
+        // draws px, so the density joins the zoom in the one transform.
+        val unit = density
         withTransform({
-            translate(left = viewport.x.toFloat(), top = viewport.y.toFloat())
-            scale(scaleX = viewport.zoom.toFloat(), scaleY = viewport.zoom.toFloat(), pivot = Offset.Zero)
+            translate(left = viewport.x.toFloat() * unit, top = viewport.y.toFloat() * unit)
+            scale(scaleX = viewport.zoom.toFloat() * unit, scaleY = viewport.zoom.toFloat() * unit, pivot = Offset.Zero)
         }) {
             for (edge in edges) {
                 drawPath(
