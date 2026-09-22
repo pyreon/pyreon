@@ -293,6 +293,9 @@ function TasksPage() {
           <Button onPress={() => navigate('/flow')} data-testid="tasks-flow">
             Flow
           </Button>
+          <Button onPress={() => navigate('/flow-scale')} data-testid="tasks-flow-scale">
+            Flow scale
+          </Button>
         </Stack>
         <Stack gap={2}>
           <Button onPress={() => navigate('/stats')} data-testid="tasks-stats">
@@ -431,6 +434,67 @@ function FlowScreen() {
         <Background variant="dots" />
         <Controls />
         <MiniMap />
+      </Flow>
+    </Stack>
+  )
+}
+
+function FlowScaleScreen() {
+  const navigate = useNavigate()
+  // F6 scale proof: a 20x20 grid of nodes with culling on. Both device lanes
+  // assert that only a bounded handful of the 400 nodes is ever MOUNTED, that
+  // panning swaps which ones are, and that a drag still reaches the engine on
+  // a node that scrolled in. Counts, not timings: a count is deterministic on
+  // every device, a timing is not.
+  const flow = createFlow<{ label: string }>({
+    nodes: [],
+    edges: [],
+    onlyRenderVisibleElements: true,
+    minZoom: 0.25,
+    maxZoom: 2,
+  })
+  const total = computed(() => `${flow.nodes().length}`)
+  const zoomLabel = computed(() => `zoom ${flow.zoom()}`)
+  const farPos = computed(() => {
+    let label = 'gone'
+    for (const n of flow.nodes()) {
+      if (n.id === 'g170') label = `${Math.round(n.position.x)},${Math.round(n.position.y)}`
+    }
+    return label
+  })
+  return (
+    <Stack gap={2} padding={4} data-testid="flow-scale-page">
+      <Text data-testid="flow-scale-total">{total}</Text>
+      <Text data-testid="flow-scale-zoom">{zoomLabel}</Text>
+      <Text data-testid="flow-scale-far-pos">{farPos}</Text>
+      <Inline gap={2}>
+        <Button
+          onPress={() => {
+            for (let row = 0; row < 20; row++) {
+              for (let col = 0; col < 20; col++) {
+                const index = row * 20 + col
+                flow.addNode({
+                  id: `g${index}`,
+                  position: { x: col * 200, y: row * 100 },
+                  data: { label: `N${index}` },
+                  ariaLabel: `grid node ${index}`,
+                })
+              }
+            }
+          }}
+          data-testid="flow-scale-load"
+        >
+          Load
+        </Button>
+        <Button onPress={() => flow.setViewport({ x: -2000, y: -800, zoom: 1 })} data-testid="flow-scale-pan">
+          Pan
+        </Button>
+        <Button onPress={() => navigate('/tasks')} data-testid="flow-scale-back">
+          Back
+        </Button>
+      </Inline>
+      <Flow instance={flow} ariaLabel="Scale flow">
+        <Background variant="dots" />
       </Flow>
     </Stack>
   )
@@ -1601,6 +1665,11 @@ export function TasksApp() {
       {
         path: '/flow',
         component: FlowScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/flow-scale',
+        component: FlowScaleScreen,
         beforeEnter: () => useApp().store.isAuthed(),
       },
     ],
