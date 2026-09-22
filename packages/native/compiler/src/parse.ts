@@ -2704,6 +2704,8 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
         // literal resolves at compile time (chart-hosts.ts CHART_THEMES /
         // NAMED_PALETTES).
         'ChartThemeProvider',
+        // The imperative handle lowers to a PyreonChartHandle (its `dispatch` runs the crossing reducer).
+        'createChartHandle',
         'chartThemes',
         'palettes',
         // The grammar: <Plot> desugars to <PlotChart marks>; its mark/config children are consumed by that desugar.
@@ -8155,6 +8157,12 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // through unchanged (string arg) — the runtime container hands the URL
   // to the OS (iOS `UIApplication.shared.open`, Android
   // `Intent.ACTION_VIEW`). Like useShare, Android needs a Context.
+  // `const chart = createChartHandle()` from `@pyreon/charts/plot` → a
+  // PyreonChartHandle: observable fields the bound PlotChart reads and writes,
+  // and a `dispatch` that runs the crossing `applyChartAction` reducer.
+  if (calleeName === 'createChartHandle') {
+    return { kind: 'chart-handle', name }
+  }
   if (calleeName === 'useLinking') {
     return { kind: 'linking', name }
   }

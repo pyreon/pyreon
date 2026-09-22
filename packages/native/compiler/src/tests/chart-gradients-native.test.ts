@@ -53,15 +53,17 @@ export function App() {
     if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
   })
 
-  it('an image pattern is named and the palette colour is used', () => {
+  it('an image fill crosses as an image pattern; a line stroke image is named', () => {
     const r = transform(`
 import { OptionChart } from '@pyreon/charts/plot'
 export function App() {
-  return <OptionChart option={{ xAxis: { type: 'category', data: ['a'] }, yAxis: {}, series: [{ type: 'bar', itemStyle: { color: { image: 'texture.png', repeat: 'repeat' } }, data: [1] }] }} />
+  return <OptionChart option={{ xAxis: { type: 'category', data: ['a'] }, yAxis: {}, series: [{ type: 'bar', itemStyle: { color: { image: 'texture.png', repeat: 'repeat' } }, data: [1] }, { type: 'line', lineStyle: { color: { image: 'texture.png' } }, data: [2] }] }} />
 }`, { target })
-    expect(r.warnings).toEqual([expect.stringContaining('option.series[0].itemStyle.color>: image patterns are not supported natively')])
+    expect(r.warnings).toEqual([expect.stringContaining('option.series[1].lineStyle.color>: A line stroke cannot be an image pattern')])
+    expect(r.code).toContain(`image${target === 'swift' ? ': ' : ' = '}"texture.png"`)
     expect(r.code).not.toContain('gradient')
   })
+
 })
 
 describe.each(['swift', 'kotlin'] as const)('grammar gradient on %s', (target) => {

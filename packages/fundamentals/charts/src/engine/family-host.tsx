@@ -68,7 +68,7 @@ export function familyHostNode(plan: FamilyPlan, o: FamilyHostOptions): VNode | 
         ...sel('candlestick'),
       })
     case 'heatmap':
-      return h(HeatmapChart, { data: plan.rows, x: (r: { x: string }) => r.x, y: (r: { y: string }) => r.y, value: (r: { value: Double }) => r.value, ...(plan.colors !== undefined ? { colors: plan.colors } : {}), ...size, ...title, ...sel('heatmap') })
+      return h(HeatmapChart, { data: plan.rows, x: (r: { x: string }) => r.x, y: (r: { y: string }) => r.y, value: (r: { value: Double }) => r.value, ...(plan.colors !== undefined ? { colors: plan.colors } : {}), ...(plan.visualMap !== undefined ? { visualMap: plan.visualMap } : {}), ...size, ...title, ...sel('heatmap') })
     case 'funnel': {
       const color = colorOf(plan.rows)
       return h(FunnelChart, { data: plan.rows, value: (r: { value: Double }) => r.value, label: (r: { name: string }) => r.name, ...(color !== undefined ? { color } : {}), funnel: plan.funnel, ...size, ...title, ...sel('funnel') })
@@ -86,7 +86,7 @@ export function familyHostNode(plan: FamilyPlan, o: FamilyHostOptions): VNode | 
     case 'chord':
       return h(ChordChart, { nodes: plan.nodes, links: plan.links, chord: plan.chord, ...size, ...title, ...sel('chord') })
     case 'calendar':
-      return h(CalendarChart, { start: plan.start, end: plan.end, values: plan.values, calendar: plan.calendar, ...(plan.orient === undefined ? {} : { orient: plan.orient }), ...size, ...title, ...sel('calendar') })
+      return h(CalendarChart, { start: plan.start, end: plan.end, values: plan.values, calendar: plan.calendar, ...(plan.orient === undefined ? {} : { orient: plan.orient }), ...(plan.visualMap !== undefined ? { visualMap: plan.visualMap } : {}), ...size, ...title, ...sel('calendar') })
     case 'parallel':
       return h(ParallelChart, { axes: plan.axes, rows: plan.rows, parallel: plan.parallel, ...(plan.orient === undefined ? {} : { orient: plan.orient }), ...size, ...title, ...sel('parallel') })
     case 'polar':
@@ -94,7 +94,7 @@ export function familyHostNode(plan: FamilyPlan, o: FamilyHostOptions): VNode | 
     case 'themeRiver':
       return h(RiverChart, { series: plan.series, river: plan.river, ...size, ...title, ...sel('themeRiver') })
     case 'map':
-      return h(MapChart, { map: plan.geo, values: plan.values, options: plan.options, roam: plan.roam, scaleLimit: plan.scaleLimit, ...size, ...title, ...sel('map') })
+      return h(MapChart, { map: plan.geo, values: plan.values, options: plan.options, roam: plan.roam, scaleLimit: plan.scaleLimit, ...(plan.visualMap !== undefined ? { visualMap: plan.visualMap } : {}), ...size, ...title, ...sel('map') })
     // Scatter / lines on a geo: the map with the points and paths as its overlays, so it roams too.
     case 'geoPoints':
       return h(MapChart, {

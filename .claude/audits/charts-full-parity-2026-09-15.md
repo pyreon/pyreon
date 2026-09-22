@@ -286,6 +286,12 @@ for interaction, animation or accessibility parity.
   run on the same clocks as cartesian lines (iOS device screenshot diff; a
   frozen time fails it).
 
+- [ ] `presentation.decals` narrowed: ECharts decal model (dash-array pitch,
+  symbolSize, rotation, rect/circle/triangle/diamond/pin/arrow) and
+  aria.decal.show on web and native; the texture geometry is ONE engine
+  function (patternMarks) all four painters draw. Open: path:// and image://
+  decal symbols (with image patterns).
+
 ## Exit gate
 
 Zero unclassified core inventory rows; green real-browser conformance; green

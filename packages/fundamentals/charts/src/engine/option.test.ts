@@ -228,11 +228,11 @@ describe('ECharts option facade — mappings', () => {
 
   it('never drops silently: unknown top-level keys, series options and types are all NAMED', () => {
     const c = compileOption({
-      brush: {}, xAxis: { data: ['a'] }, yAxis: {},
+      axisPointer: {}, xAxis: { data: ['a'] }, yAxis: {},
       series: [{ type: 'bar', data: [1], barWidth: 20 }, { type: 'funnel', data: [] }],
     })
     const codes = c.warnings.map((w) => `${w.code}@${w.path}`)
-    expect(codes).toContain('option-key-unsupported@brush')
+    expect(codes).toContain('option-key-unsupported@axisPointer')
     expect(codes).toContain('series-option-unsupported@series[0].barWidth')
     expect(codes).toContain('series-type-unsupported@series[1].type')
     expect(c.supported).toBe(false)

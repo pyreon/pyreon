@@ -13,12 +13,27 @@
 // cross. And it is DATA in, DATA out — no console, no DOM — so it runs on the
 // server and in a test the same way the engine does.
 
-import { renderChart } from './render'
+import { applyBrushSelection, brushOnlySeries, brushSelection, renderBrushAreas } from './brush-area'
+import type { BrushArea, BrushSeriesSelection } from './brush-area'
+import { readBrush } from './option-brush'
+import type { OptionBrush } from './option-brush'
+import { layoutChart, renderChart } from './render'
 import { appendGraphicLayer, graphicCommands, resolveDataset, svgSize } from './option-layer'
 import { visualMapCommands } from './visual-map'
+import { readDataZoom, windowSpec } from './option-zoom'
+import type { OptionZoom } from './option-zoom'
+import { readToolbox } from './option-toolbox'
+import type { OptionToolbox } from './option-toolbox'
+import { renderToolbox } from './toolbox'
+import { toolboxTools } from './toolbox-config'
+import type { ToolboxTool } from './toolbox-config'
+import { renderNavigator } from './navigator'
+import type { NavigatorLayout } from './navigator'
+import type { ZoomWindow } from './zoom'
 import { TIMELINE_HEIGHT, composeSvg, resolveTimeline, splitGrids, timelineCommands, timelineSteps } from './option-composite'
 import { customCommands, customExtents } from './custom-series'
 import type { LinesSeries } from './lines'
+import { unitPolygons } from './svg-path'
 import type { CustomRenderItem, CustomSeriesPlan } from './custom-series'
 import { resolveTheme } from './theme-registry'
 import type { ThemeDefinition } from './theme-registry'
@@ -35,7 +50,7 @@ import { compileFamily, familyToSvg } from './option-family'
 import type { CompiledFamily } from './option-family'
 import { decimateShared, samplingRequest } from './sampling'
 import type { SamplingRequest } from './sampling'
-import type { ChartGradientStop, ChartPattern, DrawCmd, Domain, Double, MeasureText, Rect } from './types'
+import type { ChartGradientStop, ChartPattern, DrawCmd, Domain, Double, MeasureText, Pt, Rect } from './types'
 import type { SeriesGradient } from './gradient'
 
 /** An ECharts-shaped option. Loosely typed on purpose: the facade VALIDATES. */
@@ -75,7 +90,13 @@ export interface CompiledOption {
    * rendering faithfully — the conformance metric counts it as a miss.
    */
   /** ECharts' series `selectedMode` (true / single / multiple): how a click pins a datum in the host. */
-  selectedMode?: 'single' | 'multiple' | undefined
+  selectedMode?: 'single' | 'multiple' | 'series' | undefined
+  /** `dataZoom` over the category x axis: the initial window, the slider, and the gestures. */
+  zoom?: OptionZoom | undefined
+  /** `toolbox.feature`, host-shaped. */
+  toolbox?: OptionToolbox | undefined
+  /** `option.brush`, read. */
+  brush?: OptionBrush | undefined
   supported: boolean
 }
 
@@ -91,8 +112,9 @@ export interface CompileOptions {
 }
 
 const KNOWN_TOP = new Set([
+  'aria',
   'series', 'xAxis', 'yAxis', 'title', 'legend', 'tooltip', 'color', 'grid',
-  'animation', 'backgroundColor', 'textStyle', 'dataset', 'graphic', 'visualMap',
+  'animation', 'backgroundColor', 'textStyle', 'dataset', 'graphic', 'visualMap', 'dataZoom', 'toolbox', 'brush',
 ])
 const KNOWN_SERIES = new Set([
   'type', 'name', 'data', 'stack', 'smooth', 'step', 'areaStyle', 'itemStyle',
@@ -121,30 +143,67 @@ function stateFields(s: Record<string, unknown>, path: string, warn: (code: Opti
     else if (focus !== undefined && focus !== 'none') warn('series-option-unsupported', `${path}.emphasis.focus`, `emphasis.focus "${String(focus)}" is not supported (self, series and none are); nothing is blurred.`)
     const item = isObj(emphasis['itemStyle']) ? emphasis['itemStyle'] : {}
     if (typeof item['color'] === 'string') out.emphasisColor = item['color']
-    for (const key of ['label', 'scale', 'lineStyle', 'areaStyle', 'blurScope', 'disabled']) if (emphasis[key] !== undefined) warn('series-option-unsupported', `${path}.emphasis.${key}`, `emphasis.${key} has no engine form (the highlighted datum takes emphasis.itemStyle.color and an outline); it was ignored.`)
+    // `scale`: true is ECharts' own 1.1; a number is the factor.
+    const scale = emphasis['scale']
+    if (scale === true) out.emphasisScale = 1.1
+    else if (typeof scale === 'number') out.emphasisScale = Math.max(0.0, scale)
+    else if (scale !== undefined && scale !== false) warn('series-option-unsupported', `${path}.emphasis.scale`, 'emphasis.scale takes true or a number; it was ignored.')
+    if (emphasis['disabled'] === true) out.emphasisDisabled = true
+    const eLine = isObj(emphasis['lineStyle']) ? emphasis['lineStyle'] : {}
+    const eWidth = num(eLine['width'])
+    if (eWidth !== null) out.emphasisWidth = Math.max(0.0, eWidth)
+    const eArea = isObj(emphasis['areaStyle']) ? emphasis['areaStyle'] : {}
+    const eOpacity = num(eArea['opacity'])
+    if (eOpacity !== null) out.emphasisAreaOpacity = Math.max(0.0, Math.min(1.0, eOpacity))
+    if (stateLabelShow(emphasis['label'], `${path}.emphasis.label`, warn)) out.emphasisLabel = true
+    // `blurScope`: this engine draws ONE grid, so every scope blurs the same datums.
+    const scope = emphasis['blurScope']
+    if (scope !== undefined && scope !== 'coordinateSystem' && scope !== 'series' && scope !== 'global') {
+      warn('series-option-unsupported', `${path}.emphasis.blurScope`, `emphasis.blurScope "${String(scope)}" is not one ECharts defines; it was ignored.`)
+    }
   }
   const select = state('select')
   if (select !== undefined) {
     const item = isObj(select['itemStyle']) ? select['itemStyle'] : {}
     if (typeof item['color'] === 'string') out.selectColor = item['color']
-    for (const key of ['label', 'lineStyle', 'areaStyle', 'disabled']) if (select[key] !== undefined) warn('series-option-unsupported', `${path}.select.${key}`, `select.${key} has no engine form (a pinned datum takes select.itemStyle.color and a heavy outline); it was ignored.`)
+    if (stateLabelShow(select['label'], `${path}.select.label`, warn)) out.selectLabel = true
+    if (select['disabled'] === true) warn('series-option-unsupported', `${path}.select.disabled`, 'select.disabled is not supported; leave selectedMode off to stop a datum pinning.')
+    for (const key of ['lineStyle', 'areaStyle']) if (select[key] !== undefined) warn('series-option-unsupported', `${path}.select.${key}`, `select.${key} has no engine form (a pinned DATUM takes select.itemStyle.color and a heavy outline, and a stroke belongs to the whole line); it was ignored.`)
   }
   const blur = state('blur')
   if (blur !== undefined) {
     const item = isObj(blur['itemStyle']) ? blur['itemStyle'] : {}
     const opacity = num(item['opacity'])
     if (opacity !== null) out.blurOpacity = Math.max(0.0, Math.min(1.0, opacity))
-    for (const key of ['label', 'lineStyle', 'areaStyle']) if (blur[key] !== undefined) warn('series-option-unsupported', `${path}.blur.${key}`, `blur.${key} has no engine form (a blurred datum fades to blur.itemStyle.opacity); it was ignored.`)
+    const bLine = isObj(blur['lineStyle']) ? blur['lineStyle'] : {}
+    const bWidth = num(bLine['width'])
+    if (bWidth !== null) out.blurWidth = Math.max(0.0, bWidth)
+    const bArea = isObj(blur['areaStyle']) ? blur['areaStyle'] : {}
+    const bOpacity = num(bArea['opacity'])
+    if (bOpacity !== null) out.blurAreaOpacity = Math.max(0.0, Math.min(1.0, bOpacity))
+    if (blur['label'] !== undefined) warn('series-option-unsupported', `${path}.blur.label`, 'blur.label has no engine form (a blurred datum keeps its own label); it was ignored.')
   }
   return out
 }
 
-/** ECharts' `selectedMode` as the host's pin mode; `series` (whole-series selection) is named. */
-function selectedModeOf(s: Record<string, unknown>, path: string, warn: (code: OptionWarning['code'], path: string, message: string) => void): 'single' | 'multiple' | undefined {
+/** Whether a state's `label` asks to be shown; its own styling is named. */
+function stateLabelShow(raw: unknown, path: string, warn: (code: OptionWarning['code'], path: string, message: string) => void): boolean {
+  if (raw === undefined) return false
+  if (!isObj(raw)) return raw === true
+  for (const key of Object.keys(raw)) {
+    if (key === 'show') continue
+    warn('series-option-unsupported', `${path}.${key}`, `a state label takes the series' own label style; ${key} was ignored.`)
+  }
+  return raw['show'] !== false
+}
+
+/** ECharts' `selectedMode` as the host's pin mode. */
+function selectedModeOf(s: Record<string, unknown>, path: string, warn: (code: OptionWarning['code'], path: string, message: string) => void): 'single' | 'multiple' | 'series' | undefined {
   const mode = s['selectedMode']
   if (mode === undefined || mode === false) return undefined
   if (mode === true || mode === 'single') return 'single'
   if (mode === 'multiple') return 'multiple'
+  if (mode === 'series') return 'series'
   warn('series-option-unsupported', `${path}.selectedMode`, `selectedMode "${String(mode)}" is not supported (true, single and multiple are); clicks do not pin.`)
   return undefined
 }
@@ -162,19 +221,107 @@ const num = (v: unknown): number | null => {
 }
 const first = <T,>(v: T | T[] | undefined): T | undefined => (Array.isArray(v) ? v[0] : v)
 
-function fillPattern(style: Record<string, unknown>): ChartPattern | undefined {
-  const raw = isObj(style['decal']) ? style['decal'] : undefined
-  if (raw === undefined || raw['show'] === false) return undefined
-  const symbol = typeof raw['symbol'] === 'string' ? raw['symbol'] : ''
+/** ECharts `dashArray`: a number n is dash n + gap n; [dash, gap] as given; a nested array uses its first row. */
+function dashPeriod(v: unknown, fallback: Double): { dash: Double; period: Double } {
+  const row = Array.isArray(v) && Array.isArray(v[0]) ? (v[0] as unknown[]) : v
+  if (Array.isArray(row)) {
+    const nums = row.map((x) => num(x) ?? 0)
+    const dash = nums[0] ?? fallback
+    const gap = nums.length > 1 ? nums.slice(1).reduce((a, b) => a + b, 0) : dash
+    return { dash, period: Math.max(2.0, dash + gap) }
+  }
+  const n = num(v) ?? fallback
+  return { dash: n, period: Math.max(2.0, n * 2.0) }
+}
+
+const DECAL_SYMBOLS = new Set(['rect', 'roundRect', 'circle', 'triangle', 'diamond', 'pin', 'arrow'])
+
+/** Unit rings as the pattern's flat `shape` + per-ring counts. */
+function flatShape(rings: Pt[][]): { shape: Pt[]; shapeRings: Double[] } {
+  const shape: Pt[] = []
+  const shapeRings: Double[] = []
+  for (const r of rings) {
+    for (const q of r) shape.push(q)
+    shapeRings.push(r.length)
+  }
+  return { shape, shapeRings }
+}
+
+/**
+ * An image as the engine's URL: a string as given, or — for the element forms
+ * ECharts accepts on the web — the image's `src` or the canvas's data URL.
+ */
+function imageSource(v: unknown): string | undefined {
+  if (typeof v === 'string') return v
+  if (isObj(v) && typeof v['src'] === 'string' && (v['src'] as string) !== '') return v['src'] as string
+  if (isObj(v) && typeof v['toDataURL'] === 'function') return (v['toDataURL'] as () => string)()
+  return undefined
+}
+
+/** ECharts' image fill (`color: { image, repeat }`) as an image pattern, or undefined. */
+export function imageFill(raw: unknown, path: string, warn?: (code: OptionWarning['code'], path: string, message: string) => void): ChartPattern | undefined {
+  if (!isObj(raw) || raw['image'] === undefined) return undefined
+  const image = imageSource(raw['image'])
+  if (image === undefined) {
+    warn?.('series-option-unsupported', path + '.image', 'An image fill needs a URL, a data URI, an <img> or a <canvas>; the palette colour was used.')
+    return undefined
+  }
+  const repeatRaw = typeof raw['repeat'] === 'string' ? (raw['repeat'] as string) : 'repeat'
+  const repeat = ['repeat', 'repeat-x', 'repeat-y', 'no-repeat'].includes(repeatRaw) ? repeatRaw : 'repeat'
+  if (repeat !== repeatRaw) warn?.('series-option-unsupported', path + '.repeat', 'repeat must be repeat, repeat-x, repeat-y or no-repeat; it repeats.')
+  return { kind: 'image', color: '', spacing: 0.0, width: 0.0, image, repeat }
+}
+
+/**
+ * An ECharts decal as the engine's tiled-symbol texture: the dash arrays give
+ * the cell pitch, `symbolSize` scales the symbol within its dash, `rotation`
+ * (radians, counter-clockwise) turns the whole texture. Symbols the engine
+ * cannot draw (pin, arrow, a path or image) are named and drawn as rects.
+ */
+function decalPattern(raw: Record<string, unknown>, path: string, warn?: (code: OptionWarning['code'], path: string, message: string) => void): ChartPattern {
+  const symbolRaw = typeof raw['symbol'] === 'string' ? (raw['symbol'] as string) : 'rect'
+  const isPath = symbolRaw.startsWith('path://')
+  const isImage = symbolRaw.startsWith('image://')
+  if (!DECAL_SYMBOLS.has(symbolRaw) && !isPath && !isImage) warn?.('series-option-unsupported', path + '.symbol', 'Decal symbol "' + symbolRaw + '" has no engine shape; rects were tiled instead.')
+  const x = dashPeriod(raw['dashArrayX'], 5.0)
+  const y = dashPeriod(raw['dashArrayY'], 5.0)
+  const size = Math.max(0.5, Math.min(x.dash, y.dash) * (num(raw['symbolSize']) ?? 1.0))
   const rotation = num(raw['rotation']) ?? 0.0
-  const kind: ChartPattern['kind'] = symbol.includes('circle') ? 'dots' : Math.abs(rotation) < 0.01 ? 'cross' : 'diagonal'
+  if (isImage) {
+    if (rotation !== 0.0) warn?.('series-option-unsupported', path + '.rotation', 'An image decal is drawn upright; rotation was ignored.')
+    return { kind: 'image', color: '', spacing: x.period, width: size, spacingY: y.period, image: symbolRaw.slice('image://'.length), repeat: 'grid' }
+  }
   return {
-    kind,
-    color: typeof raw['color'] === 'string' ? raw['color'] : 'rgba(255,255,255,0.45)',
-    spacing: Math.max(2.0, num(first(raw['dashArrayX'] as number | number[] | undefined)) ?? 8.0),
-    width: Math.max(0.5, num(first(raw['dashArrayY'] as number | number[] | undefined)) ?? 1.0),
+    kind: 'symbols',
+    color: typeof raw['color'] === 'string' ? (raw['color'] as string) : 'rgba(0, 0, 0, 0.2)',
+    spacing: x.period,
+    width: size,
+    angle: -rotation * (180.0 / Math.PI),
+    symbol: isPath ? 'path' : symbolRaw === 'roundRect' ? 'rect' : DECAL_SYMBOLS.has(symbolRaw) ? symbolRaw : 'rect',
+    spacingY: y.period,
+    ...(isPath ? flatShape(unitPolygons(symbolRaw.slice('path://'.length))) : {}),
   }
 }
+
+export function fillPattern(style: Record<string, unknown>, path = 'itemStyle.decal', warn?: (code: OptionWarning['code'], path: string, message: string) => void): ChartPattern | undefined {
+  const raw = isObj(style['decal']) ? style['decal'] : undefined
+  if (raw === undefined || raw['show'] === false) return undefined
+  return decalPattern(raw, path, warn)
+}
+
+/**
+ * The textures `aria.decal.show` hands series that have no decal of their own —
+ * distinct at a glance (angle, symbol, pitch) so series stay tellable apart
+ * without colour. Pyreon's set, not a pixel copy of ECharts' default list.
+ */
+export const DEFAULT_DECALS: readonly ChartPattern[] = [
+  { kind: 'diagonal', color: 'rgba(0, 0, 0, 0.22)', spacing: 6.0, width: 1.5 },
+  { kind: 'symbols', color: 'rgba(0, 0, 0, 0.22)', spacing: 7.0, width: 2.5, symbol: 'circle', spacingY: 7.0 },
+  { kind: 'diagonal', color: 'rgba(0, 0, 0, 0.22)', spacing: 6.0, width: 1.5, angle: -45.0 },
+  { kind: 'symbols', color: 'rgba(0, 0, 0, 0.22)', spacing: 9.0, width: 5.0, symbol: 'triangle', spacingY: 8.0 },
+  { kind: 'cross', color: 'rgba(0, 0, 0, 0.18)', spacing: 7.0, width: 1.0 },
+  { kind: 'symbols', color: 'rgba(0, 0, 0, 0.22)', spacing: 8.0, width: 4.0, symbol: 'diamond', spacingY: 8.0 },
+]
 
 /** `symbol` + `symbolRepeat` for a pictorialBar series; a path/image symbol falls back to a rect with a warning. */
 /**
@@ -210,7 +357,8 @@ function readGradient(raw: unknown, path: string, warn: (code: OptionWarning['co
     // ECharts' other colour object: an IMAGE pattern. It has no engine form
     // (the engine's patterns are the geometric decals), so it is named rather
     // than silently painting the palette colour.
-    if (raw['image'] !== undefined) warn('series-option-unsupported', path, 'Image patterns are not supported (linear and radial gradients, and geometric decals, are); the palette colour was used.')
+    // ECharts' other colour object — an IMAGE pattern — is read by `imageFill`.
+    if (raw['image'] !== undefined && path.endsWith('lineStyle.color')) warn('series-option-unsupported', path, 'A line stroke cannot be an image pattern (fills can); the palette colour was used.')
     return undefined
   }
   const stops: ChartGradientStop[] = []
@@ -430,6 +578,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     : isObj(option['series'])
       ? [option['series']]
       : []
+  // `aria.decal.show`: every series without its own decal gets a distinct default texture.
+  const ariaDecals = isObj(option['aria']) && isObj(option['aria']['decal']) && option['aria']['decal']['show'] === true
   const series: Series[] = []
   const customPlans: CustomSeriesPlan[] = []
   const linesList: LinesSeries[] = []
@@ -439,7 +589,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   // Large-data requests per compiled cartesian series (see the sampling pass).
   const sampleRequests: SamplingRequest[] = []
   // The first series' `selectedMode` decides how the host pins a click.
-  let selectedMode: 'single' | 'multiple' | undefined = undefined
+  let selectedMode: 'single' | 'multiple' | 'series' | undefined = undefined
   // Running totals per `stack` name for stacked LINES.
   const lineStacks = new Map<string, Double[]>()
   const barCount = rawSeries.filter((s) => isObj(s) && s['type'] === 'bar' && s['stack'] === undefined).length
@@ -618,7 +768,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       axis: !extraAxis && (yAxisIndex === 1) !== swapY ? 'right' : undefined,
       ...(extraAxis ? { axisExtra: yAxisIndex - 2 } : {}),
       ...(onX2 ? { onX2: true, xs } : {}),
-      pattern: fillPattern(itemStyle),
+      pattern: imageFill(itemStyle['color'], `${path}.itemStyle.color`, warn) ?? imageFill(areaStyle['color'], `${path}.areaStyle.color`, warn) ?? imageFill(s['color'], `${path}.color`, warn) ?? fillPattern(itemStyle, `${path}.itemStyle.decal`, warn) ?? (ariaDecals ? DEFAULT_DECALS[series.length % DEFAULT_DECALS.length] : undefined),
       ...(type === 'effectScatter' ? { effect: true } : {}),
       ...(type === 'pictorialBar' ? pictorialFields(s, warn, path) : {}),
       ...(kind === 'line' || kind === 'points' ? seriesSymbol(s, kind, warn, path) : {}),
@@ -873,7 +1023,21 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   }
   if (customY !== undefined && spec.yDomain === undefined) spec.yDomain = customY
   if (customX !== undefined && (spec.xValues === undefined || spec.xValues.length === 0)) spec.xValues = customX
-  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }) }
+  const brush = option['brush'] === undefined ? undefined : readBrush(option as Record<string, unknown>, warn)
+  const toolbox = option['toolbox'] === undefined ? undefined : readToolbox(option as Record<string, unknown>, warn, brush)
+  let zoom = option['dataZoom'] === undefined ? undefined : readDataZoom(option as Record<string, unknown>, spec.categories, warn)
+  // The toolbox's box zoom needs a window even when the option has no dataZoom component.
+  if (zoom === undefined && toolbox?.dataZoom === true) zoom = { inside: false, slider: false, window: { start: 0.0, end: 1.0 }, keepY: false, lock: false, minSpan: 0.0, maxSpan: 1.0, wheel: false, move: false }
+  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }), ...(brush === undefined ? {} : { brush }) }
+}
+
+/** The selection a compiled option's brush makes over `spec`, restricted to `brush.seriesIndex`. */
+export function optionBrushSelection(compiled: CompiledOption, spec: ChartSpec, measure: MeasureText, areas: BrushArea[]): BrushSeriesSelection[] {
+  return brushOnlySeries(brushSelection(spec, layoutChart(spec, measure), areas), compiled.brush?.seriesIndex ?? [])
+}
+
+function applyOptionBrush(compiled: CompiledOption, spec: ChartSpec, measure: MeasureText, areas: BrushArea[]): ChartSpec {
+  return applyBrushSelection(spec, optionBrushSelection(compiled, spec, measure, areas), true, compiled.brush?.outOpacity ?? 0.1)
 }
 
 const defaultPalette = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
@@ -1019,7 +1183,24 @@ function optionToSvgSingle(option: EChartsOption, opts: OptionToSvgOptions): str
  * y offset, which a host needs to hit-test against the same geometry.
  * `optionToSvg` and `<OptionChart>` both paint exactly this.
  */
-export function compiledCommands(compiled: CompiledOption, option: EChartsOption, measure: MeasureText): { cmds: DrawCmd[]; top: Double } {
+/**
+ * The chart the option draws under a zoom window: the rows in view, the
+ * global index of the first (`offset`), and the navigator strip the slider
+ * takes from the bottom. Without a `dataZoom` it is the compiled spec itself.
+ */
+export function zoomedView(compiled: CompiledOption, top: Double, win?: ZoomWindow): { spec: ChartSpec; offset: number; navigator: NavigatorLayout | null } {
+  const zoom = compiled.zoom
+  const height = Math.max(0.0, compiled.spec.height - top)
+  if (zoom === undefined) return { spec: { ...compiled.spec, height }, offset: 0, navigator: null }
+  const w = win ?? zoom.window
+  const lead = compiled.spec.series[0]
+  const t = compiled.spec.theme
+  const navigator = zoom.slider ? renderNavigator(lead?.values ?? [], lead?.color ?? t.palette[0] ?? '#5470c6', w, { x: 0.0, y: top, w: compiled.spec.width, h: height }, t.grid) : null
+  const view = windowSpec({ ...compiled.spec, height: Math.max(0.0, height - (navigator?.height ?? 0.0)) }, w, zoom.keepY)
+  return { spec: view.spec, offset: view.offset, navigator }
+}
+
+export function compiledCommands(compiled: CompiledOption, option: EChartsOption, measure: MeasureText, win?: ZoomWindow, actives: ToolboxTool[] = [], areas: BrushArea[] = []): { cmds: DrawCmd[]; top: Double } {
   const width = compiled.spec.width
   const height = compiled.spec.height
   const t = compiled.spec.theme
@@ -1040,11 +1221,18 @@ export function compiledCommands(compiled: CompiledOption, option: EChartsOption
     for (const c of l.cmds) cmds.push(c)
     top = top + l.height
   }
-  const chart = renderChart({ ...compiled.spec, height: Math.max(0.0, height - top) }, measure)
+  const view = zoomedView(compiled, top, win)
+  // Brush areas are in PLOT-frame pixels (above the title / legend offset): they dim what they miss.
+  const brushed = areas.length === 0 ? view.spec : applyOptionBrush(compiled, view.spec, measure, areas)
+  const chart = renderChart(brushed, measure)
   for (const c of chart) cmds.push(top === 0.0 ? c : shift(c, top))
-  const customOut = customCommands(compiled.custom, { ...compiled.spec, height: Math.max(0.0, height - top) }, measure, width, height)
+  for (const c of renderBrushAreas(areas, 'rgba(120,120,140,0.18)', t.axis)) cmds.push(top === 0.0 ? c : shift(c, top))
+  if (view.navigator !== null) for (const c of view.navigator.cmds) cmds.push(c)
+  const customOut = customCommands(compiled.custom, view.spec, measure, width, height)
   for (const c of customOut.cmds) cmds.push(top === 0.0 ? c : shift(c, top))
   for (const c of visualMapCommands(option, width, height).cmds) cmds.push(c)
   for (const c of graphicCommands(option, width, height).cmds) cmds.push(c)
+  // ECharts' toolbox sits over the chart's top-right corner; it reserves no room.
+  if (compiled.toolbox !== undefined) for (const c of renderToolbox(toolboxTools(compiled.toolbox), { x: 0.0, y: 0.0, w: width, h: height }, { fontSize: t.fontSize, color: t.label, actives }).cmds) cmds.push(c)
   return { cmds, top }
 }

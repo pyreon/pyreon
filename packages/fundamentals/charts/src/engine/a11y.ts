@@ -131,7 +131,7 @@ export function describeChart(input: A11yInput): string {
     }
     const dir = last > first ? 'rising' : last < first ? 'falling' : 'flat'
     const at = (i: number): string =>
-      input.categories[i] !== undefined ? ` at ${input.categories[i]!}` : ''
+      i < input.categories.length ? ` at ${input.categories[i]!}` : ''
     // A two-channel series names the channel it is describing and adds the
     // other one's span, so the interval is stated rather than implied.
     // `?? []` rather than an `!== undefined` guard: PMTC does not carry that
