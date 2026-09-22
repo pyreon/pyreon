@@ -995,21 +995,6 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(waitForLabel(app.staticTexts["gal-growth-count"].firstMatch, "5", timeout: 5), "universalTransition row-count toggle did not settle on 5 (label: \(app.staticTexts["gal-growth-count"].firstMatch.label))")
         app.buttons["gal-growth-toggle"].firstMatch.tap()
         XCTAssertTrue(waitForLabel(app.staticTexts["gal-growth-count"].firstMatch, "3", timeout: 5), "universalTransition row-count toggle did not settle back on 3 (label: \(app.staticTexts["gal-growth-count"].firstMatch.label))")
-        // `@pyreon/flow/webview` on device: the graph + `fit-view` command are pushed
-        // INTO the WKWebView, the hosted renderer fits and posts `viewport-change`
-        // BACK over the reverse bridge into native Text — page→host proven without
-        // asserting inside the WebView. The button pushes a NEW command id, so the
-        // count moving 1→2 (not 3) proves the reactive push AND that `initial-fit`
-        // ran once only.
-        let flowWebView = app.descendants(matching: .any).matching(identifier: "gal-flow-webview").firstMatch
-        XCTAssertTrue(flowWebView.waitForExistence(timeout: 10), "gal-flow-webview missing on the gallery")
-        let flowWebEvent = app.staticTexts["gal-flow-webview-event"].firstMatch
-        XCTAssertTrue(waitForLabel(flowWebEvent, "viewport-change", timeout: 20), "the hosted flow's initial fit-view never reached the host (label: \(flowWebEvent.label))")
-        let flowWebEvents = app.staticTexts["gal-flow-webview-events"].firstMatch
-        XCTAssertTrue(waitForLabel(flowWebEvents, "1", timeout: 5), "expected exactly one hosted flow event after load (label: \(flowWebEvents.label))")
-        scrollFullyOnScreen(app.buttons["gal-flow-webview-fit"].firstMatch, in: app)
-        app.buttons["gal-flow-webview-fit"].firstMatch.tap()
-        XCTAssertTrue(waitForLabel(flowWebEvents, "2", timeout: 10), "pushing a second fit-view command did not round-trip (label: \(flowWebEvents.label))")
         // The geo route trail MOVES too: two screenshots half a second apart differ.
         let geoTrail = app.descendants(matching: .any).matching(identifier: "gal-geo-trail").firstMatch
         XCTAssertTrue(geoTrail.waitForExistence(timeout: 10), "gal-geo-trail canvas missing on the gallery")
@@ -1045,6 +1030,25 @@ final class PyreonTasksUITests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         let framesAfter = linesChart.screenshot().pngRepresentation
         XCTAssertNotEqual(framesBefore, framesAfter, "gal-lines trail did not move between frames")
+        // Runs AFTER the two moving-canvas checks on purpose: the hosted flow is a full-width
+        // pannable canvas, so once it is on screen a gutter swipe that starts on it PANS the
+        // graph instead of scrolling the page, and the geo-trail scroll-back loop above never
+        // brings its chart back into view (device-found: 80 futile tries, frame y -1829).
+        // `@pyreon/flow/webview` on device: the graph + `fit-view` command are pushed
+        // INTO the WKWebView, the hosted renderer fits and posts `viewport-change`
+        // BACK over the reverse bridge into native Text — page→host proven without
+        // asserting inside the WebView. The button pushes a NEW command id, so the
+        // count moving 1→2 (not 3) proves the reactive push AND that `initial-fit`
+        // ran once only.
+        let flowWebView = app.descendants(matching: .any).matching(identifier: "gal-flow-webview").firstMatch
+        XCTAssertTrue(flowWebView.waitForExistence(timeout: 10), "gal-flow-webview missing on the gallery")
+        let flowWebEvent = app.staticTexts["gal-flow-webview-event"].firstMatch
+        XCTAssertTrue(waitForLabel(flowWebEvent, "viewport-change", timeout: 20), "the hosted flow's initial fit-view never reached the host (label: \(flowWebEvent.label))")
+        let flowWebEvents = app.staticTexts["gal-flow-webview-events"].firstMatch
+        XCTAssertTrue(waitForLabel(flowWebEvents, "1", timeout: 5), "expected exactly one hosted flow event after load (label: \(flowWebEvents.label))")
+        scrollFullyOnScreen(app.buttons["gal-flow-webview-fit"].firstMatch, in: app)
+        app.buttons["gal-flow-webview-fit"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(flowWebEvents, "2", timeout: 10), "pushing a second fit-view command did not round-trip (label: \(flowWebEvents.label))")
         app.buttons["gal-back"].firstMatch.tap()
         XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after gallery Back")
 
