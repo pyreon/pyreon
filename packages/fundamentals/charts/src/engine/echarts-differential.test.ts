@@ -797,3 +797,70 @@ describe('ECharts differential: bar value labels', () => {
     })
   }
 })
+
+/**
+ * Axis label geometry: every tick label's anchor, alignment, vertical
+ * alignment and rotation, for the category x axis and the value y axis —
+ * `axisLabel.margin` (8 by default), `inside`, and `rotate` about the anchor.
+ */
+interface AxisLabelFact { text: string; x: number; y: number; align: string; baseline: string; rotate: number }
+const ANCHOR_OF: Record<string, string> = { start: 'start', middle: 'middle', end: 'end' }
+function echartsAxisLabels(option: object): AxisLabelFact[] {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: W, height: H })
+  chart.setOption({ animation: false, ...option })
+  const svg = chart.renderToSVGString()
+  chart.dispose()
+  return [...svg.matchAll(/<text dominant-baseline="central" text-anchor="(\w+)"([^>]*)>([^<]+)<\/text>/g)].map((m) => {
+    const attrs = m[2]!
+    const tr = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(attrs)
+    const mx = /matrix\(([-\d.]+),([-\d.]+),[-\d.]+,[-\d.]+,([-\d.]+),([-\d.]+)\)/.exec(attrs)
+    const dy = /\sy="(-?[\d.]+)"/.exec(attrs)
+    return {
+      text: m[3]!,
+      x: tr !== null ? Number(tr[1]) : Number(mx![3]),
+      y: tr !== null ? Number(tr[2]) : Number(mx![4]),
+      align: ANCHOR_OF[m[1]!] ?? m[1]!,
+      baseline: dy === null ? 'middle' : Number(dy[1]) < 0 ? 'bottom' : 'top',
+      rotate: mx === null ? 0 : Math.round((Math.atan2(Number(mx[2]), Number(mx[1])) * 180) / Math.PI),
+    }
+  }).sort((a, b) => a.text.localeCompare(b.text))
+}
+function ourAxisLabels(option: object, texts: string[]): AxisLabelFact[] {
+  const c = compileOption(option as EChartsOption, { width: W, height: H })
+  const m = (t: string, size: number): number => echarts.format.getTextRect(t, String(size) + 'px sans-serif').width
+  return renderChart(c.spec, m)
+    .flatMap((d) => (d.kind === 'text' && texts.includes(d.text) ? [{ text: d.text, x: d.at.x, y: d.at.y, align: d.align, baseline: d.baseline, rotate: Math.round(d.rotate ?? 0) }] : []))
+    .sort((a, b) => a.text.localeCompare(b.text))
+}
+const axisOpt = (xAxis: object, yAxis: object): object => ({
+  xAxis: { type: 'category', data: ['aa', 'bb', 'cc'], ...xAxis },
+  yAxis: { type: 'value', ...yAxis },
+  series: [{ type: 'bar', data: [30, 120, 80], label: { show: false } }],
+})
+const AXIS_LABEL_CASES: [string, object][] = [
+  ['the default: 8px off both axes', axisOpt({}, {})],
+  ['x margin', axisOpt({ axisLabel: { margin: 14 } }, {})],
+  ['x inside', axisOpt({ axisLabel: { inside: true } }, {})],
+  ['x rotate', axisOpt({ axisLabel: { rotate: 30 } }, {})],
+  ['y margin', axisOpt({}, { axisLabel: { margin: 20 } })],
+  ['y inside', axisOpt({}, { axisLabel: { inside: true } })],
+  ['y rotate', axisOpt({}, { axisLabel: { rotate: 45 } })],
+]
+
+describe('ECharts differential: axis label geometry', () => {
+  for (const [name, option] of AXIS_LABEL_CASES) {
+    it(name, () => {
+      const e = echartsAxisLabels(option)
+      const u = ourAxisLabels(option, e.map((f) => f.text))
+      expect(u.map((f) => f.text)).toEqual(e.map((f) => f.text))
+      for (let i = 0; i < e.length; i++) {
+        const tag = e[i]!.text
+        expect(Math.abs(u[i]!.x - e[i]!.x), tag + ' x').toBeLessThan(0.6)
+        expect(Math.abs(u[i]!.y - e[i]!.y), tag + ' y').toBeLessThan(0.6)
+        expect(u[i]!.align, tag + ' align').toBe(e[i]!.align)
+        expect(u[i]!.baseline, tag + ' baseline').toBe(e[i]!.baseline)
+        expect(u[i]!.rotate, tag + ' rotate').toBe(e[i]!.rotate)
+      }
+    })
+  }
+})

@@ -158,6 +158,16 @@ export interface LayoutConfig {
    */
   xLabelAngle?: Double | undefined
   xLabelInterval?: Double | undefined
+  /** Gap between an x tick label and its axis; absent is the 6px label gap. */
+  xLabelMargin?: Double | undefined
+  /** The x labels sit inside the plot, so they take no band below it. */
+  xLabelInside?: boolean | undefined
+  /** y labels turned about their anchor (degrees clockwise): the band holds the turned box. */
+  yLabelAngle?: Double | undefined
+  /** Gap between a y tick label and its axis; absent is 6. */
+  yLabelMargin?: Double | undefined
+  /** The y labels sit inside the plot, so they take no gutter beside it. */
+  yLabelInside?: boolean | undefined
   /** The x axis sits above the plot — ECharts' `xAxis.position: 'top'`. */
   xTop?: boolean | undefined
   /** A lone y axis sits right of the plot — ECharts' `yAxis.position: 'right'`. */
@@ -228,7 +238,11 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   }
 
   const yTitleH = cfg.yTitle !== undefined && cfg.yTitle !== '' && cfg.showYAxis ? titleH : 0.0
-  const yBand = (cfg.showYAxis ? widest + labelGap + tickLen + (cfg.yOffset ?? 0.0) : 0.0) + yTitleH
+  // A turned label's box is w·|cos| + fontSize·|sin| wide; inside labels take no gutter.
+  const yRad = ((cfg.yLabelAngle ?? 0.0) * Math.PI) / 180.0
+  const yLabelW = cfg.yLabelInside === true ? 0.0 : widest * Math.abs(Math.cos(yRad)) + (cfg.yLabelAngle !== undefined && cfg.yLabelAngle !== 0.0 ? cfg.fontSize * Math.abs(Math.sin(yRad)) : 0.0)
+  const yGap = cfg.yLabelInside === true ? 0.0 : (cfg.yLabelMargin ?? labelGap)
+  const yBand = (cfg.showYAxis ? yLabelW + yGap + tickLen + (cfg.yOffset ?? 0.0) : 0.0) + yTitleH
   const xTitleH = cfg.xTitle !== undefined && cfg.xTitle !== '' && cfg.showXAxis ? titleH : 0.0
 
   // Coalesced before the guard (the Swift-narrowing idiom used throughout):
@@ -327,7 +341,8 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     }
   }
 
-  const xBand = (cfg.showXAxis ? cfg.fontSize + labelGap + tickLen + slantH + (cfg.xOffset ?? 0.0) : 0.0) + xTitleH
+  const xGap = cfg.xLabelMargin ?? labelGap
+  const xBand = (cfg.showXAxis ? (cfg.xLabelInside === true ? 0.0 : cfg.fontSize + xGap + slantH) + tickLen + (cfg.xOffset ?? 0.0) : 0.0) + xTitleH
   // A top x axis takes the label band above the plot; the bottom keeps the
   // slim padding the top had.
   const xTop = cfg.xTop === true && cfg.horizontal !== true

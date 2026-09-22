@@ -505,6 +505,16 @@ export interface ChartSpec {
   /** With `xLabels: 'echarts'`: a fixed label rotation (degrees, clockwise) and ECharts' `axisLabel.interval`. */
   xLabelAngle?: Double | undefined
   xLabelInterval?: Double | undefined
+  /** Gap between an x tick label and its axis (ECharts' `axisLabel.margin`); absent is 6. */
+  xLabelMargin?: Double | undefined
+  /** x labels inside the plot (ECharts' `axisLabel.inside`). */
+  xLabelInside?: boolean | undefined
+  /** y tick labels turned about their anchor, degrees clockwise (ECharts' `axisLabel.rotate`, negated). */
+  yLabelAngle?: Double | undefined
+  /** Gap between a y tick label and its axis; absent is 6. */
+  yLabelMargin?: Double | undefined
+  /** y labels inside the plot. */
+  yLabelInside?: boolean | undefined
   /** Draws the left value axis upside down — ECharts' `yAxis.inverse`. */
   yInverse?: boolean | undefined
   /** Runs the x axis right to left — ECharts' `xAxis.inverse`. */
@@ -1196,6 +1206,11 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     yTime: spec.yTime === true,
     xLabelAngle: spec.xLabelAngle,
     xLabelInterval: spec.xLabelInterval,
+    xLabelMargin: spec.xLabelMargin,
+    xLabelInside: spec.xLabelInside,
+    yLabelAngle: spec.yLabelAngle,
+    yLabelMargin: spec.yLabelMargin,
+    yLabelInside: spec.yLabelInside,
     insetLeft: spec.gridLeft,
     reserveLeft: spec.reserveLeft,
     insetTop: spec.gridTop,
@@ -2189,6 +2204,12 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // The anchors hold in BOTH frames: y-side labels sit left of the plot,
   // x-side labels below it — only what the ticks CONTAIN differs (categories
   // vs values in the horizontal frame).
+  // `axisLabel.margin` off the axis (ECharts' 8 through the option, 6 here by
+  // default); `inside` flips the labels into the plot; `rotate` turns each
+  // about its anchor.
+  const yMargin = spec.yLabelMargin ?? 6.0
+  const yOutward = spec.yLabelInside === true ? yRight : !yRight
+  const yTurn = spec.yLabelAngle ?? 0.0
   for (let ti = 0; ti < l.yTicks.length; ti++) {
     const tick = l.yTicks[ti]!
     // The horizontal frame's category labels thin like x labels do.
@@ -2196,11 +2217,12 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     out.push({
       kind: 'text',
       text: tick.label,
-      at: { x: yRight ? yAxisX + 6.0 : yAxisX - 6.0, y: tick.pos },
+      at: { x: yOutward ? yAxisX - yMargin : yAxisX + yMargin, y: tick.pos },
       fill: t.label,
       size: t.fontSize,
-      align: yRight ? 'start' : 'end',
+      align: yOutward ? 'end' : 'start',
       baseline: 'middle',
+      rotate: yTurn !== 0.0 ? yTurn : undefined,
     })
   }
   for (const tick of l.y2Ticks) {
@@ -2252,6 +2274,10 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     }
     extraIndex = extraIndex + 1.0
   }
+  // `axisLabel.margin` off the axis; `inside` puts the labels on the plot's side of it.
+  const xMargin = spec.xLabelMargin ?? 6.0
+  const xBelow = spec.xLabelInside === true ? xTop : !xTop
+  const xLabelY = xBelow ? xAxisY + xMargin : xAxisY - xMargin
   for (let ti = 0; ti < l.xTicks.length; ti++) {
     const tick = l.xTicks[ti]!
     if (l.xLabelEvery > 1 && ti % l.xLabelEvery !== 0) continue
@@ -2262,7 +2288,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       out.push({
         kind: 'text',
         text: tick.label,
-        at: { x: tick.pos, y: xTop ? xAxisY - 6.0 : xAxisY + 6.0 },
+        at: { x: tick.pos, y: xLabelY },
         fill: t.label,
         size: t.fontSize,
         // Turned counter-clockwise the text hangs from its end, clockwise from its start (ECharts).
@@ -2274,11 +2300,11 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       out.push({
         kind: 'text',
         text: tick.label,
-        at: { x: tick.pos, y: xTop ? xAxisY - 6.0 : xAxisY + 6.0 },
+        at: { x: tick.pos, y: xLabelY },
         fill: t.label,
         size: t.fontSize,
         align: 'middle',
-        baseline: xTop ? 'bottom' : 'top',
+        baseline: xBelow ? 'top' : 'bottom',
       })
     }
   }

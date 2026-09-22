@@ -1134,6 +1134,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     // ECharts' own label layout: upright unless axisLabel.rotate (counter-clockwise degrees) turns it, thinned by its category interval.
     xLabels: 'echarts',
     ...xLabelLayout(xAxis),
+    ...yLabelLayout(yAxes[0]),
     xValues,
     xTime: xTime ? true : undefined,
     annotations: annotations.length > 0 ? annotations : undefined,
@@ -1294,14 +1295,31 @@ function axisDomain(axis: Record<string, unknown> | undefined): Domain | undefin
   return { min: lo, max: hi }
 }
 
-/** `xAxis.axisLabel.rotate` / `interval` for the layout (the draw list turns clockwise, ECharts counter-clockwise). */
-function xLabelLayout(axis: Record<string, unknown> | undefined): { xLabelAngle?: Double; xLabelInterval?: Double } {
+/**
+ * `xAxis.axisLabel` for the layout: `rotate` (the draw list turns clockwise,
+ * ECharts counter-clockwise), `interval`, `margin` (ECharts' 8 by default)
+ * and `inside`.
+ */
+function xLabelLayout(axis: Record<string, unknown> | undefined): { xLabelAngle?: Double; xLabelInterval?: Double; xLabelMargin: Double; xLabelInside?: boolean } {
   const label = isObj(axis) && isObj(axis['axisLabel']) ? axis['axisLabel'] : {}
   const rotate = num(label['rotate'])
   const interval = num(label['interval'])
   return {
     ...(rotate !== null && rotate !== 0 ? { xLabelAngle: -rotate } : {}),
     ...(interval !== null && interval >= 0 ? { xLabelInterval: interval } : {}),
+    xLabelMargin: num(label['margin']) ?? 8.0,
+    ...(label['inside'] === true ? { xLabelInside: true } : {}),
+  }
+}
+
+/** `yAxis.axisLabel` for the layout: `rotate`, `margin` (8 by default) and `inside`. A value axis shows every label, so `interval` has no effect there, as in ECharts. */
+function yLabelLayout(axis: Record<string, unknown> | undefined): { yLabelAngle?: Double; yLabelMargin: Double; yLabelInside?: boolean } {
+  const label = isObj(axis) && isObj(axis['axisLabel']) ? axis['axisLabel'] : {}
+  const rotate = num(label['rotate'])
+  return {
+    ...(rotate !== null && rotate !== 0 ? { yLabelAngle: -rotate } : {}),
+    yLabelMargin: num(label['margin']) ?? 8.0,
+    ...(label['inside'] === true ? { yLabelInside: true } : {}),
   }
 }
 
