@@ -70,7 +70,7 @@ data class LabelSegment(var text: String, var color: String, var fontSize: Doubl
 
 data class LinesSeries(var coords: List<List<Double>>, var colors: List<String>, var widths: List<Double>, var effect: Boolean, var period: Double, var trailLength: Double, var effectColor: String, var symbolSize: Double)
 
-data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var axisExtra: Double? = null, var onX2: Boolean? = null, var xs: List<Double>? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var symbolMargin: Double? = null, var symbolOffset: List<Double>? = null, var symbolPosition: String? = null, var symbolRotate: Double? = null, var symbolClip: Boolean? = null, var symbolBoundingData: Double? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var labelTexts: List<String>? = null, var labelColor: String? = null, var labelSize: Double? = null, var labelRich: List<RichStyle>? = null, var focus: String? = null, var emphasisColor: String? = null, var selectColor: String? = null, var blurOpacity: Double? = null, var emphasisScale: Double? = null, var emphasisDisabled: Boolean? = null, var emphasisWidth: Double? = null, var blurWidth: Double? = null, var emphasisAreaOpacity: Double? = null, var blurAreaOpacity: Double? = null, var emphasisLabel: Boolean? = null, var selectLabel: Boolean? = null, var seriesSelected: Boolean? = null, var inBrush: List<Int>? = null, var brushOpacity: Double? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null, var extras: List<SeriesExtra>? = null)
+data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var axisExtra: Double? = null, var onX2: Boolean? = null, var xs: List<Double>? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var symbolMargin: Double? = null, var symbolOffset: List<Double>? = null, var symbolPosition: String? = null, var symbolRotate: Double? = null, var symbolClip: Boolean? = null, var symbolBoundingData: Double? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var labelTexts: List<String>? = null, var labelColor: String? = null, var labelSize: Double? = null, var labelRich: List<RichStyle>? = null, var focus: String? = null, var emphasisColor: String? = null, var selectColor: String? = null, var blurOpacity: Double? = null, var emphasisScale: Double? = null, var emphasisDisabled: Boolean? = null, var emphasisWidth: Double? = null, var blurWidth: Double? = null, var emphasisAreaOpacity: Double? = null, var blurAreaOpacity: Double? = null, var emphasisLabel: Boolean? = null, var selectLabel: Boolean? = null, var seriesSelected: Boolean? = null, var inBrush: List<Int>? = null, var brushOpacity: Double? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null, var extras: List<SeriesExtra>? = null, var itemColors: List<String>? = null)
 
 data class SeriesExtra(var label: String, var numbers: List<Double>? = null, var texts: List<String>? = null)
 
@@ -2500,7 +2500,9 @@ fun blurActive(spec: ChartSpec): Boolean {
     return false
   }
 
-fun stateFill(spec: ChartSpec, s: Series, index: Int, fill: String): String {
+fun stateFill(spec: ChartSpec, s: Series, index: Int, seriesFill: String): String {
+    val own = (s.itemColors ?: listOf())
+    val fill = if (index >= 0 && index < own.length && own[index] != "") own[index] else seriesFill
     val level = seriesEmphasisLevel(spec, s, index)
     val selectColor = (s.selectColor ?: "")
     val emphasisColor = (s.emphasisColor ?: "")
@@ -2668,7 +2670,7 @@ fun invertCategories(spec: ChartSpec): ChartSpec {
       for (e in (s.extras ?: listOf())) {
         extras.add(SeriesExtra(label = e.label, numbers = reversedDoubles(e.numbers, n), texts = reversedStrings(e.texts, n)))
       }
-      series.add(s.copy(values = (reversedDoubles(s.values, n) ?: listOf()), rValues = reversedDoubles(s.rValues, n), radii = reversedDoubles(s.radii, n), labelTexts = reversedStrings(s.labelTexts, n), errLow = reversedDoubles(s.errLow, n), errHigh = reversedDoubles(s.errHigh, n), values2 = reversedDoubles(s.values2, n), extras = if (s.extras == null) null else extras))
+      series.add(s.copy(values = (reversedDoubles(s.values, n) ?: listOf()), rValues = reversedDoubles(s.rValues, n), radii = reversedDoubles(s.radii, n), labelTexts = reversedStrings(s.labelTexts, n), itemColors = reversedStrings(s.itemColors, n), errLow = reversedDoubles(s.errLow, n), errHigh = reversedDoubles(s.errHigh, n), values2 = reversedDoubles(s.values2, n), extras = if (s.extras == null) null else extras))
     }
     val notes: MutableList<Annotation> = mutableListOf()
     for (a in (spec.annotations ?: listOf())) {

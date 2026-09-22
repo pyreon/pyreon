@@ -640,8 +640,10 @@ export function OptionChart(props: OptionChartProps): VNode {
       name: spec.categories[di] ?? String(di),
       value: spec.series[i]!.values[di] ?? NaN,
     })
+    // A `silent` series ignores the pointer (ECharts), so it is never hit.
+    const silent = compiled.silent
     for (let i = 0; i < spec.series.length; i++) {
-      if (spec.series[i]!.kind !== 'bars') continue
+      if (spec.series[i]!.kind !== 'bars' || silent.includes(i)) continue
       const di = categoryIndex(spec, hitBar(barsFor(spec, i, measure), px, ly))
       if (di >= 0) return mk(i, di)
     }
@@ -651,7 +653,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     const view = invertCategories(spec)
     for (let i = 0; i < spec.series.length; i++) {
       const s = view.series[i]!
-      if (s.kind === 'bars' || s.kind === 'stacked' || s.kind === 'grouped') continue
+      if (s.kind === 'bars' || s.kind === 'stacked' || s.kind === 'grouped' || silent.includes(i)) continue
       const pts = layoutSeriesPoints(s.values, plot, seriesDomain(s, spec, resolveYDomain(spec), resolveY2Domain(spec)))
       const vi = hitNearestX(pts, px)
       if (vi < 0) continue
@@ -718,6 +720,15 @@ export function OptionChart(props: OptionChartProps): VNode {
   // ECharts' animation keys, off the option as it stands at the current timeline step.
   const optionAnimation = computed(() => resolveAnimation(resolveTimeline(readOption(), stepIndex()).option as Record<string, unknown>))
   const hostProps = hostPropsFor(props, optionAnimation)
+  // A series' `universalTransition` turns the morph on for the chart (the host
+  // has one timeline); the prop, when given, wins.
+  Object.defineProperty(hostProps, 'universalTransition', {
+    get: () =>
+      props.universalTransition ??
+      asArray(readOption()['series']).some((s) => isRecord(s) && (s['universalTransition'] === true || (isRecord(s['universalTransition']) && s['universalTransition']['enabled'] === true))),
+    enumerable: true,
+    configurable: true,
+  })
   // The host attaches its pointer listeners only for a tooltip; an option
   // whose series carry states (`emphasis` / `select` / `blur`) needs the
   // hover too, so the host's tooltip switch is on for either — and the
@@ -804,6 +815,14 @@ export function OptionChart(props: OptionChartProps): VNode {
     return p === undefined ? null : { x: p.x + f.dx - 4.0, y: p.y + f.dy + f.top - 4.0, w: 8.0, h: 8.0 }
   }
 
+  /** The OPTION's series index for a compiled series index (unsupported series are skipped when compiling). */
+  const sourceOf = (g: OptionGeometry, specIndex: number): number => (g.plan.kind === 'cartesian' ? (g.plan.compiled.seriesSource[specIndex] ?? specIndex) : specIndex)
+  /** The option's own series object behind a compiled series. */
+  const rawSeriesOf = (g: OptionGeometry, specIndex: number): Record<string, unknown> | undefined => {
+    const raw = asArray((g.option as Record<string, unknown>)['series'])[sourceOf(g, specIndex)]
+    return isRecord(raw) ? raw : undefined
+  }
+
   /** One series' entry at a datum: the template's fields and the formatter's `params`. */
   const tooltipEntry = (g: OptionGeometry, spec: TooltipSpec, seriesIndex: number, dataIndex: number): { entry: TooltipEntry; params: Record<string, unknown>; value: Double } | null => {
     const f = firstSpec(g)
@@ -816,13 +835,13 @@ export function OptionChart(props: OptionChartProps): VNode {
     const color = s.color ?? paletteAt([], seriesIndex)
     const name = f.spec.categories[i] ?? String(i)
     const shown = spec.valueFormatter === undefined ? plain(value) : String(spec.valueFormatter(value, dataIndex))
-    const rawSeries = asArray((g.option as Record<string, unknown>)['series'])[seriesIndex]
-    const rawData = isRecord(rawSeries) ? asArray(rawSeries['data'])[dataIndex] : undefined
+    const rawSeries = rawSeriesOf(g, seriesIndex)
+    const rawData = rawSeries !== undefined ? asArray(rawSeries['data'])[dataIndex] : undefined
     const params = {
       componentType: 'series',
-      componentSubType: isRecord(rawSeries) ? rawSeries['type'] : undefined,
-      seriesType: isRecord(rawSeries) ? rawSeries['type'] : undefined,
-      seriesIndex,
+      componentSubType: rawSeries?.['type'],
+      seriesType: rawSeries?.['type'],
+      seriesIndex: sourceOf(g, seriesIndex),
       seriesName: s.label,
       name,
       dataIndex,
@@ -877,7 +896,10 @@ export function OptionChart(props: OptionChartProps): VNode {
    */
   const optionTooltip = (g: OptionGeometry, px: Double, py: Double, press: boolean): string[] | TooltipView | null => {
     const under = hitAt(g, px, py)
-    const spec = readTooltipOption((g.option as Record<string, unknown>)['tooltip'], () => undefined)
+    const globalTip = (g.option as Record<string, unknown>)['tooltip']
+    // A series' own `tooltip` refines the global one for its items (ECharts).
+    const ownTip = under === null ? undefined : rawSeriesOf(g, under.seriesIndex)?.['tooltip']
+    const spec = readTooltipOption(isRecord(ownTip) && (globalTip === undefined || isRecord(globalTip)) ? { ...(globalTip as Record<string, unknown> | undefined), ...ownTip } : globalTip, () => undefined)
     const axis = spec !== null && spec.trigger === 'axis'
     const index = axis ? axisIndexAt(g, px, py) : under === null ? -1 : under.dataIndex
     batch(() => {
@@ -1062,6 +1084,13 @@ export function OptionChart(props: OptionChartProps): VNode {
     },
     // The entrance plays through the engine's own `progress` (bars grow, lines draw on), timed by the option's `animation*` keys.
     animates: true,
+    // ECharts' per-series `cursor` over an item; 'pointer' is its default.
+    cursor: (g, px, py) => {
+      const under = hitAt(g, px, py)
+      if (under === null) return ''
+      const own = rawSeriesOf(g, under.seriesIndex)?.['cursor']
+      return typeof own === 'string' ? own : 'pointer'
+    },
     effectClock: (g) => linesEffectOn(g),
     // ECharts' inside dataZoom: the wheel zooms the window about the pointer, a drag pans it.
     roam: {

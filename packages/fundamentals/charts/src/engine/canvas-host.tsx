@@ -251,6 +251,8 @@ export interface CanvasHostSpec<L> {
    * pointer DOWN (a click or a tap), false for a hover move.
    */
   tooltip?: ((layout: L, px: Double, py: Double, theme: ChartTheme, press: boolean) => string[] | TooltipView | null) | undefined
+  /** The CSS cursor for a pointer position (ECharts' per-series `cursor`); '' is the default. */
+  cursor?: ((layout: L, px: Double, py: Double) => string) | undefined
   /** The pointer left the canvas (or the gesture was cancelled): whatever `tooltip` set as the hover is over. */
   leave?: (() => void) | undefined
   /** The accessible description + table input. */
@@ -618,6 +620,7 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     const f = layoutNow(el)
     if (f === null) return
     const p = localPoint(el, ev)
+    if (spec.cursor !== undefined) el.style.cursor = transposed() ? spec.cursor(f.layout, p.y, p.x) : spec.cursor(f.layout, p.x, p.y)
     const press = ev.type === 'pointerdown'
     const out = transposed() ? spec.tooltip(f.layout, p.y, p.x, theme(), press) : spec.tooltip(f.layout, p.x, p.y, theme(), press)
     const view: TooltipView | null = out === null ? null : Array.isArray(out) ? { lines: out } : out
@@ -662,6 +665,7 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
   }
   onUnmount(cancelHide)
   const handleLeave = (): void => {
+    if (canvas !== null && spec.cursor !== undefined) canvas.style.cursor = ''
     spec.leave?.()
     const view = currentView
     if (view?.keepOnLeave === true) return

@@ -91,6 +91,10 @@ export interface CompiledOption {
   tooltip: boolean
   /** ECharts' whole `tooltip` component, read (null when the option declares none). */
   tooltipSpec: TooltipSpec | null
+  /** Spec series indices that ignore the pointer (ECharts' `silent: true`). */
+  silent: number[]
+  /** The option's series index for each spec series (unsupported series are skipped, so the two can differ). */
+  seriesSource: number[]
   /** The animation the option asks for (ECharts' `animation*` keys). */
   animation: ChartAnimation
   warnings: OptionWarning[]
@@ -129,6 +133,10 @@ export const KNOWN_TOP: ReadonlySet<string> = new Set([
 ])
 export const KNOWN_SERIES: ReadonlySet<string> = new Set([
   ...ANIMATION_KEYS,
+  // Consumed outside this compiler: `id` by the setOption merge, the dataset
+  // pair by the dataset pre-pass, `cursor` / `tooltip` / `universalTransition`
+  // by the host (see OptionChart).
+  'id', 'seriesLayoutBy', 'datasetId', 'colorBy', 'cursor', 'tooltip', 'universalTransition',
   'type', 'name', 'data', 'stack', 'smooth', 'step', 'areaStyle', 'itemStyle',
   'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'xAxisIndex', 'markLine', 'markPoint', 'markArea',
   'color', 'showSymbol', 'symbol', 'emphasis', 'silent',
@@ -612,6 +620,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   // `aria.decal.show`: every series without its own decal gets a distinct default texture.
   const ariaDecals = isObj(option['aria']) && isObj(option['aria']['decal']) && option['aria']['decal']['show'] === true
   const series: Series[] = []
+  const silent: number[] = []
+  const seriesSource: number[] = []
   const customPlans: CustomSeriesPlan[] = []
   const linesList: LinesSeries[] = []
   const annotations: Annotation[] = []
@@ -747,6 +757,16 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
         values.push(v ?? 0.0)
       }
     }
+    // A datum's own `itemStyle.color`, else — under `colorBy: 'data'` — the
+    // palette colour for its index, ECharts' per-datum colouring. Index-
+    // aligned with `values`: every branch above pushes one value per datum.
+    const byData = s['colorBy'] === 'data'
+    const itemColors: string[] = data.map((d, j) => {
+      const own = isObj(d) && isObj(d['itemStyle']) ? (d['itemStyle'] as Record<string, unknown>)['color'] : undefined
+      if (typeof own === 'string') return own
+      const pal = palette.length > 0 ? palette : defaultPalette
+      return byData ? pal[j % pal.length]! : ''
+    })
     const onX2 = x2Continuous && num(s['xAxisIndex']) === 1 && xs.length === values.length && xs.length > 0
     if (!onX2 && xContinuous && xs.length === values.length && xs.length > 0 && xValues === undefined) xValues = xs
     // ledger: data.progressive-large
@@ -811,9 +831,12 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       ...(kind === 'line' || kind === 'points' ? seriesSymbol(s, kind, warn, path) : {}),
       ...(gradient !== undefined && gradient.stops.length > 0 ? { gradient } : {}),
       ...(Array.isArray(s['tooltipExtras']) ? { extras: s['tooltipExtras'] as SeriesExtra[] } : {}),
+      ...(itemColors.some((c) => c !== '') ? { itemColors } : {}),
       ...stateFields(s, path, warn),
       ...labelFields(label, typeof s['name'] === 'string' ? (s['name'] as string) : `Series ${i + 1}`, categories, values, `${path}.label`, warn, localeNumber ?? plain),
     }
+    if (s['silent'] === true) silent.push(series.length)
+    seriesSource.push(i)
     series.push(entry)
     const pinMode = selectedModeOf(s, path, warn)
     if (pinMode !== undefined && selectedMode === undefined) selectedMode = pinMode
@@ -1074,7 +1097,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   // The toolbox's box zoom needs a window even when the option has no dataZoom component.
   if (zoom === undefined && toolbox?.dataZoom === true) zoom = { inside: false, slider: false, window: { start: 0.0, end: 1.0 }, keepY: false, lock: false, minSpan: 0.0, maxSpan: 1.0, wheel: false, move: false }
   const animation = resolveAnimation(option as Record<string, unknown>, warn)
-  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, tooltipSpec, animation, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }), ...(brush === undefined ? {} : { brush }) }
+  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, tooltipSpec, silent, seriesSource, animation, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }), ...(brush === undefined ? {} : { brush }) }
 }
 
 /** The selection a compiled option's brush makes over `spec`, restricted to `brush.seriesIndex`. */

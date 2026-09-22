@@ -496,7 +496,8 @@ public struct Series {
   public var errHigh: [Double]? = nil
   public var values2: [Double]? = nil
   public var extras: [SeriesExtra]? = nil
-  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, axisExtra: Double? = nil, onX2: Bool? = nil, xs: [Double]? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, symbolMargin: Double? = nil, symbolOffset: [Double]? = nil, symbolPosition: String? = nil, symbolRotate: Double? = nil, symbolClip: Bool? = nil, symbolBoundingData: Double? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, labelTexts: [String]? = nil, labelColor: String? = nil, labelSize: Double? = nil, labelRich: [RichStyle]? = nil, focus: String? = nil, emphasisColor: String? = nil, selectColor: String? = nil, blurOpacity: Double? = nil, emphasisScale: Double? = nil, emphasisDisabled: Bool? = nil, emphasisWidth: Double? = nil, blurWidth: Double? = nil, emphasisAreaOpacity: Double? = nil, blurAreaOpacity: Double? = nil, emphasisLabel: Bool? = nil, selectLabel: Bool? = nil, seriesSelected: Bool? = nil, inBrush: [Int]? = nil, brushOpacity: Double? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil, extras: [SeriesExtra]? = nil) {
+  public var itemColors: [String]? = nil
+  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, axisExtra: Double? = nil, onX2: Bool? = nil, xs: [Double]? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, symbolMargin: Double? = nil, symbolOffset: [Double]? = nil, symbolPosition: String? = nil, symbolRotate: Double? = nil, symbolClip: Bool? = nil, symbolBoundingData: Double? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, labelTexts: [String]? = nil, labelColor: String? = nil, labelSize: Double? = nil, labelRich: [RichStyle]? = nil, focus: String? = nil, emphasisColor: String? = nil, selectColor: String? = nil, blurOpacity: Double? = nil, emphasisScale: Double? = nil, emphasisDisabled: Bool? = nil, emphasisWidth: Double? = nil, blurWidth: Double? = nil, emphasisAreaOpacity: Double? = nil, blurAreaOpacity: Double? = nil, emphasisLabel: Bool? = nil, selectLabel: Bool? = nil, seriesSelected: Bool? = nil, inBrush: [Int]? = nil, brushOpacity: Double? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil, extras: [SeriesExtra]? = nil, itemColors: [String]? = nil) {
     self.kind = kind
     self.values = values
     self.color = color
@@ -548,6 +549,7 @@ public struct Series {
     self.errHigh = errHigh
     self.values2 = values2
     self.extras = extras
+    self.itemColors = itemColors
   }
 }
 
@@ -5035,7 +5037,9 @@ public func blurActive(_ spec: ChartSpec) -> Bool {
     return false
   }
 
-public func stateFill(_ spec: ChartSpec, _ s: Series, _ index: Int, _ fill: String) -> String {
+public func stateFill(_ spec: ChartSpec, _ s: Series, _ index: Int, _ seriesFill: String) -> String {
+    let own = (s.itemColors ?? [])
+    let fill = index >= 0 && index < own.count && own[index] != "" ? own[index] : seriesFill
     let level = seriesEmphasisLevel(spec, s, index)
     let selectColor = (s.selectColor ?? "")
     let emphasisColor = (s.emphasisColor ?? "")
@@ -5203,7 +5207,7 @@ public func invertCategories(_ spec: ChartSpec) -> ChartSpec {
       for e in (s.extras ?? []) {
         extras.append(SeriesExtra(label: e.label, numbers: reversedDoubles(e.numbers, n), texts: reversedStrings(e.texts, n)))
       }
-      series.append({ var c = s; c.values = (reversedDoubles(s.values, n) ?? []); c.rValues = reversedDoubles(s.rValues, n); c.radii = reversedDoubles(s.radii, n); c.labelTexts = reversedStrings(s.labelTexts, n); c.errLow = reversedDoubles(s.errLow, n); c.errHigh = reversedDoubles(s.errHigh, n); c.values2 = reversedDoubles(s.values2, n); c.extras = s.extras == nil ? nil : extras; return c }())
+      series.append({ var c = s; c.values = (reversedDoubles(s.values, n) ?? []); c.rValues = reversedDoubles(s.rValues, n); c.radii = reversedDoubles(s.radii, n); c.labelTexts = reversedStrings(s.labelTexts, n); c.itemColors = reversedStrings(s.itemColors, n); c.errLow = reversedDoubles(s.errLow, n); c.errHigh = reversedDoubles(s.errHigh, n); c.values2 = reversedDoubles(s.values2, n); c.extras = s.extras == nil ? nil : extras; return c }())
     }
     var notes: [Annotation] = []
     for a in (spec.annotations ?? []) {

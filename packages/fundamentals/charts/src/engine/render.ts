@@ -168,6 +168,14 @@ export interface Series {
    * nothing; read by `tooltipAt` only.
    */
   extras?: SeriesExtra[] | undefined
+  /**
+   * A fill per DATUM, index-aligned with `values`; an empty string keeps the
+   * series colour. ECharts' per-datum `itemStyle.color` and `colorBy:
+   * 'data'` land here. Applied wherever a datum is filled (bars, stacked and
+   * grouped segments, waterfall steps, points) through `stateFill`, so the
+   * hover / select / blur states act on the datum's own colour.
+   */
+  itemColors?: string[] | undefined
 }
 
 /**
@@ -580,7 +588,9 @@ export function blurActive(spec: ChartSpec): boolean {
  * `selectColor` when pinned, its `emphasisColor` when highlighted, a faded
  * `fill` when another datum is highlighted and the chart blurs, else `fill`.
  */
-export function stateFill(spec: ChartSpec, s: Series, index: number, fill: string): string {
+export function stateFill(spec: ChartSpec, s: Series, index: number, seriesFill: string): string {
+  const own = s.itemColors ?? []
+  const fill = index >= 0 && index < own.length && own[index]! !== '' ? own[index]! : seriesFill
   const level = seriesEmphasisLevel(spec, s, index)
   // Coalesced first, never narrowed through the guard: Swift does not narrow
   // a struct's optional through `!== undefined`, and an empty colour is "none".
@@ -799,6 +809,7 @@ export function invertCategories(spec: ChartSpec): ChartSpec {
       rValues: reversedDoubles(s.rValues, n),
       radii: reversedDoubles(s.radii, n),
       labelTexts: reversedStrings(s.labelTexts, n),
+      itemColors: reversedStrings(s.itemColors, n),
       errLow: reversedDoubles(s.errLow, n),
       errHigh: reversedDoubles(s.errHigh, n),
       values2: reversedDoubles(s.values2, n),
