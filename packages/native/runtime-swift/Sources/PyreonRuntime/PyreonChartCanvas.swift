@@ -105,6 +105,8 @@ public struct PyreonDrawCmd: Codable, Equatable {
     public var rotate: Double?
     /// "bold" sets the text heavier; nil is the regular weight.
     public var weight: String?
+    /// A text halo's width (ECharts' `textBorderWidth`); the colour is `stroke`.
+    public var strokeWidth: Double?
     // Full defaulted-parameter init in the GENERATED engine's field order —
     // the emitted geometry constructs commands as named-subset calls
     // (`PyreonDrawCmd(kind: "rect", rect: r, fill: f)`), and Swift requires
@@ -132,7 +134,8 @@ public struct PyreonDrawCmd: Codable, Equatable {
         align: String? = nil,
         baseline: String? = nil,
         rotate: Double? = nil,
-        weight: String? = nil
+        weight: String? = nil,
+        strokeWidth: Double? = nil
     ) {
         self.kind = kind
         self.rect = rect
@@ -155,6 +158,7 @@ public struct PyreonDrawCmd: Codable, Equatable {
         self.baseline = baseline
         self.rotate = rotate
         self.weight = weight
+        self.strokeWidth = strokeWidth
     }
 }
 
@@ -684,14 +688,31 @@ private struct PyreonStaticChartCanvas: View {
                     default: y = at.y - m.height  // bottom ≈ alphabetic
                     }
                     let rot = c.rotate ?? 0.0
+                    // A halo (ECharts' textBorder): SwiftUI text has no stroke,
+                    // so the text is drawn in the halo colour at eight offsets
+                    // half the halo width out, under the fill.
+                    var halo: GraphicsContext.ResolvedText? = nil
+                    if let hs = c.stroke, !hs.isEmpty {
+                        var h = resolved
+                        h.shading = .color(pyreonChartColor(hs))
+                        halo = h
+                    }
+                    let hr = (c.strokeWidth ?? 2.0) / 2.0
+                    let offsets: [(Double, Double)] = [(-hr, 0), (hr, 0), (0, -hr), (0, hr), (-hr, -hr), (hr, -hr), (-hr, hr), (hr, hr)]
                     if rot != 0.0 {
                         // Rotate about the anchor; align/baseline apply in the
                         // rotated frame (the web canvas's translate + rotate).
                         var rc = context
                         rc.translateBy(x: at.x, y: at.y)
                         rc.rotate(by: Angle(degrees: rot))
+                        if let h = halo {
+                            for o in offsets { rc.draw(h, in: CGRect(x: x - at.x + o.0, y: y - at.y + o.1, width: m.width, height: m.height)) }
+                        }
                         rc.draw(resolved, in: CGRect(x: x - at.x, y: y - at.y, width: m.width, height: m.height))
                     } else {
+                        if let h = halo {
+                            for o in offsets { context.draw(h, in: CGRect(x: x + o.0, y: y + o.1, width: m.width, height: m.height)) }
+                        }
                         context.draw(resolved, in: CGRect(x: x, y: y, width: m.width, height: m.height))
                     }
                 default:

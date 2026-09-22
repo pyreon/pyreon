@@ -256,16 +256,27 @@ export function paint(
       ctx.textBaseline =
         c.baseline === 'middle' ? 'middle' : c.baseline === 'top' ? 'top' : 'alphabetic'
       const rot = c.rotate ?? 0
+      // A halo is stroked under the fill, as zrender paints a textBorder.
+      const paintText = (x: number, y: number): void => {
+        if (c.stroke !== undefined && c.stroke !== '') {
+          ctx.strokeStyle = c.stroke
+          ctx.lineWidth = c.strokeWidth ?? 2
+          ctx.lineJoin = 'miter'
+          ctx.miterLimit = 2
+          ctx.strokeText(c.text, x, y)
+        }
+        ctx.fillText(c.text, x, y)
+      }
       if (rot !== 0) {
         // Rotate about the anchor: the text's own align/baseline then apply
         // in the rotated frame, which is what a slanted axis label wants.
         ctx.save()
         ctx.translate(c.at.x, c.at.y)
         ctx.rotate((rot * Math.PI) / 180)
-        ctx.fillText(c.text, 0, 0)
+        paintText(0, 0)
         ctx.restore()
       } else {
-        ctx.fillText(c.text, c.at.x, c.at.y)
+        paintText(c.at.x, c.at.y)
       }
     }
   }

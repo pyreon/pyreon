@@ -676,6 +676,22 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             }
           ]
         }
+      },
+      {
+        "name": "strokeWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
       }
     ],
     "external": true
@@ -3268,6 +3284,56 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "LabelPlace",
+    "fields": [
+      {
+        "name": "at",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartPt",
+          "args": []
+        }
+      },
+      {
+        "name": "align",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "baseline",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "inside",
+        "type": {
+          "kind": "boolean"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "AutoLabelStyle",
+    "fields": [
+      {
+        "name": "textFill",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "halo",
+        "type": {
+          "kind": "string"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "LinesSeries",
     "fields": [
       {
@@ -3893,6 +3959,66 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
                 "name": "RichStyle",
                 "args": []
               }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labelPosition",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labelDistance",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labelBorderColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labelBorderWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
             },
             {
               "kind": "undefined"
@@ -14222,6 +14348,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "Annotation",
   "ArcConfig",
   "ArcGeometry",
+  "AutoLabelStyle",
   "BarLength",
   "Bin",
   "BoxplotFrame",
@@ -14300,6 +14427,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "HeatGrid",
   "HeatSelection",
   "HeatmapOptions",
+  "LabelPlace",
   "LabelSegment",
   "Layered",
   "LayoutConfig",

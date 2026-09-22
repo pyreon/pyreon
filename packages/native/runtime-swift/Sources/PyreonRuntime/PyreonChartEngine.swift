@@ -749,6 +749,28 @@ public struct LabelSegment: Codable {
   }
 }
 
+public struct LabelPlace: Codable {
+  public var at: PyreonChartPt
+  public var align: String
+  public var baseline: String
+  public var inside: Bool
+  public init(at: PyreonChartPt, align: String, baseline: String, inside: Bool) {
+    self.at = at
+    self.align = align
+    self.baseline = baseline
+    self.inside = inside
+  }
+}
+
+public struct AutoLabelStyle: Codable {
+  public var textFill: String
+  public var halo: String
+  public init(textFill: String, halo: String) {
+    self.textFill = textFill
+    self.halo = halo
+  }
+}
+
 public struct LinesSeries: Codable {
   public var coords: [[Double]]
   public var colors: [String]
@@ -808,6 +830,10 @@ public struct Series {
   public var labelColor: String? = nil
   public var labelSize: Double? = nil
   public var labelRich: [RichStyle]? = nil
+  public var labelPosition: String? = nil
+  public var labelDistance: Double? = nil
+  public var labelBorderColor: String? = nil
+  public var labelBorderWidth: Double? = nil
   public var focus: String? = nil
   public var emphasisColor: String? = nil
   public var selectColor: String? = nil
@@ -832,7 +858,7 @@ public struct Series {
   public var barMaxWidth: BarLength? = nil
   public var barMinWidth: BarLength? = nil
   public var barStack: String? = nil
-  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, smoothAmount: Double? = nil, smoothMonotone: String? = nil, connectNulls: Bool? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, axisExtra: Double? = nil, onX2: Bool? = nil, xs: [Double]? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, symbolMargin: Double? = nil, symbolOffset: [Double]? = nil, symbolPosition: String? = nil, symbolRotate: Double? = nil, symbolHollow: Bool? = nil, symbolShow: String? = nil, symbolClip: Bool? = nil, symbolBoundingData: Double? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, labelTexts: [String]? = nil, labelColor: String? = nil, labelSize: Double? = nil, labelRich: [RichStyle]? = nil, focus: String? = nil, emphasisColor: String? = nil, selectColor: String? = nil, blurOpacity: Double? = nil, emphasisScale: Double? = nil, emphasisDisabled: Bool? = nil, emphasisWidth: Double? = nil, blurWidth: Double? = nil, emphasisAreaOpacity: Double? = nil, blurAreaOpacity: Double? = nil, emphasisLabel: Bool? = nil, selectLabel: Bool? = nil, seriesSelected: Bool? = nil, inBrush: [Int]? = nil, brushOpacity: Double? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil, extras: [SeriesExtra]? = nil, itemColors: [String]? = nil, barWidth: BarLength? = nil, barMaxWidth: BarLength? = nil, barMinWidth: BarLength? = nil, barStack: String? = nil) {
+  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, smoothAmount: Double? = nil, smoothMonotone: String? = nil, connectNulls: Bool? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, axisExtra: Double? = nil, onX2: Bool? = nil, xs: [Double]? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, symbolMargin: Double? = nil, symbolOffset: [Double]? = nil, symbolPosition: String? = nil, symbolRotate: Double? = nil, symbolHollow: Bool? = nil, symbolShow: String? = nil, symbolClip: Bool? = nil, symbolBoundingData: Double? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, labelTexts: [String]? = nil, labelColor: String? = nil, labelSize: Double? = nil, labelRich: [RichStyle]? = nil, labelPosition: String? = nil, labelDistance: Double? = nil, labelBorderColor: String? = nil, labelBorderWidth: Double? = nil, focus: String? = nil, emphasisColor: String? = nil, selectColor: String? = nil, blurOpacity: Double? = nil, emphasisScale: Double? = nil, emphasisDisabled: Bool? = nil, emphasisWidth: Double? = nil, blurWidth: Double? = nil, emphasisAreaOpacity: Double? = nil, blurAreaOpacity: Double? = nil, emphasisLabel: Bool? = nil, selectLabel: Bool? = nil, seriesSelected: Bool? = nil, inBrush: [Int]? = nil, brushOpacity: Double? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil, extras: [SeriesExtra]? = nil, itemColors: [String]? = nil, barWidth: BarLength? = nil, barMaxWidth: BarLength? = nil, barMinWidth: BarLength? = nil, barStack: String? = nil) {
     self.kind = kind
     self.values = values
     self.color = color
@@ -870,6 +896,10 @@ public struct Series {
     self.labelColor = labelColor
     self.labelSize = labelSize
     self.labelRich = labelRich
+    self.labelPosition = labelPosition
+    self.labelDistance = labelDistance
+    self.labelBorderColor = labelBorderColor
+    self.labelBorderWidth = labelBorderWidth
     self.focus = focus
     self.emphasisColor = emphasisColor
     self.selectColor = selectColor
@@ -6307,13 +6337,16 @@ public func lineHeight(_ line: [LabelSegment], _ size: Double) -> Double {
     return h
   }
 
-public func labelCommands(_ text: String, _ rich: [RichStyle], _ at: PyreonChartPt, _ align: String, _ baseline: String, _ color: String, _ size: Double, _ measure: (String, Double) -> Double) -> [PyreonDrawCmd] {
+public func labelCommands(_ text: String, _ rich: [RichStyle], _ at: PyreonChartPt, _ align: String, _ baseline: String, _ color: String, _ size: Double, _ measure: (String, Double) -> Double, _ stroke: String? = nil, _ strokeWidth: Double? = nil) -> [PyreonDrawCmd] {
     var out: [PyreonDrawCmd] = []
+    let halo = (stroke ?? "")
+    let haloStroke = halo == "" ? nil : halo
+    let haloWidth = halo == "" ? nil : ((strokeWidth ?? 2.0))
     let lines = labelLines(text, rich, color, size)
     let plain = lines.count == 1 && lines[0].count <= 1
     if plain {
       let only = lines[0].count == 1 ? lines[0][0] : LabelSegment(text: "", color: color, fontSize: size)
-      out.append(PyreonDrawCmd(kind: "text", fill: only.color, text: only.text, at: at, size: only.fontSize, align: anchorX(align), baseline: anchorY(baseline)))
+      out.append(PyreonDrawCmd(kind: "text", fill: only.color, stroke: haloStroke, text: only.text, at: at, size: only.fontSize, align: anchorX(align), baseline: anchorY(baseline), strokeWidth: haloWidth))
       return out
     }
     var total = 0.0
@@ -6340,7 +6373,7 @@ public func labelCommands(_ text: String, _ rich: [RichStyle], _ at: PyreonChart
         }
       }
       for seg in line {
-        out.append(PyreonDrawCmd(kind: "text", fill: seg.color, text: seg.text, at: PyreonChartPt(x: x, y: y), size: seg.fontSize, align: "start", baseline: "top"))
+        out.append(PyreonDrawCmd(kind: "text", fill: seg.color, stroke: haloStroke, text: seg.text, at: PyreonChartPt(x: x, y: y), size: seg.fontSize, align: "start", baseline: "top", strokeWidth: haloWidth))
         x = x + measure(seg.text, seg.fontSize)
       }
       y = y + h * 1.25
@@ -6351,6 +6384,80 @@ public func labelCommands(_ text: String, _ rich: [RichStyle], _ at: PyreonChart
 public func anchorX(_ align: String) -> String { align == "middle" ? "middle" : align == "end" ? "end" : "start" }
 
 public func anchorY(_ baseline: String) -> String { baseline == "middle" ? "middle" : baseline == "bottom" ? "bottom" : "top" }
+
+public func labelPlace(_ r: PyreonChartRect, _ position: String, _ distance: Double) -> LabelPlace {
+    let x0 = r.w < 0.0 ? r.x + r.w : r.x
+    let y0 = r.h < 0.0 ? r.y + r.h : r.y
+    let w = abs(r.w)
+    let h = abs(r.h)
+    let inside = (position.range(of: "inside").map { position.distance(from: position.startIndex, to: $0.lowerBound) } ?? -1) >= 0 || (position != "top" && position != "bottom" && position != "left" && position != "right")
+    if position == "left" {
+      return LabelPlace(at: PyreonChartPt(x: x0 - distance, y: y0 + Double(h) / 2.0), align: "end", baseline: "middle", inside: inside)
+    }
+    if position == "right" {
+      return LabelPlace(at: PyreonChartPt(x: x0 + Double(w) + distance, y: y0 + Double(h) / 2.0), align: "start", baseline: "middle", inside: inside)
+    }
+    if position == "top" {
+      return LabelPlace(at: PyreonChartPt(x: x0 + Double(w) / 2.0, y: y0 - distance), align: "middle", baseline: "bottom", inside: inside)
+    }
+    if position == "bottom" {
+      return LabelPlace(at: PyreonChartPt(x: x0 + Double(w) / 2.0, y: y0 + Double(h) + distance), align: "middle", baseline: "top", inside: inside)
+    }
+    if position == "insideLeft" {
+      return LabelPlace(at: PyreonChartPt(x: x0 + distance, y: y0 + Double(h) / 2.0), align: "start", baseline: "middle", inside: inside)
+    }
+    if position == "insideRight" {
+      return LabelPlace(at: PyreonChartPt(x: x0 + Double(w) - distance, y: y0 + Double(h) / 2.0), align: "end", baseline: "middle", inside: inside)
+    }
+    if position == "insideTop" {
+      return LabelPlace(at: PyreonChartPt(x: x0 + Double(w) / 2.0, y: y0 + distance), align: "middle", baseline: "top", inside: inside)
+    }
+    if position == "insideBottom" {
+      return LabelPlace(at: PyreonChartPt(x: x0 + Double(w) / 2.0, y: y0 + Double(h) - distance), align: "middle", baseline: "bottom", inside: inside)
+    }
+    if position == "insideTopLeft" {
+      return LabelPlace(at: PyreonChartPt(x: x0 + distance, y: y0 + distance), align: "start", baseline: "top", inside: inside)
+    }
+    if position == "insideTopRight" {
+      return LabelPlace(at: PyreonChartPt(x: x0 + Double(w) - distance, y: y0 + distance), align: "end", baseline: "top", inside: inside)
+    }
+    if position == "insideBottomLeft" {
+      return LabelPlace(at: PyreonChartPt(x: x0 + distance, y: y0 + Double(h) - distance), align: "start", baseline: "bottom", inside: inside)
+    }
+    if position == "insideBottomRight" {
+      return LabelPlace(at: PyreonChartPt(x: x0 + Double(w) - distance, y: y0 + Double(h) - distance), align: "end", baseline: "bottom", inside: inside)
+    }
+    return LabelPlace(at: PyreonChartPt(x: x0 + Double(w) / 2.0, y: y0 + Double(h) / 2.0), align: "middle", baseline: "middle", inside: inside)
+  }
+
+public func colorLum(_ color: String) -> Double {
+    if color.utf16.count == 7 && Double(Array(color.utf16)[Int(0)]) == 35.0 {
+      let r = hexDigit(Double(Array(color.utf16)[Int(1)])) * 16.0 + hexDigit(Double(Array(color.utf16)[Int(2)]))
+      let g = hexDigit(Double(Array(color.utf16)[Int(3)])) * 16.0 + hexDigit(Double(Array(color.utf16)[Int(4)]))
+      let b = hexDigit(Double(Array(color.utf16)[Int(5)])) * 16.0 + hexDigit(Double(Array(color.utf16)[Int(6)]))
+      return (r * 0.299 + g * 0.587 + b * 0.114) / 255.0
+    }
+    if color.utf16.count == 4 && Double(Array(color.utf16)[Int(0)]) == 35.0 {
+      let r = hexDigit(Double(Array(color.utf16)[Int(1)])) * 17.0
+      let g = hexDigit(Double(Array(color.utf16)[Int(2)])) * 17.0
+      let b = hexDigit(Double(Array(color.utf16)[Int(3)])) * 17.0
+      return (r * 0.299 + g * 0.587 + b * 0.114) / 255.0
+    }
+    return 0.3
+  }
+
+public func isHexColor(_ color: String) -> Bool { (color.utf16.count == 7 || color.utf16.count == 4) && Double(Array(color.utf16)[Int(0)]) == 35.0 }
+
+public func autoLabelStyle(_ inside: Bool, _ shapeFill: String, _ background: String) -> AutoLabelStyle {
+    let dark = isHexColor(background) && colorLum(background) < 0.4
+    if !inside {
+      return AutoLabelStyle(textFill: dark ? "#ccc" : "#333", halo: isHexColor(background) ? background : dark ? "#000000" : "#ffffff")
+    }
+    let l = colorLum(shapeFill)
+    let fill = l > 0.5 ? "#333" : l > 0.2 ? "#eee" : "#ccc"
+    let darkLabel = colorLum(fill) < 0.4
+    return AutoLabelStyle(textFill: fill, halo: dark == darkLabel ? shapeFill : "")
+  }
 
 public func linePixels(_ flat: [Double], _ plot: PyreonChartRect, _ xDomain: Domain, _ yDomain: Domain) -> [PyreonChartPt] {
     var out: [PyreonChartPt] = []
@@ -6471,6 +6578,17 @@ public func seriesLabelCmds(_ s: Series, _ index: Int, _ fallback: String, _ at:
     let color = (s.labelColor ?? "")
     let size = (s.labelSize ?? 0.0)
     return labelCommands(labelTextAt(s, index, fallback), (s.labelRich ?? []), at, align, baseline, color == "" ? t.label : color, size > 0.0 ? size : t.fontSize, measure)
+  }
+
+public func barLabelCmds(_ s: Series, _ index: Int, _ fallback: String, _ r: PyreonChartRect, _ shapeFill: String, _ t: ChartTheme, _ measure: (String, Double) -> Double) -> [PyreonDrawCmd] {
+    let place = labelPlace(r, (s.labelPosition ?? "inside"), (s.labelDistance ?? 5.0))
+    let own = (s.labelColor ?? "")
+    let auto = autoLabelStyle(place.inside, shapeFill, t.background)
+    let border = (s.labelBorderColor ?? "")
+    let width = (s.labelBorderWidth ?? 2.0)
+    let halo = width <= 0.0 ? "" : border != "" ? border : own == "" ? auto.halo : ""
+    let size = (s.labelSize ?? 0.0)
+    return labelCommands(labelTextAt(s, index, fallback), (s.labelRich ?? []), place.at, place.align, place.baseline, own == "" ? auto.textFill : own, size > 0.0 ? size : t.fontSize, measure, halo, width)
   }
 
 public func emphasisLevel(_ spec: ChartSpec, _ index: Int) -> Int {
@@ -7369,7 +7487,9 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           out.append(emphasisOutline(rS, lvlS, t.label))
         }
         if stackedSeries[seg.seriesIndex].showValues == true && progress >= 1.0 {
-          for c in seriesLabelCmds(stackedSeries[seg.seriesIndex], seg.datumIndex, fmtS(seg.value), PyreonChartPt(x: rS.x + Double(rS.w) / 2.0, y: rS.y + Double(rS.h) / 2.0), "middle", "middle", t, measure) {
+          let sS = stackedSeries[seg.seriesIndex]
+          let cmdsS = sS.labelPosition != nil ? barLabelCmds(sS, seg.datumIndex, fmtS(seg.value), rS, stateFill(spec, sS, seg.datumIndex, sS.color), t, measure) : seriesLabelCmds(sS, seg.datumIndex, fmtS(seg.value), PyreonChartPt(x: rS.x + Double(rS.w) / 2.0, y: rS.y + Double(rS.h) / 2.0), "middle", "middle", t, measure)
+          for c in cmdsS {
             out.append(c)
           }
         }
@@ -7388,7 +7508,9 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           out.append(emphasisOutline(rG, lvlG, t.label))
         }
         if groupedSeries[seg.seriesIndex].showValues == true && progress >= 1.0 {
-          for c in seriesLabelCmds(groupedSeries[seg.seriesIndex], seg.datumIndex, fmtG(seg.value), PyreonChartPt(x: rG.x + Double(rG.w) / 2.0, y: seg.value < 0.0 ? rG.y + rG.h + 4.0 : rG.y - 4.0), "middle", seg.value < 0.0 ? "top" : "bottom", t, measure) {
+          let sG = groupedSeries[seg.seriesIndex]
+          let cmdsG = sG.labelPosition != nil ? barLabelCmds(sG, seg.datumIndex, fmtG(seg.value), rG, stateFill(spec, sG, seg.datumIndex, sG.color), t, measure) : seriesLabelCmds(sG, seg.datumIndex, fmtG(seg.value), PyreonChartPt(x: rG.x + Double(rG.w) / 2.0, y: seg.value < 0.0 ? rG.y + rG.h + 4.0 : rG.y - 4.0), "middle", seg.value < 0.0 ? "top" : "bottom", t, measure)
+          for c in cmdsG {
             out.append(c)
           }
         }
@@ -7483,7 +7605,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             if !isFiniteValue(v) {
               continue
             }
-            for c in seriesLabelCmds(s, i, fmt(v), PyreonChartPt(x: v < 0.0 ? r.x - 4.0 : r.x + r.w + 4.0, y: r.y + Double(r.h) / 2.0), v < 0.0 ? "end" : "start", "middle", t, measure) {
+            let cmdsH = s.labelPosition != nil ? barLabelCmds(s, i, fmt(v), r, stateFill(spec, s, i, s.color), t, measure) : seriesLabelCmds(s, i, fmt(v), PyreonChartPt(x: v < 0.0 ? r.x - 4.0 : r.x + r.w + 4.0, y: r.y + Double(r.h) / 2.0), v < 0.0 ? "end" : "start", "middle", t, measure)
+            for c in cmdsH {
               out.append(c)
             }
           }
@@ -7518,7 +7641,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             if !isFiniteValue(v) {
               continue
             }
-            for c in seriesLabelCmds(s, i, fmt(v), PyreonChartPt(x: r.x + Double(r.w) / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0), "middle", v < 0.0 ? "top" : "bottom", t, measure) {
+            let cmdsB = s.labelPosition != nil ? barLabelCmds(s, i, fmt(v), r, stateFill(spec, s, i, s.color), t, measure) : seriesLabelCmds(s, i, fmt(v), PyreonChartPt(x: r.x + Double(r.w) / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0), "middle", v < 0.0 ? "top" : "bottom", t, measure)
+            for c in cmdsB {
               out.append(c)
             }
           }
@@ -7545,7 +7669,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             if s.showValues == true && progress >= 1.0 {
               let fmt = (spec.yFormat ?? plain)
               let v = printed(sIdx, st.datumIndex)
-              for c in seriesLabelCmds(s, st.datumIndex, fmt(v), PyreonChartPt(x: st.rect.x + Double(st.rect.w) / 2.0, y: v < 0.0 ? st.rect.y + st.rect.h + 4.0 : st.rect.y - 4.0), "middle", v < 0.0 ? "top" : "bottom", t, measure) {
+              let cmdsW = s.labelPosition != nil ? barLabelCmds(s, st.datumIndex, fmt(v), st.rect, fill, t, measure) : seriesLabelCmds(s, st.datumIndex, fmt(v), PyreonChartPt(x: st.rect.x + Double(st.rect.w) / 2.0, y: v < 0.0 ? st.rect.y + st.rect.h + 4.0 : st.rect.y - 4.0), "middle", v < 0.0 ? "top" : "bottom", t, measure)
+              for c in cmdsW {
                 out.append(c)
               }
             }

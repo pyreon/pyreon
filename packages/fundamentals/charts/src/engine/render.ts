@@ -16,7 +16,7 @@ import { polygonCmd, rectCmd } from './corners'
 import { seriesGradient } from './gradient'
 import type { SeriesGradient } from './gradient'
 import { withAlpha } from './radar'
-import { labelCommands } from './labels'
+import { autoLabelStyle, labelCommands, labelPlace } from './labels'
 import type { RichStyle } from './labels'
 import { pictorialCommands, symbolPoints } from './pictorial'
 import type { PictorialBar } from './pictorial'
@@ -125,6 +125,14 @@ export interface Series {
   labelSize?: Double | undefined
   /** ECharts' `label.rich` — the named styles a `{name|text}` segment can take. */
   labelRich?: RichStyle[] | undefined
+  /** ECharts' `label.position` on a shaped mark (a bar): `inside` (its default), `top`, `insideTop`, … */
+  labelPosition?: string | undefined
+  /** ECharts' `label.distance` from the shape's edge (5 by default). */
+  labelDistance?: Double | undefined
+  /** ECharts' `label.textBorderColor`; absent picks zrender's automatic halo. */
+  labelBorderColor?: string | undefined
+  /** ECharts' `label.textBorderWidth` (2 by default; 0 draws no halo). */
+  labelBorderWidth?: Double | undefined
   /**
    * ECharts' `emphasis.focus`: `self` / `series` dim every datum that is NOT
    * the highlighted one while a highlight is active (the blur state). This
@@ -594,6 +602,23 @@ function seriesLabelCmds(
     size > 0.0 ? size : t.fontSize,
     measure,
   )
+}
+
+/**
+ * A bar's value label, placed and coloured as ECharts does: `label.position`
+ * against the bar's rect (`inside` by default), and zrender's automatic fill
+ * and halo unless the series sets its own.
+ */
+function barLabelCmds(s: Series, index: number, fallback: string, r: Rect, shapeFill: string, t: ChartTheme, measure: MeasureText): DrawCmd[] {
+  const place = labelPlace(r, s.labelPosition ?? 'inside', s.labelDistance ?? 5.0)
+  const own = s.labelColor ?? ''
+  const auto = autoLabelStyle(place.inside, shapeFill, t.background)
+  const border = s.labelBorderColor ?? ''
+  const width = s.labelBorderWidth ?? 2.0
+  // zrender's automatic halo applies only to an automatic fill.
+  const halo = width <= 0.0 ? '' : border !== '' ? border : own === '' ? auto.halo : ''
+  const size = s.labelSize ?? 0.0
+  return labelCommands(labelTextAt(s, index, fallback), s.labelRich ?? [], place.at, place.align, place.baseline, own === '' ? auto.textFill : own, size > 0.0 ? size : t.fontSize, measure, halo, width)
 }
 
 /** 0 = plain, 1 = highlighted (a hover or a dispatched `highlight`), 2 = selected. */
@@ -1683,7 +1708,11 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       // own, not the running total, and there is no outside edge to hang it
       // from that would not collide with the segment above.
       if (stackedSeries[seg.seriesIndex]!.showValues === true && progress >= 1.0) {
-        for (const c of seriesLabelCmds(stackedSeries[seg.seriesIndex]!, seg.datumIndex, fmtS(seg.value), { x: rS.x + rS.w / 2.0, y: rS.y + rS.h / 2.0 }, 'middle', 'middle', t, measure)) out.push(c)
+        const sS = stackedSeries[seg.seriesIndex]!
+        const cmdsS = sS.labelPosition !== undefined
+          ? barLabelCmds(sS, seg.datumIndex, fmtS(seg.value), rS, stateFill(spec, sS, seg.datumIndex, sS.color), t, measure)
+          : seriesLabelCmds(sS, seg.datumIndex, fmtS(seg.value), { x: rS.x + rS.w / 2.0, y: rS.y + rS.h / 2.0 }, 'middle', 'middle', t, measure)
+        for (const c of cmdsS) out.push(c)
       }
     }
   }
@@ -1702,7 +1731,11 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       // A grouped bar has a free outer edge, so it labels OUTSIDE like a
       // plain bar — above a positive one, below a negative one.
       if (groupedSeries[seg.seriesIndex]!.showValues === true && progress >= 1.0) {
-        for (const c of seriesLabelCmds(groupedSeries[seg.seriesIndex]!, seg.datumIndex, fmtG(seg.value), { x: rG.x + rG.w / 2.0, y: seg.value < 0.0 ? rG.y + rG.h + 4.0 : rG.y - 4.0 }, 'middle', seg.value < 0.0 ? 'top' : 'bottom', t, measure)) out.push(c)
+        const sG = groupedSeries[seg.seriesIndex]!
+        const cmdsG = sG.labelPosition !== undefined
+          ? barLabelCmds(sG, seg.datumIndex, fmtG(seg.value), rG, stateFill(spec, sG, seg.datumIndex, sG.color), t, measure)
+          : seriesLabelCmds(sG, seg.datumIndex, fmtG(seg.value), { x: rG.x + rG.w / 2.0, y: seg.value < 0.0 ? rG.y + rG.h + 4.0 : rG.y - 4.0 }, 'middle', seg.value < 0.0 ? 'top' : 'bottom', t, measure)
+        for (const c of cmdsG) out.push(c)
       }
     }
   }
@@ -1813,7 +1846,10 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           if (!isFiniteValue(v)) continue
           // The label sits just past the bar's far end — right of a positive
           // bar, left of a negative one.
-          for (const c of seriesLabelCmds(s, i, fmt(v), { x: v < 0.0 ? r.x - 4.0 : r.x + r.w + 4.0, y: r.y + r.h / 2.0 }, v < 0.0 ? 'end' : 'start', 'middle', t, measure)) out.push(c)
+          const cmdsH = s.labelPosition !== undefined
+            ? barLabelCmds(s, i, fmt(v), r, stateFill(spec, s, i, s.color), t, measure)
+            : seriesLabelCmds(s, i, fmt(v), { x: v < 0.0 ? r.x - 4.0 : r.x + r.w + 4.0, y: r.y + r.h / 2.0 }, v < 0.0 ? 'end' : 'start', 'middle', t, measure)
+          for (const c of cmdsH) out.push(c)
         }
       }
       continue
@@ -1848,7 +1884,10 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           if (!isFiniteValue(v)) continue
           // A negative bar hangs below the zero line, so its label goes under
           // its bottom edge — above the top would sit ON the zero line.
-          for (const c of seriesLabelCmds(s, i, fmt(v), { x: r.x + r.w / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0 }, 'middle', v < 0.0 ? 'top' : 'bottom', t, measure)) out.push(c)
+          const cmdsB = s.labelPosition !== undefined
+            ? barLabelCmds(s, i, fmt(v), r, stateFill(spec, s, i, s.color), t, measure)
+            : seriesLabelCmds(s, i, fmt(v), { x: r.x + r.w / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0 }, 'middle', v < 0.0 ? 'top' : 'bottom', t, measure)
+          for (const c of cmdsB) out.push(c)
         }
       }
     } else if (s.kind === 'waterfall') {
@@ -1874,7 +1913,10 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         if (s.showValues === true && progress >= 1.0) {
           const fmt = spec.yFormat ?? plain
           const v = printed(sIdx, st.datumIndex)
-          for (const c of seriesLabelCmds(s, st.datumIndex, fmt(v), { x: st.rect.x + st.rect.w / 2.0, y: v < 0.0 ? st.rect.y + st.rect.h + 4.0 : st.rect.y - 4.0 }, 'middle', v < 0.0 ? 'top' : 'bottom', t, measure)) out.push(c)
+          const cmdsW = s.labelPosition !== undefined
+            ? barLabelCmds(s, st.datumIndex, fmt(v), st.rect, fill, t, measure)
+            : seriesLabelCmds(s, st.datumIndex, fmt(v), { x: st.rect.x + st.rect.w / 2.0, y: v < 0.0 ? st.rect.y + st.rect.h + 4.0 : st.rect.y - 4.0 }, 'middle', v < 0.0 ? 'top' : 'bottom', t, measure)
+          for (const c of cmdsW) out.push(c)
         }
       }
     } else if (s.kind === 'line') {

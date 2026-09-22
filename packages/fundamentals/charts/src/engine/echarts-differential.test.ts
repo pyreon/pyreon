@@ -716,3 +716,84 @@ describe('ECharts differential: line shape', () => {
     })
   }
 })
+
+/**
+ * Bar value labels: where each sits (`label.position` against the bar's rect,
+ * `inside` by default) and zrender's automatic fill and halo. ECharts writes
+ * the anchor as a translate, and its vertical alignment as a half-font `y`
+ * offset (none = middle, negative = bottom, positive = top).
+ */
+interface BarLabelFact { text: string; x: number; y: number; baseline: string; fill: string; stroke: string; width: number }
+const rgbHex = (c: string): string => {
+  const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c)
+  if (m === null) return c.toLowerCase()
+  return '#' + [m[1], m[2], m[3]].map((v) => Number(v).toString(16).padStart(2, '0')).join('')
+}
+const longHex = (c: string): string => (/^#[0-9a-f]{3}$/i.test(c) ? '#' + [...c.slice(1)].map((d) => d + d).join('') : c).toLowerCase()
+function echartsBarLabels(option: object): BarLabelFact[] {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: W, height: H })
+  chart.setOption({ animation: false, ...option })
+  const svg = chart.renderToSVGString()
+  chart.dispose()
+  return [...svg.matchAll(/<text dominant-baseline="central" text-anchor="middle"([^>]*)>(-?\d+)<\/text>/g)].map((m) => {
+    const attrs = m[1]!
+    const t = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(attrs)!
+    const dy = /\sy="(-?[\d.]+)"/.exec(attrs)
+    const stroke = /stroke="([^"]+)"/.exec(attrs)
+    return {
+      text: m[2]!,
+      x: Number(t[1]),
+      y: Number(t[2]),
+      baseline: dy === null ? 'middle' : Number(dy[1]) < 0 ? 'bottom' : 'top',
+      fill: longHex(/fill="([^"]+)"/.exec(attrs)![1]!),
+      stroke: stroke === null ? '' : longHex(rgbHex(stroke[1]!)),
+      width: stroke === null ? 0 : Number(/stroke-width="([\d.]+)"/.exec(attrs)![1]),
+    }
+  })
+}
+function ourBarLabels(option: object): BarLabelFact[] {
+  const c = compileOption(option as EChartsOption, { width: W, height: H })
+  const m = (t: string, size: number): number => echarts.format.getTextRect(t, String(size) + 'px sans-serif').width
+  return renderChart(c.spec, m).flatMap((d) =>
+    d.kind === 'text' && d.align === 'middle' && /^-?\d+$/.test(d.text)
+      ? [{ text: d.text, x: d.at.x, y: d.at.y, baseline: d.baseline, fill: longHex(d.fill), stroke: d.stroke === undefined ? '' : longHex(d.stroke), width: d.stroke === undefined ? 0 : (d.strokeWidth ?? 2) }]
+      : [],
+  )
+}
+const barsLabelled = (series: object): object => ({
+  color: ['#5070dd'],
+  xAxis: { type: 'category', data: ['a', 'b', 'c'] },
+  yAxis: { type: 'value' },
+  series: [{ type: 'bar', data: [3, -2, 8], ...series }],
+})
+const BAR_LABEL_CASES: [string, object][] = [
+  ['inside by default: light text haloed in the bar colour', { label: { show: true } }],
+  ['top, incl. a negative bar (its geometric top, the zero line)', { label: { show: true, position: 'top' } }],
+  ['bottom', { label: { show: true, position: 'bottom' } }],
+  ['insideTop', { label: { show: true, position: 'insideTop' } }],
+  ['insideBottom with a distance', { label: { show: true, position: 'insideBottom', distance: 10 } }],
+  ['an explicit colour takes no automatic halo', { label: { show: true, color: '#ff0000' } }],
+  ['a light bar takes dark text and no halo', { itemStyle: { color: '#ffe066' }, label: { show: true } }],
+  ['a dark bar takes #ccc', { itemStyle: { color: '#1a1a40' }, label: { show: true } }],
+  ['textBorderColor and textBorderWidth', { label: { show: true, textBorderColor: '#00ff00', textBorderWidth: 3 } }],
+]
+
+describe('ECharts differential: bar value labels', () => {
+  for (const [name, series] of BAR_LABEL_CASES) {
+    it(name, () => {
+      const e = echartsBarLabels(barsLabelled(series))
+      const u = ourBarLabels(barsLabelled(series))
+      expect(u.length).toBe(e.length)
+      expect(e.length).toBe(3)
+      for (let i = 0; i < e.length; i++) {
+        expect(u[i]!.text).toBe(e[i]!.text)
+        expect(Math.abs(u[i]!.x - e[i]!.x)).toBeLessThan(0.6)
+        expect(Math.abs(u[i]!.y - e[i]!.y)).toBeLessThan(0.6)
+        expect(u[i]!.baseline).toBe(e[i]!.baseline)
+        expect(u[i]!.fill).toBe(e[i]!.fill)
+        expect(u[i]!.stroke).toBe(e[i]!.stroke)
+        expect(u[i]!.width).toBe(e[i]!.width)
+      }
+    })
+  }
+})

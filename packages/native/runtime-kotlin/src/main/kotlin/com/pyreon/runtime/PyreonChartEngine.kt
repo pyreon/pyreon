@@ -88,9 +88,13 @@ data class RichStyle(var name: String, var color: String, var fontSize: Double)
 
 data class LabelSegment(var text: String, var color: String, var fontSize: Double)
 
+data class LabelPlace(var at: PyreonChartPt, var align: String, var baseline: String, var inside: Boolean)
+
+data class AutoLabelStyle(var textFill: String, var halo: String)
+
 data class LinesSeries(var coords: List<List<Double>>, var colors: List<String>, var widths: List<Double>, var effect: Boolean, var period: Double, var trailLength: Double, var effectColor: String, var symbolSize: Double)
 
-data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var smoothAmount: Double? = null, var smoothMonotone: String? = null, var connectNulls: Boolean? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var axisExtra: Double? = null, var onX2: Boolean? = null, var xs: List<Double>? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var symbolMargin: Double? = null, var symbolOffset: List<Double>? = null, var symbolPosition: String? = null, var symbolRotate: Double? = null, var symbolHollow: Boolean? = null, var symbolShow: String? = null, var symbolClip: Boolean? = null, var symbolBoundingData: Double? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var labelTexts: List<String>? = null, var labelColor: String? = null, var labelSize: Double? = null, var labelRich: List<RichStyle>? = null, var focus: String? = null, var emphasisColor: String? = null, var selectColor: String? = null, var blurOpacity: Double? = null, var emphasisScale: Double? = null, var emphasisDisabled: Boolean? = null, var emphasisWidth: Double? = null, var blurWidth: Double? = null, var emphasisAreaOpacity: Double? = null, var blurAreaOpacity: Double? = null, var emphasisLabel: Boolean? = null, var selectLabel: Boolean? = null, var seriesSelected: Boolean? = null, var inBrush: List<Int>? = null, var brushOpacity: Double? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null, var extras: List<SeriesExtra>? = null, var itemColors: List<String>? = null, var barWidth: BarLength? = null, var barMaxWidth: BarLength? = null, var barMinWidth: BarLength? = null, var barStack: String? = null)
+data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var smoothAmount: Double? = null, var smoothMonotone: String? = null, var connectNulls: Boolean? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var axisExtra: Double? = null, var onX2: Boolean? = null, var xs: List<Double>? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var symbolMargin: Double? = null, var symbolOffset: List<Double>? = null, var symbolPosition: String? = null, var symbolRotate: Double? = null, var symbolHollow: Boolean? = null, var symbolShow: String? = null, var symbolClip: Boolean? = null, var symbolBoundingData: Double? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var labelTexts: List<String>? = null, var labelColor: String? = null, var labelSize: Double? = null, var labelRich: List<RichStyle>? = null, var labelPosition: String? = null, var labelDistance: Double? = null, var labelBorderColor: String? = null, var labelBorderWidth: Double? = null, var focus: String? = null, var emphasisColor: String? = null, var selectColor: String? = null, var blurOpacity: Double? = null, var emphasisScale: Double? = null, var emphasisDisabled: Boolean? = null, var emphasisWidth: Double? = null, var blurWidth: Double? = null, var emphasisAreaOpacity: Double? = null, var blurAreaOpacity: Double? = null, var emphasisLabel: Boolean? = null, var selectLabel: Boolean? = null, var seriesSelected: Boolean? = null, var inBrush: List<Int>? = null, var brushOpacity: Double? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null, var extras: List<SeriesExtra>? = null, var itemColors: List<String>? = null, var barWidth: BarLength? = null, var barMaxWidth: BarLength? = null, var barMinWidth: BarLength? = null, var barStack: String? = null)
 
 data class SeriesExtra(var label: String, var numbers: List<Double>? = null, var texts: List<String>? = null)
 
@@ -3389,13 +3393,16 @@ fun lineHeight(line: List<LabelSegment>, size: Double): Double {
     return h
   }
 
-fun labelCommands(text: String, rich: List<RichStyle>, at: PyreonChartPt, align: String, baseline: String, color: String, size: Double, measure: (String, Double) -> Double): List<PyreonDrawCmd> {
+fun labelCommands(text: String, rich: List<RichStyle>, at: PyreonChartPt, align: String, baseline: String, color: String, size: Double, measure: (String, Double) -> Double, stroke: String? = null, strokeWidth: Double? = null): List<PyreonDrawCmd> {
     val out: MutableList<PyreonDrawCmd> = mutableListOf()
+    val halo = (stroke ?: "")
+    val haloStroke = if (halo == "") null else halo
+    val haloWidth = if (halo == "") null else ((strokeWidth ?: 2.0))
     val lines = labelLines(text, rich, color, size)
     val plain = lines.length == 1 && lines[0].length <= 1
     if (plain) {
       val only = if (lines[0].length == 1) lines[0][0] else LabelSegment(text = "", color = color, fontSize = size)
-      out.add(PyreonDrawCmd(kind = "text", fill = only.color, text = only.text, at = at, size = only.fontSize, align = anchorX(align), baseline = anchorY(baseline)))
+      out.add(PyreonDrawCmd(kind = "text", fill = only.color, stroke = haloStroke, text = only.text, at = at, size = only.fontSize, align = anchorX(align), baseline = anchorY(baseline), strokeWidth = haloWidth))
       return out
     }
     var total = 0.0
@@ -3422,7 +3429,7 @@ fun labelCommands(text: String, rich: List<RichStyle>, at: PyreonChartPt, align:
         }
       }
       for (seg in line) {
-        out.add(PyreonDrawCmd(kind = "text", fill = seg.color, text = seg.text, at = PyreonChartPt(x = x, y = y), size = seg.fontSize, align = "start", baseline = "top"))
+        out.add(PyreonDrawCmd(kind = "text", fill = seg.color, stroke = haloStroke, text = seg.text, at = PyreonChartPt(x = x, y = y), size = seg.fontSize, align = "start", baseline = "top", strokeWidth = haloWidth))
         x = x + measure(seg.text, seg.fontSize)
       }
       y = y + h * 1.25
@@ -3433,6 +3440,80 @@ fun labelCommands(text: String, rich: List<RichStyle>, at: PyreonChartPt, align:
 fun anchorX(align: String): String = if (align == "middle") "middle" else if (align == "end") "end" else "start"
 
 fun anchorY(baseline: String): String = if (baseline == "middle") "middle" else if (baseline == "bottom") "bottom" else "top"
+
+fun labelPlace(r: PyreonChartRect, position: String, distance: Double): LabelPlace {
+    val x0 = if (r.w < 0.0) r.x + r.w else r.x
+    val y0 = if (r.h < 0.0) r.y + r.h else r.y
+    val w = Math.abs(r.w)
+    val h = Math.abs(r.h)
+    val inside = position.indexOf("inside") >= 0 || (position != "top" && position != "bottom" && position != "left" && position != "right")
+    if (position == "left") {
+      return LabelPlace(at = PyreonChartPt(x = x0 - distance, y = y0 + (h).toDouble() / (2.0).toDouble()), align = "end", baseline = "middle", inside = inside)
+    }
+    if (position == "right") {
+      return LabelPlace(at = PyreonChartPt(x = x0 + w + distance, y = y0 + (h).toDouble() / (2.0).toDouble()), align = "start", baseline = "middle", inside = inside)
+    }
+    if (position == "top") {
+      return LabelPlace(at = PyreonChartPt(x = x0 + (w).toDouble() / (2.0).toDouble(), y = y0 - distance), align = "middle", baseline = "bottom", inside = inside)
+    }
+    if (position == "bottom") {
+      return LabelPlace(at = PyreonChartPt(x = x0 + (w).toDouble() / (2.0).toDouble(), y = y0 + h + distance), align = "middle", baseline = "top", inside = inside)
+    }
+    if (position == "insideLeft") {
+      return LabelPlace(at = PyreonChartPt(x = x0 + distance, y = y0 + (h).toDouble() / (2.0).toDouble()), align = "start", baseline = "middle", inside = inside)
+    }
+    if (position == "insideRight") {
+      return LabelPlace(at = PyreonChartPt(x = x0 + w - distance, y = y0 + (h).toDouble() / (2.0).toDouble()), align = "end", baseline = "middle", inside = inside)
+    }
+    if (position == "insideTop") {
+      return LabelPlace(at = PyreonChartPt(x = x0 + (w).toDouble() / (2.0).toDouble(), y = y0 + distance), align = "middle", baseline = "top", inside = inside)
+    }
+    if (position == "insideBottom") {
+      return LabelPlace(at = PyreonChartPt(x = x0 + (w).toDouble() / (2.0).toDouble(), y = y0 + h - distance), align = "middle", baseline = "bottom", inside = inside)
+    }
+    if (position == "insideTopLeft") {
+      return LabelPlace(at = PyreonChartPt(x = x0 + distance, y = y0 + distance), align = "start", baseline = "top", inside = inside)
+    }
+    if (position == "insideTopRight") {
+      return LabelPlace(at = PyreonChartPt(x = x0 + w - distance, y = y0 + distance), align = "end", baseline = "top", inside = inside)
+    }
+    if (position == "insideBottomLeft") {
+      return LabelPlace(at = PyreonChartPt(x = x0 + distance, y = y0 + h - distance), align = "start", baseline = "bottom", inside = inside)
+    }
+    if (position == "insideBottomRight") {
+      return LabelPlace(at = PyreonChartPt(x = x0 + w - distance, y = y0 + h - distance), align = "end", baseline = "bottom", inside = inside)
+    }
+    return LabelPlace(at = PyreonChartPt(x = x0 + (w).toDouble() / (2.0).toDouble(), y = y0 + (h).toDouble() / (2.0).toDouble()), align = "middle", baseline = "middle", inside = inside)
+  }
+
+fun colorLum(color: String): Double {
+    if (color.length == 7 && color[(0).toInt()].code.toDouble() == 35.0) {
+      val r = hexDigit(color[(1).toInt()].code.toDouble()) * 16.0 + hexDigit(color[(2).toInt()].code.toDouble())
+      val g = hexDigit(color[(3).toInt()].code.toDouble()) * 16.0 + hexDigit(color[(4).toInt()].code.toDouble())
+      val b = hexDigit(color[(5).toInt()].code.toDouble()) * 16.0 + hexDigit(color[(6).toInt()].code.toDouble())
+      return ((r * 0.299 + g * 0.587 + b * 0.114)).toDouble() / (255.0).toDouble()
+    }
+    if (color.length == 4 && color[(0).toInt()].code.toDouble() == 35.0) {
+      val r = hexDigit(color[(1).toInt()].code.toDouble()) * 17.0
+      val g = hexDigit(color[(2).toInt()].code.toDouble()) * 17.0
+      val b = hexDigit(color[(3).toInt()].code.toDouble()) * 17.0
+      return ((r * 0.299 + g * 0.587 + b * 0.114)).toDouble() / (255.0).toDouble()
+    }
+    return 0.3
+  }
+
+fun isHexColor(color: String): Boolean = (color.length == 7 || color.length == 4) && color[(0).toInt()].code.toDouble() == 35.0
+
+fun autoLabelStyle(inside: Boolean, shapeFill: String, background: String): AutoLabelStyle {
+    val dark = isHexColor(background) && colorLum(background) < 0.4
+    if (!inside) {
+      return AutoLabelStyle(textFill = if (dark) "#ccc" else "#333", halo = if (isHexColor(background)) background else if (dark) "#000000" else "#ffffff")
+    }
+    val l = colorLum(shapeFill)
+    val fill = if (l > 0.5) "#333" else if (l > 0.2) "#eee" else "#ccc"
+    val darkLabel = colorLum(fill) < 0.4
+    return AutoLabelStyle(textFill = fill, halo = if (dark == darkLabel) shapeFill else "")
+  }
 
 fun linePixels(flat: List<Double>, plot: PyreonChartRect, xDomain: Domain, yDomain: Domain): List<PyreonChartPt> {
     val out: MutableList<PyreonChartPt> = mutableListOf()
@@ -3553,6 +3634,17 @@ fun seriesLabelCmds(s: Series, index: Int, fallback: String, at: PyreonChartPt, 
     val color = (s.labelColor ?: "")
     val size = (s.labelSize ?: 0.0)
     return labelCommands(labelTextAt(s, index, fallback), (s.labelRich ?: listOf()), at, align, baseline, if (color == "") t.label else color, if (size > 0.0) size else t.fontSize, measure)
+  }
+
+fun barLabelCmds(s: Series, index: Int, fallback: String, r: PyreonChartRect, shapeFill: String, t: ChartTheme, measure: (String, Double) -> Double): List<PyreonDrawCmd> {
+    val place = labelPlace(r, (s.labelPosition ?: "inside"), (s.labelDistance ?: 5.0))
+    val own = (s.labelColor ?: "")
+    val auto = autoLabelStyle(place.inside, shapeFill, t.background)
+    val border = (s.labelBorderColor ?: "")
+    val width = (s.labelBorderWidth ?: 2.0)
+    val halo = if (width <= 0.0) "" else if (border != "") border else if (own == "") auto.halo else ""
+    val size = (s.labelSize ?: 0.0)
+    return labelCommands(labelTextAt(s, index, fallback), (s.labelRich ?: listOf()), place.at, place.align, place.baseline, if (own == "") auto.textFill else own, if (size > 0.0) size else t.fontSize, measure, halo, width)
   }
 
 fun emphasisLevel(spec: ChartSpec, index: Int): Int {
@@ -4451,7 +4543,9 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           out.add(emphasisOutline(rS, lvlS, t.label))
         }
         if (stackedSeries[seg.seriesIndex].showValues == true && progress >= 1.0) {
-          for (c in seriesLabelCmds(stackedSeries[seg.seriesIndex], seg.datumIndex, fmtS(seg.value), PyreonChartPt(x = rS.x + (rS.w).toDouble() / (2.0).toDouble(), y = rS.y + (rS.h).toDouble() / (2.0).toDouble()), "middle", "middle", t, measure)) {
+          val sS = stackedSeries[seg.seriesIndex]
+          val cmdsS = if (sS.labelPosition != null) barLabelCmds(sS, seg.datumIndex, fmtS(seg.value), rS, stateFill(spec, sS, seg.datumIndex, sS.color), t, measure) else seriesLabelCmds(sS, seg.datumIndex, fmtS(seg.value), PyreonChartPt(x = rS.x + (rS.w).toDouble() / (2.0).toDouble(), y = rS.y + (rS.h).toDouble() / (2.0).toDouble()), "middle", "middle", t, measure)
+          for (c in cmdsS) {
             out.add(c)
           }
         }
@@ -4470,7 +4564,9 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           out.add(emphasisOutline(rG, lvlG, t.label))
         }
         if (groupedSeries[seg.seriesIndex].showValues == true && progress >= 1.0) {
-          for (c in seriesLabelCmds(groupedSeries[seg.seriesIndex], seg.datumIndex, fmtG(seg.value), PyreonChartPt(x = rG.x + (rG.w).toDouble() / (2.0).toDouble(), y = if (seg.value < 0.0) rG.y + rG.h + 4.0 else rG.y - 4.0), "middle", if (seg.value < 0.0) "top" else "bottom", t, measure)) {
+          val sG = groupedSeries[seg.seriesIndex]
+          val cmdsG = if (sG.labelPosition != null) barLabelCmds(sG, seg.datumIndex, fmtG(seg.value), rG, stateFill(spec, sG, seg.datumIndex, sG.color), t, measure) else seriesLabelCmds(sG, seg.datumIndex, fmtG(seg.value), PyreonChartPt(x = rG.x + (rG.w).toDouble() / (2.0).toDouble(), y = if (seg.value < 0.0) rG.y + rG.h + 4.0 else rG.y - 4.0), "middle", if (seg.value < 0.0) "top" else "bottom", t, measure)
+          for (c in cmdsG) {
             out.add(c)
           }
         }
@@ -4565,7 +4661,8 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
             if (!isFiniteValue(v)) {
               continue
             }
-            for (c in seriesLabelCmds(s, i, fmt(v), PyreonChartPt(x = if (v < 0.0) r.x - 4.0 else r.x + r.w + 4.0, y = r.y + (r.h).toDouble() / (2.0).toDouble()), if (v < 0.0) "end" else "start", "middle", t, measure)) {
+            val cmdsH = if (s.labelPosition != null) barLabelCmds(s, i, fmt(v), r, stateFill(spec, s, i, s.color), t, measure) else seriesLabelCmds(s, i, fmt(v), PyreonChartPt(x = if (v < 0.0) r.x - 4.0 else r.x + r.w + 4.0, y = r.y + (r.h).toDouble() / (2.0).toDouble()), if (v < 0.0) "end" else "start", "middle", t, measure)
+            for (c in cmdsH) {
               out.add(c)
             }
           }
@@ -4600,7 +4697,8 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
             if (!isFiniteValue(v)) {
               continue
             }
-            for (c in seriesLabelCmds(s, i, fmt(v), PyreonChartPt(x = r.x + (r.w).toDouble() / (2.0).toDouble(), y = if (v < 0.0) r.y + r.h + 4.0 else r.y - 4.0), "middle", if (v < 0.0) "top" else "bottom", t, measure)) {
+            val cmdsB = if (s.labelPosition != null) barLabelCmds(s, i, fmt(v), r, stateFill(spec, s, i, s.color), t, measure) else seriesLabelCmds(s, i, fmt(v), PyreonChartPt(x = r.x + (r.w).toDouble() / (2.0).toDouble(), y = if (v < 0.0) r.y + r.h + 4.0 else r.y - 4.0), "middle", if (v < 0.0) "top" else "bottom", t, measure)
+            for (c in cmdsB) {
               out.add(c)
             }
           }
@@ -4627,7 +4725,8 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
             if (s.showValues == true && progress >= 1.0) {
               val fmt = (spec.yFormat ?: ::plain)
               val v = printed(sIdx, st.datumIndex)
-              for (c in seriesLabelCmds(s, st.datumIndex, fmt(v), PyreonChartPt(x = st.rect.x + (st.rect.w).toDouble() / (2.0).toDouble(), y = if (v < 0.0) st.rect.y + st.rect.h + 4.0 else st.rect.y - 4.0), "middle", if (v < 0.0) "top" else "bottom", t, measure)) {
+              val cmdsW = if (s.labelPosition != null) barLabelCmds(s, st.datumIndex, fmt(v), st.rect, fill, t, measure) else seriesLabelCmds(s, st.datumIndex, fmt(v), PyreonChartPt(x = st.rect.x + (st.rect.w).toDouble() / (2.0).toDouble(), y = if (v < 0.0) st.rect.y + st.rect.h + 4.0 else st.rect.y - 4.0), "middle", if (v < 0.0) "top" else "bottom", t, measure)
+              for (c in cmdsW) {
                 out.add(c)
               }
             }

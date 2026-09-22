@@ -494,6 +494,12 @@ export function labelFields(
   if (typeof label['color'] === 'string') out.labelColor = label['color'] as string
   const size = num(label['fontSize'])
   if (size !== null) out.labelSize = size
+  if (typeof label['position'] === 'string') out.labelPosition = label['position'] as string
+  const distance = num(label['distance'])
+  if (distance !== null) out.labelDistance = distance
+  if (typeof label['textBorderColor'] === 'string') out.labelBorderColor = label['textBorderColor'] as string
+  const borderWidth = num(label['textBorderWidth'])
+  if (borderWidth !== null) out.labelBorderWidth = borderWidth
   const rich = isObj(label['rich']) ? (label['rich'] as Record<string, unknown>) : undefined
   if (rich !== undefined) {
     const styles: RichStyle[] = []
@@ -877,6 +883,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       ...(kind === 'bars' || kind === 'stacked' || kind === 'grouped' ? barSizing(s) : {}),
       ...stateFields(s, path, warn),
       ...labelFields(label, typeof s['name'] === 'string' ? (s['name'] as string) : `Series ${i + 1}`, categories, values, `${path}.label`, warn, localeNumber ?? plain),
+      // ECharts places a bar's label INSIDE it unless told otherwise.
+      ...(type === 'bar' && typeof label['position'] !== 'string' ? { labelPosition: 'inside' } : {}),
     }
     if (s['silent'] === true) silent.push(series.length)
     seriesSource.push(i)

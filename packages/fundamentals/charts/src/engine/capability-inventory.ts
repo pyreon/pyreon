@@ -609,8 +609,13 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
   row('presentation.labels-rich-text', 'presentation', 'direct', {
     web: 'partial',
     native: 'partial',
-    gaps: ['a rich segment takes colour and size only (no weight, background, padding); formatter placeholders beyond {a} {b} {c} {d} are left as written', LITERAL_ONLY],
-    evidence: ['src/engine/option-labels.test.ts', 'src/engine/option-label-formatter.test.ts', NATIVE + 'chart-labels-native.test.ts'],
+    gaps: [
+      'a rich segment takes colour and size only (no weight, background, padding); formatter placeholders beyond {a} {b} {c} {d} are left as written',
+      'bar labels take ECharts\' position, distance and automatic fill and halo (differential-tested); a line or scatter label keeps the engine\'s placement above the point, and `label.rotate` / `offset` / `align` are not read',
+      'native: SwiftUI text has no stroke, so the halo is the text drawn at eight offsets under the fill; Compose strokes it',
+      LITERAL_ONLY,
+    ],
+    evidence: ['src/engine/option-labels.test.ts', 'src/engine/option-label-formatter.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-labels-native.test.ts'],
   }),
   row('presentation.states', 'presentation', 'direct', {
     web: 'partial',

@@ -119,6 +119,8 @@ data class PyreonDrawCmd(
     var rotate: Double? = null,
     /** "bold" sets the text heavier; null is the regular weight. */
     var weight: String? = null,
+    /** A text halo's width, ECharts' `textBorderWidth`; the colour is `stroke`. */
+    var strokeWidth: Double? = null,
 )
 
 /**
@@ -660,16 +662,31 @@ fun DrawScope.pyreonPaintChart(cmds: List<PyreonDrawCmd>, density: Float) {
                         else -> at.y.toFloat()
                     }
                     val rot = c.rotate ?: 0.0
+                    // A halo (ECharts' textBorder): the same text stroked under the fill.
+                    val haloColor = c.stroke
+                    val halo = if (haloColor != null && haloColor.isNotEmpty()) {
+                        val hp = Paint(paint)
+                        val hc = pyreonChartColor(haloColor)
+                        hp.color = android.graphics.Color.argb(
+                            (hc.alpha * 255).toInt(), (hc.red * 255).toInt(), (hc.green * 255).toInt(), (hc.blue * 255).toInt())
+                        hp.style = Paint.Style.STROKE
+                        hp.strokeWidth = (c.strokeWidth ?: 2.0).toFloat() * density
+                        hp.strokeJoin = Paint.Join.MITER
+                        hp.strokeMiter = 2f
+                        hp
+                    } else null
+                    val nc = drawContext.canvas.nativeCanvas
                     if (rot != 0.0) {
                         // Rotate about the anchor; align/baseline apply in the
                         // rotated frame (the web canvas's translate + rotate).
-                        val nc = drawContext.canvas.nativeCanvas
                         nc.save()
                         nc.rotate(rot.toFloat(), at.x.toFloat(), at.y.toFloat())
+                        if (halo != null) nc.drawText(txt, at.x.toFloat(), y, halo)
                         nc.drawText(txt, at.x.toFloat(), y, paint)
                         nc.restore()
                     } else {
-                        drawContext.canvas.nativeCanvas.drawText(txt, at.x.toFloat(), y, paint)
+                        if (halo != null) nc.drawText(txt, at.x.toFloat(), y, halo)
+                        nc.drawText(txt, at.x.toFloat(), y, paint)
                     }
                 }
             }

@@ -226,7 +226,7 @@ export function svgCommand(c: DrawCmd, fontFamily: string, gradientId?: string, 
   }
   const rot = c.rotate ?? 0
   const transform = rot === 0 ? '' : ` transform="rotate(${n(rot)} ${n(c.at.x)} ${n(c.at.y)})"`
-  return `<text x="${n(c.at.x)}" y="${n(c.at.y)}" fill="${esc(c.fill)}" font-size="${n(c.size)}" font-family="${esc(fontFamily)}"${c.weight === 'bold' ? ' font-weight="bold"' : ''} text-anchor="${ANCHOR[c.align]}" dominant-baseline="${BASELINE[c.baseline]}"${transform}>${esc(c.text)}</text>`
+  return `<text x="${n(c.at.x)}" y="${n(c.at.y)}" fill="${esc(c.fill)}" font-size="${n(c.size)}" font-family="${esc(fontFamily)}"${c.weight === 'bold' ? ' font-weight="bold"' : ''}${c.stroke !== undefined && c.stroke !== '' ? ` stroke="${esc(c.stroke)}" stroke-width="${n(c.strokeWidth ?? 2)}" paint-order="stroke" stroke-miterlimit="2"` : ''} text-anchor="${ANCHOR[c.align]}" dominant-baseline="${BASELINE[c.baseline]}"${transform}>${esc(c.text)}</text>`
 }
 
 /** Options for {@link renderSvg}. */

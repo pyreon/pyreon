@@ -182,4 +182,8 @@ export type DrawCmd =
       rotate?: Double | undefined
       /** 'bold' sets the text heavier (ECharts' `fontWeight: 'bold'`); absent is normal and serializes as before. */
       weight?: string | undefined
+      /** A halo drawn under the fill (ECharts' `textBorderColor`); absent draws none. */
+      stroke?: string | undefined
+      /** The halo's width in px (ECharts' `textBorderWidth`, 2 by default). */
+      strokeWidth?: Double | undefined
     }
