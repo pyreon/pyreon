@@ -6999,8 +6999,11 @@ public func barColumns(_ spec: ChartSpec, _ band: Double) -> [PyreonChartPt] {
   }
 
 public func inColumn(_ spec: ChartSpec, _ cols: [PyreonChartPt], _ k: Int, _ r: PyreonChartRect, _ i: Int, _ n: Int, _ plot: PyreonChartRect) -> PyreonChartRect {
+    if k < 0 || k >= cols.count || n == 0 {
+      return r
+    }
     let c = cols[k]
-    if c == nil || c.y < 0.0 || n == 0 {
+    if c.y < 0.0 {
       return r
     }
     let band = plot.w / countToDouble(n)

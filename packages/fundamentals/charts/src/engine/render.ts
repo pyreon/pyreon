@@ -1336,8 +1336,12 @@ export function barColumns(spec: ChartSpec, band: Double): Pt[] {
 
 /** A bar rect moved into series `k`'s ECharts column, when the spec lays bars out that way. */
 function inColumn(spec: ChartSpec, cols: Pt[], k: number, r: Rect, i: number, n: number, plot: Rect): Rect {
-  const c = cols[k]
-  if (c === undefined || c.y < 0.0 || n === 0) return r
+  // Bounds-check BEFORE indexing: `barColumns` is empty for every chart that
+  // does not opt into ECharts' bar layout, and the generated Kotlin `cols[k]`
+  // throws past the end where TS merely yields undefined.
+  if (k < 0 || k >= cols.length || n === 0) return r
+  const c = cols[k]!
+  if (c.y < 0.0) return r
   const band = plot.w / countToDouble(n)
   return { x: plot.x + band * countToDouble(i) + band / 2.0 + c.x, y: r.y, w: c.y, h: r.h }
 }
