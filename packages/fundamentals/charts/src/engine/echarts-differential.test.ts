@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import * as echarts from 'echarts'
-import { compileOption } from './option'
+import { compileOption, compiledCommands } from './option'
 import type { EChartsOption } from './option'
 import { barsFor, layoutChart } from './render'
 import { compileFamily } from './option-family'
@@ -481,6 +481,66 @@ describe('ECharts differential: titles', () => {
       u.forEach((f, k) => {
         expect(f.x).toBeCloseTo(e[k]!.x, 1)
         expect(f.y).toBeCloseTo(e[k]!.y, 1)
+      })
+    })
+  }
+})
+
+/**
+ * Legends: each entry's text (content, anchor, position). ECharts writes an
+ * entry's text at `x`/`y` inside the entry's `translate`, vertically centred;
+ * the position encodes the icon box, the 5px gap, `boxLayout`'s wrapping and
+ * spacing (icon bounds included) and the block's placement.
+ */
+interface LegendFact { text: string; x: number; y: number; anchor: string }
+function echartsLegend(option: object): LegendFact[] {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: W, height: H })
+  chart.setOption({ animation: false, ...option })
+  const svg = chart.renderToSVGString()
+  chart.dispose()
+  const names = new Set((option as { series: { name: string }[] }).series.map((s) => s.name))
+  return [...svg.matchAll(/<text[^>]*text-anchor="(\w+)"[^>]*? x="(-?[\d.]+)" y="(-?[\d.]+)" transform="translate\((-?[\d.]+) (-?[\d.]+)\)"[^>]*>([^<]*)</g)]
+    .filter((m) => names.has(m[6]!))
+    .map((m) => ({ text: m[6]!, x: Number(m[4]) + Number(m[2]), y: Number(m[5]) + Number(m[3]), anchor: m[1]! }))
+}
+function ourLegend(option: object): LegendFact[] {
+  const c = compileOption(option as EChartsOption, { width: W, height: H })
+  const measure = (t: string, size: number): number => echarts.format.getTextRect(t, String(size) + 'px sans-serif').width
+  const names = new Set((option as { series: { name: string }[] }).series.map((s) => s.name))
+  return compiledCommands(c, option as EChartsOption, measure).cmds.flatMap((cmd) =>
+    cmd.kind === 'text' && names.has(cmd.text) && cmd.baseline === 'middle' && cmd.size === 12 ? [{ text: cmd.text, x: cmd.at.x, y: cmd.at.y, anchor: cmd.align }] : [],
+  )
+}
+const legendOf = (legend: object, names: string[] = ['Alpha', 'Beta series'], types: string[] = ['bar', 'line']): object => ({
+  legend,
+  xAxis: { type: 'category', data: ['a', 'b'] },
+  yAxis: {},
+  series: names.map((name, i) => ({ type: types[i % types.length], name, data: [1 + i, 2] })),
+})
+const many8 = ['North', 'South', 'East', 'West', 'Central', 'Overseas', 'Online', 'Partners']
+const LEGEND_CASES: [string, object][] = [
+  ['the default: centred, 15 above the bottom', legendOf({})],
+  ['left / top in pixels', legendOf({ left: 10, top: 40 })],
+  ['vertical at the right, middle', legendOf({ orient: 'vertical', right: 10, top: 'middle' })],
+  ['a scatter and a line: circle and line icons', legendOf({ top: 5 }, ['Dots', 'Trend'], ['scatter', 'line'])],
+  ['many entries wrap', legendOf({ top: 10 }, many8, ['bar'])],
+  ['itemGap / itemWidth / itemHeight', legendOf({ itemGap: 20, itemWidth: 14, itemHeight: 10 })],
+  ['left: right', legendOf({ left: 'right', top: 0 })],
+  ['a percent left and a bottom', legendOf({ left: '10%', bottom: 30 })],
+  ['padding', legendOf({ left: 0, top: 0, padding: [10, 20] })],
+  ['vertical, left: right aligns text before the icon', legendOf({ orient: 'vertical', left: 'right', top: 20 })],
+]
+
+describe('ECharts differential: legends', () => {
+  for (const [name, option] of LEGEND_CASES) {
+    it(name, () => {
+      const e = echartsLegend(option)
+      const u = ourLegend(option)
+      expect(e.length).toBeGreaterThan(0)
+      expect(u.map((f) => [f.text, f.anchor === 'start' ? 'start' : f.anchor === 'end' ? 'end' : 'middle'])).toEqual(e.map((f) => [f.text, f.anchor]))
+      u.forEach((f, k) => {
+        expect(f.x).toBeCloseTo(e[k]!.x, 0)
+        expect(f.y).toBeCloseTo(e[k]!.y, 0)
       })
     })
   }

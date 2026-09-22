@@ -223,11 +223,13 @@ describe('composition — the title shifts what the chart drew', () => {
     expect(c.spec.xValues).toEqual([3, 9])
   })
 
-  it('a legend also consumes vertical space above the plot', () => {
+  it("a legend also consumes space: at ECharts' default (the bottom) below the plot, at the top above it", () => {
     const option = { legend: {}, xAxis: { data: ['a'] }, yAxis: {}, series: [{ type: 'bar', name: 'S', data: [1] }] }
     const c = compileOption(option, { width: 400, height: 300 })
     expect(c.legend).not.toBeNull()
-    expect(compiledCommands(c, option, measureApprox()).top).toBeGreaterThan(0)
+    expect(compiledCommands(c, option, measureApprox()).chrome.bottom).toBeGreaterThan(0)
+    const atTop = { ...option, legend: { top: 0 } }
+    expect(compiledCommands(compileOption(atTop, { width: 400, height: 300 }), atTop, measureApprox()).top).toBeGreaterThan(0)
     const hidden = compileOption({ ...option, legend: { show: false } }, { width: 400, height: 300 })
     expect(hidden.legend).toBeNull()
   })

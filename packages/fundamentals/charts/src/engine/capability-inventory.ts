@@ -363,12 +363,12 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'partial',
     native: 'partial',
     gaps: [
-      'a vertical legend on the LEFT overlays the plot rather than taking its column (right, top and bottom legends do take their band); `type: "scroll"`, `icon`, `itemWidth`/`itemHeight` and legend `padding` are not read',
+      'a vertical legend on the LEFT overlays the plot rather than taking its column (right, top and bottom legends do take their band); `type: "scroll"` paging and the `selector` buttons are not drawn',
       'series `legendHoverLink` (hovering an entry emphasises its series) is not honoured',
       'a family option chart (pie, funnel, …) draws its host\'s own legend, which a click does not toggle; a multi-grid option\'s legend does not toggle either',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/legend-toggle.test.ts', 'src/engine/legend-scroll.test.ts', 'src/engine/option-legend.test.ts', 'src/engine/option-legend.browser.test.tsx', 'src/engine/option-grid.test.ts', NATIVE + 'chart-legend-change-native.test.ts'],
+    evidence: ['src/engine/legend-toggle.test.ts', 'src/engine/legend-scroll.test.ts', 'src/engine/option-legend.test.ts', 'src/engine/option-legend.browser.test.tsx', 'src/engine/echarts-differential.test.ts', 'src/engine/option-grid.test.ts', NATIVE + 'chart-legend-change-native.test.ts'],
   }),
   row('coordinates.tooltip', 'coordinates', 'direct', {
     web: 'partial',

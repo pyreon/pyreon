@@ -62,27 +62,41 @@ describe('legend placement (ECharts defaults and keys)', () => {
   const theme = { fontSize: 12, label: '#666' }
   const m = (t: string) => t.length * 6
   const at = (l: Record<string, unknown>) => placeOptionLegend(entries, readLegendLayout(l), box, theme, m)
-  it('horizontal, centred at the top by default', () => {
+  // Positions are ECharts' getLayoutRect inside the legend's 5px padding; the
+  // exact geometry is held against ECharts in echarts-differential.
+  it('horizontal, centred 15 above the bottom by default (ECharts 6)', () => {
     const p = at({})
-    expect(p.side).toBe('top')
-    expect(p.rect.y).toBe(0)
+    expect(p.side).toBe('bottom')
+    expect(p.rect.y + p.rect.h).toBeCloseTo(300 - 15 - 5, 5)
     expect(p.rect.x + p.rect.w / 2).toBeCloseTo(200, 5)
   })
   it('left / right keywords, pixels and percents; right alone measures from the right', () => {
-    expect(at({ left: 'left' }).rect.x).toBe(0)
-    expect(at({ left: 'right' }).rect.x + at({ left: 'right' }).rect.w).toBeCloseTo(400, 5)
-    expect(at({ left: 30 }).rect.x).toBe(30)
-    expect(at({ left: '10%' }).rect.x).toBe(40)
+    expect(at({ left: 'left' }).rect.x).toBe(5)
+    expect(at({ left: 'right' }).rect.x + at({ left: 'right' }).rect.w).toBeCloseTo(395, 5)
+    expect(at({ left: 30 }).rect.x).toBe(35)
+    expect(at({ left: '10%' }).rect.x).toBe(45)
     const r = at({ right: 10 })
-    expect(r.rect.x + r.rect.w).toBeCloseTo(390, 5)
+    expect(r.rect.x + r.rect.w).toBeCloseTo(385, 5)
   })
-  it('bottom puts it at the bottom; top pixels move it down (an overlay)', () => {
+  it('bottom / top place it; a legend in the top half reserves the top, the bottom half the bottom', () => {
     const b = at({ bottom: 0 })
     expect(b.side).toBe('bottom')
-    expect(b.rect.y + b.rect.h).toBeCloseTo(300, 5)
+    expect(b.rect.y + b.rect.h).toBeCloseTo(295, 5)
     expect(at({ top: 'bottom' }).side).toBe('bottom')
-    expect(at({ top: 40 }).side).toBe('over')
+    expect(at({ top: 40 }).side).toBe('top')
+    expect(at({ top: 40 }).rect.y).toBe(45)
     expect(at({ top: 'middle' }).rect.y).toBeCloseTo((300 - at({}).rect.h) / 2, 5)
+  })
+  it('icons: a rounded rect by default, a line with its symbol, a symbol; a hidden entry greys out', () => {
+    const icons = { Alpha: 'line:emptyCircle', Beta: 'triangle' }
+    const p = placeOptionLegend([{ label: 'Alpha', color: '#a00' }, { label: 'Beta', color: '#0a0', muted: true }], readLegendLayout({}), box, theme, m, icons, { Alpha: 3 })
+    expect(p.cmds.filter((c) => c.kind === 'line')).toMatchObject([{ stroke: '#a00', width: 3 }])
+    // The empty circle: a ring of the series colour round white.
+    expect(p.cmds.filter((c) => c.kind === 'circle').map((c) => (c.kind === 'circle' ? c.fill : ''))).toEqual(['#a00', '#ffffff'])
+    const tri = p.cmds.find((c) => c.kind === 'polygon')
+    expect(tri).toMatchObject({ fill: '#cfd2d7' })
+    const plain = placeOptionLegend(entries, readLegendLayout({}), box, theme, m)
+    expect(plain.cmds.filter((c) => c.kind === 'rect')).toMatchObject([{ rect: { w: 25, h: 14 }, corners: [3.5, 3.5, 3.5, 3.5] }, { rect: { w: 25, h: 14 } }])
   })
   it('vertical: stacked, on the side it sits', () => {
     const v = at({ orient: 'vertical', right: 0, top: 'middle' })

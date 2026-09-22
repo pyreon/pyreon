@@ -42,7 +42,7 @@ describe('grid places the plot', () => {
 
 describe('legend reservations', () => {
   it('a bottom legend takes its band off the bottom; the plot ends above it', () => {
-    const top = plotOf({ legend: {} })
+    const top = plotOf({ legend: { top: 0 } })
     const bottom = plotOf({ legend: { bottom: 0 } })
     expect(bottom.cc.chrome.bottom).toBeGreaterThan(0)
     expect(bottom.cc.top + bottom.plot.y).toBeLessThan(top.cc.top + top.plot.y)

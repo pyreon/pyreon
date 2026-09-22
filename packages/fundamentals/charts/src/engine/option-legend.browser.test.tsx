@@ -9,7 +9,7 @@ import type { EChartsOption } from './option'
 const option = (legend: Record<string, unknown>): EChartsOption => ({
   animation: false,
   // Pinned to the left so the first entry is at a known point.
-  legend: { left: 'left', ...legend },
+  legend: { left: 'left', top: 'top', ...legend },
   xAxis: { type: 'category', data: ['a'] },
   yAxis: { type: 'value', min: 0, max: 10 },
   series: [
@@ -24,10 +24,10 @@ const count = (c: HTMLCanvasElement, rgb: [number, number, number]): number => {
   for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i]! - rgb[0]) < 8 && Math.abs(d[i + 1]! - rgb[1]) < 8 && Math.abs(d[i + 2]! - rgb[2]) < 8) n++
   return n
 }
-/** Click the first legend entry: the legend's first row sits at the top-left. */
+/** Click the first legend entry: the legend's first row sits at the top-left, inside its 5px padding. */
 const clickFirstEntry = (c: HTMLCanvasElement): void => {
   const r = c.getBoundingClientRect()
-  c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 8, clientY: r.top + 8 }))
+  c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 12, clientY: r.top + 12 }))
 }
 
 describe('<OptionChart> legend (real browser)', () => {

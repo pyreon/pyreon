@@ -44,7 +44,7 @@ import { smooth, step } from './curve'
 import { plain } from './format'
 import type { Formatter } from './format'
 import type { LegendEntry } from './legend'
-import { placeOptionLegend, readOptionLegend } from './option-legend'
+import { placeOptionLegend, readLegendLayout, readOptionLegend } from './option-legend'
 import { optionTitleCommands, readOptionTitle } from './option-title'
 import { optionGridInsets } from './option-grid'
 import { echartsNice, formatTick } from './scale'
@@ -100,6 +100,9 @@ export interface CompiledOption {
   legendHidden?: string[] | undefined
   /** Where and how the legend draws (ECharts' `orient`, `left`/`right`/`top`/`bottom`, `itemGap`, `textStyle`, `formatter`). */
   legendLayout?: OptionLegendLayout | undefined
+  /** Each legend entry's icon and, for a line, its stroke width, by name. */
+  legendIcons?: Record<string, string> | undefined
+  legendLineWidths?: Record<string, number> | undefined
   tooltip: boolean
   /** ECharts' whole `tooltip` component, read (null when the option declares none). */
   tooltipSpec: TooltipSpec | null
@@ -1023,7 +1026,21 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     if (read !== null) titles.push(read)
   }
   const title = titles[0] ?? null
-  const optionLegend = readOptionLegend(option['legend'], series)
+  // ECharts' legend icon per series: a line draws its line and symbol, a scatter its symbol, the rest a rounded rect.
+  const seriesIcons: Record<string, string> = {}
+  const lineWidths: Record<string, number> = {}
+  for (const rs of rawSeries) {
+    if (!isObj(rs) || typeof rs['name'] !== 'string' || seriesIcons[rs['name'] as string] !== undefined) continue
+    const name = rs['name'] as string
+    const sym = typeof rs['symbol'] === 'string' ? (rs['symbol'] as string) : undefined
+    if (typeof rs['legendIcon'] === 'string') seriesIcons[name] = rs['legendIcon'] as string
+    else if (rs['type'] === 'line') seriesIcons[name] = 'line:' + (sym ?? 'emptyCircle')
+    else if (rs['type'] === 'scatter' || rs['type'] === 'effectScatter') seriesIcons[name] = sym ?? 'circle'
+    else seriesIcons[name] = 'roundRect'
+    const ls = isObj(rs['lineStyle']) ? rs['lineStyle'] : {}
+    lineWidths[name] = typeof ls['width'] === 'number' ? (ls['width'] as number) : 2
+  }
+  const optionLegend = readOptionLegend(option['legend'], series, seriesIcons)
   const legend = optionLegend === null ? null : optionLegend.entries
   const tooltipRaw = option['tooltip']
   const tooltipSpec = readTooltipOption(tooltipRaw, warn)
@@ -1151,7 +1168,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   // The toolbox's box zoom needs a window even when the option has no dataZoom component.
   if (zoom === undefined && toolbox?.dataZoom === true) zoom = { inside: false, slider: false, window: { start: 0.0, end: 1.0 }, keepY: false, lock: false, minSpan: 0.0, maxSpan: 1.0, wheel: false, move: false }
   const animation = resolveAnimation(option as Record<string, unknown>, warn)
-  return { spec, custom: customPlans, background: themed.background, title, titles, legend, ...(optionLegend === null ? {} : { legendMode: optionLegend.selectedMode, legendHidden: optionLegend.hidden, legendLayout: optionLegend.layout }), tooltip, tooltipSpec, silent, seriesSource, animation, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }), ...(brush === undefined ? {} : { brush }) }
+  return { spec, custom: customPlans, background: themed.background, title, titles, legend, ...(optionLegend === null ? {} : { legendMode: optionLegend.selectedMode, legendHidden: optionLegend.hidden, legendLayout: optionLegend.layout, legendIcons: optionLegend.icons, legendLineWidths: lineWidths }), tooltip, tooltipSpec, silent, seriesSource, animation, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }), ...(brush === undefined ? {} : { brush }) }
 }
 
 /** The selection a compiled option's brush makes over `spec`, restricted to `brush.seriesIndex`. */
@@ -1450,12 +1467,15 @@ export function compiledCommands(compiled: CompiledOption, option: EChartsOption
   let below = 0.0
   let beside = 0.0
   if (compiled.legend !== null && compiled.legend.length > 0) {
-    const placed = placeOptionLegend(compiled.legend, compiled.legendLayout, { x: 0.0, y: top, w: width, h: height - top }, t, measure)
+    // ECharts places the legend in the whole chart, as it does the title.
+    const placed = placeOptionLegend(compiled.legend, compiled.legendLayout, { x: 0.0, y: 0.0, w: width, h: height }, t, measure, compiled.legendIcons ?? {}, compiled.legendLineWidths ?? {})
     for (const c of placed.cmds) cmds.push(c)
     legendBoxes = placed.boxes
     // Where no grid places the plot, the legend's band is taken off the side it sits on.
-    if (placed.side === 'top') top = placed.rect.y + placed.rect.h
-    else if (placed.side === 'bottom' && compiled.spec.gridBottom === undefined) below = height - placed.rect.y
+    // The band includes the legend's own padding (ECharts' 5px by default).
+    const lpad = (compiled.legendLayout ?? readLegendLayout({})).padding
+    if (placed.side === 'top') top = Math.max(top, placed.rect.y + placed.rect.h + lpad[2]!)
+    else if (placed.side === 'bottom' && compiled.spec.gridBottom === undefined) below = height - placed.rect.y + lpad[0]!
     else if (placed.side === 'right' && compiled.spec.gridRight === undefined) beside = width - placed.rect.x
   }
   if (gridOwnsTop) top = 0.0
