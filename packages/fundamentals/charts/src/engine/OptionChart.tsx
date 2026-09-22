@@ -42,6 +42,7 @@ import type { ZoomWindow } from './zoom'
 import type { CompiledOption, EChartsOption, OptionPlan } from './option'
 import { familyHostNode, familyHostShape } from './family-host'
 import type { FamilyHostOptions } from './family-host'
+import { selectedSeed } from './option-selected-map'
 import { familyItemCursor, familyItemSilent, familyItemTooltip } from './family-tooltip'
 import type { FamilyPlan } from './option-family'
 import { TIMELINE_HEIGHT, defaultTimelineStrip, mergeChartOptions, resolveTimeline, timelineCommands, timelineSteps } from './option-composite'
@@ -534,6 +535,12 @@ export function OptionChart(props: OptionChartProps): VNode {
 
   // One batch per draw: the mode and host-node writes of a family host, or the
   // mode flip to svg/canvas, must repaint the surface once, not per write.
+  // The pins (ECharts' selection): declared before the draw effect, which seeds
+  // them from the option's `selectedMap`.
+  const pinned = props.handle?.selected ?? signal<number[]>([])
+  // `selectedMode: 'series'` pins SERIES indices rather than datums.
+  const pinnedSeries = signal<number[]>([])
+  let seededFrom: unknown = null
   const draw = (): void => batch(() => {
     const opt = readOption()
     const idx = stepIndex()
@@ -575,6 +582,16 @@ export function OptionChart(props: OptionChartProps): VNode {
     // also mounts each family layer's own host over it.
     const flat = hasFamilyParts(plan) ? flattenLayers(plan) : null
     syncLayers(flat === null ? [] : flat.families)
+    // ECharts' `selectedMap` seeds the pins, once per option (a click then owns them).
+    if (opt !== seededFrom) {
+      seededFrom = opt
+      const cart = plan.kind === 'cartesian' ? plan.compiled : null
+      const seed = cart === null ? null : selectedSeed(asArray(opt['series']), cart.seriesSource, cart.spec.categories)
+      if (seed !== null) {
+        pinned.set(seed.data)
+        pinnedSeries.set(seed.series)
+      }
+    }
     mode.set('canvas')
   })
 
@@ -823,9 +840,6 @@ export function OptionChart(props: OptionChartProps): VNode {
   // `emphasis` set only while a state is active, so a plain chart paints the
   // compiled commands as before.
   const hoverIndex = props.handle?.hover ?? signal(-1)
-  const pinned = props.handle?.selected ?? signal<number[]>([])
-  // `selectedMode: 'series'` pins SERIES indices rather than datums.
-  const pinnedSeries = signal<number[]>([])
   /** True when a cartesian option draws an animated `lines` trail. */
   const linesEffectOn = (g: OptionGeometry): boolean =>
     g.plan.kind === 'cartesian' && (g.plan.compiled.spec.lines ?? []).some((ls) => ls.effect)

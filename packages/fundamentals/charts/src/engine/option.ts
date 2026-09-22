@@ -142,7 +142,7 @@ export const KNOWN_SERIES: ReadonlySet<string> = new Set([
   'color', 'showSymbol', 'symbol', 'emphasis', 'silent',
   'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex', 'tooltipExtras',
   'coordinateSystem', 'polyline', 'effect', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'sampling',
-  'select', 'blur', 'selectedMode',
+  'select', 'blur', 'selectedMode', 'selectedMap',
   // Paint order (the draw order below).
   'z', 'zlevel',
 ])

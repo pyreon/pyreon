@@ -592,11 +592,12 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'partial',
     native: 'partial',
     gaps: [
-      '`emphasis.focus` ancestor/descendant/adjacency, `select.disabled`, `select.lineStyle`/`areaStyle`, `blur.label`, state labels and `selectedMode: "series"` are named and ignored',
+      '`emphasis.focus` ancestor/descendant/adjacency, `select.disabled`, `select.lineStyle`/`areaStyle` and `blur.label` are named and ignored',
+      'family option charts (pie, sankey, …) have no select or blur state: their `select`, `blur`, `selectedMode` and `selectedMap` are gaps',
       'native: the hover half of emphasis does not cross (a tap pins instead)',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/emphasis.test.ts', 'src/engine/states-render.test.ts', 'src/engine/option-states.test.ts', 'src/engine/option-chart-states.test.tsx', 'src/engine/states.browser.test.tsx', NATIVE + 'chart-states-native.test.ts'],
+    evidence: ['src/engine/emphasis.test.ts', 'src/engine/states-render.test.ts', 'src/engine/option-states.test.ts', 'src/engine/option-chart-states.test.tsx', 'src/engine/states.browser.test.tsx', 'src/engine/option-selected-map.test.ts', 'src/engine/option-selected-map.browser.test.tsx', NATIVE + 'chart-states-native.test.ts'],
   }),
   row('presentation.symbols', 'presentation', 'direct', {
     web: 'partial',
