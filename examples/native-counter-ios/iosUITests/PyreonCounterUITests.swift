@@ -401,6 +401,14 @@ final class PyreonCounterUITests: XCTestCase {
             openButton.waitForExistence(timeout: 30),
             "Open button (useLinking) did not appear"
         )
+        // The page is one outer vertical Scroll, and the rows above Open grow with
+        // every flow device proof added to it — an unscrolled tap on a button below
+        // the fold lands on nothing. Same frame-inside-window loop as the Unlock test.
+        var openSwipes = 0
+        while !(openButton.isHittable && app.windows.firstMatch.frame.contains(openButton.frame)) && openSwipes < 10 {
+            app.swipeUp()
+            openSwipes += 1
+        }
         openButton.tap()
 
         // `UIApplication.shared.open` hands the URL to the OS: this app
