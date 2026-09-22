@@ -235,6 +235,10 @@ public struct LayoutConfig {
   public var yDomain: Domain
   public var categories: [String]
   public var edgeCategories: Bool? = nil
+  public var insetLeft: Double? = nil
+  public var insetTop: Double? = nil
+  public var insetRight: Double? = nil
+  public var insetBottom: Double? = nil
   public var fontSize: Double
   public var xTickCount: Double
   public var yTickCount: Double
@@ -263,13 +267,17 @@ public struct LayoutConfig {
   public var xOffset: Double? = nil
   public var yOffset: Double? = nil
   public var y2Offset: Double? = nil
-  public init(width: Double, height: Double, xDomain: Domain, yDomain: Domain, categories: [String], edgeCategories: Bool? = nil, fontSize: Double, xTickCount: Double, yTickCount: Double, showXAxis: Bool, showYAxis: Bool, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, xTime: Bool? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, horizontal: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, yLog: Bool? = nil, yLogMin: Double? = nil, yLogMax: Double? = nil, yTime: Bool? = nil, xLabels: String? = nil, xTop: Bool? = nil, yRight: Bool? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil) {
+  public init(width: Double, height: Double, xDomain: Domain, yDomain: Domain, categories: [String], edgeCategories: Bool? = nil, insetLeft: Double? = nil, insetTop: Double? = nil, insetRight: Double? = nil, insetBottom: Double? = nil, fontSize: Double, xTickCount: Double, yTickCount: Double, showXAxis: Bool, showYAxis: Bool, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, xTime: Bool? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, horizontal: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, yLog: Bool? = nil, yLogMin: Double? = nil, yLogMax: Double? = nil, yTime: Bool? = nil, xLabels: String? = nil, xTop: Bool? = nil, yRight: Bool? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil) {
     self.width = width
     self.height = height
     self.xDomain = xDomain
     self.yDomain = yDomain
     self.categories = categories
     self.edgeCategories = edgeCategories
+    self.insetLeft = insetLeft
+    self.insetTop = insetTop
+    self.insetRight = insetRight
+    self.insetBottom = insetBottom
     self.fontSize = fontSize
     self.xTickCount = xTickCount
     self.yTickCount = yTickCount
@@ -666,6 +674,10 @@ public struct ChartSpec {
   public var series: [Series]
   public var drawOrder: [Int]? = nil
   public var boundaryGap: Bool? = nil
+  public var gridLeft: Double? = nil
+  public var gridTop: Double? = nil
+  public var gridRight: Double? = nil
+  public var gridBottom: Double? = nil
   public var categories: [String]
   public var theme: ChartTheme
   public var showXAxis: Bool
@@ -703,12 +715,16 @@ public struct ChartSpec {
   public var x2Domain: Domain? = nil
   public var lines: [LinesSeries]? = nil
   public var effectTime: Double? = nil
-  public init(width: Double, height: Double, series: [Series], drawOrder: [Int]? = nil, boundaryGap: Bool? = nil, categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, yInverse: Bool? = nil, xInverse: Bool? = nil, xTop: Bool? = nil, yRight: Bool? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, lines: [LinesSeries]? = nil, effectTime: Double? = nil) {
+  public init(width: Double, height: Double, series: [Series], drawOrder: [Int]? = nil, boundaryGap: Bool? = nil, gridLeft: Double? = nil, gridTop: Double? = nil, gridRight: Double? = nil, gridBottom: Double? = nil, categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, yInverse: Bool? = nil, xInverse: Bool? = nil, xTop: Bool? = nil, yRight: Bool? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, lines: [LinesSeries]? = nil, effectTime: Double? = nil) {
     self.width = width
     self.height = height
     self.series = series
     self.drawOrder = drawOrder
     self.boundaryGap = boundaryGap
+    self.gridLeft = gridLeft
+    self.gridTop = gridTop
+    self.gridRight = gridRight
+    self.gridBottom = gridBottom
     self.categories = categories
     self.theme = theme
     self.showXAxis = showXAxis
@@ -3917,10 +3933,12 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
     let xTop = cfg.xTop == true && cfg.horizontal != true
     let hasX2 = (((cfg.x2Labels ?? [])).count > 0 || cfg.x2Domain != nil) && cfg.showXAxis && cfg.horizontal != true
     let x2Band = hasX2 ? cfg.fontSize + labelGap + tickLen + (cfg.x2Title != nil && cfg.x2Title != "" ? titleH : 0.0) : padTop
-    let top = xTop ? xBand : x2Band
-    let bottom = xTop ? x2Band : xBand
-    let gutters = Gutters(left: left, right: right, top: top, bottom: bottom)
-    let plot = PyreonChartRect(x: left, y: top, w: max(0.0, cfg.width - left - right), h: max(0.0, cfg.height - top - bottom))
+    let top = (cfg.insetTop ?? (xTop ? xBand : x2Band))
+    let bottom = (cfg.insetBottom ?? (xTop ? x2Band : xBand))
+    let gLeft = (cfg.insetLeft ?? left)
+    let gRight = (cfg.insetRight ?? right)
+    let gutters = Gutters(left: gLeft, right: gRight, top: top, bottom: bottom)
+    let plot = PyreonChartRect(x: gLeft, y: top, w: max(0.0, cfg.width - gLeft - gRight), h: max(0.0, cfg.height - top - bottom))
     if cfg.horizontal == true {
       let yTicks = cfg.showYAxis ? bandTicksY(cfg.categories, plot) : []
       let xTicks = cfg.showXAxis ? makeTicks(cfg.yDomain, plot.x, plot.x + plot.w, cfg.yTickCount, cfg.yFormat) : []
@@ -5430,7 +5448,7 @@ public func layoutChart(_ raw: ChartSpec, _ measure: (String, Double) -> Double)
     let n = seriesMaxLength(spec.series)
     let isLog = raw.yScale == "log"
     let lb = isLog ? logBounds(raw) : Domain(min: 1.0, max: 10.0)
-    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? invertedDomain(extent((spec.xValues ?? [])), spec.xInverse == true && spec.horizontal != true) : Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, edgeCategories: edgeCategoryPoints(spec), fontSize: spec.theme.fontSize, xTickCount: 5.0, yTickCount: 5.0, showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yTime: spec.yTime == true, xLabels: spec.xLabels, xTop: spec.xTop, yRight: spec.yRight, extraYAxes: resolvedExtraAxes(spec), x2Labels: spec.x2Labels, x2Title: spec.x2Title, x2Domain: hasX2Axis(spec) ? resolveX2Domain(spec) : nil, xOffset: spec.xOffset, yOffset: spec.yOffset, y2Offset: spec.y2Offset)
+    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? invertedDomain(extent((spec.xValues ?? [])), spec.xInverse == true && spec.horizontal != true) : Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, edgeCategories: edgeCategoryPoints(spec), insetLeft: spec.gridLeft, insetTop: spec.gridTop, insetRight: spec.gridRight, insetBottom: spec.gridBottom, fontSize: spec.theme.fontSize, xTickCount: 5.0, yTickCount: 5.0, showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yTime: spec.yTime == true, xLabels: spec.xLabels, xTop: spec.xTop, yRight: spec.yRight, extraYAxes: resolvedExtraAxes(spec), x2Labels: spec.x2Labels, x2Title: spec.x2Title, x2Domain: hasX2Axis(spec) ? resolveX2Domain(spec) : nil, xOffset: spec.xOffset, yOffset: spec.yOffset, y2Offset: spec.y2Offset)
     return computeLayout(cfg, measure)
   }
 

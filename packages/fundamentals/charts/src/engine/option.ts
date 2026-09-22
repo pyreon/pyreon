@@ -43,12 +43,12 @@ import type { Annotation, ChartSpec, PointMarker, Series, SeriesExtra } from './
 import { smooth, step } from './curve'
 import { plain } from './format'
 import type { Formatter } from './format'
-import { renderLegend } from './legend'
 import type { LegendEntry } from './legend'
-import { readOptionLegend } from './option-legend'
+import { placeOptionLegend, readOptionLegend } from './option-legend'
 import { optionTitleCommands, readOptionTitle } from './option-title'
+import { optionGridInsets } from './option-grid'
 import type { OptionTitle } from './option-title'
-import type { LegendSelectedMode } from './option-legend'
+import type { LegendSelectedMode, OptionLegendLayout } from './option-legend'
 import { measureApprox, renderSvg } from './svg'
 import { compileFamily, familyToSvg } from './option-family'
 import type { CompiledFamily } from './option-family'
@@ -95,6 +95,8 @@ export interface CompiledOption {
   /** ECharts' `legend.selectedMode` (a click toggles, keeps one on, or does nothing) and the names `legend.selected` starts off. */
   legendMode?: LegendSelectedMode | undefined
   legendHidden?: string[] | undefined
+  /** Where and how the legend draws (ECharts' `orient`, `left`/`right`/`top`/`bottom`, `itemGap`, `textStyle`, `formatter`). */
+  legendLayout?: OptionLegendLayout | undefined
   tooltip: boolean
   /** ECharts' whole `tooltip` component, read (null when the option declares none). */
   tooltipSpec: TooltipSpec | null
@@ -1054,6 +1056,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     height: opts.height ?? 320.0,
     series,
     categories,
+    // A single `grid`'s position fixes the plot rect, as in ECharts.
+    ...optionGridInsets(option['grid'], opts.width ?? 640.0, opts.height ?? 320.0),
     // ECharts' category-axis `boundaryGap: false`: lines run edge to edge, labels on the points.
     ...(!xContinuous && isObj(xAxis) && xAxis['boundaryGap'] === false ? { boundaryGap: false } : {}),
     theme: themed.chartTheme,
@@ -1114,7 +1118,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   // The toolbox's box zoom needs a window even when the option has no dataZoom component.
   if (zoom === undefined && toolbox?.dataZoom === true) zoom = { inside: false, slider: false, window: { start: 0.0, end: 1.0 }, keepY: false, lock: false, minSpan: 0.0, maxSpan: 1.0, wheel: false, move: false }
   const animation = resolveAnimation(option as Record<string, unknown>, warn)
-  return { spec, custom: customPlans, background: themed.background, title, legend, ...(optionLegend === null ? {} : { legendMode: optionLegend.selectedMode, legendHidden: optionLegend.hidden }), tooltip, tooltipSpec, silent, seriesSource, animation, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }), ...(brush === undefined ? {} : { brush }) }
+  return { spec, custom: customPlans, background: themed.background, title, legend, ...(optionLegend === null ? {} : { legendMode: optionLegend.selectedMode, legendHidden: optionLegend.hidden, legendLayout: optionLegend.layout }), tooltip, tooltipSpec, silent, seriesSource, animation, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }), ...(brush === undefined ? {} : { brush }) }
 }
 
 /** The selection a compiled option's brush makes over `spec`, restricted to `brush.seriesIndex`. */
@@ -1304,19 +1308,30 @@ function optionToSvgSingle(option: EChartsOption, opts: OptionToSvgOptions): str
  * global index of the first (`offset`), and the navigator strip the slider
  * takes from the bottom. Without a `dataZoom` it is the compiled spec itself.
  */
-export function zoomedView(compiled: CompiledOption, top: Double, win?: ZoomWindow): { spec: ChartSpec; offset: number; navigator: NavigatorLayout | null } {
+/** What the title and legend take off the chart's box: a band above, below and to the right of the plot. */
+export interface OptionChrome {
+  top: Double
+  bottom: Double
+  right: Double
+}
+
+export function zoomedView(compiled: CompiledOption, reserved: Double | OptionChrome, win?: ZoomWindow): { spec: ChartSpec; offset: number; navigator: NavigatorLayout | null } {
   const zoom = compiled.zoom
-  const height = Math.max(0.0, compiled.spec.height - top)
-  if (zoom === undefined) return { spec: { ...compiled.spec, height }, offset: 0, navigator: null }
+  const top = typeof reserved === 'number' ? reserved : reserved.top
+  const below = typeof reserved === 'number' ? 0.0 : reserved.bottom
+  const beside = typeof reserved === 'number' ? 0.0 : reserved.right
+  const height = Math.max(0.0, compiled.spec.height - top - below)
+  const width = Math.max(0.0, compiled.spec.width - beside)
+  if (zoom === undefined) return { spec: { ...compiled.spec, height, width }, offset: 0, navigator: null }
   const w = win ?? zoom.window
   const lead = compiled.spec.series[0]
   const t = compiled.spec.theme
-  const navigator = zoom.slider ? renderNavigator(lead?.values ?? [], lead?.color ?? t.palette[0] ?? '#5470c6', w, { x: 0.0, y: top, w: compiled.spec.width, h: height }, t.grid) : null
-  const view = windowSpec({ ...compiled.spec, height: Math.max(0.0, height - (navigator?.height ?? 0.0)) }, w, zoom.keepY)
+  const navigator = zoom.slider ? renderNavigator(lead?.values ?? [], lead?.color ?? t.palette[0] ?? '#5470c6', w, { x: 0.0, y: top, w: width, h: height }, t.grid) : null
+  const view = windowSpec({ ...compiled.spec, width, height: Math.max(0.0, height - (navigator?.height ?? 0.0)) }, w, zoom.keepY)
   return { spec: view.spec, offset: view.offset, navigator }
 }
 
-export function compiledCommands(compiled: CompiledOption, option: EChartsOption, measure: MeasureText, win?: ZoomWindow, actives: ToolboxTool[] = [], areas: BrushArea[] = []): { cmds: DrawCmd[]; top: Double; legendBoxes: Rect[] } {
+export function compiledCommands(compiled: CompiledOption, option: EChartsOption, measure: MeasureText, win?: ZoomWindow, actives: ToolboxTool[] = [], areas: BrushArea[] = []): { cmds: DrawCmd[]; top: Double; chrome: OptionChrome; legendBoxes: Rect[] } {
   const width = compiled.spec.width
   const height = compiled.spec.height
   const t = compiled.spec.theme
@@ -1329,13 +1344,23 @@ export function compiledCommands(compiled: CompiledOption, option: EChartsOption
     for (const c of tl.cmds) cmds.push(c)
     top = top + tl.height
   }
+  // A grid that places the plot (its `top` set) owns the vertical layout: the
+  // title and legend overlay it, as ECharts draws them, instead of pushing it down.
+  const gridOwnsTop = compiled.spec.gridTop !== undefined
+  let below = 0.0
+  let beside = 0.0
   if (compiled.legend !== null && compiled.legend.length > 0) {
-    const l = renderLegend(compiled.legend, { x: 0.0, y: top, w: width, h: height - top }, { fontSize: t.fontSize, labelColor: t.label, swatch: 10.0, gap: 12.0, orientation: 'horizontal' }, measure)
-    for (const c of l.cmds) cmds.push(c)
-    legendBoxes = l.boxes
-    top = top + l.height
+    const placed = placeOptionLegend(compiled.legend, compiled.legendLayout, { x: 0.0, y: top, w: width, h: height - top }, t, measure)
+    for (const c of placed.cmds) cmds.push(c)
+    legendBoxes = placed.boxes
+    // Where no grid places the plot, the legend's band is taken off the side it sits on.
+    if (placed.side === 'top') top = placed.rect.y + placed.rect.h
+    else if (placed.side === 'bottom' && compiled.spec.gridBottom === undefined) below = height - placed.rect.y
+    else if (placed.side === 'right' && compiled.spec.gridRight === undefined) beside = width - placed.rect.x
   }
-  const view = zoomedView(compiled, top, win)
+  if (gridOwnsTop) top = 0.0
+  const chrome: OptionChrome = { top, bottom: below, right: beside }
+  const view = zoomedView(compiled, chrome, win)
   // Brush areas are in PLOT-frame pixels (above the title / legend offset): they dim what they miss.
   const brushed = areas.length === 0 ? view.spec : applyOptionBrush(compiled, view.spec, measure, areas)
   const chart = renderChart(brushed, measure)
@@ -1348,5 +1373,5 @@ export function compiledCommands(compiled: CompiledOption, option: EChartsOption
   for (const c of graphicCommands(option, width, height).cmds) cmds.push(c)
   // ECharts' toolbox sits over the chart's top-right corner; it reserves no room.
   if (compiled.toolbox !== undefined) for (const c of renderToolbox(toolboxTools(compiled.toolbox), { x: 0.0, y: 0.0, w: width, h: height }, { fontSize: t.fontSize, color: t.label, actives }).cmds) cmds.push(c)
-  return { cmds, top, legendBoxes }
+  return { cmds, top, chrome, legendBoxes }
 }

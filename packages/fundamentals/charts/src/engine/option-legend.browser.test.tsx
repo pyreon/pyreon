@@ -8,7 +8,8 @@ import type { EChartsOption } from './option'
 
 const option = (legend: Record<string, unknown>): EChartsOption => ({
   animation: false,
-  legend,
+  // Pinned to the left so the first entry is at a known point.
+  legend: { left: 'left', ...legend },
   xAxis: { type: 'category', data: ['a'] },
   yAxis: { type: 'value', min: 0, max: 10 },
   series: [

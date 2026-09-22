@@ -73,6 +73,15 @@ export interface LayoutConfig {
   categories: string[]
   /** Category labels on edge-to-edge points rather than band centres (ECharts' `boundaryGap: false` on a chart with no bars). */
   edgeCategories?: boolean | undefined
+  /**
+   * Fixed plot insets in pixels (ECharts' `grid.left` / `top` / `right` /
+   * `bottom`): a side that is set places the plot edge there, and the axis
+   * labels draw in the margin outside it; an unset side is sized to its labels.
+   */
+  insetLeft?: Double | undefined
+  insetTop?: Double | undefined
+  insetRight?: Double | undefined
+  insetBottom?: Double | undefined
   fontSize: Double
   /** Target tick counts; the nice-step algorithm decides the actual number. */
   xTickCount: Double
@@ -292,14 +301,16 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // A second x axis takes a label band (and its title's line) on the other side.
   const hasX2 = ((cfg.x2Labels ?? []).length > 0 || cfg.x2Domain !== undefined) && cfg.showXAxis && cfg.horizontal !== true
   const x2Band = hasX2 ? cfg.fontSize + labelGap + tickLen + (cfg.x2Title !== undefined && cfg.x2Title !== '' ? titleH : 0.0) : padTop
-  const top = xTop ? xBand : x2Band
-  const bottom = xTop ? x2Band : xBand
-  const gutters: Gutters = { left, right, top, bottom }
+  const top = cfg.insetTop ?? (xTop ? xBand : x2Band)
+  const bottom = cfg.insetBottom ?? (xTop ? x2Band : xBand)
+  const gLeft = cfg.insetLeft ?? left
+  const gRight = cfg.insetRight ?? right
+  const gutters: Gutters = { left: gLeft, right: gRight, top, bottom }
 
   const plot: Rect = {
-    x: left,
+    x: gLeft,
     y: top,
-    w: Math.max(0.0, cfg.width - left - right),
+    w: Math.max(0.0, cfg.width - gLeft - gRight),
     h: Math.max(0.0, cfg.height - top - bottom),
   }
 

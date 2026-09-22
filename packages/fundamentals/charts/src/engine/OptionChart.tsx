@@ -40,7 +40,7 @@ import { chartTable } from './a11y'
 import { navigatorDrag, navigatorHit } from './navigator'
 import { isFullWindow, panWindow, windowOfRows, zoomWindow } from './zoom'
 import type { ZoomWindow } from './zoom'
-import type { CompiledOption, EChartsOption, OptionPlan } from './option'
+import type { CompiledOption, EChartsOption, OptionPlan, OptionChrome } from './option'
 import { familyHostNode, familyHostShape } from './family-host'
 import type { FamilyHostOptions } from './family-host'
 import { selectedSeed } from './option-selected-map'
@@ -639,10 +639,10 @@ export function OptionChart(props: OptionChartProps): VNode {
       const composed = compiledCommands(compiled, resolved, measure, winOf(plan.compiled), toolActives(), areas)
       for (const c of composed.cmds) cmds.push(c)
       legendBoxes = composed.legendBoxes
-      for (const c of pointerCmds(plan.compiled, resolved, measure, composed.top)) cmds.push(c)
+      for (const c of pointerCmds(plan.compiled, resolved, measure, composed.chrome)) cmds.push(c)
       if (plan.compiled.zoom !== undefined) {
         const win = winOf(plan.compiled)!
-        const view = zoomedView(plan.compiled, composed.top, win)
+        const view = zoomedView(plan.compiled, composed.chrome, win)
         const p = layoutChart(view.spec, measure).plot
         zoom = { top: composed.top, offset: view.offset, plot: { x: p.x, y: p.y + composed.top, w: p.w, h: p.h }, strip: view.navigator?.strip ?? null, win }
       }
@@ -670,13 +670,14 @@ export function OptionChart(props: OptionChartProps): VNode {
    * (ECharts' `tooltip.axisPointer`), in canvas space. Nothing while nothing is
    * hovered, and nothing for an item tooltip unless the option asks.
    */
-  const pointerCmds = (compiled: CompiledOption, resolved: EChartsOption, measure: MeasureText, top: Double): DrawCmd[] => {
+  const pointerCmds = (compiled: CompiledOption, resolved: EChartsOption, measure: MeasureText, chrome: OptionChrome): DrawCmd[] => {
+    const top = chrome.top
     const index = hoverIndex()
     const at = hoverAt()
     if (index < 0 || at === null) return []
     const tip = readTooltipOption((resolved as Record<string, unknown>)['tooltip'], () => undefined)
     if (tip === null || !tip.show || tip.axisPointer.type === 'none') return []
-    const view = zoomedView(compiled, top, winOf(compiled))
+    const view = zoomedView(compiled, chrome, winOf(compiled))
     const spec = view.spec
     const i = index - view.offset
     const n = spec.categories.length
@@ -734,9 +735,10 @@ export function OptionChart(props: OptionChartProps): VNode {
   })
 
   const hitIn = (compiled: CompiledOption, option: EChartsOption, measure: MeasureText, px: Double, py: Double): OptionHit | null => {
-    const top = compiledCommands(compiled, option, measure).top
+    const chrome = compiledCommands(compiled, option, measure).chrome
+    const top = chrome.top
     // Under a dataZoom the hit runs on the rows in view; the reported index is global.
-    const zoomed = zoomedView(compiled, top, winOf(compiled))
+    const zoomed = zoomedView(compiled, chrome, winOf(compiled))
     const spec: ChartSpec = zoomed.spec
     const ly = py - top
     const mk = (i: number, di: number): OptionHit => ({
@@ -787,8 +789,8 @@ export function OptionChart(props: OptionChartProps): VNode {
   /** The first cartesian spec of the geometry — the keyboard and the table walk its rows. */
   const firstSpec = (g: OptionGeometry): { spec: ChartSpec; top: Double; dx: Double; dy: Double } | null => {
     if (g.plan.kind === 'cartesian') {
-      const top = compiledCommands(g.plan.compiled, g.option, g.measure).top
-      return { spec: zoomedView(g.plan.compiled, top, winOf(g.plan.compiled)).spec, top, dx: 0.0, dy: 0.0 }
+      const chrome = compiledCommands(g.plan.compiled, g.option, g.measure).chrome
+      return { spec: zoomedView(g.plan.compiled, chrome, winOf(g.plan.compiled)).spec, top: chrome.top, dx: 0.0, dy: 0.0 }
     }
     if (g.plan.kind === 'grids') {
       const part = g.plan.parts.find((p) => p.plan.kind === 'cartesian')
@@ -1061,8 +1063,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     const cb = props.onBrushSelected
     if (cb === undefined || g.plan.kind !== 'cartesian') return
     const compiled = g.plan.compiled
-    const top = compiledCommands(compiled, g.option, g.measure).top
-    const view = zoomedView(compiled, top, winOf(compiled))
+    const view = zoomedView(compiled, compiledCommands(compiled, g.option, g.measure).chrome, winOf(compiled))
     const sel = optionBrushSelection(compiled, view.spec, g.measure, brushAreas.peek())
     cb(sel.map((x) => ({ seriesIndex: x.seriesIndex, dataIndex: x.dataIndex.map((v) => categoryIndex(view.spec, v) + view.offset) })))
   }
@@ -1197,8 +1198,9 @@ export function OptionChart(props: OptionChartProps): VNode {
     drag: {
       start: (g, px, py) => {
         if (brushType() !== '' && g.plan.kind === 'cartesian') {
-          const top = compiledCommands(g.plan.compiled, g.option, g.measure).top
-          const plot = layoutChart(zoomedView(g.plan.compiled, top, winOf(g.plan.compiled)).spec, g.measure).plot
+          const chrome = compiledCommands(g.plan.compiled, g.option, g.measure).chrome
+          const top = chrome.top
+          const plot = layoutChart(zoomedView(g.plan.compiled, chrome, winOf(g.plan.compiled)).spec, g.measure).plot
           if (px >= plot.x && px <= plot.x + plot.w && py - top >= plot.y && py - top <= plot.y + plot.h) {
             brushOrigin = { x: px, y: py - top, top, plot }
             brushLive.set(brushAreaFromDrag(brushType(), plot, px, py - top, px, py - top))

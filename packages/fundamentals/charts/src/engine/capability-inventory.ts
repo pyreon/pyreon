@@ -330,10 +330,13 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
 
   // ── coordinates & components ──────────────────────────────────────────
   row('coordinates.grid', 'coordinates', 'direct', {
-    web: 'complete',
+    web: 'partial',
     native: 'partial',
-    gaps: [LITERAL_ONLY],
-    evidence: ['src/engine/option-composite.test.ts', NATIVE + 'chart-axes-native.test.ts'],
+    gaps: [
+      'a chart with no `grid` sizes its gutters to its labels instead of ECharts\' default grid (left 15%, top 65, right 10%, bottom 80); `containLabel` and the `outerBounds` keys are not read',
+      LITERAL_ONLY,
+    ],
+    evidence: ['src/engine/option-composite.test.ts', 'src/engine/option-grid.test.ts', NATIVE + 'chart-axes-native.test.ts'],
   }),
   row('coordinates.title', 'coordinates', 'direct', {
     web: 'partial',
@@ -348,12 +351,12 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'partial',
     native: 'partial',
     gaps: [
-      'an option legend lays out horizontally at the top: `orient`, `left`/`right`/`top`/`bottom`, `type: "scroll"`, `formatter`, `icon` and `textStyle` are not read',
+      'a vertical legend on the LEFT overlays the plot rather than taking its column (right, top and bottom legends do take their band); `type: "scroll"`, `icon`, `itemWidth`/`itemHeight` and legend `padding` are not read',
       'series `legendHoverLink` (hovering an entry emphasises its series) is not honoured',
       'a family option chart (pie, funnel, …) draws its host\'s own legend, which a click does not toggle; a multi-grid option\'s legend does not toggle either',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/legend-toggle.test.ts', 'src/engine/legend-scroll.test.ts', 'src/engine/option-legend.test.ts', 'src/engine/option-legend.browser.test.tsx', NATIVE + 'chart-legend-change-native.test.ts'],
+    evidence: ['src/engine/legend-toggle.test.ts', 'src/engine/legend-scroll.test.ts', 'src/engine/option-legend.test.ts', 'src/engine/option-legend.browser.test.tsx', 'src/engine/option-grid.test.ts', NATIVE + 'chart-legend-change-native.test.ts'],
   }),
   row('coordinates.tooltip', 'coordinates', 'direct', {
     web: 'partial',

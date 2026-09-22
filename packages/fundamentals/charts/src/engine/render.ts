@@ -342,6 +342,11 @@ export interface ChartSpec {
    * edge and the labels move onto them. A chart with bars keeps its bands.
    */
   boundaryGap?: boolean | undefined
+  /** Fixed plot insets in pixels (ECharts' `grid` position); an unset side is sized to its labels. */
+  gridLeft?: Double | undefined
+  gridTop?: Double | undefined
+  gridRight?: Double | undefined
+  gridBottom?: Double | undefined
   categories: string[]
   theme: ChartTheme
   showXAxis: boolean
@@ -1048,6 +1053,10 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     yLogMin: lb.min,
     yLogMax: lb.max,
     yTime: spec.yTime === true,
+    insetLeft: spec.gridLeft,
+    insetTop: spec.gridTop,
+    insetRight: spec.gridRight,
+    insetBottom: spec.gridBottom,
     edgeCategories: edgeCategoryPoints(spec),
     xLabels: spec.xLabels,
     xTop: spec.xTop,

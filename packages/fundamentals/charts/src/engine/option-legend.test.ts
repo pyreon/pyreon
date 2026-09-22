@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyLegendHidden, legendClick, readOptionLegend } from './option-legend'
+import { applyLegendHidden, legendClick, legendText, placeOptionLegend, readLegendLayout, readOptionLegend } from './option-legend'
 import { compileOption } from './option'
 import type { Series } from './render'
 
@@ -12,7 +12,7 @@ describe('readOptionLegend', () => {
     expect(readOptionLegend({ show: false }, series)).toBeNull()
   })
   it('one entry per name, the first series\' colour, in series order', () => {
-    expect(readOptionLegend({}, series)).toEqual({ entries: [{ label: 'A', color: '#a' }, { label: 'B', color: '#b' }], selectedMode: 'multiple', hidden: [] })
+    expect(readOptionLegend({}, series)).toMatchObject({ entries: [{ label: 'A', color: '#a' }, { label: 'B', color: '#b' }], selectedMode: 'multiple', hidden: [] })
   })
   it('legend.data picks and orders entries; unknown names are skipped; object form reads name', () => {
     expect(readOptionLegend({ data: ['B', { name: 'A' }, 'Z', 7] }, series)!.entries.map((e) => e.label)).toEqual(['B', 'A'])
@@ -53,5 +53,50 @@ describe('compiled legend', () => {
     expect(c.legendMode).toBe('multiple')
     expect(c.legendHidden).toEqual(['B'])
     expect(compileOption({ xAxis: { data: ['x'] }, yAxis: {}, series: [{ type: 'bar', data: [1] }] }).legendMode).toBeUndefined()
+  })
+})
+
+describe('legend placement (ECharts defaults and keys)', () => {
+  const entries = [{ label: 'Alpha', color: '#a' }, { label: 'Beta', color: '#b' }]
+  const box = { x: 0, y: 0, w: 400, h: 300 }
+  const theme = { fontSize: 12, label: '#666' }
+  const m = (t: string) => t.length * 6
+  const at = (l: Record<string, unknown>) => placeOptionLegend(entries, readLegendLayout(l), box, theme, m)
+  it('horizontal, centred at the top by default', () => {
+    const p = at({})
+    expect(p.side).toBe('top')
+    expect(p.rect.y).toBe(0)
+    expect(p.rect.x + p.rect.w / 2).toBeCloseTo(200, 5)
+  })
+  it('left / right keywords, pixels and percents; right alone measures from the right', () => {
+    expect(at({ left: 'left' }).rect.x).toBe(0)
+    expect(at({ left: 'right' }).rect.x + at({ left: 'right' }).rect.w).toBeCloseTo(400, 5)
+    expect(at({ left: 30 }).rect.x).toBe(30)
+    expect(at({ left: '10%' }).rect.x).toBe(40)
+    const r = at({ right: 10 })
+    expect(r.rect.x + r.rect.w).toBeCloseTo(390, 5)
+  })
+  it('bottom puts it at the bottom; top pixels move it down (an overlay)', () => {
+    const b = at({ bottom: 0 })
+    expect(b.side).toBe('bottom')
+    expect(b.rect.y + b.rect.h).toBeCloseTo(300, 5)
+    expect(at({ top: 'bottom' }).side).toBe('bottom')
+    expect(at({ top: 40 }).side).toBe('over')
+    expect(at({ top: 'middle' }).rect.y).toBeCloseTo((300 - at({}).rect.h) / 2, 5)
+  })
+  it('vertical: stacked, on the side it sits', () => {
+    const v = at({ orient: 'vertical', right: 0, top: 'middle' })
+    expect(v.side).toBe('right')
+    expect(v.boxes[1]!.y).toBeGreaterThan(v.boxes[0]!.y)
+    expect(at({ orient: 'vertical', left: 0 }).side).toBe('left')
+  })
+  it('formatter (template or function), itemGap and textStyle', () => {
+    expect(legendText('A', '{name}!')).toBe('A!')
+    expect(legendText('A', (n: string) => n + '?')).toBe('A?')
+    expect(legendText('A', undefined)).toBe('A')
+    const p = placeOptionLegend(entries, readLegendLayout({ formatter: 'x {name}', textStyle: { color: '#f00', fontSize: 20 }, itemGap: 30 }), box, theme, m)
+    const texts = p.cmds.filter((c) => c.kind === 'text') as { text: string; fill: string; size: number }[]
+    expect(texts.map((t) => t.text)).toEqual(['x Alpha', 'x Beta'])
+    expect(texts[0]).toMatchObject({ fill: '#f00', size: 20 })
   })
 })
