@@ -139,7 +139,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'complete',
     native: 'partial',
     gaps: [LITERAL_ONLY],
-    evidence: ['src/engine/option-encode-tooltip.test.ts', 'src/engine/option-layer-encode-arrays.test.ts', NATIVE + 'chart-dataset-native.test.ts'],
+    evidence: ['src/engine/option-encode-tooltip.test.ts', 'src/engine/option-layer-encode-arrays.test.ts', 'src/engine/option-family-dataset.test.ts', NATIVE + 'chart-dataset-native.test.ts'],
   }),
   row('data.transforms', 'data', 'direct', {
     web: 'partial',

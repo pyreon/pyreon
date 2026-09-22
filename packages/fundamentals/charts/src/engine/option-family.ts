@@ -150,25 +150,31 @@ export const FAMILY_KNOWN_TOP: ReadonlySet<string> = new Set([...ANIMATION_KEYS,
  * single-axis scatter: those option charts render as SVG, with no host.
  */
 const FAMILY_ITEM_KEYS = ['tooltip', 'cursor', 'silent'] as const
+/**
+ * The dataset keys the dataset pre-pass (`resolveDataset`) consumes for a
+ * family it can encode: which dataset, how it is laid out, the series' own
+ * dimension names and the column mapping.
+ */
+const FAMILY_DATASET_KEYS = ['datasetIndex', 'datasetId', 'seriesLayoutBy', 'dimensions', 'encode'] as const
 export const KNOWN_BY_FAMILY: Readonly<Record<string, ReadonlySet<string>>> = {
-  pie: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
-  gauge: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'min', 'max', 'detail', 'axisLine', 'progress', 'itemStyle', 'color']),
-  radar: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'areaStyle', 'itemStyle', 'lineStyle', 'symbol', 'color']),
-  candlestick: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'itemStyle', 'color']),
-  heatmap: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'coordinateSystem', 'type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
-  funnel: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis']),
-  treemap: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'leafDepth', 'label', 'itemStyle', 'color', 'emphasis', 'roam']),
-  sunburst: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis']),
+  pie: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
+  gauge: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'min', 'max', 'detail', 'axisLine', 'progress', 'itemStyle', 'color']),
+  radar: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'areaStyle', 'itemStyle', 'lineStyle', 'symbol', 'color']),
+  candlestick: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'itemStyle', 'color']),
+  heatmap: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'coordinateSystem', 'type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
+  funnel: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis']),
+  treemap: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'leafDepth', 'label', 'itemStyle', 'color', 'emphasis', 'roam']),
+  sunburst: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis']),
   tree: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'roam', 'emphasis', 'top', 'left', 'right', 'bottom']),
   sankey: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'nodes', 'links', 'edges', 'nodeWidth', 'nodeGap', 'nodeAlign', 'layoutIterations', 'orient', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'top', 'left', 'right', 'bottom']),
   singleAxis: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'coordinateSystem', 'symbolSize', 'symbol', 'label', 'itemStyle', 'emphasis', 'color']),
   geo: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'geoIndex', 'pointSize', 'blurSize', 'map', 'symbolSize', 'symbol', 'label', 'itemStyle', 'lineStyle', 'effect', 'polyline', 'emphasis', 'color']),
-  map: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'map', 'roam', 'scaleLimit', 'label', 'itemStyle', 'emphasis', 'select', 'selectedMode', 'nameProperty', 'projection', 'zoom', 'center', 'aspectScale', 'layoutCenter', 'layoutSize', 'geoIndex', 'left', 'top', 'right', 'bottom']),
-  themeRiver: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'boundaryGap', 'label', 'itemStyle', 'emphasis', 'color']),
+  map: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'map', 'roam', 'scaleLimit', 'label', 'itemStyle', 'emphasis', 'select', 'selectedMode', 'nameProperty', 'projection', 'zoom', 'center', 'aspectScale', 'layoutCenter', 'layoutSize', 'geoIndex', 'left', 'top', 'right', 'bottom']),
+  themeRiver: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'boundaryGap', 'label', 'itemStyle', 'emphasis', 'color']),
   polar: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'stack', 'itemStyle', 'lineStyle', 'label', 'emphasis', 'smooth', 'symbol', 'symbolSize', 'areaStyle', 'color']),
-  parallel: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'lineStyle', 'emphasis', 'smooth', 'progressive']),
+  parallel: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'lineStyle', 'emphasis', 'smooth', 'progressive']),
   graph: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'nodes', 'links', 'edges', 'categories', 'layout', 'symbol', 'symbolSize', 'force', 'circular', 'roam', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'zoom', 'center', 'left', 'top', 'right', 'bottom', 'width', 'height', 'coordinateSystem']),
-  boxplot: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'itemStyle', 'color', 'emphasis']),
+  boxplot: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, 'type', 'name', 'data', 'itemStyle', 'color', 'emphasis']),
   // Sankey's keys, minus the ones only an axis layout has (nodeWidth /
   // nodeGap / nodeAlign / layoutIterations / orient), plus the two a ring
   // needs. Deliberately a SUBSET rather than a copy: a spec that carries
