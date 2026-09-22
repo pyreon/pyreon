@@ -3175,8 +3175,11 @@ fun barColumns(spec: ChartSpec, band: Double): List<PyreonChartPt> {
   }
 
 fun inColumn(spec: ChartSpec, cols: List<PyreonChartPt>, k: Int, r: PyreonChartRect, i: Int, n: Int, plot: PyreonChartRect): PyreonChartRect {
+    if (k < 0 || k >= cols.length || n == 0) {
+      return r
+    }
     val c = cols[k]
-    if (c == null || c.y < 0.0 || n == 0) {
+    if (c.y < 0.0) {
       return r
     }
     val band = (plot.w).toDouble() / (countToDouble(n)).toDouble()
