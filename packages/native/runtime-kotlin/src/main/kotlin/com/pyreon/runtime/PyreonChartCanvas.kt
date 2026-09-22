@@ -117,6 +117,8 @@ data class PyreonDrawCmd(
     var baseline: String? = null,
     /** Rotation about `at` in degrees, clockwise positive — a slanted axis label. */
     var rotate: Double? = null,
+    /** "bold" sets the text heavier; null is the regular weight. */
+    var weight: String? = null,
 )
 
 /**
@@ -642,6 +644,7 @@ fun DrawScope.pyreonPaintChart(cmds: List<PyreonDrawCmd>, density: Float) {
                         (pyreonChartColor(fill).blue * 255).toInt())
                     paint.textSize = (c.size ?: 12.0).toFloat() * density
                     paint.isAntiAlias = true
+                    if (c.weight == "bold") paint.typeface = android.graphics.Typeface.DEFAULT_BOLD
                     // web: textAlign start|center|end
                     paint.textAlign = when (c.align ?: "start") {
                         "middle" -> Paint.Align.CENTER

@@ -18,6 +18,7 @@ import { compileFamily } from './option-family'
 import { circleView, familyRect } from './option-layers'
 import { fitCircle, layoutArcsWith } from './arc'
 import { layoutPieLabels } from './pie-labels'
+import { renderDial } from './gauge-dial'
 
 const W = 400
 const H = 300
@@ -296,6 +297,134 @@ describe('ECharts differential: pies', () => {
       const ulines = sortLines(u.lines)
       expect(ulines.length).toBe(elines.length)
       ulines.forEach((ln, k) => ln.forEach((v, j) => expect(v).toBeCloseTo(elines[k]![j]!, 0)))
+    })
+  }
+})
+
+/**
+ * Gauges: the split lines and ticks (endpoints), the axis labels, title and
+ * detail (text, anchor, position), the pointer (its outline, from ECharts'
+ * local path under its matrix) and the axis bands and progress arcs (their
+ * edge angles and fill) — against `renderDial` placed where `familyRect` puts
+ * the dial.
+ */
+interface GaugeFacts {
+  splits: number[][]
+  ticks: number[][]
+  texts: { text: string; x: number; y: number; anchor: string; fill: string }[]
+  pointers: number[][][]
+  bands: { fill: string; a: number[]; r: number }[]
+}
+const pt = (s: string): number[] => s.trim().split(/[\s,]+/).map(Number)
+function echartsGauge(option: object): GaugeFacts {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: W, height: H })
+  chart.setOption({ animation: false, ...option })
+  const svg = chart.renderToSVGString()
+  chart.dispose()
+  const c = gaugeCentre(option)
+  const lines = [...svg.matchAll(/<path d="M(-?[\d.]+) (-?[\d.]+)L(-?[\d.]+) (-?[\d.]+)" fill="none"[^>]*stroke="[^"]*"( stroke-width="([\d.]+)")?/g)]
+  const splits = lines.filter((m) => m[6] === '3').map((m) => [m[1], m[2], m[3], m[4]].map(Number))
+  const ticks = lines.filter((m) => m[6] === undefined).map((m) => [m[1], m[2], m[3], m[4]].map(Number))
+  const texts = [...svg.matchAll(/<text[^>]*text-anchor="(\w+)"[^>]*x="(-?[\d.]+)" y="(-?[\d.]+)"[^>]*fill="([^"]+)"[^>]*>([^<]*)</g)].map((m) => ({ text: m[5]!, x: Number(m[2]), y: Number(m[3]), anchor: m[1]!, fill: m[4]! }))
+  const pointers = [...svg.matchAll(/<path d="M([^"]+)" transform="matrix\(([^)]+)\)"[^>]*ecmeta_data_index/g)].map((pm) => {
+    const [a, b, cc, d, e, f] = pt(pm[2]!) as [number, number, number, number, number, number]
+    return pm[1]!.split('L').slice(0, 4).map((p) => {
+      const [x, y] = pt(p) as [number, number]
+      return [a * x + cc * y + e, b * x + d * y + f]
+    })
+  })
+  const bands = [...svg.matchAll(/<path d="M(-?[\d.]+) (-?[\d.]+)A([\d.]+) [\d.]+ 0 [01] [01] (-?[\d.]+) (-?[\d.]+)L[^"]*" fill="([^"]+)"/g)].map((m) => {
+    const [sx, sy, r, ex, ey] = [m[1], m[2], m[3], m[4], m[5]].map(Number) as [number, number, number, number, number]
+    return { fill: m[6]!, a: [norm(Math.atan2(sy - c.y, sx - c.x)), norm(Math.atan2(ey - c.y, ex - c.x))].sort((p, q) => p - q), r }
+  })
+  return { splits, ticks, texts, pointers, bands }
+}
+function gaugeCentre(option: object): { x: number; y: number } {
+  const s = (option as { series: Record<string, unknown>[] }).series[0]!
+  const r = familyRect(s, W, H)
+  return { x: r.x + r.w / 2, y: r.y + r.h / 2 }
+}
+function ourGauge(option: object): GaugeFacts {
+  const fam = compileFamily(option as EChartsOption)!
+  const plan = fam.plan
+  if (plan.kind !== 'gauge') throw new Error('not a gauge')
+  const s = (option as { series: Record<string, unknown>[] }).series[0]!
+  const { center, radius } = fitCircle(familyRect(s, W, H))
+  // The host fills an uncoloured datum from its theme's palette; ECharts' default one here.
+  const PALETTE = ['#5070dd', '#b6d634', '#505372', '#ff994d', '#0ca8df', '#ffd10a', '#fb628b', '#785db0', '#3fbe95']
+  const dial = { ...plan.dial, data: plan.dial.data.map((d, i) => ({ ...d, color: d.color === '' ? PALETTE[i % PALETTE.length]! : d.color })) }
+  const cmds = renderDial(dial, center, radius)
+  const out: GaugeFacts = { splits: [], ticks: [], texts: [], pointers: [], bands: [] }
+  for (const c of cmds) {
+    if (c.kind === 'line') (c.width === dial.splitWidth ? out.splits : out.ticks).push([c.from.x, c.from.y, c.to.x, c.to.y])
+    // ECharts' SVG writes a text at its vertical centre, whatever its baseline.
+    else if (c.kind === 'text') out.texts.push({ text: c.text, x: c.at.x, y: c.at.y + (c.baseline === 'top' ? c.size / 2 : c.baseline === 'bottom' ? -c.size / 2 : 0), anchor: c.align, fill: c.fill })
+    else if (c.kind === 'polygon' && c.points.length === 4) out.pointers.push(c.points.map((p) => [p.x, p.y]))
+    else if (c.kind === 'polygon') {
+      // A band's outer edge is the first half of its points, drawn from its start angle.
+      const half = c.points.slice(0, Math.floor(c.points.length / 2))
+      const f0 = half[0]!
+      const f1 = half[half.length - 1]!
+      out.bands.push({ fill: c.fill, a: [norm(Math.atan2(f0.y - center.y, f0.x - center.x)), norm(Math.atan2(f1.y - center.y, f1.x - center.x))].sort((p, q) => p - q), r: Math.hypot(f0.x - center.x, f0.y - center.y) })
+    }
+  }
+  return out
+}
+
+const gauge = (series: object = {}, value: unknown = 42): object => ({ series: [{ type: 'gauge', data: [{ value, name: 'Speed' }], ...series }] })
+const GAUGE_CASES: [string, object][] = [
+  ['the default dial', gauge()],
+  ['axis line colour stops', gauge({ axisLine: { lineStyle: { width: 18, color: [[0.3, '#67e0e3'], [0.7, '#37a2da'], [1, '#fd666d']] } } })],
+  ['a progress arc', gauge({ progress: { show: true, width: 14 } })],
+  ['a half dial', gauge({ startAngle: 180, endAngle: 0 })],
+  ['counter-clockwise', gauge({ clockwise: false })],
+  ['a custom range and split', gauge({ min: -20, max: 60, splitNumber: 8 }, 13)],
+  ['a label formatter and distance', gauge({ axisLabel: { formatter: '{value}%', distance: 25, fontSize: 10 } })],
+  ['a longer pointer, offset', gauge({ pointer: { length: '80%', width: 10, offsetCenter: [0, '10%'] } })],
+  ['split lines and ticks by percent', gauge({ splitLine: { length: '12%', distance: 0 }, axisTick: { length: '5%', splitNumber: 3, distance: 4 } })],
+  ['detail and title offsets and a formatter', gauge({ title: { offsetCenter: [0, '-30%'] }, detail: { offsetCenter: ['10%', '60%'], formatter: '{value} km/h' } })],
+  ['two values', { series: [{ type: 'gauge', progress: { show: true, overlap: false }, data: [{ value: 20, name: 'a', title: { offsetCenter: ['-40%', '80%'] }, detail: { offsetCenter: ['-40%', '95%'] } }, { value: 70, name: 'b', title: { offsetCenter: ['40%', '80%'] }, detail: { offsetCenter: ['40%', '95%'] } }] }] }],
+  ['a pinned centre and radius', gauge({ center: ['40%', '60%'], radius: '90%' })],
+  ['labels in auto colour off colour stops', gauge({ axisLabel: { color: 'auto' }, splitLine: { lineStyle: { color: 'auto' } }, axisLine: { lineStyle: { color: [[0.5, '#aa0000'], [1, '#00aa00']] } } })],
+]
+
+describe('ECharts differential: gauges', () => {
+  for (const [name, option] of GAUGE_CASES) {
+    it(name, () => {
+      const e = echartsGauge(option)
+      const u = ourGauge(option)
+      expect(e.splits.length).toBeGreaterThan(0)
+      const r1 = (v: number): number => Math.round(v * 10)
+      const sortL = (ls: number[][]) => [...ls].sort((p, q) => r1(p[0]!) - r1(q[0]!) || r1(p[1]!) - r1(q[1]!) || r1(p[2]!) - r1(q[2]!))
+      const close = (a: number[][], b: number[][]) => {
+        expect(a.length).toBe(b.length)
+        a.forEach((l, k) => l.forEach((v, j) => expect(Math.abs(v - b[k]![j]!)).toBeLessThan(0.11)))
+      }
+      close(sortL(u.splits), sortL(e.splits))
+      close(sortL(u.ticks), sortL(e.ticks))
+      const byText = (t: GaugeFacts['texts']) => [...t].sort((p, q) => (p.text < q.text ? -1 : p.text > q.text ? 1 : p.y - q.y))
+      const et = byText(e.texts)
+      const ut = byText(u.texts)
+      expect(ut.map((t) => [t.text, t.anchor === 'start' ? 'start' : t.anchor === 'end' ? 'end' : 'middle', t.fill])).toEqual(et.map((t) => [t.text, t.anchor, t.fill]))
+      ut.forEach((t, k) => {
+        expect(t.x).toBeCloseTo(et[k]!.x, 1)
+        expect(t.y).toBeCloseTo(et[k]!.y, 1)
+      })
+      const byTip = (ps: number[][][]) => [...ps].sort((p, q) => p[2]![0]! - q[2]![0]!)
+      const ep = byTip(e.pointers)
+      const up = byTip(u.pointers)
+      expect(up.length).toBe(ep.length)
+      up.forEach((poly, i) => poly.forEach((p, k) => p.forEach((v, j) => expect(Math.abs(v - ep[i]![k]![j]!)).toBeLessThan(0.15))))
+      const byBand = (b: GaugeFacts['bands']) => [...b].sort((p, q) => p.a[0]! - q.a[0]! || p.r - q.r)
+      const eb = byBand(e.bands)
+      const ub = byBand(u.bands)
+      expect(ub.map((b) => b.fill)).toEqual(eb.map((b) => b.fill))
+      ub.forEach((b, k) => {
+        expect(Math.abs(b.r - eb[k]!.r)).toBeLessThan(0.06)
+        const tol = 0.002
+        expect(Math.min(circDiff(b.a[0]!, eb[k]!.a[0]!), circDiff(b.a[0]!, eb[k]!.a[1]!))).toBeLessThan(tol)
+        expect(Math.min(circDiff(b.a[1]!, eb[k]!.a[1]!), circDiff(b.a[1]!, eb[k]!.a[0]!))).toBeLessThan(tol)
+      })
     })
   }
 })

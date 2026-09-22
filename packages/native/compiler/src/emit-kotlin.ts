@@ -4130,6 +4130,15 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       if (s.expr.kind === 'update') {
         return `${emitKotlinExpr(s.expr.argument, indent)} ${s.expr.op === '++' ? '+=' : '-='} 1`
       }
+      // A bare `arr.sort(cmp)` STATEMENT sorts in place: the mutating
+      // `sortWith`, not the value-position `sortedWith` whose result a
+      // statement discards (the array stayed unsorted, silently). Mirror of Swift.
+      if (s.expr.kind === 'call' && s.expr.callee.kind === 'member' && s.expr.callee.property === 'sort') {
+        const obj = emitKotlinExpr(s.expr.callee.object, indent)
+        const out = emitKotlinExpr(s.expr, indent)
+        if (out.startsWith(`${obj}.sortedWith(`)) return `${obj}.sortWith(${out.slice(obj.length + '.sortedWith('.length)}`
+        return out
+      }
       return emitKotlinExpr(s.expr, indent)
     case 'if': {
       const pad = ' '.repeat(indent)

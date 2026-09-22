@@ -4960,6 +4960,16 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       if (s.expr.kind === 'update') {
         return `${emitSwiftExpr(s.expr.argument, indent)} ${s.expr.op === '++' ? '+=' : '-='} 1`
       }
+      // A bare `arr.sort(cmp)` STATEMENT sorts in place. The value-position
+      // lowering is the non-mutating `sorted(by:)`, whose result a statement
+      // throws away — the array stayed unsorted with only an "unused result"
+      // warning. Statement position takes the mutating `sort(by:)`.
+      if (s.expr.kind === 'call' && s.expr.callee.kind === 'member' && s.expr.callee.property === 'sort') {
+        const obj = emitSwiftExpr(s.expr.callee.object, indent)
+        const out = emitSwiftExpr(s.expr, indent)
+        if (out.startsWith(`${obj}.sorted(by: `)) return `${obj}.sort(by: ${out.slice(obj.length + '.sorted(by: '.length)}`
+        return out
+      }
       return emitSwiftExpr(s.expr, indent)
     case 'if': {
       const pad = ' '.repeat(indent)

@@ -53,6 +53,7 @@ export const ENGINE_FILES = [
   'layout',
   'stack',
   'pictorial',
+  'gauge-dial',
   'graphic',
   'labels',
   'lines',

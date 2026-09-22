@@ -662,6 +662,20 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             }
           ]
         }
+      },
+      {
+        "name": "weight",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
       }
     ],
     "external": true
@@ -2380,6 +2394,610 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         "type": {
           "kind": "typeRef",
           "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "DialLen",
+    "fields": [
+      {
+        "name": "v",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "pct",
+        "type": {
+          "kind": "boolean"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "DialStop",
+    "fields": [
+      {
+        "name": "at",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "DialDatum",
+    "fields": [
+      {
+        "name": "value",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "name",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "detail",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "pointerColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "progressColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "titleX",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "titleY",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "detailX",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "detailY",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "DialSpec",
+    "fields": [
+      {
+        "name": "start",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "sweep",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "clockwise",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "min",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "max",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "splitNumber",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "lineShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "lineWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "stops",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "DialStop",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "lineRound",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "progressShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "progressRound",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "progressOverlap",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "progressWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "progressClip",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "splitShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "splitLength",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "splitDistance",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "splitColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "splitWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "tickShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "tickSplit",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "tickLength",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "tickDistance",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "tickColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "tickWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "labelShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "labelDistance",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "labelColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "labelSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "labels",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "string"
+          }
+        }
+      },
+      {
+        "name": "labelRotate",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "labelDegrees",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "pointerShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "pointerAbove",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "pointerLength",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "pointerWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "pointerX",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "pointerY",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "pointerIcon",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "anchorShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "anchorIcon",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "anchorAbove",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "anchorSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "anchorColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "anchorBorder",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "anchorBorderWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "anchorX",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "anchorY",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "titleShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "titleColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "titleSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "detailShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "detailColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "detailSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "detailBold",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "detailBg",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "detailBorder",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "detailBorderWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "detailWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "detailHeight",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "detailPadding",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "Double",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "data",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "DialDatum",
+            "args": []
+          }
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "Layered",
+    "fields": [
+      {
+        "name": "z",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "seq",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "cmd",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonDrawCmd",
           "args": []
         }
       }
@@ -13437,6 +14055,10 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "ChordOptions",
   "ChordRibbon",
   "Circle",
+  "DialDatum",
+  "DialLen",
+  "DialSpec",
+  "DialStop",
   "Domain",
   "Emphasis",
   "ExtraTick",
@@ -13483,6 +14105,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "HeatSelection",
   "HeatmapOptions",
   "LabelSegment",
+  "Layered",
   "LayoutConfig",
   "LegendEntry",
   "LegendLayout",

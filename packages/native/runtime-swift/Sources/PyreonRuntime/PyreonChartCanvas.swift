@@ -103,6 +103,8 @@ public struct PyreonDrawCmd: Codable, Equatable {
     public var baseline: String?
     /// Rotation about `at` in degrees, clockwise positive — a slanted axis label.
     public var rotate: Double?
+    /// "bold" sets the text heavier; nil is the regular weight.
+    public var weight: String?
     // Full defaulted-parameter init in the GENERATED engine's field order —
     // the emitted geometry constructs commands as named-subset calls
     // (`PyreonDrawCmd(kind: "rect", rect: r, fill: f)`), and Swift requires
@@ -129,7 +131,8 @@ public struct PyreonDrawCmd: Codable, Equatable {
         size: Double? = nil,
         align: String? = nil,
         baseline: String? = nil,
-        rotate: Double? = nil
+        rotate: Double? = nil,
+        weight: String? = nil
     ) {
         self.kind = kind
         self.rect = rect
@@ -151,6 +154,7 @@ public struct PyreonDrawCmd: Codable, Equatable {
         self.align = align
         self.baseline = baseline
         self.rotate = rotate
+        self.weight = weight
     }
 }
 
@@ -663,7 +667,7 @@ private struct PyreonStaticChartCanvas: View {
                     let font: Font =
                         fontFamily != nil ? .custom(fontFamily!, size: size) : .system(size: size)
                     var resolved = context.resolve(
-                        Text(txt).font(font))
+                        Text(txt).font(font).fontWeight(c.weight == "bold" ? .bold : .regular))
                     resolved.shading = .color(pyreonChartColor(fill))
                     let m = resolved.measure(in: CGSize(width: 10000, height: 10000))
                     // web: textAlign start|center|end; textBaseline top|middle|alphabetic

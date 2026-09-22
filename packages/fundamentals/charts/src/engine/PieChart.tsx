@@ -15,6 +15,8 @@ import type { VNode } from '@pyreon/core'
 import { DEFAULT_ARCS, fitCircle, hitArc, layoutArcsWith, renderGauge, renderPie } from './arc'
 import type { ArcConfig, GaugeOptions, Slice } from './arc'
 import type { PieLabelOptions } from './pie-labels'
+import { renderDial } from './gauge-dial'
+import type { DialSpec } from './gauge-dial'
 import { plain } from './format'
 import type { Double, Rect } from './types'
 
@@ -113,6 +115,12 @@ export interface GaugeChartProps extends CanvasHostProps {
   valueColor?: string
   /** Draw the value in the middle. */
   showValue?: boolean
+  /**
+   * ECharts' gauge: the axis line's colour bands, split lines, ticks and
+   * labels, a pointer and progress arc per value, an anchor, titles and
+   * details. The half-circle track without it.
+   */
+  dial?: DialSpec | undefined
 }
 
 interface GaugeGeometry {
@@ -142,6 +150,13 @@ export function GaugeChart(props: GaugeChartProps): VNode {
     },
     layout: (box) => ({ value: readValue(), min: props.min ?? 0, max: props.max ?? 100, box }),
     render: (g, _measure, theme) => {
+      const dial = props.dial
+      if (dial !== undefined) {
+        const { center, radius } = fitCircle(g.box)
+        // A datum with no colour of its own takes the theme's palette, by index.
+        const data = dial.data.map((d, i) => (d.color === '' ? { ...d, color: paletteAt(theme.palette, i) } : d))
+        return renderDial({ ...dial, data }, center, radius)
+      }
       const opts: GaugeOptions = {
         min: g.min,
         max: g.max,

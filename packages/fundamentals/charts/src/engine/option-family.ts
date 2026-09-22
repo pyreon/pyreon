@@ -5,6 +5,8 @@
 // later, the family components) consume directly.
 
 import { circleView, familyRect } from './option-layers'
+import { GAUGE_DIAL_KEYS, readGaugeDial } from './option-gauge'
+import type { DialSpec } from './gauge-dial'
 import { PIE_SHAPE_KEYS, readPieArcs, readPieEmpty, readPieLabels } from './option-pie'
 import type { PieShape } from './option-pie'
 import type { EChartsOption, OptionWarning } from './option'
@@ -43,7 +45,7 @@ import type { ChartAnimation } from './animation-option'
 
 export type FamilyPlan =
   | { kind: 'pie'; rows: { value: Double; name: string; color: string | undefined }[]; innerRadius: Double; showLabels: boolean; showLegend: boolean; title: string | undefined; pie: PieShape }
-  | { kind: 'gauge'; value: Double; min: Double; max: Double; showValue: boolean; thickness: Double | undefined; valueColor: string | undefined; title: string | undefined }
+  | { kind: 'gauge'; value: Double; min: Double; max: Double; showValue: boolean; thickness: Double | undefined; valueColor: string | undefined; title: string | undefined; dial: DialSpec }
   | { kind: 'radar'; axes: RadarAxis[]; rows: { values: Double[]; name: string; color: string | undefined }[]; fillAlpha: Double; showLegend: boolean; title: string | undefined }
   | { kind: 'candlestick'; rows: { x: string; open: Double; high: Double; low: Double; close: Double }[]; upColor: string | undefined; downColor: string | undefined; title: string | undefined }
   | { kind: 'heatmap'; rows: { x: string; y: string; value: Double }[]; colors: string[] | undefined; title: string | undefined; visualMap?: VisualMapSpec | undefined }
@@ -163,7 +165,7 @@ const FAMILY_ITEM_KEYS = ['tooltip', 'cursor', 'silent', 'universalTransition', 
 const FAMILY_DATASET_KEYS = ['datasetIndex', 'datasetId', 'seriesLayoutBy', 'dimensions', 'encode'] as const
 export const KNOWN_BY_FAMILY: Readonly<Record<string, ReadonlySet<string>>> = {
   pie: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, ...PIE_SHAPE_KEYS, 'colorBy', 'type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
-  gauge: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'min', 'max', 'detail', 'axisLine', 'progress', 'itemStyle', 'color']),
+  gauge: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, ...GAUGE_DIAL_KEYS, 'type', 'name', 'data', 'min', 'max', 'itemStyle', 'color']),
   radar: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'colorBy', 'type', 'name', 'data', 'areaStyle', 'itemStyle', 'lineStyle', 'symbol', 'color']),
   candlestick: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'itemStyle', 'color']),
   heatmap: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'coordinateSystem', 'type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
@@ -305,6 +307,8 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
         thickness: num(axisLine['width']) ?? undefined,
         valueColor: typeof progress['color'] === 'string' ? (progress['color'] as string) : typeof item['color'] === 'string' ? (item['color'] as string) : undefined,
         title,
+        // ledger: series.gauge
+        dial: readGaugeDial(s, palette, (path, message) => warn('series-option-unsupported', path, message)),
       },
       warnings,
       supported,
@@ -1188,6 +1192,8 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
     }
     case 'gauge':
       return gaugeToSvg({
+        dial: plan.dial,
+        ...(placed !== null ? { frame: familyRect(placed, width, height) } : {}),
         value: plan.value,
         min: plan.min,
         max: plan.max,

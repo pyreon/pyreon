@@ -251,7 +251,7 @@ export function paint(
       ctx.fill()
     } else {
       ctx.fillStyle = c.fill
-      ctx.font = `${c.size}px ${fontFamily}`
+      ctx.font = `${c.weight === 'bold' ? 'bold ' : ''}${c.size}px ${fontFamily}`
       ctx.textAlign = c.align === 'middle' ? 'center' : c.align
       ctx.textBaseline =
         c.baseline === 'middle' ? 'middle' : c.baseline === 'top' ? 'top' : 'alphabetic'

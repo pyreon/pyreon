@@ -16,6 +16,8 @@ import { fitCircle, layoutArcs, renderGauge, renderPie } from './arc'
 import { paletteAt } from './palette'
 import type { ArcConfig, GaugeOptions } from './arc'
 import type { PieLabelOptions } from './pie-labels'
+import { renderDial } from './gauge-dial'
+import type { DialSpec } from './gauge-dial'
 import { renderRadar } from './radar'
 import type { RadarAxis } from './radar'
 import { ohlcExtent, renderCandles } from './candlestick'
@@ -218,6 +220,10 @@ export interface GaugeToSvgOptions {
   title?: string
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
+  /** ECharts' gauge, as `<GaugeChart dial>`; the half-circle track without it. */
+  dial?: DialSpec | undefined
+  /** The square the dial fills (ECharts' center and radius); the whole image without it. */
+  frame?: Rect | undefined
 }
 
 /** A single-value gauge as a standalone `<svg>` string. */
@@ -238,8 +244,13 @@ export function gaugeToSvg(options: GaugeToSvgOptions): string {
   }
   // A half-circle occupies the top half of its box, so the drawing box is
   // twice the visible height — the same trick the component uses.
-  const cmds = renderGauge(options.value, { x: 0, y: 0, w: width, h: height * 2 }, opts)
-  if (options.showValue !== false) {
+  const dial = options.dial
+  const frame = options.frame ?? { x: 0, y: 0, w: width, h: height }
+  const fit = fitCircle(frame)
+  const cmds = dial !== undefined
+    ? renderDial({ ...dial, data: dial.data.map((d, i) => (d.color === '' ? { ...d, color: paletteAt(t.palette, i) } : d)) }, fit.center, fit.radius)
+    : renderGauge(options.value, { x: 0, y: 0, w: width, h: height * 2 }, opts)
+  if (dial === undefined && options.showValue !== false) {
     cmds.push({
       kind: 'text',
       text: fmt(options.value),

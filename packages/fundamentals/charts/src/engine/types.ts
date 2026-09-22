@@ -180,4 +180,6 @@ export type DrawCmd =
        * Absent is unrotated and serializes byte-identically to before.
        */
       rotate?: Double | undefined
+      /** 'bold' sets the text heavier (ECharts' `fontWeight: 'bold'`); absent is normal and serializes as before. */
+      weight?: string | undefined
     }

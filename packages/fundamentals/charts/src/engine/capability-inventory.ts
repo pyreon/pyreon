@@ -274,8 +274,13 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
   row('series.gauge', 'series', 'direct', {
     web: 'partial',
     native: 'partial',
-    gaps: ['one value per gauge; `pointer`, `anchor`, `axisTick`, `splitLine`, `axisLabel` and `title` styling are unmapped', LITERAL_ONLY],
-    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+    gaps: [
+      'a `path://` or `image://` pointer or anchor icon draws the default needle / circle (with a warning); `roundRect` draws square',
+      'the detail box has no `borderRadius` or `rich` text; `valueAnimation` counts nothing up',
+      'native: the option gauge lowers to the half-circle track — the dial is web-only for now',
+      LITERAL_ONLY,
+    ],
+    evidence: ['src/engine/echarts-differential.test.ts', 'src/engine/option-gauge.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
   }),
   row('series.river', 'series', 'direct', {
     web: 'complete',

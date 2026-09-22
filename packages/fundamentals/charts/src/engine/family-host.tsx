@@ -117,7 +117,7 @@ function familyHostFor(plan: FamilyPlan, o: FamilyHostOptions): VNode | null {
       return h(PieChart, { data: plan.rows, value: (r: { value: Double }) => r.value, label: (r: { name: string }) => r.name, ...(color !== undefined ? { color } : {}), innerRadius: plan.innerRadius, showLabels: plan.showLabels, showLegend: plan.showLegend, pie: plan.pie, ...size, ...chrome, ...sel('pie') })
     }
     case 'gauge':
-      return h(GaugeChart, { value: plan.value, min: plan.min, max: plan.max, showValue: plan.showValue, ...(plan.thickness !== undefined ? { thickness: plan.thickness } : {}), ...(plan.valueColor !== undefined ? { valueColor: plan.valueColor } : {}), ...size, ...chrome })
+      return h(GaugeChart, { value: plan.value, min: plan.min, max: plan.max, showValue: plan.showValue, dial: plan.dial, ...(plan.thickness !== undefined ? { thickness: plan.thickness } : {}), ...(plan.valueColor !== undefined ? { valueColor: plan.valueColor } : {}), ...size, ...chrome })
     case 'radar': {
       const color = colorOf(plan.rows)
       return h(RadarChart, { data: plan.rows, axes: plan.axes, values: (r: { values: Double[] }) => r.values, label: (r: { name: string }) => r.name, ...(color !== undefined ? { color } : {}), fillAlpha: plan.fillAlpha, showLegend: plan.showLegend, ...size, ...chrome })
