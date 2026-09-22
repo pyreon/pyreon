@@ -116,7 +116,7 @@ describe('<OptionChart> family tooltip, cursor and silent (real browser)', () =>
     const option: EChartsOption = {
       animation: false,
       tooltip: { formatter: (p: Record<string, unknown>) => (seen.push(p), 'x') },
-      series: [{ type: 'sankey', data: [{ name: 'in' }, { name: 'out' }], links: [{ source: 'in', target: 'out', value: 5 }] }],
+      series: [{ type: 'sankey', left: 0, right: 0, top: 0, bottom: 0, data: [{ name: 'in' }, { name: 'out' }], links: [{ source: 'in', target: 'out', value: 5 }] }],
     }
     // The ribbon runs across the middle of the plot, between the two node bands.
     const { container } = await hover(option, (c) => [c.getBoundingClientRect().width / 2, c.getBoundingClientRect().height / 2])

@@ -307,10 +307,9 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     native: 'partial',
     gaps: [
       'a family series cannot share ONE grid with cartesian series (candles with moving-average lines on the same axes); on separate grids, or as separate layers, it can',
-      'a single family chart fills the box; ECharts\' default placement (a 75% radius, the funnel margins) and its box keys apply only when several charts share an option',
       FIRST_SERIES_ONLY,
     ],
-    evidence: ['src/engine/option-layers.test.ts', 'src/engine/option-layers.browser.test.tsx', 'src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+    evidence: ['src/engine/option-layers.test.ts', 'src/engine/option-layers.browser.test.tsx', 'src/engine/option-family-frame.browser.test.tsx', 'src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
   }),
   row('series.chord', 'series', 'direct', {
     web: 'complete',

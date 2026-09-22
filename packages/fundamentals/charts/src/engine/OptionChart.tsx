@@ -42,6 +42,7 @@ import { isFullWindow, panWindow, windowOfRows, zoomWindow } from './zoom'
 import type { ZoomWindow } from './zoom'
 import type { CompiledOption, EChartsOption, OptionPlan, OptionChrome } from './option'
 import { familyHostNode, familyHostShape } from './family-host'
+import { familyRect } from './option-layers'
 import type { FamilyHostOptions } from './family-host'
 import { selectedSeed } from './option-selected-map'
 import { familyItemCursor, familyItemSilent, familyItemTooltip } from './family-tooltip'
@@ -166,6 +167,9 @@ function flattenLayers(p: OptionPlan): FlatLayers {
   if (p.kind === 'layers' || p.kind === 'grids') for (const part of p.parts) walk(part.plan, 0.0, 0.0, part.rect)
   return out
 }
+/** Families ECharts places inside the chart by their own box keys (center / radius, or margins). */
+const PLACED_FAMILIES: ReadonlySet<string> = new Set(['pie', 'gauge', 'sunburst', 'chord', 'funnel', 'treemap', 'tree', 'sankey'])
+
 /** Whether any series of an option turns ECharts' `universalTransition` on (`true` or `{ enabled: true }`). */
 function wantsUniversalTransition(option: unknown): boolean {
   return asArray(isRecord(option) ? option['series'] : undefined).some((s) => isRecord(s) && (s['universalTransition'] === true || (isRecord(s['universalTransition']) && s['universalTransition']['enabled'] === true)))
@@ -192,7 +196,7 @@ interface OptionGeometry {
 }
 
 /** The `CanvasHostProps` keys `OptionChartProps` does NOT take (its own `theme`, and the chrome the compiled option draws itself). */
-type HostOmitted = 'itemTooltip' | 'itemCursor' | 'itemSilent' | 'theme' | 'showTitle' | 'subtitle' | 'showLegend' | 'legendPosition' | 'animate' | 'updateAnimation' | 'updateDuration' | 'enterDuration' | 'enterDelay' | 'updateDelay' | 'enterEasing' | 'updateEasing'
+type HostOmitted = 'frame' | 'itemTooltip' | 'itemCursor' | 'itemSilent' | 'theme' | 'showTitle' | 'subtitle' | 'showLegend' | 'legendPosition' | 'animate' | 'updateAnimation' | 'updateDuration' | 'enterDuration' | 'enterDelay' | 'updateDelay' | 'enterEasing' | 'updateEasing'
 /** Every host key the facade forwards verbatim — the host's whole surface minus the omitted set and the defaulted `height`. */
 type HostPassthrough = Exclude<keyof CanvasHostProps, HostOmitted | 'height'>
 /**
@@ -459,6 +463,19 @@ export function OptionChart(props: OptionChartProps): VNode {
     () => familyPlan()?.kind ?? 'pie',
     () => familyBox(),
   )
+  // A single family chart sits where ECharts places it in the whole chart (a
+  // pie at its center with a 75% radius, a funnel inside its margins), the
+  // title and legend drawn over it; the layered path already places each part.
+  Object.defineProperty(familyExtrasSingle, 'frame', {
+    get: () => {
+      const s0 = asArray(familySource()['series'])[0]
+      if (!isRecord(s0) || typeof s0['type'] !== 'string' || !PLACED_FAMILIES.has(s0['type'] as string)) return undefined
+      const box = familyBox()
+      return familyRect(s0, box.w, box.h)
+    },
+    enumerable: true,
+    configurable: true,
+  })
   const familyOptions: FamilyHostOptions = {
     host: familyExtrasSingle,
     get width() {

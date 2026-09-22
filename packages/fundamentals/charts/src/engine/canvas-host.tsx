@@ -222,6 +222,12 @@ export interface CanvasHostProps {
   itemCursor?: ((item: HostItem) => string) | undefined
   /** An item that ignores the pointer: no tooltip, no cursor, no selection (ECharts' `silent`). */
   itemSilent?: ((item: HostItem) => boolean) | undefined
+  /**
+   * Lay the family out in this rect (canvas pixels) instead of the box the
+   * chrome leaves. ECharts places a series in the whole chart — a pie at its
+   * `center` with a 75% radius — and draws the title and legend over it.
+   */
+  frame?: Rect | undefined
 }
 
 /** What a family gives the host. `L` is its layout; the host never looks inside it. */
@@ -535,8 +541,8 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
         right = placed.right
       }
     }
-    const box = { x: left, y: top, w: Math.max(0, w - left - right), h: Math.max(0, hgt - top - bottom) }
-    if (layout === null || top > 0 || left > 0 || right > 0 || bottom > 0) layout = lay(box, measure, t)
+    const box = props.frame ?? { x: left, y: top, w: Math.max(0, w - left - right), h: Math.max(0, hgt - top - bottom) }
+    if (layout === null || top > 0 || left > 0 || right > 0 || bottom > 0 || props.frame !== undefined) layout = lay(box, measure, t)
     return { w, hgt, box, layout, chrome, toolBoxes }
   }
 
@@ -763,7 +769,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     const w = el === null ? 300 : drawWidth(el, props.width)
     const hgt = props.height ?? spec.defaultHeight
     const measure: MeasureText = (text, size) => text.length * size * 0.6
-    return lay({ x: 0, y: 0, w, h: hgt }, measure, theme())
+    return lay(props.frame ?? { x: 0, y: 0, w, h: hgt }, measure, theme())
   }
   /** The a11y input, computed once per draw (the description, the table and the keyboard all read it). */
   const a11yNow = (): A11yInput => {

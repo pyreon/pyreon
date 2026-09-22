@@ -122,7 +122,7 @@ export function circleRect(s: Obj, width: Double, height: Double, defaultRadius:
 const BOX_KEYS = ['left', 'top', 'right', 'bottom', 'width', 'height'] as const
 
 /** Where a standalone family series goes. */
-function familyRect(s: Obj, width: Double, height: Double): Rect {
+export function familyRect(s: Obj, width: Double, height: Double): Rect {
   const type = s['type']
   if (type === 'pie') return circleRect(s, width, height, '75%')
   if (type === 'gauge') return circleRect(s, width, height, '75%')
