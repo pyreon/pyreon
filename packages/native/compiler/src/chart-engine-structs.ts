@@ -3448,6 +3448,23 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "drawOrder",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "number"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "categories",
         "type": {
           "kind": "array",

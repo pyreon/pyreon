@@ -90,8 +90,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     stateAnimation: 'presentation.animation',
     xAxisId: 'coordinates.axes',
     yAxisId: 'coordinates.axes',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
   },
   boxplot: {
     blendMode: 'presentation.layering',
@@ -165,8 +163,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     xAxisIndex: 'coordinates.axes',
     yAxisId: 'coordinates.axes',
     yAxisIndex: 'coordinates.axes',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
   },
   chord: {
     blendMode: 'presentation.layering',
@@ -221,8 +217,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     xAxisIndex: 'coordinates.axes',
     yAxisId: 'coordinates.axes',
     yAxisIndex: 'coordinates.axes',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
     zoom: 'series.chord',
   },
   custom: {
@@ -250,8 +244,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     stateAnimation: 'presentation.animation',
     xAxisId: 'coordinates.axes',
     yAxisId: 'coordinates.axes',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
   },
   effectScatter: {
     blendMode: 'presentation.layering',
@@ -281,8 +273,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     symbolKeepAspect: 'series.effect-scatter',
     xAxisId: 'coordinates.axes',
     yAxisId: 'coordinates.axes',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
   },
   funnel: {
     blendMode: 'presentation.layering',
@@ -319,8 +309,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     stateAnimation: 'presentation.animation',
     top: 'series.funnel',
     width: 'series.funnel',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
   },
   gauge: {
     anchor: 'series.gauge',
@@ -361,8 +349,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     startAngle: 'series.gauge',
     stateAnimation: 'presentation.animation',
     title: 'series.gauge',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
   },
   graph: {
     autoCurveness: 'series.graph',
@@ -413,8 +399,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     xAxisIndex: 'coordinates.axes',
     yAxisId: 'coordinates.axes',
     yAxisIndex: 'coordinates.axes',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
   },
   heatmap: {
     blendMode: 'presentation.layering',
@@ -451,8 +435,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     xAxisIndex: 'coordinates.axes',
     yAxisId: 'coordinates.axes',
     yAxisIndex: 'coordinates.axes',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
   },
   line: {
     blendMode: 'presentation.layering',
@@ -479,8 +461,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     triggerLineEvent: 'runtime.events',
     xAxisId: 'coordinates.axes',
     yAxisId: 'coordinates.axes',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
   },
   lines: {
     blendMode: 'presentation.layering',
@@ -503,8 +483,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     stateAnimation: 'presentation.animation',
     xAxisId: 'coordinates.axes',
     yAxisId: 'coordinates.axes',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
   },
   map: {
     blendMode: 'presentation.layering',
@@ -545,8 +523,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     sourceHeader: 'data.dimensions-encode',
     stateAnimation: 'presentation.animation',
     width: 'series.map',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
   },
   parallel: {
     activeOpacity: 'series.parallel',
@@ -580,8 +556,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     selectedMode: 'presentation.states',
     sourceHeader: 'data.dimensions-encode',
     stateAnimation: 'presentation.animation',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
   },
   pictorialBar: {
     barCategoryGap: 'series.pictorial-bar',
@@ -611,8 +585,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     symbolRepeatDirection: 'series.pictorial-bar',
     xAxisId: 'coordinates.axes',
     yAxisId: 'coordinates.axes',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
   },
   pie: {
     animationType: 'presentation.animation',
@@ -666,8 +638,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     xAxisIndex: 'coordinates.axes',
     yAxisId: 'coordinates.axes',
     yAxisIndex: 'coordinates.axes',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
   },
   radar: {
     blendMode: 'presentation.layering',
@@ -698,8 +668,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     symbolOffset: 'series.radar',
     symbolRotate: 'series.radar',
     symbolSize: 'series.radar',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
   },
   sankey: {
     blendMode: 'presentation.layering',
@@ -738,8 +706,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     selectedMode: 'presentation.states',
     stateAnimation: 'presentation.animation',
     width: 'series.sankey',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
     zoom: 'series.sankey',
   },
   scatter: {
@@ -769,8 +735,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     symbolKeepAspect: 'series.scatter',
     xAxisId: 'coordinates.axes',
     yAxisId: 'coordinates.axes',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
   },
   sunburst: {
     animationType: 'presentation.animation',
@@ -804,8 +768,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     selectedMode: 'presentation.states',
     stateAnimation: 'presentation.animation',
     stillShowZeroSum: 'series.sunburst',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
   },
   themeRiver: {
     blendMode: 'presentation.layering',
@@ -834,8 +796,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     stateAnimation: 'presentation.animation',
     top: 'series.river',
     width: 'series.river',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
   },
   tree: {
     blendMode: 'presentation.layering',
@@ -875,8 +835,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     symbolOffset: 'series.tree',
     symbolRotate: 'series.tree',
     width: 'series.tree',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
     zoom: 'series.tree',
   },
   treemap: {
@@ -930,8 +888,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     visualMax: 'series.treemap',
     visualMin: 'series.treemap',
     width: 'series.treemap',
-    z: 'presentation.layering',
-    zlevel: 'presentation.layering',
     zoom: 'series.treemap',
     zoomToNodeRatio: 'series.treemap',
   },

@@ -143,6 +143,8 @@ export const KNOWN_SERIES: ReadonlySet<string> = new Set([
   'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex', 'tooltipExtras',
   'coordinateSystem', 'polyline', 'effect', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'sampling',
   'select', 'blur', 'selectedMode',
+  // Paint order (the draw order below).
+  'z', 'zlevel',
 ])
 
 /**
@@ -1090,6 +1092,17 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     ...(yAxes.length === 1 && yAxes[0]!['position'] === 'right' ? { yRight: true } : {}),
   }
   if (customY !== undefined && spec.yDomain === undefined) spec.yDomain = customY
+  // ECharts' `zlevel` then `z`: a higher one paints over a lower one; ties keep series order.
+  const layerOf = (i: number): [number, number] => {
+    const raw = isObj(rawSeries[seriesSource[i]!]) ? (rawSeries[seriesSource[i]!] as Record<string, unknown>) : {}
+    return [num(raw['zlevel']) ?? 0, num(raw['z']) ?? 2]
+  }
+  const order = spec.series.map((_, i) => i).sort((a, b) => {
+    const [la, za] = layerOf(a)
+    const [lb, zb] = layerOf(b)
+    return la !== lb ? la - lb : za !== zb ? za - zb : a - b
+  })
+  if (order.some((k, i) => k !== i)) spec.drawOrder = order
   if (customX !== undefined && (spec.xValues === undefined || spec.xValues.length === 0)) spec.xValues = customX
   const brush = option['brush'] === undefined ? undefined : readBrush(option as Record<string, unknown>, warn)
   const toolbox = option['toolbox'] === undefined ? undefined : readToolbox(option as Record<string, unknown>, warn, brush)

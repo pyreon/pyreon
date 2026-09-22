@@ -147,10 +147,11 @@ export const FAMILY_KNOWN_TOP: ReadonlySet<string> = new Set([...ANIMATION_KEYS,
 /**
  * Series keys a family honours through its host: the series' own `tooltip`,
  * `cursor` and `silent` (see `family-tooltip.ts`), and `universalTransition`
- * (the host morphs an update that changes the item count). Not boxplot or a
+ * (the host morphs an update that changes the item count), and `z` /
+ * `zlevel` (the stacking of the family's layer among the other layers). Not boxplot or a
  * single-axis scatter: those option charts render as SVG, with no host.
  */
-const FAMILY_ITEM_KEYS = ['tooltip', 'cursor', 'silent', 'universalTransition'] as const
+const FAMILY_ITEM_KEYS = ['tooltip', 'cursor', 'silent', 'universalTransition', 'z', 'zlevel'] as const
 /**
  * The dataset keys the dataset pre-pass (`resolveDataset`) consumes for a
  * family it can encode: which dataset, how it is laid out, the series' own

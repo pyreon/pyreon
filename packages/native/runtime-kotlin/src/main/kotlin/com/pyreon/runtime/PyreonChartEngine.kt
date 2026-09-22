@@ -82,7 +82,7 @@ data class ChartTheme(var palette: List<String>, var background: String, var sur
 
 data class Emphasis(var highlight: Int, var selected: List<Int>)
 
-data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var yInverse: Boolean? = null, var xInverse: Boolean? = null, var xTop: Boolean? = null, var yRight: Boolean? = null, var xOffset: Double? = null, var yOffset: Double? = null, var y2Offset: Double? = null, var extraYAxes: List<ExtraYAxis>? = null, var x2Labels: List<String>? = null, var x2Title: String? = null, var x2Domain: Domain? = null, var lines: List<LinesSeries>? = null, var effectTime: Double? = null)
+data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var drawOrder: List<Int>? = null, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var yInverse: Boolean? = null, var xInverse: Boolean? = null, var xTop: Boolean? = null, var yRight: Boolean? = null, var xOffset: Double? = null, var yOffset: Double? = null, var y2Offset: Double? = null, var extraYAxes: List<ExtraYAxis>? = null, var x2Labels: List<String>? = null, var x2Title: String? = null, var x2Domain: Domain? = null, var lines: List<LinesSeries>? = null, var effectTime: Double? = null)
 
 data class Ohlc(var open: Double, var high: Double, var low: Double, var close: Double)
 
@@ -2866,6 +2866,24 @@ fun layoutChart(raw: ChartSpec, measure: (String, Double) -> Double): PlotLayout
     return computeLayout(cfg, measure)
   }
 
+fun validDrawOrder(order: List<Int>, n: Int): List<Int> {
+    if (order.length != n) {
+      return listOf()
+    }
+    val seen: MutableList<Boolean> = mutableListOf()
+    for (i in 0 until n) {
+      seen.add(false)
+    }
+    for (i in 0 until order.length) {
+      val k = order[i]
+      if (k < 0 || k >= n || seen[k]) {
+        return listOf()
+      }
+      seen[k] = true
+    }
+    return order
+  }
+
 fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<PyreonDrawCmd> = renderChartIn(spec, measure, layoutChart(spec, measure))
 
 fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLayout): List<PyreonDrawCmd> {
@@ -3103,7 +3121,9 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         }
       }
     }
-    for (sIdx in 0 until spec.series.length) {
+    val drawOrder = validDrawOrder((spec.drawOrder ?: listOf()), spec.series.length)
+    for (oIdx in 0 until spec.series.length) {
+      val sIdx = if (drawOrder.length == 0) oIdx else drawOrder[oIdx]
       val s = spec.series[sIdx]
       if (s.kind == "stacked" || s.kind == "grouped" || s.kind == "stackedArea") {
         continue

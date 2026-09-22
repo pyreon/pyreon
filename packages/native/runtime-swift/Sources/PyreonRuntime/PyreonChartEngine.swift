@@ -662,6 +662,7 @@ public struct ChartSpec {
   public var width: Double
   public var height: Double
   public var series: [Series]
+  public var drawOrder: [Int]? = nil
   public var categories: [String]
   public var theme: ChartTheme
   public var showXAxis: Bool
@@ -699,10 +700,11 @@ public struct ChartSpec {
   public var x2Domain: Domain? = nil
   public var lines: [LinesSeries]? = nil
   public var effectTime: Double? = nil
-  public init(width: Double, height: Double, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, yInverse: Bool? = nil, xInverse: Bool? = nil, xTop: Bool? = nil, yRight: Bool? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, lines: [LinesSeries]? = nil, effectTime: Double? = nil) {
+  public init(width: Double, height: Double, series: [Series], drawOrder: [Int]? = nil, categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, yInverse: Bool? = nil, xInverse: Bool? = nil, xTop: Bool? = nil, yRight: Bool? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, lines: [LinesSeries]? = nil, effectTime: Double? = nil) {
     self.width = width
     self.height = height
     self.series = series
+    self.drawOrder = drawOrder
     self.categories = categories
     self.theme = theme
     self.showXAxis = showXAxis
@@ -5403,6 +5405,24 @@ public func layoutChart(_ raw: ChartSpec, _ measure: (String, Double) -> Double)
     return computeLayout(cfg, measure)
   }
 
+public func validDrawOrder(_ order: [Int], _ n: Int) -> [Int] {
+    if order.count != n {
+      return []
+    }
+    var seen: [Bool] = []
+    for i in 0..<n {
+      seen.append(false)
+    }
+    for i in 0..<order.count {
+      let k = order[i]
+      if k < 0 || k >= n || seen[k] {
+        return []
+      }
+      seen[k] = true
+    }
+    return order
+  }
+
 public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double) -> [PyreonDrawCmd] { renderChartIn(spec, measure, layoutChart(spec, measure)) }
 
 public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Double, _ l: PlotLayout) -> [PyreonDrawCmd] {
@@ -5640,7 +5660,9 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         }
       }
     }
-    for sIdx in 0..<spec.series.count {
+    let drawOrder = validDrawOrder((spec.drawOrder ?? []), spec.series.count)
+    for oIdx in 0..<spec.series.count {
+      let sIdx = drawOrder.count == 0 ? oIdx : drawOrder[oIdx]
       let s = spec.series[sIdx]
       if s.kind == "stacked" || s.kind == "grouped" || s.kind == "stackedArea" {
         continue

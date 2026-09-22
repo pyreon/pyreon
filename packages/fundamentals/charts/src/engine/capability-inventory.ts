@@ -617,10 +617,14 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     evidence: ['src/engine/pattern-marks.test.ts', 'src/engine/option-fills-marks.test.ts', NATIVE + 'chart-decals-native.test.ts', ...DEVICE],
   }),
   row('presentation.layering', 'presentation', 'direct', {
-    web: 'pending',
+    web: 'partial',
     native: 'pending',
-    gaps: ['series are drawn in declaration order; `z`, `zlevel` and `blendMode` do not reorder or composite them'],
-    evidence: ['src/engine/option.test.ts'],
+    gaps: [
+      '`blendMode` does not composite series (they paint source-over)',
+      'a family layer always sits over the cartesian grid, whatever the two `z` values say; stacked and grouped bars keep their group\'s place in the paint order',
+      'native: the engine paints by `ChartSpec.drawOrder`, but the native option path does not compute it from `z` / `zlevel`',
+    ],
+    evidence: ['src/engine/option-z.test.ts', 'src/engine/option-family-interaction.browser.test.tsx'],
   }),
   row('presentation.palette', 'presentation', 'direct', {
     web: 'complete',

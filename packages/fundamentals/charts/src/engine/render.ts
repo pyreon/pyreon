@@ -329,6 +329,13 @@ export interface ChartSpec {
   width: Double
   height: Double
   series: Series[]
+  /**
+   * The order the independent series PAINT in, as indices into `series`
+   * (ECharts' `zlevel` / `z`: a higher one draws over a lower one). The legend,
+   * palette and hit test keep `series` order. Ignored unless it names every
+   * series exactly once.
+   */
+  drawOrder?: number[] | undefined
   categories: string[]
   theme: ChartTheme
   showXAxis: boolean
@@ -1056,6 +1063,19 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
  * labels. Series draw over the grid so a bar is never bisected by a gridline,
  * and labels draw last so nothing can cover them.
  */
+/** A draw order that names each of `n` series exactly once, else empty (paint in series order). */
+export function validDrawOrder(order: number[], n: number): number[] {
+  if (order.length !== n) return []
+  const seen: boolean[] = []
+  for (let i = 0; i < n; i++) seen.push(false)
+  for (let i = 0; i < order.length; i++) {
+    const k = order[i]!
+    if (k < 0 || k >= n || seen[k]!) return []
+    seen[k] = true
+  }
+  return order
+}
+
 export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   return renderChartIn(spec, measure, layoutChart(spec, measure))
 }
@@ -1412,7 +1432,9 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     }
   }
 
-  for (let sIdx = 0; sIdx < spec.series.length; sIdx++) {
+  const drawOrder = validDrawOrder(spec.drawOrder ?? [], spec.series.length)
+  for (let oIdx = 0; oIdx < spec.series.length; oIdx++) {
+    const sIdx = drawOrder.length === 0 ? oIdx : drawOrder[oIdx]!
     const s = spec.series[sIdx]!
     if (s.kind === 'stacked' || s.kind === 'grouped' || s.kind === 'stackedArea') continue
     // One helper rather than three call-site conditionals: line, area and

@@ -162,6 +162,22 @@ describe('<OptionChart> family tooltip, cursor and silent (real browser)', () =>
     expect(ls).toEqual(['260px', '60px'])
   })
 
+  it('zlevel / z stack the family layers: a higher one sits over a lower one', async () => {
+    const option: EChartsOption = {
+      animation: false,
+      series: [
+        { type: 'pie', center: ['40%', '50%'], radius: '40%', z: 7, data: [1] },
+        { type: 'pie', center: ['60%', '50%'], radius: '40%', data: [1] },
+        { type: 'pie', center: ['50%', '50%'], radius: '20%', zlevel: 1, data: [1] },
+      ],
+    }
+    const { container } = mountInBrowser(h(OptionChart, { option, width: 400, height: 200 }))
+    await flush()
+    const z = Array.from(container.querySelectorAll<HTMLElement>('[data-pyreon-chart-layer]')).map((l) => Number(l.style.zIndex))
+    expect(z[0]!).toBeGreaterThan(z[1]!)
+    expect(z[2]!).toBeGreaterThan(z[0]!)
+  })
+
   it('the facade\'s host props reach a family host: accessibleTable={false} drops the table', async () => {
     const withTable = mountInBrowser(h(OptionChart, { option: pie(), width: W, height: H }))
     await flush()

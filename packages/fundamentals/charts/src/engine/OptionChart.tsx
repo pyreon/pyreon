@@ -514,7 +514,15 @@ export function OptionChart(props: OptionChartProps): VNode {
       if (host === null) return null
       // Under `rtl` the layer's box mirrors with the chart, as its content does.
       const left = (): Double => (props.rtl === true ? width() - box().x - box().w : box().x)
-      const node = h('div', { 'data-pyreon-chart-layer': String(i), style: () => `position:absolute;left:${left()}px;top:${box().y}px;width:${box().w}px;height:${box().h}px` }, host)
+      // ECharts' `zlevel` then `z` order the layers among themselves (a higher one draws over).
+      const stack = (): number => {
+        const s0 = asArray(source()['series'])[0]
+        const rec = isRecord(s0) ? s0 : {}
+        const zl = typeof rec['zlevel'] === 'number' ? rec['zlevel'] : 0
+        const z = typeof rec['z'] === 'number' ? rec['z'] : 2
+        return Math.max(1, Math.round(zl * 100 + z + 1))
+      }
+      const node = h('div', { 'data-pyreon-chart-layer': String(i), style: () => `position:absolute;left:${left()}px;top:${box().y}px;width:${box().w}px;height:${box().h}px;z-index:${stack()}` }, host)
       return { shape, plan, box, animation, source, node }
     })
     const kept = next.filter((l): l is LiveLayer => l !== null)
