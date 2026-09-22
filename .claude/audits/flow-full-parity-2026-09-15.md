@@ -199,7 +199,10 @@ native view.
   light-only default colours; a single-statement block handler holding an
   assignment emitted an empty closure; a kebab-case `defineStore` id emitted
   an unparsable class name; a zero-parameter listener subscriber emitted a
-  Swift closure of the wrong arity. Still open under F3: pixel parity of node
-  chrome under `colorMode="system"` (only forced modes are asserted), and the
-  Android px-vs-dp graph-unit divergence (fit-view lands at ~2x on a 360dp
-  canvas), which is tracked rather than fixed here.
+  Swift closure of the wrong arity. The Android px-vs-dp graph-unit divergence
+  is FIXED on the gesture branch (#3536) and merged up the stack: Compose graph
+  units were device pixels, so a 150-unit node was ~57dp on a 420dpi phone and
+  its 48dp resizer targets covered it — the stack's own Android lane failed
+  the node tap, the connect drag and the pinch on CI for that reason. Still
+  open under F3: pixel parity of node chrome under `colorMode="system"` (only
+  forced modes are asserted).
