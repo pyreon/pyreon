@@ -40,6 +40,7 @@ import type {
 import { isCanonicalPrimitive } from './canonical-primitives'
 import { parseRocketstyleDefn } from './rocketstyle-native'
 import { parseAttrsDefn } from './attrs-native'
+import { collectDeclaredTypeNames, liftInlineObjectStructs } from './inline-object-structs'
 import {
   DEFAULT_THEME,
   mergeTheme,
@@ -530,6 +531,9 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // above or below the components that use it. Merged over the defaults, so a
   // partial theme still resolves standard tokens + a zero-config app works.
   collectTheme(ast.program.body as AnyNode[], ctx)
+  // Every type name the file declares — the collision set for lifting an
+  // inline object field (`meta: { owner: string }`) into its own struct.
+  const declaredTypeNames = collectDeclaredTypeNames(ast.program.body as AnyNode[])
   const components: ComponentIR[] = []
   const enums: EnumIR[] = []
   const structs: StructIR[] = []
@@ -568,7 +572,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     // Falls through silently when the alias is a union (already caught by
     // tryEnumFromTypeAlias above) OR a non-object alias (`type Foo = string`).
     const st = tryStructFromTypeAlias(node, ctx)
-    if (st) structs.push(st)
+    if (st) structs.push(...liftInlineObjects(st, declaredTypeNames, ctx))
     // A discriminated union of object shapes synthesizes a FAT struct —
     // the representation that lets a heterogeneous command list share one
     // array on Swift/Kotlin. See tryStructFromObjectUnion.
@@ -577,7 +581,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     // Same struct synthesis for a top-level `interface X { … }` (bails + warns
     // itself on generics/extends/empty — see tryStructFromInterface).
     const stIface = tryStructFromInterface(node, ctx)
-    if (stIface) structs.push(stIface)
+    if (stIface) structs.push(...liftInlineObjects(stIface, declaredTypeNames, ctx))
     // Gap 4 Strategy-B v1: `const useFoo = defineStore("foo", () => ...)`
     // detected at top-level scope and extracted as a StoreDefnIR.
     // The setup body's signal decls become fields on the emitted
@@ -5749,6 +5753,7 @@ function tryStructFromInterface(node: AnyNode, ctx: ParseCtx): StructIR | null {
  * annotation don't double-fire (the main pass re-parses and owns them).
  */
 function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
+  const declared = collectDeclaredTypeNames(body)
   const scratch: ParseCtx = {
     warnings: [],
     source: ctx.source,
@@ -5830,7 +5835,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
           scratch,
         )
         if (parsedIface.kind === 'object' && parsedIface.fields.length > 0) {
-          ctx.objectTypeAliases.set(ifaceName, parsedIface)
+          ctx.objectTypeAliases.set(ifaceName, liftedAliasType(ifaceName, parsedIface, declared))
         }
       }
       continue
@@ -5858,9 +5863,35 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     if (!aliasBody || aliasBody.type !== 'TSTypeLiteral') continue
     const parsed = parseTypeAnnotation(aliasBody, scratch)
     if (parsed.kind === 'object' && parsed.fields.length > 0) {
-      ctx.objectTypeAliases.set(name, parsed)
+      ctx.objectTypeAliases.set(name, liftedAliasType(name, parsed, declared))
     }
   }
+}
+
+/**
+ * The props-resolution view of an alias/interface: its fields with every
+ * inline object type replaced by the SAME named reference struct synthesis
+ * declares for it, so a component typed `props: Task` and the `Task` struct
+ * agree about what `meta` is.
+ */
+function liftedAliasType(
+  name: string,
+  parsed: Extract<TypeIR, { kind: 'object' }>,
+  declared: ReadonlySet<string>,
+): Extract<TypeIR, { kind: 'object' }> {
+  const { struct } = liftInlineObjectStructs({ name, fields: parsed.fields }, declared)
+  return { kind: 'object', fields: struct.fields }
+}
+
+/** Declare a struct's lifted inline object types ahead of it, and report collisions. */
+function liftInlineObjects(
+  st: StructIR,
+  declared: ReadonlySet<string>,
+  ctx: ParseCtx,
+): StructIR[] {
+  const { struct, lifted, warnings } = liftInlineObjectStructs(st, declared)
+  ctx.warnings.push(...warnings)
+  return [...lifted, struct]
 }
 
 /**
