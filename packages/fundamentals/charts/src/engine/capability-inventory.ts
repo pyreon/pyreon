@@ -35,7 +35,7 @@
  */
 import { ECHARTS_CONTRACT_VERSION, ECHARTS_SERIES_GAPS, ECHARTS_TOP_GAPS } from './echarts-contract'
 
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-22.3' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-22.4' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -300,11 +300,11 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
     web: 'partial',
     native: 'partial',
     gaps: [
-      'only radar, polar, boxplot, geo and single-axis families render more than one series; every other family draws series[0] and warns',
-      'a family series never shares a chart with a cartesian series (candlestick + volume, pie beside a line)',
+      'a family series cannot share ONE grid with cartesian series (candles with moving-average lines on the same axes); on separate grids, or as separate layers, it can',
+      'a single family chart fills the box; ECharts\' default placement (a 75% radius, the funnel margins) and its box keys apply only when several charts share an option',
       FIRST_SERIES_ONLY,
     ],
-    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+    evidence: ['src/engine/option-layers.test.ts', 'src/engine/option-layers.browser.test.tsx', 'src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
   }),
   row('series.chord', 'series', 'direct', {
     web: 'complete',

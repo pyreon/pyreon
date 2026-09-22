@@ -129,7 +129,35 @@ function offsetCmd(c: DrawCmd, dx: Double, dy: Double): DrawCmd {
   }
 }
 
-const canvasable = (p: OptionPlan): boolean => p.kind === 'cartesian' || (p.kind === 'grids' && p.parts.every((q) => q.plan.kind === 'cartesian'))
+/**
+ * A layered plan, flattened for the canvas: every CARTESIAN part (a grid of a
+ * layer included) with its rect in the chart's box, and every FAMILY part —
+ * which mounts its own interactive host over the canvas.
+ */
+interface FlatLayers {
+  cartesian: { plan: OptionPlan; rect: Rect }[]
+  families: { plan: FamilyPlan; rect: Rect }[]
+  /** A family that has no host (it renders as SVG only): the whole option falls back to SVG. */
+  hostless: boolean
+}
+function flattenLayers(p: OptionPlan): FlatLayers {
+  const out: FlatLayers = { cartesian: [], families: [], hostless: false }
+  const walk = (plan: OptionPlan, dx: Double, dy: Double, rect: Rect): void => {
+    if (plan.kind === 'cartesian') out.cartesian.push({ plan, rect: { x: rect.x + dx, y: rect.y + dy, w: rect.w, h: rect.h } })
+    else if (plan.kind === 'family') {
+      if (familyHostShape(plan.compiled.plan, { width: rect.w, height: rect.h }) === null) out.hostless = true
+      out.families.push({ plan: plan.compiled.plan, rect: { x: rect.x + dx, y: rect.y + dy, w: rect.w, h: rect.h } })
+    } else for (const part of plan.parts) walk(part.plan, dx + (plan.kind === 'grids' || plan.kind === 'layers' ? rect.x : 0.0), dy + (plan.kind === 'grids' || plan.kind === 'layers' ? rect.y : 0.0), part.rect)
+  }
+  if (p.kind === 'layers' || p.kind === 'grids') for (const part of p.parts) walk(part.plan, 0.0, 0.0, part.rect)
+  return out
+}
+/** Whether a plan draws on the canvas (its family parts, if any, mounting hosts over it) rather than as SVG. */
+const canvasable = (p: OptionPlan): boolean => p.kind === 'cartesian' || ((p.kind === 'grids' || p.kind === 'layers') && !flattenLayers(p).hostless)
+/** Whether a plan has family parts that mount as hosts over the canvas. */
+const hasFamilyParts = (p: OptionPlan): boolean => (p.kind === 'grids' || p.kind === 'layers') && flattenLayers(p).families.length > 0
+/** What the canvas draws of a plan: a layered (or family-holding multi-grid) plan's cartesian parts as one multi-grid plan. */
+const canvasPlan = (p: OptionPlan): OptionPlan => (p.kind === 'layers' || hasFamilyParts(p) ? { kind: 'grids', parts: flattenLayers(p).cartesian, warnings: p.kind === 'cartesian' || p.kind === 'family' ? [] : p.warnings } : p)
 
 /** What the shared host lays out for a cartesian plan: the compiled commands and the plan the hit test reads. */
 interface OptionGeometry {
@@ -384,6 +412,65 @@ export function OptionChart(props: OptionChartProps): VNode {
     },
   }
 
+  // ---- family layers over the canvas -------------------------------------
+  // Each family layer of a layered option is its own interactive host in an
+  // absolutely positioned box. A layer whose host shape is unchanged stays
+  // MOUNTED and is fed its new plan and box, so an update tweens; the list of
+  // boxes is only replaced when a layer appears, leaves or changes shape.
+  interface LiveLayer {
+    shape: string
+    plan: ReturnType<typeof signal<FamilyPlan>>
+    box: ReturnType<typeof signal<Rect>>
+    animation: ReturnType<typeof signal<ChartAnimation>>
+    node: VNode
+  }
+  let liveLayers: LiveLayer[] = []
+  const layerNodes = signal<VNode[]>([])
+  const syncLayers = (parts: { plan: FamilyPlan; rect: Rect }[], planned: OptionPlan[]): void => {
+    const animationOf = (i: number): ChartAnimation => {
+      const q = planned.find((p) => p.kind === 'family' && p.compiled.plan === parts[i]!.plan)
+      return q !== undefined && q.kind === 'family' ? q.compiled.animation : optionAnimation()
+    }
+    const next = parts.map((part, i): LiveLayer | null => {
+      const shape = untrack(() => familyHostShape(part.plan, { width: part.rect.w, height: part.rect.h, transparent: true }))
+      if (shape === null) return null
+      const prev = liveLayers[i]
+      if (prev !== undefined && prev.shape === shape) {
+        prev.plan.set(part.plan)
+        prev.box.set(part.rect)
+        prev.animation.set(animationOf(i))
+        return prev
+      }
+      const plan = signal(part.plan)
+      const box = signal(part.rect)
+      const animation = signal(animationOf(i))
+      const options: FamilyHostOptions = {
+        get width() {
+          return box().w
+        },
+        get height() {
+          return box().h
+        },
+        get animation() {
+          return animation()
+        },
+        get onSelect() {
+          return props.onFamilySelect
+        },
+        transparent: true,
+      }
+      const host = untrack(() => familyHostNode(() => plan(), options))
+      if (host === null) return null
+      const node = h('div', { 'data-pyreon-chart-layer': String(i), style: () => `position:absolute;left:${box().x}px;top:${box().y}px;width:${box().w}px;height:${box().h}px` }, host)
+      return { shape, plan, box, animation, node }
+    })
+    const kept = next.filter((l): l is LiveLayer => l !== null)
+    const changed = kept.length !== liveLayers.length || kept.some((l, i) => l !== liveLayers[i])
+    liveLayers = kept
+    if (changed) layerNodes.set(kept.map((l) => l.node))
+  }
+  const layerSlot = (): VNode[] | null => (mode() === 'canvas' && layerNodes().length > 0 ? layerNodes() : null)
+
   // One batch per draw: the mode and host-node writes of a family host, or the
   // mode flip to svg/canvas, must repaint the surface once, not per write.
   const draw = (): void => batch(() => {
@@ -420,7 +507,10 @@ export function OptionChart(props: OptionChartProps): VNode {
       if (host !== null) host.innerHTML = optionToSvg(opt, compileOpts(w, hgt, idx))
       return
     }
-    // A cartesian plan paints through the shared host below.
+    // A cartesian plan paints through the shared host below; a layered one
+    // also mounts each family layer's own host over it.
+    const flat = hasFamilyParts(plan) ? flattenLayers(plan) : null
+    syncLayers(flat === null ? [] : flat.families, plan.kind === 'layers' || plan.kind === 'grids' ? plan.parts.map((part) => part.plan) : [])
     mode.set('canvas')
   })
 
@@ -458,6 +548,9 @@ export function OptionChart(props: OptionChartProps): VNode {
         zoom = { top: composed.top, offset: view.offset, plot: { x: p.x, y: p.y + composed.top, w: p.w, h: p.h }, strip: view.navigator?.strip ?? null, win }
       }
     } else if (plan.kind === 'grids') {
+      // The option's ground covers the whole canvas, not only the grids' rects.
+      const ground = (resolved as Record<string, unknown>)['backgroundColor']
+      if (typeof ground === 'string' && ground !== '') cmds.push({ kind: 'rect', rect: { x: 0.0, y: 0.0, w, h: hgt }, fill: ground })
       let first = true
       for (const part of plan.parts) {
         if (part.plan.kind !== 'cartesian') continue
@@ -517,7 +610,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     const idx = stepIndex()
     const steps = timelineSteps(opt)
     const stripH = steps === null ? 0.0 : TIMELINE_HEIGHT
-    const planned = planOption(opt, compileOpts(w, hgt - stripH, idx))
+    const planned = canvasPlan(planOption(opt, compileOpts(w, hgt - stripH, idx)))
     // `selectedMode: 'series'` tints every datum of a pinned series.
     const withSeriesPins = (c: CompiledOption): CompiledOption => (pinnedSeries().length === 0 ? c : { ...c, spec: applySeriesSelection(c.spec, pinnedSeries()) })
     const plan: OptionPlan = planned.kind === 'cartesian' ? { ...planned, compiled: withSeriesPins(magicOf(planned.compiled)) } : planned
@@ -1148,5 +1241,5 @@ export function OptionChart(props: OptionChartProps): VNode {
       ),
     )
   }
-  return h('div', { style: 'position:relative', 'data-pyreon-step': () => String(stepIndex() ?? -1), ref: (el: HTMLDivElement | null) => { rootEl = el } }, canvasSlot, svgNode, hostSlot, barSlot, dataViewSlot)
+  return h('div', { style: 'position:relative', 'data-pyreon-step': () => String(stepIndex() ?? -1), ref: (el: HTMLDivElement | null) => { rootEl = el } }, canvasSlot, layerSlot, svgNode, hostSlot, barSlot, dataViewSlot)
 }
