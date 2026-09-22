@@ -82,7 +82,10 @@ const LITERAL_ONLY =
 /** Native `<OptionChart>` reads `series[0]` only. */
 const FIRST_SERIES_ONLY = 'native: only series[0] is lowered'
 
-export const CHART_CAPABILITIES: readonly ChartCapability[] = [
+// Built inside a PURE IIFE: every `row(...)` is a module-level call, which a
+// bundler must otherwise keep in every bundle that imports this entry — the
+// ledger then ships in `plot-minimal` whether or not an app reads it.
+export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ (() => [
   // ── data ──────────────────────────────────────────────────────────────
   row('data.option-merge', 'data', 'direct', {
     web: 'complete',
@@ -594,7 +597,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
     gaps: ['native: the canvas carries the describeChart sentence; `accessibleTable` (the per-datum table) is named and dropped'],
     evidence: ['src/engine/canvas-host.test.tsx', 'src/engine/a11y-extras-cells.test.ts', NATIVE + 'chart-native-a11y.test.ts', NATIVE + 'chart-a11y-full-data-native.test.ts'],
   }),
-] as const
+] as const)()
 
 export interface ChartCapabilityScore {
   complete: number
