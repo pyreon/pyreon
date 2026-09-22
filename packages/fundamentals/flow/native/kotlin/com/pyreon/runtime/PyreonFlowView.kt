@@ -12,6 +12,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.requiredSize
@@ -68,7 +69,8 @@ data class PyreonFlowBackgroundStyle(
     val variant: PyreonFlowBackgroundVariant = PyreonFlowBackgroundVariant.Dots,
     val gap: Double = 20.0,
     val size: Double = 1.0,
-    val color: String = "#dddddd",
+    /** `null` follows the palette's `backgroundPattern` (light `#dddddd`). */
+    val color: String? = null,
 )
 
 enum class PyreonFlowControlsPosition { TopLeft, TopRight, BottomLeft, BottomRight }
@@ -88,7 +90,8 @@ data class PyreonFlowControlsStyle(
 )
 
 data class PyreonFlowMiniMapStyle(
-    val nodeColor: String = "#e2e8f0",
+    /** `null` follows the palette's `minimapNode` (light `#e2e8f0`). */
+    val nodeColor: String? = null,
     val maskColor: String = "#000000",
     val width: Double = 200.0,
     val height: Double = 150.0,
@@ -123,6 +126,80 @@ data class PyreonFlowConnectionLineContext(
 )
 
 private val LocalPyreonFlowEdgeLabelPoint = staticCompositionLocalOf { PyreonFlowPathPoint(0.0, 0.0) }
+
+/**
+ * The colour tokens the web renderer exposes as `--pyreon-flow-*` variables,
+ * resolved per colour mode. `light` mirrors the web's fallback values and
+ * `dark` its `[data-color-mode="dark"]` block, so a `<Flow colorMode>` paints
+ * the same surfaces on every target. Every hex value here is the web's.
+ */
+data class PyreonFlowPalette(
+    val canvasBackground: String?,
+    val nodeBackground: String,
+    val nodeColor: String,
+    val nodeBorder: String,
+    val nodeSelected: String,
+    val edge: String,
+    val edgeLabel: String,
+    val accent: String,
+    val handleBackground: String,
+    val handleBorder: String,
+    val panelBackground: String,
+    val panelBorder: String,
+    val controlColor: String,
+    val minimapNode: String,
+    val backgroundPattern: String,
+    val resizerBackground: String,
+) {
+    companion object {
+        val light = PyreonFlowPalette(
+            canvasBackground = null, nodeBackground = "#ffffff", nodeColor = "#1a192b", nodeBorder = "#dddddd",
+            nodeSelected = "#3b82f6", edge = "#999999", edgeLabel = "#666666", accent = "#3b82f6",
+            handleBackground = "#555555", handleBorder = "#ffffff", panelBackground = "#ffffff", panelBorder = "#dddddd",
+            controlColor = "#555555", minimapNode = "#e2e8f0", backgroundPattern = "#dddddd", resizerBackground = "#ffffff",
+        )
+        val dark = PyreonFlowPalette(
+            canvasBackground = "#0b1220", nodeBackground = "#1f2937", nodeColor = "#f3f4f6", nodeBorder = "#374151",
+            nodeSelected = "#60a5fa", edge = "#6b7280", edgeLabel = "#9ca3af", accent = "#60a5fa",
+            handleBackground = "#374151", handleBorder = "#6b7280", panelBackground = "#111827", panelBorder = "#374151",
+            controlColor = "#e5e7eb", minimapNode = "#374151", backgroundPattern = "#374151", resizerBackground = "#60a5fa",
+        )
+
+        /**
+         * `"dark"` / `"light"` force a palette; anything else (`"system"`) follows the
+         * OS scheme — the web's `prefers-color-scheme` branch.
+         */
+        fun resolve(colorMode: String, systemDark: Boolean): PyreonFlowPalette = when (colorMode) {
+            "dark" -> dark
+            "light" -> light
+            else -> if (systemDark) dark else light
+        }
+
+        fun isDark(colorMode: String, systemDark: Boolean): Boolean =
+            colorMode == "dark" || (colorMode != "light" && systemDark)
+    }
+}
+
+/** The palette the nearest [PyreonFlowView] (or [PyreonFlowColorMode]) resolved. */
+val LocalPyreonFlowPalette = staticCompositionLocalOf { PyreonFlowPalette.light }
+
+/**
+ * Scopes a `<Flow colorMode>` to THIS subtree — the flow canvas and the `<Panel>`
+ * overlays the compiler stacks beside it — the way the web's `data-color-mode`
+ * attribute scopes its tokens to the `.pyreon-flow` container.
+ */
+@Composable
+fun PyreonFlowColorMode(colorMode: String, content: @Composable () -> Unit) {
+    val systemDark = isSystemInDarkTheme()
+    val palette = PyreonFlowPalette.resolve(colorMode, systemDark)
+    CompositionLocalProvider(LocalPyreonFlowPalette provides palette) {
+        if (colorMode == "dark" || colorMode == "light") {
+            MaterialTheme(colors = if (PyreonFlowPalette.isDark(colorMode, systemDark)) darkColors() else lightColors(), content = content)
+        } else {
+            content()
+        }
+    }
+}
 
 @Composable
 fun PyreonFlowEdgeLabelRenderer(content: @Composable () -> Unit) {
@@ -184,10 +261,13 @@ fun <T> PyreonFlowMiniMap(
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
+    val palette = LocalPyreonFlowPalette.current
     val layout = pyreonFlowMiniMapLayout(state, style.width, style.height)
     Canvas(
         modifier
             .requiredSize(with(density) { style.width.toFloat().toDp() }, with(density) { style.height.toFloat().toDp() })
+            .background(pyreonFlowEdgeColor(palette.panelBackground).copy(alpha = 0.92f), RoundedCornerShape(4.dp))
+            .border(1.dp, pyreonFlowEdgeColor(palette.panelBorder), RoundedCornerShape(4.dp))
             .semantics { contentDescription = "minimap" }
             .pointerInput(layout, style.pannable) {
                 if (style.pannable) detectTapGestures { point ->
@@ -210,7 +290,7 @@ fun <T> PyreonFlowMiniMap(
         val nodesById = state.nodes.associateBy { it.id }
         for (node in layout.nodes) {
             val resolved = nodesById[node.id]?.let(nodeColor).orEmpty()
-            drawRect(pyreonFlowEdgeColor(resolved.ifEmpty { style.nodeColor }), Offset(node.x.toFloat(), node.y.toFloat()), androidx.compose.ui.geometry.Size(node.width.toFloat(), node.height.toFloat()))
+            drawRect(pyreonFlowEdgeColor(resolved.ifEmpty { style.nodeColor ?: palette.minimapNode }), Offset(node.x.toFloat(), node.y.toFloat()), androidx.compose.ui.geometry.Size(node.width.toFloat(), node.height.toFloat()))
         }
         val vp = layout.viewport
         drawRect(
@@ -257,13 +337,14 @@ fun PyreonFlowBackground(
     style: PyreonFlowBackgroundStyle,
     viewport: PyreonFlowViewport,
     modifier: Modifier = Modifier,
+    fallbackColor: String = PyreonFlowPalette.light.backgroundPattern,
 ) {
     Canvas(modifier) {
         val step = maxOf(1f, (style.gap * viewport.zoom).toFloat())
         val radius = maxOf(0.5f, (style.size * viewport.zoom).toFloat())
         val x0 = viewport.x.toFloat() % step
         val y0 = viewport.y.toFloat() % step
-        val color = pyreonFlowEdgeColor(style.color)
+        val color = pyreonFlowEdgeColor(style.color ?: fallbackColor)
         when (style.variant) {
             PyreonFlowBackgroundVariant.Dots, PyreonFlowBackgroundVariant.Cross -> {
                 var x = x0
@@ -296,7 +377,8 @@ fun PyreonFlowBackground(
 fun <T> PyreonFlowView(
     state: PyreonFlowState<T>,
     modifier: Modifier = Modifier,
-    edgeColor: String = "#999999",
+    /** `null` follows the palette's `edge` colour (light `#999999`). */
+    edgeColor: String? = null,
     edgeWidth: Double = 1.5,
     background: PyreonFlowBackgroundStyle? = null,
     controls: PyreonFlowControlsStyle? = null,
@@ -320,7 +402,8 @@ fun <T> PyreonFlowView(
 fun <T> PyreonFlowView(
     state: PyreonFlowState<T>,
     modifier: Modifier = Modifier,
-    edgeColor: String = "#999999",
+    /** `null` follows the palette's `edge` colour (light `#999999`). */
+    edgeColor: String? = null,
     edgeWidth: Double = 1.5,
     background: PyreonFlowBackgroundStyle? = null,
     controls: PyreonFlowControlsStyle? = null,
@@ -339,10 +422,8 @@ fun <T> PyreonFlowView(
     customConnectionLine: @Composable (PyreonFlowConnectionLineContext) -> Unit = {},
     nodeContent: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit,
 ) {
-    val forceDark = colorMode == "dark"
-    val forceLight = colorMode == "light"
-    val systemDark = isSystemInDarkTheme()
-    val resolvedDark = if (colorMode == "system") systemDark else forceDark
+    val palette = PyreonFlowPalette.resolve(colorMode, isSystemInDarkTheme())
+    val resolvedEdgeColor = edgeColor ?: palette.edge
     val density = LocalDensity.current
     var interactionsLocked by remember { mutableStateOf(false) }
     var connectionDraft by remember { mutableStateOf<PyreonFlowConnectionDraft?>(null) }
@@ -361,12 +442,12 @@ fun <T> PyreonFlowView(
             )
         }
     }
-    val edgeStrokes = pyreonFlowEdgeStrokes(state, edgeColor, edgeWidth, nodeHandles).filter { !state.onlyRenderVisibleElements || pyreonFlowEdgeStrokeIsVisible(it, state) }.toMutableList().also { strokes ->
+    val edgeStrokes = pyreonFlowEdgeStrokes(state, resolvedEdgeColor, edgeWidth, nodeHandles).filter { !state.onlyRenderVisibleElements || pyreonFlowEdgeStrokeIsVisible(it, state) }.toMutableList().also { strokes ->
         connectionDraft?.let { draft ->
             strokes += PyreonFlowEdgeStroke(
                 "__connection-preview",
                 pyreonFlowConnectionPreview(state.connectionLineType, draft.source, draft.current),
-                edgeColor,
+                resolvedEdgeColor,
                 edgeWidth,
             )
         }
@@ -374,13 +455,19 @@ fun <T> PyreonFlowView(
             strokes += PyreonFlowEdgeStroke(
                 "__reconnect-preview",
                 listOf(PyreonFlowEdgeSegment.move(draft.fixed.x, draft.fixed.y), PyreonFlowEdgeSegment.line(draft.current.x, draft.current.y)),
-                edgeColor,
+                resolvedEdgeColor,
                 edgeWidth,
             )
         }
     }
+    val canvasBackground = palette.canvasBackground
     val content: @Composable () -> Unit = { Box(
-        modifier = modifier
+        // The web's `.pyreon-flow` is `width: 100%; height: 100%`: the canvas
+        // FILLS the box it is given. Wrapping to content instead measured it
+        // to the Controls column (device-found: a 360dp frame held a 110dp
+        // canvas with every node under the buttons).
+        modifier = Modifier.fillMaxSize().then(modifier)
+            .let { if (canvasBackground != null) it.background(pyreonFlowEdgeColor(canvasBackground)) else it }
             .semantics { contentDescription = ariaLabel }
             .focusable(enabled = !state.disableKeyboardA11y)
             .onKeyEvent { event -> state.handleKeyEvent(event) }
@@ -432,7 +519,7 @@ fun <T> PyreonFlowView(
         )
 
         if (background != null) {
-            PyreonFlowBackground(background, state.viewport, Modifier.matchParentSize())
+            PyreonFlowBackground(background, state.viewport, Modifier.matchParentSize(), palette.backgroundPattern)
         }
 
         PyreonFlowEdgeCanvas(
@@ -450,8 +537,8 @@ fun <T> PyreonFlowView(
         if (selectionA != null && selectionB != null) Canvas(Modifier.matchParentSize()) {
             val left = minOf(selectionA.x, selectionB.x); val top = minOf(selectionA.y, selectionB.y)
             val size = androidx.compose.ui.geometry.Size(kotlin.math.abs(selectionB.x - selectionA.x), kotlin.math.abs(selectionB.y - selectionA.y))
-            drawRect(androidx.compose.ui.graphics.Color.Blue.copy(alpha = 0.10f), Offset(left, top), size)
-            drawRect(androidx.compose.ui.graphics.Color.Blue.copy(alpha = 0.8f), Offset(left, top), size, style = Stroke(width = 1f))
+            drawRect(pyreonFlowEdgeColor(palette.accent).copy(alpha = 0.10f), Offset(left, top), size)
+            drawRect(pyreonFlowEdgeColor(palette.accent).copy(alpha = 0.8f), Offset(left, top), size, style = Stroke(width = 1f))
         }
 
         Box(
@@ -500,14 +587,24 @@ fun <T> PyreonFlowView(
             for (edge in pyreonFlowEdgeLabels(state, nodeHandles).filter { visibleEdgeIds.contains(it.id) }) {
                 var edgeModifier = Modifier
                     .offset { IntOffset(edge.x.roundToInt(), edge.y.roundToInt()) }
-                    .clickable { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) }
+                    // CENTRED on the label point like the web's `translate(-50%, -50%)`
+                    // and Swift's `.position`; anchored top-left it ran along the
+                    // edge and its background hid the target-end marker (device-found).
+                    .graphicsLayer { translationX = -size.width / 2f; translationY = -size.height / 2f }
+                    // A tap gesture, not `clickable`: `clickable` inflates its hit box to
+                    // the 48dp minimum, and a label centred on a short edge then covered
+                    // the node's own tap target (device-found). The web label has no such
+                    // inflation; the semantics action below keeps it activatable.
+                    .pointerInput(edge.id) { detectTapGestures { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) } }
+                    .semantics { onClick { state.selectEdge(edge.id); state.emitEdgeClick(edge.id); true } }
                 edgeModifier = if (edge.focusable) edgeModifier.semantics {
                     contentDescription = edge.accessibilityLabel
                     selected = state.isEdgeSelected(edge.id)
                 } else edgeModifier.clearAndSetSemantics { }
                 Text(
                     edge.text ?: "",
-                    edgeModifier,
+                    if (edge.text == null) edgeModifier else edgeModifier.background(pyreonFlowEdgeColor(palette.panelBackground).copy(alpha = 0.9f)),
+                    color = pyreonFlowEdgeColor(palette.edgeLabel),
                 )
             }
             for (node in visibleNodes) {
@@ -615,10 +712,8 @@ fun <T> PyreonFlowView(
                             }
                         },
                 ) {
-                    drawCircle(
-                        if (handle.type == "source") androidx.compose.ui.graphics.Color.Blue else androidx.compose.ui.graphics.Color.Green,
-                        radius = (diameter / 2).toFloat(),
-                    )
+                    drawCircle(pyreonFlowEdgeColor(palette.handleBackground), radius = (diameter / 2).toFloat())
+                    drawCircle(pyreonFlowEdgeColor(palette.handleBorder), radius = (diameter / 2).toFloat(), style = Stroke(width = 1f))
                 }
             }
             for (node in visibleNodes) {
@@ -653,8 +748,8 @@ fun <T> PyreonFlowView(
                     ) {
                         val topLeft = Offset(((hitSize - diameter) / 2).toFloat(), ((hitSize - diameter) / 2).toFloat())
                         val visualSize = androidx.compose.ui.geometry.Size(diameter.toFloat(), diameter.toFloat())
-                        drawRect(androidx.compose.ui.graphics.Color.White, topLeft = topLeft, size = visualSize)
-                        drawRect(androidx.compose.ui.graphics.Color.Blue, topLeft = topLeft, size = visualSize, style = Stroke(width = (1.5 / state.viewport.zoom).toFloat()))
+                        drawRect(pyreonFlowEdgeColor(palette.resizerBackground), topLeft = topLeft, size = visualSize)
+                        drawRect(pyreonFlowEdgeColor(palette.accent), topLeft = topLeft, size = visualSize, style = Stroke(width = (1.5 / state.viewport.zoom).toFloat()))
                     }
                 }
             }
@@ -698,10 +793,8 @@ fun <T> PyreonFlowView(
                             }
                         },
                 ) {
-                    drawCircle(
-                        androidx.compose.ui.graphics.Color.Blue.copy(alpha = 0.35f),
-                        radius = (diameter / 2).toFloat(),
-                    )
+                    drawCircle(pyreonFlowEdgeColor(palette.accent).copy(alpha = 0.35f), radius = (diameter / 2).toFloat())
+                    drawCircle(pyreonFlowEdgeColor(palette.accent), radius = (diameter / 2).toFloat(), style = Stroke(width = (1.5 / state.viewport.zoom).toFloat()))
                 }
             }
         }
@@ -754,9 +847,6 @@ fun <T> PyreonFlowView(
             PyreonFlowMiniMap(state, miniMap, miniMapNodeColor, Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(10.dp))
         }
     } }
-    if (forceDark || forceLight) {
-        MaterialTheme(colors = if (resolvedDark) darkColors() else lightColors(), content = content)
-    } else {
-        content()
-    }
+    // Scoped to the canvas, like the web's `data-color-mode` attribute.
+    PyreonFlowColorMode(colorMode, content)
 }

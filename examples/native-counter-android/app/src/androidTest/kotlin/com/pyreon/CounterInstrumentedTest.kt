@@ -37,6 +37,11 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.graphics.toPixelMap
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
@@ -47,6 +52,7 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performScrollTo
@@ -177,6 +183,95 @@ class CounterInstrumentedTest {
         composeRule.waitUntil(5_000) {
             composeRule.onNodeWithTag("native-flow-zoom-percent").fetchSemanticsNode().config[SemanticsProperties.Text].first().text != zoomBeforePinch
         }
+    }
+
+    /// F3 renderer parity, kept apart from the gesture test above: every check
+    /// here reads something the RENDERER painted or placed, not the engine.
+    @Test
+    fun flowRendererParityChrome() {
+        composeRule.onNodeWithText("Native Flow Start").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Native Flow device proof").assertExists()
+        composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
+        // F3 renderer parity — the chrome the flow audit listed as unproven on
+        // device. Every check reads something the RENDERER did, not the engine.
+        val flowCanvas = composeRule.onNodeWithContentDescription("Native Flow device proof")
+        val canvasBounds = flowCanvas.getBoundsInRoot()
+        // <Panel position="bottom-right"> lands in the canvas's bottom-right quadrant.
+        val panelBounds = composeRule.onNodeWithTag("native-flow-panel").assertIsDisplayed().getBoundsInRoot()
+        val panelCx = (panelBounds.left + panelBounds.right) / 2
+        val panelCy = (panelBounds.top + panelBounds.bottom) / 2
+        val canvasCx = (canvasBounds.left + canvasBounds.right) / 2
+        val canvasCy = (canvasBounds.top + canvasBounds.bottom) / 2
+        check(panelCx > canvasCx && panelCy > canvasCy) {
+            "bottom-right panel is not in the canvas's bottom-right quadrant ($panelBounds in $canvasBounds)"
+        }
+        fun canvasPixels(r: Int, g: Int, b: Int): Int {
+            composeRule.waitForIdle()
+            val map = flowCanvas.captureToImage().toPixelMap()
+            var n = 0
+            for (y in 0 until map.height) for (x in 0 until map.width) {
+                val c = map[x, y]
+                if (abs((c.red * 255).roundToInt() - r) <= 6 && abs((c.green * 255).roundToInt() - g) <= 6 && abs((c.blue * 255).roundToInt() - b) <= 6) n++
+            }
+            return n
+        }
+        // The seed edge's closed arrowhead is pure #ff0000, which nothing else on this screen paints.
+        check(canvasPixels(255, 0, 0) > 0) { "the edge's red markerEnd arrowhead did not paint on the native canvas" }
+        // colorMode is reactive: the web's dark canvas colour (#0b1220) paints only while dark.
+        composeRule.onNodeWithTag("native-flow-color-mode").assertTextEquals("light")
+        check(canvasPixels(11, 18, 32) == 0) { "the dark canvas colour painted while colorMode is light" }
+        composeRule.onNodeWithTag("native-flow-toggle-dark").performScrollTo().performClick()
+        composeRule.onNodeWithTag("native-flow-color-mode").assertTextEquals("dark")
+        flowCanvas.performScrollTo()
+        check(canvasPixels(11, 18, 32) > 1000) { "colorMode=\"dark\" did not paint the web's dark canvas colour" }
+        composeRule.onNodeWithTag("native-flow-toggle-dark").performScrollTo().performClick()
+        composeRule.onNodeWithTag("native-flow-color-mode").assertTextEquals("light")
+        flowCanvas.performScrollTo()
+        check(canvasPixels(11, 18, 32) == 0) { "the dark canvas colour outlived colorMode=\"dark\"" }
+
+        composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
+        val startNode = composeRule.onNodeWithContentDescription("Native Flow Start")
+        val source = composeRule.onAllNodesWithContentDescription("source handle out")[1]
+        val sourceCenter = source.fetchSemanticsNode().boundsInRoot.center
+        check(startNode.fetchSemanticsNode().boundsInRoot.left >= 0f) { "start node off root" }
+        // connectionLine={NativeConnectionLine} renders ONLY mid-drag: the
+        // gesture is split across two performTouchInput calls so the identifier
+        // can be asserted between `down` and `up`; the release lands on empty
+        // canvas, so nothing connects and the seed edge count stays 1.
+        composeRule.onAllNodesWithTag("native-flow-custom-line").assertCountEquals(0)
+        composeRule.onNodeWithTag("native-flow-custom-line-mounts").assertTextEquals("0")
+        // Mostly sideways, ending just below the End node: a vertical drag is a
+        // page scroll on both platforms before any handle sees it.
+        source.performTouchInput {
+            down(center)
+            moveBy(androidx.compose.ui.geometry.Offset(-40f, 60f))
+            moveBy(androidx.compose.ui.geometry.Offset(-40f, 60f))
+        }
+        composeRule.onNodeWithTag("native-flow-custom-line").assertExists()
+        source.performTouchInput { up() }
+        composeRule.onAllNodesWithTag("native-flow-custom-line").assertCountEquals(0)
+        // The same mount probe iOS relies on (XCUITest cannot look mid-drag).
+        composeRule.onNodeWithTag("native-flow-custom-line-mounts").assertTextEquals("1")
+        composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
+        // Reduced motion, the web's `config.reducedMotion` contract: while ON a
+        // 3s viewport animation lands at once; flipped OFF through `config`, the
+        // same call takes its 3s — so "instant" cannot be mistaken for
+        // "animation unsupported". Measured by ELAPSED time: a semantics read
+        // waits for composition idle, and a running 16ms animation timer keeps
+        // it busy until the last frame, so a mid-flight value cannot be read here
+        // (iOS reads one; XCUITest does not idle-wait).
+        fun zoomText() = composeRule.onNodeWithTag("native-flow-zoom-percent").fetchSemanticsNode().config[SemanticsProperties.Text].first().text
+        val instantStart = SystemClock.uptimeMillis()
+        composeRule.onNodeWithTag("native-flow-animate-zoom").performScrollTo().performClick()
+        composeRule.waitUntil(6_000) { zoomText() == "50" }
+        val instantElapsed = SystemClock.uptimeMillis() - instantStart
+        check(instantElapsed < 1_500) { "reducedMotion: true did not make the 3s zoom animation land instantly (took ${instantElapsed}ms)" }
+        composeRule.onNodeWithTag("native-flow-allow-motion").performScrollTo().performClick()
+        val animatedStart = SystemClock.uptimeMillis()
+        composeRule.onNodeWithTag("native-flow-animate-zoom-back").performScrollTo().performClick()
+        composeRule.waitUntil(8_000) { zoomText() == "100" }
+        val animatedElapsed = SystemClock.uptimeMillis() - animatedStart
+        check(animatedElapsed >= 2_000) { "with reduced motion off the 3s zoom animation landed in ${animatedElapsed}ms" }
     }
 
     @Test

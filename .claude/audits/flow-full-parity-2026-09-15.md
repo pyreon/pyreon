@@ -172,3 +172,34 @@ native view.
   key and asserts the engine moved it in both native device suites. The same
   suites tap an accessible edge label and assert pointer selection. Edge
   hardware focus and the remaining focus/action matrix remain F4 work.
+- [x] F3 renderer/chrome parity is device-proven on both targets from the same
+  counter source, and every check reads what the RENDERER painted or placed
+  rather than engine state: `<Panel position="bottom-right">` sits in the
+  canvas's bottom-right quadrant (frame relation); the seed edge's
+  `markerEnd: { type: 'arrowclosed', color: '#ff0000' }` paints exact red
+  pixels in a canvas screenshot; a reactive `colorMode` paints the web's dark
+  canvas colour `#0b1220` only while dark (zero → many → zero pixels across
+  two toggles); `connectionLine={NativeConnectionLine}` mounts only while a
+  source handle is dragged (iOS: a main-queue timer fires inside the
+  synchronous gesture and finds it in the accessibility tree, plus a store the
+  component writes from `onMount`, 0 → 1 → 2; Android: the split-gesture
+  mid-drag existence check plus the same store); and `config.reducedMotion`
+  lands a 3s viewport animation instantly while the same call animates once
+  the flag is cleared through `config` (iOS reads a mid-flight value; Android
+  measures elapsed time, because a semantics read waits for composition idle
+  and a running animation timer keeps it busy). Renderer defects the pass
+  found and fixed: neither native renderer painted a colour mode at all and
+  SwiftUI's `.preferredColorScheme` re-themed the whole window — both now
+  resolve a `PyreonFlowPalette` (the web's `--pyreon-flow-*` values, light
+  and dark) scoped to the flow and its Panel overlays; the Compose canvas
+  wrapped to its Controls column instead of filling its box; Compose anchored
+  edge labels top-left (web/Swift centre them) and its `clickable` inflated
+  the label's hit box over the target-end marker and neighbouring node taps.
+  Compiler defects found on the way: `<Background>`/`<MiniMap>` baked
+  light-only default colours; a single-statement block handler holding an
+  assignment emitted an empty closure; a kebab-case `defineStore` id emitted
+  an unparsable class name; a zero-parameter listener subscriber emitted a
+  Swift closure of the wrong arity. Still open under F3: pixel parity of node
+  chrome under `colorMode="system"` (only forced modes are asserted), and the
+  Android px-vs-dp graph-unit divergence (fit-view lands at ~2x on a 360dp
+  canvas), which is tracked rather than fixed here.

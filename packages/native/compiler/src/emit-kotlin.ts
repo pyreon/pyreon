@@ -7485,7 +7485,11 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
   })
   overlays.push(...otherChildren.map((child) => `    ${emitKotlinChild(child, 4)}`))
   const overlaysCode = overlays.join('\n')
-  return `Box {\n  ${host}\n${overlaysCode}\n}`
+  // The overlays sit BESIDE the flow view, outside its own scoped colour
+  // mode; re-apply it around the stack so a <Panel> under colorMode="dark"
+  // themes like the web's `.pyreon-flow[data-color-mode]` descendants.
+  const stack = `Box {\n  ${host}\n${overlaysCode}\n}`
+  return colorModeAttr?.kind === 'attr' && colorModeAttr.value !== undefined ? `PyreonFlowColorMode(${emitKotlinExpr(colorModeAttr.value, 0)}) {\n${stack}\n}` : stack
 }
 
 function emitKotlinStandaloneFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -7544,7 +7548,14 @@ function emitKotlinFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): str
     return typeof value === 'number' ? `${value}${Number.isInteger(value) ? '.0' : ''}` : emitKotlinExpr(attr.value, 0)
   }
   const bool = (name: string, fallback: boolean): string => expr(name, String(fallback))
-  return `PyreonFlowMiniMapStyle(nodeColor = ${str('nodeColor', '#e2e8f0')}, maskColor = ${str('maskColor', '#000000')}, width = ${num('width', 200)}, height = ${num('height', 150)}, pannable = ${bool('pannable', true)}, zoomable = ${bool('zoomable', true)})`
+  // A static node colour lowers verbatim; an absent one (or a per-node
+  // callback, which travels separately as `miniMapNodeColor`) stays `null` so
+  // the palette's `minimapNode` — light or dark — decides at render time.
+  const nodeColorAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeColor')
+  const nodeColorValue = nodeColorAttr?.kind === 'attr' ? nodeColorAttr.value : undefined
+  const nodeColorIsCallback = nodeColorValue?.kind === 'arrow' || (nodeColorValue?.kind === 'identifier' && (_functionNames.has(nodeColorValue.name) || _moduleConstExprsKotlin.get(nodeColorValue.name)?.kind === 'arrow'))
+  const nodeColor = nodeColorValue === undefined || nodeColorIsCallback ? 'null' : emitKotlinExpr(nodeColorValue, 0)
+  return `PyreonFlowMiniMapStyle(nodeColor = ${nodeColor}, maskColor = ${str('maskColor', '#000000')}, width = ${num('width', 200)}, height = ${num('height', 150)}, pannable = ${bool('pannable', true)}, zoomable = ${bool('zoomable', true)})`
 }
 
 function emitKotlinFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
@@ -7574,7 +7585,10 @@ function emitKotlinFlowBackground(e: Extract<ExprIR, { kind: 'jsx-element' }>): 
     const value = attr.value.value
     return typeof value === 'number' ? `${value}${Number.isInteger(value) ? '.0' : ''}` : emitKotlinExpr(attr.value, 0)
   }
-  return `PyreonFlowBackgroundStyle(variant = ${resolvedVariant}, gap = ${num('gap', 20)}, size = ${num('size', 1)}, color = ${expr('color', '"#dddddd"')})`
+  // No colour → `null`: the renderer's palette supplies the light `#dddddd` or
+  // the dark `#374151` (`--pyreon-flow-bg-pattern`), which a baked literal
+  // would silently pin to light under `colorMode="dark"`.
+  return `PyreonFlowBackgroundStyle(variant = ${resolvedVariant}, gap = ${num('gap', 20)}, size = ${num('size', 1)}, color = ${expr('color', 'null')})`
 }
 
 /**

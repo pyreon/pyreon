@@ -6333,6 +6333,18 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (!LOWERED_FLOW_METHODS.has(member) && !LOWERED_FLOW_PROPERTY_READS.has(member)) {
           _emitWarnings.push(unloweredFlowMemberWarning(flowName, member))
         }
+        // Every `on*` listener on the port takes a ONE-argument callback, and the
+        // web lets a subscriber ignore that argument (`flow.onConnectStart(() =>
+        // count++)`). A zero-parameter Swift closure in that position is
+        // "contextual type for closure argument list expects 1 argument" —
+        // Kotlin's one-parameter lambda already accepts the bare form.
+        if (member.startsWith('on') && LOWERED_FLOW_METHODS.has(member) && e.args.length === 1) {
+          const callback = e.args[0]!
+          if (callback.kind === 'arrow' && callback.params.length === 0) {
+            const closure = emitSwiftExpr(callback, indent)
+            if (closure.startsWith('{')) return `${swiftIdent(flowName)}.${member}({ _ in${closure.slice(1)})`
+          }
+        }
         // Swift's labeled parameters: the web call is positional, the port's
         // second parameter is labeled — an unlabeled emit fails ONLY on iOS.
         if ((member === 'selectNode' || member === 'selectNodes' || member === 'selectEdge') && e.args.length === 2) {
@@ -8947,7 +8959,11 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   })
   overlays.push(...otherChildren.map((child) => `    ${emitSwiftChild(child, 4)}`))
   const overlaysCode = overlays.join('\n')
-  return `ZStack {\n  ${host}\n${overlaysCode}\n}`
+  // The overlays sit BESIDE the flow view, outside its own scoped colour
+  // mode; re-apply it on the stack so a <Panel> under colorMode="dark"
+  // themes like the web's `.pyreon-flow[data-color-mode]` descendants.
+  const colorModeTail = colorModeAttr?.kind === 'attr' && colorModeAttr.value !== undefined ? `\n.pyreonFlowColorMode(${emitSwiftExpr(colorModeAttr.value, 0)})` : ''
+  return `ZStack {\n  ${host}\n${overlaysCode}\n}${colorModeTail}`
 }
 
 function emitSwiftStandaloneFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -9004,7 +9020,14 @@ function emitSwiftFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): stri
     return attr.value.kind === 'literal' ? emitSwiftExpr(attr.value, 0) : `Double(${emitSwiftExpr(attr.value, 0)})`
   }
   const bool = (name: string, fallback: boolean): string => expr(name, String(fallback))
-  return `PyreonFlowMiniMapStyle(nodeColor: ${str('nodeColor', '#e2e8f0')}, maskColor: ${str('maskColor', '#000000')}, width: ${num('width', 200)}, height: ${num('height', 150)}, pannable: ${bool('pannable', true)}, zoomable: ${bool('zoomable', true)})`
+  // A static node colour lowers verbatim; an absent one (or a per-node
+  // callback, which travels separately as `miniMapNodeColor`) stays `nil` so
+  // the palette's `minimapNode` — light or dark — decides at render time.
+  const nodeColorAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeColor')
+  const nodeColorValue = nodeColorAttr?.kind === 'attr' ? nodeColorAttr.value : undefined
+  const nodeColorIsCallback = nodeColorValue?.kind === 'arrow' || (nodeColorValue?.kind === 'identifier' && (_functionNames.has(nodeColorValue.name) || _moduleConstExprs.get(nodeColorValue.name)?.kind === 'arrow'))
+  const nodeColor = nodeColorValue === undefined || nodeColorIsCallback ? 'nil' : emitSwiftExpr(nodeColorValue, 0)
+  return `PyreonFlowMiniMapStyle(nodeColor: ${nodeColor}, maskColor: ${str('maskColor', '#000000')}, width: ${num('width', 200)}, height: ${num('height', 150)}, pannable: ${bool('pannable', true)}, zoomable: ${bool('zoomable', true)})`
 }
 
 function emitSwiftFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
@@ -9032,7 +9055,10 @@ function emitSwiftFlowBackground(e: Extract<ExprIR, { kind: 'jsx-element' }>): s
     if (attr?.kind !== 'attr' || attr.value === undefined) return String(fallback)
     return attr.value.kind === 'literal' ? emitSwiftExpr(attr.value, 0) : `Double(${emitSwiftExpr(attr.value, 0)})`
   }
-  return `PyreonFlowBackgroundStyle(variant: ${resolvedVariant}, gap: ${num('gap', 20)}, size: ${num('size', 1)}, color: ${expr('color', '"#dddddd"')})`
+  // No colour → `nil`: the renderer's palette supplies the light `#dddddd` or
+  // the dark `#374151` (`--pyreon-flow-bg-pattern`), which a baked literal
+  // would silently pin to light under `colorMode="dark"`.
+  return `PyreonFlowBackgroundStyle(variant: ${resolvedVariant}, gap: ${num('gap', 20)}, size: ${num('size', 1)}, color: ${expr('color', 'nil')})`
 }
 
 /**
