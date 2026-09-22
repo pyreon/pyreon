@@ -4,6 +4,9 @@
 // a named warning — and the output is data the family SVG helpers (and,
 // later, the family components) consume directly.
 
+import { circleView, familyRect } from './option-layers'
+import { PIE_SHAPE_KEYS, readPieArcs, readPieEmpty, readPieLabels } from './option-pie'
+import type { PieShape } from './option-pie'
 import type { EChartsOption, OptionWarning } from './option'
 import { paletteAt } from './palette'
 import {
@@ -39,7 +42,7 @@ import { ANIMATION_KEYS, resolveAnimation } from './animation-option'
 import type { ChartAnimation } from './animation-option'
 
 export type FamilyPlan =
-  | { kind: 'pie'; rows: { value: Double; name: string; color: string | undefined }[]; innerRadius: Double; showLabels: boolean; showLegend: boolean; title: string | undefined }
+  | { kind: 'pie'; rows: { value: Double; name: string; color: string | undefined }[]; innerRadius: Double; showLabels: boolean; showLegend: boolean; title: string | undefined; pie: PieShape }
   | { kind: 'gauge'; value: Double; min: Double; max: Double; showValue: boolean; thickness: Double | undefined; valueColor: string | undefined; title: string | undefined }
   | { kind: 'radar'; axes: RadarAxis[]; rows: { values: Double[]; name: string; color: string | undefined }[]; fillAlpha: Double; showLegend: boolean; title: string | undefined }
   | { kind: 'candlestick'; rows: { x: string; open: Double; high: Double; low: Double; close: Double }[]; upColor: string | undefined; downColor: string | undefined; title: string | undefined }
@@ -159,7 +162,7 @@ const FAMILY_ITEM_KEYS = ['tooltip', 'cursor', 'silent', 'universalTransition', 
  */
 const FAMILY_DATASET_KEYS = ['datasetIndex', 'datasetId', 'seriesLayoutBy', 'dimensions', 'encode'] as const
 export const KNOWN_BY_FAMILY: Readonly<Record<string, ReadonlySet<string>>> = {
-  pie: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'colorBy', 'type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
+  pie: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, ...PIE_SHAPE_KEYS, 'colorBy', 'type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
   gauge: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'min', 'max', 'detail', 'axisLine', 'progress', 'itemStyle', 'color']),
   radar: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'colorBy', 'type', 'name', 'data', 'areaStyle', 'itemStyle', 'lineStyle', 'symbol', 'color']),
   candlestick: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'itemStyle', 'color']),
@@ -252,6 +255,7 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
 
   if (type === 'pie') {
     const rows: { value: Double; name: string; color: string | undefined }[] = []
+    const rawRows: unknown[] = []
     for (let i = 0; i < data.length; i++) {
       const d = data[i]
       const v = isObj(d) ? num(d['value']) : num(d)
@@ -259,6 +263,7 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
         warn('series-data-shape', `series[0].data[${i}]`, 'A pie datum needs a numeric value; it was skipped.')
         continue
       }
+      rawRows.push(d)
       const item = isObj(d) && isObj(d['itemStyle']) ? d['itemStyle'] : {}
       rows.push({
         value: v,
@@ -275,7 +280,8 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
       if (inner !== null && outer !== null && outer > 0) innerRadius = Math.max(0.0, Math.min(0.95, inner / outer))
     }
     const label = isObj(s['label']) ? s['label'] : {}
-    return { plan: { kind: 'pie', rows, innerRadius, showLabels: label['show'] !== false, showLegend, title }, warnings, supported }
+    const pie: PieShape = { arcs: readPieArcs(s), labels: readPieLabels(s, rows, rawRows), empty: readPieEmpty(s) }
+    return { plan: { kind: 'pie', rows, innerRadius, showLabels: label['show'] !== false, showLegend, title, pie }, warnings, supported }
   }
 
   if (type === 'gauge') {
@@ -1156,13 +1162,18 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
 }
 
 /** Render a compiled family plan to an `<svg>` string. */
-export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined; height?: Double | undefined } = {}): string {
+export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined; height?: Double | undefined } = {}, source?: Record<string, unknown>): string {
   const width = size.width ?? 640.0
   const height = size.height ?? 320.0
+  // With the option at hand, a pie sits where ECharts places it in the whole image.
+  const s0 = source !== undefined && Array.isArray(source['series']) ? (source['series'] as unknown[])[0] : source?.['series']
+  const placed = isObj(s0) ? s0 : null
   switch (plan.kind) {
     case 'pie': {
       const hasColors = plan.rows.some((r) => r.color !== undefined)
       return pieToSvg({
+        pie: plan.pie,
+        ...(placed !== null ? { frame: familyRect(placed, width, height), view: circleView(placed, width, height) } : {}),
         data: plan.rows,
         value: (d) => d.value,
         label: (d) => d.name,

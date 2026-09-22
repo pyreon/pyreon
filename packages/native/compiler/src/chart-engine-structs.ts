@@ -779,6 +779,76 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "name": "Double",
           "args": []
         }
+      },
+      {
+        "name": "index",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "reach",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "ArcConfig",
+    "fields": [
+      {
+        "name": "start",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "sweep",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "clockwise",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "minAngle",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "padAngle",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "rose",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "zeros",
+        "type": {
+          "kind": "boolean"
+        }
       }
     ],
     "external": true
@@ -835,6 +905,103 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "name": "Double",
           "args": []
         }
+      },
+      {
+        "name": "arcs",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "ArcConfig",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labels",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "PieLabelOptions",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "view",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "PyreonChartRect",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "empty",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "measure",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "function",
+              "params": [
+                {
+                  "name": "text",
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "size",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                }
+              ],
+              "returnType": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
       }
     ],
     "external": true
@@ -884,6 +1051,282 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         "name": "valueColor",
         "type": {
           "kind": "string"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "PieLabelOptions",
+    "fields": [
+      {
+        "name": "position",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "texts",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "string"
+          }
+        }
+      },
+      {
+        "name": "fontSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "line",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "lineColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "leg1",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "leg2",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "distance",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "avoidOverlap",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "minTurnAngle",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "maxSurfaceAngle",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "minAngle",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "overflow",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "bleedMargin",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "alignTo",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "edgeDistance",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "edgePercent",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "rotate",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "rotateDegrees",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "PieLabel",
+    "fields": [
+      {
+        "name": "index",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "text",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "at",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartPt",
+          "args": []
+        }
+      },
+      {
+        "name": "align",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "line",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonChartPt",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "lineColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "rotate",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "Shifted",
+    "fields": [
+      {
+        "name": "order",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "number"
+          }
+        }
+      },
+      {
+        "name": "ys",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "Double",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "adjusted",
+        "type": {
+          "kind": "boolean"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "Projection",
+    "fields": [
+      {
+        "name": "x",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "y",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "d",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
         }
       }
     ],
@@ -12963,6 +13406,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "A11ySeries",
   "A11yTable",
   "Annotation",
+  "ArcConfig",
   "ArcGeometry",
   "BarLength",
   "Bin",
@@ -13058,6 +13502,8 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "ParallelPlaced",
   "ParallelTick",
   "PictorialBar",
+  "PieLabel",
+  "PieLabelOptions",
   "PieOptions",
   "Placed",
   "PlotLayout",
@@ -13074,6 +13520,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "PolarTick",
   "PresetLayout",
   "PresetOptions",
+  "Projection",
   "PyreonChartGradient",
   "PyreonChartGradientStop",
   "PyreonChartPattern",
@@ -13100,6 +13547,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "Series",
   "SeriesExtra",
   "SeriesGradient",
+  "Shifted",
   "SingleAxisLayout",
   "SingleAxisLayoutAxis",
   "SingleAxisLayoutPoint",

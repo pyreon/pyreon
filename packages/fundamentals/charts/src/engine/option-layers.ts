@@ -109,13 +109,20 @@ export function boxRect(s: Obj, width: Double, height: Double, defaults: { left?
  * circle fills, which is what the family renderers draw into.
  */
 export function circleRect(s: Obj, width: Double, height: Double, defaultRadius: string): Rect {
-  const c = Array.isArray(s['center']) ? (s['center'] as unknown[]) : []
-  const cx = layoutLength(c[0], width, width / 2.0)
-  const cy = layoutLength(c[1], height, height / 2.0)
+  // ECharts places a circle inside the series' own box (left / top / right / bottom / width / height, the whole chart by default).
+  const view = circleView(s, width, height)
+  const c = Array.isArray(s['center']) ? (s['center'] as unknown[]) : s['center'] === undefined ? [] : [s['center'], s['center']]
+  const cx = view.x + layoutLength(c[0], view.w, view.w / 2.0)
+  const cy = view.y + layoutLength(c[1], view.h, view.h / 2.0)
   const raw = Array.isArray(s['radius']) ? (s['radius'] as unknown[])[1] : s['radius']
-  const half = Math.min(width, height) / 2.0
+  const half = Math.min(view.w, view.h) / 2.0
   const r = layoutLength(raw ?? defaultRadius, half, layoutLength(defaultRadius, half, half))
   return { x: cx - r, y: cy - r, w: r * 2.0, h: r * 2.0 }
+}
+
+/** The box a circular series lays out in — ECharts' view rect, which its outside labels also keep within. */
+export function circleView(s: Obj, width: Double, height: Double): Rect {
+  return boxRect(s, width, height, { left: 0.0, top: 0.0, right: 0.0, bottom: 0.0 })
 }
 
 /** The keys `boxRect` reads off a series. */
@@ -124,10 +131,10 @@ const BOX_KEYS = ['left', 'top', 'right', 'bottom', 'width', 'height'] as const
 /** Where a standalone family series goes. */
 export function familyRect(s: Obj, width: Double, height: Double): Rect {
   const type = s['type']
-  if (type === 'pie') return circleRect(s, width, height, '75%')
+  if (type === 'pie') return circleRect(s, width, height, '50%')
   if (type === 'gauge') return circleRect(s, width, height, '75%')
   if (type === 'sunburst') return circleRect(s, width, height, '75%')
-  if (type === 'chord') return circleRect(s, width, height, '75%')
+  if (type === 'chord') return circleRect(s, width, height, '80%')
   if (type === 'funnel') return boxRect(s, width, height, { left: 80, top: 60, right: 80, bottom: 60 })
   if (type === 'treemap') return boxRect(s, width, height, { left: width * 0.1, top: height * 0.1, right: width * 0.1, bottom: height * 0.1 })
   if (type === 'tree') return boxRect(s, width, height, { left: width * 0.12, top: height * 0.12, right: width * 0.12, bottom: height * 0.12 })

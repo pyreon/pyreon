@@ -48,6 +48,7 @@ export const ENGINE_FILES = [
   'scale-extra',
   'curve',
   'arc',
+  'pie-labels',
   'radar',
   'layout',
   'stack',

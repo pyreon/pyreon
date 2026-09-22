@@ -191,8 +191,13 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
   row('series.pie', 'series', 'direct', {
     web: 'partial',
     native: 'partial',
-    gaps: ['`roseType`, `startAngle`, `padAngle`, `minAngle`, `avoidLabelOverlap` and `labelLine` are unmapped', LITERAL_ONLY],
-    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+    gaps: [
+      'in a layered option (several pies, or a pie beside a grid) each pie is its own box, so its outside labels are cut to that box where ECharts lets them run over the whole chart',
+      'a label is one line: `rich` text is not read, and `overflow: \'break\'` cuts as `truncate` does rather than wrapping',
+      'native: the option pie lowers to the classic 12 o\'clock pie with percentages inside — the start/end angle, direction, min/pad angle, rose, outside labels and placement are web-only for now',
+      LITERAL_ONLY,
+    ],
+    evidence: ['src/engine/echarts-differential.test.ts', 'src/engine/option-pie.test.ts', 'src/engine/option-family-frame.browser.test.tsx', NATIVE + 'chart-option-family-native.test.ts'],
   }),
   row('series.scatter', 'series', 'direct', {
     web: 'complete',

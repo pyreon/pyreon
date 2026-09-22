@@ -290,8 +290,14 @@ export function funnelTip(stages: FunnelStage[], plot: Rect, px: Double, py: Dou
 /** The slice's label, value and share of the whole. */
 export function pieTip(slices: Slice[], box: Rect, innerRatio: Double, px: Double, py: Double): string[] {
   const fit = fitCircle(box)
-  const i = hitArc(layoutArcs(slices), fit.center, fit.radius, fit.radius * innerRatio, { x: px, y: py })
-  if (i < 0) return []
+  const arcs = layoutArcs(slices)
+  const i = hitArc(arcs, fit.center, fit.radius, fit.radius * innerRatio, { x: px, y: py })
+  return i < 0 ? [] : pieTipAt(slices, arcs[i]!.index)
+}
+
+/** The tooltip lines for the slice at input index `i`, or none. */
+export function pieTipAt(slices: Slice[], i: number): string[] {
+  if (i < 0 || i >= slices.length) return []
   const s = slices[i]!
   let total = 0.0
   for (const x of slices) total += x.value

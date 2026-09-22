@@ -14,7 +14,8 @@ import type { HeatSelection } from './heat-chart'
 import { transposeCmds, transposeRect } from './rtl'
 import { fitCircle, layoutArcs, renderGauge, renderPie } from './arc'
 import { paletteAt } from './palette'
-import type { GaugeOptions } from './arc'
+import type { ArcConfig, GaugeOptions } from './arc'
+import type { PieLabelOptions } from './pie-labels'
 import { renderRadar } from './radar'
 import type { RadarAxis } from './radar'
 import { ohlcExtent, renderCandles } from './candlestick'
@@ -144,6 +145,12 @@ export interface PieToSvgOptions<T> {
   /** Explicit long description; derived from the data when a title is given. */
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
+  /** ECharts' pie layout — start angle, direction, min/pad angles, rose, outside labels — as `<PieChart pie>`. */
+  pie?: { arcs: ArcConfig; labels: PieLabelOptions | undefined; empty?: string | undefined } | undefined
+  /** Draw the pie in this rect, the legend over it (ECharts' placement); below the legend without it. */
+  frame?: Rect | undefined
+  /** The rect outside labels keep within; the whole image without it. */
+  view?: Rect | undefined
 }
 
 
@@ -171,11 +178,17 @@ export function pieToSvg<T>(options: PieToSvgOptions<T>): string {
     legendH = l.height
     for (const c of l.cmds) cmds.push(c)
   }
-  const body = renderPie(slices, { x: 0, y: legendH, w: width, h: height - legendH }, {
+  const labels = options.pie?.labels
+  const body = renderPie(slices, options.frame ?? { x: 0, y: legendH, w: width, h: height - legendH }, {
     innerRadius: options.innerRadius ?? 0,
     showLabels: options.showLabels ?? true,
-    labelColor: '#ffffff',
+    labelColor: labels !== undefined && labels.position !== 'inside' ? t.label : '#ffffff',
     fontSize: t.fontSize,
+    arcs: options.pie?.arcs,
+    labels,
+    view: options.view ?? { x: 0, y: 0, w: width, h: height },
+    empty: options.pie?.empty,
+    measure,
   })
   for (const c of body) cmds.push(c)
 

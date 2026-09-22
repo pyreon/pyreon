@@ -129,7 +129,7 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
   { name: 'boxplot with outlier scatter', expectClean: true, option: {
     xAxis: { data: ['A', 'B'] }, yAxis: {},
     series: [{ type: 'boxplot', data: [[1, 2, 3, 4, 5], [2, 3, 4, 5, 6]] }, { type: 'scatter', data: [[0, 9]] }] } },
-  { name: 'rose pie (roseType unmapped)', expectClean: false, option: {
+  { name: 'rose pie', expectClean: true, option: {
     series: [{ type: 'pie', roseType: 'area', data: [{ value: 1, name: 'a' }] }] } },
   { name: 'radar + dataZoom (unmapped keys)', expectClean: false, option: {
     dataZoom: [{ type: 'inside' }], radar: { indicator: [] },

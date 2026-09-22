@@ -1373,7 +1373,7 @@ export function optionToSvg(rawOption: EChartsOption, opts: OptionToSvgOptions =
 function optionToSvgSingle(option: EChartsOption, opts: OptionToSvgOptions): string {
   const fam = compileFamily(option)
   if (fam !== null) {
-    const svg = familyToSvg(fam.plan, { width: opts.width, height: opts.height })
+    const svg = familyToSvg(fam.plan, { width: opts.width, height: opts.height }, fam.source)
     const size = svgSize(svg)
     if (size === null) return svg
     // Overlays above the chart: the visualMap strip, then free-form graphics.

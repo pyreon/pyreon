@@ -1,6 +1,6 @@
 /**
  * A single family chart sits where ECharts places it in the whole chart: a
- * pie at its `center` with a 75% radius by default, a funnel inside its
+ * pie at its `center` with a 50% radius by default, a funnel inside its
  * margins. Before, the family host filled the box.
  */
 import { describe, expect, it } from 'vitest'
@@ -27,15 +27,26 @@ const inkedSpan = (c: HTMLCanvasElement, y: number): [number, number] => {
 const pie = (extra: Record<string, unknown> = {}): EChartsOption => ({ animation: false, series: [{ type: 'pie', data: [{ name: 'a', value: 1 }, { name: 'b', value: 2 }], ...extra }] })
 
 describe('<OptionChart> single family placement (real browser)', () => {
-  it('a pie takes a 75% radius at the centre by default', async () => {
+  it('a pie takes a 50% radius at the centre by default', async () => {
     const { container } = mountInBrowser(h(OptionChart, { option: pie(), width: 400, height: 200 }))
     await flush()
     const [a, b] = inkedSpan(query(container, 'canvas'), 100)
-    // 75% of half the shorter side (100) is 75: the pie spans 125..275.
-    expect(a).toBeGreaterThan(120)
-    expect(a).toBeLessThan(130)
-    expect(b).toBeGreaterThan(270)
-    expect(b).toBeLessThan(280)
+    // ECharts' radius [0, '50%']: half of half the shorter side (100) is 50, so the pie spans 150..250.
+    expect(a).toBeGreaterThan(145)
+    expect(a).toBeLessThan(155)
+    expect(b).toBeGreaterThan(245)
+    expect(b).toBeLessThan(255)
+  })
+  it('names each slice outside, on a guide line, as ECharts does', async () => {
+    const { container } = mountInBrowser(h(OptionChart, { option: pie(), width: 400, height: 200 }))
+    await flush()
+    const c = query(container, 'canvas')
+    // Slice a's label row (its middle points up-right): ink runs past the pie's right edge, out to the text.
+    const [, right] = inkedSpan(c, 100 - 0.5 * 65)
+    expect(right).toBeGreaterThan(290)
+    // Slice b's (down-left): ink runs out past the pie's left edge.
+    const [left] = inkedSpan(c, 100 + 0.5 * 65)
+    expect(left).toBeLessThan(120)
   })
   it('center and radius move and size it', async () => {
     const { container } = mountInBrowser(h(OptionChart, { option: pie({ center: ['25%', '50%'], radius: 40 }), width: 400, height: 200 }))

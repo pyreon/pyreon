@@ -7,13 +7,14 @@
 // tree-shakeable.
 
 import { canvasHost, orNull } from './canvas-host'
-import { pieLegend, pieTip } from './chrome'
+import { pieLegend, pieTipAt } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
 import { pieItem } from './host-item'
 import { paletteAt } from './palette'
 import type { VNode } from '@pyreon/core'
-import { fitCircle, hitArc, layoutArcs, renderGauge, renderPie } from './arc'
-import type { GaugeOptions, Slice } from './arc'
+import { DEFAULT_ARCS, fitCircle, hitArc, layoutArcsWith, renderGauge, renderPie } from './arc'
+import type { ArcConfig, GaugeOptions, Slice } from './arc'
+import type { PieLabelOptions } from './pie-labels'
 import { plain } from './format'
 import type { Double, Rect } from './types'
 
@@ -32,6 +33,14 @@ export interface PieChartProps<T> extends CanvasHostProps {
   onSelect?: (index: number) => void
   /** The engine's INDEX hit — identical to `onSelect` here; the multiplatform-safe name every host carries. */
   onSelectIndex?: (index: number) => void
+  /**
+   * ECharts' pie layout: where the slices start and which way they run, min
+   * and pad angles, a rose, and labels outside on guide lines. The classic
+   * 12 o'clock pie with percentages inside without it.
+   */
+  pie?: { arcs: ArcConfig; labels: PieLabelOptions | undefined; empty?: string | undefined } | undefined
+  /** The rect outside labels keep within (ECharts' view rect); the whole canvas without it. */
+  view?: Rect | undefined
 }
 
 export function PieChart<T>(props: PieChartProps<T>): VNode {
@@ -46,16 +55,31 @@ export function PieChart<T>(props: PieChartProps<T>): VNode {
       readData()
     },
     layout: (box, _measure, theme) => ({ slices: slices(theme.palette), box }),
-    render: (g, _measure, theme) =>
-      renderPie(g.slices, g.box, { innerRadius: props.innerRadius ?? 0, showLabels: props.showLabels ?? true, labelColor: '#ffffff', fontSize: theme.fontSize }),
+    render: (g, measure, theme) => {
+      const pie = props.pie
+      const labels = pie?.labels
+      return renderPie(g.slices, g.box, {
+        innerRadius: props.innerRadius ?? 0,
+        showLabels: props.showLabels ?? true,
+        // Outside labels read on the background, so they take the theme's text; inside ones sit on the slice.
+        labelColor: labels !== undefined && labels.position !== 'inside' ? theme.label : '#ffffff',
+        fontSize: theme.fontSize,
+        arcs: pie?.arcs,
+        labels,
+        // Outside labels keep within the whole chart, as ECharts', not the pie's own box.
+        view: props.view ?? { x: 0, y: 0, w: props.width ?? g.box.x * 2 + g.box.w, h: props.height ?? g.box.y * 2 + g.box.h },
+        empty: pie?.empty,
+        measure,
+      })
+    },
     legend: (g) => pieLegend(g.slices),
     select: (g, px, py) => {
-      const i = hitAt(g, px, py, props.innerRadius ?? 0)
+      const i = hitAt(g, px, py, props.innerRadius ?? 0, arcsOf(props))
       props.onSelect?.(i)
       props.onSelectIndex?.(i)
     },
-    tooltip: (g, px, py) => orNull(pieTip(g.slices, g.box, props.innerRadius ?? 0, px, py)),
-    item: (g, px, py) => pieItem(g.slices, hitAt(g, px, py, props.innerRadius ?? 0)),
+    tooltip: (g, px, py) => orNull(pieTipAt(g.slices, hitAt(g, px, py, props.innerRadius ?? 0, arcsOf(props)))),
+    item: (g, px, py) => pieItem(g.slices, hitAt(g, px, py, props.innerRadius ?? 0, arcsOf(props))),
     pick: (_g, i) => {
       props.onSelect?.(i)
       props.onSelectIndex?.(i)
@@ -70,9 +94,14 @@ export function PieChart<T>(props: PieChartProps<T>): VNode {
 
 interface PieGeometry { slices: Slice[]; box: Rect }
 
-function hitAt(g: PieGeometry, px: Double, py: Double, innerRadius: Double): number {
+const arcsOf = (props: { pie?: { arcs: ArcConfig } | undefined }): ArcConfig => props.pie?.arcs ?? DEFAULT_ARCS
+
+/** The slice under a point, by its INPUT index (slices that draw nothing are not arcs), or -1. */
+function hitAt(g: PieGeometry, px: Double, py: Double, innerRadius: Double, arcs: ArcConfig): number {
   const { center, radius } = fitCircle(g.box)
-  return hitArc(layoutArcs(g.slices), center, radius, radius * innerRadius, { x: px, y: py })
+  const laid = layoutArcsWith(g.slices, arcs)
+  const i = hitArc(laid, center, radius, radius * innerRadius, { x: px, y: py })
+  return i < 0 ? -1 : laid[i]!.index
 }
 
 export interface GaugeChartProps extends CanvasHostProps {

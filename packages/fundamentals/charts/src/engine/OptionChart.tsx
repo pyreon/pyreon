@@ -42,7 +42,7 @@ import { isFullWindow, panWindow, windowOfRows, zoomWindow } from './zoom'
 import type { ZoomWindow } from './zoom'
 import type { CompiledOption, EChartsOption, OptionPlan, OptionChrome } from './option'
 import { familyHostNode, familyHostShape } from './family-host'
-import { familyRect } from './option-layers'
+import { circleView, familyRect } from './option-layers'
 import type { FamilyHostOptions } from './family-host'
 import { selectedSeed } from './option-selected-map'
 import { familyItemCursor, familyItemSilent, familyItemTooltip } from './family-tooltip'
@@ -472,6 +472,17 @@ export function OptionChart(props: OptionChartProps): VNode {
       if (!isRecord(s0) || typeof s0['type'] !== 'string' || !PLACED_FAMILIES.has(s0['type'] as string)) return undefined
       const box = familyBox()
       return familyRect(s0, box.w, box.h)
+    },
+    enumerable: true,
+    configurable: true,
+  })
+  // A pie's outside labels keep within its view rect (the whole chart unless its box keys say otherwise).
+  Object.defineProperty(familyExtrasSingle, 'view', {
+    get: () => {
+      const s0 = asArray(familySource()['series'])[0]
+      if (!isRecord(s0) || s0['type'] !== 'pie') return undefined
+      const box = familyBox()
+      return circleView(s0, box.w, box.h)
     },
     enumerable: true,
     configurable: true,
