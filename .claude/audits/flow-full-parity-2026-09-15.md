@@ -167,3 +167,13 @@ native view.
   Still open under F5: a node-tap `onSelect` and a host FAILURE state on
   device (both need a gesture/fault INSIDE the WebView that neither test
   harness can drive reliably), and `reload`/reconnect.
+- [x] F4 connect/resize device coverage is wired from the shared counter source
+  into both native suites: a handle drag adds an edge and a southeast-resizer
+  drag changes the node dimensions. The iOS scenario passes on Simulator; the
+  paired Android assertion is gated by the PR device lane. The iOS pass found
+  and fixed a real accessibility/input defect: handles, resizers and reconnect
+  controls used `.position`, which exposed the whole canvas as every control's
+  accessibility frame, while their 12pt hit area was below the native minimum.
+  Both native renderers now retain independent finite frames with platform-sized
+  hit targets while keeping the same visual size. Pan/zoom, reconnect, selection and keyboard/a11y
+  equivalents remain F4 work.
