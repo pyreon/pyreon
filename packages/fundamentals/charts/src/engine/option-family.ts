@@ -35,6 +35,8 @@ import type { SingleAxisOptions, SingleAxisPoint, SingleAxisSpec } from './singl
 import type { FunnelOptions } from './funnel'
 import type { RadarAxis } from './radar'
 import type { Double } from './types'
+import { ANIMATION_KEYS, resolveAnimation } from './animation-option'
+import type { ChartAnimation } from './animation-option'
 
 export type FamilyPlan =
   | { kind: 'pie'; rows: { value: Double; name: string; color: string | undefined }[]; innerRadius: Double; showLabels: boolean; showLegend: boolean; title: string | undefined }
@@ -62,6 +64,8 @@ import type { ChordLink, ChordNode, ChordOptions } from './chord'
 
 export interface CompiledFamily {
   plan: FamilyPlan
+  /** The animation the option asks for (ECharts' `animation*` keys). */
+  animation: ChartAnimation
   warnings: OptionWarning[]
   supported: boolean
 }
@@ -92,7 +96,7 @@ export interface CompiledFamily {
  * adding different members merge cleanly.
  */
 const MULTI_SERIES_FAMILIES = new Set(['radar', 'polar', 'boxplot', 'geo', 'singleAxis'])
-const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph', 'parallel', 'themeRiver', 'boxplot', 'map', 'chord'])
+export const FAMILY_TYPES: ReadonlySet<string> = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph', 'parallel', 'themeRiver', 'boxplot', 'map', 'chord'])
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const num = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
@@ -117,9 +121,11 @@ export type RoamMode = false | true | 'scale' | 'move'
 function roamOf(o: Record<string, unknown>, path: string, warn: (code: OptionWarning['code'], path: string, message: string) => void): { roam: RoamMode; scaleLimit: { min: Double; max: Double }; zoom: Double | null } {
   const r = o['roam']
   const roam: RoamMode = r === true ? true : r === 'scale' || r === 'zoom' ? 'scale' : r === 'move' || r === 'pan' ? 'move' : false
+  // ledger: invalid-input
   if (r !== undefined && r !== false && roam === false) warn('series-option-unsupported', path + '.roam', 'roam must be true, "scale"/"zoom" or "move"/"pan"; the map is static.')
   const lim = isObj(o['scaleLimit']) ? o['scaleLimit'] : {}
   for (const key of ['center', 'aspectScale', 'layoutCenter', 'layoutSize']) {
+    // ledger: coordinates.geo
     if (o[key] !== undefined) warn('series-option-unsupported', path + '.' + key, '"' + key + '" has no mapping yet; the map is fitted to the box.')
   }
   return { roam, scaleLimit: { min: num(lim['min']) ?? 0.5, max: num(lim['max']) ?? 20.0 }, zoom: num(o['zoom']) }
@@ -130,32 +136,32 @@ export function isFamilyOption(option: EChartsOption): boolean {
   return isObj(s) && typeof s['type'] === 'string' && (FAMILY_TYPES.has(s['type'] as string) || s['coordinateSystem'] === 'polar' || s['coordinateSystem'] === 'geo' || s['coordinateSystem'] === 'singleAxis')
 }
 
-const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid', 'calendar', 'parallel', 'parallelAxis', 'polar', 'angleAxis', 'radiusAxis', 'singleAxis', 'dataset', 'graphic', 'geo'])
-const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
-  pie: new Set(['type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
-  gauge: new Set(['type', 'name', 'data', 'min', 'max', 'detail', 'axisLine', 'progress', 'itemStyle', 'color']),
-  radar: new Set(['type', 'name', 'data', 'areaStyle', 'itemStyle', 'lineStyle', 'symbol', 'color']),
-  candlestick: new Set(['type', 'name', 'data', 'itemStyle', 'color']),
-  heatmap: new Set(['coordinateSystem', 'calendarIndex', 'type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
-  funnel: new Set(['type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis']),
-  treemap: new Set(['type', 'name', 'data', 'leafDepth', 'label', 'itemStyle', 'color', 'emphasis', 'roam', 'nodeClick', 'breadcrumb']),
-  sunburst: new Set(['type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis', 'nodeClick', 'levels']),
-  tree: new Set(['type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'leaves', 'roam', 'expandAndCollapse', 'emphasis', 'top', 'left', 'right', 'bottom']),
-  sankey: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'nodeWidth', 'nodeGap', 'nodeAlign', 'layoutIterations', 'orient', 'draggable', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'levels', 'top', 'left', 'right', 'bottom']),
-  singleAxis: new Set(['type', 'name', 'data', 'coordinateSystem', 'singleAxisIndex', 'symbolSize', 'symbol', 'label', 'itemStyle', 'emphasis', 'color', 'animation']),
-  geo: new Set(['type', 'name', 'data', 'coordinateSystem', 'geoIndex', 'pointSize', 'blurSize', 'map', 'symbolSize', 'symbol', 'label', 'itemStyle', 'lineStyle', 'effect', 'polyline', 'emphasis', 'rippleEffect', 'showEffectOn', 'color', 'animation', 'zlevel', 'z']),
-  map: new Set(['type', 'name', 'data', 'map', 'roam', 'scaleLimit', 'label', 'itemStyle', 'emphasis', 'select', 'selectedMode', 'nameProperty', 'projection', 'zoom', 'center', 'aspectScale', 'layoutCenter', 'layoutSize', 'showLegendSymbol', 'geoIndex', 'left', 'top', 'right', 'bottom']),
-  themeRiver: new Set(['type', 'name', 'data', 'coordinateSystem', 'singleAxisIndex', 'boundaryGap', 'label', 'itemStyle', 'emphasis', 'color', 'animation']),
-  polar: new Set(['type', 'name', 'data', 'coordinateSystem', 'polarIndex', 'stack', 'itemStyle', 'lineStyle', 'label', 'emphasis', 'smooth', 'symbol', 'symbolSize', 'barWidth', 'barGap', 'barCategoryGap', 'roundCap', 'showBackground', 'backgroundStyle', 'areaStyle', 'animation', 'color']),
-  parallel: new Set(['type', 'name', 'data', 'coordinateSystem', 'parallelIndex', 'lineStyle', 'emphasis', 'inactiveOpacity', 'activeOpacity', 'realtime', 'smooth', 'progressive', 'animation']),
-  graph: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'categories', 'layout', 'symbol', 'symbolSize', 'force', 'circular', 'roam', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'draggable', 'edgeSymbol', 'edgeSymbolSize', 'focusNodeAdjacency', 'zoom', 'center', 'left', 'top', 'right', 'bottom', 'width', 'height', 'coordinateSystem']),
-  boxplot: new Set(['type', 'name', 'data', 'itemStyle', 'color', 'boxWidth', 'emphasis']),
+export const FAMILY_KNOWN_TOP: ReadonlySet<string> = new Set([...ANIMATION_KEYS, 'series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'backgroundColor', 'textStyle', 'grid', 'calendar', 'parallel', 'parallelAxis', 'polar', 'angleAxis', 'radiusAxis', 'singleAxis', 'dataset', 'graphic', 'geo'])
+export const KNOWN_BY_FAMILY: Readonly<Record<string, ReadonlySet<string>>> = {
+  pie: new Set([...ANIMATION_KEYS, 'type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
+  gauge: new Set([...ANIMATION_KEYS, 'type', 'name', 'data', 'min', 'max', 'detail', 'axisLine', 'progress', 'itemStyle', 'color']),
+  radar: new Set([...ANIMATION_KEYS, 'type', 'name', 'data', 'areaStyle', 'itemStyle', 'lineStyle', 'symbol', 'color']),
+  candlestick: new Set([...ANIMATION_KEYS, 'type', 'name', 'data', 'itemStyle', 'color']),
+  heatmap: new Set([...ANIMATION_KEYS, 'coordinateSystem', 'type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
+  funnel: new Set([...ANIMATION_KEYS, 'type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis']),
+  treemap: new Set([...ANIMATION_KEYS, 'type', 'name', 'data', 'leafDepth', 'label', 'itemStyle', 'color', 'emphasis', 'roam']),
+  sunburst: new Set([...ANIMATION_KEYS, 'type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis']),
+  tree: new Set([...ANIMATION_KEYS, 'type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'roam', 'emphasis', 'top', 'left', 'right', 'bottom']),
+  sankey: new Set([...ANIMATION_KEYS, 'type', 'name', 'data', 'nodes', 'links', 'edges', 'nodeWidth', 'nodeGap', 'nodeAlign', 'layoutIterations', 'orient', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'top', 'left', 'right', 'bottom']),
+  singleAxis: new Set([...ANIMATION_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'symbolSize', 'symbol', 'label', 'itemStyle', 'emphasis', 'color']),
+  geo: new Set([...ANIMATION_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'geoIndex', 'pointSize', 'blurSize', 'map', 'symbolSize', 'symbol', 'label', 'itemStyle', 'lineStyle', 'effect', 'polyline', 'emphasis', 'color']),
+  map: new Set([...ANIMATION_KEYS, 'type', 'name', 'data', 'map', 'roam', 'scaleLimit', 'label', 'itemStyle', 'emphasis', 'select', 'selectedMode', 'nameProperty', 'projection', 'zoom', 'center', 'aspectScale', 'layoutCenter', 'layoutSize', 'geoIndex', 'left', 'top', 'right', 'bottom']),
+  themeRiver: new Set([...ANIMATION_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'boundaryGap', 'label', 'itemStyle', 'emphasis', 'color']),
+  polar: new Set([...ANIMATION_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'stack', 'itemStyle', 'lineStyle', 'label', 'emphasis', 'smooth', 'symbol', 'symbolSize', 'areaStyle', 'color']),
+  parallel: new Set([...ANIMATION_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'lineStyle', 'emphasis', 'smooth', 'progressive']),
+  graph: new Set([...ANIMATION_KEYS, 'type', 'name', 'data', 'nodes', 'links', 'edges', 'categories', 'layout', 'symbol', 'symbolSize', 'force', 'circular', 'roam', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'zoom', 'center', 'left', 'top', 'right', 'bottom', 'width', 'height', 'coordinateSystem']),
+  boxplot: new Set([...ANIMATION_KEYS, 'type', 'name', 'data', 'itemStyle', 'color', 'emphasis']),
   // Sankey's keys, minus the ones only an axis layout has (nodeWidth /
   // nodeGap / nodeAlign / layoutIterations / orient), plus the two a ring
   // needs. Deliberately a SUBSET rather than a copy: a spec that carries
   // `nodeAlign` onto a chord is telling us it was written for a sankey, and
   // that is worth a named warning rather than a silent no-op.
-  chord: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'padAngle', 'ringSize', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'top', 'left', 'right', 'bottom']),
+  chord: new Set([...ANIMATION_KEYS, 'type', 'name', 'data', 'nodes', 'links', 'edges', 'padAngle', 'ringSize', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'top', 'left', 'right', 'bottom']),
 }
 
 /**
@@ -163,6 +169,13 @@ const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
  * (`compileOption` owns those) so `planOption` can route without guessing.
  */
 export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
+  const compiled = compileFamilyPlan(rawOption)
+  if (compiled === null) return null
+  const animation = resolveAnimation(rawOption as Record<string, unknown>, (code, path, message) => compiled.warnings.push({ code, path, message }))
+  return { ...compiled, animation }
+}
+
+function compileFamilyPlan(rawOption: EChartsOption): Omit<CompiledFamily, 'animation'> | null {
   if (!isFamilyOption(rawOption)) return null
   const warnings: OptionWarning[] = []
   const warn = (code: OptionWarning['code'], path: string, message: string): void => {
@@ -182,7 +195,9 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   // series may be the map layer (geoIndex) or a pie centred on a lon/lat.
   const anyOnGeo = seriesArr.some((ser) => isObj(ser) && (ser['coordinateSystem'] === 'geo' || (ser['type'] === 'map' && ser['geoIndex'] !== undefined)))
   const familyKey = type === 'themeRiver' ? 'themeRiver' : s['coordinateSystem'] === 'polar' ? 'polar' : anyOnGeo ? 'geo' : s['coordinateSystem'] === 'singleAxis' ? 'singleAxis' : type
-  for (const key of Object.keys(option)) if (!KNOWN_TOP.has(key)) warn('option-key-unsupported', key, `"${key}" has no mapping yet; it was ignored.`)
+  // ledger: data.key-totality
+  for (const key of Object.keys(option)) if (!FAMILY_KNOWN_TOP.has(key)) warn('option-key-unsupported', key, `"${key}" has no mapping yet; it was ignored.`)
+  // ledger: data.key-totality
   if (familyKey !== 'geo') for (const key of Object.keys(s)) if (!KNOWN_BY_FAMILY[familyKey]!.has(key)) warn('series-option-unsupported', `series[0].${key}`, `"${key}" has no mapping for ${type} yet; it was ignored.`)
   // This guard has collided across the whole charts wave — polar, boxplot,
   // and now geo each legitimately render more than one series per option.
@@ -194,6 +209,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   // in every branch. (Worth turning into a set membership test rather than a
   // chain — it has collided three times in this wave alone.)
   if (seriesArr.length > 1 && !MULTI_SERIES_FAMILIES.has(familyKey) && !MULTI_SERIES_FAMILIES.has(type)) {
+    // ledger: series.multi-series
     warn('series-option-unsupported', 'series[1]', `Only one ${type} series is rendered per chart; extra series were ignored.`)
   }
   const titleRaw = first(option['title'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
@@ -330,6 +346,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
 
   if (familyKey === 'singleAxis') {
     // ECharts' own contract: a single axis hosts scatter / effectScatter (and the theme river, keyed by type above).
+    // ledger: invalid-input
     if (type !== 'scatter' && type !== 'effectScatter') warn('series-type-unsupported', 'series[0].type', 'Only scatter and effectScatter render on a single axis (ECharts allows no other series there); ' + type + ' was skipped.')
     const axRaw = first(option['singleAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
     const ax = isObj(axRaw) ? axRaw : {}
@@ -379,6 +396,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
     const geoObj = isObj(geoCfg) ? geoCfg : {}
     const mapName = typeof geoObj['map'] === 'string' ? (geoObj['map'] as string) : ''
     const found = getMap(mapName)
+    // ledger: invalid-input
     if (found === null) warn('series-option-unsupported', 'geo.map', 'Map "' + mapName + '" is not registered (call registerMap first); nothing was drawn.')
     const geo: GeoJson = found ?? { type: 'FeatureCollection', features: [] }
     const geoItem = isObj(geoObj['itemStyle']) ? geoObj['itemStyle'] : {}
@@ -409,10 +427,12 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       const stype = typeof ser['type'] === 'string' ? (ser['type'] as string) : ''
       const onGeo = ser['coordinateSystem'] === 'geo' || (stype === 'map' && ser['geoIndex'] !== undefined) || (stype === 'pie' && ser['coordinateSystem'] === 'geo')
       if (!onGeo) {
+        // ledger: series.multi-series
         warn('series-type-unsupported', path + '.coordinateSystem', 'A series beside a geo chart must sit on the geo (coordinateSystem: geo, or a map with geoIndex); it was skipped.')
         continue
       }
       const sdata = Array.isArray(ser['data']) ? (ser['data'] as unknown[]) : []
+      // ledger: data.key-totality
       for (const key of Object.keys(ser)) if (!KNOWN_BY_FAMILY['geo']!.has(key) && !(stype === 'pie' && (key === 'center' || key === 'radius'))) warn('series-option-unsupported', path + '.' + key, '"' + key + '" has no mapping for ' + stype + ' yet; it was ignored.')
       if (stype === 'scatter' || stype === 'effectScatter') {
         for (let i = 0; i < sdata.length; i++) {
@@ -460,6 +480,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
             color: typeof eff['color'] === 'string' ? (eff['color'] as string) : '',
             symbolSize: num(eff['symbolSize']) ?? 3.0,
           }
+          // ledger: series.lines
           for (const key of Object.keys(eff)) if (!['show', 'period', 'trailLength', 'color', 'symbolSize', 'symbol', 'loop'].includes(key)) warn('series-option-unsupported', path + '.effect.' + key, '"' + key + '" has no trail mapping yet; it was ignored.')
         }
         for (let i = 0; i < sdata.length; i++) {
@@ -530,6 +551,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
           values[d['name'] as string] = v
         }
       } else {
+        // ledger: coordinates.geo
         warn('series-type-unsupported', path + '.type', 'Only scatter, effectScatter, lines, heatmap, pie and map render on the geo coordinate; ' + stype + ' was skipped.')
       }
     }
@@ -541,6 +563,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   if (type === 'map') {
     const mapName = typeof s['map'] === 'string' ? (s['map'] as string) : ''
     const found = getMap(mapName)
+    // ledger: invalid-input
     if (found === null) warn('series-option-unsupported', 'series[0].map', 'Map "' + mapName + '" is not registered (call registerMap first); nothing was drawn.')
     const geo: GeoJson = found ?? { type: 'FeatureCollection', features: [] }
     const values: Record<string, Double> = {}
@@ -623,6 +646,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       if (!isObj(ser)) continue
       const st = ser['type'] === 'effectScatter' ? 'scatter' : ser['type']
       if (st !== 'bar' && st !== 'line' && st !== 'scatter') {
+        // ledger: coordinates.polar
         warn('series-type-unsupported', 'series[' + String(k) + '].type', 'Only bar, line and scatter series render on the polar coordinate; ' + String(ser['type']) + ' was skipped.')
         continue
       }
@@ -716,6 +740,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       end = range + '-' + (lastDay < 10 ? '0' : '') + String(lastDay)
     } else if (typeof range === 'string') [start, end] = [range, range]
     else if (Array.isArray(range) && range.length === 2 && typeof range[0] === 'string' && typeof range[1] === 'string') [start, end] = [range[0], range[1]]
+    // ledger: invalid-input
     else warn('series-option-unsupported', 'calendar.range', 'calendar.range must be a year, a "YYYY-MM", a date, or [start, end]; nothing was laid out.')
     const calendarVertical = calObj['orient'] === 'vertical'
     const values: Record<string, Double> = {}
@@ -793,6 +818,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
     }
     const label = isObj(s['label']) ? s['label'] : {}
     const cats = Array.isArray(s['categories']) ? (s['categories'] as unknown[]).map((c, i) => (isObj(c) && typeof c['name'] === 'string' ? (c['name'] as string) : typeof c === 'string' ? c : 'Category ' + String(i + 1))) : undefined
+    // ledger: series.graph
     if (typeof s['symbolSize'] === 'function') warn('series-option-unsupported', 'series[0].symbolSize', 'A symbolSize FUNCTION is not supported; pass a number or per-node values.')
     const symbolSize = num(s['symbolSize'])
     const force = isObj(s['force']) ? s['force'] : {}

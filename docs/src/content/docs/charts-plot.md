@@ -708,7 +708,9 @@ const sound = sonifyValues(closes, { duration: 3000, link })
 
 ## The option host
 
-`<OptionChart option>` is the component for an ECharts option: cartesian plans (single or multi-`grid`) paint on a canvas through the same `compiledCommands` the server's `optionToSvg` uses, family and geo plans render as inline SVG, a `timeline` auto-plays or follows `timelineIndex`, and `onSelect` hit-tests clicks against the painted geometry.
+`<OptionChart option>` is the component for an ECharts option: cartesian plans (single or multi-`grid`) paint on a canvas through the same `compiledCommands` the server's `optionToSvg` uses, family plans mount the family's own interactive host (kept alive across updates, so an update tweens), a `timeline` auto-plays or follows `timelineIndex`, and `onSelect` hit-tests clicks against the painted geometry.
+
+It animates as ECharts does — an entrance and an update tween, set by the option's `animation`, `animationDuration`, `animationEasing`, `animationDelay`, their `…Update` twins and `animationThreshold`, with ECharts' easing table — and the option's `tooltip` component decides the tooltip: `trigger`, a template or function `formatter` (its HTML renders through an allow-list), `valueFormatter`, `position`, the look keys, `triggerOn`, `hideDelay`, `alwaysShowContent`, and `tooltip.axisPointer` (`line`, `shadow` or `cross`). With no `tooltip` component no tooltip shows, as in ECharts. Set `animation: false` for a static first paint.
 
 ```tsx
 <OptionChart option={() => option()} width={640} height={320} theme="dark" onSelect={(hit) => hit && select(hit)} />
@@ -728,7 +730,7 @@ is landing chart-by-chart — see the
 ## How the engine is verified
 
 - **Engine geometry** is pure and runs in the node suite (scales, layout, marks, stacks, arcs, formatting, a11y, decimation — ~98% there).
-- **Every canvas host** runs in real Chromium: its own family suite (geometry, click, reactive repaint) plus one shared sweep that drives all twenty hosts through the same paths — the accessible surface, tooltip hit / miss / leave, click and keyboard selection through both callbacks, PNG export. Browser coverage over the host files is a gate with measured floors; the node run excludes exactly those files, and the two lists are kept in sync so a host is never measured nowhere.
+- **Every canvas host** runs in real Chromium: its own family suite (geometry, click, reactive repaint) plus one shared sweep that drives all 20 family hosts through the same paths — the accessible surface, tooltip hit / miss / leave, click and keyboard selection through both callbacks, PNG export. Browser coverage over the host files is a gate with measured floors; the node run excludes exactly those files, and the two lists are kept in sync so a host is never measured nowhere.
 - **Draw-list goldens** — one SVG per family for a fixed dataset, committed and compared byte-for-byte. The SVG is the draw list the canvases paint, and it is deterministic across platforms where a pixel baseline is not.
 - **The shipped compiler**: the app-showcase e2e hovers, clicks and keyboards the plot-engine chart on a real page under `@pyreon/vite-plugin` — the hosts' own suites run under vitest's JSX transform, and template-path bugs live in the difference.
 - **Native**: the generated Swift/Kotlin engines are drift-locked and compiled by the real toolchains per PR; device assertions ride the tasks showcase.

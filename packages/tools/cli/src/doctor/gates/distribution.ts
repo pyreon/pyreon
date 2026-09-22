@@ -34,6 +34,7 @@ interface PackageInfo {
     main?: string
     exports?: unknown
     repository?: unknown
+    scripts?: Record<string, string>
   }
 }
 
@@ -82,6 +83,26 @@ const findPackages = (repoRoot: string): PackageInfo[] => {
  * and silently passes — the package-level `files` array check above
  * is the authoritative source.
  */
+/**
+ * The live half of Rule 6: the would-be-published tarball must not carry the
+ * build's `lib/analysis/` report. The static `files` check says what the
+ * manifest asks for; this proves what `npm pack` actually takes.
+ */
+export const _detectAnalysisInPackOutput = (raw: string, cwd: string, probe: { dir: string }, probePackage: string): Finding | null => {
+  const result = JSON.parse(raw) as Array<{ files: Array<{ path: string }> }>
+  const reports = (result[0]?.files ?? []).map((f) => f.path).filter((f) => f.startsWith('lib/analysis/'))
+  if (reports.length === 0) return null
+  return {
+    category: 'architecture',
+    severity: 'error',
+    code: 'distribution/tarball-ships-bundle-analysis',
+    gate: 'distribution',
+    message: `${probePackage}: npm pack --dry-run would publish ${reports.length} bundle-analysis report file(s) (${reports.join(', ')}). They are build output, not package content.`,
+    location: { path: join(probe.dir, 'package.json'), relPath: relative(cwd, join(probe.dir, 'package.json')) },
+    fix: 'Add `"!lib/analysis"` to the `files` array',
+  }
+}
+
 export const _detectMapsInPackOutput = (
   raw: string,
   cwd: string,
@@ -314,6 +335,25 @@ export const runDistributionGate = async (
           fix: 'Remove `"!lib/**/*.map"` from the `files` array',
         })
       }
+      // Rule 6: the build's bundle-analysis report is not package content.
+      // `vl_rolldown_build` writes an HTML treemap per entry into
+      // `lib/analysis/` (~250 KB for a large package), and publishing `lib`
+      // ships it to every install unless `files` excludes it.
+      const build = typeof p.pj.scripts?.['build'] === 'string' ? p.pj.scripts['build'] : ''
+      if (build.includes('vl_rolldown_build') && !p.pj.files.includes('!lib/analysis')) {
+        findings.push({
+          category: 'architecture',
+          severity: 'error',
+          code: 'distribution/ships-bundle-analysis',
+          gate: 'distribution',
+          message: `${p.name} publishes \`lib/\`, and its build (\`vl_rolldown_build\`) writes a bundle-analysis HTML report into \`lib/analysis/\` — so every install downloads a build report that is not part of the package.`,
+          location: {
+            path: join(p.dir, 'package.json'),
+            relPath: relative(opts.cwd, join(p.dir, 'package.json')),
+          },
+          fix: 'Add `"!lib/analysis"` to the `files` array',
+        })
+      }
     }
 
     // Rule 5: a co-located native package (declares `pyreon.native`) must ship
@@ -365,6 +405,8 @@ export const runDistributionGate = async (
           probePackage,
         )
         if (finding) findings.push(finding)
+        const report = _detectAnalysisInPackOutput(out, opts.cwd, probe, probePackage)
+        if (report) findings.push(report)
       } catch {
         // npm not available or pack failed — silently skip. Locally
         // this might run in an environment where npm isn't on PATH

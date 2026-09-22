@@ -1091,7 +1091,12 @@ final class PyreonTasksUITests: XCTestCase {
         scrollFullyOnScreen(flowReloadSwap, in: app)
         flowReloadSwap.tap()
         XCTAssertTrue(waitForLabel(flowReloadStatus, "b:3", timeout: 20), "the reloaded page never received the graph and answered (label: \(flowReloadStatus.label))")
-        app.buttons["gal-back"].firstMatch.tap()
+        // gal-back is the LAST element on the gallery; the checks above leave the page
+        // scrolled wherever their subject sat, so a bare tap can land off-screen on
+        // nothing (intermittent "Did not return to tasks"). Android scrolls to it too.
+        let galBack = app.buttons["gal-back"].firstMatch
+        scrollFullyOnScreen(galBack, in: app)
+        galBack.tap()
         XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after gallery Back")
 
         // Phase 5b: the TOOLKIT screen — the one place eleven packages that had
