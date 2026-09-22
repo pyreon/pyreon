@@ -436,9 +436,11 @@ export function OptionChart(props: OptionChartProps): VNode {
       if (shape === null) return null
       const prev = liveLayers[i]
       if (prev !== undefined && prev.shape === shape) {
-        prev.plan.set(part.plan)
-        prev.box.set(part.rect)
-        prev.animation.set(animationOf(i))
+        batch(() => {
+          prev.plan.set(part.plan)
+          prev.box.set(part.rect)
+          prev.animation.set(animationOf(i))
+        })
         return prev
       }
       const plan = signal(part.plan)
