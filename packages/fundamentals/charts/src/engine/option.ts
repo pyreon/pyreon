@@ -903,7 +903,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
         const cy = num((e['coord'] as unknown[])[1])
         return cx !== null && cy !== null ? { x: cx, y: cy } : null
       }
-      const ex = num(e['xAxis'])
+      const ex = xOfCoord(e['xAxis'])
       const ey = num(e['yAxis'])
       return ex !== null && ey !== null ? { x: ex, y: ey } : null
     }
@@ -937,8 +937,9 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
         annotations.push({ y: stat, label: name ?? String(m['type']), color: lineColor })
       } else if (num(m['yAxis']) !== null) {
         annotations.push({ y: num(m['yAxis']) as number, label: name, color: lineColor })
-      } else if (num(m['xAxis']) !== null) {
-        annotations.push({ x: num(m['xAxis']) as number, label: name, color: lineColor })
+      } else if (xOfCoord(m['xAxis']) !== null) {
+        // A category NAME is ECharts' usual form here; an index works too.
+        annotations.push({ x: xOfCoord(m['xAxis']) as number, label: name, color: lineColor })
       } else {
         // ledger: coordinates.mark-line
         warn('mark-shape-unsupported', `${path}.markLine.data[${k}]`, 'Only average/max/min/median, yAxis, xAxis, and point-to-point markLines are mapped.')
@@ -957,8 +958,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       const name = typeof pair[0]['name'] === 'string' ? (pair[0]['name'] as string) : undefined
       const yFrom = num(pair[0]['yAxis'])
       const yTo = num(pair[1]['yAxis'])
-      const xFrom = num(pair[0]['xAxis'])
-      const xTo = num(pair[1]['xAxis'])
+      const xFrom = xOfCoord(pair[0]['xAxis'])
+      const xTo = xOfCoord(pair[1]['xAxis'])
       if (yFrom !== null && yTo !== null) annotations.push({ yFrom, yTo, label: name, color: maColor })
       else if (xFrom !== null && xTo !== null) annotations.push({ xFrom, xTo, label: name, color: maColor })
       // ledger: coordinates.mark-area
@@ -1053,6 +1054,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     height: opts.height ?? 320.0,
     series,
     categories,
+    // ECharts' category-axis `boundaryGap: false`: lines run edge to edge, labels on the points.
+    ...(!xContinuous && isObj(xAxis) && xAxis['boundaryGap'] === false ? { boundaryGap: false } : {}),
     theme: themed.chartTheme,
     showXAxis: shown(xAxis),
     showYAxis: shown(yAxes[0]),

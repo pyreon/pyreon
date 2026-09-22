@@ -413,7 +413,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
       'axis keys outside the mapped set are ignored with a warning, and an axis label formatter takes a function or the {value} template only',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/option-axes.test.ts', 'src/engine/option-axes-mapping.test.ts', NATIVE + 'chart-axes-native.test.ts'],
+    evidence: ['src/engine/option-axes.test.ts', 'src/engine/option-axes-mapping.test.ts', NATIVE + 'chart-axes-native.test.ts', 'src/engine/option-boundary-gap.test.ts'],
   }),
   row('coordinates.visual-map', 'coordinates', 'direct', {
     web: 'complete',
@@ -437,13 +437,13 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'partial',
     native: 'partial',
     gaps: ['markLine data outside average/max/min/median, xAxis, yAxis and point-to-point is skipped', LITERAL_ONLY],
-    evidence: ['src/engine/option-marks.test.ts', NATIVE + 'chart-marks-native.test.ts'],
+    evidence: ['src/engine/option-marks.test.ts', 'src/engine/option-boundary-gap.test.ts', NATIVE + 'chart-marks-native.test.ts'],
   }),
   row('coordinates.mark-area', 'coordinates', 'direct', {
     web: 'partial',
     native: 'partial',
-    gaps: ['a markArea bound by a statistic (`type: "min"`) or a coord pair is skipped; only numeric xAxis/yAxis bounds draw', LITERAL_ONLY],
-    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+    gaps: ['a markArea bound by a statistic (`type: "min"`) or a coord pair is skipped; only xAxis (a category name or a number) and yAxis bounds draw', LITERAL_ONLY],
+    evidence: ['src/engine/option.test.ts', 'src/engine/option-boundary-gap.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
   }),
   row('coordinates.geo', 'coordinates', 'direct', {
     web: 'partial',

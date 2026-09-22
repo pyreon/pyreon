@@ -1254,6 +1254,20 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "edgeCategories",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "fontSize",
         "type": {
           "kind": "typeRef",
@@ -3457,6 +3471,20 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
               "element": {
                 "kind": "number"
               }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "boundaryGap",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
             },
             {
               "kind": "undefined"

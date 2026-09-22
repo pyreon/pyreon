@@ -71,6 +71,8 @@ export interface LayoutConfig {
   yDomain: Domain
   /** Category labels for a band x-axis; empty for a numeric one. */
   categories: string[]
+  /** Category labels on edge-to-edge points rather than band centres (ECharts' `boundaryGap: false` on a chart with no bars). */
+  edgeCategories?: boolean | undefined
   fontSize: Double
   /** Target tick counts; the nice-step algorithm decides the actual number. */
   xTickCount: Double
@@ -327,7 +329,9 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
 
   const xTicks = cfg.showXAxis
     ? cfg.categories.length > 0
-      ? bandTicks(cfg.categories, plot)
+      ? cfg.edgeCategories === true
+        ? edgeTicks(cfg.categories, plot)
+        : bandTicks(cfg.categories, plot)
       : cfg.xTime === true
         ? timeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat)
         : makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat)
@@ -436,16 +440,35 @@ export function layoutBars(
   return out
 }
 
-/** Points for a line or area series, evenly spaced across the plot. */
+/**
+ * Points for a line or area series on a category axis: each at its BAND
+ * centre, where the category's label and a bar in the same band sit
+ * (ECharts' default, `boundaryGap: true`).
+ */
 export function layoutSeriesPoints(values: Double[], plot: Rect, yDomain: Domain): Pt[] {
   const n = values.length
   const out: Pt[] = []
   if (n === 0) return out
-  if (n === 1) {
+  const band = plot.w / n
+  for (let i = 0; i < n; i++) {
     out.push({
-      x: plot.x + plot.w / 2.0,
-      y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[0]!),
+      x: plot.x + band * i + band / 2.0,
+      y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[i]!),
     })
+  }
+  return out
+}
+
+/**
+ * Points spaced edge to edge: the first on the plot's left edge, the last on
+ * its right (ECharts' `boundaryGap: false`, and a navigator's data shadow).
+ */
+export function layoutSeriesPointsEdge(values: Double[], plot: Rect, yDomain: Domain): Pt[] {
+  const n = values.length
+  const out: Pt[] = []
+  if (n === 0) return out
+  if (n === 1) {
+    out.push({ x: plot.x + plot.w / 2.0, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[0]!) })
     return out
   }
   for (let i = 0; i < n; i++) {
@@ -453,6 +476,17 @@ export function layoutSeriesPoints(values: Double[], plot: Rect, yDomain: Domain
       x: plot.x + (i / (n - 1)) * plot.w,
       y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[i]!),
     })
+  }
+  return out
+}
+
+/** Category ticks on the points of an edge-to-edge axis (`boundaryGap: false`). */
+export function edgeTicks(categories: string[], plot: Rect): Tick[] {
+  const n = categories.length
+  const out: Tick[] = []
+  if (n === 0) return out
+  for (let i = 0; i < n; i++) {
+    out.push({ value: i, pos: n === 1 ? plot.x + plot.w / 2.0 : plot.x + (i / (n - 1)) * plot.w, label: categories[i]! })
   }
   return out
 }

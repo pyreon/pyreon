@@ -234,6 +234,7 @@ public struct LayoutConfig {
   public var xDomain: Domain
   public var yDomain: Domain
   public var categories: [String]
+  public var edgeCategories: Bool? = nil
   public var fontSize: Double
   public var xTickCount: Double
   public var yTickCount: Double
@@ -262,12 +263,13 @@ public struct LayoutConfig {
   public var xOffset: Double? = nil
   public var yOffset: Double? = nil
   public var y2Offset: Double? = nil
-  public init(width: Double, height: Double, xDomain: Domain, yDomain: Domain, categories: [String], fontSize: Double, xTickCount: Double, yTickCount: Double, showXAxis: Bool, showYAxis: Bool, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, xTime: Bool? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, horizontal: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, yLog: Bool? = nil, yLogMin: Double? = nil, yLogMax: Double? = nil, yTime: Bool? = nil, xLabels: String? = nil, xTop: Bool? = nil, yRight: Bool? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil) {
+  public init(width: Double, height: Double, xDomain: Domain, yDomain: Domain, categories: [String], edgeCategories: Bool? = nil, fontSize: Double, xTickCount: Double, yTickCount: Double, showXAxis: Bool, showYAxis: Bool, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, xTime: Bool? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, horizontal: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, yLog: Bool? = nil, yLogMin: Double? = nil, yLogMax: Double? = nil, yTime: Bool? = nil, xLabels: String? = nil, xTop: Bool? = nil, yRight: Bool? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil) {
     self.width = width
     self.height = height
     self.xDomain = xDomain
     self.yDomain = yDomain
     self.categories = categories
+    self.edgeCategories = edgeCategories
     self.fontSize = fontSize
     self.xTickCount = xTickCount
     self.yTickCount = yTickCount
@@ -663,6 +665,7 @@ public struct ChartSpec {
   public var height: Double
   public var series: [Series]
   public var drawOrder: [Int]? = nil
+  public var boundaryGap: Bool? = nil
   public var categories: [String]
   public var theme: ChartTheme
   public var showXAxis: Bool
@@ -700,11 +703,12 @@ public struct ChartSpec {
   public var x2Domain: Domain? = nil
   public var lines: [LinesSeries]? = nil
   public var effectTime: Double? = nil
-  public init(width: Double, height: Double, series: [Series], drawOrder: [Int]? = nil, categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, yInverse: Bool? = nil, xInverse: Bool? = nil, xTop: Bool? = nil, yRight: Bool? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, lines: [LinesSeries]? = nil, effectTime: Double? = nil) {
+  public init(width: Double, height: Double, series: [Series], drawOrder: [Int]? = nil, boundaryGap: Bool? = nil, categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, yInverse: Bool? = nil, xInverse: Bool? = nil, xTop: Bool? = nil, yRight: Bool? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, lines: [LinesSeries]? = nil, effectTime: Double? = nil) {
     self.width = width
     self.height = height
     self.series = series
     self.drawOrder = drawOrder
+    self.boundaryGap = boundaryGap
     self.categories = categories
     self.theme = theme
     self.showXAxis = showXAxis
@@ -3932,7 +3936,7 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
       return PlotLayout(plot: plot, xTicks: xTicks, yTicks: yTicks, y2Ticks: [], xDomainUsed: cfg.xDomain, xLabelRotate: 0.0, xLabelEvery: 1, yLabelEvery: yEvery, gutters: gutters, extraTicks: [], x2Ticks: [])
     }
     let yTicks = cfg.showYAxis ? valueTicksY(plot.y + plot.h, plot.y) : []
-    let xTicks = cfg.showXAxis ? cfg.categories.count > 0 ? bandTicks(cfg.categories, plot) : cfg.xTime == true ? timeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat) : makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat) : []
+    let xTicks = cfg.showXAxis ? cfg.categories.count > 0 ? cfg.edgeCategories == true ? edgeTicks(cfg.categories, plot) : bandTicks(cfg.categories, plot) : cfg.xTime == true ? timeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat) : makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat) : []
     let y2Ticks = hasY2 ? makeTicks(y2dom, plot.y + plot.h, plot.y, cfg.yTickCount, cfg.y2Format) : []
     var extraTicks: [ExtraTick] = []
     if cfg.showYAxis {
@@ -4015,12 +4019,37 @@ public func layoutSeriesPoints(_ values: [Double], _ plot: PyreonChartRect, _ yD
     if n == 0 {
       return out
     }
+    let band = plot.w / Double(n)
+    for i in 0..<n {
+      out.append(PyreonChartPt(x: plot.x + band * Double(i) + band / 2.0, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[i])))
+    }
+    return out
+  }
+
+public func layoutSeriesPointsEdge(_ values: [Double], _ plot: PyreonChartRect, _ yDomain: Domain) -> [PyreonChartPt] {
+    let n = values.count
+    var out: [PyreonChartPt] = []
+    if n == 0 {
+      return out
+    }
     if n == 1 {
       out.append(PyreonChartPt(x: plot.x + plot.w / 2.0, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[0])))
       return out
     }
     for i in 0..<n {
       out.append(PyreonChartPt(x: plot.x + (Double(i) / Double((n - 1))) * plot.w, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[i])))
+    }
+    return out
+  }
+
+public func edgeTicks(_ categories: [String], _ plot: PyreonChartRect) -> [Tick] {
+    let n = categories.count
+    var out: [Tick] = []
+    if n == 0 {
+      return out
+    }
+    for i in 0..<n {
+      out.append(Tick(value: Double(i), pos: n == 1 ? plot.x + plot.w / 2.0 : plot.x + (Double(i) / Double((n - 1))) * plot.w, label: categories[i]))
     }
     return out
   }
@@ -5401,7 +5430,7 @@ public func layoutChart(_ raw: ChartSpec, _ measure: (String, Double) -> Double)
     let n = seriesMaxLength(spec.series)
     let isLog = raw.yScale == "log"
     let lb = isLog ? logBounds(raw) : Domain(min: 1.0, max: 10.0)
-    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? invertedDomain(extent((spec.xValues ?? [])), spec.xInverse == true && spec.horizontal != true) : Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, fontSize: spec.theme.fontSize, xTickCount: 5.0, yTickCount: 5.0, showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yTime: spec.yTime == true, xLabels: spec.xLabels, xTop: spec.xTop, yRight: spec.yRight, extraYAxes: resolvedExtraAxes(spec), x2Labels: spec.x2Labels, x2Title: spec.x2Title, x2Domain: hasX2Axis(spec) ? resolveX2Domain(spec) : nil, xOffset: spec.xOffset, yOffset: spec.yOffset, y2Offset: spec.y2Offset)
+    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? invertedDomain(extent((spec.xValues ?? [])), spec.xInverse == true && spec.horizontal != true) : Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, edgeCategories: edgeCategoryPoints(spec), fontSize: spec.theme.fontSize, xTickCount: 5.0, yTickCount: 5.0, showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yTime: spec.yTime == true, xLabels: spec.xLabels, xTop: spec.xTop, yRight: spec.yRight, extraYAxes: resolvedExtraAxes(spec), x2Labels: spec.x2Labels, x2Title: spec.x2Title, x2Domain: hasX2Axis(spec) ? resolveX2Domain(spec) : nil, xOffset: spec.xOffset, yOffset: spec.yOffset, y2Offset: spec.y2Offset)
     return computeLayout(cfg, measure)
   }
 
@@ -5422,6 +5451,39 @@ public func validDrawOrder(_ order: [Int], _ n: Int) -> [Int] {
     }
     return order
   }
+
+public func edgeCategoryPoints(_ spec: ChartSpec) -> Bool {
+    if spec.boundaryGap != false {
+      return false
+    }
+    for s in spec.series {
+      if s.kind == "bars" || s.kind == "stacked" || s.kind == "grouped" || s.kind == "waterfall" {
+        return false
+      }
+    }
+    return true
+  }
+
+public func categoryXPixel(_ spec: ChartSpec, _ xDomain: Domain, _ plot: PyreonChartRect, _ v: Double) -> Double {
+    let n = seriesMaxLength(spec.series)
+    if ((spec.xValues ?? [])).count > 0 || n == 0 || edgeCategoryPoints(spec) {
+      return scaleLinear(xDomain, plot.x, plot.x + plot.w, v)
+    }
+    return plot.x + (plot.w / countToDouble(n)) * (v + 0.5)
+  }
+
+public func categorySpanPixels(_ spec: ChartSpec, _ xDomain: Domain, _ plot: PyreonChartRect, _ from: Double, _ to: Double) -> PyreonChartPt {
+    let n = seriesMaxLength(spec.series)
+    if ((spec.xValues ?? [])).count > 0 || n == 0 || edgeCategoryPoints(spec) {
+      return PyreonChartPt(x: scaleLinear(xDomain, plot.x, plot.x + plot.w, from), y: scaleLinear(xDomain, plot.x, plot.x + plot.w, to))
+    }
+    let lo = from < to ? from : to
+    let hi = from < to ? to : from
+    let band = plot.w / countToDouble(n)
+    return PyreonChartPt(x: plot.x + band * lo, y: plot.x + band * (hi + 1.0))
+  }
+
+public func categoryPoints(_ spec: ChartSpec, _ values: [Double], _ plot: PyreonChartRect, _ dom: Domain) -> [PyreonChartPt] { edgeCategoryPoints(spec) ? layoutSeriesPointsEdge(values, plot, dom) : layoutSeriesPoints(values, plot, dom) }
 
 public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double) -> [PyreonDrawCmd] { renderChartIn(spec, measure, layoutChart(spec, measure)) }
 
@@ -5526,8 +5588,9 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       let xFrom = (a.xFrom ?? 0.0)
       let xTo = (a.xTo ?? 0.0)
       if a.xFrom != nil && a.xTo != nil {
-        let x1 = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xFrom)
-        let x2 = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xTo)
+        let span = categorySpanPixels(spec, l.xDomainUsed, plot, xFrom, xTo)
+        let x1 = span.x
+        let x2 = span.y
         let left = x1 < x2 ? x1 : x2
         out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: left, y: plot.y, w: Double(abs(x2 - x1)), h: plot.h), fill: withAlpha((a.color ?? t.axis), 0.12)))
         if a.label != nil {
@@ -5547,7 +5610,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       }
       let ax = (a.x ?? 0.0)
       if a.x != nil {
-        let xPos = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, ax)
+        let xPos = categoryXPixel(spec, l.xDomainUsed, plot, ax)
         out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: xPos, y: plot.y), to: PyreonChartPt(x: xPos, y: plot.y + plot.h), stroke: (a.color ?? t.axis), width: 1.0, dash: [4.0, 4.0]))
         let xLabel = (a.label ?? "")
         if a.label != nil {
@@ -5559,8 +5622,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       let sx2 = (a.x2 ?? 0.0)
       let sy2 = (a.y2 ?? 0.0)
       if a.x1 != nil && a.y1 != nil && a.x2 != nil && a.y2 != nil {
-        let p1 = PyreonChartPt(x: scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, sx1), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy1))
-        let p2 = PyreonChartPt(x: scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, sx2), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy2))
+        let p1 = PyreonChartPt(x: categoryXPixel(spec, l.xDomainUsed, plot, sx1), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy1))
+        let p2 = PyreonChartPt(x: categoryXPixel(spec, l.xDomainUsed, plot, sx2), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy2))
         out.append(PyreonDrawCmd(kind: "line", from: p1, to: p2, stroke: (a.color ?? t.axis), width: 1.0, dash: [4.0, 4.0]))
         let segLabel = (a.label ?? "")
         if a.label != nil {
@@ -5631,7 +5694,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         var upper: [PyreonChartPt] = []
         var lower: [PyreonChartPt] = []
         for i in 0..<top.count {
-          let xAt = plot.x + (plot.w / max(1.0, countToDouble(top.count))) * (countToDouble(i) + 0.5)
+          let xAt = edgeCategoryPoints(spec) && top.count > 1 ? plot.x + (plot.w / countToDouble(top.count - 1)) * countToDouble(i) : plot.x + (plot.w / max(1.0, countToDouble(top.count))) * (countToDouble(i) + 0.5)
           upper.append(PyreonChartPt(x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, top[i])))
           lower.append(PyreonChartPt(x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, k == 0 ? yDomain.min : below[i])))
         }
@@ -5672,7 +5735,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       let onX2 = seriesOnX2(s, spec)
       let sXs = onX2 ? (s.xs ?? []) : xs
       let sXDomain = onX2 ? resolveX2Domain(spec) : l.xDomainUsed
-      let place = { (values: [Double]) in sXs.count > 0 ? layoutSeriesPointsAt(values, sXs, plot, sDomain, sXDomain) : layoutSeriesPoints(values, plot, sDomain) }
+      let place = { (values: [Double]) in sXs.count > 0 ? layoutSeriesPointsAt(values, sXs, plot, sDomain, sXDomain) : categoryPoints(spec, values, plot, sDomain) }
       let curveFn = (s.curve ?? ({ q in q }))
       let sGradAll = seriesGradient(s.gradient, plot)
       let sGrad = sGradAll.stops.count == 0 ? nil : sGradAll
@@ -5998,7 +6061,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       let mDomain = seriesDomain(s, spec, yDomain, y2Domain)
       let xsM = (spec.xValues ?? [])
       let segMarker = markerAnchor(spec, rawSeriesIndex, idx, plot, yDomain)
-      let p = segMarker.count > 0 ? segMarker[0] : spec.horizontal == true ? layoutSeriesPointsH(s.values, plot, mDomain)[idx] : xsM.count > 0 ? layoutSeriesPointsAt(s.values, seriesOnX2(s, spec) ? (s.xs ?? []) : xsM, plot, mDomain, seriesOnX2(s, spec) ? resolveX2Domain(spec) : l.xDomainUsed)[idx] : layoutSeriesPoints(s.values, plot, mDomain)[idx]
+      let p = segMarker.count > 0 ? segMarker[0] : spec.horizontal == true ? layoutSeriesPointsH(s.values, plot, mDomain)[idx] : xsM.count > 0 ? layoutSeriesPointsAt(s.values, seriesOnX2(s, spec) ? (s.xs ?? []) : xsM, plot, mDomain, seriesOnX2(s, spec) ? resolveX2Domain(spec) : l.xDomainUsed)[idx] : categoryPoints(spec, s.values, plot, mDomain)[idx]
       if p == nil {
         continue
       }
@@ -11085,7 +11148,7 @@ public func plotHitIndexIn(_ raw: ChartSpec, _ l: PlotLayout, _ px: Double, _ py
     if first.kind == "bars" || first.kind == "stacked" || first.kind == "grouped" || first.kind == "waterfall" {
       return -1
     }
-    return categoryIndex(raw, hitNearestX(layoutSeriesPoints(first.values, l.plot, resolveYDomain(spec)), px))
+    return categoryIndex(raw, hitNearestX(categoryPoints(spec, first.values, l.plot, resolveYDomain(spec)), px))
   }
 
 public func plotHitSeriesIn(_ spec: ChartSpec, _ l: PlotLayout, _ px: Double, _ py: Double, _ reach: Double) -> Int {
@@ -12064,7 +12127,7 @@ public func renderNavigator(_ values: [Double], _ color: String, _ win: ZoomWind
           let v = values[i]
           safe.append(!isFiniteNumber(v) ? lo : v)
         }
-        let pts = layoutSeriesPoints(safe, strip, Domain(min: lo < 0.0 ? lo : 0.0, max: hi <= lo ? lo + 1.0 : hi))
+        let pts = layoutSeriesPointsEdge(safe, strip, Domain(min: lo < 0.0 ? lo : 0.0, max: hi <= lo ? lo + 1.0 : hi))
         let last = pts[pts.count - 1]
         let first = pts[0]
         var poly: [PyreonChartPt] = []
@@ -12295,7 +12358,7 @@ public func brushDatumPoints(_ raw: ChartSpec, _ l: PlotLayout, _ k: Int) -> [Py
       let onX2 = seriesOnX2(s, spec)
       return layoutSeriesPointsAt(s.values, onX2 ? (s.xs ?? []) : xs, plot, dom, onX2 ? resolveX2Domain(spec) : l.xDomainUsed)
     }
-    return layoutSeriesPoints(s.values, plot, dom)
+    return categoryPoints(spec, s.values, plot, dom)
   }
 
 public func brushSelection(_ spec: ChartSpec, _ l: PlotLayout, _ areas: [BrushArea]) -> [BrushSeriesSelection] {

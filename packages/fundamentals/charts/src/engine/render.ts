@@ -1,6 +1,6 @@
 // Marks → draw commands. The whole chart, as plain data.
 
-import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt, layoutSeriesPointsH } from './layout'
+import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt, layoutSeriesPointsEdge, layoutSeriesPointsH } from './layout'
 import { DEFAULT_PALETTE } from './palette'
 import { layoutGroupedBars, layoutGroupedBarsH, layoutStackedBars, layoutStackedBarsH, layoutWaterfall, normalizeStack, stackCumulative, stackedExtent, waterfallExtent } from './stack'
 import type { Formatter } from './format'
@@ -336,6 +336,12 @@ export interface ChartSpec {
    * series exactly once.
    */
   drawOrder?: number[] | undefined
+  /**
+   * ECharts' category-axis `boundaryGap`. Unset or true: line and area points
+   * sit at their band centres, under their labels. False: they run edge to
+   * edge and the labels move onto them. A chart with bars keeps its bands.
+   */
+  boundaryGap?: boolean | undefined
   categories: string[]
   theme: ChartTheme
   showXAxis: boolean
@@ -1042,6 +1048,7 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     yLogMin: lb.min,
     yLogMax: lb.max,
     yTime: spec.yTime === true,
+    edgeCategories: edgeCategoryPoints(spec),
     xLabels: spec.xLabels,
     xTop: spec.xTop,
     yRight: spec.yRight,
@@ -1074,6 +1081,39 @@ export function validDrawOrder(order: number[], n: number): number[] {
     seen[k] = true
   }
   return order
+}
+
+/** Whether the category points run edge to edge (`boundaryGap: false` on a chart with no band series). */
+export function edgeCategoryPoints(spec: ChartSpec): boolean {
+  if (spec.boundaryGap !== false) return false
+  for (const s of spec.series) if (s.kind === 'bars' || s.kind === 'stacked' || s.kind === 'grouped' || s.kind === 'waterfall') return false
+  return true
+}
+
+/**
+ * A data-space x in pixels. On a category axis an index sits at its band
+ * centre (or on the edge-to-edge point under `boundaryGap: false`), where the
+ * series drew that datum; a value or time axis scales it.
+ */
+export function categoryXPixel(spec: ChartSpec, xDomain: Domain, plot: Rect, v: Double): Double {
+  const n = seriesMaxLength(spec.series)
+  if ((spec.xValues ?? []).length > 0 || n === 0 || edgeCategoryPoints(spec)) return scaleLinear(xDomain, plot.x, plot.x + plot.w, v)
+  return plot.x + (plot.w / countToDouble(n)) * (v + 0.5)
+}
+
+/** A category span `[from, to]` in pixels: band start of the first to band end of the last (edge points under `boundaryGap: false`). */
+export function categorySpanPixels(spec: ChartSpec, xDomain: Domain, plot: Rect, from: Double, to: Double): Pt {
+  const n = seriesMaxLength(spec.series)
+  if ((spec.xValues ?? []).length > 0 || n === 0 || edgeCategoryPoints(spec)) return { x: scaleLinear(xDomain, plot.x, plot.x + plot.w, from), y: scaleLinear(xDomain, plot.x, plot.x + plot.w, to) }
+  const lo = from < to ? from : to
+  const hi = from < to ? to : from
+  const band = plot.w / countToDouble(n)
+  return { x: plot.x + band * lo, y: plot.x + band * (hi + 1.0) }
+}
+
+/** A category series' points, band-centred or edge to edge as the spec's `boundaryGap` says. */
+export function categoryPoints(spec: ChartSpec, values: Double[], plot: Rect, dom: Domain): Pt[] {
+  return edgeCategoryPoints(spec) ? layoutSeriesPointsEdge(values, plot, dom) : layoutSeriesPoints(values, plot, dom)
 }
 
 export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
@@ -1245,8 +1285,9 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     const xFrom = a.xFrom ?? 0.0
     const xTo = a.xTo ?? 0.0
     if (a.xFrom !== undefined && a.xTo !== undefined) {
-      const x1 = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xFrom)
-      const x2 = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xTo)
+      const span = categorySpanPixels(spec, l.xDomainUsed, plot, xFrom, xTo)
+      const x1 = span.x
+      const x2 = span.y
       const left = x1 < x2 ? x1 : x2
       out.push({
         kind: 'rect',
@@ -1283,7 +1324,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     }
     const ax = a.x ?? 0.0
     if (a.x !== undefined) {
-      const xPos = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, ax)
+      const xPos = categoryXPixel(spec, l.xDomainUsed, plot, ax)
       out.push({
         kind: 'line',
         from: { x: xPos, y: plot.y },
@@ -1313,8 +1354,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     const sx2 = a.x2 ?? 0.0
     const sy2 = a.y2 ?? 0.0
     if (a.x1 !== undefined && a.y1 !== undefined && a.x2 !== undefined && a.y2 !== undefined) {
-      const p1: Pt = { x: scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, sx1), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy1) }
-      const p2: Pt = { x: scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, sx2), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy2) }
+      const p1: Pt = { x: categoryXPixel(spec, l.xDomainUsed, plot, sx1), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy1) }
+      const p2: Pt = { x: categoryXPixel(spec, l.xDomainUsed, plot, sx2), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy2) }
       out.push({ kind: 'line', from: p1, to: p2, stroke: a.color ?? t.axis, width: 1.0, dash: [4.0, 4.0] })
       const segLabel = a.label ?? ''
       if (a.label !== undefined) {
@@ -1407,7 +1448,9 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       const upper: Pt[] = []
       const lower: Pt[] = []
       for (let i = 0; i < top.length; i++) {
-        const xAt = plot.x + (plot.w / Math.max(1.0, countToDouble(top.length))) * (countToDouble(i) + 0.5)
+        const xAt = edgeCategoryPoints(spec) && top.length > 1
+          ? plot.x + (plot.w / countToDouble(top.length - 1)) * countToDouble(i)
+          : plot.x + (plot.w / Math.max(1.0, countToDouble(top.length))) * (countToDouble(i) + 0.5)
         upper.push({ x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, top[i]!) })
         lower.push({ x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, k === 0 ? yDomain.min : below[i]!) })
       }
@@ -1452,7 +1495,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     const place = (values: Double[]): Pt[] =>
       sXs.length > 0
         ? layoutSeriesPointsAt(values, sXs, plot, sDomain, sXDomain)
-        : layoutSeriesPoints(values, plot, sDomain)
+        : categoryPoints(spec, values, plot, sDomain)
 
     // The curve shapes line AND area from the same densified points — an
     // area whose fill followed straight segments under a smoothed outline
@@ -1802,7 +1845,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           ? layoutSeriesPointsH(s.values, plot, mDomain)[idx]
           : xsM.length > 0
             ? layoutSeriesPointsAt(s.values, seriesOnX2(s, spec) ? s.xs ?? [] : xsM, plot, mDomain, seriesOnX2(s, spec) ? resolveX2Domain(spec) : l.xDomainUsed)[idx]
-            : layoutSeriesPoints(s.values, plot, mDomain)[idx]
+            : categoryPoints(spec, s.values, plot, mDomain)[idx]
     if (p === undefined) continue
     const mColor = m.color ?? s.color
     out.push({ kind: 'circle', center: p, radius: (m.radius ?? 4.0) * progress, fill: mColor })

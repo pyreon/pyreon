@@ -52,9 +52,9 @@ import { paint, prepareCanvas } from './canvas-web'
 import type { OptionUpdatePolicy } from './option-composite'
 import { graphicCommands } from './option-layer'
 import { visualMapCommands } from './visual-map'
-import { applySeriesSelection, barsFor, categoryIndex, invertCategories, layoutChart, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
+import { applySeriesSelection, barsFor, categoryIndex, categoryPoints, invertCategories, layoutChart, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
 import type { ChartSpec, Emphasis } from './render'
-import { hitBar, hitNearestX, layoutSeriesPoints } from './layout'
+import { hitBar, hitNearestX } from './layout'
 import { plain } from './format'
 import type { ThemeDefinition } from './theme-registry'
 import type { Double, DrawCmd, MeasureText, Rect } from './types'
@@ -759,7 +759,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     for (let i = 0; i < spec.series.length; i++) {
       const s = view.series[i]!
       if (s.kind === 'bars' || s.kind === 'stacked' || s.kind === 'grouped' || silent.includes(i)) continue
-      const pts = layoutSeriesPoints(s.values, plot, seriesDomain(s, spec, resolveYDomain(spec), resolveY2Domain(spec)))
+      const pts = categoryPoints(spec, s.values, plot, seriesDomain(s, spec, resolveYDomain(spec), resolveY2Domain(spec)))
       const vi = hitNearestX(pts, px)
       if (vi < 0) continue
       const d = Math.abs(pts[vi]!.x - px)
@@ -912,7 +912,7 @@ export function OptionChart(props: OptionChartProps): VNode {
       return r === undefined ? null : { x: r.x + f.dx, y: r.y + f.dy + f.top, w: r.w, h: r.h }
     }
     const plot = layoutChart(f.spec, g.measure).plot
-    const p = layoutSeriesPoints(invertCategories(f.spec).series[seriesIndex]!.values, plot, seriesDomain(s, f.spec, resolveYDomain(f.spec), resolveY2Domain(f.spec)))[vi]
+    const p = categoryPoints(f.spec, invertCategories(f.spec).series[seriesIndex]!.values, plot, seriesDomain(s, f.spec, resolveYDomain(f.spec), resolveY2Domain(f.spec)))[vi]
     return p === undefined ? null : { x: p.x + f.dx - 4.0, y: p.y + f.dy + f.top - 4.0, w: 8.0, h: 8.0 }
   }
 
@@ -1293,7 +1293,7 @@ export function OptionChart(props: OptionChartProps): VNode {
         return r === undefined ? null : { x: r.x + f.dx, y: r.y + f.dy + f.top, w: r.w, h: r.h }
       }
       const plot = layoutChart(f.spec, g.measure).plot
-      const p = layoutSeriesPoints(invertCategories(f.spec).series[0]!.values, plot, seriesDomain(s, f.spec, resolveYDomain(f.spec), resolveY2Domain(f.spec)))[vi]
+      const p = categoryPoints(f.spec, invertCategories(f.spec).series[0]!.values, plot, seriesDomain(s, f.spec, resolveYDomain(f.spec), resolveY2Domain(f.spec)))[vi]
       return p === undefined ? null : { x: p.x + f.dx - 6.0, y: p.y + f.dy + f.top - 6.0, w: 12.0, h: 12.0 }
     },
     a11y: () => a11y(),

@@ -24,9 +24,9 @@ import { renderSvg } from './svg'
 import type { ToolboxConfig, ToolboxTool } from './toolbox-config'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
-import { applySeriesSelection, categoryIndex, geometrySpec, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
+import { applySeriesSelection, categoryIndex, categoryPoints, geometrySpec, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
 import { mirrorCmds, screenRectX } from './rtl'
-import { layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
+import { layoutSeriesPointsAt } from './layout'
 import type { PlotLayout } from './layout'
 import { dateFormatter, numberFormatter } from './locale'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker, Series } from './render'
@@ -1151,7 +1151,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       const pts =
         g.xValues !== undefined && g.xValues.length > 0
           ? layoutSeriesPointsAt(sr.values, g.xValues, plot, dom, l.xDomainUsed)
-          : layoutSeriesPoints(sr.values, plot, dom)
+          : categoryPoints(g, sr.values, plot, dom)
       const p = pts[idx]
       if (p === undefined) continue
       out.push({ kind: 'circle', center: p, radius: Math.max(3.0, sr.radius), fill: sr.color })

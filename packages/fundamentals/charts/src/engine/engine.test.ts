@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeLayout, hitBar, hitNearestX, layoutBars, layoutSeriesPoints } from './layout'
+import { computeLayout, hitBar, hitNearestX, layoutBars, layoutSeriesPoints, layoutSeriesPointsEdge } from './layout'
 import { extent, formatTick, makeTicks, niceDomain, niceStep, scaleLinear } from './scale'
 import { defaultTheme, layoutChart, renderChart, resolveYDomain, seriesMaxLength } from './render'
 import { bars as barsMark, resolveCategories, resolveMarks } from './marks'
@@ -151,12 +151,18 @@ describe('layoutBars', () => {
 describe('layoutSeriesPoints', () => {
   const plot = { x: 0, y: 0, w: 100, h: 100 }
 
-  it('spans the plot edge to edge', () => {
-    const p = layoutSeriesPoints([0, 5, 10], plot, { min: 0, max: 10 })
-    expect(p[0]!.x).toBe(0)
-    expect(p[2]!.x).toBe(100)
+  it('centres each point in its category band, under its label (ECharts boundaryGap: true)', () => {
+    const p = layoutSeriesPoints([0, 5, 10, 5], plot, { min: 0, max: 10 })
+    expect(p.map((q) => q.x)).toEqual([12.5, 37.5, 62.5, 87.5])
     expect(p[0]!.y).toBe(100)
     expect(p[2]!.y).toBe(0)
+  })
+
+  it('the edge variant spans the plot edge to edge (boundaryGap: false)', () => {
+    const p = layoutSeriesPointsEdge([0, 5, 10], plot, { min: 0, max: 10 })
+    expect(p.map((q) => q.x)).toEqual([0, 50, 100])
+    expect(layoutSeriesPointsEdge([5], plot, { min: 0, max: 10 })[0]!.x).toBe(50)
+    expect(layoutSeriesPointsEdge([], plot, { min: 0, max: 10 })).toEqual([])
   })
 
   /** One point has no span to divide by — it must not produce NaN. */

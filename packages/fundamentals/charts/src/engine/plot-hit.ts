@@ -1,8 +1,8 @@
 // Pointer → datum for a cartesian chart, as pure geometry over the spec, so
 // the web host's click / tooltip and the native tap ask the SAME question.
 
-import { hitBar, hitNearestX, layoutSeriesPoints } from './layout'
-import { barsForIn, categoryIndex, geometrySpec, layoutChart, resolveYDomain, stackedHitIn } from './render'
+import { hitBar, hitNearestX } from './layout'
+import { barsForIn, categoryIndex, categoryPoints, geometrySpec, layoutChart, resolveYDomain, stackedHitIn } from './render'
 import { brushDatumPoints } from './brush-area'
 import type { ChartSpec } from './render'
 import type { PlotLayout } from './layout'
@@ -48,7 +48,7 @@ export function plotHitIndexIn(raw: ChartSpec, l: PlotLayout, px: Double, py: Do
   if (spec.series.length === 0) return -1
   const first = spec.series[0]!
   if (first.kind === 'bars' || first.kind === 'stacked' || first.kind === 'grouped' || first.kind === 'waterfall') return -1
-  return categoryIndex(raw, hitNearestX(layoutSeriesPoints(first.values, l.plot, resolveYDomain(spec)), px))
+  return categoryIndex(raw, hitNearestX(categoryPoints(spec, first.values, l.plot, resolveYDomain(spec)), px))
 }
 
 /**

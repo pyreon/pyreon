@@ -54,7 +54,7 @@ data class ExtraTick(var axis: Double, var pos: Double, var label: String)
 
 data class PlotLayout(var plot: PyreonChartRect, var xTicks: List<Tick>, var yTicks: List<Tick>, var y2Ticks: List<Tick>, var xDomainUsed: Domain, var xLabelRotate: Double, var xLabelEvery: Int, var yLabelEvery: Int, var gutters: Gutters, var extraTicks: List<ExtraTick>, var x2Ticks: List<Tick>)
 
-data class LayoutConfig(var width: Double, var height: Double, var xDomain: Domain, var yDomain: Domain, var categories: List<String>, var fontSize: Double, var xTickCount: Double, var yTickCount: Double, var showXAxis: Boolean, var showYAxis: Boolean, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var xTime: Boolean? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var horizontal: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var yLog: Boolean? = null, var yLogMin: Double? = null, var yLogMax: Double? = null, var yTime: Boolean? = null, var xLabels: String? = null, var xTop: Boolean? = null, var yRight: Boolean? = null, var extraYAxes: List<ExtraYAxis>? = null, var x2Labels: List<String>? = null, var x2Title: String? = null, var x2Domain: Domain? = null, var xOffset: Double? = null, var yOffset: Double? = null, var y2Offset: Double? = null)
+data class LayoutConfig(var width: Double, var height: Double, var xDomain: Domain, var yDomain: Domain, var categories: List<String>, var edgeCategories: Boolean? = null, var fontSize: Double, var xTickCount: Double, var yTickCount: Double, var showXAxis: Boolean, var showYAxis: Boolean, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var xTime: Boolean? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var horizontal: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var yLog: Boolean? = null, var yLogMin: Double? = null, var yLogMax: Double? = null, var yTime: Boolean? = null, var xLabels: String? = null, var xTop: Boolean? = null, var yRight: Boolean? = null, var extraYAxes: List<ExtraYAxis>? = null, var x2Labels: List<String>? = null, var x2Title: String? = null, var x2Domain: Domain? = null, var xOffset: Double? = null, var yOffset: Double? = null, var y2Offset: Double? = null)
 
 data class StackSegment(var rect: PyreonChartRect, var seriesIndex: Int, var datumIndex: Int, var value: Double)
 
@@ -82,7 +82,7 @@ data class ChartTheme(var palette: List<String>, var background: String, var sur
 
 data class Emphasis(var highlight: Int, var selected: List<Int>)
 
-data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var drawOrder: List<Int>? = null, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var yInverse: Boolean? = null, var xInverse: Boolean? = null, var xTop: Boolean? = null, var yRight: Boolean? = null, var xOffset: Double? = null, var yOffset: Double? = null, var y2Offset: Double? = null, var extraYAxes: List<ExtraYAxis>? = null, var x2Labels: List<String>? = null, var x2Title: String? = null, var x2Domain: Domain? = null, var lines: List<LinesSeries>? = null, var effectTime: Double? = null)
+data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var drawOrder: List<Int>? = null, var boundaryGap: Boolean? = null, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var yInverse: Boolean? = null, var xInverse: Boolean? = null, var xTop: Boolean? = null, var yRight: Boolean? = null, var xOffset: Double? = null, var yOffset: Double? = null, var y2Offset: Double? = null, var extraYAxes: List<ExtraYAxis>? = null, var x2Labels: List<String>? = null, var x2Title: String? = null, var x2Domain: Domain? = null, var lines: List<LinesSeries>? = null, var effectTime: Double? = null)
 
 data class Ohlc(var open: Double, var high: Double, var low: Double, var close: Double)
 
@@ -1393,7 +1393,7 @@ fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotL
       return PlotLayout(plot = plot, xTicks = xTicks, yTicks = yTicks, y2Ticks = listOf(), xDomainUsed = cfg.xDomain, xLabelRotate = 0.0, xLabelEvery = 1, yLabelEvery = yEvery, gutters = gutters, extraTicks = listOf(), x2Ticks = listOf())
     }
     val yTicks = if (cfg.showYAxis) valueTicksY(plot.y + plot.h, plot.y) else listOf()
-    val xTicks = if (cfg.showXAxis) if (cfg.categories.length > 0) bandTicks(cfg.categories, plot) else if (cfg.xTime == true) timeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat) else makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat) else listOf()
+    val xTicks = if (cfg.showXAxis) if (cfg.categories.length > 0) if (cfg.edgeCategories == true) edgeTicks(cfg.categories, plot) else bandTicks(cfg.categories, plot) else if (cfg.xTime == true) timeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat) else makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat) else listOf()
     val y2Ticks = if (hasY2) makeTicks(y2dom, plot.y + plot.h, plot.y, cfg.yTickCount, cfg.y2Format) else listOf()
     val extraTicks: MutableList<ExtraTick> = mutableListOf()
     if (cfg.showYAxis) {
@@ -1476,12 +1476,37 @@ fun layoutSeriesPoints(values: List<Double>, plot: PyreonChartRect, yDomain: Dom
     if (n == 0) {
       return out
     }
+    val band = (plot.w).toDouble() / (n).toDouble()
+    for (i in 0 until n) {
+      out.add(PyreonChartPt(x = plot.x + band * i + (band).toDouble() / (2.0).toDouble(), y = scaleLinear(yDomain, plot.y + plot.h, plot.y, values[i])))
+    }
+    return out
+  }
+
+fun layoutSeriesPointsEdge(values: List<Double>, plot: PyreonChartRect, yDomain: Domain): List<PyreonChartPt> {
+    val n = values.length
+    val out: MutableList<PyreonChartPt> = mutableListOf()
+    if (n == 0) {
+      return out
+    }
     if (n == 1) {
       out.add(PyreonChartPt(x = plot.x + (plot.w).toDouble() / (2.0).toDouble(), y = scaleLinear(yDomain, plot.y + plot.h, plot.y, values[0])))
       return out
     }
     for (i in 0 until n) {
       out.add(PyreonChartPt(x = plot.x + ((i).toDouble() / ((n - 1)).toDouble()) * plot.w, y = scaleLinear(yDomain, plot.y + plot.h, plot.y, values[i])))
+    }
+    return out
+  }
+
+fun edgeTicks(categories: List<String>, plot: PyreonChartRect): List<Tick> {
+    val n = categories.length
+    val out: MutableList<Tick> = mutableListOf()
+    if (n == 0) {
+      return out
+    }
+    for (i in 0 until n) {
+      out.add(Tick(value = (i).toDouble(), pos = if (n == 1) plot.x + (plot.w).toDouble() / (2.0).toDouble() else plot.x + ((i).toDouble() / ((n - 1)).toDouble()) * plot.w, label = categories[i]))
     }
     return out
   }
@@ -2862,7 +2887,7 @@ fun layoutChart(raw: ChartSpec, measure: (String, Double) -> Double): PlotLayout
     val n = seriesMaxLength(spec.series)
     val isLog = raw.yScale == "log"
     val lb = if (isLog) logBounds(raw) else Domain(min = 1.0, max = 10.0)
-    val cfg = LayoutConfig(width = spec.width, height = spec.height, xDomain = if (((spec.xValues ?: listOf())).length > 0) invertedDomain(extent((spec.xValues ?: listOf())), spec.xInverse == true && spec.horizontal != true) else Domain(min = 0.0, max = if (n > 1) (n - 1).toDouble() else 1.0), yDomain = resolveYDomain(spec), categories = spec.categories, fontSize = spec.theme.fontSize, xTickCount = 5.0, yTickCount = 5.0, showXAxis = spec.showXAxis, showYAxis = spec.showYAxis, yFormat = (spec.yFormat ?: (if (raw.stackNormalize == true) percent(0) else null)), xFormat = spec.xFormat, xTime = spec.xTime == true, y2Domain = if (hasRightAxis(spec)) resolveY2Domain(spec) else null, y2Format = spec.y2Format, horizontal = spec.horizontal == true, xTitle = spec.xTitle, yTitle = spec.yTitle, y2Title = spec.y2Title, yLog = isLog, yLogMin = lb.min, yLogMax = lb.max, yTime = spec.yTime == true, xLabels = spec.xLabels, xTop = spec.xTop, yRight = spec.yRight, extraYAxes = resolvedExtraAxes(spec), x2Labels = spec.x2Labels, x2Title = spec.x2Title, x2Domain = if (hasX2Axis(spec)) resolveX2Domain(spec) else null, xOffset = spec.xOffset, yOffset = spec.yOffset, y2Offset = spec.y2Offset)
+    val cfg = LayoutConfig(width = spec.width, height = spec.height, xDomain = if (((spec.xValues ?: listOf())).length > 0) invertedDomain(extent((spec.xValues ?: listOf())), spec.xInverse == true && spec.horizontal != true) else Domain(min = 0.0, max = if (n > 1) (n - 1).toDouble() else 1.0), yDomain = resolveYDomain(spec), categories = spec.categories, edgeCategories = edgeCategoryPoints(spec), fontSize = spec.theme.fontSize, xTickCount = 5.0, yTickCount = 5.0, showXAxis = spec.showXAxis, showYAxis = spec.showYAxis, yFormat = (spec.yFormat ?: (if (raw.stackNormalize == true) percent(0) else null)), xFormat = spec.xFormat, xTime = spec.xTime == true, y2Domain = if (hasRightAxis(spec)) resolveY2Domain(spec) else null, y2Format = spec.y2Format, horizontal = spec.horizontal == true, xTitle = spec.xTitle, yTitle = spec.yTitle, y2Title = spec.y2Title, yLog = isLog, yLogMin = lb.min, yLogMax = lb.max, yTime = spec.yTime == true, xLabels = spec.xLabels, xTop = spec.xTop, yRight = spec.yRight, extraYAxes = resolvedExtraAxes(spec), x2Labels = spec.x2Labels, x2Title = spec.x2Title, x2Domain = if (hasX2Axis(spec)) resolveX2Domain(spec) else null, xOffset = spec.xOffset, yOffset = spec.yOffset, y2Offset = spec.y2Offset)
     return computeLayout(cfg, measure)
   }
 
@@ -2883,6 +2908,39 @@ fun validDrawOrder(order: List<Int>, n: Int): List<Int> {
     }
     return order
   }
+
+fun edgeCategoryPoints(spec: ChartSpec): Boolean {
+    if (spec.boundaryGap != false) {
+      return false
+    }
+    for (s in spec.series) {
+      if (s.kind == "bars" || s.kind == "stacked" || s.kind == "grouped" || s.kind == "waterfall") {
+        return false
+      }
+    }
+    return true
+  }
+
+fun categoryXPixel(spec: ChartSpec, xDomain: Domain, plot: PyreonChartRect, v: Double): Double {
+    val n = seriesMaxLength(spec.series)
+    if (((spec.xValues ?: listOf())).length > 0 || n == 0 || edgeCategoryPoints(spec)) {
+      return scaleLinear(xDomain, plot.x, plot.x + plot.w, v)
+    }
+    return plot.x + ((plot.w).toDouble() / (countToDouble(n)).toDouble()) * (v + 0.5)
+  }
+
+fun categorySpanPixels(spec: ChartSpec, xDomain: Domain, plot: PyreonChartRect, from: Double, to: Double): PyreonChartPt {
+    val n = seriesMaxLength(spec.series)
+    if (((spec.xValues ?: listOf())).length > 0 || n == 0 || edgeCategoryPoints(spec)) {
+      return PyreonChartPt(x = scaleLinear(xDomain, plot.x, plot.x + plot.w, from), y = scaleLinear(xDomain, plot.x, plot.x + plot.w, to))
+    }
+    val lo = if (from < to) from else to
+    val hi = if (from < to) to else from
+    val band = (plot.w).toDouble() / (countToDouble(n)).toDouble()
+    return PyreonChartPt(x = plot.x + band * lo, y = plot.x + band * (hi + 1.0))
+  }
+
+fun categoryPoints(spec: ChartSpec, values: List<Double>, plot: PyreonChartRect, dom: Domain): List<PyreonChartPt> = if (edgeCategoryPoints(spec)) layoutSeriesPointsEdge(values, plot, dom) else layoutSeriesPoints(values, plot, dom)
 
 fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<PyreonDrawCmd> = renderChartIn(spec, measure, layoutChart(spec, measure))
 
@@ -2987,8 +3045,9 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
       val xFrom = (a.xFrom ?: 0.0)
       val xTo = (a.xTo ?: 0.0)
       if (a.xFrom != null && a.xTo != null) {
-        val x1 = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xFrom)
-        val x2 = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xTo)
+        val span = categorySpanPixels(spec, l.xDomainUsed, plot, xFrom, xTo)
+        val x1 = span.x
+        val x2 = span.y
         val left = if (x1 < x2) x1 else x2
         out.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = left, y = plot.y, w = (Math.abs(x2 - x1)).toDouble(), h = plot.h), fill = withAlpha((a.color ?: t.axis), 0.12)))
         if (a.label != null) {
@@ -3008,7 +3067,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
       }
       val ax = (a.x ?: 0.0)
       if (a.x != null) {
-        val xPos = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, ax)
+        val xPos = categoryXPixel(spec, l.xDomainUsed, plot, ax)
         out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = xPos, y = plot.y), to = PyreonChartPt(x = xPos, y = plot.y + plot.h), stroke = (a.color ?: t.axis), width = 1.0, dash = listOf(4.0, 4.0)))
         val xLabel = (a.label ?: "")
         if (a.label != null) {
@@ -3020,8 +3079,8 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
       val sx2 = (a.x2 ?: 0.0)
       val sy2 = (a.y2 ?: 0.0)
       if (a.x1 != null && a.y1 != null && a.x2 != null && a.y2 != null) {
-        val p1 = PyreonChartPt(x = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, sx1), y = scaleLinear(yDomain, plot.y + plot.h, plot.y, sy1))
-        val p2 = PyreonChartPt(x = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, sx2), y = scaleLinear(yDomain, plot.y + plot.h, plot.y, sy2))
+        val p1 = PyreonChartPt(x = categoryXPixel(spec, l.xDomainUsed, plot, sx1), y = scaleLinear(yDomain, plot.y + plot.h, plot.y, sy1))
+        val p2 = PyreonChartPt(x = categoryXPixel(spec, l.xDomainUsed, plot, sx2), y = scaleLinear(yDomain, plot.y + plot.h, plot.y, sy2))
         out.add(PyreonDrawCmd(kind = "line", from = p1, to = p2, stroke = (a.color ?: t.axis), width = 1.0, dash = listOf(4.0, 4.0)))
         val segLabel = (a.label ?: "")
         if (a.label != null) {
@@ -3092,7 +3151,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         val upper: MutableList<PyreonChartPt> = mutableListOf()
         val lower: MutableList<PyreonChartPt> = mutableListOf()
         for (i in 0 until top.length) {
-          val xAt = plot.x + ((plot.w).toDouble() / (Math.max(1.0, countToDouble(top.length))).toDouble()) * (countToDouble(i) + 0.5)
+          val xAt = if (edgeCategoryPoints(spec) && top.length > 1) plot.x + ((plot.w).toDouble() / (countToDouble(top.length - 1)).toDouble()) * countToDouble(i) else plot.x + ((plot.w).toDouble() / (Math.max(1.0, countToDouble(top.length))).toDouble()) * (countToDouble(i) + 0.5)
           upper.add(PyreonChartPt(x = xAt, y = scaleLinear(yDomain, plot.y + plot.h, plot.y, top[i])))
           lower.add(PyreonChartPt(x = xAt, y = scaleLinear(yDomain, plot.y + plot.h, plot.y, if (k == 0) yDomain.min else below[i])))
         }
@@ -3133,7 +3192,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
       val onX2 = seriesOnX2(s, spec)
       val sXs = if (onX2) (s.xs ?: listOf()) else xs
       val sXDomain = if (onX2) resolveX2Domain(spec) else l.xDomainUsed
-      val place = { values: List<Double> -> if (sXs.length > 0) layoutSeriesPointsAt(values, sXs, plot, sDomain, sXDomain) else layoutSeriesPoints(values, plot, sDomain) }
+      val place = { values: List<Double> -> if (sXs.length > 0) layoutSeriesPointsAt(values, sXs, plot, sDomain, sXDomain) else categoryPoints(spec, values, plot, sDomain) }
       val curveFn = (s.curve ?: ({ q -> q }))
       val sGradAll = seriesGradient(s.gradient, plot)
       val sGrad = if (sGradAll.stops.length == 0) null else sGradAll
@@ -3459,7 +3518,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
       val mDomain = seriesDomain(s, spec, yDomain, y2Domain)
       val xsM = (spec.xValues ?: listOf())
       val segMarker = markerAnchor(spec, rawSeriesIndex, idx, plot, yDomain)
-      val p = if (segMarker.length > 0) segMarker[0] else if (spec.horizontal == true) layoutSeriesPointsH(s.values, plot, mDomain)[idx] else if (xsM.length > 0) layoutSeriesPointsAt(s.values, if (seriesOnX2(s, spec)) (s.xs ?: listOf()) else xsM, plot, mDomain, if (seriesOnX2(s, spec)) resolveX2Domain(spec) else l.xDomainUsed)[idx] else layoutSeriesPoints(s.values, plot, mDomain)[idx]
+      val p = if (segMarker.length > 0) segMarker[0] else if (spec.horizontal == true) layoutSeriesPointsH(s.values, plot, mDomain)[idx] else if (xsM.length > 0) layoutSeriesPointsAt(s.values, if (seriesOnX2(s, spec)) (s.xs ?: listOf()) else xsM, plot, mDomain, if (seriesOnX2(s, spec)) resolveX2Domain(spec) else l.xDomainUsed)[idx] else categoryPoints(spec, s.values, plot, mDomain)[idx]
       if (p == null) {
         continue
       }
@@ -8546,7 +8605,7 @@ fun plotHitIndexIn(raw: ChartSpec, l: PlotLayout, px: Double, py: Double): Int {
     if (first.kind == "bars" || first.kind == "stacked" || first.kind == "grouped" || first.kind == "waterfall") {
       return -1
     }
-    return categoryIndex(raw, hitNearestX(layoutSeriesPoints(first.values, l.plot, resolveYDomain(spec)), px))
+    return categoryIndex(raw, hitNearestX(categoryPoints(spec, first.values, l.plot, resolveYDomain(spec)), px))
   }
 
 fun plotHitSeriesIn(spec: ChartSpec, l: PlotLayout, px: Double, py: Double, reach: Double): Int {
@@ -9525,7 +9584,7 @@ fun renderNavigator(values: List<Double>, color: String, win: ZoomWindow, canvas
           val v = values[i]
           safe.add(if (!isFiniteNumber(v)) lo else v)
         }
-        val pts = layoutSeriesPoints(safe, strip, Domain(min = if (lo < 0.0) lo else 0.0, max = if (hi <= lo) lo + 1.0 else hi))
+        val pts = layoutSeriesPointsEdge(safe, strip, Domain(min = if (lo < 0.0) lo else 0.0, max = if (hi <= lo) lo + 1.0 else hi))
         val last = pts[pts.length - 1]
         val first = pts[0]
         val poly: MutableList<PyreonChartPt> = mutableListOf()
@@ -9756,7 +9815,7 @@ fun brushDatumPoints(raw: ChartSpec, l: PlotLayout, k: Int): List<PyreonChartPt>
       val onX2 = seriesOnX2(s, spec)
       return layoutSeriesPointsAt(s.values, if (onX2) (s.xs ?: listOf()) else xs, plot, dom, if (onX2) resolveX2Domain(spec) else l.xDomainUsed)
     }
-    return layoutSeriesPoints(s.values, plot, dom)
+    return categoryPoints(spec, s.values, plot, dom)
   }
 
 fun brushSelection(spec: ChartSpec, l: PlotLayout, areas: List<BrushArea>): List<BrushSeriesSelection> {
