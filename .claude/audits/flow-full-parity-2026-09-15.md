@@ -138,3 +138,27 @@ native view.
   callbacks, renamed imports, and explicit custom HTML are covered by compiler
   and Swift behaviour tests. Android runtime compilation and both device
   behaviour scenarios remain required before F5 can be checked complete.
+- [x] F5 device proof, first pass: `examples/native-tasks` hosts a real
+  `<FlowWebView>` (`@pyreon/flow/webview`) and BOTH device lanes assert the
+  bridge in both directions without asserting inside the WebView: the graph
+  and a `fit-view` command are pushed into the WKWebView / Android WebView,
+  the hosted renderer fits and posts `viewport-change` back over the reverse
+  channel into native Text (`gal-flow-webview-event`), and a button pushes a
+  NEW command id so the event count moving 1→2 — not 3 — proves the reactive
+  command push AND once-only execution of `initial-fit`. Android runtime
+  compilation is proven by the same lane (`flow/native/kotlin` is a Gradle
+  `srcDir` of the tasks app). Two compiler bugs fell out of writing the first
+  real consumer, both silent and both on both targets:
+  - a BLOCK-bodied handler (`onEvent={(e) => { a.set(…); b.set(…) }}`) on any
+    WebView-family host lowered to an EMPTY closure — the statements live in
+    the arrow's `stmts`, and the message-handler emitter read only `body`.
+    Same for `<WebView onMessage>` / `<ChartWebView onEvent>`. Fixed by
+    routing through the generic action emitter `onPress` already uses.
+  - `data-testid` never reached any WebView-family host (no generic layout
+    tail), so none was selectable by XCUITest / `onNodeWithTag` — the
+    `<Link>`/`<Toggle>` class again. The tail now runs on every host, skipping
+    the props the host lowers itself (`background` is the hosted PAGE's, not
+    a view token).
+  Still open under F5: a node-tap `onSelect` and a host FAILURE state on
+  device (both need a gesture/fault INSIDE the WebView that neither test
+  harness can drive reliably), and `reload`/reconnect.
