@@ -15,7 +15,7 @@
 // shape interpolate, so every family gets an update tween without knowing
 // what a value is.
 
-import { createUniqueId, h } from '@pyreon/core'
+import { createUniqueId, h, onUnmount } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { batch, effect, isClient, signal } from '@pyreon/reactivity'
 import { chartTable, describeChart } from './a11y'
@@ -30,8 +30,10 @@ import { renderTitle } from './title'
 import { hitToolbox, renderToolbox } from './toolbox'
 import type { ToolboxTool } from './toolbox-config'
 import { placeTooltip } from './tooltip'
+import type { Size } from './tooltip'
+import { renderTooltipHtml } from './tooltip-html'
 import { easeOutCubic } from './tween'
-import type { ChartGradient, DrawCmd, Double, MeasureText, Rect } from './types'
+import type { ChartGradient, DrawCmd, Double, MeasureText, Pt, Rect } from './types'
 import { mirrorCmds, mirrorX, screenRectX , transposeCmds, transposeRect } from './rtl'
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
@@ -78,6 +80,43 @@ export function shiftCmds(cmds: DrawCmd[], dx: Double, dy: Double): DrawCmd[] {
 export type { LegendPosition } from './legend'
 
 /** The props every canvas host accepts — the chrome, sizing, theme, interaction and a11y surface. */
+/** Keep a caller-placed box inside the bounds, for a view that asked to be confined. */
+function clampTooltip(at: Pt, size: Size, bounds: Rect): Pt {
+  let x = at.x
+  let y = at.y
+  if (x + size.w > bounds.x + bounds.w) x = bounds.x + bounds.w - size.w
+  if (x < bounds.x) x = bounds.x
+  if (y + size.h > bounds.y + bounds.h) y = bounds.y + bounds.h - size.h
+  if (y < bounds.y) y = bounds.y
+  return { x, y }
+}
+
+/**
+ * A tooltip richer than plain lines — what an ECharts-shaped option asks for.
+ * Every field is optional; absent means the host's default.
+ */
+export interface TooltipView {
+  /** Plain lines, rendered as text. */
+  lines?: string[] | undefined
+  /** HTML, rendered through an allow-list (`renderTooltipHtml`): tags and inline styles survive, scripts and handlers do not. */
+  html?: string | undefined
+  /** Where the box's top-left goes, in chart space, given its measured size; absent follows the pointer. */
+  place?: ((at: Pt, size: Size, bounds: Rect) => Pt) | undefined
+  /** Keep the box inside the chart (default true). */
+  confine?: boolean | undefined
+  /** CSS appended to the themed box style. */
+  css?: string | undefined
+  className?: string | undefined
+  /** The pointer may enter the box (links and buttons in it work). */
+  enterable?: boolean | undefined
+  /** Milliseconds before the box hides after the pointer leaves. */
+  hideDelay?: Double | undefined
+  /** Keep the box on screen after the pointer leaves. */
+  keepOnLeave?: boolean | undefined
+  /** Seconds the box glides between positions. */
+  transition?: Double | undefined
+}
+
 export interface CanvasHostProps {
 
   width?: Double
@@ -111,6 +150,16 @@ export interface CanvasHostProps {
   updateAnimation?: boolean
   /** Tween duration in ms; default the theme's `updateMs`. */
   updateDuration?: Double
+  /** Entrance duration in ms; default the theme's `enterMs`. */
+  enterDuration?: Double
+  /** Wait before the entrance starts, in ms. Default 0. */
+  enterDelay?: Double
+  /** Wait before an update tween starts, in ms. Default 0. */
+  updateDelay?: Double
+  /** The entrance's easing curve, 0..1 → 0..1. Default cubic ease-out. */
+  enterEasing?: (t: Double) => Double
+  /** The update tween's easing curve. Default cubic ease-out. */
+  updateEasing?: (t: Double) => Double
   /** Morph updates even when the family or item count changes. Opt-in. */
   universalTransition?: boolean
   /**
@@ -196,8 +245,12 @@ export interface CanvasHostSpec<L> {
   pick?: ((layout: L, index: number) => void) | undefined
   /** The rect to draw the keyboard focus ring around, for an item index; null draws none. */
   focusRect?: ((layout: L, index: number) => Rect | null) | undefined
-  /** Tooltip lines for a pointer position, or null for a miss. */
-  tooltip?: ((layout: L, px: Double, py: Double, theme: ChartTheme) => string[] | null) | undefined
+  /**
+   * The tooltip for a pointer position: plain lines, a richer `TooltipView`
+   * (HTML, placement, look, timing), or null for a miss. `press` is true for a
+   * pointer DOWN (a click or a tap), false for a hover move.
+   */
+  tooltip?: ((layout: L, px: Double, py: Double, theme: ChartTheme, press: boolean) => string[] | TooltipView | null) | undefined
   /** The pointer left the canvas (or the gesture was cancelled): whatever `tooltip` set as the hover is over. */
   leave?: (() => void) | undefined
   /** The accessible description + table input. */
@@ -261,6 +314,8 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
   const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
   let canvas: HTMLCanvasElement | null = null
   let tip: HTMLDivElement | null = null
+  // CSS a rich tooltip view last added to the themed box (its colours, border, padding, transition).
+  let appliedLook = ''
   let sizeObserver: ResizeObserver | null = null
   const keyboardOn = props.keyboard !== false
   const toolList: ToolboxTool[] = props.toolbox?.saveAsImage === true ? ['saveAsImage'] : []
@@ -285,13 +340,18 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     if (entranceStarted) return
     entranceStarted = true
     if (spec.animates !== true || props.animate === false || prefersReducedMotion() || !hasRaf()) return
-    const duration = theme().enterMs
+    const duration = props.enterDuration ?? theme().enterMs
     if (duration <= 0) return
+    const delay = props.enterDelay ?? 0.0
+    const curve = props.enterEasing ?? easeOutCubic
     let start = -1.0
     const tick = (now: number): void => {
-      if (start < 0.0) start = now
-      const t = Math.min(1.0, (now - start) / duration)
-      entrance = easeOutCubic(t)
+      if (start < 0.0) start = now + delay
+      const t = now < start ? 0.0 : Math.min(1.0, (now - start) / duration)
+      // An overshooting curve (backOut, elasticOut) passes 1 mid-flight; the
+      // engine clamps progress anyway, and `entrance >= 1` is how this host
+      // knows the entrance is OVER, so it may only reach 1 when time does.
+      entrance = t >= 1.0 ? 1.0 : Math.min(curve(t), 0.999999)
       draw()
       entranceFrame = t < 1.0 ? requestAnimationFrame(tick) : 0
     }
@@ -327,11 +387,12 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
   let tweenFrame = 0
   const startTween = (): void => {
     const duration = props.updateDuration ?? theme().updateMs
+    const delay = props.updateDelay ?? 0.0
     let start = -1.0
     cancelFrame(tweenFrame)
     const tick = (now: number): void => {
-      if (start < 0.0) start = now
-      tweenT = Math.min(1.0, (now - start) / duration)
+      if (start < 0.0) start = now + delay
+      tweenT = now < start ? 0.0 : Math.min(1.0, (now - start) / duration)
       paintCached()
       if (tweenT < 1.0) tweenFrame = requestAnimationFrame(tick)
       else {
@@ -346,7 +407,7 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
   /** The family commands to show right now: the tween's frame, else the last full frame. */
   const transitionFrame = (from: DrawCmd[], to: DrawCmd[], t: Double): DrawCmd[] =>
     props.universalTransition === true ? universalTweenCmds(from, to, t) : tweenCmds(from, to, t)
-  const shownFamily = (): DrawCmd[] => (tweenFrom !== null && tweenTo !== null && tweenT < 1.0 ? transitionFrame(tweenFrom, tweenTo, easeOutCubic(tweenT)) : (lastFamily ?? []))
+  const shownFamily = (): DrawCmd[] => (tweenFrom !== null && tweenTo !== null && tweenT < 1.0 ? transitionFrame(tweenFrom, tweenTo, (props.updateEasing ?? easeOutCubic)(tweenT)) : (lastFamily ?? []))
 
   /**
    * Chrome first, then the family in what is left. The title and a wrapped
@@ -458,11 +519,19 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     if (entrance >= 1.0 && clockDriven) {
       lastFamily = family
     } else if (entrance >= 1.0) {
+      // A redraw whose content is what a running tween is ALREADY heading to
+      // (an unrelated tracked read re-ran the draw) must let it finish. It used
+      // to fall through to the snap below, which cancels the tween: invisible
+      // on a host that draws once per change, fatal on one that redraws.
+      if (tweenFrame !== 0 && tweenTo !== null && cmdsEqual(tweenTo, family)) {
+        paint(ctx, present([...f.chrome, ...shownFamily(), ...ringCmds(f)], w), w, hgt, FONT)
+        return
+      }
       const enabled = props.updateAnimation !== false && hasRaf() && !prefersReducedMotion() && (props.updateDuration ?? t.updateMs) > 0
       const transitionable = lastFamily !== null && (sameCmdShape(lastFamily, family) || props.universalTransition === true)
       if (enabled && transitionable && lastFamily !== null && !cmdsEqual(lastFamily, family)) {
         // Retarget a running tween from where it is; start one from the last frame otherwise.
-        tweenFrom = tweenFrom !== null && tweenTo !== null && tweenT < 1.0 ? transitionFrame(tweenFrom, tweenTo, easeOutCubic(tweenT)) : lastFamily
+        tweenFrom = tweenFrom !== null && tweenTo !== null && tweenT < 1.0 ? transitionFrame(tweenFrom, tweenTo, (props.updateEasing ?? easeOutCubic)(tweenT)) : lastFamily
         tweenTo = family
         lastFamily = family
         startTween()
@@ -549,24 +618,63 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     const f = layoutNow(el)
     if (f === null) return
     const p = localPoint(el, ev)
-    const lines = transposed() ? spec.tooltip(f.layout, p.y, p.x, theme()) : spec.tooltip(f.layout, p.x, p.y, theme())
-    if (lines === null || lines.length === 0) {
-      box.style.display = 'none'
+    const press = ev.type === 'pointerdown'
+    const out = transposed() ? spec.tooltip(f.layout, p.y, p.x, theme(), press) : spec.tooltip(f.layout, p.x, p.y, theme(), press)
+    const view: TooltipView | null = out === null ? null : Array.isArray(out) ? { lines: out } : out
+    if (view === null || (view.html === undefined && (view.lines === undefined || view.lines.length === 0))) {
+      hideTip()
       return
     }
-    box.textContent = lines.join('\n')
+    cancelHide()
+    currentView = view
+    // The view's look is written with the rest of the box's state, in this one
+    // handler: a REACTIVE style attribute would be re-applied after these writes
+    // and reset `display`, `left` and `top` with it.
+    const look = `${view.css === undefined || view.css === '' ? '' : ';' + view.css}${view.enterable === true ? ';pointer-events:auto' : ''}${view.transition !== undefined && view.transition > 0 ? `;transition:left ${view.transition}s,top ${view.transition}s` : ''}`
+    if (look !== appliedLook) {
+      box.setAttribute('style', tooltipStyle(theme(), FONT) + look)
+      appliedLook = look
+    }
+    box.className = view.className ?? ''
+    if (view.html !== undefined) renderTooltipHtml(box, view.html)
+    else box.textContent = view.lines!.join('\n')
     box.style.display = 'block'
     // Measure AFTER filling it: placement depends on the rendered size.
     const size = { w: box.offsetWidth, h: box.offsetHeight }
-    const at = placeTooltip(p, size, { x: 0, y: 0, w: f.w, h: f.hgt }, 12)
+    const bounds = { x: 0, y: 0, w: f.w, h: f.hgt }
+    const placed = view.place === undefined ? placeTooltip(p, size, bounds, 12) : view.place(p, size, bounds)
+    const at = view.confine === false || view.place === undefined ? placed : clampTooltip(placed, size, bounds)
     // `p` is CHART space (mirrored in by `localPoint`); the tooltip is a DOM
     // node in SCREEN space, so its left edge mirrors back out (`./rtl`).
     box.style.left = `${screenRectX(at.x, size.w, f.w, props.rtl === true)}px`
     box.style.top = `${at.y}px`
   }
-  const handleLeave = (): void => {
+  // The rich view the box last showed — its leave/hide behaviour applies until the next one.
+  let currentView: TooltipView | null = null
+  let hideTimer: ReturnType<typeof setTimeout> | null = null
+  const cancelHide = (): void => {
+    if (hideTimer !== null) clearTimeout(hideTimer)
+    hideTimer = null
+  }
+  const hideTip = (): void => {
+    cancelHide()
     if (tip !== null) tip.style.display = 'none'
+  }
+  onUnmount(cancelHide)
+  const handleLeave = (): void => {
     spec.leave?.()
+    const view = currentView
+    if (view?.keepOnLeave === true) return
+    const delay = view?.hideDelay ?? 0.0
+    if (delay <= 0.0 || tip === null) {
+      hideTip()
+      return
+    }
+    cancelHide()
+    hideTimer = setTimeout(() => {
+      hideTimer = null
+      if (tip !== null) tip.style.display = 'none'
+    }, delay)
   }
 
   const layoutForA11y = (): L => {
