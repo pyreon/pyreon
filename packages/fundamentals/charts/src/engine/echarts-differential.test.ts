@@ -128,3 +128,33 @@ describe('ECharts differential: bar columns', () => {
     })
   }
 })
+
+/** ECharts' x-axis labels: the centre-anchored texts of its SSR SVG, in order. */
+function echartsXTicks(option: object): string[] {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: W, height: H })
+  chart.setOption({ animation: false, ...option })
+  const svg = chart.renderToSVGString()
+  chart.dispose()
+  return [...svg.matchAll(/text-anchor="middle"[^>]*>([^<]*)</g)].map((m) => m[1]!)
+}
+function ourXTicks(option: object): string[] {
+  const c = compileOption(option as EChartsOption, { width: W, height: H })
+  return layoutChart(c.spec, (t: string) => t.length * 7).xTicks.map((t) => t.label)
+}
+const scatter = (data: number[][], xAxis: object = {}): object => ({ xAxis: { type: 'value', ...xAxis }, yAxis: { type: 'value' }, series: [{ type: 'scatter', data }] })
+const X_CASES: [string, object][] = [
+  ['small values keep zero', scatter([[1, 2], [3, 4], [7, 1]])],
+  ['hundreds', scatter([[120, 1], [480, 2]])],
+  ['across zero', scatter([[-5, 1], [23, 2]])],
+  ['scale: true', scatter([[823, 1], [1330, 2]], { scale: true })],
+  ['decimals', scatter([[0.1, 1], [0.35, 2]])],
+  ['thousands group with commas', scatter([[1500, 1], [8200, 2]])],
+  ['a pinned max', scatter([[1, 1], [7, 2]], { max: 9 })],
+]
+describe('ECharts differential: value X axis ticks', () => {
+  for (const [name, option] of X_CASES) {
+    it(name, () => {
+      expect(ourXTicks(option)).toEqual(echartsXTicks(option))
+    })
+  }
+})

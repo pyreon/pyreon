@@ -699,6 +699,12 @@ public struct ChartSpec {
   public var barGap: BarLength? = nil
   public var barCategoryGap: BarLength? = nil
   public var yMin: Double? = nil
+  public var xSplit: Double? = nil
+  public var xZero: Bool? = nil
+  public var xMin: Double? = nil
+  public var xMax: Double? = nil
+  public var xMinData: Bool? = nil
+  public var xMaxData: Bool? = nil
   public var yMax: Double? = nil
   public var yMinData: Bool? = nil
   public var yMaxData: Bool? = nil
@@ -743,7 +749,7 @@ public struct ChartSpec {
   public var x2Domain: Domain? = nil
   public var lines: [LinesSeries]? = nil
   public var effectTime: Double? = nil
-  public init(width: Double, height: Double, series: [Series], drawOrder: [Int]? = nil, boundaryGap: Bool? = nil, yZero: Bool? = nil, ySplit: Double? = nil, barLayout: Bool? = nil, barGap: BarLength? = nil, barCategoryGap: BarLength? = nil, yMin: Double? = nil, yMax: Double? = nil, yMinData: Bool? = nil, yMaxData: Bool? = nil, gridLeft: Double? = nil, gridTop: Double? = nil, gridRight: Double? = nil, gridBottom: Double? = nil, categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, yInverse: Bool? = nil, xInverse: Bool? = nil, xTop: Bool? = nil, yRight: Bool? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, lines: [LinesSeries]? = nil, effectTime: Double? = nil) {
+  public init(width: Double, height: Double, series: [Series], drawOrder: [Int]? = nil, boundaryGap: Bool? = nil, yZero: Bool? = nil, ySplit: Double? = nil, barLayout: Bool? = nil, barGap: BarLength? = nil, barCategoryGap: BarLength? = nil, yMin: Double? = nil, xSplit: Double? = nil, xZero: Bool? = nil, xMin: Double? = nil, xMax: Double? = nil, xMinData: Bool? = nil, xMaxData: Bool? = nil, yMax: Double? = nil, yMinData: Bool? = nil, yMaxData: Bool? = nil, gridLeft: Double? = nil, gridTop: Double? = nil, gridRight: Double? = nil, gridBottom: Double? = nil, categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, yInverse: Bool? = nil, xInverse: Bool? = nil, xTop: Bool? = nil, yRight: Bool? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, lines: [LinesSeries]? = nil, effectTime: Double? = nil) {
     self.width = width
     self.height = height
     self.series = series
@@ -755,6 +761,12 @@ public struct ChartSpec {
     self.barGap = barGap
     self.barCategoryGap = barCategoryGap
     self.yMin = yMin
+    self.xSplit = xSplit
+    self.xZero = xZero
+    self.xMin = xMin
+    self.xMax = xMax
+    self.xMinData = xMinData
+    self.xMaxData = xMaxData
     self.yMax = yMax
     self.yMinData = yMinData
     self.yMaxData = yMaxData
@@ -5246,7 +5258,7 @@ public func emphasisOutline(_ r: PyreonChartRect, _ level: Int, _ stroke: String
 
 public func resolveYDomain(_ spec: ChartSpec) -> Domain {
     let d = (spec.yDomain ?? pinDomain(spec, leftAxisSeries(spec)))
-    return spec.yInverse == true ? Domain(min: d.min, max: d.max, inverse: true) : d
+    return spec.yInverse == true ? Domain(min: d.min, max: d.max, inverse: true, step: d.step) : d
   }
 
 public func resolveY2Domain(_ spec: ChartSpec) -> Domain { (spec.y2Domain ?? deriveOver(rightAxisSeries(spec), spec.yZero == true, (spec.ySplit ?? 0.0))) }
@@ -5333,7 +5345,7 @@ public func geometrySpec(_ raw: ChartSpec) -> ChartSpec {
     return { var c = spec; c.series = series; c.yDomain = yDomain; c.annotations = spec.annotations == nil ? nil : notes; c.yScale = "linear"; c.stackNormalize = false; return c }()
   }
 
-public func invertedDomain(_ d: Domain, _ inverse: Bool) -> Domain { inverse ? Domain(min: d.min, max: d.max, inverse: true) : d }
+public func invertedDomain(_ d: Domain, _ inverse: Bool) -> Domain { inverse ? Domain(min: d.min, max: d.max, inverse: true, step: d.step) : d }
 
 public func categoriesInverted(_ spec: ChartSpec) -> Bool { spec.xInverse == true && spec.horizontal != true && ((spec.xValues ?? [])).count == 0 }
 
@@ -5501,6 +5513,19 @@ public func leftAxisSeries(_ spec: ChartSpec) -> [Series] { spec.series.filter({
 
 public func rightAxisSeries(_ spec: ChartSpec) -> [Series] { spec.series.filter({ s in seriesOnRightAxis(s, spec) }) }
 
+public func resolveXValueDomain(_ spec: ChartSpec, _ data: Domain) -> Domain {
+    let split = (spec.xSplit ?? 0.0)
+    if split <= 0.0 {
+      return data
+    }
+    let zero = spec.xZero == true && spec.xMinData != true && spec.xMaxData != true
+    let lo0 = zero && data.min > 0.0 ? 0.0 : data.min
+    let hi0 = zero && data.max < 0.0 ? 0.0 : data.max
+    let lo = spec.xMinData == true ? data.min : (spec.xMin ?? lo0)
+    let hi = spec.xMaxData == true ? data.max : (spec.xMax ?? hi0)
+    return echartsNiceDomain(Domain(min: lo, max: hi), split, spec.xMin != nil || spec.xMinData == true, spec.xMax != nil || spec.xMaxData == true)
+  }
+
 public func pinDomain(_ spec: ChartSpec, _ series: [Series]) -> Domain {
     let fixMin = spec.yMin != nil || spec.yMinData == true
     let fixMax = spec.yMax != nil || spec.yMaxData == true
@@ -5595,7 +5620,7 @@ public func layoutChart(_ raw: ChartSpec, _ measure: (String, Double) -> Double)
     let n = seriesMaxLength(spec.series)
     let isLog = raw.yScale == "log"
     let lb = isLog ? logBounds(raw) : Domain(min: 1.0, max: 10.0)
-    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? invertedDomain(extent((spec.xValues ?? [])), spec.xInverse == true && spec.horizontal != true) : Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, edgeCategories: edgeCategoryPoints(spec), insetLeft: spec.gridLeft, insetTop: spec.gridTop, insetRight: spec.gridRight, insetBottom: spec.gridBottom, fontSize: spec.theme.fontSize, xTickCount: 5.0, yTickCount: 5.0, showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yTime: spec.yTime == true, xLabels: spec.xLabels, xTop: spec.xTop, yRight: spec.yRight, extraYAxes: resolvedExtraAxes(spec), x2Labels: spec.x2Labels, x2Title: spec.x2Title, x2Domain: hasX2Axis(spec) ? resolveX2Domain(spec) : nil, xOffset: spec.xOffset, yOffset: spec.yOffset, y2Offset: spec.y2Offset)
+    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? invertedDomain(resolveXValueDomain(spec, extent((spec.xValues ?? []))), spec.xInverse == true && spec.horizontal != true) : Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, edgeCategories: edgeCategoryPoints(spec), insetLeft: spec.gridLeft, insetTop: spec.gridTop, insetRight: spec.gridRight, insetBottom: spec.gridBottom, fontSize: spec.theme.fontSize, xTickCount: 5.0, yTickCount: 5.0, showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yTime: spec.yTime == true, xLabels: spec.xLabels, xTop: spec.xTop, yRight: spec.yRight, extraYAxes: resolvedExtraAxes(spec), x2Labels: spec.x2Labels, x2Title: spec.x2Title, x2Domain: hasX2Axis(spec) ? resolveX2Domain(spec) : nil, xOffset: spec.xOffset, yOffset: spec.yOffset, y2Offset: spec.y2Offset)
     return computeLayout(cfg, measure)
   }
 

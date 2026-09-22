@@ -1087,7 +1087,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     y2Domain,
     yFormat: yFormat ?? localeNumber ?? axisNumber,
     y2Format: y2Format ?? localeNumber ?? axisNumber,
-    xFormat: xFormat ?? (xTime ? localeDate : undefined),
+    xFormat: xFormat ?? (xTime ? localeDate : xContinuous ? localeNumber ?? axisNumber : undefined),
     xValues,
     xTime: xTime ? true : undefined,
     annotations: annotations.length > 0 ? annotations : undefined,
@@ -1104,6 +1104,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     ySplit,
     ...yBound('min'),
     ...yBound('max'),
+    // The value X axis ticks the same way (a scatter's x, a value-axis line).
+    ...(xContinuous && !xTime ? xValueAxis(xAxis) : {}),
     ...(isObj(xAxis) && xAxis['inverse'] === true ? { xInverse: true } : {}),
     ...(isObj(xAxis) && xAxis['position'] === 'top' ? { xTop: true } : {}),
     ...(num(isObj(xAxis) ? xAxis['offset'] : undefined) !== null ? { xOffset: num((xAxis as Record<string, unknown>)['offset']) as number } : {}),
@@ -1221,6 +1223,20 @@ function lastBarGaps(rawSeries: unknown[]): { barGap?: BarLength; barCategoryGap
     if (g !== undefined) out.barGap = g.percent ? g : { value: g.value, percent: true }
     if (c !== undefined) out.barCategoryGap = c
   }
+  return out
+}
+
+/** A value X axis' ECharts nicing: split number, zero inclusion and pinned bounds. */
+function xValueAxis(axis: Record<string, unknown> | undefined): Partial<ChartSpec> {
+  const a = axis ?? {}
+  const out: Partial<ChartSpec> = { xSplit: typeof a['splitNumber'] === 'number' ? (a['splitNumber'] as number) : 5.0 }
+  if (a['scale'] !== true) out.xZero = true
+  const bound = (v: unknown, data: 'xMinData' | 'xMaxData', fixed: 'xMin' | 'xMax'): void => {
+    if (v === 'dataMin' || v === 'dataMax') out[data] = true
+    else if (num(v) !== null) out[fixed] = num(v) as number
+  }
+  bound(a['min'], 'xMinData', 'xMin')
+  bound(a['max'], 'xMaxData', 'xMax')
   return out
 }
 

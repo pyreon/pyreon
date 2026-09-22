@@ -385,6 +385,13 @@ export interface ChartSpec {
    * bound to the data's own extent (`'dataMin'` / `'dataMax'`).
    */
   yMin?: Double | undefined
+  /** The value X axis' counterparts of `ySplit` / `yZero` / `yMin` / `yMax` / `yMinData` / `yMaxData`. */
+  xSplit?: Double | undefined
+  xZero?: boolean | undefined
+  xMin?: Double | undefined
+  xMax?: Double | undefined
+  xMinData?: boolean | undefined
+  xMaxData?: boolean | undefined
   yMax?: Double | undefined
   yMinData?: boolean | undefined
   yMaxData?: boolean | undefined
@@ -695,7 +702,7 @@ export function resolveYDomain(spec: ChartSpec): Domain {
   // `?? derive` rather than an early return: Swift does not narrow
   // `spec.yDomain` through the guard, and the coalesce is the same contract.
   const d = spec.yDomain ?? pinDomain(spec, leftAxisSeries(spec))
-  return spec.yInverse === true ? { min: d.min, max: d.max, inverse: true } : d
+  return spec.yInverse === true ? { min: d.min, max: d.max, inverse: true, step: d.step } : d
 }
 
 /**
@@ -809,7 +816,7 @@ export function geometrySpec(raw: ChartSpec): ChartSpec {
  */
 /** A domain carrying the inverse flag when asked. */
 export function invertedDomain(d: Domain, inverse: boolean): Domain {
-  return inverse ? { min: d.min, max: d.max, inverse: true } : d
+  return inverse ? { min: d.min, max: d.max, inverse: true, step: d.step } : d
 }
 
 export function categoriesInverted(spec: ChartSpec): boolean {
@@ -1009,6 +1016,22 @@ function rightAxisSeries(spec: ChartSpec): Series[] {
  * bound applied, niced the way the spec asks — ECharts' interval when
  * `ySplit` is set, the engine's own otherwise.
  */
+/**
+ * A value X axis' domain: the data extent as it was, or — when the spec asks
+ * for ECharts' nicing (`xSplit`) — zero included unless `scale`, the pinned
+ * bounds applied, and the extent floored / ceiled to ECharts' interval.
+ */
+function resolveXValueDomain(spec: ChartSpec, data: Domain): Domain {
+  const split = spec.xSplit ?? 0.0
+  if (split <= 0.0) return data
+  const zero = spec.xZero === true && spec.xMinData !== true && spec.xMaxData !== true
+  const lo0 = zero && data.min > 0.0 ? 0.0 : data.min
+  const hi0 = zero && data.max < 0.0 ? 0.0 : data.max
+  const lo = spec.xMinData === true ? data.min : spec.xMin ?? lo0
+  const hi = spec.xMaxData === true ? data.max : spec.xMax ?? hi0
+  return echartsNiceDomain({ min: lo, max: hi }, split, spec.xMin !== undefined || spec.xMinData === true, spec.xMax !== undefined || spec.xMaxData === true)
+}
+
 function pinDomain(spec: ChartSpec, series: Series[]): Domain {
   const fixMin = spec.yMin !== undefined || spec.yMinData === true
   const fixMax = spec.yMax !== undefined || spec.yMaxData === true
@@ -1093,7 +1116,7 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
       (spec.xValues ?? []).length > 0
         /* v8 ignore next — the inner `?? []` is unreachable: the test above already
            established a non-empty list. Native needs the unwrap; the web cannot reach it. */
-        ? invertedDomain(extent(spec.xValues ?? []), spec.xInverse === true && spec.horizontal !== true)
+        ? invertedDomain(resolveXValueDomain(spec, extent(spec.xValues ?? [])), spec.xInverse === true && spec.horizontal !== true)
         : { min: 0.0, max: n > 1 ? n - 1 : 1.0 },
     yDomain: resolveYDomain(spec),
     categories: spec.categories,

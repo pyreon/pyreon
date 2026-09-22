@@ -417,7 +417,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
       'a log scale applies to the first y axis only',
       'two y axes cannot share a side (ECharts offsets them); a third x axis is ignored',
       'axis keys outside the mapped set are ignored with a warning, and an axis label formatter takes a function or the {value} template only',
-      'the y axes tick as ECharts does (differential-tested); a value or time X axis still uses the engine\'s own nicing, and `interval`, `minInterval` and `maxInterval` are not read',
+      'the y axes and a value X axis tick as ECharts does (differential-tested); a time axis still uses the engine\'s own ticks, and interval, minInterval and maxInterval are not read',
       LITERAL_ONLY,
     ],
     evidence: ['src/engine/option-axes.test.ts', 'src/engine/option-axes-mapping.test.ts', NATIVE + 'chart-axes-native.test.ts', 'src/engine/option-boundary-gap.test.ts', 'src/engine/echarts-differential.test.ts'],
