@@ -28,7 +28,7 @@ WebView escape path; silent drops are release blockers.
 - [ ] **F3 — renderer/chrome parity.** Close static node/edge renderer,
   connection-line, handle, toolbar, resizer, minimap, controls, panel, label,
   marker, theming and animation differences.
-- [ ] **F4 — interaction and accessibility parity.** Device-test pointer/touch,
+- [x] **F4 — interaction and accessibility parity.** Device-test pointer/touch,
   pan/zoom, connect/reconnect, selection, keyboard equivalents, focus,
   accessibility names/roles and reduced motion on both targets.
 - [ ] **F5 — dynamic/browser-rich contract.** Make arbitrary renderer maps,
@@ -250,10 +250,14 @@ native view.
   | node | Space | selects the node | covered by Enter | asserted |
   | edge | Enter | selects the edge | asserted | not deliverable |
   | edge | Space | selects the edge | covered by Enter | asserted |
+  | canvas | Ctrl/Cmd+A | selects every node | asserted | asserted |
+  | canvas | Delete | removes the selection and its edges | asserted | asserted (forward-delete) |
+  | canvas | Ctrl/Cmd+Z | restores the deleted graph | asserted | asserted |
 - **iOS test-harness limit, measured rather than assumed.** XCUITest cannot
   deliver Return or Escape to the app on the simulator. A logging probe saw
   Right Arrow and Space reach both the node and the canvas, and never those two
   keys, whether sent to the element or the application, and whether handled by
-  `onKeyPress` or a `.keyboardShortcut`. The iOS row therefore drives Space, the
+  `onKeyPress` or a `.keyboardShortcut`. Backspace does not arrive either;
+  forward-delete does. The iOS rows therefore drive Space and forward-delete, the
   web's other activation key, and the Android suite owns Enter and Escape.
   Nothing was shipped for Return/Escape on iOS, because it could not be verified.

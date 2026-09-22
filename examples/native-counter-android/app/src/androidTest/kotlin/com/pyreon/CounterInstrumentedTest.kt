@@ -55,6 +55,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.withKeyDown
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
@@ -125,6 +127,20 @@ class CounterInstrumentedTest {
         composeRule.waitUntil(5_000) {
             composeRule.onNodeWithTag("native-flow-selected-node-count").fetchSemanticsNode().config[SemanticsProperties.Text].first().text == "1"
         }
+        // Canvas row: Ctrl+A selects every node, Delete removes them with
+        // their connected edge, and Ctrl+Z restores the graph, as on the web.
+        fun textOfTag(tag: String) = composeRule.onNodeWithTag(tag).fetchSemanticsNode().config[SemanticsProperties.Text].first().text
+        keyboardNode.performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.A) } }
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-selected-node-count") == "2" }
+        keyboardNode.performKeyInput { pressKey(Key.Delete) }
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-edge-count") == "0" }
+        composeRule.onNodeWithContentDescription("Native Flow device proof").performSemanticsAction(SemanticsActions.RequestFocus)
+        composeRule.onNodeWithContentDescription("Native Flow device proof").performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.Z) } }
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-edge-count") == "1" }
+        composeRule.onNodeWithTag("native-flow-clear-selection").performClick()
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-selected-node-count") == "0" }
+        keyboardNode.performClick()
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-selected-node-count") == "1" }
 
         composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("0")
         val keyboardEdge = composeRule.onNodeWithContentDescription("Native flow edge")
