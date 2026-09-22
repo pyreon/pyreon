@@ -67,6 +67,12 @@ every example component MUST accept `{ shared?: Signal<T> }` and fall back to a 
 
 ---
 
+### An Android root activity without `android:configChanges` resets the whole compiled app on rotation or a dark-mode switch
+
+(2026-09). Each configuration change destroys and recreates `MainActivity`, and every PMTC-emitted `remember { mutableStateOf(...) }` starts over. Nothing warns; state just resets. Every example and the `create-multiplatform` scaffold shipped without it, and no device test rotated. **Fix: declare the changes Compose can absorb by recomposing** (`keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode`, the React Native default). **Detection: `ActivityScenario.recreate()` ignores `configChanges`, so it cannot prove the fix. Change the orientation or `UiModeManager.setApplicationNightMode` and assert the activity instance is unchanged.** Locked by `create-multiplatform/src/tests/android-config-changes.test.ts` (scaffold + every example) and the counter's `stateSurvivesRotationAndThemeSwitch` (bisect-verified on an emulator).
+
+---
+
 ### XCUITest element TYPE and tap POINT must be read off the device, not guessed — three of four new device assertions failed for query reasons, not product reasons
 
 (2026-07). Writing device assertions against an assumed accessibility shape produces failures that look exactly like product bugs and bury the real one. Measured shapes from a live simulator dump: (1) a container carrying `.accessibilityElement(children: .contain)` surfaces as **`otherElements`**, NOT as the child's type — so a `<Link>`'s identifier is on an `Other` wrapping the `Button`, and `app.buttons[id]` misses it; (2) `<Scroll>` surfaces as **`scrollViews`**, not `otherElements`; (3) `<Toggle>` lowers to `Toggle("", isOn:)` whose OUTER element spans the full row (measured 402pt) while the real control occupies only the trailing ~63pt — so `element.tap()` hits the row centre, lands in dead label space, and **silently does not flip** (the state text stays put and the failure reads as "the binding never wrote the signal"); tap `element.switches.firstMatch` instead. **General rule: before asserting, dump `app.debugDescription` once and read the element types, identifiers and frames. A device test built on a guessed shape is worse than none — it manufactures failures that mask genuine ones.** Same family as "read the API before probing it".
