@@ -65,7 +65,8 @@
     "bench": "NODE_ENV=production bun bench/wrapper-overhead.bench.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
-    "bench:engine": "NODE_ENV=production bun bench/plot-engine.bench.ts"
+    "bench:engine": "NODE_ENV=production bun bench/plot-engine.bench.ts",
+    "gen:contract": "bun scripts/gen-echarts-contract.ts"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
@@ -89,7 +90,8 @@
     "echarts-for-react": "^3.0.6",
     "happy-dom": "^20.11.6",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "typescript": "^6.0.3"
   },
   "publishConfig": {
     "access": "public"

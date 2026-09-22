@@ -52,6 +52,10 @@ import { decimateShared, samplingRequest } from './sampling'
 import type { SamplingRequest } from './sampling'
 import type { ChartGradientStop, ChartPattern, DrawCmd, Domain, Double, MeasureText, Pt, Rect } from './types'
 import type { SeriesGradient } from './gradient'
+import { ANIMATION_KEYS, resolveAnimation } from './animation-option'
+import { readTooltipOption } from './option-tooltip'
+import type { TooltipSpec } from './option-tooltip'
+import type { ChartAnimation } from './animation-option'
 
 /** An ECharts-shaped option. Loosely typed on purpose: the facade VALIDATES. */
 export type EChartsOption = Record<string, unknown>
@@ -83,6 +87,10 @@ export interface CompiledOption {
   /** Legend entries, or null when the option hides the legend. */
   legend: LegendEntry[] | null
   tooltip: boolean
+  /** ECharts' whole `tooltip` component, read (null when the option declares none). */
+  tooltipSpec: TooltipSpec | null
+  /** The animation the option asks for (ECharts' `animation*` keys). */
+  animation: ChartAnimation
   warnings: OptionWarning[]
   /**
    * False when a series could not be mapped at all. A chart missing one of
@@ -111,17 +119,18 @@ export interface CompileOptions {
   locale?: string | undefined
 }
 
-const KNOWN_TOP = new Set([
+export const KNOWN_TOP: ReadonlySet<string> = new Set([
+  ...ANIMATION_KEYS,
   'aria',
   'series', 'xAxis', 'yAxis', 'title', 'legend', 'tooltip', 'color', 'grid',
-  'animation', 'backgroundColor', 'textStyle', 'dataset', 'graphic', 'visualMap', 'dataZoom', 'toolbox', 'brush',
+  'backgroundColor', 'textStyle', 'dataset', 'graphic', 'visualMap', 'dataZoom', 'toolbox', 'brush',
 ])
-const KNOWN_SERIES = new Set([
+export const KNOWN_SERIES: ReadonlySet<string> = new Set([
+  ...ANIMATION_KEYS,
   'type', 'name', 'data', 'stack', 'smooth', 'step', 'areaStyle', 'itemStyle',
   'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'xAxisIndex', 'markLine', 'markPoint', 'markArea',
-  'color', 'showSymbol', 'symbol', 'emphasis', 'z', 'zlevel', 'silent',
-  'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'rippleEffect', 'showEffectOn',
-  'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex', 'tooltipExtras',
+  'color', 'showSymbol', 'symbol', 'emphasis', 'silent',
+  'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex', 'tooltipExtras',
   'coordinateSystem', 'polyline', 'effect', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'sampling',
   'select', 'blur', 'selectedMode',
 ])
@@ -964,7 +973,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       ? null
       : series.map((s) => ({ label: s.label, color: s.color }))
   const tooltipRaw = option['tooltip']
-  const tooltip = tooltipRaw !== undefined && !(isObj(tooltipRaw) && tooltipRaw['show'] === false)
+  const tooltipSpec = readTooltipOption(tooltipRaw, warn)
+  const tooltip = tooltipSpec !== null && tooltipSpec.show
 
   // A custom-only chart still needs axes: seed them from the custom extents.
   let customY: { min: Double; max: Double } | undefined = undefined
@@ -1061,7 +1071,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   let zoom = option['dataZoom'] === undefined ? undefined : readDataZoom(option as Record<string, unknown>, spec.categories, warn)
   // The toolbox's box zoom needs a window even when the option has no dataZoom component.
   if (zoom === undefined && toolbox?.dataZoom === true) zoom = { inside: false, slider: false, window: { start: 0.0, end: 1.0 }, keepY: false, lock: false, minSpan: 0.0, maxSpan: 1.0, wheel: false, move: false }
-  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }), ...(brush === undefined ? {} : { brush }) }
+  const animation = resolveAnimation(option as Record<string, unknown>, warn)
+  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, tooltipSpec, animation, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }), ...(brush === undefined ? {} : { brush }) }
 }
 
 /** The selection a compiled option's brush makes over `spec`, restricted to `brush.seriesIndex`. */
