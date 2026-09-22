@@ -354,10 +354,10 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'partial',
     native: 'partial',
     gaps: [
-      'an option title reads `text`, `subtext`, `left`/`right`, `textAlign`, `textStyle` and `subtextStyle` color and size, and `itemGap`; `link`/`sublink`, `top`/`bottom`, `textVerticalAlign`, `padding`, `backgroundColor`, borders, shadows and several titles are not read',
+      'a title\'s box has no `borderRadius` or shadow, its text no `rich` styles or font family, and `triggerEvent` raises no click event',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/title-edges.test.ts', 'src/engine/option-title.test.ts', NATIVE + 'chart-chrome-native.test.ts'],
+    evidence: ['src/engine/title-edges.test.ts', 'src/engine/option-title.test.ts', 'src/engine/echarts-differential.test.ts', 'src/engine/option-title-link.browser.test.tsx', NATIVE + 'chart-chrome-native.test.ts'],
   }),
   row('coordinates.legend', 'coordinates', 'direct', {
     web: 'partial',

@@ -48,7 +48,7 @@ import { placeOptionLegend, readOptionLegend } from './option-legend'
 import { optionTitleCommands, readOptionTitle } from './option-title'
 import { optionGridInsets } from './option-grid'
 import { echartsNice, formatTick } from './scale'
-import type { OptionTitle } from './option-title'
+import type { OptionTitle, TitleLink } from './option-title'
 import type { LegendSelectedMode, OptionLegendLayout } from './option-legend'
 import { measureApprox, renderSvg } from './svg'
 import { compileFamily, familyToSvg } from './option-family'
@@ -89,8 +89,10 @@ export interface CompiledOption {
   custom: CustomSeriesPlan[]
   /** Background colour from the theme, painted first by `optionToSvg`; undefined = transparent. */
   background: string | undefined
-  /** Title text + sub-text, when the option carries them. */
+  /** The first title — its text names the chart for assistive tech. */
   title: OptionTitle | null
+  /** Every title component the option draws (ECharts takes an array). */
+  titles: OptionTitle[]
   /** Legend entries, or null when the option hides the legend. */
   legend: LegendEntry[] | null
   /** ECharts' `legend.selectedMode` (a click toggles, keeps one on, or does nothing) and the names `legend.selected` starts off. */
@@ -1015,8 +1017,12 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   }
 
   // ---- title / legend / tooltip ----------------------------------------
-  const titleRaw = first(option['title'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
-  const title = readOptionTitle(titleRaw)
+  const titles: OptionTitle[] = []
+  for (const raw of Array.isArray(option['title']) ? (option['title'] as unknown[]) : [option['title']]) {
+    const read = readOptionTitle(raw)
+    if (read !== null) titles.push(read)
+  }
+  const title = titles[0] ?? null
   const optionLegend = readOptionLegend(option['legend'], series)
   const legend = optionLegend === null ? null : optionLegend.entries
   const tooltipRaw = option['tooltip']
@@ -1145,7 +1151,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   // The toolbox's box zoom needs a window even when the option has no dataZoom component.
   if (zoom === undefined && toolbox?.dataZoom === true) zoom = { inside: false, slider: false, window: { start: 0.0, end: 1.0 }, keepY: false, lock: false, minSpan: 0.0, maxSpan: 1.0, wheel: false, move: false }
   const animation = resolveAnimation(option as Record<string, unknown>, warn)
-  return { spec, custom: customPlans, background: themed.background, title, legend, ...(optionLegend === null ? {} : { legendMode: optionLegend.selectedMode, legendHidden: optionLegend.hidden, legendLayout: optionLegend.layout }), tooltip, tooltipSpec, silent, seriesSource, animation, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }), ...(brush === undefined ? {} : { brush }) }
+  return { spec, custom: customPlans, background: themed.background, title, titles, legend, ...(optionLegend === null ? {} : { legendMode: optionLegend.selectedMode, legendHidden: optionLegend.hidden, legendLayout: optionLegend.layout }), tooltip, tooltipSpec, silent, seriesSource, animation, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }), ...(brush === undefined ? {} : { brush }) }
 }
 
 /** The selection a compiled option's brush makes over `spec`, restricted to `brush.seriesIndex`. */
@@ -1422,7 +1428,7 @@ export function zoomedView(compiled: CompiledOption, reserved: Double | OptionCh
   return { spec: view.spec, offset: view.offset, navigator }
 }
 
-export function compiledCommands(compiled: CompiledOption, option: EChartsOption, measure: MeasureText, win?: ZoomWindow, actives: ToolboxTool[] = [], areas: BrushArea[] = []): { cmds: DrawCmd[]; top: Double; chrome: OptionChrome; legendBoxes: Rect[] } {
+export function compiledCommands(compiled: CompiledOption, option: EChartsOption, measure: MeasureText, win?: ZoomWindow, actives: ToolboxTool[] = [], areas: BrushArea[] = []): { cmds: DrawCmd[]; top: Double; chrome: OptionChrome; legendBoxes: Rect[]; titleLinks: TitleLink[] } {
   const width = compiled.spec.width
   const height = compiled.spec.height
   const t = compiled.spec.theme
@@ -1430,10 +1436,13 @@ export function compiledCommands(compiled: CompiledOption, option: EChartsOption
   let legendBoxes: Rect[] = []
   const cmds: DrawCmd[] = []
   if (compiled.background !== undefined) cmds.push({ kind: 'rect', rect: { x: 0.0, y: 0.0, w: width, h: height }, fill: compiled.background })
-  if (compiled.title !== null) {
-    const tl = optionTitleCommands(compiled.title, width, t)
+  // Every title draws; the plot below leaves room for the lowest one at the top.
+  const titleLinks: TitleLink[] = []
+  for (const title of compiled.titles) {
+    const tl = optionTitleCommands(title, width, height, t, measure)
     for (const c of tl.cmds) cmds.push(c)
-    top = top + tl.height
+    for (const l of tl.links) titleLinks.push(l)
+    top = Math.max(top, tl.height)
   }
   // A grid that places the plot (its `top` set) owns the vertical layout: the
   // title and legend overlay it, as ECharts draws them, instead of pushing it down.
@@ -1464,5 +1473,5 @@ export function compiledCommands(compiled: CompiledOption, option: EChartsOption
   for (const c of graphicCommands(option, width, height).cmds) cmds.push(c)
   // ECharts' toolbox sits over the chart's top-right corner; it reserves no room.
   if (compiled.toolbox !== undefined) for (const c of renderToolbox(toolboxTools(compiled.toolbox), { x: 0.0, y: 0.0, w: width, h: height }, { fontSize: t.fontSize, color: t.label, actives }).cmds) cmds.push(c)
-  return { cmds, top, chrome, legendBoxes }
+  return { cmds, top, chrome, legendBoxes, titleLinks }
 }

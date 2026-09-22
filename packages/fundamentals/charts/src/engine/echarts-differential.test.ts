@@ -19,6 +19,7 @@ import { circleView, familyRect } from './option-layers'
 import { fitCircle, layoutArcsWith } from './arc'
 import { layoutPieLabels } from './pie-labels'
 import { renderDial } from './gauge-dial'
+import { optionTitleCommands, readOptionTitle } from './option-title'
 
 const W = 400
 const H = 300
@@ -424,6 +425,62 @@ describe('ECharts differential: gauges', () => {
         const tol = 0.002
         expect(Math.min(circDiff(b.a[0]!, eb[k]!.a[0]!), circDiff(b.a[0]!, eb[k]!.a[1]!))).toBeLessThan(tol)
         expect(Math.min(circDiff(b.a[1]!, eb[k]!.a[1]!), circDiff(b.a[1]!, eb[k]!.a[0]!))).toBeLessThan(tol)
+      })
+    })
+  }
+})
+
+/**
+ * Titles: the text's and subtext's anchor, vertical centre, size and weight.
+ * ECharts writes each at `translate(group) + y`, centred vertically; the
+ * facade's commands hang from a top / bottom / middle baseline, so they are
+ * compared at their centres.
+ */
+interface TitleFact { text: string; x: number; y: number; anchor: string; size: number; bold: boolean }
+function echartsTitle(option: object): TitleFact[] {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: W, height: H })
+  chart.setOption({ animation: false, ...option })
+  const svg = chart.renderToSVGString()
+  chart.dispose()
+  const title = (option as { title: { text: string; subtext?: string } }).title
+  const wanted = new Set([title.text, title.subtext])
+  // A text at the group's own origin carries no `y` attribute.
+  return [...svg.matchAll(/<text[^>]*text-anchor="(\w+)" style="([^"]*)"[^>]*?(?: y="(-?[\d.]+)")? transform="translate\((-?[\d.]+) (-?[\d.]+)\)"[^>]*>([^<]*)</g)]
+    .filter((m) => wanted.has(m[6]!))
+    .map((m) => ({ text: m[6]!, x: Number(m[4]), y: Number(m[5]) + Number(m[3] ?? 0), anchor: m[1]!, size: Number(/font-size:([\d.]+)px/.exec(m[2]!)![1]), bold: /font-weight:bold/.test(m[2]!) }))
+}
+function ourTitle(option: object): TitleFact[] {
+  const title = readOptionTitle((option as { title: unknown }).title)!
+  const measure = (t: string, size: number): number => echarts.format.getTextRect(t, String(size) + 'px sans-serif').width
+  const theme = { text: '#000', label: '#666' } as never
+  return optionTitleCommands(title, W, H, theme, measure).cmds.flatMap((c) =>
+    c.kind === 'text' ? [{ text: c.text, x: c.at.x, y: c.at.y + (c.baseline === 'top' ? c.size / 2 : c.baseline === 'bottom' ? -c.size / 2 : 0), anchor: c.align, size: c.size, bold: c.weight === 'bold' }] : [],
+  )
+}
+const withTitle = (title: object): object => ({ title, xAxis: { type: 'category', data: ['a'] }, yAxis: {}, series: [{ type: 'bar', data: [1] }] })
+const TITLE_CASES: [string, object][] = [
+  ['the default: centred, 15 from the top', withTitle({ text: 'Revenue', subtext: 'by month' })],
+  ['left in pixels', withTitle({ text: 'Revenue', left: 30 })],
+  ['left as a percent', withTitle({ text: 'Revenue', left: '25%', subtext: 'sub' })],
+  ['left: right', withTitle({ text: 'Revenue', left: 'right' })],
+  ['right in pixels, top in pixels, a small gap', withTitle({ text: 'Right', right: 10, top: 20, subtext: 'sub', itemGap: 4 })],
+  ['textAlign centre on a percent left', withTitle({ text: 'Styled', textStyle: { fontSize: 24, fontWeight: 'normal' }, textAlign: 'center', left: '50%' })],
+  ['top: bottom', withTitle({ text: 'Low', top: 'bottom', subtext: 'lower' })],
+  ['bottom in pixels', withTitle({ text: 'Low', bottom: 10 })],
+  ['top: middle', withTitle({ text: 'Mid', top: 'middle' })],
+  ['a padding array', withTitle({ text: 'Padded', left: 0, top: 0, padding: [12, 8] })],
+]
+
+describe('ECharts differential: titles', () => {
+  for (const [name, option] of TITLE_CASES) {
+    it(name, () => {
+      const e = echartsTitle(option)
+      const u = ourTitle(option)
+      expect(e.length).toBeGreaterThan(0)
+      expect(u.map((f) => [f.text, f.anchor === 'start' ? 'start' : f.anchor === 'end' ? 'end' : 'middle', f.size, f.bold])).toEqual(e.map((f) => [f.text, f.anchor, f.size, f.bold]))
+      u.forEach((f, k) => {
+        expect(f.x).toBeCloseTo(e[k]!.x, 1)
+        expect(f.y).toBeCloseTo(e[k]!.y, 1)
       })
     })
   }

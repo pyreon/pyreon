@@ -186,7 +186,8 @@ describe('composition — the title shifts what the chart drew', () => {
     // Every command in the titled version sits at or below the untitled one.
     const lowest = (c: DrawCmd[]) => Math.min(...c.filter((x) => x.kind === 'rect').map((x) => (x.kind === 'rect' ? x.rect.y : Infinity)))
     expect(lowest(withTitle.cmds)).toBeGreaterThanOrEqual(lowest(plain.cmds))
-    expect(at(withTitle.cmds, 'text')).toBe(0)
+    // ECharts' title sits 15 from the top inside a 5px padding.
+    expect(at(withTitle.cmds, 'text')).toBe(20)
   })
 
   it('every command KIND moves with the title — circles, lines, polylines and text alike', () => {

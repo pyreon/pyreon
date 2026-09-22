@@ -143,8 +143,8 @@ describe('option facade — edge shapes (every branch NAMES its loss)', () => {
 
   it('title (object or array, with or without subtext, non-string text), legend show:false, tooltip forms', () => {
     const base = { xAxis: { data: ['a'] }, yAxis: {}, series: [{ type: 'bar', data: [1] }] }
-    expect(compileOption({ ...base, title: [{ text: 'T', subtext: 'S' }] }).title).toEqual({ text: 'T', subtext: 'S' })
-    expect(compileOption({ ...base, title: { text: 'T' } }).title).toEqual({ text: 'T', subtext: undefined })
+    expect(compileOption({ ...base, title: [{ text: 'T', subtext: 'S' }] }).title).toMatchObject({ text: 'T', subtext: 'S' })
+    expect(compileOption({ ...base, title: { text: 'T' } }).title).toMatchObject({ text: 'T', subtext: undefined })
     expect(compileOption({ ...base, title: { text: 5 } }).title).toBeNull()
     expect(compileOption({ ...base, legend: { show: false } }).legend).toBeNull()
     expect(compileOption({ ...base, legend: {} }).legend).toHaveLength(1)

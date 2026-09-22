@@ -6,6 +6,7 @@
 // two host-less shapes render through `optionToSvg` into an inline `<svg>`. A
 // `timeline` steps on `autoPlay` or is driven by `timelineIndex`.
 
+import type { TitleLink } from './option-title'
 import { h, onMount } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { batch, computed, effect, isServer, signal, untrack } from '@pyreon/reactivity'
@@ -193,6 +194,8 @@ interface OptionGeometry {
   zoom: { top: Double; offset: number; plot: Rect; strip: Rect | null; win: ZoomWindow } | null
   /** The legend entries' boxes in canvas coordinates, in entry order (empty without a legend). */
   legendBoxes: Rect[]
+  /** The title's linked lines (`title.link` / `sublink`). */
+  titleLinks: TitleLink[]
 }
 
 /** The `CanvasHostProps` keys `OptionChartProps` does NOT take (its own `theme`, and the chrome the compiled option draws itself). */
@@ -647,7 +650,7 @@ export function OptionChart(props: OptionChartProps): VNode {
    * visualMap strip, graphic elements and the timeline stay on screen while a
    * state is active (they used to drop out whenever a datum was hovered).
    */
-  const compose = (plan: OptionPlan, resolved: EChartsOption, measure: MeasureText, w: Double, hgt: Double, over: { emphasis?: Emphasis | undefined; time: Double; progress: Double }): { cmds: DrawCmd[]; zoom: OptionGeometry['zoom']; legendBoxes: Rect[] } => {
+  const compose = (plan: OptionPlan, resolved: EChartsOption, measure: MeasureText, w: Double, hgt: Double, over: { emphasis?: Emphasis | undefined; time: Double; progress: Double }): { cmds: DrawCmd[]; zoom: OptionGeometry['zoom']; legendBoxes: Rect[]; titleLinks: TitleLink[] } => {
     const idx = stepIndex()
     const steps = timelineSteps(readOption())
     const stripH = steps === null ? 0.0 : TIMELINE_HEIGHT
@@ -660,6 +663,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     const cmds: DrawCmd[] = []
     let zoom: OptionGeometry['zoom'] = null
     let legendBoxes: Rect[] = []
+    let titleLinks: TitleLink[] = []
     if (plan.kind === 'cartesian') {
       const liveBrush = brushLive()
       const areas = liveBrush === null ? brushAreas() : [...brushAreas(), liveBrush]
@@ -667,6 +671,7 @@ export function OptionChart(props: OptionChartProps): VNode {
       const composed = compiledCommands(compiled, resolved, measure, winOf(plan.compiled), toolActives(), areas)
       for (const c of composed.cmds) cmds.push(c)
       legendBoxes = composed.legendBoxes
+      titleLinks = composed.titleLinks
       for (const c of pointerCmds(plan.compiled, resolved, measure, composed.chrome)) cmds.push(c)
       if (plan.compiled.zoom !== undefined) {
         const win = winOf(plan.compiled)!
@@ -690,7 +695,7 @@ export function OptionChart(props: OptionChartProps): VNode {
       for (const c of graphicCommands(resolved, w, hgt - stripH).cmds) cmds.push(c)
     }
     if (steps !== null) for (const c of timelineCommands({ ...steps, current: idx ?? steps.current }, w, hgt - stripH, stripH, isPlaying())) cmds.push(c)
-    return { cmds, zoom, legendBoxes }
+    return { cmds, zoom, legendBoxes, titleLinks }
   }
 
   /**
@@ -749,8 +754,8 @@ export function OptionChart(props: OptionChartProps): VNode {
     }
     const plan: OptionPlan = planned.kind === 'cartesian' ? { ...planned, compiled: withLegend(withSeriesPins(magicOf(planned.compiled))) } : planned
     const resolved = resolveTimeline(opt, idx).option as EChartsOption
-    const { cmds, zoom, legendBoxes } = compose(plan, resolved, measure, w, hgt, { time: 0.0, progress: 1.0 })
-    return { cmds, plan, option: resolved, measure, w, hgt, zoom, legendBoxes }
+    const { cmds, zoom, legendBoxes, titleLinks } = compose(plan, resolved, measure, w, hgt, { time: 0.0, progress: 1.0 })
+    return { cmds, plan, option: resolved, measure, w, hgt, zoom, legendBoxes, titleLinks }
   }
 
   effect(() => {
@@ -1040,6 +1045,18 @@ export function OptionChart(props: OptionChartProps): VNode {
     return { ...view, lines: axis ? [title, ...ordered.map((e) => `${e.seriesName}: ${e.value}`)] : [ordered[0]!.seriesName, `${title}: ${ordered[0]!.value}`] }
   }
 
+  /** The title link under a point, if any. */
+  const titleLinkAt = (g: OptionGeometry, px: Double, py: Double): TitleLink | undefined =>
+    g.titleLinks.find((l) => px >= l.rect.x && px <= l.rect.x + l.rect.w && py >= l.rect.y && py <= l.rect.y + l.rect.h)
+
+  /** A click on a linked title opens it (ECharts' `title.link` / `sublink`); true when it landed on one. */
+  const titleClickAt = (g: OptionGeometry, px: Double, py: Double): boolean => {
+    const link = titleLinkAt(g, px, py)
+    if (link === undefined) return false
+    if (typeof window !== 'undefined') window.open(link.url, link.target)
+    return true
+  }
+
   /** A click on a legend entry toggles its series (ECharts' `legend.selectedMode`); true when it landed on one. */
   const legendClickAt = (g: OptionGeometry, px: Double, py: Double): boolean => {
     if (g.plan.kind !== 'cartesian' || g.plan.compiled.legend === null) return false
@@ -1200,6 +1217,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     animates: true,
     // ECharts' per-series `cursor` over an item; 'pointer' is its default.
     cursor: (g, px, py) => {
+      if (titleLinkAt(g, px, py) !== undefined) return 'pointer'
       const under = hitAt(g, px, py)
       if (under === null) return ''
       const own = rawSeriesOf(g, under.seriesIndex)?.['cursor']
@@ -1291,6 +1309,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     select: (g, px, py) => {
       if (toolboxClick(g, px, py)) return
       if (timelineClick(g.w, g.hgt, px, py)) return
+      if (titleClickAt(g, px, py)) return
       if (legendClickAt(g, px, py)) return
       const h1 = hitAt(g, px, py)
       const pin = pinMode(g)
