@@ -225,10 +225,10 @@ class CounterInstrumentedTest {
             .text
         val before = label.removePrefix("Notes: ").trim().toInt()
 
-        composeRule.onNodeWithText("Save Note").performClick()
+        composeRule.onNodeWithText("Save Note").performScrollTo().performClick()
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("Notes: ${before + 1}").assertIsDisplayed()
+        composeRule.onNodeWithText("Notes: ${before + 1}").performScrollTo().assertIsDisplayed()
     }
 
     // useDatabase — the record is on the DEVICE'S DISK, not in a cache.
@@ -264,9 +264,9 @@ class CounterInstrumentedTest {
             .trim()
             .toInt()
 
-        composeRule.onNodeWithText("Save Note").performClick()
+        composeRule.onNodeWithText("Save Note").performScrollTo().performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Notes: ${before + 1}").assertIsDisplayed()
+        composeRule.onNodeWithText("Notes: ${before + 1}").performScrollTo().assertIsDisplayed()
 
         // A cold reader over the same app-private directory. The context comes
         // from the rule's own activity rather than InstrumentationRegistry:
