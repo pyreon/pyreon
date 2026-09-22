@@ -41,6 +41,58 @@ final class PyreonCounterUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    private func waitForLabel(_ el: XCUIElement, _ expected: String, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if el.exists && el.label == expected { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return el.exists && el.label == expected
+    }
+
+    /// The F3 controls live at the END of the page (so they cannot push the
+    /// counter's own controls below the fold); tapping one scrolls the canvas
+    /// away, and a screenshot or gesture on it needs it back on screen first.
+    private func bringFullyOnScreen(_ element: XCUIElement, in app: XCUIApplication) {
+        let scroll = app.scrollViews.firstMatch
+        for _ in 0..<20 {
+            let window = app.windows.firstMatch.frame
+            if element.frame.minY < window.minY + 60 {
+                scroll.swipeDown(velocity: .slow)
+            } else if element.frame.maxY > window.maxY - 60 {
+                scroll.swipeUp(velocity: .slow)
+            } else {
+                return
+            }
+        }
+    }
+
+    /// Swift renders a Double label as `50.0` where Android prints `50`.
+    private func waitForNumber(_ el: XCUIElement, _ expected: Int, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if el.exists && Double(el.label) == Double(expected) { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return el.exists && Double(el.label) == Double(expected)
+    }
+
+    private func colorPixels(_ png: Data, _ r: Int, _ g: Int, _ b: Int) -> Int {
+        // Redrawn into a known RGBA8 buffer: a screenshot's own pixel format varies by device.
+        guard let image = UIImage(data: png)?.cgImage else { return 0 }
+        let w = image.width, h = image.height
+        var buf = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &buf, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return 0 }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var n = 0
+        var i = 0
+        while i + 3 < buf.count {
+            if abs(Int(buf[i]) - r) <= 6 && abs(Int(buf[i + 1]) - g) <= 6 && abs(Int(buf[i + 2]) - b) <= 6 { n += 1 }
+            i += 4
+        }
+        return n
+    }
+
     override func tearDownWithError() throws {
         // Return every test to a clean slate. THE CI-flake root cause this
         // guards: a test that leaves a system modal open (the Share sheet) or
@@ -69,14 +121,114 @@ final class PyreonCounterUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["source handle out"].firstMatch.exists)
         XCTAssertTrue(app.descendants(matching: .any)["target handle in"].firstMatch.exists)
 
+        // F3 renderer parity — the chrome the flow audit listed as unproven on
+        // device. Every check reads something the RENDERER did, not the engine.
+        let canvas = app.descendants(matching: .any)["Native Flow device proof"].firstMatch
+        XCTAssertTrue(canvas.waitForExistence(timeout: 5))
+        // <Panel position="bottom-right"> lands in the canvas's bottom-right quadrant.
+        let panel = app.staticTexts["native-flow-panel"].firstMatch
+        XCTAssertTrue(panel.waitForExistence(timeout: 5), "the <Panel> content did not render over the native canvas")
+        XCTAssertGreaterThan(panel.frame.midX, canvas.frame.midX, "bottom-right panel sits left of the canvas centre (\(panel.frame) in \(canvas.frame))")
+        XCTAssertGreaterThan(panel.frame.midY, canvas.frame.midY, "bottom-right panel sits above the canvas centre (\(panel.frame) in \(canvas.frame))")
+        // The seed edge's closed arrowhead is pure #ff0000, which nothing else on this screen paints.
+        XCTAssertGreaterThan(colorPixels(canvas.screenshot().pngRepresentation, 255, 0, 0), 0, "the edge's red markerEnd arrowhead did not paint on the native canvas")
+        // colorMode is reactive: the web's dark canvas colour (#0b1220) paints only while dark.
+        let colorMode = app.staticTexts["native-flow-color-mode"].firstMatch
+        XCTAssertTrue(colorMode.waitForExistence(timeout: 5))
+        XCTAssertEqual(colorMode.label, "light")
+        XCTAssertEqual(colorPixels(canvas.screenshot().pngRepresentation, 11, 18, 32), 0, "the dark canvas colour painted while colorMode is light")
+        let toggleDark = app.buttons["native-flow-toggle-dark"].firstMatch
+        XCTAssertTrue(toggleDark.waitForExistence(timeout: 5))
+        toggleDark.tap()
+        XCTAssertTrue(waitForLabel(colorMode, "dark", timeout: 5))
+        bringFullyOnScreen(canvas, in: app)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        XCTAssertGreaterThan(colorPixels(canvas.screenshot().pngRepresentation, 11, 18, 32), 1000, "colorMode=\"dark\" did not paint the web's dark canvas colour")
+        toggleDark.tap()
+        XCTAssertTrue(waitForLabel(colorMode, "light", timeout: 5))
+        bringFullyOnScreen(canvas, in: app)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        XCTAssertEqual(colorPixels(canvas.screenshot().pngRepresentation, 11, 18, 32), 0, "the dark canvas colour outlived colorMode=\"dark\"")
+
+        let selectedNodeCount = app.staticTexts["native-flow-selected-node-count"].firstMatch
+        XCTAssertTrue(selectedNodeCount.waitForExistence(timeout: 10))
+        XCTAssertEqual(selectedNodeCount.label, "0")
+        let keyboardNode = app.descendants(matching: .any)["Native Flow Start"].firstMatch
+        keyboardNode.tap()
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: selectedNodeCount)
+        XCTAssertEqual(XCTWaiter().wait(for: [selected], timeout: 5), .completed, "tapping a rendered native node did not select it")
+        let startPosition = app.staticTexts["native-flow-start-position"].firstMatch
+        XCTAssertTrue(startPosition.waitForExistence(timeout: 5))
+        let positionBeforeKey = startPosition.label
+        keyboardNode.typeKey(.rightArrow, modifierFlags: [])
+        let keyboardMoved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", positionBeforeKey), object: startPosition)
+        XCTAssertEqual(XCTWaiter().wait(for: [keyboardMoved], timeout: 5), .completed, "Right Arrow did not move the focused native Flow node")
+
+        let selectedEdgeCount = app.staticTexts["native-flow-selected-edge-count"].firstMatch
+        XCTAssertTrue(selectedEdgeCount.waitForExistence(timeout: 5))
+        let clearSelection = app.buttons["native-flow-clear-selection"].firstMatch
+        XCTAssertTrue(clearSelection.waitForExistence(timeout: 5))
+        app.descendants(matching: .any)["Native flow edge"].firstMatch.tap()
+        let edgeSelectedByTap = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: selectedEdgeCount)
+        XCTAssertEqual(XCTWaiter().wait(for: [edgeSelectedByTap], timeout: 5), .completed, "tapping a native Flow edge label did not select it")
+        clearSelection.tap()
+        let edgeClearedByButton = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: selectedEdgeCount)
+        XCTAssertEqual(XCTWaiter().wait(for: [edgeClearedByButton], timeout: 5), .completed)
+
         let edgeCount = app.staticTexts["native-flow-edge-count"].firstMatch
         XCTAssertTrue(edgeCount.waitForExistence(timeout: 10))
         XCTAssertEqual(edgeCount.label, "1")
-        // Connect end -> start so this gesture creates a distinct reverse edge.
-        let source = app.descendants(matching: .any).matching(identifier: "source handle out").element(boundBy: 1)
-        let target = app.descendants(matching: .any)["target handle in"].firstMatch
+        // Connect end -> start before exposing the selected seed edge's
+        // endpoint controls for the independent reconnect gesture below.
+        let startNode = app.descendants(matching: .any)["Native Flow Start"].firstMatch
+        let connectionSourceNode = app.descendants(matching: .any)["Native Flow End"].firstMatch
+        let source = try XCTUnwrap(
+            app.descendants(matching: .any).matching(identifier: "source handle out").allElementsBoundByIndex.min {
+                abs($0.frame.midX - connectionSourceNode.frame.maxX) + abs($0.frame.midY - connectionSourceNode.frame.midY)
+                    < abs($1.frame.midX - connectionSourceNode.frame.maxX) + abs($1.frame.midY - connectionSourceNode.frame.midY)
+            }
+        )
+        let target = try XCTUnwrap(
+            app.descendants(matching: .any).matching(identifier: "target handle in").allElementsBoundByIndex.min {
+                abs($0.frame.midX - startNode.frame.minX) + abs($0.frame.midY - startNode.frame.midY)
+                    < abs($1.frame.midX - startNode.frame.minX) + abs($1.frame.midY - startNode.frame.midY)
+            }
+        )
         XCTAssertGreaterThanOrEqual(source.frame.width, 43.5, "source handle touch target is below the native minimum")
         let sourceGrab = source.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        // connectionLine={NativeConnectionLine} renders ONLY mid-drag. Two
+        // proofs: a main-queue timer fires inside the synchronous gesture's
+        // nested run loop and queries the tree mid-hold, and the component
+        // reports its own mount into a store the app reads back (0 before any
+        // drag, 1 after). The drag runs mostly SIDEWAYS from the Start node's
+        // source handle into empty canvas — a vertical one is claimed by the
+        // page's ScrollView before the handle's DragGesture sees it — and the
+        // release over empty canvas connects nothing, so the edge count stays 1.
+        let customLine = app.descendants(matching: .any)["native-flow-custom-line"].firstMatch
+        XCTAssertFalse(customLine.exists, "the custom connection line rendered before any drag")
+        let customLineMounts = app.staticTexts["native-flow-custom-line-mounts"].firstMatch
+        XCTAssertTrue(customLineMounts.waitForExistence(timeout: 5))
+        XCTAssertEqual(customLineMounts.label, "0")
+        let startSource = try XCTUnwrap(
+            app.descendants(matching: .any).matching(identifier: "source handle out").allElementsBoundByIndex.min {
+                abs($0.frame.midX - startNode.frame.maxX) + abs($0.frame.midY - startNode.frame.midY)
+                    < abs($1.frame.midX - startNode.frame.maxX) + abs($1.frame.midY - startNode.frame.midY)
+            }
+        )
+        let startGrab = startSource.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        var customLineSeenMidDrag = false
+        // XCUI event synthesis has seconds of upfront latency: fire late enough
+        // to land inside the hold, which is long enough to absorb it.
+        let midDrag = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: false) { _ in
+            customLineSeenMidDrag = customLine.exists
+        }
+        RunLoop.main.add(midDrag, forMode: .common)
+        startGrab.press(forDuration: 0.3, thenDragTo: startGrab.withOffset(CGVector(dx: 40, dy: -40)), withVelocity: .slow, thenHoldForDuration: 6)
+        let mountsAfterEmptyDrag = customLineMounts.label
+        XCTAssertFalse(customLine.exists, "the custom connection line outlived the drag")
+        XCTAssertEqual(edgeCount.label, "1", "releasing over empty canvas must not connect")
+        XCTAssertTrue(waitForLabel(customLineMounts, "1", timeout: 5), "connectionLine={NativeConnectionLine} did not mount while dragging a source handle (label after drag: \(mountsAfterEmptyDrag); connect starts: \(app.staticTexts["native-flow-connect-starts"].firstMatch.label))")
+        XCTAssertTrue(customLineSeenMidDrag, "connectionLine={NativeConnectionLine} was not in the accessibility tree mid-drag")
         sourceGrab.press(
             forDuration: 0.3,
             thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)),
@@ -85,6 +237,7 @@ final class PyreonCounterUITests: XCTestCase {
         )
         let connected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "2"), object: edgeCount)
         XCTAssertEqual(XCTWaiter().wait(for: [connected], timeout: 5), .completed, "connecting the rendered handles did not add an edge")
+        XCTAssertTrue(waitForLabel(customLineMounts, "2", timeout: 5), "the custom connection line did not mount again for the real connect (label: \(customLineMounts.label))")
 
         let size = app.staticTexts["native-flow-start-size"].firstMatch
         XCTAssertTrue(size.waitForExistence(timeout: 10))
@@ -101,6 +254,65 @@ final class PyreonCounterUITests: XCTestCase {
         )
         let resized = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", "150.0,60.0"), object: size)
         XCTAssertEqual(XCTWaiter().wait(for: [resized], timeout: 5), .completed, "dragging the southeast resizer did not change the native node dimensions")
+
+        let edgeTarget = app.staticTexts["native-flow-edge-target"].firstMatch
+        XCTAssertTrue(edgeTarget.waitForExistence(timeout: 10))
+        XCTAssertEqual(edgeTarget.label, "native-end")
+        let prepareReconnect = app.buttons["native-flow-prepare-reconnect"].firstMatch
+        XCTAssertTrue(prepareReconnect.waitForExistence(timeout: 10))
+        prepareReconnect.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["Native Flow Third"].waitForExistence(timeout: 10))
+        let reconnect = app.descendants(matching: .any)["Reconnect target of edge native-edge"].firstMatch
+        XCTAssertTrue(reconnect.waitForExistence(timeout: 10))
+        XCTAssertGreaterThanOrEqual(reconnect.frame.width, 43.5, "reconnect touch target is below the native minimum")
+        let thirdNode = app.descendants(matching: .any)["Native Flow Third"].firstMatch
+        let thirdTarget = try XCTUnwrap(
+            app.descendants(matching: .any).matching(identifier: "target handle in").allElementsBoundByIndex.min {
+                abs($0.frame.midX - thirdNode.frame.minX) + abs($0.frame.midY - thirdNode.frame.midY)
+                    < abs($1.frame.midX - thirdNode.frame.minX) + abs($1.frame.midY - thirdNode.frame.midY)
+            }
+        )
+        let reconnectGrab = reconnect.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        reconnectGrab.press(
+            forDuration: 0.3,
+            thenDragTo: thirdTarget.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)),
+            withVelocity: .slow,
+            thenHoldForDuration: 0.3
+        )
+        let reconnected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "native-third"), object: edgeTarget)
+        XCTAssertEqual(XCTWaiter().wait(for: [reconnected], timeout: 5), .completed, "dragging the selected edge endpoint did not reconnect its target")
+
+        let viewportX = app.staticTexts["native-flow-viewport-x"].firstMatch
+        XCTAssertTrue(canvas.exists)
+        XCTAssertTrue(viewportX.waitForExistence(timeout: 5))
+        let xBeforePan = viewportX.label
+        let panStart = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05))
+        panStart.press(forDuration: 0.2, thenDragTo: panStart.withOffset(CGVector(dx: 45, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        let panned = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", xBeforePan), object: viewportX)
+        XCTAssertEqual(XCTWaiter().wait(for: [panned], timeout: 5), .completed, "dragging empty canvas space did not pan the native viewport")
+
+        let zoom = app.staticTexts["native-flow-zoom-percent"].firstMatch
+        XCTAssertTrue(zoom.waitForExistence(timeout: 5))
+        let zoomBeforePinch = zoom.label
+        canvas.pinch(withScale: 1.5, velocity: 1)
+        let pinched = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", zoomBeforePinch), object: zoom)
+        XCTAssertEqual(XCTWaiter().wait(for: [pinched], timeout: 5), .completed, "pinching the native canvas did not change viewport zoom")
+
+        // Reduced motion, the web's `config.reducedMotion` contract: while ON a
+        // 3s viewport animation lands at once; flipped OFF through `config`, the
+        // same call is mid-flight 0.4s later and settles by 3s — so "instant"
+        // cannot be mistaken for "animation unsupported".
+        let animateZoom = app.buttons["native-flow-animate-zoom"].firstMatch
+        XCTAssertTrue(animateZoom.waitForExistence(timeout: 5))
+        animateZoom.tap()
+        XCTAssertTrue(waitForNumber(zoom, 50, timeout: 1), "reducedMotion: true did not make the 3s zoom animation land instantly (label: \(zoom.label))")
+        app.buttons["native-flow-allow-motion"].firstMatch.tap()
+        app.buttons["native-flow-animate-zoom-back"].firstMatch.tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        let midFlight = Double(zoom.label)
+        XCTAssertNotEqual(midFlight, 100, "with reduced motion off the 3s zoom animation jumped straight to its target")
+        XCTAssertNotEqual(midFlight, 50, "with reduced motion off the zoom animation never started")
+        XCTAssertTrue(waitForNumber(zoom, 100, timeout: 6), "the zoom animation never settled (label: \(zoom.label))")
     }
 
     /// Maps/geolocation — a BEHAVIORAL proof, not a does-not-crash one.
@@ -344,6 +556,14 @@ final class PyreonCounterUITests: XCTestCase {
             openButton.waitForExistence(timeout: 30),
             "Open button (useLinking) did not appear"
         )
+        // The page is one outer vertical Scroll, and the rows above Open grow with
+        // every flow device proof added to it — an unscrolled tap on a button below
+        // the fold lands on nothing. Same frame-inside-window loop as the Unlock test.
+        var openSwipes = 0
+        while !(openButton.isHittable && app.windows.firstMatch.frame.contains(openButton.frame)) && openSwipes < 10 {
+            app.swipeUp()
+            openSwipes += 1
+        }
         openButton.tap()
 
         // `UIApplication.shared.open` hands the URL to the OS: this app

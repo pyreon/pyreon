@@ -1849,3 +1849,53 @@ export function C() {
     }
   })
 })
+
+describe('Flow colour-mode palette lowering', () => {
+  // The web themes through `--pyreon-flow-*` variables scoped to the
+  // `.pyreon-flow[data-color-mode]` container. Both native renderers resolve
+  // the same tokens from `colorMode` at RENDER time, so the compiler must not
+  // bake a light-only literal into the chrome it lowers, and must re-apply
+  // the mode over the `<Panel>` overlays it stacks beside the canvas.
+  const themed = `
+    import { createFlow, Flow, Background, MiniMap, Panel } from '@pyreon/flow'
+    import { Text } from '${P}'
+    export function Diagram() {
+      const flow = createFlow({ nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: { label: 'A' } }], edges: [] })
+      return (
+        <Flow instance={flow} colorMode="dark">
+          <Background />
+          <MiniMap nodeColor={(node) => node.data.label} />
+          <Panel position="bottom-right"><Text>Zoom</Text></Panel>
+        </Flow>
+      )
+    }
+  `
+
+  it('leaves unspecified chrome colours to the palette and scopes the mode over the overlays on Swift', () => {
+    const result = transform(themed, { target: 'swift' })
+    expect(result.warnings ?? []).toEqual([])
+    expect(result.code).toContain('background: PyreonFlowBackgroundStyle(variant: .dots, gap: 20, size: 1, color: nil)')
+    expect(result.code).toContain('miniMap: PyreonFlowMiniMapStyle(nodeColor: nil, maskColor: "#000000", width: 200, height: 150, pannable: true, zoomable: true)')
+    expect(result.code).toContain('miniMapNodeColor:')
+    expect(result.code).toContain('}\n.pyreonFlowColorMode("dark")')
+    const validation = validateSwiftWithStubs(result.code)
+    expect(validation.ok, validation.error ?? '').toBe(true)
+  })
+
+  it('leaves unspecified chrome colours to the palette and scopes the mode over the overlays on Kotlin', () => {
+    const result = transform(themed, { target: 'kotlin' })
+    expect(result.warnings ?? []).toEqual([])
+    expect(result.code).toContain('background = PyreonFlowBackgroundStyle(variant = PyreonFlowBackgroundVariant.Dots, gap = 20.0, size = 1.0, color = null)')
+    expect(result.code).toContain('miniMap = PyreonFlowMiniMapStyle(nodeColor = null, maskColor = "#000000", width = 200.0, height = 150.0, pannable = true, zoomable = true)')
+    expect(result.code).toContain('miniMapNodeColor =')
+    expect(result.code).toContain('PyreonFlowColorMode("dark") {\nBox {')
+    const validation = validateKotlin(result.code)
+    expect(validation.ok, validation.error ?? '').toBe(true)
+  })
+
+  it('does not wrap the overlays when no colorMode is set', () => {
+    const plain = themed.replace(' colorMode="dark"', '')
+    expect(transform(plain, { target: 'swift' }).code).not.toContain('pyreonFlowColorMode')
+    expect(transform(plain, { target: 'kotlin' }).code).not.toContain('PyreonFlowColorMode(')
+  })
+})
