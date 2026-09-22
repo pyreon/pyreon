@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest'
 import * as echarts from 'echarts'
 import { compileOption, compiledCommands } from './option'
 import type { EChartsOption } from './option'
-import { barsFor, layoutChart } from './render'
+import { barsFor, layoutChart, renderChart } from './render'
 import { compileFamily } from './option-family'
 import { circleView, familyRect } from './option-layers'
 import { fitCircle, layoutArcsWith } from './arc'
@@ -542,6 +542,94 @@ describe('ECharts differential: legends', () => {
         expect(f.x).toBeCloseTo(e[k]!.x, 0)
         expect(f.y).toBeCloseTo(e[k]!.y, 0)
       })
+    })
+  }
+})
+
+/**
+ * Line symbols: which data draw a symbol. ECharts 6 shows an emptyCircle at
+ * every datum unless they crowd the category axis (`showAllSymbol: 'auto'`),
+ * where it keeps only those at the axis's label interval.
+ */
+function echartsSymbolIndices(option: object): number[] {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: W, height: H })
+  chart.setOption({ animation: false, ...option })
+  const svg = chart.renderToSVGString()
+  chart.dispose()
+  return [...svg.matchAll(/transform="matrix\([^)]*\)"[^>]*ecmeta_series_index="0" ecmeta_data_index="(\d+)"/g)].map((m) => Number(m[1])).sort((a, b) => a - b)
+}
+function ourSymbolIndices(option: object): number[] {
+  const c = compileOption(option as EChartsOption, { width: W, height: H })
+  const m = (t: string, size: number): number => echarts.format.getTextRect(t, String(size) + 'px sans-serif').width
+  const lay = layoutChart(c.spec, m)
+  const n = c.spec.categories.length
+  const step = lay.plot.w / n
+  const color = c.spec.series[0]!.color
+  // A symbol's outer shape is the series colour: a filled one, or an empty one's ring.
+  const xs = renderChart(c.spec, m).flatMap((cmd) => (cmd.kind === 'circle' && cmd.fill === color ? [cmd.center.x] : cmd.kind === 'polygon' && cmd.fill === color && cmd.points.length <= 4 ? [cmd.points.reduce((a, p) => a + p.x, 0) / cmd.points.length] : []))
+  return xs.map((x) => Math.round((x - lay.plot.x) / step - 0.5) + 0).sort((a, b) => a - b)
+}
+const lineN = (n: number, series: object = {}): object => ({
+  xAxis: { type: 'category', data: Array.from({ length: n }, (_, i) => 'c' + String(i)) },
+  yAxis: { type: 'value' },
+  series: [{ type: 'line', data: Array.from({ length: n }, (_, i) => (i * 7) % 11 + 1), ...series }],
+})
+const SYMBOL_CASES: [string, object][] = [
+  ['a short line shows every symbol', lineN(7)],
+  ['a crowded line thins to the label interval', lineN(60)],
+  ['showSymbol: false shows none', lineN(7, { showSymbol: false })],
+  ['showAllSymbol: true shows every one, crowded or not', lineN(60, { showAllSymbol: true })],
+  ['a filled triangle', lineN(7, { symbol: 'triangle' })],
+  ['symbol none', lineN(7, { symbol: 'none' })],
+]
+
+describe('ECharts differential: line symbols', () => {
+  for (const [name, option] of SYMBOL_CASES) {
+    it(name, () => {
+      expect(ourSymbolIndices(option)).toEqual(echartsSymbolIndices(option))
+    })
+  }
+})
+
+/**
+ * The plot rect: ECharts 6's default grid (15% / 65 / 10% / 80), grown where
+ * the axis labels would leave the chart (`outerBoundsMode: 'auto'`). Read off
+ * ECharts' horizontal split lines — their x run is the plot's width, the
+ * outermost two its top and bottom.
+ */
+function echartsPlot(option: object): { x0: number; x1: number; y0: number; y1: number } {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: W, height: H })
+  chart.setOption({ animation: false, ...option })
+  const svg = chart.renderToSVGString()
+  chart.dispose()
+  const lines = [...svg.matchAll(/<path d="M([\d.]+) ([\d.]+)L([\d.]+) ([\d.]+)" fill="none"[^>]*stroke="#dbdee4"/g)].map((m) => [m[1], m[2], m[3], m[4]].map(Number) as [number, number, number, number])
+  const ys = lines.map((l) => l[1])
+  return { x0: lines[0]![0], x1: lines[0]![2], y0: Math.min(...ys), y1: Math.max(...ys) }
+}
+function ourPlot(option: object): { x0: number; x1: number; y0: number; y1: number } {
+  const c = compileOption(option as EChartsOption, { width: W, height: H })
+  const m = (t: string, size: number): number => echarts.format.getTextRect(t, String(size) + 'px sans-serif').width
+  const p = layoutChart(c.spec, m).plot
+  return { x0: p.x, x1: p.x + p.w, y0: p.y, y1: p.y + p.h }
+}
+const PLOT_CASES: [string, object][] = [
+  ['the default grid', line([1, 3, 2, 4])],
+  ['seven-digit labels still fit the 15% margin', line([150000, 230000, 224000])],
+  ['ten-digit labels push the left edge out', line([1500000000, 2300000000, 900000000])],
+  ['a pinned left grows to hold its labels', { ...line([150000, 230000, 224000]), grid: { left: 10 } }],
+  ['a whole grid', { ...line([1, 3, 2, 4]), grid: { left: 50, right: 30, top: 40, bottom: 50 } }],
+]
+
+describe('ECharts differential: the plot rect', () => {
+  for (const [name, option] of PLOT_CASES) {
+    it(name, () => {
+      const e = echartsPlot(option)
+      const u = ourPlot(option)
+      // ECharts draws a 1px line at a half pixel.
+      expect(Math.abs(u.x0 - e.x0)).toBeLessThan(1.5)
+      expect(Math.abs(u.x1 - e.x1)).toBeLessThan(1.5)
+      expect(Math.abs(u.y0 - e.y0)).toBeLessThan(1.5)
+      expect(Math.abs(u.y1 - e.y1)).toBeLessThan(1.5)
     })
   }
 })

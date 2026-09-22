@@ -2,7 +2,9 @@
  * A single ECharts `grid`'s position as the engine's plot insets: `left`,
  * `top`, `right`, `bottom` (pixels or a percent of the chart) and `width` /
  * `height`, which fix the far side when the near one is set. A side the grid
- * does not set keeps the engine's label-sized gutter.
+ * does not set takes ECharts 6's default (15% / 65 / 10% / 80), and under
+ * `outerBoundsMode: 'auto'` (the default) a side still grows where its axis
+ * labels would otherwise leave the chart.
  */
 import type { Double } from './types'
 
@@ -24,12 +26,20 @@ export interface GridInsets {
   gridTop?: Double
   gridRight?: Double
   gridBottom?: Double
+  /** Grow a side to keep its axis labels inside the chart (ECharts' `outerBoundsMode: 'auto'`, or the legacy `containLabel`). */
+  gridContain?: boolean
 }
+
+/** Marks a multi-grid part's sub-option: the part's rect IS its grid, laid out by the labels inside it. */
+export const GRID_PART_KEY = "__pyreonGridPart"
 
 /** The insets a single grid sets; nothing for a multi-grid option (the composite splits those). */
 export function optionGridInsets(raw: unknown, width: Double, height: Double): GridInsets {
-  const g = Array.isArray(raw) ? (raw.length === 1 ? raw[0] : undefined) : raw
-  if (!isObj(g)) return {}
+  if (Array.isArray(raw) && raw.length > 1) return {}
+  const g0 = Array.isArray(raw) ? raw[0] : raw
+  if (isObj(g0) && g0[GRID_PART_KEY] === true) return {}
+  // No grid at all is ECharts' default grid.
+  const g: Obj = isObj(g0) ? g0 : {}
   const out: GridInsets = {}
   const left = px(g['left'], width)
   const right = px(g['right'], width)
@@ -45,5 +55,11 @@ export function optionGridInsets(raw: unknown, width: Double, height: Double): G
   else if (top !== undefined && h !== undefined) out.gridBottom = Math.max(0.0, height - top - h)
   if (left === undefined && right !== undefined && w !== undefined) out.gridLeft = Math.max(0.0, width - right - w)
   if (top === undefined && bottom !== undefined && h !== undefined) out.gridTop = Math.max(0.0, height - bottom - h)
+  // ECharts 6's default for a side left unset.
+  if (out.gridLeft === undefined) out.gridLeft = width * 0.15
+  if (out.gridTop === undefined) out.gridTop = 65.0
+  if (out.gridRight === undefined) out.gridRight = width * 0.1
+  if (out.gridBottom === undefined) out.gridBottom = 80.0
+  if (g['outerBoundsMode'] !== 'none' && g['outerBoundsMode'] !== 'same') out.gridContain = true
   return out
 }

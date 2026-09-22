@@ -345,10 +345,10 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'partial',
     native: 'partial',
     gaps: [
-      'a chart with no `grid` sizes its gutters to its labels instead of ECharts\' default grid (left 15%, top 65, right 10%, bottom 80); `containLabel` and the `outerBounds` keys are not read',
+      'ECharts 6\'s default grid and its `outerBoundsMode: \'auto\'` growth are matched (differential-tested); a custom `outerBounds` rect, `outerBoundsContain` and the 25% clamp are not read, and the growth follows the axis labels, not the axis names',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/option-composite.test.ts', 'src/engine/option-grid.test.ts', NATIVE + 'chart-axes-native.test.ts'],
+    evidence: ['src/engine/option-composite.test.ts', 'src/engine/option-grid.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-axes-native.test.ts'],
   }),
   row('coordinates.title', 'coordinates', 'direct', {
     web: 'partial',
@@ -425,7 +425,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     gaps: [
       'a log scale applies to the first y axis only',
       'two y axes cannot share a side (ECharts offsets them); a third x axis is ignored',
-      'axis keys outside the mapped set are ignored with a warning, and an axis label formatter takes a function or the {value} template only',
+      'axis keys outside the mapped set are ignored with a warning; an axis label formatter takes a function or the {value} template only; the x axis reads `axisLabel.rotate` and `interval` (a category axis thins by ECharts\' calculateCategoryInterval), the y axes neither',
       'the y axes and a value X axis tick as ECharts does (differential-tested); a time axis still uses the engine\'s own ticks, and interval, minInterval and maxInterval are not read',
       LITERAL_ONLY,
     ],
@@ -626,8 +626,8 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
   row('presentation.symbols', 'presentation', 'direct', {
     web: 'partial',
     native: 'partial',
-    gaps: ['`path://`, `image://`, `pin`, `arrow` and `none` symbols draw as a circle', LITERAL_ONLY],
-    evidence: ['src/engine/option-symbols.test.ts', NATIVE + 'chart-symbols-native.test.ts'],
+    gaps: ['`path://`, `image://`, `pin` and `arrow` symbols draw as a circle', LITERAL_ONLY],
+    evidence: ['src/engine/option-symbols.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-symbols-native.test.ts'],
   }),
   row('presentation.gradients-patterns', 'presentation', 'direct', {
     web: 'partial',

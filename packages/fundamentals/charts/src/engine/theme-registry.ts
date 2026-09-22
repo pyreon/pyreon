@@ -33,6 +33,8 @@ export interface ResolvedTheme {
   palette: readonly string[] | null
   chartTheme: ChartTheme
   background: string | undefined
+  /** The text size the definition set, or undefined when it left the default. */
+  fontSize?: number | undefined
 }
 
 const registry = new Map<string, ThemeDefinition>([
@@ -82,5 +84,5 @@ export function resolveTheme(theme: string | ThemeDefinition | undefined, warnin
   const tokens = tokensOf(def)
   const chartTheme = resolveChartTheme(defaultTheme, tokens)
   const palette = tokens.palette !== undefined && tokens.palette.length > 0 ? tokens.palette.slice() : null
-  return { palette, chartTheme, background: tokens.background === '' ? undefined : tokens.background }
+  return { palette, chartTheme, background: tokens.background === '' ? undefined : tokens.background, fontSize: tokens.fontSize }
 }

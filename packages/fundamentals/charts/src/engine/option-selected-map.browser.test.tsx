@@ -15,8 +15,9 @@ const option = (extra: Record<string, unknown>): EChartsOption => ({
 const pixel = (c: HTMLCanvasElement, i: number): number[] => {
   const w = c.getBoundingClientRect().width
   const dpr = c.width / w
-  const x = 40 + ((w - 50) / 3) * (i + 0.5)
-  return Array.from(c.getContext('2d')!.getImageData(Math.round(x * dpr), Math.round(200 * dpr), 1, 1).data.slice(0, 3))
+  // ECharts' default grid: the plot runs from 15% to 90% of the width and ends 80 above the bottom.
+  const x = w * 0.15 + ((w * 0.75) / 3) * (i + 0.5)
+  return Array.from(c.getContext('2d')!.getImageData(Math.round(x * dpr), Math.round(172 * dpr), 1, 1).data.slice(0, 3))
 }
 
 describe('<OptionChart> selectedMap (real browser)', () => {

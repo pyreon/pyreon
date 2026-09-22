@@ -429,7 +429,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     legendHoverLink: 'runtime.events',
     polarId: 'coordinates.polar',
     polarIndex: 'coordinates.polar',
-    showAllSymbol: 'series.line',
     smoothMonotone: 'series.line',
     sourceHeader: 'data.dimensions-encode',
     stackOrder: 'series.line',

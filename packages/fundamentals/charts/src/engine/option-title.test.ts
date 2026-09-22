@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { optionTitleCommands, readOptionTitle } from './option-title'
 import { compileOption, compiledCommands } from './option'
+import { GRID_PART_KEY } from './option-grid'
 import type { ChartTheme } from './render'
 
 // The placement itself is held against ECharts' SSR output in echarts-differential;
@@ -71,7 +72,8 @@ describe('option title', () => {
   })
 
   it('several titles all draw; the plot below leaves room for the lowest at the top', () => {
-    const option = { title: [{ text: 'One', left: 10 }, { text: 'Two', subtext: 'sub', right: 10 }, { text: 'Low', top: 'bottom' }], xAxis: { data: ['a'] }, yAxis: {}, series: [{ type: 'bar', data: [1] }] }
+    // Laid out by its labels (a multi-grid part), the plot leaves room; ECharts' single grid lets titles overlay its margin.
+    const option = { grid: { [GRID_PART_KEY]: true }, title: [{ text: 'One', left: 10 }, { text: 'Two', subtext: 'sub', right: 10 }, { text: 'Low', top: 'bottom' }], xAxis: { data: ['a'] }, yAxis: {}, series: [{ type: 'bar', data: [1] }] }
     const c = compileOption(option)
     expect(c.titles.map((x) => x.text)).toEqual(['One', 'Two', 'Low'])
     expect(c.title?.text).toBe('One')

@@ -154,7 +154,7 @@ export const KNOWN_SERIES: ReadonlySet<string> = new Set([
   'id', 'seriesLayoutBy', 'datasetId', 'colorBy', 'cursor', 'tooltip', 'universalTransition',
   'type', 'name', 'data', 'stack', 'smooth', 'step', 'areaStyle', 'itemStyle',
   'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'xAxisIndex', 'markLine', 'markPoint', 'markArea',
-  'color', 'showSymbol', 'symbol', 'emphasis', 'silent',
+  'color', 'showSymbol', 'showAllSymbol', 'symbol', 'emphasis', 'silent',
   'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex', 'tooltipExtras',
   'coordinateSystem', 'polyline', 'effect', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'sampling',
   'select', 'blur', 'selectedMode', 'selectedMap',
@@ -377,18 +377,24 @@ export const DEFAULT_DECALS: readonly ChartPattern[] = [
  * `emptyCircle`, which this engine states as "no symbols"). `roundRect` is a
  * rect, `emptyCircle` a circle; `pin`, `arrow`, `none` and paths warn by name.
  */
-function seriesSymbol(s: Record<string, unknown>, kind: 'line' | 'points', warn: (code: OptionWarning['code'], path: string, message: string) => void, path: string): { symbol?: Series['symbol'] } {
-  if (kind === 'line' && s['showSymbol'] !== true) return {}
-  const raw = typeof s['symbol'] === 'string' ? (s['symbol'] as string) : kind === 'line' ? 'circle' : ''
-  if (raw === '') return {}
+function seriesSymbol(s: Record<string, unknown>, kind: 'line' | 'points', warn: (code: OptionWarning['code'], path: string, message: string) => void, path: string): { symbol?: Series['symbol']; symbolHollow?: boolean; symbolShow?: string } {
+  // ECharts 6: a line shows an emptyCircle at its data unless `showSymbol` is false ('none' draws none).
+  if (kind === 'line' && s['showSymbol'] === false) return {}
+  const raw = typeof s['symbol'] === 'string' ? (s['symbol'] as string) : kind === 'line' ? 'emptyCircle' : ''
+  if (raw === '' || raw === 'none') return {}
+  const hollow = raw.startsWith('empty')
+  const base = hollow ? raw.slice(5, 6).toLowerCase() + raw.slice(6) : raw
   const symbol: Series['symbol'] | undefined =
-    raw === 'circle' || raw === 'emptyCircle' ? 'circle' : raw === 'rect' || raw === 'roundRect' ? 'rect' : raw === 'diamond' ? 'diamond' : raw === 'triangle' ? 'triangle' : undefined
+    base === 'circle' ? 'circle' : base === 'rect' || base === 'roundRect' ? 'rect' : base === 'diamond' ? 'diamond' : base === 'triangle' ? 'triangle' : undefined
+  const all = s['showAllSymbol']
+  const show = kind === 'line' ? { symbolShow: all === true ? 'all' : all === false ? 'labels' : 'auto' } : {}
   if (symbol === undefined) {
     // ledger: presentation.symbols
-    warn('mark-shape-unsupported', `${path}.symbol`, `symbol "${raw}" is not supported (circle, emptyCircle, rect, roundRect, diamond, triangle are); drawn as a circle.`)
-    return kind === 'line' ? { symbol: 'circle' } : {}
+    warn('mark-shape-unsupported', `${path}.symbol`, `symbol "${raw}" is not supported (circle, rect, roundRect, diamond, triangle and their empty forms are); drawn as a circle.`)
+    return kind === 'line' ? { symbol: 'circle', ...show } : {}
   }
-  return kind === 'points' && symbol === 'circle' ? {} : { symbol }
+  if (kind === 'points' && symbol === 'circle' && !hollow) return {}
+  return { symbol, ...(hollow ? { symbolHollow: true } : {}), ...show }
 }
 
 /**
@@ -1102,7 +1108,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     ...optionGridInsets(option['grid'], opts.width ?? 640.0, opts.height ?? 320.0),
     // ECharts' category-axis `boundaryGap: false`: lines run edge to edge, labels on the points.
     ...(!xContinuous && isObj(xAxis) && xAxis['boundaryGap'] === false ? { boundaryGap: false } : {}),
-    theme: themed.chartTheme,
+    // ECharts' text is 12px unless the theme sets its own; the engine's plain default is a step smaller.
+    theme: { ...themed.chartTheme, fontSize: themed.fontSize ?? 12.0 },
     showXAxis: shown(xAxis),
     showYAxis: shown(yAxes[0]),
     showGrid: gridShown,
@@ -1111,6 +1118,9 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     yFormat: yFormat ?? localeNumber ?? axisNumber,
     y2Format: y2Format ?? localeNumber ?? axisNumber,
     xFormat: xFormat ?? (xTime ? localeDate : xContinuous ? localeNumber ?? axisNumber : undefined),
+    // ECharts' own label layout: upright unless axisLabel.rotate (counter-clockwise degrees) turns it, thinned by its category interval.
+    xLabels: 'echarts',
+    ...xLabelLayout(xAxis),
     xValues,
     xTime: xTime ? true : undefined,
     annotations: annotations.length > 0 ? annotations : undefined,
@@ -1269,6 +1279,17 @@ function axisDomain(axis: Record<string, unknown> | undefined): Domain | undefin
   const hi = num(axis['max'])
   if (lo === null || hi === null) return undefined
   return { min: lo, max: hi }
+}
+
+/** `xAxis.axisLabel.rotate` / `interval` for the layout (the draw list turns clockwise, ECharts counter-clockwise). */
+function xLabelLayout(axis: Record<string, unknown> | undefined): { xLabelAngle?: Double; xLabelInterval?: Double } {
+  const label = isObj(axis) && isObj(axis['axisLabel']) ? axis['axisLabel'] : {}
+  const rotate = num(label['rotate'])
+  const interval = num(label['interval'])
+  return {
+    ...(rotate !== null && rotate !== 0 ? { xLabelAngle: -rotate } : {}),
+    ...(interval !== null && interval >= 0 ? { xLabelInterval: interval } : {}),
+  }
 }
 
 function axisFormatter(
@@ -1444,8 +1465,14 @@ export function zoomedView(compiled: CompiledOption, reserved: Double | OptionCh
   const w = win ?? zoom.window
   const leadSeries = compiled.spec.series[0]
   const t = compiled.spec.theme
-  const navigator = zoom.slider ? renderNavigator(leadSeries?.values ?? [], leadSeries?.color ?? t.palette[0] ?? '#5470c6', w, { x: 0.0, y: top, w: width, h: height }, t.grid) : null
-  const view = windowSpec({ ...base, width, height: Math.max(0.0, height - (navigator?.height ?? 0.0)) }, w, zoom.keepY)
+  // Under ECharts' grid the slider sits in the grid's bottom margin, aligned with the plot, and
+  // the plot keeps its rect; laid out by its labels, the chart gives the strip its own band.
+  const gridOwnsBottom = compiled.spec.gridBottom !== undefined
+  const navCanvas = gridOwnsBottom
+    ? { x: (compiled.spec.gridLeft ?? 0.0) - 8.0, y: top, w: Math.max(0.0, width - (compiled.spec.gridLeft ?? 0.0) - (compiled.spec.gridRight ?? 0.0)) + 16.0, h: Math.max(0.0, height - 7.0) }
+    : { x: 0.0, y: top, w: width, h: height }
+  const navigator = zoom.slider ? renderNavigator(leadSeries?.values ?? [], leadSeries?.color ?? t.palette[0] ?? '#5470c6', w, navCanvas, t.grid) : null
+  const view = windowSpec({ ...base, width, height: gridOwnsBottom ? height : Math.max(0.0, height - (navigator?.height ?? 0.0)) }, w, zoom.keepY)
   return { spec: view.spec, offset: view.offset, navigator }
 }
 

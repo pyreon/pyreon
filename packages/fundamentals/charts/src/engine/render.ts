@@ -17,7 +17,7 @@ import type { SeriesGradient } from './gradient'
 import { withAlpha } from './radar'
 import { labelCommands } from './labels'
 import type { RichStyle } from './labels'
-import { pictorialCommands } from './pictorial'
+import { pictorialCommands, symbolPoints } from './pictorial'
 import type { PictorialBar } from './pictorial'
 import type { ChartPattern, DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
 
@@ -82,6 +82,15 @@ export interface Series {
   symbolPosition?: string | undefined
   /** Pictorial: degrees of rotation about each cell's centre. */
   symbolRotate?: Double | undefined
+  /** An "empty" symbol (ECharts' `emptyCircle`, …): the chart's surface inside a 2px ring of the series colour. */
+  symbolHollow?: boolean | undefined
+  /**
+   * Which datum symbols a line draws (ECharts' `showAllSymbol`): '' or 'all'
+   * every one; 'auto' every one unless they crowd a category axis (1.5× the
+   * symbol exceeds a category's width), then only at the axis's label
+   * interval; 'labels' always only there.
+   */
+  symbolShow?: string | undefined
   /** Pictorial: clip to the bar instead of dropping a partial symbol. */
   symbolClip?: boolean | undefined
   /** Pictorial: the datum value a full symbol (or run) spans; with `symbolClip` the bar shows the covered fraction. */
@@ -401,6 +410,8 @@ export interface ChartSpec {
   gridTop?: Double | undefined
   gridRight?: Double | undefined
   gridBottom?: Double | undefined
+  /** Grow a grid side to keep its axis labels inside the chart (ECharts' outer bounds). */
+  gridContain?: boolean | undefined
   categories: string[]
   theme: ChartTheme
   showXAxis: boolean
@@ -475,7 +486,10 @@ export interface ChartSpec {
   yTitle?: string | undefined
   y2Title?: string | undefined
   /** How the x tick labels react to running out of room — see `LayoutConfig.xLabels`. */
-  xLabels?: 'auto' | 'rotate' | 'thin' | 'all' | undefined
+  xLabels?: 'auto' | 'rotate' | 'thin' | 'all' | 'echarts' | undefined
+  /** With `xLabels: 'echarts'`: a fixed label rotation (degrees, clockwise) and ECharts' `axisLabel.interval`. */
+  xLabelAngle?: Double | undefined
+  xLabelInterval?: Double | undefined
   /** Draws the left value axis upside down — ECharts' `yAxis.inverse`. */
   yInverse?: boolean | undefined
   /** Runs the x axis right to left — ECharts' `xAxis.inverse`. */
@@ -1148,11 +1162,14 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     yLogMin: lb.min,
     yLogMax: lb.max,
     yTime: spec.yTime === true,
+    xLabelAngle: spec.xLabelAngle,
+    xLabelInterval: spec.xLabelInterval,
     insetLeft: spec.gridLeft,
     reserveLeft: spec.reserveLeft,
     insetTop: spec.gridTop,
     insetRight: spec.gridRight,
     insetBottom: spec.gridBottom,
+    insetContain: spec.gridContain,
     edgeCategories: edgeCategoryPoints(spec),
     xLabels: spec.xLabels,
     xTop: spec.xTop,
@@ -1862,10 +1879,15 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       const lineSymbol = s.symbol ?? 'circle'
       if (s.symbol !== undefined && progress >= 1.0) {
         const dots = place(s.values)
+        const every = symbolInterval(s, spec, plot, l.xLabelEvery, sXs.length > 0)
         for (let i = 0; i < dots.length; i++) {
           if (!isFiniteValue(s.values[i]!)) continue
+          if (every > 1 && i % every !== 0) continue
           const d = dots[i]!
-          out.push(symbolCommand({ x: d.x - s.radius, y: d.y - s.radius, w: s.radius * 2.0, h: s.radius * 2.0 }, lineSymbol, s.color))
+          const cell = { x: d.x - s.radius, y: d.y - s.radius, w: s.radius * 2.0, h: s.radius * 2.0 }
+          if (s.symbolHollow === true) {
+            for (const c of hollowSymbol(cell, lineSymbol, s.color, spec.theme.surface)) out.push(c)
+          } else out.push(symbolCommand(cell, lineSymbol, s.color))
         }
       }
     } else if (s.kind === 'band') {
@@ -1938,7 +1960,9 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const r = scaled * progress
         const pointSymbol = s.symbol ?? 'circle'
         const fillP = stateFill(spec, s, i, s.color)
-        if (pointSymbol === 'circle') {
+        if (s.symbolHollow === true) {
+          for (const c of hollowSymbol({ x: pts[i]!.x - r, y: pts[i]!.y - r, w: r * 2.0, h: r * 2.0 }, pointSymbol, fillP, spec.theme.surface)) out.push(c)
+        } else if (pointSymbol === 'circle') {
           out.push({ kind: 'circle', center: pts[i]!, radius: r, fill: fillP })
         } else {
           out.push(symbolCommand({ x: pts[i]!.x - r, y: pts[i]!.y - r, w: r * 2.0, h: r * 2.0 }, pointSymbol, fillP))
@@ -2186,7 +2210,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         at: { x: tick.pos, y: xTop ? xAxisY - 6.0 : xAxisY + 6.0 },
         fill: t.label,
         size: t.fontSize,
-        align: 'end',
+        // Turned counter-clockwise the text hangs from its end, clockwise from its start (ECharts).
+        align: l.xLabelRotate < 0.0 ? 'end' : 'start',
         baseline: 'middle',
         rotate: xTop ? -l.xLabelRotate : l.xLabelRotate,
       })
@@ -2260,6 +2285,41 @@ function splitRuns(values: Double[], place: (values: Double[]) => Pt[]): Pt[][] 
     runs.push(run)
   }
   return runs
+}
+
+/**
+ * How many data a line's symbols step by (ECharts' `showAllSymbol`, via
+ * LineView's `canShowAllSymbolForCategory`): 1 for every datum; on a crowded
+ * category axis, the axis's own label interval.
+ */
+function symbolInterval(s: Series, spec: ChartSpec, plot: Rect, labelEvery: number, valueX: boolean): number {
+  const mode = s.symbolShow ?? ''
+  if (mode === 'labels') return Math.max(1, labelEvery)
+  if (mode !== 'auto' || valueX) return 1
+  const count = spec.categories.length
+  if (count === 0) return 1
+  const avail = (spec.horizontal === true ? plot.h : plot.w) / (count * 1.0)
+  return s.radius * 2.0 * 1.5 > avail ? Math.max(1, labelEvery) : 1
+}
+
+/** An "empty" symbol: the surface inside a 2px ring of `stroke`, ring centred on the symbol's edge. */
+function hollowSymbol(cell: Rect, symbol: 'rect' | 'circle' | 'diamond' | 'triangle', stroke: string, surface: string): DrawCmd[] {
+  const inside = surface === '' ? '#ffffff' : surface
+  if (symbol === 'circle') {
+    const r = (cell.w < cell.h ? cell.w : cell.h) / 2.0
+    const c = { x: cell.x + cell.w / 2.0, y: cell.y + cell.h / 2.0 }
+    return [
+      { kind: 'circle', center: c, radius: r + 1.0, fill: stroke },
+      { kind: 'circle', center: c, radius: Math.max(0.0, r - 1.0), fill: inside },
+    ]
+  }
+  const body = symbolCommand(cell, symbol, inside)
+  // The outline from the shape's own points (`symbolPoints` draws the same rect / diamond / triangle).
+  const edge = symbolPoints(cell, symbol)
+  const ring: Pt[] = []
+  for (const p of edge) ring.push(p)
+  if (edge.length > 0) ring.push(edge[0]!)
+  return [body, { kind: 'polyline', points: ring, stroke, width: 2.0 }]
 }
 
 /** One symbol filling `cell` — rect, circle, diamond, or triangle. */

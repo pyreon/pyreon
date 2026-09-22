@@ -82,6 +82,8 @@ export interface LayoutConfig {
   insetTop?: Double | undefined
   insetRight?: Double | undefined
   insetBottom?: Double | undefined
+  /** A set inset still grows to fit its axis labels inside the chart (ECharts' `outerBoundsMode: 'auto'`). */
+  insetContain?: boolean | undefined
   /** Room kept free at the chart's left edge BEFORE the plot's own left gutter (a vertical legend on the left takes its column). */
   reserveLeft?: Double | undefined
   fontSize: Double
@@ -146,7 +148,16 @@ export interface LayoutConfig {
    * category labels and thins numeric ones, `rotate` / `thin` force one,
    * `all` draws every label upright and lets them overlap.
    */
-  xLabels?: 'auto' | 'rotate' | 'thin' | 'all' | undefined
+  xLabels?: 'auto' | 'rotate' | 'thin' | 'all' | 'echarts' | undefined
+  /**
+   * `xLabels: 'echarts'`: ECharts' own label layout — never rotated unless
+   * `xLabelAngle` says so (degrees, the draw list's clockwise sense), and a
+   * category axis thinned by `calculateCategoryInterval` unless
+   * `xLabelInterval` (ECharts' `axisLabel.interval`: labels skipped between
+   * two shown) fixes it.
+   */
+  xLabelAngle?: Double | undefined
+  xLabelInterval?: Double | undefined
   /** The x axis sits above the plot — ECharts' `xAxis.position: 'top'`. */
   xTop?: boolean | undefined
   /** A lone y axis sits right of the plot — ECharts' `yAxis.position: 'right'`. */
@@ -262,7 +273,14 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // bottom gutter — a rotated label needs its slant's height — so the
   // labels are provisionally laid out over the width the plot will have,
   // measured, and the mode is chosen before the plot rect exists.
-  const provisionalW = Math.max(0.0, cfg.width - left - right)
+  // The plot's sides as they will be — a set inset, grown to contain its labels if asked — so the labels thin over the real width.
+  // Coalesced first: Swift does not narrow an optional through the ternary's test.
+  const contain = cfg.insetContain === true
+  const insL = cfg.insetLeft ?? 0.0
+  const insR = cfg.insetRight ?? 0.0
+  const gLeft = cfg.insetLeft !== undefined ? (contain ? Math.max(insL, left) : insL) : left + (cfg.reserveLeft ?? 0.0)
+  const gRight = cfg.insetRight !== undefined ? (contain ? Math.max(insR, right) : insR) : right
+  const provisionalW = Math.max(0.0, cfg.width - gLeft - gRight)
   const mode = cfg.xLabels ?? 'auto'
   let rotate = 0.0
   let every = 1
@@ -282,7 +300,20 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     }
     const overflow = need > provisionalW && xLabels.length > 1
     const wantRotate = mode === 'rotate' || (mode === 'auto' && overflow && cfg.categories.length > 0)
-    if (wantRotate && xLabels.length > 0) {
+    if (mode === 'echarts') {
+      const angle = cfg.xLabelAngle ?? 0.0
+      const rad = (angle * Math.PI) / 180.0
+      if (angle !== 0.0) {
+        rotate = angle
+        // A rotated line spans w·|sin| + fontSize·|cos| below the axis.
+        slantH = widestX * Math.abs(Math.sin(rad)) + cfg.fontSize * Math.abs(Math.cos(rad)) - cfg.fontSize
+        if (slantH < 0.0) slantH = 0.0
+      }
+      if (cfg.categories.length > 0) {
+        const fixed = cfg.xLabelInterval ?? -1.0
+        every = fixed >= 0.0 ? floorRatio(fixed, 1.0) + 1 : echartsCategoryEvery(xLabels, provisionalW, cfg.edgeCategories === true, cfg.fontSize, rad, measure)
+      }
+    } else if (wantRotate && xLabels.length > 0) {
       rotate = -45.0
       // A label slanted 45° spans (w + fontSize) * sin 45° below the axis.
       slantH = (widestX + cfg.fontSize) * 0.7071 - cfg.fontSize
@@ -303,10 +334,13 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // A second x axis takes a label band (and its title's line) on the other side.
   const hasX2 = ((cfg.x2Labels ?? []).length > 0 || cfg.x2Domain !== undefined) && cfg.showXAxis && cfg.horizontal !== true
   const x2Band = hasX2 ? cfg.fontSize + labelGap + tickLen + (cfg.x2Title !== undefined && cfg.x2Title !== '' ? titleH : 0.0) : padTop
-  const top = cfg.insetTop ?? (xTop ? xBand : x2Band)
-  const bottom = cfg.insetBottom ?? (xTop ? x2Band : xBand)
-  const gLeft = cfg.insetLeft ?? left + (cfg.reserveLeft ?? 0.0)
-  const gRight = cfg.insetRight ?? right
+  const autoTop = xTop ? xBand : x2Band
+  const autoBottom = xTop ? x2Band : xBand
+  // Under `insetContain` a set side grows where the labels it holds would leave the chart.
+  const insT = cfg.insetTop ?? 0.0
+  const insB = cfg.insetBottom ?? 0.0
+  const top = cfg.insetTop !== undefined ? (contain ? Math.max(insT, autoTop) : insT) : autoTop
+  const bottom = cfg.insetBottom !== undefined ? (contain ? Math.max(insB, autoBottom) : insB) : autoBottom
   const gutters: Gutters = { left: gLeft, right: gRight, top, bottom }
 
   const plot: Rect = {
@@ -364,6 +398,45 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   }
   const x2Ticks: Tick[] = hasX2 && cfg.x2Domain !== undefined ? makeTicks(cfg.x2Domain ?? { min: 0.0, max: 1.0 }, plot.x, plot.x + plot.w, cfg.xTickCount, undefined) : []
   return { plot, xTicks, yTicks, y2Ticks, xDomainUsed: cfg.xDomain, xLabelRotate: rotate, xLabelEvery: every, yLabelEvery: 1, gutters, extraTicks, x2Ticks }
+}
+
+/**
+ * ECharts' `calculateCategoryInterval`, as the step between shown labels:
+ * each (sampled) label's box grown by 1.3 (at least 7px), against the width
+ * one category takes along the axis at the label's rotation; the interval is
+ * how many categories the widest spans, and every (interval + 1)th is shown.
+ */
+function echartsCategoryEvery(labels: string[], axisW: Double, edge: boolean, fontSize: Double, rad: Double, measure: (text: string, size: Double) => Double): number {
+  const n = labels.length
+  if (n < 2) return 1
+  const span = edge ? axisW / (n - 1.0) : axisW / (n * 1.0)
+  const step = n > 40 ? floorRatio(n * 1.0, 40.0) : 1
+  let maxW = 0.0
+  let maxH = 0.0
+  let i = 0
+  while (i < n) {
+    maxW = Math.max(maxW, measure(labels[i]!, fontSize) * 1.3, 7.0)
+    maxH = Math.max(maxH, fontSize * 1.3, 7.0)
+    i = i + step
+  }
+  const unitW = Math.abs(span * Math.cos(rad))
+  const unitH = Math.abs(span * Math.sin(rad))
+  // An axis the label runs along or across entirely leaves that ratio unbounded.
+  const dw = unitW > 0.0 ? maxW / unitW : 1.0e9
+  const dh = unitH > 0.0 ? maxH / unitH : 1.0e9
+  return floorRatio(Math.min(dw, dh), 1.0) + 1
+}
+
+/** `floor(num / den)` as an INT, by counting (the native subset has no Double→Int assignment); bounded at 1000. */
+function floorRatio(num: Double, den: Double): number {
+  if (!(den > 0.0) || !(num >= den)) return 0
+  let k = 0
+  let acc = den
+  while (acc <= num && k < 1000) {
+    k = k + 1
+    acc = acc + den
+  }
+  return k
 }
 
 /**

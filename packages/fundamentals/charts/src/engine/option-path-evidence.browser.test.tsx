@@ -96,7 +96,7 @@ describe('option-path evidence (real browser)', () => {
     const before = snap(bc)
     const ac = query<HTMLCanvasElement>(a.container, 'canvas')
     const r = ac.getBoundingClientRect()
-    ac.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: r.left + 150, clientY: r.top + 60, pointerId: 9 }))
+    ac.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: r.left + 150, clientY: r.top + 120, pointerId: 9 }))
     await flush()
     await flush()
     expect(link.hover()).toBeGreaterThanOrEqual(0)

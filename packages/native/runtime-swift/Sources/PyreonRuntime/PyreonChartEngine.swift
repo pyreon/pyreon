@@ -362,6 +362,7 @@ public struct LayoutConfig {
   public var insetTop: Double? = nil
   public var insetRight: Double? = nil
   public var insetBottom: Double? = nil
+  public var insetContain: Bool? = nil
   public var reserveLeft: Double? = nil
   public var fontSize: Double
   public var xTickCount: Double
@@ -382,6 +383,8 @@ public struct LayoutConfig {
   public var yLogMax: Double? = nil
   public var yTime: Bool? = nil
   public var xLabels: String? = nil
+  public var xLabelAngle: Double? = nil
+  public var xLabelInterval: Double? = nil
   public var xTop: Bool? = nil
   public var yRight: Bool? = nil
   public var extraYAxes: [ExtraYAxis]? = nil
@@ -391,7 +394,7 @@ public struct LayoutConfig {
   public var xOffset: Double? = nil
   public var yOffset: Double? = nil
   public var y2Offset: Double? = nil
-  public init(width: Double, height: Double, xDomain: Domain, yDomain: Domain, categories: [String], edgeCategories: Bool? = nil, insetLeft: Double? = nil, insetTop: Double? = nil, insetRight: Double? = nil, insetBottom: Double? = nil, reserveLeft: Double? = nil, fontSize: Double, xTickCount: Double, yTickCount: Double, showXAxis: Bool, showYAxis: Bool, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, xTime: Bool? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, horizontal: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, yLog: Bool? = nil, yLogMin: Double? = nil, yLogMax: Double? = nil, yTime: Bool? = nil, xLabels: String? = nil, xTop: Bool? = nil, yRight: Bool? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil) {
+  public init(width: Double, height: Double, xDomain: Domain, yDomain: Domain, categories: [String], edgeCategories: Bool? = nil, insetLeft: Double? = nil, insetTop: Double? = nil, insetRight: Double? = nil, insetBottom: Double? = nil, insetContain: Bool? = nil, reserveLeft: Double? = nil, fontSize: Double, xTickCount: Double, yTickCount: Double, showXAxis: Bool, showYAxis: Bool, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, xTime: Bool? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, horizontal: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, yLog: Bool? = nil, yLogMin: Double? = nil, yLogMax: Double? = nil, yTime: Bool? = nil, xLabels: String? = nil, xLabelAngle: Double? = nil, xLabelInterval: Double? = nil, xTop: Bool? = nil, yRight: Bool? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil) {
     self.width = width
     self.height = height
     self.xDomain = xDomain
@@ -402,6 +405,7 @@ public struct LayoutConfig {
     self.insetTop = insetTop
     self.insetRight = insetRight
     self.insetBottom = insetBottom
+    self.insetContain = insetContain
     self.reserveLeft = reserveLeft
     self.fontSize = fontSize
     self.xTickCount = xTickCount
@@ -422,6 +426,8 @@ public struct LayoutConfig {
     self.yLogMax = yLogMax
     self.yTime = yTime
     self.xLabels = xLabels
+    self.xLabelAngle = xLabelAngle
+    self.xLabelInterval = xLabelInterval
     self.xTop = xTop
     self.yRight = yRight
     self.extraYAxes = extraYAxes
@@ -786,6 +792,8 @@ public struct Series {
   public var symbolOffset: [Double]? = nil
   public var symbolPosition: String? = nil
   public var symbolRotate: Double? = nil
+  public var symbolHollow: Bool? = nil
+  public var symbolShow: String? = nil
   public var symbolClip: Bool? = nil
   public var symbolBoundingData: Double? = nil
   public var corners: [Double]? = nil
@@ -821,7 +829,7 @@ public struct Series {
   public var barMaxWidth: BarLength? = nil
   public var barMinWidth: BarLength? = nil
   public var barStack: String? = nil
-  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, axisExtra: Double? = nil, onX2: Bool? = nil, xs: [Double]? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, symbolMargin: Double? = nil, symbolOffset: [Double]? = nil, symbolPosition: String? = nil, symbolRotate: Double? = nil, symbolClip: Bool? = nil, symbolBoundingData: Double? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, labelTexts: [String]? = nil, labelColor: String? = nil, labelSize: Double? = nil, labelRich: [RichStyle]? = nil, focus: String? = nil, emphasisColor: String? = nil, selectColor: String? = nil, blurOpacity: Double? = nil, emphasisScale: Double? = nil, emphasisDisabled: Bool? = nil, emphasisWidth: Double? = nil, blurWidth: Double? = nil, emphasisAreaOpacity: Double? = nil, blurAreaOpacity: Double? = nil, emphasisLabel: Bool? = nil, selectLabel: Bool? = nil, seriesSelected: Bool? = nil, inBrush: [Int]? = nil, brushOpacity: Double? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil, extras: [SeriesExtra]? = nil, itemColors: [String]? = nil, barWidth: BarLength? = nil, barMaxWidth: BarLength? = nil, barMinWidth: BarLength? = nil, barStack: String? = nil) {
+  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, axisExtra: Double? = nil, onX2: Bool? = nil, xs: [Double]? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, symbolMargin: Double? = nil, symbolOffset: [Double]? = nil, symbolPosition: String? = nil, symbolRotate: Double? = nil, symbolHollow: Bool? = nil, symbolShow: String? = nil, symbolClip: Bool? = nil, symbolBoundingData: Double? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, labelTexts: [String]? = nil, labelColor: String? = nil, labelSize: Double? = nil, labelRich: [RichStyle]? = nil, focus: String? = nil, emphasisColor: String? = nil, selectColor: String? = nil, blurOpacity: Double? = nil, emphasisScale: Double? = nil, emphasisDisabled: Bool? = nil, emphasisWidth: Double? = nil, blurWidth: Double? = nil, emphasisAreaOpacity: Double? = nil, blurAreaOpacity: Double? = nil, emphasisLabel: Bool? = nil, selectLabel: Bool? = nil, seriesSelected: Bool? = nil, inBrush: [Int]? = nil, brushOpacity: Double? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil, extras: [SeriesExtra]? = nil, itemColors: [String]? = nil, barWidth: BarLength? = nil, barMaxWidth: BarLength? = nil, barMinWidth: BarLength? = nil, barStack: String? = nil) {
     self.kind = kind
     self.values = values
     self.color = color
@@ -843,6 +851,8 @@ public struct Series {
     self.symbolOffset = symbolOffset
     self.symbolPosition = symbolPosition
     self.symbolRotate = symbolRotate
+    self.symbolHollow = symbolHollow
+    self.symbolShow = symbolShow
     self.symbolClip = symbolClip
     self.symbolBoundingData = symbolBoundingData
     self.corners = corners
@@ -1021,6 +1031,7 @@ public struct ChartSpec {
   public var gridTop: Double? = nil
   public var gridRight: Double? = nil
   public var gridBottom: Double? = nil
+  public var gridContain: Bool? = nil
   public var categories: [String]
   public var theme: ChartTheme
   public var showXAxis: Bool
@@ -1045,6 +1056,8 @@ public struct ChartSpec {
   public var yTitle: String? = nil
   public var y2Title: String? = nil
   public var xLabels: String? = nil
+  public var xLabelAngle: Double? = nil
+  public var xLabelInterval: Double? = nil
   public var yInverse: Bool? = nil
   public var xInverse: Bool? = nil
   public var xTop: Bool? = nil
@@ -1058,7 +1071,7 @@ public struct ChartSpec {
   public var x2Domain: Domain? = nil
   public var lines: [LinesSeries]? = nil
   public var effectTime: Double? = nil
-  public init(width: Double, height: Double, series: [Series], drawOrder: [Int]? = nil, boundaryGap: Bool? = nil, yZero: Bool? = nil, ySplit: Double? = nil, barLayout: Bool? = nil, barGap: BarLength? = nil, barCategoryGap: BarLength? = nil, yMin: Double? = nil, xSplit: Double? = nil, xZero: Bool? = nil, xMin: Double? = nil, xMax: Double? = nil, xMinData: Bool? = nil, xMaxData: Bool? = nil, yMax: Double? = nil, yMinData: Bool? = nil, yMaxData: Bool? = nil, gridLeft: Double? = nil, reserveLeft: Double? = nil, gridTop: Double? = nil, gridRight: Double? = nil, gridBottom: Double? = nil, categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, yInverse: Bool? = nil, xInverse: Bool? = nil, xTop: Bool? = nil, yRight: Bool? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, lines: [LinesSeries]? = nil, effectTime: Double? = nil) {
+  public init(width: Double, height: Double, series: [Series], drawOrder: [Int]? = nil, boundaryGap: Bool? = nil, yZero: Bool? = nil, ySplit: Double? = nil, barLayout: Bool? = nil, barGap: BarLength? = nil, barCategoryGap: BarLength? = nil, yMin: Double? = nil, xSplit: Double? = nil, xZero: Bool? = nil, xMin: Double? = nil, xMax: Double? = nil, xMinData: Bool? = nil, xMaxData: Bool? = nil, yMax: Double? = nil, yMinData: Bool? = nil, yMaxData: Bool? = nil, gridLeft: Double? = nil, reserveLeft: Double? = nil, gridTop: Double? = nil, gridRight: Double? = nil, gridBottom: Double? = nil, gridContain: Bool? = nil, categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, xLabelAngle: Double? = nil, xLabelInterval: Double? = nil, yInverse: Bool? = nil, xInverse: Bool? = nil, xTop: Bool? = nil, yRight: Bool? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, lines: [LinesSeries]? = nil, effectTime: Double? = nil) {
     self.width = width
     self.height = height
     self.series = series
@@ -1084,6 +1097,7 @@ public struct ChartSpec {
     self.gridTop = gridTop
     self.gridRight = gridRight
     self.gridBottom = gridBottom
+    self.gridContain = gridContain
     self.categories = categories
     self.theme = theme
     self.showXAxis = showXAxis
@@ -1108,6 +1122,8 @@ public struct ChartSpec {
     self.yTitle = yTitle
     self.y2Title = y2Title
     self.xLabels = xLabels
+    self.xLabelAngle = xLabelAngle
+    self.xLabelInterval = xLabelInterval
     self.yInverse = yInverse
     self.xInverse = xInverse
     self.xTop = xTop
@@ -4897,7 +4913,12 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
     }
     let left = leftBase > leftExtra ? leftBase : leftExtra
     let right = rightBase > rightExtra ? rightBase : rightExtra
-    let provisionalW = max(0.0, cfg.width - left - right)
+    let contain = cfg.insetContain == true
+    let insL = (cfg.insetLeft ?? 0.0)
+    let insR = (cfg.insetRight ?? 0.0)
+    let gLeft = cfg.insetLeft != nil ? (contain ? max(insL, left) : insL) : left + ((cfg.reserveLeft ?? 0.0))
+    let gRight = cfg.insetRight != nil ? (contain ? max(insR, right) : insR) : right
+    let provisionalW = max(0.0, cfg.width - gLeft - gRight)
     let mode = (cfg.xLabels ?? "auto")
     var rotate = 0.0
     var every = 1
@@ -4915,20 +4936,36 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
       }
       let overflow = need > provisionalW && xLabels.count > 1
       let wantRotate = mode == "rotate" || (mode == "auto" && overflow && cfg.categories.count > 0)
-      if wantRotate && xLabels.count > 0 {
-        rotate = -45.0
-        slantH = (widestX + cfg.fontSize) * 0.7071 - cfg.fontSize
-        if slantH < 0.0 {
-          slantH = 0.0
+      if mode == "echarts" {
+        let angle = (cfg.xLabelAngle ?? 0.0)
+        let rad = (angle * Double.pi) / 180.0
+        if angle != 0.0 {
+          rotate = angle
+          slantH = widestX * abs(sin(Double(rad))) + cfg.fontSize * abs(cos(Double(rad))) - cfg.fontSize
+          if slantH < 0.0 {
+            slantH = 0.0
+          }
         }
-        let bandW = provisionalW / Double(xLabels.count)
-        let perLabel = cfg.fontSize * 1.3
-        if bandW < perLabel && bandW > 0.0 {
-          every = ceilRatio(perLabel, bandW)
+        if cfg.categories.count > 0 {
+          let fixed = (cfg.xLabelInterval ?? -1.0)
+          every = fixed >= 0.0 ? floorRatio(fixed, 1.0) + 1 : echartsCategoryEvery(xLabels, provisionalW, cfg.edgeCategories == true, cfg.fontSize, rad, measure)
         }
       } else {
-        if mode != "all" && overflow && (mode == "thin" || mode == "auto") {
-          every = ceilRatio(need, provisionalW)
+        if wantRotate && xLabels.count > 0 {
+          rotate = -45.0
+          slantH = (widestX + cfg.fontSize) * 0.7071 - cfg.fontSize
+          if slantH < 0.0 {
+            slantH = 0.0
+          }
+          let bandW = provisionalW / Double(xLabels.count)
+          let perLabel = cfg.fontSize * 1.3
+          if bandW < perLabel && bandW > 0.0 {
+            every = ceilRatio(perLabel, bandW)
+          }
+        } else {
+          if mode != "all" && overflow && (mode == "thin" || mode == "auto") {
+            every = ceilRatio(need, provisionalW)
+          }
         }
       }
     }
@@ -4936,10 +4973,12 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
     let xTop = cfg.xTop == true && cfg.horizontal != true
     let hasX2 = (((cfg.x2Labels ?? [])).count > 0 || cfg.x2Domain != nil) && cfg.showXAxis && cfg.horizontal != true
     let x2Band = hasX2 ? cfg.fontSize + labelGap + tickLen + (cfg.x2Title != nil && cfg.x2Title != "" ? titleH : 0.0) : padTop
-    let top = (cfg.insetTop ?? (xTop ? xBand : x2Band))
-    let bottom = (cfg.insetBottom ?? (xTop ? x2Band : xBand))
-    let gLeft = (cfg.insetLeft ?? left + ((cfg.reserveLeft ?? 0.0)))
-    let gRight = (cfg.insetRight ?? right)
+    let autoTop = xTop ? xBand : x2Band
+    let autoBottom = xTop ? x2Band : xBand
+    let insT = (cfg.insetTop ?? 0.0)
+    let insB = (cfg.insetBottom ?? 0.0)
+    let top = cfg.insetTop != nil ? (contain ? max(insT, autoTop) : insT) : autoTop
+    let bottom = cfg.insetBottom != nil ? (contain ? max(insB, autoBottom) : insB) : autoBottom
     let gutters = Gutters(left: gLeft, right: gRight, top: top, bottom: bottom)
     let plot = PyreonChartRect(x: gLeft, y: top, w: max(0.0, cfg.width - gLeft - gRight), h: max(0.0, cfg.height - top - bottom))
     if cfg.horizontal == true {
@@ -4971,6 +5010,41 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
     }
     let x2Ticks = hasX2 && cfg.x2Domain != nil ? makeTicks((cfg.x2Domain ?? Domain(min: 0.0, max: 1.0)), plot.x, plot.x + plot.w, cfg.xTickCount, nil) : []
     return PlotLayout(plot: plot, xTicks: xTicks, yTicks: yTicks, y2Ticks: y2Ticks, xDomainUsed: cfg.xDomain, xLabelRotate: rotate, xLabelEvery: every, yLabelEvery: 1, gutters: gutters, extraTicks: extraTicks, x2Ticks: x2Ticks)
+  }
+
+public func echartsCategoryEvery(_ labels: [String], _ axisW: Double, _ edge: Bool, _ fontSize: Double, _ rad: Double, _ measure: (String, Double) -> Double) -> Int {
+    let n = labels.count
+    if n < 2 {
+      return 1
+    }
+    let span = edge ? axisW / (Double(n) - 1.0) : axisW / (Double(n) * 1.0)
+    let step = n > 40 ? floorRatio(Double(n) * 1.0, 40.0) : 1
+    var maxW = 0.0
+    var maxH = 0.0
+    var i = 0
+    while i < n {
+      maxW = max(Double(maxW), max(Double(measure(labels[i], fontSize) * 1.3), Double(7.0)))
+      maxH = max(Double(maxH), max(Double(fontSize * 1.3), Double(7.0)))
+      i = i + step
+    }
+    let unitW = abs(span * cos(Double(rad)))
+    let unitH = abs(span * sin(Double(rad)))
+    let dw = unitW > 0.0 ? maxW / unitW : 1000000000.0
+    let dh = unitH > 0.0 ? maxH / unitH : 1000000000.0
+    return floorRatio(min(dw, dh), 1.0) + 1
+  }
+
+public func floorRatio(_ num: Double, _ den: Double) -> Int {
+    if !(den > 0.0) || !(num >= den) {
+      return 0
+    }
+    var k = 0
+    var acc = den
+    while acc <= num && k < 1000 {
+      k = k + 1
+      acc = acc + den
+    }
+    return k
   }
 
 public func ceilRatio(_ need: Double, _ room: Double) -> Int {
@@ -6751,7 +6825,7 @@ public func layoutChart(_ raw: ChartSpec, _ measure: (String, Double) -> Double)
     let n = seriesMaxLength(spec.series)
     let isLog = raw.yScale == "log"
     let lb = isLog ? logBounds(raw) : Domain(min: 1.0, max: 10.0)
-    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? invertedDomain(resolveXValueDomain(spec, extent((spec.xValues ?? []))), spec.xInverse == true && spec.horizontal != true) : Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, edgeCategories: edgeCategoryPoints(spec), insetLeft: spec.gridLeft, insetTop: spec.gridTop, insetRight: spec.gridRight, insetBottom: spec.gridBottom, reserveLeft: spec.reserveLeft, fontSize: spec.theme.fontSize, xTickCount: 5.0, yTickCount: 5.0, showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yTime: spec.yTime == true, xLabels: spec.xLabels, xTop: spec.xTop, yRight: spec.yRight, extraYAxes: resolvedExtraAxes(spec), x2Labels: spec.x2Labels, x2Title: spec.x2Title, x2Domain: hasX2Axis(spec) ? resolveX2Domain(spec) : nil, xOffset: spec.xOffset, yOffset: spec.yOffset, y2Offset: spec.y2Offset)
+    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? invertedDomain(resolveXValueDomain(spec, extent((spec.xValues ?? []))), spec.xInverse == true && spec.horizontal != true) : Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, edgeCategories: edgeCategoryPoints(spec), insetLeft: spec.gridLeft, insetTop: spec.gridTop, insetRight: spec.gridRight, insetBottom: spec.gridBottom, insetContain: spec.gridContain, reserveLeft: spec.reserveLeft, fontSize: spec.theme.fontSize, xTickCount: 5.0, yTickCount: 5.0, showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yTime: spec.yTime == true, xLabels: spec.xLabels, xLabelAngle: spec.xLabelAngle, xLabelInterval: spec.xLabelInterval, xTop: spec.xTop, yRight: spec.yRight, extraYAxes: resolvedExtraAxes(spec), x2Labels: spec.x2Labels, x2Title: spec.x2Title, x2Domain: hasX2Axis(spec) ? resolveX2Domain(spec) : nil, xOffset: spec.xOffset, yOffset: spec.yOffset, y2Offset: spec.y2Offset)
     return computeLayout(cfg, measure)
   }
 
@@ -7338,12 +7412,23 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             let lineSymbol = (s.symbol ?? "circle")
             if s.symbol != nil && progress >= 1.0 {
               let dots = place(s.values)
+              let every = symbolInterval(s, spec, plot, l.xLabelEvery, sXs.count > 0)
               for i in 0..<dots.count {
                 if !isFiniteValue(s.values[i]) {
                   continue
                 }
+                if every > 1 && i % every != 0 {
+                  continue
+                }
                 let d = dots[i]
-                out.append(symbolCommand(PyreonChartRect(x: d.x - s.radius, y: d.y - s.radius, w: s.radius * 2.0, h: s.radius * 2.0), lineSymbol, s.color))
+                let cell = PyreonChartRect(x: d.x - s.radius, y: d.y - s.radius, w: s.radius * 2.0, h: s.radius * 2.0)
+                if s.symbolHollow == true {
+                  for c in hollowSymbol(cell, lineSymbol, s.color, spec.theme.surface) {
+                    out.append(c)
+                  }
+                } else {
+                  out.append(symbolCommand(cell, lineSymbol, s.color))
+                }
               }
             }
           } else {
@@ -7412,10 +7497,16 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
                   let r = scaled * progress
                   let pointSymbol = (s.symbol ?? "circle")
                   let fillP = stateFill(spec, s, i, s.color)
-                  if pointSymbol == "circle" {
-                    out.append(PyreonDrawCmd(kind: "circle", fill: fillP, center: pts[i], radius: r))
+                  if s.symbolHollow == true {
+                    for c in hollowSymbol(PyreonChartRect(x: pts[i].x - r, y: pts[i].y - r, w: r * 2.0, h: r * 2.0), pointSymbol, fillP, spec.theme.surface) {
+                      out.append(c)
+                    }
                   } else {
-                    out.append(symbolCommand(PyreonChartRect(x: pts[i].x - r, y: pts[i].y - r, w: r * 2.0, h: r * 2.0), pointSymbol, fillP))
+                    if pointSymbol == "circle" {
+                      out.append(PyreonDrawCmd(kind: "circle", fill: fillP, center: pts[i], radius: r))
+                    } else {
+                      out.append(symbolCommand(PyreonChartRect(x: pts[i].x - r, y: pts[i].y - r, w: r * 2.0, h: r * 2.0), pointSymbol, fillP))
+                    }
                   }
                 }
               }
@@ -7620,7 +7711,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         continue
       }
       if l.xLabelRotate != 0.0 {
-        out.append(PyreonDrawCmd(kind: "text", fill: t.label, text: tick.label, at: PyreonChartPt(x: tick.pos, y: xTop ? xAxisY - 6.0 : xAxisY + 6.0), size: t.fontSize, align: "end", baseline: "middle", rotate: xTop ? -l.xLabelRotate : l.xLabelRotate))
+        out.append(PyreonDrawCmd(kind: "text", fill: t.label, text: tick.label, at: PyreonChartPt(x: tick.pos, y: xTop ? xAxisY - 6.0 : xAxisY + 6.0), size: t.fontSize, align: l.xLabelRotate < 0.0 ? "end" : "start", baseline: "middle", rotate: xTop ? -l.xLabelRotate : l.xLabelRotate))
       } else {
         out.append(PyreonDrawCmd(kind: "text", fill: t.label, text: tick.label, at: PyreonChartPt(x: tick.pos, y: xTop ? xAxisY - 6.0 : xAxisY + 6.0), size: t.fontSize, align: "middle", baseline: xTop ? "bottom" : "top"))
       }
@@ -7682,6 +7773,41 @@ public func splitRuns(_ values: [Double], _ place: ([Double]) -> [PyreonChartPt]
       runs.append(run)
     }
     return runs
+  }
+
+public func symbolInterval(_ s: Series, _ spec: ChartSpec, _ plot: PyreonChartRect, _ labelEvery: Int, _ valueX: Bool) -> Int {
+    let mode = (s.symbolShow ?? "")
+    if mode == "labels" {
+      return max(1, labelEvery)
+    }
+    if mode != "auto" || valueX {
+      return 1
+    }
+    let count = spec.categories.count
+    if count == 0 {
+      return 1
+    }
+    let avail = (spec.horizontal == true ? plot.h : plot.w) / (Double(count) * 1.0)
+    return s.radius * 2.0 * 1.5 > avail ? max(1, labelEvery) : 1
+  }
+
+public func hollowSymbol(_ cell: PyreonChartRect, _ symbol: String, _ stroke: String, _ surface: String) -> [PyreonDrawCmd] {
+    let inside = surface == "" ? "#ffffff" : surface
+    if symbol == "circle" {
+      let r = (cell.w < cell.h ? cell.w : cell.h) / 2.0
+      let c = PyreonChartPt(x: cell.x + cell.w / 2.0, y: cell.y + cell.h / 2.0)
+      return [PyreonDrawCmd(kind: "circle", fill: stroke, center: c, radius: r + 1.0), PyreonDrawCmd(kind: "circle", fill: inside, center: c, radius: max(0.0, r - 1.0))]
+    }
+    let body = symbolCommand(cell, symbol, inside)
+    let edge = symbolPoints(cell, symbol)
+    var ring: [PyreonChartPt] = []
+    for p in edge {
+      ring.append(p)
+    }
+    if edge.count > 0 {
+      ring.append(edge[0])
+    }
+    return [body, PyreonDrawCmd(kind: "polyline", stroke: stroke, width: 2.0, points: ring)]
   }
 
 public func symbolCommand(_ cell: PyreonChartRect, _ symbol: String, _ fill: String) -> PyreonDrawCmd {

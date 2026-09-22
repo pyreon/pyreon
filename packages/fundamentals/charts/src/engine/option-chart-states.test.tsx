@@ -47,24 +47,24 @@ describe('OptionChart states', () => {
 
       // Hover the middle bar: it takes the emphasis colour, the others blur.
       rec.reset()
-      canvas.dispatchEvent(new PointerEvent('pointermove', { clientX: 150, clientY: 120, bubbles: true }))
+      canvas.dispatchEvent(new PointerEvent('pointermove', { clientX: 150, clientY: 105, bubbles: true }))
       expect(bars()).toEqual(['rgba(17, 17, 17, 0.5)', '#ee0000', 'rgba(17, 17, 17, 0.5)'])
 
       // Click it: pinned (select colour) even after the pointer leaves.
       rec.reset()
-      canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: 150, clientY: 120, bubbles: true }))
-      canvas.dispatchEvent(new PointerEvent('pointerup', { clientX: 150, clientY: 120, bubbles: true }))
-      canvas.dispatchEvent(new MouseEvent('click', { clientX: 150, clientY: 120, bubbles: true }))
+      canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: 150, clientY: 105, bubbles: true }))
+      canvas.dispatchEvent(new PointerEvent('pointerup', { clientX: 150, clientY: 105, bubbles: true }))
+      canvas.dispatchEvent(new MouseEvent('click', { clientX: 150, clientY: 105, bubbles: true }))
       canvas.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }))
       expect(bars().slice(-3)).toEqual(['#111111', '#0000ee', '#111111'])
 
       // `multiple`: a second click pins another; clicking a pinned datum unpins it.
       rec.reset()
-      canvas.dispatchEvent(new MouseEvent('click', { clientX: 50, clientY: 120, bubbles: true }))
+      canvas.dispatchEvent(new MouseEvent('click', { clientX: 82, clientY: 105, bubbles: true }))
       canvas.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }))
       expect(bars().slice(-3)).toEqual(['#0000ee', '#0000ee', '#111111'])
       rec.reset()
-      canvas.dispatchEvent(new MouseEvent('click', { clientX: 150, clientY: 120, bubbles: true }))
+      canvas.dispatchEvent(new MouseEvent('click', { clientX: 150, clientY: 105, bubbles: true }))
       canvas.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }))
       expect(bars().slice(-3)).toEqual(['#0000ee', '#111111', '#111111'])
     } finally {

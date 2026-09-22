@@ -1,4 +1,6 @@
 import { compileOption, compiledCommands, optionToSvg, zoomedView } from './option'
+import { GRID_PART_KEY } from './option-grid'
+import type { EChartsOption } from './option'
 import { limitWindow, readDataZoom, windowSpec } from './option-zoom'
 import { measureApprox } from './svg'
 
@@ -30,7 +32,14 @@ describe('dataZoom on a compiled option', () => {
     expect(view.spec.categories).toEqual(['a', 'b', 'c'])
     expect(view.spec.series[0]!.values).toEqual([1, 2, 3])
     expect(view.navigator).not.toBeNull()
-    expect(view.spec.height).toBe(300 - view.navigator!.height)
+    // ECharts' grid keeps the plot's rect; the slider draws in its bottom margin, aligned with the plot.
+    expect(view.spec.height).toBe(300)
+    expect(view.navigator!.strip.x).toBeCloseTo(c.spec.gridLeft ?? 0, 5)
+    expect(view.navigator!.strip.y + view.navigator!.strip.h).toBeLessThanOrEqual(300 - 7)
+    // Laid out by its labels (a multi-grid part), the chart gives the strip its own band.
+    const partC = compileOption({ ...option({ type: 'slider', start: 0, end: 30 }), grid: { [GRID_PART_KEY]: true } } as EChartsOption, { width: 400, height: 300 })
+    const partView = zoomedView(partC, 0)
+    expect(partView.spec.height).toBe(300 - partView.navigator!.height)
     // The navigator is drawn, and the label texts are sliced with the values.
     const texts = compiledCommands(c, option({}), measureApprox()).cmds.filter((d) => d.kind === 'text').map((d) => (d.kind === 'text' ? d.text : ''))
     expect(texts).toContain('a')

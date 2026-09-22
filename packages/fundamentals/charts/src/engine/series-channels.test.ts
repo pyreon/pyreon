@@ -63,6 +63,8 @@ const ROLE: Readonly<Record<keyof Series, Role>> = {
   symbolOffset: 'presentation',
   symbolPosition: 'presentation',
   symbolRotate: 'presentation',
+  symbolHollow: 'presentation',
+  symbolShow: 'presentation',
   symbolClip: 'presentation',
   symbolBoundingData: 'presentation',
   corners: 'presentation',
