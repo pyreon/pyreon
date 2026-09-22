@@ -244,12 +244,13 @@ private fun pyreonFlowKeyName(event: KeyEvent): String? = when (event.key) {
     else -> null
 }
 
-private fun <T> PyreonFlowState<T>.handleKeyEvent(event: KeyEvent, nodeId: String? = null): Boolean {
+private fun <T> PyreonFlowState<T>.handleKeyEvent(event: KeyEvent, nodeId: String? = null, edgeId: String? = null): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
     val key = pyreonFlowKeyName(event) ?: return false
     return handleKeyboardCommand(
         key = key,
         nodeId = nodeId,
+        edgeId = edgeId,
         shift = event.isShiftPressed,
         command = event.isCtrlPressed || event.isMetaPressed,
         // Compose's common KeyEvent surface does not expose repeat count.
@@ -634,10 +635,16 @@ fun <T> PyreonFlowView(
                     // neighbouring controls. The semantics action keeps it activatable.
                     .pointerInput(edge.id) { detectTapGestures { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) } }
                     .semantics { onClick { state.selectEdge(edge.id); state.emitEdgeClick(edge.id); true } }
-                edgeModifier = if (edge.focusable) edgeModifier.semantics {
-                    contentDescription = edge.accessibilityLabel
-                    selected = state.isEdgeSelected(edge.id)
-                } else edgeModifier.clearAndSetSemantics { }
+                // Hardware-keyboard focus, like the web's `tabindex` on the edge
+                // path: Tab reaches the label and Enter/Space selects the edge.
+                // It was reachable by TalkBack only.
+                edgeModifier = if (edge.focusable) edgeModifier
+                    .focusable()
+                    .onKeyEvent { event -> state.handleKeyEvent(event, edgeId = edge.id) }
+                    .semantics {
+                        contentDescription = edge.accessibilityLabel
+                        selected = state.isEdgeSelected(edge.id)
+                    } else edgeModifier.clearAndSetSemantics { }
                 Text(
                     edge.text ?: "",
                     if (edge.text == null) edgeModifier else edgeModifier.background(pyreonFlowEdgeColor(palette.panelBackground).copy(alpha = 0.9f)),

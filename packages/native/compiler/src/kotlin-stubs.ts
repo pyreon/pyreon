@@ -1873,7 +1873,7 @@ class PyreonFlowState<T>(
   fun onConnectEnd(callback: (PyreonFlowConnection?) -> Unit): () -> Unit = {}
   fun onPaneClick(callback: (PyreonFlowPaneEvent) -> Unit): () -> Unit = {}
   fun moveSelectedNodes(dx: Double, dy: Double) {}
-  fun handleKeyboardCommand(key: String, nodeId: String? = null, shift: Boolean = false, command: Boolean = false, repeatKey: Boolean = false): Boolean = false
+  fun handleKeyboardCommand(key: String, nodeId: String? = null, shift: Boolean = false, command: Boolean = false, repeatKey: Boolean = false, edgeId: String? = null): Boolean = false
   fun focusNode(nodeId: String, focusZoom: Double? = null) {}
 }
 

@@ -109,11 +109,40 @@ class CounterInstrumentedTest {
         composeRule.waitUntil(5_000) {
             composeRule.onNodeWithTag("native-flow-start-position").fetchSemanticsNode().config[SemanticsProperties.Text].first().text != positionBeforeKey
         }
+        // F4 focus/action matrix, node row: Escape clears the selection and
+        // Enter re-selects the FOCUSED node, as on the web.
+        keyboardNode.performKeyInput {
+            keyDown(Key.Escape)
+            keyUp(Key.Escape)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-selected-node-count").fetchSemanticsNode().config[SemanticsProperties.Text].first().text == "0"
+        }
+        keyboardNode.performKeyInput {
+            keyDown(Key.Enter)
+            keyUp(Key.Enter)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-selected-node-count").fetchSemanticsNode().config[SemanticsProperties.Text].first().text == "1"
+        }
 
         composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("0")
         val keyboardEdge = composeRule.onNodeWithContentDescription("Native flow edge")
         keyboardEdge.performClick()
         composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("1")
+        composeRule.onNodeWithTag("native-flow-clear-selection").performClick()
+        composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("0")
+        // F4 edge hardware focus: the label takes keyboard focus like the web's
+        // edge path, and Enter selects the FOCUSED edge. Before, the label had
+        // no focus action at all and was reachable by TalkBack only.
+        keyboardEdge.performSemanticsAction(SemanticsActions.RequestFocus)
+        keyboardEdge.performKeyInput {
+            keyDown(Key.Enter)
+            keyUp(Key.Enter)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-selected-edge-count").fetchSemanticsNode().config[SemanticsProperties.Text].first().text == "1"
+        }
         composeRule.onNodeWithTag("native-flow-clear-selection").performClick()
         composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("0")
         composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
