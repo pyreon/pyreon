@@ -64,4 +64,27 @@ describe('<WebView onMessage={…}> reverse-bridge emit', () => {
     expect(r.code).toContain('PyreonWebView(html: "<p>x</p>")')
     expect(r.code).not.toContain('onMessage:')
   })
+
+  it.each(['swift', 'kotlin'] as const)('block-bodied onMessage emits every statement; data-testid reaches the host on %s', (target) => {
+    // Same silent-drop class the hosted Flow/Chart components had: a block
+    // body parses to `stmts`, and the message-handler emitter read only `body`.
+    const result = transform(
+      `
+      import { WebView } from '@pyreon/primitives'
+      import { signal } from '@pyreon/reactivity'
+      export function App() {
+        const last = signal('none')
+        const count = signal(0)
+        return <WebView src="bridge.html" data-testid="toolkit-webview" onMessage={(m) => {
+          last.set(m)
+          count.set(count() + 1)
+        }} />
+      }`,
+      { target },
+    )
+    expect(result.warnings).toEqual([])
+    expect(result.code).toContain('last = m')
+    expect(result.code).toContain('count = count + 1')
+    expect(result.code).toContain(target === 'swift' ? '.accessibilityIdentifier("toolkit-webview")' : 'modifier = Modifier.testTag("toolkit-webview")')
+  })
 })

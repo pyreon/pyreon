@@ -966,6 +966,14 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("gal-growth-toggle").performScrollTo().performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("gal-growth-count").performScrollTo().assertTextEquals("3")
+        // `@pyreon/flow/webview` on device — mirror of the iOS assertion: the
+        // hosted renderer's `fit-view` posts `viewport-change` back over the
+        // bridge into native Text; a second command id moves the count 1→2.
+        composeRule.onNodeWithTag("gal-flow-webview").performScrollTo().assertExists()
+        waitForTagText("gal-flow-webview-event", "viewport-change")
+        waitForTagText("gal-flow-webview-events", "1")
+        composeRule.onNodeWithTag("gal-flow-webview-fit").performScrollTo().performClick()
+        waitForTagText("gal-flow-webview-events", "2")
         // The lines trail renders. Its MOTION is proven on the iOS device lane
         // and in real Chromium; here it cannot be: the trail runs on
         // withInfiniteAnimationFrameNanos (a plain frame loop kept this harness
