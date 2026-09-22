@@ -658,6 +658,9 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     @State private var resizeDrafts: [String: PyreonFlowResizeDraft] = [:]
     @State private var didInitialFit = false
     @FocusState private var focusedNodeId: String?
+    /// The edge label holding keyboard focus. A tap sets it, as a node's does,
+    /// because a SwiftUI `.focusable` view is not focused by a tap on its own.
+    @FocusState private var focusedEdgeId: String?
 
     public init(
         state: PyreonFlowState<T>,
@@ -899,7 +902,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             .offset(x: absolute.x, y: absolute.y)
     }
 
-    private func handleKeyPress(_ press: KeyPress, nodeId: String? = nil) -> KeyPress.Result {
+    private func handleKeyPress(_ press: KeyPress, nodeId: String? = nil, edgeId: String? = nil) -> KeyPress.Result {
         guard let key = flowKeyName(press.key) else { return .ignored }
         let command = press.modifiers.contains(.command) || press.modifiers.contains(.control)
         return state.handleKeyboardCommand(
@@ -907,7 +910,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             nodeId: nodeId,
             shift: press.modifiers.contains(.shift),
             command: command,
-            repeatKey: press.phase == .repeat
+            repeatKey: press.phase == .repeat,
+            edgeId: edgeId
         ) ? .handled : .ignored
     }
 
@@ -941,14 +945,24 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             .onTapGesture {
                 state.selectEdge(edge.id)
                 state.emitEdgeClick(edge.id)
+                if edge.focusable { focusedEdgeId = edge.id }
             }
             .accessibilityLabel(Text(edge.accessibilityLabel))
             .accessibilityAddTraits(state.isEdgeSelected(edge.id) ? [.isSelected] : [])
             .accessibilityAction {
                 state.selectEdge(edge.id)
                 state.emitEdgeClick(edge.id)
+                if edge.focusable { focusedEdgeId = edge.id }
             }
             .accessibilityHidden(!edge.focusable)
+            // Hardware-keyboard focus, like the web's `tabindex` on the edge
+            // path: the label takes focus and Enter/Space selects the edge. It
+            // was reachable by VoiceOver only.
+            .focusable(edge.focusable)
+            .focused($focusedEdgeId, equals: edge.id)
+            .onKeyPress { press in
+                handleKeyPress(press, edgeId: edge.id)
+            }
     }
 
     private var visibleEdgeLabels: [PyreonFlowEdgeLabel] {
