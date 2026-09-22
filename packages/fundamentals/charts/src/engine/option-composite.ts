@@ -6,6 +6,8 @@
 // facade's `optionToSvg` / `planOption` call these first, so every family and
 // the cartesian compiler see a plain single-grid option and need no awareness.
 import type { DrawCmd, Double, Rect } from './types'
+import { renderTimeline } from './timeline-strip'
+import type { TimelineStrip } from './timeline-strip'
 import { renderSvg } from './svg'
 import type { OptionWarning } from './option'
 
@@ -129,6 +131,13 @@ export interface TimelineSteps {
   autoPlay: boolean
   /** `timeline.playInterval` in ms; default 2000 like ECharts. */
   playInterval: Double
+  /** The strip: labels, loop / rewind and which controls show; default ECharts'. */
+  strip?: TimelineStrip | undefined
+}
+
+/** ECharts' default timeline strip over some labels. */
+export function defaultTimelineStrip(labels: string[]): TimelineStrip {
+  return { labels, loop: true, rewind: false, showPlay: true, showPrev: true, showNext: true, label: '#374151', accent: '#2563eb', line: '#d1d5db', fontSize: 11.0 }
 }
 
 /** The step list of an option's `timeline`, or null when there is none. */
@@ -144,7 +153,24 @@ export function timelineSteps(option: Obj): TimelineSteps | null {
   const max = Math.max(0, labels.length - 1)
   const want = num(tl['currentIndex']) ?? 0
   const current = Math.min(max, Math.max(0, Math.floor(want)))
-  return { labels, current, autoPlay: tl['autoPlay'] === true, playInterval: num(tl['playInterval']) ?? 2000.0 }
+  const control = isObj(tl['controlStyle']) ? tl['controlStyle'] : {}
+  const checkpoint = isObj(tl['checkpointStyle']) ? tl['checkpointStyle'] : {}
+  const lineStyle = isObj(tl['lineStyle']) ? tl['lineStyle'] : {}
+  const labelStyle = isObj(tl['label']) ? tl['label'] : {}
+  const defaults = defaultTimelineStrip(labels)
+  const strip: TimelineStrip = {
+    ...defaults,
+    loop: tl['loop'] !== false,
+    rewind: tl['rewind'] === true,
+    showPlay: control['show'] !== false && control['showPlayBtn'] !== false,
+    showPrev: control['show'] !== false && control['showPrevBtn'] !== false,
+    showNext: control['show'] !== false && control['showNextBtn'] !== false,
+    accent: typeof checkpoint['color'] === 'string' ? (checkpoint['color'] as string) : defaults.accent,
+    line: typeof lineStyle['color'] === 'string' ? (lineStyle['color'] as string) : defaults.line,
+    label: typeof labelStyle['color'] === 'string' ? (labelStyle['color'] as string) : defaults.label,
+    fontSize: num(labelStyle['fontSize']) ?? defaults.fontSize,
+  }
+  return { labels, current, autoPlay: tl['autoPlay'] === true, playInterval: num(tl['playInterval']) ?? 2000.0, strip }
 }
 
 const mergeObjects = (base: Obj, override: Obj): Obj => {
@@ -281,23 +307,10 @@ export function splitGrids(option: Obj, width: Double, height: Double): GridPart
 }
 
 /** The timeline strip: an axis line, one dot per step, the current step filled and labelled bold. */
-export function timelineCommands(steps: TimelineSteps, width: Double, y: Double, h: Double, colors: { label: string; accent: string; grid: string } = { label: '#374151', accent: '#2563eb', grid: '#d1d5db' }): DrawCmd[] {
-  const out: DrawCmd[] = []
-  const n = steps.labels.length
-  if (n === 0) return out
-  const pad = 24.0
-  const cy = y + h * 0.4
-  const x0 = pad
-  const x1 = Math.max(pad, width - pad)
-  out.push({ kind: 'line', from: { x: x0, y: cy }, to: { x: x1, y: cy }, stroke: colors.grid, width: 1.0 })
-  for (let i = 0; i < n; i++) {
-    const x = n === 1 ? (x0 + x1) / 2.0 : x0 + ((x1 - x0) * i) / (n - 1)
-    const current = i === steps.current
-    out.push({ kind: 'circle', center: { x, y: cy }, radius: current ? 5.0 : 3.5, fill: colors.accent })
-    if (!current) out.push({ kind: 'circle', center: { x, y: cy }, radius: 2.5, fill: '#ffffff' })
-    out.push({ kind: 'text', text: steps.labels[i]!, at: { x, y: cy + 8.0 }, fill: current ? colors.accent : colors.label, size: 11.0, align: 'middle', baseline: 'top' })
-  }
-  return out
+/** The timeline strip's commands along the bottom band `y`…`y + h`; `playing` shows the pause control. */
+export function timelineCommands(steps: TimelineSteps, width: Double, y: Double, h: Double, playing = false): DrawCmd[] {
+  const strip = steps.strip ?? defaultTimelineStrip(steps.labels)
+  return renderTimeline({ ...strip, labels: steps.labels }, { x: 0.0, y, w: width, h }, steps.current, playing)
 }
 
 const inner = (svg: string): string => {

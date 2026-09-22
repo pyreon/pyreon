@@ -904,6 +904,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             .contentShape(SwiftUI.Rectangle())
             .gesture(handle.type == "source" ? connectionGesture(handle) : nil)
             .accessibilityLabel(Text(label))
+            .accessibilityAddTraits(.isButton)
             .accessibilityHidden(state.disableKeyboardA11y)
             // Keep a finite layout frame. `.position` proposes the entire
             // canvas to an accessible child, so every handle reports the same

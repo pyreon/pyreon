@@ -8,7 +8,7 @@
 // list rather than a record. The record adapter, the epoch-ms date helpers
 // and the nullable hit live in calendar-web.ts; the svg half in family-svg.ts.
 
-import { HEAT_RAMP, rampColor } from './heat'
+import { HEAT_RAMP, rampColor, visualOutside } from './heat'
 import { isFiniteNumber } from './scale'
 import type { Domain, Double, DrawCmd, Pt, Rect } from './types'
 
@@ -71,6 +71,10 @@ export interface CalendarOptions {
   domain?: Domain | undefined
   /** Entrance progress 0..1; cells fill in week by week. */
   progress?: Double | undefined
+  /** visualMap selection: values outside it paint `outColor` (see `visualOutside`). */
+  inRange?: Domain | undefined
+  outBands?: Double[] | undefined
+  outColor?: string | undefined
 }
 
 /** A civil date; `month` is 1..12. */
@@ -299,7 +303,8 @@ export function renderCalendar(layout: CalendarLayout, values: CalendarValue[], 
     const hasV = cv.has[i]!
     const raw = !hasV ? 0.0 : span <= 0.0 ? 1.0 : (cv.value[i]! - domain.min) / span
     const t = raw < 0.0 ? 0.0 : raw > 1.0 ? 1.0 : raw
-    out.push({ kind: 'rect', rect: c.rect, fill: hasV ? rampColor(stops, t) : emptyColor })
+    const outside = hasV && visualOutside(cv.value[i]!, options?.inRange, options?.outBands)
+    out.push({ kind: 'rect', rect: c.rect, fill: !hasV ? emptyColor : outside ? options?.outColor ?? '#cccccc' : rampColor(stops, t) })
   }
   if (progress < 1.0) return out
   for (const m of layout.monthLabels) out.push({ kind: 'text', text: m.text, at: m.at, fill: labelColor, size: fontSize, align: 'start', baseline: 'bottom' })

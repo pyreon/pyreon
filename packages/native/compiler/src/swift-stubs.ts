@@ -485,6 +485,19 @@ public enum Edge {
 }
 public protocol Shape {}
 public struct Rectangle: Shape { public init() {} }
+public struct SpatialTapValue { public var location: CGPoint = CGPoint() }
+public struct SpatialTapGesture: Gesture {
+  public init(count: Int = 1) {}
+  public func onEnded(_ action: @escaping (SpatialTapValue) -> Void) -> SpatialTapGesture { self }
+}
+public struct GestureMask: OptionSet {
+  public let rawValue: UInt32
+  public init(rawValue: UInt32) { self.rawValue = rawValue }
+  public static let none = GestureMask([])
+  public static let gesture = GestureMask(rawValue: 1)
+  public static let subviews = GestureMask(rawValue: 2)
+  public static let all = GestureMask(rawValue: 3)
+}
 public protocol Gesture {}
 public struct LongPressGesture: Gesture {
   public init(minimumDuration: Double = 0.5) {}
@@ -561,12 +574,14 @@ extension View {
   public func tint(_ color: Color?) -> some View { self }
   public func accessibilityIdentifier(_ id: String) -> some View { self }
   public func accessibilityLabel(_ label: String) -> some View { self }
+  public func accessibilityValue(_ value: String) -> some View { self }
   public func accessibilityElement(children: AccessibilityChildBehavior) -> some View { self }
   public func accessibilityAddTraits(_ traits: AccessibilityTraits) -> some View { self }
   public func keyboardType(_ type: UIKeyboardType) -> some View { self }
   public func accessibilityHidden(_ hidden: Bool) -> some View { self }
   public func simultaneousGesture<G: Gesture>(_ gesture: G) -> some View { self }
   public func highPriorityGesture<G: Gesture>(_ gesture: G) -> some View { self }
+  public func highPriorityGesture<G: Gesture>(_ gesture: G, including mask: GestureMask) -> some View { self }
   // .gesture / .contentShape(Rectangle()) — the chart-host tap emit (chart-hosts.ts).
   public func gesture<G: Gesture>(_ gesture: G) -> some View { self }
   public func contentShape<S: Shape>(_ shape: S) -> some View { self }
@@ -587,6 +602,7 @@ extension View {
   // runtime does is how a broken emit slips through — the same trap the
   // lineLimit note above records, in the opposite direction.
   public func background<V: View>(_ background: V) -> some View { self }
+  public func overlay<V: View>(alignment: Alignment = .center, @ViewBuilder content: () -> V) -> some View { self }
   // useHotkey -> .keyboardShortcut on a hidden Button. Mirrors SwiftUI's real
   // signature including the modifiers-defaults-to-command DEFAULT: the emit always
   // passes modifiers explicitly (even an empty set), so the default is never
@@ -1968,6 +1984,21 @@ public struct AsyncImage: View {
 export const SWIFT_CHART_VIEW_STUBS = `
 // ---- @pyreon/charts/plot hosts (chart-hosts.ts emit) ----
 public struct GeometryProxy { public var size: CGSize = CGSize() }
+public func pyreonChartDataUrl(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double) -> String { "" }
+public func pyreonShareChartImage(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double, _ name: String) {}
+public final class PyreonChartHandle {
+  public var zoom = ZoomWindow(start: 0.0, end: 1.0)
+  public var hover: Int = -1
+  public var selected: [Int] = []
+  public var hidden: [Int] = []
+  public var seriesCount: Int = 0
+  public var brushType: String = ""
+  public var areas: [BrushArea] = []
+  public var step: Int = -1
+  public var playing: Bool = false
+  public init(seriesCount: Int = 0) { self.seriesCount = seriesCount }
+  public func dispatch(_ action: ChartActionInput) {}
+}
 public struct GeometryReader<Content: View>: View {
   public init(@ViewBuilder content: @escaping (GeometryProxy) -> Content) {}
   public typealias Body = Never

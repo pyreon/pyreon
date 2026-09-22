@@ -156,7 +156,7 @@ describe('<RadarChart> has a tap on both targets', () => {
   it('Swift: hitRadarIndex against the painted box, the legend height off the y', () => {
     const r = transform(RADAR_TAP, { target: 'swift' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('.gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in')
+    expect(r.code).toContain('.simultaneousGesture(SpatialTapGesture().onEnded { pyreonTap in')
     expect(r.code).toContain('hitRadarIndex(AXES, pyreonSeries, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 220.0 - pyreonTop), RadarOptions(')
     expect(r.code).toContain('Double(pyreonTap.location.y) - pyreonTop, 8.0)')
   })

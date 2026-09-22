@@ -477,6 +477,7 @@ class Role {
 // property) + heading() (extension fn) back the accessibilityRole vocabulary.
 class SemanticsPropertyReceiver {
   var contentDescription: String = ""
+  var stateDescription: String = ""
   var role: Role = Role.Button
   fun heading() {}
 }
@@ -2463,4 +2464,18 @@ fun pyreonChartDouble(v: Double): Double = v
 fun pyreonChartDouble(v: Int): Double = v.toDouble()
 fun pyreonLocaleNumberFormatter(tag: String): (Double) -> String = { it.toString() }
 fun pyreonLocaleDateFormatter(tag: String): (Double) -> String = { it.toString() }
+fun pyreonChartDataUrl(cmds: List<PyreonDrawCmd>, width: Double, height: Double, density: Float): String = ""
+fun pyreonShareChartImage(context: Context, cmds: List<PyreonDrawCmd>, width: Double, height: Double, density: Float, name: String) {}
+class PyreonChartHandle {
+  var zoom: ZoomWindow = ZoomWindow(start = 0.0, end = 1.0)
+  var hover: Int = -1
+  var selected: List<Int> = listOf()
+  var hidden: List<Int> = listOf()
+  var seriesCount: Int = 0
+  var brushType: String = ""
+  var areas: List<BrushArea> = listOf()
+  var step: Int = -1
+  var playing: Boolean = false
+  fun dispatch(action: ChartActionInput) {}
+}
 `
