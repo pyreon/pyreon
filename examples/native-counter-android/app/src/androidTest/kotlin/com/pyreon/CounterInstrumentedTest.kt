@@ -93,6 +93,12 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithTag("native-flow-selected-node-count").assertTextEquals("0")
         val keyboardNode = composeRule.onNodeWithContentDescription("Native Flow Start")
         keyboardNode.performClick()
+        // The node also handles double-tap, so its single tap resolves only after
+        // the double-tap timeout — wait for the selection instead of reading it
+        // the instant the click returns.
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-selected-node-count").fetchSemanticsNode().config[SemanticsProperties.Text].first().text == "1"
+        }
         composeRule.onNodeWithTag("native-flow-selected-node-count").assertTextEquals("1")
         val positionBeforeKey = composeRule.onNodeWithTag("native-flow-start-position").fetchSemanticsNode().config[SemanticsProperties.Text].first().text
         keyboardNode.performSemanticsAction(SemanticsActions.RequestFocus)
@@ -370,10 +376,10 @@ class CounterInstrumentedTest {
             .text
         val before = label.removePrefix("Notes: ").trim().toInt()
 
-        composeRule.onNodeWithText("Save Note").performClick()
+        composeRule.onNodeWithText("Save Note").performScrollTo().performClick()
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("Notes: ${before + 1}").assertIsDisplayed()
+        composeRule.onNodeWithText("Notes: ${before + 1}").performScrollTo().assertIsDisplayed()
     }
 
     // useDatabase — the record is on the DEVICE'S DISK, not in a cache.
@@ -409,9 +415,9 @@ class CounterInstrumentedTest {
             .trim()
             .toInt()
 
-        composeRule.onNodeWithText("Save Note").performClick()
+        composeRule.onNodeWithText("Save Note").performScrollTo().performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Notes: ${before + 1}").assertIsDisplayed()
+        composeRule.onNodeWithText("Notes: ${before + 1}").performScrollTo().assertIsDisplayed()
 
         // A cold reader over the same app-private directory. The context comes
         // from the rule's own activity rather than InstrumentationRegistry:
