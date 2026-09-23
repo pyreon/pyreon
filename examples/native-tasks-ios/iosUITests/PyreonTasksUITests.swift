@@ -92,6 +92,17 @@ final class PyreonTasksUITests: XCTestCase {
         }
     }
 
+    /// Tap `point` until `label` reads `expected`: a tap that lands while the gallery's scroll is still
+    /// decelerating only stops the fling, so one retry absorbs that — a tap that hits the WRONG part
+    /// still fails, because the label then reads something else.
+    private func tapUntilLabel(_ point: XCUICoordinate, _ label: XCUIElement, _ expected: String) -> Bool {
+        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+        point.tap()
+        if waitForLabel(label, expected, timeout: 3) { return true }
+        point.tap()
+        return waitForLabel(label, expected, timeout: 3)
+    }
+
     private func waitForValue(_ element: XCUIElement, _ value: String, timeout: TimeInterval) -> Bool {
         let predicate = NSPredicate(format: "value == %@", value)
         return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: element)], timeout: timeout) == .completed
@@ -908,6 +919,22 @@ final class PyreonTasksUITests: XCTestCase {
         galleryBtn.tap()
         let galPage = app.otherElements["gal-page"].firstMatch
         XCTAssertTrue(galPage.waitForExistence(timeout: 15), "Chart gallery page did not render")
+        // Option-placed families (first on the page, tapped where it opens — no scroll): the web's own compile places them (center / radius, the funnel's
+        // margins) at the device's size, and a tap is read back through that frame.
+        // The pie: centre (0.3W, 100), radius 40% of 100 = 40; slice 0 is the right half.
+        let optPie = app.descendants(matching: .any).matching(identifier: "gal-opt-pie").firstMatch
+        XCTAssertTrue(optPie.waitForExistence(timeout: 10), "gal-opt-pie missing on the gallery")
+        let pieSel = app.staticTexts["gal-opt-pie-sel"].firstMatch
+        let pieOrigin = optPie.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        XCTAssertTrue(tapUntilLabel(pieOrigin.withOffset(CGVector(dx: optPie.frame.width * 0.3 + 20, dy: 100)), pieSel, "East"), "a tap on the pie's right half did not select East (label: \(pieSel.label))")
+        XCTAssertTrue(tapUntilLabel(pieOrigin.withOffset(CGVector(dx: optPie.frame.width * 0.3 - 20, dy: 100)), pieSel, "West"), "a tap on the pie's left half did not select West (label: \(pieSel.label))")
+        // The funnel: its box is y 10..70 (top 10, height 60), the larger stage on top.
+        let optFunnel = app.descendants(matching: .any).matching(identifier: "gal-opt-funnel").firstMatch
+        XCTAssertTrue(optFunnel.waitForExistence(timeout: 10), "gal-opt-funnel missing on the gallery")
+        let funnelSel = app.staticTexts["gal-opt-funnel-sel"].firstMatch
+        let funnelOrigin = optFunnel.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        XCTAssertTrue(tapUntilLabel(funnelOrigin.withOffset(CGVector(dx: optFunnel.frame.width / 2, dy: 30)), funnelSel, "Visits"), "a tap on the funnel's top stage did not select Visits (label: \(funnelSel.label))")
+        XCTAssertTrue(tapUntilLabel(funnelOrigin.withOffset(CGVector(dx: optFunnel.frame.width / 2, dy: 55)), funnelSel, "Orders"), "a tap on the funnel's bottom stage did not select Orders (label: \(funnelSel.label))")
         for id in [
             "gal-calendar", "gal-candlestick", "gal-gantt", "gal-graph", "gal-map",
             "gal-parallel", "gal-polar", "gal-river", "gal-sunburst", "gal-tree",
@@ -981,6 +1008,12 @@ final class PyreonTasksUITests: XCTestCase {
         scrollFullyOnScreen(tlLast, in: app)
         tlLast.tap()
         XCTAssertTrue(waitForValue(timeline, "2021", timeout: 5), "the handle's timelineChange did not move the step (value: \(String(describing: timeline.value)))")
+        for id in ["gal-opt-gauge", "gal-opt-decor"] {
+            let canvas = app.descendants(matching: .any).matching(identifier: id).firstMatch
+            scrollIntoView(canvas, in: app)
+            XCTAssertTrue(canvas.waitForExistence(timeout: 10), "\(id) canvas missing on the gallery")
+            XCTAssertFalse(canvas.frame.isEmpty, "\(id) rendered with an empty frame")
+        }
         // The toolbox (dataZoom, back, dataView, line, bar, restore — right-aligned, 25pt apart at the top).
         let toolbox = app.descendants(matching: .any).matching(identifier: "gal-toolbox").firstMatch
         XCTAssertTrue(toolbox.waitForExistence(timeout: 10), "gal-toolbox missing on the gallery")

@@ -972,6 +972,24 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("gal-tl-last").performScrollTo().performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("gal-timeline").performScrollTo().assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2021"))
+        // Option-placed families: the web's own compile places them (center / radius, the funnel's
+        // margins) at the device's size, and a tap is read back through that frame.
+        // The pie: centre (0.3W, 100dp), radius 40% of 100 = 40dp; slice 0 is the right half.
+        composeRule.onNodeWithTag("gal-opt-pie").performScrollTo().performTouchInput { click(Offset(width * 0.3f + 20.dp.toPx(), 100.dp.toPx())) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-opt-pie-sel").performScrollTo().assertTextEquals("East")
+        composeRule.onNodeWithTag("gal-opt-pie").performScrollTo().performTouchInput { click(Offset(width * 0.3f - 20.dp.toPx(), 100.dp.toPx())) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-opt-pie-sel").performScrollTo().assertTextEquals("West")
+        // The funnel: its box is y 10..70dp (top 10, height 60), the larger stage on top.
+        composeRule.onNodeWithTag("gal-opt-funnel").performScrollTo().performTouchInput { click(Offset(width / 2f, 30.dp.toPx())) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-opt-funnel-sel").performScrollTo().assertTextEquals("Visits")
+        composeRule.onNodeWithTag("gal-opt-funnel").performScrollTo().performTouchInput { click(Offset(width / 2f, 55.dp.toPx())) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-opt-funnel-sel").performScrollTo().assertTextEquals("Orders")
+        composeRule.onNodeWithTag("gal-opt-gauge").performScrollTo().assertExists()
+        composeRule.onNodeWithTag("gal-opt-decor").performScrollTo().assertExists()
         // The toolbox (dataZoom, back, dataView, line, bar, restore — right-aligned, 25dp apart at the top).
         val toolbox = composeRule.onNodeWithTag("gal-toolbox").performScrollTo()
         val tool = { i: Int -> toolbox.performTouchInput { click(Offset(width - (9.5f + 25f * (5 - i)).dp.toPx(), 9.5.dp.toPx())) } }

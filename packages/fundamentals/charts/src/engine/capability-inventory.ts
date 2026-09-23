@@ -196,7 +196,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
       'a label is one line: `rich` text is not read, and `overflow: \'break\'` cuts as `truncate` does rather than wrapping',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/echarts-differential.test.ts', 'src/engine/option-pie.test.ts', 'src/engine/option-family-frame.browser.test.tsx', NATIVE + 'chart-option-family-native.test.ts', NATIVE + 'chart-option-pie-forwarded-native.test.ts'],
+    evidence: ['src/engine/echarts-differential.test.ts', 'src/engine/option-pie.test.ts', 'src/engine/option-family-frame.browser.test.tsx', NATIVE + 'chart-option-family-native.test.ts', NATIVE + 'chart-option-pie-forwarded-native.test.ts', ...DEVICE],
   }),
   row('series.scatter', 'series', 'direct', {
     web: 'complete',
@@ -268,7 +268,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'complete',
     native: 'partial',
     gaps: [LITERAL_ONLY],
-    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts', NATIVE + 'chart-option-family-frame-native.test.ts'],
+    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts', NATIVE + 'chart-option-family-frame-native.test.ts', ...DEVICE],
   }),
   row('series.gauge', 'series', 'direct', {
     web: 'partial',
@@ -278,7 +278,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
       'the detail box has no `borderRadius` or `rich` text; `valueAnimation` counts nothing up',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/echarts-differential.test.ts', 'src/engine/option-gauge.test.ts', NATIVE + 'chart-option-family-native.test.ts', NATIVE + 'chart-option-gauge-forwarded-native.test.ts'],
+    evidence: ['src/engine/echarts-differential.test.ts', 'src/engine/option-gauge.test.ts', NATIVE + 'chart-option-family-native.test.ts', NATIVE + 'chart-option-gauge-forwarded-native.test.ts', ...DEVICE],
   }),
   row('series.river', 'series', 'direct', {
     web: 'complete',
@@ -431,7 +431,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
       'the y axes and a value X axis tick as ECharts does (differential-tested); a time axis still uses the engine\'s own ticks, and interval, minInterval and maxInterval are not read',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/option-axes.test.ts', 'src/engine/option-axes-mapping.test.ts', NATIVE + 'chart-axes-native.test.ts', 'src/engine/option-boundary-gap.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-option-forwarded-native.test.ts'],
+    evidence: ['src/engine/option-axes.test.ts', 'src/engine/option-axes-mapping.test.ts', NATIVE + 'chart-axes-native.test.ts', 'src/engine/option-boundary-gap.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-option-forwarded-native.test.ts', NATIVE + 'chart-option-axis-decor-native.test.ts', ...DEVICE],
   }),
   row('coordinates.visual-map', 'coordinates', 'direct', {
     web: 'complete',
