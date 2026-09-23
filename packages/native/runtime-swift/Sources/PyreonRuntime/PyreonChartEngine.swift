@@ -1587,6 +1587,70 @@ public struct FunnelStageGeometry: Codable {
   }
 }
 
+public struct FunnelEcConfig: Codable {
+  public var orient: String
+  public var sort: String
+  public var min: Double
+  public var max: Double
+  public var minSize: Double
+  public var minSizePct: Bool
+  public var maxSize: Double
+  public var maxSizePct: Bool
+  public var gap: Double
+  public var align: String
+  public var itemSizes: [Double]
+  public var itemSizesPct: [Bool]
+  public var labelShow: Bool
+  public var labelPosition: String
+  public var labelLineShow: Bool
+  public var labelLineLength: Double
+  public var labelColor: String
+  public var labelFontSize: Double
+  public var labelTexts: [String]
+  public var borderColor: String
+  public var borderWidth: Double
+  public init(orient: String, sort: String, min: Double, max: Double, minSize: Double, minSizePct: Bool, maxSize: Double, maxSizePct: Bool, gap: Double, align: String, itemSizes: [Double], itemSizesPct: [Bool], labelShow: Bool, labelPosition: String, labelLineShow: Bool, labelLineLength: Double, labelColor: String, labelFontSize: Double, labelTexts: [String], borderColor: String, borderWidth: Double) {
+    self.orient = orient
+    self.sort = sort
+    self.min = min
+    self.max = max
+    self.minSize = minSize
+    self.minSizePct = minSizePct
+    self.maxSize = maxSize
+    self.maxSizePct = maxSizePct
+    self.gap = gap
+    self.align = align
+    self.itemSizes = itemSizes
+    self.itemSizesPct = itemSizesPct
+    self.labelShow = labelShow
+    self.labelPosition = labelPosition
+    self.labelLineShow = labelLineShow
+    self.labelLineLength = labelLineLength
+    self.labelColor = labelColor
+    self.labelFontSize = labelFontSize
+    self.labelTexts = labelTexts
+    self.borderColor = borderColor
+    self.borderWidth = borderWidth
+  }
+}
+
+public struct FunnelEcPiece: Codable {
+  public var index: Int
+  public var points: [PyreonChartPt]
+  public var labelAt: PyreonChartPt
+  public var labelAlign: String
+  public var inside: Bool
+  public var line: [PyreonChartPt]
+  public init(index: Int, points: [PyreonChartPt], labelAt: PyreonChartPt, labelAlign: String, inside: Bool, line: [PyreonChartPt]) {
+    self.index = index
+    self.points = points
+    self.labelAt = labelAt
+    self.labelAlign = labelAlign
+    self.inside = inside
+    self.line = line
+  }
+}
+
 public struct TreeNode: Codable {
   public var name: String
   public var value: Double? = nil
@@ -9690,6 +9754,384 @@ public func hitFunnel(_ stages: [FunnelStage], _ plot: PyreonChartRect, _ px: Do
       let w = g.topWidth + (g.bottomWidth - g.topWidth) * t
       if px >= g.centerX - Double(w) / 2.0 && px <= g.centerX + Double(w) / 2.0 {
         return g.index
+      }
+    }
+    return -1
+  }
+
+public func funnelMap(_ val: Double, _ d0: Double, _ d1: Double, _ r0: Double, _ r1: Double) -> Double {
+    let subDomain = d1 - d0
+    let subRange = r1 - r0
+    if subDomain == 0.0 {
+      return subRange == 0.0 ? r0 : (r0 + r1) / 2.0
+    }
+    if subDomain > 0.0 {
+      if val <= d0 {
+        return r0
+      }
+      if val >= d1 {
+        return r1
+      }
+    } else {
+      if val >= d0 {
+        return r0
+      }
+      if val <= d1 {
+        return r1
+      }
+    }
+    return ((val - d0) / subDomain) * subRange + r0
+  }
+
+public func funnelEdge(_ values: [Double], _ idx: Int, _ offset: Double, _ box: PyreonChartRect, _ cfg: FunnelEcConfig, _ lo: Double, _ hi: Double, _ sizeLo: Double, _ sizeHi: Double) -> [PyreonChartPt] {
+    let raw = idx >= 0 && idx < values.count ? values[idx] : 0.0
+    let val = isFiniteNumber(raw) ? raw : 0.0
+    let size = funnelMap(val, lo, hi, sizeLo, sizeHi)
+    if cfg.orient == "horizontal" {
+      let y0 = cfg.align == "top" ? box.y : cfg.align == "bottom" ? box.y + box.h - size : box.y + (box.h - size) / 2.0
+      return [PyreonChartPt(x: offset, y: y0), PyreonChartPt(x: offset, y: y0 + size)]
+    }
+    let x0 = cfg.align == "left" ? box.x : cfg.align == "right" ? box.x + box.w - size : box.x + (box.w - size) / 2.0
+    return [PyreonChartPt(x: x0, y: offset), PyreonChartPt(x: x0 + size, y: offset)]
+  }
+
+public func funnelLabelPiece(_ index: Int, _ pts: [PyreonChartPt], _ cfg: FunnelEcConfig) -> FunnelEcPiece {
+    let horizontal = cfg.orient == "horizontal"
+    var pos = cfg.labelPosition
+    let p0 = pts[0]
+    let p1 = pts[1]
+    let p2 = pts[2]
+    let p3 = pts[3]
+    let inside = pos == "inner" || pos == "inside" || pos == "center" || pos == "insideLeft" || pos == "insideRight"
+    if inside {
+      if pos == "insideLeft" {
+        let at = PyreonChartPt(x: (p0.x + p3.x) / 2.0 + 5.0, y: (p0.y + p3.y) / 2.0)
+        return FunnelEcPiece(index: index, points: pts, labelAt: at, labelAlign: "start", inside: true, line: [at, at])
+      }
+      if pos == "insideRight" {
+        let at = PyreonChartPt(x: (p1.x + p2.x) / 2.0 - 5.0, y: (p1.y + p2.y) / 2.0)
+        return FunnelEcPiece(index: index, points: pts, labelAt: at, labelAlign: "end", inside: true, line: [at, at])
+      }
+      let at = PyreonChartPt(x: (p0.x + p1.x + p2.x + p3.x) / 4.0, y: (p0.y + p1.y + p2.y + p3.y) / 4.0)
+      return FunnelEcPiece(index: index, points: pts, labelAt: at, labelAlign: "middle", inside: true, line: [at, at])
+    }
+    if !horizontal && (pos == "top" || pos == "bottom") {
+      pos = "left"
+    }
+    if horizontal && (pos == "left" || pos == "right") {
+      pos = "bottom"
+    }
+    let len = cfg.labelLineLength
+    var x1 = 0.0
+    var y1 = 0.0
+    var x2 = 0.0
+    var y2 = 0.0
+    var tx = 0.0
+    var ty = 0.0
+    var align = "start"
+    if pos == "left" {
+      x1 = (p3.x + p0.x) / 2.0
+      y1 = (p3.y + p0.y) / 2.0
+      x2 = x1 - len
+      tx = x2 - 5.0
+      align = "end"
+    } else {
+      if pos == "right" {
+        x1 = (p1.x + p2.x) / 2.0
+        y1 = (p1.y + p2.y) / 2.0
+        x2 = x1 + len
+        tx = x2 + 5.0
+        align = "start"
+      } else {
+        if pos == "top" {
+          x1 = (p3.x + p0.x) / 2.0
+          y1 = (p3.y + p0.y) / 2.0
+          y2 = y1 - len
+          ty = y2 - 5.0
+          align = "middle"
+        } else {
+          if pos == "bottom" {
+            x1 = (p1.x + p2.x) / 2.0
+            y1 = (p1.y + p2.y) / 2.0
+            y2 = y1 + len
+            ty = y2 + 5.0
+            align = "middle"
+          } else {
+            if pos == "rightTop" {
+              x1 = horizontal ? p3.x : p1.x
+              y1 = horizontal ? p3.y : p1.y
+              if horizontal {
+                y2 = y1 - len
+                ty = y2 - 5.0
+                align = "middle"
+              } else {
+                x2 = x1 + len
+                tx = x2 + 5.0
+                align = "start"
+              }
+            } else {
+              if pos == "rightBottom" {
+                x1 = p2.x
+                y1 = p2.y
+                if horizontal {
+                  y2 = y1 + len
+                  ty = y2 + 5.0
+                  align = "middle"
+                } else {
+                  x2 = x1 + len
+                  tx = x2 + 5.0
+                  align = "start"
+                }
+              } else {
+                if pos == "leftTop" {
+                  x1 = p0.x
+                  y1 = horizontal ? p0.y : p1.y
+                  if horizontal {
+                    y2 = y1 - len
+                    ty = y2 - 5.0
+                    align = "middle"
+                  } else {
+                    x2 = x1 - len
+                    tx = x2 - 5.0
+                    align = "end"
+                  }
+                } else {
+                  if pos == "leftBottom" {
+                    x1 = horizontal ? p1.x : p3.x
+                    y1 = horizontal ? p1.y : p2.y
+                    if horizontal {
+                      y2 = y1 + len
+                      ty = y2 + 5.0
+                      align = "middle"
+                    } else {
+                      x2 = x1 - len
+                      tx = x2 - 5.0
+                      align = "end"
+                    }
+                  } else {
+                    x1 = (p1.x + p2.x) / 2.0
+                    y1 = (p1.y + p2.y) / 2.0
+                    if horizontal {
+                      y2 = y1 + len
+                      ty = y2 + 5.0
+                      align = "middle"
+                    } else {
+                      x2 = x1 + len
+                      tx = x2 + 5.0
+                      align = "start"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    if horizontal {
+      x2 = x1
+      tx = x2
+    } else {
+      y2 = y1
+      ty = y2
+    }
+    return FunnelEcPiece(index: index, points: pts, labelAt: PyreonChartPt(x: tx, y: ty), labelAlign: align, inside: false, line: [PyreonChartPt(x: x1, y: y1), PyreonChartPt(x: x2, y: y2)])
+  }
+
+public func layoutFunnelEc(_ values: [Double], _ box: PyreonChartRect, _ cfg: FunnelEcConfig) -> [FunnelEcPiece] {
+    var out: [FunnelEcPiece] = []
+    let n = values.count
+    if n == 0 {
+      return out
+    }
+    let horizontal = cfg.orient == "horizontal"
+    var order: [Int] = []
+    var nf = 0.0
+    for i in 0..<n {
+      order.append(i)
+      nf = nf + 1.0
+    }
+    if cfg.sort == "descending" || cfg.sort == "ascending" {
+      for i in 1..<n {
+        let cur = order[i]
+        var j = i - 1
+        while j >= 0 {
+          let a = values[order[j]]
+          let b = values[cur]
+          let swap = cfg.sort == "ascending" ? a > b : a < b
+          if !swap {
+            break
+          }
+          order[j + 1] = order[j]
+          j = j - 1
+        }
+        order[j + 1] = cur
+      }
+    }
+    var dataLo = 0.0
+    var dataHi = 0.0
+    var seen = false
+    for v in values {
+      if !isFiniteNumber(v) {
+        continue
+      }
+      if !seen || v < dataLo {
+        dataLo = v
+      }
+      if !seen || v > dataHi {
+        dataHi = v
+      }
+      seen = true
+    }
+    let lo = isFiniteNumber(cfg.min) ? cfg.min : dataLo < 0.0 ? dataLo : 0.0
+    let hi = isFiniteNumber(cfg.max) ? cfg.max : dataHi
+    let across = horizontal ? box.h : box.w
+    let sizeLo = cfg.minSizePct ? cfg.minSize * across : cfg.minSize
+    let sizeHi = cfg.maxSizePct ? cfg.maxSize * across : cfg.maxSize
+    let along = horizontal ? box.w : box.h
+    let ascending = cfg.sort == "ascending"
+    var gap = cfg.gap
+    var itemSize = (along - gap * (nf - 1.0)) / nf
+    var x = box.x
+    var y = box.y
+    var seq: [Int] = []
+    if ascending {
+      itemSize = -itemSize
+      gap = -gap
+      if horizontal {
+        x = x + box.w
+      } else {
+        y = y + box.h
+      }
+      for i in stride(from: n - 1, through: 0, by: -1) {
+        seq.append(order[i])
+      }
+    } else {
+      for i in 0..<n {
+        seq.append(order[i])
+      }
+    }
+    for i in 0..<n {
+      let idx = seq[i]
+      let next = i + 1 < n ? seq[i + 1] : -1
+      var size = itemSize
+      if idx < cfg.itemSizes.count && isFiniteNumber(cfg.itemSizes[idx]) {
+        let pct = idx < cfg.itemSizesPct.count ? cfg.itemSizesPct[idx] : false
+        let own = pct ? cfg.itemSizes[idx] * along : cfg.itemSizes[idx]
+        size = ascending ? -own : own
+      }
+      let offset = horizontal ? x : y
+      let start = funnelEdge(values, idx, offset, box, cfg, lo, hi, sizeLo, sizeHi)
+      let end = funnelEdge(values, next, offset + size, box, cfg, lo, hi, sizeLo, sizeHi)
+      let pts = [start[0], start[1], end[1], end[0]]
+      out.append(funnelLabelPiece(idx, pts, cfg))
+      if horizontal {
+        x = x + size + gap
+      } else {
+        y = y + size + gap
+      }
+    }
+    return out
+  }
+
+public func funnelContains(_ pts: [PyreonChartPt], _ px: Double, _ py: Double) -> Bool {
+    let n = pts.count
+    if n < 3 {
+      return false
+    }
+    var inside = false
+    var j = n - 1
+    for i in 0..<n {
+      let a = pts[i]
+      let b = pts[j]
+      if (a.y > py) != (b.y > py) && px < ((b.x - a.x) * (py - a.y)) / Double((b.y - a.y)) + a.x {
+        inside = !inside
+      }
+      j = i
+    }
+    return inside
+  }
+
+public func renderFunnelEc(_ stages: [FunnelStage], _ box: PyreonChartRect, _ cfg: FunnelEcConfig, _ progress: Double, _ background: String) -> [PyreonDrawCmd] {
+    var out: [PyreonDrawCmd] = []
+    var values: [Double] = []
+    for st in stages {
+      values.append(st.value)
+    }
+    let pieces = layoutFunnelEc(values, box, cfg)
+    let p = progress < 0.0 ? 0.0 : progress > 1.0 ? 1.0 : progress
+    let labelsOn = cfg.labelShow && p >= 1.0
+    if labelsOn && cfg.labelLineShow {
+      for pc in pieces {
+        if pc.inside {
+          continue
+        }
+        out.append(PyreonDrawCmd(kind: "polyline", stroke: stages[pc.index].color, width: 1.0, points: pc.line))
+      }
+    }
+    let border = cfg.borderColor != "" ? cfg.borderColor : background != "" ? background : "#ffffff"
+    for pc in pieces {
+      var cx = 0.0
+      var cy = 0.0
+      for q in pc.points {
+        cx = cx + Double(q.x) / 4.0
+        cy = cy + Double(q.y) / 4.0
+      }
+      var pts: [PyreonChartPt] = []
+      for q in pc.points {
+        pts.append(PyreonChartPt(x: cx + (q.x - cx) * p, y: cy + (q.y - cy) * p))
+      }
+      out.append(PyreonDrawCmd(kind: "polygon", fill: stages[pc.index].color, points: pts))
+      if cfg.borderWidth > 0.0 {
+        var ring: [PyreonChartPt] = []
+        for q in pts {
+          ring.append(q)
+        }
+        ring.append(pts[0])
+        out.append(PyreonDrawCmd(kind: "polyline", stroke: border, width: cfg.borderWidth, points: ring))
+      }
+    }
+    if !labelsOn {
+      return out
+    }
+    for pc in pieces {
+      let color = stages[pc.index].color
+      let auto = autoLabelStyle(pc.inside, color, background)
+      var fill = auto.textFill
+      var halo = auto.halo
+      if cfg.labelColor == "inherit" {
+        if pc.inside {
+          halo = color
+        } else {
+          fill = color
+        }
+      } else {
+        if cfg.labelColor != "" {
+          fill = cfg.labelColor
+          if pc.inside {
+            halo = ""
+          }
+        }
+      }
+      let text = pc.index < cfg.labelTexts.count ? cfg.labelTexts[pc.index] : stages[pc.index].label
+      let align = pc.labelAlign == "end" ? "end" : pc.labelAlign == "middle" ? "middle" : "start"
+      if halo != "" {
+        out.append(PyreonDrawCmd(kind: "text", fill: fill, stroke: halo, text: text, at: pc.labelAt, size: cfg.labelFontSize, align: align, baseline: "middle", strokeWidth: 2.0))
+      } else {
+        out.append(PyreonDrawCmd(kind: "text", fill: fill, text: text, at: pc.labelAt, size: cfg.labelFontSize, align: align, baseline: "middle"))
+      }
+    }
+    return out
+  }
+
+public func hitFunnelEc(_ stages: [FunnelStage], _ box: PyreonChartRect, _ cfg: FunnelEcConfig, _ px: Double, _ py: Double) -> Int {
+    var values: [Double] = []
+    for st in stages {
+      values.append(st.value)
+    }
+    for pc in layoutFunnelEc(values, box, cfg) {
+      if funnelContains(pc.points, px, py) {
+        return pc.index
       }
     }
     return -1

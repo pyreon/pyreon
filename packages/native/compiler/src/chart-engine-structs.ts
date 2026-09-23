@@ -7826,6 +7826,219 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "FunnelEcConfig",
+    "fields": [
+      {
+        "name": "orient",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "sort",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "min",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "max",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "minSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "minSizePct",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "maxSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "maxSizePct",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "gap",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "align",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "itemSizes",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "Double",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "itemSizesPct",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "boolean"
+          }
+        }
+      },
+      {
+        "name": "labelShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "labelPosition",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "labelLineShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "labelLineLength",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "labelColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "labelFontSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "labelTexts",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "string"
+          }
+        }
+      },
+      {
+        "name": "borderColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "borderWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "FunnelEcPiece",
+    "fields": [
+      {
+        "name": "index",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "points",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonChartPt",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "labelAt",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartPt",
+          "args": []
+        }
+      },
+      {
+        "name": "labelAlign",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "inside",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "line",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonChartPt",
+            "args": []
+          }
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "TreeNode",
     "fields": [
       {
@@ -15571,6 +15784,8 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "FiveNumber",
   "FrameLength",
   "FrameSpec",
+  "FunnelEcConfig",
+  "FunnelEcPiece",
   "FunnelOptions",
   "FunnelStage",
   "FunnelStageGeometry",

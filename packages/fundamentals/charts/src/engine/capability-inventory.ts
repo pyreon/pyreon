@@ -271,8 +271,11 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
   row('series.funnel', 'series', 'direct', {
     web: 'complete',
     native: 'partial',
-    gaps: [LITERAL_ONLY],
-    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts', NATIVE + 'chart-option-family-frame-native.test.ts', ...DEVICE],
+    gaps: [
+      'native: an option funnel draws <FunnelChart>\'s own layout (inside labels, value / max widths), not ECharts\' funnel (the `min` / `max` / `minSize` / `maxSize` scale, `orient`, ascending from the far end, borders, outside labels on leader lines) that the web and SVG draw',
+      LITERAL_ONLY,
+    ],
+    evidence: ['src/engine/option.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-option-family-native.test.ts', NATIVE + 'chart-option-family-frame-native.test.ts', ...DEVICE],
   }),
   row('series.gauge', 'series', 'direct', {
     web: 'partial',
