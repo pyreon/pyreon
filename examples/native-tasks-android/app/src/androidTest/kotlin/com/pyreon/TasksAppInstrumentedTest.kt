@@ -956,6 +956,11 @@ class TasksAppInstrumentedTest {
             return n
         }
         val zoomChart = composeRule.onNodeWithTag("gal-datazoom").performScrollTo()
+        // The low half's four short red bars are on screen from the start, so the
+        // baseline must see some red. Capturing straight after the scroll could
+        // precede the chart's first paint ("red before 0, after 0" on unrelated
+        // PRs), which reads as a failed drag. Wait for the paint first.
+        composeRule.waitUntil(10_000) { redPixels(zoomChart.captureToImage().asAndroidBitmap()) > 0 }
         val redBefore = redPixels(zoomChart.captureToImage().asAndroidBitmap())
         zoomChart.performTouchInput {
             val stripW = width - 16.dp.toPx()
