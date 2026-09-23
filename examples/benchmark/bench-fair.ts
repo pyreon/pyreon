@@ -667,6 +667,10 @@ async function main(): Promise<void> {
     const suites: SuiteResult[] = []
     load.stamp(`pass ${r + 1} start`)
     for (const framework of executionOrder) {
+      // With --wait-quiet, re-check BEFORE EVERY framework: a check only at
+      // the start let a load spike mid-run (19.7 observed) contaminate later
+      // arms while the run still reported itself as quiet.
+      if (args.waitQuiet !== null) await waitForQuietMachine('bench-fair', args.waitQuiet)
       console.log(`[bench-fair]   ▸ ${framework}`)
       const run = await runOneFramework(framework, baseUrl, args.throttle, browser)
       if (run) {

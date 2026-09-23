@@ -256,6 +256,8 @@ try {
 
   for (const scenario of scenarios) {
     for (let pass = 1; pass <= REPEAT; pass++) {
+      // Re-check before every pass, not only once at start (see bench-fair).
+      if (WAIT_QUIET !== null) await waitForQuietMachine('bench-scenarios', WAIT_QUIET)
       const order = [...scenario.frameworks]
       for (let i = order.length - 1; i > 0; i--) {
         const j = (i * 7 + pass * 13) % (i + 1)
