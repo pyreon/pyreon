@@ -249,6 +249,36 @@ native view.
   open under F3: pixel parity of node chrome under `colorMode="system"` (only
   forced modes are asserted).
 
+## F4 checkpoint — the keyboard focus/action matrix (2026-09-22)
+
+- [x] **Edge hardware focus.** Native edge labels were reachable by VoiceOver and
+  TalkBack only. On Android they had no focus action at all, and on iOS a
+  `.focusable` view is not focused by a tap on its own. Both renderers now make
+  the label focusable, and route its keys through `handleKeyboardCommand`,
+  which gains an `edgeId`. Enter or Space selects the focused edge, like the
+  web's edge `onKeyDown`. Bisect: without the change, Android fails with
+  `the node is missing [RequestFocus]` and iOS with "Space on the focused edge
+  label did not select the edge".
+- [x] **The matrix, driven on devices** (`native-counter` suites):
+  | Focused | Key | Result | Android | iOS |
+  | --- | --- | --- | --- | --- |
+  | node | Arrow | moves the node | asserted | asserted |
+  | node | Escape | clears the selection | asserted | not deliverable |
+  | node | Enter | selects the node | asserted | not deliverable |
+  | node | Space | selects the node | covered by Enter | asserted |
+  | edge | Enter | selects the edge | asserted | not deliverable |
+  | edge | Space | selects the edge | covered by Enter | asserted |
+  | canvas | Ctrl/Cmd+A | selects every node | asserted | asserted |
+  | canvas | Delete | removes the selection and its edges | asserted | not deliverable |
+  | canvas | Ctrl/Cmd+Z | undoes the last change | asserted (restores the deletion) | asserted (undoes the arrow move) |
+- **iOS test-harness limit, measured rather than assumed.** XCUITest cannot
+  deliver Return or Escape to the app on the simulator. A logging probe saw
+  Right Arrow and Space reach both the node and the canvas, and never those two
+  keys, whether sent to the element or the application, and whether handled by
+  `onKeyPress` or a `.keyboardShortcut`. Backspace and forward-delete do not
+  reliably arrive either. The iOS rows therefore drive Space and Cmd+Z, the
+  web's other activation key, and the Android suite owns Enter and Escape.
+  Nothing was shipped for Return/Escape on iOS, because it could not be verified.
 ## F6 checkpoint — scale and memory ceilings (2026-09-22)
 
 - [x] **Scale on all three targets.** `examples/native-tasks` has a `/flow-scale`
