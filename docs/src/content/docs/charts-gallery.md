@@ -104,13 +104,13 @@ numbers depend on the machine, so read them for their ratios:
 
 | Operation                    | `PlotChart` | `OptionChart` | ECharts 6 |
 | ---------------------------- | ----------- | ------------- | --------- |
-| First render, 100,000 points | **28.3**    | 55.5          | 44.8      |
-| Update all 100,000 points    | 19.1        | **16.2**      | 31.5      |
-| Update one of 1,000 points   | 1.6         | **1.5**       | 2.0       |
-| First render, 1,000 points   | 11.6        | 11.9          | **4.3**   |
+| First render, 100,000 points | **30.5**    | 35.2          | 49.0      |
+| Update all 100,000 points    | 20.7        | **14.8**      | 34.0      |
+| Update one of 1,000 points   | 2.0         | **1.9**       | 2.4       |
+| First render, 1,000 points   | 13.1        | 12.9          | **4.9**   |
 
 The last row is a loss, and it comes from one feature. Pyreon renders an
 offscreen data table (up to 1,000 rows) for screen readers by default; ECharts
 renders none. Without it (`accessibleTable={false}`) the same chart's first
-render is 1.3 ms. Building and laying out the table is the cost of the chart
+render is 1.5 ms. Building and laying out the table is the cost of the chart
 being readable without sight, and Pyreon keeps it on by default.

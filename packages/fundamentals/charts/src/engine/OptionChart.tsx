@@ -43,7 +43,7 @@ import { chartTable } from './a11y'
 import { navigatorDrag, navigatorHit } from './navigator'
 import { isFullWindow, panWindow, windowOfRows, zoomWindow } from './zoom'
 import type { ZoomWindow } from './zoom'
-import type { CompiledOption, EChartsOption, OptionPlan, OptionChrome } from './option'
+import type { CompiledOption, CompileOptions, EChartsOption, OptionPlan, OptionChrome } from './option'
 import { familyHostNode, familyHostShape } from './family-host'
 import { circleView, familyRect } from './option-layers'
 import type { FamilyHostOptions } from './family-host'
@@ -351,7 +351,25 @@ export function OptionChart(props: OptionChartProps): VNode {
     const own = themeOf()
     return own === undefined ? defaultTheme : resolveTheme(own).chartTheme
   }
-  const compileOpts = (w: Double, hgt: Double, idx: number | undefined) => ({
+  // One chart plans the SAME option at the same size from three places each
+  // draw — the paint, the layout the pointer hit-tests, the accessible input —
+  // and a mount runs each twice: six full compiles of a 100k-point option per
+  // mount, where one is enough. `planOption` is pure, so the last two plans
+  // are kept, keyed by option IDENTITY and every compile input; a new option
+  // object (every `option.set(...)`) misses and recompiles. Bounded at two and
+  // owned by this instance, so nothing outlives the chart.
+  let planCache: { opt: EChartsOption; w: Double; h: Double; idx: number | undefined; theme: unknown; locale: unknown; plan: OptionPlan }[] = []
+  const planOf = (opt: EChartsOption, o: CompileOptions): OptionPlan => {
+    const pw = o.width ?? 640.0
+    const ph = o.height ?? 320.0
+    for (const c of planCache) {
+      if (c.opt === opt && c.w === pw && c.h === ph && c.idx === o.timelineIndex && c.theme === o.theme && c.locale === o.locale) return c.plan
+    }
+    const plan = planOption(opt, o)
+    planCache = [{ opt, w: pw, h: ph, idx: o.timelineIndex, theme: o.theme, locale: o.locale, plan }, ...planCache].slice(0, 2)
+    return plan
+  }
+  const compileOpts = (w: Double, hgt: Double, idx: number | undefined): CompileOptions => ({
     width: w,
     height: hgt,
     ...(themeOf() !== undefined ? { theme: themeOf() } : {}),
@@ -621,7 +639,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     const hgt = height()
     const steps = timelineSteps(opt)
     const stripH = steps === null ? 0.0 : TIMELINE_HEIGHT
-    const plan = planOption(opt, compileOpts(w, hgt - stripH, idx))
+    const plan = planOf(opt, compileOpts(w, hgt - stripH, idx))
     if (!canvasable(plan)) {
       if (plan.kind === 'family') {
         batch(() => {
@@ -774,7 +792,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     const idx = stepIndex()
     const steps = timelineSteps(opt)
     const stripH = steps === null ? 0.0 : TIMELINE_HEIGHT
-    const planned = canvasPlan(planOption(opt, compileOpts(w, hgt - stripH, idx)))
+    const planned = canvasPlan(planOf(opt, compileOpts(w, hgt - stripH, idx)))
     // `selectedMode: 'series'` tints every datum of a pinned series.
     const withSeriesPins = (c: CompiledOption): CompiledOption => (pinnedSeries().length === 0 ? c : { ...c, spec: applySeriesSelection(c.spec, pinnedSeries()) })
     // A legend-hidden series keeps its slot but draws, hits and tooltips nothing.
@@ -870,7 +888,7 @@ export function OptionChart(props: OptionChartProps): VNode {
 
   const a11y = () => {
     const opt = readOption()
-    const plan = planOption(opt, compileOpts(width(), height(), stepIndex()))
+    const plan = planOf(opt, compileOpts(width(), height(), stepIndex()))
     let spec: ChartSpec | null = null
     if (plan.kind === 'cartesian') spec = plan.compiled.spec
     else if (plan.kind === 'grids') {

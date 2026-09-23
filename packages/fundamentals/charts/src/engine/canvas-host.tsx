@@ -859,7 +859,10 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     const drawn = last
     if (drawn !== null) return drawn.layout
     const el = canvas
-    const w = el === null ? 300 : drawWidth(el, props.width)
+    // Before the canvas lands, the chart's own `width` (else 300): laying out at a
+    // width the chart does not have described the wrong geometry AND made an
+    // option chart compile its option a second time for it.
+    const w = el === null ? (props.width ?? 300) : drawWidth(el, props.width)
     const hgt = props.height ?? spec.defaultHeight
     const measure: MeasureText = (text, size) => text.length * size * 0.6
     return lay(props.frame ?? { x: 0, y: 0, w, h: hgt }, measure, theme())
@@ -867,7 +870,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
   /** The a11y input, computed once per draw (the description, the table and the keyboard all read it). */
   const a11yNow = (): A11yInput => {
     const version = a11yVersion()
-    const w = canvas === null ? 300 : drawWidth(canvas, props.width)
+    const w = canvas === null ? (props.width ?? 300) : drawWidth(canvas, props.width)
     const m = a11yMemo
     if (m !== null && m.version === version && m.w === w) return m.input
     const input = spec.a11y(layoutForA11y())
