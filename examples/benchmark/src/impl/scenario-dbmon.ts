@@ -34,18 +34,20 @@
  *   - **Vue** — `shallowRef` replace + `nextTick`. Vue's own performance guide
  *     prescribes `shallowRef` for a wholesale-replaced structure; a deep `ref`
  *     would allocate a proxy per sample per tick, the handicap PR #2878 removed.
- *     Published TWICE: `Vue 3` builds vnodes with `h()` (the suite's convention)
- *     and `Vue 3 (template)` runs the render function Vue's own template
- *     compiler emits, so the cost of that convention is a measured number
- *     rather than an open question.
+ *     Published TWICE: `Vue 3` runs the render function Vue's own template
+ *     compiler emits (build-time, SFC options), and the `Vue 3 (h())`
+ *     DIAGNOSTIC builds vnodes with hand-written `h()` (the suite's former
+ *     convention), so the cost of that convention is a measured number rather
+ *     than an open question.
  *   - **Svelte** — `$state.raw` replace + `flushSync`, same reasoning.
- *   - **Vanilla** — direct DOM writes against cached node references. The
- *     floor, not a competitor.
+ *   - **Vanilla** — rows cloned from one prototype (`cloneNode(true)`, the
+ *     krausest vanillajs idiom), then direct DOM writes against cached node
+ *     references. The floor, not a competitor.
  *
  * Batching is applied for every framework that has it (`batch` / `flushSync` /
  * `nextTick`), so no framework pays per-write scheduling the others avoid.
  *
- * TWO ARMS ARE PUBLISHED IN DUPLICATE ON PURPOSE (`Vue 3 (template)`,
+ * TWO ARMS ARE PUBLISHED IN DUPLICATE ON PURPOSE (`Vue 3 (h())`,
  * `SolidJS (per-attr effects)`). Both exist because a fairness correction was
  * made to a COMPETITOR's arm, and a competitor correction made by the framework
  * author is exactly the kind of change a reader should not have to take on
@@ -55,18 +57,21 @@
 import { h as ph } from '@pyreon/core'
 import { batch as pyreonBatch, signal } from '@pyreon/reactivity'
 import { mount as pyreonMount } from '@pyreon/runtime-dom'
-import { h as preactH, render as preactRender } from 'preact'
+import { render as preactRender } from 'preact'
+import { jsx as preactJsx, jsxs as preactJsxs } from 'preact/jsx-runtime'
+import { preactJsxKeyed } from './preact-jsx-keyed'
 import { memo as preactMemo } from 'preact/compat'
 import { useEffect as preactUseEffect, useState as preactUseState } from 'preact/hooks'
 import * as React from 'react'
 import { flushSync as reactFlushSync } from 'react-dom'
 import * as ReactDOM from 'react-dom/client'
-import { batch as solidBatch, createRenderEffect, createSignal } from 'solid-js'
-import { className as solidClassName, insert, render as solidRender, template } from 'solid-js/web'
+import { jsx as reactJsx, jsxs as reactJsxs } from 'react/jsx-runtime'
+import { batch as solidBatch, createComponent, createRenderEffect, createSignal, For } from 'solid-js'
+import { className as solidClassName, effect, insert, render as solidRender, template } from 'solid-js/web'
 import { flushSync as svelteFlushSync, mount as svelteMount, unmount as svelteUnmount } from 'svelte'
 import { createApp, defineComponent, h as vueH, nextTick, shallowRef } from 'vue'
-// Build-time-compiled render fn for the `Vue 3 (template)` arm — see the
-// `dbmon-vue-template` plugin in vite.config.ts.
+// Build-time-compiled render fn for the ranked `Vue 3` arm — see the
+// `vue-templates` plugin in vite.config.ts.
 import { render as vueCompiledRender } from 'virtual:dbmon-vue-render'
 import type { BenchSuite } from '../runner'
 import { bench } from '../runner'
@@ -99,7 +104,22 @@ type NumericTextData = { data: number }
 
 // ─── Vanilla (baseline) ──────────────────────────────────────────────────────
 
+/**
+ * Row prototype, cloned per row — the krausest `vanillajs-keyed` idiom (one
+ * native deep `cloneNode` + a firstChild/nextSibling walk) that `impl/vanilla.ts`
+ * uses, instead of 17 `createElement`/`createTextNode` calls + appends per row.
+ * The spaces seed the text nodes the tick writes to, so the clone already
+ * carries them. Built lazily so importing this module never touches `document`.
+ */
+let vanillaDbRowProto: HTMLTableRowElement | null = null
+
 function vanillaTarget(container: HTMLElement): DbmonTarget {
+  if (vanillaDbRowProto === null) {
+    const t = document.createElement('template')
+    t.innerHTML =
+      '<tr><td class="dbname"></td><td class="query-count"><span> </span></td><td> </td><td> </td><td> </td><td> </td><td> </td></tr>'
+    vanillaDbRowProto = t.content.firstChild as HTMLTableRowElement
+  }
   const table = document.createElement('table')
   const tbody = document.createElement('tbody')
   table.appendChild(tbody)
@@ -111,31 +131,22 @@ function vanillaTarget(container: HTMLElement): DbmonTarget {
   const queryTexts: Text[][] = []
 
   for (let i = 0; i < DB_COUNT; i++) {
-    const tr = document.createElement('tr')
-    const nameTd = document.createElement('td')
-    nameTd.className = 'dbname'
+    const tr = vanillaDbRowProto.cloneNode(true) as HTMLTableRowElement
+    const nameTd = tr.firstChild as HTMLElement
     nameTd.textContent = DB_NAMES[i] as string
-    tr.appendChild(nameTd)
-
-    const countTd = document.createElement('td')
-    countTd.className = 'query-count'
-    const span = document.createElement('span')
-    const countText = document.createTextNode('')
-    span.appendChild(countText)
-    countTd.appendChild(span)
-    tr.appendChild(countTd)
+    const countTd = nameTd.nextSibling as HTMLElement
+    const span = countTd.firstChild as HTMLElement
     countSpans.push(span)
-    countTexts.push(countText)
+    countTexts.push(span.firstChild as Text)
 
     const cells: HTMLElement[] = []
     const texts: Text[] = []
+    let td = countTd.nextSibling as HTMLElement | null
     for (let q = 0; q < QUERY_SLOTS; q++) {
-      const td = document.createElement('td')
-      const t = document.createTextNode('')
-      td.appendChild(t)
-      tr.appendChild(td)
-      cells.push(td)
-      texts.push(t)
+      const cell = td as HTMLElement
+      cells.push(cell)
+      texts.push(cell.firstChild as Text)
+      td = cell.nextSibling as HTMLElement | null
     }
     queryCells.push(cells)
     queryTexts.push(texts)
@@ -253,113 +264,160 @@ function pyreonTarget(container: HTMLElement): DbmonTarget {
 // null/hydration guard), imported rather than re-implemented as a bare
 // assignment so the arm cannot drift from it.
 
+// Templates exactly as babel-preset-solid 1.9.15 emits them (it drops the
+// quotes around attribute values and the close tags the parser infers).
+const _dbTableTmpl = template('<table><tbody>')
+const _dbRowTmplCompiled = template(
+  '<tr><td class=dbname></td><td class=query-count><span></span></td><td></td><td></td><td></td><td></td><td>',
+)
+// The diagnostic arm below keeps its original template string unchanged.
 const _dbRowTmpl = template(
   '<tr><td class="dbname"></td><td class="query-count"><span></span></td><td></td><td></td><td></td><td></td><td></td></tr>',
 )
 
-function solidTarget(container: HTMLElement): DbmonTarget {
-  type Cell = {
-    elapsed: () => string
-    setElapsed: (s: string) => void
-    cls: () => string
-    setCls: (s: string) => void
-  }
-  type SolidRow = {
-    count: () => number
-    setCount: (n: number) => void
-    countCls: () => string
-    setCountCls: (s: string) => void
-    queries: Cell[]
-  }
+type SolidDbCell = {
+  elapsed: () => string
+  setElapsed: (s: string) => void
+  cls: () => string
+  setCls: (s: string) => void
+}
+type SolidDbRow = {
+  name: string
+  count: () => number
+  setCount: (n: number) => void
+  countCls: () => string
+  setCountCls: (s: string) => void
+  queries: SolidDbCell[]
+}
 
-  const rowModel: SolidRow[] = DB_NAMES.map(() => {
+/** The compiler's `_p$` previous-value record for the row's six classes. */
+type SolidDbPrev = {
+  e: string | undefined
+  t: string | undefined
+  a: string | undefined
+  o: string | undefined
+  i: string | undefined
+  n: string | undefined
+}
+
+function solidDbRowModel(): SolidDbRow[] {
+  return DB_NAMES.map((name) => {
     const [count, setCount] = createSignal(0)
     const [countCls, setCountCls] = createSignal('')
-    const queries: Cell[] = Array.from({ length: QUERY_SLOTS }, () => {
+    const queries: SolidDbCell[] = Array.from({ length: QUERY_SLOTS }, () => {
       const [elapsed, setElapsed] = createSignal('')
       const [cls, setCls] = createSignal('')
       return { elapsed, setElapsed, cls, setCls }
     })
-    return { count, setCount, countCls, setCountCls, queries }
+    return { name, count, setCount, countCls, setCountCls, queries }
   })
+}
 
-  const dispose = solidRender(() => {
-    const table = document.createElement('table')
-    const tbody = document.createElement('tbody')
-    table.appendChild(tbody)
+function solidDbApply(rowModel: SolidDbRow[], tick: DbSample[]): void {
+  solidBatch(() => {
     for (let i = 0; i < DB_COUNT; i++) {
-      const row = rowModel[i] as SolidRow
-      const tr = _dbRowTmpl() as HTMLElement
-      const tds = tr.children
-      const name = DB_NAMES[i] as string
-      // Reactive insert — what `_$insert(el, () => row.name)` compiles to.
-      // Holds no signal, so this effect runs once at mount and never again.
-      insert(tds[0] as HTMLElement, () => name)
-      const span = (tds[1] as HTMLElement).firstElementChild as HTMLElement
-      insert(span, () => row.count())
+      const row = rowModel[i] as SolidDbRow
+      const s = tick[i] as DbSample
+      row.setCount(s.queryCount)
+      row.setCountCls(s.countCls)
       for (let q = 0; q < QUERY_SLOTS; q++) {
-        const cell = row.queries[q] as Cell
-        insert(tds[2 + q] as HTMLElement, () => cell.elapsed())
+        const cell = row.queries[q] as SolidDbCell
+        const want = s.queries[q] as { elapsed: string; cls: string }
+        cell.setElapsed(want.elapsed)
+        cell.setCls(want.cls)
       }
-      // ONE grouped effect for every class in the row, with the compiler's
-      // previous-value diffing — the `_$effect(_p$ => { … }, { … })` shape.
-      const q0 = row.queries[0] as Cell
-      const q1 = row.queries[1] as Cell
-      const q2 = row.queries[2] as Cell
-      const q3 = row.queries[3] as Cell
-      const q4 = row.queries[4] as Cell
-      const td0 = tds[2] as HTMLElement
-      const td1 = tds[3] as HTMLElement
-      const td2 = tds[4] as HTMLElement
-      const td3 = tds[5] as HTMLElement
-      const td4 = tds[6] as HTMLElement
-      createRenderEffect(
-        (p: Record<string, string | undefined>) => {
-          const v0 = row.countCls()
-          const v1 = q0.cls()
-          const v2 = q1.cls()
-          const v3 = q2.cls()
-          const v4 = q3.cls()
-          const v5 = q4.cls()
-          if (v0 !== p.a) solidClassName(span, (p.a = v0))
-          if (v1 !== p.b) solidClassName(td0, (p.b = v1))
-          if (v2 !== p.c) solidClassName(td1, (p.c = v2))
-          if (v3 !== p.d) solidClassName(td2, (p.d = v3))
-          if (v4 !== p.e) solidClassName(td3, (p.e = v4))
-          if (v5 !== p.f) solidClassName(td4, (p.f = v5))
-          return p
-        },
-        {
-          a: undefined,
-          b: undefined,
-          c: undefined,
-          d: undefined,
-          e: undefined,
-          f: undefined,
-        } as Record<string, string | undefined>,
-      )
-      tbody.appendChild(tr)
     }
-    return table
-  }, container)
+  })
+}
+
+function solidTarget(container: HTMLElement): DbmonTarget {
+  const rowModel = solidDbRowModel()
+
+  // Byte-for-byte the emit of babel-preset-solid 1.9.15 (`generate: 'dom'`) for
+  // the idiomatic component — diffed, not assumed:
+  //
+  //   <table><tbody><For each={rowModel}>{(row) => (
+  //     <tr>
+  //       <td class="dbname">{row.name}</td>
+  //       <td class="query-count"><span class={row.countCls()}>{row.count()}</span></td>
+  //       <td class={row.queries[0].cls()}>{row.queries[0].elapsed()}</td>  … ×5
+  //     </tr>)}</For></tbody></table>
+  //
+  // (firstChild/nextSibling walk, `insert(el, () => row.name)` for the member
+  // read, one grouped `effect` with `_p$` previous-value diffing for all six
+  // classes.)
+  const dispose = solidRender(
+    () =>
+      (() => {
+        const _el$ = _dbTableTmpl()
+        const _el$2 = _el$.firstChild as Node
+        insert(
+          _el$2,
+          createComponent(
+            For as unknown as (props: {
+              each: SolidDbRow[]
+              children: (row: SolidDbRow) => Node
+            }) => Node[],
+            {
+              each: rowModel,
+              children: (row: SolidDbRow) =>
+                (() => {
+                  const _el$3 = _dbRowTmplCompiled()
+                  const _el$4 = _el$3.firstChild as Node
+                  const _el$5 = _el$4.nextSibling as Node
+                  const _el$6 = _el$5.firstChild as Element
+                  const _el$7 = _el$5.nextSibling as Element
+                  const _el$8 = _el$7.nextSibling as Element
+                  const _el$9 = _el$8.nextSibling as Element
+                  const _el$0 = _el$9.nextSibling as Element
+                  const _el$1 = _el$0.nextSibling as Element
+                  insert(_el$4, () => row.name)
+                  insert(_el$6, () => row.count())
+                  insert(_el$7, () => row.queries[0]!.elapsed())
+                  insert(_el$8, () => row.queries[1]!.elapsed())
+                  insert(_el$9, () => row.queries[2]!.elapsed())
+                  insert(_el$0, () => row.queries[3]!.elapsed())
+                  insert(_el$1, () => row.queries[4]!.elapsed())
+                  effect(
+                    // `effect`'s signature types `prev` optional; the init
+                    // object below guarantees it, so the cast is type-only.
+                    (prev?: SolidDbPrev) => {
+                      const _p$ = prev as SolidDbPrev
+                      const _v$ = row.countCls(),
+                        _v$2 = row.queries[0]!.cls(),
+                        _v$3 = row.queries[1]!.cls(),
+                        _v$4 = row.queries[2]!.cls(),
+                        _v$5 = row.queries[3]!.cls(),
+                        _v$6 = row.queries[4]!.cls()
+                      if (_v$ !== _p$.e) solidClassName(_el$6, (_p$.e = _v$))
+                      if (_v$2 !== _p$.t) solidClassName(_el$7, (_p$.t = _v$2))
+                      if (_v$3 !== _p$.a) solidClassName(_el$8, (_p$.a = _v$3))
+                      if (_v$4 !== _p$.o) solidClassName(_el$9, (_p$.o = _v$4))
+                      if (_v$5 !== _p$.i) solidClassName(_el$0, (_p$.i = _v$5))
+                      if (_v$6 !== _p$.n) solidClassName(_el$1, (_p$.n = _v$6))
+                      return _p$
+                    },
+                    {
+                      e: undefined,
+                      t: undefined,
+                      a: undefined,
+                      o: undefined,
+                      i: undefined,
+                      n: undefined,
+                    } as SolidDbPrev,
+                  )
+                  return _el$3
+                })(),
+            },
+          ),
+        )
+        return _el$
+      })(),
+    container,
+  )
 
   return {
-    apply(tick) {
-      solidBatch(() => {
-        for (let i = 0; i < DB_COUNT; i++) {
-          const row = rowModel[i] as SolidRow
-          const s = tick[i] as DbSample
-          row.setCount(s.queryCount)
-          row.setCountCls(s.countCls)
-          for (let q = 0; q < QUERY_SLOTS; q++) {
-            const cell = row.queries[q] as Cell
-            const want = s.queries[q] as { elapsed: string; cls: string }
-            cell.setElapsed(want.elapsed)
-            cell.setCls(want.cls)
-          }
-        }
-      })
-    },
+    apply: (tick) => solidDbApply(rowModel, tick),
     teardown: dispose,
   }
 }
@@ -453,6 +511,24 @@ function solidPerAttrTarget(container: HTMLElement): DbmonTarget {
 
 // ─── React ───────────────────────────────────────────────────────────────────
 
+// Both arms are written as the automatic JSX runtime's output — byte-for-byte
+// esbuild's `jsx: 'automatic'` emit (jsxImportSource `react` / `preact`) for
+// the idiomatic component, diffed rather than assumed:
+//
+//   const Row = memo(function Row({ name, sample }) {
+//     const q = sample.queries
+//     return <tr><td className="dbname">{name}</td>
+//       <td className="query-count"><span className={sample.countCls}>{sample.queryCount}</span></td>
+//       <td className={q[0].cls}>{q[0].elapsed}</td> … ×5</tr>
+//   })
+//   <table><tbody>{tick.map((sample, i) => <Row key={i} name={DB_NAMES[i]} sample={sample} />)}</tbody></table>
+//
+// i.e. `jsxs` for a multi-child element with ONE `children` array, the key as
+// `jsx`'s third argument, and the mapped array as a single `children` value —
+// not `createElement` varargs, which no JSX app produces.
+
+type DbQ = { cls: string; elapsed: string }
+
 const ReactDbRow = React.memo(function ReactDbRowInner({
   name,
   sample,
@@ -460,27 +536,24 @@ const ReactDbRow = React.memo(function ReactDbRowInner({
   name: string
   sample: DbSample
 }) {
-  const r = React.createElement
-  const q = sample.queries
-  return r(
-    'tr',
-    null,
-    r('td', { className: 'dbname' }, name),
-    r(
-      'td',
-      { className: 'query-count' },
-      r('span', { className: sample.countCls }, sample.queryCount),
-    ),
-    r('td', { className: (q[0] as { cls: string }).cls }, (q[0] as { elapsed: string }).elapsed),
-    r('td', { className: (q[1] as { cls: string }).cls }, (q[1] as { elapsed: string }).elapsed),
-    r('td', { className: (q[2] as { cls: string }).cls }, (q[2] as { elapsed: string }).elapsed),
-    r('td', { className: (q[3] as { cls: string }).cls }, (q[3] as { elapsed: string }).elapsed),
-    r('td', { className: (q[4] as { cls: string }).cls }, (q[4] as { elapsed: string }).elapsed),
-  )
+  const q = sample.queries as DbQ[]
+  return reactJsxs('tr', {
+    children: [
+      reactJsx('td', { className: 'dbname', children: name }),
+      reactJsx('td', {
+        className: 'query-count',
+        children: reactJsx('span', { className: sample.countCls, children: sample.queryCount }),
+      }),
+      reactJsx('td', { className: q[0]!.cls, children: q[0]!.elapsed }),
+      reactJsx('td', { className: q[1]!.cls, children: q[1]!.elapsed }),
+      reactJsx('td', { className: q[2]!.cls, children: q[2]!.elapsed }),
+      reactJsx('td', { className: q[3]!.cls, children: q[3]!.elapsed }),
+      reactJsx('td', { className: q[4]!.cls, children: q[4]!.elapsed }),
+    ],
+  })
 })
 
 function reactTarget(container: HTMLElement): Promise<DbmonTarget> {
-  const r = React.createElement
   let resolveSetter!: (set: (t: DbSample[]) => void) => void
   const setterPromise = new Promise<(t: DbSample[]) => void>((res) => {
     resolveSetter = res
@@ -491,21 +564,17 @@ function reactTarget(container: HTMLElement): Promise<DbmonTarget> {
     React.useEffect(() => {
       onMounted(setTickState)
     }, [onMounted])
-    return r(
-      'table',
-      null,
-      r(
-        'tbody',
-        null,
-        ...tick.map((sample, i) =>
-          r(ReactDbRow, { key: i, name: DB_NAMES[i] as string, sample }),
+    return reactJsx('table', {
+      children: reactJsx('tbody', {
+        children: tick.map((sample, i) =>
+          reactJsx(ReactDbRow, { name: DB_NAMES[i] as string, sample }, i),
         ),
-      ),
-    )
+      }),
+    })
   }
 
   const root = ReactDOM.createRoot(container)
-  root.render(r(App, { onMounted: resolveSetter }))
+  root.render(reactJsx(App, { onMounted: resolveSetter }))
 
   return setterPromise.then((setTickState) => ({
     apply(tick: DbSample[]) {
@@ -524,22 +593,21 @@ const PreactDbRow = preactMemo(function PreactDbRowInner({
   name: string
   sample: DbSample
 }) {
-  const q = sample.queries
-  return preactH(
-    'tr',
-    null,
-    preactH('td', { className: 'dbname' }, name),
-    preactH(
-      'td',
-      { className: 'query-count' },
-      preactH('span', { className: sample.countCls }, sample.queryCount),
-    ),
-    preactH('td', { className: (q[0] as { cls: string }).cls }, (q[0] as { elapsed: string }).elapsed),
-    preactH('td', { className: (q[1] as { cls: string }).cls }, (q[1] as { elapsed: string }).elapsed),
-    preactH('td', { className: (q[2] as { cls: string }).cls }, (q[2] as { elapsed: string }).elapsed),
-    preactH('td', { className: (q[3] as { cls: string }).cls }, (q[3] as { elapsed: string }).elapsed),
-    preactH('td', { className: (q[4] as { cls: string }).cls }, (q[4] as { elapsed: string }).elapsed),
-  )
+  const q = sample.queries as DbQ[]
+  return preactJsxs('tr', {
+    children: [
+      preactJsx('td', { className: 'dbname', children: name }),
+      preactJsx('td', {
+        className: 'query-count',
+        children: preactJsx('span', { className: sample.countCls, children: sample.queryCount }),
+      }),
+      preactJsx('td', { className: q[0]!.cls, children: q[0]!.elapsed }),
+      preactJsx('td', { className: q[1]!.cls, children: q[1]!.elapsed }),
+      preactJsx('td', { className: q[2]!.cls, children: q[2]!.elapsed }),
+      preactJsx('td', { className: q[3]!.cls, children: q[3]!.elapsed }),
+      preactJsx('td', { className: q[4]!.cls, children: q[4]!.elapsed }),
+    ],
+  })
 })
 
 function preactTarget(container: HTMLElement): Promise<DbmonTarget> {
@@ -553,20 +621,16 @@ function preactTarget(container: HTMLElement): Promise<DbmonTarget> {
     preactUseEffect(() => {
       onMounted(setTickState)
     }, [onMounted])
-    return preactH(
-      'table',
-      null,
-      preactH(
-        'tbody',
-        null,
-        ...tick.map((sample, i) =>
-          preactH(PreactDbRow, { key: i, name: DB_NAMES[i] as string, sample }),
+    return preactJsx('table', {
+      children: preactJsx('tbody', {
+        children: tick.map((sample, i) =>
+          preactJsxKeyed(PreactDbRow, { name: DB_NAMES[i] as string, sample }, i),
         ),
-      ),
-    )
+      }),
+    })
   }
 
-  preactRender(preactH(App, { onMounted: resolveSetter }), container)
+  preactRender(preactJsx(App, { onMounted: resolveSetter }), container)
 
   return setterPromise.then((setTickState) => ({
     async apply(tick: DbSample[]) {
@@ -579,9 +643,15 @@ function preactTarget(container: HTMLElement): Promise<DbmonTarget> {
   }))
 }
 
-// ─── Vue ─────────────────────────────────────────────────────────────────────
+// ─── Vue (h() — DIAGNOSTIC, not ranked) ──────────────────────────────────────
+//
+// The previous RANKING arm, kept as `Vue 3 (h())` so the cost of the
+// hand-written render-function convention stays a measured number. `h()`
+// produces vnodes with no patch flags and no block tree, which no Vue app built
+// with its own toolchain ships — so the ranked `Vue 3` entry is the compiled
+// template below.
 
-function vueTarget(container: HTMLElement): DbmonTarget {
+function vueHTarget(container: HTMLElement): DbmonTarget {
   const tick = shallowRef<DbSample[]>([])
 
   const App = defineComponent({
@@ -626,10 +696,13 @@ function vueTarget(container: HTMLElement): DbmonTarget {
   }
 }
 
-// ─── Vue (template-compiled) ─────────────────────────────────────────────────
+// ─── Vue (template-compiled — the RANKING arm) ────────────────────────────────
 
 /**
- * The SAME Vue, on the render path a real Vue app actually ships.
+ * Vue on the render path a real Vue app actually ships. Published as `Vue 3`
+ * (it was `Vue 3 (template)` beside an `h()` `Vue 3` until the 2026-09
+ * competitor-fidelity pass, which made every Vue arm in the suite a compiled
+ * template; the `h()` arm survives as the `Vue 3 (h())` diagnostic).
  *
  * The `Vue 3` arm above builds its vnodes with `h()`, which is the convention
  * the whole suite uses for Vue. That convention has a cost that is invisible
@@ -658,7 +731,7 @@ function vueTarget(container: HTMLElement): DbmonTarget {
  * Function mode rather than module mode only changes the preamble (a
  * destructure instead of imports) so the emitted render BODY is the SFC's.
  *
- * Both arms are published and both are ranked. Keeping the `h()` arm makes the
+ * Both arms are published; only this one is ranked. Keeping the `h()` arm makes the
  * size of the gap a measured number rather than an assertion.
  *
  * MEASURED OUTCOME: the gap is small — template 1.82-1.86ms vs `h()`
@@ -731,7 +804,7 @@ export const DBMON_FRAMEWORKS = [
   'React 19',
   'Preact',
   'Vue 3',
-  'Vue 3 (template)',
+  'Vue 3 (h())',
   'SolidJS',
   'SolidJS (per-attr effects)',
   'Svelte 5',
@@ -758,10 +831,10 @@ export async function runDbmon(frameworkName: string, container: HTMLElement): P
       target = await preactTarget(container)
       break
     case 'Vue 3':
-      target = vueTarget(container)
-      break
-    case 'Vue 3 (template)':
       target = vueTemplateTarget(container)
+      break
+    case 'Vue 3 (h())':
+      target = vueHTarget(container)
       break
     case 'SolidJS':
       target = solidTarget(container)

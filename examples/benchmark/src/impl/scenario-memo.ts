@@ -52,19 +52,25 @@
 import { h as ph } from '@pyreon/core'
 import { computed, signal } from '@pyreon/reactivity'
 import { mount as pyreonMount } from '@pyreon/runtime-dom'
-import { Fragment as PreactFragment, h as preactH, options as preactOptions, render as preactRender } from 'preact'
+import { Fragment as PreactFragment, options as preactOptions, render as preactRender } from 'preact'
+import { jsx as preactJsx, jsxs as preactJsxs } from 'preact/jsx-runtime'
 import { memo as preactMemo } from 'preact/compat'
 import { useMemo as preactUseMemo, useState as preactUseState } from 'preact/hooks'
 import * as React from 'react'
 import { flushSync as reactFlushSync } from 'react-dom'
 import * as ReactDOM from 'react-dom/client'
-import { createMemo, createSignal } from 'solid-js'
+import { jsx as reactJsx, jsxs as reactJsxs } from 'react/jsx-runtime'
+import { createComponent, createMemo, createSignal } from 'solid-js'
 import { insert, render as solidRender, template } from 'solid-js/web'
 import { flushSync as svelteFlushSync, mount as svelteMount, unmount as svelteUnmount } from 'svelte'
-import { computed as vueComputed, createApp, defineComponent, h as vueH, nextTick, ref } from 'vue'
+import { computed as vueComputed, createApp, defineComponent, nextTick, ref } from 'vue'
+import { render as vueMemoAppRender } from 'virtual:memo-app-vue-render'
+import { render as vueMemoConsumerRender } from 'virtual:memo-consumer-vue-render'
+import { render as vueMemoListRender } from 'virtual:memo-list-vue-render'
 import type { BenchSuite } from '../runner'
 import { bench } from '../runner'
 import MemoWall from './MemoWall.svelte'
+import { preactJsxKeyed } from './preact-jsx-keyed'
 import { setSource as svelteSetSource } from './memo-state.svelte'
 import { PyreonMemoWall } from './scenario-memo-pyreon'
 import {
@@ -101,7 +107,20 @@ const bucketOf = (n: number): number => Math.floor(n / MEMO_BUCKET)
 // and skip the fan-out. This is the floor the frameworks are measured against,
 // not a competitor.
 
+/** Consumer prototype (carries its text node) — see `vanillaTarget`. */
+let vanillaMemoConsumerProto: HTMLElement | null = null
+
+/** Type-level view for assigning a raw number to `Text.data` (see scenario-dbmon.ts). */
+type NumericTextData = { data: number }
+
 function vanillaTarget(container: HTMLElement): MemoTarget {
+  // The 300 consumers are cloned from one prototype — the template-clone idiom
+  // of the krausest vanillajs implementation (`impl/vanilla.ts`).
+  if (vanillaMemoConsumerProto === null) {
+    vanillaMemoConsumerProto = document.createElement('span')
+    vanillaMemoConsumerProto.className = 'memo-consumer'
+    vanillaMemoConsumerProto.appendChild(document.createTextNode(''))
+  }
   const root = document.createElement('div')
   root.className = 'memo-root'
 
@@ -119,12 +138,9 @@ function vanillaTarget(container: HTMLElement): MemoTarget {
   consumersEl.className = 'memo-consumers'
   const consumerTexts: Text[] = []
   for (let i = 0; i < MEMO_CONSUMERS; i++) {
-    const span = document.createElement('span')
-    span.className = 'memo-consumer'
-    const t = document.createTextNode('')
-    span.appendChild(t)
+    const span = vanillaMemoConsumerProto.cloneNode(true)
     consumersEl.appendChild(span)
-    consumerTexts.push(t)
+    consumerTexts.push(span.firstChild as Text)
   }
 
   root.append(sourceEl, bucketEl, consumersEl)
@@ -134,13 +150,16 @@ function vanillaTarget(container: HTMLElement): MemoTarget {
 
   return {
     setSource(n) {
-      sourceText.data = String(n)
+      // Raw numbers — runner.ts "Row-id rendering rule": the WebIDL coercion on
+      // `.data`, never a harness-side `String(...)` the framework arms skip.
+      ;(sourceText as unknown as NumericTextData).data = n
       const b = bucketOf(n)
       if (b !== lastBucket) {
         lastBucket = b
-        const s = String(b)
-        bucketText.data = s
-        for (let i = 0; i < MEMO_CONSUMERS; i++) (consumerTexts[i] as Text).data = s
+        ;(bucketText as unknown as NumericTextData).data = b
+        for (let i = 0; i < MEMO_CONSUMERS; i++) {
+          ;(consumerTexts[i] as unknown as NumericTextData).data = b
+        }
       }
     },
     teardown: () => root.remove(),
@@ -189,30 +208,65 @@ function pyreonTarget(container: HTMLElement, gated: boolean): MemoTarget {
 // `createMemo`'s `equals` defaults to `===`, so the wall is automatic and
 // nothing extra is passed; that IS Solid's documented behaviour.
 
+// Emit-faithful to babel-preset-solid 1.9.15 for the idiomatic mirror of
+// `PyreonMemoWall` / `PyreonMemoConsumer` (diffed, not assumed):
+//
+//   function MemoConsumer(props) { return <span class="memo-consumer">{props.bucket}</span> }
+//   function MemoWall() {
+//     const consumers = []
+//     for (…) consumers.push(<MemoConsumer bucket={bucket()} />)   // getter prop
+//     return <div class="memo-root"><span class="memo-source">{source()}</span>
+//       <span class="memo-bucket">{bucket()}</span>
+//       <div class="memo-consumers">{consumers}</div></div>
+//   }
+//
+// The consumers are real COMPONENTS here, as in every other arm (Pyreon's
+// `PyreonMemoConsumer`, React's `memo` consumer, Vue's and Svelte's child
+// components). The previous hand-written arm inserted 300 bare `<span>`s with
+// no component boundary and no getter prop — a cheaper shape than the one the
+// scenario asks every other framework to pay for.
+
 const _memoRootTmpl = template(
-  '<div class="memo-root"><span class="memo-source"></span><span class="memo-bucket"></span><div class="memo-consumers"></div></div>',
+  '<div class=memo-root><span class=memo-source></span><span class=memo-bucket></span><div class=memo-consumers>',
 )
-const _memoConsumerTmpl = template('<span class="memo-consumer"></span>')
+const _memoConsumerTmpl = template('<span class=memo-consumer>')
+
+function SolidMemoConsumer(props: { bucket: number }): Node {
+  return (() => {
+    const _el$ = _memoConsumerTmpl()
+    insert(_el$, () => props.bucket)
+    return _el$
+  })()
+}
 
 function solidTarget(container: HTMLElement): MemoTarget {
   const [source, setSource] = createSignal(0)
   const bucket = createMemo(() => bucketOf(source()))
 
-  const dispose = solidRender(() => {
-    const root = _memoRootTmpl() as HTMLElement
-    const sourceEl = root.firstChild as HTMLElement
-    const bucketEl = sourceEl.nextSibling as HTMLElement
-    const consumersEl = bucketEl.nextSibling as HTMLElement
-
-    insert(sourceEl, source)
-    insert(bucketEl, bucket)
+  function SolidMemoWall(): Node {
+    const consumers: Node[] = []
     for (let i = 0; i < MEMO_CONSUMERS; i++) {
-      const span = _memoConsumerTmpl() as HTMLElement
-      insert(span, bucket)
-      consumersEl.appendChild(span)
+      consumers.push(
+        createComponent(SolidMemoConsumer, {
+          get bucket() {
+            return bucket()
+          },
+        }) as Node,
+      )
     }
-    return root
-  }, container)
+    return (() => {
+      const _el$2 = _memoRootTmpl()
+      const _el$3 = _el$2.firstChild as Node
+      const _el$4 = _el$3.nextSibling as Node
+      const _el$5 = _el$4.nextSibling as Node
+      insert(_el$3, source)
+      insert(_el$4, bucket)
+      insert(_el$5, consumers)
+      return _el$2
+    })()
+  }
+
+  const dispose = solidRender(() => createComponent(SolidMemoWall, {}) as Node, container)
 
   return {
     setSource: (n) => {
@@ -224,8 +278,20 @@ function solidTarget(container: HTMLElement): MemoTarget {
 
 // ─── React ───────────────────────────────────────────────────────────────────
 
+// React and Preact are written as the automatic JSX runtime's output — esbuild's
+// `jsx: 'automatic'` emit for the idiomatic source, diffed rather than assumed:
+//
+//   <span className="memo-consumer">{bucket}</span>
+//   for (…) consumers.push(<MemoConsumer key={i} bucket={bucket} />)
+//   <><span className="memo-bucket">{bucket}</span><div className="memo-consumers">{consumers}</div></>
+//   <div className="memo-root"><span className="memo-source">{source}</span><MemoList bucket={bucket} /></div>
+//
+// (a JSX fragment's static children need no keys — the `'b'`/`'c'` keys the
+// previous arm carried existed only because it passed an ARRAY to
+// `createElement`, which JSX never does.)
+
 const ReactMemoConsumer = React.memo(function ReactMemoConsumer({ bucket }: { bucket: number }) {
-  return React.createElement('span', { className: 'memo-consumer' }, bucket)
+  return reactJsx('span', { className: 'memo-consumer', children: bucket })
 })
 
 /**
@@ -244,12 +310,14 @@ const ReactMemoConsumer = React.memo(function ReactMemoConsumer({ bucket }: { bu
 const ReactMemoList = React.memo(function ReactMemoList({ bucket }: { bucket: number }) {
   const consumers: React.ReactNode[] = []
   for (let i = 0; i < MEMO_CONSUMERS; i++) {
-    consumers.push(React.createElement(ReactMemoConsumer, { key: i, bucket }))
+    consumers.push(reactJsx(ReactMemoConsumer, { bucket }, i))
   }
-  return React.createElement(React.Fragment, null, [
-    React.createElement('span', { className: 'memo-bucket', key: 'b' }, bucket),
-    React.createElement('div', { className: 'memo-consumers', key: 'c' }, consumers),
-  ])
+  return reactJsxs(React.Fragment, {
+    children: [
+      reactJsx('span', { className: 'memo-bucket', children: bucket }),
+      reactJsx('div', { className: 'memo-consumers', children: consumers }),
+    ],
+  })
 })
 
 function reactTarget(container: HTMLElement): MemoTarget {
@@ -262,14 +330,17 @@ function reactTarget(container: HTMLElement): MemoTarget {
     // because it is the shape react.dev prescribes and omitting it would differ
     // from the documented pattern without cause. The wall is `React.memo`.
     const bucket = React.useMemo(() => bucketOf(source), [source])
-    return React.createElement('div', { className: 'memo-root' }, [
-      React.createElement('span', { className: 'memo-source', key: 's' }, source),
-      React.createElement(ReactMemoList, { key: 'l', bucket }),
-    ])
+    return reactJsxs('div', {
+      className: 'memo-root',
+      children: [
+        reactJsx('span', { className: 'memo-source', children: source }),
+        reactJsx(ReactMemoList, { bucket }),
+      ],
+    })
   }
 
   const root = ReactDOM.createRoot(container)
-  reactFlushSync(() => root.render(React.createElement(App)))
+  reactFlushSync(() => root.render(reactJsx(App, {})))
 
   return {
     setSource(n) {
@@ -282,22 +353,24 @@ function reactTarget(container: HTMLElement): MemoTarget {
 // ─── Preact ──────────────────────────────────────────────────────────────────
 
 const PreactMemoConsumer = preactMemo(function PreactMemoConsumer({ bucket }: { bucket: number }) {
-  return preactH('span', { class: 'memo-consumer' }, bucket)
+  return preactJsx('span', { class: 'memo-consumer', children: bucket })
 })
 
 /** Same memo'd-list boundary as the React arm, for the same reason. */
 const PreactMemoList = preactMemo(function PreactMemoList({ bucket }: { bucket: number }) {
   const consumers: unknown[] = []
   for (let i = 0; i < MEMO_CONSUMERS; i++) {
-    consumers.push(preactH(PreactMemoConsumer as never, { key: i, bucket }))
+    consumers.push(preactJsxKeyed(PreactMemoConsumer, { bucket }, i))
   }
   // Fragment, not a wrapper div: every arm in this scenario must render a
   // byte-identical DOM, or the forced layout the harness performs each cycle
   // would not cost the same in each.
-  return preactH(PreactFragment, null, [
-    preactH('span', { class: 'memo-bucket' }, bucket),
-    preactH('div', { class: 'memo-consumers' }, consumers),
-  ])
+  return preactJsxs(PreactFragment, {
+    children: [
+      preactJsx('span', { class: 'memo-bucket', children: bucket }),
+      preactJsx('div', { class: 'memo-consumers', children: consumers as never }),
+    ],
+  })
 })
 
 function preactTarget(container: HTMLElement): MemoTarget {
@@ -307,13 +380,16 @@ function preactTarget(container: HTMLElement): MemoTarget {
     const [source, setSource] = preactUseState(0)
     setSourceState = setSource
     const bucket = preactUseMemo(() => bucketOf(source), [source])
-    return preactH('div', { class: 'memo-root' }, [
-      preactH('span', { class: 'memo-source' }, source),
-      preactH(PreactMemoList as never, { bucket }),
-    ])
+    return preactJsxs('div', {
+      class: 'memo-root',
+      children: [
+        preactJsx('span', { class: 'memo-source', children: source }),
+        preactJsx(PreactMemoList, { bucket }),
+      ],
+    })
   }
 
-  preactRender(preactH(App, null), container)
+  preactRender(preactJsx(App, {}), container)
 
   return {
     async setSource(n) {
@@ -329,12 +405,17 @@ function preactTarget(container: HTMLElement): MemoTarget {
 // ─── Vue ─────────────────────────────────────────────────────────────────────
 // `computed` short-circuits on an unchanged value in Vue 3.4+ — automatic, and
 // Vue's own performance guide uses this exact scenario shape as its example.
+//
+// All three components are build-time-compiled templates (`MEMO_*_VUE_TEMPLATE`
+// in vue-templates.ts) — what an SFC ships: hoisted static props, `TEXT` /
+// `PROPS` patch flags, a `KEYED_FRAGMENT` `v-for` and the block tree. The
+// previous arm hand-wrote `h()` render functions with none of those.
+
+const MEMO_SLOTS: readonly number[] = Array.from({ length: MEMO_CONSUMERS }, (_, i) => i)
 
 const VueMemoConsumer = defineComponent({
   props: { bucket: { type: Number, required: true } },
-  setup(props) {
-    return () => vueH('span', { class: 'memo-consumer' }, props.bucket)
-  },
+  render: vueMemoConsumerRender,
 })
 
 /**
@@ -343,22 +424,15 @@ const VueMemoConsumer = defineComponent({
  * when its props are unchanged, but only if the child EXISTS as a boundary.
  * Building the 300 consumer vnodes inside the component that reads `source`
  * would re-create them on every blocked update before any bailout could apply.
+ * Its template has two roots — a Vue fragment — so the DOM matches every other
+ * arm (see the Preact note).
  */
 const VueMemoList = defineComponent({
+  components: { MemoConsumer: VueMemoConsumer },
   props: { bucket: { type: Number, required: true } },
-  setup(props) {
-    return () => {
-      const consumers = []
-      for (let i = 0; i < MEMO_CONSUMERS; i++) {
-        consumers.push(vueH(VueMemoConsumer, { key: i, bucket: props.bucket }))
-      }
-      // Array return = Vue fragment, so the DOM matches every other arm
-      // exactly (see the Preact note).
-      return [
-        vueH('span', { class: 'memo-bucket' }, props.bucket),
-        vueH('div', { class: 'memo-consumers' }, consumers),
-      ]
-    }
+  render: vueMemoListRender,
+  setup() {
+    return { slots: MEMO_SLOTS }
   },
 })
 
@@ -367,12 +441,10 @@ function vueTarget(container: HTMLElement): MemoTarget {
   const bucket = vueComputed(() => bucketOf(source.value))
 
   const App = defineComponent({
+    components: { MemoList: VueMemoList },
+    render: vueMemoAppRender,
     setup() {
-      return () =>
-        vueH('div', { class: 'memo-root' }, [
-          vueH('span', { class: 'memo-source' }, source.value),
-          vueH(VueMemoList, { bucket: bucket.value }),
-        ])
+      return { source, bucket }
     },
   })
 

@@ -12,14 +12,23 @@
  * eager default) — documented as the "note if not supported" fairness case.
  */
 import { flushSync, mount, unmount } from 'svelte'
-import { setInput, fieldInputCount, visibleErrorCount } from '../dom'
-import { bench, type BenchSuite } from '../runner'
-import { FIELD_NAMES } from '../../shared/schema'
+import {
+  expectDirtyDom,
+  expectEmailError,
+  expectLibraryValue,
+  expectResetDom,
+  fieldInputCount,
+  setInput,
+} from '../dom'
+import { bench, settle, type BenchSuite } from '../runner'
+import { FIELD_NAMES, validValues } from '../../shared/schema'
 import FormBench from './FormBench.svelte'
 
 interface SvelteExports {
   resetForm: () => void
   setField: (name: string, value: string) => void
+  getValue: (name: string) => unknown
+  touch: (name: string) => void
 }
 interface Mounted {
   api: SvelteExports
@@ -28,6 +37,10 @@ interface Mounted {
 
 function mountForm(container: HTMLElement): Mounted {
   const instance = mount(FormBench, { target: container })
+  // Run mount effects now (the `use:form` action registers the inputs and
+  // resets Felte's stores when it mounts). Inside `mount-12-fields` this is the
+  // same work the `commit` hook would do; elsewhere it is untimed setup.
+  flushSync()
   return {
     api: instance as unknown as SvelteExports,
     dispose: () => {
@@ -62,31 +75,53 @@ export async function runSvelte(container: HTMLElement): Promise<BenchSuite> {
 
   // ── keystroke-blur (Felte default validation timing) ─────────────────────
   {
-    const { dispose } = mountForm(container)
+    const { api, dispose } = mountForm(container)
     const input = container.querySelector('input[data-field="email"]') as HTMLInputElement
     await bench('keystroke-blur', suite, () => {
-      for (let i = 1; i <= TYPED.length; i++) setInput(input, TYPED.slice(0, i))
+      // Commit PER keystroke, like every other column (a real user's keystrokes are
+      // separate tasks). Committing once after all 12 let the scheduler coalesce
+      // 12 renders into 1 — work no other column was allowed to skip.
+      for (let i = 1; i <= TYPED.length; i++) {
+        setInput(input, TYPED.slice(0, i))
+        flushSync()
+      }
     }, {
-      reset: () => setInput(input, ''),
-      commit,
-      verify: () => {
-        if (input.value !== TYPED) throw new Error('keystroke-blur: value not committed')
+      reset: async () => {
+        setInput(input, '')
+        await settle()
       },
+      commit,
+      verify: () => expectLibraryValue('keystroke-blur', api.getValue('email'), TYPED),
     })
     dispose()
   }
 
   // ── keystroke-change (same Felte default; see NOTE) ──────────────────────
   {
-    const { dispose } = mountForm(container)
+    const { api, dispose } = mountForm(container)
     const input = container.querySelector('input[data-field="email"]') as HTMLInputElement
-    await bench('keystroke-change', suite, () => {
-      for (let i = 1; i <= TYPED.length; i++) setInput(input, TYPED.slice(0, i))
+    // Felte renders an error only for a TOUCHED field (touched is set on blur),
+    // so without this it validates per keystroke but renders nothing — one
+    // fewer DOM write per run than every other column. Touch it (untimed).
+    api.touch('email')
+    flushSync()
+    await bench('keystroke-change', suite, async () => {
+      // One keystroke = dispatch, commit, then let its async validation settle
+      // (see runner.ts `settle`) — identical in every column.
+      for (let i = 1; i <= TYPED.length; i++) {
+        setInput(input, TYPED.slice(0, i))
+        flushSync()
+        await settle()
+      }
     }, {
-      reset: () => setInput(input, ''),
+      reset: async () => {
+        setInput(input, '')
+        await settle()
+      },
       commit,
-      verify: () => {
-        if (input.value !== TYPED) throw new Error('keystroke-change: value not committed')
+      verify: (c) => {
+        expectLibraryValue('keystroke-change', api.getValue('email'), TYPED)
+        expectEmailError(c)
       },
     })
     dispose()
@@ -98,16 +133,15 @@ export async function runSvelte(container: HTMLElement): Promise<BenchSuite> {
     await bench('reset-dirty-form', suite, () => {
       api.resetForm()
     }, {
-      reset: () => {
-        for (const name of FIELD_NAMES) api.setField(name, 'dirty')
+      reset: async () => {
+        const dirty = validValues()
+        for (const name of FIELD_NAMES) api.setField(name, dirty[name])
         flushSync()
+        await settle()
+        expectDirtyDom(container, dirty)
       },
       commit,
-      verify: () => {
-        const first = container.querySelector('input[data-field="first"]') as HTMLInputElement
-        if (first.value !== '') throw new Error('reset: form not reset')
-        if (visibleErrorCount(container) !== 0) throw new Error('reset: errors not cleared')
-      },
+      verify: expectResetDom,
     })
     dispose()
   }

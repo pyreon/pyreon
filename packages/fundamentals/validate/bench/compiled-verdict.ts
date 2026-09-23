@@ -18,7 +18,13 @@
  *  - The emitted verdict is byte-equivalent to the runtime (locked by the
  *    compiler's emit-equivalence gate) — this measures SPEED only.
  *
- * HONEST READ (steady-state, Apple-class hardware): compiled `.is()` is ~1.6–3×
+ * CURRENT READ (2026-09-23, two load-gated runs): compiled `.is()` is ~2×
+ * SLOWER than the runtime `.is()` (0.42–0.63×). The runtime no longer goes
+ * through `parse().ok` — it has a verdict-only JIT (#3164) — while the build
+ * still emits an issues-array validator wrapped in try/catch. The paragraph
+ * below is the ORIGINAL read, kept for history; it no longer holds.
+ *
+ * ORIGINAL READ (pre-#3164): compiled `.is()` was ~1.6–3×
  * faster than `parse().ok` — biggest on cheap schemas (number/array, where the
  * Result-allocation + parse machinery overhead dominates) and smallest on
  * expensive ones (email regex, where the regex work is shared). BUT it's
@@ -30,6 +36,18 @@
  */
 import { analyzeValidate, emitValidator } from '@pyreon/compiler'
 import { s } from '../src/v1'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 function buildPair(label: string, src: string, valid: unknown[], invalid: unknown[]) {
   // oxlint-disable no-new-func
@@ -91,6 +109,7 @@ const PAIRS = [
 
 const ITERS = 500_000
 const RUNS = 7
+console.log(benchRuntimeBanner())
 console.log(`\nCompiled verdict vs runtime .is() — ${ITERS.toLocaleString()} iters × ${RUNS} runs (median ns/op, lower=faster)\n`)
 console.log('schema'.padEnd(28), 'runtime .is()'.padStart(14), 'compiled .is()'.padStart(15), 'speedup'.padStart(9))
 console.log('─'.repeat(68))

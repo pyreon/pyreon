@@ -931,6 +931,7 @@ export type DeclIR =
         group?: boolean
         sourceHandles?: { id?: string; type: string; position: string; offset?: number }[]
         targetHandles?: { id?: string; type: string; position: string; offset?: number }[]
+        zIndex?: number
       }[]
       edges: {
         id: string
@@ -947,6 +948,7 @@ export type DeclIR =
         deletable?: boolean
         reconnectable?: boolean
         interactionWidth?: number
+        zIndex?: number
         data?: ExprIR
         cssClass?: string
         style?: string
@@ -984,6 +986,12 @@ export type DeclIR =
       zoomOnScroll?: boolean
       selectionOnDrag?: boolean
       selectionMode?: string
+      connectionMode?: string
+      elevateNodesOnSelect?: boolean
+      elevateEdgesOnSelect?: boolean
+      autoPanOnNodeDrag?: boolean
+      autoPanOnConnect?: boolean
+      autoPanSpeed?: number
       multiSelect?: boolean
       onlyRenderVisibleElements?: boolean
       snapToObjects?: boolean

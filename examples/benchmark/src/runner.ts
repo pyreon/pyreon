@@ -430,6 +430,151 @@ async function benchBatched(
   return result
 }
 
+// ─── Op-semantics correctness gates ──────────────────────────────────────────
+//
+// `verify` (supplied per impl) historically checked only the ROW COUNT for
+// `create` / `replace all` / `partial update` / `swap rows`. A row count is
+// unchanged by a swap or a label edit and is satisfied by a replace that
+// re-rendered the OLD rows, so an arm could post a number for work it never
+// did. These gates assert the EFFECT each op claims, framework-agnostically,
+// from the DOM alone, keyed on the op's name so every arm is held to the same
+// rule without each impl having to opt in.
+//
+// Timing discipline: `pre` runs AFTER `reset` and BEFORE `t0`; `post` runs
+// after `verify`, i.e. after the timed region has closed. Both are plain DOM
+// reads (`children[i]`, `textContent`) — no layout is forced, no framework API
+// is called, and the work is identical for every arm, so they cannot bias a
+// comparison. Batch-mode samples do not use them (those carry their own O(1)
+// probe; see `BenchOptions.batchK`).
+
+interface OpGate<S> {
+  pre: (container: HTMLElement) => S
+  post: (container: HTMLElement, pre: S) => void
+}
+
+type AnyOpGate = OpGate<unknown>
+
+function defineGate<S>(gate: OpGate<S>): AnyOpGate {
+  return gate as unknown as AnyOpGate
+}
+
+function gateRows(container: HTMLElement): HTMLCollection | null {
+  return rowParent(container)?.children ?? null
+}
+
+function cellText(row: Element | undefined, cell: number): string | null {
+  return row?.children[cell]?.textContent ?? null
+}
+
+function gateFail(op: string, detail: string): never {
+  throw new Error(`[bench] ${op}: correctness gate failed — ${detail}`)
+}
+
+/**
+ * `create` / `replace`: the first rendered row must be the first row of the
+ * batch the op just built — id AND label — which is only true if the op
+ * rendered the NEW data (not a stale list of the same length).
+ */
+function freshRowsGate(op: string, mustChange: boolean): AnyOpGate {
+  return defineGate<{ expected: Row; prevId: string | null }>({
+    pre: (container) => ({
+      expected: peekNextRow(),
+      prevId: cellText(gateRows(container)?.[0], 0),
+    }),
+    post: (container, pre) => {
+      const first = gateRows(container)?.[0]
+      const id = cellText(first, 0)
+      const label = cellText(first, 1)
+      if (id !== String(pre.expected.id) || label !== pre.expected.label) {
+        gateFail(
+          op,
+          `first row is (${id}, ${JSON.stringify(label)}), expected ` +
+            `(${pre.expected.id}, ${JSON.stringify(pre.expected.label)}) — the op did not render the rows it built`,
+        )
+      }
+      if (mustChange && pre.prevId !== null && id === pre.prevId) {
+        gateFail(op, `first row id ${id} unchanged — the rows were not replaced`)
+      }
+    },
+  })
+}
+
+const PARTIAL_SUFFIX = ' !!!'
+
+const OP_GATES: Record<string, AnyOpGate> = {
+  'create 1,000 rows': freshRowsGate('create 1,000 rows', false),
+  'create 10,000 rows': freshRowsGate('create 10,000 rows', false),
+  'replace all rows': freshRowsGate('replace all rows', true),
+  // Every 10th row starting at index 0 gets " !!!" appended. Assert the first
+  // and LAST touched rows carry the suffix (a loop that stopped early or wrote
+  // only row 0 fails), and that an untouched row (index 1) does NOT (a loop
+  // that suffixed every row fails).
+  'partial update (every 10th)': defineGate<null>({
+    pre: () => null,
+    post: (container) => {
+      const rows = gateRows(container)
+      const n = rows?.length ?? 0
+      if (!rows || n === 0) gateFail('partial update (every 10th)', 'no rows rendered')
+      const last = Math.floor((n - 1) / 10) * 10
+      for (const i of last === 0 ? [0] : [0, last]) {
+        const label = cellText(rows[i], 1)
+        if (!label?.endsWith(PARTIAL_SUFFIX)) {
+          gateFail(
+            'partial update (every 10th)',
+            `row ${i} label ${JSON.stringify(label)} does not end with "${PARTIAL_SUFFIX}"`,
+          )
+        }
+      }
+      if (n > 1 && cellText(rows[1], 1)?.endsWith(PARTIAL_SUFFIX)) {
+        gateFail('partial update (every 10th)', 'row 1 (not a 10th row) was suffixed')
+      }
+    },
+  }),
+  // Rows at index 1 and n-2 exchange places (1 ↔ 998 at 1,000 rows; the
+  // crossover suite uses the same `N - 2` rule). Compared against the ids read
+  // just before the timed op, so it holds whether this run swaps "out" or
+  // swaps "back".
+  'swap rows': defineGate<{ n: number; a: string | null; b: string | null }>({
+    pre: (container) => {
+      const rows = gateRows(container)
+      const n = rows?.length ?? 0
+      return { n, a: cellText(rows?.[1], 0), b: cellText(rows?.[n - 2], 0) }
+    },
+    post: (container, pre) => {
+      if (pre.n < 3 || pre.a === null || pre.b === null || pre.a === pre.b) {
+        gateFail('swap rows', `precondition not met (n=${pre.n}, a=${pre.a}, b=${pre.b})`)
+      }
+      const rows = gateRows(container)
+      const a = cellText(rows?.[1], 0)
+      const b = cellText(rows?.[pre.n - 2], 0)
+      if (a !== pre.b || b !== pre.a) {
+        gateFail(
+          'swap rows',
+          `expected ids at [1, ${pre.n - 2}] to become [${pre.b}, ${pre.a}], got [${a}, ${b}]`,
+        )
+      }
+    },
+  }),
+}
+
+async function runVerify(
+  name: string,
+  suite: BenchSuite,
+  options: BenchOptions,
+  gate: AnyOpGate | undefined,
+  gatePre: unknown,
+): Promise<void> {
+  if (options.verify) await options.verify(suite.container)
+  if (gate) {
+    try {
+      gate.post(suite.container, gatePre)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      throw new Error(`${msg} [${suite.framework} / ${name}]`)
+    }
+  }
+}
+
 /**
  * Run `fn` RUNS times and report the median with a bootstrap CI.
  *
@@ -463,8 +608,11 @@ export async function bench(
   // Stop early when two consecutive windows agree within tolerance.
   const warmupSamples: number[] = []
   let warmupUsed = 0
+  const gate = OP_GATES[name]
   while (warmupUsed < WARMUP_MAX) {
     if (options.reset) await options.reset()
+    // Correctness-gate snapshot — outside the timed region (see OP_GATES).
+    const gatePre = gate ? gate.pre(suite.container) : undefined
     const t0 = performance.now()
     await fn()
     // Per-framework commit boundary — inside the timed region, BEFORE
@@ -477,7 +625,7 @@ export async function bench(
     const elapsed = performance.now() - t0
     warmupSamples.push(elapsed)
     warmupUsed++
-    if (options.verify) await options.verify(suite.container)
+    await runVerify(name, suite, options, gate, gatePre)
     forceGc()
     await tick()
     // Check stabilisation only after we have enough samples.
@@ -495,6 +643,7 @@ export async function bench(
   const samples: number[] = []
   for (let i = 0; i < RUNS; i++) {
     if (options.reset) await options.reset()
+    const gatePre = gate ? gate.pre(suite.container) : undefined
     forceGc()
     const t0 = performance.now()
     await fn()
@@ -504,7 +653,7 @@ export async function bench(
     suite.container.getBoundingClientRect()
     const elapsed = performance.now() - t0
     samples.push(elapsed)
-    if (options.verify) await options.verify(suite.container)
+    await runVerify(name, suite, options, gate, gatePre)
     // Yield to browser between runs (not measured — runs outside the t0/elapsed region)
     await tick()
   }
@@ -720,11 +869,36 @@ function pick<T>(arr: T[]): T {
   return arr[Math.floor(rng() * arr.length)] as T
 }
 
+/**
+ * Build `count` plain `{ id, label }` rows.
+ *
+ * Delegates to `buildRowsWith` so EVERY arm pays the identical data-building
+ * cost inside its timed region. Before this, Pyreon + Solid built rows with
+ * `buildRowsWith` (a preallocated `new Array(n)` + indexed `for` loop) while
+ * Vanilla/React/Preact/Vue/Svelte/Octane went through `Array.from({ length },
+ * fn)` — a measurably slower construction path charged to those arms only, a
+ * harness asymmetry rather than a framework difference. The RNG draw order
+ * (id, then adjective, colour, noun per row) is unchanged, so the label
+ * sequence is byte-identical to the previous implementation.
+ */
 export function buildRows(count: number): Row[] {
-  return Array.from({ length: count }, () => ({
-    id: _nextId++,
-    label: `${pick(ADJECTIVES)} ${pick(COLOURS)} ${pick(NOUNS)}`,
-  }))
+  return buildRowsWith<Row>(count, makePlainRow)
+}
+
+function makePlainRow(id: number, label: string): Row {
+  return { id, label }
+}
+
+/**
+ * Peek the `{ id, label }` the NEXT `buildRows`/`buildRowsWith` call will
+ * produce for its first row, WITHOUT advancing the id counter or the RNG.
+ * Used by the `create` correctness gate (outside the timed region).
+ */
+export function peekNextRow(): Row {
+  const savedRng = _rngState
+  const label = `${pick(ADJECTIVES)} ${pick(COLOURS)} ${pick(NOUNS)}`
+  _rngState = savedRng
+  return { id: _nextId, label }
 }
 
 /**

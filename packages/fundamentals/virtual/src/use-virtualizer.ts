@@ -9,6 +9,7 @@ import {
   Virtualizer,
   type VirtualizerOptions,
 } from '@tanstack/virtual-core'
+import { deferDetachedMeasurement, guardDetachedSize } from './detached-measure'
 import { createItemRegistry, type VirtualItemMeasurement } from './item-registry'
 
 export type UseVirtualizerOptions<
@@ -73,6 +74,7 @@ export function useVirtualizer<TScrollElement extends Element, TItemElement exte
     scrollToFn: elementScroll,
     ...options(),
   }
+  resolvedOptions.measureElement = guardDetachedSize(resolvedOptions.measureElement)
 
   const virtualItems = signal<VirtualItem[]>([])
   const totalSize = signal(0)
@@ -83,6 +85,7 @@ export function useVirtualizer<TScrollElement extends Element, TItemElement exte
   let latestUserOpts = options()
 
   const instance = new Virtualizer<TScrollElement, TItemElement>(resolvedOptions)
+  deferDetachedMeasurement(instance)
 
   // Single emission point: pull the instance's current state into all reactive
   // surfaces (coarse signals + fine-grained per-index registry) in one batch.
@@ -102,6 +105,7 @@ export function useVirtualizer<TScrollElement extends Element, TItemElement exte
     instance.setOptions({
       ...instance.options,
       ...latestUserOpts,
+      measureElement: guardDetachedSize(latestUserOpts.measureElement),
       onChange: (inst, sync) => {
         emit()
         // Read latest opts to avoid stale closure

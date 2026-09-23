@@ -37,6 +37,18 @@ process.env.NODE_ENV = 'production'
 
 // ─── Real DOM (happy-dom) — react-dom + Pyreon runtime both need it ──────────
 import { Window } from 'happy-dom'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 const win = new Window({ url: 'http://localhost' })
 const g = globalThis as unknown as Record<string, unknown>
@@ -342,6 +354,10 @@ function runImpl(impl: 'pyreon' | 'react'): Result {
   return pooled
 }
 
+console.log(benchRuntimeBanner())
+console.log(
+  '⚠ happy-dom (JS DOM) — not browser-representative: every WALL-CLOCK number below was timed against happy-dom, a JavaScript DOM implementation, not a browser engine (no real style/layout/paint; DOM-op costs differ from Chromium/WebKit/Gecko).',
+)
 console.log('# @pyreon/charts vs echarts-for-react — wrapper overhead\n')
 console.log(
   `NODE_ENV=${process.env.NODE_ENV}  samples=${SAMPLES}×${PROCS} fresh processes/impl  updates/sample=${UPDATES}`,

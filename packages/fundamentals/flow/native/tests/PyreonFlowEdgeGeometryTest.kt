@@ -12,6 +12,10 @@ import com.pyreon.runtime.pyreonFlowSvgSize
 import com.pyreon.runtime.pyreonFlowSvgTransform
 import com.pyreon.runtime.PyreonFlowEdgeStroke
 import com.pyreon.runtime.PyreonFlowPathPoint
+import com.pyreon.runtime.PyreonFlowInteractiveHandle
+import com.pyreon.runtime.PyreonFlowConnection
+import com.pyreon.runtime.pyreonFlowResolveConnection
+import com.pyreon.runtime.pyreonFlowAutoPanVelocity
 import com.pyreon.runtime.PyreonFlowNodeBox
 import com.pyreon.runtime.PyreonFlowHandleConfig
 import com.pyreon.runtime.PyreonFlowMeasuredHandle
@@ -97,8 +101,30 @@ private fun checkSvgElement() {
     check(polyline.size == 3 && near(polyline[2].x, 9.0), "polyline points after M are implicit linetos")
 }
 
+/** connectionMode, decided by the same pure function the Compose view calls. Mirrors Swift. */
+private fun checkConnectionMode() {
+    val aOut = PyreonFlowInteractiveHandle("a", "out", "source", PyreonFlowPosition.Right, 100.0, 20.0)
+    val aIn = PyreonFlowInteractiveHandle("a", "in", "target", PyreonFlowPosition.Left, 0.0, 20.0)
+    val cIn = PyreonFlowInteractiveHandle("c", "in", "target", PyreonFlowPosition.Left, 300.0, 20.0)
+    val cOut = PyreonFlowInteractiveHandle("c", "out", "source", PyreonFlowPosition.Right, 400.0, 20.0)
+    val all = listOf(aOut, aIn, cIn, cOut)
+    fun resolve(start: PyreonFlowInteractiveHandle, x: Double, mode: String) = pyreonFlowResolveConnection(start, all, PyreonFlowPathPoint(x, 20.0), 10.0, mode)
+    check(resolve(aOut, 300.0, "strict") == PyreonFlowConnection("a", "c", "out", "in"), "strict: source to target connects")
+    check(resolve(aOut, 400.0, "strict") == null, "strict: source to source is refused")
+    check(resolve(cIn, 100.0, "strict") == PyreonFlowConnection("a", "c", "out", "in"), "strict: a drag from a target handle is still source -> target")
+    check(resolve(aOut, 400.0, "loose") == PyreonFlowConnection("a", "c", "out", "out"), "loose: any pair, oriented from the start")
+    check(resolve(aOut, 0.0, "loose") == null, "the start node is never a candidate")
+    // Auto-pan velocity: the same arithmetic as the web and Swift.
+    check(pyreonFlowAutoPanVelocity(400.0, 300.0, 800.0, 600.0) == PyreonFlowPathPoint(0.0, 0.0), "no auto-pan away from the edges")
+    check(pyreonFlowAutoPanVelocity(20.0, 300.0, 800.0, 600.0) == PyreonFlowPathPoint(7.5, 0.0), "half speed 20px into the left band")
+    check(pyreonFlowAutoPanVelocity(780.0, 300.0, 800.0, 600.0) == PyreonFlowPathPoint(-7.5, 0.0), "half speed, negative, near the right edge")
+    check(pyreonFlowAutoPanVelocity(900.0, 700.0, 800.0, 600.0) == PyreonFlowPathPoint(-15.0, -15.0), "full speed past the edge")
+    check(pyreonFlowAutoPanVelocity(0.0, 0.0, 60.0, 60.0) == PyreonFlowPathPoint(0.0, 0.0), "a canvas too small for two bands never pans")
+}
+
 fun main() {
     checkSvgPaths()
+    checkConnectionMode()
     checkSvgElement()
     // 1. A straight two-point edge — move + line, endpoints exact.
     val straight = pyreonFlowEdgePath(listOf(PyreonFlowEdgeSegment.move(0.0, 0.0), PyreonFlowEdgeSegment.line(100.0, 50.0)))

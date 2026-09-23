@@ -55,6 +55,18 @@
 process.env.NODE_ENV = 'production'
 
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 GlobalRegistrator.register()
 
 declare const Bun: {
@@ -284,7 +296,7 @@ for (const scenario of SCENARIO_ORDER) {
 const fmt = (x: number) => (x >= 1000 ? `${(x / 1000).toFixed(2)}µs` : `${x.toFixed(0)}ns`)
 const opsPerSec = (ns: number) => Math.round(1e9 / ns).toLocaleString('en-US')
 console.log(`\nHeadless toast-store benchmark — @pyreon/toast vs react-hot-toast`)
-console.log(`Node ${process.version}, ${process.platform} ${process.arch}, NODE_ENV=production`)
+console.log(`${benchRuntimeBanner()}, NODE_ENV=production`)
 console.log(`Median ns/op (lower = faster). Multiplier = vs fastest in row.`)
 console.log(`Each (scenario × library) measured in its OWN fresh process.`)
 console.log(`(sonner excluded — its dismiss is Toaster-coupled, not fairly headless; see toast-commit-bench.ts)\n`)
@@ -303,7 +315,7 @@ for (const r of rows) {
 console.log(
   '\n' +
     JSON.stringify(
-      { meta: { node: process.version, platform: `${process.platform}/${process.arch}` }, rows: jsonRows },
+      { meta: { runtime: benchRuntimeBanner(), platform: `${process.platform}/${process.arch}` }, rows: jsonRows },
       null,
       0,
     ),

@@ -105,6 +105,8 @@ export const HANDLED_FLOW_COMPONENT_PROPS: ReadonlyMap<string, ReadonlySet<strin
   ['NodeResizerProps', new Set(['nodeId', 'instance', 'minWidth', 'minHeight', 'handleSize', 'showEdgeHandles'])],
   ['NodeToolbarProps', new Set(['position', 'offset', 'showOnSelect', 'selected', 'nodeId', 'align', 'style', 'class', 'children'])],
   ['EdgeLabelRendererProps', new Set(['children'])],
+  ['BaseEdgeProps', new Set(['path', 'style', 'class', 'markerStart', 'markerEnd', 'label', 'labelX', 'labelY', 'labelStyle'])],
+  ['EdgeTextProps', new Set(['x', 'y', 'label', 'style'])],
 ])
 
 /** Public runtime exports whose portable semantics are implemented by the
@@ -112,7 +114,7 @@ export const HANDLED_FLOW_COMPONENT_PROPS: ReadonlyMap<string, ReadonlySet<strin
  * constants and enum-like values, not only JSX hosts. */
 export const LOWERED_FLOW_RUNTIME_EXPORTS: ReadonlySet<string> = new Set([
   'Background', 'Controls', 'Flow', 'Handle', 'MiniMap', 'NodeResizer',
-  'NodeToolbar', 'EdgeLabelRenderer', 'Panel',
+  'NodeToolbar', 'EdgeLabelRenderer', 'Panel', 'BaseEdge', 'EdgeText',
   'DEFAULT_NODE_HEIGHT', 'DEFAULT_NODE_WIDTH', 'getBezierPath', 'getEdgePath',
   'getEffectiveDimensions', 'getFloatingEndpoints', 'getHandlePosition',
   'getNodeIntersection', 'getSmartHandlePositions', 'getSmoothStepPath',
@@ -125,8 +127,14 @@ export const LOWERED_FLOW_RUNTIME_EXPORTS: ReadonlySet<string> = new Set([
 /** Public runtime exports that are intrinsically tied to the DOM renderer and
  * must remain behind a web branch/host rather than being silently emitted. */
 export const WEB_ONLY_FLOW_RUNTIME_EXPORTS: ReadonlySet<string> = new Set([
-  'FlowLayersContext', 'flowStyles',
+  'FlowLayersContext', 'flowStyles', 'ViewportPortal',
 ])
+
+/** Web-only Flow COMPONENTS the emitters DROP (emit nothing) with their own
+ * named warning at the use site. The import-boundary line ("reproduced
+ * verbatim … the native build fails") would be false for these, so it is
+ * skipped; a subset of `WEB_ONLY_FLOW_RUNTIME_EXPORTS`. */
+export const DROPPED_FLOW_COMPONENTS: ReadonlySet<string> = new Set(['ViewportPortal'])
 
 /** Mutable `FlowConfig` fields retained by both native state engines. */
 export const LOWERED_FLOW_CONFIG_PROPERTIES: ReadonlyMap<string, string> = new Map([
@@ -144,7 +152,9 @@ export const LOWERED_FLOW_CONFIG_PROPERTIES: ReadonlyMap<string, string> = new M
   ['panOnScroll', 'panOnScroll'], ['panOnScrollSpeed', 'panOnScrollSpeed'],
   ['zoomOnScroll', 'zoomOnScroll'], ['zoomOnPinch', 'zoomOnPinch'],
   ['zoomOnDoubleClick', 'zoomOnDoubleClick'], ['selectionOnDrag', 'selectionOnDrag'],
-  ['selectionMode', 'selectionMode'], ['deleteKeys', 'deleteKeys'],
+  ['selectionMode', 'selectionMode'], ['connectionMode', 'connectionMode'], ['deleteKeys', 'deleteKeys'],
+  ['elevateNodesOnSelect', 'elevateNodesOnSelect'], ['elevateEdgesOnSelect', 'elevateEdgesOnSelect'],
+  ['autoPanOnNodeDrag', 'autoPanOnNodeDrag'], ['autoPanOnConnect', 'autoPanOnConnect'], ['autoPanSpeed', 'autoPanSpeed'],
   ['multiSelectionKey', 'multiSelectionKey'], ['selectionKey', 'selectionKey'],
   ['zoomActivationKey', 'zoomActivationKey'], ['edgesReconnectable', 'edgesReconnectable'],
   ['edgeInteractionWidth', 'edgeInteractionWidth'], ['connectionLineType', 'connectionLineType'],
@@ -168,8 +178,10 @@ export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([
   'getConnectedEdges', 'getIncomers', 'getOutgoers', 'getChildNodes', 'getAbsolutePosition',
   'findNodes', 'searchNodes',
   'getProximityConnection', 'getOverlappingNodes', 'resolveCollisions',
+  'getIntersectingNodes', 'isNodeIntersecting', 'getNodesBounds',
   'getSnapLines',
   'onConnect', 'onViewportChange', 'onNodeClick', 'onNodeDoubleClick', 'onNodeDragStart', 'onNodeDrag', 'onNodeDragEnd', 'onEdgeClick', 'onSelectionChange', 'onNodesDelete', 'onEdgesDelete', 'onNodesChange', 'onEdgesChange', 'onConnectStart', 'onConnectEnd', 'onPaneClick',
+  'onNodeContextMenu', 'onEdgeContextMenu', 'onPaneContextMenu', 'onNodeMouseEnter', 'onNodeMouseLeave', 'onEdgeMouseEnter', 'onEdgeMouseLeave',
   'setNodeExtent', 'clampToExtent',
   'copySelected', 'paste', 'pushHistory', 'undo', 'redo',
   'toJSON', 'fromJSON',
@@ -183,7 +195,7 @@ export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([
 export const HANDLED_FLOW_NODE_FIELDS: ReadonlySet<string> = new Set([
   'id', 'type', 'position', 'data', 'width', 'height',
   'draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel',
-  'hidden', 'deletable', 'parentId', 'extent', 'expandParent', 'group',
+  'hidden', 'deletable', 'parentId', 'extent', 'expandParent', 'group', 'zIndex',
   'class', 'style',
   'sourceHandles', 'targetHandles',
 ])
@@ -191,7 +203,7 @@ export const HANDLED_FLOW_NODE_FIELDS: ReadonlySet<string> = new Set([
 export const HANDLED_FLOW_EDGE_FIELDS: ReadonlySet<string> = new Set([
   'id', 'source', 'target', 'sourceHandle', 'targetHandle', 'type', 'label',
   'animated', 'focusable', 'ariaLabel', 'hidden', 'deletable',
-  'reconnectable', 'interactionWidth', 'waypoints',
+  'reconnectable', 'interactionWidth', 'waypoints', 'zIndex',
   'data',
   'class', 'style',
   'pathOptions',
@@ -219,4 +231,37 @@ export function droppedFlowFieldsWarning(site: string, kind: 'node' | 'edge', ke
     `${site}: ${kind} field${keys.length === 1 ? '' : 's'} ${keys.map((k) => `\`${k}\``).join(', ')} ${keys.length === 1 ? 'is' : 'are'} NOT carried by the native Pyreon${kind === 'node' ? 'FlowNode' : 'FlowEdge'} and ${keys.length === 1 ? 'was' : 'were'} DROPPED — ` +
     `this ${kind} behaves differently on iOS/Android than on web from the SAME source. Only ${[...handled].map((k) => `\`${k}\``).join(', ')} cross today (v1).`
   )
+}
+
+/**
+ * `<NodeResizer nodeId>` names the node to resize. Inside a node renderer the
+ * native resizer always attaches to its HOST node, which is what `nodeId={id}`
+ * / `nodeId={props.id}` (every documented use) asks for. Any other value, a
+ * literal or another node's id, would resize a different node on the web and
+ * the host natively, so it is reported instead of silently lowered.
+ */
+export function nodeResizerTargetsAnotherNode(e: Extract<ExprIR, { kind: 'jsx-element' }>, propsParamName: string | undefined): boolean {
+  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeId')
+  if (attr?.kind !== 'attr') return false
+  const v = attr.value
+  if (v.kind === 'identifier' && v.name === 'id') return false
+  if (v.kind === 'member' && v.property === 'id' && v.object.kind === 'identifier' && v.object.name === propsParamName) return false
+  return true
+}
+
+export const NODE_RESIZER_FOREIGN_NODE_WARNING = (component: string): string =>
+  `<Flow nodeTypes> component \`${component}\`: <NodeResizer nodeId> names a node other than its host. Natively the resizer always resizes the node it is rendered in; pass \`nodeId={props.id}\` (or move the resizer into the target node's renderer).`
+
+/**
+ * The `{ x, y, width, height }` fields of a rect literal passed to
+ * `getIntersectingNodes` / `isNodeIntersecting`, in native constructor order, or
+ * `null` when the argument is not a literal of exactly that shape (an id, or a
+ * rect held in a variable, is then emitted as written).
+ */
+export function flowRectLiteralFields(e: ExprIR): [ExprIR, ExprIR, ExprIR, ExprIR] | null {
+  if (e.kind !== 'object' || (e.spreads?.length ?? 0) > 0) return null
+  const fields = new Map(e.fields.map((f) => [f.name, f.value]))
+  const order = ['x', 'y', 'width', 'height'] as const
+  if (fields.size !== 4 || !order.every((k) => fields.has(k))) return null
+  return order.map((k) => fields.get(k)!) as [ExprIR, ExprIR, ExprIR, ExprIR]
 }

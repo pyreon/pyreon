@@ -429,18 +429,55 @@ function FlowScreen() {
     }
     return label
   })
+  // Context-menu device proof: a long-press on a node (right-click on web)
+  // reaches `onNodeContextMenu`, which writes the node id here.
+  const lastMenu = signal('none')
+  // Hover device proof (pointer hover; Android's test drives a mouse).
+  const lastHover = signal('none')
+  // The connection gesture's own start/end, so a failed connect says which half broke.
+  const lastConnect = signal('none')
+  onMount(() => {
+    flow.onNodeContextMenu((n) => lastMenu.set(`menu ${n.id}`))
+    flow.onNodeMouseEnter((n) => lastHover.set(`hover ${n.id}`))
+    flow.onConnectStart((c) => lastConnect.set(`start ${c.nodeId}`))
+    // No member access on the optional: the native emit does not narrow it
+    // through `=== null` (the same limit as the `.find` note above).
+    flow.onConnectEnd((c) => lastConnect.set(c === null ? 'end none' : 'end ok'))
+  })
+  // Which nodes are selected: the zIndex proof taps where two nodes overlap
+  // and reads which one received the tap.
+  const selectedIds = computed(() => {
+    let ids = ''
+    for (const id of flow.selectedNodes()) ids = ids === '' ? id : `${ids},${id}`
+    return ids === '' ? 'none' : ids
+  })
+  // The viewport offset, rounded: auto-pan moves it while a node is held at
+  // the canvas edge.
+  const vpLabel = computed(() => `${Math.round(flow.viewport().x)},${Math.round(flow.viewport().y)}`)
   return (
     <Stack gap={3} padding={4} data-testid="flow-page">
-      <Text>Flow</Text>
-      <Text data-testid="flow-node-count">{nodeCount}</Text>
-      <Text data-testid="flow-edge-count">{edgeCount}</Text>
-      <Text data-testid="flow-selected-count">{selectedCount}</Text>
-      <Text data-testid="flow-zoom">{zoomLabel}</Text>
-      <Text data-testid="flow-a-pos">{aPos}</Text>
+      {/* Rows, not a column of labels: the canvas takes the height that is
+          left, and a short canvas puts the nodes inside the 40pt auto-pan
+          band, where any drag near them pans the graph. */}
+      <Inline gap={2}>
+        <Text>Flow</Text>
+        <Text data-testid="flow-node-count">{nodeCount}</Text>
+        <Text data-testid="flow-edge-count">{edgeCount}</Text>
+        <Text data-testid="flow-selected-count">{selectedCount}</Text>
+        <Text data-testid="flow-zoom">{zoomLabel}</Text>
+        <Text data-testid="flow-a-pos">{aPos}</Text>
+      </Inline>
+      <Inline gap={2}>
+        <Text data-testid="flow-menu">{lastMenu}</Text>
+        <Text data-testid="flow-hover">{lastHover}</Text>
+        <Text data-testid="flow-selected-ids">{selectedIds}</Text>
+        <Text data-testid="flow-vp">{vpLabel}</Text>
+        <Text data-testid="flow-connect">{lastConnect}</Text>
+      </Inline>
       <Inline gap={2}>
         <Button
           onPress={() =>
-            flow.addNode({ id: 'c', type: 'badge', position: { x: 100, y: 120 }, data: { label: 'Extra' } })
+            flow.addNode({ id: 'c', type: 'badge', position: { x: 100, y: 80 }, data: { label: 'Extra' } })
           }
           data-testid="flow-add"
         >
@@ -456,10 +493,43 @@ function FlowScreen() {
           Move
         </Button>
       </Inline>
-      {/* Its own row: five buttons overflow a phone-width Compose Row. */}
-      <Button onPress={() => navigate('/tasks')} data-testid="flow-back">
-        Back to tasks
-      </Button>
+      {/* View-wiring proofs: `connectionMode` (redraw e1 from the TARGET
+          handle after removing it) and `zIndex` (overlap A and B, raise A). */}
+      <Inline gap={2}>
+        {/* A and B side by side on one row, so the redraw is a SIDEWAYS drag
+            (a vertical one is claimed by the page's ScrollView on iOS before
+            the handle's gesture sees it), and at y = 80, clear of the canvas's
+            40pt auto-pan band: a slow drag starting in the band pans the graph
+            out from under the finger, exactly as on the web. */}
+        <Button
+          onPress={() => {
+            flow.removeEdge('e1')
+            flow.updateNodePosition('a', { x: 0, y: 80 })
+            flow.updateNodePosition('b', { x: 200, y: 80 })
+            // B selected = raised above the others. Its target handle must
+            // still take the drag: handles ride WITH their node's stacking.
+            flow.selectNode('b')
+          }}
+          data-testid="flow-drop-e1"
+        >
+          Drop e1
+        </Button>
+        <Button
+          onPress={() => {
+            flow.updateNodePosition('a', { x: 0, y: 0 })
+            flow.updateNodePosition('b', { x: 30, y: 10 })
+            flow.updateNode('a', { zIndex: 5 })
+            // Nothing selected, so selection elevation cannot stand in for zIndex.
+            flow.clearSelection()
+          }}
+          data-testid="flow-stack"
+        >
+          Stack
+        </Button>
+        <Button onPress={() => navigate('/tasks')} data-testid="flow-back">
+          Back
+        </Button>
+      </Inline>
       <Flow instance={flow} nodeTypes={{ badge: BadgeNode }} edgeTypes={{ wire: WireEdge }} ariaLabel="Task flow">
         <Background variant="dots" />
         <Controls />

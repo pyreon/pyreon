@@ -12,6 +12,18 @@
  */
 import { performance } from 'node:perf_hooks'
 import { resolve } from 'node:path'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 process.env.ATLAS_PROFILE = '1'
 
@@ -24,6 +36,7 @@ const code = await runCli(['scan', root])
 const total = performance.now() - t0
 
 const rows = pluginProfile()
+console.log(benchRuntimeBanner())
 process.stdout.write(`\n\n=== atlas scan cost by plugin hook (exit ${code}) ===\n\n`)
 let accounted = 0
 for (const r of rows) {

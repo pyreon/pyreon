@@ -5,7 +5,7 @@ import type { Filter, Todo, TodoApp } from '../types'
 
 /**
  * Idiomatic Pyreon: fine-grained signals. Each row owns a `done` signal, so
- * `toggleAll` flips 100 signals and patches 100 checkboxes/classes IN PLACE —
+ * `toggleAll` flips N signals and patches N checkboxes/classes IN PLACE —
  * no list reconciliation, the row VNodes never re-mount. `add` / `clearCompleted`
  * re-set the `rows` array signal (keyed `<For>` reconciles by id). This is the
  * real fine-grained shape a Pyreon user ships — NOT a forced whole-list render.
@@ -67,6 +67,9 @@ export function createPyreonApp(): TodoApp {
     },
     setFilter(f) {
       filter.set(f)
+    },
+    runCommitted(fn) {
+      fn()
     },
     commit() {
       // Pyreon signals flush synchronously inside the call above; a resolved

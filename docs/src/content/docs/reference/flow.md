@@ -121,6 +121,9 @@ flow.fromJSON({ nodes, edges })    // restore from saved state
 | [`NodeToolbar`](#nodetoolbar) | component | A floating toolbar placed beside its host node (default `position: "top"`, `offset` 8px). |
 | [`flowStyles`](#flowstyles) | constant | The package stylesheet as ONE plain string — every `.pyreon-flow-*` rule with its `--pyreon-flow-*` custom-property fall |
 | [`EdgeLabelRenderer`](#edgelabelrenderer) | component | HTML edge labels for CUSTOM edges. |
+| [`BaseEdge`](#baseedge) | component | The visible part of a CUSTOM edge: its stroke, markers and an optional label (React Flow `<BaseEdge>`). |
+| [`EdgeText`](#edgetext) | component | A text label at a point in flow coordinates, in the built-in edge-label style (11px, `--pyreon-flow-edge-label`). |
+| [`ViewportPortal`](#viewportportal) | component | Renders arbitrary HTML in flow coordinates: the children pan and zoom with the graph (React Flow `<ViewportPortal>`). |
 | [`MarkerType / Position`](#markertype-position) | constant | The two flow enums. |
 | [`edge-path-helpers`](#edge-path-helpers) | function | SVG-path builders for CUSTOM edge components. |
 | [`computeLayout`](#computelayout) | function | Auto-layout from the built-in engine. |
@@ -516,6 +519,81 @@ function LabeledEdge(props: EdgeComponentProps) {
 - Forgetting `pointer-events: all` + `nopan` on an interactive label — the layer ignores the pointer, and a click that reaches the canvas starts a pan.
 
 **See also:** `NodeToolbar` · `Flow`
+
+---
+
+### BaseEdge `component`
+
+```ts
+BaseEdge(props: BaseEdgeProps) => VNodeChild
+```
+
+The visible part of a CUSTOM edge: its stroke, markers and an optional label (React Flow `<BaseEdge>`). `path` is SVG path data, typically from `getBezierPath` / `getSmoothStepPath`; the default stroke is `--pyreon-flow-edge` at 1.5px, and a `style` string REPLACES that default wholesale, as on any SVG element. `label` + `labelX` + `labelY` add an `<EdgeText>`. The flow already wraps every edge in a wider invisible hit path, so `BaseEdge` draws only what you see. Lowers natively (a native stroke plus label; `markerStart` / `markerEnd` are `url(#…)` references with no native meaning and are reported).
+
+**Example**
+
+```tsx
+function Wire(props: EdgeComponentProps) {
+  const edge = () => getBezierPath({ sourceX: props.sourceX(), sourceY: props.sourceY(), targetX: props.targetX(), targetY: props.targetY() })
+  return <BaseEdge path={edge().path} label="wire" labelX={edge().labelX} labelY={edge().labelY} />
+}
+```
+
+**Common mistakes**
+
+- Passing a `style` that sets only `opacity` and expecting the default stroke to remain — `style` replaces the default declaration, so no `stroke` means no line.
+- Setting `label` without `labelX` / `labelY` — the label has no position and is not drawn.
+- Reading `props.sourceX` without calling it — the edge props are accessors (`props.sourceX()`).
+
+**See also:** `EdgeText` · `EdgeLabelRenderer` · `edge-path-helpers`
+
+---
+
+### EdgeText `component`
+
+```ts
+EdgeText(props: { x: number; y: number; label: string; style?: string }) => VNodeChild
+```
+
+A text label at a point in flow coordinates, in the built-in edge-label style (11px, `--pyreon-flow-edge-label`). React Flow `<EdgeText>`. For interactive or rich labels use `<EdgeLabelRenderer>`, which renders HTML. Lowers natively.
+
+**Example**
+
+```tsx
+<EdgeText x={edge().labelX} y={edge().labelY} label="42 ms" />
+```
+
+**Common mistakes**
+
+- Putting buttons or wrapped text in it — it is SVG `<text>`; use `<EdgeLabelRenderer>` for HTML.
+
+**See also:** `BaseEdge` · `EdgeLabelRenderer`
+
+---
+
+### ViewportPortal `component`
+
+```ts
+ViewportPortal(props: { children?: VNodeChild }) => VNodeChild
+```
+
+Renders arbitrary HTML in flow coordinates: the children pan and zoom with the graph (React Flow `<ViewportPortal>`). Position them with a `transform: translate(x, y)` in flow units. Renders nothing outside a mounted `<Flow>` and on the server. WEB-ONLY: CSS positioning has no native meaning, so the compiler reports it and drops it; use `<EdgeLabelRenderer>`, `<NodeToolbar>` or `<Panel>` on native.
+
+**Example**
+
+```tsx
+<Flow instance={flow}>
+  <ViewportPortal>
+    <div style="position: absolute; transform: translate(200px, 80px)">Annotation</div>
+  </ViewportPortal>
+</Flow>
+```
+
+**Common mistakes**
+
+- Positioning with `left` / `top` in screen pixels — the layer is inside the zoomed viewport, so use flow units.
+
+**See also:** `EdgeLabelRenderer` · `Panel`
 
 ---
 

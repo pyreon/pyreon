@@ -55,6 +55,18 @@ import ky from 'ky'
 import { ofetch } from 'ofetch'
 import redaxios from 'redaxios'
 import { createHttp } from '../src/client'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 declare const Bun: {
   spawnSync: (
@@ -593,6 +605,7 @@ for (const op of OP_ORDER) {
   rows.push(row)
 }
 
+console.log(benchRuntimeBanner())
 console.log(
   `=== @pyreon/http vs ky vs ofetch vs redaxios vs axios(fetch) + bare-fetch floor (${process.platform}/${process.arch}, NODE_ENV=production, stubbed fetch, per-(op×impl) isolated processes, median ns/op [CI95], 🤝 = CI-overlap tie vs pyreon) ===\n`,
 )

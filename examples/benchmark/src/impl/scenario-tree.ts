@@ -26,13 +26,15 @@
  *     this would re-render all 2,047 components and would be a handicap, not a
  *     measurement.
  *   - **Vue** — `provide`/`inject` of a `ref`; only leaves `inject`, so only
- *     leaf render effects are invalidated.
+ *     leaf render effects are invalidated. Both components are build-time
+ *     compiled templates (SFC compiler options), not hand-written `h()`.
  *   - **Solid** — `createContext` holding an accessor (Solid's idiomatic
  *     "context carries a signal" form), leaves read it via `insert`.
  *   - **Svelte** — `setContext`/`getContext` of a `$state` holder, mutated in
  *     place; leaves read `ctx.value` in the template.
- *   - **Vanilla** — no context concept: the same DOM shape, with the 1,024 leaf
- *     text nodes cached and written directly. The floor, not a competitor.
+ *   - **Vanilla** — no context concept: the same DOM shape built by cloning
+ *     per-node prototypes, with the 1,024 leaf text nodes cached and written
+ *     directly. The floor, not a competitor.
  *
  * Per-iteration `verify` checks EVERY leaf, not a sample: partial propagation
  * is exactly the failure this scenario exists to catch, and a spot check on the
@@ -43,10 +45,10 @@ import { signal } from '@pyreon/reactivity'
 import { mount as pyreonMount } from '@pyreon/runtime-dom'
 import {
   createContext as preactCreateContext,
-  h as preactH,
   render as preactRender,
   type FunctionComponent as PreactFunctionComponent,
 } from 'preact'
+import { jsx as preactJsx, jsxs as preactJsxs } from 'preact/jsx-runtime'
 import { memo as preactMemo } from 'preact/compat'
 import {
   useContext as preactUseContext,
@@ -56,6 +58,7 @@ import {
 import * as React from 'react'
 import { flushSync as reactFlushSync } from 'react-dom'
 import * as ReactDOM from 'react-dom/client'
+import { jsx as reactJsx, jsxs as reactJsxs } from 'react/jsx-runtime'
 import {
   createComponent,
   createContext as solidCreateContext,
@@ -67,13 +70,15 @@ import { flushSync as svelteFlushSync, mount as svelteMount, unmount as svelteUn
 import {
   createApp,
   defineComponent,
-  h as vueH,
   inject,
   nextTick,
   provide as vueProvide,
   ref,
   type App,
+  type Ref,
 } from 'vue'
+import { render as vueTreeNodeRender } from 'virtual:tree-node-vue-render'
+import { render as vueTreeRootRender } from 'virtual:tree-root-vue-render'
 import type { BenchSuite } from '../runner'
 import { bench } from '../runner'
 import DeepTree from './DeepTree.svelte'
@@ -96,23 +101,38 @@ export interface TreeTarget {
 
 // ─── Vanilla (baseline) ──────────────────────────────────────────────────────
 
+/**
+ * Node prototypes, cloned per node — the template-clone idiom of the krausest
+ * vanillajs implementation (`impl/vanilla.ts`): one native `cloneNode` per node
+ * instead of `createElement` + `className` (+ `createTextNode` + `appendChild`
+ * for a leaf, whose prototype already carries its text node). Built lazily so
+ * importing this module never touches `document`.
+ */
+let vanillaLeafProto: HTMLElement | null = null
+let vanillaBranchProto: HTMLElement | null = null
+
 function vanillaTarget(): TreeTarget {
   let leafTexts: Text[] = []
 
   return {
     mount(host) {
+      if (vanillaLeafProto === null) {
+        vanillaLeafProto = document.createElement('span')
+        vanillaLeafProto.className = 'leaf'
+        vanillaLeafProto.appendChild(document.createTextNode(''))
+        vanillaBranchProto = document.createElement('div')
+        vanillaBranchProto.className = 'branch'
+      }
+      const leafProto = vanillaLeafProto
+      const branchProto = vanillaBranchProto as HTMLElement
       const texts: Text[] = []
-      const build = (depth: number): HTMLElement => {
+      const build = (depth: number): Node => {
         if (depth <= 1) {
-          const span = document.createElement('span')
-          span.className = 'leaf'
-          const t = document.createTextNode('')
-          span.appendChild(t)
-          texts.push(t)
+          const span = leafProto.cloneNode(true)
+          texts.push(span.firstChild as Text)
           return span
         }
-        const div = document.createElement('div')
-        div.className = 'branch'
+        const div = branchProto.cloneNode(false)
         div.appendChild(build(depth - 1))
         div.appendChild(build(depth - 1))
         return div
@@ -175,11 +195,23 @@ function pyreonTarget(): TreeTarget {
 
 // ─── React ───────────────────────────────────────────────────────────────────
 
+// React and Preact are written as the automatic JSX runtime's output — esbuild's
+// `jsx: 'automatic'` emit (jsxImportSource `react` / `preact`), diffed against
+// the idiomatic source:
+//
+//   function Leaf() { const v = useContext(Ctx); return <span className="leaf">{v}</span> }
+//   const Branch = memo(function Branch({ depth }) {
+//     if (depth <= 1) return <Leaf />
+//     return <div className="branch"><Branch depth={depth - 1} /><Branch depth={depth - 1} /></div>
+//   })
+//   const tree = useMemo(() => <div className="tree-root"><Branch depth={TREE_DEPTH} /></div>, [])
+//   return <Ctx.Provider value={value}>{tree}</Ctx.Provider>
+
 const ReactCtx = React.createContext<string>('')
 
 function ReactLeafInner() {
   const v = React.useContext(ReactCtx)
-  return React.createElement('span', { className: 'leaf' }, v)
+  return reactJsx('span', { className: 'leaf', children: v })
 }
 const ReactLeaf = ReactLeafInner
 
@@ -188,13 +220,11 @@ const ReactLeaf = ReactLeafInner
 // (TS7022/TS7023).
 const ReactBranch: React.NamedExoticComponent<{ depth: number }> = React.memo(
   function ReactBranchInner({ depth }: { depth: number }): React.ReactElement {
-    if (depth <= 1) return React.createElement(ReactLeaf, null)
-    return React.createElement(
-      'div',
-      { className: 'branch' },
-      React.createElement(ReactBranch, { depth: depth - 1 }),
-      React.createElement(ReactBranch, { depth: depth - 1 }),
-    )
+    if (depth <= 1) return reactJsx(ReactLeaf, {})
+    return reactJsxs('div', {
+      className: 'branch',
+      children: [reactJsx(ReactBranch, { depth: depth - 1 }), reactJsx(ReactBranch, { depth: depth - 1 })],
+    })
   },
 )
 
@@ -214,14 +244,13 @@ function reactTarget(): TreeTarget {
     // re-render. This is React's documented optimization for this shape.
     const tree = React.useMemo(
       () =>
-        React.createElement(
-          'div',
-          { className: 'tree-root' },
-          React.createElement(ReactBranch, { depth: TREE_DEPTH }),
-        ),
+        reactJsx('div', {
+          className: 'tree-root',
+          children: reactJsx(ReactBranch, { depth: TREE_DEPTH }),
+        }),
       [],
     )
-    return React.createElement(ReactCtx.Provider, { value }, tree)
+    return reactJsx(ReactCtx.Provider, { value, children: tree })
   }
 
   let root: ReactDOM.Root | null = null
@@ -234,7 +263,7 @@ function reactTarget(): TreeTarget {
       // the timed region must contain the whole mount, not schedule it.
       reactFlushSync(() => {
         r.render(
-          React.createElement(App, {
+          reactJsx(App, {
             onReady: (set: (v: string) => void) => {
               setValueState = set
             },
@@ -261,20 +290,18 @@ const PreactCtx = preactCreateContext<string>('')
 
 function PreactLeaf() {
   const v = preactUseContext(PreactCtx)
-  return preactH('span', { className: 'leaf' }, v)
+  return preactJsx('span', { className: 'leaf', children: v })
 }
 
 // Same explicit-annotation requirement as ReactBranch — self-reference is
 // circular for inference otherwise.
 const PreactBranch: PreactFunctionComponent<{ depth: number }> = preactMemo(
   function PreactBranchInner({ depth }: { depth: number }) {
-    if (depth <= 1) return preactH(PreactLeaf, null)
-    return preactH(
-      'div',
-      { className: 'branch' },
-      preactH(PreactBranch, { depth: depth - 1 }),
-      preactH(PreactBranch, { depth: depth - 1 }),
-    )
+    if (depth <= 1) return preactJsx(PreactLeaf, {})
+    return preactJsxs('div', {
+      className: 'branch',
+      children: [preactJsx(PreactBranch, { depth: depth - 1 }), preactJsx(PreactBranch, { depth: depth - 1 })],
+    })
   },
 )
 
@@ -291,17 +318,20 @@ function preactTarget(): TreeTarget {
     // consumers re-render. `useMemo` is Preact's own idiom for this.
     const tree = preactUseMemo(
       () =>
-        preactH('div', { className: 'tree-root' }, preactH(PreactBranch, { depth: TREE_DEPTH })),
+        preactJsx('div', {
+          className: 'tree-root',
+          children: preactJsx(PreactBranch, { depth: TREE_DEPTH }),
+        }),
       [],
     )
-    return preactH(PreactCtx.Provider, { value }, tree)
+    return preactJsx(PreactCtx.Provider, { value, children: tree })
   }
 
   return {
     mount(host) {
       // Preact's initial render is synchronous.
       preactRender(
-        preactH(App, {
+        preactJsx(App, {
           onReady: (set: (v: string) => void) => {
             setValueState = set
           },
@@ -325,23 +355,23 @@ function preactTarget(): TreeTarget {
 
 // ─── Vue ─────────────────────────────────────────────────────────────────────
 
+// Both components are build-time-compiled templates (`TREE_NODE_VUE_TEMPLATE`,
+// `TREE_ROOT_VUE_TEMPLATE` in vue-templates.ts, compiled by the `vue-templates`
+// plugin with `@vue/compiler-sfc`'s option set) — what an SFC ships: blocks,
+// hoisted static props, and `PROPS`/`TEXT` patch flags. The previous
+// hand-written `h()` render functions had none of those.
+
 const VUE_CTX = Symbol('deep-ctx')
 
 const VueNode: ReturnType<typeof defineComponent> = defineComponent({
   name: 'VueNode',
   props: { depth: { type: Number, required: true } },
+  render: vueTreeNodeRender,
   setup(props: { depth: number }) {
     // Only leaves inject — interior nodes must NOT subscribe, or the scenario
-    // would measure 2,047 subscribers instead of 1,024.
-    if (props.depth <= 1) {
-      const v = inject<{ value: string }>(VUE_CTX)
-      return () => vueH('span', { class: 'leaf' }, v?.value ?? '')
-    }
-    return () =>
-      vueH('div', { class: 'branch' }, [
-        vueH(VueNode, { depth: props.depth - 1 }),
-        vueH(VueNode, { depth: props.depth - 1 }),
-      ])
+    // would measure 2,047 subscribers instead of 1,024. The injected ref is
+    // returned as setup state, so the template's `{{ ctx }}` unwraps it.
+    return { ctx: props.depth <= 1 ? inject<Ref<string>>(VUE_CTX) : undefined }
   },
 })
 
@@ -350,9 +380,11 @@ function vueTarget(): TreeTarget {
   let app: App | null = null
 
   const Root = defineComponent({
+    components: { VueNode },
+    render: vueTreeRootRender,
     setup() {
       vueProvide(VUE_CTX, value)
-      return () => vueH('div', { class: 'tree-root' }, [vueH(VueNode, { depth: TREE_DEPTH })])
+      return { depth: TREE_DEPTH }
     },
   })
 
@@ -470,7 +502,9 @@ function solidTarget(eagerProps: boolean): TreeTarget {
             value: value,
             get children() {
               const root = solidRootTmpl() as HTMLElement
-              insert(root, createComponent(SolidNode, { depth: TREE_DEPTH }), null)
+              // No `null` marker here: the compiler emits the 2-arg `insert`
+              // for a sole child and the 3-arg form only for siblings.
+              insert(root, createComponent(SolidNode, { depth: TREE_DEPTH }))
               return root
             },
           }) as unknown as Node,

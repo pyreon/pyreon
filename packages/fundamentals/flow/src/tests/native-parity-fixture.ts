@@ -95,10 +95,16 @@ export type ParityQuery =
   | { q: 'findByLabel'; label: string }
   | { q: 'edgeType'; id: string }
   | { q: 'edgeLabel'; id: string }
+  | { q: 'intersecting'; target: string | Rect4; partially?: boolean }
+  | { q: 'isIntersecting'; target: string | Rect4; area: Rect4; partially?: boolean }
+  | { q: 'nodesBounds'; ids?: string[] }
+
+/** A flow-coordinate rect as `[x, y, width, height]`. */
+export type Rect4 = [number, number, number, number]
 
 export interface ParityScenario {
   name: string
-  nodes: { id: string; x: number; y: number; parentId?: string; type?: string }[]
+  nodes: { id: string; x: number; y: number; parentId?: string; type?: string; hidden?: boolean }[]
   edges: { id: string; source: string; target: string }[]
   ops: ParityOp[]
   queries: ParityQuery[]
@@ -177,6 +183,7 @@ function configEntries(c: ParityConfig | undefined, lang: 'swift' | 'kotlin'): s
   return out
 }
 
+export type RectAnswer = { x: number; y: number; width: number; height: number }
 export type SnapAnswer = { snapX: number | null; snapY: number | null; x: number; y: number }
 
 export interface ParityExpectation {
@@ -185,7 +192,7 @@ export interface ParityExpectation {
   selectedNodes: string[]
   selectedEdges: string[]
   viewport: { x: number; y: number; zoom: number }
-  answers: (boolean | string | string[] | { x: number; y: number } | { x: number; y: number }[] | SnapAnswer)[]
+  answers: (boolean | string | string[] | { x: number; y: number } | { x: number; y: number }[] | SnapAnswer | RectAnswer)[]
 }
 
 const grid = (n: number) => Array.from({ length: n }, (_, i) => ({ id: String(i + 1), x: i * 200, y: (i % 2) * 120 }))
@@ -432,6 +439,35 @@ export const PARITY_SCENARIOS: readonly ParityScenario[] = [
       { op: 'resolveCollisions', id: 'missing', spacing: 10 },
     ],
     queries: [{ q: 'overlapping', id: 'a' }],
+  },
+  {
+    name: 'intersection and bounds follow React Flow semantics',
+    nodes: [
+      { id: 'a', x: 0, y: 0 },
+      { id: 'b', x: 100, y: 20 },
+      { id: 'c', x: 400, y: 0 },
+      { id: 'h', x: 50, y: 10, hidden: true },
+      { id: 'g', x: 1000, y: 1000 },
+      { id: 'k', x: 20, y: 20, parentId: 'g' },
+    ],
+    edges: [],
+    ops: [{ op: 'setMeasurement', id: 'c', width: 50, height: 20 }],
+    queries: [
+      { q: 'intersecting', target: 'a' },
+      { q: 'intersecting', target: 'k' },
+      { q: 'intersecting', target: 'missing' },
+      { q: 'intersecting', target: [0, 0, 600, 100] },
+      { q: 'intersecting', target: [0, 0, 200, 50], partially: false },
+      { q: 'intersecting', target: [1000, 1000, 50, 50] },
+      { q: 'isIntersecting', target: 'a', area: [140, 30, 100, 100] },
+      { q: 'isIntersecting', target: 'a', area: [140, 30, 100, 100], partially: false },
+      { q: 'isIntersecting', target: [0, 0, 10, 10], area: [0, 0, 100, 100], partially: false },
+      { q: 'isIntersecting', target: 'missing', area: [0, 0, 100, 100] },
+      { q: 'nodesBounds' },
+      { q: 'nodesBounds', ids: ['a', 'c'] },
+      { q: 'nodesBounds', ids: ['k'] },
+      { q: 'nodesBounds', ids: ['missing'] },
+    ],
   },
   {
     name: 'layout layered lays the same graph out on every target',
@@ -684,7 +720,7 @@ const num = (v: number) => (Number.isFinite(v) ? Math.round(v * 1e9) / 1e9 : v)
 /** Run a scenario through the WEB engine and record what it observed. */
 export async function expectationsOf(s: ParityScenario): Promise<ParityExpectation> {
   const flow = createFlow<{ label: string }>({
-    nodes: s.nodes.map((n) => ({ id: n.id, position: { x: n.x, y: n.y }, data: { label: n.id }, ...(n.parentId !== undefined ? { parentId: n.parentId } : {}), ...(n.type !== undefined ? { type: n.type } : {}) })),
+    nodes: s.nodes.map((n) => ({ id: n.id, position: { x: n.x, y: n.y }, data: { label: n.id }, ...(n.parentId !== undefined ? { parentId: n.parentId } : {}), ...(n.type !== undefined ? { type: n.type } : {}), ...(n.hidden !== undefined ? { hidden: n.hidden } : {}) })),
     edges: s.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
     ...(s.snapToGrid !== undefined ? { snapToGrid: s.snapToGrid } : {}),
     ...(s.snapGrid !== undefined ? { snapGrid: s.snapGrid } : {}),
@@ -760,6 +796,9 @@ export async function expectationsOf(s: ParityScenario): Promise<ParityExpectati
       case 'absolutePosition': { const p = flow.getAbsolutePosition(q.id); return { x: num(p.x), y: num(p.y) } }
       case 'childNodes': return flow.getChildNodes(q.id).map((n) => n.id)
       case 'overlapping': return flow.getOverlappingNodes(q.id).map((n) => n.id)
+      case 'intersecting': return flow.getIntersectingNodes(webTarget(q.target), q.partially).map((n) => n.id)
+      case 'isIntersecting': return flow.isNodeIntersecting(webTarget(q.target), webRect(q.area), q.partially)
+      case 'nodesBounds': { const r = flow.getNodesBounds(q.ids); return { x: num(r.x), y: num(r.y), width: num(r.width), height: num(r.height) } }
       case 'proximity': { const c = flow.getProximityConnection(q.id, q.threshold); return c ? [c.source, c.target] : [] }
       case 'search': return flow.searchNodes(q.query).map((n) => n.id)
       case 'waypoints': return (flow.getEdge(q.id)?.waypoints ?? []).map((p) => ({ x: num(p.x), y: num(p.y) }))
@@ -901,6 +940,15 @@ function opKotlin(o: ParityOp): string {
   }
 }
 
+const webRect = (r: Rect4) => ({ x: r[0], y: r[1], width: r[2], height: r[3] })
+const webTarget = (t: string | Rect4) => (typeof t === 'string' ? t : webRect(t))
+function nativeRect(r: Rect4, target: 'swift' | 'kotlin'): string {
+  return target === 'swift'
+    ? `PyreonFlowRect(x: ${d(r[0])}, y: ${d(r[1])}, width: ${d(r[2])}, height: ${d(r[3])})`
+    : `PyreonFlowRect(${d(r[0])}, ${d(r[1])}, ${d(r[2])}, ${d(r[3])})`
+}
+const nativeTarget = (t: string | Rect4, target: 'swift' | 'kotlin') => (typeof t === 'string' ? str(t) : nativeRect(t, target))
+
 function answerSwift(q: ParityQuery, a: ParityExpectation['answers'][number], label: string): string {
   switch (q.q) {
     case 'isValidConnection': return `check(f.isValidConnection(PyreonFlowConnection(source: ${str(q.source)}, target: ${str(q.target)})) == ${String(a)}, ${str(label)})`
@@ -915,6 +963,9 @@ function answerSwift(q: ParityQuery, a: ParityExpectation['answers'][number], la
     case 'absolutePosition': { const p = a as { x: number; y: number }; return `check(parityNear(f.getAbsolutePosition(${str(q.id)}), ${d(p.x)}, ${d(p.y)}), ${str(label)})` }
     case 'childNodes': return `check(f.getChildNodes(${str(q.id)}).map { $0.id } == ${strList(a as string[], 'swift')}, ${str(label)})`
     case 'overlapping': return `check(f.getOverlappingNodes(${str(q.id)}).map { $0.id } == ${strList(a as string[], 'swift')}, ${str(label)})`
+    case 'intersecting': return `check(f.getIntersectingNodes(${nativeTarget(q.target, 'swift')}${q.partially !== undefined ? `, partially: ${q.partially}` : ''}).map { $0.id } == ${strList(a as string[], 'swift')}, ${str(label)})`
+    case 'isIntersecting': return `check(f.isNodeIntersecting(${nativeTarget(q.target, 'swift')}, ${nativeRect(q.area, 'swift')}${q.partially !== undefined ? `, partially: ${q.partially}` : ''}) == ${String(a)}, ${str(label)})`
+    case 'nodesBounds': { const r = a as RectAnswer; return `check(parityRect(f.getNodesBounds(${q.ids ? strList(q.ids, 'swift') : ''}), ${d(r.x)}, ${d(r.y)}, ${d(r.width)}, ${d(r.height)}), ${str(label)})` }
     case 'proximity': return `check((f.getProximityConnection(${str(q.id)}, ${d(q.threshold)}).map { [$0.source, $0.target] } ?? []) == ${strList(a as string[], 'swift')}, ${str(label)})`
     case 'search': return `check(f.searchNodes(${str(q.query)}).map { $0.id } == ${strList(a as string[], 'swift')}, ${str(label)})`
     case 'waypoints': return `check(parityPoints(f.getEdge(${str(q.id)})?.waypoints ?? [], ${pointList(a as { x: number; y: number }[], 'swift')}), ${str(label)})`
@@ -942,6 +993,9 @@ function answerKotlin(q: ParityQuery, a: ParityExpectation['answers'][number], l
     case 'absolutePosition': { const p = a as { x: number; y: number }; return `check(parityNear(f.getAbsolutePosition(${str(q.id)}), ${d(p.x)}, ${d(p.y)}), ${str(label)})` }
     case 'childNodes': return `check(f.getChildNodes(${str(q.id)}).map { it.id } == ${strList(a as string[], 'kotlin')}, ${str(label)})`
     case 'overlapping': return `check(f.getOverlappingNodes(${str(q.id)}).map { it.id } == ${strList(a as string[], 'kotlin')}, ${str(label)})`
+    case 'intersecting': return `check(f.getIntersectingNodes(${nativeTarget(q.target, 'kotlin')}${q.partially !== undefined ? `, partially = ${q.partially}` : ''}).map { it.id } == ${strList(a as string[], 'kotlin')}, ${str(label)})`
+    case 'isIntersecting': return `check(f.isNodeIntersecting(${nativeTarget(q.target, 'kotlin')}, ${nativeRect(q.area, 'kotlin')}${q.partially !== undefined ? `, partially = ${q.partially}` : ''}) == ${String(a)}, ${str(label)})`
+    case 'nodesBounds': { const r = a as RectAnswer; return `check(parityRect(f.getNodesBounds(${q.ids ? strList(q.ids, 'kotlin') : ''}), ${d(r.x)}, ${d(r.y)}, ${d(r.width)}, ${d(r.height)}), ${str(label)})` }
     case 'proximity': return `check((f.getProximityConnection(${str(q.id)}, ${d(q.threshold)})?.let { listOf<String>(it.source, it.target) } ?: listOf<String>()) == ${strList(a as string[], 'kotlin')}, ${str(label)})`
     case 'search': return `check(f.searchNodes(${str(q.query)}).map { it.id } == ${strList(a as string[], 'kotlin')}, ${str(label)})`
     case 'waypoints': return `check(parityPoints(f.getEdge(${str(q.id)})?.waypoints ?: emptyList(), ${pointList(a as { x: number; y: number }[], 'kotlin')}), ${str(label)})`
@@ -958,6 +1012,7 @@ function answerKotlin(q: ParityQuery, a: ParityExpectation['answers'][number], l
 export async function renderSwift(scenarios: readonly ParityScenario[] = PARITY_SCENARIOS): Promise<string> {
   const out: string[] = [SWIFT_MARKERS[0]]
   out.push('    static func parityNear(_ p: PyreonXYPosition, _ x: Double, _ y: Double) -> Bool { abs(p.x - x) < 1e-6 && abs(p.y - y) < 1e-6 }')
+  out.push('    static func parityRect(_ r: PyreonFlowRect, _ x: Double, _ y: Double, _ w: Double, _ h: Double) -> Bool { abs(r.x - x) < 1e-6 && abs(r.y - y) < 1e-6 && abs(r.width - w) < 1e-6 && abs(r.height - h) < 1e-6 }')
   out.push('    static func parityOpt(_ v: Double?, _ want: Double?) -> Bool { switch (v, want) { case (nil, nil): return true; case let (a?, b?): return abs(a - b) < 1e-6; default: return false } }')
   out.push('    static func paritySnap(_ s: PyreonFlowSnapLines, _ x: Double?, _ y: Double?, _ px: Double, _ py: Double) -> Bool { parityOpt(s.x, x) && parityOpt(s.y, y) && parityNear(s.snappedPosition, px, py) }')
   out.push('    static func parityPoints(_ got: [PyreonXYPosition], _ want: [(Double, Double)]) -> Bool {')
@@ -982,7 +1037,7 @@ export async function renderSwift(scenarios: readonly ParityScenario[] = PARITY_
   for (const s of scenarios) {
     const e = await expectationsOf(s)
     out.push(`        do { // ${s.name}`)
-    out.push(`            let f = PyreonFlowState<NodeData>(nodes: [${s.nodes.map((n) => `PyreonFlowNode(id: ${str(n.id)}${n.type !== undefined ? `, type: ${str(n.type)}` : ''}, position: PyreonXYPosition(x: ${d(n.x)}, y: ${d(n.y)}), data: NodeData(label: ${str(n.id)})${n.parentId !== undefined ? `, parentId: ${str(n.parentId)}` : ''})`).join(', ')}], edges: [${s.edges.map((x) => `PyreonFlowEdge(id: ${str(x.id)}, source: ${str(x.source)}, target: ${str(x.target)})`).join(', ')}]${s.snapToGrid !== undefined ? `, snapToGrid: ${s.snapToGrid}` : ''}${s.snapGrid !== undefined ? `, snapGrid: ${d(s.snapGrid)}` : ''}, searchText: { $0.label })`)
+    out.push(`            let f = PyreonFlowState<NodeData>(nodes: [${s.nodes.map((n) => `PyreonFlowNode(id: ${str(n.id)}${n.type !== undefined ? `, type: ${str(n.type)}` : ''}, position: PyreonXYPosition(x: ${d(n.x)}, y: ${d(n.y)}), data: NodeData(label: ${str(n.id)})${n.hidden !== undefined ? `, hidden: ${n.hidden}` : ''}${n.parentId !== undefined ? `, parentId: ${str(n.parentId)}` : ''})`).join(', ')}], edges: [${s.edges.map((x) => `PyreonFlowEdge(id: ${str(x.id)}, source: ${str(x.source)}, target: ${str(x.target)})`).join(', ')}]${s.snapToGrid !== undefined ? `, snapToGrid: ${s.snapToGrid}` : ''}${s.snapGrid !== undefined ? `, snapGrid: ${d(s.snapGrid)}` : ''}, searchText: { $0.label })`)
     for (const line of configEntries(s.config, 'swift')) out.push(`            ${line}`)
     for (const o of s.ops) out.push(`            ${opSwift(o)}`)
     out.push(`            check(parityNodes(f, [${e.nodes.map((n) => `(${str(n.id)}, ${d(n.x)}, ${d(n.y)})`).join(', ')}]${s.tolerance !== undefined ? `, ${d(s.tolerance)}` : ''}), ${str(`parity: ${s.name} — nodes`)})`)
@@ -1001,6 +1056,7 @@ export async function renderSwift(scenarios: readonly ParityScenario[] = PARITY_
 export async function renderKotlin(scenarios: readonly ParityScenario[] = PARITY_SCENARIOS): Promise<string> {
   const out: string[] = [KOTLIN_MARKERS[0]]
   out.push('private fun parityNear(p: PyreonXYPosition, x: Double, y: Double): Boolean = abs(p.x - x) < 1e-6 && abs(p.y - y) < 1e-6')
+  out.push('private fun parityRect(r: PyreonFlowRect, x: Double, y: Double, w: Double, h: Double): Boolean = abs(r.x - x) < 1e-6 && abs(r.y - y) < 1e-6 && abs(r.width - w) < 1e-6 && abs(r.height - h) < 1e-6')
   out.push('private fun parityOpt(v: Double?, want: Double?): Boolean = if (v == null || want == null) v == null && want == null else abs(v - want) < 1e-6')
   out.push('private fun paritySnap(s: PyreonFlowSnapLines, x: Double?, y: Double?, px: Double, py: Double): Boolean = parityOpt(s.x, x) && parityOpt(s.y, y) && parityNear(s.snappedPosition, px, py)')
   out.push('private fun parityPoints(got: List<PyreonXYPosition>, want: List<Pair<Double, Double>>): Boolean {')
@@ -1025,7 +1081,7 @@ export async function renderKotlin(scenarios: readonly ParityScenario[] = PARITY
   for (const s of scenarios) {
     const e = await expectationsOf(s)
     out.push(`    run { // ${s.name}`)
-    out.push(`        val f = PyreonFlowState<NodeData>(nodes = listOf<PyreonFlowNode<NodeData>>(${s.nodes.map((n) => `PyreonFlowNode(${str(n.id)}${n.type !== undefined ? `, type = ${str(n.type)}` : ''}, position = PyreonXYPosition(${d(n.x)}, ${d(n.y)}), data = NodeData(${str(n.id)})${n.parentId !== undefined ? `, parentId = ${str(n.parentId)}` : ''})`).join(', ')}), edges = listOf<PyreonFlowEdge>(${s.edges.map((x) => `PyreonFlowEdge(${str(x.id)}, source = ${str(x.source)}, target = ${str(x.target)})`).join(', ')})${s.snapToGrid !== undefined ? `, snapToGrid = ${s.snapToGrid}` : ''}${s.snapGrid !== undefined ? `, snapGrid = ${d(s.snapGrid)}` : ''}, searchText = { it.label })`)
+    out.push(`        val f = PyreonFlowState<NodeData>(nodes = listOf<PyreonFlowNode<NodeData>>(${s.nodes.map((n) => `PyreonFlowNode(${str(n.id)}${n.type !== undefined ? `, type = ${str(n.type)}` : ''}, position = PyreonXYPosition(${d(n.x)}, ${d(n.y)}), data = NodeData(${str(n.id)})${n.hidden !== undefined ? `, hidden = ${n.hidden}` : ''}${n.parentId !== undefined ? `, parentId = ${str(n.parentId)}` : ''})`).join(', ')}), edges = listOf<PyreonFlowEdge>(${s.edges.map((x) => `PyreonFlowEdge(${str(x.id)}, source = ${str(x.source)}, target = ${str(x.target)})`).join(', ')})${s.snapToGrid !== undefined ? `, snapToGrid = ${s.snapToGrid}` : ''}${s.snapGrid !== undefined ? `, snapGrid = ${d(s.snapGrid)}` : ''}, searchText = { it.label })`)
     for (const line of configEntries(s.config, 'kotlin')) out.push(`        ${line}`)
     for (const o of s.ops) out.push(`        ${opKotlin(o)}`)
     out.push(`        check(parityNodes(f, listOf<Triple<String, Double, Double>>(${e.nodes.map((n) => `Triple(${str(n.id)}, ${d(n.x)}, ${d(n.y)})`).join(', ')})${s.tolerance !== undefined ? `, ${d(s.tolerance)}` : ''}), ${str(`parity: ${s.name} — nodes`)})`)

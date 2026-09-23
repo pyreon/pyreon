@@ -55,8 +55,17 @@ export function createItemRegistry(): ItemRegistry {
   const byIndex = new Map<number, VirtualItem>()
   const sigs = new Map<number, ItemSignals>()
   let active = false
+  // The most recent window, kept even while inactive (a pointer store — the
+  // fixed-size fast path still pays nothing per item). `item()` is first called
+  // from a row's render, i.e. AFTER the emit that produced that row, so the
+  // activating call must seed from this window: seeding from the empty
+  // pre-activation map pinned every first-window row at `start = 0` until some
+  // later emit happened to arrive — and with sizes that match the estimate, a
+  // remeasure produces no change, no notify, and no such emit ever comes.
+  let latest: readonly VirtualItem[] = []
 
   const sync = (items: VirtualItem[]): void => {
+    latest = items
     if (!active) return
     byIndex.clear()
     // Batch every per-index write so all rows flip atomically (a no-op nest when
@@ -85,7 +94,10 @@ export function createItemRegistry(): ItemRegistry {
   }
 
   const item = (index: number): VirtualItemMeasurement => {
-    active = true
+    if (!active) {
+      active = true
+      for (const it of latest) byIndex.set(it.index, it)
+    }
     let s = sigs.get(index)
     if (!s) {
       s = { start: null, size: null, lane: null }

@@ -83,6 +83,18 @@ import {
   createSignal as solidSignal,
 } from 'solid-js/dist/solid.js'
 import { filter, groupBy, map, pipe, sortBy, sum } from '../src/index'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 // ─── timing core ─────────────────────────────────────────────────────────────
 const now = () => Number(process.hrtime.bigint())
@@ -498,6 +510,7 @@ function eq(a: unknown, b: unknown): boolean {
 }
 
 // ─── print (A): composition-structure table ──────────────────────────────────
+console.log(benchRuntimeBanner())
 console.log(
   `=== (A) COMPOSITION STRUCTURE — pipe(1 node) vs naive separate-call chain (N nodes), 1k rows, DETERMINISTIC ===\n`,
 )

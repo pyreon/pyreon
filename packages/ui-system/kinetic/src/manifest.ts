@@ -303,7 +303,7 @@ const Box = kinetic('div').preset(myPreset)`,
     },
     {
       label: 'CSS-transition scope (not a JS animation engine)',
-      note: 'kinetic offloads the tween to CSS/the compositor — it does NOT run a JS animation loop. It cannot do spring physics, interruptible / retargetable value animation, layout / shared-element (FLIP) animations, or gestures / drag; reach for Motion One or Framer Motion for those. What kinetic owns: declarative, SSR-safe, reactive-prop enter/leave/collapse/stagger with zero per-frame JS. Its framework JS overhead to reveal a list is competitive with Motion One (within ~1.5×, winning small-enter, tying elsewhere — see `bench/`), both a small constant over hand-rolled CSS.',
+      note: 'kinetic offloads the tween to CSS/the compositor — it does NOT run a JS animation loop. It cannot do spring physics, interruptible / retargetable value animation, layout / shared-element (FLIP) animations, or gestures / drag; reach for Motion One or Framer Motion for those. What kinetic owns: declarative, SSR-safe, reactive-prop enter/leave/collapse/stagger with zero per-frame JS. There is currently no published speed comparison with Motion One: the earlier figures came from a harness that timed only part of the work kinetic does, revealed one element instead of N, and never animated its CSS baseline, so they were withdrawn (see `bench/README.md`).',
     },
   ],
 })

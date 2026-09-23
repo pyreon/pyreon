@@ -59,6 +59,18 @@
 process.env.NODE_ENV = 'production'
 
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 GlobalRegistrator.register()
 
@@ -462,6 +474,7 @@ for (const op of OP_ORDER) {
   rows.push({ op, vals, note: OPS[op] as string })
 }
 
+console.log(benchRuntimeBanner())
 console.log(
   `=== @pyreon/hotkeys vs tinykeys / hotkeys-js / mousetrap (${process.platform}/${process.arch}, NODE_ENV=production, per-(op×impl) isolated, median ns/op) ===\n`,
 )

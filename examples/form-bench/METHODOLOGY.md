@@ -29,7 +29,8 @@ exactly the artifact the DOM bench's objectivity pass existed to kill.
    + `zodResolver`; TanStack Form uses controlled `form.Field` render-props +
    standard-schema validators; Formik uses controlled `useFormik` + a manual
    zod `validate` (no third-party adapter, so the schema stays shared); Vue uses
-   vee-validate's `useForm`/`defineField` (in `h()` render functions — no JSX);
+   vee-validate's `useForm`/`defineField` (an SFC-compiled template, precompiled
+   at build time — see "2026-09 audit" below);
    Svelte uses Felte's `use:form` action + `@felte/validator-zod` (in a real
    `.svelte` component); Solid uses `@modular-forms/solid` (`createForm` +
    `Field` render-props, driven through the low-level `solid-js/web` API so no
@@ -60,7 +61,8 @@ exactly the artifact the DOM bench's objectivity pass existed to kill.
 8. **Forced GC between iterations** (`--js-flags=--expose-gc`), **adaptive warmup**
    (rolling p90 within 10%), **20 timed runs**, **median + 95% bootstrap CI + CV**,
    **tied-within-noise `🤝`** when the CIs overlap.
-9. **Randomized framework execution order** per pass; **machine stamp** printed.
+9. **Randomized framework execution order** per pass; **machine identity + load
+   average** stamped before and after (`examples/benchmark/machine-load.ts`).
 10. **Retained-heap dimension** (post-GC `usedJSHeapSize`) reported next to speed.
 
 ## The honesty contract
@@ -100,11 +102,63 @@ identically (same ids, same shared schema) for **all seven** frameworks: Pyreon,
 React Hook Form, TanStack Form, Formik, Vue (vee-validate), Svelte (Felte), and
 Solid (modular-forms).
 
-**One per-framework fairness note (the "note if not supported" case):** Felte
-validates on input + blur by default with no per-mode toggle, so its
-`keystroke-blur` column includes per-keystroke validation cost (unlike RHF's
-true no-validation blur mode). It is reported as-is — Felte's eager default —
-rather than bent into a mode it doesn't have.
+**Per-framework fairness notes (the "note if not supported" cases):**
+
+- Felte validates on input + blur by default with no per-mode toggle, so it
+  validates on every keystroke in `keystroke-blur` too. That validation is
+  ASYNC and `keystroke-blur` does not wait for async work (it measures the
+  value-commit path), so it runs mostly OUTSIDE Felte's blur window — an
+  under-count, not an over-count. (This note previously claimed the opposite.)
+  vee-validate's debounced background validation is likewise outside its blur
+  window.
+- vee-validate debounces schema validation by a hard-coded 5ms. In
+  `keystroke-change` each keystroke waits for it (so 12 keystrokes do NOT
+  coalesce into one validation), but that wait is EXCLUDED from the sample
+  (`untimed()` in `runner.ts`) because it is mostly an idle timer. The Vue
+  column therefore UNDER-counts its validation + error render. No other column
+  excludes anything.
+
+## 2026-09 audit (author-judge corrections)
+
+An audit of this suite against the `examples/benchmark` standard found and fixed:
+
+- **Vue and Svelte committed ONCE per 12-keystroke run** (one `nextTick` /
+  `flushSync` after the loop) while every other column committed per keystroke,
+  letting their schedulers coalesce 12 renders into 1. Now per keystroke.
+- **`keystroke-change` did not wait for validation.** Every library here
+  validates asynchronously, so each column's validation + error render ran
+  partly outside the timed window, by an amount set by its promise-chain
+  shape. Each keystroke now dispatches, commits, then `settle()`s (two
+  `MessageChannel` turns, identical in every column — `runner.ts`).
+- **The keystroke gates could not fail.** `input.value === TYPED` is written by
+  `setInput` itself; a library that did nothing passed. The gates now read the
+  LIBRARY's state and, in change mode, require the email error in the DOM.
+  Doing so immediately exposed three arms that were not doing the work the
+  column claimed: the Pyreon arm's `.map()` remounted all 12 fields per
+  keystroke (fixed by `<For>`), and Formik + Felte render errors only for
+  TOUCHED fields, so they validated but rendered nothing — the email field is
+  now touched (untimed) before `keystroke-change` so every column renders it.
+- **`reset-dirty-form` pre-states differed.** Arms whose `setFieldValue`
+  validates rendered errors for the invalid `'dirty'` values, so their reset
+  also had to clear error nodes. The pre-state is now `validValues()` (no
+  errors anywhere) and is asserted; the post-reset gate reads all 12 inputs
+  from the DOM for every arm (Pyreon's used to read its store).
+- **Competitor arms were not on their toolchain's output.** Vue used `h()`
+  render functions (no patch flags) — now an SFC-compiled template. Solid was
+  hand-built with `createElement` + per-node listeners — now babel-preset-solid's
+  emit (template clone + `spread` + `insert`). React-family arms used
+  `createElement` — now the automatic runtime's `jsx()`/`jsxs()`. The Pyreon arm
+  moved from `h()` to compiled JSX too (its own fast path).
+- **Harness:** the page is cross-origin isolated and the driver aborts unless
+  the clock is ≤20µs (it was Chromium's 100µs clamp — several cells were a
+  handful of ticks); `--strictPort` + announced-port check; each page loads
+  only its own framework (dynamic import — every page used to carry all seven
+  runtimes, diluting the heap column); `NODE_ENV=production` forced for the
+  build; load average stamped before/after; a framework that fails its gates is
+  printed `FAILED` and exits non-zero instead of ranking first with a 0µs
+  median.
+
+Numbers taken before these fixes are not comparable with numbers after them.
 
 ## Roadmap (remaining phases — honest about what is NOT here yet)
 

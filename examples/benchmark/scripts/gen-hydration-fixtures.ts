@@ -22,7 +22,10 @@ const { renderToString: pyreonRender } = await import('@pyreon/runtime-server')
 const { renderToString: reactRender } = await import('react-dom/server')
 const { renderToString: preactRender } = await import('preact-render-to-string')
 const { renderToString: vueRender } = await import('@vue/server-renderer')
-const { createSSRApp } = await import('vue')
+const Vue = await import('vue')
+const { createSSRApp } = Vue
+const { compile: compileVueTemplate } = await import('@vue/compiler-dom')
+const { HYDRATION_VUE_TEMPLATE, VUE_SFC_COMPILE_OPTIONS } = await import('../src/impl/vue-templates')
 const { signal } = await import('@pyreon/reactivity')
 
 const { buildFixtureRows, HYDRATION_ROW_COUNT, pyreonApp, reactApp, preactApp, vueApp } =
@@ -43,7 +46,14 @@ const pyreonHtml = await pyreonRender(
 
 const reactHtml = reactRender(reactApp(rows, null, () => {}))
 const preactHtml = preactRender(preactApp(rows, null, () => {}))
-const vueHtml = await vueRender(createSSRApp(vueApp(rows).component))
+// Vue renders the SAME compiled template the browser hydrates with: identical
+// template string + options; `mode: 'function'` only swaps the import header
+// (`const { … } = Vue`) for the render body the vite plugin emits as a module.
+const vueCompiledRender = new Function(
+  'Vue',
+  compileVueTemplate(HYDRATION_VUE_TEMPLATE, { mode: 'function', ...VUE_SFC_COMPILE_OPTIONS }).code,
+)(Vue) as (...args: never[]) => unknown
+const vueHtml = await vueRender(createSSRApp(vueApp(rows, vueCompiledRender).component))
 
 // Sanity: every fixture must contain all 1000 rows.
 for (const [name, html] of Object.entries({

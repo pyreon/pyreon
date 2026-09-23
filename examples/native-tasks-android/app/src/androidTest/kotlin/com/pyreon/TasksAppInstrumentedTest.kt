@@ -35,6 +35,8 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.swipe
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.performMouseInput
 import org.junit.Assert.assertTrue
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onRoot
@@ -639,6 +641,72 @@ class TasksAppInstrumentedTest {
         }
         composeRule.waitUntil(5_000) { textOf("flow-a-pos") != before }
         check(textOf("flow-a-pos") != before) { "dragging node 'Start' did not move it (still ${textOf("flow-a-pos")})" }
+        // A long-press on a node is the native context-menu gesture: it reaches
+        // `flow.onNodeContextMenu`, which writes the node id to `flow-menu`.
+        composeRule.onNodeWithTag("flow-menu").assertTextEquals("none")
+        composeRule.onNodeWithText("End").performTouchInput { longClick(center) }
+        composeRule.waitUntil(5_000) { textOf("flow-menu") == "menu b" }
+        composeRule.onNodeWithTag("flow-menu").assertTextEquals("menu b")
+
+        // Hover: a mouse moving onto node 'End' reaches `flow.onNodeMouseEnter`.
+        composeRule.onNodeWithTag("flow-hover").assertTextEquals("none")
+        composeRule.onNodeWithText("End").performMouseInput {
+            moveTo(Offset(-4f, -4f))
+            moveTo(center)
+        }
+        composeRule.waitUntil(5_000) { textOf("flow-hover") == "hover b" }
+        composeRule.onNodeWithTag("flow-hover").assertTextEquals("hover b")
+
+        fun centerInRoot(description: String) =
+            composeRule.onNodeWithContentDescription(description, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.center
+        fun textCenterInRoot(text: String) =
+            composeRule.onNodeWithText(text, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.center
+
+        // connectionMode 'strict' (the default), with B selected (raised): with e1 removed, a drag that
+        // STARTS on node b's target handle and drops on node a's source handle
+        // still creates the edge, in the source -> target direction.
+        composeRule.onNodeWithTag("flow-drop-e1").performClick()
+        waitForTagText("flow-edge-count", "1")
+        val fromHandle = centerInRoot("target handle in")
+        val toHandle = centerInRoot("source handle out")
+        composeRule.onRoot().performTouchInput {
+            down(fromHandle)
+            // Past the touch slop first (the drag starts at the slop point), then across.
+            moveTo(fromHandle + Offset(-24f, 0f))
+            moveTo(Offset((fromHandle.x + toHandle.x) / 2f, (fromHandle.y + toHandle.y) / 2f))
+            moveTo(toHandle)
+            up()
+        }
+        composeRule.waitUntil(5_000) { textOf("flow-edge-count") == "2" }
+        composeRule.onNodeWithTag("flow-edge-count").assertTextEquals("2")
+
+        // zIndex: A and B overlap, B later in the array, A raised to zIndex 5
+        // with nothing selected. A tap where they overlap must reach A.
+        composeRule.onNodeWithTag("flow-stack").performClick()
+        waitForTagText("flow-a-pos", "0,0")
+        waitForTagText("flow-selected-ids", "none")
+        composeRule.onRoot().performTouchInput { click(textCenterInRoot("Start")) }
+        composeRule.waitUntil(5_000) { textOf("flow-selected-ids") != "none" }
+        composeRule.onNodeWithTag("flow-selected-ids").assertTextEquals("a")
+
+        // Auto-pan: holding the dragged node at the canvas edge pans the viewport.
+        val vpBefore = textOf("flow-vp")
+        val canvas = composeRule.onNodeWithContentDescription("Task flow").fetchSemanticsNode().boundsInRoot
+        val grab = textCenterInRoot("Start")
+        // While the node is held in the edge band the pan loop runs every frame,
+        // so Compose is never idle: drive the test clock by hand for the hold.
+        composeRule.mainClock.autoAdvance = false
+        composeRule.onRoot().performTouchInput {
+            down(grab)
+            moveTo(grab + Offset(24f, 0f))
+            moveTo(Offset(canvas.right - 6f, grab.y))
+        }
+        // The pointer stays down between performTouchInput calls: ~0.5s held at the edge.
+        repeat(30) { composeRule.mainClock.advanceTimeByFrame() }
+        val vpHeld = textOf("flow-vp")
+        composeRule.onRoot().performTouchInput { up() }
+        composeRule.mainClock.autoAdvance = true
+        check(vpHeld != vpBefore) { "holding a node at the canvas edge did not auto-pan (viewport still $vpHeld)" }
         // Tapped past maxZoom (2) so the asserted value is the clamp, not a float product.
         repeat(5) { composeRule.onNodeWithContentDescription("Zoom in").performClick() }
         composeRule.onNodeWithTag("flow-zoom").assertTextEquals("zoom 2.0")
@@ -1186,8 +1254,18 @@ class TasksAppInstrumentedTest {
         // middle node.
         composeRule.onNodeWithTag("gal-flow-webview-swap").performScrollTo().performClick()
         composeRule.waitForIdle()
-        SystemClock.sleep(500)
-        tapFlowWebViewCentre()
+        // The swapped graph crosses the JSON bridge asynchronously and the host
+        // reports nothing when it has rendered, so one tap after a fixed wait
+        // can land on the OLD graph. Tap until the new node answers, within
+        // 10s: every tap is harmless, and the assertion is unchanged.
+        val swapDeadline = SystemClock.uptimeMillis() + 10_000
+        while (true) {
+            tapFlowWebViewCentre()
+            val answered = runCatching {
+                composeRule.waitUntil(1_500) { textOf("gal-flow-webview-selected") == "enrich" }
+            }.isSuccess
+            if (answered || SystemClock.uptimeMillis() > swapDeadline) break
+        }
         waitForTagText("gal-flow-webview-selected", "enrich")
         // A graph the hosted renderer cannot draw reaches native `onError`.
         composeRule.onNodeWithTag("gal-flow-webview-broken").performScrollTo().assertExists()

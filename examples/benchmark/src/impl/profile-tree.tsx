@@ -219,15 +219,20 @@ function SolidNode(props: { depth: number }): Node {
 
 // ─── V: the DOM floor ────────────────────────────────────────────────────────
 
+// Per-node prototype clones — the same floor as scenario-tree.ts's Vanilla arm.
+let vLeafProto: HTMLElement | null = null
+let vBranchProto: HTMLElement | null = null
+
 function vanillaBuild(depth: number): Node {
-  if (depth <= 1) {
-    const span = document.createElement('span')
-    span.className = 'leaf'
-    span.appendChild(document.createTextNode(''))
-    return span
+  if (vLeafProto === null) {
+    vLeafProto = document.createElement('span')
+    vLeafProto.className = 'leaf'
+    vLeafProto.appendChild(document.createTextNode(''))
+    vBranchProto = document.createElement('div')
+    vBranchProto.className = 'branch'
   }
-  const div = document.createElement('div')
-  div.className = 'branch'
+  if (depth <= 1) return vLeafProto.cloneNode(true)
+  const div = (vBranchProto as HTMLElement).cloneNode(false)
   div.appendChild(vanillaBuild(depth - 1))
   div.appendChild(vanillaBuild(depth - 1))
   return div
@@ -282,7 +287,7 @@ export function setupTreeProfile(makeHost: () => HTMLElement): void {
           value: sValue,
           get children() {
             const root = solidRootTmpl() as HTMLElement
-            insert(root, createComponent(SolidNode, { depth: TREE_DEPTH }), null)
+            insert(root, createComponent(SolidNode, { depth: TREE_DEPTH }))
             return root
           },
         }) as unknown as Node,
