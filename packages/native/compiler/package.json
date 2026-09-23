@@ -43,6 +43,7 @@
   "types": "./lib/types/index.d.ts",
   "files": [
     "lib",
+    "!lib/analysis",
     "src",
     "README.md",
     "LICENSE"

@@ -72,6 +72,17 @@ export function createFlow<TData = Record<string, unknown>>(
     snapGrid = 15,
     connectionRules,
   } = config
+  // `instance.config` lives as long as the instance, and the INITIAL graph is
+  // read exactly once, here. Keeping it on the config pinned every initial node
+  // and edge for the instance's whole life, including ones later removed — a
+  // 1,000-node flow kept all 500 it removed. Rebinding (rather than exposing a
+  // copy beside the original) keeps the internals and `instance.config` one
+  // object, which the `<Controls>` lock toggle relies on when it writes
+  // `instance.config.nodesDraggable`.
+  const settings: FlowConfig<TData> = { ...config }
+  delete settings.nodes
+  delete settings.edges
+  config = settings
 
   // Normalize an edge: merge flow-wide defaults (edge's own fields win —
   // including an explicit `markerEnd: null`, which survives the spread because

@@ -209,4 +209,37 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     await expect(page.getByTestId('toolkit-filter')).toHaveText('done')
     await expect(page).toHaveURL(/filter=done/)
   })
+  // F6 scale proof, web third: the same 400-node grid the device lanes load,
+  // with culling on. Counts, not timings, so the verdict is deterministic.
+  test('a 400-node flow culls to a bounded set, and panning swaps it', async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+    await page.goto('/')
+    await page.getByTestId('login-username').fill('ada')
+    await page.getByTestId('login-submit').click()
+    await expect(page.getByTestId('tasks-page')).toBeVisible()
+    await page.getByTestId('tasks-flow-scale').click()
+    await expect(page.getByTestId('flow-scale-page')).toBeVisible()
+    await expect(page.getByTestId('flow-scale-total')).toHaveText('0')
+    await page.getByTestId('flow-scale-load').click()
+    await expect(page.getByTestId('flow-scale-total')).toHaveText('400')
+
+    const gridNodes = page.locator('[aria-label^="grid node "]')
+    await expect(page.locator('[aria-label="grid node 0"]')).toHaveCount(1)
+    const mounted = await gridNodes.count()
+    expect(mounted, 'culling kept too few nodes').toBeGreaterThan(1)
+    // The same ceiling the device lanes hold: a few columns of 200px-spaced
+    // nodes. Mounting all 400 would mean culling is off.
+    expect(mounted, `culling mounted ${mounted} of 400 nodes`).toBeLessThanOrEqual(40)
+    // The grid renders through a CUSTOM node with its own handles, so its
+    // renderer is culled too: one target handle per mounted node, no more.
+    await expect(page.locator('.pyreon-flow-handle[data-handletype="target"]')).toHaveCount(mounted)
+
+    // Node 170 sits exactly at the new viewport origin after the pan.
+    await page.getByTestId('flow-scale-pan').click()
+    await expect(page.locator('[aria-label="grid node 170"]')).toHaveCount(1)
+    await expect(page.locator('[aria-label="grid node 0"]')).toHaveCount(0)
+    expect(await gridNodes.count(), 'culling after the pan').toBeLessThanOrEqual(40)
+    expect(errors).toEqual([])
+  })
 })
