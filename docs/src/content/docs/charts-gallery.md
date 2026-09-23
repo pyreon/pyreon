@@ -111,7 +111,8 @@ numbers depend on the machine, so read them for their ratios:
 The last row is a loss, and it comes from one feature. Pyreon renders an
 offscreen data table (up to 1,000 rows) for screen readers by default; ECharts
 renders none. Without it (`accessibleTable={false}`) the same chart's first
-render is 1.5 ms. The table is split into blocks the browser can skip laying
-out while they stay readable to screen readers, which took about 2 ms off; the
-rest is creating its cells. That is the cost of the chart being readable
-without sight, and Pyreon keeps it on by default.
+render is 1.5 ms. The rest is the style and layout of about 3,000 real table
+cells. Skipping that layout is possible, but in Chromium it also removes the
+rows from the accessibility tree, the one place the table is read. That cost
+is what makes the chart readable without sight, and Pyreon keeps it on by
+default.

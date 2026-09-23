@@ -18,7 +18,7 @@
 import { createUniqueId, h, onUnmount } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { batch, effect, isClient, signal } from '@pyreon/reactivity'
-import { chartTable, describeChart } from './a11y'
+import { chartRowCount, chartTable, chartTableRow, describeChart } from './a11y'
 import type { A11yInput, A11yTable } from './a11y'
 import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas, trackChartImages } from './canvas-web'
 import { cmdsEqual, sameCmdShape, tweenCmds, universalTweenCmds } from './cmd-tween'
@@ -92,17 +92,16 @@ export function a11yTableNode(read: () => A11yTable, id: string, title: () => st
       ths[c]!.setAttribute('scope', 'col')
       setCell(ths[c]!, t.headers[c] ?? '')
     }
-    // Rows go in <tbody> blocks of TABLE_CHUNK, each `content-visibility: auto`:
-    // the table sits in a 1×1 clipped box, so every block is off-screen and the
-    // browser skips laying it out — the bulk of a 1,000-row table's cost on a
-    // chart's first frame — while `auto` (unlike `hidden`) keeps the rows in
-    // the accessibility tree, the table's only reader.
+    // Rows go in <tbody> blocks of TABLE_CHUNK: building 1,000 rows into ONE
+    // row group measured ~1.7ms slower than into twenty, on a 1,000-point
+    // chart whose whole draw is ~1.5ms. (Not `content-visibility` on the
+    // blocks: containment does not apply to table-internal boxes, so it was
+    // measured to do nothing. And not on the wrapper either: that DOES skip
+    // the table's ~5ms of layout, but Chromium then drops every row from the
+    // accessibility tree — the table's only reader.)
     const chunks = Math.ceil(t.rows.length / TABLE_CHUNK)
     while (el.tBodies.length > chunks) el.tBodies[el.tBodies.length - 1]!.remove()
-    while (el.tBodies.length < chunks) {
-      const b = el.appendChild(doc.createElement('tbody'))
-      b.setAttribute('style', 'content-visibility:auto;contain-intrinsic-size:auto 1px')
-    }
+    while (el.tBodies.length < chunks) el.appendChild(doc.createElement('tbody'))
     const trs: Element[] = []
     for (let k = 0; k < chunks; k++) {
       const count = Math.min(TABLE_CHUNK, t.rows.length - k * TABLE_CHUNK)
@@ -895,17 +894,19 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
 
   /** Move the keyboard focus item and announce it. */
   const moveFocus = (delta: number, absolute?: number): void => {
-    const rows = chartTable(a11yNow()).rows
-    const n = rows.length
+    // One row, not the table: formatting every row per arrow key to announce
+    // the focused one was O(n) per keystroke on a large chart.
+    const input = a11yNow()
+    const n = chartRowCount(input)
     if (n === 0) return
     const cur = focusIdx()
     let next = absolute !== undefined ? absolute : cur < 0 ? (delta > 0 ? 0 : n - 1) : cur + delta
     if (next < 0) next = 0
     if (next > n - 1) next = n - 1
-    const row = rows[next]
+    const row = chartTableRow(input, next)
     batch(() => {
       focusIdx.set(next)
-      announce.set(row === undefined ? '' : row.join(', '))
+      announce.set(row.join(', '))
     })
     paintCached()
   }
@@ -914,7 +915,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     if (key === 'ArrowRight' || key === 'ArrowUp') moveFocus(1)
     else if (key === 'ArrowLeft' || key === 'ArrowDown') moveFocus(-1)
     else if (key === 'Home') moveFocus(0, 0)
-    else if (key === 'End') moveFocus(0, chartTable(a11yNow()).rows.length - 1)
+    else if (key === 'End') moveFocus(0, chartRowCount(a11yNow()) - 1)
     else if (key === 'Enter' || key === ' ') {
       const i = focusIdx()
       const f = last

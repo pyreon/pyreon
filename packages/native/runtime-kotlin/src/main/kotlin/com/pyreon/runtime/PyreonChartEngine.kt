@@ -12793,7 +12793,6 @@ fun withError(fmt: (Double) -> String, v: Double, s: A11ySeries, i: Int): String
   }
 
 fun chartTable(input: A11yInput, limit: Int = -1): A11yTable {
-    val fmt = (input.format ?: ::plain)
     val headers = mutableListOf("Category")
     for (s in input.series) {
       val other = (s.values2 ?: listOf())
@@ -12816,84 +12815,94 @@ fun chartTable(input: A11yInput, limit: Int = -1): A11yTable {
         headers.add("${s.label} (${e.label})")
       }
     }
+    val n = chartRowCount(input)
+    val count = if (limit >= 0 && limit < n) limit else n
+    val rows: MutableList<List<String>> = mutableListOf()
+    for (i in 0 until count) {
+      rows.add(chartTableRow(input, i))
+    }
+    return A11yTable(headers = headers, rows = rows, total = n)
+  }
+
+fun chartRowCount(input: A11yInput): Int {
     var n = input.categories.length
     for (s in input.series) {
       if (s.values.length > n) {
         n = s.values.length
       }
     }
-    val count = if (limit >= 0 && limit < n) limit else n
-    val rows: MutableList<List<String>> = mutableListOf()
-    for (i in 0 until count) {
-      val row = mutableListOf(if (i < input.categories.length) input.categories[i] else "${i + 1}")
-      for (s in input.series) {
-        val other = (s.values2 ?: listOf())
-        val rs = (s.rValues ?: listOf())
-        val two = other.length > 0
-        val sized = rs.length > 0
-        val sx = (s.xs ?: listOf())
-        val hasX = sx.length > 0
-        val extras = (s.extras ?: listOf())
-        if (i >= s.values.length) {
-          row.add("")
-          if (two) {
-            row.add("")
-          }
-          if (sized) {
-            row.add("")
-          }
-          if (hasX) {
-            row.add("")
-          }
-          for (k in 0 until extras.length) {
-            row.add("")
-          }
-          continue
-        }
-        val v = s.values[i]
-        row.add(if (isFiniteNumber(v)) withError(fmt, v, s, i) else "")
+    return n
+  }
+
+fun chartTableRow(input: A11yInput, i: Int): List<String> {
+    val fmt = (input.format ?: ::plain)
+    val row = mutableListOf(if (i < input.categories.length) input.categories[i] else "${i + 1}")
+    for (s in input.series) {
+      val other = (s.values2 ?: listOf())
+      val rs = (s.rValues ?: listOf())
+      val two = other.length > 0
+      val sized = rs.length > 0
+      val sx = (s.xs ?: listOf())
+      val hasX = sx.length > 0
+      val extras = (s.extras ?: listOf())
+      if (i >= s.values.length) {
+        row.add("")
         if (two) {
-          if (i >= other.length) {
-            row.add("")
-          } else {
-            val v2 = other[i]
-            row.add(if (isFiniteNumber(v2)) fmt(v2) else "")
-          }
+          row.add("")
         }
         if (sized) {
-          if (i >= rs.length) {
-            row.add("")
-          } else {
-            val r = rs[i]
-            row.add(if (isFiniteNumber(r)) fmt(r) else "")
-          }
+          row.add("")
         }
         if (hasX) {
-          if (i >= sx.length) {
-            row.add("")
-          } else {
-            val xv = sx[i]
-            row.add(if (isFiniteNumber(xv)) fmt(xv) else "")
-          }
+          row.add("")
         }
-        for (e in extras) {
-          val nums = (e.numbers ?: listOf())
-          val strs = (e.texts ?: listOf())
-          if (i < nums.length) {
-            val ev = nums[i]
-            row.add(if (isFiniteNumber(ev)) fmt(ev) else "")
+        for (k in 0 until extras.length) {
+          row.add("")
+        }
+        continue
+      }
+      val v = s.values[i]
+      row.add(if (isFiniteNumber(v)) withError(fmt, v, s, i) else "")
+      if (two) {
+        if (i >= other.length) {
+          row.add("")
+        } else {
+          val v2 = other[i]
+          row.add(if (isFiniteNumber(v2)) fmt(v2) else "")
+        }
+      }
+      if (sized) {
+        if (i >= rs.length) {
+          row.add("")
+        } else {
+          val r = rs[i]
+          row.add(if (isFiniteNumber(r)) fmt(r) else "")
+        }
+      }
+      if (hasX) {
+        if (i >= sx.length) {
+          row.add("")
+        } else {
+          val xv = sx[i]
+          row.add(if (isFiniteNumber(xv)) fmt(xv) else "")
+        }
+      }
+      for (e in extras) {
+        val nums = (e.numbers ?: listOf())
+        val strs = (e.texts ?: listOf())
+        if (i < nums.length) {
+          val ev = nums[i]
+          row.add(if (isFiniteNumber(ev)) fmt(ev) else "")
+        } else {
+          if (i < strs.length) {
+            row.add(strs[i])
           } else {
-            if (i < strs.length) {
-              row.add(strs[i])
-            } else {
-              row.add("")
-            }
+            row.add("")
           }
         }
       }
-      rows.add(row)
     }
-    return A11yTable(headers = headers, rows = rows, total = n)
+    return row
   }
 
 fun finite(v: Double): Boolean = v == v
