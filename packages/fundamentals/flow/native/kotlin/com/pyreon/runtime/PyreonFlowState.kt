@@ -798,9 +798,10 @@ class PyreonFlowState<T>(
         nodeContextMenuListeners.clear(); edgeContextMenuListeners.clear(); paneContextMenuListeners.clear()
         nodeMouseEnterListeners.clear(); nodeMouseLeaveListeners.clear(); edgeMouseEnterListeners.clear(); edgeMouseLeaveListeners.clear()
     }
-    private companion object {
-        val viewportAnimationTimer = Timer("PyreonFlowViewport", true)
-    }
+    /** Schedules one animation frame. Every frame mutates engine state and calls
+     *  app listeners, so on Android it must run on the MAIN thread; see
+     *  [PyreonFlowFrames]. */
+    private fun scheduleFrame(frame: () -> Unit) = PyreonFlowFrames.scheduler.schedule(16L, frame)
     @Volatile private var viewportAnimationGeneration = 0
     @Volatile private var layoutAnimationGeneration = 0
     private val undoStack = ArrayList<PyreonFlowHistorySnapshot<T>>()
@@ -904,14 +905,12 @@ class PyreonFlowState<T>(
         if (changes.isNotEmpty()) { markMutation(); emitNodeChanges(changes) }
     }
     private fun scheduleLayoutFrame(generation: Int, starts: Map<String, PyreonXYPosition>, targets: Map<String, PyreonXYPosition>, startNanos: Long, durationNanos: Double) {
-        viewportAnimationTimer.schedule(object : TimerTask() {
-            override fun run() {
-                if (layoutAnimationGeneration != generation) return
-                val t = ((System.nanoTime() - startNanos) / durationNanos).coerceIn(0.0, 1.0); val eased = 1.0 - Math.pow(1.0 - t, 3.0)
-                applyLayoutPositions(targets.mapNotNull { (id, target) -> starts[id]?.let { start -> id to PyreonXYPosition(start.x + (target.x - start.x) * eased, start.y + (target.y - start.y) * eased) } }.toMap())
-                if (t < 1.0) scheduleLayoutFrame(generation, starts, targets, startNanos, durationNanos)
-            }
-        }, 16L)
+        scheduleFrame {
+            if (layoutAnimationGeneration != generation) return@scheduleFrame
+            val t = ((System.nanoTime() - startNanos) / durationNanos).coerceIn(0.0, 1.0); val eased = 1.0 - Math.pow(1.0 - t, 3.0)
+            applyLayoutPositions(targets.mapNotNull { (id, target) -> starts[id]?.let { start -> id to PyreonXYPosition(start.x + (target.x - start.x) * eased, start.y + (target.y - start.y) * eased) } }.toMap())
+            if (t < 1.0) scheduleLayoutFrame(generation, starts, targets, startNanos, durationNanos)
+        }
     }
     fun onConnect(callback: (PyreonFlowConnection) -> Unit): () -> Unit {
         val id = nextListenerId++; connectListeners[id] = callback
@@ -1585,22 +1584,20 @@ class PyreonFlowState<T>(
         scheduleViewportFrame(generation, start, end, System.nanoTime(), duration * 1_000_000.0)
     }
     private fun scheduleViewportFrame(generation: Int, start: PyreonFlowViewport, end: PyreonFlowViewport, startNanos: Long, durationNanos: Double) {
-        viewportAnimationTimer.schedule(object : TimerTask() {
-            override fun run() {
-                if (viewportAnimationGeneration != generation) return
-                val t = ((System.nanoTime() - startNanos) / durationNanos).coerceIn(0.0, 1.0)
-                val eased = 1.0 - Math.pow(1.0 - t, 3.0)
-                Snapshot.withMutableSnapshot {
-                    _viewport = PyreonFlowViewport(
-                        start.x + (end.x - start.x) * eased,
-                        start.y + (end.y - start.y) * eased,
-                        start.zoom + (end.zoom - start.zoom) * eased,
-                    )
-                }
-                emitViewportChange()
-                if (t < 1.0) scheduleViewportFrame(generation, start, end, startNanos, durationNanos)
+        scheduleFrame {
+            if (viewportAnimationGeneration != generation) return@scheduleFrame
+            val t = ((System.nanoTime() - startNanos) / durationNanos).coerceIn(0.0, 1.0)
+            val eased = 1.0 - Math.pow(1.0 - t, 3.0)
+            Snapshot.withMutableSnapshot {
+                _viewport = PyreonFlowViewport(
+                    start.x + (end.x - start.x) * eased,
+                    start.y + (end.y - start.y) * eased,
+                    start.zoom + (end.zoom - start.zoom) * eased,
+                )
             }
-        }, 16L)
+            emitViewportChange()
+            if (t < 1.0) scheduleViewportFrame(generation, start, end, startNanos, durationNanos)
+        }
     }
     fun screenToFlowPosition(position: PyreonXYPosition): PyreonXYPosition = PyreonXYPosition(
         x = (position.x - _viewport.x) / _viewport.zoom,
@@ -1846,4 +1843,28 @@ class PyreonFlowState<T>(
         emitViewportChange()
         selectNode(nodeId)
     }
+}
+
+
+/** Schedules one frame of a flow animation after [delayMillis]. */
+fun interface PyreonFlowFrameScheduler {
+    fun schedule(delayMillis: Long, frame: () -> Unit)
+}
+
+/**
+ * Where flow animation frames run. Each frame of `animateViewport`, `fitView`
+ * and an animated `layout` mutates the engine and calls app listeners
+ * (`onViewportChange`, `onNodesChange`, ...), so on Android it must run on the
+ * MAIN thread: a listener that touches a View from any other thread throws
+ * `CalledFromWrongThreadException`. The default is a daemon [Timer], which keeps
+ * this file free of the Android SDK so the engine's JVM tests can run it;
+ * `PyreonFlowView` installs a main-looper scheduler the first time it composes.
+ * Swift has no equivalent seam: its frames already run on the main queue.
+ */
+object PyreonFlowFrames {
+    val timerScheduler: PyreonFlowFrameScheduler = run {
+        val timer = Timer("PyreonFlowViewport", true)
+        PyreonFlowFrameScheduler { delay, frame -> timer.schedule(object : TimerTask() { override fun run() = frame() }, delay) }
+    }
+    @Volatile var scheduler: PyreonFlowFrameScheduler = timerScheduler
 }

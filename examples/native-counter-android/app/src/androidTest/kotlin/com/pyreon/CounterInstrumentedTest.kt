@@ -241,6 +241,32 @@ class CounterInstrumentedTest {
 
     /// F3 renderer parity, kept apart from the gesture test above: every check
     /// here reads something the RENDERER painted or placed, not the engine.
+    // Flow animation frames (animateViewport / fitView / animated layout) mutate
+    // the engine and call app listeners. They ran on a background Timer thread,
+    // so a listener that touched a View threw CalledFromWrongThreadException
+    // (seen in CI in this class). Rendering a flow view must switch them to the
+    // main looper, and every frame must then reach listeners there.
+    @Test
+    fun flowAnimationFramesRunOnTheMainThread() {
+        com.pyreon.runtime.PyreonFlowFrames.scheduler = com.pyreon.runtime.PyreonFlowFrames.timerScheduler
+        composeRule.activityRule.scenario.recreate()
+        composeRule.onNodeWithContentDescription("Native Flow device proof").assertExists()
+        check(com.pyreon.runtime.PyreonFlowFrames.scheduler !== com.pyreon.runtime.PyreonFlowFrames.timerScheduler) {
+            "rendering PyreonFlowView did not install the main-thread frame scheduler"
+        }
+        val onMain = java.util.concurrent.CopyOnWriteArrayList<Boolean>()
+        lateinit var state: com.pyreon.runtime.PyreonFlowState<String>
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            state = com.pyreon.runtime.PyreonFlowState()
+            state.onViewportChange { onMain.add(android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) }
+            state.animateViewport(x = 100.0, duration = 120.0)
+        }
+        val deadline = SystemClock.uptimeMillis() + 5_000
+        while (SystemClock.uptimeMillis() < deadline && onMain.size < 3) SystemClock.sleep(20)
+        check(onMain.size >= 3) { "the viewport animation delivered only ${onMain.size} frames" }
+        check(onMain.all { it }) { "a viewport animation frame reached its listener OFF the main thread ($onMain)" }
+    }
+
     @Test
     fun flowRendererParityChrome() {
         composeRule.onNodeWithText("Native Flow Start").assertIsDisplayed()

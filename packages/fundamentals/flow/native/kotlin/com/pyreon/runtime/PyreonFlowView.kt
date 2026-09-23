@@ -217,6 +217,20 @@ fun PyreonFlowBaseEdgePath(result: PyreonFlowPathResult, color: String? = null, 
     PyreonFlowCustomEdgePath(result = result, color = color ?: LocalPyreonFlowPalette.current.edge, width = width, fill = null)
 }
 
+/**
+ * Runs flow animation frames on Android's MAIN looper, where the engine's
+ * listeners may touch Views. Installed by `PyreonFlowView` the first time it
+ * composes; call it yourself if you animate a flow before any view exists.
+ */
+fun pyreonFlowUseMainThreadFrames() {
+    if (PyreonFlowFrames.scheduler === PyreonFlowFrames.timerScheduler) PyreonFlowFrames.scheduler = pyreonFlowMainThreadFrames
+}
+
+private val pyreonFlowMainThreadFrames: PyreonFlowFrameScheduler = run {
+    val main = android.os.Handler(android.os.Looper.getMainLooper())
+    PyreonFlowFrameScheduler { delay, frame -> main.postDelayed({ frame() }, delay) }
+}
+
 /** Above every node in the canvas Box: dragging adds 1000, selection 100, and user `zIndex` values are small. */
 private const val PYREON_FLOW_ABOVE_ALL_NODES_Z = 1_000_000f
 
@@ -536,6 +550,8 @@ fun <T> PyreonFlowView(
     // the dragged nodes (or the draft's end) so they stay under the finger.
     var dragPointer by remember { mutableStateOf<PyreonXYPosition?>(null) }
     var reconnectDraft by remember { mutableStateOf<PyreonFlowReconnectDraft?>(null) }
+    // Animation frames must reach listeners on the main thread (see PyreonFlowFrames).
+    pyreonFlowUseMainThreadFrames()
     var nodeDragStarts by remember { mutableStateOf<Map<String, PyreonXYPosition>>(emptyMap()) }
     var didInitialFit by remember { mutableStateOf(false) }
     val visibleNodes = state.nodes.filter { it.hidden != true && (!state.onlyRenderVisibleElements || state.isNodeVisible(it.id)) }

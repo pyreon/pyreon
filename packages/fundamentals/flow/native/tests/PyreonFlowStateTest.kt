@@ -1127,6 +1127,29 @@ fun main() {
     h.animateViewport(x = 40.0, duration = 0.0)
     Thread.sleep(50)
     check(h.viewport.x == 40.0, "a newer viewport animation cancels stale scheduled frames")
+    // Frames go through the INSTALLED scheduler, never a thread of the engine's
+    // own choosing: on Android the view installs a main-looper scheduler, because
+    // each frame mutates state and calls listeners that may touch Views.
+    run {
+        val queued = ArrayList<() -> Unit>()
+        val previous = com.pyreon.runtime.PyreonFlowFrames.scheduler
+        com.pyreon.runtime.PyreonFlowFrames.scheduler = com.pyreon.runtime.PyreonFlowFrameScheduler { _, frame -> queued.add(frame) }
+        try {
+            val threads = ArrayList<Thread>()
+            val off = h.onViewportChange { threads.add(Thread.currentThread()) }
+            h.animateViewport(x = 100.0, duration = 16.0)
+            check(queued.size == 1 && threads.isEmpty(), "an animated viewport change schedules its first frame and runs nothing synchronously")
+            Thread.sleep(20)
+            val runner = Thread { while (queued.isNotEmpty()) queued.removeAt(0)() }
+            runner.start(); runner.join()
+            check(h.viewport.x == 100.0, "running the scheduled frames completes the animation (x = ${h.viewport.x})")
+            check(threads.isNotEmpty() && threads.all { it === runner }, "viewport listeners run on the thread that ran the frame, not an engine thread")
+            off()
+            h.animateViewport(x = 40.0, duration = 0.0) // leave the viewport as the checks below expect
+        } finally {
+            com.pyreon.runtime.PyreonFlowFrames.scheduler = previous
+        }
+    }
     val reduced = PyreonFlowState(nodes = listOf(PyreonFlowNode(id = "r", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Reduced"))), reducedMotion = true)
     reduced.zoomTo(2.0, duration = 500.0)
     check(reduced.viewport.zoom == 2.0, "reduced motion makes duration-based viewport methods synchronous")

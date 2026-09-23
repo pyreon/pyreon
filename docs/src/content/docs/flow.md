@@ -1299,6 +1299,8 @@ Keyboard:
 
 `onlyRenderVisibleElements` culls off-screen nodes on native too.
 
+Animation frames (`animateViewport`, `fitView`, an animated `layout`) reach your listeners on the main thread on both platforms. On Android the flow view arranges this the first time it renders. Hand-written Kotlin that animates a `PyreonFlowState` before any flow view exists should call `pyreonFlowUseMainThreadFrames()` first.
+
 ### What does not cross, and what to use instead
 
 A few parts of the web package are tied to the DOM, and the compiler names
