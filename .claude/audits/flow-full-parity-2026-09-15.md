@@ -35,7 +35,7 @@ WebView escape path; silent drops are release blockers.
   arbitrary SVG paths and DOM/CSS custom renderers select the supported
   `@pyreon/flow/webview` path without semantic loss. Device-test messages,
   graph updates, selection callbacks, reload/reconnect and failure states.
-- [ ] **F6 — real-app and scale proof.** Exercise large graphs, custom nodes and
+- [x] **F6 — real-app and scale proof.** Exercise large graphs, custom nodes and
   mixed gestures in web Chromium, iOS Simulator and Android Emulator; add
   deterministic performance and memory ceilings without claiming benchmark
   numbers until measured.
@@ -230,6 +230,38 @@ native view.
   the node tap, the connect drag and the pinch on CI for that reason. Still
   open under F3: pixel parity of node chrome under `colorMode="system"` (only
   forced modes are asserted).
+
+## F6 checkpoint — scale and memory ceilings (2026-09-22)
+
+- [x] **Scale on all three targets.** `examples/native-tasks` has a `/flow-scale`
+  screen that loads a 20×20 grid (400 nodes) into a culling flow. The iOS lane,
+  the Android lane and the Chromium e2e (`native-tasks-web`) each assert the
+  same COUNTS, never timings:
+  - at most 40 of the 400 nodes are mounted at the origin viewport, and at least 2;
+  - panning makes node 170 mount and node 0 unmount, and the bound still holds;
+  - a node that scrolled in can be dragged, and the move reaches the engine
+    (device lanes);
+  - a pinch zooms the engine and the mounted set stays under 200 (device lanes).
+- [x] **Memory ceilings, GC-observable** (`flow/src/tests/scale-memory.test.ts`):
+  a mounted 1,000-node canvas releases every node after unmount plus dispose,
+  and 500 nodes removed from a live, mounted flow are released. Writing these
+  found three real retentions, each bisect-verified:
+  - `@pyreon/reactivity`'s dev devtools registry kept an unformatted `Error`
+    per node on a strongly held record. Its call-site frames reached the
+    node's creator, so an unmounted component was never collected.
+  - The same capture kept 10 frames, pinning a reconciler frame above the call
+    site. That frame closed over the node array, so removed nodes stayed alive.
+  - `instance.config` kept the initial `nodes`/`edges` arrays for the
+    instance's lifetime.
+- [x] Two compiler bugs surfaced by the first consumer to write the shapes:
+  an inline-object `createFlow<{ … }>` generic lowered to `String`/`Any`, and
+  an integer coordinate expression reached the Double position unconverted.
+- Existing complexity locks still cover the per-frame cost: `drag-frame-complexity`,
+  `drag-fanout`, `selection-fanout`, `pointer-hot-path`, `measurement-write-cost`.
+- [x] **Custom renderers at scale.** The grid renders through a custom node
+  type with its own handles, and all three targets assert one target handle per
+  mounted node, so a user renderer and its handles are culled with the node.
+- Keyboard interaction is tracked under F4, where the focus/action matrix lives.
 - [x] F3 closed: `colorMode="system"` is device-proven. The counter source cycles
   a third mode, and both suites switch the DEVICE appearance (not the app) and
   count the web's dark canvas colour #0b1220: zero on a light device, over 1000

@@ -299,3 +299,18 @@ real Swift/Kotlin compilation; green iOS/Android behavioural galleries; and
 explicit separation of direct-native coverage from hosted-engine coverage.
 Third-party extensions are versioned add-on profiles rather than silently
 included in the core score.
+
+## 2026-09-22 re-baseline
+
+An independent audit found the ledger reporting 100 / 100 while 60+ live
+"unsupported" warnings named gaps in rows marked complete, eight rows cited
+source files as evidence, and no native target had its own status. The ledger
+now carries per-target status and gaps, evidence must be tests, and every
+warning site is tagged with its row (`capability-inventory.test.ts`, plus
+`chart-capability-ledger-native.test.ts` for the props native hosts drop).
+Honest baseline: direct 32/68 on web, 1/68 on iOS and Android (the
+literal-only `<OptionChart>` gap), hosted 11/11 on web and 0/11 device-proven.
+The plan to 100 on every target is the "Charts to One Hundred" plan
+(12 PRs: honesty, tooltip/animation, layers, axes/zoom, series keys,
+components, ECharts differential, native runtime options, native interaction,
+native totality, readiness, bridge a11y).
