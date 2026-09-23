@@ -141,6 +141,35 @@ class TasksAppInstrumentedTest {
         composeRule.onRoot().performTouchInput { click(target) }
     }
 
+    /**
+     * What a chart capture shows, for a failure message: its size, how many
+     * pixels differ from its top-left corner (the chart's background), and its
+     * four most common colours. The gallery's pixel waits failed five PRs in one
+     * day with only "Condition still not satisfied" or "did not pan"; this says
+     * whether the chart had painted at all, and in what colours.
+     */
+    private fun paintSummary(b: android.graphics.Bitmap): String {
+        val bg = b.getPixel(0, 0)
+        var painted = 0
+        val counts = HashMap<Int, Int>()
+        for (y in 0 until b.height) for (x in 0 until b.width) {
+            val c = b.getPixel(x, y)
+            if (c != bg) painted++
+            counts[c] = (counts[c] ?: 0) + 1
+        }
+        val top = counts.entries.sortedByDescending { it.value }.take(4).joinToString(", ") { String.format("#%08x x%d", it.key, it.value) }
+        return "${b.width}x${b.height}, $painted px painted over bg ${String.format("#%08x", bg)}, top colours: $top"
+    }
+
+    /** Where a tagged node sits and whether Compose considers it displayed — for a failure message. */
+    private fun nodePlace(tag: String): String {
+        val n = composeRule.onNodeWithTag(tag)
+        val bounds = runCatching { n.fetchSemanticsNode().boundsInRoot.toString() }.getOrElse { "unresolved (${it.message})" }
+        val shown = runCatching { n.assertIsDisplayed() }.isSuccess
+        val root = runCatching { composeRule.onRoot().fetchSemanticsNode().size.toString() }.getOrElse { "?" }
+        return "$tag at $bounds in root $root, displayed=$shown"
+    }
+
     private fun waitForTagText(tag: String, text: String) {
         try {
             composeRule.waitUntil(timeoutMillis = 20_000) {
@@ -1002,7 +1031,19 @@ class TasksAppInstrumentedTest {
             up()
         }
         val panned = runCatching { composeRule.waitUntil(5_000) { !mapBefore.sameAs(roamMap.captureToImage().asAndroidBitmap()) } }.isSuccess
-        assertTrue("dragging the roaming map did not pan it", panned)
+        if (!panned) {
+            // Say what the map looked like before and after, so the next CI hit tells
+            // "never painted" from "painted, but the drag never started".
+            val mapAfter = roamMap.captureToImage().asAndroidBitmap()
+            var changed = 0
+            if (mapAfter.width == mapBefore.width && mapAfter.height == mapBefore.height) {
+                for (y in 0 until mapAfter.height) for (x in 0 until mapAfter.width) if (mapAfter.getPixel(x, y) != mapBefore.getPixel(x, y)) changed++
+            }
+            throw AssertionError(
+                "dragging the roaming map did not pan it: before ${paintSummary(mapBefore)}; after ${paintSummary(mapAfter)}; " +
+                    "$changed px changed; ${nodePlace("gal-map")}; drag from (30%, 50%) by 144dp in 11 steps",
+            )
+        }
         composeRule.onNodeWithTag("gal-geo-trail").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("gal-decal").performScrollTo().assertIsDisplayed()
         // The calculable visualMap: dragging its high handle (bottom-left strip) left greys the hottest cells.
@@ -1045,7 +1086,14 @@ class TasksAppInstrumentedTest {
         // baseline must see some red. Capturing straight after the scroll could
         // precede the chart's first paint ("red before 0, after 0" on unrelated
         // PRs), which reads as a failed drag. Wait for the paint first.
-        composeRule.waitUntil(10_000) { redPixels(zoomChart.captureToImage().asAndroidBitmap()) > 0 }
+        try {
+            composeRule.waitUntil(10_000) { redPixels(zoomChart.captureToImage().asAndroidBitmap()) > 0 }
+        } catch (e: Throwable) {
+            // A bare ComposeTimeoutException says nothing; say whether the chart
+            // painted at all, where it sits, and what colours it holds instead of red.
+            val shot = zoomChart.captureToImage().asAndroidBitmap()
+            throw AssertionError("gal-datazoom showed no red bar within 10s (red px: ${redPixels(shot)}; ${paintSummary(shot)}; ${nodePlace("gal-datazoom")})", e)
+        }
         val dzBefore = zoomChart.captureToImage().asAndroidBitmap()
         val redBefore = redPixels(dzBefore)
         // The slider strip is ECharts' own now — plot-aligned in the grid's bottom
