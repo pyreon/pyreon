@@ -97,6 +97,21 @@ describe('selectSuites', () => {
     }
   })
 
+  // The budget DATA files: 83 of a week's 124 full-suite pushes were forced by
+  // these alone. Only the budget gates read them, so they must not force a
+  // full run — while every OTHER scripts/ file still does, and a budget file
+  // riding along with real code still gets that code's suites.
+  it('budget data files do not force a full run; other scripts/ files still do', () => {
+    expect(forcesFullRun('scripts/import-budgets.json')).toBe(false)
+    expect(forcesFullRun('scripts/bundle-budgets.json')).toBe(false)
+    expect(forcesFullRun('scripts/check-bundle-budgets.ts')).toBe(true)
+    expect(forcesFullRun('scripts/serve-ssg.ts')).toBe(true)
+    expect(selectSuites(['scripts/import-budgets.json', 'scripts/bundle-budgets.json'])).toEqual([])
+    const withCode = selectSuites(['scripts/import-budgets.json', 'examples/ssr-showcase/src/routes/index.tsx'])
+    expect(withCode.length).toBeGreaterThan(0)
+    expect(withCode.length).toBeLessThan(SUITES.length)
+  })
+
   it('narrow example-only change → only the suites that exercise it', () => {
     // app-showcase touches flow + dnd only
     const r = selectSuites(['examples/app-showcase/src/main.tsx'])
