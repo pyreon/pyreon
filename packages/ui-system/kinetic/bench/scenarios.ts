@@ -61,8 +61,18 @@ function ensureBaselineStyle(): void {
 /** Every element has at least one started animation (CSS transition or WAAPI). */
 function allAnimating(els: ArrayLike<Element>, n: number): boolean {
   if (els.length !== n) return false
+  // ONE document-wide query, then set membership. Chromium's per-element
+  // `el.getAnimations()` walks every animation in the document to filter by
+  // target, so calling it N times over N CSS transitions was O(N²): the
+  // 2,000-element CSS arms spent >17 minutes here, outside the timed window,
+  // and the full run never finished. Same verdict, O(N).
+  const targets = new Set<Element>()
+  for (const a of document.getAnimations()) {
+    const t = (a.effect as KeyframeEffect | null)?.target
+    if (t) targets.add(t)
+  }
   for (let i = 0; i < els.length; i++) {
-    if (els[i]!.getAnimations().length === 0) return false
+    if (!targets.has(els[i]!)) return false
   }
   return true
 }
