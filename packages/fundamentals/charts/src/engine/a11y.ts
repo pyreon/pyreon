@@ -206,7 +206,6 @@ function withError(fmt: Formatter, v: Double, s: A11ySeries, i: number): string 
 }
 
 export function chartTable(input: A11yInput, limit: number = -1): A11yTable {
-  const fmt = input.format ?? plain
   // A two-channel series gets two COLUMNS. One column holding only the high
   // edge would hand the reader half a band and no way to tell that is what
   // happened; the table exists for the reader who wants the numbers, and a
@@ -231,71 +230,85 @@ export function chartTable(input: A11yInput, limit: number = -1): A11yTable {
     for (const e of extras) headers.push(`${s.label} (${e.label})`)
   }
 
-  let n = input.categories.length
-  for (const s of input.series) if (s.values.length > n) n = s.values.length
+  const n = chartRowCount(input)
 
   // `limit` builds only the rows a reader is shown: formatting 100,000 rows to
   // display the first 1,000 was most of a large chart's accessible-table cost.
   const count = limit >= 0 && limit < n ? limit : n
   const rows: string[][] = []
-  for (let i = 0; i < count; i++) {
-    // Bounds-checked, not coalesced: a subscript past the end is a crash on
-    // Swift, not an `undefined` — and a series may be longer than the
-    // categories (or shorter than its siblings).
-    const row: string[] = [i < input.categories.length ? input.categories[i]! : `${i + 1}`]
-    for (const s of input.series) {
-      const other: Double[] = s.values2 ?? []
-      const rs: Double[] = s.rValues ?? []
-      const two = other.length > 0
-      const sized = rs.length > 0
-      const sx: Double[] = s.xs ?? []
-      const hasX = sx.length > 0
-      const extras: SeriesExtra[] = s.extras ?? []
-      if (i >= s.values.length) {
-        row.push('')
-        if (two) row.push('')
-        if (sized) row.push('')
-        if (hasX) row.push('')
-        for (let k = 0; k < extras.length; k++) row.push('')
-        continue
-      }
-      const v = s.values[i]!
-      // A gap is an empty cell, not the word NaN — and an infinity is a gap
-      // too, because the geometry drops it (`isFiniteNumber`).
-      row.push(isFiniteNumber(v) ? withError(fmt, v, s, i) : '')
-      if (two) {
-        if (i >= other.length) row.push('')
-        else {
-          const v2 = other[i]!
-          row.push(isFiniteNumber(v2) ? fmt(v2) : '')
-        }
-      }
-      if (sized) {
-        if (i >= rs.length) row.push('')
-        else {
-          const r = rs[i]!
-          row.push(isFiniteNumber(r) ? fmt(r) : '')
-        }
-      }
-      if (hasX) {
-        if (i >= sx.length) row.push('')
-        else {
-          const xv = sx[i]!
-          row.push(isFiniteNumber(xv) ? fmt(xv) : '')
-        }
-      }
-      // One cell per extra: the number formatted like a value, a text as is.
-      for (const e of extras) {
-        const nums: Double[] = e.numbers ?? []
-        const strs: string[] = e.texts ?? []
-        if (i < nums.length) {
-          const ev = nums[i]!
-          row.push(isFiniteNumber(ev) ? fmt(ev) : '')
-        } else if (i < strs.length) row.push(strs[i]!)
-        else row.push('')
+  for (let i = 0; i < count; i++) rows.push(chartTableRow(input, i))
+  return { headers, rows, total: n }
+}
+
+/** How many rows the chart's table has: the longest of the categories and every series. */
+export function chartRowCount(input: A11yInput): number {
+  let n = input.categories.length
+  for (const s of input.series) if (s.values.length > n) n = s.values.length
+  return n
+}
+
+/**
+ * Row `i` of the chart's table, exactly as `chartTable` builds it — for a
+ * reader that needs ONE row (a keyboard focus move announcing the focused
+ * item), which used to format every row of the table to read one.
+ */
+export function chartTableRow(input: A11yInput, i: number): string[] {
+  const fmt = input.format ?? plain
+  // Bounds-checked, not coalesced: a subscript past the end is a crash on
+  // Swift, not an `undefined` — and a series may be longer than the
+  // categories (or shorter than its siblings).
+  const row: string[] = [i < input.categories.length ? input.categories[i]! : `${i + 1}`]
+  for (const s of input.series) {
+    const other: Double[] = s.values2 ?? []
+    const rs: Double[] = s.rValues ?? []
+    const two = other.length > 0
+    const sized = rs.length > 0
+    const sx: Double[] = s.xs ?? []
+    const hasX = sx.length > 0
+    const extras: SeriesExtra[] = s.extras ?? []
+    if (i >= s.values.length) {
+      row.push('')
+      if (two) row.push('')
+      if (sized) row.push('')
+      if (hasX) row.push('')
+      for (let k = 0; k < extras.length; k++) row.push('')
+      continue
+    }
+    const v = s.values[i]!
+    // A gap is an empty cell, not the word NaN — and an infinity is a gap
+    // too, because the geometry drops it (`isFiniteNumber`).
+    row.push(isFiniteNumber(v) ? withError(fmt, v, s, i) : '')
+    if (two) {
+      if (i >= other.length) row.push('')
+      else {
+        const v2 = other[i]!
+        row.push(isFiniteNumber(v2) ? fmt(v2) : '')
       }
     }
-    rows.push(row)
+    if (sized) {
+      if (i >= rs.length) row.push('')
+      else {
+        const r = rs[i]!
+        row.push(isFiniteNumber(r) ? fmt(r) : '')
+      }
+    }
+    if (hasX) {
+      if (i >= sx.length) row.push('')
+      else {
+        const xv = sx[i]!
+        row.push(isFiniteNumber(xv) ? fmt(xv) : '')
+      }
+    }
+    // One cell per extra: the number formatted like a value, a text as is.
+    for (const e of extras) {
+      const nums: Double[] = e.numbers ?? []
+      const strs: string[] = e.texts ?? []
+      if (i < nums.length) {
+        const ev = nums[i]!
+        row.push(isFiniteNumber(ev) ? fmt(ev) : '')
+      } else if (i < strs.length) row.push(strs[i]!)
+      else row.push('')
+    }
   }
-  return { headers, rows, total: n }
+  return row
 }
