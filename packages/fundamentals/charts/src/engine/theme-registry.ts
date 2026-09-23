@@ -75,6 +75,7 @@ export function resolveTheme(theme: string | ThemeDefinition | undefined, warnin
   if (typeof theme === 'string') {
     const found = registry.get(theme)
     if (found === undefined) {
+      // ledger: invalid-input
       warnings?.push({ code: 'option-key-unsupported', path: 'theme', message: `Theme "${theme}" is not registered (registered: ${listThemes().join(', ')}); the light theme was used.` })
     } else def = found
   } else if (theme !== undefined) def = theme

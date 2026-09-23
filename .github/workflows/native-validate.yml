@@ -20,15 +20,13 @@ name: Native Compiler Validation
 #     deadlock-free (the trigger-level `paths:` filter would instead
 #     leave non-matching PRs stuck on an "expected" check forever).
 #
-#     History: an earlier audit note (2026-06, CRIT-1) claimed
-#     path-filtering left a hole because "packages/core/compiler/
-#     cascades through PMTC" — that premise doesn't survive the
-#     dependency graph: `@pyreon/native-compiler` imports ONLY
-#     `oxc-parser` (verified: zero `@pyreon/*` runtime imports in its
-#     src). The decide filter above IS the cascade surface; a
-#     core-compiler change cannot alter the native emit. Before that
-#     note, EVERY PR — docs-only included — paid the Swift+Kotlin
-#     toolchain install + full fixture compile (~10-25 min ubuntu).
+#     The path classifier is NOT the whole cascade surface any more:
+#     `@pyreon/native-compiler` now has RUNTIME deps on `@pyreon/charts`
+#     and `@pyreon/compiler` (an earlier note here said it imported
+#     only `oxc-parser`; that stopped being true). So the decide job
+#     ALSO emits `graph` — the workspace dependency graph's verdict —
+#     and the Linux `validate` job runs on either. The macOS job and
+#     native-device.yml stay on the path classifier alone.
 #   - `workflow_dispatch` — manual run, useful for re-validating
 #     a specific commit without a fresh PR. Always runs (decide
 #     short-circuits to true for non-PR events).
@@ -97,6 +95,8 @@ jobs:
       pull-requests: read
     outputs:
       run: ${{ steps.diff.outputs.run }}
+      # `graph` gates ONLY the Linux `validate` job — see its `if:`.
+      graph: ${{ steps.diff.outputs.graph }}
     steps:
       # The classifier reads changed package.json manifests at the PR head, so
       # it needs the merge-ref checkout (default depth is enough).
@@ -114,6 +114,7 @@ jobs:
           set -euo pipefail
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "graph=true" >> "$GITHUB_OUTPUT"
             echo "non-PR event — always validate"
             exit 0
           fi
@@ -123,14 +124,38 @@ jobs:
           # and EVERY package.json as native surface — measured 2026-09-07 at ~2h of
           # runner time (50 min macOS swiftc + 50 min iOS + 30 min Android) per
           # affected PR, on 6 of the last 40 PRs.
-          gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[].filename' \
-            | bun scripts/native-surface-touched.ts --self=.github/workflows/native-validate.yml
+          FILES=$(mktemp)
+          gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[].filename' > "$FILES"
+          bun scripts/native-surface-touched.ts --self=.github/workflows/native-validate.yml < "$FILES"
+          # `graph` — the DEPENDENCY-GRAPH half. `@pyreon/native-compiler` has
+          # RUNTIME deps on `@pyreon/charts` and `@pyreon/compiler` (the chart
+          # engine sources are PMTC input), so a PR that touches neither
+          # packages/native/** nor a native example can still change what the
+          # suite emits. The path classifier above cannot see that; the
+          # workspace graph can. This is the SAME computation ci.yml's test
+          # matrix used to decide the native-compiler shards it no longer runs
+          # (this job is now the suite's only runner), so moving the suite here
+          # neither widened nor narrowed when it runs. Fail-closed: any
+          # affected.ts error or an unknowable diff reads as "run".
+          GRAPH=$(bun scripts/affected.ts --files-from-stdin --category=native/compiler < "$FILES") || GRAPH='--filter=*'
+          if [ -n "$GRAPH" ]; then
+            echo "graph=true" >> "$GITHUB_OUTPUT"
+            echo "native-compiler in the affected graph ($GRAPH) — the Linux suite runs"
+          else
+            echo "graph=false" >> "$GITHUB_OUTPUT"
+          fi
 
   validate:
     name: Validate emitted Swift + Kotlin
     needs: decide
     # Fail-closed: a decide that could not run must not SKIP the gate.
-    if: (success() && needs.decide.outputs.run == 'true') || (failure() && needs.decide.result != 'success')
+    #
+    # `run || graph`: this job is the ONLY runner of the `@pyreon/native-compiler`
+    # suite (ci.yml used to run it a second time as 16 shards whose verdict
+    # cache could never converge — see ci.yml's test-cell comment), so it
+    # must fire on every PR the dependency graph says can change the emit, not
+    # just on native-surface paths. The macOS job below keeps `run` alone.
+    if: (success() && (needs.decide.outputs.run == 'true' || needs.decide.outputs.graph == 'true')) || (failure() && needs.decide.result != 'success')
     runs-on: ubuntu-latest
     # Derived, not guessed (the ws-relay backstop rule). RE-DERIVED 2026-07-29
     # with the SAME formula, because the suite outgrew the previous budget —

@@ -1542,12 +1542,16 @@
         "happy-dom": "^20.11.6",
         "react": "^19.2.8",
         "react-dom": "^19.2.8",
+        "typescript": "^6.0.3",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
         "echarts": ">=5.6.0",
       },
+      "optionalPeers": [
+        "echarts",
+      ],
     },
     "packages/fundamentals/code": {
       "name": "@pyreon/code",

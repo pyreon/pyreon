@@ -43,6 +43,8 @@ import {
   subsetStructName,
   explainUntypeableField,
   synthLiteralStructName,
+  synthTypedStructName,
+  isNumericLiteralOrNegation,
   classifyDynamicStylingAttr,
   classifySortableRef,
   exprHasOptionalLink,
@@ -4217,6 +4219,19 @@ function emitSwiftDecl(
     const rowFields = firstData?.kind === 'object' ? firstData.fields : []
     let inferredRowType: TypeIR | undefined
     let rowType = d.dataType !== undefined ? swiftType(d.dataType) : 'Any'
+    // An inline-object generic (`createFlow<{ label: string }>`) must name the
+    // SAME struct its `data: { label }` literals resolve to; a context-free
+    // `swiftType` cannot, and degraded it to the bare field type (`String`).
+    if (d.dataType?.kind === 'object') {
+      const declared =
+        _structTypedKeyToName.get(structShapeKey(d.dataType.fields)) ??
+        _structFieldsToName.get(d.dataType.fields.map((f) => f.name).sort().join(','))
+      const named = declared ?? synthTypedStructName(d.dataType.fields, _synthExprStructs, _synthExprStructKeys)
+      if (named !== null) {
+        rowType = named
+        inferredRowType = { kind: 'typeRef', name: named, args: [] }
+      }
+    }
     if (d.dataType === undefined && dataRows.length > 0) {
       const allNames = [...new Set(dataRows.flatMap((fields) => fields.map((field) => field.name)))]
       const heterogeneous = dataRows.some((fields) => fields.length !== allNames.length || allNames.some((name) => !fields.some((field) => field.name === name)))
@@ -4235,13 +4250,13 @@ function emitSwiftDecl(
         rowType = resolveSwiftObjectStructName(rowFields) ?? 'Any'
       }
     }
-    const expectedRowType = d.dataType ?? inferredRowType
+    const expectedRowType = inferredRowType ?? d.dataType
     const nodeLits = d.nodes
       .map((n) => {
         const parts = [
           `id: ${swiftStr(n.id)}`,
           ...(n.type !== undefined ? [`type: ${swiftStr(n.type)}`] : []),
-          `position: PyreonXYPosition(x: ${emitSwiftExpr(n.positionX, 0)}, y: ${emitSwiftExpr(n.positionY, 0)})`,
+          `position: PyreonXYPosition(x: ${swiftFlowCoord(n.positionX)}, y: ${swiftFlowCoord(n.positionY)})`,
           `data: ${withExpectedType(expectedRowType, () => emitSwiftExpr(n.data, 0))}`,
           ...(n.width !== undefined ? [`width: ${emitSwiftExpr(n.width, 0)}`] : []),
           ...(n.height !== undefined ? [`height: ${emitSwiftExpr(n.height, 0)}`] : []),
@@ -4290,7 +4305,7 @@ function emitSwiftDecl(
           ...(e.pathOptions?.offset !== undefined ? [`pathOffset: ${e.pathOptions.offset}`] : []),
           ...(e.markerStart !== undefined ? [`markerStart: ${swiftFlowMarker(e.markerStart)}`] : []),
           ...(e.markerEnd !== undefined ? [`markerEnd: ${e.markerEnd === null ? 'nil' : swiftFlowMarker(e.markerEnd)}`, 'markerEndSpecified: true'] : []),
-          ...(e.waypoints !== undefined ? [`waypoints: [${e.waypoints.map((p) => `PyreonXYPosition(x: ${emitSwiftExpr(p.x, 0)}, y: ${emitSwiftExpr(p.y, 0)})`).join(', ')}]`] : []),
+          ...(e.waypoints !== undefined ? [`waypoints: [${e.waypoints.map((p) => `PyreonXYPosition(x: ${swiftFlowCoord(p.x)}, y: ${swiftFlowCoord(p.y)})`).join(', ')}]`] : []),
         ]
         return `PyreonFlowEdge(${parts.join(', ')})`
       })
@@ -4422,7 +4437,7 @@ function swiftFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
   const parts = [
     `id: ${emitSwiftExpr(idExpr, 0)}`,
     ...(typeExpr ? [`type: ${emitSwiftExpr(typeExpr, 0)}`] : []),
-    `position: PyreonXYPosition(x: ${emitSwiftExpr(posX, 0)}, y: ${emitSwiftExpr(posY, 0)})`,
+    `position: PyreonXYPosition(x: ${swiftFlowCoord(posX)}, y: ${swiftFlowCoord(posY)})`,
     `data: ${emitSwiftExpr(dataExpr, 0)}`,
     ...(widthExpr ? [`width: ${emitSwiftExpr(widthExpr, 0)}`] : []),
     ...(heightExpr ? [`height: ${emitSwiftExpr(heightExpr, 0)}`] : []),
@@ -4688,7 +4703,7 @@ function swiftFlowPathHelper(name: string, arg: ExprIR | undefined, indent: numb
       if (point.kind !== 'object') return null
       const x = point.fields.find((field) => field.name === 'x')?.value
       const y = point.fields.find((field) => field.name === 'y')?.value
-      return x && y ? `PyreonXYPosition(x: ${emitSwiftExpr(x, indent)}, y: ${emitSwiftExpr(y, indent)})` : null
+      return x && y ? `PyreonXYPosition(x: ${swiftFlowCoord(x, indent)}, y: ${swiftFlowCoord(y, indent)})` : null
     })
     if (points.some((point) => point === null)) return null
     return `pyreonWaypointPath(sourceX: ${sx}, sourceY: ${sy}, targetX: ${tx}, targetY: ${ty}, waypoints: [${points.join(', ')}])`
@@ -4730,7 +4745,7 @@ function swiftFlowPositionLiteral(arg: ExprIR): string | null {
   const x = arg.fields.find((f) => f.name === 'x')?.value
   const y = arg.fields.find((f) => f.name === 'y')?.value
   if (!x || !y) return null
-  return `PyreonXYPosition(x: ${emitSwiftExpr(x, 0)}, y: ${emitSwiftExpr(y, 0)})`
+  return `PyreonXYPosition(x: ${swiftFlowCoord(x)}, y: ${swiftFlowCoord(y)})`
 }
 
 /**
@@ -5385,6 +5400,16 @@ function uniqueSwiftStructName(synth: SwiftSynthCtx, base: string): string {
   let i = 2
   while (synth.structs.some((s) => s.name === `${base}${i}`)) i++
   return `${base}${i}`
+}
+
+/**
+ * A flow coordinate as a Swift Double. A literal already converts; an integer
+ * EXPRESSION (`col * 200` in a loop) does not, and `Double(_:)` is identity on
+ * a Double, so a non-literal is wrapped without needing its inferred type.
+ */
+function swiftFlowCoord(x: ExprIR, indent = 0): string {
+  const text = emitSwiftExpr(x, indent)
+  return isNumericLiteralOrNegation(x) ? text : `Double(${text})`
 }
 
 export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): string {
