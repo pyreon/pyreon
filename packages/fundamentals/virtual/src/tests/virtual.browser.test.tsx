@@ -182,6 +182,23 @@ describe('useVirtualizer — <For> + item() fine-grained + real measurement', ()
     return m ? Number(m[1]) : Number.NaN
   }
 
+  // Regression (@tanstack/virtual-core 3.17.11): <For> mounts its first window
+  // into a DocumentFragment, so each row's ref — where measureElement is called
+  // — fires on a DETACHED element that reads height 0. Recording those zeros made
+  // 3.17.11's re-measure anchoring (itemStart + itemSize <= scrollOffset) scroll
+  // the viewport by one row per correction: the list mounted at row ~8 with rows
+  // 0..7 collapsed. The first window must mount at the top, rows at index × ROW.
+  it('mounts measured rows at the TOP (no zero-size measurements of detached rows)', async () => {
+    const { container, unmount } = mountInBrowser(<DynamicList />)
+    const scroll = container.querySelector<HTMLElement>('[data-testid=dyn-scroll]')!
+    await vi.waitFor(() => expect(topOf(container, 3)).toBeCloseTo(3 * ROW, 0))
+    // Let the ResizeObserver deliver and any anchoring settle.
+    await new Promise((r) => setTimeout(r, 100))
+    expect(scroll.scrollTop).toBe(0)
+    for (const i of [0, 1, 2, 3, 4, 5]) expect(topOf(container, i)).toBeCloseTo(i * ROW, 0)
+    unmount()
+  })
+
   it('repositions a STAYING row below when row 0 is remeasured taller', async () => {
     const { container, unmount } = mountInBrowser(<DynamicList />)
     await vi.waitFor(() => expect(container.querySelectorAll('.dyn-row').length).toBeGreaterThan(0))
