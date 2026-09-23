@@ -2,7 +2,7 @@
 /**
  * check-distribution — bundle/distribution hygiene gate.
  *
- * Two static invariants every published @pyreon/* package must hold:
+ * Static invariants every published @pyreon/* package must hold:
  *
  *  1. **`sideEffects` field is set.** Required for bundlers (Vite,
  *     Webpack, Rollup, esbuild) to tree-shake unused exports out of
@@ -17,7 +17,12 @@
  *     they never reach end users. Excluding them ships minified
  *     framework code with no way to debug.
  *
- * Both invariants are enforced via the package's `files` field. The
+ *  3. **No build report shipped.** `vl_rolldown_build` writes a bundle-
+ *     analysis HTML treemap into `lib/analysis/`; a package publishing
+ *     `lib` must exclude it (`"!lib/analysis"`), or every install
+ *     downloads a report that is not package content (258 KB for charts).
+ *
+ * All three are enforced via the package's `files` field. The
  * gate ALSO simulates `npm pack --dry-run` for one representative
  * package to prove maps actually land in the tarball at publish time,
  * not just on paper.

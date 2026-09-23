@@ -3196,7 +3196,12 @@ function tryStoreDefnFromTopLevel(
   const idArg = args[0]
   // A module-scope `const` resolves — a store id named once and shared with
   // whatever else keys off it is ordinary, and just as known at build time.
-  const storeId = staticStringArg(idArg, ctx)
+  // The id names the emitted singleton (`PyreonStore_<id>`), so every
+  // character that is not an identifier character becomes `_`: a kebab-case
+  // id like `'native-flow-probe'` — the ordinary web spelling — otherwise
+  // emitted `PyreonStore_native-flow-probe`, which neither compiler parses.
+  const rawStoreId = staticStringArg(idArg, ctx)
+  const storeId = rawStoreId === null ? null : rawStoreId.replace(/[^A-Za-z0-9_]/g, '_')
   if (storeId === null) {
     ctx.warnings.push(
       `defineStore declaration \`${hookName}\`: the id must be statically known — an inline string, or a module-scope \`const\` holding one. Falling back to silent-drop.`,
@@ -11881,8 +11886,16 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       if (stmts.length === 0) {
         return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' } }
       }
+      // An ASSIGNMENT is a statement in the IR, not an expression, so
+      // `() => { flow.config.pannable = false }` must keep the statement path
+      // — collapsed to an expression body it reached `parseExpr`, which
+      // rejects `AssignmentExpression`, and the handler emitted EMPTY on both
+      // targets while the two-statement spelling of the same intent worked.
+      const onlyIsAssignment =
+        stmts.length === 1 && stmts[0]!.type === 'ExpressionStatement' &&
+        (stmts[0]!.expression?.type === 'AssignmentExpression' || stmts[0]!.expression?.type === 'UpdateExpression')
       if (
-        stmts.length === 1 &&
+        stmts.length === 1 && !onlyIsAssignment &&
         (stmts[0]!.type === 'ExpressionStatement' || stmts[0]!.type === 'ReturnStatement')
       ) {
         const only = stmts[0]!
