@@ -1212,7 +1212,9 @@ web page in a WebView.
 | --- | --- |
 | `createFlow(config)` / `useFlow(config)` | `PyreonFlowState`, an observable engine with the same state and the same `FlowInstance` methods |
 | `<Flow instance={flow}>` | `PyreonFlowView`, with `<Background>`, `<Controls>`, `<MiniMap>`, `<Panel>`, `<Handle>`, `<NodeResizer>`, `<NodeToolbar>` and `<EdgeLabelRenderer>` |
+| A node without a `type` | The web's default node: the same box, palette colours and selected border |
 | `nodeTypes` / `edgeTypes` | Custom node and edge components. The map must be statically resolvable. |
+| `<path d=…>` in a custom edge or connection line | A native path. Any SVG path data works, including a template literal; fill, stroke and width follow the browser's rules. |
 | `connectionLine` | A custom connection line, shown only while a connection is being dragged |
 | `colorMode` | `'light'`, `'dark'` and `'system'`, using the web palette's colours |
 | The seven layout algorithms | Native ports of the built-in layout engine |
@@ -1240,7 +1242,7 @@ A few parts of the web package are tied to the DOM, and the compiler names
 each one when it meets it:
 
 - `FlowLayersContext` and `flowStyles`, the DOM renderer's layer context and CSS custom properties.
-- A custom renderer that draws with raw DOM or SVG elements (`<path d=…>`, `<div>`), or styles with browser CSS selectors.
+- A custom renderer built from DOM elements (`<div>`, `<span>`) or an `<svg>` element, or styled with browser CSS selectors. A `<path>` inside a custom edge or connection line is the exception: it renders natively.
 - A renderer map computed at runtime, rather than one the compiler can resolve statically.
 
 If a diagram needs any of those, host the unchanged web renderer with
@@ -1263,14 +1265,16 @@ Give it an explicit height where you can. Without one, it defaults to 150 points
 ### How this is verified
 
 - **State and algorithms.** Native test fixtures replay shared scenarios against both native engines, with the web engine's own answers as the oracle. Two checks fail when a portable method, or a native config field, has no scenario and no stated reason.
-- **Rendering and interaction.** The iOS Simulator and Android Emulator suites for the example apps read what the renderer painted or placed. They check marker colours, dark-mode canvas pixels, panel placement and the custom connection line. They also drive the gestures and keyboard commands above.
+- **Rendering and interaction.** The iOS Simulator and Android Emulator suites for the example apps read what the renderer painted or placed. They check marker colours, dark-mode canvas pixels, the default node's colours, a custom edge drawn from a path string, panel placement and the custom connection line. They also drive the gestures and keyboard commands above.
+- **Theme.** A test requires every native palette colour to equal the web's `--pyreon-flow-*` value, in light and dark mode.
 - **Scale.** A 400-node graph with culling mounts at most 40 nodes on web, iOS and Android. It keeps those bounds while panning, dragging and pinching. On web, garbage-collection tests check that a disposed flow and its removed nodes are actually released.
 
-Known platform limits:
+How the platform-specific gaps in the test tooling are covered:
 
-- On iOS, XCUITest cannot send Return, Escape or Delete to a simulator app. Those three keys are therefore asserted on Android; iOS asserts Space, the arrow keys and Cmd shortcuts.
-- iPhone 16-family simulators never pass an appearance change to the app. On those devices the `colorMode="system"` dark check is recorded as not run. It runs on newer simulators and always on Android.
-- Android apps keep their state across rotation and dark-mode switches, because the activity handles those configuration changes itself. They still lose in-memory state if the system kills the process in the background.
+- XCUITest cannot send Return, Escape or Delete to an iOS simulator app. On iOS, the native test suite drives those keys through the same function the view's key handler calls. Android asserts them on the device.
+- iPhone 16-family simulators never pass an appearance change to the app. On iOS, the native test suite renders the real flow view under a light and a dark colour scheme and checks that `colorMode="system"` follows it. Newer simulators and Android also check it on the device.
+
+State that lives only in memory, flow graphs included, is lost when the app is closed: after a page reload on web, and when the system ends the app process on iOS or Android. It is kept across rotation and dark-mode switches on Android. To keep a graph across launches, save `flow.toJSON()` with `@pyreon/storage` and restore it with `flow.fromJSON(...)` on every target.
 
 ## API Reference
 

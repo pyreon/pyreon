@@ -199,7 +199,8 @@ On iOS and Android the native compiler lowers `createFlow` / `useFlow` and `<Flo
 The same source provides all of these on web, iOS and Android:
 
 - Node and edge CRUD, selection, history and all seven layouts.
-- Built-in and static custom node and edge renderers, and custom connection lines.
+- The web's default node look, built-in and static custom node and edge renderers, and custom connection lines.
+- `<path d=…>` inside custom edges and connection lines, for any SVG path data.
 - Handles, connect and reconnect gestures, resizing, and toolbars.
 - `<Background>`, `<Controls>`, `<MiniMap>` and `<Panel>`, plus `colorMode` including `'system'`.
 - Pan, pinch-zoom and drag.
@@ -210,6 +211,7 @@ The same source provides all of these on web, iOS and Android:
 
 - The native engines replay shared scenarios whose expected answers come from the web engine. Two checks fail when a portable method or a native config field has neither a scenario nor a stated exemption.
 - Both real toolchains compile the emitted code.
+- A test ties every native palette colour to the web's `--pyreon-flow-*` value, in light and dark.
 - The example apps' iOS and Android device suites assert what the renderer draws, the gestures, the keyboard commands and a 400-node scale scenario.
 
 The full list, including the platform limits, is in the [docs](https://pyreon.dev/docs/flow#ios-and-android).
@@ -217,7 +219,7 @@ The full list, including the platform limits, is in the [docs](https://pyreon.de
 **What stays browser-only.** The compiler reports each of these by name:
 
 - `FlowLayersContext` and `flowStyles`, the DOM renderer's layer context and CSS custom properties.
-- Custom renderers that draw raw DOM or SVG elements, or use browser CSS selectors.
+- Custom renderers built from DOM elements or an `<svg>` element, or styled with browser CSS selectors. A `<path>` in a custom edge or connection line is not in this list; it renders natively.
 - Renderer maps computed at runtime.
 
 Keep that presentation in `NativeIOS` / `NativeAndroid` branches, or use the WebView route below. These inline styles lower directly:
