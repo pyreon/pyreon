@@ -65,7 +65,10 @@ describe('splitLayers — several charts in one option', () => {
     expect(rectOf('map')).toEqual({ x: 0, y: 0, w: 1000, h: 500 })
     expect(rectOf('gauge')).toEqual({ x: 312.5, y: 62.5, w: 375, h: 375 })
     expect(rectOf('sunburst').w).toBe(375)
-    expect(rectOf('chord').w).toBe(375)
+    // Chord: ECharts' default radius is ['70%', '80%'].
+    expect(rectOf('chord').w).toBe(400)
+    // Pie: [0, '50%'].
+    expect(splitLayers({ series: [{ type: 'pie', data: [] }, { type: 'funnel', data: [] }] }, 1000, 500)![0]!.rect).toEqual({ x: 375, y: 125, w: 250, h: 250 })
   })
 
   it('whole-canvas overlays never ride on a layer', () => {

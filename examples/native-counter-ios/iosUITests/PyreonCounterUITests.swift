@@ -149,6 +149,46 @@ final class PyreonCounterUITests: XCTestCase {
         bringFullyOnScreen(canvas, in: app)
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         XCTAssertEqual(colorPixels(canvas.screenshot().pngRepresentation, 11, 18, 32), 0, "the dark canvas colour outlived colorMode=\"dark\"")
+        // colorMode="system" follows the DEVICE appearance: switch the simulator,
+        // not the app, and count the same dark pixels.
+        let device = XCUIDevice.shared
+        let originalAppearance = device.appearance
+        defer { device.appearance = originalAppearance }
+        device.appearance = .light
+        let toggleSystem = app.buttons["native-flow-toggle-system"].firstMatch
+        XCTAssertTrue(toggleSystem.waitForExistence(timeout: 5))
+        toggleSystem.tap()
+        XCTAssertTrue(waitForLabel(colorMode, "system", timeout: 5))
+        bringFullyOnScreen(canvas, in: app)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        XCTAssertEqual(colorPixels(canvas.screenshot().pngRepresentation, 11, 18, 32), 0, "colorMode=\"system\" painted dark on a light device")
+        device.appearance = .dark
+        // Some simulators (the iPhone 16 family, which CI resolves) never pass an
+        // appearance flip to the app; see test_colorSchemeTracksSimulatorAppearance.
+        // `useColorScheme`'s own "Theme: dark" text is the probe: when it never
+        // appears, the device cannot show this app a dark appearance at all, so
+        // the dark half has nothing to observe and is not asserted there. On a
+        // propagating simulator (iPhone 17 Pro, verified) it runs in full.
+        if app.staticTexts["Theme: dark"].waitForExistence(timeout: 15) {
+            bringFullyOnScreen(canvas, in: app)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+            XCTAssertGreaterThan(colorPixels(canvas.screenshot().pngRepresentation, 11, 18, 32), 1000, "colorMode=\"system\" did not follow the device into dark")
+            device.appearance = .light
+            XCTAssertTrue(app.staticTexts["Theme: light"].waitForExistence(timeout: 15))
+            bringFullyOnScreen(canvas, in: app)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+            XCTAssertEqual(colorPixels(canvas.screenshot().pngRepresentation, 11, 18, 32), 0, "colorMode=\"system\" stayed dark after the device went light")
+        } else {
+            // Loud, not silent: the run log says which half did not execute.
+            XCTContext.runActivity(named: "colorMode=system dark half NOT asserted: this simulator does not propagate appearance flips") { _ in }
+            print("NOTE: colorMode=\"system\" dark half not asserted on this simulator (appearance flip did not propagate)")
+            device.appearance = .light
+        }
+        toggleSystem.tap()
+        XCTAssertTrue(waitForLabel(colorMode, "light", timeout: 5))
+        // The toggle sits at the bottom of the page; the gestures below need
+        // the canvas back on screen (a smaller device scrolls it away).
+        bringFullyOnScreen(canvas, in: app)
 
         let selectedNodeCount = app.staticTexts["native-flow-selected-node-count"].firstMatch
         XCTAssertTrue(selectedNodeCount.waitForExistence(timeout: 10))
@@ -163,6 +203,29 @@ final class PyreonCounterUITests: XCTestCase {
         keyboardNode.typeKey(.rightArrow, modifierFlags: [])
         let keyboardMoved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", positionBeforeKey), object: startPosition)
         XCTAssertEqual(XCTWaiter().wait(for: [keyboardMoved], timeout: 5), .completed, "Right Arrow did not move the focused native Flow node")
+        // F4 focus/action matrix, node row: clearing the selection leaves the
+        // node FOCUSED, and Space (the web's other activation key) re-selects
+        // it. XCUITest cannot deliver Return or Escape to the app on the
+        // simulator: a logging probe saw Right Arrow and Space reach both the
+        // node and the canvas, and never those two keys, through `onKeyPress`
+        // or a keyboard shortcut. The Android suite drives Enter and Escape.
+        app.buttons["native-flow-clear-selection"].firstMatch.tap()
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: selectedNodeCount)], timeout: 5), .completed)
+        keyboardNode.typeKey(.space, modifierFlags: [])
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: selectedNodeCount)], timeout: 5), .completed, "Space on the focused node did not select it")
+        // Canvas row: Cmd+A selects every node, and Cmd+Z undoes the arrow-key
+        // move above, putting the node back. Delete is asserted on Android
+        // only: on the simulator neither Backspace nor forward-delete reliably
+        // reaches the app (a logging probe saw Cmd+A arrive and neither delete
+        // key), the same limit as Return and Escape.
+        keyboardNode.typeKey("a", modifierFlags: .command)
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "2"), object: selectedNodeCount)], timeout: 5), .completed, "Cmd+A did not select every node")
+        canvas.typeKey("z", modifierFlags: .command)
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", positionBeforeKey), object: startPosition)], timeout: 5), .completed, "Cmd+Z did not undo the keyboard move (label: \(startPosition.label), expected \(positionBeforeKey))")
+        app.buttons["native-flow-clear-selection"].firstMatch.tap()
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: selectedNodeCount)], timeout: 5), .completed)
+        app.descendants(matching: .any)["Native Flow Start"].firstMatch.tap()
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: selectedNodeCount)], timeout: 5), .completed)
 
         let selectedEdgeCount = app.staticTexts["native-flow-selected-edge-count"].firstMatch
         XCTAssertTrue(selectedEdgeCount.waitForExistence(timeout: 5))
@@ -174,6 +237,21 @@ final class PyreonCounterUITests: XCTestCase {
         clearSelection.tap()
         let edgeClearedByButton = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: selectedEdgeCount)
         XCTAssertEqual(XCTWaiter().wait(for: [edgeClearedByButton], timeout: 5), .completed)
+        // F4 edge hardware focus: the label takes keyboard focus like the web's
+        // edge path, so after the selection is cleared Space selects the
+        // FOCUSED edge. Before, the label was reachable by VoiceOver only, and
+        // `.position` gave it the whole canvas as its frame.
+        let keyboardEdge = app.descendants(matching: .any)["Native flow edge"].firstMatch
+        keyboardEdge.tap()
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: selectedEdgeCount)], timeout: 5), .completed, "tapping the edge label did not select it before the keyboard pass")
+        clearSelection.tap()
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: selectedEdgeCount)], timeout: 5), .completed)
+        keyboardEdge.typeKey(.space, modifierFlags: [])
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: selectedEdgeCount)], timeout: 5), .completed, "Space on the focused edge label did not select the edge")
+        clearSelection.tap()
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: selectedEdgeCount)], timeout: 5), .completed)
+        clearSelection.tap()
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: selectedEdgeCount)], timeout: 5), .completed)
 
         let edgeCount = app.staticTexts["native-flow-edge-count"].firstMatch
         XCTAssertTrue(edgeCount.waitForExistence(timeout: 10))
@@ -556,6 +634,14 @@ final class PyreonCounterUITests: XCTestCase {
             openButton.waitForExistence(timeout: 30),
             "Open button (useLinking) did not appear"
         )
+        // The page is one outer vertical Scroll, and the rows above Open grow with
+        // every flow device proof added to it — an unscrolled tap on a button below
+        // the fold lands on nothing. Same frame-inside-window loop as the Unlock test.
+        var openSwipes = 0
+        while !(openButton.isHittable && app.windows.firstMatch.frame.contains(openButton.frame)) && openSwipes < 10 {
+            app.swipeUp()
+            openSwipes += 1
+        }
         openButton.tap()
 
         // `UIApplication.shared.open` hands the URL to the OS: this app

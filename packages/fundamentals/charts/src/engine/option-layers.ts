@@ -23,6 +23,8 @@
  * belong to the whole canvas (`graphic`, `visualMap`, `timeline`) are the
  * caller's, not a layer's.
  */
+import { frameLength, frameRect, frameView } from './frame'
+import type { FrameLength, FrameSpec } from './frame'
 import type { Double, Rect } from './types'
 
 type Obj = Record<string, unknown>
@@ -59,47 +61,100 @@ export interface LayerPart {
   kind: 'cartesian' | SharedCoord | 'family'
 }
 
-/** A length in ECharts' units — a number of pixels, or a percent string of `extent`. */
-export function layoutLength(v: unknown, extent: Double, fallback: Double): Double {
-  if (typeof v === 'number' && Number.isFinite(v)) return v
+
+/** An ECharts length as a frame length: a number is px, `'N%'` a percent, a numeric string px; else unset. */
+export function lengthOf(v: unknown): FrameLength {
+  if (typeof v === 'number' && Number.isFinite(v)) return { mode: 'px', amount: v }
   if (typeof v === 'string') {
     const t = v.trim()
-    if (t.endsWith('%')) {
-      const p = Number.parseFloat(t)
-      if (Number.isFinite(p)) return (p / 100.0) * extent
-    }
     const n = Number.parseFloat(t)
-    if (Number.isFinite(n)) return n
+    if (Number.isFinite(n)) return t.endsWith('%') ? { mode: 'pct', amount: n } : { mode: 'px', amount: n }
   }
-  return fallback
+  return UNSET
 }
 
-/** ECharts' position keywords for `left` / `top`: 'center', 'left', 'right', 'top', 'bottom'. */
-function edge(v: unknown, extent: Double, size: Double): Double | undefined {
-  if (v === 'center' || v === 'middle') return (extent - size) / 2.0
-  if (v === 'left' || v === 'top') return 0.0
-  if (v === 'right' || v === 'bottom') return extent - size
-  if (v === undefined) return undefined
-  return layoutLength(v, extent, 0.0)
+const UNSET: FrameLength = { mode: '', amount: 0.0 }
+const px = (n: Double): FrameLength => ({ mode: 'px', amount: n })
+const pct = (n: Double): FrameLength => ({ mode: 'pct', amount: n })
+
+/** A `left` / `top`: ECharts' keywords, else a length (an unreadable one is 0, as `layoutLength` falls back). */
+function edgeOf(v: unknown): FrameLength {
+  if (v === undefined) return UNSET
+  if (v === 'center' || v === 'middle') return { mode: 'center', amount: 0.0 }
+  if (v === 'left' || v === 'top') return { mode: 'start', amount: 0.0 }
+  if (v === 'right' || v === 'bottom') return { mode: 'end', amount: 0.0 }
+  const l = lengthOf(v)
+  return l.mode === '' ? px(0.0) : l
+}
+
+/** A length that is 0 when unreadable (`right` / `bottom`), unset when absent. */
+function marginOf(v: unknown): FrameLength {
+  if (v === undefined) return UNSET
+  const l = lengthOf(v)
+  return l.mode === '' ? px(0.0) : l
+}
+
+/** A `width` / `height`: the whole extent when unreadable, unset when absent. */
+function sizeOf(v: unknown): FrameLength {
+  if (v === undefined) return UNSET
+  const l = lengthOf(v)
+  return l.mode === '' ? pct(100.0) : l
+}
+
+interface FrameDefaults {
+  left?: FrameLength
+  top?: FrameLength
+  right?: FrameLength
+  bottom?: FrameLength
+}
+
+/** A series' box keys as a frame spec, a missing side taking its default. */
+function boxSpec(s: Obj, defaults: FrameDefaults): FrameSpec {
+  return {
+    left: s['left'] !== undefined ? edgeOf(s['left']) : defaults.left ?? UNSET,
+    top: s['top'] !== undefined ? edgeOf(s['top']) : defaults.top ?? UNSET,
+    right: s['right'] !== undefined ? marginOf(s['right']) : defaults.right ?? UNSET,
+    bottom: s['bottom'] !== undefined ? marginOf(s['bottom']) : defaults.bottom ?? UNSET,
+    width: sizeOf(s['width']),
+    height: sizeOf(s['height']),
+    round: false,
+    centerX: UNSET,
+    centerY: UNSET,
+    radius: UNSET,
+  }
+}
+
+const ZERO_MARGINS: FrameDefaults = { left: px(0.0), top: px(0.0), right: px(0.0), bottom: px(0.0) }
+
+/** A round series' spec: its box (the whole chart by default), `center`, and the OUTER `radius`. */
+function roundSpec(s: Obj, defaultRadius: string): FrameSpec {
+  const c = Array.isArray(s['center']) ? (s['center'] as unknown[]) : s['center'] === undefined ? [] : [s['center'], s['center']]
+  const raw = Array.isArray(s['radius']) ? (s['radius'] as unknown[])[1] : s['radius']
+  const own = raw === undefined ? UNSET : lengthOf(raw)
+  const fallback = lengthOf(defaultRadius)
+  return { ...boxSpec(s, ZERO_MARGINS), round: true, centerX: lengthOf(c[0]), centerY: lengthOf(c[1]), radius: own.mode !== '' ? own : fallback.mode !== '' ? fallback : pct(100.0) }
 }
 
 /**
- * A series' box from ECharts' `left`/`top`/`right`/`bottom`/`width`/`height`
- * (each a pixel number or a percent of the chart), with the defaults ECharts
- * gives that family where a key is absent.
+ * ECharts' layout length: a number is pixels, `'N%'` a percent of `extent`,
+ * anything unreadable the fallback.
+ */
+export function layoutLength(v: unknown, extent: Double, fallback: Double): Double {
+  return frameLength(lengthOf(v), extent, fallback)
+}
+
+/**
+ * A series' box from ECharts' `left` / `top` / `right` / `bottom` / `width` /
+ * `height` (pixels, percents, or `left`/`top` keywords), a missing side
+ * taking its default.
  */
 export function boxRect(s: Obj, width: Double, height: Double, defaults: { left?: Double; top?: Double; right?: Double; bottom?: Double } = {}): Rect {
-  const w0 = s['width'] !== undefined ? layoutLength(s['width'], width, width) : undefined
-  const h0 = s['height'] !== undefined ? layoutLength(s['height'], height, height) : undefined
-  const left = s['left'] !== undefined ? edge(s['left'], width, w0 ?? 0.0) : defaults.left
-  const top = s['top'] !== undefined ? edge(s['top'], height, h0 ?? 0.0) : defaults.top
-  const right = s['right'] !== undefined ? layoutLength(s['right'], width, 0.0) : defaults.right
-  const bottom = s['bottom'] !== undefined ? layoutLength(s['bottom'], height, 0.0) : defaults.bottom
-  const x = left ?? (w0 !== undefined && right !== undefined ? width - right - w0 : 0.0)
-  const y = top ?? (h0 !== undefined && bottom !== undefined ? height - bottom - h0 : 0.0)
-  const w = w0 ?? Math.max(0.0, width - x - (right ?? 0.0))
-  const h = h0 ?? Math.max(0.0, height - y - (bottom ?? 0.0))
-  return { x, y, w: Math.max(0.0, w), h: Math.max(0.0, h) }
+  const d: FrameDefaults = {}
+  if (defaults.left !== undefined) d.left = px(defaults.left)
+  if (defaults.top !== undefined) d.top = px(defaults.top)
+  if (defaults.right !== undefined) d.right = px(defaults.right)
+  if (defaults.bottom !== undefined) d.bottom = px(defaults.bottom)
+  return frameView(boxSpec(s, d), width, height)
 }
 
 /**
@@ -109,31 +164,38 @@ export function boxRect(s: Obj, width: Double, height: Double, defaults: { left?
  * circle fills, which is what the family renderers draw into.
  */
 export function circleRect(s: Obj, width: Double, height: Double, defaultRadius: string): Rect {
-  const c = Array.isArray(s['center']) ? (s['center'] as unknown[]) : []
-  const cx = layoutLength(c[0], width, width / 2.0)
-  const cy = layoutLength(c[1], height, height / 2.0)
-  const raw = Array.isArray(s['radius']) ? (s['radius'] as unknown[])[1] : s['radius']
-  const half = Math.min(width, height) / 2.0
-  const r = layoutLength(raw ?? defaultRadius, half, layoutLength(defaultRadius, half, half))
-  return { x: cx - r, y: cy - r, w: r * 2.0, h: r * 2.0 }
+  return frameRect(roundSpec(s, defaultRadius), width, height)
+}
+
+/** The box a circular series lays out in — ECharts' view rect, which its outside labels also keep within. */
+export function circleView(s: Obj, width: Double, height: Double): Rect {
+  return frameView(boxSpec(s, ZERO_MARGINS), width, height)
 }
 
 /** The keys `boxRect` reads off a series. */
 const BOX_KEYS = ['left', 'top', 'right', 'bottom', 'width', 'height'] as const
 
-/** Where a standalone family series goes. */
-function familyRect(s: Obj, width: Double, height: Double): Rect {
+/**
+ * Where a standalone family series goes, as a frame spec — ECharts' default
+ * placement per type (a pie's 50% radius, a funnel's 80 / 60 margins, …)
+ * under the series' own keys. The engine's `frameRect` resolves it at any
+ * size, which is how a native host places the chart the same way.
+ */
+export function familyFrame(s: Obj): FrameSpec {
   const type = s['type']
-  if (type === 'pie') return circleRect(s, width, height, '75%')
-  if (type === 'gauge') return circleRect(s, width, height, '75%')
-  if (type === 'sunburst') return circleRect(s, width, height, '75%')
-  if (type === 'chord') return circleRect(s, width, height, '75%')
-  if (type === 'funnel') return boxRect(s, width, height, { left: 80, top: 60, right: 80, bottom: 60 })
-  if (type === 'treemap') return boxRect(s, width, height, { left: width * 0.1, top: height * 0.1, right: width * 0.1, bottom: height * 0.1 })
-  if (type === 'tree') return boxRect(s, width, height, { left: width * 0.12, top: height * 0.12, right: width * 0.12, bottom: height * 0.12 })
-  if (type === 'sankey') return boxRect(s, width, height, { left: width * 0.05, top: height * 0.05, right: width * 0.2, bottom: height * 0.05 })
-  if (type === 'graph') return boxRect(s, width, height, { left: 0, top: 0, right: 0, bottom: 0 })
-  return boxRect(s, width, height, { left: 0, top: 0, right: 0, bottom: 0 })
+  if (type === 'pie') return roundSpec(s, '50%')
+  if (type === 'gauge' || type === 'sunburst') return roundSpec(s, '75%')
+  if (type === 'chord') return roundSpec(s, '80%')
+  if (type === 'funnel') return boxSpec(s, { left: px(80.0), top: px(60.0), right: px(80.0), bottom: px(60.0) })
+  if (type === 'treemap') return boxSpec(s, { left: pct(10.0), top: pct(10.0), right: pct(10.0), bottom: pct(10.0) })
+  if (type === 'tree') return boxSpec(s, { left: pct(12.0), top: pct(12.0), right: pct(12.0), bottom: pct(12.0) })
+  if (type === 'sankey') return boxSpec(s, { left: pct(5.0), top: pct(5.0), right: pct(20.0), bottom: pct(5.0) })
+  return boxSpec(s, ZERO_MARGINS)
+}
+
+/** Where a standalone family series goes. */
+export function familyRect(s: Obj, width: Double, height: Double): Rect {
+  return frameRect(familyFrame(s), width, height)
 }
 
 /**

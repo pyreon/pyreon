@@ -132,8 +132,8 @@ import {
 } from '@pyreon/primitives'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
 import { Background, Controls, Flow, Handle, MiniMap, Position, createFlow } from '@pyreon/flow'
-import type { NodeComponentProps } from '@pyreon/flow'
-import { FlowWebView } from '@pyreon/flow/webview'
+import type { EdgeComponentProps, NodeComponentProps } from '@pyreon/flow'
+import { FlowWebView, type FlowWebViewGraph } from '@pyreon/flow/webview'
 
 type Task = { id: number; title: string; done: boolean }
 type Quote = { id: number; text: string; author: string }
@@ -362,6 +362,32 @@ function QuotesPage() {
   )
 }
 
+// A custom edge drawn from ARBITRARY SVG path data (a template literal, not a
+// path helper). The native runtimes parse the string themselves, so this is a
+// native view on iOS and Android, not a WebView. Pure green (#16a34a) is a
+// colour nothing else on the screen paints: the device suites count it.
+function WireEdge(props: EdgeComponentProps) {
+  return <path d={`M ${props.sourceX()} ${props.sourceY() + 12} L ${props.targetX()} ${props.targetY() + 12}`} style="fill: none; stroke: #16a34a; stroke-width: 4" />
+}
+
+// A custom node carrying an inline <svg>. The native compiler lowers the
+// shapes to path data and draws them in a canvas scaled by the viewBox, so this
+// is a native view on iOS and Android, not a WebView. The 8-unit viewBox is
+// drawn at 16x16, and purple (#7c3aed) is painted by nothing else on the
+// screen: the device suites measure its box to prove the viewBox scale.
+// It takes the same named data type as GridNode: a flow has ONE node data
+// type natively, and an inline `{ label: string }` would synthesize a second.
+function BadgeNode(props: NodeComponentProps<GridNodeData>) {
+  return (
+    <Stack>
+      <svg width={16} height={16} viewBox="0 0 8 8">
+        <rect width="8" height="8" fill="#7c3aed" />
+      </svg>
+      <Text>{props.data().label}</Text>
+    </Stack>
+  )
+}
+
 function FlowScreen() {
   const navigate = useNavigate()
   // Flow-native device proof: `createFlow` lowers to PyreonFlowState on both
@@ -378,7 +404,10 @@ function FlowScreen() {
       { id: 'a', position: { x: 0, y: 0 }, data: { label: 'Start' }, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }] },
       { id: 'b', position: { x: 200, y: 0 }, data: { label: 'End' }, targetHandles: [{ id: 'in', type: 'target', position: 'left' }] },
     ],
-    edges: [{ id: 'e1', source: 'a', target: 'b', sourceHandle: 'out', targetHandle: 'in' }],
+    edges: [
+      { id: 'e1', source: 'a', target: 'b', sourceHandle: 'out', targetHandle: 'in' },
+      { id: 'wire', source: 'a', target: 'b', type: 'wire' },
+    ],
     minZoom: 0.5,
     maxZoom: 2,
   })
@@ -411,7 +440,7 @@ function FlowScreen() {
       <Inline gap={2}>
         <Button
           onPress={() =>
-            flow.addNode({ id: 'c', position: { x: 400, y: 0 }, data: { label: 'Extra' } })
+            flow.addNode({ id: 'c', type: 'badge', position: { x: 100, y: 120 }, data: { label: 'Extra' } })
           }
           data-testid="flow-add"
         >
@@ -431,7 +460,7 @@ function FlowScreen() {
       <Button onPress={() => navigate('/tasks')} data-testid="flow-back">
         Back to tasks
       </Button>
-      <Flow instance={flow} ariaLabel="Task flow">
+      <Flow instance={flow} nodeTypes={{ badge: BadgeNode }} edgeTypes={{ wire: WireEdge }} ariaLabel="Task flow">
         <Background variant="dots" />
         <Controls />
         <MiniMap />
@@ -705,6 +734,54 @@ const FLOW_WEB_FIT_TWICE: FlowFitCommand[] = [
   { id: 'initial-fit', type: 'fit-view' },
   { id: 'second-fit', type: 'fit-view' },
 ]
+// Both graphs are ONE symmetric row, so fit-view centres the middle node in the
+// WebView and a tap at the WebView's centre deterministically hits it on every
+// target. Swapping the graph must re-render in place: the same tap then selects
+// the NEW middle node. The shapes are LOCAL named types: PMTC synthesizes a
+// Codable struct for each, and a named position cannot be claimed by an
+// engine struct of the same field shape.
+type FlowRowPosition = { x: number; y: number }
+type FlowRowLabel = { label: string }
+type FlowRowNode = { id: string; position: FlowRowPosition; data: FlowRowLabel }
+type FlowRowEdge = { source: string; target: string }
+type FlowRowGraph = { nodes: FlowRowNode[]; edges: FlowRowEdge[] }
+const FLOW_WEB_GRAPH_A: FlowRowGraph = {
+  nodes: [
+    { id: 'ingest', position: { x: 0, y: 0 }, data: { label: 'Ingest' } },
+    { id: 'transform', position: { x: 220, y: 0 }, data: { label: 'Transform' } },
+    { id: 'serve', position: { x: 440, y: 0 }, data: { label: 'Serve' } },
+  ],
+  edges: [
+    { source: 'ingest', target: 'transform' },
+    { source: 'transform', target: 'serve' },
+  ],
+}
+const FLOW_WEB_GRAPH_B: FlowRowGraph = {
+  nodes: [
+    { id: 'collect', position: { x: 0, y: 0 }, data: { label: 'Collect' } },
+    { id: 'enrich', position: { x: 220, y: 0 }, data: { label: 'Enrich' } },
+    { id: 'publish', position: { x: 440, y: 0 }, data: { label: 'Publish' } },
+  ],
+  edges: [
+    { source: 'collect', target: 'enrich' },
+    { source: 'enrich', target: 'publish' },
+  ],
+}
+// A node with NO position: the hosted renderer throws reading it, which is the
+// host failure path (`safeRender` -> `__pyreonFlowHostError` -> `onError`).
+type BrokenFlowNode = { id: string; data: FlowRowLabel }
+type BrokenFlowGraph = { nodes: BrokenFlowNode[]; edges: FlowRowEdge[] }
+// Two tiny hosts for the RELOAD proof. Swapping `html` must reload the page,
+// and the NEW page must receive the graph again and answer over the reverse
+// bridge: each reports `<host>:<node count>` as a selection.
+const FLOW_RELOAD_HOST_A =
+  '<!doctype html><html><body><script>(function(){function send(){var d=window.__pyreonData;if(typeof d==="string"){try{d=JSON.parse(d)}catch(e){return}}if(!d||!d.nodes||typeof window.pyreonPostMessage!=="function")return;window.pyreonPostMessage(JSON.stringify({id:"a:"+d.nodes.length}))}window.addEventListener("pyreondata",send);send()})()</script></body></html>'
+const FLOW_RELOAD_HOST_B =
+  '<!doctype html><html><body><script>(function(){function send(){var d=window.__pyreonData;if(typeof d==="string"){try{d=JSON.parse(d)}catch(e){return}}if(!d||!d.nodes||typeof window.pyreonPostMessage!=="function")return;window.pyreonPostMessage(JSON.stringify({id:"b:"+d.nodes.length}))}window.addEventListener("pyreondata",send);send()})()</script></body></html>'
+const FLOW_WEB_BROKEN: BrokenFlowGraph = {
+  nodes: [{ id: 'orphan', data: { label: 'Orphan' } }],
+  edges: [{ source: 'orphan', target: 'orphan' }],
+}
 const FLOW_LINKS: SankeyLink[] = [
   { source: 'Backlog', target: 'Doing', value: 8 },
   { source: 'Doing', target: 'Done', value: 5 },
@@ -877,6 +954,9 @@ function GalleryPage() {
   const navigate = useNavigate()
   // The toolbox's box zoom reports its window here; the save button its PNG's prefix.
   const tbZoom = signal('0-100')
+  // The option-placed families: a tap reads the index back through the frame the web computes.
+  const optPieSel = signal('none')
+  const optFunnelSel = signal('none')
   const tbSaved = signal('none')
   const brushCount = signal('none')
   const seriesPickCount = signal('none')
@@ -885,6 +965,11 @@ function GalleryPage() {
   const flowWebEvent = signal('none')
   const flowWebEventCount = signal(0)
   const flowWebFitAgain = signal(false)
+  const flowWebSelected = signal('none')
+  const flowWebSwapped = signal(false)
+  const flowWebFailure = signal('none')
+  const flowWebReloadB = signal(false)
+  const flowWebReloadStatus = signal('none')
   // Imperative handles (ECharts dispatchAction) for the toolbox chart and the timeline.
   const tbHandle = createChartHandle()
   const tlHandle = createChartHandle()
@@ -892,6 +977,31 @@ function GalleryPage() {
     <Scroll direction="vertical" data-testid="gal-scroll">
       <Stack gap={3} padding={4} data-testid="gal-page">
         <Text>Chart gallery</Text>
+        {/* First on the page, so the device tests tap them where the page opens — no scroll, whose
+            swipe could land on a chart that takes the drag.
+            An option pie placed by ECharts' center / radius: two equal slices from 12 o'clock, clockwise —
+            the right half is East, the left West. Centred at 30%, so a host that ignored the placement
+            (a pie filling the canvas, centred at 50%) reads both of the device tests' taps as West. */}
+        <OptionChart
+          option={{
+            series: [{ type: 'pie', center: ['30%', '50%'], radius: '40%', label: { show: false }, data: [{ name: 'East', value: 1 }, { name: 'West', value: 1 }] }],
+          }}
+          height={200}
+          data-testid="gal-opt-pie"
+          onSelectIndex={(i: number) => optPieSel.set(i === 0 ? 'East' : 'West')}
+        />
+        <Text data-testid="gal-opt-pie-sel">{optPieSel()}</Text>
+        {/* A funnel placed in y 10..70 (its box keys): the larger stage on top. A host that ignored the
+            box (a funnel filling the canvas) would put both of the device tests' taps on the top stage. */}
+        <OptionChart
+          option={{
+            series: [{ type: 'funnel', top: 10, height: 60, label: { show: false }, data: [{ name: 'Visits', value: 100 }, { name: 'Orders', value: 50 }] }],
+          }}
+          height={200}
+          data-testid="gal-opt-funnel"
+          onSelectIndex={(i: number) => optFunnelSel.set(i === 0 ? 'Visits' : 'Orders')}
+        />
+        <Text data-testid="gal-opt-funnel-sel">{optFunnelSel()}</Text>
         <CalendarChart
           start="2024-01-01"
           end="2024-02-11"
@@ -990,6 +1100,21 @@ function GalleryPage() {
         <Button onPress={() => tlHandle.dispatch({ type: 'timelineChange', index: 2 })} data-testid="gal-tl-last">
           Last step
         </Button>
+        <OptionChart
+          option={{ series: [{ type: 'gauge', center: ['50%', '60%'], radius: '70%', data: [{ value: 64, name: 'Load' }] }] }}
+          height={220}
+          data-testid="gal-opt-gauge"
+        />
+        {/* Axis decoration and label placement: split areas, minor lines, rotated labels. */}
+        <OptionChart
+          option={{
+            xAxis: { type: 'category', data: ['Q1', 'Q2', 'Q3'], splitArea: { show: true } },
+            yAxis: { minorTick: { show: true }, minorSplitLine: { show: true } },
+            series: [{ type: 'bar', data: [3, 5, 2], label: { show: true, rotate: 90, position: 'insideBottom', align: 'left', verticalAlign: 'middle' } }],
+          }}
+          height={200}
+          data-testid="gal-opt-decor"
+        />
         <PlotChart
           data={SCORE_ROWS}
           marks={[bars((d: ScoreRow) => d.score)]}
@@ -1044,23 +1169,13 @@ function GalleryPage() {
         </Button>
         <Text data-testid="gal-growth-count">{growthCount()}</Text>
         <FlowWebView
-          graph={{
-            nodes: [
-              { id: 'ingest', position: { x: 0, y: 0 }, data: { label: 'Ingest' } },
-              { id: 'transform', position: { x: 220, y: 0 }, data: { label: 'Transform' } },
-              { id: 'serve', position: { x: 110, y: 130 }, data: { label: 'Serve' } },
-            ],
-            edges: [
-              { source: 'ingest', target: 'transform' },
-              { source: 'transform', target: 'serve' },
-            ],
-          }}
+          graph={() => (flowWebSwapped() ? FLOW_WEB_GRAPH_B : FLOW_WEB_GRAPH_A)}
           commands={() => (flowWebFitAgain() ? FLOW_WEB_FIT_TWICE : FLOW_WEB_FIT_ONCE)}
           onEvent={(event) => {
             flowWebEvent.set(event.type)
             flowWebEventCount.set(flowWebEventCount() + 1)
           }}
-          onSelect={(node) => flowWebEvent.set('select:' + node.id)}
+          onSelect={(node) => flowWebSelected.set(node.id)}
           onError={(error) => flowWebEvent.set('error:' + error.message)}
           data-testid="gal-flow-webview"
         />
@@ -1069,6 +1184,26 @@ function GalleryPage() {
         </Button>
         <Text data-testid="gal-flow-webview-event">{flowWebEvent()}</Text>
         <Text data-testid="gal-flow-webview-events">{String(flowWebEventCount())}</Text>
+        <Text data-testid="gal-flow-webview-selected">{flowWebSelected()}</Text>
+        <Button onPress={() => flowWebSwapped.set(true)} data-testid="gal-flow-webview-swap">
+          Swap graph
+        </Button>
+        <FlowWebView
+          graph={FLOW_WEB_BROKEN as unknown as FlowWebViewGraph}
+          onError={(error) => flowWebFailure.set(error.message.length > 0 ? 'error' : 'empty')}
+          data-testid="gal-flow-webview-broken"
+        />
+        <Text data-testid="gal-flow-webview-failure">{flowWebFailure()}</Text>
+        <FlowWebView
+          html={flowWebReloadB() ? FLOW_RELOAD_HOST_B : FLOW_RELOAD_HOST_A}
+          graph={FLOW_WEB_GRAPH_A}
+          onSelect={(node) => flowWebReloadStatus.set(node.id)}
+          data-testid="gal-flow-webview-reload"
+        />
+        <Button onPress={() => flowWebReloadB.set(true)} data-testid="gal-flow-webview-reload-swap">
+          Reload host
+        </Button>
+        <Text data-testid="gal-flow-webview-reload-status">{flowWebReloadStatus()}</Text>
         <PieChart
           data={SLICES}
           value={(d: PieSlice) => d.total}

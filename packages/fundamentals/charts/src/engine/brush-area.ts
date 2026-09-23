@@ -10,9 +10,9 @@
 // geometry's order, after an inverted category axis): that is what the render
 // loops pass `stateFill`, and `brushDataIndex` converts one for a report.
 
-import { layoutSeriesPoints, layoutSeriesPointsAt, layoutSeriesPointsH } from './layout'
+import { layoutSeriesPointsAt, layoutSeriesPointsH } from './layout'
 import type { PlotLayout } from './layout'
-import { barsForIn, categoryIndex, geometrySpec, markerAnchor, resolveX2Domain, resolveY2Domain, resolveYDomain, seriesDomain, seriesOnX2 } from './render'
+import { barsForIn, categoryIndex, categoryPoints, geometrySpec, markerAnchor, resolveX2Domain, resolveY2Domain, resolveYDomain, seriesDomain, seriesOnX2 } from './render'
 import type { ChartSpec, Series } from './render'
 import type { Double, DrawCmd, Pt, Rect } from './types'
 
@@ -136,7 +136,7 @@ export function brushDatumPoints(raw: ChartSpec, l: PlotLayout, k: number): Pt[]
     const onX2 = seriesOnX2(s, spec)
     return layoutSeriesPointsAt(s.values, onX2 ? s.xs ?? [] : xs, plot, dom, onX2 ? resolveX2Domain(spec) : l.xDomainUsed)
   }
-  return layoutSeriesPoints(s.values, plot, dom)
+  return categoryPoints(spec, s.values, plot, dom)
 }
 
 /** Per series, the visual indices of the datums inside ANY area (series without one are listed empty). */

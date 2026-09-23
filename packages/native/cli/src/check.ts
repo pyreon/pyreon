@@ -75,8 +75,18 @@ export function extractPosition(
 ): { line: number; column: number } | undefined {
   // Check the framed form first — a bare `:L:C:` scan could otherwise
   // match digits inside the frame's own path.
-  const frame = message.match(/\[\s*[^\]\n]*?:(\d+):(\d+)\s*\]/)
-  if (frame) return { line: Number(frame[1]), column: Number(frame[2]) }
+  //
+  // Two linear passes instead of one `/\[\s*[^\]\n]*?:(\d+):(\d+)\s*\]/`:
+  // there `\s*` and the lazy class both match spaces, so a `[` followed by
+  // many spaces backtracks polynomially (CodeQL js/polynomial-redos). Each
+  // bracket group's content is taken ONCE by a single class that stops at the next bracket, then tested for
+  // a trailing `:line:col` — the first group that has one wins, as before.
+  // `[` is excluded from the class too: otherwise a run of `[` with no `]`
+  // rescans to the end of the string from every one of them (quadratic).
+  for (const group of message.matchAll(/\[([^[\]\n]*)\]/g)) {
+    const tail = /:(\d+):(\d+)$/.exec(group[1]!.trimEnd())
+    if (tail) return { line: Number(tail[1]), column: Number(tail[2]) }
+  }
   const colon = message.match(/:(\d+):(\d+):/)
   if (colon) return { line: Number(colon[1]), column: Number(colon[2]) }
   return undefined

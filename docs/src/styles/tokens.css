@@ -139,7 +139,12 @@
 
 /* ── 3 · Semantic tokens · LIGHT ─────────────────────────────────────── */
 
+/* The page's declared scheme — native controls, scrollbars and anything that
+   reads `color-scheme` (the charts do) follow the site's theme, not the OS. */
+:root { color-scheme: dark; }
+
 [data-theme="light"] {
+  color-scheme: light;
   --bg:           var(--paper-3);   /* warm cream canvas */
   --bg-elevated:  #FFFFFF;          /* raised cards */
   --bg-well:      var(--paper-1);   /* recessed (code blocks) */
@@ -184,6 +189,7 @@
    data-theme. data-theme always wins over the @media query. */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
+    color-scheme: light;
     --bg:           var(--paper-3);
     --bg-elevated:  #FFFFFF;
     --bg-well:      var(--paper-1);

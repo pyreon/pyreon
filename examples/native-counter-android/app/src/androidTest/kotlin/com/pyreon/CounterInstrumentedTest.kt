@@ -55,6 +55,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.withKeyDown
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
@@ -112,11 +114,54 @@ class CounterInstrumentedTest {
         composeRule.waitUntil(5_000) {
             composeRule.onNodeWithTag("native-flow-start-position").fetchSemanticsNode().config[SemanticsProperties.Text].first().text != positionBeforeKey
         }
+        // F4 focus/action matrix, node row: Escape clears the selection and
+        // Enter re-selects the FOCUSED node, as on the web.
+        keyboardNode.performKeyInput {
+            keyDown(Key.Escape)
+            keyUp(Key.Escape)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-selected-node-count").fetchSemanticsNode().config[SemanticsProperties.Text].first().text == "0"
+        }
+        keyboardNode.performKeyInput {
+            keyDown(Key.Enter)
+            keyUp(Key.Enter)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-selected-node-count").fetchSemanticsNode().config[SemanticsProperties.Text].first().text == "1"
+        }
+        // Canvas row: Ctrl+A selects every node, Delete removes them with
+        // their connected edge, and Ctrl+Z restores the graph, as on the web.
+        fun textOfTag(tag: String) = composeRule.onNodeWithTag(tag).fetchSemanticsNode().config[SemanticsProperties.Text].first().text
+        keyboardNode.performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.A) } }
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-selected-node-count") == "2" }
+        keyboardNode.performKeyInput { pressKey(Key.Delete) }
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-edge-count") == "0" }
+        composeRule.onNodeWithContentDescription("Native Flow device proof").performSemanticsAction(SemanticsActions.RequestFocus)
+        composeRule.onNodeWithContentDescription("Native Flow device proof").performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.Z) } }
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-edge-count") == "1" }
+        composeRule.onNodeWithTag("native-flow-clear-selection").performClick()
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-selected-node-count") == "0" }
+        keyboardNode.performClick()
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-selected-node-count") == "1" }
 
         composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("0")
         val keyboardEdge = composeRule.onNodeWithContentDescription("Native flow edge")
         keyboardEdge.performClick()
         composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("1")
+        composeRule.onNodeWithTag("native-flow-clear-selection").performClick()
+        composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("0")
+        // F4 edge hardware focus: the label takes keyboard focus like the web's
+        // edge path, and Enter selects the FOCUSED edge. Before, the label had
+        // no focus action at all and was reachable by TalkBack only.
+        keyboardEdge.performSemanticsAction(SemanticsActions.RequestFocus)
+        keyboardEdge.performKeyInput {
+            keyDown(Key.Enter)
+            keyUp(Key.Enter)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-selected-edge-count").fetchSemanticsNode().config[SemanticsProperties.Text].first().text == "1"
+        }
         composeRule.onNodeWithTag("native-flow-clear-selection").performClick()
         composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("0")
         composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
@@ -237,6 +282,32 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithTag("native-flow-color-mode").assertTextEquals("light")
         flowCanvas.performScrollTo()
         check(canvasPixels(11, 18, 32) == 0) { "the dark canvas colour outlived colorMode=\"dark\"" }
+        // colorMode="system" follows the DEVICE appearance, switched here through
+        // the per-app night mode (a uiMode configuration change the activity
+        // handles in place, so the app's own state survives the switch).
+        val uiModes = InstrumentationRegistry.getInstrumentation().targetContext
+            .getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+        try {
+            uiModes.setApplicationNightMode(UiModeManager.MODE_NIGHT_NO)
+            composeRule.onNodeWithTag("native-flow-toggle-system").performScrollTo().performClick()
+            composeRule.onNodeWithTag("native-flow-color-mode").assertTextEquals("system")
+            flowCanvas.performScrollTo()
+            check(canvasPixels(11, 18, 32) == 0) { "colorMode=\"system\" painted dark on a light device" }
+            uiModes.setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)
+            composeRule.onNodeWithTag("native-flow-color-mode").assertTextEquals("system")
+            flowCanvas.performScrollTo()
+            check(canvasPixels(11, 18, 32) > 1000) { "colorMode=\"system\" did not follow the device into dark" }
+            uiModes.setApplicationNightMode(UiModeManager.MODE_NIGHT_NO)
+            flowCanvas.performScrollTo()
+            check(canvasPixels(11, 18, 32) == 0) { "colorMode=\"system\" stayed dark after the device went light" }
+            composeRule.onNodeWithTag("native-flow-toggle-system").performScrollTo().performClick()
+            composeRule.onNodeWithTag("native-flow-color-mode").assertTextEquals("light")
+            // The toggle sits at the bottom of the page: bring the canvas back
+            // before the drag checks below, or their touches land off-screen.
+            flowCanvas.performScrollTo()
+        } finally {
+            uiModes.setApplicationNightMode(UiModeManager.MODE_NIGHT_AUTO)
+        }
 
         composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
         val startNode = composeRule.onNodeWithContentDescription("Native Flow Start")

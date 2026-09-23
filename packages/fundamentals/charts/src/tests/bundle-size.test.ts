@@ -38,7 +38,7 @@ import { describe, expect, it } from 'vitest'
  * normal package growth.
  */
 describe('charts — bundle size regression (echarts subpath externalization)', () => {
-  it('lib/ total stays under 3.5 MB (~2.8 MB with the full family surface; the pre-fix duplication was 9.2 MB)', () => {
+  it('lib/ total stays under 4.5 MB (~3.7 MB with the full family and option surface; the pre-fix duplication was 9.2 MB)', () => {
     const here = dirname(fileURLToPath(import.meta.url))
     const libDir = join(here, '..', '..', 'lib')
 
@@ -72,10 +72,28 @@ describe('charts — bundle size regression (echarts subpath externalization)', 
       }
     }
 
-    // 2.5 MB: the plot subpath ships eleven families with source maps
-    // (~1.6 MB total, ~370 KB of .js); the 9.2 MB duplication bug this
-    // guards against is still ~4x over the line.
-    const CAP = 3.5 * 1024 * 1024
+    // Measured 2026-09 at ~3.7 MB, of which ~2.3 MB is source maps and ~1.05 MB
+    // .js: the option facade grew ECharts' pie, gauge and axis layouts. The
+    // 9.2 MB duplication bug this guards against is still ~2x over the line,
+    // and the engine-once check below catches duplication directly.
+    const CAP = 4.5 * 1024 * 1024
     expect(totalBytes).toBeLessThan(CAP)
+
+    // Duplication, asserted directly: the engine is emitted into ONE chunk, not
+    // copied into each entry that uses it (plot, option, webview).
+    const jsFiles: string[] = []
+    const walk: string[] = [libDir]
+    while (walk.length > 0) {
+      const dir = walk.pop() as string
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory() && entry.name !== 'analysis') walk.push(full)
+        else if (entry.name.endsWith('.js')) jsFiles.push(full)
+      }
+    }
+    for (const fn of ['function layoutChart', 'function renderPie', 'function arcPolygon']) {
+      const holders = jsFiles.filter((f) => readFileSync(f, 'utf8').includes(fn))
+      expect(holders, `${fn} is defined in ${holders.length} files`).toHaveLength(1)
+    }
   })
 })

@@ -5,6 +5,9 @@
 // no subprocess fork, no `transform(...)` run (that is the gate's integration
 // job) — see .claude/rules/anti-patterns.md "Subprocess testing as a default".
 
+import { readdirSync, readFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   classifyEntry,
@@ -401,11 +404,21 @@ describe('the real REGISTRY', () => {
   })
 
   it('every webview-host rationale states the evidence RUNG — including what is NOT proven', () => {
-    // The rationale is the human-readable truth a reader trusts. A hosted
-    // package is real-Chromium proven and NOT device-proven; a rationale that
-    // omits the second half overstates the crossing.
+    // The rationale is the human-readable truth a reader trusts, so it must
+    // name its rung: either "NOT device-proven", or a device-proven claim that
+    // names the example app carrying the proof. A claim is only accepted when
+    // that example's source really uses the host component, so the rung cannot
+    // be raised in prose alone.
+    const DEVICE_CLAIM = /device-proven on iOS Simulator and Android Emulator by (examples\/native-[a-z-]+)/
     for (const e of REGISTRY.filter((x) => x.mechanism === 'webview-host')) {
-      expect(e.rationale, e.name).toContain('NOT device-proven')
+      if (e.rationale.includes('NOT device-proven')) continue
+      const claim = DEVICE_CLAIM.exec(e.rationale)
+      expect(claim, `${e.name}: state "NOT device-proven" or name the example that proves it`).not.toBeNull()
+      // Resolved with node:path: Vite rewrites `new URL(`...${x}`, import.meta.url)`
+      // with a dynamic segment as an asset import.
+      const dir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../..', claim![1]!, 'src')
+      const sources = readdirSync(dir).filter((f) => f.endsWith('.tsx')).map((f) => readFileSync(join(dir, f), 'utf8')).join('\n')
+      expect(sources, `${e.name}: ${claim![1]} never renders <${e.webviewHost!.componentExport}>`).toContain(`<${e.webviewHost!.componentExport}`)
     }
   })
 })

@@ -34,12 +34,16 @@ const at = (c: HTMLCanvasElement, type: string, x: number, y: number): void => {
   c.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: r.left + x, clientY: r.top + y, pointerId: 3 }))
 }
 
-/** A point inside the plot over column `i` of 4, low enough to sit on the bars. */
+/**
+ * A point inside the plot over column `i` of 4, low enough to sit on the bars.
+ * ECharts' default grid places the plot: 15% / 10% of the width at the sides,
+ * 65 above and 80 below.
+ */
 const column = (c: HTMLCanvasElement, i: number): [number, number] => {
-  const w = c.getBoundingClientRect().width
-  const plotLeft = 40
-  const x = plotLeft + ((w - plotLeft - 10) / 4) * (i + 0.5)
-  return [x, 200]
+  const r = c.getBoundingClientRect()
+  const left = r.width * 0.15
+  const x = left + ((r.width - left - r.width * 0.1) / 4) * (i + 0.5)
+  return [x, r.height - 80 - 8]
 }
 
 const box = (container: HTMLElement): HTMLElement => query(container, '[data-pyreon-chart-tooltip]')
@@ -58,11 +62,12 @@ describe('<OptionChart> tooltip component (real browser)', () => {
     const { container } = mount(option({ trigger: 'axis' }))
     await flush()
     const c = container.querySelector('canvas')!
-    at(c, 'pointermove', column(c, 1)[0], 40) // high in the plot: above the bars, still the column
+    at(c, 'pointermove', column(c, 1)[0], 72) // high in the plot: above the bars, still the column
     await flush()
     const b = box(container)
     expect(b.style.display).toBe('block')
-    expect(b.textContent).toBe('Tue\nSales: 8\nCost: 3')
+    // ECharts' default content: the category, then a row (swatch, series, value) per series.
+    expect(b.innerText.split('\n').map((l) => l.trim()).filter((l) => l !== '')).toEqual(['Tue', 'Sales', '8', 'Cost', '3'])
   })
 
   it('a template formatter fills {b} {a0} {c0} {a1} {c1}, and <br/> breaks the line', async () => {
@@ -105,9 +110,9 @@ describe('<OptionChart> tooltip component (real browser)', () => {
     const { container } = mount(option({ trigger: 'axis', valueFormatter: (v: number) => `${v} kg` }))
     await flush()
     const c = container.querySelector('canvas')!
-    at(c, 'pointermove', column(c, 3)[0], 40)
+    at(c, 'pointermove', column(c, 3)[0], 72)
     await flush()
-    expect(box(container).textContent).toBe('Thu\nSales: 2 kg\nCost: 1 kg')
+    expect(box(container).innerText.split('\n').map((l) => l.trim()).filter((l) => l !== '')).toEqual(['Thu', 'Sales', '2 kg', 'Cost', '1 kg'])
   })
 
   it('a fixed position puts the box there, not at the pointer', async () => {
@@ -175,11 +180,11 @@ describe('<OptionChart> tooltip component (real browser)', () => {
       await flush()
       const c = container.querySelector('canvas')!
       const [x] = column(c, 1)
-      at(c, 'pointermove', x, 40)
+      at(c, 'pointermove', x, 72)
       await flush()
       await flush()
       // Above the bar, inside the band: only the shadow can paint here.
-      return pixel(c, x, 30)
+      return pixel(c, x, 70)
     }
     const control = await hovered('none')
     const shaded = await hovered('shadow')

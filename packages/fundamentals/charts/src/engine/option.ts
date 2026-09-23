@@ -28,6 +28,7 @@ import { renderToolbox } from './toolbox'
 import { toolboxTools } from './toolbox-config'
 import type { ToolboxTool } from './toolbox-config'
 import { renderNavigator } from './navigator'
+import { renderSliderZoom, sliderRect } from './slider-zoom'
 import type { NavigatorLayout } from './navigator'
 import type { ZoomWindow } from './zoom'
 import { TIMELINE_HEIGHT, composeSvg, resolveTimeline, splitGrids, timelineCommands, timelineSteps } from './option-composite'
@@ -39,12 +40,17 @@ import { resolveTheme } from './theme-registry'
 import type { ThemeDefinition } from './theme-registry'
 import { dateFormatter, numberFormatter } from './locale'
 import type { RichStyle } from './labels'
-import type { Annotation, ChartSpec, PointMarker, Series, SeriesExtra } from './render'
-import { smooth, step } from './curve'
+import type { Annotation, ChartSpec, PointMarker, Series, SeriesExtra, BarLength } from './render'
+import { step, stepMiddle, stepStart } from './curve'
 import { plain } from './format'
 import type { Formatter } from './format'
-import { renderLegend } from './legend'
 import type { LegendEntry } from './legend'
+import { placeOptionLegend, readLegendLayout, readOptionLegend } from './option-legend'
+import { optionTitleCommands, readOptionTitle } from './option-title'
+import { optionGridInsets } from './option-grid'
+import { echartsNice, formatTick } from './scale'
+import type { OptionTitle, TitleLink } from './option-title'
+import type { LegendPager, LegendSelectedMode, OptionLegendLayout } from './option-legend'
 import { measureApprox, renderSvg } from './svg'
 import { compileFamily, familyToSvg } from './option-family'
 import type { CompiledFamily } from './option-family'
@@ -84,13 +90,27 @@ export interface CompiledOption {
   custom: CustomSeriesPlan[]
   /** Background colour from the theme, painted first by `optionToSvg`; undefined = transparent. */
   background: string | undefined
-  /** Title text + sub-text, when the option carries them. */
-  title: { text: string; subtext: string | undefined } | null
+  /** The first title — its text names the chart for assistive tech. */
+  title: OptionTitle | null
+  /** Every title component the option draws (ECharts takes an array). */
+  titles: OptionTitle[]
   /** Legend entries, or null when the option hides the legend. */
   legend: LegendEntry[] | null
+  /** ECharts' `legend.selectedMode` (a click toggles, keeps one on, or does nothing) and the names `legend.selected` starts off. */
+  legendMode?: LegendSelectedMode | undefined
+  legendHidden?: string[] | undefined
+  /** Where and how the legend draws (ECharts' `orient`, `left`/`right`/`top`/`bottom`, `itemGap`, `textStyle`, `formatter`). */
+  legendLayout?: OptionLegendLayout | undefined
+  /** Each legend entry's icon and, for a line, its stroke width, by name. */
+  legendIcons?: Record<string, string> | undefined
+  legendLineWidths?: Record<string, number> | undefined
   tooltip: boolean
   /** ECharts' whole `tooltip` component, read (null when the option declares none). */
   tooltipSpec: TooltipSpec | null
+  /** Spec series indices that ignore the pointer (ECharts' `silent: true`). */
+  silent: number[]
+  /** The option's series index for each spec series (unsupported series are skipped, so the two can differ). */
+  seriesSource: number[]
   /** The animation the option asks for (ECharts' `animation*` keys). */
   animation: ChartAnimation
   warnings: OptionWarning[]
@@ -129,12 +149,20 @@ export const KNOWN_TOP: ReadonlySet<string> = new Set([
 ])
 export const KNOWN_SERIES: ReadonlySet<string> = new Set([
   ...ANIMATION_KEYS,
-  'type', 'name', 'data', 'stack', 'smooth', 'step', 'areaStyle', 'itemStyle',
+  // Consumed outside this compiler: `id` by the setOption merge, the dataset
+  // pair by the dataset pre-pass, `cursor` / `tooltip` / `universalTransition`
+  // by the host (see OptionChart).
+  'id', 'seriesLayoutBy', 'datasetId', 'colorBy', 'cursor', 'tooltip', 'universalTransition',
+  'type', 'name', 'data', 'stack', 'smooth', 'smoothMonotone', 'connectNulls', 'step', 'areaStyle', 'itemStyle',
   'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'xAxisIndex', 'markLine', 'markPoint', 'markArea',
-  'color', 'showSymbol', 'symbol', 'emphasis', 'silent',
+  'color', 'showSymbol', 'showAllSymbol', 'symbol', 'emphasis', 'silent',
   'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex', 'tooltipExtras',
   'coordinateSystem', 'polyline', 'effect', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'sampling',
-  'select', 'blur', 'selectedMode',
+  'select', 'blur', 'selectedMode', 'selectedMap',
+  // Paint order (the draw order below).
+  'z', 'zlevel',
+  // Bar sizing (the engine's ECharts column solver).
+  'barWidth', 'barMaxWidth', 'barMinWidth', 'barGap', 'barCategoryGap',
 ])
 
 /**
@@ -350,18 +378,24 @@ export const DEFAULT_DECALS: readonly ChartPattern[] = [
  * `emptyCircle`, which this engine states as "no symbols"). `roundRect` is a
  * rect, `emptyCircle` a circle; `pin`, `arrow`, `none` and paths warn by name.
  */
-function seriesSymbol(s: Record<string, unknown>, kind: 'line' | 'points', warn: (code: OptionWarning['code'], path: string, message: string) => void, path: string): { symbol?: Series['symbol'] } {
-  if (kind === 'line' && s['showSymbol'] !== true) return {}
-  const raw = typeof s['symbol'] === 'string' ? (s['symbol'] as string) : kind === 'line' ? 'circle' : ''
-  if (raw === '') return {}
+function seriesSymbol(s: Record<string, unknown>, kind: 'line' | 'points', warn: (code: OptionWarning['code'], path: string, message: string) => void, path: string): { symbol?: Series['symbol']; symbolHollow?: boolean; symbolShow?: string } {
+  // ECharts 6: a line shows an emptyCircle at its data unless `showSymbol` is false ('none' draws none).
+  if (kind === 'line' && s['showSymbol'] === false) return {}
+  const raw = typeof s['symbol'] === 'string' ? (s['symbol'] as string) : kind === 'line' ? 'emptyCircle' : ''
+  if (raw === '' || raw === 'none') return {}
+  const hollow = raw.startsWith('empty')
+  const base = hollow ? raw.slice(5, 6).toLowerCase() + raw.slice(6) : raw
   const symbol: Series['symbol'] | undefined =
-    raw === 'circle' || raw === 'emptyCircle' ? 'circle' : raw === 'rect' || raw === 'roundRect' ? 'rect' : raw === 'diamond' ? 'diamond' : raw === 'triangle' ? 'triangle' : undefined
+    base === 'circle' ? 'circle' : base === 'rect' || base === 'roundRect' ? 'rect' : base === 'diamond' ? 'diamond' : base === 'triangle' ? 'triangle' : undefined
+  const all = s['showAllSymbol']
+  const show = kind === 'line' ? { symbolShow: all === true ? 'all' : all === false ? 'labels' : 'auto' } : {}
   if (symbol === undefined) {
     // ledger: presentation.symbols
-    warn('mark-shape-unsupported', `${path}.symbol`, `symbol "${raw}" is not supported (circle, emptyCircle, rect, roundRect, diamond, triangle are); drawn as a circle.`)
-    return kind === 'line' ? { symbol: 'circle' } : {}
+    warn('mark-shape-unsupported', `${path}.symbol`, `symbol "${raw}" is not supported (circle, rect, roundRect, diamond, triangle and their empty forms are); drawn as a circle.`)
+    return kind === 'line' ? { symbol: 'circle', ...show } : {}
   }
-  return kind === 'points' && symbol === 'circle' ? {} : { symbol }
+  if (kind === 'points' && symbol === 'circle' && !hollow) return {}
+  return { symbol, ...(hollow ? { symbolHollow: true } : {}), ...show }
 }
 
 /**
@@ -461,6 +495,18 @@ export function labelFields(
   if (typeof label['color'] === 'string') out.labelColor = label['color'] as string
   const size = num(label['fontSize'])
   if (size !== null) out.labelSize = size
+  if (typeof label['position'] === 'string') out.labelPosition = label['position'] as string
+  const distance = num(label['distance'])
+  if (distance !== null) out.labelDistance = distance
+  const rotate = num(label['rotate'])
+  if (rotate !== null && rotate !== 0) out.labelRotate = rotate
+  const offset = label['offset']
+  if (Array.isArray(offset) && offset.length === 2 && offset.every((v) => num(v) !== null)) out.labelOffset = offset.map((v) => num(v) as number)
+  if (label['align'] === 'left' || label['align'] === 'center' || label['align'] === 'right') out.labelAlign = label['align'] as string
+  if (label['verticalAlign'] === 'top' || label['verticalAlign'] === 'middle' || label['verticalAlign'] === 'bottom') out.labelVerticalAlign = label['verticalAlign'] as string
+  if (typeof label['textBorderColor'] === 'string') out.labelBorderColor = label['textBorderColor'] as string
+  const borderWidth = num(label['textBorderWidth'])
+  if (borderWidth !== null) out.labelBorderWidth = borderWidth
   const rich = isObj(label['rich']) ? (label['rich'] as Record<string, unknown>) : undefined
   if (rich !== undefined) {
     const styles: RichStyle[] = []
@@ -521,8 +567,40 @@ export function labelFields(
 
 /** The internal renderItem for a `lines` series: a polyline through every [x, y] pair of the flattened datum. */
 
+/**
+ * A category y axis over a value x axis — ECharts' horizontal bar chart. The
+ * engine's horizontal frame keeps its VALUE axis in the `y*` fields (domain,
+ * format, ticks) and draws it along x, so the option compiles with its two
+ * axes swapped and the spec marked `horizontal`. The frame lays out bars only:
+ * another series type keeps the upright compile, and says so.
+ */
+function isHorizontalOption(option: EChartsOption): boolean {
+  const head = (v: unknown): unknown => (Array.isArray(v) ? v[0] : v)
+  const x = head((option as Record<string, unknown>)['xAxis'])
+  const y = head((option as Record<string, unknown>)['yAxis'])
+  if (!isObj(y) || y['type'] !== 'category') return false
+  return isObj(x) && (x['type'] === 'value' || x['type'] === 'log')
+}
+
 /** Compile an ECharts-shaped option onto the engine. Pure. */
 export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {}): CompiledOption {
+  if (!isHorizontalOption(rawOption)) return compileUpright(rawOption, opts)
+  const rawSeries = (rawOption as Record<string, unknown>)['series']
+  const series: unknown[] = Array.isArray(rawSeries) ? rawSeries : rawSeries === undefined ? [] : [rawSeries]
+  const barsOnly = series.length > 0 && series.every((s) => isObj(s) && s['type'] === 'bar')
+  if (!barsOnly) {
+    const upright = compileUpright(rawOption, opts)
+    // ledger: coordinates.axes
+    upright.warnings.push({ code: 'series-option-unsupported', path: 'yAxis.type', message: 'A category y axis lays out bar series only; this chart keeps the category on x.' })
+    return upright
+  }
+  const raw = rawOption as Record<string, unknown>
+  const swapped = { ...raw, xAxis: raw['yAxis'], yAxis: raw['xAxis'] } as EChartsOption
+  const compiled = compileUpright(swapped, opts)
+  return { ...compiled, spec: { ...compiled.spec, horizontal: true, bandsFromBottom: true } }
+}
+
+function compileUpright(rawOption: EChartsOption, opts: CompileOptions = {}): CompiledOption {
   const warnings: OptionWarning[] = []
   const warn = (code: OptionWarning['code'], path: string, message: string): void => {
     warnings.push({ code, path, message })
@@ -582,7 +660,18 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     // ledger: coordinates.axes
     if (!honoured) warn('option-key-unsupported', Array.isArray(yAxisRaw) ? `yAxis[${ai}].position` : 'yAxis.position', 'Both y axes cannot share a side; the axis keeps its default side.')
   }
-  const yDomain = axisDomain(yAxes[0])
+  const ySplit = isObj(yAxes[0]) && typeof yAxes[0]['splitNumber'] === 'number' ? (yAxes[0]['splitNumber'] as number) : 5.0
+  // Both bounds fixed: that domain, ticked at ECharts' interval for its span.
+  const yFixed = axisDomain(yAxes[0])
+  const yDomain = yFixed === undefined ? undefined : { ...yFixed, step: echartsNice((yFixed.max - yFixed.min) / ySplit, true) }
+  // One bound, or `dataMin` / `dataMax`: the engine derives the other side.
+  const yBound = (key: 'min' | 'max'): Record<string, unknown> => {
+    const v = isObj(yAxes[0]) ? yAxes[0][key] : undefined
+    if (yFixed !== undefined || v === undefined) return {}
+    if (v === 'dataMin' || v === 'dataMax') return key === 'min' ? { yMinData: true } : { yMaxData: true }
+    const n = num(v)
+    return n === null ? {} : key === 'min' ? { yMin: n } : { yMax: n }
+  }
   const y2Domain = axisDomain(yAxes[1])
   const yFormat = axisFormatter(yAxes[0], 'yAxis[0]', warn)
   const y2Format = axisFormatter(yAxes[1], 'yAxis[1]', warn)
@@ -612,6 +701,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   // `aria.decal.show`: every series without its own decal gets a distinct default texture.
   const ariaDecals = isObj(option['aria']) && isObj(option['aria']['decal']) && option['aria']['decal']['show'] === true
   const series: Series[] = []
+  const silent: number[] = []
+  const seriesSource: number[] = []
   const customPlans: CustomSeriesPlan[] = []
   const linesList: LinesSeries[] = []
   const annotations: Annotation[] = []
@@ -706,7 +797,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     }
     let kind: Series['kind']
     if (type === 'bar') kind = s['stack'] !== undefined ? 'stacked' : barCount > 1 ? 'grouped' : 'bars'
-    else if (type === 'line') kind = isObj(s['areaStyle']) || s['areaStyle'] === true ? (s['stack'] !== undefined ? 'stackedArea' : 'area') : 'line'
+    // A line with an areaStyle stays a LINE (its stroke and symbols over) that also fills; a stacked one stacks.
+    else if (type === 'line') kind = (isObj(s['areaStyle']) || s['areaStyle'] === true) && s['stack'] !== undefined ? 'stackedArea' : 'line'
     else if (type === 'scatter' || type === 'effectScatter') kind = 'points'
     else if (type === 'pictorialBar') kind = s['stack'] !== undefined ? 'stacked' : barCount > 1 ? 'grouped' : 'bars'
     else {
@@ -747,6 +839,16 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
         values.push(v ?? 0.0)
       }
     }
+    // A datum's own `itemStyle.color`, else — under `colorBy: 'data'` — the
+    // palette colour for its index, ECharts' per-datum colouring. Index-
+    // aligned with `values`: every branch above pushes one value per datum.
+    const byData = s['colorBy'] === 'data'
+    const itemColors: string[] = data.map((d, j) => {
+      const own = isObj(d) && isObj(d['itemStyle']) ? (d['itemStyle'] as Record<string, unknown>)['color'] : undefined
+      if (typeof own === 'string') return own
+      const pal = palette.length > 0 ? palette : defaultPalette
+      return byData ? pal[j % pal.length]! : ''
+    })
     const onX2 = x2Continuous && num(s['xAxisIndex']) === 1 && xs.length === values.length && xs.length > 0
     if (!onX2 && xContinuous && xs.length === values.length && xs.length > 0 && xValues === undefined) xValues = xs
     // ledger: data.progressive-large
@@ -797,10 +899,18 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       values,
       color,
       width: num(lineStyle['width']) ?? 2.0,
-      radius: num(s['symbolSize']) !== null ? (num(s['symbolSize']) as number) / 2.0 : 3.0,
+      // ECharts' default symbolSize: 10 for scatter, 6 for a line's symbols.
+      radius: num(s['symbolSize']) !== null ? (num(s['symbolSize']) as number) / 2.0 : type === 'scatter' || type === 'effectScatter' ? 5.0 : 3.0,
       label: typeof s['name'] === 'string' ? (s['name'] as string) : `Series ${i + 1}`,
-      curve: s['smooth'] === true || (num(s['smooth']) ?? 0) > 0 ? smooth : s['step'] !== undefined && s['step'] !== false ? step : undefined,
-      showValues: label['show'] === true,
+      // ECharts' `step`: true / 'start' rises first, 'middle' turns halfway, 'end' holds first.
+      curve: s['step'] === 'end' ? step : s['step'] === 'middle' ? stepMiddle : s['step'] !== undefined && s['step'] !== false ? stepStart : undefined,
+      // ECharts' own smoothing: `true` is 0.5, a number is the amount.
+      smoothAmount: s['smooth'] === true ? 0.5 : (num(s['smooth']) ?? 0) > 0 ? (num(s['smooth']) as number) : undefined,
+      connectNulls: s['connectNulls'] === true ? true : undefined,
+      ...(type === 'line' && kind === 'line' && (isObj(s['areaStyle']) || s['areaStyle'] === true) ? areaFields(isObj(s['areaStyle']) ? s['areaStyle'] : {}) : {}),
+      smoothMonotone: s['smoothMonotone'] === 'x' || s['smoothMonotone'] === 'y' ? (s['smoothMonotone'] as string) : undefined,
+      // A line's labels ride its symbols: with none shown, ECharts draws none.
+      showValues: label['show'] === true && !(type === 'line' && s['showSymbol'] === false),
       radii: undefined,
       axis: !extraAxis && (yAxisIndex === 1) !== swapY ? 'right' : undefined,
       ...(extraAxis ? { axisExtra: yAxisIndex - 2 } : {}),
@@ -811,9 +921,18 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       ...(kind === 'line' || kind === 'points' ? seriesSymbol(s, kind, warn, path) : {}),
       ...(gradient !== undefined && gradient.stops.length > 0 ? { gradient } : {}),
       ...(Array.isArray(s['tooltipExtras']) ? { extras: s['tooltipExtras'] as SeriesExtra[] } : {}),
+      ...(itemColors.some((c) => c !== '') ? { itemColors } : {}),
+      // ECharts' bar sizing: the engine solves the columns at layout (`barColumns`).
+      ...(kind === 'bars' || kind === 'stacked' || kind === 'grouped' ? barSizing(s) : {}),
       ...stateFields(s, path, warn),
       ...labelFields(label, typeof s['name'] === 'string' ? (s['name'] as string) : `Series ${i + 1}`, categories, values, `${path}.label`, warn, localeNumber ?? plain),
+      // ECharts places a bar's label INSIDE it unless told otherwise.
+      // ECharts places a bar's and a scatter point's label INSIDE it, a line's above its symbol.
+      ...(typeof label['position'] !== 'string' && (type === 'bar' || type === 'scatter' || type === 'effectScatter') ? { labelPosition: 'inside' } : {}),
+      ...(typeof label['position'] !== 'string' && type === 'line' ? { labelPosition: 'top' } : {}),
     }
+    if (s['silent'] === true) silent.push(series.length)
+    seriesSource.push(i)
     series.push(entry)
     const pinMode = selectedModeOf(s, path, warn)
     if (pinMode !== undefined && selectedMode === undefined) selectedMode = pinMode
@@ -871,7 +990,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
         const cy = num((e['coord'] as unknown[])[1])
         return cx !== null && cy !== null ? { x: cx, y: cy } : null
       }
-      const ex = num(e['xAxis'])
+      const ex = xOfCoord(e['xAxis'])
       const ey = num(e['yAxis'])
       return ex !== null && ey !== null ? { x: ex, y: ey } : null
     }
@@ -905,8 +1024,9 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
         annotations.push({ y: stat, label: name ?? String(m['type']), color: lineColor })
       } else if (num(m['yAxis']) !== null) {
         annotations.push({ y: num(m['yAxis']) as number, label: name, color: lineColor })
-      } else if (num(m['xAxis']) !== null) {
-        annotations.push({ x: num(m['xAxis']) as number, label: name, color: lineColor })
+      } else if (xOfCoord(m['xAxis']) !== null) {
+        // A category NAME is ECharts' usual form here; an index works too.
+        annotations.push({ x: xOfCoord(m['xAxis']) as number, label: name, color: lineColor })
       } else {
         // ledger: coordinates.mark-line
         warn('mark-shape-unsupported', `${path}.markLine.data[${k}]`, 'Only average/max/min/median, yAxis, xAxis, and point-to-point markLines are mapped.')
@@ -925,8 +1045,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       const name = typeof pair[0]['name'] === 'string' ? (pair[0]['name'] as string) : undefined
       const yFrom = num(pair[0]['yAxis'])
       const yTo = num(pair[1]['yAxis'])
-      const xFrom = num(pair[0]['xAxis'])
-      const xTo = num(pair[1]['xAxis'])
+      const xFrom = xOfCoord(pair[0]['xAxis'])
+      const xTo = xOfCoord(pair[1]['xAxis'])
       if (yFrom !== null && yTo !== null) annotations.push({ yFrom, yTo, label: name, color: maColor })
       else if (xFrom !== null && xTo !== null) annotations.push({ xFrom, xTo, label: name, color: maColor })
       // ledger: coordinates.mark-area
@@ -964,16 +1084,28 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   }
 
   // ---- title / legend / tooltip ----------------------------------------
-  const titleRaw = first(option['title'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
-  const title =
-    isObj(titleRaw) && typeof titleRaw['text'] === 'string'
-      ? { text: titleRaw['text'] as string, subtext: typeof titleRaw['subtext'] === 'string' ? (titleRaw['subtext'] as string) : undefined }
-      : null
-  const legendRaw = option['legend']
-  const legend =
-    legendRaw === undefined || (isObj(legendRaw) && legendRaw['show'] === false)
-      ? null
-      : series.map((s) => ({ label: s.label, color: s.color }))
+  const titles: OptionTitle[] = []
+  for (const raw of Array.isArray(option['title']) ? (option['title'] as unknown[]) : [option['title']]) {
+    const read = readOptionTitle(raw)
+    if (read !== null) titles.push(read)
+  }
+  const title = titles[0] ?? null
+  // ECharts' legend icon per series: a line draws its line and symbol, a scatter its symbol, the rest a rounded rect.
+  const seriesIcons: Record<string, string> = {}
+  const lineWidths: Record<string, number> = {}
+  for (const rs of rawSeries) {
+    if (!isObj(rs) || typeof rs['name'] !== 'string' || seriesIcons[rs['name'] as string] !== undefined) continue
+    const name = rs['name'] as string
+    const sym = typeof rs['symbol'] === 'string' ? (rs['symbol'] as string) : undefined
+    if (typeof rs['legendIcon'] === 'string') seriesIcons[name] = rs['legendIcon'] as string
+    else if (rs['type'] === 'line') seriesIcons[name] = 'line:' + (sym ?? 'emptyCircle')
+    else if (rs['type'] === 'scatter' || rs['type'] === 'effectScatter') seriesIcons[name] = sym ?? 'circle'
+    else seriesIcons[name] = 'roundRect'
+    const ls = isObj(rs['lineStyle']) ? rs['lineStyle'] : {}
+    lineWidths[name] = typeof ls['width'] === 'number' ? (ls['width'] as number) : 2
+  }
+  const optionLegend = readOptionLegend(option['legend'], series, seriesIcons)
+  const legend = optionLegend === null ? null : optionLegend.entries
   const tooltipRaw = option['tooltip']
   const tooltipSpec = readTooltipOption(tooltipRaw, warn)
   const tooltip = tooltipSpec !== null && tooltipSpec.show
@@ -1027,15 +1159,37 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     height: opts.height ?? 320.0,
     series,
     categories,
-    theme: themed.chartTheme,
+    // Bars lay out as ECharts' columns; the gaps come from the LAST bar series that sets them, as in ECharts.
+    barLayout: true,
+    ...lastBarGaps(rawSeries),
+    // A single `grid`'s position fixes the plot rect, as in ECharts.
+    ...optionGridInsets(option['grid'], opts.width ?? 640.0, opts.height ?? 320.0),
+    // ECharts' category-axis `boundaryGap: false`: lines run edge to edge, labels on the points.
+    ...(!xContinuous && isObj(xAxis) && xAxis['boundaryGap'] === false ? { boundaryGap: false } : {}),
+    // ECharts' text is 12px unless the theme sets its own; the engine's plain default is a step smaller.
+    theme: { ...themed.chartTheme, fontSize: themed.fontSize ?? 12.0 },
     showXAxis: shown(xAxis),
     showYAxis: shown(yAxes[0]),
     showGrid: gridShown,
     yDomain,
     y2Domain,
-    yFormat: yFormat ?? localeNumber,
-    y2Format: y2Format ?? localeNumber,
-    xFormat: xFormat ?? (xTime ? localeDate : undefined),
+    yFormat: yFormat ?? localeNumber ?? axisNumber,
+    y2Format: y2Format ?? localeNumber ?? axisNumber,
+    xFormat: xFormat ?? (xTime ? localeDate : xContinuous ? localeNumber ?? axisNumber : undefined),
+    // ECharts' own label layout: upright unless axisLabel.rotate (counter-clockwise degrees) turns it, thinned by its category interval.
+    xLabels: 'echarts',
+    ...xLabelLayout(xAxis),
+    ...yLabelLayout(yAxes[0]),
+    // ECharts shows an axis's line and ticks only when the OTHER axis is a
+    // value (or log) axis, and a category axis on bands never shows ticks.
+    ...axisStrokeFields(xAxis, 'x', true, xContinuous ? true : isObj(xAxis) && xAxis['boundaryGap'] === false, !xContinuous),
+    ...axisStrokeFields(yAxes[0], 'y', xType === 'value' || xType === 'log', xType === 'value' || xType === 'log', false),
+    ...(yAxes.length > 1 ? { y2AxisLine: axisLineShown(yAxes[1], xType === 'value' || xType === 'log') } : {}),
+    // ECharts' `axisLine.onZero` (on by default): each line sits on the other axis's zero.
+    ...(axisOnZero(xAxis) ? { xAxisOnZero: true } : {}),
+    ...(xType === 'value' && axisOnZero(yAxes[0]) ? { yAxisOnZero: true } : {}),
+    // The second y axis draws its own split lines, as ECharts does.
+    ...(yAxes.length > 1 && !(isObj(yAxes[1]!['splitLine']) && yAxes[1]!['splitLine']['show'] === false) ? { y2Grid: true } : {}),
     xValues,
     xTime: xTime ? true : undefined,
     annotations: annotations.length > 0 ? annotations : undefined,
@@ -1046,6 +1200,14 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     y2Title: axisName(yAxes[1]),
     ...(isObj(yAxes[0]) && yAxes[0]['type'] === 'log' ? { yScale: 'log' as const } : {}),
     ...(isObj(yAxes[0]) && yAxes[0]['inverse'] === true ? { yInverse: true } : {}),
+    // ECharts' value axis keeps zero in view unless it is told to fit the data (`scale: true`).
+    ...(yAxes.every((a) => !isObj(a) || ((a['type'] === undefined || a['type'] === 'value') && a['scale'] !== true)) ? { yZero: true } : {}),
+    // ECharts' value-axis ticks: `nice(span / splitNumber)`, 5 by default.
+    ySplit,
+    ...yBound('min'),
+    ...yBound('max'),
+    // The value X axis ticks the same way (a scatter's x, a value-axis line).
+    ...(xContinuous && !xTime ? xValueAxis(xAxis) : {}),
     ...(isObj(xAxis) && xAxis['inverse'] === true ? { xInverse: true } : {}),
     ...(isObj(xAxis) && xAxis['position'] === 'top' ? { xTop: true } : {}),
     ...(num(isObj(xAxis) ? xAxis['offset'] : undefined) !== null ? { xOffset: num((xAxis as Record<string, unknown>)['offset']) as number } : {}),
@@ -1061,12 +1223,24 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
             domain: axisDomain(a),
             title: axisName(a),
             offset: num(a['offset']) ?? undefined,
+            line: axisLineShown(a, xType === 'value' || xType === 'log'),
           })),
         }
       : {}),
     ...(yAxes.length === 1 && yAxes[0]!['position'] === 'right' ? { yRight: true } : {}),
   }
   if (customY !== undefined && spec.yDomain === undefined) spec.yDomain = customY
+  // ECharts' `zlevel` then `z`: a higher one paints over a lower one; ties keep series order.
+  const layerOf = (i: number): [number, number] => {
+    const raw = isObj(rawSeries[seriesSource[i]!]) ? (rawSeries[seriesSource[i]!] as Record<string, unknown>) : {}
+    return [num(raw['zlevel']) ?? 0, num(raw['z']) ?? 2]
+  }
+  const order = spec.series.map((_, i) => i).sort((a, b) => {
+    const [la, za] = layerOf(a)
+    const [lb, zb] = layerOf(b)
+    return la !== lb ? la - lb : za !== zb ? za - zb : a - b
+  })
+  if (order.some((k, i) => k !== i)) spec.drawOrder = order
   if (customX !== undefined && (spec.xValues === undefined || spec.xValues.length === 0)) spec.xValues = customX
   const brush = option['brush'] === undefined ? undefined : readBrush(option as Record<string, unknown>, warn)
   const toolbox = option['toolbox'] === undefined ? undefined : readToolbox(option as Record<string, unknown>, warn, brush)
@@ -1074,7 +1248,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   // The toolbox's box zoom needs a window even when the option has no dataZoom component.
   if (zoom === undefined && toolbox?.dataZoom === true) zoom = { inside: false, slider: false, window: { start: 0.0, end: 1.0 }, keepY: false, lock: false, minSpan: 0.0, maxSpan: 1.0, wheel: false, move: false }
   const animation = resolveAnimation(option as Record<string, unknown>, warn)
-  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, tooltipSpec, animation, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }), ...(brush === undefined ? {} : { brush }) }
+  return { spec, custom: customPlans, background: themed.background, title, titles, legend, ...(optionLegend === null ? {} : { legendMode: optionLegend.selectedMode, legendHidden: optionLegend.hidden, legendLayout: optionLegend.layout, legendIcons: optionLegend.icons, legendLineWidths: lineWidths }), tooltip, tooltipSpec, silent, seriesSource, animation, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }), ...(brush === undefined ? {} : { brush }) }
 }
 
 /** The selection a compiled option's brush makes over `spec`, restricted to `brush.seriesIndex`. */
@@ -1088,7 +1262,7 @@ function applyOptionBrush(compiled: CompiledOption, spec: ChartSpec, measure: Me
 
 const defaultPalette = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
-const AXIS_KEYS = new Set(['type', 'data', 'name', 'show', 'min', 'max', 'splitLine', 'axisLabel', 'boundaryGap', 'gridIndex', 'inverse', 'position', 'offset'])
+const AXIS_KEYS = new Set(['type', 'data', 'name', 'show', 'min', 'max', 'scale', 'splitNumber', 'splitLine', 'axisLine', 'axisTick', 'axisLabel', 'boundaryGap', 'gridIndex', 'inverse', 'position', 'offset', 'splitArea', 'minorTick', 'minorSplitLine'])
 
 function axisKeys(
   axis: Record<string, unknown>,
@@ -1105,12 +1279,233 @@ function axisKeys(
   }
 }
 
+/**
+ * ECharts' default value-axis label: the number with its integer part grouped
+ * by thousands (`addCommas`) — `1,500`, `-20`, `0.05`.
+ */
+export function axisNumber(v: Double): string {
+  const text = formatTick(v)
+  const neg = text.startsWith('-')
+  const body = neg ? text.slice(1) : text
+  const dot = body.indexOf('.')
+  const int = dot < 0 ? body : body.slice(0, dot)
+  const frac = dot < 0 ? '' : body.slice(dot)
+  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return (neg ? '-' : '') + grouped + frac
+}
+
+/** An ECharts length: a number of pixels, or a `'30%'` percent; undefined otherwise. */
+function barLength(v: unknown): BarLength | undefined {
+  if (typeof v === 'number' && Number.isFinite(v)) return { value: v, percent: false }
+  if (typeof v !== 'string') return undefined
+  const n = Number.parseFloat(v)
+  if (!Number.isFinite(n)) return undefined
+  return { value: n, percent: v.trim().endsWith('%') }
+}
+
+/** A bar series' sizing keys, as the engine's column solver takes them. */
+function barSizing(s: Record<string, unknown>): Partial<Series> {
+  const out: Partial<Series> = {}
+  const w = barLength(s['barWidth'])
+  const max = barLength(s['barMaxWidth'])
+  const min = barLength(s['barMinWidth'])
+  if (w !== undefined) out.barWidth = w
+  if (max !== undefined) out.barMaxWidth = max
+  if (min !== undefined) out.barMinWidth = min
+  if (typeof s['stack'] === 'string') out.barStack = 'stack:' + (s['stack'] as string)
+  return out
+}
+
+/** `barGap` / `barCategoryGap` from the last bar series that sets each (ECharts' rule). */
+function lastBarGaps(rawSeries: unknown[]): { barGap?: BarLength; barCategoryGap?: BarLength } {
+  const out: { barGap?: BarLength; barCategoryGap?: BarLength } = {}
+  for (const s of rawSeries) {
+    if (!isObj(s) || (s['type'] !== 'bar' && s['type'] !== 'pictorialBar')) continue
+    const g = barLength(s['barGap'])
+    const c = barLength(s['barCategoryGap'])
+    if (g !== undefined) out.barGap = g.percent ? g : { value: g.value, percent: true }
+    if (c !== undefined) out.barCategoryGap = c
+  }
+  return out
+}
+
+/** A value X axis' ECharts nicing: split number, zero inclusion and pinned bounds. */
+function xValueAxis(axis: Record<string, unknown> | undefined): Partial<ChartSpec> {
+  const a = axis ?? {}
+  const out: Partial<ChartSpec> = { xSplit: typeof a['splitNumber'] === 'number' ? (a['splitNumber'] as number) : 5.0 }
+  if (a['scale'] !== true) out.xZero = true
+  const bound = (v: unknown, data: 'xMinData' | 'xMaxData', fixed: 'xMin' | 'xMax'): void => {
+    if (v === 'dataMin' || v === 'dataMax') out[data] = true
+    else if (num(v) !== null) out[fixed] = num(v) as number
+  }
+  bound(a['min'], 'xMinData', 'xMin')
+  bound(a['max'], 'xMaxData', 'xMax')
+  return out
+}
+
 function axisDomain(axis: Record<string, unknown> | undefined): Domain | undefined {
   if (axis === undefined) return undefined
   const lo = num(axis['min'])
   const hi = num(axis['max'])
   if (lo === null || hi === null) return undefined
   return { min: lo, max: hi }
+}
+
+/**
+ * `xAxis.axisLabel` for the layout: `rotate` (the draw list turns clockwise,
+ * ECharts counter-clockwise), `interval`, `margin` (ECharts' 8 by default)
+ * and `inside`.
+ */
+function xLabelLayout(axis: Record<string, unknown> | undefined): { xLabelAngle?: Double; xLabelInterval?: Double; xLabelMargin: Double; xLabelInside?: boolean } {
+  const label = isObj(axis) && isObj(axis['axisLabel']) ? axis['axisLabel'] : {}
+  const rotate = num(label['rotate'])
+  const interval = num(label['interval'])
+  return {
+    ...(rotate !== null && rotate !== 0 ? { xLabelAngle: -rotate } : {}),
+    ...(interval !== null && interval >= 0 ? { xLabelInterval: interval } : {}),
+    xLabelMargin: num(label['margin']) ?? 8.0,
+    ...(label['inside'] === true ? { xLabelInside: true } : {}),
+  }
+}
+
+/** An axis's `axisLine.show`, or ECharts' automatic rule (`auto`) when unset. */
+function axisLineShown(axis: Record<string, unknown> | undefined, auto: boolean): boolean {
+  const line = isObj(axis) && isObj(axis['axisLine']) ? axis['axisLine'] : {}
+  return line['show'] === true ? true : line['show'] === false ? false : auto
+}
+
+/** A line's `areaStyle`: ECharts' 0.7 opacity by default, its own colour and origin. */
+function areaFields(a: Record<string, unknown>): Partial<Series> {
+  const origin = a['origin']
+  return {
+    areaFill: true,
+    areaOpacity: num(a['opacity']) ?? 0.7,
+    ...(typeof a['color'] === 'string' ? { areaColor: a['color'] as string } : {}),
+    ...(origin === 'start' || origin === 'end' || origin === 'auto' ? { areaOrigin: origin as string } : num(origin) !== null ? { areaOriginAt: num(origin) as number } : {}),
+  }
+}
+
+/** `axisLine.onZero`: on unless set false. */
+function axisOnZero(axis: Record<string, unknown> | undefined): boolean {
+  const line = isObj(axis) && isObj(axis['axisLine']) ? axis['axisLine'] : {}
+  return line['onZero'] !== false
+}
+
+/** ECharts' `lineStyle.type` as a dash: `dashed` is 4w 2w, `dotted` w w, a number or an array as given. */
+function lineDashOf(type: unknown, width: Double): Double[] | undefined {
+  if (type === 'dashed') return [4.0 * width, 2.0 * width]
+  if (type === 'dotted') return [width, width]
+  const n = num(type)
+  if (n !== null && n > 0) return [n, n]
+  if (Array.isArray(type)) return type.map((v) => num(v) ?? 0.0)
+  return undefined
+}
+
+/**
+ * An axis's `axisLine`, `axisTick` and `splitLine` for the chart spec. `show`
+ * left unset (or `'auto'`) takes ECharts' automatic rule, passed in as
+ * `autoLine` / `autoTick`. A category x axis ticks its band edges unless
+ * `alignWithLabel`; its split lines are off unless shown, a value axis's on.
+ */
+function axisStrokeFields(axis: Record<string, unknown> | undefined, which: 'x' | 'y', autoLine: boolean, autoTick: boolean, category: boolean): Partial<ChartSpec> {
+  const a = isObj(axis) ? axis : {}
+  const line = isObj(a['axisLine']) ? a['axisLine'] : {}
+  const lineStyle = isObj(line['lineStyle']) ? line['lineStyle'] : {}
+  const tick = isObj(a['axisTick']) ? a['axisTick'] : {}
+  const tickStyle = isObj(tick['lineStyle']) ? tick['lineStyle'] : {}
+  const split = isObj(a['splitLine']) ? a['splitLine'] : {}
+  const splitStyle = isObj(split['lineStyle']) ? split['lineStyle'] : {}
+  const lineShow = line['show'] === true ? true : line['show'] === false ? false : autoLine
+  const tickShow = tick['show'] === true ? true : tick['show'] === false ? false : autoTick
+  const lineColor = typeof lineStyle['color'] === 'string' ? (lineStyle['color'] as string) : undefined
+  const lineWidth = num(lineStyle['width']) ?? undefined
+  const tickColor = typeof tickStyle['color'] === 'string' ? (tickStyle['color'] as string) : undefined
+  const tickLength = num(tick['length']) ?? undefined
+  const splitColor = typeof splitStyle['color'] === 'string' ? (splitStyle['color'] as string) : undefined
+  const splitWidth = num(splitStyle['width']) ?? undefined
+  const splitDash = lineDashOf(splitStyle['type'], splitWidth ?? 1.0)
+  const decor = axisDecorFields(a, which, category)
+  if (which === 'x') {
+    const xGrid = category ? split['show'] === true : split['show'] !== false
+    return {
+      xAxisLine: lineShow,
+      ...(lineColor !== undefined ? { xAxisLineColor: lineColor } : {}),
+      ...(lineWidth !== undefined ? { xAxisLineWidth: lineWidth } : {}),
+      ...(tickShow ? { xTicks: true, xTickBands: category && tick['alignWithLabel'] !== true } : {}),
+      ...(tickLength !== undefined ? { xTickLength: tickLength } : {}),
+      ...(tick['inside'] === true ? { xTickInside: true } : {}),
+      ...(tickColor !== undefined ? { xTickColor: tickColor } : {}),
+      ...(xGrid ? { xGrid: true } : {}),
+      ...(splitColor !== undefined ? { xGridColor: splitColor } : {}),
+      ...(splitWidth !== undefined ? { xGridWidth: splitWidth } : {}),
+      ...(splitDash !== undefined ? { xGridDash: splitDash } : {}),
+      ...decor,
+    }
+  }
+  return {
+    yAxisLine: lineShow,
+    ...(lineColor !== undefined ? { yAxisLineColor: lineColor } : {}),
+    ...(lineWidth !== undefined ? { yAxisLineWidth: lineWidth } : {}),
+    ...(tickShow ? { yTicks: true } : {}),
+    ...(tickLength !== undefined ? { yTickLength: tickLength } : {}),
+    ...(tick['inside'] === true ? { yTickInside: true } : {}),
+    ...(tickColor !== undefined ? { yTickColor: tickColor } : {}),
+    ...(splitColor !== undefined ? { gridColor: splitColor } : {}),
+    ...(splitWidth !== undefined ? { gridWidth: splitWidth } : {}),
+    ...(splitDash !== undefined ? { gridDash: splitDash } : {}),
+    ...decor,
+  }
+}
+
+/** ECharts' `splitArea` default: a tint on alternate bands, from the axis start. */
+const SPLIT_AREA_COLORS = ['rgba(234,237,245,0.5)', 'rgba(255,255,255,0)']
+
+/**
+ * An axis's `splitArea`, `minorTick` and `minorSplitLine`. The minor pair is
+ * a VALUE axis's (a category axis has no intervals to divide, as in ECharts);
+ * the minor split lines divide by `minorTick.splitNumber` (5), drawn in
+ * ECharts' `#f4f7fd` unless styled.
+ */
+function axisDecorFields(a: Record<string, unknown>, which: 'x' | 'y', category: boolean): Partial<ChartSpec> {
+  const out: Partial<ChartSpec> = {}
+  const area = isObj(a['splitArea']) ? a['splitArea'] : {}
+  if (area['show'] === true) {
+    const style = isObj(area['areaStyle']) ? area['areaStyle'] : {}
+    const c = style['color']
+    const colors = typeof c === 'string' ? [c] : Array.isArray(c) && c.every((v) => typeof v === 'string') && c.length > 0 ? (c as string[]) : SPLIT_AREA_COLORS
+    if (which === 'x') out.xSplitArea = colors
+    else out.ySplitArea = colors
+  }
+  if (category) return out
+  const minor = isObj(a['minorTick']) ? a['minorTick'] : {}
+  const pieces = num(minor['splitNumber']) ?? 5.0
+  const minorStyle = isObj(minor['lineStyle']) ? minor['lineStyle'] : {}
+  if (minor['show'] === true) {
+    const len = num(minor['length']) ?? 3.0
+    const color = typeof minorStyle['color'] === 'string' ? (minorStyle['color'] as string) : undefined
+    if (which === 'x') Object.assign(out, { xMinorTicks: pieces, xMinorTickLength: len }, color !== undefined ? { xMinorTickColor: color } : {})
+    else Object.assign(out, { yMinorTicks: pieces, yMinorTickLength: len }, color !== undefined ? { yMinorTickColor: color } : {})
+  }
+  const msl = isObj(a['minorSplitLine']) ? a['minorSplitLine'] : {}
+  if (msl['show'] === true) {
+    const style = isObj(msl['lineStyle']) ? msl['lineStyle'] : {}
+    const color = typeof style['color'] === 'string' ? (style['color'] as string) : undefined
+    const width = num(style['width'])
+    if (which === 'x') Object.assign(out, { xMinorSplit: pieces }, color !== undefined ? { xMinorSplitColor: color } : {}, width !== null ? { xMinorSplitWidth: width } : {})
+    else Object.assign(out, { yMinorSplit: pieces }, color !== undefined ? { yMinorSplitColor: color } : {}, width !== null ? { yMinorSplitWidth: width } : {})
+  }
+  return out
+}
+
+/** `yAxis.axisLabel` for the layout: `rotate`, `margin` (8 by default) and `inside`. A value axis shows every label, so `interval` has no effect there, as in ECharts. */
+function yLabelLayout(axis: Record<string, unknown> | undefined): { yLabelAngle?: Double; yLabelMargin: Double; yLabelInside?: boolean } {
+  const label = isObj(axis) && isObj(axis['axisLabel']) ? axis['axisLabel'] : {}
+  const rotate = num(label['rotate'])
+  return {
+    ...(rotate !== null && rotate !== 0 ? { yLabelAngle: -rotate } : {}),
+    yLabelMargin: num(label['margin']) ?? 8.0,
+    ...(label['inside'] === true ? { yLabelInside: true } : {}),
+  }
 }
 
 function axisFormatter(
@@ -1142,6 +1537,10 @@ function shift(c: DrawCmd, dy: Double): DrawCmd {
       return { ...c, points: c.points.map((p) => ({ ...p, y: p.y + dy })) }
     case 'circle':
       return { ...c, center: { ...c.center, y: c.center.y + dy } }
+    case 'clip':
+      return { ...c, rect: { ...c.rect, y: c.rect.y + dy } }
+    case 'unclip':
+      return c
     default:
       return { ...c, at: { ...c.at, y: c.at.y + dy } }
   }
@@ -1238,7 +1637,7 @@ export function optionToSvg(rawOption: EChartsOption, opts: OptionToSvgOptions =
 function optionToSvgSingle(option: EChartsOption, opts: OptionToSvgOptions): string {
   const fam = compileFamily(option)
   if (fam !== null) {
-    const svg = familyToSvg(fam.plan, { width: opts.width, height: opts.height })
+    const svg = familyToSvg(fam.plan, { width: opts.width, height: opts.height }, fam.source, opts.theme === undefined ? undefined : resolveTheme(opts.theme).chartTheme)
     const size = svgSize(svg)
     if (size === null) return svg
     // Overlays above the chart: the visualMap strip, then free-form graphics.
@@ -1264,40 +1663,90 @@ function optionToSvgSingle(option: EChartsOption, opts: OptionToSvgOptions): str
  * global index of the first (`offset`), and the navigator strip the slider
  * takes from the bottom. Without a `dataZoom` it is the compiled spec itself.
  */
-export function zoomedView(compiled: CompiledOption, top: Double, win?: ZoomWindow): { spec: ChartSpec; offset: number; navigator: NavigatorLayout | null } {
+/** What the title and legend take off the chart's box: a band above, below and to the right of the plot. */
+export interface OptionChrome {
+  top: Double
+  bottom: Double
+  right: Double
+  /** A vertical legend's column at the left, kept free before the plot's own gutter. */
+  left?: Double | undefined
+}
+
+const NO_LENGTH = { mode: '', amount: 0.0 }
+
+export function zoomedView(compiled: CompiledOption, reserved: Double | OptionChrome, win?: ZoomWindow, measure?: (text: string, size: Double) => Double): { spec: ChartSpec; offset: number; navigator: NavigatorLayout | null } {
   const zoom = compiled.zoom
-  const height = Math.max(0.0, compiled.spec.height - top)
-  if (zoom === undefined) return { spec: { ...compiled.spec, height }, offset: 0, navigator: null }
+  const top = typeof reserved === 'number' ? reserved : reserved.top
+  const below = typeof reserved === 'number' ? 0.0 : reserved.bottom
+  const beside = typeof reserved === 'number' ? 0.0 : reserved.right
+  const lead = typeof reserved === 'number' ? 0.0 : reserved.left ?? 0.0
+  const height = Math.max(0.0, compiled.spec.height - top - below)
+  const width = Math.max(0.0, compiled.spec.width - beside)
+  const base = lead > 0.0 ? { ...compiled.spec, reserveLeft: lead } : compiled.spec
+  if (zoom === undefined) return { spec: { ...base, height, width }, offset: 0, navigator: null }
   const w = win ?? zoom.window
-  const lead = compiled.spec.series[0]
+  const leadSeries = compiled.spec.series[0]
   const t = compiled.spec.theme
-  const navigator = zoom.slider ? renderNavigator(lead?.values ?? [], lead?.color ?? t.palette[0] ?? '#5470c6', w, { x: 0.0, y: top, w: compiled.spec.width, h: height }, t.grid) : null
-  const view = windowSpec({ ...compiled.spec, height: Math.max(0.0, height - (navigator?.height ?? 0.0)) }, w, zoom.keepY)
+  // Under ECharts' grid the slider is ECharts' own: laid out in the whole chart under the plot, in the
+  // grid's bottom margin, the plot keeping its rect. A multi-grid part, laid out by its labels, gives
+  // Pyreon's navigator its own band instead.
+  const gridOwnsBottom = compiled.spec.gridBottom !== undefined
+  if (gridOwnsBottom) {
+    const view = windowSpec({ ...base, width, height }, w, zoom.keepY)
+    if (!zoom.slider) return { spec: view.spec, offset: view.offset, navigator: null }
+    const box = zoom.sliderBox ?? { left: NO_LENGTH, top: NO_LENGTH, right: NO_LENGTH, bottom: NO_LENGTH, width: NO_LENGTH, height: NO_LENGTH, brush: true }
+    // The plot the strip aligns under: laid out when a measure is given (its labels can widen the
+    // grid), else the grid's own insets.
+    const gl = compiled.spec.gridLeft ?? 0.0
+    const plot = measure !== undefined ? layoutChart(view.spec, measure).plot : { x: gl, y: 0.0, w: Math.max(0.0, compiled.spec.width - gl - (compiled.spec.gridRight ?? 0.0)), h: 0.0 }
+    const strip = sliderRect(box, plot, compiled.spec.width, compiled.spec.height)
+    return { spec: view.spec, offset: view.offset, navigator: { cmds: renderSliderZoom(leadSeries?.values ?? [], w, strip, box.brush), strip, height: 0.0 } }
+  }
+  const navigator = zoom.slider ? renderNavigator(leadSeries?.values ?? [], leadSeries?.color ?? t.palette[0] ?? '#5470c6', w, { x: 0.0, y: top, w: width, h: height }, t.grid) : null
+  const view = windowSpec({ ...base, width, height: Math.max(0.0, height - (navigator?.height ?? 0.0)) }, w, zoom.keepY)
   return { spec: view.spec, offset: view.offset, navigator }
 }
 
-export function compiledCommands(compiled: CompiledOption, option: EChartsOption, measure: MeasureText, win?: ZoomWindow, actives: ToolboxTool[] = [], areas: BrushArea[] = []): { cmds: DrawCmd[]; top: Double } {
+export function compiledCommands(compiled: CompiledOption, option: EChartsOption, measure: MeasureText, win?: ZoomWindow, actives: ToolboxTool[] = [], areas: BrushArea[] = []): { cmds: DrawCmd[]; top: Double; chrome: OptionChrome; legendBoxes: Rect[]; legendPager: LegendPager | null; titleLinks: TitleLink[] } {
   const width = compiled.spec.width
   const height = compiled.spec.height
   const t = compiled.spec.theme
   let top = 0.0
+  let legendBoxes: Rect[] = []
+  let legendPager: LegendPager | null = null
   const cmds: DrawCmd[] = []
   if (compiled.background !== undefined) cmds.push({ kind: 'rect', rect: { x: 0.0, y: 0.0, w: width, h: height }, fill: compiled.background })
-  if (compiled.title !== null) {
-    cmds.push({ kind: 'text', text: compiled.title.text, at: { x: 0.0, y: 0.0 }, fill: t.label, size: t.fontSize + 4.0, align: 'start', baseline: 'top' })
-    top = top + t.fontSize + 4.0
-    if (compiled.title.subtext !== undefined) {
-      cmds.push({ kind: 'text', text: compiled.title.subtext, at: { x: 0.0, y: top + 2.0 }, fill: t.label, size: t.fontSize, align: 'start', baseline: 'top' })
-      top = top + t.fontSize + 2.0
-    }
-    top = top + 8.0
+  // Every title draws; the plot below leaves room for the lowest one at the top.
+  const titleLinks: TitleLink[] = []
+  for (const title of compiled.titles) {
+    const tl = optionTitleCommands(title, width, height, t, measure)
+    for (const c of tl.cmds) cmds.push(c)
+    for (const l of tl.links) titleLinks.push(l)
+    top = Math.max(top, tl.height)
   }
+  // A grid that places the plot (its `top` set) owns the vertical layout: the
+  // title and legend overlay it, as ECharts draws them, instead of pushing it down.
+  const gridOwnsTop = compiled.spec.gridTop !== undefined
+  let below = 0.0
+  let beside = 0.0
+  let aside = 0.0
   if (compiled.legend !== null && compiled.legend.length > 0) {
-    const l = renderLegend(compiled.legend, { x: 0.0, y: top, w: width, h: height - top }, { fontSize: t.fontSize, labelColor: t.label, swatch: 10.0, gap: 12.0, orientation: 'horizontal' }, measure)
-    for (const c of l.cmds) cmds.push(c)
-    top = top + l.height
+    // ECharts places the legend in the whole chart, as it does the title.
+    const placed = placeOptionLegend(compiled.legend, compiled.legendLayout, { x: 0.0, y: 0.0, w: width, h: height }, t, measure, compiled.legendIcons ?? {}, compiled.legendLineWidths ?? {})
+    for (const c of placed.cmds) cmds.push(c)
+    legendBoxes = placed.boxes
+    legendPager = placed.pager ?? null
+    // Where no grid places the plot, the legend's band is taken off the side it sits on.
+    // The band includes the legend's own padding (ECharts' 5px by default).
+    const lpad = (compiled.legendLayout ?? readLegendLayout({})).padding
+    if (placed.side === 'top') top = Math.max(top, placed.rect.y + placed.rect.h + lpad[2]!)
+    else if (placed.side === 'bottom' && compiled.spec.gridBottom === undefined) below = height - placed.rect.y + lpad[0]!
+    else if (placed.side === 'right' && compiled.spec.gridRight === undefined) beside = width - placed.rect.x
+    else if (placed.side === 'left' && compiled.spec.gridLeft === undefined) aside = placed.rect.x + placed.rect.w + lpad[1]!
   }
-  const view = zoomedView(compiled, top, win)
+  if (gridOwnsTop) top = 0.0
+  const chrome: OptionChrome = aside > 0.0 ? { top, bottom: below, right: beside, left: aside } : { top, bottom: below, right: beside }
+  const view = zoomedView(compiled, chrome, win, measure)
   // Brush areas are in PLOT-frame pixels (above the title / legend offset): they dim what they miss.
   const brushed = areas.length === 0 ? view.spec : applyOptionBrush(compiled, view.spec, measure, areas)
   const chart = renderChart(brushed, measure)
@@ -1310,5 +1759,5 @@ export function compiledCommands(compiled: CompiledOption, option: EChartsOption
   for (const c of graphicCommands(option, width, height).cmds) cmds.push(c)
   // ECharts' toolbox sits over the chart's top-right corner; it reserves no room.
   if (compiled.toolbox !== undefined) for (const c of renderToolbox(toolboxTools(compiled.toolbox), { x: 0.0, y: 0.0, w: width, h: height }, { fontSize: t.fontSize, color: t.label, actives }).cmds) cmds.push(c)
-  return { cmds, top }
+  return { cmds, top, chrome, legendBoxes, legendPager, titleLinks }
 }

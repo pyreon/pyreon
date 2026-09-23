@@ -39,6 +39,7 @@ const EVERY: Readonly<Record<keyof MarkOptions, unknown>> = {
   pattern: { kind: 'dots', color: '#fff', spacing: 6, width: 2 },
   dash: [4, 2],
   negativeColor: '#ff0000',
+  areaOpacity: 0.55,
 }
 
 describe('grammar ⇄ array option parity', () => {

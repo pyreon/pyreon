@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { GRID_PART_KEY } from './option-grid'
 import { compileOption } from './option'
 import { barsFor, categoryIndex, layoutChart, renderChart } from './render'
 import { plotHitIndex } from './plot-hit'
@@ -17,7 +18,8 @@ describe('option axes', () => {
     expect(spec.xTitle).toBe('Day')
     expect(spec.yTitle).toBe('Temp')
     expect(spec.y2Title).toBe('Rain')
-    expect(spec.yDomain).toEqual({ min: 0, max: 10 })
+    // The given bounds, ticked at ECharts' interval for the span (10 / 5 → 2).
+    expect(spec.yDomain).toEqual({ min: 0, max: 10, step: 2 })
     expect(spec.y2Domain).toEqual({ min: 0, max: 300 })
     expect(spec.series[1]!.axis).toBe('right')
   })
@@ -148,7 +150,10 @@ describe('axis position', () => {
     const { spec, warnings } = compileOption({ xAxis: { type: 'category', data: cats, position: 'top', name: 'Day' }, yAxis: {}, series: [{ type: 'bar', data: [1, 2] }] })
     expect(warnings).toEqual([])
     const l = layoutChart(spec, measure)
-    expect(l.gutters.top).toBeGreaterThan(l.gutters.bottom)
+    // ECharts' grid keeps the plot where it was; the axis draws in the margin above.
+    expect(l.plot.y).toBe(65)
+    const auto = layoutChart(compileOption({ grid: { [GRID_PART_KEY]: true }, xAxis: { type: 'category', data: cats, position: 'top', name: 'Day' }, yAxis: {}, series: [{ type: 'bar', data: [1, 2] }] }).spec, measure)
+    expect(auto.gutters.top).toBeGreaterThan(auto.gutters.bottom)
     const cmds = renderChart(spec, measure)
     const label = cmds.find((c) => c.kind === 'text' && c.text === 'alpha')
     expect(label?.kind === 'text' && label.at.y < l.plot.y).toBe(true)
@@ -161,7 +166,8 @@ describe('axis position', () => {
     const { spec, warnings } = compileOption({ xAxis: { type: 'category', data: cats }, yAxis: { position: 'right', name: 'Units' }, series: [{ type: 'bar', data: [1, 200] }] })
     expect(warnings).toEqual([])
     const l = layoutChart(spec, measure)
-    expect(l.gutters.right).toBeGreaterThan(l.gutters.left)
+    const auto = layoutChart(compileOption({ grid: { [GRID_PART_KEY]: true }, xAxis: { type: 'category', data: cats }, yAxis: { position: 'right', name: 'Units' }, series: [{ type: 'bar', data: [1, 200] }] }).spec, measure)
+    expect(auto.gutters.right).toBeGreaterThan(auto.gutters.left)
     const cmds = renderChart(spec, measure)
     const tickText = cmds.filter((c) => c.kind === 'text' && l.yTicks.some((tk) => tk.label === c.text))
     expect(tickText.length).toBeGreaterThan(0)
@@ -177,7 +183,7 @@ describe('axis position', () => {
     expect(warnings).toEqual([])
     expect(spec.yTitle).toBe('L')
     expect(spec.y2Title).toBe('R')
-    expect(spec.yDomain).toEqual({ min: 0, max: 500 })
+    expect(spec.yDomain).toMatchObject({ min: 0, max: 500 })
     expect(spec.series[0]!.axis).toBe('right')
     expect(spec.series[1]!.axis).toBeUndefined()
   })
@@ -190,10 +196,13 @@ describe('axis position', () => {
 
 describe('axis offset', () => {
   const measure = (t: string): number => t.length * 6
-  it('moves each axis line and its labels off the plot edge, and grows its gutter by the same', () => {
+  it('moves each axis line and its labels off the plot edge; laid out by its labels, the gutter grows by the same', () => {
     const series = [{ type: 'line', data: [1, 2] }, { type: 'line', yAxisIndex: 1, data: [10, 20] }]
-    const base = compileOption({ xAxis: { type: 'category', data: ['a', 'b'] }, yAxis: [{}, {}], series })
-    const off = compileOption({ xAxis: { type: 'category', data: ['a', 'b'], offset: 7 }, yAxis: [{ offset: 11 }, { offset: 13 }], series })
+    // A multi-grid part lays its plot out by its labels (ECharts' single grid keeps its fixed rect).
+    const grid = { [GRID_PART_KEY]: true }
+    const base = compileOption({ grid, xAxis: { type: 'category', data: ['a', 'b'] }, yAxis: [{}, {}], series })
+    // ECharts hides a y axis line beside a category x axis; shown here, so the offset can be seen moving it.
+    const off = compileOption({ grid, xAxis: { type: 'category', data: ['a', 'b'], offset: 7 }, yAxis: [{ offset: 11, axisLine: { show: true } }, { offset: 13, axisLine: { show: true } }], series })
     expect(off.warnings).toEqual([])
     const lb = layoutChart(base.spec, measure)
     const lo = layoutChart(off.spec, measure)
@@ -212,13 +221,14 @@ describe('a third y axis', () => {
   const measure = (t: string): number => t.length * 6
   const option = (offset: number) => ({
     xAxis: { type: 'category', data: ['a', 'b'] },
-    yAxis: [{ min: 0, max: 10 }, { min: 0, max: 100 }, { name: 'Wind', min: 0, max: 1000, offset, position: 'right' }],
+    yAxis: [{ min: 0, max: 10 }, { min: 0, max: 100 }, { name: 'Wind', min: 0, max: 1000, offset, position: 'right', axisLine: { show: true } }],
     series: [{ type: 'line', data: [5, 5] }, { type: 'line', yAxisIndex: 1, data: [50, 50] }, { type: 'line', yAxisIndex: 2, data: [500, 500] }],
   })
   it('scales its series on its own domain, draws its line and labels at its offset, and widens the gutter', () => {
     const { spec, warnings } = compileOption(option(60))
     expect(warnings).toEqual([])
-    expect(spec.extraYAxes).toEqual([{ side: 'right', domain: { min: 0, max: 1000 }, title: 'Wind', offset: 60 }])
+    // Beside a category x axis ECharts draws no y axis line unless shown, as this one is.
+    expect(spec.extraYAxes).toEqual([{ side: 'right', domain: { min: 0, max: 1000 }, title: 'Wind', offset: 60, line: true }])
     expect(spec.series[2]!.axisExtra).toBe(0)
     expect(spec.series[2]!.axis).toBeUndefined()
     const l = layoutChart(spec, measure)

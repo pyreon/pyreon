@@ -4,7 +4,7 @@
 // a DOM overlay on web and a native popover want different surfaces. Keeping
 // placement here means the flip-at-the-edge logic is written once.
 
-import { plain } from './format'
+import { groupThousands, plain } from './format'
 import type { Formatter } from './format'
 import { isFiniteNumber } from './scale'
 import type { Double, Pt, Rect } from './types'
@@ -129,6 +129,58 @@ export function tooltipLines(c: TooltipContent, format?: Formatter): string[] {
     else if (sz === sz) out.push(`${r.label}: ${fmt(r.value)} (size ${fmt(sz)})`)
     else if (r.value !== r.value) out.push(`${r.label}: ${txt}`)
     else out.push(`${r.label}: ${fmt(r.value)}`)
+  }
+  return out
+}
+
+/** A row's value alone, as ECharts' default tooltip shows it (the name is its own cell). */
+function rowShown(r: TooltipRow, fmt: Formatter): string {
+  const lo: Double = r.value2 ?? (0.0 / 0.0)
+  const sz: Double = r.size ?? (0.0 / 0.0)
+  const txt = r.text ?? ''
+  if (lo === lo) return `${fmt(lo)} - ${fmt(r.value)}`
+  if (sz === sz) return `${fmt(r.value)} (${fmt(sz)})`
+  if (r.value !== r.value) return txt
+  return fmt(r.value)
+}
+
+/**
+ * ECharts' default AXIS tooltip as `renderTooltipRows` cells: the category,
+ * then per series its colour, its name — only where the option NAMED it
+ * (`named[i]`), as ECharts hides a generated name — and the value, grouped
+ * by thousands unless `format` shapes it. Empty when nothing is plotted there.
+ */
+export function tooltipAxisCells(index: number, categories: string[], series: TooltipSeries[], named: boolean[], format?: Formatter): string[] {
+  const fmt = format ?? groupThousands
+  const out: string[] = [categories[index] ?? `${index + 1}`]
+  for (let si = 0; si < series.length; si++) {
+    const c = tooltipAt(index, categories, [series[si]!])
+    const shown = si < named.length && named[si]!
+    for (let ri = 0; ri < c.rows.length; ri++) {
+      const r = c.rows[ri]!
+      out.push(r.color)
+      out.push(ri > 0 ? r.label : shown ? r.label : '')
+      out.push(rowShown(r, fmt))
+    }
+  }
+  return out.length > 1 ? out : []
+}
+
+/**
+ * ECharts' default ITEM tooltip for one series at one datum: the series name
+ * as the header (none for an unnamed series), then its colour, the category
+ * and the value; extra dimensions follow as rows of their own.
+ */
+export function tooltipItemCells(index: number, categories: string[], series: TooltipSeries, named: boolean, format?: Formatter): string[] {
+  const fmt = format ?? groupThousands
+  const c = tooltipAt(index, categories, [series])
+  if (c.rows.length === 0) return []
+  const out: string[] = [named ? series.label : '']
+  for (let ri = 0; ri < c.rows.length; ri++) {
+    const r = c.rows[ri]!
+    out.push(r.color)
+    out.push(ri === 0 ? (categories[index] ?? '') : r.label)
+    out.push(rowShown(r, fmt))
   }
   return out
 }

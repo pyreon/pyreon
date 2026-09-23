@@ -4,7 +4,7 @@
 // hidden set (and the page) as state and ask these the same questions, so a
 // legend tap means one thing on every target.
 
-import type { LegendPager } from './legend'
+import type { LegendEntry, LegendPager } from './legend'
 import type { Series } from './render'
 import type { Double, Rect } from './types'
 
@@ -29,6 +29,71 @@ export function legendToggle(hidden: number[], i: number): number[] {
     }
   }
   if (!found) out.push(i)
+  return out
+}
+
+/**
+ * The legend a chart shows for its series: ONE entry per distinct label, in
+ * first-appearance order, in that series' colour — ECharts' rule, where the
+ * legend lists series NAMES and an area and a line sharing one name are one
+ * entry. An entry is muted only when every series under it is hidden.
+ *
+ * Before this every series drew its own entry, so the idiomatic "an area under
+ * a line, both labelled Revenue" drew two identical Revenue swatches.
+ */
+export function legendEntriesGrouped(labels: string[], colors: string[], hidden: number[]): LegendEntry[] {
+  const out: LegendEntry[] = []
+  const seen: string[] = []
+  for (let i = 0; i < labels.length; i++) {
+    const label = labels[i]!
+    let known = false
+    for (let k = 0; k < seen.length; k++) {
+      if (seen[k] === label) known = true
+    }
+    if (known) continue
+    seen.push(label)
+    let allHidden = true
+    for (let j = 0; j < labels.length; j++) {
+      if (labels[j] === label && !isHiddenSeries(hidden, j)) allHidden = false
+    }
+    out.push({ label, color: i < colors.length ? colors[i]! : '#999999', muted: allHidden })
+  }
+  return out
+}
+
+/**
+ * A tap on grouped legend entry `entry` (see `legendEntriesGrouped`): every
+ * series under that label is hidden when any of them shows, and shown again
+ * when all are hidden — a NEW array; the host keeps the old one as state.
+ */
+export function legendToggleGroup(hidden: number[], labels: string[], entry: number): number[] {
+  // The label at entry index `entry`, counting distinct labels in order.
+  const seen: string[] = []
+  for (let i = 0; i < labels.length; i++) {
+    const label = labels[i]!
+    let known = false
+    for (let k = 0; k < seen.length; k++) {
+      if (seen[k] === label) known = true
+    }
+    if (!known) seen.push(label)
+  }
+  if (entry < 0 || entry >= seen.length) return hidden
+  const target = seen[entry]!
+  let anyShown = false
+  for (let j = 0; j < labels.length; j++) {
+    if (labels[j] === target && !isHiddenSeries(hidden, j)) anyShown = true
+  }
+  const out: number[] = []
+  for (let k = 0; k < hidden.length; k++) {
+    const h = hidden[k]!
+    const inGroup = h >= 0 && h < labels.length && labels[h] === target
+    if (!inGroup) out.push(h)
+  }
+  if (anyShown) {
+    for (let j = 0; j < labels.length; j++) {
+      if (labels[j] === target) out.push(j)
+    }
+  }
   return out
 }
 

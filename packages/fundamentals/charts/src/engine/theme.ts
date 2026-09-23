@@ -6,7 +6,7 @@
 
 import { createContext, nativeCompat, provide, useContext } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
-import { computed, isClient, signal } from '@pyreon/reactivity'
+import { computed, isClient, isServer, signal } from '@pyreon/reactivity'
 import { DARK_PALETTE } from './palette'
 import { defaultTheme } from './render'
 import type { ChartTheme } from './render'
@@ -81,18 +81,46 @@ export function resolveChartTheme(base: ChartTheme, override?: Partial<ChartThem
 
 let _systemMode: ReturnType<typeof signal<ChartThemeMode>> | null = null
 
-/** The system colour scheme as a signal: `'dark'` under `prefers-color-scheme: dark`, else `'light'` (SSR: light). */
+/**
+ * The scheme the PAGE declares on `<html>` through CSS `color-scheme`, when it
+ * names exactly one ('dark' / 'light', optionally 'only …'); null otherwise.
+ * A site with its own theme toggle states its scheme there (it is also what
+ * makes native form controls and scrollbars match), and a chart should agree
+ * with the page it sits on rather than with an OS setting the page overrode.
+ */
+function pageScheme(): ChartThemeMode | null {
+  if (isServer) return null
+  const cs = getComputedStyle(document.documentElement).colorScheme.trim()
+  if (cs === 'dark' || cs === 'only dark') return 'dark'
+  if (cs === 'light' || cs === 'only light') return 'light'
+  return null
+}
+
+/**
+ * The page's colour mode as a signal: the scheme `<html>` declares through CSS
+ * `color-scheme` when it declares exactly one, else the OS preference
+ * (`prefers-color-scheme`); light on the server.
+ */
 export function systemChartMode(): () => ChartThemeMode {
   if (_systemMode === null) {
     const s = signal<ChartThemeMode>('light')
     _systemMode = s
     if (isClient && typeof window.matchMedia === 'function') {
       const mq = window.matchMedia('(prefers-color-scheme: dark)')
-      s.set(mq.matches ? 'dark' : 'light')
-      // A document-lifetime listener on a module singleton, not a per-mount
-      // registration: useEventListener is for a component's own lifecycle.
+      // The OS answer the last media event (or the initial query) gave.
+      let osDark = mq.matches
+      const update = (): void => s.set(pageScheme() ?? (osDark ? 'dark' : 'light'))
+      update()
+      // A document-lifetime listener and observer on a module singleton, not a
+      // per-mount registration: useEventListener is for a component's own
+      // lifecycle. A theme toggle flips an attribute (class / data-theme /
+      // style) on <html>; the observer re-reads the declared scheme then.
       // pyreon-lint-ignore pyreon/no-raw-addeventlistener
-      mq.addEventListener('change', (e) => s.set(e.matches ? 'dark' : 'light'))
+      mq.addEventListener('change', (e) => {
+        osDark = e.matches
+        update()
+      })
+      if (typeof MutationObserver === 'function') new MutationObserver(update).observe(document.documentElement, { attributes: true })
     }
   }
   return _systemMode
@@ -108,6 +136,19 @@ const systemTheme = (): ChartTheme => chartThemes[systemChartMode()()]
  * default is a constant.)
  */
 export const ChartThemeContext = createContext<() => ChartTheme>(systemTheme)
+
+/**
+ * The theme an EXPLICIT `<ChartThemeProvider>` above this component provides,
+ * or `null` when none does (the context still holds its system-scheme default).
+ *
+ * `<OptionChart>` needs the difference: a bare option chart keeps ECharts'
+ * default (light) look, as ECharts itself ignores the OS scheme, while a
+ * provider the app put there must win — it used to be ignored entirely.
+ */
+export function useProvidedChartTheme(): (() => ChartTheme) | null {
+  const ctx = useContext(ChartThemeContext)
+  return ctx === systemTheme ? null : ctx
+}
 
 /** The theme in scope, as an accessor — read it inside an effect to track a mode flip. */
 export function useChartTheme(): () => ChartTheme {

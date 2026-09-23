@@ -6,6 +6,7 @@
  * affected by scenario code that never runs on that path.
  */
 import type { BenchSuite } from '../runner'
+import { CHARTS_FRAMEWORKS, runCharts } from './scenario-charts'
 import { DBMON_FRAMEWORKS, runDbmon } from './scenario-dbmon'
 import { EFFECTS_FRAMEWORKS, runEffects } from './scenario-effects'
 import { FLOW_FRAMEWORKS, runFlow } from './scenario-flow'
@@ -49,6 +50,12 @@ export const SCENARIOS: ScenarioDef[] = [
     label: 'flow diagram — @pyreon/flow vs React Flow 12 (500 nodes)',
     frameworks: FLOW_FRAMEWORKS,
     run: runFlow,
+  },
+  {
+    id: 'charts',
+    label: 'charts — @pyreon/charts/plot vs ECharts 6 (line, 1k / 100k points)',
+    frameworks: CHARTS_FRAMEWORKS,
+    run: runCharts,
   },
 ]
 

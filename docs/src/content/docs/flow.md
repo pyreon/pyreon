@@ -1200,6 +1200,89 @@ flow.dispose() // cancel in-flight animations + clear all listeners
 
 `useFlow` calls this automatically on unmount. For a `createFlow` instance owned outside a component tree, call it yourself at the right lifecycle point.
 
+## iOS and Android
+
+The same `@pyreon/flow` source compiles to a native flow editor on iOS
+(SwiftUI) and Android (Jetpack Compose). It is a native view tree, not a
+web page in a WebView.
+
+### What renders natively
+
+| Web | Native |
+| --- | --- |
+| `createFlow(config)` / `useFlow(config)` | `PyreonFlowState`, an observable engine with the same state and the same `FlowInstance` methods |
+| `<Flow instance={flow}>` | `PyreonFlowView`, with `<Background>`, `<Controls>`, `<MiniMap>`, `<Panel>`, `<Handle>`, `<NodeResizer>`, `<NodeToolbar>` and `<EdgeLabelRenderer>` |
+| A node without a `type` | The web's default node: the same box, palette colours and selected border |
+| `nodeTypes` / `edgeTypes` | Custom node and edge components. The map must be statically resolvable. |
+| `<path d=…>` in a custom edge or connection line | A native path. Any SVG path data works, including a template literal; fill, stroke and width follow the browser's rules. |
+| Inline `<svg>` in a node, edge or connection-line renderer | A native canvas. `path`, `rect` (rounded too), `circle`, `ellipse`, `line`, `polyline`, `polygon` and nested `<g>` draw scaled by the `viewBox` (`xMidYMid meet`, or `preserveAspectRatio="none"`), with `fill` / `stroke` / `stroke-width` inherited as in SVG. Dynamic attributes stay live. |
+| `<div>` / `<p>` / `<span>` in a renderer | Lowered in the two shapes whose layout matches the browser's: text-only content becomes a text run, and a `<div>` of block children (or one child) becomes a flush-left stack with no gap. |
+| `connectionLine` | A custom connection line, shown only while a connection is being dragged |
+| `colorMode` | `'light'`, `'dark'` and `'system'`, using the web palette's colours |
+| The seven layout algorithms | Native ports of the built-in layout engine |
+
+Gestures:
+
+- Drag, pan and pinch-zoom.
+- Connect and reconnect.
+- Resize.
+- Tap to select a node or an edge.
+
+Keyboard:
+
+- **Arrow keys** move the focused node. Hold **Shift** for larger steps.
+- **Enter** or **Space** selects the focused node or edge.
+- **Escape** clears the selection.
+- The delete keys remove the selection.
+- **Cmd/Ctrl + A / C / V / Z** select all, copy, paste and undo. Add **Shift** to **Z** to redo.
+
+`onlyRenderVisibleElements` culls off-screen nodes on native too.
+
+### What does not cross, and what to use instead
+
+A few parts of the web package are tied to the DOM, and the compiler names
+each one when it meets it:
+
+- `FlowLayersContext` and `flowStyles`, the DOM renderer's layer context and CSS custom properties.
+- A renderer whose look depends on CSS: DOM elements with a `class` or `style`, text mixed with inline elements, or browser CSS selectors. The compiler cannot see a stylesheet, and guessing a layout would draw something plausible and wrong.
+- SVG `<text>`, gradients, `transform`, and SVG children produced by a `.map` or a conditional inside an `<svg>`.
+- A renderer map computed at runtime, rather than one the compiler can resolve statically.
+
+Native rendering matches the web in structure, colour, geometry and
+behaviour, but it is not pixel-identical and cannot be: text is set in the
+platform's system font with its own metrics, and each platform antialiases
+edges its own way. If a diagram must look exactly like the browser, down to
+the pixel, or needs any of the items above, host the unchanged web renderer with
+`@pyreon/flow/webview`:
+
+```tsx
+import { FlowWebView } from '@pyreon/flow/webview'
+
+<FlowWebView graph={graph} onSelect={(e) => select(e.id)} />
+```
+
+That is a WebView. It has the same costs as any hosted web content:
+
+- Start-up time.
+- Every update crosses a JSON bridge.
+- The diagram is opaque to native gestures and the platform accessibility tree.
+
+Give it an explicit height where you can. Without one, it defaults to 150 points (iOS) or 150dp (Android), so it never collapses to zero.
+
+### How this is verified
+
+- **State and algorithms.** Native test fixtures replay shared scenarios against both native engines, with the web engine's own answers as the oracle. Two checks fail when a portable method, or a native config field, has no scenario and no stated reason.
+- **Rendering and interaction.** The iOS Simulator and Android Emulator suites for the example apps read what the renderer painted or placed. They check marker colours, dark-mode canvas pixels, the default node's colours, a custom edge drawn from a path string (ending where the target node is), a custom node's inline `<svg>` (measured at its 16-point size from an 8-unit `viewBox`), panel placement and the custom connection line. They also drive the gestures and keyboard commands above.
+- **Theme.** A test requires every native palette colour to equal the web's `--pyreon-flow-*` value, in light and dark mode.
+- **Scale.** A 400-node graph with culling mounts at most 40 nodes on web, iOS and Android. It keeps those bounds while panning, dragging and pinching. On web, garbage-collection tests check that a disposed flow and its removed nodes are actually released.
+
+How the platform-specific gaps in the test tooling are covered:
+
+- XCUITest cannot send Return, Escape or Delete to an iOS simulator app. On iOS, the native test suite drives those keys through the same function the view's key handler calls. Android asserts them on the device.
+- iPhone 16-family simulators never pass an appearance change to the app. On iOS, the native test suite renders the real flow view under a light and a dark colour scheme and checks that `colorMode="system"` follows it. Newer simulators and Android also check it on the device.
+
+State that lives only in memory, flow graphs included, is lost when the app is closed: after a page reload on web, and when the system ends the app process on iOS or Android. It is kept across rotation and dark-mode switches on Android. To keep a graph across launches, save `flow.toJSON()` with `@pyreon/storage` and restore it with `flow.fromJSON(...)` on every target.
+
 ## API Reference
 
 ### Core functions

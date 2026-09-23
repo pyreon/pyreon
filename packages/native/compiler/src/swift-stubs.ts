@@ -1031,6 +1031,9 @@ public struct PyreonFlowPathResult {
   public var labelX: Double = 0
   public var labelY: Double = 0
 }
+extension PyreonFlowPathResult {
+  public init(svgPath: String) { self.init() }
+}
 public func pyreonStraightPath(sourceX: Double, sourceY: Double, targetX: Double, targetY: Double) -> PyreonFlowPathResult { PyreonFlowPathResult() }
 public func pyreonBezierPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = .bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = .top, curvature: Double = 0.25) -> PyreonFlowPathResult { PyreonFlowPathResult() }
 public func pyreonWaypointPath(sourceX: Double, sourceY: Double, targetX: Double, targetY: Double, waypoints: [PyreonXYPosition]) -> PyreonFlowPathResult { PyreonFlowPathResult() }
@@ -1346,7 +1349,7 @@ public final class PyreonFlowState<T> {
   @discardableResult public func onConnectEnd(_ callback: @escaping (PyreonFlowConnection?) -> Void) -> () -> Void { {} }
   @discardableResult public func onPaneClick(_ callback: @escaping (PyreonFlowPaneEvent) -> Void) -> () -> Void { {} }
   public func moveSelectedNodes(_ dx: Double, _ dy: Double) {}
-  public func handleKeyboardCommand(_ key: String, nodeId: String? = nil, shift: Bool = false, command: Bool = false, repeatKey: Bool = false) -> Bool { false }
+  public func handleKeyboardCommand(_ key: String, nodeId: String? = nil, shift: Bool = false, command: Bool = false, repeatKey: Bool = false, edgeId: String? = nil) -> Bool { false }
   public func focusNode(_ nodeId: String, _ focusZoom: Double? = nil) {}
 }
 @available(iOS 17.0, macOS 14.0, *)
@@ -1375,6 +1378,10 @@ public struct PyreonFlowMiniMapStyle {
 extension View {
   public func pyreonFlowColorMode(_ colorMode: String) -> some View { self }
 }
+public struct PyreonFlowDefaultNode: View {
+  public init(label: String, selected: Bool) {}
+  public var body: some View { EmptyView() }
+}
 public struct PyreonFlowNodeResizerConfig {
   public init(minWidth: Double = 50, minHeight: Double = 30, handleSize: Double = 8, showEdgeHandles: Bool = false) {}
 }
@@ -1392,7 +1399,14 @@ public struct PyreonFlowConnectionLineContext {
   public let sourcePosition: PyreonFlowPosition; public let path: PyreonFlowPathResult
 }
 public struct PyreonFlowCustomEdgePath: View {
-  public init(result: PyreonFlowPathResult, color: String = "#999999", width: Double = 1.5, dash: [Double]? = nil) {}
+  public init(result: PyreonFlowPathResult, color: String? = "#999999", width: Double = 1.5, dash: [Double]? = nil, fill: String? = nil) {}
+  public var body: some View { EmptyView() }
+}
+public struct PyreonFlowSvgShape {
+  public init(result: PyreonFlowPathResult, stroke: String? = nil, strokeWidth: Double = 1, fill: String? = "#000000") {}
+}
+public struct PyreonFlowSvg: View {
+  public init(width: Double? = nil, height: Double? = nil, viewBox: [Double]? = nil, stretch: Bool = false, shapes: [PyreonFlowSvgShape]) {}
   public var body: some View { EmptyView() }
 }
 public struct PyreonFlowEdgeLabelRenderer<Content: View>: View {

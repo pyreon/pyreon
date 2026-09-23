@@ -15,7 +15,8 @@ describe('compiledCommands', () => {
   it('is exactly the picture optionToSvg paints: same commands, same svg bytes', () => {
     const compiled = compileOption(option, { width: 400, height: 240 })
     const { cmds, top } = compiledCommands(compiled, option, measureApprox())
-    expect(top).toBeGreaterThan(0)
+    // ECharts' default grid places the plot; the title and legend draw in its margins.
+    expect(top).toBe(0)
     expect(renderSvg(cmds, 400, 240, { title: 'Sales' })).toBe(optionToSvg(option, { width: 400, height: 240 }))
     // Title, subtitle, a legend swatch per series, bars, a polyline and the graphic note all land.
     const texts = cmds.filter((c) => c.kind === 'text').map((c) => (c.kind === 'text' ? c.text : ''))
@@ -23,12 +24,12 @@ describe('compiledCommands', () => {
     expect(texts).toContain('Q1')
     expect(texts).toContain('note')
     expect(cmds.filter((c) => c.kind === 'polyline').length).toBeGreaterThan(0)
-    // The plot really sits BELOW the title + legend: every bar rect starts at or under `top`
-    // (legend swatches are 10px squares; bars are wider). This is the assertion the byte
-    // comparison above cannot make on its own, since both sides share compiledCommands.
-    const bars = cmds.filter((c) => c.kind === 'rect' && c.rect.w > 12)
+    // The plot really sits BELOW the title: every bar starts at or under the grid's top (65).
+    // Legend icons are 25px wide, so bars are told apart by height. This is the assertion the
+    // byte comparison above cannot make on its own, since both sides share compiledCommands.
+    const bars = cmds.filter((c) => c.kind === 'rect' && c.rect.h > 14 && c.rect.w > 12)
     expect(bars.length).toBeGreaterThan(0)
-    for (const b of bars) if (b.kind === 'rect') expect(b.rect.y).toBeGreaterThanOrEqual(top)
+    for (const b of bars) if (b.kind === 'rect') expect(b.rect.y).toBeGreaterThanOrEqual(compiled.spec.gridTop ?? 0)
   })
   it('a title-less, legend-less option has no offset and starts with the plot', () => {
     const bare = { xAxis: { data: ['a'] }, yAxis: {}, series: [{ type: 'bar', data: [1] }] }

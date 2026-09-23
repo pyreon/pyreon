@@ -2,6 +2,7 @@
 // vocabulary, a `lines` datum whose coordinates do not parse, a `custom`
 // series' encode shapes, and the composition path where a title shifts every
 // drawn command down. Paired with the input each arm must leave alone.
+import { GRID_PART_KEY } from './option-grid'
 import { describe, expect, it } from 'vitest'
 import { linesCommands } from './lines'
 import { compileOption, compiledCommands, optionToSvg, planOption } from './option'
@@ -155,7 +156,7 @@ describe('the `custom` series', () => {
       xAxis: {}, yAxis: { min: -5, max: 100 },
       series: [{ type: 'custom', renderItem: box, encode: { x: 0, y: 1 }, data: [[0, 5]] }],
     })
-    expect(pinned.spec.yDomain).toEqual({ min: -5, max: 100 })
+    expect(pinned.spec.yDomain).toMatchObject({ min: -5, max: 100 })
   })
 
   it('a custom series beside a CATEGORY axis does not overwrite the categories with x values', () => {
@@ -168,29 +169,44 @@ describe('the `custom` series', () => {
   })
 })
 
+// A single grid is ECharts' default grid: the title and legend draw in its margins and the
+// plot stays put. A multi-grid PART is laid out by its labels instead, so there the title
+// and legend take their band and everything the chart drew moves — the path these cover.
+const part = { [GRID_PART_KEY]: true }
+
 describe('composition — the title shifts what the chart drew', () => {
   const at = (cmds: DrawCmd[], kind: 'text'): number => {
     const first = cmds.find((c) => c.kind === kind)
     return first?.kind === 'text' ? first.at.y : -1
   }
 
-  it('with a title every chart command moves DOWN by the space the title took', () => {
+  it("a single grid: the title draws in ECharts' 65px margin and the plot stays at the grid's top", () => {
     const option = { title: { text: 'Revenue', subtext: 'by quarter' }, xAxis: { data: ['a'] }, yAxis: {}, series: [{ type: 'bar', data: [1] }] }
+    const out = compiledCommands(compileOption(option, { width: 400, height: 300 }), option, measureApprox())
+    expect(out.top).toBe(0)
+    for (const r of out.cmds) if (r.kind === 'rect' && r.rect.w > 20) expect(r.rect.y).toBeGreaterThanOrEqual(65)
+    expect(at(out.cmds, 'text')).toBe(20)
+  })
+
+  it('a multi-grid part: every chart command moves DOWN by the space the title took', () => {
+    const option = { grid: part, title: { text: 'Revenue', subtext: 'by quarter' }, xAxis: { data: ['a'] }, yAxis: {}, series: [{ type: 'bar', data: [1] }] }
     const titled = compileOption(option, { width: 400, height: 300 })
     const withTitle = compiledCommands(titled, option, measureApprox())
     expect(withTitle.top).toBeGreaterThan(0)
 
-    const plainOption = { xAxis: { data: ['a'] }, yAxis: {}, series: [{ type: 'bar', data: [1] }] }
+    const plainOption = { grid: part, xAxis: { data: ['a'] }, yAxis: {}, series: [{ type: 'bar', data: [1] }] }
     const plain = compiledCommands(compileOption(plainOption, { width: 400, height: 300 }), plainOption, measureApprox())
     expect(plain.top).toBe(0)
     // Every command in the titled version sits at or below the untitled one.
     const lowest = (c: DrawCmd[]) => Math.min(...c.filter((x) => x.kind === 'rect').map((x) => (x.kind === 'rect' ? x.rect.y : Infinity)))
     expect(lowest(withTitle.cmds)).toBeGreaterThanOrEqual(lowest(plain.cmds))
-    expect(at(withTitle.cmds, 'text')).toBe(0)
+    // ECharts' title sits 15 from the top inside a 5px padding.
+    expect(at(withTitle.cmds, 'text')).toBe(20)
   })
 
   it('every command KIND moves with the title — circles, lines, polylines and text alike', () => {
     const option = {
+      grid: part,
       title: { text: 'Mixed' },
       xAxis: { data: ['a', 'b'] }, yAxis: {},
       series: [
@@ -222,11 +238,13 @@ describe('composition — the title shifts what the chart drew', () => {
     expect(c.spec.xValues).toEqual([3, 9])
   })
 
-  it('a legend also consumes vertical space above the plot', () => {
-    const option = { legend: {}, xAxis: { data: ['a'] }, yAxis: {}, series: [{ type: 'bar', name: 'S', data: [1] }] }
+  it("a legend in a part consumes space: at ECharts' default (the bottom) below the plot, at the top above it", () => {
+    const option = { grid: part, legend: {}, xAxis: { data: ['a'] }, yAxis: {}, series: [{ type: 'bar', name: 'S', data: [1] }] }
     const c = compileOption(option, { width: 400, height: 300 })
     expect(c.legend).not.toBeNull()
-    expect(compiledCommands(c, option, measureApprox()).top).toBeGreaterThan(0)
+    expect(compiledCommands(c, option, measureApprox()).chrome.bottom).toBeGreaterThan(0)
+    const atTop = { ...option, legend: { top: 0 } }
+    expect(compiledCommands(compileOption(atTop, { width: 400, height: 300 }), atTop, measureApprox()).top).toBeGreaterThan(0)
     const hidden = compileOption({ ...option, legend: { show: false } }, { width: 400, height: 300 })
     expect(hidden.legend).toBeNull()
   })

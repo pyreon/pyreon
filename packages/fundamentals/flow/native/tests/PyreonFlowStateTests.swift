@@ -1480,8 +1480,169 @@ struct PyreonFlowStateTests {
     }
     // <flow-parity:end>
 
+    /// The keys XCUITest cannot deliver to a simulator app (Return, Escape,
+    /// Delete, Backspace), driven through the same function the view's
+    /// `onKeyPress` calls, so the only unproven link left on iOS is the OS
+    /// delivering the key.
+    static func runKeyRoutingChecks() {
+        check(pyreonFlowKeyName(.return) == "Enter" && pyreonFlowKeyName(.escape) == "Escape", "Return and Escape map to the web key names")
+        check(pyreonFlowKeyName(.delete) == "Backspace" && pyreonFlowKeyName(.deleteForward) == "Delete", "both delete keys map to the web key names")
+        check(pyreonFlowKeyName(KeyEquivalent("q")) == nil && !pyreonFlowHandleKey(seedFlow(), key: KeyEquivalent("q"), nodeId: "1"), "an unmapped key is ignored")
+
+        let f = seedFlow()
+        check(pyreonFlowHandleKey(f, key: .return, nodeId: "2") && f.selectedNodes() == ["2"], "Return selects the focused node")
+        check(pyreonFlowHandleKey(f, key: .escape) && f.selectedNodes().isEmpty, "Escape clears the selection")
+        check(pyreonFlowHandleKey(f, key: .return, edgeId: "e1") && f.selectedEdges() == ["e1"], "Return selects the focused edge")
+        check(pyreonFlowHandleKey(f, key: .space, nodeId: "3") && f.selectedNodes() == ["3"], "Space selects the focused node")
+        check(pyreonFlowHandleKey(f, key: .deleteForward) && f.getNode("3") == nil, "Delete removes the selected node")
+        check(pyreonFlowHandleKey(f, key: KeyEquivalent("z"), modifiers: .command) && f.getNode("3") != nil, "Cmd+Z restores the node Delete removed")
+        check(pyreonFlowHandleKey(f, key: .return, nodeId: "1") && pyreonFlowHandleKey(f, key: .delete) && f.getNode("1") == nil, "Backspace removes the selected node")
+        check(pyreonFlowHandleKey(f, key: KeyEquivalent("z"), modifiers: .control) && f.getNode("1") != nil, "Ctrl+Z undoes too")
+        check(pyreonFlowHandleKey(f, key: KeyEquivalent("a"), modifiers: .command) && f.selectedNodes().sorted() == ["1", "2", "3"], "Cmd+A selects every node")
+        let before = f.getNode("2")!.position
+        check(pyreonFlowHandleKey(f, key: .rightArrow, modifiers: .shift, nodeId: "2") && f.getNode("2")!.position.x == before.x + 100, "Shift+Arrow moves the focused node a large step")
+    }
+
+    /// Pixels within 6 of `rgb` in `view`, rendered offscreen by SwiftUI.
+    @MainActor
+    static func renderedPixels<V: View>(_ view: V, _ r: Int, _ g: Int, _ b: Int) -> Int {
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 1
+        guard let image = renderer.cgImage else { return -1 }
+        let width = image.width, height = image.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        guard let ctx = CGContext(data: &pixels, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return -1 }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        var count = 0
+        for i in stride(from: 0, to: pixels.count, by: 4) where abs(Int(pixels[i]) - r) <= 6 && abs(Int(pixels[i + 1]) - g) <= 6 && abs(Int(pixels[i + 2]) - b) <= 6 {
+            count += 1
+        }
+        return count
+    }
+
+    /// Pixels of the web's dark canvas colour (#0b1220) in the REAL view,
+    /// rendered offscreen under the given environment colour scheme. This is
+    /// the SwiftUI half of `colorMode="system"`: the view must follow the
+    /// environment's scheme. The device suites prove the OS half where the
+    /// simulator propagates an appearance change.
+    @MainActor
+    static func darkCanvasPixels(colorMode: String, scheme: ColorScheme) -> Int {
+        let view = PyreonFlowView(state: seedFlow(), colorMode: colorMode) { node in Text(node.data.label) }
+            .frame(width: 320, height: 200)
+            .environment(\.colorScheme, scheme)
+        return renderedPixels(view, 11, 18, 32)
+    }
+
+    /// The default node paints the web's DefaultNode box from the palette.
+    @MainActor
+    static func runDefaultNodeRenderChecks() {
+        func node(_ mode: String, selected: Bool = false) -> some View {
+            PyreonFlowDefaultNode(label: "Node", selected: selected).padding(4).pyreonFlowColorMode(mode)
+        }
+        check(renderedPixels(node("dark"), 0x1f, 0x29, 0x37) > 1000, "the dark default node did not paint --pyreon-flow-node-bg (#1f2937)")
+        check(renderedPixels(node("dark"), 0x37, 0x41, 0x51) > 100, "the dark default node did not paint --pyreon-flow-node-border (#374151)")
+        check(renderedPixels(node("light"), 0xdd, 0xdd, 0xdd) > 100, "the light default node did not paint --pyreon-flow-node-border (#dddddd)")
+        check(renderedPixels(node("light", selected: true), 0x3b, 0x82, 0xf6) > 100, "a selected default node did not paint --pyreon-flow-node-selected (#3b82f6)")
+        check(renderedPixels(node("light"), 0x3b, 0x82, 0xf6) == 0, "an unselected default node painted the selected border")
+    }
+
+    @MainActor
+    static func runSystemColorModeRenderChecks() {
+        let lightSystem = darkCanvasPixels(colorMode: "system", scheme: .light)
+        let darkSystem = darkCanvasPixels(colorMode: "system", scheme: .dark)
+        check(lightSystem == 0, "colorMode=\"system\" painted the dark canvas under a light scheme (\(lightSystem) px)")
+        check(darkSystem > 1000, "colorMode=\"system\" did not follow a dark scheme (\(darkSystem) px)")
+        // Forced modes ignore the environment in both directions.
+        check(darkCanvasPixels(colorMode: "light", scheme: .dark) == 0, "colorMode=\"light\" followed a dark scheme")
+        check(darkCanvasPixels(colorMode: "dark", scheme: .light) > 1000, "colorMode=\"dark\" did not paint dark under a light scheme")
+    }
+
+    static func runSvgPathChecks() {
+        func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-9 }
+        func same(_ got: [PyreonFlowEdgeSegment], _ want: [(String, [Double])]) -> Bool {
+            guard got.count == want.count else { return false }
+            for (g, w) in zip(got, want) {
+                guard g.kind == w.0 else { return false }
+                let v: [Double?] = g.kind == "cubic" ? [g.x, g.y, g.c1x, g.c1y, g.c2x, g.c2y] : g.kind == "quad" ? [g.x, g.y, g.cx, g.cy] : [g.x, g.y]
+                guard v.count == w.1.count, zip(v, w.1).allSatisfy({ near($0 ?? .nan, $1) }) else { return false }
+            }
+            return true
+        }
+        check(same(pyreonFlowParseSvgPath("M10 20 L30 40"), [("move", [10.0, 20.0]), ("line", [30.0, 40.0])]), "svg path parses 'M10 20 L30 40'")
+        check(same(pyreonFlowParseSvgPath("m10 20 l5 5 h10 v-5"), [("move", [10.0, 20.0]), ("line", [15.0, 25.0]), ("line", [25.0, 25.0]), ("line", [25.0, 20.0])]), "svg path parses 'm10 20 l5 5 h10 v-5'")
+        check(same(pyreonFlowParseSvgPath("M0,0 C10,0 20,10 30,10 S50,20 60,20"), [("move", [0.0, 0.0]), ("cubic", [30.0, 10.0, 10.0, 0.0, 20.0, 10.0]), ("cubic", [60.0, 20.0, 40.0, 10.0, 50.0, 20.0])]), "svg path parses 'M0,0 C10,0 20,10 30,10 S50,20 60,20'")
+        check(same(pyreonFlowParseSvgPath("M0 0 Q10 10 20 0 T40 0"), [("move", [0.0, 0.0]), ("quad", [20.0, 0.0, 10.0, 10.0]), ("quad", [40.0, 0.0, 30.0, -10.0])]), "svg path parses 'M0 0 Q10 10 20 0 T40 0'")
+        check(same(pyreonFlowParseSvgPath("M0 0 L10 0 L10 10 Z"), [("move", [0.0, 0.0]), ("line", [10.0, 0.0]), ("line", [10.0, 10.0]), ("line", [0.0, 0.0])]), "svg path parses 'M0 0 L10 0 L10 10 Z'")
+        check(same(pyreonFlowParseSvgPath("M0 0 10 10 20 0"), [("move", [0.0, 0.0]), ("line", [10.0, 10.0]), ("line", [20.0, 0.0])]), "svg path parses 'M0 0 10 10 20 0'")
+        check(same(pyreonFlowParseSvgPath("m1 1 2 2"), [("move", [1.0, 1.0]), ("line", [3.0, 3.0])]), "svg path parses 'm1 1 2 2'")
+        check(same(pyreonFlowParseSvgPath("M-1.5.5e1-2"), [("move", [-1.5, 5.0])]), "svg path parses 'M-1.5.5e1-2'")
+        check(same(pyreonFlowParseSvgPath("M0 0 X10 10"), [("move", [0.0, 0.0])]), "svg path parses 'M0 0 X10 10'")
+        check(same(pyreonFlowParseSvgPath(""), []), "svg path parses ''")
+        check(same(pyreonFlowParseSvgPath("M0 0 H10 V10 H0 z m5 5 l1 0"), [("move", [0.0, 0.0]), ("line", [10.0, 0.0]), ("line", [10.0, 10.0]), ("line", [0.0, 10.0]), ("line", [0.0, 0.0]), ("move", [5.0, 5.0]), ("line", [6.0, 5.0])]), "svg path parses 'M0 0 H10 V10 H0 z m5 5 l1 0'")
+        check(same(pyreonFlowParseSvgPath("M0 0 c1 2 3 4 5 6 s1 1 2 2"), [("move", [0.0, 0.0]), ("cubic", [5.0, 6.0, 1.0, 2.0, 3.0, 4.0]), ("cubic", [7.0, 8.0, 7.0, 8.0, 6.0, 7.0])]), "svg path parses 'M0 0 c1 2 3 4 5 6 s1 1 2 2'")
+        // A half circle from (0,0) to (20,0), centre (10,0), sweep on: two quarter-turn cubics through (10,-10).
+        let arc = pyreonFlowParseSvgPath("M0 0 A10 10 0 0 1 20 0")
+        check(arc.count == 3 && arc[1].kind == "cubic" && near(arc[1].x, 10) && near(arc[1].y, -10) && near(arc[2].x, 20) && near(arc[2].y, 0), "a half-circle arc ends each quarter on the circle")
+        // Compact flags: "0110 10" is large=0, sweep=1, then x=10 y=10 (relative).
+        let quarter = pyreonFlowParseSvgPath("M0 0a10 10 0 0110 10")
+        check(quarter.count == 2 && near(quarter[1].x, 10) && near(quarter[1].y, 10), "compact arc flags parse and the arc ends at the relative endpoint")
+        let result = PyreonFlowPathResult(svgPath: "M0 0 L20 10")
+        check(near(result.labelX, 10) && near(result.labelY, 5) && result.path == "M0,0 L20,10", "a parsed path result centres its label and round-trips to path data")
+    }
+
+    /// RGBA of one pixel of a view rendered offscreen at scale 1.
+    @MainActor static func svgPixel<V: View>(_ view: V, x: Int, y: Int) -> (r: UInt8, g: UInt8, b: UInt8, a: UInt8) {
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 1
+        guard let image = renderer.cgImage else { fatalError("PyreonFlowStateTests: ImageRenderer produced no image") }
+        var data = [UInt8](repeating: 0, count: image.width * image.height * 4)
+        let ctx = CGContext(data: &data, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        let i = (y * image.width + x) * 4
+        return (data[i], data[i + 1], data[i + 2], data[i + 3])
+    }
+
+    /// A lowered inline `<svg>` is sized and scaled like the browser: explicit
+    /// size, viewBox aspect for a missing side, `xMidYMid meet` by default,
+    /// `none` stretching. Then an offscreen render proves the transform is
+    /// actually applied to what is drawn, not only computed.
+    @MainActor static func runSvgElementChecks() {
+        func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-9 }
+        let explicitSize = pyreonFlowSvgSize(width: 24, height: 12, viewBox: [0, 0, 10, 10])
+        check(explicitSize.width == 24 && explicitSize.height == 12, "explicit width and height win over the viewBox")
+        let fromAspect = pyreonFlowSvgSize(width: 40, height: nil, viewBox: [0, 0, 20, 10])
+        check(fromAspect.width == 40 && fromAspect.height == 20, "a missing height follows the viewBox aspect")
+        let fallback = pyreonFlowSvgSize(width: nil, height: nil, viewBox: nil)
+        check(fallback.width == 300 && fallback.height == 150, "no size and no viewBox is the 300 x 150 replaced-element default")
+        let meet = pyreonFlowSvgTransform(width: 40, height: 20, viewBox: [0, 0, 10, 10])
+        check(near(meet.scaleX, 2) && near(meet.scaleY, 2) && near(meet.translateX, 10) && near(meet.translateY, 0), "meet scales uniformly and centres the slack")
+        let offset = pyreonFlowSvgTransform(width: 20, height: 20, viewBox: [5, 5, 10, 10])
+        check(near(offset.translateX, -10) && near(offset.translateY, -10), "a viewBox origin translates the content")
+        let stretch = pyreonFlowSvgTransform(width: 40, height: 20, viewBox: [0, 0, 10, 10], stretch: true)
+        check(near(stretch.scaleX, 4) && near(stretch.scaleY, 2), "preserveAspectRatio none scales each axis")
+        check(pyreonFlowSvgTransform(width: 40, height: 20, viewBox: nil) == (1, 1, 0, 0), "no viewBox means user units are points")
+
+        // A square filling the viewBox, drawn into a wider viewport: with meet
+        // it lands centred, x 10..30. A transform that is computed but not
+        // applied would draw it at x 0..10 instead.
+        let square = PyreonFlowSvgShape(result: PyreonFlowPathResult(svgPath: "M 0 0 h 10 v 10 h -10 Z"), fill: "#ff0000")
+        let view = PyreonFlowSvg(width: 40, height: 20, viewBox: [0, 0, 10, 10], shapes: [square])
+        let left = svgPixel(view, x: 5, y: 10), mid = svgPixel(view, x: 20, y: 10), right = svgPixel(view, x: 35, y: 10)
+        check(left.a == 0 && right.a == 0, "the slack either side of a meet-fitted viewBox is empty")
+        check(mid.r > 200 && mid.g < 40 && mid.a > 200, "the fitted square is painted with its fill")
+        // Stroke only: fill nil draws no interior.
+        let ring = PyreonFlowSvgShape(result: PyreonFlowPathResult(svgPath: "M 2 2 h 16 v 16 h -16 Z"), stroke: "#0000ff", strokeWidth: 2, fill: nil)
+        let hollow = PyreonFlowSvg(width: 20, height: 20, shapes: [ring])
+        check(svgPixel(hollow, x: 10, y: 10).a == 0, "fill none leaves the interior empty")
+        let edge = svgPixel(hollow, x: 2, y: 10)
+        check(edge.b > 200 && edge.a > 200, "the stroke is painted on the outline")
+    }
     static func main() {
         runParityChecks()
+        runSvgPathChecks()
+        MainActor.assumeIsolated { runSystemColorModeRenderChecks(); runDefaultNodeRenderChecks(); runSvgElementChecks() }
+        runKeyRoutingChecks()
         runStateChecks()
         runEdgeCanvasChecks()
         runWebViewChecks()

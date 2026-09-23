@@ -365,3 +365,279 @@ fun pyreonNearestFlowEdge(edges: List<PyreonFlowEdgeStroke>, point: PyreonFlowPa
     return edges.filter { pyreonFlowEdgeDistance(it.segments, point) <= it.interactionWidth / 2 / safeZoom }
         .minByOrNull { pyreonFlowEdgeDistance(it.segments, point) }
 }
+
+/**
+ * Parses SVG path data (the `d` attribute) into the same absolute segments the
+ * path helpers produce, so a custom edge or connection line drawn from an
+ * arbitrary path string renders natively. Every command is supported,
+ * absolute and relative: M L H V C S Q T A Z. Arcs become cubic curves; `Z`
+ * becomes a line back to the subpath start. Parsing stops at the first
+ * malformed token, keeping what came before, as a browser does. The label
+ * point is the centre of the segment endpoints' bounds. Mirrors Swift's
+ * `PyreonFlowPathResult(svgPath:)`.
+ */
+fun pyreonFlowPathResultFromSvg(d: String): PyreonFlowPathResult {
+    val segments = pyreonFlowParseSvgPath(d)
+    val xs = segments.map { it.x }
+    val ys = segments.map { it.y }
+    val labelX = if (xs.isEmpty()) 0.0 else (xs.min() + xs.max()) / 2
+    val labelY = if (ys.isEmpty()) 0.0 else (ys.min() + ys.max()) / 2
+    return PyreonFlowPathResult(labelX, labelY, segments)
+}
+
+fun pyreonFlowParseSvgPath(d: String): List<PyreonFlowEdgeSegment> {
+    var i = 0
+    val out = mutableListOf<PyreonFlowEdgeSegment>()
+    var cx = 0.0
+    var cy = 0.0
+    var startX = 0.0
+    var startY = 0.0
+    var lastCubic: Pair<Double, Double>? = null
+    var lastQuad: Pair<Double, Double>? = null
+    var command: Char? = null
+    val commands = "MmLlHhVvCcSsQqTtAaZz"
+
+    fun skipSeparators() {
+        while (i < d.length && (d[i] == ' ' || d[i] == ',' || d[i] == '\n' || d[i] == '\t' || d[i] == '\r')) i++
+    }
+    fun number(): Double? {
+        skipSeparators()
+        if (i >= d.length) return null
+        val start = i
+        var sawDot = false
+        var sawExp = false
+        var sawDigit = false
+        if (d[i] == '+' || d[i] == '-') i++
+        while (i < d.length) {
+            val c = d[i]
+            if (c in '0'..'9') { sawDigit = true; i++ }
+            else if (c == '.' && !sawDot && !sawExp) { sawDot = true; i++ }
+            else if ((c == 'e' || c == 'E') && sawDigit && !sawExp) {
+                sawExp = true; i++
+                if (i < d.length && (d[i] == '+' || d[i] == '-')) i++
+            } else break
+        }
+        return if (sawDigit) d.substring(start, i).toDoubleOrNull() else null
+    }
+    fun flag(): Boolean? {
+        skipSeparators()
+        if (i >= d.length || (d[i] != '0' && d[i] != '1')) return null
+        val value = d[i] == '1'
+        i++
+        return value
+    }
+
+    while (true) {
+        skipSeparators()
+        if (i >= d.length) break
+        if (d[i] in commands) {
+            command = d[i]
+            i++
+        } else if (command == null) {
+            break
+        }
+        val cmd = command ?: break
+        val relative = cmd.isLowerCase()
+        val ox = if (relative) cx else 0.0
+        val oy = if (relative) cy else 0.0
+        when (cmd.uppercaseChar()) {
+            'Z' -> {
+                out += PyreonFlowEdgeSegment.line(startX, startY)
+                cx = startX; cy = startY
+                lastCubic = null; lastQuad = null
+                command = null
+            }
+            'M' -> {
+                val x = number() ?: break
+                val y = number() ?: break
+                cx = ox + x; cy = oy + y; startX = cx; startY = cy
+                out += PyreonFlowEdgeSegment.move(cx, cy)
+                lastCubic = null; lastQuad = null
+                // Coordinate pairs after a moveto are implicit linetos.
+                command = if (relative) 'l' else 'L'
+            }
+            'L' -> {
+                val x = number() ?: break
+                val y = number() ?: break
+                cx = ox + x; cy = oy + y
+                out += PyreonFlowEdgeSegment.line(cx, cy); lastCubic = null; lastQuad = null
+            }
+            'H' -> {
+                val x = number() ?: break
+                cx = ox + x
+                out += PyreonFlowEdgeSegment.line(cx, cy); lastCubic = null; lastQuad = null
+            }
+            'V' -> {
+                val y = number() ?: break
+                cy = oy + y
+                out += PyreonFlowEdgeSegment.line(cx, cy); lastCubic = null; lastQuad = null
+            }
+            'C' -> {
+                val x1 = number() ?: break
+                val y1 = number() ?: break
+                val x2 = number() ?: break
+                val y2 = number() ?: break
+                val x = number() ?: break
+                val y = number() ?: break
+                val c2 = Pair(ox + x2, oy + y2)
+                cx = ox + x; cy = oy + y
+                out += PyreonFlowEdgeSegment.cubic(cx, cy, ox + x1, oy + y1, c2.first, c2.second)
+                lastCubic = c2; lastQuad = null
+            }
+            'S' -> {
+                val x2 = number() ?: break
+                val y2 = number() ?: break
+                val x = number() ?: break
+                val y = number() ?: break
+                val c1 = lastCubic?.let { Pair(2 * cx - it.first, 2 * cy - it.second) } ?: Pair(cx, cy)
+                val c2 = Pair(ox + x2, oy + y2)
+                cx = ox + x; cy = oy + y
+                out += PyreonFlowEdgeSegment.cubic(cx, cy, c1.first, c1.second, c2.first, c2.second)
+                lastCubic = c2; lastQuad = null
+            }
+            'Q' -> {
+                val x1 = number() ?: break
+                val y1 = number() ?: break
+                val x = number() ?: break
+                val y = number() ?: break
+                val c = Pair(ox + x1, oy + y1)
+                cx = ox + x; cy = oy + y
+                out += PyreonFlowEdgeSegment.quad(cx, cy, c.first, c.second)
+                lastQuad = c; lastCubic = null
+            }
+            'T' -> {
+                val x = number() ?: break
+                val y = number() ?: break
+                val c = lastQuad?.let { Pair(2 * cx - it.first, 2 * cy - it.second) } ?: Pair(cx, cy)
+                cx = ox + x; cy = oy + y
+                out += PyreonFlowEdgeSegment.quad(cx, cy, c.first, c.second)
+                lastQuad = c; lastCubic = null
+            }
+            'A' -> {
+                val rx = number() ?: break
+                val ry = number() ?: break
+                val rotation = number() ?: break
+                val large = flag() ?: break
+                val sweep = flag() ?: break
+                val x = number() ?: break
+                val y = number() ?: break
+                val ex = ox + x
+                val ey = oy + y
+                out += pyreonFlowArcToCubics(cx, cy, rx, ry, rotation, large, sweep, ex, ey)
+                cx = ex; cy = ey
+                lastCubic = null; lastQuad = null
+            }
+            else -> break
+        }
+    }
+    return out
+}
+
+/** An SVG elliptical arc as cubic Béziers (SVG spec appendix F.6), at most a quarter turn per curve. */
+internal fun pyreonFlowArcToCubics(
+    x0: Double, y0: Double, rxIn: Double, ryIn: Double, rotation: Double,
+    largeArc: Boolean, sweep: Boolean, x: Double, y: Double,
+): List<PyreonFlowEdgeSegment> {
+    if (x0 == x && y0 == y) return emptyList()
+    var rx = kotlin.math.abs(rxIn)
+    var ry = kotlin.math.abs(ryIn)
+    if (rx == 0.0 || ry == 0.0) return listOf(PyreonFlowEdgeSegment.line(x, y))
+    val phi = rotation * kotlin.math.PI / 180
+    val cosPhi = kotlin.math.cos(phi)
+    val sinPhi = kotlin.math.sin(phi)
+    val dx = (x0 - x) / 2
+    val dy = (y0 - y) / 2
+    val x1p = cosPhi * dx + sinPhi * dy
+    val y1p = -sinPhi * dx + cosPhi * dy
+    val lambda = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry)
+    if (lambda > 1) { rx *= kotlin.math.sqrt(lambda); ry *= kotlin.math.sqrt(lambda) }
+    val num = rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p
+    val den = rx * rx * y1p * y1p + ry * ry * x1p * x1p
+    var coef = if (den == 0.0) 0.0 else kotlin.math.sqrt(maxOf(0.0, num / den))
+    if (largeArc == sweep) coef = -coef
+    val cxp = coef * rx * y1p / ry
+    val cyp = -coef * ry * x1p / rx
+    val centerX = cosPhi * cxp - sinPhi * cyp + (x0 + x) / 2
+    val centerY = sinPhi * cxp + cosPhi * cyp + (y0 + y) / 2
+    fun angle(ux: Double, uy: Double, vx: Double, vy: Double) = kotlin.math.atan2(ux * vy - uy * vx, ux * vx + uy * vy)
+    val theta1 = angle(1.0, 0.0, (x1p - cxp) / rx, (y1p - cyp) / ry)
+    var delta = angle((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry)
+    if (!sweep && delta > 0) delta -= 2 * kotlin.math.PI
+    if (sweep && delta < 0) delta += 2 * kotlin.math.PI
+    val pieces = maxOf(1, kotlin.math.ceil(kotlin.math.abs(delta) / (kotlin.math.PI / 2)).toInt())
+    val step = delta / pieces
+    val k = 4.0 / 3.0 * kotlin.math.tan(step / 4)
+    fun point(a: Double): Pair<Double, Double> {
+        val px = rx * kotlin.math.cos(a)
+        val py = ry * kotlin.math.sin(a)
+        return Pair(cosPhi * px - sinPhi * py + centerX, sinPhi * px + cosPhi * py + centerY)
+    }
+    fun derivative(a: Double): Pair<Double, Double> {
+        val px = -rx * kotlin.math.sin(a)
+        val py = ry * kotlin.math.cos(a)
+        return Pair(cosPhi * px - sinPhi * py, sinPhi * px + cosPhi * py)
+    }
+    val out = mutableListOf<PyreonFlowEdgeSegment>()
+    var t = theta1
+    for (piece in 0 until pieces) {
+        val t2 = t + step
+        val p1 = point(t)
+        val p2 = point(t2)
+        val d1 = derivative(t)
+        val d2 = derivative(t2)
+        val end = if (piece == pieces - 1) Pair(x, y) else p2
+        out += PyreonFlowEdgeSegment.cubic(end.first, end.second, p1.first + k * d1.first, p1.second + k * d1.second, p2.first - k * d2.first, p2.second - k * d2.second)
+        t = t2
+    }
+    return out
+}
+
+// ─── Inline <svg> in a native Flow renderer ─────────────────────────────────
+
+/**
+ * One shape of a lowered `<svg>`: every SVG shape is lowered to path data by
+ * the compiler, and paint arrives resolved (inheritance included). Mirrors
+ * Swift's `PyreonFlowSvgShape`.
+ */
+data class PyreonFlowSvgShape(
+    val result: PyreonFlowPathResult,
+    /** The stroke colour; `null` draws no stroke (SVG `stroke: none`, the initial value). */
+    val stroke: String? = null,
+    val strokeWidth: Double = 1.0,
+    /** The fill colour; `null` draws no fill (SVG `fill: none`). */
+    val fill: String? = "#000000",
+)
+
+data class PyreonFlowSvgSize(val width: Double, val height: Double)
+data class PyreonFlowSvgTransform(val scaleX: Double, val scaleY: Double, val translateX: Double, val translateY: Double)
+
+/**
+ * The `<svg>` element's rendered size, in dp. Explicit `width` and `height`
+ * win; with one, the other follows the viewBox aspect; with neither, the
+ * replaced-element default of 300 wide applies. Mirrors Swift.
+ */
+fun pyreonFlowSvgSize(width: Double?, height: Double?, viewBox: List<Double>?): PyreonFlowSvgSize {
+    val aspect = if (viewBox != null && viewBox.size == 4 && viewBox[2] > 0 && viewBox[3] > 0) viewBox[3] / viewBox[2] else null
+    return when {
+        width != null && height != null -> PyreonFlowSvgSize(width, height)
+        width != null -> PyreonFlowSvgSize(width, aspect?.let { width * it } ?: 150.0)
+        height != null -> PyreonFlowSvgSize(aspect?.let { height / it } ?: 300.0, height)
+        else -> PyreonFlowSvgSize(300.0, aspect?.let { 300.0 * it } ?: 150.0)
+    }
+}
+
+/**
+ * viewBox units onto the viewport, in dp: `xMidYMid meet` by default (uniform
+ * fit, centred), non-uniform when [stretch] (`preserveAspectRatio="none"`).
+ * Without a viewBox, user units are dp. Mirrors Swift.
+ */
+fun pyreonFlowSvgTransform(width: Double, height: Double, viewBox: List<Double>?, stretch: Boolean = false): PyreonFlowSvgTransform {
+    if (viewBox == null || viewBox.size != 4 || viewBox[2] <= 0 || viewBox[3] <= 0) return PyreonFlowSvgTransform(1.0, 1.0, 0.0, 0.0)
+    if (stretch) {
+        val sx = width / viewBox[2]
+        val sy = height / viewBox[3]
+        return PyreonFlowSvgTransform(sx, sy, -viewBox[0] * sx, -viewBox[1] * sy)
+    }
+    val s = minOf(width / viewBox[2], height / viewBox[3])
+    return PyreonFlowSvgTransform(s, s, -viewBox[0] * s + (width - viewBox[2] * s) / 2, -viewBox[1] * s + (height - viewBox[3] * s) / 2)
+}

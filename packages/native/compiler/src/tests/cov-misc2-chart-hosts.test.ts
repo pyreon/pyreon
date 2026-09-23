@@ -250,7 +250,7 @@ describe('chart-hosts — <Plot> settings children', () => {
     expect(plain).toContain('placeLegend(')
     expect(full).toContain('placeLegend(')
     expect(full).not.toBe(plain)
-    expect(full).toContain('legendToggle(')
+    expect(full).toContain('legendToggleGroup(')
   })
 
   it('lowers <Zoom> including the inside=false / navigator / presets / link arms', () => {

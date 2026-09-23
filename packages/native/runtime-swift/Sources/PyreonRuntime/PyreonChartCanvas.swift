@@ -103,6 +103,10 @@ public struct PyreonDrawCmd: Codable, Equatable {
     public var baseline: String?
     /// Rotation about `at` in degrees, clockwise positive — a slanted axis label.
     public var rotate: Double?
+    /// "bold" sets the text heavier; nil is the regular weight.
+    public var weight: String?
+    /// A text halo's width (ECharts' `textBorderWidth`); the colour is `stroke`.
+    public var strokeWidth: Double?
     // Full defaulted-parameter init in the GENERATED engine's field order —
     // the emitted geometry constructs commands as named-subset calls
     // (`PyreonDrawCmd(kind: "rect", rect: r, fill: f)`), and Swift requires
@@ -129,7 +133,9 @@ public struct PyreonDrawCmd: Codable, Equatable {
         size: Double? = nil,
         align: String? = nil,
         baseline: String? = nil,
-        rotate: Double? = nil
+        rotate: Double? = nil,
+        weight: String? = nil,
+        strokeWidth: Double? = nil
     ) {
         self.kind = kind
         self.rect = rect
@@ -151,6 +157,8 @@ public struct PyreonDrawCmd: Codable, Equatable {
         self.align = align
         self.baseline = baseline
         self.rotate = rotate
+        self.weight = weight
+        self.strokeWidth = strokeWidth
     }
 }
 
@@ -608,8 +616,16 @@ private struct PyreonStaticChartCanvas: View {
 
     public var body: some View {
         Canvas { context, _ in
+            // `clip` saves the context (a value) and narrows it; `unclip` puts the saved one back.
+            var clipStack: [GraphicsContext] = []
             for c in cmds {
                 switch c.kind {
+                case "clip":
+                    guard let r = c.rect else { continue }
+                    clipStack.append(context)
+                    context.clip(to: Path(CGRect(x: r.x, y: r.y, width: r.w, height: r.h)))
+                case "unclip":
+                    if let saved = clipStack.popLast() { context = saved }
                 case "rect":
                     guard let r = c.rect, let fill = c.fill else { continue }
                     let shade = pyreonChartShading(fill, c.grad)
@@ -663,7 +679,7 @@ private struct PyreonStaticChartCanvas: View {
                     let font: Font =
                         fontFamily != nil ? .custom(fontFamily!, size: size) : .system(size: size)
                     var resolved = context.resolve(
-                        Text(txt).font(font))
+                        Text(txt).font(font).fontWeight(c.weight == "bold" ? .bold : .regular))
                     resolved.shading = .color(pyreonChartColor(fill))
                     let m = resolved.measure(in: CGSize(width: 10000, height: 10000))
                     // web: textAlign start|center|end; textBaseline top|middle|alphabetic
@@ -680,14 +696,31 @@ private struct PyreonStaticChartCanvas: View {
                     default: y = at.y - m.height  // bottom ≈ alphabetic
                     }
                     let rot = c.rotate ?? 0.0
+                    // A halo (ECharts' textBorder): SwiftUI text has no stroke,
+                    // so the text is drawn in the halo colour at eight offsets
+                    // half the halo width out, under the fill.
+                    var halo: GraphicsContext.ResolvedText? = nil
+                    if let hs = c.stroke, !hs.isEmpty {
+                        var h = resolved
+                        h.shading = .color(pyreonChartColor(hs))
+                        halo = h
+                    }
+                    let hr = (c.strokeWidth ?? 2.0) / 2.0
+                    let offsets: [(Double, Double)] = [(-hr, 0), (hr, 0), (0, -hr), (0, hr), (-hr, -hr), (hr, -hr), (-hr, hr), (hr, hr)]
                     if rot != 0.0 {
                         // Rotate about the anchor; align/baseline apply in the
                         // rotated frame (the web canvas's translate + rotate).
                         var rc = context
                         rc.translateBy(x: at.x, y: at.y)
                         rc.rotate(by: Angle(degrees: rot))
+                        if let h = halo {
+                            for o in offsets { rc.draw(h, in: CGRect(x: x - at.x + o.0, y: y - at.y + o.1, width: m.width, height: m.height)) }
+                        }
                         rc.draw(resolved, in: CGRect(x: x - at.x, y: y - at.y, width: m.width, height: m.height))
                     } else {
+                        if let h = halo {
+                            for o in offsets { context.draw(h, in: CGRect(x: x + o.0, y: y + o.1, width: m.width, height: m.height)) }
+                        }
                         context.draw(resolved, in: CGRect(x: x, y: y, width: m.width, height: m.height))
                     }
                 default:

@@ -39,6 +39,15 @@ export function PolarChart(props: PolarChartProps): VNode {
       props.onSelectIndex?.(hitPolarIndex(layout, px, py))
     },
     tooltip: (layout, px, py) => orNull(polarTip(layout, readSeries(), px, py)),
+    item: (layout, px, py) => {
+      const hit = hitPolarIndex(layout, px, py)
+      const s = layout.sectors[hit.sector]
+      const p = s === undefined ? layout.lines[hit.line]?.points[hit.point] : undefined
+      const at = s ?? p
+      if (at === undefined) return null
+      const series = readSeries()[at.series]
+      return { seriesIndex: at.series, seriesName: series?.name, dataIndex: at.index, name: layout.categoryLabels[at.index]?.text ?? '', value: at.value, color: at.color }
+    },
     // The keyboard walks the CATEGORIES (the table's rows): Enter picks the
     // first series' item at the focused category — its sector, or its line
     // point — and the ring wraps it.

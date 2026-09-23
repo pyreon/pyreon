@@ -287,7 +287,7 @@ function dimIndex(t: Table, ref: unknown): number | null {
   return null
 }
 
-const NAME_VALUE_TYPES = new Set(['pie', 'funnel', 'treemap', 'sunburst'])
+const NAME_VALUE_TYPES = new Set(['pie', 'funnel', 'treemap', 'sunburst', 'gauge', 'map'])
 
 /**
  * Materialise `series[].data` (and a category `xAxis.data`) from `dataset`.
@@ -358,6 +358,7 @@ export function resolveDataset(option: EChartsOptionLike): { option: EChartsOpti
     delete o['datasetId']
     delete o['encode']
     delete o['seriesLayoutBy']
+    delete o['dimensions']
     return o
   }
   const outSeries = seriesArr.map((sRaw, si) => {
@@ -370,6 +371,11 @@ export function resolveDataset(option: EChartsOptionLike): { option: EChartsOpti
       return sRaw
     }
     if (sRaw['seriesLayoutBy'] === 'row') t = transpose(t)
+    // A series' own `dimensions` names the columns it reads, over the dataset's.
+    if (Array.isArray(sRaw['dimensions'])) {
+      const own = (sRaw['dimensions'] as unknown[]).map((d, i) => (isObj(d) && typeof d['name'] === 'string' ? (d['name'] as string) : typeof d === 'string' ? d : t!.dims[i] ?? 'dim' + String(i)))
+      t = { ...t, dims: t.dims.map((d, i) => own[i] ?? d) }
+    }
     const enc = isObj(sRaw['encode']) ? sRaw['encode'] : {}
     const type = typeof sRaw['type'] === 'string' ? (sRaw['type'] as string) : ''
     const col = (v: unknown[] | undefined | unknown, fallback: number): number | null => dimIndex(t!, Array.isArray(v) ? v[0] : v) ?? (fallback < t!.dims.length ? fallback : null)
@@ -404,6 +410,59 @@ export function resolveDataset(option: EChartsOptionLike): { option: EChartsOpti
       const valueCol = col(enc['value'], enc['value'] === undefined ? nextColumn(dsIndex) : 0)
       if (nameCol === null || valueCol === null) return sr
       return withExtras(withData(sr, t.rows.map((r) => ({ name: String(r[nameCol] ?? ''), value: num(r[valueCol]) ?? 0 }))))
+    }
+    // The tuple families: each datum gathers several columns of one row.
+    const cols = (key: string, n: number, from: number): number[] | null => {
+      const v = enc[key]
+      if (v !== undefined) {
+        const refs = Array.isArray(v) ? (v as unknown[]) : [v]
+        const out: number[] = []
+        for (const ref of refs) {
+          const c = dimIndex(t!, ref)
+          if (c === null) {
+            warnings.push({ code: 'series-data-shape', path: 'series[' + String(si) + '].encode.' + key, message: 'Unknown dataset dimension "' + String(ref) + '"; treated as empty.' })
+            return null
+          }
+          out.push(c)
+        }
+        return out
+      }
+      const out: number[] = []
+      for (let k = 0; k < n && from + k < t!.dims.length; k++) out.push(from + k)
+      return out.length === n ? out : null
+    }
+    // candlestick [open, close, lowest, highest] and boxplot [min, Q1, median, Q3, max] on a category x.
+    if (type === 'candlestick' || type === 'boxplot') {
+      const xCol = col(enc['x'], 0)
+      const ys = cols('y', type === 'candlestick' ? 4 : 5, 1)
+      if (xCol === null || ys === null) return sr
+      if (xData === null) xData = t.rows.map((r) => r[xCol])
+      return withExtras(withData(sr, t.rows.map((r) => ys.map((c) => num(r[c]) ?? 0))))
+    }
+    // heatmap [x, y, value]: the reader resolves names against the category axes.
+    if (type === 'heatmap') {
+      const xCol = col(enc['x'], 0)
+      const yCol = col(enc['y'], 1)
+      const vCol = col(enc['value'], 2)
+      if (xCol === null || yCol === null || vCol === null) return sr
+      return withExtras(withData(sr, t.rows.map((r) => [r[xCol], r[yCol], num(r[vCol]) ?? 0])))
+    }
+    // radar: a named polygon per row, its value every other column (or `encode.value`).
+    if (type === 'radar') {
+      const nameCol = col(enc['itemName'], 0)
+      const values = enc['value'] !== undefined ? cols('value', 0, 0) : t.dims.map((_, i) => i).filter((i) => i !== nameCol)
+      if (nameCol === null || values === null) return sr
+      return withExtras(withData(sr, t.rows.map((r) => ({ name: String(r[nameCol] ?? ''), value: values.map((c) => num(r[c]) ?? 0) }))))
+    }
+    // parallel: a row per line, one value per dimension, in dimension order.
+    if (type === 'parallel') return withExtras(withData(sr, t.rows.map((r) => t!.dims.map((_, c) => r[c] ?? null))))
+    // themeRiver [date, value, name].
+    if (type === 'themeRiver') {
+      const dCol = col(enc['single'], 0)
+      const vCol = col(enc['value'], 1)
+      const nCol = col(enc['itemName'] ?? enc['seriesName'], 2)
+      if (dCol === null || vCol === null || nCol === null) return sr
+      return withExtras(withData(sr, t.rows.map((r) => [String(r[dCol] ?? ''), num(r[vCol]) ?? 0, String(r[nCol] ?? '')])))
     }
     if (type === 'scatter') {
       const xCol = col(enc['x'], 0)

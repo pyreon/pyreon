@@ -233,9 +233,17 @@ export function CodeWebView(props: CodeWebViewProps): VNode {
   const built: BuildCodeHostHtmlOptions = {}
   if (props.codemirrorScript !== undefined) built.codemirrorScript = props.codemirrorScript
   if (props.codemirrorSrc !== undefined) built.codemirrorSrc = props.codemirrorSrc
-  const html = props.html ?? buildCodeHostHtml(built)
+  // `html` is forwarded as a GETTER, not read once here: native hosts reload
+  // when `html` changes, and an eager read froze the web host on its first
+  // page. The default host is built lazily, once, and only if needed.
+  let defaultHtml: string | undefined
 
-  const webViewProps: Record<string, unknown> = { html }
+  const webViewProps: Record<string, unknown> = {}
+  Object.defineProperty(webViewProps, 'html', {
+    enumerable: true,
+    configurable: true,
+    get: (): string => props.html ?? (defaultHtml ??= buildCodeHostHtml(built)),
+  })
   Object.defineProperty(webViewProps, 'data', {
     enumerable: true,
     configurable: true,

@@ -51,17 +51,24 @@ describe('facade: symbol and showSymbol', () => {
       { type: 'effectScatter', symbol: 'triangle', data: [1, 2] },
       { type: 'scatter', symbol: 'pin', data: [1, 2] },
     ])
-    expect(sp.series.map((s) => s.symbol)).toEqual(['diamond', 'rect', undefined, undefined, 'triangle', undefined])
+    // emptyCircle is a hollow circle; a plain scatter keeps the engine's filled default.
+    expect(sp.series.map((s) => s.symbol)).toEqual(['diamond', 'rect', 'circle', undefined, 'triangle', undefined])
+    expect(sp.series[2]!.symbolHollow).toBe(true)
     expect(warnings.map((w) => w.code + '@' + w.path)).toEqual(['mark-shape-unsupported@series[5].symbol'])
   })
-  it('a line takes symbols only with showSymbol: true, defaulting to circles', () => {
+  it("a line shows ECharts' emptyCircle by default; showSymbol false or symbol 'none' hides it", () => {
     const { spec: sp, warnings } = run([
       { type: 'line', symbol: 'diamond', data: [1, 2] },
-      { type: 'line', showSymbol: true, data: [1, 2] },
-      { type: 'line', showSymbol: true, symbol: 'rect', data: [1, 2] },
-      { type: 'line', showSymbol: true, symbol: 'arrow', data: [1, 2] },
+      { type: 'line', data: [1, 2] },
+      { type: 'line', symbol: 'rect', data: [1, 2] },
+      { type: 'line', symbol: 'arrow', data: [1, 2] },
+      { type: 'line', showSymbol: false, data: [1, 2] },
+      { type: 'line', symbol: 'none', data: [1, 2] },
+      { type: 'line', showAllSymbol: true, symbol: 'emptyTriangle', data: [1, 2] },
     ])
-    expect(sp.series.map((s) => s.symbol)).toEqual([undefined, 'circle', 'rect', 'circle'])
+    expect(sp.series.map((s) => s.symbol)).toEqual(['diamond', 'circle', 'rect', 'circle', undefined, undefined, 'triangle'])
+    expect(sp.series.map((s) => s.symbolHollow === true)).toEqual([false, true, false, false, false, false, true])
+    expect(sp.series.map((s) => s.symbolShow)).toEqual(['auto', 'auto', 'auto', 'auto', undefined, undefined, 'all'])
     expect(warnings.map((w) => w.path)).toEqual(['series[3].symbol'])
   })
 })
