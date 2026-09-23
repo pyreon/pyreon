@@ -1114,6 +1114,8 @@ public struct ChartSpec {
   public var xAxisLine: Bool? = nil
   public var yAxisLine: Bool? = nil
   public var y2AxisLine: Bool? = nil
+  public var xAxisOnZero: Bool? = nil
+  public var yAxisOnZero: Bool? = nil
   public var y2Grid: Bool? = nil
   public var xAxisLineColor: String? = nil
   public var yAxisLineColor: String? = nil
@@ -1148,7 +1150,7 @@ public struct ChartSpec {
   public var x2Domain: Domain? = nil
   public var lines: [LinesSeries]? = nil
   public var effectTime: Double? = nil
-  public init(width: Double, height: Double, series: [Series], drawOrder: [Int]? = nil, boundaryGap: Bool? = nil, yZero: Bool? = nil, ySplit: Double? = nil, barLayout: Bool? = nil, barGap: BarLength? = nil, barCategoryGap: BarLength? = nil, yMin: Double? = nil, xSplit: Double? = nil, xZero: Bool? = nil, xMin: Double? = nil, xMax: Double? = nil, xMinData: Bool? = nil, xMaxData: Bool? = nil, yMax: Double? = nil, yMinData: Bool? = nil, yMaxData: Bool? = nil, gridLeft: Double? = nil, reserveLeft: Double? = nil, gridTop: Double? = nil, gridRight: Double? = nil, gridBottom: Double? = nil, gridContain: Bool? = nil, categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, xLabelAngle: Double? = nil, xLabelInterval: Double? = nil, xLabelMargin: Double? = nil, xLabelInside: Bool? = nil, yLabelAngle: Double? = nil, yLabelMargin: Double? = nil, yLabelInside: Bool? = nil, xAxisLine: Bool? = nil, yAxisLine: Bool? = nil, y2AxisLine: Bool? = nil, y2Grid: Bool? = nil, xAxisLineColor: String? = nil, yAxisLineColor: String? = nil, xAxisLineWidth: Double? = nil, yAxisLineWidth: Double? = nil, xTicks: Bool? = nil, yTicks: Bool? = nil, xTickLength: Double? = nil, yTickLength: Double? = nil, xTickInside: Bool? = nil, yTickInside: Bool? = nil, xTickColor: String? = nil, yTickColor: String? = nil, xTickBands: Bool? = nil, gridColor: String? = nil, gridWidth: Double? = nil, gridDash: [Double]? = nil, xGrid: Bool? = nil, xGridColor: String? = nil, xGridWidth: Double? = nil, xGridDash: [Double]? = nil, yInverse: Bool? = nil, xInverse: Bool? = nil, xTop: Bool? = nil, yRight: Bool? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, lines: [LinesSeries]? = nil, effectTime: Double? = nil) {
+  public init(width: Double, height: Double, series: [Series], drawOrder: [Int]? = nil, boundaryGap: Bool? = nil, yZero: Bool? = nil, ySplit: Double? = nil, barLayout: Bool? = nil, barGap: BarLength? = nil, barCategoryGap: BarLength? = nil, yMin: Double? = nil, xSplit: Double? = nil, xZero: Bool? = nil, xMin: Double? = nil, xMax: Double? = nil, xMinData: Bool? = nil, xMaxData: Bool? = nil, yMax: Double? = nil, yMinData: Bool? = nil, yMaxData: Bool? = nil, gridLeft: Double? = nil, reserveLeft: Double? = nil, gridTop: Double? = nil, gridRight: Double? = nil, gridBottom: Double? = nil, gridContain: Bool? = nil, categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, xLabelAngle: Double? = nil, xLabelInterval: Double? = nil, xLabelMargin: Double? = nil, xLabelInside: Bool? = nil, yLabelAngle: Double? = nil, yLabelMargin: Double? = nil, yLabelInside: Bool? = nil, xAxisLine: Bool? = nil, yAxisLine: Bool? = nil, y2AxisLine: Bool? = nil, xAxisOnZero: Bool? = nil, yAxisOnZero: Bool? = nil, y2Grid: Bool? = nil, xAxisLineColor: String? = nil, yAxisLineColor: String? = nil, xAxisLineWidth: Double? = nil, yAxisLineWidth: Double? = nil, xTicks: Bool? = nil, yTicks: Bool? = nil, xTickLength: Double? = nil, yTickLength: Double? = nil, xTickInside: Bool? = nil, yTickInside: Bool? = nil, xTickColor: String? = nil, yTickColor: String? = nil, xTickBands: Bool? = nil, gridColor: String? = nil, gridWidth: Double? = nil, gridDash: [Double]? = nil, xGrid: Bool? = nil, xGridColor: String? = nil, xGridWidth: Double? = nil, xGridDash: [Double]? = nil, yInverse: Bool? = nil, xInverse: Bool? = nil, xTop: Bool? = nil, yRight: Bool? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, lines: [LinesSeries]? = nil, effectTime: Double? = nil) {
     self.width = width
     self.height = height
     self.series = series
@@ -1209,6 +1211,8 @@ public struct ChartSpec {
     self.xAxisLine = xAxisLine
     self.yAxisLine = yAxisLine
     self.y2AxisLine = y2AxisLine
+    self.xAxisOnZero = xAxisOnZero
+    self.yAxisOnZero = yAxisOnZero
     self.y2Grid = y2Grid
     self.xAxisLineColor = xAxisLineColor
     self.yAxisLineColor = yAxisLineColor
@@ -7488,28 +7492,31 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
     let y2Off = (spec.y2Offset ?? 0.0)
     let xOff = (spec.xOffset ?? 0.0)
     let yAxisX = yRight ? plot.x + plot.w + yOff : plot.x - yOff
+    let xd = l.xDomainUsed
+    let yLineX = spec.yAxisOnZero == true && ((spec.xValues ?? [])).count > 0 && xd.min < 0.0 && xd.max > 0.0 ? scaleLinear(xd, plot.x, plot.x + plot.w, 0.0) : yAxisX
     let yLineColor = (spec.yAxisLineColor ?? t.axis)
     if spec.showYAxis && spec.yAxisLine != false {
-      out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: yAxisX, y: plot.y), to: PyreonChartPt(x: yAxisX, y: plot.y + plot.h), stroke: yLineColor, width: (spec.yAxisLineWidth ?? 1.0)))
+      out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: yLineX, y: plot.y), to: PyreonChartPt(x: yLineX, y: plot.y + plot.h), stroke: yLineColor, width: (spec.yAxisLineWidth ?? 1.0)))
     }
     if spec.showYAxis && spec.yTicks == true && spec.horizontal != true {
       let yLen = (spec.yTickLength ?? 5.0)
       let yDir = (yRight ? 1.0 : -1.0) * (spec.yTickInside == true ? -1.0 : 1.0)
       for tick in l.yTicks {
-        out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: yAxisX, y: tick.pos), to: PyreonChartPt(x: yAxisX + yDir * yLen, y: tick.pos), stroke: (spec.yTickColor ?? yLineColor), width: 1.0))
+        out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: yLineX, y: tick.pos), to: PyreonChartPt(x: yLineX + yDir * yLen, y: tick.pos), stroke: (spec.yTickColor ?? yLineColor), width: 1.0))
       }
     }
     let xTop = spec.xTop == true && spec.horizontal != true
     let xAxisY = xTop ? plot.y - xOff : plot.y + plot.h + xOff
+    let xLineY = spec.xAxisOnZero == true && spec.horizontal != true && yDomain.min < 0.0 && yDomain.max > 0.0 ? scaleLinear(yDomain, plot.y + plot.h, plot.y, 0.0) : xAxisY
     let xLineColor = (spec.xAxisLineColor ?? t.axis)
     if spec.showXAxis && spec.xAxisLine != false {
-      out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: plot.x, y: xAxisY), to: PyreonChartPt(x: plot.x + plot.w, y: xAxisY), stroke: xLineColor, width: (spec.xAxisLineWidth ?? 1.0)))
+      out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: plot.x, y: xLineY), to: PyreonChartPt(x: plot.x + plot.w, y: xLineY), stroke: xLineColor, width: (spec.xAxisLineWidth ?? 1.0)))
     }
     if spec.showXAxis && spec.xTicks == true && spec.horizontal != true {
       let xLen = (spec.xTickLength ?? 5.0)
       let xDir = (xTop ? -1.0 : 1.0) * (spec.xTickInside == true ? -1.0 : 1.0)
       for tx in xTickPositions(spec, l, plot) {
-        out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: tx, y: xAxisY), to: PyreonChartPt(x: tx, y: xAxisY + xDir * xLen), stroke: (spec.xTickColor ?? xLineColor), width: 1.0))
+        out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: tx, y: xLineY), to: PyreonChartPt(x: tx, y: xLineY + xDir * xLen), stroke: (spec.xTickColor ?? xLineColor), width: 1.0))
       }
     }
     if spec.showYAxis && spec.horizontal != true {

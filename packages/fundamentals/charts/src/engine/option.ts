@@ -1140,6 +1140,9 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     ...axisStrokeFields(xAxis, 'x', true, xContinuous ? true : isObj(xAxis) && xAxis['boundaryGap'] === false, !xContinuous),
     ...axisStrokeFields(yAxes[0], 'y', xType === 'value' || xType === 'log', xType === 'value' || xType === 'log', false),
     ...(yAxes.length > 1 ? { y2AxisLine: axisLineShown(yAxes[1], xType === 'value' || xType === 'log') } : {}),
+    // ECharts' `axisLine.onZero` (on by default): each line sits on the other axis's zero.
+    ...(axisOnZero(xAxis) ? { xAxisOnZero: true } : {}),
+    ...(xType === 'value' && axisOnZero(yAxes[0]) ? { yAxisOnZero: true } : {}),
     // The second y axis draws its own split lines, as ECharts does.
     ...(yAxes.length > 1 && !(isObj(yAxes[1]!['splitLine']) && yAxes[1]!['splitLine']['show'] === false) ? { y2Grid: true } : {}),
     xValues,
@@ -1324,6 +1327,12 @@ function xLabelLayout(axis: Record<string, unknown> | undefined): { xLabelAngle?
 function axisLineShown(axis: Record<string, unknown> | undefined, auto: boolean): boolean {
   const line = isObj(axis) && isObj(axis['axisLine']) ? axis['axisLine'] : {}
   return line['show'] === true ? true : line['show'] === false ? false : auto
+}
+
+/** `axisLine.onZero`: on unless set false. */
+function axisOnZero(axis: Record<string, unknown> | undefined): boolean {
+  const line = isObj(axis) && isObj(axis['axisLine']) ? axis['axisLine'] : {}
+  return line['onZero'] !== false
 }
 
 /** ECharts' `lineStyle.type` as a dash: `dashed` is 4w 2w, `dotted` w w, a number or an array as given. */

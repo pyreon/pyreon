@@ -521,6 +521,10 @@ export interface ChartSpec {
   yAxisLine?: boolean | undefined
   /** `false` hides the second y axis's line; absent draws it. */
   y2AxisLine?: boolean | undefined
+  /** The x axis line and ticks sit on the y value 0 when the y range crosses it (ECharts' `axisLine.onZero`); labels stay at the edge. */
+  xAxisOnZero?: boolean | undefined
+  /** The y axis line and ticks sit on the x value 0 when a value x range crosses it. */
+  yAxisOnZero?: boolean | undefined
   /** Split lines at the second y axis's ticks (ECharts draws each value axis's own). */
   y2Grid?: boolean | undefined
   /** Axis line colours and widths (ECharts' `axisLine.lineStyle`); absent takes the theme's axis colour, 1px. */
@@ -1606,12 +1610,15 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   const y2Off = spec.y2Offset ?? 0.0
   const xOff = spec.xOffset ?? 0.0
   const yAxisX = yRight ? plot.x + plot.w + yOff : plot.x - yOff
+  // ECharts' onZero: the line (and its ticks) moves to the other axis's zero; the labels do not.
+  const xd = l.xDomainUsed
+  const yLineX = spec.yAxisOnZero === true && (spec.xValues ?? []).length > 0 && xd.min < 0.0 && xd.max > 0.0 ? scaleLinear(xd, plot.x, plot.x + plot.w, 0.0) : yAxisX
   const yLineColor = spec.yAxisLineColor ?? t.axis
   if (spec.showYAxis && spec.yAxisLine !== false) {
     out.push({
       kind: 'line',
-      from: { x: yAxisX, y: plot.y },
-      to: { x: yAxisX, y: plot.y + plot.h },
+      from: { x: yLineX, y: plot.y },
+      to: { x: yLineX, y: plot.y + plot.h },
       stroke: yLineColor,
       width: spec.yAxisLineWidth ?? 1.0,
     })
@@ -1621,17 +1628,18 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     const yLen = spec.yTickLength ?? 5.0
     const yDir = (yRight ? 1.0 : -1.0) * (spec.yTickInside === true ? -1.0 : 1.0)
     for (const tick of l.yTicks) {
-      out.push({ kind: 'line', from: { x: yAxisX, y: tick.pos }, to: { x: yAxisX + yDir * yLen, y: tick.pos }, stroke: spec.yTickColor ?? yLineColor, width: 1.0 })
+      out.push({ kind: 'line', from: { x: yLineX, y: tick.pos }, to: { x: yLineX + yDir * yLen, y: tick.pos }, stroke: spec.yTickColor ?? yLineColor, width: 1.0 })
     }
   }
   const xTop = spec.xTop === true && spec.horizontal !== true
   const xAxisY = xTop ? plot.y - xOff : plot.y + plot.h + xOff
+  const xLineY = spec.xAxisOnZero === true && spec.horizontal !== true && yDomain.min < 0.0 && yDomain.max > 0.0 ? scaleLinear(yDomain, plot.y + plot.h, plot.y, 0.0) : xAxisY
   const xLineColor = spec.xAxisLineColor ?? t.axis
   if (spec.showXAxis && spec.xAxisLine !== false) {
     out.push({
       kind: 'line',
-      from: { x: plot.x, y: xAxisY },
-      to: { x: plot.x + plot.w, y: xAxisY },
+      from: { x: plot.x, y: xLineY },
+      to: { x: plot.x + plot.w, y: xLineY },
       stroke: xLineColor,
       width: spec.xAxisLineWidth ?? 1.0,
     })
@@ -1640,7 +1648,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     const xLen = spec.xTickLength ?? 5.0
     const xDir = (xTop ? -1.0 : 1.0) * (spec.xTickInside === true ? -1.0 : 1.0)
     for (const tx of xTickPositions(spec, l, plot)) {
-      out.push({ kind: 'line', from: { x: tx, y: xAxisY }, to: { x: tx, y: xAxisY + xDir * xLen }, stroke: spec.xTickColor ?? xLineColor, width: 1.0 })
+      out.push({ kind: 'line', from: { x: tx, y: xLineY }, to: { x: tx, y: xLineY + xDir * xLen }, stroke: spec.xTickColor ?? xLineColor, width: 1.0 })
     }
   }
   if (spec.showYAxis && spec.horizontal !== true) {

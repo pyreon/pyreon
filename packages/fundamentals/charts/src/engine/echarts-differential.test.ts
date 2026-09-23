@@ -919,6 +919,12 @@ const STROKE_CASES: [string, object, boolean][] = [
   ['a y axis line and ticks shown, dashed split lines', strokesOf({}, { axisLine: { show: true, lineStyle: { color: '#00aa00' } }, axisTick: { show: true }, splitLine: { lineStyle: { type: 'dashed', color: '#aaaaaa' } } }), true],
   ['boundaryGap false: category ticks on the labels', strokesOf({ boundaryGap: false }, {}, { type: 'line', data: [30, 120, 80], showSymbol: false }), false],
   ['a hidden x axis line', strokesOf({ axisLine: { show: false } }, {}), false],
+  ['a y range crossing zero: the x line and ticks move to zero (onZero)', strokesOf({ axisTick: { show: true } }, {}, { type: 'bar', data: [30, -120, 80] }), false],
+  ['onZero false keeps the x line at the edge', strokesOf({ axisLine: { onZero: false } }, {}, { type: 'bar', data: [30, -120, 80] }), false],
+  ['a value x crossing zero: the y line sits on x = 0', {
+    xAxis: { type: 'value' }, yAxis: { type: 'value' },
+    series: [{ type: 'scatter', data: [[-3, 2], [5, 4]], itemStyle: { color: SERIES_INK } }],
+  }, false],
   ['two y axes beside a category x: neither draws a line', {
     xAxis: { type: 'category', data: ['a', 'b', 'c'] }, yAxis: [{ type: 'value' }, { type: 'value' }],
     series: [{ type: 'bar', data: [30, 120, 80], itemStyle: { color: SERIES_INK } }, { type: 'line', yAxisIndex: 1, data: [3, 1, 2], lineStyle: { color: SERIES_INK }, itemStyle: { color: SERIES_INK }, showSymbol: false }],
