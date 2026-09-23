@@ -28,6 +28,7 @@ import { ease } from './easing'
 import type { CanvasHostProps, TooltipView } from './canvas-host'
 import { legendHitIndex, pinSelection } from './legend-toggle'
 import { applyLegendHidden, legendClick } from './option-legend'
+import type { LegendPager } from './option-legend'
 import { compiledCommands, optionBrushSelection, optionToSvg, planOption, zoomedView } from './option'
 import { limitWindow } from './option-zoom'
 import { applyMagicType } from './magic-type'
@@ -195,6 +196,8 @@ interface OptionGeometry {
   zoom: { top: Double; offset: number; plot: Rect; strip: Rect | null; win: ZoomWindow } | null
   /** The legend entries' boxes in canvas coordinates, in entry order (empty without a legend). */
   legendBoxes: Rect[]
+  /** A scrolling legend's page controller, when it shows. */
+  legendPager?: LegendPager | null | undefined
   /** The title's linked lines (`title.link` / `sublink`). */
   titleLinks: TitleLink[]
 }
@@ -587,6 +590,8 @@ export function OptionChart(props: OptionChartProps): VNode {
   const pinnedSeries = signal<number[]>([])
   // The legend's hidden series, by name (ECharts' `legend.selected`).
   const legendHidden = signal<string[]>([])
+  // A scrolling legend's page start (ECharts' `legend.scrollDataIndex`, moved by its arrows); null = the option's own.
+  const legendScroll = signal<number | null>(null)
   let seededFrom: unknown = null
   const draw = (): void => batch(() => {
     const opt = readOption()
@@ -639,6 +644,8 @@ export function OptionChart(props: OptionChartProps): VNode {
         pinnedSeries.set(seed.series)
       }
       legendHidden.set(cart?.legendHidden ?? [])
+      // A new option starts at its own `scrollDataIndex`.
+      legendScroll.set(null)
     }
     mode.set('canvas')
   })
@@ -651,7 +658,7 @@ export function OptionChart(props: OptionChartProps): VNode {
    * visualMap strip, graphic elements and the timeline stay on screen while a
    * state is active (they used to drop out whenever a datum was hovered).
    */
-  const compose = (plan: OptionPlan, resolved: EChartsOption, measure: MeasureText, w: Double, hgt: Double, over: { emphasis?: Emphasis | undefined; time: Double; progress: Double }): { cmds: DrawCmd[]; zoom: OptionGeometry['zoom']; legendBoxes: Rect[]; titleLinks: TitleLink[] } => {
+  const compose = (plan: OptionPlan, resolved: EChartsOption, measure: MeasureText, w: Double, hgt: Double, over: { emphasis?: Emphasis | undefined; time: Double; progress: Double }): { cmds: DrawCmd[]; zoom: OptionGeometry['zoom']; legendBoxes: Rect[]; legendPager: LegendPager | null; titleLinks: TitleLink[] } => {
     const idx = stepIndex()
     const steps = timelineSteps(readOption())
     const stripH = steps === null ? 0.0 : TIMELINE_HEIGHT
@@ -664,6 +671,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     const cmds: DrawCmd[] = []
     let zoom: OptionGeometry['zoom'] = null
     let legendBoxes: Rect[] = []
+    let legendPager: LegendPager | null = null
     let titleLinks: TitleLink[] = []
     if (plan.kind === 'cartesian') {
       const liveBrush = brushLive()
@@ -672,6 +680,7 @@ export function OptionChart(props: OptionChartProps): VNode {
       const composed = compiledCommands(compiled, resolved, measure, winOf(plan.compiled), toolActives(), areas)
       for (const c of composed.cmds) cmds.push(c)
       legendBoxes = composed.legendBoxes
+      legendPager = composed.legendPager
       titleLinks = composed.titleLinks
       for (const c of pointerCmds(plan.compiled, resolved, measure, composed.chrome)) cmds.push(c)
       if (plan.compiled.zoom !== undefined) {
@@ -696,7 +705,7 @@ export function OptionChart(props: OptionChartProps): VNode {
       for (const c of graphicCommands(resolved, w, hgt - stripH).cmds) cmds.push(c)
     }
     if (steps !== null) for (const c of timelineCommands({ ...steps, current: idx ?? steps.current }, w, hgt - stripH, stripH, isPlaying())) cmds.push(c)
-    return { cmds, zoom, legendBoxes, titleLinks }
+    return { cmds, zoom, legendBoxes, legendPager, titleLinks }
   }
 
   /**
@@ -748,15 +757,17 @@ export function OptionChart(props: OptionChartProps): VNode {
     // `selectedMode: 'series'` tints every datum of a pinned series.
     const withSeriesPins = (c: CompiledOption): CompiledOption => (pinnedSeries().length === 0 ? c : { ...c, spec: applySeriesSelection(c.spec, pinnedSeries()) })
     // A legend-hidden series keeps its slot but draws, hits and tooltips nothing.
-    const withLegend = (c: CompiledOption): CompiledOption => {
+    const withLegend = (c0: CompiledOption): CompiledOption => {
+      const scroll = legendScroll()
+      const c = scroll !== null && c0.legendLayout !== undefined && c0.legendLayout.scroll ? { ...c0, legendLayout: { ...c0.legendLayout, scrollIndex: scroll } } : c0
       if (c.legend === null || legendHidden().length === 0) return c
       const applied = applyLegendHidden(c.spec.series, c.legend, legendHidden())
       return { ...c, legend: applied.entries, spec: { ...c.spec, series: applied.series } }
     }
     const plan: OptionPlan = planned.kind === 'cartesian' ? { ...planned, compiled: withLegend(withSeriesPins(magicOf(planned.compiled))) } : planned
     const resolved = resolveTimeline(opt, idx).option as EChartsOption
-    const { cmds, zoom, legendBoxes, titleLinks } = compose(plan, resolved, measure, w, hgt, { time: 0.0, progress: 1.0 })
-    return { cmds, plan, option: resolved, measure, w, hgt, zoom, legendBoxes, titleLinks }
+    const { cmds, zoom, legendBoxes, legendPager, titleLinks } = compose(plan, resolved, measure, w, hgt, { time: 0.0, progress: 1.0 })
+    return { cmds, plan, option: resolved, measure, w, hgt, zoom, legendBoxes, legendPager, titleLinks }
   }
 
   effect(() => {
@@ -1067,6 +1078,16 @@ export function OptionChart(props: OptionChartProps): VNode {
   /** A click on a legend entry toggles its series (ECharts' `legend.selectedMode`); true when it landed on one. */
   const legendClickAt = (g: OptionGeometry, px: Double, py: Double): boolean => {
     if (g.plan.kind !== 'cartesian' || g.plan.compiled.legend === null) return false
+    // A scrolling legend's arrows page it (a dimmed arrow has no page to go to).
+    const pager = g.legendPager
+    if (pager !== null && pager !== undefined) {
+      const inside = (r: Rect): boolean => px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h
+      const to = inside(pager.prev) ? pager.prevIndex : inside(pager.next) ? pager.nextIndex : undefined
+      if (to !== undefined) {
+        if (to !== null) legendScroll.set(to)
+        return true
+      }
+    }
     const i = legendHitIndex(g.legendBoxes, px, py)
     const entry = g.plan.compiled.legend[i]
     if (entry === undefined) return false

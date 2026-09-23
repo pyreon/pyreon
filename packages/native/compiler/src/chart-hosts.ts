@@ -1288,6 +1288,11 @@ function desugarOptionChartHost(
   }
 
   optionFields(raw, ['aria', 'series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'dataZoom', 'toolbox', 'brush', 'color', 'dataset', 'graphic'], 'option', warn)
+  // ledger: coordinates.legend — the web pages a scrolling legend; the native legend has no pager yet.
+  const legendType = literalOf(objectField(raw, 'legend'), resolve)
+  if (legendType?.kind === 'object' && litString(objectField(legendType, 'type')) === 'scroll') {
+    warn("<OptionChart option.legend.type>: 'scroll' pages the legend on the web; native draws every entry, wrapped, without the pager.")
+  }
 
   for (const a of e.attrs) {
     if (a.kind === 'event' && a.name !== 'selectindex' && a.name !== 'brushselected') {

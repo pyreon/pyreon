@@ -64,4 +64,35 @@ describe('<OptionChart> legend (real browser)', () => {
     await flush()
     expect(count(c, [255, 0, 0])).toBe(before)
   })
+
+  it('a scrolling legend pages with its arrows: the next arrow moves the line, a dimmed arrow does nothing', async () => {
+    const names = ['Alpha', 'Beta series', 'Gamma', 'Delta long name', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Iota', 'Kappa']
+    const scrolling: EChartsOption = { animation: false, legend: { type: 'scroll' }, xAxis: { type: 'category', data: ['a'] }, yAxis: {}, series: names.map((name) => ({ type: 'bar', name, data: [1] })) }
+    const changes: string[] = []
+    const { container } = mountInBrowser(h(OptionChart, { option: scrolling, width: 400, height: 300, onLegendSelectChange: (sel: Record<string, boolean>) => changes.push(Object.keys(sel).filter((k) => !sel[k]).join(',')) }))
+    await flush()
+    const c = query<HTMLCanvasElement>(container, 'canvas')
+    const r = c.getBoundingClientRect()
+    const at = (x: number, y: number): void => void c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + x, clientY: r.top + y }))
+    // The line sits 15 above the bottom; its first entry at the left, ECharts' controller at the right (arrows at 344 / 390.5).
+    at(12, 272)
+    await flush()
+    expect(changes).toEqual(['Alpha'])
+    at(12, 272)
+    await flush()
+    // The prev arrow is dimmed on the first page: a click on it pages nowhere and toggles nothing.
+    at(344, 272.5)
+    await flush()
+    at(12, 272)
+    await flush()
+    expect(changes).toEqual(['Alpha', '', 'Alpha'])
+    at(12, 272)
+    await flush()
+    // The next arrow: the line now starts at the entry the page opens on.
+    at(390.5, 272.5)
+    await flush()
+    at(12, 272)
+    await flush()
+    expect(changes.at(-1)).toBe('Delta long name')
+  })
 })

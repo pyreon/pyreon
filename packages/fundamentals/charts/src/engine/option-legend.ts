@@ -102,6 +102,25 @@ export interface OptionLegendLayout {
   background: string | undefined
   borderColor: string | undefined
   borderWidth: number
+  /** `type: 'scroll'`: one line, paged by ECharts' controller when it overflows. */
+  scroll: boolean
+  /** The entry the page starts at (ECharts' `scrollDataIndex`). */
+  scrollIndex: number
+  /** Between the entries and the controller (ECharts: the `itemGap`). */
+  pageButtonGap: number | undefined
+  /** `{current}/{total}`. */
+  pageFormatter: string
+  pageIconColor: string
+  pageIconInactiveColor: string
+  pageTextColor: string
+}
+
+/** A scrolling legend's controller: the two arrows' boxes and the entry each pages to (null when there is no page that way). */
+export interface LegendPager {
+  prev: Rect
+  next: Rect
+  prevIndex: number | null
+  nextIndex: number | null
 }
 
 const pos = (v: unknown): string | number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' ? v : undefined)
@@ -128,6 +147,13 @@ export function readLegendLayout(l: Obj): OptionLegendLayout {
     background: typeof l['backgroundColor'] === 'string' && l['backgroundColor'] !== 'transparent' ? (l['backgroundColor'] as string) : undefined,
     borderColor: typeof l['borderColor'] === 'string' ? (l['borderColor'] as string) : undefined,
     borderWidth: typeof l['borderWidth'] === 'number' ? (l['borderWidth'] as number) : 0,
+    scroll: l['type'] === 'scroll',
+    scrollIndex: typeof l['scrollDataIndex'] === 'number' && Number.isFinite(l['scrollDataIndex']) ? Math.max(0, Math.round(l['scrollDataIndex'] as number)) : 0,
+    pageButtonGap: typeof l['pageButtonGap'] === 'number' ? (l['pageButtonGap'] as number) : undefined,
+    pageFormatter: typeof l['pageFormatter'] === 'string' ? (l['pageFormatter'] as string) : '{current}/{total}',
+    pageIconColor: typeof l['pageIconColor'] === 'string' ? (l['pageIconColor'] as string) : '#6578ba',
+    pageIconInactiveColor: typeof l['pageIconInactiveColor'] === 'string' ? (l['pageIconInactiveColor'] as string) : '#e0e4f2',
+    pageTextColor: isObj(l['pageTextStyle']) && typeof (l['pageTextStyle'] as Obj)['color'] === 'string' ? ((l['pageTextStyle'] as Obj)['color'] as string) : '#6d6e73',
   }
 }
 
@@ -266,7 +292,7 @@ export function placeOptionLegend(
   measure: (text: string, size: number) => number,
   icons: Record<string, string> = {},
   lineWidths: Record<string, number> = {},
-): { cmds: DrawCmd[]; boxes: Rect[]; rect: Rect; side: LegendSide } {
+): { cmds: DrawCmd[]; boxes: Rect[]; rect: Rect; side: LegendSide; pager?: LegendPager } {
   const lay = layout ?? readLegendLayout({})
   const vertical = lay.orient === 'vertical'
   const [pt, pr, pb, pl] = lay.padding as [number, number, number, number]
@@ -284,6 +310,10 @@ export function placeOptionLegend(
   // The room the block may take (getLayoutRect with no size), then boxLayout.
   const maxW = layoutAxis(left, lay.right, box.w, undefined, pl, pr, 'center', 'right').size
   const maxH = layoutAxis(lay.top, bottom, box.h, undefined, pt, pb, 'middle', 'bottom').size
+  if (lay.scroll && !vertical) {
+    const scrolled = scrollLegend(items, lay, gap, maxW, box, left, bottom, measure)
+    if (scrolled !== null) return scrolled
+  }
   const at: { x: number; y: number }[] = []
   let x = 0
   let y = 0
@@ -374,4 +404,140 @@ function translate(c: DrawCmd, dx: number, dy: number): DrawCmd {
     default:
       return { ...c, at: pt(c.at) }
   }
+}
+
+/**
+ * A horizontal `type: 'scroll'` legend that overflows (ECharts'
+ * ScrollableLegendView): the entries in one line, the controller — prev
+ * arrow, `{current}/{total}`, next arrow — at the end, and the line clipped
+ * short of it, starting at the page `scrollIndex` begins. Null when the line
+ * fits (the plain layout then draws it, as ECharts hides its controller).
+ *
+ * An entry the page's edge cuts is left out rather than half drawn: the
+ * draw list has no clip.
+ */
+function scrollLegend(
+  items: LegendItem[],
+  lay: OptionLegendLayout,
+  gap: number,
+  maxW: number,
+  box: { x: number; y: number; w: number; h: number },
+  left: string | number | undefined,
+  bottom: string | number | undefined,
+  measure: (text: string, size: number) => number,
+): { cmds: DrawCmd[]; boxes: Rect[]; rect: Rect; side: LegendSide; pager: LegendPager } | null {
+  const [pt, pr, pb, pl] = lay.padding as [number, number, number, number]
+  // One line: each entry's start and end along it, the content's height.
+  const s: number[] = []
+  const e: number[] = []
+  let x = 0
+  let contentH = 0
+  for (let i = 0; i < items.length; i++) {
+    const r = items[i]!.rect
+    s.push(x + r.x)
+    e.push(x + r.x + r.w)
+    contentH = Math.max(contentH, r.h)
+    x = x + r.w + gap
+  }
+  const contentW = items.length === 0 ? 0 : e[e.length - 1]! - s[0]!
+  if (contentW <= maxW) return null
+  // The controller, laid out horizontally 5px apart: a 12×20 arrow fitted into
+  // `pageIconSize` 15 is 9 wide; the text is sized by ECharts' 'xx/xx' placeholder.
+  const icon = 9
+  const iconH = 15
+  const textW = measure('xx/xx', 12)
+  const ctrlW = icon + 5 + textW + 5 + icon
+  const clipW = Math.max(maxW - ctrlW - (lay.pageButtonGap ?? gap), 0)
+  const info = legendPageInfo(s, e, Math.min(lay.scrollIndex, items.length - 1), clipW)
+  // The block: the whole width, as tall as the taller of the line and the controller.
+  const ctrlY = contentH / 2 - iconH / 2
+  const top0 = Math.min(0, ctrlY)
+  const blockH = Math.max(contentH, iconH)
+  const px0 = layoutAxis(left, lay.right, box.w, maxW, pl, pr, 'center', 'right').start
+  const py0 = layoutAxis(lay.top, bottom, box.h, blockH, pt, pb, 'middle', 'bottom').start
+  const ox = box.x + px0
+  const oy = box.y + py0 - top0
+  const cmds: DrawCmd[] = []
+  const blockRect: Rect = { x: box.x + px0, y: box.y + py0, w: maxW, h: blockH }
+  if (lay.background !== undefined || lay.borderWidth > 0) {
+    const bg: Rect = { x: blockRect.x - pl, y: blockRect.y - pt, w: maxW + pl + pr, h: blockH + pt + pb }
+    if (lay.background !== undefined) cmds.push({ kind: 'rect', rect: bg, fill: lay.background })
+    if (lay.borderWidth > 0) cmds.push({ kind: 'polyline', points: [{ x: bg.x, y: bg.y }, { x: bg.x + bg.w, y: bg.y }, { x: bg.x + bg.w, y: bg.y + bg.h }, { x: bg.x, y: bg.y + bg.h }, { x: bg.x, y: bg.y }], stroke: lay.borderColor ?? '#b7b9be', width: lay.borderWidth })
+  }
+  const shift = -info.start
+  const boxes: Rect[] = []
+  items.forEach((it, i) => {
+    const a = s[i]! + shift
+    const b = e[i]! + shift
+    // Drawn only when the whole entry is inside the window.
+    if (a < -0.01 || b > clipW + 0.01) {
+      boxes.push({ x: 0, y: 0, w: 0, h: 0 })
+      return
+    }
+    const dx = ox + a - it.rect.x
+    for (const c of it.cmds) cmds.push(translate(c, dx, oy))
+    boxes.push({ x: dx + it.rect.x, y: oy + it.rect.y, w: it.rect.w, h: it.rect.h })
+  })
+  const cx = ox + maxW - ctrlW
+  const cy = oy + contentH / 2
+  const prevX = cx + icon / 2
+  const textX = cx + icon + 5 + textW / 2
+  const nextX = cx + icon + 5 + textW + 5 + icon / 2
+  const prevOn = info.prevIndex !== null
+  const nextOn = info.nextIndex !== null
+  cmds.push({ kind: 'polygon', points: [{ x: prevX - 4.5, y: cy }, { x: prevX + 4.5, y: cy - 7.5 }, { x: prevX + 4.5, y: cy + 7.5 }], fill: prevOn ? lay.pageIconColor : lay.pageIconInactiveColor })
+  const page = lay.pageFormatter.replace('{current}', String(info.pageIndex + 1)).replace('{total}', String(info.pageCount))
+  cmds.push({ kind: 'text', text: page, at: { x: textX, y: cy }, fill: lay.pageTextColor, size: 12, align: 'middle', baseline: 'middle' })
+  cmds.push({ kind: 'polygon', points: [{ x: nextX + 4.5, y: cy }, { x: nextX - 4.5, y: cy - 7.5 }, { x: nextX - 4.5, y: cy + 7.5 }], fill: nextOn ? lay.pageIconColor : lay.pageIconInactiveColor })
+  const pager: LegendPager = {
+    prev: { x: prevX - 7.5, y: cy - 7.5, w: 15, h: 15 },
+    next: { x: nextX - 7.5, y: cy - 7.5, w: 15, h: 15 },
+    prevIndex: info.prevIndex,
+    nextIndex: info.nextIndex,
+  }
+  const side: LegendSide = py0 + blockH / 2 > box.h / 2 ? 'bottom' : 'top'
+  return { cmds, boxes, rect: blockRect, side, pager }
+}
+
+/**
+ * ECharts' `_getPageInfo`: where the page starting at entry `target` puts
+ * the line (`start`), which page that is of how many, and the entry each
+ * arrow pages to. A page ends where an entry no longer intersects the window
+ * (the last, half-cut entry opens the next page, so it is always seen whole).
+ */
+export function legendPageInfo(s: number[], e: number[], target: number, win: number): { start: number; pageIndex: number; pageCount: number; prevIndex: number | null; nextIndex: number | null } {
+  const n = s.length
+  const out = { start: 0, pageIndex: 0, pageCount: n === 0 ? 0 : 1, prevIndex: null as number | null, nextIndex: null as number | null }
+  if (n === 0 || target < 0 || target >= n) return out
+  out.start = s[target]!
+  const meets = (i: number, winStart: number): boolean => e[i]! >= winStart && s[i]! <= winStart + win
+  let ws = target
+  let we = target
+  for (let i = target + 1; i <= n; i++) {
+    const cur = i < n ? i : -1
+    if ((cur < 0 && e[we]! > s[ws]! + win) || (cur >= 0 && !meets(cur, s[ws]!))) {
+      ws = we > ws ? we : cur
+      if (ws >= 0) {
+        if (out.nextIndex === null) out.nextIndex = ws
+        out.pageCount++
+      }
+    }
+    we = cur
+    if (cur < 0) break
+    if (ws < 0) break
+  }
+  let bs = target
+  let be = target
+  for (let i = target - 1; i >= -1; i--) {
+    const cur = i >= 0 ? i : -1
+    if ((cur < 0 || !meets(be, s[cur]!)) && bs < be) {
+      be = bs
+      if (out.prevIndex === null) out.prevIndex = bs
+      out.pageCount++
+      out.pageIndex++
+    }
+    bs = cur
+    if (cur < 0) break
+  }
+  return out
 }

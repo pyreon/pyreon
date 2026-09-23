@@ -50,7 +50,7 @@ import { optionTitleCommands, readOptionTitle } from './option-title'
 import { optionGridInsets } from './option-grid'
 import { echartsNice, formatTick } from './scale'
 import type { OptionTitle, TitleLink } from './option-title'
-import type { LegendSelectedMode, OptionLegendLayout } from './option-legend'
+import type { LegendPager, LegendSelectedMode, OptionLegendLayout } from './option-legend'
 import { measureApprox, renderSvg } from './svg'
 import { compileFamily, familyToSvg } from './option-family'
 import type { CompiledFamily } from './option-family'
@@ -1622,12 +1622,13 @@ export function zoomedView(compiled: CompiledOption, reserved: Double | OptionCh
   return { spec: view.spec, offset: view.offset, navigator }
 }
 
-export function compiledCommands(compiled: CompiledOption, option: EChartsOption, measure: MeasureText, win?: ZoomWindow, actives: ToolboxTool[] = [], areas: BrushArea[] = []): { cmds: DrawCmd[]; top: Double; chrome: OptionChrome; legendBoxes: Rect[]; titleLinks: TitleLink[] } {
+export function compiledCommands(compiled: CompiledOption, option: EChartsOption, measure: MeasureText, win?: ZoomWindow, actives: ToolboxTool[] = [], areas: BrushArea[] = []): { cmds: DrawCmd[]; top: Double; chrome: OptionChrome; legendBoxes: Rect[]; legendPager: LegendPager | null; titleLinks: TitleLink[] } {
   const width = compiled.spec.width
   const height = compiled.spec.height
   const t = compiled.spec.theme
   let top = 0.0
   let legendBoxes: Rect[] = []
+  let legendPager: LegendPager | null = null
   const cmds: DrawCmd[] = []
   if (compiled.background !== undefined) cmds.push({ kind: 'rect', rect: { x: 0.0, y: 0.0, w: width, h: height }, fill: compiled.background })
   // Every title draws; the plot below leaves room for the lowest one at the top.
@@ -1649,6 +1650,7 @@ export function compiledCommands(compiled: CompiledOption, option: EChartsOption
     const placed = placeOptionLegend(compiled.legend, compiled.legendLayout, { x: 0.0, y: 0.0, w: width, h: height }, t, measure, compiled.legendIcons ?? {}, compiled.legendLineWidths ?? {})
     for (const c of placed.cmds) cmds.push(c)
     legendBoxes = placed.boxes
+    legendPager = placed.pager ?? null
     // Where no grid places the plot, the legend's band is taken off the side it sits on.
     // The band includes the legend's own padding (ECharts' 5px by default).
     const lpad = (compiled.legendLayout ?? readLegendLayout({})).padding
@@ -1672,5 +1674,5 @@ export function compiledCommands(compiled: CompiledOption, option: EChartsOption
   for (const c of graphicCommands(option, width, height).cmds) cmds.push(c)
   // ECharts' toolbox sits over the chart's top-right corner; it reserves no room.
   if (compiled.toolbox !== undefined) for (const c of renderToolbox(toolboxTools(compiled.toolbox), { x: 0.0, y: 0.0, w: width, h: height }, { fontSize: t.fontSize, color: t.label, actives }).cmds) cmds.push(c)
-  return { cmds, top, chrome, legendBoxes, titleLinks }
+  return { cmds, top, chrome, legendBoxes, legendPager, titleLinks }
 }

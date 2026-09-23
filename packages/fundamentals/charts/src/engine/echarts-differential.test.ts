@@ -1160,3 +1160,71 @@ describe('ECharts differential: the slider dataZoom', () => {
     })
   }
 })
+
+/**
+ * A scrolling legend (`type: 'scroll'`) that overflows: ECharts lays the
+ * entries in one line, clips it short of the page controller at the end
+ * (prev arrow, `{current}/{total}`, next arrow — an arrow dimmed when there is
+ * no page that way) and starts the line at `scrollDataIndex`. Compared: the
+ * controller, the page text, and which entries the window shows WHOLE and
+ * where (ours leaves out the one the window's edge cuts — ECharts clips it).
+ */
+interface ScrollLegendFacts { arrows: { x: number; fill: string }[]; page: string | null; whole: { text: string; x: number }[] }
+const SCROLL_NAMES = ['Alpha', 'Beta series', 'Gamma', 'Delta long name', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Iota', 'Kappa']
+function echartsScrollLegend(option: object, w: number): ScrollLegendFacts {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: w, height: H })
+  chart.setOption({ animation: false, ...option })
+  const svg = chart.renderToSVGString()
+  chart.dispose()
+  const clip = /<clipPath id="zr\d+-c\d+">\s*<path d="M0 0l([\d.]+) 0l0 [\d.]+l-[\d.]+ 0Z" transform="translate\(([\d.]+) [\d.]+\)/.exec(svg)
+  const arrows = [...svg.matchAll(/<path d="M-?4\.5 0L[^"]+" transform="translate\(([\d.]+) [\d.]+\)" fill="([^"]+)"/g)].map((m) => ({ x: Number(m[1]), fill: m[2]! }))
+  const page = /style="font: normal normal 12px sans-serif"(?: xml:space="preserve")? transform="translate\([\d.]+ [\d.]+\)" fill="#6d6e73">([^<]+)</.exec(svg)
+  const m = (t: string): number => echarts.format.getTextRect(t, '12px sans-serif').width
+  const x0 = clip === null ? -Infinity : Number(clip[2])
+  const x1 = clip === null ? Infinity : x0 + Number(clip[1])
+  const whole = [...svg.matchAll(/x="30" y="7" transform="translate\((-?[\d.]+) [\d.]+\)" fill="[^"]+">([^<]+)</g)]
+    .map((g) => ({ text: g[2]!, x: Number(g[1]) }))
+    .filter((f) => SCROLL_NAMES.includes(f.text) && f.x >= x0 - 0.1 && f.x + 30 + m(f.text) <= x1 + 0.1)
+  return { arrows, page: page === null ? null : page[1]!, whole }
+}
+function ourScrollLegend(option: object, w: number): ScrollLegendFacts {
+  const c = compileOption(option as EChartsOption, { width: w, height: H })
+  const measure = (t: string, size: number): number => echarts.format.getTextRect(t, String(size) + 'px sans-serif').width
+  const cmds = compiledCommands(c, option as EChartsOption, measure).cmds
+  const arrows = cmds.flatMap((d) => (d.kind === 'polygon' && d.points.length === 3 && Math.abs(d.points[1]!.y - d.points[2]!.y) === 15 ? [{ x: (d.points[1]!.x + d.points[0]!.x) / 2, fill: d.fill }] : []))
+  const page = cmds.find((d) => d.kind === 'text' && /^\d+\/\d+$|^Page/.test(d.text)) as { text: string } | undefined
+  // An entry's text is drawn 30 in from its left edge (a 25 icon, 5 gap).
+  const whole = cmds.flatMap((d) => (d.kind === 'text' && SCROLL_NAMES.includes(d.text) ? [{ text: d.text, x: d.at.x - 30 }] : []))
+  return { arrows, page: page?.text ?? null, whole }
+}
+const scrollOf = (legend: object, n = SCROLL_NAMES.length): object => ({
+  legend: { type: 'scroll', ...legend },
+  xAxis: { type: 'category', data: ['a'] },
+  yAxis: {},
+  series: SCROLL_NAMES.slice(0, n).map((name) => ({ type: 'bar', name, data: [1] })),
+})
+const SCROLL_CASES: [string, object, number][] = [
+  ['the first page', scrollOf({}), 400],
+  ['the second page', scrollOf({ scrollDataIndex: 3 }), 400],
+  ['the last page', scrollOf({ scrollDataIndex: 7 }), 400],
+  ['a wider chart', scrollOf({}), 600],
+  ['itemGap moves the entries and the clip', scrollOf({ itemGap: 20 }), 400],
+  ['padding', scrollOf({ padding: 10 }), 400],
+  ['pageButtonGap', scrollOf({ pageButtonGap: 0, scrollDataIndex: 4 }), 400],
+  ['a pageFormatter', scrollOf({ pageFormatter: 'Page {current} of {total}' }), 400],
+  ['a line that fits shows no controller', scrollOf({}, 3), 400],
+]
+
+describe('ECharts differential: the scrolling legend', () => {
+  for (const [name, option, w] of SCROLL_CASES) {
+    it(name, () => {
+      const e = echartsScrollLegend(option, w)
+      const u = ourScrollLegend(option, w)
+      expect(u.page).toBe(e.page)
+      expect(u.arrows.map((a) => a.fill)).toEqual(e.arrows.map((a) => a.fill))
+      u.arrows.forEach((a, k) => expect(Math.abs(a.x - e.arrows[k]!.x), `arrow ${k}`).toBeLessThan(0.6))
+      expect(u.whole.map((f) => f.text)).toEqual(e.whole.map((f) => f.text))
+      u.whole.forEach((f, k) => expect(Math.abs(f.x - e.whole[k]!.x), f.text).toBeLessThan(0.6))
+    })
+  }
+})
