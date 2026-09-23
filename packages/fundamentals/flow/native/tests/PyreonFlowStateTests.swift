@@ -1480,7 +1480,31 @@ struct PyreonFlowStateTests {
     }
     // <flow-parity:end>
 
+    /// The keys XCUITest cannot deliver to a simulator app (Return, Escape,
+    /// Delete, Backspace), driven through the same function the view's
+    /// `onKeyPress` calls, so the only unproven link left on iOS is the OS
+    /// delivering the key.
+    static func runKeyRoutingChecks() {
+        check(pyreonFlowKeyName(.return) == "Enter" && pyreonFlowKeyName(.escape) == "Escape", "Return and Escape map to the web key names")
+        check(pyreonFlowKeyName(.delete) == "Backspace" && pyreonFlowKeyName(.deleteForward) == "Delete", "both delete keys map to the web key names")
+        check(pyreonFlowKeyName(KeyEquivalent("q")) == nil && !pyreonFlowHandleKey(seedFlow(), key: KeyEquivalent("q"), nodeId: "1"), "an unmapped key is ignored")
+
+        let f = seedFlow()
+        check(pyreonFlowHandleKey(f, key: .return, nodeId: "2") && f.selectedNodes() == ["2"], "Return selects the focused node")
+        check(pyreonFlowHandleKey(f, key: .escape) && f.selectedNodes().isEmpty, "Escape clears the selection")
+        check(pyreonFlowHandleKey(f, key: .return, edgeId: "e1") && f.selectedEdges() == ["e1"], "Return selects the focused edge")
+        check(pyreonFlowHandleKey(f, key: .space, nodeId: "3") && f.selectedNodes() == ["3"], "Space selects the focused node")
+        check(pyreonFlowHandleKey(f, key: .deleteForward) && f.getNode("3") == nil, "Delete removes the selected node")
+        check(pyreonFlowHandleKey(f, key: KeyEquivalent("z"), modifiers: .command) && f.getNode("3") != nil, "Cmd+Z restores the node Delete removed")
+        check(pyreonFlowHandleKey(f, key: .return, nodeId: "1") && pyreonFlowHandleKey(f, key: .delete) && f.getNode("1") == nil, "Backspace removes the selected node")
+        check(pyreonFlowHandleKey(f, key: KeyEquivalent("z"), modifiers: .control) && f.getNode("1") != nil, "Ctrl+Z undoes too")
+        check(pyreonFlowHandleKey(f, key: KeyEquivalent("a"), modifiers: .command) && f.selectedNodes().sorted() == ["1", "2", "3"], "Cmd+A selects every node")
+        let before = f.getNode("2")!.position
+        check(pyreonFlowHandleKey(f, key: .rightArrow, modifiers: .shift, nodeId: "2") && f.getNode("2")!.position.x == before.x + 100, "Shift+Arrow moves the focused node a large step")
+    }
+
     static func main() {
+        runKeyRoutingChecks()
         runParityChecks()
         runStateChecks()
         runEdgeCanvasChecks()

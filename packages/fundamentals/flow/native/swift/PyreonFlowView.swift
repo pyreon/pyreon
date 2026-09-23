@@ -903,35 +903,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     }
 
     private func handleKeyPress(_ press: KeyPress, nodeId: String? = nil, edgeId: String? = nil) -> KeyPress.Result {
-        guard let key = flowKeyName(press.key) else { return .ignored }
-        let command = press.modifiers.contains(.command) || press.modifiers.contains(.control)
-        return state.handleKeyboardCommand(
-            key,
-            nodeId: nodeId,
-            shift: press.modifiers.contains(.shift),
-            command: command,
-            repeatKey: press.phase == .repeat,
-            edgeId: edgeId
-        ) ? .handled : .ignored
-    }
-
-    private func flowKeyName(_ key: KeyEquivalent) -> String? {
-        switch key {
-        case .leftArrow: return "ArrowLeft"
-        case .rightArrow: return "ArrowRight"
-        case .upArrow: return "ArrowUp"
-        case .downArrow: return "ArrowDown"
-        case .return: return "Enter"
-        case .space: return " "
-        case .delete: return "Backspace"
-        case .deleteForward: return "Delete"
-        case .escape: return "Escape"
-        case KeyEquivalent("a"): return "a"
-        case KeyEquivalent("c"): return "c"
-        case KeyEquivalent("v"): return "v"
-        case KeyEquivalent("z"): return "z"
-        default: return nil
-        }
+        pyreonFlowHandleKey(state, key: press.key, modifiers: press.modifiers, isRepeat: press.phase == .repeat, nodeId: nodeId, edgeId: edgeId) ? .handled : .ignored
     }
 
     private func edgeLabelView(_ edge: PyreonFlowEdgeLabel) -> some View {
@@ -1327,4 +1299,49 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             state.setViewport(x: value.location.x - point.x * next, y: value.location.y - point.y * next, zoom: next)
         }
     }
+}
+
+/// The web `KeyboardEvent.key` name for a SwiftUI key, or `nil` when the key is
+/// not one the flow handles.
+public func pyreonFlowKeyName(_ key: KeyEquivalent) -> String? {
+    switch key {
+    case .leftArrow: return "ArrowLeft"
+    case .rightArrow: return "ArrowRight"
+    case .upArrow: return "ArrowUp"
+    case .downArrow: return "ArrowDown"
+    case .return: return "Enter"
+    case .space: return " "
+    case .delete: return "Backspace"
+    case .deleteForward: return "Delete"
+    case .escape: return "Escape"
+    case KeyEquivalent("a"): return "a"
+    case KeyEquivalent("c"): return "c"
+    case KeyEquivalent("v"): return "v"
+    case KeyEquivalent("z"): return "z"
+    default: return nil
+    }
+}
+
+/// Routes one hardware key press into the engine: the whole path between
+/// SwiftUI's `onKeyPress` and `handleKeyboardCommand`. The view calls it for
+/// every key, so the native tests can drive keys (Return, Escape, Delete)
+/// that XCUITest cannot deliver to a simulator app through the same code.
+@discardableResult
+public func pyreonFlowHandleKey<T>(
+    _ state: PyreonFlowState<T>,
+    key: KeyEquivalent,
+    modifiers: EventModifiers = [],
+    isRepeat: Bool = false,
+    nodeId: String? = nil,
+    edgeId: String? = nil
+) -> Bool {
+    guard let name = pyreonFlowKeyName(key) else { return false }
+    return state.handleKeyboardCommand(
+        name,
+        nodeId: nodeId,
+        shift: modifiers.contains(.shift),
+        command: modifiers.contains(.command) || modifiers.contains(.control),
+        repeatKey: isRepeat,
+        edgeId: edgeId
+    )
 }

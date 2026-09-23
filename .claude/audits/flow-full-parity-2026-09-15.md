@@ -310,3 +310,15 @@ native view.
   type with its own handles, and all three targets assert one target handle per
   mounted node, so a user renderer and its handles are culled with the node.
 - Keyboard interaction is tracked under F4, where the focus/action matrix lives.
+- [x] iOS keys XCUITest cannot deliver. XCUITest cannot send Return, Escape,
+  Delete or Backspace to a simulator app, so the iOS device suite can only
+  press Space, the arrows and Cmd shortcuts. The whole route from SwiftUI's
+  `onKeyPress` to the engine is now one public function,
+  `pyreonFlowHandleKey(state, key:modifiers:isRepeat:nodeId:edgeId:)`, and the
+  view calls nothing else. The native Swift suite drives the undeliverable keys
+  through it: Return selects a node or an edge, Escape clears, Delete and
+  Backspace remove, Cmd+Z and Ctrl+Z undo, Shift+Arrow takes the large step, an
+  unmapped key is ignored. The only link left unproven on iOS is the OS
+  handing the key to the app. Bisect: unmapping Return fails with "Return and
+  Escape map to the web key names".
+
