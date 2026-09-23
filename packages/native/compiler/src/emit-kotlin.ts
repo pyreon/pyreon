@@ -11810,7 +11810,11 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const withChrome = chrome.top !== '0.0'
   const animating = kotlinChartAnimating(e, tag) && spec.optionsStruct !== undefined
   // A framed host names its frame in a `val`, so it takes the hoisted form.
-  const hoist = withChrome || tooltip || animating || (tag !== 'PieChart' && chartFrameLiteral(e, 'kotlin') !== undefined)
+  // A select handler hoists too: its hit test runs inside `pointerInput`, which
+  // is not a composable scope, so the items (whose themed palette reads
+  // `isSystemInDarkTheme()`) must be evaluated once, here, and captured.
+  const selects = e.attrs.some((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
+  const hoist = withChrome || tooltip || animating || selects || (tag !== 'PieChart' && chartFrameLiteral(e, 'kotlin') !== undefined)
   const items = hoist ? 'pyreonItems' : mapped
   const lets = hoist ? [`val pyreonItems: List<${spec.struct}> = ${mapped}`, ...chrome.lets] : []
   if (animating) lets.push(`val pyreonOpts: ${spec.optionsStruct} = ${KOTLIN_CHART_TARGET.withProgress(options, spec.optionsStruct!, 'pyreonEntrance')}`)

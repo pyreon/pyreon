@@ -271,7 +271,14 @@ describe('chart hosts — accessor-prop hosts (Funnel / Pie) and Gauge', () => {
   it('Kotlin: mapIndexed with the same inlined accessors; the pie options and gauge text mirror Swift', () => {
     const r = transform(ACCESSOR, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain(`renderFunnel(STAGES.mapIndexed { pyreonI, pyreonD -> FunnelStage(value = (pyreonD.total).toDouble(), label = pyreonD.name, color = ${KT.palette}[pyreonI % ${KT.palette}.size]) }, PyreonChartRect(8.0, 8.0, pyreonW - 16.0, 200.0 - 16.0), null)`)
+    // The funnel has an onSelect, so its items are hoisted into a composable-scope
+    // `val`: the hit test runs inside `pointerInput`, and the themed palette reads
+    // `isSystemInDarkTheme()`, which Compose rejects there.
+    expect(r.code).toContain(`val pyreonItems: List<FunnelStage> = STAGES.mapIndexed { pyreonI, pyreonD -> FunnelStage(value = (pyreonD.total).toDouble(), label = pyreonD.name, color = ${KT.palette}[pyreonI % ${KT.palette}.size]) }`)
+    expect(r.code).toContain('renderFunnel(pyreonItems, PyreonChartRect(8.0, 8.0, pyreonW - 16.0, 200.0 - 16.0), null)')
+    for (const m of r.code.matchAll(/\.pointerInput\([^)]*\) \{ detectTapGestures \{[^\n]*/g)) {
+      expect(m[0], 'a composable read inside a tap handler does not compile').not.toContain('isSystemInDarkTheme()')
+    }
     expect(r.code).toContain('PieOptions(innerRadius = 0.4, showLabels = true, labelColor = "#ffffff", fontSize = 11.0)')
     expect(r.code).toContain('renderGauge((load).toDouble(), PyreonChartRect(0.0, 0.0, pyreonW, 120.0 * 2.0), GaugeOptions(min = 0.0, max = 100.0, sweep = Math.PI, thickness = 18.0, trackColor = "rgba(132,150,165,0.22)", valueColor = "#b45309")) + listOf(PyreonDrawCmd(kind = "text", fill = "#10161d", text = plain((load).toDouble())')
     expect(r.code).toContain('.testTag("gauge")')
