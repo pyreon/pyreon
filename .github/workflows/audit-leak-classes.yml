@@ -11,9 +11,7 @@ name: Audit Leak Classes
 #   - workflow_dispatch: manual run on any branch.
 #   - schedule: nightly drift check against main. Catches leak shapes
 #     introduced by PRs that merged without triggering the audit.
-#   - pull_request: auto-runs when a PR gets the `leak-audit` label,
-#     so contributors making leak-class-relevant changes can opt in
-#     to a pre-merge audit.
+#   - (no pull_request trigger — dispatch against a branch instead; see `on:`)
 #
 # The REPORT is advisory — the audit is permissive by design and its
 # findings are for manual triage, not proof of a leak. What IS gated is
@@ -32,8 +30,11 @@ on:
   schedule:
     # 04:23 UTC daily — staggered against the perf workflow's 03:17.
     - cron: '23 4 * * *'
-  pull_request:
-    types: [labeled, synchronize]
+  # NO pull_request trigger (removed 2026-09-23): the PR path was label opt-in
+  # (`leak-audit`), no PR has EVER carried that label, and every push to every
+  # PR still created a run whose one job was skipped — a permanent
+  # "skipping" row on each PR and ~205 empty runs/week in the Actions queue.
+  # To measure a branch, dispatch it: `gh workflow run audit-leak-classes.yml --ref <branch>`.
 
 # Read-only default; per-job blocks grant only what each step needs.
 permissions:
@@ -41,16 +42,6 @@ permissions:
 
 jobs:
   audit:
-    # Only run on leak-audit-labelled PRs — skip by default.
-    # Event-precise opt-in: `labeled` fires for EVERY label addition, so
-    # pre-fix, adding any unrelated label (skip-changeset, …) to a PR
-    # already carrying `leak-audit` re-ran this whole suite. Only the
-    # `leak-audit` label itself, or a code push to an already-labelled
-    # PR, runs it now.
-    if: >-
-      github.event_name != 'pull_request' ||
-      (github.event.action == 'labeled' && github.event.label.name == 'leak-audit') ||
-      (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'leak-audit'))
     name: Run audit-leak-classes
     runs-on: ubuntu-latest
     timeout-minutes: 10
