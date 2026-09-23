@@ -12,9 +12,9 @@
  *
  * Solid renders synchronously, so await tick() is just a layout flush.
  */
-import { createComponent, createRenderEffect, createSelector, createSignal, For } from 'solid-js'
-import { insert, render, template } from 'solid-js/web'
-import type { BenchSuite, NumericText } from '../runner'
+import { createComponent, createSelector, createSignal, For } from 'solid-js'
+import { className, effect, insert, render, template } from 'solid-js/web'
+import type { BenchSuite } from '../runner'
 import {
   BATCH_K_CLEAR,
   BATCH_K_SELECT,
@@ -36,8 +36,10 @@ function mkRows(n: number): SolidRow[] {
   })
 }
 
-// Pre-compiled template — same as what Solid's JSX compiler emits
-const _tmpl$ = template('<tr><td></td><td></td></tr>')
+// Templates exactly as babel-preset-solid emits them (it drops the
+// trailing close tags the HTML parser infers).
+const _tmpl$ = template('<table><tbody>')
+const _tmpl$2 = template('<tr><td></td><td>')
 
 export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
   resetRng()
@@ -49,47 +51,56 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
   // O(1) selection — only the deselected and newly selected rows re-run
   const isSelected = createSelector(selectedId)
 
-  const dispose = render(() => {
-    const table = document.createElement('table')
-    const tbody = document.createElement('tbody')
-    table.appendChild(tbody)
-
-    insert(
-      tbody,
-      createComponent(
-        For as unknown as (props: {
-          each: SolidRow[]
-          children: (row: SolidRow) => HTMLElement
-        }) => HTMLElement[],
-        {
-          get each() {
-            return rows()
-          },
-          children(row: SolidRow) {
-            // Template-cloned row — matches Solid compiler output
-            const el = _tmpl$() as HTMLElement
-            const td1 = el.children[0] as HTMLElement
-            const td2 = el.children[1] as HTMLElement
-            // raw number — see runner.ts "Row-id rendering rule"
-            ;(td1 as unknown as NumericText).textContent = row.id
-            // Idiomatic Solid: insert() is exactly what Solid's JSX compiler
-            // emits for `<td>{row.label()}</td>` — a reactively-updated text
-            // node, the fair equivalent of Pyreon's _bindText. The previous
-            // hand-written `createRenderEffect(() => td2.textContent = …)` was
-            // non-idiomatic and inflated Solid's partial-update by ~5×.
-            insert(td2, () => row.label())
-            // O(1) selection via createSelector — only 2 effects fire per change
-            createRenderEffect(() => {
-              el.className = isSelected(row.id) ? 'selected' : ''
-            })
-            return el
-          },
-        },
-      ),
-    )
-
-    return table
-  }, container)
+  // Byte-for-byte the emit of babel-preset-solid 1.9.15 for the idiomatic
+  // component (diffed, not assumed):
+  //
+  //   <table><tbody>
+  //     <For each={rows()}>{(row) =>
+  //       <tr class={isSelected(row.id) ? 'selected' : ''}>
+  //         <td>{row.id}</td><td>{row.label()}</td>
+  //       </tr>}</For>
+  //   </tbody></table>
+  //
+  // Note `{row.id}` compiles to `insert(td, () => row.id)` — the compiler
+  // cannot prove a member read static, so it binds it like any expression —
+  // and the cells are reached by a firstChild/nextSibling walk, not
+  // `el.children[i]`. `effect` + `className` are what `class={…}` lowers to.
+  const dispose = render(
+    () =>
+      (() => {
+        const _el$ = _tmpl$()
+        const _el$2 = _el$.firstChild as Node
+        insert(
+          _el$2,
+          createComponent(
+            For as unknown as (props: {
+              each: SolidRow[]
+              children: (row: SolidRow) => Node
+            }) => Node[],
+            {
+              get each() {
+                return rows()
+              },
+              children: (row: SolidRow) =>
+                (() => {
+                  const _el$3 = _tmpl$2()
+                  const _el$4 = _el$3.firstChild as Node
+                  const _el$5 = _el$4.nextSibling as Node
+                  // raw number handed to Solid's own insert — see runner.ts
+                  // "Row-id rendering rule"
+                  insert(_el$4, () => row.id)
+                  insert(_el$5, () => row.label())
+                  // O(1) selection via createSelector — only 2 effects fire per change
+                  effect(() => className(_el$3 as Element, isSelected(row.id) ? 'selected' : ''))
+                  return _el$3
+                })(),
+            },
+          ),
+        )
+        return _el$
+      })(),
+    container,
+  )
 
   await bench(
     'create 1,000 rows',

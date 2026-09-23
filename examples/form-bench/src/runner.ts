@@ -56,11 +56,34 @@ export const WARMUP_MIN = 5
 export const WARMUP_MAX = 15
 export const STABILIZE_WINDOW = 3
 export const STABILIZE_TOLERANCE = 0.1
-export const RUNS = 20
+/** Timed runs per scenario. `?runs=N` (the driver's `--runs`) overrides it for
+ *  a quick correctness smoke — the gates run on every iteration either way. */
+export const RUNS = (() => {
+  const n = Number(new URLSearchParams(globalThis.location?.search ?? '').get('runs'))
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 20
+})()
 export const BOOTSTRAP_RESAMPLES = 1000
 
 function forceGc(): void {
   ;(globalThis as { gc?: () => void }).gc?.()
+}
+
+/** Wall time spent inside `untimed()` during the current sample. */
+let excludedMs = 0
+
+/**
+ * Run `fn` inside a timed region WITHOUT charging its wall time to the sample.
+ * Exists for exactly one case: a library that defers its work behind a TIMER
+ * (vee-validate debounces schema validation by a hard-coded 5ms). Waiting for
+ * that timer inside the window would time idle, and not waiting lets 12
+ * keystrokes coalesce into one validation — work no other column skips. The
+ * cost of this shape is an UNDER-count for the arm that uses it (the deferred
+ * work's CPU lands in the excluded span), which the arm must disclose.
+ */
+export async function untimed(fn: () => unknown): Promise<void> {
+  const t = performance.now()
+  await fn()
+  excludedMs += performance.now() - t
 }
 
 export function tick(): Promise<void> {
@@ -78,11 +101,12 @@ export async function bench(
   let warmupUsed = 0
   while (warmupUsed < WARMUP_MAX) {
     if (options.reset) await options.reset()
+    excludedMs = 0
     const t0 = performance.now()
     await fn()
     if (options.commit) await options.commit()
     suite.container.getBoundingClientRect()
-    warmupSamples.push(performance.now() - t0)
+    warmupSamples.push(performance.now() - t0 - excludedMs)
     warmupUsed++
     if (options.verify) options.verify(suite.container)
     forceGc()
@@ -102,11 +126,12 @@ export async function bench(
   for (let i = 0; i < RUNS; i++) {
     if (options.reset) await options.reset()
     forceGc()
+    excludedMs = 0
     const t0 = performance.now()
     await fn()
     if (options.commit) await options.commit()
     suite.container.getBoundingClientRect()
-    samples.push(performance.now() - t0)
+    samples.push(performance.now() - t0 - excludedMs)
     if (options.verify) options.verify(suite.container)
     await tick()
   }
@@ -158,4 +183,43 @@ function bootstrapCI95(samples: number[]): [number, number] {
   }
   medians.sort((a, b) => a - b)
   return [quantile(medians, 0.025), quantile(medians, 0.975)]
+}
+
+/**
+ * One macrotask via `MessageChannel` — unlike `setTimeout(0)` it is not clamped
+ * to 4ms once nested, so it adds a few µs, not a timer floor.
+ */
+export function macrotask(): Promise<void> {
+  const ch = new MessageChannel()
+  return new Promise((resolve) => {
+    ch.port1.onmessage = () => {
+      ch.port1.close()
+      resolve()
+    }
+    ch.port2.postMessage(null)
+  })
+}
+
+/**
+ * Let one keystroke's ASYNC consequences land, identically in every column.
+ *
+ * Every library in this suite validates asynchronously — Pyreon's zod adapter
+ * (`safeParseAsync`), `@hookform/resolvers`, Formik's `runValidations`,
+ * vee-validate, Felte, modular-forms' `zodForm`. Before this existed the
+ * `keystroke-change` timed region ended when the SYNC part of the input
+ * handler returned, so each library's validation + error render ran partly or
+ * wholly OUTSIDE the window, by an amount that depended on how the library
+ * chains its promises — i.e. the column measured scheduling luck, and the gate
+ * (`input.value === TYPED`, which `setInput` itself guarantees) could not
+ * notice. A real user's keystrokes are separate tasks, so the honest model is:
+ * dispatch, then let the task queue turn over before the next key.
+ *
+ * TWO macrotasks, not one: a React state update issued from a resolved promise
+ * is scheduled on React's own `MessageChannel` task, which may be queued AFTER
+ * the first yield; the second yield runs after it. The cost (a few µs × 2 per
+ * keystroke) is the same additive floor in every column.
+ */
+export async function settle(): Promise<void> {
+  await macrotask()
+  await macrotask()
 }

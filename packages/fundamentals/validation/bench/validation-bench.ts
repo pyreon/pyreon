@@ -36,6 +36,18 @@ import { zodSchema } from '../src/zod'
 import { valibotSchema } from '../src/valibot'
 import { arktypeSchema } from '../src/arktype'
 import { extractParseFn, standardSchemaToValidator } from '../src/schema'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 // ─── schemas (same logical shape per library) ────────────────────────────────
 
@@ -219,6 +231,7 @@ declare const Bun: {
   }
 }
 
+console.log(benchRuntimeBanner())
 console.log(
   `=== @pyreon/validation wrapper tax (${process.platform}/${process.arch}, NODE_ENV=production, per-op isolated, median ns/op) ===\n`,
 )

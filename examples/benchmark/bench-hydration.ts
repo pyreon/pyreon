@@ -22,12 +22,15 @@
  */
 import { execSync, spawn } from 'node:child_process'
 import { chromium } from 'playwright'
+import { LoadRecorder, parseWaitQuiet, waitForQuietMachine } from './machine-load'
 
 const REPEAT = (() => {
   const i = process.argv.indexOf('--repeat')
   return i >= 0 ? Math.max(1, Number(process.argv[i + 1]) || 1) : 3
 })()
 const PORT = 4179
+/** `--wait-quiet [maxLoad]` — opt-in: block until load1 ≤ maxLoad before measuring. */
+const WAIT_QUIET = parseWaitQuiet(process.argv)
 const FRAMEWORKS = ['Pyreon', 'React 19', 'Preact', 'Vue 3']
 
 interface SuiteResult {
@@ -74,6 +77,13 @@ const browser = await chromium.launch({
   args: ['--js-flags=--expose-gc', '--enable-precise-memory-info'],
 })
 
+// Machine load stamped before/after (see machine-load.ts). Not enforced unless
+// `--wait-quiet` is passed — the build above is itself a load spike.
+const load = new LoadRecorder('bench-hydration', WAIT_QUIET)
+load.printIdentity()
+if (WAIT_QUIET !== null) await waitForQuietMachine('bench-hydration', WAIT_QUIET)
+load.stamp('before measuring')
+
 try {
   const pooled = new Map<string, number[]>()
   const pooledWalk = new Map<string, number[]>()
@@ -87,6 +97,7 @@ try {
       ;[order[i], order[j]] = [order[j]!, order[i]!]
     }
     console.log(`[bench-hydration] === pass ${pass}/${REPEAT} (order: ${order.join(', ')}) ===`)
+    load.stamp(`pass ${pass} start`)
     for (const fw of order) {
       console.log(`[bench-hydration]   ▸ ${fw}`)
       const page = await browser.newPage()
@@ -98,6 +109,9 @@ try {
           const s = document.getElementById('status')?.textContent ?? ''
           return s.includes('Done') || s.includes('FAILED')
         },
+        // `waitForFunction(fn, arg, options)` — options is the THIRD argument.
+        // Passed second, it was taken as `arg` and the 30s default applied.
+        undefined,
         { timeout: 180_000 },
       )
       const status = await page.evaluate(() => document.getElementById('status')?.textContent)
@@ -134,6 +148,8 @@ try {
       await page.close()
     }
   }
+
+  load.stamp('after measuring')
 
   console.log('\nHydration: 1,000-row SSR table → interactive (adoption + click gates in-page)')
   console.log('─'.repeat(78))

@@ -1,14 +1,21 @@
-import { createElement as r, memo, useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
+import { jsx, jsxs } from 'react/jsx-runtime'
 import type { Filter, Todo, TodoApp } from '../types'
 
 /**
  * Idiomatic React 19: `useState<Todo[]>` + memoised rows. A toggle/clear/add
  * produces a NEW array → the list component re-renders and React reconciles via
  * its VDOM diff (memo skips rows whose props are referentially unchanged). This
- * is the real shape a React user ships — NOT signals. `commit()` waits for the
- * DefaultLane commit (MessageChannel fires before rAF; rAF→setTimeout(0) is the
- * conservative "React has painted" barrier the synthetic benchmark uses too).
+ * is the real shape a React user ships — NOT signals.
+ *
+ * Timed actions run inside `flushSync` (`runCommitted`) — React's tightest real
+ * commit, the same boundary `examples/benchmark` uses. `commit()` (rAF →
+ * setTimeout) is kept ONLY for untimed setup; it used to sit inside the timed
+ * window, charging React up to a frame of idle per sample. Elements are written
+ * as the automatic JSX runtime's `jsx()`/`jsxs()` output (what a React app's
+ * own toolchain emits), not `createElement`.
  */
 interface Setters {
   seed: (todos: Todo[]) => void
@@ -23,12 +30,14 @@ function afterCommit(): Promise<void> {
 }
 
 const Row = memo(function Row({ todo }: { todo: Todo }) {
-  return r(
-    'li',
-    { className: todo.done ? 'completed' : '', 'data-id': todo.id },
-    r('input', { type: 'checkbox', checked: todo.done, readOnly: true }),
-    r('span', null, todo.text),
-  )
+  return jsxs('li', {
+    className: todo.done ? 'completed' : '',
+    'data-id': todo.id,
+    children: [
+      jsx('input', { type: 'checkbox', checked: todo.done, readOnly: true }),
+      jsx('span', { children: todo.text }),
+    ],
+  })
 })
 
 function App({ onReady }: { onReady: (s: Setters) => void }) {
@@ -57,11 +66,7 @@ function App({ onReady }: { onReady: (s: Setters) => void }) {
         ? todos.filter((t) => t.done)
         : todos
 
-  return r(
-    'ul',
-    { className: 'todos' },
-    visible.map((t) => r(Row, { key: t.id, todo: t })),
-  )
+  return jsx('ul', { className: 'todos', children: visible.map((t) => jsx(Row, { todo: t }, t.id)) })
 }
 
 export function createReactApp(): TodoApp {
@@ -76,8 +81,8 @@ export function createReactApp(): TodoApp {
       // once setters exist, so the harness's untimed seed() can't no-op.
       return new Promise<void>((resolve) => {
         root!.render(
-          r(App, {
-            onReady: (s) => {
+          jsx(App, {
+            onReady: (s: Setters) => {
               setters = s
               resolve()
             },
@@ -99,6 +104,9 @@ export function createReactApp(): TodoApp {
     },
     setFilter(f) {
       setters?.setFilter(f)
+    },
+    runCommitted(fn) {
+      flushSync(fn)
     },
     commit() {
       return afterCommit()

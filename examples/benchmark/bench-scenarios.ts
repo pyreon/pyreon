@@ -41,10 +41,11 @@
  * of this suite. Ratios are the portable signal; absolute ms are machine- and
  * load-dependent. Stamp `uptime` and discard anything measured above load ~8.
  *
- * Run: bun bench-scenarios.ts [--repeat N] [--scenario dbmon|tree|effects|memo|flow|charts]
+ * Run: bun bench-scenarios.ts [--repeat N] [--scenario dbmon|tree|effects|memo|flow|charts] [--wait-quiet [maxLoad]]
  */
 import { execSync, spawn } from 'node:child_process'
 import { chromium } from 'playwright'
+import { LoadRecorder, parseWaitQuiet, waitForQuietMachine } from './machine-load'
 
 const argv = process.argv
 const REPEAT = (() => {
@@ -86,7 +87,7 @@ const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
       'React 19',
       'Preact',
       'Vue 3',
-      'Vue 3 (template)',
+      'Vue 3 (h())',
       'SolidJS',
       'SolidJS (per-attr effects)',
       'Svelte 5',
@@ -161,6 +162,10 @@ const NON_RANKING = new Set([
   // Solid's compiler does NOT emit (it groups a row's attributes into one
   // effect). Published so the emit-faithfulness correction is auditable.
   'SolidJS (per-attr effects)',
+  // Diagnostic twin of the dbmon Vue arm: a hand-written `h()` render function,
+  // which carries no patch flags / block tree. The ranked `Vue 3` is the
+  // build-time-compiled template a real Vue app ships.
+  'Vue 3 (h())',
   // Hand-written compiler-output-level probes, not a shipped code path.
   'Pyreon (tpl slot)',
   'Pyreon (tpl append)',
@@ -215,12 +220,15 @@ function fmt(ms: number): string {
   return ms < 1 ? `${(ms * 1000).toFixed(0)}µs` : `${ms.toFixed(2)}ms`
 }
 
+/**
+ * Load stamps via the shared recorder (os.loadavg + CPU identity) — replaces a
+ * bare `uptime` shell-out that was unavailable on some platforms and recorded
+ * nothing machine-readable. `--wait-quiet [maxLoad]` opts into waiting.
+ */
+const WAIT_QUIET = parseWaitQuiet(argv)
+const load = new LoadRecorder('bench-scenarios', WAIT_QUIET ?? 8)
 function stamp(label: string): void {
-  try {
-    console.log(`[bench-scenarios] ${label}: ${execSync('uptime').toString().trim()}`)
-  } catch {
-    /* uptime is unavailable on some platforms — not worth failing the run */
-  }
+  load.stamp(label)
 }
 
 const scenarios = ONLY_SCENARIO ? SCENARIOS.filter((s) => s.id === ONLY_SCENARIO) : SCENARIOS
@@ -229,7 +237,8 @@ if (scenarios.length === 0) {
   process.exit(1)
 }
 
-stamp('load BEFORE')
+load.printIdentity()
+stamp('load BEFORE build')
 console.log('[bench-scenarios] building…')
 execSync('bun run build', { stdio: 'inherit', env: { ...process.env, NODE_ENV: 'production' } })
 
@@ -244,18 +253,25 @@ const browser = await chromium.launch({
   args: ['--js-flags=--expose-gc', '--enable-precise-memory-info'],
 })
 
+// The build above is itself a load spike; waiting is opt-in.
+if (WAIT_QUIET !== null) await waitForQuietMachine('bench-scenarios', WAIT_QUIET)
+stamp('load before measuring')
+
 try {
   // key: `${scenarioId}\u0000${opName}\u0000${framework}` → pooled samples
   const pooled = new Map<string, number[]>()
 
   for (const scenario of scenarios) {
     for (let pass = 1; pass <= REPEAT; pass++) {
+      // Re-check before every pass, not only once at start (see bench-fair).
+      if (WAIT_QUIET !== null) await waitForQuietMachine('bench-scenarios', WAIT_QUIET)
       const order = [...scenario.frameworks]
       for (let i = order.length - 1; i > 0; i--) {
         const j = (i * 7 + pass * 13) % (i + 1)
         ;[order[i], order[j]] = [order[j] as string, order[i] as string]
       }
       console.log(`[bench-scenarios] === ${scenario.id} pass ${pass}/${REPEAT} (${order.join(', ')}) ===`)
+      stamp(`${scenario.id} pass ${pass} start`)
       for (const fw of order) {
         process.stdout.write(`[bench-scenarios]   ▸ ${fw} … `)
         const page = await browser.newPage()
@@ -269,6 +285,9 @@ try {
             const s = document.getElementById('status')?.textContent ?? ''
             return s.includes('Done') || s.includes('FAILED') || s.includes('Unknown')
           },
+          // `waitForFunction(fn, arg, options)` — options is the THIRD argument.
+          // Passed second, it was taken as `arg` and the 30s default applied.
+          undefined,
           { timeout: 300_000 },
         )
         const status = await page.evaluate(() => document.getElementById('status')?.textContent)
@@ -289,6 +308,8 @@ try {
       }
     }
   }
+
+  stamp('load after measuring')
 
   // ── Report ────────────────────────────────────────────────────────────────
   for (const scenario of scenarios) {

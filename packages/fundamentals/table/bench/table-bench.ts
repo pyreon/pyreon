@@ -31,6 +31,18 @@
 process.env.NODE_ENV = 'production'
 
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 GlobalRegistrator.register()
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false
 
@@ -294,11 +306,17 @@ async function pyreonSamples(n: number, scenario: Scenario, useCompiled: boolean
     const esbuild = await import('esbuild')
     const jsxRuntime = await import('@pyreon/core/jsx-runtime')
     const stage1 = transformJSX(BENCH_APP_SOURCE, 'bench-app.tsx').code
-    const stage2 = esbuild.transformSync(stage1, {
-      loader: 'tsx',
-      jsx: 'automatic',
-      jsxImportSource: '@pyreon/core',
-    }).code
+    // ASYNC transform on purpose: transformSync starts a worker thread, and
+    // happy-dom's global registration replaces MessagePort, which crashes
+    // bun's worker messaging (`port.on is not a function`). The async form uses
+    // esbuild's child-process service; the output is identical.
+    const stage2 = (
+      await esbuild.transform(stage1, {
+        loader: 'tsx',
+        jsx: 'automatic',
+        jsxImportSource: '@pyreon/core',
+      })
+    ).code
     const body = stage2.replace(/^import\s+.*$/gm, '').trim()
     const deps: Record<string, unknown> = {
       // runtime helpers the compiled output may reference
@@ -457,6 +475,10 @@ function runCell(variant: Variant, n: number, scenario: Scenario): Cell {
   return { med: median(pooled), ci: bootstrapCI(pooled) }
 }
 
+console.log(benchRuntimeBanner())
+console.log(
+  '⚠ happy-dom (JS DOM) — not browser-representative: every WALL-CLOCK number below was timed against happy-dom, a JavaScript DOM implementation, not a browser engine (no real style/layout/paint; DOM-op costs differ from Chromium/WebKit/Gecko).',
+)
 console.log(
   `=== @pyreon/table vs @tanstack/react-table (${process.platform}/${process.arch}, happy-dom, NODE_ENV=production, per-cell isolated processes, median ms/op [CI95], 🤝 = CI-overlap tie) ===`,
 )

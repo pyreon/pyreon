@@ -14,9 +14,18 @@
  *      column); OUTPUT pinned to canonical order.
  *   6. Retained-heap (post-GC `usedJSHeapSize`) reported next to speed.
  *   7. Tied-within-noise `🤝` when the two CIs overlap.
- *   8. Machine stamp printed.
+ *   8. Machine identity + load average stamped before/after (shared
+ *      `examples/benchmark/machine-load.ts`); `--wait-quiet [maxLoad]` opts
+ *      into waiting for a quiet machine.
+ *   9. Timer-resolution preflight: the page must be cross-origin isolated
+ *      (5µs clock, not Chromium's 100µs clamp) or the run ABORTS.
+ *  10. `vite preview --strictPort` + announced-port assertion, so a stale
+ *      server on the port can never be the thing that gets measured.
  *
- * Usage: bun bench-form.ts [--json out.json] [--repeat N]
+ * Usage: bun bench-form.ts [--json out.json] [--repeat N] [--runs N]
+ *                          [--only "A,B"] [--wait-quiet [maxLoad]]
+ *   `--runs N` overrides the 20 timed runs per scenario (e.g. `--runs 3` for a
+ *   correctness smoke — the per-iteration DOM gates still run every iteration).
  */
 import { execSync, spawn, type ChildProcess } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
@@ -24,6 +33,7 @@ import * as os from 'node:os'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Page } from 'playwright'
+import { LoadRecorder, parseWaitQuiet, waitForQuietMachine } from '../benchmark/machine-load'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PORT = 4188
@@ -66,10 +76,45 @@ function shuffled<T>(input: readonly T[]): T[] {
   return out
 }
 
+/**
+ * Smallest observable `performance.now()` step in a real page of THIS build —
+ * the same preflight as `examples/benchmark/bench-fair.ts`. A clock property,
+ * so valid on a loaded machine.
+ */
+async function measureClockQuantum(
+  browser: Awaited<ReturnType<typeof chromium.launch>>,
+  baseUrl: string,
+): Promise<{ isolated: boolean; quantumMs: number }> {
+  const ctx = await browser.newContext()
+  const page = await ctx.newPage()
+  try {
+    await page.goto(baseUrl, { waitUntil: 'load' })
+    return await page.evaluate(() => {
+      let smallest = Number.POSITIVE_INFINITY
+      let prev = performance.now()
+      const end = prev + 150
+      while (performance.now() < end) {
+        const t = performance.now()
+        if (t > prev) {
+          if (t - prev < smallest) smallest = t - prev
+          prev = t
+        }
+      }
+      return {
+        isolated: (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true,
+        quantumMs: smallest,
+      }
+    })
+  } finally {
+    await ctx.close()
+  }
+}
+
 async function runOne(
   framework: string,
   baseUrl: string,
   browser: Awaited<ReturnType<typeof chromium.launch>>,
+  runs: number | undefined,
 ): Promise<FrameworkRun | null> {
   const ctx = await browser.newContext()
   const page: Page = await ctx.newPage()
@@ -81,7 +126,10 @@ async function runOne(
   })
   page.on('pageerror', (e) => console.error(`[chromium:${framework}] pageerror:`, e.message))
   try {
-    await page.goto(`${baseUrl}/?framework=${encodeURIComponent(framework)}`, { waitUntil: 'load' })
+    const runsParam = runs ? `&runs=${runs}` : ''
+    await page.goto(`${baseUrl}/?framework=${encodeURIComponent(framework)}${runsParam}`, {
+      waitUntil: 'load',
+    })
     await page.waitForFunction(
       () => document.getElementById('status')?.textContent === 'Done ✓',
       null,
@@ -118,6 +166,9 @@ async function main(): Promise<void> {
   const jsonOut = argv.includes('--json') ? argv[argv.indexOf('--json') + 1] : undefined
   const repeatIdx = argv.indexOf('--repeat')
   const repeat = repeatIdx >= 0 ? Math.max(1, Math.min(20, Number(argv[repeatIdx + 1]) || 1)) : 1
+  const runsIdx = argv.indexOf('--runs')
+  const runs = runsIdx >= 0 ? Math.max(1, Number(argv[runsIdx + 1]) || 20) : undefined
+  const waitQuiet = parseWaitQuiet(argv)
   // `--only "Pyreon,Vue (vee-validate)"` restricts to a subset (fast per-framework
   // verification). Default = all frameworks. Pyreon is always kept (it's the column
   // every multiplier is relative to).
@@ -131,22 +182,35 @@ async function main(): Promise<void> {
       : ALL_FRAMEWORKS
 
   console.log('[form-bench] building…')
-  execSync('bun run build', { cwd: HERE, stdio: 'inherit' })
+  // NODE_ENV forced: `vite build` only sets it when UNSET, so a caller's
+  // `NODE_ENV=development` (or `test`) would silently yield a dev build with
+  // every library's dev-only branches retained.
+  execSync('bun run build', { cwd: HERE, stdio: 'inherit', env: { ...process.env, NODE_ENV: 'production' } })
 
   console.log(`[form-bench] starting preview on :${PORT}`)
-  const preview: ChildProcess = spawn('bun', ['x', 'vite', 'preview', '--port', String(PORT)], {
-    cwd: HERE,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
+  // `--strictPort` + the announced-port check: without them vite drifts to the
+  // next free port when PORT is held, the `Local:` readiness check still
+  // matches, and the driver measures whatever stale server holds PORT.
+  const preview: ChildProcess = spawn(
+    'bun',
+    ['x', 'vite', 'preview', '--port', String(PORT), '--strictPort'],
+    { cwd: HERE, stdio: ['ignore', 'pipe', 'pipe'] },
+  )
   await new Promise<void>((res, rej) => {
     const to = setTimeout(() => rej(new Error('preview start timeout')), 15_000)
     preview.stdout?.on('data', (c: Buffer) => {
-      if (c.toString().includes('Local:')) {
-        clearTimeout(to)
-        res()
+      const text = c.toString()
+      if (!text.includes('Local:')) return
+      clearTimeout(to)
+      if (!text.includes(`:${PORT}`)) {
+        rej(new Error(`[form-bench] preview announced a port other than :${PORT} — refusing to measure. ${text.trim()}`))
+        return
       }
+      res()
     })
-    preview.on('exit', (code) => rej(new Error(`preview exited ${code}`)))
+    preview.on('exit', (code) =>
+      rej(new Error(`preview exited ${code} — :${PORT} is probably held (lsof -ti tcp:${PORT} | xargs kill -9)`)),
+    )
   })
 
   const browser = await chromium.launch({
@@ -154,6 +218,25 @@ async function main(): Promise<void> {
     args: ['--js-flags=--expose-gc', '--enable-precise-memory-info'],
   })
   const baseUrl = `http://localhost:${PORT}`
+
+  // Timer-resolution preflight — ABORT rather than warn (see vite.config.ts).
+  const clock = await measureClockQuantum(browser, baseUrl)
+  console.log(
+    `[form-bench] timer: crossOriginIsolated=${clock.isolated} · quantum ${(clock.quantumMs * 1000).toFixed(1)}µs`,
+  )
+  if (!clock.isolated || clock.quantumMs > 0.02) {
+    await browser.close()
+    preview.kill('SIGTERM')
+    throw new Error(
+      `[form-bench] timer too coarse (crossOriginIsolated=${clock.isolated}, ` +
+        `quantum=${(clock.quantumMs * 1000).toFixed(1)}µs) — COOP/COEP headers not served?`,
+    )
+  }
+
+  const load = new LoadRecorder('form-bench', waitQuiet)
+  load.printIdentity()
+  if (waitQuiet !== null) await waitForQuietMachine('form-bench', waitQuiet)
+  load.stamp('before measuring')
 
   // Pool samples across passes (per framework, per scenario) for tighter CI.
   const pooled = new Map<string, Map<string, number[]>>()
@@ -163,7 +246,7 @@ async function main(): Promise<void> {
       const order = shuffled(CANONICAL)
       console.log(`[form-bench] pass ${pass + 1}/${repeat} — order: ${order.join(', ')}`)
       for (const fw of order) {
-        const run = await runOne(fw, baseUrl, browser)
+        const run = await runOne(fw, baseUrl, browser, runs)
         if (!run) continue
         const byScenario = pooled.get(fw) ?? new Map<string, number[]>()
         for (const r of run.suite.results) {
@@ -180,6 +263,7 @@ async function main(): Promise<void> {
       }
     }
   } finally {
+    load.stamp('after measuring')
     await browser.close()
     preview.kill('SIGTERM')
   }
@@ -202,13 +286,18 @@ async function main(): Promise<void> {
     return [meds[25] ?? 0, meds[974] ?? 0]
   }
 
-  const scenarios = [...(pooled.get('Pyreon')?.keys() ?? [])]
+  const failed = CANONICAL.filter((fw) => !pooled.has(fw))
+  if (failed.length > 0) {
+    console.error(`\n[form-bench] ✗ ${failed.length} framework(s) FAILED their correctness gates: ${failed.join(', ')}`)
+    process.exitCode = 1
+  }
+  const scenarios = [...new Set(CANONICAL.flatMap((fw) => [...(pooled.get(fw)?.keys() ?? [])]))]
   const machine = `${os.cpus()[0]?.model ?? 'unknown'} · ${os.cpus().length} cores · ${(os.totalmem() / 1e9).toFixed(0)} GB · ${os.platform()} · Chromium ${browser.version?.() ?? '?'}`
 
   const peers = CANONICAL.filter((f) => f !== 'Pyreon').join(' / ')
   console.log(`\nTIER B — REAL-APP FORM BENCHMARK — Pyreon vs ${peers}`)
   console.log(`${machine}`)
-  console.log(`Median ± 95% bootstrap CI, CV%, pooled ${repeat * 20} samples/scenario. Lower = faster.\n`)
+  console.log(`Median ± 95% bootstrap CI, CV%, pooled ${repeat * (runs ?? 20)} samples/scenario. Lower = faster.\n`)
   const head = ['scenario', ...CANONICAL, 'verdict']
   console.log(head.map((h) => h.padEnd(h === 'scenario' ? 22 : 26)).join(''))
   console.log('─'.repeat(100))
@@ -217,9 +306,13 @@ async function main(): Promise<void> {
   for (const name of scenarios) {
     const stats = CANONICAL.map((fw) => {
       const xs = pooled.get(fw)?.get(name) ?? []
-      return { fw, median: median(xs), ci95: ci95(xs) }
+      return { fw, n: xs.length, median: median(xs), ci95: ci95(xs) }
     })
-    const ranked = [...stats].sort((a, b) => a.median - b.median)
+    // A framework whose suite THREW has no samples. Its median would read 0 and
+    // it would be ranked the WINNER — so it is excluded from ranking and
+    // printed as FAILED instead.
+    const ranked = stats.filter((x) => x.n > 0).sort((a, b) => a.median - b.median)
+    if (ranked.length === 0) continue
     const leader = ranked[0]!
     const runnerUp = ranked[1]
     const best = leader.median
@@ -230,7 +323,9 @@ async function main(): Promise<void> {
     // Ratio is only meaningful when the fastest column is above the timer floor;
     // at the floor (best === 0) show "—" rather than a misleading 0.0x.
     const ratio = (m: number) => (best > 0 ? `${(m / best).toFixed(1)}×` : '—')
-    const cells = stats.map((s) => `${fmt(s.median)}(${ratio(s.median)})`.padEnd(26)).join('')
+    const cells = stats
+      .map((s) => (s.n > 0 ? `${fmt(s.median)}(${ratio(s.median)})` : 'FAILED').padEnd(26))
+      .join('')
     console.log(name.padEnd(22) + cells + verdict)
     jsonRows.push({ scenario: name, verdict, tied, frameworks: stats })
   }
@@ -250,6 +345,9 @@ async function main(): Promise<void> {
           tier: 'B-real-app',
           machine,
           passes: repeat,
+          runsPerPass: runs ?? 20,
+          timer: clock,
+          load: load.report(),
           rows: jsonRows,
           retainedHeapMB: Object.fromEntries(
             CANONICAL.map((fw) => [fw, (heaps.get(fw) ?? []).map((b) => +(b / 1e6).toFixed(2))]),

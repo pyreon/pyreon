@@ -64,6 +64,18 @@ import {
   parseAsString,
 } from 'nuqs/server'
 import { inferSerializer } from '../src/serializers'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 // ─── Pyreon serializer pairs (inferred from a representative default) ─────────
 const pyrNum = inferSerializer(0)
@@ -291,6 +303,7 @@ for (const op of OP_ORDER) {
   rows.push({ op, pyreon: runCell(op, 'pyreon'), nuqs: runCell(op, 'nuqs'), note: OPS[op]?.note })
 }
 
+console.log(benchRuntimeBanner())
 console.log(
   `=== @pyreon/url-state vs nuqs (${process.platform}/${process.arch}, NODE_ENV=production, per-(op×impl) isolated processes ×${PROCS_PER_CELL} pooled, median ns/op [CI95], 🤝 = CI-overlap tie) ===\n`,
 )

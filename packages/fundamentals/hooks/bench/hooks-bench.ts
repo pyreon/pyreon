@@ -54,6 +54,18 @@ import { signal as pyreonSignal } from '../../../core/reactivity/src/index'
 import { useControllableState } from '../src/useControllableState'
 import { useCounter } from '../src/useCounter'
 import { useToggle } from '../src/useToggle'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 let sink = 0
 
@@ -233,6 +245,7 @@ function benchControllable(): Result[] {
   ]
 }
 
+console.log(benchRuntimeBanner())
 console.log('@pyreon/hooks — state-primitive micro-bench (NODE_ENV=production)')
 correctnessGate()
 printSection('useCounter wrapper overhead vs raw signal', benchCounterWrapperOverhead())

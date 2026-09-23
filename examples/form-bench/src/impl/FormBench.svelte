@@ -12,9 +12,10 @@
 <script lang="ts">
   import { validator } from '@felte/validator-zod'
   import { createForm } from 'felte'
+  import { get } from 'svelte/store'
   import { FIELD_NAMES, formSchema } from '../../shared/schema'
 
-  const { form, errors, reset, setFields } = createForm({
+  const { form, data, errors, reset, setFields, setTouched } = createForm({
     extend: validator({ schema: formSchema }),
     onSubmit: () => {},
   })
@@ -25,6 +26,13 @@
   }
   export function setField(name: string, value: string): void {
     setFields(name, value, true)
+  }
+  // Read-only probes for the per-iteration correctness gates (never timed).
+  export function getValue(name: string): unknown {
+    return (get(data) as Record<string, unknown>)[name]
+  }
+  export function touch(name: string): void {
+    setTouched(name, true)
   }
 </script>
 

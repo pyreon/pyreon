@@ -49,6 +49,12 @@
  *    leader). No forced GC inside the timed loop (it jettisons compiled code →
  *    fake re-tier costs); per-window fresh trees, adaptive window sizing.
  *
+ * 6. INTERLEAVED, SEEDED ORDER. All arms share one process, so windows are
+ *    interleaved across frameworks and the arm order is reshuffled (seeded,
+ *    reproducible — `--seed=N` overrides) every round, for calibration, warmup
+ *    and timed windows alike. A fixed Pyreon-first sequential order put all
+ *    in-process drift on the later arms.
+ *
  * HONEST LIMITS: this is CPU-only string generation on one tree shape. It does
  * NOT measure streaming, Suspense/async-component promotion, hydration-marker
  * cost differences, real-app async data, or client-side reconciliation. React's
@@ -461,48 +467,101 @@ async function calibrate(
   return Math.max(4, Math.round(targetMs / perOp))
 }
 
-async function measureAsync(
-  lib: string,
-  render: () => Promise<string>,
-  opsPerWindow: number,
-  windows = 25,
-  warmup = 6,
-): Promise<Sample> {
-  let sink = 0
-  for (let w = 0; w < warmup; w++) {
-    for (let j = 0; j < opsPerWindow; j++) sink += (await render()).length
-  }
-  const rps: number[] = []
-  for (let w = 0; w < windows; w++) {
-    const start = performance.now()
-    for (let j = 0; j < opsPerWindow; j++) sink += (await render()).length
-    const dt = performance.now() - start
-    rps.push((opsPerWindow / dt) * 1000)
-  }
-  if (sink < 0) throw new Error('unreachable')
-  return { lib, ...bootstrapCI(rps) }
+/** One framework arm of a scenario: its native calling convention + window size. */
+interface Arm {
+  lib: string
+  render: () => string | Promise<string>
+  isAsync: boolean
+  opsPerWindow: number
 }
 
-function measureSync(
-  lib: string,
-  render: () => string,
-  opsPerWindow: number,
+/** mulberry32 — seeded so the per-window arm order is reproducible. */
+function seededRng(seed: number): () => number {
+  let state = seed >>> 0
+  return () => {
+    state = (state + 0x6d2b79f5) | 0
+    let t = state
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+function seededShuffle<T>(input: readonly T[], rnd: () => number): T[] {
+  const out = [...input]
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1))
+    ;[out[i], out[j]] = [out[j]!, out[i]!]
+  }
+  return out
+}
+
+/** FNV-1a — derives a per-scenario seed from its label so runs are reproducible. */
+function hashLabel(label: string): number {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < label.length; i++) {
+    hash ^= label.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return hash >>> 0
+}
+
+/** `--seed=N` overrides the base seed; the default is fixed so a rerun is reproducible. */
+const BASE_SEED = (() => {
+  const v = Number(process.argv.find((a) => a.startsWith('--seed='))?.slice('--seed='.length))
+  return Number.isInteger(v) ? v >>> 0 : 0x5eed
+})()
+
+async function runWindow(arm: Arm): Promise<{ rps: number; sink: number }> {
+  let sink = 0
+  const start = performance.now()
+  if (arm.isAsync) {
+    for (let j = 0; j < arm.opsPerWindow; j++) sink += (await arm.render()).length
+  } else {
+    // Synchronous arms are NOT awaited inside the window — awaiting sync output
+    // would tax them with a microtask they never pay in a real sync SSR handler.
+    const render = arm.render as () => string
+    for (let j = 0; j < arm.opsPerWindow; j++) sink += render().length
+  }
+  const dt = performance.now() - start
+  return { rps: (arm.opsPerWindow / dt) * 1000, sink }
+}
+
+/**
+ * Measure every arm with its windows INTERLEAVED, in a seeded order that is
+ * reshuffled for every window round.
+ *
+ * The previous harness ran each framework's 6 warmup + 25 timed windows to
+ * completion before starting the next, always in the same order (Pyreon
+ * first). In one long-lived process that puts every source of monotonic drift
+ * — thermal ramp, JIT tiering of the SHARED string/array builtins, GC heap
+ * growth, a neighbour process's load arriving mid-run — systematically on the
+ * LATER arms. Interleaving turns drift into per-window noise every arm samples
+ * equally; reshuffling per round means no arm is pinned to the first or last
+ * slot of a round either. Warmup is interleaved the same way. The per-arm
+ * sample count, window sizing and native calling conventions are unchanged.
+ */
+async function measureInterleaved(
+  arms: readonly Arm[],
+  seed: number,
   windows = 25,
   warmup = 6,
-): Sample {
+): Promise<Sample[]> {
+  const rnd = seededRng(seed)
   let sink = 0
   for (let w = 0; w < warmup; w++) {
-    for (let j = 0; j < opsPerWindow; j++) sink += render().length
+    for (const arm of seededShuffle(arms, rnd)) sink += (await runWindow(arm)).sink
   }
-  const rps: number[] = []
+  const rps = new Map<Arm, number[]>(arms.map((a) => [a, []]))
   for (let w = 0; w < windows; w++) {
-    const start = performance.now()
-    for (let j = 0; j < opsPerWindow; j++) sink += render().length
-    const dt = performance.now() - start
-    rps.push((opsPerWindow / dt) * 1000)
+    for (const arm of seededShuffle(arms, rnd)) {
+      const r = await runWindow(arm)
+      sink += r.sink
+      rps.get(arm)!.push(r.rps)
+    }
   }
   if (sink < 0) throw new Error('unreachable')
-  return { lib, ...bootstrapCI(rps) }
+  return arms.map((a) => ({ lib: a.lib, ...bootstrapCI(rps.get(a)!) }))
 }
 
 const fmt = (n: number): string => {
@@ -842,25 +901,25 @@ await correctnessGate(selected)
 for (const s of selected) {
   const avgBytes = (await s.py()).length
   // Native calling convention per framework: Pyreon awaited (async), rest sync.
-  const pyOps = await calibrate(s.py, true)
-  const pyfOps = await calibrate(s.pyf, true)
-  const reOps = await calibrate(s.re, false)
-  const prOps = await calibrate(s.pr, false)
-  const soOps = await calibrate(s.so, false)
-  const rowsOut: Sample[] = [
-    await measureAsync('@pyreon _ssr (provable attrs)', s.pyf, pyfOps),
+  const specs: Array<{ lib: string; render: () => string | Promise<string>; isAsync: boolean }> = [
+    { lib: '@pyreon _ssr (provable attrs)', render: s.pyf, isAsync: true },
+    ...(s.pyfn ? [{ lib: '@pyreon _ssr (nullable attrs)', render: s.pyfn, isAsync: true }] : []),
+    { lib: '@pyreon h() (baseline)', render: s.py, isAsync: true },
+    { lib: 'react-dom/server', render: s.re, isAsync: false },
+    { lib: 'preact-render-to-string', render: s.pr, isAsync: false },
+    { lib: 'solid-js/web', render: s.so, isAsync: false },
   ]
-  if (s.pyfn) {
-    const pyfnOps = await calibrate(s.pyfn, true)
-    rowsOut.push(await measureAsync('@pyreon _ssr (nullable attrs)', s.pyfn, pyfnOps))
+  const seed = (BASE_SEED ^ hashLabel(s.label)) >>> 0
+  // Calibration order is seeded-shuffled too: calibrating in a fixed order
+  // would size every later arm's window on a warmer process.
+  const calRnd = seededRng(seed ^ 0xca1)
+  const ops = new Map<string, number>()
+  for (const spec of seededShuffle(specs, calRnd)) {
+    ops.set(spec.lib, await calibrate(spec.render, spec.isAsync))
   }
-  rowsOut.push(
-    await measureAsync('@pyreon h() (baseline)', s.py, pyOps),
-    measureSync('react-dom/server', s.re, reOps),
-    measureSync('preact-render-to-string', s.pr, prOps),
-    measureSync('solid-js/web', s.so, soOps),
-  )
-  report(s.label, avgBytes, rowsOut)
+  const arms: Arm[] = specs.map((spec) => ({ ...spec, opsPerWindow: ops.get(spec.lib)! }))
+  const rowsOut = await measureInterleaved(arms, seed)
+  report(`${s.label}  [seed ${seed}]`, avgBytes, rowsOut)
 }
 
 console.log('')

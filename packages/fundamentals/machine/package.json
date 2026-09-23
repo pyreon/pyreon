@@ -50,7 +50,7 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@vitus-labs/tools-lint": "^2.7.1",
-    "xstate": "^5.32.6"
+    "xstate": "^5.33.2"
   },
   "publishConfig": {
     "access": "public"

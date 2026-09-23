@@ -40,7 +40,7 @@ export const SCENARIOS: ScenarioSpec[] = [
     id: 'keystroke-change',
     title: 'Keystroke — validateOn:change (worst case)',
     description:
-      'Same 12-keystroke word, but validating on EVERY keystroke (Pyreon validateOn:"change" / RHF mode:"onChange"). Where the architectures diverge most: Pyreon validates the one field via the schema-per-field path; RHF re-runs the resolver and re-renders the field on each keystroke.',
+      'Same 12-keystroke word, but validating on EVERY keystroke (Pyreon validateOn:"change" / RHF mode:"onChange"). Where the architectures diverge most: Pyreon validates the one field via the schema-per-field path; RHF re-runs the resolver and re-renders the field on each keystroke. Every library validates ASYNC, so each keystroke is dispatch → commit → settle (two MessageChannel turns, identical per column); the gate requires the email error in the DOM. Formik + Felte show errors only for touched fields, so email is touched (untimed) first. vee-validate\'s 5ms-debounced validation is awaited per keystroke but excluded from its sample (disclosed under-count).',
     commitNote: 'Pyreon: synchronous validate + error-node patch. RHF: flushSync(dispatch input) — commits the resolver run + error re-render synchronously.',
     status: 'active',
   },
@@ -48,7 +48,7 @@ export const SCENARIOS: ScenarioSpec[] = [
     id: 'reset-dirty-form',
     title: 'Reset a dirty 12-field form',
     description:
-      'Dirty all 12 fields, then reset the whole form to initial values. Each timed run re-dirties before the reset so the reset always does real work.',
+      'Dirty all 12 fields with VALID values (so no column has error nodes to clear — arms whose setFieldValue validates would otherwise do extra work), then reset the whole form to initial values. Each timed run re-dirties (asserted) before the reset so the reset always does real work; the gate reads all 12 inputs + errors from the DOM.',
     commitNote: 'Pyreon: synchronous reset (per-field signal writes batched). RHF: flushSync(reset) — commits the form-state reset + uncontrolled-input clear synchronously.',
     status: 'active',
   },
