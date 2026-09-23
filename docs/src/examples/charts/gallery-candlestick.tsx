@@ -2,10 +2,10 @@ import { ChartThemeProvider, OptionChart, systemChartMode } from '@pyreon/charts
 import type { Signal } from '@pyreon/reactivity'
 
 /**
- * Gallery — a price chart from an ECharts option: 120 seeded candlesticks,
- * opening on the latest 60 through `dataZoom`'s `start` / `end`. The labels
- * thin to what fits. (A candlestick draws the opening window; its zoom slider
- * and gestures are the cartesian host's and are not drawn here yet.)
+ * Gallery — a price chart from an ECharts option: 120 seeded candlesticks
+ * opening on the latest 60 through `dataZoom`. Drag the slider's band or a
+ * handle under the chart, or scroll and drag inside the plot. The labels thin
+ * to what fits.
  * The provider hands it the PAGE's scheme (`systemChartMode` reads the
  * root's `color-scheme`); a bare option chart keeps ECharts' own light look.
  */
@@ -36,10 +36,10 @@ export default function GalleryCandlestick(_props: { shared?: Signal<number> }) 
         height={340}
         option={{
           tooltip: { trigger: 'axis' },
-          grid: { left: 48, right: 16, top: 16, bottom: 60 },
+          grid: { left: 48, right: 16, top: 16, bottom: 70 },
           xAxis: { type: 'category', data: days },
           yAxis: { type: 'value', scale: true },
-          dataZoom: [{ type: 'inside', start: 50, end: 100 }],
+          dataZoom: [{ type: 'inside', start: 50, end: 100 }, { type: 'slider', start: 50, end: 100 }],
           series: [{ type: 'candlestick', data: candles }],
         }}
       />

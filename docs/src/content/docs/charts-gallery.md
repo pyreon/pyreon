@@ -48,12 +48,11 @@ toggle their slices.
 
 ## Candlesticks — ECharts option
 
-A 120-day price series opening on its latest 60 days through `dataZoom`'s
-`start` / `end`; the day labels thin to what fits. (A candlestick draws the
-opening window; the zoom slider and gestures are drawn on cartesian charts, not
-yet on a candlestick.)
+A 120-day price series opening on its latest 60 days through `dataZoom`: drag
+the slider's band or a handle under the chart, or scroll and drag inside the
+plot. The day labels thin to what fits.
 
-<Example file="./examples/charts/gallery-candlestick" title="Candlesticks opening on the latest 60 days" />
+<Example file="./examples/charts/gallery-candlestick" title="Candlesticks with dataZoom" />
 
 ## A heatmap — ECharts option
 

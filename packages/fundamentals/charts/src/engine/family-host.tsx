@@ -133,6 +133,7 @@ function familyHostFor(plan: FamilyPlan, o: FamilyHostOptions): VNode | null {
     case 'candlestick':
       return h(CandlestickChart, {
         data: plan.rows,
+        ...(plan.zoom !== undefined ? { zoom: plan.zoom } : {}),
         open: (r: { open: Double }) => r.open,
         high: (r: { high: Double }) => r.high,
         low: (r: { low: Double }) => r.low,

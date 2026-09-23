@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import { renderCandlestickChart } from './candlestick-chart'
 import { compileFamily } from './option-family'
+import { optionToSvg } from './option'
 import { defaultTheme } from './render'
 import type { Ohlc } from './candlestick'
 
@@ -41,17 +42,20 @@ describe("a candlestick option's dataZoom", () => {
     return { rows: f.plan.rows, warnings: f.warnings.map((w) => w.message) }
   }
 
-  it('opens on the window it sets', () => {
-    const { rows } = rowsOf(option([{ type: 'inside', start: 50, end: 100 }]))
-    expect(rows).toHaveLength(60)
-    expect(rows[0]!.x).toBe('D61')
-    expect(rows[59]!.x).toBe('D120')
+  it('carries every row and the window, for the host to open on and move', () => {
+    const f = compileFamily(option([{ type: 'slider', start: 50, end: 100 }]) as never)
+    if (f === null || f.plan.kind !== 'candlestick') throw new Error('not a candlestick plan')
+    expect(f.plan.rows).toHaveLength(N)
+    expect(f.plan.zoom?.window).toEqual({ start: 0.5, end: 1 })
+    expect(f.plan.zoom?.slider).toBe(true)
+    expect(f.warnings.some((w) => w.message.includes('dataZoom'))).toBe(false)
   })
 
-  it('says the slider and gestures are not drawn, instead of calling dataZoom ignored', () => {
-    const { warnings } = rowsOf(option([{ type: 'slider', start: 50, end: 100 }]))
-    expect(warnings.some((m) => m.includes('opening window'))).toBe(true)
-    expect(warnings.some((m) => m.includes('"dataZoom" has no mapping'))).toBe(false)
+  it('a static SVG draws the opening window', () => {
+    const svg = optionToSvg(option([{ type: 'inside', start: 50, end: 100 }]) as never, { width: 640, height: 340 } as never)
+    // Every candle draws one wick line; 60 in the window, not 120.
+    const days = [...svg.matchAll(/>D(\d+)</g)].map((m) => Number(m[1]))
+    expect(Math.min(...days)).toBeGreaterThanOrEqual(61)
   })
 
   it('without one, every candle is drawn', () => {

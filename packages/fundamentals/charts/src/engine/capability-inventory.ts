@@ -245,10 +245,10 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     native: 'partial',
     gaps: [
       '`itemStyle.color0` / `borderColor0` are unmapped; a volume overlay needs a second series (see series.multi-series)',
-      "`dataZoom` applies its opening window (start / end) but a candlestick draws no slider and takes no zoom gestures (named in a warning)",
+      "`dataZoom` on a candlestick: the web draws ECharts' slider and takes the inside wheel / drag gestures; `zoomLock`, `minSpan` / `maxSpan` hold; the SVG draws the opening window; native draws every candle",
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/option.test.ts', 'src/engine/candlestick-option-polish.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+    evidence: ['src/engine/option.test.ts', 'src/engine/candlestick-option-polish.test.ts', 'src/engine/candlestick-zoom.browser.test.tsx', NATIVE + 'chart-option-family-native.test.ts'],
   }),
   row('series.heatmap', 'series', 'direct', {
     web: 'complete',

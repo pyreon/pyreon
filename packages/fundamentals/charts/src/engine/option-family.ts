@@ -47,7 +47,7 @@ export type FamilyPlan =
   | { kind: 'pie'; rows: { value: Double; name: string; color: string | undefined }[]; innerRadius: Double; showLabels: boolean; showLegend: boolean; title: string | undefined; pie: PieShape }
   | { kind: 'gauge'; value: Double; min: Double; max: Double; showValue: boolean; thickness: Double | undefined; valueColor: string | undefined; title: string | undefined; dial: DialSpec }
   | { kind: 'radar'; axes: RadarAxis[]; rows: { values: Double[]; name: string; color: string | undefined }[]; fillAlpha: Double; showLegend: boolean; title: string | undefined }
-  | { kind: 'candlestick'; rows: { x: string; open: Double; high: Double; low: Double; close: Double }[]; upColor: string | undefined; downColor: string | undefined; title: string | undefined }
+  | { kind: 'candlestick'; rows: { x: string; open: Double; high: Double; low: Double; close: Double }[]; upColor: string | undefined; downColor: string | undefined; title: string | undefined; zoom?: OptionZoom | undefined }
   | { kind: 'heatmap'; rows: { x: string; y: string; value: Double }[]; colors: string[] | undefined; title: string | undefined; visualMap?: VisualMapSpec | undefined }
   | { kind: 'funnel'; rows: { value: Double; name: string; color: string | undefined }[]; funnel: FunnelOptions; title: string | undefined }
   | { kind: 'treemap'; nodes: TreeNode[]; treemap: TreemapOptions; title: string | undefined }
@@ -68,6 +68,7 @@ export type FamilyPlan =
 import type { ChordLink, ChordNode, ChordOptions } from './chord'
 import type { ChartTheme } from './render'
 import { readDataZoom } from './option-zoom'
+import type { OptionZoom } from './option-zoom'
 import { sliceRange } from './zoom'
 
 export interface CompiledFamily {
@@ -372,18 +373,10 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
       }
       rows.push({ x: cats[i] ?? String(i + 1), open: num(arr[0]) ?? 0.0, close: num(arr[1]) ?? 0.0, low: num(arr[2]) ?? 0.0, high: num(arr[3]) ?? 0.0 })
     }
-    // `dataZoom`: the candlestick draws the option's OPENING window (a price
-    // chart almost always opens on its latest stretch). The slider strip and
-    // the zoom gestures are the cartesian host's, and are not drawn here yet —
-    // said once rather than dropped silently.
+    // `dataZoom`: the plan carries every row and the zoom; the web host opens
+    // on the window and drags / pinches it (`<CandlestickChart zoom>`), and
+    // the SVG draws the opening window.
     const zoom = readDataZoom(option, cats, warn)
-    if (zoom !== undefined) {
-      // ledger: series.candlestick
-      if (zoom.slider || zoom.inside) warn('option-key-unsupported', 'dataZoom', "A candlestick chart draws dataZoom's opening window (start / end); its slider and zoom gestures are not drawn on a candlestick yet.")
-      const range = sliceRange(zoom.window, rows.length)
-      rows.splice(range.to)
-      rows.splice(0, range.from)
-    }
     const item = isObj(s['itemStyle']) ? s['itemStyle'] : {}
     return {
       plan: {
@@ -392,6 +385,7 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
         upColor: typeof item['color'] === 'string' ? (item['color'] as string) : undefined,
         downColor: typeof item['color0'] === 'string' ? (item['color0'] as string) : undefined,
         title,
+        ...(zoom !== undefined ? { zoom } : {}),
       },
       warnings,
       supported,
@@ -1243,7 +1237,8 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
     case 'candlestick':
       return candlestickToSvg({
         ...themed,
-        data: plan.rows,
+        // A static picture draws the zoom's opening window.
+        data: plan.zoom === undefined ? plan.rows : plan.rows.slice(sliceRange(plan.zoom.window, plan.rows.length).from, sliceRange(plan.zoom.window, plan.rows.length).to),
         x: (d) => d.x,
         open: (d) => d.open,
         high: (d) => d.high,
