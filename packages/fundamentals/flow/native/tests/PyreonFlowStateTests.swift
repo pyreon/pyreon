@@ -1560,10 +1560,90 @@ struct PyreonFlowStateTests {
         let edge = svgPixel(hollow, x: 2, y: 10)
         check(edge.b > 200 && edge.a > 200, "the stroke is painted on the outline")
     }
+
+    /// The keys XCUITest cannot deliver to a simulator app (Return, Escape,
+    /// Delete, Backspace), driven through the same function the view's
+    /// `onKeyPress` calls, so the only unproven link left on iOS is the OS
+    /// delivering the key.
+    static func runKeyRoutingChecks() {
+        check(pyreonFlowKeyName(.return) == "Enter" && pyreonFlowKeyName(.escape) == "Escape", "Return and Escape map to the web key names")
+        check(pyreonFlowKeyName(.delete) == "Backspace" && pyreonFlowKeyName(.deleteForward) == "Delete", "both delete keys map to the web key names")
+        check(pyreonFlowKeyName(KeyEquivalent("q")) == nil && !pyreonFlowHandleKey(seedFlow(), key: KeyEquivalent("q"), nodeId: "1"), "an unmapped key is ignored")
+
+        let f = seedFlow()
+        check(pyreonFlowHandleKey(f, key: .return, nodeId: "2") && f.selectedNodes() == ["2"], "Return selects the focused node")
+        check(pyreonFlowHandleKey(f, key: .escape) && f.selectedNodes().isEmpty, "Escape clears the selection")
+        check(pyreonFlowHandleKey(f, key: .return, edgeId: "e1") && f.selectedEdges() == ["e1"], "Return selects the focused edge")
+        check(pyreonFlowHandleKey(f, key: .space, nodeId: "3") && f.selectedNodes() == ["3"], "Space selects the focused node")
+        check(pyreonFlowHandleKey(f, key: .deleteForward) && f.getNode("3") == nil, "Delete removes the selected node")
+        check(pyreonFlowHandleKey(f, key: KeyEquivalent("z"), modifiers: .command) && f.getNode("3") != nil, "Cmd+Z restores the node Delete removed")
+        check(pyreonFlowHandleKey(f, key: .return, nodeId: "1") && pyreonFlowHandleKey(f, key: .delete) && f.getNode("1") == nil, "Backspace removes the selected node")
+        check(pyreonFlowHandleKey(f, key: KeyEquivalent("z"), modifiers: .control) && f.getNode("1") != nil, "Ctrl+Z undoes too")
+        check(pyreonFlowHandleKey(f, key: KeyEquivalent("a"), modifiers: .command) && f.selectedNodes().sorted() == ["1", "2", "3"], "Cmd+A selects every node")
+        let before = f.getNode("2")!.position
+        check(pyreonFlowHandleKey(f, key: .rightArrow, modifiers: .shift, nodeId: "2") && f.getNode("2")!.position.x == before.x + 100, "Shift+Arrow moves the focused node a large step")
+    }
+
+    /// Pixels within 6 of `rgb` in `view`, rendered offscreen by SwiftUI.
+    @MainActor
+    static func renderedPixels<V: View>(_ view: V, _ r: Int, _ g: Int, _ b: Int) -> Int {
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 1
+        guard let image = renderer.cgImage else { return -1 }
+        let width = image.width, height = image.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        guard let ctx = CGContext(data: &pixels, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return -1 }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        var count = 0
+        for i in stride(from: 0, to: pixels.count, by: 4) where abs(Int(pixels[i]) - r) <= 6 && abs(Int(pixels[i + 1]) - g) <= 6 && abs(Int(pixels[i + 2]) - b) <= 6 {
+            count += 1
+        }
+        return count
+    }
+
+    /// Pixels of the web's dark canvas colour (#0b1220) in the REAL view,
+    /// rendered offscreen under the given environment colour scheme. This is
+    /// the SwiftUI half of `colorMode="system"`: the view must follow the
+    /// environment's scheme. The device suites prove the OS half where the
+    /// simulator propagates an appearance change.
+    @MainActor
+    static func darkCanvasPixels(colorMode: String, scheme: ColorScheme) -> Int {
+        let view = PyreonFlowView(state: seedFlow(), colorMode: colorMode) { node in Text(node.data.label) }
+            .frame(width: 320, height: 200)
+            .environment(\.colorScheme, scheme)
+        return renderedPixels(view, 11, 18, 32)
+    }
+
+    /// The default node paints the web's DefaultNode box from the palette.
+    @MainActor
+    static func runDefaultNodeRenderChecks() {
+        func node(_ mode: String, selected: Bool = false) -> some View {
+            PyreonFlowDefaultNode(label: "Node", selected: selected).padding(4).pyreonFlowColorMode(mode)
+        }
+        check(renderedPixels(node("dark"), 0x1f, 0x29, 0x37) > 1000, "the dark default node did not paint --pyreon-flow-node-bg (#1f2937)")
+        check(renderedPixels(node("dark"), 0x37, 0x41, 0x51) > 100, "the dark default node did not paint --pyreon-flow-node-border (#374151)")
+        check(renderedPixels(node("light"), 0xdd, 0xdd, 0xdd) > 100, "the light default node did not paint --pyreon-flow-node-border (#dddddd)")
+        check(renderedPixels(node("light", selected: true), 0x3b, 0x82, 0xf6) > 100, "a selected default node did not paint --pyreon-flow-node-selected (#3b82f6)")
+        check(renderedPixels(node("light"), 0x3b, 0x82, 0xf6) == 0, "an unselected default node painted the selected border")
+    }
+
+    @MainActor
+    static func runSystemColorModeRenderChecks() {
+        let lightSystem = darkCanvasPixels(colorMode: "system", scheme: .light)
+        let darkSystem = darkCanvasPixels(colorMode: "system", scheme: .dark)
+        check(lightSystem == 0, "colorMode=\"system\" painted the dark canvas under a light scheme (\(lightSystem) px)")
+        check(darkSystem > 1000, "colorMode=\"system\" did not follow a dark scheme (\(darkSystem) px)")
+        // Forced modes ignore the environment in both directions.
+        check(darkCanvasPixels(colorMode: "light", scheme: .dark) == 0, "colorMode=\"light\" followed a dark scheme")
+        check(darkCanvasPixels(colorMode: "dark", scheme: .light) > 1000, "colorMode=\"dark\" did not paint dark under a light scheme")
+    }
+
     static func main() {
         runParityChecks()
         runSvgPathChecks()
-        MainActor.assumeIsolated { runSvgElementChecks() }
+        MainActor.assumeIsolated { runSvgElementChecks(); runSystemColorModeRenderChecks(); runDefaultNodeRenderChecks() }
+        runKeyRoutingChecks()
         runStateChecks()
         runEdgeCanvasChecks()
         runWebViewChecks()

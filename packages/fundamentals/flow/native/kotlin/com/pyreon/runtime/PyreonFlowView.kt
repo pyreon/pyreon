@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -244,12 +245,13 @@ private fun pyreonFlowKeyName(event: KeyEvent): String? = when (event.key) {
     else -> null
 }
 
-private fun <T> PyreonFlowState<T>.handleKeyEvent(event: KeyEvent, nodeId: String? = null): Boolean {
+private fun <T> PyreonFlowState<T>.handleKeyEvent(event: KeyEvent, nodeId: String? = null, edgeId: String? = null): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
     val key = pyreonFlowKeyName(event) ?: return false
     return handleKeyboardCommand(
         key = key,
         nodeId = nodeId,
+        edgeId = edgeId,
         shift = event.isShiftPressed,
         command = event.isCtrlPressed || event.isMetaPressed,
         // Compose's common KeyEvent surface does not expose repeat count.
@@ -322,13 +324,68 @@ fun <T> PyreonFlowControls(
     modifier: Modifier = Modifier,
     extraContent: @Composable () -> Unit = {},
 ) {
-    Column(modifier.padding(2.dp)) {
-        if (style.showZoomIn) Button(onClick = { state.zoomIn() }, modifier = Modifier.semantics { contentDescription = "Zoom in" }) { Text("+") }
-        if (style.showZoomOut) Button(onClick = { state.zoomOut() }, modifier = Modifier.semantics { contentDescription = "Zoom out" }) { Text("−") }
-        if (style.showFitView) Button(onClick = { state.fitView() }, modifier = Modifier.semantics { contentDescription = "Fit view" }) { Text("Fit") }
-        if (style.showLock) Button(onClick = { onLockedChange(!locked) }, modifier = Modifier.semantics { contentDescription = "Lock the canvas"; selected = locked }) { Text(if (locked) "Unlock" else "Lock") }
-        Text("${(state.zoom * 100).roundToInt()}%", modifier = Modifier.semantics { contentDescription = "Current zoom level" })
+    // The web's `.pyreon-flow-controls`: a bordered panel box of 28px
+    // transparent buttons drawn in `--pyreon-flow-control-color`, not the
+    // platform's filled buttons.
+    val palette = LocalPyreonFlowPalette.current
+    val panelShape = RoundedCornerShape(6.dp)
+    Column(
+        modifier
+            .background(pyreonFlowEdgeColor(palette.panelBackground), panelShape)
+            .border(1.dp, pyreonFlowEdgeColor(palette.panelBorder), panelShape)
+            .padding(2.dp),
+    ) {
+        if (style.showZoomIn) PyreonFlowControlButton("+", "Zoom in", palette) { state.zoomIn() }
+        if (style.showZoomOut) PyreonFlowControlButton("−", "Zoom out", palette) { state.zoomOut() }
+        if (style.showFitView) PyreonFlowControlButton("Fit", "Fit view", palette) { state.fitView() }
+        if (style.showLock) PyreonFlowControlButton(if (locked) "Unlock" else "Lock", "Lock the canvas", palette, selected = locked) { onLockedChange(!locked) }
+        Text("${(state.zoom * 100).roundToInt()}%", color = pyreonFlowEdgeColor(palette.controlColor), modifier = Modifier.semantics { contentDescription = "Current zoom level" })
         extraContent()
+    }
+}
+
+@Composable
+private fun PyreonFlowControlButton(
+    glyph: String,
+    label: String,
+    palette: PyreonFlowPalette,
+    selected: Boolean? = null,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .defaultMinSize(minWidth = 28.dp, minHeight = 28.dp)
+            .clickable(onClick = onClick)
+            .semantics {
+                contentDescription = label
+                role = androidx.compose.ui.semantics.Role.Button
+                if (selected != null) this.selected = selected
+            },
+        contentAlignment = androidx.compose.ui.Alignment.Center,
+    ) {
+        Text(glyph, color = pyreonFlowEdgeColor(palette.controlColor))
+    }
+}
+
+/**
+ * The web's default node: a labelled box with the palette's node background,
+ * text and border colours, 2px border (the selected colour while selected),
+ * 6px corners, 8x16 padding, 13px text and an 80px minimum width. The
+ * compiler emits it for every node without a custom `type`.
+ */
+@Composable
+fun PyreonFlowDefaultNode(label: String, selected: Boolean) {
+    val palette = LocalPyreonFlowPalette.current
+    val shape = RoundedCornerShape(6.dp)
+    Box(
+        Modifier
+            .defaultMinSize(minWidth = 80.dp)
+            .background(pyreonFlowEdgeColor(palette.nodeBackground), shape)
+            .border(2.dp, pyreonFlowEdgeColor(if (selected) palette.nodeSelected else palette.nodeBorder), shape)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        contentAlignment = androidx.compose.ui.Alignment.Center,
+    ) {
+        Text(label, color = pyreonFlowEdgeColor(palette.nodeColor), fontSize = 13.sp)
     }
 }
 
@@ -634,10 +691,16 @@ fun <T> PyreonFlowView(
                     // neighbouring controls. The semantics action keeps it activatable.
                     .pointerInput(edge.id) { detectTapGestures { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) } }
                     .semantics { onClick { state.selectEdge(edge.id); state.emitEdgeClick(edge.id); true } }
-                edgeModifier = if (edge.focusable) edgeModifier.semantics {
-                    contentDescription = edge.accessibilityLabel
-                    selected = state.isEdgeSelected(edge.id)
-                } else edgeModifier.clearAndSetSemantics { }
+                // Hardware-keyboard focus, like the web's `tabindex` on the edge
+                // path: Tab reaches the label and Enter/Space selects the edge.
+                // It was reachable by TalkBack only.
+                edgeModifier = if (edge.focusable) edgeModifier
+                    .focusable()
+                    .onKeyEvent { event -> state.handleKeyEvent(event, edgeId = edge.id) }
+                    .semantics {
+                        contentDescription = edge.accessibilityLabel
+                        selected = state.isEdgeSelected(edge.id)
+                    } else edgeModifier.clearAndSetSemantics { }
                 Text(
                     edge.text ?: "",
                     if (edge.text == null) edgeModifier else edgeModifier.background(pyreonFlowEdgeColor(palette.panelBackground).copy(alpha = 0.9f)),
