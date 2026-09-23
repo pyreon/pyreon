@@ -427,7 +427,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
       'a log scale applies to the first y axis only',
       'two y axes cannot share a side (ECharts offsets them); a third x axis is ignored',
       'axis keys outside the mapped set are ignored with a warning; an axis label formatter takes a function or the {value} template only; both axes read `axisLabel.margin`, `inside` and `rotate` (label anchors differential-tested); the x axis also `interval` (a category axis thins by ECharts\' calculateCategoryInterval); a second or extra y axis keeps the default margin',
-      'axis lines, ticks and split lines follow ECharts\' auto rule and `axisLine` / `axisTick` / `splitLine` styles (differential-tested); `axisLine.onZero` is honoured; `minorTick`, `minorSplitLine` and `splitArea` are not drawn, and the second y axis\'s split lines take the first\'s style',
+      'axis lines, ticks and split lines follow ECharts\' auto rule and `axisLine` / `axisTick` / `splitLine` styles (differential-tested); `axisLine.onZero` is honoured; `splitArea` (bands, colours cycled from the axis start) and a value axis\'s `minorTick` / `minorSplitLine` draw as ECharts\' do (differential-tested, native-forwarded); a horizontal (category-y) chart draws neither, and the second y axis\'s split lines take the first\'s style',
       'the y axes and a value X axis tick as ECharts does (differential-tested); a time axis still uses the engine\'s own ticks, and interval, minInterval and maxInterval are not read',
       LITERAL_ONLY,
     ],
@@ -618,7 +618,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     native: 'partial',
     gaps: [
       'a rich segment takes colour and size only (no weight, background, padding); formatter placeholders beyond {a} {b} {c} {d} are left as written',
-      'bar, line and scatter labels take ECharts\' position (against the bar or the symbol box), distance and automatic fill and halo (differential-tested); `label.rotate` / `offset` / `align` are not read, and a scatter label does not carry the item opacity',
+      'bar, line and scatter labels take ECharts\' position (against the bar or the symbol box), distance and automatic fill and halo (differential-tested); `label.rotate` (about the anchor, the `offset` turned with it), `offset`, `align` and `verticalAlign` are read (differential-tested, native-forwarded) — but a RICH or multi-line label is not rotated, and a scatter label does not carry the item opacity',
       'native: SwiftUI text has no stroke, so the halo is the text drawn at eight offsets under the fill; Compose strokes it',
       LITERAL_ONLY,
     ],

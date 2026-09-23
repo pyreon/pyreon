@@ -3785,13 +3785,14 @@ function compileLiteralOption(raw: Extract<ExprIR, { kind: 'object' }>, resolve:
 const FORWARDED_SERIES_FIELDS: readonly string[] = [
   'radius', 'smoothAmount', 'smoothMonotone', 'connectNulls', 'areaFill', 'areaOpacity', 'areaColor', 'areaOrigin', 'areaOriginAt',
   'symbol', 'symbolHollow', 'symbolShow', 'showValues', 'labelPosition', 'labelDistance', 'labelBorderColor', 'labelBorderWidth',
+  'labelRotate', 'labelOffset', 'labelAlign', 'labelVerticalAlign',
 ]
 
 /** Series option keys that cross through the facade's compile (see FORWARDED_SERIES_FIELDS). */
 const FORWARDED_SERIES_KEYS: readonly string[] = ['smooth', 'smoothMonotone', 'connectNulls', 'showAllSymbol']
 
 /** Axis option keys that cross through the facade's compile. */
-const FORWARDED_AXIS_KEYS: readonly string[] = ['axisLabel', 'axisTick', 'axisLine', 'splitLine', 'boundaryGap', 'scale', 'splitNumber']
+const FORWARDED_AXIS_KEYS: readonly string[] = ['axisLabel', 'axisTick', 'axisLine', 'splitLine', 'boundaryGap', 'scale', 'splitNumber', 'splitArea', 'minorTick', 'minorSplitLine']
 
 /** The sub-keys of a forwarded axis key that the compile carries; the rest (a label `formatter`, …) are named, not dropped. */
 const FORWARDED_AXIS_SUBKEYS: Readonly<Record<string, readonly string[]>> = {
@@ -3799,6 +3800,9 @@ const FORWARDED_AXIS_SUBKEYS: Readonly<Record<string, readonly string[]>> = {
   axisTick: ['show', 'length', 'inside', 'alignWithLabel', 'lineStyle'],
   axisLine: ['show', 'onZero', 'lineStyle'],
   splitLine: ['show', 'lineStyle'],
+  splitArea: ['show', 'areaStyle'],
+  minorTick: ['show', 'splitNumber', 'length', 'lineStyle'],
+  minorSplitLine: ['show', 'lineStyle'],
 }
 
 function forwardedAxisSubfields(axis: ExprIR, path: string, warn: (m: string) => void): void {
@@ -3816,6 +3820,8 @@ const FORWARDED_SPEC_FIELDS: readonly string[] = [
   'xAxisLine', 'yAxisLine', 'y2AxisLine', 'xAxisOnZero', 'yAxisOnZero', 'y2Grid', 'xAxisLineColor', 'yAxisLineColor', 'xAxisLineWidth', 'yAxisLineWidth',
   'xTicks', 'yTicks', 'xTickLength', 'yTickLength', 'xTickInside', 'yTickInside', 'xTickColor', 'yTickColor', 'xTickBands',
   'gridColor', 'gridWidth', 'gridDash', 'xGrid', 'xGridColor', 'xGridWidth', 'xGridDash',
+  'ySplitArea', 'xSplitArea', 'yMinorSplit', 'yMinorSplitColor', 'yMinorSplitWidth', 'xMinorSplit', 'xMinorSplitColor', 'xMinorSplitWidth',
+  'yMinorTicks', 'yMinorTickLength', 'yMinorTickColor', 'xMinorTicks', 'xMinorTickLength', 'xMinorTickColor',
 ]
 
 /** A plain value as a literal the emitters read: numbers as Doubles, arrays and objects recursively. */
@@ -4037,6 +4043,10 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'labelDistance', kind: 'number' },
   { name: 'labelBorderColor', kind: 'string' },
   { name: 'labelBorderWidth', kind: 'number' },
+  { name: 'labelRotate', kind: 'number' },
+  { name: 'labelOffset', kind: 'numbers' },
+  { name: 'labelAlign', kind: 'string' },
+  { name: 'labelVerticalAlign', kind: 'string' },
   { name: 'focus', kind: 'string' },
   { name: 'emphasisColor', kind: 'string' },
   { name: 'selectColor', kind: 'string' },

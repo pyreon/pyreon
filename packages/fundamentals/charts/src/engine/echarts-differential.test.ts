@@ -723,7 +723,7 @@ describe('ECharts differential: line shape', () => {
  * the anchor as a translate, and its vertical alignment as a half-font `y`
  * offset (none = middle, negative = bottom, positive = top).
  */
-interface BarLabelFact { text: string; x: number; y: number; baseline: string; fill: string; stroke: string; width: number }
+interface BarLabelFact { text: string; x: number; y: number; baseline: string; fill: string; stroke: string; width: number; align: string; rotate: number }
 const rgbHex = (c: string): string => {
   const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c)
   if (m === null) return c.toLowerCase()
@@ -735,19 +735,24 @@ function echartsBarLabels(option: object): BarLabelFact[] {
   chart.setOption({ animation: false, ...option })
   const svg = chart.renderToSVGString()
   chart.dispose()
-  return [...svg.matchAll(/<text dominant-baseline="central" text-anchor="(?:middle|start|end)"([^>]*)>(-?\d+)<\/text>/g)].filter((m) => !m[1]!.includes('fill="#54555a"')).map((m) => {
-    const attrs = m[1]!
-    const t = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(attrs)!
+  return [...svg.matchAll(/<text dominant-baseline="central" text-anchor="(middle|start|end)"([^>]*)>(-?\d+)<\/text>/g)].filter((m) => !m[2]!.includes('fill="#54555a"')).map((m) => {
+    const attrs = m[2]!
+    // A rotated label is written as a matrix about the same anchor.
+    const mx = /matrix\(([-\d.]+),([-\d.]+),[-\d.]+,[-\d.]+,([-\d.]+),([-\d.]+)\)/.exec(attrs)
+    const t = mx !== null ? [mx[0], mx[3], mx[4]] : /translate\(([-\d.]+) ([-\d.]+)\)/.exec(attrs)!
     const dy = /\sy="(-?[\d.]+)"/.exec(attrs)
     const stroke = /stroke="([^"]+)"/.exec(attrs)
     return {
-      text: m[2]!,
+      text: m[3]!,
       x: Number(t[1]),
       y: Number(t[2]),
       baseline: dy === null ? 'middle' : Number(dy[1]) < 0 ? 'bottom' : 'top',
       fill: longHex(/fill="([^"]+)"/.exec(attrs)![1]!),
       stroke: stroke === null ? '' : longHex(rgbHex(stroke[1]!)),
       width: stroke === null ? 0 : Number(/stroke-width="([\d.]+)"/.exec(attrs)![1]),
+      align: m[1]!,
+      // The matrix's angle, clockwise-positive (screen y points down).
+      rotate: mx === null ? 0 : Math.round((Math.atan2(Number(mx[2]), Number(mx[1])) * 180) / Math.PI),
     }
   })
 }
@@ -756,7 +761,7 @@ function ourBarLabels(option: object): BarLabelFact[] {
   const m = (t: string, size: number): number => echarts.format.getTextRect(t, String(size) + 'px sans-serif').width
   return renderChart(c.spec, m).flatMap((d) =>
     d.kind === 'text' && /^-?\d+$/.test(d.text) && d.fill !== c.spec.theme.label
-      ? [{ text: d.text, x: d.at.x, y: d.at.y, baseline: d.baseline, fill: longHex(d.fill), stroke: d.stroke === undefined ? '' : longHex(d.stroke), width: d.stroke === undefined ? 0 : (d.strokeWidth ?? 2) }]
+      ? [{ text: d.text, x: d.at.x, y: d.at.y, baseline: d.baseline, fill: longHex(d.fill), stroke: d.stroke === undefined ? '' : longHex(d.stroke), width: d.stroke === undefined ? 0 : (d.strokeWidth ?? 2), align: d.align, rotate: Math.round(d.rotate ?? 0) }]
       : [],
   )
 }
@@ -776,6 +781,12 @@ const BAR_LABEL_CASES: [string, object][] = [
   ['a light bar takes dark text and no halo', { itemStyle: { color: '#ffe066' }, label: { show: true } }],
   ['a dark bar takes #ccc', { itemStyle: { color: '#1a1a40' }, label: { show: true } }],
   ['textBorderColor and textBorderWidth', { label: { show: true, textBorderColor: '#00ff00', textBorderWidth: 3 } }],
+  ['rotate about the anchor', { label: { show: true, rotate: 90 } }],
+  ['the rotated insideBottom label: align, verticalAlign, distance', { label: { show: true, rotate: 90, position: 'insideBottom', align: 'left', verticalAlign: 'middle', distance: 15 } }],
+  ['offset', { label: { show: true, offset: [5, -10] } }],
+  ['top, align left', { label: { show: true, position: 'top', align: 'left' } }],
+  ['top, rotate 30', { label: { show: true, position: 'top', rotate: 30 } }],
+  ['top, verticalAlign top', { label: { show: true, position: 'top', verticalAlign: 'top' } }],
 ]
 
 describe('ECharts differential: bar value labels', () => {
@@ -793,6 +804,9 @@ describe('ECharts differential: bar value labels', () => {
         expect(u[i]!.fill).toBe(e[i]!.fill)
         expect(u[i]!.stroke).toBe(e[i]!.stroke)
         expect(u[i]!.width).toBe(e[i]!.width)
+        expect(u[i]!.align).toBe(e[i]!.align)
+        // Both read clockwise-positive: ECharts' `rotate: 90` (counter-clockwise) is -90 in either.
+        expect(u[i]!.rotate).toBe(e[i]!.rotate)
       }
     })
   }
@@ -975,6 +989,8 @@ const POINT_LABEL_CASES: [string, object][] = [
   ['a scatter point: inside, light text haloed in its colour', { type: 'scatter', label: { show: true } }],
   ['a scatter point, right', { type: 'scatter', label: { show: true, position: 'right' } }],
   ['a line with no symbols shows no labels', { type: 'line', showSymbol: false, label: { show: true } }],
+  ['a line label, rotated and offset', { type: 'line', label: { show: true, rotate: 45, offset: [4, -6] } }],
+  ['a scatter label, aligned left and top', { type: 'scatter', label: { show: true, position: 'right', align: 'left', verticalAlign: 'top' } }],
 ]
 
 describe('ECharts differential: line and scatter labels', () => {
@@ -992,6 +1008,8 @@ describe('ECharts differential: line and scatter labels', () => {
         expect(u[i]!.baseline).toBe(e[i]!.baseline)
         expect(u[i]!.fill).toBe(e[i]!.fill)
         expect(u[i]!.stroke).toBe(e[i]!.stroke)
+        expect(u[i]!.align).toBe(e[i]!.align)
+        expect(u[i]!.rotate).toBe(e[i]!.rotate)
       }
     })
   }
@@ -1225,6 +1243,79 @@ describe('ECharts differential: the scrolling legend', () => {
       u.arrows.forEach((a, k) => expect(Math.abs(a.x - e.arrows[k]!.x), `arrow ${k}`).toBeLessThan(0.6))
       expect(u.whole.map((f) => f.text)).toEqual(e.whole.map((f) => f.text))
       u.whole.forEach((f, k) => expect(Math.abs(f.x - e.whole[k]!.x), f.text).toBeLessThan(0.6))
+    })
+  }
+})
+
+/**
+ * Axis decoration: `splitArea` (bands between the ticks, colours cycled from
+ * the axis start), `minorSplitLine` and `minorTick` (each value interval cut
+ * into `minorTick.splitNumber` pieces). Compared on ECharts' band rects and
+ * fills, and the positions of its minor lines and ticks.
+ */
+interface DecorFacts { bands: { x: number; y: number; w: number; h: number; fill: string }[]; minorH: number[]; minorV: number[]; minorTicks: number[] }
+const rgbaOf = (rgb: string, opacity: string | undefined): string => {
+  const m = /rgb\((\d+),(\d+),(\d+)\)/.exec(rgb)
+  return m === null ? rgb : `rgba(${m[1]},${m[2]},${m[3]},${opacity ?? '1'})`
+}
+function echartsDecor(option: object, minorColor: string, tickLen: number): DecorFacts {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: W, height: H })
+  chart.setOption({ animation: false, ...option })
+  const svg = chart.renderToSVGString()
+  chart.dispose()
+  const bands = [...svg.matchAll(/<path d="M([\d.]+) ([\d.]+)l([-\d.]+) 0l0 ([-\d.]+)l[-\d.]+ 0Z" fill="(rgb\([\d,]+\)|#[0-9a-f]+)"(?: fill-opacity="([\d.]+)")? class/g)].map((m) => {
+    const x = Number(m[1]); const y = Number(m[2]); const w = Number(m[3]); const h = Number(m[4])
+    return { x: Math.min(x, x + w), y: Math.min(y, y + h), w: Math.abs(w), h: Math.abs(h), fill: rgbaOf(m[5]!, m[6]) }
+  }).filter((b) => b.fill !== '#000') // the plot's clip path
+  const lines = [...svg.matchAll(/<path d="M([\d.]+) ([\d.]+)L([\d.]+) ([\d.]+)" fill="none" pointer-events="visible" stroke="([^"]+)"/g)].map((m) => ({ x0: Number(m[1]), y0: Number(m[2]), x1: Number(m[3]), y1: Number(m[4]), stroke: m[5]! }))
+  return {
+    bands,
+    minorH: lines.filter((l) => l.stroke === minorColor && l.y0 === l.y1).map((l) => l.y0),
+    minorV: lines.filter((l) => l.stroke === minorColor && l.x0 === l.x1).map((l) => l.x0),
+    minorTicks: lines.filter((l) => l.stroke !== minorColor && ((l.y0 === l.y1 && Math.abs(Math.abs(l.x1 - l.x0) - tickLen) < 0.6) || (l.x0 === l.x1 && Math.abs(Math.abs(l.y1 - l.y0) - tickLen) < 0.6))).map((l) => (l.y0 === l.y1 ? l.y0 : l.x0)),
+  }
+}
+function ourDecor(option: object, minorColor: string, tickLen: number): DecorFacts {
+  const c = compileOption(option as EChartsOption, { width: W, height: H })
+  const m = (t: string, size: number): number => echarts.format.getTextRect(t, String(size) + 'px sans-serif').width
+  const cmds = renderChart(c.spec, m)
+  const areaFills = new Set([...(c.spec.ySplitArea ?? []), ...(c.spec.xSplitArea ?? [])])
+  const lines = cmds.filter((d) => d.kind === 'line') as { from: Pt; to: Pt; stroke: string }[]
+  return {
+    bands: cmds.flatMap((d) => (d.kind === 'rect' && areaFills.has(d.fill) ? [{ ...d.rect, fill: d.fill }] : [])),
+    minorH: lines.filter((l) => l.stroke === minorColor && l.from.y === l.to.y).map((l) => l.from.y),
+    minorV: lines.filter((l) => l.stroke === minorColor && l.from.x === l.to.x).map((l) => l.from.x),
+    minorTicks: lines.filter((l) => l.stroke !== minorColor && ((l.from.y === l.to.y && Math.abs(Math.abs(l.to.x - l.from.x) - tickLen) < 0.01) || (l.from.x === l.to.x && Math.abs(Math.abs(l.to.y - l.from.y) - tickLen) < 0.01))).map((l) => (l.from.y === l.to.y ? l.from.y : l.from.x)),
+  }
+}
+const decorLine = (xAxis: object, yAxis: object): object => ({ xAxis: { type: 'category', data: ['a', 'b', 'c', 'd'], ...xAxis }, yAxis, series: [{ type: 'line', data: [1, 3, 2, 4] }] })
+const DECOR_CASES: [string, object, string, number][] = [
+  ['splitArea on both axes', decorLine({ splitArea: { show: true } }, { splitArea: { show: true } }), '#f4f7fd', 3],
+  ['minor split lines and ticks by default', decorLine({}, { minorTick: { show: true }, minorSplitLine: { show: true } }), '#f4f7fd', 3],
+  ['minorTick splitNumber, length and styles', decorLine({}, { minorTick: { show: true, splitNumber: 2, length: 6, lineStyle: { color: '#123456' } }, minorSplitLine: { show: true, lineStyle: { color: '#abcdef' } } }), '#abcdef', 6],
+  ['splitArea colours cycle', decorLine({}, { splitArea: { show: true, areaStyle: { color: ['#ff0000', '#00ff00', '#0000ff'] } } }), '#f4f7fd', 3],
+  ['a value x axis divides too', { xAxis: { type: 'value', minorTick: { show: true }, minorSplitLine: { show: true } }, yAxis: { type: 'value' }, series: [{ type: 'scatter', data: [[1, 2], [5, 7], [9, 3]] }] }, '#f4f7fd', 3],
+]
+
+describe('ECharts differential: split areas and minor lines', () => {
+  for (const [name, option, minorColor, tickLen] of DECOR_CASES) {
+    it(name, () => {
+      const e = echartsDecor(option, minorColor, tickLen)
+      const u = ourDecor(option, minorColor, tickLen)
+      const sortN = (a: number[]): number[] => [...a].sort((p, q) => p - q)
+      expect(u.bands.length).toBe(e.bands.length)
+      const key = (b: DecorFacts['bands'][number]): string => `${Math.round(b.x)},${Math.round(b.y)}`
+      const eb = [...e.bands].sort((p, q) => key(p).localeCompare(key(q)))
+      const ub = [...u.bands].sort((p, q) => key(p).localeCompare(key(q)))
+      ub.forEach((b, k) => {
+        const o = eb[k]!
+        for (const f of ['x', 'y', 'w', 'h'] as const) expect(Math.abs(b[f] - o[f]), `band ${k}.${f}`).toBeLessThan(1)
+        expect(b.fill.replace(/\s/g, '').toLowerCase()).toBe(o.fill.replace(/\s/g, '').toLowerCase())
+      })
+      for (const [ours, theirs] of [[u.minorH, e.minorH], [u.minorV, e.minorV], [u.minorTicks, e.minorTicks]] as const) {
+        expect(ours.length).toBe(theirs.length)
+        sortN(ours).forEach((p, k) => expect(Math.abs(p - sortN(theirs)[k]!)).toBeLessThan(1))
+      }
     })
   }
 })

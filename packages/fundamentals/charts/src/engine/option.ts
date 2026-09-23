@@ -498,6 +498,12 @@ export function labelFields(
   if (typeof label['position'] === 'string') out.labelPosition = label['position'] as string
   const distance = num(label['distance'])
   if (distance !== null) out.labelDistance = distance
+  const rotate = num(label['rotate'])
+  if (rotate !== null && rotate !== 0) out.labelRotate = rotate
+  const offset = label['offset']
+  if (Array.isArray(offset) && offset.length === 2 && offset.every((v) => num(v) !== null)) out.labelOffset = offset.map((v) => num(v) as number)
+  if (label['align'] === 'left' || label['align'] === 'center' || label['align'] === 'right') out.labelAlign = label['align'] as string
+  if (label['verticalAlign'] === 'top' || label['verticalAlign'] === 'middle' || label['verticalAlign'] === 'bottom') out.labelVerticalAlign = label['verticalAlign'] as string
   if (typeof label['textBorderColor'] === 'string') out.labelBorderColor = label['textBorderColor'] as string
   const borderWidth = num(label['textBorderWidth'])
   if (borderWidth !== null) out.labelBorderWidth = borderWidth
@@ -1224,7 +1230,7 @@ function applyOptionBrush(compiled: CompiledOption, spec: ChartSpec, measure: Me
 
 const defaultPalette = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
-const AXIS_KEYS = new Set(['type', 'data', 'name', 'show', 'min', 'max', 'scale', 'splitNumber', 'splitLine', 'axisLine', 'axisTick', 'axisLabel', 'boundaryGap', 'gridIndex', 'inverse', 'position', 'offset'])
+const AXIS_KEYS = new Set(['type', 'data', 'name', 'show', 'min', 'max', 'scale', 'splitNumber', 'splitLine', 'axisLine', 'axisTick', 'axisLabel', 'boundaryGap', 'gridIndex', 'inverse', 'position', 'offset', 'splitArea', 'minorTick', 'minorSplitLine'])
 
 function axisKeys(
   axis: Record<string, unknown>,
@@ -1386,6 +1392,7 @@ function axisStrokeFields(axis: Record<string, unknown> | undefined, which: 'x' 
   const splitColor = typeof splitStyle['color'] === 'string' ? (splitStyle['color'] as string) : undefined
   const splitWidth = num(splitStyle['width']) ?? undefined
   const splitDash = lineDashOf(splitStyle['type'], splitWidth ?? 1.0)
+  const decor = axisDecorFields(a, which, category)
   if (which === 'x') {
     const xGrid = category ? split['show'] === true : split['show'] !== false
     return {
@@ -1400,6 +1407,7 @@ function axisStrokeFields(axis: Record<string, unknown> | undefined, which: 'x' 
       ...(splitColor !== undefined ? { xGridColor: splitColor } : {}),
       ...(splitWidth !== undefined ? { xGridWidth: splitWidth } : {}),
       ...(splitDash !== undefined ? { xGridDash: splitDash } : {}),
+      ...decor,
     }
   }
   return {
@@ -1413,7 +1421,48 @@ function axisStrokeFields(axis: Record<string, unknown> | undefined, which: 'x' 
     ...(splitColor !== undefined ? { gridColor: splitColor } : {}),
     ...(splitWidth !== undefined ? { gridWidth: splitWidth } : {}),
     ...(splitDash !== undefined ? { gridDash: splitDash } : {}),
+    ...decor,
   }
+}
+
+/** ECharts' `splitArea` default: a tint on alternate bands, from the axis start. */
+const SPLIT_AREA_COLORS = ['rgba(234,237,245,0.5)', 'rgba(255,255,255,0)']
+
+/**
+ * An axis's `splitArea`, `minorTick` and `minorSplitLine`. The minor pair is
+ * a VALUE axis's (a category axis has no intervals to divide, as in ECharts);
+ * the minor split lines divide by `minorTick.splitNumber` (5), drawn in
+ * ECharts' `#f4f7fd` unless styled.
+ */
+function axisDecorFields(a: Record<string, unknown>, which: 'x' | 'y', category: boolean): Partial<ChartSpec> {
+  const out: Partial<ChartSpec> = {}
+  const area = isObj(a['splitArea']) ? a['splitArea'] : {}
+  if (area['show'] === true) {
+    const style = isObj(area['areaStyle']) ? area['areaStyle'] : {}
+    const c = style['color']
+    const colors = typeof c === 'string' ? [c] : Array.isArray(c) && c.every((v) => typeof v === 'string') && c.length > 0 ? (c as string[]) : SPLIT_AREA_COLORS
+    if (which === 'x') out.xSplitArea = colors
+    else out.ySplitArea = colors
+  }
+  if (category) return out
+  const minor = isObj(a['minorTick']) ? a['minorTick'] : {}
+  const pieces = num(minor['splitNumber']) ?? 5.0
+  const minorStyle = isObj(minor['lineStyle']) ? minor['lineStyle'] : {}
+  if (minor['show'] === true) {
+    const len = num(minor['length']) ?? 3.0
+    const color = typeof minorStyle['color'] === 'string' ? (minorStyle['color'] as string) : undefined
+    if (which === 'x') Object.assign(out, { xMinorTicks: pieces, xMinorTickLength: len }, color !== undefined ? { xMinorTickColor: color } : {})
+    else Object.assign(out, { yMinorTicks: pieces, yMinorTickLength: len }, color !== undefined ? { yMinorTickColor: color } : {})
+  }
+  const msl = isObj(a['minorSplitLine']) ? a['minorSplitLine'] : {}
+  if (msl['show'] === true) {
+    const style = isObj(msl['lineStyle']) ? msl['lineStyle'] : {}
+    const color = typeof style['color'] === 'string' ? (style['color'] as string) : undefined
+    const width = num(style['width'])
+    if (which === 'x') Object.assign(out, { xMinorSplit: pieces }, color !== undefined ? { xMinorSplitColor: color } : {}, width !== null ? { xMinorSplitWidth: width } : {})
+    else Object.assign(out, { yMinorSplit: pieces }, color !== undefined ? { yMinorSplitColor: color } : {}, width !== null ? { yMinorSplitWidth: width } : {})
+  }
+  return out
 }
 
 /** `yAxis.axisLabel` for the layout: `rotate`, `margin` (8 by default) and `inside`. A value axis shows every label, so `interval` has no effect there, as in ECharts. */

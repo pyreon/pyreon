@@ -13342,7 +13342,8 @@ function kotlinSpecLiteral(v: unknown): string {
   if (typeof v === 'number') return chartDouble(v)
   if (typeof v === 'boolean') return String(v)
   if (typeof v === 'string') return kotlinStr(v)
-  if (Array.isArray(v)) return `listOf(${v.map((x) => chartDouble(Number(x))).join(', ')})`
+  // A colour list (`ySplitArea`) is strings; every other array field is numbers.
+  if (Array.isArray(v)) return `listOf(${v.map((x) => (typeof x === 'string' ? kotlinStr(x) : chartDouble(Number(x)))).join(', ')})`
   const o = v as { value?: unknown; percent?: unknown }
   return `BarLength(value = ${chartDouble(Number(o.value ?? 0))}, percent = ${o.percent === true})`
 }

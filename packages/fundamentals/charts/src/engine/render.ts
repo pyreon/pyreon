@@ -20,7 +20,7 @@ import { autoLabelStyle, labelCommands, labelPlace } from './labels'
 import type { RichStyle } from './labels'
 import { pictorialCommands, symbolPoints } from './pictorial'
 import type { PictorialBar } from './pictorial'
-import type { ChartPattern, DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
+import type { ChartPattern, DrawCmd, Domain, MeasureText, Pt, Rect, Tick, Double } from './types'
 
 /** One drawable series. */
 export interface Series {
@@ -139,6 +139,13 @@ export interface Series {
   labelPosition?: string | undefined
   /** ECharts' `label.distance` from the shape's edge (5 by default). */
   labelDistance?: Double | undefined
+  /** ECharts' `label.rotate` in degrees, counter-clockwise, about the label's anchor (a plain label only). */
+  labelRotate?: Double | undefined
+  /** ECharts' `label.offset`: [dx, dy] added to the anchor. */
+  labelOffset?: Double[] | undefined
+  /** ECharts' `label.align` / `verticalAlign`: replace the anchor's alignment ('left' | 'center' | 'right', 'top' | 'middle' | 'bottom'). */
+  labelAlign?: string | undefined
+  labelVerticalAlign?: string | undefined
   /** ECharts' `label.textBorderColor`; absent picks zrender's automatic halo. */
   labelBorderColor?: string | undefined
   /** ECharts' `label.textBorderWidth` (2 by default; 0 draws no halo). */
@@ -566,6 +573,23 @@ export interface ChartSpec {
   xGridColor?: string | undefined
   xGridWidth?: Double | undefined
   xGridDash?: Double[] | undefined
+  /** ECharts' `splitArea`: bands between consecutive ticks, cycling these colours from the axis start; absent draws none. */
+  ySplitArea?: string[] | undefined
+  xSplitArea?: string[] | undefined
+  /** ECharts' `minorSplitLine` on a value axis: each tick interval cut into this many pieces (its `minorTick.splitNumber`); absent draws none. */
+  yMinorSplit?: Double | undefined
+  yMinorSplitColor?: string | undefined
+  yMinorSplitWidth?: Double | undefined
+  xMinorSplit?: Double | undefined
+  xMinorSplitColor?: string | undefined
+  xMinorSplitWidth?: Double | undefined
+  /** ECharts' `minorTick` on a value axis: this many pieces per interval, the ticks `length` long; absent draws none. */
+  yMinorTicks?: Double | undefined
+  yMinorTickLength?: Double | undefined
+  yMinorTickColor?: string | undefined
+  xMinorTicks?: Double | undefined
+  xMinorTickLength?: Double | undefined
+  xMinorTickColor?: string | undefined
   /** Draws the left value axis upside down — ECharts' `yAxis.inverse`. */
   yInverse?: boolean | undefined
   /** Runs the x axis right to left — ECharts' `xAxis.inverse`. */
@@ -589,6 +613,29 @@ export interface ChartSpec {
   lines?: LinesSeries[] | undefined
   /** Seconds on the host's effect clock; drives the trails. Absent = 0. */
   effectTime?: Double | undefined
+}
+
+/**
+ * Where a value axis's minor ticks (and minor split lines) fall: each interval
+ * between consecutive ticks cut into `pieces` equal parts, the inner cuts only.
+ * Fewer than two pieces draws none.
+ */
+export function minorPositions(ticks: Tick[], pieces: Double): Double[] {
+  const out: Double[] = []
+  const n = Math.floor(pieces + 0.5)
+  if (n < 2.0) return out
+  for (let ti = 1; ti < ticks.length; ti++) {
+    const a = ticks[ti - 1]!.pos
+    const b = ticks[ti]!.pos
+    // Stepped rather than `a + (b - a) * j / n`, so no integer counter meets a Double (Swift will not type that).
+    const step = (b - a) / n
+    let at = a
+    for (let j = 1; j < n; j++) {
+      at = at + step
+      out.push(at)
+    }
+  }
+  return out
 }
 
 /**
@@ -640,6 +687,29 @@ function labelTextAt(s: Series, index: number, fallback: string): string {
   return own === '' ? fallback : own
 }
 
+/**
+ * A series label's own `offset`, `align` / `verticalAlign` and `rotate` over
+ * where its position put it — each about the same anchor, as ECharts applies
+ * them. The rotation reaches a plain (one-command) label only.
+ */
+function adjustLabel(s: Series, cmdsOf: (at: Pt, align: string, baseline: string) => DrawCmd[], at: Pt, align: string, baseline: string): DrawCmd[] {
+  const off = s.labelOffset ?? []
+  const ox = off.length > 0 ? off[0]! : 0.0
+  const oy = off.length > 1 ? off[1]! : 0.0
+  const deg = s.labelRotate ?? 0.0
+  // The offset is in the label's own (rotated) frame, as zrender applies it.
+  const rad = (deg * Math.PI) / 180.0
+  const dx = Math.cos(rad) * ox + Math.sin(rad) * oy
+  const dy = Math.cos(rad) * oy - Math.sin(rad) * ox
+  const ha = s.labelAlign ?? ''
+  const va = s.labelVerticalAlign ?? ''
+  const cmds = cmdsOf({ x: at.x + dx, y: at.y + dy }, ha === 'left' ? 'start' : ha === 'center' ? 'middle' : ha === 'right' ? 'end' : align, va === 'top' || va === 'middle' || va === 'bottom' ? va : baseline)
+  if (deg === 0.0 || cmds.length !== 1) return cmds
+  const only = cmds[0]!
+  if (only.kind !== 'text') return cmds
+  return [{ ...only, rotate: 0.0 - deg }]
+}
+
 /** The commands a series' label draws — one text command for a plain label, one per segment for a rich or multi-line one. */
 function seriesLabelCmds(
   s: Series,
@@ -653,16 +723,8 @@ function seriesLabelCmds(
 ): DrawCmd[] {
   const color = s.labelColor ?? ''
   const size = s.labelSize ?? 0.0
-  return labelCommands(
-    labelTextAt(s, index, fallback),
-    s.labelRich ?? [],
-    at,
-    align,
-    baseline,
-    color === '' ? t.label : color,
-    size > 0.0 ? size : t.fontSize,
-    measure,
-  )
+  const text = labelTextAt(s, index, fallback)
+  return adjustLabel(s, (a, al, bl) => labelCommands(text, s.labelRich ?? [], a, al, bl, color === '' ? t.label : color, size > 0.0 ? size : t.fontSize, measure), at, align, baseline)
 }
 
 /**
@@ -670,14 +732,19 @@ function seriesLabelCmds(
  * EDGES under `xTickBands` (ECharts' default), else the label positions —
  * every shown label's, following its thinning.
  */
+/** A category x axis's band edges, thinned with its labels (the last edge always kept). */
+function categoryEdges(spec: ChartSpec, l: PlotLayout, plot: Rect): Double[] {
+  const out: Double[] = []
+  const n = spec.categories.length
+  const every = l.xLabelEvery > 1 ? l.xLabelEvery : 1
+  for (let i = 0; i <= n; i++) if (i % every === 0 || i === n) out.push(plot.x + (plot.w * i) / n)
+  return out
+}
+
 function xTickPositions(spec: ChartSpec, l: PlotLayout, plot: Rect): Double[] {
   const out: Double[] = []
   const n = spec.categories.length
-  if (spec.xTickBands === true && n > 0 && spec.boundaryGap !== false) {
-    const every = l.xLabelEvery > 1 ? l.xLabelEvery : 1
-    for (let i = 0; i <= n; i++) if (i % every === 0 || i === n) out.push(plot.x + (plot.w * i) / n)
-    return out
-  }
+  if (spec.xTickBands === true && n > 0 && spec.boundaryGap !== false) return categoryEdges(spec, l, plot)
   for (let ti = 0; ti < l.xTicks.length; ti++) {
     if (l.xLabelEvery > 1 && ti % l.xLabelEvery !== 0) continue
     out.push(l.xTicks[ti]!.pos)
@@ -699,7 +766,8 @@ function barLabelCmds(s: Series, index: number, fallback: string, r: Rect, shape
   // zrender's automatic halo applies only to an automatic fill.
   const halo = width <= 0.0 ? '' : border !== '' ? border : own === '' ? auto.halo : ''
   const size = s.labelSize ?? 0.0
-  return labelCommands(labelTextAt(s, index, fallback), s.labelRich ?? [], place.at, place.align, place.baseline, own === '' ? auto.textFill : own, size > 0.0 ? size : t.fontSize, measure, halo, width)
+  const text = labelTextAt(s, index, fallback)
+  return adjustLabel(s, (a, al, bl) => labelCommands(text, s.labelRich ?? [], a, al, bl, own === '' ? auto.textFill : own, size > 0.0 ? size : t.fontSize, measure, halo, width), place.at, place.align, place.baseline)
 }
 
 /**
@@ -1589,6 +1657,29 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     return outPts
   }
 
+  // Split areas first: every line draws over them.
+  const yAreas = spec.ySplitArea ?? []
+  if (yAreas.length > 0 && spec.horizontal !== true) {
+    for (let ti = 1; ti < l.yTicks.length; ti++) {
+      const a = l.yTicks[ti - 1]!.pos
+      const b = l.yTicks[ti]!.pos
+      out.push({ kind: 'rect', rect: { x: plot.x, y: a < b ? a : b, w: plot.w, h: a < b ? b - a : a - b }, fill: yAreas[(ti - 1) % yAreas.length]! })
+    }
+  }
+  const xAreas = spec.xSplitArea ?? []
+  if (xAreas.length > 0 && spec.horizontal !== true) {
+    // ECharts' bands follow the tick coordinates, which on a category axis are the band EDGES
+    // (whether or not the ticks themselves show).
+    const nc = spec.categories.length
+    const edges = (spec.xValues ?? []).length === 0 && nc > 0 && spec.boundaryGap !== false
+    const xs = edges ? categoryEdges(spec, l, plot) : xTickPositions(spec, l, plot)
+    for (let ti = 1; ti < xs.length; ti++) {
+      const a = xs[ti - 1]!
+      const b = xs[ti]!
+      out.push({ kind: 'rect', rect: { x: a < b ? a : b, y: plot.y, w: a < b ? b - a : a - b, h: plot.h }, fill: xAreas[(ti - 1) % xAreas.length]! })
+    }
+  }
+
   if (spec.showGrid) {
     if (spec.horizontal === true) {
       // The grid follows the VALUE axis — vertical lines in this frame.
@@ -1625,6 +1716,12 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       out.push({ kind: 'line', from: { x: gx, y: plot.y }, to: { x: gx, y: plot.y + plot.h }, stroke: spec.xGridColor ?? t.grid, width: spec.xGridWidth ?? 1.0, dash: spec.xGridDash })
     }
   }
+  // Minor split lines inside each value interval.
+  const xValueAxis = (spec.xValues ?? []).length > 0
+  const yMinor = spec.horizontal !== true ? minorPositions(l.yTicks, spec.yMinorSplit ?? 0.0) : []
+  for (let mi = 0; mi < yMinor.length; mi++) out.push({ kind: 'line', from: { x: plot.x, y: yMinor[mi]! }, to: { x: plot.x + plot.w, y: yMinor[mi]! }, stroke: spec.yMinorSplitColor ?? '#f4f7fd', width: spec.yMinorSplitWidth ?? 1.0 })
+  const xMinor = spec.horizontal !== true && xValueAxis ? minorPositions(l.xTicks, spec.xMinorSplit ?? 0.0) : []
+  for (let mi = 0; mi < xMinor.length; mi++) out.push({ kind: 'line', from: { x: xMinor[mi]!, y: plot.y }, to: { x: xMinor[mi]!, y: plot.y + plot.h }, stroke: spec.xMinorSplitColor ?? '#f4f7fd', width: spec.xMinorSplitWidth ?? 1.0 })
 
   const yRight = spec.yRight === true && !useY2 && spec.horizontal !== true
   const yOff = spec.yOffset ?? 0.0
@@ -1652,6 +1749,13 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       out.push({ kind: 'line', from: { x: yLineX, y: tick.pos }, to: { x: yLineX + yDir * yLen, y: tick.pos }, stroke: spec.yTickColor ?? yLineColor, width: 1.0 })
     }
   }
+  // Minor ticks: `minorTick.length` (3) the same way, in the tick colour.
+  if (spec.showYAxis && spec.horizontal !== true) {
+    const ym = minorPositions(l.yTicks, spec.yMinorTicks ?? 0.0)
+    const ymLen = spec.yMinorTickLength ?? 3.0
+    const ymDir = (yRight ? 1.0 : -1.0) * (spec.yTickInside === true ? -1.0 : 1.0)
+    for (let mi = 0; mi < ym.length; mi++) out.push({ kind: 'line', from: { x: yLineX, y: ym[mi]! }, to: { x: yLineX + ymDir * ymLen, y: ym[mi]! }, stroke: spec.yMinorTickColor ?? spec.yTickColor ?? yLineColor, width: 1.0 })
+  }
   const xTop = spec.xTop === true && spec.horizontal !== true
   const xAxisY = xTop ? plot.y - xOff : plot.y + plot.h + xOff
   const xLineY = spec.xAxisOnZero === true && spec.horizontal !== true && yDomain.min < 0.0 && yDomain.max > 0.0 ? scaleLinear(yDomain, plot.y + plot.h, plot.y, 0.0) : xAxisY
@@ -1671,6 +1775,12 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     for (const tx of xTickPositions(spec, l, plot)) {
       out.push({ kind: 'line', from: { x: tx, y: xLineY }, to: { x: tx, y: xLineY + xDir * xLen }, stroke: spec.xTickColor ?? xLineColor, width: 1.0 })
     }
+  }
+  if (spec.showXAxis && spec.horizontal !== true && xValueAxis) {
+    const xm = minorPositions(l.xTicks, spec.xMinorTicks ?? 0.0)
+    const xmLen = spec.xMinorTickLength ?? 3.0
+    const xmDir = (xTop ? -1.0 : 1.0) * (spec.xTickInside === true ? -1.0 : 1.0)
+    for (let mi = 0; mi < xm.length; mi++) out.push({ kind: 'line', from: { x: xm[mi]!, y: xLineY }, to: { x: xm[mi]!, y: xLineY + xmDir * xmLen }, stroke: spec.xMinorTickColor ?? spec.xTickColor ?? xLineColor, width: 1.0 })
   }
   if (spec.showYAxis && spec.horizontal !== true) {
     for (const a of spec.extraYAxes ?? []) {
