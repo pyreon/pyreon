@@ -1,9 +1,9 @@
-// The accessible table's rows sit in `content-visibility: auto` <tbody> blocks
-// so an offscreen 1,000-row table costs a chart's first frame nothing to lay
-// out (measured: a 1k-point PlotChart mount 12.5ms → 10.4ms against ECharts'
-// flat 4.6ms). `auto`, unlike `hidden`, keeps skipped content in the
-// accessibility tree — the table's only reader — so this checks the REAL
-// Chromium AX tree over CDP, not just the DOM.
+// The accessible table's rows go in 50-row <tbody> blocks, which builds a
+// 1,000-row table ~1.7ms faster than one row group. The AX-tree spec guards the
+// tempting next step: `content-visibility: auto` on the table's wrapper skips
+// ~5ms of layout but makes Chromium drop every row from the accessibility tree
+// (measured: 9 nodes left). The table's only reader is assistive technology,
+// so this reads the REAL Chromium AX tree over CDP, not just the DOM.
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { cdp } from '@vitest/browser/context'
@@ -14,21 +14,20 @@ import { line } from './marks'
 interface Row { i: string; v: number }
 const ROWS: Row[] = Array.from({ length: 1000 }, (_, i) => ({ i: `row${i}`, v: i }))
 
-describe('the accessible table in content-visibility blocks', () => {
-  it('splits rows into auto-visibility <tbody> blocks, every row present', () => {
+describe('the accessible table in row blocks', () => {
+  it('puts rows in 50-row <tbody> blocks, every row present', () => {
     const root = document.createElement('div')
     document.body.appendChild(root)
     const un = mount(h(PlotChart<Row>, { data: ROWS, x: (d: Row) => d.i, marks: [line((d: Row) => d.v)], width: 600, height: 300, animate: false }), root)
     const bodies = [...root.querySelectorAll('table tbody')] as HTMLElement[]
     expect(bodies.length).toBe(20)
-    expect(bodies.every((b) => b.style.contentVisibility === 'auto')).toBe(true)
     expect(root.querySelectorAll('table tbody tr')).toHaveLength(1000)
     expect(root.querySelector('table tbody:last-of-type tr:last-child th')!.textContent).toBe('row999')
     un()
     root.remove()
   })
 
-  it('a row in a skipped block is still in the accessibility tree', async () => {
+  it('every row is in the accessibility tree, as a table row', async () => {
     const root = document.createElement('div')
     document.body.appendChild(root)
     const un = mount(h(PlotChart<Row>, { data: ROWS, x: (d: Row) => d.i, marks: [line((d: Row) => d.v)], width: 600, height: 300, animate: false }), root)
@@ -46,13 +45,13 @@ describe('the accessible table in content-visibility blocks', () => {
     walk(frameTree)
     const names: string[] = []
     for (const f of all) {
-      const { nodes } = (await session.send('Accessibility.getFullAXTree', { frameId: f.id })) as { nodes: { name?: { value?: string }; ignored?: boolean }[] }
-      for (const n of nodes) if (n.ignored !== true) names.push(n.name?.value ?? '')
+      const { nodes } = (await session.send('Accessibility.getFullAXTree', { frameId: f.id })) as { nodes: { name?: { value?: string }; role?: { value?: string }; ignored?: boolean }[] }
+      for (const n of nodes) if (n.ignored !== true) names.push(`${n.role?.value ?? ''}:${n.name?.value ?? ''}`)
     }
-    // Negative control, run by hand: rendering the chunks `display:none` leaves
-    // 21 names in these frames and no `row950`. (`content-visibility:hidden`
-    // is NOT a usable control: Chromium keeps its rows in the tree as well.)
-    expect(names).toContain('row950')
+    // Negative controls, run by hand: `content-visibility: auto` on the wrapper
+    // and `display: none` on the blocks each drop row950 from the tree.
+    expect(names).toContain('rowheader:row950')
+    expect(names).toContain('cell:950')
     un()
     root.remove()
   })
