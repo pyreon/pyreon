@@ -50,6 +50,16 @@ export function SankeyChart(props: SankeyChartProps): VNode {
       props.onSelectIndex?.(hitSankeyIndex(layout, px, py))
     },
     tooltip: (layout, px, py) => orNull(sankeyTip(layout, px, py)),
+    // ECharts reports a node or an edge; an edge is named "source > target".
+    item: (layout, px, py) => {
+      const hit = hitSankeyIndex(layout, px, py)
+      const n = layout.nodes[hit.node]
+      if (n !== undefined) return { seriesIndex: 0, dataIndex: hit.node, name: n.name, value: n.value, color: n.color, dataType: 'node' }
+      const l = layout.links[hit.link]
+      if (l === undefined) return null
+      const name = (layout.nodes[l.source]?.name ?? '') + ' > ' + (layout.nodes[l.target]?.name ?? '')
+      return { seriesIndex: 0, dataIndex: hit.link, name, value: l.value, color: layout.nodes[l.source]?.color, dataType: 'edge' }
+    },
     // Enter on a node selects it through the same hit path a click takes, at the node's centre.
     pick: (layout, i) => {
       const node = layout.nodes[i]

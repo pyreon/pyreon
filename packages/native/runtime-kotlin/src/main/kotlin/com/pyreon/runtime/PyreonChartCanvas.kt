@@ -117,6 +117,10 @@ data class PyreonDrawCmd(
     var baseline: String? = null,
     /** Rotation about `at` in degrees, clockwise positive — a slanted axis label. */
     var rotate: Double? = null,
+    /** "bold" sets the text heavier; null is the regular weight. */
+    var weight: String? = null,
+    /** A text halo's width, ECharts' `textBorderWidth`; the colour is `stroke`. */
+    var strokeWidth: Double? = null,
 )
 
 /**
@@ -548,8 +552,22 @@ private fun PyreonStaticChartCanvas(
  */
 fun DrawScope.pyreonPaintChart(cmds: List<PyreonDrawCmd>, density: Float) {
     scale(scale = density, pivot = Offset.Zero) {
+        // `clip` saves the canvas and narrows it; `unclip` restores. An unmatched unclip is ignored.
+        var clips = 0
         for (c in cmds) {
             when (c.kind) {
+                "clip" -> {
+                    val r = c.rect ?: continue
+                    drawContext.canvas.save()
+                    drawContext.canvas.clipRect(r.x.toFloat(), r.y.toFloat(), (r.x + r.w).toFloat(), (r.y + r.h).toFloat())
+                    clips++
+                }
+                "unclip" -> {
+                    if (clips > 0) {
+                        drawContext.canvas.restore()
+                        clips--
+                    }
+                }
                 "rect" -> {
                     val r = c.rect ?: continue
                     val fill = c.fill ?: continue
@@ -640,8 +658,14 @@ fun DrawScope.pyreonPaintChart(cmds: List<PyreonDrawCmd>, density: Float) {
                         (pyreonChartColor(fill).red * 255).toInt(),
                         (pyreonChartColor(fill).green * 255).toInt(),
                         (pyreonChartColor(fill).blue * 255).toInt())
-                    paint.textSize = (c.size ?: 12.0).toFloat() * density
+                    // Density-independent, like every coordinate here: this block runs
+                    // under `scale(density)` and the native canvas carries that
+                    // transform, so multiplying by the density again drew text
+                    // density² — ~2.6× too large on a 420dpi phone, while layout
+                    // measured it at 1× (`pyreonChartMeasure`), so labels overlapped.
+                    paint.textSize = (c.size ?: 12.0).toFloat()
                     paint.isAntiAlias = true
+                    if (c.weight == "bold") paint.typeface = android.graphics.Typeface.DEFAULT_BOLD
                     // web: textAlign start|center|end
                     paint.textAlign = when (c.align ?: "start") {
                         "middle" -> Paint.Align.CENTER
@@ -657,19 +681,39 @@ fun DrawScope.pyreonPaintChart(cmds: List<PyreonDrawCmd>, density: Float) {
                         else -> at.y.toFloat()
                     }
                     val rot = c.rotate ?: 0.0
+                    // A halo (ECharts' textBorder): the same text stroked under the fill.
+                    val haloColor = c.stroke
+                    val halo = if (haloColor != null && haloColor.isNotEmpty()) {
+                        val hp = Paint(paint)
+                        val hc = pyreonChartColor(haloColor)
+                        hp.color = android.graphics.Color.argb(
+                            (hc.alpha * 255).toInt(), (hc.red * 255).toInt(), (hc.green * 255).toInt(), (hc.blue * 255).toInt())
+                        hp.style = Paint.Style.STROKE
+                        hp.strokeWidth = (c.strokeWidth ?: 2.0).toFloat()
+                        hp.strokeJoin = Paint.Join.MITER
+                        hp.strokeMiter = 2f
+                        hp
+                    } else null
+                    val nc = drawContext.canvas.nativeCanvas
                     if (rot != 0.0) {
                         // Rotate about the anchor; align/baseline apply in the
                         // rotated frame (the web canvas's translate + rotate).
-                        val nc = drawContext.canvas.nativeCanvas
                         nc.save()
                         nc.rotate(rot.toFloat(), at.x.toFloat(), at.y.toFloat())
+                        if (halo != null) nc.drawText(txt, at.x.toFloat(), y, halo)
                         nc.drawText(txt, at.x.toFloat(), y, paint)
                         nc.restore()
                     } else {
-                        drawContext.canvas.nativeCanvas.drawText(txt, at.x.toFloat(), y, paint)
+                        if (halo != null) nc.drawText(txt, at.x.toFloat(), y, halo)
+                        nc.drawText(txt, at.x.toFloat(), y, paint)
                     }
                 }
             }
+        }
+        // A list that left a clip open does not leak it past this paint.
+        while (clips > 0) {
+            drawContext.canvas.restore()
+            clips--
         }
     }
 }

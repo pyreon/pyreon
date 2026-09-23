@@ -98,6 +98,10 @@ function flipAlign(a: 'start' | 'middle' | 'end'): 'start' | 'middle' | 'end' {
 export function mirrorCmds(cmds: DrawCmd[], width: Double): DrawCmd[] {
   return cmds.map((c): DrawCmd => {
     switch (c.kind) {
+      case 'unclip':
+        return c
+      case 'clip':
+        return { ...c, rect: { ...c.rect, x: mirrorX(c.rect.x + c.rect.w, width) } }
       case 'rect':
         // The rect's own x is its LEFT edge, so the mirrored left edge is the
         // mirror of its RIGHT edge — mirroring `x` alone would shift every
@@ -156,6 +160,10 @@ const baselineOfAlign = (a: 'start' | 'middle' | 'end'): 'top' | 'middle' | 'bot
 export function transposeCmds(cmds: DrawCmd[]): DrawCmd[] {
   return cmds.map((c): DrawCmd => {
     switch (c.kind) {
+      case 'unclip':
+        return c
+      case 'clip':
+        return { ...c, rect: transposeRect(c.rect) }
       case 'rect':
         return {
           ...c,

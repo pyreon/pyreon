@@ -22,15 +22,15 @@ describe('option facade — edge shapes (every branch NAMES its loss)', () => {
     expect(w).toContain('axis-count-unsupported@xAxis')
     expect(w).toContain('option-key-unsupported@yAxis[1].min')
     expect(w).toContain('option-key-unsupported@yAxis[2].max')
-    expect(c.spec.extraYAxes).toEqual([{ side: 'right', domain: undefined, title: undefined, offset: undefined }])
-    expect(c.spec.yDomain).toEqual({ min: 0, max: 10 })
+    expect(c.spec.extraYAxes).toEqual([{ side: 'right', domain: undefined, title: undefined, offset: undefined, line: false }])
+    expect(c.spec.yDomain).toMatchObject({ min: 0, max: 10 })
     expect(c.spec.y2Domain).toBeUndefined()
     // A single y-axis object and no y axis at all both compile.
-    expect(compileOption(cat({ yAxis: { min: 1, max: 5 }, series: [{ type: 'bar', data: [1] }] })).spec.yDomain).toEqual({ min: 1, max: 5 })
+    expect(compileOption(cat({ yAxis: { min: 1, max: 5 }, series: [{ type: 'bar', data: [1] }] })).spec.yDomain).toMatchObject({ min: 1, max: 5 })
     expect(compileOption({ series: [{ type: 'bar', data: [1] }] }).spec.yDomain).toBeUndefined()
   })
 
-  it('axis formatters: a function passes through, the {value} template maps, any other template warns, no axisLabel means none', () => {
+  it('axis formatters: a function passes through, the {value} template maps, any other template warns, no axisLabel means the ECharts default grouping', () => {
     const c = compileOption({
       xAxis: { data: ['a'], axisLabel: { formatter: 'nope' } },
       yAxis: [{ axisLabel: { formatter: (v: number) => `v${v}` } }, { axisLabel: { formatter: '{value}%' } }],
@@ -40,8 +40,9 @@ describe('option facade — edge shapes (every branch NAMES its loss)', () => {
     expect(c.spec.xFormat).toBeUndefined()
     expect(c.spec.yFormat!(1)).toBe('v1')
     expect(c.spec.y2Format!(5)).toBe('5%')
-    expect(compileOption(cat({ yAxis: { axisLabel: {} }, series: [] })).spec.yFormat).toBeUndefined()
-    expect(compileOption(cat({ yAxis: { axisLabel: 'x' }, series: [] })).spec.yFormat).toBeUndefined()
+    // No formatter of the author's: ECharts' default label, grouped by thousands.
+    expect(compileOption(cat({ yAxis: { axisLabel: {} }, series: [] })).spec.yFormat!(12500)).toBe('12,500')
+    expect(compileOption(cat({ yAxis: { axisLabel: 'x' }, series: [] })).spec.yFormat!(-1234.5)).toBe('-1,234.5')
   })
 
   it('series shapes: a single object, a non-object entry (unsupported), garbage, stacked lines, areaStyle forms, missing data', () => {
@@ -67,8 +68,9 @@ describe('option facade — edge shapes (every branch NAMES its loss)', () => {
     expect(stacked.spec.series[3]!.values).toEqual([10, 10, 10])
     expect(stacked.spec.series[4]!.values).toEqual([5, 5, 5])
     expect(stacked.warnings.map((w) => `${w.code}@${w.path}`)).not.toContain('series-option-unsupported@series[0].stack')
-    expect(compileOption(cat({ series: [{ type: 'line', areaStyle: true, data: [1] }] })).spec.series[0]!.kind).toBe('area')
-    expect(compileOption(cat({ series: [{ type: 'line', areaStyle: {}, data: [1] }] })).spec.series[0]!.kind).toBe('area')
+    // Both areaStyle forms fill: a line that also fills to its origin, at ECharts' 0.7 opacity.
+    expect(compileOption(cat({ series: [{ type: 'line', areaStyle: true, data: [1] }] })).spec.series[0]).toMatchObject({ kind: 'line', areaFill: true, areaOpacity: 0.7 })
+    expect(compileOption(cat({ series: [{ type: 'line', areaStyle: {}, data: [1] }] })).spec.series[0]).toMatchObject({ kind: 'line', areaFill: true, areaOpacity: 0.7 })
     const missing = compileOption(cat({ series: [{ type: 'bar' }] }))
     expect(missing.spec.series[0]!.values).toEqual([])
     expect(missing.warnings.map((w) => `${w.code}@${w.path}`)).toContain('series-data-shape@series[0].data')
@@ -112,7 +114,7 @@ describe('option facade — edge shapes (every branch NAMES its loss)', () => {
     }))
     const [a, b, d] = c.spec.series
     expect(a!.radius).toBe(5)
-    expect(a!.curve).toBeDefined()
+    expect(a!.smoothAmount).toBe(0.5)
     expect(a!.width).toBe(3)
     expect(a!.showValues).toBe(true)
     expect(a!.axis).toBe('right')
@@ -142,8 +144,8 @@ describe('option facade — edge shapes (every branch NAMES its loss)', () => {
 
   it('title (object or array, with or without subtext, non-string text), legend show:false, tooltip forms', () => {
     const base = { xAxis: { data: ['a'] }, yAxis: {}, series: [{ type: 'bar', data: [1] }] }
-    expect(compileOption({ ...base, title: [{ text: 'T', subtext: 'S' }] }).title).toEqual({ text: 'T', subtext: 'S' })
-    expect(compileOption({ ...base, title: { text: 'T' } }).title).toEqual({ text: 'T', subtext: undefined })
+    expect(compileOption({ ...base, title: [{ text: 'T', subtext: 'S' }] }).title).toMatchObject({ text: 'T', subtext: 'S' })
+    expect(compileOption({ ...base, title: { text: 'T' } }).title).toMatchObject({ text: 'T', subtext: undefined })
     expect(compileOption({ ...base, title: { text: 5 } }).title).toBeNull()
     expect(compileOption({ ...base, legend: { show: false } }).legend).toBeNull()
     expect(compileOption({ ...base, legend: {} }).legend).toHaveLength(1)

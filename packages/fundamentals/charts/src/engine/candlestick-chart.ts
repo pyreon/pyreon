@@ -79,16 +79,34 @@ export function renderCandlestickChart(
       baseline: 'middle',
     })
   }
-  for (const tick of l.xTicks) {
-    cmds.push({
-      kind: 'text',
-      text: tick.label,
-      at: { x: tick.pos, y: l.plot.y + l.plot.h + 6.0 },
-      fill: theme.label,
-      size: theme.fontSize,
-      align: 'middle',
-      baseline: 'top',
-    })
+  // The x labels follow the layout's thinning and slant, as the cartesian
+  // renderer's do. Drawing every one of them put 120 day labels on top of
+  // each other; the layout had already worked out which fit.
+  for (let ti = 0; ti < l.xTicks.length; ti++) {
+    const tick = l.xTicks[ti]!
+    if (l.xLabelEvery > 1 && ti % l.xLabelEvery !== 0) continue
+    if (l.xLabelRotate !== 0.0) {
+      cmds.push({
+        kind: 'text',
+        text: tick.label,
+        at: { x: tick.pos, y: l.plot.y + l.plot.h + 6.0 },
+        fill: theme.label,
+        size: theme.fontSize,
+        align: l.xLabelRotate < 0.0 ? 'end' : 'start',
+        baseline: 'middle',
+        rotate: l.xLabelRotate,
+      })
+    } else {
+      cmds.push({
+        kind: 'text',
+        text: tick.label,
+        at: { x: tick.pos, y: l.plot.y + l.plot.h + 6.0 },
+        fill: theme.label,
+        size: theme.fontSize,
+        align: 'middle',
+        baseline: 'top',
+      })
+    }
   }
   // Up/down are SEMANTIC, and the constants they used to fall back to were
   // tuned on a white page — `#b42318` reads 2.70:1 on the dark ground.

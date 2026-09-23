@@ -54,6 +54,8 @@ export interface Domain {
   max: Double
   /** Maps `min` to the far end of the range — ECharts' `axis.inverse`. */
   inverse?: boolean | undefined
+  /** A fixed tick step (ECharts' axis interval); unset, the ticks pick their own. */
+  step?: Double | undefined
 }
 
 /**
@@ -178,4 +180,19 @@ export type DrawCmd =
        * Absent is unrotated and serializes byte-identically to before.
        */
       rotate?: Double | undefined
+      /** 'bold' sets the text heavier (ECharts' `fontWeight: 'bold'`); absent is normal and serializes as before. */
+      weight?: string | undefined
+      /** A halo drawn under the fill (ECharts' `textBorderColor`); absent draws none. */
+      stroke?: string | undefined
+      /** The halo's width in px (ECharts' `textBorderWidth`, 2 by default). */
+      strokeWidth?: Double | undefined
     }
+  /**
+   * Clip every following command to `rect` until the matching `unclip` — a
+   * stack, so clips nest. Each executor saves its drawing state here and
+   * restores it at the `unclip` (web canvas `save`/`clip`/`restore`, an SVG
+   * `<g clip-path>`, a SwiftUI context copy, a Compose `clipRect` save).
+   */
+  | { kind: 'clip'; rect: Rect }
+  /** Ends the innermost `clip`. */
+  | { kind: 'unclip' }

@@ -1,13 +1,17 @@
 ---
 title: Plot Engine
-description: The first-party chart engine — tree-shakeable marks, pure geometry, canvas + SVG backends, and a generated native twin.
+description: The first-party chart engine — tree-shakeable chart families, pure geometry, canvas + SVG backends, and a generated native twin.
 ---
 
 `@pyreon/charts/plot` is Pyreon's **own chart engine**. It has zero runtime
 dependencies: geometry is computed in pure TypeScript into a flat draw list,
 which a tiny canvas host paints in the browser and a pure string builder
-serializes on the server. Marks are **imported bindings**, so an unused chart
-type tree-shakes out of your bundle like any unused function.
+serializes on the server. Chart families are **imported bindings**, so an
+unused family (pie, radar, candlestick, heatmap, …) tree-shakes out of your
+bundle like any unused function. The cartesian marks inside `PlotChart` share
+one renderer: a line chart and a bar + line + tooltip + legend chart are the
+same 40.9 KB gz (measured; ECharts 6 tree-shaken is 156–177 KB gz for the same
+charts — `bun run bench:charts-bundle` in `examples/benchmark`).
 
 The main `@pyreon/charts` entry remains the [ECharts bridge](/docs/charts) —
 reach for that when you need the long tail of ECharts series types today.
@@ -710,7 +714,7 @@ const sound = sonifyValues(closes, { duration: 3000, link })
 
 `<OptionChart option>` is the component for an ECharts option: cartesian plans (single or multi-`grid`) paint on a canvas through the same `compiledCommands` the server's `optionToSvg` uses, family plans mount the family's own interactive host (kept alive across updates, so an update tweens), several charts in one option are drawn as layers (the cartesian series on the canvas, each other family series as its own host placed by its `center` / `radius` or box keys — two pies side by side, a pie in the corner of a line chart, candlesticks over volume on two grids), a `timeline` auto-plays or follows `timelineIndex`, and `onSelect` hit-tests clicks against the painted geometry.
 
-It animates as ECharts does — an entrance and an update tween, set by the option's `animation`, `animationDuration`, `animationEasing`, `animationDelay`, their `…Update` twins and `animationThreshold`, with ECharts' easing table — and the option's `tooltip` component decides the tooltip: `trigger`, a template or function `formatter` (its HTML renders through an allow-list), `valueFormatter`, `position`, the look keys, `triggerOn`, `hideDelay`, `alwaysShowContent`, and `tooltip.axisPointer` (`line`, `shadow` or `cross`). With no `tooltip` component no tooltip shows, as in ECharts. Set `animation: false` for a static first paint.
+It animates as ECharts does — an entrance and an update tween, set by the option's `animation`, `animationDuration`, `animationEasing`, `animationDelay`, their `…Update` twins and `animationThreshold`, with ECharts' easing table — and the option's `tooltip` component decides the tooltip: `trigger`, a template or function `formatter` (its HTML renders through an allow-list), `valueFormatter`, `position`, the look keys, `triggerOn`, `hideDelay`, `alwaysShowContent`, and `tooltip.axisPointer` (`line`, `shadow` or `cross`). With no `tooltip` component no tooltip shows, as in ECharts; a series' own `tooltip` refines it for that series' items. Per-datum colour works as in ECharts — a datum's `itemStyle.color`, or `colorBy: 'data'` for a palette colour per datum — and a series' `cursor` and `silent` apply to its items. Set `animation: false` for a static first paint.
 
 ```tsx
 <OptionChart option={() => option()} width={640} height={320} theme="dark" onSelect={(hit) => hit && select(hit)} />

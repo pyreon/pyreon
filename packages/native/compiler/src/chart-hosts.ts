@@ -19,9 +19,10 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import { compileOption, readBrush, readToolbox, defaultTimelineStrip, resolveYDomain, timelineSteps, DEFAULT_DECALS, visualMapSpec, visualStripOf, fillPattern, imageFill, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
+import { compileFamily, familyFrame, GAUGE_DIAL_KEYS, PIE_SHAPE_KEYS, compileOption, readBrush, readToolbox, defaultTimelineStrip, resolveYDomain, timelineSteps, DEFAULT_DECALS, visualMapSpec, visualStripOf, fillPattern, imageFill, decimateShared, graphicElements, labelFields, labelSlots, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
 import type { ChartPattern, VisualMapSpec, GraphicElement, RichStyle, SamplingRequest } from '@pyreon/charts/option-layer'
-import type { AttrIR, ChildIR, ExprIR } from './types'
+import type { AttrIR, ChildIR, ExprIR, TypeIR } from './types'
+import { kotlinStr, swiftStr } from './string-literals'
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 
 /** Per-target expression helpers the host specs build their draw list with. */
@@ -131,6 +132,92 @@ export interface ChartHostArgs {
   showLabels?: string
   /** The theme's font size as emitted text (the pie's label size); the default when absent. */
   fontSize?: string
+  /** The pie's box when an OptionChart placed it (ECharts' center / radius / box keys), in plot space. */
+  frame?: string
+  /** The pie's `ArcConfig` literal (ECharts' angles, direction, rose, gaps); the classic pie without it. */
+  pieArcs?: string
+  /** Trailing `PieOptions` arguments (arcs, labels, view, empty, measure), each already `, name: value`. */
+  pieExtra?: string
+  /**
+   * An option pie's tooltip header (its series name, '' for none): present,
+   * the tooltip takes ECharts' default rows — swatch, name, bold grouped value —
+   * through `pieTipRowsWith` / `renderTooltipRows`.
+   */
+  tipHeader?: string
+  /** The pie's label colour; white (inside the slices) without it. */
+  pieLabelColor?: string
+}
+
+/**
+ * A GaugeChart's full ECharts dial, from the `dial` / `frameSpec` attributes
+ * an OptionChart's desugar attaches: `renderDialIn` over the web-compiled
+ * `DialSpec`, in its frame (the whole canvas without one), a datum without
+ * its own colour taking the palette's. Undefined when there is no dial.
+ */
+export function chartDialCmds(e: Extract<ExprIR, { kind: 'jsx-element' }>, target: 'swift' | 'kotlin', W: string, H: string): string | undefined {
+  const dialAttr = attrOf(e, 'dial')
+  const dial = dialAttr === undefined ? undefined : irToValue(dialAttr, () => undefined)
+  const dialLit = dial?.ok === true ? engineStructLiteral('DialSpec', dial.value, target) : undefined
+  if (dialLit === undefined) return undefined
+  const frameAttr = attrOf(e, 'frameSpec')
+  const frame = frameAttr === undefined ? undefined : irToValue(frameAttr, () => undefined)
+  const frameLit = frame?.ok === true ? engineStructLiteral('FrameSpec', frame.value, target) : undefined
+  const box = frameLit !== undefined ? `frameRectAt(${frameLit}, ${W}, ${H}, 0.0, 0.0)` : target === 'swift' ? `PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H})` : `PyreonChartRect(0.0, 0.0, ${W}, ${H})`
+  const palette = CHART_HOST_PALETTE.map((c) => (target === 'swift' ? swiftStr(c) : kotlinStr(c)))
+  return `renderDialIn(${dialLit}, ${box}, ${target === 'swift' ? `[${palette.join(', ')}]` : `listOf(${palette.join(', ')})`})`
+}
+
+/**
+ * The pie host's placement and shape, from the `pie` / `frameSpec` attributes
+ * an OptionChart's desugar attaches (the web facade's compiled `PieShape` and
+ * frame). `W` / `H` are the whole canvas; `left` / `top` the chrome's offset,
+ * so the frame lands in plot space exactly where the web draws it.
+ */
+/**
+ * An option family host's ECharts tooltip header (its series name, '' when
+ * unnamed) as a target string literal — present only when the desugar set it
+ * (the option's tooltip has no formatter), which switches the host to
+ * ECharts' default rows.
+ */
+export function chartTipHeader(e: Extract<ExprIR, { kind: 'jsx-element' }>, target: 'swift' | 'kotlin'): string | undefined {
+  const header = attrOf(e, 'tooltipHeader')
+  if (header?.kind !== 'literal' || typeof header.value !== 'string') return undefined
+  return target === 'swift' ? swiftStr(header.value) : kotlinStr(header.value)
+}
+
+export function chartPieArgs(e: Extract<ExprIR, { kind: 'jsx-element' }>, target: 'swift' | 'kotlin', W: string, H: string, left: string, top: string, themeLabel: string): Partial<ChartHostArgs> {
+  const out: Partial<ChartHostArgs> = {}
+  const named = (k: string, v: string): string => (target === 'swift' ? `, ${k}: ${v}` : `, ${k} = ${v}`)
+  const frameAttr = attrOf(e, 'frameSpec')
+  const frame = frameAttr === undefined ? undefined : irToValue(frameAttr, () => undefined)
+  const frameLit = frame?.ok === true ? engineStructLiteral('FrameSpec', frame.value, target) : undefined
+  let extra = ''
+  if (frameLit !== undefined) {
+    out.frame = `frameRectAt(${frameLit}, ${W}, ${H}, ${left}, ${top})`
+  }
+  const pieAttr = attrOf(e, 'pie')
+  const pie = pieAttr === undefined ? undefined : irToValue(pieAttr, () => undefined)
+  if (pie?.ok === true && isPlainRecord(pie.value)) {
+    const arcs = engineStructLiteral('ArcConfig', pie.value['arcs'], target)
+    if (arcs !== undefined) {
+      out.pieArcs = arcs
+      extra += named('arcs', arcs)
+    }
+    const labels = pie.value['labels'] === undefined ? undefined : engineStructLiteral('PieLabelOptions', pie.value['labels'], target)
+    if (labels !== undefined) {
+      extra += named('labels', labels)
+      // Outside labels read on the background, so they take the theme's text; inside ones sit on the slice.
+      if (isPlainRecord(pie.value['labels']) && pie.value['labels']['position'] !== 'inside') out.pieLabelColor = themeLabel
+    }
+    // Outside labels keep within the view (the whole chart unless the box keys say otherwise), as the web's.
+    if (frameLit !== undefined) extra += named('view', `frameViewAt(${frameLit}, ${W}, ${H}, ${left}, ${top})`)
+    if (typeof pie.value['empty'] === 'string' && pie.value['empty'] !== '') extra += named('empty', target === 'swift' ? swiftStr(pie.value['empty']) : kotlinStr(pie.value['empty']))
+    extra += named('measure', target === 'swift' ? 'pyreonChartMeasure' : '::pyreonChartMeasure')
+  }
+  if (extra !== '') out.pieExtra = extra
+  const header = chartTipHeader(e, target)
+  if (out.pieArcs !== undefined && header !== undefined) out.tipHeader = header
+  return out
 }
 
 export interface ChartHostSpec {
@@ -232,6 +319,12 @@ function irToValue(e: ExprIR | undefined, resolve: (name: string) => ExprIR | un
   const lit = literalOf(e, resolve)
   if (lit === undefined) return { ok: false }
   if (lit.kind === 'literal') return { ok: true, value: lit.value }
+  // `-2` parses as a unary minus over a literal, not a literal: fold it, or any option with a negative number reads as non-literal.
+  if (lit.kind === 'unary' && (lit.op === '-' || lit.op === '+')) {
+    const inner = irToValue(lit.argument, resolve)
+    if (inner.ok && typeof inner.value === 'number') return { ok: true, value: lit.op === '-' ? -inner.value : inner.value }
+    return { ok: false }
+  }
   if (lit.kind === 'array') {
     const out: unknown[] = []
     for (const el of lit.elements) {
@@ -842,6 +935,8 @@ function optionLiteralRecord(o: Extract<ExprIR, { kind: 'object' }>, keys: reado
 }
 
 function optionDatumNumber(e: ExprIR | undefined): number | undefined {
+  // An ECharts `null` (or `'-'`) datum is a gap: NaN, which the engine skips or, under connectNulls, bridges.
+  if (e?.kind === 'literal' && (e.value === null || e.value === '-')) return Number.NaN
   if (e?.kind === 'object') return litNumber(objectField(e, 'value'))
   return litNumber(e)
 }
@@ -929,7 +1024,11 @@ const optionNumberLiteral = (value: number): ExprIR => ({
   ...(!Number.isInteger(value) ? { float: true } : {}),
 })
 
-const optionDoubleLiteral = (value: number): ExprIR => ({ kind: 'literal', value, float: true })
+// A NaN (an ECharts `null` datum: a gap) is `0.0 / 0.0` — the engine's own gap idiom, and valid in Swift and Kotlin alike.
+const optionDoubleLiteral = (value: number): ExprIR =>
+  Number.isNaN(value)
+    ? { kind: 'binary', op: '/', left: { kind: 'literal', value: 0, float: true }, right: { kind: 'literal', value: 0, float: true } }
+    : { kind: 'literal', value, float: true }
 
 const mergeStaticOptionObjects = (
   base: Extract<ExprIR, { kind: 'object' }>,
@@ -1097,8 +1196,9 @@ export function desugarOptionChart(
   resolve: (name: string) => ExprIR | undefined,
   warn: (m: string) => void,
 ): Extract<ExprIR, { kind: 'jsx-element' }> | undefined {
-  const lowered = desugarOptionChartHost(e, resolve, warn)
-  if (lowered === undefined || lowered.tag === CHART_TIMELINE_TAG) return lowered
+  const hosted = desugarOptionChartHost(e, resolve, warn)
+  if (hosted === undefined || hosted.tag === CHART_TIMELINE_TAG) return hosted
+  const lowered = withScrollLegend(withFamilyFrame(hosted, e, resolve, warn), e, resolve, warn)
   // `option.toolbox` through the web's own reader: the plot host lowers the
   // whole toolbox, a family host its save button.
   const raw = literalOf(attrOf(e, 'option'), resolve)
@@ -1126,6 +1226,66 @@ export function desugarOptionChart(
   }
   if (Object.keys(cfg).length === 0) return lowered
   return { ...lowered, attrs: [...lowered.attrs.filter((a) => !(a.kind === 'attr' && a.name === 'toolbox')), { kind: 'attr', name: 'toolbox', value: valueToIr(cfg) }, ...brushAttrs] }
+}
+
+
+/**
+ * ECharts' `legend.type: 'scroll'` on native. A horizontal scroll legend keeps
+ * ONE row and pages the rest, which is exactly the engine legend's own pager at
+ * `legendMaxRows: 1` — so a cartesian host pages it, with taps on the arrows.
+ * The pager's look is the engine's ("‹ 2/5 ›" at the row's end), not ECharts'
+ * triangles, and a vertical scroll legend or a family host still wraps.
+ */
+function withScrollLegend(lowered: Extract<ExprIR, { kind: 'jsx-element' }>, e: Extract<ExprIR, { kind: 'jsx-element' }>, resolve: (name: string) => ExprIR | undefined, warn: (m: string) => void): Extract<ExprIR, { kind: 'jsx-element' }> {
+  const raw = literalOf(attrOf(e, 'option'), resolve)
+  if (raw?.kind !== 'object') return lowered
+  const legend = literalOf(objectField(raw, 'legend'), resolve)
+  if (legend?.kind !== 'object' || litString(objectField(legend, 'type')) !== 'scroll') return lowered
+  const vertical = litString(objectField(legend, 'orient')) === 'vertical'
+  const shown = lowered.attrs.some((a) => a.kind === 'attr' && a.name === 'showLegend')
+  if (lowered.tag !== 'PlotChart' || vertical || !shown) {
+    warn(`<OptionChart option.legend.type>: 'scroll' pages the legend on the web; native pages a horizontal legend on a cartesian chart only, so this ${vertical ? 'vertical legend' : lowered.tag} draws every entry, wrapped.`)
+    return lowered
+  }
+  if (lowered.attrs.some((a) => a.kind === 'attr' && a.name === 'legendMaxRows')) return lowered
+  return { ...lowered, attrs: [...lowered.attrs, { kind: 'attr', name: 'legendMaxRows', value: { kind: 'literal', value: 1 } }] }
+}
+
+/** ECharts' box keys — where a placed family chart sits. */
+const FRAME_KEYS: readonly string[] = ['left', 'top', 'right', 'bottom', 'width', 'height']
+
+/** Family hosts ECharts places inside the chart (the web's PLACED_FAMILIES), by the series type each lowers. */
+const PLACED_FAMILY_HOSTS: Readonly<Record<string, string>> = { FunnelChart: 'funnel', TreemapChart: 'treemap', TreeChart: 'tree', SankeyChart: 'sankey', SunburstChart: 'sunburst' }
+
+/**
+ * A placed family host gets its ECharts frame — the default placement per
+ * type (a funnel's 80 / 60 margins, a treemap's 10%, a sunburst's 75% radius)
+ * under the series' own box keys — as the `frameSpec` the host renders into,
+ * exactly as the web's `familyRect` places it. A non-literal option cannot
+ * be framed at compile time; its box keys are named rather than dropped.
+ */
+function withFamilyFrame(lowered: Extract<ExprIR, { kind: 'jsx-element' }>, e: Extract<ExprIR, { kind: 'jsx-element' }>, resolve: (n: string) => ExprIR | undefined, warn: (m: string) => void): Extract<ExprIR, { kind: 'jsx-element' }> {
+  const type = PLACED_FAMILY_HOSTS[lowered.tag]
+  if (type === undefined || lowered.attrs.some((a) => a.kind === 'attr' && a.name === 'frameSpec')) return lowered
+  const raw = literalOf(attrOf(e, 'option'), resolve)
+  const plainOption = raw === undefined ? { ok: false as const } : irToValue(raw, resolve)
+  const series = plainOption.ok && isPlainRecord(plainOption.value) ? plainOption.value['series'] : undefined
+  const s0 = Array.isArray(series) ? series[0] : series
+  if (!isPlainRecord(s0) || s0['type'] !== type) {
+    const rawS = raw?.kind === 'object' ? literalOf(objectField(raw, 'series'), resolve) : undefined
+    const rawS0 = rawS?.kind === 'array' ? literalOf(rawS.elements[0], resolve) : rawS
+    const keys = rawS0?.kind === 'object' ? rawS0.fields.map((f) => f.name).filter((k) => FRAME_KEYS.includes(k) || k === 'center') : []
+    if (keys.length > 0) warn(`<OptionChart option.series[0].${keys[0]}>: placement needs a fully literal option on native; the chart fills its canvas.`)
+    return lowered
+  }
+  return { ...lowered, attrs: [...lowered.attrs, { kind: 'attr', name: 'frameSpec', value: valueToIr(familyFrame(s0)) }] }
+}
+
+/** A host's `frameSpec` attribute as a `FrameSpec` literal, or undefined. */
+export function chartFrameLiteral(e: Extract<ExprIR, { kind: 'jsx-element' }>, target: 'swift' | 'kotlin'): string | undefined {
+  const frameAttr = attrOf(e, 'frameSpec')
+  const frame = frameAttr === undefined ? undefined : irToValue(frameAttr, () => undefined)
+  return frame?.ok === true ? engineStructLiteral('FrameSpec', frame.value, target) : undefined
 }
 
 function desugarOptionChartHost(
@@ -1179,6 +1339,31 @@ function desugarOptionChartHost(
     const attr: AttrIR = { kind: 'attr', name, value }
     if (i < 0) attrs.push(attr)
     else attrs[i] = attr
+  }
+  // ECharts' horizontal bar chart — a category y axis over a value x axis — lowers as the
+  // upright chart with its two axes swapped, drawn in the host's horizontal frame with the
+  // bands counted up from the bottom: exactly how the web facade compiles it.
+  let horizontalOption = false
+  {
+    const firstOf = (v: ExprIR | undefined): ExprIR | undefined => (v?.kind === 'array' ? literalOf(v.elements[0], resolve) : v)
+    const hx = firstOf(literalOf(objectField(raw, 'xAxis'), resolve))
+    const hy = firstOf(literalOf(objectField(raw, 'yAxis'), resolve))
+    const hxType = hx?.kind === 'object' ? litString(objectField(hx, 'type')) : undefined
+    const hyType = hy?.kind === 'object' ? litString(objectField(hy, 'type')) : undefined
+    if (hyType === 'category' && (hxType === 'value' || hxType === 'log')) {
+      const hs = literalOf(objectField(raw, 'series'), resolve)
+      const hList = hs?.kind === 'array' ? hs.elements.map((x) => literalOf(x, resolve)) : [hs]
+      const barsOnly = hList.length > 0 && hList.every((x) => x?.kind === 'object' && litString(objectField(x, 'type')) === 'bar')
+      if (barsOnly) {
+        const swapped: Extract<ExprIR, { kind: 'object' }> = { ...raw, fields: raw.fields.map((f) => (f.name === 'xAxis' ? { ...f, name: 'yAxis' } : f.name === 'yAxis' ? { ...f, name: 'xAxis' } : f)) }
+        raw = swapped
+        horizontalOption = true
+        set('horizontal', lit(true))
+      } else {
+        // ledger: coordinates.axes
+        warn('<OptionChart option.yAxis.type>: a category y axis lays out bar series only; this chart keeps the category on x.')
+      }
+    }
   }
   // `graphic` resolves at COMPILE time through the web facade's own
   // `graphicElements` (`@pyreon/charts/option-layer`), against the option's
@@ -1241,7 +1426,15 @@ function desugarOptionChartHost(
   if (attrOf(e, 'locale') !== undefined) warn('<OptionChart locale>: locale formatting for family options is not used by this native adapter.')
 
   if (kind === 'gauge') {
-    optionFields(series, ['type', 'data', 'min', 'max', 'detail'], 'option.series[0]', warn)
+    // The web facade's own compile of a literal gauge: ECharts' whole dial
+    // (angles, bands, ticks, labels, pointers, anchor, titles, details) and
+    // its placement cross as it computed them.
+    const gaugeCompiled = compiledFamilyPlan(raw, resolve, 'gauge')
+    optionFields(series, ['type', 'data', 'min', 'max', 'detail', ...(gaugeCompiled !== undefined ? ['name', ...GAUGE_DIAL_KEYS, 'left', 'top', 'right', 'bottom', 'width', 'height'] : [])], 'option.series[0]', warn)
+    if (gaugeCompiled !== undefined && gaugeCompiled.plan.kind === 'gauge') {
+      set('dial', valueToIr(gaugeCompiled.plan.dial))
+      set('frameSpec', valueToIr(familyFrame(gaugeCompiled.series)))
+    }
     const data = literalOf(objectField(series, 'data'), resolve)
     const firstDatum = data?.kind === 'array' ? literalOf(data.elements[0], resolve) : undefined
     const value = firstDatum === undefined ? undefined : firstDatum.kind === 'object' ? objectField(firstDatum, 'value') : firstDatum
@@ -1263,7 +1456,10 @@ function desugarOptionChartHost(
   }
 
   if (kind === 'pie') {
-    optionFields(series, ['type', 'data', 'radius', 'label'], 'option.series[0]', warn)
+    // The web facade's own compile of a literal pie: its ECharts arcs, labels,
+    // empty circle and placement cross as it computed them.
+    const pieCompiled = compiledFamilyPlan(raw, resolve, 'pie')
+    optionFields(series, ['type', 'data', 'radius', 'label', ...(pieCompiled !== undefined ? ['name', 'center', ...PIE_SHAPE_KEYS] : [])], 'option.series[0]', warn)
     const data = literalOf(objectField(series, 'data'), resolve)
     if (data?.kind !== 'array') {
       warn('<OptionChart option.series[0].data>: a native pie needs a literal data array; emitting nothing.')
@@ -1296,6 +1492,25 @@ function desugarOptionChartHost(
     const label = literalOf(objectField(series, 'label'), resolve)
     const labelShow = label === undefined ? undefined : objectField(label, 'show')
     if (labelShow?.kind === 'literal' && labelShow.value === false) set('showLabels', lit(false))
+    if (pieCompiled !== undefined && pieCompiled.plan.kind === 'pie') {
+      set('pie', valueToIr(pieCompiled.plan.pie))
+      set('frameSpec', valueToIr(familyFrame(pieCompiled.series)))
+      // No formatter: the tooltip is ECharts' default rows under the series name, as the web's.
+      const tip = literalOf(objectField(raw, 'tooltip'), resolve)
+      const shaped = tip !== undefined && (objectField(tip, 'formatter') !== undefined || objectField(tip, 'valueFormatter') !== undefined)
+      if (!shaped) set('tooltipHeader', lit(litString(objectField(series, 'name')) ?? ''))
+      // A datum's own itemStyle.color, as the web plan resolved it.
+      const colors = pieCompiled.plan.rows.map((r) => r.color)
+      if (colors.some((c) => c !== undefined)) {
+        const at = attrs.findIndex((a) => a.kind === 'attr' && a.name === 'data')
+        const dataAttr = at >= 0 ? attrs[at] : undefined
+        if (dataAttr?.kind === 'attr' && dataAttr.value.kind === 'array') {
+          const withColor = dataAttr.value.elements.map((row, i) => (row.kind === 'object' ? { ...row, fields: [...row.fields, { name: 'color', value: lit(colors[i] ?? CHART_HOST_PALETTE[i % CHART_HOST_PALETTE.length]!) }] } : row))
+          set('data', { kind: 'array', elements: withColor })
+          set('color', { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: 'color' } })
+        }
+      }
+    }
     return { kind: 'jsx-element', tag: 'PieChart', attrs, children: [] }
   }
 
@@ -1814,7 +2029,7 @@ function desugarOptionChartHost(
   }
 
   if (kind === 'funnel') {
-    optionFields(series, ['type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis'], 'option.series[0]', warn)
+    optionFields(series, ['type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis', ...FRAME_KEYS], 'option.series[0]', warn)
     const data = literalOf(objectField(series, 'data'), resolve)
     if (data?.kind !== 'array') {
       warn('<OptionChart option.series[0].data>: a native funnel needs a literal data array; emitting nothing.')
@@ -1840,11 +2055,14 @@ function desugarOptionChartHost(
       if ((name === 'sort' && litString(value) !== undefined) || (name === 'gap' && litNumber(value) !== undefined)) funnelFields.push({ name, value: value! })
     }
     if (funnelFields.length > 0) set('funnel', { kind: 'object', fields: funnelFields })
+    // No formatter: ECharts' default rows under the series name, as the web's.
+    const funnelTip = literalOf(objectField(raw, 'tooltip'), resolve)
+    if (funnelTip?.kind === 'object' && objectField(funnelTip, 'formatter') === undefined && objectField(funnelTip, 'valueFormatter') === undefined) set('tooltipHeader', lit(litString(objectField(series, 'name')) ?? ''))
     return { kind: 'jsx-element', tag: 'FunnelChart', attrs, children: [] }
   }
 
   if (kind === 'treemap' || kind === 'sunburst' || kind === 'tree') {
-    optionFields(series, ['type', 'name', 'data', 'label', 'itemStyle', 'levels', 'radius', 'nodeClick', 'roam', 'symbolSize', 'orient'], 'option.series[0]', warn)
+    optionFields(series, ['type', 'name', 'data', 'label', 'itemStyle', 'levels', 'radius', 'nodeClick', 'roam', 'symbolSize', 'orient', ...FRAME_KEYS, ...(kind === 'sunburst' ? ['center'] : [])], 'option.series[0]', warn)
     const data = optionTreeNodes(objectField(series, 'data'), resolve, 'option.series[0].data', warn)
     if (data === undefined) return undefined
     set('data', data)
@@ -1869,7 +2087,7 @@ function desugarOptionChartHost(
   }
 
   if (kind === 'sankey' || kind === 'graph') {
-    optionFields(series, ['type', 'name', 'data', 'nodes', 'links', 'edges', 'label', 'itemStyle', 'lineStyle', 'layout', 'roam', 'symbolSize', 'nodeWidth', 'nodeGap', 'nodeAlign', 'orient'], 'option.series[0]', warn)
+    optionFields(series, ['type', 'name', 'data', 'nodes', 'links', 'edges', 'label', 'itemStyle', 'lineStyle', 'layout', 'roam', 'symbolSize', 'nodeWidth', 'nodeGap', 'nodeAlign', 'orient', ...(kind === 'sankey' ? FRAME_KEYS : [])], 'option.series[0]', warn)
     if (litString(objectField(series, 'orient')) === 'vertical') set('orient', lit('vertical'))
     const rawNodes = literalOf(objectField(series, 'data') ?? objectField(series, 'nodes'), resolve)
     const rawLinks = literalOf(objectField(series, 'links') ?? objectField(series, 'edges'), resolve)
@@ -1985,6 +2203,12 @@ function desugarOptionChartHost(
       return undefined
     }
     const seriesObjects: Extract<ExprIR, { kind: 'object' }>[] = []
+    // The web facade's own compile of a literal option: every series and spec
+    // field it resolves crosses from here, so the two targets read ONE
+    // interpretation of the option instead of two that drift. The keys it
+    // carries are allowed only when it ran.
+    const compiledCart = compileLiteralOption(raw, resolve, rawSeries.elements.length)
+    const fwd = compiledCart !== undefined
     for (let si = 0; si < rawSeries.elements.length; si++) {
       const s = literalOf(rawSeries.elements[si], resolve)
       const sk = s === undefined ? undefined : litString(objectField(s, 'type'))
@@ -1992,7 +2216,7 @@ function desugarOptionChartHost(
         warn(`<OptionChart option.series[${si}].type>: this cartesian adapter needs line, bar, pictorialBar, or scatter series; emitting nothing.`)
         return undefined
       }
-      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras', 'sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'emphasis', 'select', 'blur', 'selectedMode', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'label', 'yAxisIndex', 'xAxisIndex'], `option.series[${si}]`, warn)
+      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras', 'sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'emphasis', 'select', 'blur', 'selectedMode', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'label', 'yAxisIndex', 'xAxisIndex', ...(fwd ? FORWARDED_SERIES_KEYS : [])], `option.series[${si}]`, warn)
       seriesObjects.push(s)
     }
     const xAxisTop = literalOf(objectField(raw, 'xAxis'), resolve)
@@ -2052,7 +2276,8 @@ function desugarOptionChartHost(
       warn('<OptionChart option.xAxis.data>: native cartesian options need a literal category array; emitting nothing.')
       return undefined
     }
-    optionFields(xAxis!, ['type', 'data', 'show', 'name', 'inverse', 'position', 'offset'], 'option.xAxis', warn)
+    optionFields(xAxis!, ['type', 'data', 'show', 'name', 'inverse', 'position', 'offset', ...(fwd ? FORWARDED_AXIS_KEYS : [])], 'option.xAxis', warn)
+    if (fwd) forwardedAxisSubfields(xAxis!, 'option.xAxis', warn)
     const x2Data = x2AxisLit?.kind === 'object' ? literalOf(objectField(x2AxisLit, 'data'), resolve) : undefined
     const x2Mapped = x2Value || (!valueX && x2Data?.kind === 'array' && x2Data.elements.length === categories.elements.length && x2Data.elements.every((x) => litString(x) !== undefined || litNumber(x) !== undefined))
     if (xAxisEntries.length > 2 || (xAxisEntries.length === 2 && !x2Mapped)) warn('<OptionChart option.xAxis>: a second x axis maps as a value axis, or as a second set of category labels with the same count; other x axes were ignored.')
@@ -2116,11 +2341,14 @@ function desugarOptionChartHost(
         ...(valueX && sharedXs !== undefined ? [{ name: 'xv', value: { kind: 'literal' as const, value: sharedXs[i] ?? 0, ...(sharedXs.some((v) => !Number.isInteger(v)) ? { float: true } : {}) } }] : []),
         ...seriesValues.map((values, si) => ({
           name: `s${si}`,
-          value: {
-            kind: 'literal' as const,
-            value: values[i]!,
-            ...(seriesFloat[si] ? { float: true } : {}),
-          },
+          // A gap (an ECharts null) is NaN, spelled as the engine's `0.0 / 0.0`.
+          value: Number.isNaN(values[i]!)
+            ? optionDoubleLiteral(Number.NaN)
+            : {
+                kind: 'literal' as const,
+                value: values[i]!,
+                ...(seriesFloat[si] ? { float: true } : {}),
+              },
         })),
       ],
     }))
@@ -2138,7 +2366,9 @@ function desugarOptionChartHost(
       const sk = litString(objectField(s, 'type'))!
       const stacked = objectField(s, 'stack') !== undefined
       const barLike = sk === 'bar' || sk === 'pictorialBar'
-      const factory = barLike ? (stacked ? 'stackedBars' : barCount > 1 ? 'groupedBars' : 'bars') : sk === 'scatter' ? 'points' : objectField(s, 'areaStyle') !== undefined ? 'area' : 'line'
+      // A line with an areaStyle is a LINE that also fills (the web facade's reading); only without a compile is it the area mark.
+      const filledLine = compiledCart !== undefined && compiledCart.spec.series[si]?.areaFill === true
+      const factory = barLike ? (stacked ? 'stackedBars' : barCount > 1 ? 'groupedBars' : 'bars') : sk === 'scatter' ? 'points' : objectField(s, 'areaStyle') !== undefined && !filledLine ? 'area' : 'line'
       const opts: { name: string; value: ExprIR }[] = []
       const name = objectField(s, 'name')
       if (litString(name) !== undefined) opts.push({ name: 'label', value: name! })
@@ -2342,6 +2572,7 @@ function desugarOptionChartHost(
         const bounding = px('symbolBoundingData')
         if (bounding !== undefined) opts.push({ name: 'symbolBoundingData', value: optionDoubleLiteral(bounding) })
       }
+      if (compiledCart !== undefined) forwardCompiledSeries(opts, compiledCart.spec.series[si]!)
       return {
         kind: 'call',
         callee: ident(factory),
@@ -2352,6 +2583,24 @@ function desugarOptionChartHost(
       }
     })
     set('marks', { kind: 'array', elements: marks })
+    if (compiledCart !== undefined) {
+      const specLit = optionSpecLiteral(compiledCart.spec)
+      // The swapped compile is upright; the horizontal frame's bottom-up bands are the web's own.
+      if (horizontalOption) specLit.fields.push({ name: 'bandsFromBottom', value: lit(true) })
+      if (specLit.fields.length > 0) set('optionSpec', specLit)
+    }
+    // ECharts' default tooltip content (no formatter): its cells come from the engine's
+    // tooltipAxisCells / tooltipItemCells — the trigger ('item' unless the option says 'axis')
+    // and which series the option NAMED, since ECharts hides a generated name.
+    const tipOpt = literalOf(objectField(raw, 'tooltip'), resolve)
+    if (tipOpt?.kind === 'object' && objectField(tipOpt, 'formatter') === undefined && objectField(tipOpt, 'valueFormatter') === undefined) {
+      const trig = litString(objectField(tipOpt, 'trigger')) === 'axis' ? 'axis' : 'item'
+      const named = seriesObjects.map((so) => {
+        const nm = litString(objectField(so, 'name'))
+        return lit(nm !== undefined && nm !== '')
+      })
+      set('tooltipCells', { kind: 'object', fields: [{ name: 'trigger', value: lit(trig) }, { name: 'named', value: { kind: 'array', elements: named } }] })
+    }
     const annotations: ExprIR[] = []
     for (let si = 0; si < seriesObjects.length; si++) {
       const markArea = literalOf(objectField(seriesObjects[si]!, 'markArea'), resolve)
@@ -2568,7 +2817,8 @@ function desugarOptionChartHost(
     for (let ai = 2; ai < yAxisList.length; ai++) {
       const a = yAxisList[ai]!
       if (a.kind !== 'object') continue
-      optionFields(a, ['type', 'show', 'name', 'min', 'max', 'position', 'offset', 'splitLine'], `option.yAxis[${ai}]`, warn)
+      optionFields(a, ['type', 'show', 'name', 'min', 'max', 'position', 'offset', 'splitLine', ...(fwd ? FORWARDED_AXIS_KEYS : [])], `option.yAxis[${ai}]`, warn)
+      if (fwd) forwardedAxisSubfields(a, `option.yAxis[${ai}]`, warn)
       const fields: { name: string; value: ExprIR }[] = [{ name: 'side', value: lit(litString(objectField(a, 'position')) === 'left' ? 'left' : 'right') }]
       const amin = litNumber(objectField(a, 'min'))
       const amax = litNumber(objectField(a, 'max'))
@@ -2584,7 +2834,8 @@ function desugarOptionChartHost(
       const yAxis = yAxisList[ai]!
       if (yAxis.kind !== 'object') continue
       const path = yAxisRaw?.kind === 'array' ? `option.yAxis[${ai}]` : 'option.yAxis'
-      optionFields(yAxis, ['type', 'show', 'name', 'min', 'max', 'splitLine', 'inverse', 'position', 'offset'], path, warn)
+      optionFields(yAxis, ['type', 'show', 'name', 'min', 'max', 'splitLine', 'inverse', 'position', 'offset', ...(fwd ? FORWARDED_AXIS_KEYS : [])], path, warn)
+      if (fwd) forwardedAxisSubfields(yAxis, path, warn)
       const right = ai === 1
       const yOffsetLit = litNumber(objectField(yAxis, 'offset'))
       if (yOffsetLit !== undefined) set(right ? 'y2Offset' : 'yOffset', lit(yOffsetLit))
@@ -2625,6 +2876,24 @@ function desugarOptionChartHost(
         if (z !== undefined) {
           if (z.inside) set('dataZoom', lit(true))
           if (z.slider) set('navigator', lit(true))
+          // Under ECharts' grid the strip is ECharts' own, in the grid's bottom
+          // margin — the web's `zoomedView` makes the same choice.
+          if (z.slider && compiled.spec.gridBottom !== undefined) {
+            const box = z.sliderBox ?? { left: NO_FRAME_LENGTH, top: NO_FRAME_LENGTH, right: NO_FRAME_LENGTH, bottom: NO_FRAME_LENGTH, width: NO_FRAME_LENGTH, height: NO_FRAME_LENGTH, brush: true }
+            const len = (f: { mode: string; amount: number }): ExprIR => ({ kind: 'object', fields: [{ name: 'mode', value: lit(f.mode) }, { name: 'amount', value: optionDoubleLiteral(f.amount) }] })
+            set('navigatorBox', {
+              kind: 'object',
+              fields: [
+                { name: 'left', value: len(box.left) },
+                { name: 'top', value: len(box.top) },
+                { name: 'right', value: len(box.right) },
+                { name: 'bottom', value: len(box.bottom) },
+                { name: 'width', value: len(box.width) },
+                { name: 'height', value: len(box.height) },
+                { name: 'brush', value: lit(box.brush) },
+              ],
+            })
+          }
           const win = (a: number, b: number): ExprIR => ({ kind: 'object', fields: [{ name: 'start', value: optionDoubleLiteral(a) }, { name: 'end', value: optionDoubleLiteral(b) }] })
           if (z.window.start > 0 || z.window.end < 1) set('initialZoom', win(z.window.start, z.window.end))
           if (z.lock || z.minSpan > 0 || z.maxSpan < 1) {
@@ -3035,7 +3304,7 @@ export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = 
     render: (items, a, t) => `renderFunnel(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${a.options})`,
     hit: (items, x, y, a, t) => `hitFunnel(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${x}, ${y}, ${a.options})`,
     legend: (items) => `funnelLegend(${items})`,
-    tooltip: (items, x, y, a, t) => `funnelTip(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${x}, ${y}, ${a.options})`,
+    tooltip: (items, x, y, a, t) => (a.tipHeader !== undefined ? `funnelTipRowsWith(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${x}, ${y}, ${a.tipHeader}, ${a.options})` : `funnelTip(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${x}, ${y}, ${a.options})`),
   },
   PieChart: {
     data: 'data',
@@ -3047,13 +3316,15 @@ export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = 
     ],
     defaultHeight: 240,
     // `innerRatio` carries the host's `innerRadius` (a 0..1 fraction of the fitted radius).
-    render: (items, a, t) => `renderPie(${items}, ${box00(a, t)}, ${t.pieOptions(a)})`,
+    // An OptionChart-placed pie draws into its frame, laid round by ECharts' arcs (the web host's `frame` / `pie`).
+    render: (items, a, t) => `renderPie(${items}, ${a.frame ?? box00(a, t)}, ${t.pieOptions(a)})`,
     hit: (items, x, y, a, t) => {
+      if (a.pieArcs !== undefined) return `pieHitWith(${items}, ${a.frame ?? box00(a, t)}, ${a.innerRatio}, ${a.pieArcs}, ${x}, ${y})`
       const fit = `fitCircle(${box00(a, t)})`
       return `hitArc(layoutArcs(${items}), ${fit}.center, ${fit}.radius, ${fit}.radius * ${a.innerRatio}, ${t.pt(x, y)})`
     },
     legend: (items) => `pieLegend(${items})`,
-    tooltip: (items, x, y, a, t) => `pieTip(${items}, ${box00(a, t)}, ${a.innerRatio}, ${x}, ${y})`,
+    tooltip: (items, x, y, a, t) => (a.pieArcs !== undefined && a.tipHeader !== undefined ? `pieTipRowsWith(${items}, ${a.frame ?? box00(a, t)}, ${a.innerRatio}, ${a.pieArcs}, ${x}, ${y}, ${a.tipHeader})` : a.pieArcs !== undefined ? `pieTipWith(${items}, ${a.frame ?? box00(a, t)}, ${a.innerRatio}, ${a.pieArcs}, ${x}, ${y})` : `pieTip(${items}, ${box00(a, t)}, ${a.innerRatio}, ${x}, ${y})`),
   },
 }
 
@@ -3538,6 +3809,22 @@ export function chartThemeDefaultFields(spec: ChartHostSpec, t: ChartThemeText):
   return [...fields].sort((a, b) => at(a) - at(b)).map((f) => [f, t[CHART_THEME_SOURCE[f]]] as const)
 }
 
+/**
+ * An OptionChart-lowered PlotChart's `tooltipCells` (the desugar sets it when
+ * the option's tooltip has no formatter): ECharts' trigger and which series
+ * the option named. Undefined otherwise — the host then keeps its own lines.
+ */
+export function chartTooltipCells(e: Extract<ExprIR, { kind: 'jsx-element' }>): { trigger: 'axis' | 'item'; named: boolean[] } | undefined {
+  const a = attrOf(e, 'tooltipCells')
+  if (a === undefined || a.kind !== 'object') return undefined
+  const trigger = objectField(a, 'trigger')
+  const named = objectField(a, 'named')
+  return {
+    trigger: trigger?.kind === 'literal' && trigger.value === 'axis' ? 'axis' : 'item',
+    named: named?.kind === 'array' ? named.elements.map((x) => x.kind === 'literal' && x.value === true) : [],
+  }
+}
+
 export function chartTooltipFields(t: ChartThemeText): readonly (readonly [string, string])[] {
   return [
     ['fontSize', t.fontSize],
@@ -3578,10 +3865,244 @@ export const FRAME_CHART_HOSTS: Readonly<Record<string, true>> = { GaugeChart: t
  */
 export const PLOT_SPREAD_MARKS: readonly string[] = ['bollinger']
 
+/**
+ * Each `<PlotChart>` mark's palette slot, from its LITERAL label — the web's
+ * `resolveMarks` rule (`labelSlots`): marks sharing a label share a colour. A
+ * mark with no literal label keeps its own slot (`Series N`), so a chart
+ * without shared labels is coloured exactly as before.
+ */
+export function plotMarkColorSlots(marks: readonly ExprIR[]): number[] {
+  const labels: string[] = []
+  for (let k = 0; k < marks.length; k++) {
+    const m = marks[k]!
+    let label = `Series ${k + 1}`
+    if (m.kind === 'call' && m.callee.kind === 'identifier') {
+      const callee = m.callee.name
+      const optsArg = callee === 'bubble' || callee === 'band' || PLOT_INDICATOR_MARKS[callee]?.takesWindow === true ? m.args[2] : m.args[1]
+      const own = optsArg?.kind === 'object' ? litString(objectField(optsArg, 'label')) : undefined
+      if (own !== undefined) label = own
+    }
+    labels.push(label)
+  }
+  return labelSlots(labels)
+}
+
 export const PLOT_INDICATOR_MARKS: Readonly<Record<string, { readonly fn: string; readonly kind: string; readonly takesWindow: boolean }>> = {
   sma: { fn: 'smaValues', kind: 'line', takesWindow: true },
   ema: { fn: 'emaValues', kind: 'line', takesWindow: true },
   trend: { fn: 'trendValues', kind: 'line', takesWindow: false },
+}
+
+/**
+ * The web facade's compile of an OptionChart's option, when every part of it
+ * is literal and it yields exactly the series the native marks are built
+ * from. Absent otherwise — the hand lowering then stands alone.
+ */
+function compileLiteralOption(raw: Extract<ExprIR, { kind: 'object' }>, resolve: (n: string) => ExprIR | undefined, seriesCount: number): ReturnType<typeof compileOption> | undefined {
+  const plainOption = irToValue(raw, resolve)
+  if (!plainOption.ok || !isPlainRecord(plainOption.value)) return undefined
+  const compiled = compileOption(plainOption.value as never)
+  return compiled.spec.series.length === seriesCount ? compiled : undefined
+}
+
+/**
+ * Series fields the facade resolves from ECharts' semantics that the hand
+ * lowering does not re-derive: they cross as the facade computed them. Each
+ * is a literal Series field in `PLOT_MARK_OPTION_FIELDS`.
+ */
+const FORWARDED_SERIES_FIELDS: readonly string[] = [
+  'radius', 'smoothAmount', 'smoothMonotone', 'connectNulls', 'areaFill', 'areaOpacity', 'areaColor', 'areaOrigin', 'areaOriginAt',
+  'symbol', 'symbolHollow', 'symbolShow', 'showValues', 'labelPosition', 'labelDistance', 'labelBorderColor', 'labelBorderWidth',
+  'labelRotate', 'labelOffset', 'labelAlign', 'labelVerticalAlign',
+]
+
+/** Series option keys that cross through the facade's compile (see FORWARDED_SERIES_FIELDS). */
+const FORWARDED_SERIES_KEYS: readonly string[] = ['smooth', 'smoothMonotone', 'connectNulls', 'showAllSymbol']
+
+/** Axis option keys that cross through the facade's compile. */
+const FORWARDED_AXIS_KEYS: readonly string[] = ['axisLabel', 'axisTick', 'axisLine', 'splitLine', 'boundaryGap', 'scale', 'splitNumber', 'splitArea', 'minorTick', 'minorSplitLine']
+
+/** The sub-keys of a forwarded axis key that the compile carries; the rest (a label `formatter`, …) are named, not dropped. */
+const FORWARDED_AXIS_SUBKEYS: Readonly<Record<string, readonly string[]>> = {
+  axisLabel: ['rotate', 'interval', 'margin', 'inside', 'show'],
+  axisTick: ['show', 'length', 'inside', 'alignWithLabel', 'lineStyle'],
+  axisLine: ['show', 'onZero', 'lineStyle'],
+  splitLine: ['show', 'lineStyle'],
+  splitArea: ['show', 'areaStyle'],
+  minorTick: ['show', 'splitNumber', 'length', 'lineStyle'],
+  minorSplitLine: ['show', 'lineStyle'],
+}
+
+function forwardedAxisSubfields(axis: ExprIR, path: string, warn: (m: string) => void): void {
+  for (const [key, allowed] of Object.entries(FORWARDED_AXIS_SUBKEYS)) {
+    const sub = objectField(axis, key)
+    if (sub !== undefined) optionFields(sub, allowed, `${path}.${key}`, warn)
+  }
+}
+
+/** The ChartSpec fields that cross from the facade's compile (the rest the hand lowering sets itself). */
+const FORWARDED_SPEC_FIELDS: readonly string[] = [
+  'boundaryGap', 'yZero', 'ySplit', 'barLayout', 'barGap', 'barCategoryGap', 'yMin', 'xSplit', 'xZero', 'xMin', 'xMax', 'xMinData', 'xMaxData',
+  'yMax', 'yMinData', 'yMaxData', 'gridLeft', 'reserveLeft', 'gridTop', 'gridRight', 'gridBottom', 'gridContain',
+  'xLabels', 'xLabelAngle', 'xLabelInterval', 'xLabelMargin', 'xLabelInside', 'yLabelAngle', 'yLabelMargin', 'yLabelInside',
+  'xAxisLine', 'yAxisLine', 'y2AxisLine', 'xAxisOnZero', 'yAxisOnZero', 'y2Grid', 'xAxisLineColor', 'yAxisLineColor', 'xAxisLineWidth', 'yAxisLineWidth',
+  'xTicks', 'yTicks', 'xTickLength', 'yTickLength', 'xTickInside', 'yTickInside', 'xTickColor', 'yTickColor', 'xTickBands',
+  'gridColor', 'gridWidth', 'gridDash', 'xGrid', 'xGridColor', 'xGridWidth', 'xGridDash',
+  'ySplitArea', 'xSplitArea', 'yMinorSplit', 'yMinorSplitColor', 'yMinorSplitWidth', 'xMinorSplit', 'xMinorSplitColor', 'xMinorSplitWidth',
+  'yMinorTicks', 'yMinorTickLength', 'yMinorTickColor', 'xMinorTicks', 'xMinorTickLength', 'xMinorTickColor',
+]
+
+/** A plain value as a literal the emitters read: numbers as Doubles, arrays and objects recursively. */
+function forwardedLiteral(v: unknown): ExprIR | undefined {
+  if (typeof v === 'number') return Number.isFinite(v) ? optionDoubleLiteral(v) : undefined
+  if (typeof v === 'string' || typeof v === 'boolean') return lit(v)
+  if (Array.isArray(v)) {
+    const els: ExprIR[] = []
+    for (const x of v) {
+      const e = forwardedLiteral(x)
+      if (e === undefined) return undefined
+      els.push(e)
+    }
+    return { kind: 'array', elements: els }
+  }
+  if (isPlainRecord(v)) {
+    const fields: { name: string; value: ExprIR }[] = []
+    for (const [k, x] of Object.entries(v)) {
+      const e = forwardedLiteral(x)
+      if (e === undefined) return undefined
+      fields.push({ name: k, value: e })
+    }
+    return { kind: 'object', fields }
+  }
+  return undefined
+}
+
+/** Put the compiled series' forwarded fields on a mark's options, replacing what the hand lowering set for the same name. */
+function forwardCompiledSeries(opts: { name: string; value: ExprIR }[], series: Record<string, unknown> | object): void {
+  const rec = series as Record<string, unknown>
+  for (const name of FORWARDED_SERIES_FIELDS) {
+    const v = rec[name]
+    if (v === undefined) continue
+    const e = forwardedLiteral(v)
+    if (e === undefined) continue
+    const at = opts.findIndex((o) => o.name === name)
+    if (at >= 0) opts[at] = { name, value: e }
+    else opts.push({ name, value: e })
+  }
+}
+
+/** The compiled spec's forwarded fields as one object literal (the synthesized host's `optionSpec`). */
+function optionSpecLiteral(spec: Record<string, unknown> | object): Extract<ExprIR, { kind: 'object' }> {
+  const rec = spec as Record<string, unknown>
+  const fields: { name: string; value: ExprIR }[] = []
+  for (const name of FORWARDED_SPEC_FIELDS) {
+    const e = rec[name] === undefined ? undefined : forwardedLiteral(rec[name])
+    if (e !== undefined) fields.push({ name, value: e })
+  }
+  return { kind: 'object', fields }
+}
+
+/** The generated `ChartSpec`'s field order — Swift's memberwise init takes its arguments in it. */
+const CHART_SPEC_ORDER: readonly string[] = CHART_ENGINE_STRUCTS.find((s) => s.name === 'ChartSpec')?.fields.map((f) => f.name) ?? []
+
+/**
+ * A synthesized host's `optionSpec` fields, split by where each goes in the
+ * spec's argument list: `early` sit between `series` and `categories`, `late`
+ * among the literal switches. Each is a plain value (number, string, boolean,
+ * number array, or a `BarLength` object), in struct order.
+ */
+export function optionSpecArgs(e: Extract<ExprIR, { kind: 'jsx-element' }>): { early: { name: string; value: unknown }[]; late: { name: string; value: unknown }[] } {
+  const early: { name: string; value: unknown }[] = []
+  const late: { name: string; value: unknown }[] = []
+  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'optionSpec')
+  if (attr === undefined || attr.kind !== 'attr' || attr.value.kind !== 'object') return { early, late }
+  const cats = CHART_SPEC_ORDER.indexOf('categories')
+  const entries: { name: string; value: unknown; at: number }[] = []
+  for (const f of attr.value.fields) {
+    const v = irToValue(f.value, () => undefined)
+    if (!v.ok) continue
+    entries.push({ name: f.name, value: v.value, at: CHART_SPEC_ORDER.indexOf(f.name) })
+  }
+  entries.sort((a, b) => a.at - b.at)
+  for (const en of entries) (en.at < cats ? early : late).push({ name: en.name, value: en.value })
+  return { early, late }
+}
+
+/** The index of a ChartSpec field in the generated struct (for ordering literal arguments). */
+export function chartSpecFieldIndex(name: string): number {
+  return CHART_SPEC_ORDER.indexOf(name)
+}
+
+/**
+ * The web facade's family compile of a literal option, when it is the given
+ * plan kind: the plan plus the first series (its placement keys). Absent when
+ * the option is not literal or compiles to another kind.
+ */
+function compiledFamilyPlan(raw: Extract<ExprIR, { kind: 'object' }>, resolve: (n: string) => ExprIR | undefined, kind: string): { plan: NonNullable<ReturnType<typeof compileFamily>>['plan']; series: Record<string, unknown> } | undefined {
+  // The tooltip never shapes the plan, and native runs no formatter — so a function there
+  // (a `valueFormatter`) must not cost the chart its arcs, labels and placement.
+  const planInput: Extract<ExprIR, { kind: 'object' }> = { ...raw, fields: raw.fields.filter((f) => f.name !== 'tooltip') }
+  const plainOption = irToValue(planInput, resolve)
+  if (!plainOption.ok || !isPlainRecord(plainOption.value)) return undefined
+  const compiled = compileFamily(plainOption.value as never)
+  if (compiled === null || compiled.plan.kind !== kind) return undefined
+  const s = plainOption.value['series']
+  const s0 = Array.isArray(s) ? s[0] : s
+  return isPlainRecord(s0) ? { plan: compiled.plan, series: s0 } : undefined
+}
+
+/**
+ * A plain value (a web-compiled engine struct: a pie's `ArcConfig`, a gauge's
+ * `DialSpec`, a `FrameSpec`) as a Swift or Kotlin constructor call. The shape
+ * comes from the GENERATED struct itself (`CHART_ENGINE_STRUCTS`), field by
+ * field in declaration order, so Swift's order-sensitive memberwise init and
+ * each field's numeric type (Double vs Int) can never drift from the engine.
+ * Returns undefined when the value does not fit the struct.
+ */
+export function engineStructLiteral(structName: string, value: unknown, target: 'swift' | 'kotlin'): string | undefined {
+  const struct = CHART_ENGINE_STRUCTS.find((st) => st.name === structName)
+  if (struct === undefined || !isPlainRecord(value)) return undefined
+  const args: string[] = []
+  for (const f of struct.fields) {
+    const v = value[f.name]
+    const optional = f.type.kind === 'union' && f.type.branches.some((b) => b.kind === 'undefined')
+    if (v === undefined) {
+      if (optional) continue
+      return undefined
+    }
+    const type = optional && f.type.kind === 'union' ? f.type.branches.find((b) => b.kind !== 'undefined')! : f.type
+    const text = engineValueLiteral(type, v, target)
+    if (text === undefined) return undefined
+    args.push(target === 'swift' ? `${f.name}: ${text}` : `${f.name} = ${text}`)
+  }
+  return `${structName}(${args.join(', ')})`
+}
+
+function engineValueLiteral(type: TypeIR, v: unknown, target: 'swift' | 'kotlin'): string | undefined {
+  if (type.kind === 'typeRef' && type.name === 'Double') return typeof v === 'number' && Number.isFinite(v) ? chartDouble(v) : undefined
+  if (type.kind === 'number') return typeof v === 'number' && Number.isInteger(v) ? String(v) : typeof v === 'number' && type.float === true ? chartDouble(v) : undefined
+  if (type.kind === 'boolean') return typeof v === 'boolean' ? String(v) : undefined
+  if (type.kind === 'string') return typeof v === 'string' ? (target === 'swift' ? swiftStr(v) : kotlinStr(v)) : undefined
+  if (type.kind === 'array') {
+    if (!Array.isArray(v)) return undefined
+    const items: string[] = []
+    for (const x of v) {
+      const t = engineValueLiteral(type.element, x, target)
+      if (t === undefined) return undefined
+      items.push(t)
+    }
+    if (target === 'swift') return `[${items.join(', ')}]`
+    return items.length === 0 ? `listOf<${kotlinElementType(type.element)}>()` : `listOf(${items.join(', ')})`
+  }
+  if (type.kind === 'typeRef') return engineStructLiteral(type.name, v, target)
+  return undefined
+}
+
+function kotlinElementType(t: TypeIR): string {
+  if (t.kind === 'typeRef') return t.name
+  if (t.kind === 'number') return 'Int'
+  if (t.kind === 'boolean') return 'Boolean'
+  return 'String'
 }
 
 /** Mark constructor → the `Series.kind` it produces. `bubble` carries a radius accessor and is declined by name. */
@@ -3617,6 +4138,14 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'width', kind: 'number', default: 2 },
   { name: 'radius', kind: 'number', default: 3 },
   { name: 'label', kind: 'string' },
+  { name: 'smoothAmount', kind: 'number' },
+  { name: 'smoothMonotone', kind: 'string' },
+  { name: 'connectNulls', kind: 'boolean' },
+  { name: 'areaFill', kind: 'boolean' },
+  { name: 'areaOpacity', kind: 'number' },
+  { name: 'areaColor', kind: 'string' },
+  { name: 'areaOrigin', kind: 'string' },
+  { name: 'areaOriginAt', kind: 'number' },
   { name: 'showValues', kind: 'boolean', default: false },
   { name: 'axis', kind: 'string' },
   { name: 'axisExtra', kind: 'number' },
@@ -3629,6 +4158,8 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'symbolOffset', kind: 'numbers' },
   { name: 'symbolPosition', kind: 'string' },
   { name: 'symbolRotate', kind: 'number' },
+  { name: 'symbolHollow', kind: 'boolean' },
+  { name: 'symbolShow', kind: 'string' },
   { name: 'symbolClip', kind: 'boolean' },
   { name: 'symbolBoundingData', kind: 'number' },
   { name: 'negativeColor', kind: 'string' },
@@ -3636,6 +4167,14 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'labelColor', kind: 'string' },
   { name: 'labelSize', kind: 'number' },
   { name: 'labelRich', kind: 'rich' },
+  { name: 'labelPosition', kind: 'string' },
+  { name: 'labelDistance', kind: 'number' },
+  { name: 'labelBorderColor', kind: 'string' },
+  { name: 'labelBorderWidth', kind: 'number' },
+  { name: 'labelRotate', kind: 'number' },
+  { name: 'labelOffset', kind: 'numbers' },
+  { name: 'labelAlign', kind: 'string' },
+  { name: 'labelVerticalAlign', kind: 'string' },
   { name: 'focus', kind: 'string' },
   { name: 'emphasisColor', kind: 'string' },
   { name: 'selectColor', kind: 'string' },
@@ -3794,13 +4333,15 @@ export function chartVisualMap(
  * on and the span limits every gesture is held to, as target literals. A
  * non-literal value is named and ignored.
  */
+const NO_FRAME_LENGTH = { mode: '', amount: 0 }
+
 export function chartZoomConfig(
   readExpr: (name: string) => ExprIR | undefined,
   resolve: (name: string) => ExprIR | undefined,
   t: ChartHostTarget,
   warn: (m: string) => void,
   tag: string,
-): { initial: string | null; limits: string | null } {
+): { initial: string | null; limits: string | null; sliderBox: string | null } {
   const plainOf = (name: string): Record<string, unknown> | null | undefined => {
     const e = readExpr(name)
     if (e === undefined) return undefined
@@ -3817,7 +4358,19 @@ export function chartZoomConfig(
   const n = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d)
   const initial = init == null ? null : t.struct('ZoomWindow', [['start', chartDouble(Math.max(0, Math.min(1, n(init['start'], 0))))], ['end', chartDouble(Math.max(0, Math.min(1, n(init['end'], 1))))]])
   const limits = lim == null ? null : t.struct('ZoomLimits', [['lock', String(lim['lock'] === true)], ['minSpan', chartDouble(n(lim['minSpan'], 0))], ['maxSpan', chartDouble(n(lim['maxSpan'], 1))]])
-  return { initial, limits }
+  // `navigatorBox`: ECharts' slider box (`SliderBox`), which puts the strip in the
+  // grid's bottom margin as ECharts lays it out instead of Pyreon's navigator band.
+  const box = plainOf('navigatorBox')
+  const len = (v: unknown): string => {
+    const r = isPlainRecord(v) ? v : {}
+    const mode = r['mode'] === 'px' || r['mode'] === '%' ? r['mode'] : ''
+    return t.struct('FrameLength', [['mode', JSON.stringify(mode)], ['amount', chartDouble(n(r['amount'], 0))]])
+  }
+  const sliderBox =
+    box == null
+      ? null
+      : t.struct('SliderBox', [['left', len(box['left'])], ['top', len(box['top'])], ['right', len(box['right'])], ['bottom', len(box['bottom'])], ['width', len(box['width'])], ['height', len(box['height'])], ['brush', String(box['brush'] !== false)]])
+  return { initial, limits, sliderBox }
 }
 
 /**

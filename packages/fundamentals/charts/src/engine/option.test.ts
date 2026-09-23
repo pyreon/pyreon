@@ -129,7 +129,7 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
   { name: 'boxplot with outlier scatter', expectClean: true, option: {
     xAxis: { data: ['A', 'B'] }, yAxis: {},
     series: [{ type: 'boxplot', data: [[1, 2, 3, 4, 5], [2, 3, 4, 5, 6]] }, { type: 'scatter', data: [[0, 9]] }] } },
-  { name: 'rose pie (roseType unmapped)', expectClean: false, option: {
+  { name: 'rose pie', expectClean: true, option: {
     series: [{ type: 'pie', roseType: 'area', data: [{ value: 1, name: 'a' }] }] } },
   { name: 'radar + dataZoom (unmapped keys)', expectClean: false, option: {
     dataZoom: [{ type: 'inside' }], radar: { indicator: [] },
@@ -184,7 +184,10 @@ describe('ECharts option facade — mappings', () => {
         { type: 'line', data: [1] }, { type: 'line', areaStyle: {}, data: [1] }, { type: 'scatter', data: [1] },
       ],
     })
-    expect(c.spec.series.map((s) => s.kind)).toEqual(['stacked', 'stacked', 'line', 'area', 'points'])
+    // A line with an areaStyle stays a line that also fills (ECharts draws its stroke and symbols over the fill).
+    expect(c.spec.series.map((s) => s.kind)).toEqual(['stacked', 'stacked', 'line', 'line', 'points'])
+    expect(c.spec.series[3]!.areaFill).toBe(true)
+    expect(c.spec.series[2]!.areaFill).toBeUndefined()
   })
 
   it('a second y axis lands on the right with its own {value} formatter', () => {
@@ -229,11 +232,11 @@ describe('ECharts option facade — mappings', () => {
   it('never drops silently: unknown top-level keys, series options and types are all NAMED', () => {
     const c = compileOption({
       axisPointer: {}, xAxis: { data: ['a'] }, yAxis: {},
-      series: [{ type: 'bar', data: [1], barWidth: 20 }, { type: 'funnel', data: [] }],
+      series: [{ type: 'bar', data: [1], barBorderRadius: 20 }, { type: 'funnel', data: [] }],
     })
     const codes = c.warnings.map((w) => `${w.code}@${w.path}`)
     expect(codes).toContain('option-key-unsupported@axisPointer')
-    expect(codes).toContain('series-option-unsupported@series[0].barWidth')
+    expect(codes).toContain('series-option-unsupported@series[0].barBorderRadius')
     expect(codes).toContain('series-type-unsupported@series[1].type')
     expect(c.supported).toBe(false)
   })

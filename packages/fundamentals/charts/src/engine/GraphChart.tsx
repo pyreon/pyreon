@@ -42,6 +42,11 @@ export function GraphChart(props: GraphChartProps): VNode {
       props.onSelectIndex?.(hitGraphIndex(g.layout, px, py))
     },
     tooltip: (g, px, py) => orNull(graphTip(g.layout, px, py)),
+    item: (g, px, py) => {
+      const i = hitGraphIndex(g.layout, px, py)
+      const n = g.layout.nodes[i]
+      return n === undefined ? null : { seriesIndex: 0, dataIndex: i, name: n.name, value: n.value, color: n.color, dataType: 'node' }
+    },
     pick: (g, i) => {
       const node = g.layout.nodes[i]
       if (node === undefined) return

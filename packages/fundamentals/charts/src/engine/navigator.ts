@@ -4,7 +4,7 @@
 // and the window math live here, so the web host, iOS and Android agree on
 // where the band is and what a drag does to it.
 
-import { layoutSeriesPoints } from './layout'
+import { layoutSeriesPointsEdge } from './layout'
 import { withAlpha } from './radar'
 import type { DrawCmd, Double, Pt, Rect } from './types'
 import { clampWindow } from './zoom'
@@ -70,7 +70,7 @@ export function renderNavigator(
         const v = values[i]!
         safe.push(!isFiniteNumber(v) ? lo : v)
       }
-      const pts = layoutSeriesPoints(safe, strip, { min: lo < 0.0 ? lo : 0.0, max: hi <= lo ? lo + 1.0 : hi })
+      const pts = layoutSeriesPointsEdge(safe, strip, { min: lo < 0.0 ? lo : 0.0, max: hi <= lo ? lo + 1.0 : hi })
       const last = pts[pts.length - 1]!
       const first = pts[0]!
       const poly: Pt[] = []

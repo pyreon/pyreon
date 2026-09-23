@@ -126,6 +126,22 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             }
           ]
         }
+      },
+      {
+        "name": "step",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
       }
     ],
     "external": true
@@ -646,6 +662,140 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             }
           ]
         }
+      },
+      {
+        "name": "weight",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "strokeWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "FrameLength",
+    "fields": [
+      {
+        "name": "mode",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "amount",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "FrameSpec",
+    "fields": [
+      {
+        "name": "left",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "top",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "right",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "bottom",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "width",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "height",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "round",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "centerX",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "centerY",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "radius",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
       }
     ],
     "external": true
@@ -763,6 +913,76 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "name": "Double",
           "args": []
         }
+      },
+      {
+        "name": "index",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "reach",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "ArcConfig",
+    "fields": [
+      {
+        "name": "start",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "sweep",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "clockwise",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "minAngle",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "padAngle",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "rose",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "zeros",
+        "type": {
+          "kind": "boolean"
+        }
       }
     ],
     "external": true
@@ -819,6 +1039,103 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "name": "Double",
           "args": []
         }
+      },
+      {
+        "name": "arcs",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "ArcConfig",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labels",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "PieLabelOptions",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "view",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "PyreonChartRect",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "empty",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "measure",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "function",
+              "params": [
+                {
+                  "name": "text",
+                  "type": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "size",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                }
+              ],
+              "returnType": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
       }
     ],
     "external": true
@@ -868,6 +1185,282 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         "name": "valueColor",
         "type": {
           "kind": "string"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "PieLabelOptions",
+    "fields": [
+      {
+        "name": "position",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "texts",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "string"
+          }
+        }
+      },
+      {
+        "name": "fontSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "line",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "lineColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "leg1",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "leg2",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "distance",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "avoidOverlap",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "minTurnAngle",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "maxSurfaceAngle",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "minAngle",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "overflow",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "bleedMargin",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "alignTo",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "edgeDistance",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "edgePercent",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "rotate",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "rotateDegrees",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "PieLabel",
+    "fields": [
+      {
+        "name": "index",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "text",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "at",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartPt",
+          "args": []
+        }
+      },
+      {
+        "name": "align",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "line",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonChartPt",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "lineColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "rotate",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "Shifted",
+    "fields": [
+      {
+        "name": "order",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "number"
+          }
+        }
+      },
+      {
+        "name": "ys",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "Double",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "adjusted",
+        "type": {
+          "kind": "boolean"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "Projection",
+    "fields": [
+      {
+        "name": "x",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "y",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "d",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
         }
       }
     ],
@@ -1072,6 +1665,20 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             }
           ]
         }
+      },
+      {
+        "name": "line",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
       }
     ],
     "external": true
@@ -1254,6 +1861,114 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "edgeCategories",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "insetLeft",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "insetTop",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "insetRight",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "insetBottom",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "insetContain",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "reserveLeft",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "fontSize",
         "type": {
           "kind": "typeRef",
@@ -1415,6 +2130,20 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "bandsFromBottom",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "xTitle",
         "type": {
           "kind": "union",
@@ -1523,6 +2252,114 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "branches": [
             {
               "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xLabelAngle",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xLabelInterval",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xLabelMargin",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xLabelInside",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yLabelAngle",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yLabelMargin",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yLabelInside",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
             },
             {
               "kind": "undefined"
@@ -1670,6 +2507,48 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
               "kind": "undefined"
             }
           ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "LabelSample",
+    "fields": [
+      {
+        "name": "widest",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "need",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "IntRatio",
+    "fields": [
+      {
+        "name": "k",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "kd",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
         }
       }
     ],
@@ -1843,6 +2722,610 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         "type": {
           "kind": "typeRef",
           "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "DialLen",
+    "fields": [
+      {
+        "name": "v",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "pct",
+        "type": {
+          "kind": "boolean"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "DialStop",
+    "fields": [
+      {
+        "name": "at",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "DialDatum",
+    "fields": [
+      {
+        "name": "value",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "name",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "detail",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "pointerColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "progressColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "titleX",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "titleY",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "detailX",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "detailY",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "DialSpec",
+    "fields": [
+      {
+        "name": "start",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "sweep",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "clockwise",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "min",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "max",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "splitNumber",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "lineShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "lineWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "stops",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "DialStop",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "lineRound",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "progressShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "progressRound",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "progressOverlap",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "progressWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "progressClip",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "splitShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "splitLength",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "splitDistance",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "splitColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "splitWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "tickShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "tickSplit",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "tickLength",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "tickDistance",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "tickColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "tickWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "labelShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "labelDistance",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "labelColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "labelSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "labels",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "string"
+          }
+        }
+      },
+      {
+        "name": "labelRotate",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "labelDegrees",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "pointerShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "pointerAbove",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "pointerLength",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "pointerWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "pointerX",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "pointerY",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "pointerIcon",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "anchorShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "anchorIcon",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "anchorAbove",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "anchorSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "anchorColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "anchorBorder",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "anchorBorderWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "anchorX",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "anchorY",
+        "type": {
+          "kind": "typeRef",
+          "name": "DialLen",
+          "args": []
+        }
+      },
+      {
+        "name": "titleShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "titleColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "titleSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "detailShow",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "detailColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "detailSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "detailBold",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "detailBg",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "detailBorder",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "detailBorderWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "detailWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "detailHeight",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "detailPadding",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "Double",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "data",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "DialDatum",
+            "args": []
+          }
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "Layered",
+    "fields": [
+      {
+        "name": "z",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "seq",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "cmd",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonDrawCmd",
           "args": []
         }
       }
@@ -2051,6 +3534,56 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "LabelPlace",
+    "fields": [
+      {
+        "name": "at",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartPt",
+          "args": []
+        }
+      },
+      {
+        "name": "align",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "baseline",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "inside",
+        "type": {
+          "kind": "boolean"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "AutoLabelStyle",
+    "fields": [
+      {
+        "name": "textFill",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "halo",
+        "type": {
+          "kind": "string"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "LinesSeries",
     "fields": [
       {
@@ -2202,6 +3735,124 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
                   "args": []
                 }
               }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "smoothAmount",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "smoothMonotone",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "connectNulls",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "areaFill",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "areaOpacity",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "areaColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "areaOrigin",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "areaOriginAt",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
             },
             {
               "kind": "undefined"
@@ -2432,6 +4083,34 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "symbolHollow",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "symbolShow",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "symbolClip",
         "type": {
           "kind": "union",
@@ -2604,6 +4283,129 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
                 "name": "RichStyle",
                 "args": []
               }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labelPosition",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labelDistance",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labelRotate",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labelOffset",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labelAlign",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labelVerticalAlign",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labelBorderColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labelBorderWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
             },
             {
               "kind": "undefined"
@@ -2907,6 +4709,85 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
                 "name": "SeriesExtra",
                 "args": []
               }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "itemColors",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "BarLength",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barMaxWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "BarLength",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barMinWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "BarLength",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barStack",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
             },
             {
               "kind": "undefined"
@@ -3401,6 +5282,26 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "BarLength",
+    "fields": [
+      {
+        "name": "value",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "percent",
+        "type": {
+          "kind": "boolean"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "ChartSpec",
     "fields": [
       {
@@ -3428,6 +5329,357 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             "name": "Series",
             "args": []
           }
+        }
+      },
+      {
+        "name": "drawOrder",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "number"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "boundaryGap",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yZero",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "ySplit",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barLayout",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barGap",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "BarLength",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barCategoryGap",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "BarLength",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yMin",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xSplit",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xZero",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xMin",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xMax",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xMinData",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xMaxData",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yMax",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yMinData",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yMaxData",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "gridLeft",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "reserveLeft",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "gridTop",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "gridRight",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "gridBottom",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "gridContain",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
         }
       },
       {
@@ -3794,6 +6046,718 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "xLabelAngle",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xLabelInterval",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xLabelMargin",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xLabelInside",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yLabelAngle",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yLabelMargin",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yLabelInside",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xAxisLine",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yAxisLine",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "y2AxisLine",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xAxisOnZero",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yAxisOnZero",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "y2Grid",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xAxisLineColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yAxisLineColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xAxisLineWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yAxisLineWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xTicks",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yTicks",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xTickLength",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yTickLength",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xTickInside",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yTickInside",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xTickColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yTickColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xTickBands",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "gridColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "gridWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "gridDash",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xGrid",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xGridColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xGridWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xGridDash",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "ySplitArea",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xSplitArea",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yMinorSplit",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yMinorSplitColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yMinorSplitWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xMinorSplit",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xMinorSplitColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xMinorSplitWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yMinorTicks",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yMinorTickLength",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yMinorTickColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xMinorTicks",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xMinorTickLength",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xMinorTickColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "yInverse",
         "type": {
           "kind": "union",
@@ -3809,6 +6773,20 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       },
       {
         "name": "xInverse",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bandsFromBottom",
         "type": {
           "kind": "union",
           "branches": [
@@ -3996,6 +6974,40 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
               "kind": "undefined"
             }
           ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "ExtentSpan",
+    "fields": [
+      {
+        "name": "seen",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "lo",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "hi",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "count",
+        "type": {
+          "kind": "number"
         }
       }
     ],
@@ -11937,6 +14949,66 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "SliderBox",
+    "fields": [
+      {
+        "name": "left",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "top",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "right",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "bottom",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "width",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "height",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "brush",
+        "type": {
+          "kind": "boolean"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "BrushRange",
     "fields": [
       {
@@ -12397,6 +15469,12 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             }
           }
         }
+      },
+      {
+        "name": "total",
+        "type": {
+          "kind": "number"
+        }
       }
     ],
     "external": true
@@ -12449,7 +15527,10 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "A11ySeries",
   "A11yTable",
   "Annotation",
+  "ArcConfig",
   "ArcGeometry",
+  "AutoLabelStyle",
+  "BarLength",
   "Bin",
   "BoxplotFrame",
   "BoxplotOptions",
@@ -12478,11 +15559,18 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "ChordOptions",
   "ChordRibbon",
   "Circle",
+  "DialDatum",
+  "DialLen",
+  "DialSpec",
+  "DialStop",
   "Domain",
   "Emphasis",
+  "ExtentSpan",
   "ExtraTick",
   "ExtraYAxis",
   "FiveNumber",
+  "FrameLength",
+  "FrameSpec",
   "FunnelOptions",
   "FunnelStage",
   "FunnelStageGeometry",
@@ -12523,7 +15611,11 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "HeatGrid",
   "HeatSelection",
   "HeatmapOptions",
+  "IntRatio",
+  "LabelPlace",
+  "LabelSample",
   "LabelSegment",
+  "Layered",
   "LayoutConfig",
   "LegendEntry",
   "LegendLayout",
@@ -12543,6 +15635,8 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "ParallelPlaced",
   "ParallelTick",
   "PictorialBar",
+  "PieLabel",
+  "PieLabelOptions",
   "PieOptions",
   "Placed",
   "PlotLayout",
@@ -12559,6 +15653,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "PolarTick",
   "PresetLayout",
   "PresetOptions",
+  "Projection",
   "PyreonChartGradient",
   "PyreonChartGradientStop",
   "PyreonChartPattern",
@@ -12585,6 +15680,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "Series",
   "SeriesExtra",
   "SeriesGradient",
+  "Shifted",
   "SingleAxisLayout",
   "SingleAxisLayoutAxis",
   "SingleAxisLayoutPoint",
@@ -12595,6 +15691,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "Size",
   "Slice",
   "SliceRange",
+  "SliderBox",
   "StackSegment",
   "SunburstArc",
   "SunburstFrame",

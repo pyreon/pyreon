@@ -39,6 +39,7 @@ const REPO = join(HERE, '../../../..')
 /** Engine modules, in dependency order (types first — the strip targets). */
 export const ENGINE_FILES = [
   'types',
+  'frame',
   'pattern',
   'palette',
   'corners',
@@ -48,10 +49,12 @@ export const ENGINE_FILES = [
   'scale-extra',
   'curve',
   'arc',
+  'pie-labels',
   'radar',
   'layout',
   'stack',
   'pictorial',
+  'gauge-dial',
   'graphic',
   'labels',
   'lines',
@@ -91,6 +94,7 @@ export const ENGINE_FILES = [
   'presets',
   'legend-toggle',
   'navigator',
+  'slider-zoom',
   'brush',
   'brush-area',
   'chart-actions',

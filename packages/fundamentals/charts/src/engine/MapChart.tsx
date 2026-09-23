@@ -177,6 +177,18 @@ export function MapChart(props: MapChartProps): VNode {
     },
     focusRect: (layout, i) => layout.regions[i]?.bbox ?? null,
     tooltip: (layout, px, py) => orNull(geoTip(layout, readValues(), px, py)),
+    // A point overlay on the map wins over the region under it, as it is drawn over it.
+    item: (layout, px, py) => {
+      const pts = props.points ?? []
+      const pi = hitGeoOverlayPoint(layout, pts, px, py, props.overlayOptions?.radius)
+      const pt = pts[pi]
+      if (pt !== undefined) return { seriesIndex: 0, dataIndex: pi, name: pt.name ?? '', value: pt.value === undefined ? [pt.lon, pt.lat] : [pt.lon, pt.lat, pt.value], color: pt.color }
+      const i = hitGeoIndex(layout, px, py)
+      const r = layout.regions[i]
+      if (r === undefined) return null
+      const v = geoValueOf(readValues(), r.name)
+      return { seriesIndex: 0, dataIndex: i, name: r.name, value: Number.isFinite(v) ? v : Number.NaN }
+    },
     a11y: (layout) => {
       const values = readValues()
       const dom = geoDomain(layout, values)

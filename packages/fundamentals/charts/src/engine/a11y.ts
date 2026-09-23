@@ -176,6 +176,8 @@ export function describeChart(input: A11yInput): string {
 export interface A11yTable {
   headers: string[]
   rows: string[][]
+  /** How many rows the data has — more than `rows` holds when a `limit` cut it. */
+  total: number
 }
 
 /**
@@ -203,7 +205,7 @@ function withError(fmt: Formatter, v: Double, s: A11ySeries, i: number): string 
   return `${fmt(v)} (${fmt(l)} to ${fmt(h)})`
 }
 
-export function chartTable(input: A11yInput): A11yTable {
+export function chartTable(input: A11yInput, limit: number = -1): A11yTable {
   const fmt = input.format ?? plain
   // A two-channel series gets two COLUMNS. One column holding only the high
   // edge would hand the reader half a band and no way to tell that is what
@@ -232,8 +234,11 @@ export function chartTable(input: A11yInput): A11yTable {
   let n = input.categories.length
   for (const s of input.series) if (s.values.length > n) n = s.values.length
 
+  // `limit` builds only the rows a reader is shown: formatting 100,000 rows to
+  // display the first 1,000 was most of a large chart's accessible-table cost.
+  const count = limit >= 0 && limit < n ? limit : n
   const rows: string[][] = []
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < count; i++) {
     // Bounds-checked, not coalesced: a subscript past the end is a crash on
     // Swift, not an `undefined` — and a series may be longer than the
     // categories (or shorter than its siblings).
@@ -292,5 +297,5 @@ export function chartTable(input: A11yInput): A11yTable {
     }
     rows.push(row)
   }
-  return { headers, rows }
+  return { headers, rows, total: n }
 }

@@ -12,7 +12,7 @@ import ts from 'typescript'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { CHART_CAPABILITIES } from './capability-inventory'
-import { ECHARTS_COMPOSITE_TOP_KEYS, ECHARTS_CONTRACT_VERSION, ECHARTS_INERT_KEYS, ECHARTS_SERIES_GAPS, ECHARTS_TOP_GAPS } from './echarts-contract'
+import { ECHARTS_COMPOSITE_TOP_KEYS, ECHARTS_CONTRACT_VERSION, ECHARTS_INERT_BY_TYPE, ECHARTS_INERT_KEYS, ECHARTS_SERIES_GAPS, ECHARTS_TOP_GAPS } from './echarts-contract'
 import { KNOWN_SERIES, KNOWN_TOP } from './option'
 import { FAMILY_KNOWN_TOP, FAMILY_TYPES, KNOWN_BY_FAMILY } from './option-family'
 
@@ -97,10 +97,21 @@ describe('ECharts option-key totality', () => {
       const gaps = ECHARTS_SERIES_GAPS[type] ?? {}
       for (const k of keys) {
         const read = knownFor(type).has(k) && isRead(k)
-        if (!read && ECHARTS_INERT_KEYS[k] === undefined && gaps[k] === undefined) unclassified.push(`${type}.${k}`)
+        if (!read && ECHARTS_INERT_KEYS[k] === undefined && ECHARTS_INERT_BY_TYPE[type]?.[k] === undefined && gaps[k] === undefined) unclassified.push(`${type}.${k}`)
       }
     }
     expect(unclassified).toEqual([])
+  })
+
+  it('a per-type inert key names a real key of that type, one the facade does not also claim to read', () => {
+    const bad: string[] = []
+    for (const [type, keys] of Object.entries(ECHARTS_INERT_BY_TYPE)) {
+      for (const k of Object.keys(keys)) {
+        if (!contract.byType.get(type)?.has(k)) bad.push(`${type}.${k} (not a key of this type)`)
+        else if (knownFor(type).has(k)) bad.push(`${type}.${k} (the facade reads it — it cannot also be inert)`)
+      }
+    }
+    expect(bad).toEqual([])
   })
 
   it('a key the facade calls known is read by code — a known key nothing reads is a silent drop', () => {

@@ -186,8 +186,21 @@ export function paint(
 ): void {
   ctx.save()
   ctx.clearRect(0, 0, width, height)
+  // Open clips: an `unclip` with none open is ignored, so it can never pop the frame's own save.
+  let clips = 0
   for (const c of cmds) {
-    if (c.kind === 'rect') {
+    if (c.kind === 'clip') {
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(c.rect.x, c.rect.y, c.rect.w, c.rect.h)
+      ctx.clip()
+      clips++
+    } else if (c.kind === 'unclip') {
+      if (clips > 0) {
+        ctx.restore()
+        clips--
+      }
+    } else if (c.kind === 'rect') {
       ctx.fillStyle = fillStyleFor(ctx, c.fill, c.grad)
       const radii = cornerRadii(c.rect, c.corners)
       if (hasCorners(radii)) {
@@ -251,23 +264,39 @@ export function paint(
       ctx.fill()
     } else {
       ctx.fillStyle = c.fill
-      ctx.font = `${c.size}px ${fontFamily}`
+      ctx.font = `${c.weight === 'bold' ? 'bold ' : ''}${c.size}px ${fontFamily}`
       ctx.textAlign = c.align === 'middle' ? 'center' : c.align
       ctx.textBaseline =
         c.baseline === 'middle' ? 'middle' : c.baseline === 'top' ? 'top' : 'alphabetic'
       const rot = c.rotate ?? 0
+      // A halo is stroked under the fill, as zrender paints a textBorder.
+      const paintText = (x: number, y: number): void => {
+        if (c.stroke !== undefined && c.stroke !== '') {
+          ctx.strokeStyle = c.stroke
+          ctx.lineWidth = c.strokeWidth ?? 2
+          ctx.lineJoin = 'miter'
+          ctx.miterLimit = 2
+          ctx.strokeText(c.text, x, y)
+        }
+        ctx.fillText(c.text, x, y)
+      }
       if (rot !== 0) {
         // Rotate about the anchor: the text's own align/baseline then apply
         // in the rotated frame, which is what a slanted axis label wants.
         ctx.save()
         ctx.translate(c.at.x, c.at.y)
         ctx.rotate((rot * Math.PI) / 180)
-        ctx.fillText(c.text, 0, 0)
+        paintText(0, 0)
         ctx.restore()
       } else {
-        ctx.fillText(c.text, c.at.x, c.at.y)
+        paintText(c.at.x, c.at.y)
       }
     }
+  }
+  // A list that left a clip open does not leak it into the next frame.
+  while (clips > 0) {
+    ctx.restore()
+    clips--
   }
   ctx.restore()
 }

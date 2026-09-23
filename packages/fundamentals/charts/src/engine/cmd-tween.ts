@@ -106,6 +106,8 @@ function cmdPoints(cmd: DrawCmd): Pt[] {
     case 'polygon': return cmd.points
     case 'circle': return [{ x: cmd.center.x - cmd.radius, y: cmd.center.y - cmd.radius }, { x: cmd.center.x + cmd.radius, y: cmd.center.y + cmd.radius }]
     case 'text': return [cmd.at]
+    case 'clip': return [{ x: cmd.rect.x, y: cmd.rect.y }, { x: cmd.rect.x + cmd.rect.w, y: cmd.rect.y + cmd.rect.h }]
+    case 'unclip': return []
   }
 }
 
@@ -140,6 +142,9 @@ function targetAtSource(source: DrawCmd | undefined, target: DrawCmd): DrawCmd {
     case 'polygon': return { ...target, points: repeatedPoint(center, target.points.length) }
     case 'circle': return { ...target, center, radius: Math.max(box.w, box.h) / 2 }
     case 'text': return { ...target, at: center, size: source?.kind === 'text' ? source.size : 0 }
+    // A clip does not morph: it takes its target region at once.
+    case 'clip':
+    case 'unclip': return target
   }
 }
 
@@ -153,6 +158,8 @@ function collapsed(cmd: DrawCmd): DrawCmd {
     case 'polygon': return { ...cmd, points: repeatedPoint(center, cmd.points.length) }
     case 'circle': return { ...cmd, center, radius: 0 }
     case 'text': return { ...cmd, at: center, size: 0 }
+    case 'clip':
+    case 'unclip': return cmd
   }
 }
 

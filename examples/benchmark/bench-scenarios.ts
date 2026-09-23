@@ -41,7 +41,7 @@
  * of this suite. Ratios are the portable signal; absolute ms are machine- and
  * load-dependent. Stamp `uptime` and discard anything measured above load ~8.
  *
- * Run: bun bench-scenarios.ts [--repeat N] [--scenario dbmon|tree|effects|memo]
+ * Run: bun bench-scenarios.ts [--repeat N] [--scenario dbmon|tree|effects|memo|flow|charts]
  */
 import { execSync, spawn } from 'node:child_process'
 import { chromium } from 'playwright'
@@ -140,6 +140,11 @@ const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
     label: 'flow diagram — @pyreon/flow vs React Flow 12 (500 nodes / 499 edges)',
     frameworks: ['Pyreon', 'React Flow 12'].filter((f) => (NARROW ? NARROW.includes(f) : true)),
   },
+  {
+    id: 'charts',
+    label: 'charts — @pyreon/charts/plot vs ECharts 6 (line, 1k / 100k points, 800×400 canvas)',
+    frameworks: ['Pyreon (PlotChart)', 'Pyreon (OptionChart)', 'ECharts 6', 'Pyreon (PlotChart, no a11y table)'].filter((f) => (NARROW ? NARROW.includes(f) : true)),
+  },
 ]
 
 /**
@@ -159,6 +164,8 @@ const NON_RANKING = new Set([
   // Hand-written compiler-output-level probes, not a shipped code path.
   'Pyreon (tpl slot)',
   'Pyreon (tpl append)',
+  // Prices Pyreon's default offscreen data table, which ECharts does not ship.
+  'Pyreon (PlotChart, no a11y table)',
 ])
 
 interface SuiteResult {
@@ -324,7 +331,9 @@ try {
             ? '(floor)'
             : r.fw === 'SolidJS (eager props)'
               ? `(diagnostic — ${(r.med / bestFw.med).toFixed(2)}× vs SolidJS)`
-              : r === bestFw
+              : NON_RANKING.has(r.fw)
+                ? `(diagnostic, unranked — ${(r.med / bestFw.med).toFixed(2)}× the leader)`
+                : r === bestFw
                 ? '🥇'
                 : tiedWithLeader
                   ? '🤝 tie'

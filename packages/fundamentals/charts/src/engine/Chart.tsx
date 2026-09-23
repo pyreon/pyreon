@@ -6,7 +6,7 @@
 // full ECharts feature set for the long tail.
 
 import { createUniqueId, h } from '@pyreon/core'
-import { A11Y_TABLE_MAX, shiftCmds } from './canvas-host'
+import { a11yTableNode, A11Y_TABLE_MAX, shiftCmds } from './canvas-host'
 import type { LegendPosition } from './canvas-host'
 import { lttbIndices, minMaxBuckets } from './decimate-values'
 import { resolveChartTheme, tooltipStyle, useChartTheme } from './theme'
@@ -24,14 +24,14 @@ import { renderSvg } from './svg'
 import type { ToolboxConfig, ToolboxTool } from './toolbox-config'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
-import { applySeriesSelection, categoryIndex, geometrySpec, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
+import { applySeriesSelection, categoryIndex, categoryPoints, geometrySpec, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
 import { mirrorCmds, screenRectX } from './rtl'
-import { layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
+import { layoutSeriesPointsAt } from './layout'
 import type { PlotLayout } from './layout'
 import { dateFormatter, numberFormatter } from './locale'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker, Series } from './render'
 import { scaleLinear } from './scale'
-import { resolveCategories, resolveMarks } from './marks'
+import { markLabel, resolveCategories, resolveMarks } from './marks'
 import { plotHitBarsIn, plotHitIndexIn, plotHitSeriesIn } from './plot-hit'
 import type { Mark } from './marks'
 import { chartTable, describeChart } from './a11y'
@@ -39,7 +39,7 @@ import type { A11yInput } from './a11y'
 import { brushBand, brushRange, renderBrushBand } from './brush'
 import { applyBrushSelection, brushAreaFromDrag, brushOnlySeries, brushAreaUsable, brushPolygonAdd, brushSelection, renderBrushAreas } from './brush-area'
 import type { BrushArea } from './brush-area'
-import { hideHiddenSeries, legendHitIndex, legendToggle, pagerHit, pinSelection } from './legend-toggle'
+import { hideHiddenSeries, legendEntriesGrouped, legendHitIndex, legendToggleGroup, pagerHit, pinSelection } from './legend-toggle'
 import { navigatorDrag, navigatorHit, renderNavigator } from './navigator'
 import { presetHit, presetWindow, renderPresets } from './presets'
 import { clampWindow, isFullWindow, limitZoomWindow, panWindow, sliceRange, windowOfRows, zoomWindow } from './zoom'
@@ -889,7 +889,9 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (props.showLegend === true) {
       const series = resolveMarks(rows, props.marks, theme().palette)
       const hidden = hiddenSeries()
-      const entries = series.map((x, i) => ({ label: x.label, color: x.color, muted: hidden.includes(i) }))
+      // One entry per LABEL (ECharts' rule): an area and a line both labelled
+      // Revenue are one Revenue entry, and a tap toggles both.
+      const entries = legendEntriesGrouped(series.map((x) => x.label), series.map((x) => x.color), hidden)
       const placed = placeLegend(
         entries,
         { x: 0, y: titleH, w, h: hgt - titleH },
@@ -1151,7 +1153,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       const pts =
         g.xValues !== undefined && g.xValues.length > 0
           ? layoutSeriesPointsAt(sr.values, g.xValues, plot, dom, l.xDomainUsed)
-          : layoutSeriesPoints(sr.values, plot, dom)
+          : categoryPoints(g, sr.values, plot, dom)
       const p = pts[idx]
       if (p === undefined) continue
       out.push({ kind: 'circle', center: p, radius: Math.max(3.0, sr.radius), fill: sr.color })
@@ -1622,7 +1624,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       const ly = ev.clientY - r0.top
       const i = legendHitIndex(legendBoxes, lx, ly)
       if (i >= 0) {
-        hiddenSeries.set(legendToggle(hiddenSeries(), i))
+        hiddenSeries.set(legendToggleGroup(hiddenSeries(), props.marks.map((m, k) => markLabel(m, k)), i))
         return
       }
     }
@@ -1855,37 +1857,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   // unstructured string, while a table can be navigated by row and column.
   // Positioned offscreen instead of `display: none`, which would remove it
   // from the accessibility tree along with the visual layout.
-  const table = (): VNode => {
-    const t = chartTable(a11yInput())
-    // Capped: a 100k-row chart drawn through `maxPoints` must not also
-    // materialize 100k table rows in the DOM; the caption says what was cut.
-    const shown = t.rows.length > A11Y_TABLE_MAX ? t.rows.slice(0, A11Y_TABLE_MAX) : t.rows
-    const caption = (props.title ?? 'Chart data') + (shown.length < t.rows.length ? ` (first ${A11Y_TABLE_MAX} of ${t.rows.length} rows)` : '')
-    // The clip styles go on a WRAPPER, not the table. A `<table>` uses auto
-    // layout and expands to its content regardless of `width: 1px`, so styling
-    // the table directly leaves ~126px of visible layout — which the browser
-    // test caught by measuring the rendered box rather than trusting the CSS.
-    return h(
-      'div',
-      {
-        style:
-          'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;margin:-1px;padding:0',
-      },
-      h(
-      'table',
-      { id: tableId },
-      h('caption', null, caption),
-      h('thead', null, h('tr', null, ...t.headers.map((x) => h('th', { scope: 'col' }, x)))),
-      h(
-        'tbody',
-        null,
-        ...shown.map((r) =>
-          h('tr', null, h('th', { scope: 'row' }, r[0] ?? ''), ...r.slice(1).map((c) => h('td', null, c))),
-        ),
-      ),
-      ),
-    )
-  }
+  // A real table rather than a longer label (see `a11yTableNode`), capped and
+  // updated in place.
+  const tableNode = a11yTableNode(() => chartTable(a11yInput(), A11Y_TABLE_MAX), tableId, () => props.title ?? 'Chart data')
+  const table = (): VNode => tableNode
+
 
   return h(
     'div',

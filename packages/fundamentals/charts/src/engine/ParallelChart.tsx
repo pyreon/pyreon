@@ -57,6 +57,12 @@ export function ParallelChart(props: ParallelChartProps): VNode {
       props.onSelect?.(line)
       props.onSelectIndex?.(line === null ? -1 : line.index)
     },
+    // A parallel item is one row, its value the row itself.
+    item: (layout, px, py) => {
+      const line = hitParallel(layout, px, py)
+      if (line === null) return null
+      return { seriesIndex: 0, dataIndex: line.index, name: '', value: readRows()[line.index] ?? [], color: line.color }
+    },
     tooltip: (layout, px, py) => {
       const line = hitParallel(layout, px, py)
       if (line === null) return null

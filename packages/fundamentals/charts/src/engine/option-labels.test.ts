@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { labelCommands, labelLines } from './labels'
+import { autoLabelStyle, labelCommands, labelLines } from './labels'
 import { compileOption } from './option'
 import { defaultTheme, renderChart } from './render'
 import type { DrawCmd, MeasureText } from './types'
@@ -121,8 +121,11 @@ describe('the option facade', () => {
     expect(spec.series[0]!.labelTexts).toBeUndefined()
     const value = texts(renderChart(spec, measure)).find((c) => c.text === '4')
     expect(value).toBeDefined()
-    // An unstyled label takes the THEME label colour — the counterpart of the
-    // explicit-colour spec above, and what `defaultTheme` was imported for.
-    expect(value!.fill).toBe(defaultTheme.label)
+    // An unstyled label takes the AUTOMATIC colour — the counterpart of the
+    // explicit-colour spec above. A bar's label sits inside it (ECharts'
+    // default), so that is zrender's inside pick against the bar's fill.
+    const auto = autoLabelStyle(true, spec.series[0]!.color, defaultTheme.background)
+    expect(value!.fill).toBe(auto.textFill)
+    expect(value!.stroke).toBe(auto.halo === '' ? undefined : auto.halo)
   })
 })
