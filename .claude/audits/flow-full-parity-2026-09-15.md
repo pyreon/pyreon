@@ -28,7 +28,7 @@ WebView escape path; silent drops are release blockers.
 - [ ] **F3 — renderer/chrome parity.** Close static node/edge renderer,
   connection-line, handle, toolbar, resizer, minimap, controls, panel, label,
   marker, theming and animation differences.
-- [ ] **F4 — interaction and accessibility parity.** Device-test pointer/touch,
+- [x] **F4 — interaction and accessibility parity.** Device-test pointer/touch,
   pan/zoom, connect/reconnect, selection, keyboard equivalents, focus,
   accessibility names/roles and reduced motion on both targets.
 - [ ] **F5 — dynamic/browser-rich contract.** Make arbitrary renderer maps,
@@ -249,6 +249,36 @@ native view.
   open under F3: pixel parity of node chrome under `colorMode="system"` (only
   forced modes are asserted).
 
+## F4 checkpoint — the keyboard focus/action matrix (2026-09-22)
+
+- [x] **Edge hardware focus.** Native edge labels were reachable by VoiceOver and
+  TalkBack only. On Android they had no focus action at all, and on iOS a
+  `.focusable` view is not focused by a tap on its own. Both renderers now make
+  the label focusable, and route its keys through `handleKeyboardCommand`,
+  which gains an `edgeId`. Enter or Space selects the focused edge, like the
+  web's edge `onKeyDown`. Bisect: without the change, Android fails with
+  `the node is missing [RequestFocus]` and iOS with "Space on the focused edge
+  label did not select the edge".
+- [x] **The matrix, driven on devices** (`native-counter` suites):
+  | Focused | Key | Result | Android | iOS |
+  | --- | --- | --- | --- | --- |
+  | node | Arrow | moves the node | asserted | asserted |
+  | node | Escape | clears the selection | asserted | not deliverable |
+  | node | Enter | selects the node | asserted | not deliverable |
+  | node | Space | selects the node | covered by Enter | asserted |
+  | edge | Enter | selects the edge | asserted | not deliverable |
+  | edge | Space | selects the edge | covered by Enter | asserted |
+  | canvas | Ctrl/Cmd+A | selects every node | asserted | asserted |
+  | canvas | Delete | removes the selection and its edges | asserted | not deliverable |
+  | canvas | Ctrl/Cmd+Z | undoes the last change | asserted (restores the deletion) | asserted (undoes the arrow move) |
+- **iOS test-harness limit, measured rather than assumed.** XCUITest cannot
+  deliver Return or Escape to the app on the simulator. A logging probe saw
+  Right Arrow and Space reach both the node and the canvas, and never those two
+  keys, whether sent to the element or the application, and whether handled by
+  `onKeyPress` or a `.keyboardShortcut`. Backspace and forward-delete do not
+  reliably arrive either. The iOS rows therefore drive Space and Cmd+Z, the
+  web's other activation key, and the Android suite owns Enter and Escape.
+  Nothing was shipped for Return/Escape on iOS, because it could not be verified.
 ## F6 checkpoint — scale and memory ceilings (2026-09-22)
 
 - [x] **Scale on all three targets.** `examples/native-tasks` has a `/flow-scale`
@@ -280,3 +310,47 @@ native view.
   type with its own handles, and all three targets assert one target handle per
   mounted node, so a user renderer and its handles are culled with the node.
 - Keyboard interaction is tracked under F4, where the focus/action matrix lives.
+- [x] iOS keys XCUITest cannot deliver. XCUITest cannot send Return, Escape,
+  Delete or Backspace to a simulator app, so the iOS device suite can only
+  press Space, the arrows and Cmd shortcuts. The whole route from SwiftUI's
+  `onKeyPress` to the engine is now one public function,
+  `pyreonFlowHandleKey(state, key:modifiers:isRepeat:nodeId:edgeId:)`, and the
+  view calls nothing else. The native Swift suite drives the undeliverable keys
+  through it: Return selects a node or an edge, Escape clears, Delete and
+  Backspace remove, Cmd+Z and Ctrl+Z undo, Shift+Arrow takes the large step, an
+  unmapped key is ignored. The only link left unproven on iOS is the OS
+  handing the key to the app. Bisect: unmapping Return fails with "Return and
+  Escape map to the web key names".
+- [x] `colorMode="system"` on iOS is proven on every CI run, not only on a
+  simulator that passes appearance changes to the app. The native Swift suite
+  renders the REAL `PyreonFlowView` offscreen with SwiftUI's `ImageRenderer`
+  under a light and a dark environment colour scheme and counts the web's
+  dark canvas colour (#0b1220). The counts must be zero under light and over
+  1,000 under dark with `"system"`. Forced `"light"` ignores a dark scheme and
+  forced `"dark"` ignores a light one. This runs in the macOS co-source job on
+  every PR. The device suites still prove the OS half wherever the simulator
+  propagates the change: the iPhone 17 Pro, and always Android. Bisect: making
+  `"system"` resolve to light fails with "did not follow a dark scheme (0 px)".
+- [x] Visual parity of the palette, checked at three levels:
+  - Source: `native-palette-parity.test.ts` requires every Swift and Kotlin
+    palette value to equal the web's `--pyreon-flow-*` fallback (light) or
+    `[data-color-mode="dark"]` value (dark), field by field. Bisect: one digit
+    off on Kotlin's dark edge fails with `expected '#6b7281' to be '#6b7280'`.
+  - Rendering: the native Swift suite renders the new `PyreonFlowDefaultNode`
+    offscreen and counts palette pixels (node background, border, and the
+    selected border only while selected).
+  - Device: the tasks app on Android crops the rendered default node.
+  Writing the check found a real gap. Five palette fields were used by
+  neither renderer: node background, node text, node border, node selected
+  and control colour. A node without a custom `type` rendered as a bare label,
+  and Controls used the platform's filled buttons (Material purple on
+  Android). Both runtimes now ship `PyreonFlowDefaultNode`, the web's
+  DefaultNode box: palette colours, a 2px border in the selected colour while
+  selected, 6px corners, 8x16 padding, 13px text and an 80px minimum width.
+  The compiler emits it for untyped nodes. Controls are the web's bordered
+  panel box of 28px transparent buttons in `controlColor`. A first attempt
+  counted colours across the whole canvas and passed with the palette broken,
+  because other elements paint the same colours, so it was replaced by crops
+  of the element itself. Bisect on Android: the old `Text` emit fails with
+  "the default node label is not --pyreon-flow-node-color (#1a192b)".
+

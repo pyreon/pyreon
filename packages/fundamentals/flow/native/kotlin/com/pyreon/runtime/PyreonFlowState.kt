@@ -1702,8 +1702,16 @@ class PyreonFlowState<T>(
         shift: Boolean = false,
         command: Boolean = false,
         repeatKey: Boolean = false,
+        edgeId: String? = null,
     ): Boolean {
         if (disableKeyboardA11y) return false
+        // A focused EDGE takes Enter/Space to select it, like the web's edge
+        // `onKeyDown`. Everything else (Delete, Escape, the command keys) falls
+        // through to the canvas behaviour below.
+        if (edgeId != null && getEdge(edgeId) != null && (key == "Enter" || key == " ")) {
+            selectEdge(edgeId, shift)
+            return true
+        }
         if (nodeId != null) {
             val node = nodeMap[nodeId]
             if (node != null && (key == "Enter" || key == " ")) {
