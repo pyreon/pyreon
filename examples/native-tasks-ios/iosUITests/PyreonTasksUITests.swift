@@ -80,15 +80,36 @@ final class PyreonTasksUITests: XCTestCase {
     /** Scroll the gallery until the WHOLE element is inside the window: a gesture on an off-screen part lands on nothing. */
     private func scrollFullyOnScreen(_ element: XCUIElement, in app: XCUIApplication) {
         let scroll = app.scrollViews["gal-scroll"].firstMatch
+        // Down the LEFT GUTTER, outside every chart, never the centre. The
+        // gallery's charts claim drags (dataZoom, brush, the roaming map, the
+        // toolbox band), so a scroll that started over one panned or zoomed
+        // that chart instead of scrolling the page. Which chart sat under the
+        // centre depended on the scroll position, so the damage moved around:
+        // the box zoom, map pan and trail checks each failed intermittently.
         for _ in 0..<16 {
             let window = app.windows.firstMatch.frame
             if element.frame.minY < window.minY + 100 {
-                scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65)))
+                scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.4)).press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.65)))
             } else if element.frame.maxY > window.maxY - 80 {
-                scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65)).press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)))
+                scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.65)).press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.4)))
             } else {
+                waitForScrollToSettle(element)
                 return
             }
+        }
+        waitForScrollToSettle(element)
+    }
+
+    /// A drag leaves the scroll view coasting, and a tap during that coast only
+    /// stops it: the tap never reaches the control. Wait until the element has
+    /// held still for two reads before anything taps or drags on it.
+    private func waitForScrollToSettle(_ element: XCUIElement) {
+        var last = element.frame
+        for _ in 0..<20 {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            let now = element.frame
+            if now == last { return }
+            last = now
         }
     }
 

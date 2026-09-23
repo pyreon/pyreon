@@ -79,6 +79,12 @@ every example component MUST accept `{ shared?: Signal<T> }` and fall back to a 
 
 ---
 
+### XCUITest cannot deliver Return or Escape to a simulator app, so a keyboard test built on them fails for a reason that is not the app
+
+(the flow focus matrix, 2026-09). A logging `onKeyPress` probe saw Right Arrow and Space arrive at both the focused view and its container, and never Return or Escape (nor Backspace, nor forward-delete), whether typed at the element or the application, and whether caught by `onKeyPress` or a `.keyboardShortcut`. Three fixes that looked plausible (`.focusable(interactions: .edit)`, keyboard-shortcut buttons, moving the view off `.position`) were each tried against a key that never arrives, and each "failed". **Rule: before fixing a keyboard path on iOS, log what the app actually RECEIVES.** Drive Space for activation on iOS and assert Enter/Escape on Android; do not ship a Return/Escape path you could not observe. And if a failure message does not match the source, a stale `.xctrunner` on the simulator is running old test code: uninstall it and rerun. Also: `XCUIElement.hasFocus` read `false` for a node that was provably receiving keys, so it is not a usable focus signal here.
+
+---
+
 ### XCUITest element TYPE and tap POINT must be read off the device, not guessed — three of four new device assertions failed for query reasons, not product reasons
 
 (2026-07). Writing device assertions against an assumed accessibility shape produces failures that look exactly like product bugs and bury the real one. Measured shapes from a live simulator dump: (1) a container carrying `.accessibilityElement(children: .contain)` surfaces as **`otherElements`**, NOT as the child's type — so a `<Link>`'s identifier is on an `Other` wrapping the `Button`, and `app.buttons[id]` misses it; (2) `<Scroll>` surfaces as **`scrollViews`**, not `otherElements`; (3) `<Toggle>` lowers to `Toggle("", isOn:)` whose OUTER element spans the full row (measured 402pt) while the real control occupies only the trailing ~63pt — so `element.tap()` hits the row centre, lands in dead label space, and **silently does not flip** (the state text stays put and the failure reads as "the binding never wrote the signal"); tap `element.switches.firstMatch` instead. **General rule: before asserting, dump `app.debugDescription` once and read the element types, identifiers and frames. A device test built on a guessed shape is worse than none — it manufactures failures that mask genuine ones.** Same family as "read the API before probing it".
