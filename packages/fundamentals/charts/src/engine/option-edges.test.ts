@@ -22,7 +22,7 @@ describe('option facade — edge shapes (every branch NAMES its loss)', () => {
     expect(w).toContain('axis-count-unsupported@xAxis')
     expect(w).toContain('option-key-unsupported@yAxis[1].min')
     expect(w).toContain('option-key-unsupported@yAxis[2].max')
-    expect(c.spec.extraYAxes).toEqual([{ side: 'right', domain: undefined, title: undefined, offset: undefined }])
+    expect(c.spec.extraYAxes).toEqual([{ side: 'right', domain: undefined, title: undefined, offset: undefined, line: false }])
     expect(c.spec.yDomain).toMatchObject({ min: 0, max: 10 })
     expect(c.spec.y2Domain).toBeUndefined()
     // A single y-axis object and no y axis at all both compile.

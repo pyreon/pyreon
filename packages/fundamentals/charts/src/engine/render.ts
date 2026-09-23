@@ -515,6 +515,43 @@ export interface ChartSpec {
   yLabelMargin?: Double | undefined
   /** y labels inside the plot. */
   yLabelInside?: boolean | undefined
+  /** `false` hides the x axis line (ECharts' `axisLine.show`); absent draws it. */
+  xAxisLine?: boolean | undefined
+  /** `false` hides the y axis line; absent draws it. */
+  yAxisLine?: boolean | undefined
+  /** `false` hides the second y axis's line; absent draws it. */
+  y2AxisLine?: boolean | undefined
+  /** Split lines at the second y axis's ticks (ECharts draws each value axis's own). */
+  y2Grid?: boolean | undefined
+  /** Axis line colours and widths (ECharts' `axisLine.lineStyle`); absent takes the theme's axis colour, 1px. */
+  xAxisLineColor?: string | undefined
+  yAxisLineColor?: string | undefined
+  xAxisLineWidth?: Double | undefined
+  yAxisLineWidth?: Double | undefined
+  /** Tick marks on the x axis (ECharts' `axisTick`); absent draws none. */
+  xTicks?: boolean | undefined
+  /** Tick marks on the y axis. */
+  yTicks?: boolean | undefined
+  /** Tick length in px (5 in ECharts). */
+  xTickLength?: Double | undefined
+  yTickLength?: Double | undefined
+  /** Ticks point into the plot instead of out of it. */
+  xTickInside?: boolean | undefined
+  yTickInside?: boolean | undefined
+  /** Tick colours; absent takes the axis line's. */
+  xTickColor?: string | undefined
+  yTickColor?: string | undefined
+  /** Category x ticks at the band EDGES (ECharts' default) rather than on the labels (`alignWithLabel`). */
+  xTickBands?: boolean | undefined
+  /** The value split lines' colour, width and dash (ECharts' `splitLine.lineStyle`); absent takes the theme's grid colour, 1px, solid. */
+  gridColor?: string | undefined
+  gridWidth?: Double | undefined
+  gridDash?: Double[] | undefined
+  /** Vertical split lines at the x ticks (ECharts' x `splitLine`: on for a value axis, off for a category one). */
+  xGrid?: boolean | undefined
+  xGridColor?: string | undefined
+  xGridWidth?: Double | undefined
+  xGridDash?: Double[] | undefined
   /** Draws the left value axis upside down — ECharts' `yAxis.inverse`. */
   yInverse?: boolean | undefined
   /** Runs the x axis right to left — ECharts' `xAxis.inverse`. */
@@ -612,6 +649,26 @@ function seriesLabelCmds(
     size > 0.0 ? size : t.fontSize,
     measure,
   )
+}
+
+/**
+ * Where the x axis's ticks (and x split lines) fall: a category axis's band
+ * EDGES under `xTickBands` (ECharts' default), else the label positions —
+ * every shown label's, following its thinning.
+ */
+function xTickPositions(spec: ChartSpec, l: PlotLayout, plot: Rect): Double[] {
+  const out: Double[] = []
+  const n = spec.categories.length
+  if (spec.xTickBands === true && n > 0 && spec.boundaryGap !== false) {
+    const every = l.xLabelEvery > 1 ? l.xLabelEvery : 1
+    for (let i = 0; i <= n; i++) if (i % every === 0 || i === n) out.push(plot.x + (plot.w * i) / n)
+    return out
+  }
+  for (let ti = 0; ti < l.xTicks.length; ti++) {
+    if (l.xLabelEvery > 1 && ti % l.xLabelEvery !== 0) continue
+    out.push(l.xTicks[ti]!.pos)
+  }
+  return out
 }
 
 /**
@@ -1525,10 +1582,22 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           kind: 'line',
           from: { x: plot.x, y: tick.pos },
           to: { x: plot.x + plot.w, y: tick.pos },
-          stroke: t.grid,
-          width: 1.0,
+          stroke: spec.gridColor ?? t.grid,
+          width: spec.gridWidth ?? 1.0,
+          dash: spec.gridDash,
         })
       }
+    }
+  }
+  if (spec.showGrid && spec.y2Grid === true && spec.horizontal !== true) {
+    for (const tick of l.y2Ticks) {
+      out.push({ kind: 'line', from: { x: plot.x, y: tick.pos }, to: { x: plot.x + plot.w, y: tick.pos }, stroke: spec.gridColor ?? t.grid, width: spec.gridWidth ?? 1.0, dash: spec.gridDash })
+    }
+  }
+  // Vertical split lines at the x ticks (a value x axis, or a category one that asks).
+  if (spec.xGrid === true && spec.horizontal !== true) {
+    for (const gx of xTickPositions(spec, l, plot)) {
+      out.push({ kind: 'line', from: { x: gx, y: plot.y }, to: { x: gx, y: plot.y + plot.h }, stroke: spec.xGridColor ?? t.grid, width: spec.xGridWidth ?? 1.0, dash: spec.xGridDash })
     }
   }
 
@@ -1537,33 +1606,50 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   const y2Off = spec.y2Offset ?? 0.0
   const xOff = spec.xOffset ?? 0.0
   const yAxisX = yRight ? plot.x + plot.w + yOff : plot.x - yOff
-  if (spec.showYAxis) {
+  const yLineColor = spec.yAxisLineColor ?? t.axis
+  if (spec.showYAxis && spec.yAxisLine !== false) {
     out.push({
       kind: 'line',
       from: { x: yAxisX, y: plot.y },
       to: { x: yAxisX, y: plot.y + plot.h },
-      stroke: t.axis,
-      width: 1.0,
+      stroke: yLineColor,
+      width: spec.yAxisLineWidth ?? 1.0,
     })
+  }
+  // Ticks point away from the plot (into it under `inside`).
+  if (spec.showYAxis && spec.yTicks === true && spec.horizontal !== true) {
+    const yLen = spec.yTickLength ?? 5.0
+    const yDir = (yRight ? 1.0 : -1.0) * (spec.yTickInside === true ? -1.0 : 1.0)
+    for (const tick of l.yTicks) {
+      out.push({ kind: 'line', from: { x: yAxisX, y: tick.pos }, to: { x: yAxisX + yDir * yLen, y: tick.pos }, stroke: spec.yTickColor ?? yLineColor, width: 1.0 })
+    }
   }
   const xTop = spec.xTop === true && spec.horizontal !== true
   const xAxisY = xTop ? plot.y - xOff : plot.y + plot.h + xOff
-  if (spec.showXAxis) {
+  const xLineColor = spec.xAxisLineColor ?? t.axis
+  if (spec.showXAxis && spec.xAxisLine !== false) {
     out.push({
       kind: 'line',
       from: { x: plot.x, y: xAxisY },
       to: { x: plot.x + plot.w, y: xAxisY },
-      stroke: t.axis,
-      width: 1.0,
+      stroke: xLineColor,
+      width: spec.xAxisLineWidth ?? 1.0,
     })
+  }
+  if (spec.showXAxis && spec.xTicks === true && spec.horizontal !== true) {
+    const xLen = spec.xTickLength ?? 5.0
+    const xDir = (xTop ? -1.0 : 1.0) * (spec.xTickInside === true ? -1.0 : 1.0)
+    for (const tx of xTickPositions(spec, l, plot)) {
+      out.push({ kind: 'line', from: { x: tx, y: xAxisY }, to: { x: tx, y: xAxisY + xDir * xLen }, stroke: spec.xTickColor ?? xLineColor, width: 1.0 })
+    }
   }
   if (spec.showYAxis && spec.horizontal !== true) {
     for (const a of spec.extraYAxes ?? []) {
       const ax = a.side === 'left' ? plot.x - (a.offset ?? 0.0) : plot.x + plot.w + (a.offset ?? 0.0)
-      out.push({ kind: 'line', from: { x: ax, y: plot.y }, to: { x: ax, y: plot.y + plot.h }, stroke: t.axis, width: 1.0 })
+      if (a.line !== false) out.push({ kind: 'line', from: { x: ax, y: plot.y }, to: { x: ax, y: plot.y + plot.h }, stroke: t.axis, width: 1.0 })
     }
   }
-  if (spec.showYAxis && useY2) {
+  if (spec.showYAxis && useY2 && spec.y2AxisLine !== false) {
     out.push({
       kind: 'line',
       from: { x: plot.x + plot.w + y2Off, y: plot.y },

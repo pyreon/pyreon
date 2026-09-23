@@ -426,6 +426,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
       'a log scale applies to the first y axis only',
       'two y axes cannot share a side (ECharts offsets them); a third x axis is ignored',
       'axis keys outside the mapped set are ignored with a warning; an axis label formatter takes a function or the {value} template only; both axes read `axisLabel.margin`, `inside` and `rotate` (label anchors differential-tested); the x axis also `interval` (a category axis thins by ECharts\' calculateCategoryInterval); a second or extra y axis keeps the default margin',
+      'axis lines, ticks and split lines follow ECharts\' auto rule and `axisLine` / `axisTick` / `splitLine` styles (differential-tested); `axisLine.onZero` (the x line on the value zero), `minorTick`, `minorSplitLine` and `splitArea` are not drawn, and the second y axis\'s split lines take the first\'s style',
       'the y axes and a value X axis tick as ECharts does (differential-tested); a time axis still uses the engine\'s own ticks, and interval, minInterval and maxInterval are not read',
       LITERAL_ONLY,
     ],

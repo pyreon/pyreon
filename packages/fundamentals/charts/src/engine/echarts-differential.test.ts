@@ -864,3 +864,88 @@ describe('ECharts differential: axis label geometry', () => {
     })
   }
 })
+
+/**
+ * Axis strokes: the axis lines, ticks and split lines, as segments. ECharts
+ * shows an axis's line and ticks only when the other axis is a value axis,
+ * and a category axis on bands drops its ticks; `axisLine`, `axisTick` and
+ * `splitLine` override. Geometry is compared for every case; stroke colour,
+ * width and dash where the option sets them. ECharts draws 1px lines on the
+ * half pixel, so positions match within a pixel.
+ */
+interface StrokeFact { x1: number; y1: number; x2: number; y2: number; stroke: string; width: number; dash: string }
+const SERIES_INK = '#123456'
+const seg = (x1: number, y1: number, x2: number, y2: number): [number, number, number, number] => (x1 > x2 || (x1 === x2 && y1 > y2) ? [x2, y2, x1, y1] : [x1, y1, x2, y2])
+const byPos = (a: StrokeFact, b: StrokeFact): number => a.x1 - b.x1 || a.y1 - b.y1 || a.x2 - b.x2 || a.y2 - b.y2
+function echartsStrokes(option: object): StrokeFact[] {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: W, height: H })
+  chart.setOption({ animation: false, ...option })
+  const svg = chart.renderToSVGString()
+  chart.dispose()
+  const out: StrokeFact[] = []
+  for (const m of svg.matchAll(/<path d="M([-\d.]+) ([-\d.]+)L([-\d.]+) ([-\d.]+)"([^>]*)>/g)) {
+    const attrs = m[5]!
+    if (attrs.includes(SERIES_INK) || !attrs.includes('fill="none"')) continue
+    const [x1, y1, x2, y2] = seg(Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4]))
+    const dash = /stroke-dasharray="([^"]+)"/.exec(attrs)
+    out.push({ x1, y1, x2, y2, stroke: longHex(/stroke="([^"]+)"/.exec(attrs)![1]!), width: Number(/stroke-width="([\d.]+)"/.exec(attrs)?.[1] ?? 1), dash: dash === null ? '' : dash[1]!.replace(/\s/g, '') })
+  }
+  return out.sort(byPos)
+}
+function ourStrokes(option: object): StrokeFact[] {
+  const c = compileOption(option as EChartsOption, { width: W, height: H })
+  const m = (t: string, size: number): number => echarts.format.getTextRect(t, String(size) + 'px sans-serif').width
+  return renderChart(c.spec, m)
+    .flatMap((d) => {
+      if (d.kind !== 'line') return []
+      const [x1, y1, x2, y2] = seg(d.from.x, d.from.y, d.to.x, d.to.y)
+      return [{ x1, y1, x2, y2, stroke: longHex(d.stroke), width: d.width, dash: d.dash === undefined ? '' : d.dash.join(',') }]
+    })
+    .sort(byPos)
+}
+const strokesOf = (x: object, y: object, series: object = { type: 'bar', data: [30, 120, 80] }): object => ({
+  xAxis: { type: 'category', data: ['a', 'b', 'c'], ...x },
+  yAxis: { type: 'value', ...y },
+  series: [{ itemStyle: { color: SERIES_INK }, lineStyle: { color: SERIES_INK }, ...series }],
+})
+const STROKE_CASES: [string, object, boolean][] = [
+  ['a category x and value y: the x line and the split lines only', strokesOf({}, {}), false],
+  ['value x and value y: both lines, ticks on both, split lines both ways', {
+    xAxis: { type: 'value' }, yAxis: { type: 'value' },
+    series: [{ type: 'scatter', data: [[1, 2], [3, 4]], itemStyle: { color: SERIES_INK } }],
+  }, false],
+  ['category ticks shown: on the band edges', strokesOf({ axisTick: { show: true } }, {}), false],
+  ['alignWithLabel, length, inside and a styled axis line', strokesOf({ axisTick: { show: true, alignWithLabel: true, length: 8, inside: true }, axisLine: { lineStyle: { color: '#ff0000', width: 2 } } }, {}), true],
+  ['a y axis line and ticks shown, dashed split lines', strokesOf({}, { axisLine: { show: true, lineStyle: { color: '#00aa00' } }, axisTick: { show: true }, splitLine: { lineStyle: { type: 'dashed', color: '#aaaaaa' } } }), true],
+  ['boundaryGap false: category ticks on the labels', strokesOf({ boundaryGap: false }, {}, { type: 'line', data: [30, 120, 80], showSymbol: false }), false],
+  ['a hidden x axis line', strokesOf({ axisLine: { show: false } }, {}), false],
+  ['two y axes beside a category x: neither draws a line', {
+    xAxis: { type: 'category', data: ['a', 'b', 'c'] }, yAxis: [{ type: 'value' }, { type: 'value' }],
+    series: [{ type: 'bar', data: [30, 120, 80], itemStyle: { color: SERIES_INK } }, { type: 'line', yAxisIndex: 1, data: [3, 1, 2], lineStyle: { color: SERIES_INK }, itemStyle: { color: SERIES_INK }, showSymbol: false }],
+  }, false],
+]
+
+describe('ECharts differential: axis strokes', () => {
+  for (const [name, option, styled] of STROKE_CASES) {
+    it(name, () => {
+      const e = echartsStrokes(option)
+      const u = ourStrokes(option)
+      expect(e.length).toBeGreaterThan(0)
+      expect(u.length, JSON.stringify(u.map((f) => [f.x1, f.y1, f.x2, f.y2]))).toBe(e.length)
+      // Each ECharts stroke is matched to an unused one of ours at the same place
+      // (coincident strokes — the bottom split line and the x axis line — are
+      // told apart by their style where the option set one).
+      const used = new Set<number>()
+      for (const f of e) {
+        const tag = `${f.x1},${f.y1} → ${f.x2},${f.y2}`
+        // ECharts snaps a 1px line to the half pixel (subPixelOptimize: round, then +0.5).
+        const near = (g: StrokeFact): boolean => Math.abs(g.x1 - f.x1) <= 1 && Math.abs(g.y1 - f.y1) <= 1 && Math.abs(g.x2 - f.x2) <= 1 && Math.abs(g.y2 - f.y2) <= 1
+        // Styles are compared where the option set them; ECharts' default tokens are its theme, not the option's.
+        const styledHere = styled && f.stroke !== '#dbdee4' && f.stroke !== '#54555a'
+        const j = u.findIndex((g, k) => !used.has(k) && near(g) && (!styledHere || (g.stroke === f.stroke && g.width === f.width && g.dash === f.dash)))
+        expect(j, tag + (styledHere ? ` (${f.stroke} ${f.width} [${f.dash}])` : '')).toBeGreaterThanOrEqual(0)
+        used.add(j)
+      }
+    })
+  }
+})

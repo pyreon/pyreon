@@ -201,7 +201,8 @@ describe('axis offset', () => {
     // A multi-grid part lays its plot out by its labels (ECharts' single grid keeps its fixed rect).
     const grid = { [GRID_PART_KEY]: true }
     const base = compileOption({ grid, xAxis: { type: 'category', data: ['a', 'b'] }, yAxis: [{}, {}], series })
-    const off = compileOption({ grid, xAxis: { type: 'category', data: ['a', 'b'], offset: 7 }, yAxis: [{ offset: 11 }, { offset: 13 }], series })
+    // ECharts hides a y axis line beside a category x axis; shown here, so the offset can be seen moving it.
+    const off = compileOption({ grid, xAxis: { type: 'category', data: ['a', 'b'], offset: 7 }, yAxis: [{ offset: 11, axisLine: { show: true } }, { offset: 13, axisLine: { show: true } }], series })
     expect(off.warnings).toEqual([])
     const lb = layoutChart(base.spec, measure)
     const lo = layoutChart(off.spec, measure)
@@ -220,13 +221,14 @@ describe('a third y axis', () => {
   const measure = (t: string): number => t.length * 6
   const option = (offset: number) => ({
     xAxis: { type: 'category', data: ['a', 'b'] },
-    yAxis: [{ min: 0, max: 10 }, { min: 0, max: 100 }, { name: 'Wind', min: 0, max: 1000, offset, position: 'right' }],
+    yAxis: [{ min: 0, max: 10 }, { min: 0, max: 100 }, { name: 'Wind', min: 0, max: 1000, offset, position: 'right', axisLine: { show: true } }],
     series: [{ type: 'line', data: [5, 5] }, { type: 'line', yAxisIndex: 1, data: [50, 50] }, { type: 'line', yAxisIndex: 2, data: [500, 500] }],
   })
   it('scales its series on its own domain, draws its line and labels at its offset, and widens the gutter', () => {
     const { spec, warnings } = compileOption(option(60))
     expect(warnings).toEqual([])
-    expect(spec.extraYAxes).toEqual([{ side: 'right', domain: { min: 0, max: 1000 }, title: 'Wind', offset: 60 }])
+    // Beside a category x axis ECharts draws no y axis line unless shown, as this one is.
+    expect(spec.extraYAxes).toEqual([{ side: 'right', domain: { min: 0, max: 1000 }, title: 'Wind', offset: 60, line: true }])
     expect(spec.series[2]!.axisExtra).toBe(0)
     expect(spec.series[2]!.axis).toBeUndefined()
     const l = layoutChart(spec, measure)

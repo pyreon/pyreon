@@ -1135,6 +1135,13 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     xLabels: 'echarts',
     ...xLabelLayout(xAxis),
     ...yLabelLayout(yAxes[0]),
+    // ECharts shows an axis's line and ticks only when the OTHER axis is a
+    // value (or log) axis, and a category axis on bands never shows ticks.
+    ...axisStrokeFields(xAxis, 'x', true, xContinuous ? true : isObj(xAxis) && xAxis['boundaryGap'] === false, !xContinuous),
+    ...axisStrokeFields(yAxes[0], 'y', xType === 'value' || xType === 'log', xType === 'value' || xType === 'log', false),
+    ...(yAxes.length > 1 ? { y2AxisLine: axisLineShown(yAxes[1], xType === 'value' || xType === 'log') } : {}),
+    // The second y axis draws its own split lines, as ECharts does.
+    ...(yAxes.length > 1 && !(isObj(yAxes[1]!['splitLine']) && yAxes[1]!['splitLine']['show'] === false) ? { y2Grid: true } : {}),
     xValues,
     xTime: xTime ? true : undefined,
     annotations: annotations.length > 0 ? annotations : undefined,
@@ -1168,6 +1175,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
             domain: axisDomain(a),
             title: axisName(a),
             offset: num(a['offset']) ?? undefined,
+            line: axisLineShown(a, xType === 'value' || xType === 'log'),
           })),
         }
       : {}),
@@ -1206,7 +1214,7 @@ function applyOptionBrush(compiled: CompiledOption, spec: ChartSpec, measure: Me
 
 const defaultPalette = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
-const AXIS_KEYS = new Set(['type', 'data', 'name', 'show', 'min', 'max', 'scale', 'splitNumber', 'splitLine', 'axisLabel', 'boundaryGap', 'gridIndex', 'inverse', 'position', 'offset'])
+const AXIS_KEYS = new Set(['type', 'data', 'name', 'show', 'min', 'max', 'scale', 'splitNumber', 'splitLine', 'axisLine', 'axisTick', 'axisLabel', 'boundaryGap', 'gridIndex', 'inverse', 'position', 'offset'])
 
 function axisKeys(
   axis: Record<string, unknown>,
@@ -1309,6 +1317,75 @@ function xLabelLayout(axis: Record<string, unknown> | undefined): { xLabelAngle?
     ...(interval !== null && interval >= 0 ? { xLabelInterval: interval } : {}),
     xLabelMargin: num(label['margin']) ?? 8.0,
     ...(label['inside'] === true ? { xLabelInside: true } : {}),
+  }
+}
+
+/** An axis's `axisLine.show`, or ECharts' automatic rule (`auto`) when unset. */
+function axisLineShown(axis: Record<string, unknown> | undefined, auto: boolean): boolean {
+  const line = isObj(axis) && isObj(axis['axisLine']) ? axis['axisLine'] : {}
+  return line['show'] === true ? true : line['show'] === false ? false : auto
+}
+
+/** ECharts' `lineStyle.type` as a dash: `dashed` is 4w 2w, `dotted` w w, a number or an array as given. */
+function lineDashOf(type: unknown, width: Double): Double[] | undefined {
+  if (type === 'dashed') return [4.0 * width, 2.0 * width]
+  if (type === 'dotted') return [width, width]
+  const n = num(type)
+  if (n !== null && n > 0) return [n, n]
+  if (Array.isArray(type)) return type.map((v) => num(v) ?? 0.0)
+  return undefined
+}
+
+/**
+ * An axis's `axisLine`, `axisTick` and `splitLine` for the chart spec. `show`
+ * left unset (or `'auto'`) takes ECharts' automatic rule, passed in as
+ * `autoLine` / `autoTick`. A category x axis ticks its band edges unless
+ * `alignWithLabel`; its split lines are off unless shown, a value axis's on.
+ */
+function axisStrokeFields(axis: Record<string, unknown> | undefined, which: 'x' | 'y', autoLine: boolean, autoTick: boolean, category: boolean): Partial<ChartSpec> {
+  const a = isObj(axis) ? axis : {}
+  const line = isObj(a['axisLine']) ? a['axisLine'] : {}
+  const lineStyle = isObj(line['lineStyle']) ? line['lineStyle'] : {}
+  const tick = isObj(a['axisTick']) ? a['axisTick'] : {}
+  const tickStyle = isObj(tick['lineStyle']) ? tick['lineStyle'] : {}
+  const split = isObj(a['splitLine']) ? a['splitLine'] : {}
+  const splitStyle = isObj(split['lineStyle']) ? split['lineStyle'] : {}
+  const lineShow = line['show'] === true ? true : line['show'] === false ? false : autoLine
+  const tickShow = tick['show'] === true ? true : tick['show'] === false ? false : autoTick
+  const lineColor = typeof lineStyle['color'] === 'string' ? (lineStyle['color'] as string) : undefined
+  const lineWidth = num(lineStyle['width']) ?? undefined
+  const tickColor = typeof tickStyle['color'] === 'string' ? (tickStyle['color'] as string) : undefined
+  const tickLength = num(tick['length']) ?? undefined
+  const splitColor = typeof splitStyle['color'] === 'string' ? (splitStyle['color'] as string) : undefined
+  const splitWidth = num(splitStyle['width']) ?? undefined
+  const splitDash = lineDashOf(splitStyle['type'], splitWidth ?? 1.0)
+  if (which === 'x') {
+    const xGrid = category ? split['show'] === true : split['show'] !== false
+    return {
+      xAxisLine: lineShow,
+      ...(lineColor !== undefined ? { xAxisLineColor: lineColor } : {}),
+      ...(lineWidth !== undefined ? { xAxisLineWidth: lineWidth } : {}),
+      ...(tickShow ? { xTicks: true, xTickBands: category && tick['alignWithLabel'] !== true } : {}),
+      ...(tickLength !== undefined ? { xTickLength: tickLength } : {}),
+      ...(tick['inside'] === true ? { xTickInside: true } : {}),
+      ...(tickColor !== undefined ? { xTickColor: tickColor } : {}),
+      ...(xGrid ? { xGrid: true } : {}),
+      ...(splitColor !== undefined ? { xGridColor: splitColor } : {}),
+      ...(splitWidth !== undefined ? { xGridWidth: splitWidth } : {}),
+      ...(splitDash !== undefined ? { xGridDash: splitDash } : {}),
+    }
+  }
+  return {
+    yAxisLine: lineShow,
+    ...(lineColor !== undefined ? { yAxisLineColor: lineColor } : {}),
+    ...(lineWidth !== undefined ? { yAxisLineWidth: lineWidth } : {}),
+    ...(tickShow ? { yTicks: true } : {}),
+    ...(tickLength !== undefined ? { yTickLength: tickLength } : {}),
+    ...(tick['inside'] === true ? { yTickInside: true } : {}),
+    ...(tickColor !== undefined ? { yTickColor: tickColor } : {}),
+    ...(splitColor !== undefined ? { gridColor: splitColor } : {}),
+    ...(splitWidth !== undefined ? { gridWidth: splitWidth } : {}),
+    ...(splitDash !== undefined ? { gridDash: splitDash } : {}),
   }
 }
 

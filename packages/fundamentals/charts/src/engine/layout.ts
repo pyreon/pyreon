@@ -22,6 +22,8 @@ export interface ExtraYAxis {
   domain?: Domain | undefined
   title?: string | undefined
   offset?: Double | undefined
+  /** `false` hides this axis's line (ECharts' `axisLine.show`); absent draws it. */
+  line?: boolean | undefined
 }
 
 /** One tick of an extra y axis; `axis` is its index into the extra axes. */

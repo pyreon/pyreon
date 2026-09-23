@@ -58,7 +58,7 @@ data class RadarHitIndex(var series: Int, var axis: Int)
 
 data class Gutters(var left: Double, var right: Double, var top: Double, var bottom: Double)
 
-data class ExtraYAxis(var side: String, var domain: Domain? = null, var title: String? = null, var offset: Double? = null)
+data class ExtraYAxis(var side: String, var domain: Domain? = null, var title: String? = null, var offset: Double? = null, var line: Boolean? = null)
 
 data class ExtraTick(var axis: Double, var pos: Double, var label: String)
 
@@ -108,7 +108,7 @@ data class Emphasis(var highlight: Int, var selected: List<Int>)
 
 data class BarLength(var value: Double, var percent: Boolean)
 
-data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var drawOrder: List<Int>? = null, var boundaryGap: Boolean? = null, var yZero: Boolean? = null, var ySplit: Double? = null, var barLayout: Boolean? = null, var barGap: BarLength? = null, var barCategoryGap: BarLength? = null, var yMin: Double? = null, var xSplit: Double? = null, var xZero: Boolean? = null, var xMin: Double? = null, var xMax: Double? = null, var xMinData: Boolean? = null, var xMaxData: Boolean? = null, var yMax: Double? = null, var yMinData: Boolean? = null, var yMaxData: Boolean? = null, var gridLeft: Double? = null, var reserveLeft: Double? = null, var gridTop: Double? = null, var gridRight: Double? = null, var gridBottom: Double? = null, var gridContain: Boolean? = null, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var xLabelAngle: Double? = null, var xLabelInterval: Double? = null, var xLabelMargin: Double? = null, var xLabelInside: Boolean? = null, var yLabelAngle: Double? = null, var yLabelMargin: Double? = null, var yLabelInside: Boolean? = null, var yInverse: Boolean? = null, var xInverse: Boolean? = null, var xTop: Boolean? = null, var yRight: Boolean? = null, var xOffset: Double? = null, var yOffset: Double? = null, var y2Offset: Double? = null, var extraYAxes: List<ExtraYAxis>? = null, var x2Labels: List<String>? = null, var x2Title: String? = null, var x2Domain: Domain? = null, var lines: List<LinesSeries>? = null, var effectTime: Double? = null)
+data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var drawOrder: List<Int>? = null, var boundaryGap: Boolean? = null, var yZero: Boolean? = null, var ySplit: Double? = null, var barLayout: Boolean? = null, var barGap: BarLength? = null, var barCategoryGap: BarLength? = null, var yMin: Double? = null, var xSplit: Double? = null, var xZero: Boolean? = null, var xMin: Double? = null, var xMax: Double? = null, var xMinData: Boolean? = null, var xMaxData: Boolean? = null, var yMax: Double? = null, var yMinData: Boolean? = null, var yMaxData: Boolean? = null, var gridLeft: Double? = null, var reserveLeft: Double? = null, var gridTop: Double? = null, var gridRight: Double? = null, var gridBottom: Double? = null, var gridContain: Boolean? = null, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var xLabelAngle: Double? = null, var xLabelInterval: Double? = null, var xLabelMargin: Double? = null, var xLabelInside: Boolean? = null, var yLabelAngle: Double? = null, var yLabelMargin: Double? = null, var yLabelInside: Boolean? = null, var xAxisLine: Boolean? = null, var yAxisLine: Boolean? = null, var y2AxisLine: Boolean? = null, var y2Grid: Boolean? = null, var xAxisLineColor: String? = null, var yAxisLineColor: String? = null, var xAxisLineWidth: Double? = null, var yAxisLineWidth: Double? = null, var xTicks: Boolean? = null, var yTicks: Boolean? = null, var xTickLength: Double? = null, var yTickLength: Double? = null, var xTickInside: Boolean? = null, var yTickInside: Boolean? = null, var xTickColor: String? = null, var yTickColor: String? = null, var xTickBands: Boolean? = null, var gridColor: String? = null, var gridWidth: Double? = null, var gridDash: List<Double>? = null, var xGrid: Boolean? = null, var xGridColor: String? = null, var xGridWidth: Double? = null, var xGridDash: List<Double>? = null, var yInverse: Boolean? = null, var xInverse: Boolean? = null, var xTop: Boolean? = null, var yRight: Boolean? = null, var xOffset: Double? = null, var yOffset: Double? = null, var y2Offset: Double? = null, var extraYAxes: List<ExtraYAxis>? = null, var x2Labels: List<String>? = null, var x2Title: String? = null, var x2Domain: Domain? = null, var lines: List<LinesSeries>? = null, var effectTime: Double? = null)
 
 data class Ohlc(var open: Double, var high: Double, var low: Double, var close: Double)
 
@@ -3640,6 +3640,27 @@ fun seriesLabelCmds(s: Series, index: Int, fallback: String, at: PyreonChartPt, 
     return labelCommands(labelTextAt(s, index, fallback), (s.labelRich ?: listOf()), at, align, baseline, if (color == "") t.label else color, if (size > 0.0) size else t.fontSize, measure)
   }
 
+fun xTickPositions(spec: ChartSpec, l: PlotLayout, plot: PyreonChartRect): List<Double> {
+    val out: MutableList<Double> = mutableListOf()
+    val n = spec.categories.length
+    if (spec.xTickBands == true && n > 0 && spec.boundaryGap != false) {
+      val every = if (l.xLabelEvery > 1) l.xLabelEvery else 1
+      for (i in 0..n) {
+        if (i % every == 0 || i == n) {
+          out.add(plot.x + ((plot.w * i)).toDouble() / (n).toDouble())
+        }
+      }
+      return out
+    }
+    for (ti in 0 until l.xTicks.length) {
+      if (l.xLabelEvery > 1 && ti % l.xLabelEvery != 0) {
+        continue
+      }
+      out.add(l.xTicks[ti].pos)
+    }
+    return out
+  }
+
 fun barLabelCmds(s: Series, index: Int, fallback: String, r: PyreonChartRect, shapeFill: String, t: ChartTheme, measure: (String, Double) -> Double): List<PyreonDrawCmd> {
     val place = labelPlace(r, (s.labelPosition ?: "inside"), (s.labelDistance ?: 5.0))
     val own = (s.labelColor ?: "")
@@ -4434,8 +4455,18 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         }
       } else {
         for (tick in l.yTicks) {
-          out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = plot.x, y = tick.pos), to = PyreonChartPt(x = plot.x + plot.w, y = tick.pos), stroke = t.grid, width = 1.0))
+          out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = plot.x, y = tick.pos), to = PyreonChartPt(x = plot.x + plot.w, y = tick.pos), stroke = (spec.gridColor ?: t.grid), width = (spec.gridWidth ?: 1.0), dash = spec.gridDash))
         }
+      }
+    }
+    if (spec.showGrid && spec.y2Grid == true && spec.horizontal != true) {
+      for (tick in l.y2Ticks) {
+        out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = plot.x, y = tick.pos), to = PyreonChartPt(x = plot.x + plot.w, y = tick.pos), stroke = (spec.gridColor ?: t.grid), width = (spec.gridWidth ?: 1.0), dash = spec.gridDash))
+      }
+    }
+    if (spec.xGrid == true && spec.horizontal != true) {
+      for (gx in xTickPositions(spec, l, plot)) {
+        out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = gx, y = plot.y), to = PyreonChartPt(x = gx, y = plot.y + plot.h), stroke = (spec.xGridColor ?: t.grid), width = (spec.xGridWidth ?: 1.0), dash = spec.xGridDash))
       }
     }
     val yRight = spec.yRight == true && !useY2 && spec.horizontal != true
@@ -4443,21 +4474,39 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
     val y2Off = (spec.y2Offset ?: 0.0)
     val xOff = (spec.xOffset ?: 0.0)
     val yAxisX = if (yRight) plot.x + plot.w + yOff else plot.x - yOff
-    if (spec.showYAxis) {
-      out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = yAxisX, y = plot.y), to = PyreonChartPt(x = yAxisX, y = plot.y + plot.h), stroke = t.axis, width = 1.0))
+    val yLineColor = (spec.yAxisLineColor ?: t.axis)
+    if (spec.showYAxis && spec.yAxisLine != false) {
+      out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = yAxisX, y = plot.y), to = PyreonChartPt(x = yAxisX, y = plot.y + plot.h), stroke = yLineColor, width = (spec.yAxisLineWidth ?: 1.0)))
+    }
+    if (spec.showYAxis && spec.yTicks == true && spec.horizontal != true) {
+      val yLen = (spec.yTickLength ?: 5.0)
+      val yDir = (if (yRight) 1.0 else -1.0) * (if (spec.yTickInside == true) -1.0 else 1.0)
+      for (tick in l.yTicks) {
+        out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = yAxisX, y = tick.pos), to = PyreonChartPt(x = yAxisX + yDir * yLen, y = tick.pos), stroke = (spec.yTickColor ?: yLineColor), width = 1.0))
+      }
     }
     val xTop = spec.xTop == true && spec.horizontal != true
     val xAxisY = if (xTop) plot.y - xOff else plot.y + plot.h + xOff
-    if (spec.showXAxis) {
-      out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = plot.x, y = xAxisY), to = PyreonChartPt(x = plot.x + plot.w, y = xAxisY), stroke = t.axis, width = 1.0))
+    val xLineColor = (spec.xAxisLineColor ?: t.axis)
+    if (spec.showXAxis && spec.xAxisLine != false) {
+      out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = plot.x, y = xAxisY), to = PyreonChartPt(x = plot.x + plot.w, y = xAxisY), stroke = xLineColor, width = (spec.xAxisLineWidth ?: 1.0)))
+    }
+    if (spec.showXAxis && spec.xTicks == true && spec.horizontal != true) {
+      val xLen = (spec.xTickLength ?: 5.0)
+      val xDir = (if (xTop) -1.0 else 1.0) * (if (spec.xTickInside == true) -1.0 else 1.0)
+      for (tx in xTickPositions(spec, l, plot)) {
+        out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = tx, y = xAxisY), to = PyreonChartPt(x = tx, y = xAxisY + xDir * xLen), stroke = (spec.xTickColor ?: xLineColor), width = 1.0))
+      }
     }
     if (spec.showYAxis && spec.horizontal != true) {
       for (a in (spec.extraYAxes ?: listOf())) {
         val ax = if (a.side == "left") plot.x - ((a.offset ?: 0.0)) else plot.x + plot.w + ((a.offset ?: 0.0))
-        out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = ax, y = plot.y), to = PyreonChartPt(x = ax, y = plot.y + plot.h), stroke = t.axis, width = 1.0))
+        if (a.line != false) {
+          out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = ax, y = plot.y), to = PyreonChartPt(x = ax, y = plot.y + plot.h), stroke = t.axis, width = 1.0))
+        }
       }
     }
-    if (spec.showYAxis && useY2) {
+    if (spec.showYAxis && useY2 && spec.y2AxisLine != false) {
       out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = plot.x + plot.w + y2Off, y = plot.y), to = PyreonChartPt(x = plot.x + plot.w + y2Off, y = plot.y + plot.h), stroke = t.axis, width = 1.0))
     }
     val notes = (spec.annotations ?: listOf())
