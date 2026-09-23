@@ -45,6 +45,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.pinch
 import androidx.compose.ui.test.onNodeWithTag
@@ -53,6 +54,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import android.os.SystemClock
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.click
@@ -124,6 +126,21 @@ class TasksAppInstrumentedTest {
      * ("done", toolkit-filter not found mid-remount) — one class, two
      * lines. Fix the class, not the line.
      */
+    /**
+     * Tap the hosted flow at the centre of its LAYOUT. `performTouchInput`'s
+     * `center` is the centre of the VISIBLE part, so a WebView only partly on
+     * screen after `performScrollTo` took the tap in its top strip, missing the
+     * fitted graph. Scrolling to the button right below brings the whole WebView
+     * on screen first.
+     */
+    private fun tapFlowWebViewCentre() {
+        composeRule.onNodeWithTag("gal-flow-webview-fit").performScrollTo()
+        val info = composeRule.onNodeWithTag("gal-flow-webview").fetchSemanticsNode().layoutInfo
+        val origin = info.coordinates.positionInRoot()
+        val target = Offset(origin.x + info.width / 2f, origin.y + info.height / 2f)
+        composeRule.onRoot().performTouchInput { click(target) }
+    }
+
     private fun waitForTagText(tag: String, text: String) {
         try {
             composeRule.waitUntil(timeoutMillis = 20_000) {
@@ -534,7 +551,7 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("tasks-flow").performClick()
         assertTagDisplayed("flow-page", "after tasks-flow (/tasks -> /flow)")
         composeRule.onNodeWithTag("flow-node-count").assertTextEquals("2")
-        composeRule.onNodeWithTag("flow-edge-count").assertTextEquals("1")
+        composeRule.onNodeWithTag("flow-edge-count").assertTextEquals("2")
         composeRule.onNodeWithTag("flow-zoom").assertTextEquals("zoom 1.0")
         composeRule.onNodeWithTag("flow-add").performClick()
         composeRule.onNodeWithTag("flow-node-count").assertTextEquals("3")
@@ -564,6 +581,49 @@ class TasksAppInstrumentedTest {
             check(count(label, 0, 0, 0) == 0) { "the default node label painted the platform's default black" }
             val canvas = composeRule.onNodeWithContentDescription("Task flow").captureToImage().asAndroidBitmap()
             check(count(canvas, 0x3b, 0x82, 0xf6) > 500) { "the selected default node has no --pyreon-flow-node-selected (#3b82f6) border" }
+        }
+        // The `wire` custom edge draws ARBITRARY SVG path data (a template
+        // literal), parsed by the native runtime: its #16a34a stroke must paint,
+        // and at the right SCALE. Graph units are dp; a path drawn in px would
+        // land shrunk by the density, well short of the End node.
+        run {
+            val canvasNode = composeRule.onNodeWithContentDescription("Task flow")
+            val bmp = canvasNode.captureToImage().asAndroidBitmap()
+            var green = 0
+            var maxX = Int.MIN_VALUE
+            for (y in 0 until bmp.height) for (x in 0 until bmp.width) {
+                val c = bmp.getPixel(x, y)
+                if (kotlin.math.abs(android.graphics.Color.red(c) - 0x16) <= 6 && kotlin.math.abs(android.graphics.Color.green(c) - 0xa3) <= 6 && kotlin.math.abs(android.graphics.Color.blue(c) - 0x4a) <= 6) {
+                    green++
+                    if (x > maxX) maxX = x
+                }
+            }
+            check(green > 50) { "the custom edge's arbitrary SVG path did not paint natively ($green green px)" }
+            // The path ends at node 'b', seeded at graph x = 200. The viewport is
+            // still the origin at zoom 1 here, so that is 200dp from the canvas
+            // edge. At 1/density it would stop at 200px, far short.
+            val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+            check(kotlin.math.abs(maxX - 200 * density) <= 20f) {
+                "the custom edge drew at the wrong scale: it ends at ${maxX}px, node 'b' is at ${200 * density}px"
+            }
+        }
+        // The added node 'c' is a custom node with an inline <svg>: an 8-unit
+        // viewBox drawn at 16x16dp. Measured by AREA, not bounding box: a couple
+        // of antialiased pixels elsewhere on the canvas land within tolerance and
+        // would stretch a box, but not a count. A 16dp square is (16·density)²
+        // px; a viewBox that was not applied paints an 8dp square, and a missing
+        // density a 16px one (about 6dp here).
+        run {
+            val bmp = composeRule.onNodeWithContentDescription("Task flow").captureToImage().asAndroidBitmap()
+            var count = 0
+            for (y in 0 until bmp.height) for (x in 0 until bmp.width) {
+                val c = bmp.getPixel(x, y)
+                if (kotlin.math.abs(android.graphics.Color.red(c) - 0x7c) <= 6 && kotlin.math.abs(android.graphics.Color.green(c) - 0x3a) <= 6 && kotlin.math.abs(android.graphics.Color.blue(c) - 0xed) <= 6) count++
+            }
+            check(count > 0) { "the custom node's inline <svg> did not paint natively" }
+            val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+            val side = kotlin.math.sqrt(count.toFloat()) / density
+            check(kotlin.math.abs(side - 16f) <= 1.5f) { "the <svg> badge measures ${side}dp a side ($count px), its size is 16x16" }
         }
         composeRule.onNodeWithContentDescription("minimap").assertExists()
         composeRule.onNodeWithContentDescription("source handle out").assertExists()
@@ -1104,6 +1164,40 @@ class TasksAppInstrumentedTest {
         waitForTagText("gal-flow-webview-events", "1")
         composeRule.onNodeWithTag("gal-flow-webview-fit").performScrollTo().performClick()
         waitForTagText("gal-flow-webview-events", "2")
+        // F5: a node tap INSIDE the WebView reaches native `onSelect`. The graph is
+        // one symmetric row, so fit-view centres the middle node and a tap at the
+        // WebView's centre hits it; the touch is injected into the Compose root and
+        // routed to the embedded WebView like a finger would be.
+        waitForTagText("gal-flow-webview-selected", "none")
+        // An unsized WebView used to collapse to ~18dp, leaving the fitted graph no
+        // room and the centre tap nowhere to land. It now takes the web
+        // `<iframe>`'s 150dp default.
+        // Semantics size is CLIPPED to what is on screen, so measure the LAYOUT.
+        // The View itself is the thing that must be tall: a padded Compose slot
+        // around an 18dp WebView looks right here and still misses the tap.
+        composeRule.onNodeWithTag("gal-flow-webview").performScrollTo()
+        val webHeight = composeRule.onNodeWithTag("gal-flow-webview").fetchSemanticsNode().layoutInfo.height
+        check(webHeight >= with(composeRule.density) { 149.dp.roundToPx() }) {
+            "an unsized FlowWebView must get the iframe's 150dp default height, measured ${webHeight}px"
+        }
+        tapFlowWebViewCentre()
+        waitForTagText("gal-flow-webview-selected", "transform")
+        // Swapping the graph re-renders IN PLACE: the same tap now selects the new
+        // middle node.
+        composeRule.onNodeWithTag("gal-flow-webview-swap").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        SystemClock.sleep(500)
+        tapFlowWebViewCentre()
+        waitForTagText("gal-flow-webview-selected", "enrich")
+        // A graph the hosted renderer cannot draw reaches native `onError`.
+        composeRule.onNodeWithTag("gal-flow-webview-broken").performScrollTo().assertExists()
+        waitForTagText("gal-flow-webview-failure", "error")
+        // RELOAD: swapping `html` reloads the hosted page, and the NEW page must
+        // receive the graph again and answer over the reverse bridge.
+        composeRule.onNodeWithTag("gal-flow-webview-reload-status").performScrollTo()
+        waitForTagText("gal-flow-webview-reload-status", "a:3")
+        composeRule.onNodeWithTag("gal-flow-webview-reload-swap").performScrollTo().performClick()
+        waitForTagText("gal-flow-webview-reload-status", "b:3")
         // The lines trail renders. Its MOTION is proven on the iOS device lane
         // and in real Chromium; here it cannot be: the trail runs on
         // withInfiniteAnimationFrameNanos (a plain frame loop kept this harness

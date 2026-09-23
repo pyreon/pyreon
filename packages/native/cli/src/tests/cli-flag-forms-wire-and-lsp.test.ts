@@ -19,10 +19,10 @@ import { _handleMessage, _resetOpenDocuments, _setNotify } from '../lsp'
 import { watchCheck } from '../check'
 import { writeFixtureFont } from './font-fixture'
 
-const CLEAN = 'export function C() { return <text>hello</text> }'
+const CLEAN = 'export function C() { return <Text>hello</Text> }'
 const WARNS =
-  'function first<T>(xs: T[]): T { return xs[0] }\nexport function C() { return <text>hi</text> }'
-const BROKEN = 'export function C() { return <text>oops< }'
+  'function first<T>(xs: T[]): T { return xs[0] }\nexport function C() { return <Text>hi</Text> }'
+const BROKEN = 'export function C() { return <Text>oops< }'
 const WEB_ENTRY = "import { mount } from '@pyreon/runtime-dom'\nmount(null, document.body)"
 
 let root: string
@@ -73,7 +73,7 @@ describe('flag forms', () => {
     mkdirSync(fonts, { recursive: true })
     writeFixtureFont(join(fonts, 'Inter-Bold.ttf'), 'Inter-Bold')
     const src = srcDir({
-      'C.tsx': 'export function C() { return <text style={{ fontFamily: "Inter-Bold" }}>hi</text> }',
+      'C.tsx': 'export function C() { return <Text style={{ fontFamily: "Inter-Bold" }}>hi</Text> }',
     })
     expect(main(['build', `--target=ios`, `--source=${src}`, `--out=${outDir()}`, `--fonts=${fonts}`])).toBe(0)
   })

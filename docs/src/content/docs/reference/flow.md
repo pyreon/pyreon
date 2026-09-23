@@ -13,11 +13,9 @@ Reactive flow diagrams for Pyreon. Signal-native nodes and edges, pan/zoom via p
 
 ## Multiplatform
 
-**Tier:** Web-only — the browser package; the native story is stated below
+**Tier:** Service backend — the API is shared; the native runtimes host it
 
-the TypeScript package is a browser package at runtime, while the native compiler lowers its public state/editor surface to SwiftUI and Compose; browser CSS selectors and arbitrary SVG path strings remain platform-specific presentation rather than portable runtime concepts
-
-**What crosses natively:** PyreonFlowState lowers `createFlow` and lifecycle-owned `useFlow` configuration, the complete public FlowInstance operation surface, portable node/edge models, and all seven deterministic layout engines to @Observable/SwiftUI and Compose. Edge-path and marker helpers lower to matching native geometry. `<Flow instance={flow}>` lowers to the interactive `PyreonFlowView` host with statically resolvable custom node and edge maps, custom connection lines, live renderer accessors, handles and connection gestures, resizing, multiple toolbars, built-in edge geometry, node drag, canvas pan/zoom, visibility, measurement, keyboard accessibility, background, controls, minimap, positioned panels, and portable inline node/edge styling. Dynamic renderer structure, browser CSS selectors, and arbitrary SVG path strings produce named diagnostics and use explicit platform branches when required.
+one API with a web engine and a Swift/Kotlin port: `createFlow`/`useFlow`, the whole FlowInstance surface and all seven layouts lower to `PyreonFlowState`, and `<Flow instance>` lowers to the interactive `PyreonFlowView` (static custom node/edge maps, connection lines, handles, resizing, toolbars, background, controls, minimap, panels, colorMode including system, gestures, keyboard commands, culling, portable inline styles). The native engines replay shared scenarios against the web engine as oracle, and the iOS/Android device suites assert the rendered chrome and interactions. A `<path d>` in a custom edge or connection line lowers for any SVG path data, an inline `<svg>` in a renderer draws its shapes natively scaled by the viewBox, and plain `<div>`/`<p>`/`<span>` lower where the layout provably matches the browser. Browser-only by member and warned by name: `FlowLayersContext`, `flowStyles`, CSS-dependent renderers (a `class`/`style`, inline-flow mixes, CSS selectors), SVG `<text>`/gradients/`transform`, and renderer maps computed at runtime; `@pyreon/flow/webview` hosts the unchanged browser renderer for those.
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 

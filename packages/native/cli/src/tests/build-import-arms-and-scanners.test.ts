@@ -73,7 +73,7 @@ describe('findTsxFiles', () => {
   it('skips `.test.tsx` beside the sources it would otherwise compile', () => {
     // A test file lowered to Swift is a build failure at best (vitest
     // imports) and a shipped test at worst.
-    writeFileSync(join(dir, 'A.tsx'), 'export function A() { return <text>a</text> }')
+    writeFileSync(join(dir, 'A.tsx'), 'export function A() { return <Text>a</Text> }')
     writeFileSync(join(dir, 'A.test.tsx'), 'import { it } from "vitest"')
     writeFileSync(join(dir, 'notes.md'), '# not a source')
     expect(findTsxFiles(dir).map((f) => f.split('/').pop())).toEqual(['A.tsx'])
@@ -82,7 +82,7 @@ describe('findTsxFiles', () => {
   it('threads `fonts` into the transform', () => {
     writeFileSync(
       join(dir, 'A.tsx'),
-      'export function A() { return <text style={{ fontFamily: "Inter-Bold" }}>a</text> }',
+      'export function A() { return <Text style={{ fontFamily: "Inter-Bold" }}>a</Text> }',
     )
     const out = join(dir, 'out')
     const result = build({ target: 'swift', source: dir, out, fonts: { 'Inter-Bold': 'Inter-Bold' } })

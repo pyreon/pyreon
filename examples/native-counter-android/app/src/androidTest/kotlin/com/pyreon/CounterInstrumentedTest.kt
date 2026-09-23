@@ -282,6 +282,32 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithTag("native-flow-color-mode").assertTextEquals("light")
         flowCanvas.performScrollTo()
         check(canvasPixels(11, 18, 32) == 0) { "the dark canvas colour outlived colorMode=\"dark\"" }
+        // colorMode="system" follows the DEVICE appearance, switched here through
+        // the per-app night mode (a uiMode configuration change the activity
+        // handles in place, so the app's own state survives the switch).
+        val uiModes = InstrumentationRegistry.getInstrumentation().targetContext
+            .getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+        try {
+            uiModes.setApplicationNightMode(UiModeManager.MODE_NIGHT_NO)
+            composeRule.onNodeWithTag("native-flow-toggle-system").performScrollTo().performClick()
+            composeRule.onNodeWithTag("native-flow-color-mode").assertTextEquals("system")
+            flowCanvas.performScrollTo()
+            check(canvasPixels(11, 18, 32) == 0) { "colorMode=\"system\" painted dark on a light device" }
+            uiModes.setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)
+            composeRule.onNodeWithTag("native-flow-color-mode").assertTextEquals("system")
+            flowCanvas.performScrollTo()
+            check(canvasPixels(11, 18, 32) > 1000) { "colorMode=\"system\" did not follow the device into dark" }
+            uiModes.setApplicationNightMode(UiModeManager.MODE_NIGHT_NO)
+            flowCanvas.performScrollTo()
+            check(canvasPixels(11, 18, 32) == 0) { "colorMode=\"system\" stayed dark after the device went light" }
+            composeRule.onNodeWithTag("native-flow-toggle-system").performScrollTo().performClick()
+            composeRule.onNodeWithTag("native-flow-color-mode").assertTextEquals("light")
+            // The toggle sits at the bottom of the page: bring the canvas back
+            // before the drag checks below, or their touches land off-screen.
+            flowCanvas.performScrollTo()
+        } finally {
+            uiModes.setApplicationNightMode(UiModeManager.MODE_NIGHT_AUTO)
+        }
 
         composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
         val startNode = composeRule.onNodeWithContentDescription("Native Flow Start")

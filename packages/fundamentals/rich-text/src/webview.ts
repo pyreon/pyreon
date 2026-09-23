@@ -224,9 +224,17 @@ export function RichTextWebView(props: RichTextWebViewProps): VNode {
   const built: BuildRichTextHostHtmlOptions = {}
   if (props.tiptapScript !== undefined) built.tiptapScript = props.tiptapScript
   if (props.tiptapSrc !== undefined) built.tiptapSrc = props.tiptapSrc
-  const html = props.html ?? buildRichTextHostHtml(built)
+  // `html` is forwarded as a GETTER, not read once here: native hosts reload
+  // when `html` changes, and an eager read froze the web host on its first
+  // page. The default host is built lazily, once, and only if needed.
+  let defaultHtml: string | undefined
 
-  const webViewProps: Record<string, unknown> = { html }
+  const webViewProps: Record<string, unknown> = {}
+  Object.defineProperty(webViewProps, 'html', {
+    enumerable: true,
+    configurable: true,
+    get: (): string => props.html ?? (defaultHtml ??= buildRichTextHostHtml(built)),
+  })
   Object.defineProperty(webViewProps, 'data', {
     enumerable: true,
     configurable: true,

@@ -36,6 +36,43 @@ export function resolveStaticFlowRendererMap(
   return [...entries].map(([type, component]) => ({ type, component }))
 }
 
+/**
+ * The components a `<Flow>` in this file renders nodes, edges or the
+ * connection line with (`nodeTypes` / `edgeTypes` values and
+ * `connectionLine`). An inline `<svg>` lowers natively only inside one of
+ * these: anywhere else it is ordinary web markup and keeps its warning, and
+ * the flow runtime it would draw with may not even be linked.
+ *
+ * Collected up front from every component's IR, because the `<Flow>` that
+ * registers a renderer may be emitted after the renderer itself.
+ */
+export function collectFlowRendererComponents(roots: readonly unknown[], lookup: (name: string) => ExprIR | undefined): Set<string> {
+  const out = new Set<string>()
+  const seen = new Set<object>()
+  const visit = (node: unknown): void => {
+    if (node === null || typeof node !== 'object' || seen.has(node)) return
+    seen.add(node)
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item)
+      return
+    }
+    const n = node as { kind?: unknown; tag?: unknown; attrs?: unknown }
+    if (n.kind === 'jsx-element' && n.tag === 'Flow' && Array.isArray(n.attrs)) {
+      for (const a of n.attrs as { kind: string; name?: string; value?: ExprIR }[]) {
+        if (a.kind !== 'attr' || a.value === undefined) continue
+        if (a.name === 'nodeTypes' || a.name === 'edgeTypes') {
+          for (const entry of resolveStaticFlowRendererMap(a.value, lookup) ?? []) out.add(entry.component)
+        } else if (a.name === 'connectionLine' && a.value.kind === 'identifier') {
+          out.add(a.value.name)
+        }
+      }
+    }
+    for (const value of Object.values(node)) visit(value)
+  }
+  visit(roots)
+  return out
+}
+
 export const LOWERED_FLOW_PROPERTY_READS: ReadonlySet<string> = new Set([
   'nodes', 'edges', 'viewport', 'zoom', 'containerSize',
   'nodeMap', 'edgeMap', 'measurements',

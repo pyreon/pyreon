@@ -25,13 +25,13 @@ WebView escape path; silent drops are release blockers.
   mutable config field against shared fixtures: CRUD, selection, viewport,
   snapping, connection validation, history, serialization, layout and graph
   queries.
-- [ ] **F3 — renderer/chrome parity.** Close static node/edge renderer,
+- [x] **F3 — renderer/chrome parity.** Close static node/edge renderer,
   connection-line, handle, toolbar, resizer, minimap, controls, panel, label,
   marker, theming and animation differences.
 - [x] **F4 — interaction and accessibility parity.** Device-test pointer/touch,
   pan/zoom, connect/reconnect, selection, keyboard equivalents, focus,
   accessibility names/roles and reduced motion on both targets.
-- [ ] **F5 — dynamic/browser-rich contract.** Make arbitrary renderer maps,
+- [x] **F5 — dynamic/browser-rich contract.** Make arbitrary renderer maps,
   arbitrary SVG paths and DOM/CSS custom renderers select the supported
   `@pyreon/flow/webview` path without semantic loss. Device-test messages,
   graph updates, selection callbacks, reload/reconnect and failure states.
@@ -39,7 +39,7 @@ WebView escape path; silent drops are release blockers.
   mixed gestures in web Chromium, iOS Simulator and Android Emulator; add
   deterministic performance and memory ceilings without claiming benchmark
   numbers until measured.
-- [ ] **F7 — documentation/manifest truth.** Update the manifest, package docs,
+- [x] **F7 — documentation/manifest truth.** Update the manifest, package docs,
   multiplatform matrix and generated references from the measured inventory.
 
 - [x] F3/F4 first device evidence: the tasks example now renders a real
@@ -310,6 +310,73 @@ native view.
   type with its own handles, and all three targets assert one target handle per
   mounted node, so a user renderer and its handles are culled with the node.
 - Keyboard interaction is tracked under F4, where the focus/action matrix lives.
+- [x] F5 device proof, second pass: both device lanes now tap INSIDE the
+  hosted flow and assert the tap reached native `onSelect`, swap the graph and
+  assert the same tap selects the NEW middle node (an in-place re-render, the
+  graph-update half of reload), and host a graph the renderer cannot draw and
+  assert `onError` fires through the host-error bridge. The fixture graphs are
+  one symmetric row, so fit-view centres the middle node and a centre tap is
+  deterministic without asserting inside the WebView. Writing the tap found a
+  real host bug on both targets: an UNSIZED `<WebView>` had no height. On
+  Android the View gets WRAP_CONTENT params, so a `height: 100%` page measured
+  `clientHeight = 0` (read over WebView DevTools) and fitted the graph into
+  nothing; on iOS it got no ideal height inside a ScrollView. Both hosts now
+  default to the 150pt/dp the web `<iframe>` falls back to, and an explicit
+  height still wins. Bisect: reverting only the Android `MATCH_PARENT` fails
+  the node-tap assertion. Still open under F5 at this point: a full page
+  RELOAD (new `html`) and arbitrary renderer maps / SVG paths selecting the
+  WebView path. Both closed in the third pass below.
+- [x] F5 device proof, third pass:
+  - **Reload/reconnect.** A tasks-gallery `FlowWebView` swaps its `html`
+    between two small hosts. Each reports `<host>:<node count>` through
+    `onSelect`, so `a:3` then `b:3` proves the page reloaded, received the
+    graph again, and answered over a fresh reverse bridge. Both device lanes
+    assert it. On web the swap did nothing: the web `<WebView>` and all four
+    wrappers (flow, charts, code, rich-text) read `html` once at setup. They
+    now forward it reactively; real-Chromium specs in primitives and flow lock
+    it, each bisect-verified.
+  - **Renderer routing.** A `<Flow>` custom node built from DOM (`<div
+    style=…>`) was emitted as `div(…)`, which exists on neither platform, with
+    no warning; the same held for any raw element anywhere. Both emitters now
+    warn by name and point at `<FlowWebView>` from `@pyreon/flow/webview`, and
+    the arbitrary-SVG-path warning names the same route. No example emits the
+    new warning, so nothing that lowered is affected.
+## F4 checkpoint — the keyboard focus/action matrix (2026-09-22)
+
+- [x] F3 closed: `colorMode="system"` is device-proven. The counter source cycles
+  a third mode, and both suites switch the DEVICE appearance (not the app) and
+  count the web's dark canvas colour #0b1220: zero on a light device, over 1000
+  after the device goes dark, zero again after it returns to light. Android
+  switches with `UiModeManager.setApplicationNightMode`, which takes a uiMode
+  configuration change. That only works because the activity now declares
+  `android:configChanges` (#3577); without it the switch recreated the activity
+  and reset the app. iOS uses `XCUIDevice.shared.appearance`. Bisect: making the
+  `"system"` branch of the palette resolve to light fails both targets with
+  "did not follow the device into dark". On Kotlin that means BOTH `resolve()`
+  and `isDark()`, since the canvas reads the resolved palette. Honest limit: the
+  iPhone 16-family simulator CI resolves never passes an appearance flip to the
+  app (the same finding as `test_colorSchemeTracksSimulatorAppearance`). There
+  the dark half is gated on `useColorScheme`'s own "Theme: dark" probe and logs
+  a NOTE instead of asserting. It runs in full on an iPhone 17 Pro (verified),
+  and the Android half always runs.
+- [x] F7 documentation/manifest truth, written against the union of the
+  F2–F6 PRs rather than main alone:
+  - Manifest: `@pyreon/flow` moves from `web-only` + `nativeFrontend` to
+    `service-backend`. The default surface is one API with a web engine and a
+    Swift/Kotlin port; the browser-only remainder is two named exports plus DOM
+    renderers, all warned by name. Tier table regenerated.
+  - `docs/flow.md`: a new "iOS and Android" section covering what renders
+    natively, what does not cross and the WebView route, how it is verified,
+    and the platform limits. Those limits are: iOS keys XCUITest cannot send,
+    iPhone 16-family appearance propagation, and process death on Android.
+  - README: the Multiplatform section rewritten. It said gestures, keyboard and
+    reduced motion were not device-asserted, repeated its own paragraph, and
+    contradicted itself about how native hosts `FlowWebView`.
+  - `check-native-coverage`: the flow rationale cites the device evidence;
+    `@pyreon/flow/webview` is no longer described as "NOT device-proven".
+  - Found while integrating: the F2 config gate matched comments, so a comment
+    naming `nodesDraggable` read as an engine read. It now strips comments
+    first (#3576).
 - [x] iOS keys XCUITest cannot deliver. XCUITest cannot send Return, Escape,
   Delete or Backspace to a simulator app, so the iOS device suite can only
   press Space, the arrows and Cmd shortcuts. The whole route from SwiftUI's
@@ -353,4 +420,46 @@ native view.
   because other elements paint the same colours, so it was replaced by crops
   of the element itself. Bisect on Android: the old `Text` emit fails with
   "the default node label is not --pyreon-flow-node-color (#1a192b)".
+- [x] Arbitrary SVG path data renders natively. A `<path>` in a custom edge or
+  connection line used to lower only when `d` was a path-helper result or the
+  connection line's `path()`; any other path string (a template literal, a
+  constant) was dropped with a pointer to `FlowWebView`. Both runtimes now
+  parse SVG path data themselves: `PyreonFlowPathResult(svgPath:)` in Swift
+  and `pyreonFlowPathResultFromSvg` in Kotlin. They handle every command,
+  absolute and relative (M L H V C S Q T A Z), with arcs converted to cubic
+  curves, and stop at the first malformed token as a browser does. The paint
+  follows the browser's rules for an unstyled SVG path: fill black, no stroke,
+  width 1, `style` beating the attribute. Before, the native default was a grey
+  stroke and no fill, and `style` was read by taking its first hex colour.
+  Proof:
+  - The same known-answer corpus runs on both native suites.
+  - Bisect: breaking T and S reflection fails the matching case on each target.
+  - `native-tasks` now has a `wire` custom edge drawn from a template literal.
+    Both device suites count its green stroke. Bisect on Android: an empty
+    parse gives "0 green px".
+- [x] Inline `<svg>` and plain DOM inside a renderer. Every SVG shape lowers to
+  path data drawn in one canvas scaled by the `viewBox`, with SVG paint
+  inheritance; the rewrites use relative commands only, so dynamic attributes
+  interpolate without arithmetic. `<div>`/`<p>`/`<span>` lower only in the two
+  shapes whose layout matches the browser (text-only content; a `<div>` of
+  block children). A `class`, `style`, inline-flow mix, SVG `<text>`,
+  gradient or `transform` still warns with the `FlowWebView` route. Scoped to
+  components a `<Flow>` registers as renderers.
+  - Device: the `native-tasks` added node is a custom node with a 16x16 `<svg>`
+    over an 8-unit viewBox; both suites measure its purple square by AREA (a
+    bounding box was stretched by two stray antialiased pixels on Android).
+  - Bisect: Android without the density multiply measures 6.1dp; Swift without
+    the viewBox scale fails the offscreen render check.
+- Not achievable, stated in the docs: pixel-identical output. Fonts and
+  antialiasing are per platform.
+- [x] Android drew every custom edge and custom connection line at 1/density
+  size. `PyreonFlowCustomEdgePath` drew graph units (dp) straight onto a px
+  canvas; the built-in edge canvas multiplies by the density and this one did
+  not. The existing device checks only asked whether the element existed. It
+  surfaced when the default-node work made nodes opaque: the shrunken wire sat
+  inside the Start node and disappeared. Both device suites now check where the
+  wire ENDS (node 'b', at graph x = 200, so 200dp / 200pt from the canvas
+  edge), not just that it painted. Bisect on Android: without the density the
+  line "ends at 199px, node 'b' is at 525.0px". iOS draws in points and was
+  already right; its check passes unchanged.
 

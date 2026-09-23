@@ -137,6 +137,35 @@ describe('FlowWebView bridge (real SVG diagram in a real iframe)', () => {
     unmount()
   })
 
+  it('RELOAD: a reactive html swaps the hosted page, and the new page renders the same graph', async () => {
+    // The native hosts reload when `html` changes; the web wrapper read `html`
+    // once at setup and kept its first page. A second host with a different
+    // node fill makes the reload observable from inside the frame.
+    const alt = buildFlowHostHtml({ nodeFill: '#123456' })
+    const which = signal(false)
+    const props: Record<string, unknown> = { graph: () => graph(['A', 'B']) }
+    Object.defineProperty(props, 'html', { get: () => (which() ? alt : HOST), enumerable: true })
+    const { container, unmount } = mountInBrowser(h(FlowWebView as never, props as never))
+    container.style.width = '500px'
+    container.style.height = '400px'
+    await flush()
+    const iframe = query<HTMLIFrameElement>(container, 'iframe')
+    const first = await waitForFlow(iframe)
+    expect(first.querySelector('rect')?.getAttribute('fill')).toBe('#ffffff')
+
+    which.set(true)
+    const start = performance.now()
+    for (;;) {
+      const doc = iframe.contentDocument
+      if (doc && doc !== first && doc.querySelector('rect')?.getAttribute('fill') === '#123456') break
+      if (performance.now() - start > 8000) throw new Error('the reactive html never reloaded the hosted page')
+      await new Promise((r) => requestAnimationFrame(() => r(null)))
+    }
+    // The new document got the graph through the forward bridge.
+    expect(iframe.contentDocument!.querySelectorAll('[data-node-id]')).toHaveLength(2)
+    unmount()
+  })
+
   it('reports a hosted render failure to the application instead of leaving a silent blank frame', async () => {
     const errors: Error[] = []
     const { container, unmount } = mountInBrowser(

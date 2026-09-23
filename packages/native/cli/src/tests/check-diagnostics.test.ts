@@ -76,7 +76,7 @@ describe('checkSource — in-memory core', () => {
 
   it('reports an unsupported-subset warning with NO position (warnings are position-less today)', () => {
     const r = checkSource(
-      'function first<T>(xs: T[]): T { return xs[0] }\nexport function C() { return <text>hi</text> }',
+      'function first<T>(xs: T[]): T { return xs[0] }\nexport function C() { return <Text>hi</Text> }',
       'X.tsx',
       { targets: ['swift'] },
     )
@@ -89,7 +89,7 @@ describe('checkSource — in-memory core', () => {
   })
 
   it('produces no findings for a clean component on both targets', () => {
-    const r = checkSource('export function C() { return <text>hello</text> }', 'X.tsx', {
+    const r = checkSource('export function C() { return <Text>hello</Text> }', 'X.tsx', {
       targets: ['swift', 'kotlin'],
     })
     expect(r.webEntry).toBe(false)
@@ -99,7 +99,7 @@ describe('checkSource — in-memory core', () => {
   it('checks purely in memory — no disk read for the given source string', () => {
     // A path that does not exist on disk still checks fine (proves the
     // core is decoupled from the filesystem — the editor-buffer case).
-    const r = checkSource('export function C() { return <text>x</text> }', '/no/such/file.tsx', {
+    const r = checkSource('export function C() { return <Text>x</Text> }', '/no/such/file.tsx', {
       targets: ['swift'],
     })
     expect(r.webEntry).toBe(false)

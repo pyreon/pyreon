@@ -174,6 +174,23 @@ final class PyreonTasksUITests: XCTestCase {
         return n
     }
 
+    /// The right-most x (in image pixels) of pixels matching rgb, or nil.
+    private func colorMaxX(_ png: Data, _ r: Int, _ g: Int, _ b: Int) -> (maxX: Int, width: Int)? {
+        guard let image = UIImage(data: png)?.cgImage else { return nil }
+        let w = image.width, h = image.height
+        var buf = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &buf, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var maxX = -1
+        for y in 0..<h {
+            for x in 0..<w {
+                let i = (y * w + x) * 4
+                if abs(Int(buf[i]) - r) <= 6 && abs(Int(buf[i + 1]) - g) <= 6 && abs(Int(buf[i + 2]) - b) <= 6 && x > maxX { maxX = x }
+            }
+        }
+        return maxX < 0 ? nil : (maxX, w)
+    }
+
     private func scrollIntoView(
         _ element: XCUIElement,
         in app: XCUIApplication,
@@ -182,11 +199,13 @@ final class PyreonTasksUITests: XCTestCase {
         let scroller = app.scrollViews.firstMatch
         var swipes = 0
         while swipes < maxSwipes && !(element.exists && element.isHittable) {
-            if scroller.exists {
-                scroller.swipeUp()
-            } else {
-                app.swipeUp()
-            }
+            // Swipe TOWARD the element. Always swiping up could only ever reach
+            // content below; once a taller row above (a hosted WebView) shifted
+            // the layout, a target could end up ABOVE the screen and every
+            // further swipe carried it further away.
+            let above = element.exists && element.frame.maxY < app.windows.firstMatch.frame.minY
+            let target: XCUIElement = scroller.exists ? scroller : app
+            if above { target.swipeDown() } else { target.swipeUp() }
             swipes += 1
         }
         return swipes
@@ -565,7 +584,7 @@ final class PyreonTasksUITests: XCTestCase {
         let nodeCount = app.staticTexts["flow-node-count"].firstMatch
         XCTAssertTrue(nodeCount.waitForExistence(timeout: 10), "flow-node-count missing")
         XCTAssertEqual(nodeCount.label, "2", "seeded node count")
-        XCTAssertEqual(app.staticTexts["flow-edge-count"].firstMatch.label, "1", "seeded edge count")
+        XCTAssertEqual(app.staticTexts["flow-edge-count"].firstMatch.label, "2", "seeded edge count")
         XCTAssertEqual(app.staticTexts["flow-zoom"].firstMatch.label, "zoom 1.0", "initial zoom")
         tapAfterScrolling(app.buttons["flow-add"].firstMatch, in: app)
         XCTAssertTrue(waitForLabel(nodeCount, "3", timeout: 5), "addNode did not reach the native engine (label: \(nodeCount.label))")
@@ -578,6 +597,27 @@ final class PyreonTasksUITests: XCTestCase {
         // reported frame is distorted and a coordinate drag misses it.
         let canvas = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Task flow")).firstMatch
         XCTAssertTrue(canvas.waitForExistence(timeout: 10), "Flow canvas (ariaLabel) did not render")
+        // The `wire` custom edge draws ARBITRARY SVG path data (a template
+        // literal), parsed by the native runtime: its #16a34a stroke must paint.
+        let wireGreen = colorPixels(canvas.screenshot().pngRepresentation, 0x16, 0xa3, 0x4a)
+        XCTAssertGreaterThan(wireGreen, 50, "the custom edge's arbitrary SVG path did not paint natively (\(wireGreen) green px)")
+        // At the right SCALE: the path ends at node 'b', seeded at graph x = 200
+        // with the viewport still the origin at zoom 1, so 200pt from the
+        // canvas edge.
+        if let wire = colorMaxX(canvas.screenshot().pngRepresentation, 0x16, 0xa3, 0x4a) {
+            let scale = Double(wire.width) / Double(canvas.frame.width)
+            XCTAssertLessThanOrEqual(abs(Double(wire.maxX) - 200 * scale), 20 * scale, "the custom edge ends at \(Double(wire.maxX) / scale)pt, node 'b' is at 200pt")
+        }
+        // The added node 'c' is a custom node with an inline <svg>: an 8-unit
+        // viewBox drawn at 16x16. Measured by AREA, not bounding box, so a stray
+        // antialiased pixel elsewhere cannot stretch it: a 16pt square is
+        // (16·scale)² px, and a viewBox that was not applied paints an 8pt one.
+        let badgePx = colorPixels(canvas.screenshot().pngRepresentation, 0x7c, 0x3a, 0xed)
+        XCTAssertGreaterThan(badgePx, 0, "the custom node's inline <svg> did not paint natively")
+        let shot = UIImage(data: canvas.screenshot().pngRepresentation)!.cgImage!
+        let badgeScale = Double(shot.width) / Double(canvas.frame.width)
+        let badgeSide = Double(badgePx).squareRoot() / badgeScale
+        XCTAssertLessThanOrEqual(abs(badgeSide - 16), 1.5, "the <svg> badge measures \(badgeSide)pt a side (\(badgePx) px), its size is 16x16")
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "minimap")).firstMatch.exists, "MiniMap chrome missing")
         let startNode = app.staticTexts["Start"].firstMatch
         XCTAssertTrue(startNode.waitForExistence(timeout: 5), "node 'Start' did not render on the canvas")
@@ -1181,10 +1221,50 @@ final class PyreonTasksUITests: XCTestCase {
         let flowWebEvent = app.staticTexts["gal-flow-webview-event"].firstMatch
         XCTAssertTrue(waitForLabel(flowWebEvent, "viewport-change", timeout: 20), "the hosted flow's initial fit-view never reached the host (label: \(flowWebEvent.label))")
         let flowWebEvents = app.staticTexts["gal-flow-webview-events"].firstMatch
-        XCTAssertTrue(waitForLabel(flowWebEvents, "1", timeout: 5), "expected exactly one hosted flow event after load (label: \(flowWebEvents.label))")
+        // A baseline, not a fixed "1": the WebView is tall enough now that the
+        // swipes scrolling the gallery can cross it, and a drag over the hosted
+        // flow is a pan that legitimately reports its own viewport-change.
         scrollFullyOnScreen(app.buttons["gal-flow-webview-fit"].firstMatch, in: app)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        let eventsBeforeFit = Int(flowWebEvents.label) ?? 0
+        XCTAssertGreaterThanOrEqual(eventsBeforeFit, 1, "the initial fit-view never reported (label: \(flowWebEvents.label))")
         app.buttons["gal-flow-webview-fit"].firstMatch.tap()
-        XCTAssertTrue(waitForLabel(flowWebEvents, "2", timeout: 10), "pushing a second fit-view command did not round-trip (label: \(flowWebEvents.label))")
+        // Exactly ONE more: the new command id runs, and `initial-fit` does not
+        // run a second time.
+        XCTAssertTrue(waitForLabel(flowWebEvents, String(eventsBeforeFit + 1), timeout: 10), "pushing a second fit-view command did not round-trip exactly once (label: \(flowWebEvents.label), before: \(eventsBeforeFit))")
+        // F5: a node tap INSIDE the WebView reaches native `onSelect`. The graph is
+        // one symmetric row, so fit-view centres the middle node and a tap at the
+        // WebView's centre hits it on every device.
+        let flowWebSelected = app.staticTexts["gal-flow-webview-selected"].firstMatch
+        XCTAssertEqual(flowWebSelected.label, "none")
+        scrollFullyOnScreen(flowWebView, in: app)
+        // An unsized WebView used to collapse to a sliver, leaving the fitted graph
+        // no room and the centre tap nowhere to land. It now takes the web
+        // `<iframe>`'s 150pt default.
+        XCTAssertGreaterThanOrEqual(flowWebView.frame.height, 149, "an unsized FlowWebView must get the iframe's 150pt default height (frame: \(flowWebView.frame))")
+        flowWebView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(waitForLabel(flowWebSelected, "transform", timeout: 10), "tapping the hosted flow's middle node did not reach onSelect (label: \(flowWebSelected.label), frame: \(flowWebView.frame))")
+        // Swapping the graph re-renders IN PLACE: the same tap now lands on the new
+        // middle node, so the update reached the page and its handlers.
+        scrollFullyOnScreen(app.buttons["gal-flow-webview-swap"].firstMatch, in: app)
+        app.buttons["gal-flow-webview-swap"].firstMatch.tap()
+        scrollFullyOnScreen(flowWebView, in: app)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        flowWebView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(waitForLabel(flowWebSelected, "enrich", timeout: 10), "after swapping the graph the tap did not select the new middle node (label: \(flowWebSelected.label))")
+        // A graph the hosted renderer cannot draw (a node with no position) reaches
+        // native `onError` through the host-error bridge instead of failing silently.
+        let flowWebFailure = app.staticTexts["gal-flow-webview-failure"].firstMatch
+        XCTAssertTrue(waitForLabel(flowWebFailure, "error", timeout: 20), "the hosted flow's render failure never reached onError (label: \(flowWebFailure.label))")
+        // RELOAD: swapping `html` reloads the hosted page, and the NEW page must
+        // receive the graph again and answer over the reverse bridge. Each host
+        // reports `<host>:<node count>` as a selection.
+        let flowReloadStatus = app.staticTexts["gal-flow-webview-reload-status"].firstMatch
+        XCTAssertTrue(waitForLabel(flowReloadStatus, "a:3", timeout: 20), "the first hosted page never reported the pushed graph (label: \(flowReloadStatus.label))")
+        let flowReloadSwap = app.buttons["gal-flow-webview-reload-swap"].firstMatch
+        scrollFullyOnScreen(flowReloadSwap, in: app)
+        flowReloadSwap.tap()
+        XCTAssertTrue(waitForLabel(flowReloadStatus, "b:3", timeout: 20), "the reloaded page never received the graph and answered (label: \(flowReloadStatus.label))")
         // gal-back is the LAST element on the gallery; the checks above leave the page
         // scrolled wherever their subject sat, so a bare tap can land off-screen on
         // nothing (intermittent "Did not return to tasks"). Android scrolls to it too.

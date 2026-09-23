@@ -16,7 +16,10 @@ import {
   resolveStaticFlowRendererMap,
   unloweredFlowMemberWarning,
   HANDLED_FLOW_WEBVIEW_PROPS,
+  collectFlowRendererComponents,
 } from './flow-lowering'
+import { planFlowSvg, type FlowSvgNumber } from './flow-svg'
+import { lowerFlowPlainElement } from './flow-dom'
 import { CHART_WEBVIEW_HOST_PROPS, configureChartWebViewHost, legacyChartHostProp, HANDLED_CHART_WEBVIEW_PROPS } from './chart-webview-lowering'
 import { DEFAULT_FLOW_WEBVIEW_HOST_HTML } from './generated-flow-webview-host'
 import {
@@ -30,6 +33,8 @@ import {
   resolveRadius,
   resolveSpace,
 } from './canonical-primitives'
+import { FLOW_ARBITRARY_PATH_WARNING, intrinsicElementWarning, isIntrinsicElementTag } from './intrinsic-element-warning'
+import { resolveFlowPathPaint, type FlowPathPaintValue } from './flow-path-paint'
 import {
   buildComponentConstMap,
   chainHasOptional,
@@ -253,6 +258,8 @@ type StaticFlowNodeToolbar = {
   contentComponent: string
 }
 let _flowComponentToolbarsKotlin: Map<string, StaticFlowNodeToolbar[]> = new Map()
+/** Components a `<Flow>` in this file renders nodes/edges/the connection line with; `<svg>` lowers only inside these. */
+let _flowRendererComponentsKotlin: Set<string> = new Set()
 let _flowComponentsWithInvalidToolbarsKotlin: Set<string> = new Set()
 let _activeComponentName = ''
 
@@ -740,6 +747,7 @@ export function emitKotlin(
   for (const md of moduleDecls) {
     if (!md.mutable) _moduleConstExprsKotlin.set(md.name, md.initial)
   }
+  _flowRendererComponentsKotlin = collectFlowRendererComponents(components, (name) => _moduleConstExprsKotlin.get(name))
   _enumNames = new Set(enums.map((e) => e.name))
   // Build the struct-fields key map — mirror of emit-swift's logic.
   _structFieldsToName = new Map()
@@ -7358,6 +7366,11 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     return 'Box {}'
   }
   if (tag === 'path') return emitKotlinFlowCustomPath(e, indent)
+  if ((tag === 'div' || tag === 'p' || tag === 'span') && _flowRendererComponentsKotlin.has(_activeComponentName)) {
+    const lowered = lowerFlowPlainElement(e)
+    if (lowered) return emitKotlinJsx(lowered, indent)
+  }
+  if (tag === 'svg' && _flowRendererComponentsKotlin.has(_activeComponentName)) return emitKotlinFlowSvg(e, indent)
   if (tag === 'EdgeLabelRenderer') {
     const content = e.children.map((child) => `  ${emitKotlinChild(child, indent + 2)}`).join('\n')
     return `PyreonFlowEdgeLabelRenderer {\n${content}\n${' '.repeat(indent)}}`
@@ -7538,24 +7551,46 @@ function emitKotlinFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
   const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'd')
   let value = attr?.kind === 'attr' ? attr.value : undefined
   if (value?.kind === 'arrow' && value.params.length === 0) value = value.body
+  // A structured helper result (`get*Path({...}).path`) or the connection
+  // line's `path()` keeps its segments; any other `d` is SVG path data,
+  // parsed at runtime into the same segments.
   const resultCode = value?.kind === 'member' && value.property === 'path'
     ? value.object.kind === 'call'
       ? emitKotlinExpr(value.object, indent)
       : `${kotlinIdent(value.property)}()`
     : value?.kind === 'call' && value.args.length === 0 && value.callee.kind === 'member' && value.callee.property === 'path'
       ? emitKotlinExpr(value, indent)
-      : undefined
+      : value !== undefined
+        ? `pyreonFlowPathResultFromSvg(${emitKotlinExpr(value, indent)})`
+        : undefined
   if (resultCode === undefined) {
-    _emitWarnings.push('A native Flow <path> requires a structured path helper result (`get*Path({...}).path`) or the custom connection-line `path()` accessor; arbitrary SVG path strings need a NativeIOS/NativeAndroid renderer.')
+    _emitWarnings.push(FLOW_ARBITRARY_PATH_WARNING)
     return 'Box {}'
   }
-  const style = readStaticAttrKotlin(e, 'style')
-  const stroke = readStaticAttrKotlin(e, 'stroke')
-  const color = typeof stroke === 'string' ? stroke : typeof style === 'string' ? (style.match(/#[0-9a-fA-F]{3,8}/)?.[0] ?? '#999999') : '#999999'
-  const widthAttr = readStaticAttrKotlin(e, 'stroke-width') ?? readStaticAttrKotlin(e, 'strokeWidth')
-  const styleWidth = typeof style === 'string' ? /stroke-width:\s*([0-9.]+)/.exec(style)?.[1] : undefined
-  const width = typeof widthAttr === 'number' ? widthAttr : styleWidth === undefined ? 1.5 : Number(styleWidth)
-  return `PyreonFlowCustomEdgePath(result = ${resultCode}, color = ${JSON.stringify(color)}, width = ${ktChartDouble(String(width))})`
+  const paint = resolveFlowPathPaint(e)
+  _emitWarnings.push(...paint.warnings)
+  const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'null' : v.kind === 'literal' ? JSON.stringify(v.value) : emitKotlinExpr(v.expr, indent)
+  const width = paint.width.kind === 'literal' ? ktChartDouble(String(paint.width.value)) : `(${emitKotlinExpr(paint.width.expr, indent)}).toDouble()`
+  return `PyreonFlowCustomEdgePath(result = ${resultCode}, color = ${color(paint.stroke)}, width = ${width}, fill = ${color(paint.fill)})`
+}
+
+function emitKotlinFlowSvg(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const plan = planFlowSvg(e)
+  for (const w of plan.warnings) if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+  const num = (n: FlowSvgNumber) => n.kind === 'literal' ? ktChartDouble(String(n.value)) : `(${emitKotlinExpr(n.expr, indent)}).toDouble()`
+  const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'null' : v.kind === 'literal' ? JSON.stringify(v.value) : emitKotlinExpr(v.expr, indent)
+  const pad = ' '.repeat(indent + 2)
+  const shapes = plan.shapes.map((s) =>
+    `${pad}PyreonFlowSvgShape(result = pyreonFlowPathResultFromSvg(${emitKotlinExpr(s.d, indent + 2)}), stroke = ${color(s.paint.stroke)}, strokeWidth = ${s.paint.width.kind === 'literal' ? ktChartDouble(String(s.paint.width.value)) : `(${emitKotlinExpr(s.paint.width.expr, indent)}).toDouble()`}, fill = ${color(s.paint.fill)})`,
+  )
+  const args = [
+    ...(plan.width ? [`width = ${num(plan.width)}`] : []),
+    ...(plan.height ? [`height = ${num(plan.height)}`] : []),
+    ...(plan.viewBox ? [`viewBox = listOf(${plan.viewBox.map((v) => ktChartDouble(String(v))).join(', ')})`] : []),
+    ...(plan.stretch ? ['stretch = true'] : []),
+  ]
+  const body = shapes.length > 0 ? `listOf(\n${shapes.join(',\n')}\n${' '.repeat(indent)})` : 'emptyList()'
+  return `PyreonFlowSvg(${[...args, `shapes = ${body}`].join(', ')})`
 }
 
 function emitKotlinFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
@@ -10858,6 +10893,10 @@ function warnCanonicalPrimitiveFellThrough(tag: string): void {
 function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   if (isCanonicalPrimitive(e.tag) && !_componentNames.has(e.tag)) {
     warnCanonicalPrimitiveFellThrough(e.tag)
+  }
+  if (isIntrinsicElementTag(e.tag) && !_componentNames.has(e.tag)) {
+    const note = intrinsicElementWarning(e.tag)
+    if (!_emitWarnings.includes(note)) _emitWarnings.push(note)
   }
   const pad = ' '.repeat(indent + 2)
   const isUserComponent = _componentNames.has(e.tag)
