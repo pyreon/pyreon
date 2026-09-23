@@ -167,20 +167,25 @@ interface NodeRec {
    * "resolved but parse failed"; `undefined` means "not yet resolved".
    */
   loc?: SourceLocation | null | undefined
-  /**
-   * **Deferred-parse state**. The runtime fallback path stores a captured
-   * `Error` here instead of a resolved `SourceLocation`; the expensive `.stack`
-   * formatting is deferred until `getReactiveGraph()`/`getFireSummaries()`
-   * actually reads the location. Most nodes never do, so the typical app pays
-   * only the cheap `new Error()` allocation.
-   *
-   * Cleared the first time `_resolveLoc(rec)` succeeds, making the Error
-   * GC-eligible.
-   */
-  pendingErr?: Error | undefined
-  /** skipFrames from the deferred capture — needed by the lazy parser. */
-  pendingSkip?: number | undefined
 }
+
+/**
+ * **Deferred-parse state**, keyed by the NODE rather than stored on its record.
+ * The runtime fallback captures an `Error` instead of a resolved location and
+ * defers the expensive `.stack` formatting until `getReactiveGraph()` /
+ * `getFireSummaries()` reads it — most nodes never are.
+ *
+ * It must NOT live on the record. An unformatted V8 Error keeps its structured
+ * call sites, and those hold the closures of every frame — including the one
+ * that created the node. With `_byId` holding the record strongly, the chain
+ * `_byId → record → Error → frame closure → node` kept the node reachable
+ * forever, so its FinalizationRegistry entry never fired and every unmounted
+ * component that created a signal stayed in memory for the dev session (a
+ * 1,000-node flow canvas: all 1,000 nodes, measured). A WeakMap entry is an
+ * ephemeron: its value cannot keep its own key alive, so the node, the Error
+ * and the record's prune all happen together.
+ */
+const _pendingLoc = /* @__PURE__ */ new WeakMap<object, { err: Error; skip: number }>()
 
 let _active = false
 let _nextId = 1
@@ -322,7 +327,19 @@ export interface DeferredLocation {
 }
 
 export function _captureCallerLocation(skipFrames: number): DeferredLocation {
-  return { __deferred: true, err: new Error(), skipFrames }
+  // Capture ONLY the frames the lazy parser reads: this function's own frame,
+  // the `skipFrames` framework frames above it, and the caller's frame. An
+  // unformatted V8 Error keeps a call-site record per captured frame, and each
+  // record holds that frame's FUNCTION — so the default 10 frames pinned up to
+  // ten callers' closures (and every variable they close over) for as long as
+  // the node lived. A 1,000-node flow kept nodes it had REMOVED reachable this
+  // way, through a reconciler frame far above the call site. Fewer frames is
+  // also a cheaper capture.
+  const limit = Error.stackTraceLimit
+  Error.stackTraceLimit = skipFrames + 2
+  const err = new Error()
+  Error.stackTraceLimit = limit
+  return { __deferred: true, err, skipFrames }
 }
 
 /**
@@ -358,17 +375,18 @@ function _resolveLoc(rec: NodeRec): SourceLocation | undefined {
   // Already resolved (success or definitively-failed): return cached.
   if (rec.loc !== undefined) return rec.loc ?? undefined
   // No deferred handle to resolve.
-  if (!rec.pendingErr) return undefined
+  const node = rec.ref.deref()
+  const pending = node ? _pendingLoc.get(node) : undefined
+  if (!pending) return undefined
   const parsed = resolveDeferred({
     __deferred: true,
-    err: rec.pendingErr,
-    skipFrames: rec.pendingSkip ?? 0,
+    err: pending.err,
+    skipFrames: pending.skip,
   })
   // Cache the result (or `null` for failed parse — distinguishes from
   // "not yet resolved" undefined). Drop the Error so it's GC-eligible.
   rec.loc = parsed ?? null
-  rec.pendingErr = undefined
-  rec.pendingSkip = undefined
+  _pendingLoc.delete(node!)
   return parsed
 }
 
@@ -443,9 +461,10 @@ export function _rdRegister(
     fires: 0,
     lastFire: null,
     loc: isDeferred ? undefined : (loc as SourceLocation | undefined),
-    pendingErr: isDeferred ? (loc as DeferredLocation).err : undefined,
-    pendingSkip: isDeferred ? (loc as DeferredLocation).skipFrames : undefined,
   })
+  if (isDeferred) {
+    _pendingLoc.set(node, { err: (loc as DeferredLocation).err, skip: (loc as DeferredLocation).skipFrames })
+  }
   if (sub) _subId.set(sub, id)
   // During a coverage session, pin the node so it can't be GC-pruned before
   // the snapshot — a complete denominator needs every node created in the
