@@ -565,15 +565,29 @@ class TasksAppInstrumentedTest {
         // it and no reset is needed.
         composeRule.onNodeWithContentDescription("Task flow").assertExists()
         // The `wire` custom edge draws ARBITRARY SVG path data (a template
-        // literal), parsed by the native runtime: its #16a34a stroke must paint.
+        // literal), parsed by the native runtime: its #16a34a stroke must paint,
+        // and at the right SCALE. Graph units are dp; a path drawn in px would
+        // land shrunk by the density, well short of the End node.
         run {
-            val bmp = composeRule.onNodeWithContentDescription("Task flow").captureToImage().asAndroidBitmap()
+            val canvasNode = composeRule.onNodeWithContentDescription("Task flow")
+            val bmp = canvasNode.captureToImage().asAndroidBitmap()
             var green = 0
+            var maxX = Int.MIN_VALUE
             for (y in 0 until bmp.height) for (x in 0 until bmp.width) {
                 val c = bmp.getPixel(x, y)
-                if (kotlin.math.abs(android.graphics.Color.red(c) - 0x16) <= 6 && kotlin.math.abs(android.graphics.Color.green(c) - 0xa3) <= 6 && kotlin.math.abs(android.graphics.Color.blue(c) - 0x4a) <= 6) green++
+                if (kotlin.math.abs(android.graphics.Color.red(c) - 0x16) <= 6 && kotlin.math.abs(android.graphics.Color.green(c) - 0xa3) <= 6 && kotlin.math.abs(android.graphics.Color.blue(c) - 0x4a) <= 6) {
+                    green++
+                    if (x > maxX) maxX = x
+                }
             }
             check(green > 50) { "the custom edge's arbitrary SVG path did not paint natively ($green green px)" }
+            // The path ends at node 'b', seeded at graph x = 200. The viewport is
+            // still the origin at zoom 1 here, so that is 200dp from the canvas
+            // edge. At 1/density it would stop at 200px, far short.
+            val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+            check(kotlin.math.abs(maxX - 200 * density) <= 20f) {
+                "the custom edge drew at the wrong scale: it ends at ${maxX}px, node 'b' is at ${200 * density}px"
+            }
         }
         composeRule.onNodeWithContentDescription("minimap").assertExists()
         composeRule.onNodeWithContentDescription("source handle out").assertExists()

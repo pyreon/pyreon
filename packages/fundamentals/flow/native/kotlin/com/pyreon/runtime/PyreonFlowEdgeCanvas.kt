@@ -84,10 +84,17 @@ fun PyreonFlowCustomEdgePath(
 ) {
     val effect = dash?.let { PathEffect.dashPathEffect(it.map(Double::toFloat).toFloatArray()) }
     Canvas(modifier.fillMaxSize()) {
-        val path = pyreonFlowEdgePath(result.segments)
-        if (fill != null) drawPath(path, pyreonFlowEdgeColor(fill))
-        if (color != null) {
-            drawPath(path, pyreonFlowEdgeColor(color), style = Stroke(width = width.toFloat(), pathEffect = effect))
+        // The path is in graph units, which are dp; the canvas draws px. The
+        // layer this sits in already carries the viewport's zoom, so only the
+        // density is left, exactly as in PyreonFlowEdgeCanvas. It was missing,
+        // so custom edges and connection lines drew at 1/density size.
+        val unit = density
+        withTransform({ scale(scaleX = unit, scaleY = unit, pivot = Offset.Zero) }) {
+            val path = pyreonFlowEdgePath(result.segments)
+            if (fill != null) drawPath(path, pyreonFlowEdgeColor(fill))
+            if (color != null) {
+                drawPath(path, pyreonFlowEdgeColor(color), style = Stroke(width = width.toFloat(), pathEffect = effect))
+            }
         }
     }
 }
