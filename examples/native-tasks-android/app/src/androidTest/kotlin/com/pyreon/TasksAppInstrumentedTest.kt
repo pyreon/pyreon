@@ -46,9 +46,9 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.pinch
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -582,6 +582,7 @@ class TasksAppInstrumentedTest {
             check(count(label, 0, 0, 0) == 0) { "the default node label painted the platform's default black" }
             val canvas = composeRule.onNodeWithContentDescription("Task flow").captureToImage().asAndroidBitmap()
             check(count(canvas, 0x3b, 0x82, 0xf6) > 500) { "the selected default node has no --pyreon-flow-node-selected (#3b82f6) border" }
+        }
         // The `wire` custom edge draws ARBITRARY SVG path data (a template
         // literal), parsed by the native runtime: its #16a34a stroke must paint,
         // and at the right SCALE. Graph units are dp; a path drawn in px would
