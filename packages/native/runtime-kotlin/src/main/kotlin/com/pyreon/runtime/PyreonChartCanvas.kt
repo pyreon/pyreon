@@ -658,7 +658,12 @@ fun DrawScope.pyreonPaintChart(cmds: List<PyreonDrawCmd>, density: Float) {
                         (pyreonChartColor(fill).red * 255).toInt(),
                         (pyreonChartColor(fill).green * 255).toInt(),
                         (pyreonChartColor(fill).blue * 255).toInt())
-                    paint.textSize = (c.size ?: 12.0).toFloat() * density
+                    // Density-independent, like every coordinate here: this block runs
+                    // under `scale(density)` and the native canvas carries that
+                    // transform, so multiplying by the density again drew text
+                    // density² — ~2.6× too large on a 420dpi phone, while layout
+                    // measured it at 1× (`pyreonChartMeasure`), so labels overlapped.
+                    paint.textSize = (c.size ?: 12.0).toFloat()
                     paint.isAntiAlias = true
                     if (c.weight == "bold") paint.typeface = android.graphics.Typeface.DEFAULT_BOLD
                     // web: textAlign start|center|end
@@ -684,7 +689,7 @@ fun DrawScope.pyreonPaintChart(cmds: List<PyreonDrawCmd>, density: Float) {
                         hp.color = android.graphics.Color.argb(
                             (hc.alpha * 255).toInt(), (hc.red * 255).toInt(), (hc.green * 255).toInt(), (hc.blue * 255).toInt())
                         hp.style = Paint.Style.STROKE
-                        hp.strokeWidth = (c.strokeWidth ?: 2.0).toFloat() * density
+                        hp.strokeWidth = (c.strokeWidth ?: 2.0).toFloat()
                         hp.strokeJoin = Paint.Join.MITER
                         hp.strokeMiter = 2f
                         hp
