@@ -27,4 +27,11 @@ export default defineNodeConfig({
   // driven by the real-Chromium suites (edge-render/handle-anchor browser
   // tests + the app-showcase flow e2e); happy-dom has no layout.
   coverageExclude: ['src/components/**', 'src/edge-geometry.ts'],
+  // --expose-gc lets the GC-observable memory ceilings (scale-memory.test.ts)
+  // RUN rather than skip. Same harness as runtime-dom's retention locks.
+  overrides: {
+    test: {
+      execArgv: ['--expose-gc'],
+    },
+  },
 })
