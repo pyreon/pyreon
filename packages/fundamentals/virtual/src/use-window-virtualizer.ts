@@ -9,6 +9,7 @@ import {
   type VirtualizerOptions,
   windowScroll,
 } from '@tanstack/virtual-core'
+import { deferDetachedMeasurement, guardDetachedSize } from './detached-measure'
 import { createItemRegistry, type VirtualItemMeasurement } from './item-registry'
 
 export type UseWindowVirtualizerOptions<TItemElement extends Element> = () => Omit<
@@ -59,11 +60,13 @@ export function useWindowVirtualizer<TItemElement extends Element>(
     getScrollElement: () => (typeof window !== 'undefined' ? window : (null as unknown as Window)),
     ...options(),
   }
+  resolvedOptions.measureElement = guardDetachedSize(resolvedOptions.measureElement)
 
   // Store latest user options so onChange always reads the freshest reference
   let latestUserOpts = options()
 
   const instance = new Virtualizer<Window, TItemElement>(resolvedOptions)
+  deferDetachedMeasurement(instance)
 
   const emit = (): void => {
     batch(() => {
@@ -80,6 +83,7 @@ export function useWindowVirtualizer<TItemElement extends Element>(
     instance.setOptions({
       ...instance.options,
       ...latestUserOpts,
+      measureElement: guardDetachedSize(latestUserOpts.measureElement),
       onChange: (inst, sync) => {
         emit()
         // Read latest opts to avoid stale closure
