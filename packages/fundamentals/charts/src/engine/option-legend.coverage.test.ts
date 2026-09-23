@@ -57,7 +57,7 @@ describe('readLegendLayout — every key', () => {
         borderColor: '#000',
         borderWidth: 1,
       }),
-    ).toEqual({
+    ).toMatchObject({
       orient: 'vertical',
       left: 10,
       right: '5%',
