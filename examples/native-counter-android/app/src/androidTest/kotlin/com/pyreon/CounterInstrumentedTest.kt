@@ -62,8 +62,11 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pinch
 import androidx.compose.ui.unit.dp
+import android.app.UiModeManager
 import androidx.compose.ui.input.key.Key
 import android.content.Context
+import android.content.pm.ActivityInfo
+import android.os.Build
 import android.location.Location
 import android.location.LocationManager
 import android.location.provider.ProviderProperties
@@ -345,6 +348,38 @@ class CounterInstrumentedTest {
         composeRule
             .onNodeWithText("Count: 1")
             .assertIsDisplayed()
+    }
+
+    // Rotation and a dark-mode switch are CONFIGURATION changes. Without
+    // `android:configChanges` on MainActivity, Android destroys and recreates
+    // the activity for each one, and every compiler-emitted
+    // `remember { mutableStateOf(...) }` starts over: the count goes back to
+    // 0, a half-typed form empties, a flow graph resets. The manifest now
+    // declares the changes it handles, so Compose recomposes in place.
+    @Test
+    fun stateSurvivesRotationAndThemeSwitch() {
+        composeRule.onNodeWithText("Increment").performClick()
+        composeRule.onNodeWithText("Increment").performClick()
+        composeRule.onNodeWithText("Count: 2").assertIsDisplayed()
+        val before = composeRule.activity
+        val uiModes = InstrumentationRegistry.getInstrumentation().targetContext
+            .getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+        try {
+            composeRule.runOnUiThread { before.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+            composeRule.waitForIdle()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                uiModes.setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)
+                composeRule.waitForIdle()
+            }
+            // Give a recreation, if one were coming, time to land.
+            SystemClock.sleep(1_500)
+            composeRule.waitForIdle()
+            check(composeRule.activity === before) { "the activity was recreated by a configuration change" }
+            composeRule.onNodeWithText("Count: 2").assertExists()
+        } finally {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) uiModes.setApplicationNightMode(UiModeManager.MODE_NIGHT_AUTO)
+            composeRule.runOnUiThread { composeRule.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+        }
     }
 
     // M2.3 — GESTURE (long-press) asserted on device. The shared
