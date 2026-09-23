@@ -1329,22 +1329,22 @@ public final class PyreonFlowState<T> {
   public func getOverlappingNodes(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }
   public func resolveCollisions(_ nodeId: String, _ spacing: Double = 10) {}
   public func getSnapLines(_ nodeId: String, _ position: PyreonXYPosition, threshold: Double = 5, excluding: Set<String> = []) -> PyreonFlowSnapLines { PyreonFlowSnapLines(x: nil, y: nil, snappedPosition: position) }
-  public func onConnect(_ callback: @escaping (PyreonFlowConnection) -> Void) -> () -> Void { {} }
-  public func onViewportChange(_ callback: @escaping (PyreonFlowViewport) -> Void) -> () -> Void { {} }
-  public func onNodeClick(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { {} }
-  public func onNodeDoubleClick(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { {} }
-  public func onNodeDragStart(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { {} }
-  public func onNodeDrag(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { {} }
-  public func onNodeDragEnd(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { {} }
-  public func onEdgeClick(_ callback: @escaping (PyreonFlowEdge) -> Void) -> () -> Void { {} }
-  public func onSelectionChange(_ callback: @escaping (PyreonFlowSelection<T>) -> Void) -> () -> Void { {} }
-  public func onNodesDelete(_ callback: @escaping ([PyreonFlowNode<T>]) -> Void) -> () -> Void { {} }
-  public func onEdgesDelete(_ callback: @escaping ([PyreonFlowEdge]) -> Void) -> () -> Void { {} }
-  public func onNodesChange(_ callback: @escaping ([PyreonFlowNodeChange]) -> Void) -> () -> Void { {} }
-  public func onEdgesChange(_ callback: @escaping ([PyreonFlowEdgeChange]) -> Void) -> () -> Void { {} }
-  public func onConnectStart(_ callback: @escaping (PyreonFlowConnectStart) -> Void) -> () -> Void { {} }
-  public func onConnectEnd(_ callback: @escaping (PyreonFlowConnection?) -> Void) -> () -> Void { {} }
-  public func onPaneClick(_ callback: @escaping (PyreonFlowPaneEvent) -> Void) -> () -> Void { {} }
+  @discardableResult public func onConnect(_ callback: @escaping (PyreonFlowConnection) -> Void) -> () -> Void { {} }
+  @discardableResult public func onViewportChange(_ callback: @escaping (PyreonFlowViewport) -> Void) -> () -> Void { {} }
+  @discardableResult public func onNodeClick(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { {} }
+  @discardableResult public func onNodeDoubleClick(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { {} }
+  @discardableResult public func onNodeDragStart(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { {} }
+  @discardableResult public func onNodeDrag(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { {} }
+  @discardableResult public func onNodeDragEnd(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { {} }
+  @discardableResult public func onEdgeClick(_ callback: @escaping (PyreonFlowEdge) -> Void) -> () -> Void { {} }
+  @discardableResult public func onSelectionChange(_ callback: @escaping (PyreonFlowSelection<T>) -> Void) -> () -> Void { {} }
+  @discardableResult public func onNodesDelete(_ callback: @escaping ([PyreonFlowNode<T>]) -> Void) -> () -> Void { {} }
+  @discardableResult public func onEdgesDelete(_ callback: @escaping ([PyreonFlowEdge]) -> Void) -> () -> Void { {} }
+  @discardableResult public func onNodesChange(_ callback: @escaping ([PyreonFlowNodeChange]) -> Void) -> () -> Void { {} }
+  @discardableResult public func onEdgesChange(_ callback: @escaping ([PyreonFlowEdgeChange]) -> Void) -> () -> Void { {} }
+  @discardableResult public func onConnectStart(_ callback: @escaping (PyreonFlowConnectStart) -> Void) -> () -> Void { {} }
+  @discardableResult public func onConnectEnd(_ callback: @escaping (PyreonFlowConnection?) -> Void) -> () -> Void { {} }
+  @discardableResult public func onPaneClick(_ callback: @escaping (PyreonFlowPaneEvent) -> Void) -> () -> Void { {} }
   public func moveSelectedNodes(_ dx: Double, _ dy: Double) {}
   public func handleKeyboardCommand(_ key: String, nodeId: String? = nil, shift: Bool = false, command: Bool = false, repeatKey: Bool = false) -> Bool { false }
   public func focusNode(_ nodeId: String, _ focusZoom: Double? = nil) {}
@@ -1355,7 +1355,7 @@ public enum PyreonFlowBackgroundVariant {
   public static func from(_ value: String) -> Self { .dots }
 }
 public struct PyreonFlowBackgroundStyle {
-  public init(variant: PyreonFlowBackgroundVariant = .dots, gap: Double = 20, size: Double = 1, color: String = "#dddddd") {}
+  public init(variant: PyreonFlowBackgroundVariant = .dots, gap: Double = 20, size: Double = 1, color: String? = nil) {}
 }
 public enum PyreonFlowControlsPosition {
   case topLeft, topRight, bottomLeft, bottomRight
@@ -1370,7 +1370,10 @@ public struct PyreonStandaloneFlowControls<T>: View {
   public var body: some View { EmptyView() }
 }
 public struct PyreonFlowMiniMapStyle {
-  public init(nodeColor: String = "#e2e8f0", maskColor: String = "#000000", width: Double = 200, height: Double = 150, pannable: Bool = true, zoomable: Bool = true) {}
+  public init(nodeColor: String? = nil, maskColor: String = "#000000", width: Double = 200, height: Double = 150, pannable: Bool = true, zoomable: Bool = true) {}
+}
+extension View {
+  public func pyreonFlowColorMode(_ colorMode: String) -> some View { self }
 }
 public struct PyreonFlowNodeResizerConfig {
   public init(minWidth: Double = 50, minHeight: Double = 30, handleSize: Double = 8, showEdgeHandles: Bool = false) {}

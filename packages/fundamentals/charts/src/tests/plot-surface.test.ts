@@ -16,6 +16,7 @@ const EXPECTED = [
   'resolveDataset', 'applyTransforms', 'graphicCommands', 'visualMapCommands', 'customCommands',
   'registerTheme', 'resolveTheme', 'registerLocale', 'numberFormatter', 'registerMap',
   'zoomWindow', 'brushRange', 'renderTitle',
+  'splitLayers', 'boxRect', 'circleRect', 'layoutLength',
   'OptionChart', 'GanttChart', 'createChartLink', 'sonifyValues', 'compiledCommands', 'valueToHz', 'resolveTimeline', 'splitGrids',
 ] as const
 
