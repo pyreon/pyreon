@@ -71,7 +71,8 @@ describe('slots read from a named series key rather than from data', () => {
 
 describe('familyToSvg spreads that need a fully-populated plan', () => {
   it('a gauge passes thickness and valueColor through only when the option supplied them', () => {
-    const configured = plan({ series: [{ type: 'gauge', data: [{ value: 40 }], axisLine: { lineStyle: { width: 30 } }, progress: { itemStyle: { color: '#abcdef' } } }] })
+    // ECharts draws a progress arc only with `progress.show`; its colour then paints it.
+    const configured = plan({ series: [{ type: 'gauge', data: [{ value: 40 }], axisLine: { lineStyle: { width: 30 } }, progress: { show: true, itemStyle: { color: '#abcdef' } } }] })
     expect(configured).toMatchObject({ thickness: 30, valueColor: '#abcdef' })
     const svg = familyToSvg(configured, { width: 300, height: 200 })
     expect(svg).toContain('#abcdef')

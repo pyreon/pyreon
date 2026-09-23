@@ -53,11 +53,14 @@ import { PlotChart, bars, line } from '@pyreon/charts/plot'
 />
 ```
 
-**A mark is an imported binding, not a string.** That is the whole
-tree-shaking story: `bars` and `line` are functions your bundler can see you
-using, so a bar chart never pulls the radial trigonometry, the LTTB
-decimation, or the time scales. A string-keyed `type: 'bars'` could not be
-dropped by any bundler, however the library was built.
+**A chart family is an imported binding, not a string.** `PlotChart`,
+`PieChart`, `RadarChart`, `CandlestickChart`, `HeatmapChart` and the rest are
+separate modules, so a bar chart never pulls the radial trigonometry or the
+finance and matrix families (locked by the repo's import budgets). WITHIN
+`PlotChart` the cartesian marks share one renderer and one interaction surface
+(tooltip, legend, zoom, brush, `maxPoints` decimation): a one-line chart
+measures the same 40.9 KB gz as a bar + line + tooltip + legend chart — see
+"Bundle size" below.
 
 Marks: `bars`, `line`, `area`, `points`, `stackedBars`, `groupedBars`.
 Components: `PlotChart`, `PieChart` (donut via `innerRadius`), `GaugeChart`.
@@ -300,7 +303,7 @@ const sound = sonifyValues(price.map((d) => d.close), { duration: 3000, link }) 
 <OptionChart option={() => echartsOption()} theme="dark" onSelect={(hit) => hit && select(hit)} />
 ```
 
-`navigator` is the slider dataZoom, `zoomPresets` the range selector, `keyboard` walks the data with a focus ring and a live-region announcement, and a data change of the same shape tweens instead of snapping (`updateAnimation`). Every handler is a pointer handler — a finger drags, pans, brushes and pinch-zooms, a tap shows the tooltip. The family hosts (pie, treemap, sankey, …) carry the same stack: `keyboard` (on by default), `updateAnimation` (a draw-list tween), `legendPosition`, `toolbox={{ saveAsImage: true }}` (a PNG), and the canvas is `aria-describedby` its hidden table. `<OptionChart>` paints cartesian plans (single or multi-`grid`, with `timeline` auto-play) on a canvas through the same `compiledCommands` the server's `optionToSvg` uses.
+`navigator` is the slider dataZoom, `zoomPresets` the range selector, `keyboard` walks the data with a focus ring and a live-region announcement, and a data change of the same shape tweens instead of snapping (`updateAnimation`). Every handler is a pointer handler — a finger drags, pans, brushes and pinch-zooms, a tap shows the tooltip. The family hosts (pie, treemap, sankey, …) carry the same stack: `keyboard` (on by default), `updateAnimation` (a draw-list tween), `legendPosition`, `toolbox={{ saveAsImage: true }}` (a PNG), and the canvas is `aria-describedby` its hidden table. `<OptionChart>` paints cartesian plans (single or multi-`grid`, with `timeline` auto-play) on a canvas through the same `compiledCommands` the server's `optionToSvg` uses. A family option (pie, sankey, treemap and the rest) mounts the family's own host, and the option's `tooltip` component applies to it the way it applies to a line chart: `trigger`, `triggerOn`, a template or function `formatter` (with ECharts' `params`, including the pie's `percent`), `valueFormatter`, `position` and the box's look, refined by a series' own `tooltip`; a series' `cursor` and `silent` apply too. The facade's `rtl`, `toolbox`, `keyboard` and `accessibleTable` props reach a family host as they reach the cartesian one.
 
 ## Install
 
@@ -512,15 +515,24 @@ bar, line, pie, scatter, radar, heatmap, treemap, sunburst, sankey, funnel, gaug
 
 tooltip, legend, title, toolbox, dataZoom, visualMap, timeline, graphic, brush, calendar, dataset, aria, grid (also implied by `xAxis`/`yAxis`), polar, radar, geo.
 
-## Bundle size (rough)
+## Bundle size (measured)
 
-| Usage                      | ECharts loaded                                                 | Approx gzipped |
-| -------------------------- | -------------------------------------------------------------- | -------------- |
-| No charts rendered         | Nothing                                                        | 0 KB           |
-| Bar + tooltip              | core + BarChart + Grid + Tooltip + Canvas                      | ~35 KB         |
-| Bar + Line + legend        | core + BarChart + LineChart + Grid + Legend + Tooltip + Canvas | ~42 KB         |
-| Pie only                   | core + PieChart + Canvas                                       | ~25 KB         |
-| `@pyreon/charts` bridge     | Module map + hook                                              | ~3 KB          |
+Gzipped (level 9) JavaScript beyond a bare Pyreon app's own runtime, measured
+by `examples/benchmark` → `bun run bench:charts-bundle` (one production
+`vite build` per entry; ECharts imported the documented tree-shaken way).
+An earlier version of this table quoted ~25–42 KB for the ECharts modules —
+those figures were never measured and were wrong by 4–5×.
+
+| Chart                          | `@pyreon/charts/plot` | ECharts 6, tree-shaken | ECharts 6, whole package |
+| ------------------------------ | --------------------- | ---------------------- | ------------------------ |
+| Line                           | 40.9 KB (`PlotChart`) | 155.9 KB               | 361.1 KB                 |
+| Bar + line, tooltip, legend    | 40.9 KB (`PlotChart`) | 176.8 KB               | —                        |
+| Pie                            | 18.1 KB (`PieChart`)  | 117.3 KB               | —                        |
+| Line, or bar + line + tooltip + legend, as an ECharts option (`OptionChart`) | 128.8–128.9 KB | — | — |
+
+`PlotChart` does not yet tree-shake per mark: a one-line chart costs the same
+as a bar + line + tooltip + legend chart. The bridge (`useChart`) loads the
+ECharts modules on demand, so they arrive as lazy chunks of the sizes above.
 
 ## Why Canvas by default
 

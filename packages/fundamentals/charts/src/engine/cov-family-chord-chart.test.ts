@@ -19,6 +19,7 @@ interface HostSpec {
   legend: unknown
   select: (l: ChordLayout, px: number, py: number) => void
   tooltip: (l: ChordLayout, px: number, py: number) => string[] | null
+  item: (l: ChordLayout, px: number, py: number) => Record<string, unknown> | null
   pick: (l: ChordLayout, i: number) => void
   focusRect: (l: ChordLayout, i: number) => { x: number; y: number; w: number; h: number } | null
   a11y: () => { title?: string; categories: string[]; series: { label: string; values: number[]; kind: string }[] }
@@ -301,5 +302,15 @@ describe('ChordChart — host wiring', () => {
     const spec = mount({ nodes, links })
     const direct = layoutChord(nodes, links, { x: 8, y: 8, w: 384, h: 384 }, { palette: theme.palette, labelColor: theme.label })
     expect(layoutOf(spec).arcs).toEqual(direct.arcs)
+  })
+})
+
+describe('ChordChart — the item hook (what the option facade applies its tooltip to)', () => {
+  it('reports the arc under the pointer as a node item, and null off the ring', () => {
+    const spec = mount({ nodes, links })
+    const l = layoutOf(spec)
+    const a = l.arcs[1]!
+    expect(spec.item(l, ...onArc(l, a))).toEqual({ seriesIndex: 0, dataIndex: 1, name: a.name, value: a.total, color: a.color, dataType: 'node' })
+    expect(spec.item(l, l.circle.center.x, l.circle.center.y)).toBeNull()
   })
 })

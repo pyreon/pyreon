@@ -14,6 +14,8 @@ import { resolveY2Domain, resolveYDomain } from './render'
 import type { Double } from './types'
 import { clampWindow, limitZoomWindow, sliceRange } from './zoom'
 import type { ZoomWindow } from './zoom'
+import { lengthOf } from './option-layers'
+import type { SliderBox } from './slider-zoom'
 
 export interface OptionZoom {
   /** Wheel / pinch zoom and drag pan over the plot. */
@@ -32,6 +34,8 @@ export interface OptionZoom {
   /** Inside: `zoomOnMouseWheel` / `moveOnMouseMove`. */
   wheel: boolean
   move: boolean
+  /** The slider's box keys and brush flag, as ECharts lays the strip out (slider-zoom.ts). */
+  sliderBox?: SliderBox | undefined
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -98,6 +102,15 @@ export function readDataZoom(option: Record<string, unknown>, categories: string
       if (z['disabled'] === true) zoom.inside = false
     } else if (z['show'] !== false) {
       zoom.slider = true
+      zoom.sliderBox ??= {
+        left: lengthOf(z['left']),
+        top: lengthOf(z['top']),
+        right: lengthOf(z['right']),
+        bottom: lengthOf(z['bottom']),
+        width: lengthOf(z['width']),
+        height: lengthOf(z['height']),
+        brush: z['brushSelect'] !== false,
+      }
     }
   }
   return zoom

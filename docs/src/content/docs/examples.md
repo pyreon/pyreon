@@ -1,13 +1,53 @@
 ---
 title: "Examples"
-description: "A gallery of 71 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
+description: "A gallery of 81 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
 # Examples
 
-Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 71 examples across 33 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 81 examples across 33 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
 
 ## Charts
+
+### Gallery 100k
+
+<Example file="./examples/charts/gallery-100k" />
+
+### Gallery Bars
+
+<Example file="./examples/charts/gallery-bars" />
+
+### Gallery Candlestick
+
+<Example file="./examples/charts/gallery-candlestick" />
+
+### Gallery Donut
+
+<Example file="./examples/charts/gallery-donut" />
+
+### Gallery Gauge
+
+<Example file="./examples/charts/gallery-gauge" />
+
+### Gallery Heatmap
+
+<Example file="./examples/charts/gallery-heatmap" />
+
+### Gallery Horizontal
+
+<Example file="./examples/charts/gallery-horizontal" />
+
+### Gallery Radar
+
+<Example file="./examples/charts/gallery-radar" />
+
+### Gallery Stream
+
+<Example file="./examples/charts/gallery-stream" />
+
+### Gallery Trend
+
+<Example file="./examples/charts/gallery-trend" />
 
 ### Plot Grammar
 

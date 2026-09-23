@@ -1053,11 +1053,28 @@ class TasksAppInstrumentedTest {
         // precede the chart's first paint ("red before 0, after 0" on unrelated
         // PRs), which reads as a failed drag. Wait for the paint first.
         composeRule.waitUntil(10_000) { redPixels(zoomChart.captureToImage().asAndroidBitmap()) > 0 }
-        val redBefore = redPixels(zoomChart.captureToImage().asAndroidBitmap())
+        val dzBefore = zoomChart.captureToImage().asAndroidBitmap()
+        val redBefore = redPixels(dzBefore)
+        // The slider strip is ECharts' own now — plot-aligned in the grid's bottom
+        // margin, not a full-width band — so the band is FOUND, not assumed: on the
+        // swipe row, the window's filler is the blue-tinted run (the handles are
+        // white, the strip outside the window grey). Pressing its middle grabs the
+        // band, never a handle.
+        val dzRow = dzBefore.height - (18 * dzBefore.density / 160)
+        var dzL = -1
+        var dzR = -1
+        for (x in 0 until dzBefore.width) {
+            val c = dzBefore.getPixel(x, dzRow)
+            if (android.graphics.Color.blue(c) - android.graphics.Color.red(c) >= 12) {
+                if (dzL < 0) dzL = x
+                dzR = x
+            }
+        }
+        assertTrue("found no dataZoom band on the strip's row", dzL >= 0 && dzR - dzL > 20)
+        val dzMid = (dzL + dzR) / 2f
         zoomChart.performTouchInput {
-            val stripW = width - 16.dp.toPx()
-            val y = height - 18.dp.toPx()
-            swipe(start = Offset(8.dp.toPx() + stripW * 0.25f, y), end = Offset(8.dp.toPx() + stripW * 0.75f, y), durationMillis = 700)
+            val y = dzRow.toFloat()
+            swipe(start = Offset(dzMid, y), end = Offset(dzMid + (dzR - dzL).toFloat(), y), durationMillis = 700)
         }
         composeRule.waitForIdle()
         val redAfter = redPixels(zoomChart.captureToImage().asAndroidBitmap())
@@ -1075,6 +1092,24 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("gal-tl-last").performScrollTo().performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("gal-timeline").performScrollTo().assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2021"))
+        // Option-placed families: the web's own compile places them (center / radius, the funnel's
+        // margins) at the device's size, and a tap is read back through that frame.
+        // The pie: centre (0.3W, 100dp), radius 40% of 100 = 40dp; slice 0 is the right half.
+        composeRule.onNodeWithTag("gal-opt-pie").performScrollTo().performTouchInput { click(Offset(width * 0.3f + 20.dp.toPx(), 100.dp.toPx())) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-opt-pie-sel").performScrollTo().assertTextEquals("East")
+        composeRule.onNodeWithTag("gal-opt-pie").performScrollTo().performTouchInput { click(Offset(width * 0.3f - 20.dp.toPx(), 100.dp.toPx())) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-opt-pie-sel").performScrollTo().assertTextEquals("West")
+        // The funnel: its box is y 10..70dp (top 10, height 60), the larger stage on top.
+        composeRule.onNodeWithTag("gal-opt-funnel").performScrollTo().performTouchInput { click(Offset(width / 2f, 30.dp.toPx())) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-opt-funnel-sel").performScrollTo().assertTextEquals("Visits")
+        composeRule.onNodeWithTag("gal-opt-funnel").performScrollTo().performTouchInput { click(Offset(width / 2f, 55.dp.toPx())) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-opt-funnel-sel").performScrollTo().assertTextEquals("Orders")
+        composeRule.onNodeWithTag("gal-opt-gauge").performScrollTo().assertExists()
+        composeRule.onNodeWithTag("gal-opt-decor").performScrollTo().assertExists()
         // The toolbox (dataZoom, back, dataView, line, bar, restore — right-aligned, 25dp apart at the top).
         val toolbox = composeRule.onNodeWithTag("gal-toolbox").performScrollTo()
         val tool = { i: Int -> toolbox.performTouchInput { click(Offset(width - (9.5f + 25f * (5 - i)).dp.toPx(), 9.5.dp.toPx())) } }

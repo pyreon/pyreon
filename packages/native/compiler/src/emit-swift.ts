@@ -115,7 +115,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
+import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTipHeader, chartTooltipCells, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartPieArgs, chartDialCmds, chartFrameLiteral, chartSpecFieldIndex, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -4996,6 +4996,16 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       // value of non-function type"). Swift removed `++`/`--` in Swift 3.
       if (s.expr.kind === 'update') {
         return `${emitSwiftExpr(s.expr.argument, indent)} ${s.expr.op === '++' ? '+=' : '-='} 1`
+      }
+      // A bare `arr.sort(cmp)` STATEMENT sorts in place. The value-position
+      // lowering is the non-mutating `sorted(by:)`, whose result a statement
+      // throws away — the array stayed unsorted with only an "unused result"
+      // warning. Statement position takes the mutating `sort(by:)`.
+      if (s.expr.kind === 'call' && s.expr.callee.kind === 'member' && s.expr.callee.property === 'sort') {
+        const obj = emitSwiftExpr(s.expr.callee.object, indent)
+        const out = emitSwiftExpr(s.expr, indent)
+        if (out.startsWith(`${obj}.sorted(by: `)) return `${obj}.sort(by: ${out.slice(obj.length + '.sorted(by: '.length)}`
+        return out
       }
       return emitSwiftExpr(s.expr, indent)
     case 'if': {
@@ -13392,7 +13402,7 @@ const SWIFT_CHART_TARGET: ChartHostTarget = {
     options === 'nil'
       ? `${struct}(${fields.map(([f, v]) => `${f}: ${v}`).join(', ')})`
       : `{ () -> ${struct} in var pyreonO = ${options}; ${fields.map(([f, v]) => `pyreonO.${f} = pyreonO.${f} ?? ${v}`).join('; ')}; return pyreonO }()`,
-  pieOptions: (a) => `PieOptions(innerRadius: ${a.innerRatio}, showLabels: ${a.showLabels ?? 'true'}, labelColor: "#ffffff", fontSize: ${a.fontSize ?? '11.0'})`,
+  pieOptions: (a) => `PieOptions(innerRadius: ${a.innerRatio}, showLabels: ${a.showLabels ?? 'true'}, labelColor: ${a.pieLabelColor ?? '"#ffffff"'}, fontSize: ${a.fontSize ?? '11.0'}${a.pieExtra ?? ''})`,
   theme: () => `ChartTheme(axis: ${swiftStr(CHART_THEME_DEFAULT.axis)}, grid: ${swiftStr(CHART_THEME_DEFAULT.grid)}, label: ${swiftStr(CHART_THEME_DEFAULT.label)}, fontSize: ${CHART_THEME_DEFAULT.fontSize})`,
 }
 
@@ -13834,12 +13844,17 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     entries = spec.legend!('pyreonProbe', args, SWIFT_CHART_TARGET)
   }
   const chrome = swiftChartChrome(e, entries, W, H, indent, true, tf)
-  const plotArgs: ChartHostArgs = vm === null ? { ...args, W: chrome.width(W), H: chrome.height(H) } : { ...args, W: 'pyreonVmPlace.chartW', H: 'pyreonVmPlace.chartH' }
+  // An OptionChart-placed family (ECharts' box keys / center / radius) lays out in its frame — a sub-canvas the
+  // draw list is shifted into and the tap shifted out of, exactly where the web's `familyRect` puts it.
+  const frameLit = vm === null ? chartFrameLiteral(e, 'swift') : undefined
+  const plotArgs: ChartHostArgs = frameLit !== undefined ? { ...args, W: 'pyreonFrame.w', H: 'pyreonFrame.h' } : vm === null ? { ...args, W: chrome.width(W), H: chrome.height(H) } : { ...args, W: 'pyreonVmPlace.chartW', H: 'pyreonVmPlace.chartH' }
+  const inFrame = (cmds: string): string => (frameLit !== undefined ? `pyreonShiftCmdsXY(${cmds}, pyreonFrame.x, pyreonFrame.y)` : cmds)
   // A transposed host lays out in the box reflected across the diagonal (W and H swapped) and transposes the draw list back; the tap is reflected before its hit.
   const layoutArgs: ChartHostArgs = transposed ? { ...plotArgs, W: plotArgs.H, H: plotArgs.W } : plotArgs
   const transpose = (cmds: string): string => (transposed ? `pyreonTransposeCmds(${cmds})` : cmds)
   const withChrome = chrome.top !== '0.0'
   lets.push(...chrome.lets)
+  if (frameLit !== undefined) lets.push(`let pyreonFrame: PyreonChartRect = frameRectAt(${frameLit}, ${W}, ${H}, ${chrome.left}, ${chrome.top})`)
   if (vm !== null) lets.push(`let pyreonVmPlace = visualStripPlace(pyreonStrip, ${chrome.width(W)}, ${chrome.height(H)})`)
   // A hoisted layout `let` only when something else reads it (the tap); the
   // chrome-free, tap-free host keeps its inline `render(layout(...))`.
@@ -13864,7 +13879,7 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)`
     : ''
   const stripCmds = vm === null ? '' : ' + renderVisualStrip(pyreonStrip, pyreonVmPlace.at, pyreonVmRange, pyreonVmSelected)'
-  const canvas = swiftChartCanvas(e, `${chrome.mirror(chrome.wrap(`${transpose(spec.render(layout, renderArgs, SWIFT_CHART_TARGET))}${stripCmds}`))}${tipCmds}`, indent)
+  const canvas = swiftChartCanvas(e, `${chrome.mirror(chrome.wrap(`${inFrame(transpose(spec.render(layout, renderArgs, SWIFT_CHART_TARGET)))}${stripCmds}`))}${tipCmds}`, indent)
   // `onSelectIndex` → a tap (a zero-distance drag, which reports its location)
   // over the engine's index hit, computed against the same layout the canvas
   // painted. `.contentShape` makes the whole canvas — not only its painted
@@ -13872,8 +13887,10 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
   // for the point (an empty list clears the box, so a tap on nothing dismisses).
   let gesture = ''
   if (tapping) {
-    const tapY = withChrome ? 'Double(pyreonTap.location.y) - pyreonTop' : 'Double(pyreonTap.location.y)'
-    const tapX = chrome.plotX('Double(pyreonTap.location.x)')
+    const tapY0 = withChrome ? 'Double(pyreonTap.location.y) - pyreonTop' : 'Double(pyreonTap.location.y)'
+    const tapX0 = chrome.plotX('Double(pyreonTap.location.x)')
+    const tapY = frameLit !== undefined ? `(${tapY0}) - pyreonFrame.y` : tapY0
+    const tapX = frameLit !== undefined ? `(${tapX0}) - pyreonFrame.x` : tapX0
     const hitX = transposed ? tapY : tapX
     const hitY = transposed ? tapX : tapY
     const parts: string[] = []
@@ -13981,25 +13998,34 @@ function emitSwiftAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const tooltip = readStaticAttr(e, 'tooltip') === true
   const withChrome = chrome.top !== '0.0'
   const animating = swiftChartAnimating(e, tag) && spec.optionsStruct !== undefined
-  const hoist = withChrome || tooltip || animating
+  // A framed host names its frame in a `let`, so it takes the hoisted form.
+  const hoist = withChrome || tooltip || animating || (tag !== 'PieChart' && chartFrameLiteral(e, 'swift') !== undefined)
   const items = hoist ? 'pyreonItems' : mapped
   const lets = hoist ? [`let pyreonItems: [${spec.struct}] = ${mapped}`, ...chrome.lets] : []
   if (animating) lets.push(`let pyreonOpts: ${spec.optionsStruct} = ${SWIFT_CHART_TARGET.withProgress(options, spec.optionsStruct!, 'pyreonEntrance')}`)
-  const args: ChartHostArgs = { data: [], options, W: chrome.width(W), H: chrome.height(H), gutter: '0.0', innerRatio: swiftChartDouble(e, 'innerRadius', 0, indent), showLabels: readStaticAttr(e, 'showLabels') === false ? 'false' : 'true', fontSize: tf.fontSize }
+  // A placed funnel lays out in its frame (a sub-canvas); the pie frames itself through its own args.
+  const frameLit = tag === 'PieChart' ? undefined : chartFrameLiteral(e, 'swift')
+  if (frameLit !== undefined) lets.push(`let pyreonFrame: PyreonChartRect = frameRectAt(${frameLit}, ${W}, ${H}, ${chrome.left}, ${chrome.top})`)
+  const args: ChartHostArgs = { data: [], options, W: frameLit !== undefined ? 'pyreonFrame.w' : chrome.width(W), H: frameLit !== undefined ? 'pyreonFrame.h' : chrome.height(H), gutter: '0.0', innerRatio: swiftChartDouble(e, 'innerRadius', 0, indent), showLabels: readStaticAttr(e, 'showLabels') === false ? 'false' : 'true', fontSize: tf.fontSize, ...(tag === 'PieChart' ? chartPieArgs(e, 'swift', W, H, chrome.left, chrome.top, tf.label) : chartTipHeader(e, 'swift') === undefined ? {} : { tipHeader: chartTipHeader(e, 'swift')! }) }
+  const inFrame = (cmds: string): string => (frameLit !== undefined ? `pyreonShiftCmdsXY(${cmds}, pyreonFrame.x, pyreonFrame.y)` : cmds)
   const tipCmds = tooltip
-    ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)`
+    ? args.tipHeader !== undefined
+      ? ` + renderTooltipRows(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure, true)`
+      : ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)`
     : ''
-  const canvas = swiftChartCanvas(e, `${chrome.mirror(chrome.wrap(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, SWIFT_CHART_TARGET)))}${tipCmds}`, indent)
+  const canvas = swiftChartCanvas(e, `${chrome.mirror(chrome.wrap(inFrame(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, SWIFT_CHART_TARGET))))}${tipCmds}`, indent)
   // Both `onSelect` (already an index on these hosts) and `onSelectIndex` lower to the tap; `tooltip` shares it.
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
-  const tapY = withChrome ? 'Double(pyreonTap.location.y) - pyreonTop' : 'Double(pyreonTap.location.y)'
+  const tapY0 = withChrome ? 'Double(pyreonTap.location.y) - pyreonTop' : 'Double(pyreonTap.location.y)'
+  const tapY = frameLit !== undefined ? `(${tapY0}) - pyreonFrame.y` : tapY0
+  const tapXOf = (x: string): string => (frameLit !== undefined ? `(${chrome.plotX(x)}) - pyreonFrame.x` : chrome.plotX(x))
   const parts: string[] = []
   if (tooltip) {
     _hostStateDecls.push('@State private var pyreonTip: [String] = []')
     _hostStateDecls.push('@State private var pyreonTipAt: PyreonChartPt = PyreonChartPt(x: 0.0, y: 0.0)')
-    parts.push(`pyreonTip = ${spec.tooltip(items, chrome.plotX('Double(pyreonTap.location.x)'), tapY, args, SWIFT_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))`)
+    parts.push(`pyreonTip = ${spec.tooltip(items, tapXOf('Double(pyreonTap.location.x)'), tapY, args, SWIFT_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))`)
   }
-  if (onSel?.kind === 'event') parts.push(swiftChartSelectBody(onSel.handler, spec.hit(items, chrome.plotX('Double(pyreonTap.location.x)'), tapY, args, SWIFT_CHART_TARGET), indent))
+  if (onSel?.kind === 'event') parts.push(swiftChartSelectBody(onSel.handler, spec.hit(items, tapXOf('Double(pyreonTap.location.x)'), tapY, args, SWIFT_CHART_TARGET), indent))
   const gesture = parts.length === 0 ? '' : `.contentShape(Rectangle()).simultaneousGesture(SpatialTapGesture().onEnded { pyreonTap in ${parts.join('; ')} })`
   const tail = swiftChartA11y(e, undefined, indent) + emitSwiftLayoutModifiers(e)
   if (!hoist) {
@@ -14026,7 +14052,9 @@ function emitSwiftGaugeHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const text = showValue
     ? ` + [PyreonDrawCmd(kind: "text", fill: "#10161d", text: plain(${value}), at: PyreonChartPt(x: ${W} / 2.0, y: ${H} - 6.0), size: 20.0, align: "middle", baseline: "bottom")]`
     : ''
-  const canvas = swiftChartCanvas(e, swiftRtl(e, W).mirror(`renderGauge(${value}, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H} * 2.0), ${opts})${text}`), indent)
+  // An OptionChart gauge draws ECharts' whole dial (its own value text among it); a plain one the half-circle track.
+  const dial = chartDialCmds(e, 'swift', W, H)
+  const canvas = swiftChartCanvas(e, swiftRtl(e, W).mirror(dial ?? `renderGauge(${value}, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H} * 2.0), ${opts})${text}`), indent)
   const tail = swiftChartA11y(e, undefined, indent) + emitSwiftLayoutModifiers(e)
   if (hasWidth) return `${canvas}.frame(width: ${W}, height: ${H})${tail}`
   const pad = ' '.repeat(indent + 2)
@@ -14361,7 +14389,7 @@ function swiftAccessorExpr(v: ExprIR, tag: string, what: string, indent: number)
 }
 
 /** The literal option fields of one mark call as `name: value` Swift args, in `Series` declaration order. */
-function swiftMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex: number, palette: readonly string[] = CHART_HOST_PALETTE): string[] | 'unsupported' {
+function swiftMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex: number, palette: readonly string[] = CHART_HOST_PALETTE, colorSlot: number = seriesIndex): string[] | 'unsupported' {
   const fields = new Map<string, ExprIR>()
   if (opts !== undefined) {
     if (opts.kind !== 'object' || (opts.spreads !== undefined && opts.spreads.length > 0)) {
@@ -14495,7 +14523,7 @@ function swiftMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex:
       args.push(`${spec.name}: ${lit}`)
       continue
     }
-    if (spec.name === 'color') args.push(`color: ${swiftStr(palette[seriesIndex % palette.length])}`)
+    if (spec.name === 'color') args.push(`color: ${swiftStr(palette[colorSlot % palette.length])}`)
     else if (spec.name === 'label') args.push(`label: ${swiftStr(`Series ${seriesIndex + 1}`)}`)
     else if (spec.default !== undefined) args.push(`${spec.name}: ${spec.kind === 'number' ? chartDouble(spec.default as number) : String(spec.default)}`)
   }
@@ -14632,6 +14660,8 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const series: string[] = []
   const fullA11ySeries: string[] = []
   let navValues = ''
+  // Colour follows the mark's LABEL, as the web's `resolveMarks` does.
+  const colorSlots = plotMarkColorSlots(marksV.elements)
   for (let k = 0; k < marksV.elements.length; k++) {
     const m = marksV.elements[k]!
     // `...bollinger(y, window, k)` — the one mark constructor that returns an
@@ -14689,7 +14719,7 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
       decimated = true
     }
     const optsArg = bubble || isBand || indicator?.takesWindow === true ? m.args[2] : m.args[1]
-    const opts = swiftMarkOptionArgs(optsArg, tag, k, pyreonPalette)
+    const opts = swiftMarkOptionArgs(optsArg, tag, k, pyreonPalette, colorSlots[k] ?? k)
     if (opts === 'unsupported') return 'EmptyView()'
     const rowMap = swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed, decimated)
     const derivedValues = indicator === undefined ? undefined : swiftIndicatorValues(indicator, m, rowMap, tag, k, indent)
@@ -14789,8 +14819,9 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
   const entries = legend.toggling
-    ? 'pyreonSeriesAll.enumerated().map { (pyreonI, pyreonS) in LegendEntry(label: pyreonS.label, color: pyreonS.color, muted: pyreonHidden.contains(pyreonI)) }'
-    : 'pyreonSeries.map { LegendEntry(label: $0.label, color: $0.color) }'
+    ? // One entry per label, as the web draws it (the engine's `legendEntriesGrouped`).
+      'legendEntriesGrouped(pyreonSeriesAll.map { $0.label }, pyreonSeriesAll.map { $0.color }, pyreonHidden)'
+    : 'legendEntriesGrouped(pyreonSeries.map { $0.label }, pyreonSeries.map { $0.color }, [])'
   const tf = swiftChartThemeFields(e, tag)
   const chrome = swiftChartChrome(e, entries, W, H, indent, true, tf, legend.paging ? 'pyreonLegendPage' : undefined)
   lets.push(...chrome.lets)
@@ -14805,6 +14836,8 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   }
   // Below the plot, from the bottom up: the preset strip, then the navigator.
   const belowNav = presets === undefined ? '' : ' - pyreonPresetStrip.height'
+  // ECharts' slider box: the strip lives in the grid's bottom margin, the plot keeps its rect.
+  const sliderBox = navigating ? zoomCfg.sliderBox : null
   if (navigating) {
     // Thinned to the strip's width, exactly as the web host does: a 36px-tall
     // overview needs the min/max envelope per pixel column, not 100k points.
@@ -14812,20 +14845,25 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     // frame — the same defect the web host had before `minMaxBuckets` was
     // wired there, and worse here because the target has less headroom.
     lets.push(`let pyreonNavValues: [Double] = minMaxBuckets(${navValues}, max(1, Int(${W} / 2.0)))`)
-    lets.push(`let pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H}${belowNav}), pyreonTheme.grid)`)
+    if (sliderBox === null) lets.push(`let pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H}${belowNav}), pyreonTheme.grid)`)
   }
   const bool = (name: string, fallback: boolean): string => {
     const raw = readStaticAttr(e, name)
     const v = chartAttrExpr(e, name)
     return v === undefined ? String(fallback) : typeof raw === 'boolean' ? String(raw) : emitSwiftExpr(v, indent)
   }
-  const below = `${belowNav}${navigating ? ' - pyreonNavigator.height' : ''}`
+  const below = `${belowNav}${navigating && sliderBox === null ? ' - pyreonNavigator.height' : ''}`
   const locale = chartAttrExpr(e, 'locale')
   if (locale !== undefined) lets.push(`let pyreonLocale: String = ${emitSwiftExpr(locale, indent)}`)
+  // The option facade's own compiled spec (an OptionChart's `optionSpec`): its
+  // fields before `categories` go right after `series`, the rest among the
+  // literal switches below — each in the generated struct's order.
+  const optSpec = optionSpecArgs(e)
   const specArgs = [
     `width: ${chrome.width(W)}`,
     `height: ${chrome.height(H)}${below}`,
     'series: pyreonSeries',
+    ...optSpec.early.map((a) => `${a.name}: ${swiftSpecLiteral(a.value)}`),
     'categories: pyreonCats',
     `theme: ${themed ? 'pyreonTheme' : theme}`,
     `showXAxis: ${bool('showXAxis', true)}`,
@@ -14881,6 +14919,7 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     specArgs.push(`emphasis: Emphasis(highlight: ${handle === undefined ? '-1' : 'pyreonHover'}, selected: ${selected})`)
   }
   // The batch-2 spec switches: a literal each, AFTER `progress` (Swift's init order is the struct's field order).
+  const late: { at: number; arg: string; name: string }[] = []
   for (const p of PLOT_SPEC_LITERAL_PROPS) {
     const raw = readStaticAttr(e, p.name)
     const v = chartAttrExpr(e, p.name)
@@ -14889,8 +14928,12 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
       _emitWarnings.push(`<${tag}>: \`${p.name}\` must be a ${p.kind} literal on native; the prop is ignored.`)
       continue
     }
-    specArgs.push(`${p.name}: ${p.kind === 'string' ? swiftStr(raw) : p.kind === 'number' ? (Number.isInteger(raw) ? `${String(raw)}.0` : String(raw)) : String(raw)}`)
+    late.push({ at: chartSpecFieldIndex(p.name), name: p.name, arg: `${p.name}: ${p.kind === 'string' ? swiftStr(raw) : p.kind === 'number' ? (Number.isInteger(raw) ? `${String(raw)}.0` : String(raw)) : String(raw)}` })
   }
+  // The compiled option's late fields, unless the host set the same one itself.
+  for (const a of optSpec.late) if (!late.some((l) => l.name === a.name)) late.push({ at: chartSpecFieldIndex(a.name), name: a.name, arg: `${a.name}: ${swiftSpecLiteral(a.value)}` })
+  late.sort((a, b) => a.at - b.at)
+  for (const l of late) specArgs.push(l.arg)
   // Third and later y axes — the LAST ChartSpec field, so it follows the literal switches.
   const extraAxes = chartAttrExpr(e, 'extraYAxes')
   if (extraAxes !== undefined) specArgs.push(`extraYAxes: ${withExpectedType({ kind: 'array', element: { kind: 'typeRef', name: 'ExtraYAxis', args: [] } }, () => emitSwiftExpr(extraAxes, indent))}`)
@@ -14916,6 +14959,11 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     lets.push(`let pyreonSpec: ChartSpec = applyBrushSelection(pyreonSpecBase, ${area.only.length === 0 ? '' : 'brushOnlySeries('}brushSelection(pyreonSpecBase, layoutChart(pyreonSpecBase, pyreonChartMeasure), pyreonAreasNow)${area.only.length === 0 ? '' : `, [${area.only.map((x) => `${x}.0`).join(', ')}])`}, !pyreonAreasNow.isEmpty, ${Number.isInteger(area.opacity) ? `${area.opacity}.0` : String(area.opacity)})`)
   } else {
     lets.push(`let pyreonSpec: ChartSpec = ${specBuilt}`)
+  }
+  if (sliderBox !== null) {
+    lets.push(`let pyreonSliderBox: SliderBox = ${sliderBox}`)
+    lets.push(`let pyreonSliderStrip: PyreonChartRect = sliderRect(pyreonSliderBox, layoutChart(pyreonSpec, pyreonChartMeasure).plot, ${W}, ${H})`)
+    lets.push('let pyreonNavigator: NavigatorLayout = NavigatorLayout(cmds: renderSliderZoom(pyreonNavValues, pyreonZoom, pyreonSliderStrip, pyreonSliderBox.brush), strip: pyreonSliderStrip, height: 0.0)')
   }
   if (toolbox !== null) {
     const actives = [
@@ -14956,7 +15004,13 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     _hostStateDecls.push('@State private var pyreonTip: [String] = []')
     _hostStateDecls.push('@State private var pyreonTipAt: PyreonChartPt = PyreonChartPt(x: 0.0, y: 0.0)')
   }
-  const tipCmds = tooltip ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)` : ''
+  // An OptionChart without a formatter shows ECharts' default content: its cells drawn as rows.
+  const tipCells = tooltip && tipFormatter === undefined ? chartTooltipCells(e) : undefined
+  const tipCmds = tooltip
+    ? tipCells !== undefined
+      ? ` + renderTooltipRows(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure, ${tipCells.trigger === 'item'})`
+      : ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)`
+    : ''
   // `rtl` — the same seam the web host uses (`present` in canvas-host.tsx):
   // the FINISHED list is mirrored about the canvas centreline, so the chrome,
   // the plot and the extras mirror together and no layout code changes. The
@@ -14973,6 +15027,13 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const tapX = chrome.tapX('Double(pyreonTap.location.x)')
   const plotX = chrome.plotX('Double(pyreonTap.location.x)')
   const localHit = `plotHitBars(pyreonSpec, pyreonChartMeasure, ${plotX}, ${tapY})`
+  if (tipCells !== undefined) {
+    const tipSeries = (sel: string): string => `TooltipSeries(label: ${sel}.label, values: ${sel}.values, color: ${sel}.color, values2: ${sel}.values2, rValues: ${sel}.rValues, extras: ${sel}.extras)`
+    const namedList = `[${tipCells.named.map((b) => String(b)).join(', ')}]`
+    tipLines = tipCells.trigger === 'axis'
+      ? `tooltipAxisCells(pyreonLocal, pyreonCats, pyreonSeries.map { ${tipSeries('$0')} }, ${namedList})`
+      : `{ () -> [String] in let pyreonSer = plotHitSeriesIn(pyreonSpec, layoutChart(pyreonSpec, pyreonChartMeasure), ${plotX}, ${tapY}, 14.0); let pyreonNamed: [Bool] = ${namedList}; return pyreonSer < 0 || pyreonSer >= pyreonSeries.count ? [] : tooltipItemCells(pyreonLocal, pyreonCats, ${tipSeries('pyreonSeries[pyreonSer]')}, pyreonSer < pyreonNamed.count && pyreonNamed[pyreonSer]) }()`
+  }
   // Under a window the hit is LOCAL to the slice; the callback speaks GLOBAL indices, as on the web.
   // With a tooltip the local hit is bound once (`pyreonLocal`) and both read it; without one the emit is as before.
   const globalHit = (local: string): string => {
@@ -15082,7 +15143,7 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
       const onLegend = chartEventHandler(e, 'legendChange')
       const fire = onLegend === undefined ? '' : `; ${swiftChartSelectBody(onLegend, 'pyreonNextHidden', indent)}`
       branches.push(
-        `if pyreonLegendHit >= 0 { let pyreonNextHidden = legendToggle(pyreonHidden, pyreonLegendHit); pyreonHidden = pyreonNextHidden${fire} }`,
+        `if pyreonLegendHit >= 0 { let pyreonNextHidden = legendToggleGroup(pyreonHidden, pyreonSeriesAll.map { $0.label }, pyreonLegendHit); pyreonHidden = pyreonNextHidden${fire} }`,
       )
     }
     if (presets !== undefined) {
@@ -15184,7 +15245,10 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   // handle) is decided once, from the start location; the drag is absolute
   // from the window it started on — the web's model.
   const overlay =
-    `Color.clear.contentShape(Rectangle()).frame(height: pyreonNavigator.height)${presets === undefined ? '' : '.padding(.bottom, pyreonPresetStrip.height)'}` +
+    (sliderBox !== null
+      ? // ECharts' strip sits in the grid's margin; the grab area covers it and the move handle above.
+        `Color.clear.contentShape(Rectangle()).frame(height: pyreonNavigator.strip.h + 12.0).padding(.bottom, max(0.0, ${H} - pyreonNavigator.strip.y - pyreonNavigator.strip.h - 4.0))`
+      : `Color.clear.contentShape(Rectangle()).frame(height: pyreonNavigator.height)${presets === undefined ? '' : '.padding(.bottom, pyreonPresetStrip.height)'}`) +
     `.gesture(DragGesture(minimumDistance: 0).onChanged { pyreonNav in if pyreonNavKind == 0 { pyreonNavAnchor = pyreonZoom; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, Double(pyreonNav.startLocation.x)) }; pyreonZoom = ${lim('navigatorDrag(pyreonNavKind, pyreonNavAnchor, Double(pyreonNav.translation.width) / pyreonNavigator.strip.w)')} }` +
     `.onEnded { _ in pyreonNavKind = 0${zoomed ? '; pyreonZoomAnchor = pyreonZoom' : ''} })`
   return swiftFrameHost(e, lets, `ZStack(alignment: .bottom) { ${canvas}${gesture}; ${overlay} }`, '', W, H, hasWidth, indent, describe, dataViewOverlay)
@@ -15630,4 +15694,19 @@ function patternExtras(values: Map<string, ExprIR>, sep: string): string {
     out.push(`, shapeRings${sep}[${counts.join(', ')}]`)
   }
   return out.join('')
+}
+
+/**
+ * A forwarded ChartSpec value (an OptionChart's `optionSpec`) as Swift: a
+ * number as a Double, a number array as `[Double]`, a `{ value, percent }`
+ * object as a `BarLength`, a string or a boolean as itself.
+ */
+function swiftSpecLiteral(v: unknown): string {
+  if (typeof v === 'number') return chartDouble(v)
+  if (typeof v === 'boolean') return String(v)
+  if (typeof v === 'string') return swiftStr(v)
+  // A colour list (`ySplitArea`) is strings; every other array field is numbers.
+  if (Array.isArray(v)) return `[${v.map((x) => (typeof x === 'string' ? swiftStr(x) : chartDouble(Number(x)))).join(', ')}]`
+  const o = v as { value?: unknown; percent?: unknown }
+  return `BarLength(value: ${chartDouble(Number(o.value ?? 0))}, percent: ${o.percent === true})`
 }

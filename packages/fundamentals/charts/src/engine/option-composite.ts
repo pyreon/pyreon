@@ -5,6 +5,7 @@
 // `composeSvg` lays already-rendered `<svg>` strings into one document. The
 // facade's `optionToSvg` / `planOption` call these first, so every family and
 // the cartesian compiler see a plain single-grid option and need no awareness.
+import { GRID_PART_KEY } from './option-grid'
 import type { DrawCmd, Double, Rect } from './types'
 import { renderTimeline } from './timeline-strip'
 import type { TimelineStrip } from './timeline-strip'
@@ -297,7 +298,12 @@ export function splitGrids(option: Obj, width: Double, height: Double): GridPart
       delete sub['title']
       delete sub['legend']
     }
-    sub['grid'] = grids[g]
+    // The grid's position placed this part's rect; left on the sub-option it
+    // would place the plot a second time inside that rect.
+    const ownGrid: Obj = { ...grids[g] }
+    for (const key of ['left', 'top', 'right', 'bottom', 'width', 'height']) delete ownGrid[key]
+    ownGrid[GRID_PART_KEY] = true
+    sub['grid'] = ownGrid
     if (xs.length > 0) sub['xAxis'] = xs.length === 1 ? { ...xs[0]!, gridIndex: undefined } : xs
     else delete sub['xAxis']
     if (ys.length > 0) sub['yAxis'] = ys.length === 1 ? { ...ys[0]!, gridIndex: undefined } : ys

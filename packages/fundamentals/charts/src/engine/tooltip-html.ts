@@ -24,7 +24,7 @@ const STYLE_PROPS = new Set([
   'margin', 'margin-left', 'margin-right', 'margin-top', 'margin-bottom',
   'padding', 'padding-left', 'padding-right', 'padding-top', 'padding-bottom',
   'border', 'border-radius', 'border-color', 'border-width', 'border-style', 'border-bottom', 'border-top',
-  'opacity', 'float', 'gap',
+  'opacity', 'float', 'clear', 'gap',
 ])
 
 /** Keep the safe, presentational declarations of a `style` attribute. */

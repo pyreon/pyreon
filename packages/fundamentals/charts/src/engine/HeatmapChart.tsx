@@ -91,6 +91,13 @@ export function HeatmapChart<T>(props: HeatmapChartProps<T>): VNode {
       const fmt = props.format ?? plain
       return [`${g.grid.rows[c.row]!} \u00b7 ${g.grid.cols[c.col]!}: ${fmt(c.value)}`]
     },
+    // ECharts' heatmap datum: [x, y, value].
+    item: (g, px, py) => {
+      const idx = cellAt(g, px, py)
+      const c = g.grid.cells[idx]
+      if (c === undefined) return null
+      return { seriesIndex: 0, dataIndex: idx, name: '', value: [g.grid.cols[c.col]!, g.grid.rows[c.row]!, c.value] }
+    },
     // The keyboard walks the COLUMNS — the accessible table's rows, which is
     // what the live region announces (one column per row, a cell per series).
     // Enter picks the column's first cell; the ring wraps the column.

@@ -14,7 +14,10 @@ import type { HeatSelection } from './heat-chart'
 import { transposeCmds, transposeRect } from './rtl'
 import { fitCircle, layoutArcs, renderGauge, renderPie } from './arc'
 import { paletteAt } from './palette'
-import type { GaugeOptions } from './arc'
+import type { ArcConfig, GaugeOptions } from './arc'
+import type { PieLabelOptions } from './pie-labels'
+import { renderDial } from './gauge-dial'
+import type { DialSpec } from './gauge-dial'
 import { renderRadar } from './radar'
 import type { RadarAxis } from './radar'
 import { ohlcExtent, renderCandles } from './candlestick'
@@ -59,6 +62,7 @@ import type { Formatter } from './format'
 import { measureApprox, renderSvg } from './svg'
 import type { SvgOptions } from './svg'
 import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
+import { themedDial } from './option-gauge'
 
 /**
  * The legend options the CANVAS host builds (`canvas-host.tsx`) — same fields,
@@ -144,6 +148,12 @@ export interface PieToSvgOptions<T> {
   /** Explicit long description; derived from the data when a title is given. */
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
+  /** ECharts' pie layout — start angle, direction, min/pad angles, rose, outside labels — as `<PieChart pie>`. */
+  pie?: { arcs: ArcConfig; labels: PieLabelOptions | undefined; empty?: string | undefined } | undefined
+  /** Draw the pie in this rect, the legend over it (ECharts' placement); below the legend without it. */
+  frame?: Rect | undefined
+  /** The rect outside labels keep within; the whole image without it. */
+  view?: Rect | undefined
 }
 
 
@@ -171,11 +181,17 @@ export function pieToSvg<T>(options: PieToSvgOptions<T>): string {
     legendH = l.height
     for (const c of l.cmds) cmds.push(c)
   }
-  const body = renderPie(slices, { x: 0, y: legendH, w: width, h: height - legendH }, {
+  const labels = options.pie?.labels
+  const body = renderPie(slices, options.frame ?? { x: 0, y: legendH, w: width, h: height - legendH }, {
     innerRadius: options.innerRadius ?? 0,
     showLabels: options.showLabels ?? true,
-    labelColor: '#ffffff',
+    labelColor: labels !== undefined && labels.position !== 'inside' ? t.label : '#ffffff',
     fontSize: t.fontSize,
+    arcs: options.pie?.arcs,
+    labels,
+    view: options.view ?? { x: 0, y: 0, w: width, h: height },
+    empty: options.pie?.empty,
+    measure,
   })
   for (const c of body) cmds.push(c)
 
@@ -205,6 +221,10 @@ export interface GaugeToSvgOptions {
   title?: string
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
+  /** ECharts' gauge, as `<GaugeChart dial>`; the half-circle track without it. */
+  dial?: DialSpec | undefined
+  /** The square the dial fills (ECharts' center and radius); the whole image without it. */
+  frame?: Rect | undefined
 }
 
 /** A single-value gauge as a standalone `<svg>` string. */
@@ -225,8 +245,13 @@ export function gaugeToSvg(options: GaugeToSvgOptions): string {
   }
   // A half-circle occupies the top half of its box, so the drawing box is
   // twice the visible height — the same trick the component uses.
-  const cmds = renderGauge(options.value, { x: 0, y: 0, w: width, h: height * 2 }, opts)
-  if (options.showValue !== false) {
+  const dial = options.dial
+  const frame = options.frame ?? { x: 0, y: 0, w: width, h: height }
+  const fit = fitCircle(frame)
+  const cmds = dial !== undefined
+    ? renderDial(themedDial(dial, t), fit.center, fit.radius, [...t.palette])
+    : renderGauge(options.value, { x: 0, y: 0, w: width, h: height * 2 }, opts)
+  if (dial === undefined && options.showValue !== false) {
     cmds.push({
       kind: 'text',
       text: fmt(options.value),

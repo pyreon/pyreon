@@ -91,7 +91,7 @@ describe('OptionChart (real browser)', () => {
     expect(moved.end - moved.start).toBeCloseTo(50, 0)
     // A click on the first visible bar reports its index in the full data.
     await wait(50)
-    c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 70, clientY: r.top + 150 }))
+    c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 75, clientY: r.top + 165 }))
     expect(picked[picked.length - 1]).toBeGreaterThanOrEqual(Math.floor((moved.start / 100) * 20))
     // The wheel zooms in about the pointer: the span narrows.
     c.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -400, clientX: r.left + 200, clientY: r.top + 100 }))
@@ -269,7 +269,7 @@ describe('OptionChart (real browser)', () => {
   it('paints a bar option on canvas, hit-tests clicks against the painted geometry, and repaints on option change', async () => {
     const option = signal<EChartsOption>({ title: { text: 'Sales' }, xAxis: { data: ['a', 'b', 'c'] }, yAxis: {}, series: [{ type: 'bar', data: [3, 1, 2] }] })
     const hits: (OptionHit | null)[] = []
-    const { container } = mountInBrowser(h(OptionChart, { option: () => option(), width: 300, height: 160, onSelect: (hit: OptionHit | null) => hits.push(hit) }))
+    const { container } = mountInBrowser(h(OptionChart, { option: () => option(), width: 300, height: 260, onSelect: (hit: OptionHit | null) => hits.push(hit) }))
     await flush()
     const c = container.querySelector('canvas')!
     const before = inked(c)
@@ -277,7 +277,7 @@ describe('OptionChart (real browser)', () => {
     expect(container.querySelector('table')!.textContent).toContain('b')
     const r = c.getBoundingClientRect()
     // Sweep the lower plot: every category must be reported, in order.
-    for (let x = 2; x < 300; x += 4) c.dispatchEvent(new MouseEvent('click', { clientX: r.left + x, clientY: r.top + 130, bubbles: true }))
+    for (let x = 2; x < 300; x += 4) c.dispatchEvent(new MouseEvent('click', { clientX: r.left + x, clientY: r.top + 170, bubbles: true }))
     const seen: string[] = []
     for (const hh of hits) if (hh !== null && (seen.length === 0 || seen[seen.length - 1] !== hh.name)) seen.push(hh.name)
     expect(seen).toEqual(['a', 'b', 'c'])

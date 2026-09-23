@@ -28,6 +28,7 @@ import { MapChart } from './MapChart'
 import type { Double } from './types'
 import type { ChartAnimation } from './animation-option'
 import { ease } from './easing'
+import type { ChartTheme } from './render'
 
 
 export interface FamilyHostOptions {
@@ -42,6 +43,19 @@ export interface FamilyHostOptions {
    * in the corner of a line chart), whose own canvas already paints the ground.
    */
   transparent?: boolean | undefined
+  /**
+   * Host props an option chart forwards beyond the plan — its tooltip switch,
+   * keyboard, accessible table, `rtl` and toolbox, and the item hooks that
+   * apply the option's `tooltip` / `cursor` / `silent`. A live-getter object:
+   * it is read inside the host's props computation, so a change re-applies.
+   */
+  host?: Record<string, unknown> | undefined
+  /**
+   * The theme the option chart resolved (its `theme` prop, a provider, or
+   * ECharts' default) — the family paints under it, as the cartesian half of
+   * the same option chart does. Absent, the family host's context applies.
+   */
+  theme?: Partial<ChartTheme> | undefined
 }
 
 /** A resolved animation as canvas-host props. */
@@ -102,15 +116,16 @@ export function familyHostShape(plan: FamilyPlan, o: FamilyHostOptions): string 
 
 function familyHostFor(plan: FamilyPlan, o: FamilyHostOptions): VNode | null {
   const size = { width: o.width, height: o.height }
-  const chrome = { ...(plan.title !== undefined ? { title: plan.title } : {}), ...animationProps(o.animation), ...(o.transparent === true ? { theme: { background: '' } } : {}) }
+  const themed = o.theme === undefined ? (o.transparent === true ? { background: '' } : undefined) : o.transparent === true ? { ...o.theme, background: '' } : o.theme
+  const chrome = { ...(plan.title !== undefined ? { title: plan.title } : {}), ...animationProps(o.animation), ...(themed !== undefined ? { theme: themed } : {}), ...o.host }
   const sel = (kind: FamilyPlan['kind']) => (o.onSelect === undefined ? {} : { onSelect: (hit: unknown) => o.onSelect!(kind, hit) })
   switch (plan.kind) {
     case 'pie': {
       const color = colorOf(plan.rows)
-      return h(PieChart, { data: plan.rows, value: (r: { value: Double }) => r.value, label: (r: { name: string }) => r.name, ...(color !== undefined ? { color } : {}), innerRadius: plan.innerRadius, showLabels: plan.showLabels, showLegend: plan.showLegend, ...size, ...chrome, ...sel('pie') })
+      return h(PieChart, { data: plan.rows, value: (r: { value: Double }) => r.value, label: (r: { name: string }) => r.name, ...(color !== undefined ? { color } : {}), innerRadius: plan.innerRadius, showLabels: plan.showLabels, showLegend: plan.showLegend, pie: plan.pie, ...size, ...chrome, ...sel('pie') })
     }
     case 'gauge':
-      return h(GaugeChart, { value: plan.value, min: plan.min, max: plan.max, showValue: plan.showValue, ...(plan.thickness !== undefined ? { thickness: plan.thickness } : {}), ...(plan.valueColor !== undefined ? { valueColor: plan.valueColor } : {}), ...size, ...chrome })
+      return h(GaugeChart, { value: plan.value, min: plan.min, max: plan.max, showValue: plan.showValue, dial: plan.dial, ...(plan.thickness !== undefined ? { thickness: plan.thickness } : {}), ...(plan.valueColor !== undefined ? { valueColor: plan.valueColor } : {}), ...size, ...chrome })
     case 'radar': {
       const color = colorOf(plan.rows)
       return h(RadarChart, { data: plan.rows, axes: plan.axes, values: (r: { values: Double[] }) => r.values, label: (r: { name: string }) => r.name, ...(color !== undefined ? { color } : {}), fillAlpha: plan.fillAlpha, showLegend: plan.showLegend, ...size, ...chrome })
@@ -118,6 +133,7 @@ function familyHostFor(plan: FamilyPlan, o: FamilyHostOptions): VNode | null {
     case 'candlestick':
       return h(CandlestickChart, {
         data: plan.rows,
+        ...(plan.zoom !== undefined ? { zoom: plan.zoom } : {}),
         open: (r: { open: Double }) => r.open,
         high: (r: { high: Double }) => r.high,
         low: (r: { low: Double }) => r.low,

@@ -68,6 +68,18 @@ describe('versioned chart capability inventory', () => {
     }
   })
 
+  it('a DIRECT row complete on the web cites a test that drives the option path, not only PlotChart', () => {
+    // The direct rows describe the ECharts option facade. PlotChart is a
+    // separate facade, so its tests prove nothing about <OptionChart>: the
+    // legend row once read complete on PlotChart evidence alone, while the
+    // option legend could not be clicked.
+    const optionPath = /compileOption|planOption|OptionChart|optionToSvg|compileFamily|compiledCommands|readOption[A-Z]/
+    const unproven = CHART_CAPABILITIES.filter((r) => r.mode === 'direct' && r.targets.web === 'complete').filter((r) =>
+      !r.evidence.some((e) => !e.includes('native/') && existsSync(resolve(packageRoot, e)) && optionPath.test(readFileSync(resolve(packageRoot, e), 'utf8'))),
+    )
+    expect(unproven.map((r) => r.id)).toEqual([])
+  })
+
   it('a row is only as complete as its weakest target', () => {
     const rank = { pending: 0, partial: 1, complete: 2 } as const
     for (const row of CHART_CAPABILITIES) {

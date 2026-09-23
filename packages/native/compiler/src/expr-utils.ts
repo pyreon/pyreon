@@ -124,7 +124,11 @@ export function scalarLiteralType(e: ExprIR): TypeIR | null {
   if (e.kind !== 'literal') return null
   if (typeof e.value === 'string') return { kind: 'string' }
   if (typeof e.value === 'number') {
-    return { kind: 'number', float: !Number.isInteger(e.value) }
+    // The literal's own `float` mark says an integral value IS a Double (a `1.0`
+    // in a Double column); reading only the value typed that field Int, so a
+    // column whose first row was integral and a later one fractional
+    // synthesized two row structs that could not share an array.
+    return { kind: 'number', float: e.float === true || !Number.isInteger(e.value) }
   }
   if (typeof e.value === 'boolean') return { kind: 'boolean' }
   return null // null literal — can't type a field from it

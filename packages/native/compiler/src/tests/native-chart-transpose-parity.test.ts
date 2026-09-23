@@ -60,6 +60,9 @@ const CORPUS: DrawCmd[] = [
   { kind: 'text', text: 'Revenue', at: { x: 8, y: 20 }, fill: '#111', size: 11, align: 'start', baseline: 'top' },
   { kind: 'text', text: '1.2M', at: { x: 392, y: 20 }, fill: '#111', size: 11, align: 'end', baseline: 'middle' },
   { kind: 'text', text: 'Mon', at: { x: 60, y: 40 }, fill: '#111', size: 10, align: 'middle', baseline: 'bottom', rotate: -35 },
+  // A clip region transposes like a rect; its `unclip` carries nothing to move.
+  { kind: 'clip', rect: { x: 12, y: 4, w: 100, h: 30 } },
+  { kind: 'unclip' },
 ]
 
 /**
@@ -90,6 +93,10 @@ function project(cmds: DrawCmd[]): string[] {
         return ['circle', n(c.center.x), n(c.center.y), n(c.radius)].join(' ')
       case 'text':
         return ['text', c.text, n(c.at.x), n(c.at.y), c.align, c.baseline, n(c.rotate)].join(' ')
+      case 'clip':
+        return ['clip', n(c.rect.x), n(c.rect.y), n(c.rect.w), n(c.rect.h)].join(' ')
+      case 'unclip':
+        return 'unclip'
     }
   })
 }
@@ -179,6 +186,10 @@ function swiftCorpus(): string {
       f.set('points', `[${c.points.map(pt).join(', ')}]`); f.set('fill', JSON.stringify(c.fill))
     } else if (c.kind === 'circle') {
       f.set('center', pt(c.center)); f.set('radius', num(c.radius)); f.set('fill', JSON.stringify(c.fill))
+    } else if (c.kind === 'clip') {
+      f.set('rect', `PyreonChartRect(x: ${num(c.rect.x)}, y: ${num(c.rect.y)}, w: ${num(c.rect.w)}, h: ${num(c.rect.h)})`)
+    } else if (c.kind === 'unclip') {
+      // Only its kind.
     } else {
       f.set('text', JSON.stringify(c.text)); f.set('at', pt(c.at)); f.set('fill', JSON.stringify(c.fill))
       f.set('size', num(c.size)); f.set('align', JSON.stringify(c.align)); f.set('baseline', JSON.stringify(c.baseline))
@@ -211,6 +222,10 @@ function kotlinCorpus(): string {
       f.push(`points = listOf(${c.points.map(ktPt).join(', ')})`, `fill = ${JSON.stringify(c.fill)}`)
     } else if (c.kind === 'circle') {
       f.push(`center = ${ktPt(c.center)}`, `radius = ${num(c.radius)}`, `fill = ${JSON.stringify(c.fill)}`)
+    } else if (c.kind === 'clip') {
+      f.push(`rect = PyreonChartRect(${num(c.rect.x)}, ${num(c.rect.y)}, ${num(c.rect.w)}, ${num(c.rect.h)})`)
+    } else if (c.kind === 'unclip') {
+      // Only its kind.
     } else {
       f.push(`text = ${JSON.stringify(c.text)}`, `at = ${ktPt(c.at)}`, `fill = ${JSON.stringify(c.fill)}`, `size = ${num(c.size)}`, `align = ${JSON.stringify(c.align)}`, `baseline = ${JSON.stringify(c.baseline)}`)
       if (c.rotate !== undefined) f.push(`rotate = ${num(c.rotate)}`)
@@ -237,6 +252,11 @@ func line(_ c: PyreonDrawCmd) -> String {
         return c.kind + " " + c.points!.map { "\\(n($0.x)),\\(n($0.y))" }.joined(separator: " ")
     case "circle":
         return "circle \\(n(c.center!.x)) \\(n(c.center!.y)) \\(n(c.radius))"
+    case "clip":
+        let r = c.rect!
+        return "clip \\(n(r.x)) \\(n(r.y)) \\(n(r.w)) \\(n(r.h))"
+    case "unclip":
+        return "unclip"
     default:
         return "text \\(c.text!) \\(n(c.at!.x)) \\(n(c.at!.y)) \\(c.align!) \\(c.baseline!) \\(n(c.rotate))"
     }
@@ -256,6 +276,8 @@ fun line(c: PyreonDrawCmd): String = when (c.kind) {
     "line" -> "line \${n(c.from!!.x)} \${n(c.from!!.y)} \${n(c.to!!.x)} \${n(c.to!!.y)}"
     "polyline", "polygon" -> c.kind + " " + c.points!!.joinToString(" ") { "\${n(it.x)},\${n(it.y)}" }
     "circle" -> "circle \${n(c.center!!.x)} \${n(c.center!!.y)} \${n(c.radius)}"
+    "clip" -> { val r = c.rect!!; "clip \${n(r.x)} \${n(r.y)} \${n(r.w)} \${n(r.h)}" }
+    "unclip" -> "unclip"
     else -> "text \${c.text} \${n(c.at!!.x)} \${n(c.at!!.y)} \${c.align} \${c.baseline} \${n(c.rotate)}"
 }
 `

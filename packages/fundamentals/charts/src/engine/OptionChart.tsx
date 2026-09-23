@@ -6,11 +6,14 @@
 // two host-less shapes render through `optionToSvg` into an inline `<svg>`. A
 // `timeline` steps on `autoPlay` or is driven by `timelineIndex`.
 
+import { tooltipMarkup, tooltipNumber } from './tooltip-markup'
+import type { TitleLink } from './option-title'
 import { h, onMount } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { batch, computed, effect, isServer, signal, untrack } from '@pyreon/reactivity'
 import { canvasHost } from './canvas-host'
 import { readTooltipOption } from './option-tooltip'
+import { tooltipPlace } from './tooltip-place'
 import type { TooltipSpec } from './option-tooltip'
 import { formatTooltipTemplate, orderTooltipEntries, tooltipBreaks, tooltipMarker } from './tooltip-format'
 import type { TooltipEntry } from './tooltip-format'
@@ -23,7 +26,9 @@ import { ECHARTS_ANIMATION_DEFAULTS, resolveAnimation } from './animation-option
 import type { ChartAnimation } from './animation-option'
 import { ease } from './easing'
 import type { CanvasHostProps, TooltipView } from './canvas-host'
-import { pinSelection } from './legend-toggle'
+import { legendHitIndex, pinSelection } from './legend-toggle'
+import { applyLegendHidden, legendClick } from './option-legend'
+import type { LegendPager } from './option-legend'
 import { compiledCommands, optionBrushSelection, optionToSvg, planOption, zoomedView } from './option'
 import { limitWindow } from './option-zoom'
 import { applyMagicType } from './magic-type'
@@ -31,16 +36,19 @@ import { hitToolbox, renderToolbox } from './toolbox'
 import { toolboxTools } from './toolbox-config'
 import type { ToolboxTool } from './toolbox-config'
 import { brushAreaFromDrag, brushAreaUsable, brushPolygonAdd } from './brush-area'
-import type { ChartHandle } from './link'
+import type { ChartHandle, ChartLink } from './link'
 import type { BrushArea } from './brush-area'
 import { brushRange, renderBrushBand } from './brush'
 import { chartTable } from './a11y'
 import { navigatorDrag, navigatorHit } from './navigator'
 import { isFullWindow, panWindow, windowOfRows, zoomWindow } from './zoom'
 import type { ZoomWindow } from './zoom'
-import type { CompiledOption, EChartsOption, OptionPlan } from './option'
+import type { CompiledOption, CompileOptions, EChartsOption, OptionPlan, OptionChrome } from './option'
 import { familyHostNode, familyHostShape } from './family-host'
+import { circleView, familyRect } from './option-layers'
 import type { FamilyHostOptions } from './family-host'
+import { selectedSeed } from './option-selected-map'
+import { familyItemCursor, familyItemSilent, familyItemTooltip } from './family-tooltip'
 import type { FamilyPlan } from './option-family'
 import { TIMELINE_HEIGHT, defaultTimelineStrip, mergeChartOptions, resolveTimeline, timelineCommands, timelineSteps } from './option-composite'
 import { timelineAdvance, timelineHit, timelineTick } from './timeline-strip'
@@ -48,12 +56,14 @@ import { paint, prepareCanvas } from './canvas-web'
 import type { OptionUpdatePolicy } from './option-composite'
 import { graphicCommands } from './option-layer'
 import { visualMapCommands } from './visual-map'
-import { applySeriesSelection, barsFor, categoryIndex, invertCategories, layoutChart, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
-import type { ChartSpec, Emphasis } from './render'
-import { hitBar, hitNearestX, layoutSeriesPoints } from './layout'
+import { applySeriesSelection, barsFor, defaultTheme, categoryIndex, categoryPoints, invertCategories, layoutChart, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
+import type { ChartSpec, ChartTheme, Emphasis } from './render'
+import { hitBar, hitNearestX } from './layout'
 import { plain } from './format'
+import { resolveTheme } from './theme-registry'
 import type { ThemeDefinition } from './theme-registry'
-import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
+import { useProvidedChartTheme } from './theme'
+import type { Double, DrawCmd, MeasureText, Rect } from './types'
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : v === undefined ? [] : [v])
@@ -103,10 +113,20 @@ export interface OptionChartProps extends Omit<CanvasHostProps, 'theme' | 'showT
    * change callbacks fire as they would for a pointer.
    */
   handle?: ChartHandle | undefined
+  /**
+   * Couple this chart to others (ECharts' `echarts.connect`): every chart given
+   * the same `createChartLink()` shares one zoom window and one hovered datum.
+   */
+  link?: ChartLink | undefined
   /** Fired with the datum under a click (cartesian plans), or null for a miss. */
   onSelect?: (hit: OptionHit | null) => void
   /** The datum INDEX under a click (or the keyboard's pick), -1 for a miss — the multiplatform-safe twin of `onSelect`. */
   onSelectIndex?: (index: number) => void
+  /**
+   * A legend click changed which series show (ECharts' `legendselectchanged`):
+   * every entry's name, true when its series is on.
+   */
+  onLegendSelectChange?: (selected: Record<string, boolean>) => void
   /** Fired by a family host (pie, sankey, treemap, …) with ITS hit value, tagged with the family kind. */
   onFamilySelect?: (kind: FamilyPlan['kind'], hit: unknown) => void
 }
@@ -115,6 +135,9 @@ export interface OptionChartProps extends Omit<CanvasHostProps, 'theme' | 'showT
 function offsetCmd(c: DrawCmd, dx: Double, dy: Double): DrawCmd {
   if (dx === 0.0 && dy === 0.0) return c
   switch (c.kind) {
+    case 'unclip':
+      return c
+    case 'clip':
     case 'rect':
       return { ...c, rect: { ...c.rect, x: c.rect.x + dx, y: c.rect.y + dy } }
     case 'line':
@@ -136,7 +159,7 @@ function offsetCmd(c: DrawCmd, dx: Double, dy: Double): DrawCmd {
  */
 interface FlatLayers {
   cartesian: { plan: OptionPlan; rect: Rect }[]
-  families: { plan: FamilyPlan; rect: Rect }[]
+  families: { plan: FamilyPlan; rect: Rect; source: EChartsOption; animation: ChartAnimation }[]
   /** A family that has no host (it renders as SVG only): the whole option falls back to SVG. */
   hostless: boolean
 }
@@ -146,11 +169,18 @@ function flattenLayers(p: OptionPlan): FlatLayers {
     if (plan.kind === 'cartesian') out.cartesian.push({ plan, rect: { x: rect.x + dx, y: rect.y + dy, w: rect.w, h: rect.h } })
     else if (plan.kind === 'family') {
       if (familyHostShape(plan.compiled.plan, { width: rect.w, height: rect.h }) === null) out.hostless = true
-      out.families.push({ plan: plan.compiled.plan, rect: { x: rect.x + dx, y: rect.y + dy, w: rect.w, h: rect.h } })
+      out.families.push({ plan: plan.compiled.plan, rect: { x: rect.x + dx, y: rect.y + dy, w: rect.w, h: rect.h }, source: plan.compiled.source, animation: plan.compiled.animation })
     } else for (const part of plan.parts) walk(part.plan, dx + (plan.kind === 'grids' || plan.kind === 'layers' ? rect.x : 0.0), dy + (plan.kind === 'grids' || plan.kind === 'layers' ? rect.y : 0.0), part.rect)
   }
   if (p.kind === 'layers' || p.kind === 'grids') for (const part of p.parts) walk(part.plan, 0.0, 0.0, part.rect)
   return out
+}
+/** Families ECharts places inside the chart by their own box keys (center / radius, or margins). */
+const PLACED_FAMILIES: ReadonlySet<string> = new Set(['pie', 'gauge', 'sunburst', 'chord', 'funnel', 'treemap', 'tree', 'sankey'])
+
+/** Whether any series of an option turns ECharts' `universalTransition` on (`true` or `{ enabled: true }`). */
+function wantsUniversalTransition(option: unknown): boolean {
+  return asArray(isRecord(option) ? option['series'] : undefined).some((s) => isRecord(s) && (s['universalTransition'] === true || (isRecord(s['universalTransition']) && s['universalTransition']['enabled'] === true)))
 }
 /** Whether a plan draws on the canvas (its family parts, if any, mounting hosts over it) rather than as SVG. */
 const canvasable = (p: OptionPlan): boolean => p.kind === 'cartesian' || ((p.kind === 'grids' || p.kind === 'layers') && !flattenLayers(p).hostless)
@@ -169,10 +199,16 @@ interface OptionGeometry {
   hgt: Double
   /** The zoomed cartesian view: the title/legend offset, the first visible row, the plot and the slider strip in canvas coordinates. */
   zoom: { top: Double; offset: number; plot: Rect; strip: Rect | null; win: ZoomWindow } | null
+  /** The legend entries' boxes in canvas coordinates, in entry order (empty without a legend). */
+  legendBoxes: Rect[]
+  /** A scrolling legend's page controller, when it shows. */
+  legendPager?: LegendPager | null | undefined
+  /** The title's linked lines (`title.link` / `sublink`). */
+  titleLinks: TitleLink[]
 }
 
 /** The `CanvasHostProps` keys `OptionChartProps` does NOT take (its own `theme`, and the chrome the compiled option draws itself). */
-type HostOmitted = 'theme' | 'showTitle' | 'subtitle' | 'showLegend' | 'legendPosition' | 'animate' | 'updateAnimation' | 'updateDuration' | 'enterDuration' | 'enterDelay' | 'updateDelay' | 'enterEasing' | 'updateEasing'
+type HostOmitted = 'frame' | 'itemTooltip' | 'itemCursor' | 'itemSilent' | 'theme' | 'showTitle' | 'subtitle' | 'showLegend' | 'legendPosition' | 'animate' | 'updateAnimation' | 'updateDuration' | 'enterDuration' | 'enterDelay' | 'updateDelay' | 'enterEasing' | 'updateEasing'
 /** Every host key the facade forwards verbatim — the host's whole surface minus the omitted set and the defaulted `height`. */
 type HostPassthrough = Exclude<keyof CanvasHostProps, HostOmitted | 'height'>
 /**
@@ -274,7 +310,7 @@ export function OptionChart(props: OptionChartProps): VNode {
   }
   const stepIndex = (): number | undefined => props.timelineIndex ?? (step() >= 0 ? step() : undefined)
   // The dataZoom window the user has moved to; null = the option's own start/end.
-  const zoomWin = props.handle?.zoom ?? signal<ZoomWindow | null>(null)
+  const zoomWin = props.handle?.zoom ?? props.link?.zoom ?? signal<ZoomWindow | null>(null)
   // Toolbox state: the magicType switches, the box-select zoom (mode, live band, undo stack) and the data view.
   const magicKind = signal<'' | 'line' | 'bar'>('')
   const magicStack = signal<'' | 'stack' | 'tiled'>('')
@@ -305,10 +341,38 @@ export function OptionChart(props: OptionChartProps): VNode {
   const winOf = (compiled: CompiledOption): ZoomWindow | undefined => zoomWin() ?? compiled.zoom?.window
   const width = (): Double => props.width ?? 640.0
   const height = (): Double => props.height ?? 320.0
-  const compileOpts = (w: Double, hgt: Double, idx: number | undefined) => ({
+  // An explicit `theme` prop wins; else a `<ChartThemeProvider>` above; else
+  // ECharts' own default look (a bare option chart does not follow the OS scheme,
+  // exactly as ECharts does not).
+  const provided = useProvidedChartTheme()
+  const themeOf = (): string | ThemeDefinition | undefined => props.theme ?? (provided === null ? undefined : provided())
+  /** The same resolution as a full theme, for the family hosts: ECharts' default when neither is set. */
+  const familyTheme = (): ChartTheme => {
+    const own = themeOf()
+    return own === undefined ? defaultTheme : resolveTheme(own).chartTheme
+  }
+  // One chart plans the SAME option at the same size from three places each
+  // draw — the paint, the layout the pointer hit-tests, the accessible input —
+  // and a mount runs each twice: six full compiles of a 100k-point option per
+  // mount, where one is enough. `planOption` is pure, so the last two plans
+  // are kept, keyed by option IDENTITY and every compile input; a new option
+  // object (every `option.set(...)`) misses and recompiles. Bounded at two and
+  // owned by this instance, so nothing outlives the chart.
+  let planCache: { opt: EChartsOption; w: Double; h: Double; idx: number | undefined; theme: unknown; locale: unknown; plan: OptionPlan }[] = []
+  const planOf = (opt: EChartsOption, o: CompileOptions): OptionPlan => {
+    const pw = o.width ?? 640.0
+    const ph = o.height ?? 320.0
+    for (const c of planCache) {
+      if (c.opt === opt && c.w === pw && c.h === ph && c.idx === o.timelineIndex && c.theme === o.theme && c.locale === o.locale) return c.plan
+    }
+    const plan = planOption(opt, o)
+    planCache = [{ opt, w: pw, h: ph, idx: o.timelineIndex, theme: o.theme, locale: o.locale, plan }, ...planCache].slice(0, 2)
+    return plan
+  }
+  const compileOpts = (w: Double, hgt: Double, idx: number | undefined): CompileOptions => ({
     width: w,
     height: hgt,
-    ...(props.theme !== undefined ? { theme: props.theme } : {}),
+    ...(themeOf() !== undefined ? { theme: themeOf() } : {}),
     ...(props.locale !== undefined ? { locale: props.locale } : {}),
     ...(idx !== undefined ? { timelineIndex: idx } : {}),
   })
@@ -392,12 +456,82 @@ export function OptionChart(props: OptionChartProps): VNode {
     return true
   }
 
+  /**
+   * What an option-driven family host carries beyond its plan: the facade's
+   * forwarded host props (so `rtl`, `toolbox`, `keyboard`, `accessibleTable`
+   * and the tooltip switch reach a pie as they reach a line chart) and the
+   * item hooks applying the option's `tooltip` and each series' `cursor` /
+   * `silent`. Live getters over the props and the family's source option.
+   */
+  const familyExtras = (source: () => Record<string, unknown>, kind: () => FamilyPlan['kind'], size: () => { w: Double; h: Double }): Record<string, unknown> => ({
+    get tooltip() {
+      return props.tooltip !== false
+    },
+    get keyboard() {
+      return props.keyboard !== false
+    },
+    get accessibleTable() {
+      return props.accessibleTable !== false
+    },
+    get rtl() {
+      return props.rtl === true
+    },
+    get toolbox() {
+      return props.toolbox ?? {}
+    },
+    get onSaveImage() {
+      return props.onSaveImage
+    },
+    // A series' `universalTransition` lets its host morph an update that
+    // changes the item count, as it does on the cartesian canvas.
+    get universalTransition() {
+      return props.universalTransition ?? wantsUniversalTransition(source())
+    },
+    itemTooltip: familyItemTooltip({ option: source, kind, tooltipProp: () => props.tooltip, size }),
+    itemCursor: familyItemCursor(source),
+    itemSilent: familyItemSilent(source),
+  })
+
   // The family host's live inputs, read by the mounted node's prop getters.
   const familyPlan = signal<FamilyPlan | null>(null)
   const familyBox = signal({ w: 0.0, h: 0.0 })
   const familyAnimation = signal<ChartAnimation>(ECHARTS_ANIMATION_DEFAULTS)
+  const familySource = signal<Record<string, unknown>>({})
   let familyShape: string | null = null
+  const familyExtrasSingle = familyExtras(
+    () => familySource(),
+    () => familyPlan()?.kind ?? 'pie',
+    () => familyBox(),
+  )
+  // A single family chart sits where ECharts places it in the whole chart (a
+  // pie at its center with a 75% radius, a funnel inside its margins), the
+  // title and legend drawn over it; the layered path already places each part.
+  Object.defineProperty(familyExtrasSingle, 'frame', {
+    get: () => {
+      const s0 = asArray(familySource()['series'])[0]
+      if (!isRecord(s0) || typeof s0['type'] !== 'string' || !PLACED_FAMILIES.has(s0['type'] as string)) return undefined
+      const box = familyBox()
+      return familyRect(s0, box.w, box.h)
+    },
+    enumerable: true,
+    configurable: true,
+  })
+  // A pie's outside labels keep within its view rect (the whole chart unless its box keys say otherwise).
+  Object.defineProperty(familyExtrasSingle, 'view', {
+    get: () => {
+      const s0 = asArray(familySource()['series'])[0]
+      if (!isRecord(s0) || s0['type'] !== 'pie') return undefined
+      const box = familyBox()
+      return circleView(s0, box.w, box.h)
+    },
+    enumerable: true,
+    configurable: true,
+  })
   const familyOptions: FamilyHostOptions = {
+    host: familyExtrasSingle,
+    get theme() {
+      return familyTheme()
+    },
     get width() {
       return familyBox().w
     },
@@ -422,15 +556,12 @@ export function OptionChart(props: OptionChartProps): VNode {
     plan: ReturnType<typeof signal<FamilyPlan>>
     box: ReturnType<typeof signal<Rect>>
     animation: ReturnType<typeof signal<ChartAnimation>>
+    source: ReturnType<typeof signal<Record<string, unknown>>>
     node: VNode
   }
   let liveLayers: LiveLayer[] = []
   const layerNodes = signal<VNode[]>([])
-  const syncLayers = (parts: { plan: FamilyPlan; rect: Rect }[], planned: OptionPlan[]): void => {
-    const animationOf = (i: number): ChartAnimation => {
-      const q = planned.find((p) => p.kind === 'family' && p.compiled.plan === parts[i]!.plan)
-      return q !== undefined && q.kind === 'family' ? q.compiled.animation : optionAnimation()
-    }
+  const syncLayers = (parts: FlatLayers['families']): void => {
     const next = parts.map((part, i): LiveLayer | null => {
       const shape = untrack(() => familyHostShape(part.plan, { width: part.rect.w, height: part.rect.h, transparent: true }))
       if (shape === null) return null
@@ -439,14 +570,17 @@ export function OptionChart(props: OptionChartProps): VNode {
         batch(() => {
           prev.plan.set(part.plan)
           prev.box.set(part.rect)
-          prev.animation.set(animationOf(i))
+          prev.animation.set(part.animation)
+          prev.source.set(part.source)
         })
         return prev
       }
       const plan = signal(part.plan)
       const box = signal(part.rect)
-      const animation = signal(animationOf(i))
+      const animation = signal(part.animation)
+      const source = signal<Record<string, unknown>>(part.source)
       const options: FamilyHostOptions = {
+        host: familyExtras(() => source(), () => plan().kind, () => box()),
         get width() {
           return box().w
         },
@@ -459,12 +593,25 @@ export function OptionChart(props: OptionChartProps): VNode {
         get onSelect() {
           return props.onFamilySelect
         },
+        get theme() {
+          return familyTheme()
+        },
         transparent: true,
       }
       const host = untrack(() => familyHostNode(() => plan(), options))
       if (host === null) return null
-      const node = h('div', { 'data-pyreon-chart-layer': String(i), style: () => `position:absolute;left:${box().x}px;top:${box().y}px;width:${box().w}px;height:${box().h}px` }, host)
-      return { shape, plan, box, animation, node }
+      // Under `rtl` the layer's box mirrors with the chart, as its content does.
+      const left = (): Double => (props.rtl === true ? width() - box().x - box().w : box().x)
+      // ECharts' `zlevel` then `z` order the layers among themselves (a higher one draws over).
+      const stack = (): number => {
+        const s0 = asArray(source()['series'])[0]
+        const rec = isRecord(s0) ? s0 : {}
+        const zl = typeof rec['zlevel'] === 'number' ? rec['zlevel'] : 0
+        const z = typeof rec['z'] === 'number' ? rec['z'] : 2
+        return Math.max(1, Math.round(zl * 100 + z + 1))
+      }
+      const node = h('div', { 'data-pyreon-chart-layer': String(i), style: () => `position:absolute;left:${left()}px;top:${box().y}px;width:${box().w}px;height:${box().h}px;z-index:${stack()}` }, host)
+      return { shape, plan, box, animation, source, node }
     })
     const kept = next.filter((l): l is LiveLayer => l !== null)
     const changed = kept.length !== liveLayers.length || kept.some((l, i) => l !== liveLayers[i])
@@ -475,6 +622,16 @@ export function OptionChart(props: OptionChartProps): VNode {
 
   // One batch per draw: the mode and host-node writes of a family host, or the
   // mode flip to svg/canvas, must repaint the surface once, not per write.
+  // The pins (ECharts' selection): declared before the draw effect, which seeds
+  // them from the option's `selectedMap`.
+  const pinned = props.handle?.selected ?? signal<number[]>([])
+  // `selectedMode: 'series'` pins SERIES indices rather than datums.
+  const pinnedSeries = signal<number[]>([])
+  // The legend's hidden series, by name (ECharts' `legend.selected`).
+  const legendHidden = signal<string[]>([])
+  // A scrolling legend's page start (ECharts' `legend.scrollDataIndex`, moved by its arrows); null = the option's own.
+  const legendScroll = signal<number | null>(null)
+  let seededFrom: unknown = null
   const draw = (): void => batch(() => {
     const opt = readOption()
     const idx = stepIndex()
@@ -482,12 +639,15 @@ export function OptionChart(props: OptionChartProps): VNode {
     const hgt = height()
     const steps = timelineSteps(opt)
     const stripH = steps === null ? 0.0 : TIMELINE_HEIGHT
-    const plan = planOption(opt, compileOpts(w, hgt - stripH, idx))
+    const plan = planOf(opt, compileOpts(w, hgt - stripH, idx))
     if (!canvasable(plan)) {
       if (plan.kind === 'family') {
-        familyPlan.set(plan.compiled.plan)
-        familyBox.set({ w, h: hgt - stripH })
-        familyAnimation.set(plan.compiled.animation)
+        batch(() => {
+          familyPlan.set(plan.compiled.plan)
+          familyBox.set({ w, h: hgt - stripH })
+          familyAnimation.set(plan.compiled.animation)
+          familySource.set(plan.compiled.source as Record<string, unknown>)
+        })
         // One LIVE node per host shape: an option update of the same shape
         // feeds the mounted host new props, so it TWEENS (ECharts' update
         // animation) instead of remounting and replaying the entrance. The
@@ -512,7 +672,20 @@ export function OptionChart(props: OptionChartProps): VNode {
     // A cartesian plan paints through the shared host below; a layered one
     // also mounts each family layer's own host over it.
     const flat = hasFamilyParts(plan) ? flattenLayers(plan) : null
-    syncLayers(flat === null ? [] : flat.families, plan.kind === 'layers' || plan.kind === 'grids' ? plan.parts.map((part) => part.plan) : [])
+    syncLayers(flat === null ? [] : flat.families)
+    // ECharts' `selectedMap` seeds the pins, once per option (a click then owns them).
+    if (opt !== seededFrom) {
+      seededFrom = opt
+      const cart = plan.kind === 'cartesian' ? plan.compiled : null
+      const seed = cart === null ? null : selectedSeed(asArray(opt['series']), cart.seriesSource, cart.spec.categories)
+      if (seed !== null) {
+        pinned.set(seed.data)
+        pinnedSeries.set(seed.series)
+      }
+      legendHidden.set(cart?.legendHidden ?? [])
+      // A new option starts at its own `scrollDataIndex`.
+      legendScroll.set(null)
+    }
     mode.set('canvas')
   })
 
@@ -524,7 +697,7 @@ export function OptionChart(props: OptionChartProps): VNode {
    * visualMap strip, graphic elements and the timeline stay on screen while a
    * state is active (they used to drop out whenever a datum was hovered).
    */
-  const compose = (plan: OptionPlan, resolved: EChartsOption, measure: MeasureText, w: Double, hgt: Double, over: { emphasis?: Emphasis | undefined; time: Double; progress: Double }): { cmds: DrawCmd[]; zoom: OptionGeometry['zoom'] } => {
+  const compose = (plan: OptionPlan, resolved: EChartsOption, measure: MeasureText, w: Double, hgt: Double, over: { emphasis?: Emphasis | undefined; time: Double; progress: Double }): { cmds: DrawCmd[]; zoom: OptionGeometry['zoom']; legendBoxes: Rect[]; legendPager: LegendPager | null; titleLinks: TitleLink[] } => {
     const idx = stepIndex()
     const steps = timelineSteps(readOption())
     const stripH = steps === null ? 0.0 : TIMELINE_HEIGHT
@@ -536,16 +709,22 @@ export function OptionChart(props: OptionChartProps): VNode {
     })
     const cmds: DrawCmd[] = []
     let zoom: OptionGeometry['zoom'] = null
+    let legendBoxes: Rect[] = []
+    let legendPager: LegendPager | null = null
+    let titleLinks: TitleLink[] = []
     if (plan.kind === 'cartesian') {
       const liveBrush = brushLive()
       const areas = liveBrush === null ? brushAreas() : [...brushAreas(), liveBrush]
       const compiled = { ...plan.compiled, spec: live(plan.compiled.spec, over.emphasis) }
       const composed = compiledCommands(compiled, resolved, measure, winOf(plan.compiled), toolActives(), areas)
       for (const c of composed.cmds) cmds.push(c)
-      for (const c of pointerCmds(plan.compiled, resolved, measure, composed.top)) cmds.push(c)
+      legendBoxes = composed.legendBoxes
+      legendPager = composed.legendPager
+      titleLinks = composed.titleLinks
+      for (const c of pointerCmds(plan.compiled, resolved, measure, composed.chrome)) cmds.push(c)
       if (plan.compiled.zoom !== undefined) {
         const win = winOf(plan.compiled)!
-        const view = zoomedView(plan.compiled, composed.top, win)
+        const view = zoomedView(plan.compiled, composed.chrome, win, measure)
         const p = layoutChart(view.spec, measure).plot
         zoom = { top: composed.top, offset: view.offset, plot: { x: p.x, y: p.y + composed.top, w: p.w, h: p.h }, strip: view.navigator?.strip ?? null, win }
       }
@@ -565,7 +744,7 @@ export function OptionChart(props: OptionChartProps): VNode {
       for (const c of graphicCommands(resolved, w, hgt - stripH).cmds) cmds.push(c)
     }
     if (steps !== null) for (const c of timelineCommands({ ...steps, current: idx ?? steps.current }, w, hgt - stripH, stripH, isPlaying())) cmds.push(c)
-    return { cmds, zoom }
+    return { cmds, zoom, legendBoxes, legendPager, titleLinks }
   }
 
   /**
@@ -573,13 +752,14 @@ export function OptionChart(props: OptionChartProps): VNode {
    * (ECharts' `tooltip.axisPointer`), in canvas space. Nothing while nothing is
    * hovered, and nothing for an item tooltip unless the option asks.
    */
-  const pointerCmds = (compiled: CompiledOption, resolved: EChartsOption, measure: MeasureText, top: Double): DrawCmd[] => {
+  const pointerCmds = (compiled: CompiledOption, resolved: EChartsOption, measure: MeasureText, chrome: OptionChrome): DrawCmd[] => {
+    const top = chrome.top
     const index = hoverIndex()
     const at = hoverAt()
     if (index < 0 || at === null) return []
     const tip = readTooltipOption((resolved as Record<string, unknown>)['tooltip'], () => undefined)
     if (tip === null || !tip.show || tip.axisPointer.type === 'none') return []
-    const view = zoomedView(compiled, top, winOf(compiled))
+    const view = zoomedView(compiled, chrome, winOf(compiled))
     const spec = view.spec
     const i = index - view.offset
     const n = spec.categories.length
@@ -612,13 +792,21 @@ export function OptionChart(props: OptionChartProps): VNode {
     const idx = stepIndex()
     const steps = timelineSteps(opt)
     const stripH = steps === null ? 0.0 : TIMELINE_HEIGHT
-    const planned = canvasPlan(planOption(opt, compileOpts(w, hgt - stripH, idx)))
+    const planned = canvasPlan(planOf(opt, compileOpts(w, hgt - stripH, idx)))
     // `selectedMode: 'series'` tints every datum of a pinned series.
     const withSeriesPins = (c: CompiledOption): CompiledOption => (pinnedSeries().length === 0 ? c : { ...c, spec: applySeriesSelection(c.spec, pinnedSeries()) })
-    const plan: OptionPlan = planned.kind === 'cartesian' ? { ...planned, compiled: withSeriesPins(magicOf(planned.compiled)) } : planned
+    // A legend-hidden series keeps its slot but draws, hits and tooltips nothing.
+    const withLegend = (c0: CompiledOption): CompiledOption => {
+      const scroll = legendScroll()
+      const c = scroll !== null && c0.legendLayout !== undefined && c0.legendLayout.scroll ? { ...c0, legendLayout: { ...c0.legendLayout, scrollIndex: scroll } } : c0
+      if (c.legend === null || legendHidden().length === 0) return c
+      const applied = applyLegendHidden(c.spec.series, c.legend, legendHidden())
+      return { ...c, legend: applied.entries, spec: { ...c.spec, series: applied.series } }
+    }
+    const plan: OptionPlan = planned.kind === 'cartesian' ? { ...planned, compiled: withLegend(withSeriesPins(magicOf(planned.compiled))) } : planned
     const resolved = resolveTimeline(opt, idx).option as EChartsOption
-    const { cmds, zoom } = compose(plan, resolved, measure, w, hgt, { time: 0.0, progress: 1.0 })
-    return { cmds, plan, option: resolved, measure, w, hgt, zoom }
+    const { cmds, zoom, legendBoxes, legendPager, titleLinks } = compose(plan, resolved, measure, w, hgt, { time: 0.0, progress: 1.0 })
+    return { cmds, plan, option: resolved, measure, w, hgt, zoom, legendBoxes, legendPager, titleLinks }
   }
 
   effect(() => {
@@ -631,9 +819,10 @@ export function OptionChart(props: OptionChartProps): VNode {
   })
 
   const hitIn = (compiled: CompiledOption, option: EChartsOption, measure: MeasureText, px: Double, py: Double): OptionHit | null => {
-    const top = compiledCommands(compiled, option, measure).top
+    const chrome = compiledCommands(compiled, option, measure).chrome
+    const top = chrome.top
     // Under a dataZoom the hit runs on the rows in view; the reported index is global.
-    const zoomed = zoomedView(compiled, top, winOf(compiled))
+    const zoomed = zoomedView(compiled, chrome, winOf(compiled))
     const spec: ChartSpec = zoomed.spec
     const ly = py - top
     const mk = (i: number, di: number): OptionHit => ({
@@ -642,8 +831,10 @@ export function OptionChart(props: OptionChartProps): VNode {
       name: spec.categories[di] ?? String(di),
       value: spec.series[i]!.values[di] ?? NaN,
     })
+    // A `silent` series ignores the pointer (ECharts), so it is never hit.
+    const silent = compiled.silent
     for (let i = 0; i < spec.series.length; i++) {
-      if (spec.series[i]!.kind !== 'bars') continue
+      if (spec.series[i]!.kind !== 'bars' || silent.includes(i)) continue
       const di = categoryIndex(spec, hitBar(barsFor(spec, i, measure), px, ly))
       if (di >= 0) return mk(i, di)
     }
@@ -653,8 +844,8 @@ export function OptionChart(props: OptionChartProps): VNode {
     const view = invertCategories(spec)
     for (let i = 0; i < spec.series.length; i++) {
       const s = view.series[i]!
-      if (s.kind === 'bars' || s.kind === 'stacked' || s.kind === 'grouped') continue
-      const pts = layoutSeriesPoints(s.values, plot, seriesDomain(s, spec, resolveYDomain(spec), resolveY2Domain(spec)))
+      if (s.kind === 'bars' || s.kind === 'stacked' || s.kind === 'grouped' || silent.includes(i)) continue
+      const pts = categoryPoints(spec, s.values, plot, seriesDomain(s, spec, resolveYDomain(spec), resolveY2Domain(spec)))
       const vi = hitNearestX(pts, px)
       if (vi < 0) continue
       const d = Math.abs(pts[vi]!.x - px)
@@ -682,8 +873,8 @@ export function OptionChart(props: OptionChartProps): VNode {
   /** The first cartesian spec of the geometry — the keyboard and the table walk its rows. */
   const firstSpec = (g: OptionGeometry): { spec: ChartSpec; top: Double; dx: Double; dy: Double } | null => {
     if (g.plan.kind === 'cartesian') {
-      const top = compiledCommands(g.plan.compiled, g.option, g.measure).top
-      return { spec: zoomedView(g.plan.compiled, top, winOf(g.plan.compiled)).spec, top, dx: 0.0, dy: 0.0 }
+      const chrome = compiledCommands(g.plan.compiled, g.option, g.measure).chrome
+      return { spec: zoomedView(g.plan.compiled, chrome, winOf(g.plan.compiled)).spec, top: chrome.top, dx: 0.0, dy: 0.0 }
     }
     if (g.plan.kind === 'grids') {
       const part = g.plan.parts.find((p) => p.plan.kind === 'cartesian')
@@ -697,7 +888,7 @@ export function OptionChart(props: OptionChartProps): VNode {
 
   const a11y = () => {
     const opt = readOption()
-    const plan = planOption(opt, compileOpts(width(), height(), stepIndex()))
+    const plan = planOf(opt, compileOpts(width(), height(), stepIndex()))
     let spec: ChartSpec | null = null
     if (plan.kind === 'cartesian') spec = plan.compiled.spec
     else if (plan.kind === 'grids') {
@@ -720,6 +911,14 @@ export function OptionChart(props: OptionChartProps): VNode {
   // ECharts' animation keys, off the option as it stands at the current timeline step.
   const optionAnimation = computed(() => resolveAnimation(resolveTimeline(readOption(), stepIndex()).option as Record<string, unknown>))
   const hostProps = hostPropsFor(props, optionAnimation)
+  // A series' `universalTransition` turns the morph on for the chart (the host
+  // has one timeline); the prop, when given, wins.
+  Object.defineProperty(hostProps, 'universalTransition', {
+    get: () =>
+      props.universalTransition ?? wantsUniversalTransition(readOption()),
+    enumerable: true,
+    configurable: true,
+  })
   // The host attaches its pointer listeners only for a tooltip; an option
   // whose series carry states (`emphasis` / `select` / `blur`) needs the
   // hover too, so the host's tooltip switch is on for either — and the
@@ -750,10 +949,7 @@ export function OptionChart(props: OptionChartProps): VNode {
   // signals the draw effect tracks; the commands are re-rendered with the
   // `emphasis` set only while a state is active, so a plain chart paints the
   // compiled commands as before.
-  const hoverIndex = props.handle?.hover ?? signal(-1)
-  const pinned = props.handle?.selected ?? signal<number[]>([])
-  // `selectedMode: 'series'` pins SERIES indices rather than datums.
-  const pinnedSeries = signal<number[]>([])
+  const hoverIndex = props.handle?.hover ?? props.link?.hover ?? signal(-1)
   /** True when a cartesian option draws an animated `lines` trail. */
   const linesEffectOn = (g: OptionGeometry): boolean =>
     g.plan.kind === 'cartesian' && (g.plan.compiled.spec.lines ?? []).some((ls) => ls.effect)
@@ -802,12 +998,20 @@ export function OptionChart(props: OptionChartProps): VNode {
       return r === undefined ? null : { x: r.x + f.dx, y: r.y + f.dy + f.top, w: r.w, h: r.h }
     }
     const plot = layoutChart(f.spec, g.measure).plot
-    const p = layoutSeriesPoints(invertCategories(f.spec).series[seriesIndex]!.values, plot, seriesDomain(s, f.spec, resolveYDomain(f.spec), resolveY2Domain(f.spec)))[vi]
+    const p = categoryPoints(f.spec, invertCategories(f.spec).series[seriesIndex]!.values, plot, seriesDomain(s, f.spec, resolveYDomain(f.spec), resolveY2Domain(f.spec)))[vi]
     return p === undefined ? null : { x: p.x + f.dx - 4.0, y: p.y + f.dy + f.top - 4.0, w: 8.0, h: 8.0 }
   }
 
+  /** The OPTION's series index for a compiled series index (unsupported series are skipped when compiling). */
+  const sourceOf = (g: OptionGeometry, specIndex: number): number => (g.plan.kind === 'cartesian' ? (g.plan.compiled.seriesSource[specIndex] ?? specIndex) : specIndex)
+  /** The option's own series object behind a compiled series. */
+  const rawSeriesOf = (g: OptionGeometry, specIndex: number): Record<string, unknown> | undefined => {
+    const raw = asArray((g.option as Record<string, unknown>)['series'])[sourceOf(g, specIndex)]
+    return isRecord(raw) ? raw : undefined
+  }
+
   /** One series' entry at a datum: the template's fields and the formatter's `params`. */
-  const tooltipEntry = (g: OptionGeometry, spec: TooltipSpec, seriesIndex: number, dataIndex: number): { entry: TooltipEntry; params: Record<string, unknown>; value: Double } | null => {
+  const tooltipEntry = (g: OptionGeometry, spec: TooltipSpec, seriesIndex: number, dataIndex: number): { entry: TooltipEntry; params: Record<string, unknown>; value: Double; named: boolean } | null => {
     const f = firstSpec(g)
     if (f === null) return null
     const s = f.spec.series[seriesIndex]
@@ -818,13 +1022,13 @@ export function OptionChart(props: OptionChartProps): VNode {
     const color = s.color ?? paletteAt([], seriesIndex)
     const name = f.spec.categories[i] ?? String(i)
     const shown = spec.valueFormatter === undefined ? plain(value) : String(spec.valueFormatter(value, dataIndex))
-    const rawSeries = asArray((g.option as Record<string, unknown>)['series'])[seriesIndex]
-    const rawData = isRecord(rawSeries) ? asArray(rawSeries['data'])[dataIndex] : undefined
+    const rawSeries = rawSeriesOf(g, seriesIndex)
+    const rawData = rawSeries !== undefined ? asArray(rawSeries['data'])[dataIndex] : undefined
     const params = {
       componentType: 'series',
-      componentSubType: isRecord(rawSeries) ? rawSeries['type'] : undefined,
-      seriesType: isRecord(rawSeries) ? rawSeries['type'] : undefined,
-      seriesIndex,
+      componentSubType: rawSeries?.['type'],
+      seriesType: rawSeries?.['type'],
+      seriesIndex: sourceOf(g, seriesIndex),
       seriesName: s.label,
       name,
       dataIndex,
@@ -833,44 +1037,13 @@ export function OptionChart(props: OptionChartProps): VNode {
       color,
       marker: tooltipMarker(color),
     }
-    return { entry: { seriesName: s.label, name, value: shown, percent: '', values: Array.isArray(rawData) ? rawData.map((v) => plain(Number(v))) : [], color }, params, value }
+    // ECharts shows a series name only when the option gave one: a generated name is not readable.
+    const named = typeof rawSeries?.['name'] === 'string' && rawSeries['name'] !== ''
+    return { entry: { seriesName: s.label, name, value: shown, percent: '', values: Array.isArray(rawData) ? rawData.map((v) => plain(Number(v))) : [], color }, params, value, named }
   }
 
   /** Where a view goes, per the option's `position`. */
-  const placeFor = (g: OptionGeometry, spec: TooltipSpec, anchor: Rect | null, params: unknown): TooltipView['place'] => {
-    const pos = spec.position
-    if (pos.kind === 'follow') return undefined
-    const coord = (v: string | number, extent: Double, box: Double): Double => {
-      if (typeof v === 'number') return v
-      if (v.startsWith('r:')) return extent - box - Number.parseFloat(v.slice(2))
-      if (v.startsWith('b:')) return extent - box - Number.parseFloat(v.slice(2))
-      if (v.endsWith('%')) return (Number.parseFloat(v) / 100.0) * extent
-      const n = Number.parseFloat(v)
-      return Number.isFinite(n) ? n : 0.0
-    }
-    const side = (name: string, size: { w: Double; h: Double }, at: Pt): Pt => {
-      const r = anchor ?? { x: at.x, y: at.y, w: 0.0, h: 0.0 }
-      const gap = 10.0
-      if (name === 'inside') return { x: r.x + r.w / 2.0 - size.w / 2.0, y: r.y + r.h / 2.0 - size.h / 2.0 }
-      if (name === 'top') return { x: r.x + r.w / 2.0 - size.w / 2.0, y: r.y - size.h - gap }
-      if (name === 'bottom') return { x: r.x + r.w / 2.0 - size.w / 2.0, y: r.y + r.h + gap }
-      if (name === 'left') return { x: r.x - size.w - gap, y: r.y + r.h / 2.0 - size.h / 2.0 }
-      return { x: r.x + r.w + gap, y: r.y + r.h / 2.0 - size.h / 2.0 }
-    }
-    return (at, size) => {
-      if (pos.kind === 'side') return side(pos.side, size, at)
-      if (pos.kind === 'point') return { x: coord(pos.x, g.w, size.w), y: coord(pos.y, g.hgt, size.h) }
-      const out = pos.fn([at.x, at.y], params, null, anchor === null ? undefined : { x: anchor.x, y: anchor.y, width: anchor.w, height: anchor.h }, { contentSize: [size.w, size.h], viewSize: [g.w, g.hgt] })
-      if (typeof out === 'string') return side(out, size, at)
-      if (Array.isArray(out) && out.length === 2) return { x: coord(out[0] as string | number, g.w, size.w), y: coord(out[1] as string | number, g.hgt, size.h) }
-      if (isRecord(out)) {
-        const x = out['left'] !== undefined ? coord(out['left'] as string | number, g.w, size.w) : out['right'] !== undefined ? g.w - size.w - coord(out['right'] as string | number, g.w, size.w) : at.x
-        const y = out['top'] !== undefined ? coord(out['top'] as string | number, g.hgt, size.h) : out['bottom'] !== undefined ? g.hgt - size.h - coord(out['bottom'] as string | number, g.hgt, size.h) : at.y
-        return { x, y }
-      }
-      return at
-    }
-  }
+  const placeFor = (g: OptionGeometry, spec: TooltipSpec, anchor: Rect | null, params: unknown): TooltipView['place'] => tooltipPlace(spec, anchor, params, { w: g.w, h: g.hgt })
 
   /**
    * The tooltip for a pointer position, as the option's `tooltip` asks. The
@@ -879,7 +1052,10 @@ export function OptionChart(props: OptionChartProps): VNode {
    */
   const optionTooltip = (g: OptionGeometry, px: Double, py: Double, press: boolean): string[] | TooltipView | null => {
     const under = hitAt(g, px, py)
-    const spec = readTooltipOption((g.option as Record<string, unknown>)['tooltip'], () => undefined)
+    const globalTip = (g.option as Record<string, unknown>)['tooltip']
+    // A series' own `tooltip` refines the global one for its items (ECharts).
+    const ownTip = under === null ? undefined : rawSeriesOf(g, under.seriesIndex)?.['tooltip']
+    const spec = readTooltipOption(isRecord(ownTip) && (globalTip === undefined || isRecord(globalTip)) ? { ...(globalTip as Record<string, unknown> | undefined), ...ownTip } : globalTip, () => undefined)
     const axis = spec !== null && spec.trigger === 'axis'
     const index = axis ? axisIndexAt(g, px, py) : under === null ? -1 : under.dataIndex
     batch(() => {
@@ -918,8 +1094,54 @@ export function OptionChart(props: OptionChartProps): VNode {
       const out = f(params)
       return { ...view, html: typeof out === 'string' ? out : String(out ?? '') }
     }
-    const title = ordered[0]!.name
-    return { ...view, lines: axis ? [title, ...ordered.map((e) => `${e.seriesName}: ${e.value}`)] : [ordered[0]!.seriesName, `${title}: ${ordered[0]!.value}`] }
+    // ECharts' own default content: a header, then a row per value (dot, name, bold value), numbers comma-grouped
+    // unless a valueFormatter shaped them; the box edged in the series colour for an item, neutral for an axis.
+    const shownOf = (e: TooltipEntry): string => (spec.valueFormatter === undefined ? tooltipNumber(rows.find((r) => r.entry === e)!.value) : e.value)
+    const edge = `border-color:${axis ? '#b7b9be' : ordered[0]!.color};`
+    // An unnamed series shows no name: no header on an item tooltip, no name on its axis row (ECharts' noHeader / noName).
+    const nameOf = (e: TooltipEntry): string => (rows.find((r) => r.entry === e)!.named ? e.seriesName : '')
+    const html = axis
+      ? tooltipMarkup(ordered[0]!.name, ordered.map((e) => ({ color: e.color, name: nameOf(e), value: shownOf(e) })))
+      : tooltipMarkup(nameOf(ordered[0]!), [{ color: ordered[0]!.color, name: ordered[0]!.name, value: shownOf(ordered[0]!) }])
+    return { ...view, css: `${edge}${spec.css ?? ''}`, html }
+  }
+
+  /** The title link under a point, if any. */
+  const titleLinkAt = (g: OptionGeometry, px: Double, py: Double): TitleLink | undefined =>
+    g.titleLinks.find((l) => px >= l.rect.x && px <= l.rect.x + l.rect.w && py >= l.rect.y && py <= l.rect.y + l.rect.h)
+
+  /** A click on a linked title opens it (ECharts' `title.link` / `sublink`); true when it landed on one. */
+  const titleClickAt = (g: OptionGeometry, px: Double, py: Double): boolean => {
+    const link = titleLinkAt(g, px, py)
+    if (link === undefined) return false
+    if (!isServer) window.open(link.url, link.target)
+    return true
+  }
+
+  /** A click on a legend entry toggles its series (ECharts' `legend.selectedMode`); true when it landed on one. */
+  const legendClickAt = (g: OptionGeometry, px: Double, py: Double): boolean => {
+    if (g.plan.kind !== 'cartesian' || g.plan.compiled.legend === null) return false
+    // A scrolling legend's arrows page it (a dimmed arrow has no page to go to).
+    const pager = g.legendPager
+    if (pager !== null && pager !== undefined) {
+      const inside = (r: Rect): boolean => px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h
+      const to = inside(pager.prev) ? pager.prevIndex : inside(pager.next) ? pager.nextIndex : undefined
+      if (to !== undefined) {
+        if (to !== null) legendScroll.set(to)
+        return true
+      }
+    }
+    const i = legendHitIndex(g.legendBoxes, px, py)
+    const entry = g.plan.compiled.legend[i]
+    if (entry === undefined) return false
+    const names = g.plan.compiled.legend.map((e) => e.label)
+    const next = legendClick(legendHidden(), entry.label, names, g.plan.compiled.legendMode ?? 'multiple')
+    if (next === legendHidden()) return true
+    legendHidden.set(next)
+    const selected: Record<string, boolean> = {}
+    for (const n of names) selected[n] = !next.includes(n)
+    props.onLegendSelectChange?.(selected)
+    return true
   }
 
   const pinMode = (g: OptionGeometry): 'single' | 'multiple' | 'series' | undefined => {
@@ -957,8 +1179,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     const cb = props.onBrushSelected
     if (cb === undefined || g.plan.kind !== 'cartesian') return
     const compiled = g.plan.compiled
-    const top = compiledCommands(compiled, g.option, g.measure).top
-    const view = zoomedView(compiled, top, winOf(compiled))
+    const view = zoomedView(compiled, compiledCommands(compiled, g.option, g.measure).chrome, winOf(compiled))
     const sel = optionBrushSelection(compiled, view.spec, g.measure, brushAreas.peek())
     cb(sel.map((x) => ({ seriesIndex: x.seriesIndex, dataIndex: x.dataIndex.map((v) => categoryIndex(view.spec, v) + view.offset) })))
   }
@@ -1047,6 +1268,7 @@ export function OptionChart(props: OptionChartProps): VNode {
       hoverIndex()
       pinned()
       pinnedSeries()
+      legendHidden()
       zoomWin()
     },
     layout: (box, measure) => {
@@ -1064,6 +1286,14 @@ export function OptionChart(props: OptionChartProps): VNode {
     },
     // The entrance plays through the engine's own `progress` (bars grow, lines draw on), timed by the option's `animation*` keys.
     animates: true,
+    // ECharts' per-series `cursor` over an item; 'pointer' is its default.
+    cursor: (g, px, py) => {
+      if (titleLinkAt(g, px, py) !== undefined) return 'pointer'
+      const under = hitAt(g, px, py)
+      if (under === null) return ''
+      const own = rawSeriesOf(g, under.seriesIndex)?.['cursor']
+      return typeof own === 'string' ? own : 'pointer'
+    },
     effectClock: (g) => linesEffectOn(g),
     // ECharts' inside dataZoom: the wheel zooms the window about the pointer, a drag pans it.
     roam: {
@@ -1085,8 +1315,9 @@ export function OptionChart(props: OptionChartProps): VNode {
     drag: {
       start: (g, px, py) => {
         if (brushType() !== '' && g.plan.kind === 'cartesian') {
-          const top = compiledCommands(g.plan.compiled, g.option, g.measure).top
-          const plot = layoutChart(zoomedView(g.plan.compiled, top, winOf(g.plan.compiled)).spec, g.measure).plot
+          const chrome = compiledCommands(g.plan.compiled, g.option, g.measure).chrome
+          const top = chrome.top
+          const plot = layoutChart(zoomedView(g.plan.compiled, chrome, winOf(g.plan.compiled)).spec, g.measure).plot
           if (px >= plot.x && px <= plot.x + plot.w && py - top >= plot.y && py - top <= plot.y + plot.h) {
             brushOrigin = { x: px, y: py - top, top, plot }
             brushLive.set(brushAreaFromDrag(brushType(), plot, px, py - top, px, py - top))
@@ -1101,7 +1332,8 @@ export function OptionChart(props: OptionChartProps): VNode {
         }
         if (z === null || z.strip === null) return false
         const r = z.strip
-        if (px < r.x - 8.0 || px > r.x + r.w + 8.0 || py < r.y - 4.0 || py > r.y + r.h + 4.0) return false
+        // The brush move handle rides 6.5px above the strip; pressing it drags the window, as in ECharts.
+        if (px < r.x - 8.0 || px > r.x + r.w + 8.0 || py < r.y - 8.0 || py > r.y + r.h + 4.0) return false
         navGrab = { kind: navigatorHit(r, z.win, px), x: px, win: z.win }
         return true
       },
@@ -1149,6 +1381,8 @@ export function OptionChart(props: OptionChartProps): VNode {
     select: (g, px, py) => {
       if (toolboxClick(g, px, py)) return
       if (timelineClick(g.w, g.hgt, px, py)) return
+      if (titleClickAt(g, px, py)) return
+      if (legendClickAt(g, px, py)) return
       const h1 = hitAt(g, px, py)
       const pin = pinMode(g)
       // `series` pins the whole series the hit belongs to; the other modes pin the datum.
@@ -1180,7 +1414,7 @@ export function OptionChart(props: OptionChartProps): VNode {
         return r === undefined ? null : { x: r.x + f.dx, y: r.y + f.dy + f.top, w: r.w, h: r.h }
       }
       const plot = layoutChart(f.spec, g.measure).plot
-      const p = layoutSeriesPoints(invertCategories(f.spec).series[0]!.values, plot, seriesDomain(s, f.spec, resolveYDomain(f.spec), resolveY2Domain(f.spec)))[vi]
+      const p = categoryPoints(f.spec, invertCategories(f.spec).series[0]!.values, plot, seriesDomain(s, f.spec, resolveYDomain(f.spec), resolveY2Domain(f.spec)))[vi]
       return p === undefined ? null : { x: p.x + f.dx - 6.0, y: p.y + f.dy + f.top - 6.0, w: 12.0, h: 12.0 }
     },
     a11y: () => a11y(),

@@ -16,6 +16,29 @@ export function plain(v: Double): string {
 }
 
 /**
+ * `plain` with its integer part grouped by thousands — ECharts' `addCommas`,
+ * what its default tooltip shows (2,000; 1,234.5). A `while` over the digits
+ * rather than a regex, so it lowers through PMTC.
+ */
+export function groupThousands(v: Double): string {
+  const s = plain(v)
+  const neg = s.length > 0 && s.charAt(0) === '-'
+  const body = neg ? s.slice(1) : s
+  const dot = body.indexOf('.')
+  const whole = dot < 0 ? body : body.slice(0, dot)
+  const frac = dot < 0 ? '' : body.slice(dot)
+  let out = ''
+  let end = whole.length
+  while (end > 0) {
+    const start = end - 3 > 0 ? end - 3 : 0
+    const chunk = whole.slice(start, end)
+    out = out === '' ? chunk : `${chunk},${out}`
+    end = start
+  }
+  return `${neg ? '-' : ''}${out}${frac}`
+}
+
+/**
  * Compact notation — 1.2K, 3.4M.
  *
  * Hand-rolled rather than `Intl.NumberFormat` because this has to compile to
