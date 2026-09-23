@@ -3,8 +3,8 @@
 import { echartsSmooth } from './curve'
 import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt, layoutSeriesPointsEdge, layoutSeriesPointsH } from './layout'
 import { DEFAULT_PALETTE } from './palette'
-import { layoutGroupedBars, layoutGroupedBarsH, layoutStackedBars, layoutStackedBarsH, layoutWaterfall, normalizeStack, stackCumulative, stackedExtent, waterfallExtent } from './stack'
-import type { StackSegment } from './stack'
+import { layoutGroupedBars, layoutGroupedBarsH, layoutStackLevels, layoutStackLevelsH, layoutWaterfall, normalizeStack, stackLevels, stackLevelsExtent, waterfallExtent } from './stack'
+import type { StackLevels, StackSegment } from './stack'
 import type { Formatter } from './format'
 import type { ExtraYAxis, LayoutConfig, PlotLayout } from './layout'
 import { linesCommands } from './lines'
@@ -227,6 +227,22 @@ export interface Series {
   barMaxWidth?: BarLength | undefined
   barMinWidth?: BarLength | undefined
   barStack?: string | undefined
+  /**
+   * How a stacked value finds the total it stacks on (ECharts'
+   * `stackStrategy`): 'samesign' (the default — positives up, negatives
+   * down), 'all', 'positive' or 'negative'. See `stackLevels`.
+   */
+  stackStrategy?: string | undefined
+  /** The stack runs top-down (ECharts' `stackOrder: 'seriesDesc'`); read from a stack's first series. */
+  stackDesc?: boolean | undefined
+  /**
+   * The shortest a bar is drawn, in pixels (ECharts' `barMinHeight`): a
+   * shorter one grows to it from its base, the way it points — a zero bar
+   * grows up (right when horizontal).
+   */
+  barMinHeight?: Double | undefined
+  /** A strip behind each bar, the plot's full height in its column (ECharts' `showBackground`); '' draws none. */
+  barBackground?: string | undefined
 }
 
 /**
@@ -1293,11 +1309,12 @@ function rawExtentOver(series: Series[], zero: boolean): Domain {
   // max of the individual series would clip the stack at the top.
   const stacked = series.filter((s) => s.kind === 'stacked' || s.kind === 'stackedArea')
   if (stacked.length > 0) {
-    const e = stackedExtent(stacked.map((s) => s.values))
+    const e = stackLevelsExtent(levelsOf(stacked))
     const others: Double[] = []
     for (const s of series) if (s.kind !== 'stacked' && s.kind !== 'stackedArea') for (const v of s.values) if (isFiniteValue(v)) others.push(v)
     const max = others.length > 0 ? Math.max(e.max, extent(others).max) : e.max
-    return { min: 0.0, max }
+    const min = others.length > 0 ? Math.min(e.min, extent(others).min, 0.0) : e.min
+    return { min, max }
   }
   // Streamed rather than gathered: collecting every finite value into one
   // array and then taking its extent copied a 100,000-point series twice per
@@ -1614,13 +1631,50 @@ function bandOf(plot: Rect, n: number): Double {
   return n === 0 ? 0.0 : plot.w / countToDouble(n)
 }
 
+/**
+ * ECharts' `barMinHeight`: a bar shorter than `min` pixels grows to it with
+ * its base fixed, the way it points (`up` — a zero bar counts as up, or
+ * right on the flipped frame). An empty slot (negative width) is left alone.
+ */
+function minBarLength(r: Rect, minLen: Double, up: boolean, horizontal: boolean, plot: Rect): Rect {
+  if (minLen <= 0.0 || r.w < 0.0 || r.h < 0.0) return r
+  if (!horizontal) {
+    if (r.h >= minLen) return r
+    // Grown past the grid, a bar is clipped to it (ECharts' bar `clip`, on by default).
+    if (up) {
+      const y = Math.max(plot.y, r.y + r.h - minLen)
+      return { x: r.x, y, w: r.w, h: r.y + r.h - y }
+    }
+    return { x: r.x, y: r.y, w: r.w, h: Math.min(plot.y + plot.h, r.y + minLen) - r.y }
+  }
+  if (r.w >= minLen) return r
+  if (up) return { x: r.x, y: r.y, w: Math.min(plot.x + plot.w, r.x + minLen) - r.x, h: r.h }
+  const x = Math.max(plot.x, r.x + r.w - minLen)
+  return { x, y: r.y, w: r.x + r.w - x, h: r.h }
+}
+
+/** A bar's background strip: its column across the whole plot. */
+export function barBackgroundRect(r: Rect, plot: Rect, horizontal: boolean): Rect {
+  return horizontal ? { x: plot.x, y: r.y, w: plot.w, h: r.h } : { x: r.x, y: plot.y, w: r.w, h: plot.h }
+}
+
+/** Where a plain bar's value is measured from: zero, held inside the domain. */
+function barZero(dom: Domain): Double {
+  return dom.min > 0.0 ? dom.min : dom.max < 0.0 ? dom.max : 0.0
+}
+
 /** `layoutBars` for series `k`, in its column. */
 function barsLaid(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] {
   const s = spec.series[k]!
   const rects = layoutBars(s.values, plot, dom, 0.25)
   const cols = barColumns(spec, bandOf(plot, rects.length))
+  const min = s.barMinHeight ?? 0.0
+  const zero = barZero(dom)
   const out: Rect[] = []
-  for (let i = 0; i < rects.length; i++) out.push(inColumn(spec, cols, k, rects[i]!, i, rects.length, plot))
+  for (let i = 0; i < rects.length; i++) {
+    const v = i < s.values.length ? s.values[i]! : 0.0
+    out.push(minBarLength(inColumn(spec, cols, k, rects[i]!, i, rects.length, plot), min, !(v < zero), false, plot))
+  }
   return out
 }
 
@@ -1631,6 +1685,25 @@ function indicesOf(spec: ChartSpec, kind: string): number[] {
   return out
 }
 
+/**
+ * ECharts' stack levels for a set of stacked series: each stacks within its
+ * own `stack` group (`barStack`), by its own `stackStrategy`, in its group's
+ * `stackOrder`.
+ */
+function levelsOf(series: Series[]): StackLevels {
+  const values: Double[][] = []
+  const groups: string[] = []
+  const strategies: string[] = []
+  const descs: boolean[] = []
+  for (const s of series) {
+    values.push(s.values)
+    groups.push(s.barStack ?? '')
+    strategies.push(s.stackStrategy ?? '')
+    descs.push(s.stackDesc ?? false)
+  }
+  return stackLevels(values, groups, strategies, descs)
+}
+
 /** `layoutStackedBars` / `layoutGroupedBars` for a kind, each segment in its series' column. */
 function setLaid(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackSegment[] {
   const idx = indicesOf(spec, kind)
@@ -1638,9 +1711,14 @@ function setLaid(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackS
   let n = 0
   for (const v of values) if (v.length > n) n = v.length
   const cols = barColumns(spec, bandOf(plot, n))
-  const segs = kind === 'stacked' ? layoutStackedBars(values, plot, dom, 0.25) : layoutGroupedBars(values, plot, dom, 0.25)
+  const segs = kind === 'stacked' ? layoutStackLevels(levelsOf(idx.map((k) => spec.series[k]!)), values, plot, dom, 0.25) : layoutGroupedBars(values, plot, dom, 0.25)
   const out: StackSegment[] = []
-  for (const seg of segs) out.push({ rect: inColumn(spec, cols, idx[seg.seriesIndex]!, seg.rect, seg.datumIndex, n, plot), seriesIndex: seg.seriesIndex, datumIndex: seg.datumIndex, value: seg.value })
+  for (const seg of segs) {
+    const sk = spec.series[idx[seg.seriesIndex]!]!
+    // A stacked segment grows from its stack base, a grouped bar from zero: both point up for a value >= 0.
+    const r = minBarLength(inColumn(spec, cols, idx[seg.seriesIndex]!, seg.rect, seg.datumIndex, n, plot), sk.barMinHeight ?? 0.0, !(seg.value < 0.0), false, plot)
+    out.push({ rect: r, seriesIndex: seg.seriesIndex, datumIndex: seg.datumIndex, value: seg.value })
+  }
   return out
 }
 
@@ -1665,8 +1743,13 @@ function barsLaidH(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] 
   const rects = layoutBarsH(s.values, plot, dom, 0.25)
   const n = rects.length
   const cols = barColumns(spec, n === 0 ? 0.0 : plot.h / countToDouble(n))
+  const min = s.barMinHeight ?? 0.0
+  const zero = barZero(dom)
   const out: Rect[] = []
-  for (let i = 0; i < rects.length; i++) out.push(inRow(spec, cols, k, rects[i]!, i, n, plot))
+  for (let i = 0; i < rects.length; i++) {
+    const v = i < s.values.length ? s.values[i]! : 0.0
+    out.push(minBarLength(inRow(spec, cols, k, rects[i]!, i, n, plot), min, !(v < zero), true, plot))
+  }
   return out
 }
 
@@ -1677,9 +1760,13 @@ function setLaidH(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): Stack
   let n = 0
   for (const v of values) if (v.length > n) n = v.length
   const cols = barColumns(spec, n === 0 ? 0.0 : plot.h / countToDouble(n))
-  const segs = kind === 'stacked' ? layoutStackedBarsH(values, plot, dom, 0.25) : layoutGroupedBarsH(values, plot, dom, 0.25)
+  const segs = kind === 'stacked' ? layoutStackLevelsH(levelsOf(idx.map((k) => spec.series[k]!)), values, plot, dom, 0.25) : layoutGroupedBarsH(values, plot, dom, 0.25)
   const out: StackSegment[] = []
-  for (const seg of segs) out.push({ rect: inRow(spec, cols, idx[seg.seriesIndex]!, seg.rect, seg.datumIndex, n, plot), seriesIndex: seg.seriesIndex, datumIndex: seg.datumIndex, value: seg.value })
+  for (const seg of segs) {
+    const sk = spec.series[idx[seg.seriesIndex]!]!
+    const r = minBarLength(inRow(spec, cols, idx[seg.seriesIndex]!, seg.rect, seg.datumIndex, n, plot), sk.barMinHeight ?? 0.0, !(seg.value < 0.0), true, plot)
+    out.push({ rect: r, seriesIndex: seg.seriesIndex, datumIndex: seg.datumIndex, value: seg.value })
+  }
   return out
 }
 
@@ -2075,6 +2162,10 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       : setLaid(spec, 'stacked', plot, yDomain)
     const fmtS = spec.yFormat ?? plain
     for (const seg of stackSegs) {
+      const bgS = stackedSeries[seg.seriesIndex]!.barBackground ?? ''
+      if (bgS !== '' && seg.rect.w >= 0.0) out.push(rectCmd(barBackgroundRect(seg.rect, plot, spec.horizontal === true), bgS, undefined, undefined, undefined))
+    }
+    for (const seg of stackSegs) {
       const rS = growRect(seg.rect, yDomain)
       const gS = seriesGradient(stackedSeries[seg.seriesIndex]!.gradient, plot)
       out.push(rectCmd(rS, stateFill(spec, stackedSeries[seg.seriesIndex]!, seg.datumIndex, stackedSeries[seg.seriesIndex]!.color), stackedSeries[seg.seriesIndex]!.corners, gS.stops.length === 0 ? undefined : gS, stackedSeries[seg.seriesIndex]!.pattern))
@@ -2099,6 +2190,10 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       : setLaid(spec, 'grouped', plot, yDomain)
     const fmtG = spec.yFormat ?? plain
     for (const seg of groupSegs) {
+      const bgG = groupedSeries[seg.seriesIndex]!.barBackground ?? ''
+      if (bgG !== '' && seg.rect.w >= 0.0) out.push(rectCmd(barBackgroundRect(seg.rect, plot, spec.horizontal === true), bgG, undefined, undefined, undefined))
+    }
+    for (const seg of groupSegs) {
       const rG = growRect(seg.rect, yDomain)
       const gG = seriesGradient(groupedSeries[seg.seriesIndex]!.gradient, plot)
       out.push(rectCmd(rG, stateFill(spec, groupedSeries[seg.seriesIndex]!, seg.datumIndex, groupedSeries[seg.seriesIndex]!.color), groupedSeries[seg.seriesIndex]!.corners, gG.stops.length === 0 ? undefined : gG, groupedSeries[seg.seriesIndex]!.pattern))
@@ -2121,19 +2216,24 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // outline of the topmost series is the total.
   const areaStack = spec.horizontal === true ? [] : spec.series.filter((s) => s.kind === 'stackedArea')
   if (areaStack.length > 0) {
-    const tops = stackCumulative(areaStack.map((s) => s.values))
+    const levels = levelsOf(areaStack)
+    // A band with nothing below it fills to zero, held inside the axis (ECharts' `origin: 'auto'`).
+    const origin = yDomain.min > 0.0 ? yDomain.min : yDomain.max < 0.0 ? yDomain.max : 0.0
     for (let k = 0; k < areaStack.length; k++) {
       const sA = areaStack[k]!
-      const top = tops[k]!
-      const below = k === 0 ? [] : tops[k - 1]!
+      const top = levels.tops[k]!
+      const base = levels.bases[k]!
       const upper: Pt[] = []
       const lower: Pt[] = []
       for (let i = 0; i < top.length; i++) {
         const xAt = edgeCategoryPoints(spec) && top.length > 1
           ? plot.x + (plot.w / countToDouble(top.length - 1)) * countToDouble(i)
           : plot.x + (plot.w / Math.max(1.0, countToDouble(top.length))) * (countToDouble(i) + 0.5)
-        upper.push({ x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, top[i]!) })
-        lower.push({ x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, k === 0 ? yDomain.min : below[i]!) })
+        const lo = isFiniteNumber(base[i]!) ? base[i]! : origin
+        // A gap is a zero-height band: it sits on whatever it would have stacked on.
+        const hiV = isFiniteNumber(top[i]!) ? top[i]! : k > 0 && isFiniteNumber(levels.tops[k - 1]![i]!) ? levels.tops[k - 1]![i]! : lo
+        upper.push({ x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, hiV) })
+        lower.push({ x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, isFiniteNumber(top[i]!) ? lo : hiV) })
       }
       if (upper.length > 1) {
         const poly: Pt[] = []
@@ -2194,6 +2294,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     if (spec.horizontal === true) {
       if (s.kind !== 'bars') continue
       const rects = barsLaidH(spec, sIdx, plot, yDomain)
+      const bgH = s.barBackground ?? ''
+      if (bgH !== '') for (const r of rects) if (r.w >= 0.0) out.push(rectCmd(barBackgroundRect(r, plot, true), bgH, undefined, undefined, undefined))
       for (let ri = 0; ri < rects.length; ri++) {
         const r = rects[ri]!
         const grown = growRectH(r)
@@ -2233,6 +2335,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
 
     if (s.kind === 'bars') {
       const rects = barsLaid(spec, sIdx, plot, sDomain)
+      const bgV = s.barBackground ?? ''
+      if (bgV !== '') for (const r of rects) if (r.w >= 0.0) out.push(rectCmd(barBackgroundRect(r, plot, false), bgV, undefined, undefined, undefined))
       for (let ri = 0; ri < rects.length; ri++) {
         const r = rects[ri]!
         const grown = growRect(r, sDomain)

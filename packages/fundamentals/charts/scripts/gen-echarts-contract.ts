@@ -18,7 +18,7 @@ import { resolve } from 'node:path'
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { KNOWN_TOP, KNOWN_SERIES } from '../src/engine/option'
 import { FAMILY_KNOWN_TOP, KNOWN_BY_FAMILY, FAMILY_TYPES } from '../src/engine/option-family'
-import { ECHARTS_INERT_BY_TYPE } from '../src/engine/echarts-contract'
+import { ECHARTS_INERT_BY_TYPE, ECHARTS_NOT_HONOURED_BY_TYPE } from '../src/engine/echarts-contract'
 
 const entry = resolve(import.meta.dir, '../node_modules/echarts/types/dist/echarts.d.ts')
 const program = ts.createProgram([entry], { strict: true, noEmit: true, skipLibCheck: true })
@@ -98,7 +98,7 @@ for (const [t, keys] of [...byType].sort()) {
   const fam = FAM_ROW[t] ?? `series.${t}`
   const g: Record<string, string> = {}
   for (const k of [...keys].sort()) {
-    if (known.has(k) && read(k)) continue
+    if (known.has(k) && read(k) && !(ECHARTS_NOT_HONOURED_BY_TYPE[t] ?? []).includes(k)) continue
     if (ECHARTS_INERT_BY_TYPE[t]?.[k] !== undefined) continue
     const r = rowFor(k, fam)
     if (r === 'inert') continue

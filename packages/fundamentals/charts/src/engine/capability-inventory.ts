@@ -183,7 +183,9 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'partial',
     native: 'partial',
     gaps: [
-      'bars lay out as ECharts columns (differential-tested) on a vertical grid, and a horizontal bar chart (a category y axis over a value x axis) lays out as ECharts does — rows up from the bottom, the same column solver (differential-tested, native-lowered); a category y axis over a non-bar series keeps the upright chart with a warning, and two DIFFERENT `stack` groups share one accumulating stack',
+      'bars lay out as ECharts columns (differential-tested) on a vertical grid, and a horizontal bar chart (a category y axis over a value x axis) lays out as ECharts does — rows up from the bottom, the same column solver (differential-tested, native-lowered); a category y axis over a non-bar series keeps the upright chart with a warning',
+      'stacks follow ECharts\' `dataStack` (differential-tested: `samesign` negatives downward, `stackStrategy`, `stackOrder`, separate `stack` groups), but a bar and a line sharing one `stack` name stack apart rather than together',
+      '`showBackground` draws its strip in `backgroundStyle.color` / `opacity`; the strip\'s border and `borderRadius` are not drawn',
       LITERAL_ONLY,
     ],
     evidence: ['src/engine/option.test.ts', 'src/engine/horizontal.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-axes-native.test.ts', 'src/engine/gap-fixes.coverage.test.ts', NATIVE + 'chart-option-horizontal-native.test.ts'],
