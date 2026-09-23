@@ -9,6 +9,18 @@ import { z } from 'zod'
 import * as v from 'valibot'
 import { type } from 'arktype'
 import { s } from '../src/v1'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 const line = (t: string) => console.log('\n' + '─'.repeat(72) + '\n' + t + '\n' + '─'.repeat(72))
 
@@ -18,6 +30,7 @@ const Z = z.object({ name: z.string().min(2), age: z.number().int().min(0).max(1
 const V = v.object({ name: v.pipe(v.string(), v.minLength(2)), age: v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(150)), email: v.pipe(v.string(), v.email()), tags: v.array(v.string()) })
 const A = type({ name: 'string >= 2', age: '0 <= number.integer <= 150', email: 'string.email', tags: 'string[]' })
 
+console.log(benchRuntimeBanner())
 // ── 1. Standard Schema (~standard) conformance ──
 line('1. Standard Schema (~standard) conformance — present? version/vendor')
 const std = (sch: any) => { const s2 = sch['~standard']; return s2 ? `version=${s2.version} vendor=${s2.vendor}` : 'ABSENT' }

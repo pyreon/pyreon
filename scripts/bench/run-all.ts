@@ -11,6 +11,7 @@
  */
 
 import { execFileSync, execSync } from 'node:child_process'
+import { cpus, loadavg } from 'node:os'
 import { resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dir, '../..')
@@ -23,6 +24,8 @@ interface BenchMetric {
 interface BenchOutput {
   timestamp: string
   commit: string
+  /** Runtime + machine the numbers were measured on — without these, two runs are not comparable. */
+  machine: { engine: string; cpu: string; cores: number; loadBefore: number[]; loadAfter: number[] }
   results: Record<string, BenchMetric>
 }
 
@@ -37,6 +40,8 @@ function getCommitHash(): string {
 /**
  * Run a benchmark script and return its stdout.
  */
+const LOAD_BEFORE = loadavg()
+
 /** A bench that could not run — recorded by name so the run FAILS instead of quietly omitting rows. */
 const failed: string[] = []
 
@@ -294,7 +299,15 @@ function extractUnistyle(output: string, results: Record<string, BenchMetric>): 
 const results: Record<string, BenchMetric> = {}
 
 const benchmarks = [
-  { script: 'scripts/bench/core/reactivity.ts', extractor: extractReactivity, name: 'reactivity' },
+  {
+    script: 'scripts/bench/core/reactivity.ts',
+    extractor: extractReactivity,
+    name: 'reactivity',
+    // Full protocol is one process per cell × 3 rounds (~2 min); the aggregate
+    // run takes one round.
+    args: ['--quick'],
+    timeoutMs: 300_000,
+  },
   { script: 'scripts/bench/core/compiler.ts', extractor: extractCompiler, name: 'compiler' },
   {
     script: 'scripts/bench/core/router.ts',
@@ -339,6 +352,15 @@ for (const { script, extractor, name, args, timeoutMs } of benchmarks as {
 const output: BenchOutput = {
   timestamp: new Date().toISOString(),
   commit: getCommitHash(),
+  machine: {
+    // Every bench runs under bun (JavaScriptCore). V8 (browsers, Node) can rank
+    // micro-ops differently — see scripts/bench/core/reactivity.ts --runtime node.
+    engine: `bun ${execFileSync('bun', ['--version'], { encoding: 'utf-8' }).trim()} (JavaScriptCore)`,
+    cpu: cpus()[0]?.model ?? 'unknown',
+    cores: cpus().length,
+    loadBefore: LOAD_BEFORE,
+    loadAfter: loadavg(),
+  },
   results,
 }
 

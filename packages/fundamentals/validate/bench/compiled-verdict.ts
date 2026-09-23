@@ -30,6 +30,18 @@
  */
 import { analyzeValidate, emitValidator } from '@pyreon/compiler'
 import { s } from '../src/v1'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 function buildPair(label: string, src: string, valid: unknown[], invalid: unknown[]) {
   // oxlint-disable no-new-func
@@ -91,6 +103,7 @@ const PAIRS = [
 
 const ITERS = 500_000
 const RUNS = 7
+console.log(benchRuntimeBanner())
 console.log(`\nCompiled verdict vs runtime .is() — ${ITERS.toLocaleString()} iters × ${RUNS} runs (median ns/op, lower=faster)\n`)
 console.log('schema'.padEnd(28), 'runtime .is()'.padStart(14), 'compiled .is()'.padStart(15), 'speedup'.padStart(9))
 console.log('─'.repeat(68))

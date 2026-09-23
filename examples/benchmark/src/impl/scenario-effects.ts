@@ -63,20 +63,25 @@
 import { h as ph } from '@pyreon/core'
 import { batch as pyreonBatch, signal } from '@pyreon/reactivity'
 import { mount as pyreonMount } from '@pyreon/runtime-dom'
-import { h as preactH, options as preactOptions, render as preactRender } from 'preact'
+import { options as preactOptions, render as preactRender } from 'preact'
+import { jsx as preactJsx } from 'preact/jsx-runtime'
 import { memo as preactMemo, useSyncExternalStore as preactUseSyncExternalStore } from 'preact/compat'
 import { useEffect as preactUseEffect } from 'preact/hooks'
 import * as React from 'react'
 import { flushSync as reactFlushSync } from 'react-dom'
 import * as ReactDOM from 'react-dom/client'
+import { jsx as reactJsx } from 'react/jsx-runtime'
 import { batch as solidBatch, createComponent, createEffect, createSignal } from 'solid-js'
 import { insert, render as solidRender, template } from 'solid-js/web'
 import { flushSync as svelteFlushSync, mount as svelteMount, unmount as svelteUnmount } from 'svelte'
-import { defineComponent, createApp, h as vueH, nextTick, ref, watchEffect } from 'vue'
+import { defineComponent, createApp, nextTick, ref, watchEffect } from 'vue'
+import { render as vueFxListRender } from 'virtual:fx-list-vue-render'
+import { render as vueFxRowRender } from 'virtual:fx-row-vue-render'
 import type { Ref } from 'vue'
 import type { BenchSuite } from '../runner'
 import { bench } from '../runner'
 import FxList from './FxList.svelte'
+import { preactJsxKeyed } from './preact-jsx-keyed'
 import { setAll as svelteSetAll, setRow as svelteSetRow } from './effects-state.svelte'
 import { PyreonFxList } from './scenario-effects-pyreon'
 import {
@@ -102,20 +107,36 @@ export interface EffectsTarget {
 
 // ─── Vanilla (baseline) ──────────────────────────────────────────────────────
 
+/**
+ * Row prototype, cloned per row — the template-clone idiom of the krausest
+ * vanillajs implementation (`impl/vanilla.ts`). The prototype carries its text
+ * node, so a row is one native `cloneNode(true)` instead of `createElement` +
+ * `className` + `createTextNode` + `appendChild`. Built lazily so importing this
+ * module never touches `document`.
+ */
+let vanillaFxRowProto: HTMLElement | null = null
+
 function vanillaTarget(sink: EffectSink): EffectsTarget {
   const values = new Array<number>(EFFECT_ROWS).fill(-1)
   let texts: Text[] = []
 
   return {
     mount(host) {
+      if (vanillaFxRowProto === null) {
+        vanillaFxRowProto = document.createElement('span')
+        vanillaFxRowProto.className = 'fx-row'
+        vanillaFxRowProto.appendChild(document.createTextNode(''))
+      }
       const list = document.createElement('div')
       list.className = 'fx-list'
       texts = []
       for (let i = 0; i < EFFECT_ROWS; i++) {
-        const span = document.createElement('span')
-        span.className = 'fx-row'
-        const t = document.createTextNode(String(values[i]))
-        span.appendChild(t)
+        const span = vanillaFxRowProto.cloneNode(true)
+        const t = span.firstChild as Text
+        // Raw number — runner.ts "Row-id rendering rule": the WebIDL coercion
+        // on `.data`, not a harness-side `String(...)` the framework arms do
+        // not pay.
+        ;(t as unknown as NumericTextData).data = values[i] as number
         list.appendChild(span)
         texts.push(t)
       }
@@ -126,7 +147,7 @@ function vanillaTarget(sink: EffectSink): EffectsTarget {
       for (let i = 0; i < EFFECT_ROWS; i++) {
         const v = next[i] as number
         values[i] = v
-        ;(texts[i] as Text).data = String(v)
+        ;(texts[i] as unknown as NumericTextData).data = v
         // The hand-written stand-in for a subscription.
         sink.values[i] = v
         sink.runs++
@@ -134,12 +155,15 @@ function vanillaTarget(sink: EffectSink): EffectsTarget {
     },
     applyOne(index, value) {
       values[index] = value
-      ;(texts[index] as Text).data = String(value)
+      ;(texts[index] as unknown as NumericTextData).data = value
       sink.values[index] = value
       sink.runs++
     },
   }
 }
+
+/** Type-level view for assigning a raw number to `Text.data` (see scenario-dbmon.ts). */
+type NumericTextData = { data: number }
 
 // ─── Pyreon ──────────────────────────────────────────────────────────────────
 
@@ -188,7 +212,23 @@ function pyreonTarget(sink: EffectSink): EffectsTarget {
 // Hand-written at the compiler's output level — no vite-plugin-solid here, the
 // same constraint `impl/solid.ts` documents.
 
-const _fxRowTmpl = template('<span class="fx-row"></span>')
+// Templates + calls exactly as babel-preset-solid 1.9.15 emits them for the
+// idiomatic mirror of `PyreonFxList` / `PyreonFxRow` (diffed, not assumed):
+//
+//   function SolidFxRow(props) {
+//     const [get] = sigs[props.index]
+//     createEffect(() => { … })
+//     return <span class="fx-row">{get()}</span>          // → insert(_el$, get)
+//   }
+//   function List() {
+//     const children = []
+//     for (…) children.push(<SolidFxRow index={i} />)     // → createComponent
+//     return <div class="fx-list">{children}</div>         // → insert(_el$, children)
+//   }
+//   render(() => <List />, host)
+
+const _fxRowTmpl = template('<span class=fx-row>')
+const _fxListTmpl = template('<div class=fx-list>')
 
 function solidTarget(sink: EffectSink): EffectsTarget {
   const sigs = Array.from({ length: EFFECT_ROWS }, () => createSignal(-1))
@@ -204,28 +244,35 @@ function solidTarget(sink: EffectSink): EffectsTarget {
    * per-component scope against Solid's bare effects and manufacturing a
    * Pyreon loss out of the bench's own asymmetry.
    */
-  function SolidFxRow(props: { index: number }): HTMLElement {
+  function SolidFxRow(props: { index: number }): Node {
     const [get] = sigs[props.index] as [() => number, (v: number) => void]
-    const span = _fxRowTmpl() as HTMLElement
-    insert(span, get)
     createEffect(() => {
       const v = get()
       sink.values[props.index] = v
       sink.runs++
     })
-    return span
+    return (() => {
+      const _el$ = _fxRowTmpl()
+      insert(_el$, get)
+      return _el$
+    })()
+  }
+
+  function SolidFxList(): Node {
+    const children: Node[] = []
+    for (let i = 0; i < EFFECT_ROWS; i++) {
+      children.push(createComponent(SolidFxRow, { index: i }) as Node)
+    }
+    return (() => {
+      const _el$2 = _fxListTmpl()
+      insert(_el$2, children)
+      return _el$2
+    })()
   }
 
   return {
     mount(host) {
-      return solidRender(() => {
-        const list = document.createElement('div')
-        list.className = 'fx-list'
-        for (let i = 0; i < EFFECT_ROWS; i++) {
-          list.appendChild(createComponent(SolidFxRow, { index: i }) as HTMLElement)
-        }
-        return list
-      }, host)
+      return solidRender(() => createComponent(SolidFxList, {}) as Node, host)
     },
     applyAll(next) {
       solidBatch(() => {
@@ -287,6 +334,13 @@ function makeRowStore(): RowStore {
 
 // ─── React ───────────────────────────────────────────────────────────────────
 
+// React and Preact are written as the automatic JSX runtime's output — esbuild's
+// `jsx: 'automatic'` emit for the idiomatic source, diffed rather than assumed:
+//
+//   return <span className="fx-row">{value}</span>
+//   for (…) children.push(<Row key={i} index={i} />)     // key → jsx's 3rd arg
+//   return <div className="fx-list">{children}</div>      // one `children` value
+
 function reactTarget(sink: EffectSink): EffectsTarget {
   const store = makeRowStore()
 
@@ -299,15 +353,15 @@ function reactTarget(sink: EffectSink): EffectsTarget {
       sink.values[index] = value
       sink.runs++
     }, [value, index])
-    return React.createElement('span', { className: 'fx-row' }, value)
+    return reactJsx('span', { className: 'fx-row', children: value })
   })
 
   function List() {
     const children: React.ReactNode[] = []
     for (let i = 0; i < EFFECT_ROWS; i++) {
-      children.push(React.createElement(Row, { key: i, index: i }))
+      children.push(reactJsx(Row, { index: i }, i))
     }
-    return React.createElement('div', { className: 'fx-list' }, children)
+    return reactJsx('div', { className: 'fx-list', children })
   }
 
   let root: ReactDOM.Root | null = null
@@ -316,7 +370,7 @@ function reactTarget(sink: EffectSink): EffectsTarget {
     mount(host) {
       root = ReactDOM.createRoot(host)
       const r = root
-      reactFlushSync(() => r.render(React.createElement(List)))
+      reactFlushSync(() => r.render(reactJsx(List, {})))
       return () => r.unmount()
     },
     applyAll(next) {
@@ -342,20 +396,20 @@ function preactTarget(sink: EffectSink): EffectsTarget {
       sink.values[index] = value
       sink.runs++
     }, [value, index])
-    return preactH('span', { class: 'fx-row' }, value)
+    return preactJsx('span', { class: 'fx-row', children: value })
   })
 
   function List() {
     const children: unknown[] = []
     for (let i = 0; i < EFFECT_ROWS; i++) {
-      children.push(preactH(Row as never, { key: i, index: i }))
+      children.push(preactJsxKeyed(Row, { index: i }, i))
     }
-    return preactH('div', { class: 'fx-list' }, children)
+    return preactJsx('div', { class: 'fx-list', children: children as never })
   }
 
   return {
     mount(host) {
-      preactRender(preactH(List, null), host)
+      preactRender(preactJsx(List, {}), host)
       return () => preactRender(null, host)
     },
     async applyAll(next) {
@@ -375,29 +429,35 @@ function preactTarget(sink: EffectSink): EffectsTarget {
 // updates to complete — so awaiting `nextTick` provably covers it. (`flush:
 // 'post'` / `watchPostEffect` is NOT used: the docs do not assert that
 // `nextTick` waits for post-flush watchers.)
+//
+// Both components are build-time-compiled templates (`FX_ROW_VUE_TEMPLATE`,
+// `FX_LIST_VUE_TEMPLATE` in vue-templates.ts) — what an SFC ships: a
+// `KEYED_FRAGMENT` `v-for`, `PROPS`/`TEXT` patch flags and hoisted static
+// props, none of which the previous hand-written `h()` arm had.
+
+const FX_SLOTS: readonly number[] = Array.from({ length: EFFECT_ROWS }, (_, i) => i)
 
 function vueTarget(sink: EffectSink): EffectsTarget {
   const refs: Ref<number>[] = Array.from({ length: EFFECT_ROWS }, () => ref(-1))
 
-  const Row = defineComponent({
+  const FxRow = defineComponent({
     props: { index: { type: Number, required: true } },
+    render: vueFxRowRender,
     setup(props) {
       const r = refs[props.index] as Ref<number>
       watchEffect(() => {
         sink.values[props.index] = r.value
         sink.runs++
       })
-      return () => vueH('span', { class: 'fx-row' }, r.value)
+      return { value: r }
     },
   })
 
   const List = defineComponent({
+    components: { FxRow },
+    render: vueFxListRender,
     setup() {
-      return () => {
-        const children = []
-        for (let i = 0; i < EFFECT_ROWS; i++) children.push(vueH(Row, { key: i, index: i }))
-        return vueH('div', { class: 'fx-list' }, children)
-      }
+      return { slots: FX_SLOTS }
     },
   })
 

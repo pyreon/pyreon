@@ -28,9 +28,12 @@ import { signal, createSelector } from '@pyreon/reactivity'
 import { PyreonCompiledApp } from './hydration-pyreon-compiled'
 import * as React from 'react'
 import * as ReactDOMClient from 'react-dom/client'
+import { jsx as reactJsx } from 'react/jsx-runtime'
 import { flushSync } from 'react-dom'
 import { hydrate as preactHydrate, render as preactRender } from 'preact'
 import { createSSRApp } from 'vue'
+// Build-time-compiled HYDRATION_VUE_TEMPLATE — see `vue-templates` in vite.config.ts.
+import { render as vueHydrationRender } from 'virtual:hydration-vue-render'
 import type { BenchSuite } from '../runner'
 import { bench } from '../runner'
 import {
@@ -110,7 +113,7 @@ const makeTargets = (fixtures: {
       // gate loudly rather than posting a fast number.
       let root!: ReactDOMClient.Root
       flushSync(() => {
-        root = ReactDOMClient.hydrateRoot(container, React.createElement(App))
+        root = ReactDOMClient.hydrateRoot(container, reactJsx(App, {}))
       })
       return () => root.unmount()
     },
@@ -136,7 +139,7 @@ const makeTargets = (fixtures: {
     name: 'Vue 3',
     html: fixtures.html.vue!,
     hydrate(container) {
-      const { component } = vueApp(rows)
+      const { component } = vueApp(rows, vueHydrationRender)
       const app = createSSRApp(component)
       app.mount(container)
       return () => app.unmount()

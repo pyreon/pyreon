@@ -41,12 +41,17 @@
  * the portable signal; absolute µs are machine-dependent.
  *
  * Run: bun bench-ssr.ts            (orchestrator — full table)
+ *      bun bench-ssr.ts --wait-quiet [maxLoad]   (orchestrator; wait for load1 ≤ maxLoad first)
  *      bun bench-ssr.ts <fw> <n>   (single cell, prints JSON samples)
+ *
+ * Machine load (os.loadavg + CPU identity) is stamped before/after and per
+ * size, and written into the trailing JSON line under `meta.machineLoad`.
  */
 process.env.NODE_ENV = 'production'
 
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { LoadRecorder, parseWaitQuiet, waitForQuietMachine } from './machine-load'
 
 const now = () => Number(process.hrtime.bigint())
 const median = (a: number[]): number => {
@@ -394,7 +399,11 @@ async function runChild(fw: Framework, n: number): Promise<void> {
 
 // ─── Orchestrator ────────────────────────────────────────────────────────────
 
-const argFw = process.argv[2] as Framework | undefined
+// A leading `--flag` is an ORCHESTRATOR option (e.g. `--wait-quiet`), not a
+// child-cell framework name.
+const argFw = (process.argv[2]?.startsWith('--') ? undefined : process.argv[2]) as
+  | Framework
+  | undefined
 const argN = Number(process.argv[3])
 if (argFw) {
   if (!(argFw in FRAMEWORKS)) throw new Error(`unknown framework: ${argFw}`)
@@ -439,7 +448,14 @@ console.log(
 
 const FWS: Framework[] = ['pyreon', 'pyreon-h-walk', 'react', 'vue', 'svelte']
 const jsonOut: Record<string, unknown>[] = []
+// Diagnostics go to stderr: stdout's last line is the machine-readable JSON.
+const WAIT_QUIET = parseWaitQuiet(process.argv)
+const load = new LoadRecorder('bench-ssr', WAIT_QUIET, process.stderr)
+load.printIdentity()
+if (WAIT_QUIET !== null) await waitForQuietMachine('bench-ssr', WAIT_QUIET, undefined, process.stderr)
+load.stamp('before measuring')
 for (const n of SIZES) {
+  load.stamp(`rows=${n} start`)
   const cells = new Map<Framework, Cell>()
   // Randomized execution order per size (position-bias guard).
   const order = [...FWS]
@@ -471,5 +487,8 @@ for (const n of SIZES) {
 console.log(
   'NOTE: react/svelte/pyreon render synchronously (sync-timed); vue renderToString is async by design (awaited — its real per-request completion). AUTHOR-JUDGE disclosed.',
 )
-console.log(JSON.stringify({ meta: { versions, procs: PROCS }, rows: jsonOut }))
+load.stamp('after measuring')
+console.log(
+  JSON.stringify({ meta: { versions, procs: PROCS, machineLoad: load.report() }, rows: jsonOut }),
+)
 rmSync(TMP, { recursive: true, force: true })

@@ -157,8 +157,8 @@
     "@vitest/browser-playwright": "^4.1.11",
     "@vitus-labs/tools-lint": "^2.7.1",
     "monaco-editor": "^0.56.0",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "publishConfig": {
     "access": "public"

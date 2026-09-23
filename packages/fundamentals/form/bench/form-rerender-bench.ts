@@ -25,6 +25,18 @@
 process.env.NODE_ENV = 'production'
 
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 GlobalRegistrator.register()
 // Suppress React 19's "update not wrapped in act(...)" warning — we drive
 // commits synchronously via flushSync, which is the correct bench primitive.
@@ -169,6 +181,7 @@ const formik = formikR.renders
 const rhf = rhfR.renders
 const pyreon = pyreonR.renders
 
+console.log(benchRuntimeBanner())
 console.log(`\nForm re-render benchmark — component renders for ${KEYSTROKES} keystrokes into 1 field of a ${FIELD_COUNT}-field form`)
 console.log(`(deterministic render COUNT; lower = fewer re-renders = less work per keystroke)\n`)
 console.log(`  Pyreon          : ${pyreon}   (signals patch the bound node — 0 component re-renders, values still reactive)`)

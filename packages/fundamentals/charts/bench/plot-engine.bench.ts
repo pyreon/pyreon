@@ -37,6 +37,18 @@ import { layoutTreemap, renderTreemap } from '../src/engine/treemap'
 import { layoutSankey, renderSankey } from '../src/engine/sankey'
 import { measureApprox, renderSvg } from '../src/engine/svg'
 import * as echarts from 'echarts'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 const K = 15
 const measure = measureApprox()
@@ -81,6 +93,7 @@ function bench(name: string, make: () => () => number, expectMin: number): void 
   console.log(`${name.padEnd(34)} median ${median.toFixed(2).padStart(8)} ms   p25 ${p25.toFixed(2).padStart(7)}   p75 ${p75.toFixed(2).padStart(7)}   cmds ${String(cmds).padStart(7)}`)
 }
 
+console.log(benchRuntimeBanner())
 console.log(`plot engine — layout + render, K=${K} samples, ${process.env.NODE_ENV}\n`)
 for (const [kind, n, count] of [['bars', 1_000, 1], ['bars', 10_000, 1], ['line', 10_000, 1], ['line', 100_000, 1], ['area', 10_000, 3], ['points', 10_000, 1]] as const) {
   bench(`${kind} ×${count} n=${n}`, () => {

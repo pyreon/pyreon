@@ -4,39 +4,77 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 import pyreon from '@pyreon/vite-plugin'
 import { defineConfig, type Plugin } from 'vite'
 import { DBMON_VUE_TEMPLATE } from './src/impl/dbmon-vue-template'
+import {
+  APPPAGE_FORM_ROW_VUE_TEMPLATE,
+  APPPAGE_SECTION_HEADER_VUE_TEMPLATE,
+  APPPAGE_VUE_TEMPLATE,
+  FX_LIST_VUE_TEMPLATE,
+  FX_ROW_VUE_TEMPLATE,
+  HYDRATION_VUE_TEMPLATE,
+  MEMO_APP_VUE_TEMPLATE,
+  MEMO_CONSUMER_VUE_TEMPLATE,
+  MEMO_LIST_VUE_TEMPLATE,
+  ROWS_VUE_TEMPLATE,
+  TREE_NODE_VUE_TEMPLATE,
+  TREE_ROOT_VUE_TEMPLATE,
+  VUE_SFC_COMPILE_OPTIONS,
+} from './src/impl/vue-templates'
 
 /**
- * Precompiles the dbmon Vue template exactly the way an SFC is compiled:
- * at BUILD time, in Node, with `prefixIdentifiers` on.
+ * Precompiles every Vue template the benchmark uses exactly the way an SFC is
+ * compiled: at BUILD time, in Node, with `@vue/compiler-sfc`'s option set
+ * (`VUE_SFC_COMPILE_OPTIONS` — `prefixIdentifiers`, `hoistStatic`,
+ * `cacheHandlers`). One virtual module per template:
+ *
+ *  - `virtual:dbmon-vue-render`     — the dbmon scenario's `Vue 3 (template)` arm
+ *  - `virtual:rows-vue-render`      — the row suite (`impl/vue.ts`)
+ *  - `virtual:hydration-vue-render` — the hydration fixture's client side
+ *  - `virtual:tree-*-vue-render`    — the deep-tree scenario (node + root)
+ *  - `virtual:fx-*-vue-render`      — the effect-heavy list (row + list)
+ *  - `virtual:memo-*-vue-render`    — the memoization wall (app, list, consumer)
+ *  - `virtual:apppage-*-vue-render` — the app-page hydration page (client side)
  *
  * This exists because the two easier routes both measure something other than
  * Vue. Handing a `template:` string to `vue/dist/vue.esm-bundler.js` invokes
  * the RUNTIME compiler, which emits `with (_ctx) { … }` — a V8 deoptimization
- * barrier no SFC ever produces, and measurably slower than the hand-written
- * `h()` arm it is supposed to represent. Calling `compile()` in the browser
- * with `prefixIdentifiers: true` instead throws Vue compiler error 48, because
+ * barrier no SFC ever produces. Calling `compile()` in the browser with
+ * `prefixIdentifiers: true` instead throws Vue compiler error 48, because
  * identifier prefixing needs `@babel/parser`, which the browser build omits.
+ * And a hand-written `h()` render function (what the row suite used before)
+ * carries no patch flags or blocks, so every re-render full-diffs every row —
+ * a handicap no Vue app built with its toolchain pays.
  *
- * Compiling here sidesteps both: `mode: 'module'` emits the same
+ * Compiling here sidesteps all three: `mode: 'module'` emits the same
  * `import { … } from "vue"` + `export function render(…)` pair an SFC does,
  * the browser bundle carries no compiler at all, and no compilation happens
  * inside a timed region.
  */
-function dbmonVueTemplatePlugin(): Plugin {
-  const VIRTUAL = 'virtual:dbmon-vue-render'
-  const RESOLVED = `\0${VIRTUAL}`
+function vueTemplatesPlugin(): Plugin {
+  const templates: Record<string, string> = {
+    'virtual:dbmon-vue-render': DBMON_VUE_TEMPLATE,
+    'virtual:rows-vue-render': ROWS_VUE_TEMPLATE,
+    'virtual:hydration-vue-render': HYDRATION_VUE_TEMPLATE,
+    'virtual:tree-node-vue-render': TREE_NODE_VUE_TEMPLATE,
+    'virtual:tree-root-vue-render': TREE_ROOT_VUE_TEMPLATE,
+    'virtual:fx-row-vue-render': FX_ROW_VUE_TEMPLATE,
+    'virtual:fx-list-vue-render': FX_LIST_VUE_TEMPLATE,
+    'virtual:memo-app-vue-render': MEMO_APP_VUE_TEMPLATE,
+    'virtual:memo-list-vue-render': MEMO_LIST_VUE_TEMPLATE,
+    'virtual:memo-consumer-vue-render': MEMO_CONSUMER_VUE_TEMPLATE,
+    'virtual:apppage-vue-render': APPPAGE_VUE_TEMPLATE,
+    'virtual:apppage-section-header-vue-render': APPPAGE_SECTION_HEADER_VUE_TEMPLATE,
+    'virtual:apppage-form-row-vue-render': APPPAGE_FORM_ROW_VUE_TEMPLATE,
+  }
   return {
-    name: 'dbmon-vue-template',
+    name: 'vue-templates',
     resolveId(id) {
-      return id === VIRTUAL ? RESOLVED : undefined
+      return id in templates ? `\0${id}` : undefined
     },
     load(id) {
-      if (id !== RESOLVED) return undefined
-      const { code } = compileVueTemplate(DBMON_VUE_TEMPLATE, {
-        mode: 'module',
-        prefixIdentifiers: true,
-        hoistStatic: true,
-      })
+      if (!id.startsWith('\0')) return undefined
+      const template = templates[id.slice(1)]
+      if (template === undefined) return undefined
+      const { code } = compileVueTemplate(template, { mode: 'module', ...VUE_SFC_COMPILE_OPTIONS })
       return code
     },
   }
@@ -96,7 +134,7 @@ export default defineConfig({
       ? { build: { minify: false } }
       : {}),
   plugins: [
-    dbmonVueTemplatePlugin(),
+    vueTemplatesPlugin(),
     pyreon(),
     // Octane — the compiled-React framework (`.tsrx`). `requireDirective: true`
     // is LOAD-BEARING, not a preference: with the default `false`, Octane's
