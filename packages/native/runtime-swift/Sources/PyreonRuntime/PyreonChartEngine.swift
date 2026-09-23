@@ -3867,6 +3867,24 @@ public func plain(_ v: Double) -> String {
     return "\(((Double(v * 1000.0)) + 0.5).rounded(.down) / 1000.0)"
   }
 
+public func groupThousands(_ v: Double) -> String {
+    let s = plain(v)
+    let neg = s.utf16.count > 0 && String(Array(s)[0]) == "-"
+    let body = neg ? String(s.dropFirst(1)) : s
+    let dot = (body.range(of: ".").map { body.distance(from: body.startIndex, to: $0.lowerBound) } ?? -1)
+    let whole = dot < 0 ? body : String(body.dropFirst(0).prefix(max(0, (dot) - (0))))
+    let frac = dot < 0 ? "" : String(body.dropFirst(dot))
+    var out = ""
+    var end = whole.utf16.count
+    while end > 0 {
+      let start = end - 3 > 0 ? end - 3 : 0
+      let chunk = String(whole.dropFirst(start).prefix(max(0, (end) - (start))))
+      out = out == "" ? chunk : "\(chunk),\(out)"
+      end = start
+    }
+    return "\(neg ? "-" : "")\(out)\(frac)"
+  }
+
 public func compact(_ v: Double) -> String {
     let abs = abs(v)
     let sign = v < 0.0 ? "-" : ""
@@ -13979,6 +13997,15 @@ public func pieHitWith(_ slices: [Slice], _ box: PyreonChartRect, _ innerRatio: 
 
 public func pieTipWith(_ slices: [Slice], _ box: PyreonChartRect, _ innerRatio: Double, _ arcs: ArcConfig, _ px: Double, _ py: Double) -> [String] { pieTipAt(slices, pieHitWith(slices, box, innerRatio, arcs, px, py)) }
 
+public func pieTipRowsWith(_ slices: [Slice], _ box: PyreonChartRect, _ innerRatio: Double, _ arcs: ArcConfig, _ px: Double, _ py: Double, _ seriesName: String) -> [String] {
+    let i = pieHitWith(slices, box, innerRatio, arcs, px, py)
+    if i < 0 || i >= slices.count {
+      return []
+    }
+    let s = slices[i]
+    return [seriesName, s.color, s.label, groupThousands(s.value)]
+  }
+
 public func pieTipAt(_ slices: [Slice], _ i: Int) -> [String] {
     if i < 0 || i >= slices.count {
       return []
@@ -14014,6 +14041,43 @@ public func renderTooltip(_ lines: [String], _ at: PyreonChartPt, _ bounds: Pyre
     for l in lines {
       cmds.append(PyreonDrawCmd(kind: "text", fill: opts.text, text: l, at: PyreonChartPt(x: p.x + opts.pad, y: y), size: opts.fontSize, align: "start", baseline: "top"))
       y = y + lineH
+    }
+    return cmds
+  }
+
+public func renderTooltipRows(_ rows: [String], _ at: PyreonChartPt, _ bounds: PyreonChartRect, _ opts: TooltipOptions, _ measure: (String, Double) -> Double, _ edgeByRow: Bool) -> [PyreonDrawCmd] {
+    var cmds: [PyreonDrawCmd] = []
+    if rows.count < 4 {
+      return cmds
+    }
+    let fs = opts.fontSize
+    let count = floor(Double(Double((rows.count - 1)) / Double(3)))
+    let head = rows[0] != ""
+    var w = head ? measure(rows[0], fs) : 0.0
+    for k in 0..<Int(ceil(Double(count))) {
+      let rw = 16.0 + measure(rows[1 + k * 3 + 1], fs) + 20.0 + measure(rows[1 + k * 3 + 2], fs)
+      if rw > w {
+        w = rw
+      }
+    }
+    let inner = (head ? fs + 10.0 : 0.0) + count * fs + (count - Double(1)) * 10.0
+    let size = Size(w: w + opts.pad * 2.0, h: inner + opts.pad * 2.0)
+    let p = placeTooltip(at, size, bounds, 12.0)
+    let r = opts.radius
+    let edge = edgeByRow ? rows[1] : opts.border
+    cmds.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: p.x, y: p.y, w: size.w, h: size.h), fill: opts.fill, corners: [r, r, r, r]))
+    cmds.append(PyreonDrawCmd(kind: "polyline", stroke: edge, width: 1.0, points: [PyreonChartPt(x: p.x, y: p.y), PyreonChartPt(x: p.x + size.w, y: p.y), PyreonChartPt(x: p.x + size.w, y: p.y + size.h), PyreonChartPt(x: p.x, y: p.y + size.h), PyreonChartPt(x: p.x, y: p.y)]))
+    let left = p.x + opts.pad
+    let right = p.x + size.w - opts.pad
+    if head {
+      cmds.append(PyreonDrawCmd(kind: "text", fill: opts.text, text: rows[0], at: PyreonChartPt(x: left, y: p.y + opts.pad), size: fs, align: "start", baseline: "top"))
+    }
+    var y = head ? p.y + opts.pad + fs + 10.0 : p.y + opts.pad
+    for k in 0..<Int(ceil(Double(count))) {
+      cmds.append(PyreonDrawCmd(kind: "circle", fill: rows[1 + k * 3], center: PyreonChartPt(x: left + 5.0, y: y + fs / 2.0), radius: 5.0))
+      cmds.append(PyreonDrawCmd(kind: "text", fill: opts.text, text: rows[1 + k * 3 + 1], at: PyreonChartPt(x: left + 16.0, y: y), size: fs, align: "start", baseline: "top"))
+      cmds.append(PyreonDrawCmd(kind: "text", fill: opts.text, text: rows[1 + k * 3 + 2], at: PyreonChartPt(x: right, y: y), size: fs, align: "end", baseline: "top", weight: "bold"))
+      y = y + fs + 10.0
     }
     return cmds
   }

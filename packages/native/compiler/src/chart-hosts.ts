@@ -138,6 +138,12 @@ export interface ChartHostArgs {
   pieArcs?: string
   /** Trailing `PieOptions` arguments (arcs, labels, view, empty, measure), each already `, name: value`. */
   pieExtra?: string
+  /**
+   * An option pie's tooltip header (its series name, '' for none): present,
+   * the tooltip takes ECharts' default rows — swatch, name, bold grouped value —
+   * through `pieTipRowsWith` / `renderTooltipRows`.
+   */
+  pieTipHeader?: string
   /** The pie's label colour; white (inside the slices) without it. */
   pieLabelColor?: string
 }
@@ -197,6 +203,8 @@ export function chartPieArgs(e: Extract<ExprIR, { kind: 'jsx-element' }>, target
     extra += named('measure', target === 'swift' ? 'pyreonChartMeasure' : '::pyreonChartMeasure')
   }
   if (extra !== '') out.pieExtra = extra
+  const header = attrOf(e, 'tooltipHeader')
+  if (out.pieArcs !== undefined && header?.kind === 'literal' && typeof header.value === 'string') out.pieTipHeader = target === 'swift' ? swiftStr(header.value) : kotlinStr(header.value)
   return out
 }
 
@@ -1427,6 +1435,10 @@ function desugarOptionChartHost(
     if (pieCompiled !== undefined && pieCompiled.plan.kind === 'pie') {
       set('pie', valueToIr(pieCompiled.plan.pie))
       set('frameSpec', valueToIr(familyFrame(pieCompiled.series)))
+      // No formatter: the tooltip is ECharts' default rows under the series name, as the web's.
+      const tip = literalOf(objectField(raw, 'tooltip'), resolve)
+      const shaped = tip !== undefined && (objectField(tip, 'formatter') !== undefined || objectField(tip, 'valueFormatter') !== undefined)
+      if (!shaped) set('tooltipHeader', lit(litString(objectField(series, 'name')) ?? ''))
       // A datum's own itemStyle.color, as the web plan resolved it.
       const colors = pieCompiled.plan.rows.map((r) => r.color)
       if (colors.some((c) => c !== undefined)) {
@@ -3217,7 +3229,7 @@ export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = 
       return `hitArc(layoutArcs(${items}), ${fit}.center, ${fit}.radius, ${fit}.radius * ${a.innerRatio}, ${t.pt(x, y)})`
     },
     legend: (items) => `pieLegend(${items})`,
-    tooltip: (items, x, y, a, t) => (a.pieArcs !== undefined ? `pieTipWith(${items}, ${a.frame ?? box00(a, t)}, ${a.innerRatio}, ${a.pieArcs}, ${x}, ${y})` : `pieTip(${items}, ${box00(a, t)}, ${a.innerRatio}, ${x}, ${y})`),
+    tooltip: (items, x, y, a, t) => (a.pieArcs !== undefined && a.pieTipHeader !== undefined ? `pieTipRowsWith(${items}, ${a.frame ?? box00(a, t)}, ${a.innerRatio}, ${a.pieArcs}, ${x}, ${y}, ${a.pieTipHeader})` : a.pieArcs !== undefined ? `pieTipWith(${items}, ${a.frame ?? box00(a, t)}, ${a.innerRatio}, ${a.pieArcs}, ${x}, ${y})` : `pieTip(${items}, ${box00(a, t)}, ${a.innerRatio}, ${x}, ${y})`),
   },
 }
 
@@ -3888,7 +3900,10 @@ export function chartSpecFieldIndex(name: string): number {
  * the option is not literal or compiles to another kind.
  */
 function compiledFamilyPlan(raw: Extract<ExprIR, { kind: 'object' }>, resolve: (n: string) => ExprIR | undefined, kind: string): { plan: NonNullable<ReturnType<typeof compileFamily>>['plan']; series: Record<string, unknown> } | undefined {
-  const plainOption = irToValue(raw, resolve)
+  // The tooltip never shapes the plan, and native runs no formatter — so a function there
+  // (a `valueFormatter`) must not cost the chart its arcs, labels and placement.
+  const planInput: Extract<ExprIR, { kind: 'object' }> = { ...raw, fields: raw.fields.filter((f) => f.name !== 'tooltip') }
+  const plainOption = irToValue(planInput, resolve)
   if (!plainOption.ok || !isPlainRecord(plainOption.value)) return undefined
   const compiled = compileFamily(plainOption.value as never)
   if (compiled === null || compiled.plan.kind !== kind) return undefined

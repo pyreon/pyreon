@@ -20,7 +20,7 @@ import { fitCircle, hitArc, layoutArcs, layoutArcsWith } from './arc'
 import type { ArcConfig, Slice } from './arc'
 import { hitCalendarIndex } from './calendar'
 import type { CalendarLayout, CalendarValue } from './calendar'
-import { plain } from './format'
+import { groupThousands, plain } from './format'
 import { geoValueOf, hitGeoIndex } from './geo'
 import type { GeoLayout, GeoValue } from './geo'
 import { hitFunnel } from './funnel'
@@ -313,6 +313,18 @@ export function pieTipWith(slices: Slice[], box: Rect, innerRatio: Double, arcs:
   return pieTipAt(slices, pieHitWith(slices, box, innerRatio, arcs, px, py))
 }
 
+/**
+ * ECharts' default tooltip rows for the slice under a point: the series name,
+ * then its colour, name and grouped value — the flat shape `renderTooltipRows`
+ * draws. Empty on a miss.
+ */
+export function pieTipRowsWith(slices: Slice[], box: Rect, innerRatio: Double, arcs: ArcConfig, px: Double, py: Double, seriesName: string): string[] {
+  const i = pieHitWith(slices, box, innerRatio, arcs, px, py)
+  if (i < 0 || i >= slices.length) return []
+  const s = slices[i]!
+  return [seriesName, s.color, s.label, groupThousands(s.value)]
+}
+
 export function pieTipAt(slices: Slice[], i: number): string[] {
   if (i < 0 || i >= slices.length) return []
   const s = slices[i]!
@@ -378,6 +390,55 @@ export function renderTooltip(
   for (const l of lines) {
     cmds.push({ kind: 'text', text: l, at: { x: p.x + opts.pad, y }, fill: opts.text, size: opts.fontSize, align: 'start', baseline: 'top' })
     y = y + lineH
+  }
+  return cmds
+}
+
+/**
+ * ECharts' default tooltip box as draw commands: `rows[0]` the header (a
+ * series or a category name; '' for none), then (colour, name, value) triples — a 10px
+ * swatch, the name, and the value bold at the right with at least 20px
+ * between them; rows 10px apart. The box is edged in the first row's colour
+ * when `edgeByRow` (an item tooltip), else the theme's border.
+ */
+export function renderTooltipRows(rows: string[], at: Pt, bounds: Rect, opts: TooltipOptions, measure: (text: string, size: Double) => Double, edgeByRow: boolean): DrawCmd[] {
+  const cmds: DrawCmd[] = []
+  if (rows.length < 4) return cmds
+  const fs = opts.fontSize
+  const count = Math.floor((rows.length - 1) / 3)
+  const head = rows[0]! !== ''
+  let w = head ? measure(rows[0]!, fs) : 0.0
+  for (let k = 0; k < count; k++) {
+    const rw = 16.0 + measure(rows[1 + k * 3 + 1]!, fs) + 20.0 + measure(rows[1 + k * 3 + 2]!, fs)
+    if (rw > w) w = rw
+  }
+  const inner = (head ? fs + 10.0 : 0.0) + count * fs + (count - 1) * 10.0
+  const size: Size = { w: w + opts.pad * 2.0, h: inner + opts.pad * 2.0 }
+  const p = placeTooltip(at, size, bounds, 12.0)
+  const r = opts.radius
+  const edge = edgeByRow ? rows[1]! : opts.border
+  cmds.push({ kind: 'rect', rect: { x: p.x, y: p.y, w: size.w, h: size.h }, fill: opts.fill, corners: [r, r, r, r] })
+  cmds.push({
+    kind: 'polyline',
+    points: [
+      { x: p.x, y: p.y },
+      { x: p.x + size.w, y: p.y },
+      { x: p.x + size.w, y: p.y + size.h },
+      { x: p.x, y: p.y + size.h },
+      { x: p.x, y: p.y },
+    ],
+    stroke: edge,
+    width: 1.0,
+  })
+  const left = p.x + opts.pad
+  const right = p.x + size.w - opts.pad
+  if (head) cmds.push({ kind: 'text', text: rows[0]!, at: { x: left, y: p.y + opts.pad }, fill: opts.text, size: fs, align: 'start', baseline: 'top' })
+  let y = head ? p.y + opts.pad + fs + 10.0 : p.y + opts.pad
+  for (let k = 0; k < count; k++) {
+    cmds.push({ kind: 'circle', center: { x: left + 5.0, y: y + fs / 2.0 }, radius: 5.0, fill: rows[1 + k * 3]! })
+    cmds.push({ kind: 'text', text: rows[1 + k * 3 + 1]!, at: { x: left + 16.0, y }, fill: opts.text, size: fs, align: 'start', baseline: 'top' })
+    cmds.push({ kind: 'text', text: rows[1 + k * 3 + 2]!, at: { x: right, y }, fill: opts.text, size: fs, align: 'end', baseline: 'top', weight: 'bold' })
+    y = y + fs + 10.0
   }
   return cmds
 }

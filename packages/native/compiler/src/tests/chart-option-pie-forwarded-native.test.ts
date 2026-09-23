@@ -54,7 +54,22 @@ describe.each(['swift', 'kotlin'] as const)('forwarded option pie on %s', (targe
     expect(r.code).toContain('PieLabelOptions(')
     expect(r.code).toContain(`position${sep}"outside"`)
     expect(r.code).toContain('pieHitWith(')
-    expect(r.code).toContain('pieTipWith(')
+    expect(r.code).toContain('pieTipRowsWith(')
+  })
+
+  it("tips in ECharts' default rows — swatch, name, bold grouped value — under the series name", () => {
+    expect(r.code).toContain('renderTooltipRows(')
+    const named = transform(OPTION.replace("type: 'pie',", "type: 'pie', name: 'Traffic',"), { target })
+    expect(named.warnings).toEqual([])
+    expect(named.code).toMatch(/pieTipRowsWith\([^\n]*"Traffic"\)/)
+  })
+
+  it('a formatter keeps the plain lines tooltip (native has no formatter to run)', () => {
+    const shaped = transform(OPTION.replace('series: [{', "tooltip: { valueFormatter: (v: number) => v + ' kg' },\n      series: [{"), { target })
+    // The function is the tooltip's alone: the arcs and placement still cross.
+    expect(shaped.code).toContain('ArcConfig(')
+    expect(shaped.code).toContain('pieTipWith(')
+    expect(shaped.code).not.toContain('renderTooltipRows(')
   })
 
   it("carries a datum's own colour", () => {

@@ -132,7 +132,7 @@ describe('OptionChart family options lower to native hosts', () => {
       expect(r.code).toContain('"Share"')
       expect(r.code).toContain('pieLegend(')
       // The tooltip hits the same laid-out arcs the web compiled (ECharts' start angle and direction).
-      expect(r.code).toContain('pieTipWith(')
+      expect(r.code).toContain('pieTipRowsWith(')
     })
 
     it(`${target}: gauge preserves its numeric domain, value, and hidden detail`, () => {

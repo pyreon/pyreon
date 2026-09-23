@@ -66,7 +66,8 @@ describe('<OptionChart> tooltip component (real browser)', () => {
     await flush()
     const b = box(container)
     expect(b.style.display).toBe('block')
-    expect(b.textContent).toBe('Tue\nSales: 8\nCost: 3')
+    // ECharts' default content: the category, then a row (swatch, series, value) per series.
+    expect(b.innerText.split('\n').map((l) => l.trim()).filter((l) => l !== '')).toEqual(['Tue', 'Sales', '8', 'Cost', '3'])
   })
 
   it('a template formatter fills {b} {a0} {c0} {a1} {c1}, and <br/> breaks the line', async () => {
@@ -111,7 +112,7 @@ describe('<OptionChart> tooltip component (real browser)', () => {
     const c = container.querySelector('canvas')!
     at(c, 'pointermove', column(c, 3)[0], 72)
     await flush()
-    expect(box(container).textContent).toBe('Thu\nSales: 2 kg\nCost: 1 kg')
+    expect(box(container).innerText.split('\n').map((l) => l.trim()).filter((l) => l !== '')).toEqual(['Thu', 'Sales', '2 kg', 'Cost', '1 kg'])
   })
 
   it('a fixed position puts the box there, not at the pointer', async () => {

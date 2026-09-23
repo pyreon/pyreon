@@ -13913,7 +13913,9 @@ function emitSwiftAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const args: ChartHostArgs = { data: [], options, W: frameLit !== undefined ? 'pyreonFrame.w' : chrome.width(W), H: frameLit !== undefined ? 'pyreonFrame.h' : chrome.height(H), gutter: '0.0', innerRatio: swiftChartDouble(e, 'innerRadius', 0, indent), showLabels: readStaticAttr(e, 'showLabels') === false ? 'false' : 'true', fontSize: tf.fontSize, ...(tag === 'PieChart' ? chartPieArgs(e, 'swift', W, H, chrome.left, chrome.top, tf.label) : {}) }
   const inFrame = (cmds: string): string => (frameLit !== undefined ? `pyreonShiftCmdsXY(${cmds}, pyreonFrame.x, pyreonFrame.y)` : cmds)
   const tipCmds = tooltip
-    ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)`
+    ? args.pieTipHeader !== undefined
+      ? ` + renderTooltipRows(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure, true)`
+      : ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)`
     : ''
   const canvas = swiftChartCanvas(e, `${chrome.mirror(chrome.wrap(inFrame(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, SWIFT_CHART_TARGET))))}${tipCmds}`, indent)
   // Both `onSelect` (already an index on these hosts) and `onSelectIndex` lower to the tap; `tooltip` shares it.

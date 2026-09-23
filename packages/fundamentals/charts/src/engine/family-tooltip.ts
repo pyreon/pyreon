@@ -7,6 +7,7 @@
  * template syntax, placement and look the cartesian path uses, so a
  * `tooltip.formatter` written for a pie reads the way ECharts reads it.
  */
+import { tooltipMarkup, tooltipNumber } from './tooltip-markup'
 import type { CanvasHostProps, HostItem, TooltipView } from './canvas-host'
 import type { FamilyPlan } from './option-family'
 import { readTooltipOption } from './option-tooltip'
@@ -112,6 +113,12 @@ export function familyItemTooltip(inputs: FamilyTooltipInputs): (item: HostItem,
     if (typeof f === 'function') {
       const out = f(params)
       return { ...view, html: typeof out === 'string' ? out : String(out ?? '') }
+    }
+    // A single value takes ECharts' own default content: the series name, then a row of swatch, name and value
+    // (comma-grouped unless a valueFormatter shaped it), the box edged in the item's colour.
+    if (typeof item.value === 'number' && Number.isFinite(item.value)) {
+      const rowValue = spec.valueFormatter === undefined ? tooltipNumber(item.value) : value
+      return { ...view, css: `border-color:${color};${spec.css ?? ''}`, html: tooltipMarkup(seriesName, [{ color, name: item.name, value: rowValue }]) }
     }
     // The family's own lines, unless a valueFormatter asks for the value re-shown.
     if (lines.length > 0 && spec.valueFormatter === undefined) return { ...view, lines }

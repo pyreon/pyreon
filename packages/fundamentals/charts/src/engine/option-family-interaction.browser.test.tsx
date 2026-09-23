@@ -54,9 +54,10 @@ describe('<OptionChart> family tooltip, cursor and silent (real browser)', () =>
     expect(shownText(container)).toBeNull()
   })
 
-  it('a tooltip component shows the family\'s own lines for the hovered slice', async () => {
+  it('a tooltip component shows ECharts\' default content for the hovered slice: the series, then swatch, name and value', async () => {
     const { container } = await hover(pie({}, { tooltip: {} }), inSlice1)
-    expect(shownText(container)).toBe('b\n2 (67%)')
+    const b = container.querySelector('[data-pyreon-chart-tooltip]') as HTMLElement
+    expect(b.innerText.split('\n').map((l) => l.trim()).filter((l) => l !== '')).toEqual(['Share', 'b', '2'])
   })
 
   it('a template formatter reads {a} {b} {c} {d} with ECharts\' pie percent (largest remainder, two places)', async () => {

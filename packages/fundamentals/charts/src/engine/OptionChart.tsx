@@ -6,6 +6,7 @@
 // two host-less shapes render through `optionToSvg` into an inline `<svg>`. A
 // `timeline` steps on `autoPlay` or is driven by `timelineIndex`.
 
+import { tooltipMarkup, tooltipNumber } from './tooltip-markup'
 import type { TitleLink } from './option-title'
 import { h, onMount } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
@@ -1041,8 +1042,14 @@ export function OptionChart(props: OptionChartProps): VNode {
       const out = f(params)
       return { ...view, html: typeof out === 'string' ? out : String(out ?? '') }
     }
-    const title = ordered[0]!.name
-    return { ...view, lines: axis ? [title, ...ordered.map((e) => `${e.seriesName}: ${e.value}`)] : [ordered[0]!.seriesName, `${title}: ${ordered[0]!.value}`] }
+    // ECharts' own default content: a header, then a row per value (dot, name, bold value), numbers comma-grouped
+    // unless a valueFormatter shaped them; the box edged in the series colour for an item, neutral for an axis.
+    const shownOf = (e: TooltipEntry): string => (spec.valueFormatter === undefined ? tooltipNumber(rows.find((r) => r.entry === e)!.value) : e.value)
+    const edge = `border-color:${axis ? '#b7b9be' : ordered[0]!.color};`
+    const html = axis
+      ? tooltipMarkup(ordered[0]!.name, ordered.map((e) => ({ color: e.color, name: e.seriesName, value: shownOf(e) })))
+      : tooltipMarkup(ordered[0]!.seriesName, [{ color: ordered[0]!.color, name: ordered[0]!.name, value: shownOf(ordered[0]!) }])
+    return { ...view, css: `${edge}${spec.css ?? ''}`, html }
   }
 
   /** The title link under a point, if any. */

@@ -7,6 +7,8 @@ const tipFor = (option: Record<string, unknown>, opts: { kind?: string; prop?: b
   familyItemTooltip({ option: () => option, kind: () => (opts.kind ?? 'pie') as never, tooltipProp: () => opts.prop, size: () => ({ w: 300, h: 200 }) })
 const pie = (extra: Record<string, unknown> = {}) => ({ series: [{ type: 'pie', name: 'Share', data: [{ name: 'a', value: 1 }, { name: 'b', value: 2 }], ...extra }] })
 const view = (v: ReturnType<ReturnType<typeof tipFor>>): TooltipView => v as TooltipView
+/** The text a reader sees in the view's HTML, one entry per element that holds text. */
+const textOf = (v: TooltipView): string[] => [...(v.html ?? '').matchAll(/>([^<]+)</g)].map((m) => m[1]!)
 
 describe('familyItemTooltip', () => {
   it('no tooltip component: nothing, unless the prop keeps the family\'s own lines', () => {
@@ -22,13 +24,13 @@ describe('familyItemTooltip', () => {
   })
   it('triggerOn: click answers only a press; none never', () => {
     expect(tipFor({ ...pie(), tooltip: { triggerOn: 'click' } })(item(), ['b'], false)).toBeNull()
-    expect(view(tipFor({ ...pie(), tooltip: { triggerOn: 'click' } })(item(), ['b'], true)).lines).toEqual(['b'])
+    expect(textOf(view(tipFor({ ...pie(), tooltip: { triggerOn: 'click' } })(item(), ['b'], true)))).toEqual(['Share', 'b', '2'])
     expect(tipFor({ ...pie(), tooltip: { triggerOn: 'none' } })(item(), ['b'], true)).toBeNull()
   })
   it('trigger axis: nothing on a pie, the family\'s lines on a polar or a river', () => {
     expect(tipFor({ ...pie(), tooltip: { trigger: 'axis' } })(item(), ['b'], false)).toBeNull()
-    expect(view(tipFor({ ...pie(), tooltip: { trigger: 'axis' } }, { kind: 'polar' })(item(), ['b'], false)).lines).toEqual(['b'])
-    expect(view(tipFor({ ...pie(), tooltip: { trigger: 'axis' } }, { kind: 'themeRiver' })(item(), ['b'], false)).lines).toEqual(['b'])
+    expect(textOf(view(tipFor({ ...pie(), tooltip: { trigger: 'axis' } }, { kind: 'polar' })(item(), ['b'], false)))).toEqual(['Share', 'b', '2'])
+    expect(textOf(view(tipFor({ ...pie(), tooltip: { trigger: 'axis' } }, { kind: 'themeRiver' })(item(), ['b'], false)))).toEqual(['Share', 'b', '2'])
   })
   it('a series\' own tooltip refines the global one; a lone series tooltip works without a global one', () => {
     expect(view(tipFor({ ...pie({ tooltip: { formatter: 'own {b}' } }), tooltip: { formatter: 'global {b}' } })(item(), [], false)).html).toBe('own b')
@@ -52,9 +54,12 @@ describe('familyItemTooltip', () => {
     tipFor({ series: [{ type: 'sankey', data: [{ name: 'x' }] }], tooltip: { formatter: (p: Record<string, unknown>) => (seen.push(p), '') } }, { kind: 'sankey' })(item({ dataType: 'edge', seriesName: 'Flow' }), [], false)
     expect(seen[0]).toMatchObject({ dataType: 'edge', seriesName: 'Flow', data: undefined })
   })
-  it('default content: the family\'s lines, or a name: value line when a valueFormatter re-shows the value', () => {
-    expect(view(tipFor({ ...pie(), tooltip: {} })(item(), ['b', '2 (67%)'], false)).lines).toEqual(['b', '2 (67%)'])
-    expect(view(tipFor({ ...pie(), tooltip: { valueFormatter: (v: unknown) => `${String(v)} kg` } })(item({ percent: 66.67 }), ['b'], false)).lines).toEqual(['Share', 'b: 2 kg (66.67%)'])
+  it('default content: ECharts\' markup for a single value (series name, then swatch, name and value); the family\'s lines otherwise', () => {
+    // As ECharts: no percent in the default, a thousands-grouped value, the box edged in the item's colour.
+    const plain = view(tipFor({ ...pie(), tooltip: {} })(item({ value: 2500 }), ['b', '2500 (67%)'], false))
+    expect(textOf(plain)).toEqual(['Share', 'b', '2,500'])
+    expect(plain.css).toContain('border-color:#123456')
+    expect(textOf(view(tipFor({ ...pie(), tooltip: { valueFormatter: (v: unknown) => `${String(v)} kg` } })(item({ percent: 66.67 }), ['b'], false)))).toEqual(['Share', 'b', '2 kg'])
     expect(view(tipFor({ series: [{ type: 'treemap' }], tooltip: {} }, { kind: 'treemap' })(item({ value: [1, Number.NaN, 'x', null] }), [], false)).lines).toEqual(['b: 1, -, x, -'])
     expect(view(tipFor({ series: [{ type: 'treemap' }], tooltip: {} }, { kind: 'treemap' })(item({ value: undefined, color: undefined }), [], false)).lines).toEqual(['b: -'])
   })

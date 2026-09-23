@@ -809,6 +809,24 @@ fun plain(v: Double): String {
     return "${(Math.round(v * 1000.0)).toDouble() / (1000.0).toDouble()}"
   }
 
+fun groupThousands(v: Double): String {
+    val s = plain(v)
+    val neg = s.length > 0 && s[0].toString() == "-"
+    val body = if (neg) s.drop(1) else s
+    val dot = body.indexOf(".")
+    val whole = if (dot < 0) body else body.drop(0).take(maxOf(0, (dot) - (0)))
+    val frac = if (dot < 0) "" else body.drop(dot)
+    var out = ""
+    var end = whole.length
+    while (end > 0) {
+      val start = if (end - 3 > 0) end - 3 else 0
+      val chunk = whole.drop(start).take(maxOf(0, (end) - (start)))
+      out = if (out == "") chunk else "${chunk},${out}"
+      end = start
+    }
+    return "${if (neg) "-" else ""}${out}${frac}"
+  }
+
 fun compact(v: Double): String {
     val abs = Math.abs(v)
     val sign = if (v < 0.0) "-" else ""
@@ -10921,6 +10939,15 @@ fun pieHitWith(slices: List<Slice>, box: PyreonChartRect, innerRatio: Double, ar
 
 fun pieTipWith(slices: List<Slice>, box: PyreonChartRect, innerRatio: Double, arcs: ArcConfig, px: Double, py: Double): List<String> = pieTipAt(slices, pieHitWith(slices, box, innerRatio, arcs, px, py))
 
+fun pieTipRowsWith(slices: List<Slice>, box: PyreonChartRect, innerRatio: Double, arcs: ArcConfig, px: Double, py: Double, seriesName: String): List<String> {
+    val i = pieHitWith(slices, box, innerRatio, arcs, px, py)
+    if (i < 0 || i >= slices.length) {
+      return listOf()
+    }
+    val s = slices[i]
+    return listOf(seriesName, s.color, s.label, groupThousands(s.value))
+  }
+
 fun pieTipAt(slices: List<Slice>, i: Int): List<String> {
     if (i < 0 || i >= slices.length) {
       return listOf()
@@ -10956,6 +10983,43 @@ fun renderTooltip(lines: List<String>, at: PyreonChartPt, bounds: PyreonChartRec
     for (l in lines) {
       cmds.add(PyreonDrawCmd(kind = "text", fill = opts.text, text = l, at = PyreonChartPt(x = p.x + opts.pad, y = y), size = opts.fontSize, align = "start", baseline = "top"))
       y = y + lineH
+    }
+    return cmds
+  }
+
+fun renderTooltipRows(rows: List<String>, at: PyreonChartPt, bounds: PyreonChartRect, opts: TooltipOptions, measure: (String, Double) -> Double, edgeByRow: Boolean): List<PyreonDrawCmd> {
+    val cmds: MutableList<PyreonDrawCmd> = mutableListOf()
+    if (rows.length < 4) {
+      return cmds
+    }
+    val fs = opts.fontSize
+    val count = Math.floor(((rows.length - 1)).toDouble() / (3).toDouble())
+    val head = rows[0] != ""
+    var w = if (head) measure(rows[0], fs) else 0.0
+    for (k in 0 until Math.ceil(count).toInt()) {
+      val rw = 16.0 + measure(rows[1 + k * 3 + 1], fs) + 20.0 + measure(rows[1 + k * 3 + 2], fs)
+      if (rw > w) {
+        w = rw
+      }
+    }
+    val inner = (if (head) fs + 10.0 else 0.0) + count * fs + (count - 1) * 10.0
+    val size = Size(w = w + opts.pad * 2.0, h = inner + opts.pad * 2.0)
+    val p = placeTooltip(at, size, bounds, 12.0)
+    val r = opts.radius
+    val edge = if (edgeByRow) rows[1] else opts.border
+    cmds.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = p.x, y = p.y, w = size.w, h = size.h), fill = opts.fill, corners = listOf(r, r, r, r)))
+    cmds.add(PyreonDrawCmd(kind = "polyline", stroke = edge, width = 1.0, points = listOf(PyreonChartPt(x = p.x, y = p.y), PyreonChartPt(x = p.x + size.w, y = p.y), PyreonChartPt(x = p.x + size.w, y = p.y + size.h), PyreonChartPt(x = p.x, y = p.y + size.h), PyreonChartPt(x = p.x, y = p.y))))
+    val left = p.x + opts.pad
+    val right = p.x + size.w - opts.pad
+    if (head) {
+      cmds.add(PyreonDrawCmd(kind = "text", fill = opts.text, text = rows[0], at = PyreonChartPt(x = left, y = p.y + opts.pad), size = fs, align = "start", baseline = "top"))
+    }
+    var y = if (head) p.y + opts.pad + fs + 10.0 else p.y + opts.pad
+    for (k in 0 until Math.ceil(count).toInt()) {
+      cmds.add(PyreonDrawCmd(kind = "circle", fill = rows[1 + k * 3], center = PyreonChartPt(x = left + 5.0, y = y + (fs).toDouble() / (2.0).toDouble()), radius = 5.0))
+      cmds.add(PyreonDrawCmd(kind = "text", fill = opts.text, text = rows[1 + k * 3 + 1], at = PyreonChartPt(x = left + 16.0, y = y), size = fs, align = "start", baseline = "top"))
+      cmds.add(PyreonDrawCmd(kind = "text", fill = opts.text, text = rows[1 + k * 3 + 2], at = PyreonChartPt(x = right, y = y), size = fs, align = "end", baseline = "top", weight = "bold"))
+      y = y + fs + 10.0
     }
     return cmds
   }

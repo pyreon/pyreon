@@ -11824,7 +11824,9 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const inFrame = (c: string): string => (frameLit !== undefined ? `pyreonShiftCmdsXY(${c}, pyreonFrame.x, pyreonFrame.y)` : c)
   const args: ChartHostArgs = { data: [], options, W: frameLit !== undefined ? 'pyreonFrame.w' : chrome.width(W), H: frameLit !== undefined ? 'pyreonFrame.h' : chrome.height(H), gutter: '0.0', innerRatio: kotlinChartDouble(e, 'innerRadius', 0, indent), showLabels: readStaticAttrKotlin(e, 'showLabels') === false ? 'false' : 'true', fontSize: tf.fontSize, ...(tag === 'PieChart' ? chartPieArgs(e, 'kotlin', W, H, chrome.left, chrome.top, tf.label) : {}) }
   const tipCmds = tooltip
-    ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)`
+    ? args.pieTipHeader !== undefined
+      ? ` + renderTooltipRows(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure, true)`
+      : ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)`
     : ''
   const cmds = `${chrome.mirror(chrome.wrap(inFrame(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, KOTLIN_CHART_TARGET))))}${tipCmds}`
   const rawTx = '(pyreonTap.x / pyreonDensity).toDouble()'
