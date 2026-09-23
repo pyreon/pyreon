@@ -257,7 +257,11 @@ class CounterInstrumentedTest {
         val onMain = java.util.concurrent.CopyOnWriteArrayList<Boolean>()
         lateinit var state: com.pyreon.runtime.PyreonFlowState<String>
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            state = com.pyreon.runtime.PyreonFlowState()
+            // Motion forced ON: with system animations off (CI emulators run
+            // with animator scale 0), the engine honours reduced motion and
+            // jumps to the end in ONE synchronous frame on this thread, which
+            // never touches the scheduler this test exists to check.
+            state = com.pyreon.runtime.PyreonFlowState(reducedMotion = false)
             state.onViewportChange { onMain.add(android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) }
             state.animateViewport(x = 100.0, duration = 120.0)
         }
