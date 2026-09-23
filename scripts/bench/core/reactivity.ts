@@ -44,17 +44,31 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { cpus, loadavg } from 'node:os'
+import { cpus, loadavg, tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { writeFileSync } from 'node:fs'
+import { cpSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '../../..')
 
-type Lib = 'pyreon' | 'preact' | 'solid'
-const LIBS: Lib[] = ['pyreon', 'preact', 'solid']
-const LIB_LABEL: Record<Lib, string> = { pyreon: 'Pyreon', preact: 'Preact', solid: 'Solid' }
+type Lib = 'pyreon' | 'pyreonFolded' | 'preact' | 'solid'
+const LIBS: Lib[] = ['pyreon', 'pyreonFolded', 'preact', 'solid']
+const LIB_LABEL: Record<Lib, string> = {
+  pyreon: 'Pyreon',
+  pyreonFolded: 'Pyreon-bundled',
+  preact: 'Preact',
+  solid: 'Solid',
+}
+/**
+ * `pyreon` loads the built `lib/` exactly as an UNBUNDLED consumer does, so
+ * its `process.env.NODE_ENV` dev gates are live reads — ~1ns under bun, ~145ns
+ * under Node, where `process.env` is a native interceptor. `pyreonFolded` is
+ * the same `lib/` with every `process.env.NODE_ENV` replaced by
+ * `"production"`, which is what every bundler (Vite/Rolldown/esbuild/webpack)
+ * does for a browser app. Report both: they answer different questions.
+ */
+const FOLDED_DIR = resolve(tmpdir(), 'pyreon-bench-reactivity-folded')
 
 interface Section {
   id: string
@@ -103,7 +117,7 @@ const SECTIONS: Section[] = [
     id: 'store',
     title: 'Store Read + Write (Pyreon only)',
     label: 'store read+write',
-    libs: ['pyreon'],
+    libs: ['pyreon', 'pyreonFolded'],
   },
 ]
 
@@ -121,10 +135,9 @@ function expectEq(what: string, got: number, want: number): void {
 }
 
 async function buildCase(section: string, lib: Lib): Promise<Case> {
-  if (lib === 'pyreon') {
-    const R = await import(
-      pathToFileURL(resolve(ROOT, 'packages/core/reactivity/lib/index.js')).href
-    )
+  if (lib === 'pyreon' || lib === 'pyreonFolded') {
+    const base = lib === 'pyreon' ? resolve(ROOT, 'packages/core/reactivity/lib') : FOLDED_DIR
+    const R = await import(pathToFileURL(resolve(base, 'index.js')).href)
     return pyreonCase(section, R)
   }
   if (lib === 'preact') return preactCase(section, await import('@preact/signals-core'))
@@ -556,7 +569,23 @@ function engineOf(runtime: string): string {
   return runtime === 'bun' ? `bun ${v} (JavaScriptCore)` : `node ${v} (V8)`
 }
 
+/** Copy `lib/` and fold `process.env.NODE_ENV` the way a bundler's define does. */
+function buildFoldedLib(): void {
+  rmSync(FOLDED_DIR, { recursive: true, force: true })
+  cpSync(resolve(ROOT, 'packages/core/reactivity/lib'), FOLDED_DIR, { recursive: true })
+  const walk = (dir: string): void => {
+    for (const name of readdirSync(dir)) {
+      const p = resolve(dir, name)
+      if (statSync(p).isDirectory()) walk(p)
+      else if (p.endsWith('.js'))
+        writeFileSync(p, readFileSync(p, 'utf-8').replaceAll('process.env.NODE_ENV', '"production"'))
+    }
+  }
+  walk(FOLDED_DIR)
+}
+
 async function orchestrate(): Promise<void> {
+  buildFoldedLib()
   const argv = process.argv.slice(2)
   const quick = argv.includes('--quick')
   const rtIdx = argv.indexOf('--runtime')

@@ -108,7 +108,9 @@ function extractReactivity(output: string, results: Record<string, BenchMetric>)
   const lines = output.split('\n')
   for (const line of lines) {
     const parsed = parseOpsLine(line)
-    if (!parsed || !parsed.label.startsWith('Pyreon')) continue
+    // `Pyreon-bundled …` rows are the NODE_ENV-folded variant; keep the key space
+    // to the plain `Pyreon …` rows it has always recorded.
+    if (!parsed || !/^Pyreon\s/.test(parsed.label)) continue
 
     const key = parsed.label
       .replace(/^Pyreon\s+/, '')
@@ -196,7 +198,9 @@ function extractHead(output: string, results: Record<string, BenchMetric>): void
   const lines = output.split('\n')
   for (const line of lines) {
     const parsed = parseOpsLine(line)
-    if (!parsed || !parsed.label.startsWith('Pyreon')) continue
+    // `Pyreon-bundled …` rows are the NODE_ENV-folded variant; keep the key space
+    // to the plain `Pyreon …` rows it has always recorded.
+    if (!parsed || !/^Pyreon\s/.test(parsed.label)) continue
 
     const key = parsed.label
       .replace(/^Pyreon\s+/, '')
