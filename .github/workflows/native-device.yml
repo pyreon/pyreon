@@ -846,6 +846,13 @@ jobs:
         # SHA-pinned per PinnedDependenciesID supply-chain hardening.
         # reactivecircus/android-emulator-runner@v2
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        env:
+          # No Gradle daemon INSIDE the emulator step. The action waits for its
+          # script's output streams to close, and a daemon started here inherits
+          # them — so after every test passed and the emulator was killed, the
+          # step sat idle until the 60-min job timeout (observed on this PR). The
+          # build steps outside the emulator keep the daemon and its warm JVM.
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
         with:
           api-level: 33
           target: google_apis
@@ -926,6 +933,8 @@ jobs:
         # iOS XCUITest, so the "one source → both platforms" claim covers a real
         # app rather than a demo.
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false # see the todomvc emulator step
         with:
           api-level: 33
           target: google_apis
@@ -958,6 +967,8 @@ jobs:
         # multiple times in the same job) — an acceptable cost for this
         # job's runtime budget.
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false # see the todomvc emulator step
         with:
           api-level: 33
           target: google_apis
@@ -991,6 +1002,8 @@ jobs:
       - name: Run Espresso test on Android Emulator — native-router-demo-android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' router-demo ')
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false # see the todomvc emulator step
         with:
           api-level: 33
           target: google_apis
@@ -1051,6 +1064,8 @@ jobs:
       - name: Run Espresso test on Android Emulator — native-tasks-android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' tasks ')
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false # see the todomvc emulator step
         with:
           api-level: 33
           target: google_apis
