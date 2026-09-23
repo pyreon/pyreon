@@ -509,7 +509,7 @@ final class PyreonTasksUITests: XCTestCase {
         let nodeCount = app.staticTexts["flow-node-count"].firstMatch
         XCTAssertTrue(nodeCount.waitForExistence(timeout: 10), "flow-node-count missing")
         XCTAssertEqual(nodeCount.label, "2", "seeded node count")
-        XCTAssertEqual(app.staticTexts["flow-edge-count"].firstMatch.label, "1", "seeded edge count")
+        XCTAssertEqual(app.staticTexts["flow-edge-count"].firstMatch.label, "2", "seeded edge count")
         XCTAssertEqual(app.staticTexts["flow-zoom"].firstMatch.label, "zoom 1.0", "initial zoom")
         tapAfterScrolling(app.buttons["flow-add"].firstMatch, in: app)
         XCTAssertTrue(waitForLabel(nodeCount, "3", timeout: 5), "addNode did not reach the native engine (label: \(nodeCount.label))")
@@ -522,6 +522,10 @@ final class PyreonTasksUITests: XCTestCase {
         // reported frame is distorted and a coordinate drag misses it.
         let canvas = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Task flow")).firstMatch
         XCTAssertTrue(canvas.waitForExistence(timeout: 10), "Flow canvas (ariaLabel) did not render")
+        // The `wire` custom edge draws ARBITRARY SVG path data (a template
+        // literal), parsed by the native runtime: its #16a34a stroke must paint.
+        let wireGreen = colorPixels(canvas.screenshot().pngRepresentation, 0x16, 0xa3, 0x4a)
+        XCTAssertGreaterThan(wireGreen, 50, "the custom edge's arbitrary SVG path did not paint natively (\(wireGreen) green px)")
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "minimap")).firstMatch.exists, "MiniMap chrome missing")
         let startNode = app.staticTexts["Start"].firstMatch
         XCTAssertTrue(startNode.waitForExistence(timeout: 5), "node 'Start' did not render on the canvas")

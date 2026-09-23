@@ -1605,6 +1605,7 @@ enum class PyreonFlowPosition { Top, Right, Bottom, Left }
 data class PyreonFlowPathPoint(val x: Double, val y: Double)
 data class PyreonFlowPathResult(val path: String = "", val labelX: Double = 0.0, val labelY: Double = 0.0)
 fun pyreonStraightPath(sourceX: Double, sourceY: Double, targetX: Double, targetY: Double) = PyreonFlowPathResult()
+fun pyreonFlowPathResultFromSvg(d: String) = PyreonFlowPathResult()
 fun pyreonBezierPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = PyreonFlowPosition.Bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = PyreonFlowPosition.Top, curvature: Double = 0.25) = PyreonFlowPathResult()
 fun pyreonWaypointPath(sourceX: Double, sourceY: Double, targetX: Double, targetY: Double, waypoints: List<PyreonFlowPathPoint>) = PyreonFlowPathResult()
 fun pyreonSmoothStepPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = PyreonFlowPosition.Bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = PyreonFlowPosition.Top, borderRadius: Double = 5.0, offset: Double = 20.0) = PyreonFlowPathResult()
@@ -1890,7 +1891,7 @@ data class PyreonFlowNodeResizerConfig(val minWidth: Double = 50.0, val minHeigh
 data class PyreonFlowNodeToolbarConfig(val position: String = "top", val align: String = "center", val offset: Double = 8.0, val showOnSelect: Boolean = true, val selectedOverride: Boolean? = false, val nodeIdOverride: String? = null)
 data class PyreonFlowCustomEdgeContext(val edge: PyreonFlowEdge, val sourceX: Double, val sourceY: Double, val targetX: Double, val targetY: Double, val sourcePosition: PyreonFlowPosition, val targetPosition: PyreonFlowPosition, val selected: Boolean, val labelX: Double, val labelY: Double)
 data class PyreonFlowConnectionLineContext(val sourceX: Double, val sourceY: Double, val targetX: Double, val targetY: Double, val sourcePosition: PyreonFlowPosition, val path: PyreonFlowPathResult)
-@Composable fun PyreonFlowCustomEdgePath(result: PyreonFlowPathResult, color: String = "#999999", width: Double = 1.5, dash: List<Double>? = null) {}
+@Composable fun PyreonFlowCustomEdgePath(result: PyreonFlowPathResult, color: String? = "#999999", width: Double = 1.5, dash: List<Double>? = null, fill: String? = null) {}
 @Composable fun PyreonFlowEdgeLabelRenderer(content: @Composable () -> Unit) { content() }
 
 @Composable

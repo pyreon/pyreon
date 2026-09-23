@@ -74,18 +74,20 @@ fun PyreonFlowEdgeCanvas(
 @Composable
 fun PyreonFlowCustomEdgePath(
     result: PyreonFlowPathResult,
-    color: String = "#999999",
+    /** The stroke colour; `null` draws no stroke (SVG `stroke: none`). */
+    color: String? = "#999999",
     width: Double = 1.5,
     dash: List<Double>? = null,
+    /** The fill colour; `null` draws no fill (SVG `fill: none`). */
+    fill: String? = null,
     modifier: Modifier = Modifier,
 ) {
-    val resolved = pyreonFlowEdgeColor(color)
     val effect = dash?.let { PathEffect.dashPathEffect(it.map(Double::toFloat).toFloatArray()) }
     Canvas(modifier.fillMaxSize()) {
-        drawPath(
-            pyreonFlowEdgePath(result.segments),
-            resolved,
-            style = Stroke(width = width.toFloat(), pathEffect = effect),
-        )
+        val path = pyreonFlowEdgePath(result.segments)
+        if (fill != null) drawPath(path, pyreonFlowEdgeColor(fill))
+        if (color != null) {
+            drawPath(path, pyreonFlowEdgeColor(color), style = Stroke(width = width.toFloat(), pathEffect = effect))
+        }
     }
 }

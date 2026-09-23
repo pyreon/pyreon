@@ -132,7 +132,7 @@ import {
 } from '@pyreon/primitives'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
 import { Background, Controls, Flow, Handle, MiniMap, Position, createFlow } from '@pyreon/flow'
-import type { NodeComponentProps } from '@pyreon/flow'
+import type { EdgeComponentProps, NodeComponentProps } from '@pyreon/flow'
 import { FlowWebView, type FlowWebViewGraph } from '@pyreon/flow/webview'
 
 type Task = { id: number; title: string; done: boolean }
@@ -362,6 +362,14 @@ function QuotesPage() {
   )
 }
 
+// A custom edge drawn from ARBITRARY SVG path data (a template literal, not a
+// path helper). The native runtimes parse the string themselves, so this is a
+// native view on iOS and Android, not a WebView. Pure green (#16a34a) is a
+// colour nothing else on the screen paints: the device suites count it.
+function WireEdge(props: EdgeComponentProps) {
+  return <path d={`M ${props.sourceX()} ${props.sourceY() + 12} L ${props.targetX()} ${props.targetY() + 12}`} style="fill: none; stroke: #16a34a; stroke-width: 4" />
+}
+
 function FlowScreen() {
   const navigate = useNavigate()
   // Flow-native device proof: `createFlow` lowers to PyreonFlowState on both
@@ -378,7 +386,10 @@ function FlowScreen() {
       { id: 'a', position: { x: 0, y: 0 }, data: { label: 'Start' }, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }] },
       { id: 'b', position: { x: 200, y: 0 }, data: { label: 'End' }, targetHandles: [{ id: 'in', type: 'target', position: 'left' }] },
     ],
-    edges: [{ id: 'e1', source: 'a', target: 'b', sourceHandle: 'out', targetHandle: 'in' }],
+    edges: [
+      { id: 'e1', source: 'a', target: 'b', sourceHandle: 'out', targetHandle: 'in' },
+      { id: 'wire', source: 'a', target: 'b', type: 'wire' },
+    ],
     minZoom: 0.5,
     maxZoom: 2,
   })
@@ -431,7 +442,7 @@ function FlowScreen() {
       <Button onPress={() => navigate('/tasks')} data-testid="flow-back">
         Back to tasks
       </Button>
-      <Flow instance={flow} ariaLabel="Task flow">
+      <Flow instance={flow} edgeTypes={{ wire: WireEdge }} ariaLabel="Task flow">
         <Background variant="dots" />
         <Controls />
         <MiniMap />

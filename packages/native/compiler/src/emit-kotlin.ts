@@ -31,6 +31,7 @@ import {
   resolveSpace,
 } from './canonical-primitives'
 import { FLOW_ARBITRARY_PATH_WARNING, intrinsicElementWarning, isIntrinsicElementTag } from './intrinsic-element-warning'
+import { resolveFlowPathPaint, type FlowPathPaintValue } from './flow-path-paint'
 import {
   buildComponentConstMap,
   chainHasOptional,
@@ -7525,24 +7526,27 @@ function emitKotlinFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
   const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'd')
   let value = attr?.kind === 'attr' ? attr.value : undefined
   if (value?.kind === 'arrow' && value.params.length === 0) value = value.body
+  // A structured helper result (`get*Path({...}).path`) or the connection
+  // line's `path()` keeps its segments; any other `d` is SVG path data,
+  // parsed at runtime into the same segments.
   const resultCode = value?.kind === 'member' && value.property === 'path'
     ? value.object.kind === 'call'
       ? emitKotlinExpr(value.object, indent)
       : `${kotlinIdent(value.property)}()`
     : value?.kind === 'call' && value.args.length === 0 && value.callee.kind === 'member' && value.callee.property === 'path'
       ? emitKotlinExpr(value, indent)
-      : undefined
+      : value !== undefined
+        ? `pyreonFlowPathResultFromSvg(${emitKotlinExpr(value, indent)})`
+        : undefined
   if (resultCode === undefined) {
     _emitWarnings.push(FLOW_ARBITRARY_PATH_WARNING)
     return 'Box {}'
   }
-  const style = readStaticAttrKotlin(e, 'style')
-  const stroke = readStaticAttrKotlin(e, 'stroke')
-  const color = typeof stroke === 'string' ? stroke : typeof style === 'string' ? (style.match(/#[0-9a-fA-F]{3,8}/)?.[0] ?? '#999999') : '#999999'
-  const widthAttr = readStaticAttrKotlin(e, 'stroke-width') ?? readStaticAttrKotlin(e, 'strokeWidth')
-  const styleWidth = typeof style === 'string' ? /stroke-width:\s*([0-9.]+)/.exec(style)?.[1] : undefined
-  const width = typeof widthAttr === 'number' ? widthAttr : styleWidth === undefined ? 1.5 : Number(styleWidth)
-  return `PyreonFlowCustomEdgePath(result = ${resultCode}, color = ${JSON.stringify(color)}, width = ${ktChartDouble(String(width))})`
+  const paint = resolveFlowPathPaint(e)
+  _emitWarnings.push(...paint.warnings)
+  const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'null' : v.kind === 'literal' ? JSON.stringify(v.value) : emitKotlinExpr(v.expr, indent)
+  const width = paint.width.kind === 'literal' ? ktChartDouble(String(paint.width.value)) : `(${emitKotlinExpr(paint.width.expr, indent)}).toDouble()`
+  return `PyreonFlowCustomEdgePath(result = ${resultCode}, color = ${color(paint.stroke)}, width = ${width}, fill = ${color(paint.fill)})`
 }
 
 function emitKotlinFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {

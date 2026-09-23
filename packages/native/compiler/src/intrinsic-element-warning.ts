@@ -25,8 +25,12 @@ export function intrinsicElementWarning(tag: string): string {
   )
 }
 
-/** The route for an arbitrary SVG path string inside a native Flow renderer. */
+/**
+ * A native Flow `<path>` with no `d`. Any `d` lowers: a path-helper result or
+ * the connection line's `path()` keeps its segments, and any other string is
+ * SVG path data the runtime parses (`PyreonFlowPathResult(svgPath:)` /
+ * `pyreonFlowPathResultFromSvg`).
+ */
 export const FLOW_ARBITRARY_PATH_WARNING =
-  'A native Flow <path> requires a structured path helper result (`get*Path({...}).path`) or the ' +
-  'custom connection-line `path()` accessor. An arbitrary SVG path string needs a NativeIOS/NativeAndroid ' +
-  'renderer, or host the diagram with `<FlowWebView>` from `@pyreon/flow/webview`, which draws it unchanged.'
+  'A native Flow <path> needs a `d` attribute: path data, a path helper result (`get*Path({...}).path`), ' +
+  'or the custom connection line `path()` accessor. Without one there is nothing to draw, so it was dropped.'

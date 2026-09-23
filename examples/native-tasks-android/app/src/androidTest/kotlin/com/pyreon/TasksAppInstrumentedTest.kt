@@ -552,7 +552,7 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("tasks-flow").performClick()
         assertTagDisplayed("flow-page", "after tasks-flow (/tasks -> /flow)")
         composeRule.onNodeWithTag("flow-node-count").assertTextEquals("2")
-        composeRule.onNodeWithTag("flow-edge-count").assertTextEquals("1")
+        composeRule.onNodeWithTag("flow-edge-count").assertTextEquals("2")
         composeRule.onNodeWithTag("flow-zoom").assertTextEquals("zoom 1.0")
         composeRule.onNodeWithTag("flow-add").performClick()
         composeRule.onNodeWithTag("flow-node-count").assertTextEquals("3")
@@ -564,6 +564,17 @@ class TasksAppInstrumentedTest {
         // initial zoom 1 / origin viewport, so the node sits where the seed put
         // it and no reset is needed.
         composeRule.onNodeWithContentDescription("Task flow").assertExists()
+        // The `wire` custom edge draws ARBITRARY SVG path data (a template
+        // literal), parsed by the native runtime: its #16a34a stroke must paint.
+        run {
+            val bmp = composeRule.onNodeWithContentDescription("Task flow").captureToImage().asAndroidBitmap()
+            var green = 0
+            for (y in 0 until bmp.height) for (x in 0 until bmp.width) {
+                val c = bmp.getPixel(x, y)
+                if (kotlin.math.abs(android.graphics.Color.red(c) - 0x16) <= 6 && kotlin.math.abs(android.graphics.Color.green(c) - 0xa3) <= 6 && kotlin.math.abs(android.graphics.Color.blue(c) - 0x4a) <= 6) green++
+            }
+            check(green > 50) { "the custom edge's arbitrary SVG path did not paint natively ($green green px)" }
+        }
         composeRule.onNodeWithContentDescription("minimap").assertExists()
         composeRule.onNodeWithContentDescription("source handle out").assertExists()
         composeRule.onNodeWithContentDescription("target handle in").assertExists()
