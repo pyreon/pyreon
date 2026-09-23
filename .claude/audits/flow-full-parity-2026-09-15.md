@@ -35,7 +35,7 @@ WebView escape path; silent drops are release blockers.
   arbitrary SVG paths and DOM/CSS custom renderers select the supported
   `@pyreon/flow/webview` path without semantic loss. Device-test messages,
   graph updates, selection callbacks, reload/reconnect and failure states.
-- [ ] **F6 — real-app and scale proof.** Exercise large graphs, custom nodes and
+- [x] **F6 — real-app and scale proof.** Exercise large graphs, custom nodes and
   mixed gestures in web Chromium, iOS Simulator and Android Emulator; add
   deterministic performance and memory ceilings without claiming benchmark
   numbers until measured.
@@ -177,3 +177,88 @@ native view.
   Both native renderers now retain independent finite frames with platform-sized
   hit targets while keeping the same visual size. Pan/zoom, reconnect, selection and keyboard/a11y
   equivalents remain F4 work.
+- [x] F4 reconnect coverage now drags the selected seed edge's target endpoint
+  onto a third node from the same source app and asserts the changed target in
+  both native device suites. The scenario also measures each platform's
+  reconnect hit target. Pan/zoom, gesture-driven selection and keyboard/a11y
+  equivalents remain F4 work.
+- [x] F4 viewport gesture coverage now pans empty canvas space and pinch-zooms
+  the direct-native Flow in both device suites, asserting the live viewport
+  coordinates and zoom emitted from the shared source app. The iOS device pass
+  found that magnification lived only on the background sibling, so a pinch
+  beginning over graph content was swallowed; it now runs simultaneously on
+  the canvas container. Gesture-driven selection and keyboard/a11y equivalents
+  remain F4 work.
+- [x] F4 node-selection gestures now tap a rendered node in both native device
+  suites and assert the engine's selected-node set changes through a reactive
+  label. Edge-pointer selection and keyboard/a11y equivalents remain F4 work.
+- [x] F4 hardware-keyboard coverage now focuses a rendered node, sends an arrow
+  key and asserts the engine moved it in both native device suites. The same
+  suites tap an accessible edge label and assert pointer selection. Edge
+  hardware focus and the remaining focus/action matrix remain F4 work.
+- [x] F3 renderer/chrome parity is device-proven on both targets from the same
+  counter source, and every check reads what the RENDERER painted or placed
+  rather than engine state: `<Panel position="bottom-right">` sits in the
+  canvas's bottom-right quadrant (frame relation); the seed edge's
+  `markerEnd: { type: 'arrowclosed', color: '#ff0000' }` paints exact red
+  pixels in a canvas screenshot; a reactive `colorMode` paints the web's dark
+  canvas colour `#0b1220` only while dark (zero → many → zero pixels across
+  two toggles); `connectionLine={NativeConnectionLine}` mounts only while a
+  source handle is dragged (iOS: a main-queue timer fires inside the
+  synchronous gesture and finds it in the accessibility tree, plus a store the
+  component writes from `onMount`, 0 → 1 → 2; Android: the split-gesture
+  mid-drag existence check plus the same store); and `config.reducedMotion`
+  lands a 3s viewport animation instantly while the same call animates once
+  the flag is cleared through `config` (iOS reads a mid-flight value; Android
+  measures elapsed time, because a semantics read waits for composition idle
+  and a running animation timer keeps it busy). Renderer defects the pass
+  found and fixed: neither native renderer painted a colour mode at all and
+  SwiftUI's `.preferredColorScheme` re-themed the whole window — both now
+  resolve a `PyreonFlowPalette` (the web's `--pyreon-flow-*` values, light
+  and dark) scoped to the flow and its Panel overlays; the Compose canvas
+  wrapped to its Controls column instead of filling its box; Compose anchored
+  edge labels top-left (web/Swift centre them) and its `clickable` inflated
+  the label's hit box over the target-end marker and neighbouring node taps.
+  Compiler defects found on the way: `<Background>`/`<MiniMap>` baked
+  light-only default colours; a single-statement block handler holding an
+  assignment emitted an empty closure; a kebab-case `defineStore` id emitted
+  an unparsable class name; a zero-parameter listener subscriber emitted a
+  Swift closure of the wrong arity. The Android px-vs-dp graph-unit divergence
+  is FIXED on the gesture branch (#3536) and merged up the stack: Compose graph
+  units were device pixels, so a 150-unit node was ~57dp on a 420dpi phone and
+  its 48dp resizer targets covered it — the stack's own Android lane failed
+  the node tap, the connect drag and the pinch on CI for that reason. Still
+  open under F3: pixel parity of node chrome under `colorMode="system"` (only
+  forced modes are asserted).
+
+## F6 checkpoint — scale and memory ceilings (2026-09-22)
+
+- [x] **Scale on all three targets.** `examples/native-tasks` has a `/flow-scale`
+  screen that loads a 20×20 grid (400 nodes) into a culling flow. The iOS lane,
+  the Android lane and the Chromium e2e (`native-tasks-web`) each assert the
+  same COUNTS, never timings:
+  - at most 40 of the 400 nodes are mounted at the origin viewport, and at least 2;
+  - panning makes node 170 mount and node 0 unmount, and the bound still holds;
+  - a node that scrolled in can be dragged, and the move reaches the engine
+    (device lanes);
+  - a pinch zooms the engine and the mounted set stays under 200 (device lanes).
+- [x] **Memory ceilings, GC-observable** (`flow/src/tests/scale-memory.test.ts`):
+  a mounted 1,000-node canvas releases every node after unmount plus dispose,
+  and 500 nodes removed from a live, mounted flow are released. Writing these
+  found three real retentions, each bisect-verified:
+  - `@pyreon/reactivity`'s dev devtools registry kept an unformatted `Error`
+    per node on a strongly held record. Its call-site frames reached the
+    node's creator, so an unmounted component was never collected.
+  - The same capture kept 10 frames, pinning a reconciler frame above the call
+    site. That frame closed over the node array, so removed nodes stayed alive.
+  - `instance.config` kept the initial `nodes`/`edges` arrays for the
+    instance's lifetime.
+- [x] Two compiler bugs surfaced by the first consumer to write the shapes:
+  an inline-object `createFlow<{ … }>` generic lowered to `String`/`Any`, and
+  an integer coordinate expression reached the Double position unconverted.
+- Existing complexity locks still cover the per-frame cost: `drag-frame-complexity`,
+  `drag-fanout`, `selection-fanout`, `pointer-hot-path`, `measurement-write-cost`.
+- [x] **Custom renderers at scale.** The grid renders through a custom node
+  type with its own handles, and all three targets assert one target handle per
+  mounted node, so a user renderer and its handles are culled with the node.
+- Keyboard interaction is tracked under F4, where the focus/action matrix lives.

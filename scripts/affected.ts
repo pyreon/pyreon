@@ -558,6 +558,23 @@ export function isDocsOnlyChange(changed: string[] | null): boolean {
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
+/** See `--files-from-stdin`. Empty → null (fail-closed: run everything). */
+export function parseFileList(text: string): string[] | null {
+  const files = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+  return files.length === 0 ? null : files
+}
+
+function readFilesFromStdin(): string[] | null {
+  try {
+    return parseFileList(readFileSync('/dev/stdin', 'utf-8'))
+  } catch {
+    return null
+  }
+}
+
 function main(): void {
   let base = 'origin/main'
   let category: string | undefined
@@ -565,6 +582,7 @@ function main(): void {
   let codeChanged = false
   let hasAffected = false
   let directOnly = false
+  let filesFromStdin = false
   for (const arg of process.argv.slice(2)) {
     if (arg.startsWith('--base=')) base = arg.slice('--base='.length)
     else if (arg.startsWith('--category=')) category = arg.slice('--category='.length)
@@ -587,9 +605,16 @@ function main(): void {
     // computeAffectedFlags for why the closure is both useless and harmful
     // there.
     else if (arg === '--changed-only') directOnly = true
+    // `--files-from-stdin` takes the changed-file list from stdin (one path
+    // per line) instead of `git diff`. For a caller that already HAS the list
+    // and no history to diff — native-validate.yml's decide job reads it from
+    // the PR files API over a depth-1 checkout. An empty list is treated as
+    // UNKNOWABLE (null → `--filter=*`), never as "nothing changed": a PR with
+    // zero files cannot reach CI, so an empty read means the pipe failed.
+    else if (arg === '--files-from-stdin') filesFromStdin = true
   }
 
-  const changed = gitChangedFiles(base)
+  const changed = filesFromStdin ? readFilesFromStdin() : gitChangedFiles(base)
 
   if (codeChanged) {
     process.stdout.write(isDocsOnlyChange(changed) ? 'false' : 'true')

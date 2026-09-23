@@ -39,6 +39,8 @@ import {
   subsetStructName,
   explainUntypeableField,
   synthLiteralStructName,
+  synthTypedStructName,
+  isNumericLiteralOrNegation,
   classifyDynamicStylingAttr,
   classifySortableRef,
   exprHasOptionalLink,
@@ -3353,6 +3355,19 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       subsetStructName(rowFields.map((field) => field.name), _declaredStructs, typeIsOptional)
     let inferredRowType: TypeIR | undefined
     let rowType = d.dataType !== undefined ? kotlinType(d.dataType) : 'Any'
+    // An inline-object generic (`createFlow<{ label: string }>`) must name the
+    // SAME data class its `data = { label }` literals resolve to; a
+    // context-free `kotlinType` returned `Any`.
+    if (d.dataType?.kind === 'object') {
+      const named =
+        _structTypedKeyToName.get(structShapeKey(d.dataType.fields)) ??
+        _structFieldsToName.get(d.dataType.fields.map((f) => f.name).sort().join(',')) ??
+        synthTypedStructName(d.dataType.fields, _synthExprStructs, _synthExprStructKeys)
+      if (named !== null) {
+        rowType = named
+        inferredRowType = { kind: 'typeRef', name: named, args: [] }
+      }
+    }
     const allNames = [...new Set(dataRows.flatMap((fields) => fields.map((field) => field.name)))]
     const heterogeneous = dataRows.some((fields) => fields.length !== allNames.length || allNames.some((name) => !fields.some((field) => field.name === name)))
     if (d.dataType === undefined && heterogeneous) {
@@ -3369,7 +3384,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     } else if (d.dataType === undefined) {
       rowType = declaredRowType ?? synthLiteralStructName(rowFields, _synthExprStructs, _synthExprStructKeys, (ex) => inferType(ex, _kotlinExprInferCtx)) ?? 'Any'
     }
-    const expectedRowType = d.dataType ?? inferredRowType
+    const expectedRowType = inferredRowType ?? d.dataType
     // `PyreonXYPosition`/`PyreonFlowNode.width`/`.height` are Double —
     // Kotlin refuses a bare Int literal there (same reason charts' Pie/Gauge
     // emitters run every numeric arg through `ktChartDouble`).
@@ -3378,7 +3393,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
         const parts = [
           `id = ${kotlinStr(n.id)}`,
           ...(n.type !== undefined ? [`type = ${kotlinStr(n.type)}`] : []),
-          `position = PyreonXYPosition(${ktChartDouble(emitKotlinExpr(n.positionX, 0))}, ${ktChartDouble(emitKotlinExpr(n.positionY, 0))})`,
+          `position = PyreonXYPosition(${kotlinFlowCoord(n.positionX)}, ${kotlinFlowCoord(n.positionY)})`,
           `data = ${withExpectedTypeKotlin(expectedRowType, () => emitKotlinExpr(n.data, 0))}`,
           ...(n.width !== undefined ? [`width = ${ktChartDouble(emitKotlinExpr(n.width, 0))}`] : []),
           ...(n.height !== undefined ? [`height = ${ktChartDouble(emitKotlinExpr(n.height, 0))}`] : []),
@@ -3427,7 +3442,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
           ...(e.pathOptions?.offset !== undefined ? [`pathOffset = ${ktChartDouble(String(e.pathOptions.offset))}`] : []),
           ...(e.markerStart !== undefined ? [`markerStart = ${kotlinFlowMarker(e.markerStart)}`] : []),
           ...(e.markerEnd !== undefined ? [`markerEnd = ${e.markerEnd === null ? 'null' : kotlinFlowMarker(e.markerEnd)}`, 'markerEndSpecified = true'] : []),
-          ...(e.waypoints !== undefined ? [`waypoints = listOf(${e.waypoints.map((p) => `PyreonXYPosition(${ktChartDouble(emitKotlinExpr(p.x, 0))}, ${ktChartDouble(emitKotlinExpr(p.y, 0))})`).join(', ')})`] : []),
+          ...(e.waypoints !== undefined ? [`waypoints = listOf(${e.waypoints.map((p) => `PyreonXYPosition(${kotlinFlowCoord(p.x)}, ${kotlinFlowCoord(p.y)})`).join(', ')})`] : []),
         ]
         return `PyreonFlowEdge(${parts.join(', ')})`
       })
@@ -3570,7 +3585,7 @@ function kotlinFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
   const parts = [
     `id = ${emitKotlinExpr(idExpr, 0)}`,
     ...(typeExpr ? [`type = ${emitKotlinExpr(typeExpr, 0)}`] : []),
-    `position = PyreonXYPosition(${ktChartDouble(emitKotlinExpr(posX, 0))}, ${ktChartDouble(emitKotlinExpr(posY, 0))})`,
+    `position = PyreonXYPosition(${kotlinFlowCoord(posX)}, ${kotlinFlowCoord(posY)})`,
     `data = ${emitKotlinExpr(dataExpr, 0)}`,
     ...(widthExpr ? [`width = ${ktChartDouble(emitKotlinExpr(widthExpr, 0))}`] : []),
     ...(heightExpr ? [`height = ${ktChartDouble(emitKotlinExpr(heightExpr, 0))}`] : []),
@@ -3871,7 +3886,7 @@ function kotlinFlowPositionLiteral(arg: ExprIR): string | null {
   const x = arg.fields.find((f) => f.name === 'x')?.value
   const y = arg.fields.find((f) => f.name === 'y')?.value
   if (!x || !y) return null
-  return `PyreonXYPosition(${ktChartDouble(emitKotlinExpr(x, 0))}, ${ktChartDouble(emitKotlinExpr(y, 0))})`
+  return `PyreonXYPosition(${kotlinFlowCoord(x)}, ${kotlinFlowCoord(y)})`
 }
 
 /**
@@ -7495,7 +7510,11 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
   })
   overlays.push(...otherChildren.map((child) => `    ${emitKotlinChild(child, 4)}`))
   const overlaysCode = overlays.join('\n')
-  return `Box {\n  ${host}\n${overlaysCode}\n}`
+  // The overlays sit BESIDE the flow view, outside its own scoped colour
+  // mode; re-apply it around the stack so a <Panel> under colorMode="dark"
+  // themes like the web's `.pyreon-flow[data-color-mode]` descendants.
+  const stack = `Box {\n  ${host}\n${overlaysCode}\n}`
+  return colorModeAttr?.kind === 'attr' && colorModeAttr.value !== undefined ? `PyreonFlowColorMode(${emitKotlinExpr(colorModeAttr.value, 0)}) {\n${stack}\n}` : stack
 }
 
 function emitKotlinStandaloneFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -7554,7 +7573,14 @@ function emitKotlinFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): str
     return typeof value === 'number' ? `${value}${Number.isInteger(value) ? '.0' : ''}` : emitKotlinExpr(attr.value, 0)
   }
   const bool = (name: string, fallback: boolean): string => expr(name, String(fallback))
-  return `PyreonFlowMiniMapStyle(nodeColor = ${str('nodeColor', '#e2e8f0')}, maskColor = ${str('maskColor', '#000000')}, width = ${num('width', 200)}, height = ${num('height', 150)}, pannable = ${bool('pannable', true)}, zoomable = ${bool('zoomable', true)})`
+  // A static node colour lowers verbatim; an absent one (or a per-node
+  // callback, which travels separately as `miniMapNodeColor`) stays `null` so
+  // the palette's `minimapNode` — light or dark — decides at render time.
+  const nodeColorAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeColor')
+  const nodeColorValue = nodeColorAttr?.kind === 'attr' ? nodeColorAttr.value : undefined
+  const nodeColorIsCallback = nodeColorValue?.kind === 'arrow' || (nodeColorValue?.kind === 'identifier' && (_functionNames.has(nodeColorValue.name) || _moduleConstExprsKotlin.get(nodeColorValue.name)?.kind === 'arrow'))
+  const nodeColor = nodeColorValue === undefined || nodeColorIsCallback ? 'null' : emitKotlinExpr(nodeColorValue, 0)
+  return `PyreonFlowMiniMapStyle(nodeColor = ${nodeColor}, maskColor = ${str('maskColor', '#000000')}, width = ${num('width', 200)}, height = ${num('height', 150)}, pannable = ${bool('pannable', true)}, zoomable = ${bool('zoomable', true)})`
 }
 
 function emitKotlinFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
@@ -7584,7 +7610,10 @@ function emitKotlinFlowBackground(e: Extract<ExprIR, { kind: 'jsx-element' }>): 
     const value = attr.value.value
     return typeof value === 'number' ? `${value}${Number.isInteger(value) ? '.0' : ''}` : emitKotlinExpr(attr.value, 0)
   }
-  return `PyreonFlowBackgroundStyle(variant = ${resolvedVariant}, gap = ${num('gap', 20)}, size = ${num('size', 1)}, color = ${expr('color', '"#dddddd"')})`
+  // No colour → `null`: the renderer's palette supplies the light `#dddddd` or
+  // the dark `#374151` (`--pyreon-flow-bg-pattern`), which a baked literal
+  // would silently pin to light under `colorMode="dark"`.
+  return `PyreonFlowBackgroundStyle(variant = ${resolvedVariant}, gap = ${num('gap', 20)}, size = ${num('size', 1)}, color = ${expr('color', 'null')})`
 }
 
 /**
@@ -11085,6 +11114,19 @@ function emitKotlinRxCall(
 
 
 /** Kotlin refuses Int literals for Double params — `height={200}` must emit `200.0`. */
+/**
+ * A flow coordinate as a Kotlin Double. `PyreonXYPosition` takes Doubles, and
+ * an integer EXPRESSION (`col * 200` in a loop) does not widen implicitly, so
+ * `ktChartDouble`'s literal-only rewrite left it an Int argument mismatch. A
+ * non-literal is wrapped: `.toDouble()` is identity on a Double, so the wrap
+ * needs no type inference to be safe.
+ */
+function kotlinFlowCoord(x: ExprIR): string {
+  const text = emitKotlinExpr(x, 0)
+  if (isNumericLiteralOrNegation(x)) return ktChartDouble(text.replace(/^\((-\d+)\)$/, '$1'))
+  return `(${text}).toDouble()`
+}
+
 function ktChartDouble(text: string): string {
   return /^-?\d+$/.test(text) ? `${text}.0` : text
 }

@@ -43,6 +43,8 @@ import {
   subsetStructName,
   explainUntypeableField,
   synthLiteralStructName,
+  synthTypedStructName,
+  isNumericLiteralOrNegation,
   classifyDynamicStylingAttr,
   classifySortableRef,
   exprHasOptionalLink,
@@ -4217,6 +4219,19 @@ function emitSwiftDecl(
     const rowFields = firstData?.kind === 'object' ? firstData.fields : []
     let inferredRowType: TypeIR | undefined
     let rowType = d.dataType !== undefined ? swiftType(d.dataType) : 'Any'
+    // An inline-object generic (`createFlow<{ label: string }>`) must name the
+    // SAME struct its `data: { label }` literals resolve to; a context-free
+    // `swiftType` cannot, and degraded it to the bare field type (`String`).
+    if (d.dataType?.kind === 'object') {
+      const declared =
+        _structTypedKeyToName.get(structShapeKey(d.dataType.fields)) ??
+        _structFieldsToName.get(d.dataType.fields.map((f) => f.name).sort().join(','))
+      const named = declared ?? synthTypedStructName(d.dataType.fields, _synthExprStructs, _synthExprStructKeys)
+      if (named !== null) {
+        rowType = named
+        inferredRowType = { kind: 'typeRef', name: named, args: [] }
+      }
+    }
     if (d.dataType === undefined && dataRows.length > 0) {
       const allNames = [...new Set(dataRows.flatMap((fields) => fields.map((field) => field.name)))]
       const heterogeneous = dataRows.some((fields) => fields.length !== allNames.length || allNames.some((name) => !fields.some((field) => field.name === name)))
@@ -4235,13 +4250,13 @@ function emitSwiftDecl(
         rowType = resolveSwiftObjectStructName(rowFields) ?? 'Any'
       }
     }
-    const expectedRowType = d.dataType ?? inferredRowType
+    const expectedRowType = inferredRowType ?? d.dataType
     const nodeLits = d.nodes
       .map((n) => {
         const parts = [
           `id: ${swiftStr(n.id)}`,
           ...(n.type !== undefined ? [`type: ${swiftStr(n.type)}`] : []),
-          `position: PyreonXYPosition(x: ${emitSwiftExpr(n.positionX, 0)}, y: ${emitSwiftExpr(n.positionY, 0)})`,
+          `position: PyreonXYPosition(x: ${swiftFlowCoord(n.positionX)}, y: ${swiftFlowCoord(n.positionY)})`,
           `data: ${withExpectedType(expectedRowType, () => emitSwiftExpr(n.data, 0))}`,
           ...(n.width !== undefined ? [`width: ${emitSwiftExpr(n.width, 0)}`] : []),
           ...(n.height !== undefined ? [`height: ${emitSwiftExpr(n.height, 0)}`] : []),
@@ -4290,7 +4305,7 @@ function emitSwiftDecl(
           ...(e.pathOptions?.offset !== undefined ? [`pathOffset: ${e.pathOptions.offset}`] : []),
           ...(e.markerStart !== undefined ? [`markerStart: ${swiftFlowMarker(e.markerStart)}`] : []),
           ...(e.markerEnd !== undefined ? [`markerEnd: ${e.markerEnd === null ? 'nil' : swiftFlowMarker(e.markerEnd)}`, 'markerEndSpecified: true'] : []),
-          ...(e.waypoints !== undefined ? [`waypoints: [${e.waypoints.map((p) => `PyreonXYPosition(x: ${emitSwiftExpr(p.x, 0)}, y: ${emitSwiftExpr(p.y, 0)})`).join(', ')}]`] : []),
+          ...(e.waypoints !== undefined ? [`waypoints: [${e.waypoints.map((p) => `PyreonXYPosition(x: ${swiftFlowCoord(p.x)}, y: ${swiftFlowCoord(p.y)})`).join(', ')}]`] : []),
         ]
         return `PyreonFlowEdge(${parts.join(', ')})`
       })
@@ -4422,7 +4437,7 @@ function swiftFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
   const parts = [
     `id: ${emitSwiftExpr(idExpr, 0)}`,
     ...(typeExpr ? [`type: ${emitSwiftExpr(typeExpr, 0)}`] : []),
-    `position: PyreonXYPosition(x: ${emitSwiftExpr(posX, 0)}, y: ${emitSwiftExpr(posY, 0)})`,
+    `position: PyreonXYPosition(x: ${swiftFlowCoord(posX)}, y: ${swiftFlowCoord(posY)})`,
     `data: ${emitSwiftExpr(dataExpr, 0)}`,
     ...(widthExpr ? [`width: ${emitSwiftExpr(widthExpr, 0)}`] : []),
     ...(heightExpr ? [`height: ${emitSwiftExpr(heightExpr, 0)}`] : []),
@@ -4688,7 +4703,7 @@ function swiftFlowPathHelper(name: string, arg: ExprIR | undefined, indent: numb
       if (point.kind !== 'object') return null
       const x = point.fields.find((field) => field.name === 'x')?.value
       const y = point.fields.find((field) => field.name === 'y')?.value
-      return x && y ? `PyreonXYPosition(x: ${emitSwiftExpr(x, indent)}, y: ${emitSwiftExpr(y, indent)})` : null
+      return x && y ? `PyreonXYPosition(x: ${swiftFlowCoord(x, indent)}, y: ${swiftFlowCoord(y, indent)})` : null
     })
     if (points.some((point) => point === null)) return null
     return `pyreonWaypointPath(sourceX: ${sx}, sourceY: ${sy}, targetX: ${tx}, targetY: ${ty}, waypoints: [${points.join(', ')}])`
@@ -4730,7 +4745,7 @@ function swiftFlowPositionLiteral(arg: ExprIR): string | null {
   const x = arg.fields.find((f) => f.name === 'x')?.value
   const y = arg.fields.find((f) => f.name === 'y')?.value
   if (!x || !y) return null
-  return `PyreonXYPosition(x: ${emitSwiftExpr(x, 0)}, y: ${emitSwiftExpr(y, 0)})`
+  return `PyreonXYPosition(x: ${swiftFlowCoord(x)}, y: ${swiftFlowCoord(y)})`
 }
 
 /**
@@ -5395,6 +5410,16 @@ function uniqueSwiftStructName(synth: SwiftSynthCtx, base: string): string {
   let i = 2
   while (synth.structs.some((s) => s.name === `${base}${i}`)) i++
   return `${base}${i}`
+}
+
+/**
+ * A flow coordinate as a Swift Double. A literal already converts; an integer
+ * EXPRESSION (`col * 200` in a loop) does not, and `Double(_:)` is identity on
+ * a Double, so a non-literal is wrapped without needing its inferred type.
+ */
+function swiftFlowCoord(x: ExprIR, indent = 0): string {
+  const text = emitSwiftExpr(x, indent)
+  return isNumericLiteralOrNegation(x) ? text : `Double(${text})`
 }
 
 export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): string {
@@ -6343,6 +6368,18 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         // build is where it fails, but now the author heard about it first).
         if (!LOWERED_FLOW_METHODS.has(member) && !LOWERED_FLOW_PROPERTY_READS.has(member)) {
           _emitWarnings.push(unloweredFlowMemberWarning(flowName, member))
+        }
+        // Every `on*` listener on the port takes a ONE-argument callback, and the
+        // web lets a subscriber ignore that argument (`flow.onConnectStart(() =>
+        // count++)`). A zero-parameter Swift closure in that position is
+        // "contextual type for closure argument list expects 1 argument" —
+        // Kotlin's one-parameter lambda already accepts the bare form.
+        if (member.startsWith('on') && LOWERED_FLOW_METHODS.has(member) && e.args.length === 1) {
+          const callback = e.args[0]!
+          if (callback.kind === 'arrow' && callback.params.length === 0) {
+            const closure = emitSwiftExpr(callback, indent)
+            if (closure.startsWith('{')) return `${swiftIdent(flowName)}.${member}({ _ in${closure.slice(1)})`
+          }
         }
         // Swift's labeled parameters: the web call is positional, the port's
         // second parameter is labeled — an unlabeled emit fails ONLY on iOS.
@@ -8958,7 +8995,11 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   })
   overlays.push(...otherChildren.map((child) => `    ${emitSwiftChild(child, 4)}`))
   const overlaysCode = overlays.join('\n')
-  return `ZStack {\n  ${host}\n${overlaysCode}\n}`
+  // The overlays sit BESIDE the flow view, outside its own scoped colour
+  // mode; re-apply it on the stack so a <Panel> under colorMode="dark"
+  // themes like the web's `.pyreon-flow[data-color-mode]` descendants.
+  const colorModeTail = colorModeAttr?.kind === 'attr' && colorModeAttr.value !== undefined ? `\n.pyreonFlowColorMode(${emitSwiftExpr(colorModeAttr.value, 0)})` : ''
+  return `ZStack {\n  ${host}\n${overlaysCode}\n}${colorModeTail}`
 }
 
 function emitSwiftStandaloneFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -9015,7 +9056,14 @@ function emitSwiftFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): stri
     return attr.value.kind === 'literal' ? emitSwiftExpr(attr.value, 0) : `Double(${emitSwiftExpr(attr.value, 0)})`
   }
   const bool = (name: string, fallback: boolean): string => expr(name, String(fallback))
-  return `PyreonFlowMiniMapStyle(nodeColor: ${str('nodeColor', '#e2e8f0')}, maskColor: ${str('maskColor', '#000000')}, width: ${num('width', 200)}, height: ${num('height', 150)}, pannable: ${bool('pannable', true)}, zoomable: ${bool('zoomable', true)})`
+  // A static node colour lowers verbatim; an absent one (or a per-node
+  // callback, which travels separately as `miniMapNodeColor`) stays `nil` so
+  // the palette's `minimapNode` — light or dark — decides at render time.
+  const nodeColorAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeColor')
+  const nodeColorValue = nodeColorAttr?.kind === 'attr' ? nodeColorAttr.value : undefined
+  const nodeColorIsCallback = nodeColorValue?.kind === 'arrow' || (nodeColorValue?.kind === 'identifier' && (_functionNames.has(nodeColorValue.name) || _moduleConstExprs.get(nodeColorValue.name)?.kind === 'arrow'))
+  const nodeColor = nodeColorValue === undefined || nodeColorIsCallback ? 'nil' : emitSwiftExpr(nodeColorValue, 0)
+  return `PyreonFlowMiniMapStyle(nodeColor: ${nodeColor}, maskColor: ${str('maskColor', '#000000')}, width: ${num('width', 200)}, height: ${num('height', 150)}, pannable: ${bool('pannable', true)}, zoomable: ${bool('zoomable', true)})`
 }
 
 function emitSwiftFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
@@ -9043,7 +9091,10 @@ function emitSwiftFlowBackground(e: Extract<ExprIR, { kind: 'jsx-element' }>): s
     if (attr?.kind !== 'attr' || attr.value === undefined) return String(fallback)
     return attr.value.kind === 'literal' ? emitSwiftExpr(attr.value, 0) : `Double(${emitSwiftExpr(attr.value, 0)})`
   }
-  return `PyreonFlowBackgroundStyle(variant: ${resolvedVariant}, gap: ${num('gap', 20)}, size: ${num('size', 1)}, color: ${expr('color', '"#dddddd"')})`
+  // No colour → `nil`: the renderer's palette supplies the light `#dddddd` or
+  // the dark `#374151` (`--pyreon-flow-bg-pattern`), which a baked literal
+  // would silently pin to light under `colorMode="dark"`.
+  return `PyreonFlowBackgroundStyle(variant: ${resolvedVariant}, gap: ${num('gap', 20)}, size: ${num('size', 1)}, color: ${expr('color', 'nil')})`
 }
 
 /**

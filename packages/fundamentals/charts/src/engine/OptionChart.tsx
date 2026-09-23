@@ -1053,7 +1053,7 @@ export function OptionChart(props: OptionChartProps): VNode {
   const titleClickAt = (g: OptionGeometry, px: Double, py: Double): boolean => {
     const link = titleLinkAt(g, px, py)
     if (link === undefined) return false
-    if (typeof window !== 'undefined') window.open(link.url, link.target)
+    if (!isServer) window.open(link.url, link.target)
     return true
   }
 
