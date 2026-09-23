@@ -111,6 +111,32 @@ final class PyreonTasksUITests: XCTestCase {
     private func redPixels(_ png: Data) -> Int { colorPixels(png, 255, 0, 0) }
     private func greyPixels(_ png: Data) -> Int { colorPixels(png, 204, 204, 204) }
 
+    /**
+     * The x extent, in POINTS of `widthPoints`, of the blue-tinted run on the row
+     * `rowFromBottom` points above the image's bottom — the dataZoom window's
+     * filler (its handles are white and the strip outside it grey). Nil when no run.
+     */
+    private func blueRun(_ png: Data, rowFromBottom: CGFloat, widthPoints: CGFloat) -> (CGFloat, CGFloat)? {
+        guard let image = UIImage(data: png)?.cgImage else { return nil }
+        let w = image.width, h = image.height
+        var buf = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &buf, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        let scale = CGFloat(w) / widthPoints
+        let row = h - Int(rowFromBottom * scale)
+        guard row >= 0 && row < h else { return nil }
+        var lo = -1, hi = -1
+        for x in 0..<w {
+            let i = (row * w + x) * 4
+            if Int(buf[i + 2]) - Int(buf[i]) >= 12 {
+                if lo < 0 { lo = x }
+                hi = x
+            }
+        }
+        guard lo >= 0 && hi - lo > 20 else { return nil }
+        return (CGFloat(lo) / scale, CGFloat(hi) / scale)
+    }
+
     private func colorPixels(_ png: Data, _ r: Int, _ g: Int, _ b: Int) -> Int {
         // Redrawn into a known RGBA8 buffer: a screenshot's own pixel format varies by device.
         guard let image = UIImage(data: png)?.cgImage else { return 0 }
@@ -983,11 +1009,19 @@ final class PyreonTasksUITests: XCTestCase {
         let zoomChart = app.descendants(matching: .any).matching(identifier: "gal-datazoom").firstMatch
         XCTAssertTrue(zoomChart.waitForExistence(timeout: 10), "gal-datazoom canvas missing on the gallery")
         scrollFullyOnScreen(zoomChart, in: app)
-        let redBefore = redPixels(zoomChart.screenshot().pngRepresentation)
+        let zoomShot = zoomChart.screenshot().pngRepresentation
+        let redBefore = redPixels(zoomShot)
         let zoomOrigin = zoomChart.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
-        let zoomStripW = zoomChart.frame.width - 16
         let zoomStripY = zoomChart.frame.height - 18
-        zoomOrigin.withOffset(CGVector(dx: 8 + zoomStripW * 0.25, dy: zoomStripY)).press(forDuration: 0.2, thenDragTo: zoomOrigin.withOffset(CGVector(dx: 8 + zoomStripW * 0.75, dy: zoomStripY)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        // The slider strip is ECharts' own — plot-aligned in the grid's bottom
+        // margin, not full-width — so the band is FOUND on the swipe row, and the
+        // press lands on its middle (a handle press would resize the window).
+        guard let band = blueRun(zoomShot, rowFromBottom: 18, widthPoints: zoomChart.frame.width) else {
+            XCTFail("found no dataZoom band on the strip's row")
+            return
+        }
+        let bandMid = (band.0 + band.1) / 2
+        zoomOrigin.withOffset(CGVector(dx: bandMid, dy: zoomStripY)).press(forDuration: 0.2, thenDragTo: zoomOrigin.withOffset(CGVector(dx: bandMid + (band.1 - band.0), dy: zoomStripY)), withVelocity: .slow, thenHoldForDuration: 0.3)
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         let redAfter = redPixels(zoomChart.screenshot().pngRepresentation)
         XCTAssertGreaterThan(redBefore, 100, "the zoomed bar chart painted no red bars before the drag")
