@@ -929,11 +929,16 @@ class TasksAppInstrumentedTest {
         // The calculable visualMap: dragging its high handle (bottom-left strip) left greys the hottest cells.
         val visualMap = composeRule.onNodeWithTag("gal-visualmap").performScrollTo()
         val vmBefore = visualMap.captureToImage().asAndroidBitmap()
+        // Driven as a hand does (past the touch slop, then small steps), like the map
+        // and dataZoom drags: one 600ms `swipe` intermittently never moved the handle
+        // ("grey pixels: 0" on #3558). Same 79dp leftward drag of the high handle.
         visualMap.performTouchInput {
             val y = height - (41 - 16 - 4).dp.toPx()
-            swipe(start = Offset(159.dp.toPx(), y), end = Offset(80.dp.toPx(), y), durationMillis = 600)
+            down(Offset(159.dp.toPx(), y))
+            moveBy(Offset(-12.dp.toPx(), 0f))
+            repeat(6) { moveBy(Offset(-(67f / 6f).dp.toPx(), 0f)) }
+            up()
         }
-        composeRule.waitForIdle()
         // Out-of-range values take the inactive #cccccc: none before the drag, a block of it after.
         fun greyPixels(b: android.graphics.Bitmap): Int {
             var n = 0
@@ -944,6 +949,7 @@ class TasksAppInstrumentedTest {
             return n
         }
         assertTrue("the visualMap greyed cells before any drag", greyPixels(vmBefore) < 50)
+        runCatching { composeRule.waitUntil(5_000) { greyPixels(visualMap.captureToImage().asAndroidBitmap()) > 400 } }
         val vmGrey = greyPixels(visualMap.captureToImage().asAndroidBitmap())
         assertTrue("dragging the visualMap handle did not grey the out-of-range cells (grey pixels: $vmGrey)", vmGrey > 400)
         // The slider dataZoom opens on the low half; dragging the band right shows the tall bars (y extent pinned).
