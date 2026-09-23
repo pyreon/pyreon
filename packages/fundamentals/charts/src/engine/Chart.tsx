@@ -34,7 +34,7 @@ import { scaleLinear } from './scale'
 import { markLabel, resolveCategories, resolveMarks } from './marks'
 import { plotHitBarsIn, plotHitIndexIn, plotHitSeriesIn } from './plot-hit'
 import type { Mark } from './marks'
-import { chartTable, describeChart } from './a11y'
+import { chartRowCount, chartTable, chartTableRow, describeChart } from './a11y'
 import type { A11yInput } from './a11y'
 import { brushBand, brushRange, renderBrushBand } from './brush'
 import { applyBrushSelection, brushAreaFromDrag, brushOnlySeries, brushAreaUsable, brushPolygonAdd, brushSelection, renderBrushAreas } from './brush-area'
@@ -1061,8 +1061,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (next < 0) next = 0
     if (next > n - 1) next = n - 1
     const off = viewRange(all).from
-    const t = chartTable(a11yInput())
-    const row = t.rows[globalOf(next, off)]
+    // One row, not the table: formatting every row of a 100,000-point chart
+    // per arrow key to announce the focused one.
+    const input = a11yInput()
+    const g = globalOf(next, off)
+    const row = g >= 0 && g < chartRowCount(input) ? chartTableRow(input, g) : undefined
     // One notify cycle for the three writes a keystroke makes (focus, hover, live region).
     batch(() => {
       focusIdx.set(next)
