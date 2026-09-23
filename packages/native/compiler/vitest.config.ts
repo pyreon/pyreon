@@ -50,10 +50,12 @@ export default defineNodeConfig({
       // processes on the same two-core Actions runner. The resulting CPU and
       // memory contention has repeatedly stretched otherwise-valid Kotlin
       // checks from seconds to the 25-minute job ceiling, where GitHub marks
-      // the matrix cell as `cancelled`. CI already distributes this package
-      // across sixteen independent runners; serialize files *inside* each
-      // runner so those shards provide the parallelism without a local
-      // compiler stampede.
+      // the matrix cell as `cancelled`. `PYREON_NATIVE_COMPILER_SERIAL=1`
+      // (set by the coverage runner, scripts/check-coverage.ts) serializes
+      // files for runs where V8 instrumentation already saturates the cores.
+      // The per-PR gate (native-validate.yml) leaves files parallel: its
+      // single-writer verdict cache is warm on almost every run, so a cold
+      // compiler stampede is the exception rather than the rule.
       fileParallelism: process.env.PYREON_NATIVE_COMPILER_SERIAL !== '1',
     },
   },

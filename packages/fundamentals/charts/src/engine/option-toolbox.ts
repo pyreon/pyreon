@@ -42,6 +42,7 @@ export function readToolbox(option: Record<string, unknown>, warn: (code: Option
       out.dataView = true
     } else if (key === 'dataZoom') {
       const y = (v as Record<string, unknown>)['yAxisIndex']
+      // ledger: coordinates.toolbox
       if (y !== undefined && y !== false && y !== 'none') warn('series-option-unsupported', path + '.yAxisIndex', 'The box zoom selects along the category x axis; its y-axis zoom was ignored.')
       out.dataZoom = true
     } else if (key === 'magicType') {
@@ -49,6 +50,7 @@ export function readToolbox(option: Record<string, unknown>, warn: (code: Option
       const list: ('line' | 'bar' | 'stack' | 'tiled')[] = []
       for (const t of Array.isArray(types) ? types : []) {
         if (t === 'line' || t === 'bar' || t === 'stack' || t === 'tiled') list.push(t)
+        // ledger: invalid-input
         else warn('series-option-unsupported', path + '.type', `magicType "${String(t)}" is not a switch ECharts defines; it was skipped.`)
       }
       if (list.length > 0) out.magicType = list
@@ -57,8 +59,10 @@ export function readToolbox(option: Record<string, unknown>, warn: (code: Option
       const list = brushToolList((v as Record<string, unknown>)['type'], path + '.type', warn) ?? brush?.tools ?? ['rect', 'polygon', 'lineX', 'lineY', 'keep', 'clear']
       if (list.length > 0) out.brush = list
     } else if (key.startsWith('my')) {
+      // ledger: coordinates.toolbox
       warn('series-option-unsupported', path, 'A custom toolbox tool runs a function the option cannot carry; it was skipped.')
     } else {
+      // ledger: coordinates.toolbox
       warn('series-option-unsupported', path, `The toolbox feature "${key}" is not supported; it was skipped.`)
     }
   }

@@ -67,3 +67,36 @@ describe('familyHostNode', () => {
     expect(familyHostNode(single.plan, { width: 100, height: 100 })).toBeNull()
   })
 })
+
+describe('a live family host (an accessor plan)', () => {
+  it('reads its props through the CURRENT plan, so a mounted host sees an update', async () => {
+    const { signal } = await import('@pyreon/reactivity')
+    const { familyHostShape } = await import('./family-host')
+    const plan = (values: number[]) => compileFamily({ series: [{ type: 'funnel', data: values.map((v, i) => ({ name: `s${i}`, value: v })) }] })!.plan
+    const current = signal(plan([5, 3]))
+    const node = familyHostNode(() => current(), { width: 300, height: 200 })!
+    expect(node.type).toBe(FunnelChart)
+    const props = node.props as { data: { value: number }[]; width: number }
+    expect(props.data.map((d) => d.value)).toEqual([5, 3])
+    current.set(plan([9, 1, 2]))
+    expect(props.data.map((d) => d.value)).toEqual([9, 1, 2])
+    expect(props.width).toBe(300)
+    // The shape is the component and its prop KEYS, so two funnels share one node and a pie does not.
+    const o = { width: 300, height: 200 }
+    expect(familyHostShape(plan([1]), o)).toBe(familyHostShape(plan([2, 3]), o))
+    expect(familyHostShape(compileFamily({ series: [{ type: 'pie', data: [{ name: 'a', value: 1 }] }] })!.plan, o)).not.toBe(familyHostShape(plan([1]), o))
+    expect(familyHostShape(compileFamily({ singleAxis: {}, series: [{ type: 'scatter', coordinateSystem: 'singleAxis', data: [1] }] })!.plan, o)).toBeNull()
+    expect(familyHostNode(() => compileFamily({ singleAxis: {}, series: [{ type: 'scatter', coordinateSystem: 'singleAxis', data: [1] }] })!.plan, o)).toBeNull()
+  })
+
+  it('hands the option\'s animation to the host as canvas-host props', () => {
+    const plan = compileFamily({ series: [{ type: 'funnel', data: [{ name: 'a', value: 1 }] }] })!.plan
+    const animation = { enter: false, enterMs: 250, enterEasing: 'linear', enterDelay: 10, update: true, updateMs: 90, updateEasing: 'bounceOut', updateDelay: 5 }
+    const props = familyHostNode(plan, { width: 100, height: 100, animation })!.props as Record<string, unknown>
+    expect(props).toMatchObject({ animate: false, updateAnimation: true, enterDuration: 250, enterDelay: 10, updateDuration: 90, updateDelay: 5 })
+    expect((props['enterEasing'] as (t: number) => number)(0.5)).toBe(0.5)
+    expect((props['updateEasing'] as (t: number) => number)(1)).toBe(1)
+    // No animation given: the host keeps its own defaults (no keys at all).
+    expect('animate' in (familyHostNode(plan, { width: 100, height: 100 })!.props as object)).toBe(false)
+  })
+})

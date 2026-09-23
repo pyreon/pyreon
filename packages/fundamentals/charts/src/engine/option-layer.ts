@@ -217,6 +217,7 @@ export function applyTransformsAll(t: Table, transforms: unknown[], warnings: Op
     }
     const registered = typeof type === 'string' ? chartTransforms.get(type) : undefined
     if (registered === undefined) {
+      // ledger: data.transforms
       warnings.push({ code: 'option-key-unsupported', path: tp + '.type', message: 'dataset transform "' + String(type) + '" is not registered (filter and sort are built in; register others with registerChartTransform); the table passed through unchanged.' })
       results = [cur]
       continue
@@ -514,6 +515,7 @@ export function graphicElements(option: EChartsOptionLike, width: Double, height
         pushPair(shape['x2'], shape['y2'])
       } else if (type !== 'text' && type !== 'rect' && type !== 'circle' && type !== 'arc' && type !== 'ring' && type !== 'sector') {
         warnings.push({
+          // ledger: coordinates.graphic
           code: 'mark-shape-unsupported',
           path: p + '.type',
           message:

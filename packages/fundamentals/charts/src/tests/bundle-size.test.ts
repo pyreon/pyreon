@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -59,9 +59,15 @@ describe('charts — bundle size regression (echarts subpath externalization)', 
       for (const entry of readdirSync(cursor, { withFileTypes: true })) {
         const full = join(cursor, entry.name)
         if (entry.isDirectory()) {
-          stack.push(full)
+          // The build's bundle-analysis report is a local artifact, not part of
+          // the published package; measuring it counted 258 KB nobody installs.
+          if (entry.name !== 'analysis') stack.push(full)
         } else if (entry.isFile()) {
           totalBytes += statSync(full).size
+          // The defect this guards, asserted directly rather than through the
+          // size: ECharts core code BUNDLED into lib/. `registerPreprocessor`
+          // is an ECharts core API this package never names.
+          if (entry.name.endsWith('.js')) expect(readFileSync(full, 'utf8').includes('registerPreprocessor'), `${full} contains bundled ECharts code`).toBe(false)
         }
       }
     }

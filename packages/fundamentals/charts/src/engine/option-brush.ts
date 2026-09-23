@@ -29,6 +29,7 @@ export function brushToolList(raw: unknown, path: string, warn: (code: OptionWar
   const out: BrushToolName[] = []
   for (const t of raw) {
     if (TOOL_NAMES.includes(t as BrushToolName)) out.push(t as BrushToolName)
+    // ledger: invalid-input
     else warn('series-option-unsupported', path, `The brush tool "${String(t)}" is not one ECharts defines; it was skipped.`)
   }
   return out
@@ -51,14 +52,17 @@ export function readBrush(option: Record<string, unknown>, warn: (code: OptionWa
   if (isObj(ob)) {
     for (const k of Object.keys(ob)) {
       if (k === 'colorAlpha' && typeof ob[k] === 'number') out.outOpacity = Math.max(0, Math.min(1, ob[k] as number))
+      // ledger: coordinates.brush
       else warn('series-option-unsupported', 'brush.outOfBrush.' + k, `The out-of-brush visual "${k}" is named; outside datums fade by colorAlpha only.`)
     }
   }
+  // ledger: coordinates.brush
   if (isObj(b['inBrush'])) warn('series-option-unsupported', 'brush.inBrush', 'Brushed datums keep their own style; the in-brush visual was ignored.')
   const si = b['seriesIndex']
   if (typeof si === 'number') out.seriesIndex = [si]
   else if (Array.isArray(si)) out.seriesIndex = si.filter((x): x is number => typeof x === 'number')
   for (const k of ['geoIndex', 'xAxisIndex', 'yAxisIndex']) {
+    // ledger: coordinates.brush
     if (b[k] !== undefined && b[k] !== 'all' && b[k] !== 0) warn('series-option-unsupported', 'brush.' + k, `The option chart has one grid; brush.${k} was ignored.`)
   }
   return out

@@ -62,11 +62,13 @@ export function readDataZoom(option: Record<string, unknown>, categories: string
     const path = Array.isArray(raw) ? `dataZoom[${i}]` : 'dataZoom'
     if (!isObj(z)) continue
     if (z['yAxisIndex'] !== undefined || z['orient'] === 'vertical' || z['radiusAxisIndex'] !== undefined || z['angleAxisIndex'] !== undefined) {
+      // ledger: coordinates.data-zoom
       warn('series-option-unsupported', path, 'Only a zoom over the category x axis is supported; this dataZoom was ignored.')
       continue
     }
     const xi = z['xAxisIndex']
     if (xi !== undefined && !(xi === 0 || (Array.isArray(xi) && xi.length === 1 && xi[0] === 0))) {
+      // ledger: coordinates.data-zoom
       warn('series-option-unsupported', path + '.xAxisIndex', 'Only the first x axis zooms; this dataZoom was ignored.')
       continue
     }
