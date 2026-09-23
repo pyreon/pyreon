@@ -37,6 +37,11 @@ export interface FamilyHostOptions {
   onSelect?: ((kind: FamilyPlan['kind'], hit: unknown) => void) | undefined
   /** The option's animation (ECharts' `animation*` keys); absent = the host's own defaults. */
   animation?: ChartAnimation | undefined
+  /**
+   * Paint no background: the host is a LAYER drawn over another chart (a pie
+   * in the corner of a line chart), whose own canvas already paints the ground.
+   */
+  transparent?: boolean | undefined
 }
 
 /** A resolved animation as canvas-host props. */
@@ -97,7 +102,7 @@ export function familyHostShape(plan: FamilyPlan, o: FamilyHostOptions): string 
 
 function familyHostFor(plan: FamilyPlan, o: FamilyHostOptions): VNode | null {
   const size = { width: o.width, height: o.height }
-  const chrome = { ...(plan.title !== undefined ? { title: plan.title } : {}), ...animationProps(o.animation) }
+  const chrome = { ...(plan.title !== undefined ? { title: plan.title } : {}), ...animationProps(o.animation), ...(o.transparent === true ? { theme: { background: '' } } : {}) }
   const sel = (kind: FamilyPlan['kind']) => (o.onSelect === undefined ? {} : { onSelect: (hit: unknown) => o.onSelect!(kind, hit) })
   switch (plan.kind) {
     case 'pie': {

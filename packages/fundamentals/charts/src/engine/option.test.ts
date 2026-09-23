@@ -147,7 +147,7 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
 
 /** Flatten a plan to what the corpus asserts on — a multi-grid plan is clean only when EVERY part is. */
 const compiledOf = (p: OptionPlan): { supported: boolean; warnings: OptionWarning[] } => {
-  if (p.kind !== 'grids') return p.compiled
+  if (p.kind !== 'grids' && p.kind !== 'layers') return p.compiled
   const inner = p.parts.map((q) => compiledOf(q.plan))
   return { supported: inner.every((c) => c.supported), warnings: [...p.warnings, ...inner.flatMap((c) => c.warnings)] }
 }

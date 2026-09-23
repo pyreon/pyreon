@@ -39,6 +39,7 @@
   "files": [
     "bin",
     "lib",
+    "!lib/analysis",
     "src",
     "schema",
     "README.md",

@@ -72,6 +72,17 @@ export function createFlow<TData = Record<string, unknown>>(
     snapGrid = 15,
     connectionRules,
   } = config
+  // `instance.config` lives as long as the instance, and the INITIAL graph is
+  // read exactly once, here. Keeping it on the config pinned every initial node
+  // and edge for the instance's whole life, including ones later removed — a
+  // 1,000-node flow kept all 500 it removed. Rebinding (rather than exposing a
+  // copy beside the original) keeps the internals and `instance.config` one
+  // object, which the `<Controls>` lock toggle relies on when it writes
+  // `instance.config.nodesDraggable`.
+  const settings: FlowConfig<TData> = { ...config }
+  delete settings.nodes
+  delete settings.edges
+  config = settings
 
   // Normalize an edge: merge flow-wide defaults (edge's own fields win —
   // including an explicit `markerEnd: null`, which survives the spread because
@@ -725,12 +736,16 @@ export function createFlow<TData = Record<string, unknown>>(
   // ── Selection ────────────────────────────────────────────────────────────
 
   function selectNode(id: string, additive = false): void {
+    // `multiSelect: false` means no multi-selection at all, as documented and
+    // as both native engines enforce. It used to gate only the drag-select
+    // box here, so a Shift-click still multi-selected on web.
+    const multi = additive && config.multiSelect !== false
     selectedNodeIds.update((set) => {
-      const next = additive ? new Set(set) : new Set<string>()
+      const next = multi ? new Set(set) : new Set<string>()
       next.add(id)
       return next
     })
-    if (!additive) {
+    if (!multi) {
       selectedEdgeIds.set(new Set())
     }
   }
@@ -750,23 +765,31 @@ export function createFlow<TData = Record<string, unknown>>(
   // nodes). Non-additive selection replaces the node set and clears the edge
   // set — the same net state the clearSelection + additive loop produced.
   function selectNodes(ids: Iterable<string>, additive = false): void {
+    // `multiSelect: false` means no multi-selection at all, as documented and
+    // as both native engines enforce. It used to gate only the drag-select
+    // box here, so a Shift-click still multi-selected on web.
+    const multi = additive && config.multiSelect !== false
     batch(() => {
       selectedNodeIds.update((set) => {
-        const next = additive ? new Set(set) : new Set<string>()
+        const next = multi ? new Set(set) : new Set<string>()
         for (const id of ids) next.add(id)
         return next
       })
-      if (!additive) selectedEdgeIds.set(new Set())
+      if (!multi) selectedEdgeIds.set(new Set())
     })
   }
 
   function selectEdge(id: string, additive = false): void {
+    // `multiSelect: false` means no multi-selection at all, as documented and
+    // as both native engines enforce. It used to gate only the drag-select
+    // box here, so a Shift-click still multi-selected on web.
+    const multi = additive && config.multiSelect !== false
     selectedEdgeIds.update((set) => {
-      const next = additive ? new Set(set) : new Set<string>()
+      const next = multi ? new Set(set) : new Set<string>()
       next.add(id)
       return next
     })
-    if (!additive) {
+    if (!multi) {
       selectedNodeIds.set(new Set())
     }
   }
