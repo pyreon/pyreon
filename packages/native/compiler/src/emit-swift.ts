@@ -20,7 +20,10 @@ import {
   resolveStaticFlowRendererMap,
   unloweredFlowMemberWarning,
   HANDLED_FLOW_WEBVIEW_PROPS,
+  collectFlowRendererComponents,
 } from './flow-lowering'
+import { planFlowSvg, type FlowSvgNumber } from './flow-svg'
+import { lowerFlowPlainElement } from './flow-dom'
 import { CHART_WEBVIEW_HOST_PROPS, configureChartWebViewHost, legacyChartHostProp, HANDLED_CHART_WEBVIEW_PROPS } from './chart-webview-lowering'
 import { DEFAULT_FLOW_WEBVIEW_HOST_HTML } from './generated-flow-webview-host'
 import {
@@ -263,6 +266,8 @@ type StaticFlowNodeToolbar = {
   contentComponent: string
 }
 let _flowComponentToolbars: Map<string, StaticFlowNodeToolbar[]> = new Map()
+/** Components a `<Flow>` in this file renders nodes/edges/the connection line with; `<svg>` lowers only inside these. */
+let _flowRendererComponents: Set<string> = new Set()
 let _flowComponentsWithInvalidToolbars: Set<string> = new Set()
 let _activeComponentName = ''
 
@@ -1199,6 +1204,7 @@ export function emitSwift(
   for (const md of moduleDecls) {
     if (!md.mutable) _moduleConstExprs.set(md.name, md.initial)
   }
+  _flowRendererComponents = collectFlowRendererComponents(components, (name) => _moduleConstExprs.get(name))
   _enumNames = new Set(enums.map((e) => e.name))
   _structFieldsToName = new Map()
   _structTypedKeyToName = new Map()
@@ -8828,6 +8834,11 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
     return 'EmptyView()'
   }
   if (tag === 'path') return emitSwiftFlowCustomPath(e, indent)
+  if ((tag === 'div' || tag === 'p' || tag === 'span') && _flowRendererComponents.has(_activeComponentName)) {
+    const lowered = lowerFlowPlainElement(e)
+    if (lowered) return emitSwiftJsx(lowered, indent)
+  }
+  if (tag === 'svg' && _flowRendererComponents.has(_activeComponentName)) return emitSwiftFlowSvg(e, indent)
   if (tag === 'EdgeLabelRenderer') {
     const content = e.children.map((child) => `  ${emitSwiftChild(child, indent + 2)}`).join('\n')
     return `PyreonFlowEdgeLabelRenderer {\n${content}\n${' '.repeat(indent)}}`
@@ -9031,6 +9042,25 @@ function emitSwiftFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
   const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'nil' : v.kind === 'literal' ? JSON.stringify(v.value) : emitSwiftExpr(v.expr, indent)
   const width = paint.width.kind === 'literal' ? String(paint.width.value) : `Double(${emitSwiftExpr(paint.width.expr, indent)})`
   return `PyreonFlowCustomEdgePath(result: ${resultCode}, color: ${color(paint.stroke)}, width: ${width}, fill: ${color(paint.fill)})`
+}
+
+function emitSwiftFlowSvg(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const plan = planFlowSvg(e)
+  for (const w of plan.warnings) if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+  const num = (n: FlowSvgNumber) => n.kind === 'literal' ? String(n.value) : `Double(${emitSwiftExpr(n.expr, indent)})`
+  const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'nil' : v.kind === 'literal' ? JSON.stringify(v.value) : emitSwiftExpr(v.expr, indent)
+  const pad = ' '.repeat(indent + 2)
+  const shapes = plan.shapes.map((s) =>
+    `${pad}PyreonFlowSvgShape(result: PyreonFlowPathResult(svgPath: ${emitSwiftExpr(s.d, indent + 2)}), stroke: ${color(s.paint.stroke)}, strokeWidth: ${s.paint.width.kind === 'literal' ? String(s.paint.width.value) : `Double(${emitSwiftExpr(s.paint.width.expr, indent)})`}, fill: ${color(s.paint.fill)})`,
+  )
+  const args = [
+    ...(plan.width ? [`width: ${num(plan.width)}`] : []),
+    ...(plan.height ? [`height: ${num(plan.height)}`] : []),
+    ...(plan.viewBox ? [`viewBox: [${plan.viewBox.join(', ')}]`] : []),
+    ...(plan.stretch ? ['stretch: true'] : []),
+  ]
+  const body = shapes.length > 0 ? `[\n${shapes.join(',\n')}\n${' '.repeat(indent)}]` : '[]'
+  return `PyreonFlowSvg(${[...args, `shapes: ${body}`].join(', ')})`
 }
 
 function emitSwiftFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {

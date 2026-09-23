@@ -370,6 +370,24 @@ function WireEdge(props: EdgeComponentProps) {
   return <path d={`M ${props.sourceX()} ${props.sourceY() + 12} L ${props.targetX()} ${props.targetY() + 12}`} style="fill: none; stroke: #16a34a; stroke-width: 4" />
 }
 
+// A custom node carrying an inline <svg>. The native compiler lowers the
+// shapes to path data and draws them in a canvas scaled by the viewBox, so this
+// is a native view on iOS and Android, not a WebView. The 8-unit viewBox is
+// drawn at 16x16, and purple (#7c3aed) is painted by nothing else on the
+// screen: the device suites measure its box to prove the viewBox scale.
+// It takes the same named data type as GridNode: a flow has ONE node data
+// type natively, and an inline `{ label: string }` would synthesize a second.
+function BadgeNode(props: NodeComponentProps<GridNodeData>) {
+  return (
+    <Stack>
+      <svg width={16} height={16} viewBox="0 0 8 8">
+        <rect width="8" height="8" fill="#7c3aed" />
+      </svg>
+      <Text>{props.data().label}</Text>
+    </Stack>
+  )
+}
+
 function FlowScreen() {
   const navigate = useNavigate()
   // Flow-native device proof: `createFlow` lowers to PyreonFlowState on both
@@ -422,7 +440,7 @@ function FlowScreen() {
       <Inline gap={2}>
         <Button
           onPress={() =>
-            flow.addNode({ id: 'c', position: { x: 400, y: 0 }, data: { label: 'Extra' } })
+            flow.addNode({ id: 'c', type: 'badge', position: { x: 100, y: 120 }, data: { label: 'Extra' } })
           }
           data-testid="flow-add"
         >
@@ -442,7 +460,7 @@ function FlowScreen() {
       <Button onPress={() => navigate('/tasks')} data-testid="flow-back">
         Back to tasks
       </Button>
-      <Flow instance={flow} edgeTypes={{ wire: WireEdge }} ariaLabel="Task flow">
+      <Flow instance={flow} nodeTypes={{ badge: BadgeNode }} edgeTypes={{ wire: WireEdge }} ariaLabel="Task flow">
         <Background variant="dots" />
         <Controls />
         <MiniMap />

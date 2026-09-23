@@ -33,9 +33,10 @@ describe('a raw DOM/SVG element is named, with its route', () => {
       expect(div).toContain('@pyreon/flow/webview')
     })
 
-    it(`${target}: the <svg> wrapper still warns, but its <path> data now lowers natively`, () => {
+    it(`${target}: an <svg> in a flow renderer lowers natively, wrapper and path data both`, () => {
       const result = transform(FLOW_APP, { target })
-      expect(result.warnings.some((w) => w.startsWith('<svg> is a DOM/SVG element'))).toBe(true)
+      expect(result.warnings.some((w) => w.startsWith('<svg> is a DOM/SVG element'))).toBe(false)
+      expect(result.code).toContain('PyreonFlowSvg(')
       expect(result.code).toContain(target === 'swift' ? 'PyreonFlowPathResult(svgPath: "M0 0 L40 40")' : 'pyreonFlowPathResultFromSvg("M0 0 L40 40")')
       expect(result.warnings.some((w) => w.includes('needs a `d` attribute'))).toBe(false)
     })

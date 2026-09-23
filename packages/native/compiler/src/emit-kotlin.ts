@@ -16,7 +16,10 @@ import {
   resolveStaticFlowRendererMap,
   unloweredFlowMemberWarning,
   HANDLED_FLOW_WEBVIEW_PROPS,
+  collectFlowRendererComponents,
 } from './flow-lowering'
+import { planFlowSvg, type FlowSvgNumber } from './flow-svg'
+import { lowerFlowPlainElement } from './flow-dom'
 import { CHART_WEBVIEW_HOST_PROPS, configureChartWebViewHost, legacyChartHostProp, HANDLED_CHART_WEBVIEW_PROPS } from './chart-webview-lowering'
 import { DEFAULT_FLOW_WEBVIEW_HOST_HTML } from './generated-flow-webview-host'
 import {
@@ -255,6 +258,8 @@ type StaticFlowNodeToolbar = {
   contentComponent: string
 }
 let _flowComponentToolbarsKotlin: Map<string, StaticFlowNodeToolbar[]> = new Map()
+/** Components a `<Flow>` in this file renders nodes/edges/the connection line with; `<svg>` lowers only inside these. */
+let _flowRendererComponentsKotlin: Set<string> = new Set()
 let _flowComponentsWithInvalidToolbarsKotlin: Set<string> = new Set()
 let _activeComponentName = ''
 
@@ -742,6 +747,7 @@ export function emitKotlin(
   for (const md of moduleDecls) {
     if (!md.mutable) _moduleConstExprsKotlin.set(md.name, md.initial)
   }
+  _flowRendererComponentsKotlin = collectFlowRendererComponents(components, (name) => _moduleConstExprsKotlin.get(name))
   _enumNames = new Set(enums.map((e) => e.name))
   // Build the struct-fields key map — mirror of emit-swift's logic.
   _structFieldsToName = new Map()
@@ -7351,6 +7357,11 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     return 'Box {}'
   }
   if (tag === 'path') return emitKotlinFlowCustomPath(e, indent)
+  if ((tag === 'div' || tag === 'p' || tag === 'span') && _flowRendererComponentsKotlin.has(_activeComponentName)) {
+    const lowered = lowerFlowPlainElement(e)
+    if (lowered) return emitKotlinJsx(lowered, indent)
+  }
+  if (tag === 'svg' && _flowRendererComponentsKotlin.has(_activeComponentName)) return emitKotlinFlowSvg(e, indent)
   if (tag === 'EdgeLabelRenderer') {
     const content = e.children.map((child) => `  ${emitKotlinChild(child, indent + 2)}`).join('\n')
     return `PyreonFlowEdgeLabelRenderer {\n${content}\n${' '.repeat(indent)}}`
@@ -7547,6 +7558,25 @@ function emitKotlinFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
   const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'null' : v.kind === 'literal' ? JSON.stringify(v.value) : emitKotlinExpr(v.expr, indent)
   const width = paint.width.kind === 'literal' ? ktChartDouble(String(paint.width.value)) : `(${emitKotlinExpr(paint.width.expr, indent)}).toDouble()`
   return `PyreonFlowCustomEdgePath(result = ${resultCode}, color = ${color(paint.stroke)}, width = ${width}, fill = ${color(paint.fill)})`
+}
+
+function emitKotlinFlowSvg(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const plan = planFlowSvg(e)
+  for (const w of plan.warnings) if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+  const num = (n: FlowSvgNumber) => n.kind === 'literal' ? ktChartDouble(String(n.value)) : `(${emitKotlinExpr(n.expr, indent)}).toDouble()`
+  const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'null' : v.kind === 'literal' ? JSON.stringify(v.value) : emitKotlinExpr(v.expr, indent)
+  const pad = ' '.repeat(indent + 2)
+  const shapes = plan.shapes.map((s) =>
+    `${pad}PyreonFlowSvgShape(result = pyreonFlowPathResultFromSvg(${emitKotlinExpr(s.d, indent + 2)}), stroke = ${color(s.paint.stroke)}, strokeWidth = ${s.paint.width.kind === 'literal' ? ktChartDouble(String(s.paint.width.value)) : `(${emitKotlinExpr(s.paint.width.expr, indent)}).toDouble()`}, fill = ${color(s.paint.fill)})`,
+  )
+  const args = [
+    ...(plan.width ? [`width = ${num(plan.width)}`] : []),
+    ...(plan.height ? [`height = ${num(plan.height)}`] : []),
+    ...(plan.viewBox ? [`viewBox = listOf(${plan.viewBox.map((v) => ktChartDouble(String(v))).join(', ')})`] : []),
+    ...(plan.stretch ? ['stretch = true'] : []),
+  ]
+  const body = shapes.length > 0 ? `listOf(\n${shapes.join(',\n')}\n${' '.repeat(indent)})` : 'emptyList()'
+  return `PyreonFlowSvg(${[...args, `shapes = ${body}`].join(', ')})`
 }
 
 function emitKotlinFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {

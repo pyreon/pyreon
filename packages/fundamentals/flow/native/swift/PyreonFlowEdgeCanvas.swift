@@ -774,3 +774,82 @@ func pyreonFlowArcToCubics(x0: Double, y0: Double, rx rxIn: Double, ry ryIn: Dou
     }
     return out
 }
+
+// MARK: - Inline <svg> in a native Flow renderer
+
+/// One shape of a lowered `<svg>`. The compiler turns every SVG shape
+/// (`path`, `rect`, `circle`, `ellipse`, `line`, `polyline`, `polygon`, and
+/// the shapes inside a `<g>`) into path data, so a single draw routine covers
+/// them all. Paint is already resolved, inheritance included.
+public struct PyreonFlowSvgShape: Equatable {
+    public var result: PyreonFlowPathResult
+    /// The stroke colour; `nil` draws no stroke (SVG `stroke: none`, the initial value).
+    public var stroke: String?
+    public var strokeWidth: Double
+    /// The fill colour; `nil` draws no fill (SVG `fill: none`).
+    public var fill: String?
+    public init(result: PyreonFlowPathResult, stroke: String? = nil, strokeWidth: Double = 1, fill: String? = "#000000") {
+        self.result = result; self.stroke = stroke; self.strokeWidth = strokeWidth; self.fill = fill
+    }
+}
+
+/// The `<svg>` element's rendered size, in points. An explicit `width` and
+/// `height` win. With only one, the other follows the viewBox's aspect ratio.
+/// With neither, the replaced-element default applies: 300 wide, and 150 high
+/// or the viewBox's aspect.
+public func pyreonFlowSvgSize(width: Double?, height: Double?, viewBox: [Double]?) -> (width: Double, height: Double) {
+    let aspect: Double? = {
+        guard let vb = viewBox, vb.count == 4, vb[2] > 0, vb[3] > 0 else { return nil }
+        return vb[3] / vb[2]
+    }()
+    switch (width, height) {
+    case let (w?, h?): return (w, h)
+    case let (w?, nil): return (w, aspect.map { w * $0 } ?? 150)
+    case let (nil, h?): return (aspect.map { h / $0 } ?? 300, h)
+    case (nil, nil): return (300, aspect.map { 300 * $0 } ?? 150)
+    }
+}
+
+/// Maps viewBox units onto the viewport. The default `preserveAspectRatio`
+/// (`xMidYMid meet`) scales uniformly to fit and centres; `stretch` is
+/// `preserveAspectRatio="none"`. Without a viewBox, user units are points.
+public func pyreonFlowSvgTransform(width: Double, height: Double, viewBox: [Double]?, stretch: Bool = false) -> (scaleX: Double, scaleY: Double, translateX: Double, translateY: Double) {
+    guard let vb = viewBox, vb.count == 4, vb[2] > 0, vb[3] > 0 else { return (1, 1, 0, 0) }
+    if stretch {
+        let sx = width / vb[2], sy = height / vb[3]
+        return (sx, sy, -vb[0] * sx, -vb[1] * sy)
+    }
+    let s = min(width / vb[2], height / vb[3])
+    return (s, s, -vb[0] * s + (width - vb[2] * s) / 2, -vb[1] * s + (height - vb[3] * s) / 2)
+}
+
+/// A lowered inline `<svg>`: its shapes drawn in one `Canvas`, sized and
+/// scaled the way the browser sizes and scales the element. Strokes scale
+/// with the viewBox, as they do on the web.
+public struct PyreonFlowSvg: View {
+    public var width: Double?
+    public var height: Double?
+    public var viewBox: [Double]?
+    public var stretch: Bool
+    public var shapes: [PyreonFlowSvgShape]
+    public init(width: Double? = nil, height: Double? = nil, viewBox: [Double]? = nil, stretch: Bool = false, shapes: [PyreonFlowSvgShape]) {
+        self.width = width; self.height = height; self.viewBox = viewBox; self.stretch = stretch; self.shapes = shapes
+    }
+    public var body: some View {
+        let size = pyreonFlowSvgSize(width: width, height: height, viewBox: viewBox)
+        let t = pyreonFlowSvgTransform(width: size.width, height: size.height, viewBox: viewBox, stretch: stretch)
+        return Canvas { context, _ in
+            context.translateBy(x: CGFloat(t.translateX), y: CGFloat(t.translateY))
+            context.scaleBy(x: CGFloat(t.scaleX), y: CGFloat(t.scaleY))
+            for shape in shapes {
+                let path = pyreonFlowEdgePath(shape.result.segments)
+                if let fill = shape.fill { context.fill(path, with: .color(pyreonFlowEdgeColor(fill))) }
+                if let stroke = shape.stroke {
+                    context.stroke(path, with: .color(pyreonFlowEdgeColor(stroke)), style: StrokeStyle(lineWidth: CGFloat(shape.strokeWidth)))
+                }
+            }
+        }
+        .frame(width: CGFloat(size.width), height: CGFloat(size.height))
+        .allowsHitTesting(false)
+    }
+}

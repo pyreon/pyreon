@@ -1398,6 +1398,13 @@ public struct PyreonFlowCustomEdgePath: View {
   public init(result: PyreonFlowPathResult, color: String? = "#999999", width: Double = 1.5, dash: [Double]? = nil, fill: String? = nil) {}
   public var body: some View { EmptyView() }
 }
+public struct PyreonFlowSvgShape {
+  public init(result: PyreonFlowPathResult, stroke: String? = nil, strokeWidth: Double = 1, fill: String? = "#000000") {}
+}
+public struct PyreonFlowSvg: View {
+  public init(width: Double? = nil, height: Double? = nil, viewBox: [Double]? = nil, stretch: Bool = false, shapes: [PyreonFlowSvgShape]) {}
+  public var body: some View { EmptyView() }
+}
 public struct PyreonFlowEdgeLabelRenderer<Content: View>: View {
   public init(@ViewBuilder content: () -> Content) {}
   public var body: some View { EmptyView() }

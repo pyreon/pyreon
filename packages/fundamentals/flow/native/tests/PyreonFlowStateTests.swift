@@ -1266,9 +1266,58 @@ struct PyreonFlowStateTests {
         let result = PyreonFlowPathResult(svgPath: "M0 0 L20 10")
         check(near(result.labelX, 10) && near(result.labelY, 5) && result.path == "M0,0 L20,10", "a parsed path result centres its label and round-trips to path data")
     }
+
+    /// RGBA of one pixel of a view rendered offscreen at scale 1.
+    @MainActor static func svgPixel<V: View>(_ view: V, x: Int, y: Int) -> (r: UInt8, g: UInt8, b: UInt8, a: UInt8) {
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 1
+        guard let image = renderer.cgImage else { fatalError("PyreonFlowStateTests: ImageRenderer produced no image") }
+        var data = [UInt8](repeating: 0, count: image.width * image.height * 4)
+        let ctx = CGContext(data: &data, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        let i = (y * image.width + x) * 4
+        return (data[i], data[i + 1], data[i + 2], data[i + 3])
+    }
+
+    /// A lowered inline `<svg>` is sized and scaled like the browser: explicit
+    /// size, viewBox aspect for a missing side, `xMidYMid meet` by default,
+    /// `none` stretching. Then an offscreen render proves the transform is
+    /// actually applied to what is drawn, not only computed.
+    @MainActor static func runSvgElementChecks() {
+        func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-9 }
+        let explicitSize = pyreonFlowSvgSize(width: 24, height: 12, viewBox: [0, 0, 10, 10])
+        check(explicitSize.width == 24 && explicitSize.height == 12, "explicit width and height win over the viewBox")
+        let fromAspect = pyreonFlowSvgSize(width: 40, height: nil, viewBox: [0, 0, 20, 10])
+        check(fromAspect.width == 40 && fromAspect.height == 20, "a missing height follows the viewBox aspect")
+        let fallback = pyreonFlowSvgSize(width: nil, height: nil, viewBox: nil)
+        check(fallback.width == 300 && fallback.height == 150, "no size and no viewBox is the 300 x 150 replaced-element default")
+        let meet = pyreonFlowSvgTransform(width: 40, height: 20, viewBox: [0, 0, 10, 10])
+        check(near(meet.scaleX, 2) && near(meet.scaleY, 2) && near(meet.translateX, 10) && near(meet.translateY, 0), "meet scales uniformly and centres the slack")
+        let offset = pyreonFlowSvgTransform(width: 20, height: 20, viewBox: [5, 5, 10, 10])
+        check(near(offset.translateX, -10) && near(offset.translateY, -10), "a viewBox origin translates the content")
+        let stretch = pyreonFlowSvgTransform(width: 40, height: 20, viewBox: [0, 0, 10, 10], stretch: true)
+        check(near(stretch.scaleX, 4) && near(stretch.scaleY, 2), "preserveAspectRatio none scales each axis")
+        check(pyreonFlowSvgTransform(width: 40, height: 20, viewBox: nil) == (1, 1, 0, 0), "no viewBox means user units are points")
+
+        // A square filling the viewBox, drawn into a wider viewport: with meet
+        // it lands centred, x 10..30. A transform that is computed but not
+        // applied would draw it at x 0..10 instead.
+        let square = PyreonFlowSvgShape(result: PyreonFlowPathResult(svgPath: "M 0 0 h 10 v 10 h -10 Z"), fill: "#ff0000")
+        let view = PyreonFlowSvg(width: 40, height: 20, viewBox: [0, 0, 10, 10], shapes: [square])
+        let left = svgPixel(view, x: 5, y: 10), mid = svgPixel(view, x: 20, y: 10), right = svgPixel(view, x: 35, y: 10)
+        check(left.a == 0 && right.a == 0, "the slack either side of a meet-fitted viewBox is empty")
+        check(mid.r > 200 && mid.g < 40 && mid.a > 200, "the fitted square is painted with its fill")
+        // Stroke only: fill nil draws no interior.
+        let ring = PyreonFlowSvgShape(result: PyreonFlowPathResult(svgPath: "M 2 2 h 16 v 16 h -16 Z"), stroke: "#0000ff", strokeWidth: 2, fill: nil)
+        let hollow = PyreonFlowSvg(width: 20, height: 20, shapes: [ring])
+        check(svgPixel(hollow, x: 10, y: 10).a == 0, "fill none leaves the interior empty")
+        let edge = svgPixel(hollow, x: 2, y: 10)
+        check(edge.b > 200 && edge.a > 200, "the stroke is painted on the outline")
+    }
     static func main() {
         runParityChecks()
         runSvgPathChecks()
+        MainActor.assumeIsolated { runSvgElementChecks() }
         runStateChecks()
         runEdgeCanvasChecks()
         runWebViewChecks()

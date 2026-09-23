@@ -6,6 +6,10 @@
 // asserted here is the builder's COMMAND SEQUENCE and the color channels.
 
 import com.pyreon.runtime.PyreonFlowEdgeSegment
+import com.pyreon.runtime.PyreonFlowSvgSize
+import com.pyreon.runtime.PyreonFlowSvgTransform
+import com.pyreon.runtime.pyreonFlowSvgSize
+import com.pyreon.runtime.pyreonFlowSvgTransform
 import com.pyreon.runtime.PyreonFlowEdgeStroke
 import com.pyreon.runtime.PyreonFlowPathPoint
 import com.pyreon.runtime.PyreonFlowNodeBox
@@ -72,8 +76,29 @@ private fun checkSvgPaths() {
     check(near(result.labelX, 10.0) && near(result.labelY, 5.0) && result.path == "M0,0 L20,10", "a parsed path result centres its label and round-trips to path data")
 }
 
+private fun checkSvgElement() {
+    fun near(a: Double, b: Double) = kotlin.math.abs(a - b) < 1e-9
+    check(pyreonFlowSvgSize(24.0, 12.0, listOf(0.0, 0.0, 10.0, 10.0)) == PyreonFlowSvgSize(24.0, 12.0), "explicit width and height win over the viewBox")
+    check(pyreonFlowSvgSize(40.0, null, listOf(0.0, 0.0, 20.0, 10.0)) == PyreonFlowSvgSize(40.0, 20.0), "a missing height follows the viewBox aspect")
+    check(pyreonFlowSvgSize(null, 10.0, listOf(0.0, 0.0, 20.0, 10.0)) == PyreonFlowSvgSize(20.0, 10.0), "a missing width follows the viewBox aspect")
+    check(pyreonFlowSvgSize(null, null, null) == PyreonFlowSvgSize(300.0, 150.0), "no size and no viewBox is the 300 x 150 replaced-element default")
+    val meet = pyreonFlowSvgTransform(40.0, 20.0, listOf(0.0, 0.0, 10.0, 10.0))
+    check(near(meet.scaleX, 2.0) && near(meet.scaleY, 2.0) && near(meet.translateX, 10.0) && near(meet.translateY, 0.0), "meet scales uniformly and centres the slack")
+    val offset = pyreonFlowSvgTransform(20.0, 20.0, listOf(5.0, 5.0, 10.0, 10.0))
+    check(near(offset.translateX, -10.0) && near(offset.translateY, -10.0), "a viewBox origin translates the content")
+    val stretch = pyreonFlowSvgTransform(40.0, 20.0, listOf(0.0, 0.0, 10.0, 10.0), stretch = true)
+    check(near(stretch.scaleX, 4.0) && near(stretch.scaleY, 2.0), "preserveAspectRatio none scales each axis")
+    check(pyreonFlowSvgTransform(40.0, 20.0, null) == PyreonFlowSvgTransform(1.0, 1.0, 0.0, 0.0), "no viewBox means user units are dp")
+    // The shapes the compiler emits parse to closed outlines.
+    val circle = pyreonFlowParseSvgPath("M 12 12 m -10 0 a 10 10 0 0 0 10 10 a 10 10 0 0 0 10 -10 a 10 10 0 0 0 -10 -10 a 10 10 0 0 0 -10 10 Z")
+    check(near(circle.first().x, 2.0) && circle.any { near(it.x, 12.0) && near(it.y, 22.0) } && circle.any { near(it.x, 22.0) && near(it.y, 12.0) } && circle.any { near(it.x, 12.0) && near(it.y, 2.0) }, "the lowered circle passes through its four extremes")
+    val polyline = pyreonFlowParseSvgPath("M 1,1 5,5 9,1")
+    check(polyline.size == 3 && near(polyline[2].x, 9.0), "polyline points after M are implicit linetos")
+}
+
 fun main() {
     checkSvgPaths()
+    checkSvgElement()
     // 1. A straight two-point edge — move + line, endpoints exact.
     val straight = pyreonFlowEdgePath(listOf(PyreonFlowEdgeSegment.move(0.0, 0.0), PyreonFlowEdgeSegment.line(100.0, 50.0)))
     check(straight.ops == listOf("move(0.0,0.0)", "line(100.0,50.0)"), "straight edge is move+line, got ${straight.ops}")

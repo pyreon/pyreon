@@ -39,7 +39,19 @@ function paintOf(value: string): FlowPathPaintValue {
   return v === 'none' || v === 'transparent' ? { kind: 'none' } : { kind: 'literal', value: v }
 }
 
-export function resolveFlowPathPaint(e: JsxElement): FlowPathPaint {
+/** What an element inherits when it sets nothing: the SVG initial values. */
+export const SVG_INITIAL_PAINT: Omit<FlowPathPaint, 'warnings'> = {
+  fill: { kind: 'literal', value: '#000000' },
+  stroke: { kind: 'none' },
+  width: { kind: 'literal', value: 1 },
+}
+
+/**
+ * `inherited` is the parent's resolved paint. `fill`, `stroke` and
+ * `stroke-width` are inherited properties in SVG, so a shape inside a `<g>`
+ * or `<svg>` that sets them takes the ancestor's value, not the initial one.
+ */
+export function resolveFlowPathPaint(e: JsxElement, inherited: Omit<FlowPathPaint, 'warnings'> = SVG_INITIAL_PAINT): FlowPathPaint {
   const warnings: string[] = []
   const attr = (...names: string[]) => {
     for (const name of names) {
@@ -56,7 +68,7 @@ export function resolveFlowPathPaint(e: JsxElement): FlowPathPaint {
   if (styleExpr !== undefined) {
     const text = literal(styleExpr)
     if (typeof text === 'string') style = styleDeclarations(text)
-    else warnings.push('A native Flow <path style={…}> must be a static string to lower; its fill, stroke and stroke-width attributes still apply.')
+    else warnings.push(`A native Flow <${e.tag} style={…}> must be a static string to lower; its fill, stroke and stroke-width attributes still apply.`)
   }
 
   const paint = (styleKey: string, ...attrNames: string[]): FlowPathPaintValue | undefined => {
@@ -68,10 +80,10 @@ export function resolveFlowPathPaint(e: JsxElement): FlowPathPaint {
     return typeof text === 'string' ? paintOf(text) : { kind: 'expr', expr }
   }
 
-  const fill = paint('fill', 'fill') ?? { kind: 'literal', value: '#000000' }
-  const stroke = paint('stroke', 'stroke') ?? { kind: 'none' }
+  const fill = paint('fill', 'fill') ?? inherited.fill
+  const stroke = paint('stroke', 'stroke') ?? inherited.stroke
 
-  let width: FlowPathPaint['width'] = { kind: 'literal', value: 1 }
+  let width: FlowPathPaint['width'] = inherited.width
   const styleWidth = style.get('stroke-width')
   if (styleWidth !== undefined && Number.isFinite(Number.parseFloat(styleWidth))) {
     width = { kind: 'literal', value: Number.parseFloat(styleWidth) }

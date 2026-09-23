@@ -591,3 +591,53 @@ internal fun pyreonFlowArcToCubics(
     }
     return out
 }
+
+// ─── Inline <svg> in a native Flow renderer ─────────────────────────────────
+
+/**
+ * One shape of a lowered `<svg>`: every SVG shape is lowered to path data by
+ * the compiler, and paint arrives resolved (inheritance included). Mirrors
+ * Swift's `PyreonFlowSvgShape`.
+ */
+data class PyreonFlowSvgShape(
+    val result: PyreonFlowPathResult,
+    /** The stroke colour; `null` draws no stroke (SVG `stroke: none`, the initial value). */
+    val stroke: String? = null,
+    val strokeWidth: Double = 1.0,
+    /** The fill colour; `null` draws no fill (SVG `fill: none`). */
+    val fill: String? = "#000000",
+)
+
+data class PyreonFlowSvgSize(val width: Double, val height: Double)
+data class PyreonFlowSvgTransform(val scaleX: Double, val scaleY: Double, val translateX: Double, val translateY: Double)
+
+/**
+ * The `<svg>` element's rendered size, in dp. Explicit `width` and `height`
+ * win; with one, the other follows the viewBox aspect; with neither, the
+ * replaced-element default of 300 wide applies. Mirrors Swift.
+ */
+fun pyreonFlowSvgSize(width: Double?, height: Double?, viewBox: List<Double>?): PyreonFlowSvgSize {
+    val aspect = if (viewBox != null && viewBox.size == 4 && viewBox[2] > 0 && viewBox[3] > 0) viewBox[3] / viewBox[2] else null
+    return when {
+        width != null && height != null -> PyreonFlowSvgSize(width, height)
+        width != null -> PyreonFlowSvgSize(width, aspect?.let { width * it } ?: 150.0)
+        height != null -> PyreonFlowSvgSize(aspect?.let { height / it } ?: 300.0, height)
+        else -> PyreonFlowSvgSize(300.0, aspect?.let { 300.0 * it } ?: 150.0)
+    }
+}
+
+/**
+ * viewBox units onto the viewport, in dp: `xMidYMid meet` by default (uniform
+ * fit, centred), non-uniform when [stretch] (`preserveAspectRatio="none"`).
+ * Without a viewBox, user units are dp. Mirrors Swift.
+ */
+fun pyreonFlowSvgTransform(width: Double, height: Double, viewBox: List<Double>?, stretch: Boolean = false): PyreonFlowSvgTransform {
+    if (viewBox == null || viewBox.size != 4 || viewBox[2] <= 0 || viewBox[3] <= 0) return PyreonFlowSvgTransform(1.0, 1.0, 0.0, 0.0)
+    if (stretch) {
+        val sx = width / viewBox[2]
+        val sy = height / viewBox[3]
+        return PyreonFlowSvgTransform(sx, sy, -viewBox[0] * sx, -viewBox[1] * sy)
+    }
+    val s = minOf(width / viewBox[2], height / viewBox[3])
+    return PyreonFlowSvgTransform(s, s, -viewBox[0] * s + (width - viewBox[2] * s) / 2, -viewBox[1] * s + (height - viewBox[3] * s) / 2)
+}
