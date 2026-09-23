@@ -241,6 +241,36 @@ class CounterInstrumentedTest {
 
     /// F3 renderer parity, kept apart from the gesture test above: every check
     /// here reads something the RENDERER painted or placed, not the engine.
+    // Flow animation frames (animateViewport / fitView / animated layout) mutate
+    // the engine and call app listeners. They ran on a background Timer thread,
+    // so a listener that touched a View threw CalledFromWrongThreadException
+    // (seen in CI in this class). Rendering a flow view must switch them to the
+    // main looper, and every frame must then reach listeners there.
+    @Test
+    fun flowAnimationFramesRunOnTheMainThread() {
+        com.pyreon.runtime.PyreonFlowFrames.scheduler = com.pyreon.runtime.PyreonFlowFrames.timerScheduler
+        composeRule.activityRule.scenario.recreate()
+        composeRule.onNodeWithContentDescription("Native Flow device proof").assertExists()
+        check(com.pyreon.runtime.PyreonFlowFrames.scheduler !== com.pyreon.runtime.PyreonFlowFrames.timerScheduler) {
+            "rendering PyreonFlowView did not install the main-thread frame scheduler"
+        }
+        val onMain = java.util.concurrent.CopyOnWriteArrayList<Boolean>()
+        lateinit var state: com.pyreon.runtime.PyreonFlowState<String>
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            // Motion forced ON: with system animations off (CI emulators run
+            // with animator scale 0), the engine honours reduced motion and
+            // jumps to the end in ONE synchronous frame on this thread, which
+            // never touches the scheduler this test exists to check.
+            state = com.pyreon.runtime.PyreonFlowState(reducedMotion = false)
+            state.onViewportChange { onMain.add(android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) }
+            state.animateViewport(x = 100.0, duration = 120.0)
+        }
+        val deadline = SystemClock.uptimeMillis() + 5_000
+        while (SystemClock.uptimeMillis() < deadline && onMain.size < 3) SystemClock.sleep(20)
+        check(onMain.size >= 3) { "the viewport animation delivered only ${onMain.size} frames" }
+        check(onMain.all { it }) { "a viewport animation frame reached its listener OFF the main thread ($onMain)" }
+    }
+
     @Test
     fun flowRendererParityChrome() {
         composeRule.onNodeWithText("Native Flow Start").assertIsDisplayed()
@@ -321,11 +351,19 @@ class CounterInstrumentedTest {
         composeRule.onAllNodesWithTag("native-flow-custom-line").assertCountEquals(0)
         composeRule.onNodeWithTag("native-flow-custom-line-mounts").assertTextEquals("0")
         // Mostly sideways, ending just below the End node: a vertical drag is a
-        // page scroll on both platforms before any handle sees it.
+        // page scroll on both platforms before any handle sees it. The hold must
+        // stay clear of the canvas's 40dp auto-pan band: held inside it, the
+        // graph pans every frame (as on the web) and Compose never idles, so the
+        // mid-drag assertion times out. It used to hold 39.3dp from the bottom.
+        val holdDown = run {
+            val canvas = flowCanvas.fetchSemanticsNode().boundsInRoot
+            val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+            minOf(120f, canvas.bottom - 60f * density - sourceCenter.y)
+        }
         source.performTouchInput {
             down(center)
-            moveBy(androidx.compose.ui.geometry.Offset(-40f, 60f))
-            moveBy(androidx.compose.ui.geometry.Offset(-40f, 60f))
+            moveBy(androidx.compose.ui.geometry.Offset(-40f, holdDown / 2f))
+            moveBy(androidx.compose.ui.geometry.Offset(-40f, holdDown / 2f))
         }
         composeRule.onNodeWithTag("native-flow-custom-line").assertExists()
         source.performTouchInput { up() }

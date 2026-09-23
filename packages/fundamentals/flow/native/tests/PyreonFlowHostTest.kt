@@ -20,6 +20,33 @@ fun main() {
     )
     val strokes = pyreonFlowEdgeStrokes(state)
     checkHost(strokes.map { it.id } == listOf("shown"), "only valid visible edges render")
+    // Stacking order: zIndex orders the drawn strokes; elevateEdgesOnSelect
+    // puts a selected edge last. Built through pyreonFlowEdgeStrokes itself.
+    val stacked = PyreonFlowState(
+        nodes = listOf(
+            PyreonFlowNode("a", position = PyreonXYPosition(0.0, 0.0), data = "A"),
+            PyreonFlowNode("b", position = PyreonXYPosition(200.0, 0.0), data = "B"),
+            PyreonFlowNode("c", position = PyreonXYPosition(400.0, 0.0), data = "C"),
+        ),
+        edges = listOf(
+            PyreonFlowEdge("ab", source = "a", target = "b", zIndex = 3.0),
+            PyreonFlowEdge("ac", source = "a", target = "c"),
+            PyreonFlowEdge("bc", source = "b", target = "c"),
+        ),
+        elevateEdgesOnSelect = true,
+    )
+    checkHost(pyreonFlowEdgeStrokes(stacked).map { it.id } == listOf("ac", "bc", "ab"), "edges draw in zIndex order, stably")
+    stacked.selectEdge("ac")
+    checkHost(pyreonFlowEdgeStrokes(stacked).map { it.id } == listOf("bc", "ab", "ac"), "elevateEdgesOnSelect draws the selected edge last")
+    stacked.elevateEdgesOnSelect = false
+    checkHost(pyreonFlowEdgeStrokes(stacked).map { it.id } == listOf("ac", "bc", "ab"), "without elevation a selection does not reorder")
+    checkHost(pyreonFlowNodeZ(5.0, selected = true, dragging = false, elevate = true) == 105.0, "a selected node is raised by 100")
+    checkHost(pyreonFlowNodeZ(5.0, selected = true, dragging = false, elevate = false) == 5.0, "elevateNodesOnSelect false keeps its own zIndex")
+    checkHost(pyreonFlowNodeZ(null, selected = false, dragging = true, elevate = false) == 1000.0, "a dragged node is raised by 1000")
+    // A loose reconnect accepts a handle of the other type; strict does not.
+    val sourceTypeHandle = PyreonFlowInteractiveHandle("c", "out", "source", PyreonFlowPosition.Right, 0.0, 0.0)
+    checkHost(pyreonFlowReconnectConnection(stacked.getEdge("ab")!!, "target", sourceTypeHandle) == null, "strict reconnect refuses a source handle for the target end")
+    checkHost(pyreonFlowReconnectConnection(stacked.getEdge("ab")!!, "target", sourceTypeHandle, loose = true) == PyreonFlowConnection("a", "c", null, "out"), "loose reconnect accepts it")
     checkHost(strokes.single().segments.isNotEmpty(), "visible edge has native path geometry")
     val inferredHandles = listOf(PyreonFlowHandleConfig("out", "source", PyreonFlowPosition.Right, 75.0), PyreonFlowHandleConfig("in", "target", PyreonFlowPosition.Left))
     checkHost(pyreonFlowEffectiveHandles(state.getNode("visible")!!, inferredHandles) == inferredHandles, "renderer handles fill missing endpoint types")

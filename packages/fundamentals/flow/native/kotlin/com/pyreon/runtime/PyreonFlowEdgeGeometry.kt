@@ -100,8 +100,22 @@ fun pyreonFlowInteractiveHandles(nodeId: String, node: PyreonFlowNodeBox, handle
 fun pyreonNearestFlowHandle(handles: List<PyreonFlowInteractiveHandle>, point: PyreonFlowPathPoint, type: String, radius: Double): PyreonFlowInteractiveHandle? {
     if (radius < 0.0) return null
     return handles.asSequence()
-        .filter { it.type == type && kotlin.math.hypot(it.x - point.x, it.y - point.y) <= radius }
+        .filter { (type == "any" || it.type == type) && kotlin.math.hypot(it.x - point.x, it.y - point.y) <= radius }
         .minByOrNull { kotlin.math.hypot(it.x - point.x, it.y - point.y) }
+}
+
+/**
+ * The connection a handle drag makes when it ends at [point], under the web's
+ * `connectionMode` rules: `"strict"` accepts only the opposite handle type and
+ * always yields source -> target; `"loose"` accepts any handle, oriented from
+ * the start. The start node is never a candidate. Mirrors Swift.
+ */
+fun pyreonFlowResolveConnection(start: PyreonFlowInteractiveHandle, handles: List<PyreonFlowInteractiveHandle>, point: PyreonFlowPathPoint, radius: Double, connectionMode: String): PyreonFlowConnection? {
+    val loose = connectionMode == "loose"
+    val want = if (loose) "any" else if (start.type == "target") "source" else "target"
+    val end = pyreonNearestFlowHandle(handles.filter { it.nodeId != start.nodeId }, point, want, radius) ?: return null
+    return if (!loose && start.type == "target") PyreonFlowConnection(end.nodeId, start.nodeId, end.handleId, start.handleId)
+    else PyreonFlowConnection(start.nodeId, end.nodeId, start.handleId, end.handleId)
 }
 
 fun pyreonSmartHandlePositions(source: PyreonFlowNodeBox, target: PyreonFlowNodeBox, sourceHandles: List<PyreonFlowHandleConfig> = emptyList(), targetHandles: List<PyreonFlowHandleConfig> = emptyList()): PyreonFlowSmartPositions {
@@ -640,4 +654,17 @@ fun pyreonFlowSvgTransform(width: Double, height: Double, viewBox: List<Double>?
     }
     val s = minOf(width / viewBox[2], height / viewBox[3])
     return PyreonFlowSvgTransform(s, s, -viewBox[0] * s + (width - viewBox[2] * s) / 2, -viewBox[1] * s + (height - viewBox[3] * s) / 2)
+}
+
+// ─── Auto-pan (mirrors the web's auto-pan.ts and Swift) ─────────────────────
+
+/** How far to pan the viewport this frame while dragging at canvas point ([x], [y]). Mirrors Swift. */
+fun pyreonFlowAutoPanVelocity(x: Double, y: Double, width: Double, height: Double, speed: Double = 15.0, threshold: Double = 40.0): PyreonFlowPathPoint {
+    fun axis(value: Double, size: Double): Double = when {
+        size <= 2 * threshold -> 0.0
+        value < threshold -> minOf(maxOf(threshold - value, 1.0), threshold) / threshold
+        value > size - threshold -> -minOf(maxOf(value - (size - threshold), 1.0), threshold) / threshold
+        else -> 0.0
+    }
+    return PyreonFlowPathPoint(axis(x, width) * speed, axis(y, height) * speed)
 }

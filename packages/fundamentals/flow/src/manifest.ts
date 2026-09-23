@@ -391,6 +391,47 @@ const NodeWithToolbar = (props) => (
       seeAlso: ['NodeToolbar', 'Flow'],
     },
     {
+      name: 'BaseEdge',
+      kind: 'component',
+      signature: 'BaseEdge(props: BaseEdgeProps) => VNodeChild',
+      summary:
+        'The visible part of a CUSTOM edge: its stroke, markers and an optional label (React Flow `<BaseEdge>`). `path` is SVG path data, typically from `getBezierPath` / `getSmoothStepPath`; the default stroke is `--pyreon-flow-edge` at 1.5px, and a `style` string REPLACES that default wholesale, as on any SVG element. `label` + `labelX` + `labelY` add an `<EdgeText>`. The flow already wraps every edge in a wider invisible hit path, so `BaseEdge` draws only what you see. Lowers natively (a native stroke plus label; `markerStart` / `markerEnd` are `url(#…)` references with no native meaning and are reported).',
+      example: `function Wire(props: EdgeComponentProps) {
+  const edge = () => getBezierPath({ sourceX: props.sourceX(), sourceY: props.sourceY(), targetX: props.targetX(), targetY: props.targetY() })
+  return <BaseEdge path={edge().path} label="wire" labelX={edge().labelX} labelY={edge().labelY} />
+}`,
+      mistakes: [
+        'Passing a `style` that sets only `opacity` and expecting the default stroke to remain — `style` replaces the default declaration, so no `stroke` means no line.',
+        'Setting `label` without `labelX` / `labelY` — the label has no position and is not drawn.',
+        'Reading `props.sourceX` without calling it — the edge props are accessors (`props.sourceX()`).',
+      ],
+      seeAlso: ['EdgeText', 'EdgeLabelRenderer', 'edge-path-helpers'],
+    },
+    {
+      name: 'EdgeText',
+      kind: 'component',
+      signature: 'EdgeText(props: { x: number; y: number; label: string; style?: string }) => VNodeChild',
+      summary:
+        'A text label at a point in flow coordinates, in the built-in edge-label style (11px, `--pyreon-flow-edge-label`). React Flow `<EdgeText>`. For interactive or rich labels use `<EdgeLabelRenderer>`, which renders HTML. Lowers natively.',
+      example: `<EdgeText x={edge().labelX} y={edge().labelY} label="42 ms" />`,
+      mistakes: ['Putting buttons or wrapped text in it — it is SVG `<text>`; use `<EdgeLabelRenderer>` for HTML.'],
+      seeAlso: ['BaseEdge', 'EdgeLabelRenderer'],
+    },
+    {
+      name: 'ViewportPortal',
+      kind: 'component',
+      signature: 'ViewportPortal(props: { children?: VNodeChild }) => VNodeChild',
+      summary:
+        'Renders arbitrary HTML in flow coordinates: the children pan and zoom with the graph (React Flow `<ViewportPortal>`). Position them with a `transform: translate(x, y)` in flow units. Renders nothing outside a mounted `<Flow>` and on the server. WEB-ONLY: CSS positioning has no native meaning, so the compiler reports it and drops it; use `<EdgeLabelRenderer>`, `<NodeToolbar>` or `<Panel>` on native.',
+      example: `<Flow instance={flow}>
+  <ViewportPortal>
+    <div style="position: absolute; transform: translate(200px, 80px)">Annotation</div>
+  </ViewportPortal>
+</Flow>`,
+      mistakes: ['Positioning with `left` / `top` in screen pixels — the layer is inside the zoomed viewport, so use flow units.'],
+      seeAlso: ['EdgeLabelRenderer', 'Panel'],
+    },
+    {
       name: 'MarkerType / Position',
       kind: 'constant',
       signature:
