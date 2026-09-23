@@ -38,6 +38,11 @@ import androidx.compose.ui.test.swipe
 import org.junit.Assert.assertTrue
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.assertContentDescriptionContains
 import androidx.compose.ui.test.assertIsDisplayed
@@ -139,6 +144,28 @@ class TasksAppInstrumentedTest {
         val origin = info.coordinates.positionInRoot()
         val target = Offset(origin.x + info.width / 2f, origin.y + info.height / 2f)
         composeRule.onRoot().performTouchInput { click(target) }
+    }
+
+    /**
+     * Scroll a gallery chart to the MIDDLE of the screen before a gesture on it.
+     * `performScrollTo` scrolls the least it can, which leaves the target flush
+     * with a screen edge — measured locally: gal-map at y 0, gal-datazoom ending
+     * at y 2400 of 2400 — and every gallery gesture made at such an edge (the
+     * roaming map, the dataZoom band, the visualMap handle) flaked in CI.
+     */
+    private fun centred(tag: String): SemanticsNodeInteraction {
+        composeRule.onNodeWithTag(tag).performScrollTo()
+        val b = composeRule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+        val rootH = composeRule.onRoot().fetchSemanticsNode().size.height.toFloat()
+        val dy = (b.top + b.bottom) / 2f - rootH / 2f
+        val scrollers = composeRule.onAllNodes(hasScrollAction() and hasAnyDescendant(hasTestTag(tag)))
+        val count = scrollers.fetchSemanticsNodes().size
+        if (count > 0 && kotlin.math.abs(dy) > 1f) {
+            // The innermost scroller (tree order lists ancestors first) moves the chart.
+            scrollers[count - 1].performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, dy) }
+            composeRule.waitForIdle()
+        }
+        return composeRule.onNodeWithTag(tag)
     }
 
     /**
@@ -1022,7 +1049,7 @@ class TasksAppInstrumentedTest {
         // touch slop first, then many small steps. One 400ms `swipe` intermittently
         // never started `detectTransformGestures` (the gallery's vertical scroll
         // competes for the same touch), failing unrelated PRs with "did not pan".
-        val roamMap = composeRule.onNodeWithTag("gal-map").performScrollTo()
+        val roamMap = centred("gal-map")
         val mapBefore = roamMap.captureToImage().asAndroidBitmap()
         roamMap.performTouchInput {
             down(Offset(width * 0.3f, height * 0.5f))
@@ -1047,7 +1074,7 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("gal-geo-trail").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("gal-decal").performScrollTo().assertIsDisplayed()
         // The calculable visualMap: dragging its high handle (bottom-left strip) left greys the hottest cells.
-        val visualMap = composeRule.onNodeWithTag("gal-visualmap").performScrollTo()
+        val visualMap = centred("gal-visualmap")
         val vmBefore = visualMap.captureToImage().asAndroidBitmap()
         // Driven as a hand does (past the touch slop, then small steps), like the map
         // and dataZoom drags: one 600ms `swipe` intermittently never moved the handle
@@ -1081,7 +1108,7 @@ class TasksAppInstrumentedTest {
             }
             return n
         }
-        val zoomChart = composeRule.onNodeWithTag("gal-datazoom").performScrollTo()
+        val zoomChart = centred("gal-datazoom")
         // The low half's four short red bars are on screen from the start, so the
         // baseline must see some red. Capturing straight after the scroll could
         // precede the chart's first paint ("red before 0, after 0" on unrelated
@@ -1121,7 +1148,7 @@ class TasksAppInstrumentedTest {
         val redAfter = redPixels(zoomChart.captureToImage().asAndroidBitmap())
         assertTrue("dragging the dataZoom band did not move the window to the tall bars (red before $redBefore, after $redAfter)", redAfter > redBefore * 3)
         // The timeline: a tap on the last checkpoint shows that step; next wraps to the first.
-        val timeline = composeRule.onNodeWithTag("gal-timeline").performScrollTo()
+        val timeline = centred("gal-timeline")
         timeline.assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2019"))
         timeline.performTouchInput { click(Offset(width - 48.dp.toPx(), height - (40 - 16).dp.toPx())) }
         composeRule.waitForIdle()
@@ -1136,23 +1163,23 @@ class TasksAppInstrumentedTest {
         // Option-placed families: the web's own compile places them (center / radius, the funnel's
         // margins) at the device's size, and a tap is read back through that frame.
         // The pie: centre (0.3W, 100dp), radius 40% of 100 = 40dp; slice 0 is the right half.
-        composeRule.onNodeWithTag("gal-opt-pie").performScrollTo().performTouchInput { click(Offset(width * 0.3f + 20.dp.toPx(), 100.dp.toPx())) }
+        centred("gal-opt-pie").performTouchInput { click(Offset(width * 0.3f + 20.dp.toPx(), 100.dp.toPx())) }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("gal-opt-pie-sel").performScrollTo().assertTextEquals("East")
-        composeRule.onNodeWithTag("gal-opt-pie").performScrollTo().performTouchInput { click(Offset(width * 0.3f - 20.dp.toPx(), 100.dp.toPx())) }
+        centred("gal-opt-pie").performTouchInput { click(Offset(width * 0.3f - 20.dp.toPx(), 100.dp.toPx())) }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("gal-opt-pie-sel").performScrollTo().assertTextEquals("West")
         // The funnel: its box is y 10..70dp (top 10, height 60), the larger stage on top.
-        composeRule.onNodeWithTag("gal-opt-funnel").performScrollTo().performTouchInput { click(Offset(width / 2f, 30.dp.toPx())) }
+        centred("gal-opt-funnel").performTouchInput { click(Offset(width / 2f, 30.dp.toPx())) }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("gal-opt-funnel-sel").performScrollTo().assertTextEquals("Visits")
-        composeRule.onNodeWithTag("gal-opt-funnel").performScrollTo().performTouchInput { click(Offset(width / 2f, 55.dp.toPx())) }
+        centred("gal-opt-funnel").performTouchInput { click(Offset(width / 2f, 55.dp.toPx())) }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("gal-opt-funnel-sel").performScrollTo().assertTextEquals("Orders")
         composeRule.onNodeWithTag("gal-opt-gauge").performScrollTo().assertExists()
         composeRule.onNodeWithTag("gal-opt-decor").performScrollTo().assertExists()
         // The toolbox (dataZoom, back, dataView, line, bar, restore — right-aligned, 25dp apart at the top).
-        val toolbox = composeRule.onNodeWithTag("gal-toolbox").performScrollTo()
+        val toolbox = centred("gal-toolbox")
         val tool = { i: Int -> toolbox.performTouchInput { click(Offset(width - (9.5f + 25f * (5 - i)).dp.toPx(), 9.5.dp.toPx())) } }
         tool(0)
         composeRule.waitForIdle()
@@ -1160,11 +1187,11 @@ class TasksAppInstrumentedTest {
         composeRule.waitForIdle()
         val zoomText = composeRule.onNodeWithTag("gal-toolbox-zoom").performScrollTo()
         zoomText.assert(androidx.compose.ui.test.SemanticsMatcher("zoomed away from 0-100") { n -> n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.joinToString("") { it.text } != "0-100" })
-        composeRule.onNodeWithTag("gal-toolbox").performScrollTo()
+        centred("gal-toolbox")
         tool(1)
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("gal-toolbox-zoom").performScrollTo().assertTextEquals("0-100")
-        composeRule.onNodeWithTag("gal-toolbox").performScrollTo()
+        centred("gal-toolbox")
         tool(2)
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("pyreon-dataview").assertExists()
