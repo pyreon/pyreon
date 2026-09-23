@@ -39,6 +39,8 @@ import { mirrorCmds, mirrorX, screenRectX , transposeCmds, transposeRect } from 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 /** The accessible table stops here — a 100k-row table is a 100k-node DOM, and no reader walks it. */
 export const A11Y_TABLE_MAX = 1000
+/** Rows per `<tbody>` block of the accessible table (see `a11yTableNode`). */
+const TABLE_CHUNK = 50
 const OFFSCREEN = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;margin:-1px;padding:0'
 
 /** Make `parent` hold exactly `n` `tag` children, reusing the ones it has; returns them. */
@@ -90,9 +92,22 @@ export function a11yTableNode(read: () => A11yTable, id: string, title: () => st
       ths[c]!.setAttribute('scope', 'col')
       setCell(ths[c]!, t.headers[c] ?? '')
     }
-    let body = el.tBodies[0] ?? null
-    if (body === null) body = el.appendChild(doc.createElement('tbody'))
-    const trs = ensureChildren(body, 'tr', t.rows.length)
+    // Rows go in <tbody> blocks of TABLE_CHUNK, each `content-visibility: auto`:
+    // the table sits in a 1×1 clipped box, so every block is off-screen and the
+    // browser skips laying it out — the bulk of a 1,000-row table's cost on a
+    // chart's first frame — while `auto` (unlike `hidden`) keeps the rows in
+    // the accessibility tree, the table's only reader.
+    const chunks = Math.ceil(t.rows.length / TABLE_CHUNK)
+    while (el.tBodies.length > chunks) el.tBodies[el.tBodies.length - 1]!.remove()
+    while (el.tBodies.length < chunks) {
+      const b = el.appendChild(doc.createElement('tbody'))
+      b.setAttribute('style', 'content-visibility:auto;contain-intrinsic-size:auto 1px')
+    }
+    const trs: Element[] = []
+    for (let k = 0; k < chunks; k++) {
+      const count = Math.min(TABLE_CHUNK, t.rows.length - k * TABLE_CHUNK)
+      for (const tr of ensureChildren(el.tBodies[k]!, 'tr', count)) trs.push(tr)
+    }
     const next: string[][] = []
     for (let r = 0; r < trs.length; r++) {
       const row = t.rows[r]!
