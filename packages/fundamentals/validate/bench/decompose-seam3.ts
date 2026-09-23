@@ -114,7 +114,7 @@ const ci = (xs: number[]) => {
   return { lo: meds[Math.floor(meds.length * 0.025)]!, hi: meds[Math.floor(meds.length * 0.975)]! }
 }
 const f = (x: number) => x.toFixed(2).padStart(6)
-console.log(`\nload=${require('node:os').loadavg().map((x: number) => x.toFixed(2)).join(' ')}  N=${N}  runs=${RUNS}\n`)
+console.log(`\nengine=${process.versions.bun ? `bun ${process.versions.bun} (JavaScriptCore)` : `node ${process.version} (V8)`} · cpu=${require('node:os').cpus()[0]?.model ?? '?'} · load=${require('node:os').loadavg().map((x: number) => x.toFixed(2)).join(' ')}  N=${N}  runs=${RUNS}\n`)
 const R: Record<string, { med: number; lo: number; hi: number }> = {}
 for (const a of arms) { const xs = samples.get(a.name)!; R[a.name] = { med: median(xs), ...ci(xs) }; console.log(`${a.name.padEnd(28)} ${f(R[a.name]!.med)} ns  [${f(R[a.name]!.lo)}–${f(R[a.name]!.hi)}]`) }
 const g = (p: string) => R[arms.find((a) => a.name.startsWith(p))!.name]!

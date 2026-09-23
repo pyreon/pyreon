@@ -31,9 +31,14 @@ import { signal } from '@pyreon/reactivity'
 import { AppPage } from './apppage-pyreon'
 import * as React from 'react'
 import * as ReactDOMClient from 'react-dom/client'
+import { jsx as reactJsx } from 'react/jsx-runtime'
 import { flushSync } from 'react-dom'
 import { hydrate as preactHydrate, render as preactRender } from 'preact'
 import { createSSRApp } from 'vue'
+// Build-time-compiled APPPAGE_*_VUE_TEMPLATE — see `vue-templates` in vite.config.ts.
+import { render as vueAppPageRender } from 'virtual:apppage-vue-render'
+import { render as vueFormRowRender } from 'virtual:apppage-form-row-vue-render'
+import { render as vueSectionHeaderRender } from 'virtual:apppage-section-header-vue-render'
 import type { BenchSuite } from '../runner'
 import { bench } from '../runner'
 import { APPPAGE_COMPONENTS, APPPAGE_ROWS, APPPAGE_SECTIONS } from './apppage-descriptor'
@@ -73,7 +78,7 @@ const makeTargets = (html: Record<string, string>): Target[] => [
       }
       let root!: ReactDOMClient.Root
       flushSync(() => {
-        root = ReactDOMClient.hydrateRoot(container, React.createElement(App))
+        root = ReactDOMClient.hydrateRoot(container, reactJsx(App, {}))
       })
       return () => root.unmount()
     },
@@ -95,7 +100,11 @@ const makeTargets = (html: Record<string, string>): Target[] => [
     name: 'Vue 3',
     html: html.vue!,
     hydrate(container) {
-      const { component } = vueAppPage()
+      const { component } = vueAppPage({
+        page: vueAppPageRender,
+        sectionHeader: vueSectionHeaderRender,
+        formRow: vueFormRowRender,
+      })
       const app = createSSRApp(component)
       app.mount(container)
       return () => app.unmount()

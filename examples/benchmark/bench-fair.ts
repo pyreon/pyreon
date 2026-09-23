@@ -31,16 +31,19 @@
  *      slowdown — mimics mid-tier devices). Off by default; the
  *      uncongested numbers are the reference.
  *   8. **Randomized execution order**: the framework EXECUTION order
- *      is Fisher-Yates-shuffled once per process run (printed as
- *      `[bench-fair] run order: …`) so position-dependent bias —
- *      thermal ramp-up, OS file-cache warmth, preview-server warmth —
- *      can't systematically favor any framework. Output tables keep
- *      the canonical fixed column order regardless of execution order.
+ *      is Fisher-Yates-shuffled independently for EVERY pass (printed as
+ *      `[bench-fair] run order: …`, or per pass under `--repeat`) so
+ *      position-dependent bias — thermal ramp-up, OS file-cache warmth,
+ *      preview-server warmth — can't systematically favor any framework.
+ *      Output tables keep the canonical fixed column order regardless of
+ *      execution order.
  *   9. **Retained-heap metric**: after each framework's suite
- *      completes (DOM already cleaned by the suite's own teardown),
- *      3 forced GCs then `performance.memory.usedJSHeapSize` (precise
- *      values via `--enable-precise-memory-info`) — reported per
- *      framework as "retained JS heap after suite".
+ *      completes (DOM already cleaned by the suite's own teardown), a
+ *      GC-then-yield SETTLE loop (gc(), yield a macrotask, repeat until
+ *      `usedJSHeapSize` moves by <16KB, max 12 rounds) then
+ *      `performance.memory.usedJSHeapSize` (precise values via
+ *      `--enable-precise-memory-info`) — reported per framework as
+ *      "retained JS heap after suite".
  *  10. **One Pyreon entry, no manufactured tiers**: the single
  *      `Pyreon` entry is the IDIOMATIC JSX impl (`pyreon.tsx`) — what
  *      users actually write and what the compiler emits. A hand-tuned
@@ -68,6 +71,10 @@
  *   bun bench-fair.ts --throttle 4                   # 4× CPU slowdown via CDP
  *   bun bench-fair.ts --frameworks Pyreon,Solid      # restrict to subset
  *   bun bench-fair.ts --repeat 4                     # 4 full passes; pools 20×4=80 samples per test for tighter CI95
+ *   bun bench-fair.ts --wait-quiet [maxLoad]         # block until load1 ≤ maxLoad (default 8) before measuring
+ *
+ * Machine load (`os.loadavg()`) + CPU identity are stamped before and after
+ * every pass and written into the `--json` output (`machineLoad`).
  */
 import { execSync, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
@@ -76,6 +83,7 @@ import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Page } from 'playwright'
 import { auditCells, formatGuardReport } from './bimodality-guard'
+import { LoadRecorder, parseWaitQuiet, waitForQuietMachine } from './machine-load'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PORT = 4178
@@ -123,6 +131,22 @@ const ALL_FRAMEWORKS = [
  */
 const RESOLUTION_FLOOR_QUANTA = 1
 
+/**
+ * How many measured clock quanta the LEADER's median must span before the
+ * per-test verdict may declare anything — "🥇 outright" in particular.
+ *
+ * A ratio needs one quantum; a VERDICT needs far more. At a few quanta every
+ * sample is one of a handful of discrete values, so the bootstrap CI95 on the
+ * median routinely collapses to zero width (every resample picks the same
+ * tick). Two zero-width intervals one tick apart read as "CI-disjoint" and
+ * printed `🥇 outright` for what is a one-tick difference — the clock, not
+ * the framework. Below this floor the verdict line reports "below resolution"
+ * and points at the batch instrument (`… (batch cycle)` ops), which dilutes
+ * the quantum by K and is the valid reading for sub-resolution ops. The
+ * absolute medians stay printed in the first table.
+ */
+const VERDICT_FLOOR_QUANTA = 10
+
 interface BenchResult {
   name: string
   median: number
@@ -154,6 +178,8 @@ interface CliArgs {
    * and run-to-run variance is the dominant source of noise.
    */
   repeat: number
+  /** `--wait-quiet [maxLoad]` — block until load1 ≤ this before measuring. `null` = don't wait. */
+  waitQuiet: number | null
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -163,6 +189,7 @@ function parseArgs(argv: string[]): CliArgs {
     throttle: undefined,
     frameworks: ALL_FRAMEWORKS,
     repeat: 1,
+    waitQuiet: parseWaitQuiet(argv),
   }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
@@ -191,8 +218,9 @@ function parseArgs(argv: string[]): CliArgs {
 }
 
 /**
- * Fisher-Yates shuffle — randomizes the framework EXECUTION order once
- * per process run so position-dependent bias (CPU thermal ramp, OS
+ * Fisher-Yates shuffle — randomizes the framework EXECUTION order (called
+ * once per pass, so each `--repeat` pass gets an independent order) so
+ * position-dependent bias (CPU thermal ramp, OS
  * file-cache warmth, preview-server warmth) can't systematically favor
  * frameworks that happen to run early or late. `Math.random()` is fine
  * here: this is Node orchestration code, not browser-measured code, so
@@ -215,7 +243,7 @@ function shuffled<T>(input: readonly T[]): T[] {
 
 /**
  * Pin suite order to the canonical `ALL_FRAMEWORKS` column order.
- * Execution order is randomized per process run (see `shuffled`), but
+ * Execution order is randomized per pass (see `shuffled`), but
  * every output surface (markdown tables, JSON dump, baseline diff)
  * must stay in the fixed canonical order so reports are diffable
  * run-to-run. Unknown framework names (future additions) sort last,
@@ -440,10 +468,11 @@ async function runOneFramework(
     if (!suite) return null
 
     // Retained-heap metric: the suite already cleaned its DOM (its own
-    // teardown ran before `status` flipped to "Done ✓"). Force GC 3×
-    // via the SAME `globalThis.gc` mechanism `runner.ts` uses (exposed
-    // by --js-flags=--expose-gc), then read Chromium's heap counter —
-    // precise (non-bucketed) thanks to --enable-precise-memory-info.
+    // teardown ran before `status` flipped to "Done ✓"). Settle the heap
+    // with a GC-then-yield loop via the SAME `globalThis.gc` mechanism
+    // `runner.ts` uses (exposed by --js-flags=--expose-gc), then read
+    // Chromium's heap counter — precise (non-bucketed) thanks to
+    // --enable-precise-memory-info. Recipe + rationale below.
     const retainedHeapBytes = await page.evaluate(async () => {
       const gc = (globalThis as { gc?: () => void }).gc
       const perf = performance as Performance & { memory?: { usedJSHeapSize?: number } }
@@ -595,6 +624,14 @@ async function main(): Promise<void> {
   // and the wrong value moves every quantum-scaled threshold by 20x.
   const quantumMs = clock.quantumMs
 
+  // ─── Machine load ──────────────────────────────────────────────────────
+  // Stamped (not enforced) by default; `--wait-quiet [maxLoad]` opts into
+  // blocking until the machine settles — the build above is itself a spike.
+  const load = new LoadRecorder('bench-fair', args.waitQuiet)
+  load.printIdentity()
+  if (args.waitQuiet !== null) await waitForQuietMachine('bench-fair', args.waitQuiet)
+  load.stamp('before measuring')
+
   if (args.throttle && args.throttle > 1) {
     console.log(`[bench-fair] CPU throttling enabled — rate ${args.throttle}×`)
   }
@@ -628,7 +665,12 @@ async function main(): Promise<void> {
       console.log(`[bench-fair] run order: ${executionOrder.join(', ')}`)
     }
     const suites: SuiteResult[] = []
+    load.stamp(`pass ${r + 1} start`)
     for (const framework of executionOrder) {
+      // With --wait-quiet, re-check BEFORE EVERY framework: a check only at
+      // the start let a load spike mid-run (19.7 observed) contaminate later
+      // arms while the run still reported itself as quiet.
+      if (args.waitQuiet !== null) await waitForQuietMachine('bench-fair', args.waitQuiet)
       console.log(`[bench-fair]   ▸ ${framework}`)
       const run = await runOneFramework(framework, baseUrl, args.throttle, browser)
       if (run) {
@@ -647,7 +689,9 @@ async function main(): Promise<void> {
       process.exit(1)
     }
     allRuns.push(suites)
+    load.stamp(`pass ${r + 1} end`)
   }
+  load.stamp('after measuring')
 
   await browser.close()
   preview.kill('SIGTERM')
@@ -702,7 +746,12 @@ async function main(): Promise<void> {
         exposeGc: true,
         repeat: args.repeat,
         pooledSamplesPerTest: args.repeat * 20,
+        clockQuantumMs: quantumMs,
+        crossOriginIsolated: clock.isolated,
+        resolutionFloorQuanta: RESOLUTION_FLOOR_QUANTA,
+        verdictFloorQuanta: VERDICT_FLOOR_QUANTA,
       },
+      machineLoad: load.report(),
       suites,
     }
     writeFileSync(args.jsonOut, JSON.stringify(out, null, 2))
@@ -716,7 +765,7 @@ async function main(): Promise<void> {
       process.exit(1)
     }
     const baseline = JSON.parse(readFileSync(args.baseline, 'utf-8')) as { suites: SuiteResult[] }
-    printDiffTable(baseline.suites, suites)
+    printDiffTable(baseline.suites, suites, quantumMs)
   }
 
   // Non-zero exit is the enforcement; the tables above are left intact so the
@@ -752,10 +801,52 @@ function fmtCell(r: BenchResult): string {
   return `${fmtMs(r.median)} [${fmtMs(r.ci95[0])}–${fmtMs(r.ci95[1])}] cv${(r.cv * 100).toFixed(0)}%`
 }
 
+/**
+ * Every op name measured by ANY suite, in first-appearance order.
+ *
+ * Taking the list from `suites[0]` (the old behaviour) silently dropped any op
+ * the first canonical suite does not implement, and — worse — let an op that
+ * only SOME arms implement (the `… (batch cycle)` ops: Vanilla/Pyreon/Solid/
+ * Octane only) look like a full-field comparison. The union plus an explicit
+ * coverage count makes a partial field visible instead.
+ */
+function unionTestNames(suites: SuiteResult[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const s of suites) {
+    for (const r of s.results) {
+      if (!seen.has(r.name)) {
+        seen.add(r.name)
+        out.push(r.name)
+      }
+    }
+  }
+  return out
+}
+
+/**
+ * `… (batch cycle)` ops time K cycles in ONE region and report region/K, so
+ * their quantization error is already diluted K-fold (the region is sized to
+ * hundreds of quanta by construction — see `runner.ts` `BenchOptions.batchK`).
+ * A per-cycle median below N quanta is therefore NOT a resolution problem for
+ * them; applying the direct-op floors would suppress exactly the instrument the
+ * floors point readers to.
+ */
+function isBatchOp(test: string): boolean {
+  return test.endsWith('(batch cycle)')
+}
+
+/** `(n/N measured)` suffix when some arm lacks the op; empty when all have it. */
+function coverageNote(suites: SuiteResult[], test: string): string {
+  const n = suites.filter((s) => s.results.some((r) => r.name === test)).length
+  return n < suites.length ? ` (${n}/${suites.length} measured)` : ''
+}
+
 function printMarkdownTable(suites: SuiteResult[], quantumMs: number): void {
-  // Derived, never assumed — see RESOLUTION_FLOOR_QUANTA.
+  // Derived, never assumed — see RESOLUTION_FLOOR_QUANTA / VERDICT_FLOOR_QUANTA.
   const floorMs = RESOLUTION_FLOOR_QUANTA * quantumMs
-  const tests = suites[0]?.results.map((r) => r.name) ?? []
+  const verdictFloorMs = VERDICT_FLOOR_QUANTA * quantumMs
+  const tests = unionTestNames(suites)
   if (tests.length === 0) {
     console.error('[bench-fair] suite has no tests')
     return
@@ -771,7 +862,7 @@ function printMarkdownTable(suites: SuiteResult[], quantumMs: number): void {
       if (!r) return pad('—', COLW)
       return pad(fmtCell(r), COLW)
     })
-    console.log(`${t.padEnd(28)}${cells.join('')}`)
+    console.log(`${t.padEnd(28)}${cells.join('')}${coverageNote(suites, t)}`)
   }
 
   console.log()
@@ -794,13 +885,11 @@ function printMarkdownTable(suites: SuiteResult[], quantumMs: number): void {
     // frameworks) printed `Infinity×` next to every rival and `NaN×` next
     // to the leader itself. That reads as "rival is infinitely slower"
     // when the truth is only "our own number is too small to time".
+    const ratioable = best >= floorMs || (isBatchOp(t) && best > 0)
     const cells = medians.map((m) =>
-      pad(
-        Number.isFinite(m) && best >= floorMs ? `${(m / best).toFixed(2)}×` : '—',
-        FCOL,
-      ),
+      pad(Number.isFinite(m) && ratioable ? `${(m / best).toFixed(2)}×` : '—', FCOL),
     )
-    console.log(`${t.padEnd(28)}${cells.join('')}`)
+    console.log(`${t.padEnd(28)}${cells.join('')}${coverageNote(ranked, t)}`)
   }
 
   // Slowdown vs Vanilla baseline — the framework's real overhead vs
@@ -821,7 +910,7 @@ function printMarkdownTable(suites: SuiteResult[], quantumMs: number): void {
         const m = s.results.find((x) => x.name === t)?.median
         if (m === undefined) return pad('—', FCOL)
         // Below performance.now() resolution → can't make a ratio.
-        if (vanillaMedian < floorMs) return pad('—', FCOL)
+        if (vanillaMedian < floorMs && !(isBatchOp(t) && vanillaMedian > 0)) return pad('—', FCOL)
         return pad(`${(m / vanillaMedian).toFixed(2)}×`, FCOL)
       })
       console.log(`${t.padEnd(28)}${cells.join('')}`)
@@ -866,6 +955,10 @@ function printMarkdownTable(suites: SuiteResult[], quantumMs: number): void {
       console.log(`  ${t}: no data`)
       continue
     }
+    // A PARTIAL field cannot have a winner. The batch-cycle ops are only
+    // implemented by some arms, and dropping the missing ones silently let the
+    // fastest of a subset print "🥇 outright" as if it had beaten the field.
+    const coverage = coverageNote(fwOnlyForVerdict, t)
     const leader = rows[0]
     if (!leader) continue
     const tied: string[] = [leader.framework]
@@ -885,12 +978,27 @@ function printMarkdownTable(suites: SuiteResult[], quantumMs: number): void {
     // indistinguishable from zero, so declaring an "outright" winner would
     // be an artifact of float noise — not a result. Report the floor
     // instead and name everyone who reached it.
-    if (leader.median < floorMs) {
-      const atFloor = rows.filter((r) => r.median < floorMs).map((r) => r.framework)
-      const above = rows.length - atFloor.length
+    //
+    // The verdict floor is deliberately MUCH higher than the ratio floor: at a
+    // few quanta the bootstrap CI95 collapses to zero width, so a one-tick
+    // difference would otherwise read as a CI-disjoint "outright" win. See
+    // VERDICT_FLOOR_QUANTA.
+    if (!isBatchOp(t) && leader.median < verdictFloorMs) {
+      const below = rows.filter((r) => r.median < verdictFloorMs).map((r) => r.framework)
+      const above = rows.length - below.length
       console.log(
-        `  ${t.padEnd(28)} ⏱ too fast to time (<${floorMs}ms) — no ratio; at floor: ${atFloor.join(' = ')}` +
-          (above > 0 ? ` (${above} above floor — see absolute medians)` : ''),
+        `  ${t.padEnd(28)} ⏱ below resolution (<${VERDICT_FLOOR_QUANTA} quanta = ${fmtMs(verdictFloorMs)}) — ` +
+          `no verdict; see the batch instrument. Below floor: ${below.join(', ')}` +
+          (above > 0 ? ` (${above} above — see absolute medians)` : '') +
+          coverage,
+      )
+      continue
+    }
+    if (coverage) {
+      console.log(
+        `  ${t.padEnd(28)} ⚠ partial field${coverage} — no verdict across absent arms; ` +
+          `fastest measured ${leader.framework} (${fmtMs(leader.median)})` +
+          (tied.length > 1 ? `, CI-tied with ${tied.slice(1).join(', ')}` : ''),
       )
       continue
     }
@@ -947,10 +1055,13 @@ function printRetainedHeapTable(
   }
 }
 
-function printDiffTable(baseline: SuiteResult[], current: SuiteResult[]): void {
+function printDiffTable(baseline: SuiteResult[], current: SuiteResult[], quantumMs: number): void {
+  // Was referenced here without ever being defined in this scope (a latent
+  // ReferenceError on every `--baseline` run). Same floor as the ratio tables.
+  const floorMs = RESOLUTION_FLOOR_QUANTA * quantumMs
   console.log()
   console.log('Δ vs baseline (current / baseline; <1.00 = faster, >1.00 = slower)')
-  const tests = current[0]?.results.map((r) => r.name) ?? []
+  const tests = unionTestNames(current)
   const COLW = 18
   console.log(`${' '.repeat(28)}${current.map((s) => pad(s.framework, COLW)).join('')}`)
   console.log('─'.repeat(28 + current.length * COLW))

@@ -1,9 +1,21 @@
 /**
  * Preact benchmark — same VDOM model as React, but no scheduler overhead.
- * Uses h() directly (no JSX needed) like the React impl uses createElement.
+ * The row tree is written as the automatic JSX runtime's output (`jsx` /
+ * `jsxs` from `preact/jsx-runtime`) — byte-for-byte esbuild's
+ * `jsx: 'automatic', jsxImportSource: 'preact'` emit for the idiomatic
+ * component (see react.ts for the source it was diffed against).
  * Preact flushes batched hook updates via Promise microtask.
  */
 import { h, render } from 'preact'
+import type { ComponentType, Key, VNode } from 'preact'
+import { jsx, jsxs } from 'preact/jsx-runtime'
+
+// `preact/jsx-runtime`'s .d.ts types `jsx`'s key parameter as `string`, while
+// Preact's own `Attributes.key` (what `<RowItem key={row.id}>` checks against)
+// is `Key` = `string | number | any`, and the runtime stores it verbatim. The
+// compiled JSX passes the NUMBER — so this re-types the key slot to match
+// what the JSX source type-checks against, rather than stringifying the id.
+const jsxKeyed = jsx as <P>(type: ComponentType<P>, props: P, key: Key) => VNode<P>
 import { memo } from 'preact/compat'
 import { useEffect, useState } from 'preact/hooks'
 import type { BenchSuite, Row } from '../runner'
@@ -20,12 +32,10 @@ interface Setters {
 }
 
 const RowItem = memo(function RowItemInner({ row, selected }: { row: Row; selected: boolean }) {
-  return h(
-    'tr',
-    { className: selected ? 'selected' : undefined },
-    h('td', null, row.id),
-    h('td', null, row.label),
-  )
+  return jsxs('tr', {
+    className: selected ? 'selected' : undefined,
+    children: [jsx('td', { children: row.id }), jsx('td', { children: row.label })],
+  })
 })
 
 function App({ onMounted }: { onMounted: (setters: Setters) => void }) {
@@ -36,15 +46,13 @@ function App({ onMounted }: { onMounted: (setters: Setters) => void }) {
     onMounted({ setRows, setSelected })
   }, [onMounted])
 
-  return h(
-    'table',
-    null,
-    h(
-      'tbody',
-      null,
-      ...rows.map((row) => h(RowItem, { key: row.id, row, selected: row.id === selectedId })),
-    ),
-  )
+  return jsx('table', {
+    children: jsx('tbody', {
+      children: rows.map((row) =>
+        jsxKeyed(RowItem, { row, selected: row.id === selectedId }, row.id),
+      ),
+    }),
+  })
 }
 
 export async function runPreact(container: HTMLElement): Promise<BenchSuite> {

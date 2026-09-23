@@ -77,6 +77,16 @@ export function setupCreateProfile(
   // ─── Vanilla arm — copied from impl/vanilla.ts `renderAll` ────────────────
   let vRows: Row[] = []
 
+  let vRowProto: HTMLElement | null = null
+  /** Lazily-built `<tr><td></td><td></td></tr>` prototype (see impl/vanilla.ts). */
+  function vanillaRowProto(): HTMLElement {
+    if (vRowProto === null) {
+      vRowProto = document.createElement('tr')
+      vRowProto.innerHTML = '<td></td><td></td>'
+    }
+    return vRowProto
+  }
+
   function vanillaRenderAll(newRows: Row[]) {
     vRows = newRows
     vanillaHost.innerHTML = ''
@@ -85,14 +95,14 @@ export function setupCreateProfile(
 
     for (let i = 0; i < vRows.length; i++) {
       const row = vRows[i] as Row
-      const tr = document.createElement('tr')
-      const td1 = document.createElement('td')
-      const td2 = document.createElement('td')
+      // Row prototype clone + firstChild/nextSibling walk — the krausest
+      // vanillajs idiom impl/vanilla.ts now uses (`createRow`).
+      const tr = vanillaRowProto().cloneNode(true) as HTMLElement
+      const td1 = tr.firstChild as HTMLElement
+      const td2 = td1.nextSibling as HTMLElement
       // raw number — see runner.ts "Row-id rendering rule"
       ;(td1 as unknown as NumericText).textContent = row.id
       td2.textContent = row.label
-      tr.appendChild(td1)
-      tr.appendChild(td2)
       tbody.appendChild(tr)
     }
 

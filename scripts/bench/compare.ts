@@ -67,7 +67,11 @@ function formatValue(metric: BenchMetric): string {
   return `${metric.mean.toFixed(3)}${metric.unit}`
 }
 
-function computeDelta(baselineVal: number, currentVal: number): { pct: number; label: string; status: string } {
+function computeDelta(
+  baselineVal: number,
+  currentVal: number,
+  unit: string,
+): { pct: number; label: string; status: string } {
   if (baselineVal === 0) return { pct: 0, label: 'N/A', status: 'pass' }
 
   const pct = (currentVal - baselineVal) / baselineVal
@@ -81,11 +85,15 @@ function computeDelta(baselineVal: number, currentVal: number): { pct: number; l
     label = `${(pct * 100).toFixed(1)}%`
   }
 
-  // For timing metrics, higher = slower = regression
+  // Timing metrics (ms/ns): higher = slower = regression. Throughput metrics
+  // (ops/s — the styler/unistyle rows) are the opposite: a DROP is the
+  // regression. Treating both as "higher is worse" reported every throughput
+  // improvement as FAIL.
+  const worse = unit === 'ops/s' ? -pct : pct
   let status: string
-  if (pct > FAIL_THRESHOLD) {
+  if (worse > FAIL_THRESHOLD) {
     status = 'fail'
-  } else if (pct > WARN_THRESHOLD) {
+  } else if (worse > WARN_THRESHOLD) {
     status = 'warn'
   } else {
     status = 'pass'
@@ -143,7 +151,7 @@ for (const key of sortedKeys) {
   }
 
   if (base && curr) {
-    const { label, status } = computeDelta(base.mean, curr.mean)
+    const { label, status } = computeDelta(base.mean, curr.mean, curr.unit)
     if (status === 'warn') hasWarning = true
     if (status === 'fail') hasFailure = true
 

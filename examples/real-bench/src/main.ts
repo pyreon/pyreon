@@ -1,18 +1,24 @@
-import { createPyreonApp } from './impl/pyreon'
-import { createReactApp } from './impl/react'
 import { runFramework, type FrameworkResult } from './runner'
 import { SCENARIOS } from './scenarios'
 import { ci95Overlaps, fmtMs, type Stats } from './stats'
 import type { AppFactory } from './types'
 
-const FRAMEWORKS: Record<string, AppFactory> = {
-  pyreon: createPyreonApp,
-  react: createReactApp,
+/**
+ * Dynamic imports: a `?framework=<name>` page loads ONLY that framework, so
+ * the isolated page really is isolated (no second runtime's code, module
+ * state, or JIT feedback in the heap).
+ */
+const FRAMEWORKS: Record<string, () => Promise<AppFactory>> = {
+  pyreon: async () => (await import('./impl/pyreon')).createPyreonApp,
+  react: async () => (await import('./impl/react')).createReactApp,
 }
 
 declare global {
   interface Window {
     __REAL_BENCH__?: FrameworkResult
+    /** Set when a scenario throws (e.g. a DOM gate) — the driver fails loudly
+     *  instead of waiting out its timeout. */
+    __REAL_BENCH_ERROR__?: string
   }
 }
 
@@ -34,7 +40,8 @@ async function main(): Promise<void> {
   // scenario set with no cross-framework heap/JIT bias.
   if (requested && FRAMEWORKS[requested]) {
     setStatus(`running ${requested}…`)
-    const result = await runFramework(FRAMEWORKS[requested]!, SCENARIOS, appEl, runs, (m) =>
+    const factory = await FRAMEWORKS[requested]!()
+    const result = await runFramework(factory, SCENARIOS, appEl, runs, (m) =>
       setStatus(`running ${m}…`),
     )
     window.__REAL_BENCH__ = result
@@ -47,7 +54,8 @@ async function main(): Promise<void> {
   // the authoritative numbers come from the page-isolated Playwright runner).
   setStatus('running all frameworks (manual mode)…')
   const results: FrameworkResult[] = []
-  for (const factory of Object.values(FRAMEWORKS)) {
+  for (const load of Object.values(FRAMEWORKS)) {
+    const factory = await load()
     results.push(
       await runFramework(factory, SCENARIOS, appEl, runs, (m) => setStatus(`running ${m}…`)),
     )
@@ -84,4 +92,7 @@ function renderTable(results: FrameworkResult[]): void {
   resultsEl.innerHTML = html
 }
 
-void main()
+void main().catch((err: unknown) => {
+  window.__REAL_BENCH_ERROR__ = String(err instanceof Error ? (err.stack ?? err.message) : err)
+  setStatus(`FAILED: ${window.__REAL_BENCH_ERROR__}`)
+})

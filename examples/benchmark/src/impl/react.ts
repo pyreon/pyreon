@@ -1,14 +1,26 @@
 /**
- * React 19 benchmark — createElement (no JSX, no extra transform needed).
- * Uses useState + re-render model.
+ * React 19 benchmark — useState + re-render model.
+ *
+ * The row tree is written as the automatic JSX runtime's output (`jsx` /
+ * `jsxs` from `react/jsx-runtime`), i.e. exactly what a React app compiled
+ * with its own toolchain ships — diffed against esbuild's `jsx: 'automatic'`
+ * emit for the idiomatic component:
+ *
+ *   <tr className={selected ? 'selected' : undefined}><td>{row.id}</td><td>{row.label}</td></tr>
+ *   <table><tbody>{rows.map((row) => <RowItem key={row.id} … />)}</tbody></table>
+ *
+ * (key as `jsx`'s 3rd argument, the mapped array as ONE `children` value — not
+ * `createElement` varargs, which a JSX app never produces.)
  *
  * Setters are captured via a mounted Promise so Rollup's dead-code elimination
- * cannot see them as always-null. Timing uses rAF → setTimeout(0) to wait for
- * React's DefaultLane commit before stopping the clock.
+ * cannot see them as always-null. Timing wraps each update in `flushSync`, so
+ * React commits synchronously and the clock measures reconcile + commit, not
+ * scheduler latency.
  */
 import * as React from 'react'
 import * as ReactDOM from 'react-dom/client'
 import { flushSync } from 'react-dom'
+import { jsx, jsxs } from 'react/jsx-runtime'
 import type { BenchSuite, Row } from '../runner'
 import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng } from '../runner'
 
@@ -20,12 +32,10 @@ interface Setters {
 }
 
 const RowItem = memo(function RowItemInner({ row, selected }: { row: Row; selected: boolean }) {
-  return r(
-    'tr',
-    { className: selected ? 'selected' : undefined },
-    r('td', null, row.id),
-    r('td', null, row.label),
-  )
+  return jsxs('tr', {
+    className: selected ? 'selected' : undefined,
+    children: [jsx('td', { children: row.id }), jsx('td', { children: row.label })],
+  })
 })
 
 function App({ onMounted }: { onMounted: (setters: Setters) => void }) {
@@ -37,15 +47,11 @@ function App({ onMounted }: { onMounted: (setters: Setters) => void }) {
     onMounted({ setRows, setSelected })
   }, [])
 
-  return r(
-    'table',
-    null,
-    r(
-      'tbody',
-      null,
-      ...rows.map((row) => r(RowItem, { key: row.id, row, selected: row.id === selectedId })),
-    ),
-  )
+  return jsx('table', {
+    children: jsx('tbody', {
+      children: rows.map((row) => jsx(RowItem, { row, selected: row.id === selectedId }, row.id)),
+    }),
+  })
 }
 
 export async function runReact(container: HTMLElement): Promise<BenchSuite> {

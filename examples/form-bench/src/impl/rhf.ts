@@ -7,9 +7,11 @@
  * cost is its onChange ref-write + subscription bookkeeping (blur mode) and the
  * resolver run + field re-render (change mode).
  *
- * Built with `React.createElement` (no JSX) — same approach examples/benchmark
- * uses for its React entry — so there is no jsxImportSource conflict with the
- * Pyreon impl in the same Vite project.
+ * Written as the AUTOMATIC JSX runtime's output (`jsx` / `jsxs` from
+ * `react/jsx-runtime`, key as the 3rd argument) — byte-for-byte esbuild's
+ * `jsx: 'automatic'` emit for the idiomatic TSX (diffed, not assumed), i.e.
+ * what a React app compiled by its own toolchain ships, with no second JSX
+ * transform in this Vite project.
  *
  * Commit boundary: `flushSync` wraps the user action so React commits
  * synchronously INSIDE the timed region (the DOM-bench's tightest-commit fix).
@@ -17,19 +19,25 @@
  * METHODOLOGY.md.
  */
 import { zodResolver } from '@hookform/resolvers/zod'
-import * as React from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { flushSync } from 'react-dom'
+import { jsx, jsxs } from 'react/jsx-runtime'
 import { useForm, type UseFormReturn } from 'react-hook-form'
-import { setInput, fieldInputCount, visibleErrorCount } from '../dom'
-import { bench, type BenchSuite } from '../runner'
-import { FIELD_NAMES, emptyValues, formSchema, type FormValues } from '../../shared/schema'
+import {
+  expectDirtyDom,
+  expectEmailError,
+  expectLibraryValue,
+  expectResetDom,
+  fieldInputCount,
+  setInput,
+} from '../dom'
+import { bench, settle, type BenchSuite } from '../runner'
+import { FIELD_NAMES, emptyValues, formSchema, validValues, type FormValues } from '../../shared/schema'
 
 // We drive commits via flushSync, the correct bench primitive — suppress
 // React 19's "update not wrapped in act(...)" warning.
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false
 
-const rc = React.createElement
 type Methods = UseFormReturn<FormValues>
 type Mode = 'onBlur' | 'onChange' | 'onSubmit'
 
@@ -46,18 +54,20 @@ function FormImpl({ mode, onReady }: { mode: Mode; onReady: (m: Methods) => void
   onReady(methods)
   const { register, formState } = methods
   const errors = formState.errors as Record<string, { message?: string } | undefined>
-  return rc(
-    'form',
-    null,
-    FIELD_NAMES.map((name) =>
-      rc(
+  return jsx('form', {
+    children: FIELD_NAMES.map((name) =>
+      jsxs(
         'div',
-        { key: name },
-        rc('input', { 'data-field': name, ...register(name) }),
-        rc('span', { 'data-error': name }, errors[name]?.message ?? ''),
+        {
+          children: [
+            jsx('input', { 'data-field': name, ...register(name) }),
+            jsx('span', { 'data-error': name, children: errors[name]?.message ?? '' }),
+          ],
+        },
+        name,
       ),
     ),
-  )
+  })
 }
 
 interface Mounted {
@@ -70,7 +80,7 @@ function mountForm(container: HTMLElement, mode: Mode): Mounted {
   let captured: Methods | undefined
   const root = createRoot(container)
   flushSync(() => {
-    root.render(rc(FormImpl, { mode, onReady: (m) => (captured = m) }))
+    root.render(jsx(FormImpl, { mode, onReady: (m: Methods) => (captured = m) }))
   })
   return {
     methods: captured as Methods,
@@ -109,29 +119,39 @@ export async function runRhf(container: HTMLElement): Promise<BenchSuite> {
   // keystroke is a discrete commit, matching Pyreon's per-keystroke patch),
   // so the per-run work clears Chromium's ~100µs performance.now() floor.
   {
-    const { dispose } = mountForm(container, 'onBlur')
+    const { methods, dispose } = mountForm(container, 'onBlur')
     const input = container.querySelector('input[data-field="email"]') as HTMLInputElement
     await bench('keystroke-blur', suite, () => {
       for (let i = 1; i <= TYPED.length; i++) flushSync(() => setInput(input, TYPED.slice(0, i)))
     }, {
-      reset: () => flushSync(() => setInput(input, '')),
-      verify: () => {
-        if (input.value !== TYPED) throw new Error('keystroke-blur: value not committed')
+      reset: async () => {
+        flushSync(() => setInput(input, ''))
+        await settle()
       },
+      verify: () => expectLibraryValue('keystroke-blur', methods.getValues('email'), TYPED),
     })
     dispose()
   }
 
   // ── Scenario: keystroke-change (validate every keystroke) ────────────────
   {
-    const { dispose } = mountForm(container, 'onChange')
+    const { methods, dispose } = mountForm(container, 'onChange')
     const input = container.querySelector('input[data-field="email"]') as HTMLInputElement
-    await bench('keystroke-change', suite, () => {
-      for (let i = 1; i <= TYPED.length; i++) flushSync(() => setInput(input, TYPED.slice(0, i)))
+    await bench('keystroke-change', suite, async () => {
+      // One keystroke = dispatch, commit, then let its async validation settle
+      // (see runner.ts `settle`) — identical in every column.
+      for (let i = 1; i <= TYPED.length; i++) {
+        flushSync(() => setInput(input, TYPED.slice(0, i)))
+        await settle()
+      }
     }, {
-      reset: () => flushSync(() => setInput(input, '')),
-      verify: () => {
-        if (input.value !== TYPED) throw new Error('keystroke-change: value not committed')
+      reset: async () => {
+        flushSync(() => setInput(input, ''))
+        await settle()
+      },
+      verify: (c) => {
+        expectLibraryValue('keystroke-change', methods.getValues('email'), TYPED)
+        expectEmailError(c)
       },
     })
     dispose()
@@ -143,18 +163,18 @@ export async function runRhf(container: HTMLElement): Promise<BenchSuite> {
     await bench('reset-dirty-form', suite, () => {
       flushSync(() => methods.reset())
     }, {
-      reset: () =>
+      reset: async () => {
+        const dirty = validValues()
         flushSync(() => {
           for (const name of FIELD_NAMES) {
             const el = container.querySelector(`input[data-field="${name}"]`) as HTMLInputElement
-            setInput(el, 'dirty')
+            setInput(el, dirty[name])
           }
-        }),
-      verify: () => {
-        const first = container.querySelector('input[data-field="first"]') as HTMLInputElement
-        if (first.value !== '') throw new Error('reset: form not reset')
-        if (visibleErrorCount(container) !== 0) throw new Error('reset: errors not cleared')
+        })
+        await settle()
+        expectDirtyDom(container, dirty)
       },
+      verify: expectResetDom,
     })
     dispose()
   }

@@ -117,6 +117,8 @@ try {
         const s = document.getElementById('status')?.textContent ?? ''
         return s.includes('Done') || s.includes('FAILED')
       },
+      // options is waitForFunction's THIRD argument (see bench-scenarios.ts).
+      undefined,
       { timeout: 180_000 },
     )
     const status = await page.evaluate(() => document.getElementById('status')?.textContent)

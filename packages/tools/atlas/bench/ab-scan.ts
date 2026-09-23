@@ -22,6 +22,18 @@
  */
 import { spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 const args = process.argv.slice(2)
 const dir = args.find((a) => !a.startsWith('--')) ?? '.'
@@ -62,6 +74,7 @@ for (let rep = 0; rep < reps; rep++) {
   }
 }
 
+console.log(benchRuntimeBanner())
 process.stdout.write(`\n=== atlas scan — interleaved A/B (${reps} reps, min of each) ===\n\n`)
 process.stdout.write('  batch     min      max    gc calls   mounts   components/scenarios  failing\n')
 for (const arm of arms) {

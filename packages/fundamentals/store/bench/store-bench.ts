@@ -58,6 +58,18 @@ import { signal } from '@pyreon/reactivity'
 import { atom, createStore as createJotai } from 'jotai/vanilla'
 import { createStore as createZustand } from 'zustand/vanilla'
 import { defineStore, resetAllStores } from '../src/index'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 declare const Bun: {
   spawnSync: (
@@ -275,7 +287,7 @@ const OPS: Record<string, OpSpec> = {
     },
   },
   'patch 2 fields (with subscriber)': {
-    note: 'REALISTIC — a listener is attached, so every lib does its full notify path. Pyreon still does MORE per notify (per-key {key,oldValue,newValue} events + state snapshot vs Zustand\'s single shallow merge + (state, prevState)) yet wins via the O(1) sole-subscriber detector suspension + cached batch closure. Jotai sets 2 atoms.',
+    note: 'REALISTIC — a listener is attached, so every lib does its full notify path. Pyreon still does MORE per notify (per-key {key,oldValue,newValue} events + state snapshot vs Zustand\'s single shallow merge + (state, prevState)) — offset by the O(1) sole-subscriber detector suspension + cached batch closure (the measured ratio, not this note, is the verdict). Jotai sets 2 atoms.',
     make: () => {
       const p = makePyreon()
       const z = makeZustand()
@@ -397,6 +409,7 @@ for (const op of OP_ORDER) {
   rows.push(row)
 }
 
+console.log(benchRuntimeBanner())
 console.log(
   `=== @pyreon/store vs Zustand vs Jotai (${process.platform}/${process.arch}, NODE_ENV=production, per-(op×impl) isolated processes, median ns/op [CI95], 🤝 = CI-overlap tie) ===\n`,
 )

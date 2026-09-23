@@ -33,7 +33,7 @@
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
-    "bench": "bun bench/dnd-wrapper-tax.ts",
+    "bench": "NODE_ENV=production bun bench/dnd-wrapper-tax.ts",
     "test": "vitest run",
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "typecheck": "tsc --noEmit",

@@ -1,8 +1,17 @@
 /**
- * Vue 3 benchmark — reactive refs + template rendering via h().
- * No JSX transform needed — uses Vue's h() directly.
+ * Vue 3 benchmark — reactive refs + a COMPILED template.
+ *
+ * The row table is `ROWS_VUE_TEMPLATE` (`vue-templates.ts`), compiled at build
+ * time by the `vue-templates` plugin in vite.config.ts with the exact option
+ * set `@vue/compiler-sfc` uses for a `<template>` block. That is what a Vue app
+ * built with its own toolchain ships, and it matters for speed: the compiled
+ * render carries `KEYED_FRAGMENT` on the `v-for`, `CLASS` on each `<tr>` and
+ * `TEXT` on each `<td>`, plus block tracking — so a select / partial-update
+ * re-render patches only the dynamic parts. The previous hand-written `h()`
+ * arm had no patch flags and full-diffed every row's props on every update.
  */
-import { createApp, defineComponent, h, nextTick, ref, shallowRef, triggerRef } from 'vue'
+import { createApp, defineComponent, nextTick, ref, shallowRef, triggerRef } from 'vue'
+import { render as rowsRender } from 'virtual:rows-vue-render'
 import type { BenchSuite, Row } from '../runner'
 import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng } from '../runner'
 
@@ -20,25 +29,11 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
   const selectedId = ref<number | null>(null)
 
   const App = defineComponent({
+    // Compiled template — `{{ row.id }}` hands the raw number to Vue's own
+    // `toDisplayString` (see runner.ts "Row-id rendering rule").
+    render: rowsRender,
     setup() {
-      return () =>
-        h('table', null, [
-          h(
-            'tbody',
-            null,
-            rows.value.map((row) =>
-              h(
-                'tr',
-                {
-                  key: row.id,
-                  class: { selected: row.id === selectedId.value },
-                },
-                // raw number — see runner.ts "Row-id rendering rule"
-                [h('td', null, row.id), h('td', null, row.label)],
-              ),
-            ),
-          ),
-        ])
+      return { rows, selectedId }
     },
   })
 

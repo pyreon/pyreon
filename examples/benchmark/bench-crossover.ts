@@ -41,9 +41,17 @@ import * as os from 'node:os'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Page } from 'playwright'
+import { LoadRecorder, loadAvg1, waitForQuietMachine } from './machine-load'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const PORT = 4179
+/**
+ * Crossover's OWN port. It used to share 4179 with `bench-hydration.ts`,
+ * `bench-cpuprofile.ts` and `bench-allocprofile.ts`, so two of them run in
+ * parallel sessions would silently probe each other's preview (and build).
+ * Combined with `--strictPort` + the announced-port assertion below, a held
+ * port is now a loud failure rather than a measurement of someone else's bundle.
+ */
+const PORT = 4190
 
 const ALL_FRAMEWORKS = ['Pyreon', 'Octane', 'SolidJS'] as const
 const ALL_ROWS = [100, 1_000, 5_000, 10_000, 20_000]
@@ -51,12 +59,14 @@ const ALL_ROWS = [100, 1_000, 5_000, 10_000, 20_000]
 /**
  * Resolution floor — MEASURED on the real page at startup, not assumed.
  *
- * `bench-fair.ts` hardcodes 0.1ms for Chromium's documented 100µs clamp. That
- * is the right number for a NON-ISOLATED page and the wrong one here:
- * `vite.config.ts` serves COOP `same-origin` + COEP `require-corp`, so the
- * benchmark page is cross-origin ISOLATED and the clamp is 5µs — verified with
- * `scripts/probe-clock.ts`, which reads 100µs on `about:blank` and 5µs on the
- * bench page in the same browser.
+ * Chromium's documented clamp is 100µs for a NON-ISOLATED page, and that is the
+ * wrong number here: `vite.config.ts` serves COOP `same-origin` + COEP
+ * `require-corp`, so the benchmark page is cross-origin ISOLATED and the clamp
+ * is 5µs — verified with `scripts/probe-clock.ts`, which reads 100µs on
+ * `about:blank` and 5µs on the bench page in the same browser. (`bench-fair.ts`
+ * likewise measures its quantum at startup via `measureClockQuantum`; neither
+ * runner assumes it.) Like bench-fair, this runner ABORTS when the page is not
+ * isolated rather than measuring on a 100µs clock.
  *
  * The difference is not academic for this sweep: a 100µs floor would declare
  * every `swap` and `partial` direct median in the small-N cells unmeasurable
@@ -169,51 +179,9 @@ function shuffled<T>(input: readonly T[]): T[] {
   return out
 }
 
-function loadAvg1(): number {
-  return os.loadavg()[0] ?? 0
-}
-
-function stampLoad(label: string): number {
-  const l = loadAvg1()
-  const flag = l > LOAD_CEILING ? '  ⚠ ABOVE CEILING — run is contaminated' : ''
-  console.log(`[crossover] ${label}: load1=${l.toFixed(2)}${flag}`)
-  return l
-}
-
-/**
- * Block until the machine is quiet, or give up loudly.
- *
- * This exists because the runner's OWN first step contaminates it: `bun run
- * build` compiles the whole benchmark and drives load into the 30s, and the
- * 1-minute load average decays slowly, so the first cells of pass 1 would be
- * measured on a machine still recovering from the build. That is not a
- * hypothetical — it was observed at load 31.5 on a sweep whose build had just
- * finished, i.e. every early cell was contaminated by the harness itself.
- *
- * Waiting is the fix rather than merely stamping, because a stamp only tells
- * you afterwards that the numbers should be thrown away.
- */
-async function waitForQuietMachine(ceiling: number, maxWaitMs: number): Promise<void> {
-  const started = Date.now()
-  let l = loadAvg1()
-  if (l <= ceiling) {
-    console.log(`[crossover] machine already quiet (load1=${l.toFixed(2)} ≤ ${ceiling})`)
-    return
-  }
-  console.log(`[crossover] waiting for machine to settle (load1=${l.toFixed(2)} > ${ceiling})…`)
-  while (Date.now() - started < maxWaitMs) {
-    await new Promise((r) => setTimeout(r, 5_000))
-    l = loadAvg1()
-    process.stdout.write(`\r[crossover]   load1=${l.toFixed(2)}          `)
-    if (l <= ceiling) {
-      console.log(`\n[crossover] settled after ${Math.round((Date.now() - started) / 1000)}s`)
-      return
-    }
-  }
-  console.log(
-    `\n[crossover] ⚠ still load1=${l.toFixed(2)} after ${Math.round(maxWaitMs / 1000)}s — ` +
-      `PROCEEDING, but every verdict from this run is suspect`,
-  )
+/** Log + record one load stamp; returns load1 for the ceiling checks below. */
+function stampLoad(recorder: LoadRecorder, label: string): number {
+  return recorder.stamp(label).load1
 }
 
 /** Re-compute median + p90 + CI95 + CV from pooled samples (see bench-fair). */
@@ -317,19 +285,39 @@ async function main(): Promise<void> {
   execSync('bun run build', { cwd: HERE, stdio: 'inherit' })
 
   console.log(`[crossover] starting preview on :${PORT}`)
-  const preview: ChildProcess = spawn('bun', ['x', 'vite', 'preview', '--port', String(PORT)], {
-    cwd: HERE,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
+  // `--strictPort` + the announced-port assertion: same measurement-integrity
+  // guard as bench-fair — without them vite drifts to the next free port and
+  // the driver keeps probing PORT, measuring whoever else holds it.
+  const preview: ChildProcess = spawn(
+    'bun',
+    ['x', 'vite', 'preview', '--port', String(PORT), '--strictPort'],
+    { cwd: HERE, stdio: ['ignore', 'pipe', 'pipe'] },
+  )
   await new Promise<void>((res, rej) => {
     const timeout = setTimeout(() => rej(new Error('preview server start timeout')), 20_000)
     preview.stdout?.on('data', (chunk: Buffer) => {
-      if (chunk.toString().includes('Local:')) {
-        clearTimeout(timeout)
-        res()
+      const text = chunk.toString()
+      if (!text.includes('Local:')) return
+      clearTimeout(timeout)
+      if (!text.includes(`:${PORT}`)) {
+        rej(
+          new Error(
+            `[crossover] preview announced a different port than :${PORT} — refusing to ` +
+              `measure someone else's build. Announced: ${text.trim()}`,
+          ),
+        )
+        return
       }
+      res()
     })
-    preview.on('exit', (code) => rej(new Error(`preview exited with code ${code}`)))
+    preview.on('exit', (code) =>
+      rej(
+        new Error(
+          `preview exited with code ${code}. With --strictPort this usually means :${PORT} ` +
+            `is already held — free it (lsof -ti tcp:${PORT} | xargs kill -9); do NOT switch ports.`,
+        ),
+      ),
+    )
   })
 
   const browser = await chromium.launch({
@@ -374,6 +362,24 @@ async function main(): Promise<void> {
     `[crossover] clock: quantum ${(clock.quantumMs * 1000).toFixed(1)}µs ` +
       `(crossOriginIsolated=${clock.isolated}) — this is the resolution floor, measured not assumed`,
   )
+  // Abort on a non-isolated page, mirroring bench-fair's preflight. The batch
+  // instrument would survive a 100µs clock, but every DIRECT reading — and so
+  // the direct↔batch agreement check that licenses the batch numbers — would
+  // be quantization, reported as if it were a 5µs measurement.
+  if (process.env.BENCH_NO_ISOLATION === '1') {
+    console.log(
+      '[crossover] BENCH_NO_ISOLATION=1 — CONTROL RUN. Direct sub-millisecond readings are ' +
+        'quantized and must NOT be reported.',
+    )
+  } else if (!clock.isolated || clock.quantumMs > 0.02) {
+    preview.kill('SIGTERM')
+    await browser.close()
+    throw new Error(
+      `[crossover] timer resolution too coarse: crossOriginIsolated=${clock.isolated}, ` +
+        `quantum=${(clock.quantumMs * 1000).toFixed(1)}µs (need isolation + ≤20µs). Check the ` +
+        `COOP/COEP headers in vite.config.ts are being served.`,
+    )
+  }
 
   const plan: Array<{ framework: string; rows: number }> = []
   for (const f of args.frameworks) for (const r of args.rows) plan.push({ framework: f, rows: r })
@@ -384,7 +390,10 @@ async function main(): Promise<void> {
   )
 
   // The build above is itself a load spike — settle before measuring anything.
-  await waitForQuietMachine(LOAD_CEILING, 300_000)
+  // (Crossover DISCARDS per-cell on load, so waiting stays the default here.)
+  const load = new LoadRecorder('crossover', LOAD_CEILING)
+  load.printIdentity()
+  await waitForQuietMachine('crossover', LOAD_CEILING, 300_000)
 
   const loadSamples: number[] = []
   // pooled[framework][rows][opName] -> samples
@@ -401,7 +410,7 @@ async function main(): Promise<void> {
     // a constant bias on the same cell.
     const order = shuffled(plan)
     console.log(`[crossover] === pass ${pass + 1}/${args.repeat} ===`)
-    loadSamples.push(stampLoad(`pass ${pass + 1} start`))
+    loadSamples.push(stampLoad(load, `pass ${pass + 1} start`))
     for (const { framework, rows } of order) {
       // Per-CELL load, not just per-pass. A pass-level stamp cannot tell you
       // WHICH cells were measured under load, and a sweep is long enough that
@@ -439,7 +448,7 @@ async function main(): Promise<void> {
       byRows.set(rows, byOp)
       pooled.set(framework, byRows)
     }
-    loadSamples.push(stampLoad(`pass ${pass + 1} end`))
+    loadSamples.push(stampLoad(load, `pass ${pass + 1} end`))
   }
 
   await browser.close()
@@ -471,6 +480,7 @@ async function main(): Promise<void> {
       sha: currentSha(),
       chromiumVersion,
       loadSamples,
+      machineLoad: load.report(),
       clock,
       discarded,
       keptPasses: Object.fromEntries(keptPasses),
