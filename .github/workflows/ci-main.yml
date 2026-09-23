@@ -1,0 +1,130 @@
+name: CI (main)
+
+# The main-only half of CI, split out of ci.yml on 2026-09-23. These jobs
+# never run on a pull request, but as jobs INSIDE ci.yml every PR still
+# listed them as "skipping" rows — noise on every PR's check list. Here they
+# only exist where they run.
+#
+# They need no `Install` job: setup-pyreon restores node_modules by lockfile
+# key and lib/ by source hash (BOOTSTRAP_KEY below is per-run, so it misses
+# and the `bootstrap-ubuntu-<source-hash>` restore key serves it; a full miss
+# rebuilds). Job NAMES are unchanged — `.claude/rules/*` refer to them.
+#
+# (ci.yml's former `Benchmark` job was deleted rather than moved: it uploaded
+# an artifact no workflow or script ever downloaded, measured on shared,
+# noisy runners — the nightly perf.yml is the measured trend.)
+
+on:
+  push:
+    branches: [main]
+  merge_group:
+
+concurrency:
+  group: ci-main-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  BOOTSTRAP_KEY: bootstrap-${{ github.run_id }}
+
+jobs:
+  coverage-full:
+    name: Coverage (Full)
+    # P3c — runs the full test suite, same lib/-requiring tests as
+    # `test-cell`. Needs Bootstrap.
+    #
+    # Scoped to push:main + merge_group ONLY — NOT every PR. The original
+    # "runs on every trigger" claim estimated ~30s added to PR CI; actual
+    # CI measurement showed 262s (4.4 min) — 9× the estimate. That's a
+    # 262s slice off the PR critical path for a check that only catches
+    # numeric regressions main / merge_queue already gate on, and is
+    # functionally duplicated for PR-visible feedback by the
+    # `Coverage` floor gate (runs always, ~5s).
+    #
+    # Trade-off restored: a PR that drops a package's actual coverage from
+    # 92% to 88% (still above the floor) passes `Coverage` but fails
+    # `Coverage (Full)` at merge-queue time. Same safety as before; the
+    # signal just lands at merge-time instead of PR-time.
+    # Event-gated to push:main + merge_group only (never runs on PRs), so the
+    # docs-only Layer-2 gate does not apply here — a code change always exists
+    # by the time something lands on main.
+    #
+    # 2026-07 restoration: this job had gone red-on-arrival (12 packages below
+    # their configured thresholds — coverage drifted under feature waves whose
+    # tests live in the browser/e2e tier). A permanently-red safety net detects
+    # nothing. Invariant since the restoration: every package's configured
+    # thresholds sit AT/BELOW measured node-suite reality (ratchet up as tests
+    # land, like lint-baseline); browser-covered files are coverageExclude'd /
+    # v8-ignored from the node gate with per-site rationale. If this job goes
+    # red, treat it as a REGRESSION to fix or an honest re-baseline to land
+    # immediately — never leave it red (see anti-patterns.md "CI / Build Gate
+    # Mistakes": a red-on-arrival gate is a dead gate).
+    if: ${{ github.event_name == 'push' || github.event_name == 'merge_group' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-pyreon
+        with:
+          # Coverage REQUIRES node — bun's inspector lacks the V8 coverage API
+          # ('Coverage APIs are not supported'; the 2026-08-04 all-72-packages
+          # red main). check-coverage.ts spawns vitest under node explicitly
+          # and preflights for it; this pins the version instead of trusting
+          # whatever the runner image happens to ship on PATH that day.
+          node-version: '24'
+      - name: Run full per-package coverage
+        # `@pyreon/native-compiler` is measured by `Coverage (Native)` below.
+        # Its suite spawns hundreds of real swiftc/kotlinc processes, and
+        # inside this job's 4-way pool — with NO verdict cache restored and
+        # file parallelism on — it pinned the job at the 15-minute cap on
+        # every main push from #3441 (which brought packages/native into the
+        # scan) onward: `java` orphans at cancel, `Test` red behind it, a
+        # gate that never produced a table. The PR-time `Coverage (changed
+        # packages)` step already drops it for the same reason and says so;
+        # the script fails LOUD if this name stops matching a workspace, so
+        # the skip cannot rot into a silent re-inclusion.
+        run: bun run coverage -- --skip=@pyreon/native-compiler
+
+  coverage-native:
+    name: Coverage (Native)
+    # The toolchain-bound half of `Coverage (Full)`, isolated for the same
+    # reason the native TEST cells are (`NATIVE_ISO`): its wall clock is a
+    # function of the compile-verdict cache, not of the suite, and it must
+    # not share a runner with three other instrumented suites. It is the
+    # SINGLE writer of its own lineage (`coverage-native-`), which is what
+    # lets restore-newest/save-per-sha converge; it runs the package ALONE
+    # with its files serial. (It cannot borrow native-validate.yml's store:
+    # that job pins its own swiftc/kotlinc, and the compiler version is part
+    # of every verdict key, so those entries would all miss here.)
+    #
+    # The cap is sized for a mostly-warm cache, not a cold one: warm, the
+    # ~6,500 specs are JS time under V8 instrumentation; a wholly cold cache
+    # is ~2,600s of kotlinc alone and the script's own 30-minute per-package
+    # ceiling reports that as TIMED OUT rather than letting the job cap turn
+    # it into `cancelled` with no table.
+    if: ${{ github.event_name == 'push' || github.event_name == 'merge_group' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-pyreon
+        with:
+          node-version: '24'
+      - name: Restore native compile-verdict cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/pyreon-native-validate
+          key: native-verdicts-ci-${{ runner.os }}-coverage-native-${{ github.sha }}
+          restore-keys: native-verdicts-ci-${{ runner.os }}-coverage-native-
+      - name: Run native-compiler coverage
+        env:
+          PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
+        run: bun run coverage -- --only=@pyreon/native-compiler
+      - name: Save native compile-verdict cache
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/pyreon-native-validate
+          key: native-verdicts-ci-${{ runner.os }}-coverage-native-${{ github.sha }}

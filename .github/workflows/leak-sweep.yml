@@ -12,7 +12,7 @@ name: Leak Sweep
 #   - workflow_dispatch: manual run, any branch. Useful for reproducing a
 #     PR author's local leak claim in a clean VM, OR for re-running the
 #     sweep against a specific journey list.
-#   - pull_request: auto-runs when a PR carries the `leak-sweep` label.
+#   - (no pull_request trigger — dispatch against a branch instead; see `on:`)
 #     Skipped otherwise — most PRs don't touch the runtime primitives
 #     this workflow exercises.
 #   - schedule: nightly drift check against main. Catches leaks introduced
@@ -47,43 +47,32 @@ on:
         description: 'Bytes-per-cycle slope threshold'
         required: false
         default: '50000'
-  pull_request:
-    types: [labeled, synchronize]
+  # NO pull_request trigger (removed 2026-09-23): the PR path was label opt-in
+  # (`leak-sweep`), no PR has EVER carried that label, and every push to every
+  # PR still created a run whose one job was skipped — a permanent
+  # "skipping" row on each PR and ~205 empty runs/week in the Actions queue.
+  # To measure a branch, dispatch it: `gh workflow run leak-sweep.yml --ref <branch>`.
   schedule:
     # 04:11 UTC — offset from the perf workflow's 03:17 so they don't
     # contend for the same runner pool, and from CodeQL's defaults.
     - cron: '11 4 * * *'
 
-# Read-only default at the workflow level. The sweep job below
-# additionally grants `pull-requests: write` so it can post the
-# sticky leak-sweep comment when run on a labelled PR.
+# Read-only default at the workflow level.
 permissions:
   contents: read
 
-# Cancel in-flight runs for the same branch when a fresh push lands —
-# stale leak runs against an old commit are pure waste.
+# One sweep per ref at a time (schedule / dispatch only — no PR trigger).
 concurrency:
   group: leak-sweep-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 jobs:
   sweep:
-    # Only run on `leak-sweep`-labelled PRs — skip by default.
-    # Event-precise opt-in: `labeled` fires for EVERY label addition, so
-    # pre-fix, adding any unrelated label (skip-changeset, …) to a PR
-    # already carrying `leak-sweep` re-ran this whole suite. Only the
-    # `leak-sweep` label itself, or a code push to an already-labelled
-    # PR, runs it now.
-    if: >-
-      github.event_name != 'pull_request' ||
-      (github.event.action == 'labeled' && github.event.label.name == 'leak-sweep') ||
-      (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'leak-sweep'))
     name: Sweep ${{ inputs.app || 'perf-dashboard' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -163,47 +152,6 @@ jobs:
             perf-results/leak-sweep-${{ steps.sha.outputs.sha }}-*.json
             perf-results/leak-sweep-${{ steps.sha.outputs.sha }}-*.md
           retention-days: 30
-
-      # Best-effort: the sweep VERDICT is enforced by the "Fail job if sweep
-      # flagged a regression" step below — the comment is reporting only, so a
-      # transient GitHub API 5xx must not turn this check red (the class that
-      # failed the release PR's bundle-size-diff on 2026-07-16).
-      - name: Post sweep summary as PR comment
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        with:
-          retries: 3
-          script: |
-            const fs = require('node:fs')
-            const mdPath = '${{ steps.sweep.outputs.md_path }}'
-            let body = ''
-            try {
-              body = fs.readFileSync(mdPath, 'utf8')
-            } catch (err) {
-              body = `Leak sweep ran but no markdown output was produced (\`${mdPath}\` missing). Check the run logs.`
-            }
-            const exit = '${{ steps.sweep.outputs.exit_code }}'
-            const header = exit === '6'
-              ? '### 🟥 Leak sweep flagged at least one journey'
-              : exit === '0'
-                ? '### ✅ Leak sweep clean'
-                : `### ⚠️ Leak sweep exited ${exit} — see logs`
-            const marker = '<!-- pyreon-leak-sweep -->'
-            const fullBody = `${marker}\n${header}\n\n<details><summary>Sweep output</summary>\n\n\`\`\`\n${body.slice(0, 60000)}\n\`\`\`\n\n</details>\n\n_Advisory — does not block merge. Re-run via the \`leak-sweep\` label._`
-            const { owner, repo } = context.repo
-            const issue_number = context.issue.number
-            try {
-              // Look for an existing leak-sweep comment to update in place.
-              const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number, per_page: 100 })
-              const existing = comments.find((c) => c.body?.startsWith(marker))
-              if (existing) {
-                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: fullBody })
-              } else {
-                await github.rest.issues.createComment({ owner, repo, issue_number, body: fullBody })
-              }
-            } catch (err) {
-              core.warning(`leak-sweep: posting the PR comment failed after retries (${err.status ?? '?'} ${err.message}) — the sweep verdict is enforced by the fail step below, not by this comment`)
-            }
 
       - name: Fail job if sweep flagged a regression
         if: steps.sweep.outputs.exit_code != '0'
