@@ -287,7 +287,7 @@ const OPS: Record<string, OpSpec> = {
     },
   },
   'patch 2 fields (with subscriber)': {
-    note: 'REALISTIC — a listener is attached, so every lib does its full notify path. Pyreon still does MORE per notify (per-key {key,oldValue,newValue} events + state snapshot vs Zustand\'s single shallow merge + (state, prevState)) yet wins via the O(1) sole-subscriber detector suspension + cached batch closure. Jotai sets 2 atoms.',
+    note: 'REALISTIC — a listener is attached, so every lib does its full notify path. Pyreon still does MORE per notify (per-key {key,oldValue,newValue} events + state snapshot vs Zustand\'s single shallow merge + (state, prevState)) — offset by the O(1) sole-subscriber detector suspension + cached batch closure (the measured ratio, not this note, is the verdict). Jotai sets 2 atoms.',
     make: () => {
       const p = makePyreon()
       const z = makeZustand()
