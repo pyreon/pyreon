@@ -972,7 +972,7 @@ export function OptionChart(props: OptionChartProps): VNode {
   }
 
   /** One series' entry at a datum: the template's fields and the formatter's `params`. */
-  const tooltipEntry = (g: OptionGeometry, spec: TooltipSpec, seriesIndex: number, dataIndex: number): { entry: TooltipEntry; params: Record<string, unknown>; value: Double } | null => {
+  const tooltipEntry = (g: OptionGeometry, spec: TooltipSpec, seriesIndex: number, dataIndex: number): { entry: TooltipEntry; params: Record<string, unknown>; value: Double; named: boolean } | null => {
     const f = firstSpec(g)
     if (f === null) return null
     const s = f.spec.series[seriesIndex]
@@ -998,7 +998,9 @@ export function OptionChart(props: OptionChartProps): VNode {
       color,
       marker: tooltipMarker(color),
     }
-    return { entry: { seriesName: s.label, name, value: shown, percent: '', values: Array.isArray(rawData) ? rawData.map((v) => plain(Number(v))) : [], color }, params, value }
+    // ECharts shows a series name only when the option gave one: a generated name is not readable.
+    const named = typeof rawSeries?.['name'] === 'string' && rawSeries['name'] !== ''
+    return { entry: { seriesName: s.label, name, value: shown, percent: '', values: Array.isArray(rawData) ? rawData.map((v) => plain(Number(v))) : [], color }, params, value, named }
   }
 
   /** Where a view goes, per the option's `position`. */
@@ -1057,9 +1059,11 @@ export function OptionChart(props: OptionChartProps): VNode {
     // unless a valueFormatter shaped them; the box edged in the series colour for an item, neutral for an axis.
     const shownOf = (e: TooltipEntry): string => (spec.valueFormatter === undefined ? tooltipNumber(rows.find((r) => r.entry === e)!.value) : e.value)
     const edge = `border-color:${axis ? '#b7b9be' : ordered[0]!.color};`
+    // An unnamed series shows no name: no header on an item tooltip, no name on its axis row (ECharts' noHeader / noName).
+    const nameOf = (e: TooltipEntry): string => (rows.find((r) => r.entry === e)!.named ? e.seriesName : '')
     const html = axis
-      ? tooltipMarkup(ordered[0]!.name, ordered.map((e) => ({ color: e.color, name: e.seriesName, value: shownOf(e) })))
-      : tooltipMarkup(ordered[0]!.seriesName, [{ color: ordered[0]!.color, name: ordered[0]!.name, value: shownOf(ordered[0]!) }])
+      ? tooltipMarkup(ordered[0]!.name, ordered.map((e) => ({ color: e.color, name: nameOf(e), value: shownOf(e) })))
+      : tooltipMarkup(nameOf(ordered[0]!), [{ color: ordered[0]!.color, name: ordered[0]!.name, value: shownOf(ordered[0]!) }])
     return { ...view, css: `${edge}${spec.css ?? ''}`, html }
   }
 

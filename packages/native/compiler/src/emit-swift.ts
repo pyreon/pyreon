@@ -106,7 +106,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartPieArgs, chartDialCmds, chartFrameLiteral, chartSpecFieldIndex, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTipHeader, chartTooltipCells, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartPieArgs, chartDialCmds, chartFrameLiteral, chartSpecFieldIndex, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -13910,10 +13910,10 @@ function emitSwiftAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   // A placed funnel lays out in its frame (a sub-canvas); the pie frames itself through its own args.
   const frameLit = tag === 'PieChart' ? undefined : chartFrameLiteral(e, 'swift')
   if (frameLit !== undefined) lets.push(`let pyreonFrame: PyreonChartRect = frameRectAt(${frameLit}, ${W}, ${H}, ${chrome.left}, ${chrome.top})`)
-  const args: ChartHostArgs = { data: [], options, W: frameLit !== undefined ? 'pyreonFrame.w' : chrome.width(W), H: frameLit !== undefined ? 'pyreonFrame.h' : chrome.height(H), gutter: '0.0', innerRatio: swiftChartDouble(e, 'innerRadius', 0, indent), showLabels: readStaticAttr(e, 'showLabels') === false ? 'false' : 'true', fontSize: tf.fontSize, ...(tag === 'PieChart' ? chartPieArgs(e, 'swift', W, H, chrome.left, chrome.top, tf.label) : {}) }
+  const args: ChartHostArgs = { data: [], options, W: frameLit !== undefined ? 'pyreonFrame.w' : chrome.width(W), H: frameLit !== undefined ? 'pyreonFrame.h' : chrome.height(H), gutter: '0.0', innerRatio: swiftChartDouble(e, 'innerRadius', 0, indent), showLabels: readStaticAttr(e, 'showLabels') === false ? 'false' : 'true', fontSize: tf.fontSize, ...(tag === 'PieChart' ? chartPieArgs(e, 'swift', W, H, chrome.left, chrome.top, tf.label) : chartTipHeader(e, 'swift') === undefined ? {} : { tipHeader: chartTipHeader(e, 'swift')! }) }
   const inFrame = (cmds: string): string => (frameLit !== undefined ? `pyreonShiftCmdsXY(${cmds}, pyreonFrame.x, pyreonFrame.y)` : cmds)
   const tipCmds = tooltip
-    ? args.pieTipHeader !== undefined
+    ? args.tipHeader !== undefined
       ? ` + renderTooltipRows(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure, true)`
       : ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)`
     : ''
@@ -14898,7 +14898,13 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     _hostStateDecls.push('@State private var pyreonTip: [String] = []')
     _hostStateDecls.push('@State private var pyreonTipAt: PyreonChartPt = PyreonChartPt(x: 0.0, y: 0.0)')
   }
-  const tipCmds = tooltip ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)` : ''
+  // An OptionChart without a formatter shows ECharts' default content: its cells drawn as rows.
+  const tipCells = tooltip && tipFormatter === undefined ? chartTooltipCells(e) : undefined
+  const tipCmds = tooltip
+    ? tipCells !== undefined
+      ? ` + renderTooltipRows(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure, ${tipCells.trigger === 'item'})`
+      : ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)`
+    : ''
   // `rtl` — the same seam the web host uses (`present` in canvas-host.tsx):
   // the FINISHED list is mirrored about the canvas centreline, so the chrome,
   // the plot and the extras mirror together and no layout code changes. The
@@ -14915,6 +14921,13 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const tapX = chrome.tapX('Double(pyreonTap.location.x)')
   const plotX = chrome.plotX('Double(pyreonTap.location.x)')
   const localHit = `plotHitBars(pyreonSpec, pyreonChartMeasure, ${plotX}, ${tapY})`
+  if (tipCells !== undefined) {
+    const tipSeries = (sel: string): string => `TooltipSeries(label: ${sel}.label, values: ${sel}.values, color: ${sel}.color, values2: ${sel}.values2, rValues: ${sel}.rValues, extras: ${sel}.extras)`
+    const namedList = `[${tipCells.named.map((b) => String(b)).join(', ')}]`
+    tipLines = tipCells.trigger === 'axis'
+      ? `tooltipAxisCells(pyreonLocal, pyreonCats, pyreonSeries.map { ${tipSeries('$0')} }, ${namedList})`
+      : `{ () -> [String] in let pyreonSer = plotHitSeriesIn(pyreonSpec, layoutChart(pyreonSpec, pyreonChartMeasure), ${plotX}, ${tapY}, 14.0); let pyreonNamed: [Bool] = ${namedList}; return pyreonSer < 0 || pyreonSer >= pyreonSeries.count ? [] : tooltipItemCells(pyreonLocal, pyreonCats, ${tipSeries('pyreonSeries[pyreonSer]')}, pyreonSer < pyreonNamed.count && pyreonNamed[pyreonSer]) }()`
+  }
   // Under a window the hit is LOCAL to the slice; the callback speaks GLOBAL indices, as on the web.
   // With a tooltip the local hit is bound once (`pyreonLocal`) and both read it; without one the emit is as before.
   const globalHit = (local: string): string => {

@@ -287,6 +287,18 @@ export function funnelTip(stages: FunnelStage[], plot: Rect, px: Double, py: Dou
   return [s.label, plain(s.value)]
 }
 
+/**
+ * ECharts' default item tooltip for the funnel stage under a point: the series
+ * name (none when unnamed), then the stage's colour, name and grouped value —
+ * the cells `renderTooltipRows` draws. Empty on a miss.
+ */
+export function funnelTipRowsWith(stages: FunnelStage[], plot: Rect, px: Double, py: Double, seriesName: string, options?: FunnelOptions): string[] {
+  const i = hitFunnel(stages, plot, px, py, options)
+  if (i < 0 || i >= stages.length) return []
+  const s = stages[i]!
+  return [seriesName, s.color, s.label, groupThousands(s.value)]
+}
+
 /** The slice's label, value and share of the whole. */
 export function pieTip(slices: Slice[], box: Rect, innerRatio: Double, px: Double, py: Double): string[] {
   const fit = fitCircle(box)
@@ -436,7 +448,8 @@ export function renderTooltipRows(rows: string[], at: Pt, bounds: Rect, opts: To
   let y = head ? p.y + opts.pad + fs + 10.0 : p.y + opts.pad
   for (let k = 0; k < count; k++) {
     cmds.push({ kind: 'circle', center: { x: left + 5.0, y: y + fs / 2.0 }, radius: 5.0, fill: rows[1 + k * 3]! })
-    cmds.push({ kind: 'text', text: rows[1 + k * 3 + 1]!, at: { x: left + 16.0, y }, fill: opts.text, size: fs, align: 'start', baseline: 'top' })
+    // An unnamed row (ECharts' noName) draws no name.
+    if (rows[1 + k * 3 + 1]! !== '') cmds.push({ kind: 'text', text: rows[1 + k * 3 + 1]!, at: { x: left + 16.0, y }, fill: opts.text, size: fs, align: 'start', baseline: 'top' })
     cmds.push({ kind: 'text', text: rows[1 + k * 3 + 2]!, at: { x: right, y }, fill: opts.text, size: fs, align: 'end', baseline: 'top', weight: 'bold' })
     y = y + fs + 10.0
   }

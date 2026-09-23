@@ -376,10 +376,10 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     gaps: [
       '`appendToBody` / `appendTo`, the richText render mode and `displayMode: "multipleByCoordSys"` are named and not honoured',
       'a boxplot or single-axis option chart renders as SVG, so the option\'s tooltip does not reach it (every other family applies `formatter`, `position`, `trigger` and the series\' own `tooltip` through its host)',
-      'native draws ECharts\' default rows (swatch, name, bold grouped value) for an option pie only; the other native hosts still show plain lines, and no native host runs a `formatter` / `valueFormatter`',
+      'native draws ECharts\' default rows for an option bar / line / scatter (item and axis triggers), pie and funnel; the other option families (treemap, sunburst, sankey, graph, …) still show plain lines, and no native host runs a `formatter` / `valueFormatter` (a formatted tooltip shows the plain lines)',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/option-tooltip.test.ts', 'src/engine/tooltip-format.test.ts', 'src/engine/tooltip-html.test.ts', 'src/engine/option-tooltip.browser.test.tsx', 'src/engine/family-tooltip.test.ts', 'src/engine/option-family-interaction.browser.test.tsx', 'src/engine/echarts-tooltip-differential.browser.test.tsx', 'src/engine/tooltip-rows.test.ts', NATIVE + 'chart-plot-tooltip-native.test.ts', NATIVE + 'chart-option-pie-forwarded-native.test.ts'],
+    evidence: ['src/engine/option-tooltip.test.ts', 'src/engine/tooltip-format.test.ts', 'src/engine/tooltip-html.test.ts', 'src/engine/option-tooltip.browser.test.tsx', 'src/engine/family-tooltip.test.ts', 'src/engine/option-family-interaction.browser.test.tsx', 'src/engine/echarts-tooltip-differential.browser.test.tsx', 'src/engine/tooltip-rows.test.ts', NATIVE + 'chart-plot-tooltip-native.test.ts', NATIVE + 'chart-option-pie-forwarded-native.test.ts', NATIVE + 'chart-option-cartesian-tooltip-native.test.ts'],
   }),
   row('coordinates.axis-pointer', 'coordinates', 'direct', {
     web: 'partial',

@@ -143,7 +143,7 @@ export interface ChartHostArgs {
    * the tooltip takes ECharts' default rows — swatch, name, bold grouped value —
    * through `pieTipRowsWith` / `renderTooltipRows`.
    */
-  pieTipHeader?: string
+  tipHeader?: string
   /** The pie's label colour; white (inside the slices) without it. */
   pieLabelColor?: string
 }
@@ -173,6 +173,18 @@ export function chartDialCmds(e: Extract<ExprIR, { kind: 'jsx-element' }>, targe
  * frame). `W` / `H` are the whole canvas; `left` / `top` the chrome's offset,
  * so the frame lands in plot space exactly where the web draws it.
  */
+/**
+ * An option family host's ECharts tooltip header (its series name, '' when
+ * unnamed) as a target string literal — present only when the desugar set it
+ * (the option's tooltip has no formatter), which switches the host to
+ * ECharts' default rows.
+ */
+export function chartTipHeader(e: Extract<ExprIR, { kind: 'jsx-element' }>, target: 'swift' | 'kotlin'): string | undefined {
+  const header = attrOf(e, 'tooltipHeader')
+  if (header?.kind !== 'literal' || typeof header.value !== 'string') return undefined
+  return target === 'swift' ? swiftStr(header.value) : kotlinStr(header.value)
+}
+
 export function chartPieArgs(e: Extract<ExprIR, { kind: 'jsx-element' }>, target: 'swift' | 'kotlin', W: string, H: string, left: string, top: string, themeLabel: string): Partial<ChartHostArgs> {
   const out: Partial<ChartHostArgs> = {}
   const named = (k: string, v: string): string => (target === 'swift' ? `, ${k}: ${v}` : `, ${k} = ${v}`)
@@ -203,8 +215,8 @@ export function chartPieArgs(e: Extract<ExprIR, { kind: 'jsx-element' }>, target
     extra += named('measure', target === 'swift' ? 'pyreonChartMeasure' : '::pyreonChartMeasure')
   }
   if (extra !== '') out.pieExtra = extra
-  const header = attrOf(e, 'tooltipHeader')
-  if (out.pieArcs !== undefined && header?.kind === 'literal' && typeof header.value === 'string') out.pieTipHeader = target === 'swift' ? swiftStr(header.value) : kotlinStr(header.value)
+  const header = chartTipHeader(e, target)
+  if (out.pieArcs !== undefined && header !== undefined) out.tipHeader = header
   return out
 }
 
@@ -2000,6 +2012,9 @@ function desugarOptionChartHost(
       if ((name === 'sort' && litString(value) !== undefined) || (name === 'gap' && litNumber(value) !== undefined)) funnelFields.push({ name, value: value! })
     }
     if (funnelFields.length > 0) set('funnel', { kind: 'object', fields: funnelFields })
+    // No formatter: ECharts' default rows under the series name, as the web's.
+    const funnelTip = literalOf(objectField(raw, 'tooltip'), resolve)
+    if (funnelTip?.kind === 'object' && objectField(funnelTip, 'formatter') === undefined && objectField(funnelTip, 'valueFormatter') === undefined) set('tooltipHeader', lit(litString(objectField(series, 'name')) ?? ''))
     return { kind: 'jsx-element', tag: 'FunnelChart', attrs, children: [] }
   }
 
@@ -2528,6 +2543,18 @@ function desugarOptionChartHost(
     if (compiledCart !== undefined) {
       const specLit = optionSpecLiteral(compiledCart.spec)
       if (specLit.fields.length > 0) set('optionSpec', specLit)
+    }
+    // ECharts' default tooltip content (no formatter): its cells come from the engine's
+    // tooltipAxisCells / tooltipItemCells — the trigger ('item' unless the option says 'axis')
+    // and which series the option NAMED, since ECharts hides a generated name.
+    const tipOpt = literalOf(objectField(raw, 'tooltip'), resolve)
+    if (tipOpt?.kind === 'object' && objectField(tipOpt, 'formatter') === undefined && objectField(tipOpt, 'valueFormatter') === undefined) {
+      const trig = litString(objectField(tipOpt, 'trigger')) === 'axis' ? 'axis' : 'item'
+      const named = seriesObjects.map((so) => {
+        const nm = litString(objectField(so, 'name'))
+        return lit(nm !== undefined && nm !== '')
+      })
+      set('tooltipCells', { kind: 'object', fields: [{ name: 'trigger', value: lit(trig) }, { name: 'named', value: { kind: 'array', elements: named } }] })
     }
     const annotations: ExprIR[] = []
     for (let si = 0; si < seriesObjects.length; si++) {
@@ -3214,7 +3241,7 @@ export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = 
     render: (items, a, t) => `renderFunnel(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${a.options})`,
     hit: (items, x, y, a, t) => `hitFunnel(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${x}, ${y}, ${a.options})`,
     legend: (items) => `funnelLegend(${items})`,
-    tooltip: (items, x, y, a, t) => `funnelTip(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${x}, ${y}, ${a.options})`,
+    tooltip: (items, x, y, a, t) => (a.tipHeader !== undefined ? `funnelTipRowsWith(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${x}, ${y}, ${a.tipHeader}, ${a.options})` : `funnelTip(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${x}, ${y}, ${a.options})`),
   },
   PieChart: {
     data: 'data',
@@ -3234,7 +3261,7 @@ export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = 
       return `hitArc(layoutArcs(${items}), ${fit}.center, ${fit}.radius, ${fit}.radius * ${a.innerRatio}, ${t.pt(x, y)})`
     },
     legend: (items) => `pieLegend(${items})`,
-    tooltip: (items, x, y, a, t) => (a.pieArcs !== undefined && a.pieTipHeader !== undefined ? `pieTipRowsWith(${items}, ${a.frame ?? box00(a, t)}, ${a.innerRatio}, ${a.pieArcs}, ${x}, ${y}, ${a.pieTipHeader})` : a.pieArcs !== undefined ? `pieTipWith(${items}, ${a.frame ?? box00(a, t)}, ${a.innerRatio}, ${a.pieArcs}, ${x}, ${y})` : `pieTip(${items}, ${box00(a, t)}, ${a.innerRatio}, ${x}, ${y})`),
+    tooltip: (items, x, y, a, t) => (a.pieArcs !== undefined && a.tipHeader !== undefined ? `pieTipRowsWith(${items}, ${a.frame ?? box00(a, t)}, ${a.innerRatio}, ${a.pieArcs}, ${x}, ${y}, ${a.tipHeader})` : a.pieArcs !== undefined ? `pieTipWith(${items}, ${a.frame ?? box00(a, t)}, ${a.innerRatio}, ${a.pieArcs}, ${x}, ${y})` : `pieTip(${items}, ${box00(a, t)}, ${a.innerRatio}, ${x}, ${y})`),
   },
 }
 
@@ -3717,6 +3744,22 @@ export function chartThemeDefaultFields(spec: ChartHostSpec, t: ChartThemeText):
     return i < 0 ? Number.MAX_SAFE_INTEGER : i
   }
   return [...fields].sort((a, b) => at(a) - at(b)).map((f) => [f, t[CHART_THEME_SOURCE[f]]] as const)
+}
+
+/**
+ * An OptionChart-lowered PlotChart's `tooltipCells` (the desugar sets it when
+ * the option's tooltip has no formatter): ECharts' trigger and which series
+ * the option named. Undefined otherwise — the host then keeps its own lines.
+ */
+export function chartTooltipCells(e: Extract<ExprIR, { kind: 'jsx-element' }>): { trigger: 'axis' | 'item'; named: boolean[] } | undefined {
+  const a = attrOf(e, 'tooltipCells')
+  if (a === undefined || a.kind !== 'object') return undefined
+  const trigger = objectField(a, 'trigger')
+  const named = objectField(a, 'named')
+  return {
+    trigger: trigger?.kind === 'literal' && trigger.value === 'axis' ? 'axis' : 'item',
+    named: named?.kind === 'array' ? named.elements.map((x) => x.kind === 'literal' && x.value === true) : [],
+  }
 }
 
 export function chartTooltipFields(t: ChartThemeText): readonly (readonly [string, string])[] {

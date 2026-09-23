@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_ARCS } from './arc'
 import { pieTipRowsWith, renderTooltipRows } from './chrome'
 import { groupThousands } from './format'
+import { tooltipAxisCells, tooltipItemCells } from './tooltip'
 import { tooltipNumber } from './tooltip-markup'
 
 const measure = (text: string, size: number): number => text.length * size * 0.6
@@ -54,5 +55,26 @@ describe('pieTipRowsWith', () => {
   })
   it('a miss is empty', () => {
     expect(pieTipRowsWith(slices, box, 0, DEFAULT_ARCS, -50, -50, 'Traffic')).toEqual([])
+  })
+})
+
+describe('tooltipAxisCells / tooltipItemCells — ECharts default cartesian tooltips', () => {
+  const cats = ['Mon', 'Tue']
+  const series = [
+    { label: 'Sales', values: [120, 2000], color: '#f00' },
+    { label: 'Series 2', values: [80, Number.NaN], color: '#0f0' },
+  ]
+  it('axis: the category, then colour / name (named series only) / grouped value; a gap has no row', () => {
+    expect(tooltipAxisCells(0, cats, series, [true, false])).toEqual(['Mon', '#f00', 'Sales', '120', '#0f0', '', '80'])
+    expect(tooltipAxisCells(1, cats, series, [true, false])).toEqual(['Tue', '#f00', 'Sales', '2,000'])
+  })
+  it('item: the series name (none when unnamed), then colour / category / value', () => {
+    expect(tooltipItemCells(1, cats, series[0]!, true)).toEqual(['Sales', '#f00', 'Tue', '2,000'])
+    expect(tooltipItemCells(0, cats, series[1]!, false)).toEqual(['', '#0f0', 'Mon', '80'])
+    expect(tooltipItemCells(1, cats, series[1]!, false)).toEqual([])
+  })
+  it('an unnamed row draws no name text', () => {
+    const cmds = renderTooltipRows(['Mon', '#0f0', '', '80'], { x: 50, y: 50 }, BOUNDS, OPTS, measure, false)
+    expect((cmds.filter((c) => c.kind === 'text') as { text: string }[]).map((t) => t.text)).toEqual(['Mon', '80'])
   })
 })

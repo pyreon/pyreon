@@ -40,7 +40,7 @@ function row(r: TooltipRow): string {
   return (
     '<div style="margin: 0px 0 0;line-height:1;">'
     + `<span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:${safeColor(r.color)};"></span>`
-    + `<span style="${ROW_TEXT};margin-left:2px">${escapeHtml(r.name)}</span>`
+    + (r.name === '' ? '' : `<span style="${ROW_TEXT};margin-left:2px">${escapeHtml(r.name)}</span>`)
     + `<span style="float:right;margin-left:20px;font-size:14px;color:#6d6e73;font-weight:900">${escapeHtml(r.value)}</span>`
     + '<div style="clear:both"></div></div>'
   )
@@ -53,6 +53,8 @@ function row(r: TooltipRow): string {
  */
 export function tooltipMarkup(header: string, rows: TooltipRow[]): string {
   const body = rows.map((r, i) => (i === 0 ? row(r) : `<div style="margin: 10px 0 0;line-height:1;">${row(r)}<div style="clear:both"></div></div>`)).join('')
+  // No header ('' — an unnamed series' item tooltip): the rows alone, as ECharts' `noHeader`.
+  if (header === '') return `<div style="margin: 0px 0 0;line-height:1;">${body}<div style="clear:both"></div></div>`
   return (
     '<div style="margin: 0px 0 0;line-height:1;">'
     + `<div style="${ROW_TEXT};line-height:1;">${escapeHtml(header)}</div>`

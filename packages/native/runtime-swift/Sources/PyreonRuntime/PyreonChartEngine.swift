@@ -13768,6 +13768,54 @@ public func tooltipLines(_ c: TooltipContent, _ format: ((Double) -> String)? = 
     return out
   }
 
+public func rowShown(_ r: TooltipRow, _ fmt: (Double) -> String) -> String {
+    let lo = (r.value2 ?? (0.0 / 0.0))
+    let sz = (r.size ?? (0.0 / 0.0))
+    let txt = (r.text ?? "")
+    if lo == lo {
+      return "\(fmt(lo)) - \(fmt(r.value))"
+    }
+    if sz == sz {
+      return "\(fmt(r.value)) (\(fmt(sz)))"
+    }
+    if r.value != r.value {
+      return txt
+    }
+    return fmt(r.value)
+  }
+
+public func tooltipAxisCells(_ index: Int, _ categories: [String], _ series: [TooltipSeries], _ named: [Bool], _ format: ((Double) -> String)? = nil) -> [String] {
+    let fmt = (format ?? groupThousands)
+    var out = [(categories[index] ?? "\(index + 1)")]
+    for si in 0..<series.count {
+      let c = tooltipAt(index, categories, [series[si]])
+      let shown = si < named.count && named[si]
+      for ri in 0..<c.rows.count {
+        let r = c.rows[ri]
+        out.append(r.color)
+        out.append(ri > 0 ? r.label : shown ? r.label : "")
+        out.append(rowShown(r, fmt))
+      }
+    }
+    return out.count > 1 ? out : []
+  }
+
+public func tooltipItemCells(_ index: Int, _ categories: [String], _ series: TooltipSeries, _ named: Bool, _ format: ((Double) -> String)? = nil) -> [String] {
+    let fmt = (format ?? groupThousands)
+    let c = tooltipAt(index, categories, [series])
+    if c.rows.count == 0 {
+      return []
+    }
+    var out = [named ? series.label : ""]
+    for ri in 0..<c.rows.count {
+      let r = c.rows[ri]
+      out.append(r.color)
+      out.append(ri == 0 ? ((categories[index] ?? "")) : r.label)
+      out.append(rowShown(r, fmt))
+    }
+    return out
+  }
+
 public func placeTooltip(_ at: PyreonChartPt, _ size: Size, _ bounds: PyreonChartRect, _ offset: Double) -> PyreonChartPt {
     var x = at.x + offset
     if x + size.w > bounds.x + bounds.w {
@@ -14109,6 +14157,15 @@ public func funnelTip(_ stages: [FunnelStage], _ plot: PyreonChartRect, _ px: Do
     return [s.label, plain(s.value)]
   }
 
+public func funnelTipRowsWith(_ stages: [FunnelStage], _ plot: PyreonChartRect, _ px: Double, _ py: Double, _ seriesName: String, _ options: FunnelOptions? = nil) -> [String] {
+    let i = hitFunnel(stages, plot, px, py, options)
+    if i < 0 || i >= stages.count {
+      return []
+    }
+    let s = stages[i]
+    return [seriesName, s.color, s.label, groupThousands(s.value)]
+  }
+
 public func pieTip(_ slices: [Slice], _ box: PyreonChartRect, _ innerRatio: Double, _ px: Double, _ py: Double) -> [String] {
     let fit = fitCircle(box)
     let arcs = layoutArcs(slices)
@@ -14203,7 +14260,9 @@ public func renderTooltipRows(_ rows: [String], _ at: PyreonChartPt, _ bounds: P
     var y = head ? p.y + opts.pad + fs + 10.0 : p.y + opts.pad
     for k in 0..<Int(ceil(Double(count))) {
       cmds.append(PyreonDrawCmd(kind: "circle", fill: rows[1 + k * 3], center: PyreonChartPt(x: left + 5.0, y: y + fs / 2.0), radius: 5.0))
-      cmds.append(PyreonDrawCmd(kind: "text", fill: opts.text, text: rows[1 + k * 3 + 1], at: PyreonChartPt(x: left + 16.0, y: y), size: fs, align: "start", baseline: "top"))
+      if rows[1 + k * 3 + 1] != "" {
+        cmds.append(PyreonDrawCmd(kind: "text", fill: opts.text, text: rows[1 + k * 3 + 1], at: PyreonChartPt(x: left + 16.0, y: y), size: fs, align: "start", baseline: "top"))
+      }
       cmds.append(PyreonDrawCmd(kind: "text", fill: opts.text, text: rows[1 + k * 3 + 2], at: PyreonChartPt(x: right, y: y), size: fs, align: "end", baseline: "top", weight: "bold"))
       y = y + fs + 10.0
     }

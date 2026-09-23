@@ -10674,6 +10674,54 @@ fun tooltipLines(c: TooltipContent, format: ((Double) -> String)? = null): List<
     return out
   }
 
+fun rowShown(r: TooltipRow, fmt: (Double) -> String): String {
+    val lo = (r.value2 ?: ((0.0).toDouble() / (0.0).toDouble()))
+    val sz = (r.size ?: ((0.0).toDouble() / (0.0).toDouble()))
+    val txt = (r.text ?: "")
+    if (lo == lo) {
+      return "${fmt(lo)} - ${fmt(r.value)}"
+    }
+    if (sz == sz) {
+      return "${fmt(r.value)} (${fmt(sz)})"
+    }
+    if (r.value != r.value) {
+      return txt
+    }
+    return fmt(r.value)
+  }
+
+fun tooltipAxisCells(index: Int, categories: List<String>, series: List<TooltipSeries>, named: List<Boolean>, format: ((Double) -> String)? = null): List<String> {
+    val fmt = (format ?: ::groupThousands)
+    val out = mutableListOf((categories[index] ?: "${index + 1}"))
+    for (si in 0 until series.length) {
+      val c = tooltipAt(index, categories, listOf(series[si]))
+      val shown = si < named.length && named[si]
+      for (ri in 0 until c.rows.length) {
+        val r = c.rows[ri]
+        out.add(r.color)
+        out.add(if (ri > 0) r.label else if (shown) r.label else "")
+        out.add(rowShown(r, fmt))
+      }
+    }
+    return if (out.length > 1) out else listOf()
+  }
+
+fun tooltipItemCells(index: Int, categories: List<String>, series: TooltipSeries, named: Boolean, format: ((Double) -> String)? = null): List<String> {
+    val fmt = (format ?: ::groupThousands)
+    val c = tooltipAt(index, categories, listOf(series))
+    if (c.rows.length == 0) {
+      return listOf()
+    }
+    val out = mutableListOf(if (named) series.label else "")
+    for (ri in 0 until c.rows.length) {
+      val r = c.rows[ri]
+      out.add(r.color)
+      out.add(if (ri == 0) ((categories[index] ?: "")) else r.label)
+      out.add(rowShown(r, fmt))
+    }
+    return out
+  }
+
 fun placeTooltip(at: PyreonChartPt, size: Size, bounds: PyreonChartRect, offset: Double): PyreonChartPt {
     var x = at.x + offset
     if (x + size.w > bounds.x + bounds.w) {
@@ -11015,6 +11063,15 @@ fun funnelTip(stages: List<FunnelStage>, plot: PyreonChartRect, px: Double, py: 
     return listOf(s.label, plain(s.value))
   }
 
+fun funnelTipRowsWith(stages: List<FunnelStage>, plot: PyreonChartRect, px: Double, py: Double, seriesName: String, options: FunnelOptions? = null): List<String> {
+    val i = hitFunnel(stages, plot, px, py, options)
+    if (i < 0 || i >= stages.length) {
+      return listOf()
+    }
+    val s = stages[i]
+    return listOf(seriesName, s.color, s.label, groupThousands(s.value))
+  }
+
 fun pieTip(slices: List<Slice>, box: PyreonChartRect, innerRatio: Double, px: Double, py: Double): List<String> {
     val fit = fitCircle(box)
     val arcs = layoutArcs(slices)
@@ -11109,7 +11166,9 @@ fun renderTooltipRows(rows: List<String>, at: PyreonChartPt, bounds: PyreonChart
     var y = if (head) p.y + opts.pad + fs + 10.0 else p.y + opts.pad
     for (k in 0 until Math.ceil(count).toInt()) {
       cmds.add(PyreonDrawCmd(kind = "circle", fill = rows[1 + k * 3], center = PyreonChartPt(x = left + 5.0, y = y + (fs).toDouble() / (2.0).toDouble()), radius = 5.0))
-      cmds.add(PyreonDrawCmd(kind = "text", fill = opts.text, text = rows[1 + k * 3 + 1], at = PyreonChartPt(x = left + 16.0, y = y), size = fs, align = "start", baseline = "top"))
+      if (rows[1 + k * 3 + 1] != "") {
+        cmds.add(PyreonDrawCmd(kind = "text", fill = opts.text, text = rows[1 + k * 3 + 1], at = PyreonChartPt(x = left + 16.0, y = y), size = fs, align = "start", baseline = "top"))
+      }
       cmds.add(PyreonDrawCmd(kind = "text", fill = opts.text, text = rows[1 + k * 3 + 2], at = PyreonChartPt(x = right, y = y), size = fs, align = "end", baseline = "top", weight = "bold"))
       y = y + fs + 10.0
     }

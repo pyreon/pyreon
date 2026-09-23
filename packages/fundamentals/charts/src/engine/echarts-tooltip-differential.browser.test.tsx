@@ -97,6 +97,30 @@ describe('ECharts differential: tooltip content (real browser)', () => {
     expect(u.edge).toBe(e.edge)
   })
 
+  // A series the option did not name shows no name: ECharts hides the generated `series0`.
+  const unnamed = (tooltip: object): object => ({ ...cartesian(tooltip), series: [{ type: 'bar', data: [120, 2000, 150] }, { type: 'line', data: [80, 90, 1234.5] }] })
+
+  it('an unnamed series: an item tooltip has no header', async () => {
+    const e = await echartsTip(unnamed({ trigger: 'item' }), { seriesIndex: 0, dataIndex: 1 })
+    const u = await ourTip(unnamed({ trigger: 'item' }), tueX, inBar)
+    expect(u.lines).toEqual(e.lines)
+    expect(u.swatches).toEqual(e.swatches)
+  })
+
+  it('an unnamed series: an axis row has no name', async () => {
+    const e = await echartsTip(unnamed({ trigger: 'axis' }), { seriesIndex: 0, dataIndex: 1 })
+    const u = await ourTip(unnamed({ trigger: 'axis' }), tueX, inBar)
+    expect(u.lines).toEqual(e.lines)
+    expect(u.swatches).toEqual(e.swatches)
+  })
+
+  it('the default trigger is item', async () => {
+    const e = await echartsTip(cartesian({}), { seriesIndex: 0, dataIndex: 1 })
+    const u = await ourTip(cartesian({}), tueX, inBar)
+    expect(u.lines).toEqual(e.lines)
+    expect(u.edge).toBe(e.edge)
+  })
+
   it('valueFormatter shapes every value', async () => {
     const tip = { trigger: 'axis', valueFormatter: (v: number) => `$${v}` }
     const e = await echartsTip(cartesian(tip), { seriesIndex: 0, dataIndex: 1 })
