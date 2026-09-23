@@ -73,13 +73,16 @@ function cutRun(pts: Pt[], x0: Double, x1: Double): Pt[] {
   return out
 }
 
-function area(run: Pt[], base: Double, fill: string, cmds: DrawCmd[]): void {
-  if (run.length < 2) return
+/** The run closed down to `base` — an empty list when the run has no length. */
+function shadowArea(run: Pt[], base: Double, fill: string): DrawCmd[] {
+  const out: DrawCmd[] = []
+  if (run.length < 2) return out
   const poly: Pt[] = []
   for (let i = 0; i < run.length; i++) poly.push(run[i]!)
   poly.push({ x: run[run.length - 1]!.x, y: base })
   poly.push({ x: run[0]!.x, y: base })
-  cmds.push({ kind: 'polygon', points: poly, fill })
+  out.push({ kind: 'polygon', points: poly, fill })
+  return out
 }
 
 /**
@@ -116,18 +119,25 @@ export function renderSliderZoom(values: Double[], win: ZoomWindow, strip: Rect,
     const b = hi + span * 0.3
     const pts: Pt[] = []
     const n = values.length
+    // The step accumulates rather than multiplying by the index, so the native
+    // ports (which cannot mix a Double and an Int) read it the same way.
+    let gaps = 0.0
+    for (let i = 1; i < n; i++) gaps = gaps + 1.0
+    const step = strip.w / gaps
+    let px = strip.x
     for (let i = 0; i < n; i++) {
       const v = values[i]!
       const u = !isFiniteNumber(v) ? lo : v
       const f = b > a ? (u - a) / (b - a) : 0.5
-      pts.push({ x: strip.x + (strip.w * i) / (n - 1), y: bottom - f * strip.h })
+      pts.push({ x: px, y: bottom - f * strip.h })
+      px = px + step
     }
     const before = cutRun(pts, strip.x, x0)
     const inside = cutRun(pts, x0, x1)
     const after = cutRun(pts, x1, strip.x + strip.w)
-    area(before, bottom, 'rgba(192,201,230,0.2)', cmds)
-    area(inside, bottom, 'rgba(192,201,230,0.3)', cmds)
-    area(after, bottom, 'rgba(192,201,230,0.2)', cmds)
+    for (const c of shadowArea(before, bottom, 'rgba(192,201,230,0.2)')) cmds.push(c)
+    for (const c of shadowArea(inside, bottom, 'rgba(192,201,230,0.3)')) cmds.push(c)
+    for (const c of shadowArea(after, bottom, 'rgba(192,201,230,0.2)')) cmds.push(c)
     if (before.length > 1) cmds.push({ kind: 'polyline', points: before, stroke: '#a1aed9', width: 0.5 })
     if (inside.length > 1) cmds.push({ kind: 'polyline', points: inside, stroke: '#8292cc', width: 0.5 })
     if (after.length > 1) cmds.push({ kind: 'polyline', points: after, stroke: '#a1aed9', width: 0.5 })

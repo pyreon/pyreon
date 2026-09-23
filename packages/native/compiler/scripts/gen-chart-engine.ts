@@ -94,6 +94,7 @@ export const ENGINE_FILES = [
   'presets',
   'legend-toggle',
   'navigator',
+  'slider-zoom',
   'brush',
   'brush-area',
   'chart-actions',

@@ -12543,6 +12543,8 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     lets.push(`val pyreonPresetStrip: PresetLayout = renderPresets(pyreonPresets, ${data}.size, pyreonZoom, PyreonChartRect(0.0, 0.0, ${W}, ${H}), PresetOptions(fontSize = 11.0, padX = 8.0, padY = 3.0, gap = 6.0, inset = 8.0, activeFill = pyreonTheme.axis, idleFill = pyreonTheme.grid, activeText = "#ffffff", idleText = pyreonTheme.label), ::pyreonChartMeasure)`)
   }
   const belowNav = presets === undefined ? '' : ' - pyreonPresetStrip.height'
+  // ECharts' slider box: the strip lives in the grid's bottom margin, the plot keeps its rect.
+  const sliderBox = navigating ? zoomCfgK.sliderBox : null
   if (navigating) {
     // Thinned to the strip's width, exactly as the web host does: a 36px-tall
     // overview needs the min/max envelope per pixel column, not 100k points.
@@ -12550,14 +12552,14 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     // frame — the same defect the web host had before `minMaxBuckets` was
     // wired there, and worse here because the target has less headroom.
     lets.push(`val pyreonNavValues: List<Double> = minMaxBuckets(${navValues}, maxOf(1, (${W} / 2.0).toInt()))`)
-    lets.push(`val pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(0.0, 0.0, ${W}, ${H}${belowNav}), pyreonTheme.grid)`)
+    if (sliderBox === null) lets.push(`val pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(0.0, 0.0, ${W}, ${H}${belowNav}), pyreonTheme.grid)`)
   }
   const bool = (name: string, fallback: boolean): string => {
     const raw = readStaticAttrKotlin(e, name)
     const v = chartAttrExprKotlin(e, name)
     return v === undefined ? String(fallback) : typeof raw === 'boolean' ? String(raw) : emitKotlinExpr(v, indent)
   }
-  const below = `${belowNav}${navigating ? ' - pyreonNavigator.height' : ''}`
+  const below = `${belowNav}${navigating && sliderBox === null ? ' - pyreonNavigator.height' : ''}`
   const locale = chartAttrExprKotlin(e, 'locale')
   if (locale !== undefined) lets.push(`val pyreonLocale: String = ${emitKotlinExpr(locale, indent)}`)
   // The option facade's own compiled spec (an OptionChart's `optionSpec`); named arguments, so order is free.
@@ -12637,6 +12639,11 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     lets.push(`val pyreonSpec: ChartSpec = applyBrushSelection(pyreonSpecBase, ${area.only.length === 0 ? '' : 'brushOnlySeries('}brushSelection(pyreonSpecBase, layoutChart(pyreonSpecBase, ::pyreonChartMeasure), pyreonAreasNow)${area.only.length === 0 ? '' : `, listOf(${area.only.map((x) => `${x}.0`).join(', ')}))`}, pyreonAreasNow.isNotEmpty(), ${Number.isInteger(area.opacity) ? `${area.opacity}.0` : String(area.opacity)})`)
   } else {
     lets.push(`val pyreonSpec: ChartSpec = ${specBuilt}`)
+  }
+  if (sliderBox !== null) {
+    lets.push(`val pyreonSliderBox: SliderBox = ${sliderBox}`)
+    lets.push(`val pyreonSliderStrip: PyreonChartRect = sliderRect(pyreonSliderBox, layoutChart(pyreonSpec, ::pyreonChartMeasure).plot, ${W}, ${H})`)
+    lets.push('val pyreonNavigator: NavigatorLayout = NavigatorLayout(renderSliderZoom(pyreonNavValues, pyreonZoom, pyreonSliderStrip, pyreonSliderBox.brush), pyreonSliderStrip, 0.0)')
   }
   if (toolbox !== null) {
     const actives = [
@@ -12864,7 +12871,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   // on every step — the window then never moves, and the fifth device run
   // showed exactly that (a post-drag tap still reported the un-zoomed index).
   const overlay = navigating
-    ? `Box(modifier = Modifier.fillMaxWidth().offset(y = ((${H})${below}).dp).height((pyreonNavigator.height).dp).pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonDown.position.x / pyreonDensity).toDouble()); drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonStep.x / pyreonDensity).toDouble(); pyreonZoom = ${lim('navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w)')} }; pyreonNavKind = 0 } })`
+    ? `Box(modifier = Modifier.fillMaxWidth()${sliderBox !== null ? '.offset(y = (pyreonNavigator.strip.y - 8.0).dp).height((pyreonNavigator.strip.h + 12.0).dp)' : `.offset(y = ((${H})${below}).dp).height((pyreonNavigator.height).dp)`}.pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonDown.position.x / pyreonDensity).toDouble()); drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonStep.x / pyreonDensity).toDouble(); pyreonZoom = ${lim('navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w)')} }; pyreonNavKind = 0 } })`
     : undefined
   // The data description always uses every source row and mark, independent
   // of paint-only zoom, thinning and legend visibility (mirror of Swift/web).

@@ -14873,6 +14873,66 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "SliderBox",
+    "fields": [
+      {
+        "name": "left",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "top",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "right",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "bottom",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "width",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "height",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "brush",
+        "type": {
+          "kind": "boolean"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "BrushRange",
     "fields": [
       {
@@ -15546,6 +15606,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "Size",
   "Slice",
   "SliceRange",
+  "SliderBox",
   "StackSegment",
   "SunburstArc",
   "SunburstFrame",

@@ -363,7 +363,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     gaps: [
       'a `type: "scroll"` legend pages as ECharts\' does — a row or a column, the controller at the end or the start, `scrollDataIndex`, `pageButtonGap`, `pageFormatter`, the page colours, the entry the window cuts drawn clipped (differential-tested); `pageIconSize` / `pageIcons` are not read',
       'the `selector` buttons are not drawn',
-      'native draws a scrolling legend unpaged (named in a warning)',
+      'native pages a horizontal scroll legend on a cartesian chart with the engine legend\'s pager (one row, tappable arrows, not ECharts\' triangles); a vertical one, or one on a family host, draws unpaged (named in a warning)',
       'series `legendHoverLink` (hovering an entry emphasises its series) is not honoured',
       'a family option chart (pie, funnel, …) draws its host\'s own legend, which a click does not toggle; a multi-grid option\'s legend does not toggle either',
       LITERAL_ONLY,
@@ -478,10 +478,10 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     gaps: [
       'only the category x axis zooms, and only the first x axis; a y-axis or value-axis dataZoom is ignored with a warning',
       'the web slider takes ECharts\' geometry and look, but its styling keys (`fillerColor`, `handleStyle`, `handleIcon`, `dataBackground`, `showDataShadow`) and the drag-time value labels (`showDetail`) are not read',
-      'native draws a slider option as PlotChart\'s own navigator, a strip below the chart, not ECharts\' slider in the grid\'s bottom margin',
+      'native draws the same ECharts slider in the grid\'s bottom margin (the ported strip, from the option\'s box); a multi-grid part keeps PlotChart\'s own navigator band, as on the web',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/option-zoom.test.ts', 'src/engine/zoom.browser.test.tsx', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-option-datazoom-native.test.ts', ...DEVICE],
+    evidence: ['src/engine/option-zoom.test.ts', 'src/engine/zoom.browser.test.tsx', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-option-datazoom-native.test.ts', NATIVE + 'chart-option-slider-native.test.ts', ...DEVICE],
   }),
   row('coordinates.timeline', 'coordinates', 'direct', {
     web: 'complete',

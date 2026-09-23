@@ -14737,6 +14737,8 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   }
   // Below the plot, from the bottom up: the preset strip, then the navigator.
   const belowNav = presets === undefined ? '' : ' - pyreonPresetStrip.height'
+  // ECharts' slider box: the strip lives in the grid's bottom margin, the plot keeps its rect.
+  const sliderBox = navigating ? zoomCfg.sliderBox : null
   if (navigating) {
     // Thinned to the strip's width, exactly as the web host does: a 36px-tall
     // overview needs the min/max envelope per pixel column, not 100k points.
@@ -14744,14 +14746,14 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     // frame — the same defect the web host had before `minMaxBuckets` was
     // wired there, and worse here because the target has less headroom.
     lets.push(`let pyreonNavValues: [Double] = minMaxBuckets(${navValues}, max(1, Int(${W} / 2.0)))`)
-    lets.push(`let pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H}${belowNav}), pyreonTheme.grid)`)
+    if (sliderBox === null) lets.push(`let pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H}${belowNav}), pyreonTheme.grid)`)
   }
   const bool = (name: string, fallback: boolean): string => {
     const raw = readStaticAttr(e, name)
     const v = chartAttrExpr(e, name)
     return v === undefined ? String(fallback) : typeof raw === 'boolean' ? String(raw) : emitSwiftExpr(v, indent)
   }
-  const below = `${belowNav}${navigating ? ' - pyreonNavigator.height' : ''}`
+  const below = `${belowNav}${navigating && sliderBox === null ? ' - pyreonNavigator.height' : ''}`
   const locale = chartAttrExpr(e, 'locale')
   if (locale !== undefined) lets.push(`let pyreonLocale: String = ${emitSwiftExpr(locale, indent)}`)
   // The option facade's own compiled spec (an OptionChart's `optionSpec`): its
@@ -14858,6 +14860,11 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     lets.push(`let pyreonSpec: ChartSpec = applyBrushSelection(pyreonSpecBase, ${area.only.length === 0 ? '' : 'brushOnlySeries('}brushSelection(pyreonSpecBase, layoutChart(pyreonSpecBase, pyreonChartMeasure), pyreonAreasNow)${area.only.length === 0 ? '' : `, [${area.only.map((x) => `${x}.0`).join(', ')}])`}, !pyreonAreasNow.isEmpty, ${Number.isInteger(area.opacity) ? `${area.opacity}.0` : String(area.opacity)})`)
   } else {
     lets.push(`let pyreonSpec: ChartSpec = ${specBuilt}`)
+  }
+  if (sliderBox !== null) {
+    lets.push(`let pyreonSliderBox: SliderBox = ${sliderBox}`)
+    lets.push(`let pyreonSliderStrip: PyreonChartRect = sliderRect(pyreonSliderBox, layoutChart(pyreonSpec, pyreonChartMeasure).plot, ${W}, ${H})`)
+    lets.push('let pyreonNavigator: NavigatorLayout = NavigatorLayout(cmds: renderSliderZoom(pyreonNavValues, pyreonZoom, pyreonSliderStrip, pyreonSliderBox.brush), strip: pyreonSliderStrip, height: 0.0)')
   }
   if (toolbox !== null) {
     const actives = [
@@ -15139,7 +15146,10 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   // handle) is decided once, from the start location; the drag is absolute
   // from the window it started on — the web's model.
   const overlay =
-    `Color.clear.contentShape(Rectangle()).frame(height: pyreonNavigator.height)${presets === undefined ? '' : '.padding(.bottom, pyreonPresetStrip.height)'}` +
+    (sliderBox !== null
+      ? // ECharts' strip sits in the grid's margin; the grab area covers it and the move handle above.
+        `Color.clear.contentShape(Rectangle()).frame(height: pyreonNavigator.strip.h + 12.0).padding(.bottom, max(0.0, ${H} - pyreonNavigator.strip.y - pyreonNavigator.strip.h - 4.0))`
+      : `Color.clear.contentShape(Rectangle()).frame(height: pyreonNavigator.height)${presets === undefined ? '' : '.padding(.bottom, pyreonPresetStrip.height)'}`) +
     `.gesture(DragGesture(minimumDistance: 0).onChanged { pyreonNav in if pyreonNavKind == 0 { pyreonNavAnchor = pyreonZoom; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, Double(pyreonNav.startLocation.x)) }; pyreonZoom = ${lim('navigatorDrag(pyreonNavKind, pyreonNavAnchor, Double(pyreonNav.translation.width) / pyreonNavigator.strip.w)')} }` +
     `.onEnded { _ in pyreonNavKind = 0${zoomed ? '; pyreonZoomAnchor = pyreonZoom' : ''} })`
   return swiftFrameHost(e, lets, `ZStack(alignment: .bottom) { ${canvas}${gesture}; ${overlay} }`, '', W, H, hasWidth, indent, describe, dataViewOverlay)

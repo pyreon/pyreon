@@ -1198,7 +1198,7 @@ export function desugarOptionChart(
 ): Extract<ExprIR, { kind: 'jsx-element' }> | undefined {
   const hosted = desugarOptionChartHost(e, resolve, warn)
   if (hosted === undefined || hosted.tag === CHART_TIMELINE_TAG) return hosted
-  const lowered = withFamilyFrame(hosted, e, resolve, warn)
+  const lowered = withScrollLegend(withFamilyFrame(hosted, e, resolve, warn), e, resolve, warn)
   // `option.toolbox` through the web's own reader: the plot host lowers the
   // whole toolbox, a family host its save button.
   const raw = literalOf(attrOf(e, 'option'), resolve)
@@ -1226,6 +1226,29 @@ export function desugarOptionChart(
   }
   if (Object.keys(cfg).length === 0) return lowered
   return { ...lowered, attrs: [...lowered.attrs.filter((a) => !(a.kind === 'attr' && a.name === 'toolbox')), { kind: 'attr', name: 'toolbox', value: valueToIr(cfg) }, ...brushAttrs] }
+}
+
+
+/**
+ * ECharts' `legend.type: 'scroll'` on native. A horizontal scroll legend keeps
+ * ONE row and pages the rest, which is exactly the engine legend's own pager at
+ * `legendMaxRows: 1` — so a cartesian host pages it, with taps on the arrows.
+ * The pager's look is the engine's ("‹ 2/5 ›" at the row's end), not ECharts'
+ * triangles, and a vertical scroll legend or a family host still wraps.
+ */
+function withScrollLegend(lowered: Extract<ExprIR, { kind: 'jsx-element' }>, e: Extract<ExprIR, { kind: 'jsx-element' }>, resolve: (name: string) => ExprIR | undefined, warn: (m: string) => void): Extract<ExprIR, { kind: 'jsx-element' }> {
+  const raw = literalOf(attrOf(e, 'option'), resolve)
+  if (raw?.kind !== 'object') return lowered
+  const legend = literalOf(objectField(raw, 'legend'), resolve)
+  if (legend?.kind !== 'object' || litString(objectField(legend, 'type')) !== 'scroll') return lowered
+  const vertical = litString(objectField(legend, 'orient')) === 'vertical'
+  const shown = lowered.attrs.some((a) => a.kind === 'attr' && a.name === 'showLegend')
+  if (lowered.tag !== 'PlotChart' || vertical || !shown) {
+    warn(`<OptionChart option.legend.type>: 'scroll' pages the legend on the web; native pages a horizontal legend on a cartesian chart only, so this ${vertical ? 'vertical legend' : lowered.tag} draws every entry, wrapped.`)
+    return lowered
+  }
+  if (lowered.attrs.some((a) => a.kind === 'attr' && a.name === 'legendMaxRows')) return lowered
+  return { ...lowered, attrs: [...lowered.attrs, { kind: 'attr', name: 'legendMaxRows', value: { kind: 'literal', value: 1 } }] }
 }
 
 /** ECharts' box keys — where a placed family chart sits. */
@@ -1300,11 +1323,6 @@ function desugarOptionChartHost(
   }
 
   optionFields(raw, ['aria', 'series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'dataZoom', 'toolbox', 'brush', 'color', 'dataset', 'graphic'], 'option', warn)
-  // ledger: coordinates.legend — the web pages a scrolling legend; the native legend has no pager yet.
-  const legendType = literalOf(objectField(raw, 'legend'), resolve)
-  if (legendType?.kind === 'object' && litString(objectField(legendType, 'type')) === 'scroll') {
-    warn("<OptionChart option.legend.type>: 'scroll' pages the legend on the web; native draws every entry, wrapped, without the pager.")
-  }
 
   for (const a of e.attrs) {
     if (a.kind === 'event' && a.name !== 'selectindex' && a.name !== 'brushselected') {
@@ -2858,6 +2876,24 @@ function desugarOptionChartHost(
         if (z !== undefined) {
           if (z.inside) set('dataZoom', lit(true))
           if (z.slider) set('navigator', lit(true))
+          // Under ECharts' grid the strip is ECharts' own, in the grid's bottom
+          // margin — the web's `zoomedView` makes the same choice.
+          if (z.slider && compiled.spec.gridBottom !== undefined) {
+            const box = z.sliderBox ?? { left: NO_FRAME_LENGTH, top: NO_FRAME_LENGTH, right: NO_FRAME_LENGTH, bottom: NO_FRAME_LENGTH, width: NO_FRAME_LENGTH, height: NO_FRAME_LENGTH, brush: true }
+            const len = (f: { mode: string; amount: number }): ExprIR => ({ kind: 'object', fields: [{ name: 'mode', value: lit(f.mode) }, { name: 'amount', value: optionDoubleLiteral(f.amount) }] })
+            set('navigatorBox', {
+              kind: 'object',
+              fields: [
+                { name: 'left', value: len(box.left) },
+                { name: 'top', value: len(box.top) },
+                { name: 'right', value: len(box.right) },
+                { name: 'bottom', value: len(box.bottom) },
+                { name: 'width', value: len(box.width) },
+                { name: 'height', value: len(box.height) },
+                { name: 'brush', value: lit(box.brush) },
+              ],
+            })
+          }
           const win = (a: number, b: number): ExprIR => ({ kind: 'object', fields: [{ name: 'start', value: optionDoubleLiteral(a) }, { name: 'end', value: optionDoubleLiteral(b) }] })
           if (z.window.start > 0 || z.window.end < 1) set('initialZoom', win(z.window.start, z.window.end))
           if (z.lock || z.minSpan > 0 || z.maxSpan < 1) {
@@ -4275,13 +4311,15 @@ export function chartVisualMap(
  * on and the span limits every gesture is held to, as target literals. A
  * non-literal value is named and ignored.
  */
+const NO_FRAME_LENGTH = { mode: '', amount: 0 }
+
 export function chartZoomConfig(
   readExpr: (name: string) => ExprIR | undefined,
   resolve: (name: string) => ExprIR | undefined,
   t: ChartHostTarget,
   warn: (m: string) => void,
   tag: string,
-): { initial: string | null; limits: string | null } {
+): { initial: string | null; limits: string | null; sliderBox: string | null } {
   const plainOf = (name: string): Record<string, unknown> | null | undefined => {
     const e = readExpr(name)
     if (e === undefined) return undefined
@@ -4298,7 +4336,19 @@ export function chartZoomConfig(
   const n = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d)
   const initial = init == null ? null : t.struct('ZoomWindow', [['start', chartDouble(Math.max(0, Math.min(1, n(init['start'], 0))))], ['end', chartDouble(Math.max(0, Math.min(1, n(init['end'], 1))))]])
   const limits = lim == null ? null : t.struct('ZoomLimits', [['lock', String(lim['lock'] === true)], ['minSpan', chartDouble(n(lim['minSpan'], 0))], ['maxSpan', chartDouble(n(lim['maxSpan'], 1))]])
-  return { initial, limits }
+  // `navigatorBox`: ECharts' slider box (`SliderBox`), which puts the strip in the
+  // grid's bottom margin as ECharts lays it out instead of Pyreon's navigator band.
+  const box = plainOf('navigatorBox')
+  const len = (v: unknown): string => {
+    const r = isPlainRecord(v) ? v : {}
+    const mode = r['mode'] === 'px' || r['mode'] === '%' ? r['mode'] : ''
+    return t.struct('FrameLength', [['mode', JSON.stringify(mode)], ['amount', chartDouble(n(r['amount'], 0))]])
+  }
+  const sliderBox =
+    box == null
+      ? null
+      : t.struct('SliderBox', [['left', len(box['left'])], ['top', len(box['top'])], ['right', len(box['right'])], ['bottom', len(box['bottom'])], ['width', len(box['width'])], ['height', len(box['height'])], ['brush', String(box['brush'] !== false)]])
+  return { initial, limits, sliderBox }
 }
 
 /**
