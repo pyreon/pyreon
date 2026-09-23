@@ -1508,11 +1508,9 @@ struct PyreonFlowStateTests {
     /// the SwiftUI half of `colorMode="system"`: the view must follow the
     /// environment's scheme. The device suites prove the OS half where the
     /// simulator propagates an appearance change.
+    /// Pixels within 6 of `rgb` in `view`, rendered offscreen by SwiftUI.
     @MainActor
-    static func darkCanvasPixels(colorMode: String, scheme: ColorScheme) -> Int {
-        let view = PyreonFlowView(state: seedFlow(), colorMode: colorMode) { node in Text(node.data.label) }
-            .frame(width: 320, height: 200)
-            .environment(\.colorScheme, scheme)
+    static func renderedPixels<V: View>(_ view: V, _ r: Int, _ g: Int, _ b: Int) -> Int {
         let renderer = ImageRenderer(content: view)
         renderer.scale = 1
         guard let image = renderer.cgImage else { return -1 }
@@ -1522,10 +1520,36 @@ struct PyreonFlowStateTests {
         guard let ctx = CGContext(data: &pixels, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return -1 }
         ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         var count = 0
-        for i in stride(from: 0, to: pixels.count, by: 4) where abs(Int(pixels[i]) - 11) <= 6 && abs(Int(pixels[i + 1]) - 18) <= 6 && abs(Int(pixels[i + 2]) - 32) <= 6 {
+        for i in stride(from: 0, to: pixels.count, by: 4) where abs(Int(pixels[i]) - r) <= 6 && abs(Int(pixels[i + 1]) - g) <= 6 && abs(Int(pixels[i + 2]) - b) <= 6 {
             count += 1
         }
         return count
+    }
+
+    /// Pixels of the web's dark canvas colour (#0b1220) in the REAL view,
+    /// rendered offscreen under the given environment colour scheme. This is
+    /// the SwiftUI half of `colorMode="system"`: the view must follow the
+    /// environment's scheme. The device suites prove the OS half where the
+    /// simulator propagates an appearance change.
+    @MainActor
+    static func darkCanvasPixels(colorMode: String, scheme: ColorScheme) -> Int {
+        let view = PyreonFlowView(state: seedFlow(), colorMode: colorMode) { node in Text(node.data.label) }
+            .frame(width: 320, height: 200)
+            .environment(\.colorScheme, scheme)
+        return renderedPixels(view, 11, 18, 32)
+    }
+
+    /// The default node paints the web's DefaultNode box from the palette.
+    @MainActor
+    static func runDefaultNodeRenderChecks() {
+        func node(_ mode: String, selected: Bool = false) -> some View {
+            PyreonFlowDefaultNode(label: "Node", selected: selected).padding(4).pyreonFlowColorMode(mode)
+        }
+        check(renderedPixels(node("dark"), 0x1f, 0x29, 0x37) > 1000, "the dark default node did not paint --pyreon-flow-node-bg (#1f2937)")
+        check(renderedPixels(node("dark"), 0x37, 0x41, 0x51) > 100, "the dark default node did not paint --pyreon-flow-node-border (#374151)")
+        check(renderedPixels(node("light"), 0xdd, 0xdd, 0xdd) > 100, "the light default node did not paint --pyreon-flow-node-border (#dddddd)")
+        check(renderedPixels(node("light", selected: true), 0x3b, 0x82, 0xf6) > 100, "a selected default node did not paint --pyreon-flow-node-selected (#3b82f6)")
+        check(renderedPixels(node("light"), 0x3b, 0x82, 0xf6) == 0, "an unselected default node painted the selected border")
     }
 
     @MainActor
@@ -1540,9 +1564,9 @@ struct PyreonFlowStateTests {
     }
 
     static func main() {
-        MainActor.assumeIsolated { runSystemColorModeRenderChecks() }
-        runKeyRoutingChecks()
         runParityChecks()
+        MainActor.assumeIsolated { runSystemColorModeRenderChecks(); runDefaultNodeRenderChecks() }
+        runKeyRoutingChecks()
         runStateChecks()
         runEdgeCanvasChecks()
         runWebViewChecks()

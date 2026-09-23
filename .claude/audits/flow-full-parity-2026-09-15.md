@@ -331,4 +331,26 @@ native view.
   every PR. The device suites still prove the OS half wherever the simulator
   propagates the change: the iPhone 17 Pro, and always Android. Bisect: making
   `"system"` resolve to light fails with "did not follow a dark scheme (0 px)".
+- [x] Visual parity of the palette, checked at three levels:
+  - Source: `native-palette-parity.test.ts` requires every Swift and Kotlin
+    palette value to equal the web's `--pyreon-flow-*` fallback (light) or
+    `[data-color-mode="dark"]` value (dark), field by field. Bisect: one digit
+    off on Kotlin's dark edge fails with `expected '#6b7281' to be '#6b7280'`.
+  - Rendering: the native Swift suite renders the new `PyreonFlowDefaultNode`
+    offscreen and counts palette pixels (node background, border, and the
+    selected border only while selected).
+  - Device: the tasks app on Android crops the rendered default node.
+  Writing the check found a real gap. Five palette fields were used by
+  neither renderer: node background, node text, node border, node selected
+  and control colour. A node without a custom `type` rendered as a bare label,
+  and Controls used the platform's filled buttons (Material purple on
+  Android). Both runtimes now ship `PyreonFlowDefaultNode`, the web's
+  DefaultNode box: palette colours, a 2px border in the selected colour while
+  selected, 6px corners, 8x16 padding, 13px text and an 80px minimum width.
+  The compiler emits it for untyped nodes. Controls are the web's bordered
+  panel box of 28px transparent buttons in `controlColor`. A first attempt
+  counted colours across the whole canvas and passed with the palette broken,
+  because other elements paint the same colours, so it was replaced by crops
+  of the element itself. Bisect on Android: the old `Text` emit fails with
+  "the default node label is not --pyreon-flow-node-color (#1a192b)".
 

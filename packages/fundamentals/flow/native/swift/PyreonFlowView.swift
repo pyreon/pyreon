@@ -377,19 +377,35 @@ public struct PyreonFlowControls<T>: View {
     public init(state: PyreonFlowState<T>, style: PyreonFlowControlsStyle, locked: Binding<Bool>, extraContent: @escaping () -> AnyView? = { nil }) {
         self.state = state; self.style = style; self._locked = locked; self.extraContent = extraContent
     }
+    @Environment(\.pyreonFlowPalette) private var palette
+    /// A 28pt transparent button in the palette's control colour, like the
+    /// web's `.pyreon-flow-controls button`.
+    private func controlButton(_ glyph: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(glyph)
+                .foregroundStyle(pyreonFlowEdgeColor(palette.controlColor))
+                .frame(minWidth: 28, minHeight: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
     public var body: some View {
         VStack(spacing: 2) {
-            if style.showZoomIn { Button("+") { state.zoomIn() }.accessibilityLabel("Zoom in") }
-            if style.showZoomOut { Button("−") { state.zoomOut() }.accessibilityLabel("Zoom out") }
-            if style.showFitView { Button("Fit") { state.fitView() }.accessibilityLabel("Fit view") }
-            if style.showLock { Button(locked ? "Unlock" : "Lock") { locked.toggle() }.accessibilityLabel("Lock the canvas").accessibilityValue(locked ? "Locked" : "Unlocked") }
+            if style.showZoomIn { controlButton("+") { state.zoomIn() }.accessibilityLabel("Zoom in") }
+            if style.showZoomOut { controlButton("−") { state.zoomOut() }.accessibilityLabel("Zoom out") }
+            if style.showFitView { controlButton("Fit") { state.fitView() }.accessibilityLabel("Fit view") }
+            if style.showLock { controlButton(locked ? "Unlock" : "Lock") { locked.toggle() }.accessibilityLabel("Lock the canvas").accessibilityValue(locked ? "Locked" : "Unlocked") }
             Text("\(Int((state.zoom * 100).rounded()))%")
                 .font(.caption2)
+                .foregroundStyle(pyreonFlowEdgeColor(palette.controlColor))
                 .accessibilityLabel("Current zoom level")
             if let extra = extraContent() { extra }
         }
         .padding(2)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+        // The web's `.pyreon-flow-controls`: a bordered panel box, not a
+        // material blur.
+        .background(RoundedRectangle(cornerRadius: 6).fill(pyreonFlowEdgeColor(palette.panelBackground)))
+        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(pyreonFlowEdgeColor(palette.panelBorder), lineWidth: 1))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
         .padding(10)
     }
@@ -1344,4 +1360,26 @@ public func pyreonFlowHandleKey<T>(
         repeatKey: isRepeat,
         edgeId: edgeId
     )
+}
+
+/// The web's default node: a labelled box with the palette's node background,
+/// text and border colours, a 2pt border (the selected colour while selected),
+/// 6pt corners, 8x16 padding, 13pt text and an 80pt minimum width. The compiler
+/// emits it for every node without a custom `type`.
+public struct PyreonFlowDefaultNode: View {
+    private let label: String
+    private let selected: Bool
+    @Environment(\.pyreonFlowPalette) private var palette
+    public init(label: String, selected: Bool) { self.label = label; self.selected = selected }
+    public var body: some View {
+        Text(label)
+            .font(.system(size: 13))
+            .foregroundStyle(pyreonFlowEdgeColor(palette.nodeColor))
+            .multilineTextAlignment(.center)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 16)
+            .frame(minWidth: 80)
+            .background(RoundedRectangle(cornerRadius: 6).fill(pyreonFlowEdgeColor(palette.nodeBackground)))
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(pyreonFlowEdgeColor(selected ? palette.nodeSelected : palette.nodeBorder), lineWidth: 2))
+    }
 }

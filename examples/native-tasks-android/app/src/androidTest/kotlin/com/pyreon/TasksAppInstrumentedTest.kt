@@ -547,6 +547,25 @@ class TasksAppInstrumentedTest {
         // initial zoom 1 / origin viewport, so the node sits where the seed put
         // it and no reset is needed.
         composeRule.onNodeWithContentDescription("Task flow").assertExists()
+        // The default node is the web's DefaultNode box, painted from the
+        // palette: the label in --pyreon-flow-node-color (#1a192b, not the
+        // platform's default black) and, with node 'a' selected above, a
+        // --pyreon-flow-node-selected (#3b82f6) border.
+        run {
+            fun count(bmp: android.graphics.Bitmap, r: Int, g: Int, b: Int): Int {
+                var n = 0
+                for (y in 0 until bmp.height) for (x in 0 until bmp.width) {
+                    val c = bmp.getPixel(x, y)
+                    if (kotlin.math.abs(android.graphics.Color.red(c) - r) <= 6 && kotlin.math.abs(android.graphics.Color.green(c) - g) <= 6 && kotlin.math.abs(android.graphics.Color.blue(c) - b) <= 6) n++
+                }
+                return n
+            }
+            val label = composeRule.onNodeWithText("Start").captureToImage().asAndroidBitmap()
+            check(count(label, 0x1a, 0x19, 0x2b) > 50) { "the default node label is not --pyreon-flow-node-color (#1a192b)" }
+            check(count(label, 0, 0, 0) == 0) { "the default node label painted the platform's default black" }
+            val canvas = composeRule.onNodeWithContentDescription("Task flow").captureToImage().asAndroidBitmap()
+            check(count(canvas, 0x3b, 0x82, 0xf6) > 500) { "the selected default node has no --pyreon-flow-node-selected (#3b82f6) border" }
+        }
         composeRule.onNodeWithContentDescription("minimap").assertExists()
         composeRule.onNodeWithContentDescription("source handle out").assertExists()
         composeRule.onNodeWithContentDescription("target handle in").assertExists()
