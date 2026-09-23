@@ -1,33 +1,37 @@
 #!/usr/bin/env bun
 /**
- * The required `Test` check, posted by whichever aggregated job finishes LAST.
+ * The required `Test` check: waits for every aggregated job, then decides.
  *
- * ## Why this exists
+ * ## Why it WAITS instead of being scheduled last
  *
- * `Test` used to be its own job: `needs: [install, typecheck-cell, test-cell,
- * e2e-suite, scaffold-smoke-cell]`, three seconds of shell. On a free-plan org
- * (20 concurrent jobs, shared by every open PR) a job that becomes ready LAST
- * queues behind everything other runs enqueued before it. Measured 2026-09-22
- * on 14 PR runs: once its dependencies had finished, the aggregator waited
- * 0-11 min for a runner on a quiet pool and 56-78 min on a busy one — up to
- * half of a 91-192 min run's wall clock, for a verdict that was already known.
+ * `Test` used to be a job that `needs:` every matrix — three seconds of shell
+ * that became READY last, so on a busy free-plan pool it queued behind
+ * everything other PRs had enqueued: measured 2026-09-22, 56-78 min AFTER its
+ * dependencies had finished. So the job now `needs: install` only, starts
+ * alongside the cells, and polls this run's job list until every aggregated
+ * job is complete. It still reports its OWN conclusion as the check, so it
+ * needs nothing beyond `actions: read`.
  *
- * So every aggregated job ends with an `always()` step running this script.
- * The one that finds every OTHER aggregated job already complete computes the
- * verdict and posts `Test` through the Checks API. A check run posted with the
- * workflow's GITHUB_TOKEN belongs to the `github-actions` app — the app branch
- * protection binds `Test` to — so no protection change is needed.
+ * ## Why not "the last cell posts `Test`" (the version this replaced)
  *
- * ## Why it cannot weaken the gate
+ * That shipped first (#3573) and was faster still, but it gave every cell
+ * `checks: write` — and cells run repo tests and npm dependencies. A token
+ * that can create check runs can create ANY check name bound to the
+ * github-actions app, i.e. nearly every required check (`Build`, `Install`,
+ * `Fast Gates`, the device lanes…). A compromised dependency executing in a
+ * test cell could then forge merge-gating checks, where before it could at
+ * most fake its own job's result. OpenSSF Scorecard flagged all six grants
+ * (TokenPermissionsID); least privilege wins over the remaining minutes.
  *
- * - An ABSENT `Test` blocks the merge ("Expected"), exactly like a pending one.
- * - Two jobs finishing in the same instant each see the other still running
- *   and neither posts. The `Test (fallback)` job (the old aggregator, renamed)
- *   still runs after everything with `--force` and posts the same verdict, so
- *   the worst case is today's behaviour, never a missing or wrong verdict.
- * - The rules below are the aggregator's rules, moved rather than rewritten:
- *   Install must succeed; every other aggregated job must be success or
- *   skipped; when e2e suites were selected, the e2e jobs must SUCCEED.
+ * ## Poll budget
+ *
+ * GITHUB_TOKEN is limited to 1,000 API requests/hour PER REPOSITORY, shared by
+ * every workflow. One request per poll (`per_page=100` covers the run's ~30
+ * jobs), every 90 s: ~40/hour per in-flight run.
+ *
+ * The rules are the old aggregator's, unchanged: Install must succeed; every
+ * other aggregated job must be success or skipped; when e2e suites were
+ * selected, the e2e jobs must SUCCEED.
  */
 
 export interface JobInfo {
@@ -128,8 +132,9 @@ async function listJobs(repo: string, runId: string): Promise<JobInfo[]> {
   return out
 }
 
+const POLL_MS = 90_000
+
 async function main(): Promise<number> {
-  const force = process.argv.includes('--force')
   const env = (k: string): string => {
     const v = process.env[k]
     if (!v) throw new Error(`[ci-aggregate] missing env ${k}`)
@@ -137,61 +142,45 @@ async function main(): Promise<number> {
   }
   const repo = env('GITHUB_REPOSITORY')
   const runId = env('GITHUB_RUN_ID')
-  const headSha = env('HEAD_SHA')
   const e2eSelected = process.env.E2E_SELECTED === 'true'
-  const jobs = await listJobs(repo, runId)
-
-  let self: JobInfo | null = null
-  if (!force) {
-    const runner = process.env.RUNNER_NAME
-    const mine = jobs.filter((j) => j.status === 'in_progress' && j.runner_name === runner)
-    self = mine.find((j) => aggregateKind(j.name) !== null) ?? null
-    if (!self) {
-      console.log(`[ci-aggregate] could not identify this job (runner ${runner}); leaving Test to the fallback`)
-      return 0
+  let lastPending = ''
+  let apiFailures = 0
+  for (;;) {
+    let jobs: JobInfo[]
+    try {
+      jobs = await listJobs(repo, runId)
+      apiFailures = 0
+    } catch (err) {
+      // A transient 5xx must not turn a green run red; five in a row (~7 min)
+      // is an outage, and then failing closed is right.
+      if (++apiFailures >= 5) throw err
+      console.log(`::warning::[ci-aggregate] listing jobs failed (${apiFailures}/5): ${String(err)}`)
+      await new Promise((r) => setTimeout(r, POLL_MS))
+      continue
     }
-    // This job's own outcome, which the API cannot report while it runs.
-    self = { ...self, status: 'completed', conclusion: process.env.SELF_OUTCOME ?? 'failure' }
+    const v = decideAggregate(jobs, null, { e2eSelected })
+    if (v.last) {
+      for (const l of v.lines) console.log('  ' + l)
+      console.log(`[ci-aggregate] Test = ${v.ok ? 'success' : 'failure'}`)
+      return v.ok ? 0 : 1
+    }
+    const pending = v.lines.join('\n')
+    if (pending !== lastPending) {
+      console.log(`[ci-aggregate] waiting (${new Date().toISOString()}):\n  ${v.lines.join('\n  ')}`)
+      lastPending = pending
+    }
+    await new Promise((r) => setTimeout(r, POLL_MS))
   }
-  const list = self ? jobs.map((j) => (j.runner_name === self!.runner_name && j.status === 'in_progress' ? self! : j)) : jobs
-  const v = decideAggregate(list, self, { e2eSelected })
-  for (const l of v.lines) console.log('  ' + l)
-  if (!v.last && !force) {
-    console.log('[ci-aggregate] not the last aggregated job — Test is posted by whichever finishes last')
-    return 0
-  }
-  if (process.env.NO_POST === '1') {
-    console.log(`[ci-aggregate] verdict ${v.ok ? 'success' : 'failure'} (not posting: NO_POST=1)`)
-    return v.ok ? 0 : 1
-  }
-  await gh(`/repos/${repo}/check-runs`, {
-    method: 'POST',
-    body: JSON.stringify({
-      name: 'Test',
-      head_sha: headSha,
-      status: 'completed',
-      conclusion: v.ok ? 'success' : 'failure',
-      details_url: `https://github.com/${repo}/actions/runs/${runId}`,
-      output: {
-        title: v.ok ? 'All aggregated CI jobs passed' : 'Aggregated CI jobs failed',
-        summary: v.lines.join('\n'),
-      },
-    }),
-  })
-  console.log(`[ci-aggregate] posted Test = ${v.ok ? 'success' : 'failure'} on ${headSha}`)
-  // The poster reports the verdict in its own check as well only in --force
-  // mode (the fallback job); a cell must not fail because a SIBLING failed.
-  return force && !v.ok ? 1 : 0
 }
 
 if (import.meta.main) {
   main().then(
     (code) => process.exit(code),
     (err) => {
-      // Never fail a cell over a posting problem: an absent Test blocks the
-      // merge, and the fallback job re-derives and posts it.
-      console.log(`::warning::[ci-aggregate] ${String(err)}`)
-      process.exit(process.argv.includes('--force') ? 1 : 0)
+      // An API error must FAIL the check (fail-closed): a green `Test` that
+      // never saw the cells would be the worst outcome.
+      console.log(`::error::[ci-aggregate] ${String(err)}`)
+      process.exit(1)
     },
   )
 }

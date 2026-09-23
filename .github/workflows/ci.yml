@@ -134,11 +134,6 @@ jobs:
   install:
     name: Install
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      # `checks: write` + `actions: read`: the no-cells `Test` post (last step).
-      checks: write
-      actions: read
     # Derived, not guessed: install ~50s + decide ~20s + lib/ build 90-280s
     # (prefix-hit incremental vs cold, measured 2026-09) + two cache saves.
     # 15 is ~2× the cold case.
@@ -546,23 +541,6 @@ jobs:
             .bootstrap-cache.json
           key: ${{ env.BOOTSTRAP_KEY }}
 
-      # Every matrix empty (a docs-only PR): no cell will run, so none can post
-      # `Test`. Post it here rather than leave it to `Test (fallback)`, which
-      # would wait for a runner after an otherwise-finished run.
-      - name: Post the Test verdict (no cells selected)
-        if: >-
-          github.event.pull_request.head.repo.fork != true &&
-          steps.matrices.outputs.typecheck-has == 'false' &&
-          steps.matrices.outputs.test-has == 'false' &&
-          steps.e2e.outputs.has == 'false' &&
-          steps.scaffold.outputs.has == 'false'
-        continue-on-error: true
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          E2E_SELECTED: 'false'
-          SELF_OUTCOME: success
-        run: bun scripts/ci-aggregate.ts
 
   # ── Fast Gates: every lib-free gate, one runner ──────────────────────────
   # Consolidated 2026-08 (eleven singleton jobs → one) and again 2026-09
@@ -816,11 +794,6 @@ jobs:
     needs: install
     if: ${{ (success() && needs.install.outputs.typecheck-has == 'true') || (failure() && needs.install.result != 'success') }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      # `checks: write` posts `Test`; `actions: read` lists this run's jobs.
-      checks: write
-      actions: read
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -963,19 +936,6 @@ jobs:
             examples/*/.cache/tsbuildinfo
           key: tsbuildinfo-${{ runner.os }}-${{ github.run_id }}-${{ matrix.name }}
 
-      # Post the required `Test` check if this is the LAST aggregated job to
-      # finish (scripts/ci-aggregate.ts), instead of leaving it to a separate
-      # 3-second job that waited up to 78 min for a runner. Never changes this
-      # job's outcome; if it cannot post, `Test (fallback)` does.
-      - name: Post the Test verdict (if this is the last aggregated job)
-        if: always() && github.event.pull_request.head.repo.fork != true
-        continue-on-error: true
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          E2E_SELECTED: ${{ needs.install.outputs.e2e-has }}
-          SELF_OUTCOME: ${{ job.status }}
-        run: bun scripts/ci-aggregate.ts
 
   # ── Test: per-category matrix (P3b) ──────────────────────────────────
   # Same shard shape as `typecheck-cell` above (8 cells, per-category).
@@ -1016,11 +976,6 @@ jobs:
     needs: install
     if: ${{ (success() && needs.install.outputs.test-has == 'true') || (failure() && needs.install.result != 'success') }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      # `checks: write` posts `Test`; `actions: read` lists this run's jobs.
-      checks: write
-      actions: read
     # `@pyreon/native-compiler` is NOT run here. It lives in ONE job:
     # native-validate.yml's required `Validate emitted Swift + Kotlin`
     # (pinned swiftc/kotlinc, PYREON_REQUIRE_NATIVE_VALIDATE=1), whose decide
@@ -1202,19 +1157,6 @@ jobs:
           path: .cache/pyreon-native-validate
           key: native-verdicts-ci-${{ runner.os }}-${{ matrix.name }}-${{ github.sha }}
 
-      # Post the required `Test` check if this is the LAST aggregated job to
-      # finish (scripts/ci-aggregate.ts), instead of leaving it to a separate
-      # 3-second job that waited up to 78 min for a runner. Never changes this
-      # job's outcome; if it cannot post, `Test (fallback)` does.
-      - name: Post the Test verdict (if this is the last aggregated job)
-        if: always() && github.event.pull_request.head.repo.fork != true
-        continue-on-error: true
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          E2E_SELECTED: ${{ needs.install.outputs.e2e-has }}
-          SELF_OUTCOME: ${{ job.status }}
-        run: bun scripts/ci-aggregate.ts
 
   # ── E2E: real-Chromium app-level tests against example apps ──────────
   # Parallel, flake-resilient matrix. Before 2026-05 this was ONE runner
@@ -1247,11 +1189,6 @@ jobs:
     needs: install
     if: needs.install.outputs.e2e-has == 'true'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      # `checks: write` posts `Test`; `actions: read` lists this run's jobs.
-      checks: write
-      actions: read
     # A cell runs a BATCH of suites now, so the cap covers the batch, not one
     # suite. Full serial e2e is ~8-20 min across every suite; at 4 batches the
     # heaviest lands well under 10 min, and 25 leaves real headroom for a slow
@@ -1383,19 +1320,6 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
-      # Post the required `Test` check if this is the LAST aggregated job to
-      # finish (scripts/ci-aggregate.ts), instead of leaving it to a separate
-      # 3-second job that waited up to 78 min for a runner. Never changes this
-      # job's outcome; if it cannot post, `Test (fallback)` does.
-      - name: Post the Test verdict (if this is the last aggregated job)
-        if: always() && github.event.pull_request.head.repo.fork != true
-        continue-on-error: true
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          E2E_SELECTED: ${{ needs.install.outputs.e2e-has }}
-          SELF_OUTCOME: ${{ job.status }}
-        run: bun scripts/ci-aggregate.ts
 
   # ── Scaffold smoke: end-to-end gate against create-pyreon-app ──────────
   # Runs the actual scaffolder + bun install + bun run build for every
@@ -1431,11 +1355,6 @@ jobs:
     needs: install
     if: ${{ needs.install.outputs.scaffold-has == 'true' }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      # `checks: write` posts `Test`; `actions: read` lists this run's jobs.
-      checks: write
-      actions: read
     # Three cells of ~6 min in one batch, plus setup. Derived, not guessed:
     # measured cells run 222-373s; the heaviest LPT bin is 3 × ~370s.
     timeout-minutes: 25
@@ -1466,19 +1385,6 @@ jobs:
           MEMBERS: ${{ matrix.members }}
         run: bun scripts/scaffold-smoke.ts $MEMBERS
 
-      # Post the required `Test` check if this is the LAST aggregated job to
-      # finish (scripts/ci-aggregate.ts), instead of leaving it to a separate
-      # 3-second job that waited up to 78 min for a runner. Never changes this
-      # job's outcome; if it cannot post, `Test (fallback)` does.
-      - name: Post the Test verdict (if this is the last aggregated job)
-        if: always() && github.event.pull_request.head.repo.fork != true
-        continue-on-error: true
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          E2E_SELECTED: ${{ needs.install.outputs.e2e-has }}
-          SELF_OUTCOME: ${{ job.status }}
-        run: bun scripts/ci-aggregate.ts
   # ── Test: the ONE aggregator for every dynamic matrix ────────────────────
   # Branch protection pins a stable name; matrix cells have dynamic names.
   # This used to be four aggregator jobs (Test, Typecheck, E2E, Scaffold
@@ -1495,38 +1401,47 @@ jobs:
   # Fail-closed on Install: if the decide job did not succeed, cell selection
   # is unknown and this is red regardless of what did run.
   test:
-    # The FALLBACK for the required `Test` check. The primary path is the last
-    # aggregated job to finish posting `Test` itself (scripts/ci-aggregate.ts):
-    # as a separate job, this 3-second verdict waited 56-78 min for a runner on
-    # a busy pool after everything it needs had finished (measured 2026-09-22).
-    # It still runs after them with `always()`, so a race (two cells finishing
-    # together, neither seeing itself as last) or an Install failure (no cell
-    # runs at all) still gets a verdict — merely late, as before.
+    name: Test
+    # Starts right after Install — ALONGSIDE the cells, not after them — and
+    # waits for every aggregated job (scripts/ci-aggregate.ts). As a job that
+    # `needs:` all four matrices it became ready LAST and queued behind every
+    # other PR: measured 2026-09-22, 56-78 min for a 3-second verdict once its
+    # dependencies had finished. Its OWN conclusion is the required `Test`
+    # check, so it needs only `actions: read`: no job in this workflow holds a
+    # token that can write checks (see the script header for why the faster
+    # "last cell posts Test" version was withdrawn).
     #
-    # Fork PRs get a read-only token and cannot post a check run, so for them
-    # this job keeps the name `Test` and its own conclusion IS the check, as it
-    # was before the split.
-    name: ${{ github.event.pull_request.head.repo.fork && 'Test' || 'Test (fallback)' }}
-    needs: [install, typecheck-cell, test-cell, e2e-suite, scaffold-smoke-cell]
+    # `always()`: a failed Install must still produce a red `Test`, never a
+    # skipped-green one.
+    #
+    # Re-runs: this job no longer `needs:` the cells, so re-running ONE cell
+    # by hand does not re-evaluate it — use "Re-run failed jobs" (a red
+    # `Test` is itself a failed job, so it is included) or re-run it too.
+    needs: install
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Must outlast the slowest cell INCLUDING its queue wait (cells cap at 25
+    # min of runtime; a busy pool adds an hour or more). A timeout reports a
+    # cancelled — i.e. blocking, never green — `Test`.
+    timeout-minutes: 240
     permissions:
       contents: read
-      checks: write
-      actions: read
+      actions: read # list this run's jobs
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            scripts/ci-aggregate.ts
+            .bun-version
+          sparse-checkout-cone-mode: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
-      - name: Aggregate typecheck / test / e2e / scaffold matrices
+      - name: Wait for typecheck / test / e2e / scaffold matrices, then decide
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           E2E_SELECTED: ${{ needs.install.outputs.e2e-has }}
-          NO_POST: ${{ github.event.pull_request.head.repo.fork && '1' || '0' }}
-        run: bun scripts/ci-aggregate.ts --force
+        run: bun scripts/ci-aggregate.ts
 
   build:
     name: Build
