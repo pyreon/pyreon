@@ -62,6 +62,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pinch
 import androidx.compose.ui.unit.dp
+import android.app.UiModeManager
 import androidx.compose.ui.input.key.Key
 import android.app.UiModeManager
 import android.content.Context
