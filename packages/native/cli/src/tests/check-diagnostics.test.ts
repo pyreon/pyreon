@@ -43,6 +43,26 @@ describe('extractPosition', () => {
   })
 })
 
+describe('extractPosition — linear on adversarial input (CodeQL js/polynomial-redos)', () => {
+  it('skips a bracket group without a position and takes the first that has one', () => {
+    expect(extractPosition('[PARSE_ERROR] x ╭─[ a.tsx:4:2 ] then [ b.tsx:9:9 ]')).toEqual({ line: 4, column: 2 })
+    expect(extractPosition('[ a.tsx:4:2   ]')).toEqual({ line: 4, column: 2 })
+    expect(extractPosition('[ no position here ] tail.kt:7:1: error')).toEqual({ line: 7, column: 1 })
+    expect(extractPosition('[ outer [ inner.tsx:3:4 ]')).toEqual({ line: 3, column: 4 })
+  })
+  it('returns promptly for a bracket followed by a huge run of spaces', () => {
+    // The replaced regex backtracked polynomially on exactly this shape.
+    const hostile = '['.concat(' '.repeat(50_000))
+    const start = performance.now()
+    expect(extractPosition(hostile)).toBeUndefined()
+    expect(extractPosition(hostile.repeat(4))).toBeUndefined()
+    // …and a long run of unclosed brackets (each must not rescan to the end).
+    expect(extractPosition('['.repeat(50_000))).toBeUndefined()
+    expect(extractPosition('[\\'.repeat(50_000))).toBeUndefined()
+    expect(performance.now() - start).toBeLessThan(250)
+  })
+})
+
 describe('checkSource — in-memory core', () => {
   it('flags a web-only entry (imports the DOM runtime) and emits no findings', () => {
     const r = checkSource(

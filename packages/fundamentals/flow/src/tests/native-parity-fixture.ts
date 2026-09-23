@@ -59,6 +59,18 @@ export type ParityOp =
   | { op: 'removeEdgeWaypoint'; id: string; index: number }
   | { op: 'updateEdgeWaypoint'; id: string; index: number; x: number; y: number }
   | { op: 'layout'; algorithm: string; direction?: string; nodeSpacing?: number; layerSpacing?: number }
+  | { op: 'addNodes'; nodes: { id: string; x: number; y: number }[] }
+  | { op: 'setNodes'; nodes: { id: string; x: number; y: number }[] }
+  | { op: 'removeNodes'; ids: string[] }
+  | { op: 'updateNode'; id: string; x: number; y: number }
+  | { op: 'updateNodeData'; id: string; label: string }
+  | { op: 'setMeasurement'; id: string; width: number; height: number }
+  | { op: 'clearMeasurement'; id: string }
+  | { op: 'addEdges'; edges: { id: string; source: string; target: string }[] }
+  | { op: 'setEdges'; edges: { id: string; source: string; target: string }[] }
+  | { op: 'removeEdges'; ids: string[] }
+  | { op: 'updateEdge'; id: string; target: string }
+  | { op: 'batch'; ops: ParityOp[] }
 
 export type ParityQuery =
   | { q: 'isValidConnection'; source: string; target: string }
@@ -76,10 +88,17 @@ export type ParityQuery =
   | { q: 'proximity'; id: string; threshold: number }
   | { q: 'search'; query: string }
   | { q: 'waypoints'; id: string }
+  | { q: 'nodePosition'; id: string }
+  | { q: 'nodeSelected'; id: string }
+  | { q: 'edgeSelected'; id: string }
+  | { q: 'dimensions'; id: string }
+  | { q: 'findByLabel'; label: string }
+  | { q: 'edgeType'; id: string }
+  | { q: 'edgeLabel'; id: string }
 
 export interface ParityScenario {
   name: string
-  nodes: { id: string; x: number; y: number; parentId?: string }[]
+  nodes: { id: string; x: number; y: number; parentId?: string; type?: string }[]
   edges: { id: string; source: string; target: string }[]
   ops: ParityOp[]
   queries: ParityQuery[]
@@ -88,6 +107,74 @@ export interface ParityScenario {
   snapGrid?: number
   /** Position tolerance for the node check (default 1e-6); the iterative layouts accumulate ~1e-4 of floating-point order across languages. */
   tolerance?: number
+  /**
+   * Mutable engine configuration. The oracle passes these to `createFlow`; the
+   * native fixtures set the same properties right after construction, so the
+   * config field itself is what is under test, not an initializer order.
+   */
+  config?: ParityConfig
+}
+
+/**
+ * The portable config fields a scenario can opt into. Each one has a web form
+ * (what `createFlow` takes) and a native form (the engine property), and
+ * `configEntries` below is the single place that translates between them.
+ */
+export interface ParityConfig {
+  minZoom?: number
+  maxZoom?: number
+  multiSelect?: boolean
+  nodesDeletable?: boolean
+  edgesDeletable?: boolean
+  autoHistory?: boolean
+  /** Node type -> the node types it may connect to. Web spells it `{ outputs }`. */
+  connectionRules?: Record<string, string[]>
+  defaultEdgeType?: string
+  /** Web spells it `[[minX, minY], [maxX, maxY]]`. */
+  nodeExtent?: { minX: number; minY: number; maxX: number; maxY: number }
+  defaultEdgeOptions?: { type?: string; label?: string }
+  fitViewPadding?: number
+  /** A user validator that rejects one target id. Web spells it `isValidConnection`. */
+  connectionValidator?: { rejectTarget: string }
+}
+
+/** The config in the shape `createFlow` takes. */
+function webConfig(c: ParityConfig | undefined): Record<string, unknown> {
+  if (!c) return {}
+  const { connectionRules, nodeExtent, connectionValidator, ...rest } = c
+  return {
+    ...rest,
+    ...(connectionValidator ? { isValidConnection: (conn: { target: string }) => conn.target !== connectionValidator.rejectTarget } : {}),
+    ...(connectionRules ? { connectionRules: Object.fromEntries(Object.entries(connectionRules).map(([k, v]) => [k, { outputs: v }])) } : {}),
+    ...(nodeExtent ? { nodeExtent: [[nodeExtent.minX, nodeExtent.minY], [nodeExtent.maxX, nodeExtent.maxY]] } : {}),
+  }
+}
+
+/** One native assignment per config field, as the property the engine exposes. */
+function configEntries(c: ParityConfig | undefined, lang: 'swift' | 'kotlin'): string[] {
+  const out: string[] = []
+  for (const [k, v] of Object.entries(c ?? {})) {
+    if (v === undefined) continue
+    if (k === 'connectionRules') {
+      const pairs = Object.entries(v as Record<string, string[]>).map(([t, outs]) =>
+        lang === 'swift' ? `${str(t)}: ${strList(outs, 'swift')}` : `${str(t)} to ${strList(outs, 'kotlin')}`)
+      out.push(`f.${k} = ${lang === 'swift' ? `[${pairs.join(', ')}]` : `mapOf(${pairs.join(', ')})`}`)
+    } else if (k === 'nodeExtent') {
+      const e = v as { minX: number; minY: number; maxX: number; maxY: number }
+      out.push(lang === 'swift'
+        ? `f.${k} = PyreonFlowNodeExtent(minX: ${d(e.minX)}, minY: ${d(e.minY)}, maxX: ${d(e.maxX)}, maxY: ${d(e.maxY)})`
+        : `f.${k} = PyreonFlowNodeExtent(${d(e.minX)}, ${d(e.minY)}, ${d(e.maxX)}, ${d(e.maxY)})`)
+    } else if (k === 'defaultEdgeOptions') {
+      const o = v as { type?: string; label?: string }
+      const args = Object.entries(o).filter(([, x]) => x !== undefined).map(([ok, x]) => lang === 'swift' ? `${ok}: ${str(x as string)}` : `${ok} = ${str(x as string)}`)
+      out.push(`f.${k} = PyreonFlowDefaultEdgeOptions(${args.join(', ')})`)
+    } else if (k === 'connectionValidator') {
+      const t = (v as { rejectTarget: string }).rejectTarget
+      out.push(lang === 'swift' ? `f.${k} = { $0.target != ${str(t)} }` : `f.${k} = { it.target != ${str(t)} }`)
+    } else if (typeof v === 'string') out.push(`f.${k} = ${str(v)}`)
+    else out.push(`f.${k} = ${typeof v === 'number' ? d(v) : String(v)}`)
+  }
+  return out
 }
 
 export type SnapAnswer = { snapX: number | null; snapY: number | null; x: number; y: number }
@@ -98,7 +185,7 @@ export interface ParityExpectation {
   selectedNodes: string[]
   selectedEdges: string[]
   viewport: { x: number; y: number; zoom: number }
-  answers: (boolean | string[] | { x: number; y: number } | { x: number; y: number }[] | SnapAnswer)[]
+  answers: (boolean | string | string[] | { x: number; y: number } | { x: number; y: number }[] | SnapAnswer)[]
 }
 
 const grid = (n: number) => Array.from({ length: n }, (_, i) => ({ id: String(i + 1), x: i * 200, y: (i % 2) * 120 }))
@@ -405,6 +492,191 @@ export const PARITY_SCENARIOS: readonly ParityScenario[] = [
     ops: [{ op: 'layout', algorithm: 'rectpacking', nodeSpacing: 12 }],
     queries: [{ q: 'incomers', id: 'e' }],
   },
+  // ---- F2 sweep: the portable methods and config fields no scenario above reached ----
+  {
+    name: 'bulk node and edge CRUD',
+    nodes: grid(3),
+    edges: chain(3),
+    ops: [
+      { op: 'addNodes', nodes: [{ id: '4', x: 600, y: 0 }, { id: '5', x: 800, y: 120 }] },
+      { op: 'addEdges', edges: [{ id: 'e3', source: '3', target: '4' }, { id: 'e4', source: '4', target: '5' }] },
+      { op: 'removeNodes', ids: ['1'] },
+      { op: 'removeEdges', ids: ['e3'] },
+      { op: 'updateEdge', id: 'e4', target: '2' },
+      { op: 'updateNode', id: '5', x: 820, y: 140 },
+    ],
+    queries: [{ q: 'nodePosition', id: '5' }, { q: 'nodePosition', id: '1' }, { q: 'connectedEdges', id: '2' }, { q: 'incomers', id: '2' }],
+  },
+  {
+    name: 'replacing the whole graph prunes a stale selection',
+    nodes: grid(3),
+    edges: chain(3),
+    ops: [
+      { op: 'selectAll' },
+      { op: 'selectEdge', id: 'e1', additive: true },
+      { op: 'setNodes', nodes: [{ id: '1', x: 0, y: 0 }, { id: '9', x: 300, y: 300 }] },
+      { op: 'setEdges', edges: [{ id: 'e9', source: '1', target: '9' }] },
+    ],
+    queries: [{ q: 'nodeSelected', id: '1' }, { q: 'nodeSelected', id: '2' }, { q: 'edgeSelected', id: 'e1' }, { q: 'outgoers', id: '1' }],
+  },
+  {
+    name: 'a data update reaches search and predicates',
+    nodes: grid(3),
+    edges: [],
+    ops: [{ op: 'updateNodeData', id: '2', label: 'Renamed' }],
+    queries: [{ q: 'search', query: 'Renamed' }, { q: 'findByLabel', label: 'Renamed' }, { q: 'findByLabel', label: '2' }],
+  },
+  {
+    name: 'a measured size drives dimensions, overlap and fit',
+    nodes: grid(3),
+    edges: [],
+    ops: [
+      { op: 'setMeasurement', id: '1', width: 320, height: 90 },
+      { op: 'setContainerSize', width: 800, height: 600 },
+      { op: 'fitView' },
+    ],
+    queries: [{ q: 'dimensions', id: '1' }, { q: 'dimensions', id: '2' }, { q: 'overlapping', id: '1' }],
+  },
+  {
+    name: 'clearing a measurement falls back to the default size',
+    nodes: grid(2),
+    edges: [],
+    ops: [
+      { op: 'setMeasurement', id: '1', width: 320, height: 90 },
+      { op: 'clearMeasurement', id: '1' },
+    ],
+    queries: [{ q: 'dimensions', id: '1' }, { q: 'overlapping', id: '1' }],
+  },
+  {
+    name: 'batch applies every operation it wraps',
+    nodes: grid(2),
+    edges: [],
+    ops: [{ op: 'batch', ops: [{ op: 'addNode', id: '3', x: 400, y: 0 }, { op: 'addEdge', id: 'e5', source: '1', target: '3' }, { op: 'selectNode', id: '3', additive: false }] }],
+    queries: [{ q: 'nodeSelected', id: '3' }, { q: 'outgoers', id: '1' }],
+  },
+  {
+    name: 'config: zoom limits clamp every zoom path',
+    nodes: grid(2),
+    edges: [],
+    config: { minZoom: 0.5, maxZoom: 2 },
+    ops: [{ op: 'zoomTo', zoom: 10 }, { op: 'zoomIn' }],
+    queries: [],
+  },
+  {
+    name: 'config: the lower zoom limit clamps too',
+    nodes: grid(2),
+    edges: [],
+    config: { minZoom: 0.5, maxZoom: 2 },
+    ops: [{ op: 'zoomTo', zoom: 0.01 }, { op: 'zoomOut' }],
+    queries: [],
+  },
+  {
+    name: 'config: multiSelect off makes an additive selection replace',
+    nodes: grid(3),
+    edges: [],
+    config: { multiSelect: false },
+    ops: [{ op: 'selectNode', id: '1', additive: false }, { op: 'selectNode', id: '2', additive: true }],
+    queries: [{ q: 'nodeSelected', id: '1' }, { q: 'nodeSelected', id: '2' }],
+  },
+  {
+    name: 'config: undeletable nodes and edges survive deleteSelected',
+    nodes: grid(3),
+    edges: chain(3),
+    config: { nodesDeletable: false, edgesDeletable: false },
+    ops: [{ op: 'selectAll' }, { op: 'selectEdge', id: 'e1', additive: true }, { op: 'deleteSelected' }],
+    queries: [],
+  },
+  {
+    name: 'config: with autoHistory off, a removal is not undoable',
+    nodes: grid(3),
+    edges: chain(3),
+    config: { autoHistory: false },
+    ops: [{ op: 'removeNode', id: '2' }, { op: 'undo' }],
+    queries: [],
+  },
+  {
+    name: 'with autoHistory off, a manual checkpoint makes the removal undoable',
+    nodes: grid(3),
+    edges: chain(3),
+    config: { autoHistory: false },
+    ops: [{ op: 'pushHistory' }, { op: 'removeNode', id: '2' }, { op: 'undo' }],
+    queries: [],
+  },
+  {
+    name: 'with autoHistory on, the same removal is undoable',
+    nodes: grid(3),
+    edges: chain(3),
+    ops: [{ op: 'removeNode', id: '2' }, { op: 'undo' }],
+    queries: [],
+  },
+  {
+    name: 'config: connectionRules gate a connection by the source and target node types',
+    nodes: [
+      { id: 'in', x: 0, y: 0, type: 'input' },
+      { id: 'proc', x: 200, y: 0, type: 'process' },
+      { id: 'out', x: 400, y: 0, type: 'output' },
+      { id: 'plain', x: 600, y: 0 },
+    ],
+    edges: [],
+    ops: [],
+    queries: [
+      { q: 'isValidConnection', source: 'in', target: 'proc' },
+      { q: 'isValidConnection', source: 'in', target: 'out' },
+      { q: 'isValidConnection', source: 'proc', target: 'out' },
+      { q: 'isValidConnection', source: 'out', target: 'in' },
+      { q: 'isValidConnection', source: 'plain', target: 'out' },
+      { q: 'isValidConnection', source: 'in', target: 'plain' },
+      { q: 'isValidConnection', source: 'in', target: 'missing' },
+    ],
+    config: { connectionRules: { input: ['process'], process: ['output'], default: ['output'] } },
+  },
+  {
+    name: 'config: defaultEdgeType types an untyped edge on every add path',
+    nodes: grid(3),
+    edges: [{ id: 'e0', source: '1', target: '2' }],
+    ops: [{ op: 'addEdge', id: 'e1', source: '2', target: '3' }, { op: 'addEdges', edges: [{ id: 'e2', source: '1', target: '3' }] }],
+    queries: [{ q: 'edgeType', id: 'e1' }, { q: 'edgeType', id: 'e2' }],
+    config: { defaultEdgeType: 'step' },
+  },
+  {
+    name: 'config: a nodeExtent from config clamps a move like setNodeExtent does',
+    nodes: grid(2),
+    edges: [],
+    ops: [{ op: 'updateNodePosition', id: '1', x: -50, y: 900 }],
+    queries: [{ q: 'clampToExtent', x: -10, y: 10 }, { q: 'nodePosition', id: '1' }],
+    config: { nodeExtent: { minX: 0, minY: 0, maxX: 500, maxY: 500 } },
+  },
+  {
+    // Only edges added AFTER construction: the native fixtures set config as a
+    // property after the engine is built, so an initial edge was normalized
+    // with the defaults of that moment on native and with the config on web.
+    name: 'config: defaultEdgeOptions fill an added edge, and its own type still wins over the default type',
+    nodes: grid(3),
+    edges: [],
+    ops: [{ op: 'addEdge', id: 'e1', source: '1', target: '2' }, { op: 'addEdges', edges: [{ id: 'e2', source: '2', target: '3' }] }],
+    queries: [{ q: 'edgeType', id: 'e1' }, { q: 'edgeLabel', id: 'e1' }, { q: 'edgeType', id: 'e2' }, { q: 'edgeLabel', id: 'e2' }],
+    config: { defaultEdgeType: 'step', defaultEdgeOptions: { type: 'smoothstep', label: 'flows' } },
+  },
+  {
+    name: 'config: fitViewPadding is the padding a bare fitView uses',
+    nodes: grid(4),
+    edges: [],
+    ops: [{ op: 'setContainerSize', width: 800, height: 600 }, { op: 'fitView' }],
+    queries: [],
+    config: { fitViewPadding: 0.3 },
+  },
+  {
+    name: 'config: a user connection validator runs after the built-in checks',
+    nodes: grid(3),
+    edges: [],
+    ops: [],
+    queries: [
+      { q: 'isValidConnection', source: '1', target: '2' },
+      { q: 'isValidConnection', source: '1', target: '3' },
+      { q: 'isValidConnection', source: '1', target: '1' },
+    ],
+    config: { connectionValidator: { rejectTarget: '3' } },
+  },
 ]
 
 const num = (v: number) => (Number.isFinite(v) ? Math.round(v * 1e9) / 1e9 : v)
@@ -412,12 +684,13 @@ const num = (v: number) => (Number.isFinite(v) ? Math.round(v * 1e9) / 1e9 : v)
 /** Run a scenario through the WEB engine and record what it observed. */
 export async function expectationsOf(s: ParityScenario): Promise<ParityExpectation> {
   const flow = createFlow<{ label: string }>({
-    nodes: s.nodes.map((n) => ({ id: n.id, position: { x: n.x, y: n.y }, data: { label: n.id }, ...(n.parentId !== undefined ? { parentId: n.parentId } : {}) })),
+    nodes: s.nodes.map((n) => ({ id: n.id, position: { x: n.x, y: n.y }, data: { label: n.id }, ...(n.parentId !== undefined ? { parentId: n.parentId } : {}), ...(n.type !== undefined ? { type: n.type } : {}) })),
     edges: s.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
     ...(s.snapToGrid !== undefined ? { snapToGrid: s.snapToGrid } : {}),
     ...(s.snapGrid !== undefined ? { snapGrid: s.snapGrid } : {}),
+    ...webConfig(s.config),
   })
-  for (const o of s.ops) {
+  const apply = async (o: ParityOp): Promise<void> => {
     switch (o.op) {
       case 'addNode': flow.addNode({ id: o.id, position: { x: o.x, y: o.y }, data: { label: o.id } }); break
       case 'removeNode': flow.removeNode(o.id); break
@@ -453,8 +726,26 @@ export async function expectationsOf(s: ParityScenario): Promise<ParityExpectati
       case 'removeEdgeWaypoint': flow.removeEdgeWaypoint(o.id, o.index); break
       case 'updateEdgeWaypoint': flow.updateEdgeWaypoint(o.id, o.index, { x: o.x, y: o.y }); break
       case 'layout': await flow.layout(o.algorithm as 'layered', { animate: false, ...(o.direction !== undefined ? { direction: o.direction as 'DOWN' } : {}), ...(o.nodeSpacing !== undefined ? { nodeSpacing: o.nodeSpacing } : {}), ...(o.layerSpacing !== undefined ? { layerSpacing: o.layerSpacing } : {}) }); break
+      case 'addNodes': flow.addNodes(o.nodes.map((n) => ({ id: n.id, position: { x: n.x, y: n.y }, data: { label: n.id } }))); break
+      case 'setNodes': flow.setNodes(o.nodes.map((n) => ({ id: n.id, position: { x: n.x, y: n.y }, data: { label: n.id } }))); break
+      case 'removeNodes': flow.removeNodes(o.ids); break
+      case 'updateNode': flow.updateNode(o.id, { position: { x: o.x, y: o.y } }); break
+      case 'updateNodeData': flow.updateNodeData(o.id, { label: o.label }); break
+      case 'setMeasurement': flow._setNodeMeasurement(o.id, o.width, o.height); break
+      case 'clearMeasurement': flow._clearNodeMeasurement(o.id); break
+      case 'addEdges': flow.addEdges(o.edges.map((e) => ({ id: e.id, source: e.source, target: e.target }))); break
+      case 'setEdges': flow.setEdges(o.edges.map((e) => ({ id: e.id, source: e.source, target: e.target }))); break
+      case 'removeEdges': flow.removeEdges(o.ids); break
+      case 'updateEdge': flow.updateEdge(o.id, { target: o.target }); break
+      case 'batch': {
+        // The web `batch` is synchronous; layout (the one async op) is never batched.
+        const inner = o.ops
+        flow.batch(() => { for (const x of inner) void apply(x) })
+        break
+      }
     }
   }
+  for (const o of s.ops) await apply(o)
   const answers: ParityExpectation['answers'] = s.queries.map((q) => {
     switch (q.q) {
       case 'isValidConnection': return flow.isValidConnection({ source: q.source, target: q.target })
@@ -472,6 +763,13 @@ export async function expectationsOf(s: ParityScenario): Promise<ParityExpectati
       case 'proximity': { const c = flow.getProximityConnection(q.id, q.threshold); return c ? [c.source, c.target] : [] }
       case 'search': return flow.searchNodes(q.query).map((n) => n.id)
       case 'waypoints': return (flow.getEdge(q.id)?.waypoints ?? []).map((p) => ({ x: num(p.x), y: num(p.y) }))
+      case 'nodePosition': { const n = flow.getNode(q.id); return n ? [{ x: num(n.position.x), y: num(n.position.y) }] : [] }
+      case 'nodeSelected': return flow.isNodeSelected(q.id)
+      case 'edgeSelected': return flow.isEdgeSelected(q.id)
+      case 'dimensions': { const dm = flow.getNodeDimensions(q.id); return { x: num(dm.width), y: num(dm.height) } }
+      case 'findByLabel': return flow.findNodes((n) => n.data.label === q.label).map((n) => n.id)
+      case 'edgeType': return flow.getEdge(q.id)?.type ?? ''
+      case 'edgeLabel': return flow.getEdge(q.id)?.label ?? ''
     }
   })
   const vp = flow.getViewport()
@@ -537,6 +835,18 @@ function opSwift(o: ParityOp): string {
     case 'removeEdgeWaypoint': return `f.removeEdgeWaypoint(${str(o.id)}, ${o.index})`
     case 'updateEdgeWaypoint': return `f.updateEdgeWaypoint(${str(o.id)}, ${o.index}, PyreonXYPosition(x: ${d(o.x)}, y: ${d(o.y)}))`
     case 'layout': return `f.layout(${str(o.algorithm)}, options: PyreonFlowLayoutOptions(${[o.direction !== undefined ? `direction: ${str(o.direction)}` : '', o.nodeSpacing !== undefined ? `nodeSpacing: ${d(o.nodeSpacing)}` : '', o.layerSpacing !== undefined ? `layerSpacing: ${d(o.layerSpacing)}` : '', 'animate: false'].filter((x) => x !== '').join(', ')}))`
+    case 'addNodes': return `f.addNodes([${o.nodes.map((n) => `PyreonFlowNode(id: ${str(n.id)}, position: PyreonXYPosition(x: ${d(n.x)}, y: ${d(n.y)}), data: NodeData(label: ${str(n.id)}))`).join(', ')}])`
+    case 'setNodes': return `f.setNodes([${o.nodes.map((n) => `PyreonFlowNode(id: ${str(n.id)}, position: PyreonXYPosition(x: ${d(n.x)}, y: ${d(n.y)}), data: NodeData(label: ${str(n.id)}))`).join(', ')}] as [PyreonFlowNode<NodeData>])`
+    case 'removeNodes': return `f.removeNodes(${strList(o.ids, 'swift')})`
+    case 'updateNode': return `f.updateNode(${str(o.id)}) { $0.position = PyreonXYPosition(x: ${d(o.x)}, y: ${d(o.y)}) }`
+    case 'updateNodeData': return `f.updateNodeData(${str(o.id)}) { $0.label = ${str(o.label)} }`
+    case 'setMeasurement': return `f.updateNodeMeasurement(${str(o.id)}, width: ${d(o.width)}, height: ${d(o.height)})`
+    case 'clearMeasurement': return `f.clearNodeMeasurement(${str(o.id)})`
+    case 'addEdges': return `f.addEdges([${o.edges.map((e) => `PyreonFlowEdge(id: ${str(e.id)}, source: ${str(e.source)}, target: ${str(e.target)})`).join(', ')}])`
+    case 'setEdges': return `f.setEdges([${o.edges.map((e) => `PyreonFlowEdge(id: ${str(e.id)}, source: ${str(e.source)}, target: ${str(e.target)})`).join(', ')}] as [PyreonFlowEdge])`
+    case 'removeEdges': return `f.removeEdges(${strList(o.ids, 'swift')})`
+    case 'updateEdge': return `f.updateEdge(${str(o.id)}) { $0.target = ${str(o.target)} }`
+    case 'batch': return `f.batch { ${o.ops.map(opSwift).join('; ')} }`
   }
 }
 
@@ -576,6 +886,18 @@ function opKotlin(o: ParityOp): string {
     case 'removeEdgeWaypoint': return `f.removeEdgeWaypoint(${str(o.id)}, ${o.index})`
     case 'updateEdgeWaypoint': return `f.updateEdgeWaypoint(${str(o.id)}, ${o.index}, PyreonXYPosition(${d(o.x)}, ${d(o.y)}))`
     case 'layout': return `f.layout(${str(o.algorithm)}, PyreonFlowLayoutOptions(${[o.direction !== undefined ? `direction = ${str(o.direction)}` : '', o.nodeSpacing !== undefined ? `nodeSpacing = ${d(o.nodeSpacing)}` : '', o.layerSpacing !== undefined ? `layerSpacing = ${d(o.layerSpacing)}` : '', 'animate = false'].filter((x) => x !== '').join(', ')}))`
+    case 'addNodes': return `f.addNodes(listOf<PyreonFlowNode<NodeData>>(${o.nodes.map((n) => `PyreonFlowNode(${str(n.id)}, position = PyreonXYPosition(${d(n.x)}, ${d(n.y)}), data = NodeData(${str(n.id)}))`).join(', ')}))`
+    case 'setNodes': return `f.setNodes(listOf<PyreonFlowNode<NodeData>>(${o.nodes.map((n) => `PyreonFlowNode(${str(n.id)}, position = PyreonXYPosition(${d(n.x)}, ${d(n.y)}), data = NodeData(${str(n.id)}))`).join(', ')}))`
+    case 'removeNodes': return `f.removeNodes(${strList(o.ids, 'kotlin')})`
+    case 'updateNode': return `f.updateNode(${str(o.id)}) { it.copy(position = PyreonXYPosition(${d(o.x)}, ${d(o.y)})) }`
+    case 'updateNodeData': return `f.updateNodeData(${str(o.id)}) { it.copy(label = ${str(o.label)}) }`
+    case 'setMeasurement': return `f.updateNodeMeasurement(${str(o.id)}, ${d(o.width)}, ${d(o.height)})`
+    case 'clearMeasurement': return `f.clearNodeMeasurement(${str(o.id)})`
+    case 'addEdges': return `f.addEdges(listOf<PyreonFlowEdge>(${o.edges.map((e) => `PyreonFlowEdge(${str(e.id)}, source = ${str(e.source)}, target = ${str(e.target)})`).join(', ')}))`
+    case 'setEdges': return `f.setEdges(listOf<PyreonFlowEdge>(${o.edges.map((e) => `PyreonFlowEdge(${str(e.id)}, source = ${str(e.source)}, target = ${str(e.target)})`).join(', ')}))`
+    case 'removeEdges': return `f.removeEdges(${strList(o.ids, 'kotlin')})`
+    case 'updateEdge': return `f.updateEdge(${str(o.id)}) { it.copy(target = ${str(o.target)}) }`
+    case 'batch': return `f.batch { ${o.ops.map(opKotlin).join('; ')} }`
   }
 }
 
@@ -596,6 +918,13 @@ function answerSwift(q: ParityQuery, a: ParityExpectation['answers'][number], la
     case 'proximity': return `check((f.getProximityConnection(${str(q.id)}, ${d(q.threshold)}).map { [$0.source, $0.target] } ?? []) == ${strList(a as string[], 'swift')}, ${str(label)})`
     case 'search': return `check(f.searchNodes(${str(q.query)}).map { $0.id } == ${strList(a as string[], 'swift')}, ${str(label)})`
     case 'waypoints': return `check(parityPoints(f.getEdge(${str(q.id)})?.waypoints ?? [], ${pointList(a as { x: number; y: number }[], 'swift')}), ${str(label)})`
+    case 'nodePosition': return `check(parityPoints(f.getNode(${str(q.id)}).map { [$0.position] } ?? [], ${pointList(a as { x: number; y: number }[], 'swift')}), ${str(label)})`
+    case 'nodeSelected': return `check(f.isNodeSelected(${str(q.id)}) == ${String(a)}, ${str(label)})`
+    case 'edgeSelected': return `check(f.isEdgeSelected(${str(q.id)}) == ${String(a)}, ${str(label)})`
+    case 'dimensions': { const p = a as { x: number; y: number }; return `check({ let dm = f.getNodeDimensions(${str(q.id)}); return abs(dm.width - ${d(p.x)}) < 1e-6 && abs(dm.height - ${d(p.y)}) < 1e-6 }(), ${str(label)})` }
+    case 'edgeType': return `check((f.getEdge(${str(q.id)})?.type ?? "") == ${str(a as string)}, ${str(label)})`
+    case 'edgeLabel': return `check((f.getEdge(${str(q.id)})?.label ?? "") == ${str(a as string)}, ${str(label)})`
+    case 'findByLabel': return `check(f.findNodes { $0.data.label == ${str(q.label)} }.map { $0.id } == ${strList(a as string[], 'swift')}, ${str(label)})`
   }
 }
 
@@ -616,6 +945,13 @@ function answerKotlin(q: ParityQuery, a: ParityExpectation['answers'][number], l
     case 'proximity': return `check((f.getProximityConnection(${str(q.id)}, ${d(q.threshold)})?.let { listOf<String>(it.source, it.target) } ?: listOf<String>()) == ${strList(a as string[], 'kotlin')}, ${str(label)})`
     case 'search': return `check(f.searchNodes(${str(q.query)}).map { it.id } == ${strList(a as string[], 'kotlin')}, ${str(label)})`
     case 'waypoints': return `check(parityPoints(f.getEdge(${str(q.id)})?.waypoints ?: emptyList(), ${pointList(a as { x: number; y: number }[], 'kotlin')}), ${str(label)})`
+    case 'nodePosition': return `check(parityPoints(f.getNode(${str(q.id)})?.let { listOf(it.position) } ?: emptyList(), ${pointList(a as { x: number; y: number }[], 'kotlin')}), ${str(label)})`
+    case 'nodeSelected': return `check(f.isNodeSelected(${str(q.id)}) == ${String(a)}, ${str(label)})`
+    case 'edgeSelected': return `check(f.isEdgeSelected(${str(q.id)}) == ${String(a)}, ${str(label)})`
+    case 'dimensions': { const p = a as { x: number; y: number }; return `check(f.getNodeDimensions(${str(q.id)}).let { abs(it.width - ${d(p.x)}) < 1e-6 && abs(it.height - ${d(p.y)}) < 1e-6 }, ${str(label)})` }
+    case 'edgeType': return `check((f.getEdge(${str(q.id)})?.type ?: "") == ${str(a as string)}, ${str(label)})`
+    case 'edgeLabel': return `check((f.getEdge(${str(q.id)})?.label ?: "") == ${str(a as string)}, ${str(label)})`
+    case 'findByLabel': return `check(f.findNodes { it.data.label == ${str(q.label)} }.map { it.id } == ${strList(a as string[], 'kotlin')}, ${str(label)})`
   }
 }
 
@@ -646,7 +982,8 @@ export async function renderSwift(scenarios: readonly ParityScenario[] = PARITY_
   for (const s of scenarios) {
     const e = await expectationsOf(s)
     out.push(`        do { // ${s.name}`)
-    out.push(`            let f = PyreonFlowState<NodeData>(nodes: [${s.nodes.map((n) => `PyreonFlowNode(id: ${str(n.id)}, position: PyreonXYPosition(x: ${d(n.x)}, y: ${d(n.y)}), data: NodeData(label: ${str(n.id)})${n.parentId !== undefined ? `, parentId: ${str(n.parentId)}` : ''})`).join(', ')}], edges: [${s.edges.map((x) => `PyreonFlowEdge(id: ${str(x.id)}, source: ${str(x.source)}, target: ${str(x.target)})`).join(', ')}]${s.snapToGrid !== undefined ? `, snapToGrid: ${s.snapToGrid}` : ''}${s.snapGrid !== undefined ? `, snapGrid: ${d(s.snapGrid)}` : ''}, searchText: { $0.label })`)
+    out.push(`            let f = PyreonFlowState<NodeData>(nodes: [${s.nodes.map((n) => `PyreonFlowNode(id: ${str(n.id)}${n.type !== undefined ? `, type: ${str(n.type)}` : ''}, position: PyreonXYPosition(x: ${d(n.x)}, y: ${d(n.y)}), data: NodeData(label: ${str(n.id)})${n.parentId !== undefined ? `, parentId: ${str(n.parentId)}` : ''})`).join(', ')}], edges: [${s.edges.map((x) => `PyreonFlowEdge(id: ${str(x.id)}, source: ${str(x.source)}, target: ${str(x.target)})`).join(', ')}]${s.snapToGrid !== undefined ? `, snapToGrid: ${s.snapToGrid}` : ''}${s.snapGrid !== undefined ? `, snapGrid: ${d(s.snapGrid)}` : ''}, searchText: { $0.label })`)
+    for (const line of configEntries(s.config, 'swift')) out.push(`            ${line}`)
     for (const o of s.ops) out.push(`            ${opSwift(o)}`)
     out.push(`            check(parityNodes(f, [${e.nodes.map((n) => `(${str(n.id)}, ${d(n.x)}, ${d(n.y)})`).join(', ')}]${s.tolerance !== undefined ? `, ${d(s.tolerance)}` : ''}), ${str(`parity: ${s.name} — nodes`)})`)
     out.push(`            check(parityEdges(f, [${e.edges.map((x) => `(${str(x.id)}, ${str(x.source)}, ${str(x.target)})`).join(', ')}]), ${str(`parity: ${s.name} — edges`)})`)
@@ -688,7 +1025,8 @@ export async function renderKotlin(scenarios: readonly ParityScenario[] = PARITY
   for (const s of scenarios) {
     const e = await expectationsOf(s)
     out.push(`    run { // ${s.name}`)
-    out.push(`        val f = PyreonFlowState<NodeData>(nodes = listOf<PyreonFlowNode<NodeData>>(${s.nodes.map((n) => `PyreonFlowNode(${str(n.id)}, position = PyreonXYPosition(${d(n.x)}, ${d(n.y)}), data = NodeData(${str(n.id)})${n.parentId !== undefined ? `, parentId = ${str(n.parentId)}` : ''})`).join(', ')}), edges = listOf<PyreonFlowEdge>(${s.edges.map((x) => `PyreonFlowEdge(${str(x.id)}, source = ${str(x.source)}, target = ${str(x.target)})`).join(', ')})${s.snapToGrid !== undefined ? `, snapToGrid = ${s.snapToGrid}` : ''}${s.snapGrid !== undefined ? `, snapGrid = ${d(s.snapGrid)}` : ''}, searchText = { it.label })`)
+    out.push(`        val f = PyreonFlowState<NodeData>(nodes = listOf<PyreonFlowNode<NodeData>>(${s.nodes.map((n) => `PyreonFlowNode(${str(n.id)}${n.type !== undefined ? `, type = ${str(n.type)}` : ''}, position = PyreonXYPosition(${d(n.x)}, ${d(n.y)}), data = NodeData(${str(n.id)})${n.parentId !== undefined ? `, parentId = ${str(n.parentId)}` : ''})`).join(', ')}), edges = listOf<PyreonFlowEdge>(${s.edges.map((x) => `PyreonFlowEdge(${str(x.id)}, source = ${str(x.source)}, target = ${str(x.target)})`).join(', ')})${s.snapToGrid !== undefined ? `, snapToGrid = ${s.snapToGrid}` : ''}${s.snapGrid !== undefined ? `, snapGrid = ${d(s.snapGrid)}` : ''}, searchText = { it.label })`)
+    for (const line of configEntries(s.config, 'kotlin')) out.push(`        ${line}`)
     for (const o of s.ops) out.push(`        ${opKotlin(o)}`)
     out.push(`        check(parityNodes(f, listOf<Triple<String, Double, Double>>(${e.nodes.map((n) => `Triple(${str(n.id)}, ${d(n.x)}, ${d(n.y)})`).join(', ')})${s.tolerance !== undefined ? `, ${d(s.tolerance)}` : ''}), ${str(`parity: ${s.name} — nodes`)})`)
     out.push(`        check(parityEdges(f, listOf<Triple<String, String, String>>(${e.edges.map((x) => `Triple(${str(x.id)}, ${str(x.source)}, ${str(x.target)})`).join(', ')})), ${str(`parity: ${s.name} — edges`)})`)

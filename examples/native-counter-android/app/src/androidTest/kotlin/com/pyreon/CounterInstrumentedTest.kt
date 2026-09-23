@@ -55,13 +55,18 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.withKeyDown
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pinch
 import androidx.compose.ui.unit.dp
+import android.app.UiModeManager
 import androidx.compose.ui.input.key.Key
 import android.content.Context
+import android.content.pm.ActivityInfo
+import android.os.Build
 import android.location.Location
 import android.location.LocationManager
 import android.location.provider.ProviderProperties
@@ -109,11 +114,54 @@ class CounterInstrumentedTest {
         composeRule.waitUntil(5_000) {
             composeRule.onNodeWithTag("native-flow-start-position").fetchSemanticsNode().config[SemanticsProperties.Text].first().text != positionBeforeKey
         }
+        // F4 focus/action matrix, node row: Escape clears the selection and
+        // Enter re-selects the FOCUSED node, as on the web.
+        keyboardNode.performKeyInput {
+            keyDown(Key.Escape)
+            keyUp(Key.Escape)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-selected-node-count").fetchSemanticsNode().config[SemanticsProperties.Text].first().text == "0"
+        }
+        keyboardNode.performKeyInput {
+            keyDown(Key.Enter)
+            keyUp(Key.Enter)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-selected-node-count").fetchSemanticsNode().config[SemanticsProperties.Text].first().text == "1"
+        }
+        // Canvas row: Ctrl+A selects every node, Delete removes them with
+        // their connected edge, and Ctrl+Z restores the graph, as on the web.
+        fun textOfTag(tag: String) = composeRule.onNodeWithTag(tag).fetchSemanticsNode().config[SemanticsProperties.Text].first().text
+        keyboardNode.performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.A) } }
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-selected-node-count") == "2" }
+        keyboardNode.performKeyInput { pressKey(Key.Delete) }
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-edge-count") == "0" }
+        composeRule.onNodeWithContentDescription("Native Flow device proof").performSemanticsAction(SemanticsActions.RequestFocus)
+        composeRule.onNodeWithContentDescription("Native Flow device proof").performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.Z) } }
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-edge-count") == "1" }
+        composeRule.onNodeWithTag("native-flow-clear-selection").performClick()
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-selected-node-count") == "0" }
+        keyboardNode.performClick()
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-selected-node-count") == "1" }
 
         composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("0")
         val keyboardEdge = composeRule.onNodeWithContentDescription("Native flow edge")
         keyboardEdge.performClick()
         composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("1")
+        composeRule.onNodeWithTag("native-flow-clear-selection").performClick()
+        composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("0")
+        // F4 edge hardware focus: the label takes keyboard focus like the web's
+        // edge path, and Enter selects the FOCUSED edge. Before, the label had
+        // no focus action at all and was reachable by TalkBack only.
+        keyboardEdge.performSemanticsAction(SemanticsActions.RequestFocus)
+        keyboardEdge.performKeyInput {
+            keyDown(Key.Enter)
+            keyUp(Key.Enter)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-selected-edge-count").fetchSemanticsNode().config[SemanticsProperties.Text].first().text == "1"
+        }
         composeRule.onNodeWithTag("native-flow-clear-selection").performClick()
         composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("0")
         composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
@@ -300,6 +348,38 @@ class CounterInstrumentedTest {
         composeRule
             .onNodeWithText("Count: 1")
             .assertIsDisplayed()
+    }
+
+    // Rotation and a dark-mode switch are CONFIGURATION changes. Without
+    // `android:configChanges` on MainActivity, Android destroys and recreates
+    // the activity for each one, and every compiler-emitted
+    // `remember { mutableStateOf(...) }` starts over: the count goes back to
+    // 0, a half-typed form empties, a flow graph resets. The manifest now
+    // declares the changes it handles, so Compose recomposes in place.
+    @Test
+    fun stateSurvivesRotationAndThemeSwitch() {
+        composeRule.onNodeWithText("Increment").performClick()
+        composeRule.onNodeWithText("Increment").performClick()
+        composeRule.onNodeWithText("Count: 2").assertIsDisplayed()
+        val before = composeRule.activity
+        val uiModes = InstrumentationRegistry.getInstrumentation().targetContext
+            .getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+        try {
+            composeRule.runOnUiThread { before.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+            composeRule.waitForIdle()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                uiModes.setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)
+                composeRule.waitForIdle()
+            }
+            // Give a recreation, if one were coming, time to land.
+            SystemClock.sleep(1_500)
+            composeRule.waitForIdle()
+            check(composeRule.activity === before) { "the activity was recreated by a configuration change" }
+            composeRule.onNodeWithText("Count: 2").assertExists()
+        } finally {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) uiModes.setApplicationNightMode(UiModeManager.MODE_NIGHT_AUTO)
+            composeRule.runOnUiThread { composeRule.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+        }
     }
 
     // M2.3 — GESTURE (long-press) asserted on device. The shared
