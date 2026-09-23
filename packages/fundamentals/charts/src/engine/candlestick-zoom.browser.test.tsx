@@ -17,16 +17,16 @@ function setup() {
   const un = mount(
     h(CandlestickChart<Row>, {
       data: ROWS,
-      open: (d) => d.o,
-      high: (d) => d.h,
-      low: (d) => d.l,
-      close: (d) => d.c,
-      x: (_d, i) => `D${i + 1}`,
+      open: (d: Row) => d.o,
+      high: (d: Row) => d.h,
+      low: (d: Row) => d.l,
+      close: (d: Row) => d.c,
+      x: (_d: Row, i: number) => `D${i + 1}`,
       width: 640,
       height: 340,
       animate: false,
       zoom: ZOOM,
-      onSelect: (i) => picks.push(i),
+      onSelect: (i: number) => picks.push(i),
     }),
     root,
   )
