@@ -439,4 +439,14 @@ native view.
     parse gives "0 green px".
   `<svg>` and DOM elements inside a renderer still have no native lowering and
   still warn with the `FlowWebView` route.
+- [x] Android drew every custom edge and custom connection line at 1/density
+  size. `PyreonFlowCustomEdgePath` drew graph units (dp) straight onto a px
+  canvas; the built-in edge canvas multiplies by the density and this one did
+  not. The existing device checks only asked whether the element existed. It
+  surfaced when the default-node work made nodes opaque: the shrunken wire sat
+  inside the Start node and disappeared. Both device suites now check where the
+  wire ENDS (node 'b', at graph x = 200, so 200dp / 200pt from the canvas
+  edge), not just that it painted. Bisect on Android: without the density the
+  line "ends at 199px, node 'b' is at 525.0px". iOS draws in points and was
+  already right; its check passes unchanged.
 

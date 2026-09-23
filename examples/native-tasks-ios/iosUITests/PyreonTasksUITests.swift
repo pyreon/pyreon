@@ -116,6 +116,23 @@ final class PyreonTasksUITests: XCTestCase {
         return n
     }
 
+    /// The right-most x (in image pixels) of pixels matching rgb, or nil.
+    private func colorMaxX(_ png: Data, _ r: Int, _ g: Int, _ b: Int) -> (maxX: Int, width: Int)? {
+        guard let image = UIImage(data: png)?.cgImage else { return nil }
+        let w = image.width, h = image.height
+        var buf = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &buf, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var maxX = -1
+        for y in 0..<h {
+            for x in 0..<w {
+                let i = (y * w + x) * 4
+                if abs(Int(buf[i]) - r) <= 6 && abs(Int(buf[i + 1]) - g) <= 6 && abs(Int(buf[i + 2]) - b) <= 6 && x > maxX { maxX = x }
+            }
+        }
+        return maxX < 0 ? nil : (maxX, w)
+    }
+
     private func scrollIntoView(
         _ element: XCUIElement,
         in app: XCUIApplication,
@@ -526,6 +543,13 @@ final class PyreonTasksUITests: XCTestCase {
         // literal), parsed by the native runtime: its #16a34a stroke must paint.
         let wireGreen = colorPixels(canvas.screenshot().pngRepresentation, 0x16, 0xa3, 0x4a)
         XCTAssertGreaterThan(wireGreen, 50, "the custom edge's arbitrary SVG path did not paint natively (\(wireGreen) green px)")
+        // At the right SCALE: the path ends at node 'b', seeded at graph x = 200
+        // with the viewport still the origin at zoom 1, so 200pt from the
+        // canvas edge.
+        if let wire = colorMaxX(canvas.screenshot().pngRepresentation, 0x16, 0xa3, 0x4a) {
+            let scale = Double(wire.width) / Double(canvas.frame.width)
+            XCTAssertLessThanOrEqual(abs(Double(wire.maxX) - 200 * scale), 20 * scale, "the custom edge ends at \(Double(wire.maxX) / scale)pt, node 'b' is at 200pt")
+        }
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "minimap")).firstMatch.exists, "MiniMap chrome missing")
         let startNode = app.staticTexts["Start"].firstMatch
         XCTAssertTrue(startNode.waitForExistence(timeout: 5), "node 'Start' did not render on the canvas")
