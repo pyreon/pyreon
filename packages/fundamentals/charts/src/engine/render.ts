@@ -594,6 +594,8 @@ export interface ChartSpec {
   yInverse?: boolean | undefined
   /** Runs the x axis right to left — ECharts' `xAxis.inverse`. */
   xInverse?: boolean | undefined
+  /** The horizontal frame's categories run up from the bottom, as ECharts' category y axis does (the option facade sets it). */
+  bandsFromBottom?: boolean | undefined
   /** Draws the x axis above the plot — ECharts' `xAxis.position: 'top'`. */
   xTop?: boolean | undefined
   /** Draws a lone y axis right of the plot — ECharts' `yAxis.position: 'right'`. */
@@ -690,7 +692,7 @@ function labelTextAt(s: Series, index: number, fallback: string): string {
 /**
  * A series label's own `offset`, `align` / `verticalAlign` and `rotate` over
  * where its position put it — each about the same anchor, as ECharts applies
- * them. The rotation reaches a plain (one-command) label only.
+ * them. A multi-segment label turns as one block about that anchor.
  */
 function adjustLabel(s: Series, cmdsOf: (at: Pt, align: string, baseline: string) => DrawCmd[], at: Pt, align: string, baseline: string): DrawCmd[] {
   const off = s.labelOffset ?? []
@@ -704,10 +706,30 @@ function adjustLabel(s: Series, cmdsOf: (at: Pt, align: string, baseline: string
   const ha = s.labelAlign ?? ''
   const va = s.labelVerticalAlign ?? ''
   const cmds = cmdsOf({ x: at.x + dx, y: at.y + dy }, ha === 'left' ? 'start' : ha === 'center' ? 'middle' : ha === 'right' ? 'end' : align, va === 'top' || va === 'middle' || va === 'bottom' ? va : baseline)
-  if (deg === 0.0 || cmds.length !== 1) return cmds
-  const only = cmds[0]!
-  if (only.kind !== 'text') return cmds
-  return [{ ...only, rotate: 0.0 - deg }]
+  if (deg === 0.0) return cmds
+  // A rich or multi-line label is several segments laid out about the anchor: each
+  // segment's own anchor turns about the label's, and each takes the same angle, so
+  // the block turns as one piece (zrender rotates the whole text group about it).
+  // A plain label is the one-segment case: its anchor IS the label's and stays put.
+  const ax = at.x + dx
+  const ay = at.y + dy
+  const cw = 0.0 - rad
+  const cc = Math.cos(cw)
+  const sn = Math.sin(cw)
+  const out: DrawCmd[] = []
+  for (let i = 0; i < cmds.length; i++) {
+    const cmd = cmds[i]!
+    if (cmd.kind !== 'text') {
+      out.push(cmd)
+    } else {
+      // Coalesced: the native emit does not carry the `kind` narrowing, so `at` is optional there.
+      const p0: Pt = cmd.at ?? { x: ax, y: ay }
+      const rx = p0.x - ax
+      const ry = p0.y - ay
+      out.push({ ...cmd, at: { x: ax + cc * rx - sn * ry, y: ay + sn * rx + cc * ry }, rotate: 0.0 - deg })
+    }
+  }
+  return out
 }
 
 /** The commands a series' label draws — one text command for a plain label, one per segment for a rich or multi-line one. */
@@ -1347,6 +1369,7 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     y2Format: spec.y2Format,
     xTime: spec.xTime === true,
     horizontal: spec.horizontal === true,
+    bandsFromBottom: spec.bandsFromBottom === true,
     xTitle: spec.xTitle,
     yTitle: spec.yTitle,
     y2Title: spec.y2Title,
@@ -1578,6 +1601,45 @@ function setLaid(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackS
   return out
 }
 
+/**
+ * A horizontal-frame bar rect moved into series `k`'s ECharts column along y:
+ * the same `barColumns` widths the upright frame uses, and — under
+ * `bandsFromBottom` — the bands counted up from the bottom, as ECharts' category
+ * y axis runs. A chart without ECharts' bar layout keeps its rect.
+ */
+function inRow(spec: ChartSpec, cols: Pt[], k: number, r: Rect, i: number, n: number, plot: Rect): Rect {
+  if (k < 0 || k >= cols.length || n === 0) return r
+  const c = cols[k]!
+  if (c.y < 0.0) return r
+  const band = plot.h / countToDouble(n)
+  const j = spec.bandsFromBottom === true ? n - 1 - i : i
+  return { x: r.x, y: plot.y + band * countToDouble(j) + band / 2.0 + c.x, w: r.w, h: c.y }
+}
+
+/** `layoutBarsH` for series `k`, in its row. */
+function barsLaidH(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] {
+  const s = spec.series[k]!
+  const rects = layoutBarsH(s.values, plot, dom, 0.25)
+  const n = rects.length
+  const cols = barColumns(spec, n === 0 ? 0.0 : plot.h / countToDouble(n))
+  const out: Rect[] = []
+  for (let i = 0; i < rects.length; i++) out.push(inRow(spec, cols, k, rects[i]!, i, n, plot))
+  return out
+}
+
+/** `layoutStackedBarsH` / `layoutGroupedBarsH` for a kind, each segment in its series' row. */
+function setLaidH(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackSegment[] {
+  const idx = indicesOf(spec, kind)
+  const values = idx.map((k) => spec.series[k]!.values)
+  let n = 0
+  for (const v of values) if (v.length > n) n = v.length
+  const cols = barColumns(spec, n === 0 ? 0.0 : plot.h / countToDouble(n))
+  const segs = kind === 'stacked' ? layoutStackedBarsH(values, plot, dom, 0.25) : layoutGroupedBarsH(values, plot, dom, 0.25)
+  const out: StackSegment[] = []
+  for (const seg of segs) out.push({ rect: inRow(spec, cols, idx[seg.seriesIndex]!, seg.rect, seg.datumIndex, n, plot), seriesIndex: seg.seriesIndex, datumIndex: seg.datumIndex, value: seg.value })
+  return out
+}
+
 export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   return renderChartIn(spec, measure, layoutChart(spec, measure))
 }
@@ -1666,6 +1728,28 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       out.push({ kind: 'rect', rect: { x: plot.x, y: a < b ? a : b, w: plot.w, h: a < b ? b - a : a - b }, fill: yAreas[(ti - 1) % yAreas.length]! })
     }
   }
+  // The horizontal frame: the VALUE axis (the y* fields) runs along x, its ticks in
+  // `l.xTicks`; the CATEGORY axis (the x* fields) runs up y, a band per category.
+  if (spec.horizontal === true) {
+    // ECharts paints the category axis's bands first, the value axis's over them (both are translucent).
+    const cAreas = spec.xSplitArea ?? []
+    const nh = spec.categories.length
+    if (cAreas.length > 0) {
+      for (let ci = 0; ci < nh; ci++) {
+        const bh = plot.h / countToDouble(nh)
+        const top = spec.bandsFromBottom === true ? plot.y + plot.h - bh * countToDouble(ci + 1) : plot.y + bh * countToDouble(ci)
+        out.push({ kind: 'rect', rect: { x: plot.x, y: top, w: plot.w, h: bh }, fill: cAreas[ci % cAreas.length]! })
+      }
+    }
+    const vAreas = spec.ySplitArea ?? []
+    if (vAreas.length > 0) {
+      for (let ti = 1; ti < l.xTicks.length; ti++) {
+        const a = l.xTicks[ti - 1]!.pos
+        const b = l.xTicks[ti]!.pos
+        out.push({ kind: 'rect', rect: { x: a < b ? a : b, y: plot.y, w: a < b ? b - a : a - b, h: plot.h }, fill: vAreas[(ti - 1) % vAreas.length]! })
+      }
+    }
+  }
   const xAreas = spec.xSplitArea ?? []
   if (xAreas.length > 0 && spec.horizontal !== true) {
     // ECharts' bands follow the tick coordinates, which on a category axis are the band EDGES
@@ -1720,6 +1804,9 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   const xValueAxis = (spec.xValues ?? []).length > 0
   const yMinor = spec.horizontal !== true ? minorPositions(l.yTicks, spec.yMinorSplit ?? 0.0) : []
   for (let mi = 0; mi < yMinor.length; mi++) out.push({ kind: 'line', from: { x: plot.x, y: yMinor[mi]! }, to: { x: plot.x + plot.w, y: yMinor[mi]! }, stroke: spec.yMinorSplitColor ?? '#f4f7fd', width: spec.yMinorSplitWidth ?? 1.0 })
+  // Horizontal: the value axis's minor split lines stand up along x.
+  const hMinor = spec.horizontal === true ? minorPositions(l.xTicks, spec.yMinorSplit ?? 0.0) : []
+  for (let mi = 0; mi < hMinor.length; mi++) out.push({ kind: 'line', from: { x: hMinor[mi]!, y: plot.y }, to: { x: hMinor[mi]!, y: plot.y + plot.h }, stroke: spec.yMinorSplitColor ?? '#f4f7fd', width: spec.yMinorSplitWidth ?? 1.0 })
   const xMinor = spec.horizontal !== true && xValueAxis ? minorPositions(l.xTicks, spec.xMinorSplit ?? 0.0) : []
   for (let mi = 0; mi < xMinor.length; mi++) out.push({ kind: 'line', from: { x: xMinor[mi]!, y: plot.y }, to: { x: xMinor[mi]!, y: plot.y + plot.h }, stroke: spec.xMinorSplitColor ?? '#f4f7fd', width: spec.xMinorSplitWidth ?? 1.0 })
 
@@ -1775,6 +1862,12 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     for (const tx of xTickPositions(spec, l, plot)) {
       out.push({ kind: 'line', from: { x: tx, y: xLineY }, to: { x: tx, y: xLineY + xDir * xLen }, stroke: spec.xTickColor ?? xLineColor, width: 1.0 })
     }
+  }
+  // Horizontal: the value axis's minor ticks hang off the bottom axis line.
+  if (spec.showXAxis && spec.horizontal === true) {
+    const hm = minorPositions(l.xTicks, spec.yMinorTicks ?? 0.0)
+    const hmLen = spec.yMinorTickLength ?? 3.0
+    for (let mi = 0; mi < hm.length; mi++) out.push({ kind: 'line', from: { x: hm[mi]!, y: xLineY }, to: { x: hm[mi]!, y: xLineY + hmLen }, stroke: spec.yMinorTickColor ?? spec.yTickColor ?? xLineColor, width: 1.0 })
   }
   if (spec.showXAxis && spec.horizontal !== true && xValueAxis) {
     const xm = minorPositions(l.xTicks, spec.xMinorTicks ?? 0.0)
@@ -1935,7 +2028,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   const stackedSeries = spec.series.filter((s) => s.kind === 'stacked')
   if (stackedSeries.length > 0) {
     const stackSegs = spec.horizontal === true
-      ? layoutStackedBarsH(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)
+      ? setLaidH(spec, 'stacked', plot, yDomain)
       : setLaid(spec, 'stacked', plot, yDomain)
     const fmtS = spec.yFormat ?? plain
     for (const seg of stackSegs) {
@@ -1959,7 +2052,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   const groupedSeries = spec.series.filter((s) => s.kind === 'grouped')
   if (groupedSeries.length > 0) {
     const groupSegs = spec.horizontal === true
-      ? layoutGroupedBarsH(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)
+      ? setLaidH(spec, 'grouped', plot, yDomain)
       : setLaid(spec, 'grouped', plot, yDomain)
     const fmtG = spec.yFormat ?? plain
     for (const seg of groupSegs) {
@@ -2057,7 +2150,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
 
     if (spec.horizontal === true) {
       if (s.kind !== 'bars') continue
-      const rects = layoutBarsH(s.values, plot, yDomain, 0.25)
+      const rects = barsLaidH(spec, sIdx, plot, yDomain)
       for (let ri = 0; ri < rects.length; ri++) {
         const r = rects[ri]!
         const grown = growRectH(r)
@@ -2724,13 +2817,15 @@ export function barsForIn(raw: ChartSpec, index: number, plot: Rect): Rect[] {
   // A stacked or grouped series' own segments, index-aligned with its values
   // (a datum with no segment — a gap, a non-positive stack value — gets an
   // empty rect nothing can land in).
-  if ((s.kind === 'stacked' || s.kind === 'grouped') && spec.horizontal !== true) {
+  if (s.kind === 'stacked' || s.kind === 'grouped') {
     const idx = indicesOf(spec, s.kind)
     let local = -1
     for (let q = 0; q < idx.length; q++) if (idx[q] === index) local = q
     const rects: Rect[] = []
     for (let i = 0; i < s.values.length; i++) rects.push({ x: 0.0, y: 0.0, w: -1.0, h: -1.0 })
-    for (const seg of setLaid(spec, s.kind, plot, resolveYDomain(spec))) if (seg.seriesIndex === local && seg.datumIndex < rects.length) rects[seg.datumIndex] = seg.rect
+    // Each frame's own layout — the horizontal one counts its bands along y.
+    const segs = spec.horizontal === true ? setLaidH(spec, s.kind, plot, resolveYDomain(spec)) : setLaid(spec, s.kind, plot, resolveYDomain(spec))
+    for (const seg of segs) if (seg.seriesIndex === local && seg.datumIndex < rects.length) rects[seg.datumIndex] = seg.rect
     return rects
   }
   if (s.kind !== 'bars' && s.kind !== 'waterfall') return []
@@ -2745,7 +2840,7 @@ export function barsForIn(raw: ChartSpec, index: number, plot: Rect): Rect[] {
     for (const st of layoutWaterfall(s.values, plot, dom, 0.25)) rects[st.datumIndex] = st.rect
     return rects
   }
-  return barsLaid(spec, index, plot, dom)
+  return spec.horizontal === true ? barsLaidH(spec, index, plot, dom) : barsLaid(spec, index, plot, dom)
 }
 
 /**
@@ -2817,16 +2912,14 @@ export function markerAnchor(spec: ChartSpec, seriesIdx: Double, idx: number, pl
     g = g + 1.0
   }
   if (which < 0) return out
-  const members = spec.series.filter((q) => q.kind === kind)
-  const values = members.map((q) => q.values)
   const flipped = spec.horizontal === true
   const segs =
     kind === 'stacked'
       ? flipped
-        ? layoutStackedBarsH(values, plot, yDomain, 0.25)
+        ? setLaidH(spec, 'stacked', plot, yDomain)
         : setLaid(spec, 'stacked', plot, yDomain)
       : flipped
-        ? layoutGroupedBarsH(values, plot, yDomain, 0.25)
+        ? setLaidH(spec, 'grouped', plot, yDomain)
         : setLaid(spec, 'grouped', plot, yDomain)
   for (const seg of segs) {
     if (seg.seriesIndex !== which) continue
@@ -2849,14 +2942,13 @@ export function stackedHitIn(raw: ChartSpec, plot: Rect, px: Double, py: Double)
   for (const kind of ['stacked', 'grouped'] as const) {
     const series = spec.series.filter((s) => s.kind === kind)
     if (series.length === 0) continue
-    const values = series.map((s) => s.values)
     const segs =
       kind === 'stacked'
         ? flipped
-          ? layoutStackedBarsH(values, plot, yDomain, 0.25)
+          ? setLaidH(spec, 'stacked', plot, yDomain)
           : setLaid(spec, 'stacked', plot, yDomain)
         : flipped
-          ? layoutGroupedBarsH(values, plot, yDomain, 0.25)
+          ? setLaidH(spec, 'grouped', plot, yDomain)
           : setLaid(spec, 'grouped', plot, yDomain)
     for (const seg of segs) {
       const r = seg.rect

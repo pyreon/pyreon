@@ -108,6 +108,8 @@ export interface OptionLegendLayout {
   scrollIndex: number
   /** Between the entries and the controller (ECharts: the `itemGap`). */
   pageButtonGap: number | undefined
+  /** Where the controller sits along the line: 'end' (ECharts' default) or 'start'. */
+  pageButtonPosition: 'start' | 'end'
   /** `{current}/{total}`. */
   pageFormatter: string
   pageIconColor: string
@@ -150,6 +152,7 @@ export function readLegendLayout(l: Obj): OptionLegendLayout {
     scroll: l['type'] === 'scroll',
     scrollIndex: typeof l['scrollDataIndex'] === 'number' && Number.isFinite(l['scrollDataIndex']) ? Math.max(0, Math.round(l['scrollDataIndex'] as number)) : 0,
     pageButtonGap: typeof l['pageButtonGap'] === 'number' ? (l['pageButtonGap'] as number) : undefined,
+    pageButtonPosition: l['pageButtonPosition'] === 'start' ? 'start' : 'end',
     pageFormatter: typeof l['pageFormatter'] === 'string' ? (l['pageFormatter'] as string) : '{current}/{total}',
     pageIconColor: typeof l['pageIconColor'] === 'string' ? (l['pageIconColor'] as string) : '#6578ba',
     pageIconInactiveColor: typeof l['pageIconInactiveColor'] === 'string' ? (l['pageIconInactiveColor'] as string) : '#e0e4f2',
@@ -310,8 +313,8 @@ export function placeOptionLegend(
   // The room the block may take (getLayoutRect with no size), then boxLayout.
   const maxW = layoutAxis(left, lay.right, box.w, undefined, pl, pr, 'center', 'right').size
   const maxH = layoutAxis(lay.top, bottom, box.h, undefined, pt, pb, 'middle', 'bottom').size
-  if (lay.scroll && !vertical) {
-    const scrolled = scrollLegend(items, lay, gap, maxW, box, left, bottom, measure)
+  if (lay.scroll) {
+    const scrolled = scrollLegend(items, lay, gap, maxW, maxH, box, left, bottom, vertical, measure)
     if (scrolled !== null) return scrolled
   }
   const at: { x: number; y: number }[] = []
@@ -401,101 +404,139 @@ function translate(c: DrawCmd, dx: number, dy: number): DrawCmd {
       return { ...c, points: c.points.map(pt) }
     case 'circle':
       return { ...c, center: pt(c.center) }
+    case 'clip':
+      return { ...c, rect: { ...c.rect, x: c.rect.x + dx, y: c.rect.y + dy } }
+    case 'unclip':
+      return c
     default:
       return { ...c, at: pt(c.at) }
   }
 }
 
 /**
- * A horizontal `type: 'scroll'` legend that overflows (ECharts'
- * ScrollableLegendView): the entries in one line, the controller — prev
- * arrow, `{current}/{total}`, next arrow — at the end, and the line clipped
- * short of it, starting at the page `scrollIndex` begins. Null when the line
- * fits (the plain layout then draws it, as ECharts hides its controller).
- *
- * An entry the page's edge cuts is left out rather than half drawn: the
- * draw list has no clip.
+ * A `type: 'scroll'` legend that overflows (ECharts' ScrollableLegendView):
+ * the entries in ONE line along the legend's orient — a row, or a column for
+ * `orient: 'vertical'` — clipped short of the page controller (prev arrow,
+ * `{current}/{total}`, next arrow) at the line's end, or its start under
+ * `pageButtonPosition: 'start'`. The line starts at the page `scrollIndex`
+ * begins; the entry the window's edge cuts is drawn, clipped. Null when the
+ * line fits (the plain layout draws it, as ECharts hides its controller).
  */
 function scrollLegend(
   items: LegendItem[],
   lay: OptionLegendLayout,
   gap: number,
   maxW: number,
+  maxH: number,
   box: { x: number; y: number; w: number; h: number },
   left: string | number | undefined,
   bottom: string | number | undefined,
+  vertical: boolean,
   measure: (text: string, size: number) => number,
 ): { cmds: DrawCmd[]; boxes: Rect[]; rect: Rect; side: LegendSide; pager: LegendPager } | null {
   const [pt, pr, pb, pl] = lay.padding as [number, number, number, number]
-  // One line: each entry's start and end along it, the content's height.
+  // One line: each entry's start and end along it, and the line's cross size.
   const s: number[] = []
   const e: number[] = []
-  let x = 0
-  let contentH = 0
+  let at = 0
+  let cross = 0
   for (let i = 0; i < items.length; i++) {
     const r = items[i]!.rect
-    s.push(x + r.x)
-    e.push(x + r.x + r.w)
-    contentH = Math.max(contentH, r.h)
-    x = x + r.w + gap
+    const start = vertical ? r.y : r.x
+    const size = vertical ? r.h : r.w
+    s.push(at + start)
+    e.push(at + start + size)
+    cross = Math.max(cross, vertical ? r.w : r.h)
+    at = at + size + gap
   }
-  const contentW = items.length === 0 ? 0 : e[e.length - 1]! - s[0]!
-  if (contentW <= maxW) return null
-  // The controller, laid out horizontally 5px apart: a 12×20 arrow fitted into
-  // `pageIconSize` 15 is 9 wide; the text is sized by ECharts' 'xx/xx' placeholder.
-  const icon = 9
-  const iconH = 15
+  const maxMain = vertical ? maxH : maxW
+  const contentMain = items.length === 0 ? 0 : e[e.length - 1]! - s[0]!
+  if (contentMain <= maxMain) return null
+  // The controller, laid out horizontally 5px apart in either orient: a horizontal
+  // arrow (12 x 20 fitted into pageIconSize 15) is 9 wide, a vertical one (20 x 20)
+  // 15; the text is sized by ECharts' 'xx/xx' placeholder.
+  const icon = vertical ? 15 : 9
   const textW = measure('xx/xx', 12)
   const ctrlW = icon + 5 + textW + 5 + icon
-  const clipW = Math.max(maxW - ctrlW - (lay.pageButtonGap ?? gap), 0)
-  const info = legendPageInfo(s, e, Math.min(lay.scrollIndex, items.length - 1), clipW)
-  // The block: the whole width, as tall as the taller of the line and the controller.
-  const ctrlY = contentH / 2 - iconH / 2
-  const top0 = Math.min(0, ctrlY)
-  const blockH = Math.max(contentH, iconH)
-  const px0 = layoutAxis(left, lay.right, box.w, maxW, pl, pr, 'center', 'right').start
+  const ctrlH = 15
+  const ctrlMain = vertical ? ctrlH : ctrlW
+  const ctrlCross = vertical ? ctrlW : ctrlH
+  const buttonGap = lay.pageButtonGap ?? gap
+  const atStart = lay.pageButtonPosition === 'start'
+  const clipMain = Math.max(maxMain - ctrlMain - buttonGap, 0)
+  // Along the line: the container after the controller (start) or the controller after it (end).
+  const lineAt = atStart ? ctrlMain + buttonGap : 0
+  const ctrlAt = atStart ? 0 : maxMain - ctrlMain
+  // Across: the controller centred on the line; the block spans both.
+  const ctrlCrossAt = cross / 2 - ctrlCross / 2
+  const crossStart = Math.min(0, ctrlCrossAt)
+  const blockCross = Math.max(cross, ctrlCross)
+  const blockW = vertical ? blockCross : maxMain
+  const blockH = vertical ? maxMain : blockCross
+  const info = legendPageInfo(s, e, Math.min(lay.scrollIndex, items.length - 1), clipMain)
+  const px0 = layoutAxis(left, lay.right, box.w, blockW, pl, pr, 'center', 'right').start
   const py0 = layoutAxis(lay.top, bottom, box.h, blockH, pt, pb, 'middle', 'bottom').start
-  const ox = box.x + px0
-  const oy = box.y + py0 - top0
+  // The line's origin (its first entry's box starts here, before paging).
+  const ox = box.x + px0 - (vertical ? crossStart : 0)
+  const oy = box.y + py0 - (vertical ? 0 : crossStart)
   const cmds: DrawCmd[] = []
-  const blockRect: Rect = { x: box.x + px0, y: box.y + py0, w: maxW, h: blockH }
+  const blockRect: Rect = { x: box.x + px0, y: box.y + py0, w: blockW, h: blockH }
   if (lay.background !== undefined || lay.borderWidth > 0) {
-    const bg: Rect = { x: blockRect.x - pl, y: blockRect.y - pt, w: maxW + pl + pr, h: blockH + pt + pb }
+    const bg: Rect = { x: blockRect.x - pl, y: blockRect.y - pt, w: blockW + pl + pr, h: blockH + pt + pb }
     if (lay.background !== undefined) cmds.push({ kind: 'rect', rect: bg, fill: lay.background })
     if (lay.borderWidth > 0) cmds.push({ kind: 'polyline', points: [{ x: bg.x, y: bg.y }, { x: bg.x + bg.w, y: bg.y }, { x: bg.x + bg.w, y: bg.y + bg.h }, { x: bg.x, y: bg.y + bg.h }, { x: bg.x, y: bg.y }], stroke: lay.borderColor ?? '#b7b9be', width: lay.borderWidth })
   }
-  const shift = -info.start
+  const shift = lineAt - info.start
   const boxes: Rect[] = []
+  // The window clips the line, as ECharts' container clip path does: the entry its edge
+  // cuts is drawn cut, and its hit box is cut with it.
+  const clip: Rect = vertical ? { x: blockRect.x, y: oy + lineAt, w: blockW, h: clipMain } : { x: ox + lineAt, y: blockRect.y, w: clipMain, h: blockH }
+  cmds.push({ kind: 'clip', rect: clip })
   items.forEach((it, i) => {
     const a = s[i]! + shift
     const b = e[i]! + shift
-    // Drawn only when the whole entry is inside the window.
-    if (a < -0.01 || b > clipW + 0.01) {
+    if (b < lineAt || a > lineAt + clipMain) {
       boxes.push({ x: 0, y: 0, w: 0, h: 0 })
       return
     }
-    const dx = ox + a - it.rect.x
-    for (const c of it.cmds) cmds.push(translate(c, dx, oy))
-    boxes.push({ x: dx + it.rect.x, y: oy + it.rect.y, w: it.rect.w, h: it.rect.h })
+    const dx = vertical ? ox : ox + a - it.rect.x
+    const dy = vertical ? oy + a - it.rect.y : oy
+    for (const c of it.cmds) cmds.push(translate(c, dx, dy))
+    const x0 = Math.max(dx + it.rect.x, clip.x)
+    const y0 = Math.max(dy + it.rect.y, clip.y)
+    const x1 = Math.min(dx + it.rect.x + it.rect.w, clip.x + clip.w)
+    const y1 = Math.min(dy + it.rect.y + it.rect.h, clip.y + clip.h)
+    boxes.push({ x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) })
   })
-  const cx = ox + maxW - ctrlW
-  const cy = oy + contentH / 2
+  cmds.push({ kind: 'unclip' })
+  // The controller's own box: along the line at `ctrlAt`, across centred on it.
+  const cx = vertical ? blockRect.x + (ctrlCrossAt - crossStart) : ox + ctrlAt
+  const cy = vertical ? oy + ctrlAt + ctrlH / 2 : oy + cross / 2
   const prevX = cx + icon / 2
   const textX = cx + icon + 5 + textW / 2
   const nextX = cx + icon + 5 + textW + 5 + icon / 2
-  const prevOn = info.prevIndex !== null
-  const nextOn = info.nextIndex !== null
-  cmds.push({ kind: 'polygon', points: [{ x: prevX - 4.5, y: cy }, { x: prevX + 4.5, y: cy - 7.5 }, { x: prevX + 4.5, y: cy + 7.5 }], fill: prevOn ? lay.pageIconColor : lay.pageIconInactiveColor })
+  const prevFill = info.prevIndex !== null ? lay.pageIconColor : lay.pageIconInactiveColor
+  const nextFill = info.nextIndex !== null ? lay.pageIconColor : lay.pageIconInactiveColor
+  if (vertical) {
+    // Up and down triangles, 15 x 15.
+    cmds.push({ kind: 'polygon', points: [{ x: prevX - 7.5, y: cy + 7.5 }, { x: prevX + 7.5, y: cy + 7.5 }, { x: prevX, y: cy - 7.5 }], fill: prevFill })
+  } else {
+    cmds.push({ kind: 'polygon', points: [{ x: prevX - 4.5, y: cy }, { x: prevX + 4.5, y: cy - 7.5 }, { x: prevX + 4.5, y: cy + 7.5 }], fill: prevFill })
+  }
   const page = lay.pageFormatter.replace('{current}', String(info.pageIndex + 1)).replace('{total}', String(info.pageCount))
   cmds.push({ kind: 'text', text: page, at: { x: textX, y: cy }, fill: lay.pageTextColor, size: 12, align: 'middle', baseline: 'middle' })
-  cmds.push({ kind: 'polygon', points: [{ x: nextX + 4.5, y: cy }, { x: nextX - 4.5, y: cy - 7.5 }, { x: nextX - 4.5, y: cy + 7.5 }], fill: nextOn ? lay.pageIconColor : lay.pageIconInactiveColor })
+  if (vertical) {
+    cmds.push({ kind: 'polygon', points: [{ x: nextX - 7.5, y: cy - 7.5 }, { x: nextX + 7.5, y: cy - 7.5 }, { x: nextX, y: cy + 7.5 }], fill: nextFill })
+  } else {
+    cmds.push({ kind: 'polygon', points: [{ x: nextX + 4.5, y: cy }, { x: nextX - 4.5, y: cy - 7.5 }, { x: nextX - 4.5, y: cy + 7.5 }], fill: nextFill })
+  }
   const pager: LegendPager = {
     prev: { x: prevX - 7.5, y: cy - 7.5, w: 15, h: 15 },
     next: { x: nextX - 7.5, y: cy - 7.5, w: 15, h: 15 },
     prevIndex: info.prevIndex,
     nextIndex: info.nextIndex,
   }
-  const side: LegendSide = py0 + blockH / 2 > box.h / 2 ? 'bottom' : 'top'
+  const side: LegendSide = vertical ? (px0 + blockW / 2 > box.w / 2 ? 'right' : 'left') : py0 + blockH / 2 > box.h / 2 ? 'bottom' : 'top'
   return { cmds, boxes, rect: blockRect, side, pager }
 }
 

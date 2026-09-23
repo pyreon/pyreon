@@ -131,6 +131,8 @@ export interface LayoutConfig {
    * bars exist, so the gutter math is the feature, not a detail.
    */
   horizontal?: boolean | undefined
+  /** The horizontal frame's categories run up from the bottom (ECharts' category y axis) rather than down. */
+  bandsFromBottom?: boolean | undefined
   /** Axis titles; each one widens its gutter by a line. */
   xTitle?: string | undefined
   yTitle?: string | undefined
@@ -372,7 +374,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     // runs along x. The value ticks reuse the y domain — that is where the
     // data lives — and the same formatter, so a chart flipped horizontal
     // keeps its "$3.2K" labels without re-wiring anything.
-    const yTicks = cfg.showYAxis ? bandTicksY(cfg.categories, plot) : []
+    const yTicks = cfg.showYAxis ? bandTicksY(cfg.categories, plot, cfg.bandsFromBottom === true) : []
     const xTicks = cfg.showXAxis
       ? makeTicks(cfg.yDomain, plot.x, plot.x + plot.w, cfg.yTickCount, cfg.yFormat)
       : []
@@ -475,7 +477,7 @@ function ceilRatio(need: Double, room: Double): number {
 
 /** One tick per category, centred on its band. */
 /** Band ticks down the Y axis — the horizontal frame's category labels. */
-export function bandTicksY(categories: string[], plot: Rect): Tick[] {
+export function bandTicksY(categories: string[], plot: Rect, fromBottom: boolean = false): Tick[] {
   const n = categories.length
   const out: Tick[] = []
   if (n === 0) return out
@@ -483,7 +485,7 @@ export function bandTicksY(categories: string[], plot: Rect): Tick[] {
   for (let i = 0; i < n; i++) {
     out.push({
       value: i,
-      pos: plot.y + bh * (i + 0.5),
+      pos: fromBottom ? plot.y + plot.h - bh * (i + 0.5) : plot.y + bh * (i + 0.5),
       label: categories[i]!,
     })
   }

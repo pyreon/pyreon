@@ -567,8 +567,40 @@ export function labelFields(
 
 /** The internal renderItem for a `lines` series: a polyline through every [x, y] pair of the flattened datum. */
 
+/**
+ * A category y axis over a value x axis — ECharts' horizontal bar chart. The
+ * engine's horizontal frame keeps its VALUE axis in the `y*` fields (domain,
+ * format, ticks) and draws it along x, so the option compiles with its two
+ * axes swapped and the spec marked `horizontal`. The frame lays out bars only:
+ * another series type keeps the upright compile, and says so.
+ */
+function isHorizontalOption(option: EChartsOption): boolean {
+  const head = (v: unknown): unknown => (Array.isArray(v) ? v[0] : v)
+  const x = head((option as Record<string, unknown>)['xAxis'])
+  const y = head((option as Record<string, unknown>)['yAxis'])
+  if (!isObj(y) || y['type'] !== 'category') return false
+  return isObj(x) && (x['type'] === 'value' || x['type'] === 'log')
+}
+
 /** Compile an ECharts-shaped option onto the engine. Pure. */
 export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {}): CompiledOption {
+  if (!isHorizontalOption(rawOption)) return compileUpright(rawOption, opts)
+  const rawSeries = (rawOption as Record<string, unknown>)['series']
+  const series: unknown[] = Array.isArray(rawSeries) ? rawSeries : rawSeries === undefined ? [] : [rawSeries]
+  const barsOnly = series.length > 0 && series.every((s) => isObj(s) && s['type'] === 'bar')
+  if (!barsOnly) {
+    const upright = compileUpright(rawOption, opts)
+    // ledger: coordinates.axes
+    upright.warnings.push({ code: 'series-option-unsupported', path: 'yAxis.type', message: 'A category y axis lays out bar series only; this chart keeps the category on x.' })
+    return upright
+  }
+  const raw = rawOption as Record<string, unknown>
+  const swapped = { ...raw, xAxis: raw['yAxis'], yAxis: raw['xAxis'] } as EChartsOption
+  const compiled = compileUpright(swapped, opts)
+  return { ...compiled, spec: { ...compiled.spec, horizontal: true, bandsFromBottom: true } }
+}
+
+function compileUpright(rawOption: EChartsOption, opts: CompileOptions = {}): CompiledOption {
   const warnings: OptionWarning[] = []
   const warn = (code: OptionWarning['code'], path: string, message: string): void => {
     warnings.push({ code, path, message })
@@ -1505,6 +1537,10 @@ function shift(c: DrawCmd, dy: Double): DrawCmd {
       return { ...c, points: c.points.map((p) => ({ ...p, y: p.y + dy })) }
     case 'circle':
       return { ...c, center: { ...c.center, y: c.center.y + dy } }
+    case 'clip':
+      return { ...c, rect: { ...c.rect, y: c.rect.y + dy } }
+    case 'unclip':
+      return c
     default:
       return { ...c, at: { ...c.at, y: c.at.y + dy } }
   }

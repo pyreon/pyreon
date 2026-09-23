@@ -1187,35 +1187,58 @@ describe('ECharts differential: the slider dataZoom', () => {
  * controller, the page text, and which entries the window shows WHOLE and
  * where (ours leaves out the one the window's edge cuts — ECharts clips it).
  */
-interface ScrollLegendFacts { arrows: { x: number; fill: string }[]; page: string | null; whole: { text: string; x: number }[] }
-const SCROLL_NAMES = ['Alpha', 'Beta series', 'Gamma', 'Delta long name', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Iota', 'Kappa']
+interface ScrollLegendFacts { arrows: { x: number; y: number; fill: string }[]; page: string | null; whole: { text: string; at: number }[]; cut: string[] }
+const SCROLL_NAMES = ['Alpha', 'Beta series', 'Gamma', 'Delta long name', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Iota', 'Kappa', 'Lambda', 'Mu', 'Nu', 'Xi', 'Omicron']
+/** An entry along the line: its left edge in a row, its top in a column; `size` is its extent there. */
+const alongOf = (vertical: boolean, x: number, y: number): number => (vertical ? y : x)
 function echartsScrollLegend(option: object, w: number): ScrollLegendFacts {
+  const vertical = (option as { legend: { orient?: string } }).legend.orient === 'vertical'
   const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: w, height: H })
   chart.setOption({ animation: false, ...option })
   const svg = chart.renderToSVGString()
   chart.dispose()
-  const clip = /<clipPath id="zr\d+-c\d+">\s*<path d="M0 0l([\d.]+) 0l0 [\d.]+l-[\d.]+ 0Z" transform="translate\(([\d.]+) [\d.]+\)/.exec(svg)
-  const arrows = [...svg.matchAll(/<path d="M-?4\.5 0L[^"]+" transform="translate\(([\d.]+) [\d.]+\)" fill="([^"]+)"/g)].map((m) => ({ x: Number(m[1]), fill: m[2]! }))
+  const clip = /<clipPath id="zr\d+-c\d+">\s*<path d="M0 0l([\d.]+) 0l0 ([\d.]+)l-[\d.]+ 0Z" transform="translate\(([\d.]+) ([\d.]+)\)/.exec(svg)
+  const arrows = [...svg.matchAll(/<path d="M-?(?:4\.5 0|7\.5 -?7\.5)L[^"]+" transform="translate\(([\d.]+) ([\d.]+)\)" fill="([^"]+)"/g)].map((m) => ({ x: Number(m[1]), y: Number(m[2]), fill: m[3]! }))
   const page = /style="font: normal normal 12px sans-serif"(?: xml:space="preserve")? transform="translate\([\d.]+ [\d.]+\)" fill="#6d6e73">([^<]+)</.exec(svg)
   const m = (t: string): number => echarts.format.getTextRect(t, '12px sans-serif').width
-  const x0 = clip === null ? -Infinity : Number(clip[2])
-  const x1 = clip === null ? Infinity : x0 + Number(clip[1])
-  const whole = [...svg.matchAll(/x="30" y="7" transform="translate\((-?[\d.]+) [\d.]+\)" fill="[^"]+">([^<]+)</g)]
-    .map((g) => ({ text: g[2]!, x: Number(g[1]) }))
-    .filter((f) => SCROLL_NAMES.includes(f.text) && f.x >= x0 - 0.1 && f.x + 30 + m(f.text) <= x1 + 0.1)
-  return { arrows, page: page === null ? null : page[1]!, whole }
+  const lo = clip === null ? -Infinity : vertical ? Number(clip[4]) : Number(clip[3])
+  const hi = clip === null ? Infinity : lo + (vertical ? Number(clip[2]) : Number(clip[1]))
+  const all = [...svg.matchAll(/x="30" y="7" transform="translate\((-?[\d.]+) (-?[\d.]+)\)" fill="[^"]+">([^<]+)</g)]
+    .map((g) => ({ text: g[3]!, at: alongOf(vertical, Number(g[1]), Number(g[2])) }))
+    .filter((f) => SCROLL_NAMES.includes(f.text))
+  const size = (t: string): number => (vertical ? 14 : 30 + m(t))
+  const inside = (f: { text: string; at: number }): boolean => f.at >= lo - 0.1 && f.at + size(f.text) <= hi + 0.1
+  // Cut: an entry that overlaps the window without fitting in it (ECharts draws it, clipped).
+  const cut = all.filter((f) => !inside(f) && f.at + size(f.text) > lo && f.at < hi).map((f) => f.text)
+  return { arrows, page: page === null ? null : page[1]!, whole: all.filter(inside), cut }
 }
 function ourScrollLegend(option: object, w: number): ScrollLegendFacts {
+  const vertical = (option as { legend: { orient?: string } }).legend.orient === 'vertical'
   const c = compileOption(option as EChartsOption, { width: w, height: H })
   const measure = (t: string, size: number): number => echarts.format.getTextRect(t, String(size) + 'px sans-serif').width
   const cmds = compiledCommands(c, option as EChartsOption, measure).cmds
-  const arrows = cmds.flatMap((d) => (d.kind === 'polygon' && d.points.length === 3 && Math.abs(d.points[1]!.y - d.points[2]!.y) === 15 ? [{ x: (d.points[1]!.x + d.points[0]!.x) / 2, fill: d.fill }] : []))
+  // The controller's arrows: triangles 9 x 15 (a row) or 15 x 15 (a column), at their box centre.
+  const arrows = cmds.flatMap((d) => {
+    if (d.kind !== 'polygon' || d.points.length !== 3) return []
+    const xs = d.points.map((p) => p.x)
+    const ys = d.points.map((p) => p.y)
+    const bw = Math.max(...xs) - Math.min(...xs)
+    const bh = Math.max(...ys) - Math.min(...ys)
+    return Math.abs(bh - 15) < 0.01 && (Math.abs(bw - 9) < 0.01 || Math.abs(bw - 15) < 0.01) ? [{ x: (Math.max(...xs) + Math.min(...xs)) / 2, y: (Math.max(...ys) + Math.min(...ys)) / 2, fill: d.fill }] : []
+  })
   const page = cmds.find((d) => d.kind === 'text' && /^\d+\/\d+$|^Page/.test(d.text)) as { text: string } | undefined
-  // An entry's text is drawn 30 in from its left edge (a 25 icon, 5 gap).
-  const whole = cmds.flatMap((d) => (d.kind === 'text' && SCROLL_NAMES.includes(d.text) ? [{ text: d.text, x: d.at.x - 30 }] : []))
-  return { arrows, page: page?.text ?? null, whole }
+  // An entry's text is drawn 30 in from its left edge (a 25 icon, 5 gap), at its row's middle (14 tall).
+  const clip = cmds.find((d) => d.kind === 'clip') as { rect: { x: number; y: number; w: number; h: number } } | undefined
+  const m = (t: string): number => measure(t, 12)
+  const size = (t: string): number => (vertical ? 14 : 30 + m(t))
+  const drawn = cmds.flatMap((d) => (d.kind === 'text' && SCROLL_NAMES.includes(d.text) ? [{ text: d.text, at: alongOf(vertical, d.at.x - 30, d.at.y - 7) }] : []))
+  if (clip === undefined) return { arrows, page: page?.text ?? null, whole: drawn, cut: [] }
+  const lo = vertical ? clip.rect.y : clip.rect.x
+  const hi = lo + (vertical ? clip.rect.h : clip.rect.w)
+  const inside = (f: { text: string; at: number }): boolean => f.at >= lo - 0.1 && f.at + size(f.text) <= hi + 0.1
+  return { arrows, page: page?.text ?? null, whole: drawn.filter(inside), cut: drawn.filter((f) => !inside(f)).map((f) => f.text) }
 }
-const scrollOf = (legend: object, n = SCROLL_NAMES.length): object => ({
+const scrollOf = (legend: object, n = 10): object => ({
   legend: { type: 'scroll', ...legend },
   xAxis: { type: 'category', data: ['a'] },
   yAxis: {},
@@ -1231,6 +1254,10 @@ const SCROLL_CASES: [string, object, number][] = [
   ['pageButtonGap', scrollOf({ pageButtonGap: 0, scrollDataIndex: 4 }), 400],
   ['a pageFormatter', scrollOf({ pageFormatter: 'Page {current} of {total}' }), 400],
   ['a line that fits shows no controller', scrollOf({}, 3), 400],
+  ['pageButtonPosition start: the controller first, the line after it', scrollOf({ pageButtonPosition: 'start' }, 15), 400],
+  ['a vertical legend: one column, the controller under it', scrollOf({ orient: 'vertical', right: 10, top: 'middle' }, 15), 400],
+  ['a vertical legend, second page', scrollOf({ orient: 'vertical', right: 10, top: 'middle', scrollDataIndex: 11 }, 15), 400],
+  ['a vertical legend at the left, controller first', scrollOf({ orient: 'vertical', left: 10, top: 20, pageButtonPosition: 'start' }, 15), 400],
 ]
 
 describe('ECharts differential: the scrolling legend', () => {
@@ -1240,9 +1267,14 @@ describe('ECharts differential: the scrolling legend', () => {
       const u = ourScrollLegend(option, w)
       expect(u.page).toBe(e.page)
       expect(u.arrows.map((a) => a.fill)).toEqual(e.arrows.map((a) => a.fill))
-      u.arrows.forEach((a, k) => expect(Math.abs(a.x - e.arrows[k]!.x), `arrow ${k}`).toBeLessThan(0.6))
+      u.arrows.forEach((a, k) => {
+        expect(Math.abs(a.x - e.arrows[k]!.x), `arrow ${k} x`).toBeLessThan(0.6)
+        expect(Math.abs(a.y - e.arrows[k]!.y), `arrow ${k} y`).toBeLessThan(0.6)
+      })
       expect(u.whole.map((f) => f.text)).toEqual(e.whole.map((f) => f.text))
-      u.whole.forEach((f, k) => expect(Math.abs(f.x - e.whole[k]!.x), f.text).toBeLessThan(0.6))
+      u.whole.forEach((f, k) => expect(Math.abs(f.at - e.whole[k]!.at), f.text).toBeLessThan(0.6))
+      // The entry the window's edge cuts is drawn, clipped, as ECharts draws it.
+      expect(u.cut).toEqual(e.cut)
     })
   }
 })
@@ -1295,6 +1327,8 @@ const DECOR_CASES: [string, object, string, number][] = [
   ['minorTick splitNumber, length and styles', decorLine({}, { minorTick: { show: true, splitNumber: 2, length: 6, lineStyle: { color: '#123456' } }, minorSplitLine: { show: true, lineStyle: { color: '#abcdef' } } }), '#abcdef', 6],
   ['splitArea colours cycle', decorLine({}, { splitArea: { show: true, areaStyle: { color: ['#ff0000', '#00ff00', '#0000ff'] } } }), '#f4f7fd', 3],
   ['a value x axis divides too', { xAxis: { type: 'value', minorTick: { show: true }, minorSplitLine: { show: true } }, yAxis: { type: 'value' }, series: [{ type: 'scatter', data: [[1, 2], [5, 7], [9, 3]] }] }, '#f4f7fd', 3],
+  ['horizontal bars: category bands up y, value bands along x', { xAxis: { type: 'value', splitArea: { show: true } }, yAxis: { type: 'category', data: ['a', 'b', 'c'], splitArea: { show: true, areaStyle: { color: ['#eeeeee', '#dddddd'] } } }, series: [{ type: 'bar', data: [3, 5, 2] }] }, '#f4f7fd', 3],
+  ['horizontal bars: the value axis minor lines and ticks', { xAxis: { type: 'value', minorTick: { show: true }, minorSplitLine: { show: true } }, yAxis: { type: 'category', data: ['a', 'b', 'c'] }, series: [{ type: 'bar', data: [3, 5, 2] }] }, '#f4f7fd', 3],
 ]
 
 describe('ECharts differential: split areas and minor lines', () => {
@@ -1304,9 +1338,9 @@ describe('ECharts differential: split areas and minor lines', () => {
       const u = ourDecor(option, minorColor, tickLen)
       const sortN = (a: number[]): number[] => [...a].sort((p, q) => p - q)
       expect(u.bands.length).toBe(e.bands.length)
-      const key = (b: DecorFacts['bands'][number]): string => `${Math.round(b.x)},${Math.round(b.y)}`
-      const eb = [...e.bands].sort((p, q) => key(p).localeCompare(key(q)))
-      const ub = [...u.bands].sort((p, q) => key(p).localeCompare(key(q)))
+      // In paint order: overlapping translucent bands blend by it, so the order is part of the fact.
+      const eb = e.bands
+      const ub = u.bands
       ub.forEach((b, k) => {
         const o = eb[k]!
         for (const f of ['x', 'y', 'w', 'h'] as const) expect(Math.abs(b[f] - o[f]), `band ${k}.${f}`).toBeLessThan(1)
@@ -1316,6 +1350,144 @@ describe('ECharts differential: split areas and minor lines', () => {
         expect(ours.length).toBe(theirs.length)
         sortN(ours).forEach((p, k) => expect(Math.abs(p - sortN(theirs)[k]!)).toBeLessThan(1))
       }
+    })
+  }
+})
+
+/**
+ * Multi-line series labels: ECharts lays the lines one font-size apart (its
+ * default line height) about the label's anchor, and `rotate` turns the whole
+ * block about that anchor. Compared on each line's visual centre.
+ */
+interface LineCentre { text: string; x: number; y: number }
+function echartsLineCentres(option: object, texts: string[]): LineCentre[] {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: W, height: H })
+  chart.setOption({ animation: false, ...option })
+  const svg = chart.renderToSVGString()
+  chart.dispose()
+  return [...svg.matchAll(/<text([^>]*)>([^<]+)<\/text>/g)]
+    .filter((m) => texts.includes(m[2]!))
+    .map((m) => {
+      const attrs = m[1]!
+      const yAttr = / y="(-?[\d.]+)"/.exec(attrs)
+      const ly = yAttr === null ? 0 : Number(yAttr[1])
+      const tr = /translate\((-?[\d.]+) (-?[\d.]+)\)/.exec(attrs)
+      if (tr !== null) return { text: m[2]!, x: Number(tr[1]), y: Number(tr[2]) + ly }
+      const mx = /matrix\((-?[\d.]+),(-?[\d.]+),(-?[\d.]+),(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)\)/.exec(attrs)!
+      const [c, d, e, f] = [Number(mx[3]), Number(mx[4]), Number(mx[5]), Number(mx[6])]
+      return { text: m[2]!, x: e + c * ly, y: f + d * ly }
+    })
+}
+function ourLineCentres(option: object, texts: string[]): LineCentre[] {
+  const c = compileOption(option as EChartsOption, { width: W, height: H })
+  const m = (t: string, size: number): number => echarts.format.getTextRect(t, String(size) + 'px sans-serif').width
+  return renderChart(c.spec, m).flatMap((d) => {
+    if (d.kind !== 'text' || !texts.includes(d.text)) return []
+    const w = m(d.text, d.size)
+    const hx = d.align === 'start' ? w / 2 : d.align === 'end' ? -w / 2 : 0
+    const hy = d.baseline === 'top' ? d.size / 2 : d.baseline === 'bottom' ? -d.size / 2 : 0
+    const r = ((d.rotate ?? 0) * Math.PI) / 180
+    return [{ text: d.text, x: d.at.x + Math.cos(r) * hx - Math.sin(r) * hy, y: d.at.y + Math.sin(r) * hx + Math.cos(r) * hy }]
+  })
+}
+const twoLine = (label: object): object => ({
+  xAxis: { type: 'category', data: ['a', 'b'] },
+  yAxis: {},
+  // Values no axis tick shares, so a tick label cannot be mistaken for one.
+  series: [{ type: 'bar', data: [3, 9], label: { show: true, formatter: '{c}\nkg', ...label } }],
+})
+const LINE_CASES: [string, object][] = [
+  ['above the bar', twoLine({ position: 'top' })],
+  ['inside the bar', twoLine({ position: 'inside' })],
+  ['rotated 90 about the anchor', twoLine({ position: 'top', rotate: 90 })],
+  ['rotated 30', twoLine({ position: 'top', rotate: 30 })],
+]
+
+describe('ECharts differential: multi-line labels', () => {
+  for (const [name, option] of LINE_CASES) {
+    it(name, () => {
+      const texts = ['3', '9', 'kg']
+      const e = echartsLineCentres(option, texts)
+      const u = ourLineCentres(option, texts)
+      expect(e.length).toBe(4)
+      expect(u.map((f) => f.text)).toEqual(e.map((f) => f.text))
+      u.forEach((f, k) => {
+        expect(Math.abs(f.x - e[k]!.x), `${f.text} x`).toBeLessThan(0.6)
+        expect(Math.abs(f.y - e[k]!.y), `${f.text} y`).toBeLessThan(0.6)
+      })
+    })
+  }
+})
+
+/**
+ * Horizontal bars — a category y axis over a value x axis. Compared on each
+ * bar's absolute rect (ECharts' `M x y l w 0 l 0 h` path, rounded to a tenth)
+ * and on where the category and value labels sit.
+ */
+interface HBarFacts { bars: { key: string; x: number; y: number; w: number; h: number }[]; labels: { text: string; x: number; y: number }[] }
+function echartsHBars(option: object, texts: string[]): HBarFacts {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: W, height: H })
+  chart.setOption({ animation: false, ...option })
+  const svg = chart.renderToSVGString()
+  chart.dispose()
+  const bars = [...svg.matchAll(/<path d="M([\d.]+) ([\d.]+)l(-?[\d.]+) 0l0 (-?[\d.]+)[^"]*"[^>]*ecmeta_series_index="(\d+)" ecmeta_data_index="(\d+)"/g)].map((m) => {
+    const x = Number(m[1]), y = Number(m[2]), w = Number(m[3]), h = Number(m[4])
+    return { key: `${m[5]}/${m[6]}`, x: Math.min(x, x + w), y: Math.min(y, y + h), w: Math.abs(w), h: Math.abs(h) }
+  }).sort((a, b) => (a.key < b.key ? -1 : 1))
+  const labels = [...svg.matchAll(/<text([^>]*)>([^<]+)<\/text>/g)].filter((m) => texts.includes(m[2]!)).map((m) => {
+    const t = /translate\((-?[\d.]+) (-?[\d.]+)\)/.exec(m[1]!)!
+    const dy = / y="(-?[\d.]+)"/.exec(m[1]!)
+    return { text: m[2]!, x: Number(t[1]), y: Number(t[2]) + (dy === null ? 0 : Number(dy[1])) }
+  })
+  return { bars, labels }
+}
+function ourHBars(option: object, texts: string[]): HBarFacts {
+  const c = compileOption(option as EChartsOption, { width: W, height: H })
+  const m = (t: string, size: number): number => echarts.format.getTextRect(t, String(size) + 'px sans-serif').width
+  const cmds = renderChart(c.spec, m)
+  // Each series' bars, index-aligned with its data, from the geometry the paint uses.
+  const bars: HBarFacts['bars'] = []
+  c.spec.series.forEach((_, si) => {
+    barsFor(c.spec, si, m).forEach((r, i) => { if (r.w > 0 && r.h > 0) bars.push({ key: `${si}/${i}`, x: r.x, y: r.y, w: r.w, h: r.h }) })
+  })
+  bars.sort((a, b) => (a.key < b.key ? -1 : 1))
+  const labels = cmds.flatMap((d) => {
+    if (d.kind !== 'text' || !texts.includes(d.text)) return []
+    // A label's visual centre line, as ECharts writes it (central baseline).
+    const y = d.baseline === 'top' ? d.at.y + d.size / 2 : d.baseline === 'bottom' ? d.at.y - d.size / 2 : d.at.y
+    return [{ text: d.text, x: d.at.x, y }]
+  })
+  return { bars, labels }
+}
+const hbar = (series: object[], xAxis: object = {}): object => ({
+  xAxis: { type: 'value', ...xAxis },
+  yAxis: { type: 'category', data: ['Mon', 'Tue', 'Wed'] },
+  series,
+})
+const HBAR_CASES: [string, object][] = [
+  ['one series', hbar([{ type: 'bar', data: [120, 200, 150] }])],
+  ['two grouped series', hbar([{ type: 'bar', data: [120, 200, 150] }, { type: 'bar', data: [80, 70, 110] }])],
+  ['a stack', hbar([{ type: 'bar', stack: 's', data: [120, 200, 150] }, { type: 'bar', stack: 's', data: [80, 70, 110] }])],
+  ['a pinned value axis', hbar([{ type: 'bar', data: [120, 200, 150] }], { max: 400 })],
+]
+
+describe('ECharts differential: horizontal bars', () => {
+  for (const [name, option] of HBAR_CASES) {
+    it(name, () => {
+      const texts = ['Mon', 'Tue', 'Wed', '0', '50', '100', '150', '200', '250', '300', '350', '400']
+      const e = echartsHBars(option, texts)
+      const u = ourHBars(option, texts)
+      expect(e.bars.length).toBeGreaterThan(0)
+      expect(u.bars.map((b) => b.key)).toEqual(e.bars.map((b) => b.key))
+      u.bars.forEach((b, k) => {
+        for (const f of ['x', 'y', 'w', 'h'] as const) expect(Math.abs(b[f] - e.bars[k]![f]), `bar ${b.key}.${f}`).toBeLessThan(0.6)
+      })
+      const sortL = (l: HBarFacts['labels']) => [...l].sort((a, b) => a.text.localeCompare(b.text))
+      expect(sortL(u.labels).map((l) => l.text)).toEqual(sortL(e.labels).map((l) => l.text))
+      sortL(u.labels).forEach((l, k) => {
+        expect(Math.abs(l.x - sortL(e.labels)[k]!.x), `${l.text} x`).toBeLessThan(1)
+        expect(Math.abs(l.y - sortL(e.labels)[k]!.y), `${l.text} y`).toBeLessThan(1)
+      })
     })
   }
 })

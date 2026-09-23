@@ -299,7 +299,8 @@ describe('renderChart', () => {
           : c.kind === 'line' ? [c.from.x, c.from.y, c.to.x, c.to.y]
           : c.kind === 'circle' ? [c.center.x, c.center.y, c.radius]
           : c.kind === 'text' ? [c.at.x, c.at.y]
-          : c.points.flatMap((p) => [p.x, p.y])
+          : c.kind === 'polyline' || c.kind === 'polygon' ? c.points.flatMap((p) => [p.x, p.y])
+          : []
         for (const n of nums) expect(Number.isFinite(n)).toBe(true)
       }
     }

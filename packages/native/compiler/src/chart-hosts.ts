@@ -1322,6 +1322,31 @@ function desugarOptionChartHost(
     if (i < 0) attrs.push(attr)
     else attrs[i] = attr
   }
+  // ECharts' horizontal bar chart — a category y axis over a value x axis — lowers as the
+  // upright chart with its two axes swapped, drawn in the host's horizontal frame with the
+  // bands counted up from the bottom: exactly how the web facade compiles it.
+  let horizontalOption = false
+  {
+    const firstOf = (v: ExprIR | undefined): ExprIR | undefined => (v?.kind === 'array' ? literalOf(v.elements[0], resolve) : v)
+    const hx = firstOf(literalOf(objectField(raw, 'xAxis'), resolve))
+    const hy = firstOf(literalOf(objectField(raw, 'yAxis'), resolve))
+    const hxType = hx?.kind === 'object' ? litString(objectField(hx, 'type')) : undefined
+    const hyType = hy?.kind === 'object' ? litString(objectField(hy, 'type')) : undefined
+    if (hyType === 'category' && (hxType === 'value' || hxType === 'log')) {
+      const hs = literalOf(objectField(raw, 'series'), resolve)
+      const hList = hs?.kind === 'array' ? hs.elements.map((x) => literalOf(x, resolve)) : [hs]
+      const barsOnly = hList.length > 0 && hList.every((x) => x?.kind === 'object' && litString(objectField(x, 'type')) === 'bar')
+      if (barsOnly) {
+        const swapped: Extract<ExprIR, { kind: 'object' }> = { ...raw, fields: raw.fields.map((f) => (f.name === 'xAxis' ? { ...f, name: 'yAxis' } : f.name === 'yAxis' ? { ...f, name: 'xAxis' } : f)) }
+        raw = swapped
+        horizontalOption = true
+        set('horizontal', lit(true))
+      } else {
+        // ledger: coordinates.axes
+        warn('<OptionChart option.yAxis.type>: a category y axis lays out bar series only; this chart keeps the category on x.')
+      }
+    }
+  }
   // `graphic` resolves at COMPILE time through the web facade's own
   // `graphicElements` (`@pyreon/charts/option-layer`), against the option's
   // static width/height (its props, or the web host's own 640x320 defaults),
@@ -2542,6 +2567,8 @@ function desugarOptionChartHost(
     set('marks', { kind: 'array', elements: marks })
     if (compiledCart !== undefined) {
       const specLit = optionSpecLiteral(compiledCart.spec)
+      // The swapped compile is upright; the horizontal frame's bottom-up bands are the web's own.
+      if (horizontalOption) specLit.fields.push({ name: 'bandsFromBottom', value: lit(true) })
       if (specLit.fields.length > 0) set('optionSpec', specLit)
     }
     // ECharts' default tooltip content (no formatter): its cells come from the engine's

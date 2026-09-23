@@ -196,6 +196,8 @@ function markSvg(m: DrawCmd): string {
  * one, a gradient-bearing command falls back to its solid `fill`.
  */
 export function svgCommand(c: DrawCmd, fontFamily: string, gradientId?: string, patternId?: string): string {
+  // A clip spans the commands after it, so it is the document's (`renderSvg`), not one command's.
+  if (c.kind === 'clip' || c.kind === 'unclip') return ''
   const paint = (fill: string, grad: ChartGradient | undefined): string =>
     grad !== undefined && gradientId !== undefined && gradientId !== '' ? `url(#${gradientId})` : esc(fill)
   if (c.kind === 'rect') {
@@ -302,10 +304,29 @@ export function renderSvg(
   if (options.background !== undefined) {
     body.push(`<rect x="0" y="0" width="${n(width)}" height="${n(height)}" fill="${esc(options.background)}"/>`)
   }
+  // A clip opens a `<g clip-path>` over the commands up to its `unclip`; the id is the
+  // chart's prefix plus the command index, unique within and across charts on a page.
+  let clips = 0
   for (let i = 0; i < cmds.length; i++) {
-    const s = svgCommand(cmds[i]!, fontFamily, gradients.ids[i], patterns.ids[i])
+    const c = cmds[i]!
+    if (c.kind === 'clip') {
+      const id = `${prefix}-clip-${i}`
+      body.push(`<clipPath id="${id}"><rect x="${n(c.rect.x)}" y="${n(c.rect.y)}" width="${n(c.rect.w)}" height="${n(c.rect.h)}"/></clipPath><g clip-path="url(#${id})">`)
+      clips++
+      continue
+    }
+    if (c.kind === 'unclip') {
+      if (clips > 0) {
+        body.push('</g>')
+        clips--
+      }
+      continue
+    }
+    const s = svgCommand(c, fontFamily, gradients.ids[i], patterns.ids[i])
     if (s !== '') body.push(s)
   }
+  // An unclosed clip still closes its group: the document stays well formed.
+  for (; clips > 0; clips--) body.push('</g>')
 
   return `<svg xmlns="http://www.w3.org/2000/svg" ${size} ${aria.join(' ')}>${labelled.join('')}${body.join('')}</svg>`
 }

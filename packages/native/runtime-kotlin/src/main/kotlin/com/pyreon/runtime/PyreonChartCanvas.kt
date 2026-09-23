@@ -552,8 +552,22 @@ private fun PyreonStaticChartCanvas(
  */
 fun DrawScope.pyreonPaintChart(cmds: List<PyreonDrawCmd>, density: Float) {
     scale(scale = density, pivot = Offset.Zero) {
+        // `clip` saves the canvas and narrows it; `unclip` restores. An unmatched unclip is ignored.
+        var clips = 0
         for (c in cmds) {
             when (c.kind) {
+                "clip" -> {
+                    val r = c.rect ?: continue
+                    drawContext.canvas.save()
+                    drawContext.canvas.clipRect(r.x.toFloat(), r.y.toFloat(), (r.x + r.w).toFloat(), (r.y + r.h).toFloat())
+                    clips++
+                }
+                "unclip" -> {
+                    if (clips > 0) {
+                        drawContext.canvas.restore()
+                        clips--
+                    }
+                }
                 "rect" -> {
                     val r = c.rect ?: continue
                     val fill = c.fill ?: continue
@@ -690,6 +704,11 @@ fun DrawScope.pyreonPaintChart(cmds: List<PyreonDrawCmd>, density: Float) {
                     }
                 }
             }
+        }
+        // A list that left a clip open does not leak it past this paint.
+        while (clips > 0) {
+            drawContext.canvas.restore()
+            clips--
         }
     }
 }

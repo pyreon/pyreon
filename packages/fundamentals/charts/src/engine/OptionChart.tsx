@@ -133,6 +133,9 @@ export interface OptionChartProps extends Omit<CanvasHostProps, 'theme' | 'showT
 function offsetCmd(c: DrawCmd, dx: Double, dy: Double): DrawCmd {
   if (dx === 0.0 && dy === 0.0) return c
   switch (c.kind) {
+    case 'unclip':
+      return c
+    case 'clip':
     case 'rect':
       return { ...c, rect: { ...c.rect, x: c.rect.x + dx, y: c.rect.y + dy } }
     case 'line':

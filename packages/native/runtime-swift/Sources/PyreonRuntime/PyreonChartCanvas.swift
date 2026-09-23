@@ -616,8 +616,16 @@ private struct PyreonStaticChartCanvas: View {
 
     public var body: some View {
         Canvas { context, _ in
+            // `clip` saves the context (a value) and narrows it; `unclip` puts the saved one back.
+            var clipStack: [GraphicsContext] = []
             for c in cmds {
                 switch c.kind {
+                case "clip":
+                    guard let r = c.rect else { continue }
+                    clipStack.append(context)
+                    context.clip(to: Path(CGRect(x: r.x, y: r.y, width: r.w, height: r.h)))
+                case "unclip":
+                    if let saved = clipStack.popLast() { context = saved }
                 case "rect":
                     guard let r = c.rect, let fill = c.fill else { continue }
                     let shade = pyreonChartShading(fill, c.grad)

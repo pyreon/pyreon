@@ -149,7 +149,7 @@ export function labelCommands(
   // The block's own height decides where the first line starts, so the whole
   // label sits where a one-line label would have.
   let total = 0.0
-  for (const line of lines) total = total + lineHeight(line, size) * 1.25
+  for (const line of lines) total = total + lineHeight(line, size)
   let y = at.y
   if (baseline === 'middle') y = at.y - total / 2.0
   else if (baseline === 'bottom') y = at.y - total
@@ -163,7 +163,7 @@ export function labelCommands(
       out.push({ kind: 'text', text: seg.text, at: { x, y }, fill: seg.color, size: seg.fontSize, align: 'start', baseline: 'top', stroke: haloStroke, strokeWidth: haloWidth })
       x = x + measure(seg.text, seg.fontSize)
     }
-    y = y + h * 1.25
+    y = y + h
   }
   return out
 }

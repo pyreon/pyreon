@@ -61,6 +61,9 @@ export function shiftCmds(cmds: DrawCmd[], dx: Double, dy: Double): DrawCmd[] {
   }
   return cmds.map((c): DrawCmd => {
     switch (c.kind) {
+      case 'unclip':
+        return c
+      case 'clip':
       case 'rect':
         return shiftGradient(c, { ...c, rect: { ...c.rect, x: c.rect.x + dx, y: c.rect.y + dy } })
       case 'line':

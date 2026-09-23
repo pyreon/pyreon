@@ -411,6 +411,7 @@ public struct LayoutConfig {
   public var y2Domain: Domain? = nil
   public var y2Format: ((Double) -> String)? = nil
   public var horizontal: Bool? = nil
+  public var bandsFromBottom: Bool? = nil
   public var xTitle: String? = nil
   public var yTitle: String? = nil
   public var y2Title: String? = nil
@@ -435,7 +436,7 @@ public struct LayoutConfig {
   public var xOffset: Double? = nil
   public var yOffset: Double? = nil
   public var y2Offset: Double? = nil
-  public init(width: Double, height: Double, xDomain: Domain, yDomain: Domain, categories: [String], edgeCategories: Bool? = nil, insetLeft: Double? = nil, insetTop: Double? = nil, insetRight: Double? = nil, insetBottom: Double? = nil, insetContain: Bool? = nil, reserveLeft: Double? = nil, fontSize: Double, xTickCount: Double, yTickCount: Double, showXAxis: Bool, showYAxis: Bool, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, xTime: Bool? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, horizontal: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, yLog: Bool? = nil, yLogMin: Double? = nil, yLogMax: Double? = nil, yTime: Bool? = nil, xLabels: String? = nil, xLabelAngle: Double? = nil, xLabelInterval: Double? = nil, xLabelMargin: Double? = nil, xLabelInside: Bool? = nil, yLabelAngle: Double? = nil, yLabelMargin: Double? = nil, yLabelInside: Bool? = nil, xTop: Bool? = nil, yRight: Bool? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil) {
+  public init(width: Double, height: Double, xDomain: Domain, yDomain: Domain, categories: [String], edgeCategories: Bool? = nil, insetLeft: Double? = nil, insetTop: Double? = nil, insetRight: Double? = nil, insetBottom: Double? = nil, insetContain: Bool? = nil, reserveLeft: Double? = nil, fontSize: Double, xTickCount: Double, yTickCount: Double, showXAxis: Bool, showYAxis: Bool, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, xTime: Bool? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, horizontal: Bool? = nil, bandsFromBottom: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, yLog: Bool? = nil, yLogMin: Double? = nil, yLogMax: Double? = nil, yTime: Bool? = nil, xLabels: String? = nil, xLabelAngle: Double? = nil, xLabelInterval: Double? = nil, xLabelMargin: Double? = nil, xLabelInside: Bool? = nil, yLabelAngle: Double? = nil, yLabelMargin: Double? = nil, yLabelInside: Bool? = nil, xTop: Bool? = nil, yRight: Bool? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil) {
     self.width = width
     self.height = height
     self.xDomain = xDomain
@@ -459,6 +460,7 @@ public struct LayoutConfig {
     self.y2Domain = y2Domain
     self.y2Format = y2Format
     self.horizontal = horizontal
+    self.bandsFromBottom = bandsFromBottom
     self.xTitle = xTitle
     self.yTitle = yTitle
     self.y2Title = y2Title
@@ -1205,6 +1207,7 @@ public struct ChartSpec {
   public var xMinorTickColor: String? = nil
   public var yInverse: Bool? = nil
   public var xInverse: Bool? = nil
+  public var bandsFromBottom: Bool? = nil
   public var xTop: Bool? = nil
   public var yRight: Bool? = nil
   public var xOffset: Double? = nil
@@ -1216,7 +1219,7 @@ public struct ChartSpec {
   public var x2Domain: Domain? = nil
   public var lines: [LinesSeries]? = nil
   public var effectTime: Double? = nil
-  public init(width: Double, height: Double, series: [Series], drawOrder: [Int]? = nil, boundaryGap: Bool? = nil, yZero: Bool? = nil, ySplit: Double? = nil, barLayout: Bool? = nil, barGap: BarLength? = nil, barCategoryGap: BarLength? = nil, yMin: Double? = nil, xSplit: Double? = nil, xZero: Bool? = nil, xMin: Double? = nil, xMax: Double? = nil, xMinData: Bool? = nil, xMaxData: Bool? = nil, yMax: Double? = nil, yMinData: Bool? = nil, yMaxData: Bool? = nil, gridLeft: Double? = nil, reserveLeft: Double? = nil, gridTop: Double? = nil, gridRight: Double? = nil, gridBottom: Double? = nil, gridContain: Bool? = nil, categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, xLabelAngle: Double? = nil, xLabelInterval: Double? = nil, xLabelMargin: Double? = nil, xLabelInside: Bool? = nil, yLabelAngle: Double? = nil, yLabelMargin: Double? = nil, yLabelInside: Bool? = nil, xAxisLine: Bool? = nil, yAxisLine: Bool? = nil, y2AxisLine: Bool? = nil, xAxisOnZero: Bool? = nil, yAxisOnZero: Bool? = nil, y2Grid: Bool? = nil, xAxisLineColor: String? = nil, yAxisLineColor: String? = nil, xAxisLineWidth: Double? = nil, yAxisLineWidth: Double? = nil, xTicks: Bool? = nil, yTicks: Bool? = nil, xTickLength: Double? = nil, yTickLength: Double? = nil, xTickInside: Bool? = nil, yTickInside: Bool? = nil, xTickColor: String? = nil, yTickColor: String? = nil, xTickBands: Bool? = nil, gridColor: String? = nil, gridWidth: Double? = nil, gridDash: [Double]? = nil, xGrid: Bool? = nil, xGridColor: String? = nil, xGridWidth: Double? = nil, xGridDash: [Double]? = nil, ySplitArea: [String]? = nil, xSplitArea: [String]? = nil, yMinorSplit: Double? = nil, yMinorSplitColor: String? = nil, yMinorSplitWidth: Double? = nil, xMinorSplit: Double? = nil, xMinorSplitColor: String? = nil, xMinorSplitWidth: Double? = nil, yMinorTicks: Double? = nil, yMinorTickLength: Double? = nil, yMinorTickColor: String? = nil, xMinorTicks: Double? = nil, xMinorTickLength: Double? = nil, xMinorTickColor: String? = nil, yInverse: Bool? = nil, xInverse: Bool? = nil, xTop: Bool? = nil, yRight: Bool? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, lines: [LinesSeries]? = nil, effectTime: Double? = nil) {
+  public init(width: Double, height: Double, series: [Series], drawOrder: [Int]? = nil, boundaryGap: Bool? = nil, yZero: Bool? = nil, ySplit: Double? = nil, barLayout: Bool? = nil, barGap: BarLength? = nil, barCategoryGap: BarLength? = nil, yMin: Double? = nil, xSplit: Double? = nil, xZero: Bool? = nil, xMin: Double? = nil, xMax: Double? = nil, xMinData: Bool? = nil, xMaxData: Bool? = nil, yMax: Double? = nil, yMinData: Bool? = nil, yMaxData: Bool? = nil, gridLeft: Double? = nil, reserveLeft: Double? = nil, gridTop: Double? = nil, gridRight: Double? = nil, gridBottom: Double? = nil, gridContain: Bool? = nil, categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, xLabelAngle: Double? = nil, xLabelInterval: Double? = nil, xLabelMargin: Double? = nil, xLabelInside: Bool? = nil, yLabelAngle: Double? = nil, yLabelMargin: Double? = nil, yLabelInside: Bool? = nil, xAxisLine: Bool? = nil, yAxisLine: Bool? = nil, y2AxisLine: Bool? = nil, xAxisOnZero: Bool? = nil, yAxisOnZero: Bool? = nil, y2Grid: Bool? = nil, xAxisLineColor: String? = nil, yAxisLineColor: String? = nil, xAxisLineWidth: Double? = nil, yAxisLineWidth: Double? = nil, xTicks: Bool? = nil, yTicks: Bool? = nil, xTickLength: Double? = nil, yTickLength: Double? = nil, xTickInside: Bool? = nil, yTickInside: Bool? = nil, xTickColor: String? = nil, yTickColor: String? = nil, xTickBands: Bool? = nil, gridColor: String? = nil, gridWidth: Double? = nil, gridDash: [Double]? = nil, xGrid: Bool? = nil, xGridColor: String? = nil, xGridWidth: Double? = nil, xGridDash: [Double]? = nil, ySplitArea: [String]? = nil, xSplitArea: [String]? = nil, yMinorSplit: Double? = nil, yMinorSplitColor: String? = nil, yMinorSplitWidth: Double? = nil, xMinorSplit: Double? = nil, xMinorSplitColor: String? = nil, xMinorSplitWidth: Double? = nil, yMinorTicks: Double? = nil, yMinorTickLength: Double? = nil, yMinorTickColor: String? = nil, xMinorTicks: Double? = nil, xMinorTickLength: Double? = nil, xMinorTickColor: String? = nil, yInverse: Bool? = nil, xInverse: Bool? = nil, bandsFromBottom: Bool? = nil, xTop: Bool? = nil, yRight: Bool? = nil, xOffset: Double? = nil, yOffset: Double? = nil, y2Offset: Double? = nil, extraYAxes: [ExtraYAxis]? = nil, x2Labels: [String]? = nil, x2Title: String? = nil, x2Domain: Domain? = nil, lines: [LinesSeries]? = nil, effectTime: Double? = nil) {
     self.width = width
     self.height = height
     self.series = series
@@ -1316,6 +1319,7 @@ public struct ChartSpec {
     self.xMinorTickColor = xMinorTickColor
     self.yInverse = yInverse
     self.xInverse = xInverse
+    self.bandsFromBottom = bandsFromBottom
     self.xTop = xTop
     self.yRight = yRight
     self.xOffset = xOffset
@@ -5395,7 +5399,7 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
     let gutters = Gutters(left: gLeft, right: gRight, top: top, bottom: bottom)
     let plot = PyreonChartRect(x: gLeft, y: top, w: max(0.0, cfg.width - gLeft - gRight), h: max(0.0, cfg.height - top - bottom))
     if cfg.horizontal == true {
-      let yTicks = cfg.showYAxis ? bandTicksY(cfg.categories, plot) : []
+      let yTicks = cfg.showYAxis ? bandTicksY(cfg.categories, plot, cfg.bandsFromBottom == true) : []
       let xTicks = cfg.showXAxis ? makeTicks(cfg.yDomain, plot.x, plot.x + plot.w, cfg.yTickCount, cfg.yFormat) : []
       var yEvery = 1
       let nCat = cfg.categories.count
@@ -5473,7 +5477,7 @@ public func ceilRatio(_ need: Double, _ room: Double) -> Int {
     return every
   }
 
-public func bandTicksY(_ categories: [String], _ plot: PyreonChartRect) -> [Tick] {
+public func bandTicksY(_ categories: [String], _ plot: PyreonChartRect, _ fromBottom: Bool = false) -> [Tick] {
     let n = categories.count
     var out: [Tick] = []
     if n == 0 {
@@ -5481,7 +5485,7 @@ public func bandTicksY(_ categories: [String], _ plot: PyreonChartRect) -> [Tick
     }
     let bh = plot.h / Double(n)
     for i in 0..<n {
-      out.append(Tick(value: Double(i), pos: plot.y + bh * (Double(i) + 0.5), label: categories[i]))
+      out.append(Tick(value: Double(i), pos: fromBottom ? plot.y + plot.h - bh * (Double(i) + 0.5) : plot.y + bh * (Double(i) + 0.5), label: categories[i]))
     }
     return out
   }
@@ -6598,7 +6602,7 @@ public func labelCommands(_ text: String, _ rich: [RichStyle], _ at: PyreonChart
     }
     var total = 0.0
     for line in lines {
-      total = total + lineHeight(line, size) * 1.25
+      total = total + lineHeight(line, size)
     }
     var y = at.y
     if baseline == "middle" {
@@ -6623,7 +6627,7 @@ public func labelCommands(_ text: String, _ rich: [RichStyle], _ at: PyreonChart
         out.append(PyreonDrawCmd(kind: "text", fill: seg.color, stroke: haloStroke, text: seg.text, at: PyreonChartPt(x: x, y: y), size: seg.fontSize, align: "start", baseline: "top", strokeWidth: haloWidth))
         x = x + measure(seg.text, seg.fontSize)
       }
-      y = y + h * 1.25
+      y = y + h
     }
     return out
   }
@@ -6851,14 +6855,27 @@ public func adjustLabel(_ s: Series, _ cmdsOf: (PyreonChartPt, String, String) -
     let ha = (s.labelAlign ?? "")
     let va = (s.labelVerticalAlign ?? "")
     let cmds = cmdsOf(PyreonChartPt(x: at.x + dx, y: at.y + dy), ha == "left" ? "start" : ha == "center" ? "middle" : ha == "right" ? "end" : align, va == "top" || va == "middle" || va == "bottom" ? va : baseline)
-    if deg == 0.0 || cmds.count != 1 {
+    if deg == 0.0 {
       return cmds
     }
-    let only = cmds[0]
-    if only.kind != "text" {
-      return cmds
+    let ax = at.x + dx
+    let ay = at.y + dy
+    let cw = 0.0 - rad
+    let cc = cos(Double(cw))
+    let sn = sin(Double(cw))
+    var out: [PyreonDrawCmd] = []
+    for i in 0..<cmds.count {
+      let cmd = cmds[i]
+      if cmd.kind != "text" {
+        out.append(cmd)
+      } else {
+        let p0 = (cmd.at ?? PyreonChartPt(x: ax, y: ay))
+        let rx = p0.x - ax
+        let ry = p0.y - ay
+        out.append({ var c = cmd; c.at = PyreonChartPt(x: ax + cc * rx - sn * ry, y: ay + sn * rx + cc * ry); c.rotate = 0.0 - deg; return c }())
+      }
     }
-    return [{ var c = only; c.rotate = 0.0 - deg; return c }()]
+    return out
   }
 
 public func seriesLabelCmds(_ s: Series, _ index: Int, _ fallback: String, _ at: PyreonChartPt, _ align: String, _ baseline: String, _ t: ChartTheme, _ measure: (String, Double) -> Double) -> [PyreonDrawCmd] {
@@ -7416,7 +7433,7 @@ public func layoutChart(_ raw: ChartSpec, _ measure: (String, Double) -> Double)
     let n = seriesMaxLength(spec.series)
     let isLog = raw.yScale == "log"
     let lb = isLog ? logBounds(raw) : Domain(min: 1.0, max: 10.0)
-    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? invertedDomain(resolveXValueDomain(spec, extent((spec.xValues ?? []))), spec.xInverse == true && spec.horizontal != true) : Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, edgeCategories: edgeCategoryPoints(spec), insetLeft: spec.gridLeft, insetTop: spec.gridTop, insetRight: spec.gridRight, insetBottom: spec.gridBottom, insetContain: spec.gridContain, reserveLeft: spec.reserveLeft, fontSize: spec.theme.fontSize, xTickCount: 5.0, yTickCount: 5.0, showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yTime: spec.yTime == true, xLabels: spec.xLabels, xLabelAngle: spec.xLabelAngle, xLabelInterval: spec.xLabelInterval, xLabelMargin: spec.xLabelMargin, xLabelInside: spec.xLabelInside, yLabelAngle: spec.yLabelAngle, yLabelMargin: spec.yLabelMargin, yLabelInside: spec.yLabelInside, xTop: spec.xTop, yRight: spec.yRight, extraYAxes: resolvedExtraAxes(spec), x2Labels: spec.x2Labels, x2Title: spec.x2Title, x2Domain: hasX2Axis(spec) ? resolveX2Domain(spec) : nil, xOffset: spec.xOffset, yOffset: spec.yOffset, y2Offset: spec.y2Offset)
+    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? invertedDomain(resolveXValueDomain(spec, extent((spec.xValues ?? []))), spec.xInverse == true && spec.horizontal != true) : Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, edgeCategories: edgeCategoryPoints(spec), insetLeft: spec.gridLeft, insetTop: spec.gridTop, insetRight: spec.gridRight, insetBottom: spec.gridBottom, insetContain: spec.gridContain, reserveLeft: spec.reserveLeft, fontSize: spec.theme.fontSize, xTickCount: 5.0, yTickCount: 5.0, showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, bandsFromBottom: spec.bandsFromBottom == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yTime: spec.yTime == true, xLabels: spec.xLabels, xLabelAngle: spec.xLabelAngle, xLabelInterval: spec.xLabelInterval, xLabelMargin: spec.xLabelMargin, xLabelInside: spec.xLabelInside, yLabelAngle: spec.yLabelAngle, yLabelMargin: spec.yLabelMargin, yLabelInside: spec.yLabelInside, xTop: spec.xTop, yRight: spec.yRight, extraYAxes: resolvedExtraAxes(spec), x2Labels: spec.x2Labels, x2Title: spec.x2Title, x2Domain: hasX2Axis(spec) ? resolveX2Domain(spec) : nil, xOffset: spec.xOffset, yOffset: spec.yOffset, y2Offset: spec.y2Offset)
     return computeLayout(cfg, measure)
   }
 
@@ -7642,6 +7659,49 @@ public func setLaid(_ spec: ChartSpec, _ kind: String, _ plot: PyreonChartRect, 
     return out
   }
 
+public func inRow(_ spec: ChartSpec, _ cols: [PyreonChartPt], _ k: Int, _ r: PyreonChartRect, _ i: Int, _ n: Int, _ plot: PyreonChartRect) -> PyreonChartRect {
+    if k < 0 || k >= cols.count || n == 0 {
+      return r
+    }
+    let c = cols[k]
+    if c.y < 0.0 {
+      return r
+    }
+    let band = plot.h / countToDouble(n)
+    let j = spec.bandsFromBottom == true ? n - 1 - i : i
+    return PyreonChartRect(x: r.x, y: plot.y + band * countToDouble(j) + band / 2.0 + c.x, w: r.w, h: c.y)
+  }
+
+public func barsLaidH(_ spec: ChartSpec, _ k: Int, _ plot: PyreonChartRect, _ dom: Domain) -> [PyreonChartRect] {
+    let s = spec.series[k]
+    let rects = layoutBarsH(s.values, plot, dom, 0.25)
+    let n = rects.count
+    let cols = barColumns(spec, n == 0 ? 0.0 : plot.h / countToDouble(n))
+    var out: [PyreonChartRect] = []
+    for i in 0..<rects.count {
+      out.append(inRow(spec, cols, k, rects[i], i, n, plot))
+    }
+    return out
+  }
+
+public func setLaidH(_ spec: ChartSpec, _ kind: String, _ plot: PyreonChartRect, _ dom: Domain) -> [StackSegment] {
+    let idx = indicesOf(spec, kind)
+    let values = idx.map({ k in spec.series[k].values })
+    var n = 0
+    for v in values {
+      if v.count > n {
+        n = v.count
+      }
+    }
+    let cols = barColumns(spec, n == 0 ? 0.0 : plot.h / countToDouble(n))
+    let segs = kind == "stacked" ? layoutStackedBarsH(values, plot, dom, 0.25) : layoutGroupedBarsH(values, plot, dom, 0.25)
+    var out: [StackSegment] = []
+    for seg in segs {
+      out.append(StackSegment(rect: inRow(spec, cols, idx[seg.seriesIndex], seg.rect, seg.datumIndex, n, plot), seriesIndex: seg.seriesIndex, datumIndex: seg.datumIndex, value: seg.value))
+    }
+    return out
+  }
+
 public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double) -> [PyreonDrawCmd] { renderChartIn(spec, measure, layoutChart(spec, measure)) }
 
 public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Double, _ l: PlotLayout) -> [PyreonDrawCmd] {
@@ -7704,6 +7764,25 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: plot.x, y: a < b ? a : b, w: plot.w, h: a < b ? b - a : a - b), fill: yAreas[(ti - 1) % yAreas.count]))
       }
     }
+    if spec.horizontal == true {
+      let cAreas = (spec.xSplitArea ?? [])
+      let nh = spec.categories.count
+      if cAreas.count > 0 {
+        for ci in 0..<nh {
+          let bh = plot.h / countToDouble(nh)
+          let top = spec.bandsFromBottom == true ? plot.y + plot.h - bh * countToDouble(ci + 1) : plot.y + bh * countToDouble(ci)
+          out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: plot.x, y: top, w: plot.w, h: bh), fill: cAreas[ci % cAreas.count]))
+        }
+      }
+      let vAreas = (spec.ySplitArea ?? [])
+      if vAreas.count > 0 {
+        for ti in 1..<l.xTicks.count {
+          let a = l.xTicks[ti - 1].pos
+          let b = l.xTicks[ti].pos
+          out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: a < b ? a : b, y: plot.y, w: a < b ? b - a : a - b, h: plot.h), fill: vAreas[(ti - 1) % vAreas.count]))
+        }
+      }
+    }
     let xAreas = (spec.xSplitArea ?? [])
     if xAreas.count > 0 && spec.horizontal != true {
       let nc = spec.categories.count
@@ -7740,6 +7819,10 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
     let yMinor = spec.horizontal != true ? minorPositions(l.yTicks, (spec.yMinorSplit ?? 0.0)) : []
     for mi in 0..<yMinor.count {
       out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: plot.x, y: yMinor[mi]), to: PyreonChartPt(x: plot.x + plot.w, y: yMinor[mi]), stroke: (spec.yMinorSplitColor ?? "#f4f7fd"), width: (spec.yMinorSplitWidth ?? 1.0)))
+    }
+    let hMinor = spec.horizontal == true ? minorPositions(l.xTicks, (spec.yMinorSplit ?? 0.0)) : []
+    for mi in 0..<hMinor.count {
+      out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: hMinor[mi], y: plot.y), to: PyreonChartPt(x: hMinor[mi], y: plot.y + plot.h), stroke: (spec.yMinorSplitColor ?? "#f4f7fd"), width: (spec.yMinorSplitWidth ?? 1.0)))
     }
     let xMinor = spec.horizontal != true && xValueAxis ? minorPositions(l.xTicks, (spec.xMinorSplit ?? 0.0)) : []
     for mi in 0..<xMinor.count {
@@ -7783,6 +7866,13 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       let xDir = (xTop ? -1.0 : 1.0) * (spec.xTickInside == true ? -1.0 : 1.0)
       for tx in xTickPositions(spec, l, plot) {
         out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: tx, y: xLineY), to: PyreonChartPt(x: tx, y: xLineY + xDir * xLen), stroke: (spec.xTickColor ?? xLineColor), width: 1.0))
+      }
+    }
+    if spec.showXAxis && spec.horizontal == true {
+      let hm = minorPositions(l.xTicks, (spec.yMinorTicks ?? 0.0))
+      let hmLen = (spec.yMinorTickLength ?? 3.0)
+      for mi in 0..<hm.count {
+        out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: hm[mi], y: xLineY), to: PyreonChartPt(x: hm[mi], y: xLineY + hmLen), stroke: ((spec.yMinorTickColor ?? spec.yTickColor) ?? xLineColor), width: 1.0))
       }
     }
     if spec.showXAxis && spec.horizontal != true && xValueAxis {
@@ -7880,7 +7970,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
     }
     let stackedSeries = spec.series.filter({ s in s.kind == "stacked" })
     if stackedSeries.count > 0 {
-      let stackSegs = spec.horizontal == true ? layoutStackedBarsH(stackedSeries.map({ s in s.values }), plot, yDomain, 0.25) : setLaid(spec, "stacked", plot, yDomain)
+      let stackSegs = spec.horizontal == true ? setLaidH(spec, "stacked", plot, yDomain) : setLaid(spec, "stacked", plot, yDomain)
       let fmtS = (spec.yFormat ?? plain)
       for seg in stackSegs {
         let rS = growRect(seg.rect, yDomain)
@@ -7901,7 +7991,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
     }
     let groupedSeries = spec.series.filter({ s in s.kind == "grouped" })
     if groupedSeries.count > 0 {
-      let groupSegs = spec.horizontal == true ? layoutGroupedBarsH(groupedSeries.map({ s in s.values }), plot, yDomain, 0.25) : setLaid(spec, "grouped", plot, yDomain)
+      let groupSegs = spec.horizontal == true ? setLaidH(spec, "grouped", plot, yDomain) : setLaid(spec, "grouped", plot, yDomain)
       let fmtG = (spec.yFormat ?? plain)
       for seg in groupSegs {
         let rG = growRect(seg.rect, yDomain)
@@ -7982,7 +8072,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         if s.kind != "bars" {
           continue
         }
-        let rects = layoutBarsH(s.values, plot, yDomain, 0.25)
+        let rects = barsLaidH(spec, sIdx, plot, yDomain)
         for ri in 0..<rects.count {
           let r = rects[ri]
           let grown = growRectH(r)
@@ -8549,7 +8639,7 @@ public func barsForIn(_ raw: ChartSpec, _ index: Int, _ plot: PyreonChartRect) -
     if s == nil {
       return []
     }
-    if (s.kind == "stacked" || s.kind == "grouped") && spec.horizontal != true {
+    if s.kind == "stacked" || s.kind == "grouped" {
       let idx = indicesOf(spec, s.kind)
       var local = -1
       for q in 0..<idx.count {
@@ -8561,7 +8651,8 @@ public func barsForIn(_ raw: ChartSpec, _ index: Int, _ plot: PyreonChartRect) -
       for i in 0..<s.values.count {
         rects.append(PyreonChartRect(x: 0.0, y: 0.0, w: -1.0, h: -1.0))
       }
-      for seg in setLaid(spec, s.kind, plot, resolveYDomain(spec)) {
+      let segs = spec.horizontal == true ? setLaidH(spec, s.kind, plot, resolveYDomain(spec)) : setLaid(spec, s.kind, plot, resolveYDomain(spec))
+      for seg in segs {
         if seg.seriesIndex == local && seg.datumIndex < rects.count {
           rects[seg.datumIndex] = seg.rect
         }
@@ -8582,7 +8673,7 @@ public func barsForIn(_ raw: ChartSpec, _ index: Int, _ plot: PyreonChartRect) -
       }
       return rects
     }
-    return barsLaid(spec, index, plot, dom)
+    return spec.horizontal == true ? barsLaidH(spec, index, plot, dom) : barsLaid(spec, index, plot, dom)
   }
 
 public func stackedHitAt(_ spec: ChartSpec, _ measure: (String, Double) -> Double, _ px: Double, _ py: Double) -> Int { stackedHitIn(spec, layoutChart(spec, measure).plot, px, py) }
@@ -8615,10 +8706,8 @@ public func markerAnchor(_ spec: ChartSpec, _ seriesIdx: Double, _ idx: Int, _ p
     if which < 0 {
       return out
     }
-    let members = spec.series.filter({ q in q.kind == kind })
-    let values = members.map({ q in q.values })
     let flipped = spec.horizontal == true
-    let segs = kind == "stacked" ? flipped ? layoutStackedBarsH(values, plot, yDomain, 0.25) : setLaid(spec, "stacked", plot, yDomain) : flipped ? layoutGroupedBarsH(values, plot, yDomain, 0.25) : setLaid(spec, "grouped", plot, yDomain)
+    let segs = kind == "stacked" ? flipped ? setLaidH(spec, "stacked", plot, yDomain) : setLaid(spec, "stacked", plot, yDomain) : flipped ? setLaidH(spec, "grouped", plot, yDomain) : setLaid(spec, "grouped", plot, yDomain)
     for seg in segs {
       if seg.seriesIndex != which {
         continue
@@ -8644,8 +8733,7 @@ public func stackedHitIn(_ raw: ChartSpec, _ plot: PyreonChartRect, _ px: Double
       if series.count == 0 {
         continue
       }
-      let values = series.map({ s in s.values })
-      let segs = kind == "stacked" ? flipped ? layoutStackedBarsH(values, plot, yDomain, 0.25) : setLaid(spec, "stacked", plot, yDomain) : flipped ? layoutGroupedBarsH(values, plot, yDomain, 0.25) : setLaid(spec, "grouped", plot, yDomain)
+      let segs = kind == "stacked" ? flipped ? setLaidH(spec, "stacked", plot, yDomain) : setLaid(spec, "stacked", plot, yDomain) : flipped ? setLaidH(spec, "grouped", plot, yDomain) : setLaid(spec, "grouped", plot, yDomain)
       for seg in segs {
         let r = seg.rect
         if px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h {

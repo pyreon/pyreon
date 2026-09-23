@@ -186,8 +186,21 @@ export function paint(
 ): void {
   ctx.save()
   ctx.clearRect(0, 0, width, height)
+  // Open clips: an `unclip` with none open is ignored, so it can never pop the frame's own save.
+  let clips = 0
   for (const c of cmds) {
-    if (c.kind === 'rect') {
+    if (c.kind === 'clip') {
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(c.rect.x, c.rect.y, c.rect.w, c.rect.h)
+      ctx.clip()
+      clips++
+    } else if (c.kind === 'unclip') {
+      if (clips > 0) {
+        ctx.restore()
+        clips--
+      }
+    } else if (c.kind === 'rect') {
       ctx.fillStyle = fillStyleFor(ctx, c.fill, c.grad)
       const radii = cornerRadii(c.rect, c.corners)
       if (hasCorners(radii)) {
@@ -279,6 +292,11 @@ export function paint(
         paintText(c.at.x, c.at.y)
       }
     }
+  }
+  // A list that left a clip open does not leak it into the next frame.
+  while (clips > 0) {
+    ctx.restore()
+    clips--
   }
   ctx.restore()
 }

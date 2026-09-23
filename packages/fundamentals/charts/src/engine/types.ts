@@ -187,3 +187,12 @@ export type DrawCmd =
       /** The halo's width in px (ECharts' `textBorderWidth`, 2 by default). */
       strokeWidth?: Double | undefined
     }
+  /**
+   * Clip every following command to `rect` until the matching `unclip` — a
+   * stack, so clips nest. Each executor saves its drawing state here and
+   * restores it at the `unclip` (web canvas `save`/`clip`/`restore`, an SVG
+   * `<g clip-path>`, a SwiftUI context copy, a Compose `clipRect` save).
+   */
+  | { kind: 'clip'; rect: Rect }
+  /** Ends the innermost `clip`. */
+  | { kind: 'unclip' }

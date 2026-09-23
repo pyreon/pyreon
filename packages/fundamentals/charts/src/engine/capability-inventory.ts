@@ -183,10 +183,10 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'partial',
     native: 'partial',
     gaps: [
-      'bars lay out as ECharts columns (differential-tested) on a vertical grid; a horizontal bar chart keeps the engine gap, and two DIFFERENT `stack` groups share one accumulating stack',
+      'bars lay out as ECharts columns (differential-tested) on a vertical grid, and a horizontal bar chart (a category y axis over a value x axis) lays out as ECharts does — rows up from the bottom, the same column solver (differential-tested, native-lowered); a category y axis over a non-bar series keeps the upright chart with a warning, and two DIFFERENT `stack` groups share one accumulating stack',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/option.test.ts', 'src/engine/horizontal.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-axes-native.test.ts'],
+    evidence: ['src/engine/option.test.ts', 'src/engine/horizontal.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-axes-native.test.ts', 'src/engine/gap-fixes.coverage.test.ts', NATIVE + 'chart-option-horizontal-native.test.ts'],
   }),
   row('series.pie', 'series', 'direct', {
     web: 'partial',
@@ -361,14 +361,14 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'partial',
     native: 'partial',
     gaps: [
-      'a horizontal `type: "scroll"` legend pages as ECharts\' does (one line, the controller, `scrollDataIndex`, `pageButtonGap`, `pageFormatter`, the page colours), but an entry the page edge cuts is left out rather than clipped, and `pageButtonPosition: "start"`, `pageIconSize` / `pageIcons` and a VERTICAL scroll legend are not honoured',
+      'a `type: "scroll"` legend pages as ECharts\' does — a row or a column, the controller at the end or the start, `scrollDataIndex`, `pageButtonGap`, `pageFormatter`, the page colours, the entry the window cuts drawn clipped (differential-tested); `pageIconSize` / `pageIcons` are not read',
       'the `selector` buttons are not drawn',
       'native draws a scrolling legend unpaged (named in a warning)',
       'series `legendHoverLink` (hovering an entry emphasises its series) is not honoured',
       'a family option chart (pie, funnel, …) draws its host\'s own legend, which a click does not toggle; a multi-grid option\'s legend does not toggle either',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/legend-toggle.test.ts', 'src/engine/legend-scroll.test.ts', 'src/engine/option-legend.test.ts', 'src/engine/option-legend.browser.test.tsx', 'src/engine/echarts-differential.test.ts', 'src/engine/option-grid.test.ts', NATIVE + 'chart-legend-change-native.test.ts', NATIVE + 'chart-option-legend-scroll-native.test.ts'],
+    evidence: ['src/engine/legend-toggle.test.ts', 'src/engine/legend-scroll.test.ts', 'src/engine/option-legend.test.ts', 'src/engine/option-legend.browser.test.tsx', 'src/engine/echarts-differential.test.ts', 'src/engine/option-grid.test.ts', NATIVE + 'chart-legend-change-native.test.ts', NATIVE + 'chart-option-legend-scroll-native.test.ts', 'src/engine/clip.browser.test.ts', 'src/engine/svg-clip.test.ts'],
   }),
   row('coordinates.tooltip', 'coordinates', 'direct', {
     web: 'partial',
@@ -427,11 +427,11 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
       'a log scale applies to the first y axis only',
       'two y axes cannot share a side (ECharts offsets them); a third x axis is ignored',
       'axis keys outside the mapped set are ignored with a warning; an axis label formatter takes a function or the {value} template only; both axes read `axisLabel.margin`, `inside` and `rotate` (label anchors differential-tested); the x axis also `interval` (a category axis thins by ECharts\' calculateCategoryInterval); a second or extra y axis keeps the default margin',
-      'axis lines, ticks and split lines follow ECharts\' auto rule and `axisLine` / `axisTick` / `splitLine` styles (differential-tested); `axisLine.onZero` is honoured; `splitArea` (bands, colours cycled from the axis start) and a value axis\'s `minorTick` / `minorSplitLine` draw as ECharts\' do (differential-tested, native-forwarded); a horizontal (category-y) chart draws neither, and the second y axis\'s split lines take the first\'s style',
+      'axis lines, ticks and split lines follow ECharts\' auto rule and `axisLine` / `axisTick` / `splitLine` styles (differential-tested); `axisLine.onZero` is honoured; `splitArea` (bands, colours cycled from the axis start) and a value axis\'s `minorTick` / `minorSplitLine` draw as ECharts\' do on a vertical or a horizontal chart (differential-tested, native-forwarded), and the second y axis\'s split lines take the first\'s style',
       'the y axes and a value X axis tick as ECharts does (differential-tested); a time axis still uses the engine\'s own ticks, and interval, minInterval and maxInterval are not read',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/option-axes.test.ts', 'src/engine/option-axes-mapping.test.ts', NATIVE + 'chart-axes-native.test.ts', 'src/engine/option-boundary-gap.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-option-forwarded-native.test.ts', NATIVE + 'chart-option-axis-decor-native.test.ts', ...DEVICE],
+    evidence: ['src/engine/option-axes.test.ts', 'src/engine/option-axes-mapping.test.ts', NATIVE + 'chart-axes-native.test.ts', 'src/engine/option-boundary-gap.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-option-forwarded-native.test.ts', NATIVE + 'chart-option-axis-decor-native.test.ts', ...DEVICE, 'src/engine/gap-fixes.coverage.test.ts'],
   }),
   row('coordinates.visual-map', 'coordinates', 'direct', {
     web: 'complete',
@@ -618,7 +618,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     native: 'partial',
     gaps: [
       'a rich segment takes colour and size only (no weight, background, padding); formatter placeholders beyond {a} {b} {c} {d} are left as written',
-      'bar, line and scatter labels take ECharts\' position (against the bar or the symbol box), distance and automatic fill and halo (differential-tested); `label.rotate` (about the anchor, the `offset` turned with it), `offset`, `align` and `verticalAlign` are read (differential-tested, native-forwarded) — but a RICH or multi-line label is not rotated, and a scatter label does not carry the item opacity',
+      'bar, line and scatter labels take ECharts\' position (against the bar or the symbol box), distance and automatic fill and halo (differential-tested); `label.rotate` (about the anchor, the `offset` turned with it), `offset`, `align` and `verticalAlign` are read (differential-tested, native-forwarded) — a rich or multi-line label turns as one block about its anchor with ECharts\' line height (differential-tested), and a scatter label does not carry the item opacity',
       'native: SwiftUI text has no stroke, so the halo is the text drawn at eight offsets under the fill; Compose strokes it',
       LITERAL_ONLY,
     ],
