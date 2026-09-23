@@ -556,6 +556,54 @@ final class PyreonTasksUITests: XCTestCase {
         tapAfterScrolling(app.buttons["flow-back"].firstMatch, in: app)
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 10), "flow-back did not return to tasks")
 
+        // F6 scale proof: 400 nodes with culling on. Every assertion is a COUNT
+        // or an identity, so it is deterministic on any simulator; a timing
+        // would not be.
+        tapAfterScrolling(app.buttons["tasks-flow-scale"].firstMatch, in: app)
+        XCTAssertTrue(app.otherElements["flow-scale-page"].firstMatch.waitForExistence(timeout: 15), "Flow scale page did not render")
+        let scaleTotal = app.staticTexts["flow-scale-total"].firstMatch
+        XCTAssertEqual(scaleTotal.label, "0", "the scale flow starts empty")
+        app.buttons["flow-scale-load"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(scaleTotal, "400", timeout: 15), "loading the grid did not reach the engine (label: \(scaleTotal.label))")
+        let gridNodes = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "grid node "))
+        func node(_ index: Int) -> XCUIElement {
+            app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "grid node \(index)")).firstMatch
+        }
+        XCTAssertTrue(node(0).waitForExistence(timeout: 10), "the first grid node did not render at the origin viewport")
+        // The ceiling: a phone canvas shows a few columns of 200pt-spaced nodes.
+        // Mounting all 400 would mean culling is off.
+        let mountedAtOrigin = gridNodes.count
+        XCTAssertGreaterThan(mountedAtOrigin, 1, "culling kept too few nodes")
+        XCTAssertLessThanOrEqual(mountedAtOrigin, 40, "culling mounted \(mountedAtOrigin) of 400 nodes at the origin viewport")
+        // The grid renders through a CUSTOM node with its own handles, so its
+        // renderer is culled too: one target handle per mounted node, no more.
+        let targetHandles = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "target handle in"))
+        XCTAssertEqual(targetHandles.count, mountedAtOrigin, "custom-node handles are not culled with their nodes")
+        // Panning swaps WHICH nodes are mounted: node 0 leaves, node 170 (row 8,
+        // column 10, placed exactly at the new viewport origin) arrives.
+        app.buttons["flow-scale-pan"].firstMatch.tap()
+        XCTAssertTrue(node(170).waitForExistence(timeout: 10), "panning did not mount the node now at the viewport origin")
+        XCTAssertFalse(node(0).exists, "node 0 stayed mounted after it was panned far off screen")
+        XCTAssertLessThanOrEqual(gridNodes.count, 40, "culling mounted \(gridNodes.count) nodes after the pan")
+        // A node that scrolled in is live: dragging it reaches the engine.
+        let farPos = app.staticTexts["flow-scale-far-pos"].firstMatch
+        let farBefore = farPos.label
+        let farGrab = node(170).coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        farGrab.press(forDuration: 0.3, thenDragTo: farGrab.withOffset(CGVector(dx: 60, dy: 30)), withVelocity: .slow, thenHoldForDuration: 0.4)
+        let farMoved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", farBefore), object: farPos)
+        XCTAssertEqual(XCTWaiter().wait(for: [farMoved], timeout: 5), .completed, "dragging a panned-in node did not move it (still \(farPos.label))")
+        // Pinching out zooms the engine and widens the culled set, and the set
+        // stays bounded rather than falling back to every node.
+        let scaleZoom = app.staticTexts["flow-scale-zoom"].firstMatch
+        let zoomBefore = scaleZoom.label
+        let scaleCanvas = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Scale flow")).firstMatch
+        scaleCanvas.pinch(withScale: 0.5, velocity: -1)
+        let zoomed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", zoomBefore), object: scaleZoom)
+        XCTAssertEqual(XCTWaiter().wait(for: [zoomed], timeout: 5), .completed, "pinching did not zoom the scale flow (label: \(scaleZoom.label))")
+        XCTAssertLessThan(gridNodes.count, 200, "culling mounted \(gridNodes.count) of 400 nodes after zooming out")
+        tapAfterScrolling(app.buttons["flow-scale-back"].firstMatch, in: app)
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 10), "flow-scale-back did not return to tasks")
+
         let lifecycleNav = app.buttons["tasks-lifecycle"].firstMatch
         XCTAssertTrue(lifecycleNav.exists, "Lifecycle button missing on tasks page")
         lifecycleNav.tap()
@@ -1030,7 +1078,31 @@ final class PyreonTasksUITests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         let framesAfter = linesChart.screenshot().pngRepresentation
         XCTAssertNotEqual(framesBefore, framesAfter, "gal-lines trail did not move between frames")
-        app.buttons["gal-back"].firstMatch.tap()
+        // Runs AFTER the two moving-canvas checks on purpose: the hosted flow is a full-width
+        // pannable canvas, so once it is on screen a gutter swipe that starts on it PANS the
+        // graph instead of scrolling the page, and the geo-trail scroll-back loop above never
+        // brings its chart back into view (device-found: 80 futile tries, frame y -1829).
+        // `@pyreon/flow/webview` on device: the graph + `fit-view` command are pushed
+        // INTO the WKWebView, the hosted renderer fits and posts `viewport-change`
+        // BACK over the reverse bridge into native Text — page→host proven without
+        // asserting inside the WebView. The button pushes a NEW command id, so the
+        // count moving 1→2 (not 3) proves the reactive push AND that `initial-fit`
+        // ran once only.
+        let flowWebView = app.descendants(matching: .any).matching(identifier: "gal-flow-webview").firstMatch
+        XCTAssertTrue(flowWebView.waitForExistence(timeout: 10), "gal-flow-webview missing on the gallery")
+        let flowWebEvent = app.staticTexts["gal-flow-webview-event"].firstMatch
+        XCTAssertTrue(waitForLabel(flowWebEvent, "viewport-change", timeout: 20), "the hosted flow's initial fit-view never reached the host (label: \(flowWebEvent.label))")
+        let flowWebEvents = app.staticTexts["gal-flow-webview-events"].firstMatch
+        XCTAssertTrue(waitForLabel(flowWebEvents, "1", timeout: 5), "expected exactly one hosted flow event after load (label: \(flowWebEvents.label))")
+        scrollFullyOnScreen(app.buttons["gal-flow-webview-fit"].firstMatch, in: app)
+        app.buttons["gal-flow-webview-fit"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(flowWebEvents, "2", timeout: 10), "pushing a second fit-view command did not round-trip (label: \(flowWebEvents.label))")
+        // gal-back is the LAST element on the gallery; the checks above leave the page
+        // scrolled wherever their subject sat, so a bare tap can land off-screen on
+        // nothing (intermittent "Did not return to tasks"). Android scrolls to it too.
+        let galBack = app.buttons["gal-back"].firstMatch
+        scrollFullyOnScreen(galBack, in: app)
+        galBack.tap()
         XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after gallery Back")
 
         // Phase 5b: the TOOLKIT screen — the one place eleven packages that had

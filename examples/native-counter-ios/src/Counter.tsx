@@ -9,6 +9,7 @@
 
 import { onMount } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { defineStore } from '@pyreon/store'
 import {
   useHaptics,
   useShare,
@@ -24,7 +25,7 @@ import {
 } from '@pyreon/hooks'
 import { createI18n } from '@pyreon/i18n/core'
 import { createMachine } from '@pyreon/machine'
-import { Background, Controls, createFlow, Flow, Handle, NodeResizer, NodeToolbar, Position, type NodeComponentProps } from '@pyreon/flow'
+import { Background, Controls, createFlow, Flow, Handle, NodeResizer, NodeToolbar, Panel, Position, type ConnectionLineProps, type NodeComponentProps } from '@pyreon/flow'
 import {
   Button,
   Inline,
@@ -84,7 +85,31 @@ const NativeFlowFrame = rocketstyle()({ component: Stack }).sizes(() => ({
   device: { height: 260 },
 }))
 
+// XCUITest gestures are synchronous, so iOS cannot look at the canvas
+// mid-drag. The custom connection line therefore reports its own MOUNT into a
+// store both platforms read back after the drag ends: a count of 1 proves the
+// component rendered during the gesture; 0 before proves it renders only then.
+const useNativeFlowProbe = defineStore('native-flow-probe', () => {
+  const customLineMounts = signal(0)
+  const noteCustomLineMount = () => { customLineMounts.set(customLineMounts() + 1) }
+  return { customLineMounts, noteCustomLineMount }
+})
+
 type NativeFlowData = { label: string }
+
+// F3 renderer-parity device proof: a custom connection line exists ONLY while
+// a source handle is being dragged, so its identifier appearing mid-drag (and
+// not before or after) is the observable on both targets.
+function NativeConnectionLine(props: ConnectionLineProps) {
+  const probe = useNativeFlowProbe()
+  onMount(() => { probe.store.noteCustomLineMount() })
+  return (
+    <Stack data-testid="native-flow-custom-line">
+      <path d={props.path} style="fill: none; stroke: #2563eb; stroke-width: 3" />
+      <Text>custom line</Text>
+    </Stack>
+  )
+}
 
 function NativeFlowNode(props: NodeComponentProps<NativeFlowData>) {
   return (
@@ -111,8 +136,48 @@ export function Counter() {
       { id: 'native-start', type: 'native', position: { x: 20, y: 30 }, data: { label: 'Native Flow Start' }, width: 150, height: 60, ariaLabel: 'Native Flow Start' },
       { id: 'native-end', type: 'native', position: { x: 250, y: 130 }, data: { label: 'Native Flow End' }, width: 150, height: 60, ariaLabel: 'Native Flow End' },
     ],
-    edges: [{ id: 'native-edge', source: 'native-start', target: 'native-end', sourceHandle: 'out', targetHandle: 'in' }],
+    // A pure-red closed arrowhead: the device suites count exact #ff0000 pixels
+    // in the canvas screenshot, which nothing else on this screen paints.
+    edges: [{ id: 'native-edge', source: 'native-start', target: 'native-end', sourceHandle: 'out', targetHandle: 'in', label: 'Native edge', ariaLabel: 'Native flow edge', markerEnd: { type: 'arrowclosed', color: '#ff0000', width: 20, height: 20 } }],
+    // Reduced motion ON at first: a 3s viewport animation must land INSTANTLY.
+    // The suites then flip it off through `config` and prove the same call
+    // animates, so "instant" cannot be mistaken for "animation unsupported".
+    reducedMotion: true,
     fitView: true,
+  })
+  const nativeFlowEdgeCount = computed(() => nativeFlow.edges().length)
+  // `colorMode` is reactive: the suites toggle it and count the web's dark
+  // canvas colour (#0b1220) in a screenshot — zero before, many after, zero again.
+  const nativeFlowDark = signal(false)
+  const nativeFlowProbe = useNativeFlowProbe()
+  // Connect-start count: separates "no drag ever started" from "the custom
+  // connection line did not render" when a device suite fails.
+  const nativeFlowConnectStarts = signal(0)
+  onMount(() => { nativeFlow.onConnectStart((_start) => { nativeFlowConnectStarts.set(nativeFlowConnectStarts() + 1) }) })
+  const nativeFlowSelectedNodeCount = computed(() => nativeFlow.selectedNodes().length)
+  const nativeFlowSelectedEdgeCount = computed(() => nativeFlow.selectedEdges().length)
+  const nativeFlowStartPosition = computed(() => {
+    let position = 'gone'
+    for (const node of nativeFlow.nodes()) {
+      if (node.id === 'native-start') position = `${Math.round(node.position.x)},${Math.round(node.position.y)}`
+    }
+    return position
+  })
+  const nativeFlowViewportX = computed(() => Math.round(nativeFlow.viewport().x))
+  const nativeFlowZoomPercent = computed(() => Math.round(nativeFlow.viewport().zoom * 100))
+  const nativeFlowEdgeTarget = computed(() => {
+    let target = 'gone'
+    for (const edge of nativeFlow.edges()) {
+      if (edge.id === 'native-edge') target = edge.target
+    }
+    return target
+  })
+  const nativeFlowStartSize = computed(() => {
+    let label = 'gone'
+    for (const node of nativeFlow.nodes()) {
+      if (node.id === 'native-start') label = `${Math.round(node.width ?? 0)},${Math.round(node.height ?? 0)}`
+    }
+    return label
   })
   // M2.7 animations proof — a `<Transition show>` animates a child's
   // visibility. Native: iOS `.transition(.opacity)` on an `if show { … }`
@@ -298,11 +363,25 @@ export function Counter() {
     <Stack>
       <Text>Count: {count}</Text>
       <NativeFlowFrame size="device" data-testid="native-flow-frame">
-        <Flow instance={nativeFlow} nodeTypes={{ native: NativeFlowNode }} ariaLabel="Native Flow device proof">
+        <Flow instance={nativeFlow} nodeTypes={{ native: NativeFlowNode }} connectionLine={NativeConnectionLine} colorMode={nativeFlowDark() ? 'dark' : 'light'} ariaLabel="Native Flow device proof">
           <Background variant="dots" />
           <Controls showLock={true} />
+          <Panel position="bottom-right"><Text data-testid="native-flow-panel">Native panel</Text></Panel>
         </Flow>
       </NativeFlowFrame>
+      <Text data-testid="native-flow-edge-count">{nativeFlowEdgeCount}</Text>
+      <Text data-testid="native-flow-selected-node-count">{nativeFlowSelectedNodeCount}</Text>
+      <Text data-testid="native-flow-selected-edge-count">{nativeFlowSelectedEdgeCount}</Text>
+      <Text data-testid="native-flow-start-position">{nativeFlowStartPosition}</Text>
+      <Text data-testid="native-flow-viewport-x">{nativeFlowViewportX}</Text>
+      <Text data-testid="native-flow-zoom-percent">{nativeFlowZoomPercent}</Text>
+      <Text data-testid="native-flow-edge-target">{nativeFlowEdgeTarget}</Text>
+      <Text data-testid="native-flow-start-size">{nativeFlowStartSize}</Text>
+      <Button data-testid="native-flow-prepare-reconnect" onPress={() => {
+        nativeFlow.addNode({ id: 'native-third', type: 'native', position: { x: 250, y: 230 }, data: { label: 'Native Flow Third' }, width: 150, height: 60, ariaLabel: 'Native Flow Third' })
+        nativeFlow.selectEdge('native-edge')
+      }}>Prepare native reconnect</Button>
+      <Button data-testid="native-flow-clear-selection" onPress={() => nativeFlow.clearSelection()}>Clear native selection</Button>
       {/* ui-system device proof — a rocketstyle component with a REACTIVE
           dimension. The text flips with the same signal that drives the colour,
           so the device test can assert the flip actually re-rendered (XCUITest
@@ -482,6 +561,17 @@ export function Counter() {
           <Text data-testid="core-scroll-child">Scrolled child</Text>
         </Scroll>
       </Stack>
+      {/* F3 flow renderer-parity controls, LAST on the page on purpose: every
+          row added above the counter pushes controls the other device tests
+          click without scrolling below the fold (Compose's performClick does
+          not scroll). The F3 tests scroll to what they need. */}
+      <Text data-testid="native-flow-color-mode">{nativeFlowDark() ? 'dark' : 'light'}</Text>
+      <Text data-testid="native-flow-custom-line-mounts">{nativeFlowProbe.store.customLineMounts()}</Text>
+      <Text data-testid="native-flow-connect-starts">{nativeFlowConnectStarts()}</Text>
+      <Button data-testid="native-flow-toggle-dark" onPress={() => nativeFlowDark.set(!nativeFlowDark())}>Toggle native dark</Button>
+      <Button data-testid="native-flow-animate-zoom" onPress={() => nativeFlow.setViewport({ zoom: 0.5 }, { duration: 3000 })}>Zoom native out slowly</Button>
+      <Button data-testid="native-flow-allow-motion" onPress={() => { nativeFlow.config.reducedMotion = false }}>Allow native motion</Button>
+      <Button data-testid="native-flow-animate-zoom-back" onPress={() => nativeFlow.setViewport({ zoom: 1 }, { duration: 3000 })}>Zoom native back slowly</Button>
     </Stack>
     </Scroll>
   )

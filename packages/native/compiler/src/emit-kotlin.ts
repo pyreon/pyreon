@@ -15,8 +15,9 @@ import {
   flowSignalWriteWarning,
   resolveStaticFlowRendererMap,
   unloweredFlowMemberWarning,
+  HANDLED_FLOW_WEBVIEW_PROPS,
 } from './flow-lowering'
-import { CHART_WEBVIEW_HOST_PROPS, configureChartWebViewHost, legacyChartHostProp } from './chart-webview-lowering'
+import { CHART_WEBVIEW_HOST_PROPS, configureChartWebViewHost, legacyChartHostProp, HANDLED_CHART_WEBVIEW_PROPS } from './chart-webview-lowering'
 import { DEFAULT_FLOW_WEBVIEW_HOST_HTML } from './generated-flow-webview-host'
 import {
   ICON_MAP,
@@ -38,6 +39,8 @@ import {
   subsetStructName,
   explainUntypeableField,
   synthLiteralStructName,
+  synthTypedStructName,
+  isNumericLiteralOrNegation,
   classifyDynamicStylingAttr,
   classifySortableRef,
   exprHasOptionalLink,
@@ -3352,6 +3355,19 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       subsetStructName(rowFields.map((field) => field.name), _declaredStructs, typeIsOptional)
     let inferredRowType: TypeIR | undefined
     let rowType = d.dataType !== undefined ? kotlinType(d.dataType) : 'Any'
+    // An inline-object generic (`createFlow<{ label: string }>`) must name the
+    // SAME data class its `data = { label }` literals resolve to; a
+    // context-free `kotlinType` returned `Any`.
+    if (d.dataType?.kind === 'object') {
+      const named =
+        _structTypedKeyToName.get(structShapeKey(d.dataType.fields)) ??
+        _structFieldsToName.get(d.dataType.fields.map((f) => f.name).sort().join(',')) ??
+        synthTypedStructName(d.dataType.fields, _synthExprStructs, _synthExprStructKeys)
+      if (named !== null) {
+        rowType = named
+        inferredRowType = { kind: 'typeRef', name: named, args: [] }
+      }
+    }
     const allNames = [...new Set(dataRows.flatMap((fields) => fields.map((field) => field.name)))]
     const heterogeneous = dataRows.some((fields) => fields.length !== allNames.length || allNames.some((name) => !fields.some((field) => field.name === name)))
     if (d.dataType === undefined && heterogeneous) {
@@ -3368,7 +3384,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     } else if (d.dataType === undefined) {
       rowType = declaredRowType ?? synthLiteralStructName(rowFields, _synthExprStructs, _synthExprStructKeys, (ex) => inferType(ex, _kotlinExprInferCtx)) ?? 'Any'
     }
-    const expectedRowType = d.dataType ?? inferredRowType
+    const expectedRowType = inferredRowType ?? d.dataType
     // `PyreonXYPosition`/`PyreonFlowNode.width`/`.height` are Double —
     // Kotlin refuses a bare Int literal there (same reason charts' Pie/Gauge
     // emitters run every numeric arg through `ktChartDouble`).
@@ -3377,7 +3393,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
         const parts = [
           `id = ${kotlinStr(n.id)}`,
           ...(n.type !== undefined ? [`type = ${kotlinStr(n.type)}`] : []),
-          `position = PyreonXYPosition(${ktChartDouble(emitKotlinExpr(n.positionX, 0))}, ${ktChartDouble(emitKotlinExpr(n.positionY, 0))})`,
+          `position = PyreonXYPosition(${kotlinFlowCoord(n.positionX)}, ${kotlinFlowCoord(n.positionY)})`,
           `data = ${withExpectedTypeKotlin(expectedRowType, () => emitKotlinExpr(n.data, 0))}`,
           ...(n.width !== undefined ? [`width = ${ktChartDouble(emitKotlinExpr(n.width, 0))}`] : []),
           ...(n.height !== undefined ? [`height = ${ktChartDouble(emitKotlinExpr(n.height, 0))}`] : []),
@@ -3426,7 +3442,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
           ...(e.pathOptions?.offset !== undefined ? [`pathOffset = ${ktChartDouble(String(e.pathOptions.offset))}`] : []),
           ...(e.markerStart !== undefined ? [`markerStart = ${kotlinFlowMarker(e.markerStart)}`] : []),
           ...(e.markerEnd !== undefined ? [`markerEnd = ${e.markerEnd === null ? 'null' : kotlinFlowMarker(e.markerEnd)}`, 'markerEndSpecified = true'] : []),
-          ...(e.waypoints !== undefined ? [`waypoints = listOf(${e.waypoints.map((p) => `PyreonXYPosition(${ktChartDouble(emitKotlinExpr(p.x, 0))}, ${ktChartDouble(emitKotlinExpr(p.y, 0))})`).join(', ')})`] : []),
+          ...(e.waypoints !== undefined ? [`waypoints = listOf(${e.waypoints.map((p) => `PyreonXYPosition(${kotlinFlowCoord(p.x)}, ${kotlinFlowCoord(p.y)})`).join(', ')})`] : []),
         ]
         return `PyreonFlowEdge(${parts.join(', ')})`
       })
@@ -3569,7 +3585,7 @@ function kotlinFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
   const parts = [
     `id = ${emitKotlinExpr(idExpr, 0)}`,
     ...(typeExpr ? [`type = ${emitKotlinExpr(typeExpr, 0)}`] : []),
-    `position = PyreonXYPosition(${ktChartDouble(emitKotlinExpr(posX, 0))}, ${ktChartDouble(emitKotlinExpr(posY, 0))})`,
+    `position = PyreonXYPosition(${kotlinFlowCoord(posX)}, ${kotlinFlowCoord(posY)})`,
     `data = ${emitKotlinExpr(dataExpr, 0)}`,
     ...(widthExpr ? [`width = ${ktChartDouble(emitKotlinExpr(widthExpr, 0))}`] : []),
     ...(heightExpr ? [`height = ${ktChartDouble(emitKotlinExpr(heightExpr, 0))}`] : []),
@@ -3870,7 +3886,7 @@ function kotlinFlowPositionLiteral(arg: ExprIR): string | null {
   const x = arg.fields.find((f) => f.name === 'x')?.value
   const y = arg.fields.find((f) => f.name === 'y')?.value
   if (!x || !y) return null
-  return `PyreonXYPosition(${ktChartDouble(emitKotlinExpr(x, 0))}, ${ktChartDouble(emitKotlinExpr(y, 0))})`
+  return `PyreonXYPosition(${kotlinFlowCoord(x)}, ${kotlinFlowCoord(y)})`
 }
 
 /**
@@ -7485,7 +7501,11 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
   })
   overlays.push(...otherChildren.map((child) => `    ${emitKotlinChild(child, 4)}`))
   const overlaysCode = overlays.join('\n')
-  return `Box {\n  ${host}\n${overlaysCode}\n}`
+  // The overlays sit BESIDE the flow view, outside its own scoped colour
+  // mode; re-apply it around the stack so a <Panel> under colorMode="dark"
+  // themes like the web's `.pyreon-flow[data-color-mode]` descendants.
+  const stack = `Box {\n  ${host}\n${overlaysCode}\n}`
+  return colorModeAttr?.kind === 'attr' && colorModeAttr.value !== undefined ? `PyreonFlowColorMode(${emitKotlinExpr(colorModeAttr.value, 0)}) {\n${stack}\n}` : stack
 }
 
 function emitKotlinStandaloneFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -7544,7 +7564,14 @@ function emitKotlinFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): str
     return typeof value === 'number' ? `${value}${Number.isInteger(value) ? '.0' : ''}` : emitKotlinExpr(attr.value, 0)
   }
   const bool = (name: string, fallback: boolean): string => expr(name, String(fallback))
-  return `PyreonFlowMiniMapStyle(nodeColor = ${str('nodeColor', '#e2e8f0')}, maskColor = ${str('maskColor', '#000000')}, width = ${num('width', 200)}, height = ${num('height', 150)}, pannable = ${bool('pannable', true)}, zoomable = ${bool('zoomable', true)})`
+  // A static node colour lowers verbatim; an absent one (or a per-node
+  // callback, which travels separately as `miniMapNodeColor`) stays `null` so
+  // the palette's `minimapNode` — light or dark — decides at render time.
+  const nodeColorAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeColor')
+  const nodeColorValue = nodeColorAttr?.kind === 'attr' ? nodeColorAttr.value : undefined
+  const nodeColorIsCallback = nodeColorValue?.kind === 'arrow' || (nodeColorValue?.kind === 'identifier' && (_functionNames.has(nodeColorValue.name) || _moduleConstExprsKotlin.get(nodeColorValue.name)?.kind === 'arrow'))
+  const nodeColor = nodeColorValue === undefined || nodeColorIsCallback ? 'null' : emitKotlinExpr(nodeColorValue, 0)
+  return `PyreonFlowMiniMapStyle(nodeColor = ${nodeColor}, maskColor = ${str('maskColor', '#000000')}, width = ${num('width', 200)}, height = ${num('height', 150)}, pannable = ${bool('pannable', true)}, zoomable = ${bool('zoomable', true)})`
 }
 
 function emitKotlinFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
@@ -7574,7 +7601,10 @@ function emitKotlinFlowBackground(e: Extract<ExprIR, { kind: 'jsx-element' }>): 
     const value = attr.value.value
     return typeof value === 'number' ? `${value}${Number.isInteger(value) ? '.0' : ''}` : emitKotlinExpr(attr.value, 0)
   }
-  return `PyreonFlowBackgroundStyle(variant = ${resolvedVariant}, gap = ${num('gap', 20)}, size = ${num('size', 1)}, color = ${expr('color', '"#dddddd"')})`
+  // No colour → `null`: the renderer's palette supplies the light `#dddddd` or
+  // the dark `#374151` (`--pyreon-flow-bg-pattern`), which a baked literal
+  // would silently pin to light under `colorMode="dark"`.
+  return `PyreonFlowBackgroundStyle(variant = ${resolvedVariant}, gap = ${num('gap', 20)}, size = ${num('size', 1)}, color = ${expr('color', 'null')})`
 }
 
 /**
@@ -8744,8 +8774,14 @@ function kotlinAccessibilityHiddenModifier(
  * key per-target difference. Both consume the same canonical input
  * via the shared `resolveSpace`/`resolveColor`/`resolveRadius` helpers.
  */
+const EMPTY_OMIT: ReadonlySet<string> = new Set()
+
 function emitKotlinLayoutModifier(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  // Attrs the HOST consumes itself (a hosted `<FlowWebView background>` is
+  // the PAGE's background, not a view styling token). Skipped here so the
+  // generic tail never double-lowers a prop the host already lowered.
+  omit: ReadonlySet<string> = EMPTY_OMIT,
 ): string {
   const parts: string[] = []
   // `margin` — the OUTERMOST inset, so it goes FIRST.
@@ -8759,37 +8795,37 @@ function emitKotlinLayoutModifier(
   // Never implemented until now, though the Swift twin's docblock claimed it
   // was in scope. `margin` is on the shared `BaseLayoutProps`, so this was
   // silently dropped on Stack, Inline, Layer and Scroll, on both targets.
-  const margin = kotlinStylingValue(e, 'margin', resolveSpace)
+  const margin = (omit.has('margin') ? undefined : kotlinStylingValue(e, 'margin', resolveSpace))
   if (margin !== undefined) {
     parts.push(`.padding(${margin}.dp)`)
   }
-  const marginX = kotlinStylingValue(e, 'marginX', resolveSpace)
+  const marginX = (omit.has('marginX') ? undefined : kotlinStylingValue(e, 'marginX', resolveSpace))
   if (marginX !== undefined) {
     parts.push(`.padding(horizontal = ${marginX}.dp)`)
   }
-  const marginY = kotlinStylingValue(e, 'marginY', resolveSpace)
+  const marginY = (omit.has('marginY') ? undefined : kotlinStylingValue(e, 'marginY', resolveSpace))
   if (marginY !== undefined) {
     parts.push(`.padding(vertical = ${marginY}.dp)`)
   }
-  const padding = kotlinStylingValue(e, 'padding', resolveSpace)
+  const padding = (omit.has('padding') ? undefined : kotlinStylingValue(e, 'padding', resolveSpace))
   if (padding !== undefined) {
     parts.push(`.padding(${padding}.dp)`)
   }
-  const paddingX = kotlinStylingValue(e, 'paddingX', resolveSpace)
+  const paddingX = (omit.has('paddingX') ? undefined : kotlinStylingValue(e, 'paddingX', resolveSpace))
   if (paddingX !== undefined) {
     parts.push(`.padding(horizontal = ${paddingX}.dp)`)
   }
-  const paddingY = kotlinStylingValue(e, 'paddingY', resolveSpace)
+  const paddingY = (omit.has('paddingY') ? undefined : kotlinStylingValue(e, 'paddingY', resolveSpace))
   if (paddingY !== undefined) {
     parts.push(`.padding(vertical = ${paddingY}.dp)`)
   }
-  const background = kotlinStylingValue(e, 'background', (v) =>
+  const background = (omit.has('background') ? undefined : kotlinStylingValue(e, 'background', (v) =>
     resolveColor(String(v), 'kotlin'),
-  )
+  ))
   if (background !== undefined) {
     parts.push(`.background(${background})`)
   }
-  const radius = kotlinStylingValue(e, 'radius', (v) => resolveRadius(String(v)))
+  const radius = (omit.has('radius') ? undefined : kotlinStylingValue(e, 'radius', (v) => resolveRadius(String(v))))
   if (radius !== undefined) {
     // Bare `RoundedCornerShape` — consumer imports from
     // androidx.compose.foundation.shape. Same convention as Color +
@@ -9157,10 +9193,10 @@ function emitKotlinWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     _emitWarnings.push(
       '<WebView>: needs an `html` or `src` attribute on native; emitting an empty PyreonWebView().',
     )
-    return 'PyreonWebView()'
+    return `PyreonWebView(${kotlinWebViewModifierArg(e).replace(/^, /, '')})`
   }
   const args = [content, dataArg, onMsgArg].filter((a) => a !== undefined).join(', ')
-  return `PyreonWebView(${args})`
+  return `PyreonWebView(${args}${kotlinWebViewModifierArg(e)})`
 }
 
 function emitKotlinChartWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
@@ -9189,7 +9225,7 @@ function emitKotlinChartWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): st
     return attr?.kind === 'event' ? [`on${name[0]!.toUpperCase()}${name.slice(1)} = ${emitKotlinMessageHandler(attr.handler)}`] : []
   })
   const onMessage = callbackArgs.length === 0 ? '' : `, onMessage = { pyreonMsg -> pyreonDispatchChartWebViewMessage(pyreonMsg, ${callbackArgs.join(', ')}) }`
-  return `PyreonWebView(html = ${html}, data = ${data}${onMessage})`
+  return `PyreonWebView(html = ${html}, data = ${data}${onMessage}${kotlinWebViewModifierArg(e, HANDLED_CHART_WEBVIEW_PROPS)})`
 }
 
 function flowWebViewHostHtmlKotlin(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
@@ -9250,7 +9286,7 @@ function emitKotlinFlowWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): str
   const onMessage = callbackArgs.length === 0
     ? undefined
     : `onMessage = { pyreonMsg -> pyreonDispatchFlowWebViewMessage(pyreonMsg, ${callbackArgs.join(', ')}) }`
-  return `PyreonWebView(html = ${html}, data = ${data}${onMessage ? `, ${onMessage}` : ''})`
+  return `PyreonWebView(html = ${html}, data = ${data}${onMessage ? `, ${onMessage}` : ''}${kotlinWebViewModifierArg(e, HANDLED_FLOW_WEBVIEW_PROPS)})`
 }
 
 /**
@@ -9259,8 +9295,27 @@ function emitKotlinFlowWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): str
  * param keeps it (`{ m -> … }`); a zero-param arrow ignores it
  * (`{ _ -> … }`); a bare function reference is called with the message.
  */
+/**
+ * The `modifier = …` arg for a WebView-family host: the generic layout tail
+ * (`padding`/`margin`, `data-testid` → `Modifier.testTag`, a11y props) every
+ * primitive gets. `PyreonWebView` accepts `modifier` on the real runtime AND
+ * the stub; a host that omitted it was unselectable by `onNodeWithTag` — the
+ * same class the `<Toggle>` emitter had. Empty when nothing applies.
+ */
+function kotlinWebViewModifierArg(e: Extract<ExprIR, { kind: 'jsx-element' }>, omit?: ReadonlySet<string>): string {
+  const chain = emitKotlinLayoutModifier(e, omit)
+  return chain === '' ? '' : `, modifier = ${chain}`
+}
+
 function emitKotlinMessageHandler(handler: ExprIR): string {
   if (handler.kind === 'arrow') {
+    // A BLOCK body parses to an empty `body` with its statements in `stmts`;
+    // reading `body` alone emitted `{ _ -> }` and DROPPED the handler (mirror
+    // of the Swift fix). The generic action emitter already binds the lambda
+    // parameters and handles multi-statement / `async` bodies.
+    if (handler.stmts !== undefined && handler.stmts.length > 0) {
+      return emitKotlinAction(handler, 0)
+    }
     if (handler.body.kind === 'literal' && handler.body.value === '') {
       return '{ _ -> }'
     }
@@ -11050,6 +11105,19 @@ function emitKotlinRxCall(
 
 
 /** Kotlin refuses Int literals for Double params — `height={200}` must emit `200.0`. */
+/**
+ * A flow coordinate as a Kotlin Double. `PyreonXYPosition` takes Doubles, and
+ * an integer EXPRESSION (`col * 200` in a loop) does not widen implicitly, so
+ * `ktChartDouble`'s literal-only rewrite left it an Int argument mismatch. A
+ * non-literal is wrapped: `.toDouble()` is identity on a Double, so the wrap
+ * needs no type inference to be safe.
+ */
+function kotlinFlowCoord(x: ExprIR): string {
+  const text = emitKotlinExpr(x, 0)
+  if (isNumericLiteralOrNegation(x)) return ktChartDouble(text.replace(/^\((-\d+)\)$/, '$1'))
+  return `(${text}).toDouble()`
+}
+
 function ktChartDouble(text: string): string {
   return /^-?\d+$/.test(text) ? `${text}.0` : text
 }

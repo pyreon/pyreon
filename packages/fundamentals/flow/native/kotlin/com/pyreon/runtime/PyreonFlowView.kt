@@ -7,11 +7,16 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.requiredSize
@@ -35,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
@@ -68,7 +74,8 @@ data class PyreonFlowBackgroundStyle(
     val variant: PyreonFlowBackgroundVariant = PyreonFlowBackgroundVariant.Dots,
     val gap: Double = 20.0,
     val size: Double = 1.0,
-    val color: String = "#dddddd",
+    /** `null` follows the palette's `backgroundPattern` (light `#dddddd`). */
+    val color: String? = null,
 )
 
 enum class PyreonFlowControlsPosition { TopLeft, TopRight, BottomLeft, BottomRight }
@@ -88,7 +95,8 @@ data class PyreonFlowControlsStyle(
 )
 
 data class PyreonFlowMiniMapStyle(
-    val nodeColor: String = "#e2e8f0",
+    /** `null` follows the palette's `minimapNode` (light `#e2e8f0`). */
+    val nodeColor: String? = null,
     val maskColor: String = "#000000",
     val width: Double = 200.0,
     val height: Double = 150.0,
@@ -124,10 +132,84 @@ data class PyreonFlowConnectionLineContext(
 
 private val LocalPyreonFlowEdgeLabelPoint = staticCompositionLocalOf { PyreonFlowPathPoint(0.0, 0.0) }
 
+/**
+ * The colour tokens the web renderer exposes as `--pyreon-flow-*` variables,
+ * resolved per colour mode. `light` mirrors the web's fallback values and
+ * `dark` its `[data-color-mode="dark"]` block, so a `<Flow colorMode>` paints
+ * the same surfaces on every target. Every hex value here is the web's.
+ */
+data class PyreonFlowPalette(
+    val canvasBackground: String?,
+    val nodeBackground: String,
+    val nodeColor: String,
+    val nodeBorder: String,
+    val nodeSelected: String,
+    val edge: String,
+    val edgeLabel: String,
+    val accent: String,
+    val handleBackground: String,
+    val handleBorder: String,
+    val panelBackground: String,
+    val panelBorder: String,
+    val controlColor: String,
+    val minimapNode: String,
+    val backgroundPattern: String,
+    val resizerBackground: String,
+) {
+    companion object {
+        val light = PyreonFlowPalette(
+            canvasBackground = null, nodeBackground = "#ffffff", nodeColor = "#1a192b", nodeBorder = "#dddddd",
+            nodeSelected = "#3b82f6", edge = "#999999", edgeLabel = "#666666", accent = "#3b82f6",
+            handleBackground = "#555555", handleBorder = "#ffffff", panelBackground = "#ffffff", panelBorder = "#dddddd",
+            controlColor = "#555555", minimapNode = "#e2e8f0", backgroundPattern = "#dddddd", resizerBackground = "#ffffff",
+        )
+        val dark = PyreonFlowPalette(
+            canvasBackground = "#0b1220", nodeBackground = "#1f2937", nodeColor = "#f3f4f6", nodeBorder = "#374151",
+            nodeSelected = "#60a5fa", edge = "#6b7280", edgeLabel = "#9ca3af", accent = "#60a5fa",
+            handleBackground = "#374151", handleBorder = "#6b7280", panelBackground = "#111827", panelBorder = "#374151",
+            controlColor = "#e5e7eb", minimapNode = "#374151", backgroundPattern = "#374151", resizerBackground = "#60a5fa",
+        )
+
+        /**
+         * `"dark"` / `"light"` force a palette; anything else (`"system"`) follows the
+         * OS scheme — the web's `prefers-color-scheme` branch.
+         */
+        fun resolve(colorMode: String, systemDark: Boolean): PyreonFlowPalette = when (colorMode) {
+            "dark" -> dark
+            "light" -> light
+            else -> if (systemDark) dark else light
+        }
+
+        fun isDark(colorMode: String, systemDark: Boolean): Boolean =
+            colorMode == "dark" || (colorMode != "light" && systemDark)
+    }
+}
+
+/** The palette the nearest [PyreonFlowView] (or [PyreonFlowColorMode]) resolved. */
+val LocalPyreonFlowPalette = staticCompositionLocalOf { PyreonFlowPalette.light }
+
+/**
+ * Scopes a `<Flow colorMode>` to THIS subtree — the flow canvas and the `<Panel>`
+ * overlays the compiler stacks beside it — the way the web's `data-color-mode`
+ * attribute scopes its tokens to the `.pyreon-flow` container.
+ */
+@Composable
+fun PyreonFlowColorMode(colorMode: String, content: @Composable () -> Unit) {
+    val systemDark = isSystemInDarkTheme()
+    val palette = PyreonFlowPalette.resolve(colorMode, systemDark)
+    CompositionLocalProvider(LocalPyreonFlowPalette provides palette) {
+        if (colorMode == "dark" || colorMode == "light") {
+            MaterialTheme(colors = if (PyreonFlowPalette.isDark(colorMode, systemDark)) darkColors() else lightColors(), content = content)
+        } else {
+            content()
+        }
+    }
+}
+
 @Composable
 fun PyreonFlowEdgeLabelRenderer(content: @Composable () -> Unit) {
     val point = LocalPyreonFlowEdgeLabelPoint.current
-    Box(Modifier.offset { IntOffset(point.x.roundToInt(), point.y.roundToInt()) }) { content() }
+    Box(Modifier.offset { IntOffset((point.x * density).roundToInt(), (point.y * density).roundToInt()) }) { content() }
 }
 
 private fun pyreonFlowSegmentPosition(segments: List<PyreonFlowEdgeSegment>, atStart: Boolean): PyreonFlowPosition {
@@ -184,18 +266,23 @@ fun <T> PyreonFlowMiniMap(
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
+    val palette = LocalPyreonFlowPalette.current
     val layout = pyreonFlowMiniMapLayout(state, style.width, style.height)
     Canvas(
         modifier
-            .requiredSize(with(density) { style.width.toFloat().toDp() }, with(density) { style.height.toFloat().toDp() })
+            .requiredSize(style.width.toFloat().dp, style.height.toFloat().dp)
+            .background(pyreonFlowEdgeColor(palette.panelBackground).copy(alpha = 0.92f), RoundedCornerShape(4.dp))
+            .border(1.dp, pyreonFlowEdgeColor(palette.panelBorder), RoundedCornerShape(4.dp))
             .semantics { contentDescription = "minimap" }
             .pointerInput(layout, style.pannable) {
-                if (style.pannable) detectTapGestures { point ->
+                if (style.pannable) detectTapGestures { tap ->
+                    val point = tap / density.density
                     if (layout.scale > 0) state.setCenter(point.x / layout.scale + layout.minX - 40, point.y / layout.scale + layout.minY - 40)
                 }
             }
             .pointerInput(layout.scale, style.pannable, style.zoomable) {
-                detectTransformGestures { _, pan, zoom, _ ->
+                detectTransformGestures { _, panPx, zoom, _ ->
+                    val pan = panPx / density.density
                     if (style.pannable && layout.scale > 0) {
                         state.setViewport(x = state.viewport.x - pan.x / layout.scale * state.zoom, y = state.viewport.y - pan.y / layout.scale * state.zoom)
                     }
@@ -207,18 +294,22 @@ fun <T> PyreonFlowMiniMap(
                 }
             },
     ) {
+        // The layout is in dp (the unit of `style.width`); the canvas draws px.
+        val unit = density.density
+        withTransform({ scale(unit, unit, pivot = Offset.Zero) }) {
         val nodesById = state.nodes.associateBy { it.id }
         for (node in layout.nodes) {
             val resolved = nodesById[node.id]?.let(nodeColor).orEmpty()
-            drawRect(pyreonFlowEdgeColor(resolved.ifEmpty { style.nodeColor }), Offset(node.x.toFloat(), node.y.toFloat()), androidx.compose.ui.geometry.Size(node.width.toFloat(), node.height.toFloat()))
+            drawRect(pyreonFlowEdgeColor(resolved.ifEmpty { style.nodeColor ?: palette.minimapNode }), Offset(node.x.toFloat(), node.y.toFloat()), androidx.compose.ui.geometry.Size(node.width.toFloat(), node.height.toFloat()))
         }
         val vp = layout.viewport
         drawRect(
             pyreonFlowEdgeColor(style.maskColor),
             Offset(vp.x.toFloat(), vp.y.toFloat()),
             androidx.compose.ui.geometry.Size(vp.width.toFloat(), vp.height.toFloat()),
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1f),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1f / unit),
         )
+        }
     }
 }
 
@@ -257,13 +348,15 @@ fun PyreonFlowBackground(
     style: PyreonFlowBackgroundStyle,
     viewport: PyreonFlowViewport,
     modifier: Modifier = Modifier,
+    fallbackColor: String = PyreonFlowPalette.light.backgroundPattern,
 ) {
     Canvas(modifier) {
-        val step = maxOf(1f, (style.gap * viewport.zoom).toFloat())
-        val radius = maxOf(0.5f, (style.size * viewport.zoom).toFloat())
-        val x0 = viewport.x.toFloat() % step
-        val y0 = viewport.y.toFloat() % step
-        val color = pyreonFlowEdgeColor(style.color)
+        // Viewport and pattern are in dp, like iOS points and web CSS px.
+        val step = maxOf(1f, (style.gap * viewport.zoom).toFloat() * density)
+        val radius = maxOf(0.5f, (style.size * viewport.zoom).toFloat() * density)
+        val x0 = viewport.x.toFloat() * density % step
+        val y0 = viewport.y.toFloat() * density % step
+        val color = pyreonFlowEdgeColor(style.color ?: fallbackColor)
         when (style.variant) {
             PyreonFlowBackgroundVariant.Dots, PyreonFlowBackgroundVariant.Cross -> {
                 var x = x0
@@ -296,7 +389,8 @@ fun PyreonFlowBackground(
 fun <T> PyreonFlowView(
     state: PyreonFlowState<T>,
     modifier: Modifier = Modifier,
-    edgeColor: String = "#999999",
+    /** `null` follows the palette's `edge` colour (light `#999999`). */
+    edgeColor: String? = null,
     edgeWidth: Double = 1.5,
     background: PyreonFlowBackgroundStyle? = null,
     controls: PyreonFlowControlsStyle? = null,
@@ -320,7 +414,8 @@ fun <T> PyreonFlowView(
 fun <T> PyreonFlowView(
     state: PyreonFlowState<T>,
     modifier: Modifier = Modifier,
-    edgeColor: String = "#999999",
+    /** `null` follows the palette's `edge` colour (light `#999999`). */
+    edgeColor: String? = null,
     edgeWidth: Double = 1.5,
     background: PyreonFlowBackgroundStyle? = null,
     controls: PyreonFlowControlsStyle? = null,
@@ -339,11 +434,15 @@ fun <T> PyreonFlowView(
     customConnectionLine: @Composable (PyreonFlowConnectionLineContext) -> Unit = {},
     nodeContent: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit,
 ) {
-    val forceDark = colorMode == "dark"
-    val forceLight = colorMode == "light"
-    val systemDark = isSystemInDarkTheme()
-    val resolvedDark = if (colorMode == "system") systemDark else forceDark
+    val palette = PyreonFlowPalette.resolve(colorMode, isSystemInDarkTheme())
+    val resolvedEdgeColor = edgeColor ?: palette.edge
     val density = LocalDensity.current
+    // ONE graph/screen unit is a dp — iOS points, web CSS px. Compose hands this
+    // view px, so every value crossing between the two goes through `unit`. A
+    // px unit made a 150-unit node ~57dp on a 420dpi phone, and its 48dp
+    // resizer targets covered it completely, so a tap on the node never
+    // reached it (device-found).
+    val unit = density.density.toDouble()
     var interactionsLocked by remember { mutableStateOf(false) }
     var connectionDraft by remember { mutableStateOf<PyreonFlowConnectionDraft?>(null) }
     var reconnectDraft by remember { mutableStateOf<PyreonFlowReconnectDraft?>(null) }
@@ -361,12 +460,12 @@ fun <T> PyreonFlowView(
             )
         }
     }
-    val edgeStrokes = pyreonFlowEdgeStrokes(state, edgeColor, edgeWidth, nodeHandles).filter { !state.onlyRenderVisibleElements || pyreonFlowEdgeStrokeIsVisible(it, state) }.toMutableList().also { strokes ->
+    val edgeStrokes = pyreonFlowEdgeStrokes(state, resolvedEdgeColor, edgeWidth, nodeHandles).filter { !state.onlyRenderVisibleElements || pyreonFlowEdgeStrokeIsVisible(it, state) }.toMutableList().also { strokes ->
         connectionDraft?.let { draft ->
             strokes += PyreonFlowEdgeStroke(
                 "__connection-preview",
                 pyreonFlowConnectionPreview(state.connectionLineType, draft.source, draft.current),
-                edgeColor,
+                resolvedEdgeColor,
                 edgeWidth,
             )
         }
@@ -374,18 +473,42 @@ fun <T> PyreonFlowView(
             strokes += PyreonFlowEdgeStroke(
                 "__reconnect-preview",
                 listOf(PyreonFlowEdgeSegment.move(draft.fixed.x, draft.fixed.y), PyreonFlowEdgeSegment.line(draft.current.x, draft.current.y)),
-                edgeColor,
+                resolvedEdgeColor,
                 edgeWidth,
             )
         }
     }
+    val canvasBackground = palette.canvasBackground
     val content: @Composable () -> Unit = { Box(
-        modifier = modifier
+        // The web's `.pyreon-flow` is `width: 100%; height: 100%`: the canvas
+        // FILLS the box it is given. Wrapping to content instead measured it
+        // to the Controls column (device-found: a 360dp frame held a 110dp
+        // canvas with every node under the buttons).
+        modifier = Modifier.fillMaxSize().then(modifier)
+            .let { if (canvasBackground != null) it.background(pyreonFlowEdgeColor(canvasBackground)) else it }
             .semantics { contentDescription = ariaLabel }
             .focusable(enabled = !state.disableKeyboardA11y)
             .onKeyEvent { event -> state.handleKeyEvent(event) }
+            // Pinch belongs to the CANVAS, not the background sibling: a pinch that
+            // begins over a node, label or control must still zoom the graph (the
+            // iOS renderer found the same gap). Two pressed pointers are observed
+            // in the Initial pass and taken over; one-finger taps and drags still
+            // reach the content untouched.
+            .pointerInput(state, interactionsLocked) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    do {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        if (event.changes.count { it.pressed } >= 2 && !interactionsLocked && state.zoomable && state.zoomOnPinch) {
+                            val factor = event.calculateZoom()
+                            if (factor != 1f) state.zoomTo(state.viewport.zoom * factor)
+                            event.changes.forEach { it.consume() }
+                        }
+                    } while (event.changes.any { it.pressed })
+                }
+            }
             .onSizeChanged { size ->
-            state.containerSize = PyreonFlowContainerSize(size.width.toDouble(), size.height.toDouble())
+            state.containerSize = PyreonFlowContainerSize(size.width / unit, size.height / unit)
             if (state.fitViewOnLoad && !didInitialFit && size.width > 0 && size.height > 0) {
                 didInitialFit = true
                 state.fitView(padding = state.fitViewPadding)
@@ -403,27 +526,28 @@ fun <T> PyreonFlowView(
                     onDragEnd = {
                         val start = selectionStart; val end = selectionCurrent
                         if (start != null && end != null) state.selectNodes(state.nodesInSelection(
-                            PyreonXYPosition((start.x - state.viewport.x) / state.zoom, (start.y - state.viewport.y) / state.zoom),
-                            PyreonXYPosition((end.x - state.viewport.x) / state.zoom, (end.y - state.viewport.y) / state.zoom),
+                            PyreonXYPosition((start.x / unit - state.viewport.x) / state.zoom, (start.y / unit - state.viewport.y) / state.zoom),
+                            PyreonXYPosition((end.x / unit - state.viewport.x) / state.zoom, (end.y / unit - state.viewport.y) / state.zoom),
                         ))
                         selectionStart = null; selectionCurrent = null
                     },
                 ) { change, _ -> change.consume(); selectionCurrent = change.position }
                 else detectTransformGestures { _, pan, zoom, _ ->
                     if (interactionsLocked) return@detectTransformGestures
-                    if (state.pannable && state.panOnDrag) state.setViewport(x = state.viewport.x + pan.x, y = state.viewport.y + pan.y)
-                    if (state.zoomable && state.zoomOnPinch) state.zoomTo(state.viewport.zoom * zoom)
+                    if (state.pannable && state.panOnDrag) state.setViewport(x = state.viewport.x + pan.x / unit, y = state.viewport.y + pan.y / unit)
+                    // Zoom is handled once, by the canvas-level pinch above.
                 }
             }.pointerInput(state, edgeStrokes, state.viewport) {
-                detectTapGestures(onDoubleTap = { screen ->
+                detectTapGestures(onDoubleTap = { screenPx ->
+                    val screen = PyreonXYPosition(screenPx.x / unit, screenPx.y / unit)
                     if (!interactionsLocked && state.zoomable && state.zoomOnDoubleClick) {
                         val point = PyreonXYPosition((screen.x - state.viewport.x) / state.zoom, (screen.y - state.viewport.y) / state.zoom)
                         state.zoomTo(state.zoom * 1.2)
                         val next = state.zoom
                         state.setViewport(x = screen.x - point.x * next, y = screen.y - point.y * next, zoom = next)
                     }
-                }, onTap = { screen ->
-                    val point = PyreonFlowPathPoint((screen.x - state.viewport.x) / state.viewport.zoom, (screen.y - state.viewport.y) / state.viewport.zoom)
+                }, onTap = { screenPx ->
+                    val point = PyreonFlowPathPoint((screenPx.x / unit - state.viewport.x) / state.viewport.zoom, (screenPx.y / unit - state.viewport.y) / state.viewport.zoom)
                     val edge = pyreonNearestFlowEdge(edgeStrokes.filter { it.id != "__connection-preview" }, point, state.viewport.zoom)
                     if (edge != null) { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) }
                     else state.emitPaneClick(PyreonXYPosition(point.x, point.y))
@@ -432,7 +556,7 @@ fun <T> PyreonFlowView(
         )
 
         if (background != null) {
-            PyreonFlowBackground(background, state.viewport, Modifier.matchParentSize())
+            PyreonFlowBackground(background, state.viewport, Modifier.matchParentSize(), palette.backgroundPattern)
         }
 
         PyreonFlowEdgeCanvas(
@@ -450,14 +574,14 @@ fun <T> PyreonFlowView(
         if (selectionA != null && selectionB != null) Canvas(Modifier.matchParentSize()) {
             val left = minOf(selectionA.x, selectionB.x); val top = minOf(selectionA.y, selectionB.y)
             val size = androidx.compose.ui.geometry.Size(kotlin.math.abs(selectionB.x - selectionA.x), kotlin.math.abs(selectionB.y - selectionA.y))
-            drawRect(androidx.compose.ui.graphics.Color.Blue.copy(alpha = 0.10f), Offset(left, top), size)
-            drawRect(androidx.compose.ui.graphics.Color.Blue.copy(alpha = 0.8f), Offset(left, top), size, style = Stroke(width = 1f))
+            drawRect(pyreonFlowEdgeColor(palette.accent).copy(alpha = 0.10f), Offset(left, top), size)
+            drawRect(pyreonFlowEdgeColor(palette.accent).copy(alpha = 0.8f), Offset(left, top), size, style = Stroke(width = 1f))
         }
 
         Box(
             Modifier.matchParentSize().graphicsLayer {
-                translationX = state.viewport.x.toFloat()
-                translationY = state.viewport.y.toFloat()
+                translationX = (state.viewport.x * unit).toFloat()
+                translationY = (state.viewport.y * unit).toFloat()
                 scaleX = state.viewport.zoom.toFloat()
                 scaleY = state.viewport.zoom.toFloat()
                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
@@ -499,37 +623,47 @@ fun <T> PyreonFlowView(
             val visibleEdgeIds = edgeStrokes.mapTo(mutableSetOf()) { it.id }
             for (edge in pyreonFlowEdgeLabels(state, nodeHandles).filter { visibleEdgeIds.contains(it.id) }) {
                 var edgeModifier = Modifier
-                    .offset { IntOffset(edge.x.roundToInt(), edge.y.roundToInt()) }
-                    .clickable { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) }
+                    .offset { IntOffset((edge.x * unit).roundToInt(), (edge.y * unit).roundToInt()) }
+                    // CENTRED on the label point like the web's `translate(-50%, -50%)`
+                    // and Swift's `.position`; anchored top-left it ran along the
+                    // edge onto the target node's resizer and hid the target-end
+                    // marker (device-found).
+                    .graphicsLayer { translationX = -size.width / 2f; translationY = -size.height / 2f }
+                    // A tap gesture, not `clickable`: `clickable` inflates its hit box to
+                    // the 48dp minimum, and a label centred on a short edge then covered
+                    // neighbouring controls. The semantics action keeps it activatable.
+                    .pointerInput(edge.id) { detectTapGestures { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) } }
+                    .semantics { onClick { state.selectEdge(edge.id); state.emitEdgeClick(edge.id); true } }
                 edgeModifier = if (edge.focusable) edgeModifier.semantics {
                     contentDescription = edge.accessibilityLabel
                     selected = state.isEdgeSelected(edge.id)
                 } else edgeModifier.clearAndSetSemantics { }
                 Text(
                     edge.text ?: "",
-                    edgeModifier,
+                    if (edge.text == null) edgeModifier else edgeModifier.background(pyreonFlowEdgeColor(palette.panelBackground).copy(alpha = 0.9f)),
+                    color = pyreonFlowEdgeColor(palette.edgeLabel),
                 )
             }
             for (node in visibleNodes) {
                 val absolute = state.getAbsolutePosition(node.id)
                 val inlineStyle = pyreonFlowNodeInlineStyle(node.style)
                 var nodeModifier = Modifier
-                    .offset { IntOffset(absolute.x.roundToInt(), absolute.y.roundToInt()) }
+                    .offset { IntOffset((absolute.x * unit).roundToInt(), (absolute.y * unit).roundToInt()) }
                 val styledWidth = node.width ?: inlineStyle.width
                 val styledHeight = node.height ?: inlineStyle.height
-                if (styledWidth != null) nodeModifier = nodeModifier.width(with(density) { styledWidth.toFloat().toDp() })
-                if (styledHeight != null) nodeModifier = nodeModifier.height(with(density) { styledHeight.toFloat().toDp() })
+                if (styledWidth != null) nodeModifier = nodeModifier.width(styledWidth.toFloat().dp)
+                if (styledHeight != null) nodeModifier = nodeModifier.height(styledHeight.toFloat().dp)
                 nodeModifier = nodeModifier.defaultMinSize(
-                    minWidth = with(density) { PYREON_FLOW_DEFAULT_NODE_WIDTH.toFloat().toDp() },
-                    minHeight = with(density) { PYREON_FLOW_DEFAULT_NODE_HEIGHT.toFloat().toDp() },
+                    minWidth = PYREON_FLOW_DEFAULT_NODE_WIDTH.toFloat().dp,
+                    minHeight = PYREON_FLOW_DEFAULT_NODE_HEIGHT.toFloat().dp,
                 ).onSizeChanged { size ->
                     state.updateNodeMeasurement(node.id, size.width / density.density.toDouble(), size.height / density.density.toDouble())
                 }
-                if (inlineStyle.padding > 0) nodeModifier = nodeModifier.padding(with(density) { inlineStyle.padding.toFloat().toDp() })
-                val nodeShape = RoundedCornerShape(with(density) { inlineStyle.borderRadius.toFloat().toDp() })
+                if (inlineStyle.padding > 0) nodeModifier = nodeModifier.padding(inlineStyle.padding.toFloat().dp)
+                val nodeShape = RoundedCornerShape(inlineStyle.borderRadius.toFloat().dp)
                 inlineStyle.backgroundColor?.let { nodeModifier = nodeModifier.background(pyreonFlowEdgeColor(it), nodeShape) }
                 if (inlineStyle.borderWidth > 0 && inlineStyle.borderColor != null) nodeModifier = nodeModifier.border(
-                    with(density) { inlineStyle.borderWidth.toFloat().toDp() },
+                    inlineStyle.borderWidth.toFloat().dp,
                     pyreonFlowEdgeColor(inlineStyle.borderColor),
                     nodeShape,
                 )
@@ -554,7 +688,7 @@ fun <T> PyreonFlowView(
                             onDragEnd = { if (nodeDragStarts.isNotEmpty()) state.emitNodeDragEnd(node.id); nodeDragStarts = emptyMap() },
                         ) { change, _ ->
                             change.consume()
-                            val delta = change.position - change.previousPosition
+                            val delta = (change.position - change.previousPosition) / unit.toFloat()
                             val primary = nodeDragStarts[node.id] ?: return@detectDragGestures
                             val rawPrimary = PyreonXYPosition(primary.x + delta.x / state.viewport.zoom, primary.y + delta.y / state.viewport.zoom)
                             val snappedPrimary = state.snappedNodePosition(node.id, rawPrimary, nodeDragStarts.keys)
@@ -582,11 +716,13 @@ fun <T> PyreonFlowView(
                 Box(nodeModifier) { nodeContent(node, state.isNodeSelected(node.id), nodeDragStarts.containsKey(node.id)) }
             }
             for (handle in interactiveHandles) {
+                // Graph units ARE dp, so the 48dp platform floor is 48 units at zoom 1.
                 val diameter = 12.0 / state.viewport.zoom
+                val hitSize = maxOf(diameter, 48.0 / state.viewport.zoom)
                 Canvas(
                     Modifier
-                        .offset { IntOffset((handle.x - diameter / 2).roundToInt(), (handle.y - diameter / 2).roundToInt()) }
-                        .requiredSize(with(density) { diameter.toFloat().toDp() })
+                        .offset { IntOffset(((handle.x - hitSize / 2) * unit).roundToInt(), ((handle.y - hitSize / 2) * unit).roundToInt()) }
+                        .requiredSize(hitSize.toFloat().dp)
                         .semantics {
                             contentDescription = "${handle.type} handle ${handle.handleId ?: "default"}"
                             role = androidx.compose.ui.semantics.Role.Button
@@ -607,14 +743,20 @@ fun <T> PyreonFlowView(
                                     state.emitConnectEnd(completed)
                                     connectionDraft = null
                                 },
-                            ) { change, amount ->
+                            ) { change, _ ->
                                 change.consume()
-                                current = PyreonFlowPathPoint(current.x + amount.x, current.y + amount.y)
+                                // The ABSOLUTE pointer, not summed deltas: the first delta
+                                // Compose reports excludes the touch slop, so a summed
+                                // draft ended one slop short of the finger and a drop
+                                // exactly on a target handle missed it (device-found).
+                                // Local px inside the zoomed layer are graph units × unit.
+                                current = PyreonFlowPathPoint(handle.x - hitSize / 2 + change.position.x / unit, handle.y - hitSize / 2 + change.position.y / unit)
                                 connectionDraft = PyreonFlowConnectionDraft(handle, current)
                             }
                         },
                 ) {
-                    drawCircle(if (handle.type == "source") androidx.compose.ui.graphics.Color.Blue else androidx.compose.ui.graphics.Color.Green)
+                    drawCircle(pyreonFlowEdgeColor(palette.handleBackground), radius = (diameter / 2 * unit).toFloat())
+                    drawCircle(pyreonFlowEdgeColor(palette.handleBorder), radius = (diameter / 2 * unit).toFloat(), style = Stroke(width = 1f))
                 }
             }
             for (node in visibleNodes) {
@@ -628,10 +770,11 @@ fun <T> PyreonFlowView(
                     val x = if ('w' in direction) absolute.x else if ('e' in direction) absolute.x + width else absolute.x + width / 2
                     val y = if ('n' in direction) absolute.y else if ('s' in direction) absolute.y + height else absolute.y + height / 2
                     val diameter = config.handleSize / state.viewport.zoom
+                    val hitSize = maxOf(diameter, 48.0 / state.viewport.zoom)
                     Canvas(
                         Modifier
-                            .offset { IntOffset((x - diameter / 2).roundToInt(), (y - diameter / 2).roundToInt()) }
-                            .requiredSize(with(density) { diameter.toFloat().toDp() })
+                            .offset { IntOffset(((x - hitSize / 2) * unit).roundToInt(), ((y - hitSize / 2) * unit).roundToInt()) }
+                            .requiredSize(hitSize.toFloat().dp)
                             .semantics { contentDescription = "Resize $direction for node ${node.id}" }
                             .pointerInput(node.id, direction, config, state.viewport.zoom, interactionsLocked) {
                                 if (interactionsLocked) return@pointerInput
@@ -640,23 +783,26 @@ fun <T> PyreonFlowView(
                                 detectDragGestures(
                                     onDragStart = { state.pushHistory(); start = PyreonFlowResizeFrame(state.getNode(node.id)?.position ?: node.position, state.getNodeDimensions(node.id).width, state.getNodeDimensions(node.id).height) },
                                 ) { change, amount ->
-                                    change.consume(); dx += amount.x / state.viewport.zoom; dy += amount.y / state.viewport.zoom
+                                    change.consume(); dx += amount.x / unit / state.viewport.zoom; dy += amount.y / unit / state.viewport.zoom
                                     val frame = pyreonFlowResizeFrame(start, direction, dx, dy, config.minWidth, config.minHeight)
                                     state.updateNode(node.id) { current -> current.copy(position = frame.position, width = frame.width, height = frame.height) }
                                 }
                             },
                     ) {
-                        drawRect(androidx.compose.ui.graphics.Color.White)
-                        drawRect(androidx.compose.ui.graphics.Color.Blue, style = Stroke(width = (1.5 / state.viewport.zoom).toFloat()))
+                        val topLeft = Offset(((hitSize - diameter) / 2 * unit).toFloat(), ((hitSize - diameter) / 2 * unit).toFloat())
+                        val visualSize = androidx.compose.ui.geometry.Size((diameter * unit).toFloat(), (diameter * unit).toFloat())
+                        drawRect(pyreonFlowEdgeColor(palette.resizerBackground), topLeft = topLeft, size = visualSize)
+                        drawRect(pyreonFlowEdgeColor(palette.accent), topLeft = topLeft, size = visualSize, style = Stroke(width = (1.5 / state.viewport.zoom * unit).toFloat()))
                     }
                 }
             }
             for (updater in pyreonFlowEdgeUpdaters(state, edgeStrokes)) {
                 val diameter = 12.0 / state.viewport.zoom
+                val hitSize = maxOf(diameter, 48.0 / state.viewport.zoom)
                 Canvas(
                     Modifier
-                        .offset { IntOffset((updater.x - diameter / 2).roundToInt(), (updater.y - diameter / 2).roundToInt()) }
-                        .requiredSize(with(density) { diameter.toFloat().toDp() })
+                        .offset { IntOffset(((updater.x - hitSize / 2) * unit).roundToInt(), ((updater.y - hitSize / 2) * unit).roundToInt()) }
+                        .requiredSize(hitSize.toFloat().dp)
                         .semantics { contentDescription = "Reconnect ${updater.end} of edge ${updater.edgeId}" }
                         .pointerInput(updater, interactionsLocked, state.viewport.zoom) {
                             if (interactionsLocked) return@pointerInput
@@ -683,13 +829,17 @@ fun <T> PyreonFlowView(
                                     }
                                     reconnectDraft = null
                                 },
-                            ) { change, amount ->
+                            ) { change, _ ->
                                 change.consume()
-                                current = PyreonFlowPathPoint(current.x + amount.x, current.y + amount.y)
+                                // Absolute pointer, as for a new connection (slop-safe).
+                                current = PyreonFlowPathPoint(updater.x - hitSize / 2 + change.position.x / unit, updater.y - hitSize / 2 + change.position.y / unit)
                                 reconnectDraft = PyreonFlowReconnectDraft(updater, fixed, current)
                             }
                         },
-                ) { drawCircle(androidx.compose.ui.graphics.Color.Blue.copy(alpha = 0.35f)) }
+                ) {
+                    drawCircle(pyreonFlowEdgeColor(palette.accent).copy(alpha = 0.35f), radius = (diameter / 2 * unit).toFloat())
+                    drawCircle(pyreonFlowEdgeColor(palette.accent), radius = (diameter / 2 * unit).toFloat(), style = Stroke(width = (1.5 / state.viewport.zoom * unit).toFloat()))
+                }
             }
         }
 
@@ -708,7 +858,7 @@ fun <T> PyreonFlowView(
                 )
                 Box(
                     Modifier
-                        .offset { IntOffset(placement.x.roundToInt(), placement.y.roundToInt()) }
+                        .offset { IntOffset((placement.x * unit).roundToInt(), (placement.y * unit).roundToInt()) }
                         .graphicsLayer {
                             translationX = (-placement.anchorX * size.width).toFloat()
                             translationY = (-placement.anchorY * size.height).toFloat()
@@ -741,9 +891,6 @@ fun <T> PyreonFlowView(
             PyreonFlowMiniMap(state, miniMap, miniMapNodeColor, Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(10.dp))
         }
     } }
-    if (forceDark || forceLight) {
-        MaterialTheme(colors = if (resolvedDark) darkColors() else lightColors(), content = content)
-    } else {
-        content()
-    }
+    // Scoped to the canvas, like the web's `data-color-mode` attribute.
+    PyreonFlowColorMode(colorMode, content)
 }

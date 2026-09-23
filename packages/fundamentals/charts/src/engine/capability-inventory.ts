@@ -23,11 +23,19 @@
  *     contract (an unregistered map, a malformed markLine) is tagged
  *     `invalid-input` instead, which never counts against a row.
  *
+ *  4. The ECharts contract caps the row. Every key ECharts' own types define
+ *     is read, inert, or filed under a row in `echarts-contract.ts`
+ *     (enforced by `option-key-totality.test.ts`); while a row has an
+ *     unmapped key, no target of it can be complete, and the keys are listed
+ *     in its gaps.
+ *
  * Any target short of `complete` must say why in `gaps`, in words a user can
  * act on. The headline percentages are derived from these rows by
  * `chartCapabilityScore`; nothing types a number by hand.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-22.1' as const
+import { ECHARTS_CONTRACT_VERSION, ECHARTS_SERIES_GAPS, ECHARTS_TOP_GAPS } from './echarts-contract'
+
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-22.4' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -60,10 +68,38 @@ interface RowSpec {
   evidence: readonly string[]
 }
 
+/**
+ * The ECharts keys still unmapped for a row, from the measured contract
+ * (`echarts-contract.ts`): top-level keys by name, series keys as
+ * `type.key` — or by bare name when every series type shares the gap.
+ */
+function contractGapsFor(id: string): string[] {
+  const top = Object.entries(ECHARTS_TOP_GAPS).filter(([, r]) => r === id).map(([k]) => k)
+  const byKey = new Map<string, string[]>()
+  for (const [type, gaps] of Object.entries(ECHARTS_SERIES_GAPS)) {
+    for (const [k, r] of Object.entries(gaps)) if (r === id) byKey.set(k, [...(byKey.get(k) ?? []), type])
+  }
+  const typeCount = Object.keys(ECHARTS_SERIES_GAPS).length
+  const series = [...byKey].map(([k, types]) => (types.length === typeCount || types.length > 3 ? `series.${k}` : types.map((t) => `${t}.${k}`).join(', ')))
+  return [...top, ...series]
+}
+
+const cap = (s: ChartCapabilityStatus, max: ChartCapabilityStatus): ChartCapabilityStatus => (RANK[s] > RANK[max] ? max : s)
+
+/**
+ * A row as declared, capped by the contract: while ANY ECharts key filed
+ * under the row is unmapped, no target can be complete, and the unmapped keys
+ * are named in the row's gaps. The declared status is therefore "complete
+ * apart from the keys the contract lists", and it takes effect only once that
+ * list is empty.
+ */
 const row = (id: string, area: ChartCapabilityArea, mode: ChartCapabilityMode, spec: RowSpec): ChartCapability => {
-  const targets = { web: spec.web, ios: spec.native, android: spec.native }
+  const unmapped = mode === 'direct' ? contractGapsFor(id) : []
+  const ceiling: ChartCapabilityStatus = unmapped.length > 0 ? 'partial' : 'complete'
+  const targets = { web: cap(spec.web, ceiling), ios: cap(spec.native, ceiling), android: cap(spec.native, ceiling) }
   const status = CHART_CAPABILITY_TARGETS.map((t) => targets[t]).reduce((a, b) => (RANK[b] < RANK[a] ? b : a))
-  return { id, area, mode, targets, status, gaps: spec.gaps ?? [], evidence: spec.evidence }
+  const gaps = [...(spec.gaps ?? []), ...(unmapped.length > 0 ? [`ECharts ${ECHARTS_CONTRACT_VERSION} keys not yet mapped (${unmapped.length}): ${unmapped.join(', ')}`] : [])]
+  return { id, area, mode, targets, status, gaps, evidence: spec.evidence }
 }
 
 const NATIVE = '../../native/compiler/src/tests/'
@@ -192,9 +228,9 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
   }),
   row('series.boxplot', 'series', 'direct', {
-    web: 'complete',
+    web: 'partial',
     native: 'partial',
-    gaps: [LITERAL_ONLY],
+    gaps: ['an option boxplot renders as a static SVG on the web — no hit test, tooltip or keyboard — because `<BoxplotChart>` takes raw observations, not five-number summaries', LITERAL_ONLY],
     evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
   }),
   row('series.candlestick', 'series', 'direct', {
@@ -267,11 +303,23 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'partial',
     native: 'partial',
     gaps: [
-      'only radar, polar, boxplot, geo and single-axis families render more than one series; every other family draws series[0] and warns',
-      'a family series never shares a chart with a cartesian series (candlestick + volume, pie beside a line)',
+      'a family series cannot share ONE grid with cartesian series (candles with moving-average lines on the same axes); on separate grids, or as separate layers, it can',
+      'a single family chart fills the box; ECharts\' default placement (a 75% radius, the funnel margins) and its box keys apply only when several charts share an option',
       FIRST_SERIES_ONLY,
     ],
-    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+    evidence: ['src/engine/option-layers.test.ts', 'src/engine/option-layers.browser.test.tsx', 'src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+  }),
+  row('series.chord', 'series', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/chord.test.ts', NATIVE + 'chart-chord-native.test.ts'],
+  }),
+  row('series.parallel', 'series', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/parallel.test.ts', NATIVE + 'chart-orient-native.test.ts'],
   }),
   row('series.extensions', 'series', 'hosted', {
     web: 'complete',
@@ -303,16 +351,20 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'partial',
     native: 'partial',
     gaps: [
-      'the option reads `tooltip` as show/hide only: `trigger`, `formatter`, `valueFormatter`, `position` and `confine` are dropped WITHOUT a warning',
+      '`appendToBody` / `appendTo`, the richText render mode and `displayMode: "multipleByCoordSys"` are named and not honoured',
+      'a FAMILY option chart (pie, sankey, …) shows its host\'s own tooltip; the option\'s `formatter` / `position` apply to cartesian charts only',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/option-encode-tooltip.test.ts', NATIVE + 'chart-plot-tooltip-native.test.ts'],
+    evidence: ['src/engine/option-tooltip.test.ts', 'src/engine/tooltip-format.test.ts', 'src/engine/tooltip-html.test.ts', 'src/engine/option-tooltip.browser.test.tsx', NATIVE + 'chart-plot-tooltip-native.test.ts'],
   }),
   row('coordinates.axis-pointer', 'coordinates', 'direct', {
-    web: 'pending',
+    web: 'partial',
     native: 'pending',
-    gaps: ['there is no `axisPointer` component; `<PlotChart crosshair>` is a host prop, not an option key, and does not cross'],
-    evidence: ['src/engine/interaction.test.ts'],
+    gaps: [
+      '`tooltip.axisPointer` (line / shadow / cross with axis labels) draws on a vertical category axis; the top-level `axisPointer` component, `xAxis.axisPointer` and horizontal (category-on-y) charts are not covered',
+      'native: the axis pointer follows a hover, which a touch target does not have',
+    ],
+    evidence: ['src/engine/axis-pointer.test.ts', 'src/engine/option-tooltip.browser.test.tsx'],
   }),
   row('coordinates.aria', 'coordinates', 'direct', {
     web: 'partial',
@@ -339,9 +391,9 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     evidence: ['src/engine/option-orient.test.ts', NATIVE + 'chart-orient-native.test.ts'],
   }),
   row('coordinates.single-axis', 'coordinates', 'direct', {
-    web: 'complete',
+    web: 'partial',
     native: 'partial',
-    gaps: [LITERAL_ONLY, 'native: SingleAxisChart has no device test'],
+    gaps: ['an option single-axis chart renders as a static SVG on the web (no interactive host)', LITERAL_ONLY, 'native: SingleAxisChart has no device test'],
     evidence: ['src/engine/single-axis.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
   }),
   row('coordinates.axes', 'coordinates', 'direct', {
@@ -417,6 +469,18 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     native: 'partial',
     gaps: ['out-of-brush visuals other than colorAlpha and every in-brush visual are ignored; brush binds the one grid only', LITERAL_ONLY],
     evidence: ['src/engine/brush-area.test.ts', 'src/engine/option-brush.test.ts', 'src/engine/brush-area.browser.test.tsx', NATIVE + 'chart-brush-native.test.ts', ...DEVICE],
+  }),
+  row('coordinates.matrix', 'coordinates', 'direct', {
+    web: 'pending',
+    native: 'pending',
+    gaps: ['the ECharts 6 `matrix` coordinate system (a grid of cells series are placed into) is not implemented'],
+    evidence: ['src/engine/option.test.ts'],
+  }),
+  row('coordinates.thumbnail', 'coordinates', 'direct', {
+    web: 'pending',
+    native: 'pending',
+    gaps: ['the ECharts 6 `thumbnail` component (an overview of a roamed chart) is not implemented'],
+    evidence: ['src/engine/option.test.ts'],
   }),
   row('coordinates.media', 'coordinates', 'direct', {
     web: 'pending',
@@ -552,15 +616,34 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     gaps: ['`path://` and `image://` decal symbols are not drawn', LITERAL_ONLY],
     evidence: ['src/engine/pattern-marks.test.ts', 'src/engine/option-fills-marks.test.ts', NATIVE + 'chart-decals-native.test.ts', ...DEVICE],
   }),
+  row('presentation.layering', 'presentation', 'direct', {
+    web: 'pending',
+    native: 'pending',
+    gaps: ['series are drawn in declaration order; `z`, `zlevel` and `blendMode` do not reorder or composite them'],
+    evidence: ['src/engine/option.test.ts'],
+  }),
+  row('presentation.palette', 'presentation', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/presets.test.ts', 'src/engine/theme.test.ts', NATIVE + 'chart-theme-native.test.ts'],
+  }),
+  row('presentation.theme', 'presentation', 'direct', {
+    web: 'complete',
+    native: 'partial',
+    gaps: [LITERAL_ONLY],
+    evidence: ['src/engine/theme.test.ts', 'src/engine/theme-locale.test.ts', NATIVE + 'chart-theme-native.test.ts'],
+  }),
   row('presentation.animation', 'presentation', 'direct', {
     web: 'partial',
     native: 'partial',
     gaps: [
-      'the option\'s `animation`, `animationDuration`, `animationEasing`, `animationDelay` and the update variants are accepted and NEVER READ, with no warning',
-      'one easing curve (cubic ease-out) instead of the ECharts easing table',
+      'per-datum FUNCTION durations and delays (ECharts\' staggered entrance) fall back to one timeline, and series that ask for different timings share the first one',
+      '`stateAnimation` (the hover / select state transition) and pie / sunburst `animationType` are not played',
+      'native: the easing table and the option\'s timings do not cross yet (the native entrance is the fixed cubic ease-out)',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/cmd-tween.test.ts', 'src/engine/tween.test.ts', NATIVE + 'native-chart-transition-parity.test.ts', NATIVE + 'chart-entrance-native.test.ts'],
+    evidence: ['src/engine/easing.test.ts', 'src/engine/animation-option.test.ts', 'src/engine/option-animation.browser.test.tsx', 'src/engine/cmd-tween.test.ts', NATIVE + 'native-chart-transition-parity.test.ts', NATIVE + 'chart-entrance-native.test.ts'],
   }),
   row('presentation.universal-transition', 'presentation', 'direct', {
     web: 'complete',

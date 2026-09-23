@@ -46,6 +46,8 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.pinch
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -566,6 +568,63 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("flow-back").performClick()
         assertTagDisplayed("tasks-page", "after flow-back (/flow -> /tasks)")
 
+        // F6 scale proof: 400 nodes with culling on. Every assertion is a COUNT
+        // or an identity, so it is deterministic on any emulator.
+        composeRule.onNodeWithTag("tasks-flow-scale").performClick()
+        assertTagDisplayed("flow-scale-page", "after tasks-flow-scale (/tasks -> /flow-scale)")
+        composeRule.onNodeWithTag("flow-scale-total").assertTextEquals("0")
+        composeRule.onNodeWithTag("flow-scale-load").performClick()
+        waitForTagText("flow-scale-total", "400")
+        fun gridNode(index: Int) = composeRule.onNodeWithContentDescription("grid node $index", useUnmergedTree = true)
+        fun mountedGridNodes() = composeRule
+            .onAllNodes(hasContentDescription("grid node ", substring = true), useUnmergedTree = true)
+            .fetchSemanticsNodes().size
+        composeRule.waitUntil(10_000) { mountedGridNodes() > 0 }
+        gridNode(0).assertExists()
+        // The ceiling: a phone canvas shows a few columns of 200dp-spaced nodes.
+        // Mounting all 400 would mean culling is off.
+        val mountedAtOrigin = mountedGridNodes()
+        check(mountedAtOrigin in 2..40) { "culling mounted $mountedAtOrigin of 400 nodes at the origin viewport" }
+        // The grid renders through a CUSTOM node with its own handles, so its
+        // renderer is culled too: one target handle per mounted node, no more.
+        val targetHandles = composeRule
+            .onAllNodes(hasContentDescription("target handle in"), useUnmergedTree = true)
+            .fetchSemanticsNodes().size
+        check(targetHandles == mountedAtOrigin) { "custom-node handles are not culled with their nodes: $targetHandles handles for $mountedAtOrigin nodes" }
+        // Panning swaps WHICH nodes are mounted: node 0 leaves, node 170 (row 8,
+        // column 10, placed exactly at the new viewport origin) arrives.
+        composeRule.onNodeWithTag("flow-scale-pan").performClick()
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodes(hasContentDescription("grid node 170"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        gridNode(0).assertDoesNotExist()
+        check(mountedGridNodes() <= 40) { "culling mounted ${mountedGridNodes()} nodes after the pan" }
+        // A node that scrolled in is live: dragging it reaches the engine.
+        val farBefore = textOf("flow-scale-far-pos")
+        gridNode(170).performTouchInput {
+            down(center)
+            moveBy(Offset(24f, 0f))
+            moveBy(Offset(40f, 15f))
+            moveBy(Offset(40f, 15f))
+            up()
+        }
+        composeRule.waitUntil(5_000) { textOf("flow-scale-far-pos") != farBefore }
+        // Pinching out zooms the engine and widens the culled set, and the set
+        // stays bounded rather than falling back to every node.
+        val zoomBefore = textOf("flow-scale-zoom")
+        composeRule.onNodeWithContentDescription("Scale flow").performTouchInput {
+            pinch(
+                start0 = center + Offset(-200f, 0f),
+                end0 = center + Offset(-60f, 0f),
+                start1 = center + Offset(200f, 0f),
+                end1 = center + Offset(60f, 0f),
+            )
+        }
+        composeRule.waitUntil(5_000) { textOf("flow-scale-zoom") != zoomBefore }
+        check(mountedGridNodes() < 200) { "culling mounted ${mountedGridNodes()} of 400 nodes after zooming out" }
+        composeRule.onNodeWithTag("flow-scale-back").performClick()
+        assertTagDisplayed("tasks-page", "after flow-scale-back (/flow-scale -> /tasks)")
+
         composeRule
             .onNodeWithTag("tasks-lifecycle")
             .performClick()
@@ -966,6 +1025,14 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("gal-growth-toggle").performScrollTo().performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("gal-growth-count").performScrollTo().assertTextEquals("3")
+        // `@pyreon/flow/webview` on device — mirror of the iOS assertion: the
+        // hosted renderer's `fit-view` posts `viewport-change` back over the
+        // bridge into native Text; a second command id moves the count 1→2.
+        composeRule.onNodeWithTag("gal-flow-webview").performScrollTo().assertExists()
+        waitForTagText("gal-flow-webview-event", "viewport-change")
+        waitForTagText("gal-flow-webview-events", "1")
+        composeRule.onNodeWithTag("gal-flow-webview-fit").performScrollTo().performClick()
+        waitForTagText("gal-flow-webview-events", "2")
         // The lines trail renders. Its MOTION is proven on the iOS device lane
         // and in real Chromium; here it cannot be: the trail runs on
         // withInfiniteAnimationFrameNanos (a plain frame loop kept this harness

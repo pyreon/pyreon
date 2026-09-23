@@ -52,6 +52,12 @@ import { decimateShared, samplingRequest } from './sampling'
 import type { SamplingRequest } from './sampling'
 import type { ChartGradientStop, ChartPattern, DrawCmd, Domain, Double, MeasureText, Pt, Rect } from './types'
 import type { SeriesGradient } from './gradient'
+import { ANIMATION_KEYS, resolveAnimation } from './animation-option'
+import { readTooltipOption } from './option-tooltip'
+import { splitLayers } from './option-layers'
+import type { LayerPart } from './option-layers'
+import type { TooltipSpec } from './option-tooltip'
+import type { ChartAnimation } from './animation-option'
 
 /** An ECharts-shaped option. Loosely typed on purpose: the facade VALIDATES. */
 export type EChartsOption = Record<string, unknown>
@@ -83,6 +89,10 @@ export interface CompiledOption {
   /** Legend entries, or null when the option hides the legend. */
   legend: LegendEntry[] | null
   tooltip: boolean
+  /** ECharts' whole `tooltip` component, read (null when the option declares none). */
+  tooltipSpec: TooltipSpec | null
+  /** The animation the option asks for (ECharts' `animation*` keys). */
+  animation: ChartAnimation
   warnings: OptionWarning[]
   /**
    * False when a series could not be mapped at all. A chart missing one of
@@ -111,17 +121,18 @@ export interface CompileOptions {
   locale?: string | undefined
 }
 
-const KNOWN_TOP = new Set([
+export const KNOWN_TOP: ReadonlySet<string> = new Set([
+  ...ANIMATION_KEYS,
   'aria',
   'series', 'xAxis', 'yAxis', 'title', 'legend', 'tooltip', 'color', 'grid',
-  'animation', 'backgroundColor', 'textStyle', 'dataset', 'graphic', 'visualMap', 'dataZoom', 'toolbox', 'brush',
+  'backgroundColor', 'textStyle', 'dataset', 'graphic', 'visualMap', 'dataZoom', 'toolbox', 'brush',
 ])
-const KNOWN_SERIES = new Set([
+export const KNOWN_SERIES: ReadonlySet<string> = new Set([
+  ...ANIMATION_KEYS,
   'type', 'name', 'data', 'stack', 'smooth', 'step', 'areaStyle', 'itemStyle',
   'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'xAxisIndex', 'markLine', 'markPoint', 'markArea',
-  'color', 'showSymbol', 'symbol', 'emphasis', 'z', 'zlevel', 'silent',
-  'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'rippleEffect', 'showEffectOn',
-  'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex', 'tooltipExtras',
+  'color', 'showSymbol', 'symbol', 'emphasis', 'silent',
+  'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex', 'tooltipExtras',
   'coordinateSystem', 'polyline', 'effect', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'sampling',
   'select', 'blur', 'selectedMode',
 ])
@@ -964,7 +975,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       ? null
       : series.map((s) => ({ label: s.label, color: s.color }))
   const tooltipRaw = option['tooltip']
-  const tooltip = tooltipRaw !== undefined && !(isObj(tooltipRaw) && tooltipRaw['show'] === false)
+  const tooltipSpec = readTooltipOption(tooltipRaw, warn)
+  const tooltip = tooltipSpec !== null && tooltipSpec.show
 
   // A custom-only chart still needs axes: seed them from the custom extents.
   let customY: { min: Double; max: Double } | undefined = undefined
@@ -1061,7 +1073,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   let zoom = option['dataZoom'] === undefined ? undefined : readDataZoom(option as Record<string, unknown>, spec.categories, warn)
   // The toolbox's box zoom needs a window even when the option has no dataZoom component.
   if (zoom === undefined && toolbox?.dataZoom === true) zoom = { inside: false, slider: false, window: { start: 0.0, end: 1.0 }, keepY: false, lock: false, minSpan: 0.0, maxSpan: 1.0, wheel: false, move: false }
-  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }), ...(brush === undefined ? {} : { brush }) }
+  const animation = resolveAnimation(option as Record<string, unknown>, warn)
+  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, tooltipSpec, animation, warnings, supported, ...(selectedMode === undefined ? {} : { selectedMode }), ...(zoom === undefined ? {} : { zoom }), ...(toolbox === undefined ? {} : { toolbox }), ...(brush === undefined ? {} : { brush }) }
 }
 
 /** The selection a compiled option's brush makes over `spec`, restricted to `brush.seriesIndex`. */
@@ -1144,11 +1157,27 @@ export type OptionPlan =
   | { kind: 'family'; compiled: CompiledFamily }
   /** A multi-`grid` option: one plan per grid, each with its pixel rect. */
   | { kind: 'grids'; parts: { plan: OptionPlan; rect: Rect }[]; warnings: OptionWarning[] }
+  /** Several charts in one option (`splitLayers`): one plan per layer, each with its pixel rect. */
+  | { kind: 'layers'; parts: { plan: OptionPlan; rect: Rect; layer: LayerPart['kind'] }[]; warnings: OptionWarning[] }
+
+/** The options minus the timeline step: a layer is planned from an option whose timeline is already resolved. */
+function withoutTimeline<T extends CompileOptions>(opts: T): Omit<T, 'timelineIndex'> {
+  const { timelineIndex: _step, ...rest } = opts
+  return rest
+}
 
 /** Route an option to the cartesian or the family compiler (a `timeline` step is resolved first; several `grid`s become one plan each). */
 export function planOption(rawOption: EChartsOption, opts: CompileOptions = {}): OptionPlan {
   const tl = resolveTimeline(rawOption, opts.timelineIndex)
   const option = tl.option as EChartsOption
+  const layers = splitLayers(option, opts.width ?? 640.0, opts.height ?? 320.0)
+  if (layers !== null) {
+    return {
+      kind: 'layers',
+      parts: layers.map((l) => ({ plan: planOption(l.option as EChartsOption, { ...withoutTimeline(opts), width: l.rect.w, height: l.rect.h }), rect: l.rect, layer: l.kind })),
+      warnings: tl.warnings,
+    }
+  }
   const parts = splitGrids(option, opts.width ?? 640.0, opts.height ?? 320.0)
   if (parts !== null) {
     return { kind: 'grids', parts: parts.map((p) => ({ plan: planOption(p.option as EChartsOption, { ...opts, width: p.rect.w, height: p.rect.h }), rect: p.rect })), warnings: tl.warnings }
@@ -1174,6 +1203,17 @@ export function optionToSvg(rawOption: EChartsOption, opts: OptionToSvgOptions =
   const width = opts.width ?? 640.0
   const height = opts.height ?? 320.0
   const stripH = steps === null ? 0.0 : TIMELINE_HEIGHT
+  const layers = splitLayers(option, width, height - stripH)
+  if (layers !== null) {
+    // Every layer is a whole chart of its own, drawn in its rect; the
+    // whole-canvas overlays and the timeline strip go on top once.
+    const rendered = layers.map((l) => ({ svg: optionToSvg(l.option as EChartsOption, { ...withoutTimeline(opts), width: l.rect.w, height: l.rect.h }), x: l.rect.x, y: l.rect.y }))
+    const overlay: DrawCmd[] = [...visualMapCommands(option, width, height - stripH).cmds, ...graphicCommands(option, width, height - stripH).cmds]
+    if (steps !== null) for (const c of timelineCommands(steps, width, height - stripH, stripH)) overlay.push(c)
+    return composeSvg(rendered, overlay, width, height, {
+      ...(typeof option['backgroundColor'] === 'string' ? { background: option['backgroundColor'] as string } : {}),
+    })
+  }
   const parts = splitGrids(option, width, height - stripH)
   if (parts === null && steps === null) return optionToSvgSingle(option, opts)
   // Composite: each grid (or the whole chart) rendered on its own, laid into one document.

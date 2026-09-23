@@ -1,5 +1,87 @@
 import SwiftUI
 
+/// The colour tokens the web renderer exposes as `--pyreon-flow-*` variables,
+/// resolved per colour mode. `light` mirrors the web's fallback values and
+/// `dark` its `[data-color-mode="dark"]` block, so a `<Flow colorMode>` paints
+/// the same surfaces on every target. Every hex value here is the web's.
+public struct PyreonFlowPalette: Equatable {
+    public var canvasBackground: String?
+    public var nodeBackground: String
+    public var nodeColor: String
+    public var nodeBorder: String
+    public var nodeSelected: String
+    public var edge: String
+    public var edgeLabel: String
+    public var accent: String
+    public var handleBackground: String
+    public var handleBorder: String
+    public var panelBackground: String
+    public var panelBorder: String
+    public var controlColor: String
+    public var minimapNode: String
+    public var backgroundPattern: String
+    public var resizerBackground: String
+
+    public static let light = PyreonFlowPalette(
+        canvasBackground: nil, nodeBackground: "#ffffff", nodeColor: "#1a192b", nodeBorder: "#dddddd",
+        nodeSelected: "#3b82f6", edge: "#999999", edgeLabel: "#666666", accent: "#3b82f6",
+        handleBackground: "#555555", handleBorder: "#ffffff", panelBackground: "#ffffff", panelBorder: "#dddddd",
+        controlColor: "#555555", minimapNode: "#e2e8f0", backgroundPattern: "#dddddd", resizerBackground: "#ffffff")
+    public static let dark = PyreonFlowPalette(
+        canvasBackground: "#0b1220", nodeBackground: "#1f2937", nodeColor: "#f3f4f6", nodeBorder: "#374151",
+        nodeSelected: "#60a5fa", edge: "#6b7280", edgeLabel: "#9ca3af", accent: "#60a5fa",
+        handleBackground: "#374151", handleBorder: "#6b7280", panelBackground: "#111827", panelBorder: "#374151",
+        controlColor: "#e5e7eb", minimapNode: "#374151", backgroundPattern: "#374151", resizerBackground: "#60a5fa")
+
+    /// `"dark"` / `"light"` force a palette; anything else (`"system"`) follows
+    /// the scheme the view resolves from its environment — the web's
+    /// `prefers-color-scheme` branch.
+    public static func resolve(colorMode: String, systemScheme: ColorScheme) -> PyreonFlowPalette {
+        if colorMode == "dark" { return .dark }
+        if colorMode == "light" { return .light }
+        return systemScheme == .dark ? .dark : .light
+    }
+
+    public static func scheme(colorMode: String, systemScheme: ColorScheme) -> ColorScheme {
+        colorMode == "dark" ? .dark : colorMode == "light" ? .light : systemScheme
+    }
+
+    var canvasBackgroundColor: Color { canvasBackground.map(pyreonFlowEdgeColor) ?? Color.clear }
+}
+
+private struct PyreonFlowPaletteKey: EnvironmentKey {
+    static let defaultValue = PyreonFlowPalette.light
+}
+
+extension EnvironmentValues {
+    /// The palette the nearest `PyreonFlowView` (or `pyreonFlowColorMode`) resolved.
+    public var pyreonFlowPalette: PyreonFlowPalette {
+        get { self[PyreonFlowPaletteKey.self] }
+        set { self[PyreonFlowPaletteKey.self] = newValue }
+    }
+}
+
+private struct PyreonFlowColorModeModifier: ViewModifier {
+    let colorMode: String
+    @Environment(\.colorScheme) private var systemScheme
+    func body(content: Content) -> some View {
+        content
+            .environment(\.colorScheme, PyreonFlowPalette.scheme(colorMode: colorMode, systemScheme: systemScheme))
+            .environment(\.pyreonFlowPalette, PyreonFlowPalette.resolve(colorMode: colorMode, systemScheme: systemScheme))
+    }
+}
+
+extension View {
+    /// Scopes a `<Flow colorMode>` to THIS subtree — the flow canvas and the
+    /// `<Panel>` overlays the compiler stacks beside it — the way the web's
+    /// `data-color-mode` attribute scopes its tokens to the `.pyreon-flow`
+    /// container. `.preferredColorScheme` would instead re-theme the whole
+    /// window, which is not what the web does.
+    public func pyreonFlowColorMode(_ colorMode: String) -> some View {
+        modifier(PyreonFlowColorModeModifier(colorMode: colorMode))
+    }
+}
+
 public struct PyreonFlowMiniMapNode: Equatable {
     public var id: String; public var x: Double; public var y: Double; public var width: Double; public var height: Double
 }
@@ -87,8 +169,9 @@ public struct PyreonFlowMiniMapLayout: Equatable {
 }
 
 public struct PyreonFlowMiniMapStyle: Equatable {
-    public var nodeColor: String; public var maskColor: String; public var width: Double; public var height: Double; public var pannable: Bool; public var zoomable: Bool
-    public init(nodeColor: String = "#e2e8f0", maskColor: String = "#000000", width: Double = 200, height: Double = 150, pannable: Bool = true, zoomable: Bool = true) {
+    /// `nil` follows the palette's `minimapNode` (light `#e2e8f0`).
+    public var nodeColor: String?; public var maskColor: String; public var width: Double; public var height: Double; public var pannable: Bool; public var zoomable: Bool
+    public init(nodeColor: String? = nil, maskColor: String = "#000000", width: Double = 200, height: Double = 150, pannable: Bool = true, zoomable: Bool = true) {
         self.nodeColor = nodeColor; self.maskColor = maskColor; self.width = width; self.height = height; self.pannable = pannable; self.zoomable = zoomable
     }
 }
@@ -195,6 +278,7 @@ public struct PyreonFlowMiniMap<T>: View {
     private let nodeColor: (PyreonFlowNode<T>) -> String
     @State private var panStart: PyreonFlowViewport?
     @State private var zoomStart: (zoom: Double, centerX: Double, centerY: Double)?
+    @Environment(\.pyreonFlowPalette) private var palette
     public init(state: PyreonFlowState<T>, style: PyreonFlowMiniMapStyle = PyreonFlowMiniMapStyle(), nodeColor: @escaping (PyreonFlowNode<T>) -> String = { _ in "" }) {
         self.state = state; self.style = style; self.nodeColor = nodeColor
     }
@@ -204,15 +288,15 @@ public struct PyreonFlowMiniMap<T>: View {
             let nodesById = Dictionary(uniqueKeysWithValues: state.nodes.map { ($0.id, $0) })
             for node in layout.nodes {
                 let resolved = nodesById[node.id].map(nodeColor) ?? ""
-                context.fill(Path(CGRect(x: node.x, y: node.y, width: node.width, height: node.height)), with: .color(pyreonFlowEdgeColor(resolved.isEmpty ? style.nodeColor : resolved)))
+                context.fill(Path(CGRect(x: node.x, y: node.y, width: node.width, height: node.height)), with: .color(pyreonFlowEdgeColor(resolved.isEmpty ? (style.nodeColor ?? palette.minimapNode) : resolved)))
             }
             let viewport = layout.viewport
             context.stroke(Path(CGRect(x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height)), with: .color(pyreonFlowEdgeColor(style.maskColor)), lineWidth: 1)
         }
         .frame(width: style.width, height: style.height)
-        .background(Color.white.opacity(0.92))
+        .background(pyreonFlowEdgeColor(palette.panelBackground).opacity(0.92))
         .clipShape(RoundedRectangle(cornerRadius: 4))
-        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.gray.opacity(0.4)))
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(pyreonFlowEdgeColor(palette.panelBorder)))
         .contentShape(Rectangle())
         .gesture(panGesture(layout))
         .simultaneousGesture(tapGesture(layout))
@@ -254,8 +338,9 @@ public struct PyreonFlowBackgroundStyle: Equatable {
     public var variant: PyreonFlowBackgroundVariant
     public var gap: Double
     public var size: Double
-    public var color: String
-    public init(variant: PyreonFlowBackgroundVariant = .dots, gap: Double = 20, size: Double = 1, color: String = "#dddddd") {
+    /// `nil` follows the palette's `backgroundPattern` (light `#dddddd`).
+    public var color: String?
+    public init(variant: PyreonFlowBackgroundVariant = .dots, gap: Double = 20, size: Double = 1, color: String? = nil) {
         self.variant = variant; self.gap = gap; self.size = size; self.color = color
     }
 }
@@ -338,8 +423,9 @@ public struct PyreonStandaloneFlowControls<T>: View {
 public struct PyreonFlowBackground: View, Equatable {
     public var style: PyreonFlowBackgroundStyle
     public var viewport: PyreonFlowViewport
-    public init(style: PyreonFlowBackgroundStyle, viewport: PyreonFlowViewport) {
-        self.style = style; self.viewport = viewport
+    public var fallbackColor: String
+    public init(style: PyreonFlowBackgroundStyle, viewport: PyreonFlowViewport, fallbackColor: String = PyreonFlowPalette.light.backgroundPattern) {
+        self.style = style; self.viewport = viewport; self.fallbackColor = fallbackColor
     }
     public var body: some View {
         Canvas { context, size in
@@ -347,7 +433,7 @@ public struct PyreonFlowBackground: View, Equatable {
             let radius = CGFloat(max(0.5, style.size * viewport.zoom))
             let x0 = CGFloat(viewport.x).truncatingRemainder(dividingBy: step)
             let y0 = CGFloat(viewport.y).truncatingRemainder(dividingBy: step)
-            let color = pyreonFlowEdgeColor(style.color)
+            let color = pyreonFlowEdgeColor(style.color ?? fallbackColor)
             switch style.variant {
             case .dots, .cross:
                 var x = x0
@@ -538,7 +624,8 @@ private struct PyreonFlowToolbarPortal: View {
 @available(iOS 17.0, macOS 14.0, *)
 public struct PyreonFlowView<T, NodeContent: View>: View {
     @Bindable private var state: PyreonFlowState<T>
-    private let edgeColor: String
+    /// `nil` follows the palette's `edge` colour (light `#999999`).
+    private let edgeColor: String?
     private let edgeWidth: Double
     private let background: PyreonFlowBackgroundStyle?
     private let controls: PyreonFlowControlsStyle?
@@ -558,6 +645,9 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private let nodeContent: (PyreonFlowNode<T>, Bool, Bool) -> NodeContent
 
     @State private var nodeDragStart: [String: PyreonXYPosition] = [:]
+    @Environment(\.colorScheme) private var systemColorScheme
+    private var palette: PyreonFlowPalette { PyreonFlowPalette.resolve(colorMode: colorMode, systemScheme: systemColorScheme) }
+    private var resolvedEdgeColor: String { edgeColor ?? palette.edge }
     @State private var panStart: PyreonFlowViewport?
     @State private var selectionStart: PyreonXYPosition?
     @State private var selectionCurrent: PyreonXYPosition?
@@ -567,10 +657,11 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     @State private var reconnectDraft: PyreonFlowReconnectDraft?
     @State private var resizeDrafts: [String: PyreonFlowResizeDraft] = [:]
     @State private var didInitialFit = false
+    @FocusState private var focusedNodeId: String?
 
     public init(
         state: PyreonFlowState<T>,
-        edgeColor: String = "#999999",
+        edgeColor: String? = nil,
         edgeWidth: Double = 1.5,
         background: PyreonFlowBackgroundStyle? = nil,
         controls: PyreonFlowControlsStyle? = nil,
@@ -612,7 +703,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
 
     public init(
         state: PyreonFlowState<T>,
-        edgeColor: String = "#999999",
+        edgeColor: String? = nil,
         edgeWidth: Double = 1.5,
         background: PyreonFlowBackgroundStyle? = nil,
         controls: PyreonFlowControlsStyle? = nil,
@@ -656,15 +747,14 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
                 Rectangle()
-                    .fill(Color.clear)
+                    .fill(palette.canvasBackgroundColor)
                     .contentShape(Rectangle())
                     .gesture(panGesture)
-                    .simultaneousGesture(zoomGesture)
                     .simultaneousGesture(doubleClickZoomGesture)
                     .simultaneousGesture(edgeTapGesture)
 
                 if let background {
-                    PyreonFlowBackground(style: background, viewport: state.viewport)
+                    PyreonFlowBackground(style: background, viewport: state.viewport, fallbackColor: palette.backgroundPattern)
                         .equatable()
                 }
 
@@ -696,8 +786,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                     let x1 = start.x * state.zoom + state.viewport.x, y1 = start.y * state.zoom + state.viewport.y
                     let x2 = current.x * state.zoom + state.viewport.x, y2 = current.y * state.zoom + state.viewport.y
                     Rectangle()
-                        .fill(Color.blue.opacity(0.10))
-                        .overlay(Rectangle().stroke(Color.blue.opacity(0.8), lineWidth: 1))
+                        .fill(pyreonFlowEdgeColor(palette.accent).opacity(0.10))
+                        .overlay(Rectangle().stroke(pyreonFlowEdgeColor(palette.accent).opacity(0.8), lineWidth: 1))
                         .frame(width: abs(x2 - x1), height: abs(y2 - y1))
                         .position(x: (x1 + x2) / 2, y: (y1 + y2) / 2)
                         .allowsHitTesting(false)
@@ -714,6 +804,9 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             }
             .clipped()
             .coordinateSpace(name: "PyreonFlowCanvas")
+            // Zoom belongs to the canvas container so a pinch that begins on
+            // a node, edge control, or other child still transforms the graph.
+            .simultaneousGesture(zoomGesture)
             .onPreferenceChange(PyreonFlowNodeSizePreference.self) { sizes in
                 for (id, size) in sizes { state.updateNodeMeasurement(id, width: size.width, height: size.height) }
             }
@@ -729,7 +822,9 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(ariaLabel))
-        .preferredColorScheme(colorMode == "dark" ? .dark : colorMode == "light" ? .light : nil)
+        // Scoped to the canvas, like the web's `data-color-mode` attribute:
+        // `.preferredColorScheme` would re-theme the entire window.
+        .pyreonFlowColorMode(colorMode)
     }
 
     private func measuredNodeView(_ node: PyreonFlowNode<T>) -> some View {
@@ -772,6 +867,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 if node.selectable ?? state.nodesSelectable {
                     state.selectNode(node.id)
                     state.emitNodeClick(node.id)
+                    focusedNodeId = node.id
                 }
             }
             .accessibilityHidden(state.disableKeyboardA11y || !(node.focusable ?? state.nodesFocusable))
@@ -786,12 +882,16 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             // at (x, y). Device-found.
             .contentShape(Rectangle())
             .onTapGesture {
-                if node.selectable ?? state.nodesSelectable { state.selectNode(node.id) }
+                if node.selectable ?? state.nodesSelectable {
+                    state.selectNode(node.id)
+                    focusedNodeId = node.id
+                }
                 state.emitNodeClick(node.id)
             }
             .onTapGesture(count: 2) { state.emitNodeDoubleClick(node.id) }
             .gesture(nodeDragGesture(node))
             .focusable(!state.disableKeyboardA11y && (node.focusable ?? state.nodesFocusable))
+            .focused($focusedNodeId, equals: node.id)
             .onKeyPress { press in
                 handleKeyPress(press, nodeId: node.id)
             }
@@ -833,11 +933,15 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private func edgeLabelView(_ edge: PyreonFlowEdgeLabel) -> some View {
         Text(edge.text ?? "")
             .font(.system(size: 12))
+            .foregroundStyle(pyreonFlowEdgeColor(palette.edgeLabel))
             .padding(edge.text == nil ? 8 : 3)
-            .background(edge.text == nil ? Color.clear : Color.white.opacity(0.9))
+            .background(edge.text == nil ? Color.clear : pyreonFlowEdgeColor(palette.panelBackground).opacity(0.9))
             .position(x: edge.x, y: edge.y)
             .contentShape(Rectangle())
-            .onTapGesture { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) }
+            .onTapGesture {
+                state.selectEdge(edge.id)
+                state.emitEdgeClick(edge.id)
+            }
             .accessibilityLabel(Text(edge.accessibilityLabel))
             .accessibilityAddTraits(state.isEdgeSelected(edge.id) ? [.isSelected] : [])
             .accessibilityAction {
@@ -892,16 +996,22 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
 
     private func handleView(_ handle: PyreonFlowInteractiveHandle) -> some View {
         let label = "\(handle.type) handle \(handle.handleId ?? "default")"
+        let diameter = 12 / state.viewport.zoom
+        let hitSize = max(diameter, 44 / state.viewport.zoom)
         return SwiftUI.Circle()
-            .fill(handle.type == "source" ? Color.blue : Color.green)
-            .overlay(SwiftUI.Circle().stroke(Color.white, lineWidth: 1))
-            .frame(width: 12 / state.viewport.zoom, height: 12 / state.viewport.zoom)
-            .position(x: handle.x, y: handle.y)
-            .contentShape(SwiftUI.Circle())
+            .fill(pyreonFlowEdgeColor(palette.handleBackground))
+            .overlay(SwiftUI.Circle().stroke(pyreonFlowEdgeColor(palette.handleBorder), lineWidth: 1))
+            .frame(width: diameter, height: diameter)
+            .frame(width: hitSize, height: hitSize)
+            .contentShape(SwiftUI.Rectangle())
             .gesture(handle.type == "source" ? connectionGesture(handle) : nil)
             .accessibilityLabel(Text(label))
             .accessibilityAddTraits(.isButton)
             .accessibilityHidden(state.disableKeyboardA11y)
+            // Keep a finite layout frame. `.position` proposes the entire
+            // canvas to an accessible child, so every handle reports the same
+            // canvas-sized frame. The outer frame is the native 44pt target.
+            .offset(x: handle.x - hitSize / 2, y: handle.y - hitSize / 2)
     }
 
     private var resizersLayer: some View {
@@ -915,14 +1025,18 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     }
 
     private func resizerView(_ node: PyreonFlowNode<T>, config: PyreonFlowNodeResizerConfig, direction: String) -> some View {
-        SwiftUI.RoundedRectangle(cornerRadius: 2 / state.viewport.zoom)
-            .fill(Color.white)
-            .overlay(SwiftUI.RoundedRectangle(cornerRadius: 2 / state.viewport.zoom).stroke(Color.blue, lineWidth: 1.5 / state.viewport.zoom))
-            .frame(width: config.handleSize / state.viewport.zoom, height: config.handleSize / state.viewport.zoom)
-            .position(resizerPosition(node, direction: direction))
+        let size = config.handleSize / state.viewport.zoom
+        let hitSize = max(size, 44 / state.viewport.zoom)
+        let position = resizerPosition(node, direction: direction)
+        return SwiftUI.RoundedRectangle(cornerRadius: 2 / state.viewport.zoom)
+            .fill(pyreonFlowEdgeColor(palette.resizerBackground))
+            .overlay(SwiftUI.RoundedRectangle(cornerRadius: 2 / state.viewport.zoom).stroke(pyreonFlowEdgeColor(palette.accent), lineWidth: 1.5 / state.viewport.zoom))
+            .frame(width: size, height: size)
+            .frame(width: hitSize, height: hitSize)
             .contentShape(SwiftUI.Rectangle())
             .gesture(resizeGesture(node, config: config, direction: direction))
             .accessibilityLabel(Text("Resize \(direction) for node \(node.id)"))
+            .offset(x: position.x - hitSize / 2, y: position.y - hitSize / 2)
     }
 
     private var edgeUpdatersLayer: some View {
@@ -933,15 +1047,18 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
 
     private func edgeUpdaterView(_ updater: PyreonFlowEdgeUpdater) -> some View {
         let label = "Reconnect \(updater.end) of edge \(updater.edgeId)"
+        let diameter = 12 / state.viewport.zoom
+        let hitSize = max(diameter, 44 / state.viewport.zoom)
         return SwiftUI.Circle()
-            .fill(Color.blue.opacity(0.35))
-            .overlay(SwiftUI.Circle().stroke(Color.blue, lineWidth: 1.5 / state.viewport.zoom))
-            .frame(width: 12 / state.viewport.zoom, height: 12 / state.viewport.zoom)
-            .position(x: updater.x, y: updater.y)
-            .contentShape(SwiftUI.Circle())
+            .fill(pyreonFlowEdgeColor(palette.accent).opacity(0.35))
+            .overlay(SwiftUI.Circle().stroke(pyreonFlowEdgeColor(palette.accent), lineWidth: 1.5 / state.viewport.zoom))
+            .frame(width: diameter, height: diameter)
+            .frame(width: hitSize, height: hitSize)
+            .contentShape(SwiftUI.Rectangle())
             .gesture(reconnectGesture(updater))
             .accessibilityLabel(Text(label))
             .accessibilityHidden(state.disableKeyboardA11y)
+            .offset(x: updater.x - hitSize / 2, y: updater.y - hitSize / 2)
     }
 
     private var interactiveHandles: [PyreonFlowInteractiveHandle] {
@@ -955,15 +1072,15 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     }
 
     private var edgeStrokes: [PyreonFlowEdgeStroke] {
-        var strokes = pyreonFlowEdgeStrokes(state: state, color: edgeColor, width: edgeWidth, nodeHandles: nodeHandles)
+        var strokes = pyreonFlowEdgeStrokes(state: state, color: resolvedEdgeColor, width: edgeWidth, nodeHandles: nodeHandles)
         if state.onlyRenderVisibleElements { strokes = strokes.filter { pyreonFlowEdgeStrokeIsVisible($0, state: state) } }
         if let draft = connectionDraft {
-            strokes.append(PyreonFlowEdgeStroke(id: "__connection-preview", segments: pyreonFlowConnectionPreview(type: state.connectionLineType, source: draft.source, target: draft.current), color: edgeColor, width: edgeWidth))
+            strokes.append(PyreonFlowEdgeStroke(id: "__connection-preview", segments: pyreonFlowConnectionPreview(type: state.connectionLineType, source: draft.source, target: draft.current), color: resolvedEdgeColor, width: edgeWidth))
         }
         if let draft = reconnectDraft {
             strokes.append(PyreonFlowEdgeStroke(id: "__reconnect-preview", segments: [
                 .move(draft.fixed.x, draft.fixed.y), .line(draft.current.x, draft.current.y),
-            ], color: edgeColor, width: edgeWidth))
+            ], color: resolvedEdgeColor, width: edgeWidth))
         }
         return strokes
     }

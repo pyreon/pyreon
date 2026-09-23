@@ -821,6 +821,7 @@
         "@pyreon/primitives": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/rocketstyle": "workspace:*",
+        "@pyreon/store": "workspace:*",
       },
     },
     "examples/native-finance": {
@@ -1541,6 +1542,7 @@
         "happy-dom": "^20.11.6",
         "react": "^19.2.8",
         "react-dom": "^19.2.8",
+        "typescript": "^6.0.3",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
