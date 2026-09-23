@@ -608,6 +608,24 @@ class TasksAppInstrumentedTest {
                 "the custom edge drew at the wrong scale: it ends at ${maxX}px, node 'b' is at ${200 * density}px"
             }
         }
+        // The added node 'c' is a custom node with an inline <svg>: an 8-unit
+        // viewBox drawn at 16x16dp. Measured by AREA, not bounding box: a couple
+        // of antialiased pixels elsewhere on the canvas land within tolerance and
+        // would stretch a box, but not a count. A 16dp square is (16·density)²
+        // px; a viewBox that was not applied paints an 8dp square, and a missing
+        // density a 16px one (about 6dp here).
+        run {
+            val bmp = composeRule.onNodeWithContentDescription("Task flow").captureToImage().asAndroidBitmap()
+            var count = 0
+            for (y in 0 until bmp.height) for (x in 0 until bmp.width) {
+                val c = bmp.getPixel(x, y)
+                if (kotlin.math.abs(android.graphics.Color.red(c) - 0x7c) <= 6 && kotlin.math.abs(android.graphics.Color.green(c) - 0x3a) <= 6 && kotlin.math.abs(android.graphics.Color.blue(c) - 0xed) <= 6) count++
+            }
+            check(count > 0) { "the custom node's inline <svg> did not paint natively" }
+            val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+            val side = kotlin.math.sqrt(count.toFloat()) / density
+            check(kotlin.math.abs(side - 16f) <= 1.5f) { "the <svg> badge measures ${side}dp a side ($count px), its size is 16x16" }
+        }
         composeRule.onNodeWithContentDescription("minimap").assertExists()
         composeRule.onNodeWithContentDescription("source handle out").assertExists()
         composeRule.onNodeWithContentDescription("target handle in").assertExists()

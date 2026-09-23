@@ -1893,6 +1893,8 @@ data class PyreonFlowNodeToolbarConfig(val position: String = "top", val align: 
 data class PyreonFlowCustomEdgeContext(val edge: PyreonFlowEdge, val sourceX: Double, val sourceY: Double, val targetX: Double, val targetY: Double, val sourcePosition: PyreonFlowPosition, val targetPosition: PyreonFlowPosition, val selected: Boolean, val labelX: Double, val labelY: Double)
 data class PyreonFlowConnectionLineContext(val sourceX: Double, val sourceY: Double, val targetX: Double, val targetY: Double, val sourcePosition: PyreonFlowPosition, val path: PyreonFlowPathResult)
 @Composable fun PyreonFlowCustomEdgePath(result: PyreonFlowPathResult, color: String? = "#999999", width: Double = 1.5, dash: List<Double>? = null, fill: String? = null) {}
+data class PyreonFlowSvgShape(val result: PyreonFlowPathResult, val stroke: String? = null, val strokeWidth: Double = 1.0, val fill: String? = "#000000")
+@Composable fun PyreonFlowSvg(width: Double? = null, height: Double? = null, viewBox: List<Double>? = null, stretch: Boolean = false, shapes: List<PyreonFlowSvgShape>) {}
 @Composable fun PyreonFlowEdgeLabelRenderer(content: @Composable () -> Unit) { content() }
 
 @Composable

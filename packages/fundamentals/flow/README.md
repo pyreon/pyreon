@@ -201,6 +201,8 @@ The same source provides all of these on web, iOS and Android:
 - Node and edge CRUD, selection, history and all seven layouts.
 - The web's default node look, built-in and static custom node and edge renderers, and custom connection lines.
 - `<path d=…>` inside custom edges and connection lines, for any SVG path data.
+- Inline `<svg>` inside node, edge and connection-line renderers: its shapes (`path`, `rect`, `circle`, `ellipse`, `line`, `polyline`, `polygon`, nested `<g>`) draw natively, scaled by the `viewBox`, with SVG paint inheritance. `<text>`, gradients and `transform` are named in a warning.
+- Plain `<div>` / `<p>` / `<span>` in a renderer, in the two shapes whose native layout provably matches the browser's: text-only content, and a `<div>` of block children. A `class`, a `style` or inline-flow children keep the warning that points at `<FlowWebView>`.
 - Handles, connect and reconnect gestures, resizing, and toolbars.
 - `<Background>`, `<Controls>`, `<MiniMap>` and `<Panel>`, plus `colorMode` including `'system'`.
 - Pan, pinch-zoom and drag.
@@ -219,7 +221,7 @@ The full list, including the platform limits, is in the [docs](https://pyreon.de
 **What stays browser-only.** The compiler reports each of these by name:
 
 - `FlowLayersContext` and `flowStyles`, the DOM renderer's layer context and CSS custom properties.
-- Custom renderers built from DOM elements or an `<svg>` element, or styled with browser CSS selectors. A `<path>` in a custom edge or connection line is not in this list; it renders natively.
+- Renderers whose layout depends on CSS: DOM elements with a `class` or `style`, inline-flow mixes of text and elements, and SVG `<text>`, gradients and `transform`. Plain SVG shapes and simple `<div>` / `<p>` / `<span>` structure are not in this list; they render natively.
 - Renderer maps computed at runtime.
 
 Keep that presentation in `NativeIOS` / `NativeAndroid` branches, or use the WebView route below. These inline styles lower directly:

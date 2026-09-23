@@ -437,8 +437,21 @@ native view.
   - `native-tasks` now has a `wire` custom edge drawn from a template literal.
     Both device suites count its green stroke. Bisect on Android: an empty
     parse gives "0 green px".
-  `<svg>` and DOM elements inside a renderer still have no native lowering and
-  still warn with the `FlowWebView` route.
+- [x] Inline `<svg>` and plain DOM inside a renderer. Every SVG shape lowers to
+  path data drawn in one canvas scaled by the `viewBox`, with SVG paint
+  inheritance; the rewrites use relative commands only, so dynamic attributes
+  interpolate without arithmetic. `<div>`/`<p>`/`<span>` lower only in the two
+  shapes whose layout matches the browser (text-only content; a `<div>` of
+  block children). A `class`, `style`, inline-flow mix, SVG `<text>`,
+  gradient or `transform` still warns with the `FlowWebView` route. Scoped to
+  components a `<Flow>` registers as renderers.
+  - Device: the `native-tasks` added node is a custom node with a 16x16 `<svg>`
+    over an 8-unit viewBox; both suites measure its purple square by AREA (a
+    bounding box was stretched by two stray antialiased pixels on Android).
+  - Bisect: Android without the density multiply measures 6.1dp; Swift without
+    the viewBox scale fails the offscreen render check.
+- Not achievable, stated in the docs: pixel-identical output. Fonts and
+  antialiasing are per platform.
 - [x] Android drew every custom edge and custom connection line at 1/density
   size. `PyreonFlowCustomEdgePath` drew graph units (dp) straight onto a px
   canvas; the built-in edge canvas multiplies by the density and this one did

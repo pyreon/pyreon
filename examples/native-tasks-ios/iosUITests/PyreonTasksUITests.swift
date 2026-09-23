@@ -550,6 +550,16 @@ final class PyreonTasksUITests: XCTestCase {
             let scale = Double(wire.width) / Double(canvas.frame.width)
             XCTAssertLessThanOrEqual(abs(Double(wire.maxX) - 200 * scale), 20 * scale, "the custom edge ends at \(Double(wire.maxX) / scale)pt, node 'b' is at 200pt")
         }
+        // The added node 'c' is a custom node with an inline <svg>: an 8-unit
+        // viewBox drawn at 16x16. Measured by AREA, not bounding box, so a stray
+        // antialiased pixel elsewhere cannot stretch it: a 16pt square is
+        // (16·scale)² px, and a viewBox that was not applied paints an 8pt one.
+        let badgePx = colorPixels(canvas.screenshot().pngRepresentation, 0x7c, 0x3a, 0xed)
+        XCTAssertGreaterThan(badgePx, 0, "the custom node's inline <svg> did not paint natively")
+        let shot = UIImage(data: canvas.screenshot().pngRepresentation)!.cgImage!
+        let badgeScale = Double(shot.width) / Double(canvas.frame.width)
+        let badgeSide = Double(badgePx).squareRoot() / badgeScale
+        XCTAssertLessThanOrEqual(abs(badgeSide - 16), 1.5, "the <svg> badge measures \(badgeSide)pt a side (\(badgePx) px), its size is 16x16")
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "minimap")).firstMatch.exists, "MiniMap chrome missing")
         let startNode = app.staticTexts["Start"].firstMatch
         XCTAssertTrue(startNode.waitForExistence(timeout: 5), "node 'Start' did not render on the canvas")

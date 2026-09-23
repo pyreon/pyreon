@@ -57,7 +57,7 @@ bun run perf:diff perf-results/before.json perf-results/*-perf-dashboard-shuffle
 `.github/workflows/perf.yml` runs on:
 
 - `workflow_dispatch` — manual any-branch record
-- `pull_request` — only when labelled `perf`; diffs against committed baseline
+- ~~`pull_request`~~ — removed (the `perf` label was never used); run a branch with `gh workflow run perf.yml --ref <branch>`
 - `schedule` — nightly drift check (artefact only, no auto-commit)
 
 Baselines are committed manually to `perf-results/baseline-<app>-<journey>.json` after reviewing a nightly artefact. The workflow does NOT auto-commit baselines — intentional, since they're load-bearing.

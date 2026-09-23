@@ -1215,6 +1215,8 @@ web page in a WebView.
 | A node without a `type` | The web's default node: the same box, palette colours and selected border |
 | `nodeTypes` / `edgeTypes` | Custom node and edge components. The map must be statically resolvable. |
 | `<path d=…>` in a custom edge or connection line | A native path. Any SVG path data works, including a template literal; fill, stroke and width follow the browser's rules. |
+| Inline `<svg>` in a node, edge or connection-line renderer | A native canvas. `path`, `rect` (rounded too), `circle`, `ellipse`, `line`, `polyline`, `polygon` and nested `<g>` draw scaled by the `viewBox` (`xMidYMid meet`, or `preserveAspectRatio="none"`), with `fill` / `stroke` / `stroke-width` inherited as in SVG. Dynamic attributes stay live. |
+| `<div>` / `<p>` / `<span>` in a renderer | Lowered in the two shapes whose layout matches the browser's: text-only content becomes a text run, and a `<div>` of block children (or one child) becomes a flush-left stack with no gap. |
 | `connectionLine` | A custom connection line, shown only while a connection is being dragged |
 | `colorMode` | `'light'`, `'dark'` and `'system'`, using the web palette's colours |
 | The seven layout algorithms | Native ports of the built-in layout engine |
@@ -1242,10 +1244,15 @@ A few parts of the web package are tied to the DOM, and the compiler names
 each one when it meets it:
 
 - `FlowLayersContext` and `flowStyles`, the DOM renderer's layer context and CSS custom properties.
-- A custom renderer built from DOM elements (`<div>`, `<span>`) or an `<svg>` element, or styled with browser CSS selectors. A `<path>` inside a custom edge or connection line is the exception: it renders natively.
+- A renderer whose look depends on CSS: DOM elements with a `class` or `style`, text mixed with inline elements, or browser CSS selectors. The compiler cannot see a stylesheet, and guessing a layout would draw something plausible and wrong.
+- SVG `<text>`, gradients, `transform`, and SVG children produced by a `.map` or a conditional inside an `<svg>`.
 - A renderer map computed at runtime, rather than one the compiler can resolve statically.
 
-If a diagram needs any of those, host the unchanged web renderer with
+Native rendering matches the web in structure, colour, geometry and
+behaviour, but it is not pixel-identical and cannot be: text is set in the
+platform's system font with its own metrics, and each platform antialiases
+edges its own way. If a diagram must look exactly like the browser, down to
+the pixel, or needs any of the items above, host the unchanged web renderer with
 `@pyreon/flow/webview`:
 
 ```tsx
@@ -1265,7 +1272,7 @@ Give it an explicit height where you can. Without one, it defaults to 150 points
 ### How this is verified
 
 - **State and algorithms.** Native test fixtures replay shared scenarios against both native engines, with the web engine's own answers as the oracle. Two checks fail when a portable method, or a native config field, has no scenario and no stated reason.
-- **Rendering and interaction.** The iOS Simulator and Android Emulator suites for the example apps read what the renderer painted or placed. They check marker colours, dark-mode canvas pixels, the default node's colours, a custom edge drawn from a path string, panel placement and the custom connection line. They also drive the gestures and keyboard commands above.
+- **Rendering and interaction.** The iOS Simulator and Android Emulator suites for the example apps read what the renderer painted or placed. They check marker colours, dark-mode canvas pixels, the default node's colours, a custom edge drawn from a path string (ending where the target node is), a custom node's inline `<svg>` (measured at its 16-point size from an 8-unit `viewBox`), panel placement and the custom connection line. They also drive the gestures and keyboard commands above.
 - **Theme.** A test requires every native palette colour to equal the web's `--pyreon-flow-*` value, in light and dark mode.
 - **Scale.** A 400-node graph with culling mounts at most 40 nodes on web, iOS and Android. It keeps those bounds while panning, dragging and pinching. On web, garbage-collection tests check that a disposed flow and its removed nodes are actually released.
 
