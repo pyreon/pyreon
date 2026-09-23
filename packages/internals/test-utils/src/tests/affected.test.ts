@@ -9,6 +9,7 @@ import {
   isScriptFile,
   transitiveDependents,
   type Workspace,
+  parseFileList,
 } from '../../../../../scripts/affected'
 
 /**
@@ -810,5 +811,21 @@ describe('an e2e-only change must produce a NON-EMPTY affected set', () => {
         root: ROOT,
       }),
     ).not.toBe('--filter=*')
+  })
+})
+
+// `--files-from-stdin` feeds native-validate.yml's decide job, which gates the
+// ONLY runner of the native-compiler suite. The load-bearing case is the empty
+// one: an empty read means the file-list pipe failed (a PR cannot reach CI with
+// zero files), so it must escalate like an undiffable base — never read as
+// "nothing changed", which would skip the gate.
+describe('parseFileList (--files-from-stdin)', () => {
+  it('splits one path per line, trimming blanks', () => {
+    expect(parseFileList('a/b.ts\n\n  c/d.ts  \n')).toEqual(['a/b.ts', 'c/d.ts'])
+  })
+  it('treats an empty list as unknowable (null → full run), not as no change', () => {
+    expect(parseFileList('')).toBeNull()
+    expect(parseFileList('\n  \n')).toBeNull()
+    expect(computeAffectedFlags({ changed: parseFileList(''), workspaces: [] })).toBe('--filter=*')
   })
 })
