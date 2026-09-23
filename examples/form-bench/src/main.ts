@@ -1,25 +1,28 @@
-import { runFormik } from './impl/formik'
-import { runPyreon } from './impl/pyreon'
-import { runRhf } from './impl/rhf'
-import { runSolid } from './impl/solid'
-import { runSvelte } from './impl/svelte'
-import { runTanstack } from './impl/tanstack'
-import { runVue } from './impl/vue'
 import type { BenchSuite } from './runner'
 
 const statusEl = document.getElementById('status') as HTMLElement
 const tableEl = document.getElementById('results') as HTMLElement
 const runBtn = document.getElementById('run') as HTMLButtonElement
 
-const ALL = [
-  { name: 'Pyreon', run: runPyreon },
-  { name: 'React Hook Form', run: runRhf },
-  { name: 'TanStack Form', run: runTanstack },
-  { name: 'Formik', run: runFormik },
-  { name: 'Vue (vee-validate)', run: runVue },
-  { name: 'Svelte (Felte)', run: runSvelte },
-  { name: 'Solid (modular-forms)', run: runSolid },
-] as const
+type Runner = (c: HTMLElement) => Promise<BenchSuite>
+
+/**
+ * Each arm is a DYNAMIC import, so a `?framework=<name>` page downloads,
+ * evaluates and heap-retains ONLY its own framework + form library. With
+ * static imports every page carried all seven runtimes (module-level state,
+ * code, JIT feedback), which diluted the retained-heap column into "all seven
+ * libraries + a delta" and let other libraries' module-eval side effects run
+ * in every column's page.
+ */
+const ALL: readonly { name: string; load: () => Promise<Runner> }[] = [
+  { name: 'Pyreon', load: async () => (await import('./impl/pyreon')).runPyreon },
+  { name: 'React Hook Form', load: async () => (await import('./impl/rhf')).runRhf },
+  { name: 'TanStack Form', load: async () => (await import('./impl/tanstack')).runTanstack },
+  { name: 'Formik', load: async () => (await import('./impl/formik')).runFormik },
+  { name: 'Vue (vee-validate)', load: async () => (await import('./impl/vue')).runVue },
+  { name: 'Svelte (Felte)', load: async () => (await import('./impl/svelte')).runSvelte },
+  { name: 'Solid (modular-forms)', load: async () => (await import('./impl/solid')).runSolid },
+]
 
 function fmt(ms: number): string {
   return ms < 1 ? `${(ms * 1000).toFixed(0)} µs` : `${ms.toFixed(2)} ms`
@@ -53,15 +56,16 @@ function makeContainer(): HTMLElement {
 }
 
 async function runSelected(
-  frameworks: readonly { name: string; run: (c: HTMLElement) => Promise<BenchSuite> }[],
+  frameworks: readonly { name: string; load: () => Promise<Runner> }[],
 ): Promise<BenchSuite[]> {
   runBtn.disabled = true
   tableEl.innerHTML = ''
   const suites: BenchSuite[] = []
-  for (const { name, run } of frameworks) {
+  for (const { name, load } of frameworks) {
     statusEl.textContent = `Running ${name}…`
     const container = makeContainer()
     try {
+      const run = await load()
       suites.push(await run(container))
     } catch (err) {
       console.error(`${name} benchmark failed:`, err)
@@ -81,7 +85,8 @@ runBtn.addEventListener('click', () => {
 })
 
 // `?framework=<name>` — run ONE framework in a fresh page (what bench-form.ts
-// uses for per-framework page isolation). `?auto=1` runs both in this page.
+// uses for per-framework page isolation). `?auto=1` runs all in this page
+// (informational only — no isolation).
 const url = new URL(window.location.href)
 const fw = url.searchParams.get('framework')
 if (fw) {

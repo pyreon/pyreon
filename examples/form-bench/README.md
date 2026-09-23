@@ -39,14 +39,14 @@ bun run dev                             # open the page, click "Run"
 | `shared/scenarios.ts` | Framework-agnostic scenario contract (`active`/`planned`) |
 | `src/runner.ts` | Measurement core — adaptive warmup + 20 runs + median + CI95 + CV (same discipline as `examples/benchmark`) |
 | `src/dom.ts` | Real-keystroke driving (`setInput`) + DOM verification helpers |
-| `src/impl/pyreon.ts` | Idiomatic `@pyreon/form` (`register` + signals) |
-| `src/impl/rhf.ts` | React Hook Form (uncontrolled `register` + `zodResolver`) |
+| `src/impl/pyreon.tsx` | Idiomatic `@pyreon/form` (`register` + signals, compiled JSX + `<For>`) |
+| `src/impl/rhf.ts` | React Hook Form (uncontrolled `register` + `zodResolver`; automatic-runtime `jsx()` shape) |
 | `src/impl/tanstack.ts` | TanStack Form (controlled `form.Field` + standard-schema) |
 | `src/impl/formik.ts` | Formik (controlled `useFormik` + manual zod validate) |
-| `src/impl/vue.ts` | Vue + vee-validate (`useForm`/`defineField`, `h()` render fns) |
+| `src/impl/vue.ts` + `vue-template.ts` | Vue + vee-validate (`useForm`/`defineField`, SFC-compiled template via `virtual:form-vue-render`) |
 | `src/impl/svelte.ts` + `FormBench.svelte` | Svelte + Felte (`use:form` + validator-zod) |
-| `src/impl/solid.ts` | Solid + `@modular-forms/solid` (low-level, no Solid-JSX) |
-| `bench-form.ts` | Playwright driver (the canonical run; `--only "<name>"` to filter) |
+| `src/impl/solid.ts` | Solid + `@modular-forms/solid` (babel-preset-solid emit written out) |
+| `bench-form.ts` | Playwright driver (the canonical run; `--only "<name>"` to filter, `--runs N` for a quick correctness smoke, `--wait-quiet [load]`) |
 
 ## Status
 

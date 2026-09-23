@@ -20,14 +20,17 @@ function maybeGc(): void {
  * Run one scenario against one framework for `runs` timed iterations, with
  * adaptive warmup (stop once the rolling p90 of the last 3 samples is within
  * 10% of the prior 3) and a forced GC between every iteration. Each iteration:
- * fresh app → untimed setup → GC → time(act + commit) → DOM-verify → unmount.
+ * fresh app → untimed setup → GC → time(runCommitted(act) + forced layout) →
+ * DOM-verify → unmount. The forced layout matches `examples/benchmark`'s
+ * runner: the user waits for style/layout too, and it is the same call for
+ * every framework.
  */
 async function runScenario(
   factory: AppFactory,
   scenario: Scenario,
   container: HTMLElement,
   runs: number,
-): Promise<Stats> {
+): Promise<Stats & { samples: number[] }> {
   async function oneIteration(): Promise<number> {
     const app = factory()
     await app.mount(container)
@@ -36,8 +39,8 @@ async function runScenario(
     maybeGc()
 
     const start = performance.now()
-    scenario.act(app)
-    await app.commit()
+    app.runCommitted(() => scenario.act(app))
+    container.getBoundingClientRect()
     const elapsed = performance.now() - start
 
     scenario.verify(container)
@@ -60,12 +63,13 @@ async function runScenario(
 
   const samples: number[] = []
   for (let i = 0; i < runs; i++) samples.push(await oneIteration())
-  return computeStats(samples)
+  // Raw samples travel with the stats so the driver can pool across passes.
+  return { ...computeStats(samples), samples }
 }
 
 export interface FrameworkResult {
   framework: string
-  scenarios: Record<string, Stats>
+  scenarios: Record<string, Stats & { samples: number[] }>
 }
 
 /** Run every scenario for one framework, sequentially, in this page. */

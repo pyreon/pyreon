@@ -2,23 +2,46 @@
  * Pyreon form impl — idiomatic `@pyreon/form`.
  *
  * Uses `useForm` + per-field `register()` (the documented binding API) and the
- * `@pyreon/validation` zod adapter with the SHARED schema. Built with explicit
- * `h()` calls (no JSX) so it sits next to the React-Hook-Form impl with no
- * jsxImportSource conflict and no `.map`-slot template-ordering surprises — the
- * fine-grained binding is identical to what the compiler emits for the JSX form.
+ * `@pyreon/validation` zod adapter with the SHARED schema. Written as JSX and
+ * compiled by `@pyreon/vite-plugin` — the path a Pyreon app ships (compiled
+ * `_tpl` templates), the same "each arm on its own toolchain's output" rule the
+ * other columns follow (Vue compiled template, Solid babel-preset-solid emit,
+ * React automatic-runtime `jsx()`, Svelte compiler).
+ *
+ * The input binds `value` / `onInput` / `onBlur` from `register()` rather than
+ * spreading the whole object: the spread would also render `id` +
+ * `aria-invalid` + `aria-describedby`, attributes no other column renders.
+ * Same attribute set in every column = same DOM work.
+ *
+ * The field list is `<For>`, not `.map()`: a `.map()` child lowers to ONE
+ * reactive slot, and the per-field JSX inside its callback reads `r.value()` /
+ * `error()` eagerly — so every keystroke re-ran the whole slot and REMOUNTED
+ * all 12 fields (caught by the library-state gate: the input the bench held
+ * was detached after the first keystroke). `<For>` is the documented list
+ * primitive and gives each row its own fine-grained bindings.
  *
  * Commit boundary: NONE. Signal writes patch the bound text node synchronously,
  * so the DOM is committed when `fn()` returns (the runner omits `commit`).
  */
-import { h } from '@pyreon/core'
+import { For } from '@pyreon/core'
 import { useForm, type FormState } from '@pyreon/form'
 import { mount } from '@pyreon/runtime-dom'
 import { zodSchema } from '@pyreon/validation/zod'
-import { setInput, fieldInputCount, visibleErrorCount } from '../dom'
-import { bench, type BenchSuite } from '../runner'
-import { FIELD_NAMES, emptyValues, formSchema, type FormValues } from '../../shared/schema'
+import {
+  expectDirtyDom,
+  expectEmailError,
+  expectLibraryValue,
+  expectResetDom,
+  fieldInputCount,
+  setInput,
+} from '../dom'
+import { bench, settle, type BenchSuite } from '../runner'
+import { FIELD_NAMES, emptyValues, formSchema, validValues, type FieldName, type FormValues } from '../../shared/schema'
 
 type PyForm = FormState<FormValues>
+
+/** `<For each>` takes a mutable array. */
+const FIELD_LIST: FieldName[] = [...FIELD_NAMES]
 
 /** A 12-keystroke word typed per timed keystroke run (lifts the per-run work
  *  above Chromium's ~100µs performance.now() resolution floor; also realistic
@@ -41,24 +64,24 @@ function mountForm(container: HTMLElement, validateOn: 'blur' | 'change' | 'subm
       onSubmit: () => {},
     })
     captured = form
-    const rows = FIELD_NAMES.map((name) => {
-      const r = form.register(name)
-      return h(
-        'div',
-        null,
-        h('input', {
-          'data-field': name,
-          value: () => r.value(),
-          onInput: r.onInput,
-          onBlur: r.onBlur,
-        }),
-        h('span', { 'data-error': name }, () => form.fields[name].error() ?? ''),
-      )
-    })
-    return h('form', null, ...rows)
+    return (
+      <form>
+        <For each={FIELD_LIST} by={(name: FieldName) => name}>
+          {(name: FieldName) => {
+            const r = form.register(name)
+            return (
+              <div>
+                <input data-field={name} value={r.value()} onInput={r.onInput} onBlur={r.onBlur} />
+                <span data-error={name}>{form.fields[name].error() ?? ''}</span>
+              </div>
+            )
+          }}
+        </For>
+      </form>
+    )
   }
 
-  const dispose = mount(h(PyreonForm, null), container)
+  const dispose = mount(<PyreonForm />, container)
   return {
     form: captured as PyForm,
     dispose: () => {
@@ -97,29 +120,39 @@ export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
   // performance.now() resolution floor and the median is meaningful. More
   // realistic too: users type words, not single chars.
   {
-    const { dispose } = mountForm(container, 'blur')
+    const { form, dispose } = mountForm(container, 'blur')
     const input = container.querySelector('input[data-field="email"]') as HTMLInputElement
     await bench('keystroke-blur', suite, () => {
       for (let i = 1; i <= TYPED.length; i++) setInput(input, TYPED.slice(0, i))
     }, {
-      reset: () => setInput(input, ''),
-      verify: () => {
-        if (input.value !== TYPED) throw new Error('keystroke-blur: value not committed')
+      reset: async () => {
+        setInput(input, '')
+        await settle()
       },
+      verify: () => expectLibraryValue('keystroke-blur', form.values().email, TYPED),
     })
     dispose()
   }
 
   // ── Scenario: keystroke-change (validate every keystroke) ────────────────
   {
-    const { dispose } = mountForm(container, 'change')
+    const { form, dispose } = mountForm(container, 'change')
     const input = container.querySelector('input[data-field="email"]') as HTMLInputElement
-    await bench('keystroke-change', suite, () => {
-      for (let i = 1; i <= TYPED.length; i++) setInput(input, TYPED.slice(0, i))
+    await bench('keystroke-change', suite, async () => {
+      // One keystroke = dispatch, commit, then let its async validation settle
+      // (see runner.ts `settle`) — identical in every column.
+      for (let i = 1; i <= TYPED.length; i++) {
+        setInput(input, TYPED.slice(0, i))
+        await settle()
+      }
     }, {
-      reset: () => setInput(input, ''),
-      verify: () => {
-        if (input.value !== TYPED) throw new Error('keystroke-change: value not committed')
+      reset: async () => {
+        setInput(input, '')
+        await settle()
+      },
+      verify: (c) => {
+        expectLibraryValue('keystroke-change', form.values().email, TYPED)
+        expectEmailError(c)
       },
     })
     dispose()
@@ -131,13 +164,13 @@ export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
     await bench('reset-dirty-form', suite, () => {
       form.reset()
     }, {
-      reset: () => {
-        for (const name of FIELD_NAMES) form.setFieldValue(name, 'dirty')
+      reset: async () => {
+        const dirty = validValues()
+        for (const name of FIELD_NAMES) form.setFieldValue(name, dirty[name])
+        await settle()
+        expectDirtyDom(container, dirty)
       },
-      verify: () => {
-        if (form.values().first !== '') throw new Error('reset: form not reset')
-        if (visibleErrorCount(container) !== 0) throw new Error('reset: errors not cleared')
-      },
+      verify: expectResetDom,
     })
     dispose()
   }
