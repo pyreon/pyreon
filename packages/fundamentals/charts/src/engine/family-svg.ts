@@ -24,7 +24,7 @@ import { ohlcExtent, renderCandles } from './candlestick'
 import type { CandleOptions, Ohlc } from './candlestick'
 import { buildHeatGrid, renderHeat } from './heat'
 import { renderFunnel } from './funnel'
-import { layoutTreemap, renderTreemap } from './treemap'
+import { layoutTreemap, renderTreemapEc, treemapEcCells, treemapGround, renderTreemap } from './treemap'
 import type { TreeNode, TreemapOptions } from './treemap'
 import { layoutSunburst, renderSunburst, treeDepth } from './sunburst'
 import type { SunburstOptions } from './sunburst'
@@ -50,6 +50,7 @@ import type { ParallelRow } from './parallel-web'
 import type { CalendarOptions } from './calendar'
 import { calendarValues } from './calendar-web'
 import type { FunnelOptions, FunnelStage } from './funnel'
+import type { TreemapEc } from './option-treemap'
 import type { HeatGrid } from './heat'
 import { computeLayout } from './layout'
 import { niceDomain } from './scale'
@@ -615,6 +616,10 @@ export interface TreemapToSvgOptions {
   width?: Double
   height?: Double
   treemap?: TreemapOptions
+  /** ECharts' own treemap, laid out in `frame` (the whole image without one); replaces `treemap`'s layout. */
+  echarts?: TreemapEc
+  /** The series box, in image pixels. */
+  frame?: Rect
   measure?: MeasureText
   /** Chart theme; the canvas host reads the same fields. */
   theme?: Partial<ChartTheme>
@@ -628,8 +633,13 @@ export function treemapToSvg(options: TreemapToSvgOptions): string {
   const t = themeOf(options.theme)
   const width = options.width ?? 640.0
   const height = options.height ?? 400.0
-  const cells = layoutTreemap(options.data, { x: 0.0, y: 0.0, w: width, h: height }, { palette: t.palette, ...options.treemap })
-  const cmds = renderTreemap(cells, { palette: t.palette, ...options.treemap }, options.measure ?? measureApprox())
+  const ec = options.echarts
+  const box = options.frame ?? { x: 0.0, y: 0.0, w: width, h: height }
+  const cells = ec !== undefined ? treemapEcCells(ec.root, box, ec.cfg, t.palette) : layoutTreemap(options.data, { x: 0.0, y: 0.0, w: width, h: height }, { palette: t.palette, ...options.treemap })
+  const cmds =
+    ec !== undefined
+      ? renderTreemapEc(cells, box, treemapGround(ec.borderColor, t.background ?? ''), ec.labelColor, ec.fontSize, ec.showLabels, 1.0, options.measure ?? measureApprox())
+      : renderTreemap(cells, { palette: t.palette, ...options.treemap }, options.measure ?? measureApprox())
   const leaves = cells.filter((c) => c.leaf)
   const description =
     options.description ??

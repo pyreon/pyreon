@@ -151,7 +151,7 @@ function familyHostFor(plan: FamilyPlan, o: FamilyHostOptions): VNode | null {
       return h(FunnelChart, { data: plan.rows, value: (r: { value: Double }) => r.value, label: (r: { name: string }) => r.name, ...(color !== undefined ? { color } : {}), funnel: plan.funnel, ...size, ...chrome, ...sel('funnel') })
     }
     case 'treemap':
-      return h(TreemapChart, { data: plan.nodes, treemap: plan.treemap, ...size, ...chrome, ...sel('treemap') })
+      return h(TreemapChart, { data: plan.nodes, treemap: plan.treemap, echarts: plan.ec, ...size, ...chrome, ...sel('treemap') })
     case 'sunburst':
       return h(SunburstChart, { data: plan.nodes, innerRatio: plan.innerRatio, sunburst: plan.sunburst, ...size, ...chrome, ...sel('sunburst') })
     case 'tree':

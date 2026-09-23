@@ -1655,6 +1655,55 @@ public struct TreemapFrame: Codable {
   }
 }
 
+public struct TreemapEcNode: Codable {
+  public var name: String
+  public var value: Double
+  public var color: String
+  public var children: [TreemapEcNode]
+  public var borderWidth: Double
+  public var gapWidth: Double
+  public var upperLabelHeight: Double
+  public var visibleMin: Double
+  public var childrenVisibleMin: Double
+  public init(name: String, value: Double, color: String, children: [TreemapEcNode], borderWidth: Double, gapWidth: Double, upperLabelHeight: Double, visibleMin: Double, childrenVisibleMin: Double) {
+    self.name = name
+    self.value = value
+    self.color = color
+    self.children = children
+    self.borderWidth = borderWidth
+    self.gapWidth = gapWidth
+    self.upperLabelHeight = upperLabelHeight
+    self.visibleMin = visibleMin
+    self.childrenVisibleMin = childrenVisibleMin
+  }
+}
+
+public struct TreemapEcConfig: Codable {
+  public var squareRatio: Double
+  public var sort: String
+  public var leafDepth: Double
+  public init(squareRatio: Double, sort: String, leafDepth: Double) {
+    self.squareRatio = squareRatio
+    self.sort = sort
+    self.leafDepth = leafDepth
+  }
+}
+
+public struct TreemapEcFrame: Codable {
+  public var node: TreemapEcNode
+  public var rect: PyreonChartRect
+  public var depth: Int
+  public var path: [Int]
+  public var hide: Bool
+  public init(node: TreemapEcNode, rect: PyreonChartRect, depth: Int, path: [Int], hide: Bool) {
+    self.node = node
+    self.rect = rect
+    self.depth = depth
+    self.path = path
+    self.hide = hide
+  }
+}
+
 public struct SunburstArc: Codable {
   public var name: String
   public var value: Double
@@ -9993,6 +10042,265 @@ public func hitTreemapIndex(_ cells: [TreemapCell], _ px: Double, _ py: Double) 
 public func hitTreemap(_ cells: [TreemapCell], _ px: Double, _ py: Double) -> TreemapCell? {
     let i = hitTreemapIndex(cells, px, py)
     return i < 0 ? nil : cells[i]
+  }
+
+public func treemapWorst(_ areas: [Double], _ rowArea: Double, _ fixed: Double, _ ratio: Double) -> Double {
+    var areaMax = 0.0
+    var areaMin = 1.0 / 0.0
+    for a in areas {
+      if a != 0.0 {
+        if a < areaMin {
+          areaMin = a
+        }
+        if a > areaMax {
+          areaMax = a
+        }
+      }
+    }
+    let squareArea = rowArea * rowArea
+    let f = fixed * fixed * ratio
+    if squareArea == 0.0 {
+      return 1.0 / 0.0
+    }
+    let a1 = (f * areaMax) / squareArea
+    let a2 = squareArea / (f * areaMin)
+    return a1 > a2 ? a1 : a2
+  }
+
+public func layoutTreemapEc(_ root: TreemapEcNode, _ box: PyreonChartRect, _ cfg: TreemapEcConfig) -> [TreemapCell] {
+    var out: [TreemapCell] = []
+    var stack: [TreemapEcFrame] = []
+    stack.append(TreemapEcFrame(node: root, rect: box, depth: 0, path: [], hide: false))
+    var sp = 1
+    while sp > 0 {
+      sp = sp - 1
+      let frame = stack[sp]
+      let node = frame.node
+      let halfGap = Double(node.gapWidth) / 2.0
+      let upperHeight = node.borderWidth > node.upperLabelHeight ? node.borderWidth : node.upperLabelHeight
+      let offset = node.borderWidth - halfGap
+      let offsetUpper = upperHeight - halfGap
+      let w0 = frame.rect.w - 2.0 * offset
+      let h0 = frame.rect.h - offset - offsetUpper
+      let width = w0 > 0.0 ? w0 : 0.0
+      let height = h0 > 0.0 ? h0 : 0.0
+      let totalArea = width * height
+      let overLeafDepth = isFiniteNumber(cfg.leafDepth) && cfg.leafDepth <= countDepth(frame.depth)
+      var kids: [Int] = []
+      if !(frame.hide && !overLeafDepth) {
+        for i in 0..<node.children.count {
+          kids.append(i)
+        }
+        if cfg.sort == "desc" || cfg.sort == "asc" {
+          for i in 1..<kids.count {
+            let cur = kids[i]
+            var j = i - 1
+            while j >= 0 {
+              let a = node.children[kids[j]].value
+              let b = node.children[cur].value
+              let swap = cfg.sort == "asc" ? a > b || (a == b && kids[j] > cur) : a < b || (a == b && kids[j] < cur)
+              if !swap {
+                break
+              }
+              kids[j + 1] = kids[j]
+              j = j - 1
+            }
+            kids[j + 1] = cur
+          }
+        }
+      }
+      var sum = 0.0
+      for k in kids {
+        sum = sum + node.children[k].value
+      }
+      var visible = kids
+      if sum > 0.0 && (cfg.sort == "desc" || cfg.sort == "asc") && isFiniteNumber(node.visibleMin) {
+        let n = kids.count
+        var deletePoint = n
+        for i in stride(from: n - 1, through: 0, by: -1) {
+          let value = node.children[kids[cfg.sort == "asc" ? n - i - 1 : i]].value
+          if (Double(value) / Double(sum)) * totalArea < node.visibleMin {
+            deletePoint = i
+            sum = sum - value
+          }
+        }
+        var kept: [Int] = []
+        if cfg.sort == "asc" {
+          for i in n - deletePoint..<n {
+            kept.append(kids[i])
+          }
+        } else {
+          for i in 0..<deletePoint {
+            kept.append(kids[i])
+          }
+        }
+        visible = kept
+      }
+      let laidOut = sum > 0.0 && !overLeafDepth && visible.count > 0
+      out.append(TreemapCell(name: node.name, value: node.value, rect: frame.rect, depth: frame.depth, path: frame.path, color: node.color, leaf: !laidOut))
+      if !laidOut {
+        continue
+      }
+      var areas: [Double] = []
+      for k in visible {
+        areas.append((Double(node.children[k].value) / Double(sum)) * totalArea)
+      }
+      var rects: [PyreonChartRect] = []
+      for i in 0..<visible.count {
+        rects.append(PyreonChartRect(x: 0.0, y: 0.0, w: 0.0, h: 0.0))
+      }
+      var rx = frame.rect.x + offset
+      var ry = frame.rect.y + offsetUpper
+      var rw = width
+      var rh = height
+      var fixed = rw < rh ? rw : rh
+      var best = 1.0 / 0.0
+      var rowStart = 0
+      var rowArea = 0.0
+      var i = 0
+      while i <= visible.count {
+        let closing = i == visible.count
+        var accept = false
+        if !closing {
+          var trial: [Double] = []
+          for q in rowStart...i {
+            trial.append(areas[q])
+          }
+          let score = treemapWorst(trial, rowArea + areas[i], fixed, cfg.squareRatio)
+          if score <= best {
+            accept = true
+            best = score
+            rowArea = rowArea + areas[i]
+            i = i + 1
+          }
+        }
+        if accept {
+          continue
+        }
+        if i == rowStart {
+          break
+        }
+        let alongX = fixed == rw
+        var rowOther = fixed != 0.0 ? Double(rowArea) / Double(fixed) : 0.0
+        let across = alongX ? rh : rw
+        if closing || rowOther > across {
+          rowOther = across
+        }
+        var last = alongX ? rx : ry
+        let end = alongX ? rx + rw : ry + rh
+        for q in rowStart..<i {
+          let step = rowOther != 0.0 ? Double(areas[q]) / Double(rowOther) : 0.0
+          let wh1raw = rowOther - 2.0 * halfGap
+          let wh1 = wh1raw > 0.0 ? wh1raw : 0.0
+          let remain = end - last
+          let mod = q == i - 1 || remain < step ? remain : step
+          let wh0raw = mod - 2.0 * halfGap
+          let wh0 = wh0raw > 0.0 ? wh0raw : 0.0
+          let off1 = halfGap < Double(wh1) / 2.0 ? halfGap : Double(wh1) / 2.0
+          let off0 = halfGap < Double(wh0) / 2.0 ? halfGap : Double(wh0) / 2.0
+          if alongX {
+            rects[q] = PyreonChartRect(x: last + off0, y: ry + off1, w: wh0, h: wh1)
+          } else {
+            rects[q] = PyreonChartRect(x: rx + off1, y: last + off0, w: wh1, h: wh0)
+          }
+          last = last + mod
+        }
+        if alongX {
+          ry = ry + rowOther
+          rh = rh - rowOther
+        } else {
+          rx = rx + rowOther
+          rw = rw - rowOther
+        }
+        if closing {
+          break
+        }
+        fixed = rw < rh ? rw : rh
+        best = 1.0 / 0.0
+        rowStart = i
+        rowArea = 0.0
+      }
+      let hideNext = frame.hide || (isFiniteNumber(node.childrenVisibleMin) && totalArea < node.childrenVisibleMin)
+      for q in stride(from: visible.count - 1, through: 0, by: -1) {
+        let k = visible[q]
+        var path: [Int] = []
+        for p in frame.path {
+          path.append(p)
+        }
+        path.append(k)
+        let f = TreemapEcFrame(node: node.children[k], rect: rects[q], depth: frame.depth + 1, path: path, hide: hideNext)
+        if sp < stack.count {
+          stack[sp] = f
+        } else {
+          stack.append(f)
+        }
+        sp = sp + 1
+      }
+    }
+    return out
+  }
+
+public func countDepth(_ d: Int) -> Double {
+    var f = 0.0
+    for i in 0..<d {
+      f = f + 1.0
+    }
+    return f
+  }
+
+public func treemapEcCells(_ root: TreemapEcNode, _ box: PyreonChartRect, _ cfg: TreemapEcConfig, _ palette: [String]) -> [TreemapCell] {
+    var out: [TreemapCell] = []
+    var colors = [""]
+    for c in layoutTreemapEc(root, box, cfg) {
+      if c.depth == 0 {
+        continue
+      }
+      let inherited = c.depth == 1 ? (palette.count == 0 ? "#5070dd" : palette[c.path[0] % palette.count]) : colors[c.depth - 1]
+      let color = c.color != "" ? c.color : inherited
+      if c.depth < colors.count {
+        colors[c.depth] = color
+      } else {
+        colors.append(color)
+      }
+      out.append(TreemapCell(name: c.name, value: c.value, rect: c.rect, depth: c.depth - 1, path: c.path, color: color, leaf: c.leaf))
+    }
+    return out
+  }
+
+public func renderTreemapEc(_ cells: [TreemapCell], _ box: PyreonChartRect, _ borderColor: String, _ labelColor: String, _ fontSize: Double, _ showLabels: Bool, _ progress: Double, _ measure: (String, Double) -> Double) -> [PyreonDrawCmd] {
+    var out: [PyreonDrawCmd] = []
+    let p = progress < 0.0 ? 0.0 : progress > 1.0 ? 1.0 : progress
+    out.append(PyreonDrawCmd(kind: "rect", rect: box, fill: borderColor))
+    for c in cells {
+      if !c.leaf {
+        out.append(PyreonDrawCmd(kind: "rect", rect: c.rect, fill: borderColor))
+        continue
+      }
+      let w = c.rect.w * p
+      let h = c.rect.h * p
+      out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: c.rect.x + Double((c.rect.w - w)) / 2.0, y: c.rect.y + Double((c.rect.h - h)) / 2.0, w: w, h: h), fill: c.color))
+    }
+    if !showLabels || p < 1.0 {
+      return out
+    }
+    for c in cells {
+      if !c.leaf || c.rect.h < fontSize {
+        continue
+      }
+      let text = truncateLabel(c.name, c.rect.w, fontSize, measure)
+      if text == "" {
+        continue
+      }
+      out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: text, at: PyreonChartPt(x: c.rect.x + Double(c.rect.w) / 2.0, y: c.rect.y + Double(c.rect.h) / 2.0), size: fontSize, align: "middle", baseline: "middle"))
+    }
+    return out
+  }
+
+public func treemapGround(_ borderColor: String, _ background: String) -> String {
+    if borderColor != "" {
+      return borderColor
+    }
+    return background != "" ? background : "#ffffff"
   }
 
 public func treeDepth(_ nodes: [TreeNode]) -> Int {

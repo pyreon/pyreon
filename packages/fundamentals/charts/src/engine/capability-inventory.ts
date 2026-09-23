@@ -225,8 +225,14 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
   row('series.treemap', 'series', 'direct', {
     web: 'partial',
     native: 'partial',
-    gaps: ['`levels`, `upperLabel`, `visualDimension` and `childrenVisibleMin` are unmapped', LITERAL_ONLY],
-    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts', NATIVE + 'chart-option-family-frame-native.test.ts'],
+    gaps: [
+      'the layout is ECharts\' (differential-tested: box, golden-ratio squarify, `sort`, `squareRatio`, `levels` / `itemStyle` border and gap widths, `visibleMin`, `childrenVisibleMin`, `leafDepth`), but `levels` colours and the visual mapping (`colorAlpha`, `colorSaturation`, `colorMappingBy`, `visualDimension`, `visualMin` / `visualMax`) are not applied — a child takes its parent\'s colour',
+      '`upperLabel` reserves its band (so the layout matches) but draws no text, and still warns as unmapped',
+      'no breadcrumb, drill-down (`nodeClick`), zoom or roam',
+      'native: an option treemap draws <TreemapChart>\'s own layout, not ECharts\'',
+      LITERAL_ONLY,
+    ],
+    evidence: ['src/engine/option.test.ts', 'src/engine/echarts-differential.test.ts', 'src/engine/treemap-ec.test.ts', NATIVE + 'chart-option-family-native.test.ts', NATIVE + 'chart-option-family-frame-native.test.ts'],
   }),
   row('series.sunburst', 'series', 'direct', {
     web: 'complete',
