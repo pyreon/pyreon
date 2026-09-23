@@ -1503,11 +1503,6 @@ struct PyreonFlowStateTests {
         check(pyreonFlowHandleKey(f, key: .rightArrow, modifiers: .shift, nodeId: "2") && f.getNode("2")!.position.x == before.x + 100, "Shift+Arrow moves the focused node a large step")
     }
 
-    /// Pixels of the web's dark canvas colour (#0b1220) in the REAL view,
-    /// rendered offscreen under the given environment colour scheme. This is
-    /// the SwiftUI half of `colorMode="system"`: the view must follow the
-    /// environment's scheme. The device suites prove the OS half where the
-    /// simulator propagates an appearance change.
     /// Pixels within 6 of `rgb` in `view`, rendered offscreen by SwiftUI.
     @MainActor
     static func renderedPixels<V: View>(_ view: V, _ r: Int, _ g: Int, _ b: Int) -> Int {
@@ -1563,8 +1558,41 @@ struct PyreonFlowStateTests {
         check(darkCanvasPixels(colorMode: "dark", scheme: .light) > 1000, "colorMode=\"dark\" did not paint dark under a light scheme")
     }
 
+    static func runSvgPathChecks() {
+        func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-9 }
+        func same(_ got: [PyreonFlowEdgeSegment], _ want: [(String, [Double])]) -> Bool {
+            guard got.count == want.count else { return false }
+            for (g, w) in zip(got, want) {
+                guard g.kind == w.0 else { return false }
+                let v: [Double?] = g.kind == "cubic" ? [g.x, g.y, g.c1x, g.c1y, g.c2x, g.c2y] : g.kind == "quad" ? [g.x, g.y, g.cx, g.cy] : [g.x, g.y]
+                guard v.count == w.1.count, zip(v, w.1).allSatisfy({ near($0 ?? .nan, $1) }) else { return false }
+            }
+            return true
+        }
+        check(same(pyreonFlowParseSvgPath("M10 20 L30 40"), [("move", [10.0, 20.0]), ("line", [30.0, 40.0])]), "svg path parses 'M10 20 L30 40'")
+        check(same(pyreonFlowParseSvgPath("m10 20 l5 5 h10 v-5"), [("move", [10.0, 20.0]), ("line", [15.0, 25.0]), ("line", [25.0, 25.0]), ("line", [25.0, 20.0])]), "svg path parses 'm10 20 l5 5 h10 v-5'")
+        check(same(pyreonFlowParseSvgPath("M0,0 C10,0 20,10 30,10 S50,20 60,20"), [("move", [0.0, 0.0]), ("cubic", [30.0, 10.0, 10.0, 0.0, 20.0, 10.0]), ("cubic", [60.0, 20.0, 40.0, 10.0, 50.0, 20.0])]), "svg path parses 'M0,0 C10,0 20,10 30,10 S50,20 60,20'")
+        check(same(pyreonFlowParseSvgPath("M0 0 Q10 10 20 0 T40 0"), [("move", [0.0, 0.0]), ("quad", [20.0, 0.0, 10.0, 10.0]), ("quad", [40.0, 0.0, 30.0, -10.0])]), "svg path parses 'M0 0 Q10 10 20 0 T40 0'")
+        check(same(pyreonFlowParseSvgPath("M0 0 L10 0 L10 10 Z"), [("move", [0.0, 0.0]), ("line", [10.0, 0.0]), ("line", [10.0, 10.0]), ("line", [0.0, 0.0])]), "svg path parses 'M0 0 L10 0 L10 10 Z'")
+        check(same(pyreonFlowParseSvgPath("M0 0 10 10 20 0"), [("move", [0.0, 0.0]), ("line", [10.0, 10.0]), ("line", [20.0, 0.0])]), "svg path parses 'M0 0 10 10 20 0'")
+        check(same(pyreonFlowParseSvgPath("m1 1 2 2"), [("move", [1.0, 1.0]), ("line", [3.0, 3.0])]), "svg path parses 'm1 1 2 2'")
+        check(same(pyreonFlowParseSvgPath("M-1.5.5e1-2"), [("move", [-1.5, 5.0])]), "svg path parses 'M-1.5.5e1-2'")
+        check(same(pyreonFlowParseSvgPath("M0 0 X10 10"), [("move", [0.0, 0.0])]), "svg path parses 'M0 0 X10 10'")
+        check(same(pyreonFlowParseSvgPath(""), []), "svg path parses ''")
+        check(same(pyreonFlowParseSvgPath("M0 0 H10 V10 H0 z m5 5 l1 0"), [("move", [0.0, 0.0]), ("line", [10.0, 0.0]), ("line", [10.0, 10.0]), ("line", [0.0, 10.0]), ("line", [0.0, 0.0]), ("move", [5.0, 5.0]), ("line", [6.0, 5.0])]), "svg path parses 'M0 0 H10 V10 H0 z m5 5 l1 0'")
+        check(same(pyreonFlowParseSvgPath("M0 0 c1 2 3 4 5 6 s1 1 2 2"), [("move", [0.0, 0.0]), ("cubic", [5.0, 6.0, 1.0, 2.0, 3.0, 4.0]), ("cubic", [7.0, 8.0, 7.0, 8.0, 6.0, 7.0])]), "svg path parses 'M0 0 c1 2 3 4 5 6 s1 1 2 2'")
+        // A half circle from (0,0) to (20,0), centre (10,0), sweep on: two quarter-turn cubics through (10,-10).
+        let arc = pyreonFlowParseSvgPath("M0 0 A10 10 0 0 1 20 0")
+        check(arc.count == 3 && arc[1].kind == "cubic" && near(arc[1].x, 10) && near(arc[1].y, -10) && near(arc[2].x, 20) && near(arc[2].y, 0), "a half-circle arc ends each quarter on the circle")
+        // Compact flags: "0110 10" is large=0, sweep=1, then x=10 y=10 (relative).
+        let quarter = pyreonFlowParseSvgPath("M0 0a10 10 0 0110 10")
+        check(quarter.count == 2 && near(quarter[1].x, 10) && near(quarter[1].y, 10), "compact arc flags parse and the arc ends at the relative endpoint")
+        let result = PyreonFlowPathResult(svgPath: "M0 0 L20 10")
+        check(near(result.labelX, 10) && near(result.labelY, 5) && result.path == "M0,0 L20,10", "a parsed path result centres its label and round-trips to path data")
+    }
     static func main() {
         runParityChecks()
+        runSvgPathChecks()
         MainActor.assumeIsolated { runSystemColorModeRenderChecks(); runDefaultNodeRenderChecks() }
         runKeyRoutingChecks()
         runStateChecks()

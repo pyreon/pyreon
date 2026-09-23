@@ -1031,6 +1031,9 @@ public struct PyreonFlowPathResult {
   public var labelX: Double = 0
   public var labelY: Double = 0
 }
+extension PyreonFlowPathResult {
+  public init(svgPath: String) { self.init() }
+}
 public func pyreonStraightPath(sourceX: Double, sourceY: Double, targetX: Double, targetY: Double) -> PyreonFlowPathResult { PyreonFlowPathResult() }
 public func pyreonBezierPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = .bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = .top, curvature: Double = 0.25) -> PyreonFlowPathResult { PyreonFlowPathResult() }
 public func pyreonWaypointPath(sourceX: Double, sourceY: Double, targetX: Double, targetY: Double, waypoints: [PyreonXYPosition]) -> PyreonFlowPathResult { PyreonFlowPathResult() }
@@ -1396,7 +1399,7 @@ public struct PyreonFlowConnectionLineContext {
   public let sourcePosition: PyreonFlowPosition; public let path: PyreonFlowPathResult
 }
 public struct PyreonFlowCustomEdgePath: View {
-  public init(result: PyreonFlowPathResult, color: String = "#999999", width: Double = 1.5, dash: [Double]? = nil) {}
+  public init(result: PyreonFlowPathResult, color: String? = "#999999", width: Double = 1.5, dash: [Double]? = nil, fill: String? = nil) {}
   public var body: some View { EmptyView() }
 }
 public struct PyreonFlowEdgeLabelRenderer<Content: View>: View {

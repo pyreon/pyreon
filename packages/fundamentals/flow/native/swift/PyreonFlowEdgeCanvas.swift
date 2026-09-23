@@ -568,18 +568,209 @@ public struct PyreonFlowEdgeCanvas: View, Equatable {
 /// native keeps the exact move/line/cubic/quad geometry without parsing SVG.
 public struct PyreonFlowCustomEdgePath: View {
     public var result: PyreonFlowPathResult
-    public var color: String
+    /// The stroke colour; `nil` draws no stroke (SVG `stroke: none`).
+    public var color: String?
     public var width: Double
     public var dash: [Double]?
-    public init(result: PyreonFlowPathResult, color: String = "#999999", width: Double = 1.5, dash: [Double]? = nil) {
-        self.result = result; self.color = color; self.width = width; self.dash = dash
+    /// The fill colour; `nil` draws no fill (SVG `fill: none`).
+    public var fill: String?
+    public init(result: PyreonFlowPathResult, color: String? = "#999999", width: Double = 1.5, dash: [Double]? = nil, fill: String? = nil) {
+        self.result = result; self.color = color; self.width = width; self.dash = dash; self.fill = fill
     }
     public var body: some View {
         Canvas { context, _ in
+            let path = pyreonFlowEdgePath(result.segments)
+            if let fill { context.fill(path, with: .color(pyreonFlowEdgeColor(fill))) }
+            guard let color else { return }
             var style = StrokeStyle(lineWidth: CGFloat(width), lineJoin: .round)
             if let dash { style.dash = dash.map { CGFloat($0) } }
-            context.stroke(pyreonFlowEdgePath(result.segments), with: .color(pyreonFlowEdgeColor(color)), style: style)
+            context.stroke(path, with: .color(pyreonFlowEdgeColor(color)), style: style)
         }
         .allowsHitTesting(false)
     }
+}
+
+extension PyreonFlowPathResult {
+    /// Parses SVG path data (the `d` attribute) into the same absolute
+    /// segments the path helpers produce, so a custom edge or connection line
+    /// drawn from an arbitrary path string renders natively. Every command is
+    /// supported, absolute and relative: M L H V C S Q T A Z. Arcs become cubic
+    /// curves; `Z` becomes a line back to the subpath start. Parsing stops at
+    /// the first malformed token, keeping what came before, as a browser does.
+    /// The label point is the centre of the segment endpoints' bounds.
+    public init(svgPath d: String) {
+        let segments = pyreonFlowParseSvgPath(d)
+        let xs = segments.map(\.x), ys = segments.map(\.y)
+        let labelX = xs.isEmpty ? 0 : (xs.min()! + xs.max()!) / 2
+        let labelY = ys.isEmpty ? 0 : (ys.min()! + ys.max()!) / 2
+        self.init(labelX: labelX, labelY: labelY, segments: segments)
+    }
+}
+
+/// SVG path data to absolute segments. See `PyreonFlowPathResult(svgPath:)`.
+public func pyreonFlowParseSvgPath(_ d: String) -> [PyreonFlowEdgeSegment] {
+    let chars = Array(d.unicodeScalars)
+    var i = 0
+    var out: [PyreonFlowEdgeSegment] = []
+    var cx = 0.0, cy = 0.0, startX = 0.0, startY = 0.0
+    var lastCubic: (Double, Double)? = nil
+    var lastQuad: (Double, Double)? = nil
+    var command: Character? = nil
+
+    func skipSeparators() {
+        while i < chars.count, chars[i] == " " || chars[i] == "," || chars[i] == "\n" || chars[i] == "\t" || chars[i] == "\r" { i += 1 }
+    }
+    func isCommand(_ c: Unicode.Scalar) -> Bool { "MmLlHhVvCcSsQqTtAaZz".unicodeScalars.contains(c) }
+    func number() -> Double? {
+        skipSeparators()
+        guard i < chars.count else { return nil }
+        var text = ""
+        var sawDot = false, sawExp = false, sawDigit = false
+        if chars[i] == "+" || chars[i] == "-" { text.unicodeScalars.append(chars[i]); i += 1 }
+        while i < chars.count {
+            let c = chars[i]
+            if c >= "0" && c <= "9" { text.unicodeScalars.append(c); sawDigit = true; i += 1 }
+            else if c == "." && !sawDot && !sawExp { text.unicodeScalars.append(c); sawDot = true; i += 1 }
+            else if (c == "e" || c == "E") && sawDigit && !sawExp {
+                sawExp = true; text.unicodeScalars.append(c); i += 1
+                if i < chars.count, chars[i] == "+" || chars[i] == "-" { text.unicodeScalars.append(chars[i]); i += 1 }
+            } else { break }
+        }
+        return sawDigit ? Double(text) : nil
+    }
+    func flag() -> Bool? {
+        skipSeparators()
+        guard i < chars.count, chars[i] == "0" || chars[i] == "1" else { return nil }
+        let value = chars[i] == "1"
+        i += 1
+        return value
+    }
+
+    parse: while true {
+        skipSeparators()
+        guard i < chars.count else { break }
+        if isCommand(chars[i]) {
+            command = Character(chars[i])
+            i += 1
+        } else if command == nil {
+            break
+        }
+        guard let cmd = command else { break }
+        let relative = cmd.isLowercase
+        let ox = relative ? cx : 0, oy = relative ? cy : 0
+        switch cmd.uppercased() {
+        case "Z":
+            out.append(.line(startX, startY))
+            cx = startX; cy = startY
+            lastCubic = nil; lastQuad = nil
+            command = nil
+        case "M":
+            guard let x = number(), let y = number() else { break parse }
+            cx = ox + x; cy = oy + y; startX = cx; startY = cy
+            out.append(.move(cx, cy))
+            lastCubic = nil; lastQuad = nil
+            // Coordinate pairs after a moveto are implicit linetos.
+            command = relative ? "l" : "L"
+        case "L":
+            guard let x = number(), let y = number() else { break parse }
+            cx = ox + x; cy = oy + y
+            out.append(.line(cx, cy)); lastCubic = nil; lastQuad = nil
+        case "H":
+            guard let x = number() else { break parse }
+            cx = ox + x
+            out.append(.line(cx, cy)); lastCubic = nil; lastQuad = nil
+        case "V":
+            guard let y = number() else { break parse }
+            cy = oy + y
+            out.append(.line(cx, cy)); lastCubic = nil; lastQuad = nil
+        case "C":
+            guard let x1 = number(), let y1 = number(), let x2 = number(), let y2 = number(), let x = number(), let y = number() else { break parse }
+            let c2 = (ox + x2, oy + y2)
+            cx = ox + x; cy = oy + y
+            out.append(.cubic(cx, cy, c1x: ox + x1, c1y: oy + y1, c2x: c2.0, c2y: c2.1))
+            lastCubic = c2; lastQuad = nil
+        case "S":
+            guard let x2 = number(), let y2 = number(), let x = number(), let y = number() else { break parse }
+            let c1 = lastCubic.map { (2 * cx - $0.0, 2 * cy - $0.1) } ?? (cx, cy)
+            let c2 = (ox + x2, oy + y2)
+            cx = ox + x; cy = oy + y
+            out.append(.cubic(cx, cy, c1x: c1.0, c1y: c1.1, c2x: c2.0, c2y: c2.1))
+            lastCubic = c2; lastQuad = nil
+        case "Q":
+            guard let x1 = number(), let y1 = number(), let x = number(), let y = number() else { break parse }
+            let c = (ox + x1, oy + y1)
+            cx = ox + x; cy = oy + y
+            out.append(.quad(cx, cy, cx: c.0, cy: c.1))
+            lastQuad = c; lastCubic = nil
+        case "T":
+            guard let x = number(), let y = number() else { break parse }
+            let c = lastQuad.map { (2 * cx - $0.0, 2 * cy - $0.1) } ?? (cx, cy)
+            cx = ox + x; cy = oy + y
+            out.append(.quad(cx, cy, cx: c.0, cy: c.1))
+            lastQuad = c; lastCubic = nil
+        case "A":
+            guard let rx = number(), let ry = number(), let rotation = number(),
+                  let large = flag(), let sweep = flag(), let x = number(), let y = number() else { break parse }
+            let ex = ox + x, ey = oy + y
+            out.append(contentsOf: pyreonFlowArcToCubics(x0: cx, y0: cy, rx: rx, ry: ry, rotation: rotation, largeArc: large, sweep: sweep, x: ex, y: ey))
+            cx = ex; cy = ey
+            lastCubic = nil; lastQuad = nil
+        default:
+            break parse
+        }
+    }
+    return out
+}
+
+/// An SVG elliptical arc as cubic Béziers (endpoint-to-centre conversion from
+/// the SVG spec, appendix F.6), at most a quarter turn per curve.
+func pyreonFlowArcToCubics(x0: Double, y0: Double, rx rxIn: Double, ry ryIn: Double, rotation: Double, largeArc: Bool, sweep: Bool, x: Double, y: Double) -> [PyreonFlowEdgeSegment] {
+    if x0 == x && y0 == y { return [] }
+    var rx = abs(rxIn), ry = abs(ryIn)
+    if rx == 0 || ry == 0 { return [.line(x, y)] }
+    let phi = rotation * .pi / 180
+    let cosPhi = cos(phi), sinPhi = sin(phi)
+    let dx = (x0 - x) / 2, dy = (y0 - y) / 2
+    let x1p = cosPhi * dx + sinPhi * dy
+    let y1p = -sinPhi * dx + cosPhi * dy
+    let lambda = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry)
+    if lambda > 1 { rx *= lambda.squareRoot(); ry *= lambda.squareRoot() }
+    let num = rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p
+    let den = rx * rx * y1p * y1p + ry * ry * x1p * x1p
+    var coef = den == 0 ? 0 : (max(0, num / den)).squareRoot()
+    if largeArc == sweep { coef = -coef }
+    let cxp = coef * rx * y1p / ry
+    let cyp = -coef * ry * x1p / rx
+    let centerX = cosPhi * cxp - sinPhi * cyp + (x0 + x) / 2
+    let centerY = sinPhi * cxp + cosPhi * cyp + (y0 + y) / 2
+    func angle(_ ux: Double, _ uy: Double, _ vx: Double, _ vy: Double) -> Double {
+        let a = atan2(ux * vy - uy * vx, ux * vx + uy * vy)
+        return a
+    }
+    let theta1 = angle(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry)
+    var delta = angle((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry)
+    if !sweep && delta > 0 { delta -= 2 * .pi }
+    if sweep && delta < 0 { delta += 2 * .pi }
+    let pieces = max(1, Int((abs(delta) / (.pi / 2)).rounded(.up)))
+    let step = delta / Double(pieces)
+    let k = 4.0 / 3.0 * tan(step / 4)
+    var out: [PyreonFlowEdgeSegment] = []
+    var t = theta1
+    func point(_ a: Double) -> (Double, Double) {
+        let px = rx * cos(a), py = ry * sin(a)
+        return (cosPhi * px - sinPhi * py + centerX, sinPhi * px + cosPhi * py + centerY)
+    }
+    func derivative(_ a: Double) -> (Double, Double) {
+        let px = -rx * sin(a), py = ry * cos(a)
+        return (cosPhi * px - sinPhi * py, sinPhi * px + cosPhi * py)
+    }
+    for piece in 0..<pieces {
+        let t2 = t + step
+        let p1 = point(t), p2 = point(t2)
+        let d1 = derivative(t), d2 = derivative(t2)
+        let end = piece == pieces - 1 ? (x, y) : p2
+        out.append(.cubic(end.0, end.1, c1x: p1.0 + k * d1.0, c1y: p1.1 + k * d1.1, c2x: p2.0 - k * d2.0, c2y: p2.1 - k * d2.1))
+        t = t2
+    }
+    return out
 }

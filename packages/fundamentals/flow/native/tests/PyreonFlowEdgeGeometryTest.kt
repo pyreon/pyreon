@@ -34,12 +34,46 @@ import com.pyreon.runtime.pyreonStraightPath
 import com.pyreon.runtime.pyreonSmoothStepPath
 import com.pyreon.runtime.pyreonStepPath
 import com.pyreon.runtime.pyreonWaypointPath
+import com.pyreon.runtime.pyreonFlowParseSvgPath
+import com.pyreon.runtime.pyreonFlowPathResultFromSvg
 
 private fun check(cond: Boolean, msg: String) {
     if (!cond) throw AssertionError("PyreonFlowEdgeGeometryTest: $msg")
 }
 
+private fun checkSvgPaths() {
+    fun near(a: Double?, b: Double) = a != null && kotlin.math.abs(a - b) < 1e-9
+    fun same(got: List<PyreonFlowEdgeSegment>, want: List<Pair<String, List<Double>>>): Boolean {
+        if (got.size != want.size) return false
+        for ((g, w) in got.zip(want)) {
+            if (g.kind != w.first) return false
+            val v: List<Double?> = when (g.kind) { "cubic" -> listOf(g.x, g.y, g.c1x, g.c1y, g.c2x, g.c2y); "quad" -> listOf(g.x, g.y, g.cx, g.cy); else -> listOf(g.x, g.y) }
+            if (v.size != w.second.size || !v.zip(w.second).all { near(it.first, it.second) }) return false
+        }
+        return true
+    }
+    check(same(pyreonFlowParseSvgPath("M10 20 L30 40"), listOf(Pair("move", listOf(10.0, 20.0)), Pair("line", listOf(30.0, 40.0)))), "svg path parses 'M10 20 L30 40'")
+    check(same(pyreonFlowParseSvgPath("m10 20 l5 5 h10 v-5"), listOf(Pair("move", listOf(10.0, 20.0)), Pair("line", listOf(15.0, 25.0)), Pair("line", listOf(25.0, 25.0)), Pair("line", listOf(25.0, 20.0)))), "svg path parses 'm10 20 l5 5 h10 v-5'")
+    check(same(pyreonFlowParseSvgPath("M0,0 C10,0 20,10 30,10 S50,20 60,20"), listOf(Pair("move", listOf(0.0, 0.0)), Pair("cubic", listOf(30.0, 10.0, 10.0, 0.0, 20.0, 10.0)), Pair("cubic", listOf(60.0, 20.0, 40.0, 10.0, 50.0, 20.0)))), "svg path parses 'M0,0 C10,0 20,10 30,10 S50,20 60,20'")
+    check(same(pyreonFlowParseSvgPath("M0 0 Q10 10 20 0 T40 0"), listOf(Pair("move", listOf(0.0, 0.0)), Pair("quad", listOf(20.0, 0.0, 10.0, 10.0)), Pair("quad", listOf(40.0, 0.0, 30.0, -10.0)))), "svg path parses 'M0 0 Q10 10 20 0 T40 0'")
+    check(same(pyreonFlowParseSvgPath("M0 0 L10 0 L10 10 Z"), listOf(Pair("move", listOf(0.0, 0.0)), Pair("line", listOf(10.0, 0.0)), Pair("line", listOf(10.0, 10.0)), Pair("line", listOf(0.0, 0.0)))), "svg path parses 'M0 0 L10 0 L10 10 Z'")
+    check(same(pyreonFlowParseSvgPath("M0 0 10 10 20 0"), listOf(Pair("move", listOf(0.0, 0.0)), Pair("line", listOf(10.0, 10.0)), Pair("line", listOf(20.0, 0.0)))), "svg path parses 'M0 0 10 10 20 0'")
+    check(same(pyreonFlowParseSvgPath("m1 1 2 2"), listOf(Pair("move", listOf(1.0, 1.0)), Pair("line", listOf(3.0, 3.0)))), "svg path parses 'm1 1 2 2'")
+    check(same(pyreonFlowParseSvgPath("M-1.5.5e1-2"), listOf(Pair("move", listOf(-1.5, 5.0)))), "svg path parses 'M-1.5.5e1-2'")
+    check(same(pyreonFlowParseSvgPath("M0 0 X10 10"), listOf(Pair("move", listOf(0.0, 0.0)))), "svg path parses 'M0 0 X10 10'")
+    check(same(pyreonFlowParseSvgPath(""), listOf()), "svg path parses ''")
+    check(same(pyreonFlowParseSvgPath("M0 0 H10 V10 H0 z m5 5 l1 0"), listOf(Pair("move", listOf(0.0, 0.0)), Pair("line", listOf(10.0, 0.0)), Pair("line", listOf(10.0, 10.0)), Pair("line", listOf(0.0, 10.0)), Pair("line", listOf(0.0, 0.0)), Pair("move", listOf(5.0, 5.0)), Pair("line", listOf(6.0, 5.0)))), "svg path parses 'M0 0 H10 V10 H0 z m5 5 l1 0'")
+    check(same(pyreonFlowParseSvgPath("M0 0 c1 2 3 4 5 6 s1 1 2 2"), listOf(Pair("move", listOf(0.0, 0.0)), Pair("cubic", listOf(5.0, 6.0, 1.0, 2.0, 3.0, 4.0)), Pair("cubic", listOf(7.0, 8.0, 7.0, 8.0, 6.0, 7.0)))), "svg path parses 'M0 0 c1 2 3 4 5 6 s1 1 2 2'")
+    val arc = pyreonFlowParseSvgPath("M0 0 A10 10 0 0 1 20 0")
+    check(arc.size == 3 && arc[1].kind == "cubic" && near(arc[1].x, 10.0) && near(arc[1].y, -10.0) && near(arc[2].x, 20.0) && near(arc[2].y, 0.0), "a half-circle arc ends each quarter on the circle")
+    val quarter = pyreonFlowParseSvgPath("M0 0a10 10 0 0110 10")
+    check(quarter.size == 2 && near(quarter[1].x, 10.0) && near(quarter[1].y, 10.0), "compact arc flags parse and the arc ends at the relative endpoint")
+    val result = pyreonFlowPathResultFromSvg("M0 0 L20 10")
+    check(near(result.labelX, 10.0) && near(result.labelY, 5.0) && result.path == "M0,0 L20,10", "a parsed path result centres its label and round-trips to path data")
+}
+
 fun main() {
+    checkSvgPaths()
     // 1. A straight two-point edge — move + line, endpoints exact.
     val straight = pyreonFlowEdgePath(listOf(PyreonFlowEdgeSegment.move(0.0, 0.0), PyreonFlowEdgeSegment.line(100.0, 50.0)))
     check(straight.ops == listOf("move(0.0,0.0)", "line(100.0,50.0)"), "straight edge is move+line, got ${straight.ops}")

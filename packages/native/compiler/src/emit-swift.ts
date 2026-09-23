@@ -35,6 +35,7 @@ import {
   resolveSpace,
 } from './canonical-primitives'
 import { FLOW_ARBITRARY_PATH_WARNING, intrinsicElementWarning, isIntrinsicElementTag } from './intrinsic-element-warning'
+import { resolveFlowPathPaint, type FlowPathPaintValue } from './flow-path-paint'
 import {
   buildComponentConstMap,
   isCompoundExpr,
@@ -9014,24 +9015,27 @@ function emitSwiftFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
   const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'd')
   let value = attr?.kind === 'attr' ? attr.value : undefined
   if (value?.kind === 'arrow' && value.params.length === 0) value = value.body
+  // A structured helper result (`get*Path({...}).path`) or the connection
+  // line's `path()` keeps its segments; any other `d` is SVG path data,
+  // parsed at runtime into the same segments.
   const resultCode = value?.kind === 'member' && value.property === 'path'
     ? value.object.kind === 'call'
       ? emitSwiftExpr(value.object, indent)
       : `${swiftIdent(value.property)}()`
     : value?.kind === 'call' && value.args.length === 0 && value.callee.kind === 'member' && value.callee.property === 'path'
       ? emitSwiftExpr(value, indent)
-      : undefined
+      : value !== undefined
+        ? `PyreonFlowPathResult(svgPath: ${emitSwiftExpr(value, indent)})`
+        : undefined
   if (resultCode === undefined) {
     _emitWarnings.push(FLOW_ARBITRARY_PATH_WARNING)
     return 'EmptyView()'
   }
-  const style = readStaticAttr(e, 'style')
-  const stroke = readStaticAttr(e, 'stroke')
-  const color = typeof stroke === 'string' ? stroke : typeof style === 'string' ? (style.match(/#[0-9a-fA-F]{3,8}/)?.[0] ?? '#999999') : '#999999'
-  const widthAttr = readStaticAttr(e, 'stroke-width') ?? readStaticAttr(e, 'strokeWidth')
-  const styleWidth = typeof style === 'string' ? /stroke-width:\s*([0-9.]+)/.exec(style)?.[1] : undefined
-  const width = typeof widthAttr === 'number' ? widthAttr : styleWidth === undefined ? 1.5 : Number(styleWidth)
-  return `PyreonFlowCustomEdgePath(result: ${resultCode}, color: ${JSON.stringify(color)}, width: ${width})`
+  const paint = resolveFlowPathPaint(e)
+  _emitWarnings.push(...paint.warnings)
+  const color = (v: FlowPathPaintValue) => v.kind === 'none' ? 'nil' : v.kind === 'literal' ? JSON.stringify(v.value) : emitSwiftExpr(v.expr, indent)
+  const width = paint.width.kind === 'literal' ? String(paint.width.value) : `Double(${emitSwiftExpr(paint.width.expr, indent)})`
+  return `PyreonFlowCustomEdgePath(result: ${resultCode}, color: ${color(paint.stroke)}, width: ${width}, fill: ${color(paint.fill)})`
 }
 
 function emitSwiftFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {

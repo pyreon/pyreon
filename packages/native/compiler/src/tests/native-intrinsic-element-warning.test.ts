@@ -33,9 +33,11 @@ describe('a raw DOM/SVG element is named, with its route', () => {
       expect(div).toContain('@pyreon/flow/webview')
     })
 
-    it(`${target}: an arbitrary SVG path names the FlowWebView route`, () => {
-      const warnings = transform(FLOW_APP, { target }).warnings
-      expect(warnings.some((w) => w.includes('arbitrary SVG path string') && w.includes('@pyreon/flow/webview'))).toBe(true)
+    it(`${target}: the <svg> wrapper still warns, but its <path> data now lowers natively`, () => {
+      const result = transform(FLOW_APP, { target })
+      expect(result.warnings.some((w) => w.startsWith('<svg> is a DOM/SVG element'))).toBe(true)
+      expect(result.code).toContain(target === 'swift' ? 'PyreonFlowPathResult(svgPath: "M0 0 L40 40")' : 'pyreonFlowPathResultFromSvg("M0 0 L40 40")')
+      expect(result.warnings.some((w) => w.includes('needs a `d` attribute'))).toBe(false)
     })
 
     it(`${target}: a raw element outside flow warns too, and a primitive does not`, () => {

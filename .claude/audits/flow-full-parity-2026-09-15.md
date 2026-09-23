@@ -420,4 +420,23 @@ native view.
   because other elements paint the same colours, so it was replaced by crops
   of the element itself. Bisect on Android: the old `Text` emit fails with
   "the default node label is not --pyreon-flow-node-color (#1a192b)".
+- [x] Arbitrary SVG path data renders natively. A `<path>` in a custom edge or
+  connection line used to lower only when `d` was a path-helper result or the
+  connection line's `path()`; any other path string (a template literal, a
+  constant) was dropped with a pointer to `FlowWebView`. Both runtimes now
+  parse SVG path data themselves: `PyreonFlowPathResult(svgPath:)` in Swift
+  and `pyreonFlowPathResultFromSvg` in Kotlin. They handle every command,
+  absolute and relative (M L H V C S Q T A Z), with arcs converted to cubic
+  curves, and stop at the first malformed token as a browser does. The paint
+  follows the browser's rules for an unstyled SVG path: fill black, no stroke,
+  width 1, `style` beating the attribute. Before, the native default was a grey
+  stroke and no fill, and `style` was read by taking its first hex colour.
+  Proof:
+  - The same known-answer corpus runs on both native suites.
+  - Bisect: breaking T and S reflection fails the matching case on each target.
+  - `native-tasks` now has a `wire` custom edge drawn from a template literal.
+    Both device suites count its green stroke. Bisect on Android: an empty
+    parse gives "0 green px".
+  `<svg>` and DOM elements inside a renderer still have no native lowering and
+  still warn with the `FlowWebView` route.
 
