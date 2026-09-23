@@ -243,8 +243,12 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
   row('series.candlestick', 'series', 'direct', {
     web: 'partial',
     native: 'partial',
-    gaps: ['`itemStyle.color0` / `borderColor0` are unmapped; a volume overlay needs a second series (see series.multi-series)', LITERAL_ONLY],
-    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+    gaps: [
+      '`itemStyle.color0` / `borderColor0` are unmapped; a volume overlay needs a second series (see series.multi-series)',
+      "`dataZoom` applies its opening window (start / end) but a candlestick draws no slider and takes no zoom gestures (named in a warning)",
+      LITERAL_ONLY,
+    ],
+    evidence: ['src/engine/option.test.ts', 'src/engine/candlestick-option-polish.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
   }),
   row('series.heatmap', 'series', 'direct', {
     web: 'complete',
@@ -278,7 +282,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
       'the detail box has no `borderRadius` or `rich` text; `valueAnimation` counts nothing up',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/echarts-differential.test.ts', 'src/engine/option-gauge.test.ts', NATIVE + 'chart-option-family-native.test.ts', NATIVE + 'chart-option-gauge-forwarded-native.test.ts', ...DEVICE],
+    evidence: ['src/engine/echarts-differential.test.ts', 'src/engine/option-gauge.test.ts', 'src/engine/option-dark-theme.test.ts', NATIVE + 'chart-option-family-native.test.ts', NATIVE + 'chart-option-gauge-forwarded-native.test.ts', ...DEVICE],
   }),
   row('series.river', 'series', 'direct', {
     web: 'complete',
@@ -368,7 +372,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
       'a family option chart (pie, funnel, …) draws its host\'s own legend, which a click does not toggle; a multi-grid option\'s legend does not toggle either',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/legend-toggle.test.ts', 'src/engine/legend-scroll.test.ts', 'src/engine/option-legend.test.ts', 'src/engine/option-legend.browser.test.tsx', 'src/engine/echarts-differential.test.ts', 'src/engine/option-grid.test.ts', NATIVE + 'chart-legend-change-native.test.ts', NATIVE + 'chart-option-legend-scroll-native.test.ts', 'src/engine/clip.browser.test.ts', 'src/engine/svg-clip.test.ts'],
+    evidence: ['src/engine/legend-toggle.test.ts', 'src/engine/legend-scroll.test.ts', 'src/engine/option-legend.test.ts', 'src/engine/option-legend.browser.test.tsx', 'src/engine/echarts-differential.test.ts', 'src/engine/option-grid.test.ts', NATIVE + 'chart-legend-change-native.test.ts', NATIVE + 'chart-option-legend-scroll-native.test.ts', 'src/engine/clip.browser.test.ts', 'src/engine/svg-clip.test.ts', 'src/engine/legend-grouped.test.ts', NATIVE + 'chart-plot-label-color-native.test.ts'],
   }),
   row('coordinates.tooltip', 'coordinates', 'direct', {
     web: 'partial',
@@ -673,7 +677,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'complete',
     native: 'partial',
     gaps: [LITERAL_ONLY],
-    evidence: ['src/engine/theme.test.ts', 'src/engine/theme-locale.test.ts', NATIVE + 'chart-theme-native.test.ts'],
+    evidence: ['src/engine/theme.test.ts', 'src/engine/theme-locale.test.ts', 'src/engine/option-dark-theme.test.ts', 'src/engine/page-scheme.browser.test.ts', NATIVE + 'chart-theme-native.test.ts'],
   }),
   row('presentation.animation', 'presentation', 'direct', {
     web: 'partial',
@@ -719,7 +723,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'complete',
     native: 'partial',
     gaps: ['native: the canvas carries the describeChart sentence; `accessibleTable` (the per-datum table) is named and dropped'],
-    evidence: ['src/engine/canvas-host.test.tsx', 'src/engine/a11y-extras-cells.test.ts', 'src/engine/option-path-evidence.browser.test.tsx', NATIVE + 'chart-native-a11y.test.ts', NATIVE + 'chart-a11y-full-data-native.test.ts'],
+    evidence: ['src/engine/canvas-host.test.tsx', 'src/engine/a11y-extras-cells.test.ts', 'src/engine/option-path-evidence.browser.test.tsx', 'src/engine/large-series.test.ts', NATIVE + 'chart-native-a11y.test.ts', NATIVE + 'chart-a11y-full-data-native.test.ts'],
   }),
 ] as const)()
 

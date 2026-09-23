@@ -19,6 +19,7 @@ import { renderDialIn } from './gauge-dial'
 import type { DialSpec } from './gauge-dial'
 import { plain } from './format'
 import type { Double, Rect } from './types'
+import { themedDial } from './option-gauge'
 
 
 export interface PieChartProps<T> extends CanvasHostProps {
@@ -150,7 +151,7 @@ export function GaugeChart(props: GaugeChartProps): VNode {
       const dial = props.dial
       if (dial !== undefined) {
         // A datum with no colour of its own takes the theme's palette, by index.
-        return renderDialIn(dial, g.box, [...theme.palette])
+        return renderDialIn(themedDial(dial, theme), g.box, [...theme.palette])
       }
       const opts: GaugeOptions = {
         min: g.min,

@@ -19,7 +19,7 @@ import { createUniqueId, h, onUnmount } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { batch, effect, isClient, signal } from '@pyreon/reactivity'
 import { chartTable, describeChart } from './a11y'
-import type { A11yInput } from './a11y'
+import type { A11yInput, A11yTable } from './a11y'
 import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas, trackChartImages } from './canvas-web'
 import { cmdsEqual, sameCmdShape, tweenCmds, universalTweenCmds } from './cmd-tween'
 import { placeLegend } from './legend'
@@ -40,6 +40,89 @@ const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 /** The accessible table stops here — a 100k-row table is a 100k-node DOM, and no reader walks it. */
 export const A11Y_TABLE_MAX = 1000
 const OFFSCREEN = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;margin:-1px;padding:0'
+
+/** Make `parent` hold exactly `n` `tag` children, reusing the ones it has; returns them. */
+function ensureChildren(parent: Element, tag: string, n: number): Element[] {
+  const doc = parent.ownerDocument
+  while (parent.children.length > n) parent.lastElementChild?.remove()
+  while (parent.children.length < n) parent.appendChild(doc.createElement(tag))
+  return Array.from(parent.children)
+}
+
+/** Write `text` into `el`'s text node (creating it once) — `.data`, not `textContent`, which replaces the node. */
+function setCell(el: Element, text: string): void {
+  const node = el.firstChild
+  if (node !== null && node.nodeType === 3) (node as Text).data = text
+  else el.textContent = text
+}
+
+/**
+ * The offscreen accessible table, capped at `A11Y_TABLE_MAX` rows.
+ *
+ * One effect reconciles the table in place: rows and cells are created or
+ * removed only when the COUNT changes, and a cell's text is written only when
+ * it differs. It used to be rebuilt as fresh `h()` rows on every draw, which
+ * remounted 1,000 `<tr>`s per data update — on every frame, for a table nobody
+ * was reading at that moment. (A keyed `<For>` per row and per column was tried
+ * first and measured far WORSE on mount: 1,000 nested list instances.)
+ *
+ * The clip styles go on a WRAPPER, not the table: a `<table>` uses auto layout
+ * and expands to its content regardless of `width: 1px`.
+ */
+export function a11yTableNode(read: () => A11yTable, id: string, title: () => string): VNode {
+  const host = signal<HTMLTableElement | null>(null)
+  // What each body cell last held, so an unchanged cell costs a string compare
+  // and no DOM read or write.
+  let shown: string[][] = []
+  effect(() => {
+    const el = host()
+    if (el === null) return
+    const t = read()
+    const doc = el.ownerDocument
+    let caption = el.caption
+    if (caption === null) caption = el.createCaption()
+    setCell(caption, title() + (t.rows.length < t.total ? ` (first ${t.rows.length} of ${t.total} rows)` : ''))
+    let head = el.tHead
+    if (head === null) head = el.createTHead()
+    const headRow = ensureChildren(head, 'tr', 1)[0]!
+    const ths = ensureChildren(headRow, 'th', t.headers.length)
+    for (let c = 0; c < ths.length; c++) {
+      ths[c]!.setAttribute('scope', 'col')
+      setCell(ths[c]!, t.headers[c] ?? '')
+    }
+    let body = el.tBodies[0] ?? null
+    if (body === null) body = el.appendChild(doc.createElement('tbody'))
+    const trs = ensureChildren(body, 'tr', t.rows.length)
+    const next: string[][] = []
+    for (let r = 0; r < trs.length; r++) {
+      const row = t.rows[r]!
+      const tr = trs[r]!
+      next.push(row)
+      const was = shown[r]
+      // The first cell names the row; a count change rebuilds the row's cells.
+      if (was === undefined || tr.children.length !== row.length) {
+        tr.replaceChildren()
+        for (let c = 0; c < row.length; c++) {
+          const cell = doc.createElement(c === 0 ? 'th' : 'td')
+          if (c === 0) cell.setAttribute('scope', 'row')
+          tr.appendChild(cell)
+        }
+      }
+      const cells = tr.children
+      for (let c = 0; c < row.length; c++) {
+        const text = row[c] ?? ''
+        if (was === undefined || was.length !== row.length || was[c] !== text) setCell(cells[c]!, text)
+      }
+    }
+    shown = next
+  })
+  // `table-layout: fixed` + containment: the table is offscreen, so nothing it
+  // holds may cost a page layout. AUTO table layout measures every cell of
+  // every row to size its columns — ~6ms for 1,000 rows on each forced layout,
+  // several times the chart's own draw. Containment and fixed layout change
+  // nothing in the accessibility tree, which is the table's only reader.
+  return h('div', { style: `${OFFSCREEN};contain:strict` }, h('table', { id, style: 'table-layout:fixed;width:1px', ref: (el: HTMLTableElement | null) => host.set(el) }))
+}
 
 /** The crossing chrome functions return an EMPTY list for a miss; the host's tooltip contract says `null`. */
 export function orNull(lines: string[]): string[] | null {
@@ -768,6 +851,13 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
   }
 
   const layoutForA11y = (): L => {
+    // The drawn frame's layout when there is one: the a11y input reads the
+    // DATA a layout carries, which the draw already laid out — laying the
+    // chart out a second time here cost as much as the draw itself on a
+    // large series. Before the first draw (SSR, a detached host) it lays out
+    // with an approximate measure, as before.
+    const drawn = last
+    if (drawn !== null) return drawn.layout
     const el = canvas
     const w = el === null ? 300 : drawWidth(el, props.width)
     const hgt = props.height ?? spec.defaultHeight
@@ -981,23 +1071,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
   if (t !== null) extras.push(t)
   if (keyboardOn) extras.push(liveNode())
   if (props.accessibleTable !== false) {
-    const table = (): VNode => {
-      const a = chartTable(a11yNow())
-      const shown = a.rows.length > A11Y_TABLE_MAX ? a.rows.slice(0, A11Y_TABLE_MAX) : a.rows
-      const caption = (props.title ?? spec.caption) + (shown.length < a.rows.length ? ` (first ${A11Y_TABLE_MAX} of ${a.rows.length} rows)` : '')
-      return h(
-        'div',
-        { style: OFFSCREEN },
-        h(
-          'table',
-          { id: tableId },
-          h('caption', null, caption),
-          h('thead', null, h('tr', null, ...a.headers.map((x) => h('th', { scope: 'col' }, x)))),
-          h('tbody', null, ...shown.map((r) => h('tr', null, h('th', { scope: 'row' }, r[0] ?? ''), ...r.slice(1).map((c) => h('td', null, c))))),
-        ),
-      )
-    }
-    extras.push(() => table())
+    extras.push(a11yTableNode(() => chartTable(a11yNow(), A11Y_TABLE_MAX), tableId, () => props.title ?? spec.caption))
   }
   if (extras.length === 0) return canvasNode
   return h('div', { style: 'position:relative' }, canvasNode, ...extras)

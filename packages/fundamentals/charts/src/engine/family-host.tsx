@@ -28,6 +28,7 @@ import { MapChart } from './MapChart'
 import type { Double } from './types'
 import type { ChartAnimation } from './animation-option'
 import { ease } from './easing'
+import type { ChartTheme } from './render'
 
 
 export interface FamilyHostOptions {
@@ -49,6 +50,12 @@ export interface FamilyHostOptions {
    * it is read inside the host's props computation, so a change re-applies.
    */
   host?: Record<string, unknown> | undefined
+  /**
+   * The theme the option chart resolved (its `theme` prop, a provider, or
+   * ECharts' default) — the family paints under it, as the cartesian half of
+   * the same option chart does. Absent, the family host's context applies.
+   */
+  theme?: Partial<ChartTheme> | undefined
 }
 
 /** A resolved animation as canvas-host props. */
@@ -109,7 +116,8 @@ export function familyHostShape(plan: FamilyPlan, o: FamilyHostOptions): string 
 
 function familyHostFor(plan: FamilyPlan, o: FamilyHostOptions): VNode | null {
   const size = { width: o.width, height: o.height }
-  const chrome = { ...(plan.title !== undefined ? { title: plan.title } : {}), ...animationProps(o.animation), ...(o.transparent === true ? { theme: { background: '' } } : {}), ...o.host }
+  const themed = o.theme === undefined ? (o.transparent === true ? { background: '' } : undefined) : o.transparent === true ? { ...o.theme, background: '' } : o.theme
+  const chrome = { ...(plan.title !== undefined ? { title: plan.title } : {}), ...animationProps(o.animation), ...(themed !== undefined ? { theme: themed } : {}), ...o.host }
   const sel = (kind: FamilyPlan['kind']) => (o.onSelect === undefined ? {} : { onSelect: (hit: unknown) => o.onSelect!(kind, hit) })
   switch (plan.kind) {
     case 'pie': {

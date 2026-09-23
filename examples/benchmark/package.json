@@ -17,14 +17,18 @@
     "bench:apppage": "bun bench-apppage.ts",
     "bench:scenarios": "bun bench-scenarios.ts",
     "bench:crossover": "bun bench-crossover.ts",
-    "bench:flow": "bun bench-scenarios.ts --scenario flow"
+    "bench:flow": "bun bench-scenarios.ts --scenario flow",
+    "bench:charts": "bun bench-scenarios.ts --scenario charts",
+    "bench:charts-bundle": "bun bench-charts-bundle.ts"
   },
   "dependencies": {
+    "@pyreon/charts": "workspace:*",
     "@pyreon/core": "workspace:*",
     "@pyreon/flow": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@vue/server-renderer": "^3.5.42",
+    "echarts": "^6.1.0",
     "@xyflow/react": "^12.8.0",
     "octane": "0.2.2",
     "preact": "^10.29.8",

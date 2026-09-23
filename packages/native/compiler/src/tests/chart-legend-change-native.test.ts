@@ -52,7 +52,7 @@ describe('<PlotChart onLegendChange> lowers', () => {
   it('Swift: fires with the NEW hidden set, after the state write', () => {
     const r = transform(SRC, { target: 'swift' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('let pyreonNextHidden = legendToggle(pyreonHidden, pyreonLegendHit)')
+    expect(r.code).toContain('let pyreonNextHidden = legendToggleGroup(pyreonHidden, pyreonSeriesAll.map { $0.label }, pyreonLegendHit)')
     expect(r.code).toContain('pyreonHidden = pyreonNextHidden')
     // The handler receives the local, NOT the state var — that is the whole
     // point of the local, so assert the argument rather than just the call.
@@ -62,7 +62,7 @@ describe('<PlotChart onLegendChange> lowers', () => {
   it('Kotlin: the same shape', () => {
     const r = transform(SRC, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('val pyreonNextHidden = legendToggle(pyreonHidden, pyreonLegendHit)')
+    expect(r.code).toContain('val pyreonNextHidden = legendToggleGroup(pyreonHidden, pyreonSeriesAll.map { it.label }, pyreonLegendHit)')
     expect(r.code).toContain('pyreonHidden = pyreonNextHidden')
   })
 

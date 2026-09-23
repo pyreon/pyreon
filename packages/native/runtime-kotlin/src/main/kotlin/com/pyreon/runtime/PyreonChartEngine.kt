@@ -70,6 +70,10 @@ data class PlotLayout(var plot: PyreonChartRect, var xTicks: List<Tick>, var yTi
 
 data class LayoutConfig(var width: Double, var height: Double, var xDomain: Domain, var yDomain: Domain, var categories: List<String>, var edgeCategories: Boolean? = null, var insetLeft: Double? = null, var insetTop: Double? = null, var insetRight: Double? = null, var insetBottom: Double? = null, var insetContain: Boolean? = null, var reserveLeft: Double? = null, var fontSize: Double, var xTickCount: Double, var yTickCount: Double, var showXAxis: Boolean, var showYAxis: Boolean, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var xTime: Boolean? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var horizontal: Boolean? = null, var bandsFromBottom: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var yLog: Boolean? = null, var yLogMin: Double? = null, var yLogMax: Double? = null, var yTime: Boolean? = null, var xLabels: String? = null, var xLabelAngle: Double? = null, var xLabelInterval: Double? = null, var xLabelMargin: Double? = null, var xLabelInside: Boolean? = null, var yLabelAngle: Double? = null, var yLabelMargin: Double? = null, var yLabelInside: Boolean? = null, var xTop: Boolean? = null, var yRight: Boolean? = null, var extraYAxes: List<ExtraYAxis>? = null, var x2Labels: List<String>? = null, var x2Title: String? = null, var x2Domain: Domain? = null, var xOffset: Double? = null, var yOffset: Double? = null, var y2Offset: Double? = null)
 
+data class LabelSample(var widest: Double, var need: Double)
+
+data class IntRatio(var k: Int, var kd: Double)
+
 data class StackSegment(var rect: PyreonChartRect, var seriesIndex: Int, var datumIndex: Int, var value: Double)
 
 data class WaterfallStep(var rect: PyreonChartRect, var datumIndex: Int, var value: Double, var start: Double, var end: Double)
@@ -113,6 +117,8 @@ data class Emphasis(var highlight: Int, var selected: List<Int>)
 data class BarLength(var value: Double, var percent: Boolean)
 
 data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var drawOrder: List<Int>? = null, var boundaryGap: Boolean? = null, var yZero: Boolean? = null, var ySplit: Double? = null, var barLayout: Boolean? = null, var barGap: BarLength? = null, var barCategoryGap: BarLength? = null, var yMin: Double? = null, var xSplit: Double? = null, var xZero: Boolean? = null, var xMin: Double? = null, var xMax: Double? = null, var xMinData: Boolean? = null, var xMaxData: Boolean? = null, var yMax: Double? = null, var yMinData: Boolean? = null, var yMaxData: Boolean? = null, var gridLeft: Double? = null, var reserveLeft: Double? = null, var gridTop: Double? = null, var gridRight: Double? = null, var gridBottom: Double? = null, var gridContain: Boolean? = null, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var xLabelAngle: Double? = null, var xLabelInterval: Double? = null, var xLabelMargin: Double? = null, var xLabelInside: Boolean? = null, var yLabelAngle: Double? = null, var yLabelMargin: Double? = null, var yLabelInside: Boolean? = null, var xAxisLine: Boolean? = null, var yAxisLine: Boolean? = null, var y2AxisLine: Boolean? = null, var xAxisOnZero: Boolean? = null, var yAxisOnZero: Boolean? = null, var y2Grid: Boolean? = null, var xAxisLineColor: String? = null, var yAxisLineColor: String? = null, var xAxisLineWidth: Double? = null, var yAxisLineWidth: Double? = null, var xTicks: Boolean? = null, var yTicks: Boolean? = null, var xTickLength: Double? = null, var yTickLength: Double? = null, var xTickInside: Boolean? = null, var yTickInside: Boolean? = null, var xTickColor: String? = null, var yTickColor: String? = null, var xTickBands: Boolean? = null, var gridColor: String? = null, var gridWidth: Double? = null, var gridDash: List<Double>? = null, var xGrid: Boolean? = null, var xGridColor: String? = null, var xGridWidth: Double? = null, var xGridDash: List<Double>? = null, var ySplitArea: List<String>? = null, var xSplitArea: List<String>? = null, var yMinorSplit: Double? = null, var yMinorSplitColor: String? = null, var yMinorSplitWidth: Double? = null, var xMinorSplit: Double? = null, var xMinorSplitColor: String? = null, var xMinorSplitWidth: Double? = null, var yMinorTicks: Double? = null, var yMinorTickLength: Double? = null, var yMinorTickColor: String? = null, var xMinorTicks: Double? = null, var xMinorTickLength: Double? = null, var xMinorTickColor: String? = null, var yInverse: Boolean? = null, var xInverse: Boolean? = null, var bandsFromBottom: Boolean? = null, var xTop: Boolean? = null, var yRight: Boolean? = null, var xOffset: Double? = null, var yOffset: Double? = null, var y2Offset: Double? = null, var extraYAxes: List<ExtraYAxis>? = null, var x2Labels: List<String>? = null, var x2Title: String? = null, var x2Domain: Domain? = null, var lines: List<LinesSeries>? = null, var effectTime: Double? = null)
+
+data class ExtentSpan(var seen: Boolean, var lo: Double, var hi: Double, var count: Int)
 
 data class Ohlc(var open: Double, var high: Double, var low: Double, var close: Double)
 
@@ -396,7 +402,7 @@ data class A11ySeries(var label: String, var values: List<Double>, var kind: Str
 
 data class A11yInput(var title: String? = null, var categories: List<String>, var series: List<A11ySeries>, var format: ((Double) -> String)? = null)
 
-data class A11yTable(var headers: List<String>, var rows: List<List<String>>)
+data class A11yTable(var headers: List<String>, var rows: List<List<String>>, var total: Int)
 
 data class Bin(var x0: Double, var x1: Double, var count: Double)
 
@@ -429,6 +435,8 @@ private val POLYGON_CIRCLE_SIDES = 24
 private val FULL_TURN = kotlin.math.PI * 2.0
 
 private val BEZIER_STEPS = 48
+
+private val AREA_MARK_OPACITY = 0.3
 
 private val defaultTheme: ChartTheme = ChartTheme(palette = DEFAULT_PALETTE, background = "", surface = "#ffffff", text = "#1f2937", label = "#5a6b7a", axis = "#8496a5", grid = "rgba(132,150,165,0.18)", positive = "#15803d", negative = "#b42318", muted = "#e2e8f0", ramp = listOf("#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"), fontFamily = "", fontSize = 11.0, titleSize = 15.0, radius = 3.0, enterMs = 700.0, updateMs = 350.0)
 
@@ -697,6 +705,26 @@ fun patternImageCells(p: PyreonChartPattern, bounds: PyreonChartRect, imageW: Do
         x = x + imageW
       }
       y = y + imageH
+    }
+    return out
+  }
+
+fun labelSlots(labels: List<String>): List<Int> {
+    val seen: MutableList<String> = mutableListOf()
+    val out: MutableList<Int> = mutableListOf()
+    for (i in 0 until labels.length) {
+      val label = labels[i]
+      var slot = -1
+      for (k in 0 until seen.length) {
+        if (seen[k] == label) {
+          slot = k
+        }
+      }
+      if (slot < 0) {
+        slot = seen.length
+        seen.add(label)
+      }
+      out.add(slot)
     }
     return out
   }
@@ -2186,13 +2214,8 @@ fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotL
     val logMax = (cfg.yLogMax ?: 10.0)
     val valueTicksY = { r0: Double, r1: Double -> if (isLog) logViewTicks(logMin, logMax, if (cfg.yDomain.inverse == true) r1 else r0, if (cfg.yDomain.inverse == true) r0 else r1, cfg.yFormat) else if (cfg.yTime == true) timeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat) else makeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat) }
     val provisionalLabels = if (cfg.horizontal == true) if (cfg.showYAxis) cfg.categories else listOf() else if (cfg.showYAxis) valueTicksY(cfg.height, 0.0).map({ t -> t.label }) else listOf()
-    var widest = 0.0
-    for (label in provisionalLabels) {
-      var w = measure(label, cfg.fontSize)
-      if (w > widest) {
-        widest = w
-      }
-    }
+    val yProvisional = labelSample(provisionalLabels, cfg.fontSize, 0.0, measure)
+    val widest = yProvisional.widest
     val yTitleH = if (cfg.yTitle != null && cfg.yTitle != "" && cfg.showYAxis) titleH else 0.0
     val yRad = ((((cfg.yLabelAngle ?: 0.0)) * kotlin.math.PI)).toDouble() / (180.0).toDouble()
     val yLabelW = if (cfg.yLabelInside == true) 0.0 else widest * Math.abs(Math.cos((yRad).toDouble())) + (if (cfg.yLabelAngle != null && cfg.yLabelAngle != 0.0) cfg.fontSize * Math.abs(Math.sin((yRad).toDouble())) else 0.0)
@@ -2251,15 +2274,9 @@ fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotL
     var slantH = 0.0
     if (cfg.showXAxis && cfg.horizontal != true) {
       val xLabels = if (cfg.categories.length > 0) cfg.categories else (if (cfg.xTime == true) timeTicks(cfg.xDomain, 0.0, provisionalW, cfg.xTickCount, cfg.xFormat) else makeTicks(cfg.xDomain, 0.0, provisionalW, cfg.xTickCount, cfg.xFormat)).map({ t -> t.label })
-      var need = 0.0
-      var widestX = 0.0
-      for (label in xLabels) {
-        var w = measure(label, cfg.fontSize)
-        need = need + w + labelGap
-        if (w > widestX) {
-          widestX = w
-        }
-      }
+      val xSample = labelSample(xLabels, cfg.fontSize, labelGap, measure)
+      val need = xSample.need
+      val widestX = xSample.widest
       val overflow = need > provisionalW && xLabels.length > 1
       val wantRotate = mode == "rotate" || (mode == "auto" && overflow && cfg.categories.length > 0)
       if (mode == "echarts") {
@@ -2361,30 +2378,67 @@ fun echartsCategoryEvery(labels: List<String>, axisW: Double, edge: Boolean, fon
     return floorRatio(Math.min(dw, dh), 1.0) + 1
   }
 
-fun floorRatio(num: Double, den: Double): Int {
+fun labelSample(labels: List<String>, fontSize: Double, gap: Double, measure: (String, Double) -> Double): LabelSample {
+    val n = labels.length
+    val step = if (n > 40) floorRatio(n * 1.0, 40.0) else 1
+    var widest = 0.0
+    var need = 0.0
+    var sampled = 0.0
+    var i = 0
+    while (i < n) {
+      val w = measure(labels[i], fontSize)
+      need = need + w + gap
+      if (w > widest) {
+        widest = w
+      }
+      sampled = sampled + 1.0
+      i = i + step
+    }
+    if (step > 1 && sampled > 0.0) {
+      need = ((need * (n * 1.0))).toDouble() / (sampled).toDouble()
+    }
+    return LabelSample(widest = widest, need = need)
+  }
+
+fun intRatio(num: Double, den: Double): IntRatio {
     if (!(den > 0.0) || !(num >= den)) {
-      return 0
+      return IntRatio(k = 0, kd = 0.0)
+    }
+    val pows: MutableList<Int> = mutableListOf()
+    val powsD: MutableList<Double> = mutableListOf()
+    var p = 1
+    var pd = 1.0
+    while (pd * den <= num && pows.length < 30) {
+      pows.add(p)
+      powsD.add(pd)
+      p = p + p
+      pd = pd + pd
     }
     var k = 0
-    var acc = den
-    while (acc <= num && k < 1000) {
-      k = k + 1
-      acc = acc + den
+    var kd = 0.0
+    val m = pows.length
+    for (q in 0 until m) {
+      val j = m - 1 - q
+      val nd = kd + powsD[j]
+      if (nd * den <= num) {
+        k = k + pows[j]
+        kd = nd
+      }
     }
-    return k
+    return IntRatio(k = k, kd = kd)
   }
+
+fun floorRatio(num: Double, den: Double): Int = intRatio(num, den).k
 
 fun ceilRatio(need: Double, room: Double): Int {
     if (!(room > 0.0)) {
       return 1
     }
-    var every = 1
-    var acc = room
-    while (acc < need && every < 200) {
-      every = every + 1
-      acc = acc + room
+    val r = intRatio(need, room)
+    if (r.kd * room < need) {
+      return r.k + 1
     }
-    return every
+    return if (r.k > 0) r.k else 1
   }
 
 fun bandTicksY(categories: List<String>, plot: PyreonChartRect, fromBottom: Boolean = false): List<Tick> {
@@ -4254,7 +4308,7 @@ fun pinDomain(spec: ChartSpec, series: List<Series>): Domain {
     val fixMax = spec.yMax != null || spec.yMaxData == true
     val zero = spec.yZero == true && spec.yMinData != true && spec.yMaxData != true
     val raw = rawExtentOver(series, zero)
-    val data = rawExtentOver(series, false)
+    val data = raw
     val lo = if (spec.yMinData == true) data.min else (spec.yMin ?: raw.min)
     val hi = if (spec.yMaxData == true) data.max else (spec.yMax ?: raw.max)
     val split = (spec.ySplit ?: 0.0)
@@ -4289,7 +4343,7 @@ fun rawExtentOver(series: List<Series>, zero: Boolean): Domain {
       val max = if (others.length > 0) Math.max(e.max, extent(others).max) else e.max
       return Domain(min = 0.0, max = max)
     }
-    val all: MutableList<Double> = mutableListOf()
+    var span = ExtentSpan(seen = false, lo = 0.0, hi = 1.0, count = 0)
     var hasBars = false
     for (s in series) {
       if (s.kind == "bars" || s.kind == "area" || s.kind == "grouped" || s.kind == "waterfall" || s.kind == "stackedArea") {
@@ -4297,33 +4351,47 @@ fun rawExtentOver(series: List<Series>, zero: Boolean): Domain {
       }
       if (s.kind == "waterfall") {
         val we = waterfallExtent(s.values)
-        all.add(we.min)
-        all.add(we.max)
+        span = extendSpan(span, listOf(we.min, we.max), true)
         continue
       }
-      for (v in s.values) {
-        if (isFiniteValue(v)) {
-          all.add(v)
-        }
+      span = extendSpan(span, s.values, false)
+      span = extendSpan(span, (s.values2 ?: listOf()), false)
+      span = extendSpan(span, (s.errLow ?: listOf()), false)
+      span = extendSpan(span, (s.errHigh ?: listOf()), false)
+    }
+    val e = if (span.seen) Domain(min = span.lo, max = span.hi) else Domain(min = 0.0, max = 1.0)
+    return if (hasBars || (zero && span.count > 0)) Domain(min = if (e.min > 0.0) 0.0 else e.min, max = if (e.max < 0.0) 0.0 else e.max) else e
+  }
+
+fun extendSpan(span: ExtentSpan, values: List<Double>, countAll: Boolean): ExtentSpan {
+    var seen = span.seen
+    var lo = span.lo
+    var hi = span.hi
+    var count = span.count
+    for (i in 0 until values.length) {
+      val v = values[i]
+      if (countAll) {
+        count = count + 1
       }
-      for (v in (s.values2 ?: listOf())) {
-        if (isFiniteValue(v)) {
-          all.add(v)
+      if (isFiniteValue(v)) {
+        if (!countAll) {
+          count = count + 1
         }
-      }
-      for (v in (s.errLow ?: listOf())) {
-        if (isFiniteValue(v)) {
-          all.add(v)
-        }
-      }
-      for (v in (s.errHigh ?: listOf())) {
-        if (isFiniteValue(v)) {
-          all.add(v)
+        if (!seen) {
+          lo = v
+          hi = v
+          seen = true
+        } else {
+          if (v < lo) {
+            lo = v
+          }
+          if (v > hi) {
+            hi = v
+          }
         }
       }
     }
-    val e = extent(all)
-    return if (hasBars || (zero && all.length > 0)) Domain(min = if (e.min > 0.0) 0.0 else e.min, max = if (e.max < 0.0) 0.0 else e.max) else e
+    return ExtentSpan(seen = seen, lo = lo, hi = hi, count = count)
   }
 
 fun isFiniteValue(v: Double): Boolean = isFiniteNumber(v)
@@ -5164,7 +5232,8 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
                     poly.add(PyreonChartPt(x = pts[pts.length - 1].x, y = baseY))
                     poly.add(PyreonChartPt(x = pts[0].x, y = baseY))
                     val areaAlpha = stateAreaOpacity(spec, s)
-                    out.add(polygonCmd(poly, if (areaAlpha < 0.0) s.color else withAlpha(s.color, areaAlpha), sGrad, s.pattern))
+                    val baseAlpha = (s.areaOpacity ?: AREA_MARK_OPACITY)
+                    out.add(polygonCmd(poly, withAlpha(s.color, if (areaAlpha < 0.0) baseAlpha else areaAlpha), sGrad, s.pattern))
                   }
                 }
               } else {
@@ -10181,8 +10250,16 @@ fun renderCandlestickChart(candles: List<Ohlc>, w: Double, h: Double, categories
       cmds.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = l.plot.x, y = tick.pos), to = PyreonChartPt(x = l.plot.x + l.plot.w, y = tick.pos), stroke = theme.grid, width = 1.0))
       cmds.add(PyreonDrawCmd(kind = "text", fill = theme.label, text = tick.label, at = PyreonChartPt(x = l.plot.x - 6.0, y = tick.pos), size = theme.fontSize, align = "end", baseline = "middle"))
     }
-    for (tick in l.xTicks) {
-      cmds.add(PyreonDrawCmd(kind = "text", fill = theme.label, text = tick.label, at = PyreonChartPt(x = tick.pos, y = l.plot.y + l.plot.h + 6.0), size = theme.fontSize, align = "middle", baseline = "top"))
+    for (ti in 0 until l.xTicks.length) {
+      val tick = l.xTicks[ti]
+      if (l.xLabelEvery > 1 && ti % l.xLabelEvery != 0) {
+        continue
+      }
+      if (l.xLabelRotate != 0.0) {
+        cmds.add(PyreonDrawCmd(kind = "text", fill = theme.label, text = tick.label, at = PyreonChartPt(x = tick.pos, y = l.plot.y + l.plot.h + 6.0), size = theme.fontSize, align = if (l.xLabelRotate < 0.0) "end" else "start", baseline = "middle", rotate = l.xLabelRotate))
+      } else {
+        cmds.add(PyreonDrawCmd(kind = "text", fill = theme.label, text = tick.label, at = PyreonChartPt(x = tick.pos, y = l.plot.y + l.plot.h + 6.0), size = theme.fontSize, align = "middle", baseline = "top"))
+      }
     }
     val body = renderCandles(candles, l.plot, f.domain, CandleOptions(upColor = (options?.upColor ?: theme.positive), downColor = (options?.downColor ?: theme.negative), widthRatio = options?.widthRatio))
     for (c in body) {
@@ -11484,6 +11561,74 @@ fun legendToggle(hidden: List<Int>, i: Int): List<Int> {
     return out
   }
 
+fun legendEntriesGrouped(labels: List<String>, colors: List<String>, hidden: List<Int>): List<LegendEntry> {
+    val out: MutableList<LegendEntry> = mutableListOf()
+    val seen: MutableList<String> = mutableListOf()
+    for (i in 0 until labels.length) {
+      val label = labels[i]
+      var known = false
+      for (k in 0 until seen.length) {
+        if (seen[k] == label) {
+          known = true
+        }
+      }
+      if (known) {
+        continue
+      }
+      seen.add(label)
+      var allHidden = true
+      for (j in 0 until labels.length) {
+        if (labels[j] == label && !isHiddenSeries(hidden, j)) {
+          allHidden = false
+        }
+      }
+      out.add(LegendEntry(label = label, color = if (i < colors.length) colors[i] else "#999999", muted = allHidden))
+    }
+    return out
+  }
+
+fun legendToggleGroup(hidden: List<Int>, labels: List<String>, entry: Int): List<Int> {
+    val seen: MutableList<String> = mutableListOf()
+    for (i in 0 until labels.length) {
+      val label = labels[i]
+      var known = false
+      for (k in 0 until seen.length) {
+        if (seen[k] == label) {
+          known = true
+        }
+      }
+      if (!known) {
+        seen.add(label)
+      }
+    }
+    if (entry < 0 || entry >= seen.length) {
+      return hidden
+    }
+    val target = seen[entry]
+    var anyShown = false
+    for (j in 0 until labels.length) {
+      if (labels[j] == target && !isHiddenSeries(hidden, j)) {
+        anyShown = true
+      }
+    }
+    val out: MutableList<Int> = mutableListOf()
+    for (k in 0 until hidden.length) {
+      val h = hidden[k]
+      val inGroup = h >= 0 && h < labels.length && labels[h] == target
+      if (!inGroup) {
+        out.add(h)
+      }
+    }
+    if (anyShown) {
+      for (j in 0 until labels.length) {
+        if (labels[j] == target) {
+          out.add(j)
+        }
+      }
+    }
+    return out
+  }
+
 fun pinSelection(selected: List<Int>, global: Int, multiple: Boolean): List<Int> {
     if (global < 0) {
       return selected
@@ -12265,7 +12410,7 @@ fun withError(fmt: (Double) -> String, v: Double, s: A11ySeries, i: Int): String
     return "${fmt(v)} (${fmt(l)} to ${fmt(h)})"
   }
 
-fun chartTable(input: A11yInput): A11yTable {
+fun chartTable(input: A11yInput, limit: Int = -1): A11yTable {
     val fmt = (input.format ?: ::plain)
     val headers = mutableListOf("Category")
     for (s in input.series) {
@@ -12295,8 +12440,9 @@ fun chartTable(input: A11yInput): A11yTable {
         n = s.values.length
       }
     }
+    val count = if (limit >= 0 && limit < n) limit else n
     val rows: MutableList<List<String>> = mutableListOf()
-    for (i in 0 until n) {
+    for (i in 0 until count) {
       val row = mutableListOf(if (i < input.categories.length) input.categories[i] else "${i + 1}")
       for (s in input.series) {
         val other = (s.values2 ?: listOf())
@@ -12365,7 +12511,7 @@ fun chartTable(input: A11yInput): A11yTable {
       }
       rows.add(row)
     }
-    return A11yTable(headers = headers, rows = rows)
+    return A11yTable(headers = headers, rows = rows, total = n)
   }
 
 fun finite(v: Double): Boolean = v == v

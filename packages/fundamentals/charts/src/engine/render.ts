@@ -654,6 +654,9 @@ export function themeCorners(radius: Double, positive: boolean, horizontal: bool
   return positive ? [radius, radius, 0.0, 0.0] : [0.0, 0.0, radius, radius]
 }
 
+/** The default fill opacity of an `area` mark (see its paint branch). */
+const AREA_MARK_OPACITY = 0.3
+
 export const defaultTheme: ChartTheme = {
   palette: DEFAULT_PALETTE,
   background: '',
@@ -1268,7 +1271,9 @@ function pinDomain(spec: ChartSpec, series: Series[]): Domain {
   // A bound pinned to the data (`dataMin` / `dataMax`) turns ECharts' zero-inclusion off.
   const zero = spec.yZero === true && spec.yMinData !== true && spec.yMaxData !== true
   const raw = rawExtentOver(series, zero)
-  const data = rawExtentOver(series, false)
+  // A bound pinned to the data turns `zero` off (above), so the pinned extent
+  // IS `raw` whenever it is read — no second pass over every value.
+  const data = raw
   const lo = spec.yMinData === true ? data.min : spec.yMin ?? raw.min
   const hi = spec.yMaxData === true ? data.max : spec.yMax ?? raw.max
   const split = spec.ySplit ?? 0.0
@@ -1294,7 +1299,10 @@ function rawExtentOver(series: Series[], zero: boolean): Domain {
     const max = others.length > 0 ? Math.max(e.max, extent(others).max) : e.max
     return { min: 0.0, max }
   }
-  const all: Double[] = []
+  // Streamed rather than gathered: collecting every finite value into one
+  // array and then taking its extent copied a 100,000-point series twice per
+  // domain resolve, and the domain is resolved several times a frame.
+  let span: ExtentSpan = { seen: false, lo: 0.0, hi: 1.0, count: 0 }
   let hasBars = false
   for (const s of series) {
     if (s.kind === 'bars' || s.kind === 'area' || s.kind === 'grouped' || s.kind === 'waterfall' || s.kind === 'stackedArea') hasBars = true
@@ -1302,23 +1310,58 @@ function rawExtentOver(series: Series[], zero: boolean): Domain {
       // A waterfall's extent is its RUNNING TOTALS, not its steps — a chart
       // of +5, +5, +5 must reach 15.
       const we = waterfallExtent(s.values)
-      all.push(we.min)
-      all.push(we.max)
+      span = extendSpan(span, [we.min, we.max], true)
       continue
     }
     // Gaps (NaN) carry no extent — and so do error bars beyond them: the
     // whisker must stay inside the axis.
-    for (const v of s.values) if (isFiniteValue(v)) all.push(v)
+    span = extendSpan(span, s.values, false)
     // A band's lower bound is data too; without it a band dipping below every
     // `values` entry is clipped at the axis floor.
-    for (const v of s.values2 ?? []) if (isFiniteValue(v)) all.push(v)
-    for (const v of s.errLow ?? []) if (isFiniteValue(v)) all.push(v)
-    for (const v of s.errHigh ?? []) if (isFiniteValue(v)) all.push(v)
+    span = extendSpan(span, s.values2 ?? [], false)
+    span = extendSpan(span, s.errLow ?? [], false)
+    span = extendSpan(span, s.errHigh ?? [], false)
   }
-  const e = extent(all)
-  return hasBars || (zero && all.length > 0)
+  const e: Domain = span.seen ? { min: span.lo, max: span.hi } : { min: 0.0, max: 1.0 }
+  return hasBars || (zero && span.count > 0)
     ? { min: e.min > 0.0 ? 0.0 : e.min, max: e.max < 0.0 ? 0.0 : e.max }
     : e
+}
+
+/**
+ * A running extent: the finite values seen so far, and how many values were
+ * COUNTED (a waterfall's totals count even when not finite, exactly as the
+ * gathered array they replace did).
+ */
+interface ExtentSpan {
+  seen: boolean
+  lo: Double
+  hi: Double
+  count: number
+}
+
+/** `span` widened by the finite entries of `values`; `countAll` counts every entry, finite or not. */
+function extendSpan(span: ExtentSpan, values: Double[], countAll: boolean): ExtentSpan {
+  let seen = span.seen
+  let lo = span.lo
+  let hi = span.hi
+  let count = span.count
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i]!
+    if (countAll) count = count + 1
+    if (isFiniteValue(v)) {
+      if (!countAll) count = count + 1
+      if (!seen) {
+        lo = v
+        hi = v
+        seen = true
+      } else {
+        if (v < lo) lo = v
+        if (v > hi) hi = v
+      }
+    }
+  }
+  return { seen, lo, hi, count }
 }
 
 /** Finite check — `isFiniteNumber` from `./scale` (NaN AND infinity are gaps; `Number.*` has no native lowering). */
@@ -2333,8 +2376,12 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           const baseY = scaleLinear(sDomain, plot.y + plot.h, plot.y, sDomain.min)
           poly.push({ x: pts[pts.length - 1]!.x, y: baseY })
           poly.push({ x: pts[0]!.x, y: baseY })
+          // Translucent by default, so the grid and anything drawn under the
+          // area stay visible: an opaque fill in a palette colour covered the
+          // plot. `areaOpacity` sets it; an emphasis/blur state overrides both.
           const areaAlpha = stateAreaOpacity(spec, s)
-          out.push(polygonCmd(poly, areaAlpha < 0.0 ? s.color : withAlpha(s.color, areaAlpha), sGrad, s.pattern))
+          const baseAlpha = s.areaOpacity ?? AREA_MARK_OPACITY
+          out.push(polygonCmd(poly, withAlpha(s.color, areaAlpha < 0.0 ? baseAlpha : areaAlpha), sGrad, s.pattern))
         }
       }
     } else {

@@ -1,13 +1,17 @@
 ---
 title: Plot Engine
-description: The first-party chart engine — tree-shakeable marks, pure geometry, canvas + SVG backends, and a generated native twin.
+description: The first-party chart engine — tree-shakeable chart families, pure geometry, canvas + SVG backends, and a generated native twin.
 ---
 
 `@pyreon/charts/plot` is Pyreon's **own chart engine**. It has zero runtime
 dependencies: geometry is computed in pure TypeScript into a flat draw list,
 which a tiny canvas host paints in the browser and a pure string builder
-serializes on the server. Marks are **imported bindings**, so an unused chart
-type tree-shakes out of your bundle like any unused function.
+serializes on the server. Chart families are **imported bindings**, so an
+unused family (pie, radar, candlestick, heatmap, …) tree-shakes out of your
+bundle like any unused function. The cartesian marks inside `PlotChart` share
+one renderer: a line chart and a bar + line + tooltip + legend chart are the
+same 40.9 KB gz (measured; ECharts 6 tree-shaken is 156–177 KB gz for the same
+charts — `bun run bench:charts-bundle` in `examples/benchmark`).
 
 The main `@pyreon/charts` entry remains the [ECharts bridge](/docs/charts) —
 reach for that when you need the long tail of ECharts series types today.

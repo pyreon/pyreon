@@ -25,6 +25,31 @@ export const DEFAULT_PALETTE: readonly string[] = ['#4f7df3', '#f97362', '#22c3a
 export const DARK_PALETTE: readonly string[] = ['#7b9bff', '#ff8f7e', '#4adbc0', '#bd93ff', '#ffc44d', '#5dcbf2', '#ff80be', '#9ad870', '#a3acbd', '#d8955e']
 
 /** The palette colour for series `index`, cycling; an empty palette falls back to the default. */
+/**
+ * Each mark's palette slot, keyed by its LABEL: marks that share a label share
+ * a colour (an area and a line both labelled Revenue are one series to the
+ * reader, and the legend groups them into one entry), and each new label takes
+ * the next slot. With all-distinct labels this is simply the mark index, so a
+ * chart without shared labels is coloured exactly as before.
+ */
+export function labelSlots(labels: string[]): number[] {
+  const seen: string[] = []
+  const out: number[] = []
+  for (let i = 0; i < labels.length; i++) {
+    const label = labels[i]!
+    let slot = -1
+    for (let k = 0; k < seen.length; k++) {
+      if (seen[k] === label) slot = k
+    }
+    if (slot < 0) {
+      slot = seen.length
+      seen.push(label)
+    }
+    out.push(slot)
+  }
+  return out
+}
+
 export function paletteAt(palette: readonly string[], index: number): string {
   const n = palette.length
   if (n === 0) return DEFAULT_PALETTE[index % DEFAULT_PALETTE.length]!

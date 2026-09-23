@@ -66,6 +66,9 @@ export type FamilyPlan =
   | { kind: 'singleAxis'; axis: SingleAxisSpec; points: SingleAxisPoint[]; options: SingleAxisOptions; title: string | undefined }
 
 import type { ChordLink, ChordNode, ChordOptions } from './chord'
+import type { ChartTheme } from './render'
+import { readDataZoom } from './option-zoom'
+import { sliceRange } from './zoom'
 
 export interface CompiledFamily {
   plan: FamilyPlan
@@ -222,8 +225,9 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
   // series may be the map layer (geoIndex) or a pie centred on a lon/lat.
   const anyOnGeo = seriesArr.some((ser) => isObj(ser) && (ser['coordinateSystem'] === 'geo' || (ser['type'] === 'map' && ser['geoIndex'] !== undefined)))
   const familyKey = type === 'themeRiver' ? 'themeRiver' : s['coordinateSystem'] === 'polar' ? 'polar' : anyOnGeo ? 'geo' : s['coordinateSystem'] === 'singleAxis' ? 'singleAxis' : type
+  // A candlestick reads `dataZoom` itself (its opening window, below).
   // ledger: data.key-totality
-  for (const key of Object.keys(option)) if (!FAMILY_KNOWN_TOP.has(key)) warn('option-key-unsupported', key, `"${key}" has no mapping yet; it was ignored.`)
+  for (const key of Object.keys(option)) if (!FAMILY_KNOWN_TOP.has(key) && !(key === 'dataZoom' && type === 'candlestick')) warn('option-key-unsupported', key, `"${key}" has no mapping yet; it was ignored.`)
   // ledger: data.key-totality
   if (familyKey !== 'geo') for (const key of Object.keys(s)) if (!KNOWN_BY_FAMILY[familyKey]!.has(key)) warn('series-option-unsupported', `series[0].${key}`, `"${key}" has no mapping for ${type} yet; it was ignored.`)
   // This guard has collided across the whole charts wave — polar, boxplot,
@@ -367,6 +371,18 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
         continue
       }
       rows.push({ x: cats[i] ?? String(i + 1), open: num(arr[0]) ?? 0.0, close: num(arr[1]) ?? 0.0, low: num(arr[2]) ?? 0.0, high: num(arr[3]) ?? 0.0 })
+    }
+    // `dataZoom`: the candlestick draws the option's OPENING window (a price
+    // chart almost always opens on its latest stretch). The slider strip and
+    // the zoom gestures are the cartesian host's, and are not drawn here yet —
+    // said once rather than dropped silently.
+    const zoom = readDataZoom(option, cats, warn)
+    if (zoom !== undefined) {
+      // ledger: series.candlestick
+      if (zoom.slider || zoom.inside) warn('option-key-unsupported', 'dataZoom', "A candlestick chart draws dataZoom's opening window (start / end); its slider and zoom gestures are not drawn on a candlestick yet.")
+      const range = sliceRange(zoom.window, rows.length)
+      rows.splice(range.to)
+      rows.splice(0, range.from)
     }
     const item = isObj(s['itemStyle']) ? s['itemStyle'] : {}
     return {
@@ -1166,7 +1182,9 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
 }
 
 /** Render a compiled family plan to an `<svg>` string. */
-export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined; height?: Double | undefined } = {}, source?: Record<string, unknown>): string {
+export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined; height?: Double | undefined } = {}, source?: Record<string, unknown>, theme?: Partial<ChartTheme>): string {
+  // The option's theme, when it set one (`optionToSvg`'s `theme`); absent, each renderer's default.
+  const themed = theme === undefined ? {} : { theme }
   const width = size.width ?? 640.0
   const height = size.height ?? 320.0
   // With the option at hand, a pie sits where ECharts places it in the whole image.
@@ -1176,6 +1194,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
     case 'pie': {
       const hasColors = plan.rows.some((r) => r.color !== undefined)
       return pieToSvg({
+        ...themed,
         pie: plan.pie,
         ...(placed !== null ? { frame: familyRect(placed, width, height), view: circleView(placed, width, height) } : {}),
         data: plan.rows,
@@ -1192,6 +1211,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
     }
     case 'gauge':
       return gaugeToSvg({
+        ...themed,
         dial: plan.dial,
         ...(placed !== null ? { frame: familyRect(placed, width, height) } : {}),
         value: plan.value,
@@ -1207,6 +1227,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
     case 'radar': {
       const hasColors = plan.rows.some((r) => r.color !== undefined)
       return radarToSvg({
+        ...themed,
         data: plan.rows,
         axes: plan.axes,
         values: (d) => d.values,
@@ -1221,6 +1242,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
     }
     case 'candlestick':
       return candlestickToSvg({
+        ...themed,
         data: plan.rows,
         x: (d) => d.x,
         open: (d) => d.open,
@@ -1235,6 +1257,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
     case 'funnel': {
       const hasColors = plan.rows.some((r) => r.color !== undefined)
       return funnelToSvg({
+        ...themed,
         data: plan.rows,
         value: (d) => d.value,
         label: (d) => d.name,
@@ -1247,6 +1270,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
     }
     case 'singleAxis':
       return singleAxisToSvg({
+        ...themed,
         axis: plan.axis,
         points: plan.points,
         options: plan.options,
@@ -1256,6 +1280,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'geoPoints':
       return geoPointsToSvg({
+        ...themed,
         geo: plan.geo,
         points: plan.points,
         paths: plan.paths,
@@ -1272,6 +1297,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'map':
       return geoToSvg({
+        ...themed,
         geo: plan.geo,
         values: plan.values,
         options: plan.visualMap === undefined ? plan.options : { ...plan.options, ...visualSelectionOptions(plan.visualMap) },
@@ -1281,6 +1307,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'themeRiver':
       return riverToSvg({
+        ...themed,
         series: plan.series,
         river: plan.river,
         width,
@@ -1289,6 +1316,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'polar':
       return polarToSvg({
+        ...themed,
         axes: plan.axes,
         series: plan.series,
         polar: plan.polar,
@@ -1298,6 +1326,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'parallel':
       return parallelToSvg({
+        ...themed,
         axes: plan.axes,
         rows: plan.rows,
         parallel: plan.parallel,
@@ -1308,6 +1337,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'calendar':
       return calendarToSvg({
+        ...themed,
         start: plan.start,
         end: plan.end,
         values: plan.values,
@@ -1319,6 +1349,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'graph':
       return graphToSvg({
+        ...themed,
         nodes: plan.nodes,
         links: plan.links,
         graph: plan.graph,
@@ -1328,6 +1359,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'sankey':
       return sankeyToSvg({
+        ...themed,
         nodes: plan.nodes,
         links: plan.links,
         sankey: plan.sankey,
@@ -1338,6 +1370,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'chord':
       return chordToSvg({
+        ...themed,
         nodes: plan.nodes,
         links: plan.links,
         chord: plan.chord,
@@ -1347,6 +1380,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'tree':
       return treeToSvg({
+        ...themed,
         data: plan.nodes,
         tree: plan.tree,
         width,
@@ -1355,6 +1389,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'sunburst':
       return sunburstToSvg({
+        ...themed,
         data: plan.nodes,
         innerRatio: plan.innerRatio,
         sunburst: plan.sunburst,
@@ -1364,6 +1399,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'treemap':
       return treemapToSvg({
+        ...themed,
         data: plan.nodes,
         treemap: plan.treemap,
         width,
@@ -1372,6 +1408,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'boxplot':
       return boxplotToSvg({
+        ...themed,
         data: plan.rows,
         values: () => [],
         x: (d) => d.x,
@@ -1384,6 +1421,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     default:
       return heatmapToSvg({
+        ...themed,
         data: plan.rows,
         x: (d) => d.x,
         y: (d) => d.y,

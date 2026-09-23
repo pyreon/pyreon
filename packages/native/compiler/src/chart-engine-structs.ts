@@ -2513,6 +2513,48 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "LabelSample",
+    "fields": [
+      {
+        "name": "widest",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "need",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "IntRatio",
+    "fields": [
+      {
+        "name": "k",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "kd",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "StackSegment",
     "fields": [
       {
@@ -6932,6 +6974,40 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
               "kind": "undefined"
             }
           ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "ExtentSpan",
+    "fields": [
+      {
+        "name": "seen",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "lo",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "hi",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "count",
+        "type": {
+          "kind": "number"
         }
       }
     ],
@@ -15393,6 +15469,12 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             }
           }
         }
+      },
+      {
+        "name": "total",
+        "type": {
+          "kind": "number"
+        }
       }
     ],
     "external": true
@@ -15483,6 +15565,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "DialStop",
   "Domain",
   "Emphasis",
+  "ExtentSpan",
   "ExtraTick",
   "ExtraYAxis",
   "FiveNumber",
@@ -15528,7 +15611,9 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "HeatGrid",
   "HeatSelection",
   "HeatmapOptions",
+  "IntRatio",
   "LabelPlace",
+  "LabelSample",
   "LabelSegment",
   "Layered",
   "LayoutConfig",

@@ -56,11 +56,13 @@ import { paint, prepareCanvas } from './canvas-web'
 import type { OptionUpdatePolicy } from './option-composite'
 import { graphicCommands } from './option-layer'
 import { visualMapCommands } from './visual-map'
-import { applySeriesSelection, barsFor, categoryIndex, categoryPoints, invertCategories, layoutChart, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
-import type { ChartSpec, Emphasis } from './render'
+import { applySeriesSelection, barsFor, defaultTheme, categoryIndex, categoryPoints, invertCategories, layoutChart, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
+import type { ChartSpec, ChartTheme, Emphasis } from './render'
 import { hitBar, hitNearestX } from './layout'
 import { plain } from './format'
+import { resolveTheme } from './theme-registry'
 import type { ThemeDefinition } from './theme-registry'
+import { useProvidedChartTheme } from './theme'
 import type { Double, DrawCmd, MeasureText, Rect } from './types'
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -339,10 +341,20 @@ export function OptionChart(props: OptionChartProps): VNode {
   const winOf = (compiled: CompiledOption): ZoomWindow | undefined => zoomWin() ?? compiled.zoom?.window
   const width = (): Double => props.width ?? 640.0
   const height = (): Double => props.height ?? 320.0
+  // An explicit `theme` prop wins; else a `<ChartThemeProvider>` above; else
+  // ECharts' own default look (a bare option chart does not follow the OS scheme,
+  // exactly as ECharts does not).
+  const provided = useProvidedChartTheme()
+  const themeOf = (): string | ThemeDefinition | undefined => props.theme ?? (provided === null ? undefined : provided())
+  /** The same resolution as a full theme, for the family hosts: ECharts' default when neither is set. */
+  const familyTheme = (): ChartTheme => {
+    const own = themeOf()
+    return own === undefined ? defaultTheme : resolveTheme(own).chartTheme
+  }
   const compileOpts = (w: Double, hgt: Double, idx: number | undefined) => ({
     width: w,
     height: hgt,
-    ...(props.theme !== undefined ? { theme: props.theme } : {}),
+    ...(themeOf() !== undefined ? { theme: themeOf() } : {}),
     ...(props.locale !== undefined ? { locale: props.locale } : {}),
     ...(idx !== undefined ? { timelineIndex: idx } : {}),
   })
@@ -499,6 +511,9 @@ export function OptionChart(props: OptionChartProps): VNode {
   })
   const familyOptions: FamilyHostOptions = {
     host: familyExtrasSingle,
+    get theme() {
+      return familyTheme()
+    },
     get width() {
       return familyBox().w
     },
@@ -559,6 +574,9 @@ export function OptionChart(props: OptionChartProps): VNode {
         },
         get onSelect() {
           return props.onFamilySelect
+        },
+        get theme() {
+          return familyTheme()
         },
         transparent: true,
       }

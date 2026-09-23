@@ -98,7 +98,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTipHeader, chartTooltipCells, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartPieArgs, chartDialCmds, chartFrameLiteral, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
+import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTipHeader, chartTooltipCells, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartPieArgs, chartDialCmds, chartFrameLiteral, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -12101,7 +12101,7 @@ function kotlinAccessorExpr(v: ExprIR, tag: string, what: string, indent: number
   return emitKotlinExpr(body, indent)
 }
 
-function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex: number, palette: readonly string[] = CHART_HOST_PALETTE): string[] | 'unsupported' {
+function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex: number, palette: readonly string[] = CHART_HOST_PALETTE, colorSlot: number = seriesIndex): string[] | 'unsupported' {
   const fields = new Map<string, ExprIR>()
   if (opts !== undefined) {
     if (opts.kind !== 'object' || (opts.spreads !== undefined && opts.spreads.length > 0)) {
@@ -12235,7 +12235,7 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
       args.push(`${spec.name} = ${lit}`)
       continue
     }
-    if (spec.name === 'color') args.push(`color = ${kotlinStr(palette[seriesIndex % palette.length])}`)
+    if (spec.name === 'color') args.push(`color = ${kotlinStr(palette[colorSlot % palette.length])}`)
     else if (spec.name === 'label') args.push(`label = ${kotlinStr(`Series ${seriesIndex + 1}`)}`)
     else if (spec.default !== undefined) args.push(`${spec.name} = ${spec.kind === 'number' ? chartDouble(spec.default as number) : String(spec.default)}`)
   }
@@ -12385,6 +12385,8 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const series: string[] = []
   const fullA11ySeries: string[] = []
   let navValues = ''
+  // Colour follows the mark's LABEL, as the web's `resolveMarks` does.
+  const colorSlots = plotMarkColorSlots(marksV.elements)
   for (let k = 0; k < marksV.elements.length; k++) {
     const m = marksV.elements[k]!
     // `...bollinger(...)` — mirror of the Swift emitter.
@@ -12437,7 +12439,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
       decimated = true
     }
     const optsArg = bubble || isBand || indicator?.takesWindow === true ? m.args[2] : m.args[1]
-    const opts = kotlinMarkOptionArgs(optsArg, tag, k, pyreonPalette)
+    const opts = kotlinMarkOptionArgs(optsArg, tag, k, pyreonPalette, colorSlots[k] ?? k)
     if (opts === 'unsupported') return 'Box {}'
     const rowMap = kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed, decimated)
     const derivedValues = indicator === undefined ? undefined : kotlinIndicatorValues(indicator, m, rowMap, tag, k)
@@ -12530,8 +12532,9 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
   const entries = legend.toggling
-    ? 'pyreonSeriesAll.mapIndexed { pyreonI, pyreonS -> LegendEntry(label = pyreonS.label, color = pyreonS.color, muted = pyreonHidden.contains(pyreonI)) }'
-    : 'pyreonSeries.map { LegendEntry(label = it.label, color = it.color) }'
+    ? // One entry per label, as the web draws it (the engine's `legendEntriesGrouped`).
+      'legendEntriesGrouped(pyreonSeriesAll.map { it.label }, pyreonSeriesAll.map { it.color }, pyreonHidden)'
+    : 'legendEntriesGrouped(pyreonSeries.map { it.label }, pyreonSeries.map { it.color }, listOf())'
   const tf = kotlinChartThemeFields(e, tag)
   const chrome = kotlinChartChrome(e, entries, W, H, indent, true, tf, legend.paging ? 'pyreonLegendPage' : undefined)
   lets.push(...chrome.lets)
@@ -12805,7 +12808,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
       const onLegend = chartEventHandler(e, 'legendChange')
       const fire = onLegend === undefined ? '' : `; ${kotlinChartSelectBody(onLegend, 'pyreonNextHidden', indent)}`
       branches.push(
-        `if (pyreonLegendHit >= 0) { val pyreonNextHidden = legendToggle(pyreonHidden, pyreonLegendHit); pyreonHidden = pyreonNextHidden${fire} }`,
+        `if (pyreonLegendHit >= 0) { val pyreonNextHidden = legendToggleGroup(pyreonHidden, pyreonSeriesAll.map { it.label }, pyreonLegendHit); pyreonHidden = pyreonNextHidden${fire} }`,
       )
     }
     if (presets !== undefined) {

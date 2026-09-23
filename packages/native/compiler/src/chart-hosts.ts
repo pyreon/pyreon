@@ -19,7 +19,7 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import { compileFamily, familyFrame, GAUGE_DIAL_KEYS, PIE_SHAPE_KEYS, compileOption, readBrush, readToolbox, defaultTimelineStrip, resolveYDomain, timelineSteps, DEFAULT_DECALS, visualMapSpec, visualStripOf, fillPattern, imageFill, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
+import { compileFamily, familyFrame, GAUGE_DIAL_KEYS, PIE_SHAPE_KEYS, compileOption, readBrush, readToolbox, defaultTimelineStrip, resolveYDomain, timelineSteps, DEFAULT_DECALS, visualMapSpec, visualStripOf, fillPattern, imageFill, decimateShared, graphicElements, labelFields, labelSlots, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
 import type { ChartPattern, VisualMapSpec, GraphicElement, RichStyle, SamplingRequest } from '@pyreon/charts/option-layer'
 import type { AttrIR, ChildIR, ExprIR, TypeIR } from './types'
 import { kotlinStr, swiftStr } from './string-literals'
@@ -3864,6 +3864,28 @@ export const FRAME_CHART_HOSTS: Readonly<Record<string, true>> = { GaugeChart: t
  * it the same way it sees these.
  */
 export const PLOT_SPREAD_MARKS: readonly string[] = ['bollinger']
+
+/**
+ * Each `<PlotChart>` mark's palette slot, from its LITERAL label — the web's
+ * `resolveMarks` rule (`labelSlots`): marks sharing a label share a colour. A
+ * mark with no literal label keeps its own slot (`Series N`), so a chart
+ * without shared labels is coloured exactly as before.
+ */
+export function plotMarkColorSlots(marks: readonly ExprIR[]): number[] {
+  const labels: string[] = []
+  for (let k = 0; k < marks.length; k++) {
+    const m = marks[k]!
+    let label = `Series ${k + 1}`
+    if (m.kind === 'call' && m.callee.kind === 'identifier') {
+      const callee = m.callee.name
+      const optsArg = callee === 'bubble' || callee === 'band' || PLOT_INDICATOR_MARKS[callee]?.takesWindow === true ? m.args[2] : m.args[1]
+      const own = optsArg?.kind === 'object' ? litString(objectField(optsArg, 'label')) : undefined
+      if (own !== undefined) label = own
+    }
+    labels.push(label)
+  }
+  return labelSlots(labels)
+}
 
 export const PLOT_INDICATOR_MARKS: Readonly<Record<string, { readonly fn: string; readonly kind: string; readonly takesWindow: boolean }>> = {
   sma: { fn: 'smaValues', kind: 'line', takesWindow: true },

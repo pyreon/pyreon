@@ -62,6 +62,7 @@ import type { Formatter } from './format'
 import { measureApprox, renderSvg } from './svg'
 import type { SvgOptions } from './svg'
 import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
+import { themedDial } from './option-gauge'
 
 /**
  * The legend options the CANVAS host builds (`canvas-host.tsx`) — same fields,
@@ -248,7 +249,7 @@ export function gaugeToSvg(options: GaugeToSvgOptions): string {
   const frame = options.frame ?? { x: 0, y: 0, w: width, h: height }
   const fit = fitCircle(frame)
   const cmds = dial !== undefined
-    ? renderDial(dial, fit.center, fit.radius, [...t.palette])
+    ? renderDial(themedDial(dial, t), fit.center, fit.radius, [...t.palette])
     : renderGauge(options.value, { x: 0, y: 0, w: width, h: height * 2 }, opts)
   if (dial === undefined && options.showValue !== false) {
     cmds.push({

@@ -106,7 +106,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTipHeader, chartTooltipCells, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartPieArgs, chartDialCmds, chartFrameLiteral, chartSpecFieldIndex, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
+import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTipHeader, chartTooltipCells, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartPieArgs, chartDialCmds, chartFrameLiteral, chartSpecFieldIndex, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -14293,7 +14293,7 @@ function swiftAccessorExpr(v: ExprIR, tag: string, what: string, indent: number)
 }
 
 /** The literal option fields of one mark call as `name: value` Swift args, in `Series` declaration order. */
-function swiftMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex: number, palette: readonly string[] = CHART_HOST_PALETTE): string[] | 'unsupported' {
+function swiftMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex: number, palette: readonly string[] = CHART_HOST_PALETTE, colorSlot: number = seriesIndex): string[] | 'unsupported' {
   const fields = new Map<string, ExprIR>()
   if (opts !== undefined) {
     if (opts.kind !== 'object' || (opts.spreads !== undefined && opts.spreads.length > 0)) {
@@ -14427,7 +14427,7 @@ function swiftMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex:
       args.push(`${spec.name}: ${lit}`)
       continue
     }
-    if (spec.name === 'color') args.push(`color: ${swiftStr(palette[seriesIndex % palette.length])}`)
+    if (spec.name === 'color') args.push(`color: ${swiftStr(palette[colorSlot % palette.length])}`)
     else if (spec.name === 'label') args.push(`label: ${swiftStr(`Series ${seriesIndex + 1}`)}`)
     else if (spec.default !== undefined) args.push(`${spec.name}: ${spec.kind === 'number' ? chartDouble(spec.default as number) : String(spec.default)}`)
   }
@@ -14564,6 +14564,8 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const series: string[] = []
   const fullA11ySeries: string[] = []
   let navValues = ''
+  // Colour follows the mark's LABEL, as the web's `resolveMarks` does.
+  const colorSlots = plotMarkColorSlots(marksV.elements)
   for (let k = 0; k < marksV.elements.length; k++) {
     const m = marksV.elements[k]!
     // `...bollinger(y, window, k)` — the one mark constructor that returns an
@@ -14621,7 +14623,7 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
       decimated = true
     }
     const optsArg = bubble || isBand || indicator?.takesWindow === true ? m.args[2] : m.args[1]
-    const opts = swiftMarkOptionArgs(optsArg, tag, k, pyreonPalette)
+    const opts = swiftMarkOptionArgs(optsArg, tag, k, pyreonPalette, colorSlots[k] ?? k)
     if (opts === 'unsupported') return 'EmptyView()'
     const rowMap = swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed, decimated)
     const derivedValues = indicator === undefined ? undefined : swiftIndicatorValues(indicator, m, rowMap, tag, k, indent)
@@ -14721,8 +14723,9 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
   const entries = legend.toggling
-    ? 'pyreonSeriesAll.enumerated().map { (pyreonI, pyreonS) in LegendEntry(label: pyreonS.label, color: pyreonS.color, muted: pyreonHidden.contains(pyreonI)) }'
-    : 'pyreonSeries.map { LegendEntry(label: $0.label, color: $0.color) }'
+    ? // One entry per label, as the web draws it (the engine's `legendEntriesGrouped`).
+      'legendEntriesGrouped(pyreonSeriesAll.map { $0.label }, pyreonSeriesAll.map { $0.color }, pyreonHidden)'
+    : 'legendEntriesGrouped(pyreonSeries.map { $0.label }, pyreonSeries.map { $0.color }, [])'
   const tf = swiftChartThemeFields(e, tag)
   const chrome = swiftChartChrome(e, entries, W, H, indent, true, tf, legend.paging ? 'pyreonLegendPage' : undefined)
   lets.push(...chrome.lets)
@@ -15044,7 +15047,7 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
       const onLegend = chartEventHandler(e, 'legendChange')
       const fire = onLegend === undefined ? '' : `; ${swiftChartSelectBody(onLegend, 'pyreonNextHidden', indent)}`
       branches.push(
-        `if pyreonLegendHit >= 0 { let pyreonNextHidden = legendToggle(pyreonHidden, pyreonLegendHit); pyreonHidden = pyreonNextHidden${fire} }`,
+        `if pyreonLegendHit >= 0 { let pyreonNextHidden = legendToggleGroup(pyreonHidden, pyreonSeriesAll.map { $0.label }, pyreonLegendHit); pyreonHidden = pyreonNextHidden${fire} }`,
       )
     }
     if (presets !== undefined) {

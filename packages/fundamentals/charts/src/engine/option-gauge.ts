@@ -6,6 +6,8 @@
  * title and detail.
  */
 import type { DialDatum, DialLen, DialSpec, DialStop } from './gauge-dial'
+import { defaultTheme } from './render'
+import type { ChartTheme } from './render'
 import { arcSweep } from './option-pie'
 import type { Double } from './types'
 
@@ -26,6 +28,30 @@ const TOKEN = {
   detail: '#3c3c41', // primary
   anchor: '#fff', // neutral00
   anchorBorder: '#5070dd', // theme[0]
+}
+
+/**
+ * The dial under a THEME. ECharts' gauge defaults are light-theme tokens (dark
+ * grey text, a near-white track); under the default theme they stay exactly
+ * ECharts', and under any other a colour still equal to its ECharts default
+ * takes the theme's own token instead — the detail value is the theme's text,
+ * the labels and title its label colour, the track its muted colour. A colour
+ * the option SET differently is left alone. Without this a gauge under a dark
+ * theme drew its value in #3c3c41 on a #141821 ground.
+ */
+export function themedDial(dial: DialSpec, t: ChartTheme): DialSpec {
+  if (t.text === defaultTheme.text && t.label === defaultTheme.label) return dial
+  const swap = (c: string, from: string, to: string): string => (c === from ? to : c)
+  return {
+    ...dial,
+    stops: dial.stops.map((st) => ({ at: st.at, color: swap(st.color, TOKEN.band, t.muted) })),
+    splitColor: swap(dial.splitColor, TOKEN.splitLine, t.axis),
+    tickColor: swap(dial.tickColor, TOKEN.tick, t.axis),
+    labelColor: swap(dial.labelColor, TOKEN.label, t.label),
+    titleColor: swap(dial.titleColor, TOKEN.title, t.label),
+    detailColor: swap(dial.detailColor, TOKEN.detail, t.text),
+    anchorColor: swap(dial.anchorColor, TOKEN.anchor, t.surface),
+  }
 }
 
 /** A colour that paints nothing. */

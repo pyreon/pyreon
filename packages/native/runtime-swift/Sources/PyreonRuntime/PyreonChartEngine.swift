@@ -488,6 +488,24 @@ public struct LayoutConfig {
   }
 }
 
+public struct LabelSample: Codable {
+  public var widest: Double
+  public var need: Double
+  public init(widest: Double, need: Double) {
+    self.widest = widest
+    self.need = need
+  }
+}
+
+public struct IntRatio: Codable {
+  public var k: Int
+  public var kd: Double
+  public init(k: Int, kd: Double) {
+    self.k = k
+    self.kd = kd
+  }
+}
+
 public struct StackSegment: Codable {
   public var rect: PyreonChartRect
   public var seriesIndex: Int
@@ -1331,6 +1349,19 @@ public struct ChartSpec {
     self.x2Domain = x2Domain
     self.lines = lines
     self.effectTime = effectTime
+  }
+}
+
+public struct ExtentSpan: Codable {
+  public var seen: Bool
+  public var lo: Double
+  public var hi: Double
+  public var count: Int
+  public init(seen: Bool, lo: Double, hi: Double, count: Int) {
+    self.seen = seen
+    self.lo = lo
+    self.hi = hi
+    self.count = count
   }
 }
 
@@ -3498,9 +3529,11 @@ public struct A11yInput {
 public struct A11yTable: Codable {
   public var headers: [String]
   public var rows: [[String]]
-  public init(headers: [String], rows: [[String]]) {
+  public var total: Int
+  public init(headers: [String], rows: [[String]], total: Int) {
     self.headers = headers
     self.rows = rows
+    self.total = total
   }
 }
 
@@ -3544,6 +3577,8 @@ private let POLYGON_CIRCLE_SIDES = 24
 private let FULL_TURN = Double.pi * 2.0
 
 private let BEZIER_STEPS = 48
+
+private let AREA_MARK_OPACITY = 0.3
 
 private let defaultTheme: ChartTheme = ChartTheme(palette: DEFAULT_PALETTE, background: "", surface: "#ffffff", text: "#1f2937", label: "#5a6b7a", axis: "#8496a5", grid: "rgba(132,150,165,0.18)", positive: "#15803d", negative: "#b42318", muted: "#e2e8f0", ramp: ["#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"], fontFamily: "", fontSize: 11.0, titleSize: 15.0, radius: 3.0, enterMs: 700.0, updateMs: 350.0)
 
@@ -3812,6 +3847,26 @@ public func patternImageCells(_ p: PyreonChartPattern, _ bounds: PyreonChartRect
         x = x + imageW
       }
       y = y + imageH
+    }
+    return out
+  }
+
+public func labelSlots(_ labels: [String]) -> [Int] {
+    var seen: [String] = []
+    var out: [Int] = []
+    for i in 0..<labels.count {
+      let label = labels[i]
+      var slot = -1
+      for k in 0..<seen.count {
+        if seen[k] == label {
+          slot = k
+        }
+      }
+      if slot < 0 {
+        slot = seen.count
+        seen.append(label)
+      }
+      out.append(slot)
     }
     return out
   }
@@ -5301,13 +5356,8 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
     let logMax = (cfg.yLogMax ?? 10.0)
     let valueTicksY = { (r0: Double, r1: Double) in isLog ? logViewTicks(logMin, logMax, cfg.yDomain.inverse == true ? r1 : r0, cfg.yDomain.inverse == true ? r0 : r1, cfg.yFormat) : cfg.yTime == true ? timeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat) : makeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat) }
     let provisionalLabels = cfg.horizontal == true ? cfg.showYAxis ? cfg.categories : [] : cfg.showYAxis ? valueTicksY(cfg.height, 0.0).map({ t in t.label }) : []
-    var widest = 0.0
-    for label in provisionalLabels {
-      var w = measure(label, cfg.fontSize)
-      if w > widest {
-        widest = w
-      }
-    }
+    let yProvisional = labelSample(provisionalLabels, cfg.fontSize, 0.0, measure)
+    let widest = yProvisional.widest
     let yTitleH = cfg.yTitle != nil && cfg.yTitle != "" && cfg.showYAxis ? titleH : 0.0
     let yRad = (((cfg.yLabelAngle ?? 0.0)) * Double.pi) / 180.0
     let yLabelW = cfg.yLabelInside == true ? 0.0 : widest * abs(cos(Double(yRad))) + (cfg.yLabelAngle != nil && cfg.yLabelAngle != 0.0 ? cfg.fontSize * abs(sin(Double(yRad))) : 0.0)
@@ -5366,15 +5416,9 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
     var slantH = 0.0
     if cfg.showXAxis && cfg.horizontal != true {
       let xLabels = cfg.categories.count > 0 ? cfg.categories : (cfg.xTime == true ? timeTicks(cfg.xDomain, 0.0, provisionalW, cfg.xTickCount, cfg.xFormat) : makeTicks(cfg.xDomain, 0.0, provisionalW, cfg.xTickCount, cfg.xFormat)).map({ t in t.label })
-      var need = 0.0
-      var widestX = 0.0
-      for label in xLabels {
-        var w = measure(label, cfg.fontSize)
-        need = need + w + labelGap
-        if w > widestX {
-          widestX = w
-        }
-      }
+      let xSample = labelSample(xLabels, cfg.fontSize, labelGap, measure)
+      let need = xSample.need
+      let widestX = xSample.widest
       let overflow = need > provisionalW && xLabels.count > 1
       let wantRotate = mode == "rotate" || (mode == "auto" && overflow && cfg.categories.count > 0)
       if mode == "echarts" {
@@ -5476,30 +5520,67 @@ public func echartsCategoryEvery(_ labels: [String], _ axisW: Double, _ edge: Bo
     return floorRatio(min(dw, dh), 1.0) + 1
   }
 
-public func floorRatio(_ num: Double, _ den: Double) -> Int {
+public func labelSample(_ labels: [String], _ fontSize: Double, _ gap: Double, _ measure: (String, Double) -> Double) -> LabelSample {
+    let n = labels.count
+    let step = n > 40 ? floorRatio(Double(n) * 1.0, 40.0) : 1
+    var widest = 0.0
+    var need = 0.0
+    var sampled = 0.0
+    var i = 0
+    while i < n {
+      let w = measure(labels[i], fontSize)
+      need = need + w + gap
+      if w > widest {
+        widest = w
+      }
+      sampled = sampled + 1.0
+      i = i + step
+    }
+    if step > 1 && sampled > 0.0 {
+      need = (need * (Double(n) * 1.0)) / sampled
+    }
+    return LabelSample(widest: widest, need: need)
+  }
+
+public func intRatio(_ num: Double, _ den: Double) -> IntRatio {
     if !(den > 0.0) || !(num >= den) {
-      return 0
+      return IntRatio(k: 0, kd: 0.0)
+    }
+    var pows: [Int] = []
+    var powsD: [Double] = []
+    var p = 1
+    var pd = 1.0
+    while pd * den <= num && pows.count < 30 {
+      pows.append(p)
+      powsD.append(pd)
+      p = p + p
+      pd = pd + pd
     }
     var k = 0
-    var acc = den
-    while acc <= num && k < 1000 {
-      k = k + 1
-      acc = acc + den
+    var kd = 0.0
+    let m = pows.count
+    for q in 0..<m {
+      let j = m - 1 - q
+      let nd = kd + powsD[j]
+      if nd * den <= num {
+        k = k + pows[j]
+        kd = nd
+      }
     }
-    return k
+    return IntRatio(k: k, kd: kd)
   }
+
+public func floorRatio(_ num: Double, _ den: Double) -> Int { intRatio(num, den).k }
 
 public func ceilRatio(_ need: Double, _ room: Double) -> Int {
     if !(room > 0.0) {
       return 1
     }
-    var every = 1
-    var acc = room
-    while acc < need && every < 200 {
-      every = every + 1
-      acc = acc + room
+    let r = intRatio(need, room)
+    if r.kd * room < need {
+      return r.k + 1
     }
-    return every
+    return r.k > 0 ? r.k : 1
   }
 
 public func bandTicksY(_ categories: [String], _ plot: PyreonChartRect, _ fromBottom: Bool = false) -> [Tick] {
@@ -7369,7 +7450,7 @@ public func pinDomain(_ spec: ChartSpec, _ series: [Series]) -> Domain {
     let fixMax = spec.yMax != nil || spec.yMaxData == true
     let zero = spec.yZero == true && spec.yMinData != true && spec.yMaxData != true
     let raw = rawExtentOver(series, zero)
-    let data = rawExtentOver(series, false)
+    let data = raw
     let lo = spec.yMinData == true ? data.min : (spec.yMin ?? raw.min)
     let hi = spec.yMaxData == true ? data.max : (spec.yMax ?? raw.max)
     let split = (spec.ySplit ?? 0.0)
@@ -7404,7 +7485,7 @@ public func rawExtentOver(_ series: [Series], _ zero: Bool) -> Domain {
       let max = others.count > 0 ? Double(max(e.max, extent(others).max)) : e.max
       return Domain(min: 0.0, max: max)
     }
-    var all: [Double] = []
+    var span = ExtentSpan(seen: false, lo: 0.0, hi: 1.0, count: 0)
     var hasBars = false
     for s in series {
       if s.kind == "bars" || s.kind == "area" || s.kind == "grouped" || s.kind == "waterfall" || s.kind == "stackedArea" {
@@ -7412,33 +7493,47 @@ public func rawExtentOver(_ series: [Series], _ zero: Bool) -> Domain {
       }
       if s.kind == "waterfall" {
         let we = waterfallExtent(s.values)
-        all.append(we.min)
-        all.append(we.max)
+        span = extendSpan(span, [we.min, we.max], true)
         continue
       }
-      for v in s.values {
-        if isFiniteValue(v) {
-          all.append(v)
-        }
+      span = extendSpan(span, s.values, false)
+      span = extendSpan(span, (s.values2 ?? []), false)
+      span = extendSpan(span, (s.errLow ?? []), false)
+      span = extendSpan(span, (s.errHigh ?? []), false)
+    }
+    let e = span.seen ? Domain(min: span.lo, max: span.hi) : Domain(min: 0.0, max: 1.0)
+    return hasBars || (zero && span.count > 0) ? Domain(min: e.min > 0.0 ? 0.0 : e.min, max: e.max < 0.0 ? 0.0 : e.max) : e
+  }
+
+public func extendSpan(_ span: ExtentSpan, _ values: [Double], _ countAll: Bool) -> ExtentSpan {
+    var seen = span.seen
+    var lo = span.lo
+    var hi = span.hi
+    var count = span.count
+    for i in 0..<values.count {
+      let v = values[i]
+      if countAll {
+        count = count + 1
       }
-      for v in (s.values2 ?? []) {
-        if isFiniteValue(v) {
-          all.append(v)
+      if isFiniteValue(v) {
+        if !countAll {
+          count = count + 1
         }
-      }
-      for v in (s.errLow ?? []) {
-        if isFiniteValue(v) {
-          all.append(v)
-        }
-      }
-      for v in (s.errHigh ?? []) {
-        if isFiniteValue(v) {
-          all.append(v)
+        if !seen {
+          lo = v
+          hi = v
+          seen = true
+        } else {
+          if v < lo {
+            lo = v
+          }
+          if v > hi {
+            hi = v
+          }
         }
       }
     }
-    let e = extent(all)
-    return hasBars || (zero && all.count > 0) ? Domain(min: e.min > 0.0 ? 0.0 : e.min, max: e.max < 0.0 ? 0.0 : e.max) : e
+    return ExtentSpan(seen: seen, lo: lo, hi: hi, count: count)
   }
 
 public func isFiniteValue(_ v: Double) -> Bool { isFiniteNumber(v) }
@@ -8279,7 +8374,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
                     poly.append(PyreonChartPt(x: pts[pts.count - 1].x, y: baseY))
                     poly.append(PyreonChartPt(x: pts[0].x, y: baseY))
                     let areaAlpha = stateAreaOpacity(spec, s)
-                    out.append(polygonCmd(poly, areaAlpha < 0.0 ? s.color : withAlpha(s.color, areaAlpha), sGrad, s.pattern))
+                    let baseAlpha = (s.areaOpacity ?? AREA_MARK_OPACITY)
+                    out.append(polygonCmd(poly, withAlpha(s.color, areaAlpha < 0.0 ? baseAlpha : areaAlpha), sGrad, s.pattern))
                   }
                 }
               } else {
@@ -13296,8 +13392,16 @@ public func renderCandlestickChart(_ candles: [Ohlc], _ w: Double, _ h: Double, 
       cmds.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: l.plot.x, y: tick.pos), to: PyreonChartPt(x: l.plot.x + l.plot.w, y: tick.pos), stroke: theme.grid, width: 1.0))
       cmds.append(PyreonDrawCmd(kind: "text", fill: theme.label, text: tick.label, at: PyreonChartPt(x: l.plot.x - 6.0, y: tick.pos), size: theme.fontSize, align: "end", baseline: "middle"))
     }
-    for tick in l.xTicks {
-      cmds.append(PyreonDrawCmd(kind: "text", fill: theme.label, text: tick.label, at: PyreonChartPt(x: tick.pos, y: l.plot.y + l.plot.h + 6.0), size: theme.fontSize, align: "middle", baseline: "top"))
+    for ti in 0..<l.xTicks.count {
+      let tick = l.xTicks[ti]
+      if l.xLabelEvery > 1 && ti % l.xLabelEvery != 0 {
+        continue
+      }
+      if l.xLabelRotate != 0.0 {
+        cmds.append(PyreonDrawCmd(kind: "text", fill: theme.label, text: tick.label, at: PyreonChartPt(x: tick.pos, y: l.plot.y + l.plot.h + 6.0), size: theme.fontSize, align: l.xLabelRotate < 0.0 ? "end" : "start", baseline: "middle", rotate: l.xLabelRotate))
+      } else {
+        cmds.append(PyreonDrawCmd(kind: "text", fill: theme.label, text: tick.label, at: PyreonChartPt(x: tick.pos, y: l.plot.y + l.plot.h + 6.0), size: theme.fontSize, align: "middle", baseline: "top"))
+      }
     }
     let body = renderCandles(candles, l.plot, f.domain, CandleOptions(upColor: (options?.upColor ?? theme.positive), downColor: (options?.downColor ?? theme.negative), widthRatio: options?.widthRatio))
     for c in body {
@@ -14599,6 +14703,74 @@ public func legendToggle(_ hidden: [Int], _ i: Int) -> [Int] {
     return out
   }
 
+public func legendEntriesGrouped(_ labels: [String], _ colors: [String], _ hidden: [Int]) -> [LegendEntry] {
+    var out: [LegendEntry] = []
+    var seen: [String] = []
+    for i in 0..<labels.count {
+      let label = labels[i]
+      var known = false
+      for k in 0..<seen.count {
+        if seen[k] == label {
+          known = true
+        }
+      }
+      if known {
+        continue
+      }
+      seen.append(label)
+      var allHidden = true
+      for j in 0..<labels.count {
+        if labels[j] == label && !isHiddenSeries(hidden, j) {
+          allHidden = false
+        }
+      }
+      out.append(LegendEntry(label: label, color: i < colors.count ? colors[i] : "#999999", muted: allHidden))
+    }
+    return out
+  }
+
+public func legendToggleGroup(_ hidden: [Int], _ labels: [String], _ entry: Int) -> [Int] {
+    var seen: [String] = []
+    for i in 0..<labels.count {
+      let label = labels[i]
+      var known = false
+      for k in 0..<seen.count {
+        if seen[k] == label {
+          known = true
+        }
+      }
+      if !known {
+        seen.append(label)
+      }
+    }
+    if entry < 0 || entry >= seen.count {
+      return hidden
+    }
+    let target = seen[entry]
+    var anyShown = false
+    for j in 0..<labels.count {
+      if labels[j] == target && !isHiddenSeries(hidden, j) {
+        anyShown = true
+      }
+    }
+    var out: [Int] = []
+    for k in 0..<hidden.count {
+      let h = hidden[k]
+      let inGroup = h >= 0 && h < labels.count && labels[h] == target
+      if !inGroup {
+        out.append(h)
+      }
+    }
+    if anyShown {
+      for j in 0..<labels.count {
+        if labels[j] == target {
+          out.append(j)
+        }
+      }
+    }
+    return out
+  }
+
 public func pinSelection(_ selected: [Int], _ global: Int, _ multiple: Bool) -> [Int] {
     if global < 0 {
       return selected
@@ -15380,7 +15552,7 @@ public func withError(_ fmt: (Double) -> String, _ v: Double, _ s: A11ySeries, _
     return "\(fmt(v)) (\(fmt(l)) to \(fmt(h)))"
   }
 
-public func chartTable(_ input: A11yInput) -> A11yTable {
+public func chartTable(_ input: A11yInput, _ limit: Int = -1) -> A11yTable {
     let fmt = (input.format ?? plain)
     var headers = ["Category"]
     for s in input.series {
@@ -15410,8 +15582,9 @@ public func chartTable(_ input: A11yInput) -> A11yTable {
         n = s.values.count
       }
     }
+    let count = limit >= 0 && limit < n ? limit : n
     var rows: [[String]] = []
-    for i in 0..<n {
+    for i in 0..<count {
       var row = [i < input.categories.count ? input.categories[i] : "\(i + 1)"]
       for s in input.series {
         let other = (s.values2 ?? [])
@@ -15480,7 +15653,7 @@ public func chartTable(_ input: A11yInput) -> A11yTable {
       }
       rows.append(row)
     }
-    return A11yTable(headers: headers, rows: rows)
+    return A11yTable(headers: headers, rows: rows, total: n)
   }
 
 public func finite(_ v: Double) -> Bool { v == v }

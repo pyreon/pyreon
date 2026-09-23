@@ -235,11 +235,12 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     : cfg.showYAxis
       ? valueTicksY(cfg.height, 0.0).map((t) => t.label)
       : []
-  let widest = 0.0
-  for (const label of provisionalLabels) {
-    const w = measure(label, cfg.fontSize)
-    if (w > widest) widest = w
-  }
+  // Sampled past 40 labels, as ECharts samples a category axis
+  // (`calculateCategoryInterval`: every `floor(count / 40)`-th label). Measuring
+  // every one of 100,000 category names is a `measureText` call each, and it
+  // was most of a large chart's frame.
+  const yProvisional = labelSample(provisionalLabels, cfg.fontSize, 0.0, measure)
+  const widest = yProvisional.widest
 
   const yTitleH = cfg.yTitle !== undefined && cfg.yTitle !== '' && cfg.showYAxis ? titleH : 0.0
   // A turned label's box is w·|cos| + fontSize·|sin| wide; inside labels take no gutter.
@@ -309,13 +310,9 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
       : (cfg.xTime === true
           ? timeTicks(cfg.xDomain, 0.0, provisionalW, cfg.xTickCount, cfg.xFormat)
           : makeTicks(cfg.xDomain, 0.0, provisionalW, cfg.xTickCount, cfg.xFormat)).map((t) => t.label)
-    let need = 0.0
-    let widestX = 0.0
-    for (const label of xLabels) {
-      const w = measure(label, cfg.fontSize)
-      need = need + w + labelGap
-      if (w > widestX) widestX = w
-    }
+    const xSample = labelSample(xLabels, cfg.fontSize, labelGap, measure)
+    const need = xSample.need
+    const widestX = xSample.widest
     const overflow = need > provisionalW && xLabels.length > 1
     const wantRotate = mode === 'rotate' || (mode === 'auto' && overflow && cfg.categories.length > 0)
     if (mode === 'echarts') {
@@ -446,33 +443,85 @@ function echartsCategoryEvery(labels: string[], axisW: Double, edge: boolean, fo
   return floorRatio(Math.min(dw, dh), 1.0) + 1
 }
 
-/** `floor(num / den)` as an INT, by counting (the native subset has no Double→Int assignment); bounded at 1000. */
-function floorRatio(num: Double, den: Double): number {
-  if (!(den > 0.0) || !(num >= den)) return 0
-  let k = 0
-  let acc = den
-  while (acc <= num && k < 1000) {
-    k = k + 1
-    acc = acc + den
+/**
+ * The widest label and the room the whole run needs (each label plus `gap`),
+ * from a sample of every `floor(count / 40)`-th label past 40 — ECharts'
+ * `calculateCategoryInterval` rule, and what keeps a 100,000-category axis
+ * from measuring 100,000 strings. The run's room is the sample's scaled to the
+ * whole run; a run of 40 or fewer is measured exactly.
+ */
+interface LabelSample {
+  widest: Double
+  need: Double
+}
+
+function labelSample(labels: string[], fontSize: Double, gap: Double, measure: (text: string, size: Double) => Double): LabelSample {
+  const n = labels.length
+  const step = n > 40 ? floorRatio(n * 1.0, 40.0) : 1
+  let widest = 0.0
+  let need = 0.0
+  let sampled = 0.0
+  let i = 0
+  while (i < n) {
+    const w = measure(labels[i]!, fontSize)
+    need = need + w + gap
+    if (w > widest) widest = w
+    sampled = sampled + 1.0
+    i = i + step
   }
-  return k
+  if (step > 1 && sampled > 0.0) need = (need * (n * 1.0)) / sampled
+  return { widest, need }
+}
+
+/** An INT quotient and the same quotient as a Double, built together. */
+interface IntRatio {
+  k: number
+  kd: Double
 }
 
 /**
- * `ceil(need / room)` as an INT, by counting — the native subset has no
- * Double→Int assignment (`Math.ceil` yields a Double on both targets), so
- * the ratio is walked in whole rooms. Bounded: past 200 the labels are
- * already unreadable and the count stops mattering.
+ * `floor(num / den)` as an INT and a Double, by binary decomposition over
+ * powers of two — the native subset has no Double→Int assignment, and the
+ * counting loop this replaced was capped (at 200 and 1000), which is how a
+ * 100,000-category axis drew 500 overlapping labels instead of ~50.
  */
+function intRatio(num: Double, den: Double): IntRatio {
+  if (!(den > 0.0) || !(num >= den)) return { k: 0, kd: 0.0 }
+  const pows: number[] = []
+  const powsD: Double[] = []
+  let p = 1
+  let pd = 1.0
+  while (pd * den <= num && pows.length < 30) {
+    pows.push(p)
+    powsD.push(pd)
+    p = p + p
+    pd = pd + pd
+  }
+  let k = 0
+  let kd = 0.0
+  const m = pows.length
+  for (let q = 0; q < m; q++) {
+    const j = m - 1 - q
+    const nd = kd + powsD[j]!
+    if (nd * den <= num) {
+      k = k + pows[j]!
+      kd = nd
+    }
+  }
+  return { k, kd }
+}
+
+/** `floor(num / den)` as an INT (see `intRatio`). */
+function floorRatio(num: Double, den: Double): number {
+  return intRatio(num, den).k
+}
+
+/** `ceil(need / room)` as an INT, at least 1 (see `intRatio`). */
 function ceilRatio(need: Double, room: Double): number {
   if (!(room > 0.0)) return 1
-  let every = 1
-  let acc = room
-  while (acc < need && every < 200) {
-    every = every + 1
-    acc = acc + room
-  }
-  return every
+  const r = intRatio(need, room)
+  if (r.kd * room < need) return r.k + 1
+  return r.k > 0 ? r.k : 1
 }
 
 /** One tick per category, centred on its band. */
