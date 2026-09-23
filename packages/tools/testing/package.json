@@ -76,6 +76,7 @@
   },
   "files": [
     "lib",
+    "!lib/analysis",
     "README.md",
     "LICENSE",
     "src"
