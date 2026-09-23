@@ -558,6 +558,54 @@ final class PyreonTasksUITests: XCTestCase {
         tapAfterScrolling(app.buttons["flow-back"].firstMatch, in: app)
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 10), "flow-back did not return to tasks")
 
+        // F6 scale proof: 400 nodes with culling on. Every assertion is a COUNT
+        // or an identity, so it is deterministic on any simulator; a timing
+        // would not be.
+        tapAfterScrolling(app.buttons["tasks-flow-scale"].firstMatch, in: app)
+        XCTAssertTrue(app.otherElements["flow-scale-page"].firstMatch.waitForExistence(timeout: 15), "Flow scale page did not render")
+        let scaleTotal = app.staticTexts["flow-scale-total"].firstMatch
+        XCTAssertEqual(scaleTotal.label, "0", "the scale flow starts empty")
+        app.buttons["flow-scale-load"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(scaleTotal, "400", timeout: 15), "loading the grid did not reach the engine (label: \(scaleTotal.label))")
+        let gridNodes = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "grid node "))
+        func node(_ index: Int) -> XCUIElement {
+            app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "grid node \(index)")).firstMatch
+        }
+        XCTAssertTrue(node(0).waitForExistence(timeout: 10), "the first grid node did not render at the origin viewport")
+        // The ceiling: a phone canvas shows a few columns of 200pt-spaced nodes.
+        // Mounting all 400 would mean culling is off.
+        let mountedAtOrigin = gridNodes.count
+        XCTAssertGreaterThan(mountedAtOrigin, 1, "culling kept too few nodes")
+        XCTAssertLessThanOrEqual(mountedAtOrigin, 40, "culling mounted \(mountedAtOrigin) of 400 nodes at the origin viewport")
+        // The grid renders through a CUSTOM node with its own handles, so its
+        // renderer is culled too: one target handle per mounted node, no more.
+        let targetHandles = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "target handle in"))
+        XCTAssertEqual(targetHandles.count, mountedAtOrigin, "custom-node handles are not culled with their nodes")
+        // Panning swaps WHICH nodes are mounted: node 0 leaves, node 170 (row 8,
+        // column 10, placed exactly at the new viewport origin) arrives.
+        app.buttons["flow-scale-pan"].firstMatch.tap()
+        XCTAssertTrue(node(170).waitForExistence(timeout: 10), "panning did not mount the node now at the viewport origin")
+        XCTAssertFalse(node(0).exists, "node 0 stayed mounted after it was panned far off screen")
+        XCTAssertLessThanOrEqual(gridNodes.count, 40, "culling mounted \(gridNodes.count) nodes after the pan")
+        // A node that scrolled in is live: dragging it reaches the engine.
+        let farPos = app.staticTexts["flow-scale-far-pos"].firstMatch
+        let farBefore = farPos.label
+        let farGrab = node(170).coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        farGrab.press(forDuration: 0.3, thenDragTo: farGrab.withOffset(CGVector(dx: 60, dy: 30)), withVelocity: .slow, thenHoldForDuration: 0.4)
+        let farMoved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", farBefore), object: farPos)
+        XCTAssertEqual(XCTWaiter().wait(for: [farMoved], timeout: 5), .completed, "dragging a panned-in node did not move it (still \(farPos.label))")
+        // Pinching out zooms the engine and widens the culled set, and the set
+        // stays bounded rather than falling back to every node.
+        let scaleZoom = app.staticTexts["flow-scale-zoom"].firstMatch
+        let zoomBefore = scaleZoom.label
+        let scaleCanvas = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Scale flow")).firstMatch
+        scaleCanvas.pinch(withScale: 0.5, velocity: -1)
+        let zoomed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", zoomBefore), object: scaleZoom)
+        XCTAssertEqual(XCTWaiter().wait(for: [zoomed], timeout: 5), .completed, "pinching did not zoom the scale flow (label: \(scaleZoom.label))")
+        XCTAssertLessThan(gridNodes.count, 200, "culling mounted \(gridNodes.count) of 400 nodes after zooming out")
+        tapAfterScrolling(app.buttons["flow-scale-back"].firstMatch, in: app)
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 10), "flow-scale-back did not return to tasks")
+
         let lifecycleNav = app.buttons["tasks-lifecycle"].firstMatch
         XCTAssertTrue(lifecycleNav.exists, "Lifecycle button missing on tasks page")
         lifecycleNav.tap()
