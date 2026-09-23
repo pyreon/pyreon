@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -323,13 +324,68 @@ fun <T> PyreonFlowControls(
     modifier: Modifier = Modifier,
     extraContent: @Composable () -> Unit = {},
 ) {
-    Column(modifier.padding(2.dp)) {
-        if (style.showZoomIn) Button(onClick = { state.zoomIn() }, modifier = Modifier.semantics { contentDescription = "Zoom in" }) { Text("+") }
-        if (style.showZoomOut) Button(onClick = { state.zoomOut() }, modifier = Modifier.semantics { contentDescription = "Zoom out" }) { Text("−") }
-        if (style.showFitView) Button(onClick = { state.fitView() }, modifier = Modifier.semantics { contentDescription = "Fit view" }) { Text("Fit") }
-        if (style.showLock) Button(onClick = { onLockedChange(!locked) }, modifier = Modifier.semantics { contentDescription = "Lock the canvas"; selected = locked }) { Text(if (locked) "Unlock" else "Lock") }
-        Text("${(state.zoom * 100).roundToInt()}%", modifier = Modifier.semantics { contentDescription = "Current zoom level" })
+    // The web's `.pyreon-flow-controls`: a bordered panel box of 28px
+    // transparent buttons drawn in `--pyreon-flow-control-color`, not the
+    // platform's filled buttons.
+    val palette = LocalPyreonFlowPalette.current
+    val panelShape = RoundedCornerShape(6.dp)
+    Column(
+        modifier
+            .background(pyreonFlowEdgeColor(palette.panelBackground), panelShape)
+            .border(1.dp, pyreonFlowEdgeColor(palette.panelBorder), panelShape)
+            .padding(2.dp),
+    ) {
+        if (style.showZoomIn) PyreonFlowControlButton("+", "Zoom in", palette) { state.zoomIn() }
+        if (style.showZoomOut) PyreonFlowControlButton("−", "Zoom out", palette) { state.zoomOut() }
+        if (style.showFitView) PyreonFlowControlButton("Fit", "Fit view", palette) { state.fitView() }
+        if (style.showLock) PyreonFlowControlButton(if (locked) "Unlock" else "Lock", "Lock the canvas", palette, selected = locked) { onLockedChange(!locked) }
+        Text("${(state.zoom * 100).roundToInt()}%", color = pyreonFlowEdgeColor(palette.controlColor), modifier = Modifier.semantics { contentDescription = "Current zoom level" })
         extraContent()
+    }
+}
+
+@Composable
+private fun PyreonFlowControlButton(
+    glyph: String,
+    label: String,
+    palette: PyreonFlowPalette,
+    selected: Boolean? = null,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .defaultMinSize(minWidth = 28.dp, minHeight = 28.dp)
+            .clickable(onClick = onClick)
+            .semantics {
+                contentDescription = label
+                role = androidx.compose.ui.semantics.Role.Button
+                if (selected != null) this.selected = selected
+            },
+        contentAlignment = androidx.compose.ui.Alignment.Center,
+    ) {
+        Text(glyph, color = pyreonFlowEdgeColor(palette.controlColor))
+    }
+}
+
+/**
+ * The web's default node: a labelled box with the palette's node background,
+ * text and border colours, 2px border (the selected colour while selected),
+ * 6px corners, 8x16 padding, 13px text and an 80px minimum width. The
+ * compiler emits it for every node without a custom `type`.
+ */
+@Composable
+fun PyreonFlowDefaultNode(label: String, selected: Boolean) {
+    val palette = LocalPyreonFlowPalette.current
+    val shape = RoundedCornerShape(6.dp)
+    Box(
+        Modifier
+            .defaultMinSize(minWidth = 80.dp)
+            .background(pyreonFlowEdgeColor(palette.nodeBackground), shape)
+            .border(2.dp, pyreonFlowEdgeColor(if (selected) palette.nodeSelected else palette.nodeBorder), shape)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        contentAlignment = androidx.compose.ui.Alignment.Center,
+    ) {
+        Text(label, color = pyreonFlowEdgeColor(palette.nodeColor), fontSize = 13.sp)
     }
 }
 

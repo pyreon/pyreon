@@ -1375,6 +1375,10 @@ public struct PyreonFlowMiniMapStyle {
 extension View {
   public func pyreonFlowColorMode(_ colorMode: String) -> some View { self }
 }
+public struct PyreonFlowDefaultNode: View {
+  public init(label: String, selected: Bool) {}
+  public var body: some View { EmptyView() }
+}
 public struct PyreonFlowNodeResizerConfig {
   public init(minWidth: Double = 50, minHeight: Double = 30, handleSize: Double = 8, showEdgeHandles: Bool = false) {}
 }
