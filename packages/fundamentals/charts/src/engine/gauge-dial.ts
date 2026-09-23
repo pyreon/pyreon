@@ -6,7 +6,8 @@
 // pointer's, the title's offset) travel as `DialLen` and resolve against the
 // radius at draw time, when it is known.
 
-import { arcPolygon } from './arc'
+import { arcPolygon, fitCircle } from './arc'
+import { paletteAt } from './palette'
 import { symbolPoints } from './pictorial'
 import type { DrawCmd, Double, Pt, Rect } from './types'
 
@@ -181,7 +182,10 @@ export function sausagePolygon(center: Pt, outer: Double, inner: Double, lo: Dou
 }
 
 /** The dial's draw commands for a gauge centred at `center` with radius `r`. */
-export function renderDial(spec: DialSpec, center: Pt, r: Double): DrawCmd[] {
+export function renderDial(spec: DialSpec, center: Pt, r: Double, palette?: string[]): DrawCmd[] {
+  // A datum with no colour of its own takes the palette's, by index.
+  const pal = palette ?? []
+  const colorOf = (d: DialDatum, i: number): string => (d.color !== '' || pal.length === 0 ? d.color : paletteAt(pal, i))
   const layers: Layered[] = []
   let seq = 0.0
   const dir = spec.clockwise ? 1.0 : -1.0
@@ -259,7 +263,8 @@ export function renderDial(spec: DialSpec, center: Pt, r: Double): DrawCmd[] {
 
   // Each value's title and detail.
   const textZ = spec.pointerAbove ? 0.0 : 2.0
-  for (const d of spec.data) {
+  for (let di = 0; di < spec.data.length; di++) {
+    const d = spec.data[di]!
     const auto = dialColor(spec.stops, fraction(d.value, spec.min, spec.max))
     if (spec.titleShow && d.name !== '') {
       const at = { x: center.x + dialLen(d.titleX, r), y: center.y + dialLen(d.titleY, r) }
@@ -283,7 +288,7 @@ export function renderDial(spec: DialSpec, center: Pt, r: Double): DrawCmd[] {
           seq = seq + 1.0
         }
       }
-      const fill = spec.detailColor !== '' ? spec.detailColor : spec.progressShow ? d.color : auto
+      const fill = spec.detailColor !== '' ? spec.detailColor : spec.progressShow ? colorOf(d, di) : auto
       if (spec.detailBold) layers.push({ z: textZ, seq, cmd: { kind: 'text', text: d.detail, at, fill, size: spec.detailSize, align: 'middle', baseline: 'middle', weight: 'bold' } })
       else layers.push({ z: textZ, seq, cmd: { kind: 'text', text: d.detail, at, fill, size: spec.detailSize, align: 'middle', baseline: 'middle' } })
       seq = seq + 1.0
@@ -327,7 +332,7 @@ export function renderDial(spec: DialSpec, center: Pt, r: Double): DrawCmd[] {
     const auto = dialColor(spec.stops, f)
     if (spec.pointerShow) {
       const a = start + span * f
-      const fill = d.pointerColor === 'auto' ? auto : d.pointerColor !== '' ? d.pointerColor : d.color
+      const fill = d.pointerColor === 'auto' ? auto : d.pointerColor !== '' ? d.pointerColor : colorOf(d, i)
       const len = dialLen(spec.pointerLength, r)
       const w = dialLen(spec.pointerWidth, r)
       const ox = dialLen(spec.pointerX, r)
@@ -341,7 +346,7 @@ export function renderDial(spec: DialSpec, center: Pt, r: Double): DrawCmd[] {
       const t = spec.progressClip ? f : raw
       const width = spec.progressOverlap ? spec.progressWidth : spec.lineWidth / (count * 1.0)
       const outer = spec.progressOverlap ? r : r - ring * width
-      const fill = d.progressColor === 'auto' ? auto : d.progressColor !== '' ? d.progressColor : d.color
+      const fill = d.progressColor === 'auto' ? auto : d.progressColor !== '' ? d.progressColor : colorOf(d, i)
       // Overlapping arcs: a smaller value paints over a larger one (ECharts' z2 of 100..0).
       const z = spec.progressOverlap ? 100.0 - f * 100.0 : 0.0
       layers.push({ z, seq, cmd: band(center, outer, outer - width, start, start + span * t, fill, spec.progressRound) })
@@ -402,4 +407,10 @@ export function iconPoints(icon: string, cell: Rect): Pt[] {
     ]
   }
   return symbolPoints(cell, icon === 'emptyCircle' ? 'circle' : icon)
+}
+
+/** A dial drawn into `box`: the circle fitted to it, a datum without its own colour taking `palette`'s by index. */
+export function renderDialIn(spec: DialSpec, box: Rect, palette: string[]): DrawCmd[] {
+  const fit = fitCircle(box)
+  return renderDial(spec, fit.center, fit.radius, palette)
 }

@@ -19,9 +19,10 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import { compileOption, readBrush, readToolbox, defaultTimelineStrip, resolveYDomain, timelineSteps, DEFAULT_DECALS, visualMapSpec, visualStripOf, fillPattern, imageFill, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
+import { compileFamily, familyFrame, GAUGE_DIAL_KEYS, PIE_SHAPE_KEYS, compileOption, readBrush, readToolbox, defaultTimelineStrip, resolveYDomain, timelineSteps, DEFAULT_DECALS, visualMapSpec, visualStripOf, fillPattern, imageFill, decimateShared, graphicElements, labelFields, plain, resolveDataset, samplingRequest } from '@pyreon/charts/option-layer'
 import type { ChartPattern, VisualMapSpec, GraphicElement, RichStyle, SamplingRequest } from '@pyreon/charts/option-layer'
-import type { AttrIR, ChildIR, ExprIR } from './types'
+import type { AttrIR, ChildIR, ExprIR, TypeIR } from './types'
+import { kotlinStr, swiftStr } from './string-literals'
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 
 /** Per-target expression helpers the host specs build their draw list with. */
@@ -131,6 +132,72 @@ export interface ChartHostArgs {
   showLabels?: string
   /** The theme's font size as emitted text (the pie's label size); the default when absent. */
   fontSize?: string
+  /** The pie's box when an OptionChart placed it (ECharts' center / radius / box keys), in plot space. */
+  frame?: string
+  /** The pie's `ArcConfig` literal (ECharts' angles, direction, rose, gaps); the classic pie without it. */
+  pieArcs?: string
+  /** Trailing `PieOptions` arguments (arcs, labels, view, empty, measure), each already `, name: value`. */
+  pieExtra?: string
+  /** The pie's label colour; white (inside the slices) without it. */
+  pieLabelColor?: string
+}
+
+/**
+ * A GaugeChart's full ECharts dial, from the `dial` / `frameSpec` attributes
+ * an OptionChart's desugar attaches: `renderDialIn` over the web-compiled
+ * `DialSpec`, in its frame (the whole canvas without one), a datum without
+ * its own colour taking the palette's. Undefined when there is no dial.
+ */
+export function chartDialCmds(e: Extract<ExprIR, { kind: 'jsx-element' }>, target: 'swift' | 'kotlin', W: string, H: string): string | undefined {
+  const dialAttr = attrOf(e, 'dial')
+  const dial = dialAttr === undefined ? undefined : irToValue(dialAttr, () => undefined)
+  const dialLit = dial?.ok === true ? engineStructLiteral('DialSpec', dial.value, target) : undefined
+  if (dialLit === undefined) return undefined
+  const frameAttr = attrOf(e, 'frameSpec')
+  const frame = frameAttr === undefined ? undefined : irToValue(frameAttr, () => undefined)
+  const frameLit = frame?.ok === true ? engineStructLiteral('FrameSpec', frame.value, target) : undefined
+  const box = frameLit !== undefined ? `frameRectAt(${frameLit}, ${W}, ${H}, 0.0, 0.0)` : target === 'swift' ? `PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H})` : `PyreonChartRect(0.0, 0.0, ${W}, ${H})`
+  const palette = CHART_HOST_PALETTE.map((c) => (target === 'swift' ? swiftStr(c) : kotlinStr(c)))
+  return `renderDialIn(${dialLit}, ${box}, ${target === 'swift' ? `[${palette.join(', ')}]` : `listOf(${palette.join(', ')})`})`
+}
+
+/**
+ * The pie host's placement and shape, from the `pie` / `frameSpec` attributes
+ * an OptionChart's desugar attaches (the web facade's compiled `PieShape` and
+ * frame). `W` / `H` are the whole canvas; `left` / `top` the chrome's offset,
+ * so the frame lands in plot space exactly where the web draws it.
+ */
+export function chartPieArgs(e: Extract<ExprIR, { kind: 'jsx-element' }>, target: 'swift' | 'kotlin', W: string, H: string, left: string, top: string, themeLabel: string): Partial<ChartHostArgs> {
+  const out: Partial<ChartHostArgs> = {}
+  const named = (k: string, v: string): string => (target === 'swift' ? `, ${k}: ${v}` : `, ${k} = ${v}`)
+  const frameAttr = attrOf(e, 'frameSpec')
+  const frame = frameAttr === undefined ? undefined : irToValue(frameAttr, () => undefined)
+  const frameLit = frame?.ok === true ? engineStructLiteral('FrameSpec', frame.value, target) : undefined
+  let extra = ''
+  if (frameLit !== undefined) {
+    out.frame = `frameRectAt(${frameLit}, ${W}, ${H}, ${left}, ${top})`
+  }
+  const pieAttr = attrOf(e, 'pie')
+  const pie = pieAttr === undefined ? undefined : irToValue(pieAttr, () => undefined)
+  if (pie?.ok === true && isPlainRecord(pie.value)) {
+    const arcs = engineStructLiteral('ArcConfig', pie.value['arcs'], target)
+    if (arcs !== undefined) {
+      out.pieArcs = arcs
+      extra += named('arcs', arcs)
+    }
+    const labels = pie.value['labels'] === undefined ? undefined : engineStructLiteral('PieLabelOptions', pie.value['labels'], target)
+    if (labels !== undefined) {
+      extra += named('labels', labels)
+      // Outside labels read on the background, so they take the theme's text; inside ones sit on the slice.
+      if (isPlainRecord(pie.value['labels']) && pie.value['labels']['position'] !== 'inside') out.pieLabelColor = themeLabel
+    }
+    // Outside labels keep within the view (the whole chart unless the box keys say otherwise), as the web's.
+    if (frameLit !== undefined) extra += named('view', `frameViewAt(${frameLit}, ${W}, ${H}, ${left}, ${top})`)
+    if (typeof pie.value['empty'] === 'string' && pie.value['empty'] !== '') extra += named('empty', target === 'swift' ? swiftStr(pie.value['empty']) : kotlinStr(pie.value['empty']))
+    extra += named('measure', target === 'swift' ? 'pyreonChartMeasure' : '::pyreonChartMeasure')
+  }
+  if (extra !== '') out.pieExtra = extra
+  return out
 }
 
 export interface ChartHostSpec {
@@ -1253,7 +1320,15 @@ function desugarOptionChartHost(
   if (attrOf(e, 'locale') !== undefined) warn('<OptionChart locale>: locale formatting for family options is not used by this native adapter.')
 
   if (kind === 'gauge') {
-    optionFields(series, ['type', 'data', 'min', 'max', 'detail'], 'option.series[0]', warn)
+    // The web facade's own compile of a literal gauge: ECharts' whole dial
+    // (angles, bands, ticks, labels, pointers, anchor, titles, details) and
+    // its placement cross as it computed them.
+    const gaugeCompiled = compiledFamilyPlan(raw, resolve, 'gauge')
+    optionFields(series, ['type', 'data', 'min', 'max', 'detail', ...(gaugeCompiled !== undefined ? ['name', ...GAUGE_DIAL_KEYS, 'left', 'top', 'right', 'bottom', 'width', 'height'] : [])], 'option.series[0]', warn)
+    if (gaugeCompiled !== undefined && gaugeCompiled.plan.kind === 'gauge') {
+      set('dial', valueToIr(gaugeCompiled.plan.dial))
+      set('frameSpec', valueToIr(familyFrame(gaugeCompiled.series)))
+    }
     const data = literalOf(objectField(series, 'data'), resolve)
     const firstDatum = data?.kind === 'array' ? literalOf(data.elements[0], resolve) : undefined
     const value = firstDatum === undefined ? undefined : firstDatum.kind === 'object' ? objectField(firstDatum, 'value') : firstDatum
@@ -1275,7 +1350,10 @@ function desugarOptionChartHost(
   }
 
   if (kind === 'pie') {
-    optionFields(series, ['type', 'data', 'radius', 'label'], 'option.series[0]', warn)
+    // The web facade's own compile of a literal pie: its ECharts arcs, labels,
+    // empty circle and placement cross as it computed them.
+    const pieCompiled = compiledFamilyPlan(raw, resolve, 'pie')
+    optionFields(series, ['type', 'data', 'radius', 'label', ...(pieCompiled !== undefined ? ['name', 'center', ...PIE_SHAPE_KEYS] : [])], 'option.series[0]', warn)
     const data = literalOf(objectField(series, 'data'), resolve)
     if (data?.kind !== 'array') {
       warn('<OptionChart option.series[0].data>: a native pie needs a literal data array; emitting nothing.')
@@ -1308,6 +1386,21 @@ function desugarOptionChartHost(
     const label = literalOf(objectField(series, 'label'), resolve)
     const labelShow = label === undefined ? undefined : objectField(label, 'show')
     if (labelShow?.kind === 'literal' && labelShow.value === false) set('showLabels', lit(false))
+    if (pieCompiled !== undefined && pieCompiled.plan.kind === 'pie') {
+      set('pie', valueToIr(pieCompiled.plan.pie))
+      set('frameSpec', valueToIr(familyFrame(pieCompiled.series)))
+      // A datum's own itemStyle.color, as the web plan resolved it.
+      const colors = pieCompiled.plan.rows.map((r) => r.color)
+      if (colors.some((c) => c !== undefined)) {
+        const at = attrs.findIndex((a) => a.kind === 'attr' && a.name === 'data')
+        const dataAttr = at >= 0 ? attrs[at] : undefined
+        if (dataAttr?.kind === 'attr' && dataAttr.value.kind === 'array') {
+          const withColor = dataAttr.value.elements.map((row, i) => (row.kind === 'object' ? { ...row, fields: [...row.fields, { name: 'color', value: lit(colors[i] ?? CHART_HOST_PALETTE[i % CHART_HOST_PALETTE.length]!) }] } : row))
+          set('data', { kind: 'array', elements: withColor })
+          set('color', { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: 'color' } })
+        }
+      }
+    }
     return { kind: 'jsx-element', tag: 'PieChart', attrs, children: [] }
   }
 
@@ -3078,13 +3171,15 @@ export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = 
     ],
     defaultHeight: 240,
     // `innerRatio` carries the host's `innerRadius` (a 0..1 fraction of the fitted radius).
-    render: (items, a, t) => `renderPie(${items}, ${box00(a, t)}, ${t.pieOptions(a)})`,
+    // An OptionChart-placed pie draws into its frame, laid round by ECharts' arcs (the web host's `frame` / `pie`).
+    render: (items, a, t) => `renderPie(${items}, ${a.frame ?? box00(a, t)}, ${t.pieOptions(a)})`,
     hit: (items, x, y, a, t) => {
+      if (a.pieArcs !== undefined) return `pieHitWith(${items}, ${a.frame ?? box00(a, t)}, ${a.innerRatio}, ${a.pieArcs}, ${x}, ${y})`
       const fit = `fitCircle(${box00(a, t)})`
       return `hitArc(layoutArcs(${items}), ${fit}.center, ${fit}.radius, ${fit}.radius * ${a.innerRatio}, ${t.pt(x, y)})`
     },
     legend: (items) => `pieLegend(${items})`,
-    tooltip: (items, x, y, a, t) => `pieTip(${items}, ${box00(a, t)}, ${a.innerRatio}, ${x}, ${y})`,
+    tooltip: (items, x, y, a, t) => (a.pieArcs !== undefined ? `pieTipWith(${items}, ${a.frame ?? box00(a, t)}, ${a.innerRatio}, ${a.pieArcs}, ${x}, ${y})` : `pieTip(${items}, ${box00(a, t)}, ${a.innerRatio}, ${x}, ${y})`),
   },
 }
 
@@ -3747,6 +3842,75 @@ export function optionSpecArgs(e: Extract<ExprIR, { kind: 'jsx-element' }>): { e
 /** The index of a ChartSpec field in the generated struct (for ordering literal arguments). */
 export function chartSpecFieldIndex(name: string): number {
   return CHART_SPEC_ORDER.indexOf(name)
+}
+
+/**
+ * The web facade's family compile of a literal option, when it is the given
+ * plan kind: the plan plus the first series (its placement keys). Absent when
+ * the option is not literal or compiles to another kind.
+ */
+function compiledFamilyPlan(raw: Extract<ExprIR, { kind: 'object' }>, resolve: (n: string) => ExprIR | undefined, kind: string): { plan: NonNullable<ReturnType<typeof compileFamily>>['plan']; series: Record<string, unknown> } | undefined {
+  const plainOption = irToValue(raw, resolve)
+  if (!plainOption.ok || !isPlainRecord(plainOption.value)) return undefined
+  const compiled = compileFamily(plainOption.value as never)
+  if (compiled === null || compiled.plan.kind !== kind) return undefined
+  const s = plainOption.value['series']
+  const s0 = Array.isArray(s) ? s[0] : s
+  return isPlainRecord(s0) ? { plan: compiled.plan, series: s0 } : undefined
+}
+
+/**
+ * A plain value (a web-compiled engine struct: a pie's `ArcConfig`, a gauge's
+ * `DialSpec`, a `FrameSpec`) as a Swift or Kotlin constructor call. The shape
+ * comes from the GENERATED struct itself (`CHART_ENGINE_STRUCTS`), field by
+ * field in declaration order, so Swift's order-sensitive memberwise init and
+ * each field's numeric type (Double vs Int) can never drift from the engine.
+ * Returns undefined when the value does not fit the struct.
+ */
+export function engineStructLiteral(structName: string, value: unknown, target: 'swift' | 'kotlin'): string | undefined {
+  const struct = CHART_ENGINE_STRUCTS.find((st) => st.name === structName)
+  if (struct === undefined || !isPlainRecord(value)) return undefined
+  const args: string[] = []
+  for (const f of struct.fields) {
+    const v = value[f.name]
+    const optional = f.type.kind === 'union' && f.type.branches.some((b) => b.kind === 'undefined')
+    if (v === undefined) {
+      if (optional) continue
+      return undefined
+    }
+    const type = optional && f.type.kind === 'union' ? f.type.branches.find((b) => b.kind !== 'undefined')! : f.type
+    const text = engineValueLiteral(type, v, target)
+    if (text === undefined) return undefined
+    args.push(target === 'swift' ? `${f.name}: ${text}` : `${f.name} = ${text}`)
+  }
+  return `${structName}(${args.join(', ')})`
+}
+
+function engineValueLiteral(type: TypeIR, v: unknown, target: 'swift' | 'kotlin'): string | undefined {
+  if (type.kind === 'typeRef' && type.name === 'Double') return typeof v === 'number' && Number.isFinite(v) ? chartDouble(v) : undefined
+  if (type.kind === 'number') return typeof v === 'number' && Number.isInteger(v) ? String(v) : typeof v === 'number' && type.float === true ? chartDouble(v) : undefined
+  if (type.kind === 'boolean') return typeof v === 'boolean' ? String(v) : undefined
+  if (type.kind === 'string') return typeof v === 'string' ? (target === 'swift' ? swiftStr(v) : kotlinStr(v)) : undefined
+  if (type.kind === 'array') {
+    if (!Array.isArray(v)) return undefined
+    const items: string[] = []
+    for (const x of v) {
+      const t = engineValueLiteral(type.element, x, target)
+      if (t === undefined) return undefined
+      items.push(t)
+    }
+    if (target === 'swift') return `[${items.join(', ')}]`
+    return items.length === 0 ? `listOf<${kotlinElementType(type.element)}>()` : `listOf(${items.join(', ')})`
+  }
+  if (type.kind === 'typeRef') return engineStructLiteral(type.name, v, target)
+  return undefined
+}
+
+function kotlinElementType(t: TypeIR): string {
+  if (t.kind === 'typeRef') return t.name
+  if (t.kind === 'number') return 'Int'
+  if (t.kind === 'boolean') return 'Boolean'
+  return 'String'
 }
 
 /** Mark constructor → the `Series.kind` it produces. `bubble` carries a radius accessor and is declined by name. */

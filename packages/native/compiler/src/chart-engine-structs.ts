@@ -697,6 +697,110 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "FrameLength",
+    "fields": [
+      {
+        "name": "mode",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "amount",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "FrameSpec",
+    "fields": [
+      {
+        "name": "left",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "top",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "right",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "bottom",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "width",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "height",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "round",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "centerX",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "centerY",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      },
+      {
+        "name": "radius",
+        "type": {
+          "kind": "typeRef",
+          "name": "FrameLength",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "SeriesGradient",
     "fields": [
       {
@@ -15013,6 +15117,8 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "ExtraTick",
   "ExtraYAxis",
   "FiveNumber",
+  "FrameLength",
+  "FrameSpec",
   "FunnelOptions",
   "FunnelStage",
   "FunnelStageGeometry",

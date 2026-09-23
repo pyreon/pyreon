@@ -248,7 +248,7 @@ export function gaugeToSvg(options: GaugeToSvgOptions): string {
   const frame = options.frame ?? { x: 0, y: 0, w: width, h: height }
   const fit = fitCircle(frame)
   const cmds = dial !== undefined
-    ? renderDial({ ...dial, data: dial.data.map((d, i) => (d.color === '' ? { ...d, color: paletteAt(t.palette, i) } : d)) }, fit.center, fit.radius)
+    ? renderDial(dial, fit.center, fit.radius, [...t.palette])
     : renderGauge(options.value, { x: 0, y: 0, w: width, h: height * 2 }, opts)
   if (dial === undefined && options.showValue !== false) {
     cmds.push({

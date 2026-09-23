@@ -131,15 +131,18 @@ describe('OptionChart family options lower to native hosts', () => {
       expect(r.code).toContain(target === 'swift' ? 'innerRadius: 0.5, showLabels: false' : 'innerRadius = 0.5, showLabels = false')
       expect(r.code).toContain('"Share"')
       expect(r.code).toContain('pieLegend(')
-      expect(r.code).toContain('pieTip(')
+      // The tooltip hits the same laid-out arcs the web compiled (ECharts' start angle and direction).
+      expect(r.code).toContain('pieTipWith(')
     })
 
     it(`${target}: gauge preserves its numeric domain, value, and hidden detail`, () => {
       const r = transform(GAUGE, { target })
       expect(r.warnings).toEqual([])
       expect(r.code).not.toContain('OptionChart(')
-      expect(r.code).toContain('renderGauge(')
+      // ECharts' whole dial, as the web compiled it; its detail hidden by the option.
+      expect(r.code).toContain('renderDialIn(DialSpec(')
       expect(r.code).toContain(target === 'swift' ? 'min: 10.0, max: 90.0' : 'min = 10.0, max = 90.0')
+      expect(r.code).toContain(target === 'swift' ? 'detailShow: false' : 'detailShow = false')
       expect(r.code).not.toContain('plain(42.0)')
     })
 

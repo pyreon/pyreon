@@ -194,10 +194,9 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     gaps: [
       'in a layered option (several pies, or a pie beside a grid) each pie is its own box, so its outside labels are cut to that box where ECharts lets them run over the whole chart',
       'a label is one line: `rich` text is not read, and `overflow: \'break\'` cuts as `truncate` does rather than wrapping',
-      'native: the option pie lowers to the classic 12 o\'clock pie with percentages inside — the start/end angle, direction, min/pad angle, rose, outside labels and placement are web-only for now',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/echarts-differential.test.ts', 'src/engine/option-pie.test.ts', 'src/engine/option-family-frame.browser.test.tsx', NATIVE + 'chart-option-family-native.test.ts'],
+    evidence: ['src/engine/echarts-differential.test.ts', 'src/engine/option-pie.test.ts', 'src/engine/option-family-frame.browser.test.tsx', NATIVE + 'chart-option-family-native.test.ts', NATIVE + 'chart-option-pie-forwarded-native.test.ts'],
   }),
   row('series.scatter', 'series', 'direct', {
     web: 'complete',
@@ -277,10 +276,9 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     gaps: [
       'a `path://` or `image://` pointer or anchor icon draws the default needle / circle (with a warning); `roundRect` draws square',
       'the detail box has no `borderRadius` or `rich` text; `valueAnimation` counts nothing up',
-      'native: the option gauge lowers to the half-circle track — the dial is web-only for now',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/echarts-differential.test.ts', 'src/engine/option-gauge.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+    evidence: ['src/engine/echarts-differential.test.ts', 'src/engine/option-gauge.test.ts', NATIVE + 'chart-option-family-native.test.ts', NATIVE + 'chart-option-gauge-forwarded-native.test.ts'],
   }),
   row('series.river', 'series', 'direct', {
     web: 'complete',

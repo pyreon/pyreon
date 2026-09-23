@@ -16,8 +16,8 @@
 //   handed the layout to the renderer, so the same value is in scope on every
 //   target.
 
-import { fitCircle, hitArc, layoutArcs } from './arc'
-import type { Slice } from './arc'
+import { fitCircle, hitArc, layoutArcs, layoutArcsWith } from './arc'
+import type { ArcConfig, Slice } from './arc'
 import { hitCalendarIndex } from './calendar'
 import type { CalendarLayout, CalendarValue } from './calendar'
 import { plain } from './format'
@@ -296,6 +296,23 @@ export function pieTip(slices: Slice[], box: Rect, innerRatio: Double, px: Doubl
 }
 
 /** The tooltip lines for the slice at input index `i`, or none. */
+/**
+ * The slice under a point by its INPUT index (a slice that draws nothing is
+ * not an arc), laid round by `arcs` — ECharts' start angle, direction, rose
+ * and gaps; -1 on a miss.
+ */
+export function pieHitWith(slices: Slice[], box: Rect, innerRatio: Double, arcs: ArcConfig, px: Double, py: Double): number {
+  const fit = fitCircle(box)
+  const laid = layoutArcsWith(slices, arcs)
+  const i = hitArc(laid, fit.center, fit.radius, fit.radius * innerRatio, { x: px, y: py })
+  return i < 0 ? -1 : laid[i]!.index
+}
+
+/** `pieTip` for a pie laid round by `arcs`. */
+export function pieTipWith(slices: Slice[], box: Rect, innerRatio: Double, arcs: ArcConfig, px: Double, py: Double): string[] {
+  return pieTipAt(slices, pieHitWith(slices, box, innerRatio, arcs, px, py))
+}
+
 export function pieTipAt(slices: Slice[], i: number): string[] {
   if (i < 0 || i >= slices.length) return []
   const s = slices[i]!
