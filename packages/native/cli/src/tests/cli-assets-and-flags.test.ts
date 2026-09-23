@@ -89,7 +89,7 @@ describe('the assets command reaches its materializer', () => {
 })
 
 describe('value-less flags do not swallow the next argument', () => {
-  const CLEAN = 'export function C() { return <text>hi</text> }'
+  const CLEAN = 'export function C() { return <Text>hi</Text> }'
 
   it('--typecheck before a space-separated --source keeps the source', () => {
     // If `--typecheck` fell through to the `--key value` branch it would
@@ -152,7 +152,7 @@ describe('build reports a source that cannot be parsed', () => {
     // Before parse errors were made fatal this wrote an EMPTY .swift and
     // exited 0, so the failure surfaced much later as a missing symbol in
     // Xcode with nothing pointing back at the file.
-    writeFileSync(join(srcDir, 'Broken.tsx'), 'export function C() { return <text>hi</text> ', 'utf8')
+    writeFileSync(join(srcDir, 'Broken.tsx'), 'export function C() { return <Text>hi</Text> ', 'utf8')
     const code = main(['build', '--target=ios', `--source=${srcDir}`, `--out=${out}`])
     expect(code).toBe(2)
     expect(errs.join('\n')).toContain('Broken.tsx')

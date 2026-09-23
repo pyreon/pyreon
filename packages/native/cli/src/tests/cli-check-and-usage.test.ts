@@ -34,12 +34,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { main } from '../cli'
 
 /** A component that lowers cleanly to both targets. */
-const CLEAN = 'export function C() { return <text>hello</text> }'
+const CLEAN = 'export function C() { return <Text>hello</Text> }'
 /** A generic function — outside the PMTC subset, so it warns without erroring. */
 const WARNS =
-  'function first<T>(xs: T[]): T { return xs[0] }\nexport function C() { return <text>hi</text> }'
+  'function first<T>(xs: T[]): T { return xs[0] }\nexport function C() { return <Text>hi</Text> }'
 /** Unparseable: the transform throws, which becomes an `error` finding. */
-const BROKEN = 'export function C() { return <text>oops< }'
+const BROKEN = 'export function C() { return <Text>oops< }'
 
 let dir: string
 let outDir: string
