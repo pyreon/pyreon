@@ -226,13 +226,13 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'partial',
     native: 'partial',
     gaps: ['`levels`, `upperLabel`, `visualDimension` and `childrenVisibleMin` are unmapped', LITERAL_ONLY],
-    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts', NATIVE + 'chart-option-family-frame-native.test.ts'],
   }),
   row('series.sunburst', 'series', 'direct', {
     web: 'complete',
     native: 'partial',
     gaps: [LITERAL_ONLY],
-    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts', NATIVE + 'chart-option-family-frame-native.test.ts'],
   }),
   row('series.boxplot', 'series', 'direct', {
     web: 'partial',
@@ -262,13 +262,13 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'complete',
     native: 'partial',
     gaps: [LITERAL_ONLY],
-    evidence: ['src/engine/option-orient.test.ts', NATIVE + 'chart-orient-native.test.ts'],
+    evidence: ['src/engine/option-orient.test.ts', NATIVE + 'chart-orient-native.test.ts', NATIVE + 'chart-option-family-frame-native.test.ts'],
   }),
   row('series.funnel', 'series', 'direct', {
     web: 'complete',
     native: 'partial',
     gaps: [LITERAL_ONLY],
-    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+    evidence: ['src/engine/option.test.ts', NATIVE + 'chart-option-family-native.test.ts', NATIVE + 'chart-option-family-frame-native.test.ts'],
   }),
   row('series.gauge', 'series', 'direct', {
     web: 'partial',

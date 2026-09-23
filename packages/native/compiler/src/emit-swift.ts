@@ -106,7 +106,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartPieArgs, chartDialCmds, chartSpecFieldIndex, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartPieArgs, chartDialCmds, chartFrameLiteral, chartSpecFieldIndex, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -13748,12 +13748,17 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     entries = spec.legend!('pyreonProbe', args, SWIFT_CHART_TARGET)
   }
   const chrome = swiftChartChrome(e, entries, W, H, indent, true, tf)
-  const plotArgs: ChartHostArgs = vm === null ? { ...args, W: chrome.width(W), H: chrome.height(H) } : { ...args, W: 'pyreonVmPlace.chartW', H: 'pyreonVmPlace.chartH' }
+  // An OptionChart-placed family (ECharts' box keys / center / radius) lays out in its frame — a sub-canvas the
+  // draw list is shifted into and the tap shifted out of, exactly where the web's `familyRect` puts it.
+  const frameLit = vm === null ? chartFrameLiteral(e, 'swift') : undefined
+  const plotArgs: ChartHostArgs = frameLit !== undefined ? { ...args, W: 'pyreonFrame.w', H: 'pyreonFrame.h' } : vm === null ? { ...args, W: chrome.width(W), H: chrome.height(H) } : { ...args, W: 'pyreonVmPlace.chartW', H: 'pyreonVmPlace.chartH' }
+  const inFrame = (cmds: string): string => (frameLit !== undefined ? `pyreonShiftCmdsXY(${cmds}, pyreonFrame.x, pyreonFrame.y)` : cmds)
   // A transposed host lays out in the box reflected across the diagonal (W and H swapped) and transposes the draw list back; the tap is reflected before its hit.
   const layoutArgs: ChartHostArgs = transposed ? { ...plotArgs, W: plotArgs.H, H: plotArgs.W } : plotArgs
   const transpose = (cmds: string): string => (transposed ? `pyreonTransposeCmds(${cmds})` : cmds)
   const withChrome = chrome.top !== '0.0'
   lets.push(...chrome.lets)
+  if (frameLit !== undefined) lets.push(`let pyreonFrame: PyreonChartRect = frameRectAt(${frameLit}, ${W}, ${H}, ${chrome.left}, ${chrome.top})`)
   if (vm !== null) lets.push(`let pyreonVmPlace = visualStripPlace(pyreonStrip, ${chrome.width(W)}, ${chrome.height(H)})`)
   // A hoisted layout `let` only when something else reads it (the tap); the
   // chrome-free, tap-free host keeps its inline `render(layout(...))`.
@@ -13778,7 +13783,7 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)`
     : ''
   const stripCmds = vm === null ? '' : ' + renderVisualStrip(pyreonStrip, pyreonVmPlace.at, pyreonVmRange, pyreonVmSelected)'
-  const canvas = swiftChartCanvas(e, `${chrome.mirror(chrome.wrap(`${transpose(spec.render(layout, renderArgs, SWIFT_CHART_TARGET))}${stripCmds}`))}${tipCmds}`, indent)
+  const canvas = swiftChartCanvas(e, `${chrome.mirror(chrome.wrap(`${inFrame(transpose(spec.render(layout, renderArgs, SWIFT_CHART_TARGET)))}${stripCmds}`))}${tipCmds}`, indent)
   // `onSelectIndex` → a tap (a zero-distance drag, which reports its location)
   // over the engine's index hit, computed against the same layout the canvas
   // painted. `.contentShape` makes the whole canvas — not only its painted
@@ -13786,8 +13791,10 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
   // for the point (an empty list clears the box, so a tap on nothing dismisses).
   let gesture = ''
   if (tapping) {
-    const tapY = withChrome ? 'Double(pyreonTap.location.y) - pyreonTop' : 'Double(pyreonTap.location.y)'
-    const tapX = chrome.plotX('Double(pyreonTap.location.x)')
+    const tapY0 = withChrome ? 'Double(pyreonTap.location.y) - pyreonTop' : 'Double(pyreonTap.location.y)'
+    const tapX0 = chrome.plotX('Double(pyreonTap.location.x)')
+    const tapY = frameLit !== undefined ? `(${tapY0}) - pyreonFrame.y` : tapY0
+    const tapX = frameLit !== undefined ? `(${tapX0}) - pyreonFrame.x` : tapX0
     const hitX = transposed ? tapY : tapX
     const hitY = transposed ? tapX : tapY
     const parts: string[] = []
@@ -13895,25 +13902,32 @@ function emitSwiftAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const tooltip = readStaticAttr(e, 'tooltip') === true
   const withChrome = chrome.top !== '0.0'
   const animating = swiftChartAnimating(e, tag) && spec.optionsStruct !== undefined
-  const hoist = withChrome || tooltip || animating
+  // A framed host names its frame in a `let`, so it takes the hoisted form.
+  const hoist = withChrome || tooltip || animating || (tag !== 'PieChart' && chartFrameLiteral(e, 'swift') !== undefined)
   const items = hoist ? 'pyreonItems' : mapped
   const lets = hoist ? [`let pyreonItems: [${spec.struct}] = ${mapped}`, ...chrome.lets] : []
   if (animating) lets.push(`let pyreonOpts: ${spec.optionsStruct} = ${SWIFT_CHART_TARGET.withProgress(options, spec.optionsStruct!, 'pyreonEntrance')}`)
-  const args: ChartHostArgs = { data: [], options, W: chrome.width(W), H: chrome.height(H), gutter: '0.0', innerRatio: swiftChartDouble(e, 'innerRadius', 0, indent), showLabels: readStaticAttr(e, 'showLabels') === false ? 'false' : 'true', fontSize: tf.fontSize, ...(tag === 'PieChart' ? chartPieArgs(e, 'swift', W, H, chrome.left, chrome.top, tf.label) : {}) }
+  // A placed funnel lays out in its frame (a sub-canvas); the pie frames itself through its own args.
+  const frameLit = tag === 'PieChart' ? undefined : chartFrameLiteral(e, 'swift')
+  if (frameLit !== undefined) lets.push(`let pyreonFrame: PyreonChartRect = frameRectAt(${frameLit}, ${W}, ${H}, ${chrome.left}, ${chrome.top})`)
+  const args: ChartHostArgs = { data: [], options, W: frameLit !== undefined ? 'pyreonFrame.w' : chrome.width(W), H: frameLit !== undefined ? 'pyreonFrame.h' : chrome.height(H), gutter: '0.0', innerRatio: swiftChartDouble(e, 'innerRadius', 0, indent), showLabels: readStaticAttr(e, 'showLabels') === false ? 'false' : 'true', fontSize: tf.fontSize, ...(tag === 'PieChart' ? chartPieArgs(e, 'swift', W, H, chrome.left, chrome.top, tf.label) : {}) }
+  const inFrame = (cmds: string): string => (frameLit !== undefined ? `pyreonShiftCmdsXY(${cmds}, pyreonFrame.x, pyreonFrame.y)` : cmds)
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)`
     : ''
-  const canvas = swiftChartCanvas(e, `${chrome.mirror(chrome.wrap(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, SWIFT_CHART_TARGET)))}${tipCmds}`, indent)
+  const canvas = swiftChartCanvas(e, `${chrome.mirror(chrome.wrap(inFrame(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, SWIFT_CHART_TARGET))))}${tipCmds}`, indent)
   // Both `onSelect` (already an index on these hosts) and `onSelectIndex` lower to the tap; `tooltip` shares it.
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
-  const tapY = withChrome ? 'Double(pyreonTap.location.y) - pyreonTop' : 'Double(pyreonTap.location.y)'
+  const tapY0 = withChrome ? 'Double(pyreonTap.location.y) - pyreonTop' : 'Double(pyreonTap.location.y)'
+  const tapY = frameLit !== undefined ? `(${tapY0}) - pyreonFrame.y` : tapY0
+  const tapXOf = (x: string): string => (frameLit !== undefined ? `(${chrome.plotX(x)}) - pyreonFrame.x` : chrome.plotX(x))
   const parts: string[] = []
   if (tooltip) {
     _hostStateDecls.push('@State private var pyreonTip: [String] = []')
     _hostStateDecls.push('@State private var pyreonTipAt: PyreonChartPt = PyreonChartPt(x: 0.0, y: 0.0)')
-    parts.push(`pyreonTip = ${spec.tooltip(items, chrome.plotX('Double(pyreonTap.location.x)'), tapY, args, SWIFT_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))`)
+    parts.push(`pyreonTip = ${spec.tooltip(items, tapXOf('Double(pyreonTap.location.x)'), tapY, args, SWIFT_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))`)
   }
-  if (onSel?.kind === 'event') parts.push(swiftChartSelectBody(onSel.handler, spec.hit(items, chrome.plotX('Double(pyreonTap.location.x)'), tapY, args, SWIFT_CHART_TARGET), indent))
+  if (onSel?.kind === 'event') parts.push(swiftChartSelectBody(onSel.handler, spec.hit(items, tapXOf('Double(pyreonTap.location.x)'), tapY, args, SWIFT_CHART_TARGET), indent))
   const gesture = parts.length === 0 ? '' : `.contentShape(Rectangle()).simultaneousGesture(SpatialTapGesture().onEnded { pyreonTap in ${parts.join('; ')} })`
   const tail = swiftChartA11y(e, undefined, indent) + emitSwiftLayoutModifiers(e)
   if (!hoist) {

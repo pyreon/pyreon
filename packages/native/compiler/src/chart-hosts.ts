@@ -1176,8 +1176,9 @@ export function desugarOptionChart(
   resolve: (name: string) => ExprIR | undefined,
   warn: (m: string) => void,
 ): Extract<ExprIR, { kind: 'jsx-element' }> | undefined {
-  const lowered = desugarOptionChartHost(e, resolve, warn)
-  if (lowered === undefined || lowered.tag === CHART_TIMELINE_TAG) return lowered
+  const hosted = desugarOptionChartHost(e, resolve, warn)
+  if (hosted === undefined || hosted.tag === CHART_TIMELINE_TAG) return hosted
+  const lowered = withFamilyFrame(hosted, e, resolve, warn)
   // `option.toolbox` through the web's own reader: the plot host lowers the
   // whole toolbox, a family host its save button.
   const raw = literalOf(attrOf(e, 'option'), resolve)
@@ -1205,6 +1206,43 @@ export function desugarOptionChart(
   }
   if (Object.keys(cfg).length === 0) return lowered
   return { ...lowered, attrs: [...lowered.attrs.filter((a) => !(a.kind === 'attr' && a.name === 'toolbox')), { kind: 'attr', name: 'toolbox', value: valueToIr(cfg) }, ...brushAttrs] }
+}
+
+/** ECharts' box keys — where a placed family chart sits. */
+const FRAME_KEYS: readonly string[] = ['left', 'top', 'right', 'bottom', 'width', 'height']
+
+/** Family hosts ECharts places inside the chart (the web's PLACED_FAMILIES), by the series type each lowers. */
+const PLACED_FAMILY_HOSTS: Readonly<Record<string, string>> = { FunnelChart: 'funnel', TreemapChart: 'treemap', TreeChart: 'tree', SankeyChart: 'sankey', SunburstChart: 'sunburst' }
+
+/**
+ * A placed family host gets its ECharts frame — the default placement per
+ * type (a funnel's 80 / 60 margins, a treemap's 10%, a sunburst's 75% radius)
+ * under the series' own box keys — as the `frameSpec` the host renders into,
+ * exactly as the web's `familyRect` places it. A non-literal option cannot
+ * be framed at compile time; its box keys are named rather than dropped.
+ */
+function withFamilyFrame(lowered: Extract<ExprIR, { kind: 'jsx-element' }>, e: Extract<ExprIR, { kind: 'jsx-element' }>, resolve: (n: string) => ExprIR | undefined, warn: (m: string) => void): Extract<ExprIR, { kind: 'jsx-element' }> {
+  const type = PLACED_FAMILY_HOSTS[lowered.tag]
+  if (type === undefined || lowered.attrs.some((a) => a.kind === 'attr' && a.name === 'frameSpec')) return lowered
+  const raw = literalOf(attrOf(e, 'option'), resolve)
+  const plainOption = raw === undefined ? { ok: false as const } : irToValue(raw, resolve)
+  const series = plainOption.ok && isPlainRecord(plainOption.value) ? plainOption.value['series'] : undefined
+  const s0 = Array.isArray(series) ? series[0] : series
+  if (!isPlainRecord(s0) || s0['type'] !== type) {
+    const rawS = raw?.kind === 'object' ? literalOf(objectField(raw, 'series'), resolve) : undefined
+    const rawS0 = rawS?.kind === 'array' ? literalOf(rawS.elements[0], resolve) : rawS
+    const keys = rawS0?.kind === 'object' ? rawS0.fields.map((f) => f.name).filter((k) => FRAME_KEYS.includes(k) || k === 'center') : []
+    if (keys.length > 0) warn(`<OptionChart option.series[0].${keys[0]}>: placement needs a fully literal option on native; the chart fills its canvas.`)
+    return lowered
+  }
+  return { ...lowered, attrs: [...lowered.attrs, { kind: 'attr', name: 'frameSpec', value: valueToIr(familyFrame(s0)) }] }
+}
+
+/** A host's `frameSpec` attribute as a `FrameSpec` literal, or undefined. */
+export function chartFrameLiteral(e: Extract<ExprIR, { kind: 'jsx-element' }>, target: 'swift' | 'kotlin'): string | undefined {
+  const frameAttr = attrOf(e, 'frameSpec')
+  const frame = frameAttr === undefined ? undefined : irToValue(frameAttr, () => undefined)
+  return frame?.ok === true ? engineStructLiteral('FrameSpec', frame.value, target) : undefined
 }
 
 function desugarOptionChartHost(
@@ -1919,7 +1957,7 @@ function desugarOptionChartHost(
   }
 
   if (kind === 'funnel') {
-    optionFields(series, ['type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis'], 'option.series[0]', warn)
+    optionFields(series, ['type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis', ...FRAME_KEYS], 'option.series[0]', warn)
     const data = literalOf(objectField(series, 'data'), resolve)
     if (data?.kind !== 'array') {
       warn('<OptionChart option.series[0].data>: a native funnel needs a literal data array; emitting nothing.')
@@ -1949,7 +1987,7 @@ function desugarOptionChartHost(
   }
 
   if (kind === 'treemap' || kind === 'sunburst' || kind === 'tree') {
-    optionFields(series, ['type', 'name', 'data', 'label', 'itemStyle', 'levels', 'radius', 'nodeClick', 'roam', 'symbolSize', 'orient'], 'option.series[0]', warn)
+    optionFields(series, ['type', 'name', 'data', 'label', 'itemStyle', 'levels', 'radius', 'nodeClick', 'roam', 'symbolSize', 'orient', ...FRAME_KEYS, ...(kind === 'sunburst' ? ['center'] : [])], 'option.series[0]', warn)
     const data = optionTreeNodes(objectField(series, 'data'), resolve, 'option.series[0].data', warn)
     if (data === undefined) return undefined
     set('data', data)
@@ -1974,7 +2012,7 @@ function desugarOptionChartHost(
   }
 
   if (kind === 'sankey' || kind === 'graph') {
-    optionFields(series, ['type', 'name', 'data', 'nodes', 'links', 'edges', 'label', 'itemStyle', 'lineStyle', 'layout', 'roam', 'symbolSize', 'nodeWidth', 'nodeGap', 'nodeAlign', 'orient'], 'option.series[0]', warn)
+    optionFields(series, ['type', 'name', 'data', 'nodes', 'links', 'edges', 'label', 'itemStyle', 'lineStyle', 'layout', 'roam', 'symbolSize', 'nodeWidth', 'nodeGap', 'nodeAlign', 'orient', ...(kind === 'sankey' ? FRAME_KEYS : [])], 'option.series[0]', warn)
     if (litString(objectField(series, 'orient')) === 'vertical') set('orient', lit('vertical'))
     const rawNodes = literalOf(objectField(series, 'data') ?? objectField(series, 'nodes'), resolve)
     const rawLinks = literalOf(objectField(series, 'links') ?? objectField(series, 'edges'), resolve)

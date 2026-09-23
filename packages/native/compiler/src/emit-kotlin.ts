@@ -98,7 +98,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartPieArgs, chartDialCmds, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartPieArgs, chartDialCmds, chartFrameLiteral, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -11656,12 +11656,16 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     entries = spec.legend!('pyreonProbe', args, KOTLIN_CHART_TARGET)
   }
   const chrome = kotlinChartChrome(e, entries, W, H, indent, true, tf)
-  const plotArgs: ChartHostArgs = vm === null ? { ...args, W: chrome.width(W), H: chrome.height(H) } : { ...args, W: 'pyreonVmPlace.chartW', H: 'pyreonVmPlace.chartH' }
+  // An OptionChart-placed family lays out in its frame — a sub-canvas the draw list is shifted into and the tap out of.
+  const frameLit = vm === null ? chartFrameLiteral(e, 'kotlin') : undefined
+  const plotArgs: ChartHostArgs = frameLit !== undefined ? { ...args, W: 'pyreonFrame.w', H: 'pyreonFrame.h' } : vm === null ? { ...args, W: chrome.width(W), H: chrome.height(H) } : { ...args, W: 'pyreonVmPlace.chartW', H: 'pyreonVmPlace.chartH' }
+  const inFrame = (c: string): string => (frameLit !== undefined ? `pyreonShiftCmdsXY(${c}, pyreonFrame.x, pyreonFrame.y)` : c)
   // A transposed host lays out in the box reflected across the diagonal (W and H swapped) and transposes the draw list back; the tap is reflected before its hit.
   const layoutArgs: ChartHostArgs = transposed ? { ...plotArgs, W: plotArgs.H, H: plotArgs.W } : plotArgs
   const transpose = (cmds: string): string => (transposed ? `pyreonTransposeCmds(${cmds})` : cmds)
   const withChrome = chrome.top !== '0.0'
   lets.push(...chrome.lets)
+  if (frameLit !== undefined) lets.push(`val pyreonFrame: PyreonChartRect = frameRectAt(${frameLit}, ${W}, ${H}, ${chrome.left}, ${chrome.top})`)
   if (vm !== null) lets.push(`val pyreonVmPlace = visualStripPlace(pyreonStrip, ${chrome.width(W)}, ${chrome.height(H)})`)
   const tooltip = spec.tooltip !== undefined && readStaticAttrKotlin(e, 'tooltip') === true
   const onSel = e.attrs.find((a) => a.kind === 'event' && a.name === 'selectindex')
@@ -11686,7 +11690,7 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)`
     : ''
   const stripCmds = vm === null ? '' : ' + renderVisualStrip(pyreonStrip, pyreonVmPlace.at, pyreonVmRange, pyreonVmSelected)'
-  const cmds = `${chrome.mirror(chrome.wrap(`${transpose(spec.render(layout, renderArgs, KOTLIN_CHART_TARGET))}${stripCmds}`))}${tipCmds}`
+  const cmds = `${chrome.mirror(chrome.wrap(`${inFrame(transpose(spec.render(layout, renderArgs, KOTLIN_CHART_TARGET)))}${stripCmds}`))}${tipCmds}`
   // `onSelectIndex` → a tap over the engine's index hit. The tap position is
   // in pixels while the draw list is laid out in dp (PyreonChartCanvas scales
   // by the density when it paints), so the position is divided by the density
@@ -11698,8 +11702,10 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     // left legend's indent); the tooltip's ANCHOR stays raw, because the
     // tooltip is drawn unmirrored at the finger.
     const rawTx = '(pyreonTap.x / pyreonDensity).toDouble()'
-    const tx = chrome.plotX(rawTx)
-    const tapY = withChrome ? '(pyreonTap.y / pyreonDensity).toDouble() - pyreonTop' : '(pyreonTap.y / pyreonDensity).toDouble()'
+    const tx0 = chrome.plotX(rawTx)
+    const tapY0 = withChrome ? '(pyreonTap.y / pyreonDensity).toDouble() - pyreonTop' : '(pyreonTap.y / pyreonDensity).toDouble()'
+    const tx = frameLit !== undefined ? `(${tx0}) - pyreonFrame.x` : tx0
+    const tapY = frameLit !== undefined ? `(${tapY0}) - pyreonFrame.y` : tapY0
     const hitX = transposed ? tapY : tx
     const hitY = transposed ? tx : tapY
     const parts: string[] = []
@@ -11803,7 +11809,8 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const tooltip = readStaticAttrKotlin(e, 'tooltip') === true
   const withChrome = chrome.top !== '0.0'
   const animating = kotlinChartAnimating(e, tag) && spec.optionsStruct !== undefined
-  const hoist = withChrome || tooltip || animating
+  // A framed host names its frame in a `val`, so it takes the hoisted form.
+  const hoist = withChrome || tooltip || animating || (tag !== 'PieChart' && chartFrameLiteral(e, 'kotlin') !== undefined)
   const items = hoist ? 'pyreonItems' : mapped
   const lets = hoist ? [`val pyreonItems: List<${spec.struct}> = ${mapped}`, ...chrome.lets] : []
   if (animating) lets.push(`val pyreonOpts: ${spec.optionsStruct} = ${KOTLIN_CHART_TARGET.withProgress(options, spec.optionsStruct!, 'pyreonEntrance')}`)
@@ -11811,14 +11818,20 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     lets.push('var pyreonTip by remember { mutableStateOf(listOf<String>()) }')
     lets.push('var pyreonTipAt by remember { mutableStateOf(PyreonChartPt(0.0, 0.0)) }')
   }
-  const args: ChartHostArgs = { data: [], options, W: chrome.width(W), H: chrome.height(H), gutter: '0.0', innerRatio: kotlinChartDouble(e, 'innerRadius', 0, indent), showLabels: readStaticAttrKotlin(e, 'showLabels') === false ? 'false' : 'true', fontSize: tf.fontSize, ...(tag === 'PieChart' ? chartPieArgs(e, 'kotlin', W, H, chrome.left, chrome.top, tf.label) : {}) }
+  // A placed funnel lays out in its frame (a sub-canvas); the pie frames itself through its own args.
+  const frameLit = tag === 'PieChart' ? undefined : chartFrameLiteral(e, 'kotlin')
+  if (frameLit !== undefined) lets.push(`val pyreonFrame: PyreonChartRect = frameRectAt(${frameLit}, ${W}, ${H}, ${chrome.left}, ${chrome.top})`)
+  const inFrame = (c: string): string => (frameLit !== undefined ? `pyreonShiftCmdsXY(${c}, pyreonFrame.x, pyreonFrame.y)` : c)
+  const args: ChartHostArgs = { data: [], options, W: frameLit !== undefined ? 'pyreonFrame.w' : chrome.width(W), H: frameLit !== undefined ? 'pyreonFrame.h' : chrome.height(H), gutter: '0.0', innerRatio: kotlinChartDouble(e, 'innerRadius', 0, indent), showLabels: readStaticAttrKotlin(e, 'showLabels') === false ? 'false' : 'true', fontSize: tf.fontSize, ...(tag === 'PieChart' ? chartPieArgs(e, 'kotlin', W, H, chrome.left, chrome.top, tf.label) : {}) }
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)`
     : ''
-  const cmds = `${chrome.mirror(chrome.wrap(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, KOTLIN_CHART_TARGET)))}${tipCmds}`
+  const cmds = `${chrome.mirror(chrome.wrap(inFrame(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, KOTLIN_CHART_TARGET))))}${tipCmds}`
   const rawTx = '(pyreonTap.x / pyreonDensity).toDouble()'
-  const tx = chrome.plotX(rawTx)
-  const tapY = withChrome ? '(pyreonTap.y / pyreonDensity).toDouble() - pyreonTop' : '(pyreonTap.y / pyreonDensity).toDouble()'
+  const tx0 = chrome.plotX(rawTx)
+  const tapY0 = withChrome ? '(pyreonTap.y / pyreonDensity).toDouble() - pyreonTop' : '(pyreonTap.y / pyreonDensity).toDouble()'
+  const tx = frameLit !== undefined ? `(${tx0}) - pyreonFrame.x` : tx0
+  const tapY = frameLit !== undefined ? `(${tapY0}) - pyreonFrame.y` : tapY0
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   const parts: string[] = []
   if (tooltip) parts.push(`pyreonTip = ${spec.tooltip(items, tx, tapY, args, KOTLIN_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(${rawTx}, (pyreonTap.y / pyreonDensity).toDouble())`)
