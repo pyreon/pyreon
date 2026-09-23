@@ -15553,7 +15553,6 @@ public func withError(_ fmt: (Double) -> String, _ v: Double, _ s: A11ySeries, _
   }
 
 public func chartTable(_ input: A11yInput, _ limit: Int = -1) -> A11yTable {
-    let fmt = (input.format ?? plain)
     var headers = ["Category"]
     for s in input.series {
       let other = (s.values2 ?? [])
@@ -15576,84 +15575,94 @@ public func chartTable(_ input: A11yInput, _ limit: Int = -1) -> A11yTable {
         headers.append("\(s.label) (\(e.label))")
       }
     }
+    let n = chartRowCount(input)
+    let count = limit >= 0 && limit < n ? limit : n
+    var rows: [[String]] = []
+    for i in 0..<count {
+      rows.append(chartTableRow(input, i))
+    }
+    return A11yTable(headers: headers, rows: rows, total: n)
+  }
+
+public func chartRowCount(_ input: A11yInput) -> Int {
     var n = input.categories.count
     for s in input.series {
       if s.values.count > n {
         n = s.values.count
       }
     }
-    let count = limit >= 0 && limit < n ? limit : n
-    var rows: [[String]] = []
-    for i in 0..<count {
-      var row = [i < input.categories.count ? input.categories[i] : "\(i + 1)"]
-      for s in input.series {
-        let other = (s.values2 ?? [])
-        let rs = (s.rValues ?? [])
-        let two = other.count > 0
-        let sized = rs.count > 0
-        let sx = (s.xs ?? [])
-        let hasX = sx.count > 0
-        let extras = (s.extras ?? [])
-        if i >= s.values.count {
-          row.append("")
-          if two {
-            row.append("")
-          }
-          if sized {
-            row.append("")
-          }
-          if hasX {
-            row.append("")
-          }
-          for k in 0..<extras.count {
-            row.append("")
-          }
-          continue
-        }
-        let v = s.values[i]
-        row.append(isFiniteNumber(v) ? withError(fmt, v, s, i) : "")
+    return n
+  }
+
+public func chartTableRow(_ input: A11yInput, _ i: Int) -> [String] {
+    let fmt = (input.format ?? plain)
+    var row = [i < input.categories.count ? input.categories[i] : "\(i + 1)"]
+    for s in input.series {
+      let other = (s.values2 ?? [])
+      let rs = (s.rValues ?? [])
+      let two = other.count > 0
+      let sized = rs.count > 0
+      let sx = (s.xs ?? [])
+      let hasX = sx.count > 0
+      let extras = (s.extras ?? [])
+      if i >= s.values.count {
+        row.append("")
         if two {
-          if i >= other.count {
-            row.append("")
-          } else {
-            let v2 = other[i]
-            row.append(isFiniteNumber(v2) ? fmt(v2) : "")
-          }
+          row.append("")
         }
         if sized {
-          if i >= rs.count {
-            row.append("")
-          } else {
-            let r = rs[i]
-            row.append(isFiniteNumber(r) ? fmt(r) : "")
-          }
+          row.append("")
         }
         if hasX {
-          if i >= sx.count {
-            row.append("")
-          } else {
-            let xv = sx[i]
-            row.append(isFiniteNumber(xv) ? fmt(xv) : "")
-          }
+          row.append("")
         }
-        for e in extras {
-          let nums = (e.numbers ?? [])
-          let strs = (e.texts ?? [])
-          if i < nums.count {
-            let ev = nums[i]
-            row.append(isFiniteNumber(ev) ? fmt(ev) : "")
+        for k in 0..<extras.count {
+          row.append("")
+        }
+        continue
+      }
+      let v = s.values[i]
+      row.append(isFiniteNumber(v) ? withError(fmt, v, s, i) : "")
+      if two {
+        if i >= other.count {
+          row.append("")
+        } else {
+          let v2 = other[i]
+          row.append(isFiniteNumber(v2) ? fmt(v2) : "")
+        }
+      }
+      if sized {
+        if i >= rs.count {
+          row.append("")
+        } else {
+          let r = rs[i]
+          row.append(isFiniteNumber(r) ? fmt(r) : "")
+        }
+      }
+      if hasX {
+        if i >= sx.count {
+          row.append("")
+        } else {
+          let xv = sx[i]
+          row.append(isFiniteNumber(xv) ? fmt(xv) : "")
+        }
+      }
+      for e in extras {
+        let nums = (e.numbers ?? [])
+        let strs = (e.texts ?? [])
+        if i < nums.count {
+          let ev = nums[i]
+          row.append(isFiniteNumber(ev) ? fmt(ev) : "")
+        } else {
+          if i < strs.count {
+            row.append(strs[i])
           } else {
-            if i < strs.count {
-              row.append(strs[i])
-            } else {
-              row.append("")
-            }
+            row.append("")
           }
         }
       }
-      rows.append(row)
     }
-    return A11yTable(headers: headers, rows: rows, total: n)
+    return row
   }
 
 public func finite(_ v: Double) -> Bool { v == v }
