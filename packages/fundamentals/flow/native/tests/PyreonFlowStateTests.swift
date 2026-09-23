@@ -1503,11 +1503,6 @@ struct PyreonFlowStateTests {
         check(pyreonFlowHandleKey(f, key: .rightArrow, modifiers: .shift, nodeId: "2") && f.getNode("2")!.position.x == before.x + 100, "Shift+Arrow moves the focused node a large step")
     }
 
-    /// Pixels of the web's dark canvas colour (#0b1220) in the REAL view,
-    /// rendered offscreen under the given environment colour scheme. This is
-    /// the SwiftUI half of `colorMode="system"`: the view must follow the
-    /// environment's scheme. The device suites prove the OS half where the
-    /// simulator propagates an appearance change.
     /// Pixels within 6 of `rgb` in `view`, rendered offscreen by SwiftUI.
     @MainActor
     static func renderedPixels<V: View>(_ view: V, _ r: Int, _ g: Int, _ b: Int) -> Int {
