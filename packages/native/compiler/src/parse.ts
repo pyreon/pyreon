@@ -6,7 +6,7 @@
 
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS } from './chart-hosts'
-import { HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, LOWERED_FLOW_RUNTIME_EXPORTS, droppedFlowFieldsWarning } from './flow-lowering'
+import { DROPPED_FLOW_COMPONENTS, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, LOWERED_FLOW_RUNTIME_EXPORTS, droppedFlowFieldsWarning } from './flow-lowering'
 import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
@@ -3016,6 +3016,10 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
       // blanket line claimed it was "reproduced verbatim" in an emit that
       // never mentions it.
       if (ctx.httpClientSchemaNames.has(imported)) continue
+      // A Flow component the emitters DROP with their own named warning at
+      // the use site (`<ViewportPortal>`): nothing reaches Swift/Kotlin, so
+      // "reproduced verbatim … the native build fails" would be false.
+      if (src === '@pyreon/flow' && DROPPED_FLOW_COMPONENTS.has(imported)) continue
       // When a module lists `unsupported`, ONLY those warn — everything else in
       // it lowers and must stay silent.
       if (entry.unsupported !== undefined && !entry.unsupported.has(imported)) continue

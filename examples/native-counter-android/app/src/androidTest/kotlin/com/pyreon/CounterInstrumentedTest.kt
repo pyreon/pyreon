@@ -321,11 +321,19 @@ class CounterInstrumentedTest {
         composeRule.onAllNodesWithTag("native-flow-custom-line").assertCountEquals(0)
         composeRule.onNodeWithTag("native-flow-custom-line-mounts").assertTextEquals("0")
         // Mostly sideways, ending just below the End node: a vertical drag is a
-        // page scroll on both platforms before any handle sees it.
+        // page scroll on both platforms before any handle sees it. The hold must
+        // stay clear of the canvas's 40dp auto-pan band: held inside it, the
+        // graph pans every frame (as on the web) and Compose never idles, so the
+        // mid-drag assertion times out. It used to hold 39.3dp from the bottom.
+        val holdDown = run {
+            val canvas = flowCanvas.fetchSemanticsNode().boundsInRoot
+            val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+            minOf(120f, canvas.bottom - 60f * density - sourceCenter.y)
+        }
         source.performTouchInput {
             down(center)
-            moveBy(androidx.compose.ui.geometry.Offset(-40f, 60f))
-            moveBy(androidx.compose.ui.geometry.Offset(-40f, 60f))
+            moveBy(androidx.compose.ui.geometry.Offset(-40f, holdDown / 2f))
+            moveBy(androidx.compose.ui.geometry.Offset(-40f, holdDown / 2f))
         }
         composeRule.onNodeWithTag("native-flow-custom-line").assertExists()
         source.performTouchInput { up() }

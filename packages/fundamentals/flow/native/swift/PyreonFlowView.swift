@@ -140,6 +140,11 @@ private extension EnvironmentValues {
 }
 /// The web's `BaseEdge` stroke: `color` when the author styled it, else the
 /// flow palette's edge colour (light or dark), as the web's CSS variable does.
+/// A stacking value above every node in the flow's canvas ZStack: dragging adds
+/// 1000, selection 100, and user `zIndex` values are small. (File scope: a
+/// generic view cannot hold a static stored property.)
+let pyreonFlowAboveAllNodesZ: Double = 1_000_000
+
 public struct PyreonFlowBaseEdgePath: View {
     @Environment(\.pyreonFlowPalette) private var palette
     public var result: PyreonFlowPathResult
@@ -161,7 +166,7 @@ public struct PyreonFlowEdgeText: View {
     public init(x: Double, y: Double, label: String) { self.x = x; self.y = y; self.label = label }
     public var body: some View {
         Text(label)
-            .font(.system(size: 12))
+            .font(.system(size: 11))
             .foregroundStyle(pyreonFlowEdgeColor(palette.edgeLabel))
             .position(x: x, y: y)
             .allowsHitTesting(false)
@@ -995,7 +1000,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
 
     private func edgeLabelView(_ edge: PyreonFlowEdgeLabel) -> some View {
         Text(edge.text ?? "")
-            .font(.system(size: 12))
+            .font(.system(size: 11))
             .foregroundStyle(pyreonFlowEdgeColor(palette.edgeLabel))
             .padding(edge.text == nil ? 8 : 3)
             .background(edge.text == nil ? Color.clear : pyreonFlowEdgeColor(palette.panelBackground).opacity(0.9))
@@ -1042,9 +1047,19 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private var nodesLayer: some View {
         ForEach(visibleNodes, id: \.id) { node in
             measuredNodeView(node)
-                .zIndex(pyreonFlowNodeZ(zIndex: node.zIndex, selected: state.isNodeSelected(node.id), dragging: nodeDragStart[node.id] != nil, elevate: state.elevateNodesOnSelect))
+                .zIndex(nodeStackZ(node.id))
         }
     }
+
+    /// A node's stacking position among its ZStack siblings. Handles and
+    /// resizers are siblings of the nodes here (on the web they are the node's
+    /// own children), so they take their node's value plus a half: they ride
+    /// with the node, stay above it, and a higher node still covers them.
+    private func nodeStackZ(_ id: String) -> Double {
+        guard let node = state.getNode(id) else { return 0 }
+        return pyreonFlowNodeZ(zIndex: node.zIndex, selected: state.isNodeSelected(id), dragging: nodeDragStart[id] != nil, elevate: state.elevateNodesOnSelect)
+    }
+
 
     private var nodeToolbarsLayer: some View {
         ForEach(visibleNodes, id: \.id) { node in
@@ -1069,6 +1084,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private var handlesLayer: some View {
         ForEach(Array(interactiveHandles.enumerated()), id: \.offset) { _, handle in
             handleView(handle)
+                .zIndex(nodeStackZ(handle.nodeId) + 0.5)
         }
     }
 
@@ -1097,6 +1113,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             if let config = nodeResizer(node) {
                 ForEach(config.directions, id: \.self) { direction in
                     resizerView(node, config: config, direction: direction)
+                        .zIndex(nodeStackZ(node.id) + 0.5)
                 }
             }
         }
@@ -1120,6 +1137,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private var edgeUpdatersLayer: some View {
         ForEach(pyreonFlowEdgeUpdaters(state: state, strokes: edgeStrokes)) { updater in
             edgeUpdaterView(updater)
+                .zIndex(pyreonFlowAboveAllNodesZ)
         }
     }
 
@@ -1346,16 +1364,25 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         state.emitNodeDrag(nodeId)
     }
 
+    private func autoPanVelocity() -> (x: Double, y: Double)? {
+        guard let p = dragPointer else { return nil }
+        let v = pyreonFlowAutoPanVelocity(x: Double(p.x), y: Double(p.y), width: state.containerSize.width, height: state.containerSize.height, speed: state.autoPanSpeed)
+        return v.x != 0 || v.y != 0 ? (x: v.x, y: v.y) : nil
+    }
+
     /// While a node or connection drag holds the pointer in the edge band, pan
-    /// every frame even without pointer movement (the web's auto-pan).
+    /// every frame even without pointer movement (the web's auto-pan). The loop
+    /// runs only while the pointer is IN the band: every drag move calls this,
+    /// so it starts on entry and ends itself on exit, rather than waking every
+    /// frame for the whole drag. `autoPanShift` survives the restart; only
+    /// `stopAutoPan` (the drag ending) clears it. Mirrors the Kotlin view.
     private func startAutoPan() {
-        guard autoPanTask == nil else { return }
+        guard autoPanTask == nil, autoPanVelocity() != nil else { return }
         autoPanTask = _Concurrency.Task { @MainActor in
             while !_Concurrency.Task.isCancelled {
                 try? await _Concurrency.Task.sleep(nanoseconds: 16_000_000)
-                guard !_Concurrency.Task.isCancelled, let p = dragPointer else { continue }
-                let v = pyreonFlowAutoPanVelocity(x: Double(p.x), y: Double(p.y), width: state.containerSize.width, height: state.containerSize.height, speed: state.autoPanSpeed)
-                guard v.x != 0 || v.y != 0 else { continue }
+                guard !_Concurrency.Task.isCancelled else { return }
+                guard let p = dragPointer, let v = autoPanVelocity() else { autoPanTask = nil; return }
                 state.setViewport(x: state.viewport.x + v.x, y: state.viewport.y + v.y)
                 if let id = draggingNodeId, !nodeDragStart.isEmpty {
                     autoPanShift.width -= v.x

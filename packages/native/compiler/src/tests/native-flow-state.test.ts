@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { transform } from '../index'
-import { HANDLED_FLOW_COMPONENT_PROPS, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, HANDLED_FLOW_HOST_PROPS, HANDLED_FLOW_WEBVIEW_PROPS, LOWERED_FLOW_CONFIG_PROPERTIES, LOWERED_FLOW_METHODS, LOWERED_FLOW_PROPERTY_READS, LOWERED_FLOW_RUNTIME_EXPORTS, WEB_ONLY_FLOW_RUNTIME_EXPORTS } from '../flow-lowering'
+import { DROPPED_FLOW_COMPONENTS, HANDLED_FLOW_COMPONENT_PROPS, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, HANDLED_FLOW_HOST_PROPS, HANDLED_FLOW_WEBVIEW_PROPS, LOWERED_FLOW_CONFIG_PROPERTIES, LOWERED_FLOW_METHODS, LOWERED_FLOW_PROPERTY_READS, LOWERED_FLOW_RUNTIME_EXPORTS, WEB_ONLY_FLOW_RUNTIME_EXPORTS } from '../flow-lowering'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,
@@ -164,8 +164,21 @@ it('classifies every public Flow runtime export as native-portable or web-only',
 
 it('uses the Flow runtime inventory for exact import-boundary diagnostics', () => {
   for (const name of WEB_ONLY_FLOW_RUNTIME_EXPORTS) {
+    if (DROPPED_FLOW_COMPONENTS.has(name)) continue
     const result = transform(`import { ${name} } from '@pyreon/flow'; export function App() { return null }`, { target: 'swift' })
     expect(result.warnings.join('\n'), name).toContain(name)
+  }
+  // A dropped component is named ONCE, at its use, by a warning that says it
+  // was dropped — never the import-time "the native build fails" line.
+  for (const name of DROPPED_FLOW_COMPONENTS) {
+    expect(WEB_ONLY_FLOW_RUNTIME_EXPORTS.has(name), `${name} must also be classified web-only`).toBe(true)
+    for (const target of ['swift', 'kotlin'] as const) {
+      const warnings = transform(`import { ${name} } from '@pyreon/flow'; export function App() { return <${name}><div /></${name}> }`, { target }).warnings
+      const naming = warnings.filter((w) => w.includes(name))
+      expect(naming, `${name} on ${target}`).toHaveLength(1)
+      expect(naming[0]).toContain('dropped')
+      expect(naming[0]).not.toContain('reproduced verbatim')
+    }
   }
   for (const name of LOWERED_FLOW_RUNTIME_EXPORTS) {
     const result = transform(`import { ${name} } from '@pyreon/flow'; export function App() { return null }`, { target: 'swift' })

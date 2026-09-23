@@ -130,6 +130,12 @@ export const WEB_ONLY_FLOW_RUNTIME_EXPORTS: ReadonlySet<string> = new Set([
   'FlowLayersContext', 'flowStyles', 'ViewportPortal',
 ])
 
+/** Web-only Flow COMPONENTS the emitters DROP (emit nothing) with their own
+ * named warning at the use site. The import-boundary line ("reproduced
+ * verbatim … the native build fails") would be false for these, so it is
+ * skipped; a subset of `WEB_ONLY_FLOW_RUNTIME_EXPORTS`. */
+export const DROPPED_FLOW_COMPONENTS: ReadonlySet<string> = new Set(['ViewportPortal'])
+
 /** Mutable `FlowConfig` fields retained by both native state engines. */
 export const LOWERED_FLOW_CONFIG_PROPERTIES: ReadonlyMap<string, string> = new Map([
   ['defaultEdgeType', 'defaultEdgeType'], ['defaultEdgeOptions', 'defaultEdgeOptions'],

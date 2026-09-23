@@ -65,4 +65,37 @@ describe('connectionMode, elevation and zIndex lower natively', () => {
       expect(transform(src, { target }).warnings.join('\n'), target).toContain('zIndex (not a numeric literal)')
     }
   })
+
+  it('updateNode / updateEdge with a zIndex literal compile on Kotlin (Int literal into a Double field)', () => {
+    const src = `
+      import { createFlow, Flow } from '@pyreon/flow'
+      import { Button, Stack } from '@pyreon/primitives'
+      export function Diagram() {
+        const flow = createFlow({
+          nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: { label: 'A' } }, { id: 'b', position: { x: 200, y: 0 }, data: { label: 'B' } }],
+          edges: [{ id: 'ab', source: 'a', target: 'b' }],
+        })
+        return (
+          <Stack>
+            <Button onPress={() => { flow.updateNode('a', { zIndex: 5 }); flow.updateEdge('ab', { zIndex: 3 }) }}>raise</Button>
+            <Flow instance={flow} />
+          </Stack>
+        )
+      }
+    `
+    const k = transform(src, { target: 'kotlin' })
+    expect(k.warnings).toEqual([])
+    expect(k.code).toContain('node.copy(zIndex = 5.0)')
+    expect(k.code).toContain('zIndex = 3.0')
+    if (isKotlincAvailable()) {
+      const v = validateKotlin(k.code)
+      expect(v.ok, v.error ?? '').toBe(true)
+    }
+    const sw = transform(src, { target: 'swift' })
+    expect(sw.warnings).toEqual([])
+    if (isSwiftcAvailable()) {
+      const v = validateSwiftWithStubs(sw.code)
+      expect(v.ok, v.error ?? '').toBe(true)
+    }
+  })
 })

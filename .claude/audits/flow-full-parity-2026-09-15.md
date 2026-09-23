@@ -491,7 +491,19 @@ native view.
   and a chained edge-ordering expression that the real-runtime swiftc gate could
   not type-check in time (now split into typed steps). Neither co-source nor the
   stub gate can see an app-level name collision.
-- Not device-asserted: hover (needs a pointer, which the simulator and emulator
-  drivers do not synthesise), auto-pan, `connectionMode` and `zIndex` in the
-  views. Their engine logic is covered by the native checks; the view wiring is
-  compiled but not exercised on a device.
+- [x] Device-asserted on both suites: `connectionMode` (a drag starting on a
+  RAISED node's target handle), `zIndex` (a tap where two nodes overlap reaches
+  the higher one), auto-pan (a node held at the canvas edge). Hover: Android
+  only (a Compose mouse); XCUITest has no pointer hover on iOS. Each assertion
+  is bisected: reverting the view code it covers fails it.
+- Three defects the device work surfaced, all fixed: (1) raised nodes covered
+  every handle and resizer, because those are ZStack/Box SIBLINGS of the nodes
+  natively (children on the web) and the new node `zIndex` put the node above
+  them; (2) the iOS auto-pan loop woke every frame for the whole drag (Android
+  had the same bug, fixed by another session in this branch); (3) Kotlin
+  `updateNode/updateEdge({ zIndex: 5 })` emitted an Int into a Double field.
+- Test-geometry lesson: a flow canvas that takes "the height that is left"
+  shrinks as a page grows, and a short canvas puts every node inside the 40pt
+  auto-pan band, where a slow drag pans the graph out from under the finger.
+  The iOS connect drag failed for that reason until the page was compacted and
+  the nodes moved clear of the band.

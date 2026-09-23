@@ -648,6 +648,42 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertEqual(menu.label, "none", "no context menu has been requested yet")
         app.staticTexts["End"].firstMatch.press(forDuration: 1.0)
         XCTAssertTrue(waitForLabel(menu, "menu b", timeout: 5), "a long-press on node 'End' did not reach onNodeContextMenu (label: \(menu.label))")
+        // (Hover is asserted on Android only: XCUITest on iOS has no pointer
+        // hover to synthesise, `XCUIElement.hover()` is macOS-only.)
+
+        func labelled(_ label: String) -> XCUIElement {
+            app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+        }
+        let edgeCount = app.staticTexts["flow-edge-count"].firstMatch
+        let selectedIds = app.staticTexts["flow-selected-ids"].firstMatch
+
+        // connectionMode 'strict' (the default), with B selected (raised): with e1 removed, a drag that
+        // STARTS on node b's target handle and drops on node a's source handle
+        // still creates the edge, in the source -> target direction.
+        tapAfterScrolling(app.buttons["flow-drop-e1"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabel(edgeCount, "1", timeout: 5), "removeEdge('e1') did not reach the engine (label: \(edgeCount.label))")
+        let vpBeforeConnect = app.staticTexts["flow-vp"].firstMatch.label
+        let fromHandle = labelled("target handle in").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let toHandle = labelled("source handle out").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        fromHandle.press(forDuration: 0.3, thenDragTo: toHandle, withVelocity: .slow, thenHoldForDuration: 0.3)
+        XCTAssertTrue(waitForLabel(edgeCount, "2", timeout: 5), "a drag from a target handle to a source handle did not connect under strict mode (edges: \(edgeCount.label), connect: \(app.staticTexts["flow-connect"].firstMatch.label), viewport: \(vpBeforeConnect) -> \(app.staticTexts["flow-vp"].firstMatch.label))")
+
+        // zIndex: A and B overlap, B later in the array, A raised to zIndex 5
+        // with nothing selected. A tap where they overlap must reach A.
+        tapAfterScrolling(app.buttons["flow-stack"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabel(aPos, "0.0,0.0", timeout: 5) || aPos.label == "0,0", "flow-stack did not move A (label: \(aPos.label))")
+        XCTAssertTrue(waitForLabel(selectedIds, "none", timeout: 5), "flow-stack did not clear the selection (label: \(selectedIds.label))")
+        app.staticTexts["Start"].firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(waitForLabel(selectedIds, "a", timeout: 5), "a tap where A (zIndex 5) overlaps B did not reach A (label: \(selectedIds.label))")
+
+        // Auto-pan: holding the dragged node at the canvas edge pans the viewport.
+        let vp = app.staticTexts["flow-vp"].firstMatch
+        let vpBefore = vp.label
+        let canvasEdge = labelled("Task flow").coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5))
+        app.staticTexts["Start"].firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.3, thenDragTo: canvasEdge, withVelocity: .slow, thenHoldForDuration: 1.0)
+        let panned = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", vpBefore), object: vp)
+        XCTAssertEqual(XCTWaiter().wait(for: [panned], timeout: 5), .completed, "holding a node at the canvas edge did not auto-pan (viewport still \(vp.label))")
 
         tapAfterScrolling(app.buttons["flow-zoom-in"].firstMatch, in: app)
         XCTAssertTrue(waitForLabel(app.staticTexts["flow-zoom"].firstMatch, "zoom 1.2", timeout: 5), "zoomIn did not reach the native engine (label: \(app.staticTexts["flow-zoom"].firstMatch.label))")
@@ -1256,9 +1292,18 @@ final class PyreonTasksUITests: XCTestCase {
         scrollFullyOnScreen(app.buttons["gal-flow-webview-swap"].firstMatch, in: app)
         app.buttons["gal-flow-webview-swap"].firstMatch.tap()
         scrollFullyOnScreen(flowWebView, in: app)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        flowWebView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        XCTAssertTrue(waitForLabel(flowWebSelected, "enrich", timeout: 10), "after swapping the graph the tap did not select the new middle node (label: \(flowWebSelected.label))")
+        // The swapped graph crosses the JSON bridge asynchronously and the host
+        // reports nothing when it has rendered, so a single tap after a fixed
+        // wait can land on the OLD graph and select `transform` again (seen
+        // once in CI-like load). Tap until the new node answers, within the
+        // same 10s budget: every tap is harmless, and the assertion is still
+        // that the swapped graph reached the page and its handlers.
+        let swapDeadline = Date().addingTimeInterval(10)
+        repeat {
+            flowWebView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            if waitForLabel(flowWebSelected, "enrich", timeout: 1.5) { break }
+        } while Date() < swapDeadline
+        XCTAssertEqual(flowWebSelected.label, "enrich", "after swapping the graph the tap did not select the new middle node (label: \(flowWebSelected.label))")
         // A graph the hosted renderer cannot draw (a node with no position) reaches
         // native `onError` through the host-error bridge instead of failing silently.
         let flowWebFailure = app.staticTexts["gal-flow-webview-failure"].firstMatch

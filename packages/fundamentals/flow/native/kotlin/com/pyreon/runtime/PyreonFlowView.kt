@@ -217,6 +217,9 @@ fun PyreonFlowBaseEdgePath(result: PyreonFlowPathResult, color: String? = null, 
     PyreonFlowCustomEdgePath(result = result, color = color ?: LocalPyreonFlowPalette.current.edge, width = width, fill = null)
 }
 
+/** Above every node in the canvas Box: dragging adds 1000, selection 100, and user `zIndex` values are small. */
+private const val PYREON_FLOW_ABOVE_ALL_NODES_Z = 1_000_000f
+
 /** A text label centred at a flow point in a custom edge (the web's `EdgeText`). Mirrors Swift. */
 @Composable
 fun PyreonFlowEdgeText(x: Double, y: Double, label: String) {
@@ -224,7 +227,7 @@ fun PyreonFlowEdgeText(x: Double, y: Double, label: String) {
     var size by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     Text(
         label,
-        fontSize = 12.sp,
+        fontSize = 11.sp,
         color = pyreonFlowEdgeColor(palette.edgeLabel),
         modifier = Modifier
             .onSizeChanged { size = it }
@@ -547,12 +550,30 @@ fun <T> PyreonFlowView(
             )
         }
     }
-    LaunchedEffect(dragPointer != null) {
-        while (dragPointer != null) {
+    // A node's stacking position among its Box siblings. Handles and resizers
+    // are siblings of the nodes here (on the web they are the node's own
+    // children), so they take their node's value plus a half: they ride with
+    // the node, stay above it, and a higher node still covers them.
+    fun nodeStackZ(id: String): Float {
+        val node = state.getNode(id) ?: return 0f
+        return pyreonFlowNodeZ(node.zIndex, state.isNodeSelected(id), nodeDragStarts.containsKey(id), state.elevateNodesOnSelect).toFloat()
+    }
+    // The frame loop runs only while the pointer sits in the edge band. Keying
+    // it on "a drag is live" instead kept it awaiting frames for the WHOLE
+    // drag, so Compose never went idle: a test (or anything waiting for idle)
+    // mid-drag timed out with ComposeNotIdleException, and the loop burned a
+    // frame per vsync doing nothing. The band is re-read on every pointer move,
+    // since `dragPointer` is state.
+    val autoPanActive = dragPointer?.let { p ->
+        val v = pyreonFlowAutoPanVelocity(p.x, p.y, state.containerSize.width, state.containerSize.height, state.autoPanSpeed)
+        v.x != 0.0 || v.y != 0.0
+    } ?: false
+    LaunchedEffect(autoPanActive) {
+        while (autoPanActive) {
             withFrameNanos { }
             val p = dragPointer ?: break
             val v = pyreonFlowAutoPanVelocity(p.x, p.y, state.containerSize.width, state.containerSize.height, state.autoPanSpeed)
-            if (v.x == 0.0 && v.y == 0.0) continue
+            if (v.x == 0.0 && v.y == 0.0) break
             state.setViewport(x = state.viewport.x + v.x, y = state.viewport.y + v.y)
             val zoom = state.viewport.zoom
             if (nodeDragStarts.isNotEmpty()) {
@@ -776,13 +797,15 @@ fun <T> PyreonFlowView(
                     edge.text ?: "",
                     if (edge.text == null) edgeModifier else edgeModifier.background(pyreonFlowEdgeColor(palette.panelBackground).copy(alpha = 0.9f)),
                     color = pyreonFlowEdgeColor(palette.edgeLabel),
+                    // The web's built-in edge label is 11px (flow-component.tsx).
+                    fontSize = 11.sp,
                 )
             }
             for (node in visibleNodes) {
                 val absolute = state.getAbsolutePosition(node.id)
                 val inlineStyle = pyreonFlowNodeInlineStyle(node.style)
                 var nodeModifier = Modifier
-                    .zIndex(pyreonFlowNodeZ(node.zIndex, state.isNodeSelected(node.id), nodeDragStarts.containsKey(node.id), state.elevateNodesOnSelect).toFloat())
+                    .zIndex(nodeStackZ(node.id))
                     .offset { IntOffset((absolute.x * unit).roundToInt(), (absolute.y * unit).roundToInt()) }
                 val styledWidth = node.width ?: inlineStyle.width
                 val styledHeight = node.height ?: inlineStyle.height
@@ -880,6 +903,8 @@ fun <T> PyreonFlowView(
                 val hitSize = maxOf(diameter, 48.0 / state.viewport.zoom)
                 Canvas(
                     Modifier
+                        // Rides with its node (the web's handles are the node's children).
+                        .zIndex(nodeStackZ(handle.nodeId) + 0.5f)
                         .offset { IntOffset(((handle.x - hitSize / 2) * unit).roundToInt(), ((handle.y - hitSize / 2) * unit).roundToInt()) }
                         .requiredSize(hitSize.toFloat().dp)
                         .semantics {
@@ -933,6 +958,7 @@ fun <T> PyreonFlowView(
                     val hitSize = maxOf(diameter, 48.0 / state.viewport.zoom)
                     Canvas(
                         Modifier
+                            .zIndex(nodeStackZ(node.id) + 0.5f)
                             .offset { IntOffset(((x - hitSize / 2) * unit).roundToInt(), ((y - hitSize / 2) * unit).roundToInt()) }
                             .requiredSize(hitSize.toFloat().dp)
                             .semantics { contentDescription = "Resize $direction for node ${node.id}" }
@@ -961,6 +987,7 @@ fun <T> PyreonFlowView(
                 val hitSize = maxOf(diameter, 48.0 / state.viewport.zoom)
                 Canvas(
                     Modifier
+                        .zIndex(PYREON_FLOW_ABOVE_ALL_NODES_Z)
                         .offset { IntOffset(((updater.x - hitSize / 2) * unit).roundToInt(), ((updater.y - hitSize / 2) * unit).roundToInt()) }
                         .requiredSize(hitSize.toFloat().dp)
                         .semantics { contentDescription = "Reconnect ${updater.end} of edge ${updater.edgeId}" }
