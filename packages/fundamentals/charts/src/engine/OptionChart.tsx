@@ -676,7 +676,7 @@ export function OptionChart(props: OptionChartProps): VNode {
       for (const c of pointerCmds(plan.compiled, resolved, measure, composed.chrome)) cmds.push(c)
       if (plan.compiled.zoom !== undefined) {
         const win = winOf(plan.compiled)!
-        const view = zoomedView(plan.compiled, composed.chrome, win)
+        const view = zoomedView(plan.compiled, composed.chrome, win, measure)
         const p = layoutChart(view.spec, measure).plot
         zoom = { top: composed.top, offset: view.offset, plot: { x: p.x, y: p.y + composed.top, w: p.w, h: p.h }, strip: view.navigator?.strip ?? null, win }
       }
@@ -1268,7 +1268,8 @@ export function OptionChart(props: OptionChartProps): VNode {
         }
         if (z === null || z.strip === null) return false
         const r = z.strip
-        if (px < r.x - 8.0 || px > r.x + r.w + 8.0 || py < r.y - 4.0 || py > r.y + r.h + 4.0) return false
+        // The brush move handle rides 6.5px above the strip; pressing it drags the window, as in ECharts.
+        if (px < r.x - 8.0 || px > r.x + r.w + 8.0 || py < r.y - 8.0 || py > r.y + r.h + 4.0) return false
         navGrab = { kind: navigatorHit(r, z.win, px), x: px, win: z.win }
         return true
       },

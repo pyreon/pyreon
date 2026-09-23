@@ -63,7 +63,7 @@ export interface LayerPart {
 
 
 /** An ECharts length as a frame length: a number is px, `'N%'` a percent, a numeric string px; else unset. */
-function lengthOf(v: unknown): FrameLength {
+export function lengthOf(v: unknown): FrameLength {
   if (typeof v === 'number' && Number.isFinite(v)) return { mode: 'px', amount: v }
   if (typeof v === 'string') {
     const t = v.trim()

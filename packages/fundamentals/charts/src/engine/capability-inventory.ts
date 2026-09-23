@@ -473,8 +473,13 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
   row('coordinates.data-zoom', 'coordinates', 'direct', {
     web: 'partial',
     native: 'partial',
-    gaps: ['only the category x axis zooms, and only the first x axis; a y-axis or value-axis dataZoom is ignored with a warning', LITERAL_ONLY],
-    evidence: ['src/engine/option-zoom.test.ts', 'src/engine/zoom.browser.test.tsx', NATIVE + 'chart-option-datazoom-native.test.ts', ...DEVICE],
+    gaps: [
+      'only the category x axis zooms, and only the first x axis; a y-axis or value-axis dataZoom is ignored with a warning',
+      'the web slider takes ECharts\' geometry and look, but its styling keys (`fillerColor`, `handleStyle`, `handleIcon`, `dataBackground`, `showDataShadow`) and the drag-time value labels (`showDetail`) are not read',
+      'native draws a slider option as PlotChart\'s own navigator, a strip below the chart, not ECharts\' slider in the grid\'s bottom margin',
+      LITERAL_ONLY,
+    ],
+    evidence: ['src/engine/option-zoom.test.ts', 'src/engine/zoom.browser.test.tsx', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-option-datazoom-native.test.ts', ...DEVICE],
   }),
   row('coordinates.timeline', 'coordinates', 'direct', {
     web: 'complete',

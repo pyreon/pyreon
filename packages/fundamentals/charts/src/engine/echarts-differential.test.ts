@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import * as echarts from 'echarts'
-import { compileOption, compiledCommands } from './option'
+import { compileOption, compiledCommands, zoomedView } from './option'
 import type { EChartsOption } from './option'
 import { barsFor, layoutChart, renderChart } from './render'
 import { compileFamily } from './option-family'
@@ -1056,6 +1056,107 @@ describe('ECharts differential: area fills', () => {
       expect(u.opacity).toBeCloseTo(e.opacity, 5)
       expect(e.hasLine).toBe(true)
       expect(u.hasLine).toBe(true)
+    })
+  }
+})
+
+/**
+ * The slider dataZoom: where ECharts puts the strip (under the plot, laid out
+ * in the whole chart, shifted by its group's bounding box), where its window's
+ * filler and handles sit, the brush's move handle above it, and the data
+ * shadow's points (the first series over every row, its extent padded 30%).
+ * Read off ECharts' flipped slider group — every part is drawn in a
+ * `matrix(1,0,0,-1,x,y)` frame whose origin is the strip's bottom-left.
+ */
+interface SliderFacts {
+  strip: { x: number; y: number; w: number; h: number }
+  filler: { x: number; w: number }
+  handles: number[]
+  move: { y0: number; y1: number } | null
+  shadow: Pt[]
+  plotBottom: number
+}
+function echartsSlider(option: object, w: number, h: number): SliderFacts {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: w, height: h })
+  chart.setOption({ animation: false, ...option })
+  const svg = chart.renderToSVGString()
+  chart.dispose()
+  const s = /<path d="M0 0l([\d.]+) 0l0 ([\d.]+)l-[\d.]+ 0Z" transform="matrix\(1,0,0,-1,([\d.]+),([\d.]+)\)"/.exec(svg)!
+  const sw = Number(s[1])
+  const sh = Number(s[2])
+  const tx = Number(s[3])
+  const ty = Number(s[4])
+  const f = /<path d="M([\d.]+) 0l([\d.]+) 0l0 [\d.]+l-[\d.]+ 0Z" transform="matrix\(1,0,0,-1,[\d.]+,[\d.]+\)" fill="rgb\(135/.exec(svg)!
+  const handles = [...svg.matchAll(/matrix\([\d.]+,0,0,-[\d.]+,([\d.]+),[\d.]+\)" fill="#fff" stroke="#c0c9e6"/g)].map((m) => Number(m[1]))
+  const m = /<path d="M[\d.]+ ([\d.]+)L[\d.]+ [\d.]+L[\d.]+ [\d.]+A2 2 0 0 1 [\d.]+ ([\d.]+)L/.exec(svg)
+  const poly = /<polyline points="([^"]+)" transform="matrix\(1,0,0,-1/.exec(svg)!
+  const nums = poly[1]!.trim().split(/\s+/).map(Number)
+  const shadow: Pt[] = []
+  for (let i = 0; i + 1 < nums.length; i += 2) shadow.push({ x: tx + nums[i]!, y: ty - nums[i + 1]! })
+  const ys = [...svg.matchAll(/<path d="M[\d.]+ ([\d.]+)L[\d.]+ [\d.]+" fill="none"[^>]*stroke="#dbdee4"/g)].map((x) => Number(x[1]))
+  return {
+    strip: { x: tx, y: ty - sh, w: sw, h: sh },
+    filler: { x: tx + Number(f[1]), w: Number(f[2]) },
+    handles,
+    move: m === null ? null : { y0: ty - Number(m[2]), y1: ty - Number(m[1]) },
+    shadow,
+    plotBottom: Math.max(...ys),
+  }
+}
+function ourSlider(option: object, w: number, h: number): SliderFacts {
+  const c = compileOption(option as EChartsOption, { width: w, height: h })
+  const m = (t: string, size: number): number => echarts.format.getTextRect(t, String(size) + 'px sans-serif').width
+  const view = zoomedView(c, 0, undefined, m)
+  const nav = view.navigator!
+  const filler = nav.cmds.find((d) => d.kind === 'rect' && d.fill === 'rgba(135,175,255,0.2)') as { rect: { x: number; w: number } }
+  const handles = nav.cmds.filter((d) => d.kind === 'line').map((d) => (d as { from: Pt }).from.x).filter((x, i, a) => a.indexOf(x) === i)
+  const move = nav.cmds.find((d) => d.kind === 'rect' && d.fill === 'rgba(130,146,204,0.5)') as { rect: { y: number; h: number } } | undefined
+  const shadow = nav.cmds.filter((d) => d.kind === 'polyline' && d.width === 0.5).flatMap((d) => (d as { points: Pt[] }).points)
+  return {
+    strip: nav.strip,
+    filler: { x: filler.rect.x, w: filler.rect.w },
+    handles,
+    move: move === undefined ? null : { y0: move.rect.y, y1: move.rect.y + move.rect.h },
+    shadow,
+    plotBottom: layoutChart(view.spec, m).plot.y + layoutChart(view.spec, m).plot.h,
+  }
+}
+const zoomLine = (dz: object, extra: object = {}): object => ({
+  xAxis: { type: 'category', data: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] },
+  yAxis: {},
+  dataZoom: [{ type: 'slider', start: 25, end: 75, ...dz }],
+  series: [{ type: 'line', data: [1, 3, 2, 4, 6, 5, 7, 6] }],
+  ...extra,
+})
+const SLIDER_CASES: [string, object, number, number][] = [
+  ['the default slider, a window of 25–75%', zoomLine({}), 400, 300],
+  ['the whole range', zoomLine({ start: 0, end: 100 }), 400, 300],
+  ['a larger chart', zoomLine({ start: 10, end: 90 }), 600, 400],
+  ['under a set grid', zoomLine({}, { grid: { left: 30, right: 20, bottom: 70 } }), 400, 300],
+  ['without the brush (no move handle)', zoomLine({ brushSelect: false }), 400, 300],
+  ['a set bottom and height', zoomLine({ bottom: 5, height: 20 }), 400, 300],
+  ['a set left and width', zoomLine({ left: 40, width: 200 }), 400, 300],
+]
+
+describe('ECharts differential: the slider dataZoom', () => {
+  for (const [name, option, w, h] of SLIDER_CASES) {
+    it(name, () => {
+      const e = echartsSlider(option, w, h)
+      const u = ourSlider(option, w, h)
+      for (const k of ['x', 'y', 'w', 'h'] as const) expect(Math.abs(u.strip[k] - e.strip[k]), `strip.${k}: ${u.strip[k]} vs ${e.strip[k]}`).toBeLessThan(0.6)
+      expect(Math.abs(u.filler.x - e.filler.x)).toBeLessThan(0.6)
+      expect(Math.abs(u.filler.w - e.filler.w)).toBeLessThan(0.6)
+      expect(u.handles.length).toBe(2)
+      for (let i = 0; i < 2; i++) expect(Math.abs(u.handles[i]! - e.handles[i]!), `handle ${i}`).toBeLessThan(0.6)
+      expect(u.move === null).toBe(e.move === null)
+      if (u.move !== null && e.move !== null) {
+        expect(Math.abs(u.move.y0 - e.move.y0)).toBeLessThan(0.6)
+        expect(Math.abs(u.move.y1 - e.move.y1)).toBeLessThan(0.6)
+      }
+      // Every point of ECharts' shadow is a point of ours (ours also carries the cuts at the window ends).
+      for (const p of e.shadow) expect(u.shadow.some((q) => Math.abs(q.x - p.x) < 0.15 && Math.abs(q.y - p.y) < 0.15), `shadow point ${p.x},${p.y}`).toBe(true)
+      // The slider takes nothing from the plot: it sits in the grid's bottom margin.
+      expect(Math.abs(u.plotBottom - e.plotBottom)).toBeLessThan(1.5)
     })
   }
 })

@@ -34,8 +34,10 @@ describe('dataZoom on a compiled option', () => {
     expect(view.navigator).not.toBeNull()
     // ECharts' grid keeps the plot's rect; the slider draws in its bottom margin, aligned with the plot.
     expect(view.spec.height).toBe(300)
-    expect(view.navigator!.strip.x).toBeCloseTo(c.spec.gridLeft ?? 0, 5)
-    expect(view.navigator!.strip.y + view.navigator!.strip.h).toBeLessThanOrEqual(300 - 7)
+    // ECharts shifts the drawn group by its bounding box: 2.8px right of the plot's left edge, the
+    // strip's bottom 15.5px above the chart's (see slider-zoom.ts; the differential holds both).
+    expect(view.navigator!.strip.x).toBeCloseTo((c.spec.gridLeft ?? 0) + 2.8, 5)
+    expect(view.navigator!.strip.y + view.navigator!.strip.h).toBeCloseTo(300 - 15.5, 5)
     // Laid out by its labels (a multi-grid part), the chart gives the strip its own band.
     const partC = compileOption({ ...option({ type: 'slider', start: 0, end: 30 }), grid: { [GRID_PART_KEY]: true } } as EChartsOption, { width: 400, height: 300 })
     const partView = zoomedView(partC, 0)

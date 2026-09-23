@@ -28,6 +28,7 @@ import { renderToolbox } from './toolbox'
 import { toolboxTools } from './toolbox-config'
 import type { ToolboxTool } from './toolbox-config'
 import { renderNavigator } from './navigator'
+import { renderSliderZoom, sliderRect } from './slider-zoom'
 import type { NavigatorLayout } from './navigator'
 import type { ZoomWindow } from './zoom'
 import { TIMELINE_HEIGHT, composeSvg, resolveTimeline, splitGrids, timelineCommands, timelineSteps } from './option-composite'
@@ -1586,7 +1587,9 @@ export interface OptionChrome {
   left?: Double | undefined
 }
 
-export function zoomedView(compiled: CompiledOption, reserved: Double | OptionChrome, win?: ZoomWindow): { spec: ChartSpec; offset: number; navigator: NavigatorLayout | null } {
+const NO_LENGTH = { mode: '', amount: 0.0 }
+
+export function zoomedView(compiled: CompiledOption, reserved: Double | OptionChrome, win?: ZoomWindow, measure?: (text: string, size: Double) => Double): { spec: ChartSpec; offset: number; navigator: NavigatorLayout | null } {
   const zoom = compiled.zoom
   const top = typeof reserved === 'number' ? reserved : reserved.top
   const below = typeof reserved === 'number' ? 0.0 : reserved.bottom
@@ -1599,14 +1602,23 @@ export function zoomedView(compiled: CompiledOption, reserved: Double | OptionCh
   const w = win ?? zoom.window
   const leadSeries = compiled.spec.series[0]
   const t = compiled.spec.theme
-  // Under ECharts' grid the slider sits in the grid's bottom margin, aligned with the plot, and
-  // the plot keeps its rect; laid out by its labels, the chart gives the strip its own band.
+  // Under ECharts' grid the slider is ECharts' own: laid out in the whole chart under the plot, in the
+  // grid's bottom margin, the plot keeping its rect. A multi-grid part, laid out by its labels, gives
+  // Pyreon's navigator its own band instead.
   const gridOwnsBottom = compiled.spec.gridBottom !== undefined
-  const navCanvas = gridOwnsBottom
-    ? { x: (compiled.spec.gridLeft ?? 0.0) - 8.0, y: top, w: Math.max(0.0, width - (compiled.spec.gridLeft ?? 0.0) - (compiled.spec.gridRight ?? 0.0)) + 16.0, h: Math.max(0.0, height - 7.0) }
-    : { x: 0.0, y: top, w: width, h: height }
-  const navigator = zoom.slider ? renderNavigator(leadSeries?.values ?? [], leadSeries?.color ?? t.palette[0] ?? '#5470c6', w, navCanvas, t.grid) : null
-  const view = windowSpec({ ...base, width, height: gridOwnsBottom ? height : Math.max(0.0, height - (navigator?.height ?? 0.0)) }, w, zoom.keepY)
+  if (gridOwnsBottom) {
+    const view = windowSpec({ ...base, width, height }, w, zoom.keepY)
+    if (!zoom.slider) return { spec: view.spec, offset: view.offset, navigator: null }
+    const box = zoom.sliderBox ?? { left: NO_LENGTH, top: NO_LENGTH, right: NO_LENGTH, bottom: NO_LENGTH, width: NO_LENGTH, height: NO_LENGTH, brush: true }
+    // The plot the strip aligns under: laid out when a measure is given (its labels can widen the
+    // grid), else the grid's own insets.
+    const gl = compiled.spec.gridLeft ?? 0.0
+    const plot = measure !== undefined ? layoutChart(view.spec, measure).plot : { x: gl, y: 0.0, w: Math.max(0.0, compiled.spec.width - gl - (compiled.spec.gridRight ?? 0.0)), h: 0.0 }
+    const strip = sliderRect(box, plot, compiled.spec.width, compiled.spec.height)
+    return { spec: view.spec, offset: view.offset, navigator: { cmds: renderSliderZoom(leadSeries?.values ?? [], w, strip, box.brush), strip, height: 0.0 } }
+  }
+  const navigator = zoom.slider ? renderNavigator(leadSeries?.values ?? [], leadSeries?.color ?? t.palette[0] ?? '#5470c6', w, { x: 0.0, y: top, w: width, h: height }, t.grid) : null
+  const view = windowSpec({ ...base, width, height: Math.max(0.0, height - (navigator?.height ?? 0.0)) }, w, zoom.keepY)
   return { spec: view.spec, offset: view.offset, navigator }
 }
 
@@ -1647,7 +1659,7 @@ export function compiledCommands(compiled: CompiledOption, option: EChartsOption
   }
   if (gridOwnsTop) top = 0.0
   const chrome: OptionChrome = aside > 0.0 ? { top, bottom: below, right: beside, left: aside } : { top, bottom: below, right: beside }
-  const view = zoomedView(compiled, chrome, win)
+  const view = zoomedView(compiled, chrome, win, measure)
   // Brush areas are in PLOT-frame pixels (above the title / legend offset): they dim what they miss.
   const brushed = areas.length === 0 ? view.spec : applyOptionBrush(compiled, view.spec, measure, areas)
   const chart = renderChart(brushed, measure)
