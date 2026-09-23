@@ -163,6 +163,29 @@ final class PyreonCounterUITests: XCTestCase {
         keyboardNode.typeKey(.rightArrow, modifierFlags: [])
         let keyboardMoved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", positionBeforeKey), object: startPosition)
         XCTAssertEqual(XCTWaiter().wait(for: [keyboardMoved], timeout: 5), .completed, "Right Arrow did not move the focused native Flow node")
+        // F4 focus/action matrix, node row: clearing the selection leaves the
+        // node FOCUSED, and Space (the web's other activation key) re-selects
+        // it. XCUITest cannot deliver Return or Escape to the app on the
+        // simulator: a logging probe saw Right Arrow and Space reach both the
+        // node and the canvas, and never those two keys, through `onKeyPress`
+        // or a keyboard shortcut. The Android suite drives Enter and Escape.
+        app.buttons["native-flow-clear-selection"].firstMatch.tap()
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: selectedNodeCount)], timeout: 5), .completed)
+        keyboardNode.typeKey(.space, modifierFlags: [])
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: selectedNodeCount)], timeout: 5), .completed, "Space on the focused node did not select it")
+        // Canvas row: Cmd+A selects every node, and Cmd+Z undoes the arrow-key
+        // move above, putting the node back. Delete is asserted on Android
+        // only: on the simulator neither Backspace nor forward-delete reliably
+        // reaches the app (a logging probe saw Cmd+A arrive and neither delete
+        // key), the same limit as Return and Escape.
+        keyboardNode.typeKey("a", modifierFlags: .command)
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "2"), object: selectedNodeCount)], timeout: 5), .completed, "Cmd+A did not select every node")
+        canvas.typeKey("z", modifierFlags: .command)
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", positionBeforeKey), object: startPosition)], timeout: 5), .completed, "Cmd+Z did not undo the keyboard move (label: \(startPosition.label), expected \(positionBeforeKey))")
+        app.buttons["native-flow-clear-selection"].firstMatch.tap()
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: selectedNodeCount)], timeout: 5), .completed)
+        app.descendants(matching: .any)["Native Flow Start"].firstMatch.tap()
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: selectedNodeCount)], timeout: 5), .completed)
 
         let selectedEdgeCount = app.staticTexts["native-flow-selected-edge-count"].firstMatch
         XCTAssertTrue(selectedEdgeCount.waitForExistence(timeout: 5))
@@ -174,6 +197,21 @@ final class PyreonCounterUITests: XCTestCase {
         clearSelection.tap()
         let edgeClearedByButton = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: selectedEdgeCount)
         XCTAssertEqual(XCTWaiter().wait(for: [edgeClearedByButton], timeout: 5), .completed)
+        // F4 edge hardware focus: the label takes keyboard focus like the web's
+        // edge path, so after the selection is cleared Space selects the
+        // FOCUSED edge. Before, the label was reachable by VoiceOver only, and
+        // `.position` gave it the whole canvas as its frame.
+        let keyboardEdge = app.descendants(matching: .any)["Native flow edge"].firstMatch
+        keyboardEdge.tap()
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: selectedEdgeCount)], timeout: 5), .completed, "tapping the edge label did not select it before the keyboard pass")
+        clearSelection.tap()
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: selectedEdgeCount)], timeout: 5), .completed)
+        keyboardEdge.typeKey(.space, modifierFlags: [])
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: selectedEdgeCount)], timeout: 5), .completed, "Space on the focused edge label did not select the edge")
+        clearSelection.tap()
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: selectedEdgeCount)], timeout: 5), .completed)
+        clearSelection.tap()
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: selectedEdgeCount)], timeout: 5), .completed)
 
         let edgeCount = app.staticTexts["native-flow-edge-count"].firstMatch
         XCTAssertTrue(edgeCount.waitForExistence(timeout: 10))
@@ -556,6 +594,14 @@ final class PyreonCounterUITests: XCTestCase {
             openButton.waitForExistence(timeout: 30),
             "Open button (useLinking) did not appear"
         )
+        // The page is one outer vertical Scroll, and the rows above Open grow with
+        // every flow device proof added to it — an unscrolled tap on a button below
+        // the fold lands on nothing. Same frame-inside-window loop as the Unlock test.
+        var openSwipes = 0
+        while !(openButton.isHittable && app.windows.firstMatch.frame.contains(openButton.frame)) && openSwipes < 10 {
+            app.swipeUp()
+            openSwipes += 1
+        }
         openButton.tap()
 
         // `UIApplication.shared.open` hands the URL to the OS: this app
