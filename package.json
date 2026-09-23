@@ -201,7 +201,9 @@
     "hono": "^4.13.5",
     "@changesets/parse": {
       "js-yaml": "^4.3.2"
-    }
+    },
+    "devalue": "^5.9.2",
+    "image-size": "^2.0.4"
   },
   "dependencies": {
     "@tanstack/query-core": "^5.102.8",

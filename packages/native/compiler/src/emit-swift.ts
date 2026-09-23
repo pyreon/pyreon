@@ -8975,9 +8975,14 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   const customConnectionLineArg = connectionLine
     ? `, customConnectionLineEnabled: true, customConnectionLine: { pyreonLine in AnyView(${swiftIdent(connectionLine)}(sourceX: { pyreonLine.sourceX }, sourceY: { pyreonLine.sourceY }, targetX: { pyreonLine.targetX }, targetY: { pyreonLine.targetY }, sourcePosition: { pyreonLine.sourcePosition }, path: { pyreonLine.path })) }`
     : ''
-  const nodeText = attr.value.kind === 'identifier' && _flowStateLabelNamesSwift.has(attr.value.name)
-    ? 'Text(String(describing: pyreonNode.data.label))'
-    : 'Text(pyreonNode.id)'
+  // A node without a custom `type` renders the web's DefaultNode box — palette
+  // background, text and border, the selected colour while selected — not a
+  // bare label.
+  const nodeLabel = attr.value.kind === 'identifier' && _flowStateLabelNamesSwift.has(attr.value.name)
+    ? 'String(describing: pyreonNode.data.label)'
+    : 'pyreonNode.id'
+  const nodeSelected = nodeTypes && nodeTypes.length > 0 ? 'pyreonSelected' : `${emitSwiftExpr(attr.value, 0)}.isNodeSelected(pyreonNode.id)`
+  const nodeText = `PyreonFlowDefaultNode(label: ${nodeLabel}, selected: ${nodeSelected})`
   const renderer = nodeTypes && nodeTypes.length > 0
     ? `switch pyreonNode.type {\n${nodeTypes.map(({ type, component }) => `  case ${swiftStr(type)}:\n    ${swiftIdent(component)}(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging })`).join('\n')}\n  default:\n    ${nodeText}\n  }`
     : nodeText

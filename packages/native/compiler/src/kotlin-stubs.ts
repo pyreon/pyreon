@@ -1873,7 +1873,7 @@ class PyreonFlowState<T>(
   fun onConnectEnd(callback: (PyreonFlowConnection?) -> Unit): () -> Unit = {}
   fun onPaneClick(callback: (PyreonFlowPaneEvent) -> Unit): () -> Unit = {}
   fun moveSelectedNodes(dx: Double, dy: Double) {}
-  fun handleKeyboardCommand(key: String, nodeId: String? = null, shift: Boolean = false, command: Boolean = false, repeatKey: Boolean = false): Boolean = false
+  fun handleKeyboardCommand(key: String, nodeId: String? = null, shift: Boolean = false, command: Boolean = false, repeatKey: Boolean = false, edgeId: String? = null): Boolean = false
   fun focusNode(nodeId: String, focusZoom: Double? = null) {}
 }
 
@@ -1881,6 +1881,7 @@ enum class PyreonFlowBackgroundVariant { Dots, Lines, Cross }
 fun pyreonFlowBackgroundVariant(value: String): PyreonFlowBackgroundVariant = PyreonFlowBackgroundVariant.Dots
 data class PyreonFlowBackgroundStyle(val variant: PyreonFlowBackgroundVariant = PyreonFlowBackgroundVariant.Dots, val gap: Double = 20.0, val size: Double = 1.0, val color: String? = null)
 @Composable fun PyreonFlowColorMode(colorMode: String, content: @Composable () -> Unit) { content() }
+@Composable fun PyreonFlowDefaultNode(label: String, selected: Boolean) {}
 enum class PyreonFlowControlsPosition { TopLeft, TopRight, BottomLeft, BottomRight }
 fun pyreonFlowControlsPosition(value: String): PyreonFlowControlsPosition = PyreonFlowControlsPosition.BottomLeft
 data class PyreonFlowControlsStyle(val showZoomIn: Boolean = true, val showZoomOut: Boolean = true, val showFitView: Boolean = true, val showLock: Boolean = false, val position: PyreonFlowControlsPosition = PyreonFlowControlsPosition.BottomLeft)

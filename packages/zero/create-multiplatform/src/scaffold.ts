@@ -666,9 +666,14 @@ tasks.named("preBuild") { dependsOn("pyreonCompile") }
     <application
         android:label="${pascal}"
         android:allowBackup="true">
+        <!-- configChanges: rotation, a dark-mode switch, a keyboard or window-size
+             change would otherwise DESTROY and recreate the activity, and every
+             compiler-emitted \`remember { mutableStateOf(...) }\` would start over.
+             Compose recomposes in place instead (the React Native default set). -->
         <activity
             android:name="${androidPkg}.MainActivity"
             android:exported="true"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
             android:theme="@android:style/Theme.Material.Light.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

@@ -2062,9 +2062,17 @@ public final class PyreonFlowState<T> {
         nodeId: String? = nil,
         shift: Bool = false,
         command: Bool = false,
-        repeatKey: Bool = false
+        repeatKey: Bool = false,
+        edgeId: String? = nil
     ) -> Bool {
         if disableKeyboardA11y { return false }
+        // A focused EDGE takes Enter/Space to select it, like the web's edge
+        // `onKeyDown`. Everything else (Delete, Escape, the command keys) falls
+        // through to the canvas behaviour below.
+        if let edgeId, getEdge(edgeId) != nil, key == "Enter" || key == " " {
+            selectEdge(edgeId, additive: shift)
+            return true
+        }
         if let nodeId, let node = nodeStore[nodeId] {
             if key == "Enter" || key == " " {
                 guard node.selectable ?? nodesSelectable else { return false }
