@@ -35,7 +35,6 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.swipe
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onRoot
@@ -851,14 +850,21 @@ class TasksAppInstrumentedTest {
         )) {
             composeRule.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
         }
-        // The map ROAMS: a horizontal swipe pans it, so its pixels change.
+        // The map ROAMS: a horizontal drag pans it, so its pixels change.
+        // Driven as a hand does, like the flow and dataZoom drags above: past the
+        // touch slop first, then many small steps. One 400ms `swipe` intermittently
+        // never started `detectTransformGestures` (the gallery's vertical scroll
+        // competes for the same touch), failing unrelated PRs with "did not pan".
         val roamMap = composeRule.onNodeWithTag("gal-map").performScrollTo()
         val mapBefore = roamMap.captureToImage().asAndroidBitmap()
         roamMap.performTouchInput {
-            swipe(start = Offset(width * 0.3f, height * 0.5f), end = Offset(width * 0.3f + 200f, height * 0.5f), durationMillis = 400)
+            down(Offset(width * 0.3f, height * 0.5f))
+            moveBy(Offset(24f * flowDensity, 0f))
+            repeat(10) { moveBy(Offset(12f * flowDensity, 0f)) }
+            up()
         }
-        composeRule.waitForIdle()
-        assertFalse("dragging the roaming map did not pan it", mapBefore.sameAs(roamMap.captureToImage().asAndroidBitmap()))
+        val panned = runCatching { composeRule.waitUntil(5_000) { !mapBefore.sameAs(roamMap.captureToImage().asAndroidBitmap()) } }.isSuccess
+        assertTrue("dragging the roaming map did not pan it", panned)
         composeRule.onNodeWithTag("gal-geo-trail").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("gal-decal").performScrollTo().assertIsDisplayed()
         // The calculable visualMap: dragging its high handle (bottom-left strip) left greys the hottest cells.
