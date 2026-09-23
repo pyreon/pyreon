@@ -154,16 +154,23 @@ async function main() {
 
   const results = new Map<string, Row[]>()
 
-  const scenarios = QUICK ? [{ op: 'enter', n: 50, label: 'enter 50 (quick)' }, { op: 'stagger', n: 50, label: 'stagger 50 (quick)' }] : SCENARIOS
+  // KBENCH_SCENARIOS=enter:250,enter:500 — ad-hoc sizes (scaling probes).
+  const custom = process.env.KBENCH_SCENARIOS?.split(',').map((t) => {
+    const [op, size] = t.split(':')
+    return { op: op!, n: Number(size), label: `${op} ${size}` }
+  })
+  const scenarios = custom ?? (QUICK ? [{ op: 'enter', n: 50, label: 'enter 50 (quick)' }, { op: 'stagger', n: 50, label: 'stagger 50 (quick)' }] : SCENARIOS)
   for (const { op, n, label } of scenarios) {
     const rows: Row[] = []
     for (const lib of shuffle([...LIBS])) {
       console.error(`[kinetic-bench] ${label} · ${lib}…`)
+      const armStart = performance.now()
       const samples: number[] = await page.evaluate(
         ([l, o, size, w, s]) =>
           (globalThis as any).__kbench.runScenario(l, o, size, w, s) as Promise<number[]>,
         [lib, op, n, WARMUP, SAMPLES] as const,
       )
+      console.error(`[kinetic-bench]   ${label} · ${lib} done in ${((performance.now() - armStart) / 1000).toFixed(1)}s`)
       const { median, lo, hi } = bootstrapCI(samples)
       rows.push({ lib, median, lo, hi })
     }

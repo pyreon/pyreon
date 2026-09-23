@@ -45,9 +45,9 @@
 
 import { spawnSync } from 'node:child_process'
 import { cpus, loadavg, tmpdir } from 'node:os'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { cpSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '../../..')
@@ -68,7 +68,8 @@ const LIB_LABEL: Record<Lib, string> = {
  * `"production"`, which is what every bundler (Vite/Rolldown/esbuild/webpack)
  * does for a browser app. Report both: they answer different questions.
  */
-const FOLDED_DIR = resolve(tmpdir(), 'pyreon-bench-reactivity-folded')
+/** The orchestrator creates a private temp dir (mkdtemp) and hands it to children. */
+const FOLDED_ENV = 'PYREON_BENCH_FOLDED_DIR'
 
 interface Section {
   id: string
@@ -136,7 +137,7 @@ function expectEq(what: string, got: number, want: number): void {
 
 async function buildCase(section: string, lib: Lib): Promise<Case> {
   if (lib === 'pyreon' || lib === 'pyreonFolded') {
-    const base = lib === 'pyreon' ? resolve(ROOT, 'packages/core/reactivity/lib') : FOLDED_DIR
+    const base = lib === 'pyreon' ? resolve(ROOT, 'packages/core/reactivity/lib') : process.env[FOLDED_ENV]!
     const R = await import(pathToFileURL(resolve(base, 'index.js')).href)
     return pyreonCase(section, R)
   }
@@ -569,23 +570,41 @@ function engineOf(runtime: string): string {
   return runtime === 'bun' ? `bun ${v} (JavaScriptCore)` : `node ${v} (V8)`
 }
 
-/** Copy `lib/` and fold `process.env.NODE_ENV` the way a bundler's define does. */
-function buildFoldedLib(): void {
-  rmSync(FOLDED_DIR, { recursive: true, force: true })
-  cpSync(resolve(ROOT, 'packages/core/reactivity/lib'), FOLDED_DIR, { recursive: true })
-  const walk = (dir: string): void => {
-    for (const name of readdirSync(dir)) {
-      const p = resolve(dir, name)
-      if (statSync(p).isDirectory()) walk(p)
-      else if (p.endsWith('.js'))
-        writeFileSync(p, readFileSync(p, 'utf-8').replaceAll('process.env.NODE_ENV', '"production"'))
+/**
+ * Copy `lib/` into a fresh private temp dir (mkdtemp — unpredictable name,
+ * owner-only), folding `process.env.NODE_ENV` the way a bundler's define does.
+ * Reads always come from the ORIGINAL lib/ and writes go to new paths, so no
+ * file is checked and then re-opened.
+ */
+function buildFoldedLib(): string {
+  const out = mkdtempSync(join(tmpdir(), 'pyreon-bench-reactivity-'))
+  const copy = (from: string, to: string): void => {
+    for (const e of readdirSync(from, { withFileTypes: true })) {
+      const src = join(from, e.name)
+      const dst = join(to, e.name)
+      if (e.isDirectory()) {
+        mkdirSync(dst)
+        copy(src, dst)
+      } else if (e.isFile()) {
+        const text = readFileSync(src, 'utf-8')
+        writeFileSync(dst, e.name.endsWith('.js') ? text.replaceAll('process.env.NODE_ENV', '"production"') : text)
+      }
     }
   }
-  walk(FOLDED_DIR)
+  copy(resolve(ROOT, 'packages/core/reactivity/lib'), out)
+  return out
 }
 
 async function orchestrate(): Promise<void> {
-  buildFoldedLib()
+  const foldedDir = buildFoldedLib()
+  try {
+    await measureAll(foldedDir)
+  } finally {
+    rmSync(foldedDir, { recursive: true, force: true })
+  }
+}
+
+async function measureAll(foldedDir: string): Promise<void> {
   const argv = process.argv.slice(2)
   const quick = argv.includes('--quick')
   const rtIdx = argv.indexOf('--runtime')
@@ -623,7 +642,7 @@ async function orchestrate(): Promise<void> {
       const p = spawnSync(runtime, args, {
         cwd: ROOT,
         encoding: 'utf-8',
-        env: { ...process.env, NODE_ENV: 'production' },
+        env: { ...process.env, NODE_ENV: 'production', [FOLDED_ENV]: foldedDir },
         maxBuffer: 16 * 1024 * 1024,
       })
       if (p.status !== 0) {
