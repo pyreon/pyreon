@@ -91,7 +91,8 @@ private fun checkSvgElement() {
     check(pyreonFlowSvgTransform(40.0, 20.0, null) == PyreonFlowSvgTransform(1.0, 1.0, 0.0, 0.0), "no viewBox means user units are dp")
     // The shapes the compiler emits parse to closed outlines.
     val circle = pyreonFlowParseSvgPath("M 12 12 m -10 0 a 10 10 0 0 0 10 10 a 10 10 0 0 0 10 -10 a 10 10 0 0 0 -10 -10 a 10 10 0 0 0 -10 10 Z")
-    check(near(circle.first().x, 2.0) && circle.any { near(it.x, 12.0) && near(it.y, 22.0) } && circle.any { near(it.x, 22.0) && near(it.y, 12.0) } && circle.any { near(it.x, 12.0) && near(it.y, 2.0) }, "the lowered circle passes through its four extremes")
+    // `M cx cy` then `m -r 0`: the drawn subpath starts at the leftmost point.
+    check(circle.count { it.kind == "move" } == 2 && near(circle[1].x, 2.0) && near(circle[1].y, 12.0) && near(circle.last().x, 2.0) && near(circle.last().y, 12.0) && circle.any { near(it.x, 12.0) && near(it.y, 22.0) } && circle.any { near(it.x, 22.0) && near(it.y, 12.0) } && circle.any { near(it.x, 12.0) && near(it.y, 2.0) }, "the lowered circle passes through its four extremes")
     val polyline = pyreonFlowParseSvgPath("M 1,1 5,5 9,1")
     check(polyline.size == 3 && near(polyline[2].x, 9.0), "polyline points after M are implicit linetos")
 }
