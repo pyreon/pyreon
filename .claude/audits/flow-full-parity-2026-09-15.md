@@ -321,4 +321,14 @@ native view.
   unmapped key is ignored. The only link left unproven on iOS is the OS
   handing the key to the app. Bisect: unmapping Return fails with "Return and
   Escape map to the web key names".
+- [x] `colorMode="system"` on iOS is proven on every CI run, not only on a
+  simulator that passes appearance changes to the app. The native Swift suite
+  renders the REAL `PyreonFlowView` offscreen with SwiftUI's `ImageRenderer`
+  under a light and a dark environment colour scheme and counts the web's
+  dark canvas colour (#0b1220). The counts must be zero under light and over
+  1,000 under dark with `"system"`. Forced `"light"` ignores a dark scheme and
+  forced `"dark"` ignores a light one. This runs in the macOS co-source job on
+  every PR. The device suites still prove the OS half wherever the simulator
+  propagates the change: the iPhone 17 Pro, and always Android. Bisect: making
+  `"system"` resolve to light fails with "did not follow a dark scheme (0 px)".
 

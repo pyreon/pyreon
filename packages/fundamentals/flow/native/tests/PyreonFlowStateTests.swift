@@ -1503,7 +1503,44 @@ struct PyreonFlowStateTests {
         check(pyreonFlowHandleKey(f, key: .rightArrow, modifiers: .shift, nodeId: "2") && f.getNode("2")!.position.x == before.x + 100, "Shift+Arrow moves the focused node a large step")
     }
 
+    /// Pixels of the web's dark canvas colour (#0b1220) in the REAL view,
+    /// rendered offscreen under the given environment colour scheme. This is
+    /// the SwiftUI half of `colorMode="system"`: the view must follow the
+    /// environment's scheme. The device suites prove the OS half where the
+    /// simulator propagates an appearance change.
+    @MainActor
+    static func darkCanvasPixels(colorMode: String, scheme: ColorScheme) -> Int {
+        let view = PyreonFlowView(state: seedFlow(), colorMode: colorMode) { node in Text(node.data.label) }
+            .frame(width: 320, height: 200)
+            .environment(\.colorScheme, scheme)
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 1
+        guard let image = renderer.cgImage else { return -1 }
+        let width = image.width, height = image.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        guard let ctx = CGContext(data: &pixels, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return -1 }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        var count = 0
+        for i in stride(from: 0, to: pixels.count, by: 4) where abs(Int(pixels[i]) - 11) <= 6 && abs(Int(pixels[i + 1]) - 18) <= 6 && abs(Int(pixels[i + 2]) - 32) <= 6 {
+            count += 1
+        }
+        return count
+    }
+
+    @MainActor
+    static func runSystemColorModeRenderChecks() {
+        let lightSystem = darkCanvasPixels(colorMode: "system", scheme: .light)
+        let darkSystem = darkCanvasPixels(colorMode: "system", scheme: .dark)
+        check(lightSystem == 0, "colorMode=\"system\" painted the dark canvas under a light scheme (\(lightSystem) px)")
+        check(darkSystem > 1000, "colorMode=\"system\" did not follow a dark scheme (\(darkSystem) px)")
+        // Forced modes ignore the environment in both directions.
+        check(darkCanvasPixels(colorMode: "light", scheme: .dark) == 0, "colorMode=\"light\" followed a dark scheme")
+        check(darkCanvasPixels(colorMode: "dark", scheme: .light) > 1000, "colorMode=\"dark\" did not paint dark under a light scheme")
+    }
+
     static func main() {
+        MainActor.assumeIsolated { runSystemColorModeRenderChecks() }
         runKeyRoutingChecks()
         runParityChecks()
         runStateChecks()
