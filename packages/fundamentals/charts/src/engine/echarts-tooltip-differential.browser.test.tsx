@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import * as echarts from 'echarts'
 import { h } from '@pyreon/core'
+import { query } from '@pyreon/test-utils'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { OptionChart } from './OptionChart'
 import type { EChartsOption } from './option'
@@ -45,7 +46,7 @@ async function ourTip(option: object, x: number, y: number): Promise<TipFacts> {
   const r = c.getBoundingClientRect()
   c.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: r.left + x, clientY: r.top + y, pointerId: 1 }))
   await flush()
-  const box = container.querySelector('[data-pyreon-chart-tooltip]') as HTMLElement
+  const box = query<HTMLElement>(container, '[data-pyreon-chart-tooltip]')
   expect(box.style.display).toBe('block')
   return { lines: linesOf(box), swatches: swatchesOf(box), edge: box.style.borderColor }
 }

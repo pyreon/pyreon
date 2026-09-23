@@ -56,7 +56,7 @@ describe('<OptionChart> family tooltip, cursor and silent (real browser)', () =>
 
   it('a tooltip component shows ECharts\' default content for the hovered slice: the series, then swatch, name and value', async () => {
     const { container } = await hover(pie({}, { tooltip: {} }), inSlice1)
-    const b = container.querySelector('[data-pyreon-chart-tooltip]') as HTMLElement
+    const b = query<HTMLElement>(container, '[data-pyreon-chart-tooltip]')
     expect(b.innerText.split('\n').map((l) => l.trim()).filter((l) => l !== '')).toEqual(['Share', 'b', '2'])
   })
 
