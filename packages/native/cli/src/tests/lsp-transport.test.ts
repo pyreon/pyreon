@@ -176,7 +176,7 @@ describe('documents flow through the transport end to end', () => {
         params: {
           textDocument: {
             uri: 'file:///Warns.tsx',
-            text: 'function f<T>(xs: T[]): T { return xs[0] }\nexport function C() { return <text>hi</text> }',
+            text: 'function f<T>(xs: T[]): T { return xs[0] }\nexport function C() { return <Text>hi</Text> }',
           },
         },
       }),
@@ -196,7 +196,7 @@ describe('documents flow through the transport end to end', () => {
     // short, JSON.parse fails, and the document is silently dropped —
     // meaning diagnostics break for any file containing an accent or an
     // emoji, which is not an edge case in real source.
-    const text = 'export function C() { return <text>héllo 🎉 wörld</text> }'
+    const text = 'export function C() { return <Text>héllo 🎉 wörld</Text> }'
     stdin.feed(
       frame({
         jsonrpc: '2.0',
