@@ -63,9 +63,12 @@ WebView escape path; silent drops are release blockers.
     lands. Node frames now read 150x40 and the iOS UITest drags node `a`
     (bisect-verified: offset before the gestures -> label unchanged).
     Device note: Swift renders a position Double as `25.0`, Android `25`.
-- [ ] F3/F4 remaining: pixel-level renderer parity (connection line, handles,
-  toolbar, resizer, panel, labels, markers, theming, reduced motion), and pan/zoom/connect/reconnect
-  gestures on both targets.
+- [x] F3/F4 remaining: renderer parity (connection line, handles, toolbar,
+  resizer, panel, labels, markers, theming, reduced motion), and
+  pan/zoom/connect/reconnect gestures on both targets. Closed by the F3/F4
+  checkpoints below (device-read colours, frames and gestures). Not pursued:
+  PIXEL-IDENTICAL output, which fonts and antialiasing make unattainable; the
+  docs state it.
 
 ## Exit gate
 
@@ -463,3 +466,32 @@ native view.
   line "ends at 199px, node 'b' is at 525.0px". iOS draws in points and was
   already right; its check passes unchanged.
 
+
+## Full-package analysis follow-ups (2026-09-23)
+
+- [x] A custom node typed with an inline data shape,
+  `NodeComponentProps<{ label: string }>`, compiled on neither target with zero
+  warnings (Swift typed `data()` as `String`, Kotlin synthesized an unrelated
+  class). A parse pre-pass now declares one struct per inline shape, shared by
+  the renderer and the flow's node literal. Bisect: without the pre-pass the four
+  inline-shape specs fail.
+- [x] `<NodeResizer nodeId>` naming a node other than its host was silently
+  re-targeted to the host natively. It now warns by name. Bisect: without the
+  check both "another node's id is reported" specs fail.
+- [x] React Flow gaps, closed on web, iOS and Android: intersection helpers,
+  `connectionMode`, node/edge `zIndex` with select elevation, context-menu and
+  hover listeners, auto-pan, and `<BaseEdge>` / `<EdgeText>`. `<ViewportPortal>`
+  is web-only and named by the compiler. Evidence: web unit + real-Chromium
+  specs (each bisected), native engine checks in both fixtures, compiler emit
+  compiled by swiftc/kotlinc, the Android view compiled by Gradle, and a
+  long-press → `onNodeContextMenu` assertion on an iOS simulator and an Android
+  emulator (both bisected: removing the view's call fails the device test).
+- Two defects only a real app build found: the tasks app's own `Task` model
+  shadowed Swift concurrency's `Task` in the flow view (now `_Concurrency.Task`),
+  and a chained edge-ordering expression that the real-runtime swiftc gate could
+  not type-check in time (now split into typed steps). Neither co-source nor the
+  stub gate can see an app-level name collision.
+- Not device-asserted: hover (needs a pointer, which the simulator and emulator
+  drivers do not synthesise), auto-pan, `connectionMode` and `zIndex` in the
+  views. Their engine logic is covered by the native checks; the view wiring is
+  compiled but not exercised on a device.

@@ -40,6 +40,8 @@ const HAND_ASSERTED: Record<string, string> = {
   onNodeDragStart: CALLBACK, onNodeDrag: CALLBACK, onNodeDragEnd: CALLBACK, onEdgeClick: CALLBACK,
   onSelectionChange: CALLBACK, onNodesDelete: CALLBACK, onEdgesDelete: CALLBACK, onNodesChange: CALLBACK,
   onEdgesChange: CALLBACK, onConnectStart: CALLBACK, onConnectEnd: CALLBACK, onPaneClick: CALLBACK,
+  onNodeContextMenu: CALLBACK, onEdgeContextMenu: CALLBACK, onPaneContextMenu: CALLBACK,
+  onNodeMouseEnter: CALLBACK, onNodeMouseLeave: CALLBACK, onEdgeMouseEnter: CALLBACK, onEdgeMouseLeave: CALLBACK,
 }
 
 const calls = (text: string, name: string) => new RegExp(`\\.${name}\\b`).test(text)
@@ -98,12 +100,13 @@ const CONFIG_NOT_ORACLED: Record<string, string> = {
   nodes: DATA, edges: DATA, viewport: DATA,
   reducedMotion: 'motion policy: animateViewport is HAND_ASSERTED above, and both fixtures pin reducedMotion explicitly',
   fitViewOnLoad: 'applied once when the view first lays out, which is a view-lifecycle event rather than an engine call; the fixtures assert the flag is retained',
-  defaultMarkerEnd: RENDER, connectionLineType: RENDER, edgeInteractionWidth: RENDER,
+  defaultMarkerEnd: RENDER, connectionLineType: RENDER, edgeInteractionWidth: RENDER, elevateNodesOnSelect: RENDER, elevateEdgesOnSelect: RENDER,
   nodesFocusable: RENDER, edgesFocusable: RENDER, onlyRenderVisibleElements: RENDER, snapToObjects: GESTURE,
   nodesDraggable: GESTURE, nodesConnectable: GESTURE, nodesSelectable: GESTURE, edgesReconnectable: GESTURE,
-  disableKeyboardA11y: GESTURE, connectionRadius: GESTURE, selectionMode: GESTURE,
+  disableKeyboardA11y: GESTURE, connectionRadius: GESTURE, selectionMode: GESTURE, connectionMode: GESTURE,
   pannable: GESTURE, panOnDrag: GESTURE, panOnScroll: GESTURE, panOnScrollSpeed: GESTURE,
   zoomable: GESTURE, zoomOnScroll: GESTURE, zoomOnPinch: GESTURE, zoomOnDoubleClick: GESTURE, selectionOnDrag: GESTURE,
+  autoPanOnNodeDrag: GESTURE, autoPanOnConnect: GESTURE, autoPanSpeed: GESTURE,
   deleteKeys: GESTURE, multiSelectionKey: GESTURE, selectionKey: GESTURE, zoomActivationKey: GESTURE, preventScrolling: GESTURE,
 }
 

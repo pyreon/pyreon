@@ -140,6 +140,7 @@ it('tracks every public Flow supporting-component prop in native lowering or bou
     readFileSync(new URL('../../../../fundamentals/flow/src/components/node-resizer.tsx', import.meta.url), 'utf8'),
     readFileSync(new URL('../../../../fundamentals/flow/src/components/node-toolbar.tsx', import.meta.url), 'utf8'),
     readFileSync(new URL('../../../../fundamentals/flow/src/components/edge-label-renderer.tsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('../../../../fundamentals/flow/src/components/edge-base.tsx', import.meta.url), 'utf8'),
   ].join('\n')
   for (const [name, handled] of HANDLED_FLOW_COMPONENT_PROPS) {
     const start = sources.indexOf(`export interface ${name}`)

@@ -39,3 +39,6 @@ data class PyreonFlowSmartPositions(val source: PyreonFlowPosition, val target: 
     val targetPosition: PyreonFlowPosition get() = target
 }
 data class PyreonFlowNodeBoxDimensions(val sourceW: Double, val sourceH: Double, val targetW: Double, val targetH: Double)
+
+/** An axis-aligned rect in flow coordinates: the web `Rect` (`x`, `y`, `width`, `height`). */
+data class PyreonFlowRect(val x: Double, val y: Double, val width: Double, val height: Double)

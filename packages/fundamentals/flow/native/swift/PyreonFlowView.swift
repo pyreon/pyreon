@@ -138,6 +138,36 @@ private extension EnvironmentValues {
         set { self[PyreonFlowEdgeLabelPointKey.self] = newValue }
     }
 }
+/// The web's `BaseEdge` stroke: `color` when the author styled it, else the
+/// flow palette's edge colour (light or dark), as the web's CSS variable does.
+public struct PyreonFlowBaseEdgePath: View {
+    @Environment(\.pyreonFlowPalette) private var palette
+    public var result: PyreonFlowPathResult
+    public var color: String?
+    public var width: Double
+    public init(result: PyreonFlowPathResult, color: String? = nil, width: Double = 1.5) { self.result = result; self.color = color; self.width = width }
+    public var body: some View {
+        PyreonFlowCustomEdgePath(result: result, color: color ?? palette.edge, width: width, fill: nil)
+    }
+}
+
+/// A text label centred at a flow point in a custom edge (the web's
+/// `EdgeText`, and `BaseEdge`'s `label`), coloured from the flow palette.
+public struct PyreonFlowEdgeText: View {
+    @Environment(\.pyreonFlowPalette) private var palette
+    public var x: Double
+    public var y: Double
+    public var label: String
+    public init(x: Double, y: Double, label: String) { self.x = x; self.y = y; self.label = label }
+    public var body: some View {
+        Text(label)
+            .font(.system(size: 12))
+            .foregroundStyle(pyreonFlowEdgeColor(palette.edgeLabel))
+            .position(x: x, y: y)
+            .allowsHitTesting(false)
+    }
+}
+
 public struct PyreonFlowEdgeLabelRenderer<Content: View>: View {
     @Environment(\.pyreonFlowEdgeLabelPoint) private var point
     private let content: Content
@@ -493,7 +523,7 @@ public func pyreonFlowEdgeStrokes<T>(
     var nodes: [String: PyreonFlowNode<T>] = [:]
     for node in state.nodes where node.hidden != true { nodes[node.id] = node }
 
-    return state.edges.compactMap { edge in
+    return pyreonFlowOrderedEdges(state.edges, elevate: state.elevateEdgesOnSelect, isSelected: state.isEdgeSelected).compactMap { edge in
         guard edge.hidden != true,
               let source = nodes[edge.source],
               let target = nodes[edge.target]
@@ -540,7 +570,7 @@ public func pyreonFlowEdgeStrokes<T>(
 @available(iOS 17.0, macOS 14.0, *)
 public func pyreonFlowEdgeLabels<T>(state: PyreonFlowState<T>, nodeHandles: (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] }) -> [PyreonFlowEdgeLabel] {
     let nodes = Dictionary(uniqueKeysWithValues: state.nodes.filter { $0.hidden != true }.map { ($0.id, $0) })
-    return state.edges.compactMap { edge in
+    return pyreonFlowOrderedEdges(state.edges, elevate: state.elevateEdgesOnSelect, isSelected: state.isEdgeSelected).compactMap { edge in
         guard edge.hidden != true, let source = nodes[edge.source], let target = nodes[edge.target] else { return nil }
         let sp = state.getAbsolutePosition(source.id), tp = state.getAbsolutePosition(target.id)
         let sd = state.getNodeDimensions(source.id), td = state.getNodeDimensions(target.id)
@@ -568,12 +598,14 @@ public func pyreonFlowEdgeUpdaters<T>(state: PyreonFlowState<T>, strokes: [Pyreo
     }
 }
 
-public func pyreonFlowReconnectConnection(edge: PyreonFlowEdge, end: String, handle: PyreonFlowInteractiveHandle) -> PyreonFlowConnection? {
+/// The connection an endpoint drag makes. `strict` (default) requires the
+/// dropped handle to be of the moved end's type; `loose` accepts either.
+public func pyreonFlowReconnectConnection(edge: PyreonFlowEdge, end: String, handle: PyreonFlowInteractiveHandle, loose: Bool = false) -> PyreonFlowConnection? {
     if end == "target" {
-        guard handle.type == "target", handle.nodeId != edge.source else { return nil }
+        guard loose || handle.type == "target", handle.nodeId != edge.source else { return nil }
         return PyreonFlowConnection(source: edge.source, target: handle.nodeId, sourceHandle: edge.sourceHandle, targetHandle: handle.handleId)
     }
-    guard end == "source", handle.type == "source", handle.nodeId != edge.target else { return nil }
+    guard end == "source", loose || handle.type == "source", handle.nodeId != edge.target else { return nil }
     return PyreonFlowConnection(source: handle.nodeId, target: edge.target, sourceHandle: handle.handleId, targetHandle: edge.targetHandle)
 }
 
@@ -666,6 +698,21 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private var resolvedEdgeColor: String { edgeColor ?? palette.edge }
     @State private var panStart: PyreonFlowViewport?
     @State private var selectionStart: PyreonXYPosition?
+    /// Set when a long-press delivered a context menu, so the release that
+    /// ends it is not ALSO read as a tap. Cleared at the next press start.
+    @State private var suppressTapAfterContextMenu = false
+    // Qualified: an app may declare its own `Task` (a to-do model), which
+    // would otherwise shadow Swift concurrency's `Task` here.
+    @State private var contextPressTask: _Concurrency.Task<Void, Never>?
+    @State private var hoveredEdgeId: String?
+    // Auto-pan: the dragging pointer in canvas coordinates, the pan accumulated
+    // during this node drag (fed back into the node position so the node stays
+    // under the finger), and the frame loop.
+    @State private var dragPointer: CGPoint?
+    @State private var autoPanShift: CGSize = .zero
+    @State private var autoPanTask: _Concurrency.Task<Void, Never>?
+    @State private var nodeDragTranslation: CGSize = .zero
+    @State private var draggingNodeId: String?
     @State private var selectionCurrent: PyreonXYPosition?
     @State private var zoomStart: Double?
     @State private var interactionsLocked = false
@@ -771,6 +818,20 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                     .gesture(panGesture)
                     .simultaneousGesture(doubleClickZoomGesture)
                     .simultaneousGesture(edgeTapGesture)
+                    .simultaneousGesture(contextPressGesture)
+                    .onContinuousHover(coordinateSpace: .named("PyreonFlowCanvas")) { phase in
+                        switch phase {
+                        case .active(let location):
+                            let id = pyreonNearestFlowEdge(edgeStrokes.filter { !$0.id.hasPrefix("__") }, point: graphPoint(location), zoom: state.viewport.zoom)?.id
+                            guard id != hoveredEdgeId else { return }
+                            if let old = hoveredEdgeId { state.emitEdgeMouseLeave(old) }
+                            if let id { state.emitEdgeMouseEnter(id) }
+                            hoveredEdgeId = id
+                        case .ended:
+                            if let old = hoveredEdgeId { state.emitEdgeMouseLeave(old) }
+                            hoveredEdgeId = nil
+                        }
+                    }
 
                 if let background {
                     PyreonFlowBackground(style: background, viewport: state.viewport, fallbackColor: palette.backgroundPattern)
@@ -901,6 +962,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             // at (x, y). Device-found.
             .contentShape(Rectangle())
             .onTapGesture {
+                if suppressTapAfterContextMenu { suppressTapAfterContextMenu = false; return }
                 if node.selectable ?? state.nodesSelectable {
                     state.selectNode(node.id)
                     focusedNodeId = node.id
@@ -908,6 +970,15 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 state.emitNodeClick(node.id)
             }
             .onTapGesture(count: 2) { state.emitNodeDoubleClick(node.id) }
+            // The web's right-click: a long-press. `onChanged` fires at press
+            // start and clears a stale suppression; a successful press marks
+            // the release so it is not also a tap.
+            .simultaneousGesture(LongPressGesture(minimumDuration: 0.5)
+                .onChanged { _ in suppressTapAfterContextMenu = false }
+                .onEnded { _ in if state.emitNodeContextMenu(node.id) { suppressTapAfterContextMenu = true } })
+            .onHover { inside in
+                if inside { state.emitNodeMouseEnter(node.id) } else { state.emitNodeMouseLeave(node.id) }
+            }
             .gesture(nodeDragGesture(node))
             .focusable(!state.disableKeyboardA11y && (node.focusable ?? state.nodesFocusable))
             .focused($focusedNodeId, equals: node.id)
@@ -931,10 +1002,14 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             .position(x: edge.x, y: edge.y)
             .contentShape(Rectangle())
             .onTapGesture {
+                if suppressTapAfterContextMenu { suppressTapAfterContextMenu = false; return }
                 state.selectEdge(edge.id)
                 state.emitEdgeClick(edge.id)
                 if edge.focusable { focusedEdgeId = edge.id }
             }
+            .simultaneousGesture(LongPressGesture(minimumDuration: 0.5)
+                .onChanged { _ in suppressTapAfterContextMenu = false }
+                .onEnded { _ in if state.emitEdgeContextMenu(edge.id) { suppressTapAfterContextMenu = true } })
             .accessibilityLabel(Text(edge.accessibilityLabel))
             .accessibilityAddTraits(state.isEdgeSelected(edge.id) ? [.isSelected] : [])
             .accessibilityAction {
@@ -967,6 +1042,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private var nodesLayer: some View {
         ForEach(visibleNodes, id: \.id) { node in
             measuredNodeView(node)
+                .zIndex(pyreonFlowNodeZ(zIndex: node.zIndex, selected: state.isNodeSelected(node.id), dragging: nodeDragStart[node.id] != nil, elevate: state.elevateNodesOnSelect))
         }
     }
 
@@ -1006,7 +1082,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             .frame(width: diameter, height: diameter)
             .frame(width: hitSize, height: hitSize)
             .contentShape(SwiftUI.Rectangle())
-            .gesture(handle.type == "source" ? connectionGesture(handle) : nil)
+            .gesture(connectionGesture(handle))
             .accessibilityLabel(Text(label))
             .accessibilityAddTraits(.isButton)
             .accessibilityHidden(state.disableKeyboardA11y)
@@ -1115,7 +1191,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private var customEdgeContexts: [PyreonFlowCustomEdgeContext] {
         let strokes = Dictionary(uniqueKeysWithValues: edgeStrokes.map { ($0.id, $0) })
         let labels = Dictionary(uniqueKeysWithValues: pyreonFlowEdgeLabels(state: state, nodeHandles: nodeHandles).map { ($0.id, $0) })
-        return state.edges.compactMap { edge in
+        return pyreonFlowOrderedEdges(state.edges, elevate: state.elevateEdgesOnSelect, isSelected: state.isEdgeSelected).compactMap { edge in
             guard edge.hidden != true, customEdgeTypes.contains(edge.type ?? "bezier"),
                   let stroke = strokes[edge.id], let first = stroke.segments.first, let last = stroke.segments.last
             else { return nil }
@@ -1145,12 +1221,13 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             .onChanged { value in
                 if connectionDraft == nil { state.emitConnectStart(nodeId: source.nodeId, handleId: source.handleId) }
                 connectionDraft = PyreonFlowConnectionDraft(source: source, current: graphPoint(value.location))
+                if state.autoPanOnConnect { dragPointer = value.location; startAutoPan() }
             }
             .onEnded { value in
+                stopAutoPan()
                 let point = graphPoint(value.location)
                 var completed: PyreonFlowConnection?
-                if let target = pyreonNearestFlowHandle(interactiveHandles, point: point, type: "target", radius: (6 + state.connectionRadius) / state.viewport.zoom) {
-                    let connection = PyreonFlowConnection(source: source.nodeId, target: target.nodeId, sourceHandle: source.handleId, targetHandle: target.handleId)
+                if let connection = pyreonFlowResolveConnection(from: source, handles: interactiveHandles, point: point, radius: (6 + state.connectionRadius) / state.viewport.zoom, connectionMode: state.connectionMode) {
                     if state.connect(connection) != nil { completed = connection }
                 }
                 state.emitConnectEnd(completed)
@@ -1178,10 +1255,10 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 guard let handle = pyreonNearestFlowHandle(
                     interactiveHandles.filter { $0.nodeId != fixedNodeId },
                     point: graphPoint(value.location),
-                    type: movingTarget ? "target" : "source",
+                    type: state.connectionMode == "loose" ? "any" : (movingTarget ? "target" : "source"),
                     radius: (6 + state.connectionRadius) / state.viewport.zoom)
                 else { return }
-                guard let connection = pyreonFlowReconnectConnection(edge: edge, end: updater.end, handle: handle) else { return }
+                guard let connection = pyreonFlowReconnectConnection(edge: edge, end: updater.end, handle: handle, loose: state.connectionMode == "loose") else { return }
                 _ = state.reconnectEdge(edge.id, connection: connection)
             }
     }
@@ -1227,37 +1304,77 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         state.fitView(padding: state.fitViewPadding)
     }
 
+    // The canvas space is unscaled, so a translation here equals the global
+    // one; the location in it is what auto-pan measures against the edges.
     private func nodeDragGesture(_ node: PyreonFlowNode<T>) -> some Gesture {
-        DragGesture(minimumDistance: 1, coordinateSpace: .global)
+        DragGesture(minimumDistance: 1, coordinateSpace: .named("PyreonFlowCanvas"))
             .onChanged { value in
                 guard !interactionsLocked, node.draggable ?? state.nodesDraggable else { return }
                 if nodeDragStart.isEmpty {
                     state.pushHistory()
+                    autoPanShift = .zero
                     for id in pyreonFlowDragNodeIds(state: state, draggedNodeId: node.id) {
                         if let position = state.getNode(id)?.position { nodeDragStart[id] = position }
                     }
                     state.emitNodeDragStart(node.id)
                 }
-                guard let primaryStart = nodeDragStart[node.id] else { return }
-                let rawPrimary = PyreonXYPosition(
-                    x: primaryStart.x + value.translation.width / state.viewport.zoom,
-                    y: primaryStart.y + value.translation.height / state.viewport.zoom)
-                let snappedPrimary = state.snappedNodePosition(node.id, rawPrimary, excluding: Set(nodeDragStart.keys))
-                let dx = snappedPrimary.x - primaryStart.x
-                let dy = snappedPrimary.y - primaryStart.y
-                for (id, start) in nodeDragStart {
-                    state.updateNodePosition(
-                        id,
-                        PyreonXYPosition(
-                            x: start.x + dx,
-                            y: start.y + dy))
-                }
-                state.emitNodeDrag(node.id)
+                nodeDragTranslation = value.translation
+                draggingNodeId = node.id
+                applyNodeDrag(node.id)
+                if state.autoPanOnNodeDrag { dragPointer = value.location; startAutoPan() }
             }
             .onEnded { _ in
+                stopAutoPan()
                 if !nodeDragStart.isEmpty { state.emitNodeDragEnd(node.id) }
                 nodeDragStart.removeAll(keepingCapacity: true)
             }
+    }
+
+    /// Position the dragged selection from the drag translation plus any
+    /// auto-pan so far, snapped like a pointer move.
+    private func applyNodeDrag(_ nodeId: String) {
+        guard let primaryStart = nodeDragStart[nodeId] else { return }
+        let rawPrimary = PyreonXYPosition(
+            x: primaryStart.x + (nodeDragTranslation.width + autoPanShift.width) / state.viewport.zoom,
+            y: primaryStart.y + (nodeDragTranslation.height + autoPanShift.height) / state.viewport.zoom)
+        let snappedPrimary = state.snappedNodePosition(nodeId, rawPrimary, excluding: Set(nodeDragStart.keys))
+        let dx = snappedPrimary.x - primaryStart.x
+        let dy = snappedPrimary.y - primaryStart.y
+        for (id, start) in nodeDragStart {
+            state.updateNodePosition(id, PyreonXYPosition(x: start.x + dx, y: start.y + dy))
+        }
+        state.emitNodeDrag(nodeId)
+    }
+
+    /// While a node or connection drag holds the pointer in the edge band, pan
+    /// every frame even without pointer movement (the web's auto-pan).
+    private func startAutoPan() {
+        guard autoPanTask == nil else { return }
+        autoPanTask = _Concurrency.Task { @MainActor in
+            while !_Concurrency.Task.isCancelled {
+                try? await _Concurrency.Task.sleep(nanoseconds: 16_000_000)
+                guard !_Concurrency.Task.isCancelled, let p = dragPointer else { continue }
+                let v = pyreonFlowAutoPanVelocity(x: Double(p.x), y: Double(p.y), width: state.containerSize.width, height: state.containerSize.height, speed: state.autoPanSpeed)
+                guard v.x != 0 || v.y != 0 else { continue }
+                state.setViewport(x: state.viewport.x + v.x, y: state.viewport.y + v.y)
+                if let id = draggingNodeId, !nodeDragStart.isEmpty {
+                    autoPanShift.width -= v.x
+                    autoPanShift.height -= v.y
+                    applyNodeDrag(id)
+                }
+                if let draft = connectionDraft {
+                    connectionDraft = PyreonFlowConnectionDraft(source: draft.source, current: graphPoint(p))
+                }
+            }
+        }
+    }
+
+    private func stopAutoPan() {
+        autoPanTask?.cancel()
+        autoPanTask = nil
+        dragPointer = nil
+        autoPanShift = .zero
+        draggingNodeId = nil
     }
 
     private var panGesture: some Gesture {
@@ -1284,8 +1401,36 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             }
     }
 
+    /// A press held for 0.5s without moving: the canvas's context menu, for the
+    /// edge under it or else the pane. Fired while still pressed, as a real
+    /// long-press is; `edgeTapGesture` then ignores the release.
+    private var contextPressGesture: some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named("PyreonFlowCanvas"))
+            .onChanged { value in
+                if contextPressTask == nil {
+                    suppressTapAfterContextMenu = false
+                    let point = graphPoint(value.startLocation)
+                    contextPressTask = _Concurrency.Task { @MainActor in
+                        try? await _Concurrency.Task.sleep(nanoseconds: 500_000_000)
+                        guard !_Concurrency.Task.isCancelled else { return }
+                        if let edge = pyreonNearestFlowEdge(edgeStrokes.filter { !$0.id.hasPrefix("__") }, point: point, zoom: state.viewport.zoom) {
+                            if state.emitEdgeContextMenu(edge.id) { suppressTapAfterContextMenu = true }
+                        } else if state.emitPaneContextMenu(point) {
+                            suppressTapAfterContextMenu = true
+                        }
+                    }
+                }
+                if hypot(value.translation.width, value.translation.height) > 10 { contextPressTask?.cancel() }
+            }
+            .onEnded { _ in
+                contextPressTask?.cancel()
+                contextPressTask = nil
+            }
+    }
+
     private var edgeTapGesture: some Gesture {
         SpatialTapGesture(coordinateSpace: .named("PyreonFlowCanvas")).onEnded { value in
+            if suppressTapAfterContextMenu { suppressTapAfterContextMenu = false; return }
             let point = graphPoint(value.location)
             if let edge = pyreonNearestFlowEdge(edgeStrokes.filter { $0.id != "__connection-preview" }, point: point, zoom: state.viewport.zoom) {
                 state.selectEdge(edge.id)

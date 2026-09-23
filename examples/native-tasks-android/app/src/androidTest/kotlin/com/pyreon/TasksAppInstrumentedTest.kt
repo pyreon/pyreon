@@ -35,6 +35,7 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.swipe
+import androidx.compose.ui.test.longClick
 import org.junit.Assert.assertTrue
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onRoot
@@ -639,6 +640,12 @@ class TasksAppInstrumentedTest {
         }
         composeRule.waitUntil(5_000) { textOf("flow-a-pos") != before }
         check(textOf("flow-a-pos") != before) { "dragging node 'Start' did not move it (still ${textOf("flow-a-pos")})" }
+        // A long-press on a node is the native context-menu gesture: it reaches
+        // `flow.onNodeContextMenu`, which writes the node id to `flow-menu`.
+        composeRule.onNodeWithTag("flow-menu").assertTextEquals("none")
+        composeRule.onNodeWithText("End").performTouchInput { longClick(center) }
+        composeRule.waitUntil(5_000) { textOf("flow-menu") == "menu b" }
+        composeRule.onNodeWithTag("flow-menu").assertTextEquals("menu b")
         // Tapped past maxZoom (2) so the asserted value is the clamp, not a float product.
         repeat(5) { composeRule.onNodeWithContentDescription("Zoom in").performClick() }
         composeRule.onNodeWithTag("flow-zoom").assertTextEquals("zoom 2.0")

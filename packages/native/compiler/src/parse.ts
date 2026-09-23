@@ -107,6 +107,12 @@ interface ParseCtx {
   enumTypeNames: Set<string>
   objectTypeAliases: Map<string, Extract<TypeIR, { kind: 'object' }>>
   /**
+   * Inline `NodeComponentProps<{ … }>` data types, keyed by their field shape,
+   * mapped to the struct the flow pre-pass declared for them (see
+   * `collectFlowNodeDataStructs`).
+   */
+  flowNodeDataStructs: Map<string, string>
+  /**
    * Locally-declared FUNCTION-type aliases (`type Formatter = (v: Double) =>
    * string`), name → parsed function TypeIR. Consumed by SUBSTITUTION: a
    * zero-arg typeRef naming one resolves to the function type inline, so the
@@ -395,6 +401,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     flowComputeLayoutNames: new Set(),
     storeHookNames: new Set(),
     objectTypeAliases: new Map(),
+    flowNodeDataStructs: new Map(),
     enumTypeNames: new Set(),
     fnTypeAliases: new Map(),
     storeAliases: new Map(),
@@ -546,6 +553,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   const styledComponents: StyledComponentIR[] = []
   const rocketstyleComponents: RocketstyleComponentIR[] = []
   const attrsComponents: AttrsComponentIR[] = []
+  structs.push(...collectFlowNodeDataStructs(ast.program.body as AnyNode[], declaredTypeNames, ctx))
 
   for (const node of ast.program.body as AnyNode[]) {
     // Store aliases are component-scoped — reset before each top-level
@@ -2670,7 +2678,7 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       // lowered right above it). The five public edge-path builders lower to
       // the same native geometry used by the Flow canvas.
       advice:
-        '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, edge-path and marker helpers, literal `<Flow nodeTypes={{ type: Component }}>`, literal `<Flow edgeTypes={{ type: Component }}>` maps whose renderer uses the shipped path helpers, static `<Handle>`, `<NodeResizer>`, and one literal-config `<NodeToolbar>` declaration inside custom nodes, `<Background>`, `<Controls>`, `<MiniMap>`, `<Panel>`, and `<EdgeLabelRenderer>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Arbitrary SVG path strings or browser-only DOM/CSS inside a custom renderer still require NativeIOS/NativeAndroid branches or the `@pyreon/flow/webview` bridge',
+        '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, edge-path and marker helpers, literal `<Flow nodeTypes={{ type: Component }}>`, literal `<Flow edgeTypes={{ type: Component }}>` maps whose renderer uses the shipped path helpers, static `<Handle>`, `<NodeResizer>`, and one literal-config `<NodeToolbar>` declaration inside custom nodes, `<Background>`, `<Controls>`, `<MiniMap>`, `<Panel>`, `<EdgeLabelRenderer>`, `<BaseEdge>` and `<EdgeText>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Arbitrary SVG path strings or browser-only DOM/CSS inside a custom renderer still require NativeIOS/NativeAndroid branches or the `@pyreon/flow/webview` bridge',
       supported: LOWERED_FLOW_RUNTIME_EXPORTS,
     },
   ],
@@ -5767,6 +5775,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     // warnings from double-firing, and the consts are read-only lookup either way.
     stringConsts: ctx.stringConsts,
     objectTypeAliases: new Map(),
+    flowNodeDataStructs: new Map(),
     // Shared, not copied — the pre-pass POPULATES this for the main ctx.
     enumTypeNames: ctx.enumTypeNames,
     fnTypeAliases: new Map(),
@@ -5871,6 +5880,52 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
       ctx.objectTypeAliases.set(name, liftedAliasType(name, parsed, declared))
     }
   }
+}
+
+/** Field-shape key of an inline object type: two identical shapes share one struct. */
+function flowNodeDataKey(t: Extract<TypeIR, { kind: 'object' }>): string {
+  return JSON.stringify(t.fields)
+}
+
+/**
+ * A custom Flow node typed with an INLINE data shape,
+ * `props: NodeComponentProps<{ label: string }>`, had no native spelling that
+ * matched the flow it renders for: Swift typed `data()` as `String` and Kotlin
+ * synthesized a `<Component>Data` class, while the flow's own node literal
+ * became a different struct. Neither compiled, and nothing warned. This
+ * declares ONE struct per distinct inline shape (named after the first
+ * component that uses it) before the components are parsed, so the renderer's
+ * `data` type and the flow's node-data literal, which picks a declared struct
+ * by its field names, both resolve to it. Nested inline objects are lifted the
+ * same way a declared interface's are.
+ */
+function collectFlowNodeDataStructs(body: AnyNode[], declared: Set<string>, ctx: ParseCtx): StructIR[] {
+  const out: StructIR[] = []
+  for (const top of body) {
+    const node = top?.type === 'ExportNamedDeclaration' || top?.type === 'ExportDefaultDeclaration' ? top.declaration : top
+    const fns: { name: string; fn: AnyNode }[] = []
+    if (node?.type === 'FunctionDeclaration' && node.id?.name) fns.push({ name: node.id.name as string, fn: node })
+    if (node?.type === 'VariableDeclaration') {
+      for (const d of (node.declarations as AnyNode[]) ?? []) {
+        const init = d?.init
+        if (d?.id?.type === 'Identifier' && (init?.type === 'ArrowFunctionExpression' || init?.type === 'FunctionExpression')) fns.push({ name: d.id.name as string, fn: init })
+      }
+    }
+    for (const { name, fn } of fns) {
+      const annot = (fn.params as AnyNode[] | undefined)?.[0]?.typeAnnotation?.typeAnnotation as AnyNode | undefined
+      if (!annot) continue
+      const t = parseTypeAnnotation(annot, ctx)
+      if (t.kind !== 'typeRef' || t.name !== 'NodeComponentProps' || t.args[0]?.kind !== 'object') continue
+      const key = flowNodeDataKey(t.args[0])
+      if (ctx.flowNodeDataStructs.has(key)) continue
+      let structName = `${name}Data`
+      for (let i = 2; declared.has(structName); i++) structName = `${name}Data${i}`
+      declared.add(structName)
+      ctx.flowNodeDataStructs.set(key, structName)
+      out.push(...liftInlineObjects({ name: structName, fields: t.args[0].fields }, declared, ctx))
+    }
+  }
+  return out
 }
 
 /**
@@ -6655,7 +6710,9 @@ function resolvePropsObjectType(t: TypeIR, ctx: ParseCtx): TypeIR {
   // here just like compiler-known chart engine structs instead of emitting a
   // zero-prop component whose body references unbound data/selection fields.
   if (t.kind === 'typeRef' && t.name === 'NodeComponentProps' && t.args.length <= 1) {
-    const dataType = t.args[0] ?? { kind: 'unknown' as const }
+    const inline = t.args[0]
+    const lifted = inline?.kind === 'object' ? ctx.flowNodeDataStructs.get(flowNodeDataKey(inline)) : undefined
+    const dataType: TypeIR = lifted !== undefined ? { kind: 'typeRef', name: lifted, args: [] } : (inline ?? { kind: 'unknown' as const })
     const accessor = (returnType: TypeIR): TypeIR => ({ kind: 'function', params: [], returnType })
     return {
       kind: 'object',
@@ -9346,7 +9403,10 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       if (sourceHandlesNode && sourceHandles === undefined) droppedNodeFields.add('sourceHandles (not a literal handle array)')
       if (targetHandlesNode && targetHandles === undefined) droppedNodeFields.add('targetHandles (not a literal handle array)')
       if (extentNode && !extentParent && extent === undefined) droppedNodeFields.add('extent (expected "parent" or a numeric [[minX, minY], [maxX, maxY]] literal)')
+      const nodeZIndex = literalNumber(objProp(nodeLit, 'zIndex'))
+      if (objProp(nodeLit, 'zIndex') && nodeZIndex === undefined) droppedNodeFields.add('zIndex (not a numeric literal)')
       nodesOut.push({
+        ...(nodeZIndex !== undefined ? { zIndex: nodeZIndex } : {}),
         id,
         positionX: parseExpr(posXNode, ctx),
         positionY: parseExpr(posYNode, ctx),
@@ -9428,6 +9488,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       for (const k of edgeStringFields) if (objProp(edgeLit, k) && literalString(objProp(edgeLit, k)) === undefined) droppedEdgeFields.add(`${k} (not a string literal)`)
       for (const k of edgeBoolFields) if (objProp(edgeLit, k) && literalBool(objProp(edgeLit, k)) === undefined) droppedEdgeFields.add(`${k} (not a boolean literal)`)
       if (objProp(edgeLit, 'interactionWidth') && interactionWidth === undefined) droppedEdgeFields.add('interactionWidth (not a numeric literal)')
+      const edgeZIndex = literalNumber(objProp(edgeLit, 'zIndex'))
+      if (objProp(edgeLit, 'zIndex') && edgeZIndex === undefined) droppedEdgeFields.add('zIndex (not a numeric literal)')
       if (edgeDataNode && edgeDataNode.type !== 'ObjectExpression') droppedEdgeFields.add('data (not an object literal)')
       if (objProp(edgeLit, 'class') && edgeClass === undefined) droppedEdgeFields.add('class (not a string literal)')
       if (objProp(edgeLit, 'style') && edgeStyle === undefined) droppedEdgeFields.add('style (not a string literal)')
@@ -9436,6 +9498,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       if (markerEndNode && markerEnd === undefined) droppedEdgeFields.add('markerEnd (not a literal marker or null)')
       if (waypointsNode && waypoints === undefined) droppedEdgeFields.add('waypoints (not an array literal of { x, y })')
       edgesOut.push({
+        ...(edgeZIndex !== undefined ? { zIndex: edgeZIndex } : {}),
         id,
         source,
         target,
@@ -9510,7 +9573,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const connectionRulesNode = objProp(configArg, 'connectionRules')
   const defaultMarkerEndNode = objProp(configArg, 'defaultMarkerEnd')
   const defaultMarkerEnd = literalMarker(defaultMarkerEndNode)
-  const interactionBoolKeys = ['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'disableKeyboardA11y', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'panOnDrag', 'panOnScroll', 'zoomable', 'zoomOnScroll', 'zoomOnPinch', 'zoomOnDoubleClick', 'selectionOnDrag', 'multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory', 'reducedMotion', 'preventScrolling'] as const
+  const interactionBoolKeys = ['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'disableKeyboardA11y', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'panOnDrag', 'panOnScroll', 'zoomable', 'zoomOnScroll', 'zoomOnPinch', 'zoomOnDoubleClick', 'selectionOnDrag', 'multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory', 'reducedMotion', 'preventScrolling', 'elevateNodesOnSelect', 'elevateEdgesOnSelect', 'autoPanOnNodeDrag', 'autoPanOnConnect'] as const
   const interactionBools = Object.fromEntries(interactionBoolKeys.flatMap((key) => { const value = literalBool(objProp(configArg, key)); return value === undefined ? [] : [[key, value]] })) as Partial<Record<(typeof interactionBoolKeys)[number], boolean>>
   const panOnDragNode = objProp(configArg, 'panOnDrag')
   const panOnDragButtons = panOnDragNode?.type === 'ArrayExpression'
@@ -9549,6 +9612,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const defaultEdgeType = literalString(objProp(configArg, 'defaultEdgeType'))
   const connectionLineType = literalString(objProp(configArg, 'connectionLineType'))
   const selectionMode = literalString(objProp(configArg, 'selectionMode'))
+  const connectionMode = literalString(objProp(configArg, 'connectionMode'))
+  const autoPanSpeed = literalNumber(objProp(configArg, 'autoPanSpeed'))
   const defaultEdgeOptionsNode = objProp(configArg, 'defaultEdgeOptions')
   const defaultEdgeOptions = (() => {
     if (defaultEdgeOptionsNode === undefined) return undefined
@@ -9628,7 +9693,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (droppedEdgeFields.size > 0) {
     ctx.warnings.push(droppedFlowFieldsWarning(`${factory} declaration \`${name}\``, 'edge', [...droppedEdgeFields]))
   }
-  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'defaultMarkerEnd', 'connectionRules', 'isValidConnection', ...interactionBoolKeys, 'edgeInteractionWidth', 'connectionRadius', 'panOnScrollSpeed', 'deleteKeys', ...modifierKeys, 'defaultEdgeType', 'connectionLineType', 'selectionMode', 'defaultEdgeOptions', 'fitView', 'fitViewPadding'])
+  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'defaultMarkerEnd', 'connectionRules', 'isValidConnection', ...interactionBoolKeys, 'edgeInteractionWidth', 'connectionRadius', 'panOnScrollSpeed', 'deleteKeys', ...modifierKeys, 'defaultEdgeType', 'connectionLineType', 'selectionMode', 'connectionMode', 'autoPanSpeed', 'defaultEdgeOptions', 'fitView', 'fitViewPadding'])
   const droppedKeys: string[] = []
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
@@ -9672,6 +9737,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (objProp(configArg, 'defaultEdgeType') && defaultEdgeType === undefined) droppedKeys.push('defaultEdgeType (not a string literal)')
   if (objProp(configArg, 'connectionLineType') && connectionLineType === undefined) droppedKeys.push('connectionLineType (not a string literal)')
   if (objProp(configArg, 'selectionMode') && !['partial', 'full'].includes(selectionMode ?? '')) droppedKeys.push('selectionMode (expected "partial" or "full")')
+  if (objProp(configArg, 'connectionMode') && !['strict', 'loose'].includes(connectionMode ?? '')) droppedKeys.push('connectionMode (expected "strict" or "loose")')
+  if (objProp(configArg, 'autoPanSpeed') && autoPanSpeed === undefined) droppedKeys.push('autoPanSpeed (not a numeric literal)')
   if (defaultEdgeOptions === null) droppedKeys.push('defaultEdgeOptions (not a supported literal edge-options object)')
   if (objProp(configArg, 'fitView') && fitView === undefined) droppedKeys.push('fitView (not a boolean literal)')
   if (objProp(configArg, 'fitViewPadding') && fitViewPadding === undefined) droppedKeys.push('fitViewPadding (not a numeric literal)')
@@ -9707,6 +9774,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     ...(defaultEdgeType !== undefined ? { defaultEdgeType } : {}),
     ...(connectionLineType !== undefined ? { connectionLineType } : {}),
     ...(selectionMode === 'partial' || selectionMode === 'full' ? { selectionMode } : {}),
+    ...(connectionMode === 'strict' || connectionMode === 'loose' ? { connectionMode } : {}),
+    ...(autoPanSpeed !== undefined ? { autoPanSpeed } : {}),
     ...(defaultEdgeOptions !== undefined && defaultEdgeOptions !== null ? { defaultEdgeOptions } : {}),
     ...(fitView !== undefined ? { fitView } : {}),
     ...(fitViewPadding !== undefined ? { fitViewPadding } : {}),

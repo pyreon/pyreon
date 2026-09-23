@@ -605,6 +605,13 @@ final class PyreonTasksUITests: XCTestCase {
         if XCTWaiter().wait(for: [moved], timeout: 5) != .completed { print("DIAG-HIERARCHY:\n\(app.debugDescription)") }
         XCTAssertNotEqual(aPos.label, placed, "dragging node 'Start' did not move it in the native engine (still \(aPos.label))")
 
+        // A long-press on a node is the native context-menu gesture: it reaches
+        // `flow.onNodeContextMenu`, which writes the node id to `flow-menu`.
+        let menu = app.staticTexts["flow-menu"].firstMatch
+        XCTAssertEqual(menu.label, "none", "no context menu has been requested yet")
+        app.staticTexts["End"].firstMatch.press(forDuration: 1.0)
+        XCTAssertTrue(waitForLabel(menu, "menu b", timeout: 5), "a long-press on node 'End' did not reach onNodeContextMenu (label: \(menu.label))")
+
         tapAfterScrolling(app.buttons["flow-zoom-in"].firstMatch, in: app)
         XCTAssertTrue(waitForLabel(app.staticTexts["flow-zoom"].firstMatch, "zoom 1.2", timeout: 5), "zoomIn did not reach the native engine (label: \(app.staticTexts["flow-zoom"].firstMatch.label))")
         // Tapped past maxZoom (2) so the asserted value is the clamp, not a float product.

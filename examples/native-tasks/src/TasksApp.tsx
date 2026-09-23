@@ -429,6 +429,12 @@ function FlowScreen() {
     }
     return label
   })
+  // Context-menu device proof: a long-press on a node (right-click on web)
+  // reaches `onNodeContextMenu`, which writes the node id here.
+  const lastMenu = signal('none')
+  onMount(() => {
+    flow.onNodeContextMenu((n) => lastMenu.set(`menu ${n.id}`))
+  })
   return (
     <Stack gap={3} padding={4} data-testid="flow-page">
       <Text>Flow</Text>
@@ -437,6 +443,7 @@ function FlowScreen() {
       <Text data-testid="flow-selected-count">{selectedCount}</Text>
       <Text data-testid="flow-zoom">{zoomLabel}</Text>
       <Text data-testid="flow-a-pos">{aPos}</Text>
+      <Text data-testid="flow-menu">{lastMenu}</Text>
       <Inline gap={2}>
         <Button
           onPress={() =>
