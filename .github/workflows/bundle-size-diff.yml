@@ -14,6 +14,23 @@ on:
   # Re-adding the filter re-opens that hole.
   pull_request:
     types: [opened, synchronize, reopened]
+    # Only what can move a BUILT lib/ size. This is an advisory comment, not a
+    # required check, so a trigger-level filter is safe here (the deadlock the
+    # repo's required checks avoid does not apply). Measured 2026-09-22: 64
+    # runs/day at ~3.5 min each on a 20-slot pool, including PRs that touched
+    # only docs, examples, tests, or CI.
+    paths:
+      - 'packages/**'
+      - '!packages/**/*.md'
+      - '!packages/**/tests/**'
+      - '!packages/**/__tests__/**'
+      - '!packages/**/*.test.*'
+      - '!packages/**/*.spec.*'
+      - '!packages/**/*.stories.*'
+      - 'bun.lock'
+      - 'scripts/check-bundle-budgets.ts'
+      - 'scripts/bootstrap.ts'
+      - '.github/workflows/bundle-size-diff.yml'
 
 permissions:
   contents: read
