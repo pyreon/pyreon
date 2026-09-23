@@ -612,7 +612,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     native: 'partial',
     gaps: [
       'a rich segment takes colour and size only (no weight, background, padding); formatter placeholders beyond {a} {b} {c} {d} are left as written',
-      'bar labels take ECharts\' position, distance and automatic fill and halo (differential-tested); a line or scatter label keeps the engine\'s placement above the point, and `label.rotate` / `offset` / `align` are not read',
+      'bar, line and scatter labels take ECharts\' position (against the bar or the symbol box), distance and automatic fill and halo (differential-tested); `label.rotate` / `offset` / `align` are not read, and a scatter label does not carry the item opacity',
       'native: SwiftUI text has no stroke, so the halo is the text drawn at eight offsets under the fill; Compose strokes it',
       LITERAL_ONLY,
     ],

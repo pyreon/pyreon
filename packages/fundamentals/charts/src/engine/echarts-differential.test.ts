@@ -735,7 +735,7 @@ function echartsBarLabels(option: object): BarLabelFact[] {
   chart.setOption({ animation: false, ...option })
   const svg = chart.renderToSVGString()
   chart.dispose()
-  return [...svg.matchAll(/<text dominant-baseline="central" text-anchor="middle"([^>]*)>(-?\d+)<\/text>/g)].map((m) => {
+  return [...svg.matchAll(/<text dominant-baseline="central" text-anchor="(?:middle|start|end)"([^>]*)>(-?\d+)<\/text>/g)].filter((m) => !m[1]!.includes('fill="#54555a"')).map((m) => {
     const attrs = m[1]!
     const t = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(attrs)!
     const dy = /\sy="(-?[\d.]+)"/.exec(attrs)
@@ -755,7 +755,7 @@ function ourBarLabels(option: object): BarLabelFact[] {
   const c = compileOption(option as EChartsOption, { width: W, height: H })
   const m = (t: string, size: number): number => echarts.format.getTextRect(t, String(size) + 'px sans-serif').width
   return renderChart(c.spec, m).flatMap((d) =>
-    d.kind === 'text' && d.align === 'middle' && /^-?\d+$/.test(d.text)
+    d.kind === 'text' && /^-?\d+$/.test(d.text) && d.fill !== c.spec.theme.label
       ? [{ text: d.text, x: d.at.x, y: d.at.y, baseline: d.baseline, fill: longHex(d.fill), stroke: d.stroke === undefined ? '' : longHex(d.stroke), width: d.stroke === undefined ? 0 : (d.strokeWidth ?? 2) }]
       : [],
   )
@@ -951,6 +951,47 @@ describe('ECharts differential: axis strokes', () => {
         const j = u.findIndex((g, k) => !used.has(k) && near(g) && (!styledHere || (g.stroke === f.stroke && g.width === f.width && g.dash === f.dash)))
         expect(j, tag + (styledHere ? ` (${f.stroke} ${f.width} [${f.dash}])` : '')).toBeGreaterThanOrEqual(0)
         used.add(j)
+      }
+    })
+  }
+})
+
+/**
+ * Line and scatter labels: placed against the symbol's box (a line above
+ * it, a scatter point inside it, by default), with zrender's automatic
+ * colours; a line with no symbols shows no labels.
+ */
+const pointsLabelled = (series: object): object => ({
+  color: ['#5070dd'],
+  xAxis: { type: 'category', data: ['a', 'b', 'c'] },
+  yAxis: { type: 'value' },
+  // Values no tick label shares, so the axis labels cannot be mistaken for them.
+  series: [{ data: [31, -3, 83], ...series }],
+})
+const POINT_LABEL_CASES: [string, object][] = [
+  ['a line: above the hollow symbol', { type: 'line', label: { show: true } }],
+  ['a line with a bigger symbol', { type: 'line', symbolSize: 12, label: { show: true } }],
+  ['a line, bottom', { type: 'line', label: { show: true, position: 'bottom' } }],
+  ['a scatter point: inside, light text haloed in its colour', { type: 'scatter', label: { show: true } }],
+  ['a scatter point, right', { type: 'scatter', label: { show: true, position: 'right' } }],
+  ['a line with no symbols shows no labels', { type: 'line', showSymbol: false, label: { show: true } }],
+]
+
+describe('ECharts differential: line and scatter labels', () => {
+  for (const [name, series] of POINT_LABEL_CASES) {
+    it(name, () => {
+      const e = echartsBarLabels(pointsLabelled(series))
+      const u = ourBarLabels(pointsLabelled(series))
+      // Never vacuous: every case but the symbol-less line labels all three data.
+      expect(e.length).toBe((series as { showSymbol?: boolean }).showSymbol === false ? 0 : 3)
+      expect(u.length).toBe(e.length)
+      for (let i = 0; i < e.length; i++) {
+        expect(u[i]!.text).toBe(e[i]!.text)
+        expect(Math.abs(u[i]!.x - e[i]!.x)).toBeLessThan(0.6)
+        expect(Math.abs(u[i]!.y - e[i]!.y)).toBeLessThan(0.6)
+        expect(u[i]!.baseline).toBe(e[i]!.baseline)
+        expect(u[i]!.fill).toBe(e[i]!.fill)
+        expect(u[i]!.stroke).toBe(e[i]!.stroke)
       }
     })
   }

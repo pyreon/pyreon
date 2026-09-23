@@ -4908,7 +4908,9 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           if (!isFiniteValue(v)) {
             continue
           }
-          for (c in seriesLabelCmds(s, i, fmtP(v), PyreonChartPt(x = labelPts[i].x, y = labelPts[i].y - (s.radius + 5.0)), "middle", "bottom", t, measure)) {
+          val half = s.radius + (if (s.symbolHollow == true) 1.0 else 0.0)
+          val cmdsP = if (s.labelPosition != null) barLabelCmds(s, i, fmtP(v), PyreonChartRect(x = labelPts[i].x - half, y = labelPts[i].y - half, w = 2.0 * half, h = 2.0 * half), s.color, t, measure) else seriesLabelCmds(s, i, fmtP(v), PyreonChartPt(x = labelPts[i].x, y = labelPts[i].y - (s.radius + 5.0)), "middle", "bottom", t, measure)
+          for (c in cmdsP) {
             out.add(c)
           }
         }

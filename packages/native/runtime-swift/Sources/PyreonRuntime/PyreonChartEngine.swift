@@ -7926,7 +7926,9 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           if !isFiniteValue(v) {
             continue
           }
-          for c in seriesLabelCmds(s, i, fmtP(v), PyreonChartPt(x: labelPts[i].x, y: labelPts[i].y - (s.radius + 5.0)), "middle", "bottom", t, measure) {
+          let half = s.radius + (s.symbolHollow == true ? 1.0 : 0.0)
+          let cmdsP = s.labelPosition != nil ? barLabelCmds(s, i, fmtP(v), PyreonChartRect(x: labelPts[i].x - half, y: labelPts[i].y - half, w: 2.0 * half, h: 2.0 * half), s.color, t, measure) : seriesLabelCmds(s, i, fmtP(v), PyreonChartPt(x: labelPts[i].x, y: labelPts[i].y - (s.radius + 5.0)), "middle", "bottom", t, measure)
+          for c in cmdsP {
             out.append(c)
           }
         }

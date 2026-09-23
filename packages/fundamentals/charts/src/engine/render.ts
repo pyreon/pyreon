@@ -2160,8 +2160,14 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const v = printed(sIdx, i)
         // A gap has no value to print — same rule as the bars.
         if (!isFiniteValue(v)) continue
-        // Above the point, clear of a dot of the series' own radius.
-        for (const c of seriesLabelCmds(s, i, fmtP(v), { x: labelPts[i]!.x, y: labelPts[i]!.y - (s.radius + 5.0) }, 'middle', 'bottom', t, measure)) out.push(c)
+        // With a position (ECharts'), placed against the symbol's box — a hollow
+        // symbol's ring reaches a pixel past its radius. Else above the point,
+        // clear of a dot of the series' own radius.
+        const half = s.radius + (s.symbolHollow === true ? 1.0 : 0.0)
+        const cmdsP = s.labelPosition !== undefined
+          ? barLabelCmds(s, i, fmtP(v), { x: labelPts[i]!.x - half, y: labelPts[i]!.y - half, w: 2.0 * half, h: 2.0 * half }, s.color, t, measure)
+          : seriesLabelCmds(s, i, fmtP(v), { x: labelPts[i]!.x, y: labelPts[i]!.y - (s.radius + 5.0) }, 'middle', 'bottom', t, measure)
+        for (const c of cmdsP) out.push(c)
       }
     }
 

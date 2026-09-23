@@ -859,7 +859,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       values,
       color,
       width: num(lineStyle['width']) ?? 2.0,
-      radius: num(s['symbolSize']) !== null ? (num(s['symbolSize']) as number) / 2.0 : 3.0,
+      // ECharts' default symbolSize: 10 for scatter, 6 for a line's symbols.
+      radius: num(s['symbolSize']) !== null ? (num(s['symbolSize']) as number) / 2.0 : type === 'scatter' || type === 'effectScatter' ? 5.0 : 3.0,
       label: typeof s['name'] === 'string' ? (s['name'] as string) : `Series ${i + 1}`,
       // ECharts' `step`: true / 'start' rises first, 'middle' turns halfway, 'end' holds first.
       curve: s['step'] === 'end' ? step : s['step'] === 'middle' ? stepMiddle : s['step'] !== undefined && s['step'] !== false ? stepStart : undefined,
@@ -867,7 +868,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       smoothAmount: s['smooth'] === true ? 0.5 : (num(s['smooth']) ?? 0) > 0 ? (num(s['smooth']) as number) : undefined,
       connectNulls: s['connectNulls'] === true ? true : undefined,
       smoothMonotone: s['smoothMonotone'] === 'x' || s['smoothMonotone'] === 'y' ? (s['smoothMonotone'] as string) : undefined,
-      showValues: label['show'] === true,
+      // A line's labels ride its symbols: with none shown, ECharts draws none.
+      showValues: label['show'] === true && !(type === 'line' && s['showSymbol'] === false),
       radii: undefined,
       axis: !extraAxis && (yAxisIndex === 1) !== swapY ? 'right' : undefined,
       ...(extraAxis ? { axisExtra: yAxisIndex - 2 } : {}),
@@ -884,7 +886,9 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       ...stateFields(s, path, warn),
       ...labelFields(label, typeof s['name'] === 'string' ? (s['name'] as string) : `Series ${i + 1}`, categories, values, `${path}.label`, warn, localeNumber ?? plain),
       // ECharts places a bar's label INSIDE it unless told otherwise.
-      ...(type === 'bar' && typeof label['position'] !== 'string' ? { labelPosition: 'inside' } : {}),
+      // ECharts places a bar's and a scatter point's label INSIDE it, a line's above its symbol.
+      ...(typeof label['position'] !== 'string' && (type === 'bar' || type === 'scatter' || type === 'effectScatter') ? { labelPosition: 'inside' } : {}),
+      ...(typeof label['position'] !== 'string' && type === 'line' ? { labelPosition: 'top' } : {}),
     }
     if (s['silent'] === true) silent.push(series.length)
     seriesSource.push(i)
