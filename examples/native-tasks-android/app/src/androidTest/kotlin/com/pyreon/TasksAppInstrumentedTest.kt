@@ -35,7 +35,6 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.swipe
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onRoot
@@ -929,24 +928,36 @@ class TasksAppInstrumentedTest {
         )) {
             composeRule.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
         }
-        // The map ROAMS: a horizontal swipe pans it, so its pixels change.
+        // The map ROAMS: a horizontal drag pans it, so its pixels change.
+        // Driven as a hand does, like the flow and dataZoom drags above: past the
+        // touch slop first, then many small steps. One 400ms `swipe` intermittently
+        // never started `detectTransformGestures` (the gallery's vertical scroll
+        // competes for the same touch), failing unrelated PRs with "did not pan".
         val roamMap = composeRule.onNodeWithTag("gal-map").performScrollTo()
         val mapBefore = roamMap.captureToImage().asAndroidBitmap()
         roamMap.performTouchInput {
-            swipe(start = Offset(width * 0.3f, height * 0.5f), end = Offset(width * 0.3f + 200f, height * 0.5f), durationMillis = 400)
+            down(Offset(width * 0.3f, height * 0.5f))
+            moveBy(Offset(24f * flowDensity, 0f))
+            repeat(10) { moveBy(Offset(12f * flowDensity, 0f)) }
+            up()
         }
-        composeRule.waitForIdle()
-        assertFalse("dragging the roaming map did not pan it", mapBefore.sameAs(roamMap.captureToImage().asAndroidBitmap()))
+        val panned = runCatching { composeRule.waitUntil(5_000) { !mapBefore.sameAs(roamMap.captureToImage().asAndroidBitmap()) } }.isSuccess
+        assertTrue("dragging the roaming map did not pan it", panned)
         composeRule.onNodeWithTag("gal-geo-trail").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("gal-decal").performScrollTo().assertIsDisplayed()
         // The calculable visualMap: dragging its high handle (bottom-left strip) left greys the hottest cells.
         val visualMap = composeRule.onNodeWithTag("gal-visualmap").performScrollTo()
         val vmBefore = visualMap.captureToImage().asAndroidBitmap()
+        // Driven as a hand does (past the touch slop, then small steps), like the map
+        // and dataZoom drags: one 600ms `swipe` intermittently never moved the handle
+        // ("grey pixels: 0" on #3558). Same 79dp leftward drag of the high handle.
         visualMap.performTouchInput {
             val y = height - (41 - 16 - 4).dp.toPx()
-            swipe(start = Offset(159.dp.toPx(), y), end = Offset(80.dp.toPx(), y), durationMillis = 600)
+            down(Offset(159.dp.toPx(), y))
+            moveBy(Offset(-12.dp.toPx(), 0f))
+            repeat(6) { moveBy(Offset(-(67f / 6f).dp.toPx(), 0f)) }
+            up()
         }
-        composeRule.waitForIdle()
         // Out-of-range values take the inactive #cccccc: none before the drag, a block of it after.
         fun greyPixels(b: android.graphics.Bitmap): Int {
             var n = 0
@@ -957,6 +968,7 @@ class TasksAppInstrumentedTest {
             return n
         }
         assertTrue("the visualMap greyed cells before any drag", greyPixels(vmBefore) < 50)
+        runCatching { composeRule.waitUntil(5_000) { greyPixels(visualMap.captureToImage().asAndroidBitmap()) > 400 } }
         val vmGrey = greyPixels(visualMap.captureToImage().asAndroidBitmap())
         assertTrue("dragging the visualMap handle did not grey the out-of-range cells (grey pixels: $vmGrey)", vmGrey > 400)
         // The slider dataZoom opens on the low half; dragging the band right shows the tall bars (y extent pinned).
@@ -969,6 +981,11 @@ class TasksAppInstrumentedTest {
             return n
         }
         val zoomChart = composeRule.onNodeWithTag("gal-datazoom").performScrollTo()
+        // The low half's four short red bars are on screen from the start, so the
+        // baseline must see some red. Capturing straight after the scroll could
+        // precede the chart's first paint ("red before 0, after 0" on unrelated
+        // PRs), which reads as a failed drag. Wait for the paint first.
+        composeRule.waitUntil(10_000) { redPixels(zoomChart.captureToImage().asAndroidBitmap()) > 0 }
         val redBefore = redPixels(zoomChart.captureToImage().asAndroidBitmap())
         zoomChart.performTouchInput {
             val stripW = width - 16.dp.toPx()
