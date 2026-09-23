@@ -177,7 +177,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
     web: 'partial',
     native: 'partial',
     gaps: [LITERAL_ONLY],
-    evidence: ['src/engine/option-edges.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-option-family-native.test.ts'],
+    evidence: ['src/engine/option-edges.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-option-family-native.test.ts', NATIVE + 'chart-option-forwarded-native.test.ts', NATIVE + 'chart-option-row-doubles-native.test.ts'],
   }),
   row('series.bar', 'series', 'direct', {
     web: 'partial',
@@ -348,7 +348,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
       'ECharts 6\'s default grid and its `outerBoundsMode: \'auto\'` growth are matched (differential-tested); a custom `outerBounds` rect, `outerBoundsContain` and the 25% clamp are not read, and the growth follows the axis labels, not the axis names',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/option-composite.test.ts', 'src/engine/option-grid.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-axes-native.test.ts'],
+    evidence: ['src/engine/option-composite.test.ts', 'src/engine/option-grid.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-axes-native.test.ts', NATIVE + 'chart-option-forwarded-native.test.ts'],
   }),
   row('coordinates.title', 'coordinates', 'direct', {
     web: 'partial',
@@ -430,7 +430,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
       'the y axes and a value X axis tick as ECharts does (differential-tested); a time axis still uses the engine\'s own ticks, and interval, minInterval and maxInterval are not read',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/option-axes.test.ts', 'src/engine/option-axes-mapping.test.ts', NATIVE + 'chart-axes-native.test.ts', 'src/engine/option-boundary-gap.test.ts', 'src/engine/echarts-differential.test.ts'],
+    evidence: ['src/engine/option-axes.test.ts', 'src/engine/option-axes-mapping.test.ts', NATIVE + 'chart-axes-native.test.ts', 'src/engine/option-boundary-gap.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-option-forwarded-native.test.ts'],
   }),
   row('coordinates.visual-map', 'coordinates', 'direct', {
     web: 'complete',
@@ -616,7 +616,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = /* @__PURE__ */ ((
       'native: SwiftUI text has no stroke, so the halo is the text drawn at eight offsets under the fill; Compose strokes it',
       LITERAL_ONLY,
     ],
-    evidence: ['src/engine/option-labels.test.ts', 'src/engine/option-label-formatter.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-labels-native.test.ts'],
+    evidence: ['src/engine/option-labels.test.ts', 'src/engine/option-label-formatter.test.ts', 'src/engine/echarts-differential.test.ts', NATIVE + 'chart-labels-native.test.ts', NATIVE + 'chart-option-forwarded-native.test.ts'],
   }),
   row('presentation.states', 'presentation', 'direct', {
     web: 'partial',

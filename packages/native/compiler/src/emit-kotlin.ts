@@ -96,7 +96,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -12502,10 +12502,13 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const below = `${belowNav}${navigating ? ' - pyreonNavigator.height' : ''}`
   const locale = chartAttrExprKotlin(e, 'locale')
   if (locale !== undefined) lets.push(`val pyreonLocale: String = ${emitKotlinExpr(locale, indent)}`)
+  // The option facade's own compiled spec (an OptionChart's `optionSpec`); named arguments, so order is free.
+  const optSpec = optionSpecArgs(e)
   const specArgs = [
     `width = ${chrome.width(W)}`,
     `height = ${chrome.height(H)}${below}`,
     'series = pyreonSeries',
+    ...optSpec.early.map((a) => `${a.name} = ${kotlinSpecLiteral(a.value)}`),
     'categories = pyreonCats',
     `theme = ${themed ? 'pyreonTheme' : theme}`,
     `showXAxis = ${bool('showXAxis', true)}`,
@@ -12551,6 +12554,8 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     }
     specArgs.push(`${p.name} = ${p.kind === 'string' ? kotlinStr(raw) : p.kind === 'number' ? (Number.isInteger(raw) ? `${String(raw)}.0` : String(raw)) : String(raw)}`)
   }
+  // The compiled option's late fields, unless the host set the same one itself.
+  for (const a of optSpec.late) if (!PLOT_SPEC_LITERAL_PROPS.some((p) => p.name === a.name && chartAttrExprKotlin(e, p.name) !== undefined)) specArgs.push(`${a.name} = ${kotlinSpecLiteral(a.value)}`)
   // Third and later y axes — the LAST ChartSpec field, so it follows the literal switches.
   const extraAxes = chartAttrExprKotlin(e, 'extraYAxes')
   if (extraAxes !== undefined) specArgs.push(`extraYAxes = ${withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'ExtraYAxis', args: [] } }, () => emitKotlinExpr(extraAxes, indent))}`)
@@ -13268,4 +13273,18 @@ function patternExtras(values: Map<string, ExprIR>, sep: string): string {
     out.push(`, shapeRings${sep}listOf(${counts.join(', ')})`)
   }
   return out.join('')
+}
+
+/**
+ * A forwarded ChartSpec value (an OptionChart's `optionSpec`) as Kotlin: a
+ * number as a Double, a number array as `listOf(...)`, a `{ value, percent }`
+ * object as a `BarLength`, a string or a boolean as itself.
+ */
+function kotlinSpecLiteral(v: unknown): string {
+  if (typeof v === 'number') return chartDouble(v)
+  if (typeof v === 'boolean') return String(v)
+  if (typeof v === 'string') return kotlinStr(v)
+  if (Array.isArray(v)) return `listOf(${v.map((x) => chartDouble(Number(x))).join(', ')})`
+  const o = v as { value?: unknown; percent?: unknown }
+  return `BarLength(value = ${chartDouble(Number(o.value ?? 0))}, percent = ${o.percent === true})`
 }

@@ -156,7 +156,9 @@ describe('OptionChart family options lower to native hosts', () => {
       const r = transform(CARTESIAN, { target })
       expect(r.warnings).toEqual([])
       expect(r.code).not.toContain('OptionChart(')
-      for (const kind of ['grouped', 'area', 'points']) expect(r.code).toContain(`"${kind}"`)
+      // A line with an areaStyle is a LINE that also fills (the web facade's reading, crossed as compiled).
+      for (const kind of ['grouped', 'line', 'points']) expect(r.code).toContain(`"${kind}"`)
+      expect(r.code).toContain(target === 'swift' ? 'areaFill: true, areaOpacity: 0.7' : 'areaFill = true, areaOpacity = 0.7')
       for (const label of ['Actual', 'Plan', 'Trend', 'Events']) expect(r.code).toContain(`"${label}"`)
       for (const category of ['Q1', 'Q2', 'Q3']) expect(r.code).toContain(`"${category}"`)
       expect(r.code).toContain('#3366ff')

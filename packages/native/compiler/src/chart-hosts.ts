@@ -232,6 +232,12 @@ function irToValue(e: ExprIR | undefined, resolve: (name: string) => ExprIR | un
   const lit = literalOf(e, resolve)
   if (lit === undefined) return { ok: false }
   if (lit.kind === 'literal') return { ok: true, value: lit.value }
+  // `-2` parses as a unary minus over a literal, not a literal: fold it, or any option with a negative number reads as non-literal.
+  if (lit.kind === 'unary' && (lit.op === '-' || lit.op === '+')) {
+    const inner = irToValue(lit.argument, resolve)
+    if (inner.ok && typeof inner.value === 'number') return { ok: true, value: lit.op === '-' ? -inner.value : inner.value }
+    return { ok: false }
+  }
   if (lit.kind === 'array') {
     const out: unknown[] = []
     for (const el of lit.elements) {
@@ -842,6 +848,8 @@ function optionLiteralRecord(o: Extract<ExprIR, { kind: 'object' }>, keys: reado
 }
 
 function optionDatumNumber(e: ExprIR | undefined): number | undefined {
+  // An ECharts `null` (or `'-'`) datum is a gap: NaN, which the engine skips or, under connectNulls, bridges.
+  if (e?.kind === 'literal' && (e.value === null || e.value === '-')) return Number.NaN
   if (e?.kind === 'object') return litNumber(objectField(e, 'value'))
   return litNumber(e)
 }
@@ -929,7 +937,11 @@ const optionNumberLiteral = (value: number): ExprIR => ({
   ...(!Number.isInteger(value) ? { float: true } : {}),
 })
 
-const optionDoubleLiteral = (value: number): ExprIR => ({ kind: 'literal', value, float: true })
+// A NaN (an ECharts `null` datum: a gap) is `0.0 / 0.0` — the engine's own gap idiom, and valid in Swift and Kotlin alike.
+const optionDoubleLiteral = (value: number): ExprIR =>
+  Number.isNaN(value)
+    ? { kind: 'binary', op: '/', left: { kind: 'literal', value: 0, float: true }, right: { kind: 'literal', value: 0, float: true } }
+    : { kind: 'literal', value, float: true }
 
 const mergeStaticOptionObjects = (
   base: Extract<ExprIR, { kind: 'object' }>,
@@ -1985,6 +1997,12 @@ function desugarOptionChartHost(
       return undefined
     }
     const seriesObjects: Extract<ExprIR, { kind: 'object' }>[] = []
+    // The web facade's own compile of a literal option: every series and spec
+    // field it resolves crosses from here, so the two targets read ONE
+    // interpretation of the option instead of two that drift. The keys it
+    // carries are allowed only when it ran.
+    const compiledCart = compileLiteralOption(raw, resolve, rawSeries.elements.length)
+    const fwd = compiledCart !== undefined
     for (let si = 0; si < rawSeries.elements.length; si++) {
       const s = literalOf(rawSeries.elements[si], resolve)
       const sk = s === undefined ? undefined : litString(objectField(s, 'type'))
@@ -1992,7 +2010,7 @@ function desugarOptionChartHost(
         warn(`<OptionChart option.series[${si}].type>: this cartesian adapter needs line, bar, pictorialBar, or scatter series; emitting nothing.`)
         return undefined
       }
-      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras', 'sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'emphasis', 'select', 'blur', 'selectedMode', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'label', 'yAxisIndex', 'xAxisIndex'], `option.series[${si}]`, warn)
+      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'markLine', 'markPoint', 'symbol', 'symbolRepeat', 'showSymbol', 'symbolSize', 'tooltipExtras', 'sampling', 'large', 'largeThreshold', 'progressive', 'progressiveThreshold', 'emphasis', 'select', 'blur', 'selectedMode', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'label', 'yAxisIndex', 'xAxisIndex', ...(fwd ? FORWARDED_SERIES_KEYS : [])], `option.series[${si}]`, warn)
       seriesObjects.push(s)
     }
     const xAxisTop = literalOf(objectField(raw, 'xAxis'), resolve)
@@ -2052,7 +2070,8 @@ function desugarOptionChartHost(
       warn('<OptionChart option.xAxis.data>: native cartesian options need a literal category array; emitting nothing.')
       return undefined
     }
-    optionFields(xAxis!, ['type', 'data', 'show', 'name', 'inverse', 'position', 'offset'], 'option.xAxis', warn)
+    optionFields(xAxis!, ['type', 'data', 'show', 'name', 'inverse', 'position', 'offset', ...(fwd ? FORWARDED_AXIS_KEYS : [])], 'option.xAxis', warn)
+    if (fwd) forwardedAxisSubfields(xAxis!, 'option.xAxis', warn)
     const x2Data = x2AxisLit?.kind === 'object' ? literalOf(objectField(x2AxisLit, 'data'), resolve) : undefined
     const x2Mapped = x2Value || (!valueX && x2Data?.kind === 'array' && x2Data.elements.length === categories.elements.length && x2Data.elements.every((x) => litString(x) !== undefined || litNumber(x) !== undefined))
     if (xAxisEntries.length > 2 || (xAxisEntries.length === 2 && !x2Mapped)) warn('<OptionChart option.xAxis>: a second x axis maps as a value axis, or as a second set of category labels with the same count; other x axes were ignored.')
@@ -2116,11 +2135,14 @@ function desugarOptionChartHost(
         ...(valueX && sharedXs !== undefined ? [{ name: 'xv', value: { kind: 'literal' as const, value: sharedXs[i] ?? 0, ...(sharedXs.some((v) => !Number.isInteger(v)) ? { float: true } : {}) } }] : []),
         ...seriesValues.map((values, si) => ({
           name: `s${si}`,
-          value: {
-            kind: 'literal' as const,
-            value: values[i]!,
-            ...(seriesFloat[si] ? { float: true } : {}),
-          },
+          // A gap (an ECharts null) is NaN, spelled as the engine's `0.0 / 0.0`.
+          value: Number.isNaN(values[i]!)
+            ? optionDoubleLiteral(Number.NaN)
+            : {
+                kind: 'literal' as const,
+                value: values[i]!,
+                ...(seriesFloat[si] ? { float: true } : {}),
+              },
         })),
       ],
     }))
@@ -2138,7 +2160,9 @@ function desugarOptionChartHost(
       const sk = litString(objectField(s, 'type'))!
       const stacked = objectField(s, 'stack') !== undefined
       const barLike = sk === 'bar' || sk === 'pictorialBar'
-      const factory = barLike ? (stacked ? 'stackedBars' : barCount > 1 ? 'groupedBars' : 'bars') : sk === 'scatter' ? 'points' : objectField(s, 'areaStyle') !== undefined ? 'area' : 'line'
+      // A line with an areaStyle is a LINE that also fills (the web facade's reading); only without a compile is it the area mark.
+      const filledLine = compiledCart !== undefined && compiledCart.spec.series[si]?.areaFill === true
+      const factory = barLike ? (stacked ? 'stackedBars' : barCount > 1 ? 'groupedBars' : 'bars') : sk === 'scatter' ? 'points' : objectField(s, 'areaStyle') !== undefined && !filledLine ? 'area' : 'line'
       const opts: { name: string; value: ExprIR }[] = []
       const name = objectField(s, 'name')
       if (litString(name) !== undefined) opts.push({ name: 'label', value: name! })
@@ -2342,6 +2366,7 @@ function desugarOptionChartHost(
         const bounding = px('symbolBoundingData')
         if (bounding !== undefined) opts.push({ name: 'symbolBoundingData', value: optionDoubleLiteral(bounding) })
       }
+      if (compiledCart !== undefined) forwardCompiledSeries(opts, compiledCart.spec.series[si]!)
       return {
         kind: 'call',
         callee: ident(factory),
@@ -2352,6 +2377,10 @@ function desugarOptionChartHost(
       }
     })
     set('marks', { kind: 'array', elements: marks })
+    if (compiledCart !== undefined) {
+      const specLit = optionSpecLiteral(compiledCart.spec)
+      if (specLit.fields.length > 0) set('optionSpec', specLit)
+    }
     const annotations: ExprIR[] = []
     for (let si = 0; si < seriesObjects.length; si++) {
       const markArea = literalOf(objectField(seriesObjects[si]!, 'markArea'), resolve)
@@ -2568,7 +2597,8 @@ function desugarOptionChartHost(
     for (let ai = 2; ai < yAxisList.length; ai++) {
       const a = yAxisList[ai]!
       if (a.kind !== 'object') continue
-      optionFields(a, ['type', 'show', 'name', 'min', 'max', 'position', 'offset', 'splitLine'], `option.yAxis[${ai}]`, warn)
+      optionFields(a, ['type', 'show', 'name', 'min', 'max', 'position', 'offset', 'splitLine', ...(fwd ? FORWARDED_AXIS_KEYS : [])], `option.yAxis[${ai}]`, warn)
+      if (fwd) forwardedAxisSubfields(a, `option.yAxis[${ai}]`, warn)
       const fields: { name: string; value: ExprIR }[] = [{ name: 'side', value: lit(litString(objectField(a, 'position')) === 'left' ? 'left' : 'right') }]
       const amin = litNumber(objectField(a, 'min'))
       const amax = litNumber(objectField(a, 'max'))
@@ -2584,7 +2614,8 @@ function desugarOptionChartHost(
       const yAxis = yAxisList[ai]!
       if (yAxis.kind !== 'object') continue
       const path = yAxisRaw?.kind === 'array' ? `option.yAxis[${ai}]` : 'option.yAxis'
-      optionFields(yAxis, ['type', 'show', 'name', 'min', 'max', 'splitLine', 'inverse', 'position', 'offset'], path, warn)
+      optionFields(yAxis, ['type', 'show', 'name', 'min', 'max', 'splitLine', 'inverse', 'position', 'offset', ...(fwd ? FORWARDED_AXIS_KEYS : [])], path, warn)
+      if (fwd) forwardedAxisSubfields(yAxis, path, warn)
       const right = ai === 1
       const yOffsetLit = litNumber(objectField(yAxis, 'offset'))
       if (yOffsetLit !== undefined) set(right ? 'y2Offset' : 'yOffset', lit(yOffsetLit))
@@ -3584,6 +3615,140 @@ export const PLOT_INDICATOR_MARKS: Readonly<Record<string, { readonly fn: string
   trend: { fn: 'trendValues', kind: 'line', takesWindow: false },
 }
 
+/**
+ * The web facade's compile of an OptionChart's option, when every part of it
+ * is literal and it yields exactly the series the native marks are built
+ * from. Absent otherwise — the hand lowering then stands alone.
+ */
+function compileLiteralOption(raw: Extract<ExprIR, { kind: 'object' }>, resolve: (n: string) => ExprIR | undefined, seriesCount: number): ReturnType<typeof compileOption> | undefined {
+  const plainOption = irToValue(raw, resolve)
+  if (!plainOption.ok || !isPlainRecord(plainOption.value)) return undefined
+  const compiled = compileOption(plainOption.value as never)
+  return compiled.spec.series.length === seriesCount ? compiled : undefined
+}
+
+/**
+ * Series fields the facade resolves from ECharts' semantics that the hand
+ * lowering does not re-derive: they cross as the facade computed them. Each
+ * is a literal Series field in `PLOT_MARK_OPTION_FIELDS`.
+ */
+const FORWARDED_SERIES_FIELDS: readonly string[] = [
+  'radius', 'smoothAmount', 'smoothMonotone', 'connectNulls', 'areaFill', 'areaOpacity', 'areaColor', 'areaOrigin', 'areaOriginAt',
+  'symbol', 'symbolHollow', 'symbolShow', 'showValues', 'labelPosition', 'labelDistance', 'labelBorderColor', 'labelBorderWidth',
+]
+
+/** Series option keys that cross through the facade's compile (see FORWARDED_SERIES_FIELDS). */
+const FORWARDED_SERIES_KEYS: readonly string[] = ['smooth', 'smoothMonotone', 'connectNulls', 'showAllSymbol']
+
+/** Axis option keys that cross through the facade's compile. */
+const FORWARDED_AXIS_KEYS: readonly string[] = ['axisLabel', 'axisTick', 'axisLine', 'splitLine', 'boundaryGap', 'scale', 'splitNumber']
+
+/** The sub-keys of a forwarded axis key that the compile carries; the rest (a label `formatter`, …) are named, not dropped. */
+const FORWARDED_AXIS_SUBKEYS: Readonly<Record<string, readonly string[]>> = {
+  axisLabel: ['rotate', 'interval', 'margin', 'inside', 'show'],
+  axisTick: ['show', 'length', 'inside', 'alignWithLabel', 'lineStyle'],
+  axisLine: ['show', 'onZero', 'lineStyle'],
+  splitLine: ['show', 'lineStyle'],
+}
+
+function forwardedAxisSubfields(axis: ExprIR, path: string, warn: (m: string) => void): void {
+  for (const [key, allowed] of Object.entries(FORWARDED_AXIS_SUBKEYS)) {
+    const sub = objectField(axis, key)
+    if (sub !== undefined) optionFields(sub, allowed, `${path}.${key}`, warn)
+  }
+}
+
+/** The ChartSpec fields that cross from the facade's compile (the rest the hand lowering sets itself). */
+const FORWARDED_SPEC_FIELDS: readonly string[] = [
+  'boundaryGap', 'yZero', 'ySplit', 'barLayout', 'barGap', 'barCategoryGap', 'yMin', 'xSplit', 'xZero', 'xMin', 'xMax', 'xMinData', 'xMaxData',
+  'yMax', 'yMinData', 'yMaxData', 'gridLeft', 'reserveLeft', 'gridTop', 'gridRight', 'gridBottom', 'gridContain',
+  'xLabels', 'xLabelAngle', 'xLabelInterval', 'xLabelMargin', 'xLabelInside', 'yLabelAngle', 'yLabelMargin', 'yLabelInside',
+  'xAxisLine', 'yAxisLine', 'y2AxisLine', 'xAxisOnZero', 'yAxisOnZero', 'y2Grid', 'xAxisLineColor', 'yAxisLineColor', 'xAxisLineWidth', 'yAxisLineWidth',
+  'xTicks', 'yTicks', 'xTickLength', 'yTickLength', 'xTickInside', 'yTickInside', 'xTickColor', 'yTickColor', 'xTickBands',
+  'gridColor', 'gridWidth', 'gridDash', 'xGrid', 'xGridColor', 'xGridWidth', 'xGridDash',
+]
+
+/** A plain value as a literal the emitters read: numbers as Doubles, arrays and objects recursively. */
+function forwardedLiteral(v: unknown): ExprIR | undefined {
+  if (typeof v === 'number') return Number.isFinite(v) ? optionDoubleLiteral(v) : undefined
+  if (typeof v === 'string' || typeof v === 'boolean') return lit(v)
+  if (Array.isArray(v)) {
+    const els: ExprIR[] = []
+    for (const x of v) {
+      const e = forwardedLiteral(x)
+      if (e === undefined) return undefined
+      els.push(e)
+    }
+    return { kind: 'array', elements: els }
+  }
+  if (isPlainRecord(v)) {
+    const fields: { name: string; value: ExprIR }[] = []
+    for (const [k, x] of Object.entries(v)) {
+      const e = forwardedLiteral(x)
+      if (e === undefined) return undefined
+      fields.push({ name: k, value: e })
+    }
+    return { kind: 'object', fields }
+  }
+  return undefined
+}
+
+/** Put the compiled series' forwarded fields on a mark's options, replacing what the hand lowering set for the same name. */
+function forwardCompiledSeries(opts: { name: string; value: ExprIR }[], series: Record<string, unknown> | object): void {
+  const rec = series as Record<string, unknown>
+  for (const name of FORWARDED_SERIES_FIELDS) {
+    const v = rec[name]
+    if (v === undefined) continue
+    const e = forwardedLiteral(v)
+    if (e === undefined) continue
+    const at = opts.findIndex((o) => o.name === name)
+    if (at >= 0) opts[at] = { name, value: e }
+    else opts.push({ name, value: e })
+  }
+}
+
+/** The compiled spec's forwarded fields as one object literal (the synthesized host's `optionSpec`). */
+function optionSpecLiteral(spec: Record<string, unknown> | object): Extract<ExprIR, { kind: 'object' }> {
+  const rec = spec as Record<string, unknown>
+  const fields: { name: string; value: ExprIR }[] = []
+  for (const name of FORWARDED_SPEC_FIELDS) {
+    const e = rec[name] === undefined ? undefined : forwardedLiteral(rec[name])
+    if (e !== undefined) fields.push({ name, value: e })
+  }
+  return { kind: 'object', fields }
+}
+
+/** The generated `ChartSpec`'s field order — Swift's memberwise init takes its arguments in it. */
+const CHART_SPEC_ORDER: readonly string[] = CHART_ENGINE_STRUCTS.find((s) => s.name === 'ChartSpec')?.fields.map((f) => f.name) ?? []
+
+/**
+ * A synthesized host's `optionSpec` fields, split by where each goes in the
+ * spec's argument list: `early` sit between `series` and `categories`, `late`
+ * among the literal switches. Each is a plain value (number, string, boolean,
+ * number array, or a `BarLength` object), in struct order.
+ */
+export function optionSpecArgs(e: Extract<ExprIR, { kind: 'jsx-element' }>): { early: { name: string; value: unknown }[]; late: { name: string; value: unknown }[] } {
+  const early: { name: string; value: unknown }[] = []
+  const late: { name: string; value: unknown }[] = []
+  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'optionSpec')
+  if (attr === undefined || attr.kind !== 'attr' || attr.value.kind !== 'object') return { early, late }
+  const cats = CHART_SPEC_ORDER.indexOf('categories')
+  const entries: { name: string; value: unknown; at: number }[] = []
+  for (const f of attr.value.fields) {
+    const v = irToValue(f.value, () => undefined)
+    if (!v.ok) continue
+    entries.push({ name: f.name, value: v.value, at: CHART_SPEC_ORDER.indexOf(f.name) })
+  }
+  entries.sort((a, b) => a.at - b.at)
+  for (const en of entries) (en.at < cats ? early : late).push({ name: en.name, value: en.value })
+  return { early, late }
+}
+
+/** The index of a ChartSpec field in the generated struct (for ordering literal arguments). */
+export function chartSpecFieldIndex(name: string): number {
+  return CHART_SPEC_ORDER.indexOf(name)
+}
+
 /** Mark constructor → the `Series.kind` it produces. `bubble` carries a radius accessor and is declined by name. */
 export const PLOT_MARK_KINDS: Readonly<Record<string, string>> = {
   bars: 'bars',
@@ -3617,6 +3782,14 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'width', kind: 'number', default: 2 },
   { name: 'radius', kind: 'number', default: 3 },
   { name: 'label', kind: 'string' },
+  { name: 'smoothAmount', kind: 'number' },
+  { name: 'smoothMonotone', kind: 'string' },
+  { name: 'connectNulls', kind: 'boolean' },
+  { name: 'areaFill', kind: 'boolean' },
+  { name: 'areaOpacity', kind: 'number' },
+  { name: 'areaColor', kind: 'string' },
+  { name: 'areaOrigin', kind: 'string' },
+  { name: 'areaOriginAt', kind: 'number' },
   { name: 'showValues', kind: 'boolean', default: false },
   { name: 'axis', kind: 'string' },
   { name: 'axisExtra', kind: 'number' },
@@ -3629,6 +3802,8 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'symbolOffset', kind: 'numbers' },
   { name: 'symbolPosition', kind: 'string' },
   { name: 'symbolRotate', kind: 'number' },
+  { name: 'symbolHollow', kind: 'boolean' },
+  { name: 'symbolShow', kind: 'string' },
   { name: 'symbolClip', kind: 'boolean' },
   { name: 'symbolBoundingData', kind: 'number' },
   { name: 'negativeColor', kind: 'string' },
@@ -3636,6 +3811,10 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'labelColor', kind: 'string' },
   { name: 'labelSize', kind: 'number' },
   { name: 'labelRich', kind: 'rich' },
+  { name: 'labelPosition', kind: 'string' },
+  { name: 'labelDistance', kind: 'number' },
+  { name: 'labelBorderColor', kind: 'string' },
+  { name: 'labelBorderWidth', kind: 'number' },
   { name: 'focus', kind: 'string' },
   { name: 'emphasisColor', kind: 'string' },
   { name: 'selectColor', kind: 'string' },
