@@ -821,6 +821,7 @@
         "@pyreon/primitives": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/rocketstyle": "workspace:*",
+        "@pyreon/store": "workspace:*",
       },
     },
     "examples/native-finance": {
