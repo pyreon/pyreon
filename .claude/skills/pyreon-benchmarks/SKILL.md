@@ -422,6 +422,39 @@ Reproduce: `cd examples/benchmark && bun bench:scenarios --repeat 3`. Per-iterat
 
 **Methodology** (designed for objectivity): per-framework page isolation (`page.goto('?framework=X')`); forced GC between iterations (`--expose-gc`); adaptive warmup; 20 timed runs + median + 95% bootstrap CI + CV + CI95-overlap `🤝` tied-marker; real Chromium on production `vite build`; DOM verification per iteration; seeded RNG; real published deps; tightest-commit-per-framework (no `rAF`); per-run resets on every op; randomized + per-pass-reshuffled execution order; machine stamp printed; retained-heap metric (`--enable-precise-memory-info`, post-GC). **Honest limits**: **(0) EVERY sub-millisecond row in this suite is QUANTIZED, and one verdict rests entirely on that.** Chromium clamps `performance.now()` to **100µs** (a Spectre mitigation), so a sample can only ever be a multiple of 100µs — `--repeat` pools more samples and tightens the CI95, but it cannot subdivide a clock tick. `clear rows` — the single op Pyreon is reported behind on — has a total on-CPU cost of ~79µs (subtree-attributed CDP profile, PR #2912 — supersedes an earlier ~100-130µs estimate from #2880's coarser, non-subtree-attributed profiling), so "Octane 100µs vs Pyreon 200µs" is **ONE tick versus TWO**, not a measured 2× difference. The tell is in the run's own output: both frameworks report a CI95 collapsed to a single point with a huge CV (2026-08-17: Pyreon `200µs [200-200] cv38%`, Octane `100µs [100-100] cv53%`) — a CV that large beside a zero-width CI is the signature of samples bouncing between adjacent quanta, not of a stable measurement. Treat every `select row` figure and the `clear rows` ratio measured with the PLAIN `performance.now()` timer as UNRESOLVED by this instrument. **UPDATE 2026-08-18 (#2894, since MERGED): this limitation has a fix.** #2894 subdivides the 100µs clamp by timing K×(op) and dividing, giving a genuine ~5.0µs quantum — at that resolution `clear rows` resolves to a real, CI-disjoint ~1.45× loss (160µs vs 110µs on the FINAL post-#2903 board; a further, independent fix pending in #2912 narrows this to ~1.15× without closing it — see "the corrected diagnosis" above) rather than "one tick vs two," and `select row` resolves to a small (~1.3–1.7×) but still imprecise gap, not the CDP-profiling escape hatch this paragraph used to require. Until #2894 merges, a `clear rows` or `select row` ratio measured by the DEFAULT `bench:fair` timer is still unresolved by this instrument — do NOT publish one without either #2894 or CDP CPU profiling. **(1)** this is CPU-objective, not real-world-async-latency (React's default path would be higher); the deepest limit is **author-judge** (the framework author writes + judges the bench) — only an upstream submission to the independent krausest/js-framework-benchmark fully resolves it (a ready-to-submit `frameworks/keyed/pyreon` implementation is staged at `contrib/krausest/pyreon-keyed/` — built + 8-op-smoked against PUBLISHED npm packages; submission steps in its README-SUBMISSION.md — the upstream PR itself is a human decision). A **real-app head-to-head does not exist yet** (the `cpa-pw-app-*` ports run on Pyreon compat shims, not the real frameworks) — "fastest" claims stop at this synthetic suite's evidence.
 
+### Charts vs ECharts 6 — 2026-09-23, `--repeat 3` (60 pooled samples/op), load 5.89 → 6.51 stamped
+
+`examples/benchmark` → `bun run bench:charts`: real Chromium, production build, an 800×400 canvas line chart. Arms: `PlotChart` (idiomatic), `OptionChart` (the SAME ECharts option object), and ECharts 6 tree-shaken (`echarts/core` + `LineChart` + `GridComponent` + `CanvasRenderer`). Animation is off on every arm, ECharts' `showSymbol` is off so every arm strokes only a line, and no arm decimates. The timed region ends with a 1×1 `getImageData`, forcing rasterization. Per-iteration pixel gates (line-colour pixel count, image fingerprint changes on update) make a library that no-ops fail rather than post a fast number. Every row below has CI95 disjoint from its competitors.
+
+| op (ms, median) | PlotChart | OptionChart | ECharts 6 | PlotChart, no a11y table (diagnostic) |
+| --- | --- | --- | --- | --- |
+| mount 1k | 11.61 | 11.94 | **4.34** | 1.27 |
+| mount 100k | **28.28** | 55.48 | 44.83 | 18.56 |
+| update 100k (every value) | 19.13 | **16.23** | 31.50 | 14.97 |
+| update 1k (one value) | 1.63 | **1.48** | 2.01 | 0.66 |
+
+**Verdicts.**
+
+- **Pyreon wins three of four ops outright.** The 100k update is 1.6–1.9× faster than ECharts, the 100k mount 1.59× (PlotChart), and the 1k update 1.23–1.36×.
+- **Pyreon LOSES the 1k mount: 2.67× slower.** The whole loss is the default offscreen accessible data table. The chart itself (the diagnostic arm) mounts in 1.27ms, 3.4× faster than ECharts. ECharts ships no table: its `aria` is off by default. About 10ms of the 11.6ms is creating and LAYING OUT a 1,000-row table. Fixed table layout plus containment saved only ~1ms, and the rest is inherent to 3,000 real table cells.
+  - **Deliberately NOT deferred.** Moving the table to idle time would take it out of the timed region, not off the main thread. That would buy a better number, not a better chart.
+  - A reader-facing claim must therefore say "with the accessible table Pyreon renders by default", never "Pyreon's chart mounts in 11.6ms vs ECharts' 4.3ms" without it.
+- **OptionChart LOSES the 100k mount: 1.24× slower than ECharts.** It compiles the option on every mount. Not yet profiled further.
+
+**The first run of this bench found a 7–10× loss, not these numbers.** A 100k mount took ~320ms against ECharts' ~44ms, and 84% of it was `measureText` on every category label. The layout now samples labels as ECharts' `calculateCategoryInterval` does. The label step's 200-cap drew ~500 overlapping labels at 100k. See `large-series.test.ts`, which locks each fix as a count.
+
+**Size** (`bun run bench:charts-bundle`, gzipped, beyond a bare Pyreon runtime):
+
+| chart | Pyreon plot | ECharts 6, tree-shaken | ECharts 6, whole |
+| --- | --- | --- | --- |
+| line | 40.9 KB | 155.9 KB | 361.1 KB |
+| bar + line, tooltip, legend | 40.9 KB | 176.8 KB | — |
+| pie | 18.1 KB | 117.3 KB | — |
+
+`OptionChart` is 128.9 KB. `PlotChart` does not tree-shake per cartesian mark: a line-only chart equals bar + line + tooltip + legend. The docs claim that it did was corrected.
+
+**Author-judge and limits.** The Pyreon authors wrote and judged this. It measures one chart shape on one machine. The 1k-mount loss depends on shipping the table: `accessibleTable={false}` removes it, at an accessibility cost.
+
 ## Deeper detail — read on demand
 
 | Topic | File | Size |

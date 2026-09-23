@@ -96,7 +96,21 @@ Pyreon app's runtime:
 
 An ECharts option through `<OptionChart>` costs 128.9 KB: the facade compiles
 every series type it supports, so it is the larger Pyreon entry, and still
-smaller than the ECharts it replaces. The speed comparison (first render and
-updates at 1,000 and 100,000 points) is described in the benchmark's source,
-with its fairness rules; its numbers depend on the machine and are published
-there rather than here.
+smaller than the ECharts it replaces.
+
+Speed, one line chart on an 800×400 canvas. The figures are medians in
+milliseconds from real Chromium with animation off on both sides; absolute
+numbers depend on the machine, so read them for their ratios:
+
+| Operation                    | `PlotChart` | `OptionChart` | ECharts 6 |
+| ---------------------------- | ----------- | ------------- | --------- |
+| First render, 100,000 points | **28.3**    | 55.5          | 44.8      |
+| Update all 100,000 points    | 19.1        | **16.2**      | 31.5      |
+| Update one of 1,000 points   | 1.6         | **1.5**       | 2.0       |
+| First render, 1,000 points   | 11.6        | 11.9          | **4.3**   |
+
+The last row is a loss, and it comes from one feature. Pyreon renders an
+offscreen data table (up to 1,000 rows) for screen readers by default; ECharts
+renders none. Without it (`accessibleTable={false}`) the same chart's first
+render is 1.3 ms. Building and laying out the table is the cost of the chart
+being readable without sight, and Pyreon keeps it on by default.
