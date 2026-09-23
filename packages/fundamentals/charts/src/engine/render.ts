@@ -41,6 +41,16 @@ export interface Series {
   smoothMonotone?: string | undefined
   /** ECharts' `connectNulls`: bridge a missing value instead of breaking the line. */
   connectNulls?: boolean | undefined
+  /** A line that also fills down to its origin (ECharts' `areaStyle` on a line): the fill under, the line and its symbols over. */
+  areaFill?: boolean | undefined
+  /** The fill's opacity (ECharts' `areaStyle.opacity`, 0.7 by default). */
+  areaOpacity?: Double | undefined
+  /** The fill's colour (`areaStyle.color`); absent is the series colour. */
+  areaColor?: string | undefined
+  /** Where the fill closes (`areaStyle.origin`): 'auto' (zero, else the nearer edge), 'start' or 'end'. */
+  areaOrigin?: string | undefined
+  /** A numeric `areaStyle.origin`: the fill closes at this value (wins over `areaOrigin`). */
+  areaOriginAt?: Double | undefined
   /**
    * Label each datum with its value.
    *
@@ -690,6 +700,17 @@ function barLabelCmds(s: Series, index: number, fallback: string, r: Rect, shape
   const halo = width <= 0.0 ? '' : border !== '' ? border : own === '' ? auto.halo : ''
   const size = s.labelSize ?? 0.0
   return labelCommands(labelTextAt(s, index, fallback), s.labelRich ?? [], place.at, place.align, place.baseline, own === '' ? auto.textFill : own, size > 0.0 ? size : t.fontSize, measure, halo, width)
+}
+
+/**
+ * ECharts' area `origin` as a value: 'start' / 'end' the axis's ends, and
+ * 'auto' zero when the axis holds it, else the end nearer to it.
+ */
+export function areaOriginValue(origin: string, d: Domain): Double {
+  if (origin === 'start') return d.min
+  if (origin === 'end') return d.max
+  if (d.min <= 0.0 && d.max >= 0.0) return 0.0
+  return d.min > 0.0 ? d.min : d.max
 }
 
 /** 0 = plain, 1 = highlighted (a hover or a dispatched `highlight`), 2 = selected. */
@@ -2034,6 +2055,18 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       for (const run of splitRuns(s.values, place, s.connectNulls)) {
         const pts = reveal(shape(run))
         if (pts.length > 1) {
+          if (s.areaFill === true) {
+            // The fill closes to its origin under the same shaped points, so
+            // the outline and the fill cannot drift apart.
+            const baseY = scaleLinear(sDomain, plot.y + plot.h, plot.y, s.areaOriginAt ?? areaOriginValue(s.areaOrigin ?? 'auto', sDomain))
+            const poly: Pt[] = []
+            for (const p of pts) poly.push(p)
+            poly.push({ x: pts[pts.length - 1]!.x, y: baseY })
+            poly.push({ x: pts[0]!.x, y: baseY })
+            const over = stateAreaOpacity(spec, s)
+            const alpha = over >= 0.0 ? over : (s.areaOpacity ?? 0.7)
+            out.push(polygonCmd(poly, withAlpha(s.areaColor ?? s.color, alpha), sGrad, s.pattern))
+          }
           out.push({ kind: 'polyline', points: pts, stroke: s.color, width: stateWidth(spec, s), dash: s.dash })
         }
       }

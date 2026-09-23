@@ -68,8 +68,9 @@ describe('option facade — edge shapes (every branch NAMES its loss)', () => {
     expect(stacked.spec.series[3]!.values).toEqual([10, 10, 10])
     expect(stacked.spec.series[4]!.values).toEqual([5, 5, 5])
     expect(stacked.warnings.map((w) => `${w.code}@${w.path}`)).not.toContain('series-option-unsupported@series[0].stack')
-    expect(compileOption(cat({ series: [{ type: 'line', areaStyle: true, data: [1] }] })).spec.series[0]!.kind).toBe('area')
-    expect(compileOption(cat({ series: [{ type: 'line', areaStyle: {}, data: [1] }] })).spec.series[0]!.kind).toBe('area')
+    // Both areaStyle forms fill: a line that also fills to its origin, at ECharts' 0.7 opacity.
+    expect(compileOption(cat({ series: [{ type: 'line', areaStyle: true, data: [1] }] })).spec.series[0]).toMatchObject({ kind: 'line', areaFill: true, areaOpacity: 0.7 })
+    expect(compileOption(cat({ series: [{ type: 'line', areaStyle: {}, data: [1] }] })).spec.series[0]).toMatchObject({ kind: 'line', areaFill: true, areaOpacity: 0.7 })
     const missing = compileOption(cat({ series: [{ type: 'bar' }] }))
     expect(missing.spec.series[0]!.values).toEqual([])
     expect(missing.warnings.map((w) => `${w.code}@${w.path}`)).toContain('series-data-shape@series[0].data')

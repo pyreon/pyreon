@@ -996,3 +996,66 @@ describe('ECharts differential: line and scatter labels', () => {
     })
   }
 })
+
+/**
+ * Area fills: a line with `areaStyle` fills down to its origin at ECharts'
+ * 0.7 opacity, under its own line. Compared on the fill polygon's points,
+ * colour and opacity, and on the line still being drawn.
+ */
+/** The fill's top edge (one point per datum), the y it closes at, its colour and opacity. */
+interface AreaFact { top: number[]; baseY: number; fill: string; opacity: number }
+function echartsArea(option: object): AreaFact & { hasLine: boolean } {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: W, height: H })
+  chart.setOption({ animation: false, ...option })
+  const svg = chart.renderToSVGString()
+  chart.dispose()
+  const m = /<path d="(M[^"]*Z)"([^>]*fill-opacity="([\d.]+)"[^>]*)>/.exec(svg)!
+  const fill = /fill="([^"]+)"/.exec(m[2]!)![1]!
+  const xs = nums(m[1]!)
+  // ECharts writes the top edge, then back along the baseline through every datum's x.
+  return { top: xs.slice(0, 6), baseY: xs[xs.length - 1]!, fill: longHex(fill), opacity: Number(m[3]), hasLine: /<path d="M[^"Z]*" fill="none"[^>]*stroke="#5070dd"/.test(svg) }
+}
+function ourArea(option: object): AreaFact & { hasLine: boolean } {
+  const c = compileOption(option as EChartsOption, { width: W, height: H })
+  const m = (t: string, size: number): number => echarts.format.getTextRect(t, String(size) + 'px sans-serif').width
+  const cmds = renderChart(c.spec, m)
+  const poly = cmds.find((d) => d.kind === 'polygon')!
+  if (poly.kind !== 'polygon') throw new Error('no fill')
+  const rgba = /^rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)$/.exec(poly.fill)
+  return {
+    top: poly.points.slice(0, 3).flatMap((p) => [p.x, p.y]),
+    baseY: poly.points[poly.points.length - 1]!.y,
+    fill: rgba === null ? longHex(poly.fill) : longHex('#' + [rgba[1], rgba[2], rgba[3]].map((v) => Number(v).toString(16).padStart(2, '0')).join('')),
+    opacity: rgba === null ? 1 : Number(rgba[4]),
+    hasLine: cmds.some((d) => d.kind === 'polyline' && longHex(d.stroke) === '#5070dd'),
+  }
+}
+const areaOf = (series: object, xAxis: object = {}): object => ({
+  color: ['#5070dd'],
+  xAxis: { type: 'category', data: ['a', 'b', 'c'], boundaryGap: false, ...xAxis },
+  yAxis: { type: 'value' },
+  series: [{ type: 'line', data: [31, 53, 83], showSymbol: false, ...series }],
+})
+const AREA_CASES: [string, object][] = [
+  ['the default: series colour at 0.7, closed to zero, the line over it', areaOf({ areaStyle: {} })],
+  ['areaStyle.opacity', areaOf({ areaStyle: { opacity: 0.3 } })],
+  ['areaStyle.color', areaOf({ areaStyle: { color: '#ff0000' } })],
+  ["origin 'end' closes to the top", areaOf({ areaStyle: { origin: 'end' } })],
+  ['a range through zero closes to zero, not the floor', areaOf({ data: [31, -20, 83], areaStyle: {} })],
+]
+
+describe('ECharts differential: area fills', () => {
+  for (const [name, option] of AREA_CASES) {
+    it(name, () => {
+      const e = echartsArea(option)
+      const u = ourArea(option)
+      // ECharts writes coordinates at 0.1 precision.
+      for (let i = 0; i < e.top.length; i++) expect(Math.abs(u.top[i]! - e.top[i]!)).toBeLessThan(0.11)
+      expect(Math.abs(u.baseY - e.baseY)).toBeLessThan(0.11)
+      expect(u.fill).toBe(e.fill)
+      expect(u.opacity).toBeCloseTo(e.opacity, 5)
+      expect(e.hasLine).toBe(true)
+      expect(u.hasLine).toBe(true)
+    })
+  }
+})

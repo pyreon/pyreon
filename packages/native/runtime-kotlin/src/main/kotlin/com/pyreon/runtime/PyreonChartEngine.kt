@@ -94,7 +94,7 @@ data class AutoLabelStyle(var textFill: String, var halo: String)
 
 data class LinesSeries(var coords: List<List<Double>>, var colors: List<String>, var widths: List<Double>, var effect: Boolean, var period: Double, var trailLength: Double, var effectColor: String, var symbolSize: Double)
 
-data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var smoothAmount: Double? = null, var smoothMonotone: String? = null, var connectNulls: Boolean? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var axisExtra: Double? = null, var onX2: Boolean? = null, var xs: List<Double>? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var symbolMargin: Double? = null, var symbolOffset: List<Double>? = null, var symbolPosition: String? = null, var symbolRotate: Double? = null, var symbolHollow: Boolean? = null, var symbolShow: String? = null, var symbolClip: Boolean? = null, var symbolBoundingData: Double? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var labelTexts: List<String>? = null, var labelColor: String? = null, var labelSize: Double? = null, var labelRich: List<RichStyle>? = null, var labelPosition: String? = null, var labelDistance: Double? = null, var labelBorderColor: String? = null, var labelBorderWidth: Double? = null, var focus: String? = null, var emphasisColor: String? = null, var selectColor: String? = null, var blurOpacity: Double? = null, var emphasisScale: Double? = null, var emphasisDisabled: Boolean? = null, var emphasisWidth: Double? = null, var blurWidth: Double? = null, var emphasisAreaOpacity: Double? = null, var blurAreaOpacity: Double? = null, var emphasisLabel: Boolean? = null, var selectLabel: Boolean? = null, var seriesSelected: Boolean? = null, var inBrush: List<Int>? = null, var brushOpacity: Double? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null, var extras: List<SeriesExtra>? = null, var itemColors: List<String>? = null, var barWidth: BarLength? = null, var barMaxWidth: BarLength? = null, var barMinWidth: BarLength? = null, var barStack: String? = null)
+data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var smoothAmount: Double? = null, var smoothMonotone: String? = null, var connectNulls: Boolean? = null, var areaFill: Boolean? = null, var areaOpacity: Double? = null, var areaColor: String? = null, var areaOrigin: String? = null, var areaOriginAt: Double? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var axisExtra: Double? = null, var onX2: Boolean? = null, var xs: List<Double>? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var symbolMargin: Double? = null, var symbolOffset: List<Double>? = null, var symbolPosition: String? = null, var symbolRotate: Double? = null, var symbolHollow: Boolean? = null, var symbolShow: String? = null, var symbolClip: Boolean? = null, var symbolBoundingData: Double? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var labelTexts: List<String>? = null, var labelColor: String? = null, var labelSize: Double? = null, var labelRich: List<RichStyle>? = null, var labelPosition: String? = null, var labelDistance: Double? = null, var labelBorderColor: String? = null, var labelBorderWidth: Double? = null, var focus: String? = null, var emphasisColor: String? = null, var selectColor: String? = null, var blurOpacity: Double? = null, var emphasisScale: Double? = null, var emphasisDisabled: Boolean? = null, var emphasisWidth: Double? = null, var blurWidth: Double? = null, var emphasisAreaOpacity: Double? = null, var blurAreaOpacity: Double? = null, var emphasisLabel: Boolean? = null, var selectLabel: Boolean? = null, var seriesSelected: Boolean? = null, var inBrush: List<Int>? = null, var brushOpacity: Double? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null, var extras: List<SeriesExtra>? = null, var itemColors: List<String>? = null, var barWidth: BarLength? = null, var barMaxWidth: BarLength? = null, var barMinWidth: BarLength? = null, var barStack: String? = null)
 
 data class SeriesExtra(var label: String, var numbers: List<Double>? = null, var texts: List<String>? = null)
 
@@ -3672,6 +3672,19 @@ fun barLabelCmds(s: Series, index: Int, fallback: String, r: PyreonChartRect, sh
     return labelCommands(labelTextAt(s, index, fallback), (s.labelRich ?: listOf()), place.at, place.align, place.baseline, if (own == "") auto.textFill else own, if (size > 0.0) size else t.fontSize, measure, halo, width)
   }
 
+fun areaOriginValue(origin: String, d: Domain): Double {
+    if (origin == "start") {
+      return d.min
+    }
+    if (origin == "end") {
+      return d.max
+    }
+    if (d.min <= 0.0 && d.max >= 0.0) {
+      return 0.0
+    }
+    return if (d.min > 0.0) d.min else d.max
+  }
+
 fun emphasisLevel(spec: ChartSpec, index: Int): Int {
     val e = (spec.emphasis ?: Emphasis(highlight = -1, selected = listOf()))
     for (sel in e.selected) {
@@ -4792,6 +4805,18 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
             for (run in splitRuns(s.values, place, s.connectNulls)) {
               val pts = reveal(shape(run))
               if (pts.length > 1) {
+                if (s.areaFill == true) {
+                  val baseY = scaleLinear(sDomain, plot.y + plot.h, plot.y, (s.areaOriginAt ?: areaOriginValue((s.areaOrigin ?: "auto"), sDomain)))
+                  val poly: MutableList<PyreonChartPt> = mutableListOf()
+                  for (p in pts) {
+                    poly.add(p)
+                  }
+                  poly.add(PyreonChartPt(x = pts[pts.length - 1].x, y = baseY))
+                  poly.add(PyreonChartPt(x = pts[0].x, y = baseY))
+                  val over = stateAreaOpacity(spec, s)
+                  val alpha = if (over >= 0.0) over else ((s.areaOpacity ?: 0.7))
+                  out.add(polygonCmd(poly, withAlpha((s.areaColor ?: s.color), alpha), sGrad, s.pattern))
+                }
                 out.add(PyreonDrawCmd(kind = "polyline", stroke = s.color, width = stateWidth(spec, s), dash = s.dash, points = pts))
               }
             }

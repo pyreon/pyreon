@@ -184,7 +184,10 @@ describe('ECharts option facade — mappings', () => {
         { type: 'line', data: [1] }, { type: 'line', areaStyle: {}, data: [1] }, { type: 'scatter', data: [1] },
       ],
     })
-    expect(c.spec.series.map((s) => s.kind)).toEqual(['stacked', 'stacked', 'line', 'area', 'points'])
+    // A line with an areaStyle stays a line that also fills (ECharts draws its stroke and symbols over the fill).
+    expect(c.spec.series.map((s) => s.kind)).toEqual(['stacked', 'stacked', 'line', 'line', 'points'])
+    expect(c.spec.series[3]!.areaFill).toBe(true)
+    expect(c.spec.series[2]!.areaFill).toBeUndefined()
   })
 
   it('a second y axis lands on the right with its own {value} formatter', () => {

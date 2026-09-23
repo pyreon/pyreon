@@ -758,7 +758,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     }
     let kind: Series['kind']
     if (type === 'bar') kind = s['stack'] !== undefined ? 'stacked' : barCount > 1 ? 'grouped' : 'bars'
-    else if (type === 'line') kind = isObj(s['areaStyle']) || s['areaStyle'] === true ? (s['stack'] !== undefined ? 'stackedArea' : 'area') : 'line'
+    // A line with an areaStyle stays a LINE (its stroke and symbols over) that also fills; a stacked one stacks.
+    else if (type === 'line') kind = (isObj(s['areaStyle']) || s['areaStyle'] === true) && s['stack'] !== undefined ? 'stackedArea' : 'line'
     else if (type === 'scatter' || type === 'effectScatter') kind = 'points'
     else if (type === 'pictorialBar') kind = s['stack'] !== undefined ? 'stacked' : barCount > 1 ? 'grouped' : 'bars'
     else {
@@ -867,6 +868,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       // ECharts' own smoothing: `true` is 0.5, a number is the amount.
       smoothAmount: s['smooth'] === true ? 0.5 : (num(s['smooth']) ?? 0) > 0 ? (num(s['smooth']) as number) : undefined,
       connectNulls: s['connectNulls'] === true ? true : undefined,
+      ...(type === 'line' && kind === 'line' && (isObj(s['areaStyle']) || s['areaStyle'] === true) ? areaFields(isObj(s['areaStyle']) ? s['areaStyle'] : {}) : {}),
       smoothMonotone: s['smoothMonotone'] === 'x' || s['smoothMonotone'] === 'y' ? (s['smoothMonotone'] as string) : undefined,
       // A line's labels ride its symbols: with none shown, ECharts draws none.
       showValues: label['show'] === true && !(type === 'line' && s['showSymbol'] === false),
@@ -1331,6 +1333,17 @@ function xLabelLayout(axis: Record<string, unknown> | undefined): { xLabelAngle?
 function axisLineShown(axis: Record<string, unknown> | undefined, auto: boolean): boolean {
   const line = isObj(axis) && isObj(axis['axisLine']) ? axis['axisLine'] : {}
   return line['show'] === true ? true : line['show'] === false ? false : auto
+}
+
+/** A line's `areaStyle`: ECharts' 0.7 opacity by default, its own colour and origin. */
+function areaFields(a: Record<string, unknown>): Partial<Series> {
+  const origin = a['origin']
+  return {
+    areaFill: true,
+    areaOpacity: num(a['opacity']) ?? 0.7,
+    ...(typeof a['color'] === 'string' ? { areaColor: a['color'] as string } : {}),
+    ...(origin === 'start' || origin === 'end' || origin === 'auto' ? { areaOrigin: origin as string } : num(origin) !== null ? { areaOriginAt: num(origin) as number } : {}),
+  }
 }
 
 /** `axisLine.onZero`: on unless set false. */

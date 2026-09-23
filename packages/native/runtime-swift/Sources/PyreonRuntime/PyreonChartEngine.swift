@@ -815,6 +815,11 @@ public struct Series {
   public var smoothAmount: Double? = nil
   public var smoothMonotone: String? = nil
   public var connectNulls: Bool? = nil
+  public var areaFill: Bool? = nil
+  public var areaOpacity: Double? = nil
+  public var areaColor: String? = nil
+  public var areaOrigin: String? = nil
+  public var areaOriginAt: Double? = nil
   public var showValues: Bool? = nil
   public var rValues: [Double]? = nil
   public var radii: [Double]? = nil
@@ -870,7 +875,7 @@ public struct Series {
   public var barMaxWidth: BarLength? = nil
   public var barMinWidth: BarLength? = nil
   public var barStack: String? = nil
-  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, smoothAmount: Double? = nil, smoothMonotone: String? = nil, connectNulls: Bool? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, axisExtra: Double? = nil, onX2: Bool? = nil, xs: [Double]? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, symbolMargin: Double? = nil, symbolOffset: [Double]? = nil, symbolPosition: String? = nil, symbolRotate: Double? = nil, symbolHollow: Bool? = nil, symbolShow: String? = nil, symbolClip: Bool? = nil, symbolBoundingData: Double? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, labelTexts: [String]? = nil, labelColor: String? = nil, labelSize: Double? = nil, labelRich: [RichStyle]? = nil, labelPosition: String? = nil, labelDistance: Double? = nil, labelBorderColor: String? = nil, labelBorderWidth: Double? = nil, focus: String? = nil, emphasisColor: String? = nil, selectColor: String? = nil, blurOpacity: Double? = nil, emphasisScale: Double? = nil, emphasisDisabled: Bool? = nil, emphasisWidth: Double? = nil, blurWidth: Double? = nil, emphasisAreaOpacity: Double? = nil, blurAreaOpacity: Double? = nil, emphasisLabel: Bool? = nil, selectLabel: Bool? = nil, seriesSelected: Bool? = nil, inBrush: [Int]? = nil, brushOpacity: Double? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil, extras: [SeriesExtra]? = nil, itemColors: [String]? = nil, barWidth: BarLength? = nil, barMaxWidth: BarLength? = nil, barMinWidth: BarLength? = nil, barStack: String? = nil) {
+  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, smoothAmount: Double? = nil, smoothMonotone: String? = nil, connectNulls: Bool? = nil, areaFill: Bool? = nil, areaOpacity: Double? = nil, areaColor: String? = nil, areaOrigin: String? = nil, areaOriginAt: Double? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, axisExtra: Double? = nil, onX2: Bool? = nil, xs: [Double]? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, symbolMargin: Double? = nil, symbolOffset: [Double]? = nil, symbolPosition: String? = nil, symbolRotate: Double? = nil, symbolHollow: Bool? = nil, symbolShow: String? = nil, symbolClip: Bool? = nil, symbolBoundingData: Double? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, labelTexts: [String]? = nil, labelColor: String? = nil, labelSize: Double? = nil, labelRich: [RichStyle]? = nil, labelPosition: String? = nil, labelDistance: Double? = nil, labelBorderColor: String? = nil, labelBorderWidth: Double? = nil, focus: String? = nil, emphasisColor: String? = nil, selectColor: String? = nil, blurOpacity: Double? = nil, emphasisScale: Double? = nil, emphasisDisabled: Bool? = nil, emphasisWidth: Double? = nil, blurWidth: Double? = nil, emphasisAreaOpacity: Double? = nil, blurAreaOpacity: Double? = nil, emphasisLabel: Bool? = nil, selectLabel: Bool? = nil, seriesSelected: Bool? = nil, inBrush: [Int]? = nil, brushOpacity: Double? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil, extras: [SeriesExtra]? = nil, itemColors: [String]? = nil, barWidth: BarLength? = nil, barMaxWidth: BarLength? = nil, barMinWidth: BarLength? = nil, barStack: String? = nil) {
     self.kind = kind
     self.values = values
     self.color = color
@@ -881,6 +886,11 @@ public struct Series {
     self.smoothAmount = smoothAmount
     self.smoothMonotone = smoothMonotone
     self.connectNulls = connectNulls
+    self.areaFill = areaFill
+    self.areaOpacity = areaOpacity
+    self.areaColor = areaColor
+    self.areaOrigin = areaOrigin
+    self.areaOriginAt = areaOriginAt
     self.showValues = showValues
     self.rValues = rValues
     self.radii = radii
@@ -6690,6 +6700,19 @@ public func barLabelCmds(_ s: Series, _ index: Int, _ fallback: String, _ r: Pyr
     return labelCommands(labelTextAt(s, index, fallback), (s.labelRich ?? []), place.at, place.align, place.baseline, own == "" ? auto.textFill : own, size > 0.0 ? size : t.fontSize, measure, halo, width)
   }
 
+public func areaOriginValue(_ origin: String, _ d: Domain) -> Double {
+    if origin == "start" {
+      return d.min
+    }
+    if origin == "end" {
+      return d.max
+    }
+    if d.min <= 0.0 && d.max >= 0.0 {
+      return 0.0
+    }
+    return d.min > 0.0 ? d.min : d.max
+  }
+
 public func emphasisLevel(_ spec: ChartSpec, _ index: Int) -> Int {
     let e = (spec.emphasis ?? Emphasis(highlight: -1, selected: []))
     for sel in e.selected {
@@ -7810,6 +7833,18 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             for run in splitRuns(s.values, place, s.connectNulls) {
               let pts = reveal(shape(run))
               if pts.count > 1 {
+                if s.areaFill == true {
+                  let baseY = scaleLinear(sDomain, plot.y + plot.h, plot.y, (s.areaOriginAt ?? areaOriginValue((s.areaOrigin ?? "auto"), sDomain)))
+                  var poly: [PyreonChartPt] = []
+                  for p in pts {
+                    poly.append(p)
+                  }
+                  poly.append(PyreonChartPt(x: pts[pts.count - 1].x, y: baseY))
+                  poly.append(PyreonChartPt(x: pts[0].x, y: baseY))
+                  let over = stateAreaOpacity(spec, s)
+                  let alpha = over >= 0.0 ? over : ((s.areaOpacity ?? 0.7))
+                  out.append(polygonCmd(poly, withAlpha((s.areaColor ?? s.color), alpha), sGrad, s.pattern))
+                }
                 out.append(PyreonDrawCmd(kind: "polyline", stroke: s.color, width: stateWidth(spec, s), dash: s.dash, points: pts))
               }
             }
