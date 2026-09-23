@@ -18,7 +18,13 @@
  *  - The emitted verdict is byte-equivalent to the runtime (locked by the
  *    compiler's emit-equivalence gate) — this measures SPEED only.
  *
- * HONEST READ (steady-state, Apple-class hardware): compiled `.is()` is ~1.6–3×
+ * CURRENT READ (2026-09-23, two load-gated runs): compiled `.is()` is ~2×
+ * SLOWER than the runtime `.is()` (0.42–0.63×). The runtime no longer goes
+ * through `parse().ok` — it has a verdict-only JIT (#3164) — while the build
+ * still emits an issues-array validator wrapped in try/catch. The paragraph
+ * below is the ORIGINAL read, kept for history; it no longer holds.
+ *
+ * ORIGINAL READ (pre-#3164): compiled `.is()` was ~1.6–3×
  * faster than `parse().ok` — biggest on cheap schemas (number/array, where the
  * Result-allocation + parse machinery overhead dominates) and smallest on
  * expensive ones (email regex, where the regex work is shared). BUT it's

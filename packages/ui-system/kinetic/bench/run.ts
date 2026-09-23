@@ -127,7 +127,16 @@ async function main() {
   const server = serve({
     port: 0,
     fetch() {
-      return new Response(html, { headers: { 'content-type': 'text/html' } })
+      // Cross-origin isolation unlocks Chromium's fine-grained clock (~5µs).
+      // Without it performance.now() is clamped to 100µs and every sample here
+      // (0.4–1.1ms) is a handful of ticks — the previous results were quantized.
+      return new Response(html, {
+        headers: {
+          'content-type': 'text/html',
+          'cross-origin-opener-policy': 'same-origin',
+          'cross-origin-embedder-policy': 'require-corp',
+        },
+      })
     },
   })
   const url = `http://localhost:${server.port}/`
@@ -138,6 +147,10 @@ async function main() {
   page.on('pageerror', (e) => console.error('[pageerror]', e.message))
   await page.goto(url)
   await page.waitForFunction(() => typeof (globalThis as any).__kbench?.runScenario === 'function')
+  if (!(await page.evaluate(() => globalThis.crossOriginIsolated))) {
+    console.error('[kinetic-bench] page is not cross-origin isolated — the clock is clamped to 100µs; aborting')
+    process.exit(1)
+  }
 
   const results = new Map<string, Row[]>()
 
@@ -145,6 +158,7 @@ async function main() {
   for (const { op, n, label } of scenarios) {
     const rows: Row[] = []
     for (const lib of shuffle([...LIBS])) {
+      console.error(`[kinetic-bench] ${label} · ${lib}…`)
       const samples: number[] = await page.evaluate(
         ([l, o, size, w, s]) =>
           (globalThis as any).__kbench.runScenario(l, o, size, w, s) as Promise<number[]>,
