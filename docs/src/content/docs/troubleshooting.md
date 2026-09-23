@@ -23,4 +23,4 @@ Common mistakes and anti-patterns across Pyreon, grouped by area, each with its 
 - **[CI / Build Gate Mistakes](/docs/troubleshooting/ci)** — 35 entries
 - **[Best-Practice Mistakes (opt-in `@pyreon/lint` rules)](/docs/troubleshooting/best-practices)** — 10 entries
 - **[Library API-Shape Mistakes](/docs/troubleshooting/library-api)** — 12 entries
-- **[Documentation Mistakes](/docs/troubleshooting/documentation)** — 18 entries
+- **[Documentation Mistakes](/docs/troubleshooting/documentation)** — 19 entries

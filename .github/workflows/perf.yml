@@ -7,8 +7,7 @@ name: Perf
 # Triggers:
 #   - workflow_dispatch: manual run, any branch. Useful for reproducing a PR
 #     author's local perf claim in a clean VM.
-#   - pull_request: auto-runs when a PR gets the `perf` label (filter below).
-#     Skipped otherwise — most PRs don't need a perf run.
+#   - (no pull_request trigger — dispatch against a branch instead; see `on:`)
 #   - schedule: nightly drift check against main. Uploads results as artifact
 #     so regressions that land between PR labels are still caught.
 #
@@ -32,8 +31,11 @@ on:
         description: 'Journey name'
         required: false
         default: 'boot'
-  pull_request:
-    types: [labeled, synchronize]
+  # NO pull_request trigger (removed 2026-09-23): the PR path was label opt-in
+  # (`perf`), no PR has EVER carried that label, and every push to every
+  # PR still created a run whose one job was skipped — a permanent
+  # "skipping" row on each PR and ~205 empty runs/week in the Actions queue.
+  # To measure a branch, dispatch it: `gh workflow run perf.yml --ref <branch>`.
   schedule:
     - cron: '17 3 * * *'
 
@@ -44,16 +46,6 @@ permissions:
 
 jobs:
   perf:
-    # Only run on perf-labelled PRs — skip by default.
-    # Event-precise opt-in: `labeled` fires for EVERY label addition, so
-    # pre-fix, adding any unrelated label (skip-changeset, …) to a PR
-    # already carrying `perf` re-ran this whole suite. Only the
-    # `perf` label itself, or a code push to an already-labelled
-    # PR, runs it now.
-    if: >-
-      github.event_name != 'pull_request' ||
-      (github.event.action == 'labeled' && github.event.label.name == 'perf') ||
-      (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'perf'))
     name: Record ${{ matrix.app }}/${{ matrix.journey }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -165,7 +157,7 @@ jobs:
       # counter regression on main must be VISIBLE without turning a data
       # collection run red.
       - name: Publish diff to the run summary
-        if: github.event_name != 'pull_request' && steps.diff.outputs.summary_path != ''
+        if: steps.diff.outputs.summary_path != ''
         run: |
           {
             echo "## ${{ matrix.app }} / ${{ matrix.journey }}"
@@ -175,39 +167,3 @@ jobs:
             echo "::warning title=perf drift on ${{ matrix.journey }}::A counter regressed against the committed baseline. See the run summary for the table."
           fi
 
-      # Best-effort: this workflow is ADVISORY — a PR comment must never turn
-      # the check red. `retries: 3` covers transient GitHub API 5xx (the class
-      # that failed the release PR's bundle-size-diff on 2026-07-16); residual
-      # failures downgrade to a warning annotation.
-      - name: Post diff as PR comment
-        if: github.event_name == 'pull_request' && steps.diff.outputs.summary_path != ''
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        with:
-          retries: 3
-          script: |
-            const fs = require('node:fs')
-            let summary = ''
-            try {
-              summary = fs.readFileSync('${{ steps.diff.outputs.summary_path }}', 'utf8')
-            } catch {
-              core.warning('perf: summary file missing — nothing to post')
-              return
-            }
-            const { owner, repo } = context.repo
-            const issue_number = context.issue.number
-            const marker = `<!-- perf-${{ matrix.app }}-${{ matrix.journey }} -->`
-            const body = `${marker}\n${summary}`
-            try {
-              const comments = await github.paginate(
-                github.rest.issues.listComments,
-                { owner, repo, issue_number, per_page: 100 },
-              )
-              const existing = comments.find((c) => c.body?.startsWith(marker))
-              if (existing) {
-                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body })
-              } else {
-                await github.rest.issues.createComment({ owner, repo, issue_number, body })
-              }
-            } catch (err) {
-              core.warning(`perf: posting the PR comment failed after retries (${err.status ?? '?'} ${err.message}) — advisory workflow, not failing the check`)
-            }
