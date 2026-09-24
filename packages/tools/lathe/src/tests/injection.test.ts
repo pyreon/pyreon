@@ -156,7 +156,9 @@ describe('spec-controlled strings cannot inject code', () => {
     for (const f of out.files) {
       expect(f.contents, `${f.path} took an injected parameter`).not.toContain('INJECTED')
     }
-    const queries = out.files.find((f) => f.path === 'queries/x.ts')?.contents ?? ''
+    // The input type lives on the endpoint declaration now (dx D6); the hooks
+    // derive theirs from it.
+    const queries = out.files.find((f) => f.path === 'endpoints/x.ts')?.contents ?? ''
     // A QUERY name is a WIRE name (`?odd wire-name=1`), so it survives verbatim
     // -- QUOTED, not normalized, or the request would go to the wrong key.
     // `propKey` quotes with JSON.stringify, which is the correct escaper for a
@@ -186,7 +188,7 @@ describe('spec-controlled strings cannot inject code', () => {
     const op = out.doc.operations[0]
     expect(op?.path).toBe('/x/:userId')
     expect(op?.pathParams[0]?.name).toBe('userId')
-    expect(out.files.find((f) => f.path === 'queries/x.ts')?.contents).toContain('userId: string')
+    expect(out.files.find((f) => f.path === 'endpoints/x.ts')?.contents).toContain('userId: string')
   })
 
   it('a `pattern` cannot break out of the REGEX literal it is emitted into', () => {

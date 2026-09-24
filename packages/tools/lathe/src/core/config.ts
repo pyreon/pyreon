@@ -155,6 +155,15 @@ export interface LatheSection {
   /** Overrides the spec's `servers[0].url` — must be a literal to reach native. */
   baseUrl?: string
   /**
+   * The generated client's DEFAULT response validation (`'strict'`).
+   *
+   * `'warn'` logs a mismatch and passes the body through — a production
+   * setting for a backend that drifts; `'off'` skips validation entirely
+   * (safe only for non-transforming schemas). Switchable at runtime too:
+   * `configureApi({ validate })`.
+   */
+  validate?: 'strict' | 'warn' | 'off'
+  /**
    * Fail the run when a generated native module does not lower.
    *
    * Off by default: a spec is usually partly un-lowerable and that is fine and
@@ -182,6 +191,7 @@ export interface ResolvedConfig {
   client: ClientName
   validator: ValidatorName
   baseUrl?: string | undefined
+  validate?: 'strict' | 'warn' | 'off' | undefined
   strictNative: boolean
 }
 
@@ -246,6 +256,12 @@ export function resolveConfig(section: LatheSection | undefined): ResolvedConfig
       `[Pyreon] lathe: unknown validator \`${validator}\`. Known: ${ALL_VALIDATORS.join(', ')}.`,
     )
   }
+  const validate = section?.validate
+  if (validate !== undefined && validate !== 'strict' && validate !== 'warn' && validate !== 'off') {
+    throw new Error(
+      `[Pyreon] lathe: unknown validate mode \`${String(validate)}\`. Known: strict, warn, off.`,
+    )
+  }
   const target = section?.target ?? 'web'
   // REFUSED rather than silently downgraded. `multiplatform` exists to prove
   // the generated modules lower, and PMTC recognises `createHttp` by NAME — an
@@ -269,6 +285,7 @@ export function resolveConfig(section: LatheSection | undefined): ResolvedConfig
     client,
     validator,
     baseUrl: section?.baseUrl,
+    validate: section?.validate,
     strictNative: section?.strictNative ?? false,
   }
 }

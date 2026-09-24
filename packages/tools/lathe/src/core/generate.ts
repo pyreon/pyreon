@@ -71,7 +71,17 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
   if (has('types')) push(emitTypes(doc))
   if (has('schemas')) push(emitSchemas(doc, { native: false, validator: config.validator }))
   if (has('client')) {
-    push(emitClient(doc, { native, baseUrl: config.baseUrl, client: config.client }))
+    push(
+      emitClient(doc, {
+        native,
+        baseUrl: config.baseUrl,
+        client: config.client,
+        // A project's NAME when it has one, else the API's own base URL (unique
+        // per API by construction), else its title.
+        keyScope: config.name || config.baseUrl || doc.baseUrl || doc.title,
+        validate: config.validate,
+      }),
+    )
     for (const f of emitWebEndpoints(doc, config.validator)) push(f)
   }
   if (has('queries')) {

@@ -112,7 +112,8 @@ describe('shapes only a real spec produces', () => {
         - name: alert
           in: query
           schema: { $ref: '#/components/schemas/AlertNumber' }`)
-    const out = file(src, 'queries/x.ts')
+    // The input type — and so the import — is on the endpoint declaration.
+    const out = file(src, 'endpoints/x.ts')
     expect(out).toContain('AlertNumber')
     expect(out).toMatch(/import type \{[^}]*AlertNumber[^}]*\} from '\.\.\/schemas'/)
   })

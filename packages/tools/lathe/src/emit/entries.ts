@@ -103,7 +103,13 @@ export function emitBarrel(doc: IrDocument, opts: EntryOptions): SourceFile {
     if (exists(opts, 'schemas.ts')) lines.push(`export * from './schemas'`)
   } else if (has('types') && exists(opts, 'types.ts')) lines.push(`export * from './types'`)
   if (has('client')) {
-    if (exists(opts, 'client.ts')) lines.push(`export { api } from './client'`)
+    if (exists(opts, 'client.ts')) {
+      // The runtime seam (dx D8) is part of the production surface: an app
+      // configures its base URL and auth from here, not by editing output.
+      const pyreon = (opts.client ?? 'pyreon') === 'pyreon'
+      const auth = pyreon && (doc.securitySchemes?.length ?? 0) > 0
+      lines.push(`export { api, configureApi, ${auth ? 'auth, ' : ''}type ApiConfig } from './client'`)
+    }
     for (const [tag] of byTag(doc)) {
       if (exists(opts, `endpoints/${tagFile(tag)}.ts`)) {
         lines.push(`export * from './endpoints/${tagFile(tag)}'`)
@@ -114,7 +120,7 @@ export function emitBarrel(doc: IrDocument, opts: EntryOptions): SourceFile {
     for (const [tag] of byTag(doc)) {
       if (exists(opts, `queries/${tagFile(tag)}.ts`)) lines.push(`export * from './queries/${tagFile(tag)}'`)
     }
-    if (exists(opts, KEYS_FILE)) lines.push(`export { keys } from './keys'`)
+    if (exists(opts, KEYS_FILE)) lines.push(`export { keys, optimisticUpdate } from './keys'`)
   }
   for (const l of lines) f.line(l)
   // A file with no import/export is a SCRIPT, and a consumer compiling with
@@ -215,12 +221,12 @@ export function emitKeys(doc: IrDocument): SourceFile {
   const f = new SourceFile(KEYS_FILE)
   const tags = [...byTag(doc)]
   const queryOps = tags.map(([tag, ops]) => [tag, ops.filter((o) => !isMutation(o))] as const)
-  if (queryOps.every(([, ops]) => ops.length === 0)) return f
 
   for (const [tag, ops] of queryOps) {
     if (ops.length === 0) continue
     f.import(relativeSpecifier(KEYS_FILE, `endpoints/${tagFile(tag)}.ts`), ...ops.map((o) => o.id))
   }
+  f.importType('@pyreon/query', 'QueryClient', 'QueryKey')
 
   f.line()
   f.doc(
@@ -248,5 +254,39 @@ export function emitKeys(doc: IrDocument): SourceFile {
     f.line('  },')
   }
   f.line('} as const')
+
+  f.line()
+  f.doc(
+    'Optimistically rewrite cached query data, returning a ROLLBACK (audit E2).',
+    '',
+    'Cancels in-flight fetches for `queryKey` (so a late response cannot',
+    'overwrite the optimistic value), applies `update` to every cached entry',
+    'under it, and returns a function restoring exactly what was there. The',
+    'data type is the endpoint\'s own response type — pass the endpoint.',
+    '',
+    '```ts',
+    'const rename = useRenamePet({',
+    '  onMutate: async (vars) => {',
+    '    const rollback = await optimisticUpdate(client, getPet, getPet.key(vars), (pet) =>',
+    '      pet && { ...pet, name: vars.json.name })',
+    '    return { rollback }',
+    '  },',
+    '  onError: (_e, _v, ctx) => ctx?.rollback(),',
+    '})',
+    '```',
+  )
+  f.line('export async function optimisticUpdate<E extends (...args: never[]) => Promise<unknown>>(')
+  f.line('  client: QueryClient,')
+  f.line('  _endpoint: E,')
+  f.line('  queryKey: QueryKey,')
+  f.line('  update: (current: Awaited<ReturnType<E>> | undefined) => Awaited<ReturnType<E>> | undefined,')
+  f.line('): Promise<() => void> {')
+  f.line('  await client.cancelQueries({ queryKey })')
+  f.line('  const previous = client.getQueriesData<Awaited<ReturnType<E>>>({ queryKey })')
+  f.line('  client.setQueriesData<Awaited<ReturnType<E>>>({ queryKey }, update)')
+  f.line('  return () => {')
+  f.line('    for (const [key, data] of previous) client.setQueryData(key, data)')
+  f.line('  }')
+  f.line('}')
   return f
 }

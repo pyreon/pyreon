@@ -16,6 +16,7 @@ import type {
   IrNote,
   IrOperation,
   IrParam,
+  IrSecurityScheme,
   IrType,
   StringFormat,
 } from '../core/ir'
@@ -82,10 +83,12 @@ function convert(spec: Json): IrDocument {
   // one needs to resolve `$ref`s.
   normalizeUnions(models, operations, ctx)
 
+  const securitySchemes = collectSecuritySchemes(spec, ctx)
   return {
     title: str(info.title) ?? 'API',
     version: str(info.version) ?? '0.0.0',
     baseUrl,
+    ...(securitySchemes.length > 0 ? { securitySchemes } : {}),
     models,
     operations,
     notes,
@@ -230,12 +233,43 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
         summary: str(op.summary) ?? str(op.description),
         pathParams,
         queryParams,
-        body: bodyType(op, at, ctx),
-        response: responseType(op, at, ctx),
+        ...bodyOf(method, op, at, ctx),
+        ...responseOf(op, at, ctx),
       })
     }
   }
   return ops
+}
+
+/**
+ * `components.securitySchemes`, reduced to how a client applies each one
+ * (dx D8). A scheme a client cannot apply by itself (`mutualTLS`) is noted.
+ */
+function collectSecuritySchemes(spec: Json, ctx: Ctx): IrSecurityScheme[] {
+  const schemes = obj(obj(spec.components)?.securitySchemes) ?? {}
+  const out: IrSecurityScheme[] = []
+  for (const key of Object.keys(schemes).sort()) {
+    const at = `#/components/securitySchemes/${key}`
+    const sc = obj(deref(schemes[key], at, ctx))
+    if (!sc) continue
+    const doc = str(sc.description)
+    const type = str(sc.type)
+    const scheme = str(sc.scheme)?.toLowerCase()
+    if (type === 'http' && scheme === 'basic') {
+      out.push({ name: key, kind: 'basic', doc })
+    } else if ((type === 'http' && scheme === 'bearer') || type === 'oauth2' || type === 'openIdConnect') {
+      out.push({ name: key, kind: 'bearer', doc })
+    } else if (type === 'apiKey' && (sc.in === 'header' || sc.in === 'query' || sc.in === 'cookie') && str(sc.name)) {
+      out.push({ name: key, kind: 'apiKey', in: sc.in, param: str(sc.name) as string, doc })
+    } else {
+      ctx.notes.push({
+        code: 'unsupported-schema',
+        at,
+        message: `security scheme \`${key}\` (${type ?? 'no type'}${scheme ? ` ${scheme}` : ''}) has no generated helper — apply it with your own middleware via \`configureApi({ use })\`.`,
+      })
+    }
+  }
+  return out
 }
 
 const QUERY_STYLES = ['form', 'spaceDelimited', 'pipeDelimited', 'deepObject'] as const
@@ -271,19 +305,72 @@ function bodyType(op: Json, at: string, ctx: Ctx): IrType | undefined {
   return pickContent(content, `${at}/requestBody`, ctx)
 }
 
-function responseType(op: Json, at: string, ctx: Ctx): IrType | undefined {
+/**
+ * The request body, and whether the spec requires it (audit A11b).
+ *
+ * `requestBody.required` defaults to FALSE in OpenAPI, and it was ignored, so
+ * every body was a required `json` argument. A body on GET / HEAD is DROPPED
+ * with a note: `fetch` rejects it outright (`Request with GET/HEAD method
+ * cannot have body`), so a call that satisfied the old type could not run —
+ * and Stripe alone declares 273 of them, each with an empty form body.
+ */
+function bodyOf(
+  method: HttpMethod,
+  op: Json,
+  at: string,
+  ctx: Ctx,
+): Pick<IrOperation, 'body' | 'bodyRequired'> {
+  const rb = obj(deref(op.requestBody, at, ctx))
+  if (!rb) return {}
+  if (method === 'GET' || method === 'HEAD') {
+    ctx.notes.push({
+      code: 'body-on-get',
+      at: `${at}/requestBody`,
+      message: `${method} declares a requestBody, which fetch refuses to send — the body is dropped from the generated call. Move the data to query parameters in the spec.`,
+    })
+    return {}
+  }
+  const body = bodyType(op, at, ctx)
+  return body ? { body, bodyRequired: rb.required === true } : {}
+}
+
+/**
+ * The success response: its type, and its media type when it is not JSON
+ * (audit B4). A non-JSON response is not a LOSS any more — the client decodes
+ * it as text, a Blob or a stream by media type — so it is noted only when the
+ * spec offered several and one had to be chosen.
+ */
+function responseOf(op: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response' | 'responseMedia'> {
   const responses = obj(op.responses)
-  if (!responses) return undefined
+  if (!responses) return {}
   // First 2xx wins, numerically, so `200` beats `201` deterministically.
   const ok = Object.keys(responses)
     .filter((k) => /^2\d\d$/.test(k))
     .sort()[0]
   const chosen = ok ?? (responses.default !== undefined ? 'default' : undefined)
-  if (!chosen) return undefined
+  if (!chosen) return {}
   const res = obj(deref(responses[chosen], at, ctx))
   const content = obj(res?.content)
-  if (!content) return undefined
-  return pickContent(content, `${at}/responses/${chosen}`, ctx)
+  if (!content) return {}
+  const keys = Object.keys(content)
+  if (keys.length === 0) return {}
+  if (!keys.some(isJsonMedia)) {
+    const media = keys[0] as string
+    if (keys.length > 1) {
+      ctx.notes.push({
+        code: 'multiple-content-types',
+        at: `${at}/responses/${chosen}`,
+        message: `no JSON media type (found ${keys.join(', ')}) — the client decodes \`${media}\`.`,
+      })
+    }
+    return { response: { kind: 'unknown', reason: `media type ${media}` }, responseMedia: media }
+  }
+  const response = pickContent(content, `${at}/responses/${chosen}`, ctx)
+  return response ? { response } : {}
+}
+
+function isJsonMedia(media: string): boolean {
+  return media === 'application/json' || media.endsWith('+json')
 }
 
 /**

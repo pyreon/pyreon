@@ -77,7 +77,8 @@ describe('generate', () => {
     // The INVARIANT is where the generic sits, not the surrounding shape — the
     // options spread was added later and must not weaken this.
     const src = file(generate(SPEC, web), 'queries/books.ts')
-    expect(src).toContain('useQuery<Book[]>(')
+    // The generic is DERIVED from the endpoint (audit A8), never re-rendered.
+    expect(src).toContain('useQuery<Awaited<ReturnType<typeof listBooks>>, Error, TData>(')
     expect(src).not.toContain('.query<')
   })
 
@@ -142,8 +143,14 @@ describe('generate', () => {
     // `QueryOptionsLike<unknown>` and the generated hook did not typecheck in
     // the consumer's repo. The composite form needs `s` imported too.
     const src = file(generate(SPEC, web), 'endpoints/books.ts')
-    expect(src).toContain("api.endpoint('GET /books/:id', { response: Book })")
-    expect(src).toContain("api.endpoint('GET /books', { response: s.array(Book) })")
+    // `getBook` has an input, so its generics name the input AND the
+    // response schema's type (no partial inference in TypeScript).
+    expect(src).toContain(
+      "api.endpoint<'GET /books/:id', typeof Book, { params: { id: string } }>('GET /books/:id', { response: Book })",
+    )
+    // A COMPOSITE response is named, so the generics can name its type.
+    expect(src).toContain('const listBooks$response = s.array(Book)')
+    expect(src).toMatch(/api\.endpoint<'GET \/books', typeof listBooks\$response, [^>]*>\('GET \/books', \{ response: listBooks\$response/)
     expect(src).toContain("import { s } from '@pyreon/validate'")
   })
 
@@ -180,7 +187,7 @@ describe('generate', () => {
     // `/books/` with an empty segment — a 404 on first paint that reads as a
     // backend fault. Returning `undefined` says "not yet" ONCE.
     const src = file(generate(SPEC, web), 'queries/books.ts')
-    expect(src).toContain('args: () => { params: { id: string } } | undefined')
+    expect(src).toContain('args: () => Parameters<typeof getBook>[0] | undefined')
     expect(src).toContain('if (a === undefined) {')
     // Keyed on the endpoint's own prefix, so an invalidation still matches it.
     expect(src).toContain('queryKey: getBook.key.prefix')
@@ -193,8 +200,12 @@ describe('generate', () => {
 
   it('leaves a parameterless hook alone — nothing to be not-ready about', () => {
     const src = file(generate(SPEC, web), 'queries/books.ts')
-    expect(src).toContain('export function useListBooks(options?: () => Record<string, unknown>) {')
-    expect(src).toContain('return useQuery<Book[]>(() => ({ ...listBooks.query(), ...options?.() }))')
+    expect(src).toContain(
+      "export function useListBooks<TData = Awaited<ReturnType<typeof listBooks>>>(options?: () => Omit<UseQueryOptions<Awaited<ReturnType<typeof listBooks>>, Error, TData>, 'queryKey' | 'queryFn'>) {",
+    )
+    expect(src).toContain(
+      'return useQuery<Awaited<ReturnType<typeof listBooks>>, Error, TData>(() => ({ ...listBooks.query(), ...options?.() }))',
+    )
   })
 
   it('reports per-operation reach with a reason', () => {

@@ -114,6 +114,8 @@ export interface LatheSection {
   plugins?: readonly string[]
   /** Overrides the spec's `servers[0].url` — must be literal to reach native. */
   baseUrl?: string
+  /** The generated client's default response validation: `strict` (default), `warn`, `off`. */
+  validate?: 'strict' | 'warn' | 'off'
   /** Exit non-zero when a generated native module does not lower. */
   strictNative?: boolean
 }

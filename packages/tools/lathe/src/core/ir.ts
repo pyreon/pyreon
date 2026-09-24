@@ -82,15 +82,48 @@ export interface IrOperation {
   queryParams: readonly IrParam[]
   /** Request body type, when the operation takes one. */
   body?: IrType | undefined
+  /**
+   * `requestBody.required` — OpenAPI defaults it to FALSE, so a body the spec
+   * does not mark required is optional at the call site.
+   */
+  bodyRequired?: boolean | undefined
   /** The 2xx response type. `undefined` means no content. */
   response?: IrType | undefined
+  /**
+   * The media type the response was read from, when it is NOT JSON
+   * (`text/plain`, `image/png`, `text/event-stream`). Absent for JSON and for
+   * no content. Decides how the client DECODES the body — see
+   * `core/media.ts`.
+   */
+  responseMedia?: string | undefined
 }
+
+/**
+ * One `components.securitySchemes` entry, reduced to how a CLIENT applies it.
+ *
+ * `oauth2` and `openIdConnect` reduce to `bearer`: whatever flow obtained the
+ * token, a request carries it as `Authorization: Bearer …`, which is the only
+ * part a generated client participates in.
+ */
+export type IrSecurityScheme =
+  | { name: string; kind: 'bearer'; doc?: string | undefined }
+  | { name: string; kind: 'basic'; doc?: string | undefined }
+  | {
+      name: string
+      kind: 'apiKey'
+      in: 'header' | 'query' | 'cookie'
+      /** The header / query parameter / cookie NAME the key travels in. */
+      param: string
+      doc?: string | undefined
+    }
 
 export interface IrDocument {
   title: string
   version: string
   /** From `servers[0].url`; `''` when the spec declares none. */
   baseUrl: string
+  /** `components.securitySchemes`, in spec-key order. Absent when there are none. */
+  securitySchemes?: readonly IrSecurityScheme[] | undefined
   models: readonly IrModel[]
   operations: readonly IrOperation[]
   /**
@@ -110,6 +143,7 @@ export interface IrNote {
     | 'multiple-content-types'
     | 'no-servers'
     | 'cyclic-ref'
+    | 'body-on-get'
   message: string
   /** JSON-pointer-ish location in the source document. */
   at: string

@@ -145,7 +145,7 @@ const EMITTER_VALUES = new Set([
   // client + validator bindings in the endpoint modules
   'api', 's', 'z', 'standardSchema', 'createHttp',
   // exports of the generated entries
-  'keys', 'configureApi', 'setDevTransport', 'installMocks', 'mockRoutes', 'mockRouteTable',
+  'keys', 'configureApi', 'auth', 'optimisticUpdate', 'setDevTransport', 'installMocks', 'mockRoutes', 'mockRouteTable',
   'routes', 'mock', 'faker',
   // `use<Id>` must never equal an imported hook
   'query', 'mutation', 'queryClient', 'infiniteQuery', 'queries', 'isFetching', 'isMutating',

@@ -40,6 +40,7 @@ interface ClientModule {
     styles?: Record<string, QueryStyle>,
   ) => string
   api: { endpoint: (spec: string, config?: { response?: unknown }) => never }
+  KEY_SCOPE: string | undefined
 }
 
 const modules = new Map<string, ClientModule>()
@@ -193,12 +194,15 @@ describe('adapter cache keys are identical to @pyreon/http', () => {
     // emitted IDENTICALLY for every client — match nothing, so an
     // invalidateQueries after a mutation would silently refresh no query.
     const { createHttp } = (await import('@pyreon/http')) as typeof import('@pyreon/http')
-    const oracleApi = createHttp({ baseUrl: 'https://api.test' })
-    const oracle = oracleApi.endpoint('GET /books/:id')
-
     for (const client of ADAPTER_CLIENTS) {
       const mod = modules.get(client)
       if (!mod) throw new Error(`no module for ${client}`)
+      // The generated client namespaces its keys (audit E1); the oracle is
+      // configured with the SAME scope, so the shapes must agree exactly.
+      expect(typeof mod.KEY_SCOPE, client).toBe('string')
+      const oracle = createHttp({ baseUrl: 'https://api.test', keyScope: mod.KEY_SCOPE }).endpoint(
+        'GET /books/:id',
+      )
       const ep = mod.api.endpoint('GET /books/:id') as unknown as {
         method: string
         path: string

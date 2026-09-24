@@ -19,7 +19,7 @@
 
 import { reachableModels, topoSortModels } from '../core/graph'
 import type { IrDocument, IrOperation, IrType } from '../core/ir'
-import { propKey, typeIdent } from '../core/naming'
+import { ident, propKey, typeIdent, uniquifier } from '../core/naming'
 import { byCodeUnit } from '../core/order'
 import {
   CLIENT_PACKAGE,
@@ -30,6 +30,7 @@ import {
   runtimeValidate,
   type ClientName,
 } from './client-runtime'
+import { hasInput, inputType, type ModelTypes, responseTypeOf } from './operation-types'
 import { schemaExpr, schemaSpecifier, tsType } from './schema'
 import { dialectOf, type ValidatorName } from './validator'
 import { q, relativeSpecifier, SourceFile } from './writer'
@@ -42,6 +43,13 @@ export interface ClientOptions {
   client?: ClientName | undefined
   /** Which library the schemas are written in. Defaults to `pyreon`. */
   validator?: ValidatorName | undefined
+  /**
+   * Namespace for every endpoint's cache key (audit E1). Two generated clients
+   * sharing one `QueryClient` otherwise share `GET /users`.
+   */
+  keyScope?: string | undefined
+  /** The client's default response validation (perf lever 7). */
+  validate?: 'strict' | 'warn' | 'off' | undefined
 }
 
 export const CLIENT_FILE = 'client.ts'
@@ -57,44 +65,184 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
   const client = opts.client ?? 'pyreon'
   if (client !== 'pyreon') return emitAdapterClient(doc, opts, client)
   const f = new SourceFile(CLIENT_FILE)
-  f.import('@pyreon/http', 'createHttp')
-  f.importType('@pyreon/http', 'HttpMiddleware')
+  f.import('@pyreon/http', 'compose', 'createHttp')
+  f.importType('@pyreon/http', 'HttpMiddleware', 'ValidateMode')
   f.import('@pyreon/http/schema', 'standardSchema')
   f.line()
   f.doc(
-    `HTTP client for ${doc.title} ${doc.version}.`,
+    'Runtime configuration of the generated client — see {@link configureApi}.',
     '',
-    'The baseUrl is emitted as a STRING LITERAL on purpose. PMTC reads it at',
-    'compile time to build the native request URL, and a computed value (an',
-    'env read, a concatenation) makes every endpoint on this client web-only.',
+    'Each field is its own SLOT, so setting one never disturbs another: auth',
+    'middleware in `use` survives `installMocks()`, which answers through a',
+    'separate transport slot, and a `baseUrl` switch keeps the headers.',
+  )
+  f.line('export interface ApiConfig {')
+  f.line("  /** Replaces the spec's server URL for every request (an environment switch). */")
+  f.line('  baseUrl?: string | undefined')
+  f.line('  /** Headers for every request. An accessor is re-read per request — use one for a token. */')
+  f.line('  headers?: HeadersInit | (() => HeadersInit) | undefined')
+  f.line('  /** Middleware around every request, outermost first — auth, logging, retry. */')
+  f.line('  use?: readonly HttpMiddleware[] | undefined')
+  f.line("  /** Response validation: `'strict'` throws, `'warn'` logs and passes the body through, `'off'` skips it. */")
+  f.line('  validate?: ValidateMode | undefined')
+  f.line('}')
+  f.line()
+  f.line(`const DEFAULT_BASE_URL = ${q(baseUrlOf(doc, opts))}`)
+  f.line(`const DEFAULT_VALIDATE: ValidateMode = ${q(opts.validate ?? 'strict')}`)
+  f.line()
+  f.line('const settings: {')
+  f.line('  baseUrl: string')
+  f.line("  headers: ApiConfig['headers']")
+  f.line('  use: readonly HttpMiddleware[]')
+  f.line('  validate: ValidateMode')
+  f.line('} = { baseUrl: DEFAULT_BASE_URL, headers: undefined, use: [], validate: DEFAULT_VALIDATE }')
+  f.line()
+  f.line('let devTransport: HttpMiddleware | null = null')
+  f.line()
+  f.doc(
+    'Configure the client at runtime — base URL, headers, middleware, validation.',
+    '',
+    'Endpoints bind to the client when they are declared, so everything that',
+    'varies (an environment, a session token, a logger) is read from here on',
+    'every request rather than baked in. A key present with `undefined` resets',
+    'that slot to its generated default; an absent key leaves it alone.',
+    '',
+    '```ts',
+    'configureApi({',
+    '  baseUrl: import.meta.env.VITE_API_URL,',
+    '  headers: () => ({ \'x-request-id\': crypto.randomUUID() }),',
+    '  use: [logger],',
+    "  validate: import.meta.env.PROD ? 'warn' : 'strict',",
+    '})',
+    '```',
+  )
+  f.line('export function configureApi(config: ApiConfig): void {')
+  f.line("  if ('baseUrl' in config) settings.baseUrl = config.baseUrl ?? DEFAULT_BASE_URL")
+  f.line("  if ('headers' in config) settings.headers = config.headers")
+  f.line("  if ('use' in config) settings.use = config.use ?? []")
+  f.line("  if ('validate' in config) settings.validate = config.validate ?? DEFAULT_VALIDATE")
+  f.line('}')
+  f.line()
+  f.doc(
+    'Answer requests from a transport slot of their own — the generated',
+    '`installMocks()` uses it. Separate from `configureApi({ use })` on purpose:',
+    'installing mocks must not remove auth middleware, and configuring auth must',
+    'not uninstall mocks. Pass `null` to go back to the network.',
+  )
+  f.line('export function setDevTransport(middleware: HttpMiddleware | null): void {')
+  f.line('  devTransport = middleware')
+  f.line('}')
+  emitAuthHelpers(f, doc)
+  f.line()
+  f.doc(
+    `HTTP client for ${doc.title} ${doc.version}.`,
     '',
     '`schema` is REQUIRED here, not optional polish: @pyreon/http keeps schema',
     'support opt-in so the core costs nothing when unused, and an endpoint',
     'declared with `{ response }` against a client that has not enabled it',
     'FAILS AT RUNTIME — the request succeeds, the validation step rejects, and',
     'the query settles as an error with a 200 on the wire.',
+    '',
+    'The native modules (`*.native.tsx`) declare their own client with a',
+    'LITERAL base URL, which is what PMTC reads; this one reads its settings',
+    'per request.',
   )
-  f.line('let devTransport: HttpMiddleware | null = null')
+  f.line('export const api = createHttp({')
+  f.line('  baseUrl: () => settings.baseUrl,')
+  if (opts.keyScope) f.line(`  keyScope: ${q(opts.keyScope)},`)
+  f.line('  schema: standardSchema,')
+  f.line('  validate: () => settings.validate,')
+  f.line('  headers: () => {')
+  f.line('    const h = settings.headers')
+  f.line("    return typeof h === 'function' ? h() : (h ?? {})")
+  f.line('  },')
+  f.line('  use: [')
+  f.line('    (req, next) => (settings.use.length === 0 ? next(req) : compose(settings.use, next)(req)),')
+  f.line('    (req, next) => (devTransport ? devTransport(req, next) : next(req)),')
+  f.line('  ],')
+  f.line('})')
+  return f
+}
+
+/**
+ * `auth` — one helper per `components.securitySchemes` entry (dx D8).
+ *
+ * Each returns MIDDLEWARE, so it composes with `configureApi({ use })` and
+ * with anything else there. A credential may be an accessor, re-read per
+ * request, which is how a token that rotates stays current without
+ * reconfiguring the client.
+ */
+function emitAuthHelpers(f: SourceFile, doc: IrDocument): void {
+  const schemes = doc.securitySchemes ?? []
+  if (schemes.length === 0) return
+  f.line()
+  f.doc('A credential, or an accessor re-read on every request. Nullish sends nothing.')
+  f.line('export type Credential = string | null | undefined | (() => string | null | undefined)')
+  f.line()
+  f.line('const read = (c: Credential): string | null | undefined => (typeof c === \'function\' ? c() : c)')
   f.line()
   f.doc(
-    'Install middleware AFTER the client was built.',
+    'Auth middleware for each security scheme the spec declares.',
     '',
-    'Endpoints bind to the client at declaration time, so middleware passed to',
-    '`createHttp` has to be known before any endpoint exists -- which a mock',
-    'installed by a workbench wrapper or a test never is. One passthrough entry',
-    'reserves the slot; it costs a function call per request and nothing else',
-    'when unused. The generated `installMocks()` uses it.',
+    '```ts',
+    `configureApi({ use: [auth.${ident(schemes[0]?.name ?? 'x')}(${schemes[0]?.kind === 'basic' ? "'user', () => password()" : '() => session.token()'})] })`,
+    '```',
   )
-  f.line('export function setDevTransport(middleware: HttpMiddleware | null): void {')
-  f.line('  devTransport = middleware')
+  f.line('export const auth = {')
+  const unique = uniquifier()
+  for (const sc of schemes) {
+    const key = propKey(unique(ident(sc.name)))
+    if (sc.kind === 'bearer') {
+      f.doc(sc.doc, `\`${sc.name}\` — sends \`Authorization: Bearer <token>\`.`)
+      f.line(`  ${key}: (token: Credential): HttpMiddleware => (req, next) => {`)
+      f.line('    const t = read(token)')
+      f.line("    if (t) req.headers.set('authorization', `Bearer ${t}`)")
+      f.line('    return next(req)')
+      f.line('  },')
+    } else if (sc.kind === 'basic') {
+      f.doc(sc.doc, `\`${sc.name}\` — sends \`Authorization: Basic <base64(username:password)>\`.`)
+      f.line(`  ${key}: (username: Credential, password: Credential): HttpMiddleware => (req, next) => {`)
+      f.line('    const u = read(username)')
+      f.line('    if (u !== null && u !== undefined) {')
+      f.line('      // UTF-8 first: `btoa` alone throws on any non-Latin-1 character.')
+      f.line("      const bytes = new TextEncoder().encode(`${u}:${read(password) ?? ''}`)")
+      f.line("      req.headers.set('authorization', `Basic ${btoa(String.fromCharCode(...bytes))}`)")
+      f.line('    }')
+      f.line('    return next(req)')
+      f.line('  },')
+    } else if (sc.in === 'header') {
+      f.doc(sc.doc, `\`${sc.name}\` — sends the key in the \`${sc.param}\` header.`)
+      f.line(`  ${key}: (apiKey: Credential): HttpMiddleware => (req, next) => {`)
+      f.line('    const k = read(apiKey)')
+      f.line(`    if (k) req.headers.set(${q(sc.param)}, k)`)
+      f.line('    return next(req)')
+      f.line('  },')
+    } else if (sc.in === 'query') {
+      f.doc(sc.doc, `\`${sc.name}\` — appends the key as the \`${sc.param}\` query parameter.`)
+      f.line(`  ${key}: (apiKey: Credential): HttpMiddleware => (req, next) => {`)
+      f.line('    const k = read(apiKey)')
+      f.line('    if (!k) return next(req)')
+      f.line("    const sep = req.url.includes('?') ? '&' : '?'")
+      f.line(`    return next({ ...req, url: \`\${req.url}\${sep}${encodeURIComponent(sc.param)}=\${encodeURIComponent(k)}\` })`)
+      f.line('  },')
+    } else {
+      f.doc(
+        sc.doc,
+        `\`${sc.name}\` — sends the key as the \`${sc.param}\` cookie. Browsers forbid setting`,
+        'the Cookie header from script, so this applies on the SERVER (SSR, scripts);',
+        'in a browser the cookie must already be set on the API origin.',
+      )
+      f.line(`  ${key}: (apiKey: Credential): HttpMiddleware => (req, next) => {`)
+      f.line('    const k = read(apiKey)')
+      f.line('    if (!k) return next(req)')
+      f.line("    const prev = req.headers.get('cookie')")
+      f.line(`    const pair = \`${encodeURIComponent(sc.param)}=\${encodeURIComponent(k)}\``)
+      f.line("    req.headers.set('cookie', prev ? `${prev}; ${pair}` : pair)")
+      f.line('    return next(req)')
+      f.line('  },')
+    }
+  }
   f.line('}')
-  f.line()
-  f.line(`export const api = createHttp({`)
-  f.line(`  baseUrl: ${q(baseUrlOf(doc, opts))},`)
-  f.line(`  schema: standardSchema,`)
-  f.line(`  use: [(req, next) => (devTransport ? devTransport(req, next) : next(req))],`)
-  f.line(`})`)
-  return f
 }
 
 function baseUrlOf(doc: IrDocument, opts: ClientOptions): string {
@@ -152,7 +300,7 @@ function emitAdapterClient(
   f.line()
   f.lines(...runtimeTransport())
   f.line()
-  f.lines(...runtimeEndpoint(client, baseUrlOf(doc, opts)))
+  f.lines(...runtimeEndpoint(client, baseUrlOf(doc, opts), opts.keyScope, opts.validate))
   return f
 }
 
@@ -177,26 +325,6 @@ export function byTag(doc: IrDocument): Map<string, IrOperation[]> {
   return new Map([...out.entries()].sort(([a], [b]) => byCodeUnit(a, b)))
 }
 
-/** The argument type for one operation's call site. */
-function argsType(op: IrOperation): string | undefined {
-  const parts: string[] = []
-  // `propKey` quotes anything that is not a plain identifier. Without it a
-  // spec parameter name carrying a `}` closes the type and injects an
-  // arbitrary parameter into the generated function signature.
-  if (op.pathParams.length > 0) {
-    const inner = op.pathParams.map((p) => `${propKey(p.name)}: ${tsType(p.type)}`).join('; ')
-    parts.push(`params: { ${inner} }`)
-  }
-  if (op.queryParams.length > 0) {
-    const inner = op.queryParams
-      .map((p) => `${propKey(p.name)}${p.required ? '' : '?'}: ${tsType(p.type)}`)
-      .join('; ')
-    parts.push(`query${op.queryParams.some((p) => p.required) ? '' : '?'}: { ${inner} }`)
-  }
-  if (op.body) parts.push(`json: ${tsType(op.body)}`)
-  return parts.length > 0 ? `{ ${parts.join('; ')} }` : undefined
-}
-
 /** Does this operation mutate? Decides query vs mutation binding. */
 export function isMutation(op: IrOperation): boolean {
   return op.method !== 'GET' && op.method !== 'HEAD' && op.method !== 'OPTIONS'
@@ -212,35 +340,101 @@ export function emitWebEndpoints(
   validator: ValidatorName = 'pyreon',
 ): SourceFile[] {
   const dialect = dialectOf(validator)
+  const models: ModelTypes = new Map(doc.models.map((m) => [m.name, m.type]))
   const files: SourceFile[] = []
   for (const [tag, ops] of byTag(doc)) {
     const path = `endpoints/${tagFile(tag)}.ts`
     const f = new SourceFile(path)
     f.import(relativeSpecifier(path, CLIENT_FILE), 'api')
-    // The response clause can name several models (an array of refs, a union),
-    // so collect them structurally rather than taking a top-level name.
+    // VALUES for response schemas (a composite clause names several models);
+    // TYPES for everything an input names — a parameter or a body can be a
+    // `$ref` too (GitHub's spec does this heavily).
     const schemaImports = new Set<string>()
-    for (const op of ops) collectRefs(op.response, schemaImports)
-    if (schemaImports.size > 0) f.import(schemaSpecifier(path), ...schemaImports)
-
-    // Built once per operation. The previous form called `responseCfg` a second
-    // time just to test the string for `s.`, which rebuilt every response
-    // schema expression in the tag for a substring check.
-    const models = new Map(doc.models.map((m) => [m.name, m.type]))
-    const clauses = ops.map((op) => webEndpointCfg(op, validator, models))
-    // A composite clause (`array(Book)`, a union) needs the binding itself.
-    if (clauses.some((c) => c.includes(`${dialect.binding}.`))) {
-      f.import(dialect.module, dialect.binding)
+    const typeImports = new Set<string>()
+    for (const op of ops) {
+      collectRefs(op.response, schemaImports)
+      for (const p of op.pathParams) collectRefs(p.type, typeImports)
+      for (const p of op.queryParams) collectRefs(p.type, typeImports)
+      collectRefs(op.body, typeImports)
     }
+    if (schemaImports.size > 0) f.import(schemaSpecifier(path), ...schemaImports)
+    if (typeImports.size > 0) f.importType(schemaSpecifier(path), ...typeImports)
+
+    const decls = ops.map((op) => endpointDecl(op, validator, models))
+    // A composite clause (`array(Book)`, a union) needs the binding itself.
+    if (decls.some((d) => d.usesBinding(dialect.binding))) f.import(dialect.module, dialect.binding)
 
     for (const [i, op] of ops.entries()) {
+      const d = decls[i] as EndpointDecl
       f.line()
+      if (d.responseConst) f.line(d.responseConst)
       f.doc(op.summary, `\`${endpointSpec(op)}\``)
-      f.line(`export const ${op.id} = api.endpoint(${q(endpointSpec(op))}${clauses[i] ?? ''})`)
+      f.line(`export const ${op.id} = api.endpoint${d.generics}(${q(endpointSpec(op))}${d.config})`)
     }
     files.push(f)
   }
   return files
+}
+
+interface EndpointDecl {
+  /** `<Spec, V, Input[, Kind]>`. */
+  generics: string
+  /** `, { … }`, or `''`. */
+  config: string
+  /** A named response schema, when the generics must name its type. */
+  responseConst: string | undefined
+  usesBinding(binding: string): boolean
+}
+
+/**
+ * One endpoint declaration.
+ *
+ * The declaration is where every call-site type is DECIDED (dx D6): its
+ * generics carry the input type (`params`, `query`, `json`, each required
+ * exactly where the spec says) and the response kind, so a direct call —
+ * a loader, a server route, a script — is as strictly typed as a hook, and
+ * the hooks derive theirs from it instead of re-rendering the spec (A8).
+ *
+ * TypeScript has no partial inference, so naming the input means naming the
+ * response schema's TYPE too, which is why a composite response gets a named
+ * `const` here.
+ */
+function endpointDecl(op: IrOperation, validator: ValidatorName, models: ModelTypes): EndpointDecl {
+  const entries: string[] = []
+  const kind = responseTypeOf(op)
+  let responseConst: string | undefined
+  let v = 'undefined'
+  if (op.response && op.response.kind !== 'unknown') {
+    const expr = schemaExpr(op.response, { native: false, validator })
+    if (op.response.kind === 'ref') {
+      entries.push(`response: ${op.response.name}`)
+      v = `typeof ${op.response.name}`
+    } else {
+      // `$` cannot come out of `ident()` or `modelIdent()`, so this name can
+      // never collide with an operation, a model or an emitter binding.
+      const name = `${op.id}$response`
+      responseConst = `const ${name} = ${expr}`
+      entries.push(`response: ${name}`)
+      v = `typeof ${name}`
+    }
+  }
+  if (kind !== undefined) entries.push(`responseType: ${q(kind)}`)
+  const styles = op.queryParams.flatMap((p) => {
+    const style = runtimeQueryStyle(p, models)
+    return style ? [`${propKey(p.name)}: ${style}`] : []
+  })
+  if (styles.length > 0) entries.push(`queryStyle: { ${styles.join(', ')} }`)
+  // ALWAYS explicit, even for an operation that sends nothing: its input is
+  // then `{}`, so a direct call cannot pass a query or a body the spec never
+  // declared — the loose default would accept both.
+  const generics = `<${[q(endpointSpec(op)), v, inputType(op, models), ...(kind ? [q(kind)] : [])].join(', ')}>`
+  const config = entries.length > 0 ? `, { ${entries.join(', ')} }` : ''
+  return {
+    generics,
+    config,
+    responseConst,
+    usesBinding: (binding) => new RegExp(`\\b${binding}\\.`).test(`${config} ${responseConst ?? ''}`),
+  }
 }
 
 /**
@@ -261,31 +455,6 @@ function responseCfg(
   if (!op.response) return ''
   if (op.response.kind === 'unknown') return ''
   return `, { response: ${schemaExpr(op.response, { native, validator, models })} }`
-}
-
-/**
- * The WEB endpoint's config clause: the response schema plus anything else
- * the runtime needs to know about the operation.
- *
- * Built as a list of entries so each concern is one line of reasoning. The
- * NATIVE layout deliberately does not use this: PMTC reports any endpoint
- * option it cannot lower, and the native data components never pass a query.
- */
-function webEndpointCfg(
-  op: IrOperation,
-  validator: ValidatorName,
-  models: ReadonlyMap<string, IrType>,
-): string {
-  const entries: string[] = []
-  if (op.response && op.response.kind !== 'unknown') {
-    entries.push(`response: ${schemaExpr(op.response, { native: false, validator })}`)
-  }
-  const styles = op.queryParams.flatMap((p) => {
-    const style = runtimeQueryStyle(p, models)
-    return style ? [`${propKey(p.name)}: ${style}`] : []
-  })
-  if (styles.length > 0) entries.push(`queryStyle: { ${styles.join(', ')} }`)
-  return entries.length > 0 ? `, { ${entries.join(', ')} }` : ''
 }
 
 /**
@@ -330,6 +499,7 @@ function resolvedKind(type: IrType, models: ReadonlyMap<string, IrType>, depth =
 /** WEB layout: `queries.ts` — reactive hooks, one per operation. */
 export function emitWebQueries(doc: IrDocument): SourceFile[] {
   const files: SourceFile[] = []
+  const queryOps = doc.operations.filter((o) => !isMutation(o))
   for (const [tag, ops] of byTag(doc)) {
     const path = `queries/${tagFile(tag)}.ts`
     const f = new SourceFile(path)
@@ -337,47 +507,59 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
     f.import(relativeSpecifier(path, epPath), ...ops.map((o) => o.id))
     const usesQuery = ops.some((o) => !isMutation(o))
     const usesMutation = ops.some((o) => isMutation(o))
-    if (usesQuery) f.import('@pyreon/query', 'useQuery')
-    if (usesMutation) f.import('@pyreon/query', 'useMutation')
-
-    // Import exactly what the emitted lines reference: response types for
-    // queries, ARG types (which carry the body) for mutations. Collecting both
-    // for every operation leaves an unused import, which is a lint error in a
-    // consumer's repo and a confusing one, since nobody wrote the file.
-    const typeImports = new Set<string>()
-    for (const op of ops) {
-      if (isMutation(op)) collectRefs(op.body, typeImports)
-      else collectRefs(op.response, typeImports)
-      // A PARAMETER's schema can be a `$ref` too - GitHub's spec does this
-      // heavily (`AlertNumber`, `CodeScanningRef`). Collecting only the
-      // response and body left those names used in the args type and never
-      // imported, so the generated module did not compile.
-      for (const p of op.pathParams) collectRefs(p.type, typeImports)
-      for (const p of op.queryParams) collectRefs(p.type, typeImports)
+    if (usesQuery) {
+      f.import('@pyreon/query', 'useQuery')
+      f.importType('@pyreon/query', 'UseQueryOptions')
     }
-    if (typeImports.size > 0) f.importType(schemaSpecifier(path), ...typeImports)
+    if (usesMutation) {
+      f.import('@pyreon/query', 'useMutation')
+      f.importType('@pyreon/query', 'MutationOptions')
+    }
+    // Invalidation targets can live in another tag's endpoint module.
+    for (const op of ops.filter(isMutation)) {
+      for (const target of invalidationTargets(op, queryOps)) {
+        if (target.tag !== tag) f.import(relativeSpecifier(path, `endpoints/${tagFile(target.tag)}.ts`), target.id)
+      }
+    }
 
     for (const op of ops) {
-      const args = argsType(op)
       const hook = `use${typeIdent(op.id)}`
-      const ret = op.response ? tsType(op.response) : 'void'
+      // Every type below is DERIVED from the endpoint declaration, never
+      // re-rendered from the spec — the declaration is the one source.
+      const data = `Awaited<ReturnType<typeof ${op.id}>>`
+      const input = `Parameters<typeof ${op.id}>[0]`
       f.line()
       if (isMutation(op)) {
-        // The variables type is the endpoint's own call args, so a caller
-        // that forgets `json` (or misspells a path param) is a compile error
-        // rather than a request the server rejects at runtime.
-        const vars = args ?? 'Record<string, never>'
+        const targets = invalidationTargets(op, queryOps)
+        const vars = hasInput(op) ? input : 'void'
         f.doc(
           op.summary,
           `\`${endpointSpec(op)}\``,
           '',
           'Mutation options are a plain object — imperative, nothing to track.',
+          targets.length > 0
+            ? `On success it invalidates the queries this operation can change (${targets.map((t) => `\`${t.id}\``).join(', ')}); pass \`invalidates\` to replace that list, or \`[]\` to turn it off.`
+            : undefined,
+          '`onMutate` / `onError` / `onSettled` take the usual optimistic-update shape — see `optimisticUpdate` in `./keys`.',
         )
-        f.line(`export function ${hook}() {`)
-        f.line(`  return useMutation({ mutationFn: (vars: ${vars}) => ${op.id}(vars) })`)
+        f.line(`export function ${hook}(`)
+        f.line(`  options?: Omit<MutationOptions<${data}, Error, ${vars}>, 'mutationFn'>,`)
+        f.line(') {')
+        f.line('  return useMutation({')
+        f.line(
+          hasInput(op)
+            ? `    mutationFn: (vars: ${input}) => ${op.id}(vars),`
+            : `    mutationFn: () => ${op.id}(),`,
+        )
+        if (targets.length > 0) {
+          f.line(`    invalidates: [${targets.map((t) => `${t.id}.key.prefix`).join(', ')}],`)
+        }
+        f.line('    ...options,')
+        f.line('  })')
         f.line('}')
         continue
       }
+      const args = hasInput(op)
       f.doc(
         op.summary,
         `\`${endpointSpec(op)}\``,
@@ -387,38 +569,27 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
         // the query key move and the request refetch.
         args ? 'Takes an ACCESSOR so signal reads in the arguments stay reactive.' : undefined,
         // The single most common way to get a detail query wrong is to fire it
-        // before its id exists. Returning `undefined` is how you say "not yet";
-        // deriving `enabled` from that means the condition is written ONCE
-        // instead of duplicated between a placeholder argument and an
-        // `enabled` option that has to agree with it.
+        // before its id exists. Returning `undefined` is how you say "not yet".
         args
           ? 'Return `undefined` from `args` while the arguments are not ready — the query is DISABLED rather than fired with a placeholder.'
           : undefined,
-        'Second accessor merges extra query options (`enabled`, `staleTime`, `select`).',
+        'Second accessor merges typed query options (`enabled`, `staleTime`, `select` — which changes the result type).',
         '',
-        // Worth stating on every generated hook: the result fields are signals,
-        // and reading one WITHOUT calling it yields the signal function, which
-        // is truthy. `data ?? []` then skips the fallback and `.length` reads
-        // the function's arity — a silent zero rather than an error.
         'Result fields are SIGNALS: `q.data()`, `q.isPending()` — call them.',
       )
-      const extra = 'options?: () => Record<string, unknown>'
+      const extra = `options?: () => Omit<UseQueryOptions<${data}, Error, TData>, 'queryKey' | 'queryFn'>`
       if (args) {
-        // `| undefined` WIDENS the accepted type, so every existing call site
-        // still compiles; what changes is that returning it now means
-        // "disabled" rather than a crash on a missing path parameter.
-        f.line(`export function ${hook}(args: () => ${args} | undefined, ${extra}) {`)
-        f.line(`  return useQuery<${ret}>(() => {`)
+        f.line(`export function ${hook}<TData = ${data}>(`)
+        f.line(`  args: () => ${input} | undefined,`)
+        f.line(`  ${extra},`)
+        f.line(') {')
+        f.line(`  return useQuery<${data}, Error, TData>(() => {`)
         f.line('    const a = args()')
         f.line('    const extra = options?.() ?? {}')
         // The disabled branch keys on the endpoint's own PREFIX — the same key
-        // `keys` exposes, and exactly what `.query()` would produce for absent
-        // arguments — so an invalidation of the endpoint still matches it.
-        //
-        // `enabled` sits AFTER the spread deliberately: a caller's
-        // `enabled: true` must not be able to fire a request whose path
-        // parameter is missing. `enabled: false` still disables, via the
-        // branch below.
+        // `keys` exposes — so an invalidation of the endpoint still matches it.
+        // `enabled` sits AFTER the spread: a caller's `enabled: true` must not
+        // fire a request whose path parameter is missing.
         f.line('    if (a === undefined) {')
         f.line(
           `      return { queryKey: ${op.id}.key.prefix, queryFn: ${DISABLED_FN}, ...extra, enabled: false }`,
@@ -427,14 +598,31 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
         f.line(`    return { ...${op.id}.query(a), ...extra, enabled: extra.enabled !== false }`)
         f.line('  })')
       } else {
-        f.line(`export function ${hook}(${extra}) {`)
-        f.line(`  return useQuery<${ret}>(() => ({ ...${op.id}.query(), ...options?.() }))`)
+        f.line(`export function ${hook}<TData = ${data}>(${extra}) {`)
+        f.line(`  return useQuery<${data}, Error, TData>(() => ({ ...${op.id}.query(), ...options?.() }))`)
       }
       f.line('}')
     }
     files.push(f)
   }
   return files
+}
+
+/**
+ * The queries a mutation can change, derived from paths (audit E2).
+ *
+ * A mutation on `/pets/:id` changes that pet AND the `/pets` collection it
+ * lives in, so the scope is the path with one trailing parameter segment
+ * removed: every GET at or below it is invalidated. `POST /pets` scopes to
+ * `/pets` itself. Conservative in the direction that matters — an extra
+ * refetch is cheap, a stale list after a create is a bug report.
+ */
+export function invalidationTargets(op: IrOperation, queryOps: readonly IrOperation[]): IrOperation[] {
+  const segs = op.path.split('/')
+  const last = segs[segs.length - 1] ?? ''
+  const scope = last.startsWith(':') ? segs.slice(0, -1).join('/') : op.path
+  const within = (p: string): boolean => scope === '' || p === scope || p.startsWith(`${scope}/`)
+  return queryOps.filter((candidate) => within(candidate.path)).sort((a, b) => byCodeUnit(a.id, b.id))
 }
 
 /**
