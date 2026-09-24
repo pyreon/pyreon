@@ -198,6 +198,8 @@ Routes live in `src/routes/`. The file path maps directly to the URL:
 | `src/routes/users/[id].tsx`     | `/users/:id` |
 | `src/routes/blog/[...slug].tsx` | `/blog/*`    |
 
+Parameter names may contain letters, digits, `_` and `-`: `[post-id].tsx` reads as `params['post-id']`.
+
 ### Special Files
 
 | File           | Purpose                                                                |
