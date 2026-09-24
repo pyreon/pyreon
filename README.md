@@ -95,7 +95,7 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/router`](packages/core/router/) | Hash/history router, nested routes, guards, loaders, prefetching, `useIsActive` |
 | [`@pyreon/head`](packages/core/head/) | `useHead()` — reactive document head management with SSR |
 | [`@pyreon/server`](packages/core/server/) | `createHandler` (SSR), `prerender` (SSG), `island()` architecture |
-| [`@pyreon/primitives`](packages/core/primitives/) | 15 canonical multi-platform primitives — `Stack`, `Inline`, `Text`, `Button`, `Field`… one source → DOM + SwiftUI + Compose |
+| [`@pyreon/primitives`](packages/core/primitives/) | 20 canonical multi-platform primitives — `Stack`, `Inline`, `Text`, `Button`, `Field`… one source → DOM + SwiftUI + Compose |
 | [`@pyreon/sized-map`](packages/core/sized-map/) | Bounded `Map<K, V>` — FIFO (default) or LRU-on-read eviction |
 
 ### Fundamentals
@@ -122,7 +122,7 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/flow`](packages/fundamentals/flow/) | Flow diagrams — signal-native nodes, edges, pan/zoom, auto-layout |
 | [`@pyreon/code`](packages/fundamentals/code/) | Code editor — CodeMirror 6 with signals, minimap, diff editor |
 | [`@pyreon/document`](packages/fundamentals/document/) | Universal document rendering — 18 primitives, 20 output formats |
-| [`@pyreon/rx`](packages/fundamentals/rx/) | Signal-aware transforms — filter, map, sortBy, groupBy, pipe, debounce, 39 functions |
+| [`@pyreon/rx`](packages/fundamentals/rx/) | 42 signal-aware transforms — filter, map, sortBy, groupBy, pipe, debounce |
 | [`@pyreon/toast`](packages/fundamentals/toast/) | Toast notifications — imperative API, auto-dismiss, a11y |
 | [`@pyreon/url-state`](packages/fundamentals/url-state/) | URL-synced state — auto type coercion, schema mode, SSR-safe |
 | [`@pyreon/dnd`](packages/fundamentals/dnd/) | Drag and drop — sortable, droppable, file drop, keyboard support |
