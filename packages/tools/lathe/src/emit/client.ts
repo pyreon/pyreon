@@ -156,9 +156,16 @@ function emitAdapterClient(
   return f
 }
 
-/** The `'GET /users/:id'` literal an endpoint is declared with. */
+/**
+ * The `'GET /users/:id'` literal an endpoint is declared with.
+ *
+ * An operation with its OWN server carries it in the literal
+ * (`'POST https://upload.box.com/api/2.0/files'`): every client here treats an
+ * absolute path as overriding the base URL, so that one call goes to its own
+ * host while the rest keep the shared client.
+ */
 export function endpointSpec(op: IrOperation): string {
-  return `${op.method} ${op.path}`
+  return `${op.method} ${op.baseUrl ?? ''}${op.path}`
 }
 
 /**
@@ -527,6 +534,16 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
       'because PMTC resolves nothing across file boundaries.',
     )
     f.line(`const api = createHttp({ baseUrl: ${q(baseUrlOf(doc, opts))}, schema: standardSchema })`)
+    // PMTC bakes `baseUrl + path` at compile time, so an operation with its
+    // own server cannot carry the host in the path the way the web layout
+    // does -- it gets its own literal-base client instead, which lowers.
+    const hosts = [...new Set(ops.map((o) => o.baseUrl).filter((b): b is string => b !== undefined))].sort()
+    const clientOf = new Map<string, string>()
+    hosts.forEach((h, i) => {
+      const name = `api${i + 2}`
+      clientOf.set(h, name)
+      f.line(`const ${name} = createHttp({ baseUrl: ${q(h)}, schema: standardSchema })`)
+    })
 
     // Schemas, inlined. The TRANSITIVE closure, not just the models an
     // operation names: a native module imports nothing, so inlining `Order`
@@ -558,8 +575,9 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
     for (const op of ops) {
       f.line()
       f.doc(op.summary, `\`${endpointSpec(op)}\``)
+      const client = op.baseUrl ? (clientOf.get(op.baseUrl) as string) : 'api'
       f.line(
-        `export const ${op.id} = api.endpoint(${q(endpointSpec(op))}${responseCfg(op, true, dialect.name, modelTypes)})`,
+        `export const ${op.id} = ${client}.endpoint(${q(`${op.method} ${op.path}`)}${responseCfg(op, true, dialect.name, modelTypes)})`,
       )
     }
 

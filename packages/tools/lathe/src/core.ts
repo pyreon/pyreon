@@ -27,7 +27,7 @@ export {
   type ResolvedConfig,
 } from './core/config'
 export { generate, type GenerateResult, type GeneratedFile } from './core/generate'
-export { loadOpenApi } from './input/openapi'
+export { loadOpenApi, type LoadOptions } from './input/openapi'
 export { parseSpecText, parseYaml, YamlError } from './input/yaml'
 export {
   resolveTransform,

@@ -155,6 +155,12 @@ export interface IrOperation {
   method: HttpMethod
   /** Pyreon-shaped path: `/users/:id`, NOT OpenAPI's `/users/{id}`. */
   path: string
+  /**
+   * The operation's OWN server, when its operation- or path-level `servers`
+   * differ from the document's. Absolute; a config `baseUrl` does not
+   * override it.
+   */
+  baseUrl?: string | undefined
   /** Grouping key from the spec's first tag; `default` when untagged. */
   tag: string
   summary?: string | undefined

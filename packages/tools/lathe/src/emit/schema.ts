@@ -96,6 +96,14 @@ export function tsType(type: IrType, depth = 0, widenEnums = false, native = fal
       const body = type.fields
         .map((f) => `${pad}${propKey(f.name)}${f.required ? '' : '?'}: ${fieldTs(f, depth + 1, widenEnums, native, files)}`)
         .join('\n')
+      if (type.additional && !native) {
+        // An index signature must admit every declared property's type too.
+        const values = new Set([
+          tsType(type.additional, depth + 1, widenEnums, native, files),
+          ...type.fields.map((f) => fieldTs(f, depth + 1, widenEnums, native, files)),
+        ])
+        return `{\n${body}\n${close}} & Record<string, ${[...values].join(' | ')}>`
+      }
       return `{\n${body}\n${close}}`
     }
   }
@@ -200,7 +208,10 @@ export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): st
       const pad = '  '.repeat(depth + 1)
       const close = '  '.repeat(depth)
       const body = type.fields.map((f) => `${pad}${propKey(f.name)}: ${fieldSchema(f, opts, depth + 1)},`).join('\n')
-      return `${b}.object({\n${body}\n${close}})`
+      // Declared properties AND an `additionalProperties` schema: the extra
+      // keys are typed too. Dropping the map part accepted any value there.
+      const rest = type.additional && !opts.native ? `.catchall(${schemaExpr(type.additional, opts, depth + 1)})` : ''
+      return `${b}.object({\n${body}\n${close}})${rest}`
     }
   }
 }
@@ -413,7 +424,9 @@ export function emitTypes(doc: IrDocument): SourceFile {
     f.line()
     f.doc(model.doc)
     const rendered = tsType(model.type)
-    const keyword = rendered.startsWith('{') ? 'interface' : 'type'
+    // An `interface` only for a plain object literal; `{…} & Record<…>` (an
+    // object with typed extra keys) is not a legal interface body.
+    const keyword = rendered.startsWith('{') && rendered.endsWith('}') ? 'interface' : 'type'
     f.line(keyword === 'interface' ? `export interface ${model.name} ${rendered}` : `export type ${model.name} = ${rendered}`)
   }
   return f

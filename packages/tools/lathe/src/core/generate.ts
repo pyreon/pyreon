@@ -29,7 +29,7 @@ import { emitSchemas, emitTypes } from '../emit/schema'
 import { banner, jsonLiteral, type GeneratedFile } from '../emit/writer'
 import type { ResolvedConfig } from './config'
 import type { IrDocument, IrOperation, Reach } from './ir'
-import { loadOpenApi } from '../input/openapi'
+import { loadOpenApi, type LoadOptions } from '../input/openapi'
 import { extractSurface, type ApiSurface } from './surface'
 
 export interface GenerateResult {
@@ -49,8 +49,13 @@ export interface GenerateResult {
 }
 
 /** Run the pipeline over a spec document's text. */
-export function generate(specText: string, config: ResolvedConfig): GenerateResult {
-  const { doc } = loadOpenApi(specText)
+export function generate(
+  specText: string,
+  config: ResolvedConfig,
+  /** Where the spec came from; resolves a relative `servers[].url`. */
+  options: LoadOptions = {},
+): GenerateResult {
+  const { doc } = loadOpenApi(specText, options)
   const native = config.target === 'multiplatform'
   const files: GeneratedFile[] = []
   const reach = reachOf(doc, config)
@@ -183,7 +188,7 @@ function reachOf(doc: IrDocument, config: ResolvedConfig): Map<string, { reach: 
   const out = new Map<string, { reach: Reach; reason?: string }>()
   const baseUrl = config.baseUrl ?? doc.baseUrl
   for (const op of doc.operations) {
-    out.set(op.id, decide(op, baseUrl))
+    out.set(op.id, decide(op, op.baseUrl ?? baseUrl))
   }
   return out
 }

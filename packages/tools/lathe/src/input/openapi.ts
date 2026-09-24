@@ -24,6 +24,7 @@ import type {
   StringFormat,
 } from '../core/ir'
 import { assignNames, ident, operationIdFrom, tagFile, typeIdent } from '../core/naming'
+import { splitByDirection } from './direction'
 import { parseSpecText } from './yaml'
 
 type Json = Record<string, unknown>
@@ -35,16 +36,64 @@ export interface LoadResult {
   doc: IrDocument
 }
 
+export interface LoadOptions {
+  /**
+   * The URL the spec was fetched from. A RELATIVE `servers[].url` (petstore's
+   * `/api/v3`) is resolved against it, as OpenAPI specifies; without it a
+   * relative server stays relative and is reported.
+   */
+  sourceUrl?: string | undefined
+}
+
 /** Parse a spec document (JSON or YAML text) into the IR. */
-export function loadOpenApi(source: string): LoadResult {
+export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResult {
   const raw = parseSpecText(source)
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('[Pyreon] lathe: spec did not parse to an object')
   }
-  return { doc: convert(raw as Json) }
+  return { doc: convert(raw as Json, options) }
 }
 
-function convert(spec: Json): IrDocument {
+/**
+ * The URL a `servers[]` entry means.
+ *
+ * Server VARIABLES (`https://{region}.api.test/{version}`) are substituted with
+ * their `default` -- the value OpenAPI says to use when none is chosen; they
+ * were baked in with literal braces. A RELATIVE url is resolved against the
+ * spec's own URL when that is known (OpenAPI §Server Object).
+ */
+function serverUrl(server: Json | undefined, at: string, ctx: Ctx, sourceUrl: string | undefined): string {
+  let url = str(server?.url)
+  if (!url) return ''
+  const vars = obj(server?.variables)
+  url = url.replace(/\{([^}]+)\}/g, (match, name: string) => {
+    const def = obj(vars?.[name])?.default
+    if (typeof def === 'string' || typeof def === 'number') return String(def)
+    ctx.notes.push({
+      code: 'no-servers',
+      at,
+      message: `server variable \`{${name}}\` has no default — it stays in the URL literally. Pass \`baseUrl\` in the config.`,
+    })
+    return match
+  })
+  if (!/^[a-z][a-z\d+.-]*:/i.test(url)) {
+    if (sourceUrl) {
+      try {
+        return stripTrailingSlash(new URL(url, sourceUrl).href)
+      } catch {
+        // An unparseable source URL leaves the server relative; reported below.
+      }
+    }
+    ctx.notes.push({
+      code: 'no-servers',
+      at,
+      message: `server url \`${url}\` is RELATIVE — the web client resolves it against the page's origin, but native needs an absolute URL (PMTC bakes it at compile time). Pass \`baseUrl\` in the config, or generate from the spec's URL so it can be resolved.`,
+    })
+  }
+  return stripTrailingSlash(url)
+}
+
+function convert(spec: Json, options: LoadOptions = {}): IrDocument {
   const notes: IrNote[] = []
   const ctx: Ctx = {
     spec,
@@ -58,12 +107,16 @@ function convert(spec: Json): IrDocument {
     reentered: new Set(),
     extraModels: [],
     taken: new Set(),
+    baseUrl: '',
+    sourceUrl: undefined,
   }
 
   const info = obj(spec.info) ?? {}
   const servers = arr(spec.servers)
   const firstServer = servers.length > 0 ? obj(servers[0]) : undefined
-  const baseUrl = typeof firstServer?.url === 'string' ? stripTrailingSlash(firstServer.url) : ''
+  const baseUrl = serverUrl(firstServer, '#/servers/0', ctx, options.sourceUrl)
+  ctx.baseUrl = baseUrl
+  ctx.sourceUrl = options.sourceUrl
   if (baseUrl === '') {
     notes.push({
       code: 'no-servers',
@@ -100,6 +153,10 @@ function convert(spec: Json): IrDocument {
   // RECURSIVE were hoisted into named models while converting; they join the
   // document here, after every conversion that could add one.
   models.push(...ctx.extraModels)
+
+  // readOnly / writeOnly: request and response shapes of one model. Before the
+  // union pass, so a discriminator is validated against the final shapes.
+  splitByDirection(models, operations, (base) => claimName(base, ctx))
 
   // Post-pass: two union shapes a real spec produces that the emitted schema
   // DSL cannot express. Runs here, after models exist, because deciding either
@@ -258,6 +315,10 @@ interface Ctx {
   extraModels: IrModel[]
   /** Every model name in use, so a synthesized one never collides. */
   taken: Set<string>
+  /** The document's resolved base URL (`servers[0]`). */
+  baseUrl: string
+  /** Where the spec came from, for resolving relative server URLs. */
+  sourceUrl: string | undefined
 }
 
 /**
@@ -379,9 +440,14 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
           doc: str(po.description),
         })
       }
+      // Operation- and path-level `servers` override the document's (Box's
+      // uploads go to upload.box.com, not api.box.com). They were ignored.
+      const ownServers = arr(op.servers).length > 0 ? arr(op.servers) : arr(item.servers)
+      const ownBase = ownServers.length > 0 ? serverUrl(obj(ownServers[0]), `${at}/servers/0`, ctx, ctx.sourceUrl) : ''
       ops.push({
         id,
         method,
+        baseUrl: ownBase !== '' && ownBase !== ctx.baseUrl ? ownBase : undefined,
         path: toPyreonPath(rawPath, placeholderIds),
         tag: tagNames.get(str(arr(op.tags)[0]) ?? 'default') as string,
         summary: str(op.summary) ?? str(op.description),
@@ -645,22 +711,60 @@ function toTypeNonNull(schema: Json, at: string, ctx: Ctx): IrType {
   // An EMPTY `oneOf`/`anyOf` falls through to the type switch and lands on
   // `unknown` anyway, which is safe -- but silently. A spec that declares a
   // union of nothing is worth saying out loud.
+  const oneOf = arr(schema.oneOf)
+  const anyOf = arr(schema.anyOf)
   const declaredUnion = Array.isArray(schema.oneOf) || Array.isArray(schema.anyOf)
-  const anyOf = arr(schema.oneOf).length > 0 ? arr(schema.oneOf) : arr(schema.anyOf)
-  if (declaredUnion && anyOf.length === 0) {
+  if (declaredUnion && oneOf.length === 0 && anyOf.length === 0) {
     ctx.notes.push({ code: 'unsupported-schema', at, message: 'empty oneOf/anyOf - typed as unknown.' })
     return { kind: 'unknown', reason: 'empty union' }
   }
-  if (anyOf.length > 0) {
+  if (oneOf.length > 0 || anyOf.length > 0) {
+    // The WIRE name. It was `ident()`-ed, which turned `pet_type` into
+    // `petType` -- a key no member has, so `s.discriminatedUnion` threw at
+    // module import in dev and made every member unreachable in production.
     const discriminator = str(obj(schema.discriminator)?.propertyName)
-    return {
-      kind: 'union',
-      options: anyOf.map((o, i) => toType(obj(o) ?? {}, `${at}/oneOf/${i}`, ctx)),
-      // The WIRE name. It was `ident()`-ed, which turned `pet_type` into
-      // `petType` -- a key no member has, so `s.discriminatedUnion` threw at
-      // module import in dev and made every member unreachable in production.
-      discriminator,
+    const unions: IrType[] = []
+    if (oneOf.length > 0) {
+      unions.push({ kind: 'union', options: oneOf.map((o, i) => toType(obj(o) ?? {}, `${at}/oneOf/${i}`, ctx)), discriminator })
     }
+    if (anyOf.length > 0) {
+      unions.push({
+        kind: 'union',
+        options: anyOf.map((o, i) => toType(obj(o) ?? {}, `${at}/anyOf/${i}`, ctx)),
+        discriminator: oneOf.length > 0 ? undefined : discriminator,
+      })
+    }
+    // Properties NEXT TO the union are shared by every member (GitHub 14,
+    // OpenAI 2), and a schema with both `oneOf` and `anyOf` must satisfy both.
+    // Each was silently dropped; both are an allOf of their parts, so they
+    // take the same merge.
+    const base = siblingObject(schema)
+    if (unions.length === 1 && !base) return unions[0] as IrType
+    if (unions.length === 1 && base) {
+      // Merge per member from the RAW member, so a member that only adds
+      // `required: [x]` to the shared properties keeps that requirement.
+      const baseType = toTypeNonNull(base, at, ctx)
+      const members = oneOf.length > 0 ? oneOf : anyOf
+      const union = unions[0] as Extract<IrType, { kind: 'union' }>
+      return {
+        kind: 'union',
+        options: members.map((m, i) =>
+          mergeParts(
+            [
+              { type: baseType, required: [] },
+              { type: union.options[i] as IrType, required: stringList(obj(m)?.required) },
+            ],
+            at,
+            ctx,
+          ),
+        ),
+        discriminator: union.discriminator,
+      }
+    }
+    const parts: MergePart[] = []
+    if (base) parts.push({ type: toTypeNonNull(base, at, ctx), required: stringList(schema.required) })
+    for (const u of unions) parts.push({ type: u, required: [] })
+    return mergeParts(parts, at, ctx)
   }
 
   // `const` (3.1) and `enum` are both a closed set of values, so they share a
@@ -878,52 +982,216 @@ function fieldsOf(schema: Json, props: Json, at: string, ctx: Ctx): IrField[] {
   return out
 }
 
+/** One operand of an `allOf`-style merge. */
+interface MergePart {
+  type: IrType
+  /** A part's own `required` list -- `{ required: [x] }` has no properties at all. */
+  required: readonly string[]
+}
+
+function stringList(v: unknown): string[] {
+  return arr(v).filter((x): x is string => typeof x === 'string')
+}
+
+/** The object-shaped siblings of a union or allOf, as a schema, if any. */
+function siblingObject(schema: Json): Json | undefined {
+  if (!obj(schema.properties) && schema.additionalProperties === undefined) return undefined
+  return {
+    type: 'object',
+    properties: schema.properties,
+    required: schema.required,
+    additionalProperties: schema.additionalProperties,
+  }
+}
+
 function mergeAllOf(parts: unknown[], self: Json, at: string, ctx: Ctx): IrType {
-  const fields: IrField[] = []
-  const seen = new Set<string>()
-  let sawNonObject = false
-  const push = (t: IrType): void => {
-    // A nullable part (GitHub's `nullable-*` models) still contributes its
-    // fields; whether the MERGED shape admits null is the allOf's own call.
-    if (t.kind === 'nullable') { push(t.inner); return }
-    if (t.kind === 'object') {
-      for (const f of t.fields) {
-        if (seen.has(f.name)) continue
-        seen.add(f.name)
-        fields.push(f)
-      }
-      return
+  const merged: MergePart[] = parts.map((p, i) => {
+    const raw = obj(p) ?? {}
+    return { type: toType(raw, `${at}/allOf/${i}`, ctx), required: stringList(raw.required) }
+  })
+  // Properties / required / additionalProperties declared ALONGSIDE the allOf
+  // are one more part. A sibling `oneOf` is one more part too.
+  const own = siblingObject(self)
+  if (own) merged.push({ type: toTypeNonNull(own, at, ctx), required: [] })
+  else if (Array.isArray(self.required)) merged.push({ type: { kind: 'unknown', reason: 'constraint only' }, required: stringList(self.required) })
+  if (arr(self.oneOf).length > 0 || arr(self.anyOf).length > 0) {
+    const { allOf: _allOf, properties: _p, required: _r, additionalProperties: _a, ...union } = self
+    merged.push({ type: toTypeNonNull(union, at, ctx), required: [] })
+  }
+  return mergeParts(merged, at, ctx)
+}
+
+/** Resolve a part through refs; a cyclic one contributes nothing. */
+function resolvePart(t: IrType, at: string, ctx: Ctx): { type: IrType; nullable: boolean } | undefined {
+  if (t.kind === 'nullable') {
+    const inner = resolvePart(t.inner, at, ctx)
+    return inner ? { type: inner.type, nullable: true } : undefined
+  }
+  if (t.kind === 'ref') {
+    const key = ctx.modelKeys.get(t.name)
+    if (key !== undefined) {
+      const target = modelType(key, ctx)
+      if (target) return resolvePart(target, at, ctx)
+      // Still being converted: an allOf CYCLE. A schema that is "all of
+      // itself and X" is just X, so the cyclic part contributes nothing.
+      ctx.notes.push({
+        code: 'cyclic-ref',
+        at,
+        message: `allOf reaches \`${t.name}\` again while merging it — the cyclic part contributes no fields.`,
+      })
+      return undefined
     }
-    if (t.kind === 'ref') {
-      // Resolve the referenced model so its fields flatten in. `allOf` with a
-      // $ref is the standard inheritance idiom and must not degrade to unknown.
-      const key = ctx.modelKeys.get(t.name)
-      if (key !== undefined) {
-        const target = modelType(key, ctx)
-        if (target) { push(target); return }
-        // Still being converted: an allOf CYCLE. A schema that is "all of
-        // itself and X" is just X, so the cyclic part contributes nothing.
-        ctx.notes.push({
-          code: 'cyclic-ref',
+    const hoisted = ctx.extraModels.find((m) => m.name === t.name)
+    if (hoisted) return resolvePart(hoisted.type, at, ctx)
+  }
+  return { type: t, nullable: false }
+}
+
+/** How many merged shapes a union distribution may produce before it gives up. */
+const MAX_DISTRIBUTION = 64
+
+/**
+ * Merge the operands of an `allOf` (or a union with sibling properties).
+ *
+ * The previous flattening kept the FIRST declaration of each field and dropped
+ * everything it could not flatten, silently:
+ *
+ *  - a required-only refinement (`allOf: [{$ref: Base}, {required: [x]}]`)
+ *    left `x` optional -- `required` is now the union over every part;
+ *  - a later part refining a field (`status: string` -> `status: enum`) lost
+ *    the refinement -- the more specific type now wins;
+ *  - a part that is itself a `oneOf` vanished whenever any fields existed --
+ *    it now DISTRIBUTES: `A ∧ (B ∨ C)` is `(A ∧ B) ∨ (A ∧ C)`, keeping the
+ *    discriminator;
+ *  - sibling `additionalProperties` / nullability were dropped.
+ */
+function mergeParts(parts: readonly MergePart[], at: string, ctx: Ctx): IrType {
+  const resolved: { type: IrType; nullable: boolean; required: readonly string[] }[] = []
+  for (const p of parts) {
+    const r = resolvePart(p.type, at, ctx)
+    resolved.push(r ? { ...r, required: p.required } : { type: { kind: 'unknown', reason: 'cyclic' }, nullable: false, required: p.required })
+  }
+  // `null` satisfies every part only if every CONSTRAINING part admits it.
+  const constraining = resolved.filter((r) => r.type.kind !== 'unknown')
+  const admitsNull = constraining.length > 0 && constraining.every((r) => r.nullable)
+
+  const unionAt = resolved.findIndex((r) => r.type.kind === 'union')
+  let result: IrType
+  if (unionAt !== -1) {
+    const union = resolved[unionAt]?.type as Extract<IrType, { kind: 'union' }>
+    const rest = resolved.filter((_, i) => i !== unionAt)
+    const width = resolved.reduce((n, r) => n * (r.type.kind === 'union' ? r.type.options.length : 1), 1)
+    if (width > MAX_DISTRIBUTION) {
+      ctx.notes.push({
+        code: 'unsupported-schema',
+        at,
+        message: `merging these parts would expand to ${width} shapes — kept the first union's members without the other constraints.`,
+      })
+      result = union
+    } else {
+      // The union's members come AFTER the shared parts, so a member's own
+      // refinement of a shared field (its discriminator tag) is what survives.
+      const options = union.options.map((member) =>
+        mergeParts(
+          [...rest.map((r) => ({ type: r.nullable ? nullable(r.type) : r.type, required: r.required })), { type: member, required: [] }],
           at,
-          message: `allOf reaches \`${t.name}\` again while merging it — the cyclic part contributes no fields.`,
-        })
-        return
-      }
-      const hoisted = ctx.extraModels.find((m) => m.name === t.name)
-      if (hoisted) { push(hoisted.type); return }
+          ctx,
+        ),
+      )
+      result = { kind: 'union', options, discriminator: union.discriminator }
     }
-    sawNonObject = true
+  } else {
+    result = mergeObjects(resolved, at, ctx)
   }
-  for (let i = 0; i < parts.length; i++) push(toType(obj(parts[i]) ?? {}, `${at}/allOf/${i}`, ctx))
-  // Properties declared alongside allOf merge in too.
-  const own = obj(self.properties)
-  if (own) for (const f of fieldsOf(self, own, at, ctx)) { if (!seen.has(f.name)) { seen.add(f.name); fields.push(f) } }
-  if (sawNonObject && fields.length === 0) {
-    ctx.notes.push({ code: 'unsupported-schema', at, message: 'allOf of non-object schemas — typed as unknown.' })
-    return { kind: 'unknown', reason: 'allOf of non-objects' }
+  return admitsNull ? nullable(result) : result
+}
+
+function mergeObjects(
+  parts: readonly { type: IrType; required: readonly string[] }[],
+  at: string,
+  ctx: Ctx,
+): IrType {
+  const objects = parts.filter((p) => p.type.kind === 'object')
+  const values = parts.filter((p) => p.type.kind !== 'object' && p.type.kind !== 'unknown')
+  if (objects.length === 0) {
+    if (values.length === 0) return { kind: 'unknown', reason: 'allOf of unconstrained parts' }
+    if (values.length > 1 && !values.every((v) => v.type.kind === values[0]?.type.kind)) {
+      ctx.notes.push({ code: 'unsupported-schema', at, message: 'allOf of incompatible non-object schemas — kept the first.' })
+    }
+    return values.slice(1).reduce((acc, v) => refineType(acc, v.type), (values[0] as { type: IrType }).type)
   }
-  return { kind: 'object', fields, additional: undefined }
+  if (values.length > 0) {
+    ctx.notes.push({
+      code: 'unsupported-schema',
+      at,
+      message: `allOf mixes object and non-object parts (${values.map((v) => v.type.kind).join(', ')}) — the non-object parts are dropped.`,
+    })
+  }
+  const fields = new Map<string, IrField>()
+  let additional: IrType | undefined
+  for (const p of objects) {
+    const o = p.type as Extract<IrType, { kind: 'object' }>
+    for (const f of o.fields) {
+      const prev = fields.get(f.name)
+      fields.set(
+        f.name,
+        prev
+          ? {
+              ...prev,
+              ...f,
+              type: refineType(prev.type, f.type),
+              required: prev.required || f.required,
+              doc: f.doc ?? prev.doc,
+              example: f.example ?? prev.example,
+            }
+          : f,
+      )
+    }
+    if (o.additional !== undefined) additional = o.additional
+  }
+  const required = new Set(parts.flatMap((p) => p.required))
+  const out = [...fields.values()].map((f) => (required.has(f.name) && !f.required ? { ...f, required: true } : f))
+  return { kind: 'object', fields: out, additional }
+}
+
+/**
+ * Two declarations of one value, the second refining the first. The more
+ * SPECIFIC wins: an enum over a plain scalar, anything over `unknown`, and the
+ * tighter bound of two constraints of the same kind.
+ */
+function refineType(a: IrType, b: IrType): IrType {
+  if (a.kind === 'unknown') return b
+  if (b.kind === 'unknown') return a
+  if (a.kind === 'enum' && (b.kind === 'string' || b.kind === 'number' || b.kind === 'boolean')) return a
+  if (b.kind === 'enum') return b
+  if (a.kind === 'string' && b.kind === 'string') {
+    return {
+      kind: 'string',
+      format: b.format ?? a.format,
+      minLength: maxOf(a.minLength, b.minLength),
+      maxLength: minOf(a.maxLength, b.maxLength),
+      pattern: b.pattern ?? a.pattern,
+    }
+  }
+  if (a.kind === 'number' && b.kind === 'number') {
+    return {
+      kind: 'number',
+      integer: a.integer || b.integer,
+      minimum: maxOf(a.minimum, b.minimum),
+      maximum: minOf(a.maximum, b.maximum),
+      exclusiveMinimum: maxOf(a.exclusiveMinimum, b.exclusiveMinimum),
+      exclusiveMaximum: minOf(a.exclusiveMaximum, b.exclusiveMaximum),
+      multipleOf: b.multipleOf ?? a.multipleOf,
+    }
+  }
+  return b
+}
+
+function maxOf(a: number | undefined, b: number | undefined): number | undefined {
+  return a === undefined ? b : b === undefined ? a : Math.max(a, b)
+}
+function minOf(a: number | undefined, b: number | undefined): number | undefined {
+  return a === undefined ? b : b === undefined ? a : Math.min(a, b)
 }
 
 /**

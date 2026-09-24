@@ -142,7 +142,10 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
  * lexical half.
  */
 function mockPath(op: IrOperation, pyreon: boolean): string {
-  if (!pyreon || op.pathParams.length === 0) return q(op.path)
+  // The generated adapters match on the DECLARED path, host included when
+  // the operation has its own server.
+  if (!pyreon) return q(`${op.baseUrl ?? ''}${op.path}`)
+  if (op.pathParams.length === 0) return q(op.path)
   const source = op.path
     .split('/')
     .map((seg) => (seg.startsWith(':') ? '[^/?#]+' : seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))

@@ -98,6 +98,10 @@ paths:
       responses: { '204': { description: stored } }
 components:
   schemas:
+    Labels:
+      type: object
+      properties: { id: { type: string } }
+      additionalProperties: { type: integer }
     Upload:
       type: object
       required: [file]
@@ -170,7 +174,10 @@ function diagnose(client: ClientName, validator: ValidatorName): string[] {
     // nowhere else.
     plugins: ['schemas', 'client', 'queries', 'mocks', 'faker'],
   })
-  const files = generate(SPEC, cfg).files.filter((f) => f.path.endsWith('.ts'))
+  // `types.ts` is a SECOND rendering of every model (plain TS, no runtime);
+  // it is typechecked too, standalone, because nothing imports it.
+  const typesFile = generate(SPEC, resolveConfig({ input: 'x', plugins: ['types'] })).files.find((f) => f.path === 'types.ts')
+  const files = [...generate(SPEC, cfg).files, ...(typesFile ? [typesFile] : [])].filter((f) => f.path.endsWith('.ts'))
   const root = join(TC_ROOT, `${client}-${validator}`)
   rmSync(root, { recursive: true, force: true })
   for (const f of files) {
