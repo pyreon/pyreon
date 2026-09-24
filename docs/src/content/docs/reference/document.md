@@ -32,7 +32,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 A full, end-to-end usage of the package:
 
 ```tsx
-import { Document, Page, Heading, Text, Table, Image, List, Code, Divider, render, createDocument, download } from '@pyreon/document'
+import { Document, Page, Heading, Text, Table, List, ListItem, Code, Divider, render, createDocument, download } from '@pyreon/document'
 
 // JSX primitives — compose a document tree
 const report = (
@@ -50,7 +50,10 @@ const report = (
       />
       <Divider />
       <Heading level={2}>Notes</Heading>
-      <List items={['Record quarter for APAC', 'EU impacted by currency exchange']} />
+      <List>
+        <ListItem>Record quarter for APAC</ListItem>
+        <ListItem>EU impacted by currency exchange</ListItem>
+      </List>
       <Code language="sql">SELECT region, SUM(revenue) FROM sales GROUP BY region</Code>
     </Page>
   </Document>
@@ -67,8 +70,8 @@ const slack = await render(report, 'slack')          // Slack Block Kit JSON
 const notion = await render(report, 'notion')        // Notion blocks
 const teams = await render(report, 'teams')          // Adaptive Card JSON
 
-// Browser download helper:
-download(pdf, 'report.pdf')
+// Browser download helper — pass the TREE; the extension picks the format:
+await download(report, 'report.pdf')
 
 // Builder API — alternative to JSX:
 const doc = createDocument({ title: 'Report' })
@@ -87,9 +90,9 @@ await doc.toNotion()    // Notion blocks
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`render`](#render) | function | Render a document node tree to any supported format. |
+| [`render`](#render) | function | Render a document tree to any supported format. |
 | [`createDocument`](#createdocument) | function | Fluent builder API for constructing documents without JSX. |
-| [`Document`](#document) | component | Root JSX primitive for document trees. |
+| [`Document`](#document) | component | Root primitive for document trees. |
 | [`download`](#download) | function | Browser helper that renders a document node tree and triggers a file download in one call. |
 | [`Heading`](#heading) | component | A heading block. |
 | [`Text`](#text) | component | A paragraph / run of text with inline styling props (bold, italic, underline, strikethrough, size, color, align, lineHei |
@@ -107,14 +110,22 @@ await doc.toNotion()    // Notion blocks
 ### render `function`
 
 ```ts
-(node: DocNode, format: OutputFormat, options?: RenderOptions) => Promise<RenderResult>
+(node: DocNode | VNode, format: OutputFormat, options?: RenderOptions) => Promise<RenderResult>
 ```
 
-Render a document node tree to any supported format. Returns a string (HTML, Markdown, text, CSV, email, JSON, JSONL, Slack, Teams, etc.) or Uint8Array (PDF, DOCX, XLSX, PPTX) depending on the format. Heavy format renderers are lazy-loaded on first use. Supports 20 built-in formats plus custom renderers registered via `registerRenderer()`. The `json` format serializes the full DocNode tree (round-trippable — JSON.parse it back and render again); `jsonl` emits one content block per line for ingestion / chunking pipelines.
+Render a document tree to any supported format. The input is a `DocNode` (primitives called directly, or `createDocument()`) OR a JSX / `h()` VNode tree of primitives — `render()` resolves the VNode tree first (components invoked, fragments flattened, `true`/`false`/`null`/`undefined` children dropped), so JSX, `h()` and direct calls produce identical output. Returns a string (HTML, Markdown, text, CSV, email, JSON, JSONL, Slack, Teams, etc.) or Uint8Array (PDF, DOCX, XLSX, PPTX) depending on the format. Heavy format renderers are lazy-loaded on first use. Supports 20 built-in formats plus custom renderers registered via `registerRenderer()`. The `json` format serializes the full DocNode tree (round-trippable — JSON.parse it back and render again); `jsonl` emits one content block per line for ingestion / chunking pipelines.
 
 **Example**
 
 ```tsx
+const doc = (
+  <Document title="Report">
+    <Page>
+      <Heading>Summary</Heading>
+      {showNotes && <Text>Notes</Text>}
+    </Page>
+  </Document>
+)
 const pdf = await render(doc, 'pdf')            // Uint8Array
 const html = await render(doc, 'html')           // string
 const email = await render(doc, 'email')         // Outlook-safe HTML
@@ -126,7 +137,8 @@ const slack = await render(doc, 'slack')          // Slack Block Kit JSON
 
 - Not awaiting the render call — render() is always async due to lazy-loaded format renderers
 - Expecting render("pdf") to return a string — PDF, DOCX, XLSX, PPTX return Uint8Array
-- Passing a VNode instead of a DocNode — render() expects the output of JSX primitives (Document, Page, etc.) or createDocument(), not arbitrary Pyreon VNodes
+- Putting a DOM element in a document tree (`<div>`, `<p>`, `<span>`) — a document tree may only contain @pyreon/document primitives, components that return them, strings and numbers; render() throws `<div> is a DOM element, not a document primitive`. Use `<Section>` / `<Text>` instead.
+- Expecting a signal-driven child to stay live — render() takes a one-shot snapshot: accessor children (`{() => x()}`) and reactive props are read ONCE at render time. Re-render to reflect new values.
 
 **See also:** `createDocument` · `Document` · `download` · `registerRenderer`
 
@@ -168,7 +180,7 @@ await doc.toDocx()     // Word document
 (props: DocumentProps) => DocNode
 ```
 
-Root JSX primitive for document trees. Accepts `title`, `author`, `subject` as metadata props. Children should be `Page` elements (or other block-level primitives for single-page documents). The returned DocNode is passed to `render()` for output.
+Root primitive for document trees. Accepts `title`, `author`, `subject` as metadata props. Children should be `Page` elements (or other block-level primitives for single-page documents). Use it as JSX (`<Document>`), via `h(Document, props, ...children)`, or call it directly (`Document({ title, children })`) — all three render identically. Called directly it returns a `DocNode`; as JSX / `h()` it is a VNode that `render()` / `download()` resolve.
 
 **Example**
 
@@ -191,10 +203,10 @@ await render(doc, 'pdf')
 ### download `function`
 
 ```ts
-(node: DocNode, filename: string, options?: RenderOptions) => Promise<void>
+(node: DocNode | VNode, filename: string, options?: RenderOptions) => Promise<void>
 ```
 
-Browser helper that renders a document node tree and triggers a file download in one call. The FILE EXTENSION on `filename` selects the format (`.pdf` → pdf, `.md` → markdown, `.json` → json, `.jsonl`/`.ndjson` → jsonl, etc.) — it renders internally, so you pass the DocNode, NOT already-rendered bytes. Creates a temporary Blob URL and clicks a hidden anchor. Browser-only — throws on the server.
+Browser helper that renders a document node tree and triggers a file download in one call. The FILE EXTENSION on `filename` selects the format (`.pdf` → pdf, `.md` → markdown, `.json` → json, `.jsonl`/`.ndjson` → jsonl, etc.) — it renders internally, so you pass the document tree (a DocNode or a JSX / `h()` tree), NOT already-rendered bytes. Creates a temporary Blob URL and clicks a hidden anchor. Browser-only — throws on the server.
 
 **Example**
 
@@ -289,7 +301,7 @@ A data table. `columns` (headers, each a string or &#123; header, width?, align?
 (List: { ordered?: boolean; children?: DocChild }) => DocNode · (ListItem: { children?: DocChild }) => DocNode
 ```
 
-A bulleted (default) or numbered list. `List` takes `ordered` (unordered when omitted — there is no applied default, undefined is falsy) and `ListItem` children. NOTE: the JSX `<List items={[…]} />` shorthand in the builder/examples is convenience sugar; the primitive itself nests `ListItem` children. `ListItem` DISCARDS every prop except `children` — it always renders &#123; type: 'list-item', props: &#123;&#125;, children &#125;.
+A bulleted (default) or numbered list. `List` takes `ordered` (unordered when omitted — there is no applied default, undefined is falsy) and `ListItem` children. There is NO `items` prop on the primitive — nest `ListItem` children; only the builder's `.list(items[])` takes an array. `ListItem` DISCARDS every prop except `children` — it always renders &#123; type: 'list-item', props: &#123;&#125;, children &#125;.
 
 **Example**
 
@@ -304,6 +316,7 @@ A bulleted (default) or numbered list. `List` takes `ordered` (unordered when om
 
 - Setting any prop other than `children` on `ListItem` (an id, a style) — it is silently dropped; the primitive hard-codes empty props.
 - Expecting `ordered` to have a truthy default — omitting it yields an UNORDERED list (undefined → falsy).
+- Writing `<List items={[…]} />` — the primitive has no `items` prop (it is a type error, and at runtime the list renders EMPTY). Nest `<ListItem>` children, or use the builder `.list([...])`.
 
 **See also:** `Text`
 
@@ -428,7 +441,7 @@ The structural / layout primitives. `Page` is a page boundary (`size` 'A4'|'A3'|
 registerRenderer(format: string, renderer: DocumentRenderer | (() => Promise<DocumentRenderer>)) => void · unregisterRenderer(format: string) => void · isDocNode(value: unknown) => value is DocNode
 ```
 
-The extension + guard API. `registerRenderer` adds (or REPLACES) a format's renderer — pass a `DocumentRenderer` object (&#123; render(node, options?) &#125;) or a lazy `() => Promise<DocumentRenderer>` loader (every built-in format is a lazy loader; the resolved renderer is cached back into the registry on first use). `unregisterRenderer` deletes a format (no-op if absent). `isDocNode` is a structural type guard.
+The extension + guard API. `registerRenderer` adds (or REPLACES) a format's renderer — pass a `DocumentRenderer` object (&#123; render(node, options?) &#125;) or a lazy `() => Promise<DocumentRenderer>` loader (every built-in format is a lazy loader; the resolved renderer is cached back into the registry on first use). `unregisterRenderer` deletes a format (no-op if absent). `isDocNode` checks for a DocNode: an object with a STRING `type`, `props`, `children`, and NO `key` — so a JSX / `h()` VNode (whose `type` is the primitive function and which carries a `key`) is NOT a DocNode, even though `render()` accepts one.
 
 **Example**
 
@@ -442,7 +455,8 @@ const rtf = await render(doc, 'rtf')
 **Common mistakes**
 
 - registerRenderer SILENTLY OVERWRITES an existing format (it is a bare Map.set, no guard) — re-registering `html` replaces the built-in renderer with no warning.
-- Trusting isDocNode to validate the tree — it only checks `value` is an object carrying `type`, `props`, and `children` keys; it does NOT verify `type` is a real node type or that the shapes are valid (a hand-rolled &#123; type: 'x', props: 0, children: 0 &#125; passes).
+- Trusting isDocNode to validate the tree — it only checks for a string `type`, `props` and `children` keys and no `key`; it does NOT verify `type` is a real node type or that the shapes are valid (a hand-rolled &#123; type: 'x', props: 0, children: 0 &#125; passes).
+- Using isDocNode to test JSX output — `isDocNode(<Text>hi</Text>)` is FALSE (it is a VNode); call the primitive directly (`Text({ children: 'hi' })`) when you need a DocNode value, or just pass the JSX to render().
 - Rendering to an unregistered format — render() rejects with [@pyreon/document] No renderer registered for format 'X'. Available: … (the message enumerates the currently-registered keys). The markdown key is 'md', not 'markdown'.
 
 **See also:** `render` · `createDocument`
