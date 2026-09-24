@@ -53,7 +53,7 @@ function readJson(path: string): RawManifest | null {
   try {
     return JSON.parse(raw) as RawManifest
   } catch (err) {
-    throw new Error(`[Pyreon] loom: ${path} is not valid JSON: ${(err as Error).message}`)
+    throw new Error(`[Pyreon] loom: ${path} is not valid JSON: ${(err as Error).message}`, { cause: err })
   }
 }
 
