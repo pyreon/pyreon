@@ -13,7 +13,7 @@ import { CHART_ENGINE_DECLARED_NAMES, CHART_ENGINE_STRUCTS } from '../chart-engi
 import { transform } from '../index'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
-const COLLIDES = `import { PieChart } from '@pyreon/charts/plot'
+const COLLIDES = `import { PieChart } from '@pyreon/charts/engine'
 interface Slice { value: number; label: string }
 const ROWS: Slice[] = [{ value: 1, label: 'a' }, { value: 2, label: 'b' }]
 export function Board() {

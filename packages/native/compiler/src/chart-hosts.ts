@@ -1,4 +1,4 @@
-// `@pyreon/charts/plot` family hosts on native — the table both emitters lower
+// `@pyreon/charts` family hosts on native — the table both emitters lower
 // from.
 //
 // Every plot family's GEOMETRY is generated into the native runtimes
@@ -881,18 +881,28 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
 /** Plot hosts that exist on the web but have no native lowering yet, with the reason. */
 export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {}
 
-/** The grammar host and its mark/config children — `<Plot>` desugars to `<PlotChart marks>` before the plot emit runs. */
-export const GRAMMAR_CHART_HOST = 'Plot'
+/** The grammar host and its mark/config children — `<Chart>` desugars to `<PlotChart marks>` before the plot emit runs. */
+export const GRAMMAR_CHART_HOST = 'Chart'
 export const GRAMMAR_MARK_TAGS: Readonly<Record<string, string>> = { Bar: 'bars', Line: 'line', Area: 'area', Dot: 'points', StackedArea: 'stackedArea', Band: 'band' }
-export const GRAMMAR_CONFIG_TAGS: readonly string[] = ['Rule', 'Axis', 'Tip', 'Legend', 'Zoom', 'Label', 'Scale', 'Histogram']
-/** The FAMILY marks: `<Plot>` with one of these desugars to the row-array host it names, channels as accessors. */
+/**
+ * The indicator marks — `<Sma>` etc. — and the array-form factory each
+ * desugars to. They are DERIVED marks with their own arguments (a window, a
+ * width), so they are not in `GRAMMAR_MARK_TAGS`, whose entries all take the
+ * shared `y` + options shape. `bollinger` expands to two marks, so it
+ * desugars to a SPREAD (`...bollinger(…)`), exactly as the array form writes
+ * it. Mirrors `GRAMMAR_INDICATOR_TAGS` in the charts package's
+ * `grammar-indicators.test.tsx`.
+ */
+export const GRAMMAR_INDICATOR_TAGS: Readonly<Record<string, string>> = { Sma: 'sma', Ema: 'ema', Trend: 'trend', Bollinger: 'bollinger' }
+export const GRAMMAR_CONFIG_TAGS: readonly string[] = ['Rule', 'Axis', 'Tooltip', 'Legend', 'Zoom', 'Toolbox', 'Label', 'Scale', 'Histogram']
+/** The FAMILY marks: `<Chart>` with one of these desugars to the row-array host it names, channels as accessors. */
 export const GRAMMAR_FAMILY_TAGS: Readonly<Record<string, string>> = { Arc: 'PieChart', Stage: 'FunnelChart', Cell: 'HeatmapChart', Candle: 'CandlestickChart' }
 /** The channels of each family mark (the host's accessor props); every other attr is an option. */
 const FAMILY_CHANNELS: Readonly<Record<string, readonly string[]>> = { Arc: ['value', 'label', 'color'], Stage: ['value', 'label', 'color'], Cell: ['x', 'y', 'value'], Candle: ['open', 'high', 'low', 'close'] }
 /** Where a family mark's option attrs go: an options struct prop, or straight onto the host. */
 const FAMILY_OPTIONS_PROP: Readonly<Record<string, string | undefined>> = { Stage: 'funnel', Candle: 'candle' }
 
-/** Whether a JSX tag is a `@pyreon/charts/plot` host, lowered or not (the grammar's mark tags included, so a stray one warns instead of emitting a phantom component). */
+/** Whether a JSX tag is a `@pyreon/charts` host, lowered or not (the grammar's mark tags included, so a stray one warns instead of emitting a phantom component). */
 export function isChartHostTag(tag: string): boolean {
   return (
     Object.hasOwn(CHART_HOSTS, tag) ||
@@ -902,6 +912,7 @@ export function isChartHostTag(tag: string): boolean {
     tag === 'OptionChart' ||
     tag === GRAMMAR_CHART_HOST ||
     Object.hasOwn(GRAMMAR_MARK_TAGS, tag) ||
+    Object.hasOwn(GRAMMAR_INDICATOR_TAGS, tag) ||
     Object.hasOwn(GRAMMAR_FAMILY_TAGS, tag) ||
     GRAMMAR_CONFIG_TAGS.includes(tag)
   )
@@ -2949,10 +2960,10 @@ const flagOn = (e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string): bool
 }
 
 /**
- * `<Plot data x>` with mark children → the `<PlotChart data x marks={[…]}>`
+ * `<Chart data x>` with mark children → the `<PlotChart data x marks={[…]}>`
  * element the plot emit already lowers, so the grammar is the SAME spec on
  * native as on the web. Field-name channels become accessors; mark children
- * become mark calls with their options; Rule/Axis/Tip/Legend/Zoom become the
+ * become mark calls with their options; Rule/Axis/Tooltip/Legend/Zoom become the
  * plot props they set on the web. A long-format `color` channel (a pivot the
  * web resolves at runtime) is not lowered — it warns by name and the chart
  * renders as wide-format.
@@ -2969,13 +2980,44 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   const markers: ExprIR[] = []
   for (const a of e.attrs) {
     if (a.kind === 'attr' && (a.name === 'x' || a.name === 'xValue')) attrs.push({ kind: 'attr', name: a.name, value: channelArrow(a.value) })
-    else if (a.kind === 'attr' && a.name === 'color') warn('<Plot color>: the long-format pivot is resolved on the web at runtime and is not lowered on native; the chart renders wide-format (one mark, one series).')
+    else if (a.kind === 'attr' && a.name === 'color') warn('<Chart color>: the long-format pivot is resolved on the web at runtime and is not lowered on native; the chart renders wide-format (one mark, one series).')
     else attrs.push(a)
   }
   for (const c of e.children) {
     if (c.kind !== 'expr' || c.expr.kind !== 'jsx-element') continue
     const child = c.expr
     const tag = child.tag
+    const indicator = GRAMMAR_INDICATOR_TAGS[tag]
+    if (indicator !== undefined) {
+      // `<Sma y window>` → `sma(y, window, { …rest })`, the array form's own
+      // call, so the indicator lowering the emitters already have runs
+      // unchanged. `<Bollinger>` becomes `...bollinger(y, window, k, { … })`.
+      const y = attrOf(child, 'y')
+      const window = attrOf(child, 'window')
+      if (y === undefined) {
+        warn(`<${tag}>: needs a \`y\` channel; the mark is skipped on native.`)
+        continue
+      }
+      if (indicator !== 'trend' && window === undefined) {
+        warn(`<${tag}>: needs a \`window\`; the mark is skipped on native.`)
+        continue
+      }
+      const k = attrOf(child, 'k')
+      const fields: { name: string; value: ExprIR }[] = []
+      for (const a of child.attrs) {
+        if (a.kind !== 'attr' || ['y', 'window', 'k'].includes(a.name)) continue
+        fields.push({ name: a.name, value: a.value })
+      }
+      const args: ExprIR[] = [channelArrow(y)]
+      if (window !== undefined && indicator !== 'trend') args.push(window)
+      // bollinger's options are its FOURTH argument, so an absent `k` still
+      // needs its default in place when options follow.
+      if (indicator === 'bollinger' && (k !== undefined || fields.length > 0)) args.push(k ?? optionDoubleLiteral(2))
+      if (fields.length > 0) args.push({ kind: 'object', fields })
+      const call: ExprIR = { kind: 'call', callee: ident(indicator), args }
+      marks.push(indicator === 'bollinger' ? { kind: 'spread', argument: call } : call)
+      continue
+    }
     const markKind = GRAMMAR_MARK_TAGS[tag]
     if (markKind !== undefined) {
       // `<Band>` is the one mark with no `y`: a region has two bounds and no
@@ -3089,7 +3131,7 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
         histogram = { x: channelArrow(hx), bins: attrOf(child, 'bins') ?? lit(10) }
         break
       }
-      case 'Tip':
+      case 'Tooltip':
         attrs.push({ kind: 'attr', name: 'tooltip', value: lit(true) })
         if (flagOn(child, 'crosshair')) attrs.push({ kind: 'attr', name: 'crosshair', value: lit(true) })
         break
@@ -3120,6 +3162,14 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
         if (maxRows !== undefined) attrs.push({ kind: 'attr', name: 'legendMaxRows', value: maxRows })
         break
       }
+      case 'Toolbox': {
+        // `<Toolbox saveAsImage magicType={[…]}>` → `toolbox={{ … }}`: the
+        // child's attributes ARE the config object the host takes.
+        const fields: { name: string; value: ExprIR }[] = []
+        for (const a of child.attrs) if (a.kind === 'attr') fields.push({ name: a.name, value: a.value })
+        attrs.push({ kind: 'attr', name: 'toolbox', value: { kind: 'object', fields } })
+        break
+      }
       case 'Zoom': {
         const inside = attrOf(child, 'inside')
         if (inside === undefined || !(inside.kind === 'literal' && inside.value === false)) attrs.push({ kind: 'attr', name: 'dataZoom', value: lit(true) })
@@ -3136,7 +3186,7 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
         break
       }
       default:
-        warn(`<Plot>: child <${tag}> is not a mark or a chart setting; it is ignored on native.`)
+        warn(`<Chart>: child <${tag}> is not a mark or a chart setting; it is ignored on native.`)
     }
   }
   if (histogram !== undefined) {
@@ -3147,7 +3197,7 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     const dataAttr = attrs.find((a) => a.kind === 'attr' && a.name === 'data')
     const rows = dataAttr?.kind === 'attr' ? dataAttr.value : undefined
     if (rows === undefined) {
-      warn('<Histogram>: <Plot> needs a `data` attribute to bin; the plot renders without it on native.')
+      warn('<Histogram>: <Chart> needs a `data` attribute to bin; the plot renders without it on native.')
     } else {
       if (marks.length > 0) warn('<Histogram>: a mark beside it reads the ORIGINAL rows, which the histogram replaces with bins; it is dropped on native.')
       const binned: ExprIR = {
@@ -3177,11 +3227,11 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
 }
 
 /**
- * `<Plot data><Arc value label /></Plot>` → `<PieChart data value={(d) => d.value} label={…}>`
+ * `<Chart data><Arc value label /></Chart>` → `<PieChart data value={(d) => d.value} label={…}>`
  * (and Stage → Funnel, Cell → Heatmap, Candle → Candlestick): the plot's shared
  * props carry over, the mark's channels become the host's accessors, its
  * option attrs go where the host keeps them (`funnel={{…}}` / `candle={{…}}`
- * or straight on), `<Tip>` / `<Legend>` / `<Axis y format>` set the host's
+ * or straight on), `<Tooltip>` / `<Legend>` / `<Axis y format>` set the host's
  * switches. Everything cartesian — the other marks, `<Zoom>`, `<Rule>`,
  * `<Label>`, the `x` channel except on a candlestick — is reported and ignored,
  * exactly as the web host does.
@@ -3197,9 +3247,15 @@ function desugarFamilyGrammar(
   for (const a of e.attrs) {
     if (a.kind === 'attr' && a.name === 'x') {
       if (host === 'CandlestickChart') attrs.push({ kind: 'attr', name: 'x', value: channelArrow(a.value) })
-      else warn(`<Plot x>: a ${host.replace('Chart', '').toLowerCase()} has no x channel; it is ignored.`)
+      else warn(`<Chart x>: a ${host.replace('Chart', '').toLowerCase()} has no x channel; it is ignored.`)
     } else if (a.kind === 'attr' && (a.name === 'xValue' || a.name === 'color' || a.name === 'horizontal' || a.name === 'showGrid')) {
-      warn(`<Plot ${a.name}>: not a ${host.replace('Chart', '').toLowerCase()} prop; it is ignored.`)
+      warn(`<Chart ${a.name}>: not a ${host.replace('Chart', '').toLowerCase()} prop; it is ignored.`)
+    } else if (a.kind === 'event' && a.name === 'select') {
+      // `<Chart onSelect>` reports the drawn item's INDEX on every target. A
+      // family host's own `onSelect` is shaped per family (a heatmap reports
+      // its cell, which native cannot build); its `onSelectIndex` is the
+      // index — the same routing the web grammar does.
+      attrs.push({ kind: 'event', name: 'selectindex', handler: a.handler })
     } else attrs.push(a)
   }
   const channels = FAMILY_CHANNELS[mark.tag]!
@@ -3215,13 +3271,19 @@ function desugarFamilyGrammar(
   for (const child of children) {
     if (child === mark) continue
     if (Object.hasOwn(GRAMMAR_FAMILY_TAGS, child.tag)) {
-      warn(`<Plot>: one family per plot — <${child.tag}> is ignored beside <${mark.tag}>.`)
+      warn(`<Chart>: one family per plot — <${child.tag}> is ignored beside <${mark.tag}>.`)
       continue
     }
-    if (child.tag === 'Tip') attrs.push({ kind: 'attr', name: 'tooltip', value: lit(true) })
+    if (child.tag === 'Tooltip') attrs.push({ kind: 'attr', name: 'tooltip', value: lit(true) })
     else if (child.tag === 'Legend') attrs.push({ kind: 'attr', name: 'showLegend', value: lit(true) })
+    else if (child.tag === 'Toolbox') {
+      // A family host's toolbox is PNG-only: any save form turns it on, as on the web.
+      const save = attrOf(child, 'saveAsImage')
+      const on = save !== undefined && !(save.kind === 'literal' && save.value === false)
+      attrs.push({ kind: 'attr', name: 'toolbox', value: { kind: 'object', fields: [{ name: 'saveAsImage', value: lit(on) }] } })
+    }
     else if (child.tag === 'Axis' && !flagOn(child, 'x') && !flagOn(child, 'y2') && attrOf(child, 'format') !== undefined) attrs.push({ kind: 'attr', name: 'format', value: attrOf(child, 'format')! })
-    else warn(`<Plot>: <${child.tag}> does not apply to a ${host.replace('Chart', '').toLowerCase()}; it is ignored.`)
+    else warn(`<Chart>: <${child.tag}> does not apply to a ${host.replace('Chart', '').toLowerCase()}; it is ignored.`)
   }
   return { kind: 'jsx-element', tag: host, attrs, children: [] }
 }
@@ -3333,7 +3395,7 @@ export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = 
  * `defaultTheme` is module-private in both targets. Field ORDER is the struct's
  * declaration order (Swift's memberwise init rejects reordered arguments), and
  * every value is the emitted TEXT of that field. Drift against
- * `@pyreon/charts/plot`'s `defaultTheme` is locked by `chart-theme-default.test.ts`.
+ * `@pyreon/charts`'s `defaultTheme` is locked by `chart-theme-default.test.ts`.
  */
 export const CHART_THEME_DEFAULT = {
   palette: ['#4f7df3', '#f97362', '#22c3a6', '#a66cff', '#ffb020', '#2fb7e8', '#f45fa3', '#7bc950', '#8892a6', '#c47a3d'],
@@ -3356,7 +3418,7 @@ export const CHART_THEME_DEFAULT = {
 } as const
 
 /**
- * The named palettes `@pyreon/charts/plot` exports as `palettes.*`, so a theme
+ * The named palettes `@pyreon/charts` exports as `palettes.*`, so a theme
  * literal may say `palette: palettes.okabeIto` and lower to the resolved list.
  * Drift-locked against theme.ts by `chart-theme-default.test.ts`.
  */
@@ -3578,38 +3640,95 @@ export type RawChartTheme = Readonly<Record<keyof typeof CHART_THEME_DEFAULT, st
  * system scheme, or an app's reactive mode — natively the light theme
  * applies), and a non-literal `theme`.
  */
-export function chartThemeScope(e: ExprIR & { kind: 'jsx-element' }, warn: (m: string) => void, outer?: RawChartTheme): RawChartTheme {
-  const modeAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'mode')
-  const modeV = modeAttr?.kind === 'attr' ? modeAttr.value : undefined
-  let base: RawChartTheme = outer ?? CHART_THEME_DEFAULT
-  if (modeV === undefined) {
-    if (outer === undefined) warn('<ChartThemeProvider>: without a literal `mode` the web follows the system scheme; natively the light theme applies — pin `mode="dark"` (or give each chart its own `theme`).')
-  } else if (modeV.kind === 'literal' && (modeV.value === 'light' || modeV.value === 'dark')) {
-    base = CHART_THEMES[modeV.value]
-  } else {
-    warn('<ChartThemeProvider mode>: only the literal "light" / "dark" lowers on native (a reactive mode cannot be read at compile time); the light theme applies.')
+/**
+ * How each compile-time theme scope was built: the colour mode pinned above it
+ * (null when none is — the platform scheme decides) and the
+ * `<ChartThemeProvider>` elements in force, outermost first. Keyed by the
+ * scope's resolved theme so the emitters keep passing one object around.
+ *
+ * The chain, not just the resolved theme, is kept because on the web a
+ * provider hands down a theme PER MODE and the mode is applied where the chart
+ * sits — so a `<ColorModeProvider mode="dark">` BELOW a provider must re-resolve
+ * that provider's `light` / `dark` overrides, not inherit a theme resolved for
+ * the outer mode.
+ */
+interface ThemeChain {
+  mode: 'light' | 'dark' | null
+  providers: readonly (ExprIR & { kind: 'jsx-element' })[]
+}
+const SCOPE_CHAIN = new WeakMap<RawChartTheme, ThemeChain>()
+
+/** Merge one theme-object literal's fields over `raw`, warning by name on what cannot lower. */
+function applyThemeLiteral(raw: Record<string, string | readonly string[]>, v: ExprIR, attr: string, warn: (m: string) => void): void {
+  if (v.kind !== 'object' || (v.spreads !== undefined && v.spreads.length > 0)) {
+    warn(`<ChartThemeProvider ${attr}>: only an object literal with literal fields lowers on native; it is ignored.`)
+    return
   }
-  const themeAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'theme')
-  const themeV = themeAttr?.kind === 'attr' ? themeAttr.value : undefined
-  if (themeV === undefined) return base
-  const raw: Record<string, string | readonly string[]> = { ...base }
-  const named = namedChartTheme(themeV)
-  if (named !== undefined) return named
-  if (themeV.kind !== 'object' || (themeV.spreads !== undefined && themeV.spreads.length > 0)) {
-    warn('<ChartThemeProvider theme>: only an object literal with literal fields lowers on native; the mode\'s theme applies.')
-    return base
-  }
-  raw.palette = chartThemePalette(themeV, 'ChartThemeProvider', warn, base.palette as readonly string[])
-  for (const f of themeV.fields) {
+  raw.palette = chartThemePalette(v, 'ChartThemeProvider', warn, raw.palette as readonly string[])
+  for (const f of v.fields) {
     const spec = CHART_THEME_FIELDS.find((x) => x.name === f.name)
     if (spec === undefined || spec.kind === 'strings') continue
     if (f.value.kind !== 'literal' || typeof f.value.value !== spec.kind) {
-      warn(`<ChartThemeProvider theme>: \`${f.name}\` must be a ${spec.kind} literal on native; the mode's value applies.`)
+      warn(`<ChartThemeProvider ${attr}>: \`${f.name}\` must be a ${spec.kind} literal on native; the mode's value applies.`)
       continue
     }
     raw[spec.name] = spec.kind === 'number' ? chartDouble(f.value.value as number) : (f.value.value as string)
   }
-  return raw as RawChartTheme
+}
+
+function scopeAttr(e: ExprIR & { kind: 'jsx-element' }, name: string): ExprIR | undefined {
+  const a = e.attrs.find((x) => x.kind === 'attr' && x.name === name)
+  return a?.kind === 'attr' ? a.value : undefined
+}
+
+/** Resolve a chain as the web does: the mode's built-in theme, then each provider's `theme`, then its override for the mode. */
+function resolveThemeChain(chain: ThemeChain, warn: (m: string) => void): RawChartTheme {
+  const mode = chain.mode ?? 'light'
+  let raw: Record<string, string | readonly string[]> = { ...CHART_THEMES[mode] }
+  for (const el of chain.providers) {
+    const themeV = scopeAttr(el, 'theme')
+    const named = themeV === undefined ? undefined : namedChartTheme(themeV)
+    if (named !== undefined) raw = { ...named }
+    else if (themeV !== undefined) applyThemeLiteral(raw, themeV, 'theme', warn)
+    const perMode = scopeAttr(el, mode)
+    if (perMode !== undefined) applyThemeLiteral(raw, perMode, mode, warn)
+  }
+  const out = raw as RawChartTheme
+  SCOPE_CHAIN.set(out, chain)
+  return out
+}
+
+/** A `<ChartThemeProvider>`: push its layers onto the chain in force. */
+export function chartThemeScope(e: ExprIR & { kind: 'jsx-element' }, warn: (m: string) => void, outer?: RawChartTheme): RawChartTheme {
+  const prev: ThemeChain = (outer === undefined ? undefined : SCOPE_CHAIN.get(outer)) ?? { mode: null, providers: [] }
+  if (scopeAttr(e, 'mode') !== undefined) warn('<ChartThemeProvider mode>: the mode is not a provider prop any more — wrap it in `<ColorModeProvider mode>` (@pyreon/core) or set `<PyreonUI mode>`; it is ignored.')
+  if (prev.mode === null && prev.providers.length === 0) warn('<ChartThemeProvider>: with no literal colour mode above it, the web follows the system scheme; natively the light theme applies — wrap it in `<ColorModeProvider mode="dark">` (or give each chart its own `theme`).')
+  return resolveThemeChain({ mode: prev.mode, providers: [...prev.providers, e] }, warn)
+}
+
+/** The literal mode a `<ColorModeProvider>` pins, or undefined (absent, `'system'`, or reactive). */
+export function literalColorMode(e: ExprIR & { kind: 'jsx-element' }): 'light' | 'dark' | undefined {
+  const v = scopeAttr(e, 'mode')
+  return v !== undefined && v.kind === 'literal' && (v.value === 'light' || v.value === 'dark') ? v.value : undefined
+}
+
+/**
+ * A `<ColorModeProvider mode>` or `<PyreonUI mode>`: pin the mode for the
+ * charts below. Only a literal `"light"` / `"dark"` can be read at compile
+ * time; `"system"` keeps the platform scheme (the scope in force is returned
+ * unchanged), and a reactive mode warns and does the same.
+ */
+export function colorModeScope(e: ExprIR & { kind: 'jsx-element' }, warn: (m: string) => void, outer?: RawChartTheme, warnReactive: boolean = true): RawChartTheme | undefined {
+  const modeV = scopeAttr(e, 'mode')
+  if (modeV === undefined) return outer
+  if (modeV.kind === 'literal' && (modeV.value === 'light' || modeV.value === 'dark')) {
+    const prev: ThemeChain = (outer === undefined ? undefined : SCOPE_CHAIN.get(outer)) ?? { mode: null, providers: [] }
+    return resolveThemeChain({ mode: modeV.value, providers: prev.providers }, warn)
+  }
+  if (warnReactive && !(modeV.kind === 'literal' && modeV.value === 'system')) {
+    warn(`<${e.tag} mode>: only a literal "light" / "dark" / "system" lowers on native (a reactive mode cannot be read at compile time); charts below follow the platform scheme.`)
+  }
+  return outer
 }
 
 /** The palette the web Funnel / Pie hosts colour unaccessored rows with — the theme's. */

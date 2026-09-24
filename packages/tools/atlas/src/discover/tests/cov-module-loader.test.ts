@@ -11,8 +11,8 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, describe, expect, it } from 'vitest'
-import { createModuleLoader } from '../load'
+import { afterAll, describe, expect, it, vi } from 'vitest'
+import { createModuleLoader, loadRuntime, missingRuntimeMessage } from '../load'
 import { buildPackageMap } from '../workspace-packages'
 
 const roots: string[] = []
@@ -102,5 +102,49 @@ describe('a Vite-backed loader', () => {
     // finds it on its own depends on the install layout; what must hold is that
     // the loader does not answer for it.
     await loader.load(component).catch(() => undefined)
+  })
+})
+
+describe('a quiet loader (audit 2026-09)', () => {
+  it('prints nothing of its own for ordinary failures — Atlas reports them', async () => {
+    // A throwing component module and a project with no `@pyreon/*` runtime
+    // are ordinary situations. Vite used to log each as a timestamped stack
+    // trace (plus `WebSocket server error: Port … already in use`) before
+    // Atlas's own summary, which read as Atlas crashing.
+    const root = tempDir()
+    const file = write(root, 'src/Boom.tsx', 'throw new Error("module threw")\nexport const Boom = () => null\n')
+    const printed: string[] = []
+    const spies = (['log', 'info', 'warn', 'error'] as const).map((level) =>
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        printed.push(args.map(String).join(' '))
+      }),
+    )
+    try {
+      const loader = await loaderFor(root)
+      await expect(loader.load(file)).rejects.toThrow('module threw')
+      let failure: string | undefined
+      expect(await loadRuntime(loader, (m) => (failure = m))).toBeUndefined()
+      // …and the runtime failure names the fix instead of Vite's symptom.
+      expect(failure).toContain('[Pyreon] atlas: this project does not resolve @pyreon/')
+      expect(failure).toContain('bun add @pyreon/core @pyreon/runtime-dom @pyreon/reactivity')
+    } finally {
+      for (const spy of spies) spy.mockRestore()
+    }
+    expect(printed).toEqual([])
+  })
+})
+
+describe('missingRuntimeMessage', () => {
+  it('names the unresolvable framework package and the install command', () => {
+    const msg = missingRuntimeMessage(
+      'Failed to load url @pyreon/core (resolved id: @pyreon/core). Does the file exist?',
+    )
+    expect(msg).toContain('does not resolve @pyreon/core')
+    expect(msg).toContain('--no-mount')
+  })
+
+  it('leaves other failures (a dual instance, a sibling package) alone', () => {
+    expect(missingRuntimeMessage('Multiple instances of @pyreon/reactivity detected')).toBeUndefined()
+    expect(missingRuntimeMessage('Failed to load url @pyreon/core-extras')).toBeUndefined()
   })
 })

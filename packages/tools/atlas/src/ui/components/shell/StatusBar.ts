@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const StatusBar = el
   .attrs({
@@ -7,7 +7,7 @@ export const StatusBar = el
     contentAlignY: 'center',
     gap: 16,
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     height: '32px',
     flex: 'none',
     // Explicit: without it the Element wrapper's default column stacking

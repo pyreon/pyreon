@@ -10,9 +10,9 @@ they ship none of ECharts itself. Charts follow the page's scheme: the
 `color-scheme` the page declares on `<html>` (this site sets it with its theme
 toggle), else the OS preference. A bare option chart keeps ECharts' own light
 look, exactly as ECharts does, so the option examples here sit in a
-`<ChartThemeProvider mode={systemChartMode()}>`. Each example's source is one click away.
+`<ChartThemeProvider>`, which opts them into the colour mode in scope. Each example's source is one click away.
 
-<PackageBadge name="@pyreon/charts" href="/docs/charts-plot" />
+<PackageBadge name="@pyreon/charts" href="/docs/charts" />
 
 ## A trend
 

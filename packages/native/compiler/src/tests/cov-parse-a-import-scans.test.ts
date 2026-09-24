@@ -256,10 +256,10 @@ describe('unlowered-HOOK warnings', () => {
   })
 
   it('a hook imported from a SUBPATH still gets its package\'s own advice', () => {
-    // Root-normalised: `@pyreon/charts/plot` has to find the `@pyreon/charts`
+    // Root-normalised: `@pyreon/charts/engine` has to find the `@pyreon/charts`
     // entry, or the message degrades to the generic tail.
-    const w = warnings(mod(`import { useZoom } from '@pyreon/charts/plot'`))
-    expect(w.some((m) => m.includes('useZoom() (from @pyreon/charts/plot)'))).toBe(true)
+    const w = warnings(mod(`import { useZoom } from '@pyreon/charts/engine'`))
+    expect(w.some((m) => m.includes('useZoom() (from @pyreon/charts/engine)'))).toBe(true)
     expect(w.some((m) => m.includes('Or keep it behind a `<Web>` escape hatch.'))).toBe(true)
   })
 

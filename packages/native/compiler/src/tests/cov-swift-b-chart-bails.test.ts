@@ -1,4 +1,4 @@
-// Branch-coverage matrices for the `@pyreon/charts/plot` Swift host BAIL
+// Branch-coverage matrices for the `@pyreon/charts` Swift host BAIL
 // arms — the shapes that a host declines to lower.
 //
 // Every one of these is the same contract: a host that cannot lower emits
@@ -15,7 +15,9 @@ function chart(el: string): { code: string; warnings: string[] } {
   return transform(
     `import { signal } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'
-import { PlotChart, RadarChart, HeatmapChart, CandlestickChart, BoxplotChart, GaugeChart, bars, line } from '@pyreon/charts/plot'
+import { RadarChart, BoxplotChart, GaugeChart } from '@pyreon/charts'
+import { HeatmapChart, CandlestickChart } from '@pyreon/charts/engine'
+import { PlotChart, bars, line } from '@pyreon/charts/engine'
 export function C() {
   const rows = signal<{ x: string; y: number; lo: number; hi: number; vals: number[] }[]>([])
   const axes = signal<string[]>(['a', 'b'])
