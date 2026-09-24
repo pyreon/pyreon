@@ -1,10 +1,10 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const ZoomBtn = el
   .attrs({
     tag: 'button',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     font: 'inherit',
     cursor: 'pointer',
     border: 'none',

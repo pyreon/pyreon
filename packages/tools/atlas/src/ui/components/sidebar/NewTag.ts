@@ -1,10 +1,10 @@
-import { txt, type T } from '../../kit'
+import { txt } from '../../kit'
 
 export const NewTag = txt
   .attrs({
     tag: 'span',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     fontSize: t.size.nano,
     fontWeight: '700',
     letterSpacing: t.tracking.md,

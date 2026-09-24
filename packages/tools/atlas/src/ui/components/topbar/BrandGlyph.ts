@@ -1,10 +1,10 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const BrandGlyph = el
   .attrs({
     tag: 'div',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     width: '13px',
     height: '13px',
     borderRadius: t.radius.bar,

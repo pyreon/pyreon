@@ -1,10 +1,10 @@
-import { txt, type T } from '../../kit'
+import { txt } from '../../kit'
 
 export const DocsDesc = txt
   .attrs({
     tag: 'p',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     fontSize: t.size.hero,
     lineHeight: '1.6',
     margin: '0 0 24px',
