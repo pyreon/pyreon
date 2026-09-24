@@ -14,7 +14,7 @@ bun add @pyreon/sized-map
 
 ## Why
 
-Bounded maps are the standard fix for "Class C — unbounded caches" leaks (see [Memory Leak Classes](https://github.com/pyreon/pyreon/blob/main/.claude/rules/anti-patterns.md)). Before this package, 9 Pyreon files each carried their own ~10-line FIFO eviction snippet — same `map.keys().next().value` + `map.delete(oldest)` shape, but each grown with its own subtle bugs over time. `@pyreon/sized-map` collapses the 9 implementations to one. The eviction code lives in exactly one place.
+Bounded maps are the standard fix for "Class C — unbounded caches" leaks (see [Memory Leak Classes](https://github.com/pyreon/pyreon/blob/main/.agents/rules/anti-patterns.md)). Before this package, 9 Pyreon files each carried their own ~10-line FIFO eviction snippet — same `map.keys().next().value` + `map.delete(oldest)` shape, but each grown with its own subtle bugs over time. `@pyreon/sized-map` collapses the 9 implementations to one. The eviction code lives in exactly one place.
 
 Used internally by:
 
@@ -105,6 +105,6 @@ For high-churn caches where most reads are followed by a write anyway (template 
 
 ## See also
 
-- [Memory Leak Classes catalog](https://github.com/pyreon/pyreon/blob/main/.claude/rules/anti-patterns.md) — the bug class this package exists to prevent.
+- [Memory Leak Classes catalog](https://github.com/pyreon/pyreon/blob/main/.agents/rules/anti-patterns.md) — the bug class this package exists to prevent.
 - [`@pyreon/lint` `AstCache`](https://github.com/pyreon/pyreon/blob/main/packages/tools/lint/src/cache.ts) — reference LRU consumer.
 - [`@pyreon/runtime-dom` `_tplCache`](https://github.com/pyreon/pyreon/blob/main/packages/core/runtime-dom/src/template.ts) — reference FIFO consumer.

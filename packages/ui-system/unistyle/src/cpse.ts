@@ -1,8 +1,7 @@
 /**
  * Custom-Property Style Extraction (CPSE) — Phase 0 proof-of-concept primitive.
  *
- * See `.claude/audits/custom-property-style-extraction-2026-06-22.md` for the
- * full RFC. The thesis: decouple a style prop's **CSS-rule identity** from its
+ * The thesis: decouple a style prop's **CSS-rule identity** from its
  * **value identity**. Instead of baking the resolved value into the rule —
  *
  *     gap: 2.25rem            // value-DEPENDENT rule → a new rule + a

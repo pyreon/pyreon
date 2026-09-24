@@ -116,7 +116,7 @@ describe('mountReactive: <Show> inside <For> under batched signal toggles', () =
         // primitive) — see `keyed-array-in-for-batched-toggle.browser.test.ts`.
         // Anti-pattern catalog entry: "Closure-captured `parent` in a
         // reactive mount loop becomes stale after a sibling reconciler
-        // moves the markers" in `.claude/rules/anti-patterns.md`.
+        // moves the markers" in `.agents/rules/anti-patterns.md`.
         expect(container.querySelectorAll('div[data-id]')).toHaveLength(100)
       } finally {
         unmount()

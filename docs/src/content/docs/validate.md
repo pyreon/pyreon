@@ -875,14 +875,19 @@ deep-nested invalid 137ns → 7ns, discriminated-union invalid 85ns → 7ns, arr
 
 ### `parse` — produce a validated output value
 
-**The error path is ours: outright fastest on four of five invalid cells** — 1.1–3.4×
+**The error path is ours.** In the full 2026-09-23 run (`BENCHMARKS.md` §9) Pyreon won
+**every** invalid-input parse cell. The earlier run below had it outright fastest on four of
+five invalid cells — 1.1–3.4×
 vs Valibot, 7.3–10.9× vs Zod (interpreted and compiled alike), 12.4–37.8× vs ArkType,
 1.6–6.1× vs typia, 19–135× vs Joi/Yup. Error-information parity is verified separately: on
 a multi-fail object Pyreon reports the same issue count with paths and messages as Zod, so
 the speed is not "reporting less". The fifth (scalar number-range invalid) goes to typia by
 1.2×.
 
-**On the valid path we are not ahead, and Zod 4.5 is why.** Compiled Zod wins scalar
+**On the valid path we are not ahead, and Zod 4.5 is why.** In the 2026-09-23 run compiled
+Zod won three valid-parse cells outright — email (1.3×), integer (1.7×) and array-of-20
+(1.1×) — and ArkType won valid object parse (1.2×); where the older per-cell figures below
+disagree, that run supersedes them. In the earlier run, compiled Zod wins scalar
 number-range (2.8ns vs 5.0ns), array-of-20 (108ns vs 116ns) and object-with-array-of-objects
 (117ns vs 134ns); ArkType and typia win scalar email (26/27ns vs 33ns) and ArkType wins
 flat object (36ns vs 49ns). Deep-nested and discriminated union are 🤝 CI-ties with compiled

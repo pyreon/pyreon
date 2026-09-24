@@ -8,7 +8,7 @@
  * FAIR BY CONSTRUCTION
  * ───────────────────────────────────────────────────────────────────────────
  * Both @pyreon/query and @tanstack/react-query wrap the SAME
- * `@tanstack/query-core` (5.101.2, pinned tree-wide via root `overrides` — so
+ * `@tanstack/query-core` (pinned tree-wide via root `overrides`; the run prints the installed version — so
  * the QueryClient / QueryObserver both sides use is byte-identical). This bench
  * therefore measures the ADAPTER layer — how each library surfaces a query-core
  * result to the UI — NOT the query engine. Any difference is 100% adapter.
@@ -20,7 +20,7 @@
  *     Pyreon's dev mode keeps the reactive-devtools registry always-on; React's
  *     dev build ships `Object.freeze` / prop-type / act-warning overhead. Both
  *     are measuring instrumentation if not gated to production.
- *  2. Same query-core version (5.101.2) for BOTH — the engine is identical.
+ *  2. Same query-core version for BOTH (printed from the installed package.json) — the engine is identical.
  *  3. CORRECTNESS GATE — both adapters must surface the SAME `data` in the DOM
  *     for the SAME driven query before any number is trusted.
  *  4. The HEADLINE result is a COUNT (recompute / re-render), which is EXACT and
@@ -56,6 +56,11 @@ process.env.NODE_ENV = 'production'
 
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+import { createRequire } from 'node:module'
+
+// Read, never hard-code: a literal here drifted two releases behind the root
+// `overrides` and mislabelled the 2026-09-24 run.
+const QUERY_CORE_VERSION: string = createRequire(import.meta.url)('@tanstack/query-core/package.json').version
 
 // Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
 // node = V8) plus CPU and load, so a result is never quoted engine-less.
@@ -358,7 +363,7 @@ console.log(
 )
 console.log('\n=== @pyreon/query vs @tanstack/react-query — adapter head-to-head ===')
 console.log(
-  `  Bun ${typeof Bun !== 'undefined' ? (Bun as unknown as { version: string }).version : '?'} · ${process.platform}/${process.arch} · NODE_ENV=production · query-core 5.101.2 (identical engine both sides)`,
+  `  Bun ${typeof Bun !== 'undefined' ? (Bun as unknown as { version: string }).version : '?'} · ${process.platform}/${process.arch} · NODE_ENV=production · query-core ${QUERY_CORE_VERSION} (identical engine both sides)`,
 )
 
 // ─── correctness gate ────────────────────────────────────────────────────────

@@ -75,7 +75,7 @@ ship. See `src/impl/pyreon.tsx` and `src/impl/react.ts`.
 
 ## What does NOT exist yet (follow-ups)
 
-This is the working first slice of the full real-app benchmark CLAUDE.md scopes
+This is the working first slice of the full real-app benchmark, scoped
 at 3–5 days. The remaining work, each a well-scoped follow-up PR:
 
 1. **`solid/`** port (real `solid-js`, `createSignal`/`createStore`, compiled template).
@@ -92,7 +92,7 @@ at 3–5 days. The remaining work, each a well-scoped follow-up PR:
 6. **Gzipped bundle-size delta** — report each framework's gzipped main bundle
    next to the perf medians (closes the second half of "fast in real apps").
 
-## Acceptance bar (when can CLAUDE.md claim "fast in real apps"?)
+## Acceptance bar (when can the docs claim "fast in real apps"?)
 
 Only after the full matrix: all five real runtimes × all six scenarios, with the
 gzipped bundle-size column, reproduced across ≥2 machines. Until then every

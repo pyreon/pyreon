@@ -2,10 +2,10 @@
  * audit-leak-classes gate — programmatic API.
  *
  * Catches the 5 memory-leak classes catalogued in
- * `.claude/rules/anti-patterns.md` "Memory Leak Classes" section. The
+ * `.agents/rules/anti-patterns.md` "Memory Leak Classes" section. The
  * script ships 4 detectors (Class A / C / D / I) that are too
  * context-dependent for a per-file lint rule but tractable as an
- * advisory project-wide scan. See `.claude/rules/anti-patterns.md` for
+ * advisory project-wide scan. See `.agents/rules/anti-patterns.md` for
  * the full leak-class taxonomy.
  *
  * **Severity + category mapping**: every audit finding maps to severity

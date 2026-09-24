@@ -9,8 +9,7 @@ import { Element } from '../Element'
 /**
  * Real-Chromium proof for the CPSE default-pipeline integration in styler's
  * `doResolve` (wired via `setStyleExtraction`, the path `init({ styleExtraction:
- * true })` enables through PyreonUI). See
- * `.claude/audits/custom-property-style-extraction-2026-06-22.md`.
+ * true })` enables through PyreonUI).
  *
  * Self-discriminating (the two specs ARE the bisect — no fix to revert):
  *   - flag ON  → a function-interpolated `styled` resolves to a value-agnostic

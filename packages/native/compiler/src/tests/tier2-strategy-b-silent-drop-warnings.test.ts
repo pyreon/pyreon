@@ -20,7 +20,7 @@
 //   valibotSchema /
 //   arktypeSchema
 //
-// Bisect-verify (per .claude/rules/testing.md):
+// Bisect-verify (per .agents/rules/testing.md):
 //   1. Disable the new `tier2StrategyB` block in parse.ts
 //   2. Each "warns" spec in this file fails with "expected 1 warning,
 //      received 0"

@@ -102,7 +102,7 @@ export function typeaheadMatch(
  *
  * Create ONE per primitive instance (closure-scoped state). Real `setTimeout`
  * is used deliberately (fake timers cause subtle test issues — see
- * `.claude/rules/testing.md`). The pending timer holds only a string closure
+ * `.agents/rules/testing.md`). The pending timer holds only a string closure
  * and self-clears, so an unmount mid-buffer is harmless.
  */
 export function createTypeahead(resetMs = 500): {
