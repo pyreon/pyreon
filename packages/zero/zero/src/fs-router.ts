@@ -1269,6 +1269,64 @@ export function resolveAutoAppMode(
   return 'ssg'
 }
 
+type SyncRouteFs = Pick<
+  typeof import('node:fs'),
+  'existsSync' | 'readdirSync' | 'readFileSync' | 'statSync'
+>
+
+const SERVER_LOADER_FILE = /\.server\.[jt]sx?$/
+
+/**
+ * Every route-extension file under `routesDir` (relative paths, `.server.*`
+ * siblings included), or `null` when the directory is missing or unreadable.
+ */
+function walkRouteFilesSync(routesDir: string, fs: SyncRouteFs): string[] | null {
+  if (!fs.existsSync(routesDir)) return null
+  const files: string[] = []
+  const walk = (dir: string): void => {
+    for (const entry of fs.readdirSync(dir)) {
+      const full = `${dir}/${entry}`
+      try {
+        if (fs.statSync(full).isDirectory()) walk(full)
+        else if (ROUTE_EXTENSIONS.some((ext) => entry.endsWith(ext))) {
+          files.push(full.slice(routesDir.length + 1))
+        }
+      } catch {
+        /* unreadable entry */
+      }
+    }
+  }
+  try {
+    walk(routesDir)
+  } catch {
+    return null
+  }
+  return files
+}
+
+/**
+ * Does any file route declare loader data — a `loader` export or a
+ * `.server.ts` server-loader sibling? Drives the production build's
+ * `globalThis.__PYREON_ROUTER_LOADERS__` define, where `false` compiles the
+ * router's loader engine out, so every doubt answers `true`: a missing or
+ * unreadable routes directory, and any file that cannot be read. A wrong
+ * `true` costs bytes; a wrong `false` would break a page. Synchronous for the
+ * same reason as `resolveAutoModeSync` — the plugin's `config()` hook is.
+ */
+export function routesDeclareLoadersSync(routesDir: string, fs: SyncRouteFs): boolean {
+  const files = walkRouteFilesSync(routesDir, fs)
+  if (!files) return true
+  for (const f of files) {
+    if (SERVER_LOADER_FILE.test(f)) return true
+    try {
+      if (detectRouteExports(fs.readFileSync(`${routesDir}/${f}`, 'utf-8')).hasLoader) return true
+    } catch {
+      return true
+    }
+  }
+  return false
+}
+
 /**
  * Synchronous auto-mode resolution for plugin-factory time (Vite plugin
  * arrays are built before any async hook runs). Reads the routes dir with
@@ -1283,29 +1341,9 @@ export function resolveAutoModeSync(
   // (zeroPlugin — server-only) passes the real node:fs.
   fs: Pick<typeof import('node:fs'), 'existsSync' | 'readdirSync' | 'readFileSync' | 'statSync'>,
 ): { mode: 'ssr' | 'ssg'; pages: number } {
-  if (!fs.existsSync(routesDir)) return { mode: 'ssg', pages: 0 }
-  const files: string[] = []
-  const walk = (dir: string): void => {
-    for (const entry of fs.readdirSync(dir)) {
-      const full = `${dir}/${entry}`
-      try {
-        if (fs.statSync(full).isDirectory()) walk(full)
-        else if (
-          ROUTE_EXTENSIONS.some((ext) => entry.endsWith(ext))
-          && !/\.server\.[jt]sx?$/.test(entry)
-        ) {
-          files.push(full.slice(routesDir.length + 1))
-        }
-      } catch {
-        /* unreadable entry */
-      }
-    }
-  }
-  try {
-    walk(routesDir)
-  } catch {
-    return { mode: 'ssg', pages: 0 }
-  }
+  const all = walkRouteFilesSync(routesDir, fs)
+  if (!all) return { mode: 'ssg', pages: 0 }
+  const files = all.filter((f) => !SERVER_LOADER_FILE.test(f))
   const routes = parseFileRoutes(files)
   const withExports = routes.map((r) => {
     try {

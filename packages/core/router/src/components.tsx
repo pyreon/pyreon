@@ -595,6 +595,10 @@ export const RouterLink = /* @__PURE__ */ nativeCompat(RouterLinkImpl) as {
 const MAX_PREFETCH_CACHE = 50
 
 function prefetchRoute(router: RouterInstance, path: string): void {
+  // Prefetch only warms loader data. With loaders compiled out (see the
+  // flag note above createRouter) there is nothing to warm, and this return
+  // lets the bundler drop the prefetch cache and prefetchLoaderData too.
+  if ((globalThis as { __PYREON_ROUTER_LOADERS__?: boolean }).__PYREON_ROUTER_LOADERS__ === false) return
   let set = _prefetched.get(router)
   if (!set) {
     set = new Set()
@@ -672,8 +676,11 @@ function renderWithLoader(
   // predicate for both branches so they can't drift again (the
   // errorComponent branch is the one EVERY zero route takes — fs-router
   // attaches a default errorComponent — and it was missed first).
+  // With loaders compiled out this folds to false, which drops the whole
+  // loader render path (renderLoaderContent, PendingLoader, the provider).
   const carriesLoaderData =
-    Boolean(record.loader) || Boolean(record.serverLoader) || record.hasServerLoader === true
+    (globalThis as { __PYREON_ROUTER_LOADERS__?: boolean }).__PYREON_ROUTER_LOADERS__ !== false &&
+    (Boolean(record.loader) || Boolean(record.serverLoader) || record.hasServerLoader === true)
 
   // If route has an error component, wrap rendering in error boundary
   if (record.errorComponent) {
