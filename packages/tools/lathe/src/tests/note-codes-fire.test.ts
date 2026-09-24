@@ -139,3 +139,24 @@ describe('note locations are real JSON pointers', () => {
     expect(note?.at).toBe('#/components/schemas/my-shape')
   })
 })
+
+describe('the docs page documents every note code, with its real severity', () => {
+  it('has one row per code and nothing stale', async () => {
+    // A code table maintained by hand drifts the day a code is added; this
+    // reads the published page so a new code fails here until it is documented.
+    const { readFileSync } = await import('node:fs')
+    const { fileURLToPath } = await import('node:url')
+    const page = readFileSync(
+      fileURLToPath(new URL('../../../../../docs/src/content/docs/lathe.md', import.meta.url)),
+      'utf8',
+    )
+    const rows = new Map<string, string>()
+    for (const m of page.matchAll(/^\| `([a-z-]+)`(?: \/ `([a-z-]+)`)? \| (loss|choice) \|/gm)) {
+      rows.set(m[1] as string, m[3] as string)
+      if (m[2]) rows.set(m[2], m[3] as string)
+    }
+    expect(Object.fromEntries([...rows].sort())).toEqual(
+      Object.fromEntries(Object.entries(NOTE_SEVERITY).sort()),
+    )
+  })
+})
