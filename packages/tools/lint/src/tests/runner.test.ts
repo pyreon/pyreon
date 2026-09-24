@@ -602,6 +602,34 @@ describe('JSX rules', () => {
     expect(diags.length).toBe(1)
   })
 
+  // Components that build their output with `h()` (framework and library code
+  // that is not compiled) — RouterLink, Dynamic and the a11y components all
+  // destructured props unnoticed because only a JSX return counted.
+  it('pyreon/no-props-destructure: flags an h()-returning PascalCase component (body form)', () => {
+    const source = `const Link = (props) => { const { to, ...rest } = props; return h('a', { ...rest, href: to }) }`
+    const diags = findByRule(lintSource(source), 'pyreon/no-props-destructure')
+    expect(diags.length).toBe(1)
+  })
+
+  it('pyreon/no-props-destructure: flags an h()-returning component function declaration', () => {
+    const source = `function Region(props) { const { role, ...rest } = props; return h('div', { ...rest, role }) }`
+    const diags = findByRule(lintSource(source), 'pyreon/no-props-destructure')
+    expect(diags.length).toBe(1)
+  })
+
+  it('pyreon/no-props-destructure: h() return does NOT make a camelCase helper a component', () => {
+    const source = `function renderCell(opts) { const { label } = opts; return h('td', null, label) }
+const build = ({ tag }) => h(tag, null)`
+    const diags = findByRule(lintSource(source), 'pyreon/no-props-destructure')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-props-destructure: splitProps in an h() component is clean', () => {
+    const source = `const Link = (props) => { const [own, rest] = splitProps(props, ['to']); return h('a', mergeProps(rest, { href: () => own.to })) }`
+    const diags = findByRule(lintSource(source), 'pyreon/no-props-destructure')
+    expect(diags.length).toBe(0)
+  })
+
   it('pyreon/no-props-destructure: respects exemptPaths option', () => {
     const config = configWithExemptPaths('pyreon/no-props-destructure', [
       'examples/legacy/',
