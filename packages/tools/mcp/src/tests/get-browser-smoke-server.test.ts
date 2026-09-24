@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 // Real MCP server <-> client round-trip for the `get_browser_smoke_status`
 // tool. The tool walks `<cwd>/packages` looking for browser-categorised
-// packages from `.claude/rules/browser-packages.json` and checks each
+// packages from `.agents/rules/browser-packages.json` and checks each
 // for `*.browser.test.{ts,tsx}` files. CI script `check-browser-smoke.ts`
 // covers the same shape from a script entrypoint; this test pins the
 // JSON-RPC handler + formatter output.

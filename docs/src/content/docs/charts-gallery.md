@@ -84,7 +84,10 @@ and nothing else: the chart is one effect over one signal.
 ## Against ECharts
 
 The same charts, measured in `examples/benchmark` (`bun run bench:charts` for
-speed, `bun run bench:charts-bundle` for size). Size, gzipped, beyond a bare
+speed, `bun run bench:charts-bundle` for size). These suites landed after the
+2026-09-23 full run recorded in `BENCHMARKS.md`, which lists the charts
+scenario as not yet measured; treat the figures below as single-machine,
+author-run numbers pending that record. Size, gzipped, beyond a bare
 Pyreon app's runtime:
 
 | Chart                       | `@pyreon/charts/plot` | ECharts 6, tree-shaken | ECharts 6, whole package |

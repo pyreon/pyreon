@@ -20,7 +20,7 @@
  * sites hold MEGAMORPHIC IC state — the "app validating many schema shapes"
  * workload. Scalar rows here therefore show the multi-schema story, not the
  * single-schema hot loop (that monomorphic case lives in the package bench
- * and in CLAUDE.md's documented ArkType bare-scalar residual).
+ * and in `.agents/guides/fundamentals/references/validate.md`).
  *
  * OBJECTIVITY CONTRACT (2026-07 rewrite — the previous harness had three
  * defects that fabricated cross-lib verdicts: a single CONSTANT closed-over

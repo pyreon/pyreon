@@ -11,7 +11,8 @@ unused family (pie, radar, candlestick, heatmap, …) tree-shakes out of your
 bundle like any unused function. The cartesian marks inside `PlotChart` share
 one renderer: a line chart and a bar + line + tooltip + legend chart are the
 same 40.9 KB gz (measured; ECharts 6 tree-shaken is 156–177 KB gz for the same
-charts — `bun run bench:charts-bundle` in `examples/benchmark`).
+charts — `bun run bench:charts-bundle` in `examples/benchmark`; author-run, not
+yet part of the full benchmark record in `BENCHMARKS.md`).
 
 The main `@pyreon/charts` entry remains the [ECharts bridge](/docs/charts) —
 reach for that when you need the long tail of ECharts series types today.

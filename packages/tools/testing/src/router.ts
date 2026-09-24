@@ -71,8 +71,8 @@ export async function renderWithRouter(
   // The SSR-handler contract: resolve lazy components into the cache AND run
   // the matched chain's loaders BEFORE the synchronous mount — so the first
   // render shows final content (no loading fallbacks, `useLoaderData()`
-  // populated). See CLAUDE.md "The SSR handler must pre-resolve lazy route
-  // components BEFORE rendering".
+  // populated). See `.agents/guides/internals/README.md` "SSR"
+  // (resolve lazy route components before rendering).
   await router.preload(route)
 
   const tree = h(RouterProvider, { router }, ui ?? h(RouterView, {}))

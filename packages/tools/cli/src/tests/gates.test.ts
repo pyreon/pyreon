@@ -160,7 +160,7 @@ describe('runDocClaimsGate', () => {
     // 33 as of the duplicate-`<For>`-rule fix: +2 lint-rule-count sites
     // (`packages/tools/lint/package.json` — the published npm description,
     // which had rotted to "56 rules" against a real 98 because it was the one
-    // count surface this gate did not cover — and `.claude/rules/code-style.md`,
+    // count surface this gate did not cover — and `.agents/rules/code-style.md`,
     // stale at 97) and +1 lint-category-count site (the same code-style.md).
     //
     // 34 as of the README-gaps audit: +1 hook-count site — the hooks
@@ -268,16 +268,16 @@ describe('runDocClaimsGate', () => {
       )
     }
 
-    // CLAUDE.md carries TWO claim sites (table row + arch section)
+    // AGENTS.md carries TWO claim sites (table row + arch section)
     fs.writeFileSync(
-      path.join(tmp, 'CLAUDE.md'),
+      path.join(tmp, 'AGENTS.md'),
       `${opts.claudeMdRow ?? `| \`@pyreon/hooks\` | ${opts.hookCount} signal-based hooks for stuff |`}\n${
         opts.claudeMdArch ?? `- ${opts.hookCount} signal-based hooks across 6 categories`
       }\n3 doc pages covering all packages\n`,
     )
 
     // The root README carries the hooks claim too, and it is one of the sites
-    // that still REJECTS the hedged "N+" form now that CLAUDE.md's package
+    // that still REJECTS the hedged "N+" form now that AGENTS.md's package
     // table is gone (#2538 slimmed it).
     fs.writeFileSync(
       path.join(tmp, 'README.md'),
@@ -318,7 +318,7 @@ describe('runDocClaimsGate', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-hedged-'))
     // 3 actual exports; the root README uses the rejected hedged form.
     //
-    // This used to target CLAUDE.md's package-table row. That row was deleted
+    // This used to target AGENTS.md's package-table row. That row was deleted
     // when #2538 slimmed the file, so the claim site went with it — but the
     // INVARIANT under test is "a hedged number is an error, not a pass", and
     // that is unchanged. It is asserted here against a site that still exists.
@@ -376,11 +376,11 @@ describe('runDocClaimsGate', () => {
       path.join(tmp, 'packages', 'fundamentals', 'hooks', 'src', 'index.ts'),
       '',
     )
-    // Plant one claim file (CLAUDE.md) so the gate doesn't skip.
+    // Plant one claim file (AGENTS.md) so the gate doesn't skip.
     // Content is empty so its claims trigger pattern-miss (warning),
     // not file-missing. All OTHER claim files remain absent and
     // produce file-missing (error) findings.
-    fs.writeFileSync(path.join(tmp, 'CLAUDE.md'), '')
+    fs.writeFileSync(path.join(tmp, 'AGENTS.md'), '')
 
     const result = await runDocClaimsGate({ cwd: tmp })
     assertGateResultShape(result, 'doc-claims')
@@ -397,7 +397,7 @@ describe('runDocClaimsGate', () => {
     fs.rmSync(tmp, { recursive: true, force: true })
   })
 
-  it('lint-rule-count: drift when CLAUDE.md hard-codes the wrong allRules length', async () => {
+  it('lint-rule-count: drift when AGENTS.md hard-codes the wrong allRules length', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-lr-'))
     markMonorepo(tmp)
     const rulesDir = path.join(tmp, 'packages', 'tools', 'lint', 'src', 'rules')
@@ -410,7 +410,7 @@ describe('runDocClaimsGate', () => {
         '  // JSX (2)\n  ruleC,\n  ruleD,\n]\n',
     )
     fs.writeFileSync(
-      path.join(tmp, 'CLAUDE.md'),
+      path.join(tmp, 'AGENTS.md'),
       '| `@pyreon/lint` | Pyreon-specific linter — 99 rules, 18 categories |\n',
     )
 
@@ -443,8 +443,8 @@ describe('runDocClaimsGate', () => {
         "// pyreon-lint --list  # list all 3 rules\n" +
         "desc: 'covers stuff — 9 rules total. bar'\n",
     )
-    // Plant CLAUDE.md so the gate doesn't skip (no rule claim in it).
-    fs.writeFileSync(path.join(tmp, 'CLAUDE.md'), 'nothing here\n')
+    // Plant AGENTS.md so the gate doesn't skip (no rule claim in it).
+    fs.writeFileSync(path.join(tmp, 'AGENTS.md'), 'nothing here\n')
 
     const result = await runDocClaimsGate({ cwd: tmp })
     const drifts = result.findings.filter(
@@ -470,13 +470,13 @@ describe('runDocClaimsGate', () => {
       path.join(compilerDir, 'pyreon-intercept.ts'),
       "export type PyreonDiagnosticCode =\n  | 'a-b'\n  | 'c-d'\n  | 'e-f'\n\nexport interface X {}\n",
     )
-    const rulesDir = path.join(tmp, '.claude', 'rules')
+    const rulesDir = path.join(tmp, '.agents', 'rules')
     fs.mkdirSync(rulesDir, { recursive: true })
     fs.writeFileSync(
       path.join(rulesDir, 'anti-patterns.md'),
       'the detector flags 12 of the patterns below statically, and more.\n',
     )
-    fs.writeFileSync(path.join(tmp, 'CLAUDE.md'), 'no detector claim here\n')
+    fs.writeFileSync(path.join(tmp, 'AGENTS.md'), 'no detector claim here\n')
 
     const result = await runDocClaimsGate({ cwd: tmp })
     const drift = result.findings.find(
@@ -522,7 +522,7 @@ describe('runDocClaimsGate', () => {
     fs.rmSync(tmp, { recursive: true, force: true })
   })
 
-  it('package-count: drift when CLAUDE.md mis-states the published-package count', async () => {
+  it('package-count: drift when AGENTS.md mis-states the published-package count', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-pkg-'))
     markMonorepo(tmp)
     // 3 non-private packages + 1 private (the private one must NOT count).
@@ -539,7 +539,7 @@ describe('runDocClaimsGate', () => {
     mk('fundamentals', 'store')
     mk('internals', 'test-utils', true) // private — excluded
     fs.writeFileSync(
-      path.join(tmp, 'CLAUDE.md'),
+      path.join(tmp, 'AGENTS.md'),
       '99 published packages across 6 categories under `packages/`.\n',
     )
 

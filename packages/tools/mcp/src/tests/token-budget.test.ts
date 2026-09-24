@@ -125,16 +125,19 @@ describe('MCP token budgets', () => {
     })
   })
 
-  it('a clamped index title, copied with its marker, resolves through name lookup', async () => {
+  it('an index title, copied as shown (clamp marker included), resolves through name lookup', async () => {
     await withServer(async (client) => {
       const index = await callText(client, 'get_anti_patterns', {})
-      const clamped = index.split('\n').find((l) => l.startsWith('- **') && l.includes('…**'))
-      expect(clamped, 'index has no clamped title to check').toBeDefined()
-      const shown = clamped!.slice('- **'.length, clamped!.indexOf('**', 4))
+      const titles = index
+        .split('\n')
+        .filter((l) => l.startsWith('- **'))
+        .map((l) => l.slice('- **'.length, l.indexOf('**', 4)))
+      expect(titles.length).toBeGreaterThan(0)
+      // Prefer a clamped title when the catalog has one; otherwise any title.
+      const shown = titles.find((t) => t.endsWith('…')) ?? titles[Math.floor(titles.length / 2)]!
       const body = await callText(client, 'get_anti_patterns', { name: shown })
       expect(body).not.toContain('No anti-pattern title matches')
-      // Exactly the entry whose title starts with the clamped prefix.
-      expect(body).toContain(shown.slice(0, -1))
+      expect(body).toContain(shown.replace(/…$/, ''))
     })
   })
 

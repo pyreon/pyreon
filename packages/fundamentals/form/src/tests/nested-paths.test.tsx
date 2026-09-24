@@ -6,7 +6,7 @@ import { useForm } from '../use-form'
 // declares a leaf field addressable exactly like a top-level one; a
 // schema/validator error keyed by the same dot-path routes to the LEAF (not the
 // ancestor). The value model stays FLAT (values()/onSubmit keep the dot-path
-// keys); `nestValues` converts to a nested API payload. See .claude/rules/
+// keys); `nestValues` converts to a nested API payload. See .agents/rules/
 // anti-patterns.md schema-error-routing entry.
 
 type DotForm = {

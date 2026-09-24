@@ -12,7 +12,7 @@ import { sharedConfig } from './internals.ts'
 // Runs real Chromium via @vitest/browser + playwright. Unlike happy-dom, this
 // catches environment-divergence bugs: `typeof process` dead code, real
 // IntersectionObserver timing, computed styles, Vite's `import.meta.env`
-// in browser context. See .claude/rules/test-environment-parity.md.
+// in browser context. See .agents/rules/test-environment-parity.md.
 
 export type BrowserProviderFactory = () => unknown
 

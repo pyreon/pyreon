@@ -9,418 +9,318 @@ numbers — the wins, the statistical ties, **and the losses**. The same honesty
 bar as everywhere else in these docs: an inflated benchmark is worse than a
 slow framework.
 
-**How to read this page.** All numbers were measured on an idle Apple M3 Max
-(darwin/arm64) against the real published competitor packages, current as of
-2026-07 on `main`. Absolute times are machine-dependent — **the ratio is the
+**How to read this page.** All numbers come from the full run of 2026-09-23 on
+an Apple M3 Max (darwin/arm64, bun 1.4 / node 26.1, Chromium 151 via
+Playwright), against the real published competitor packages bumped to npm
+latest before the run. Benches ran strictly one at a time, each gated on a
+quiet machine, with `NODE_ENV=production` and production builds for every
+browser suite. Absolute times are machine-dependent — **the ratio is the
 portable signal**. `🤝` marks a statistical tie (95% bootstrap confidence
-intervals overlap). Every suite is reproducible from the repo with the
-commands listed in each section.
+intervals overlap — *could not distinguish*, not *equal*). The authoritative,
+complete record is [`BENCHMARKS.md`](https://github.com/pyreon/pyreon/blob/main/BENCHMARKS.md)
+at the repo root; where this page and that file disagree, the file wins.
 
 **Author-judge caveat, stated up front:** these benchmarks are written and
 judged by the Pyreon authors. The methodology is designed for objectivity —
-per-cell process isolation, rotated inputs (so a JIT can't cache a constant
-result), correctness gates that verify the measured effect before a number is
-trusted, seeded randomized execution order, and competitor code compiled
+per-cell process isolation, rotated execution order, correctness gates that
+read the result back before a number is trusted, and competitor code compiled
 through each framework's **own real compiler** at its idiomatic best — but
 only independent reproduction fully resolves author bias. A ready-to-submit
 `frameworks/keyed/pyreon` implementation for the independent
 [krausest/js-framework-benchmark](https://github.com/krausest/js-framework-benchmark)
 is staged in-repo at `contrib/krausest/pyreon-keyed/`.
 
+**Before this run, every harness was audited, and most defects favoured
+Pyreon.** Six competitor arms built their row data with a slower helper inside
+the timed window, Vue arms were hand-written `h()` render functions that
+disable Vue's compiled patch flags, Solid arms skipped the per-cell `insert()`
+work its compiler emits, and several correctness gates only counted rows, so a
+no-op could pass. All of it was fixed before measuring, and this run
+supersedes every earlier figure this page published. Where a verdict flipped,
+it is called out below.
+
 ## Flagship: keyed row-list DOM benchmark
 
-> **2026-08-18 retraction, updated same day after a SECOND root cause was
-> found.** The table and verdicts this section published through 2026-08-17
-> were partly wrong, and every error flattered Pyreon. Two rounds of harness
-> bugs, all in our own code: (1) our harness had handicapped
-> [Octane](https://octanejs.dev) — the nearest rival — by rendering its row
-> id as `{String(row.id)}` where its own idiomatic form passes the raw
-> number, disabling a compiler fast path, and separately let five
-> implementations' `String(row.id)` calls inflate a shared V8 engine cache
-> that our retained-heap metric charged to the framework; (2) the bench
-> fixture used `table-layout: auto`, so any op that widens a table cell
-> forced Chromium to re-measure every row's column widths — this is what
-> actually caused `append`'s bimodal timing, and it separately inflated our
-> published Pyreon-vs-Solid `partial update` lead by more than 2×. **This is
-> not a Pyreon regression** — every fix removes something that was inflating
-> or destabilizing a number, never something that was making Pyreon look
-> artificially slow. The fixes are staged as open pull requests
-> ([#2893](https://github.com/pyreon/pyreon/pull/2893),
-> [#2894](https://github.com/pyreon/pyreon/pull/2894),
-> [#2895](https://github.com/pyreon/pyreon/pull/2895),
-> [#2897](https://github.com/pyreon/pyreon/pull/2897),
-> [#2899](https://github.com/pyreon/pyreon/pull/2899),
-> [#2901](https://github.com/pyreon/pyreon/pull/2901),
-> [#2903](https://github.com/pyreon/pyreon/pull/2903)) and had **not merged**
-> as of this writing — the table below is the destination once they land,
-> not yet the state of `main`. (#2896 is unrelated to this suite — it only
-> touches the deep-component-tree scenario.)
-
-A krausest-style row-list suite in real Chromium (Playwright), production
-`vite build` per framework, forced GC between iterations, 100 pooled samples
-per op (`--repeat 5`), DOM verified every iteration. The Pyreon entry is the
-**idiomatic JSX users actually write** — no hand-tuned tier (the compiler
-already lowers idiomatic JSX to the optimal `_tpl()` output; a hand-written
-low-level entry measured statistically identical and was removed).
+A krausest-style row-list suite in real Chromium, production `vite build` per
+framework, 100 pooled samples per cell (`--repeat 5`), load re-checked before
+every framework and pass, cross-origin isolated (5µs clock). The Pyreon entry
+is the **idiomatic JSX users actually write**.
 
 | Benchmark | Vanilla | Pyreon | Octane | Vue 3 | Solid | Svelte 5 | React 19 | Preact |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Create 1,000 | 7.47 | 🤝 8.01 | 🤝 7.95 | 8.06 | 8.82 | 8.97 | 10.23 | 11.83 |
-| Replace 1,000 | 7.45 | 🤝 7.92 | 🤝 7.84 | 8.03 | 8.60 | 8.86 | 9.98 | 11.75 |
-| Partial update | 720µs | 🤝 650µs | 🤝 700µs | 1.03 | 1.39 | 1.25 | 890µs | 1.01 |
-| Select row | — | at floor (no ratio) | at floor (no ratio) | — | — | — | — | — |
-| Swap rows | 690µs | 760µs | 850µs | 1.06 | 890µs | 1.39 | 6.10 | 1.00 |
-| Remove row | 6.14 | 🤝 6.24 | 🤝 6.26 | 6.47 | 6.26 | 7.02 | 6.60 | 6.74 |
-| Clear rows | 90µs | 160µs | **110µs** | 230µs | 440µs | 280µs | 1.05 | 740µs |
-| Create 10,000 | 75.25 | **80.28** | 83.40 | 87.70 | 98.30 | 95.90 | 209.60 | 266.70 |
-| Append 1k→10k | 13.68 | **14.24ms** | 16.27ms | 70.98 | 16.17 | 21.22 | 17.75 | 18.09 |
+| Create 1,000 | 8.07 | **8.83** | 9.27 | 9.30 | 9.47 | 9.73 | 11.25 | 12.88 |
+| Replace all | 8.05 | **8.64** | 8.95 | 9.21 | 9.30 | 9.70 | 10.53 | 12.90 |
+| Partial update | 620µs | 🤝 645µs | 🤝 675µs | 990µs | 1.30 | 725µs | 855µs | 980µs |
+| Select row | 10µs | 15µs | 25µs | 305µs | 25µs | 380µs | 185µs | 230µs |
+| Swap rows | 550µs | 🤝 655µs | 🤝 625µs | 865µs | 725µs | 1.36 | 6.66 | 805µs |
+| Remove row | 6.80 | 🤝 7.02 | 🤝 6.81 | 7.18 | 🤝 6.79 | 7.37 | 7.06 | 7.14 |
+| Clear rows | 95µs | **115µs** | 190µs | 225µs | 430µs | 315µs | 990µs | 860µs |
+| Create 10,000 | 80.61 | **88.31** | 94.94 | 97.10 | 93.23 | 105.09 | 216.97 | 295.50 |
+| Append 1k→10k | 14.64 | **15.71** | 18.87 | 76.86 | 17.55 | 24.72 | 19.23 | 20.52 |
 
-(ms unless noted; `🤝` = statistical CI95-overlap tie; **bold** = outright
-leader on that row. Median of 100 pooled samples, on the `table-layout:
-fixed` board — see the retraction above. `swap` and `clear rows` are shown
-without a tie marker because this handoff's board doesn't carry fresh CI
-bounds for every cell; treat any cell without `🤝` or **bold** as pending
-re-verification, not adjudicated.)
+(ms unless noted; `🤝` = CI95-overlap tie; **bold** = outright leader among
+frameworks on that row.)
 
-**Tally on this board: Pyreon wins 2 ops outright (`create 10,000`,
-`append` — both WIDENED by the table-layout fix, not narrowed), a plausible
-tie-cluster (`create 1,000`, `replace`, `partial update`, `remove`,
-`select row`), and loses 1 (`clear rows`, ~1.45×, unaffected by the layout
-fix since it doesn't widen any cell).** `swap`'s gap also widened and may no
-longer be a tie, but is unconfirmed without CI — do not publish it as a win.
-The measurable wall-clock cost vs hand-written Vanilla is bulk-create
-(~7.2%/~6.7% at create-1k/create-10k — layout-dominated, not a clean JS-cost
-signal, see below) and append (**+4.1% to +5.7%**, now publishable — see
-below for why that changed).
+**Verdicts:** Pyreon outright on create 1,000, replace all, clear rows,
+create 10,000 and append · tie Pyreon = Octane on partial update and swap rows ·
+tie Solid = Octane = Pyreon on remove row · **no verdict** on select row, which
+sits below 10 clock ticks (the batch instrument below resolves it).
 
-**A correction about `clear rows`, not to the number but to the reasoning behind it.** We previously explained the loss as "the price of fine-grained subscriptions" and treated the investigation as closed. A follow-up CPU profile found that explanation was wrong by more than an order of magnitude: tearing down Pyreon's per-row signal binding costs under 1µs per 1,000 rows; the real cost is a duplicate per-key lookup table that a fix (open, not yet merged) removes, narrowing the loss from ~1.47× to ~1.15× without closing it — Octane's advantage on this one op is architectural (it registers no per-row subscriptions at all), not a missing optimization on our side. The figure above (~1.45×) is what `main` measures today.
+**Two verdicts changed against earlier versions of this page.** `clear rows`
+flipped from a loss to Octane to an outright Pyreon win (115 vs 190µs) — but
+against **Octane 0.4.2**, not the 0.2.2 previously measured, so this is not a
+like-for-like confirmation of any Pyreon change. `create 1,000` and `replace
+all` moved from ties with Octane to outright.
 
-**`partial update` — the correction that matters most: our published ~4.9×
-lead over Solid was inflated more than 2× by the table-layout bug, and is
-retracted as explicitly as the Octane/retained-heap artifacts.** `partial
-update` appends `" !!!"` to a cell's text on every 10th row — widening that
-cell forced `table-layout: auto` to re-measure column widths across the
-WHOLE table, penalizing Solid disproportionately: Solid drops **4.03ms →
-1.39ms (−66%)** on the fix, while every other framework drops only 15–24%.
-**The record has published "Solid ~3.90–3.98ms, ~4.9× Pyreon lead" — that
-number is wrong. The corrected margin is Pyreon 650µs vs Solid 1.39ms,
-~2.1×.** Do not repeat the retracted 4.9× figure anywhere. The lead is
-still real, just less than half of what was claimed — Solid's effect-based
-`insert` is genuinely slower than Pyreon's `_bindText` direct-subscriber
-path, at ~2.1×, not ~4.9×.
+**Against hand-written Vanilla**, Pyreon costs 1.04–1.10× on most ops
+(create 1.09×, replace 1.07×, partial 1.04×, remove 1.03×, create-10k 1.10×,
+append 1.07×), 1.19× on swap and 1.21× on clear.
 
-**`select row` has no published multiplier.** Unaffected by the
-table-layout fix (this op doesn't widen any cell). Timing at
-100/1,000/10,000 rows: Pyreon 1.03/0.96/0.69µs vs Octane 1.37/1.53/1.15µs,
-against a harness floor of 0.47–0.65µs. Octane is roughly flat across list
-length — this refutes an earlier claim that treated it as O(n) with a large
-multiplier. Both frameworks sit at the edge of what real-Chromium timing can
-resolve; we publish "Pyreon is at the floor, Octane measurably but slightly
-above it," never a precise ratio, and never `0µs` again.
+Caveats that travel with these numbers:
 
-**`Create 1,000` and `replace` are, 19 times out of 20, literally the same operation — and their tie is browser-bound, not a coincidence.** A profiling pass (measured pre-`table-layout` fix; the qualitative finding is unaffected, since it concerns the `getBoundingClientRect()` flush every `create`/`replace` op pays regardless of table-layout mode) split `bench()`'s timed region (which times the framework's `fn()` PLUS that forced layout flush, in the SAME window) into JS and layout, on a production build:
+- create/replace/remove/append are dominated by browser layout that every
+  framework pays identically, so small gaps there are real but mostly not
+  framework JavaScript.
+- `create N rows` is a replace for 19 of 20 samples — there is no reset
+  between runs, so only the first sample mounts into an empty list.
+- Pyreon and Solid allocate a per-row signal that the plain-object
+  frameworks do not.
 
-| | JS | layout | total |
+### Scaling — select, partial update, swap at 100 → 20,000 rows
+
+A batch instrument (K ops per timing window) resolves per-op cost below the
+clock tick:
+
+- **select** is O(1) for Pyreon and Octane — flat at roughly 0.5µs vs 0.9µs,
+  Pyreon **1.85–1.95×** faster at every size — and O(n) for Solid, which
+  Pyreon beats 247× at 20,000 rows.
+- **partial update**: Pyreon 1.08–1.13× faster than Octane at every size;
+  1.05–1.07× faster than Solid from 1,000 rows up (a tie at 100).
+- **swap**: a tie with Octane at 100 rows, Pyreon 1.03–1.18× faster from
+  1,000 up; 1.10–1.20× faster than Solid.
+- Disclosed instrument disagreement: for Octane `select` at 10k/20k rows the
+  per-op timer reads 50–60µs while the batch instrument reads about 0.9µs.
+  The batch figure is used above; the per-op figure is unexplained.
+
+**Retained heap after the suite** (post-GC, MB): Vanilla 2.65 · Preact 2.78 ·
+**Pyreon 2.78** · Solid 2.87 · Svelte 2.98 · Vue 3.01 · Octane 3.15 ·
+React 3.21 — Pyreon ties Preact for the lightest framework.
+
+Reproduce: `cd examples/benchmark && bun bench-fair.ts --repeat 5 --wait-quiet 6`
+(and `bench-crossover.ts` for the scaling table).
+
+## Scenarios beyond the row list
+
+Real Chromium, 60 samples per cell.
+
+| Scenario | Fastest | Pyreon |
+| --- | --- | --- |
+| dbmon tick (100×6 cells, all change) | Svelte 1.80ms | 1.90ms (1.06× slower) |
+| mount deep tree (2,047 components) | Solid 3.25ms | 4.20ms (**1.29× slower**) |
+| context → 1,024 consumers | **Pyreon 1.71ms** | Solid 1.79 🤝 |
+| effect list: update 500 | Solid 1.02ms | 🤝 1.03ms |
+| effect list: dispose 500 | Solid 40µs | 🤝 40µs |
+| memo wall: blocked (300 consumers) | **Pyreon 13µs** | Vue 18 · React 19 |
+| memo wall: passthrough | **Pyreon 565µs** | Svelte 595 · Solid 603 |
+
+- **dbmon** changes every value every tick, which removes a signal graph's
+  skip-unchanged advantage by construction; the whole field is within 1.25×
+  and Pyreon is **not** the leader.
+- **Deep-tree mount is Pyreon's clearest loss** — 1.29× behind Solid.
+- The memo scenario's first pass started after a load spike settled; treat it
+  as possibly contaminated.
+
+**Flow diagrams — `@pyreon/flow` vs React Flow 12** (500 nodes, 499 edges):
+React Flow wins **mount** (17.05 vs 20.38ms, Pyreon 1.20× slower); Pyreon wins
+drag ×60 (7.4×), select (3.5×), pan+zoom ×60 (95×) and unmount (3.5×); adding
+50 nodes is a tie.
+
+Reproduce: `cd examples/benchmark && bun bench-scenarios.ts`
+
+## Hydration
+
+**1,000-row table** — every framework adopted 1,000/1,000 server rows:
+
+| | total | walk (framework work) | layout |
 | --- | ---: | ---: | ---: |
-| Pyreon | 1.13ms | 7.12ms | 8.24ms |
-| Vanilla | 810µs | 7.26ms | 8.07ms |
-| Δ | +317µs | −145µs | +172µs |
+| Vue 3 | 6.91ms | 1.34ms | 5.57ms |
+| **Pyreon** | 🤝 6.93ms | 🤝 1.38ms | 5.55ms |
+| React 19 | 7.45ms | 2.12ms | 5.33ms |
+| Preact | 12.69ms | 6.88ms | 5.81ms |
 
-Layout is ~86% of `create 1,000` and **statistically identical between
-Pyreon and Vanilla** — layout Δ across three reproductions (−58µs, −278µs,
-−145µs) is noise around zero, LARGER than the entire framework JS gap. The
-honest statement about the `create 1,000`/`replace` ties is therefore not
-merely "within CI" — **this op is browser-layout-bound and the instrument
-structurally cannot separate the frameworks there.** The only real,
-tightly-reproducing signal is the JS term alone (Δ +318µs/+285µs/+317µs
-across three runs): a genuine ~+28% Pyreon-vs-Vanilla cost on the JS
-term that is **invisible in wall clock**, swamped by ~7ms of layout neither
-framework controls. This is not a win claim, and not a loss claim — it's a
-statement about what this instrument can and cannot see; do not quote a
-wall-clock create/replace percentage as a framework cost without this
-caveat. Separately: the suite has no `reset` between runs and row ids come
-from a monotonic counter, so of the 20 timed runs per op only the FIRST
-mounts into an empty list — the other 19 hand the reconciler N brand-new
-keys against N rows STILL LIVE, which is structurally a replace. That's why
-`create` and `replace` report nearly identical medians on both the old and
-the fixed-layout boards — for 19 of 20 sampled runs they are, literally, the
-same operation. State this plainly: a reader of "Create 1,000: 8.01ms"
-reasonably assumes a fresh empty-DOM mount, and for the vast majority of
-sampled runs that assumption is wrong.
+Pyreon and Vue are **statistically tied** on both the total and the walk,
+with Vue now measured on its compiled template (its real fast path).
 
-A profiling driver used for the JS/layout split above initially printed
-`0.0µs` for every sample — its attribution keyed on `Function.name`, which a
-minified production build strips, so every lookup silently missed and fell
-back to a plausible-looking zero. Same class as this repo's "gate that could
-not fail" entries: it now refuses to report an empty attribution instead of
-printing one.
+**App-page shape** (320 statically composed components, 2,206 nodes, all four
+adopt every node): **Pyreon 4.26ms** · React 4.63 (1.09×) · Vue 5.02 (1.18×) ·
+Preact 5.94 (1.39×).
 
-**`append` is OUTRIGHT PYREON, and the margin WIDENED — this supersedes the
-"~1.04×, no vs-Vanilla ratio" figures reported earlier in this campaign.**
-`append` previously read "OUTRIGHT Pyreon, 22.40ms," which turned out to be
-measured on a bimodal-timing harness and was briefly retracted to
-"unmeasured" while under investigation. **The bimodality's root cause is now
-identified: `table-layout: auto` forced a full-table column re-measure on
-every append (~93% of the op's time), and whether the expensive path fired
-depended on random label content and benchmark history** — which is exactly
-why the mode mix differed per framework and per run. Fixed to `table-layout:
-fixed`, scoped to `.bench-fixture`, identical for all eight impls (PR
-#2903). Two independent corrected runs on the fixed board both land Pyreon
-**OUTRIGHT and CI95-disjoint**, at **1.14–1.20×** (run 1: 14.24ms vs Octane
-16.27ms = 1.14×; run 2: 14.11ms vs Octane 16.95ms = 1.20×) — WIDER than the
-previously-reported 1.04×, because a large shared additive layout constant
-left both sides once the table stopped re-measuring on every append.
-
-The bimodality guard (#2901) now passes CLEAN across the whole board: **7
-bimodal cells → 0**, every framework 100/100 fast-mode samples, CV 29–43% →
-**3–7%**. Because Vanilla's own median no longer straddles two timing modes,
-**a vs-Vanilla ratio is now honest and published**: Pyreon **+4.1% (run 1) /
-+5.7% (run 2)** over hand-written Vanilla — the earlier instruction on this
-page to never publish this ratio is superseded specifically because the
-bimodality that made it dishonest is now fixed at the root.
-
-Three caveats travel with the append figure and must be encoded wherever
-it's quoted, not just attached once: **(1)** even fixed, `append` is **~90%
-layout** (Pyreon's own JS is 1.48ms of a 14.47ms total) and all eight
-implementations emit **byte-identical DOM** (3 elements + 2 text nodes per
-appended row, verified) — the defensible claim is *end-to-end append cost
-including the layout it causes*, **not** "Pyreon's reconciler is 1.14×
-faster." **(2)** the fixture is now **less representative of real apps**,
-which commonly DO use auto-layout tables and pay this cost — `table-layout:
-fixed` is the right trade for a *comparison* specifically because
-auto-layout's cost is random-data-triggered and destabilizing, not a stable
-framework signal — state the trade-off, don't hide it. **(3)** these are
-pending numbers (see the retraction note above) — do not present this as
-settled until the PRs land.
-
-**A refuted diagnosis, worth recording as a lesson.** Before the
-`table-layout` root cause was found, append's bimodality was attributed to
-residue from the preceding `create 10,000` op, with fresh-fixture,
-fresh-page, or benchmark-reordering proposed as fixes. Measurement refuted
-the theory: append run with no preceding op at all is 54.53ms and 60/60
-SLOW; with only `create 10,000` before it, 21.11ms and ~50/50; with the
-full suite before it, 20.15ms and 90% FAST. **More preceding work produced
-MORE fast samples — the opposite of what a residue theory predicts.** Any
-of the proposed fixes would have shipped looking principled and made the
-benchmark worse. Measure a causal theory before fixing the harness on its
-strength alone.
-
-Per-op tie-vs-outright still shuffles with machine noise even on the
-corrected field, so treat it as a band rather than a fixed scoreboard; the
-current per-op record lives in
-`.claude/skills/pyreon-benchmarks/SKILL.md`.
-
-**Retained memory, corrected** (post-suite, post-GC): Vanilla 2.38 ·
-Preact 2.50 = **Pyreon 2.50** · Solid 2.53 · Octane 2.69 · Svelte 2.70 ·
-Vue 2.71 · React 2.89 MB — **3rd of 8, and TIED with Preact, not "2nd among
-frameworks."** A tie has no ordinal; the previous "2nd, 0.04MB behind Preact"
-framing on this page implied a ranking the numbers don't support. A sibling
-run measured 2.45/2.48 for the same pair — both deltas sit inside a 10–20KB
-noise floor, consistent with a tie rather than a gap.
-
-The correction is a second fix layered on the same metric. This page first
-said Pyreon was mid-pack (~2.90MB) because a GC-timing bug in the harness
-counted not-yet-collected garbage as retained — fixed in
-[#2391](https://github.com/pyreon/pyreon/pull/2391) (GC, yield, repeat until
-the counter stops moving; see the still-accurate mechanism below). That fix
-produced the "2nd among frameworks" claim this section is now retracting: a
-second, separate bug let five implementations' `String(row.id)` calls grow a
-shared V8 engine cache (`smi_string_cache`) that the metric attributed to the
-framework rather than the engine. React/Vue/Svelte/Octane still carry the
-same ~63KB artifact from their own row-id text paths — a fixed cost every
-text-id implementation pays, not framework retention.
-
-Heap-snapshot attribution still refutes the original cause this page used to
-give ("tracks code-space/bundle size"): Pyreon's `code` space is **579KB vs
-Preact's 596KB** — Pyreon ships *less* code — and the JS-only object graphs
-are near-identical (1.50 vs 1.46MB). The gap was never bundle size, and the
-GC-timing mechanism below is unaffected by this correction — only the
-ranking claim ("2nd") is retracted.
-
-Honest residual: Pyreon uniquely defers ~0.67MB of reclamation by one
-event-loop turn. In any real app that memory returns on the next turn — a
-latency, not a leak — but it is a real difference from Preact/Solid, and the
-mechanism is not yet explained. **Beating Vanilla is structurally
-impossible for a framework**; the honest target was always Preact/Solid, a
-tie Pyreon now genuinely holds rather than beats.
-
-Reproduce: `cd examples/benchmark && bun bench:fair --repeat 5`
+Reproduce: `cd examples/benchmark && bun bench-hydration.ts` / `bench-apppage.ts`
 
 ## Server-side rendering (cross-framework)
 
-The same page (nav + heading + N-row keyed list + footer) rendered
-server-side by each framework at its **compiled idiomatic best**: Pyreon
-through `transformJSX` with the SSR compile-to-string fast path (the
-vite-plugin default), React through `react-dom/server`, Vue through
-`compileTemplate({ ssr: true })` (the `ssrRender` string-concat path Nuxt
-runs), Svelte through `generate: 'server'`. Steady-state warm-process
-throughput; per-render app creation; framework-independent correctness gate.
+The same page rendered server-side by each framework at its **compiled
+idiomatic best**: Pyreon through the compile-to-string fast path (the
+`@pyreon/vite-plugin` default), React through `react-dom/server`, Vue through
+its compiled SSR, Svelte through `generate: 'server'`. µs per render, 3
+processes pooled per cell.
 
-| rows | **Pyreon** | react-dom 19 | vue 3.5 | svelte 5 |
-| --- | --- | --- | --- | --- |
-| 10 | **★ 1.99µs** | 10.09µs | 3.16µs | 2.76µs |
-| 100 | **★ 15.56µs** | 60.67µs | 16.63µs | 18.56µs |
-| 1000 | **★ 137.9µs** | 628.8µs | 🤝 140.6µs | 175.2µs |
+| rows | Pyreon | Vue 3 | Svelte 5 | React 19 | Pyreon h() walk |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 10 | **2.11** | 2.79 (1.32×) | 2.48 (1.18×) | 11.22 (5.32×) | 16.17 |
+| 100 | 16.30 (1.06×) | **15.40** | 18.63 (1.21×) | 77.44 (5.03×) | 135.26 |
+| 1,000 | 159.3 (1.09×) | **146.5** | 177.1 (1.21×) | 785.9 (5.36×) | 1,408.7 |
 
-(median µs/render, 3 processes pooled per cell, CI95, randomized cell order,
-8 rotated datasets, correctness-gated. `🤝` = CI95 overlaps the fastest, i.e.
-a tie the numbers cannot separate.)
+Honest reading: **Pyreon leads small pages; Vue leads at 100 and 1,000 rows**
+(Pyreon 1.06× and 1.09× behind, CIs disjoint). This reverses an earlier
+version of this page, which had Pyreon ahead at 100 rows and tied at 1,000.
+Pyreon leads React 4.75–5.32× and Svelte 1.11–1.18× at every size (the
+parenthesised ratios in the table are against each row's fastest). Vue's
+`renderToString` is async and awaited (its real completion); the others are
+synchronous. Pyreon also emits a per-row hydration-key marker Vue does not.
 
-Honest reading: **Pyreon is the fastest of the five at 10 and 100 rows** —
-outright, with CI95 clear of Vue — and **ties Vue at 1000 rows** (137.9 vs
-140.6µs, CI95 overlapping: a tie, not a win). It leads React 4.6–5.1× and
-Svelte 1.25–1.4× at every size. What got it here: each `<For>` row and
-`.map` item now compiles to one fused string concat (Vue's shape) instead of
-a per-item call + per-hole dispatch walk — worth ~29% at 1000 rows and
-turning a prior ~1.24× Vue deficit into a tie.
+A second suite (`bench:ssr-cross`) compares `renderToString` against React,
+Preact and Solid with byte-identical output enforced. Pyreon's compiled path
+leads every scenario — card 4.46×, list-50 1.63×, list-1000 1.79×, layout
+1.85× ahead of Solid, the next fastest. The uncompiled `h()` walk is 5–6×
+slower than the compiled path, which is what an app actually ships.
 
-The remaining 1000-row profile is now dominated by the same irreducible
-`escapeHtml` work Vue spends its time on, plus one honest architectural cost
-Vue does not pay: Pyreon emits a per-row `<!--k:KEY-->` hydration-key marker
-(~8% of self time at 1000 rows). That is a feature, not slack.
+Reproduce: `cd examples/benchmark && bun bench-ssr.ts`
 
-A second, runtime-tree variant (`bun run bench:ssr-cross`) compares
-`renderToString` implementations on the same logical VNode/element tree
-without each framework's template compiler — useful for isolating renderer
-overhead from compiler wins.
+## Real-app shapes
 
-Reproduce: `cd examples/benchmark && bun bench:ssr`
+**TodoMVC vs real `react-dom@19`:** add-100 **1.14×**, toggle-1000 **2.42×**,
+clear-1000 **4.24×** faster. An earlier "about 16× on add-100" figure was a
+harness artifact — React's timed window included an idle frame — and is
+withdrawn.
 
-## Real-app TodoMVC
-
-A complete TodoMVC (store + list + filters + edits) driven headlessly
-against real `react-dom@19`: **~5.7–16× faster** per interaction. µs-scale
-and high-variance by nature — the magnitude, not the exact ratio, is the
-signal (disclosed in the suite).
+**12-field form vs six form libraries** (real Chromium): Pyreon leads
+keystroke in blur mode (60µs vs Solid modular-forms 110), keystroke with
+validation (460µs vs 525) and reset (25µs vs 40); mount is a 🤝 tie with Solid
+modular-forms (250 vs 275µs). Retained heap is the lowest of the seven
+(2.28MB).
 
 ## Reactivity core
 
-Bun-run micro-benchmarks against Preact Signals and Solid (resolved to their
-real working builds, `NODE_ENV=production`):
+Against Preact Signals and Solid, one process per cell. On V8 (node 26.1, the
+engine Chrome uses), with `NODE_ENV` folded as every bundler does:
 
-- **Effect propagation**: Pyreon leads (~1.25× over Preact, ~3× over Solid).
-- **Batched writes (batch-50)**: Pyreon leads (~1.06×).
-- **Wide fan-out** (one signal, many effects): Pyreon is **~1.11× behind**
-  Preact (2721ns vs 2464ns median) — a near-tie leaning behind. An earlier
-  version of this page claimed a ~1.03× Pyreon *win* "flipped" from
-  ~2.4–2.75× behind; that was cross-machine drift, not a real flip, and is
-  retracted here (corrected 2026-08 via a 10-run distribution + a
-  single-variable A/B, both against Preact 1.14.4's real build).
-- **Computed diamond**: Preact ahead **1.54×** (8720ns vs 5656ns median).
-  An earlier version of this page claimed a near-tie (~1.07–1.10×); the real
-  number moved because of an intentional trade
-  ([#2983](https://github.com/pyreon/pyreon/pull/2983), 2026-08): `computed`
-  now gates on value with an `Object.is` compare at the runner boundary, so
-  a downstream cascade stops when a derived value is unchanged — a real win
-  for real apps, where a derived value is unchanged between writes far more
-  often than not. This synthetic bench changes every value on every tick,
-  so the gate never short-circuits and only adds a compare per recompute —
-  confirmed causal by reverting the gate for reactivity alone, which
-  measures the diamond back to ~1.13× behind.
-- **Deep computed chain**: Preact ahead **1.51×** (185k vs 122k ns over 100
-  updates on a depth-50 chain) — the same #2983 cost, on the same
-  worst-case every-value-changes shape (reverting the gate measures this back to
-  a ~1.04× tie).
-- **Signal create**: Preact ahead ~1.4×.
+| test | Pyreon | Preact | Solid |
+| --- | ---: | ---: | ---: |
+| signal create+read+write | 67 | **14** | 20 |
+| computed diamond (100 updates) | 9,146 | **6,408** | 40,503 |
+| effect propagation (100) | **2,406** | 3,094 | 17,276 |
+| batch 50 signals | **777** | 924 | 4,896 |
+| deep chain (depth 50, 100) | 183,578 | **81,265** | 713,605 |
+| wide fan-out (1→100 effects) | 3,003 | **1,703** | 5,052 |
 
-The diamond/chain numbers above are the deliberate cost side of #2983's
-trade, not a regression to chase — do not "fix" them by reverting the gate.
-The **signal-create** gap is a separate, structural trade: closing it
-requires Preact's lazy-pull version model, which costs retained heap per
-primitive. Pyreon's per-primitive memory (signal ~152B, computed ~913B,
-effect ~930B) is part of its memory story, and that trade was declined
-deliberately.
+(median ns/op.)
+
+**Honest read:** Pyreon wins effect propagation and batching, and loses
+signal create (about 5×), the computed diamond (1.43×), deep chains (2.26×)
+and wide fan-out (1.76×) to Preact. On JavaScriptCore (bun 1.4) Pyreon leads
+effect propagation (2.76×), batching (1.99×) and wide fan-out (1.09×), while
+Preact leads create (about 5×), diamond (1.18×) and deep chain (1.35×). Solid
+is behind Pyreon on every row except create.
+
+The diamond and chain costs are partly the deliberate price of `computed`
+gating on value with an `Object.is` compare, so a downstream cascade stops
+when a derived value is unchanged — a synthetic bench that changes every value
+every tick pays the compare without ever benefiting from it.
+
+**Unbundled Node pays a tax.** A Node process that imports Pyreon's `lib/`
+without a bundler (a custom server, a script) keeps live
+`process.env.NODE_ENV` reads — about 145ns each under Node — and pays 10–20×
+on these rows. Bundled apps do not.
 
 Reproduce: `bun run bench:reactivity`
 
 ## Router matching
 
-8-router protocol (find-my-way, Hono, radix3, React Router, TanStack Router,
-Vue Router, Next.js-style matcher), per-cell process isolation, rotated path
-variants, identity-verified matches:
+8 routers, 3 processes pooled, correctness gate over 1,344 cells:
 
-- **Static resolve is flat O(1)** (~16ns) at 10/50/200 routes — tied-fastest
-  with radix3 at realistic sizes.
-- **Pyreon wins the realistic-size table averages outright at both 50 and
-  200 routes**, and wins `dynamic (1 param)` outright (~78ns).
-- Hono's compiled mega-regex wins the 10-route toy table, then collapses at
-  50/200 routes (150ns+).
-- React Router's linear scan degrades with table size (10µs → 67µs → 280µs
-  per resolve); Pyreon stays flat.
-- **`miss → catch-all` flipped to an outright Pyreon win** (first-char
-  fail-fast mask: ★25–27ns vs find-my-way's 41–47 — the first-character
-  fail a radix tree gets for free, now table-driven).
-- **Losses, disclosed:** find-my-way/radix3 still edge the param-heavier
-  rows (dynamic-2/nested-dynamic ~1.1×; splat ~1.35× find-my-way) — while
-  returning less than Pyreon's `ResolvedRoute` (params + parsed query +
-  merged meta + matched chain); the splat residual is quantified as that
-  richer return envelope.
+- At **50 and 200 routes** Pyreon averages **1.00× / 1.01×** of the fastest
+  (radix3) — effectively tied for first — ahead of find-my-way (1.27–1.29×),
+  Hono (3.2×), Vue Router (8–20×), TanStack Router (10×) and React Router
+  (865–3,894×).
+- At **10 routes Hono leads** (Pyreon 4.66×), driven by one outlier cell:
+  Pyreon's splat reads 1.23µs with a wide CI, against 108–112ns at 50/200
+  routes. Load rose during this run.
 
 Reproduce: `bun run bench:router`
 
 ## Head, compiler, styler
 
-- **`@pyreon/head` vs unhead**: ~1.3–2.1× faster at 5/20/50 tags (fair
-  comparison — both resolve *and* serialize to the HTML string).
-- **Compiler**: the Rust (napi) backend transforms 3.7–8.9× faster than the
-  JS fallback; both emit byte-identical output (locked by a 300-seed
-  differential fuzzer across client/SSR/SSR-template modes).
-- **Styler SSR fast path**: ~5× faster `renderToString` for styled
-  components, byte-identical class names (no hydration mismatch).
+- **`@pyreon/head` vs Unhead**: serialize 1.07–1.26× faster at 5/20/50 tags.
+- **Compiler** (Vite 8 pipeline): Pyreon's pass on top of OXC costs 2.4–7×
+  OXC alone, and is still faster than esbuild/SWC/Babel's standalone JSX
+  transforms on small and medium inputs. A build-time cost, disclosed.
+- **Styler vs Emotion / goober / styled-components**: cold insert 3.18× /
+  3.76×; warm dedup 5.14× / 3.24×; dynamic resolve 5.14× / 1.73×; SSR collect
+  3.58× / 4.41× / 2.64× (styled-components includes a React render pass).
 
 Reproduce: `bun run bench:head`, `bun run bench:compiler`
 
 ## Fundamentals — vs the library each package targets
 
-Each adapter/package is benchmarked head-to-head against the library it
-wraps or competes with, idiomatic per library, correctness-gated,
-process-isolated. Headline verdicts (losses included):
+Each package is benchmarked head-to-head against the library it wraps or
+competes with, one process per op × library, under bun (JavaScriptCore).
+Rows marked ⚠ run under happy-dom — a JavaScript DOM implementation, not a
+browser — so their counts and relative work are meaningful but their absolute
+times are not browser-representative. Headline verdicts, losses included:
 
 | Package | vs | Verdict |
 | --- | --- | --- |
-| `@pyreon/store` | Zustand / Jotai | Wins the per-field hot path (dispatch ~6.5×, write→1-subscriber ~2.4×, no-sub patch ~1.7×); 🤝 ties read. **Loses `setup` ~12.6×** (per-field signals, paid once per store id — documented trade-off). The former with-subscriber `patch` ~1.7× loss flipped to a **~1.2× win** (sole-subscriber detector suspension + cached detach closure). |
-| `@pyreon/validate` | Zod / Valibot / ArkType | **Fastest or CI-tied on all 12 rows** of the megamorphic multi-schema suite (flat-object 1.46×, arrays 1.37×, scalar-int 2.4×, DU 1.89× over ArkType; error path 20–53× over ArkType, 33–44× over Zod). The former last loss — bare scalar-string valid vs Valibot's minimal pipe — closed to a 🤝 CI-tie (8.8 vs 8.0ns) by the pure-JIT reused-ctx seam; the monomorphic scalar losses flipped in the same pass. |
-| `@pyreon/query` | @tanstack/react-query | Same query-core underneath. Intra-component data change: **1 field derivation + 0 re-renders vs 8 + 1 re-render**; ~4× faster data-flip→DOM. Cross-component tracked-props: 🤝 tie. Mount: 🤝 tie. |
-| `@pyreon/table` | @tanstack/react-table | Same table-core. Single-cell edit **7–9× faster than naive react-table**, ~1.1× vs hand-memoized — with zero `React.memo` boilerplate. **Losses:** mount ~2× and replace ~1.1–1.3× (per-cell reactive-binding setup — the price of the update wins), sort ~2× vs memo-row. |
-| `@pyreon/virtual` | @tanstack/react-virtual | Same virtual-core. Steady-state scroll **1.3× faster**; row-recycle counts tied with memoized React. **Loss:** fixed-size mount ~1.1× slower (one-time ~16µs on a 10k list). |
-| `@pyreon/storage` | jotai / zustand persist | Wins every op vs jotai; wins read + write vs zustand (write 12×, write→sub 9×), 🤝 ties create. |
-| `@pyreon/url-state` | nuqs-style parsing | Wins or CI-ties every row after parser-class matching (float vs int-scan disclosed). |
-| `@pyreon/i18n` | i18next | Faster on every measured op (plural path memoized per locale). |
-| `@pyreon/machine` | XState | Large constant-factor wins on common ops — XState buys statechart features Pyreon deliberately offloads to signals. |
-| `@pyreon/state-tree` | MobX-State-Tree | Faster on the action/patch/reactive hot path. |
-| `@pyreon/toast` | react-hot-toast / sonner | Mounted DOM-commit path **21–40× faster than react-hot-toast**. Cold-start ingest: sonner leads ~2× (smaller code path; labeled cold-start by construction — sonner can't be warmed cross-lib). |
-| `@pyreon/form` | @tanstack/form-core | Store-primitive tier (disclosed: not the full keystroke→paint path): update-field **~94× faster** (40ns vs 3.8µs), reset ~7.6×, read-all ~2.4×; setup 🤝 tied. |
-| `@pyreon/permissions` | CASL | Exact allow/deny ~4.5×, wildcard/broad-grant ~19×, multi-check ~3.7× faster — correctness-gated (both systems agree on every check); the two permission MODELS differ (flat keys + predicates vs ability rules), disclosed in the bench header. |
-| `@pyreon/hotkeys` | tinykeys / hotkeys-js / mousetrap | Dispatch hit 120ns (fastest; tinykeys 743, mousetrap 213), miss 72ns (🤝 with mousetrap's 83 — and Pyreon runs a scope + input-focus filter per event that tinykeys/mousetrap don't), register+teardown fastest. |
-| `@pyreon/rx` | chained per-op computeds | `pipe()` collapses an N-step chain into ONE computed — exactly N× fewer nodes and recomputes per change (a structural win, measured per-N in the bench). |
-| `@pyreon/rich-text` | @tiptap/react | Wrapper glue **1.5KB vs 8.5KB gz** (both lazy-load the same TipTap engine); content computeds don't re-run on pure cursor moves (split doc/selection version counters). |
-| `@pyreon/dnd` | raw pragmatic-drag-and-drop | 🤝 no measurable wrapper tax on any lifecycle (draggable/droppable/sortable/monitor). |
+| `@pyreon/store` | Zustand / Jotai | Wins dispatch 7.0× / 29.9×, write→subscriber 2.0× / 9.3×, patch 1.5× / 6.6×. **Loses `setup` 34.8× to Zustand** (a registry plus two signals); read and patch-with-subscriber are 1.1× slower than Zustand. |
+| `@pyreon/validate` | Zod / Valibot / ArkType | Fastest or CI-tied on every cell of the megamorphic multi-schema workload. In the per-cell bench against nine libraries, **compiled Zod wins three valid-parse cells outright** (email 1.3×, int 1.7×, array-of-20 1.1×) and ArkType wins valid object parse (1.2×) and the invalid-email check (1.3×); Pyreon wins or ties everything else, including every invalid-input parse cell. |
+| `@pyreon/query` ⚠ | @tanstack/react-query | Same query-core underneath. Data change → DOM 4.6× faster with 8× less derivation work; mount 🤝 tie. |
+| `@pyreon/table` ⚠ | @tanstack/react-table | Same table-core. Single-cell update 1.2–1.4× vs memoized rows (a tie at 1,000), 11–29× vs naive. **Losses:** mount 1.6–1.7×, replace 1.4×, sort 2.2–2.6× slower than memoized rows. |
+| `@pyreon/virtual` ⚠ | @tanstack/react-virtual | Same virtual-core. Scroll → DOM 1.3× faster. **Loss:** mounting a 10k list is 1.3× slower. |
+| `@pyreon/storage` | jotai `atomWithStorage` / zustand persist | Writes 10–30×, create 1.7–1.8× faster; read is 1.1× slower than Zustand. |
+| `@pyreon/url-state` | nuqs | Booleans 2.2×, arrays 2.8–7.9×, float 1.3× faster. **Losses:** integer parse 1.4× and round-trip 1.2× slower (nuqs uses a cheaper int parser). |
+| `@pyreon/i18n` | i18next | `t` 18.2×, interpolation 6.4×, plural 4.5×, number 3.5×, date 2.9× faster. |
+| `@pyreon/machine` | XState | create 12.7×, send 39.6×, can 11.9×, matches 4.4× faster. |
+| `@pyreon/state-tree` | MobX-State-Tree | 3.5–34× faster on every op. |
+| `@pyreon/toast` ⚠ | react-hot-toast / sonner | Headless 2.4–3.3×; create/update/dismiss → DOM 22–30×. Sonner is excluded from the commit rows (it does not render in happy-dom). |
+| `@pyreon/form` | @tanstack/form-core | Headless store tier: update 69.5×, reset 5.7× faster. **Loss:** setup 1.4× slower. |
+| `@pyreon/permissions` | CASL | Fair resolver race 1.6–2.1× faster; exact deny 🤝 tie. Memo-hit rows are a cache read, not a resolver race, and are not claimed. |
+| `@pyreon/http` | ky / ofetch / redaxios / axios | 1.4–7.8× faster than ky/ofetch/redaxios, 12–20× faster than axios. **Loss:** creating a client is slower than ofetch and redaxios. |
+| `@pyreon/hotkeys` | tinykeys / hotkeys-js / mousetrap | Dispatch hit/miss 1.5–32× faster. **Loss:** register + teardown is 4.3× slower than tinykeys. |
+| `@pyreon/rx` | plain computed / Solid / RxJS | `pipe()` fuses N nodes into one. **Per op, `@pyreon/rx` is slower than a plain computed** (filter 4.0 vs 2.6µs, map 3.0 vs 1.6µs). |
+| `@pyreon/dnd` ⚠ | raw pragmatic-drag-and-drop | Row-enter fan-out 24× (selector vs naive); mount/unmount 🤝 tie; dispatch adds 5ns. |
+| `@pyreon/hooks` | Solid / Preact counters | Counter 1.21× faster. |
+| `@pyreon/validation` | raw zod / valibot / arktype | Wrapper tax of 5–480ns over the raw library (largest on ArkType invalid). |
 
 Reproduce: `bun run --filter='@pyreon/<pkg>' bench` (per package), or the
 root `bun run bench:validate` for the cross-schema suite.
 
 ## UI layer
 
-- **`@pyreon/kinetic` vs Motion One** (real Chromium, bare-CSS floor
-  disclosed): wins enter-500 (~1.8–2×) and stagger-300 (~1.3×),
-  wins-or-ties enter-2000, 🤝 ties stagger-1000 (was a 1.27× loss before the
-  2026-07 shared-frame batching). Kinetic is CSS-transition-based — springs,
-  interruptible values, layout and gesture animation remain Motion
-  One/Framer territory, by design.
-- **`@pyreon/charts` vs echarts-for-react** (same ECharts engine): reactive
-  update ~11–12× faster, dispose ~tied; **mount ~1.7–1.9× slower** — the
-  lazy-loader price of keeping ECharts out of your bundle.
-- **`@pyreon/code` vs @uiw/react-codemirror**: core editor ~138KB gz — at
-  parity (react wrapper ~129KB); ~7× smaller than Monaco's ESM core.
+- **`@pyreon/kinetic` vs Motion** — the published comparison is
+  **withdrawn**. The earlier harness closed its timing window before kinetic's
+  enter state was applied and ran on a clamped clock. The re-run is
+  provisional and is not published as a verdict: kinetic measured *below* the
+  hand-written CSS baseline in every cell, which should be impossible for the
+  same work and suggests the timed window does not capture CSS-transition work
+  equally across arms.
+- **`@pyreon/charts` engine vs ECharts 6.1 SSR**: spec → SVG 6.5–8.3× faster
+  (bars 1k/10k, line 10k).
+- **`@pyreon/charts` wrapper vs echarts-for-react** ⚠ happy-dom: update 9.4×,
+  dispose 2.2× faster; mount 🤝 tie.
+- **`@pyreon/code` vs @uiw/react-codemirror**: the core is 3% larger gzipped
+  (same CodeMirror 6 core underneath). The Monaco comparison row is missing —
+  monaco-editor failed to bundle in this run.
 
 ## Bundle sizes
 
-Gzipped, built `lib/`, production define, measured by the CI budget gate on
-every PR (`scripts/bundle-budgets.json` locks every package):
+The same keyed-table app built per framework, gzip -9: Vanilla 3.6KB ·
+**Solid 7.5KB** · Preact 10.6 · Svelte 16.0 · **Pyreon 16.6** (2.22× Solid) ·
+Vue 27.0 · Octane 65.8 · React 69.6. Every entry carries the same shared
+runner module, a constant offset.
 
-- `mount`-only import of `@pyreon/runtime-dom`: **~7.4KB** (kitchen-sink ~9.8KB)
-- Every published package ships source maps; main-entry size and canonical
-  minimal-import size are both ratcheted in CI.
+Every published package's main-entry size and canonical minimal-import size
+are also locked by CI budget gates (`scripts/bundle-budgets.json`,
+`scripts/import-budgets.json`), so growth cannot land unnoticed.
 
 ## Framework-internal suites
 
@@ -434,41 +334,42 @@ isolation, correctness gates):
 - **Styler / Unistyle engine** (`bun run bench:styler`, `bun run
   bench:unistyle`) — resolve → normalize → hash → insert hot paths and the
   responsive-breakpoint engine.
-- **Sync (CRDT)** (`bun run bench:sync`) — synced-signal throughput sanity
-  over the Yjs engine seam.
-- **Document renderers** (`bun run bench:document`) — the 18-primitive /
-  20-format render matrix.
+- **Sync (CRDT)** (`bun run bench:sync`) — synced-signal throughput and the
+  presence-publish tax over the Yjs engine seam.
+- **Document renderers** (`bun run bench:document`) — the render matrix
+  across all 16 output formats.
 - **Loom workspace scan** (`bun run bench:loom`) — phase timings for a real
-  `loom scan` (walk / graph / import scan / detectors) over an actual
-  monorepo. ~98% of a scan is the import phase, so the phase split is the
-  point; a total alone invites optimizing the other 2%. Warm-cache, median of
-  N, with a correctness gate that refuses to print timings for a scan that
-  found nothing.
+  `loom scan` over an actual monorepo. About 98% of a scan is the import
+  phase, so the phase split is the point; a total alone invites optimizing
+  the other 2%.
 - **Hooks wrapper tax** (`@pyreon/hooks` bench) — hook wrappers vs raw
-  signals (the deltas mirror the reactivity standings above).
-- **Compiler rocketstyle collapse** — the opt-in build-time collapse
-  measures 44× on eligible literal-prop mounts (styler resolves 22 → 0).
-- **Perf counters + leak sweep** — 66 named dev-mode counters
+  signals.
+- **cssVariables theming** — cssVariables mode measures 1.16× faster than
+  classic mode across 40 components and 4 flips, at the same heap.
+- **Perf counters + leak sweep** — named dev-mode counters
   (`@pyreon/perf-harness`) and a nightly heap-slope leak sweep gate the
   memory story continuously.
 
 ## What we don't win (the standing list)
 
-Honesty section, kept current: retained memory ties Preact (3rd of 8, corrected
-2026-08-18 — an earlier pass had this as "2nd among frameworks," which a second
-harness bug made wrong; see the flagship section above) — it is no longer a
-standing loss, though Pyreon still defers ~0.67MB by one event-loop turn; SSR
-at 1000 rows is a **tie** with Vue (CI95 overlapping) rather than a win —
-Pyreon leads outright only at 10 and 100 rows; Preact leads computed diamond
-(**1.54×**) and deep computed chain (**1.51×**) — corrected 2026-08: both were
-previously reported as a near-tie (~1.07–1.10×) / ~1.25×, before accounting for
-[#2983](https://github.com/pyreon/pyreon/pull/2983)'s intentional `Object.is`
-value-gate, whose per-recompute compare this synthetic bench pays in full
-because every value changes every tick (reverting the gate for reactivity alone
-puts both back near parity — ~1.13× and a ~1.04× tie); Preact also leads signal
-create (~1.4×) — structurally priced (the callable-signal API itself, a closure
-per signal vs Preact's class instance); find-my-way keeps router splat (~1.35×,
-the richer ResolvedRoute envelope; catch-all flipped to a Pyreon win); store
-`setup` favors Zustand's single-object contract; table/virtual/charts pay a
-mount premium for their fine-grained update wins. Each of these is either
-actively being closed or is a priced, documented trade-off — never hidden.
+Honesty section, kept current against the 2026-09-23 run:
+
+1. **Deep component-tree mount** — 1.29× behind Solid (4.20 vs 3.25ms).
+2. **Signal creation** — about 5× slower than Preact on both engines; deep
+   computed chains 1.35× (JSC) to 2.26× (V8); computed diamond 1.18–1.43×; on
+   V8 also wide fan-out 1.76×.
+3. **SSR of large pages** — Vue's compiled SSR is 1.06× (100 rows) to 1.09×
+   (1,000 rows) faster.
+4. **dbmon** — Svelte leads; Pyreon is 1.06× behind in a field that spans
+   1.25×.
+5. **Bundle size** — 16.6KB vs Solid 7.5KB and Preact 10.6KB for the same app.
+6. **Flow mount** — React Flow mounts 500 nodes 1.20× faster.
+7. **Package-level losses** — store setup (34.8× vs Zustand), hotkeys
+   register/teardown (4.3× vs tinykeys), http client creation (vs
+   ofetch/redaxios), url-state integer parse (1.4×), form store setup (1.4×),
+   rx per-op overhead, table mount and sort, router at 10 routes.
+8. **Unbundled Node** — any process importing `lib/` without a bundler pays
+   about 145ns per dev-gate read.
+
+Each of these is either actively being closed or is a priced, documented
+trade-off — never hidden.

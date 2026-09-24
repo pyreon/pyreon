@@ -2,8 +2,6 @@
 
 > **PRIVATE / EXPERIMENTAL.** iOS host shell for the Gap 5 tasks showcase. Compiles the SHARED `TasksApp.tsx` source (from #1449's `examples/native-tasks/src/`) to SwiftUI via PMTC; SAME source the web (#1456) and Android (follow-up) hosts use.
 
-Closes the iOS half of Gap 5's host-shells follow-up from the [2026-06-05 native-readiness audit](../../.claude/audits/native-readiness-2026-06-05.md). Android Gradle host remains the last follow-up.
-
 ## Architecture
 
 ```text

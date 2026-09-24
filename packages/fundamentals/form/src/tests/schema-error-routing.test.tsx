@@ -9,7 +9,7 @@ import {
 // dot-path (`address.city`, produced by the zod/valibot/arktype adapters) or a
 // path-less `""` key matched NO top-level field, so `validate()` dropped it and
 // reported the form VALID while the schema had rejected — a silent submit of
-// invalid data. See .claude/rules/anti-patterns.md.
+// invalid data. See .agents/rules/anti-patterns.md.
 
 describe('matchSchemaErrorForField (pure)', () => {
   it('returns an exact key match', () => {

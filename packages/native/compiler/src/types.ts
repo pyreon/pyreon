@@ -1984,7 +1984,7 @@ export interface ParseResult {
   /**
    * Top-level pure-logic HELPER functions — a function that takes value
    * parameters and returns a non-JSX value (`function dbl(x: number) { return
-   * x * 2 }`, CLAUDE.md's L1 "shared pure logic"). Emitted at file scope as a
+   * x * 2 }`, L1 "shared pure logic" in `.agents/guides/multiplatform/README.md`). Emitted at file scope as a
    * Swift `func` / Kotlin `fun` (a sibling of enums / structs / stores, BEFORE
    * the component View structs so components + store methods can call them).
    * A GENERIC helper (`function first<T>(…)`) is NOT collected here — the IR

@@ -1,7 +1,6 @@
 // Phase 0 latency micro-spike — JS<->native boundary cost.
 //
-// Context: the multiplatform strategy (.claude/plans/
-// multiplatform-runtime-native-strategy.md) proposes a signal-driven NATIVE
+// Context: the multiplatform strategy proposes a signal-driven NATIVE
 // RUNTIME (Option B): instead of transpiling to SwiftUI/Compose at build time,
 // drive real native widgets at runtime, with one signal write -> one native
 // mutation command across a JS<->native boundary. The whole bet rests on one

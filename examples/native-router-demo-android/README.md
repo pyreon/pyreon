@@ -2,8 +2,6 @@
 
 > **PRIVATE / EXPERIMENTAL.** Android-target sibling of [`native-router-demo-ios`](../native-router-demo-ios/). Compiles the **SAME** `RouterApp.tsx` source to Jetpack Compose / Kotlin — proving the PMTC multiplatform routing contract on the Android-real-toolchain side.
 
-Closes the Android router-demo half of Gap 5 (Espresso parity beyond TodoMVC + Counter) from the [2026-06-05 native-readiness audit](../../.claude/audits/native-readiness-2026-06-05.md). Counter Android half landed in #1454; iOS UITest (both counter + router-demo) landed in #1452.
-
 ## Architecture
 
 ```text

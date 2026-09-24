@@ -221,4 +221,4 @@ Real-Chromium e2e gate: `e2e/islands-showcase.spec.ts` + `e2e/islands-showcase-m
 
 - Detector: `island-never-with-registry-entry` — fires when `hydrate: 'never'` AND the same name appears in `hydrateIslands({ ... })`
 - Reference API: `island` / `hydrateIslands` / `hydrateIslandsAuto` in `@pyreon/server` — see `get_api({ package: "server", symbol: "island" })`
-- Anti-patterns: "Islands Mistakes" section in `.claude/rules/anti-patterns.md`
+- Anti-patterns: "Islands Mistakes" section in `.agents/rules/anti-patterns.md`

@@ -2,7 +2,7 @@
 // which DROPS the subtree rather than rendering it.
 //
 // It is not a cosmetic loss. The docs site's troubleshooting pages are
-// generated from `.claude/rules/anti-patterns.md`, where a superseded entry is
+// generated from `.agents/rules/anti-patterns.md`, where a superseded entry is
 // written as `~~the old claim~~ Here is why it no longer holds` — so the page
 // rendered the explanation with its subject missing, leaving a dangling
 // "under the new model there is no X to truncate" whose X was never stated.

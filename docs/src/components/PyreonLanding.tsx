@@ -10,15 +10,16 @@ import { PyreonHeroMark } from './PyreonHeroMark'
 // piece of copy matches the Vue source — paraphrasing here would
 // break the CSS bound to those exact names.
 
-// Real measured numbers — CLAUDE.md "Benchmark Results" (Chromium via
-// Playwright; median of 100 pooled samples, --repeat 5, 2026-06-11 run).
-// ms, lower = faster. Keep in sync with the CLAUDE.md table the footer
-// cites as source.
+// Real measured numbers — `BENCHMARKS.md` §1 "DOM row-list suite" (Chromium
+// via Playwright; median of 100 pooled samples, --repeat 5, 2026-09-23 run).
+// ms, lower = faster. Keep in sync with the `BENCHMARKS.md` table the footer
+// cites as source. `select` is below 10 clock ticks there — no verdict.
 const BENCHMARK = [
-  { name: 'Pyreon', c1k: '9.1', r1k: '9.1', upd: '0.8', sel: '0', c10k: '93.9', hot: true },
-  { name: 'Solid', c1k: '9.9', r1k: '10.0', upd: '4.6', sel: '0', c10k: '114.6', hot: false },
-  { name: 'Vue 3', c1k: '10.2', r1k: '10.2', upd: '1.6', sel: '0.7', c10k: '109.3', hot: false },
-  { name: 'React 19', c1k: '11.0', r1k: '11.0', upd: '1.1', sel: '0.3', c10k: '220.1', hot: false },
+  { name: 'Pyreon', c1k: '8.83', r1k: '8.64', upd: '0.645', sel: '0.015', c10k: '88.31', hot: true },
+  { name: 'Octane', c1k: '9.27', r1k: '8.95', upd: '0.675', sel: '0.025', c10k: '94.94', hot: false },
+  { name: 'Solid', c1k: '9.47', r1k: '9.30', upd: '1.30', sel: '0.025', c10k: '93.23', hot: false },
+  { name: 'Vue 3', c1k: '9.30', r1k: '9.21', upd: '0.990', sel: '0.305', c10k: '97.10', hot: false },
+  { name: 'React 19', c1k: '11.25', r1k: '10.53', upd: '0.855', sel: '0.185', c10k: '216.97', hot: false },
 ]
 
 const MECHANISM = [
@@ -151,7 +152,7 @@ const RENDER_MODES = [
   { tag: 'SPA', d: 'Client-only. Same component model, no server.' },
 ]
 
-// Real categories/counts from CLAUDE.md (55 published packages).
+// Real categories/counts from AGENTS.md "Packages" (55 published packages).
 const ECOSYSTEM = [
   { cat: 'core', count: 8, items: ['reactivity', 'core', 'compiler', 'runtime-dom', 'runtime-server', 'router', 'head', 'server'] },
   { cat: 'fundamentals', count: 22, items: ['store', 'form', 'query', 'i18n', 'storage', 'hooks', 'machine', 'flow', 'rx', '+13 more'] },
@@ -260,8 +261,8 @@ export function PyreonLanding() {
             </RouterLink>
           </div>
           <p class="px-honest">
-            Synthetic-benchmark parity with Solid. Real-app head-to-head:
-            we haven't run it, and we won't claim it until we do.
+            Synthetic row-list benchmark: ahead of Solid on most ops, behind
+            it on deep-tree mount. Author-judged — no independent run yet.
           </p>
         </div>
 
@@ -306,14 +307,14 @@ export function PyreonLanding() {
       <section class="px-sec">
         <div class="px-sec-head">
           <span class="px-mono-label">
-            01 · benchmark · js framework benchmark (chromium / playwright)
+            01 · benchmark · krausest-style row list (chromium / playwright)
           </span>
           <span class="px-rule" />
         </div>
         <h2 class="px-h2">The measured numbers. Read them as data.</h2>
         <p class="px-sub">
-          Wall-clock milliseconds on the standard js-framework-benchmark
-          suite (Chromium via Playwright, lower = faster). These are
+          Wall-clock milliseconds on a krausest-style row-list suite
+          (Chromium via Playwright, lower = faster). These are
           synthetic workloads — every framework here optimizes for
           different real-world shapes. It's a data point, not a verdict.
         </p>
@@ -347,7 +348,8 @@ export function PyreonLanding() {
               </tbody>
             </table>
             <p class="px-bench-foot">
-              Source: CLAUDE.md "Benchmark Results".{' '}
+              Source: BENCHMARKS.md §1 (2026-09-23 run). Select is below
+              the clock resolution — no verdict.{' '}
               <a href="https://github.com/pyreon/pyreon">run yours</a> ·
               methodology in the repo.
             </p>
@@ -356,18 +358,18 @@ export function PyreonLanding() {
             <div class="px-claim px-claim--cyan">
               <div class="px-claim-h">METHOD</div>
               <p>
-                Standard js-framework-benchmark suite, Chromium via
-                Playwright, wall-clock ms — same machine, same run.
+                krausest-style row-list suite, Chromium via Playwright,
+                wall-clock ms — same machine, same run, 100 pooled samples.
                 Re-run it yourself; the config is in the repo.
               </p>
             </div>
             <div class="px-claim px-claim--ember">
               <div class="px-claim-h">SCOPE</div>
               <p>
-                We report our own measured numbers and synthetic-benchmark
-                parity with Solid. Real-app head-to-head isn't run yet —
-                we won't claim it until it is. Every framework here is
-                good work by good people.
+                We report our own measured numbers, losses included: Solid
+                mounts a deep component tree 1.29× faster, and Octane ties
+                us on partial update and swap. No independent run exists
+                yet. Every framework here is good work by good people.
               </p>
             </div>
           </div>

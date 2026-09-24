@@ -164,7 +164,7 @@ function PyreonUI(props: PyreonUIProps): VNodeChild {
   // Previously this destructured `{ theme, mode = 'light', inversed, children }`
   // which made `inversed` permanently static — toggling inversed in a parent
   // had no effect because the local boolean was captured once. See
-  // `.claude/rules/anti-patterns.md` "Destructuring props" entry.
+  // `.agents/rules/anti-patterns.md` "Destructuring props" entry.
 
   // Create a reactive mode getter that resolves "system" and applies inversion.
   // This getter is provided via context — consumers read it lazily in their
