@@ -34,6 +34,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
+import { assertClientClean, assertRouteBudgets } from './zero-app-checks'
 
 type Mode = 'ssr' | 'ssg' | 'spa' | 'isr' | 'auto'
 
@@ -149,16 +150,13 @@ function assertFileAbsent(path: string): void {
 }
 
 /** Inverse content gate — NO file in `dir` (recursive) may contain `needle`. */
-function assertNoFileInDirContains(dir: string, needle: string): void {
-  if (!existsSync(dir)) return
+function assertSomeFileInDirContains(dir: string, needle: string): void {
+  if (!existsSync(dir)) throw new Error(`expected ${dir} to exist`)
   for (const entry of readdirSync(dir, { withFileTypes: true, recursive: true })) {
     if (!entry.isFile()) continue
-    const full = join(entry.parentPath ?? dir, entry.name)
-    const content = readFileSync(full, 'utf-8')
-    if (content.includes(needle)) {
-      throw new Error(`expected NO file under ${dir} to contain "${needle}" — found in ${full}`)
-    }
+    if (readFileSync(join(entry.parentPath ?? dir, entry.name), 'utf-8').includes(needle)) return
   }
+  throw new Error(`expected SOME file under ${dir} to contain "${needle}" — none did`)
 }
 
 function assertFileContains(path: string, needle: string): void {
@@ -745,7 +743,18 @@ const MATRIX: Cell[] = [
       // `serverLoaders: true` unconditionally) → the sentinel lands in a
       // client chunk → this fails.
       assertFileContains(join(dist, 'server', 'entry-server.js'), 'SERVER_ONLY_SENTINEL_q7x9')
-      assertNoFileInDirContains(join(dist, 'assets'), 'SERVER_ONLY_SENTINEL_q7x9')
+      // A5 — the client leak check walks `dist/client`, the tree the node
+      // adapter DEPLOYS (the previous check walked the flat `dist/assets`
+      // copy and silently returned if it was absent). `assertClientClean`
+      // refuses a missing or JS-less directory rather than passing.
+      // Sentinels: the `.server.ts` loader and a server ACTION handler
+      // (`src/features/probe-action.ts`, imported by a client route, so the
+      // handler-stripping transform is what keeps it out). Plus: no `node:*`
+      // import in any client chunk.
+      assertSomeFileInDirContains(join(dist, 'server'), 'ACTION_HANDLER_SENTINEL_z3k8')
+      assertClientClean(join(dist, 'client'), {
+        forbiddenSentinels: ['SERVER_ONLY_SENTINEL_q7x9', 'ACTION_HANDLER_SENTINEL_z3k8'],
+      })
     },
   },
   {
@@ -833,6 +842,22 @@ const MATRIX: Cell[] = [
       assertFileContains(aboutPath, 'Pyreon is a signal-based UI framework')
       // Cleanup of the temporary SSR sub-build dir
       assertFileDoesNotExist(join(dist, '.zero-ssg-server'))
+      // A5 — per-route first-load JS (entry + modulepreloads + their static
+      // import closure, gzipped) against `scripts/zero-app-budgets.json`,
+      // and no server code in the static output.
+      assertRouteBudgets(
+        'ssr-showcase',
+        dist,
+        {
+          '/': homePath,
+          '/about': aboutPath,
+          '/island-demo': join(dist, 'island-demo', 'index.html'),
+        },
+        join(REPO_ROOT, 'scripts', 'zero-app-budgets.json'),
+      )
+      assertClientClean(dist, {
+        forbiddenSentinels: ['SERVER_ONLY_SENTINEL_q7x9', 'ACTION_HANDLER_SENTINEL_z3k8'],
+      })
       // Styler CSS flush regression: about.ts uses a `styled('span')` so
       // its SSG render populates `@pyreon/styler`'s `sheet.ssrBuffer`.
       // Pre-fix, prerendered HTML carried styler-generated class names
