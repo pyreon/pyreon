@@ -12,6 +12,7 @@ import type {
   HttpMethod,
   IrDocument,
   IrField,
+  IrLiteral,
   IrModel,
   IrNote,
   IrOperation,
@@ -34,7 +35,7 @@ export interface LoadResult {
 /** Parse a spec document (JSON or YAML text) into the IR. */
 export function loadOpenApi(source: string): LoadResult {
   const raw = parseSpecText(source)
-  if (raw === null || typeof raw !== 'object') {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('[Pyreon] lathe: spec did not parse to an object')
   }
   return { doc: convert(raw as Json) }
@@ -95,53 +96,96 @@ function convert(spec: Json): IrDocument {
 /**
  * Fix up union shapes the schema DSL cannot express.
  *
- * Both were found by running the GitHub spec through the generator, and both
- * emitted code that did not typecheck:
+ * Every rule here exists because a real spec produced output that did not
+ * typecheck or -- worse -- threw when the generated module was IMPORTED:
  *
  *  - a `oneOf`/`anyOf` with ONE member. `s.union` requires at least two, and a
  *    one-member union is just that member anyway.
- *  - a `discriminator` whose members are not all OBJECTS. GitHub's
- *    `GET /repos/{}/contents/{}` discriminates over a set that includes an
- *    ARRAY branch; `s.discriminatedUnion` takes object schemas only, so it
- *    degrades to a plain union rather than emitting something invalid.
+ *  - a `discriminator` the schema library cannot build. `discriminatedUnion`
+ *    registers each member's tag values at CONSTRUCTION, so it throws unless
+ *    every member is an object whose tag field is REQUIRED and a closed set of
+ *    values, and no two members claim the same value. OpenAI's specs use
+ *    IMPLICIT discriminators -- the member's tag is a plain `string` and the
+ *    values live in `mapping` or in the member's component name -- and GitHub
+ *    discriminates over a set that includes an ARRAY. Each of those degrades to
+ *    a plain union (which still validates every member correctly) with a note
+ *    naming the reason, instead of shipping a module that throws on import.
  */
 function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx): void {
   const byName = new Map(models.map((m) => [m.name, m]))
-  const isObjectish = (t: IrType, depth = 0): boolean => {
-    if (depth > 8) return false
-    if (t.kind === 'object') return true
-    if (t.kind === 'ref') {
-      const target = byName.get(t.name)
-      return target ? isObjectish(target.type, depth + 1) : false
+  /** The object a union member resolves to, following refs; cycle-safe. */
+  const objectOf = (t: IrType): Extract<IrType, { kind: 'object' }> | undefined => {
+    const seen = new Set<string>()
+    let cur: IrType | undefined = t
+    while (cur?.kind === 'ref') {
+      if (seen.has(cur.name)) return undefined
+      seen.add(cur.name)
+      cur = byName.get(cur.name)?.type
     }
-    return false
+    return cur?.kind === 'object' ? cur : undefined
   }
 
-  const walk = (type: IrType | undefined, at: string, depth = 0): IrType | undefined => {
-    if (!type || depth > 12) return type
+  /** Why `options` cannot be a discriminated union on `key`, or undefined. */
+  const whyNotDiscriminated = (options: readonly IrType[], key: string): string | undefined => {
+    const claimed = new Set<IrLiteral>()
+    for (const o of options) {
+      const target = objectOf(o)
+      if (!target) return 'has a non-object member'
+      const field = target.fields.find((f) => f.name === key)
+      if (!field) return `has a member without a \`${key}\` field`
+      if (!field.required) return `has a member whose \`${key}\` is optional`
+      if (field.type.kind !== 'enum') {
+        return `has a member whose \`${key}\` is not a fixed value (an implicit discriminator)`
+      }
+      for (const v of field.type.values) {
+        if (claimed.has(v)) return `has two members claiming the tag \`${String(v)}\``
+        claimed.add(v)
+      }
+    }
+    return undefined
+  }
+
+  const walk = (type: IrType | undefined, at: string): IrType | undefined => {
+    if (!type) return type
     switch (type.kind) {
       case 'array':
-        return { ...type, items: walk(type.items, at, depth + 1) as IrType }
+        return { ...type, items: walk(type.items, at) as IrType }
+      case 'nullable':
+        return { kind: 'nullable', inner: walk(type.inner, at) as IrType }
       case 'object':
         return {
           ...type,
-          fields: type.fields.map((f) => ({ ...f, type: walk(f.type, at, depth + 1) as IrType })),
-          additional: walk(type.additional, at, depth + 1),
+          fields: type.fields.map((f) => ({ ...f, type: walk(f.type, at) as IrType })),
+          additional: walk(type.additional, at),
         }
       case 'union': {
-        const options = type.options.map((o) => walk(o, at, depth + 1) as IrType)
+        let options = type.options.map((o) => walk(o, at) as IrType)
+        // `anyOf: [X, {type: 'null'}]` is 3.1's canonical nullable -- and
+        // `nullable: true` members are the same thing. Lifting null OUT of the
+        // union makes it `X | null` rather than a union the discriminator
+        // check would then reject for having a non-object member.
+        const hasNull = options.some((o) => o.kind === 'null' || o.kind === 'nullable')
+        if (hasNull && options.length > 1) {
+          options = options.filter((o) => o.kind !== 'null').map((o) => (o.kind === 'nullable' ? o.inner : o))
+          if (options.length === 0) return { kind: 'null' }
+          const rest = walk({ ...type, options }, at) as IrType
+          return rest.kind === 'null' || rest.kind === 'nullable' ? rest : { kind: 'nullable', inner: rest }
+        }
         if (options.length === 1) return options[0] as IrType
         if (options.length === 0) {
           ctx.notes.push({ code: 'unsupported-schema', at, message: 'empty oneOf/anyOf - typed as unknown.' })
           return { kind: 'unknown', reason: 'empty union' }
         }
-        if (type.discriminator && !options.every((o) => isObjectish(o))) {
-          ctx.notes.push({
-            code: 'unsupported-schema',
-            at,
-            message: `discriminator \`${type.discriminator}\` has a non-object member, which a discriminated union cannot take - emitted as a plain union instead.`,
-          })
-          return { kind: 'union', options, discriminator: undefined }
+        if (type.discriminator) {
+          const why = whyNotDiscriminated(options, type.discriminator)
+          if (why) {
+            ctx.notes.push({
+              code: 'unsupported-schema',
+              at,
+              message: `discriminator \`${type.discriminator}\` ${why}, which a discriminated union cannot take - emitted as a plain union instead (every member still validates).`,
+            })
+            return { kind: 'union', options, discriminator: undefined }
+          }
         }
         return { ...type, options }
       }
@@ -150,11 +194,17 @@ function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx)
     }
   }
 
+  // A discriminator decision reads OTHER models' fields, so every model is
+  // walked first with its own result visible to the next -- the member types a
+  // union names are final by the time the union is checked. The IR is a
+  // finite tree (refs close cycles), so the walk needs no depth cap.
   for (const m of models) m.type = walk(m.type, `#/components/schemas/${m.name}`) as IrType
   for (const op of operations) {
     const at = `#/paths/${op.path}/${op.method.toLowerCase()}`
     if (op.response) op.response = walk(op.response, at)
     if (op.body) op.body = walk(op.body, at)
+    op.pathParams = op.pathParams.map((p) => ({ ...p, type: walk(p.type, at) as IrType }))
+    op.queryParams = op.queryParams.map((p) => ({ ...p, type: walk(p.type, at) as IrType }))
   }
 }
 
@@ -314,8 +364,34 @@ function deref(node: unknown, at: string, ctx: Ctx): unknown {
   return cur
 }
 
-/** Convert a JSON-Schema-ish node to an IR type. */
+/**
+ * Convert a JSON-Schema-ish node to an IR type.
+ *
+ * Nullability is resolved HERE, for every node, rather than by the caller that
+ * happens to hold a property: 3.0 `nullable: true` and 3.1 `type: [X, 'null']`
+ * mean the same thing wherever they appear -- a component model, an array
+ * item, a response root, a parameter. Resolving it only for direct object
+ * properties (what this used to do) dropped it on GitHub's 63 `nullable-*`
+ * component models, and every one of their 414 uses then rejected `null`.
+ */
 function toType(schema: Json, at: string, ctx: Ctx): IrType {
+  const inner = toTypeNonNull(schema, at, ctx)
+  return declaresNull(schema) ? nullable(inner) : inner
+}
+
+/** 3.0 `nullable: true`, or `null` among 3.1's `type` list. */
+function declaresNull(schema: Json): boolean {
+  if (schema.nullable === true) return true
+  return Array.isArray(schema.type) && schema.type.some((t) => t === 'null')
+}
+
+/** Wrap in `nullable`, collapsing the cases where that adds nothing. */
+function nullable(inner: IrType): IrType {
+  if (inner.kind === 'null' || inner.kind === 'nullable' || inner.kind === 'unknown') return inner
+  return { kind: 'nullable', inner }
+}
+
+function toTypeNonNull(schema: Json, at: string, ctx: Ctx): IrType {
   const ref = str(schema.$ref)
   if (ref) {
     const key = ref.startsWith('#/components/schemas/') ? ref.slice('#/components/schemas/'.length) : undefined
@@ -345,38 +421,66 @@ function toType(schema: Json, at: string, ctx: Ctx): IrType {
     return {
       kind: 'union',
       options: anyOf.map((o, i) => toType(obj(o) ?? {}, `${at}/oneOf/${i}`, ctx)),
-      discriminator: discriminator ? ident(discriminator) : undefined,
+      // The WIRE name. It was `ident()`-ed, which turned `pet_type` into
+      // `petType` -- a key no member has, so `s.discriminatedUnion` threw at
+      // module import in dev and made every member unreachable in production.
+      discriminator,
     }
   }
 
-  // OpenAPI 3.1 allows `type: [string, null]`.
+  // `const` (3.1) and `enum` are both a closed set of values, so they share a
+  // kind. A `const` is the 3.1 spelling of a discriminator tag; typing it
+  // `unknown` (what happened before) accepted any value at all.
+  if ('const' in schema) {
+    const v = schema.const
+    if (isLiteral(v)) return enumOf([v])
+    return unsupported(at, ctx, '`const` whose value is not a JSON scalar')
+  }
+  if (Array.isArray(schema.enum)) {
+    const values = schema.enum.filter(isLiteral)
+    if (values.length === schema.enum.length && values.length > 0) return enumOf(values)
+    if (values.length === 0) return unsupported(at, ctx, '`enum` with no scalar values')
+    ctx.notes.push({
+      code: 'unsupported-schema',
+      at,
+      message: `enum holds ${schema.enum.length - values.length} non-scalar value(s) -- kept the ${values.length} scalar one(s); the rest are not accepted.`,
+    })
+    return enumOf(values)
+  }
+
+  // OpenAPI 3.1 allows a LIST of types. `null` among them was handled by the
+  // caller; more than one remaining type is a union of each (it used to keep
+  // only the first, so `[string, integer]` rejected every integer).
   const rawType = schema.type
   const types = Array.isArray(rawType) ? rawType.map(String) : rawType === undefined ? [] : [String(rawType)]
   const nonNull = types.filter((t) => t !== 'null')
-  const t = nonNull[0]
-
-  if (Array.isArray(schema.enum) && (t === 'string' || t === undefined)) {
-    const values = schema.enum.filter((v): v is string => typeof v === 'string')
-    if (values.length > 0) return { kind: 'string', enum: values }
+  if (types.length > 0 && nonNull.length === 0) return { kind: 'null' }
+  if (nonNull.length > 1) {
+    return {
+      kind: 'union',
+      options: nonNull.map((t) => toTypeNonNull({ ...schema, type: t, nullable: undefined }, at, ctx)),
+      discriminator: undefined,
+    }
   }
+  const t = nonNull[0] ?? inferType(schema)
 
   switch (t) {
-    case 'string': {
-      const fmt = str(schema.format)
-      const format = fmt && (FORMATS as readonly string[]).includes(fmt) ? (fmt as StringFormat) : undefined
-      return format ? { kind: 'string', format } : { kind: 'string' }
-    }
+    case 'string':
+      return stringType(schema)
     case 'integer':
-      return { kind: 'number', integer: true }
     case 'number':
-      return { kind: 'number', integer: false }
+      return numberType(schema, t === 'integer')
     case 'boolean':
       return { kind: 'boolean' }
-    case 'null':
-      return { kind: 'null' }
     case 'array': {
       const items = obj(schema.items)
-      return { kind: 'array', items: items ? toType(items, `${at}/items`, ctx) : { kind: 'unknown', reason: 'array without items' } }
+      return {
+        kind: 'array',
+        items: items ? toType(items, `${at}/items`, ctx) : { kind: 'unknown', reason: 'array without items' },
+        minItems: count(schema.minItems),
+        maxItems: count(schema.maxItems),
+        uniqueItems: schema.uniqueItems === true ? true : undefined,
+      }
     }
     case 'object':
     case undefined: {
@@ -393,8 +497,75 @@ function toType(schema: Json, at: string, ctx: Ctx): IrType {
       return { kind: 'object', fields: fieldsOf(schema, props, at, ctx), additional: undefined }
     }
     default:
-      ctx.notes.push({ code: 'unsupported-schema', at, message: `unsupported type \`${String(t)}\` — typed as unknown.` })
-      return { kind: 'unknown', reason: `type ${String(t)}` }
+      return unsupported(at, ctx, `unsupported type \`${String(t)}\``)
+  }
+}
+
+/** The type a schema with no `type` keyword implies by its other keywords. */
+function inferType(schema: Json): string | undefined {
+  if (schema.items !== undefined) return 'array'
+  if (schema.properties !== undefined || schema.additionalProperties !== undefined) return 'object'
+  if (typeof schema.minLength === 'number' || typeof schema.maxLength === 'number' || typeof schema.pattern === 'string') {
+    return 'string'
+  }
+  return undefined
+}
+
+function unsupported(at: string, ctx: Ctx, what: string): IrType {
+  ctx.notes.push({ code: 'unsupported-schema', at, message: `${what} — typed as unknown.` })
+  return { kind: 'unknown', reason: what }
+}
+
+function isLiteral(v: unknown): v is IrLiteral {
+  return v === null || typeof v === 'string' || typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v))
+}
+
+/** An enum, with `null` lifted out into `nullable` so emitters see one shape. */
+function enumOf(values: readonly IrLiteral[]): IrType {
+  const unique = [...new Set(values)]
+  const nonNull = unique.filter((v) => v !== null)
+  if (nonNull.length === 0) return { kind: 'null' }
+  const e: IrType = { kind: 'enum', values: nonNull }
+  return nonNull.length === unique.length ? e : { kind: 'nullable', inner: e }
+}
+
+function stringType(schema: Json): IrType {
+  const fmt = str(schema.format)
+  const format = fmt && (FORMATS as readonly string[]).includes(fmt) ? (fmt as StringFormat) : undefined
+  return {
+    kind: 'string',
+    format,
+    minLength: count(schema.minLength),
+    maxLength: count(schema.maxLength),
+    pattern: str(schema.pattern),
+  }
+}
+
+function numberType(schema: Json, integer: boolean): IrType {
+  // 3.0 spells a strict bound as `minimum: 5, exclusiveMinimum: true`; 3.1 as
+  // `exclusiveMinimum: 5`. Both normalize to the number. Reading the 3.0 form
+  // as an inclusive `minimum` (what happened before) accepted the bound itself.
+  let minimum = num(schema.minimum)
+  let maximum = num(schema.maximum)
+  let exclusiveMinimum = num(schema.exclusiveMinimum)
+  let exclusiveMaximum = num(schema.exclusiveMaximum)
+  if (schema.exclusiveMinimum === true && minimum !== undefined) {
+    exclusiveMinimum = minimum
+    minimum = undefined
+  }
+  if (schema.exclusiveMaximum === true && maximum !== undefined) {
+    exclusiveMaximum = maximum
+    maximum = undefined
+  }
+  const multipleOf = num(schema.multipleOf)
+  return {
+    kind: 'number',
+    integer,
+    minimum,
+    maximum,
+    exclusiveMinimum,
+    exclusiveMaximum,
+    multipleOf: multipleOf !== undefined && multipleOf > 0 ? multipleOf : undefined,
   }
 }
 
@@ -404,19 +575,14 @@ function fieldsOf(schema: Json, props: Json, at: string, ctx: Ctx): IrField[] {
   for (const key of Object.keys(props)) {
     const p = obj(props[key])
     if (!p) continue
-    const nullable =
-      p.nullable === true ||
-      (Array.isArray(p.type) && (p.type as unknown[]).map(String).includes('null'))
     out.push({
       name: key,
       type: toType(p, `${at}/properties/${key}`, ctx),
       required: required.has(key),
-      nullable,
       doc: str(p.description) ?? str(p.title),
-      min: num(p.minLength) ?? num(p.minimum),
-      max: num(p.maxLength) ?? num(p.maximum),
-      pattern: str(p.pattern),
       example: p.example,
+      readOnly: p.readOnly === true ? true : undefined,
+      writeOnly: p.writeOnly === true ? true : undefined,
     })
   }
   return out
@@ -427,6 +593,9 @@ function mergeAllOf(parts: unknown[], self: Json, at: string, ctx: Ctx): IrType 
   const seen = new Set<string>()
   let sawNonObject = false
   const push = (t: IrType): void => {
+    // A nullable part (GitHub's `nullable-*` models) still contributes its
+    // fields; whether the MERGED shape admits null is the allOf's own call.
+    if (t.kind === 'nullable') { push(t.inner); return }
     if (t.kind === 'object') {
       for (const f of t.fields) {
         if (seen.has(f.name)) continue
@@ -469,4 +638,8 @@ function str(v: unknown): string | undefined {
 }
 function num(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined
+}
+/** A non-negative integer count (`minLength`, `minItems`, …). */
+function count(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : undefined
 }

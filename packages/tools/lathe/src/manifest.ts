@@ -14,7 +14,7 @@ export default defineManifest({
       'the code generator — build-time tooling that emits app code, not app runtime itself',
   },
   features: [
-    'First-party OpenAPI 3.x reader: JSON or YAML, local `$ref` resolution, `allOf` flattening through refs (the inheritance idiom), `oneOf`/`anyOf` with `discriminator`, 3.1 `type: [string, null]`, path-level parameters, and `{id}` → `:id` conversion to the `@pyreon/http` endpoint form',
+    'OpenAPI 3.x reader: JSON or YAML, local `$ref` resolution, `allOf` flattening through refs (the inheritance idiom), `oneOf`/`anyOf` with `discriminator` (validated at generation — an implicit or non-object discriminator degrades to a plain union with a note instead of a module that throws at import), nullability in every spelling (3.0 `nullable`, 3.1 `type: [X, null]` / `anyOf: [X, {type: null}]`) on every node including component models, `enum`/`const` of any JSON scalar, constraints on the type itself (so they apply to array items and alias models), path-level parameters, and `{id}` → `:id` conversion to the `@pyreon/http` endpoint form',
     'Strict YAML 1.2 reading via the `yaml` package — anchors, aliases and merge keys resolve; duplicate keys, multi-document streams, custom tags, recursive aliases and `.inf`/`.nan` are REFUSED with a line number rather than producing a subtly wrong document',
     'Loss is REPORTED, never silent: every spec feature the IR cannot represent becomes a `note` with a stable greppable `code` (`unsupported-schema`, `unsupported-ref`, `missing-operation-id`, `multiple-content-types`, `no-servers`) and a JSON-pointer location',
     '`target: \'multiplatform\'` emits an additional self-contained module per tag — client, schemas, endpoints and calls sharing one top level — because PMTC resolves nothing across file boundaries; the web output is unchanged, so enabling it can never make the web build worse',
@@ -78,7 +78,7 @@ for (const [id, r] of reach) {
         'Passing a relative `baseUrl` (or omitting `servers` from the spec) and expecting native output — PMTC bakes the request URL at compile time, so a relative base makes EVERY operation web-only. The reach report names this, but only if you read it.',
         'Assuming the `.native.tsx` modules replace the web output. They are ADDITIVE: the web files are byte-identical whether the target is `web` or `multiplatform`.',
         'Editing generated files. Every file carries a DO-NOT-EDIT banner and is overwritten on the next run; change the spec or the emitter.',
-        'Expecting `s.enum` in native output. Enums do not lower, so the native path narrows them to `s.string()` — the constraint is genuinely lost there, which is why the two layouts are emitted separately rather than shared.',
+        'Expecting `s.enum` in native output. Enums do not lower, so the native path narrows them to their base scalar (`s.string()` / `s.number()`) — the constraint is genuinely lost there, which is why the two layouts are emitted separately rather than shared.',
       ],
     },
     {

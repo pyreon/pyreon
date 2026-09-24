@@ -63,7 +63,7 @@ describe('fixture shapes per IR kind', () => {
   })
 
   it('an enum takes its FIRST member, not a sample string', () => {
-    expect(fixtureText({ kind: 'string', enum: ['active', 'archived'] })).toContain('"active"')
+    expect(fixtureText({ kind: 'enum', values: ['active', 'archived'] })).toContain('"active"')
   })
 
   it.each([
@@ -81,7 +81,7 @@ describe('fixture shapes per IR kind', () => {
     // noise. Differing, because identical ids collapse a keyed list.
     const out = fixtureText({
       kind: 'array',
-      items: { kind: 'object', fields: [{ name: 'n', type: { kind: 'number', integer: true }, required: true, nullable: false }] },
+      items: { kind: 'object', fields: [{ name: 'n', type: { kind: 'number', integer: true }, required: true }] },
     } as IrType)
     expect(out).toContain('1')
     expect(out).toContain('2')
@@ -97,7 +97,7 @@ describe('fixture shapes per IR kind', () => {
 
   it('a ref resolves through the model table', () => {
     const out = fixtureText({ kind: 'ref', name: 'M' }, [
-      { name: 'M', type: { kind: 'object', fields: [{ name: 'ok', type: { kind: 'boolean' }, required: true, nullable: false }] } },
+      { name: 'M', type: { kind: 'object', fields: [{ name: 'ok', type: { kind: 'boolean' }, required: true }] } },
     ])
     expect(out).toContain('"ok"')
   })
@@ -127,14 +127,14 @@ describe('object field selection', () => {
     // A status badge or filter the UI must handle. Omitting it renders the one
     // state that never needs handling.
     const out = fixtureText(
-      obj([{ name: 'status', type: { kind: 'string', enum: ['active'] }, required: false }]),
+      obj([{ name: 'status', type: { kind: 'enum', values: ['active'] }, required: false }]),
     )
     expect(out).toContain('"status"')
   })
 
   it('KEEPS an optional that carries an example', () => {
     const out = fixtureText(
-      obj([{ name: 'hint', type: { kind: 'string' }, required: false, nullable: false, example: 'given' }]),
+      obj([{ name: 'hint', type: { kind: 'string' }, required: false, example: 'given' }]),
     )
     expect(out).toContain('"given"')
   })
@@ -142,8 +142,8 @@ describe('object field selection', () => {
   it('a nullable optional is rendered as null, not omitted', () => {
     const out = fixtureText(
       obj([
-        { name: 'kind', type: { kind: 'string', enum: ['a'] }, required: false },
-        { name: 'x', type: { kind: 'string' }, required: false, nullable: true, example: 'e' },
+        { name: 'kind', type: { kind: 'enum', values: ['a'] }, required: false },
+        { name: 'x', type: { kind: 'nullable', inner: { kind: 'string' } }, required: false, example: 'e' },
       ]),
     )
     expect(out).toContain('"kind"')

@@ -284,7 +284,15 @@ function sample(type: IrType): string {
       // the same escaper the code emitters use. A raw `'` ended the literal
       // and a raw newline ended the LINE, which is how a value breaks out of
       // a fenced snippet.
-      return type.enum && type.enum[0] ? q(type.enum[0]) : "'…'"
+      return "'…'"
+    case 'enum': {
+      // An enum VALUE is spec text landing in a string literal, so it takes
+      // the same escaper the code emitters use. A raw `'` ended the literal
+      // and a raw newline ended the LINE, which is how a value breaks out of
+      // a fenced snippet.
+      const v = type.values[0]
+      return typeof v === 'string' ? q(v) : String(v)
+    }
     default:
       return "'…'"
   }

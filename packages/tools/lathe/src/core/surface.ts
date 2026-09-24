@@ -78,7 +78,11 @@ export function renderType(type: IrType | undefined, depth = 0): string {
   if (depth > 6) return '…'
   switch (type.kind) {
     case 'string':
-      return type.enum ? `enum(${[...type.enum].sort().join('|')})` : type.format ?? 'string'
+      return type.format ?? 'string'
+    case 'enum':
+      return `enum(${type.values.map((v) => JSON.stringify(v)).sort().join('|')})`
+    case 'nullable':
+      return `${renderType(type.inner, depth)} | null`
     case 'number':
       return type.integer ? 'integer' : 'number'
     case 'boolean':

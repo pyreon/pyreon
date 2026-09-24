@@ -18,6 +18,7 @@
  */
 
 import { reachableModels, topoSortModels } from '../core/graph'
+import { collectRefNames } from '../core/walk'
 import type { IrDocument, IrOperation, IrType } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
 import {
@@ -463,7 +464,7 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
       // `import type` — erased by TypeScript, but PMTC's warn pass reads the
       // import statement itself and reports the module as un-lowerable. The
       // rendered type is identical; only the derivation differs.
-      f.line(`export type ${model.name} = ${tsType(model.type, 0, true)}`)
+      f.line(`export type ${model.name} = ${tsType(model.type, 0, true, true)}`)
     }
 
     for (const op of ops) {
@@ -543,23 +544,7 @@ const DISABLED_FN =
   "() => Promise.reject(new Error('[Pyreon] lathe: query is disabled — its arguments are not ready'))"
 
 function collectRefs(type: IrType | undefined, into: Set<string>): void {
-  if (!type) return
-  switch (type.kind) {
-    case 'ref':
-      into.add(type.name)
-      return
-    case 'array':
-      collectRefs(type.items, into)
-      return
-    case 'union':
-      for (const o of type.options) collectRefs(o, into)
-      return
-    case 'object':
-      for (const f of type.fields) collectRefs(f.type, into)
-      if (type.additional) collectRefs(type.additional, into)
-      return
-    default:
-  }
+  collectRefNames(type, into)
 }
 
 /** Filename-safe tag. */

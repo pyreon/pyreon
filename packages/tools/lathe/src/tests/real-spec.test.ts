@@ -88,11 +88,11 @@ describe('shapes only a real spec produces', () => {
     A_:
       type: object
       required: [kind]
-      properties: { kind: { type: string } }
+      properties: { kind: { type: string, enum: [a] } }
     B_:
       type: object
       required: [kind]
-      properties: { kind: { type: string } }`)
+      properties: { kind: { type: string, enum: [b] } }`)
     expect(file(src, 'schemas.ts')).toContain("s.discriminatedUnion('kind'")
   })
 

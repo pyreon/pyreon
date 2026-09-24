@@ -32,7 +32,7 @@ const op = (over: Partial<IrOperation> = {}): IrOperation => ({
 } as IrOperation)
 
 const param = (name: string, required = true, type: IrType = { kind: 'string' }) =>
-  ({ name, type, required, nullable: false })
+  ({ name, type, required })
 
 const doc = (over: Partial<IrDocument> = {}): IrDocument => ({
   title: 'T', version: '1', baseUrl: '', models: [], operations: [], notes: [], ...over,

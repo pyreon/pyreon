@@ -336,7 +336,7 @@ Real, current, and reported per-operation rather than papered over:
 | `GET` with no path parameters | lowers |
 | `GET` with a path parameter | **web-only** — PMTC bakes the URL at compile time; a runtime param cannot be baked |
 | `POST`/`PUT`/`PATCH`/`DELETE` | **web-only** — mutations are not recognised yet |
-| `enum` | narrowed to a plain string on the native path; the constraint is genuinely lost there |
+| `enum` / `const` | narrowed to its base scalar (`string` / `number` / `boolean`) on the native path; the constraint is genuinely lost there |
 | a model field naming another model | **lowers under `validator: 'zod'`** (inlined); dropped under the default `s.*`, with a compiler warning |
 | a `$ref` **cycle** | web-only for that field — there is no finite nesting to inline, on either validator |
 | `date` / `date-time` | kept as strings on both paths, deliberately — `s.date()` does not lower, and parsing to a `Date` on web only would be a silent divergence |
