@@ -87,6 +87,6 @@ describe('gen-docs — charts snapshot', () => {
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(20)
+    expect(Object.keys(record).length).toBe(21)
   })
 })
