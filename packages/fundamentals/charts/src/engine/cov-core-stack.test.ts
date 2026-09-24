@@ -139,17 +139,15 @@ describe('grouped bars, horizontal — the flipped frame', () => {
 })
 
 describe('cumulative tops, extents and shares over RAGGED input', () => {
-  it('stackLevels reads a missing cell as a gap, carries each group, and runs a seriesDesc group top-down', () => {
-    const r = stackLevels([[1, 2, 3], [10]], [], [], [])
+  it('stackLevels reads a missing cell as a gap', () => {
+    const r = stackLevels([[1, 2, 3], [10]])
     expect(r.tops[0]).toEqual([1, 2, 3])
     expect(r.tops[1]![0]).toBe(11)
     expect(Number.isNaN(r.tops[1]![1]!)).toBe(true)
-    // Two groups stack apart; a seriesDesc group puts its LAST series at the bottom.
-    const g = stackLevels([[1], [2], [4]], ['a', 'a', 'b'], [], [true, false, false])
-    expect(g.tops.map((row) => row[0])).toEqual([3, 2, 4])
-    // 'all' ignores sign; 'positive' only stacks on a positive total.
-    expect(stackLevels([[5], [-3]], [], ['all', 'all'], []).tops[1]).toEqual([2])
-    expect(stackLevels([[-5], [3]], [], ['positive', 'positive'], []).tops[1]).toEqual([3])
+    // Samesign: a negative skips the positive total below it and a positive
+    // skips a negative one.
+    expect(stackLevels([[5], [-3]]).tops[1]).toEqual([-3])
+    expect(stackLevels([[-5], [3]]).tops[1]).toEqual([3])
   })
 
   it('stackedExtent spans the positive and negative TOTALS per column over a ragged set, and floors an empty stack at 1', () => {

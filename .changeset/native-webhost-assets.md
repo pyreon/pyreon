@@ -14,6 +14,6 @@ the runtimes advertised a capability the build had no way to feed, and every
 resolver actually reads. The filename is preserved verbatim on every target,
 because it IS the contract: `src="chart.html"` must find `chart.html`.
 
-This is the missing route for the four webview-hosted packages (charts / code /
-flow / rich-text), whose host page is produced at BUILD time and so cannot
+This is the missing route for the three webview-hosted packages (code / flow /
+rich-text), whose host page is produced at BUILD time and so cannot
 appear in lowered source.

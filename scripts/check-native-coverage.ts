@@ -256,22 +256,20 @@ export function unmetCompileRequest(
 
 export const REGISTRY: RegistryEntry[] = [
   // ── @pyreon/charts: the OWN engine's family hosts lower to the native canvas ──
-  // Distinct from the `@pyreon/charts/echarts` entry below (the ECharts
-  // wrapper, a webview host): every plot family's geometry is GENERATED into
+  // Every plot family's geometry is GENERATED into
   // PyreonChartEngine.swift/.kt, and the data-prop hosts (<SankeyChart>,
   // <GraphChart>, <TreemapChart>, <SunburstChart>, <TreeChart>, <RiverChart>,
   // <GanttChart>, <PolarChart>) and the accessor / frame hosts (PlotChart,
   // Pie, Gauge, Radar, Funnel, Heatmap, Candlestick, Boxplot, Calendar,
   // Parallel), <ChordChart>, <SingleAxisChart> and <MapChart> (from a
   // precomputed GeoShape[]) all lower to PyreonChartCanvas over that engine — a
-  // NATIVE view, not a hosted web page. <OptionChart> lowers too, from a LITERAL
-  // option resolved at compile time; a signal-driven option warns. A subpath
-  // import is skipped by the export check by design.
+  // NATIVE view, not a hosted web page. A subpath import is skipped by the
+  // export check by design.
   {
     name: '@pyreon/charts',
     mechanism: 'pmtc-lowers',
     rationale:
-      'the plot engine is generated into the native runtimes and every host lowers to PyreonChartCanvas (a native Canvas over the same draw list); <OptionChart> needs a literal option and <MapChart> a precomputed GeoShape[]; a bare host follows the runtime colour scheme',
+      'the plot engine is generated into the native runtimes and every host lowers to PyreonChartCanvas (a native Canvas over the same draw list); <MapChart> needs a precomputed GeoShape[]; a bare host follows the runtime colour scheme',
     snippet: `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
 import { BoxplotChart, SankeyChart } from '@pyreon/charts'
@@ -730,8 +728,8 @@ export function C() {
 }`,
   },
   // ── webview-host: the web ENGINE runs inside a native <WebView> ──────────
-  // These four cannot be reimplemented as native views (ECharts is a canvas
-  // engine, ProseMirror/CodeMirror are DOM editors, flow is an elk/SVG layout),
+  // These cannot be reimplemented as native views (ProseMirror/CodeMirror are
+  // DOM editors, flow is an elk/SVG layout),
   // so they cross by HOSTING: `./webview` builds a self-contained page that runs
   // in WKWebView / Android WebView / an `<iframe srcdoc>` on web, with the
   // bidirectional bridge (`data` → `window.__pyreonData` + a `pyreondata`
@@ -739,7 +737,7 @@ export function C() {
   //
   // Evidence rung, stated per entry rather than implied — the host BRIDGE is
   // proven in real Chromium against the REAL engine (`src/webview.browser.test.tsx`),
-  // and the native `<WebView>` host is emit + COMPILE proven: each of these four
+  // and the native `<WebView>` host is emit + COMPILE proven: each of these
   // carries a snippet hosting its own real payload shape, which the compile pass
   // puts through swiftc and kotlinc like any other. NO device test hosts a
   // WebView on either platform — see the `not device-proven` note each rationale
@@ -755,31 +753,6 @@ export function C() {
   // serialize. `<WebView data>` lowers literals as JSON now, and the snippets
   // below are what keeps that honest: each carries the payload shape its package
   // actually crosses by, so the mechanism is checked rather than described.
-  {
-    name: '@pyreon/charts/echarts',
-    mechanism: 'webview-host',
-    rationale:
-      'ECharts is a canvas engine with no native equivalent, so it crosses by HOSTING the same web chart in a native <WebView> (@pyreon/charts/webview). Bridge proven in real Chromium against real ECharts; native host is emit + stub-typecheck proven, NOT device-proven.',
-    snippet: `import { signal } from '@pyreon/reactivity'
-import { Stack, Text, WebView } from '@pyreon/primitives'
-export function C() {
-  const nums = signal([1, 2, 3])
-  const text = signal('const a = 1')
-  const picked = signal('none')
-  return (
-    <Stack>
-      <Text>{picked()}</Text>
-      <WebView
-        html="<!doctype html><html><body></body></html>"
-        data={{ xAxis: { type: 'category', data: ['Mon', 'Tue'] }, yAxis: {}, series: [{ type: 'bar', data: nums() }] }}
-        onMessage={(m) => picked.set(m)}
-      />
-    </Stack>
-  )
-}
-`,
-    webviewHost: { hostHtmlExport: 'buildChartHostHtml', componentExport: 'ChartWebView' },
-  },
   {
     name: '@pyreon/code',
     mechanism: 'webview-host',

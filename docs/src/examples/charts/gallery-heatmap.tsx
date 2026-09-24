@@ -1,37 +1,30 @@
-import { ChartThemeProvider } from '@pyreon/charts'
-import { OptionChart } from '@pyreon/charts/option'
+import { Cell, Chart, Tooltip } from '@pyreon/charts'
 import type { Signal } from '@pyreon/reactivity'
 
 /**
- * Gallery — a heatmap from an ECharts option: activity by weekday and hour,
- * coloured through a continuous `visualMap` strip.
- * The provider opts it into the colour mode in scope — the page's scheme
- * here (the root's `color-scheme`); a bare option chart keeps ECharts' own light look.
+ * Gallery — a heatmap: activity by weekday and hour, one `<Cell>` per row of
+ * long-format data, coloured through the theme's value ramp.
  */
+interface Obs {
+  hour: string
+  day: string
+  n: number
+}
+
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const HOURS = Array.from({ length: 24 }, (_, h) => `${h}h`)
-const CELLS: number[][] = []
+const CELLS: Obs[] = []
 for (let d = 0; d < DAYS.length; d++) {
   for (let h = 0; h < 24; h++) {
     const work = d < 5 && h >= 9 && h <= 17 ? 6 : 1
-    CELLS.push([h, d, Math.round(work + 4 * Math.abs(Math.sin((h + d * 3) / 4)))])
+    CELLS.push({ hour: `${h}h`, day: DAYS[d]!, n: Math.round(work + 4 * Math.abs(Math.sin((h + d * 3) / 4))) })
   }
 }
 
 export default function GalleryHeatmap(_props: { shared?: Signal<number> }) {
   return (
-    <ChartThemeProvider>
-      <OptionChart
-        height={300}
-        option={{
-          tooltip: {},
-          grid: { left: 48, right: 16, top: 16, bottom: 70 },
-          xAxis: { type: 'category', data: HOURS, splitArea: { show: true } },
-          yAxis: { type: 'category', data: DAYS, splitArea: { show: true } },
-          visualMap: { min: 0, max: 10, calculable: true, orient: 'horizontal', left: 'center', bottom: 0 },
-          series: [{ type: 'heatmap', data: CELLS }],
-        }}
-      />
-    </ChartThemeProvider>
+    <Chart<Obs> data={CELLS} height={300}>
+      <Cell x="hour" y="day" value="n" />
+      <Tooltip />
+    </Chart>
   )
 }

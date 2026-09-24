@@ -21,7 +21,7 @@ import { cmdsEqual, universalTweenCmds } from './cmd-tween'
 import type { ToolboxConfig, ToolboxTool } from './toolbox-config'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
-import { applySeriesSelection, categoryIndex, categoryPoints, geometrySpec, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
+import { applySeriesSelection, categoryPoints, geometrySpec, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
 import { mirrorCmds, screenRectX } from './rtl'
 import { layoutSeriesPointsAt } from './layout'
 import type { PlotLayout } from './layout'
@@ -494,7 +494,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const keep = lastKeep
     const tb = features.toolbox
     const sel = tb === undefined ? [] : tb.brushOnlySeries(tb.brushSelection(f.spec, f.layout, brushAreas.peek()), props.brushSeriesIndex ?? [])
-    cb(sel.map((x) => ({ seriesIndex: x.seriesIndex, dataIndex: x.dataIndex.map((v) => { const i = categoryIndex(f.spec, v); return (keep === null ? i : keep[i]!) + off }) })))
+    cb(sel.map((x) => ({ seriesIndex: x.seriesIndex, dataIndex: x.dataIndex.map((v) => (keep === null ? v : keep[v]!) + off) })))
   }
   const clearBrushAreas = (): void => {
     brushAreas.set([])
@@ -619,8 +619,8 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   }
   // Command-level tween for a shape change under `universalTransition`: the
   // previous frame's rendered geometry (not values — the arrays don't line
-  // up) morphs into the new frame's, the same `cmd-tween.ts` machinery
-  // `OptionChart`'s canvas host uses. `lastCoreCmds` is the last SETTLED
+  // up) morphs into the new frame's through the `cmd-tween.ts` machinery.
+  // `lastCoreCmds` is the last SETTLED
   // (fully-resolved) plot geometry, before the legend/nav/crosshair shift —
   // the same scope `canvas-host.tsx` calls `family`.
   let lastCoreCmds: DrawCmd[] | null = null
@@ -1169,7 +1169,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       const pts =
         g.xValues !== undefined && g.xValues.length > 0
           ? layoutSeriesPointsAt(sr.values, g.xValues, plot, dom, l.xDomainUsed)
-          : categoryPoints(g, sr.values, plot, dom)
+          : categoryPoints(sr.values, plot, dom)
       const p = pts[idx]
       if (p === undefined) continue
       out.push({ kind: 'circle', center: p, radius: Math.max(3.0, sr.radius), fill: sr.color })
@@ -1711,7 +1711,6 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         ...(s.errLow !== undefined ? { errLow: s.errLow } : {}),
         ...(s.errHigh !== undefined ? { errHigh: s.errHigh } : {}),
         ...(s.rValues !== undefined ? { rValues: s.rValues } : {}),
-        ...(s.onX2 === true && s.xs !== undefined ? { xs: s.xs } : {}),
       })),
     }
     a11yMemo = { rows, marks: props.marks, labels: props.seriesLabels, format: fmtNow, title: props.title, input }

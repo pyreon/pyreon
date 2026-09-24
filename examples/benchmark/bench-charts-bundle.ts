@@ -21,8 +21,7 @@
  * assumed: `PlotChart` does NOT currently tree-shake per mark — a one-line chart
  * costs the same as bar + line + tooltip + legend, because the component pulls
  * its whole interaction surface (tooltip, legend, zoom, brush, toolbox) either
- * way. The `OptionChart` facade compiles every ECharts series type it supports,
- * so it is the larger of the two Pyreon entries. AUTHOR-JUDGE: written by the
+ * way. AUTHOR-JUDGE: written by the
  * Pyreon authors.
  *
  * Run: bun bench-charts-bundle.ts
@@ -77,13 +76,6 @@ ${LINE_DATA}
 `,
   },
   {
-    name: 'Pyreon OptionChart',
-    group: 'line chart',
-    source: `${MOUNT}import { OptionChart } from '@pyreon/charts/option'
-;(globalThis as Record<string, unknown>).__benchKeep = () => mount(h(OptionChart, { option: ${OPTION_LINE} }), document.body)
-`,
-  },
-  {
     name: 'ECharts 6 (tree-shaken)',
     group: 'line chart',
     source: echartsHost(
@@ -103,13 +95,6 @@ ${LINE_DATA}
     source: `${MOUNT}import { bars, line, PlotChart } from '@pyreon/charts/engine'
 ${LINE_DATA}
 ;(globalThis as Record<string, unknown>).__benchKeep = () => mount(h(PlotChart, { data: rows, x: (d: { m: string }) => d.m, marks: [bars((d: { v: number }) => d.v, { label: 'A' }), line((d: { v: number }) => d.v, { label: 'B' })], tooltip: true, showLegend: true }), document.body)
-`,
-  },
-  {
-    name: 'Pyreon OptionChart',
-    group: 'bar + line, tooltip, legend',
-    source: `${MOUNT}import { OptionChart } from '@pyreon/charts/option'
-;(globalThis as Record<string, unknown>).__benchKeep = () => mount(h(OptionChart, { option: ${OPTION_BAR_RICH} }), document.body)
 `,
   },
   {

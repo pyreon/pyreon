@@ -860,8 +860,8 @@ Rules for backing a third-party library's pluggable reactivity (atom-style `crea
 
 ## Library API-Shape Mistakes
 
-- **Importing `@pyreon/charts` through a pre-0.52 entry point** `[detector: charts-legacy-import]`: the main entry is now the engine (`<Chart>` with mark children, formerly `<Plot>` at `/plot`), and the ECharts wrapper is `<EChart>` at `/echarts`, with `/manual` and `/vite` under it. `<Chart options={…}>` from the root is the old wrapper and no longer type-checks.
-  - `pyreon check --fix` rewrites each import to the entry that exports the name now, and renames `Plot`→`Chart`, `Tip`→`Tooltip` and the wrapper's `Chart`→`EChart` at every reference.
+- **Importing `@pyreon/charts`'s removed ECharts wrapper** `[detector: charts-legacy-import]`: 0.51's `<Chart options>`, `useChart`, `/manual`, `/vite` and `/webview` are gone — 0.52's `@pyreon/charts` is Pyreon's own engine, `<Chart>` with rows and mark children.
+  - There is no codemod: an ECharts option has no mechanical translation to marks. `pyreon check` flags every such import; rewrite each series as a mark and delete the tslib Vite alias.
   - The wrapper is told apart from the grammar by an `options` attribute or a wrapper-only name in the same import.
 - **Narrower projections silently drop a new struct field**: a layer that copies a shared struct field by field into its own narrower type compiles and renders when a field is added, but loses it. In `@pyreon/charts`, `values2` (a band's second bound) was lost by the value labels, a11y description and tooltip types, and the bubble mark's reader surfaces held pixel `radii` instead of the datum. Rules:
   - When adding a field to a cross-layer struct, grep for every type that restates its shape. Pass by reference where possible.
@@ -910,7 +910,7 @@ Rules for backing a third-party library's pluggable reactivity (atom-style `crea
 
 - **SwiftUI presentation modifiers on `EmptyView()` never present**: `EmptyView` is not in the render tree, so `.sheet`/`.alert`/`.popover` attached to it are inert, and it still typechecks. PMTC's `<Modal>` anchors to `Color.clear.frame(width: 0, height: 0).sheet(…)`. Compose composes a `Dialog` node and has no such requirement, so check each target on a device when the mechanisms differ. Reference: `packages/native/compiler/src/emit-swift.ts` (Modal); test `examples/native-counter-ios/iosUITests/PyreonCounterUITests.swift`.
 
-- **Special-case emitters that return before the generic modifier tail**: the generic tail turns `data-testid` into `.accessibilityIdentifier` / `Modifier.testTag`. Emitters that return early (`emitSwiftLink`/`emitKotlinLink`, `emitKotlinToggle`, the `<WebView>`/`<ChartWebView>`/`<FlowWebView>` hosts) dropped it, so the element could not be selected in device tests. When writing or touching any special-case emitter, audit which tail responsibilities it skips (test ids, a11y props, layout).
+- **Special-case emitters that return before the generic modifier tail**: the generic tail turns `data-testid` into `.accessibilityIdentifier` / `Modifier.testTag`. Emitters that return early (`emitSwiftLink`/`emitKotlinLink`, `emitKotlinToggle`, the `<WebView>`/`<FlowWebView>` hosts) dropped it, so the element could not be selected in device tests. When writing or touching any special-case emitter, audit which tail responsibilities it skips (test ids, a11y props, layout).
   - Swift wrappers such as `PyreonLink` need `.accessibilityElement(children: .contain)` so the identifier survives flattening and the child stays queryable.
   - A host that lowers some props itself passes them in the tail's `omit` set, from its own handled-prop registry (e.g. `background` is the page's background on a WebView).
   - A handler emitter that special-cases the parameter must still delegate the body to the one generic action emitter; otherwise block-bodied handlers (`onMessage`, `onSelect`, …) lower to empty closures.

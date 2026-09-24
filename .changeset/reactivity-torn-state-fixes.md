@@ -1,20 +1,12 @@
 ---
-'@pyreon/charts': patch
 '@pyreon/flow': patch
 '@pyreon/sync': patch
 '@pyreon/lint': patch
 ---
 
-Three reactivity/correctness fixes found by running `pyreon doctor` against the
+Two reactivity/correctness fixes found by running `pyreon doctor` against the
 framework itself, plus the rule-option support that made the remaining reports
 resolvable.
-
-- **`useChart` published a torn frame.** `instance.set(chart)`, `loading.set(false)`
-  and `error.set(null)` ran unbatched, so a subscriber reading two of them saw
-  the chart instance published while `loading` was still `true` — the "chart is
-  ready but still showing a spinner" flicker. Batched into one notify cycle; the
-  batch flushes before `onInit`, so the documented "fully configured before
-  `onInit` fires" invariant is unchanged.
 
 - **Flow's `handlePointerUp` fired one notify cycle per selected node.** Its
   three branches (rubber-band / drag-end / connection-drop) are sequential and

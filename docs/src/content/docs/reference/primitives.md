@@ -23,7 +23,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - One canonical name + event per concept — `<Stack>` (not View/VStack/div), `onPress` everywhere
 - Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target
 - PMTC compiles your component SOURCE in a narrow declarative TS subset — NOT npm libraries
-- `<WebView>` hosts a web-only component (charts/flow/editor) natively with a bidirectional data bridge
+- `<WebView>` hosts a web-only component (flow/editor) natively with a bidirectional data bridge
 - `<Transition>` / `<TransitionGroup>` — the animation vocabulary, lowered to SwiftUI `.transition(…)` and Compose `AnimatedVisibility` (import from HERE; `@pyreon/runtime-dom` is web-only)
 - `<Web>` / `<NativeIOS>` / `<NativeAndroid>` escape hatches for genuinely per-platform UI
 - `useNativeModule` FFI — add a platform capability the framework does not ship (Bluetooth, ARKit, a vendor SDK) as an app-level Swift/Kotlin class, no framework PR
@@ -535,7 +535,7 @@ A container that animates its own SIZE as rows enter and leave the keyed list in
 (props: { html?: string; src?: string; data?: unknown; onMessage?: (message: string) => void }) => VNode
 ```
 
-Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). THE escape hatch for web-only packages (charts/flow/code/document) on native — they run inside the WebView. Bidirectional bridge: `data` is pushed in as `window.__pyreonData` (+ a `pyreondata` event, live, no reload); the page calls `window.pyreonPostMessage(payload)` → your `onMessage` closure.
+Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). THE escape hatch for web-only packages (flow/code/document) on native — they run inside the WebView. Bidirectional bridge: `data` is pushed in as `window.__pyreonData` (+ a `pyreondata` event, live, no reload); the page calls `window.pyreonPostMessage(payload)` → your `onMessage` closure.
 
 **Example**
 
@@ -545,7 +545,7 @@ Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe 
 
 **Common mistakes**
 
-- Using it for core UI (nav/forms/lists) — pays WebView boot + bundle cost; use native primitives there. Reserve &lt;WebView&gt; for self-contained web-island panes (charts/editors/diagrams)
+- Using it for core UI (nav/forms/lists) — pays WebView boot + bundle cost; use native primitives there. Reserve &lt;WebView&gt; for self-contained web-island panes (editors/diagrams)
 - Expecting native look-and-feel — content renders as a web view, not native widgets
 
 **See also:** `Web` · `connectWebHost`
@@ -558,7 +558,7 @@ Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe 
 connectWebHost<T>() => { data(): T | undefined; onData(cb: (data: T | undefined) => void): () => void; emit(message: string): void; joinGroup(group: string): void; leaveGroup(): void; relay(message: string): void; onRelay(cb: (message: string) => void): () => void }
 ```
 
-The guest-side glue for the `<WebView>` bridge — the reusable OTHER half of the WebView-host pattern. A web-only-rich component (chart/flow/editor) built as a self-contained bundle runs `connectWebHost()` INSIDE the hosted page (an `<iframe srcdoc>` on web, a WKWebView on iOS, an Android WebView) to read host-pushed props (`data()` / `onData(cb)` fires on every `pyreondata` push) and send events back (`emit(msg)` → the host `onMessage`). Same code on every platform, so a webview-hosted panel is truly 1:1. HOST GROUPS: `joinGroup(name)` puts the page in a group; `relay(msg)` reaches every OTHER hosted page of that group (a sibling iframe on web, a sibling WKWebView / Android WebView natively — the host does the fan-out, since separate pages can never see each other) and `onRelay(cb)` receives what siblings relay; this is how `<ChartWebView group>` mirrors zoom/legend/tooltip across hosted charts. Guest-only: every method is an inert no-op off-browser, so importing it can never crash a build.
+The guest-side glue for the `<WebView>` bridge — the reusable OTHER half of the WebView-host pattern. A web-only-rich component (flow diagram, editor) built as a self-contained bundle runs `connectWebHost()` INSIDE the hosted page (an `<iframe srcdoc>` on web, a WKWebView on iOS, an Android WebView) to read host-pushed props (`data()` / `onData(cb)` fires on every `pyreondata` push) and send events back (`emit(msg)` → the host `onMessage`). Same code on every platform, so a webview-hosted panel is truly 1:1. HOST GROUPS: `joinGroup(name)` puts the page in a group; `relay(msg)` reaches every OTHER hosted page of that group (a sibling iframe on web, a sibling WKWebView / Android WebView natively — the host does the fan-out, since separate pages can never see each other) and `onRelay(cb)` receives what siblings relay; this is how separate hosted pages mirror shared state (a viewport, a selection) with each other. Guest-only: every method is an inert no-op off-browser, so importing it can never crash a build.
 
 **Example**
 
@@ -588,7 +588,7 @@ Build the self-contained HTML page a `<WebView html={…}>` hosts — the docume
 **Example**
 
 ```tsx
-const html = webHostDocument({ script: BUNDLED_CHART_IIFE, css: chartCss })
+const html = webHostDocument({ script: BUNDLED_EDITOR_IIFE, css: editorCss })
 // <WebView html={html} data={metrics()} onMessage={(m) => selected.set(m)} />
 ```
 

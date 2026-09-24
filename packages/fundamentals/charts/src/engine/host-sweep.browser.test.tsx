@@ -22,7 +22,6 @@ import { GanttChart } from './GanttChart'
 import { GraphChart } from './GraphChart'
 import { HeatmapChart } from './HeatmapChart'
 import { MapChart } from './MapChart'
-import { OptionChart } from './OptionChart'
 import { ParallelChart } from './ParallelChart'
 import { SingleAxisChart } from './SingleAxisChart'
 import { GaugeChart, PieChart } from './PieChart'
@@ -87,7 +86,6 @@ const HOSTS: Host[] = [
   { name: 'CandlestickChart', make: (k) => h(CandlestickChart<Bar>, { ...shared(k), data: CANDLES, x: (d: Bar) => d.day, open: (d: Bar) => d.o, high: (d: Bar) => d.h, low: (d: Bar) => d.l, close: (d: Bar) => d.c }) },
   { name: 'RadarChart', make: (k) => h(RadarChart<Player>, { ...shared(k), data: PLAYERS, axes: [{ label: 'Speed', max: 100 }, { label: 'Power', max: 100 }, { label: 'Skill', max: 100 }], values: (d: Player) => [d.speed, d.power, d.skill], label: (d: Player) => d.name }) },
   { name: 'BoxplotChart', make: (k) => h(BoxplotChart<{ group: string; obs: number[] }>, { ...shared(k), data: [{ group: 'A', obs: [1, 2, 3, 4, 5] }, { group: 'B', obs: [3, 5, 7, 9, 40] }], values: (d: { group: string; obs: number[] }) => d.obs, x: (d: { group: string; obs: number[] }) => d.group }) },
-  { name: 'OptionChart', make: (k) => h(OptionChart, { ...shared(k), option: { xAxis: { type: 'category', data: ['a', 'b', 'c'] }, yAxis: {}, series: [{ type: 'bar', data: [3, 1, 2] }] } }) },
   // The plot host's toolbox defaults to the engine's SVG export; the sweep asks for the PNG the family hosts produce.
   { name: 'PlotChart', make: (k) => h(PlotChart<Share>, { ...shared(k), data: SHARES, x: (d: Share) => d.name, marks: [bars<Share>((d) => d.share), line<Share>((d) => d.share)], crosshair: true, toolbox: { saveAsImage: 'png' } }) },
 ]

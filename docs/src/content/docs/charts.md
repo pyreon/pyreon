@@ -20,14 +20,12 @@ The family marks follow the same rule: `<Arc>`, `<Stage>`, `<Cell>` and
 marks never includes the pie, funnel, heatmap or candlestick code. A CI import
 budget locks it.
 
-The package has five entries:
+The package has three entries:
 
 | Entry | For |
 | --- | --- |
 | `@pyreon/charts` | `<Chart>`, its marks, the family components, formatters, theme and linking. The stable surface. |
 | `@pyreon/charts/svg` | `chartToSvg` and every `*ToSvg`: charts as SVG strings with no DOM, for SSR and export. |
-| `@pyreon/charts/option` | `<OptionChart>` and `optionToSvg`: an ECharts option object, drawn by this engine. |
-| `@pyreon/charts/echarts` | `<EChart>`: a wrapper around the real [ECharts library](/docs/charts-echarts), when you need its full catalog. |
 | `@pyreon/charts/engine` | Every layout, hit test and draw-list builder, and the array form `<PlotChart marks>`. Not covered by the stability promise. |
 
 <PackageBadge name="@pyreon/charts" href="/docs/charts" />
@@ -490,19 +488,7 @@ Relations use node/link lists: `<SankeyChart nodes links>` lays flows out by lon
 
 ## Coordinates
 
-Beyond the cartesian grid the engine ships the ECharts coordinate systems as families of their own: `<CalendarChart start end values>` (the contribution-graph grid, strict ISO dates), `<ParallelChart axes rows>` (parallel coordinates with category or value axes and highlighted rows), `<PolarChart axes series>` (radial or concentric bars and polar lines), `<RiverChart series>` (a silhouette streamgraph), a single axis (`layoutSingleAxis`), and `<MapChart map values>` over GeoJSON registered with `registerMap`, passed inline, or projected first with `geoShapes(json)` into a `GeoShape[]` (the form that crosses to iOS and Android) — regions filled by value through the same colour ramp the heatmap uses, with `renderGeoPoints` / `renderGeoPaths` for scatter and flight paths on top.
-
-## ECharts option compatibility
-
-`optionToSvg(option)` and `compileOption(option)` accept an **ECharts-shaped option** and render it on this engine — cartesian series, every family above, `coordinateSystem: 'polar' | 'geo' | 'singleAxis'`, `dataset` (with `filter` / `sort` transforms), `graphic`, `visualMap`, `custom` series with `renderItem`, `lines`, `effectScatter`, `pictorialBar`, `markPoint` / `markLine`, titles, legends and tooltips. Anything the facade cannot map is **named** in `compiled.warnings` (`option-key-unsupported`, `series-option-unsupported`, …) rather than dropped silently, and a gallery-shaped conformance corpus ratchets the clean pass-rate upward in CI.
-
-```ts
-import { optionToSvg } from '@pyreon/charts/option'
-import { compileOption } from '@pyreon/charts/engine'
-
-const svg = optionToSvg({ xAxis: { data: ['Mon', 'Tue'] }, yAxis: {}, series: [{ type: 'bar', data: [120, 200] }] }, { theme: 'dark', locale: 'de' })
-const { spec, warnings } = compileOption(myEchartsOption)
-```
+Beyond the cartesian grid the engine ships further coordinate systems as families of their own: `<CalendarChart start end values>` (the contribution-graph grid, strict ISO dates), `<ParallelChart axes rows>` (parallel coordinates with category or value axes and highlighted rows), `<PolarChart axes series>` (radial or concentric bars and polar lines), `<RiverChart series>` (a silhouette streamgraph), a single axis (`layoutSingleAxis`), and `<MapChart map values>` over GeoJSON registered with `registerMap`, passed inline, or projected first with `geoShapes(json)` into a `GeoShape[]` (the form that crosses to iOS and Android) — regions filled by value through the same colour ramp the heatmap uses, with `renderGeoPoints` / `renderGeoPaths` for scatter and flight paths on top.
 
 ## Themes
 
@@ -623,7 +609,7 @@ crosses from a **precomputed `GeoShape[]`** — raw GeoJSON's `geometry` is a
 depths, which the native struct lowering refuses to merge. Project once with
 `geoShapes(json)` on the web or in a build step and pass the const; the
 registry name, the raw FeatureCollection and `geoShapes()` itself stay web and
-decline by name, as `<OptionChart>` does. A host with no `theme` and no provider
+decline by name. A host with no `theme` and no provider
 follows the phone's colour scheme at runtime, as it follows
 `prefers-color-scheme` in a browser. `animate` crosses too: every host whose
 engine takes a `progress` (all of the above except Pie, Radar, Candlestick and
@@ -655,14 +641,12 @@ engine's throughput is measured, not asserted: `bun run
 --filter=@pyreon/charts bench:engine` (layout + render, 1k–100k points, treemap,
 sankey, LTTB; single machine, author-run — treat magnitudes as the signal).
 
-## Registered themes and locales
+## Locales
 
-`registerTheme(name, tokens)` takes the same tokens (the ECharts-shaped
-aliases `color` / `backgroundColor` / `textStyle` / `axisLineColor` /
-`splitLineColor` still register as-is), with `light` and `dark` built in;
-`registerLocale(tag, pack)` over `Intl` feeds `compileOption(option, { theme,
-locale })`. `resolveTheme` and `numberFormatter` / `dateFormatter` are exported
-for hosts that build specs by hand.
+`registerLocale(tag, pack)` registers a locale pack over `Intl`; a chart's
+`locale` prop picks it up for its number and date formatting. `numberFormatter`
+and `dateFormatter` are exported from `@pyreon/charts/engine` for hosts that
+build specs by hand.
 
 ## Interaction
 
@@ -763,16 +747,6 @@ const sound = sonifyValues(closes, { duration: 3000, link })
 <button onClick={() => void sound.play()}>Play</button>
 ```
 
-## The option host
-
-`<OptionChart option>` is the component for an ECharts option: cartesian plans (single or multi-`grid`) paint on a canvas through the same `compiledCommands` the server's `optionToSvg` uses, family plans mount the family's own interactive host (kept alive across updates, so an update tweens), several charts in one option are drawn as layers (the cartesian series on the canvas, each other family series as its own host placed by its `center` / `radius` or box keys — two pies side by side, a pie in the corner of a line chart, candlesticks over volume on two grids), a `timeline` auto-plays or follows `timelineIndex`, and `onSelect` hit-tests clicks against the painted geometry.
-
-It animates as ECharts does — an entrance and an update tween, set by the option's `animation`, `animationDuration`, `animationEasing`, `animationDelay`, their `…Update` twins and `animationThreshold`, with ECharts' easing table — and the option's `tooltip` component decides the tooltip: `trigger`, a template or function `formatter` (its HTML renders through an allow-list), `valueFormatter`, `position`, the look keys, `triggerOn`, `hideDelay`, `alwaysShowContent`, and `tooltip.axisPointer` (`line`, `shadow` or `cross`). With no `tooltip` component no tooltip shows, as in ECharts; a series' own `tooltip` refines it for that series' items. Per-datum colour works as in ECharts — a datum's `itemStyle.color`, or `colorBy: 'data'` for a palette colour per datum — and a series' `cursor` and `silent` apply to its items. Set `animation: false` for a static first paint.
-
-```tsx
-<OptionChart option={() => option()} width={640} height={320} theme="dark" onSelect={(hit) => hit && select(hit)} />
-```
-
 ## Native
 
 The engine's geometry is **generated into Swift and Kotlin twins**
@@ -803,35 +777,28 @@ and `facet` (a DOM panel grid).
 
 ## Migrating from 0.51
 
-0.52 made this engine the package's main entry. Most of the change is
-mechanical, and `pyreon check --fix` (or the MCP `migrate_pyreon` tool) does it:
-it rewrites every old import to the entry that now exports each name, and
-renames at every reference.
+In 0.51, `@pyreon/charts` was a wrapper around the ECharts library:
+`<Chart options>`, `useChart`, and the `/manual`, `/vite` and `/webview`
+entries. 0.52 replaces it with this engine and removes the wrapper, along with
+the `echarts` peer dependency and the tslib Vite alias it needed. An ECharts
+option has no mechanical translation to marks, so there is no codemod;
+`pyreon check` lists every import still on the wrapper.
 
-| 0.51 | 0.52 |
+Each series becomes a mark, each component a child:
+
+| 0.51 (ECharts option) | 0.52 |
 | --- | --- |
-| `import { Chart, useChart } from '@pyreon/charts'` (the ECharts wrapper) | `import { EChart, useChart } from '@pyreon/charts/echarts'` |
-| `@pyreon/charts/manual`, `@pyreon/charts/vite` | `@pyreon/charts/echarts/manual`, `@pyreon/charts/echarts/vite` |
-| `<Plot>` from `@pyreon/charts/plot` | `<Chart>` from `@pyreon/charts` |
-| `<Tip>` | `<Tooltip>` |
-| `<PieChart>`, `<FunnelChart>`, `<HeatmapChart>`, `<CandlestickChart>` | the marks `<Arc>`, `<Stage>`, `<Cell>`, `<Candle>` inside `<Chart>` (the components live on in `/engine`) |
-| `OptionChart`, `optionToSvg` from `/plot` | `@pyreon/charts/option` |
-| `chartToSvg` and the `*ToSvg` family from `/plot` | `@pyreon/charts/svg` |
-| everything else from `/plot` | `@pyreon/charts/engine` |
-
-Two changes need a person, and both surface as type errors after the fix:
-
-- `<Chart toolbox={{ … }}>` becomes a child, `<Toolbox … />`, which is what
-  lets a chart without one skip the tool strip's code.
-- `<Chart onSelectIndex>` is gone: `<Chart onSelect>` receives the drawn
-  item's index on every target.
-
-## Choosing between this engine and the ECharts wrapper
-
-| | `@pyreon/charts` | `@pyreon/charts/echarts` |
-| --- | --- | --- |
-| Dependencies | none | `echarts` peer |
-| Bundle | pay per imported mark | lazy-loaded per chart type |
-| SSR | `chartToSvg` / every `*ToSvg` is a pure string; the components render a canvas + the data table on the server and paint on the client | client-only render |
-| Native | shared generated geometry | web-only |
-| Series breadth | growing first-party set | the full ECharts catalog |
+| `xAxis: { type: 'category', data }` + `series: [{ data }]` | rows: `<Chart data={rows} x="month">`, each series a field of the row |
+| `{ type: 'bar' }`, `stack: 'total'` | `<Bar y="revenue" />`, `<Bar y="revenue" stack />` |
+| `{ type: 'line' }`, `smooth: true`, `areaStyle: {}` | `<Line y>`, `<Line y curve={smooth}>`, `<Area y>` |
+| `{ type: 'scatter' }` | `<Dot y>`, with `r` for bubbles |
+| `{ type: 'pie', radius: ['40%', '70%'] }` | `<Arc value label innerRadius={0.57}>` |
+| `{ type: 'funnel' }`, `'heatmap'`, `'candlestick'` | `<Stage>`, `<Cell>`, `<Candle>` |
+| `'gauge'`, `'radar'`, `'sankey'`, `'treemap'`, `'graph'`, … | the family components: `<GaugeChart>`, `<RadarChart>`, `<SankeyChart>`, `<TreemapChart>`, `<GraphChart>`, … |
+| `tooltip`, `legend`, `dataZoom`, `toolbox` | `<Tooltip />`, `<Legend />`, `<Zoom />`, `<Toolbox />` |
+| `yAxis.axisLabel.formatter` | `<Axis y format={currency('EUR')} />` — one formatter feeds the axis, tooltip and table |
+| `markLine` / `markPoint` | `<Rule>` / `<Label>` |
+| `visualMap` | `visualMap({ domain })` on `<HeatmapChart>`, `<CalendarChart>`, `<MapChart>` |
+| `useChart(() => option)` + `chart.instance()` | `<Chart>` reads signals directly; `createChartHandle()` for imperative actions |
+| `<ChartWebView>` on iOS / Android | `<Chart>` itself: it draws natively |
+| `chartsViteAlias()` in `vite.config.ts` | delete it |

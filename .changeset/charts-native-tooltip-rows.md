@@ -5,6 +5,4 @@
 '@pyreon/native-runtime-kotlin': minor
 ---
 
-A series the option did not name no longer shows its generated "Series 1" in the default tooltip, on web and native. ECharts hides it: an item tooltip has no header, and an axis row has no name. A browser differential against real ECharts covers both cases, and the default trigger (item).
-
-On iOS and Android, an OptionChart bar, line or scatter chart and a funnel now show ECharts' default tooltip rows, as the pie already did. An item tooltip, the default trigger, shows the series under the tap. An axis tooltip shows a row per series. The new engine functions are `tooltipAxisCells`, `tooltipItemCells` and `funnelTipRowsWith`. A formatted tooltip keeps the plain lines, since native runs no formatter function.
+The engine gains ECharts' default tooltip rows for cartesian charts and funnels: `tooltipAxisCells`, `tooltipItemCells` and `funnelTipRowsWith`. An item tooltip shows the series under the pointer or tap, an axis tooltip a row per series, and a series with no name shows no generated "Series 1". They are generated into the native engines, so iOS and Android show the same rows. A formatted tooltip keeps the plain lines on native, since native runs no formatter function.

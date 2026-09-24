@@ -364,15 +364,11 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
         ...userPlugins,
       ] as Plugin[],
       // NOTE this REPLACES the user's whole `resolve` block, so a
-      // `resolve.alias` from their vite.config (e.g. `chartsViteAlias()`) does
-      // not reach this build. Measured on `examples/hn-clone`, which is exactly
-      // that combination (`mode: 'ssg'` + `chartsViteAlias()` + a route
-      // importing `@pyreon/charts`): the build prerenders all 13 pages and
-      // exits 0, because the charts runtime is lazily imported and the SSR
-      // graph never has to resolve `tslib`. So this is an un-threaded surface,
-      // NOT a known failure — if an alias ever turns out to be load-bearing for
-      // a prerendered route, thread it the way `base` / `assetsInlineLimit` /
-      // `assetsDir` are threaded above, each with the bug that motivated it.
+      // `resolve.alias` from their vite.config does not reach this build. That
+      // is an un-threaded surface, NOT a known failure — if an alias ever turns
+      // out to be load-bearing for a prerendered route, thread it the way
+      // `base` / `assetsInlineLimit` / `assetsDir` are threaded above, each
+      // with the bug that motivated it.
       resolve: { conditions: ['bun'] },
       build: buildInnerBuildOptions(options),
     })

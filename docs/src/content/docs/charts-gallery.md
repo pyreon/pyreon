@@ -1,16 +1,12 @@
 ---
 title: Chart Gallery
-description: Live charts on Pyreon's own engine — idiomatic PlotChart examples and ECharts options pasted as-is, no ECharts in the bundle.
+description: Live charts on Pyreon's own engine — marks as JSX children, one flat draw list, no third-party charting library.
 ---
 
-Every chart on this page is live: it runs on `@pyreon/charts/plot`, Pyreon's own
-engine, in this page. The examples marked **ECharts option** are ordinary ECharts
-option objects handed to `<OptionChart>` — they compile onto the same engine, so
-they ship none of ECharts itself. Charts follow the page's scheme: the
-`color-scheme` the page declares on `<html>` (this site sets it with its theme
-toggle), else the OS preference. A bare option chart keeps ECharts' own light
-look, exactly as ECharts does, so the option examples here sit in a
-`<ChartThemeProvider>`, which opts them into the colour mode in scope. Each example's source is one click away.
+Every chart on this page is live: it runs on `@pyreon/charts`, Pyreon's own
+engine, in this page. Charts follow the page's scheme: the `color-scheme` the
+page declares on `<html>` (this site sets it with its theme toggle), else the OS
+preference. Each example's source is one click away.
 
 <PackageBadge name="@pyreon/charts" href="/docs/charts" />
 
@@ -28,41 +24,38 @@ list is reactive, so the switch repaints the same canvas.
 
 <Example file="./examples/charts/gallery-bars" title="Orders by channel" />
 
-## A ranking — ECharts option
+## A ranking
 
-A horizontal bar chart: a category y axis over a value x axis, laid out the way
-ECharts lays it out, rows bottom-up.
+`horizontal` turns the category axis on its side; `showValues` labels each bar.
 
-<Example file="./examples/charts/gallery-horizontal" title="Horizontal bars from an ECharts option" />
+<Example file="./examples/charts/gallery-horizontal" title="Horizontal bars" />
 
-## A donut — ECharts option
+## A donut
 
-An inner radius, outside labels on leader lines, and a legend whose entries
-toggle their slices.
+An `<Arc>` with an inner radius, and a legend whose entries toggle their slices.
 
-<Example file="./examples/charts/gallery-donut" title="Donut from an ECharts option" />
+<Example file="./examples/charts/gallery-donut" title="Donut" />
 
-## A radar — ECharts option
+## A radar
 
-<Example file="./examples/charts/gallery-radar" title="Radar from an ECharts option" />
+<Example file="./examples/charts/gallery-radar" title="Radar" />
 
-## Candlesticks — ECharts option
+## Candlesticks
 
-A 120-day price series opening on its latest 60 days through `dataZoom`: drag
-the slider's band or a handle under the chart, or scroll and drag inside the
-plot. The day labels thin to what fits.
+A 120-day price series with a navigator strip: drag the strip's band or a
+handle, or scroll and drag inside the plot. The day labels thin to what fits.
 
-<Example file="./examples/charts/gallery-candlestick" title="Candlesticks with dataZoom" />
+<Example file="./examples/charts/gallery-candlestick" title="Candlesticks with a navigator" />
 
-## A heatmap — ECharts option
+## A heatmap
 
-Activity by weekday and hour, coloured through a continuous `visualMap`.
+Activity by weekday and hour, one `<Cell>` per observation.
 
-<Example file="./examples/charts/gallery-heatmap" title="Heatmap with visualMap" />
+<Example file="./examples/charts/gallery-heatmap" title="Heatmap" />
 
-## A gauge driven by a signal — ECharts option
+## A gauge driven by a signal
 
-The option is an accessor; writing the signal repaints the dial.
+`gaugeDial()` builds the full dial; writing the signal repaints it.
 
 <Example file="./examples/charts/gallery-gauge" title="Gauge" />
 
@@ -90,26 +83,22 @@ scenario as not yet measured; treat the figures below as single-machine,
 author-run numbers pending that record. Size, gzipped, beyond a bare
 Pyreon app's runtime:
 
-| Chart                       | `@pyreon/charts/plot` | ECharts 6, tree-shaken | ECharts 6, whole package |
+| Chart                       | `@pyreon/charts` | ECharts 6, tree-shaken | ECharts 6, whole package |
 | --------------------------- | --------------------- | ---------------------- | ------------------------ |
 | Line                        | 40.9 KB               | 155.9 KB               | 361.1 KB                 |
 | Bar + line, tooltip, legend | 40.9 KB               | 176.8 KB               | —                        |
 | Pie                         | 18.1 KB               | 117.3 KB               | —                        |
 
-An ECharts option through `<OptionChart>` costs 128.9 KB: the facade compiles
-every series type it supports, so it is the larger Pyreon entry, and still
-smaller than the ECharts it replaces.
-
 Speed, one line chart on an 800×400 canvas. The figures are medians in
 milliseconds from real Chromium with animation off on both sides; absolute
 numbers depend on the machine, so read them for their ratios:
 
-| Operation                    | `PlotChart` | `OptionChart` | ECharts 6 |
-| ---------------------------- | ----------- | ------------- | --------- |
-| First render, 100,000 points | **28.2**    | 33.1          | 46.5      |
-| Update all 100,000 points    | 20.2        | **14.1**      | 32.8      |
-| Update one of 1,000 points   | 1.6         | **1.4**       | 2.1       |
-| First render, 1,000 points   | 10.4        | 10.5          | **4.5**   |
+| Operation                    | `PlotChart` | ECharts 6 |
+| ---------------------------- | ----------- | --------- |
+| First render, 100,000 points | **28.2**    | 46.5      |
+| Update all 100,000 points    | **20.2**    | 32.8      |
+| Update one of 1,000 points   | **1.6**     | 2.1       |
+| First render, 1,000 points   | 10.4        | **4.5**   |
 
 The last row is a loss, and it comes from one feature. Pyreon renders an
 offscreen data table (up to 1,000 rows) for screen readers by default; ECharts

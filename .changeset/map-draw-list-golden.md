@@ -5,8 +5,7 @@
 The map family gets the draw-list golden every other family already had
 
 Counting hosts against `__goldens__/`: 19 chart hosts, 23 goldens, and exactly
-one family host with none — `map`. (`OptionChart` is the ECharts facade and is
-web-only by design.)
+one family host with none — `map`.
 
 That gap mattered more than a missing row, because the geo reduction was
 refactored in the same session it was found: `Polygon` and `MultiPolygon` are

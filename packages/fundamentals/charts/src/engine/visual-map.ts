@@ -2,20 +2,9 @@
 
 import { HEAT_RAMP } from './heat'
 import { colorRamp } from './heat-ramp'
-import type { OptionWarning } from './option'
-import type { Double, DrawCmd, Rect } from './types'
+import type { Double, DrawCmd } from './types'
 import { renderVisualStrip, visualOutBands, visualStripSize } from './visual-strip'
 import type { VisualStrip } from './visual-strip'
-
-const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
-const num = (v: unknown): number | null => {
-  if (typeof v === 'number') return Number.isFinite(v) ? v : null
-  if (typeof v === 'string' && v.trim() !== '') {
-    const n = Number(v)
-    return Number.isFinite(n) ? n : null
-  }
-  return null
-}
 
 export interface VisualMapPiece {
   label: string
@@ -92,60 +81,69 @@ export function renderVisualMap(spec: VisualMapSpec, at: { x: Double; y: Double 
   return { cmds: renderVisualStrip(strip, at, { min: spec.range[0], max: spec.range[1] }, spec.selected), width: size.x, height: size.y }
 }
 
-/** Numeric extent of the first series' values — the domain when `visualMap` has no min/max. */
-export function domainFromSeries(option: Record<string, unknown>): [Double, Double] | null {
-  const sRaw = option['series']
-  const s = Array.isArray(sRaw) ? sRaw[0] : sRaw
-  if (!isObj(s) || !Array.isArray(s['data'])) return null
-  let lo = Infinity
-  let hi = -Infinity
-  for (const d of s['data'] as unknown[]) {
-    let v: number | null = null
-    if (Array.isArray(d)) v = num(d[d.length - 1])
-    else if (isObj(d)) v = Array.isArray(d['value']) ? num((d['value'] as unknown[])[(d['value'] as unknown[]).length - 1]) : num(d['value'])
-    else v = num(d)
-    if (v === null) continue
-    if (v < lo) lo = v
-    if (v > hi) hi = v
-  }
-  return lo === Infinity ? null : [lo, hi]
+/** What `visualMap()` takes. Only `domain` is required. */
+export interface VisualMapOptions {
+  /** The value range the strip spans, `[low, high]`. */
+  domain: [Double, Double]
+  /** `'continuous'` draws a ramp, `'piecewise'` draws swatches. Default `'continuous'`. */
+  type?: 'continuous' | 'piecewise' | undefined
+  /** The ramp's colours, low to high. Default the heat ramp. */
+  stops?: string[] | undefined
+  /**
+   * Piecewise: the pieces, high to low. A piece without a `label` is named by
+   * its bounds, one without a `color` takes the ramp's. Without pieces, the
+   * domain is split into `splitNumber` equal ones.
+   */
+  pieces?: { min?: Double | undefined; max?: Double | undefined; label?: string | undefined; color?: string | undefined }[] | undefined
+  /** Piecewise: how many equal pieces to split the domain into when `pieces` is absent. Default 5. */
+  splitNumber?: number | undefined
+  orient?: 'horizontal' | 'vertical' | undefined
+  /** Continuous: `[high, low]` end labels. */
+  text?: [string, string] | undefined
+  fontSize?: Double | undefined
+  labelColor?: string | undefined
+  /** Bar thickness / swatch size, in pixels. */
+  itemSize?: Double | undefined
+  /** Bar length of the continuous strip, in pixels. */
+  itemLength?: Double | undefined
+  /** Continuous: draggable range handles. */
+  calculable?: boolean | undefined
+  /** The initially selected range. Default the whole domain. */
+  range?: [Double, Double] | undefined
+  /** Piecewise: which pieces start selected, by index. Default all. */
+  selected?: boolean[] | undefined
+  /** The colour of values and swatches outside the selection. */
+  inactiveColor?: string | undefined
 }
 
-/** Read `option.visualMap` (first entry) into a spec, or null when hidden/absent. */
-export function visualMapSpec(option: Record<string, unknown>): { spec: VisualMapSpec; place: { left?: unknown; right?: unknown; top?: unknown; bottom?: unknown }; warnings: OptionWarning[] } | null {
-  const raw = option['visualMap']
-  const vm = Array.isArray(raw) ? raw[0] : raw
-  if (!isObj(vm) || vm['show'] === false) return null
-  const warnings: OptionWarning[] = []
-  const inRange = isObj(vm['inRange']) ? vm['inRange'] : {}
-  const stopsRaw = Array.isArray(inRange['color']) ? (inRange['color'] as unknown[]).filter((c): c is string => typeof c === 'string') : []
-  const stops = stopsRaw.length >= 2 ? stopsRaw : HEAT_RAMP
-  const vmin = num(vm['min'])
-  const vmax = num(vm['max'])
-  const data = domainFromSeries(option)
-  const domain: [Double, Double] = [vmin ?? data?.[0] ?? 0.0, vmax ?? data?.[1] ?? 1.0]
-  const fontSize = num(isObj(vm['textStyle']) ? vm['textStyle']['fontSize'] : undefined) ?? 11.0
-  const type = vm['type'] === 'piecewise' ? 'piecewise' : 'continuous'
-  const orient = vm['orient'] === 'horizontal' ? 'horizontal' : 'vertical'
+const round2 = (v: Double): Double => Math.round(v * 100.0) / 100.0
+
+/**
+ * A value → colour legend for `<HeatmapChart>`, `<CalendarChart>` and
+ * `<MapChart>`, with every option defaulted.
+ *
+ * @example
+ * <HeatmapChart data={rows} x="day" y="hour" value="n" visualMap={visualMap({ domain: [0, 100], calculable: true })} />
+ */
+export function visualMap(o: VisualMapOptions): VisualMapSpec {
+  const stops = o.stops !== undefined && o.stops.length >= 2 ? o.stops : HEAT_RAMP
+  const type = o.type ?? 'continuous'
+  const domain: [Double, Double] = [o.domain[0], o.domain[1]]
   const ramp = colorRamp(stops)
   const pieces: VisualMapPiece[] = []
   if (type === 'piecewise') {
-    if (Array.isArray(vm['pieces'])) {
-      const ps = vm['pieces'] as unknown[]
+    if (o.pieces !== undefined) {
+      const ps = o.pieces
       for (let i = 0; i < ps.length; i++) {
-        const p = ps[i]
-        if (!isObj(p)) continue
-        const lo = num(p['min']) ?? num(p['gte']) ?? num(p['gt'])
-        const hi = num(p['max']) ?? num(p['lte']) ?? num(p['lt'])
-        const label = typeof p['label'] === 'string' ? (p['label'] as string) : lo !== null && hi !== null ? `${lo} – ${hi}` : lo !== null ? `≥ ${lo}` : hi !== null ? `≤ ${hi}` : String(i + 1)
+        const p = ps[i]!
+        const lo = p.min
+        const hi = p.max
+        const label = p.label ?? (lo !== undefined && hi !== undefined ? `${lo} – ${hi}` : lo !== undefined ? `≥ ${lo}` : hi !== undefined ? `≤ ${hi}` : String(i + 1))
         const t = ps.length <= 1 ? 1.0 : 1.0 - i / (ps.length - 1)
-        pieces.push({ label, color: typeof p['color'] === 'string' ? (p['color'] as string) : ramp(t), ...(lo !== null ? { min: lo } : {}), ...(hi !== null ? { max: hi } : {}) })
+        pieces.push({ label, color: p.color ?? ramp(t), ...(lo !== undefined ? { min: lo } : {}), ...(hi !== undefined ? { max: hi } : {}) })
       }
-    } else if (Array.isArray(vm['categories'])) {
-      const cats = vm['categories'] as unknown[]
-      cats.forEach((c, i) => pieces.push({ label: String(c), color: ramp(cats.length <= 1 ? 1.0 : i / (cats.length - 1)) }))
     } else {
-      const n = Math.max(1, Math.floor(num(vm['splitNumber']) ?? 5))
+      const n = Math.max(1, Math.floor(o.splitNumber ?? 5))
       const step = (domain[1] - domain[0]) / n
       for (let i = n - 1; i >= 0; i--) {
         const lo = domain[0] + step * i
@@ -154,70 +152,21 @@ export function visualMapSpec(option: Record<string, unknown>): { spec: VisualMa
       }
     }
   }
-  const rangeRaw = vm['range']
-  const r0 = Array.isArray(rangeRaw) ? num(rangeRaw[0]) : null
-  const r1 = Array.isArray(rangeRaw) ? num(rangeRaw[1]) : null
-  const range: [Double, Double] = r0 !== null && r1 !== null ? [Math.min(r0, r1), Math.max(r0, r1)] : [domain[0], domain[1]]
-  // ECharts keys `selected` by piece label (or category); an index key also works here.
-  const selRaw = isObj(vm['selected']) ? vm['selected'] : {}
-  const selected = pieces.map((p, i) => selRaw[p.label] !== false && selRaw[String(i)] !== false)
-  const textRaw = vm['text']
-  const text: [string, string] | undefined = Array.isArray(textRaw) && textRaw.length === 2 ? [String(textRaw[0]), String(textRaw[1])] : undefined
-  const spec: VisualMapSpec = {
+  const range: [Double, Double] = o.range !== undefined ? [Math.min(o.range[0], o.range[1]), Math.max(o.range[0], o.range[1])] : [domain[0], domain[1]]
+  return {
     type,
     stops,
     domain,
     pieces,
-    orient,
-    text,
-    fontSize,
-    labelColor: '#64748b',
-    itemSize: num(vm['itemWidth']) ?? (type === 'piecewise' ? 14.0 : 16.0),
-    itemLength: num(vm['itemHeight']) ?? 120.0,
-    calculable: type === 'continuous' && vm['calculable'] === true,
+    orient: o.orient ?? 'vertical',
+    text: o.text,
+    fontSize: o.fontSize ?? 11.0,
+    labelColor: o.labelColor ?? '#64748b',
+    itemSize: o.itemSize ?? (type === 'piecewise' ? 14.0 : 16.0),
+    itemLength: o.itemLength ?? 120.0,
+    calculable: type === 'continuous' && o.calculable === true,
     range,
-    selected,
-    inactiveColor: typeof vm['inactiveColor'] === 'string' ? (vm['inactiveColor'] as string) : '#cccccc',
+    selected: pieces.map((_, i) => o.selected?.[i] !== false),
+    inactiveColor: o.inactiveColor ?? '#cccccc',
   }
-  return { spec, place: { left: vm['left'], right: vm['right'], top: vm['top'], bottom: vm['bottom'] }, warnings }
-}
-
-function round2(v: Double): string {
-  return String(Math.round(v * 100.0) / 100.0)
-}
-
-function placeEdge(v: unknown, size: Double, extent: Double): Double | null {
-  if (typeof v === 'number') return v
-  if (typeof v === 'string') {
-    if (v === 'center' || v === 'middle') return (size - extent) / 2.0
-    if (v === 'left' || v === 'top') return 0.0
-    if (v === 'right' || v === 'bottom') return size - extent
-    if (v.endsWith('%')) {
-      const n = Number(v.slice(0, -1))
-      return Number.isFinite(n) ? (size * n) / 100.0 : null
-    }
-    const n = Number(v)
-    return Number.isFinite(n) ? n : null
-  }
-  return null
-}
-
-/** The strip as draw commands for a `width × height` canvas — ECharts' default corner is bottom-left. */
-export function visualMapCommands(option: Record<string, unknown>, width: Double, height: Double): { cmds: DrawCmd[]; warnings: OptionWarning[]; box: Rect | null } {
-  const read = visualMapSpec(option)
-  if (read === null) return { cmds: [], warnings: [], box: null }
-  const probe = renderVisualMap(read.spec, { x: 0.0, y: 0.0 })
-  const margin = 8.0
-  let x = placeEdge(read.place.left, width, probe.width)
-  if (x === null) {
-    const r = placeEdge(read.place.right, width, probe.width)
-    x = r === null ? margin : width - r - probe.width
-  }
-  let y = placeEdge(read.place.top, height, probe.height)
-  if (y === null) {
-    const b = placeEdge(read.place.bottom, height, probe.height)
-    y = b === null ? height - margin - probe.height : height - b - probe.height
-  }
-  const laid = renderVisualMap(read.spec, { x, y })
-  return { cmds: laid.cmds, warnings: read.warnings, box: { x, y, w: laid.width, h: laid.height } }
 }

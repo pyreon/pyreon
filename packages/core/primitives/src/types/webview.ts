@@ -44,8 +44,8 @@ export interface WebViewProps {
    * fans a relayed string into every OTHER hosted page of the same group by
    * calling its `window.__pyreonWebViewGroupMessage(message)`. Identical on
    * web (sibling iframes), iOS (sibling WKWebViews) and Android (sibling
-   * WebViews); this is how `<ChartWebView group>` mirrors zoom/legend/tooltip
-   * across separate hosted charts.
+   * WebViews); this is how separate hosted pages mirror shared state (a
+   * viewport, a selection) with each other.
    */
   onMessage?: (message: string) => void
   /** Pass-through `data-*` / `aria-*` / `id` / `class` attrs (web). */

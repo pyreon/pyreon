@@ -6,13 +6,12 @@
 // datums fall inside, and dim the rest through `applyBrushSelection`, so a
 // rect drawn over the same pixels selects the same datums everywhere.
 //
-// Areas live in chart pixels. Selected indices are VISUAL indices (the
-// geometry's order, after an inverted category axis): that is what the render
-// loops pass `stateFill`, and `brushDataIndex` converts one for a report.
+// Areas live in chart pixels. Selected indices are datum indices: what the
+// render loops pass `stateFill`.
 
 import { layoutSeriesPointsAt, layoutSeriesPointsH } from './layout'
 import type { PlotLayout } from './layout'
-import { barsForIn, categoryIndex, categoryPoints, geometrySpec, markerAnchor, resolveX2Domain, resolveY2Domain, resolveYDomain, seriesDomain, seriesOnX2 } from './render'
+import { barsForIn, categoryPoints, geometrySpec, markerAnchor, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
 import type { ChartSpec, Series } from './render'
 import type { Double, DrawCmd, Pt, Rect } from './types'
 
@@ -132,11 +131,8 @@ export function brushDatumPoints(raw: ChartSpec, l: PlotLayout, k: number): Pt[]
   const dom = seriesDomain(s, spec, yDomain, resolveY2Domain(spec))
   if (spec.horizontal === true) return layoutSeriesPointsH(s.values, plot, dom)
   const xs = spec.xValues ?? []
-  if (xs.length > 0) {
-    const onX2 = seriesOnX2(s, spec)
-    return layoutSeriesPointsAt(s.values, onX2 ? s.xs ?? [] : xs, plot, dom, onX2 ? resolveX2Domain(spec) : l.xDomainUsed)
-  }
-  return categoryPoints(spec, s.values, plot, dom)
+  if (xs.length > 0) return layoutSeriesPointsAt(s.values, xs, plot, dom, l.xDomainUsed)
+  return categoryPoints(s.values, plot, dom)
 }
 
 /** Per series, the visual indices of the datums inside ANY area (series without one are listed empty). */
@@ -175,10 +171,6 @@ export function brushOnlySeries(sel: BrushSeriesSelection[], only: Double[]): Br
   return out
 }
 
-/** A visual index as the data index a report names (undoes an inverted category axis). */
-export function brushDataIndex(spec: ChartSpec, visual: number): number {
-  return categoryIndex(spec, visual)
-}
 
 /**
  * The spec with the selection applied: every series marks its brushed datums,

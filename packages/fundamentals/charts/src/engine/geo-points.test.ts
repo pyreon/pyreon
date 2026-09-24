@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { geoPointRadii, geoPointsToSvg, hitGeoPoint, renderGeoPaths, renderGeoPoints } from './geo-points'
 import { layoutGeo, registerMap } from './geo-web'
 import type { GeoJson } from './geo-web'
-import { compileFamily, familyToSvg, isFamilyOption } from './option-family'
 
 const world: GeoJson = {
   type: 'FeatureCollection',
@@ -62,29 +61,3 @@ describe('points on a map', () => {
   })
 })
 
-describe('geo coordinate option mapping', () => {
-  it('scatter/effectScatter on coordinateSystem geo lower over the geo map; other types warn', () => {
-    registerMap('squares-geo', world)
-    const option = {
-      geo: { map: 'squares-geo', itemStyle: { borderColor: '#000000' } },
-      series: [{ type: 'effectScatter', coordinateSystem: 'geo', symbolSize: 12, label: { show: true }, itemStyle: { color: '#123456' }, data: [{ name: 'p', value: [5, 5, 3] }, [15, 5, 9], 'junk'] }],
-    }
-    expect(isFamilyOption(option)).toBe(true)
-    const f = compileFamily(option)!
-    if (f.plan.kind !== 'geoPoints') throw new Error('kind')
-    expect(f.plan.points).toEqual([{ name: 'p', lon: 5, lat: 5, value: 3, effect: true }, { lon: 15, lat: 5, value: 9, effect: true }])
-    expect(f.plan.options).toMatchObject({ radius: 6, showLabels: true, color: '#123456' })
-    expect(f.plan.map.borderColor).toBe('#000000')
-    expect(f.warnings.map((w) => w.code)).toEqual(['series-data-shape'])
-    expect(familyToSvg(f.plan)).toContain('<circle')
-    const bad = compileFamily({ geo: { map: 'squares-geo' }, series: [{ type: 'bar', coordinateSystem: 'geo', data: [] }] })!
-    expect(bad.warnings.map((w) => w.code)).toContain('series-type-unsupported')
-    const lines = compileFamily({ geo: { map: 'squares-geo' }, series: [{ type: 'lines', coordinateSystem: 'geo', lineStyle: { color: '#00ff00', width: 2 }, data: [{ coords: [[0, 0], [20, 10]] }, { coords: [[1, 1]] }] }] })!
-    if (lines.plan.kind !== 'geoPoints') throw new Error('kind')
-    expect(lines.plan.paths).toEqual([{ coords: [[0, 0], [20, 10]], color: '#00ff00', width: 2 }])
-    expect(lines.warnings.map((w) => w.code)).toEqual(['series-data-shape'])
-    expect(familyToSvg(lines.plan)).toContain('<polyline')
-    const missing = compileFamily({ geo: { map: 'nope' }, series: [{ type: 'scatter', coordinateSystem: 'geo', data: [] }] })!
-    expect(missing.warnings.map((w) => w.code)).toContain('series-option-unsupported')
-  })
-})

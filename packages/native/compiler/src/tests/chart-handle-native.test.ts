@@ -85,34 +85,3 @@ export function App() {
     check(r.code)
   })
 })
-
-describe.each(['swift', 'kotlin'] as const)('OptionChart handle on %s', (target) => {
-  const check = (code: string) => {
-    if (target === 'swift' && isSwiftcAvailable()) { const v = validateSwiftWithStubs(code); if (!v.ok) console.log('SWIFTERR', String((v as { error?: string }).error ?? '').split('\n').filter((l) => l.includes('error:')).slice(0, 6).join(' || ')); expect(v).toMatchObject({ ok: true }) }
-    if (target === 'kotlin' && isKotlincAvailable()) { const v = validateKotlin(code); if (!v.ok) console.log('KTERR', String((v as { error?: string }).error ?? '').split('\n').filter((l) => l.includes('error:')).map((l) => l.slice(0, 200)).slice(0, 6).join(' || ')); expect(v).toMatchObject({ ok: true }) }
-  }
-
-  it('a timeline OptionChart takes its step and play state from the handle; a plain one binds the plot host', () => {
-    const r = transform(`
-import { Stack, Button } from '@pyreon/primitives'
-import { createChartHandle } from '@pyreon/charts'
-import { OptionChart } from '@pyreon/charts/option'
-export function App() {
-  const tl = createChartHandle()
-  const plain = createChartHandle()
-  return <Stack>
-    <OptionChart height={240} handle={tl} option={{
-      baseOption: { timeline: { data: ['a', 'b'], autoPlay: true }, xAxis: { type: 'category', data: ['x', 'y'] }, yAxis: {}, series: [{ type: 'bar' }] },
-      options: [{ series: [{ data: [1, 2] }] }, { series: [{ data: [3, 4] }] }],
-    }} />
-    <Button onPress={() => tl.dispatch({ type: 'timelineChange', index: 1 })}>Step</Button>
-    <Button onPress={() => tl.dispatch({ type: 'timelinePlayChange', playing: false })}>Pause</Button>
-    <OptionChart height={200} handle={plain} option={{ xAxis: { type: 'category', data: ['x', 'y'] }, yAxis: {}, series: [{ type: 'bar', data: [1, 2] }] }} />
-    <Button onPress={() => plain.dispatch({ type: 'select', index: 0 })}>Pin</Button>
-  </Stack>
-}`, { target })
-    expect(r.warnings).toEqual([])
-    for (const s of ['tl.step', 'tl.playing', 'plain.selected', 'plain.zoom']) expect(r.code).toContain(s)
-    check(r.code)
-  })
-})

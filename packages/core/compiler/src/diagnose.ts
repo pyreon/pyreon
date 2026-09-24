@@ -40,24 +40,28 @@ export interface ErrorPattern {
  */
 export const ERROR_PATTERNS: ErrorPattern[] = [
   {
-    // 0.52 made `@pyreon/charts`'s main entry the package's own engine and
-    // moved the ECharts wrapper to `/echarts`. An app still on the old paths
-    // hits one of two errors, neither naming the move: the bundler's missing
-    // export specifier (`/plot`, `/manual`, `/vite` no longer exist) or the
-    // type checker's missing member (`Plot`, `Tip`, `useChart`, … no longer
-    // come from the main entry). The fix is mechanical and automated.
+    // 0.52 replaced `@pyreon/charts`'s ECharts wrapper with Pyreon's own
+    // engine and removed the wrapper. An app still on 0.51's API hits one of
+    // two errors, neither naming the change: the bundler's missing export
+    // specifier (`/manual`, `/vite`, `/webview` no longer exist) or the type
+    // checker's missing member (`useChart`, `EChartsOption`, … no longer
+    // exist anywhere).
     pattern:
       // Quotes as \x22 / \x27 escapes: a regex literal holding raw quote
       // characters derails the lexical import scanners (loom's among them),
       // which have no notion of a regex literal.
-      /(?:Missing \x22\.\/(plot|manual|vite)\x22 specifier in \x22@pyreon\/charts\x22 package|Module \x27\x22@pyreon\/charts(?:\/plot)?\x22\x27 has no exported member \x27(Plot|PlotProps|Tip|TipProps|useChart|EChartsOption|ComposeOption|getCore|connect|PieChart|FunnelChart|HeatmapChart|CandlestickChart|OptionChart|optionToSvg|chartToSvg|PlotChart)\x27)/,
+      /(?:Missing \x22\.\/(manual|vite|webview)\x22 specifier in \x22@pyreon\/charts\x22 package|Module \x27\x22@pyreon\/charts\x22\x27 has no exported member \x27(useChart|UseChartConfig|UseChartResult|EChartsOption|ECharts|ComposeOption|SetOptionOpts|ChartEventParams|ChartEventHandler|getCore|connect|\w+SeriesOption|\w+ComponentOption)\x27)/,
     diagnose: (m) => ({
       cause:
-        "`@pyreon/charts` changed its entry points in 0.52: the main entry is now Pyreon's own engine (`<Chart>` with mark children, formerly `<Plot>` at `/plot`), the ECharts wrapper is `<EChart>` at `/echarts`, and the rest of the engine is split across `/option`, `/svg` and `/engine`. " +
-        (m[1] !== undefined ? '`@pyreon/charts/' + m[1] + '` no longer exists.' : '`' + m[2] + '` no longer comes from where this import asks for it.'),
-      fix: "Run `pyreon check --fix` (or the MCP `migrate_pyreon` tool): it rewrites every old `@pyreon/charts` import to the entry that exports each name and renames `Plot`→`Chart`, `Tip`→`Tooltip` and the wrapper's `Chart`→`EChart`. Then move `<Chart toolbox>` to a `<Toolbox>` child and `onSelectIndex` to `onSelect`.",
-      fixCode: `import { Chart, Line, Tooltip } from '@pyreon/charts'
-import { EChart } from '@pyreon/charts/echarts'`,
+        "`@pyreon/charts` 0.52 removed the ECharts wrapper: it is now Pyreon's own engine, where `<Chart>` takes your rows and marks as children instead of an ECharts `options` object. " +
+        (m[1] !== undefined ? '`@pyreon/charts/' + m[1] + '` no longer exists.' : '`' + m[2] + '` belonged to the wrapper and no longer exists.'),
+      fix: "Rewrite the chart with marks: each ECharts series becomes a mark (`type: 'bar'` → `<Bar y=\"field\" />`, `'line'` → `<Line>`, `'pie'` → `<Arc>`), `tooltip` becomes `<Tooltip />`, `legend` `<Legend />`, and the family charts (sankey, treemap, gauge, …) are components. Delete the `/vite` tslib alias — it is no longer needed. `pyreon check` lists every import still on the wrapper.",
+      fixCode: `import { Bar, Chart, Tooltip } from '@pyreon/charts'
+
+<Chart data={rows} x="month">
+  <Bar y="revenue" />
+  <Tooltip />
+</Chart>`,
     }),
   },
   {

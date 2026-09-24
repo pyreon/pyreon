@@ -98,15 +98,6 @@ export function C() { return <SankeyChart animate={false} nodes={[]} /> }`,
     expect(r.warnings.join('\n')).toContain('<SankeyChart>: needs a `links` attribute on native')
     expect(r.code).toContain('EmptyView()')
   })
-  it('an unsupported OptionChart shape warns by option path instead of naming a view that does not exist', () => {
-    const r = transform(
-      `import { OptionChart } from '@pyreon/charts/option'
-export function C() { return <OptionChart option={{ series: [] }} /> }`,
-      { target: 'swift' },
-    )
-    expect(r.warnings.join('\n')).toContain('<OptionChart option.series>')
-    expect(r.code).not.toContain('OptionChart(')
-  })
   it('importing from @pyreon/charts does not raise the web-only package warning', () => {
     const r = transform(SANKEY, { target: 'swift' })
     expect(r.warnings.some((w) => /web-only/i.test(w))).toBe(false)
@@ -458,7 +449,7 @@ describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
     // bare title — the sentence the web `aria-label` carries, with the title
     // inside it. The invariant is unchanged (a titled host is named by its
     // title); the label says more than the title alone did.
-    expect(r.code).toContain('.accessibilityLabel(describeChart(A11yInput(title: "Revenue by month", categories: pyreonCats, series: pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues, xs: $0.onX2 == true ? $0.xs : nil) }, format: nil)))')
+    expect(r.code).toContain('.accessibilityLabel(describeChart(A11yInput(title: "Revenue by month", categories: pyreonCats, series: pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues) }, format: nil)))')
     expect(r.code).toContain('.accessibilityIdentifier("revenue")')
     // The second chart: an index-using accessor, no x, a given width (Group, no reader).
     expect(r.code).toContain('let pyreonValues0: [Double] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.cost + pyreonI) }')
@@ -1302,7 +1293,7 @@ const MAP_VALUE_LIST = MAP.replace('GeoShape }', 'GeoShape, GeoValue }')
   .replace('export function Regions()', "const VALUES: GeoValue[] = [{ region: 'A', value: 5 }]\nexport function Regions()")
   .replace('values={{ A: 5, B: 9.5 }}', 'values={VALUES}')
 
-describe('chart hosts — CalendarChart + ParallelChart lower through literal adapters (the unlowered list is down to OptionChart)', () => {
+describe('chart hosts — CalendarChart + ParallelChart lower through literal adapters', () => {
   it('Swift: a values record becomes [CalendarValue]; the layout is the web host\'s box; the tap is hitCalendarIndex', () => {
     const r = transform(CALENDAR, { target: 'swift' })
     expect(r.warnings).toEqual([])

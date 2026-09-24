@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { hitChordIndex, layoutChord, renderChord, ribbonPolygon } from './chord'
 import { chordToSvg } from './family-svg'
-import { compileFamily, familyToSvg } from './option-family'
 import type { ChordLink, ChordNode } from './chord'
 
 const box = { x: 0, y: 0, w: 400, h: 400 }
@@ -203,49 +202,8 @@ describe('chord hit testing', () => {
 })
 
 describe('chord option mapping', () => {
-  it('an ECharts chord series lowers nodes/links, padAngle and ringSize', () => {
-    const f = compileFamily({
-      series: [
-        {
-          type: 'chord',
-          padAngle: 0.12,
-          ringSize: 0.2,
-          data: [{ name: 'a', itemStyle: { color: '#123456' } }, { name: 'b' }],
-          links: [{ source: 'a', target: 'b', value: 3 }],
-        },
-      ],
-    })!
-    if (f.plan.kind !== 'chord') throw new Error('kind')
-    expect(f.plan.nodes[0]!.color).toBe('#123456')
-    expect(f.plan.links[0]!.value).toBe(3)
-    expect(f.plan.chord.padAngle).toBe(0.12)
-    expect(f.plan.chord.ringRatio).toBe(0.2)
-    expect(f.warnings).toEqual([])
-    expect(familyToSvg(f.plan)).toContain('<polygon')
-  })
 
-  it('reads a sankey-shaped option unchanged — the reason to reach for chord', () => {
-    // The two take the same `{ data, links }`, so switching a spec between them
-    // is a one-word edit. If this ever needed reshaping, the compat claim in the
-    // manifest would be wrong.
-    const spec = {
-      data: [{ name: 'a' }, { name: 'b' }, { name: 'c' }],
-      links: [{ source: 'a', target: 'b', value: 5 }, { source: 'b', target: 'c', value: 3 }],
-    }
-    const asSankey = compileFamily({ series: [{ type: 'sankey', ...spec }] })!
-    const asChord = compileFamily({ series: [{ type: 'chord', ...spec }] })!
-    expect(asChord.warnings).toEqual([])
-    if (asSankey.plan.kind !== 'sankey' || asChord.plan.kind !== 'chord') throw new Error('kind')
-    expect(asChord.plan.nodes.map((n) => n.name)).toEqual(asSankey.plan.nodes.map((n) => n.name))
-    expect(asChord.plan.links).toEqual(asSankey.plan.links)
-  })
 
-  it('names a bad node or link rather than dropping it silently', () => {
-    const f = compileFamily({
-      series: [{ type: 'chord', data: [{ name: 'a' }, { nope: 1 }], links: [{ source: 'a', target: 'a' }] }],
-    })!
-    expect(f.warnings.map((w) => w.code)).toEqual(['series-data-shape', 'series-data-shape'])
-  })
 
   it('chordToSvg describes what it drew, for the hidden a11y summary', () => {
     const svg = chordToSvg({

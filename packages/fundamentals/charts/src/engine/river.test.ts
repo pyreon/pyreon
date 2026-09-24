@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { hitRiver, layerPolygon, layoutRiver, renderRiver, smoothPoints } from './river'
 import { riverToSvg } from './family-svg'
 import type { RiverSeries } from './river'
-import { compileFamily, familyToSvg } from './option-family'
 
 const box = { x: 0, y: 0, w: 400, h: 200 }
 const series: RiverSeries[] = [
@@ -77,21 +76,3 @@ describe('theme river layout', () => {
   })
 })
 
-describe('theme river option mapping', () => {
-  it('[date, value, name] triples group into streams over the sorted date axis', () => {
-    const f = compileFamily({
-      singleAxis: { type: 'time' },
-      series: [{ type: 'themeRiver', data: [['2024-01-02', 5, 'x'], ['2024-01-01', 3, 'x'], ['2024-01-01', 2, 'y'], ['2024-01-03', 1, 'y']], label: { show: false } }],
-    })!
-    if (f.plan.kind !== 'themeRiver') throw new Error('kind')
-    expect(f.plan.river.categories).toEqual(['2024-01-01', '2024-01-02', '2024-01-03'])
-    expect(f.plan.series.map((s) => s.name)).toEqual(['x', 'y'])
-    expect(f.plan.series[0]!.values).toEqual([3, 5, 0])
-    expect(f.plan.series[1]!.values).toEqual([2, 0, 1])
-    expect(f.plan.river.showLabels).toBe(false)
-    expect(f.warnings).toEqual([])
-    expect(familyToSvg(f.plan)).toContain('<polygon')
-    const bad = compileFamily({ series: [{ type: 'themeRiver', data: [['2024-01-01', 'nope', 'x'], 'junk'] }] })!
-    expect(bad.warnings.filter((w) => w.code === 'series-data-shape')).toHaveLength(2)
-  })
-})

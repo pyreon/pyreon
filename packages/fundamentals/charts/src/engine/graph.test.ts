@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { layoutGraph, renderGraph } from './graph'
 import { hitGraph } from './graph-hit'
 import { graphToSvg } from './family-svg'
-import { compileFamily, familyToSvg } from './option-family'
 
 const box = { x: 0, y: 0, w: 400, h: 300 }
 const nodes = [{ id: 'a', value: 10 }, { id: 'b', value: 5 }, { id: 'c' }, { id: 'd' }, { id: 'e' }, { id: 'f' }]
@@ -96,24 +95,3 @@ describe('graph layout', () => {
   })
 })
 
-describe('graph option mapping', () => {
-  it('ECharts graph series lowers layout/categories/symbolSize/force/label', () => {
-    const f = compileFamily({
-      series: [{
-        type: 'graph', layout: 'force', symbolSize: 14, categories: [{ name: 'x' }, { name: 'y' }],
-        force: { repulsion: 500, edgeLength: 40, gravity: 0.2 }, label: { show: true },
-        data: [{ id: '1', name: 'one', value: 3, category: 1, itemStyle: { color: '#123456' } }, { name: 'two' }],
-        links: [{ source: '1', target: 'two', value: 2 }],
-      }],
-    })!
-    if (f.plan.kind !== 'graph') throw new Error('kind')
-    expect(f.plan.nodes[0]).toMatchObject({ id: '1', name: 'one', value: 3, category: 1, color: '#123456' })
-    expect(f.plan.nodes[1]!.id).toBe('two')
-    expect(f.plan.links[0]).toEqual({ source: '1', target: 'two', value: 2 })
-    expect(f.plan.graph).toMatchObject({ layout: 'force', symbolSize: 14, categories: ['x', 'y'], repulsion: 500, linkDistance: 40, gravity: 0.2, showLabels: true })
-    expect(f.warnings).toEqual([])
-    expect(familyToSvg(f.plan)).toContain('<circle')
-    const fn = compileFamily({ series: [{ type: 'graph', symbolSize: () => 3, data: [{ name: 'a' }], links: [] }] })!
-    expect(fn.warnings.map((w) => w.code)).toContain('series-option-unsupported')
-  })
-})

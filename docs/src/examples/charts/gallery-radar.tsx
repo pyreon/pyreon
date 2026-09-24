@@ -1,43 +1,22 @@
-import { ChartThemeProvider } from '@pyreon/charts'
-import { OptionChart } from '@pyreon/charts/option'
+import { RadarChart } from '@pyreon/charts'
+import type { RadarAxis } from '@pyreon/charts'
 import type { Signal } from '@pyreon/reactivity'
 
 /**
- * Gallery — a radar comparison from an ECharts option: two filled series over
- * six named indicators, each with its own maximum.
- * The provider opts it into the colour mode in scope — the page's scheme
- * here (the root's `color-scheme`); a bare option chart keeps ECharts' own light look.
+ * Gallery — a radar comparison: two filled series over six named axes, each
+ * with its own maximum.
  */
+interface Framework {
+  name: string
+  scores: number[]
+}
+
+const AXES: RadarAxis[] = ['Speed', 'Size', 'DX', 'Ecosystem', 'SSR', 'Native'].map((label) => ({ label, max: 100 }))
+const FRAMEWORKS: Framework[] = [
+  { name: 'Framework A', scores: [92, 88, 80, 55, 90, 85] },
+  { name: 'Framework B', scores: [70, 60, 85, 95, 75, 40] },
+]
+
 export default function GalleryRadar(_props: { shared?: Signal<number> }) {
-  return (
-    <ChartThemeProvider>
-      <OptionChart
-        height={320}
-        option={{
-          legend: { bottom: 0 },
-          tooltip: {},
-          radar: {
-            indicator: [
-              { name: 'Speed', max: 100 },
-              { name: 'Size', max: 100 },
-              { name: 'DX', max: 100 },
-              { name: 'Ecosystem', max: 100 },
-              { name: 'SSR', max: 100 },
-              { name: 'Native', max: 100 },
-            ],
-          },
-          series: [
-            {
-              type: 'radar',
-              areaStyle: { opacity: 0.2 },
-              data: [
-                { name: 'Framework A', value: [92, 88, 80, 55, 90, 85] },
-                { name: 'Framework B', value: [70, 60, 85, 95, 75, 40] },
-              ],
-            },
-          ],
-        }}
-      />
-    </ChartThemeProvider>
-  )
+  return <RadarChart data={FRAMEWORKS} axes={AXES} values={(d) => d.scores} label={(d) => d.name} fillAlpha={0.2} height={320} showLegend />
 }

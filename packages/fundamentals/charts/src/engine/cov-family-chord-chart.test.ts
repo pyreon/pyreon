@@ -305,7 +305,7 @@ describe('ChordChart — host wiring', () => {
   })
 })
 
-describe('ChordChart — the item hook (what the option facade applies its tooltip to)', () => {
+describe('ChordChart — the item hook (what `itemTooltip` is applied to)', () => {
   it('reports the arc under the pointer as a node item, and null off the ring', () => {
     const spec = mount({ nodes, links })
     const l = layoutOf(spec)

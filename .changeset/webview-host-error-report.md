@@ -1,12 +1,11 @@
 ---
-'@pyreon/charts': patch
 '@pyreon/code': patch
 '@pyreon/rich-text': patch
 ---
 
 A WebView host page that cannot start now tells the host
 
-All three host pages already detected the failure — engine missing or never
+Both host pages already detected the failure — engine missing or never
 injected — set a `window.__pyreonXError` flag, and returned. That flag lives
 inside the very frame nobody on the host can read from, so every target rendered
 a blank box with the diagnosis stranded one origin away. On a device that is the

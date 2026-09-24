@@ -1,16 +1,16 @@
-// A candlestick with ECharts' dataZoom: the slider and the inside gestures
-// move the window, in real Chromium. Before, the window was fixed at the
-// option's start / end and no slider was drawn.
+// `<CandlestickChart zoom>`: the slider and the inside gestures move the
+// window, in real Chromium. Every `zoom` field is optional.
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { describe, expect, it } from 'vitest'
 import { CandlestickChart } from './CandlestickChart'
+import type { CandlestickZoom } from './CandlestickChart'
 
 interface Row { o: number; h: number; l: number; c: number }
 const ROWS: Row[] = Array.from({ length: 120 }, (_, i) => ({ o: 100 + i, c: 101 + i, l: 99 + i, h: 102 + i }))
-const ZOOM = { inside: true, slider: true, window: { start: 0.5, end: 1.0 }, keepY: false, lock: false, minSpan: 0.0, maxSpan: 1.0, wheel: true, move: true }
+const ZOOM: CandlestickZoom = { window: { start: 0.5, end: 1.0 } }
 
-function setup() {
+function setup(zoom: CandlestickZoom = ZOOM) {
   const root = document.createElement('div')
   document.body.appendChild(root)
   const picks: number[] = []
@@ -25,7 +25,7 @@ function setup() {
       width: 640,
       height: 340,
       animate: false,
-      zoom: ZOOM,
+      zoom,
       onSelect: (i: number) => picks.push(i),
     }),
     root,
@@ -41,7 +41,9 @@ function setup() {
     // The click a browser fires on release, which the host swallows after a drag.
     canvas.dispatchEvent(new MouseEvent('click', { clientX: r.left + x1, clientY: r.top + y, bubbles: true }))
   }
-  return { un, root, picks, click, drag }
+  const wheel = (x: number, y: number, deltaY: number) =>
+    canvas.dispatchEvent(new WheelEvent('wheel', { clientX: r.left + x, clientY: r.top + y, deltaY, bubbles: true, cancelable: true }))
+  return { un, root, picks, click, drag, wheel }
 }
 
 describe('<CandlestickChart zoom>', () => {
@@ -55,12 +57,42 @@ describe('<CandlestickChart zoom>', () => {
 
   it('dragging the slider band left moves the window to the earlier candles', () => {
     const t = setup()
-    // The strip sits ~20px above the bottom (ECharts' slider box); its band is the right half.
+    // The strip sits ~20px above the bottom; its band is the right half.
     t.drag(470, 150, 340 - 22)
     t.click(340, 150)
     expect(t.picks.at(-1)).toBeLessThan(60)
     t.un()
     t.root.remove()
+  })
+
+  it('an empty zoom opens on every row, with the slider and inside gestures on', () => {
+    const t = setup({})
+    // The whole range is shown, so the left third of the plot is an early candle.
+    t.click(150, 150)
+    expect(t.picks.at(-1)).toBeLessThan(40)
+    t.drag(200, 560, 150)
+    t.click(150, 150)
+    expect(t.picks.at(-1), 'a full window has nowhere to pan').toBeLessThan(40)
+    t.un()
+    t.root.remove()
+  })
+
+  it('the wheel zooms the window; `lock` fixes the span so it does not', () => {
+    const pickAfterWheel = (zoom: CandlestickZoom): [number, number] => {
+      const t = setup(zoom)
+      t.click(100, 150)
+      const before = t.picks.at(-1)!
+      t.wheel(340, 150, -400)
+      t.click(100, 150)
+      const after = t.picks.at(-1)!
+      t.un()
+      t.root.remove()
+      return [before, after]
+    }
+    const [free0, free1] = pickAfterWheel({})
+    expect(free1, 'the wheel never zoomed an unlocked window').not.toBe(free0)
+    const [lock0, lock1] = pickAfterWheel({ lock: true })
+    expect(lock1, 'a locked window zoomed').toBe(lock0)
   })
 
   it('a drag inside the plot pans the window', () => {

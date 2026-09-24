@@ -13,26 +13,6 @@ export interface Gutters {
   bottom: Double
 }
 
-/**
- * A third or later y axis — ECharts' `yAxis[k]` for k >= 2. It sits on a side,
- * `offset` pixels out from the plot edge, and scales the series that name it.
- */
-export interface ExtraYAxis {
-  side: string
-  domain?: Domain | undefined
-  title?: string | undefined
-  offset?: Double | undefined
-  /** `false` hides this axis's line (ECharts' `axisLine.show`); absent draws it. */
-  line?: boolean | undefined
-}
-
-/** One tick of an extra y axis; `axis` is its index into the extra axes. */
-export interface ExtraTick {
-  axis: Double
-  pos: Double
-  label: string
-}
-
 export interface PlotLayout {
   /** The drawable data area, inside the gutters. */
   plot: Rect
@@ -60,10 +40,6 @@ export interface PlotLayout {
   yLabelEvery: number
   /** The gutters the plot sits inside — where axis titles are placed. */
   gutters: Gutters
-  /** Ticks of every extra y axis, tagged with the axis they belong to. */
-  extraTicks: ExtraTick[]
-  /** Ticks of a second value x axis; empty otherwise. */
-  x2Ticks: Tick[]
 }
 
 export interface LayoutConfig {
@@ -73,21 +49,6 @@ export interface LayoutConfig {
   yDomain: Domain
   /** Category labels for a band x-axis; empty for a numeric one. */
   categories: string[]
-  /** Category labels on edge-to-edge points rather than band centres (ECharts' `boundaryGap: false` on a chart with no bars). */
-  edgeCategories?: boolean | undefined
-  /**
-   * Fixed plot insets in pixels (ECharts' `grid.left` / `top` / `right` /
-   * `bottom`): a side that is set places the plot edge there, and the axis
-   * labels draw in the margin outside it; an unset side is sized to its labels.
-   */
-  insetLeft?: Double | undefined
-  insetTop?: Double | undefined
-  insetRight?: Double | undefined
-  insetBottom?: Double | undefined
-  /** A set inset still grows to fit its axis labels inside the chart (ECharts' `outerBoundsMode: 'auto'`). */
-  insetContain?: boolean | undefined
-  /** Room kept free at the chart's left edge BEFORE the plot's own left gutter (a vertical legend on the left takes its column). */
-  reserveLeft?: Double | undefined
   fontSize: Double
   /** Target tick counts; the nice-step algorithm decides the actual number. */
   xTickCount: Double
@@ -131,8 +92,6 @@ export interface LayoutConfig {
    * bars exist, so the gutter math is the feature, not a detail.
    */
   horizontal?: boolean | undefined
-  /** The horizontal frame's categories run up from the bottom (ECharts' category y axis) rather than down. */
-  bandsFromBottom?: boolean | undefined
   /** Axis titles; each one widens its gutter by a line. */
   xTitle?: string | undefined
   yTitle?: string | undefined
@@ -152,41 +111,7 @@ export interface LayoutConfig {
    * category labels and thins numeric ones, `rotate` / `thin` force one,
    * `all` draws every label upright and lets them overlap.
    */
-  xLabels?: 'auto' | 'rotate' | 'thin' | 'all' | 'echarts' | undefined
-  /**
-   * `xLabels: 'echarts'`: ECharts' own label layout — never rotated unless
-   * `xLabelAngle` says so (degrees, the draw list's clockwise sense), and a
-   * category axis thinned by `calculateCategoryInterval` unless
-   * `xLabelInterval` (ECharts' `axisLabel.interval`: labels skipped between
-   * two shown) fixes it.
-   */
-  xLabelAngle?: Double | undefined
-  xLabelInterval?: Double | undefined
-  /** Gap between an x tick label and its axis; absent is the 6px label gap. */
-  xLabelMargin?: Double | undefined
-  /** The x labels sit inside the plot, so they take no band below it. */
-  xLabelInside?: boolean | undefined
-  /** y labels turned about their anchor (degrees clockwise): the band holds the turned box. */
-  yLabelAngle?: Double | undefined
-  /** Gap between a y tick label and its axis; absent is 6. */
-  yLabelMargin?: Double | undefined
-  /** The y labels sit inside the plot, so they take no gutter beside it. */
-  yLabelInside?: boolean | undefined
-  /** The x axis sits above the plot — ECharts' `xAxis.position: 'top'`. */
-  xTop?: boolean | undefined
-  /** A lone y axis sits right of the plot — ECharts' `yAxis.position: 'right'`. */
-  yRight?: boolean | undefined
-  /** Third and later y axes, each with its domain already resolved. */
-  extraYAxes?: ExtraYAxis[] | undefined
-  /** A second x axis's category labels, drawn on the side opposite the first. */
-  x2Labels?: string[] | undefined
-  x2Title?: string | undefined
-  /** A second VALUE x axis's domain; its ticks are laid out on the opposite edge. */
-  x2Domain?: Domain | undefined
-  /** Pixels an axis sits off its plot edge; its gutter grows by the same. */
-  xOffset?: Double | undefined
-  yOffset?: Double | undefined
-  y2Offset?: Double | undefined
+  xLabels?: 'auto' | 'rotate' | 'thin' | 'all' | undefined
 }
 
 /**
@@ -218,7 +143,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // the final pass cannot disagree.
   const valueTicksY = (r0: Double, r1: Double): Tick[] =>
     isLog
-      ? logViewTicks(logMin, logMax, cfg.yDomain.inverse === true ? r1 : r0, cfg.yDomain.inverse === true ? r0 : r1, cfg.yFormat)
+      ? logViewTicks(logMin, logMax, r0, r1, cfg.yFormat)
       : cfg.yTime === true
         ? timeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat)
         : makeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat)
@@ -243,11 +168,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   const widest = yProvisional.widest
 
   const yTitleH = cfg.yTitle !== undefined && cfg.yTitle !== '' && cfg.showYAxis ? titleH : 0.0
-  // A turned label's box is w·|cos| + fontSize·|sin| wide; inside labels take no gutter.
-  const yRad = ((cfg.yLabelAngle ?? 0.0) * Math.PI) / 180.0
-  const yLabelW = cfg.yLabelInside === true ? 0.0 : widest * Math.abs(Math.cos(yRad)) + (cfg.yLabelAngle !== undefined && cfg.yLabelAngle !== 0.0 ? cfg.fontSize * Math.abs(Math.sin(yRad)) : 0.0)
-  const yGap = cfg.yLabelInside === true ? 0.0 : (cfg.yLabelMargin ?? labelGap)
-  const yBand = (cfg.showYAxis ? yLabelW + yGap + tickLen + (cfg.yOffset ?? 0.0) : 0.0) + yTitleH
+  const yBand = (cfg.showYAxis ? widest + labelGap + tickLen : 0.0) + yTitleH
   const xTitleH = cfg.xTitle !== undefined && cfg.xTitle !== '' && cfg.showXAxis ? titleH : 0.0
 
   // Coalesced before the guard (the Swift-narrowing idiom used throughout):
@@ -262,44 +183,14 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     }
   }
   const y2TitleH = hasY2 && cfg.y2Title !== undefined && cfg.y2Title !== '' ? titleH : 0.0
-  // A lone y axis placed on the right swaps its band with the slim padding.
-  const yRight = cfg.yRight === true && !hasY2 && cfg.horizontal !== true
-  const leftBase = yRight ? padRight : yBand
-  const rightBase = yRight ? yBand : (hasY2 ? widest2 + labelGap + tickLen + (cfg.y2Offset ?? 0.0) : padRight) + y2TitleH
-  // Extra y axes: each needs its offset plus its labels (and title) of room on
-  // its side; the side's gutter is the widest of what it already had and them.
-  let leftExtra = 0.0
-  let rightExtra = 0.0
-  if (cfg.horizontal !== true && cfg.showYAxis) {
-    for (const a of cfg.extraYAxes ?? []) {
-      let w = 0.0
-      for (const tk of makeTicks(a.domain ?? { min: 0.0, max: 1.0 }, cfg.height, 0.0, cfg.yTickCount, undefined)) {
-        const lw = measure(tk.label, cfg.fontSize)
-        if (lw > w) w = lw
-      }
-      const band = (a.offset ?? 0.0) + w + labelGap + tickLen + (a.title !== undefined && a.title !== '' ? titleH : 0.0)
-      if (a.side === 'left') {
-        if (band > leftExtra) leftExtra = band
-      } else if (band > rightExtra) {
-        rightExtra = band
-      }
-    }
-  }
-  const left = leftBase > leftExtra ? leftBase : leftExtra
-  const right = rightBase > rightExtra ? rightBase : rightExtra
+  const left = yBand
+  const right = (hasY2 ? widest2 + labelGap + tickLen : padRight) + y2TitleH
 
   // The x labels get the room that is left. Whether they FIT decides the
   // bottom gutter — a rotated label needs its slant's height — so the
   // labels are provisionally laid out over the width the plot will have,
   // measured, and the mode is chosen before the plot rect exists.
-  // The plot's sides as they will be — a set inset, grown to contain its labels if asked — so the labels thin over the real width.
-  // Coalesced first: Swift does not narrow an optional through the ternary's test.
-  const contain = cfg.insetContain === true
-  const insL = cfg.insetLeft ?? 0.0
-  const insR = cfg.insetRight ?? 0.0
-  const gLeft = cfg.insetLeft !== undefined ? (contain ? Math.max(insL, left) : insL) : left + (cfg.reserveLeft ?? 0.0)
-  const gRight = cfg.insetRight !== undefined ? (contain ? Math.max(insR, right) : insR) : right
-  const provisionalW = Math.max(0.0, cfg.width - gLeft - gRight)
+  const provisionalW = Math.max(0.0, cfg.width - left - right)
   const mode = cfg.xLabels ?? 'auto'
   let rotate = 0.0
   let every = 1
@@ -315,20 +206,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     const widestX = xSample.widest
     const overflow = need > provisionalW && xLabels.length > 1
     const wantRotate = mode === 'rotate' || (mode === 'auto' && overflow && cfg.categories.length > 0)
-    if (mode === 'echarts') {
-      const angle = cfg.xLabelAngle ?? 0.0
-      const rad = (angle * Math.PI) / 180.0
-      if (angle !== 0.0) {
-        rotate = angle
-        // A rotated line spans w·|sin| + fontSize·|cos| below the axis.
-        slantH = widestX * Math.abs(Math.sin(rad)) + cfg.fontSize * Math.abs(Math.cos(rad)) - cfg.fontSize
-        if (slantH < 0.0) slantH = 0.0
-      }
-      if (cfg.categories.length > 0) {
-        const fixed = cfg.xLabelInterval ?? -1.0
-        every = fixed >= 0.0 ? floorRatio(fixed, 1.0) + 1 : echartsCategoryEvery(xLabels, provisionalW, cfg.edgeCategories === true, cfg.fontSize, rad, measure)
-      }
-    } else if (wantRotate && xLabels.length > 0) {
+    if (wantRotate && xLabels.length > 0) {
       rotate = -45.0
       // A label slanted 45° spans (w + fontSize) * sin 45° below the axis.
       slantH = (widestX + cfg.fontSize) * 0.7071 - cfg.fontSize
@@ -342,28 +220,14 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     }
   }
 
-  const xGap = cfg.xLabelMargin ?? labelGap
-  const xBand = (cfg.showXAxis ? (cfg.xLabelInside === true ? 0.0 : cfg.fontSize + xGap + slantH) + tickLen + (cfg.xOffset ?? 0.0) : 0.0) + xTitleH
-  // A top x axis takes the label band above the plot; the bottom keeps the
-  // slim padding the top had.
-  const xTop = cfg.xTop === true && cfg.horizontal !== true
-  // A second x axis takes a label band (and its title's line) on the other side.
-  const hasX2 = ((cfg.x2Labels ?? []).length > 0 || cfg.x2Domain !== undefined) && cfg.showXAxis && cfg.horizontal !== true
-  const x2Band = hasX2 ? cfg.fontSize + labelGap + tickLen + (cfg.x2Title !== undefined && cfg.x2Title !== '' ? titleH : 0.0) : padTop
-  const autoTop = xTop ? xBand : x2Band
-  const autoBottom = xTop ? x2Band : xBand
-  // Under `insetContain` a set side grows where the labels it holds would leave the chart.
-  const insT = cfg.insetTop ?? 0.0
-  const insB = cfg.insetBottom ?? 0.0
-  const top = cfg.insetTop !== undefined ? (contain ? Math.max(insT, autoTop) : insT) : autoTop
-  const bottom = cfg.insetBottom !== undefined ? (contain ? Math.max(insB, autoBottom) : insB) : autoBottom
-  const gutters: Gutters = { left: gLeft, right: gRight, top, bottom }
+  const bottom = (cfg.showXAxis ? cfg.fontSize + labelGap + slantH + tickLen : 0.0) + xTitleH
+  const gutters: Gutters = { left, right, top: padTop, bottom }
 
   const plot: Rect = {
-    x: gLeft,
-    y: top,
-    w: Math.max(0.0, cfg.width - gLeft - gRight),
-    h: Math.max(0.0, cfg.height - top - bottom),
+    x: left,
+    y: padTop,
+    w: Math.max(0.0, cfg.width - left - right),
+    h: Math.max(0.0, cfg.height - padTop - bottom),
   }
 
   if (cfg.horizontal === true) {
@@ -371,7 +235,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     // runs along x. The value ticks reuse the y domain — that is where the
     // data lives — and the same formatter, so a chart flipped horizontal
     // keeps its "$3.2K" labels without re-wiring anything.
-    const yTicks = cfg.showYAxis ? bandTicksY(cfg.categories, plot, cfg.bandsFromBottom === true) : []
+    const yTicks = cfg.showYAxis ? bandTicksY(cfg.categories, plot) : []
     const xTicks = cfg.showXAxis
       ? makeTicks(cfg.yDomain, plot.x, plot.x + plot.w, cfg.yTickCount, cfg.yFormat)
       : []
@@ -383,7 +247,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
       const perLabel = cfg.fontSize + 2.0
       if (bandH < perLabel) yEvery = ceilRatio(perLabel, bandH)
     }
-    return { plot, xTicks, yTicks, y2Ticks: [], xDomainUsed: cfg.xDomain, xLabelRotate: 0.0, xLabelEvery: 1, yLabelEvery: yEvery, gutters, extraTicks: [], x2Ticks: [] }
+    return { plot, xTicks, yTicks, y2Ticks: [], xDomainUsed: cfg.xDomain, xLabelRotate: 0.0, xLabelEvery: 1, yLabelEvery: yEvery, gutters }
   }
 
   // y grows DOWNWARD in screen space, so the domain min maps to the plot's
@@ -392,9 +256,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
 
   const xTicks = cfg.showXAxis
     ? cfg.categories.length > 0
-      ? cfg.edgeCategories === true
-        ? edgeTicks(cfg.categories, plot)
-        : bandTicks(cfg.categories, plot)
+      ? bandTicks(cfg.categories, plot)
       : cfg.xTime === true
         ? timeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat)
         : makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat)
@@ -404,43 +266,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     ? makeTicks(y2dom, plot.y + plot.h, plot.y, cfg.yTickCount, cfg.y2Format)
     : []
 
-  const extraTicks: ExtraTick[] = []
-  if (cfg.showYAxis) {
-    let ai = 0.0
-    for (const a of cfg.extraYAxes ?? []) {
-      for (const tk of makeTicks(a.domain ?? { min: 0.0, max: 1.0 }, plot.y + plot.h, plot.y, cfg.yTickCount, undefined)) extraTicks.push({ axis: ai, pos: tk.pos, label: tk.label })
-      ai = ai + 1.0
-    }
-  }
-  const x2Ticks: Tick[] = hasX2 && cfg.x2Domain !== undefined ? makeTicks(cfg.x2Domain ?? { min: 0.0, max: 1.0 }, plot.x, plot.x + plot.w, cfg.xTickCount, undefined) : []
-  return { plot, xTicks, yTicks, y2Ticks, xDomainUsed: cfg.xDomain, xLabelRotate: rotate, xLabelEvery: every, yLabelEvery: 1, gutters, extraTicks, x2Ticks }
-}
-
-/**
- * ECharts' `calculateCategoryInterval`, as the step between shown labels:
- * each (sampled) label's box grown by 1.3 (at least 7px), against the width
- * one category takes along the axis at the label's rotation; the interval is
- * how many categories the widest spans, and every (interval + 1)th is shown.
- */
-function echartsCategoryEvery(labels: string[], axisW: Double, edge: boolean, fontSize: Double, rad: Double, measure: (text: string, size: Double) => Double): number {
-  const n = labels.length
-  if (n < 2) return 1
-  const span = edge ? axisW / (n - 1.0) : axisW / (n * 1.0)
-  const step = n > 40 ? floorRatio(n * 1.0, 40.0) : 1
-  let maxW = 0.0
-  let maxH = 0.0
-  let i = 0
-  while (i < n) {
-    maxW = Math.max(maxW, measure(labels[i]!, fontSize) * 1.3, 7.0)
-    maxH = Math.max(maxH, fontSize * 1.3, 7.0)
-    i = i + step
-  }
-  const unitW = Math.abs(span * Math.cos(rad))
-  const unitH = Math.abs(span * Math.sin(rad))
-  // An axis the label runs along or across entirely leaves that ratio unbounded.
-  const dw = unitW > 0.0 ? maxW / unitW : 1.0e9
-  const dh = unitH > 0.0 ? maxH / unitH : 1.0e9
-  return floorRatio(Math.min(dw, dh), 1.0) + 1
+  return { plot, xTicks, yTicks, y2Ticks, xDomainUsed: cfg.xDomain, xLabelRotate: rotate, xLabelEvery: every, yLabelEvery: 1, gutters }
 }
 
 /**
@@ -526,7 +352,7 @@ function ceilRatio(need: Double, room: Double): number {
 
 /** One tick per category, centred on its band. */
 /** Band ticks down the Y axis — the horizontal frame's category labels. */
-export function bandTicksY(categories: string[], plot: Rect, fromBottom: boolean = false): Tick[] {
+export function bandTicksY(categories: string[], plot: Rect): Tick[] {
   const n = categories.length
   const out: Tick[] = []
   if (n === 0) return out
@@ -534,7 +360,7 @@ export function bandTicksY(categories: string[], plot: Rect, fromBottom: boolean
   for (let i = 0; i < n; i++) {
     out.push({
       value: i,
-      pos: fromBottom ? plot.y + plot.h - bh * (i + 0.5) : plot.y + bh * (i + 0.5),
+      pos: plot.y + bh * (i + 0.5),
       label: categories[i]!,
     })
   }
@@ -630,17 +456,6 @@ export function layoutSeriesPointsEdge(values: Double[], plot: Rect, yDomain: Do
       x: plot.x + (i / (n - 1)) * plot.w,
       y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[i]!),
     })
-  }
-  return out
-}
-
-/** Category ticks on the points of an edge-to-edge axis (`boundaryGap: false`). */
-export function edgeTicks(categories: string[], plot: Rect): Tick[] {
-  const n = categories.length
-  const out: Tick[] = []
-  if (n === 0) return out
-  for (let i = 0; i < n; i++) {
-    out.push({ value: i, pos: n === 1 ? plot.x + plot.w / 2.0 : plot.x + (i / (n - 1)) * plot.w, label: categories[i]! })
   }
   return out
 }

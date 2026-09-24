@@ -1,7 +1,7 @@
 // ECharts' toolbox `magicType` — switch the chart between line / bar and
 // stacked / tiled, as a pure rewrite of the series kinds.
 //
-// One rule for every host: the web plot, the option chart and the native
+// One rule for every host: the web plot and the native
 // hosts all run a spec through `applyMagicType`, so a tap on "stack" gives the
 // same chart everywhere. `kind` is 'line' | 'bar' | '' (no override) and
 // `stack` is 'stack' | 'tiled' | '' — ECharts keeps the two pairs independent.

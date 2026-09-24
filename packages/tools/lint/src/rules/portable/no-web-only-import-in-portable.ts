@@ -24,7 +24,6 @@ import { isPortablePath, portablePathsFrom } from '../../utils/portable-paths'
  */
 const WEB_ONLY = new Set([
   '@pyreon/atlas',
-  '@pyreon/charts',
   '@pyreon/code',
   '@pyreon/compiler',
   '@pyreon/config',
@@ -52,7 +51,6 @@ const WEB_ONLY = new Set([
 
 /** Packages whose `/webview` subpath IS the native story. */
 const WEBVIEW_BRIDGED = new Set([
-  '@pyreon/charts',
   '@pyreon/code',
   '@pyreon/flow',
   '@pyreon/rich-text',

@@ -22,9 +22,4 @@ describe('pattern fills', () => {
     expect(svg).toContain('fill="url(#pyreon-chart-p0)"')
   })
 
-  it('maps a declarative dot texture through the option adapter', async () => {
-    const { compileOption } = await import('./option')
-    const out = compileOption({ xAxis: { data: ['A'] }, yAxis: {}, series: [{ type: 'bar', data: [4], itemStyle: { decal: { symbol: 'circle', color: '#111', dashArrayX: 9, dashArrayY: 3 } } }] })
-    expect(out.spec.series[0]!.pattern).toEqual({ kind: 'symbols', color: '#111', spacing: 18, spacingY: 6, width: 3, angle: -0, symbol: 'circle' })
-  })
 })

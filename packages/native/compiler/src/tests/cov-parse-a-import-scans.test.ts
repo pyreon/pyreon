@@ -57,7 +57,7 @@ describe('unlowered-module warnings — specifier shapes', () => {
   it('a `/webview` SUBPATH is the documented native bridge and stays exempt', () => {
     // The blanket line used to tell the author to reach for the bridge subpath
     // they had just imported.
-    expect(warnings(mod(`import { Renderer } from '@pyreon/charts/webview'`))).toEqual([])
+    expect(warnings(mod(`import { FlowWebView } from '@pyreon/flow/webview'`))).toEqual([])
   })
 })
 

@@ -1061,14 +1061,12 @@ public final class PyreonChartHandle {
     public var seriesCount: Int = 0
     public var brushType: String = ""
     public var areas: [BrushArea] = []
-    public var step: Int = -1
-    public var playing: Bool = false
 
     public init(seriesCount: Int = 0) { self.seriesCount = seriesCount }
 
     public func dispatch(_ action: ChartActionInput) {
         let next = applyChartAction(
-            ChartActionState(zoom: zoom, hover: hover, selected: selected, hidden: hidden, seriesCount: seriesCount, brushType: brushType, areas: areas, step: step, playing: playing),
+            ChartActionState(zoom: zoom, hover: hover, selected: selected, hidden: hidden, seriesCount: seriesCount, brushType: brushType, areas: areas),
             action
         )
         if next.zoom.start != zoom.start || next.zoom.end != zoom.end { zoom = next.zoom }
@@ -1077,8 +1075,6 @@ public final class PyreonChartHandle {
         if next.hidden != hidden { hidden = next.hidden }
         if next.brushType != brushType { brushType = next.brushType }
         if next.areas.count != areas.count || action.type == "brush" { areas = next.areas }
-        if next.step != step { step = next.step }
-        if next.playing != playing { playing = next.playing }
     }
 }
 

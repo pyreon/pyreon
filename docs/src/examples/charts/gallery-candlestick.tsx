@@ -1,49 +1,46 @@
-import { ChartThemeProvider } from '@pyreon/charts'
-import { OptionChart } from '@pyreon/charts/option'
+import { Candle, Chart, Tooltip, Zoom } from '@pyreon/charts'
 import type { Signal } from '@pyreon/reactivity'
 
 /**
- * Gallery — a price chart from an ECharts option: 120 seeded candlesticks
- * opening on the latest 60 through `dataZoom`. Drag the slider's band or a
- * handle under the chart, or scroll and drag inside the plot. The labels thin
- * to what fits.
- * The provider opts it into the colour mode in scope — the page's scheme
- * here (the root's `color-scheme`); a bare option chart keeps ECharts' own light look.
+ * Gallery — a price chart: 120 seeded candles with a navigator strip under the
+ * plot. Drag the strip's band or a handle, or scroll and drag inside the plot.
+ * The labels thin to what fits.
  */
-function ohlc(n: number): { days: string[]; candles: number[][] } {
+interface Day {
+  day: string
+  open: number
+  high: number
+  low: number
+  close: number
+}
+
+function ohlc(n: number): Day[] {
   let seed = 7
   const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 0xffffffff)
-  const days: string[] = []
-  const candles: number[][] = []
+  const out: Day[] = []
   let close = 100
   for (let i = 0; i < n; i++) {
     const open = close
     close = Math.max(20, open + (rnd() - 0.48) * 6)
-    const high = Math.max(open, close) + rnd() * 3
-    const low = Math.min(open, close) - rnd() * 3
-    days.push(`D${i + 1}`)
-    // ECharts' candlestick order: open, close, low, high.
-    candles.push([+open.toFixed(2), +close.toFixed(2), +low.toFixed(2), +high.toFixed(2)])
+    out.push({
+      day: `D${i + 1}`,
+      open: +open.toFixed(2),
+      close: +close.toFixed(2),
+      high: +(Math.max(open, close) + rnd() * 3).toFixed(2),
+      low: +(Math.min(open, close) - rnd() * 3).toFixed(2),
+    })
   }
-  return { days, candles }
+  return out
 }
 
-const { days, candles } = ohlc(120)
+const DAYS = ohlc(120)
 
 export default function GalleryCandlestick(_props: { shared?: Signal<number> }) {
   return (
-    <ChartThemeProvider>
-      <OptionChart
-        height={340}
-        option={{
-          tooltip: { trigger: 'axis' },
-          grid: { left: 48, right: 16, top: 16, bottom: 70 },
-          xAxis: { type: 'category', data: days },
-          yAxis: { type: 'value', scale: true },
-          dataZoom: [{ type: 'inside', start: 50, end: 100 }, { type: 'slider', start: 50, end: 100 }],
-          series: [{ type: 'candlestick', data: candles }],
-        }}
-      />
-    </ChartThemeProvider>
+    <Chart<Day> data={DAYS} x="day" height={340}>
+      <Candle open="open" high="high" low="low" close="close" />
+      <Zoom navigator />
+      <Tooltip />
+    </Chart>
   )
 }

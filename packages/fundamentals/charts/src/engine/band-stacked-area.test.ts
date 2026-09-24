@@ -72,17 +72,17 @@ describe('stackedArea — shares over time', () => {
   })
 
   it('stacks cumulatively, and a gap contributes nothing', () => {
-    const tops = stackLevels([[3, 5, 2], [4, 2, 6]], [], [], []).tops
+    const tops = stackLevels([[3, 5, 2], [4, 2, 6]]).tops
     expect(tops[0]).toEqual([3, 5, 2])
     expect(tops[1]).toEqual([7, 7, 8])
     // A gap is a gap in its own row, and the row above stacks past it.
-    const withGap = stackLevels([[3, Number.NaN], [4, 2]], [], [], []).tops
+    const withGap = stackLevels([[3, Number.NaN], [4, 2]]).tops
     expect(Number.isNaN(withGap[0]![1]!)).toBe(true)
     expect(withGap[1]![1]).toBe(2)
   })
 
   it('a negative value stacks DOWN from zero, and the positives keep their own total (ECharts samesign)', () => {
-    const { bases, tops } = stackLevels([[5], [-3], [2]], [], [], [])
+    const { bases, tops } = stackLevels([[5], [-3], [2]])
     expect(tops[1]![0]).toBe(-3)
     expect(Number.isNaN(bases[1]![0]!)).toBe(true)
     expect(tops[2]![0]).toBe(7)

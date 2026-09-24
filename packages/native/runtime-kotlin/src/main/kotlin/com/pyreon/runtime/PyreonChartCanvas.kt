@@ -967,12 +967,10 @@ class PyreonChartHandle {
     var seriesCount by mutableStateOf(0)
     var brushType by mutableStateOf("")
     var areas by mutableStateOf(listOf<BrushArea>())
-    var step by mutableStateOf(-1)
-    var playing by mutableStateOf(false)
 
     fun dispatch(action: ChartActionInput) {
         val next = applyChartAction(
-            ChartActionState(zoom = zoom, hover = hover, selected = selected, hidden = hidden, seriesCount = seriesCount, brushType = brushType, areas = areas, step = step, playing = playing),
+            ChartActionState(zoom = zoom, hover = hover, selected = selected, hidden = hidden, seriesCount = seriesCount, brushType = brushType, areas = areas),
             action,
         )
         if (next.zoom != zoom) zoom = next.zoom
@@ -981,8 +979,6 @@ class PyreonChartHandle {
         if (next.hidden != hidden) hidden = next.hidden
         if (next.brushType != brushType) brushType = next.brushType
         if (next.areas != areas) areas = next.areas
-        if (next.step != step) step = next.step
-        if (next.playing != playing) playing = next.playing
     }
 }
 

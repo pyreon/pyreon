@@ -11,23 +11,14 @@ const EXPECTED = [
   'CalendarChart', 'ParallelChart', 'PolarChart', 'SingleAxisChart', 'RiverChart', 'MapChart',
   'funnelToSvg', 'treemapToSvg', 'sunburstToSvg', 'treeToSvg', 'sankeyToSvg', 'graphToSvg',
   'calendarToSvg', 'parallelToSvg', 'polarToSvg', 'singleAxisToSvg', 'riverToSvg', 'geoToSvg', 'geoPointsToSvg',
-  'chartCapabilityScore',
-  'compileOption', 'optionToSvg', 'planOption', 'compileFamily', 'familyToSvg',
-  'resolveDataset', 'applyTransforms', 'graphicCommands', 'visualMapCommands', 'customCommands',
-  'registerTheme', 'resolveTheme', 'registerLocale', 'numberFormatter', 'registerMap',
+  'registerLocale', 'numberFormatter', 'registerMap',
   'zoomWindow', 'brushRange', 'renderTitle',
-  'splitLayers', 'boxRect', 'circleRect', 'layoutLength',
-  'OptionChart', 'GanttChart', 'createChartLink', 'sonifyValues', 'compiledCommands', 'valueToHz', 'resolveTimeline', 'splitGrids',
+  'GanttChart', 'createChartLink', 'sonifyValues', 'valueToHz', 'visualMap', 'gaugeDial',
 ] as const
 
 describe('@pyreon/charts public surface', () => {
   it('exports every family, coordinate, facade layer and registry', () => {
     const missing = EXPECTED.filter((name) => typeof (plot as Record<string, unknown>)[name] !== 'function')
     expect(missing).toEqual([])
-  })
-  it('the option facade round-trips a gallery option to svg from the public entry', () => {
-    const svg = plot.optionToSvg({ xAxis: { data: ['a', 'b'] }, yAxis: {}, series: [{ type: 'bar', data: [1, 2] }] }, { width: 200, height: 100, theme: 'dark' })
-    expect(svg).toContain('<svg')
-    expect(svg).toContain('#141821')
   })
 })

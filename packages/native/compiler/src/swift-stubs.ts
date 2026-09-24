@@ -1603,11 +1603,6 @@ public struct PyreonWebView: View {
   public init(src: String? = nil, html: String? = nil, data: String? = nil, onMessage: ((String) -> Void)? = nil) {}
   public typealias Body = Never
 }
-public struct PyreonChartWebViewSelection { public let name: String? }
-public struct PyreonChartWebViewEvent { public let name: String; public let payload: [String: Any] }
-public struct PyreonChartWebViewError: Error { public let message: String }
-public func pyreonChartWebViewData(option: String, commands: String, loading: Bool, loadingOptions: String, group: String? = nil) -> String { option }
-public func pyreonDispatchChartWebViewMessage(_ message: String, onSelect: ((PyreonChartWebViewSelection) -> Void)? = nil, onEvent: ((PyreonChartWebViewEvent) -> Void)? = nil, onError: ((PyreonChartWebViewError) -> Void)? = nil) {}
 public struct PyreonFlowWebViewSelection { public let id: String; public let data: Any? }
 public struct PyreonFlowWebViewViewport { public let x: Double; public let y: Double; public let zoom: Double }
 public struct PyreonFlowWebViewEvent { public let type: String; public let id: String?; public let data: Any?; public let source: String?; public let target: String?; public let viewport: PyreonFlowWebViewViewport? }
@@ -2042,8 +2037,6 @@ public final class PyreonChartHandle {
   public var seriesCount: Int = 0
   public var brushType: String = ""
   public var areas: [BrushArea] = []
-  public var step: Int = -1
-  public var playing: Bool = false
   public init(seriesCount: Int = 0) { self.seriesCount = seriesCount }
   public func dispatch(_ action: ChartActionInput) {}
 }

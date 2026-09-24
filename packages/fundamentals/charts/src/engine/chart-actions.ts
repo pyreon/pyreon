@@ -17,7 +17,7 @@ import type { ZoomWindow } from './zoom'
 /** The action record: `type` plus whichever fields that type reads. */
 export interface ChartActionInput {
   type: string
-  /** highlight / showTip / select / unselect / toggleSelect: the datum. timelineChange: the step. */
+  /** highlight / showTip / select / unselect / toggleSelect: the datum. */
   index: number
   /** legendSelect / legendUnselect / legendToggle: the series. legendInverseSelect: a count override (-1 = the chart's). */
   series: number
@@ -28,8 +28,6 @@ export interface ChartActionInput {
   brushType: string
   /** brush: the areas to show (empty clears). */
   areas: BrushArea[]
-  /** timelinePlayChange. */
-  playing: boolean
 }
 
 /** Everything an action can move. The full window (0..1) is "not zoomed". */
@@ -41,20 +39,17 @@ export interface ChartActionState {
   seriesCount: number
   brushType: string
   areas: BrushArea[]
-  /** The timeline step; -1 = the option's own. */
-  step: number
-  playing: boolean
 }
 
 /** A state with nothing set, over `seriesCount` series (0 until a chart binds). */
 export function emptyChartActionState(seriesCount: number): ChartActionState {
   const zoom: ZoomWindow = { start: 0.0, end: 1.0 }
-  return { zoom, hover: -1, selected: [], hidden: [], seriesCount, brushType: '', areas: [], step: -1, playing: false }
+  return { zoom, hover: -1, selected: [], hidden: [], seriesCount, brushType: '', areas: [] }
 }
 
 /** An action record from its type, with every other field empty. */
 export function chartAction(type: string): ChartActionInput {
-  return { type, index: -1, series: -1, start: 0.0, end: 1.0, brushType: '', areas: [], playing: false }
+  return { type, index: -1, series: -1, start: 0.0, end: 1.0, brushType: '', areas: [] }
 }
 
 function has(xs: number[], v: number): boolean {
@@ -108,8 +103,6 @@ export function applyChartAction(s: ChartActionState, a: ChartActionInput): Char
   }
   if (t === 'takeGlobalCursor') return { ...s, brushType: a.brushType }
   if (t === 'brush') return { ...s, areas: a.areas }
-  if (t === 'timelineChange') return a.index < 0 ? s : { ...s, step: a.index }
-  if (t === 'timelinePlayChange') return { ...s, playing: a.playing }
   if (t === 'restore') {
     const none: ZoomWindow = { start: 0.0, end: 1.0 }
     return { ...s, zoom: none, hover: -1, selected: [], hidden: [], areas: [] }

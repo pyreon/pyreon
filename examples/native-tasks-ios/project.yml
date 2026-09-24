@@ -56,7 +56,6 @@ targets:
       - path: ../../packages/fundamentals/a11y/native/swift
       # Flow-native device proof (FlowScreen): PyreonFlowState + the edge canvas.
       - path: ../../packages/fundamentals/flow/native/swift
-      - path: ../../packages/fundamentals/charts/native/swift
       - path: ../../packages/fundamentals/dnd/native/swift
       - path: ../../packages/fundamentals/table/native/swift
         type: group

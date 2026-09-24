@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { calendarDomain, civilFromDays, daysFromCivil, layoutCalendar, renderCalendar, weekdayOfDays } from './calendar'
 import { calendarValues, formatIsoDate, hitCalendar, parseIsoDate } from './calendar-web'
 import { calendarToSvg } from './family-svg'
-import { compileFamily, familyToSvg } from './option-family'
 
 const box = { x: 0, y: 0, w: 720, h: 120 }
 
@@ -105,26 +104,3 @@ describe('calendar render', () => {
   })
 })
 
-describe('calendar option mapping', () => {
-  it('a heatmap series on a calendar coordinate lowers range/cellSize/firstDay/labels/visualMap', () => {
-    const f = compileFamily({
-      calendar: { range: '2024', cellSize: [12, 12], dayLabel: { firstDay: 1 }, monthLabel: { show: false } },
-      visualMap: { min: 0, max: 20, inRange: { color: ['#ffffff', '#000000'] } },
-      series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: [['2024-03-01', 4], { value: ['2024-03-02', 9] }] }],
-    })!
-    if (f.plan.kind !== 'calendar') throw new Error('kind')
-    expect(f.plan.start).toBe('2024-01-01')
-    expect(f.plan.end).toBe('2024-12-31')
-    expect(f.plan.values).toEqual({ '2024-03-01': 4, '2024-03-02': 9 })
-    expect(f.plan.calendar).toMatchObject({ cellSize: 12, firstDay: 1, showMonthLabels: false, domain: { min: 0, max: 20 }, stops: ['#ffffff', '#000000'] })
-    expect(f.warnings).toEqual([])
-    expect(familyToSvg(f.plan)).toContain('<rect')
-    const range = compileFamily({ calendar: { range: ['2024-02-01', '2024-02-10'] }, series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: [] }] })!
-    if (range.plan.kind !== 'calendar') throw new Error('kind')
-    expect(range.plan.end).toBe('2024-02-10')
-    const bad = compileFamily({ calendar: { range: '2024', orient: 'vertical' }, series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: [['not-a-date', 1]] }] })!
-    // The bad datum warns; a vertical orient is a transposed plan, not an unsupported option.
-    expect(bad.warnings.map((w) => w.code)).toEqual(['series-data-shape'])
-    expect(bad.plan).toMatchObject({ kind: 'calendar', orient: 'vertical' })
-  })
-})

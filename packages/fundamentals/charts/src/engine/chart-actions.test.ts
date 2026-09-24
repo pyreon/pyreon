@@ -45,12 +45,6 @@ describe('applyChartAction — the ECharts action vocabulary as one reducer', ()
     expect(run(armed, { type: 'brush', areas: [] }).areas).toEqual([])
   })
 
-  it('timelineChange moves the step, timelinePlayChange plays or pauses', () => {
-    const s = run(empty, { type: 'timelineChange', index: 2 }, { type: 'timelinePlayChange', playing: true })
-    expect([s.step, s.playing]).toEqual([2, true])
-    expect(run(s, { type: 'timelineChange', index: -1 }).step).toBe(2)
-  })
-
   it('restore clears zoom, hover, selection, legend and brush areas, and an unknown type is a no-op', () => {
     const busy = run(empty, { type: 'dataZoom', start: 0.1, end: 0.4 }, { type: 'select', index: 1 }, { type: 'legendToggle', series: 0 }, { type: 'highlight', index: 1 }, { type: 'brush', areas: [{ type: 'rect', points: [] }] })
     expect(run(busy, { type: 'restore' })).toEqual({ ...busy, zoom: { start: 0, end: 1 }, hover: -1, selected: [], hidden: [], areas: [] })

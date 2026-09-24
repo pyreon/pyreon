@@ -78,7 +78,6 @@ targets:
       - path: ../../packages/fundamentals/storage/native/swift
       - path: ../../packages/fundamentals/hooks/native/swift
       - path: ../../packages/fundamentals/form/native/swift
-      - path: ../../packages/fundamentals/charts/native/swift
       - path: ../../packages/fundamentals/store/native/swift
       - path: ../../packages/core/sized-map/native/swift
       - path: ../../packages/fundamentals/query/native/swift

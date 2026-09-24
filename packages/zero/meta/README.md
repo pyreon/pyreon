@@ -100,7 +100,7 @@ Tree-shaking removes everything you don't import — the published `lib/index.js
 Heavy upstream deps stay lazy at the source-package level:
 
 - **`@pyreon/document`** — PDF (~3MB pdfmake), DOCX (~700KB), XLSX (~1.1MB), PPTX (~400KB) renderers `import()` inside `render(doc, '<format>')`. `createDocument()` alone bundles nothing format-specific.
-- **`@pyreon/charts`** — ECharts is lazy-loaded inside `<Chart>` mount.
+- **`@pyreon/charts`** — every mark and chart family is its own import, so a chart carries only what it draws.
 - **`@pyreon/code`** — CodeMirror language grammars lazy-load via `loadLanguage()`.
 - **`@pyreon/flow`** — elkjs (auto-layout) lazy-loads inside `flow.layout()`.
 

@@ -151,9 +151,8 @@ class TasksAppInstrumentedTest {
     /**
      * Scroll a gallery chart to the MIDDLE of the screen before a gesture on it.
      * `performScrollTo` scrolls the least it can, which leaves the target flush
-     * with a screen edge — measured locally: gal-map at y 0, gal-datazoom ending
-     * at y 2400 of 2400 — and every gallery gesture made at such an edge (the
-     * roaming map, the dataZoom band, the visualMap handle) flaked in CI.
+     * with a screen edge — measured locally: gal-map at y 0 — and every gallery
+     * gesture made at such an edge (the roaming map, the toolbox) flaked in CI.
      */
     private fun centred(tag: String): SemanticsNodeInteraction {
         composeRule.onNodeWithTag(tag).performScrollTo()
@@ -188,28 +187,6 @@ class TasksAppInstrumentedTest {
         }
         val top = counts.entries.sortedByDescending { it.value }.take(4).joinToString(", ") { String.format("#%08x x%d", it.key, it.value) }
         return "${b.width}x${b.height}, $painted px painted over bg ${String.format("#%08x", bg)}, top colours: $top"
-    }
-
-    /**
-     * One pixel row of a capture as runs of colour ("x0-x1 #aarrggbb"), for a
-     * failure message: where a strip, a handle or a gap actually sits on the row a
-     * gesture pressed, rather than where the test assumed it would be.
-     */
-    private fun rowRuns(b: android.graphics.Bitmap, y: Int, max: Int = 14): String {
-        if (y < 0 || y >= b.height) return "row $y outside 0..${b.height - 1}"
-        val runs = ArrayList<String>()
-        var start = 0
-        var colour = b.getPixel(0, y)
-        for (x in 1..b.width) {
-            val c = if (x < b.width) b.getPixel(x, y) else colour.inv()
-            if (c != colour) {
-                runs.add("$start-${x - 1} ${String.format("#%08x", colour)}")
-                start = x
-                colour = c
-            }
-        }
-        val shown = runs.take(max).joinToString(", ")
-        return "row $y: " + shown + if (runs.size > max) ", … (${runs.size} runs)" else ""
     }
 
     /** Where a tagged node sits and whether Compose considers it displayed — for a failure message. */
@@ -1186,128 +1163,6 @@ class TasksAppInstrumentedTest {
             )
         }
         composeRule.onNodeWithTag("gal-geo-trail").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("gal-decal").performScrollTo().assertIsDisplayed()
-        // The calculable visualMap: dragging its high handle (bottom-left strip) left greys the hottest cells.
-        val visualMap = centred("gal-visualmap")
-        val vmBefore = visualMap.captureToImage().asAndroidBitmap()
-        // Driven as a hand does (past the touch slop, then small steps), like the map
-        // and dataZoom drags: one 600ms `swipe` intermittently never moved the handle
-        // ("grey pixels: 0" on #3558). Same 79dp leftward drag of the high handle.
-        var vmDown = Offset.Zero
-        visualMap.performTouchInput {
-            val y = height - (41 - 16 - 4).dp.toPx()
-            vmDown = Offset(159.dp.toPx(), y)
-            down(vmDown)
-            moveBy(Offset(-12.dp.toPx(), 0f))
-            repeat(6) { moveBy(Offset(-(67f / 6f).dp.toPx(), 0f)) }
-            up()
-        }
-        // Out-of-range values take the inactive #cccccc: none before the drag, a block of it after.
-        fun greyPixels(b: android.graphics.Bitmap): Int {
-            var n = 0
-            for (y in 0 until b.height) for (x in 0 until b.width) {
-                val c = b.getPixel(x, y)
-                if (kotlin.math.abs(android.graphics.Color.red(c) - 204) <= 3 && kotlin.math.abs(android.graphics.Color.green(c) - 204) <= 3 && kotlin.math.abs(android.graphics.Color.blue(c) - 204) <= 3) n++
-            }
-            return n
-        }
-        assertTrue("the visualMap greyed cells before any drag", greyPixels(vmBefore) < 50)
-        runCatching { composeRule.waitUntil(5_000) { greyPixels(visualMap.captureToImage().asAndroidBitmap()) > 400 } }
-        val vmAfter = visualMap.captureToImage().asAndroidBitmap()
-        val vmGrey = greyPixels(vmAfter)
-        if (vmGrey <= 400) {
-            // Say where the finger went and what that row held, so the next CI hit
-            // tells "the press missed the handle" from "the drag never registered".
-            var changed = 0
-            if (vmAfter.width == vmBefore.width && vmAfter.height == vmBefore.height) {
-                for (y in 0 until vmAfter.height) for (x in 0 until vmAfter.width) if (vmAfter.getPixel(x, y) != vmBefore.getPixel(x, y)) changed++
-            }
-            throw AssertionError(
-                "dragging the visualMap handle did not grey the out-of-range cells (grey pixels: $vmGrey): " +
-                    "down at (${vmDown.x.toInt()}, ${vmDown.y.toInt()}) px, dragged 79dp left in 7 steps; " +
-                    "pressed ${rowRuns(vmBefore, vmDown.y.toInt())}; before ${paintSummary(vmBefore)}; after ${paintSummary(vmAfter)}; " +
-                    "$changed px changed; ${nodePlace("gal-visualmap")}",
-            )
-        }
-        // The slider dataZoom opens on the low half; dragging the band right shows the tall bars (y extent pinned).
-        fun redPixels(b: android.graphics.Bitmap): Int {
-            var n = 0
-            for (y in 0 until b.height) for (x in 0 until b.width) {
-                val c = b.getPixel(x, y)
-                if (android.graphics.Color.red(c) >= 249 && android.graphics.Color.green(c) <= 6 && android.graphics.Color.blue(c) <= 6) n++
-            }
-            return n
-        }
-        val zoomChart = centred("gal-datazoom")
-        // The low half's four short red bars are on screen from the start, so the
-        // baseline must see some red. Capturing straight after the scroll could
-        // precede the chart's first paint ("red before 0, after 0" on unrelated
-        // PRs), which reads as a failed drag. Wait for the paint first.
-        try {
-            composeRule.waitUntil(10_000) { redPixels(zoomChart.captureToImage().asAndroidBitmap()) > 0 }
-        } catch (e: Throwable) {
-            // A bare ComposeTimeoutException says nothing; say whether the chart
-            // painted at all, where it sits, and what colours it holds instead of red.
-            val shot = zoomChart.captureToImage().asAndroidBitmap()
-            throw AssertionError("gal-datazoom showed no red bar within 10s (red px: ${redPixels(shot)}; ${paintSummary(shot)}; ${nodePlace("gal-datazoom")})", e)
-        }
-        val dzBefore = zoomChart.captureToImage().asAndroidBitmap()
-        val redBefore = redPixels(dzBefore)
-        // The slider strip is ECharts' own now — plot-aligned in the grid's bottom
-        // margin, not a full-width band — so the band is FOUND, not assumed: on the
-        // swipe row, the window's filler is the blue-tinted run (the handles are
-        // white, the strip outside the window grey). Pressing its middle grabs the
-        // band, never a handle.
-        val dzRow = dzBefore.height - (18 * dzBefore.density / 160)
-        var dzL = -1
-        var dzR = -1
-        for (x in 0 until dzBefore.width) {
-            val c = dzBefore.getPixel(x, dzRow)
-            if (android.graphics.Color.blue(c) - android.graphics.Color.red(c) >= 12) {
-                if (dzL < 0) dzL = x
-                dzR = x
-            }
-        }
-        assertTrue("found no dataZoom band on the strip's row", dzL >= 0 && dzR - dzL > 20)
-        val dzMid = (dzL + dzR) / 2f
-        zoomChart.performTouchInput {
-            val y = dzRow.toFloat()
-            swipe(start = Offset(dzMid, y), end = Offset(dzMid + (dzR - dzL).toFloat(), y), durationMillis = 700)
-        }
-        composeRule.waitForIdle()
-        val redAfter = redPixels(zoomChart.captureToImage().asAndroidBitmap())
-        assertTrue("dragging the dataZoom band did not move the window to the tall bars (red before $redBefore, after $redAfter)", redAfter > redBefore * 3)
-        // The timeline: a tap on the last checkpoint shows that step; next wraps to the first.
-        val timeline = centred("gal-timeline")
-        timeline.assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2019"))
-        timeline.performTouchInput { click(Offset(width - 48.dp.toPx(), height - (40 - 16).dp.toPx())) }
-        composeRule.waitForIdle()
-        timeline.assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2021"))
-        timeline.performTouchInput { click(Offset(width - 33.dp.toPx(), height - (40 - 16).dp.toPx())) }
-        composeRule.waitForIdle()
-        timeline.assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2019"))
-        // dispatchAction: the handle's timelineChange moves the same step a tap does.
-        composeRule.onNodeWithTag("gal-tl-last").performScrollTo().performClick()
-        composeRule.waitForIdle()
-        composeRule.onNodeWithTag("gal-timeline").performScrollTo().assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2021"))
-        // Option-placed families: the web's own compile places them (center / radius, the funnel's
-        // margins) at the device's size, and a tap is read back through that frame.
-        // The pie: centre (0.3W, 100dp), radius 40% of 100 = 40dp; slice 0 is the right half.
-        centred("gal-opt-pie").performTouchInput { click(Offset(width * 0.3f + 20.dp.toPx(), 100.dp.toPx())) }
-        composeRule.waitForIdle()
-        composeRule.onNodeWithTag("gal-opt-pie-sel").performScrollTo().assertTextEquals("East")
-        centred("gal-opt-pie").performTouchInput { click(Offset(width * 0.3f - 20.dp.toPx(), 100.dp.toPx())) }
-        composeRule.waitForIdle()
-        composeRule.onNodeWithTag("gal-opt-pie-sel").performScrollTo().assertTextEquals("West")
-        // The funnel: its box is y 10..70dp (top 10, height 60), the larger stage on top.
-        centred("gal-opt-funnel").performTouchInput { click(Offset(width / 2f, 30.dp.toPx())) }
-        composeRule.waitForIdle()
-        composeRule.onNodeWithTag("gal-opt-funnel-sel").performScrollTo().assertTextEquals("Visits")
-        centred("gal-opt-funnel").performTouchInput { click(Offset(width / 2f, 55.dp.toPx())) }
-        composeRule.waitForIdle()
-        composeRule.onNodeWithTag("gal-opt-funnel-sel").performScrollTo().assertTextEquals("Orders")
-        composeRule.onNodeWithTag("gal-opt-gauge").performScrollTo().assertExists()
-        composeRule.onNodeWithTag("gal-opt-decor").performScrollTo().assertExists()
         // The toolbox (dataZoom, back, dataView, line, bar, restore — right-aligned, 25dp apart at the top).
         val toolbox = centred("gal-toolbox")
         val tool = { i: Int -> toolbox.performTouchInput { click(Offset(width - (9.5f + 25f * (5 - i)).dp.toPx(), 9.5.dp.toPx())) } }
@@ -1413,13 +1268,6 @@ class TasksAppInstrumentedTest {
         waitForTagText("gal-flow-webview-reload-status", "a:3")
         composeRule.onNodeWithTag("gal-flow-webview-reload-swap").performScrollTo().performClick()
         waitForTagText("gal-flow-webview-reload-status", "b:3")
-        // The lines trail renders. Its MOTION is proven on the iOS device lane
-        // and in real Chromium; here it cannot be: the trail runs on
-        // withInfiniteAnimationFrameNanos (a plain frame loop kept this harness
-        // busy forever), and the Compose test harness suspends infinite
-        // animations by design, so two captures are identical whatever the
-        // runtime does.
-        composeRule.onNodeWithTag("gal-lines").performScrollTo().assertIsDisplayed()
         composeRule
             .onNodeWithTag("gal-back")
             .performScrollTo()

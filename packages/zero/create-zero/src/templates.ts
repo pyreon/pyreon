@@ -219,7 +219,7 @@ export const FEATURES = {
     deps: ['@pyreon/hooks'],
   },
   charts: {
-    label: 'Charts (@pyreon/charts — reactive ECharts)',
+    label: 'Charts (@pyreon/charts — marks as JSX, web + iOS + Android)',
     deps: ['@pyreon/charts'],
   },
   hotkeys: {

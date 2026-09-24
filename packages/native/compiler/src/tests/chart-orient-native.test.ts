@@ -49,20 +49,4 @@ export function App(props: { orient: 'horizontal' | 'vertical' }) {
     expect(r.warnings.some((w) => w.includes('<SankeyChart orient={…}>: must be a literal on native'))).toBe(true)
     expect(r.code).not.toContain('pyreonTransposeCmds(')
   })
-
-  it("the option facade's spellings reach the hosts: series.orient, calendar.orient and parallel.layout", () => {
-    const r = transform(`
-import { OptionChart } from '@pyreon/charts/option'
-export function App() {
-  return (
-    <Stack>
-      <OptionChart option={{ series: [{ type: 'sankey', orient: 'vertical', data: [{ name: 'a' }, { name: 'b' }], links: [{ source: 'a', target: 'b', value: 1 }] }] }} />
-      <OptionChart option={{ calendar: { range: '2024-01', orient: 'vertical' }, series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: [['2024-01-02', 3]] }] }} />
-      <OptionChart option={{ parallel: { layout: 'vertical' }, parallelAxis: [{ dim: 0, name: 'a' }, { dim: 1, name: 'b' }], series: [{ type: 'parallel', data: [[1, 2]] }] }} />
-    </Stack>
-  )
-}`, { target })
-    expect(r.warnings.filter((w) => w.includes('vertical'))).toEqual([])
-    expect(r.code.match(/pyreonTransposeCmds\(/g)?.length).toBe(3)
-  })
 })

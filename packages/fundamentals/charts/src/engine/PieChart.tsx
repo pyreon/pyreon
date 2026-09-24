@@ -19,7 +19,7 @@ import { renderDialIn } from './gauge-dial'
 import type { DialSpec } from './gauge-dial'
 import { plain } from './format'
 import type { Double, Rect } from './types'
-import { themedDial } from './option-gauge'
+import { themedDial } from './dial'
 
 
 export interface PieChartProps<T> extends CanvasHostProps {
@@ -114,9 +114,9 @@ export interface GaugeChartProps extends CanvasHostProps {
   /** Draw the value in the middle. */
   showValue?: boolean
   /**
-   * ECharts' gauge: the axis line's colour bands, split lines, ticks and
-   * labels, a pointer and progress arc per value, an anchor, titles and
-   * details. The half-circle track without it.
+   * A full dial — colour bands, split lines, ticks and labels, a pointer and
+   * progress arc per value, titles and details. Build one with `gaugeDial()`.
+   * The half-circle track without it.
    */
   dial?: DialSpec | undefined
 }
@@ -177,7 +177,7 @@ export function GaugeChart(props: GaugeChartProps): VNode {
       }
       return cmds
     },
-    // The whole dial is the one item (ECharts' gauge has one datum per pointer).
+    // The whole dial is the one item.
     item: (g, px, py) =>
       px >= g.box.x && px <= g.box.x + g.box.w && py >= g.box.y && py <= g.box.y + g.box.h
         ? { seriesIndex: 0, dataIndex: 0, name: props.title ?? '', value: g.value, color: props.valueColor }

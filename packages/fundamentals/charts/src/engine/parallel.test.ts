@@ -4,7 +4,6 @@ import type { ParallelAxis } from './parallel'
 import { hitParallel, lineRuns, parallelLineColors, parallelRows } from './parallel-web'
 import type { ParallelRow } from './parallel-web'
 import { parallelToSvg } from './family-svg'
-import { compileFamily, familyToSvg } from './option-family'
 
 const box = { x: 0, y: 0, w: 600, h: 300 }
 const axes: ParallelAxis[] = [{ name: 'price' }, { name: 'weight', inverse: true }, { name: 'size', type: 'category', categories: ['S', 'M', 'L'] }]
@@ -97,25 +96,3 @@ describe('parallel layout', () => {
   })
 })
 
-describe('parallel option mapping', () => {
-  it('parallelAxis + a parallel series lower dims/types/min-max/inverse/lineStyle', () => {
-    const f = compileFamily({
-      parallelAxis: [{ dim: 0, name: 'a', min: 0, max: 10 }, { dim: 1, name: 'b', inverse: true }, { dim: 2, name: 'c', type: 'category', data: ['x', 'y'] }],
-      series: [{ type: 'parallel', lineStyle: { width: 2, opacity: 0.8, color: '#123456' }, data: [[1, 2, 'x'], [3, 4, 'y']] }],
-    })!
-    if (f.plan.kind !== 'parallel') throw new Error('kind')
-    expect(f.plan.axes).toEqual([
-      { name: 'a', domain: { min: 0, max: 10 } },
-      { name: 'b', inverse: true },
-      { name: 'c', type: 'category', categories: ['x', 'y'] },
-    ])
-    expect(f.plan.rows).toEqual([[1, 2, 'x'], [3, 4, 'y']])
-    expect(f.plan.parallel).toMatchObject({ lineWidth: 2, lineOpacity: 0.8, lineColor: '#123456' })
-    expect(f.warnings).toEqual([])
-    expect(familyToSvg(f.plan)).toContain('<polyline')
-    const vert = compileFamily({ parallel: { layout: 'vertical' }, parallelAxis: [{ dim: 0 }], series: [{ type: 'parallel', data: [[1]] }] })!
-    // A vertical layout is a transposed plan, not an unsupported option.
-    expect(vert.warnings).toEqual([])
-    expect(vert.plan).toMatchObject({ kind: 'parallel', orient: 'vertical' })
-  })
-})

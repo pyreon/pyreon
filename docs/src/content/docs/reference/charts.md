@@ -7,13 +7,13 @@ description: "Pyreon's own charting engine: marks as JSX children, typed channel
 
 > **Generated** from `charts`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [charts](/docs/charts).
 
-`<Chart>` takes your rows and marks as children — `<Bar y="revenue">`, `<Line>`, `<Area>`, `<Dot>`, `<Arc>` for a pie, `<Stage>` for a funnel. Channels are field names checked against the row — `<Chart<Row>>` checks its own, and a mark given the row type (`<Bar<Row> y="revenue">`) checks its own too; axes, palette, tooltip, an accessible data table and a spoken description come for free. The geometry is pure TypeScript over a flat draw list, which is what makes the same source render on canvas, as an SVG string on a server, and natively on iOS and Android (the draw list is generated into the Swift and Kotlin runtimes). Every mark and chart family is an imported binding, so a bundle carries only what it draws. Entries: `@pyreon/charts` (the stable surface), `/svg` (SSR and export), `/option` (`<OptionChart>`: an ECharts option object on this engine), `/echarts` (`<EChart>`, a wrapper around the real ECharts library, lazy-loaded) and `/engine` (every layout, hit test and draw-list builder; not covered by the stability promise).
+`<Chart>` takes your rows and marks as children — `<Bar y="revenue">`, `<Line>`, `<Area>`, `<Dot>`, `<Arc>` for a pie, `<Stage>` for a funnel. Channels are field names checked against the row — `<Chart<Row>>` checks its own, and a mark given the row type (`<Bar<Row> y="revenue">`) checks its own too; axes, palette, tooltip, an accessible data table and a spoken description come for free. The geometry is pure TypeScript over a flat draw list, which is what makes the same source render on canvas, as an SVG string on a server, and natively on iOS and Android (the draw list is generated into the Swift and Kotlin runtimes). Every mark and chart family is an imported binding, so a bundle carries only what it draws. Entries: `@pyreon/charts` (the stable surface), `/svg` (SSR and export) and `/engine` (every layout, hit test and draw-list builder; not covered by the stability promise).
 
 ## Multiplatform
 
 **Tier:** Shared — the same source runs on web, iOS and Android
 
-the engine is generated into the native runtimes and every chart component lowers to a native PyreonChartCanvas over the same draw list: `<Chart>` with its marks (desugared to `<PlotChart marks>`), the family components (Pie / Gauge / Funnel / Radar / Candlestick / Heatmap / Boxplot / Treemap / Sunburst / Tree / Sankey / Graph / Chord / River / Polar / SingleAxis / Gantt / Calendar / Parallel, and `<MapChart>` from a precomputed `GeoShape[]` — the map registry, raw GeoJSON and `geoShapes()` stay web and warn by name). Theme tokens (`chartThemes`, `palettes`) resolve at compile time and `<ChartThemeProvider mode>` is a compile-time scope. A literal `<OptionChart>` option (`/option`) lowers for the common families; a dynamic one warns. `<EChart>` (`/echarts`) wraps the ECharts library and stays web — keep it in a `<Web>` branch or host it through `/webview`
+the engine is generated into the native runtimes and every chart component lowers to a native PyreonChartCanvas over the same draw list: `<Chart>` with its marks (desugared to `<PlotChart marks>`), the family components (Pie / Gauge / Funnel / Radar / Candlestick / Heatmap / Boxplot / Treemap / Sunburst / Tree / Sankey / Graph / Chord / River / Polar / SingleAxis / Gantt / Calendar / Parallel, and `<MapChart>` from a precomputed `GeoShape[]` — the map registry, raw GeoJSON and `geoShapes()` stay web and warn by name). Theme tokens (`chartThemes`, `palettes`) resolve at compile time and `<ChartThemeProvider mode>` is a compile-time scope.
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 
@@ -27,7 +27,6 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - Canvas in the browser, SVG strings on a server (`@pyreon/charts/svg`), and native canvases on iOS and Android from the same source
 - Tree-shaking by construction: each mark and family is an imported binding, locked by CI import budgets
 - Theme tokens (`chartThemes`, `palettes`, `<ChartThemeProvider>`), formatters (`currency`, `percent`, `compact`), linked charts (`createChartLink`)
-- `@pyreon/charts/option` draws an ECharts option object on this engine; `@pyreon/charts/echarts` wraps the real ECharts library
 
 ## Complete example
 
@@ -80,14 +79,10 @@ rows.set([...rows(), { month: 'Apr', revenue: 190, target: 180 }])
 | [`RadarChart`](#radarchart) | component | Radar (spider) chart from `@pyreon/charts` — one polygon per datum over shared spokes. |
 | [`TreemapChart`](#treemapchart) | component | The hierarchy families of Pyreon's own engine share ONE data shape: `TreeNode { name, value?, children?, color? }`. |
 | [`MapChart`](#mapchart) | component | GeoJSON regions filled by value. |
-| [`optionToSvg`](#optiontosvg) | function | The ECharts option-compat facade: an ECharts-SHAPED option in, this engine out — cartesian series (line/bar/scatter/effe |
-| [`OptionChart`](#optionchart) | component | The ECharts-option-driven host: an ECharts-shaped option in (a value or an accessor), a live chart out. |
 | [`GanttChart`](#ganttchart) | component | The Gantt family — one row per task on a calendar-aligned time axis. |
 | [`createChartHandle`](#createcharthandle) | function | The imperative handle (ECharts `dispatchAction`) for ONE `<PlotChart handle>`: a link (`zoom`, `hover`) plus `selected`  |
 | [`createChartLink`](#createchartlink) | function | Linked charts (ECharts `connect`): a shared `{ zoom, hover }` pair of signals that every `<PlotChart link>` in a group u |
 | [`sonifyValues`](#sonifyvalues) | function | A series as sound: each value maps linearly to a pitch between `minHz` and `maxHz` (`valueToHz` — a FINITE value outside |
-| [`EChart`](#echart) | component | From `@pyreon/charts/echarts`: a wrapper around the ECharts LIBRARY (not the Pyreon engine), lazy-loaded so ECharts cost |
-| [`useChart`](#usechart) | hook | From `@pyreon/charts/echarts`. |
 
 ## API
 
@@ -246,7 +241,6 @@ const dark = signal(true) // <PyreonUI mode> sets the mode in a UI-system app
 
 - Hard-coding `color` on every mark to "theme" a dashboard — a mark with its own `color` keeps it forever; leave `color` off and set `theme.palette` once (the provider, or the `theme` prop)
 - Passing a hex list you maintain when a named set exists — `palette: palettes.observable10` is a reference the compiler also resolves on native; a copied list is a second copy to keep in sync
-- Expecting `registerTheme` themes to reach `<PlotChart>` — the registry feeds `compileOption` / `<OptionChart>`; the components resolve `<ChartThemeProvider>` → system scheme → `theme` prop
 - Passing `mode` to `<ChartThemeProvider>` — the mode is the framework-wide colour mode now: set it with `<PyreonUI mode>` or `<ColorModeProvider mode>` from @pyreon/core, so charts, the UI system and every other component agree
 - Pinning a reactive colour mode in shared multiplatform source and expecting the native build to follow it — only a literal `mode="light"` / `"dark"` is a compile-time scope on native; a reactive one warns and the charts below follow the platform scheme
 - Branching on the mode inside `theme={() => …}` to vary one token by mode — use `light={{ … }}` / `dark={{ … }}`: they are plain data, so they lower on native, where an accessor cannot
@@ -520,7 +514,7 @@ const repo: TreeNode[] = [
 - Reading colours as data — descendants inherit and TINT the top-level colour so nesting reads as nesting; set `color` per node only when it carries meaning
 - Passing a graph to `<TreeChart>` — a tree needs one parent per node; use `<GraphChart nodes links>` for arbitrary networks (its force layout is deterministic, seeded)
 
-**See also:** `PlotChart` · `optionToSvg`
+**See also:** `PlotChart`
 
 ---
 
@@ -558,75 +552,6 @@ const euShapes: GeoShape[] = geoShapes(euGeoJson)
 - Reaching for `registerMap` in SHARED multiplatform source — the registry is a module map no native target has, and neither raw GeoJSON nor `geoShapes()` crosses; pass a PRECOMPUTED `GeoShape[]` const (projected on the web or in a build step) and the warnings go away
 
 **See also:** `TreemapChart` · `Cell`
-
----
-
-### optionToSvg `function`
-
-```ts
-(option: EChartsOption, opts?: OptionToSvgOptions) => string
-```
-
-The ECharts option-compat facade: an ECharts-SHAPED option in, this engine out — cartesian series (line/bar/scatter/effectScatter/pictorialBar/lines/custom with `renderItem`), every family (pie, gauge, radar, candlestick, heatmap, funnel, boxplot, treemap, sunburst, tree, sankey, graph, chord, themeRiver, map), `coordinateSystem: 'polar' | 'geo' | 'singleAxis' | 'calendar'`, `dataset` with filter/sort transforms, `graphic`, `visualMap`, `markPoint` / `markLine`, title, legend, tooltip. `compileOption` returns the spec plus `warnings` — anything unmapped is NAMED (`option-key-unsupported`, `series-option-unsupported`, `series-type-unsupported`, `series-data-shape`, …), never dropped silently, and a gallery-shaped conformance corpus ratchets the clean pass-rate upward in CI. `{ theme, locale }` apply registered themes (`registerTheme`; light/dark built in) and Intl-backed locale packs (`registerLocale`).
-
-**Example**
-
-```tsx
-import { optionToSvg } from '@pyreon/charts/option'
-import { compileOption } from '@pyreon/charts/engine'
-import type { EChartsOption } from '@pyreon/charts/option'
-
-declare const echartsOption: EChartsOption
-const svg = optionToSvg(
-  { xAxis: { data: ['Mon', 'Tue'] }, yAxis: {}, series: [{ type: 'bar', data: [120, 200] }] },
-  { width: 640, height: 320, theme: 'dark', locale: 'de' },
-)
-const { spec, warnings } = compileOption(echartsOption)
-if (warnings.length > 0) console.warn(warnings.map((w) => w.code + ' @ ' + w.path))
-```
-
-**Common mistakes**
-
-- Treating an empty `warnings` array as "pixel-identical to ECharts" — it means every key MAPPED; styling details (ECharts default paddings, label placement) still differ
-- Ignoring `warnings` — a `series-type-unsupported` means a whole series is missing from the picture; log them in development
-- Passing `theme` in the OPTION — ECharts sets it on `init`, so the facade takes it in the second argument (`{ theme, locale }`)
-- Expecting `map` series to work without `registerMap` — an unregistered name warns by name and draws nothing
-- Using this for the interactive host — `optionToSvg` is the server/static path; mount `<PlotChart>` or a family component for pointer interaction
-
-**See also:** `PlotChart` · `chartToSvg` · `MapChart`
-
----
-
-### OptionChart `component`
-
-```ts
-(props: OptionChartProps) => VNode
-```
-
-The ECharts-option-driven host: an ECharts-shaped option in (a value or an accessor), a live chart out. Cartesian plans — single grid or multi-`grid` — paint on a canvas through the SAME `compiledCommands` that `optionToSvg` serialises, so the host and the server never disagree on a pixel; family plans (pie, sankey, treemap, map, …) mount that family's own interactive host, kept alive across option updates so an update TWEENS rather than remounting; SEVERAL charts in one option (two pies, a pie in the corner of a line chart, a gauge beside a radar, candlesticks on one grid and volume on another) are split into layers — the cartesian series on the canvas, series sharing a coordinate system together, every other family series as its own host placed by its `center` / `radius` or `left` / `top` / `width` / `height` box; boxplot and single-axis options still render as static SVG. It animates as ECharts does: an entrance (1000 ms `cubicOut` by default) and an update tween (300 ms `cubicInOut`), governed by the option's `animation`, `animationDuration` / `animationEasing` / `animationDelay`, their `…Update` twins and `animationThreshold`, on the option or a series, with ECharts' whole easing table. The option's `tooltip` component decides the tooltip: `trigger` (`item` / `axis`), a template (`{a}` `{b}` `{c}` `{d}`, indexed for an axis tooltip) or function `formatter` whose HTML renders through an allow-list, `valueFormatter`, `order`, every `position` form, `confine`, the look keys, `triggerOn`, `showDelay` / `hideDelay`, `alwaysShowContent`, `enterable`, and `tooltip.axisPointer` (`line`, `shadow`, `cross` with axis labels). A `timeline` steps on `autoPlay` or follows `timelineIndex`; `dataZoom`, the toolbox, brush and visualMap handles are interactive; `onSelect` hit-tests clicks against the painted geometry.
-
-**Example**
-
-```tsx
-import { OptionChart } from '@pyreon/charts/option'
-import type { EChartsOption } from '@pyreon/charts/option'
-import { signal } from '@pyreon/reactivity'
-
-const option = signal<EChartsOption>({ xAxis: { data: ['Mon', 'Tue'] }, yAxis: {}, series: [{ type: 'bar', data: [120, 200] }] })
-<OptionChart option={() => option()} width={640} height={320} theme="dark" onSelect={(hit) => hit && console.log(hit.name, hit.value)} />
-```
-
-**Common mistakes**
-
-- Passing the option as a plain object and expecting updates — a value is static; pass an accessor (`option={() => option()}`) so a signal write repaints
-- Reading `hit.dataIndex` as a ROW index on a multi-grid option — it is the index within the hit grid's series; the grid is implied by `seriesIndex`
-- Expecting a tooltip with no `tooltip` component in the option — as in ECharts, none shows; add `tooltip: {}` (or `trigger: 'axis'` for every series at a column), or pass the `tooltip` prop for the plain default box
-- Expecting the first frame to be the settled chart — option charts animate by default as ECharts does; set `animation: false` in the option for a static first paint (a browser test sampling pixels at mount needs it)
-- Returning HTML with scripts, handlers, links or images from a tooltip `formatter` — it renders through an allow-list (formatting tags and presentational inline styles only); everything else is dropped
-- Setting `timelineIndex` AND `timeline.autoPlay` — an explicit index wins and auto-play is suspended while it is set
-- Reaching for the canvas of a family option for hit-testing — families mount their own canvas hosts (`<PieChart>`, `<SankeyChart>`, …); use `onFamilySelect`
-
-**See also:** `optionToSvg` · `PlotChart` · `compileOption`
 
 ---
 
@@ -670,7 +595,7 @@ const tasks: GanttTask[] = [
 () => ChartHandle
 ```
 
-The imperative handle (ECharts `dispatchAction`) for ONE `<PlotChart handle>`: a link (`zoom`, `hover`) plus `selected` (pinned datums, GLOBAL indices) and `hidden` (series by mark index), and `dispatch(action)` over the ECharts vocabulary — `highlight` / `downplay` (VISIBLE-row index, the crosshair's space), `select` / `unselect` / `toggleSelect` (global datum), `legendSelect` / `legendUnselect` / `legendToggle` (series), `dataZoom` (fractions; a full window reads back as null), `restore` (clears all four), `showTip` / `hideTip` (the crosshair datum), `legendAllSelect` and `legendInverseSelect` (over the bound chart's `seriesCount`, which the chart keeps on the handle), `takeGlobalCursor` (arm the area brush with a type) and `brush` (set or clear its areas), and `timelineChange` / `timelinePlayChange` for an `<OptionChart handle>`, which also binds its zoom, hover, pins and brush. One pure reducer (`applyChartAction`) runs every dispatch, and it crosses: on iOS and Android `createChartHandle()` lowers to a `PyreonChartHandle`, the bound chart reads and writes its fields, and `handle.dispatch({ ... })` with an inline action object lowers too. Every dispatch is one batch, so the chart repaints once. The signals ARE the chart's state: `handle.selected()` reads the chart, and the change callbacks (`onSelectChange` / `onHighlight` / `onLegendChange` / `onZoom`) fire for a dispatch exactly as for a pointer; `onClick` / `onDoubleClick` / `onContextMenu` report the datum under the pointer (-1 for a miss) whatever `selectedMode` says, and `onRendered` follows each paint. A handle is also a link — pass it as `link` to sibling charts to connect them.
+The imperative handle (ECharts `dispatchAction`) for ONE `<PlotChart handle>`: a link (`zoom`, `hover`) plus `selected` (pinned datums, GLOBAL indices) and `hidden` (series by mark index), and `dispatch(action)` over the ECharts vocabulary — `highlight` / `downplay` (VISIBLE-row index, the crosshair's space), `select` / `unselect` / `toggleSelect` (global datum), `legendSelect` / `legendUnselect` / `legendToggle` (series), `dataZoom` (fractions; a full window reads back as null), `restore` (clears all four), `showTip` / `hideTip` (the crosshair datum), `legendAllSelect` and `legendInverseSelect` (over the bound chart's `seriesCount`, which the chart keeps on the handle), `takeGlobalCursor` (arm the area brush with a type) and `brush` (set or clear its areas). One pure reducer (`applyChartAction`) runs every dispatch, and it crosses: on iOS and Android `createChartHandle()` lowers to a `PyreonChartHandle`, the bound chart reads and writes its fields, and `handle.dispatch({ ... })` with an inline action object lowers too. Every dispatch is one batch, so the chart repaints once. The signals ARE the chart's state: `handle.selected()` reads the chart, and the change callbacks (`onSelectChange` / `onHighlight` / `onLegendChange` / `onZoom`) fire for a dispatch exactly as for a pointer; `onClick` / `onDoubleClick` / `onContextMenu` report the datum under the pointer (-1 for a miss) whatever `selectedMode` says, and `onRendered` follows each paint. A handle is also a link — pass it as `link` to sibling charts to connect them.
 
 **Example**
 
@@ -763,90 +688,8 @@ const sound = sonifyValues(closes, { duration: 3000, minHz: 220, maxHz: 880, lin
 
 ---
 
-### EChart `component`
-
-```ts
-(props: EChartProps) => VNodeChild
-```
-
-From `@pyreon/charts/echarts`: a wrapper around the ECharts LIBRARY (not the Pyreon engine), lazy-loaded so ECharts costs nothing until it renders. Declarative chart component that wraps `useChart` internally. Accepts `options` (reactive function), `style`/`class` for the container, and event handlers. `onEvents` binds ANY ECharts event by name (`legendselectchanged`, `datazoom`, `finished`, …), with `onClick`/`onMouseover`/`onMouseout` as shorthands — binding is leak-safe (handler changes swap listeners, all removed on unmount). `showLoading` reactively toggles the ECharts loading overlay. Renders a div with the chart — auto-resizes and cleans up on unmount. Simpler than useChart for most use cases.
-
-**Example**
-
-```tsx
-<EChart
-  options={() => ({
-    legend: {},
-    series: [{ type: 'pie', data: [{ value: 60, name: 'A' }, { value: 40, name: 'B' }] }],
-  })}
-  style="height: 300px"
-  showLoading={isFetching()}
-  onEvents={{
-    legendselectchanged: (p) => console.log('toggled', p.name),
-    datazoom: (_p, instance) => syncOtherChart(instance.getOption()),
-  }}
-/>
-```
-
-**Common mistakes**
-
-- Missing style height on `<EChart>` — same as useChart, ECharts requires explicit container dimensions
-- Passing a static options object — wrap in `() => ({...})` so signal reads inside are tracked reactively
-- Using onClick/onMouseover/onMouseout for a non-mouse event — those are only shorthands; reach for the general `onEvents` map (e.g. `onEvents={{ legendselectchanged: fn }}`) for any other ECharts event
-- Passing `theme` as a plain VALUE and expecting runtime swaps — a value is applied once at init; pass an ACCESSOR (`theme: () => (dark() ? 'dark' : null)`) and a flip disposes + re-inits with the option, group, and events preserved
-- Relying on the default merge when data shrinks — a signal change that removes a series/point leaves the old one; pass `notMerge` or `replaceMerge="series"`
-
-**See also:** `useChart` · `OptionChart`
-
----
-
-### useChart `hook`
-
-```ts
-<TOption extends EChartsOption = EChartsOption>(optionsFn: () => TOption, config?: UseChartConfig) => UseChartResult
-```
-
-From `@pyreon/charts/echarts`. Create a reactive ECharts instance. Options are passed as a function — signal reads inside are tracked and the chart updates automatically when any tracked signal changes. Lazy-loads the required ECharts modules on first render (zero bytes until mount). Returns `ref` (bind to a container div), `instance` (Signal&lt;ECharts | null&gt;), `loading` (Signal&lt;boolean&gt;), `error` (Signal&lt;Error | null&gt;), and `resize()`. Auto-resizes via ResizeObserver (`autoresize: false | { throttle }` to opt out/throttle) and disposes on unmount. `theme` accepts an accessor for reactive swaps; `initOptions` passes through to `core.init`; warm mounts (modules cached) are synchronous. `getCore()`/`connect()` are exported for `registerMap`/`registerTheme`/linked charts.
-
-**Example**
-
-```tsx
-const chart = useChart(() => ({
-  xAxis: { type: 'category', data: months() },
-  yAxis: { type: 'value' },
-  series: [{ type: 'bar', data: revenue() }],
-}))
-
-<div ref={chart.ref} style="height: 400px" />
-// chart.loading() — true until ECharts modules loaded + chart initialized
-// chart.instance() — raw ECharts instance for imperative API
-```
-
-**Common mistakes**
-
-- Forgetting to set a height on the container div — ECharts requires explicit dimensions, it does not auto-size to content
-- Passing options as a plain object instead of a function — signal reads are not tracked and the chart never updates
-- Reading chart.instance() immediately after useChart — the instance is null until the async module load completes; check chart.loading() first
-- Calling chart.resize() during SSR — useChart is browser-only; the hook no-ops safely on the server but resize is meaningless
-
-**See also:** `EChart`
-
----
-
 ## Package-level notes
 
-> **Which entry:** `@pyreon/charts` is the stable surface: `<Chart>`, its marks, the family components, formatters, theme and linking. `/svg` renders charts to SVG strings with no DOM. `/option` draws an ECharts option object on this engine (`<OptionChart>`, `optionToSvg`). `/echarts` wraps the real ECharts library (`<EChart>`, `useChart`) and is the only entry that pulls ECharts in. `/engine` exports every layout, hit test and draw-list builder for building on the engine, and is not covered by the stability promise.
-
-> **&lt;EChart&gt;: tslib Vite alias:** ECharts imports `tslib` whose ESM `./modules/index.js` entry destructures named helpers from a `__toESM(require_tslib())` default — the helpers live as top-level vars on the CJS factory, so the destructure reads `undefined` and the page throws `TypeError: Cannot destructure property "__extends"` the moment ECharts loads. Use `chartsViteAlias()` from `@pyreon/charts/echarts/vite` in your `vite.config.ts` (`resolve: { alias: { ...chartsViteAlias() } }`); it resolves `tslib` to the flat-ESM `tslib.es6.js` across install layouts. Browser tests use `tslibBrowserAlias()` from the shared test config. Tracking upstream: microsoft/tslib#189.
-
-> **Note:** `<EChart>` / `useChart` options must be a FUNCTION `() => EChartsOption`, not a plain object. Signal reads inside the function are tracked — changing any tracked signal reactively updates the chart.
-
-> **&lt;EChart&gt;: lazy loading:** ECharts modules are auto-detected from your options (series types, components) and dynamically imported. First render has an async loading phase — check `loading()`, or `<EChart>` handles it internally. Zero ECharts bytes in your initial bundle.
-
-> **&lt;EChart&gt;: manual entry:** `@pyreon/charts/echarts/manual` skips auto-detection — you register ECharts components yourself via `use()` for maximum tree-shaking control.
-
-> **&lt;EChart&gt;: events:** `onEvents` is the general handler map — any ECharts event by name (`legendselectchanged`, `datazoom`, `brushselected`, `finished`, …); each handler gets `(params, instance)`. `onClick`/`onMouseover`/`onMouseout` are shorthands merged in (they WIN on a key collision). Binding is leak-safe: a changed handler swaps the listener (no pile-up) and all are removed on unmount.
+> **Which entry:** `@pyreon/charts` is the stable surface: `<Chart>`, its marks, the family components, formatters, theme and linking. `/svg` renders charts to SVG strings with no DOM. `/engine` exports every layout, hit test and draw-list builder for building on the engine, and is not covered by the stability promise.
 
 > **A non-finite value is a GAP, everywhere:** In `@pyreon/charts`, NaN AND Infinity are gaps: they are dropped from every domain (`extent`, the auto axis, the parallel/calendar/boxplot/histogram domains), draw as nothing (a zero-height bar at the zero line, a break in a line, an absent parallel segment), are absent from the tooltip and the accessible table, and are silence in `sonifyValues`. `makeTicks` returns ZERO ticks for a non-finite BOUND rather than a thousand NaN labels. `isFiniteNumber` is the engine's predicate and is exported — it is written in the native subset (`v === v && v - v === 0`) because `Number.isFinite` has no lowering inside the crossing engine, and it is what a custom mark or family should use so its gaps match the built-ins'.
-
-> **&lt;EChart&gt;: theme is not reactive:** Reactive theme: pass `theme` as an ACCESSOR (`() => (dark() ? 'dark' : null)`) — a flip disposes + re-inits with the current option/group/events preserved (ECharts has no in-place swap; dispose+re-init is the mechanism, as in vue-echarts). A plain value stays static. For map charts, `await getCore()` then `core.registerMap(...)` BEFORE rendering a `map` series.

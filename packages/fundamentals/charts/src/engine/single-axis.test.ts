@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { hitSingleAxis, layoutSingleAxis, renderSingleAxis } from './single-axis'
 import { singleAxisTip } from './chrome'
 import { singleAxisToSvg } from './single-axis-web'
-import { compileFamily, familyToSvg, isFamilyOption } from './option-family'
 
 const box = { x: 0, y: 0, w: 400, h: 100 }
 
@@ -48,44 +47,7 @@ describe('single axis', () => {
   })
 })
 
-describe('singleAxis option mapping', () => {
-  it('scatter on coordinateSystem singleAxis lowers the axis, sizes, names and colours', () => {
-    const option = {
-      singleAxis: { type: 'category', data: ['Mon', 'Tue', 'Wed'], name: 'Day' },
-      series: [{ type: 'scatter', coordinateSystem: 'singleAxis', symbolSize: 12, label: { show: true }, itemStyle: { color: '#123456' }, data: [[0, 5], { name: 'big', value: [2, 20] }, 'junk'] }],
-    }
-    expect(isFamilyOption(option)).toBe(true)
-    const f = compileFamily(option)!
-    if (f.plan.kind !== 'singleAxis') throw new Error('kind')
-    expect(f.plan.axis).toEqual({ type: 'category', categories: ['Mon', 'Tue', 'Wed'], name: 'Day' })
-    expect(f.plan.points).toEqual([{ x: 0, size: 5 }, { x: 2, size: 20, name: 'big' }])
-    expect(f.plan.options).toMatchObject({ radius: 6, showLabels: true, color: '#123456' })
-    expect(f.warnings.map((w) => w.code)).toEqual(['series-data-shape'])
-    expect(familyToSvg(f.plan)).toContain('<circle')
-    const value = compileFamily({ singleAxis: { type: 'value', min: 0, max: 10 }, series: [{ type: 'scatter', coordinateSystem: 'singleAxis', data: [3, 7] }] })!
-    if (value.plan.kind !== 'singleAxis') throw new Error('kind')
-    expect(value.plan.axis.domain).toEqual({ min: 0, max: 10 })
-    expect(value.plan.points.map((p) => p.x)).toEqual([3, 7])
-    const bad = compileFamily({ singleAxis: {}, series: [{ type: 'bar', coordinateSystem: 'singleAxis', data: [1] }] })!
-    expect(bad.warnings.map((w) => w.code)).toContain('series-type-unsupported')
-  })
-})
 
-describe('single axis — routing by ECharts contract', () => {
-  it("a theme river declared with coordinateSystem 'singleAxis' (ECharts' required spelling) is a theme river, not a skipped scatter", () => {
-    const r = compileFamily({ singleAxis: { type: 'time' }, series: [{ type: 'themeRiver', coordinateSystem: 'singleAxis', data: [['2024-01-01', 1, 'a'], ['2024-01-02', 2, 'a']] }] })!
-    expect(r.warnings).toEqual([])
-    expect(r.plan.kind).toBe('themeRiver')
-  })
-  it('effectScatter is a scatter on the axis; a series ECharts itself cannot place there warns by name', () => {
-    const ok = compileFamily({ singleAxis: { type: 'value' }, series: [{ type: 'effectScatter', coordinateSystem: 'singleAxis', data: [1, 2] }] })!
-    expect(ok.warnings).toEqual([])
-    expect(ok.plan.kind).toBe('singleAxis')
-    const bar = compileFamily({ singleAxis: { type: 'value' }, series: [{ type: 'bar', coordinateSystem: 'singleAxis', data: [1] }] })!
-    expect(bar.warnings.map((w) => w.code + '@' + w.path)).toEqual(['series-type-unsupported@series[0].type'])
-    expect(bar.warnings[0]!.message).toContain('ECharts allows no other series there')
-  })
-})
 
 describe('singleAxisTip — what the pointer reads off a point', () => {
   const points = [{ x: 1, name: 'a' }, { x: 8, name: 'b' }, { x: 4 }]

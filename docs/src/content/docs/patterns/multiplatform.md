@@ -100,7 +100,7 @@ Native-ported: reactivity, the 15 primitives, `store`, `machine`, `state-tree`, 
 
 ## Web-only packages — only via a `<WebView>` bridge
 
-These can NOT be native-rendered (they're bound to canvas/DOM/vendors): **`@pyreon/charts`**'s ECharts facade (`<Chart>` / `<OptionChart>` — its `@pyreon/charts/plot` engine renders natively), **`@pyreon/code`** (CodeMirror), **`@pyreon/dnd`**, **`@pyreon/document`**, **`@pyreon/query`**, **`@pyreon/table`/`virtual`**, and the whole CSS-in-JS UI stack (`elements`/`styler`/`rocketstyle`/`coolgrid`/`kinetic`).
+These can NOT be native-rendered (they're bound to canvas/DOM/vendors): **`@pyreon/code`** (CodeMirror), **`@pyreon/dnd`**, **`@pyreon/document`**, **`@pyreon/query`**, **`@pyreon/table`/`virtual`**, and the whole CSS-in-JS UI stack (`elements`/`styler`/`rocketstyle`/`coolgrid`/`kinetic`).
 
 You CAN still use them — host the web component in a **`<WebView>`** (a real browser engine) with the bidirectional bridge:
 

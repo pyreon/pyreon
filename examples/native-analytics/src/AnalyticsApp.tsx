@@ -14,8 +14,9 @@
 //   Lowers correctly per target (Swift `reduce(init, cb)`, Kotlin
 //   `fold(init, cb)`).
 // - **Heavy viz via the WebView host, BOTH bridge directions** — the
-//   chart is web-only-rich (`@pyreon/charts` / `@pyreon/flow` can't
-//   compile to native), so the escape-hatch primitives select per
+//   chart here is a hand-written web page standing in for any web-only-rich
+//   component (a DOM editor, a document preview), so the escape-hatch
+//   primitives select per
 //   platform: `<Web>` renders an inline chart, `<NativeIOS>` /
 //   `<NativeAndroid>` host the SAME web chart in a `<WebView>` (WKWebView
 //   / Android WebView). The chart is INTERACTIVE end-to-end:

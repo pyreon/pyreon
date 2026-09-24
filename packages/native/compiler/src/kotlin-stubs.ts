@@ -988,13 +988,6 @@ fun PyreonLink(to: String, content: @Composable (navigate: () -> Unit) -> Unit) 
 @Composable
 @Suppress("UNUSED_PARAMETER")
 fun PyreonWebView(html: String? = null, src: String? = null, data: String? = null, onMessage: ((String) -> Unit)? = null, modifier: Modifier = Modifier) {}
-data class PyreonChartWebViewSelection(val name: String? = null)
-data class PyreonChartWebViewEvent(val name: String, val payload: Map<String, Any?> = emptyMap())
-data class PyreonChartWebViewError(val message: String)
-@Suppress("UNUSED_PARAMETER")
-fun pyreonChartWebViewData(option: String, commands: String, loading: Boolean, loadingOptions: String, group: String? = null): String = option
-@Suppress("UNUSED_PARAMETER")
-fun pyreonDispatchChartWebViewMessage(message: String, onSelect: ((PyreonChartWebViewSelection) -> Unit)? = null, onEvent: ((PyreonChartWebViewEvent) -> Unit)? = null, onError: ((PyreonChartWebViewError) -> Unit)? = null) {}
 data class PyreonFlowWebViewSelection(val id: String, val data: Any? = null)
 data class PyreonFlowWebViewViewport(val x: Double, val y: Double, val zoom: Double)
 data class PyreonFlowWebViewEvent(val type: String, val id: String? = null, val data: Any? = null, val source: String? = null, val target: String? = null, val viewport: PyreonFlowWebViewViewport? = null)
@@ -2522,8 +2515,6 @@ class PyreonChartHandle {
   var seriesCount: Int = 0
   var brushType: String = ""
   var areas: List<BrushArea> = listOf()
-  var step: Int = -1
-  var playing: Boolean = false
   fun dispatch(action: ChartActionInput) {}
 }
 `

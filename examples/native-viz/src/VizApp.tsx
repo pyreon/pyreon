@@ -3,33 +3,30 @@
 //
 // EXHAUSTIVE MULTIPLATFORM VIZ — ONE `.tsx` -> web + iOS + Android.
 //
-// The proof that `@pyreon/charts` + `@pyreon/flow` + `@pyreon/code` +
-// `@pyreon/rich-text` — web-only-rich UI that CANNOT compile to
-// SwiftUI/Compose — nonetheless work on every target via the `<WebView>` bridge
+// The proof that `@pyreon/flow` + `@pyreon/code` + `@pyreon/rich-text` —
+// web-only-rich UI that CANNOT compile to SwiftUI/Compose — nonetheless work on every target via the `<WebView>` bridge
 // and the reusable HOSTS from each package's `/webview` subpath. `<WebView>`
 // compiles to a WKWebView (iOS), an Android WebView, and an `<iframe srcdoc>`
 // (web) — SAME bridge everywhere:
 //
 //   - FORWARD: `data={option()/graph()/{value}/{content}}` pushes live signal
 //     data INTO the page (`window.__pyreonData` + a `pyreondata` event) with NO
-//     reload; the chart / diagram / editor re-renders in place.
-//   - REVERSE: tapping a chart bar / flow node, or editing the code / rich-text
+//     reload; the diagram / editor re-renders in place.
+//   - REVERSE: tapping a flow node, or editing the code / rich-text
 //     editor, calls `window.pyreonPostMessage` -> the `onMessage` closure,
 //     driving the native `selected` label / source signals.
+// (Charts need no WebView: `@pyreon/charts` draws natively on every target.)
 //
-// FROM ONE SOURCE: 21 ECharts chart types + a FLOW pipeline diagram + a REAL
-// CodeMirror code editor + a REAL TipTap WYSIWYG. Data is a signal; bump it and
-// every surface follows; edit an editor and the native source signal follows.
+// FROM ONE SOURCE: a FLOW pipeline diagram + a REAL CodeMirror code editor + a
+// REAL TipTap WYSIWYG. Data is a signal; bump it and every surface follows;
+// edit an editor and the native source signal follows.
 //
-// THE HOSTS. `CHART_HOST` / `CODE_HOST` / `RICHTEXT_HOST` below are GENERATED
+// THE HOSTS. `CODE_HOST` / `RICHTEXT_HOST` below are GENERATED
 // by each package's host builder (regenerate: `bun
 // scripts/gen-hosts.ts`). They are LOCAL consts because PMTC const-ref
 // resolution inlines a local literal into the native `PyreonWebView(html:)`
-// call (an imported const stays an unresolved reference). CHART_HOST uses the
-// ECharts CDN (small, dev/web); a shipping native app passes its BUNDLED
-// echarts to `buildChartHostHtml({ echartsScript })` for an offline,
-// App-Store-safe page. FlowWebView embeds its own self-contained host. CODE_HOST
-// / RICHTEXT_HOST load the app-bundled editor globals (`window.CM` / `window.TT`)
+// call (an imported const stays an unresolved reference). FlowWebView embeds
+// its own self-contained host. CODE_HOST / RICHTEXT_HOST load the app-bundled editor globals (`window.CM` / `window.TT`)
 // via `<script src="./assets/{cm,tt}.js">` — produce those with `bun
 // scripts/gen-editors.ts` (a shipping app inlines the bundle via the
 // `codemirrorScript` / `tiptapScript` option instead — offline, App-Store-safe).
@@ -37,9 +34,6 @@
 import { Stack, Text, Heading, WebView } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'
 import { FlowWebView } from '@pyreon/flow/webview'
-
-const CHART_HOST = "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1\"><style>html,body{margin:0;padding:0;height:100%;width:100%;background:transparent}#pyreon-chart{height:100%;width:100%}</style></head><body><div id=\"pyreon-chart\"></div><script src=\"https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js\"></script><script>\n(function () {\n  function pyreonReportHostError(msg) {\n    /* Tell the HOST, not just this page. Setting a window flag and returning\n       left every target showing a blank frame forever, with the diagnosis\n       stranded inside the very frame nobody can read from. The reverse bridge\n       is already here for ordinary events; a failure is the one message that\n       most needs it.\n\n       RETRIES, because the host installs pyreonPostMessage on load and this\n       can run first: the page's own script executes at parse time. Reporting\n       once and giving up put the message back where it started, nowhere. */\n    var left = 120;\n    (function attempt() {\n      try {\n        if (typeof window.pyreonPostMessage === 'function') {\n          window.pyreonPostMessage(JSON.stringify({ error: msg }));\n          return;\n        }\n      } catch (e) { return; }\n      if (--left > 0) setTimeout(attempt, 16);\n    })();\n  }\n  try {\n  if (typeof echarts === 'undefined') { window.__pyreonChartError = 'echarts undefined'; pyreonReportHostError(window.__pyreonChartError); return; }\n  var el = document.getElementById('pyreon-chart');\n  var chart = echarts.init(el, null, { renderer: 'canvas' });\n\n  var lastSig = null, rafId = 0, lastLoading = null, lastLoadingOptions = null;\n  var lastGroup = null, relaying = false;\n  var completedCommands = Object.create(null), completedCommandKeys = [];\n  function seriesSig(opt) {\n    var s = opt.series;\n    if (Object.prototype.toString.call(s) === '[object Array]') {\n      var out = s.length + '|';\n      for (var i = 0; i < s.length; i++) out += (s[i] && s[i].type) + ',';\n      return out;\n    }\n    if (s && typeof s === 'object') return '1|' + s.type;\n    return '0|';\n  }\n  function doApply() {\n    rafId = 0;\n    var input = window.__pyreonData;\n    // The bridge may deliver the option as an already-parsed object (web:\n    // contentWindow.__pyreonData = value) or, defensively, as a JSON string.\n    if (typeof input === 'string') { try { input = JSON.parse(input); } catch (e) { return; } }\n    var isEnvelope = input && input.__pyreonChartHost === 1;\n    var opt = isEnvelope ? input.option : input;\n    if (!opt || typeof opt !== 'object') return;\n    var sig = seriesSig(opt);\n    // PERF: same series structure → MERGE (ECharts diffs + animates the data\n    // change — far cheaper than a teardown+rebuild); structure CHANGED (series\n    // added/removed/retyped) → full replace (notMerge) for correctness.\n    chart.setOption(opt, sig !== lastSig);\n    lastSig = sig;\n    // Connected group: mirrors echarts.connect() — each hosted page is its own\n    // realm, so the engine's own connect() can never see a sibling host. The\n    // page joins the engine group locally (honest for a multi-chart host page)\n    // AND the <WebView> HOST GROUP of the same name; the host fans the action\n    // classes connect() mirrors into every sibling host of that group.\n    var group = isEnvelope && typeof input.group === 'string' && input.group !== '' ? input.group : null;\n    if (group !== lastGroup) {\n      if (lastGroup !== null) { try { echarts.disconnect(lastGroup); } catch (e) {} }\n      chart.group = group === null ? undefined : group;\n      if (group !== null) { try { echarts.connect(group); } catch (e) {} }\n      lastGroup = group;\n      if (typeof window.pyreonPostMessage === 'function') {\n        try {\n          window.pyreonPostMessage(JSON.stringify(group === null\n            ? { __pyreonWebViewGroup: 1, leave: true }\n            : { __pyreonWebViewGroup: 1, join: group }));\n        } catch (e) {}\n      }\n    }\n    var commands = isEnvelope && Object.prototype.toString.call(input.commands) === '[object Array]' ? input.commands : [];\n    for (var c = 0; c < commands.length; c++) {\n      var command = commands[c];\n      if (!command || (typeof command.id !== 'string' && typeof command.id !== 'number') || typeof command.type !== 'string') continue;\n      var commandKey = typeof command.id + ':' + command.id;\n      if (completedCommands[commandKey]) continue;\n      try {\n        chart.dispatchAction(command);\n        completedCommands[commandKey] = true;\n        completedCommandKeys.push(commandKey);\n        if (completedCommandKeys.length > 1024) delete completedCommands[completedCommandKeys.shift()];\n      } catch (e) { pyreonReportHostError(String(e && e.stack || e)); }\n    }\n    if (isEnvelope && input.loading) {\n      var visible = input.loading.visible === true;\n      var loadingOptions = input.loading.options && typeof input.loading.options === 'object' ? input.loading.options : {};\n      var loadingOptionsSig = '';\n      try { loadingOptionsSig = JSON.stringify(loadingOptions); } catch (e) {}\n      if (visible !== lastLoading || (visible && loadingOptionsSig !== lastLoadingOptions)) {\n        if (visible) chart.showLoading('default', loadingOptions);\n        else chart.hideLoading();\n        lastLoading = visible;\n        lastLoadingOptions = loadingOptionsSig;\n      }\n    }\n  }\n  // PERF: coalesce a burst of pushes (a signal updating several times before a\n  // frame) into ONE setOption per frame — aligns work to the display and never\n  // renders a value the user won't see.\n  function apply() {\n    if (rafId) return;\n    if (typeof requestAnimationFrame === 'function') rafId = requestAnimationFrame(doApply);\n    else doApply();\n  }\n\n  chart.on('click', function (p) {\n    if (typeof window.pyreonPostMessage !== 'function') return;\n    // Serialize only the JSON-safe fields — the raw event carries engine refs.\n    var payload = {\n      seriesName: p && p.seriesName,\n      seriesIndex: p && p.seriesIndex,\n      name: p && p.name,\n      dataIndex: p && p.dataIndex,\n      value: p && p.value,\n      componentType: p && p.componentType\n    };\n    try { window.pyreonPostMessage(JSON.stringify(payload)); } catch (e) {}\n  });\n\n  function eventPayload(p) {\n    var payload = {};\n    if (!p || typeof p !== 'object') return payload;\n    for (var key in p) {\n      if (!Object.prototype.hasOwnProperty.call(p, key) || key === 'event') continue;\n      try { payload[key] = JSON.parse(JSON.stringify(p[key])); } catch (e) {}\n    }\n    return payload;\n  }\n  var forwardedEvents = [];\n  for (var eventIndex = 0; eventIndex < forwardedEvents.length; eventIndex++) {\n    (function (eventName) {\n      chart.on(eventName, function (p) {\n        if (typeof window.pyreonPostMessage !== 'function') return;\n        try { window.pyreonPostMessage(JSON.stringify({ __pyreonChartEvent: 1, name: eventName, payload: eventPayload(p) })); } catch (e) {}\n      });\n    })(forwardedEvents[eventIndex]);\n  }\n\n  // Outbound half of the connected group. The mirrored set is the one\n  // echarts.connect() shares: dataZoom, legend selection, highlight/downplay,\n  // and the data-anchored tooltip.\n  function groupAction(eventName, p) {\n    var a = null;\n    if (eventName === 'datazoom') a = pick({ type: 'dataZoom' }, p, ['batch', 'start', 'end', 'startValue', 'endValue', 'dataZoomIndex', 'dataZoomId']);\n    else if (eventName === 'legendselectchanged' || eventName === 'legendselected' || eventName === 'legendunselected') {\n      // A user legend tap is a TOGGLE (legendselectchanged); programmatic\n      // select/unselect actions raise the other two. All carry name + selected.\n      if (!p || typeof p.name !== 'string' || !p.selected) return null;\n      a = { type: p.selected[p.name] === false ? 'legendUnSelect' : 'legendSelect', name: p.name };\n    } else if (eventName === 'highlight' || eventName === 'downplay') a = pick({ type: eventName }, p, ['batch', 'seriesIndex', 'seriesId', 'seriesName', 'dataIndex', 'name']);\n    else if (eventName === 'showtip') a = pick({ type: 'showTip' }, p, ['seriesIndex', 'dataIndex', 'name', 'position']);\n    else if (eventName === 'hidetip') a = { type: 'hideTip' };\n    return a;\n  }\n  function pick(target, source, keys) {\n    if (!source || typeof source !== 'object') return target;\n    for (var k = 0; k < keys.length; k++) {\n      var v = source[keys[k]];\n      if (v === undefined || v === null) continue;\n      try { target[keys[k]] = JSON.parse(JSON.stringify(v)); } catch (e) {}\n    }\n    return target;\n  }\n  var groupEvents = ['datazoom', 'legendselectchanged', 'legendselected', 'legendunselected', 'highlight', 'downplay', 'showtip', 'hidetip'];\n  for (var groupIndex = 0; groupIndex < groupEvents.length; groupIndex++) {\n    (function (eventName) {\n      chart.on(eventName, function (p) {\n        if (lastGroup === null || relaying || (p && p.__pyreonGroupRelay === true)) return;\n        if (typeof window.pyreonPostMessage !== 'function') return;\n        var action = groupAction(eventName, p);\n        if (!action) return;\n        action.__pyreonGroupRelay = true;\n        try { window.pyreonPostMessage(JSON.stringify({ __pyreonWebViewGroup: 1, group: lastGroup, message: JSON.stringify(action) })); } catch (e) {}\n      });\n    })(groupEvents[groupIndex]);\n  }\n  // Inbound half: a sibling host's mirrored action, delivered by the <WebView>\n  // host through the page-level relay entry point. The relaying flag keeps the\n  // dispatch's own events from echoing back out.\n  window.__pyreonWebViewGroupMessage = function (message) {\n    var action = null;\n    try { action = JSON.parse(message); } catch (e) { return; }\n    if (!action || typeof action.type !== 'string') return;\n    relaying = true;\n    try { chart.dispatchAction(action); } catch (e) {} finally { relaying = false; }\n  };\n\n  window.addEventListener('pyreondata', apply);\n  window.addEventListener('resize', function () { chart.resize(); });\n  // Observe the container's OWN size — a native host (or an iframe) sizing the\n  // page AFTER load doesn't fire a window 'resize' inside it, so without this\n  // a chart inited at 0-size (common: the host lays out after the page boots)\n  // would never render. Covers device rotation + layout changes too.\n  if (typeof ResizeObserver !== 'undefined') {\n    new ResizeObserver(function () { chart.resize(); }).observe(el);\n  }\n  apply();\n  } catch (e) {\n    window.__pyreonChartError = String(e && e.stack || e);\n    pyreonReportHostError(window.__pyreonChartError);\n  }\n})();</script></body></html>"
-
 
 const CODE_HOST = "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1\"><style>html,body{margin:0;padding:0;height:100%;width:100%;background:transparent}#pyreon-code,.cm-editor{height:100%;width:100%}</style></head><body><div id=\"pyreon-code\"></div><script src=\"./assets/cm.js\"></script><script>\n(function () {\n  // Wait for window.CM — the app's bundled CodeMirror may load async (an\n  // external <script src>, or injected by the native host after page load).\n  function pyreonReportHostError(msg) {\n    /* Tell the HOST, not just this page. Setting a window flag and returning\n       left every target showing a blank frame forever, with the diagnosis\n       stranded inside the very frame nobody can read from. The reverse bridge\n       is already here for ordinary events; a failure is the one message that\n       most needs it.\n\n       RETRIES, because the host installs pyreonPostMessage on load and this\n       can run first: the page's own script executes at parse time. Reporting\n       once and giving up put the message back where it started, nowhere. */\n    var left = 120;\n    (function attempt() {\n      try {\n        if (typeof window.pyreonPostMessage === 'function') {\n          window.pyreonPostMessage(JSON.stringify({ error: msg }));\n          return;\n        }\n      } catch (e) { return; }\n      if (--left > 0) setTimeout(attempt, 16);\n    })();\n  }\n  var tries = 0;\n  function waitCM() {\n    if (window.CM) { boot(); return; }\n    if (++tries > 800) { window.__pyreonCodeError = 'window.CM not provided (timed out)'; pyreonReportHostError(window.__pyreonCodeError); return; }\n    setTimeout(waitCM, 10);\n  }\n  function boot() {\n  try {\n  var CM = window.CM;\n  var el = document.getElementById('pyreon-code');\n  var cur = { value: '', language: '', readOnly: false };\n  var langComp = new CM.Compartment();\n  var roComp = new CM.Compartment();\n  var view = new CM.EditorView({\n    parent: el,\n    state: CM.EditorState.create({\n      doc: '',\n      extensions: [\n        CM.basicSetup,\n        langComp.of([]),\n        roComp.of(CM.EditorState.readOnly.of(false)),\n        CM.EditorView.updateListener.of(function (u) {\n          if (!u.docChanged) return;\n          var v = u.state.doc.toString();\n          // Loop guard: skip the echo of a value WE pushed (cur.value set\n          // BEFORE dispatch below).\n          if (v === cur.value) return;\n          cur.value = v;\n          if (typeof window.pyreonPostMessage === 'function') {\n            try { window.pyreonPostMessage(JSON.stringify({ value: v })); } catch (e) {}\n          }\n        }),\n      ],\n    }),\n  });\n  function apply() {\n    var d = window.__pyreonData;\n    if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { return; } }\n    if (!d || typeof d !== 'object') return;\n    if (typeof d.value === 'string' && d.value !== cur.value) {\n      cur.value = d.value;\n      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: d.value } });\n    }\n    if (d.readOnly !== undefined && !!d.readOnly !== cur.readOnly) {\n      cur.readOnly = !!d.readOnly;\n      view.dispatch({ effects: roComp.reconfigure(CM.EditorState.readOnly.of(cur.readOnly)) });\n    }\n    if (d.language !== undefined && d.language !== cur.language && typeof CM.languageFor === 'function') {\n      cur.language = d.language;\n      view.dispatch({ effects: langComp.reconfigure(CM.languageFor(d.language) || []) });\n    }\n  }\n  window.addEventListener('pyreondata', apply);\n  apply();\n  } catch (e) { window.__pyreonCodeError = String(e && e.stack || e); }\n  }\n  waitCM();\n})();</script></body></html>"
 
@@ -49,12 +43,12 @@ const RICHTEXT_HOST = "<!doctype html><html><head><meta charset=\"utf-8\"><meta 
 type PMNode = { type: string; content?: PMNode[]; text?: string }
 
 export function VizApp() {
-  const selected = signal('Tap any chart element or flow node, or edit an editor')
+  const selected = signal('Tap a flow node, or edit an editor')
   // The code/rich-text editors are driven by these signals over the FORWARD
   // bridge (bump them and the hosted editor's document updates in place). The
   // REVERSE edit fires `onMessage` with the new value/JSON as a raw string —
   // here it just updates the `selected` label (native-clean: no JSON.parse,
-  // matching the chart/flow panels). To drive a TYPED native signal from an
+  // matching the flow panel). To drive a TYPED native signal from an
   // edit, use `<CodeWebView onChange>` / `<RichTextWebView onChange>` (they
   // parse the payload on web — see each package's /webview browser tests).
   const source = signal('function greet(name) {\n  return "Hello, " + name\n}')
@@ -66,79 +60,11 @@ export function VizApp() {
   // branch's array. `PMNode` supplies exactly the missing information: one node
   // type whose two shapes are optional fields.
   const doc = signal<PMNode>({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Edit me — this is a real TipTap editor in a WebView.' }] }] })
-  // One signal drives every data-driven chart — bump it and they all follow
-  // (the forward bridge). 21 chart types + a flow diagram, all in
-  // native WebViews from THIS one source.
-  const revenue = signal([120, 200, 150, 80, 70])
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
 
   return (
     <Stack gap={16}>
-      <Heading>Multiplatform viz — 21 charts + a flow + a code editor + a WYSIWYG, one source, three targets</Heading>
+      <Heading>Multiplatform viz — a flow + a code editor + a WYSIWYG, one source, three targets</Heading>
       <Text>{selected()}</Text>
-
-      <Text>Bar</Text>
-      <WebView html={CHART_HOST} data={{ xAxis: { type: 'category', data: days }, yAxis: {}, series: [{ type: 'bar', data: revenue() }] }} onMessage={(m) => selected.set('Bar: ' + m)} />
-
-      <Text>Bar (horizontal)</Text>
-      <WebView html={CHART_HOST} data={{ xAxis: {}, yAxis: { type: 'category', data: days }, series: [{ type: 'bar', data: revenue() }] }} onMessage={(m) => selected.set('Bar (horizontal): ' + m)} />
-
-      <Text>Bar (stacked)</Text>
-      <WebView html={CHART_HOST} data={{ xAxis: { type: 'category', data: days }, yAxis: {}, series: [{ type: 'bar', stack: 't', data: revenue() }, { type: 'bar', stack: 't', data: [20, 30, 40, 10, 25] }] }} onMessage={(m) => selected.set('Bar (stacked): ' + m)} />
-
-      <Text>Line</Text>
-      <WebView html={CHART_HOST} data={{ xAxis: { type: 'category', data: days }, yAxis: {}, series: [{ type: 'line', data: revenue() }] }} onMessage={(m) => selected.set('Line: ' + m)} />
-
-      <Text>Area</Text>
-      <WebView html={CHART_HOST} data={{ xAxis: { type: 'category', data: days }, yAxis: {}, series: [{ type: 'line', areaStyle: {}, data: revenue() }] }} onMessage={(m) => selected.set('Area: ' + m)} />
-
-      <Text>Line (smooth)</Text>
-      <WebView html={CHART_HOST} data={{ xAxis: { type: 'category', data: days }, yAxis: {}, series: [{ type: 'line', smooth: true, data: revenue() }] }} onMessage={(m) => selected.set('Line (smooth): ' + m)} />
-
-      <Text>Pie</Text>
-      <WebView html={CHART_HOST} data={{ series: [{ type: 'pie', radius: '65%', data: [{ name: 'Mon', value: revenue()[0] }, { name: 'Tue', value: revenue()[1] }, { name: 'Wed', value: revenue()[2] }, { name: 'Thu', value: revenue()[3] }, { name: 'Fri', value: revenue()[4] }] }] }} onMessage={(m) => selected.set('Pie: ' + m)} />
-
-      <Text>Doughnut</Text>
-      <WebView html={CHART_HOST} data={{ series: [{ type: 'pie', radius: ['40%', '70%'], data: [{ name: 'Mon', value: revenue()[0] }, { name: 'Tue', value: revenue()[1] }, { name: 'Wed', value: revenue()[2] }, { name: 'Thu', value: revenue()[3] }, { name: 'Fri', value: revenue()[4] }] }] }} onMessage={(m) => selected.set('Doughnut: ' + m)} />
-
-      <Text>Rose</Text>
-      <WebView html={CHART_HOST} data={{ series: [{ type: 'pie', roseType: 'area', radius: [10, 90], data: [{ name: 'Mon', value: revenue()[0] }, { name: 'Tue', value: revenue()[1] }, { name: 'Wed', value: revenue()[2] }, { name: 'Thu', value: revenue()[3] }, { name: 'Fri', value: revenue()[4] }] }] }} onMessage={(m) => selected.set('Rose: ' + m)} />
-
-      <Text>Scatter</Text>
-      <WebView html={CHART_HOST} data={{ xAxis: {}, yAxis: {}, series: [{ type: 'scatter', data: [[1, 2], [3, 4], [5, 3], [7, 6], [9, 8]] }] }} onMessage={(m) => selected.set('Scatter: ' + m)} />
-
-      <Text>Effect scatter</Text>
-      <WebView html={CHART_HOST} data={{ xAxis: {}, yAxis: {}, series: [{ type: 'effectScatter', data: [[2, 3], [5, 4], [8, 7]] }] }} onMessage={(m) => selected.set('Effect scatter: ' + m)} />
-
-      <Text>Radar</Text>
-      <WebView html={CHART_HOST} data={{ radar: { indicator: [{ name: 'Speed', max: 100 }, { name: 'Cost', max: 100 }, { name: 'Power', max: 100 }, { name: 'Range', max: 100 }] }, series: [{ type: 'radar', data: [{ value: [80, 60, 90, 40] }] }] }} onMessage={(m) => selected.set('Radar: ' + m)} />
-
-      <Text>Gauge</Text>
-      <WebView html={CHART_HOST} data={{ series: [{ type: 'gauge', max: 300, data: [{ value: revenue()[1] }] }] }} onMessage={(m) => selected.set('Gauge: ' + m)} />
-
-      <Text>Funnel</Text>
-      <WebView html={CHART_HOST} data={{ series: [{ type: 'funnel', data: [{ name: 'Mon', value: revenue()[0] }, { name: 'Tue', value: revenue()[1] }, { name: 'Wed', value: revenue()[2] }, { name: 'Thu', value: revenue()[3] }, { name: 'Fri', value: revenue()[4] }] }] }} onMessage={(m) => selected.set('Funnel: ' + m)} />
-
-      <Text>Heatmap</Text>
-      <WebView html={CHART_HOST} data={{ xAxis: { type: 'category', data: days }, yAxis: { type: 'category', data: ['x', 'y', 'z'] }, visualMap: { min: 0, max: 10, calculable: true }, series: [{ type: 'heatmap', data: [[0, 0, 5], [1, 1, 8], [2, 2, 3], [3, 0, 9]] }] }} onMessage={(m) => selected.set('Heatmap: ' + m)} />
-
-      <Text>Candlestick</Text>
-      <WebView html={CHART_HOST} data={{ xAxis: { type: 'category', data: days }, yAxis: {}, series: [{ type: 'candlestick', data: [[20, 34, 10, 38], [40, 35, 30, 50], [31, 38, 33, 44], [38, 15, 5, 42], [30, 20, 18, 40]] }] }} onMessage={(m) => selected.set('Candlestick: ' + m)} />
-
-      <Text>Sankey</Text>
-      <WebView html={CHART_HOST} data={{ series: [{ type: 'sankey', data: [{ name: 'Ingest' }, { name: 'Transform' }, { name: 'Store' }], links: [{ source: 'Ingest', target: 'Transform', value: 5 }, { source: 'Transform', target: 'Store', value: 3 }] }] }} onMessage={(m) => selected.set('Sankey: ' + m)} />
-
-      <Text>Graph</Text>
-      <WebView html={CHART_HOST} data={{ series: [{ type: 'graph', layout: 'force', data: [{ name: 'n1' }, { name: 'n2' }, { name: 'n3' }], links: [{ source: 'n1', target: 'n2' }, { source: 'n2', target: 'n3' }] }] }} onMessage={(m) => selected.set('Graph: ' + m)} />
-
-      <Text>Tree</Text>
-      <WebView html={CHART_HOST} data={{ series: [{ type: 'tree', data: [{ name: 'root', children: [{ name: 'a' }, { name: 'b', children: [{ name: 'c' }] }] }] }] }} onMessage={(m) => selected.set('Tree: ' + m)} />
-
-      <Text>Treemap</Text>
-      <WebView html={CHART_HOST} data={{ series: [{ type: 'treemap', data: [{ name: 'a', value: 10, children: [{ name: 'a1', value: 4 }, { name: 'a2', value: 6 }] }, { name: 'b', value: 8 }] }] }} onMessage={(m) => selected.set('Treemap: ' + m)} />
-
-      <Text>Sunburst</Text>
-      <WebView html={CHART_HOST} data={{ series: [{ type: 'sunburst', data: [{ name: 'a', children: [{ name: 'a1', value: 3 }, { name: 'a2', value: 5 }] }, { name: 'b', value: 4 }] }] }} onMessage={(m) => selected.set('Sunburst: ' + m)} />
 
       <Text>Pipeline — flow diagram</Text>
       <FlowWebView

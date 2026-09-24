@@ -2,7 +2,7 @@
 //
 // The registry is module-level on purpose: maps are static assets registered
 // once at startup (ECharts' registerMap shape), bounded by the app's map
-// count, and looked up by name from the option facade.
+// count, and looked up by name when a `<MapChart map>` names one.
 
 import { HEAT_RAMP, rampColor, visualOutside } from './heat'
 import { approxTextWidth } from './treemap'

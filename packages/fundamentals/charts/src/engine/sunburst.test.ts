@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { hitSunburst, layoutSunburst, renderSunburst, treeDepth } from './sunburst'
 import { sunburstToSvg } from './family-svg'
 import type { TreeNode } from './treemap'
-import { compileFamily, familyToSvg } from './option-family'
 
 const TAU = Math.PI * 2
 const tree: TreeNode[] = [
@@ -90,17 +89,3 @@ describe('sunburst layout', () => {
   })
 })
 
-describe('sunburst option mapping', () => {
-  it('nested ECharts data maps to TreeNodes; radius + sort + startAngle lower', () => {
-    const f = compileFamily({
-      series: [{ type: 'sunburst', radius: ['25%', '90%'], sort: null, startAngle: 90, data: [{ name: 'p', children: [{ name: 'x', value: 2 }] }, { name: 'q', value: 3 }] }],
-    })!
-    if (f.plan.kind !== 'sunburst') throw new Error('kind')
-    expect(f.plan.nodes[0]!.children![0]!.name).toBe('x')
-    expect(f.plan.innerRatio).toBeCloseTo(25 / 90, 9)
-    expect(f.plan.sunburst.sort).toBe('none')
-    expect(f.plan.sunburst.startAngle).toBeCloseTo(-Math.PI / 2, 9)
-    expect(f.warnings).toEqual([])
-    expect(familyToSvg(f.plan)).toContain('<polygon')
-  })
-})

@@ -7,7 +7,6 @@
 import { describe, expect, it } from 'vitest'
 import { chartTableRow, describeChart } from './a11y'
 import { currency, groupThousands, plain } from './format'
-import { axisNumber } from './option'
 import { makeTicks } from './scale'
 import { logViewTicks } from './scale-extra'
 import { tooltipLines } from './tooltip'
@@ -32,10 +31,6 @@ describe('grouped by default', () => {
     const input = { title: 'Revenue', categories: ['Apr', 'May'], series: [{ label: 'Revenue', values: [47000, 60000], kind: 'line' }] }
     expect(describeChart(input)).toContain('60,000')
     expect(chartTableRow(input, 1)).toContain('60,000')
-  })
-
-  it("the option facade's axis agrees with the engine's", () => {
-    for (const v of [0, 5, 999, 1000, 60000, -1234.5, 0.05, 1234567.25]) expect(axisNumber(v), String(v)).toBe(groupThousands(v))
   })
 
   it('an explicit format still wins', () => {

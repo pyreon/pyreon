@@ -6,7 +6,7 @@
 // requires explicit extensions for relative imports. TypeScript with
 // `moduleResolution: 'Bundler'` allows the `.ts` form to typecheck.
 export type { BrowserProviderFactory } from './browser.ts'
-export { defineBrowserConfig, resolveTslibEsmEntry, tslibBrowserAlias } from './browser.ts'
+export { defineBrowserConfig } from './browser.ts'
 export type { DefineNodeConfigOptions } from './node.ts'
 export { defineNodeConfig } from './node.ts'
 export type {
