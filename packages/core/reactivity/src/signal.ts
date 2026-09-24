@@ -503,18 +503,31 @@ export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
     _countSink.__pyreon_count__?.('reactivity.signalCreate')
   // The read function is the only per-signal closure.
   // It doubles as the SubscriberHost (_s property) for trackSubscriber.
-  const read = ((...args: unknown[]) => {
-    if (process.env.NODE_ENV !== 'production' && args.length > 0) {
-      // oxlint-disable-next-line no-console
-      console.warn(
-        '[Pyreon] signal() was called with an argument. ' +
-          'Use signal.set(value) or signal.update(fn) to write. ' +
-          'signal(value) only reads — the argument is ignored.',
-      )
-    }
-    trackSubscriber(read as SignalFn<T>)
-    return read._v
-  }) as unknown as SignalFn<T>
+  //
+  // Two declarations, chosen by the dev gate, rather than one `(...args)`
+  // closure with a dev-only warning inside: a bundler folds the warning branch
+  // away but NOT the rest parameter, so production shipped `(...e)=>` and every
+  // signal READ materialized an argument array it never looked at. The
+  // production arm takes no parameters at all.
+  const read = (
+    process.env.NODE_ENV !== 'production'
+      ? (...args: unknown[]) => {
+          if (args.length > 0) {
+            // oxlint-disable-next-line no-console
+            console.warn(
+              '[Pyreon] signal() was called with an argument. ' +
+                'Use signal.set(value) or signal.update(fn) to write. ' +
+                'signal(value) only reads — the argument is ignored.',
+            )
+          }
+          trackSubscriber(read as SignalFn<T>)
+          return read._v
+        }
+      : () => {
+          trackSubscriber(read as SignalFn<T>)
+          return read._v
+        }
+  ) as unknown as SignalFn<T>
 
   // Single setPrototypeOf instead of 6 per-instance method assignments.
   // All signals share SignalProto → monomorphic call sites for method dispatch.
