@@ -2,7 +2,8 @@
  * @pyreon/charts — charts on Pyreon's own engine, on the web, iOS and Android.
  *
  * `<Chart>` takes your rows and marks as children. Channels are field names,
- * typed against the row, so a typo is a compile error. Axes, palette,
+ * checked against the row: `<Chart<Row>>` checks its own, and a mark given the
+ * row type (`<Bar<Row> y="revenue">`) checks its own too. Axes, palette,
  * tooltip, the accessible data table and a spoken description come for free.
  *
  * @example
@@ -101,6 +102,9 @@ export type { TreeOptions } from './engine/tree'
 export type { BrushRange } from './engine/brush'
 export type { ZoomWindow } from './engine/zoom'
 export type { Double } from './engine/types'
+
+// Line and area curves — functions, so an unused one tree-shakes: `<Line y curve={smooth} />`.
+export { smooth, step } from './engine/curve'
 
 // Formatters: one value feeds the axis, the tooltip and the accessible table.
 export { compact, currency, fixed, percent, plain } from './engine/format'

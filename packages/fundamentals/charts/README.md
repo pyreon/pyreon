@@ -3,7 +3,8 @@
 Charts for Pyreon, on the web, iOS and Android.
 
 `<Chart>` takes your rows and marks as children. Channels are field names typed
-against the row, so a typo is a compile error. Axes, palette, tooltip, an
+against the row, so a typo is a compile error when the chart and its marks
+know the row type (`<Chart<Row>>`, `<Bar<Row> y="revenue">`). Axes, palette, tooltip, an
 accessible data table and a spoken description come without configuration. The
 geometry is pure TypeScript over a flat draw list, so the same source paints a
 canvas in the browser, serializes to SVG on a server, and draws natively on iOS
@@ -34,7 +35,10 @@ import { Axis, Bar, Legend, Line, Chart, Tooltip, currency } from '@pyreon/chart
 
 The same grammar covers the row-array families: `<Chart data={share}><Arc value="pct" label="browser" /></Chart>` is a pie or donut, `<Stage>` a funnel, `<Cell x y value>` a heatmap, `<Candle open high low close>` a candlestick — one family per plot, and `<Chart>` renders that host. `<Label text at="max" />` marks a datum, `<Rule x>` draws a vertical reference.
 
-Channels are field names (typed `keyof Row`) or accessors; marks are children
+Channels are field names or accessors. `<Chart<Row>>` checks its own channels
+against the row; a mark checks its field names when it is given the row type
+too (`<Bar<Row> y="revenue">`), since JSX cannot pass a type argument from a
+parent to its children. Marks are children
 and draw in order; `<Rule>` / `<Axis>` / `<Tooltip>` / `<Legend>` / `<Zoom>` declare
 the rest as data. `color="region"` pivots long-format rows into one series per
 value. The `<PlotChart marks={[bars(…)]}>` array form is the same spec and stays
@@ -47,17 +51,13 @@ is written in the PMTC subset — generated verbatim into the Swift and Kotlin
 runtimes (see [Native geometry](#native-geometry--the-plot-engine-on-iosandroid)).
 
 ```tsx
-import { PlotChart, bars, line } from '@pyreon/charts/engine'
+import { Bar, Chart, Legend, Line, Tooltip } from '@pyreon/charts'
 
-<PlotChart
-  data={() => sales()}
-  x={(d) => d.month}
-  marks={[bars((d) => d.revenue), line((d) => d.target)]}
-  showLegend
-  tooltip
-  title="Monthly revenue"
-  height={240}
-/>
+<Chart data={() => sales()} x="month" title="Monthly revenue" height={240}>
+  <Bar y="revenue" />
+  <Line y="target" />
+  <Tooltip /> <Legend />
+</Chart>
 ```
 
 **A chart family is an imported binding, not a string.** `PlotChart`,
@@ -75,19 +75,14 @@ Components: `PlotChart`, `PieChart` (donut via `innerRadius`), `GaugeChart`.
 ### Curves, annotations, bubbles, labels
 
 ```tsx
-import { PlotChart, line, area, bubble, smooth, step } from '@pyreon/charts/engine'
+import { Area, Chart, Dot, Rule, smooth } from '@pyreon/charts'
 
-<PlotChart
-  data={readings}
-  marks={[
-    area((d) => d.value, { curve: smooth }),
-    bubble((d) => d.price, (d) => d.volume),
-  ]}
-  annotations={[
-    { y: 100, label: 'Target' },
-    { yFrom: 40, yTo: 60 },       // a translucent band
-  ]}
-/>
+<Chart data={readings} x="day">
+  <Area y="value" curve={smooth} />
+  <Dot y="price" r="volume" />
+  <Rule y={100} label="Target" />
+  <Rule from={40} to={60} />   {/* a translucent band */}
+</Chart>
 ```
 
 A **curve** is an imported binding, like a mark — `smooth` (monotone cubic:
@@ -132,7 +127,9 @@ one number.
 ### Horizontal bars
 
 ```tsx
-<PlotChart data={teams} x={(d) => d.name} marks={[bars((d) => d.headcount)]} horizontal />
+<Chart data={teams} x="name" horizontal>
+  <Bar y="headcount" />
+</Chart>
 ```
 
 Categories move to the Y axis and bars grow rightward — and the left gutter
@@ -197,15 +194,16 @@ The 20 family hosts share one canvas host: `title` / `subtitle` /
 family's rich hit) and `onSelectIndex` (the engine's index — what the native
 tap reports) mean the same thing on every one of them. Bars round from
 `theme.radius` (3, away from the baseline; `radius: 0` for square).
-`<PlotChart maxPoints>` thins big series with LTTB while keeping marks aligned.
+`<Chart maxPoints>` thins big series with LTTB while keeping marks aligned.
 
 ### Formatting
 
 ```tsx
-import { compact, currency } from '@pyreon/charts'
-import { PlotChart, bars } from '@pyreon/charts/engine'
+import { Bar, Chart, currency } from '@pyreon/charts'
 
-<PlotChart data={rows} marks={[bars((d) => d.revenue)]} format={currency('$')} />
+<Chart data={rows} x="month" format={currency('$')}>
+  <Bar y="revenue" />
+</Chart>
 ```
 
 One `format` covers the y-axis ticks, the tooltip values and the spoken
@@ -223,12 +221,10 @@ locale support.
 ### Time and continuous axes
 
 ```tsx
-<PlotChart
-  data={readings}
-  marks={[line((d) => d.value)]}
-  xValue={(d) => d.at}      // epoch ms, or any number
-  xTime                      // label with calendar steps
-/>
+<Chart data={readings} xValue="at">  {/* epoch ms, or any number */}
+  <Line y="value" />
+  <Axis x time />                     {/* label with calendar steps */}
+</Chart>
 ```
 
 Without `xValue` the points are spaced evenly by index. That is right for a

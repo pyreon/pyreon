@@ -1,4 +1,4 @@
-import { line, PlotChart } from '@pyreon/charts/engine'
+import { Chart, Line, Tooltip } from '@pyreon/charts'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**
@@ -46,15 +46,10 @@ export default function Gallery100k(props: { shared?: Signal<number> }) {
           last redraw: {() => took()} · runs: {() => runs()}
         </span>
       </div>
-      <PlotChart<Row>
-        data={() => rows()}
-        x={(d) => String(d.i)}
-        marks={[line((d) => d.v, { width: 1, label: 'Random walk' })]}
-        height={280}
-        animate={false}
-        updateAnimation={false}
-        tooltip
-      />
+      <Chart<Row> data={() => rows()} x={(d) => String(d.i)} height={280} animate={false} updateAnimation={false}>
+        <Line y="v" width={1} label="Random walk" />
+        <Tooltip />
+      </Chart>
     </div>
   )
 }

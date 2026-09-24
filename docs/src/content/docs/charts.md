@@ -5,7 +5,8 @@ description: "@pyreon/charts — charts on Pyreon's own engine: marks as JSX chi
 
 `@pyreon/charts` is Pyreon's **own chart engine**. You write `<Chart>` with your
 rows and put marks inside it as children. Channels are field names, typed
-against the row, so a typo is a compile error. Axes, palette, tooltip, an
+against the row, so a typo is a compile error when the chart and its marks
+know the row type (`<Chart<Row>>`, `<Bar<Row> y="revenue">`). Axes, palette, tooltip, an
 accessible data table and a spoken description come without configuration.
 
 It has zero runtime dependencies: geometry is computed in pure TypeScript into
@@ -178,24 +179,27 @@ the accessible description together.
 
 ## Marks
 
-A mark pairs a value accessor `(d, index) => number` with paint options. They
-draw in array order.
+A mark is a child of `<Chart>`, and marks draw in the order they are written.
+Each takes its value channel as a field name (`y="revenue"`, typed against the
+row) or an accessor.
 
 | Mark | Draws |
 | --- | --- |
-| `bars(y, options?)` | Vertical bars from the zero line. |
-| `line(y, options?)` | A polyline through the values; `dash: [4, 2]` draws it dashed (a target or a forecast). |
-| `area(y, options?)` | A filled area under the line. |
-| `points(y, options?)` | Discrete points. |
-| `stackedBars(y, options?)` | One stack segment per mark — combine several; `stackNormalize` on the chart draws them as shares (the 100% stack). |
-| `groupedBars(y, options?)` | Side-by-side bars per category. |
-| `bubble(y, r, options?)` | Points with a per-datum radius channel. |
-| `waterfall(y, options?)` | Floating steps from running total to running total (the bridge chart); `negativeColor` fills the falls, dashed connectors carry the level across. |
-| `stackedArea(y, options?)` | Shares over time: one filled area per mark, each between the running total below it and its own top, so the topmost outline is the total. |
-| `band(low, high, options?)` | A filled REGION between two channels — a confidence interval or a min/max range. Two accessors, not one: a region has two bounds and no single value, so its floor is the data rather than the axis an `area` closes to. `showValues` labels the HIGH edge; the tooltip and the accessible table carry both. |
-| `sma(y, window)` / `ema(y, window)` / `trend(y)` | Derived lines: a simple or exponential moving average, or a least-squares trend. The leading `window - 1` points are gaps, not zeros. These LOWER to iOS and Android — the arithmetic crosses through the generated engine — as long as the window is a numeric literal. |
-| `bollinger(y, window, k?)` | The ±k·σ envelope as a filled `band` plus its middle line — an ARRAY of two marks to spread. Its bounds are computed from the series (a rolling window), which is what `band` supports through `transform`/`transform2`. Lowers to native too: the spread expands to the two Series it names, with the envelope arithmetic crossing through the generated engine. |
-| `histogram(rows, x, options?)` | Not a mark but a spread: bins the `x` channel (`bins`, nice-step edges) and returns `{ data, x, marks }` for `<PlotChart {...histogram(rows, (d) => d.age, { bins: 12 })} />`. |
+| `<Bar y />` | Vertical bars from the zero line. |
+| `<Bar y stack />` / `<Bar y group />` | One stack segment per mark, or side-by-side bars per category; `<Scale normalize>` draws a stack as shares (the 100% stack). |
+| `<Bar y waterfall />` | Floating steps from running total to running total (the bridge chart); `negativeColor` fills the falls, dashed connectors carry the level across. |
+| `<Line y />` | A polyline through the values; `dash={[4, 2]}` draws it dashed (a target or a forecast). |
+| `<Area y />` | A filled area under the line. |
+| `<StackedArea y />` | Shares over time: one filled area per mark, each between the running total below it and its own top, so the topmost outline is the total. |
+| `<Dot y />` / `<Dot y r />` | Discrete points; an `r` channel makes area-mapped bubbles. |
+| `<Band low high />` | A filled REGION between two channels — a confidence interval or a min/max range. Its floor is the data rather than the axis an `<Area>` closes to. `showValues` labels the HIGH edge; the tooltip and the accessible table carry both. |
+| `<Histogram x bins />` | Bins the `x` channel (nice-step edges) and draws one bar per bin. It replaces the rows with bins, so it is the whole chart. |
+| `<Rule y />` / `<Label text at />` | A reference line or band, and a datum-anchored label. |
+
+The technical indicators — `sma(y, window)`, `ema(y, window)`, `trend(y)` and
+`bollinger(y, window, k?)` — are mark factories for the array form
+(`<PlotChart marks>` in `@pyreon/charts/engine`); they have no child mark yet.
+They lower to iOS and Android as long as the window is a numeric literal.
 
 <Example file="./examples/charts/plot-marks-intervals" title="The marks that are not one value per category" />
 
@@ -203,30 +207,27 @@ That second demo covers the shapes the table above describes and the first demo
 does not draw: an interval, a rolling envelope, shares over time, a running
 total, and a raw sample binned.
 
-`bars`, `line`, `area` and `points` also take `errorLow` / `errorHigh`
-accessors: a capped whisker from the low bound to the high one through each
+`<Bar>`, `<Line>`, `<Area>` and `<Dot>` also take `errorLow` / `errorHigh`
+channels: a capped whisker from the low bound to the high one through each
 datum, both bounds joining the domain so a whisker never leaves the axis.
 
-Options (`MarkOptions`): `label` (legend/tooltip/a11y name), `color`, `width`
-(stroke), `radius` (points), `showValues` (a value label per datum — on
-every kind, not only bars: a line, area or point labels the placed point, a
-bar labels its rect, and a `band` labels its HIGH edge), and
-`curve` — an imported interpolator, not a string:
+Every mark takes `label` (legend/tooltip/a11y name), `color`, `width` (stroke),
+`radius` (points) and `showValues` (a value label per datum — on every kind,
+not only bars: a line, area or point labels the placed point, a bar labels its
+rect, and a `<Band>` labels its HIGH edge). `curve` takes an imported
+interpolator rather than a string, so an unused curve tree-shakes:
 
 ```tsx
 // @check
-import { PlotChart, area, smooth, step } from '@pyreon/charts/engine'
+import { Area, Chart, smooth, step } from '@pyreon/charts'
 
 const readings = [3, 7, 4, 9, 6]
 
 export const Curves = () => (
-  <PlotChart
-    data={readings}
-    marks={[
-      area((d: number) => d, { curve: smooth, label: 'Smoothed' }),
-      area((d: number) => d, { curve: step, label: 'Stepped' }),
-    ]}
-  />
+  <Chart<number> data={readings}>
+    <Area<number> y={(d) => d} curve={smooth} label="Smoothed" />
+    <Area<number> y={(d) => d} curve={step} label="Stepped" />
+  </Chart>
 )
 ```
 
@@ -626,7 +627,7 @@ when `horizontal` — so a bar still reads as growing from zero. A mark's own
 `borderRadius` wins; `theme={{ radius: 0 }}` restores square bars; stacked and
 grouped segments keep only their mark radii.
 
-### Big data on `<PlotChart>`
+### Big data
 
 `maxPoints` caps what one paint draws: past it the visible slice is thinned with
 LTTB on the first mark — rows stay aligned across marks, so a line and its area
@@ -647,23 +648,31 @@ for hosts that build specs by hand.
 
 ## Interaction
 
-`<PlotChart>` owns the pointer and keyboard model (each prop installs only its own handlers, so a static chart in a report pays for none of it):
+Each interaction is opt-in, and so is its code: a static chart in a report pays
+for none of it.
 
-- `tooltip`, `crosshair` — hover.
-- `dataZoom` — wheel-zoom + drag-pan (ECharts' inside dataZoom); `brush` — shift-drag a band and read it from `onBrush`.
-- `navigator` — the slider dataZoom: a strip under the plot with the first series over ALL rows and the window as a draggable band with resize handles.
-- `zoomPresets={[{ label: '1m', count: 30 }, { label: '3m', count: 90 }, { label: 'All', count: 0 }]}` — the Highcharts range selector; a strip of buttons under the plot.
-- `keyboard` — focus the canvas and walk the data with Arrow / Home / End; the focused datum gets a dashed ring and is announced through a live region, Enter / Space fire `onSelect`, Escape clears.
+- `<Tooltip crosshair? />` — the hover tooltip, and the crosshair line.
+- `<Zoom />` — wheel-zoom and drag-pan (ECharts' inside dataZoom). Its props add the rest: `navigator` (a strip under the plot with the first series over ALL rows and the window as a draggable band with resize handles), `presets={[{ label: '1m', count: 30 }, { label: 'All', count: 0 }]}` (the Highcharts range selector), `brush={(range) => …}` (shift-drag a band) and `link`.
+- `<Toolbox saveAsImage? restore? magicType? dataZoom? dataView? brush? />` — the tool strip.
+- `keyboard` on `<Chart>` — focus the canvas and walk the data with Arrow / Home / End; the focused datum gets a dashed ring and is announced through a live region, Enter / Space fire `onSelect`, Escape clears.
 - `updateAnimation` (default on) — a data change of the same shape tweens to the new frame instead of snapping; `updateDuration` sets the length; `prefers-reduced-motion` disables it.
 - **Touch** — every handler is a pointer handler: a finger drags, pans and brushes as a mouse does, two fingers pinch-zoom the window around their midpoint, and a tap shows the tooltip. A zoomable chart sets `touch-action: none`; a static one leaves the page free to scroll over it.
-- `legendPosition` — `top` (default), `bottom`, `left` or `right`; a side legend narrows the plot.
-- `yDomain` — pin the left y domain (`<Axis y domain>` in the grammar).
-- `link={createChartLink()}` — pass the same link to several charts and their zoom window and crosshair datum stay in sync (ECharts `connect`).
+- `<Legend position />` — `top` (default), `bottom`, `left` or `right`; a side legend narrows the plot.
+- `<Axis y domain />` — pin the y domain.
+- `<Zoom link={createChartLink()} />` — pass the same link to several charts and their zoom window and crosshair datum stay in sync (ECharts `connect`).
 
 ```tsx
 const link = createChartLink()
-<PlotChart data={price} x={(d) => d.t} marks={[line((d) => d.close)]} dataZoom navigator crosshair keyboard link={link} zoomPresets={[{ label: '1m', count: 30 }, { label: 'All', count: 0 }]} />
-<PlotChart data={price} x={(d) => d.t} marks={[bars((d) => d.volume)]} dataZoom crosshair link={link} />
+<Chart data={price} x="t" keyboard>
+  <Line y="close" />
+  <Tooltip crosshair />
+  <Zoom navigator link={link} presets={[{ label: '1m', count: 30 }, { label: 'All', count: 0 }]} />
+</Chart>
+<Chart data={price} x="t">
+  <Bar y="volume" />
+  <Tooltip crosshair />
+  <Zoom link={link} />
+</Chart>
 ```
 
 ### Rounded bars
@@ -671,7 +680,9 @@ const link = createChartLink()
 `borderRadius` on a bar-family mark (ECharts' `itemStyle.borderRadius`): a number rounds all four corners, `[topLeft, topRight, bottomRight, bottomLeft]` rounds them individually — `[6, 6, 0, 0]` is the column look that keeps the bar flat on the axis.
 
 ```tsx
-<PlotChart data={rows} x={(d) => d.k} marks={[bars((d) => d.v, { borderRadius: [6, 6, 0, 0] })]} />
+<Chart data={rows} x="k">
+  <Bar y="v" borderRadius={[6, 6, 0, 0]} />
+</Chart>
 ```
 
 The radius travels in the draw list as `corners` on the rect command, clamped by the engine to half the bar's shorter side — so a bar animating up from zero rounds proportionally, and the web canvas, the SSR SVG and the SwiftUI/Compose canvases all draw the same four arcs.
@@ -681,11 +692,9 @@ The radius travels in the draw list as `corners` on the rect command, clamped by
 `gradient` on a bar-family or `area` mark (ECharts' `LinearGradient` item and area style). You give the stops; the engine resolves the two points against the plot box, so one ramp spans the chart instead of repeating inside every bar.
 
 ```tsx
-<PlotChart
-  data={rows}
-  x={(d) => d.k}
-  marks={[area((d) => d.v, { gradient: { stops: [{ offset: 0, color: '#2563eb' }, { offset: 1, color: 'rgba(37,99,235,0)' }] } })]}
-/>
+<Chart data={rows} x="k">
+  <Area y="v" gradient={{ stops: [{ offset: 0, color: '#2563eb' }, { offset: 1, color: 'rgba(37,99,235,0)' }] }} />
+</Chart>
 ```
 
 `direction: 'horizontal'` ramps left → right instead of top → bottom. Every gradient-bearing command still carries its solid `color`, so a backend that cannot paint one — or an SVG serialized command-by-command without a `<defs>` — falls back to the colour rather than to nothing.
@@ -701,13 +710,15 @@ ECharts' `on(...)` / `dispatchAction` in Pyreon shapes: every event is a prop, e
 
 ```tsx
 const chart = createChartHandle()
-<PlotChart data={rows} x={(d) => d.k} marks={[bars((d) => d.v)]} handle={chart} selectedMode="multiple" onSelectChange={(s) => console.log(s)} />
+<Chart data={rows} x="k" handle={chart} selectedMode="multiple" onSelectChange={(s) => console.log(s)}>
+  <Bar y="v" />
+</Chart>
 <button onClick={() => chart.dispatch({ type: 'select', index: 2 })}>Pin March</button>
 <button onClick={() => chart.dispatch({ type: 'dataZoom', start: 0.25, end: 0.75 })}>Middle half</button>
 <button onClick={() => chart.dispatch({ type: 'restore' })}>Reset</button>
 ```
 
-On native the events/actions props warn by name and the chart renders without them (`onSelectIndex` taps cross today; the handle is the next tier).
+On native the events/actions props warn by name and the chart renders without them (`onSelect` taps cross today; the handle is the next tier).
 
 ## Gantt
 

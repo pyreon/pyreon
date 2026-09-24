@@ -1,5 +1,4 @@
-import { ChartThemeProvider, palettes } from '@pyreon/charts'
-import { bars, line, PlotChart } from '@pyreon/charts/engine'
+import { Bar, Chart, ChartThemeProvider, Legend, Line, Tooltip, palettes } from '@pyreon/charts'
 import type { ChartThemeMode } from '@pyreon/charts'
 import { signal, type Signal } from '@pyreon/reactivity'
 
@@ -63,15 +62,12 @@ export default function PlotTheme(props: { shared?: Signal<number> }) {
         so a flip re-resolves the theme; `theme` carries the palette override.
       */}
       <ChartThemeProvider mode={() => mode()} theme={() => ({ palette: [...palettes[paletteName()]] })}>
-        <PlotChart<Row>
-          data={ROWS}
-          x={(d) => d.q}
-          marks={[bars((d) => d.revenue, { label: 'Revenue' }), line((d) => d.cost, { label: 'Cost', width: 2 })]}
-          showLegend
-          tooltip
-          height={220}
-          animate={false}
-        />
+        <Chart<Row> data={ROWS} x="q" height={220} animate={false}>
+          <Bar y="revenue" label="Revenue" />
+          <Line y="cost" label="Cost" width={2} />
+          <Legend />
+          <Tooltip />
+        </Chart>
       </ChartThemeProvider>
     </div>
   )

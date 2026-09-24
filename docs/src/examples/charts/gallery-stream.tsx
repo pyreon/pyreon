@@ -1,5 +1,5 @@
 import { onMount } from '@pyreon/core'
-import { area, line, PlotChart, smooth } from '@pyreon/charts/engine'
+import { Area, Axis, Chart, Line, smooth } from '@pyreon/charts'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**
@@ -43,14 +43,11 @@ export default function GalleryStream(props: { shared?: Signal<number> }) {
         </button>
         <span>samples: {() => samples()}</span>
       </div>
-      <PlotChart<Row>
-        data={() => rows()}
-        x={(d) => String(d.t)}
-        marks={[area((d) => d.v, { curve: smooth }), line((d) => d.v, { curve: smooth, width: 2, label: 'Throughput' })]}
-        height={240}
-        updateAnimation={false}
-        yDomain={{ min: 0, max: 100 }}
-      />
+      <Chart<Row> data={() => rows()} x={(d) => String(d.t)} height={240} updateAnimation={false}>
+        <Area y="v" curve={smooth} label="Throughput" />
+        <Line y="v" curve={smooth} width={2} label="Throughput" />
+        <Axis y domain={{ min: 0, max: 100 }} />
+      </Chart>
     </div>
   )
 }

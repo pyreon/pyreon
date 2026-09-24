@@ -1,4 +1,7 @@
-import { band, bollinger, histogram, PlotChart, stackedArea, waterfall } from '@pyreon/charts/engine'
+import { Band, Bar, Chart, Histogram, StackedArea, Tooltip } from '@pyreon/charts'
+// Technical indicators (`sma`, `ema`, `bollinger`, `trend`) have no mark yet;
+// they are mark factories for `<PlotChart marks>` in `/engine`.
+import { bollinger, PlotChart } from '@pyreon/charts/engine'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**
@@ -82,14 +85,10 @@ export default function PlotIntervals(props: { shared?: Signal<number> }) {
 
       <figure style={{ margin: 0 }}>
         <figcaption>A forecast interval — two bounds, no centre value.</figcaption>
-        <PlotChart<Day>
-          data={() => days()}
-          x={(d) => d.d}
-          height={200}
-          title="Forecast range"
-          tooltip
-          marks={[band<Day>((d) => d.lo, (d) => d.hi, { label: 'Range', showValues: true })]}
-        />
+        <Chart<Day> data={() => days()} x="d" height={200} title="Forecast range">
+          <Band low="lo" high="hi" label="Range" showValues />
+          <Tooltip />
+        </Chart>
       </figure>
 
       <figure style={{ margin: 0 }}>
@@ -105,34 +104,26 @@ export default function PlotIntervals(props: { shared?: Signal<number> }) {
 
       <figure style={{ margin: 0 }}>
         <figcaption>Shares over time — each area is filled between running totals.</figcaption>
-        <PlotChart<Split>
-          data={SPLITS}
-          x={(d) => d.q}
-          height={200}
-          title="Revenue by channel"
-          marks={[
-            stackedArea<Split>((d) => d.direct, { label: 'Direct' }),
-            stackedArea<Split>((d) => d.partner, { label: 'Partner' }),
-          ]}
-        />
+        <Chart<Split> data={SPLITS} x="q" height={200} title="Revenue by channel">
+          <StackedArea y="direct" label="Direct" />
+          <StackedArea y="partner" label="Partner" />
+        </Chart>
       </figure>
 
       <figure style={{ margin: 0 }}>
         <figcaption>A running total, each step measured from the last.</figcaption>
-        <PlotChart<Step>
-          data={STEPS}
-          x={(d) => d.name}
-          height={200}
-          title="Balance"
-          marks={[waterfall<Step>((d) => d.delta, { label: 'Change', showValues: true })]}
-        />
+        <Chart<Step> data={STEPS} x="name" height={200} title="Balance">
+          <Bar y="delta" waterfall label="Change" showValues />
+        </Chart>
       </figure>
 
       <figure style={{ margin: 0 }}>
         <figcaption>A raw sample, binned — the x axis is the bin, not the row.</figcaption>
-        {/* `histogram` returns the whole `{ data, x, marks }` bundle — it BINS
-            the sample, so the chart's rows are bins rather than the raw values. */}
-        <PlotChart height={200} title="Latency distribution" {...histogram(SAMPLE, (d: number) => d, { bins: 14, label: 'Requests' })} />
+        {/* `<Histogram>` BINS the sample, so the chart's rows become bins
+            rather than the raw values — it is the whole chart. */}
+        <Chart<number> data={SAMPLE} height={200} title="Latency distribution">
+          <Histogram<number> x={(d) => d} bins={14} label="Requests" />
+        </Chart>
       </figure>
     </div>
   )

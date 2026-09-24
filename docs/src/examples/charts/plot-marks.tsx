@@ -1,5 +1,4 @@
-import { currency } from '@pyreon/charts'
-import { area, bars, line, PlotChart, points, smooth } from '@pyreon/charts/engine'
+import { Area, Bar, Chart, Dot, Legend, Line, Tooltip, currency, smooth } from '@pyreon/charts'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**
@@ -55,33 +54,27 @@ export default function PlotMarks(props: { shared?: Signal<number> }) {
         Passing `data={rows()}` instead would read the signal once at setup and
         the chart would never update.
       */}
-      <PlotChart<Row>
+      <Chart<Row>
         data={() => rows()}
-        x={(d) => d.month}
-        marks={[
-          area((d) => d.revenue, { color: '#dbeafe' }),
-          line((d) => d.revenue, { color: '#2563eb', width: 2, curve: smooth, label: 'Revenue' }),
-          points((d) => d.revenue, { color: '#2563eb', radius: 3 }),
-        ]}
+        x="month"
         height={260}
         format={currency('$')}
         title="Monthly revenue"
-        showLegend
-        tooltip
         onSelect={(index) => {
           selected.set(index < 0 ? '—' : (rows()[index]?.month ?? '—'))
         }}
-      />
+      >
+        <Area y="revenue" color="#dbeafe" />
+        <Line y="revenue" color="#2563eb" width={2} curve={smooth} label="Revenue" />
+        <Dot y="revenue" color="#2563eb" radius={3} />
+        <Legend />
+        <Tooltip />
+      </Chart>
 
       {/* A second chart over the same rows — bars, no curve, values drawn on. */}
-      <PlotChart<Row>
-        data={() => rows()}
-        x={(d) => d.month}
-        marks={[bars((d) => d.revenue, { color: '#16a34a', label: 'Revenue', showValues: true })]}
-        height={200}
-        format={currency('$')}
-        title="Monthly revenue (bars)"
-      />
+      <Chart<Row> data={() => rows()} x="month" height={200} format={currency('$')} title="Monthly revenue (bars)">
+        <Bar y="revenue" color="#16a34a" label="Revenue" showValues />
+      </Chart>
     </div>
   )
 }

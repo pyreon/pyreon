@@ -10,7 +10,9 @@
 //     <Tooltip /> <Legend />
 //   </Chart>
 //
-// Channels are FIELD NAMES (`y="revenue"`, typed `keyof T`) or accessors;
+// Channels are FIELD NAMES (`y="revenue"`, `keyof T` — checked when the mark
+// is given the row type, `<Bar<Row> y>`, since JSX cannot pass a type argument
+// from `<Chart<Row>>` to its children) or accessors;
 // marks are JSX children, so layering is composition and a `<Show>` around a
 // mark is ordinary Pyreon. Nothing here is a second engine: `<Chart>` scans its
 // children STRUCTURALLY (the `Switch` / `Match` precedent — a mark is a branded
