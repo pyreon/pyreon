@@ -138,6 +138,13 @@ const systemTheme = (): ChartTheme => chartThemes[systemChartMode()()]
 export const ChartThemeContext = createContext<() => ChartTheme>(systemTheme)
 
 /**
+ * The colour mode in scope — the system scheme by default, pinned by a
+ * provider's `mode`. A provider without `mode` inherits it, which is how its
+ * `light` / `dark` overrides know which one applies.
+ */
+const ChartModeContext = createContext<() => ChartThemeMode>(() => systemChartMode()())
+
+/**
  * The theme an EXPLICIT `<ChartThemeProvider>` above this component provides,
  * or `null` when none does (the context still holds its system-scheme default).
  *
@@ -162,8 +169,12 @@ export interface ChartThemeProviderProps {
    * scheme decides.
    */
   mode?: ChartThemeMode | (() => ChartThemeMode) | undefined
-  /** Overrides merged over the mode's theme — a palette, a font, a radius. A value or an accessor. */
+  /** Overrides merged over the mode's theme in BOTH modes — a palette, a font, a radius. A value or an accessor. */
   theme?: Partial<ChartTheme> | (() => Partial<ChartTheme> | undefined) | undefined
+  /** Overrides for light mode only, applied over `theme` — a brand's ground or palette that differs by mode. */
+  light?: Partial<ChartTheme> | undefined
+  /** Overrides for dark mode only, applied over `theme`. */
+  dark?: Partial<ChartTheme> | undefined
   children?: VNodeChild
 }
 
@@ -171,21 +182,33 @@ export interface ChartThemeProviderProps {
  * Provides a chart theme to every chart below it.
  *
  * ```tsx
- * <ChartThemeProvider mode={useMode} theme={{ palette: palettes.okabeIto }}>
- *   <PlotChart … />
+ * <ChartThemeProvider mode={useMode} theme={{ palette: palettes.okabeIto, radius: 6 }} dark={{ background: '#0b1020' }}>
+ *   <Chart … />
  * </ChartThemeProvider>
  * ```
+ *
+ * The layers apply in order: the mode's built-in theme, then `theme` (both
+ * modes), then `light` or `dark` (the mode in effect). Every layer is plain
+ * data, so the same provider lowers on iOS and Android.
  */
 function ChartThemeProviderImpl(props: ChartThemeProviderProps): VNodeChild {
   const parent = useContext(ChartThemeContext)
+  const parentMode = useContext(ChartModeContext)
+  const mode = (): ChartThemeMode => {
+    const m = props.mode
+    const own = typeof m === 'function' ? m() : m
+    return own ?? parentMode()
+  }
   const resolved = computed<ChartTheme>(() => {
     const m = props.mode
-    const mode = typeof m === 'function' ? m() : m
-    const base = mode === undefined ? parent() : chartThemes[mode]
+    const pinned = typeof m === 'function' ? m() : m
+    const base = pinned === undefined ? parent() : chartThemes[pinned]
     const t = props.theme
-    return resolveChartTheme(base, typeof t === 'function' ? t() : t)
+    const shared = resolveChartTheme(base, typeof t === 'function' ? t() : t)
+    return resolveChartTheme(shared, mode() === 'dark' ? props.dark : props.light)
   })
   provide(ChartThemeContext, () => resolved())
+  provide(ChartModeContext, mode)
   return props.children
 }
 

@@ -123,25 +123,27 @@ const sales = signal<Row[]>([{ month: 'Jan', revenue: 120, target: 100 }])
     {
       name: 'ChartThemeProvider',
       kind: 'component',
-      signature: '(props: { mode?: ChartThemeMode | (() => ChartThemeMode); theme?: Partial<ChartTheme> | (() => Partial<ChartTheme> | undefined); children? }) => VNodeChild',
+      signature: '(props: { mode?: ChartThemeMode | (() => ChartThemeMode); theme?: Partial<ChartTheme> | (() => Partial<ChartTheme> | undefined); light?: Partial<ChartTheme>; dark?: Partial<ChartTheme>; children? }) => VNodeChild',
       summary:
-        "Provides ONE theme to every `/plot` chart below it. `ChartTheme` is a token map — `palette` (series colours in draw order), `background`, `surface` (tooltip / pager cards), `text`, `label` (ticks, legend entries), `axis`, `grid`, `fontFamily`, `fontSize`, `titleSize`, `radius` (the bar corner marks fall back to), `enterMs` / `updateMs` — and every host, family, legend, title, tooltip and accessible description reads from it. With NO provider a chart follows the system colour scheme (`chartThemes.light` / `chartThemes.dark` by `prefers-color-scheme`, live); `mode` pins one or tracks the app's (`mode={useMode}` hands PyreonUI's reactive mode through); `theme` merges token overrides over the mode's theme; a host's own `theme` prop merges over all of it. `palettes` exports the named sets as data (`pyreon` — the default —, `pyreonDark`, `echarts6`, `echarts5`, `echartsDark`, `observable10`, `tableau10`, `okabeIto`, `tailwind`). On native the provider is transparent: theme each chart there (`theme={chartThemes.dark}` and `palette: palettes.okabeIto` resolve at compile time).",
-      example: `import { ChartThemeProvider, palettes } from '@pyreon/charts'
-import { PlotChart, bars } from '@pyreon/charts/engine'
+        "Provides ONE theme to every chart below it, in layers: the mode's built-in theme, then `theme` (both modes), then `light` or `dark` (only in that mode — a brand whose ground or palette differs by mode). A provider without `mode` inherits the mode above it. `ChartTheme` is a token map — `palette` (series colours in draw order), `background`, `surface` (tooltip / pager cards), `text`, `label` (ticks, legend entries), `axis`, `grid`, `fontFamily`, `fontSize`, `titleSize`, `radius` (the bar corner marks fall back to), `enterMs` / `updateMs` — and every host, family, legend, title, tooltip and accessible description reads from it. With NO provider a chart follows the system colour scheme (`chartThemes.light` / `chartThemes.dark` by `prefers-color-scheme`, live); `mode` pins one or tracks the app's (`mode={useMode}` hands PyreonUI's reactive mode through); `theme` merges token overrides over the mode's theme; a host's own `theme` prop merges over all of it. `palettes` exports the named sets as data (`pyreon` — the default —, `pyreonDark`, `echarts6`, `echarts5`, `echartsDark`, `observable10`, `tableau10`, `okabeIto`, `tailwind`). On native the provider is transparent: theme each chart there (`theme={chartThemes.dark}` and `palette: palettes.okabeIto` resolve at compile time).",
+      example: `import { Bar, Chart, ChartThemeProvider, palettes } from '@pyreon/charts'
 import { signal } from '@pyreon/reactivity'
 
 interface Row { q: string; v: number }
 const rows: Row[] = [{ q: 'Q1', v: 3 }, { q: 'Q2', v: 5 }]
 const mode = signal<'light' | 'dark'>('dark') // or PyreonUI's useMode
 
-<ChartThemeProvider mode={() => mode()} theme={{ palette: palettes.okabeIto, radius: 4 }}>
-  <PlotChart data={rows} x={(d: Row) => d.q} marks={[bars((d: Row) => d.v)]} />
+<ChartThemeProvider mode={() => mode()} theme={{ palette: palettes.okabeIto, radius: 4 }} dark={{ background: '#0b1020' }}>
+  <Chart data={rows} x="q">
+    <Bar y="v" />
+  </Chart>
 </ChartThemeProvider>`,
       mistakes: [
         'Hard-coding `color` on every mark to "theme" a dashboard — a mark with its own `color` keeps it forever; leave `color` off and set `theme.palette` once (the provider, or the `theme` prop)',
         'Passing a hex list you maintain when a named set exists — `palette: palettes.observable10` is a reference the compiler also resolves on native; a copied list is a second copy to keep in sync',
         'Expecting `registerTheme` themes to reach `<PlotChart>` — the registry feeds `compileOption` / `<OptionChart>`; the components resolve `<ChartThemeProvider>` → system scheme → `theme` prop',
-        'Wrapping charts in the provider on native and wondering why they stay light — the provider is transparent there (context does not cross); give each chart `theme={chartThemes.dark}`',
+        'Pinning a reactive `mode` in shared multiplatform source and expecting the native build to follow it — the provider is a compile-time scope on native, so only a literal `mode="dark"` lowers; a reactive one warns and the light theme (plus its `light` overrides) applies',
+        'Branching on the mode inside `theme={() => …}` to vary one token by mode — use `light={{ … }}` / `dark={{ … }}`: they are plain data, so they lower on native, where an accessor cannot',
         'Reading `useChartTheme()` once at setup — it returns an ACCESSOR; call it inside the effect that draws so a mode flip repaints',
         'Building a full `ChartTheme` by hand from four fields — the type has thirteen required tokens now; start from `chartThemes.light` / `.dark` and spread overrides, or pass a `Partial` to `theme`',
       ],

@@ -493,8 +493,11 @@ right on both grounds:
 - **With no provider**, a chart follows the system colour scheme —
   `chartThemes.light` or `chartThemes.dark` by `prefers-color-scheme`, live.
 - **`<ChartThemeProvider>`** pins a mode or tracks your app's:
-  `mode={useMode}` hands PyreonUI's reactive mode straight through, and
-  `theme={{ … }}` merges token overrides for every chart below it.
+  `mode={useMode}` hands PyreonUI's reactive mode straight through,
+  `theme={{ … }}` merges token overrides for every chart below it, and
+  `light={{ … }}` / `dark={{ … }}` override only in that mode (a brand whose
+  ground or palette differs by mode). A provider without `mode` inherits the
+  mode above it, so its `light` / `dark` still pick the right one.
 - **The `theme` prop** on any host merges over whatever is in scope.
 
 The last four tokens exist because a colour that is not a series colour still
@@ -512,15 +515,16 @@ token.
 ```tsx
 // @check
 import { useMode } from '@pyreon/ui-core'
-import { ChartThemeProvider, palettes } from '@pyreon/charts'
-import { PlotChart, bars } from '@pyreon/charts/engine'
+import { Bar, Chart, ChartThemeProvider, palettes } from '@pyreon/charts'
 
 interface Row { q: string; v: number }
 const rows: Row[] = [{ q: 'Q1', v: 3 }, { q: 'Q2', v: 5 }]
 
 export const Themed = () => (
-  <ChartThemeProvider mode={useMode} theme={{ palette: palettes.okabeIto, radius: 4 }}>
-    <PlotChart<Row> data={rows} x={(d) => d.q} marks={[bars((d) => d.v)]} />
+  <ChartThemeProvider mode={useMode} theme={{ palette: palettes.okabeIto, radius: 4 }} dark={{ background: '#0b1020' }}>
+    <Chart<Row> data={rows} x="q">
+      <Bar y="v" />
+    </Chart>
   </ChartThemeProvider>
 )
 ```
@@ -535,10 +539,11 @@ the rest cycle through `theme.palette`.
 
 On native the theme is a struct: `theme={chartThemes.dark}` and
 `theme={{ palette: palettes.okabeIto }}` resolve at compile time, a literal
-merges over the defaults, and `<ChartThemeProvider mode theme>` is a
-compile-time scope its chart children inherit — mode, then the provider's
-literal overrides, then the chart's own `theme`, the web's three layers in
-the web's order. A reactive `mode` (an app's own signal) or an absent one
+merges over the defaults, and `<ChartThemeProvider mode theme light dark>` is
+a compile-time scope its chart children inherit — mode, then the provider's
+`theme`, then its `light` or `dark`, then the chart's own `theme`, the web's
+layers in the web's order. A nested provider without `mode` inherits the
+outer one's there too. A reactive `mode` (an app's own signal) or an absent one
 (the web follows the system scheme) cannot be read at compile time; the
 light theme applies and the compiler says so by name.
 

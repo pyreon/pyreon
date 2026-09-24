@@ -3598,38 +3598,58 @@ export type RawChartTheme = Readonly<Record<keyof typeof CHART_THEME_DEFAULT, st
  * system scheme, or an app's reactive mode — natively the light theme
  * applies), and a non-literal `theme`.
  */
-export function chartThemeScope(e: ExprIR & { kind: 'jsx-element' }, warn: (m: string) => void, outer?: RawChartTheme): RawChartTheme {
-  const modeAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'mode')
-  const modeV = modeAttr?.kind === 'attr' ? modeAttr.value : undefined
-  let base: RawChartTheme = outer ?? CHART_THEME_DEFAULT
-  if (modeV === undefined) {
-    if (outer === undefined) warn('<ChartThemeProvider>: without a literal `mode` the web follows the system scheme; natively the light theme applies — pin `mode="dark"` (or give each chart its own `theme`).')
-  } else if (modeV.kind === 'literal' && (modeV.value === 'light' || modeV.value === 'dark')) {
-    base = CHART_THEMES[modeV.value]
-  } else {
-    warn('<ChartThemeProvider mode>: only the literal "light" / "dark" lowers on native (a reactive mode cannot be read at compile time); the light theme applies.')
+/**
+ * The mode each resolved provider scope is in, keyed by the scope's theme
+ * object, so a nested provider with no `mode` inherits it — which is what
+ * lets its `light` / `dark` overrides pick the right one, as on the web.
+ */
+const SCOPE_MODE = new WeakMap<RawChartTheme, 'light' | 'dark'>()
+
+/** Merge one theme-object literal's fields over `raw`, warning by name on what cannot lower. */
+function applyThemeLiteral(raw: Record<string, string | readonly string[]>, v: ExprIR, attr: string, warn: (m: string) => void): void {
+  if (v.kind !== 'object' || (v.spreads !== undefined && v.spreads.length > 0)) {
+    warn(`<ChartThemeProvider ${attr}>: only an object literal with literal fields lowers on native; it is ignored.`)
+    return
   }
-  const themeAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'theme')
-  const themeV = themeAttr?.kind === 'attr' ? themeAttr.value : undefined
-  if (themeV === undefined) return base
-  const raw: Record<string, string | readonly string[]> = { ...base }
-  const named = namedChartTheme(themeV)
-  if (named !== undefined) return named
-  if (themeV.kind !== 'object' || (themeV.spreads !== undefined && themeV.spreads.length > 0)) {
-    warn('<ChartThemeProvider theme>: only an object literal with literal fields lowers on native; the mode\'s theme applies.')
-    return base
-  }
-  raw.palette = chartThemePalette(themeV, 'ChartThemeProvider', warn, base.palette as readonly string[])
-  for (const f of themeV.fields) {
+  raw.palette = chartThemePalette(v, 'ChartThemeProvider', warn, raw.palette as readonly string[])
+  for (const f of v.fields) {
     const spec = CHART_THEME_FIELDS.find((x) => x.name === f.name)
     if (spec === undefined || spec.kind === 'strings') continue
     if (f.value.kind !== 'literal' || typeof f.value.value !== spec.kind) {
-      warn(`<ChartThemeProvider theme>: \`${f.name}\` must be a ${spec.kind} literal on native; the mode's value applies.`)
+      warn(`<ChartThemeProvider ${attr}>: \`${f.name}\` must be a ${spec.kind} literal on native; the mode's value applies.`)
       continue
     }
     raw[spec.name] = spec.kind === 'number' ? chartDouble(f.value.value as number) : (f.value.value as string)
   }
-  return raw as RawChartTheme
+}
+
+export function chartThemeScope(e: ExprIR & { kind: 'jsx-element' }, warn: (m: string) => void, outer?: RawChartTheme): RawChartTheme {
+  const modeAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'mode')
+  const modeV = modeAttr?.kind === 'attr' ? modeAttr.value : undefined
+  let base: RawChartTheme = outer ?? CHART_THEME_DEFAULT
+  let mode: 'light' | 'dark' = outer === undefined ? 'light' : (SCOPE_MODE.get(outer) ?? 'light')
+  if (modeV === undefined) {
+    if (outer === undefined) warn('<ChartThemeProvider>: without a literal `mode` the web follows the system scheme; natively the light theme applies — pin `mode="dark"` (or give each chart its own `theme`).')
+  } else if (modeV.kind === 'literal' && (modeV.value === 'light' || modeV.value === 'dark')) {
+    base = CHART_THEMES[modeV.value]
+    mode = modeV.value
+  } else {
+    warn('<ChartThemeProvider mode>: only the literal "light" / "dark" lowers on native (a reactive mode cannot be read at compile time); the light theme applies.')
+  }
+  const attrOfScope = (name: string): ExprIR | undefined => {
+    const a = e.attrs.find((x) => x.kind === 'attr' && x.name === name)
+    return a?.kind === 'attr' ? a.value : undefined
+  }
+  const themeV = attrOfScope('theme')
+  const perMode = attrOfScope(mode)
+  const named = themeV === undefined ? undefined : namedChartTheme(themeV)
+  const raw: Record<string, string | readonly string[]> = { ...(named ?? base) }
+  if (themeV !== undefined && named === undefined) applyThemeLiteral(raw, themeV, 'theme', warn)
+  // The layers apply as on the web: the mode's theme, then `theme`, then the mode's own override.
+  if (perMode !== undefined) applyThemeLiteral(raw, perMode, mode, warn)
+  const out = raw as RawChartTheme
+  SCOPE_MODE.set(out, mode)
+  return out
 }
 
 /** The palette the web Funnel / Pie hosts colour unaccessored rows with — the theme's. */
