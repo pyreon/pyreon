@@ -24,7 +24,7 @@
  * frame state instead of resetting it.
  */
 
-import { cyclicModels } from '../core/graph'
+import { cyclicModels, modelIndex, stronglyConnected } from '../core/graph'
 import type { IrDocument, IrField, IrModel, IrType } from '../core/ir'
 import { pascal, propKey } from '../core/naming'
 import { q, relativeSpecifier, SourceFile } from './writer'
@@ -52,7 +52,10 @@ export function emitFaker(doc: IrDocument, typesFrom: 'schemas' | 'types'): Sour
   // recurse. This used to be derived from the topological sort's back edges,
   // split on `'->'` -- while `edgeKey` joins with `'|'`, so the set held whole
   // keys as names and the recursion notice below never fired for anything.
-  const cyclic = cyclicModels(fakerDependencies(doc))
+  // Computed fresh for every emit and held for the render walk below.
+  const graph = computeFakerGraph(doc)
+  graphs.set(doc, graph)
+  const cyclic = graph.cyclic
 
   f.import(FAKER_PACKAGE, 'faker')
   f.importType(relativeSpecifier(FAKER_FILE, `${typesFrom}.ts`), ...doc.models.map((m) => m.name))
@@ -218,8 +221,7 @@ function render(
       return guard ? `(d >= ${MAX_DEPTH} ? [] : ${body})` : body
     }
     case 'ref': {
-      const model = doc.models.find((m) => m.name === type.name)
-      if (!model) return 'null'
+      if (!modelIndex(doc).has(type.name)) return 'null'
       return `build${pascal(type.name)}(d + 1)`
     }
     case 'union': {
@@ -276,24 +278,66 @@ function renderField(
   return `(d >= ${MAX_DEPTH} ? (null as never) : ${value})`
 }
 
-/** Whether `type` can reach `self` — i.e. expanding it recurses. */
-function referencesSelf(type: IrType, doc: IrDocument, self: string, seen = new Set<string>()): boolean {
-  switch (type.kind) {
-    case 'ref': {
-      if (type.name === self) return true
-      if (seen.has(type.name)) return false
-      seen.add(type.name)
-      const model = doc.models.find((m) => m.name === type.name)
-      return model ? referencesSelf(model.type, doc, self, seen) : false
+/**
+ * Whether `type` can reach `self` — i.e. expanding it recurses.
+ *
+ * A ref recurses iff it IS `self` or can reach `self`, and since `self`
+ * references it, "can reach `self`" is exactly "shares `self`'s strongly-
+ * connected component". So this is a walk of `type`'s OWN refs plus a lookup,
+ * where it used to be a transitive walk of the whole reachable graph per field
+ * with a linear `doc.models.find` per step -- quadratic to cubic on a spec with
+ * a large cycle. Measured on Stripe (`--plugins faker`) that walk was 64% of
+ * generation.
+ */
+function referencesSelf(type: IrType, doc: IrDocument, self: string): boolean {
+  const { component } = fakerGraph(doc)
+  const mine = component.get(self)
+  const hit = (t: IrType): boolean => {
+    switch (t.kind) {
+      case 'ref':
+        return t.name === self || (mine !== undefined && component.get(t.name) === mine)
+      case 'array':
+        return hit(t.items)
+      case 'object':
+        return t.fields.some((f) => hit(f.type))
+      case 'union':
+        return t.options.some(hit)
+      default:
+        return false
     }
-    case 'array':
-      return referencesSelf(type.items, doc, self, seen)
-    case 'object':
-      return type.fields.some((f) => referencesSelf(f.type, doc, self, seen))
-    case 'union':
-      return type.options.some((o) => referencesSelf(o, doc, self, seen))
-    default:
-      return false
+  }
+  return hit(type)
+}
+
+interface FakerGraph {
+  /** Model -> strongly-connected component id, over the FAKER graph. */
+  component: Map<string, number>
+  /** Models whose expansion recurses. */
+  cyclic: Set<string>
+}
+
+/**
+ * The faker graph for a document, computed once per emit and held WEAKLY so
+ * it dies with the document. A lookup table the render walk consults, not
+ * state it mutates.
+ */
+const graphs = new WeakMap<IrDocument, FakerGraph>()
+
+function fakerGraph(doc: IrDocument): FakerGraph {
+  let graph = graphs.get(doc)
+  if (!graph) {
+    graph = computeFakerGraph(doc)
+    graphs.set(doc, graph)
+  }
+  return graph
+}
+
+function computeFakerGraph(doc: IrDocument): FakerGraph {
+  const deps = fakerDependencies(doc)
+  const component = stronglyConnected(deps)
+  return {
+    component,
+    cyclic: cyclicModels(deps, component),
   }
 }
 

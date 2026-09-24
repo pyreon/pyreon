@@ -32,6 +32,7 @@ import type { IrDocument, IrType } from './ir'
 interface GraphMemo {
   models: IrDocument['models']
   types: IrType[]
+  byName?: Map<string, IrDocument['models'][number]>
   deps?: Map<string, Set<string>>
   order?: ModelOrder
 }
@@ -50,6 +51,13 @@ function memoFor(doc: IrDocument): GraphMemo {
   const fresh: GraphMemo = { models: doc.models, types: doc.models.map((m) => m.type) }
   memo.set(doc, fresh)
   return fresh
+}
+
+/** Models by name -- the O(1) replacement for `doc.models.find(...)` in a walk. */
+export function modelIndex(doc: IrDocument): Map<string, IrDocument['models'][number]> {
+  const m = memoFor(doc)
+  m.byName ??= new Map(doc.models.map((model) => [model.name, model]))
+  return m.byName
 }
 
 /**
@@ -273,8 +281,10 @@ export function stronglyConnected(deps: ReadonlyMap<string, ReadonlySet<string>>
  * Models that can reach THEMSELVES -- a member of a multi-model component, or a
  * model with a self-edge. Exactly the set whose expansion recurses.
  */
-export function cyclicModels(deps: ReadonlyMap<string, ReadonlySet<string>>): Set<string> {
-  const scc = stronglyConnected(deps)
+export function cyclicModels(
+  deps: ReadonlyMap<string, ReadonlySet<string>>,
+  scc: ReadonlyMap<string, number> = stronglyConnected(deps),
+): Set<string> {
   const size = new Map<number, number>()
   for (const c of scc.values()) size.set(c, (size.get(c) ?? 0) + 1)
   const out = new Set<string>()
