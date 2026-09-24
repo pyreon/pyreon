@@ -90,6 +90,7 @@ const typedChart = useChart<MyOption>(() => ({
 | --- | --- | --- |
 | [`useChart`](#usechart) | hook | Create a reactive ECharts instance. |
 | [`Chart`](#chart) | component | Declarative chart component that wraps `useChart` internally. |
+| [`getCore / connect`](#getcore-connect) | function | Escape hatches for whatever `<Chart>`/`useChart` do not model. |
 | [`Plot`](#plot) | component | The grammar — `<Plot data x>` with MARK CHILDREN (`Plot`, because the package's default entry already exports the EChart |
 | [`PlotChart`](#plotchart) | component | Pyreon's OWN charting engine, from the `@pyreon/charts/plot` subpath — no ECharts, no third-party engine. |
 | [`ChartThemeProvider`](#chartthemeprovider) | component | Provides ONE theme to every `/plot` chart below it. |
@@ -178,6 +179,36 @@ Declarative chart component that wraps `useChart` internally. Accepts `options` 
 - Relying on the default merge when data shrinks — a signal change that removes a series/point leaves the old one; pass `notMerge` or `replaceMerge="series"`
 
 **See also:** `useChart`
+
+---
+
+### getCore / connect `function`
+
+```ts
+getCore() => Promise<typeof import('echarts/core')> · connect(groupId: string) => Promise<void>
+```
+
+Escape hatches for whatever `<Chart>`/`useChart` do not model. `getCore()` lazily loads (and caches) the underlying `echarts/core` module — use it for `registerMap` (map charts), `registerTheme`, `getInstanceByDom`, or any raw ECharts API the wrapper does not expose; awaiting it is safe before any chart has mounted, since it triggers the same lazy load `<Chart>` does. `connect(groupId)` is a thin async wrapper over `echarts.connect` (awaits the core load first) — assign the SAME `group` id to each chart (the `group` option on `useChart`/prop on `<Chart>`) and call `connect(groupId)` once to sync tooltips/dataZoom/actions across them.
+
+**Example**
+
+```tsx
+import { getCore, connect } from '@pyreon/charts'
+
+const core = await getCore()
+core.registerMap('world', worldGeoJson)
+
+const a = useChart(optsA, { group: 'sales' })
+const b = useChart(optsB, { group: 'sales' })
+await connect('sales')
+```
+
+**Common mistakes**
+
+- Calling `getCore()` repeatedly expecting a fresh import each time — it is cached after the first call; the promise resolves to the SAME module instance on every subsequent call
+- Registering a map/theme AFTER a chart using it has already mounted — `registerMap`/`registerTheme` must run before the chart that references the name renders, or ECharts falls back to its default
+
+**See also:** `Chart` · `useChart`
 
 ---
 

@@ -552,9 +552,9 @@ search.query.set('signal')
       kind: 'function',
       signature: 'generateSitemap(args): string · generateRssFeed(args): string · generateLlmsTxt(args): string',
       summary:
-        "DEPRECATED — all three are thin build-script helpers kept for back-compat and superseded by richer `@pyreon/zero` equivalents that run as Vite plugins instead of a hand-written build script: `generateSitemap` → `@pyreon/zero`'s `generateSitemap` + `seoPlugin` (adds hreflang/i18n, trailing-slash policy, SSG path-manifest integration); `generateRssFeed`/`toRfc822` → import them directly from `@pyreon/zero` (same function, re-exported, no `zero-content` wrapper needed); `generateLlmsTxt` → `@pyreon/zero`'s `aiPlugin`. These `zero-content` versions will be removed in a future major version — do not build new tooling on them.",
-      example: `// Prefer, from @pyreon/zero:
-import { seoPlugin, generateRssFeed, aiPlugin } from '@pyreon/zero'`,
+        "DEPRECATED — all three are thin build-script helpers kept for back-compat and superseded by richer `@pyreon/zero` equivalents that run as Vite plugins instead of a hand-written build script: `generateSitemap` → `@pyreon/zero/server`'s `generateSitemap` + `seoPlugin` (adds hreflang/i18n, trailing-slash policy, SSG path-manifest integration; server-only, Vite-plugin-only); `generateRssFeed`/`toRfc822` → the SAME function, re-exported from `@pyreon/zero`'s CLIENT-SAFE main entry (no `/server` needed — no `zero-content` wrapper needed either); `generateLlmsTxt` → `@pyreon/zero/server`'s `aiPlugin` (server-only). These `zero-content` versions will be removed in a future major version — do not build new tooling on them.",
+      example: `// Prefer, from @pyreon/zero/server (server-only, Vite plugins):
+import { seoPlugin, generateRssFeed, aiPlugin } from '@pyreon/zero/server'`,
       mistakes: [
         "Building new SEO tooling on these zero-content functions — they are deprecated aliases; use @pyreon/zero's seoPlugin/aiPlugin/generateRssFeed instead, which cover strictly more (hreflang, SSG integration, no hand-written build script)",
       ],

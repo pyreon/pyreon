@@ -103,6 +103,7 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())
 | [`hydrateStores`](#hydratestores) | function | CLIENT side of the SSR store-hydration handshake. |
 | [`StoreState`](#storestate) | type | Derive the UNWRAPPED per-field value shape of a store from its api object — the inverse of `SignalsOf`. |
 | [`StoreActions`](#storeactions) | type | Derive the ACTIONS surface of a store from its api object — the plain function fields of the setup return (schema stores |
+| [`signal`](#signal) | function | Convenience re-exports of the four `@pyreon/reactivity` primitives a `setup()` function reaches for constantly, so a sto |
 
 ## API
 
@@ -579,6 +580,38 @@ function callAction<K extends keyof CartActions>(name: K, ...args: Parameters<Ca
 - Using it to type `patch()` payloads — that is `Partial<StoreState<Api>>`, not the actions record
 
 **See also:** `StoreState` · `defineStore`
+
+---
+
+### signal `function`
+
+```ts
+re-exported verbatim from @pyreon/reactivity: signal, computed, effect, batch
+```
+
+Convenience re-exports of the four `@pyreon/reactivity` primitives a `setup()` function reaches for constantly, so a store module rarely needs a second import from `@pyreon/reactivity` alongside `defineStore`. `signal`/`computed` are what setup CLASSIFIES into store state (a returned `signal(...)` becomes tracked state; a returned `computed(...)` is passed through as a derived read); `effect`/`batch` are for internal setup logic (a store-owned effect runs inside the store's own scope — see the "Scope ownership" gotcha — and `batch` groups several signal writes inside an action into one notification, same as anywhere else in the framework). See `@pyreon/reactivity`'s manifest for the full API of each — this package adds no behavior on top, it only re-exports.
+
+**Example**
+
+```tsx
+import { defineStore, signal, computed, batch } from '@pyreon/store'
+
+export const useCounter = defineStore('counter', () => {
+  const count = signal(0)
+  const doubled = computed(() => count() * 2)
+  return {
+    count, doubled,
+    incrementTwice: () => batch(() => { count.update((n) => n + 1); count.update((n) => n + 1) }),
+  }
+})
+```
+
+**Common mistakes**
+
+- Importing these from `@pyreon/reactivity` in the SAME file that already imports `defineStore` from `@pyreon/store` — harmless, but the store package re-exports them precisely so you don't need the second import
+- Expecting a store-specific variant of `signal`/`computed`/`effect`/`batch` — they are the exact same functions as `@pyreon/reactivity`'s; classification into state/action happens by DUCK-TYPING the setup return, not by a special wrapped version of these primitives
+
+**See also:** `defineStore` · `StoreState`
 
 ---
 

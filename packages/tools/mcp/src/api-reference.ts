@@ -638,6 +638,75 @@ type C = AccessorReturn<MaybeAccessor<boolean>>  // boolean`,
     notes: 'Resolve a `MaybeAccessor` (or any accessor) to its VALUE type — unwraps the `() => T` arm and passes plain values through unchanged (`AccessorReturn<MaybeAccessor<T>>` round-trips to `T`). Type-only, zero runtime bytes. See also: MaybeAccessor, SignalValue.',
     mistakes: '- Confusing it with `SignalValue` — `AccessorReturn<number>` is `number` (pass-through) while `SignalValue<number>` is `never` (strict: input must be callable)',
   },
+
+  'reactivity/registerSingleton': {
+    signature: '(pkg: string, version: string, location: string) => void',
+    example: `// Top of any package's own src/index.ts:
+import { name as __pkgName, version as __pkgVersion } from '../package.json' with { type: 'json' }
+import { registerSingleton } from '@pyreon/reactivity'
+
+registerSingleton(__pkgName, __pkgVersion, import.meta.url)
+// ...rest of the package's exports`,
+    notes: `Fail-loud detection of duplicate framework instances. Every \`@pyreon/*\` package with module-level state calls this once at the TOP of its own \`src/index.ts\` — \`registerSingleton(name, version, import.meta.url)\`, with \`name\`/\`version\` pulled from that package's own \`package.json\`. Bundlers can produce TWO instances of the same package (Vite bare-vs-entry resolver divergence, sub-dependency version mismatches, workspace + npm-published mixes), and each instance has its OWN module-level state, so a producer on instance A and a consumer reading instance B silently break every framework invariant. The FIRST registration for a package name records a marker; a SECOND with a DIFFERENT (query-string-normalized, so Vite HMR re-evals are allowed) module location triggers detection: \`'throw'\` (default — the loud failure), \`'warn'\` (log via \`console.error\` and continue), or \`'silent'\` (the escape hatch for browser extensions, micro-frontends, and nested SSR harnesses that legitimately dual-load). Controlled by the \`PYREON_SINGLE_INSTANCE\` env var. See also: withSilent.`,
+    mistakes: `- Hardcoding the version string literal instead of importing it from \`package.json\` — a release bump then leaves the sentinel reporting a stale version forever, defeating the diagnostic value of a version-skew report
+- Registering with a name/location that does not match how the package is actually imported — the location is what discriminates "same module, re-evaluated by HMR" from "genuinely two instances"; get it from \`import.meta.url\` at the top of the real entry module
+- Wrapping the call in a try/catch — it deliberately has none; swallowing the throw here hides the exact bug class it exists to surface`,
+  },
+
+  'reactivity/defineCrossModuleState': {
+    signature: '<T extends object>(key: string, init: () => T) => T',
+    example: `import { defineCrossModuleState } from '@pyreon/reactivity'
+
+const registry = defineCrossModuleState('my-lib:widget-registry', () => new Map<string, unknown>())
+// Every module instance of "my-lib" that calls this with the SAME key shares the SAME Map.`,
+    notes: 'A globalThis-keyed singleton, for state that must be shared even across a genuine dual-instance situation (as opposed to `registerSingleton`, which DETECTS and warns about dual instances). `key` is looked up via `Symbol.for(key)` (a GLOBAL symbol registry entry — the same string always resolves to the same symbol, even across separately-loaded module instances). The FIRST call with a given key runs `init()` and stores the result on `globalThis`; every subsequent call with the same key — from ANY module instance — returns the IDENTICAL object reference. Re-exported from `@pyreon/core` for convenience. See also: registerSingleton.',
+    mistakes: `- Returning a primitive from \`init()\` — the constraint is \`T extends object\`; primitives cannot be mutated in place, so cross-instance updates would not propagate. Return a mutable object/Map/Set
+- Using a non-globally-unique \`key\` — \`Symbol.for\` is a GLOBAL registry, so a generic key like \`'state'\` can collide with an unrelated package doing the same thing; namespace your key (\`'my-lib:feature-name'\`)
+- Reaching for this as a substitute for \`registerSingleton\` — that function DETECTS and warns/throws on accidental dual-instancing (the bug you usually want surfaced); this one SILENTLY shares state across instances, which is only correct when dual-instancing is expected and harmless for this particular piece of state`,
+  },
+
+  'reactivity/getContextOwner': {
+    signature: '() => EffectScope | null',
+    example: `// A primitive that defers mounting (simplified island shape):
+const owner = getContextOwner()   // capture while the real ancestor chain is active
+scheduleLater(() => {
+  runWithContextOwner(owner, () => hydrateRoot(el, Component))
+})`,
+    notes: `Read the currently active CONTEXT OWNER — the \`EffectScope\` that \`@pyreon/core\`'s \`provide()\`/\`useContext()\` resolve against. Distinct from \`getCurrentScope()\`: the context owner tracks the COMPONENT TREE (set by the renderer at mount, mirroring parent→child structure), while \`getCurrentScope()\` tracks EFFECT NESTING. A component's \`EffectScope\` doubles as its context owner — \`provide()\` writes onto \`scope._contexts\`, and \`useContext()\` walks \`scope._parent\` up the owner chain. Framework primitives that defer mounting past the synchronous render frame (an island, a lazy boundary, a scheduled re-mount) must capture this at setup time and restore it with \`runWithContextOwner\` when they finally mount — otherwise \`useContext()\` inside the deferred content resolves against whatever owner happens to be active later, not the real ancestor chain. See also: runWithContextOwner, setContextOwner, getCurrentScope.`,
+    mistakes: `- Assuming this returns the same thing as \`getCurrentScope()\` — it does not; one tracks context/component-tree ownership, the other tracks effect nesting. They usually coincide during synchronous mount and DIVERGE after a deferred/async boundary
+- Forgetting to capture this BEFORE an async gap (an \`await import()\`, a \`setTimeout\`) in code that will call \`useContext()\` later — by the time the deferred code runs, the owner active at capture time is gone unless you threaded it through \`runWithContextOwner\``,
+  },
+
+  'reactivity/runWithContextOwner': {
+    signature: '<T>(owner: EffectScope | null, fn: () => T) => T',
+    example: `const owner = getContextOwner()
+onIdle(() => {
+  runWithContextOwner(owner, () => {
+    // useContext() calls inside this mount now resolve against the
+    // REAL ancestor chain captured above, not whatever owner (if any)
+    // happens to be active when the idle callback actually fires.
+    mountDeferredContent()
+  })
+})`,
+    notes: `Run \`fn\` with \`owner\` as the active context owner, then restore whatever was active before — the safe, try/finally-guarded way to temporarily swap the context owner (mirrors \`scope.runInScope\` for effect scopes). This is how a deferred boundary (an island's late hydration, \`<Show>\`/\`<For>\` mounting children) re-establishes the REAL ancestor chain for a mount that happens after the synchronous render frame — capture the owner with \`getContextOwner()\` while it is genuinely active, then wrap the later mount call in \`runWithContextOwner(capturedOwner, () => …)\` so \`useContext()\` inside it resolves against the right provider. See also: getContextOwner, setContextOwner.`,
+    mistakes: `- Using \`setContextOwner\` + a manual restore instead of this — \`runWithContextOwner\` restores via try/finally even if \`fn\` throws; a hand-written set/restore pair leaks the owner on an exception
+- Capturing the owner too LATE — \`getContextOwner()\` must run while the real ancestor chain is genuinely active (synchronously, at setup), not inside the deferred callback itself`,
+  },
+
+  'reactivity/setContextOwner': {
+    signature: '(owner: EffectScope | null) => EffectScope | null',
+    example: `const prev = setContextOwner(myOwner)
+try {
+  doWork()
+} finally {
+  setContextOwner(prev)
+}
+// Prefer, when the swap fits a single call:
+runWithContextOwner(myOwner, () => doWork())`,
+    notes: '**Low-level escape hatch** — directly set the active context owner, returning the PREVIOUS one (for a manual restore). Prefer `runWithContextOwner(owner, fn)`, which does the same swap with a try/finally-guaranteed restore; reach for this only when implementing a framework primitive that cannot express its owner-swap as a single synchronous `fn` call (mirrors the `setCurrentScope`/`runInScope` relationship for effect scopes one level up). See also: runWithContextOwner, getContextOwner.',
+    mistakes: `- Forgetting to restore the previous owner (or restoring unconditionally instead of in a \`finally\`) — leaves subsequent \`useContext()\` calls resolving against the wrong ancestor chain until something else happens to reset it
+- Using this in ordinary application code instead of \`runWithContextOwner\` — this is a framework-primitive-authoring escape hatch, not a general-purpose API`,
+  },
   // <gen-docs:api-reference:end @pyreon/reactivity>
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1060,6 +1129,59 @@ return wrapCompatComponent(type)(props)`,
 // Equivalent to nativeCompat(MyComponent):
 ;(MyComponent as Record<symbol, boolean>)[NATIVE_COMPAT_MARKER] = true`,
     notes: 'The well-known registry symbol (`Symbol.for("pyreon:native-compat")`) used to mark a component as a Pyreon native framework component. Most callers should use `nativeCompat()` / `isNativeCompat()` instead of touching the symbol directly; exported for advanced cases (e.g., a compat layer that wants to inspect the property without going through the helper). See also: nativeCompat, isNativeCompat.',
+  },
+
+  'core/Defer': {
+    signature: `<Defer chunk={() => import('./X')} when={() => boolean} | on='visible'|'idle' fallback? rootMargin?>{(Component) => VNodeChild}</Defer>`,
+    example: `// Signal-driven (modal) — explicit form:
+<Defer chunk={() => import('./ConfirmDeleteModal')} when={open} fallback={<Spinner/>}>
+  {Modal => <Modal onClose={() => setOpen(false)} />}
+</Defer>
+
+// Viewport-driven (below-fold), with @pyreon/vite-plugin — inline form:
+<Defer on="visible">
+  <Comments postId={id} />
+</Defer>`,
+    notes: `Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): \`when={accessor}\` loads once the accessor becomes truthy (the modal-open pattern); \`on="visible"\` loads when the wrapper scrolls into the viewport (\`IntersectionObserver\`, \`rootMargin\` default \`'200px'\` so it's typically ready before the user scrolls to it); \`on="idle"\` loads during browser idle time (\`requestIdleCallback\`, falling back to \`setTimeout(1)\`). The chunk fetch fires EXACTLY ONCE per \`Defer\` instance — a \`when\` accessor oscillating true/false/true does not re-fetch. Two authoring forms: the EXPLICIT render-prop form shown above (works everywhere), and an INLINE JSX form (\`<Defer when={x}><Modal/></Defer>\`) that \`@pyreon/compiler\`'s \`transformDeferInline\` rewrites into the explicit form at BUILD time — the inline form requires \`@pyreon/vite-plugin\`; without it, \`Defer\` throws a clear dev-mode error naming the fix. \`fallback\` renders while the chunk loads (default \`null\`); a chunk-load failure is caught, dev-warned, and re-thrown into the nearest \`ErrorBoundary\` on render. See also: lazy, Suspense, ErrorBoundary.`,
+    mistakes: `- Using the inline JSX form WITHOUT \`@pyreon/vite-plugin\` enabled — the compiler pass that rewrites \`<Defer on="visible"><Comments/></Defer>\` into the chunk-prop form never runs, so \`Defer\` throws a clear "\`<Defer>\` has no \`chunk\` prop" error the moment the trigger fires; use the explicit render-prop form instead in a non-Vite build
+- Expecting the chunk to re-fetch when a \`when\` accessor flips false then true again — it loads exactly once per mounted \`Defer\`; unmount and remount the \`<Defer>\` itself if you need a fresh fetch
+- Forgetting the module needs a \`default\` export — \`Defer\` accepts either \`{ default: Component }\` or a bare \`ComponentFn\`, matching \`lazy()\`'s contract; a module with neither dev-warns and renders nothing`,
+  },
+
+  'core/registerErrorHandler / reportError': {
+    signature: 'registerErrorHandler(handler: (ctx: ErrorContext) => void) => () => void · reportError(ctx: ErrorContext) => void',
+    example: `import { registerErrorHandler } from '@pyreon/core'
+import * as Sentry from '@sentry/browser'
+
+registerErrorHandler((ctx) => {
+  Sentry.captureException(ctx.error, {
+    extra: { component: ctx.component, phase: ctx.phase, reactiveTrace: ctx.reactiveTrace },
+  })
+})`,
+    notes: `\`registerErrorHandler\` is the telemetry hook for Sentry/Datadog/custom error reporting — called whenever a component throws in ANY lifecycle phase (setup/render/mount/unmount) OR an \`effect()\` in \`@pyreon/reactivity\` throws (bridged via a \`globalThis.__pyreon_report_error__\` sink, since reactivity can't depend on core). Returns an unregister function; multiple handlers can be registered simultaneously (all fire). The \`ErrorContext\` passed to your handler carries \`component\`/\`phase\`/\`error\`/\`timestamp\`/\`props\`, plus (dev-only, tree-shaken in production) \`reactiveTrace\` — the last ~50 signal writes leading up to the error, answering "what reactive state changed in the run-up?" for free. \`reportError\` is the lower-level function the RUNTIME calls to dispatch a caught error through the registered handlers — call it directly only from custom framework-adjacent code (a hand-rolled error boundary, a compat-layer bridge) that catches an error the normal mount pipeline won't see. See also: ErrorBoundary, onErrorCaptured.`,
+    mistakes: `- Registering more than one handler and expecting only the LAST one to run — every registered handler fires for every error; deduplicate reporting inside your own handler if you register from multiple places
+- Expecting \`ctx.reactiveTrace\` to be populated in production — it is dev-only by design (the recorder tree-shakes out of prod bundles for zero cost); do not branch production telemetry logic on its presence
+- Calling \`reportError\` from ordinary application code instead of just throwing — a thrown error inside a component/effect ALREADY reaches every registered handler via the normal mount/effect error paths; \`reportError\` is for framework-adjacent code catching an error OUTSIDE those paths`,
+  },
+
+  'core/isClient / isServer': {
+    signature: 'isClient: boolean · isServer: boolean',
+    example: `import { isClient } from '@pyreon/core'
+
+if (isClient) {
+  // module-level singleton setup safe here — never runs during SSR
+}`,
+    notes: `Re-exported from \`@pyreon/reactivity\` for convenience — \`isServer = typeof document === 'undefined'\`, \`isClient\` its inverse. Plain runtime constants evaluated ONCE at module load (not an export-condition fold), so they work correctly in any bundler regardless of whether it sets a \`browser\` condition. Use for small environment guards (module-level singletons, lazy globals, render output that differs server vs client); for DOM access INSIDE a component prefer \`onMount\`/\`effect\` (which never run during SSR at all) over branching on \`isClient\` yourself, and for large server-only code prefer a \`/server\` subpath export over a runtime branch. See also: onMount.`,
+    mistakes: `- Hand-rolling \`const isBrowser = typeof window !== "undefined"\` instead of importing \`isClient\`/\`isServer\` — \`typeof document\` (what this uses) is the more reliable discriminator than \`typeof window\`, and a hand-rolled local const is NOT recognized by the \`no-window-in-ssr\` lint rule's SSR-guard detection the way \`isClient\`/\`isServer\` imported from \`@pyreon/core\`/\`@pyreon/reactivity\` are
+- Using \`isClient\` to gate DOM access inside a component body when \`onMount\`/\`effect\` would do — those never run during SSR at all, which is simpler and doesn't need the guard`,
+  },
+
+  'core/defineComponent': {
+    signature: '<P>(fn: ComponentFn<P>) => ComponentFn<P>',
+    example: `const Button = defineComponent((props: { label: string }) => <button>{props.label}</button>)
+// Identical behavior to: const Button = (props: { label: string }) => <button>{props.label}</button>`,
+    notes: 'An identity wrapper — returns `fn` unchanged. Purely a TYPE-LEVEL / tooling annotation: marks a function as a Pyreon component for IDE tooling and potential future compiler optimizations. Has ZERO runtime effect today (no wrapping, no registration, no different behavior from an unwrapped component function).',
+    mistakes: '- Expecting `defineComponent` to do anything at runtime (memoization, registration, special reactivity handling) — it is a no-op identity function; components work identically with or without it',
   },
 
   'core/ExtractProps': {
@@ -1949,6 +2071,74 @@ function PostsPage() {
 - \`LoaderData<ReturnType<typeof loader>>\` — pass the FUNCTION type (\`typeof loader\`), not its return type
 - It types, it does not validate — the loader data crosses an SSR JSON boundary; Date/Map/class instances arrive as plain JSON on the client`,
   },
+
+  'router/getActiveRouter / setActiveRouter': {
+    signature: 'getActiveRouter(): RouterInstance | null · setActiveRouter(router: RouterInstance | null): void',
+    example: `// App setup (once):
+setActiveRouter(router)
+
+// Later, from a plain (non-component) module:
+const router = getActiveRouter()
+if (router) router.push('/dashboard')`,
+    notes: `The module-level FALLBACK a hook resolves against when no \`<RouterProvider>\` context is above it. Every router hook (\`useRouter\`, \`useRoute\`, \`RouterLink\`'s internal resolution, …) reads \`useContext(RouterContext) ?? _activeRouter\` — the context wins when present, and \`setActiveRouter(router)\` (called once by app setup code — \`createApp\`/\`startClient\` in \`@pyreon/zero\`, or by hand in a non-JSX-provider app) supplies the fallback for code that runs OUTSIDE any component tree (a route loader, a plain utility module). \`getActiveRouter()\` reads the SAME resolution a hook would, without throwing when nothing is installed — useful for "is a router active at all?" checks in framework-adjacent code. See also: useRouter, RouterProvider, createRouter.`,
+    mistakes: `- Calling \`setActiveRouter\` more than once per app expecting multiple active routers to coexist — it is a single module-level fallback slot; the LAST call wins. Multiple simultaneous routers need \`<RouterProvider>\` context scoping, not this
+- Reaching for \`getActiveRouter()\` inside an ordinary component instead of \`useRouter()\` — \`useRouter()\` throws a clear error with no router installed; \`getActiveRouter()\` silently returns \`null\`, which is right for library/framework code but usually wrong for app components (a silent \`null\` there reads as "nothing happened")`,
+  },
+
+  'router/classifyHref / toRouterPath': {
+    signature: `classifyHref(to: string, config?: LinkConfig) => 'internal' | 'external' | 'hash' | 'protocol' · toRouterPath(to: string) => string`,
+    example: `classifyHref('/about')                    // 'internal'
+classifyHref('https://other.com/x')       // 'external'
+classifyHref('#section')                  // 'hash'
+classifyHref('mailto:hi@example.com')     // 'protocol'
+toRouterPath('https://example.com/about?tab=1')  // '/about?tab=1'`,
+    notes: `The classification \`<RouterLink>\` uses internally to decide client-side-navigate vs plain-anchor-behavior, exported for building CUSTOM link components without re-deriving the logic. \`classifyHref\` returns \`'internal'\` (client-side router navigation), \`'external'\` (full browser navigation — a different origin, OR a protocol-relative/authority-delimiter-prefixed value like \`//host\`, \`\\\\host\` — all resolve to a HOST per the URL parser and are treated as external for safety), \`'hash'\` (\`#section\` same-page anchor), or \`'protocol'\` (\`mailto:\`/\`tel:\`/\`sms:\`/other scheme — plain \`<a>\`). Pure and SSR-safe (falls back to treating an origin-undecidable absolute URL as external when there's no \`location\`). \`toRouterPath\` strips an absolute same-origin URL down to a router-relative path (\`https://example.com/about?x#y\` → \`/about?x#y\`); a relative value passes through unchanged. See also: RouterLink, LinkKind.`,
+    mistakes: `- Building a custom link component that only checks \`to.startsWith('http')\` — misses protocol-relative (\`//host\`) and other-scheme (\`mailto:\`) values, which need different handling (external navigation / plain anchor) than a router push
+- Assuming \`classifyHref\` decides based on a CLICK — it is a pure string classifier; the actual navigation choice (\`preventDefault\` + \`router.push\` vs letting the browser handle it) is the caller's job, exactly what \`RouterLink\` does with the result`,
+  },
+
+  'router/classifyRedirectTarget / safeRedirectLocation': {
+    signature: 'classifyRedirectTarget(target: string) => RedirectClass · safeRedirectLocation(target: string) => string',
+    example: `safeRedirectLocation('/dashboard')           // '/dashboard'
+safeRedirectLocation('https://good.com/x')   // 'https://good.com/x' (external)
+safeRedirectLocation('//evil.com')           // '/' — blocked, dev-warns why
+safeRedirectLocation('javascript:alert(1)')  // '/' — blocked`,
+    notes: `The open-redirect guard \`redirect()\` runs its target through. \`classifyRedirectTarget\` returns a \`{ kind: 'internal' | 'external' | 'block', url }\` verdict: a root-relative path or a genuine \`http(s)://\` URL passes as \`'internal'\`/\`'external'\`; anything that could trick the URL parser into resolving to an attacker-controlled host — a protocol-relative/authority-delimiter prefix (\`//host\`, \`\\\\host\`, \`/\\host\`, \`\\/host\`, all of which the parser reads as introducing a HOST exactly like \`//host\` does), or an explicit non-http(s) scheme (\`javascript:\`, \`data:\`, …) — is \`'block'\`ed to \`/\` (with a dev warning naming why). \`safeRedirectLocation\` is the convenience wrapper: \`'block'\` collapses to \`/\`, everything else passes through as a plain string. Exported for anyone building their OWN redirect helper outside \`redirect()\`/loaders (a webhook handler validating a \`returnTo\` query param, for instance). See also: redirect, isRedirectError, getRedirectInfo.`,
+    mistakes: `- Validating a redirect target with \`target.startsWith('http')\` or \`!target.startsWith('//')\` by hand instead of this — the authority-delimiter class (\`\\\\host\`, \`/\\host\`, \`\\/host\`) resolves to a host exactly like \`//host\` and is easy to miss when hand-rolling the check
+- Using \`classifyRedirectTarget\` result's \`.url\` directly for a \`'block'\` verdict — it is undefined for that kind; use \`safeRedirectLocation\` (which always returns a safe string) unless you specifically need to branch on WHY something was blocked`,
+  },
+
+  'router/serializeLoaderData / stringifyLoaderData / hydrateLoaderData': {
+    signature: 'serializeLoaderData(router: RouterInstance) => Record<string, unknown> · stringifyLoaderData(loaderData: Record<string, unknown>) => string · hydrateLoaderData(router: RouterInstance, serialized: Record<string, unknown>) => void',
+    example: `// Server (SSR handler):
+await prefetchLoaderData(router, req.url)
+const json = stringifyLoaderData(serializeLoaderData(router))
+const html = \`...<script>window.__PYREON_LOADER_DATA__=\${json}</script>...\`
+
+// Client entry (before mount):
+const router = createRouter({ routes })
+hydrateLoaderData(router, window.__PYREON_LOADER_DATA__ ?? {})
+mount(h(App, null), document.getElementById('app')!)`,
+    notes: `The SSR ⇄ client loader-data transit pipeline \`@pyreon/server\`/\`@pyreon/zero\` build on. Server side: \`serializeLoaderData(router)\` collects the matched chain's loader results into a plain object keyed by route path (a layout and its index page can share a path — the SECOND record at the same path gets a \`path#1\` suffix so neither clobbers the other); \`stringifyLoaderData(data)\` then turns that into a STRING ready to embed inside an inline \`<script>\` — it strips functions/symbols, throws a clear \`[Pyreon] Loader returned circular reference at "<path>"\` naming the offending key on a real cycle (a DAG with a SHARED reference, like two fields pointing at the same ORM instance, is NOT a cycle and serializes fine), and neutralizes the whole \`<\` character class plus U+2028/U+2029 so an adversarial loader value can never break out of the \`<script>\` boundary. Client side: \`hydrateLoaderData(router, serialized)\` — called once, BEFORE \`mount()\`, right after \`createRouter()\` — populates the router's internal loader-data map from the deserialized blob so the initial render uses the server-fetched data instead of re-running loaders. See also: useLoaderData, prefetchLoaderData.`,
+    mistakes: `- Calling \`JSON.stringify(serializeLoaderData(router))\` directly instead of \`stringifyLoaderData\` — loses the circular-reference diagnostic (a bare \`JSON.stringify\` throws an opaque "Converting circular structure to JSON" naming no route) AND the \`<script>\`-context escaping (a loader value containing \`</script>\` or \`<!--<script>\` can corrupt the page)
+- Calling \`hydrateLoaderData\` AFTER \`mount()\` — it populates the loader-data map the FIRST render reads; called too late, the initial render re-fetches instead of using the server data
+- Returning a Mongo/Prisma model with back-references intact from a loader — that IS a genuine cycle, and \`stringifyLoaderData\` throws naming the exact key; strip back-references or return a plain serialized shape`,
+  },
+
+  'router/resolveRoute / buildPath / findRouteByName / parseQuery / parseQueryMulti / stringifyQuery': {
+    signature: 'resolveRoute(rawPath, routes) => ResolvedRoute · buildPath(pattern, params) => string · findRouteByName(name, routes) => RouteRecord | null · parseQuery(qs) => Record<string, string> · parseQueryMulti(qs) => Record<string, string | string[]> · stringifyQuery(query) => string',
+    example: `import { resolveRoute, buildPath, parseQueryMulti } from '@pyreon/router'
+
+const resolved = resolveRoute('/user/42?tab=posts', routes)
+resolved.params.id      // '42'
+
+buildPath('/user/:id', { id: '42' })            // '/user/42'
+parseQueryMulti('color=red&color=blue')          // { color: ['red', 'blue'] }`,
+    notes: `Match utilities re-exported for SSR route pre-fetching and custom tooling that needs to match a path against a route TREE outside a live router instance (a build-time route inspector, a link-checker script, a test harness). \`resolveRoute(rawPath, routes)\` runs the SAME matcher \`createRouter\` uses internally (WHATWG-ordered: fragment split first, then query) and returns the full \`ResolvedRoute\` (matched chain, params, query, hash). \`buildPath(pattern, params)\` is the inverse — fills a route pattern's \`:param\`/\`:param?\`/\`:splat*\` placeholders from a params object (optional params omit their whole segment when absent; splat params are joined unencoded, since they legitimately contain \`/\`). \`findRouteByName\` does an O(n) recursive name search (prefer building a \`Map\` yourself for repeated lookups in a hot path — the router does this internally via \`buildNameIndex\`). \`parseQuery\`/\`parseQueryMulti\`/\`stringifyQuery\` are the query-string codec: \`parseQuery\` keeps the LAST value for a repeated key, \`parseQueryMulti\` collects repeats into an array, both drop a small denylist of dangerous keys (\`__proto__\` etc.) to keep the result prototype-pollution-safe. See also: createRouter, useRoute.`,
+    mistakes: `- Calling \`resolveRoute\` per-navigation in app code instead of using the router's own \`push\`/\`useRoute()\` — this is the low-level matcher for OFFLINE/tooling use; a live app already has a resolved route via the router instance
+- Using \`parseQuery\` when duplicate keys matter (\`?tag=a&tag=b\`) — it keeps only the LAST value per key; use \`parseQueryMulti\` to get an array
+- Calling \`findRouteByName\` in a hot path (per-render, per-navigation) — it is an O(n) recursive walk; the router itself uses a pre-built \`Map\` (\`buildNameIndex\`) for repeated lookups`,
+  },
   // <gen-docs:api-reference:end @pyreon/router>
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -2129,13 +2319,26 @@ const CartBadge = serverIsland(() => import('../islands/CartBadge'), {
 
 // page stays SSG/ISR/CDN-cacheable; the badge renders per request
 ;<CartBadge label="Cart" />`,
-    notes: `The INVERSE of \`island()\`: a static (CDN/ISR/prerender-cacheable) page with per-request SERVER-rendered holes. Every render emits only a \`<pyreon-server-island>\` marker carrying the name + codec-encoded props — the page contains nothing request-specific, so it stays cacheable. On the client each marker SELF-ACTIVATES on mount and fetches \`GET /_pyreon/fragment/<name>?props=…\` (auto-mounted by zero's createServer); the fragment renders per-request on the server with full request context (middleware locals, cookies — \`useRequestLocals()\` works inside). The endpoint is name-ALLOWLISTED — only registered islands render. \`fallback\` is the structural placeholder for no-JS clients and until the fragment arrives. \`cache\` sets the fragment response Cache-Control (default \`no-store\`) — only for fragments that do NOT vary on cookies/auth.`,
+    notes: `The INVERSE of \`island()\`: a static (CDN/ISR/prerender-cacheable) page with per-request SERVER-rendered holes. Every render emits only a \`<pyreon-server-island>\` marker carrying the name + codec-encoded props — the page contains nothing request-specific, so it stays cacheable. On the client each marker SELF-ACTIVATES on mount and fetches \`GET /_pyreon/fragment/<name>?props=…\` (auto-mounted by zero's createServer); the fragment renders per-request on the server with full request context (middleware locals, cookies — \`useRequestLocals()\` works inside). The endpoint is name-ALLOWLISTED — only registered islands render. \`fallback\` is the structural placeholder for no-JS clients and until the fragment arrives. \`cache\` sets the fragment response Cache-Control (default \`no-store\`) — only for fragments that do NOT vary on cookies/auth. See also: activateServerIslands.`,
     mistakes: `- TRUSTING the props inside the fragment — they arrive in the query string of a public, UNAUTHENTICATED endpoint (\`GET /_pyreon/fragment/<name>?props=…\`), so a caller can send any value for any registered island. The NAME is allowlisted; the props are not. Render from them freely, but authorize from the REQUEST (\`useRequestLocals()\`, the session cookie) — an island that reads a \`userId\` prop and returns that user's data is an IDOR by construction
 - Passing children — island props cross the fragment boundary as codec-encoded data; children are dropped (same contract as client islands)
 - Setting \`cache\` on a cookie-varying fragment — the same auth poisoning class as ISR cacheKey; the no-store default exists for a reason
 - Expecting the fragment to hydrate interactivity — fragments are server-rendered HTML; composing a client island() INSIDE a server island is a documented follow-up, not v1
 - Rendering personalized data in the PAGE around the island — the page is the cacheable part; everything request-specific belongs inside the island
 - Two serverIsland() declarations with the same name — the endpoint serves the FIRST registration (dev-mode warns)`,
+  },
+
+  'server/activateServerIslands': {
+    signature: '(base?: string) => () => void',
+    example: `// A static HTML page embedding server-island markup with no
+// Pyreon client mount cycle of its own:
+import { activateServerIslands } from '@pyreon/server/client'
+
+const stop = activateServerIslands('/my-app') // subpath deploy
+// stop() to tear down if the page unmounts / navigates away in an SPA shell`,
+    notes: `The MANUAL document-scan activator for \`<pyreon-server-island>\` markers, for static / no-full-hydrate hosts that are NOT a \`@pyreon/zero\` app. Each marker normally SELF-ACTIVATES on mount (a \`ref\` fires \`activateServerIslandElement\`) — that is what wins the lazy-route timing race in a zero app, and \`zero\`'s \`startClient\` does NOT call this function. Call \`activateServerIslands()\` yourself only when server islands are embedded in a page with no client-side mount/hydrate cycle to trigger the per-marker self-activation (a plain static HTML page, a non-Pyreon host rendering Pyreon-produced markup). \`base\` prefixes the fragment-fetch URL when the app is deployed under a subpath. Returns a disposer that stops the scan's observer. See also: serverIsland, island.`,
+    mistakes: `- Calling this in a \`@pyreon/zero\` app — \`startClient\` never calls it because each marker already self-activates on mount; calling it there is redundant (though harmless) work
+- Importing from \`@pyreon/server\` instead of \`@pyreon/server/client\` — like \`island\`, this is client-code and lives on the client-safe subpath`,
   },
 
   'server/useRequestLocals': {
@@ -2669,6 +2872,23 @@ function callAction<K extends keyof CartActions>(name: K, ...args: Parameters<Ca
     mistakes: `- Expecting signals/computeds to appear — they are callable but deliberately excluded (they are state/derivation, not actions)
 - Using it to type \`patch()\` payloads — that is \`Partial<StoreState<Api>>\`, not the actions record`,
   },
+
+  'store/signal': {
+    signature: 're-exported verbatim from @pyreon/reactivity: signal, computed, effect, batch',
+    example: `import { defineStore, signal, computed, batch } from '@pyreon/store'
+
+export const useCounter = defineStore('counter', () => {
+  const count = signal(0)
+  const doubled = computed(() => count() * 2)
+  return {
+    count, doubled,
+    incrementTwice: () => batch(() => { count.update((n) => n + 1); count.update((n) => n + 1) }),
+  }
+})`,
+    notes: `Convenience re-exports of the four \`@pyreon/reactivity\` primitives a \`setup()\` function reaches for constantly, so a store module rarely needs a second import from \`@pyreon/reactivity\` alongside \`defineStore\`. \`signal\`/\`computed\` are what setup CLASSIFIES into store state (a returned \`signal(...)\` becomes tracked state; a returned \`computed(...)\` is passed through as a derived read); \`effect\`/\`batch\` are for internal setup logic (a store-owned effect runs inside the store's own scope — see the "Scope ownership" gotcha — and \`batch\` groups several signal writes inside an action into one notification, same as anywhere else in the framework). See \`@pyreon/reactivity\`'s manifest for the full API of each — this package adds no behavior on top, it only re-exports. See also: defineStore, StoreState.`,
+    mistakes: `- Importing these from \`@pyreon/reactivity\` in the SAME file that already imports \`defineStore\` from \`@pyreon/store\` — harmless, but the store package re-exports them precisely so you don't need the second import
+- Expecting a store-specific variant of \`signal\`/\`computed\`/\`effect\`/\`batch\` — they are the exact same functions as \`@pyreon/reactivity\`'s; classification into state/action happens by DUCK-TYPING the setup return, not by a special wrapped version of these primitives`,
+  },
   // <gen-docs:api-reference:end @pyreon/store>
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -3053,6 +3273,21 @@ const messages = formatErrors(result.issues ?? [], t)`,
     notes: `Build a per-field error map keyed by the issue's path joined with \`.\`. Compatible with \`@pyreon/form\`'s \`Errors\` shape (\`Partial<Record<fieldName, string>>\`). Path-less issues land under the empty-string key. First issue wins on collision unless \`joinWith\` is set (then messages concatenate). See also: formatErrors.`,
   },
 
+  'validate/toFormValidator': {
+    signature: '<TValues>(schema: Schema<TValues>, t?: TFn) => (values: TValues) => Record<string, string>',
+    example: `const schema = s.object({ email: s.string().email(), age: s.number().int().min(18) })
+const { t } = useI18n()
+const form = useForm({
+  fields: [emailField, ageField],
+  schema: toFormValidator(schema, t),
+  onSubmit,
+})`,
+    notes: `Adapt an \`s.*\` schema directly into \`@pyreon/form\`'s \`schema\` validator shape — a \`(values) => Record<field, errorMessage>\` function. Runs \`schema.safeParse(values)\` and, on failure, maps every issue's path through \`formatErrorsByPath\` (so \`key\`/\`params\` resolve through \`t\` exactly like any other issue); valid input returns \`{}\`. Designed for a FLAT object schema (\`s.object({ email, age })\`) whose top-level keys match the form's field names — each issue's path is expected to be a single segment. See also: formatErrorsByPath, formatErrors.`,
+    mistakes: `- Using a NESTED schema (\`s.object({ user: s.object({ email }) })\`) — its issues produce dotted paths (\`user.email\`), which will not match a flat form field named \`email\`; flatten the schema or use \`@pyreon/form\` field arrays for nested shapes
+- Omitting \`t\` when the schema uses \`key\`/\`params\` issues — without it, i18n keys never resolve and every message falls back to \`fallback\`/\`message\`
+- Expecting the returned function to THROW — it never does; \`schema.safeParse\` failures become the returned error record, \`{}\` on success`,
+  },
+
   'validate/toJsonSchema': {
     signature: `(schema: Schema<unknown>, options?: { unrepresentable?: 'throw' | 'any' }) => JsonSchema`,
     example: `import { toJsonSchema } from '@pyreon/validate/json-schema'
@@ -3380,9 +3615,18 @@ issuesToRecord([
   { path: 'email', message: 'Invalid' }, // dropped — first wins
 ])
 // => { email: 'Required' }`,
-    notes: 'Collapse an array of normalized `ValidationIssue` (`{ path, message }`) into a flat field→error record — the shape `@pyreon/form` consumes. First message per path wins; nested dot-paths (`address.city`) become the record key verbatim (the adapter is responsible for producing the dot-string). The building block every custom adapter ends with. See also: formatIssues, zodSchema.',
+    notes: 'Collapse an array of normalized `ValidationIssue` (`{ path, message }`) into a flat field→error record — the shape `@pyreon/form` consumes. First message per path wins; nested dot-paths (`address.city`) become the record key verbatim (the adapter is responsible for producing the dot-string). The building block every custom adapter ends with. See also: formatIssues, zodSchema, flattenIssuePath.',
     mistakes: `- Expecting the LAST message to win for a repeated path — the FIRST wins; order your issues most-important-first
-- Feeding native library paths (arrays / objects) directly — normalize to a dot-string path in the ValidationIssue first`,
+- Feeding native library paths (arrays / objects) directly — normalize to a dot-string path with \`flattenIssuePath\` first`,
+  },
+
+  'validation/flattenIssuePath': {
+    signature: '(path: ReadonlyArray<PropertyKey | { key: PropertyKey }> | undefined) => string',
+    example: `flattenIssuePath(['address', 'city'])        // 'address.city'
+flattenIssuePath([{ key: 'address' }, 'city'])  // 'address.city' — mixed shapes work
+flattenIssuePath(undefined)                     // '' — form-level issue`,
+    notes: `Normalize a Standard-Schema-style issue path (an array of \`PropertyKey\`s, or of \`{ key }\` wrappers — libraries emit either shape) into the single dot-joined string every consumer of a \`ValidationIssue.path\` keys on: \`@pyreon/form\`'s schema-error routing, \`@pyreon/store\`/\`@pyreon/state-tree\`'s parse errors, and \`issuesToRecord\` here. This is the ONE canonical join implementation — every custom adapter should call it rather than hand-rolling \`path.map(String).join('.')\`, which drifts from libraries that use the \`{ key }\` wrapper form and silently mis-routes errors. An empty/undefined path returns \`''\` (a whole-form-level issue). See also: issuesToRecord.`,
+    mistakes: `- Hand-rolling \`path.map(String).join('.')\` in a custom adapter instead of calling this — it silently disagrees with \`flattenIssuePath\` the moment a library emits the \`{ key }\` wrapper shape instead of a bare \`PropertyKey\``,
   },
 
   'validation/TypedSchemaAdapter': {
@@ -3558,6 +3802,32 @@ const field = useField(form, 'email')`,
     notes: 'Read the nearest `FormProvider` form from context. Throws at dev time if no provider is mounted above the call site. Pass the expected `TValues` generic so downstream typings (`useField` field names, `useWatch` keys) stay end-to-end typed. Returns the same `FormState<TValues>` instance that was passed to `FormProvider`. See also: FormProvider, useForm.',
     mistakes: `- Calling at module scope — hooks require an active component setup context; call inside a component body
 - Omitting the \`<TValues>\` generic — TypeScript infers \`FormState<Record<string, unknown>>\` and \`useField\` field names lose type narrowing`,
+  },
+
+  'form/Form': {
+    signature: '<TValues>(props: { of: FormState<TValues>; children?: VNodeChild; class?: string; disabled?: boolean | (() => boolean); readOnly?: boolean | (() => boolean) }) => VNodeChild',
+    example: `const form = useForm({ initialValues: { email: '' }, onSubmit: (values) => api.login(values) })
+
+<Form of={form} disabled={query.isFetching}>
+  <EmailInput />
+  <Submit>Login</Submit>
+</Form>`,
+    notes: `A thin \`<form>\` wrapper that combines \`FormProvider\` (so descendants can call \`useField\`/\`useFormContext\` without prop-drilling) with wiring \`onSubmit={form.handleSubmit}\` automatically — the two things every form's root element needs. \`disabled\`/\`readOnly\` accept either a plain boolean or a reactive accessor (\`query.isFetching\`, \`mutation.isPending\`) and sync into the form's own \`disabled\`/\`readOnly\` signals; form-LEVEL always takes priority over any field-level \`disabled\`/\`readOnly\` set individually. This is sugar over \`FormProvider\` + a hand-written \`<form onSubmit={form.handleSubmit}>\` — use \`FormProvider\` directly when you need a non-\`<form>\` root element or extra attributes \`Form\` does not forward. See also: FormProvider, Submit, useForm.`,
+    mistakes: `- Also manually wiring \`onSubmit={form.handleSubmit}\` on a nested \`<form>\` — \`Form\` already renders the \`<form>\` element and wires submit; do not nest another \`<form>\` inside it
+- Passing \`disabled\` as a plain boolean when it should track a query/mutation — pass the ACCESSOR (\`query.isFetching\`, not \`query.isFetching()\`) so it stays reactive; a plain \`boolean\` value is read once at the render that produced it
+- Expecting \`Form\`'s \`class\` prop to accept an array/object like the styler \`class\` convention — it is a plain optional string here`,
+  },
+
+  'form/Submit': {
+    signature: '(props: { children?: VNodeChild; class?: string }) => VNodeChild',
+    example: `<Form of={form}>
+  <EmailInput />
+  <Submit>Sign in</Submit>
+</Form>`,
+    notes: 'A `<button type="submit">` that auto-disables while `form.isSubmitting()` is true OR the form is `disabled` — the button-level half of the disabled-while-submitting pattern every form needs, without hand-wiring `disabled={() => form.isSubmitting() || form.disabled()}` yourself. MUST be rendered inside a `<Form>` or `<FormProvider>` (it reads the form via `useFormContext()`, which throws with no provider above it). Defaults its label to the text `"Submit"` when no children are passed. See also: Form, useForm, useFormState.',
+    mistakes: `- Rendering \`<Submit>\` outside a \`<Form>\`/\`<FormProvider>\` tree — \`useFormContext()\` throws at dev time with no ancestor provider
+- Adding a manual \`disabled={form.isSubmitting()}\` on top of \`<Submit>\` — it already combines submitting AND form-disabled state; a hand-added check is redundant and can disagree during a form-level \`disabled\` toggle
+- Expecting \`<Submit>\` to run validation before submit — validation is \`form.handleSubmit\`'s job (wired by \`<Form>\`'s \`onSubmit\`); \`<Submit>\` only renders the button and its disabled state`,
   },
 
   'form/FormValues': {
@@ -4025,6 +4295,75 @@ export const middleware = (ctx: { req: Request }) =>
     mistakes: `- Importing it from \`@pyreon/http\` instead of \`@pyreon/http/server\` — the split is what keeps node:async_hooks out of the client bundle.
 - Expecting relative URLs to resolve on the server WITHOUT it. There is no ambient origin until you wire it.
 - Assuming headers forward automatically. \`forwardHeaders\` requires an explicit allowlist and stops at the origin boundary by default.`,
+  },
+
+  'http/RequestError': {
+    signature: 'class RequestError extends Error { readonly request: HttpRequest | undefined }  — subclasses: HttpError (+ ClientError/ServerError), TimeoutError, AbortError, NetworkError, ParseError, ResponseValidationError',
+    example: `try {
+  await getUser({ params: { id } })
+} catch (e) {
+  if (e instanceof AbortError) return          // cancellation — not a failure
+  if (e instanceof RequestError) reportError(e) // every other failure mode
+  throw e
+}`,
+    notes: 'The common base of every error this package throws — `catch (e) { if (e instanceof RequestError) … }` covers the whole family in one check, without listing members. Every message is `[Pyreon]`-prefixed. The subclasses each name a distinct failure MODE, not just a status code: `HttpError` (and its `ClientError`/`ServerError` refinements for 4xx/5xx) is a non-2xx response — thrown by default because `@pyreon/query` needs a rejected promise to enter its error state; `TimeoutError` is the request exceeding its `timeout`; `NetworkError` is the transport failing before any response arrived (DNS, offline, CORS); `ParseError` is a body that did not decode as the requested type; `ResponseValidationError` is a body that decoded but failed schema validation (its `.value` carries the raw, unvalidated body for reporting). `AbortError` is the odd one out — see its own mistake below. See also: createHttp, standardSchema.',
+    mistakes: `- Reporting \`AbortError\` as a failure — it is the EXPECTED outcome of navigating away mid-request or a newer call superseding an older one; check for it FIRST and return, never log it to an error tracker
+- Checking \`e instanceof AbortError\` alone to detect cancellation — \`fetch\` itself can reject with a plain \`DOMException{name:"AbortError"}\` (not this package's class); use the standalone \`isAbortError(e)\` function, which recognizes both
+- Assuming every non-2xx throws — a client created with \`throwHttpErrors: false\` returns the response instead; check \`response.ok\` in that mode
+- Reading \`ResponseValidationError.request\` for the parsed value — that field is the outgoing request; the raw (unvalidated) body is on \`.value\``,
+  },
+
+  'http/buildUrl': {
+    signature: '(baseUrl: string | undefined, path: string, params: PathParams | undefined, query: QueryParams | undefined) => string',
+    example: `buildUrl('/api', '/users/:id', { id: '1' }, { includeDeleted: true })
+// -> '/api/users/1?includeDeleted=true'`,
+    notes: 'The full URL-resolution pipeline `createHttp`/`endpoint` build every request URL through: `applyPathParams` (substitutes `:name` placeholders, `encodeURIComponent`-encoded so an id containing `/` cannot escape its segment — throws on a missing param rather than leaving a literal `:id` in the URL) → `joinUrl` (base + path with exactly one slash between them; a PREFIX join, not `new URL(path, base)` — see the "baseUrl is a PREFIX" gotcha) → `buildQuery` (serializes a query object, DROPPING `undefined`/`null` entries so they never land in the URL as the literal text `"undefined"`, and repeating the key for array values). Each step is also individually exported (`applyPathParams`, `joinUrl`, `buildQuery`, `isAbsoluteUrl`) for anything building URLs outside the client — a custom transport, a test assertion, a devtools panel. See also: createHttp.',
+    mistakes: `- Interpolating a param into the path string yourself (\`\` \`/users/\${id}\` \`\`) instead of \`:id\` + \`params\` — that skips encoding, so an id containing \`/\` or \`?\` escapes its segment
+- Expecting \`joinUrl\` to follow WHATWG \`new URL(path, base)\` semantics — a leading slash does NOT discard the base path here; \`joinUrl('/api/v1', '/users')\` is \`/api/v1/users\`, never \`/users\`
+- Passing \`undefined\` in a query object and expecting it omitted only sometimes — it is ALWAYS dropped, on every value including array entries`,
+  },
+
+  'http/compose': {
+    signature: '(middleware: readonly HttpMiddleware[], transport: Transport) => Transport',
+    example: `import { compose } from '@pyreon/http'
+import { retry } from '@pyreon/http/middleware'
+import { fetchTransport } from '@pyreon/http'
+
+const dispatch = compose([retry({ limit: 2 })], fetchTransport)
+const response = await dispatch(request)`,
+    notes: `Fold a middleware array (outermost first) over a transport into one callable — what \`createHttp({ use })\` does internally to build the client's dispatch chain. Exposed standalone for testing a middleware pipeline directly (no need to build a full client), or for composing a custom \`Transport\` outside the normal client shape. Deliberately has NO "next() called multiple times" guard (unlike Koa) — retry middleware legitimately re-enters the downstream chain in a loop, and a guard would forbid exactly that. See also: HttpMiddleware, retry.`,
+    mistakes: `- Assuming a middleware may only call \`next()\` once — repeated calls are exactly what makes retry possible; do not add a re-entrancy guard on top
+- Forgetting a middleware must RETURN the response from \`next()\` — the chain resolves to whatever each middleware returns, so swallowing it silently drops the response`,
+  },
+
+  'http/createFetchTransport': {
+    signature: '(fetchImpl?: typeof fetch) => Transport',
+    example: `import { createFetchTransport } from '@pyreon/http'
+
+const api = createHttp({ transport: createFetchTransport(myFetchImpl) })`,
+    notes: `Build a \`fetch\`-backed \`Transport\`. \`fetchTransport\` (a constant) is the default instance — \`createHttp()\` uses it when no custom transport is configured. \`createFetchTransport(fetchImpl)\` lets you inject a substitute \`fetch\` (tests, SSR, a future in-process dispatcher) — the same injectable-implementation seam \`@pyreon/zero-content\`'s search runtime uses. Its whole job beyond calling \`fetch\` is normalising the rejection channel: a network failure rejects with a bare \`TypeError\` and cancellation rejects with \`DOMException{name:"AbortError"}\`, and this transport turns those into \`NetworkError\`/\`AbortError\` respectively so they never get conflated downstream. See also: createHttp, RequestError.`,
+    mistakes: `- Expecting a raw \`TypeError\`/\`DOMException\` from a client built on this transport — both are already normalized to \`NetworkError\`/\`AbortError\`
+- Building this for every request instead of once at client-construction time — it is a factory, meant to be called once and reused`,
+  },
+
+  'http/getAmbientRequest': {
+    signature: '() => AmbientRequest | undefined',
+    example: `import { getAmbientRequest, resolveAgainstAmbientOrigin } from '@pyreon/http'
+
+const req = getAmbientRequest()          // undefined in the browser
+const url = resolveAgainstAmbientOrigin('/api/users')  // absolute on the server, unchanged in the browser`,
+    notes: `Read the inbound request currently in scope — \`undefined\` in the browser, and \`undefined\` on any server that has not opted in via \`runWithRequest\` (from \`@pyreon/http/server\`). \`resolveAgainstAmbientOrigin(url)\` is the companion that USES it: a root-relative URL (\`/api/users\`) has no origin on the server, so it resolves against the ambient request's origin; an already-absolute URL, or one with no ambient request, is returned unchanged (never throwing — a malformed inbound URL degrades gracefully instead of failing the render). Both are client-safe (no \`node:async_hooks\` import) — the AsyncLocalStorage wiring itself lives in \`@pyreon/http/server\`'s \`runWithRequest\`, kept in a separate entry so importing this one never drags a Node-only module into a browser bundle. See also: runWithRequest, createHttp.`,
+    mistakes: `- Reading this without ever calling \`runWithRequest\` (from \`@pyreon/http/server\`) somewhere upstream — it always returns \`undefined\` until something establishes the context, so relative URLs on the server never resolve on their own
+- Importing \`runWithRequest\` from \`@pyreon/http\` — it lives in \`@pyreon/http/server\` specifically so \`node:async_hooks\` stays out of the client bundle; this read-side pair is the client-safe half`,
+  },
+
+  'http/defineEndpoint': {
+    signature: '(client: HttpClient, spec: `${HttpMethod} ${string}`, options?: { response?: Validator }) => Endpoint',
+    example: `import { defineEndpoint } from '@pyreon/http'
+
+const getUser = defineEndpoint(api, 'GET /users/:id', { response: UserSchema })`,
+    notes: 'The standalone form of `client.endpoint(spec, options)` — the method is a thin wrapper (`(spec, opts) => defineEndpoint(client, spec, opts)`). Reach for this directly when defining endpoints in a module that should not import a specific client instance (a shared endpoints file consumed against different clients per environment), or when building tooling that generates endpoint declarations. Same key/params/response semantics as `endpoint`. See also: endpoint, createHttp.',
+    mistakes: '- Using this when `api.endpoint(...)` reads more naturally — for the common case of one client per module, prefer the method form; reach for the standalone function only when the client is not fixed at declaration time',
   },
 
   'http/createMock': {
@@ -4628,6 +4967,135 @@ const status = signal<'idle' | 'unlocked' | 'denied'>('idle')
 - Expecting the WEB \`authenticate\` to actually authenticate — v1 resolves \`false\` (a real WebAuthn assertion needs a server challenge + a registered credential, out of scope for a client-only hook). For web biometric auth drive the WebAuthn API with your backend; the native paths (Face ID / Touch ID / BiometricPrompt) are the real gate.
 - Treating a \`false\` result as an error — \`authenticate\` never rejects; failure, cancellation, and an unavailable / unenrolled device all resolve \`false\`. Branch on the boolean, do not wrap it in \`try/catch\`.`,
   },
+
+  'hooks/useGeolocation': {
+    signature: '(options?: { enableHighAccuracy?: boolean; timeout?: number; maximumAge?: number }) => { latitude: number | null; longitude: number | null; accuracy: number | null; error: string | null; isTracking: boolean; start(): void; stop(): void }',
+    example: `const geo = useGeolocation({ enableHighAccuracy: true })
+<Stack>
+  <span>{geo.latitude ?? 'no fix yet'}</span>
+  <Button onPress={() => geo.start()}>Locate</Button>
+</Stack>`,
+    notes: `Reactive device position, shared across web / iOS / Android — the web half of the hook PMTC has always lowered natively to \`PyreonGeolocation\`. Returned fields are GETTERS over signals (not plain values, so a component body reading \`geo.latitude\` re-reads on every access, matching the native \`@Observable\`/\`mutableStateOf\` container), and field NAMES mirror the native container exactly so one shared \`.tsx\` reads the same members on all three targets. \`start()\` begins \`navigator.geolocation.watchPosition\`; \`stop()\` clears it and also runs automatically on unmount. HONEST PLATFORM GAP: \`start()\` compiles on web and iOS only — Kotlin's native container needs a host closure argument (no default location transport), so \`geo.start()\` does not compile on Android; the reactive READS (\`latitude\`/\`longitude\`/\`accuracy\`) are shared on all three, only starting the watch is not. See also: useMap, useWebSocket, useOnline.`,
+    mistakes: `- Calling \`geo.start()\` on Android in shared code without a \`<NativeIOS>\`/\`<Web>\` guard — the Kotlin container needs a registration closure the shared call site does not supply, so it will not compile there until the Android side grows a default transport
+- Destructuring \`{ latitude }\` at setup instead of reading \`geo.latitude\` inside JSX/an effect — the fields are getters over signals; destructuring captures the value ONCE and freezes it
+- Forgetting \`stop()\` is idempotent by design — calling it before \`start()\`, or twice, is always safe (it also runs automatically on unmount)`,
+  },
+
+  'hooks/useMap': {
+    signature: '() => { camera: PyreonMapCamera; markers: PyreonMapMarker[]; selectedMarkerId: string | null; selectedMarker: PyreonMapMarker | null; setCamera(c): void; moveTo(lat, lng, zoom?): void; setMarkers(m[]): void; addMarker(m): void; removeMarker(id): void; selectMarker(id): void }',
+    example: `const map = useMap()
+map.setCamera({ latitude: 51.5, longitude: -0.12, zoom: 12 })
+map.addMarker({ id: 'a', latitude: 51.5, longitude: -0.12, title: 'Here' })
+<Show when={() => map.selectedMarker}>{(m) => <span>{m.title}</span>}</Show>`,
+    notes: 'Map STATE — camera, markers, selection — shared across web / iOS / Android, mirroring the native `PyreonMapState` container field-for-field. Deliberately NOT a renderer: the actual drawing is MapKit / the Android Maps SDK natively, and on web this hook imposes no mapping-library choice — feed `map.camera`/`map.markers` to Leaflet, MapLibre, Google Maps, or a plain `<svg>`. Semantics worth knowing: `addMarker` UPSERTS by id and preserves the existing list position; `removeMarker` clears the selection if the removed marker was selected; `moveTo` keeps the CURRENT zoom when `zoom` is omitted; `selectedMarker` is DERIVED from `selectedMarkerId`, never stored separately. There is no `error` field by design — the container performs no I/O and cannot fail. See also: useGeolocation.',
+    mistakes: `- Expecting this hook to render a map — it is pure state; wire \`map.camera\`/\`map.markers\` into your mapping library of choice (or MapKit/Android Maps natively)
+- Calling \`moveTo(lat, lng, 0)\` to reset zoom — \`0\` is a valid zoom value, not "unset"; omit the third argument entirely to keep the current zoom
+- Expecting an \`error\` field — none exists on any target; the container never performs I/O`,
+  },
+
+  'hooks/useWebSocket': {
+    signature: '(url: string) => { lastMessage: string | null; messages: string[]; isConnected: boolean; error: string | null; connect(): void; send(text): void; close(): void }',
+    example: `const ws = useWebSocket('wss://example.com/chat')
+onMount(() => ws.connect())
+<Show when={() => ws.isConnected}><span>{ws.lastMessage}</span></Show>
+<Button onPress={() => ws.send('ping')}>Ping</Button>`,
+    notes: 'A live TEXT socket, shared across web / iOS / Android, mirroring the native `PyreonWebSocket` container field-for-field (an implicit auto-connect-on-mount is synthesized on native; on web call `connect()` — or read `isConnected`/`lastMessage`, which start at their empty defaults). Getters over signals: `ws.isConnected` re-reads on every access rather than freezing at mount. HONEST LIMITS matching the native container exactly: TEXT frames only (a binary frame is silently ignored — the native side can never produce one); no automatic reconnect/backoff on any target; `messages` grows WITHOUT BOUND like the native `[String]` — a long-lived feed should read `lastMessage` and keep its own bounded history. `error` is a rendered STRING (not an `Error`) to match what the native optional-interpolation can produce. See also: useFetch, useOnline.',
+    mistakes: `- Sending a binary payload (\`ArrayBuffer\`/\`Blob\`) — \`send()\` is TEXT-only; a binary frame received from the server is silently ignored rather than stringified
+- Rendering \`ws.messages\` directly for a long-lived feed — it grows without bound on every target; keep your own bounded history and read \`lastMessage\` for the latest
+- Expecting automatic reconnect after a drop — none exists on web OR native; wire your own retry against \`ws.error\`/\`ws.isConnected\``,
+  },
+
+  'hooks/useAuth': {
+    signature: '<User>() => { status: "signedOut" | "signingIn" | "signedIn" | "error"; user: User | null; error: string | null; isAuthenticated: boolean; isSigningIn: boolean; beginSignIn(): void; signInSucceeded(user): void; signInFailed(failure): void; signOut(): void }',
+    example: `const auth = useAuth<{ id: string; name: string }>()
+const signIn = async () => {
+  auth.beginSignIn()
+  try {
+    const user = await api.login()
+    auth.signInSucceeded(user)
+  } catch (err) {
+    auth.signInFailed(err)
+  }
+}
+<Show when={() => auth.isAuthenticated}><span>{() => \`Hi \${auth.user?.name}\`}</span></Show>`,
+    notes: 'The device-proven auth-STATE container, shared across web / iOS / Android — mirrors the native `PyreonAuth<User>` field-for-field, including the exact `status` string spellings (`"signedOut"`/`"signingIn"`/`"signedIn"`/`"error"`) so `<Text>{auth.status}</Text>` renders identically on all three targets. Pure state machine — no I/O, no platform edge: the sign-in MECHANISM (an OAuth redirect, a POST, a biometric unlock) lives in your own code and drives the container through its explicit transitions. Non-obvious transition rules, each mirroring the native container line-for-line: `beginSignIn` keeps the PRIOR `user` (a token refresh while signed in must not blank the UI); `signInFailed` also keeps `user` (a failed refresh keeps the existing session visible); `signInSucceeded`/`beginSignIn`/`signOut` all clear `error`. Compose token persistence with `useSecureStorage` (store on `signInSucceeded`, clear on `signOut`). See also: useSecureStorage, useBiometrics.',
+    mistakes: `- Assuming \`user\` is \`null\` while \`status === "signingIn"\` — it is not; a token refresh keeps the PRIOR user visible so the UI does not blank during re-auth
+- Treating \`status === "error"\` as terminal — \`error\` can also be set with \`user\` still populated (a failed refresh); check \`isAuthenticated\` for "does the app have a usable session", not the absence of an error
+- Reimplementing session persistence by hand — pair \`signInSucceeded\`/\`signOut\` with \`useSecureStorage\`, not \`useStorage\` (plaintext) or a module-level variable (lost on reload)`,
+  },
+
+  'hooks/usePush': {
+    signature: '() => { token: string | null; lastNotification: PyreonPushNotification | null; notifications: PyreonPushNotification[]; isAuthorized: boolean; isRegistered: boolean; error: string | null; tokenReceived(t): void; notificationReceived(n): void; authorize(ok): void; fail(err): void; start(register): () => void; stop(): void }',
+    example: `const push = usePush()
+onMount(() => push.start((handlers) => {
+  Notification.requestPermission().then((p) => handlers.authorize(p === 'granted'))
+  // subscribe via your service worker, then: handlers.tokenReceived(subscription)
+  return () => {} // teardown
+}))
+<Show when={() => push.isAuthorized}><span>{push.lastNotification?.title}</span></Show>`,
+    notes: 'Push-notification STATE + INJECTED REGISTRATION, shared across web / iOS / Android, mirroring the native `PyreonPushNotifications` container. The device token cannot arrive through anything the container owns — natively it lands in the AppDelegate/FirebaseMessagingService, on web it comes out of a service-worker `PushManager.subscribe()` flow your app orchestrates — so `start(register)` hands your app a set of handler thunks (`onToken`, `onAuthorization`, `onNotification`) that drive the pure transitions; your code wires the actual SDK/permission-prompt call. `start` is IDEMPOTENT (a second call while registered does not re-invoke `register`); `stop` is safe when never started and safe to call twice. Transition rules to know: `tokenReceived` clears `error`; `notificationReceived`/`authorize` do NOT touch it; `fail` keeps the prior `token`/`notifications` (stale-while-error). See also: useNotifications, useAuth.',
+    mistakes: `- Expecting \`start()\` to request permission or subscribe for you — it only wires the STATE transitions; the app supplies the real SDK calls inside the \`register\` callback
+- Calling \`start(register)\` a second time expecting it to re-register — it is idempotent while already registered; call \`stop()\` first if you genuinely need to re-run the registration flow
+- Reading \`token\` before \`authorize(true)\`/\`tokenReceived\` have fired — both start \`null\`/empty until your registration callback reports them`,
+  },
+
+  'hooks/usePayments': {
+    signature: '() => { products: PyreonProduct[]; ownedProductIds: ReadonlySet<string>; purchasing: string | null; error: string | null; owns(id): boolean; productsLoaded(p[]): void; purchaseStarted(id): void; purchaseSucceeded(id): void; purchaseFailed(err): void; restored(ids): void; connect(actions): void; purchase(id): void; restore(): void }',
+    example: `const pay = usePayments()
+onMount(() => pay.connect({
+  purchase: (id) => store.buy(id).then(() => pay.purchaseSucceeded(id)).catch((e) => pay.purchaseFailed(e)),
+  restore: () => store.restorePurchases().then((ids) => pay.restored(ids)),
+}))
+<Button disabled={() => pay.owns('pro')} onPress={() => pay.purchase('pro')}>Buy Pro — {product.price}</Button>`,
+    notes: 'In-app-purchase STATE + INJECTED STORE ACTIONS, shared across web / iOS / Android, mirroring the native `PyreonPayments` container. The purchase MECHANISM (StoreKit/Play Billing natively; Stripe/Paddle/the Payment Request API on web) is async and app-orchestrated — `connect(actions)` hands the container your `{ purchase, restore }` implementations, and `purchase(id)`/`restore()` route through them after entering the purchasing state. `purchase(id)` is a TOTAL no-op when not connected — it does not even enter the purchasing state. `connect` is idempotent (a second call while already connected is a no-op). `price` is a pre-formatted STRING (the store formats it per storefront) on every target. See also: useAuth, useSecureStorage.',
+    mistakes: `- Calling \`purchase(id)\` before \`connect(actions)\` — it is a total no-op (does not even set \`purchasing\`) rather than an error, so a missing \`connect()\` call silently does nothing
+- Assuming \`purchaseSucceeded\` clears \`error\` — it does not; only \`productsLoaded\`/\`purchaseStarted\`/\`restored\` clear it
+- Carrying \`price\` as a number and formatting it yourself — it is already a localized, pre-formatted string on every target; reformatting risks disagreeing with the storefront`,
+  },
+
+  'hooks/useDatabase': {
+    signature: '() => { insert(collection, record): void; get(collection, id): PyreonRecord | null; all(collection): PyreonRecord[]; delete(collection, id): boolean; find(collection, field, equals): PyreonRecord[]; count(collection): number }',
+    example: `const db = useDatabase()
+db.insert('notes', { id: '1', fields: { title: 'Hello', done: 'false' } })
+const notes = db.all('notes')
+const open = db.find('notes', 'done', 'false')`,
+    notes: 'A tiny, SYNCHRONOUS document store, shared across web / iOS / Android, mirroring the native `PyreonDatabase` container (file-backed on both native targets — records survive relaunch). The API is synchronous because the native one is (`get` returns `PyreonRecord?`, not a promise) — that rules out IndexedDB for the web half, so `localStorage` backs it: synchronous, persistent across reloads, ~5 MB per origin. This is for small app-state record sets, NOT a real database: `find` is a linear scan (as it is natively), and every `PyreonRecord.fields` value is a STRING on every target (`[String: String]` natively) — serialize numbers/dates yourself. See also: useSecureStorage, useStorage (in @pyreon/storage).',
+    mistakes: `- Storing a number or boolean directly in \`fields\` — every value is a STRING on every target (native \`[String: String]\`); serialize (\`String(n)\`) on write, parse on read
+- Expecting \`get\`/\`find\` to be async — the whole point is a SYNCHRONOUS API matching the native container; no \`await\`, no promise
+- Using this for a real dataset — it is \`localStorage\`-backed (~5 MB/origin) with a linear-scan \`find\`, meant for small app-state record sets, not a production database`,
+  },
+
+  'hooks/useCrashReporter': {
+    signature: '() => { lastCrash: string; hadCrash: boolean; recordError(message): void; breadcrumb(message): void; clear(): void; start(): void }',
+    example: `const crash = useCrashReporter()
+onMount(() => crash.start())
+<Show when={() => crash.hadCrash}>
+  <Banner onDismiss={() => crash.clear()}>We're sorry — the app crashed last time.</Banner>
+</Show>
+// Elsewhere, in a top-level catch:
+crash.recordError(String(err))`,
+    notes: `The web half of the cross-platform crash-reporter container (\`PyreonCrashReporter\` natively). Captures via \`window.onerror\` + \`unhandledrejection\`, persists to \`localStorage\` (the durable, cross-reload analogue of the native file/Keychain backing), and rehydrates the previous session's report on \`start()\`. \`start()\` installs the global-error hooks and is auto-called by the native emit on mount; on web call it once yourself (typically in \`onMount\`) — or skip it entirely if you only use \`recordError\` for manual capture. \`breadcrumb(message)\` maintains a ring buffer capped at 32 entries, attached to the next report. The vendor transport (actually uploading a report) is app-wired via \`setCrashTransport\`, mirroring the native transport registry — the hook itself only captures + persists, never fakes an upload. SSR-safe: every read returns the empty state and \`start()\` no-ops without \`window\`. See also: useOnline.`,
+    mistakes: `- Forgetting to call \`start()\` on web — unlike native (auto-called by the emit), the web half needs an explicit \`start()\` call (typically in \`onMount\`) to install the global-error hooks and rehydrate
+- Expecting \`recordError\`/\`breadcrumb\` to upload anywhere — capture + persist is all this hook does; wire \`setCrashTransport\` separately to actually send reports
+- Calling \`clear()\` before the user has seen \`hadCrash\` — it wipes both the in-memory state AND the persisted entry, so the banner cannot be shown again after a reload`,
+  },
+
+  'hooks/useAppState': {
+    signature: '() => () => "active" | "background" | "inactive"',
+    example: `const state = useAppState()
+// Pause a live poll while the app isn't in the foreground:
+<Show when={() => state() === 'active'}><LivePoll /></Show>`,
+    notes: 'Reactive app lifecycle phase — returns an ACCESSOR (call it in a reactive scope: `state()`), mirroring the native lifecycle channels (SwiftUI `ScenePhase`/`UIApplication` notifications, Android `ProcessLifecycleOwner`) so one shared source reads the same value on web + iOS + Android. `"active"` = foreground and focused; `"inactive"` = visible but not focused (another window focused, or mid-transition); `"background"` = hidden (tab switched away, window minimized, app backgrounded). SSR-safe: reports `"active"` on the server. Driven by `visibilitychange`/`focus`/`blur` on web. See also: useOnline, useDocumentVisibility.',
+    mistakes: `- Reading \`useAppState()()\` (calling the accessor eagerly at setup) instead of inside a reactive scope — the whole point is that JSX/\`effect\` re-reads it on every phase change
+- Treating \`"inactive"\` as equivalent to \`"background"\` — it is not; \`"inactive"\` means still VISIBLE but not focused, which matters for pausing input handling without also pausing rendering`,
+  },
+
+  'hooks/setCrashTransport': {
+    signature: '(send: ((report: string) => void) | undefined) => void',
+    example: `setCrashTransport((report) => fetch('/api/crashes', { method: 'POST', body: report }))`,
+    notes: 'Register (or clear, with `undefined`) the function that actually uploads a crash report string — the app-wired vendor transport for `useCrashReporter`, mirroring the native `PyreonCrashTransportRegistry`. `useCrashReporter` only captures + persists; nothing is ever sent anywhere until a transport is registered. See also: useCrashReporter.',
+    mistakes: '- Never calling this and expecting `useCrashReporter` to upload reports on its own — capture/persist and transport are deliberately separate; without a registered transport, reports stay local only',
+  },
   // <gen-docs:api-reference:end @pyreon/hooks>
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -4981,9 +5449,10 @@ i18n.rt(-1, 'day', { numeric: 'auto' })// "yesterday"`,
     signature: '() => I18nInstance',
     example: `const { t, locale } = useI18n()
 return <div>{t('greeting', { name: 'User' })}</div>`,
-    notes: 'Consume the nearest `I18nProvider` value. Returns the same `I18nInstance` with `t`, `locale`, `addMessages`, etc. Only available from the full `@pyreon/i18n` entry. See also: I18nProvider, createI18n.',
+    notes: 'Consume the nearest `I18nProvider` value. Returns the same `I18nInstance` with `t`, `locale`, `addMessages`, etc. Only available from the full `@pyreon/i18n` entry. See also: I18nProvider, createI18n, I18nContext.',
     mistakes: `- Calling it with no \`<I18nProvider>\` ancestor — it THROWS (\`useI18n() must be used within an <I18nProvider>\`); the context default is null. Wrap the tree in a provider.
-- Destructuring \`{ locale }\` and reading it as a value — \`locale\` is a SIGNAL; call \`locale()\` to read (and track) the current locale, and \`locale.set("fr")\` to change it. Destructuring the instance itself is fine — \`t\`/\`n\`/\`d\`/\`rt\` are stable bound functions (this is NOT the reactive-props destructure trap).`,
+- Destructuring \`{ locale }\` and reading it as a value — \`locale\` is a SIGNAL; call \`locale()\` to read (and track) the current locale, and \`locale.set("fr")\` to change it. Destructuring the instance itself is fine — \`t\`/\`n\`/\`d\`/\`rt\` are stable bound functions (this is NOT the reactive-props destructure trap).
+- Reaching for the raw \`I18nContext\` (\`useContext(I18nContext)\`) instead of \`useI18n()\` — \`I18nContext\` is exported so \`<I18nProvider>\` and advanced consumers (a custom provider wrapper, a compat-layer bridge) can read/write it directly, but it returns \`I18nInstance | null\` (no throw-on-missing) where \`useI18n()\` throws a clear error; prefer \`useI18n()\` in ordinary components`,
   },
 
   'i18n/Trans': {
@@ -5568,6 +6037,21 @@ for (const { id, position } of positioned) flow.updateNode(id, { position })`,
 - Relying on the default merge when data shrinks — a signal change that removes a series/point leaves the old one; pass \`notMerge\` or \`replaceMerge="series"\``,
   },
 
+  'charts/getCore / connect': {
+    signature: `getCore() => Promise<typeof import('echarts/core')> · connect(groupId: string) => Promise<void>`,
+    example: `import { getCore, connect } from '@pyreon/charts'
+
+const core = await getCore()
+core.registerMap('world', worldGeoJson)
+
+const a = useChart(optsA, { group: 'sales' })
+const b = useChart(optsB, { group: 'sales' })
+await connect('sales')`,
+    notes: 'Escape hatches for whatever `<Chart>`/`useChart` do not model. `getCore()` lazily loads (and caches) the underlying `echarts/core` module — use it for `registerMap` (map charts), `registerTheme`, `getInstanceByDom`, or any raw ECharts API the wrapper does not expose; awaiting it is safe before any chart has mounted, since it triggers the same lazy load `<Chart>` does. `connect(groupId)` is a thin async wrapper over `echarts.connect` (awaits the core load first) — assign the SAME `group` id to each chart (the `group` option on `useChart`/prop on `<Chart>`) and call `connect(groupId)` once to sync tooltips/dataZoom/actions across them. See also: Chart, useChart.',
+    mistakes: `- Calling \`getCore()\` repeatedly expecting a fresh import each time — it is cached after the first call; the promise resolves to the SAME module instance on every subsequent call
+- Registering a map/theme AFTER a chart using it has already mounted — \`registerMap\`/\`registerTheme\` must run before the chart that references the name renders, or ECharts falls back to its default`,
+  },
+
   'charts/Plot': {
     signature: '<T>(props: PlotProps<T>) => VNode',
     example: `import { Axis, Bar, Legend, Line, Plot, Tip, currency } from '@pyreon/charts/plot'
@@ -6019,6 +6503,23 @@ tabbed.activeTab()   // Computed<Tab | null>
     notes: 'Lazy-load a language grammar and return its CodeMirror `Extension`. All 19 non-plain identifiers ship a real grammar: json, typescript, javascript, jsx, tsx, python, css, html, markdown, rust, go, java, cpp, sql, xml, yaml, php from the modern `@codemirror/lang-*` packages, plus ruby and shell from `@codemirror/legacy-modes` (StreamLanguage). `plain` is intentionally empty. The result is cached per language; an uninstalled optional grammar package (or an unknown identifier) resolves to an empty `[]` extension (never throws). `createEditor` loads the grammar for its `language` on mount, so calling `loadLanguage` ahead of time just warms the cache. See also: createEditor, getAvailableLanguages.',
   },
 
+  'code/registerLanguage': {
+    signature: '(id: string, loader: () => Promise<Extension>) => void',
+    example: `import { registerLanguage } from '@pyreon/code'
+import type { EditorLanguage } from '@pyreon/code'
+
+registerLanguage('svelte', () =>
+  import('@replit/codemirror-lang-svelte').then((m) => m.svelte()),
+)
+// createEditor({ language }) is typed EditorLanguage (a closed union of the
+// 19 built-ins) — a custom id needs a cast to pass the type checker:
+const editor = createEditor({ value: svelteSource, language: 'svelte' as EditorLanguage })`,
+    notes: `Register (or replace) a language loader in the grammar registry \`loadLanguage\` reads from. This is how \`@pyreon/code/languages-all\` installs the 13 built-in grammars NOT registered by default (the core registers only javascript/typescript/jsx/tsx/json/plain — the JS-framework default — because a single static map naming all 19 \`@codemirror/lang-*\` packages made a bundler's dependency scanner pull the whole language ecosystem into every consumer's pre-bundle step, even one that only ever shows TSX). It is also how you add a grammar this package does not ship at all (a community \`@codemirror/lang-*\` or \`@replit/codemirror-lang-*\` package). Re-registering an existing id replaces its loader AND evicts any already-cached extension for it, so a subsequent \`loadLanguage\` call re-resolves from the new loader. See also: loadLanguage, getAvailableLanguages.`,
+    mistakes: `- Importing \`@pyreon/code/languages-all\` AND hand-registering the same id — the bulk import already covers all 19 built-in grammars; only register manually for a grammar the package does not ship
+- Registering after the editor has already loaded that language — the extension is cached per language name; \`registerLanguage\` evicts the cache entry so a NEW \`createEditor\`/\`loadLanguage\` call picks up the replacement, but an already-mounted editor keeps its currently-loaded extension until it reloads
+- Passing a custom-registered id straight to \`createEditor({ language })\` and expecting it to typecheck without a cast — \`EditorLanguage\` is a CLOSED union of the 19 built-in ids; a runtime-only id (like \`'svelte'\` here) needs \`as EditorLanguage\` to satisfy the type checker, even though the RUNTIME registry accepts any string`,
+  },
+
   'code/minimapExtension': {
     signature: '() => Extension',
     example: `const editor = createEditor({ value: longCode, minimap: true })
@@ -6165,14 +6666,14 @@ if (isKeyPressed('shift')) extendSelection()`,
 - Expecting keys held across a tab switch to stay pressed — window blur deliberately clears the set (their keyup events are never delivered to the page)`,
   },
 
-  'hotkeys/parseShortcut / matchesCombo / formatCombo': {
-    signature: 'parseShortcut(shortcut: string) => KeyCombo · matchesCombo(event: KeyboardEvent, combo: KeyCombo) => boolean · formatCombo(combo: KeyCombo) => string',
+  'hotkeys/parseShortcut / matchesCombo / formatCombo / splitShortcutList': {
+    signature: 'parseShortcut(shortcut: string) => KeyCombo · matchesCombo(event: KeyboardEvent, combo: KeyCombo) => boolean · formatCombo(combo: KeyCombo) => string · splitShortcutList(list: string) => string[]',
     example: `const combo = parseShortcut('mod+k')
 document.addEventListener('keydown', (e) => {
   if (matchesCombo(e, combo)) openPalette()
 })
 formatCombo(combo) // → 'Ctrl+K' (or '⌘+K' on Mac)`,
-    notes: `The combo utilities. \`parseShortcut\` turns a string (\`'mod+shift+k'\`) into a \`KeyCombo\` — lower-cased, \`+\`-split, with aliases (\`esc\`->\`escape\`, \`del\`->\`delete\`, \`space\`->space, \`up\`->\`arrowup\`, …) and \`mod\` resolving to META on Mac / CTRL elsewhere. \`matchesCombo\` tests a \`KeyboardEvent\` against a parsed combo. \`formatCombo\` renders a combo back to a display string (\`Ctrl+Shift+K\`; META shows as the \`⌘\` glyph on Mac). See also: useHotkey, registerHotkey.`,
+    notes: `The combo utilities. \`parseShortcut\` turns a string (\`'mod+shift+k'\`) into a \`KeyCombo\` — lower-cased, \`+\`-split, with aliases (\`esc\`->\`escape\`, \`del\`->\`delete\`, \`space\`->space, \`up\`->\`arrowup\`, …) and \`mod\` resolving to META on Mac / CTRL elsewhere. \`matchesCombo\` tests a \`KeyboardEvent\` against a parsed combo. \`formatCombo\` renders a combo back to a display string (\`Ctrl+Shift+K\`; META shows as the \`⌘\` glyph on Mac). \`splitShortcutList\` splits a COMMA-separated list of shortcuts (\`useHotkey\`'s \`'mod+s, mod+shift+s'\`-style multi-binding syntax) into individual shortcut strings — correctly handling the comma KEY itself (\`','\`, \`'ctrl+,'\`, \`'mod+comma'\` all parse as one binding on the comma key, not a two-item split). See also: useHotkey, registerHotkey.`,
     mistakes: `- Enforcing Shift for a SYMBOL key — \`matchesCombo\` deliberately does NOT require the Shift modifier for a single-character symbol key (\`?\`, \`!\`, \`+\`, \`/\`), so \`parseShortcut('?')\` matches the real \`Shift+/\` keystroke (the canonical 'show help' binding). Letters and named keys (\`a\`, \`arrowup\`) keep exact Shift-matching.
 - \`mod\` is platform-dependent — \`parseShortcut('mod+s')\` yields META on Mac and CTRL elsewhere; do not hard-code \`ctrl\`/\`meta\` if you want cross-platform behavior.
 - Round-tripping \`formatCombo\` back through \`parseShortcut\` — \`formatCombo\` is for DISPLAY (it emits the \`⌘\` glyph on Mac and capitalizes keys); it is not guaranteed to re-parse. Keep the original shortcut string if you need to re-parse it.`,
@@ -6311,6 +6812,24 @@ table.toggleSort('name'); table.setFilter('li')
     mistakes: `- Using useWindowVirtualizer inside a scrollable container that is not the window — use useVirtualizer with getScrollElement instead
 - Forgetting to position items absolutely inside a relative container with the total height — items overlap or collapse`,
   },
+
+  'virtual/Virtualizer': {
+    signature: 'class Virtualizer<TScrollElement, TItemElement> — plus config primitives: elementScroll, observeElementOffset, observeElementRect, windowScroll, observeWindowOffset, observeWindowRect, measureElement, defaultKeyExtractor, defaultRangeExtractor',
+    example: `// Advanced: composing a custom adapter (rare — useVirtualizer covers the normal case)
+import { Virtualizer, observeElementRect, observeElementOffset, elementScroll } from '@pyreon/virtual'
+
+const instance = new Virtualizer({
+  count: items.length,
+  getScrollElement: () => scrollEl,
+  estimateSize: () => 50,
+  observeElementRect,
+  observeElementOffset,
+  scrollToFn: elementScroll,
+})`,
+    notes: `The \`@tanstack/virtual-core\` engine \`useVirtualizer\`/\`useWindowVirtualizer\` build on top of, re-exported for single-import convenience and for the rare case of composing a CUSTOM adapter (a different framework's virtualizer, or a non-DOM scroll surface). \`useVirtualizer\` wires \`elementScroll\`/\`observeElementOffset\`/\`observeElementRect\` as its \`scrollToFn\`/\`observeElementOffset\`/\`observeElementRect\` options; \`useWindowVirtualizer\` wires the \`window*\` siblings instead — you almost never call these directly, they exist as the pluggable pieces TanStack's \`VirtualizerOptions\` accepts. \`measureElement\` is the DEFAULT dynamic-size measurer (\`element.getBoundingClientRect()\`-based); \`defaultKeyExtractor\` returns the item's index; \`defaultRangeExtractor\` computes the visible-plus-overscan index range from scroll offset. Reach for the raw \`Virtualizer\` class only when building your own reactive adapter from scratch — \`useVirtualizer\` already IS that adapter for Pyreon signals. See also: useVirtualizer, useWindowVirtualizer.`,
+    mistakes: `- Reaching for the raw \`Virtualizer\` class in ordinary app code — \`useVirtualizer\`/\`useWindowVirtualizer\` already wrap it with Pyreon-signal-native return values; only bypass them when building a genuinely new adapter
+- Passing \`measureElement\` as a size ESTIMATE — it measures the ACTUAL rendered element (\`getBoundingClientRect\`), so it only makes sense once the element exists in the DOM; \`estimateSize\` is the pre-render guess`,
+  },
   // <gen-docs:api-reference:end @pyreon/virtual>
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -6384,7 +6903,7 @@ isReference('users')                       // false — a bare string is not a r
   empty="No posts yet."
   cell={{ status: ({ value }) => <Badge tone={value}>{value}</Badge> }}
 />`,
-    notes: 'Render the table `useTable()` already computes — thead, tbody, sorting handlers and the sort indicator. Owns two traps an app author should never have to meet: a `<th>` carries a `key`, so the keyed reconciler REUSES the node on a state change and never re-runs its body, which freezes a sort indicator read bare (it must sit inside an accessor); and `getVisibleCells()` comes from `columnVisibilityFeature`, which `featureTableFeatures` does not register, so `getAllCells()` is the correct call and reaching for the other silently renders nothing. Per-COLUMN cell overrides keyed by column id, for the same reason `Field` is per-field — a generated table is excellent until one column needs a badge, a link or a formatted date. Each override receives `{ value, row }`, so it can render from the whole record rather than just the cell. See also: useTable, Field.',
+    notes: 'Render the table `useTable()` already computes — thead, tbody, sorting handlers and the sort indicator. Owns two traps an app author should never have to meet: a `<th>` carries a `key`, so the keyed reconciler REUSES the node on a state change and never re-runs its body, which freezes a sort indicator read bare (it must sit inside an accessor); and `getVisibleCells()` comes from `columnVisibilityFeature`, which `featureTableFeatures` does not register, so `getAllCells()` is the correct call and reaching for the other silently renders nothing. Per-COLUMN cell overrides keyed by column id, for the same reason `Field` is per-field — a generated table is excellent until one column needs a badge, a link or a formatted date. Each override receives `{ value, row }`, so it can render from the whole record rather than just the cell. See also: useTable, Field, createTableComponent.',
     mistakes: `- Reading a sort indicator OUTSIDE an accessor when hand-rolling this — the \`<th>\` is reused by key and the arrow freezes at its first value. \`Table\` handles it; the trap is why it exists.
 - Expecting \`getVisibleCells()\` to work — \`featureTableFeatures\` does not register \`columnVisibilityFeature\`, so it is unavailable and \`getAllCells()\` is correct.
 - Passing \`useTable({ data })\` — data is the FIRST positional argument (\`useTable(rows, options?)\`), options are second.
@@ -6401,11 +6920,22 @@ isReference('users')                       // false — a bare string is not a r
   <Posts.Field form={form} name="views" label="View count" />
   <button type="submit">Save</button>
 </form>`,
-    notes: `Render ONE schema field — label, typed control and error — from the feature's own \`fields\`. The control type is derived from the schema (string → text, number → number, boolean → checkbox, enum → select with its values), the required marker from the field's optionality, and the wiring from the form's \`register\` / \`labelProps\` / \`errorProps\`, so the label↔control association and the error's \`role="alert"\` come for free. Deliberately PER-FIELD rather than a whole-form renderer: a generated form is excellent until a designer wants one field different, at which point an all-or-nothing component is worse than the markup it replaced. Every derived value has an override prop (\`label\`, \`type\`, \`options\`, \`placeholder\`, \`class\`, \`inputClass\`), and a field you do not want generated is simply written by hand next to the ones you do. See also: useForm, extractFields.`,
+    notes: `Render ONE schema field — label, typed control and error — from the feature's own \`fields\`. The control type is derived from the schema (string → text, number → number, boolean → checkbox, enum → select with its values), the required marker from the field's optionality, and the wiring from the form's \`register\` / \`labelProps\` / \`errorProps\`, so the label↔control association and the error's \`role="alert"\` come for free. Deliberately PER-FIELD rather than a whole-form renderer: a generated form is excellent until a designer wants one field different, at which point an all-or-nothing component is worse than the markup it replaced. Every derived value has an override prop (\`label\`, \`type\`, \`options\`, \`placeholder\`, \`class\`, \`inputClass\`), and a field you do not want generated is simply written by hand next to the ones you do. See also: useForm, extractFields, createFieldComponent.`,
     mistakes: `- Expecting an email/url input from a \`z.string().email()\` — duck-typed introspection cannot see the refinement, so it renders \`type="text"\`. Pass \`type="email"\` explicitly; the component will NOT guess from the field NAME (which would mistype a field called \`emailVerified\`).
 - Typo in \`name\` — it THROWS naming the unknown field and listing the real ones, rather than rendering an empty row that reads as a styling problem. Pyreon routes a setup throw to the error handler, so look in the console rather than expecting \`mount\` to reject.
 - Reaching for it to render a whole form — there is no \`<AutoForm>\` yet, and per-field is the point. Map over \`feature.fields\` yourself if you want every field.
 - Passing a plain \`useForm()\` from \`@pyreon/form\` — \`Field\` is bound to the FEATURE's schema fields, so it must receive the form from \`feature.useForm()\`.`,
+  },
+
+  'feature/createFieldComponent / createTableComponent': {
+    signature: 'createFieldComponent<TValues>(fields: FieldInfo[]) => (props: FieldProps<TValues>) => VNodeChild · createTableComponent<TValues>() => (props: TableProps<TValues>) => VNodeChild',
+    example: `// What defineFeature does internally:
+import { createFieldComponent, createTableComponent } from '@pyreon/feature'
+
+const Field = createFieldComponent<MyValues>(fields)
+const Table = createTableComponent<MyValues>()`,
+    notes: `The factories \`defineFeature\` calls internally to build the bound \`feature.Field\` and \`feature.Table\` components — every consumer uses those bound components, not these factories directly. \`createFieldComponent(fields)\` closes over the schema's \`FieldInfo[]\` (what makes \`<Feature.Field name="title">\` know the control type without a prop) and \`createTableComponent()\` builds the generic table renderer \`featureTableFeatures\` wires up. Exported standalone for building your OWN bound component outside \`defineFeature\` — e.g. a table/field renderer bound to a schema assembled some other way. See also: Field, Table, defineFeature.`,
+    mistakes: '- Calling these directly when `defineFeature(...)` already gives you bound `Field`/`Table` — reach for these only when building a schema-driven component OUTSIDE the standard `defineFeature` flow',
   },
 
   'feature/extractFields': {
@@ -7593,10 +8123,17 @@ effect(() => { void throttled() })
     signature: 'announce(message: string, options?: { politeness?: "polite" | "assertive"; clearAfter?: number }): void',
     example: `announce('Item added to cart')
 announce('Error: name is required', { politeness: 'assertive' })`,
-    notes: 'Speak a message to screen readers via an aria-live region. Lazily creates a visually-hidden region on document.body on first call and reuses it — zero setup, no provider. Clears the region then writes on the next frame so two identical consecutive messages still re-announce. No-op on the server.',
+    notes: 'Speak a message to screen readers via an aria-live region. Lazily creates a visually-hidden region on document.body on first call and reuses it — zero setup, no provider. Clears the region then writes on the next frame so two identical consecutive messages still re-announce. No-op on the server. See also: clearAnnouncements.',
     mistakes: `- Using \`assertive\` for routine status updates — it interrupts whatever the screen reader is saying. Reserve it for errors and time-critical alerts; default \`polite\` queues politely.
 - Calling announce() during SSR expecting output — it is a no-op on the server. Announcements are client-side, user-triggered events; trigger them in handlers / effects, not render.
 - Expecting visible UI — the live region is visually hidden by design. Render your own visible toast/status separately; announce() is the screen-reader channel.`,
+  },
+
+  'a11y/clearAnnouncements': {
+    signature: 'clearAnnouncements(): void',
+    example: 'afterEach(() => clearAnnouncements())',
+    notes: 'Remove both live regions (`polite` and `assertive`) that `announce()` lazily creates, so the NEXT `announce()` call re-creates them from scratch. Mainly useful in tests, to reset the module-level DOM state between cases without relying on a full DOM teardown; app code rarely needs it since the regions are cheap and reused across the page lifetime. See also: announce.',
+    mistakes: '- Calling this expecting it to CANCEL a pending announcement — it removes the region element entirely; there is no in-flight message to cancel since `announce()` writes synchronously (on the next frame)',
   },
 
   'a11y/VisuallyHidden': {
@@ -8336,9 +8873,45 @@ createISRHandler(handler, {
 
 plugins: [pyreon(), zero({ i18n: { locales, defaultLocale } }), i18nRouting({ locales, defaultLocale })]
 // Same config object shape — accepts the i18n already passed to zero() if you keep one source of truth`,
-    notes: 'Vite plugin for REQUEST-TIME locale detection — Accept-Language header, cookie, root-path redirect to detected locale. Orthogonal to BUILD-TIME route duplication (`expandRoutesForLocales`); both can be used together. The plugin sets a request-context locale that components read via `createLocaleContext`. See also: zero, I18nRoutingConfig, createLocaleContext.',
+    notes: 'Vite plugin for REQUEST-TIME locale detection — Accept-Language header, cookie, root-path redirect to detected locale. Orthogonal to BUILD-TIME route duplication (`expandRoutesForLocales`); both can be used together. The plugin stores the detected locale in an AsyncLocalStorage-backed per-request store; APP CODE reads the current locale via `useLocale()` (works reactively client-side too, falling back to a plain signal when no ALS context is active) and changes it via `setLocale(locale, config)`. See also: zero, I18nRoutingConfig, useLocale.',
     mistakes: `- Confusing this plugin with route duplication — they're separate concerns. \`zero({ i18n })\` controls BUILD-TIME duplication; \`i18nRouting()\` plugin controls REQUEST-TIME detection
-- Using \`i18nRouting()\` under SSG mode without a server runtime — request-time middleware needs a live request handler. SSG only emits static files. Use \`mode: 'ssr'\` for request-time locale detection`,
+- Using \`i18nRouting()\` under SSG mode without a server runtime — request-time middleware needs a live request handler. SSG only emits static files. Use \`mode: 'ssr'\` for request-time locale detection
+- Reading \`req.__localeContext\` (the \`LocaleContext\` this plugin attaches via \`createLocaleContext\`) expecting it to be the documented component-facing read path — nothing in the framework reads that field back out today; the WORKING app-facing API is \`useLocale()\`/\`setLocale()\``,
+  },
+
+  'zero/useLocale / setLocale': {
+    signature: 'useLocale(): string · setLocale(locale: string, config: I18nRoutingConfig): void',
+    example: `const locale = useLocale() // "en", "de", …
+
+<select onChange={(e) => setLocale(e.target.value, { locales: ['en','de'], defaultLocale: 'en' })}>
+  <option value="en">English</option>
+  <option value="de">Deutsch</option>
+</select>`,
+    notes: `The app-facing locale read/write pair. \`useLocale()\` returns the current locale STRING — on the SERVER it prefers the per-request AsyncLocalStorage store \`i18nRouting()\`'s middleware populated (so concurrent SSR requests never cross locales, unlike a naive module-level variable); with no ALS context (client-side, or no \`i18nRouting()\` middleware active) it falls back to a plain module-level SIGNAL, which IS reactive — read it inside JSX/effects and it re-renders on \`setLocale\`. \`setLocale(locale, config)\` updates whichever store is active, persists the choice to a cookie client-side (\`config.cookieName\`, default \`'locale'\`), and navigates to the corresponding localized URL via \`pushState\` (no full reload). See also: i18nRouting, I18nRoutingConfig, buildLocalePath, extractLocaleFromPath.`,
+    mistakes: `- Expecting \`useLocale()\` to be reactive to a raw \`document.cookie\` edit — it reads from the ALS store (server) or a signal (client), not the cookie directly; go through \`setLocale()\` to change it, which keeps the cookie, the signal/ALS store, and the URL in sync
+- Assuming \`setLocale\` alone updates client state on the SERVER during SSR — render is one-shot server-side (no re-render mid-request); a server-side locale is fixed once middleware has set it for that request
+- Calling \`useLocale()\` expecting the richer \`LocaleContext\` shape (\`{ locale, locales, defaultLocale, localePath }\`) — it returns a bare STRING; build the richer shape yourself from \`useLocale()\` + your own \`I18nRoutingConfig\`, or via \`createLocaleContext\` server-side`,
+  },
+
+  'zero/buildLocalePath / extractLocaleFromPath': {
+    signature: `buildLocalePath(path: string, locale: string, defaultLocale: string, strategy: 'prefix' | 'prefix-except-default') => string · extractLocaleFromPath(path: string, locales: string[], defaultLocale: string) => { locale: string; pathWithoutLocale: string }`,
+    example: `buildLocalePath('/about', 'de', 'en', 'prefix-except-default')  // '/de/about'
+buildLocalePath('/about', 'en', 'en', 'prefix-except-default')  // '/about' (default, unprefixed)
+extractLocaleFromPath('/de/about', ['en', 'de', 'cs'], 'en')
+// -> { locale: 'de', pathWithoutLocale: '/about' }`,
+    notes: `The pure URL-shape helpers behind \`expandRoutesForLocales\`/\`setLocale\`/\`i18nRouting()\` — exported standalone for building custom locale-switcher UI or middleware. \`buildLocalePath\` produces the localized URL for a path under a given strategy (mirrors \`I18nRoutingConfig.strategy\`: \`'prefix-except-default'\` leaves the default locale's path unprefixed, \`'prefix'\` prefixes every locale). \`extractLocaleFromPath\` is the inverse — given a URL path and the configured locale list, returns the detected locale (falling back to \`defaultLocale\` when the first segment isn't a known locale) plus the path with that segment stripped. See also: useLocale / setLocale, expandRoutesForLocales, I18nRoutingConfig.`,
+    mistakes: `- Passing a \`strategy\` that disagrees with the one \`zero({ i18n })\`/\`expandRoutesForLocales\` was configured with — the produced URL then does not match an actual duplicated route
+- Assuming \`extractLocaleFromPath\` validates the locale against BCP-47 shape — it only checks membership in the supplied \`locales\` list; an unrecognized first segment falls back to \`defaultLocale\` silently (by design — a non-locale path segment like \`/about\` should not be misread as a locale)`,
+  },
+
+  'zero/createLocaleContext': {
+    signature: '(locale: string, path: string, config: I18nRoutingConfig) => LocaleContext',
+    example: `import { createLocaleContext } from '@pyreon/zero/server'
+
+const ctx = createLocaleContext('de', '/de/about', { locales: ['en', 'de'], defaultLocale: 'en' })
+ctx.localePath('/contact', 'en')  // '/contact' (default locale, unprefixed)`,
+    notes: `Builds a richer \`LocaleContext\` object (\`{ locale, locales, defaultLocale, localePath(path, locale?) }\`) — \`i18nRouting()\`'s middleware calls this per request and stashes the result on \`req.__localeContext\`. HONEST STATUS: nothing in the framework currently reads \`req.__localeContext\` back out — it is not yet wired into a loader/component-facing hook. The WORKING app-facing locale API today is \`useLocale()\`/\`setLocale()\` (a bare string, not this richer object). Reach for \`createLocaleContext\` directly only if you are writing custom server middleware that wants the \`localePath()\` convenience alongside the raw locale. See also: useLocale / setLocale, i18nRouting.`,
+    mistakes: '- Expecting a built-in hook to expose this per-request object to components — none exists yet; use `useLocale()` for the string, and build `localePath`-style helpers yourself from `buildLocalePath` if needed',
   },
 
   'zero/https': {
@@ -9022,6 +9595,70 @@ if (isBypass) {
 - Relying on \`useNoOptimize()\` to enforce optimization boundaries in custom code — the hook is read-only; use \`<NoOptimize>\` to set the boundary
 - Assuming the hook's value is stable across re-renders — it responds dynamically to boundary mount/unmount, so guards/memoization may be needed`,
   },
+
+  'zero/theme / resolvedTheme / setTheme / toggleTheme / initTheme / ThemeToggle': {
+    signature: `theme: Signal<'light'|'dark'|'system'> · resolvedTheme(): 'light'|'dark' · setTheme(t): void · toggleTheme(): void · initTheme(): void · ThemeToggle(props: { class?; style? }): VNodeChild · themeScript: string · themeScriptCspHash: string · setSSRThemeDefault(v: 'light'|'dark'): void`,
+    example: `// index.html <head>, BEFORE any stylesheet:
+<script>{themeScript}</script>
+
+// Component:
+<ThemeToggle />
+// or hand-rolled:
+<button onClick={toggleTheme}>{() => resolvedTheme() === 'dark' ? '☀️' : '🌙'}</button>
+
+// Strict CSP:
+cspMiddleware({ directives: { scriptSrc: ["'self'", themeScriptCspHash] } })`,
+    notes: `Built-in light/dark/system theme system with no flash-of-wrong-theme (FOWT). \`theme\` is the EXPLICIT user choice (\`'light'|'dark'|'system'\`, persisted to \`localStorage\`); \`resolvedTheme()\` is what you actually render from — it resolves \`'system'\` against the live OS \`prefers-color-scheme\` (reactive: it subscribes to BOTH the explicit choice AND OS-preference changes, so a user flipping their OS theme updates the page live). \`setTheme\`/\`toggleTheme\` write the explicit choice. \`initTheme()\` (called automatically by \`<ThemeToggle>\`, or call it yourself once in a layout) wires the \`localStorage\` read + \`matchMedia\` listener + the reactive \`data-theme\` sync effect — it is REFCOUNTED, so multiple \`<ThemeToggle>\` instances (header + footer) share ONE underlying listener rather than piling up N. \`themeScript\` is a pre-paint inline \`<script>\` string for \`<head>\` (before any stylesheet) that sets \`data-theme\` synchronously before first paint, eliminating FOWT; \`themeScriptCspHash\` is its precomputed \`sha256-…\` CSP hash for a strict \`script-src\` policy with no \`'unsafe-inline'\`. \`setSSRThemeDefault('dark')\` sets the server-side fallback used when \`theme === 'system'\` and there is no way to detect OS preference server-side. See also: ThemeToggle, cspMiddleware.`,
+    mistakes: `- Reading \`theme()\` directly to decide what CSS/classes to apply — \`theme\` can be \`'system'\`, which is not a renderable value; use \`resolvedTheme()\` for the actual \`'light'|'dark'\` to render
+- Placing \`themeScript\` AFTER a stylesheet \`<link>\` in \`<head>\` — the whole point is running it BEFORE the browser paints anything styled, so it must be the FIRST thing in \`<head>\`
+- Calling \`initTheme()\` per component instance expecting isolated state — it is a single shared refcounted subscription (one \`matchMedia\` listener, one \`data-theme\` sync effect) across the whole page, by design
+- Forgetting \`setSSRThemeDefault\` — without it, \`resolvedTheme()\` on the server defaults to \`'light'\` for \`theme === 'system'\` users, which can visibly flash on a dark-preferring client before \`themeScript\` corrects it post-load`,
+  },
+
+  'zero/Meta / buildMetaTags': {
+    signature: 'Meta(props: MetaProps): VNodeChild · buildMetaTags(props): { meta: MetaTagEntry[]; link: LinkTagEntry[]; script: ScriptTagEntry[] }',
+    example: `<Meta
+  title={() => \`\${pageTitle()} · My Site\`}
+  description="A description for search engines."
+  image="/og-default.png"
+  origin="https://example.com"
+/>`,
+    notes: '`<Meta>` is the single-component SEO/social-meta surface — title, description, canonical, Open Graph image + dimensions, Twitter card, locale + `alternateLocales` (hreflang), published/modified time, JSON-LD, favicon links, and more, all from one props object. `title`/`description` accept either a plain string OR a reactive accessor (`() => string`) so a client-navigated SPA keeps `<head>` in sync. AUTO-CANONICAL: with an `origin` set and no explicit `canonical`, it derives `${origin}${route.path}` from the active router automatically (both `<link rel="canonical">` and `og:url`); this degrades gracefully to no-canonical when rendered outside a router context (isolated component tests). `buildMetaTags` is the pure function `<Meta>` renders through, exposed standalone for build-time/non-JSX head generation (e.g. a script that pre-renders `<head>` tags for a static host). See also: seoPlugin, useHead (in @pyreon/head).',
+    mistakes: `- Passing \`title\`/\`description\` as PLAIN STRINGS when the page title changes client-side (e.g. after data loads) — pass an ACCESSOR (\`() => title()\`) so \`<head>\` stays reactive; a plain string is captured once
+- Setting \`image\` without \`imageWidth\`/\`imageHeight\` — crawlers must download the image to determine layout before rendering a social-card preview without them; supplying both speeds up and improves the preview
+- Expecting auto-canonical without setting \`origin\` — it is derived from \`origin + route.path\`; omitting \`origin\` disables the whole auto-canonical feature (no canonical link is emitted unless you pass one explicitly)`,
+  },
+
+  'zero/generateRouteTypes / extractRouteParams': {
+    signature: 'generateRouteTypes(routePaths: readonly string[], opts?: { module?: string }) => string · extractRouteParams(path: string) => string[]',
+    example: `extractRouteParams('/users/:id/posts/:postId')  // ['id', 'postId']
+extractRouteParams('/blog/:slug*')               // ['slug']
+
+generateRouteTypes(['/', '/about', '/users/:id'])
+// -> "declare module \\"@pyreon/zero\\" { interface RegisteredRoutes { \\"/\\": …; \\"/users/:id\\": { id: string } } }"`,
+    notes: `Build-time typed-routes codegen — the mechanism behind \`RegisteredRoutes\` augmentation (what makes \`<RouterLink to="/users/:id">\` typo-checkable). \`generateRouteTypes\` is pure: given the fs-router's list of \`urlPath\`s, it emits a \`.d.ts\` source string that augments \`RegisteredRoutes\` (module \`@pyreon/zero\` by default, overridable via \`opts.module\`) with a param-shape per route (\`{ id: string }\` for a route declaring \`:id\`, \`Record<string, never>\` for a static route). The vite plugin calls this internally and writes the result to a generated file your tsconfig includes — app code does not normally call it directly. \`extractRouteParams(path)\` is the pure sub-helper: pulls \`:name\` placeholders (and the catch-all \`:slug*\` form, stripped to \`slug\`) from a single route path string, deduped, in path order. See also: expandRoutesForLocales.`,
+    mistakes: '- Calling `generateRouteTypes` by hand in application code — it is the codegen PRIMITIVE the Vite plugin already runs automatically on every route change; reach for it directly only when building custom tooling around the route list',
+  },
+
+  'zero/generateRssFeed': {
+    signature: '(config: RssConfig) => string',
+    example: `import { generateRssFeed } from '@pyreon/zero'
+
+const xml = generateRssFeed({
+  title: 'My Blog',
+  origin: 'https://example.com',
+  description: 'Latest posts',
+  items: posts.map((p) => ({
+    title: p.data.title,
+    link: \`/blog/\${p.slug}\`,
+    pubDate: p.data.publishDate,
+    description: p.data.description,
+  })),
+})`,
+    notes: 'Generate an RSS 2.0 feed string for blog / changelog / podcast content — CLIENT-SAFE, re-exported from the main `@pyreon/zero` entry (no `/server` subpath needed, unlike `seoPlugin`/`aiPlugin`/`generateSitemap`). Items are emitted in the supplied order — sort newest-first yourself before passing them in. Typically called from a build script or an API route handler that returns the string with `Content-Type: application/rss+xml`. See also: seoPlugin.',
+    mistakes: `- Passing \`items\` in an arbitrary order and expecting the feed to sort itself — items are emitted in the SUPPLIED order; sort newest-first before passing them in
+- Reaching for \`@pyreon/zero-content\`'s own \`generateRssFeed\` — that one is DEPRECATED and forwards here anyway; import directly from \`@pyreon/zero\``,
+  },
   // <gen-docs:api-reference:end @pyreon/zero>
 
   // <gen-docs:api-reference:start @pyreon/zero-content>
@@ -9085,9 +9722,26 @@ const posts = await getCollection('blog')
 for (const post of posts) {
   console.log(post.data.title, post.slug)
 }`,
-    notes: `Runtime query — returns every entry in a collection. Data shape inferred from the collection's zod schema via the generated \`.pyreon/content-types.d.ts\`. Each entry exposes a \`render()\` lazy loader to get the page component.`,
+    notes: `Runtime query — returns every entry in a collection. Data shape inferred from the collection's zod schema via the generated \`.pyreon/content-types.d.ts\`. Each entry exposes a \`render()\` lazy loader to get the page component. See also: getEntry, getEntries.`,
     mistakes: `- Calling \`getCollection\` in a component body without \`await\`. It returns a Promise. Wrap in an async setup function, use a loader, or await it during SSG render.
 - Passing a string that isn't a defined collection. TypeScript catches this once \`.pyreon/content-types.d.ts\` is generated; without it, you'd get a runtime error.`,
+  },
+
+  'zero-content/getEntry': {
+    signature: 'getEntry<K>(name: K, slug: string): Promise<CollectionEntry<CollectionSchemas[K]> | undefined>',
+    example: `const post = await getEntry('blog', 'my-first-post')
+if (post) console.log(post.data.title)`,
+    notes: 'Sibling of `getCollection` for a SINGLE known slug instead of the whole collection — returns `undefined` (never throws) when the collection name or the slug is not found. Slug match is EXACT (case-sensitive, no trailing-slash normalization). See also: getCollection, getEntries.',
+    mistakes: `- Assuming a trailing-slash or case-insensitive match — the slug lookup is exact; normalize your slug before calling if the source can vary
+- Not handling \`undefined\` — the function never throws on a miss, it resolves \`undefined\``,
+  },
+
+  'zero-content/getEntries': {
+    signature: 'getEntries<K>(name: K, slugs: string[]): Promise<CollectionEntry<CollectionSchemas[K]>[]>',
+    example: `const related = await getEntries('blog', ['post-a', 'post-b', 'post-c'])
+// Length may be < 3 if any slug is missing — no error, no gap markers.`,
+    notes: 'Batch sibling of `getEntry` — resolves multiple entries by slug in parallel. Missing slugs are SILENTLY FILTERED from the result (never throw, never produce a hole) — useful for "related content" widgets where a stale/renamed slug in the data should degrade gracefully rather than break the page. See also: getEntry, getCollection.',
+    mistakes: '- Assuming the result array preserves a 1:1 index correspondence with the input `slugs` — a missing slug is DROPPED, not represented as `null`, so the output can be shorter than the input',
   },
 
   'zero-content/Callout': {
@@ -9194,6 +9848,177 @@ console.log(a()) // 5`,
 - Calling \`clearAllSharedSignals()\` in production (default-page-nav handler etc.) — signals are normally session-scoped; clearing wipes intentional app-wide state (theme/locale/...).
 - Re-implementing the registry per-feature instead of reusing this — the registry is the canonical home for module-level shared signals across mount boundaries.`,
   },
+
+  'zero-content/Details': {
+    signature: '<Details summary?="…" open? class? children>',
+    example: `// In markdown:
+:::details Why?
+The full explanation goes here.
+:::
+
+// In JSX:
+<Details summary="Why?">The full explanation goes here.</Details>`,
+    notes: 'Thin wrapper around native `<details>`/`<summary>` for a collapsible disclosure section. `summary` renders the always-visible label; children render inside the collapsible body. Authored via the `:::details Label` block directive in markdown, or used directly in JSX. See also: Callout.',
+    mistakes: '- Expecting JS-driven animation — it is the native `<details>` toggle, no transition by default',
+  },
+
+  'zero-content/Tabs': {
+    signature: '<Tabs labels={string[]} children? | items={{ label, content }[]} initial?=0 class?>',
+    example: `<Tabs labels={['npm', 'bun']}>
+  <CodeBlock lang="bash">npm install @pyreon/zero</CodeBlock>
+  <CodeBlock lang="bash">bun add @pyreon/zero</CodeBlock>
+</Tabs>
+
+// Programmatic:
+<Tabs items={[{ label: 'A', content: <div>a</div> }, { label: 'B', content: <div>b</div> }]} />`,
+    notes: 'A generic tab strip with one active panel at a time — distinct from `<CodeGroup>` in that labels can be any string and panel content is arbitrary children, not just code. Used for "Install / Use / Configure"-style flows. Two mutually-exclusive shapes: the CHILDREN API (`labels` + parallel `children` array — simple to author from MDX) or the PROPS API (`items: Array<{ label, content }>` — for programmatic tabs from a config/data source). See also: CodeGroup.',
+    mistakes: `- Passing BOTH \`items\` AND \`labels\`/\`children\` — they are mutually exclusive; \`items\` (when present) is authoritative
+- A \`labels\` array longer than \`children\` — the extra labels render with \`null\` panel content rather than erroring`,
+  },
+
+  'zero-content/PropTable': {
+    signature: '<PropTable rows={PropRow[]} class?> — PropRow: { name, type, default?, required?, description? }',
+    example: `<PropTable rows={[
+  { name: 'children', type: 'VNodeChild', required: true, description: 'The button content.' },
+  { name: 'onClick', type: '(e: MouseEvent) => void', description: 'Click handler.' },
+  { name: 'disabled', type: 'boolean', default: 'false', description: 'Non-interactive when true.' },
+]} />`,
+    notes: 'Renders a Markdown-style props reference table from a STATIC, author-supplied row list — no runtime introspection, so the table renders identically regardless of environment. Used in API documentation pages, typically paired with `<APICard>`. See also: APICard.',
+    mistakes: `- Expecting it to introspect a real component's types — rows are hand-authored; keep them in sync with the actual prop interface manually`,
+  },
+
+  'zero-content/APICard': {
+    signature: '<APICard name="…" signature?="…" summary?="…" stability?="stable"|"experimental"|"deprecated" since?="…" id?="…" children?>',
+    example: `<APICard
+  name="getCollection"
+  signature="getCollection<K>(name: K, options?: GetCollectionOptions): Promise<Entry[]>"
+  summary="Read all entries from a content collection."
+>
+  <PropTable rows={[/* … */]} />
+</APICard>`,
+    notes: 'Renders a heading + signature + short description block for ONE API surface entry — the inline structural block authors drop alongside a `<PropTable>` to lock a public API in docs. `id` derives from `name` by default (lowercase, non-alphanumeric → hyphen) for deep-linking; `stability` renders as a badge next to the name. See also: PropTable.',
+    mistakes: '- Omitting `id` on two API cards that derive the SAME anchor slug from similarly-named `name`s — deep links collide; pass an explicit `id` to disambiguate',
+  },
+
+  'zero-content/CompatMatrix': {
+    signature: '<CompatMatrix features={string[]} platforms={string[]} cells={Record<feature, Record<platform, CompatCellValue>>}>',
+    example: `<CompatMatrix
+  features={['SSR', 'SSG', 'ISR']}
+  platforms={['Node', 'Bun', 'Cloudflare', 'Vercel']}
+  cells={{
+    SSR: { Node: true, Bun: true, Cloudflare: 'partial', Vercel: true },
+    SSG: { Node: true, Bun: true, Cloudflare: true, Vercel: true },
+    ISR: { Node: true, Bun: true, Cloudflare: 'planned', Vercel: true },
+  }}
+/>`,
+    notes: `Renders a feature × platform compatibility table — one status cell per intersection: ✓ supported, ✗ unsupported, 🚧 partial, ⏳ planned. \`CompatCellValue\` accepts \`true\`/\`false\`/\`'partial'\`/\`'planned'\`/any custom string (normalized for display); a missing key at \`[feature][platform]\` renders an empty cell. Used on adapter/runtime pages to surface what works where.`,
+    mistakes: '- Keying `cells` by `[platform][feature]` (swapped) — the lookup is `cells[feature][platform]`, matching the `features`/`platforms` argument order',
+  },
+
+  'zero-content/PackageBadge': {
+    signature: '<PackageBadge name="…" version?="…" description?="…" managers?={Partial<Record<"bun"|"npm"|"pnpm"|"yarn"|"deno", string>>} hideInstall?>',
+    example: `<PackageBadge
+  name="@pyreon/zero-content"
+  version="0.2.0"
+  managers={{ bun: 'add', npm: 'install' }}
+/>`,
+    notes: 'A static panel showing a package name, optional version, and one or more per-package-manager install commands. No network calls, no runtime resolution — authors typically place it at the top of an integration/migration page. Omit a manager key to hide its row; defaults cover bun/npm/pnpm/yarn/deno with their conventional verbs (`add`/`install`).',
+    mistakes: '- Expecting `version` to be resolved automatically from a registry — it is a plain string prop the author supplies',
+  },
+
+  'zero-content/Mermaid': {
+    signature: '<Mermaid class? id?>{diagramSource}</Mermaid>',
+    example: `// In markdown:
+:::mermaid
+graph TD
+  A --> B
+:::
+
+// In JSX:
+<Mermaid>{\`graph TD\\n  A --> B\`}</Mermaid>`,
+    notes: 'Renders a mermaid diagram source string as an SVG. `mermaid` is an OPTIONAL peer dependency — when it is absent (or on the server, before the client-side render completes) the component falls back to a `<pre>` block showing the raw source, so SSR / no-mermaid builds still surface the diagram content instead of a blank area. Authored via the `:::mermaid` block directive in markdown. See also: Math.',
+    mistakes: '- Not installing the `mermaid` peer dependency and expecting a rendered diagram — without it, every `<Mermaid>` falls back to plain source text (by design, not a bug)',
+  },
+
+  'zero-content/Math': {
+    signature: '<Math inline? class?>{latexSource}</Math>',
+    example: `// In markdown:
+:::math
+E = mc^2
+:::
+
+// In JSX, inline:
+<Math inline>x^2 + y^2 = r^2</Math>`,
+    notes: 'Renders a LaTeX expression via KaTeX. `katex` is an OPTIONAL peer dependency — when absent, falls back to a `<code>` element with the raw source so SSR / no-KaTeX builds still surface the formula text. `inline={true}` renders in `display: inline` mode (KaTeX `displayMode: false`); default is block/display mode. Authored via the `:::math` block directive in markdown. See also: Mermaid.',
+    mistakes: '- Not installing the `katex` peer dependency and expecting a rendered formula — without it, every `<Math>` falls back to a plain `<code>` element',
+  },
+
+  'zero-content/Sidebar': {
+    signature: '<Sidebar entries?={SidebarEntry[]} config?={SidebarConfig} currentPath={() => string}> — SidebarEntry: { title, url, group?, order?, badge? }',
+    example: `<Sidebar
+  entries={[
+    { title: 'Getting Started', url: '/docs/start', group: 'Guides', order: 0 },
+    { title: 'API', url: '/docs/api', group: 'Reference', order: 0 },
+  ]}
+  currentPath={() => router.currentRoute().path}
+/>`,
+    notes: `Collection-driven navigation. In the default (auto-grouping) mode, reads each entry's \`group\`/\`order\` (typically sourced from frontmatter \`sidebar.group\`/\`sidebar.order\`) to build a grouped tree — entries with no \`group\` fall under an empty-string bucket rendered before the named groups. In CONFIG-DRIVEN mode (\`config\` prop, takes precedence over \`entries\`), pinned groups with explicit order skip the auto-grouping pass entirely — useful when navigation structure should be decoupled from per-file frontmatter. Active-link highlighting is automatic and REACTIVE: pass \`currentPath\` as an accessor so router navigation flips the active item. See also: Breadcrumbs, PrevNext.`,
+    mistakes: `- Passing \`currentPath\` as a called value (\`currentPath={router.currentRoute().path}\`) instead of an accessor — active-link highlighting then freezes at the value captured on first render
+- Mixing \`entries\` and \`config\` expecting them to merge — \`config\` takes precedence outright and skips the frontmatter-derived auto-grouping entirely`,
+  },
+
+  'zero-content/Breadcrumbs': {
+    signature: '<Breadcrumbs currentPath={() => string} homeLabel?="Home" homeUrl?="/" entries?={SidebarEntry[]}>',
+    example: '<Breadcrumbs currentPath={() => router.currentRoute().path} entries={sidebarEntries} />',
+    notes: `Renders a \`Home › Section › Page\` crumb trail derived from the current URL. Two modes: AUTO (default, no \`entries\`) derives each segment's label by title-casing the URL path segment (\`/docs/getting-started\` → \`Home › Docs › Getting Started\`); LOOKUP (pass \`entries\` — typically the SAME array given to \`<Sidebar>\`) resolves each parent segment's title from the matching entry, falling back to auto title-casing for segments with no match. The final segment always renders as plain text (current page, not a link). See also: Sidebar, PrevNext.`,
+    mistakes: '- Expecting every crumb to be clickable — the LAST segment (current page) is deliberately plain text, not a link',
+  },
+
+  'zero-content/PrevNext': {
+    signature: '<PrevNext entries={SidebarEntry[]} currentPath={() => string} labels?={{ previous?, next? }}>',
+    example: '<PrevNext entries={sidebarEntries} currentPath={() => router.currentRoute().path} />',
+    notes: `Renders "← Previous" / "Next →" links derived from a flattened entry list and the current path — \`entries\` is typically the SAME array supplied to \`<Sidebar>\`, so prev/next order matches the sidebar's rendered order. Renders empty when the current page is not found in the list. The pure resolution logic is exported separately as \`resolvePrevNext(entries, currentPath)\` for testing or building a custom prev/next UI. See also: Sidebar, Breadcrumbs.`,
+    mistakes: `- Passing an entries array in a DIFFERENT order than \`<Sidebar>\` — prev/next then disagrees with the sidebar's visual order, confusing readers`,
+  },
+
+  'zero-content/Toc': {
+    signature: '<Toc headings={Heading[]} class? minLevel?=2 maxLevel?=3 activeSlug?={() => string | null} smoothScroll?=true scrollOffset?=0>',
+    example: '<Toc headings={page.headings} scrollOffset={64} />',
+    notes: `Page table-of-contents with scroll-spy: renders a flat list of headings (level 2–3 by default) and tracks which is currently in view via \`IntersectionObserver\`, flipping \`aria-current\` + a \`.pyreon-toc__link--active\` class on the active link. SSR-safe — when \`IntersectionObserver\` is undefined (no window), the heading list still renders, just without active-tracking (the reactive active-id signal is client-only). \`smoothScroll\` (default true) makes a click smooth-scroll to the section and update the URL hash instead of a full jump, falling back to native jump when \`scrollIntoView\` isn't supported; \`scrollOffset\` compensates for a sticky header.`,
+    mistakes: '- Passing a hand-built headings array instead of the one the compiled markdown module exports — the compiler already extracts `headings` with the right slugs; a hand-rolled list can drift from the actual `id` attributes in the rendered page',
+  },
+
+  'zero-content/Playground': {
+    signature: '<Playground title? html? css? js? tabs?=false height?=240 class?>',
+    example: `// Legacy usage — prefer <Example> for new docs:
+<Playground title="Hello world" html={'<button id="b">Click</button>'} js={'b.onclick = () => alert("hi")'} />`,
+    notes: 'DEPRECATED in favor of `<Example>` — flagged by the `pyreon/no-playground-in-docs` lint rule. A minimal sandboxed code playground: renders a `<textarea>` next to a sandboxed `<iframe srcdoc>` that re-renders its body on input. Deliberately narrow scope — no CodeMirror, no Babel/esbuild runtime, just literal HTML/JS/CSS in a sandbox. `<Example>` (type-checked, refactor-safe, cross-mount signal sharing via `share`) structurally supersedes the value this component offered; for richer interactivity (syntax highlighting, autocomplete, multi-file demos) reach for `@pyreon/code` directly instead of either. See also: Example.',
+    mistakes: `- Authoring NEW docs pages with \`<Playground>\` — use \`<Example file="./examples/…">\` instead; \`no-playground-in-docs\` lints against new usage
+- Expecting type-checking or a shared signal store — those are \`<Example>\`-only capabilities this component never had`,
+  },
+
+  'zero-content/Search / useSearch': {
+    signature: `useSearch(options?: UseSearchOptions) => UseSearchResult · <Search catalogUrl? debounceMs?=150 maxResults?=8 minQueryLength?=2> — UseSearchResult: { open, query, results, status: 'idle'|'searching'|'ready', toggle, close }`,
+    example: `const search = useSearch({ maxResults: 5 })
+search.query.set('signal')
+<Show when={() => search.status() === 'ready' && search.results().length === 0}>
+  <p>No results.</p>
+</Show>
+
+// Or the ready-made overlay:
+<Search />`,
+    notes: `\`useSearch\` is the headless search state — build a custom search UI on top of it. \`<Search />\` wraps it with default styling + keyboard shortcuts (⌘K-style open). Both load a MiniSearch index lazily via \`loadSearchIndex\` (a module-level cache, reference-counted across mounts so it is not re-fetched per component instance) and debounce the query (\`debounceMs\`, default 150ms) before searching. \`status\` exists specifically to avoid a "No results" flash: \`'idle'\` (query empty or below \`minQueryLength\`), \`'searching'\` (in flight), \`'ready'\` (a search COMPLETED for the current query — only then is an empty \`results\` a genuine "no matches"). \`minQueryLength\` defaults to 2 (single letters hit too broad a result set on docs-sized corpora).`,
+    mistakes: `- Gating the empty state on \`results().length === 0\` alone — during the debounce/index-load window results are momentarily empty for a query that WILL match; gate on \`status() === 'ready'\` too, as shown above
+- Building a search index yourself instead of calling \`loadSearchIndex\` — the module-level cache is what keeps the ~200 KB index from being fetched/parsed once per mounted search UI`,
+  },
+
+  'zero-content/generateSitemap / generateRssFeed / generateLlmsTxt': {
+    signature: 'generateSitemap(args): string · generateRssFeed(args): string · generateLlmsTxt(args): string',
+    example: `// Prefer, from @pyreon/zero/server (server-only, Vite plugins):
+import { seoPlugin, generateRssFeed, aiPlugin } from '@pyreon/zero/server'`,
+    notes: `DEPRECATED — all three are thin build-script helpers kept for back-compat and superseded by richer \`@pyreon/zero\` equivalents that run as Vite plugins instead of a hand-written build script: \`generateSitemap\` → \`@pyreon/zero/server\`'s \`generateSitemap\` + \`seoPlugin\` (adds hreflang/i18n, trailing-slash policy, SSG path-manifest integration; server-only, Vite-plugin-only); \`generateRssFeed\`/\`toRfc822\` → the SAME function, re-exported from \`@pyreon/zero\`'s CLIENT-SAFE main entry (no \`/server\` needed — no \`zero-content\` wrapper needed either); \`generateLlmsTxt\` → \`@pyreon/zero/server\`'s \`aiPlugin\` (server-only). These \`zero-content\` versions will be removed in a future major version — do not build new tooling on them.`,
+    mistakes: `- Building new SEO tooling on these zero-content functions — they are deprecated aliases; use @pyreon/zero's seoPlugin/aiPlugin/generateRssFeed instead, which cover strictly more (hreflang, SSG integration, no hand-written build script)`,
+  },
   // <gen-docs:api-reference:end @pyreon/zero-content>
   // <gen-docs:api-reference:start @pyreon/sync>
 
@@ -9209,7 +10034,8 @@ title.dispose()      // detach observer (auto on onCleanup inside a scope)`,
 - Expecting \`initial\` to win when the key already exists — it is create-if-missing only; a persisted / peer value is authoritative and \`initial\` is ignored (the local-first convention)
 - Creating the synced signal BEFORE attaching the transport — the create-if-missing seed defers until first sync ONLY when a transport is already registered on the doc; created first, it seeds immediately (as if alone) and a fresh default can clobber a peer value on a clientId tie-break (#2380). Attach the transport (+ persistence) first
 - Storing an object/array and expecting per-field surgical updates — v1 is scalar (string/number/boolean); whole-value replace works but re-fires per replace. Use \`syncedText\`/\`syncedList\` for collaborative collections
-- Forgetting \`.dispose()\` for a module-scope synced signal that outlives any reactive scope (inside a scope it auto-disposes via onCleanup)`,
+- Forgetting \`.dispose()\` for a module-scope synced signal that outlives any reactive scope (inside a scope it auto-disposes via onCleanup)
+- Assuming the \`map\` option is required — it defaults to the exported \`DEFAULT_MAP\` constant (\`'pyreon'\`) when omitted; pass an explicit \`map\` only when you need multiple independent maps in the same doc`,
   },
 
   'sync/syncedStore': {
@@ -9270,7 +10096,8 @@ const sb = syncedSignal({ doc: b, key: "k", initial: 0 })
 sa.set(5) // sb() becomes 5`,
     notes: `An in-memory, dependency-free CrdtAdapter for unit-testing synced stores without standing up a real engine. Pair docs with \`connectFakeDocs(a, b)\` to simulate two peers in-process. It does NOT do state-vector reconciliation, so it can't model offline-reconnect convergence — use the Yjs adapter (\`createYjsDoc\` + a transport) for that. See also: connectFakeDocs, createYjsDoc.`,
     mistakes: `- Using the fake adapter to test offline-reconnect convergence — it has no state-vector merge; use the Yjs adapter for that scenario
-- Shipping the fake adapter to production — it is a test double with no persistence or real conflict resolution`,
+- Shipping the fake adapter to production — it is a test double with no persistence or real conflict resolution
+- Constructing \`new FakeCrdtAdapter()\` per test when a single shared instance is fine — the package also exports \`fakeAdapter\`, a ready-made \`CrdtAdapter\` singleton (\`export const fakeAdapter: CrdtAdapter = new FakeCrdtAdapter()\`) for the common case of "I just need an adapter, not multiple isolated ones"`,
   },
 
   'sync/connectFakeDocs': {

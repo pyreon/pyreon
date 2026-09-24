@@ -962,7 +962,7 @@ const status = signal<'idle' | 'unlocked' | 'denied'>('idle')
         'Reactive device position, shared across web / iOS / Android — the web half of the hook PMTC has always lowered natively to `PyreonGeolocation`. Returned fields are GETTERS over signals (not plain values, so a component body reading `geo.latitude` re-reads on every access, matching the native `@Observable`/`mutableStateOf` container), and field NAMES mirror the native container exactly so one shared `.tsx` reads the same members on all three targets. `start()` begins `navigator.geolocation.watchPosition`; `stop()` clears it and also runs automatically on unmount. HONEST PLATFORM GAP: `start()` compiles on web and iOS only — Kotlin\'s native container needs a host closure argument (no default location transport), so `geo.start()` does not compile on Android; the reactive READS (`latitude`/`longitude`/`accuracy`) are shared on all three, only starting the watch is not.',
       example: `const geo = useGeolocation({ enableHighAccuracy: true })
 <Stack>
-  <Text>{geo.latitude ?? 'no fix yet'}</Text>
+  <span>{geo.latitude ?? 'no fix yet'}</span>
   <Button onPress={() => geo.start()}>Locate</Button>
 </Stack>`,
       mistakes: [
@@ -982,7 +982,7 @@ const status = signal<'idle' | 'unlocked' | 'denied'>('idle')
       example: `const map = useMap()
 map.setCamera({ latitude: 51.5, longitude: -0.12, zoom: 12 })
 map.addMarker({ id: 'a', latitude: 51.5, longitude: -0.12, title: 'Here' })
-<Show when={() => map.selectedMarker}>{(m) => <Text>{m.title}</Text>}</Show>`,
+<Show when={() => map.selectedMarker}>{(m) => <span>{m.title}</span>}</Show>`,
       mistakes: [
         'Expecting this hook to render a map — it is pure state; wire `map.camera`/`map.markers` into your mapping library of choice (or MapKit/Android Maps natively)',
         'Calling `moveTo(lat, lng, 0)` to reset zoom — `0` is a valid zoom value, not "unset"; omit the third argument entirely to keep the current zoom',
@@ -999,7 +999,7 @@ map.addMarker({ id: 'a', latitude: 51.5, longitude: -0.12, title: 'Here' })
         'A live TEXT socket, shared across web / iOS / Android, mirroring the native `PyreonWebSocket` container field-for-field (an implicit auto-connect-on-mount is synthesized on native; on web call `connect()` — or read `isConnected`/`lastMessage`, which start at their empty defaults). Getters over signals: `ws.isConnected` re-reads on every access rather than freezing at mount. HONEST LIMITS matching the native container exactly: TEXT frames only (a binary frame is silently ignored — the native side can never produce one); no automatic reconnect/backoff on any target; `messages` grows WITHOUT BOUND like the native `[String]` — a long-lived feed should read `lastMessage` and keep its own bounded history. `error` is a rendered STRING (not an `Error`) to match what the native optional-interpolation can produce.',
       example: `const ws = useWebSocket('wss://example.com/chat')
 onMount(() => ws.connect())
-<Show when={() => ws.isConnected}><Text>{ws.lastMessage}</Text></Show>
+<Show when={() => ws.isConnected}><span>{ws.lastMessage}</span></Show>
 <Button onPress={() => ws.send('ping')}>Ping</Button>`,
       mistakes: [
         'Sending a binary payload (`ArrayBuffer`/`Blob`) — `send()` is TEXT-only; a binary frame received from the server is silently ignored rather than stringified',
@@ -1025,7 +1025,7 @@ const signIn = async () => {
     auth.signInFailed(err)
   }
 }
-<Show when={() => auth.isAuthenticated}><Text>Hi {auth.user?.name}</Text></Show>`,
+<Show when={() => auth.isAuthenticated}><span>{() => \`Hi \${auth.user?.name}\`}</span></Show>`,
       mistakes: [
         'Assuming `user` is `null` while `status === "signingIn"` — it is not; a token refresh keeps the PRIOR user visible so the UI does not blank during re-auth',
         'Treating `status === "error"` as terminal — `error` can also be set with `user` still populated (a failed refresh); check `isAuthenticated` for "does the app have a usable session", not the absence of an error',
@@ -1046,7 +1046,7 @@ onMount(() => push.start((handlers) => {
   // subscribe via your service worker, then: handlers.tokenReceived(subscription)
   return () => {} // teardown
 }))
-<Show when={() => push.isAuthorized}><Text>{push.lastNotification?.title}</Text></Show>`,
+<Show when={() => push.isAuthorized}><span>{push.lastNotification?.title}</span></Show>`,
       mistakes: [
         'Expecting `start()` to request permission or subscribe for you — it only wires the STATE transitions; the app supplies the real SDK calls inside the `register` callback',
         'Calling `start(register)` a second time expecting it to re-register — it is idempotent while already registered; call `stop()` first if you genuinely need to re-run the registration flow',

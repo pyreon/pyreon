@@ -1362,6 +1362,31 @@ generateRouteTypes(['/', '/about', '/users/:id'])
       ],
       seeAlso: ['expandRoutesForLocales'],
     },
+    {
+      name: 'generateRssFeed',
+      kind: 'function',
+      signature: '(config: RssConfig) => string',
+      summary:
+        'Generate an RSS 2.0 feed string for blog / changelog / podcast content — CLIENT-SAFE, re-exported from the main `@pyreon/zero` entry (no `/server` subpath needed, unlike `seoPlugin`/`aiPlugin`/`generateSitemap`). Items are emitted in the supplied order — sort newest-first yourself before passing them in. Typically called from a build script or an API route handler that returns the string with `Content-Type: application/rss+xml`.',
+      example: `import { generateRssFeed } from '@pyreon/zero'
+
+const xml = generateRssFeed({
+  title: 'My Blog',
+  origin: 'https://example.com',
+  description: 'Latest posts',
+  items: posts.map((p) => ({
+    title: p.data.title,
+    link: \`/blog/\${p.slug}\`,
+    pubDate: p.data.publishDate,
+    description: p.data.description,
+  })),
+})`,
+      mistakes: [
+        'Passing `items` in an arbitrary order and expecting the feed to sort itself — items are emitted in the SUPPLIED order; sort newest-first before passing them in',
+        'Reaching for `@pyreon/zero-content`\'s own `generateRssFeed` — that one is DEPRECATED and forwards here anyway; import directly from `@pyreon/zero`',
+      ],
+      seeAlso: ['seoPlugin'],
+    },
   ],
   gotchas: [
     'mode: \'ssg\' returns Plugin[] (the SSG plugin auto-attaches a companion `ssgPlugin()`); Vite\'s plugins array flattens nested arrays so `plugins: [pyreon(), zero()]` works as-is.',

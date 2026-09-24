@@ -102,6 +102,9 @@ export default function PostPage() { /* component body */ }
 | [`seoPlugin`](#seoplugin) | function | SEO plugin — emits `sitemap.xml`, `robots.txt`, JSON-LD, and hreflang cross-references. |
 | [`aiPlugin`](#aiplugin) | function | AI integration plugin — generates `llms.txt`, `llms-full.txt`, and JSON-LD inference metadata at build time. |
 | [`i18nRouting`](#i18nrouting) | function | Vite plugin for REQUEST-TIME locale detection — Accept-Language header, cookie, root-path redirect to detected locale. |
+| [`useLocale / setLocale`](#uselocale-setlocale) | function | The app-facing locale read/write pair. |
+| [`buildLocalePath / extractLocaleFromPath`](#buildlocalepath-extractlocalefrompath) | function | The pure URL-shape helpers behind `expandRoutesForLocales`/`setLocale`/`i18nRouting()` — exported standalone for buildin |
+| [`createLocaleContext`](#createlocalecontext) | function | Builds a richer `LocaleContext` object (`{ locale, locales, defaultLocale, localePath(path, locale?) }`) — `i18nRouting( |
 | [`https`](#https) | function | Serves the dev server over TLS. |
 | [`validateEnv`](#validateenv) | function | Env-variable validation with type coercion. |
 | [`cspMiddleware`](#cspmiddleware) | function | CSP (Content Security Policy) middleware — emits `Content-Security-Policy` header per request with configurable directiv |
@@ -135,6 +138,10 @@ export default function PostPage() { /* component body */ }
 | [`usePreload`](#usepreload) | hook | Emit a `<link rel="preload" as="..." href="..." crossorigin>` for a specific resource that the page will hit in the crit |
 | [`PreloadOptions`](#preloadoptions) | type | Configuration shape for `usePreload(href, opts)`. |
 | [`useNoOptimize`](#usenooptimize) | hook | Reads the current `<NoOptimize>` boundary state. |
+| [`theme / resolvedTheme / setTheme / toggleTheme / initTheme / ThemeToggle`](#theme-resolvedtheme-settheme-toggletheme-inittheme-themetoggle) | component | Built-in light/dark/system theme system with no flash-of-wrong-theme (FOWT). |
+| [`Meta / buildMetaTags`](#meta-buildmetatags) | component | `<Meta>` is the single-component SEO/social-meta surface — title, description, canonical, Open Graph image + dimensions, |
+| [`generateRouteTypes / extractRouteParams`](#generateroutetypes-extractrouteparams) | function | Build-time typed-routes codegen — the mechanism behind `RegisteredRoutes` augmentation (what makes `&lt;RouterLink to="/use |
+| [`generateRssFeed`](#generaterssfeed) | function | Generate an RSS 2.0 feed string for blog / changelog / podcast content — CLIENT-SAFE, re-exported from the main `@pyreon |
 
 ## API
 
@@ -566,7 +573,7 @@ plugins: [pyreon(), zero(), seoPlugin({ ... }), aiPlugin()]
 function i18nRouting(config: I18nRoutingConfig): Plugin // server-only
 ```
 
-Vite plugin for REQUEST-TIME locale detection — Accept-Language header, cookie, root-path redirect to detected locale. Orthogonal to BUILD-TIME route duplication (`expandRoutesForLocales`); both can be used together. The plugin sets a request-context locale that components read via `createLocaleContext`.
+Vite plugin for REQUEST-TIME locale detection — Accept-Language header, cookie, root-path redirect to detected locale. Orthogonal to BUILD-TIME route duplication (`expandRoutesForLocales`); both can be used together. The plugin stores the detected locale in an AsyncLocalStorage-backed per-request store; APP CODE reads the current locale via `useLocale()` (works reactively client-side too, falling back to a plain signal when no ALS context is active) and changes it via `setLocale(locale, config)`.
 
 **Example**
 
@@ -581,8 +588,89 @@ plugins: [pyreon(), zero({ i18n: { locales, defaultLocale } }), i18nRouting({ lo
 
 - Confusing this plugin with route duplication — they're separate concerns. `zero({ i18n })` controls BUILD-TIME duplication; `i18nRouting()` plugin controls REQUEST-TIME detection
 - Using `i18nRouting()` under SSG mode without a server runtime — request-time middleware needs a live request handler. SSG only emits static files. Use `mode: 'ssr'` for request-time locale detection
+- Reading `req.__localeContext` (the `LocaleContext` this plugin attaches via `createLocaleContext`) expecting it to be the documented component-facing read path — nothing in the framework reads that field back out today; the WORKING app-facing API is `useLocale()`/`setLocale()`
 
-**See also:** `zero` · `I18nRoutingConfig` · `createLocaleContext`
+**See also:** `zero` · `I18nRoutingConfig` · `useLocale`
+
+---
+
+### useLocale / setLocale `function`
+
+```ts
+useLocale(): string · setLocale(locale: string, config: I18nRoutingConfig): void
+```
+
+The app-facing locale read/write pair. `useLocale()` returns the current locale STRING — on the SERVER it prefers the per-request AsyncLocalStorage store `i18nRouting()`'s middleware populated (so concurrent SSR requests never cross locales, unlike a naive module-level variable); with no ALS context (client-side, or no `i18nRouting()` middleware active) it falls back to a plain module-level SIGNAL, which IS reactive — read it inside JSX/effects and it re-renders on `setLocale`. `setLocale(locale, config)` updates whichever store is active, persists the choice to a cookie client-side (`config.cookieName`, default `'locale'`), and navigates to the corresponding localized URL via `pushState` (no full reload).
+
+**Example**
+
+```tsx
+const locale = useLocale() // "en", "de", …
+
+<select onChange={(e) => setLocale(e.target.value, { locales: ['en','de'], defaultLocale: 'en' })}>
+  <option value="en">English</option>
+  <option value="de">Deutsch</option>
+</select>
+```
+
+**Common mistakes**
+
+- Expecting `useLocale()` to be reactive to a raw `document.cookie` edit — it reads from the ALS store (server) or a signal (client), not the cookie directly; go through `setLocale()` to change it, which keeps the cookie, the signal/ALS store, and the URL in sync
+- Assuming `setLocale` alone updates client state on the SERVER during SSR — render is one-shot server-side (no re-render mid-request); a server-side locale is fixed once middleware has set it for that request
+- Calling `useLocale()` expecting the richer `LocaleContext` shape (`{ locale, locales, defaultLocale, localePath }`) — it returns a bare STRING; build the richer shape yourself from `useLocale()` + your own `I18nRoutingConfig`, or via `createLocaleContext` server-side
+
+**See also:** `i18nRouting` · `I18nRoutingConfig` · `buildLocalePath` · `extractLocaleFromPath`
+
+---
+
+### buildLocalePath / extractLocaleFromPath `function`
+
+```ts
+buildLocalePath(path: string, locale: string, defaultLocale: string, strategy: 'prefix' | 'prefix-except-default') => string · extractLocaleFromPath(path: string, locales: string[], defaultLocale: string) => { locale: string; pathWithoutLocale: string }
+```
+
+The pure URL-shape helpers behind `expandRoutesForLocales`/`setLocale`/`i18nRouting()` — exported standalone for building custom locale-switcher UI or middleware. `buildLocalePath` produces the localized URL for a path under a given strategy (mirrors `I18nRoutingConfig.strategy`: `'prefix-except-default'` leaves the default locale's path unprefixed, `'prefix'` prefixes every locale). `extractLocaleFromPath` is the inverse — given a URL path and the configured locale list, returns the detected locale (falling back to `defaultLocale` when the first segment isn't a known locale) plus the path with that segment stripped.
+
+**Example**
+
+```tsx
+buildLocalePath('/about', 'de', 'en', 'prefix-except-default')  // '/de/about'
+buildLocalePath('/about', 'en', 'en', 'prefix-except-default')  // '/about' (default, unprefixed)
+extractLocaleFromPath('/de/about', ['en', 'de', 'cs'], 'en')
+// -> { locale: 'de', pathWithoutLocale: '/about' }
+```
+
+**Common mistakes**
+
+- Passing a `strategy` that disagrees with the one `zero({ i18n })`/`expandRoutesForLocales` was configured with — the produced URL then does not match an actual duplicated route
+- Assuming `extractLocaleFromPath` validates the locale against BCP-47 shape — it only checks membership in the supplied `locales` list; an unrecognized first segment falls back to `defaultLocale` silently (by design — a non-locale path segment like `/about` should not be misread as a locale)
+
+**See also:** `useLocale / setLocale` · `expandRoutesForLocales` · `I18nRoutingConfig`
+
+---
+
+### createLocaleContext `function`
+
+```ts
+(locale: string, path: string, config: I18nRoutingConfig) => LocaleContext
+```
+
+Builds a richer `LocaleContext` object (`{ locale, locales, defaultLocale, localePath(path, locale?) }`) — `i18nRouting()`'s middleware calls this per request and stashes the result on `req.__localeContext`. HONEST STATUS: nothing in the framework currently reads `req.__localeContext` back out — it is not yet wired into a loader/component-facing hook. The WORKING app-facing locale API today is `useLocale()`/`setLocale()` (a bare string, not this richer object). Reach for `createLocaleContext` directly only if you are writing custom server middleware that wants the `localePath()` convenience alongside the raw locale.
+
+**Example**
+
+```tsx
+import { createLocaleContext } from '@pyreon/zero/server'
+
+const ctx = createLocaleContext('de', '/de/about', { locales: ['en', 'de'], defaultLocale: 'en' })
+ctx.localePath('/contact', 'en')  // '/contact' (default locale, unprefixed)
+```
+
+**Common mistakes**
+
+- Expecting a built-in hook to expose this per-request object to components — none exists yet; use `useLocale()` for the string, and build `localePath`-style helpers yourself from `buildLocalePath` if needed
+
+**See also:** `useLocale / setLocale` · `i18nRouting`
 
 ---
 
@@ -1751,6 +1839,130 @@ if (isBypass) {
 - Assuming the hook's value is stable across re-renders — it responds dynamically to boundary mount/unmount, so guards/memoization may be needed
 
 **See also:** `NoOptimize` · `NoOptimizeContext`
+
+---
+
+### theme / resolvedTheme / setTheme / toggleTheme / initTheme / ThemeToggle `component`
+
+```ts
+theme: Signal<'light'|'dark'|'system'> · resolvedTheme(): 'light'|'dark' · setTheme(t): void · toggleTheme(): void · initTheme(): void · ThemeToggle(props: { class?; style? }): VNodeChild · themeScript: string · themeScriptCspHash: string · setSSRThemeDefault(v: 'light'|'dark'): void
+```
+
+Built-in light/dark/system theme system with no flash-of-wrong-theme (FOWT). `theme` is the EXPLICIT user choice (`'light'|'dark'|'system'`, persisted to `localStorage`); `resolvedTheme()` is what you actually render from — it resolves `'system'` against the live OS `prefers-color-scheme` (reactive: it subscribes to BOTH the explicit choice AND OS-preference changes, so a user flipping their OS theme updates the page live). `setTheme`/`toggleTheme` write the explicit choice. `initTheme()` (called automatically by `<ThemeToggle>`, or call it yourself once in a layout) wires the `localStorage` read + `matchMedia` listener + the reactive `data-theme` sync effect — it is REFCOUNTED, so multiple `<ThemeToggle>` instances (header + footer) share ONE underlying listener rather than piling up N. `themeScript` is a pre-paint inline `<script>` string for `<head>` (before any stylesheet) that sets `data-theme` synchronously before first paint, eliminating FOWT; `themeScriptCspHash` is its precomputed `sha256-…` CSP hash for a strict `script-src` policy with no `'unsafe-inline'`. `setSSRThemeDefault('dark')` sets the server-side fallback used when `theme === 'system'` and there is no way to detect OS preference server-side.
+
+**Example**
+
+```tsx
+// index.html <head>, BEFORE any stylesheet:
+<script>{themeScript}</script>
+
+// Component:
+<ThemeToggle />
+// or hand-rolled:
+<button onClick={toggleTheme}>{() => resolvedTheme() === 'dark' ? '☀️' : '🌙'}</button>
+
+// Strict CSP:
+cspMiddleware({ directives: { scriptSrc: ["'self'", themeScriptCspHash] } })
+```
+
+**Common mistakes**
+
+- Reading `theme()` directly to decide what CSS/classes to apply — `theme` can be `'system'`, which is not a renderable value; use `resolvedTheme()` for the actual `'light'|'dark'` to render
+- Placing `themeScript` AFTER a stylesheet `<link>` in `<head>` — the whole point is running it BEFORE the browser paints anything styled, so it must be the FIRST thing in `<head>`
+- Calling `initTheme()` per component instance expecting isolated state — it is a single shared refcounted subscription (one `matchMedia` listener, one `data-theme` sync effect) across the whole page, by design
+- Forgetting `setSSRThemeDefault` — without it, `resolvedTheme()` on the server defaults to `'light'` for `theme === 'system'` users, which can visibly flash on a dark-preferring client before `themeScript` corrects it post-load
+
+**See also:** `ThemeToggle` · `cspMiddleware`
+
+---
+
+### Meta / buildMetaTags `component`
+
+```ts
+Meta(props: MetaProps): VNodeChild · buildMetaTags(props): { meta: MetaTagEntry[]; link: LinkTagEntry[]; script: ScriptTagEntry[] }
+```
+
+`<Meta>` is the single-component SEO/social-meta surface — title, description, canonical, Open Graph image + dimensions, Twitter card, locale + `alternateLocales` (hreflang), published/modified time, JSON-LD, favicon links, and more, all from one props object. `title`/`description` accept either a plain string OR a reactive accessor (`() => string`) so a client-navigated SPA keeps `<head>` in sync. AUTO-CANONICAL: with an `origin` set and no explicit `canonical`, it derives `${origin}${route.path}` from the active router automatically (both `<link rel="canonical">` and `og:url`); this degrades gracefully to no-canonical when rendered outside a router context (isolated component tests). `buildMetaTags` is the pure function `<Meta>` renders through, exposed standalone for build-time/non-JSX head generation (e.g. a script that pre-renders `<head>` tags for a static host).
+
+**Example**
+
+```tsx
+<Meta
+  title={() => `${pageTitle()} · My Site`}
+  description="A description for search engines."
+  image="/og-default.png"
+  origin="https://example.com"
+/>
+```
+
+**Common mistakes**
+
+- Passing `title`/`description` as PLAIN STRINGS when the page title changes client-side (e.g. after data loads) — pass an ACCESSOR (`() => title()`) so `<head>` stays reactive; a plain string is captured once
+- Setting `image` without `imageWidth`/`imageHeight` — crawlers must download the image to determine layout before rendering a social-card preview without them; supplying both speeds up and improves the preview
+- Expecting auto-canonical without setting `origin` — it is derived from `origin + route.path`; omitting `origin` disables the whole auto-canonical feature (no canonical link is emitted unless you pass one explicitly)
+
+**See also:** `seoPlugin` · `useHead (in @pyreon/head)`
+
+---
+
+### generateRouteTypes / extractRouteParams `function`
+
+```ts
+generateRouteTypes(routePaths: readonly string[], opts?: { module?: string }) => string · extractRouteParams(path: string) => string[]
+```
+
+Build-time typed-routes codegen — the mechanism behind `RegisteredRoutes` augmentation (what makes `<RouterLink to="/users/:id">` typo-checkable). `generateRouteTypes` is pure: given the fs-router's list of `urlPath`s, it emits a `.d.ts` source string that augments `RegisteredRoutes` (module `@pyreon/zero` by default, overridable via `opts.module`) with a param-shape per route (`{ id: string }` for a route declaring `:id`, `Record<string, never>` for a static route). The vite plugin calls this internally and writes the result to a generated file your tsconfig includes — app code does not normally call it directly. `extractRouteParams(path)` is the pure sub-helper: pulls `:name` placeholders (and the catch-all `:slug*` form, stripped to `slug`) from a single route path string, deduped, in path order.
+
+**Example**
+
+```tsx
+extractRouteParams('/users/:id/posts/:postId')  // ['id', 'postId']
+extractRouteParams('/blog/:slug*')               // ['slug']
+
+generateRouteTypes(['/', '/about', '/users/:id'])
+// -> "declare module \"@pyreon/zero\" { interface RegisteredRoutes { \"/\": …; \"/users/:id\": { id: string } } }"
+```
+
+**Common mistakes**
+
+- Calling `generateRouteTypes` by hand in application code — it is the codegen PRIMITIVE the Vite plugin already runs automatically on every route change; reach for it directly only when building custom tooling around the route list
+
+**See also:** `expandRoutesForLocales`
+
+---
+
+### generateRssFeed `function`
+
+```ts
+(config: RssConfig) => string
+```
+
+Generate an RSS 2.0 feed string for blog / changelog / podcast content — CLIENT-SAFE, re-exported from the main `@pyreon/zero` entry (no `/server` subpath needed, unlike `seoPlugin`/`aiPlugin`/`generateSitemap`). Items are emitted in the supplied order — sort newest-first yourself before passing them in. Typically called from a build script or an API route handler that returns the string with `Content-Type: application/rss+xml`.
+
+**Example**
+
+```tsx
+import { generateRssFeed } from '@pyreon/zero'
+
+const xml = generateRssFeed({
+  title: 'My Blog',
+  origin: 'https://example.com',
+  description: 'Latest posts',
+  items: posts.map((p) => ({
+    title: p.data.title,
+    link: `/blog/${p.slug}`,
+    pubDate: p.data.publishDate,
+    description: p.data.description,
+  })),
+})
+```
+
+**Common mistakes**
+
+- Passing `items` in an arbitrary order and expecting the feed to sort itself — items are emitted in the SUPPLIED order; sort newest-first before passing them in
+- Reaching for `@pyreon/zero-content`'s own `generateRssFeed` — that one is DEPRECATED and forwards here anyway; import directly from `@pyreon/zero`
+
+**See also:** `seoPlugin`
 
 ---
 
