@@ -140,6 +140,41 @@ class DeferredHtml {
   constructor(readonly render: () => RawHtml | Promise<RawHtml>) {}
 }
 
+/**
+ * A component hole kept UNRENDERED so the stream can walk it in place.
+ *
+ * `_ssrNode` renders its node to a string — correct for `renderToString`, but
+ * in a stream it turned every compiled page into one buffered chunk: the
+ * compiler lowers `<div>…<Suspense>…</Suspense>…</div>` to ONE `_ssr(...)`
+ * call whose Suspense hole was rendered by the string renderer, which awaits
+ * the slow child and emits no fallback. So the page (the default compiler
+ * output, `ssrTemplate` on) arrived as a single chunk after the slowest child,
+ * while the same page built with h() streamed its shell and fallback at once.
+ *
+ * While `streamNode` evaluates a `DeferredHtml` thunk it sets
+ * `_streamHoleMode`; `_ssrNode` then returns this wrapper and `_ssr` returns a
+ * `StreamParts` list instead of a string. `streamNode` enqueues the static
+ * parts and streams each hole with `streamNode` itself — the same function the
+ * h() path uses for that vnode, so the bytes are identical by construction
+ * (the concatenated stream equals the string render).
+ */
+class StreamHole {
+  constructor(readonly node: VNodeChild) {}
+}
+
+/** Ordered output of an `_ssr(...)` call that contains a `StreamHole`. */
+class StreamParts {
+  constructor(readonly parts: readonly unknown[]) {}
+}
+
+// True ONLY for the synchronous extent of a `DeferredHtml` thunk invoked by
+// `streamNode` (set and restored around the call — see `StreamHole`). The
+// compiler emits `_ssrNode` exclusively as a DIRECT argument of that thunk's
+// single `_ssr(...)` call, so no other consumer can observe a `StreamHole`.
+// `renderNode`'s DeferredHtml branch clears it, so a string render nested
+// inside the window (an `_escSole(vnode)` hole) keeps rendering to strings.
+let _streamHoleMode = false
+
 // ─── Streaming Suspense context ───────────────────────────────────────────────
 // Tracks in-flight async Suspense boundary resolutions within a single stream.
 
@@ -803,7 +838,15 @@ async function streamNode(
   // h() path would have rendered the same vnode, so enclosing providers have
   // already pushed. See `DeferredHtml`.
   if (node instanceof DeferredHtml) {
-    enqueue((await node.render()).value)
+    const prev = _streamHoleMode
+    _streamHoleMode = true
+    let r: unknown
+    try {
+      r = node.render()
+    } finally {
+      _streamHoleMode = prev
+    }
+    await streamPart(r, enqueue)
     return
   }
   if (node == null || node === false) return
@@ -823,6 +866,37 @@ async function streamNode(
   await streamVNode(node as VNode, enqueue)
 }
 
+/**
+ * Stream one resolved piece of a compiled template: a static string or an
+ * already-formatted hole (verbatim — `_ssrConcat` appends both raw), a
+ * `RawHtml` (its value), a `StreamParts` list (each part in order), a
+ * `StreamHole` (streamed with `streamNode`, like the h() path), or a Promise of
+ * any of these (an async text hole) — awaited, then streamed.
+ */
+async function streamPart(p: unknown, enqueue: (s: string) => void): Promise<void> {
+  if (typeof p === 'string') {
+    if (p !== '') enqueue(p)
+    return
+  }
+  if (p instanceof RawHtml) {
+    enqueue(p.value)
+    return
+  }
+  if (p instanceof StreamParts) {
+    for (const part of p.parts) await streamPart(part, enqueue)
+    return
+  }
+  if (p instanceof StreamHole) {
+    await streamNode(p.node, enqueue)
+    return
+  }
+  if (p instanceof Promise) {
+    await streamPart(await p, enqueue)
+    return
+  }
+  enqueue(holeToString(p))
+}
+
 // Inline swap helper emitted once per stream, before the first <template>
 const SUSPENSE_SWAP_BODY =
   'function __NS(s,t){var e=document.getElementById(s),l=document.getElementById(t);' +
@@ -838,7 +912,15 @@ const SUSPENSE_SWAP_BODY =
 async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void): Promise<void> {
   _count('runtime-server.suspense.boundary')
   const ctx = _streamCtxAls.getStore()
-  const { fallback, children } = vnode.props as { fallback: VNodeChild; children?: VNodeChild }
+  // Merged, not `vnode.props`: `h(Suspense, props, child)` carries its child in
+  // `vnode.children` (only the automatic JSX runtime puts it on props), and
+  // reading props alone streamed an EMPTY `<template>` for every h()-built
+  // boundary — the swap then replaced the fallback with nothing. The string
+  // renderer always merged (`renderComponent`); the stream now matches it.
+  const { fallback, children } = mergeChildrenIntoProps(vnode) as {
+    fallback: VNodeChild
+    children?: VNodeChild
+  }
 
   // Defensive: the streaming pipeline only enters here via `_streamCtxAls.run`,
   // so `ctx` is always defined. Kept as a safety net in case a future entry point
@@ -1062,7 +1144,16 @@ function renderNode(node: VNodeChild | (() => VNodeChild)): MaybeAsync {
   // path would have rendered the equivalent vnode, so the context stack holds
   // every enclosing provider.
   if (node instanceof DeferredHtml) {
-    const r = node.render()
+    // A string render never streams holes — even when it runs inside a
+    // stream's hole window (see `_streamHoleMode`).
+    const prev = _streamHoleMode
+    _streamHoleMode = false
+    let r: RawHtml | Promise<RawHtml>
+    try {
+      r = node.render()
+    } finally {
+      _streamHoleMode = prev
+    }
     return r instanceof RawHtml ? r.value : r.then((x) => x.value)
   }
 
@@ -1452,6 +1543,13 @@ export function _ssr(
   }
   // oxlint-disable-next-line prefer-rest-params
   const holes = _collectHoles(arguments.length - 1, a, b, c, d, e, f, rest)
+  if (_streamHoleMode && holes.some((x) => x instanceof StreamHole)) {
+    // Interleave statics and holes as-is; `streamParts` resolves each hole
+    // exactly as `_ssrConcat` would, streaming `StreamHole`s in place.
+    const parts: unknown[] = [statics[0] ?? '']
+    for (let i = 0; i < holes.length; i++) parts.push(holes[i], statics[i + 1] ?? '')
+    return new StreamParts(parts) as unknown as RawHtml
+  }
   const r = _ssrConcat(statics, holes, 0, statics[0] ?? '')
   return typeof r === 'string' ? new RawHtml(r) : r.then((s) => new RawHtml(s))
 }
@@ -1774,7 +1872,8 @@ export function _ssrChildren(items: readonly unknown[]): RawHtml | Promise<RawHt
  * inside an `_ssrDeferred` thunk, which is what places it at the h() path's
  * render time. Calling it eagerly is the bug documented on `DeferredHtml`.
  */
-export function _ssrNode(node: VNodeChild): MaybeAsync {
+export function _ssrNode(node: VNodeChild): MaybeAsync | StreamHole {
+  if (_streamHoleMode) return new StreamHole(node)
   return renderNode(node)
 }
 
