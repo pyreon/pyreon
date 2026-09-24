@@ -121,6 +121,33 @@ export interface IrParam {
   doc?: string | undefined
 }
 
+/**
+ * How a request body travels on the wire.
+ *
+ * The IR used to carry only a TYPE, so every body went out as `json:` -- and
+ * Stripe (611 of 612 mutations) and Twilio accept only form encoding.
+ */
+export type BodyEncoding = 'json' | 'form' | 'multipart' | 'text' | 'binary'
+
+/** One property's serialization in a form body — OpenAPI's Encoding Object. */
+export interface IrFieldEncoding {
+  style?: 'form' | 'deepObject' | 'spaceDelimited' | 'pipeDelimited' | undefined
+  explode?: boolean | undefined
+}
+
+export interface IrBody {
+  /** The chosen media type, verbatim (`application/x-www-form-urlencoded`). */
+  mediaType: string
+  encoding: BodyEncoding
+  /**
+   * The body's shape. For `text` a string; for `binary` a `binary`-format
+   * string (the emitters render it as a Blob in request position).
+   */
+  type: IrType
+  /** `form` only: per-property serialization, when the spec declares any. */
+  fieldEncoding?: Readonly<Record<string, IrFieldEncoding>> | undefined
+}
+
 /** One API operation — the unit every emitter iterates. */
 export interface IrOperation {
   /** Stable, unique, already a valid identifier (`getUserById`). */
@@ -133,8 +160,17 @@ export interface IrOperation {
   summary?: string | undefined
   pathParams: readonly IrParam[]
   queryParams: readonly IrParam[]
-  /** Request body type, when the operation takes one. */
-  body?: IrType | undefined
+  /**
+   * Header parameters, keyed by their wire name. `Accept`, `Content-Type` and
+   * `Authorization` are never here: OpenAPI says a header parameter with one
+   * of those names SHALL be ignored (the client and the security scheme own
+   * them).
+   */
+  headerParams: readonly IrParam[]
+  /** Cookie parameters, keyed by their wire name. */
+  cookieParams: readonly IrParam[]
+  /** Request body, when the operation takes one. */
+  body?: IrBody | undefined
   /** The 2xx response type. `undefined` means no content. */
   response?: IrType | undefined
 }

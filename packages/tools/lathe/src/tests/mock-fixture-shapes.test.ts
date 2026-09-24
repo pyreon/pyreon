@@ -29,6 +29,8 @@ const op = (response: IrType): IrOperation => ({
   tag: 'x',
   pathParams: [],
   queryParams: [],
+  headerParams: [],
+  cookieParams: [],
   response,
 })
 

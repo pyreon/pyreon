@@ -28,6 +28,8 @@ const op = (over: Partial<IrOperation> = {}): IrOperation => ({
   path: '/users/{id}',
   pathParams: [],
   queryParams: [],
+  headerParams: [],
+  cookieParams: [],
   ...over,
 } as IrOperation)
 
@@ -137,8 +139,8 @@ describe('bodies and responses', () => {
   it('a changed request body is breaking, and names both sides', () => {
     // The message is what tells the reader whether they can adapt.
     const cs = diff(
-      { operations: [op({ body: { kind: 'string' } })] },
-      { operations: [op({ body: { kind: 'number', integer: true } })] },
+      { operations: [op({ body: { mediaType: 'application/json', encoding: 'json', type: { kind: 'string' } } })] },
+      { operations: [op({ body: { mediaType: 'application/json', encoding: 'json', type: { kind: 'number', integer: true } } })] },
     )
     const change = cs.find((c) => c.code === 'body-changed')
     expect(change?.severity).toBe('breaking')
@@ -151,7 +153,7 @@ describe('bodies and responses', () => {
   it('ADDING a body where there was none is breaking, and says "none"', () => {
     // The `?? 'none'` arm — `undefined → number` in a diff line reads as
     // a bug in the tool.
-    const cs = diff({ operations: [op()] }, { operations: [op({ body: { kind: 'string' } })] })
+    const cs = diff({ operations: [op()] }, { operations: [op({ body: { mediaType: 'application/json', encoding: 'json', type: { kind: 'string' } } })] })
     const change = cs.find((c) => c.code === 'body-changed')
     expect(change?.detail).toContain('none')
     expect(change?.detail).not.toContain('undefined')

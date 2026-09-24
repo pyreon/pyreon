@@ -25,7 +25,7 @@ import type { IrDocument, IrOperation, IrType } from '../core/ir'
 
 const op = (over: Partial<IrOperation> = {}): IrOperation => ({
   id: 'getUser', tag: 'users', method: 'GET', path: '/users/{id}',
-  pathParams: [], queryParams: [],
+  pathParams: [], queryParams: [], headerParams: [], cookieParams: [],
   ...over,
 } as IrOperation)
 

@@ -139,7 +139,7 @@ function surfaceOf(op: IrOperation): SurfaceOperation {
     if (p.required || op.pathParams.includes(p)) requiredParams.push(p.name)
   }
   const out: SurfaceOperation = { id: op.id, method: op.method, path: op.path, params, requiredParams }
-  if (op.body !== undefined) out.body = renderType(op.body)
+  if (op.body !== undefined) out.body = `${op.body.encoding} ${renderType(op.body.type)}`
   if (op.response !== undefined) out.response = renderType(op.response)
   return out
 }

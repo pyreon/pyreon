@@ -30,7 +30,7 @@ const obj = (fields: ReturnType<typeof field>[]): IrType =>
   ({ kind: 'object', fields }) as IrType
 
 const op = (id: string, tag: string): IrOperation =>
-  ({ id, tag, method: 'GET', path: `/${id}`, pathParams: [], queryParams: [] }) as IrOperation
+  ({ id, tag, method: 'GET', path: `/${id}`, pathParams: [], queryParams: [], headerParams: [], cookieParams: [] }) as IrOperation
 const doc = (operations: IrOperation[]): IrDocument =>
   ({ title: 'T', version: '1', baseUrl: '', models: [], operations, notes: [] }) as IrDocument
 

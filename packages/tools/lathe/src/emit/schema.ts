@@ -56,10 +56,12 @@ export interface SchemaExprOptions {
  * not enforce. Non-string enums are emitted as a union of `literal`s, which
  * both libraries infer exactly, so they only widen on the native path.
  */
-export function tsType(type: IrType, depth = 0, widenEnums = false, native = false): string {
+export function tsType(type: IrType, depth = 0, widenEnums = false, native = false, files = false): string {
   switch (type.kind) {
     case 'string':
-      return 'string'
+      // In a REQUEST body a `binary` string is a file: what a caller hands the
+      // client is a `Blob` (a `File` is one), never text.
+      return files && type.format === 'binary' ? 'Blob' : 'string'
     case 'enum':
       return enumTs(type.values, widenEnums, native)
     case 'number':
@@ -73,26 +75,26 @@ export function tsType(type: IrType, depth = 0, widenEnums = false, native = fal
     case 'ref':
       return type.name
     case 'nullable': {
-      const inner = tsType(type.inner, depth, widenEnums, native)
+      const inner = tsType(type.inner, depth, widenEnums, native, files)
       return `${inner} | null`
     }
     case 'array': {
-      const inner = tsType(type.items, depth + 1, widenEnums, native)
+      const inner = tsType(type.items, depth + 1, widenEnums, native, files)
       // `A | B[]` parses as `A | (B[])`, so a union element needs parens.
       return /[|&]/.test(inner) ? `(${inner})[]` : `${inner}[]`
     }
     case 'union':
-      return type.options.map((o) => tsType(o, depth + 1, widenEnums, native)).join(' | ')
+      return type.options.map((o) => tsType(o, depth + 1, widenEnums, native, files)).join(' | ')
     case 'object': {
       if (type.fields.length === 0) {
         return type.additional
-          ? `Record<string, ${tsType(type.additional, depth + 1, widenEnums, native)}>`
+          ? `Record<string, ${tsType(type.additional, depth + 1, widenEnums, native, files)}>`
           : 'Record<string, unknown>'
       }
       const pad = '  '.repeat(depth + 1)
       const close = '  '.repeat(depth)
       const body = type.fields
-        .map((f) => `${pad}${propKey(f.name)}${f.required ? '' : '?'}: ${fieldTs(f, depth + 1, widenEnums, native)}`)
+        .map((f) => `${pad}${propKey(f.name)}${f.required ? '' : '?'}: ${fieldTs(f, depth + 1, widenEnums, native, files)}`)
         .join('\n')
       return `{\n${body}\n${close}}`
     }
@@ -110,8 +112,8 @@ function enumTs(values: readonly IrLiteral[], widen: boolean, native: boolean): 
   return values.map((v) => (typeof v === 'string' ? q(v) : String(v))).join(' | ')
 }
 
-function fieldTs(field: IrField, depth: number, widenEnums: boolean, native: boolean): string {
-  const base = tsType(field.type, depth, widenEnums, native)
+function fieldTs(field: IrField, depth: number, widenEnums: boolean, native: boolean, files = false): string {
+  const base = tsType(field.type, depth, widenEnums, native, files)
   // `exactOptionalPropertyTypes` is on across this repo and in the consumer
   // presets, where `x?: number` and `x?: number | undefined` are DIFFERENT
   // types. The schema infers the second, so the emitted type must say it — or

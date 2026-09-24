@@ -9,9 +9,12 @@
  */
 
 import type {
+  BodyEncoding,
   HttpMethod,
+  IrBody,
   IrDocument,
   IrField,
+  IrFieldEncoding,
   IrLiteral,
   IrModel,
   IrNote,
@@ -222,7 +225,9 @@ function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx)
   for (const op of operations) {
     const at = `#/paths/${op.path}/${op.method.toLowerCase()}`
     if (op.response) op.response = walk(op.response, at)
-    if (op.body) op.body = walk(op.body, at)
+    if (op.body) op.body = { ...op.body, type: walk(op.body.type, at) as IrType }
+    op.headerParams = op.headerParams.map((p) => ({ ...p, type: walk(p.type, at) as IrType }))
+    op.cookieParams = op.cookieParams.map((p) => ({ ...p, type: walk(p.type, at) as IrType }))
     op.pathParams = op.pathParams.map((p) => ({ ...p, type: walk(p.type, at) as IrType }))
     op.queryParams = op.queryParams.map((p) => ({ ...p, type: walk(p.type, at) as IrType }))
   }
@@ -335,12 +340,30 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
       const params = [...shared, ...arr(op.parameters)]
       const pathParams: IrParam[] = []
       const queryParams: IrParam[] = []
+      const headerParams: IrParam[] = []
+      const cookieParams: IrParam[] = []
+      // An operation-level parameter OVERRIDES a path-level one with the same
+      // (name, in) -- OpenAPI 3 §Operation Object. Concatenating them gave two
+      // `q` parameters with different types and required-ness.
+      const byKey = new Map<string, Json>()
       for (const p of params) {
         const po = obj(deref(p, at, ctx))
-        if (!po) continue
-        const name = str(po.name)
-        if (!name) continue
-        const target = po.in === 'path' ? pathParams : po.in === 'query' ? queryParams : null
+        const name = po ? str(po.name) : undefined
+        if (!po || !name) continue
+        byKey.set(`${String(po.in)}:${name}`, po)
+      }
+      for (const po of byKey.values()) {
+        const name = str(po.name) as string
+        const target =
+          po.in === 'path'
+            ? pathParams
+            : po.in === 'query'
+              ? queryParams
+              : po.in === 'header' && !IGNORED_HEADERS.has(name.toLowerCase())
+                ? headerParams
+                : po.in === 'cookie'
+                  ? cookieParams
+                  : null
         if (!target) continue
         target.push({
           // A PATH parameter's name must match the `:placeholder` the path was
@@ -350,7 +373,7 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
           // generated signature. A QUERY parameter's name is a WIRE name
           // (`?page=2`), so it stays verbatim and is quoted at emit instead.
           name: po.in === 'path' ? (placeholderIds.get(name) ?? ident(name)) : name,
-          type: toType(obj(po.schema) ?? { type: 'string' }, `${at}/parameters/${name}`, ctx),
+          type: toType(paramSchema(po), `${at}/parameters/${name}`, ctx),
           // A path parameter is always required, whatever the spec claims.
           required: po.in === 'path' ? true : po.required === true,
           doc: str(po.description),
@@ -362,9 +385,11 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
         path: toPyreonPath(rawPath, placeholderIds),
         tag: tagNames.get(str(arr(op.tags)[0]) ?? 'default') as string,
         summary: str(op.summary) ?? str(op.description),
-        pathParams,
+        pathParams: withUndeclaredPathParams(pathParams, placeholders, placeholderIds),
         queryParams,
-        body: bodyType(op, at, ctx),
+        headerParams,
+        cookieParams,
+        body: bodyOf(op, at, ctx),
         response: responseType(op, at, ctx),
       })
     }
@@ -398,39 +423,142 @@ function toPyreonPath(path: string, ids: ReadonlyMap<string, string>): string {
   return path.replace(/\{([^}]+)\}/g, (_m, name: string) => `:${ids.get(name) ?? ident(name)}`)
 }
 
-function bodyType(op: Json, at: string, ctx: Ctx): IrType | undefined {
+/**
+ * OpenAPI §Parameter Object: a header parameter named `Accept`,
+ * `Content-Type` or `Authorization` SHALL be ignored -- the media type and the
+ * security scheme own those.
+ */
+const IGNORED_HEADERS = new Set(['accept', 'content-type', 'authorization'])
+
+/**
+ * A parameter's schema. A parameter may declare `content` (one media type
+ * carrying the schema) instead of `schema`; that used to type silently as
+ * `string`.
+ */
+function paramSchema(po: Json): Json {
+  const direct = obj(po.schema)
+  if (direct) return direct
+  const content = obj(po.content)
+  const first = content ? obj(content[Object.keys(content)[0] ?? '']) : undefined
+  return obj(first?.schema) ?? { type: 'string' }
+}
+
+/**
+ * A `{placeholder}` the path uses but no parameter declares still has to be
+ * supplied -- the runtime throws on a missing one. It is typed `string`, the
+ * only honest reading of a path segment.
+ */
+function withUndeclaredPathParams(
+  declared: IrParam[],
+  placeholders: readonly string[],
+  ids: ReadonlyMap<string, string>,
+): IrParam[] {
+  const have = new Set(declared.map((p) => p.name))
+  const out = [...declared]
+  for (const ph of placeholders) {
+    const id = ids.get(ph) ?? ident(ph)
+    if (have.has(id)) continue
+    have.add(id)
+    out.push({ name: id, type: { kind: 'string' }, required: true, doc: undefined })
+  }
+  return out
+}
+
+/** The base media type, lowercased, without parameters: `application/json`. */
+function baseMediaType(mediaType: string): string {
+  return (mediaType.split(';')[0] ?? '').trim().toLowerCase()
+}
+
+/**
+ * Classify a media type. JSON is any `…/json` or `…+json`, WITH parameters
+ * (`application/json; charset=utf-8` was classed non-JSON, so k8s's 70
+ * responses typed as `unknown`), and `*\/*` -- a schema under "anything"
+ * is still described as JSON.
+ */
+function encodingOf(mediaType: string): BodyEncoding {
+  const base = baseMediaType(mediaType)
+  if (base === '*/*' || base.endsWith('/json') || base.endsWith('+json')) return 'json'
+  if (base === 'application/x-www-form-urlencoded') return 'form'
+  if (base.startsWith('multipart/')) return 'multipart'
+  if (base.startsWith('text/')) return 'text'
+  return 'binary'
+}
+
+/** Preference order when a body offers several media types. */
+const ENCODING_RANK: Readonly<Record<BodyEncoding, number>> = { json: 0, form: 1, multipart: 2, text: 3, binary: 4 }
+
+function bodyOf(op: Json, at: string, ctx: Ctx): IrBody | undefined {
   const rb = obj(deref(op.requestBody, at, ctx))
   if (!rb) return undefined
   const content = obj(rb.content)
   if (!content) return undefined
-  return pickContent(content, `${at}/requestBody`, ctx)
+  const keys = Object.keys(content)
+  if (keys.length === 0) return undefined
+  const mediaType = [...keys].sort((a, b) => ENCODING_RANK[encodingOf(a)] - ENCODING_RANK[encodingOf(b)])[0] as string
+  const encoding = encodingOf(mediaType)
+  const where = `${at}/requestBody`
+  if (keys.length > 1) {
+    ctx.notes.push({
+      code: 'multiple-content-types',
+      at: where,
+      message: `${keys.length} media types (${keys.join(', ')}) — generated code sends ${mediaType}.`,
+    })
+  }
+  const media = obj(content[mediaType]) ?? {}
+  const schema = obj(media.schema)
+  if (encoding === 'text') return { mediaType, encoding, type: { kind: 'string' } }
+  if (encoding === 'binary') return { mediaType, encoding, type: { kind: 'string', format: 'binary' } }
+  const type = schema ? toType(schema, where, ctx) : { kind: 'unknown' as const, reason: 'no schema' }
+  return {
+    mediaType,
+    encoding,
+    type,
+    fieldEncoding: encoding === 'form' ? fieldEncodingOf(obj(media.encoding)) : undefined,
+  }
+}
+
+/** A form body's `encoding` map, reduced to style/explode per property. */
+function fieldEncodingOf(encoding: Json | undefined): Record<string, IrFieldEncoding> | undefined {
+  if (!encoding) return undefined
+  const out: Record<string, IrFieldEncoding> = {}
+  const styles = new Set(['form', 'deepObject', 'spaceDelimited', 'pipeDelimited'])
+  for (const key of Object.keys(encoding).sort()) {
+    const e = obj(encoding[key])
+    if (!e) continue
+    const style = typeof e.style === 'string' && styles.has(e.style) ? (e.style as IrFieldEncoding['style']) : undefined
+    const explode = typeof e.explode === 'boolean' ? e.explode : undefined
+    if (style !== undefined || explode !== undefined) out[key] = { style, explode }
+  }
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 function responseType(op: Json, at: string, ctx: Ctx): IrType | undefined {
   const responses = obj(op.responses)
   if (!responses) return undefined
-  // First 2xx wins, numerically, so `200` beats `201` deterministically.
-  const ok = Object.keys(responses)
-    .filter((k) => /^2\d\d$/.test(k))
-    .sort()[0]
+  // First 2xx wins, numerically, so `200` beats `201` deterministically. A
+  // `2XX` RANGE counts too, after the explicit codes (OpenAPI: an explicit
+  // code takes precedence over the range); ignoring it typed the response
+  // `void` and the generated call discarded the body.
+  const keys = Object.keys(responses)
+  const ok = keys.filter((k) => /^2\d\d$/.test(k)).sort()[0] ?? keys.find((k) => /^2XX$/i.test(k))
   const chosen = ok ?? (responses.default !== undefined ? 'default' : undefined)
   if (!chosen) return undefined
   const res = obj(deref(responses[chosen], at, ctx))
   const content = obj(res?.content)
   if (!content) return undefined
-  return pickContent(content, `${at}/responses/${chosen}`, ctx)
+  return pickResponseContent(content, `${at}/responses/${chosen}`, ctx)
 }
 
 /**
- * Choose a media type.
+ * Choose a response media type.
  *
  * JSON wins when present. When it is not, the choice is REPORTED — a generated
  * client that silently decodes `text/csv` as JSON fails at runtime, far from
  * the spec line that caused it.
  */
-function pickContent(content: Json, at: string, ctx: Ctx): IrType | undefined {
+function pickResponseContent(content: Json, at: string, ctx: Ctx): IrType | undefined {
   const keys = Object.keys(content)
-  const json = keys.find((k) => k === 'application/json' || k.endsWith('+json'))
+  const json = keys.find((k) => encodingOf(k) === 'json')
   if (!json) {
     const first = keys[0]
     if (!first) return undefined

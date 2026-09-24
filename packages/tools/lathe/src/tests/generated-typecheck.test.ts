@@ -57,10 +57,79 @@ paths:
     delete:
       operationId: deleteNode
       tags: [n]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: X-Dangerous, in: header, required: true, schema: { type: boolean } }
+        - { name: X-Trace, in: header, schema: { type: string } }
+        - { name: session, in: cookie, schema: { type: string } }
       responses: { '204': { description: gone } }
+  /charges:
+    post:
+      operationId: createCharge
+      tags: [n]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: integer, multipleOf: 1 }
+                metadata: { type: object, additionalProperties: { type: string } }
+                expand: { type: array, items: { type: string }, uniqueItems: true }
+            encoding:
+              metadata: { style: deepObject, explode: true }
+              expand: { style: deepObject, explode: true }
+      responses: { '2XX': { content: { application/json; charset=utf-8: { schema: { $ref: '#/components/schemas/Charge' } } } } }
+  /files:
+    post:
+      operationId: uploadFile
+      tags: [n]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/Upload' }
+      responses: { '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Meta' } } } } }
+  /blobs:
+    put:
+      operationId: putBlob
+      tags: [n]
+      requestBody: { content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+      responses: { '204': { description: stored } }
 components:
   schemas:
+    Upload:
+      type: object
+      required: [file]
+      properties:
+        file: { type: string, format: binary }
+        purpose: { type: string, enum: [a, b] }
+    Charge:
+      type: object
+      required: [id, amount, status, kind]
+      properties:
+        id: { type: string }
+        amount: { type: number, multipleOf: 0.01, exclusiveMinimum: 0 }
+        status: { type: integer, enum: [1, 2, 3] }
+        kind: { const: charge }
+        refunded_by: { $ref: '#/components/schemas/NullableMeta' }
+        tags: { type: array, items: { type: string, maxLength: 8 }, minItems: 1 }
+    NullableMeta:
+      type: [object, 'null']
+      required: [at]
+      properties:
+        at: { type: string, format: date-time }
+    Shape:
+      oneOf: [{ $ref: '#/components/schemas/Circle' }, { $ref: '#/components/schemas/Square' }]
+      discriminator: { propertyName: shape_type }
+    Circle:
+      type: object
+      required: [shape_type, r]
+      properties: { shape_type: { const: circle }, r: { type: number } }
+    Square:
+      type: object
+      required: [shape_type, side]
+      properties: { shape_type: { type: string, enum: [square] }, side: { type: number } }
     Node:
       type: object
       required: [id, kind, children]

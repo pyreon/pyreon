@@ -21,7 +21,7 @@
 
 import type { IrDocument, IrOperation, IrType, Reach } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
-import { byTag, endpointSpec, isMutation, tagFile } from './client'
+import { bodyArg, byTag, endpointSpec, isMutation, tagFile } from './client'
 import { tsType } from './schema'
 import type { GeneratedFile } from './writer'
 import { CONTROL_CHARS, q, safeBlockComment } from './writer'
@@ -177,10 +177,10 @@ function tagPage(
     lines.push(`- **Reach** — ${reachLabel(info)}`)
     if (info?.reason) lines.push(`  - ${md(info.reason)}`)
     lines.push(`- **Response** — ${typeCell(op.response)}`)
-    if (op.body) lines.push(`- **Request body** — ${typeCell(op.body)}`)
+    if (op.body) lines.push(`- **Request body** — ${typeCell(op.body.type)} as \`${md(op.body.mediaType)}\``)
     lines.push('')
 
-    const params = [...op.pathParams, ...op.queryParams]
+    const params = [...op.pathParams, ...op.queryParams, ...op.headerParams, ...op.cookieParams]
     if (params.length > 0) {
       // A parameter NAME is spec-supplied text landing in a table cell, so it
       // takes the same escape every other cell here takes. A PATH name is
@@ -192,10 +192,16 @@ function tagPage(
       for (const p of op.pathParams) {
         lines.push(`| \`${md(p.name)}\` | path | yes | ${typeCell(p.type)} |`)
       }
-      for (const p of op.queryParams) {
-        lines.push(
-          `| \`${md(p.name)}\` | query | ${p.required ? 'yes' : 'no'} | ${typeCell(p.type)} |`,
-        )
+      for (const [where, list] of [
+        ['query', op.queryParams],
+        ['header', op.headerParams],
+        ['cookie', op.cookieParams],
+      ] as const) {
+        for (const p of list) {
+          lines.push(
+            `| \`${md(p.name)}\` | ${where} | ${p.required ? 'yes' : 'no'} | ${typeCell(p.type)} |`,
+          )
+        }
       }
       lines.push('')
     }
@@ -264,12 +270,17 @@ function argsLiteral(op: IrOperation): string {
     const fields = op.pathParams.map((p) => `${propKey(p.name)}: ${sample(p.type)}`)
     parts.push(`params: { ${fields.join(', ')} }`)
   }
-  const required = op.queryParams.filter((p) => p.required)
-  if (required.length > 0) {
+  for (const [arg, list] of [
+    ['query', op.queryParams],
+    ['headers', op.headerParams],
+    ['cookies', op.cookieParams],
+  ] as const) {
+    const required = list.filter((p) => p.required)
+    if (required.length === 0) continue
     const fields = required.map((p) => `${propKey(p.name)}: ${sample(p.type)}`)
-    parts.push(`query: { ${fields.join(', ')} }`)
+    parts.push(`${arg}: { ${fields.join(', ')} }`)
   }
-  if (op.body) parts.push('json: /* … */ {}')
+  if (op.body) parts.push(`${bodyArg(op.body)}: /* … */ ${op.body.encoding === 'text' ? "''" : op.body.encoding === 'binary' ? 'new Blob()' : '{}'}`)
   return parts.length > 0 ? `{ ${parts.join(', ')} }` : ''
 }
 
