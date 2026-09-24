@@ -8188,8 +8188,8 @@ export const getStaticPaths: GetStaticPaths<{ slug: string }> = async () => {
   },
 
   'zero/Adapter': {
-    signature: 'interface Adapter { name: string; build?(options: AdapterBuildOptions): Promise<void>; revalidate?(path: string): Promise<AdapterRevalidateResult> }',
-    example: `import { vercelAdapter, cloudflareAdapter, netlifyAdapter, staticAdapter } from '@pyreon/zero/server'
+    signature: 'interface Adapter { name: string; build(options: AdapterBuildOptions): Promise<void>; capabilities?: AdapterCapabilities; revalidate?(path: string): Promise<AdapterRevalidateResult> }',
+    example: `import { vercelAdapter, cloudflareAdapter, netlifyAdapter, staticAdapter, denoAdapter } from '@pyreon/zero/server'
 
 // Vercel — emits .vercel/output/config.json v3 STATIC variant
 plugins: [pyreon(), zero({ mode: 'ssg', adapter: vercelAdapter() })]
@@ -8202,12 +8202,20 @@ plugins: [pyreon(), zero({ mode: 'ssg', adapter: netlifyAdapter() })]
 
 // ISR revalidation webhook handler (Vercel-side)
 await vercelAdapter().revalidate?.('/posts/123')
-// → { regenerated: true } on success`,
-    notes: `Deployment adapter contract. \`build()\` is auto-invoked by SSG's \`closeBundle\` AFTER the path render loop (PR J) and writes platform-specific routing config: Vercel emits \`.vercel/output/config.json\`; Cloudflare emits \`_routes.json\` with zero-function \`exclude: ['/*']\`; Netlify emits \`netlify.toml\` with \`publish = '.'\` + asset cache headers. \`revalidate(path)\` is the runtime hook for build-time ISR (PR I) — Vercel POSTs to a revalidation webhook, Cloudflare purges the edge cache, Netlify triggers a Build Hook. Static / node / bun adapters no-op for SSG. See also: zero, createISRHandler, vercelAdapter.`,
+// → { regenerated: true } on success
+
+// Edge + cron: route files declare, the adapter maps per platform
+// src/routes/geo.tsx       → export const runtime = 'edge'
+// src/routes/api/cleanup.ts → export const schedule = '0 3 * * *'
+plugins: [pyreon(), zero({ mode: 'ssr', adapter: vercelAdapter() })] // ssr-edge.func + config.json crons
+plugins: [pyreon(), zero({ mode: 'ssr', adapter: denoAdapter() })]   // Deno.serve runner, Deno.cron`,
+    notes: `Deployment adapter contract. \`build()\` is auto-invoked by SSG's \`closeBundle\` AFTER the path render loop (PR J) and writes platform-specific routing config: Vercel emits \`.vercel/output/config.json\`; Cloudflare emits \`_routes.json\` with zero-function \`exclude: ['/*']\`; Netlify emits \`netlify.toml\` with \`publish = '.'\` + asset cache headers. \`revalidate(path)\` is the runtime hook for build-time ISR (PR I) — Vercel POSTs to a revalidation webhook, Cloudflare purges the edge cache, Netlify triggers a Build Hook. Static / node / bun adapters no-op for SSG. \`capabilities\` declares what the target can deploy beyond one Node function: per-route \`export const runtime = 'edge'\` (vercel \`ssr-edge.func\`, netlify edge function, cloudflare natively), whole-app edge (\`vercelAdapter({ runtime: 'edge' })\`, \`netlifyAdapter({ edge: true })\`, \`denoAdapter()\`), and API-route \`export const schedule\` crons (vercel \`crons\`, netlify scheduled functions, \`Deno.cron\`, node/bun \`{ scheduler: true }\`). A declaration the adapter cannot honour FAILS the build naming the file; the edge bundle is asserted free of \`node:*\` imports. See also: zero, createISRHandler, vercelAdapter.`,
     mistakes: `- Calling \`adapter.revalidate(path)\` without the platform's env vars set (e.g. \`VERCEL_DEPLOYMENT_URL\` + \`VERCEL_REVALIDATE_TOKEN\`) — returns \`{ regenerated: false }\` with a dev-mode warning. The webhook is a no-op without credentials
 - Expecting \`nodeAdapter\` / \`bunAdapter\` to emit platform routing config under SSG — they no-op (no platform routing to configure). Use vercel/cloudflare/netlify if you need a routing config emitted
 - Setting \`mode: 'ssg'\` + \`adapter: vercelAdapter()\` and ALSO writing \`.vercel/output/config.json\` manually — the adapter overwrites it. Pick one source of truth
 - Calling adapter methods from CLIENT code — server-only. Import from \`@pyreon/zero/server\`
+- Declaring \`export const runtime = 'edge'\` (or \`schedule\`) while deploying with an adapter that cannot run it — the build fails with the file named; switch adapter or opt in (\`nodeAdapter({ scheduler: true })\`)
+- Writing \`runtime\` / \`schedule\` as a computed value — the build reads them without executing the file, so only a plain string literal is accepted
 - Forgetting that Netlify's revalidate triggers a FULL-SITE rebuild (Build Hook semantics) — Netlify doesn't expose per-page ISR. The \`path\` arg flows into \`trigger_title\` for audit logs but doesn't scope the rebuild`,
   },
 

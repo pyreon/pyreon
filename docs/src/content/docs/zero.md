@@ -1411,6 +1411,7 @@ defineConfig({ adapter: 'vercel' }) // or adapter: vercelAdapter()
 | `vercel`     | `.vercel/output` (Build Output API v3)     | `.vercel/output/config.json` (static variant)          |
 | `cloudflare` | Cloudflare Pages + Workers                 | `_routes.json` static config                           |
 | `netlify`    | Netlify Functions (streaming)              | `netlify.toml` / static config                         |
+| `deno`       | `Deno.serve()` runner (`dist/main.js`) over the edge bundle | no-op                               |
 
 `vercel`/`cloudflare`/`netlify` also implement `Adapter.revalidate(path)` for build-time ISR — see [SSG → Build-time ISR](/docs/ssg#build-time-isr-per-route-revalidate). `static`/`node`/`bun` implement `revalidate` as a no-op.
 
@@ -1424,6 +1425,53 @@ When `mode: 'ssr'` or `mode: 'isr'` is set, the build pipeline also produces a s
 - Otherwise the plugin synthesizes the canonical entry `import { routes } from "virtual:zero/routes"; … export default createServer({ routes, routeMiddleware, apiRoutes })` automatically — no setup required.
 
 After the bundle lands the configured adapter's `build({ kind: 'ssr', … })` is invoked so platform adapters (vercel/cloudflare/netlify) can wrap it into a deployable serverless function. The recursive SSR sub-build uses `PYREON_ZERO_SSR_INNER_BUILD` as its env-flag gate (distinct from SSG's `PYREON_ZERO_SSG_INNER_BUILD`) so the two modes can never collide.
+
+### Edge runtimes and per-route `runtime`
+
+A route (page or API) can ask to run on an edge runtime:
+
+```ts
+// src/routes/geo.tsx
+export const runtime = 'edge' // or 'nodejs' (the default)
+```
+
+The build reads the declaration without executing the file (it must be a plain string literal) and splits routes into the right function per platform:
+
+| Adapter | Default | `runtime = 'edge'` routes | Whole app on the edge |
+| --- | --- | --- | --- |
+| `vercel` | Node function `functions/ssr.func` | `functions/ssr-edge.func` (`.vc-config.json` `runtime: "edge"`), routed before the catch-all | `vercelAdapter({ runtime: 'edge' })` — then `runtime = 'nodejs'` routes split out to `ssr-node.func` (`nodeRuntime`, default `nodejs22.x`) |
+| `netlify` | Node function `ssr` | edge function `netlify/edge-functions/ssr-edge/` with `config.pattern` per route | `netlifyAdapter({ edge: true })` — `runtime = 'nodejs'` routes go to `excludedPattern` and fall through to the Node function |
+| `deno` | — | — | always (`denoAdapter()`); a `runtime = 'nodejs'` route fails the build |
+| `cloudflare` | workerd | honoured as-is (everything already runs on workerd) | — |
+| `node` / `bun` / `static` | — | **build fails**, naming the files | — |
+
+When an edge function is needed the SSR plugin builds a second server bundle at `dist/server-edge/` for a web-worker runtime: every dependency is bundled, `@pyreon/zero/server` resolves to the tooling-free `@pyreon/zero/edge`, and every Node builtin becomes a stub that throws `[Pyreon] node:X is not available on the edge runtime` when *called* — the bundle contains no `node:*` import at all. The platform wrapper imports only `node:async_hooks` (for request context) and inlines the built HTML template, since edge runtimes have no filesystem. A `src/entry-server.ts` works on the edge as long as it imports only what `@pyreon/zero/edge` exports (`createServer`, `createApp`, `createISRHandler`, `createMemoryStore`, `compose`, `getContext`, `render404Page`).
+
+Hashed assets are always excluded from edge functions. On Netlify, edge functions run before static files, so a prerendered page under an edge route's pattern is rendered by the function.
+
+### Scheduled API routes
+
+An API route can declare a cron schedule; the platform calls it with `GET` on that schedule (UTC):
+
+```ts
+// src/routes/api/cleanup.ts
+export const schedule = '0 3 * * *' // 03:00 UTC daily
+
+export async function GET() {
+  await purgeExpiredSessions()
+  return Response.json({ ok: true })
+}
+```
+
+The schedule is validated at build time against the grammar every platform accepts — five numeric fields, `*`, `a-b`, `*/n`, `a-b/n` and comma lists; no `MON`/`JAN` names and no `@hourly` macros. It must be on a static (non-dynamic) API route that exports `GET`.
+
+| Adapter | Maps to |
+| --- | --- |
+| `vercel` | Build Output API `config.json` `crons` |
+| `netlify` | a scheduled function `netlify/functions/cron-<path>.mjs` (`config.schedule`) that calls the handler in-process |
+| `deno` | `Deno.cron` (native on Deno Deploy; locally needs `--unstable-cron` — the runner logs an error rather than skipping silently) |
+| `node` / `bun` | opt-in in-process scheduler: `nodeAdapter({ scheduler: true })`. Opt-in because N instances would each run every job. Without it a `schedule` export fails the build |
+| `cloudflare` | **build fails** — Pages has no cron triggers (they exist only on Workers); trigger the route from a separate Worker with a `[triggers] crons` entry |
 
 ## ISR Handler (runtime)
 
