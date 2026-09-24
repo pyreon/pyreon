@@ -202,6 +202,13 @@ interface StreamCtx {
   suspenseTimeoutMs: number
   /** ` nonce="…"` or `''` — appended to every inline tag the stream emits. */
   nonceAttr: string
+  /** Hand the batched output to the consumer now (see `STREAM_FLUSH_BYTES`). */
+  flush: () => void
+}
+
+/** Flush the active stream's batched output before a real wait. No-op outside a stream. */
+function flushStream(): void {
+  _streamCtxAls.getStore()?.flush()
 }
 
 const _streamCtxAls = new AsyncLocalStorage<StreamCtx>()
@@ -551,6 +558,31 @@ export interface RenderToStreamOptions {
   nonce?: string
 }
 
+/**
+ * Output batching threshold for `renderToStream`, in string length.
+ *
+ * The stream used to `controller.enqueue` every fragment the walker produced —
+ * each open tag, text node and close tag — so a 3.3 KB h()-built page went out
+ * as 314 chunks, each paying a queue + consumer read. Fragments are now
+ * accumulated and handed over (a) whenever the batch reaches this size, and
+ * (b) at every point the render is about to WAIT: before an async component or
+ * async hole is awaited, at the end of the shell, after each Suspense swap
+ * script, and on close/error. (b) is what keeps streaming semantics intact —
+ * nothing the client could already render sits in the buffer while the server
+ * waits. The concatenated output is byte-identical; only chunk boundaries move.
+ */
+let STREAM_FLUSH_BYTES = 4096
+
+/**
+ * @internal Test-only: set the batching threshold (`0` = hand every fragment
+ * over as produced, the pre-batching behaviour). Returns the previous value.
+ */
+export function _setStreamFlushBytes(n: number): number {
+  const prev = STREAM_FLUSH_BYTES
+  STREAM_FLUSH_BYTES = n
+  return prev
+}
+
 export function renderToStream(
   root: VNode | null,
   options: RenderToStreamOptions = {},
@@ -584,9 +616,17 @@ export function renderToStream(
 
   return new ReadableStream<string>({
     start(controller) {
+      let pendingOut = ''
+      const flush = (): void => {
+        if (pendingOut === '') return
+        const out = pendingOut
+        pendingOut = ''
+        if (!signal.aborted) controller.enqueue(out)
+      }
       const enqueue = (chunk: string) => {
         if (signal.aborted) return // stop appending after abort
-        controller.enqueue(chunk)
+        pendingOut += chunk
+        if (pendingOut.length >= STREAM_FLUSH_BYTES) flush()
       }
       let bid = 0
       const ctx: StreamCtx = {
@@ -597,6 +637,7 @@ export function renderToStream(
         signal,
         suspenseTimeoutMs,
         nonceAttr,
+        flush,
       }
       // One shared abort-promise — registered ONCE, resolved on signal
       // abort. Racing each pending batch against this lets the drain
@@ -632,6 +673,8 @@ export function renderToStream(
             // Drain all pending Suspense resolutions (which may spawn nested
             // ones). Each batch is RACED against the abort signal so a mid-flight
             // child doesn't keep us blocked after the consumer hung up.
+            // The shell is complete: hand it over before waiting on boundaries.
+            flush()
             while (ctx.pending.length > 0) {
               if (signal.aborted) break
               const batch = Promise.all(ctx.pending.splice(0))
@@ -640,6 +683,7 @@ export function renderToStream(
             // ALWAYS close — gracefully on natural completion AND on abort.
             // (`if (!aborted) close()` left the stream open forever on cancel,
             // hanging the reader.) Wrapped because `cancel()` may have closed it.
+            flush()
             try {
               controller.close()
             } catch {
@@ -657,6 +701,8 @@ export function renderToStream(
               }
               return
             }
+            // Deliver what rendered before the failure, then error the stream.
+            flush()
             controller.error(err)
           })
       return _contextAls.getStore() !== undefined
@@ -726,6 +772,7 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
     // hydrate walker matches the nearest unclosed start.
     if (output instanceof Promise) {
       enqueue('<!--$pas-->')
+      flushStream()
       const resolved = await output
       if (resolved !== null) await streamNode(resolved, enqueue)
       enqueue('<!--$pae-->')
@@ -891,6 +938,7 @@ async function streamPart(p: unknown, enqueue: (s: string) => void): Promise<voi
     return
   }
   if (p instanceof Promise) {
+    flushStream()
     await streamPart(await p, enqueue)
     return
   }
@@ -1031,6 +1079,8 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
 
         mainEnqueue(`<template id="pyreon-t-${id}">${content}</template>`)
         mainEnqueue(`<script${nonceAttr}>__NS("pyreon-s-${id}","pyreon-t-${id}")</script>`)
+        // The swap is ready — deliver it now, not with the next boundary.
+        ctx.flush()
       } catch (err) {
         if (process.env.NODE_ENV !== 'production') {
           console.error(

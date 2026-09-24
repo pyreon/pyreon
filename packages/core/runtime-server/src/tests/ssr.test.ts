@@ -235,8 +235,10 @@ describe('renderToStream', () => {
       if (done) break
       chunks.push(value)
     }
-    // First chunk must be the opening tag, not the full string
-    expect(chunks[0]).toBe('<div>')
+    // The opening tag is delivered BEFORE the child resolves: output is
+    // batched, but flushed at every real wait (here: the async component).
+    expect(chunks[0]).toBe('<div><!--$pas-->')
+    expect(chunks[0]).not.toContain('done')
     // Async-component output is wrapped in `<!--$pas-->/<!--$pae-->`
     // sentinel markers so the client hydrate can find the SSR DOM range
     // corresponding to the still-pending Promise and attach reactivity.
