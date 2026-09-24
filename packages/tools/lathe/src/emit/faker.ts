@@ -24,7 +24,7 @@
  * frame state instead of resetting it.
  */
 
-import { topoSortModels } from '../core/graph'
+import { cyclicModels } from '../core/graph'
 import type { IrDocument, IrField, IrModel, IrType } from '../core/ir'
 import { pascal, propKey } from '../core/naming'
 import { q, relativeSpecifier, SourceFile } from './writer'
@@ -46,14 +46,13 @@ export function emitFaker(doc: IrDocument, typesFrom: 'schemas' | 'types'): Sour
   const f = new SourceFile(FAKER_FILE)
   if (doc.models.length === 0) return null
 
-  const { backEdges } = topoSortModels(doc)
-  const cyclic = new Set<string>()
-  for (const key of backEdges) {
-    // `edgeKey` is `from -> to`; both ends of a back edge can recurse.
-    const [from, to] = key.split('->')
-    if (from) cyclic.add(from.trim())
-    if (to) cyclic.add(to.trim())
-  }
+  // Which models can reach THEMSELVES through the fields a factory actually
+  // expands. Over the FAKER graph, not the schema one: `additionalProperties`
+  // is never rendered here, so a cycle that only closes through it cannot
+  // recurse. This used to be derived from the topological sort's back edges,
+  // split on `'->'` -- while `edgeKey` joins with `'|'`, so the set held whole
+  // keys as names and the recursion notice below never fired for anything.
+  const cyclic = cyclicModels(fakerDependencies(doc))
 
   f.import(FAKER_PACKAGE, 'faker')
   f.importType(relativeSpecifier(FAKER_FILE, `${typesFrom}.ts`), ...doc.models.map((m) => m.name))
@@ -88,17 +87,27 @@ export function emitFaker(doc: IrDocument, typesFrom: 'schemas' | 'types'): Sour
 
   for (const model of doc.models) {
     const name = `create${pascal(model.name)}`
+    const overridable = takesOverrides(model)
     f.line()
     f.doc(
       model.doc ?? `A fake \`${model.name}\`.`,
       '',
-      '`overrides` is shallow and applied LAST, so any field can be pinned',
-      'without rebuilding the rest.',
+      overridable
+        ? '`overrides` is shallow and applied LAST, so any field can be pinned'
+        : undefined,
+      overridable ? 'without rebuilding the rest.' : undefined,
     )
+    // Only an OBJECT model takes overrides. `Partial<X> = {}` for an array,
+    // a scalar or a union model does not typecheck (`{}` is not a `Pet[]`),
+    // and there is no field to pin in any of them -- the parameter existed and
+    // was silently ignored. A caller wanting a specific value of a non-object
+    // model already has it: it is the value.
     f.line(
-      `export function ${name}(overrides: Partial<${model.name}> = {}): ${model.name} {`,
+      overridable
+        ? `export function ${name}(overrides: Partial<${model.name}> = {}): ${model.name} {`
+        : `export function ${name}(): ${model.name} {`,
     )
-    f.line(`  return ${buildCall(model, 0)}`)
+    f.line(`  return build${pascal(model.name)}(0${overridable ? ', overrides' : ''})`)
     f.line('}')
   }
 
@@ -114,7 +123,9 @@ export function emitFaker(doc: IrDocument, typesFrom: 'schemas' | 'types'): Sour
         : undefined,
     )
     f.line(
-      `function build${pascal(model.name)}(d: number, o: Partial<${model.name}> = {}): ${model.name} {`,
+      takesOverrides(model)
+        ? `function build${pascal(model.name)}(d: number, o: Partial<${model.name}> = {}): ${model.name} {`
+        : `function build${pascal(model.name)}(d: number): ${model.name} {`,
     )
     f.line(`  return ${render(model.type, doc, 1, undefined, model.name)}`)
     f.line('}')
@@ -122,8 +133,54 @@ export function emitFaker(doc: IrDocument, typesFrom: 'schemas' | 'types'): Sour
   return f
 }
 
-function buildCall(model: IrModel, _d: number): string {
-  return `build${pascal(model.name)}(0, overrides)`
+/**
+ * Does this model's factory take `overrides`? Only when it renders as an
+ * object literal carrying the `...o` spread -- see the object branch below.
+ */
+function takesOverrides(model: IrModel): boolean {
+  return model.type.kind === 'object'
+}
+
+/**
+ * Model -> models its FACTORY expands. Mirrors exactly what `render` walks:
+ * object fields, array items, union options -- never `additional`, which no
+ * factory renders.
+ */
+function fakerDependencies(doc: IrDocument): Map<string, Set<string>> {
+  const known = new Set(doc.models.map((m) => m.name))
+  const out = new Map<string, Set<string>>()
+  const walk = (t: IrType, into: Set<string>): void => {
+    switch (t.kind) {
+      case 'ref':
+        if (known.has(t.name)) into.add(t.name)
+        return
+      case 'array':
+        walk(t.items, into)
+        return
+      case 'object':
+        for (const f of t.fields) walk(f.type, into)
+        return
+      case 'union':
+        for (const o of t.options) walk(o, into)
+        return
+      default:
+    }
+  }
+  for (const m of doc.models) {
+    const deps = new Set<string>()
+    walk(m.type, deps)
+    out.set(m.name, deps)
+  }
+  return out
+}
+
+/**
+ * An arrow function's body. An object literal must be PARENTHESIZED: `() => {
+ * id: 1 }` parses as a block with a label, and a real one with two fields is a
+ * syntax error. Every inline-object array item and union branch produced it.
+ */
+function arrowBody(expr: string): string {
+  return expr.startsWith('{') ? `(${expr})` : expr
 }
 
 /** Render an expression producing a value of `type`. */
@@ -157,7 +214,7 @@ function render(
       // A recursive array bottoms out as EMPTY, which is the one value a
       // recursive list is always allowed to take.
       const guard = referencesSelf(type.items, doc, self)
-      const body = `faker.helpers.multiple(() => ${inner}, { count: { min: 1, max: 3 } })`
+      const body = `faker.helpers.multiple(() => ${arrowBody(inner)}, { count: { min: 1, max: 3 } })`
       return guard ? `(d >= ${MAX_DEPTH} ? [] : ${body})` : body
     }
     case 'ref': {
@@ -169,7 +226,7 @@ function render(
       if (type.options.length === 0) return 'null'
       // Every branch is rendered and one is picked at call time, so a union
       // exercises all of its shapes across a run rather than pinning the first.
-      const branches = type.options.map((o) => `() => ${render(o, doc, depth + 1, undefined, self)}`)
+      const branches = type.options.map((o) => `() => ${arrowBody(render(o, doc, depth + 1, undefined, self))}`)
       return `faker.helpers.arrayElement([${branches.join(', ')}])()`
     }
     case 'object': {

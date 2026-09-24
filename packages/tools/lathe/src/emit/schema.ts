@@ -7,7 +7,7 @@
  * declared type that the runtime schema does not actually enforce.
  */
 
-import { topoSortModels } from '../core/graph'
+import { deferredTargets, topoSortModels } from '../core/graph'
 import type { IrDocument, IrField, IrType } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
 import { dialectOf, type ValidatorName } from './validator'
@@ -286,9 +286,7 @@ export function emitSchemas(
     if (!model) continue
     // Only the edges that actually close a cycle are deferred; every other ref
     // is emitted by name, which keeps the common output unchanged.
-    const defer = new Set(
-      [...backEdges].filter((e) => e.startsWith(`${name}|`)).map((e) => e.slice(name.length + 1)),
-    )
+    const defer = deferredTargets(backEdges, name)
     f.line()
     f.doc(model.doc)
     const expr = schemaExpr(model.type, { ...opts, defer })

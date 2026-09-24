@@ -11,7 +11,7 @@ import ts from 'typescript'
 import { s } from '@pyreon/validate'
 import { resolveConfig } from '../core/config'
 import { generate } from '../core/generate'
-import { topoSortModels, reachableModels, edgeKey } from '../core/graph'
+import { cyclicModels, deferredTargets, edgeKey, reachableModels, stronglyConnected, topoSortModels } from '../core/graph'
 import { loadOpenApi } from '../input/openapi'
 
 function spec(components: string, response = 'Alpha'): string {
@@ -167,5 +167,38 @@ describe('model dependency graph', () => {
     expect(order).toHaveLength(2000)
     // Deepest dependency first.
     expect(order[0]).toBe('M1999')
+  })
+})
+
+describe('strongly-connected components', () => {
+  const g = (edges: Record<string, string[]>): Map<string, Set<string>> =>
+    new Map(Object.entries(edges).map(([k, v]) => [k, new Set(v)]))
+
+  it('groups a cycle and leaves its tail apart', () => {
+    const scc = stronglyConnected(g({ A: ['B'], B: ['C'], C: ['A'], D: ['A'], E: [] }))
+    expect(scc.get('A')).toBe(scc.get('B'))
+    expect(scc.get('B')).toBe(scc.get('C'))
+    expect(scc.get('D')).not.toBe(scc.get('A'))
+    expect(scc.get('E')).not.toBe(scc.get('D'))
+  })
+
+  it('names every member of a cycle as cyclic, and a self-loop, and nothing else', () => {
+    const cyclic = cyclicModels(g({ A: ['B'], B: ['C'], C: ['A'], D: ['A'], S: ['S'], E: ['X'] }))
+    expect([...cyclic].sort()).toEqual(['A', 'B', 'C', 'S'])
+  })
+
+  it('does not blow the stack on a long chain', () => {
+    const edges: Record<string, string[]> = {}
+    for (let i = 0; i < 50_000; i++) edges[`M${i}`] = [`M${i + 1}`]
+    edges.M50000 = ['M0']
+    expect(cyclicModels(g(edges)).size).toBe(50_001)
+  })
+})
+
+describe('deferredTargets', () => {
+  it('reads targets through the SAME key format topoSortModels writes', () => {
+    const edges = new Set([edgeKey('A', 'B'), edgeKey('A', 'C'), edgeKey('AB', 'X')])
+    expect([...deferredTargets(edges, 'A')].sort()).toEqual(['B', 'C'])
+    expect([...deferredTargets(edges, 'AB')]).toEqual(['X'])
   })
 })

@@ -17,7 +17,7 @@
  * endpoints and the calls all in a single top level.
  */
 
-import { reachableModels, topoSortModels } from '../core/graph'
+import { deferredTargets, reachableModels, topoSortModels } from '../core/graph'
 import type { IrDocument, IrOperation, IrType } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
 import {
@@ -402,11 +402,7 @@ export function emitNativeModules(doc: IrDocument, opts: ClientOptions): SourceF
     // TDZ ReferenceError there exactly as it is on the web. `s.lazy` does not
     // lower, so this costs the model its native path -- which the verifier
     // reports. Correct-and-web-only beats lowering-and-broken.
-    const defer = new Set(
-      [...backEdges]
-        .filter((e) => e.startsWith(`${model.name}|`))
-        .map((e) => e.slice(model.name.length + 1)),
-    )
+    const defer = deferredTargets(backEdges, model.name)
     const expr = schemaExpr(model.type, {
       native: true,
       defer,
