@@ -172,6 +172,10 @@ Opt out for minimal logs (log scrapers, size-diff tooling):
 zero({ buildSummary: false })
 ```
 
+### SPA apps ship without hydration code
+
+When every page is client-rendered (`mode: 'spa'`, no `routeRules` or route file declaring another `renderMode`), a production build compiles hydration out of the client bundle: no page ever arrives with server HTML to adopt. On `examples/kanban` that is 6.6 KB gzipped (10.6%) of the initial JavaScript. Any route that can be server-rendered keeps hydration, and dev is unchanged.
+
 ## File-System Routing
 
 Routes live in `src/routes/`. The file path maps directly to the URL:
