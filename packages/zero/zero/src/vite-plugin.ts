@@ -8,11 +8,7 @@ import { Readable } from 'node:stream'
 import type { ConfigEnv, Plugin, ViteDevServer } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ApiRouteEntry } from './api-routes'
-import {
-  createApiMiddleware,
-  generateApiRouteModule,
-  matchApiRoute,
-} from './api-routes'
+import { generateApiRouteModule } from './api-routes'
 import { resolveConfig } from './config'
 import { assertPublicEnv, loadPublicEnvVars } from './public-env'
 // Used in the dev-mode SSR catch handler to convert loader-thrown
@@ -81,7 +77,7 @@ import { ssrPlugin } from "./ssr-plugin";
 import { themeScript } from "./theme";
 import { serializeServerConfig } from "./server-config";
 import { clientFlagsPlugin } from "./client-flags-plugin";
-import type { ZeroConfig } from "./types";
+import type { RouteMiddlewareEntry, ZeroConfig } from "./types";
 
 import { withSilent } from "@pyreon/reactivity";
 
@@ -510,7 +506,8 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 			// etc. — those plug in via user-defined Pyreon middleware which dev
 			// doesn't currently load; not in scope here).
 			//
-			// Registered FIRST so API requests don't get SSR'd or 404'd.
+			// Registered FIRST so endpoints don't get SSR'd or 404'd. Runs the
+			// production request pipeline — see `dispatchDevPipeline`.
 			server.middlewares.use((req, res, next) => {
 				const pathname = req.url?.split("?")[0] ?? "/";
 				if (pathname.startsWith("/@") || pathname.startsWith("/__"))
@@ -522,14 +519,21 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 				// production dispatches — skipping it in dev returned Vite's 404.
 				if (!isApiPathname(pathname) && /\.\w+$/.test(pathname)) return next();
 
-				dispatchApiRoute(server, req, res).then(
+				dispatchDevPipeline(server, root, config, req, res).then(
 					(handled) => {
 						if (!handled) next();
 					},
 					(err: unknown) => {
-						// oxlint-disable-next-line no-console
-						console.error("[Pyreon] Error in dev API dispatcher:", err);
-						next();
+						// A throwing middleware answers 500 in production; in dev
+						// show it in the overlay AND the terminal it points at.
+						const error = err instanceof Error ? err : new Error(String(err));
+						server.ssrFixStacktrace(error);
+						logDevSsrError(server, req.url, error);
+						if (res.headersSent) return res.end();
+						const html = renderErrorOverlay(error);
+						res.statusCode = 500;
+						res.setHeader("Content-Type", "text/html; charset=utf-8");
+						res.end(html);
 					},
 				);
 			});
@@ -581,7 +585,16 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 							headers: reqHeaders,
 						});
 
-						renderSsr(server, root, req.originalUrl ?? pathname, pathname, webReq).then(
+						renderSsr(
+							server,
+							root,
+							req.originalUrl ?? pathname,
+							pathname,
+							webReq,
+							// Middleware `locals` (auth user, CSP nonce, …) reach
+							// the page render exactly as in the production handler.
+							devPipelineCtx(req)?.locals,
+						).then(
 							(result) => {
 								if (result === null) return next();
 								if (result.kind === "redirect") {
@@ -1189,50 +1202,54 @@ export function isApiPathname(pathname: string): boolean {
 	return pathname === "/api" || pathname.startsWith("/api/");
 }
 
-/**
- * Dev-mode API-route dispatcher. Loads the `virtual:zero/api-routes` virtual
- * module, builds a Web `Request` from the Node `IncomingMessage`, and invokes
- * the matching route's HTTP-method handler.
- *
- * Returns `true` if the API middleware handled the request (response written).
- * Returns `false` if no route matched (caller falls through to next middleware).
- *
- * Mirrors what `createServer` wires up in production via `createApiMiddleware`,
- * but adapted for Vite's connect-style middleware stack — needs a Node→Web
- * request adapter.
- */
-async function dispatchApiRoute(
-	server: ViteDevServer,
-	req: IncomingMessage,
-	res: ServerResponse,
-): Promise<boolean> {
-	let apiRoutes: ApiRouteEntry[];
-	try {
-		const mod = await ssrLoadModuleQuiet(server, VIRTUAL_API_ROUTES_ID);
-		apiRoutes = (mod.apiRoutes ?? []) as ApiRouteEntry[];
-	} catch {
-		return false;
-	}
-	if (apiRoutes.length === 0) return false;
+/** Where a dev request's pipeline context is stashed for the page renderer. */
+const DEV_PIPELINE_CTX = Symbol.for("pyreon.zero.devPipelineCtx");
 
+type DevPipelineCtx = import("@pyreon/server").MiddlewareContext;
+
+/** The pipeline context the dev pipeline ran for this request, if any. */
+export function devPipelineCtx(req: IncomingMessage): DevPipelineCtx | undefined {
+	return (req as unknown as Record<symbol, DevPipelineCtx | undefined>)[DEV_PIPELINE_CTX];
+}
+
+const ENTRY_SERVER_CANDIDATES = ["entry-server.ts", "entry-server.tsx", "entry-server.js"];
+let warnedEntryLoad = false;
+
+/**
+ * The server entry's own `createServer({ middleware, actions })` — loaded
+ * through Vite so dev applies the same security headers / auth the
+ * production entry does. `undefined` when the app has no entry (zero then
+ * generates the canonical one, which has no extra middleware).
+ */
+async function loadEntryPipelineOptions(
+	server: ViteDevServer,
+	root: string,
+): Promise<{ middleware?: import("@pyreon/server").Middleware[]; actions?: unknown } | undefined> {
+	const file = ENTRY_SERVER_CANDIDATES.map((f) => join(root, "src", f)).find((f) => existsSync(f));
+	if (!file) return undefined;
+	try {
+		const mod = await ssrLoadModuleQuiet(server, file);
+		const handler = mod.default as Record<symbol, unknown> | undefined;
+		return handler?.[Symbol.for("pyreon.zero.pipelineOptions")] as
+			| { middleware?: import("@pyreon/server").Middleware[]; actions?: unknown }
+			| undefined;
+	} catch (err) {
+		if (!warnedEntryLoad) {
+			warnedEntryLoad = true;
+			server.config.logger.error(
+				`[Pyreon] zero dev: could not load ${relative(root, file)} — its middleware is NOT applied in dev:\n${
+					err instanceof Error ? (err.stack ?? err.message) : String(err)
+				}`,
+			);
+		}
+		return undefined;
+	}
+}
+
+/** Node `IncomingMessage` → Web `Request` (body streamed, not buffered). */
+function toWebRequest(req: IncomingMessage): Request {
 	const host = req.headers.host ?? "localhost";
 	const url = new URL(req.url ?? "/", `http://${host}`);
-	const pathname = url.pathname;
-
-	// Quick gate: only build the Web Request when the path actually matches
-	// an api route. Reuses the same `matchApiRoute` that `createApiMiddleware`
-	// uses internally — including catch-all `:param*` patterns from
-	// `[...slug].ts` API routes — so the gate and the dispatcher agree on
-	// what counts as a match. Avoids per-request body buffering for SSR /
-	// static traffic that doesn't target an API route.
-	const anyMatch = apiRoutes.some((r) => matchApiRoute(r.pattern, pathname) !== null);
-	if (!anyMatch) return false;
-
-	// Convert Node IncomingMessage → Web Request. Stream the request body
-	// for non-GET/HEAD via `Readable.toWeb` instead of buffering — large
-	// uploads (multipart, file POSTs) don't have to fit in memory before
-	// the handler sees them. `duplex: 'half'` is required by the WHATWG
-	// fetch spec when `body` is a `ReadableStream`.
 	const method = (req.method ?? "GET").toUpperCase();
 	const headers = new Headers();
 	for (const [key, value] of Object.entries(req.headers)) {
@@ -1240,54 +1257,98 @@ async function dispatchApiRoute(
 			headers.set(key, Array.isArray(value) ? value.join(", ") : String(value));
 		}
 	}
-	const requestInit: RequestInit & { duplex?: "half" } = { method, headers };
+	const init: RequestInit & { duplex?: "half" } = { method, headers };
 	if (method !== "GET" && method !== "HEAD") {
-		// `Readable.toWeb` returns Node's `node:stream/web` `ReadableStream`;
-		// `RequestInit.body` expects the DOM `ReadableStream`. They're
-		// structurally identical at runtime but TS keeps them as separate
-		// types — `as unknown as` is the standard bridge per TS's own
-		// "convert to unknown first" suggestion.
-		requestInit.body = Readable.toWeb(req) as unknown as ReadableStream<Uint8Array>;
-		requestInit.duplex = "half";
+		// `Readable.toWeb` returns Node's `node:stream/web` ReadableStream;
+		// structurally identical to the DOM one — bridge via `unknown`.
+		init.body = Readable.toWeb(req) as unknown as ReadableStream<Uint8Array>;
+		init.duplex = "half";
 	}
-	const webReq = new Request(url.href, requestInit);
+	return new Request(url.href, init);
+}
 
-	const middleware = createApiMiddleware(apiRoutes);
-	const response = await middleware({
-		req: webReq,
-		url,
-		path: pathname + url.search,
-		headers: new Headers(),
-		locals: {},
-	});
-
-	if (!response) return false;
-
-	// Pipe the Web Response body directly to the Node response stream
-	// instead of buffering with `arrayBuffer()`. Critical for SSE, large
-	// downloads, and any handler that returns a `Response` constructed
-	// from a streaming source — buffering would defeat the streaming
-	// contract and OOM on large payloads.
+/** Write a Web `Response` to the Node response, streaming the body. */
+function sendWebResponse(res: ServerResponse, response: Response): void {
 	res.statusCode = response.status;
+	const cookies = response.headers.getSetCookie();
 	response.headers.forEach((v, k) => {
-		res.setHeader(k, v);
+		if (k !== "set-cookie") res.setHeader(k, v);
 	});
+	if (cookies.length > 0) res.setHeader("set-cookie", cookies);
 	if (response.body) {
-		// `pipe(res)` ends `res` automatically on stream completion and
-		// auto-cancels the upstream Web ReadableStream if the client
-		// disconnects (Node ≥18). We don't await — once the headers and
-		// pipe are wired, the function's job is done. The connect chain
-		// doesn't call `next()` because we resolved with `true`.
-		// `response.body` is a DOM `ReadableStream`; `Readable.fromWeb`
-		// expects `node:stream/web`'s `ReadableStream`. Cross-realm types
-		// don't unify in TS — bridge via `unknown` per TS's own guidance.
-		Readable.fromWeb(
-			response.body as unknown as import("node:stream/web").ReadableStream,
-		).pipe(res);
+		// `pipe` ends `res` on completion and cancels upstream on disconnect.
+		Readable.fromWeb(response.body as unknown as import("node:stream/web").ReadableStream).pipe(res);
 	} else {
 		res.end();
 	}
-	return true;
+}
+
+/**
+ * Dev request pipeline — the SAME `createRequestPipeline` production's
+ * `createServer` builds (app middleware → route middleware → API routes →
+ * server islands → `/_pyreon/data` → `/_zero/actions/*`), loaded through
+ * Vite's SSR graph so the action / island registries are the ones the
+ * route modules register into.
+ *
+ * Returns `true` when a middleware answered. On fall-through the context is
+ * stashed on `req` so the dev page renderer applies the middleware's
+ * response headers and `locals`, exactly as the production handler does.
+ */
+async function dispatchDevPipeline(
+	server: ViteDevServer,
+	root: string,
+	config: ZeroConfig,
+	req: IncomingMessage,
+	res: ServerResponse,
+): Promise<boolean> {
+	const [routesMod, mwMod, apiMod, pipelineMod, entryOptions] = await Promise.all([
+		ssrLoadModuleQuiet(server, VIRTUAL_ROUTES_ID),
+		ssrLoadModuleQuiet(server, VIRTUAL_MIDDLEWARE_ID),
+		ssrLoadModuleQuiet(server, VIRTUAL_API_ROUTES_ID),
+		ssrLoadModuleQuiet(server, "@pyreon/zero/pipeline"),
+		loadEntryPipelineOptions(server, root),
+	]);
+	const { createRequestPipeline, runRequestPipeline } =
+		pipelineMod as unknown as typeof import("./pipeline");
+	const pipeline = createRequestPipeline({
+		routes: (routesMod.routes ?? []) as import("@pyreon/router").RouteRecord[],
+		// Production's config is the SERIALIZED one (code-valued options like
+		// `zero({ middleware })` are dropped with a build warning) — dev uses
+		// the same value so it cannot run middleware production never will.
+		config: serializeServerConfig(config).value,
+		routeMiddleware: (mwMod.routeMiddleware ?? []) as RouteMiddlewareEntry[],
+		apiRoutes: (apiMod.apiRoutes ?? []) as ApiRouteEntry[],
+		...(entryOptions?.middleware ? { middleware: entryOptions.middleware } : {}),
+		...(entryOptions?.actions !== undefined
+			? { actions: entryOptions.actions as import("./actions").CreateActionMiddlewareOptions | false }
+			: {}),
+	});
+
+	const webReq = toWebRequest(req);
+	const url = new URL(webReq.url);
+	const ctx: DevPipelineCtx = {
+		req: webReq,
+		url,
+		path: url.pathname + url.search,
+		headers: new Headers({ "Content-Type": "text/html; charset=utf-8" }),
+		locals: {},
+	};
+	if (req.socket?.remoteAddress) ctx.locals.remoteAddress = req.socket.remoteAddress;
+
+	const response = await runRequestPipeline(pipeline, ctx);
+	if (response) {
+		sendWebResponse(res, response);
+		return true;
+	}
+	(req as unknown as Record<symbol, DevPipelineCtx>)[DEV_PIPELINE_CTX] = ctx;
+	// Headers a middleware set for the PAGE (CSP, security headers, cookies)
+	// apply to whatever answers next — the dev SSR render or Vite's SPA shell.
+	const cookies = ctx.headers.getSetCookie();
+	ctx.headers.forEach((v, k) => {
+		if (k !== "content-type" && k !== "set-cookie") res.setHeader(k, v);
+	});
+	if (cookies.length > 0) res.setHeader("set-cookie", cookies);
+	return false;
 }
 
 /**
@@ -1410,6 +1471,7 @@ async function renderSsr(
 	originalUrl: string,
 	pathname: string,
 	req?: Request,
+	locals?: Record<string, unknown>,
 ): Promise<
 	| { kind: "html"; html: string; status: number }
 	| { kind: "redirect"; to: string; status: number }
@@ -1479,6 +1541,7 @@ async function renderSsr(
 		pathname,
 		{
 			...(req ? { request: req } : {}),
+			...(locals ? { locals } : {}),
 			bailOnUnmatched: true,
 		},
 	);

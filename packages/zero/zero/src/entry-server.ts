@@ -1,17 +1,14 @@
 import { readFileSync } from "node:fs";
 import type { ComponentFn } from "@pyreon/core";
 import type { RouteRecord } from "@pyreon/router";
-import type { Middleware, MiddlewareContext } from "@pyreon/server";
+import type { Middleware } from "@pyreon/server";
 import { createHandler } from "@pyreon/server";
 import type { CreateActionMiddlewareOptions } from "./actions";
-import { createActionMiddleware } from "./actions";
 import type { ApiRouteEntry } from "./api-routes";
-import { createApiMiddleware, matchApiRoute } from "./api-routes";
 import { createApp } from "./app";
 import { createISRHandler } from "./isr";
+import { createRequestPipeline, matchPattern, trimTrailingSlashes } from "./pipeline";
 import { collectRouteModes, resolveRenderModeForPath } from "./route-modes";
-import { createServerIslandMiddleware } from "./server-islands-middleware";
-import { createDataEndpointMiddleware } from "./data-endpoint-middleware";
 import { render404Page } from "./not-found";
 import type { RenderMode, RouteMiddlewareEntry, ZeroConfig } from "./types";
 
@@ -23,6 +20,8 @@ import type { RenderMode, RouteMiddlewareEntry, ZeroConfig } from "./types";
 // `entry-server.test.ts:exhaustive RenderMode handling` is the runtime
 // regression lock for the same gate.
 type _AssertExhaustive<T extends never> = T;
+
+export { matchPattern, routingPathname } from "./pipeline";
 
 // ─── Server entry factory ───────────────────────────────────────────────────
 
@@ -96,117 +95,6 @@ export function mergeServerConfig(
 	return merged;
 }
 
-const DATA_ENDPOINT = "/_pyreon/data";
-
-/**
- * `base` without its trailing slashes. A loop, not `/\/+$/`: that regex backtracks
- * quadratically on a long run of `/`, and a linear strip costs nothing.
- */
-function trimTrailingSlashes(value: string): string {
-	let end = value.length;
-	while (end > 0 && value.charCodeAt(end - 1) === 47) end--;
-	return value.slice(0, end);
-}
-
-/**
- * The path a request's route middleware must be matched against.
- *
- * - The PATHNAME, never `ctx.path`: that carries the query string, and a
- *   segment-exact match on it let `/admin?x=1` skip `/admin`'s middleware.
- * - For the single-fetch data endpoint, the TARGET page's path: the endpoint
- *   runs that page's serverLoaders, so it must be gated by that page's
- *   middleware — otherwise `/_pyreon/data?path=/admin` handed out data the
- *   `/admin` middleware refuses, on every client-side navigation.
- * - With `base` and i18n prefixes removed, because route patterns carry
- *   neither (`/app/de/admin` is the `/admin` route).
- */
-export function routingPathname(url: URL, config: ZeroConfig): string {
-	let pathname = url.pathname;
-	if (pathname === DATA_ENDPOINT) {
-		const target = url.searchParams.get("path");
-		if (target && target.startsWith("/")) {
-			pathname = new URL(target, "http://pyreon.invalid").pathname;
-		}
-	}
-	const base = config.base && config.base !== "/" ? trimTrailingSlashes(config.base) : "";
-	if (base) {
-		if (pathname === base) pathname = "/";
-		else if (pathname.startsWith(`${base}/`)) pathname = pathname.slice(base.length);
-	}
-	const locales = config.i18n?.locales;
-	if (locales?.length) {
-		const first = pathname.split("/")[1] ?? "";
-		const hit = locales.find((l) => l.toLowerCase() === first.toLowerCase());
-		if (hit) pathname = pathname.slice(first.length + 1) || "/";
-	}
-	return pathname;
-}
-
-/**
- * Create a middleware that dispatches per-route middleware based on URL pattern matching.
- */
-function createRouteMiddlewareDispatcher(
-	entries: RouteMiddlewareEntry[],
-	config: ZeroConfig,
-): Middleware {
-	return async (ctx: MiddlewareContext) => {
-		const pathname = routingPathname(ctx.url, config);
-		for (const entry of entries) {
-			const hit = entry.patterns
-				? entry.patterns.some((p) => matchPattern(p, pathname))
-				: matchPattern(entry.pattern, pathname);
-			if (hit) {
-				const mw = Array.isArray(entry.middleware)
-					? entry.middleware
-					: [entry.middleware];
-				for (const fn of mw) {
-					const result = await fn(ctx);
-					if (result) return result;
-				}
-			}
-		}
-	};
-}
-
-/**
- * URL pattern matcher supporting :param and :param* segments.
- *
- * Rules:
- * - Static segments must match exactly
- * - `:param` matches a single path segment
- * - `:param*` matches all remaining segments (must be last, and path must
- *   have matched all preceding segments)
- * - Path length must match pattern length (unless catch-all)
- */
-export function matchPattern(pattern: string, path: string): boolean {
-	const patternParts = pattern.split("/").filter(Boolean);
-	const pathParts = path.split("/").filter(Boolean);
-
-	for (let i = 0; i < patternParts.length; i++) {
-		const pp = patternParts[i]!;
-
-		// Catch-all: matches remaining segments, but only if we've matched
-		// all preceding segments up to this point
-		if (pp.endsWith("*")) {
-			// All segments before the catch-all must have matched (we got here)
-			// and there must be at least one remaining path segment
-			return i <= pathParts.length;
-		}
-
-		// No more path segments to match against
-		if (i >= pathParts.length) return false;
-
-		// Dynamic segment matches any single segment
-		if (pp.startsWith(":")) continue;
-
-		// Static segment must match exactly
-		if (pp !== pathParts[i]) return false;
-	}
-
-	// All pattern parts consumed — path must also be fully consumed
-	return patternParts.length === pathParts.length;
-}
-
 /**
  * Read the production SSR template — the built client `index.html` (with its
  * hashed entry script), so SSR responses hydrate. Returns `undefined` when
@@ -256,62 +144,16 @@ export function createServer(options: CreateServerOptions) {
 		options.config,
 	);
 
-	// Order is a security property. App-wide middleware (auth gates, rate
-	// limits, CORS, security headers) and each route's own middleware run
-	// BEFORE every framework endpoint. They used to run last, so API routes,
-	// server actions, the data endpoint and island fragments all answered
-	// without any of it — the documented `rateLimitMiddleware({ include:
-	// ['/api/*'] })` never applied to /api, and route auth never protected
-	// loader data.
-	const allMiddleware: Middleware[] = [
-		...(config.middleware ?? []),
-		...(options.middleware ?? []),
-	];
-	if (options.routeMiddleware?.length) {
-		allMiddleware.push(
-			createRouteMiddlewareDispatcher(options.routeMiddleware, config),
-		);
-	}
-
-	if (options.apiRoutes?.length) {
-		allMiddleware.push(createApiMiddleware(options.apiRoutes));
-	}
-
-	// Phase 4 — server-island fragment endpoint. Mounted UNCONDITIONALLY
-	// (one path-prefix check per request when unused): the registry fills at
-	// route-module evaluation, which is LAZY in zero — gating the mount on
-	// registry size at createServer time would miss every island declared in
-	// a route file (the registry is empty at boot; the middleware warms it
-	// on first fragment request — see server-islands-middleware.ts).
-	allMiddleware.push(createServerIslandMiddleware(options.routes));
-
-	// Phase 5 — server-loader data endpoint (single-fetch). Mounted
-	// unconditionally for the same lazy-registration reason.
-	allMiddleware.push(createDataEndpointMiddleware(options.routes));
-
-	// Server actions: same-origin CSRF baseline, `actions.corsOrigins` to opt
-	// in to cross-origin, `actions: false` to mount manually. Mounted
-	// unconditionally for the SAME lazy-registration reason as the two
-	// endpoints above — `defineAction` in a lazily loaded route module has not
-	// run yet when createServer does, so a registry-size gate here left those
-	// actions without an endpoint at all. Unused, it costs one prefix check.
-	if (options.actions !== false) {
-		allMiddleware.push(
-			createActionMiddleware(
-				typeof options.actions === "object" ? options.actions : undefined,
-			),
-		);
-	}
-
-	// Responses that are NOT page renders. ISR must never cache or relabel
-	// them: it used to wrap the whole chain, so API JSON was cached without
-	// opting in and replayed as `text/html` — a JSON API that echoes input
-	// became stored XSS.
-	const apiPatterns = (options.apiRoutes ?? []).map((r) => r.pattern);
-	const isEndpoint = (pathname: string): boolean =>
-		pathname.startsWith("/_pyreon/") ||
-		pathname.startsWith("/_zero/") ||
-		apiPatterns.some((p) => matchApiRoute(p, pathname) !== null);
+	// Order is a security property — see `createRequestPipeline`. Dev runs
+	// the SAME function (zero's dev middleware), so the two cannot drift.
+	const { middleware: allMiddleware, isEndpoint } = createRequestPipeline({
+		routes: options.routes,
+		config,
+		...(options.middleware ? { middleware: options.middleware } : {}),
+		...(options.routeMiddleware ? { routeMiddleware: options.routeMiddleware } : {}),
+		...(options.apiRoutes ? { apiRoutes: options.apiRoutes } : {}),
+		...(options.actions !== undefined ? { actions: options.actions } : {}),
+	});
 
 	const { App } = createApp({
 		routes: options.routes,
@@ -417,12 +259,12 @@ export function createServer(options: CreateServerOptions) {
 	// standalone shape as a final fallback. The canonical pattern is
 	// `_404.tsx` inside a `_layout.tsx` directory — that goes through
 	// PR L5's router-driven path and gets layout chrome for free.
-	if (!options.notFoundComponent) return handler;
+	if (!options.notFoundComponent) return withPipelineOptions(handler, options);
 
 	const NotFound = options.notFoundComponent;
 	const hasRouteTreeNotFound = routeTreeHasNotFound(options.routes);
 
-	return async (req: Request) => {
+	return withPipelineOptions(async (req: Request) => {
 		// Route-tree notFoundComponent present → handler handles 404 via
 		// resolveRoute's `isNotFound` fallback (PR L5). Skip the legacy
 		// wrapper entirely — handler.ts sets status 404 + renders layout
@@ -443,7 +285,33 @@ export function createServer(options: CreateServerOptions) {
 		}
 
 		return handler(req);
+	}, options);
+}
+
+/**
+ * The server entry's own pipeline inputs, readable by zero's dev middleware
+ * (which loads `src/entry-server.ts` through Vite and runs the SAME
+ * `createRequestPipeline` in front of its dev renderer). Without it the
+ * entry's `middleware` — CSP / security headers, auth — only ran in
+ * production.
+ * @internal
+ */
+export const PIPELINE_OPTIONS: unique symbol = Symbol.for("pyreon.zero.pipelineOptions") as never;
+
+export type PipelineTaggedHandler = ((req: Request) => Promise<Response>) & {
+	[PIPELINE_OPTIONS]?: Pick<CreateServerOptions, "middleware" | "actions">;
+};
+
+function withPipelineOptions(
+	handler: (req: Request) => Promise<Response>,
+	options: CreateServerOptions,
+): PipelineTaggedHandler {
+	const tagged = handler as PipelineTaggedHandler;
+	tagged[PIPELINE_OPTIONS] = {
+		...(options.middleware ? { middleware: options.middleware } : {}),
+		...(options.actions !== undefined ? { actions: options.actions } : {}),
 	};
+	return tagged;
 }
 
 // ─── Render-mode dispatcher (PR-S5) ─────────────────────────────────────────
