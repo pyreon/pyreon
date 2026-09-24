@@ -1,4 +1,4 @@
-import { h } from '@pyreon/core'
+import { h, mergeProps, splitProps } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 
 export interface VisuallyHiddenProps {
@@ -43,12 +43,19 @@ const SR_ONLY: Record<string, string> = {
  * ```
  */
 export function VisuallyHidden(props: VisuallyHiddenProps): VNodeChild {
-  const { as = 'span', children, style, ...rest } = props as VisuallyHiddenProps & {
-    style?: Record<string, string> | string
-  }
+  // splitProps, not a destructure: the compiler passes signal-driven props as
+  // getters, and a destructure read each once — a reactive attribute or style
+  // on VisuallyHidden froze at its first value. `as` is the element's TAG, a
+  // structural choice read once at setup.
+  const [own, rest] = splitProps(
+    props as VisuallyHiddenProps & { style?: Record<string, string> | string },
+    ['as', 'children', 'style'],
+  )
   // Merge caller styles AFTER the sr-only base so an explicit override wins,
   // but the clipping defaults still apply for any property the caller omits.
-  const merged =
-    style && typeof style === 'object' ? { ...SR_ONLY, ...style } : SR_ONLY
-  return h(as, { ...rest, style: merged }, children)
+  const style = () => {
+    const s = own.style
+    return s && typeof s === 'object' ? { ...SR_ONLY, ...s } : SR_ONLY
+  }
+  return h(own.as ?? 'span', mergeProps(rest as Record<string, unknown>, { style }), own.children)
 }

@@ -1,4 +1,4 @@
-import { txt, type T } from '../../kit'
+import { txt } from '../../kit'
 
 export const SideLabel = txt
   .attrs({
@@ -6,7 +6,7 @@ export const SideLabel = txt
   })
   // The shared EYEBROW style (the profile menu's section labels use the same
   // one) — mono-lowercase here and ALL-CAPS there read as two design systems.
-  .theme((t: T) => ({
+  .theme((t) => ({
     fontSize: t.size.caption,
     fontWeight: '700',
     letterSpacing: t.tracking.sm,

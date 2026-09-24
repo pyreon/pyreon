@@ -18,5 +18,9 @@ declare module 'sharp' {
   }
 
   function sharp(input: string | Buffer): SharpInstance
+  namespace sharp {
+    /** Versions of libvips and its dependencies (keys the image cache). */
+    const versions: { vips: string }
+  }
   export default sharp
 }

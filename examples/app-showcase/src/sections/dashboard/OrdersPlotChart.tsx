@@ -1,4 +1,4 @@
-import { PlotChart, bars, line } from '@pyreon/charts/plot'
+import { PlotChart, bars, line } from '@pyreon/charts/engine'
 import { useQuery } from '@pyreon/query'
 import { Show } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
@@ -8,7 +8,7 @@ import { ChartCard, ChartFallback, ChartTitle } from './styled'
 
 /**
  * The same data as `<RevenueChart>`, drawn by Pyreon's OWN engine
- * (`@pyreon/charts/plot`) instead of the ECharts bridge.
+ * (`@pyreon/charts`) instead of the ECharts bridge.
  *
  * This exists to exercise the engine through the REAL `@pyreon/vite-plugin`
  * compiler in a real app. The engine's own suite runs under vitest's JSX

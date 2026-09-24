@@ -12,7 +12,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
 /** The snippet `plotUnloweredWarning` tells a user to write for `maxPoints`. */
 const PRE_DECIMATED = `
 import { signal } from '@pyreon/reactivity'
-import { lttbIndices, PlotChart, line } from '@pyreon/charts/plot'
+import { lttbIndices, PlotChart, line } from '@pyreon/charts/engine'
 
 interface Row { t: number; v: number }
 
@@ -28,7 +28,7 @@ export function Big(): JSX.Element {
 /** `lttb` takes \`Pt[]\` and genuinely stays web — it must still warn. */
 const PT_WRAPPER = `
 import { signal } from '@pyreon/reactivity'
-import { lttb, PlotChart, line } from '@pyreon/charts/plot'
+import { lttb, PlotChart, line } from '@pyreon/charts/engine'
 
 interface Row { t: number; v: number }
 
@@ -41,7 +41,7 @@ export function Big(): JSX.Element {
 
 const MAX_POINTS = `
 import { signal } from '@pyreon/reactivity'
-import { PlotChart, line } from '@pyreon/charts/plot'
+import { PlotChart, line } from '@pyreon/charts/engine'
 interface Row { label: string; v: number }
 export function Big(): JSX.Element {
   const rows = signal<Row[]>([])

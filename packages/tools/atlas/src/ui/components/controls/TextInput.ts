@@ -1,10 +1,10 @@
-import { el, type InputEl, type T } from '../../kit'
+import { el, type InputEl } from '../../kit'
 
 export const TextInput = el
   .attrs({
     tag: 'input',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     font: 'inherit',
     fontSize: t.size.input,
     width: '100%',

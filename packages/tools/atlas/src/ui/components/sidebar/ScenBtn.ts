@@ -1,5 +1,5 @@
 /** One derived scenario under the SELECTED component — name + verdict dot. */
-import { dim, el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const ScenBtn = el
   .attrs({
@@ -9,7 +9,7 @@ export const ScenBtn = el
     block: true,
     gap: 8,
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     font: 'inherit',
     cursor: 'pointer',
     textAlign: 'left',
@@ -22,7 +22,7 @@ export const ScenBtn = el
     hover: { background: t.surface2 },
   }))
   .states(
-    dim((t) => ({
+    (t) => ({
       // Quieter than the selected COMPONENT row above it (accent fill): the
       // two used to be the same fill, and read as two selections.
       active: {
@@ -31,5 +31,5 @@ export const ScenBtn = el
         backgroundColor: t.surface2,
       },
       idle: {},
-    })),
+    }),
   )

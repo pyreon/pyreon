@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const TopBar = el
   .attrs({
@@ -7,7 +7,7 @@ export const TopBar = el
     contentAlignY: 'center',
     gap: 16,
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     // ONE row at every width. It used to wrap, which at phone width stacked
     // brand / segment / search into a 163px header; the compact layout now
     // shrinks the row instead (icon-only search, no brand text).

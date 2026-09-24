@@ -1,4 +1,4 @@
-import { el, type InputEl, type T } from '../../kit'
+import { el, type InputEl } from '../../kit'
 
 /**
  * The sidebar's persistent filter — a narrow sibling of the top bar's search
@@ -7,7 +7,7 @@ import { el, type InputEl, type T } from '../../kit'
  */
 export const FilterInput = el
   .attrs({ tag: 'input' })
-  .theme((t: T) => ({
+  .theme((t) => ({
     font: 'inherit',
     fontSize: t.size.text,
     width: '100%',

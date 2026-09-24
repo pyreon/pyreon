@@ -10,7 +10,7 @@ const read = (p: string) => readFileSync(join(REPO, p), 'utf8')
 const CANVAS_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartCanvas.swift'
 const ENGINE_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartEngine.swift'
 
-const SRC = `import { PlotChart, band, bars, bubble } from '@pyreon/charts/plot'
+const SRC = `import { PlotChart, band, bars, bubble } from '@pyreon/charts/engine'
 interface Row { label: string; value: number; low: number; high: number; radius: number }
 const ROWS: Row[] = [
   { label: 'A', value: 1, low: 0, high: 2, radius: 4 },
@@ -27,7 +27,7 @@ export function App() {
   ]} seriesLabels={['Bars', 'Bubbles', 'Band']} showLegend legendToggle dataZoom maxPoints={3} height={200} />
 }`
 
-const BOLLINGER = `import { PlotChart, bollinger } from '@pyreon/charts/plot'
+const BOLLINGER = `import { PlotChart, bollinger } from '@pyreon/charts/engine'
 interface Row { label: string; value: number }
 const ROWS: Row[] = [{ label: 'A', value: 1 }, { label: 'B', value: 9 }, { label: 'C', value: 2 }, { label: 'D', value: 7 }]
 export function App() {

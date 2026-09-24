@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const Empty = el
   .attrs({
@@ -6,7 +6,7 @@ export const Empty = el
     contentDirection: 'rows',
     contentAlignX: 'center',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     textAlign: 'center',
     padding: '44px 16px',
     color: t.faint,

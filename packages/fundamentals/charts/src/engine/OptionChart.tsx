@@ -8,7 +8,7 @@
 
 import { tooltipMarkup, tooltipNumber } from './tooltip-markup'
 import type { TitleLink } from './option-title'
-import { h, onMount } from '@pyreon/core'
+import { h, onMount, useProvidedColorMode } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { batch, computed, effect, isServer, signal, untrack } from '@pyreon/reactivity'
 import { canvasHost } from './canvas-host'
@@ -62,7 +62,7 @@ import { hitBar, hitNearestX } from './layout'
 import { plain } from './format'
 import { resolveTheme } from './theme-registry'
 import type { ThemeDefinition } from './theme-registry'
-import { useProvidedChartTheme } from './theme'
+import { chartThemes, useProvidedChartTheme } from './theme'
 import type { Double, DrawCmd, MeasureText, Rect } from './types'
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -342,10 +342,14 @@ export function OptionChart(props: OptionChartProps): VNode {
   const width = (): Double => props.width ?? 640.0
   const height = (): Double => props.height ?? 320.0
   // An explicit `theme` prop wins; else a `<ChartThemeProvider>` above; else
-  // ECharts' own default look (a bare option chart does not follow the OS scheme,
-  // exactly as ECharts does not).
+  // the colour mode the APP set (`<PyreonUI mode>` / `<ColorModeProvider>`);
+  // else ECharts' own default look. A bare option chart does not follow the
+  // OS scheme, exactly as ECharts does not, but an app that chose dark is a
+  // choice ECharts would honour through its own `theme` — so it is honoured.
   const provided = useProvidedChartTheme()
-  const themeOf = (): string | ThemeDefinition | undefined => props.theme ?? (provided === null ? undefined : provided())
+  const appMode = useProvidedColorMode()
+  const themeOf = (): string | ThemeDefinition | undefined =>
+    props.theme ?? (provided !== null ? provided() : appMode === undefined ? undefined : chartThemes[appMode()])
   /** The same resolution as a full theme, for the family hosts: ECharts' default when neither is set. */
   const familyTheme = (): ChartTheme => {
     const own = themeOf()

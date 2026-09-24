@@ -107,6 +107,14 @@ describe('mergeOwners — a folder named after a component IS that component', (
     expect(ancestorPaths(tree, 'combobox')).toEqual(['Components'])
     expect(ancestorPaths(tree, 'nope')).toEqual([])
   })
+
+  it('lets a ROOT folder own its namesake too (Button/Button.tsx at the top level)', () => {
+    const roots = mergeOwners(
+      buildHierarchy([c('button', 'Button', 'Button'), c('button-group', 'ButtonGroup', 'Button')]),
+    )
+    expect(roots[0]!.owner?.id).toBe('button')
+    expect(roots[0]!.items.map((i) => i.id)).toEqual(['button-group'])
+  })
 })
 
 describe('createModel — the opening selection is the first row the sidebar shows', () => {
