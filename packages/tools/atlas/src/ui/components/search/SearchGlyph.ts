@@ -1,5 +1,5 @@
-import { txt, type T } from '../../kit'
+import { txt } from '../../kit'
 
 export const SearchGlyph = txt
   .attrs({ tag: 'span' })
-  .theme((t: T) => ({ fontSize: '16px', color: t.faint }))
+  .theme((t) => ({ fontSize: '16px', color: t.faint }))

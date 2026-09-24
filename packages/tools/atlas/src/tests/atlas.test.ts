@@ -1,4 +1,5 @@
 import { inferControls } from '../core'
+import { focusComponents } from '../verify/focus'
 import { createAtlas, defineAtlas } from '../index'
 import { a11yPlugin, defineAtlasPlugin, variantMatrixPlugin } from '../plugins'
 
@@ -98,5 +99,61 @@ describe('createAtlas', () => {
     // usage docs wrote a summary; the agent catalog renders
     expect(button.summary).toContain('Button —')
     expect(graph.toLlmsText()).toContain('## Button')
+  })
+})
+
+describe('same-named components in one package (audit 2026-09)', () => {
+  const card = (source: string) => ({
+    name: 'Card',
+    controls: [],
+    axes: [],
+    scenarios: [],
+    tags: [],
+    source,
+  })
+
+  it('get DISTINCT scenario ids — only the colliding names are qualified', async () => {
+    const graph = await createAtlas({
+      cwd: '/tmp',
+      plugins: [
+        defineAtlasPlugin({
+          name: 'two-cards',
+          discover: () => [card('proj/src/a/Card.tsx'), card('proj/src/b/Card.tsx'), { ...card('proj/src/Badge.tsx'), name: 'Badge' }],
+        }),
+      ],
+    }).build()
+    const ids = graph.scenarios().map((s) => s.id)
+    expect(new Set(ids).size, 'no two scenarios share an id').toBe(ids.length)
+    expect(ids).toContain('card-proj-src-a--default')
+    expect(ids).toContain('card-proj-src-b--default')
+    // A name that does not collide keeps its byte-identical id.
+    expect(ids).toContain('badge--default')
+    expect(graph.list().map((c) => c.name)).toEqual(['Card', 'Card', 'Badge'])
+  })
+
+  it('focus accepts the qualified key and refuses the bare name', async () => {
+    const run = async (only: string) => {
+      let outcome: unknown
+      await createAtlas({
+        cwd: '/tmp',
+        preset: 'none',
+        focus: (found) => {
+          const out = focusComponents(found, only)
+          outcome = out
+          return out.kind === 'matched' ? out.components : []
+        },
+        plugins: [
+          defineAtlasPlugin({
+            name: 'two-cards',
+            discover: () => [card('proj/src/a/Card.tsx'), card('proj/src/b/Card.tsx')],
+          }),
+        ],
+      }).build()
+      return outcome as ReturnType<typeof focusComponents>
+    }
+    const qualified = await run('Card@proj/src/b')
+    expect(qualified.kind === 'matched' && qualified.components[0]?.source).toBe('proj/src/b/Card.tsx')
+    // Used to resolve to the FIRST Card silently: its bare key matched exactly.
+    expect((await run('Card')).kind).toBe('ambiguous')
   })
 })

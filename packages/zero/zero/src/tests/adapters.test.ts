@@ -105,7 +105,9 @@ describe('vercel adapter build', () => {
 
     // Verify function config
     const vcConfig = JSON.parse(await readFile(join(vercelDir, 'functions', 'ssr.func', '.vc-config.json'), 'utf-8'))
-    expect(vcConfig.runtime).toMatch(/^nodejs/)
+    // Node 20 is end-of-life (April 2026); the default must be a supported
+    // runtime, and it must be overridable.
+    expect(vcConfig.runtime).toBe('nodejs22.x')
 
     // Verify the SSR module import is HOISTED to module scope, NOT
     // dynamically imported inside the handler. Pre-fix the emitted
@@ -127,6 +129,26 @@ describe('vercel adapter build', () => {
     // and Vercel's launcher logged generic 500s without context.
     expect(funcSrc).toMatch(/console\.error\([^)]*Pyreon SSR/)
 
+    await cleanup()
+  })
+})
+
+describe('vercel adapter runtime option', () => {
+  it('uses the runtime the caller pins', async () => {
+    await setupMockBuild()
+    const outDir = join(TMP, 'vercel-runtime')
+    await vercelAdapter({ runtime: 'nodejs24.x' }).build({
+      kind: 'ssr',
+      serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+      clientOutDir: MOCK_CLIENT,
+      outDir,
+      projectRoot: outDir,
+      config: {},
+    })
+    const vc = JSON.parse(
+      await readFile(join(outDir, '.vercel', 'output', 'functions', 'ssr.func', '.vc-config.json'), 'utf-8'),
+    )
+    expect(vc.runtime).toBe('nodejs24.x')
     await cleanup()
   })
 })

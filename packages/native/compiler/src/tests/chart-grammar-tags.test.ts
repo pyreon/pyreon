@@ -14,7 +14,7 @@
 // declarations, one contract, both checked — and the pair is what fails when
 // someone adds a mark to one side only.
 import { describe, expect, it } from 'vitest'
-import { GRAMMAR_MARK_TAGS, PLOT_MARK_KINDS, PLOT_INDICATOR_MARKS, PLOT_SPREAD_MARKS } from '../chart-hosts'
+import { GRAMMAR_INDICATOR_TAGS, GRAMMAR_MARK_TAGS, PLOT_MARK_KINDS, PLOT_INDICATOR_MARKS, PLOT_SPREAD_MARKS } from '../chart-hosts'
 import { UNLOWERED_PYREON_MODULES } from '../parse'
 
 /** Mirrors `GRAMMAR_TAG_KINDS` in the charts package's grammar-parity test. */
@@ -43,6 +43,19 @@ describe('GRAMMAR_MARK_TAGS', () => {
   })
 })
 
+describe('GRAMMAR_INDICATOR_TAGS', () => {
+  it('matches the indicator marks the charts package ships', () => {
+    // Mirrors `GRAMMAR_INDICATOR_TAGS` in the charts package's
+    // `grammar-indicators.test.tsx`.
+    expect(GRAMMAR_INDICATOR_TAGS).toEqual({ Sma: 'sma', Ema: 'ema', Trend: 'trend', Bollinger: 'bollinger' })
+  })
+
+  it('every tag desugars to a factory the emitters lower', () => {
+    const lowered = new Set([...Object.keys(PLOT_INDICATOR_MARKS), ...PLOT_SPREAD_MARKS])
+    expect(Object.values(GRAMMAR_INDICATOR_TAGS).filter((f) => !lowered.has(f))).toEqual([])
+  })
+})
+
 describe("the import allowlist knows every grammar tag too", () => {
   // A THIRD copy of the same set, and the one a rename forgets last.
   //
@@ -65,6 +78,7 @@ describe("the import allowlist knows every grammar tag too", () => {
     // grammar tags AND the indicator marks, one rename and one feature apart.
     const lowered = [
       ...Object.keys(GRAMMAR_MARK_TAGS),
+      ...Object.keys(GRAMMAR_INDICATOR_TAGS),
       ...Object.keys(PLOT_MARK_KINDS),
       ...Object.keys(PLOT_INDICATOR_MARKS),
       ...PLOT_SPREAD_MARKS,
