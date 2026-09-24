@@ -15,8 +15,56 @@
 
 import type { IrDocument, IrType } from './ir'
 
-/** Model names each model references, directly, in a deterministic order. */
+/**
+ * Per-document memo for the two whole-graph passes below.
+ *
+ * `topoSortModels` and `modelDependencies` were computed three to four times
+ * per generation -- once per emitter that needs an order (schemas, types,
+ * faker, native modules) and again per tag in `reachableModels`. Keyed WEAKLY
+ * on the document, so a cached graph dies with the document it describes.
+ *
+ * A cached entry is only served while the document still has the SAME model
+ * array and every model the SAME type object. The IR is built once and never
+ * mutated by the pipeline, but it is plain data and a caller (a test, a
+ * plugin) may reassign a model's type; comparing identities is O(models) and
+ * turns that into a recompute rather than a stale answer.
+ */
+interface GraphMemo {
+  models: IrDocument['models']
+  types: IrType[]
+  deps?: Map<string, Set<string>>
+  order?: ModelOrder
+}
+const memo = new WeakMap<IrDocument, GraphMemo>()
+
+function memoFor(doc: IrDocument): GraphMemo {
+  const hit = memo.get(doc)
+  if (
+    hit &&
+    hit.models === doc.models &&
+    hit.types.length === doc.models.length &&
+    doc.models.every((m, i) => m.type === hit.types[i])
+  ) {
+    return hit
+  }
+  const fresh: GraphMemo = { models: doc.models, types: doc.models.map((m) => m.type) }
+  memo.set(doc, fresh)
+  return fresh
+}
+
+/**
+ * Model names each model references, directly, in a deterministic order.
+ *
+ * Memoized per document (see {@link memoFor}); callers must treat the result
+ * as read-only.
+ */
 export function modelDependencies(doc: IrDocument): Map<string, Set<string>> {
+  const m = memoFor(doc)
+  m.deps ??= computeDependencies(doc)
+  return m.deps
+}
+
+function computeDependencies(doc: IrDocument): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>()
   const known = new Set(doc.models.map((m) => m.name))
   for (const model of doc.models) {
@@ -81,7 +129,12 @@ export function edgeKey(from: string, to: string): string {
  * unreviewable diff.
  */
 export function topoSortModels(doc: IrDocument): ModelOrder {
-  const deps = modelDependencies(doc)
+  const m = memoFor(doc)
+  m.order ??= computeOrder(modelDependencies(doc))
+  return m.order
+}
+
+function computeOrder(deps: Map<string, Set<string>>): ModelOrder {
   const names = [...deps.keys()].sort()
   const order: string[] = []
   const backEdges = new Set<string>()

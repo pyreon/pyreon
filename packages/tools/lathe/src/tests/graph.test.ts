@@ -202,3 +202,31 @@ describe('deferredTargets', () => {
     expect([...deferredTargets(edges, 'AB')]).toEqual(['X'])
   })
 })
+
+describe('graph memo', () => {
+  const docOf = (): Parameters<typeof topoSortModels>[0] =>
+    ({
+      title: 'T',
+      version: '1',
+      baseUrl: '',
+      operations: [],
+      notes: [],
+      models: [
+        { name: 'A', type: { kind: 'ref', name: 'B' } },
+        { name: 'B', type: { kind: 'string' } },
+      ],
+    }) as never
+
+  it('computes the order once per document', () => {
+    const doc = docOf()
+    expect(topoSortModels(doc)).toBe(topoSortModels(doc))
+  })
+
+  it('recomputes when a model type is REPLACED, rather than serving a stale order', () => {
+    const doc = docOf()
+    expect(topoSortModels(doc).order).toEqual(['B', 'A'])
+    ;(doc.models[0] as { type: unknown }).type = { kind: 'string' }
+    ;(doc.models[1] as { type: unknown }).type = { kind: 'ref', name: 'A' }
+    expect(topoSortModels(doc).order).toEqual(['A', 'B'])
+  })
+})
