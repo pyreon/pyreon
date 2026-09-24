@@ -140,14 +140,14 @@ export async function scanInChild(options: ChildScanOptions): Promise<ChildScanP
       child.on('error', reject)
       child.on('close', (code) => {
         if (code === 0) resolvePromise(err)
-        else reject(new Error(`the rescan process exited with code ${code}${err ? `:\n${err.trim().slice(-2000)}` : ''}`))
+        else reject(new Error(`[Pyreon] atlas dev: the rescan process exited with code ${code}${err ? `:\n${err.trim().slice(-2000)}` : ''}`))
       })
     })
     let raw: string
     try {
       raw = readFileSync(out, 'utf8')
     } catch {
-      throw new Error(`the rescan process wrote no catalog${stderr ? `:\n${stderr.trim().slice(-2000)}` : ''}`)
+      throw new Error(`[Pyreon] atlas dev: the rescan process wrote no catalog${stderr ? `:\n${stderr.trim().slice(-2000)}` : ''}`)
     }
     return JSON.parse(raw) as ChildScanPayload
   } finally {
