@@ -155,6 +155,31 @@ describe('<Search> browser — empty state', () => {
     input.dispatchEvent(new Event('input', { bubbles: true }))
   }
 
+  it('closes from the backdrop but not from a click inside the dialog', async () => {
+    const { container, unmount } = mountInBrowser(<Search />)
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'k',
+        metaKey: true,
+        ctrlKey: true,
+        bubbles: true,
+      }),
+    )
+    const panel = await vi.waitFor(() => {
+      const el = container.querySelector<HTMLElement>('.pyreon-search__panel')
+      if (!el) throw new Error('search panel not shown')
+      return el
+    })
+    panel.click()
+    expect(container.querySelector('.pyreon-search__backdrop')).not.toBeNull()
+
+    container.querySelector<HTMLElement>('.pyreon-search__backdrop')!.click()
+    await vi.waitFor(() =>
+      expect(container.querySelector('.pyreon-search__backdrop')).toBeNull(),
+    )
+    unmount()
+  })
+
   it('shows the empty state (with the query) after a search with no matches', async () => {
     const { container, unmount } = mountInBrowser(<Search debounceMs={10} />)
     await openAndType(container, 'zzzznomatchqxy')

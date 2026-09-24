@@ -8,13 +8,15 @@
  * chain (the Atlas Workbench wiring, including the `as never` cast the
  * prebuilt-lib path needs).
  */
-import { h, Show, type VNodeChild } from '@pyreon/core'
-import { useEventListener } from '@pyreon/hooks'
-import { computed, isServer } from '@pyreon/reactivity'
+import { h, onMount, Show, type VNodeChild } from '@pyreon/core'
+import { useEventListener, useMediaQuery } from '@pyreon/hooks'
+import { batch, computed, effect, isServer } from '@pyreon/reactivity'
 import { PyreonUI } from '@pyreon/ui-core'
 import type { LoomReport } from '../core/types'
 import * as C from './chrome'
+import { ensureGlobalStyles } from './global-css'
 import { createModel, shortName, type ObservatoryModel, type ViewId } from './model'
+import { hashForSel, MOBILE_QUERY, readPrefs, writeThemePref } from './prefs'
 import { tokens } from './theme'
 import { GraphView } from './views/GraphView'
 import { SearchDialog } from './views/SearchDialog'
@@ -51,12 +53,75 @@ export function Observatory(props: {
    * something. Absent (the single-page host), the tabs stay signal-driven. */
   hrefFor?: (id: ViewId) => string
 }) {
-  const m = createModel(props.report, props.initialView ?? 'graph')
+  ensureGlobalStyles()
+  // Theme (remembered choice, else the OS), viewport class, and a selection
+  // carried in the URL hash are browser state — resolved here, once, so the
+  // model stays pure. SSR gets `{}` (dark, everything open).
+  const m = createModel(props.report, props.initialView ?? 'graph', readPrefs())
   // The observatory IS a dev tool — its model is its public runtime surface
   // (the same contract the Atlas workbench exposes for its browser runner).
   ;(globalThis as Record<string, unknown>).__LOOM_MODEL__ = m
 
   const theme = computed(() => tokens(m.dark()))
+  const mobile = useMediaQuery(MOBILE_QUERY)
+
+  // Crossing the breakpoint re-lays out the chrome: below it the sidebar and
+  // detail panel are overlay drawers (closed by default), above it they are
+  // columns (open by default). Only a TRANSITION moves them — a user who
+  // closed the panel on desktop keeps it closed until the viewport changes.
+  let wasMobile: boolean | undefined
+  effect(() => {
+    const mob = mobile()
+    if (wasMobile !== undefined && mob !== wasMobile) {
+      batch(() => {
+        m.navOpen.set(!mob)
+        m.panelOpen.set(!mob)
+      })
+    }
+    wasMobile = mob
+  })
+  const closeDrawersOnMobile = () => {
+    if (!mobile()) return
+    batch(() => {
+      m.navOpen.set(false)
+      m.panelOpen.set(false)
+    })
+  }
+
+  let sideListEl: HTMLElement | null = null
+  let canvasEl: HTMLElement | null = null
+
+  onMount(() => {
+    const root = document.documentElement
+    // <html> carries the theme too, so the PAGE background (and anything the
+    // host renders outside the shell) follows the toggle.
+    root.setAttribute('data-lm-theme', m.dark() ? 'dark' : 'light')
+    const offDark = m.dark.subscribe(() =>
+      root.setAttribute('data-lm-theme', m.dark() ? 'dark' : 'light'),
+    )
+    // Selection → URL hash (replace, not push: arrowing through 50 packages
+    // must not leave 50 history entries), and keep the sidebar row on screen
+    // when the selection moves by keyboard or ⌘K.
+    const revealRow = () =>
+      requestAnimationFrame(() => {
+        sideListEl
+          ?.querySelector(`[data-testid="pkg-${m.selId()}"]`)
+          ?.scrollIntoView({ block: 'nearest' })
+      })
+    revealRow() // a selection restored from the URL starts on screen too
+    const offSel = m.selId.subscribe(() => {
+      history.replaceState(history.state, '', hashForSel(m.selId()))
+      revealRow()
+    })
+    // Each view starts at its top-left — the canvas element is shared, so a
+    // deep scroll into the graph used to carry over into the matrix.
+    const offView = m.view.subscribe(() => canvasEl?.scrollTo(0, 0))
+    return () => {
+      offDark()
+      offSel()
+      offView()
+    }
+  })
 
   // The search input, captured by REF — focusing via a live element reference
   // instead of a runtime document.querySelector (better, and the AST walker
@@ -82,7 +147,6 @@ export function Observatory(props: {
     if (e.key === 'Escape') {
       if (m.searchOpen()) {
         m.searchOpen.set(false)
-        m.query.set('')
         return
       }
       if (m.query()) m.query.set('')
@@ -108,7 +172,12 @@ export function Observatory(props: {
         ? `${m.report.stats.cycles} cycle${m.report.stats.cycles === 1 ? '' : 's'}`
         : 'fabric clean'
 
-  const sidebarGroup = (label: string, num: string, glyph: string, kind: 'internal' | 'external'): VNodeChild => (
+  const sidebarGroup = (
+    label: string,
+    num: string,
+    glyph: string,
+    kind: 'internal' | 'external',
+  ): VNodeChild => (
     <>
       {() => {
         const items = m.shown().filter((n) => n.kind === kind)
@@ -125,7 +194,11 @@ export function Observatory(props: {
               <C.PkgBtn
                 data-testid={`pkg-${n.id}`}
                 state={() => (m.selId() === n.id ? 'active' : 'idle')}
-                onClick={() => m.select(n.id)}
+                title={n.id}
+                onClick={() => {
+                  m.select(n.id)
+                  closeDrawersOnMobile()
+                }}
               >
                 <C.PkgBar state={() => (m.selId() === n.id ? 'active' : 'idle')} />
                 <C.PkgName>{n.id}</C.PkgName>
@@ -146,8 +219,11 @@ export function Observatory(props: {
   const externalGroup = sidebarGroup('external', '02', '//', 'external')
 
   return (
-    <PyreonUI theme={((() => theme()) as never)} mode={(() => (m.dark() ? 'dark' : 'light')) as never}>
-      <C.Shell data-testid="loom-shell">
+    <PyreonUI
+      theme={(() => theme()) as never}
+      mode={(() => (m.dark() ? 'dark' : 'light')) as never}
+    >
+      <C.Shell data-testid="loom-shell" data-lm-theme={() => (m.dark() ? 'dark' : 'light')}>
         <C.Header>
           <C.BrandBlock>
             <C.BrandMark>
@@ -164,7 +240,9 @@ export function Observatory(props: {
                 data-testid={`view-${v.id}`}
                 state={() => (m.view() === v.id ? 'active' : 'idle')}
                 {...(props.hrefFor
-                  ? { tag: 'a', href: props.hrefFor(v.id) }
+                  ? // The selection rides along in the hash, so a routed host's
+                    // full-page tab navigation keeps what you were looking at.
+                    { tag: 'a', href: () => props.hrefFor!(v.id) + hashForSel(m.selId()) }
                   : { onClick: () => m.view.set(v.id) })}
               >
                 {v.label}
@@ -176,7 +254,7 @@ export function Observatory(props: {
             <C.SearchTrigger data-testid="search-trigger" onClick={() => m.searchOpen.set(true)}>
               <C.SearchGlyph>⌕</C.SearchGlyph>
               <C.SearchTriggerText>Search packages, findings…</C.SearchTriggerText>
-              <C.SearchKbd>⌘K</C.SearchKbd>
+              <C.SearchTriggerKbd>⌘K</C.SearchTriggerKbd>
             </C.SearchTrigger>
           </C.SearchWrap>
           <C.Spacer />
@@ -184,7 +262,16 @@ export function Observatory(props: {
             <C.HealthDot state={health} />
             <C.HealthText state={health}>{healthLabel}</C.HealthText>
           </C.HealthPill>
-          <C.IconBtn data-testid="dark-toggle" onClick={() => m.dark.set(!m.dark())} title="Toggle theme">
+          <C.IconBtn
+            data-testid="dark-toggle"
+            onClick={() => {
+              const next = !m.dark()
+              m.dark.set(next)
+              writeThemePref(next)
+            }}
+            title="Toggle theme"
+            aria-label="Toggle theme"
+          >
             {() => (m.dark() ? '☀' : '☾')}
           </C.IconBtn>
         </C.Header>
@@ -203,7 +290,11 @@ export function Observatory(props: {
                   </C.KindBtn>
                 ))}
               </C.KindRow>
-              <C.SideList>
+              <C.SideList
+                ref={(el: HTMLElement | null) => {
+                  sideListEl = el
+                }}
+              >
                 {internalGroup}
                 {externalGroup}
                 <Show when={() => m.shown().length === 0}>
@@ -216,7 +307,11 @@ export function Observatory(props: {
 
           <C.Main>
             <C.ViewBar>
-              <C.SmallBtn data-testid="nav-toggle" onClick={() => m.navOpen.set(!m.navOpen())} title="Toggle package list">
+              <C.SmallBtn
+                data-testid="nav-toggle"
+                onClick={() => m.navOpen.set(!m.navOpen())}
+                title="Toggle package list"
+              >
                 {() => (m.navOpen() ? '⇤' : '⇥')}
               </C.SmallBtn>
               <C.ViewTitleBlock>
@@ -226,21 +321,38 @@ export function Observatory(props: {
               <C.Spacer />
               <C.CyclesBtn
                 data-testid="cycles-toggle"
-                state={() => (m.showCycles() ? 'on' : 'off')}
+                title="Highlight dependency cycles"
+                // Red only when there is something to be alarmed about — an
+                // acyclic workspace used to wear the same alarm as a broken one.
+                state={() => (!m.showCycles() ? 'off' : m.report.stats.cycles > 0 ? 'on' : 'clean')}
+                aria-pressed={() => (m.showCycles() ? 'true' : 'false')}
                 onClick={() => m.showCycles.set(!m.showCycles())}
               >
-                <C.CyclesDot />
-                highlight cycles
+                <C.CyclesDot variant={m.report.stats.cycles > 0 ? 'danger' : 'ok'} />
+                <C.CyclesLabel>
+                  {m.report.stats.cycles > 0
+                    ? `highlight cycles · ${m.report.stats.cycles}`
+                    : 'highlight cycles'}
+                </C.CyclesLabel>
               </C.CyclesBtn>
-              <C.SmallBtn data-testid="panel-toggle" onClick={() => m.panelOpen.set(!m.panelOpen())} title="Toggle detail panel">
+              <C.SmallBtn
+                data-testid="panel-toggle"
+                onClick={() => m.panelOpen.set(!m.panelOpen())}
+                title="Toggle detail panel"
+              >
                 {() => (m.panelOpen() ? '⇥' : '⇤')}
               </C.SmallBtn>
             </C.ViewBar>
-            <C.Canvas data-testid="loom-canvas">
+            <C.Canvas
+              data-testid="loom-canvas"
+              ref={(el: HTMLElement | null) => {
+                canvasEl = el
+              }}
+            >
               {() => {
                 switch (m.view()) {
                   case 'graph':
-                    return h(GraphView, { model: m, theme: () => theme() })
+                    return h(GraphView, { model: m })
                   case 'matrix':
                     return h(MatrixView, { model: m })
                   case 'cycles':
@@ -255,6 +367,13 @@ export function Observatory(props: {
           </C.Main>
 
           <Show when={() => m.panelOpen()}>{h(DetailPanel, { model: m })}</Show>
+          <Show when={() => mobile() && (m.navOpen() || m.panelOpen())}>
+            <C.DrawerScrim
+              data-testid="drawer-scrim"
+              aria-hidden="true"
+              onClick={closeDrawersOnMobile}
+            />
+          </Show>
         </C.Body>
 
         <C.Footer>
