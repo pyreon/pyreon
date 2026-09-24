@@ -322,8 +322,17 @@ export function stripWithMask(text: string): { stripped: string; codeAt: Uint8Ar
 
   return { stripped: parts.join(''), codeAt: mask.subarray(0, outLen) }
 }
+/**
+ * The left boundary `(?<![\w$.])` keeps an identifier that merely ENDS in a
+ * keyword (`myrequire('x')`, `reimport('x')`) or a method call
+ * (`loader.import('x')`) from scanning as an import statement.
+ */
 const SPEC_RE =
-  /(?:from\s+|import\s*\(\s*|require\s*\(\s*|import\s+)['"]([^'"\n]+)['"]/g
+  /(?<![\w$.])(?:from\s+|import\s*\(\s*|require\s*\(\s*|import\s+)['"]([^'"\n]+)['"]/g
+
+/** `typeof import('x')` — a TYPE query. It names the module's shape and is
+ * erased at build; the consumer never loads `x`. */
+const TYPEOF_BEFORE_RE = /\btypeof\s*$/
 
 /** node builtins (with or without the `node:` prefix) are never dependencies. */
 const BUILTINS = new Set([
@@ -408,6 +417,78 @@ export function readTsconfigAliases(pkgAbsDir: string, rootDir?: string): Set<st
   }
   visit(join(pkgAbsDir, 'tsconfig.json'), 1)
   if (rootDir) visit(join(rootDir, 'tsconfig.json'), 1)
+  return out
+}
+
+/** Parse a JSONC file (tsconfig grammar); null when missing or unparseable. */
+function readJsonc(file: string): Record<string, unknown> | null {
+  let raw: string
+  try {
+    raw = readFileSync(file, 'utf8')
+  } catch {
+    return null
+  }
+  try {
+    const parsed: unknown = JSON.parse(stripNonCode(raw).replace(/,(\s*[}\]])/g, '$1'))
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Packages a package's TypeScript config names as its `jsxImportSource`,
+ * mapped to the config file that names them.
+ *
+ * A `jsxImportSource` makes the compiler EMIT `import … from '<source>/jsx-runtime'`
+ * into every JSX file — a real use of that package with no import statement a
+ * lexical scan could see. Unrecognised, a TS preset package (whose whole job is
+ * to set it) reads its own dependency as `unused-dep`.
+ *
+ * Read from the package's ROOT `tsconfig*.json` files and any `.json` its
+ * `exports` publishes (a config-preset package ships its presets that way), with
+ * one RELATIVE `extends` level — the same reach {@link readTsconfigAliases} has.
+ * The workspace root's tsconfig is deliberately NOT consulted: it applies to a
+ * package only if the package extends it, and then the extends chain finds it.
+ */
+export function readJsxImportSources(pkgAbsDir: string): Map<string, string> {
+  const out = new Map<string, string>()
+  const candidates = new Set<string>()
+  try {
+    for (const name of readdirSync(pkgAbsDir)) {
+      if (/^tsconfig.*\.json$/.test(name)) candidates.add(name)
+    }
+  } catch {
+    return out
+  }
+  const manifest = readJsonc(join(pkgAbsDir, 'package.json'))
+  const collect = (v: unknown): void => {
+    if (typeof v === 'string') {
+      if (v.endsWith('.json') && !v.includes('..')) candidates.add(v.replace(/^\.\//, ''))
+    } else if (v && typeof v === 'object') {
+      for (const inner of Object.values(v)) collect(inner)
+    }
+  }
+  collect(manifest?.exports)
+  for (const rel of candidates) {
+    const seen = new Set<string>()
+    const visit = (file: string, depthLeft: number): void => {
+      if (depthLeft < 0 || seen.has(file)) return
+      seen.add(file)
+      const json = readJsonc(file)
+      if (!json) return
+      const opts = json.compilerOptions as { jsxImportSource?: unknown } | undefined
+      const source = opts?.jsxImportSource
+      if (typeof source === 'string') {
+        const name = specifierToPackage(source)
+        if (name && !out.has(name)) out.set(name, rel)
+      }
+      if (typeof json.extends === 'string' && json.extends.startsWith('.')) {
+        visit(join(file, '..', json.extends), depthLeft - 1)
+      }
+    }
+    visit(join(pkgAbsDir, rel), 1)
+  }
   return out
 }
 
@@ -543,7 +624,13 @@ function walkFiles(dir: string, rel: string, out: string[], depthLeft: number): 
   }
   for (const entry of entries) {
     const name = entry.name
-    if (name === 'node_modules' || name === 'lib' || name === 'dist' || name.charCodeAt(0) === 46) continue
+    if (name === 'node_modules' || name.charCodeAt(0) === 46) continue
+    // `lib/` and `dist/` are BUILD OUTPUT only at the package root. Deeper,
+    // they are ordinary source directories — `src/lib/` is one of the most
+    // common layouts there is, and skipping it at every depth left whole
+    // subtrees unscanned: every dependency used only there read as
+    // `unused-dep`, and every undeclared import there went unreported.
+    if (rel === '' && (name === 'lib' || name === 'dist')) continue
     const r = rel ? `${rel}/${name}` : name
     if (entry.isDirectory()) walkFiles(join(dir, name), r, out, depthLeft - 1)
     else if (SOURCE_EXT.test(name)) out.push(r)
@@ -603,12 +690,26 @@ export function scanPackageImports(pkgAbsDir: string, rootDir?: string, devPaths
       // read an unrelated earlier `import type` as their head.
       const typeOnly =
         declarationFile ||
-        (m[0].startsWith('from') && isTypeOnlyStatement(stripped, m.index))
+        (m[0].startsWith('from') && isTypeOnlyStatement(stripped, m.index)) ||
+        (m[0].startsWith('import') &&
+          /^import\s*\(/.test(m[0]) &&
+          TYPEOF_BEFORE_RE.test(stripped.slice(Math.max(0, m.index - 32), m.index)))
       const bucket = typeOnly ? type : runtimeBucket
       const list = bucket.get(name) ?? []
       if (list.length < 5) list.push(file)
       bucket.set(name, list)
     }
+  }
+  // A configured `jsxImportSource` is a compiler-emitted import — evidence the
+  // package is USED. It goes in the TYPE bucket on purpose: that bucket counts
+  // as used for `unused-dep` but never drives `phantom-dep` or
+  // `prod-import-of-dev-dep`, and a config file alone cannot tell whether the
+  // JSX it governs ships or is test-only.
+  for (const [name, file] of readJsxImportSources(pkgAbsDir)) {
+    if (aliases.has(name)) continue
+    const list = type.get(name) ?? []
+    if (list.length < 5) list.push(file)
+    type.set(name, list)
   }
   return { prod, dev, type }
 }
