@@ -99,6 +99,16 @@ export function mergeServerConfig(
 const DATA_ENDPOINT = "/_pyreon/data";
 
 /**
+ * `base` without its trailing slashes. A loop, not `/\/+$/`: that regex backtracks
+ * quadratically on a long run of `/`, and a linear strip costs nothing.
+ */
+function trimTrailingSlashes(value: string): string {
+	let end = value.length;
+	while (end > 0 && value.charCodeAt(end - 1) === 47) end--;
+	return value.slice(0, end);
+}
+
+/**
  * The path a request's route middleware must be matched against.
  *
  * - The PATHNAME, never `ctx.path`: that carries the query string, and a
@@ -118,7 +128,7 @@ export function routingPathname(url: URL, config: ZeroConfig): string {
 			pathname = new URL(target, "http://pyreon.invalid").pathname;
 		}
 	}
-	const base = config.base && config.base !== "/" ? config.base.replace(/\/+$/, "") : "";
+	const base = config.base && config.base !== "/" ? trimTrailingSlashes(config.base) : "";
 	if (base) {
 		if (pathname === base) pathname = "/";
 		else if (pathname.startsWith(`${base}/`)) pathname = pathname.slice(base.length);
@@ -516,7 +526,7 @@ export function wirePerRouteModes(
 		: undefined;
 
 	const basePrefix =
-		config.base && config.base !== "/" ? config.base.replace(/\/+$/, "") : "";
+		config.base && config.base !== "/" ? trimTrailingSlashes(config.base) : "";
 	return async (req: Request) => {
 		const url = new URL(req.url);
 		if (isEndpoint?.(url.pathname)) return baseHandler(req);
