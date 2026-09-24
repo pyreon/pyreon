@@ -131,7 +131,7 @@ function convert(spec: Json): IrDocument {
 
   return {
     title: str(info.title) ?? 'API',
-    version: str(info.version) ?? '0.0.0',
+    version: specVersion(info.version, notes),
     baseUrl,
     models,
     operations,
@@ -544,6 +544,27 @@ function mergeAllOf(parts: unknown[], self: Json, at: string, ctx: Ctx): IrType 
     return { kind: 'unknown', reason: 'allOf of non-objects' }
   }
   return { kind: 'object', fields, additional: undefined }
+}
+
+/**
+ * `info.version`, as the string the banner and the surface record.
+ *
+ * YAML reads an unquoted `version: 1` as a NUMBER, and the old `str()`-only
+ * read turned every such spec into `0.0.0` -- a version the author never wrote,
+ * stamped on every generated file. A number is stringified instead, with a note,
+ * because the conversion is lossy for the case that matters: `version: 1.0`
+ * reads as `1` before this code ever sees it.
+ */
+function specVersion(raw: unknown, notes: IrNote[]): string {
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    notes.push({
+      code: 'unsupported-schema',
+      at: '#/info/version',
+      message: `\`info.version\` is the number ${raw}, not a string -- used as \`${raw}\`. Quote it in YAML (\`version: '1.0'\`); an unquoted \`1.0\` has already lost its \`.0\` by the time it is read.`,
+    })
+    return String(raw)
+  }
+  return str(raw) ?? '0.0.0'
 }
 
 function stripTrailingSlash(url: string): string {

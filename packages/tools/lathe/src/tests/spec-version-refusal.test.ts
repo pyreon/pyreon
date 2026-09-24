@@ -87,3 +87,17 @@ describe('a refused spec leaves every output tree untouched', () => {
     expect(Object.keys(fs.files).filter((p) => p.startsWith('gen/'))).toEqual([])
   })
 })
+
+describe('info.version', () => {
+  it('keeps a numeric YAML version instead of replacing it with 0.0.0, and says so', () => {
+    const out = generate(OPENAPI.replace('version: "1"', 'version: 2'), resolveConfig({ input: 'x' }))
+    expect(out.doc.version).toBe('2')
+    expect(out.doc.notes.some((n) => n.at === '#/info/version')).toBe(true)
+  })
+
+  it('a string version is used verbatim, with no note', () => {
+    const out = generate(OPENAPI, resolveConfig({ input: 'x' }))
+    expect(out.doc.version).toBe('1')
+    expect(out.doc.notes.some((n) => n.at === '#/info/version')).toBe(false)
+  })
+})
