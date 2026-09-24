@@ -1579,6 +1579,10 @@ mount(<App />, document.getElementById('app')!)
 
 A record can carry a `serverLoader` instead of a `loader` — a data loader that exists as a real function ONLY in the SSR module graph (zero emits it from the `.server.ts` sibling convention; client builds carry just the serializable `hasServerLoader` marker). On a client-side navigation to a chain with `hasServerLoader` records, the router makes **ONE** fetch to the data endpoint (`dataEndpoint`, default `` `${base}/_pyreon/data` ``) for the whole matched chain — single-fetch, no per-record waterfall. The endpoint's worker calls `router.runServerLoaders(path, request)` server-side. A `redirect()` thrown from a server loader comes back as a JSON envelope at HTTP 200, which the client router turns into a navigation. See [Zero → Server Loaders](/docs/zero#server-loaders) for the file convention.
 
+### Compiling loaders out
+
+Defining `globalThis.__PYREON_ROUTER_LOADERS__` as `false` at build time removes the loader engine (cache, in-flight dedup, stale-while-revalidate, server-loader single-fetch) and the loader render path (pending components, link prefetch) from the bundle, about 0.9–1 KB gz. Leave it undefined and nothing changes. [@pyreon/zero](/docs/zero#router-loaders-are-compiled-out-when-unused) sets it automatically in production builds; any other Vite app can set it in `define` when none of its routes has a loader. With the flag `false`, loaders are skipped — define it only when you have none.
+
 ### redirect() — control-flow from inside a loader
 
 Throw `redirect(url, status?)` inside a route loader to redirect the navigation **before** the layout renders. This is the canonical pattern for SSR-side auth gates and replaces the fragile `onMount + router.push('/login')` workaround under nested-layout dev SSR + hydration (which would briefly render the auth-gated layout before redirecting, leaking authenticated UI structure to anonymous users).
