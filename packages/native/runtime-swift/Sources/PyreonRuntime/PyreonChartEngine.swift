@@ -519,6 +519,15 @@ public struct StackSegment: Codable {
   }
 }
 
+public struct StackLevels: Codable {
+  public var bases: [[Double]]
+  public var tops: [[Double]]
+  public init(bases: [[Double]], tops: [[Double]]) {
+    self.bases = bases
+    self.tops = tops
+  }
+}
+
 public struct WaterfallStep: Codable {
   public var rect: PyreonChartRect
   public var datumIndex: Int
@@ -933,7 +942,11 @@ public struct Series {
   public var barMaxWidth: BarLength? = nil
   public var barMinWidth: BarLength? = nil
   public var barStack: String? = nil
-  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, smoothAmount: Double? = nil, smoothMonotone: String? = nil, connectNulls: Bool? = nil, areaFill: Bool? = nil, areaOpacity: Double? = nil, areaColor: String? = nil, areaOrigin: String? = nil, areaOriginAt: Double? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, axisExtra: Double? = nil, onX2: Bool? = nil, xs: [Double]? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, symbolMargin: Double? = nil, symbolOffset: [Double]? = nil, symbolPosition: String? = nil, symbolRotate: Double? = nil, symbolHollow: Bool? = nil, symbolShow: String? = nil, symbolClip: Bool? = nil, symbolBoundingData: Double? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, labelTexts: [String]? = nil, labelColor: String? = nil, labelSize: Double? = nil, labelRich: [RichStyle]? = nil, labelPosition: String? = nil, labelDistance: Double? = nil, labelRotate: Double? = nil, labelOffset: [Double]? = nil, labelAlign: String? = nil, labelVerticalAlign: String? = nil, labelBorderColor: String? = nil, labelBorderWidth: Double? = nil, focus: String? = nil, emphasisColor: String? = nil, selectColor: String? = nil, blurOpacity: Double? = nil, emphasisScale: Double? = nil, emphasisDisabled: Bool? = nil, emphasisWidth: Double? = nil, blurWidth: Double? = nil, emphasisAreaOpacity: Double? = nil, blurAreaOpacity: Double? = nil, emphasisLabel: Bool? = nil, selectLabel: Bool? = nil, seriesSelected: Bool? = nil, inBrush: [Int]? = nil, brushOpacity: Double? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil, extras: [SeriesExtra]? = nil, itemColors: [String]? = nil, barWidth: BarLength? = nil, barMaxWidth: BarLength? = nil, barMinWidth: BarLength? = nil, barStack: String? = nil) {
+  public var stackStrategy: String? = nil
+  public var stackDesc: Bool? = nil
+  public var barMinHeight: Double? = nil
+  public var barBackground: String? = nil
+  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, smoothAmount: Double? = nil, smoothMonotone: String? = nil, connectNulls: Bool? = nil, areaFill: Bool? = nil, areaOpacity: Double? = nil, areaColor: String? = nil, areaOrigin: String? = nil, areaOriginAt: Double? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, axisExtra: Double? = nil, onX2: Bool? = nil, xs: [Double]? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, symbolMargin: Double? = nil, symbolOffset: [Double]? = nil, symbolPosition: String? = nil, symbolRotate: Double? = nil, symbolHollow: Bool? = nil, symbolShow: String? = nil, symbolClip: Bool? = nil, symbolBoundingData: Double? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, labelTexts: [String]? = nil, labelColor: String? = nil, labelSize: Double? = nil, labelRich: [RichStyle]? = nil, labelPosition: String? = nil, labelDistance: Double? = nil, labelRotate: Double? = nil, labelOffset: [Double]? = nil, labelAlign: String? = nil, labelVerticalAlign: String? = nil, labelBorderColor: String? = nil, labelBorderWidth: Double? = nil, focus: String? = nil, emphasisColor: String? = nil, selectColor: String? = nil, blurOpacity: Double? = nil, emphasisScale: Double? = nil, emphasisDisabled: Bool? = nil, emphasisWidth: Double? = nil, blurWidth: Double? = nil, emphasisAreaOpacity: Double? = nil, blurAreaOpacity: Double? = nil, emphasisLabel: Bool? = nil, selectLabel: Bool? = nil, seriesSelected: Bool? = nil, inBrush: [Int]? = nil, brushOpacity: Double? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil, extras: [SeriesExtra]? = nil, itemColors: [String]? = nil, barWidth: BarLength? = nil, barMaxWidth: BarLength? = nil, barMinWidth: BarLength? = nil, barStack: String? = nil, stackStrategy: String? = nil, stackDesc: Bool? = nil, barMinHeight: Double? = nil, barBackground: String? = nil) {
     self.kind = kind
     self.values = values
     self.color = color
@@ -1008,6 +1021,10 @@ public struct Series {
     self.barMaxWidth = barMaxWidth
     self.barMinWidth = barMinWidth
     self.barStack = barStack
+    self.stackStrategy = stackStrategy
+    self.stackDesc = stackDesc
+    self.barMinHeight = barMinHeight
+    self.barBackground = barBackground
   }
 }
 
@@ -5741,71 +5758,187 @@ public func hitNearestX(_ points: [PyreonChartPt], _ px: Double) -> Int {
     return best
   }
 
-public func layoutStackedBars(_ seriesValues: [[Double]], _ plot: PyreonChartRect, _ yDomain: Domain, _ gapRatio: Double) -> [StackSegment] {
-    var out: [StackSegment] = []
-    if seriesValues.count == 0 {
-      return out
-    }
+public func stackLevels(_ seriesValues: [[Double]], _ groups: [String], _ strategies: [String], _ descs: [Bool]) -> StackLevels {
+    let k = seriesValues.count
     var n = 0
-    for s in seriesValues {
-      if s.count > n {
-        n = s.count
+    for sv in seriesValues {
+      if sv.count > n {
+        n = sv.count
+      }
+    }
+    var flatBase: [Double] = []
+    var flatTop: [Double] = []
+    for c in 0..<k * n {
+      flatBase.append(0.0 / 0.0)
+      flatTop.append(0.0 / 0.0)
+    }
+    var done: [Bool] = []
+    for s in 0..<k {
+      done.append(false)
+    }
+    for first in 0..<k {
+      if done[first] {
+        continue
+      }
+      let g = first < groups.count ? groups[first] : ""
+      var members: [Int] = []
+      for s in first..<k {
+        let gs = s < groups.count ? groups[s] : ""
+        if gs == g {
+          members.append(s)
+          done[s] = true
+        }
+      }
+      let desc = first < descs.count ? descs[first] : false
+      var order: [Int] = []
+      if desc {
+        for m in stride(from: members.count - 1, through: 0, by: -1) {
+          order.append(members[m])
+        }
+      } else {
+        for m in 0..<members.count {
+          order.append(members[m])
+        }
+      }
+      for o in 0..<order.count {
+        let s = order[o]
+        let strategy = s < strategies.count && strategies[s] != "" ? strategies[s] : "samesign"
+        let own = seriesValues[s]
+        for i in 0..<n {
+          let v = i < own.count ? own[i] : 0.0 / 0.0
+          if !isFiniteNumber(v) {
+            continue
+          }
+          var sum = v
+          var base = 0.0 / 0.0
+          for q in stride(from: o - 1, through: 0, by: -1) {
+            let val = flatTop[order[q] * n + i]
+            let take = strategy == "all" || (strategy == "positive" && val > 0.0) || (strategy == "negative" && val < 0.0) || (strategy == "samesign" && sum >= 0.0 && val > 0.0) || (strategy == "samesign" && sum <= 0.0 && val < 0.0)
+            if take {
+              sum = sum + val
+              base = val
+              break
+            }
+          }
+          flatTop[s * n + i] = sum
+          flatBase[s * n + i] = base
+        }
+      }
+    }
+    var bases: [[Double]] = []
+    var tops: [[Double]] = []
+    for s in 0..<k {
+      var bRow: [Double] = []
+      var tRow: [Double] = []
+      for i in 0..<n {
+        bRow.append(flatBase[s * n + i])
+        tRow.append(flatTop[s * n + i])
+      }
+      bases.append(bRow)
+      tops.append(tRow)
+    }
+    return StackLevels(bases: bases, tops: tops)
+  }
+
+public func stackLevelsExtent(_ levels: StackLevels) -> Domain {
+    var lo = 0.0
+    var hi = 0.0
+    for row in levels.tops {
+      for v in row {
+        if !isFiniteNumber(v) {
+          continue
+        }
+        if v < lo {
+          lo = v
+        }
+        if v > hi {
+          hi = v
+        }
+      }
+    }
+    if lo == 0.0 && hi == 0.0 {
+      return Domain(min: 0.0, max: 1.0)
+    }
+    return Domain(min: lo, max: hi)
+  }
+
+public func layoutStackLevels(_ levels: StackLevels, _ values: [[Double]], _ plot: PyreonChartRect, _ yDomain: Domain, _ gapRatio: Double) -> [StackSegment] {
+    var out: [StackSegment] = []
+    var n = 0
+    for row in levels.tops {
+      if row.count > n {
+        n = row.count
       }
     }
     if n == 0 {
       return out
     }
     let ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
-    let band = plot.w / Double(n)
+    let band = plot.w / countOf(n)
     let bw = band * (1.0 - ratio)
+    var fi = 0.0
     for i in 0..<n {
-      var acc = 0.0
-      for s in 0..<seriesValues.count {
-        let v = (seriesValues[s][i] ?? 0.0)
-        if !(v > 0.0) {
+      for s in 0..<levels.tops.count {
+        let top = levels.tops[s][i]
+        if !isFiniteNumber(top) {
           continue
         }
-        let yTop = scaleLinear(yDomain, plot.y + plot.h, plot.y, acc + v)
-        let yBot = scaleLinear(yDomain, plot.y + plot.h, plot.y, acc)
-        out.append(StackSegment(rect: PyreonChartRect(x: plot.x + band * Double(i) + (band - bw) / 2.0, y: yTop < yBot ? yTop : yBot, w: bw, h: Double(abs(yBot - yTop))), seriesIndex: s, datumIndex: i, value: v))
-        acc = acc + v
+        let b = levels.bases[s][i]
+        let base = isFiniteNumber(b) ? b : 0.0
+        let yTop = scaleLinear(yDomain, plot.y + plot.h, plot.y, top)
+        let yBot = scaleLinear(yDomain, plot.y + plot.h, plot.y, base)
+        let own = values[s]
+        out.append(StackSegment(rect: PyreonChartRect(x: plot.x + band * fi + (band - bw) / 2.0, y: yTop < yBot ? yTop : yBot, w: bw, h: Double(abs(yBot - yTop))), seriesIndex: s, datumIndex: i, value: i < own.count ? own[i] : 0.0))
       }
+      fi = fi + 1.0
     }
     return out
   }
 
-public func layoutStackedBarsH(_ seriesValues: [[Double]], _ plot: PyreonChartRect, _ vDomain: Domain, _ gapRatio: Double) -> [StackSegment] {
+public func layoutStackLevelsH(_ levels: StackLevels, _ values: [[Double]], _ plot: PyreonChartRect, _ vDomain: Domain, _ gapRatio: Double) -> [StackSegment] {
     var out: [StackSegment] = []
-    if seriesValues.count == 0 {
-      return out
-    }
     var n = 0
-    for s in seriesValues {
-      if s.count > n {
-        n = s.count
+    for row in levels.tops {
+      if row.count > n {
+        n = row.count
       }
     }
     if n == 0 {
       return out
     }
     let ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
-    let band = plot.h / Double(n)
+    let band = plot.h / countOf(n)
     let bh = band * (1.0 - ratio)
+    var fi = 0.0
     for i in 0..<n {
-      var acc = 0.0
-      for s in 0..<seriesValues.count {
-        let v = (seriesValues[s][i] ?? 0.0)
-        if !(v > 0.0) {
+      for s in 0..<levels.tops.count {
+        let top = levels.tops[s][i]
+        if !isFiniteNumber(top) {
           continue
         }
-        let xEnd = scaleLinear(vDomain, plot.x, plot.x + plot.w, acc + v)
-        let xStart = scaleLinear(vDomain, plot.x, plot.x + plot.w, acc)
-        out.append(StackSegment(rect: PyreonChartRect(x: xStart < xEnd ? xStart : xEnd, y: plot.y + band * Double(i) + (band - bh) / 2.0, w: Double(abs(xEnd - xStart)), h: bh), seriesIndex: s, datumIndex: i, value: v))
-        acc = acc + v
+        let b = levels.bases[s][i]
+        let base = isFiniteNumber(b) ? b : 0.0
+        let xEnd = scaleLinear(vDomain, plot.x, plot.x + plot.w, top)
+        let xStart = scaleLinear(vDomain, plot.x, plot.x + plot.w, base)
+        let own = values[s]
+        out.append(StackSegment(rect: PyreonChartRect(x: xStart < xEnd ? xStart : xEnd, y: plot.y + band * fi + (band - bh) / 2.0, w: Double(abs(xEnd - xStart)), h: bh), seriesIndex: s, datumIndex: i, value: i < own.count ? own[i] : 0.0))
       }
+      fi = fi + 1.0
     }
     return out
   }
+
+public func countOf(_ n: Int) -> Double {
+    var f = 0.0
+    for i in 0..<n {
+      f = f + 1.0
+    }
+    return f
+  }
+
+public func layoutStackedBars(_ seriesValues: [[Double]], _ plot: PyreonChartRect, _ yDomain: Domain, _ gapRatio: Double) -> [StackSegment] { layoutStackLevels(stackLevels(seriesValues, [], [], []), seriesValues, plot, yDomain, gapRatio) }
+
+public func layoutStackedBarsH(_ seriesValues: [[Double]], _ plot: PyreonChartRect, _ vDomain: Domain, _ gapRatio: Double) -> [StackSegment] { layoutStackLevelsH(stackLevels(seriesValues, [], [], []), seriesValues, plot, vDomain, gapRatio) }
 
 public func layoutGroupedBarsH(_ seriesValues: [[Double]], _ plot: PyreonChartRect, _ vDomain: Domain, _ gapRatio: Double) -> [StackSegment] {
     var out: [StackSegment] = []
@@ -5840,32 +5973,6 @@ public func layoutGroupedBarsH(_ seriesValues: [[Double]], _ plot: PyreonChartRe
     return out
   }
 
-public func stackCumulative(_ seriesValues: [[Double]]) -> [[Double]] {
-    var out: [[Double]] = []
-    var n = 0
-    for s in seriesValues {
-      if s.count > n {
-        n = s.count
-      }
-    }
-    var acc: [Double] = []
-    for i in 0..<n {
-      acc.append(0.0)
-    }
-    for s in seriesValues {
-      var row: [Double] = []
-      for i in 0..<n {
-        let v = i < s.count ? s[i] : 0.0
-        if v > 0.0 {
-          acc[i] = acc[i] + v
-        }
-        row.append(acc[i])
-      }
-      out.append(row)
-    }
-    return out
-  }
-
 public func stackHasNegatives(_ seriesValues: [[Double]]) -> Bool {
     for s in seriesValues {
       for v in s {
@@ -5877,28 +5984,7 @@ public func stackHasNegatives(_ seriesValues: [[Double]]) -> Bool {
     return false
   }
 
-public func stackedExtent(_ seriesValues: [[Double]]) -> Domain {
-    var n = 0
-    for s in seriesValues {
-      if s.count > n {
-        n = s.count
-      }
-    }
-    var max = 0.0
-    for i in 0..<n {
-      var sum = 0.0
-      for s in seriesValues {
-        let v = (s[i] ?? 0.0)
-        if v > 0.0 {
-          sum = sum + v
-        }
-      }
-      if sum > max {
-        max = sum
-      }
-    }
-    return Domain(min: 0.0, max: max == 0.0 ? 1.0 : max)
-  }
+public func stackedExtent(_ seriesValues: [[Double]]) -> Domain { stackLevelsExtent(stackLevels(seriesValues, [], [], [])) }
 
 public func layoutGroupedBars(_ seriesValues: [[Double]], _ plot: PyreonChartRect, _ yDomain: Domain, _ gapRatio: Double) -> [StackSegment] {
     var out: [StackSegment] = []
@@ -7471,7 +7557,7 @@ public func deriveOver(_ series: [Series], _ zero: Bool, _ split: Double) -> Dom
 public func rawExtentOver(_ series: [Series], _ zero: Bool) -> Domain {
     let stacked = series.filter({ s in s.kind == "stacked" || s.kind == "stackedArea" })
     if stacked.count > 0 {
-      let e = stackedExtent(stacked.map({ s in s.values }))
+      let e = stackLevelsExtent(levelsOf(stacked))
       var others: [Double] = []
       for s in series {
         if s.kind != "stacked" && s.kind != "stackedArea" {
@@ -7483,7 +7569,8 @@ public func rawExtentOver(_ series: [Series], _ zero: Bool) -> Domain {
         }
       }
       let max = others.count > 0 ? Double(max(e.max, extent(others).max)) : e.max
-      return Domain(min: 0.0, max: max)
+      let min = others.count > 0 ? min(Double(e.min), min(Double(extent(others).min), Double(0.0))) : e.min
+      return Domain(min: min, max: max)
     }
     var span = ExtentSpan(seen: false, lo: 0.0, hi: 1.0, count: 0)
     var hasBars = false
@@ -7740,13 +7827,44 @@ public func inColumn(_ spec: ChartSpec, _ cols: [PyreonChartPt], _ k: Int, _ r: 
 
 public func bandOf(_ plot: PyreonChartRect, _ n: Int) -> Double { n == 0 ? 0.0 : plot.w / countToDouble(n) }
 
+public func minBarLength(_ r: PyreonChartRect, _ minLen: Double, _ up: Bool, _ horizontal: Bool, _ plot: PyreonChartRect) -> PyreonChartRect {
+    if minLen <= 0.0 || r.w < 0.0 || r.h < 0.0 {
+      return r
+    }
+    if !horizontal {
+      if r.h >= minLen {
+        return r
+      }
+      if up {
+        let y = max(plot.y, r.y + r.h - minLen)
+        return PyreonChartRect(x: r.x, y: y, w: r.w, h: r.y + r.h - y)
+      }
+      return PyreonChartRect(x: r.x, y: r.y, w: r.w, h: min(plot.y + plot.h, r.y + minLen) - r.y)
+    }
+    if r.w >= minLen {
+      return r
+    }
+    if up {
+      return PyreonChartRect(x: r.x, y: r.y, w: min(plot.x + plot.w, r.x + minLen) - r.x, h: r.h)
+    }
+    let x = max(plot.x, r.x + r.w - minLen)
+    return PyreonChartRect(x: x, y: r.y, w: r.x + r.w - x, h: r.h)
+  }
+
+public func barBackgroundRect(_ r: PyreonChartRect, _ plot: PyreonChartRect, _ horizontal: Bool) -> PyreonChartRect { horizontal ? PyreonChartRect(x: plot.x, y: r.y, w: plot.w, h: r.h) : PyreonChartRect(x: r.x, y: plot.y, w: r.w, h: plot.h) }
+
+public func barZero(_ dom: Domain) -> Double { dom.min > 0.0 ? dom.min : dom.max < 0.0 ? dom.max : 0.0 }
+
 public func barsLaid(_ spec: ChartSpec, _ k: Int, _ plot: PyreonChartRect, _ dom: Domain) -> [PyreonChartRect] {
     let s = spec.series[k]
     let rects = layoutBars(s.values, plot, dom, 0.25)
     let cols = barColumns(spec, bandOf(plot, rects.count))
+    let min = (s.barMinHeight ?? 0.0)
+    let zero = barZero(dom)
     var out: [PyreonChartRect] = []
     for i in 0..<rects.count {
-      out.append(inColumn(spec, cols, k, rects[i], i, rects.count, plot))
+      let v = i < s.values.count ? s.values[i] : 0.0
+      out.append(minBarLength(inColumn(spec, cols, k, rects[i], i, rects.count, plot), min, !(v < zero), false, plot))
     }
     return out
   }
@@ -7761,6 +7879,20 @@ public func indicesOf(_ spec: ChartSpec, _ kind: String) -> [Int] {
     return out
   }
 
+public func levelsOf(_ series: [Series]) -> StackLevels {
+    var values: [[Double]] = []
+    var groups: [String] = []
+    var strategies: [String] = []
+    var descs: [Bool] = []
+    for s in series {
+      values.append(s.values)
+      groups.append((s.barStack ?? ""))
+      strategies.append((s.stackStrategy ?? ""))
+      descs.append((s.stackDesc ?? false))
+    }
+    return stackLevels(values, groups, strategies, descs)
+  }
+
 public func setLaid(_ spec: ChartSpec, _ kind: String, _ plot: PyreonChartRect, _ dom: Domain) -> [StackSegment] {
     let idx = indicesOf(spec, kind)
     let values = idx.map({ k in spec.series[k].values })
@@ -7771,10 +7903,12 @@ public func setLaid(_ spec: ChartSpec, _ kind: String, _ plot: PyreonChartRect, 
       }
     }
     let cols = barColumns(spec, bandOf(plot, n))
-    let segs = kind == "stacked" ? layoutStackedBars(values, plot, dom, 0.25) : layoutGroupedBars(values, plot, dom, 0.25)
+    let segs = kind == "stacked" ? layoutStackLevels(levelsOf(idx.map({ k in spec.series[k] })), values, plot, dom, 0.25) : layoutGroupedBars(values, plot, dom, 0.25)
     var out: [StackSegment] = []
     for seg in segs {
-      out.append(StackSegment(rect: inColumn(spec, cols, idx[seg.seriesIndex], seg.rect, seg.datumIndex, n, plot), seriesIndex: seg.seriesIndex, datumIndex: seg.datumIndex, value: seg.value))
+      let sk = spec.series[idx[seg.seriesIndex]]
+      let r = minBarLength(inColumn(spec, cols, idx[seg.seriesIndex], seg.rect, seg.datumIndex, n, plot), (sk.barMinHeight ?? 0.0), !(seg.value < 0.0), false, plot)
+      out.append(StackSegment(rect: r, seriesIndex: seg.seriesIndex, datumIndex: seg.datumIndex, value: seg.value))
     }
     return out
   }
@@ -7797,9 +7931,12 @@ public func barsLaidH(_ spec: ChartSpec, _ k: Int, _ plot: PyreonChartRect, _ do
     let rects = layoutBarsH(s.values, plot, dom, 0.25)
     let n = rects.count
     let cols = barColumns(spec, n == 0 ? 0.0 : plot.h / countToDouble(n))
+    let min = (s.barMinHeight ?? 0.0)
+    let zero = barZero(dom)
     var out: [PyreonChartRect] = []
     for i in 0..<rects.count {
-      out.append(inRow(spec, cols, k, rects[i], i, n, plot))
+      let v = i < s.values.count ? s.values[i] : 0.0
+      out.append(minBarLength(inRow(spec, cols, k, rects[i], i, n, plot), min, !(v < zero), true, plot))
     }
     return out
   }
@@ -7814,10 +7951,12 @@ public func setLaidH(_ spec: ChartSpec, _ kind: String, _ plot: PyreonChartRect,
       }
     }
     let cols = barColumns(spec, n == 0 ? 0.0 : plot.h / countToDouble(n))
-    let segs = kind == "stacked" ? layoutStackedBarsH(values, plot, dom, 0.25) : layoutGroupedBarsH(values, plot, dom, 0.25)
+    let segs = kind == "stacked" ? layoutStackLevelsH(levelsOf(idx.map({ k in spec.series[k] })), values, plot, dom, 0.25) : layoutGroupedBarsH(values, plot, dom, 0.25)
     var out: [StackSegment] = []
     for seg in segs {
-      out.append(StackSegment(rect: inRow(spec, cols, idx[seg.seriesIndex], seg.rect, seg.datumIndex, n, plot), seriesIndex: seg.seriesIndex, datumIndex: seg.datumIndex, value: seg.value))
+      let sk = spec.series[idx[seg.seriesIndex]]
+      let r = minBarLength(inRow(spec, cols, idx[seg.seriesIndex], seg.rect, seg.datumIndex, n, plot), (sk.barMinHeight ?? 0.0), !(seg.value < 0.0), true, plot)
+      out.append(StackSegment(rect: r, seriesIndex: seg.seriesIndex, datumIndex: seg.datumIndex, value: seg.value))
     }
     return out
   }
@@ -8093,6 +8232,12 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       let stackSegs = spec.horizontal == true ? setLaidH(spec, "stacked", plot, yDomain) : setLaid(spec, "stacked", plot, yDomain)
       let fmtS = (spec.yFormat ?? plain)
       for seg in stackSegs {
+        let bgS = (stackedSeries[seg.seriesIndex].barBackground ?? "")
+        if bgS != "" && seg.rect.w >= 0.0 {
+          out.append(rectCmd(barBackgroundRect(seg.rect, plot, spec.horizontal == true), bgS, nil, nil, nil))
+        }
+      }
+      for seg in stackSegs {
         let rS = growRect(seg.rect, yDomain)
         let gS = seriesGradient(stackedSeries[seg.seriesIndex].gradient, plot)
         out.append(rectCmd(rS, stateFill(spec, stackedSeries[seg.seriesIndex], seg.datumIndex, stackedSeries[seg.seriesIndex].color), stackedSeries[seg.seriesIndex].corners, gS.stops.count == 0 ? nil : gS, stackedSeries[seg.seriesIndex].pattern))
@@ -8114,6 +8259,12 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       let groupSegs = spec.horizontal == true ? setLaidH(spec, "grouped", plot, yDomain) : setLaid(spec, "grouped", plot, yDomain)
       let fmtG = (spec.yFormat ?? plain)
       for seg in groupSegs {
+        let bgG = (groupedSeries[seg.seriesIndex].barBackground ?? "")
+        if bgG != "" && seg.rect.w >= 0.0 {
+          out.append(rectCmd(barBackgroundRect(seg.rect, plot, spec.horizontal == true), bgG, nil, nil, nil))
+        }
+      }
+      for seg in groupSegs {
         let rG = growRect(seg.rect, yDomain)
         let gG = seriesGradient(groupedSeries[seg.seriesIndex].gradient, plot)
         out.append(rectCmd(rG, stateFill(spec, groupedSeries[seg.seriesIndex], seg.datumIndex, groupedSeries[seg.seriesIndex].color), groupedSeries[seg.seriesIndex].corners, gG.stops.count == 0 ? nil : gG, groupedSeries[seg.seriesIndex].pattern))
@@ -8132,17 +8283,20 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
     }
     let areaStack = spec.horizontal == true ? [] : spec.series.filter({ s in s.kind == "stackedArea" })
     if areaStack.count > 0 {
-      let tops = stackCumulative(areaStack.map({ s in s.values }))
+      let levels = levelsOf(areaStack)
+      let origin = yDomain.min > 0.0 ? yDomain.min : yDomain.max < 0.0 ? yDomain.max : 0.0
       for k in 0..<areaStack.count {
         let sA = areaStack[k]
-        let top = tops[k]
-        let below = k == 0 ? [] : tops[k - 1]
+        let top = levels.tops[k]
+        let base = levels.bases[k]
         var upper: [PyreonChartPt] = []
         var lower: [PyreonChartPt] = []
         for i in 0..<top.count {
           let xAt = edgeCategoryPoints(spec) && top.count > 1 ? plot.x + (plot.w / countToDouble(top.count - 1)) * countToDouble(i) : plot.x + (plot.w / max(1.0, countToDouble(top.count))) * (countToDouble(i) + 0.5)
-          upper.append(PyreonChartPt(x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, top[i])))
-          lower.append(PyreonChartPt(x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, k == 0 ? yDomain.min : below[i])))
+          let lo = isFiniteNumber(base[i]) ? base[i] : origin
+          let hiV = isFiniteNumber(top[i]) ? top[i] : k > 0 && isFiniteNumber(levels.tops[k - 1][i]) ? levels.tops[k - 1][i] : lo
+          upper.append(PyreonChartPt(x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, hiV)))
+          lower.append(PyreonChartPt(x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, isFiniteNumber(top[i]) ? lo : hiV)))
         }
         if upper.count > 1 {
           var poly: [PyreonChartPt] = []
@@ -8193,6 +8347,14 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           continue
         }
         let rects = barsLaidH(spec, sIdx, plot, yDomain)
+        let bgH = (s.barBackground ?? "")
+        if bgH != "" {
+          for r in rects {
+            if r.w >= 0.0 {
+              out.append(rectCmd(barBackgroundRect(r, plot, true), bgH, nil, nil, nil))
+            }
+          }
+        }
         for ri in 0..<rects.count {
           let r = rects[ri]
           let grown = growRectH(r)
@@ -8229,6 +8391,14 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       }
       if s.kind == "bars" {
         let rects = barsLaid(spec, sIdx, plot, sDomain)
+        let bgV = (s.barBackground ?? "")
+        if bgV != "" {
+          for r in rects {
+            if r.w >= 0.0 {
+              out.append(rectCmd(barBackgroundRect(r, plot, false), bgV, nil, nil, nil))
+            }
+          }
+        }
         for ri in 0..<rects.count {
           let r = rects[ri]
           let grown = growRect(r, sDomain)

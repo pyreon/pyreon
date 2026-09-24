@@ -2589,6 +2589,40 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "StackLevels",
+    "fields": [
+      {
+        "name": "bases",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "array",
+            "element": {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            }
+          }
+        }
+      },
+      {
+        "name": "tops",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "array",
+            "element": {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            }
+          }
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "WaterfallStep",
     "fields": [
       {
@@ -4783,6 +4817,64 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       },
       {
         "name": "barStack",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "stackStrategy",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "stackDesc",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barMinHeight",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barBackground",
         "type": {
           "kind": "union",
           "branches": [
@@ -15692,6 +15784,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "Slice",
   "SliceRange",
   "SliderBox",
+  "StackLevels",
   "StackSegment",
   "SunburstArc",
   "SunburstFrame",

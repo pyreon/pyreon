@@ -12,7 +12,7 @@ import ts from 'typescript'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { CHART_CAPABILITIES } from './capability-inventory'
-import { ECHARTS_COMPOSITE_TOP_KEYS, ECHARTS_CONTRACT_VERSION, ECHARTS_INERT_BY_TYPE, ECHARTS_INERT_KEYS, ECHARTS_SERIES_GAPS, ECHARTS_TOP_GAPS } from './echarts-contract'
+import { ECHARTS_COMPOSITE_TOP_KEYS, ECHARTS_CONTRACT_VERSION, ECHARTS_INERT_BY_TYPE, ECHARTS_INERT_KEYS, ECHARTS_NOT_HONOURED_BY_TYPE, ECHARTS_SERIES_GAPS, ECHARTS_TOP_GAPS } from './echarts-contract'
 import { KNOWN_SERIES, KNOWN_TOP } from './option'
 import { FAMILY_KNOWN_TOP, FAMILY_TYPES, KNOWN_BY_FAMILY } from './option-family'
 
@@ -132,7 +132,7 @@ describe('ECharts option-key totality', () => {
       const keys = contract.byType.get(type)
       for (const k of Object.keys(gaps)) {
         if (keys === undefined || !keys.has(k)) stale.push(`${type}.${k} (not an ECharts key)`)
-        else if (knownFor(type).has(k) && isRead(k)) stale.push(`${type}.${k} (now read — remove the gap)`)
+        else if (knownFor(type).has(k) && isRead(k) && !(ECHARTS_NOT_HONOURED_BY_TYPE[type] ?? []).includes(k)) stale.push(`${type}.${k} (now read — remove the gap)`)
       }
     }
     expect(stale).toEqual([])

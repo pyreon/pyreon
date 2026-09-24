@@ -12,9 +12,9 @@ import {
   layoutStackedBarsH,
   layoutWaterfall,
   normalizeStack,
-  stackCumulative,
   stackHasNegatives,
   stackedExtent,
+  stackLevels,
   waterfallExtent,
 } from './stack'
 import type { Domain, Rect } from './types'
@@ -46,21 +46,26 @@ describe('stacked bars — the empty and ragged inputs the guards exist for', ()
     expect(segs.every((s) => s.value > 0)).toBe(true)
   })
 
-  it('skips a negative and a gap, and keeps the positives around them stacking', () => {
+  it('stacks a negative DOWN from zero (ECharts samesign), skips a gap, and keeps the positives stacking', () => {
     const segs = layoutStackedBars([[5, 5], [-3, Number.NaN], [2, 2]], PLOT, D, 0)
     expect(segs.map((s) => [s.seriesIndex, s.datumIndex, s.value])).toEqual([
       [0, 0, 5],
+      [1, 0, -3],
       [2, 0, 2],
       [0, 1, 5],
       [2, 1, 2],
     ])
-    // Series 2 sits ON TOP of series 0 (5), not at the floor — the skipped
-    // entries contributed nothing to the running total.
+    // Series 2 sits ON TOP of series 0 (5), not on the negative segment or
+    // the floor — a positive stacks on the positive total, and a gap adds nothing.
     const top = segs.find((s) => s.seriesIndex === 2 && s.datumIndex === 0)!
     expect(top.rect.y + top.rect.h).toBeCloseTo(layoutStackedBars([[5]], PLOT, D, 0)[0]!.rect.y, 9)
+    // The negative hangs from zero, not from the positive total.
+    const neg = segs.find((s) => s.seriesIndex === 1 && s.datumIndex === 0)!
+    const zeroY = PLOT.y + PLOT.h - ((0 - D.min) / (D.max - D.min)) * PLOT.h
+    expect(neg.rect.y).toBeCloseTo(zeroY, 9)
     const h = layoutStackedBarsH([[5], [-3], [2]], PLOT, D, 0)
-    expect(h.map((s) => s.seriesIndex)).toEqual([0, 2])
-    expect(h[1]!.rect.x).toBeCloseTo(PLOT.x + (5 / 10) * PLOT.w, 9)
+    expect(h.map((s) => s.seriesIndex)).toEqual([0, 1, 2])
+    expect(h[2]!.rect.x).toBeCloseTo(PLOT.x + ((5 - D.min) / (D.max - D.min)) * PLOT.w, 9)
   })
 
   it('clamps the gap ratio to 0..0.9 at both ends, on every layout', () => {
@@ -134,19 +139,25 @@ describe('grouped bars, horizontal — the flipped frame', () => {
 })
 
 describe('cumulative tops, extents and shares over RAGGED input', () => {
-  it('stackCumulative reads a missing cell as zero and carries the running total', () => {
-    expect(stackCumulative([[1, 2, 3], [10]])).toEqual([
-      [1, 2, 3],
-      [11, 2, 3],
-    ])
-    // A negative contributes nothing, matching the bar layout.
-    expect(stackCumulative([[5], [-5]])).toEqual([[5], [5]])
+  it('stackLevels reads a missing cell as a gap, carries each group, and runs a seriesDesc group top-down', () => {
+    const r = stackLevels([[1, 2, 3], [10]], [], [], [])
+    expect(r.tops[0]).toEqual([1, 2, 3])
+    expect(r.tops[1]![0]).toBe(11)
+    expect(Number.isNaN(r.tops[1]![1]!)).toBe(true)
+    // Two groups stack apart; a seriesDesc group puts its LAST series at the bottom.
+    const g = stackLevels([[1], [2], [4]], ['a', 'a', 'b'], [], [true, false, false])
+    expect(g.tops.map((row) => row[0])).toEqual([3, 2, 4])
+    // 'all' ignores sign; 'positive' only stacks on a positive total.
+    expect(stackLevels([[5], [-3]], [], ['all', 'all'], []).tops[1]).toEqual([2])
+    expect(stackLevels([[-5], [3]], [], ['positive', 'positive'], []).tops[1]).toEqual([3])
   })
 
-  it('stackedExtent totals the POSITIVES per column over a ragged set, and floors an empty stack at 1', () => {
+  it('stackedExtent spans the positive and negative TOTALS per column over a ragged set, and floors an empty stack at 1', () => {
     expect(stackedExtent([[1, 2], [3]])).toEqual({ min: 0, max: 4 })
     expect(stackedExtent([[1, 2], [3, Number.NaN]])).toEqual({ min: 0, max: 4 })
-    expect(stackedExtent([[-1, -2]])).toEqual({ min: 0, max: 1 })
+    // All-negative: the stack hangs from zero down to -3.
+    expect(stackedExtent([[-1, -2], [-2]])).toEqual({ min: -3, max: 0 })
+    expect(stackedExtent([[4, -1], [-2, 3]])).toEqual({ min: -2, max: 4 })
     expect(stackedExtent([])).toEqual({ min: 0, max: 1 })
   })
 
