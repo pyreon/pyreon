@@ -20,8 +20,9 @@ import { ALL_VALIDATORS } from '../emit/validator'
 import { generate } from '../core/generate'
 import { noteSeverity, type IrNote, type IrNoteSeverity, type Reach } from '../core/ir'
 import { OUTPUT_MANIFEST, orphanedPaths } from '../core/output-manifest'
-import { diffSurface, type ApiSurface, type SurfaceChange } from '../core/surface'
+import { diffCommittedSurface, type ApiSurface, type SurfaceChange } from '../core/surface'
 import { resolveTransform, verifyNative, worstVerdict } from '../verify/lower'
+import { closest } from '../core/suggest'
 import { renderReport } from './report'
 
 export interface Argv {
@@ -274,34 +275,6 @@ export function parseArgv(args: readonly string[]): Argv {
 function hint(input: string, candidates: readonly string[]): string {
   const best = closest(input, candidates)
   return best ? ` Did you mean \`${best}\`?` : ''
-}
-
-/** The candidate within edit distance 2 (or a prefix match), if any. */
-export function closest(input: string, candidates: readonly string[]): string | undefined {
-  let best: string | undefined
-  let bestScore = Number.POSITIVE_INFINITY
-  for (const c of candidates) {
-    const d = c.startsWith(input) && input.length >= 3 ? 1 : distance(input, c)
-    if (d < bestScore) {
-      bestScore = d
-      best = c
-    }
-  }
-  return bestScore <= Math.max(2, Math.floor(input.length / 4)) ? best : undefined
-}
-
-function distance(a: string, b: string): number {
-  const row = Array.from({ length: b.length + 1 }, (_, i) => i)
-  for (let i = 1; i <= a.length; i++) {
-    let prev = row[0] as number
-    row[0] = i
-    for (let j = 1; j <= b.length; j++) {
-      const tmp = row[j] as number
-      row[j] = Math.min((row[j] as number) + 1, (row[j - 1] as number) + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1))
-      prev = tmp
-    }
-  }
-  return row[b.length] as number
 }
 
 export interface Fs {
@@ -650,24 +623,8 @@ function dirOf(path: string): string {
   return i <= 0 ? '.' : path.slice(0, i)
 }
 
-/**
- * The committed surface from the last run, diffed against this one.
- *
- * A MISSING baseline returns no changes rather than reporting every operation
- * as added: the first run has nothing to compare against, and a wall of
- * "additive" on day one teaches people to skim the section. An UNREADABLE or
- * wrong-version baseline is treated the same way and says so — a diff computed
- * against a shape this code does not understand is worse than no diff.
- */
+/** The committed surface from the last run, diffed against this one. */
 function compareSurface(fs: Fs, output: string, now: ApiSurface): SurfaceChange[] {
   const path = fs.join(output, 'api-surface.json')
-  if (!fs.exists(path)) return []
-  let previous: ApiSurface
-  try {
-    previous = JSON.parse(fs.read(path)) as ApiSurface
-  } catch {
-    return []
-  }
-  if (previous?.version !== now.version) return []
-  return diffSurface(previous, now)
+  return diffCommittedSurface(fs.exists(path) ? fs.read(path) : undefined, now)
 }
