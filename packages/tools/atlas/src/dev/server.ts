@@ -202,7 +202,15 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
     // resolve and the dev overlay covers the WHOLE workbench, not just that
     // component's card (#2744).
     ...(alias.length > 0 ? { resolve: { alias: [...alias] } } : {}),
-    server: { port: options.port ?? 5210, strictPort: true },
+    // An explicit port is a requirement; the default is a preference. Failing
+    // because 5210 is taken — by another workbench, say — made a second
+    // `atlas dev` refuse to start with nothing else wrong.
+    server: { port: options.port ?? 5210, strictPort: options.port !== undefined },
+    // Its own dependency cache. Sharing the project's `node_modules/.vite`
+    // made the workbench and the project's own dev server invalidate each
+    // other on every start ("Re-optimizing dependencies because vite config
+    // has changed"), a full re-optimize for both.
+    cacheDir: resolve(root, 'node_modules', '.cache', 'atlas-vite'),
     // The workbench entry is VIRTUAL, so Vite must not crawl the project's own
     // `index.html` for dependencies — that file belongs to the consuming app
     // (it may not even exist), and scanning it pre-bundles the wrong graph and
@@ -285,8 +293,15 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
             if (request.method !== 'GET' || url.includes('.') || url.startsWith('/@')) {
               return next()
             }
-            response.setHeader('Content-Type', 'text/html')
-            response.end(await inner.transformIndexHtml(url, html))
+            try {
+              const page = await inner.transformIndexHtml(url, html)
+              response.setHeader('Content-Type', 'text/html')
+              response.end(page)
+            } catch (error) {
+              // Rejected inside middleware, this left the request hanging.
+              response.setHeader('Content-Type', 'text/plain')
+              response.end(`atlas dev: ${error instanceof Error ? error.message : String(error)}`)
+            }
           })
         },
       },
@@ -294,9 +309,9 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
   })
 
   await server.listen()
-  const port = options.port ?? 5210
+  const bound = (server as { resolvedUrls?: { local?: string[] } }).resolvedUrls?.local?.[0]
   return {
-    url: `http://localhost:${port}/`,
+    url: bound ?? `http://localhost:${options.port ?? 5210}/`,
     components: entries.length,
     close: () => server.close(),
   }
