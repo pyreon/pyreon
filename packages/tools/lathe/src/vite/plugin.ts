@@ -78,6 +78,7 @@ export function runPass(
   options: LathePluginOptions,
   root: string,
   mode: 'write' | 'check',
+  only?: string,
 ): LathePassResult {
   const abs = (p: string): string => (isAbsolute(p) ? p : resolve(root, p))
   const written: string[] = []
@@ -86,6 +87,9 @@ export function runPass(
 
   for (const project of resolveProjects(options)) {
     const input = abs(project.input)
+    // `only`: a spec path. A change to one project's spec regenerates THAT
+    // project, not every project the config declares.
+    if (only !== undefined && input !== only) continue
     specs.push(input)
     // Read directly and treat a miss as absent, rather than `existsSync` then
     // read. The exists-check is redundant — a missing file is just a read that
@@ -110,6 +114,11 @@ export function runPass(
     }
   }
   return { written, stale, specs }
+}
+
+/** Absolute spec path of every project, in config order. No generation. */
+export function specPaths(options: LathePluginOptions, root: string): string[] {
+  return resolveProjects(options).map((p) => (isAbsolute(p.input) ? p.input : resolve(root, p.input)))
 }
 
 /**
@@ -148,12 +157,16 @@ export function lathe(options: LathePluginOptions): LathePluginHost {
     },
     configureServer(server) {
       if (options.watch === false) return
-      const { specs } = runPass(options, root, 'check')
+      // The spec paths come from the CONFIG, not from a generation pass.
+      // `buildStart` has just generated everything; running a full `check`
+      // pass here only to learn these paths doubled the work of every dev
+      // start (a full parse + emit of each spec, discarded).
+      const specs = specPaths(options, root)
       for (const spec of specs) server.watcher.add(spec)
       server.watcher.on('change', (path) => {
         if (!specs.includes(path)) return
         try {
-          const { written } = runPass(options, root, 'write')
+          const { written } = runPass(options, root, 'write', path)
           // eslint-disable-next-line no-console
           console.log(`[Pyreon] lathe: ${path} changed, regenerated ${written.length} file(s)`)
         } catch (err) {

@@ -8,6 +8,7 @@
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import * as gen from '../core/generate'
 import { lathe, runPass } from '../vite/plugin'
 
 const SPEC = `
@@ -113,5 +114,34 @@ describe('lathe vite plugin', () => {
     plugin.configResolved?.({ root, command: 'build' })
     expect(() => plugin.buildStart?.()).not.toThrow()
     expect(readFileSync(join(root, 'src/gen/schemas.ts'), 'utf8')).toContain('export const Book')
+  })
+
+  it('the dev server generates nothing on start, and one project per spec change', () => {
+    // `buildStart` has already generated. A second full pass in
+    // `configureServer` only to learn the spec paths doubled every dev start,
+    // and a change to one spec used to regenerate every project.
+    const { root } = project()
+    writeFileSync(join(root, 'second.yaml'), SPEC)
+    const plugin = lathe({
+      plugins: ['schemas'],
+      projects: [
+        { name: 'a', input: './openapi.yaml', output: './src/a' },
+        { name: 'b', input: './second.yaml', output: './src/b' },
+      ],
+    })
+    plugin.configResolved?.({ root, command: 'serve' })
+    const spy = vi.spyOn(gen, 'generate')
+    const watched: string[] = []
+    let onChange: (path: string) => void = () => {}
+    plugin.configureServer?.({
+      watcher: { add: (p) => watched.push(p), on: (_e, cb) => (onChange = cb) },
+    })
+    expect(spy).not.toHaveBeenCalled()
+    expect(watched).toEqual([join(root, 'openapi.yaml'), join(root, 'second.yaml')])
+    onChange(join(root, 'second.yaml'))
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(readFileSync(join(root, 'src/b/schemas.ts'), 'utf8')).toContain('export const Book')
+    expect(() => readFileSync(join(root, 'src/a/schemas.ts'), 'utf8')).toThrow()
+    spy.mockRestore()
   })
 })
