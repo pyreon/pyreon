@@ -8,6 +8,7 @@
  * think to write the shapes that break you.
  */
 import { resolveConfig } from '../core/config'
+import { schemaSource } from './helpers/write-tree'
 import { generate } from '../core/generate'
 
 function spec(components: string, extra = ''): string {
@@ -50,7 +51,7 @@ describe('shapes only a real spec produces', () => {
       properties: { a: { type: string } }`)
     // `Target` collapses to the member itself, so the alias is `= Only` and
     // nothing emits a one-member union anywhere.
-    expect(file(src, 'schemas.ts')).toContain('export const Target = Only')
+    expect(schemaSource(generate(src, web).files)).toContain('export const Target = Only')
     for (const f of generate(src, web).files) expect(f.contents).not.toContain('s.union([Only])')
   })
 
@@ -71,7 +72,7 @@ describe('shapes only a real spec produces', () => {
       properties: { type: { type: string } }`)
     const r = generate(src, web)
     // The union is the MODEL's shape, so it lives in `schemas.ts`.
-    const out = r.files.find((f) => f.path === 'schemas.ts')?.contents ?? ''
+    const out = schemaSource(r.files)
     expect(out).not.toContain('s.discriminatedUnion')
     expect(out).toContain('s.union(')
     // Reported, not silently downgraded.
@@ -93,7 +94,7 @@ describe('shapes only a real spec produces', () => {
       type: object
       required: [kind]
       properties: { kind: { type: string } }`)
-    expect(file(src, 'schemas.ts')).toContain("s.discriminatedUnion('kind'")
+    expect(schemaSource(generate(src, web).files)).toContain("s.discriminatedUnion('kind'")
   })
 
   it('imports a model a PARAMETER references', () => {

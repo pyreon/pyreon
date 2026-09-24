@@ -69,7 +69,7 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
   const has = (p: string): boolean => config.plugins.includes(p as never)
 
   if (has('types')) push(emitTypes(doc))
-  if (has('schemas')) push(emitSchemas(doc, { native: false, validator: config.validator }))
+  if (has('schemas')) for (const f of emitSchemas(doc, { native: false, validator: config.validator })) push(f)
   if (has('client')) {
     push(emitClient(doc, { native, baseUrl: config.baseUrl, client: config.client }))
     for (const f of emitWebEndpoints(doc, config.validator)) push(f)

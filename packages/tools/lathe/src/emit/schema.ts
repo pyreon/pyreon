@@ -7,7 +7,7 @@
  * declared type that the runtime schema does not actually enforce.
  */
 
-import { deferredTargets, topoSortModels } from '../core/graph'
+import { deferredTargets, modelDependencies, modelIndex, stronglyConnected, topoSortModels } from '../core/graph'
 import type { IrDocument, IrField, IrType } from '../core/ir'
 import { propKey, typeIdent } from '../core/naming'
 import { dialectOf, type ValidatorName } from './validator'
@@ -105,6 +105,19 @@ function fieldTs(field: IrField, depth: number, native = false): string {
 }
 
 /**
+ * The pure-call annotation on every emitted builder call.
+ *
+ * `s.object({ … })` and `api.endpoint(…)` are module-level CALLS, and a
+ * bundler keeps a call it cannot prove side-effect-free, so every schema and
+ * every endpoint in a module a hook reaches was retained. The annotation has
+ * to be on EVERY call, arguments included: on the outer declaration alone the
+ * bundler still had to evaluate the argument calls (`s.string().uuid()`), which
+ * is why an earlier measurement of the outer-only form found it worth 2% and
+ * concluded the annotation was useless.
+ */
+export const PURE = '/* @__PURE__ */ '
+
+/**
  * Render an IR type as an `s.*` expression.
  *
  * `native` narrows the output to the subset PMTC lowers. The difference is not
@@ -115,10 +128,13 @@ function fieldTs(field: IrField, depth: number, native = false): string {
 export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): string {
   const dialect = dialectOf(opts.validator ?? 'pyreon')
   const b = dialect.binding
+  // Every builder CALL is annotated pure (web only -- the native recognizers
+  // read these files, and they are not bundled). See `PURE` for why.
+  const c = (ctor: string): string => `${opts.native ? '' : PURE}${b}.${ctor}`
   switch (type.kind) {
     case 'string': {
-      if (type.enum && !opts.native) return `${b}.enum([${type.enum.map((v) => q(v)).join(', ')}])`
-      if (type.enum && opts.native) return `${b}.string()`
+      if (type.enum && !opts.native) return `${c('enum')}([${type.enum.map((v) => q(v)).join(', ')}])`
+      if (type.enum && opts.native) return `${c('string')}()`
       switch (type.format) {
         // The `.email()` / `.url()` / `.uuid()` chain is DEPRECATED in zod 4 in
         // favour of top-level `z.email()`, and emitted anyway: the chained form
@@ -127,26 +143,26 @@ export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): st
         // this output compiles against, and the failure would land in the
         // consumer's repo rather than here.
         case 'email':
-          return `${b}.string().email()`
+          return `${c('string')}().email()`
         case 'uri':
-          return `${b}.string().url()`
+          return `${c('string')}().url()`
         case 'uuid':
-          return `${b}.string().uuid()`
+          return `${c('string')}().uuid()`
         // `date` / `date-time` stay strings deliberately: a date schema does
         // not lower, and parsing to a Date on web and a String on native is a
         // divergence no consumer can see coming.
         default:
-          return `${b}.string()`
+          return `${c('string')}()`
       }
     }
     case 'number':
-      return type.integer ? `${b}.number().int()` : `${b}.number()`
+      return type.integer ? `${c('number')}().int()` : `${c('number')}()`
     case 'boolean':
-      return `${b}.boolean()`
+      return `${c('boolean')}()`
     case 'null':
-      return opts.native ? `${b}.string()` : `${b}.null()`
+      return opts.native ? `${c('string')}()` : `${c('null')}()`
     case 'unknown':
-      return opts.native ? `${b}.string()` : `${b}.unknown()`
+      return opts.native ? `${c('string')}()` : `${c('unknown')}()`
     case 'ref': {
       // On the native path, INLINE the target where the dialect says nested
       // objects lower: PMTC drops a field that NAMES another schema, and an
@@ -165,33 +181,46 @@ export function schemaExpr(type: IrType, opts: SchemaExprOptions, depth = 0): st
       // A back edge closes a `$ref` cycle. `const` is not hoisted, so naming
       // the target directly here is a TDZ ReferenceError at import; `lazy`
       // defers the read to first use, which is exactly what a cycle needs.
-      return opts.defer?.has(type.name) === true ? `${b}.lazy(() => ${type.name})` : type.name
+      return opts.defer?.has(type.name) === true ? `${c('lazy')}(() => ${type.name})` : type.name
     }
     case 'array':
-      return `${b}.array(${schemaExpr(type.items, opts, depth + 1)})`
+      return `${c('array')}(${schemaExpr(type.items, opts, depth + 1)})`
     case 'union': {
-      if (opts.native) return `${b}.string()`
-      const inner = type.options.map((o) => schemaExpr(o, opts, depth + 1)).join(', ')
-      return type.discriminator
-        ? `${b}.discriminatedUnion(${q(type.discriminator)}, [${inner}])`
-        : `${b}.union([${inner}])`
+      if (opts.native) return `${c('string')}()`
+      const members = type.options.map((o) => schemaExpr(o, opts, depth + 1))
+      const inner = members.join(', ')
+      if (!type.discriminator) return `${c('union')}([${inner}])`
+      // A member that NAMES a model is typed as that model's `Schema<X>` (see
+      // `emitSchemas`), which a discriminated union's signature rejects -- it
+      // needs the object-schema type to read the discriminant's values. At
+      // runtime the const IS an object schema, so the member is cast back to
+      // one and the call's result is cast to the union of the members' types,
+      // which is what it validates. A DEFERRED member (`lazy`, closing a
+      // cycle) is not an object schema at runtime and cannot be dispatched on
+      // eagerly, so that union stays a plain one.
+      const named = type.options.map((o, i) => o.kind === 'ref' && members[i] === o.name)
+      if (!named.some(Boolean)) return `${c('discriminatedUnion')}(${q(type.discriminator)}, [${inner}])`
+      if (type.options.some((o, i) => o.kind === 'ref' && !named[i])) return `${c('union')}([${inner}])`
+      const cast = members.map((m, i) => (named[i] ? `(${m} as unknown as ${dialect.objectSchemaRef})` : m))
+      return `(${c('discriminatedUnion')}(${q(type.discriminator)}, [${cast.join(', ')}]) as unknown as ${dialect.schemaTypeRef(tsType(type, depth, dialect.enumWidensToString))})`
     }
     case 'object': {
       if (type.fields.length === 0) {
         return type.additional && !opts.native
-          ? `${b}.record(${b}.string(), ${schemaExpr(type.additional, opts, depth + 1)})`
-          : `${b}.object({})`
+          ? `${c('record')}(${c('string')}(), ${schemaExpr(type.additional, opts, depth + 1)})`
+          : `${c('object')}({})`
       }
       const pad = '  '.repeat(depth + 1)
       const close = '  '.repeat(depth)
       const body = type.fields.map((f) => `${pad}${propKey(f.name)}: ${fieldSchema(f, opts, depth + 1)},`).join('\n')
-      return `${b}.object({\n${body}\n${close}})`
+      return `${c('object')}({\n${body}\n${close}})`
     }
   }
 }
 
 function fieldSchema(field: IrField, opts: SchemaExprOptions, depth: number): string {
-  let expr = schemaExpr(field.type, opts, depth)
+  const base = schemaExpr(field.type, opts, depth)
+  let expr = base
   // Constraints only attach to the kinds that carry them.
   if (field.type.kind === 'string') {
     if (typeof field.min === 'number') expr += `.min(${field.min})`
@@ -203,6 +232,12 @@ function fieldSchema(field: IrField, opts: SchemaExprOptions, depth: number): st
   }
   if (field.nullable) expr += '.nullable()'
   if (!field.required) expr += '.optional()'
+  // A chain on a bare model NAME (`Author.optional()`) is a method call the
+  // bundler cannot prove pure, and it sits inside the enclosing
+  // `s.object({ … })` arguments -- so without its own annotation it pinned the
+  // whole enclosing model into every bundle that reached its module. An
+  // expression already starting with a builder call carries the annotation.
+  if (!opts.native && expr !== base && !expr.startsWith(PURE)) expr = `${PURE}${expr}`
   return expr
 }
 
@@ -303,36 +338,173 @@ function portableRegex(pattern: string): boolean {
 export function emitSchemas(
   doc: IrDocument,
   opts: { native: boolean; validator?: ValidatorName | undefined },
-): SourceFile {
-  const f = new SourceFile(SCHEMA_FILE)
-  if (doc.models.length === 0) return f
+): SourceFile[] {
+  if (doc.models.length === 0) return []
   const dialect = dialectOf(opts.validator ?? 'pyreon')
-  f.import(dialect.module, dialect.binding)
-  if (dialect.schemaTypeImport) {
-    f.importType(dialect.schemaTypeImport.module, dialect.schemaTypeImport.name)
+  const { modules, moduleOf } = schemaModules(doc)
+  const { backEdges } = topoSortModels(doc)
+  const byName = modelIndex(doc)
+  const files: SourceFile[] = []
+
+  for (const mod of modules) {
+    const f = new SourceFile(mod.path)
+    f.import(dialect.module, dialect.binding)
+    if (dialect.schemaTypeImport) {
+      f.importType(dialect.schemaTypeImport.module, dialect.schemaTypeImport.name)
+    }
+    const needsObjectType = { value: false }
+    // A model named by this module but declared in ANOTHER one is imported
+    // from there -- and only from there, so importing one model reaches only
+    // the models it actually references.
+    for (const member of mod.members) {
+      const refs = new Set<string>()
+      const model = byName.get(member)
+      if (model) schemaRefs(model.type, refs)
+      for (const dep of refs) {
+        const home = moduleOf.get(dep)
+        if (home && home !== mod) f.import(relativeSpecifier(mod.path, home.path), dep)
+      }
+    }
+    // DEPENDENCY ORDER within the module. These are `const` declarations and
+    // `const` is not hoisted, so a model emitted before one it references
+    // throws `Cannot access 'X' before initialization` on import.
+    for (const name of mod.members) {
+      const model = byName.get(name)
+      if (!model) continue
+      // Only the edges that close a cycle are deferred (`lazy`); they are
+      // always inside one module, since a cycle is one component.
+      const defer = deferredTargets(backEdges, name)
+      f.line()
+      f.doc(model.doc)
+      f.line(typeDeclaration(model.name, model.type, dialect.enumWidensToString))
+      const expr = schemaExpr(model.type, { ...opts, defer })
+      if (dialect.objectSchemaImport && expr.includes(dialect.objectSchemaRef)) needsObjectType.value = true
+      f.line(`export const ${model.name} = ${expr} as unknown as ${dialect.schemaTypeRef(model.name)}`)
+    }
+    if (needsObjectType.value && dialect.objectSchemaImport) {
+      f.importType(dialect.objectSchemaImport.module, dialect.objectSchemaImport.name)
+    }
+    files.push(f)
   }
 
-  // DEPENDENCY ORDER, not alphabetical. These are `const` declarations and
-  // `const` is not hoisted, so a model emitted before one it references throws
-  // `Cannot access 'X' before initialization` when the module is imported.
-  // Alphabetical order satisfies that only by coincidence.
-  const { order, backEdges } = topoSortModels(doc)
-  const byName = new Map(doc.models.map((m) => [m.name, m]))
+  // The barrel keeps `import { Book } from './gen/schemas'` working. It is a
+  // re-export of every module, so importing ONE binding through it still
+  // reaches only that binding's module under the emitted `sideEffects` marker.
+  const barrel = new SourceFile(SCHEMA_FILE)
+  barrel.line()
+  barrel.doc(
+    `Every schema of ${doc.title} ${doc.version}.`,
+    '',
+    'One module per model (a `$ref` cycle shares one), so a hook reaches only',
+    'the schemas its response actually names -- see `./schemas/`.',
+  )
+  for (const mod of modules) barrel.line(`export * from '${relativeSpecifier(SCHEMA_FILE, mod.path)}'`)
+  files.push(barrel)
+  return files
+}
 
+/**
+ * The model names a web schema expression for `type` actually NAMES.
+ *
+ * Mirrors `schemaExpr`'s non-native branches exactly -- in particular an
+ * object WITH fields drops `additionalProperties`, so a model referenced only
+ * there is not named and must not be imported (an unused import is a lint
+ * error in the consumer's repo, in a file nobody wrote).
+ */
+export function schemaRefs(type: IrType, into: Set<string>): void {
+  switch (type.kind) {
+    case 'ref':
+      into.add(type.name)
+      return
+    case 'array':
+      schemaRefs(type.items, into)
+      return
+    case 'union':
+      for (const o of type.options) schemaRefs(o, into)
+      return
+    case 'object':
+      if (type.fields.length === 0) {
+        if (type.additional) schemaRefs(type.additional, into)
+      } else {
+        for (const f of type.fields) schemaRefs(f.type, into)
+      }
+      return
+    default:
+  }
+}
+
+/** One generated schema module and the models it declares, in order. */
+export interface SchemaModule {
+  /** Output path, `schemas/<Name>.ts`. */
+  path: string
+  /** Models declared here, dependencies first. */
+  members: string[]
+}
+
+const moduleMemo = new WeakMap<IrDocument, { modules: SchemaModule[]; moduleOf: Map<string, SchemaModule> }>()
+
+/**
+ * How models are split into modules: one per strongly-connected component.
+ *
+ * One module per MODEL is what makes a hook's bundle proportional to what it
+ * uses -- but not literally per model. A `$ref` cycle split across two ES
+ * modules is an import cycle, and which side evaluates first depends on who
+ * imported whom first: import `Customer` before `Source` and `Source`'s module
+ * runs while `Customer` is still in its temporal dead zone. Keeping a cycle in
+ * ONE module makes every inter-module edge acyclic, so evaluation order is
+ * fixed by the graph rather than by the importer.
+ *
+ * Named after the model, or after the first member (by name) of a cycle. File
+ * names are compared CASE-INSENSITIVELY, since `Foo.ts` and `FOO.ts` are one
+ * file on macOS and Windows; a clash takes a numeric suffix, assigned in name
+ * order so it is stable across runs.
+ */
+export function schemaModules(doc: IrDocument): { modules: SchemaModule[]; moduleOf: Map<string, SchemaModule> } {
+  const hit = moduleMemo.get(doc)
+  if (hit && hit.moduleOf.size === doc.models.length) return hit
+  const deps = modelDependencies(doc)
+  const component = stronglyConnected(deps)
+  const { order } = topoSortModels(doc)
+  const byComponent = new Map<number, string[]>()
+  // Members in topological order, so declarations inside a module are safe.
   for (const name of order) {
-    const model = byName.get(name)
-    if (!model) continue
-    // Only the edges that actually close a cycle are deferred (`lazy`); every
-    // other ref is emitted by name.
-    const defer = deferredTargets(backEdges, name)
-    f.line()
-    f.doc(model.doc)
-    f.line(typeDeclaration(model.name, model.type, dialect.enumWidensToString))
-    f.line(
-      `export const ${model.name} = ${schemaExpr(model.type, { ...opts, defer })} as unknown as ${dialect.schemaTypeRef(model.name)}`,
-    )
+    const c = component.get(name) as number
+    const list = byComponent.get(c)
+    if (list) list.push(name)
+    else byComponent.set(c, [name])
   }
-  return f
+  const groups = [...byComponent.values()].map((members) => ({
+    members,
+    base: [...members].sort()[0] as string,
+  }))
+  groups.sort((a, b) => (a.base < b.base ? -1 : a.base > b.base ? 1 : 0))
+  const used = new Set<string>()
+  const modules: SchemaModule[] = []
+  const moduleOf = new Map<string, SchemaModule>()
+  for (const g of groups) {
+    let base = g.base
+    // Windows reserves these device names regardless of extension.
+    if (/^(con|prn|aux|nul|com\d|lpt\d)$/i.test(base)) base = `${base}_`
+    let name = base
+    for (let i = 2; used.has(name.toLowerCase()); i++) name = `${base}_${i}`
+    used.add(name.toLowerCase())
+    const mod: SchemaModule = { path: `schemas/${name}.ts`, members: g.members }
+    modules.push(mod)
+    for (const m of g.members) moduleOf.set(m, mod)
+  }
+  // Modules in dependency order: the barrel re-exports them in that order,
+  // which makes its own evaluation order obvious to a reader.
+  const rank = new Map(order.map((n, i) => [n, i]))
+  modules.sort((a, b) => (rank.get(a.members[0] as string) as number) - (rank.get(b.members[0] as string) as number))
+  const out = { modules, moduleOf }
+  moduleMemo.set(doc, out)
+  return out
+}
+
+/** Where another generated file imports `model` from. */
+export function schemaSpecifierFor(fromPath: string, model: string, doc: IrDocument): string {
+  const home = schemaModules(doc).moduleOf.get(model)
+  return relativeSpecifier(fromPath, home ? home.path : SCHEMA_FILE)
 }
 
 /**
@@ -357,6 +529,9 @@ export function emitSchemaAgreement(doc: IrDocument, validator: ValidatorName = 
   const dialect = dialectOf(validator)
   f.import(dialect.module, dialect.binding)
   if (dialect.typeHelper) f.importType(dialect.typeHelper.module, dialect.typeHelper.name)
+  // A discriminated union over named models casts through these types.
+  if (dialect.schemaTypeImport) f.importType(dialect.schemaTypeImport.module, dialect.schemaTypeImport.name)
+  if (dialect.objectSchemaImport) f.importType(dialect.objectSchemaImport.module, dialect.objectSchemaImport.name)
   const { order, backEdges } = topoSortModels(doc)
   const byName = new Map(doc.models.map((m) => [m.name, m]))
   if (order.length > 0) f.import(relativeSpecifier(f.path, SCHEMA_FILE), ...order)

@@ -15,6 +15,7 @@ export function stripTs(source: string): string {
   }).outputText
   return js
     .replace(/^import\s+.*$/gm, '')
+    .replace(/^export \* from .*$/gm, '')
     .replace(/^export \{\s*\};?$/gm, '')
     .replace(/^export (const|let|function|class) /gm, '$1 ')
 }

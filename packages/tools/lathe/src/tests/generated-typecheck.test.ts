@@ -185,6 +185,9 @@ describe('generated output typechecks under strict TypeScript', () => {
  *   `Property 'nullable' does not exist on type 'UnionSchema<…>'`.
  * - `ListEnvelope`: an inline response carrying a string enum. The hook's
  *   declared data type said `'list'` where `@pyreon/validate` infers `string`.
+ * - `Animal` / `getAnimal`: a discriminated union over NAMED models, as a
+ *   model and as an inline response (GitHub's `GET /user`). A model const is
+ *   typed `Schema<Cat>`, which the discriminated-union signature rejects.
  */
 const SHAPES = `
 openapi: 3.0.3
@@ -210,6 +213,22 @@ paths:
                 properties:
                   object: { type: string, enum: [list] }
                   data: { type: array, items: { $ref: '#/components/schemas/Customer' } }
+  /animals:
+    get:
+      operationId: getAnimal
+      tags: [a]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                oneOf: [ { $ref: '#/components/schemas/Cat' }, { $ref: '#/components/schemas/Dog' } ]
+                discriminator: { propertyName: kind }
+  /zoo:
+    get:
+      operationId: getZoo
+      tags: [a]
+      responses: { '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Zoo' } } } } }
   /shapes:
     get:
       operationId: getShape
@@ -233,6 +252,21 @@ components:
             - { type: object, required: [w], properties: { w: { type: number } } }
     Pets: { type: array, items: { $ref: '#/components/schemas/Pet' } }
     Mark: { type: string, enum: [X, O] }
+    Cat: { type: object, required: [kind, meows], properties: { kind: { type: string, enum: [cat] }, meows: { type: boolean } } }
+    Dog: { type: object, required: [kind], properties: { kind: { type: string, enum: [dog] }, barks: { type: boolean } } }
+    Animal:
+      oneOf: [ { $ref: '#/components/schemas/Cat' }, { $ref: '#/components/schemas/Dog' } ]
+      discriminator: { propertyName: kind }
+    Zoo:
+      type: object
+      required: [star]
+      properties:
+        star:
+          oneOf: [ { $ref: '#/components/schemas/Cat' }, { $ref: '#/components/schemas/Dog' } ]
+          discriminator: { propertyName: kind }
+        runnerUp:
+          oneOf: [ { $ref: '#/components/schemas/Cat' }, { $ref: '#/components/schemas/Dog' } ]
+          discriminator: { propertyName: kind }
     Either: { oneOf: [ { type: string }, { $ref: '#/components/schemas/Pet' } ] }
     Customer:
       type: object

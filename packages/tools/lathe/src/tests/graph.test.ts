@@ -9,6 +9,7 @@ import ts from 'typescript'
  * either way -- which is exactly how the bug shipped.
  */
 import { s } from '@pyreon/validate'
+import { schemaSource } from './helpers/write-tree'
 import { resolveConfig } from '../core/config'
 import { generate } from '../core/generate'
 import { cyclicModels, deferredTargets, edgeKey, reachableModels, stronglyConnected, topoSortModels } from '../core/graph'
@@ -100,7 +101,7 @@ describe('model dependency graph', () => {
   it('orders a forward reference so the module can be EVALUATED', () => {
     // Alphabetically `Alpha` comes first and references `Zulu` -- the exact
     // shape that threw at import time.
-    const src = file(generate(FORWARD_REF, web), 'schemas.ts')
+    const src = schemaSource(generate(FORWARD_REF, web).files)
     expect(src.indexOf('const Zulu')).toBeLessThan(src.indexOf('const Alpha'))
     expect(() => evaluate(src)).not.toThrow()
   })
@@ -108,7 +109,7 @@ describe('model dependency graph', () => {
   it('breaks a `$ref` CYCLE with s.lazy rather than emitting an unorderable file', () => {
     // A self-referencing node cannot be ordered at all; `s.lazy` defers the
     // read to first use, which is what a cycle needs.
-    const src = file(generate(CYCLE, web), 'schemas.ts')
+    const src = schemaSource(generate(CYCLE, web).files)
     expect(src).toContain('s.lazy(() => Node)')
     const exports = evaluate(src) as {
       Node: { parse(v: unknown): { ok: boolean; value?: unknown } }
@@ -124,7 +125,7 @@ describe('model dependency graph', () => {
   it('does NOT defer a reference that is merely forward', () => {
     // `s.lazy` only where a cycle demands it -- otherwise the common output
     // changes shape for no reason and stops being the plain literal PMTC wants.
-    expect(file(generate(FORWARD_REF, web), 'schemas.ts')).not.toContain('s.lazy')
+    expect(schemaSource(generate(FORWARD_REF, web).files)).not.toContain('s.lazy')
   })
 
   it('inlines the TRANSITIVE closure into a native module', () => {

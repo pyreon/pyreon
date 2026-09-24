@@ -150,7 +150,7 @@ describe('the validator setting', () => {
   }
 
   it('emits zod schemas from the zod dialect', () => {
-    const schemas = filesForValidator('zod').get('schemas.ts') ?? ''
+    const schemas = filesForValidator('zod').get('schemas/Book.ts') ?? ''
     expect(schemas).toContain("import { z } from 'zod'")
     expect(schemas).toContain('z.object({')
     expect(schemas).not.toContain('@pyreon/validate')
@@ -163,7 +163,7 @@ describe('the validator setting', () => {
   })
 
   it('keeps the default on @pyreon/validate', () => {
-    const schemas = filesForValidator('pyreon').get('schemas.ts') ?? ''
+    const schemas = filesForValidator('pyreon').get('schemas/Book.ts') ?? ''
     expect(schemas).toContain("import { s } from '@pyreon/validate'")
     expect(schemas).toContain("import type { Schema } from '@pyreon/validate'")
     expect(schemas).toContain('as unknown as Schema<')
@@ -204,10 +204,10 @@ describe('the validator setting', () => {
     const b = filesForValidator('zod')
     expect([...b.keys()].sort()).toEqual([...a.keys()].sort())
     const differing = [...a.keys()].filter((p) => a.get(p) !== b.get(p)).sort()
-    // Only `schemas.ts` here: this spec's responses are bare `$ref`s, which
+    // Only the schema module here: this spec's responses are bare `$ref`s, which
     // render as the model's own name and carry no binding prefix. The hooks,
     // keys and barrel never name the validator at all.
-    expect(differing).toEqual(['schemas.ts'])
+    expect(differing).toEqual(['schemas/Book.ts'])
   })
 
   it('a COMPOSITE response clause names the binding, so endpoints follow', () => {
@@ -237,7 +237,7 @@ describe('the validator setting', () => {
     })
     const files = new Map(generate(SPEC, cfg).files.map((f) => [f.path, f.contents]))
     expect(files.get('client.ts')).toContain("import axios from 'axios'")
-    expect(files.get('schemas.ts')).toContain("import { z } from 'zod'")
+    expect(files.get('schemas/Book.ts')).toContain("import { z } from 'zod'")
     // The adapter validates through Standard Schema, which zod satisfies — so
     // the two settings genuinely do not need to know about each other.
     expect(files.get('client.ts')).toContain('~standard')

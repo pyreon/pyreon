@@ -15,6 +15,7 @@
  * the one nobody wrote a sanitizer for.
  */
 import { s } from '@pyreon/validate'
+import { schemaSource } from './helpers/write-tree'
 import { stripTs } from './helpers/strip-ts'
 import { parseSync } from 'oxc-parser'
 import { resolveConfig } from '../core/config'
@@ -102,9 +103,9 @@ describe('spec-controlled strings cannot inject code', () => {
   })
 
   it('EXECUTES the emitted schema module and nothing injected runs', () => {
-    const schemas = files.find((f) => f.path === 'schemas.ts')
-    expect(schemas).toBeDefined()
-    expect(executeAndCatchInjection(schemas!.contents)).toEqual([])
+    const schemas = schemaSource(files)
+    expect(schemas).toContain('export const')
+    expect(executeAndCatchInjection(schemas)).toEqual([])
   })
 
   it('carries no RAW line terminator into a string literal', () => {
@@ -234,17 +235,17 @@ describe('spec-controlled strings cannot inject code', () => {
       },
     })
     const out = generate(spec, resolveConfig({ input: 'x', plugins: ['schemas'] }))
-    const schemas = out.files.find((f) => f.path === 'schemas.ts')
-    expect(schemas).toBeDefined()
+    const schemas = { contents: schemaSource(out.files) }
+    expect(schemas.contents).toContain('export const')
 
     delete (globalThis as Record<string, unknown>).__REGEX_PWNED
     // Parses AND runs. Pre-fix this line threw the SyntaxError.
-    expect(() => executeAndCatchInjection(schemas!.contents)).not.toThrow()
+    expect(() => executeAndCatchInjection(schemas.contents)).not.toThrow()
     expect((globalThis as Record<string, unknown>).__REGEX_PWNED).toBeUndefined()
 
     // Exactly one constraint survived: the portable one.
-    expect([...schemas!.contents.matchAll(/\.regex\(/g)]).toHaveLength(1)
-    expect(schemas!.contents).toContain('.regex(/^[a-z]+$/)')
+    expect([...schemas.contents.matchAll(/\.regex\(/g)]).toHaveLength(1)
+    expect(schemas.contents).toContain('.regex(/^[a-z]+$/)')
   })
 
   it('carries no RAW line terminator into a regex literal either', () => {
@@ -266,10 +267,7 @@ describe('spec-controlled strings cannot inject code', () => {
         },
       },
     })
-    const schemas =
-      generate(spec, resolveConfig({ input: 'x', plugins: ['schemas'] })).files.find(
-        (f) => f.path === 'schemas.ts',
-      )?.contents ?? ''
+    const schemas = schemaSource(generate(spec, resolveConfig({ input: 'x', plugins: ['schemas'] })).files)
     expect(schemas).not.toContain(LS)
   })
 

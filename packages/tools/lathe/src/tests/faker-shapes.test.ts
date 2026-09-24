@@ -20,6 +20,7 @@
  * run emitted.
  */
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { schemaSource, writeTree } from './helpers/write-tree'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseSync } from 'oxc-parser'
@@ -68,6 +69,11 @@ components:
       oneOf:
         - { type: string }
         - { $ref: '#/components/schemas/Pet' }
+    Cat: { type: object, required: [kind], properties: { kind: { type: string, enum: [cat] } } }
+    Dog: { type: object, required: [kind], properties: { kind: { type: string, enum: [dog] }, barks: { type: boolean } } }
+    Animal:
+      oneOf: [ { $ref: '#/components/schemas/Cat' }, { $ref: '#/components/schemas/Dog' } ]
+      discriminator: { propertyName: kind }
     Alpha:
       type: object
       properties:
@@ -91,11 +97,9 @@ beforeAll(async () => {
     const cfg = resolveConfig({ input: 'x', validator, plugins: ['schemas', 'faker'] })
     const dir = join(ROOT, validator)
     mkdirSync(dir, { recursive: true })
-    for (const f of generate(SPEC, cfg).files) {
-      if (!f.path.endsWith('.ts')) continue
-      writeFileSync(join(dir, f.path), f.contents)
-      if (f.path === 'faker.ts') fakerSource = f.contents
-    }
+    const files = generate(SPEC, cfg).files
+    writeTree(dir, files, (p) => p.endsWith('.ts'))
+    fakerSource = files.find((f) => f.path === 'faker.ts')?.contents ?? ''
     loaded.set(validator, {
       faker: (await import(join(dir, 'faker.ts'))) as never,
       schemas: (await import(join(dir, 'schemas.ts'))) as never,
@@ -138,7 +142,7 @@ describe('the recursion notice fires for every member of a cycle', () => {
   })
 
   it('does not name a model that cannot', () => {
-    for (const m of ['Pet', 'Pets', 'Mark', 'Either']) {
+    for (const m of ['Pet', 'Pets', 'Mark', 'Either', 'Animal']) {
       expect(fakerSource).not.toContain(`\`${m}\` is recursive in the spec`)
     }
   })
@@ -150,7 +154,9 @@ for (const validator of ['pyreon', 'zod'] as const) {
     const issues = (schema: Validator, value: unknown): readonly unknown[] =>
       schema['~standard'].validate(value).issues ?? []
 
-    for (const name of ['Pet', 'Pets', 'Mark', 'Either', 'Alpha']) {
+    // `Animal` is a discriminated union over NAMED models, which the emit
+    // casts through the object-schema type -- this is the runtime half of that.
+    for (const name of ['Pet', 'Pets', 'Mark', 'Either', 'Alpha', 'Animal']) {
       it(`create${name}() produces a value its own schema accepts`, () => {
         const { faker, schemas } = get()
         ;(faker.seedFaker as (n: number) => void)(7)
@@ -162,3 +168,15 @@ for (const validator of ['pyreon', 'zod'] as const) {
     }
   })
 }
+
+describe('a discriminated union over named models still dispatches', () => {
+  for (const validator of ['pyreon', 'zod'] as const) {
+    it(`rejects a value no member accepts (${validator})`, () => {
+      const animal = (loaded.get(validator)?.schemas.Animal ?? null) as Validator | null
+      expect(animal).not.toBeNull()
+      const v = animal as Validator
+      expect(v['~standard'].validate({ kind: 'cat' }).issues ?? []).toEqual([])
+      expect((v['~standard'].validate({ kind: 'fish' }).issues ?? []).length).toBeGreaterThan(0)
+    })
+  }
+})

@@ -183,11 +183,11 @@ components:
     const fs = memFs({ 'billing.yaml': SECOND })
     const r = await run(parseArgv(['generate']), twoProjects, fs)
     expect(r.code).toBe(0)
-    expect(fs.files['packages/catalog/src/gen/schemas.ts']).toContain('export const Book')
-    expect(fs.files['packages/billing/src/gen/schemas.ts']).toContain('export const Invoice')
+    expect(fs.files['packages/catalog/src/gen/schemas/Book.ts']).toContain('export const Book')
+    expect(fs.files['packages/billing/src/gen/schemas/Invoice.ts']).toContain('export const Invoice')
     // Each output carries ONLY its own spec's models.
     expect(fs.files['packages/catalog/src/gen/schemas.ts']).not.toContain('Invoice')
-    expect(fs.files['packages/billing/src/gen/schemas.ts']).not.toContain('export const Book')
+    expect(fs.files['packages/billing/src/gen/schemas.ts']).not.toContain('Book')
   })
 
   it('inherits top-level settings and lets a project override them', async () => {

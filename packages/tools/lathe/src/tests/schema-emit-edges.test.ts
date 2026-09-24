@@ -42,7 +42,9 @@ const doc = (fields: Array<{ name: string; type: IrType; pattern?: string }>): I
 })
 
 const emitWith = (pattern: string): string =>
-  emitSchemas(doc([{ name: 'v', type: { kind: 'string' }, pattern }]), { native: false }).build('').contents
+  emitSchemas(doc([{ name: 'v', type: { kind: 'string' }, pattern }]), { native: false })
+    .map((f) => f.build('').contents)
+    .join('\n')
 
 const CR = String.fromCharCode(13)
 const LS = String.fromCharCode(0x2028)
@@ -132,7 +134,9 @@ describe('pattern constraints — only portable regexes survive', () => {
     const out = emitSchemas(
       doc([{ name: 'n', type: { kind: 'number', integer: true }, pattern: '^[0-9]+$' }]),
       { native: false },
-    ).build('').contents
+    )
+      .map((f) => f.build('').contents)
+      .join('\n')
     expect(out).not.toContain('.regex(')
   })
 })

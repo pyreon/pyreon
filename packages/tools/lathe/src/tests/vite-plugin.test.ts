@@ -51,7 +51,7 @@ describe('lathe vite plugin', () => {
     const { root } = project()
     const first = runPass({ ...opts }, root, 'write')
     expect(first.written.length).toBeGreaterThan(0)
-    expect(readFileSync(join(root, 'src/gen/schemas.ts'), 'utf8')).toContain('export const Book')
+    expect(readFileSync(join(root, 'src/gen/schemas/Book.ts'), 'utf8')).toContain('export const Book')
     expect(runPass({ ...opts }, root, 'write').written).toEqual([])
   })
 
@@ -93,8 +93,8 @@ describe('lathe vite plugin', () => {
       'write',
     )
     expect(res.specs).toHaveLength(2)
-    expect(readFileSync(join(root, 'src/a/schemas.ts'), 'utf8')).toContain('export const Book')
-    expect(readFileSync(join(root, 'src/b/schemas.ts'), 'utf8')).toContain('export const Book')
+    expect(readFileSync(join(root, 'src/a/schemas/Book.ts'), 'utf8')).toContain('export const Book')
+    expect(readFileSync(join(root, 'src/b/schemas/Book.ts'), 'utf8')).toContain('export const Book')
   })
 
   it('THROWS on a stale build when checkOnBuild is set', () => {
@@ -113,7 +113,7 @@ describe('lathe vite plugin', () => {
     const plugin = lathe({ ...opts })
     plugin.configResolved?.({ root, command: 'build' })
     expect(() => plugin.buildStart?.()).not.toThrow()
-    expect(readFileSync(join(root, 'src/gen/schemas.ts'), 'utf8')).toContain('export const Book')
+    expect(readFileSync(join(root, 'src/gen/schemas/Book.ts'), 'utf8')).toContain('export const Book')
   })
 
   it('the dev server generates nothing on start, and one project per spec change', () => {
@@ -140,7 +140,7 @@ describe('lathe vite plugin', () => {
     expect(watched).toEqual([join(root, 'openapi.yaml'), join(root, 'second.yaml')])
     onChange(join(root, 'second.yaml'))
     expect(spy).toHaveBeenCalledTimes(1)
-    expect(readFileSync(join(root, 'src/b/schemas.ts'), 'utf8')).toContain('export const Book')
+    expect(readFileSync(join(root, 'src/b/schemas/Book.ts'), 'utf8')).toContain('export const Book')
     expect(() => readFileSync(join(root, 'src/a/schemas.ts'), 'utf8')).toThrow()
     spy.mockRestore()
   })

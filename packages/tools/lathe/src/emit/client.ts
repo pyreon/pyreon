@@ -29,7 +29,7 @@ import {
   runtimeValidate,
   type ClientName,
 } from './client-runtime'
-import { schemaExpr, schemaSpecifier, tsType } from './schema'
+import { PURE, schemaExpr, schemaRefs, schemaSpecifier, schemaSpecifierFor, tsType } from './schema'
 import { dialectOf, type ValidatorName } from './validator'
 import { q, relativeSpecifier, SourceFile } from './writer'
 
@@ -219,8 +219,11 @@ export function emitWebEndpoints(
     // The response clause can name several models (an array of refs, a union),
     // so collect them structurally rather than taking a top-level name.
     const schemaImports = new Set<string>()
-    for (const op of ops) collectRefs(op.response, schemaImports)
-    if (schemaImports.size > 0) f.import(schemaSpecifier(path), ...schemaImports)
+    for (const op of ops) if (op.response && op.response.kind !== 'unknown') schemaRefs(op.response, schemaImports)
+    // Each from its OWN module, not the barrel: the barrel re-exports every
+    // model, and an edge to it is an edge to all of them for any bundler that
+    // does not honour the `sideEffects` marker.
+    for (const name of schemaImports) f.import(schemaSpecifierFor(path, name, doc), name)
 
     // Built once per operation. The previous form called `responseCfg` a second
     // time just to test the string for `s.`, which rebuilt every response
@@ -230,11 +233,18 @@ export function emitWebEndpoints(
     if (clauses.some((c) => c.includes(`${dialect.binding}.`))) {
       f.import(dialect.module, dialect.binding)
     }
+    // A discriminated union over named models casts through the schema types.
+    if (clauses.some((c) => c.includes(' as unknown as '))) {
+      if (dialect.schemaTypeImport) f.importType(dialect.schemaTypeImport.module, dialect.schemaTypeImport.name)
+      if (dialect.objectSchemaImport) f.importType(dialect.objectSchemaImport.module, dialect.objectSchemaImport.name)
+    }
 
     for (const [i, op] of ops.entries()) {
       f.line()
       f.doc(op.summary, `\`${endpointSpec(op)}\``)
-      f.line(`export const ${op.id} = api.endpoint(${q(endpointSpec(op))}${clauses[i] ?? ''})`)
+      // Pure, so an endpoint nothing imports is dropped from the bundle even
+      // though its tag module is reached (see `PURE`).
+      f.line(`export const ${op.id} = ${PURE}api.endpoint(${q(endpointSpec(op))}${clauses[i] ?? ''})`)
     }
     files.push(f)
   }

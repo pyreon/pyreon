@@ -83,6 +83,14 @@ export interface ValidatorDialect {
   /** Type-only import the annotation needs, if any. */
   schemaTypeImport: { module: string; name: string } | undefined
   /**
+   * The type of ANY object schema -- what a discriminated union's members are
+   * cast back to when they name a model (a model const is typed as its
+   * `Schema<X>`, which the discriminated-union signature does not accept).
+   */
+  objectSchemaRef: string
+  /** Type-only import `objectSchemaRef` needs, if any. */
+  objectSchemaImport: { module: string; name: string } | undefined
+  /**
    * Does this library's `enum` widen its members to `string` in the inferred
    * type? The written-out interface must say what the schema infers.
    *
@@ -113,6 +121,8 @@ export const DIALECTS: Readonly<Record<ValidatorName, ValidatorDialect>> = {
     nativeWrap: undefined,
     schemaTypeRef: (t) => `Schema<${t}>`,
     schemaTypeImport: { module: '@pyreon/validate', name: 'Schema' },
+    objectSchemaRef: 'ObjectSchema<Record<string, Schema<unknown>>>',
+    objectSchemaImport: { module: '@pyreon/validate', name: 'ObjectSchema' },
     enumWidensToString: true,
     inlineRefsOnNative: false,
   },
@@ -127,6 +137,8 @@ export const DIALECTS: Readonly<Record<ValidatorName, ValidatorDialect>> = {
     // the annotation costs no extra import.
     schemaTypeRef: (t) => `z.ZodType<${t}>`,
     schemaTypeImport: undefined,
+    objectSchemaRef: 'z.ZodObject',
+    objectSchemaImport: undefined,
     enumWidensToString: false,
     inlineRefsOnNative: true,
   },
