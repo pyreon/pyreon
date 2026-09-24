@@ -129,13 +129,22 @@ fun isSystemInDarkTheme(): Boolean = false
 // device build imports it via the CLI's conditionalKotlinImports; this stub mirrors
 // the surface so the validate-kotlin gate resolves it (previously missing → any
 // useSizeClass emit failed kotlinc).
-class Configuration {
+// android.content.res.Configuration: a copy constructor, a MUTABLE uiMode
+// and the night-mode bits — <ColorModeProvider mode> provides a copy with the
+// night bit set (the device build imports it via conditionalKotlinImports).
+class Configuration() {
+  constructor(other: Configuration) : this()
   val screenWidthDp: Int = 0
+  var uiMode: Int = 0
+  companion object {
+    const val UI_MODE_NIGHT_MASK: Int = 0x30
+    const val UI_MODE_NIGHT_NO: Int = 0x10
+    const val UI_MODE_NIGHT_YES: Int = 0x20
+  }
 }
-object LocalConfiguration {
-  val current: Configuration
-    @Composable get() = Configuration()
-}
+// A PROVIDABLE composition local, as in real Compose, so "LocalConfiguration
+// provides ..." resolves exactly where the real SDK accepts it.
+val LocalConfiguration: ProvidableCompositionLocal<Configuration> = compositionLocalOf { Configuration() }
 // Context + LocalContext (android.content / androidx.compose.ui.platform).
 // EVERY Context-injecting service emits "val xCtx = LocalContext.current" --
 // clipboard, share, linking, notifications, the two pickers, and any

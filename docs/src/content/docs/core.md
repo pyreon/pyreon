@@ -904,8 +904,12 @@ The mode resolves nearest first:
 
 `mode` takes `'light'`, `'dark'` or `'system'`, or an accessor over one.
 `systemColorMode()` returns the page-and-OS half on its own. On iOS and Android
-a literal `mode` is a compile-time scope; a reactive one follows the platform's
-scheme.
+`useColorMode()` reads the platform scheme, and a literal
+`<ColorModeProvider mode="dark">` pins it for its subtree: SwiftUI's
+`.environment(\.colorScheme, .dark)`, and on Compose a configuration whose
+night bit is set. So components, charts and system controls below it agree, as
+on the web. A reactive `mode` cannot be read at compile time; the platform's
+scheme applies.
 
 ## Refs
 

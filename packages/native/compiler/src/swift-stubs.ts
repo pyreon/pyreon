@@ -573,6 +573,9 @@ extension View {
   public func buttonStyle(_ style: PrimitiveButtonStyleStub) -> some View { self }
   public func tint(_ color: Color?) -> some View { self }
   public func accessibilityIdentifier(_ id: String) -> some View { self }
+  // The real SwiftUI signature (WritableKeyPath), so a key path the real SDK
+  // rejects fails here too — <ColorModeProvider mode> pins the colorScheme key.
+  public func environment<V>(_ keyPath: WritableKeyPath<EnvironmentValues, V>, _ value: V) -> some View { self }
   public func accessibilityLabel(_ label: String) -> some View { self }
   public func accessibilityValue(_ value: String) -> some View { self }
   public func accessibilityElement(children: AccessibilityChildBehavior) -> some View { self }

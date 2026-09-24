@@ -22,3 +22,46 @@ describe('useColorMode on native', () => {
     })
   }
 })
+
+import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
+
+const PINNED = `import { Text } from '@pyreon/primitives'
+import { ColorModeProvider, useColorMode } from '@pyreon/core'
+function Badge() {
+  const mode = useColorMode()
+  return <Text>{mode() === 'dark' ? 'night' : 'day'}</Text>
+}
+export function App() {
+  return (
+    <ColorModeProvider mode="dark">
+      <Badge />
+    </ColorModeProvider>
+  )
+}`
+
+describe('a literal <ColorModeProvider mode> pins the platform scheme for its subtree', () => {
+  it("swift: the subtree's colour scheme is set, so useColorMode below reads it", () => {
+    const r = transform(PINNED, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('.environment(\\.colorScheme, .dark)')
+  })
+  it("kotlin: the subtree's configuration night bit is set, which isSystemInDarkTheme reads", () => {
+    const r = transform(PINNED, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('CompositionLocalProvider(LocalConfiguration provides')
+    expect(r.code).toContain('UI_MODE_NIGHT_YES')
+  })
+  it("'system' pins nothing", () => {
+    const sys = PINNED.replace('mode="dark"', 'mode="system"')
+    expect(transform(sys, { target: 'swift' }).code).not.toContain('.environment(\\.colorScheme')
+    expect(transform(sys, { target: 'kotlin' }).code).not.toContain('CompositionLocalProvider(LocalConfiguration')
+  })
+  it('swiftc accepts it', { skip: !isSwiftcAvailable() }, () => {
+    const r = validateSwiftWithStubs(transform(PINNED, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it('kotlinc accepts it', { skip: !isKotlincAvailable() }, () => {
+    const r = validateKotlin(transform(PINNED, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})

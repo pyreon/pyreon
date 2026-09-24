@@ -3706,6 +3706,12 @@ export function chartThemeScope(e: ExprIR & { kind: 'jsx-element' }, warn: (m: s
   return resolveThemeChain({ mode: prev.mode, providers: [...prev.providers, e] }, warn)
 }
 
+/** The literal mode a `<ColorModeProvider>` pins, or undefined (absent, `'system'`, or reactive). */
+export function literalColorMode(e: ExprIR & { kind: 'jsx-element' }): 'light' | 'dark' | undefined {
+  const v = scopeAttr(e, 'mode')
+  return v !== undefined && v.kind === 'literal' && (v.value === 'light' || v.value === 'dark') ? v.value : undefined
+}
+
 /**
  * A `<ColorModeProvider mode>` or `<PyreonUI mode>`: pin the mode for the
  * charts below. Only a literal `"light"` / `"dark"` can be read at compile
