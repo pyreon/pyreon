@@ -510,6 +510,19 @@ async function autoDetectStaticPaths(
   const fileRoutes = i18n ? expandRoutesForLocales(baseRoutes, i18n) : baseRoutes
 
   const out: string[] = []
+  // Which route FILE produced each path. The dedup below exists for benign
+  // repeats from ONE route (a getStaticPaths returning a slug twice); two
+  // DIFFERENT files producing one URL is the collision `assertNoPathCollisions`
+  // guards — and deduping first had made that guard dead for every
+  // auto-detected path, so a static `posts/new.tsx` silently won over a
+  // `posts/[id].tsx` enumerating `new`.
+  const producers = new Map<string, Set<string>>()
+  const produce = (path: string, file: string): void => {
+    out.push(path)
+    let byFile = producers.get(path)
+    if (!byFile) producers.set(path, (byFile = new Set()))
+    byFile.add(file)
+  }
   const warnedDynamicFiles = new Set<string>()
   for (const r of fileRoutes) {
     if (r.isLayout || r.isError || r.isLoading || r.isNotFound) continue
@@ -518,7 +531,7 @@ async function autoDetectStaticPaths(
 
     // Static path — emit as-is.
     if (!/[:*]/.test(path)) {
-      out.push(path)
+      produce(path, r.filePath)
       continue
     }
 
@@ -549,7 +562,7 @@ async function autoDetectStaticPaths(
             `[Pyreon] getStaticPaths for "${path}" returned an entry without "params"`,
           )
         }
-        out.push(expandUrlPattern(path, entry.params))
+        produce(expandUrlPattern(path, entry.params), r.filePath)
       }
     } catch (error) {
       errors.push({ path, error })
@@ -561,6 +574,8 @@ async function autoDetectStaticPaths(
   // i18n route fan-out colliding — which otherwise renders the same
   // `dist/<path>/index.html` twice (wasted work + last-write race) and
   // feeds a duplicate `<url>` into the SSG→sitemap merge.
+  const collisions = [...producers].filter(([, byFile]) => byFile.size > 1).map(([p]) => p)
+  if (collisions.length > 0) throw new Error(formatPathCollisionError(collisions.sort()))
   const deduped = [...new Set(out)]
 
   // Always include "/" as a fallback if no static routes were found —
@@ -686,6 +701,15 @@ function detectPathCollisions(paths: readonly string[]): string[] {
     seen.add(p)
   }
   return [...duplicates].sort()
+}
+
+/**
+ * A `_redirects` file combining the app's own (from `public/`, already in
+ * dist) with the ones loaders produced at build time. The user's rules come
+ * first: static hosts apply the first matching rule.
+ */
+function mergeRedirectsFile(existing: string, generated: string): string {
+  return existing.trim() ? `${existing.trimEnd()}\n${generated}` : generated
 }
 
 /** Format a path-collision error message with actionable guidance. */
@@ -2056,10 +2080,14 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       if (redirects.length > 0 && config.ssg?.emitRedirects !== false) {
         // M2.1 — atomic so an interrupted build doesn't leave a half-
         // written `_redirects` file that adapters / static hosts misparse.
-        await writeFileAtomic(
-          join(distDir, '_redirects'),
-          renderNetlifyRedirects(redirects),
-        )
+        // A `_redirects` the app ships in `public/` is already in dist (Vite
+        // copied it). Overwriting it silently dropped every hand-written
+        // rule the moment one loader threw `redirect()`. Keep the user's
+        // rules FIRST — hosts apply the first match.
+        const redirectsPath = join(distDir, '_redirects')
+        const existing = await readFile(redirectsPath, 'utf-8').catch(() => '')
+        const generated = renderNetlifyRedirects(redirects)
+        await writeFileAtomic(redirectsPath, mergeRedirectsFile(existing, generated))
         await writeFileAtomic(
           join(distDir, '_redirects.json'),
           renderVercelRedirectsJson(redirects),
@@ -2242,6 +2270,7 @@ export const _internal = {
   resolvePaths,
   needsSpaFallbackShell,
   autoDetectStaticPaths,
+  mergeRedirectsFile,
   writeRouteOutputs,
   injectCanonical,
   joinBaseAndPath,

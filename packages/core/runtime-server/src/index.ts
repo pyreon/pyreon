@@ -165,6 +165,8 @@ interface StreamCtx {
    * hard-coded value, so unset is byte-identical to prior behavior.
    */
   suspenseTimeoutMs: number
+  /** ` nonce="…"` or `''` — appended to every inline tag the stream emits. */
+  nonceAttr: string
 }
 
 const _streamCtxAls = new AsyncLocalStorage<StreamCtx>()
@@ -500,6 +502,13 @@ export interface RenderToStreamOptions {
    * cancels.
    */
   suspenseTimeoutMs?: number
+  /**
+   * Per-request CSP nonce. When set, every inline `<script>` and `<style>`
+   * the stream emits (the Suspense swap helper, each swap call, styler
+   * flushes) carries it, so a strict `script-src 'nonce-…'` policy admits
+   * them. Without it streaming forced apps onto `'unsafe-inline'`.
+   */
+  nonce?: string
 }
 
 export function renderToStream(
@@ -529,6 +538,9 @@ export function renderToStream(
       : userTimeout !== undefined && Number.isFinite(userTimeout) && userTimeout > 0
         ? userTimeout
         : 30_000
+  // Sanitized to a bare token so it can never break out of the attribute.
+  const nonce = options.nonce ? options.nonce.replace(/["'<>\s]/g, '') : ''
+  const nonceAttr = nonce ? ` nonce="${nonce}"` : ''
 
   return new ReadableStream<string>({
     start(controller) {
@@ -544,6 +556,7 @@ export function renderToStream(
         suspenseDepth: 0,
         signal,
         suspenseTimeoutMs,
+        nonceAttr,
       }
       // One shared abort-promise — registered ONCE, resolved on signal
       // abort. Racing each pending batch against this lets the drain
@@ -573,7 +586,7 @@ export function renderToStream(
               const newRules = stylerFlush()
               if (newRules) {
                 const safeCss = newRules.replace(/<\/style/gi, '<\\/style')
-                enqueue(`<style data-pyreon-stream="shell">${safeCss}</style>`)
+                enqueue(`<style data-pyreon-stream="shell"${nonceAttr}>${safeCss}</style>`)
               }
             }
             // Drain all pending Suspense resolutions (which may spawn nested
@@ -806,9 +819,9 @@ async function streamNode(
 }
 
 // Inline swap helper emitted once per stream, before the first <template>
-const SUSPENSE_SWAP_FN =
-  '<script>function __NS(s,t){var e=document.getElementById(s),l=document.getElementById(t);' +
-  'if(e&&l){e.replaceWith(l.content.cloneNode(!0));l.remove()}}</script>'
+const SUSPENSE_SWAP_BODY =
+  'function __NS(s,t){var e=document.getElementById(s),l=document.getElementById(t);' +
+  'if(e&&l){e.replaceWith(l.content.cloneNode(!0));l.remove()}}'
 
 /**
  * Stream a Suspense boundary: emit fallback immediately, then resolve children
@@ -841,10 +854,10 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
   /* c8 ignore stop */
 
   const id = ctx.nextId()
-  const { mainEnqueue } = ctx
+  const { mainEnqueue, nonceAttr } = ctx
 
   // Emit the swap helper function once (before first use)
-  if (id === 0) mainEnqueue(SUSPENSE_SWAP_FN)
+  if (id === 0) mainEnqueue(`<script${nonceAttr}>${SUSPENSE_SWAP_BODY}</script>`)
 
   // Stream the fallback synchronously (no await on children)
   mainEnqueue(`<div id="pyreon-s-${id}">`)
@@ -925,12 +938,12 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
           const newRules = stylerFlush()
           if (newRules) {
             const safeCss = newRules.replace(/<\/style/gi, '<\\/style')
-            mainEnqueue(`<style data-pyreon-stream="${id}">${safeCss}</style>`)
+            mainEnqueue(`<style data-pyreon-stream="${id}"${nonceAttr}>${safeCss}</style>`)
           }
         }
 
         mainEnqueue(`<template id="pyreon-t-${id}">${content}</template>`)
-        mainEnqueue(`<script>__NS("pyreon-s-${id}","pyreon-t-${id}")</script>`)
+        mainEnqueue(`<script${nonceAttr}>__NS("pyreon-s-${id}","pyreon-t-${id}")</script>`)
       } catch (err) {
         if (process.env.NODE_ENV !== 'production') {
           console.error(

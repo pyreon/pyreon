@@ -73,6 +73,12 @@ Read before touching `packages/zero/**`, a build adapter, SSG/SSR/ISR output, or
 - X.509 is hand-rolled on `node:crypto` (`src/https/der.ts`, `selfsign.ts`). An IP must be an `iPAddress` SAN. A `dNSName` holding an IP parses fine and browsers ignore it.
 - HTTP/1.1 only (Vite dev dropped h2).
 
+## Client build flags (`client-flags-plugin.ts`)
+
+- `__ZERO_HYDRATE__`: defined `false` in a production build only when `isSpaEverywhere` holds (app mode `spa`, no non-spa `routeRules`, no route file mentioning `renderMode` — every doubt keeps hydration). `client.ts` checks it inline, so `hydrateRoot` and the hydration machinery drop out of the bundle (−6.6 KB gz on kanban). If a flagged build still receives markup, the client clears it before mounting rather than duplicating it.
+- **Rejected, measured:** grouping the always-loaded runtime into one chunk (`output.codeSplitting.groups`). It cut ssr-showcase by 3.3 KB gz and 14 requests but made kanban 1.7 KB bigger (runtime code only lazy chunks used became eager); with `minShareCount: 2` kanban was neutral but ui-showcase grew 1.5 KB. Not a win for every app, so not shipped.
+- Dev SSR loads `createApp` from `@pyreon/zero/app` (one module) rather than the whole `@pyreon/zero/server` package.
+
 ## Gates
 
 - `pyreon doctor --check-ssg` and the lint `ssg` category: `revalidate-not-pure-literal`, `missing-get-static-paths` (skips API routes and files without a default export), `invalid-loader-export`.
