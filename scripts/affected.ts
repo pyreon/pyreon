@@ -145,19 +145,19 @@ export const SCRIPT_TEST_PACKAGE = '@pyreon/test-utils'
  * docs-only for the heavy-job gate (`build` / `verify-modes` never read them),
  * but the consuming package's tests assert their structure, so that package's
  * test cell MUST run. Without this, e.g. reorganizing
- * `.claude/rules/anti-patterns.md` or renaming a `docs/patterns/*.md` merges
+ * `.agents/rules/anti-patterns.md` or renaming a `docs/patterns/*.md` merges
  * without `@pyreon/mcp`'s `anti-patterns.test.ts` / `patterns.test.ts` ever
  * running — and the MCP tool that ships those parsers then breaks silently.
  * Mapped as LEAF seeds (like `scripts/**`): only the consuming package's own
  * tests care, so we don't expand to its dependents.
  */
 export const DOC_INPUT_CONSUMERS: ReadonlyArray<{ match: (p: string) => boolean; pkg: string }> = [
-  { match: (p) => p === '.claude/rules/anti-patterns.md', pkg: '@pyreon/mcp' },
+  { match: (p) => p === '.agents/rules/anti-patterns.md', pkg: '@pyreon/mcp' },
   { match: (p) => p.startsWith('docs/patterns/'), pkg: '@pyreon/mcp' },
   // `@pyreon/lint`'s `require-browser-smoke-test` loads this list at runtime
-  // and its runner tests construct it — a `.claude/**` change is docs-only
+  // and its runner tests construct it — an `.agents/**` change is docs-only
   // for the heavy jobs, but this file's consumer must still run its tests.
-  { match: (p) => p === '.claude/rules/browser-packages.json', pkg: '@pyreon/lint' },
+  { match: (p) => p === '.agents/rules/browser-packages.json', pkg: '@pyreon/lint' },
 ]
 
 /** The consuming package for a doc-input file, or undefined if it isn't one. */
@@ -443,7 +443,7 @@ export function computeAffectedFlags(opts: {
       // reachable. A leaf keeps it off the full 60-package run.
       leafSeeds.add(SCRIPT_TEST_PACKAGE)
     }
-    // A doc-INPUT file (`.claude/rules/anti-patterns.md`, `docs/patterns/**`)
+    // A doc-INPUT file (`.agents/rules/anti-patterns.md`, `docs/patterns/**`)
     // must run the package that PARSES it. ADDITIVE, NOT a fallback: an
     // `else`-only branch would miss `docs/patterns/**`, which is already OWNED
     // by the @pyreon/docs workspace — so `findOwningWorkspace` matches, the
@@ -538,15 +538,15 @@ export function gitChangedFiles(base: string, cwd: string = ROOT): string[] | nu
  *
  * STRICT allowlist — anything not matched here is treated as code (the
  * conservative bias: never skip a heavy job for a real source change):
- *   - any `*.md` / `*.mdx` (CLAUDE.md, READMEs, anti-patterns.md, …)
+ *   - any `*.md` / `*.mdx` (AGENTS.md, READMEs, anti-patterns.md, …)
  *   - the docs site content (`docs/**`) — its own `docs-sync` gate covers it
- *   - the `.claude/**` rules / audits / plans
+ *   - agent instructions: `.agents/**` (rules, guides) and `.claude/**`
  *   - the generated AI-reference files `llms.txt` / `llms-full.txt`
  *
  * NOTE `.github/**`, `scripts/**`, `package.json`, lockfiles, tsconfig, and
  * every `packages/**` / `examples/**` source file are NOT docs → code=true.
  */
-const DOCS_PATTERNS: RegExp[] = [/\.mdx?$/i, /^docs\//, /^\.claude\//, /^llms(-full)?\.txt$/]
+const DOCS_PATTERNS: RegExp[] = [/\.mdx?$/i, /^docs\//, /^\.claude\//, /^\.agents\//, /^llms(-full)?\.txt$/]
 
 export function isDocsOnlyChange(changed: string[] | null): boolean {
   // null = git couldn't compute the diff → unknowable → treat as code (run).

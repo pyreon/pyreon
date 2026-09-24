@@ -186,7 +186,7 @@ export function familyFrame(s: Obj): FrameSpec {
   if (type === 'pie') return roundSpec(s, '50%')
   if (type === 'gauge' || type === 'sunburst') return roundSpec(s, '75%')
   if (type === 'chord') return roundSpec(s, '80%')
-  if (type === 'funnel') return boxSpec(s, { left: px(80.0), top: px(60.0), right: px(80.0), bottom: px(60.0) })
+  if (type === 'funnel') return boxSpec(s, { left: px(80.0), top: px(60.0), right: px(80.0), bottom: px(65.0) })
   if (type === 'treemap') return boxSpec(s, { left: pct(10.0), top: pct(10.0), right: pct(10.0), bottom: pct(10.0) })
   if (type === 'tree') return boxSpec(s, { left: pct(12.0), top: pct(12.0), right: pct(12.0), bottom: pct(12.0) })
   if (type === 'sankey') return boxSpec(s, { left: pct(5.0), top: pct(5.0), right: pct(20.0), bottom: pct(5.0) })

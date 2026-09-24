@@ -6,7 +6,7 @@ binds itself to *before* the numbers exist.
 
 The whole design is a deliberate port of the discipline already applied to the
 DOM row-list benchmark (`examples/benchmark`, the 2026-06 "objectivity pass" —
-see the root `CLAUDE.md` → "Benchmark Results"). Forms are a different domain,
+see the root `BENCHMARKS.md`). Forms are a different domain,
 but the failure modes are the same: scheduler latency folded into the timed
 region, no per-run reset, no DOM verification, a single cherry-picked
 competitor, author-as-judge.

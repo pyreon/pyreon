@@ -4,7 +4,7 @@
 // manifest or sits on the explicit no-consumable-runtime-API exempt list.
 //
 // Policy functions are called DIRECTLY (no subprocess fork — see
-// .claude/rules/anti-patterns.md "Subprocess testing as a default").
+// .agents/rules/anti-patterns.md "Subprocess testing as a default").
 
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'

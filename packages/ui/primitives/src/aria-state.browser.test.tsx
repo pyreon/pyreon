@@ -24,7 +24,7 @@ import {
  * `true` that reaches the DOM as presence-only `aria-checked=""` is an
  * INVALID ARIA value — assistive tech falls back to the attribute's default
  * (unchecked / not-selected / valid), announcing the OPPOSITE of the intended
- * state. See `.claude/rules/anti-patterns.md` "Boolean ARIA-STATE attributes".
+ * state. See `.agents/rules/anti-patterns.md` "Boolean ARIA-STATE attributes".
  *
  * DETECTION TRAP (this suite avoids it): `el.hasAttribute('aria-checked')`
  * passes for BOTH `""` and `"true"`, masking the bug. Every assertion below

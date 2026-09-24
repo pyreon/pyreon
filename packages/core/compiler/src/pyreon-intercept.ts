@@ -5,7 +5,7 @@
  * catches "coming from React" mistakes; this one catches "using Pyreon
  * wrong" mistakes.
  *
- * Catalog of detected patterns (grounded in `.claude/rules/anti-patterns.md`):
+ * Catalog of detected patterns (grounded in `.agents/rules/anti-patterns.md`):
  *
  *  - `for-missing-by` — `<For each={...}>` without a `by` prop
  *  - `for-with-key`   — `<For key={...}>` (JSX reserves `key`; the keying

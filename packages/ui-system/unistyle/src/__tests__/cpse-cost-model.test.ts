@@ -1,6 +1,5 @@
 /**
- * CPSE cost-model harness — the measurement the RFC rests on.
- * See `.claude/audits/custom-property-style-extraction-2026-06-22.md`.
+ * CPSE cost-model harness — the measurement the CPSE design rests on.
  *
  * The thesis in ONE contrast (self-discriminating, no fix to revert — same
  * shape as styler's `static-styler-resolve-cost.test.ts`, which it extends):

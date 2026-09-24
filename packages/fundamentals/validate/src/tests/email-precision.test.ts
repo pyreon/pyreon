@@ -1,7 +1,7 @@
 // Email precision tiers (server/client split) + the a@b.c bug-fix regression.
 // Pre-2026-06 the default `EMAIL_RE` was the loose `^[^\s@]+@[^\s@]+\.[^\s@]+$`,
 // which accepted `a@b.c` (1-char TLD) and most garbage — looser than every
-// other major validator (audit: .claude/audits/validation-libs-comparison-2026-06.md).
+// other major validator.
 import { describe, expect, it } from 'vitest'
 import { s, string } from '../v1'
 import { EMAIL_HTML5_RE, EMAIL_RE, validateEmail } from '../primitives/string'

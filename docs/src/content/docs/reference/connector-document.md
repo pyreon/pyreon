@@ -393,6 +393,6 @@ const node: DocNode = {
 
 > **Marker contract:** A component is extractable when it carries `_documentType` — via rocketstyle `.statics()` (read from `.meta`) or as a direct static on a plain function. Unmarked components, DOM elements, and `<>…</>` fragments are transparent: their children flatten into the parent.
 
-> **Test with real primitives:** Mock vnodes that pre-attach `_documentProps` bypass the rocketstyle `__rs_attrs` fast path — the PR #197 silent-metadata-drop hid exactly there. Pair every mock-vnode test with a real-`h()` primitive test (see `.claude/rules/test-environment-parity.md`).
+> **Test with real primitives:** Mock vnodes that pre-attach `_documentProps` bypass the rocketstyle `__rs_attrs` fast path — the PR #197 silent-metadata-drop hid exactly there. Pair every mock-vnode test with a real-`h()` primitive test (see `.agents/rules/test-environment-parity.md`).
 
 > **cssVariables mode:** Under `init({ cssVariables: true })`, `$rocketstyle` values are `var(--…)` strings that PDF/DOCX/email cannot evaluate — pass `ExtractOptions.resolveVar` (compose `resolveModeVar` + `resolveCssVarReferences`) to inline them at extraction time.

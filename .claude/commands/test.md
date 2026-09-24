@@ -1,14 +1,15 @@
-Run tests for a specific package or all packages.
+Run tests for one package or all packages.
 
 Usage:
 
-- `/test` — run all package tests
-- `/test reactivity` — run tests for a specific package
-- `/test runtime-dom --coverage` — run with coverage
+- `/test` — all package tests
+- `/test reactivity` — one package
+- `/test runtime-dom --coverage` — with coverage
 
 Steps:
 
-1. If a package name is provided as $ARGUMENTS, run `cd packages/$ARGUMENTS && bun run test`
-2. If `--coverage` flag is present, append `-- --coverage` to the command
-3. If no arguments, run `bun run test` from the project root
-4. Report any failures clearly with the test name and error
+1. If $ARGUMENTS names a package, run `bun run --filter='@pyreon/<name>' test` (packages live at `packages/<category>/<name>`, so filter by name rather than `cd`).
+2. If `--coverage` is present, append `-- --coverage`.
+3. With no arguments, run `bun run test` from the repo root.
+4. Do not pipe the run through `tail`/`head` — that hides the exit code.
+5. Report failures with the test name and error.

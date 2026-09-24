@@ -2,8 +2,6 @@
 
 > **PRIVATE / EXPERIMENTAL.** Web sibling of the canonical [`native-tasks`](../native-tasks/) Gap 5 scaffold from #1449. Renders the SAME `TasksApp.tsx` source via Pyreon's `runtime-dom` + the `@pyreon/primitives` web implementations.
 
-Closes the web half of the Gap 5 host-shells follow-up from the [2026-06-05 native-readiness audit](../../.claude/audits/native-readiness-2026-06-05.md). iOS XcodeGen + Android Gradle host shells remain follow-up PRs.
-
 ## Architecture
 
 ```text

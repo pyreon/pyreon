@@ -32,7 +32,8 @@
 // ## Two layers — pluggable backend + real Keychain edge
 //
 // The facade is keyed on a `PyreonSecureBackend` (the `StorageBackend`
-// blueprint CLAUDE.md documents — `createStorage(backend)`). The DEFAULT
+// blueprint `.agents/guides/fundamentals/references/storage.md`
+// documents — `createStorage(backend)`). The DEFAULT
 // is `KeychainSecureBackend`, a real `Security`-framework implementation
 // (`SecItemAdd` / `SecItemCopyMatching` / `SecItemDelete`) that compiles
 // under `swift build`. Tests inject `InMemorySecureBackend` and assert the

@@ -10,7 +10,7 @@
  * only improve: new code can't refill the backlog while it's burned down.
  *
  * This is the keystone that turns the lint config from a one-time snapshot
- * into a self-sustaining quality system. See `.claude/rules/code-style.md`
+ * into a self-sustaining quality system. See `.agents/rules/code-style.md`
  * "three-state model" for the philosophy.
  *
  * Usage:
@@ -85,7 +85,7 @@ export function buildBaseline(current: Record<string, number>): LintBaseline {
       'oxlint WARN-finding ratchet — per-rule counts may only DECREASE. ' +
       'A change pushing any rule above its baseline fails `bun scripts/check-lint-ratchet.ts`. ' +
       'After fixing findings, tighten with `--update`. Never raise the baseline to absorb new findings. ' +
-      'See .claude/rules/code-style.md (three-state model).',
+      'See .agents/rules/code-style.md (three-state model).',
     total,
     rules: sorted,
   }

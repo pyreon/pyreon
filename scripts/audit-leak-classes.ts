@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * audit-leak-classes — periodic static audit for the 5 memory-leak
- * classes catalogued in `.claude/rules/anti-patterns.md`.
+ * classes catalogued in `.agents/rules/anti-patterns.md`.
  *
  * Why this exists: the 8-PR sweep across #725-#741 produced two
  * preventative lint rules (`pyreon/promise-race-needs-cleartimeout`,
@@ -72,7 +72,7 @@ export interface Finding {
   line: number
   message: string
   context: string
-  /** Class label from `.claude/rules/anti-patterns.md` */
+  /** Class label from `.agents/rules/anti-patterns.md` */
   leakClass: 'A' | 'C' | 'D' | 'I'
 }
 
@@ -633,7 +633,7 @@ else {
     )
     // oxlint-disable-next-line no-console
     console.log(
-      `\nNOTE: this audit is permissive — false positives expected. See\n  .claude/rules/anti-patterns.md "Memory Leak Classes" for the canonical fix shapes.`,
+      `\nNOTE: this audit is permissive — false positives expected. See\n  .agents/rules/anti-patterns.md "Memory Leak Classes" for the canonical fix shapes.`,
     )
   }
 }

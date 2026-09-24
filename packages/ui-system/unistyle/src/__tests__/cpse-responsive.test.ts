@@ -4,7 +4,6 @@
  * proven in the e2e (ssr-showcase /cpse-probe responsive box + viewport spec);
  * this asserts the SSR INPUT: a responsive value expands to one suffixed inline
  * custom property per breakpoint, with the converted value.
- * See `.claude/audits/custom-property-style-extraction-2026-06-22.md`.
  */
 import { describe, expect, it } from 'vitest'
 import { cpseVarName } from '../cpse'

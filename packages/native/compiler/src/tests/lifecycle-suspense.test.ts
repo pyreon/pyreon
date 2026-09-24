@@ -8,7 +8,7 @@
 // Observation / Compose recomposition tracks it — a child wrapper
 // struct arg does NOT (device-found). No fetch → `false`.
 //
-// Bisect-verify (per .claude/rules/testing.md):
+// Bisect-verify (per .agents/rules/testing.md):
 //   1. Revert emitSwiftSuspense / emitKotlinSuspense to walled emit
 //   2. The fetch spec fails (no `if quotes.isPending {` in output)
 //   3. Restore; all specs pass

@@ -21,8 +21,8 @@
  *     shipped, already AST-based; the lens just unifies them under one
  *     editor-facing taxonomy.
  *
- * Absence of a finding is "not asserted", NEVER an implicit static claim —
- * see the asymmetric-precision commitment in `.claude/plans/reactivity-lens.md`.
+ * Absence of a finding is "not asserted", NEVER an implicit static claim
+ * (the lens's asymmetric-precision commitment).
  *
  * JS-backend only (Phase 1). The native Rust binary emits byte-identical
  * codegen (527 cross-backend equivalence tests), so the JS path is a sound

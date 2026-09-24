@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/native-router-kotlin",
   "version": "0.51.0",
-  "description": "PRIVATE / EXPERIMENTAL \u2014 Kotlin runtime implementing @pyreon/router's API surface (RouterProvider / RouterView / PyreonLink / useNavigate / useParams) for Android Compose. Parallel to @pyreon/native-router-swift. Phase C2 of the PMTC multiplatform router story.",
+  "description": "@pyreon/router's API (RouterProvider, RouterView, PyreonLink, useNavigate, useParams) for Android Jetpack Compose.",
   "license": "MIT",
   "repository": {
     "type": "git",

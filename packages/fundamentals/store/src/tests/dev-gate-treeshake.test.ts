@@ -11,7 +11,7 @@ const LIB_INDEX = path.resolve(here, '..', '..', 'lib', 'index.js')
 
 // Regression locks for the store dev-gate alias fix — the documented
 // anti-pattern ("Local `__DEV__` const alias prevents bundler tree-shake",
-// `.claude/rules/anti-patterns.md`):
+// `.agents/rules/anti-patterns.md`):
 //
 //   const __DEV__ = process.env.NODE_ENV !== 'production'
 //   ...
