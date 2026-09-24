@@ -75,7 +75,7 @@ describe('styler — string-mode SSR request isolation', () => {
     // A lazy route module evaluates inside the first request that needs it;
     // defining a styled component there is not rendering it.
     const tag = await runWithRequestContext(async () => {
-      styled('p')`color: purple;`
+      void styled('p')`color: purple;`
       await renderToString(h(Blue, null))
       return sheet.getStyleTag()
     })

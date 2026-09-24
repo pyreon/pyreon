@@ -1786,7 +1786,8 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       const concurrency = Math.max(1, config.ssg?.concurrency ?? 4)
       let completed = 0
 
-try {
+      if (workerCount > 1) pool = createSsgWorkerPool(pathToFileURL(handlerPath).href, workerCount)
+      try {
         await runWithConcurrency(renderablePaths, concurrency, renderOne, async (p) => {
           completed++
           if (config.ssg?.onProgress) {
@@ -2177,7 +2178,8 @@ try {
 
       const elapsed = Date.now() - start
       const redirectsSummary = redirects.length > 0 ? ` + ${redirects.length} redirect(s)` : ''
-      const concurrencySummary = concurrency > 1 ? ` (concurrency: ${concurrency})` : ''
+      const concurrencySummary =
+        (concurrency > 1 ? ` (concurrency: ${concurrency})` : '') + (workerCount > 1 ? ` (workers: ${workerCount})` : '')
       const adapterSummary = adapter.name !== 'node' ? ` [adapter: ${adapter.name}]` : ''
       // M2.5 — revalidate-manifest entry count surfaces in the summary so
       // users see at a glance whether per-route ISR config landed in
