@@ -14,6 +14,7 @@
  * nothing in it).
  */
 import { catalogReplacer, componentKey, type ComponentIntelligence, type PropControl } from '../core'
+import { relative } from 'node:path'
 
 /** A component paired with the absolute path it is imported from. */
 export interface CatalogEntrySource {
@@ -514,7 +515,9 @@ export function generateCatalogModule(
     lines.push(
       `          return h('div', { 'data-atlas-error': ${lit(component.name)} }, ` +
         `why ? ${lit(`${component.name} failed to load: `)} + (why.message ?? String(why)) ` +
-        `: ${lit(`Could not load ${component.name} from `)} + ${lit(entry.file)})`,
+        // Project-relative: this string ships in a built site, and the
+        // absolute path would publish the build machine's directory layout.
+        `: ${lit(`Could not load ${component.name} from `)} + ${lit(relative(options.root, entry.file))})`,
     )
     lines.push(`        }`)
     // Content merges UNDER the control values: the seed is what renders when
