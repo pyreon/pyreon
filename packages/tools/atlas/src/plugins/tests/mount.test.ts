@@ -316,3 +316,62 @@ describe('declared gates — browserOnly and parts', () => {
     expect(result.interaction!.status).toBe('fail')
   })
 })
+
+describe('framework dev warnings become findings (audit 2026-09)', () => {
+  const verifyWith = async (component: (props: Record<string, unknown>) => unknown) => {
+    // A fresh plugin: the catalog pass is memoised per plugin instance.
+    const fresh = mountPlugin()
+    const result = await fresh.verify!({ scenario: scenarioFor({}), component: intelligence(component) })
+    return result.interaction!
+  }
+
+  it('records a real `[Pyreon]` warning emitted during mount on the scenario', async () => {
+    const spy = vi.spyOn(console, 'warn')
+    try {
+      const check = await verifyWith(() => h('a', { href: 'javascript:alert(1)' }, 'x'))
+      const warning = check.findings?.find((f) => f.code === 'framework-warning')
+      expect(warning?.message).toContain('Blocked unsafe URL in "href"')
+      expect(warning?.fix).toBeTruthy()
+      // Reported on the scenario, not also dumped mid-scan.
+      expect(spy.mock.calls.some((c) => String(c[0]).startsWith('[Pyreon]'))).toBe(false)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('a warn-ONCE warning swallowed by the warm-up mount still reaches the first scenario', async () => {
+    // The warm-up only runs when a leak verdict is possible, so the runtime is
+    // given a GC hook and a (steady) graph reader to take that path.
+    const runtime = {
+      ...(await defaultRuntime()),
+      collectGarbage: async () => {},
+      reactiveGraphSize: () => 0,
+    }
+    let warned = false
+    const fresh = mountPlugin({ runtime })
+    const component = () => {
+      if (!warned) {
+        warned = true
+        console.warn('[Pyreon] once-per-process defect')
+      }
+      return h('div', null, 'ok')
+    }
+    const result = await fresh.verify!({ scenario: scenarioFor({}), component: intelligence(component) })
+    expect(warned, 'the warm-up mount ran first and consumed the warning').toBe(true)
+    expect(result.interaction?.findings?.map((f) => f.code)).toContain('framework-warning')
+  })
+
+  it("a component's own (non-framework) warning passes through untouched", async () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const check = await verifyWith(() => {
+        console.warn('my app warning')
+        return h('div', null, 'ok')
+      })
+      expect(check.findings?.some((f) => f.code === 'framework-warning') ?? false).toBe(false)
+      expect(spy.mock.calls.some((c) => c[0] === 'my app warning')).toBe(true)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+})

@@ -107,7 +107,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTipHeader, chartTooltipCells, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartPieArgs, chartDialCmds, chartFrameLiteral, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
+import { plotMarkColorSlots, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTipHeader, chartTooltipCells, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, colorModeScope, literalColorMode, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, optionSpecArgs, chartPieArgs, chartDialCmds, chartFrameLiteral, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag, chartOrientVertical, chartRoamConfig, chartVisualMap, chartZoomConfig, CHART_TIMELINE_TAG, chartTimelineStripLiteral, chartToolboxConfig, chartAreaBrushConfig, chartActionFields } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -7191,8 +7191,15 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // compile-time-resolved; dark mode is a system read). Render children directly
   // (mirror the jsx-fragment `Column {…}`). Swift-dispatcher parity.
   if ((tag === 'PyreonUI' || tag === 'PyreonUIProvider') && canAliasIntercept(tag, '@pyreon/ui-core')) {
-    const p = ' '.repeat(indent + 2)
-    return `Column {\n${e.children.map((c) => p + emitKotlinChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+    // A literal `mode` pins the colour mode for the charts below — see the Swift twin.
+    const prevScope = _chartThemeScope
+    _chartThemeScope = colorModeScope(e, (w) => _emitWarnings.push(w), prevScope ?? undefined, false) ?? null
+    try {
+      const p = ' '.repeat(indent + 2)
+      return `Column {\n${e.children.map((c) => p + emitKotlinChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+    } finally {
+      _chartThemeScope = prevScope
+    }
   }
 
   // @pyreon/toast `<Toaster />` → a native overlay over the reactive PyreonToast
@@ -7337,11 +7344,32 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   }
   if (tag === 'Flow' && canAliasIntercept(tag, '@pyreon/flow')) return emitKotlinFlowHost(e)
   if (tag === 'Controls' && canAliasIntercept(tag, '@pyreon/flow')) return emitKotlinStandaloneFlowControls(e, indent)
-  // `@pyreon/charts/plot` family hosts → PyreonChartCanvas over the generated
+  // `@pyreon/charts` family hosts → PyreonChartCanvas over the generated
   // engine (chart-hosts.ts); accessor-prop hosts warn by name.
   if (isChartHostTag(tag)) return emitKotlinChartHost(e, indent)
   // `<ChartThemeProvider>` — transparent on native; see the Swift twin for why.
   // `<ChartThemeProvider>` — a compile-time theme scope; see the Swift twin.
+  // `<ColorModeProvider mode>` (@pyreon/core) pins the framework-wide colour
+  // mode; natively a compile-time scope the chart hosts below read. Children
+  // render as they are.
+  if (tag === 'ColorModeProvider' && canAliasIntercept(tag, '@pyreon/core')) {
+    const prevScope = _chartThemeScope
+    _chartThemeScope = colorModeScope(e, (w) => _emitWarnings.push(w), prevScope ?? undefined) ?? null
+    try {
+      const inner = ' '.repeat(indent + 2)
+      const box = `Box {\n${e.children.map((c) => inner + emitKotlinChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+      // A literal mode also pins the configuration's night bit for the subtree,
+      // which is what `isSystemInDarkTheme()` (the lowered `useColorMode()`)
+      // and Material read — the Compose twin of SwiftUI's `.environment(\.colorScheme)`.
+      const pinned = literalColorMode(e)
+      if (pinned === undefined) return box
+      const night = pinned === 'dark' ? 'UI_MODE_NIGHT_YES' : 'UI_MODE_NIGHT_NO'
+      const cfg = `Configuration(LocalConfiguration.current).apply { uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or Configuration.${night} }`
+      return `CompositionLocalProvider(LocalConfiguration provides ${cfg}) {\n${inner}${box}\n${' '.repeat(indent)}}`
+    } finally {
+      _chartThemeScope = prevScope
+    }
+  }
   if (tag === 'ChartThemeProvider') {
     const prev = _chartThemeScope
     _chartThemeScope = chartThemeScope(e, (w) => _emitWarnings.push(w), prev ?? undefined)
@@ -7431,7 +7459,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Link' || tag === 'RouterLink') return emitKotlinLink(e, indent)
   if (tag === 'PieChart') return emitKotlinPieChart(e, indent)
   if (tag === 'GaugeChart') return emitKotlinGaugeChart(e, indent)
-  // `<PieChart>` / `<GaugeChart>` from @pyreon/charts/plot — mirror of the
+  // `<PieChart>` / `<GaugeChart>` from @pyreon/charts — mirror of the
   // Swift branch: the radial family lowers to the runtime composables over
   // the GENERATED engine.
   if (tag === 'PermissionsProvider') return emitKotlinPermissionsProvider(e, indent)
@@ -11236,7 +11264,7 @@ function ktChartDouble(text: string): string {
 }
 
 /**
- * `<PieChart data value label …>` (@pyreon/charts/plot) → the runtime-kotlin
+ * `<PieChart data value label …>` (@pyreon/charts) → the runtime-kotlin
  * `PyreonPieChart` composable. Mirror of emitSwiftPieChart — see its
  * docblock for the accessor-arity rule.
  */
@@ -11296,7 +11324,7 @@ function emitKotlinPieChart(
 }
 
 /**
- * `<GaugeChart value …>` (@pyreon/charts/plot) → the runtime-kotlin
+ * `<GaugeChart value …>` (@pyreon/charts) → the runtime-kotlin
  * `PyreonGaugeChart` composable. Mirror of emitSwiftGaugeChart.
  */
 function emitKotlinGaugeChart(
@@ -11346,7 +11374,7 @@ function emitKotlinGaugeChart(
 }
 
 // ---------------------------------------------------------------------------
-// `@pyreon/charts/plot` family hosts → PyreonChartCanvas (the Compose Canvas
+// `@pyreon/charts` family hosts → PyreonChartCanvas (the Compose Canvas
 // that walks the generated engine's draw list). Mirror of the Swift emitter;
 // see chart-hosts.ts for the per-host table.
 // ---------------------------------------------------------------------------
@@ -11620,7 +11648,7 @@ function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
 
 function emitKotlinChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
-  // The grammar: `<Plot>` with mark children desugars to the `<PlotChart marks>` element the plot emit lowers.
+  // The grammar: `<Chart>` with mark children desugars to the `<PlotChart marks>` element the plot emit lowers.
   if (tag === GRAMMAR_CHART_HOST) {
     // The grammar desugars to the host it names (`<PlotChart marks>`, or a family host for `<Arc>` / `<Stage>` / `<Cell>` / `<Candle>`) and re-enters here as that element.
     return emitKotlinChartHost(desugarChartGrammar(e, (w) => _emitWarnings.push(w)), indent)
@@ -11630,7 +11658,7 @@ function emitKotlinChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
     return lowered === undefined ? 'Box {}' : emitKotlinChartHost(lowered, indent)
   }
   if (Object.hasOwn(GRAMMAR_MARK_TAGS, tag) || Object.hasOwn(GRAMMAR_FAMILY_TAGS, tag) || GRAMMAR_CONFIG_TAGS.includes(tag)) {
-    _emitWarnings.push(`<${tag}> only means something as a child of <Plot>; on its own it renders nothing.`)
+    _emitWarnings.push(`<${tag}> only means something as a child of <Chart>; on its own it renders nothing.`)
     return 'Box {}'
   }
   // Chrome the web host draws but this target does not yet — named, never silent.
@@ -13001,7 +13029,13 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
       `if (pyreonDataView) { Box(modifier = Modifier.fillMaxSize().background(Color(0xFFFFFFFF)).testTag("pyreon-dataview")) { Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(8.dp)) { val pyreonTable = chartTable(${input}); Text(pyreonTable.headers.joinToString("  "), fontSize = 12.sp); for (pyreonRow in pyreonTable.rows) Text(pyreonRow.joinToString("  "), fontSize = 12.sp) }; ` +
       `Text("Close", modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).testTag("pyreon-dataview-close").clickable { pyreonDataView = false }) } }`
   }
-  const overlays = [overlay, dataViewOverlay].filter((o): o is string => o !== undefined)
+  // TalkBack's per-datum nodes: one per visible category over the plot, the
+  // native twin of the web host's hidden table. Evenly spaced columns only —
+  // a decimated or continuous-x chart keeps the description alone.
+  const pointsOverlay = decimated || xValueAcc !== undefined
+    ? undefined
+    : `PyreonChartPoints(${describe.slice('describeChart('.length, -1)}, layoutChart(pyreonSpec, ::pyreonChartMeasure).plot, pyreonCats.size, ${windowed ? 'pyreonRange.from' : '0'}, ${horizontal}, ${chrome.left}, ${chrome.top}, ${readStaticAttrKotlin(e, 'rtl') === true ? W : '-1.0'})`
+  const overlays = [pointsOverlay, overlay, dataViewOverlay].filter((o): o is string => o !== undefined)
   return kotlinFrameHostWithDensity(e, lets, cmds, tap, W, H, hasWidth, indent, windowed || tap !== '' || toolbox !== null, overlays.length === 0 ? undefined : overlays.join('\n'), describe)
 }
 

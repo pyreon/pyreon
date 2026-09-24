@@ -1,4 +1,4 @@
-// `<SingleAxisChart>` is a PUBLIC export of `@pyreon/charts/plot`, and unlike
+// `<SingleAxisChart>` is a PUBLIC export of `@pyreon/charts`, and unlike
 // the other families it has no `familyHostNode` route — the option facade draws
 // a single axis as SVG — so nothing exercised the component itself. A host with
 // no test is a host whose canvas wiring (layout → render → hit) is unproven.

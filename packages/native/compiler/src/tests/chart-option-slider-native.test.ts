@@ -11,7 +11,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * which lays out and paints the same strip, and its drag overlay covers it.
  */
 const src = (zoom: string): string => `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ xAxis: { type: 'category', data: ['a', 'b', 'c', 'd'] }, yAxis: { type: 'value' }, dataZoom: ${zoom}, series: [{ type: 'line', data: [3, 9, 4, 7] }] }} />
 }`

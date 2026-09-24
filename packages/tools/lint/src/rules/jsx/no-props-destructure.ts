@@ -1,20 +1,35 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isDestructuring } from '../../utils/ast'
 
-function containsJSXReturn(node: any): boolean {
+function containsJSXReturn(node: any, allowH = false): boolean {
   if (!node) return false
   if (node.type === 'JSXElement' || node.type === 'JSXFragment') return true
-  if (node.type === 'ParenthesizedExpression') return containsJSXReturn(node.expression)
+  // `h(tag, props, …)` IS the JSX of framework and library code that is not
+  // compiled — RouterLink, Dynamic and the a11y components all build their
+  // output this way, and all of them destructured props unnoticed because this
+  // rule only recognised a JSX return. Only honoured for a PascalCase function
+  // (`allowH`), so an ordinary helper that happens to return `h(...)` from an
+  // options object is never treated as a component.
+  if (
+    allowH &&
+    node.type === 'CallExpression' &&
+    node.callee?.type === 'Identifier' &&
+    node.callee.name === 'h'
+  )
+    return true
+  if (node.type === 'ParenthesizedExpression') return containsJSXReturn(node.expression, allowH)
 
   if (node.type === 'BlockStatement') {
     for (const stmt of node.body ?? []) {
-      if (stmt.type === 'ReturnStatement' && containsJSXReturn(stmt.argument)) {
+      if (stmt.type === 'ReturnStatement' && containsJSXReturn(stmt.argument, allowH)) {
         return true
       }
     }
   }
   return false
 }
+
+const PASCAL_CASE = /^[A-Z][A-Za-z0-9]*$/
 
 /**
  * Extract destructured property names from an ObjectPattern.
@@ -84,8 +99,22 @@ export const noPropsDestructure: Rule = {
     // Track BOTH the function and its parent call so we can later refuse
     // the exemption when the parent is a known component factory.
     const callArgFns = new WeakMap<any, any>()
+    // Function nodes bound to a PascalCase name (`function Link(…)`,
+    // `const Link = (…) =>`), pre-marked on the way in for the same reason
+    // as `callArgFns`: the visitor gets no `parent`.
+    const pascalFns = new WeakSet<any>()
 
     const callbacks: VisitorCallbacks = {
+      VariableDeclarator(node: any) {
+        const init = node.init
+        if (
+          node.id?.type === 'Identifier' &&
+          PASCAL_CASE.test(node.id.name) &&
+          (init?.type === 'ArrowFunctionExpression' || init?.type === 'FunctionExpression')
+        ) {
+          pascalFns.add(init)
+        }
+      },
       CallExpression(node: any) {
         for (const arg of node.arguments ?? []) {
           if (
@@ -99,21 +128,21 @@ export const noPropsDestructure: Rule = {
       },
       ArrowFunctionExpression(node: any) {
         functionDepth++
-        checkFunction(node, context, functionDepth, callArgFns)
+        checkFunction(node, context, functionDepth, callArgFns, pascalFns)
       },
       'ArrowFunctionExpression:exit'() {
         functionDepth--
       },
       FunctionDeclaration(node: any) {
         functionDepth++
-        checkFunction(node, context, functionDepth, callArgFns)
+        checkFunction(node, context, functionDepth, callArgFns, pascalFns)
       },
       'FunctionDeclaration:exit'() {
         functionDepth--
       },
       FunctionExpression(node: any) {
         functionDepth++
-        checkFunction(node, context, functionDepth, callArgFns)
+        checkFunction(node, context, functionDepth, callArgFns, pascalFns)
       },
       'FunctionExpression:exit'() {
         functionDepth--
@@ -209,7 +238,13 @@ function checkBodyDestructure(paramName: string, body: any, context: any) {
   for (const stmt of body.body ?? []) walk(stmt)
 }
 
-function checkFunction(node: any, context: any, depth: number, callArgFns: WeakMap<any, any>) {
+function checkFunction(
+  node: any,
+  context: any,
+  depth: number,
+  callArgFns: WeakMap<any, any>,
+  pascalFns: WeakSet<any>,
+) {
   const params = node.params
   if (!params || params.length === 0) return
 
@@ -234,7 +269,10 @@ function checkFunction(node: any, context: any, depth: number, callArgFns: WeakM
 
   const body = node.body
   if (!body) return
-  if (!containsJSXReturn(body)) return
+  const isPascal =
+    pascalFns.has(node) ||
+    (node.type === 'FunctionDeclaration' && PASCAL_CASE.test(node.id?.name ?? ''))
+  if (!containsJSXReturn(body, isPascal)) return
 
   // Signature form: `function C({ a }) { … }`.
   if (isDestructuring(firstParam)) {

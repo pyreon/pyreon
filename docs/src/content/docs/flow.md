@@ -1143,7 +1143,7 @@ SVG strokes/fills are set via the `style` attribute, never SVG presentation attr
 
 #### Color modes
 
-`<Flow colorMode="dark">` (or `"system"`, which follows `prefers-color-scheme`) renders `data-color-mode` on the canvas, and `flowStyles` carries a dark value for every `--pyreon-flow-*` variable behind it — nodes, edges, panels, controls, minimap, toolbar, handles and the background pattern. Your own variable overrides on an ancestor still win, so a custom theme needs no changes.
+With no `colorMode`, a flow takes the app's colour mode — `<PyreonUI mode>` or `<ColorModeProvider mode>` from `@pyreon/core` — and is light when the app set none. `<Flow colorMode="dark">` (or `"system"`, which follows `prefers-color-scheme`) overrides it and renders `data-color-mode` on the canvas, and `flowStyles` carries a dark value for every `--pyreon-flow-*` variable behind it — nodes, edges, panels, controls, minimap, toolbar, handles and the background pattern. Your own variable overrides on an ancestor still win, so a custom theme needs no changes.
 
 ## `flowStyles` — hover & animation states
 
