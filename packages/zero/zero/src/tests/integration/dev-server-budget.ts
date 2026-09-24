@@ -24,7 +24,7 @@
  *
  * THE RULE THIS FOLLOWS
  * ---------------------
- * `.claude/rules/testing.md` — "Timeouts: the wall-clock backstop must exceed
+ * `.agents/rules/testing.md` — "Timeouts: the wall-clock backstop must exceed
  * the composed internal budgets". The failure mode being retired is NOT
  * "slow test"; it is the OPAQUE kill: vitest's wall clock fires first and
  * reports `Test timed out in 20000ms`, which names neither which request

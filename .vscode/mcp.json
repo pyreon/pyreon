@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "pyreon": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${workspaceFolder}/packages/tools/mcp/lib/index.js"]
+    }
+  }
+}

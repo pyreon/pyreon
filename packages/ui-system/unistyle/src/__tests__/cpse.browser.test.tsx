@@ -6,7 +6,6 @@ import { value } from '../units'
 
 /**
  * Real-Chromium correctness proof for Custom-Property Style Extraction.
- * See `.claude/audits/custom-property-style-extraction-2026-06-22.md`.
  *
  * happy-dom does NOT resolve CSS custom properties through the cascade (same
  * reason cssVariables.browser.test.tsx exists), so these are the load-bearing

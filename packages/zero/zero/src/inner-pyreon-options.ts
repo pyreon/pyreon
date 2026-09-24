@@ -31,7 +31,7 @@
  *
  * An allowlist array reproduces the bug on the next option: whoever adds one
  * to `PyreonPluginOptions` gets a silent non-forward, exactly the failure mode
- * above (`.claude/rules/anti-patterns.md`, "gate input list is a silent-hole
+ * above (`.agents/rules/anti-patterns.md`, "gate input list is a silent-hole
  * generator"). `Record<keyof Required<PyreonPluginOptions>, …>` makes a missing
  * key a TYPECHECK ERROR and an unknown key a typecheck error too, so a new
  * option cannot be added without classifying it. The default stops being

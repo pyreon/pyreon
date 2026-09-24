@@ -7,7 +7,7 @@
  * GitHub already refuses to DISPATCH a `pull_request` workflow for a
  * conflicting PR — those workflows run against `refs/pull/N/merge`, and when
  * that merge commit cannot be built nothing is queued at all (the
- * "checks never started" shape in `.claude/rules/anti-patterns.md`). What it
+ * "checks never started" shape in `.agents/rules/anti-patterns.md`). What it
  * does NOT do is stop a run that was already in flight when a merge to main
  * created the conflict. That run tests `old-main + head`; the PR cannot merge
  * on it, and resolving the conflict requires a push, which dispatches a fresh

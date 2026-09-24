@@ -118,7 +118,7 @@ describe('isDocsOnlyChange — Layer-2 heavy-job gate', () => {
   it('treats a pure CLAUDE.md / README change as docs-only (heavy jobs skip)', () => {
     expect(isDocsOnlyChange(['CLAUDE.md'])).toBe(true)
     expect(isDocsOnlyChange(['CLAUDE.md', 'packages/fundamentals/code/README.md'])).toBe(true)
-    expect(isDocsOnlyChange(['.claude/rules/anti-patterns.md'])).toBe(true)
+    expect(isDocsOnlyChange(['.agents/rules/anti-patterns.md'])).toBe(true)
   })
 
   it('treats docs-site / .claude / llms files as docs-only', () => {
@@ -131,6 +131,13 @@ describe('isDocsOnlyChange — Layer-2 heavy-job gate', () => {
         'README.mdx',
       ]),
     ).toBe(true)
+  })
+
+  it('treats non-markdown agent config under .agents/ as docs-only', () => {
+    // browser-packages.json is not `.md`, so only the `.agents/` prefix makes
+    // it docs-only; its lint consumer still runs via DOC_INPUT_CONSUMERS.
+    expect(isDocsOnlyChange(['.agents/rules/browser-packages.json', 'AGENTS.md'])).toBe(true)
+    expect(isDocsOnlyChange(['.agents/rules/browser-packages.json', 'scripts/affected.ts'])).toBe(false)
   })
 
   it('treats ANY non-docs path as code (heavy jobs run) — conservative bias', () => {
@@ -579,19 +586,19 @@ describe('computeAffectedFlags', () => {
     ]
 
     it('docInputConsumer identifies the parser package', () => {
-      expect(docInputConsumer('.claude/rules/anti-patterns.md')).toBe('@pyreon/mcp')
+      expect(docInputConsumer('.agents/rules/anti-patterns.md')).toBe('@pyreon/mcp')
       expect(docInputConsumer('docs/patterns/keyed-lists.md')).toBe('@pyreon/mcp')
-      expect(docInputConsumer('.claude/rules/browser-packages.json')).toBe('@pyreon/lint')
+      expect(docInputConsumer('.agents/rules/browser-packages.json')).toBe('@pyreon/lint')
       expect(docInputConsumer('docs/guides/routing.md')).toBeUndefined()
       expect(docInputConsumer('packages/tools/mcp/src/index.ts')).toBeUndefined()
     })
 
-    it('a change to .claude/rules/anti-patterns.md runs the tools cell for @pyreon/mcp', () => {
+    it('a change to .agents/rules/anti-patterns.md runs the tools cell for @pyreon/mcp', () => {
       // Regression: these doc-INPUTs used to seed nothing → the `test (tools)`
       // cell skipped @pyreon/mcp's anti-patterns.test.ts / patterns.test.ts,
       // so a structural break in the parsed files merged unnoticed.
       const out = computeAffectedFlags({
-        changed: ['.claude/rules/anti-patterns.md'],
+        changed: ['.agents/rules/anti-patterns.md'],
         workspaces: WS_MCP,
         category: 'tools',
         root: ROOT,
@@ -613,7 +620,7 @@ describe('computeAffectedFlags', () => {
     it('does NOT leak into non-tools cells (leaf seed, no expansion)', () => {
       expect(
         computeAffectedFlags({
-          changed: ['.claude/rules/anti-patterns.md'],
+          changed: ['.agents/rules/anti-patterns.md'],
           workspaces: WS_MCP,
           category: 'core',
           root: ROOT,
@@ -623,7 +630,7 @@ describe('computeAffectedFlags', () => {
 
     it('gracefully no-ops when @pyreon/mcp is absent (never --filter=*)', () => {
       expect(
-        computeAffectedFlags({ changed: ['.claude/rules/anti-patterns.md'], workspaces: WS, root: ROOT }),
+        computeAffectedFlags({ changed: ['.agents/rules/anti-patterns.md'], workspaces: WS, root: ROOT }),
       ).toBe('')
     })
 
@@ -663,7 +670,7 @@ describe('computeAffectedFlags', () => {
     it('a doc-INPUT change is has-affected=true; pure prose is has-affected=false', () => {
       const hasAffected = (changed: string[] | null) =>
         computeAffectedFlags({ changed, workspaces: WS_MCP, root: ROOT }) !== ''
-      expect(hasAffected(['.claude/rules/anti-patterns.md'])).toBe(true)
+      expect(hasAffected(['.agents/rules/anti-patterns.md'])).toBe(true)
       expect(hasAffected(['docs/patterns/x.md'])).toBe(true)
       expect(hasAffected(['CLAUDE.md'])).toBe(false)
       expect(hasAffected(['packages/fundamentals/code/README.md'])).toBe(false)

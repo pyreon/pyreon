@@ -724,7 +724,7 @@ Server-only packages are correctly exempt — they always run in Node where `pro
 
 ### `pyreon/require-browser-smoke-test`
 
-Every browser-categorized package must ship at least one `*.browser.test.{ts,tsx}` file under `src/`. The rule fires once per package on its `src/index.ts`, walks the package directory for browser smoke tests, and reports if none exist. This locks in the browser smoke harness: without it, new browser-running packages can silently ship without real-Chromium coverage, and happy-dom masks environment-divergence bugs (mock-vnode metadata drops, `typeof process` dead code, event-delegation bugs that only surface in a real browser). The default browser-package list mirrors `.claude/rules/browser-packages.json`; extend via `additionalPackages`, opt out via `exemptPaths`. **Off** in `app`, forced to **error** in `lib`.
+Every browser-categorized package must ship at least one `*.browser.test.{ts,tsx}` file under `src/`. The rule fires once per package on its `src/index.ts`, walks the package directory for browser smoke tests, and reports if none exist. This locks in the browser smoke harness: without it, new browser-running packages can silently ship without real-Chromium coverage, and happy-dom masks environment-divergence bugs (mock-vnode metadata drops, `typeof process` dead code, event-delegation bugs that only surface in a real browser). The default browser-package list mirrors `.agents/rules/browser-packages.json`; extend via `additionalPackages`, opt out via `exemptPaths`. **Off** in `app`, forced to **error** in `lib`.
 
 ```json
 {
@@ -745,7 +745,7 @@ Every browser-categorized package must ship at least one `*.browser.test.{ts,tsx
 :::
 
 :::warning{title="Don't hardcode the browser-package list in the rule"}
-The list lives in `.claude/rules/browser-packages.json` (the single source of truth), not in the rule source. Use `additionalPackages` to extend it.
+The list lives in `.agents/rules/browser-packages.json` (the single source of truth), not in the rule source. Use `additionalPackages` to extend it.
 :::
 
 ### `pyreon/no-imperative-effect-on-create`

@@ -1,8 +1,16 @@
 #!/usr/bin/env bun
 /**
- * check-mcp-docs — assert every MCP tool registered in
- * `packages/tools/mcp/src/manifest.ts` has a `### <name>` section in
- * `docs/src/content/docs/mcp.md`.
+ * check-mcp-docs — assert the MCP tool surface agrees across its three
+ * descriptions:
+ *   1. the tools the server actually registers (`server.tool('<name>'` in
+ *      `packages/tools/mcp/src/index.ts`),
+ *   2. the tool entries in `packages/tools/mcp/src/manifest.ts` (which drive
+ *      `mcp_overview`, the generated API reference and the counted claim), and
+ *   3. the `### <name>` sections in `docs/src/content/docs/mcp.md`.
+ *
+ * (1)⇄(2) is checked in BOTH directions: a registered tool missing from the
+ * manifest is invisible to `mcp_overview` and uncounted, and a manifest entry
+ * the server does not register advertises a tool that does not exist.
  *
  * Closes the silent-drift footgun T2.5.12 was opened to fix: as new
  * MCP tools land, manifest entries drift ahead of the human-written
@@ -21,11 +29,13 @@
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const REPO_ROOT = resolve(import.meta.dir, '..')
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const MANIFEST_PATH = join(REPO_ROOT, 'packages/tools/mcp/src/manifest.ts')
 const DOCS_PATH = join(REPO_ROOT, 'docs/src/content/docs/mcp.md')
+const SERVER_PATH = join(REPO_ROOT, 'packages/tools/mcp/src/index.ts')
 
 interface MissingEntry {
   tool: string
@@ -39,6 +49,39 @@ interface CheckResult {
   unreachable: string[]
   documented: string[]
   missing: MissingEntry[]
+  /** Registered by the server but absent from the manifest. */
+  notInManifest: string[]
+  /** In the manifest but not registered by the server. */
+  notRegistered: string[]
+}
+
+/** Tool names passed to `server.tool('<name>', …)`, in source order. */
+function parseRegisteredTools(source: string): string[] {
+  return [...source.matchAll(/server\.tool\(\s*['"]([a-z_][a-z0-9_]*)['"]/g)].map((m) => m[1]!)
+}
+
+/** Both directions of the server ⇄ manifest comparison, sorted. */
+function compareRegistrations(
+  registered: string[],
+  manifest: string[],
+): { notInManifest: string[]; notRegistered: string[] } {
+  const reg = new Set(registered)
+  const man = new Set(manifest)
+  return {
+    notInManifest: [...reg].filter((n) => !man.has(n)).sort(),
+    notRegistered: [...man].filter((n) => !reg.has(n)).sort(),
+  }
+}
+
+function readRegisteredTools(): string[] {
+  if (!existsSync(SERVER_PATH)) {
+    throw new Error(`[check-mcp-docs] server source not found: ${SERVER_PATH}`)
+  }
+  const names = parseRegisteredTools(readFileSync(SERVER_PATH, 'utf8'))
+  if (names.length === 0) {
+    throw new Error('[check-mcp-docs] no server.tool(...) registrations parsed — regex drifted')
+  }
+  return names
 }
 
 /**
@@ -108,8 +151,19 @@ function check(): CheckResult {
     }
   }
 
+  const { notInManifest, notRegistered } = compareRegistrations(
+    readRegisteredTools(),
+    tools.map((t) => t.name),
+  )
+
   return {
-    ok: missing.length === 0 && unreachable.length === 0,
+    ok:
+      missing.length === 0 &&
+      unreachable.length === 0 &&
+      notInManifest.length === 0 &&
+      notRegistered.length === 0,
+    notInManifest,
+    notRegistered,
     toolCount: tools.length,
     documented: documented.sort(),
     missing: missing.sort((a, b) => a.tool.localeCompare(b.tool)),
@@ -179,6 +233,21 @@ function main(): void {
     )
   }
 
+  if (result.notInManifest.length > 0 || result.notRegistered.length > 0) {
+    for (const name of result.notInManifest) {
+      console.error(
+        `✗ \`${name}\` is registered by the server but has no tool entry in packages/tools/mcp/src/manifest.ts, ` +
+          'so mcp_overview, the API reference and the counted tool claim all miss it.',
+      )
+    }
+    for (const name of result.notRegistered) {
+      console.error(
+        `✗ \`${name}\` has a manifest tool entry but packages/tools/mcp/src/index.ts never registers it.`,
+      )
+    }
+    console.error('')
+  }
+
   if (result.ok) {
     console.log(
       `✓ MCP docs gate clean. ${result.toolCount} tool(s) registered, ` +
@@ -210,4 +279,4 @@ if (import.meta.main) {
   main()
 }
 
-export { check, readManifestTools, readDocSections }
+export { check, compareRegistrations, parseRegisteredTools, readDocSections, readManifestTools }

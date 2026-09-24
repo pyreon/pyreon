@@ -12,7 +12,7 @@ export const toastA11y: Rule = {
     // its DEFINITION (computing `role` from severity, say) still reports here.
     // Resolving that needs the parent chain, and oxc's visitor passes none — so
     // a toast IMPLEMENTATION opts out by path rather than by a silently-inert
-    // parent walk. See `.claude/rules/anti-patterns.md` → oxc visitor parent.
+    // parent walk. See `.agents/rules/anti-patterns.md` → oxc visitor parent.
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {

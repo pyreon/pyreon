@@ -9,7 +9,7 @@ A bounded-`Map<K, V>` primitive that evicts the oldest entry when a size cap is 
 
 ## Why
 
-Before this package, 9 Pyreon files each carried their own ~10-line FIFO eviction snippet — same `map.keys().next().value` + `map.delete(oldest)` shape, slightly different (each had its own bugs at one point). The catalog of leaked-by-omission inline caches is documented in `.claude/rules/anti-patterns.md` under "Memory Leak Classes" (Class C).
+Before this package, 9 Pyreon files each carried their own ~10-line FIFO eviction snippet — same `map.keys().next().value` + `map.delete(oldest)` shape, slightly different (each had its own bugs at one point). The catalog of leaked-by-omission inline caches is documented in `.agents/rules/anti-patterns.md` under "Memory Leak Classes" (Class C).
 
 This package collapses the 9 implementations to one. Each consumer passes an `SizedMapOptions` config; the eviction code lives in exactly one place.
 

@@ -19,7 +19,7 @@
  *
  * Every spec compiles REAL source through `transformJSX` — vitest's own JSX
  * transform never produces `_tpl`/`_ssr`, so it cannot see this class at all
- * (see `.claude/rules/test-environment-parity.md`).
+ * (see `.agents/rules/test-environment-parity.md`).
  *
  * Both JSX runtimes are exercised. They deliver children by DIFFERENT routes —
  * classic `h(Comp, null, child)` puts it in `vnode.children` (merged into props

@@ -6,7 +6,7 @@ import { defineManifest } from '@pyreon/manifest'
  * surface (zero(), i18n, ISR, adapters, getStaticPaths,
  * expandRoutesForLocales, plus the core plugin APIs that compose with
  * them). Other zero subpath exports (`/image`, `/font`, `/cache`, etc.)
- * stay in CLAUDE.md until a real consumer-side foot-gun surfaces — the
+ * stay in `.agents/guides/zero/README.md` until a real consumer-side foot-gun surfaces — the
  * manifest is for the surface AI agents need to discover, not an
  * exhaustive enumeration.
  */

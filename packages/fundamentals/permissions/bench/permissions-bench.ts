@@ -3,7 +3,7 @@
  *
  * Run: `bun run bench:casl` (sets NODE_ENV=production).
  *
- * Objectivity contract (see .claude/plans/fundamentals-benchmarks.md):
+ * Objectivity contract:
  *  - NODE_ENV=production (shell-set) before either library loads.
  *  - Idiomatic per library — Pyreon `createPermissions(map)` + `can('a.b')` flat
  *    hierarchical string keys; CASL `AbilityBuilder(createMongoAbility)` +

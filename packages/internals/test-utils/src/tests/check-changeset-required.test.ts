@@ -241,7 +241,7 @@ describe('isConsumerAffectingFile', () => {
     it('rejects .claude/ rules', () => {
       expect(
         isConsumerAffectingFile(
-          '.claude/rules/workflow.md',
+          '.agents/rules/workflow.md',
           PACKAGES,
           IGNORED,
           REPO,
@@ -583,7 +583,7 @@ describe('evaluateGate', () => {
         files: [
           'scripts/check-diagnose-catalog.ts',
           'packages/internals/test-utils/src/tests/check-diagnose-catalog.test.ts',
-          '.claude/rules/workflow.md',
+          '.agents/rules/workflow.md',
         ],
       }),
     )
@@ -808,7 +808,7 @@ describe('real-repo smoke (the actual Pyreon monorepo)', () => {
     const files = [
       'scripts/check-diagnose-catalog.ts',
       'packages/internals/test-utils/src/tests/check-diagnose-catalog.test.ts',
-      '.claude/rules/workflow.md',
+      '.agents/rules/workflow.md',
     ]
 
     const result = evaluateGate({

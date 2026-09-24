@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Hand-written bin (never bundled) — invokes the CLI entry EXPLICITLY rather
 // than relying on an `import.meta.main` self-run guard, which does not survive
-// the library build (see .claude/rules/testing.md "Test the shipped ENTRY").
+// the library build (see .agents/rules/testing.md "Test the shipped ENTRY").
 import { runCli } from '../lib/cli.js'
 
 runCli(process.argv.slice(2))

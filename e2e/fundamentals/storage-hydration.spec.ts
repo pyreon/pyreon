@@ -104,7 +104,7 @@ test.describe('@pyreon/storage hydration — strong elements bound to storage si
     // understood, non-bug load-sensitivity so the spec passes on the
     // first attempt instead of relying on the retry mask (which would
     // otherwise drown the new flaky-spec CI signal in expected noise).
-    // The HMR-suppression recipe from `.claude/rules/testing.md` is
+    // The HMR-suppression recipe from `.agents/rules/testing.md` is
     // deliberately NOT used — see this file's `beforeEach`: it breaks
     // click-handler delegation in the fundamentals-playground dev build.
     const CI_REACT = 15_000

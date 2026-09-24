@@ -11,7 +11,7 @@ Does message-passing actually prevent reactivity bugs, or just relocate them?
 
 ## Method
 
-Pick two bug patterns documented in `.claude/rules/anti-patterns.md` that signal-based code is repeatedly susceptible to:
+Pick two bug patterns documented in `.agents/rules/anti-patterns.md` that signal-based code is repeatedly susceptible to:
 
 1. **Pattern A — stale-capture race between sibling handlers**: parent passes a signal to N children; each child captures the value (not the accessor) at component setup; handlers reference the stale capture; one child's update silently overwrites another's.
 2. **Pattern B — stale-closure async fetch race**: user clicks A → user clicks B before A's fetch resolves; A's late response overwrites B's data; UI shows wrong user.
@@ -57,7 +57,7 @@ A stricter read would mark this DEFER. I'm choosing GRADUATE and flagging the ru
 
 ## Findings worth carrying forward
 
-1. **The signal version of Pattern A IS a documented anti-pattern** (`.claude/rules/anti-patterns.md` "Destructuring props" / "stale capture in component setup"). The lint rule `pyreon/no-props-destructure` catches some forms. The actor model doesn't need a lint rule — the unsafe API doesn't exist.
+1. **The signal version of Pattern A IS a documented anti-pattern** (`.agents/rules/anti-patterns.md` "Destructuring props" / "stale capture in component setup"). The lint rule `pyreon/no-props-destructure` catches some forms. The actor model doesn't need a lint rule — the unsafe API doesn't exist.
 
 2. **Pattern B's signal version COULD be fixed with an `AbortController` per fetch**. The actor version doesn't need one — the requestId check is built into the message-handling loop. The cost difference between the two fixes is tiny in LOC but huge in cognitive load: the AbortController is one of those "you remember to add it after the bug bites once" patterns. The actor's request-id check is structural.
 

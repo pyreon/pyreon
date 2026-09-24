@@ -483,7 +483,7 @@ describe('auditTestEnvironment — real Pyreon repo', () => {
     }
   })
 
-  // `.claude/rules/test-environment-parity.md` states the pre-merge guard as
+  // `.agents/rules/test-environment-parity.md` states the pre-merge guard as
   // "verify HIGH + MEDIUM count is still 0", and the comment above records that
   // T1.2 achieved it — but nothing ASSERTED it, so the count silently drifted
   // back to 2 HIGH (both false positives). A documented invariant with no test
