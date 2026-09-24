@@ -5,7 +5,7 @@ description: "Common documentation mistakes in Pyreon and how to fix them."
 
 # Documentation Mistakes
 
-> **Generated** from `.claude/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
+> **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
 ### A renderer that reserves a markdown level for STRUCTURE must demote body headings, or the body can forge structure — and the forgery is invisible until the first body that uses a heading
 
@@ -15,7 +15,7 @@ description: "Common documentation mistakes in Pyreon and how to fix them."
 
 ### Forgetting to update all surfaces
 
-CLAUDE.md, docs/, README, llms.txt, llms-full.txt, MCP api-reference must all stay in sync
+AGENTS.md, docs/, README, llms.txt, llms-full.txt, MCP api-reference must all stay in sync
 
 ---
 

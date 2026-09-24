@@ -6,7 +6,7 @@ export default defineManifest({
   tagline:
     'Model Context Protocol server — discoverability map, live API lookup, validation, migration, anti-pattern catalog, changelog, test-environment audit',
   description:
-    'MCP server (stdio transport) that exposes Pyreon\\\'s structured knowledge to AI coding assistants (Claude Code, Cursor, etc.). Sixteen tools: `mcp_overview` (start here — markdown table of every tool with "when to use" + example, read straight from this manifest), `get_api` (look up any Pyreon API), `validate` (catch React + Pyreon-specific anti-patterns in a snippet), `migrate_react` (auto-convert React code), `diagnose` (parse a Pyreon error into structured fix info; optional `componentSource` + `reactiveTrace` for causal diagnosis), `explain_error` (assemble a failure dossier from a full error report), `get_routes` / `get_components` (project introspection), `get_content_collection` / `get_content_entry` (enumerate `@pyreon/zero-content` collections + drill into one entry\\\'s frontmatter + heading outline), `get_browser_smoke_status` (which packages need a browser smoke test), `get_pattern` (canonical "how do I do X" docs), `get_anti_patterns` (the catalog from `.claude/rules/anti-patterns.md`), `get_changelog` (recent release notes per package), `audit_test_environment` (mock-vnode test scanner — PR #197 bug class), and `audit_islands` (project-wide islands cross-file audit — duplicate names, dead islands, registry drift, nested islands, never-with-registry).',
+    'MCP server (stdio transport) that exposes Pyreon\\\'s structured knowledge to AI coding assistants (Claude Code, Cursor, etc.). Sixteen tools: `mcp_overview` (start here — markdown table of every tool with "when to use" + example, read straight from this manifest), `get_api` (look up any Pyreon API), `validate` (catch React + Pyreon-specific anti-patterns in a snippet), `migrate_react` (auto-convert React code), `diagnose` (parse a Pyreon error into structured fix info; optional `componentSource` + `reactiveTrace` for causal diagnosis), `explain_error` (assemble a failure dossier from a full error report), `get_routes` / `get_components` (project introspection), `get_content_collection` / `get_content_entry` (enumerate `@pyreon/zero-content` collections + drill into one entry\\\'s frontmatter + heading outline), `get_browser_smoke_status` (which packages need a browser smoke test), `get_pattern` (canonical "how do I do X" docs), `get_anti_patterns` (the catalog from `.agents/rules/anti-patterns.md`), `get_changelog` (recent release notes per package), `audit_test_environment` (mock-vnode test scanner — PR #197 bug class), and `audit_islands` (project-wide islands cross-file audit — duplicate names, dead islands, registry drift, nested islands, never-with-registry).',
   category: 'server',
   multiplatform: {
     tier: 'web-only',
@@ -41,7 +41,7 @@ export default defineManifest({
 //   get_pattern({ name: 'controllable-state' })
 //     → canonical pattern body from docs/patterns/
 //   get_anti_patterns({ category: 'reactivity' })
-//     → reactivity foot-guns from .claude/rules/anti-patterns.md
+//     → reactivity foot-guns from .agents/rules/anti-patterns.md
 //   get_changelog({ package: 'flow', limit: 5 })
 //     → recent release notes filtered through ceremonial-bump removal
 //   audit_test_environment({ minRisk: 'medium' })
@@ -71,10 +71,10 @@ export default defineManifest({
       kind: 'constant',
       signature: 'tool: get_browser_smoke_status — no args',
       summary:
-        "Companion to the `pyreon/require-browser-smoke-test` lint rule. Reports which browser-categorized Pyreon packages have at least one `*.browser.test.{ts,tsx}` file under `src/`. Uses the same `.claude/rules/browser-packages.json` single source of truth as the rule + the CI script. Lets an AI agent check coverage before writing a new browser package (so it adds a smoke test in the same PR) instead of discovering the failure when CI runs. Falls back with a clear message if the JSON isn't present (e.g. consumer apps that don't ship the Pyreon monorepo layout).",
+        "Companion to the `pyreon/require-browser-smoke-test` lint rule. Reports which browser-categorized Pyreon packages have at least one `*.browser.test.{ts,tsx}` file under `src/`. Uses the same `.agents/rules/browser-packages.json` single source of truth as the rule + the CI script. Lets an AI agent check coverage before writing a new browser package (so it adds a smoke test in the same PR) instead of discovering the failure when CI runs. Falls back with a clear message if the JSON isn't present (e.g. consumer apps that don't ship the Pyreon monorepo layout).",
       example: `// Ask the MCP server:
 //   "which Pyreon packages are missing browser smoke coverage?"
-// Tool walks packages/, matches against .claude/rules/browser-packages.json,
+// Tool walks packages/, matches against .agents/rules/browser-packages.json,
 // returns a coverage report.`,
       mistakes: [
         "Using the tool's output as a substitute for running the CI script — this tool only checks file existence, not the self-expiring-exemption check that `bun run lint:browser-smoke` performs",
@@ -111,7 +111,7 @@ function MyComp(props) {
 }
 \` })`,
       mistakes: [
-        'Treating zero diagnostics as "the code is correct" — `validate` is a STATIC detector. It catches the documented anti-patterns from `.claude/rules/anti-patterns.md` but does NOT verify runtime semantics, cross-file consistency, type correctness, or compiler output. Pair with `tsc` + tests for full coverage.',
+        'Treating zero diagnostics as "the code is correct" — `validate` is a STATIC detector. It catches the documented anti-patterns from `.agents/rules/anti-patterns.md` but does NOT verify runtime semantics, cross-file consistency, type correctness, or compiler output. Pair with `tsc` + tests for full coverage.',
         'Omitting the `filename` arg for path-sensitive detectors — some detectors (e.g. `pyreon/no-window-in-ssr` with its `exemptPaths` option) need the path to know whether the file is server-only-exempt. Without it the diagnostic may misfire or fail to fire.',
         'Running `validate` on a snippet that is NOT a full file — detectors expect complete syntax (every `import`, every `function`). Passing a partial expression yields no diagnostics, which can be mistaken for "clean".',
         'Calling `validate` after the code is already merged — it\'s a pre-commit / before-paste tool. After-the-fact use is fine but the maximum value is catching the bug BEFORE it ships.',
@@ -329,7 +329,7 @@ get_pattern({})
       signature:
         "tool: get_anti_patterns({ category?: 'reactivity'|'jsx'|'context'|'architecture'|'testing'|'lifecycle'|'documentation'|'all'; name?: string; full?: boolean }) → string",
       summary:
-        'Browse the anti-patterns catalog from `.claude/rules/anti-patterns.md`, token-frugal by default. **No args → a COMPACT INDEX** (one line per entry: title + `[detector: <code>]` tag + one-sentence hook; ≈3.3K tokens vs the ≈14K full dump — a ~76% cut on the common orient call). Drill in deliberately: `{ name }` → the single matching entry\\\'s full body (cheapest); `{ category }` → full bodies for one category; `{ full: true }` → entire catalog (≈14K, explicit opt-in). The index keeps per-category `## <Heading>` markers so categories are still discoverable in one call; each `[detector: <code>]` tag pairs the entry with the live `validate` detector.',
+        'Browse the anti-patterns catalog from `.agents/rules/anti-patterns.md`, token-frugal by default. **No args → a COMPACT INDEX** (one line per entry: title + `[detector: <code>]` tag + one-sentence hook; ≈3.3K tokens vs the ≈14K full dump — a ~76% cut on the common orient call). Drill in deliberately: `{ name }` → the single matching entry\\\'s full body (cheapest); `{ category }` → full bodies for one category; `{ full: true }` → entire catalog (≈14K, explicit opt-in). The index keeps per-category `## <Heading>` markers so categories are still discoverable in one call; each `[detector: <code>]` tag pairs the entry with the live `validate` detector.',
       example: `get_anti_patterns()
 // → compact index (~3.3K): titles + detector tags + one-line hooks
 get_anti_patterns({ name: 'Destructuring props' })  // → that entry's full body

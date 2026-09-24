@@ -14,15 +14,15 @@ changes behavior without updating them is incomplete by definition.
 
 ## The nine surfaces
 
-1. `CLAUDE.md` — durable contracts and non-obvious gotchas. NOT per-PR changelog.
+1. `AGENTS.md` — durable contracts and non-obvious gotchas. NOT per-PR changelog.
 2. `docs/` — the Pyreon-native docs site
 3. package `README.md`
 4. `llms.txt` / `llms-full.txt`
 5. `packages/tools/mcp/src/api-reference.ts`
 6. JSDoc on exported APIs
 7. source comments where the WHY is non-obvious
-8. `.claude/rules/anti-patterns.md` when a new anti-pattern was found
-9. the other `.claude/rules/` files when a workflow/style/testing lesson was learned
+8. `.agents/rules/anti-patterns.md` when a new anti-pattern was found
+9. the other `.agents/rules/` files when a workflow/style/testing lesson was learned
 
 ## Generated vs hand-written — never edit the generated side
 
@@ -47,7 +47,7 @@ give them filler manifests.
 
 ## LOCKED numeric claims
 
-`check-doc-claims` asserts that counts quoted in `CLAUDE.md`/`README`/docs match
+`check-doc-claims` asserts that counts quoted in `AGENTS.md`/`README`/docs match
 source: hook count, lint rule count, rule categories, detector codes, doc-page count.
 Write exact numbers, never "33+". Adding or removing a docs page, a hook, or a lint
 rule means updating every claim site in the same pass.

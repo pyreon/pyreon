@@ -3,7 +3,7 @@
  * Install Pyreon's git hooks via `core.hooksPath`.
  *
  * Phase E1 of the production-readiness work — shipped, see CLAUDE.md
- * "Pre-push hook" section in `.claude/rules/workflow.md`.
+ * "Pre-push hook" section in `.agents/rules/workflow.md`.
  *
  * Why `core.hooksPath` instead of husky / simple-git-hooks:
  *

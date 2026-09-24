@@ -59,7 +59,7 @@ Compute the affected set with `bun scripts/affected.ts`. A root-file change mean
   orphaned vitest from a parallel worktree holding CPU), say so and name the evidence.
 - After a `package.json` change, `bun install` and confirm `bun.lock` is staged.
 - If a gate failure is NOT in the table above, add it to the table in
-  `.claude/rules/workflow.md` in the same pass — that list is institutional memory
+  `.agents/rules/workflow.md` in the same pass — that list is institutional memory
   and a missing entry means the trap repeats.
 
 ## Output

@@ -133,4 +133,4 @@ The marker contract has two distinct failure modes, and each test layer catches 
 - [`@pyreon/react-compat`](/docs/react-compat) · [`@pyreon/preact-compat`](/docs/preact-compat) · [`@pyreon/vue-compat`](/docs/vue-compat) · [`@pyreon/solid-compat`](/docs/solid-compat) — the four compat layers that read the marker
 - [`@pyreon/core`](/docs/core) — the `nativeCompat` / `isNativeCompat` exports and the broader context system
 - Source: [`packages/core/core/src/compat-marker.ts`](https://github.com/pyreon/pyreon/blob/main/packages/core/core/src/compat-marker.ts)
-- Anti-pattern: `.claude/rules/anti-patterns.md` — "Pyreon-flavored helper components in compat-mode apps without `nativeCompat()`"
+- Anti-pattern: `.agents/rules/anti-patterns.md` — "Pyreon-flavored helper components in compat-mode apps without `nativeCompat()`"

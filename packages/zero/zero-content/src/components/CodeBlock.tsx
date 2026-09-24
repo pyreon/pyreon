@@ -137,7 +137,7 @@ export function CodeBlock(props: CodeBlockProps): VNodeChild {
   // (the docs code blocks render broken after navigating in). Keeping the wrappers
   // static means no `_mountSlot` precedes a ref'd element, so the refs stay valid.
   // (Underlying compiler bug — interleaved `__eN` refs + `_mountSlot` — tracked in
-  // .claude/rules/anti-patterns.md; this is the local, backend-agnostic fix.)
+  // .agents/rules/anti-patterns.md; this is the local, backend-agnostic fix.)
   //
   // The empty-state is expressed as a STATIC, prop-derived class (not a dynamic
   // `hidden` attribute): `filename` / `showLineNumbers` are fixed per instance,

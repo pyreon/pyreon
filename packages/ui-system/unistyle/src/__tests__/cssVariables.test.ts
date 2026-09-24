@@ -251,7 +251,7 @@ describe('resolveCssVarReferences — ReDoS-safe (linear scan)', () => {
   // for the old alternation regex (quadratic backtracking over the fallback
   // whitespace). The linear scanner must stay O(n) in the run length.
   //
-  // LOAD-IMMUNE SHAPE (the ws-relay lesson, .claude/rules/testing.md): the
+  // LOAD-IMMUNE SHAPE (the ws-relay lesson, .agents/rules/testing.md): the
   // previous absolute wall-clock ceiling (`ms < 50`) was a statement about
   // the MACHINE, not the algorithm — it read 51.1ms under full-workspace
   // saturation (2026-08) while green in isolation. Linearity is a statement

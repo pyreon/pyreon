@@ -6,7 +6,7 @@ import { isProjectDependency } from '../../utils/project-deps'
  * Dependency-gated `@pyreon/rocketstyle` rule.
  *
  * rocketstyle `.attrs()` callbacks run ONCE at component setup (the
- * documented contract — see `.claude/rules/code-style.md` "Severity-driven
+ * documented contract — see `.agents/rules/code-style.md` "Severity-driven
  * live-region roles use the `.attrs((props) => …)` CALLBACK form"). A
  * zero-arg call of a signal/computed binding inside the callback —
  * `.attrs((props, theme) => ({ 'aria-expanded': open() ? 'true' : 'false' }))`

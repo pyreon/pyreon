@@ -23,7 +23,7 @@
  *
  * ## Why a gate rather than a rule
  *
- * Because the rule already existed. `.claude/rules/testing.md` has said "a
+ * Because the rule already existed. `.agents/rules/testing.md` has said "a
  * skipped suite must never masquerade as coverage" since the release audit,
  * and the next four guards were still written the quiet way — which is what a
  * documented-but-unenforced invariant does. This makes it structural.

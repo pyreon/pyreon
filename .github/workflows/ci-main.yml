@@ -8,7 +8,7 @@ name: CI (main)
 # They need no `Install` job: setup-pyreon restores node_modules by lockfile
 # key and lib/ by source hash (BOOTSTRAP_KEY below is per-run, so it misses
 # and the `bootstrap-ubuntu-<source-hash>` restore key serves it; a full miss
-# rebuilds). Job NAMES are unchanged — `.claude/rules/*` refer to them.
+# rebuilds). Job NAMES are unchanged — `.agents/rules/*` refer to them.
 #
 # (ci.yml's former `Benchmark` job was deleted rather than moved: it uploaded
 # an artifact no workflow or script ever downloaded, measured on shared,

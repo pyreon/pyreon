@@ -2,7 +2,7 @@ name: Audit Leak Classes
 
 # Advisory-only nightly run of `scripts/audit-leak-classes.ts` — the
 # offline static analyzer for the 5 memory-leak classes catalogued in
-# `.claude/rules/anti-patterns.md` "Memory Leak Classes". The script
+# `.agents/rules/anti-patterns.md` "Memory Leak Classes". The script
 # is permissive by design (always exits 0); this workflow uploads the
 # JSON report as an artifact + diffs against the previous run's
 # baseline so newly-introduced findings surface in the summary.
@@ -79,7 +79,7 @@ jobs:
           {
             echo "## audit-leak-classes — ${{ steps.audit.outputs.total }} finding(s)"
             echo ""
-            echo "The audit is **permissive** — a finding is a prompt to triage, not proof of a leak. GROWTH is gated separately by \`bun run check-leak-ratchet\` against \`leak-baseline.json\`. See \`.claude/rules/anti-patterns.md\` \"Memory Leak Classes\" for the canonical fix shapes."
+            echo "The audit is **permissive** — a finding is a prompt to triage, not proof of a leak. GROWTH is gated separately by \`bun run check-leak-ratchet\` against \`leak-baseline.json\`. See \`.agents/rules/anti-patterns.md\` \"Memory Leak Classes\" for the canonical fix shapes."
             echo ""
             echo "<details><summary>Full report</summary>"
             echo ""

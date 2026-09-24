@@ -12,7 +12,7 @@ Categorize each package into one of three buckets and apply the matching rule:
 
 These run in real browsers in production. **Must have at least one Playwright/browser smoke test** in addition to vitest tests.
 
-The canonical machine-readable list lives at [`.claude/rules/browser-packages.json`](./browser-packages.json) — consumed by the `pyreon/require-browser-smoke-test` lint rule, the MCP `get_browser_smoke_status` tool, and the CI script `scripts/check-browser-smoke.ts`. Update the JSON when adding a new browser-running package; this prose list is kept in sync manually.
+The canonical machine-readable list lives at [`.agents/rules/browser-packages.json`](./browser-packages.json) — consumed by the `pyreon/require-browser-smoke-test` lint rule, the MCP `get_browser_smoke_status` tool, and the CI script `scripts/check-browser-smoke.ts`. Update the JSON when adding a new browser-running package; this prose list is kept in sync manually.
 
 - `@pyreon/runtime-dom`
 - `@pyreon/router`
@@ -162,7 +162,7 @@ The mock test is the fast unit-test path. The real-`h()` test is the safety net 
 
 ### 2. `typeof process !== 'undefined'` as a dev-mode gate in browser packages
 
-Dead code in real Vite browser bundles. See `.claude/rules/anti-patterns.md` and the reference implementation in `flow/src/layout.ts`.
+Dead code in real Vite browser bundles. See `.agents/rules/anti-patterns.md` and the reference implementation in `flow/src/layout.ts`.
 
 ### 3. happy-dom as a stand-in for a real browser
 

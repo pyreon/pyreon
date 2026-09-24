@@ -2,7 +2,7 @@
  * Pattern A — stale-capture race between sibling handlers.
  *
  * Real-world shape (this is the documented Pyreon anti-pattern from
- * `.claude/rules/anti-patterns.md`): a parent passes a signal to N
+ * `.agents/rules/anti-patterns.md`): a parent passes a signal to N
  * children. Each child captures the *value* (not the signal accessor) at
  * component-setup time, then references the captured copy in its handler.
  *

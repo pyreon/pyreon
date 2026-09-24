@@ -5,7 +5,7 @@ description: "Common lifecycle & cleanup mistakes in Pyreon and how to fix them.
 
 # Lifecycle & Cleanup Mistakes
 
-> **Generated** from `.claude/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
+> **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
 ### Measuring layout in a `ref` inside `<For>` reads 0 — the first batch of rows is built DETACHED.
 

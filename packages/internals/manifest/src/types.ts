@@ -247,10 +247,10 @@ export interface PackageManifest {
    * by the `pyreon/require-browser-smoke-test` lint rule and whether
    * `typeof process` is an acceptable dev-gate pattern.
    *
-   * **Source of truth**: `.claude/rules/test-environment-parity.md`
+   * **Source of truth**: `.agents/rules/test-environment-parity.md`
    * owns the category definitions and the canonical per-package
    * assignments; the rule file's machine-readable list is at
-   * `.claude/rules/browser-packages.json`. This literal union must
+   * `.agents/rules/browser-packages.json`. This literal union must
    * stay aligned with those. If a new category is added to the rule
    * file (e.g. `'worker'`), widen this union in the same PR.
    */

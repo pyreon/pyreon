@@ -369,7 +369,7 @@ const checks: ClaimCheck[] = [
     actual: countDocPages,
     claims: [
       {
-        file: 'CLAUDE.md',
+        file: 'AGENTS.md',
         pattern: /(\d+) doc pages covering all packages/,
       },
     ],
@@ -380,7 +380,7 @@ const checks: ClaimCheck[] = [
     actual: countLintRules,
     claims: [
       {
-        file: 'CLAUDE.md',
+        file: 'AGENTS.md',
         pattern: /Pyreon-specific linter — (\d+) rules, \d+ categories/,
       },
       {
@@ -411,7 +411,7 @@ const checks: ClaimCheck[] = [
         pattern: /Pyreon-specific linter — (\d+) rules/,
       },
       {
-        file: '.claude/rules/code-style.md',
+        file: '.agents/rules/code-style.md',
         pattern: /Pyreon-specific rules \((\d+) rules, \d+ categories/,
       },
     ],
@@ -422,7 +422,7 @@ const checks: ClaimCheck[] = [
     actual: countLintCategories,
     claims: [
       {
-        file: 'CLAUDE.md',
+        file: 'AGENTS.md',
         pattern: /Pyreon-specific linter — \d+ rules, (\d+) categories/,
       },
       {
@@ -439,7 +439,7 @@ const checks: ClaimCheck[] = [
         pattern: /lint rules across (\d+) categories/,
       },
       {
-        file: '.claude/rules/code-style.md',
+        file: '.agents/rules/code-style.md',
         pattern: /Pyreon-specific rules \(\d+ rules, (\d+) categories/,
       },
     ],
@@ -450,11 +450,11 @@ const checks: ClaimCheck[] = [
     actual: countDetectorCodes,
     claims: [
       {
-        file: '.claude/rules/anti-patterns.md',
+        file: '.agents/rules/anti-patterns.md',
         pattern: /flags (\d+) of the patterns below statically/,
       },
       {
-        file: 'CLAUDE.md',
+        file: 'AGENTS.md',
         pattern:
           /catches "using Pyreon wrong" mistakes — (\d+) detector codes today/,
       },
@@ -505,8 +505,8 @@ const checks: ClaimCheck[] = [
     actual: countMcpTools,
     claims: [
       {
-        file: 'CLAUDE.md',
-        pattern: /MCP server, so its (\d+) tools are available/,
+        file: 'AGENTS.md',
+        pattern: /MCP server \(`@pyreon\/mcp`\), which exposes (\d+) tools/,
       },
     ],
   },
@@ -516,7 +516,7 @@ const checks: ClaimCheck[] = [
     actual: countManifests,
     claims: [
       {
-        file: 'CLAUDE.md',
+        file: 'AGENTS.md',
         pattern: /Coverage: (\d+) of \d+ published packages have a manifest/,
       },
     ],
@@ -530,7 +530,7 @@ const checks: ClaimCheck[] = [
     actual: (root: string) => countPublishedPackages(root) - countManifests(root),
     claims: [
       {
-        file: 'CLAUDE.md',
+        file: 'AGENTS.md',
         pattern: /The remaining (\d+) are EXPLICITLY EXEMPT/,
       },
     ],
@@ -550,11 +550,11 @@ const checks: ClaimCheck[] = [
         pattern: /(\d+) packages across 6 categories/,
       },
       {
-        file: 'CLAUDE.md',
+        file: 'AGENTS.md',
         pattern: /(\d+) published packages across 6 categories/,
       },
       {
-        file: 'CLAUDE.md',
+        file: 'AGENTS.md',
         pattern: /Coverage: \d+ of (\d+) published packages have a manifest/,
       },
     ],

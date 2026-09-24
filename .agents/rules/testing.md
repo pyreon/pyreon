@@ -262,7 +262,7 @@ old format would have been the CI failure, not the local one.
 bisect recipe for it is `edit source → bootstrap → run`.** A green spawn-based
 run against unbuilt changes is not evidence. The same applies to a test
 asserting on `lib/` bytes, a nested Vite SSR build, or anything else in
-CLAUDE.md's "lib-needing" category — that list is about CI job wiring, but the
+AGENTS.md's "lib-needing" category — that list is about CI job wiring, but the
 reason is this one, and it holds locally too.
 
 Mark the `BIN` constant in such a file with a comment saying so; the cost of
@@ -285,7 +285,7 @@ When bisect-verifying an e2e spec that runs against a Vite dev server (anything 
 7. Rebuild lib + kill server again (steps 3-4).
 8. Re-run the spec — assert it passes.
 
-**Without steps 3 + 4, the test will silently pass against the OLD (built) code, giving a false-negative bisect verification.** Caught originally in M1.2: a stash-then-run produced "test still passes" results for 3 iterations before realizing `lib/vite-plugin-*.js` still carried the fix. The recipe was added to `.claude/rules/testing.md` to prevent the same trap.
+**Without steps 3 + 4, the test will silently pass against the OLD (built) code, giving a false-negative bisect verification.** Caught originally in M1.2: a stash-then-run produced "test still passes" results for 3 iterations before realizing `lib/vite-plugin-*.js` still carried the fix. The recipe was added to `.agents/rules/testing.md` to prevent the same trap.
 
 **`playwright.config.ts` has `reuseExistingServer: !process.env.CI`** — locally, if port 5175 is already in use, playwright reuses the existing server. So step 4 (kill the server) is mandatory in iterative bisect cycles; the auto-reuse will otherwise serve from the stale boot.
 
@@ -380,7 +380,7 @@ Without `@vite/client`, neither tab opens the HMR websocket — no HMR updates, 
 `mountInBrowser` takes a `VNodeChild`; an arrow that CALLS the component is a
 function child, i.e. a reactive accessor, and the general accessor path runs it
 twice at mount (an untracked classification sample, then the tracked bind — see
-CLAUDE.md "single accessor invocation ... keyed-array/general accessors keep the
+AGENTS.md "single accessor invocation ... keyed-array/general accessors keep the
 2-invocation handoff"). The sampled instance is never mounted, but its setup
 already ran: every `effect`, `ResizeObserver` and timer it created is live.
 Found on `<OptionChart>`'s auto-play spec: `onTimelineChange` fired twice per

@@ -5,7 +5,7 @@ description: "Common ssr-rendering mistakes in Pyreon and how to fix them."
 
 # SSR-rendering Mistakes
 
-> **Generated** from `.claude/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
+> **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
 ### A quantified regex over an AMBIGUOUS character class is polynomial — and a hardening fix is the likeliest place to introduce one (`normaliseTarget`, 2026-09)
 

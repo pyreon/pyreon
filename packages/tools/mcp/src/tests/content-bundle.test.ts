@@ -148,13 +148,13 @@ describe('get_anti_patterns — bundled fallback in a consumer', () => {
     expect(entries[0]!.name).toBe('Bare signal in JSX text')
   })
 
-  it("does NOT let a consumer's own non-Pyreon .claude/rules/anti-patterns.md shadow the bundled one", () => {
+  it("does NOT let a consumer's own non-Pyreon .agents/rules/anti-patterns.md shadow the bundled one", () => {
     // A consumer project that happens to have its own anti-patterns.md that
     // is NOT Pyreon's catalog (parses to zero entries) must fall back to the
     // bundled Pyreon snapshot, not serve the consumer's unrelated file.
-    mkdirSync(join(consumer, '.claude', 'rules'), { recursive: true })
+    mkdirSync(join(consumer, '.agents', 'rules'), { recursive: true })
     writeFileSync(
-      join(consumer, '.claude', 'rules', 'anti-patterns.md'),
+      join(consumer, '.agents', 'rules', 'anti-patterns.md'),
       '# My own notes\n\nSome unrelated project rules, no Pyreon categories.\n',
     )
     const doc = loadAntiPatternsDoc(consumer, join(content, 'anti-patterns.md'))

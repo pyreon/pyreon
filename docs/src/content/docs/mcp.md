@@ -574,17 +574,17 @@ Like `get_content_collection`, this tool is callable but not yet listed in the m
 
 ### get_browser_smoke_status
 
-Companion to the `pyreon/require-browser-smoke-test` lint rule. Reports which browser-categorized Pyreon packages have at least one `*.browser.test.{ts,tsx}` file under `src/`, reading the same `.claude/rules/browser-packages.json` single source of truth as the rule and the CI script. An agent can check coverage **before** writing a new browser package — so it adds the smoke test in the same PR instead of discovering the gap when CI runs.
+Companion to the `pyreon/require-browser-smoke-test` lint rule. Reports which browser-categorized Pyreon packages have at least one `*.browser.test.{ts,tsx}` file under `src/`, reading the same `.agents/rules/browser-packages.json` single source of truth as the rule and the CI script. An agent can check coverage **before** writing a new browser package — so it adds the smoke test in the same PR instead of discovering the gap when CI runs.
 
 **Parameters:** None
 
 **Response includes:**
 
 - `Covered (N)` — packages that ship at least one browser smoke test.
-- `Missing` — packages categorized as browser but with no `*.browser.test.*` file (plus a pointer to the setup recipe in `.claude/rules/test-environment-parity.md`).
+- `Missing` — packages categorized as browser but with no `*.browser.test.*` file (plus a pointer to the setup recipe in `.agents/rules/test-environment-parity.md`).
 - `Listed in browser-packages.json but not found in this repo` — drift between the JSON list and the actual workspace.
 
-Falls back with a clear message when `.claude/rules/browser-packages.json` isn't present (consumer apps that don't ship the Pyreon monorepo layout).
+Falls back with a clear message when `.agents/rules/browser-packages.json` isn't present (consumer apps that don't ship the Pyreon monorepo layout).
 
 :::warning{title="Common mistakes"}
 This tool only checks **file existence**, not the self-expiring-exemption logic that `bun run lint:browser-smoke` performs. Don't use its output as a substitute for running the CI script.
@@ -626,7 +626,7 @@ When a pattern isn't found, the tool returns up to 5 fuzzy-matched suggestions p
 
 The compact index clamps a title longer than 120 characters on a word boundary and marks it with `…`; pass any fragment of a title as `name` (a copied `…` is stripped) to get the full entry.
 
-Browse the anti-pattern catalog parsed live from `.claude/rules/anti-patterns.md`. **Token-frugal by default**: with no arguments the tool returns a **compact index** — one line per entry (title + `[detector: <code>]` tag + a one-sentence hook), with the per-category `## <Heading>` markers preserved so categories stay discoverable in a single call. That's roughly 3.3K tokens versus ~14K for the full dump — a ~76% cut on the common "what should I avoid?" orient call. Drill into full bodies deliberately:
+Browse the anti-pattern catalog parsed live from `.agents/rules/anti-patterns.md`. **Token-frugal by default**: with no arguments the tool returns a **compact index** — one line per entry (title + `[detector: <code>]` tag + a one-sentence hook), with the per-category `## <Heading>` markers preserved so categories stay discoverable in a single call. That's roughly 3.3K tokens versus ~14K for the full dump — a ~76% cut on the common "what should I avoid?" orient call. Drill into full bodies deliberately:
 
 - `{ name }` → the single matching entry's full body (cheapest drill-in; case-insensitive title substring match).
 - `{ category }` → full bodies for one category (the pre-existing filtered contract).
@@ -845,7 +845,7 @@ The server speaks JSON-RPC over stdio. If the client connected but `tools/list` 
 
 ### `get_pattern` / `get_anti_patterns` / `get_changelog` in a consumer project
 
-These tools read from Pyreon-monorepo files (`docs/src/content/docs/patterns/*.md`, `.claude/rules/anti-patterns.md`, `packages/**/CHANGELOG.md`). When the server runs from a **consumer project** (`bunx @pyreon/mcp`), those files aren't reachable in the working tree — so the published package **bundles a snapshot** of them (a `content/` dir shipped in the tarball, regenerated on every build). The loaders prefer the live monorepo source when present (so in-repo dev always sees the latest) and fall back to the bundled snapshot otherwise, so the tools return real content in consumers. The bundled changelogs / patterns / anti-patterns reflect the version of `@pyreon/mcp` you installed — upgrade the package to refresh them. The "could not locate" message now only appears if BOTH the live source and the bundled snapshot are missing (a broken install).
+These tools read from Pyreon-monorepo files (`docs/src/content/docs/patterns/*.md`, `.agents/rules/anti-patterns.md`, `packages/**/CHANGELOG.md`). When the server runs from a **consumer project** (`bunx @pyreon/mcp`), those files aren't reachable in the working tree — so the published package **bundles a snapshot** of them (a `content/` dir shipped in the tarball, regenerated on every build). The loaders prefer the live monorepo source when present (so in-repo dev always sees the latest) and fall back to the bundled snapshot otherwise, so the tools return real content in consumers. The bundled changelogs / patterns / anti-patterns reflect the version of `@pyreon/mcp` you installed — upgrade the package to refresh them. The "could not locate" message now only appears if BOTH the live source and the bundled snapshot are missing (a broken install).
 
 ### `audit_test_environment` / `audit_islands` report zero findings in a known-broken codebase
 

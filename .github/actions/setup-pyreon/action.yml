@@ -119,7 +119,7 @@ runs:
         restore-keys: bun-install-cache-${{ runner.os }}-
     # A prefix-key restore hands this job a node_modules built from a
     # DIFFERENT lockfile, and installing over it does not converge:
-    # `.claude/rules/testing.md` ("never trust an incremental bun layout")
+    # `.agents/rules/testing.md` ("never trust an incremental bun layout")
     # records that neither a plain `bun install` NOR `bun install --force`
     # clears the stale peer-hash instance dirs under `node_modules/.bun` —
     # their internal symlinks keep pointing at the old versions, so the

@@ -5,7 +5,7 @@ description: "Common best-practice mistakes (opt-in `@pyreon/lint` rules) in Pyr
 
 # Best-Practice Mistakes (opt-in `@pyreon/lint` rules)
 
-> **Generated** from `.claude/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
+> **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
 ### `<img>` without `alt`
 

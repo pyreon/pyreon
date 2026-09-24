@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Run every docs generator in sequence. The generated pages emit from a
- * single source of truth (package manifests, .claude/rules/anti-patterns.md,
+ * single source of truth (package manifests, .agents/rules/anti-patterns.md,
  * docs/src/examples/) — NEVER hand-edit their output; run this instead.
  *
  *   bun docs/scripts/gen-all.ts

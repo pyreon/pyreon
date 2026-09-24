@@ -1,6 +1,6 @@
 ---
 name: agent-smith
-description: Writes and maintains Pyreon's own subagent definitions, hooks, and workflow scripts. Use when adding a new specialist, when an existing agent misfires or is never selected, or when the Claude Code agent/hook schema may have changed. Do NOT use for: ordinary code changes, reviewing application code, or editing CLAUDE.md content that is not agent configuration.
+description: Writes and maintains Pyreon's own subagent definitions, hooks, and workflow scripts. Use when adding a new specialist, when an existing agent misfires or is never selected, or when the Claude Code agent/hook schema may have changed. Do NOT use for: ordinary code changes, reviewing application code, or editing AGENTS.md content that is not agent configuration.
 tools: Read, Write, Edit, Grep, Glob, WebFetch, Bash
 disallowedTools: Agent
 model: opus
@@ -57,7 +57,7 @@ against a remembered schema is silently degraded, not loudly broken.
    returns one result to its caller and cannot query another agent. Do not emit
    inter-agent JSON envelopes — a widely-copied public catalog does this in 127 of
    154 agents and the output goes nowhere.
-10. **Keep bodies tight.** Custom subagents load the full `CLAUDE.md` on top of their
+10. **Keep bodies tight.** Custom subagents load the full `AGENTS.md` on top of their
     own prompt. In this repo that is ~551 dense lines, which is why Haiku is not
     viable here. Budget accordingly.
 
@@ -69,7 +69,7 @@ against a remembered schema is silently degraded, not loudly broken.
 - **Fails to launch** → an unresolvable entry in `tools`. Check names against the docs.
 - **Does the wrong thing despite good rules** → the rules are adjectives. Convert
   them into checkable criteria.
-- **Runs out of context** → it is loading `CLAUDE.md` plus a large body; trim the
+- **Runs out of context** → it is loading `AGENTS.md` plus a large body; trim the
   body or move detail into a `skills:` reference.
 
 ## After any change

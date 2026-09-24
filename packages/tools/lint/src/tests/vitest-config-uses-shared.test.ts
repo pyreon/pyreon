@@ -4,7 +4,7 @@
  * Locks in PRs #914-#922 (the vitest-config migration). Without this
  * rule a future PR could hand-roll a vitest config that silently drifts
  * the merge order — exactly the systemic-flake cause documented in
- * `.claude/rules/testing.md` and surfaced empirically in #919's
+ * `.agents/rules/testing.md` and surfaced empirically in #919's
  * `@pyreon/dnd` finding (silent 5s timeout under CI load).
  */
 import * as fs from 'node:fs'

@@ -30,7 +30,7 @@ shape, the class is the container grammar. Say so explicitly in your verdict.
 
 1. `git diff` (or `git diff origin/main...HEAD` on a branch). Read every changed
    file in full — a diff hunk hides the surrounding contract.
-2. For each change, consult `.claude/rules/anti-patterns.md`. It is ~350KB and you
+2. For each change, consult `.agents/rules/anti-patterns.md`. It is ~350KB and you
    should NOT read it whole: `Grep` it for the symbols, APIs, and concepts the diff
    touches (`_bindText`, `applyProp`, `mountFor`, `provide`, `splitProps`,
    `WeakSet`, `innerHTML`, `import.meta`, the package name).

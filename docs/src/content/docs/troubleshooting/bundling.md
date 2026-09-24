@@ -5,7 +5,7 @@ description: "Common bundling mistakes in Pyreon and how to fix them."
 
 # Bundling Mistakes
 
-> **Generated** from `.claude/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
+> **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
 ### A convenience barrel is a REACHABILITY EDGE, and `sideEffects` — not `/* @__PURE__ */` — is the lever.
 

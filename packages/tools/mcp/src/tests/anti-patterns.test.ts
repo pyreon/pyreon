@@ -14,7 +14,7 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url))
 // tests/ → src/ → mcp/ → tools/ → packages/ → repo root (5 ups)
 const REPO_ROOT = resolve(HERE, '../../../../../')
-const ANTI_PATTERNS_PATH = resolve(REPO_ROOT, '.claude/rules/anti-patterns.md')
+const ANTI_PATTERNS_PATH = resolve(REPO_ROOT, '.agents/rules/anti-patterns.md')
 
 describe('parseAntiPatterns — real repo file', () => {
   const doc = readFileSync(ANTI_PATTERNS_PATH, 'utf8')

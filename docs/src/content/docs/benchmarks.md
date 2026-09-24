@@ -208,7 +208,7 @@ strength alone.
 Per-op tie-vs-outright still shuffles with machine noise even on the
 corrected field, so treat it as a band rather than a fixed scoreboard; the
 current per-op record lives in
-`.claude/skills/pyreon-benchmarks/SKILL.md`.
+`.agents/guides/benchmarks/README.md`.
 
 **Retained memory, corrected** (post-suite, post-GC): Vanilla 2.38 ·
 Preact 2.50 = **Pyreon 2.50** · Solid 2.53 · Octane 2.69 · Svelte 2.70 ·
