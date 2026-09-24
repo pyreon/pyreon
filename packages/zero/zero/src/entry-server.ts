@@ -4,7 +4,8 @@ import type { RouteRecord } from "@pyreon/router";
 import type { Middleware, MiddlewareContext } from "@pyreon/server";
 import { createHandler } from "@pyreon/server";
 import type { CreateActionMiddlewareOptions } from "./actions";
-import { createActionMiddleware } from "./actions";
+import { createActionMiddleware, resolveActionOptions } from "./actions";
+import { createActionSnapshotMiddleware, createFormActionMiddleware } from "./form-actions-server";
 import type { ApiRouteEntry } from "./api-routes";
 import { createApiMiddleware, matchApiRoute } from "./api-routes";
 import { createApp } from "./app";
@@ -263,7 +264,10 @@ export function createServer(options: CreateServerOptions) {
 	// without any of it — the documented `rateLimitMiddleware({ include:
 	// ['/api/*'] })` never applied to /api, and route auth never protected
 	// loader data.
+	// The action-snapshot hand-off runs first: it only copies a page
+	// re-render's action result (see form-actions-server.ts) into locals.
 	const allMiddleware: Middleware[] = [
+		createActionSnapshotMiddleware(),
 		...(config.middleware ?? []),
 		...(options.middleware ?? []),
 	];
@@ -295,11 +299,22 @@ export function createServer(options: CreateServerOptions) {
 	// endpoints above — `defineAction` in a lazily loaded route module has not
 	// run yet when createServer does, so a registry-size gate here left those
 	// actions without an endpoint at all. Unused, it costs one prefix check.
+	// Page form posts (`<Form>` without JS, a route's `action` export) share
+	// the same origin check + body limit. They re-render through the BASE
+	// handler (assigned below), never through an ISR cache.
+	let renderForAction: ((req: Request) => Promise<Response>) | null = null;
 	if (options.actions !== false) {
+		const resolvedActions = resolveActionOptions(
+			typeof options.actions === "object" ? options.actions : undefined,
+		);
+		allMiddleware.push(createActionMiddleware(resolvedActions));
 		allMiddleware.push(
-			createActionMiddleware(
-				typeof options.actions === "object" ? options.actions : undefined,
-			),
+			createFormActionMiddleware({
+				routes: options.routes,
+				render: (req) => renderForAction!(req),
+				options: resolvedActions,
+				base: config.base && config.base !== "/" ? trimTrailingSlashes(config.base) : "",
+			}),
 		);
 	}
 
@@ -371,6 +386,8 @@ export function createServer(options: CreateServerOptions) {
 		...(resolvedTemplate ? { template: resolvedTemplate } : {}),
 		...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
 	});
+
+	renderForAction = baseHandler;
 
 	// PR-S5: wire the render mode. `mode: 'isr'` was a typed-but-not-
 	// wired surface from inception — apps that set it got SSR behavior

@@ -28,7 +28,7 @@ interface LazyLike {
   loader?: () => Promise<unknown>
 }
 
-async function warmRouteModules(routes: RouteRecord[]): Promise<void> {
+export async function warmRouteModules(routes: RouteRecord[]): Promise<void> {
   const walk = async (records: RouteRecord[]): Promise<void> => {
     for (const record of records) {
       const component = (record as { component?: unknown }).component

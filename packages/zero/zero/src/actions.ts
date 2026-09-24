@@ -1,3 +1,4 @@
+import { getRedirectInfo, safeRedirectLocation } from '@pyreon/router'
 import type { MiddlewareContext } from '@pyreon/server'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -44,6 +45,9 @@ export interface Action<T = unknown> {
  * instead of adding a new one. Bounded by the number of `defineAction()`
  * call sites in the app.
  */
+/** Response header carrying an action's `redirect()` target. @internal */
+export const ACTION_REDIRECT_HEADER = 'X-Zero-Redirect'
+
 const actionRegistry = new Map<string, RegisteredAction>()
 
 let warnedPluginless = false
@@ -139,6 +143,11 @@ async function postAction<T>(id: string, data: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data ?? null),
   })
+  const redirectTo = response.headers.get(ACTION_REDIRECT_HEADER)
+  if (redirectTo !== null) {
+    globalThis.location.assign(redirectTo)
+    return null as T
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
     throw new Error((body as { error?: string }).error ?? `Action failed: ${response.statusText}`)
@@ -160,12 +169,66 @@ export function _resetActions(): void {
   warnedPluginless = false
 }
 
+// ─── Results: fail() ────────────────────────────────────────────────────────
+
+const FAIL = Symbol.for('pyreon.zero.actionFailure')
+
+/**
+ * An expected, user-facing failure returned from an action handler — a
+ * validation error, a conflict. Build it with {@link fail}.
+ */
+export interface ActionFailure<D = unknown> {
+  readonly [FAIL]: true
+  /** HTTP status of the response (4xx). */
+  readonly status: number
+  /** Data handed to the page (`useSubmission(action).result()`). */
+  readonly data: D
+}
+
+/**
+ * The data a page sees for an action whose handler returns `T`: a
+ * {@link fail} result is unwrapped to its `data`.
+ */
+export type ActionData<T> = T extends ActionFailure<infer D> ? D : T
+
+/**
+ * Return an expected failure from an action handler. The page re-renders
+ * (no-JS form post) or the submission settles (enhanced `<Form>`) with
+ * `data` as the result and `status` as the HTTP status — unlike a thrown
+ * error, which is a 500 and never exposes its message in production.
+ *
+ * @example
+ * export const action = defineAction(async ({ formData }) => {
+ *   const title = String(formData?.get('title') ?? '')
+ *   if (!title) return fail(422, { error: 'Title is required', title })
+ *   await db.posts.insert({ title })
+ *   throw redirect('/posts')
+ * })
+ */
+export function fail<D>(status: number, data: D): ActionFailure<D> {
+  if (!Number.isInteger(status) || status < 400 || status > 599) {
+    throw new Error(
+      `[Pyreon] fail(${status}, …): the status must be an HTTP error status (400-599). ` +
+        'Return plain data for a success, or throw redirect() to navigate.',
+    )
+  }
+  return { [FAIL]: true, status, data }
+}
+
+/** Is `value` a {@link fail} result? */
+export function isActionFailure(value: unknown): value is ActionFailure {
+  return typeof value === 'object' && value !== null && (value as Record<symbol, unknown>)[FAIL] === true
+}
+
 // ─── Server handler ──────────────────────────────────────────────────────────
+
+/** Default request-body cap for action requests: 1 MiB. */
+export const DEFAULT_ACTION_BODY_LIMIT = 1024 * 1024
 
 export interface CreateActionMiddlewareOptions {
   /**
-   * Origins (scheme + host + optional port) allowed to POST to
-   * `/_zero/actions/*` cross-origin. Default: same-origin only.
+   * Origins (scheme + host + optional port) allowed to POST to actions
+   * cross-origin. Default: same-origin only.
    *
    * Each entry is an ORIGIN and is matched by EXACT EQUALITY against the
    * origin the request's `Origin` header carries (a `Referer` is first
@@ -180,32 +243,28 @@ export interface CreateActionMiddlewareOptions {
    * Without this opt-in, any cross-origin POST is rejected with HTTP 403.
    * This is the CSRF baseline: a malicious origin that a logged-in user
    * visits can otherwise POST to any defined action (action IDs are in
-   * the client bundle and trivially discoverable).
+   * the client bundle and trivially discoverable). The same check guards
+   * both `/_zero/actions/*` and page form posts.
    */
   corsOrigins?: readonly string[]
+  /**
+   * Maximum request-body size in bytes for an action request (JSON, form
+   * or multipart). Larger bodies are rejected with HTTP 413 before the
+   * handler runs — checked against `Content-Length` AND enforced while
+   * reading, so a missing or lying header cannot bypass it.
+   * Default {@link DEFAULT_ACTION_BODY_LIMIT} (1 MiB); raise it for uploads.
+   */
+  bodyLimit?: number
 }
 
-/**
- * Create a middleware that handles action requests at `/_zero/actions/*`.
- * Mount this before the SSR handler in the server entry.
- *
- * **Security baseline**: every cross-origin POST is rejected with HTTP 403
- * by default. Use `corsOrigins` to opt in to specific cross-origin callers.
- * Without this check, any malicious origin a logged-in user visits can
- * forge POSTs to any defined action (CSRF).
- *
- * This is **defense in depth** for the basic case. For higher assurance:
- *   1. Set `SameSite=Strict` (or `Lax`) on your auth cookies
- *   2. Wire your auth middleware BEFORE `createActionMiddleware()` so the
- *      action handler can read authenticated user state.
- *   3. Per-session CSRF tokens + encrypted action IDs (Next.js-style)
- *      are tracked as follow-up work.
- */
-export function createActionMiddleware(
-  options?: CreateActionMiddlewareOptions,
-): (
-  ctx: MiddlewareContext,
-) => Response | undefined | Promise<Response | undefined> {
+/** Normalized options shared by the JSON endpoint and page form posts. @internal */
+export interface ResolvedActionOptions {
+  corsOrigins: readonly string[]
+  bodyLimit: number
+}
+
+/** @internal */
+export function resolveActionOptions(options?: CreateActionMiddlewareOptions): ResolvedActionOptions {
   // Normalize the allowlist ONCE, at construction. Entries are written by
   // hand, so `https://admin.example.com/` (trailing slash) and a default
   // port are both plausible spellings of the same origin — and since the
@@ -223,6 +282,175 @@ export function createActionMiddleware(
     }
     return [origin]
   })
+  const limit = options?.bodyLimit
+  if (limit !== undefined && (!Number.isFinite(limit) || limit < 0)) {
+    throw new Error(
+      `[Pyreon] actions.bodyLimit must be a non-negative number of bytes, got ${String(limit)}.`,
+    )
+  }
+  return { corsOrigins, bodyLimit: limit ?? DEFAULT_ACTION_BODY_LIMIT }
+}
+
+/**
+ * CSRF baseline: Origin / Referer same-origin check. Returns the reason
+ * string when the request must be rejected, `null` when it may proceed.
+ *
+ * Algorithm:
+ *   - Neither Origin nor Referer present → ALLOW. Same-origin fetch()
+ *     without credentials and server-to-server tools (curl, integration
+ *     tests) often omit both; the auth layer owns "is this a logged-in
+ *     user?". The baseline answers "did this come from a browser tab on an
+ *     attacker's origin?" — and browsers always send `Origin` on a
+ *     cross-origin POST, form submissions included.
+ *   - Otherwise PARSE it and require its ORIGIN to equal the request's own
+ *     origin, or be an opt-in `corsOrigins` entry. Equality, never a
+ *     prefix: `startsWith` accepts `https://app.example.com.evil.net` and
+ *     `https://app.example.com@evil.net`. A `Referer` is reduced to its
+ *     origin the same way.
+ *   - An unparseable header (including the literal `null` a sandboxed
+ *     iframe sends) yields no origin → rejected.
+ *
+ * @internal
+ */
+export function checkActionOrigin(req: Request, corsOrigins: readonly string[]): string | null {
+  const headerOrigin = req.headers.get('origin') ?? req.headers.get('referer')
+  if (!headerOrigin) return null
+  const origin = originOf(headerOrigin)
+  const sameOrigin = origin !== null && origin === new URL(req.url).origin
+  const allowedCrossOrigin = origin !== null && corsOrigins.includes(origin)
+  return sameOrigin || allowedCrossOrigin ? null : headerOrigin
+}
+
+/** Parsed action request payload. @internal */
+export interface ActionPayload {
+  formData: FormData | null
+  json: unknown
+}
+
+/**
+ * Read the request body under `limit` bytes and parse it. Returns an error
+ * `Response` (413 / 400) instead of a payload when the body is refused.
+ *
+ * The limit is enforced twice: `Content-Length` rejects early without
+ * reading, and the stream is counted while reading, because the header is
+ * optional (chunked uploads) and client-controlled.
+ *
+ * @internal
+ */
+export async function readActionPayload(
+  req: Request,
+  limit: number,
+  asJsonError = true,
+): Promise<ActionPayload | Response> {
+  const tooLarge = (): Response =>
+    asJsonError
+      ? Response.json({ error: 'Request body too large' }, { status: 413 })
+      : new Response('Payload Too Large', { status: 413, headers: { 'Content-Type': 'text/plain' } })
+
+  const declared = req.headers.get('content-length')
+  if (declared !== null && Number(declared) > limit) return tooLarge()
+
+  let bytes: Uint8Array<ArrayBuffer>
+  if (!req.body) {
+    bytes = new Uint8Array(0)
+  } else {
+    const reader = req.body.getReader()
+    const chunks: Uint8Array[] = []
+    let total = 0
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > limit) {
+        await reader.cancel().catch(() => {})
+        return tooLarge()
+      }
+      chunks.push(value)
+    }
+    bytes = new Uint8Array(total)
+    let offset = 0
+    for (const c of chunks) {
+      bytes.set(c, offset)
+      offset += c.byteLength
+    }
+  }
+
+  // Parse separately so a malformed body is a 400 (client problem), not a
+  // 500. The parser's own message is logged, never returned.
+  const contentType = req.headers.get('content-type') ?? ''
+  try {
+    if (contentType.includes('application/json')) {
+      return { formData: null, json: bytes.byteLength === 0 ? null : JSON.parse(new TextDecoder().decode(bytes)) }
+    }
+    if (contentType.includes('multipart/form-data') || contentType.includes('application/x-www-form-urlencoded')) {
+      const formData = await new Response(bytes, { headers: { 'Content-Type': contentType } }).formData()
+      return { formData, json: null }
+    }
+    return { formData: null, json: null }
+  } catch (err) {
+    console.error('[Pyreon Action] failed to parse request body:', err)
+    return asJsonError
+      ? Response.json({ error: 'Invalid request body' }, { status: 400 })
+      : new Response('Bad Request', { status: 400, headers: { 'Content-Type': 'text/plain' } })
+  }
+}
+
+/** What running an action produced. @internal */
+export type ActionOutcome =
+  | { kind: 'data'; status: number; data: unknown }
+  | { kind: 'redirect'; status: number; to: string }
+  | { kind: 'error'; message: string }
+
+/**
+ * Run a handler and classify the result: plain data, a {@link fail}
+ * result, a thrown or returned `redirect()`, or an unexpected error (logged;
+ * its message kept only outside production — it routinely carries
+ * connection strings and hostnames the client has no claim on).
+ *
+ * @internal
+ */
+export async function runActionHandler(
+  handler: ActionHandler,
+  req: Request,
+  payload: ActionPayload,
+): Promise<ActionOutcome> {
+  try {
+    const result = await handler({ request: req, formData: payload.formData, json: payload.json, headers: req.headers })
+    if (isActionFailure(result)) return { kind: 'data', status: result.status, data: result.data }
+    const returned = getRedirectInfo(result)
+    if (returned) return { kind: 'redirect', status: returned.status, to: returned.url }
+    return { kind: 'data', status: 200, data: result ?? null }
+  } catch (err) {
+    const info = getRedirectInfo(err)
+    if (info) return { kind: 'redirect', status: info.status, to: info.url }
+    console.error('[Pyreon Action] handler failed:', err)
+    const isProduction = process.env.NODE_ENV === 'production'
+    return { kind: 'error', message: isProduction || !(err instanceof Error) ? 'Internal server error' : err.message }
+  }
+}
+
+/**
+ * Create a middleware that handles action requests at `/_zero/actions/*`.
+ * `createServer` mounts it for you; mount it manually only with
+ * `actions: false`.
+ *
+ * **Security baseline**: every cross-origin POST is rejected with HTTP 403
+ * by default (`corsOrigins` opts specific origins in), and bodies over
+ * `bodyLimit` (1 MiB) are rejected with 413.
+ *
+ * For higher assurance:
+ *   1. Set `SameSite=Strict` (or `Lax`) on your auth cookies
+ *   2. Wire your auth middleware BEFORE this one so the handler can read
+ *      authenticated user state.
+ *   3. Per-session CSRF tokens + encrypted action IDs (Next.js-style)
+ *      are tracked as follow-up work.
+ */
+export function createActionMiddleware(
+  options?: CreateActionMiddlewareOptions,
+): (
+  ctx: MiddlewareContext,
+) => Response | undefined | Promise<Response | undefined> {
+  const resolved = resolveActionOptions(options)
   return async (ctx: MiddlewareContext) => {
     // Pathname only — `ctx.path` carries the query string, which would be
     // glued onto the action id.
@@ -240,110 +468,40 @@ export function createActionMiddleware(
       return Response.json({ error: 'Method not allowed' }, { status: 405 })
     }
 
-    // ── CSRF baseline: Origin / Referer same-origin check ────────────────────
-    // Without this, any malicious origin a logged-in user visits can forge
-    // POSTs to /_zero/actions/<id>. Action IDs are bundled in client JS
-    // so they are trivially discoverable via DevTools / source inspection.
-    //
-    // Algorithm:
-    //   - If neither Origin nor Referer is present → ALLOW. Same-origin
-    //     fetch() / form submit without credentials AND server-to-server
-    //     tools (curl, integration tests) often omit Origin; rejecting
-    //     here would break legitimate usage. The auth layer is responsible
-    //     for the "is this a logged-in user?" check; the CSRF baseline is
-    //     "did this request come from a browser tab on an attacker's origin?".
-    //   - If Origin/Referer is present → PARSE it and require its ORIGIN to
-    //     equal the request's own origin, or to be one of the opt-in
-    //     `corsOrigins` entries. Equality, never a prefix: `startsWith`
-    //     accepts `https://app.example.com.evil.net`, `...comevil.net` and
-    //     `https://app.example.com@evil.net` (userinfo), all of which are
-    //     attacker-controlled origins. A `Referer` is a full URL, so it is
-    //     reduced to its origin the same way.
-    //   - An unparseable header (including the literal `null` a sandboxed
-    //     iframe sends) yields no origin → 403.
-    //   - Otherwise → 403.
-    const headerOrigin = ctx.req.headers.get('origin') ?? ctx.req.headers.get('referer')
-    if (headerOrigin) {
-      const origin = originOf(headerOrigin)
-      const sameOrigin = origin !== null && origin === new URL(ctx.req.url).origin
-      const allowedCrossOrigin = origin !== null && corsOrigins.includes(origin)
-      if (!sameOrigin && !allowedCrossOrigin) {
-        return Response.json(
-          {
-            error:
-              'Server action rejected: Origin not allowed. ' +
-              'Cross-origin POSTs to /_zero/actions/* require an explicit ' +
-              '`corsOrigins` entry in createActionMiddleware().',
-            origin: headerOrigin,
-          },
-          { status: 403 },
-        )
-      }
+    const rejectedOrigin = checkActionOrigin(ctx.req, resolved.corsOrigins)
+    if (rejectedOrigin !== null) {
+      return Response.json(
+        {
+          error:
+            'Server action rejected: Origin not allowed. ' +
+            'Cross-origin POSTs to /_zero/actions/* require an explicit ' +
+            '`corsOrigins` entry in createActionMiddleware().',
+          origin: rejectedOrigin,
+        },
+        { status: 403 },
+      )
     }
 
-    return executeAction(action, ctx.req)
+    const payload = await readActionPayload(ctx.req, resolved.bodyLimit)
+    if (payload instanceof Response) return payload
+
+    const outcome = await runActionHandler(action.handler, ctx.req, payload)
+    if (outcome.kind === 'error') return Response.json({ error: outcome.message }, { status: 500 })
+    if (outcome.kind === 'redirect') {
+      // A fetch() would silently FOLLOW a 3xx and hand the caller the target
+      // page's HTML, so a redirect travels as a header the client acts on.
+      return new Response('null', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', [ACTION_REDIRECT_HEADER]: safeRedirectLocation(outcome.to) },
+      })
+    }
+    return Response.json(outcome.data, { status: outcome.status })
   }
 }
 
-async function executeAction(action: RegisteredAction, req: Request): Promise<Response> {
-  // Parse the request payload separately so a malformed body returns
-  // 400 (Bad Request) instead of being conflated with a runtime 500.
-  // `req.json()` / `req.formData()` throw on syntactically invalid
-  // payloads (truncated JSON, malformed multipart, invalid UTF-8, etc.)
-  // — that's a client problem, not a server problem, and the HTTP
-  // status code should reflect that.
-  const contentType = req.headers.get('content-type') ?? ''
-  let formData: FormData | null = null
-  let json: unknown = null
-  try {
-    if (contentType.includes('application/json')) {
-      json = await req.json()
-    } else if (
-      contentType.includes('multipart/form-data') ||
-      contentType.includes('application/x-www-form-urlencoded')
-    ) {
-      formData = await req.formData()
-    }
-  } catch (err) {
-    // Malformed request body — log for ops diagnostics but return 400
-    // (not 500) so the client sees the right status code. Don't leak
-    // the parser's internal error message; surface only the shape.
-    console.error('[Pyreon Action] failed to parse request body:', err)
-    return Response.json(
-      { error: 'Invalid request body' },
-      { status: 400 },
-    )
-  }
-
-  // Execute the user-supplied action handler. Surface errors to server
-  // logs via `console.error` — the cloud-adapter audit found this
-  // same swallow-error pattern hiding production crashes from
-  // operators. Without it, a CMS-triggered action that crashed inside
-  // the user's handler returned a generic 500 to the client AND
-  // logged nothing on the server side, so the operator couldn't
-  // diagnose the failure.
-  try {
-    const result = await action.handler({
-      request: req,
-      formData,
-      json,
-      headers: req.headers,
-    })
-    return Response.json(result ?? null)
-  } catch (err) {
-    // Log the real error for operators; return a GENERIC message to the
-    // client in production. `err.message` routinely carries connection
-    // strings, credentials and internal hostnames ("pg: password
-    // authentication failed for user ..."), and the client has no claim
-    // on it — exactly the reasoning the body-parse arm above already
-    // applies. Outside production the detail is kept, because that is
-    // where a developer is reading the response.
-    console.error('[Pyreon Action] handler failed:', err)
-    const isProduction = process.env.NODE_ENV === 'production'
-    const message =
-      isProduction || !(err instanceof Error) ? 'Internal server error' : err.message
-    return Response.json({ error: message }, { status: 500 })
-  }
+/** @internal Look up a registered action by id. */
+export function _getAction(id: string): RegisteredAction | undefined {
+  return actionRegistry.get(id)
 }
 
 /**
@@ -360,3 +518,4 @@ function originOf(headerValue: string): string | null {
     return null
   }
 }
+export * from './form'

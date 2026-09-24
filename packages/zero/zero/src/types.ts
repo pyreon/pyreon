@@ -816,6 +816,11 @@ export interface RouteFileExports {
   /** Has `export const middleware` */
   hasMiddleware: boolean
   /**
+   * Route exports `action` — a `defineAction()` that handles POSTs to the
+   * page (no-JS form submissions). Server-only: never makes the route eager.
+   */
+  hasAction?: boolean
+  /**
    * Has `export const loaderKey` or `export function loaderKey`. When present,
    * the route generator wires it as the `loaderKey` field on the route record,
    * which controls cache identity for `_loaderCache`. Useful for auth-gate

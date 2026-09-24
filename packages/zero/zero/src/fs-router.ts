@@ -84,6 +84,7 @@ const ROUTE_EXPORT_NAMES = [
   'renderMode',
   'error',
   'middleware',
+  'action',
   'loaderKey',
   'gcTime',
   'getStaticPaths',
@@ -176,6 +177,7 @@ export function detectRouteExports(source: string, filename = 'route.tsx'): Rout
     hasRenderMode: found.has('renderMode'),
     hasError: found.has('error'),
     hasMiddleware: found.has('middleware'),
+    hasAction: found.has('action'),
     hasLoaderKey: found.has('loaderKey'),
     hasGcTime: found.has('gcTime'),
     hasGetStaticPaths: found.has('getStaticPaths'),
@@ -988,14 +990,15 @@ export function generateMiddlewareModule(files: string[], routesDir: string): st
   const pageEntries: string[] = []
   let counter = 0
 
-  const readsMiddleware = (filePath: string): boolean => {
+  const readExports = (filePath: string): RouteFileExports => {
     try {
-      return detectRouteExports(readFileSync(`${routesDir}/${filePath}`, 'utf-8'), filePath).hasMiddleware
+      return detectRouteExports(readFileSync(`${routesDir}/${filePath}`, 'utf-8'), filePath)
     } catch {
       // File can't be read — skip; the SSR runtime falls back gracefully.
-      return false
+      return EMPTY_EXPORTS
     }
   }
+  const readsMiddleware = (filePath: string): boolean => readExports(filePath).hasMiddleware
 
   const pages = routes.filter((r) => !r.isLayout && !r.isError && !r.isLoading && !r.isNotFound)
 
@@ -1026,11 +1029,26 @@ export function generateMiddlewareModule(files: string[], routesDir: string): st
   }
 
   for (const route of pages) {
-    if (!readsMiddleware(route.filePath)) continue
-    const name = `_mw${counter++}`
+    const exp = readExports(route.filePath)
     const fullPath = `${routesDir}/${route.filePath}`
-    imports.push(`import { middleware as ${name} } from "${fullPath}"`)
-    pageEntries.push(`  { pattern: ${JSON.stringify(route.urlPath)}, middleware: ${name} }`)
+    if (exp.hasMiddleware) {
+      const name = `_mw${counter++}`
+      imports.push(`import { middleware as ${name} } from "${fullPath}"`)
+      pageEntries.push(`  { pattern: ${JSON.stringify(route.urlPath)}, middleware: ${name} }`)
+    }
+    // A route-level `action` export handles POSTs to the page — a plain
+    // `<form method="post">` works with no JavaScript and no `<Form>`. The
+    // marker only POINTS at the action (via ctx.locals); zero's form-action
+    // middleware runs it later, after every other middleware — including
+    // this page's own — so a route auth gate also gates its action. Placed
+    // after the page's middleware entry for the same reason.
+    if (exp.hasAction) {
+      const name = `_act${counter++}`
+      imports.push(`import { action as ${name} } from "${fullPath}"`)
+      pageEntries.push(
+        `  { pattern: ${JSON.stringify(route.urlPath)}, middleware: (ctx) => { if (ctx.req.method === "POST") ctx.locals["zero:routeAction"] = ${name} } }`,
+      )
+    }
   }
 
   return [
