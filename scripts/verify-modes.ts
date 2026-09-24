@@ -35,6 +35,13 @@ import { rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import { assertClientClean, assertRouteBudgets } from './zero-app-checks'
+import {
+  assertRunsUnderWorkerd,
+  invokeIsolated,
+  loadRuntimeEol,
+  netlifyOutputProblems,
+  vercelOutputProblems,
+} from './zero-adapter-runtimes'
 
 type Mode = 'ssr' | 'ssg' | 'spa' | 'isr' | 'auto'
 
@@ -210,6 +217,10 @@ function assertSsrFunctionRenders(
       `${funcRelPath}: emitted ${style} function failed to server-render.\n${result.stderr || result.stdout || '(no output)'}`,
     )
   }
+}
+
+function throwIfProblems(label: string, problems: string[]): void {
+  if (problems.length > 0) throw new Error(`[${label}] adapter output is invalid:\n  ${problems.join('\n  ')}`)
 }
 
 function assertFileDoesNotExist(path: string): void {
@@ -803,6 +814,11 @@ const MATRIX: Cell[] = [
         join('.vercel', 'output', 'functions', 'ssr.func', 'index.js'),
         'vercel',
       )
+      // A4 — the Build Output API v3 contract (config.json routes, every
+      // routed function exists, .vc-config.json runtime not past EOL) and
+      // the function run from a copy OUTSIDE the repo, as Vercel uploads it.
+      throwIfProblems('vercel', vercelOutputProblems(join(exampleDir, '.vercel', 'output'), loadRuntimeEol()))
+      invokeIsolated(join(exampleDir, '.vercel', 'output', 'functions', 'ssr.func'), 'index.js', 'vercel')
     },
   },
   {
@@ -813,18 +829,27 @@ const MATRIX: Cell[] = [
       assertFileExists(join(dist, 'netlify.toml'))
       assertFileContains(join(dist, 'publish', 'index.html'), '<!--pyreon-app-->')
       assertSsrFunctionRenders(dist, join('netlify', 'functions', 'ssr.mjs'), 'netlify')
+      // A4 — netlify.toml parses and every redirect target function exists
+      // with a default export; the functions dir run outside the repo.
+      throwIfProblems('netlify', netlifyOutputProblems(dist))
+      invokeIsolated(join(dist, 'netlify'), join('functions', 'ssr.mjs'), 'netlify')
     },
   },
   {
     example: 'ssr-showcase',
     mode: 'ssr',
     adapter: 'cloudflare',
-    smoke: (dist) => {
+    smoke: async (dist) => {
       assertFileExists(join(dist, '_routes.json'))
       assertFileExists(join(dist, '_worker.js'))
       // Cloudflare serves the client flat at the root.
       assertFileContains(join(dist, 'index.html'), '<!--pyreon-app-->')
       assertSsrFunctionRenders(dist, '_worker.js', 'cloudflare')
+      // A4 — outside the repo, then under workerd itself (wrangler pages
+      // dev + the scaffold's wrangler.toml). CI sets PYREON_REQUIRE_WORKERD;
+      // locally a missing wrangler is a loud skip.
+      invokeIsolated(dist, '_worker.js', 'cloudflare')
+      await assertRunsUnderWorkerd(dist)
     },
   },
   {

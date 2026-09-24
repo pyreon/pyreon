@@ -1479,8 +1479,21 @@ jobs:
           bun run --filter='./examples/*' build
       # `vite build` every example × mode cell and assert the RENDERED content
       # (not just a green build) — the typed-but-unimplemented backstop.
+      # A4: the cloudflare cell serves its output under workerd via
+      # `wrangler pages dev`. Pinned, installed outside the workspace so it
+      # never enters bun.lock; PYREON_REQUIRE_WORKERD turns the local
+      # "no wrangler" skip into a failure here (fail-closed).
+      - name: Install wrangler (workerd) for Verify Modes
+        id: wrangler
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: |
+          npm install --prefix "$RUNNER_TEMP/wrangler" --no-audit --no-fund wrangler@4.138.0
+          echo "bin=$RUNNER_TEMP/wrangler/node_modules/.bin/wrangler" >> "$GITHUB_OUTPUT"
       - name: Verify Modes
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        env:
+          PYREON_WRANGLER: ${{ steps.wrangler.outputs.bin }}
+          PYREON_REQUIRE_WORKERD: '1'
         run: bun run verify-modes
       # ── package contracts against the built lib/ ────────────────────────
       - name: Check Bundle Budgets
