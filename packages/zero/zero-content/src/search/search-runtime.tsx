@@ -461,6 +461,11 @@ export function Search(props: SearchProps): VNodeChild {
 
   onUnmount(() => state.close())
 
+  const closeAndRestoreFocus = () => {
+    state.close()
+    queueMicrotask(() => lastFocused?.focus?.())
+  }
+
   return (
     <search
       class={() =>
@@ -474,7 +479,15 @@ export function Search(props: SearchProps): VNodeChild {
           doesn't always normalize the VNode return correctly). Ternary
           → null is the canonical form. */}
       {() => state.open() ? (
-        <div class="pyreon-search__backdrop">
+        // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- The backdrop is pointer-only dismissal chrome; Escape and the dialog's Close button provide keyboard dismissal without adding a misleading focus stop/role around the dialog.
+        <div
+          class="pyreon-search__backdrop"
+          onClick={(e: MouseEvent) => {
+            // Only the uncovered backdrop dismisses. Clicks in the dialog
+            // bubble through this element too and must keep search open.
+            if (e.target === e.currentTarget) closeAndRestoreFocus()
+          }}
+        >
           <dialog
             class="pyreon-search__panel"
             aria-modal="true"
@@ -498,10 +511,7 @@ export function Search(props: SearchProps): VNodeChild {
               type="button"
               class="pyreon-search__close"
               aria-label="Close search"
-              onClick={() => {
-                state.close()
-                queueMicrotask(() => lastFocused?.focus?.())
-              }}
+              onClick={closeAndRestoreFocus}
             >
               Close
             </button>
