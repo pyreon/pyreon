@@ -19,7 +19,7 @@ import type {
   IrType,
   StringFormat,
 } from '../core/ir'
-import { ident, operationIdFrom, typeIdent, uniquifier } from '../core/naming'
+import { ident, modelIdent, operationIdent, operationIdFrom, uniquifier } from '../core/naming'
 import { parseSpecText } from './yaml'
 
 type Json = Record<string, unknown>
@@ -62,7 +62,7 @@ function convert(spec: Json): IrDocument {
   const schemas = obj(obj(spec.components)?.schemas) ?? {}
   const uniq = uniquifier()
   for (const key of Object.keys(schemas).sort()) {
-    ctx.modelNames.set(key, uniq(typeIdent(key)))
+    ctx.modelNames.set(key, uniq(modelIdent(key)))
   }
   const models: IrModel[] = []
   for (const key of Object.keys(schemas).sort()) {
@@ -214,7 +214,7 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
         })
       }
       ops.push({
-        id: uniq(ident(id)),
+        id: uniq(operationIdent(id)),
         method,
         path: toPyreonPath(rawPath),
         tag: str(arr(op.tags)[0]) ?? 'default',
