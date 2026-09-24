@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { isAbsolute, join, relative, sep } from 'node:path'
+import { generateActionManifestCode } from './action-manifest'
 import { transformServerActions } from './actions-transform'
 import { innerBuildActiveInProcess, innerBuildFlagSet } from './build-flags'
 import { collectBuildStats, detectColorLevel, formatBuildSummary } from './build-summary'
@@ -469,11 +470,15 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 			}
 
 			if (id === RESOLVED_VIRTUAL_MIDDLEWARE_ID) {
+				// Plus the build-time action manifest (action-manifest.ts): this
+				// module is what every server entry and the dev pipeline import,
+				// so a fresh server knows every action id up front.
+				const manifest = generateActionManifestCode(root);
 				try {
 					const files = await scanRouteFiles(routesDir);
-					return generateMiddlewareModule(files, routesDir);
+					return `${manifest}\n${generateMiddlewareModule(files, routesDir)}`;
 				} catch (_err) {
-					return `export const routeMiddleware = []`;
+					return `${manifest}\nexport const routeMiddleware = []`;
 				}
 			}
 

@@ -21,7 +21,7 @@ import { safeRedirectLocation } from '@pyreon/router'
 import type { Middleware } from '@pyreon/server'
 import { useRequestLocals } from '@pyreon/server'
 import type { Action, ActionOutcome, ResolvedActionOptions } from './actions'
-import { _getAction, checkActionOrigin, readActionPayload, runActionHandler } from './actions'
+import { _resolveAction, checkActionOrigin, readActionPayload, runActionHandler } from './actions'
 import type { ActionSnapshot, EnhancedActionResponse } from './form'
 import { _setActionSnapshotReader, ACTION_QUERY_PARAM, ENHANCED_ACTION_HEADER } from './form'
 import { warmRouteModules } from './server-islands-middleware'
@@ -132,12 +132,13 @@ export function createFormActionMiddleware(opts: FormActionMiddlewareOptions): M
       id = routeAction.actionId
     }
 
-    let registered = _getAction(id)
+    // The build-time manifest loads the defining module on demand. Warming
+    // every route module stays as the fallback for an embedding that did not
+    // register one (no zero plugin-generated route-middleware module).
+    let registered = await _resolveAction(id)
     if (!registered) {
-      // Route modules load lazily; an action defined in one (or in a module
-      // only a route imports) registers when that module first evaluates.
       await warmOnce()
-      registered = _getAction(id)
+      registered = await _resolveAction(id)
     }
     if (!registered) {
       return enhanced ? Response.json({ kind: 'error', message: 'Action not found' }, { status: 404 }) : text(404, 'Action not found')

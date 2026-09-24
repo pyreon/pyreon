@@ -76,21 +76,22 @@ function walk(node: unknown, parent: AstNode | null, visit: (n: AstNode, p: AstN
   }
 }
 
+interface ActionCall {
+  node: AstNode
+  id: string
+}
+
 /**
- * Rewrite `defineAction` call sites in `code`. Returns `null` when the
- * module has none (the common case; checked with a substring test before
- * any parse).
- *
- * @param relPath the module's path relative to the Vite root, POSIX
- *   separators — the id's only input besides the binding name.
- * @param ssr `true` for the server bundle, `false` for the browser bundle.
+ * Parse `code` and locate every `defineAction` call with its build-time id.
+ * `null` when the module imports no `defineAction` (or does not parse).
+ * The single derivation shared by the transform and the action manifest,
+ * so a manifest id always equals the id the transform bakes in.
  */
-export function transformServerActions(
+function locateActions(
   code: string,
   filename: string,
   relPath: string,
-  ssr: boolean,
-): string | null {
+): { program: AstNode; calls: ActionCall[] } | null {
   if (!code.includes(ACTIONS_MODULE)) return null
 
   let program: AstNode
@@ -129,11 +130,9 @@ export function transformServerActions(
     return false
   }
 
-  const edits: Edit[] = []
-  const removed: Array<[number, number]> = []
+  const calls: ActionCall[] = []
   const usedKeys = new Set<string>()
   let ordinal = 0
-
   walk(program, null, (node, parent) => {
     if (node.type !== 'CallExpression' || !isDefineAction(node.callee as AstNode)) return
     const args = node.arguments as AstNode[]
@@ -150,8 +149,46 @@ export function transformServerActions(
     if (usedKeys.has(key)) key = `${key}$${ordinal}`
     usedKeys.add(key)
     ordinal++
-    const id = JSON.stringify(actionId(relPath, key))
+    calls.push({ node, id: actionId(relPath, key) })
+    // Do not descend: a `defineAction` nested in a handler is part of the
+    // stripped body (client) or is keyed independently only if reachable.
+    return false
+  })
+  return { program, calls }
+}
 
+/**
+ * The ids of every server action `code` defines — what the server's action
+ * manifest maps to this module so a fresh server can load it on demand.
+ */
+export function collectActionIds(code: string, filename: string, relPath: string): string[] {
+  return locateActions(code, filename, relPath)?.calls.map((c) => c.id) ?? []
+}
+
+/**
+ * Rewrite `defineAction` call sites in `code`. Returns `null` when the
+ * module has none (the common case; checked with a substring test before
+ * any parse).
+ *
+ * @param relPath the module's path relative to the Vite root, POSIX
+ *   separators — the id's only input besides the binding name.
+ * @param ssr `true` for the server bundle, `false` for the browser bundle.
+ */
+export function transformServerActions(
+  code: string,
+  filename: string,
+  relPath: string,
+  ssr: boolean,
+): string | null {
+  const located = locateActions(code, filename, relPath)
+  if (!located) return null
+  const { program, calls } = located
+
+  const edits: Edit[] = []
+  const removed: Array<[number, number]> = []
+
+  for (const { node, id: rawId } of calls) {
+    const id = JSON.stringify(rawId)
     const callee = node.callee as AstNode
     const typeArgs = node.typeArguments as AstNode | null | undefined
     const headEnd = typeArgs ? typeArgs.end : callee.end
@@ -170,10 +207,7 @@ export function transformServerActions(
       })
       removed.push([node.start, node.end])
     }
-    // Do not descend: a `defineAction` nested in a handler is part of the
-    // stripped body (client) or is keyed independently only if reachable.
-    return false
-  })
+  }
 
   if (edits.length === 0) return null
 

@@ -46,6 +46,18 @@ beforeEach(() => {
 const form = { "content-type": "application/x-www-form-urlencoded", "x-auth": "ok" };
 
 describe("zero dev runs route form actions", { timeout: DEV_SERVER_TEST_TIMEOUT_MS }, () => {
+	// FIRST: nothing has rendered or imported extra-actions.ts yet.
+	it("a fresh dev server answers an action whose module nothing has loaded (manifest)", async () => {
+		const res = await devFetch(`${baseUrl}/_zero/actions/${actionId("src/extra-actions.ts", "ping")}`, "fresh action", {
+			observe: state,
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: "null",
+		});
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ pong: true });
+	});
+
 	it("no-JS: a plain page POST runs the route action and re-renders, middleware once", async () => {
 		const res = await devFetch(`${baseUrl}/guest?tab=1`, "no-JS form post", {
 			observe: state,

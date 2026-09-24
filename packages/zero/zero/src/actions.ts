@@ -167,6 +167,7 @@ export function getRegisteredActions(): Map<string, RegisteredAction> {
  */
 export function _resetActions(): void {
   actionRegistry.clear()
+  actionModuleLoaders = new Map()
   _resetSubmissions()
   warnedPluginless = false
 }
@@ -460,7 +461,7 @@ export function createActionMiddleware(
     if (!pathname.startsWith('/_zero/actions/')) return
 
     const actionId = pathname.slice('/_zero/actions/'.length)
-    const action = actionRegistry.get(actionId)
+    const action = await _resolveAction(actionId)
 
     if (!action) {
       return Response.json({ error: 'Action not found' }, { status: 404 })
@@ -503,6 +504,41 @@ export function createActionMiddleware(
 
 /** @internal Look up a registered action by id. */
 export function _getAction(id: string): RegisteredAction | undefined {
+  return actionRegistry.get(id)
+}
+
+/**
+ * Build-time action manifest: action id → a loader for the module that
+ * defines it. Registered by zero's generated `virtual:zero/route-middleware`
+ * module (which every server entry, and the dev pipeline, imports), so a
+ * FRESH server can answer an action whose module no render has loaded yet —
+ * `defineAction` only registers when its module evaluates, and route
+ * modules load lazily. Bounded by the build's action call sites.
+ */
+let actionModuleLoaders: ReadonlyMap<string, () => Promise<unknown>> = new Map()
+
+/** @internal Called by the generated route-middleware module. */
+export function _registerActionModules(loaders: Record<string, () => Promise<unknown>>): void {
+  actionModuleLoaders = new Map(Object.entries(loaders))
+}
+
+/**
+ * Resolve an action by id, loading its defining module from the build-time
+ * manifest when it has not registered yet. `undefined` for an unknown id.
+ *
+ * @internal
+ */
+export async function _resolveAction(id: string): Promise<RegisteredAction | undefined> {
+  const registered = actionRegistry.get(id)
+  if (registered) return registered
+  const load = actionModuleLoaders.get(id)
+  if (!load) return undefined
+  try {
+    await load()
+  } catch (err) {
+    console.error(`[Pyreon Action] failed to load the module defining ${id}:`, err)
+    return undefined
+  }
   return actionRegistry.get(id)
 }
 
