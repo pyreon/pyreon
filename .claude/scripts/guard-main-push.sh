@@ -45,7 +45,10 @@ for tok in $args; do
 done
 
 if [ ${#refspecs[@]} -eq 0 ]; then
-  branch=$(git -C "$dir" symbolic-ref --short -q HEAD 2>/dev/null)
+  # Clear GIT_*: inside a git hook, git exports GIT_DIR (and friends) for the
+  # OUTER repo, and it overrides `-C` — the lookup then reads the wrong
+  # checkout's branch. See anti-patterns "GIT_* env-var leak inside git hooks".
+  branch=$(unset $(compgen -e | grep '^GIT_'); git -C "$dir" symbolic-ref --short -q HEAD 2>/dev/null)
   if [ "$branch" = "main" ] || [ "$branch" = "master" ]; then block; fi
   echo '{}'
   exit 0
