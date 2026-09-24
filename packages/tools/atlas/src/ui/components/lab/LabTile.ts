@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const LabTile = el
   .attrs({
@@ -6,7 +6,7 @@ export const LabTile = el
     contentDirection: 'rows',
     contentAlignX: 'block',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     borderRadius: t.radius.modal,
     overflow: 'hidden',
     border: t.hairline,

@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const A11ySummary = el
   .attrs({
@@ -7,7 +7,7 @@ export const A11ySummary = el
     contentAlignY: 'center',
     gap: 16,
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     marginBottom: '16px',
     padding: '16px',
     borderRadius: t.radius.card,

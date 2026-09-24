@@ -499,6 +499,18 @@ export function useMiddlewareData(): () => Record<string, unknown> {
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
+// Compile-time feature flag `globalThis.__PYREON_ROUTER_LOADERS__`: defining
+// it `false` compiles the loader engine (cache, in-flight dedup, SWR, the
+// server-loader single-fetch) OUT of the bundle, and components.tsx drops the loader
+// render path (PendingLoader, the data provider, link prefetch) — ~0.9–1 KB gz. Unset means ON,
+// so an app that never defines it behaves exactly as before. @pyreon/zero
+// defines it in production builds from its route scan (true or false — either
+// value folds the guards away).
+//
+// The check is written out at each use site instead of being read into a
+// local: esbuild and Bun do not fold a define through a local alias, so an
+// aliased flag would silently keep the engine in their bundles.
+
 export function createRouter<TNames extends string = string>(
   options: RouterOptions | RouteRecord[],
 ): Router<TNames> {
@@ -889,6 +901,7 @@ export function createRouter<TNames extends string = string>(
    * 3. Otherwise → run loader, cache result, clean up in-flight
    */
   function executeLoader(record: RouteRecord, loaderCtx: LoaderContext): Promise<unknown> {
+    if ((globalThis as { __PYREON_ROUTER_LOADERS__?: boolean }).__PYREON_ROUTER_LOADERS__ === false) return Promise.resolve(undefined)
     if (!record.loader) return Promise.resolve(undefined)
 
     const key = getCacheKey(record, loaderCtx)
@@ -1003,6 +1016,7 @@ export function createRouter<TNames extends string = string>(
     gen: number,
     ac: AbortController,
   ): Promise<GuardOutcome> {
+    if ((globalThis as { __PYREON_ROUTER_LOADERS__?: boolean }).__PYREON_ROUTER_LOADERS__ === false) return { action: 'continue' }
     // Phase 5 — server loaders. On the SERVER the function import exists
     // (`serverLoader` is a fn) and runs like a normal loader. On the
     // CLIENT only the `hasServerLoader` marker exists — those records'

@@ -160,6 +160,10 @@ const data = useLoaderData<{ name: string }>()
 - **`router.runServerLoaders(path, request?)`** runs only the matched chain's serverLoaders, keyed by matched-chain index; returns `{ kind: 'data', data }` or `{ kind: 'redirect', to, status }`. Server-side use — it's what the data endpoint's worker calls.
 - **`dataEndpoint`** (createRouter option, default `` `${base}/_pyreon/data` ``) is the URL the client router fetches server-loader data from; zero's `createServer` auto-mounts it.
 
+### Compiling loaders out
+
+Define `globalThis.__PYREON_ROUTER_LOADERS__` as `false` at build time to drop the loader engine and loader rendering from the bundle (~0.9–1 KB gz) in an app with no loaders. Undefined means on. `@pyreon/zero` sets it for you in production builds, based on its route scan.
+
 ## Guards + middleware
 
 ```ts

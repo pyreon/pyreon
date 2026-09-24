@@ -83,6 +83,12 @@ Rules for release tooling:
 
 `@pyreon/validate`'s `.strict()` emitters once short-circuited on `Object.keys(x).length === N`, but field checks read through the prototype chain, so a prototype-carried object and a typo'd key in place of a real one both slipped past the unknown-key scan. The short-circuit must prove each declared key is in `Object.keys(x)`: use `Object.prototype.propertyIsEnumerable.call` (own and enumerable), not `Object.hasOwn`, which also matches non-enumerable own keys. When optimizing a predicate, name what the cheap version assumes and what code establishes it. When two emitters share one predicate, a fuzz whose oracle is their agreement (`is() === parse().ok`) cannot catch it; differential-test against the interpreter. Reference: `packages/fundamentals/validate/src/core/jit.ts:strictShortCircuitMiss`; locks `src/tests/strict-prototype-keys.test.ts`, the schema-paired fuzz in `src/tests/jit-check-differential.test.ts`, and the `.strict()` block in `src/tests/jit-differential.test.ts`.
 
+---
+
+### A callback-or-object union whose OBJECT arm is `Partial<Record<string, unknown>>` silently swallows every callback
+
+(`@pyreon/rocketstyle` `.theme()`, 2026-09). `{ [k: string]?: unknown }` accepts a FUNCTION, so `.theme((t: Anything) => …)` matched the object arm and its `ThemeCb` contract was never consulted: a wrong annotation on `t` compiled, and `@pyreon/atlas`/`@pyreon/loom` carried ~180 `(t: T)` annotations nothing verified. They annotated because the factory hard-coded the theme generic to `{}` — no channel for a token type except a global `ThemeDefault` augmentation (unsafe from a library) or a cast. **Fix: exclude functions from the object arm (`O & { call?: never; apply?: never }`) and give the type a LOCAL channel (`rocketstyle(cfg).withTheme<Tokens>()`, type-only).** General rule: when a parameter accepts "an object OR a callback", prove a mistyped callback is REJECTED — an index-signature object type accepts functions, so the union collapses to its loosest arm. Lock with an `@ts-expect-error` spec. Reference: `rocketstyle/src/types/rocketstyle.ts:ThemeObject` + `src/__tests__/with-theme.types.test.ts`.
+
 A 27-package audit of `packages/fundamentals` (PRs #3642–#3653) found the same few shapes in many packages. Each entry names the class once; the per-package fixes live in those PRs.
 
 ---
