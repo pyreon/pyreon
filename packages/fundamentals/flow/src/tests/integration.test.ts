@@ -320,11 +320,11 @@ describe('listener unsubscribe', () => {
     const connections: string[] = []
     const unsub = flow.onConnect((c) => connections.push(c.source))
 
-    flow.addEdge({ source: '1', target: '2' })
+    flow._emit.connect({ source: '1', target: '2' })
     expect(connections).toEqual(['1'])
 
     unsub()
-    flow.addEdge({ source: '2', target: '1' })
+    flow._emit.connect({ source: '2', target: '1' })
     expect(connections).toEqual(['1']) // no second callback
   })
 
@@ -1618,7 +1618,7 @@ describe('dispose', () => {
     const connections: string[] = []
     flow.onConnect((c) => connections.push(c.source))
     flow.dispose()
-    flow.addEdge({ source: '1', target: '2' })
+    flow._emit.connect({ source: '1', target: '2' })
     expect(connections).toEqual([]) // listener was cleared
   })
 })
