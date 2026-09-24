@@ -103,11 +103,12 @@ describe('SCENARIOS', () => {
   it('locks the plot subpath trio (tree-shaking of the charts engine)', () => {
     const charts = SCENARIOS.filter((s) => s.pkg === '@pyreon/charts')
     expect(charts.map((s) => s.id).sort()).toEqual([
+      '@pyreon/charts::plot-grammar',
       '@pyreon/charts::plot-minimal',
       '@pyreon/charts::plot-pie',
       '@pyreon/charts::plot-svg',
     ])
-    // All three must measure the SUBPATH entry — routing through the main
+    // Every one must measure the SUBPATH entry — routing through the main
     // barrel would measure the echarts bridge, not the engine.
     for (const s of charts) expect(s.entry).toBe('plot.js')
   })

@@ -21,6 +21,8 @@ import { layoutPieLabels } from './pie-labels'
 import { renderDial } from './gauge-dial'
 import { optionTitleCommands, readOptionTitle } from './option-title'
 import { echartsBeziers } from './curve'
+import { layoutTreemapEc } from './treemap'
+import { readTreemapEc } from './option-treemap'
 import { renderFunnelEc } from './funnel'
 import { palettes } from './palettes'
 import type { Pt } from './types'
@@ -1743,6 +1745,80 @@ describe('ECharts differential: funnels', () => {
         expect(l.anchor, `${l.text} anchor`).toBe(el.anchor)
         expect(l.fill, `${l.text} fill`).toBe(el.fill)
         expect(l.halo, `${l.text} halo`).toBe(el.halo)
+      })
+    })
+  }
+})
+
+// ---- treemaps: ECharts' treemapLayout (squarify), read from its own model ----
+
+interface TreeRectFact { path: string; x: number; y: number; w: number; h: number }
+type EcTreeNode = { depth: number; getLayout(): { x: number; y: number; width: number; height: number } | null; viewChildren?: EcTreeNode[]; parentNode: EcTreeNode | null; children: EcTreeNode[] }
+/** Every laid-out node ECharts' model holds, absolute, keyed by its child-index path. */
+function echartsTreemap(option: object): TreeRectFact[] {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: W, height: H })
+  chart.setOption({ animation: false, ...option })
+  const sm = (chart as unknown as { getModel(): { getSeriesByIndex(i: number): { layoutInfo: { x: number; y: number }; getData(): { tree: { root: EcTreeNode } } } } }).getModel().getSeriesByIndex(0)
+  const out: TreeRectFact[] = []
+  const walk = (n: EcTreeNode, ox: number, oy: number, path: string): void => {
+    const l = n.getLayout()
+    if (!l) return
+    const ax = ox + l.x, ay = oy + l.y
+    out.push({ path, x: ax, y: ay, w: l.width, h: l.height })
+    for (const c of n.viewChildren ?? []) walk(c, ax, ay, path + '/' + String(n.children.indexOf(c)))
+  }
+  walk(sm.getData().tree.root, sm.layoutInfo.x, sm.layoutInfo.y, '')
+  chart.dispose()
+  return out.sort((a, b) => (a.path < b.path ? -1 : 1))
+}
+function ourTreemap(option: object): TreeRectFact[] {
+  const s = (option as { series: Record<string, unknown>[] }).series[0]!
+  const { root, cfg } = readTreemapEc(s, (s['data'] as unknown[]) ?? [])
+  return layoutTreemapEc(root, familyRect(s, W, H), cfg)
+    .map((c) => ({ path: c.path.map((p) => '/' + String(p)).join(''), x: c.rect.x, y: c.rect.y, w: c.rect.w, h: c.rect.h }))
+    .sort((a, b) => (a.path < b.path ? -1 : 1))
+}
+const tdata = [
+  { name: 'A', value: 6, children: [{ name: 'a1', value: 4 }, { name: 'a2', value: 2 }] },
+  { name: 'B', value: 3 },
+  { name: 'C', value: 1 },
+]
+const tmany = [
+  { name: 'Ops', children: [{ name: 'k8s', value: 40 }, { name: 'ci', value: 22 }, { name: 'obs', value: 18 }, { name: 'dns', value: 3 }] },
+  { name: 'Web', children: [{ name: 'app', value: 55, children: [{ name: 'ui', value: 30 }, { name: 'api', value: 25 }] }, { name: 'cdn', value: 9 }] },
+  { name: 'Data', children: [{ name: 'etl', value: 17 }, { name: 'bi', value: 11 }, { name: 'ml', value: 26 }, { name: 'lake', value: 5 }, { name: 'q', value: 1 }] },
+  { name: 'Misc', value: 7 },
+]
+const treemapOf = (series: object = {}, data: unknown[] = tdata): object => ({ series: [{ type: 'treemap', data, ...series }] })
+const TREEMAP_CASES: [string, object][] = [
+  ['the defaults (20/50 box, golden-ratio squarify, desc)', treemapOf()],
+  ['a deeper, wider tree', treemapOf({}, tmany)],
+  ['sort asc', treemapOf({ sort: 'asc' }, tmany)],
+  ['sort off (input order)', treemapOf({ sort: false }, tmany)],
+  ["sort 'none' still sorts, as ECharts does", treemapOf({ sort: 'none' }, tmany)],
+  ['squareRatio 1', treemapOf({ squareRatio: 1 }, tmany)],
+  ['a parent value that is not its children\'s sum', treemapOf({}, [{ name: 'A', value: 20, children: [{ name: 'a1', value: 4 }, { name: 'a2', value: 2 }] }, { name: 'B', value: 10 }])],
+  ['borderWidth and gapWidth by level', treemapOf({ levels: [{ itemStyle: { borderWidth: 0, gapWidth: 4 } }, { itemStyle: { borderWidth: 3, gapWidth: 2 } }] }, tmany)],
+  ['series-level gapWidth', treemapOf({ itemStyle: { gapWidth: 3, borderWidth: 1 } }, tmany)],
+  ['upperLabel bands', treemapOf({ upperLabel: { show: true, height: 18 }, itemStyle: { borderWidth: 2 } }, tmany)],
+  ['a per-item borderWidth', treemapOf({}, [{ name: 'A', value: 6, itemStyle: { borderWidth: 6 }, children: [{ name: 'a1', value: 4 }, { name: 'a2', value: 2 }] }, { name: 'B', value: 3 }])],
+  ['visibleMin drops the smallest', treemapOf({ visibleMin: 3000 }, tmany)],
+  ['childrenVisibleMin hides grandchildren', treemapOf({ childrenVisibleMin: 20000 }, tmany)],
+  ['leafDepth 1', treemapOf({ leafDepth: 1 }, tmany)],
+  ['leafDepth 2', treemapOf({ leafDepth: 2 }, tmany)],
+  ['a box', treemapOf({ left: 10, top: 10, width: 300, height: 150 }, tmany)],
+  ['a negative value clamps to zero', treemapOf({}, [{ name: 'A', value: 5 }, { name: 'B', value: -3 }, { name: 'C', value: 2 }])],
+]
+
+describe('ECharts differential: treemap layout', () => {
+  for (const [name, option] of TREEMAP_CASES) {
+    it(name, () => {
+      const e = echartsTreemap(option)
+      const u = ourTreemap(option)
+      expect(e.length).toBeGreaterThan(1)
+      expect(u.map((c) => c.path)).toEqual(e.map((c) => c.path))
+      u.forEach((c, k) => {
+        for (const f of ['x', 'y', 'w', 'h'] as const) expect(Math.abs(c[f] - e[k]![f]), `${c.path || 'root'}.${f}`).toBeLessThan(1e-6)
       })
     })
   }
