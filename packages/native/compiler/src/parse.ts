@@ -1650,10 +1650,15 @@ const encodePathParam = (value: string): string => encodeURIComponent(value)
  * a declaration's `paramNames`, and substituting at a call site), so it lives
  * once rather than being re-typed at each.
  *
+ * `\\:` is the web's escape for a LITERAL colon (`/v1/:name\\:cancel`, a
+ * Google-style custom verb). It matches with no capture group, and both sites
+ * treat that match as the text `:` — reading it as a second parameter would
+ * make the native URL demand a value the web never asks for.
+ *
  * A fresh RegExp per use: `g`-flagged instances carry `lastIndex`, so a shared
  * one would resume mid-string on its second caller and silently skip params.
  */
-const pathParamPattern = (): RegExp => /:([A-Za-z_][A-Za-z0-9_]*)/g
+const pathParamPattern = (): RegExp => /\\:|:([A-Za-z_][A-Za-z0-9_]*)/g
 
 /**
  * Serialize literal query entries EXACTLY as the web's `buildQuery` does — by
@@ -2062,11 +2067,17 @@ function resolveEndpointParts(
   const PARAM_RE = pathParamPattern()
   let cursor = 0
   for (let m = PARAM_RE.exec(def.pathTemplate); m; m = PARAM_RE.exec(def.pathTemplate)) {
-    const name = m[1] as string
     const before = def.pathTemplate.slice(cursor, m.index)
     cursor = m.index + m[0].length
     literalPath += before
     quasis[quasis.length - 1] += before
+    const name = m[1]
+    if (name === undefined) {
+      // `\:` — a literal colon, exactly as the web's `applyPathParams` writes it.
+      literalPath += ':'
+      quasis[quasis.length - 1] += ':'
+      continue
+    }
     const literal = literalParams[name]
     if (literal !== undefined) {
       const encoded = encodePathParam(literal)

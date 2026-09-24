@@ -89,3 +89,17 @@ describe('buildUrl', () => {
     expect(buildUrl('/api', '/users', undefined, undefined)).toBe('/api/users')
   })
 })
+
+describe('literal colon escape', () => {
+  it('`\\:` is a literal colon, not a second parameter', () => {
+    expect(applyPathParams('/v1/:name\\:cancel', { name: 'ops/1' })).toBe('/v1/ops%2F1:cancel')
+    expect(applyPathParams('/v1/projects\\:list', undefined)).toBe('/v1/projects:list')
+    expect(buildUrl('https://api.test', '/v1/:a\\:b/:c', { a: 'x', c: 'y' }, { q: 1 })).toBe(
+      'https://api.test/v1/x:b/y?q=1',
+    )
+  })
+
+  it('an unescaped colon mid-segment is still a parameter, as the type says', () => {
+    expect(() => applyPathParams('/v1/:name:cancel', { name: 'x' })).toThrow(/needs the parameter "cancel"/)
+  })
+})

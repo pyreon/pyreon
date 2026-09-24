@@ -94,6 +94,18 @@ describe('endpoint typing', () => {
     expectTypeOf<PathParamNames<'/users'>>().toEqualTypeOf<never>()
   })
 
+  it('agrees with the runtime matcher inside a segment', () => {
+    // `\\:` is a literal colon (Google custom verbs).
+    expectTypeOf<PathParamNames<'/v1/:name\\:cancel'>>().toEqualTypeOf<'name'>()
+    expectTypeOf<PathParamNames<'/v1/projects\\:list'>>().toEqualTypeOf<never>()
+    // The runtime reads identifier characters only.
+    expectTypeOf<PathParamNames<'/f/:name.json'>>().toEqualTypeOf<'name'>()
+    expectTypeOf<PathParamNames<'/f/:a-:b'>>().toEqualTypeOf<'a' | 'b'>()
+    // A parameter need not start its segment; `:8080` is not one.
+    expectTypeOf<PathParamNames<'/f/file:id'>>().toEqualTypeOf<'id'>()
+    expectTypeOf<PathParamNames<'/f/x:8080'>>().toEqualTypeOf<never>()
+  })
+
   it('narrows method and path to the literals from the spec', () => {
     const getUser = api.endpoint('GET /users/:id')
     expectTypeOf(getUser.method).toEqualTypeOf<'GET'>()

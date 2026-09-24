@@ -39,20 +39,33 @@ export function joinUrl(base: string | undefined, path: string): string {
 }
 
 /**
+ * `:name` placeholders, plus the `\\:` escape for a LITERAL colon.
+ *
+ * A fresh RegExp per call: a `g`-flagged instance carries `lastIndex`.
+ */
+const pathToken = (): RegExp => /\\:|:([A-Za-z_][A-Za-z0-9_]*)/g
+
+/**
  * Substitute `:name` placeholders. Values are `encodeURIComponent`-encoded,
  * so an id containing `/` or `?` can never break out of its segment.
+ *
+ * `\\:` writes a LITERAL colon — the escape for paths such as Google's custom
+ * verbs, `/v1/:name\\:cancel`, where an unescaped `:cancel` would read as a
+ * second parameter. The type-level `PathParamNames` honours the same
+ * escape, so the two can never disagree about what the caller must supply.
  *
  * Throws on a missing param rather than leaving a literal `:id` in the URL
  * — a silently-malformed request is far harder to diagnose than a throw.
  */
 export function applyPathParams(path: string, params: PathParams | undefined): string {
   if (!path.includes(':')) return path
-  return path.replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, (match, name: string) => {
+  return path.replace(pathToken(), (_match, name: string | undefined) => {
+    if (name === undefined) return ':'
     const value = params?.[name]
     if (value === undefined || value === null) {
       throw new Error(
         `[Pyreon] http: path "${path}" needs the parameter "${name}" but it was not supplied. ` +
-          `Pass it as \`{ params: { ${name}: … } }\`.`,
+          `Pass it as \`{ params: { ${name}: … } }\`, or write \`\\\\:\` for a literal colon.`,
       )
     }
     return encodeURIComponent(String(value))

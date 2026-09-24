@@ -142,12 +142,30 @@ export function emitMocks(doc: IrDocument, client: ClientName = 'pyreon'): Sourc
  * lexical half.
  */
 function mockPath(op: IrOperation, pyreon: boolean): string {
-  if (!pyreon || op.pathParams.length === 0) return q(op.path)
-  const source = op.path
-    .split('/')
-    .map((seg) => (seg.startsWith(':') ? '[^/?#]+' : seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
-    .join('\\/')
-  return regexLiteral(`${source}(?:\\?|$)`)
+  if (!pyreon || !op.path.includes(':')) return q(op.path)
+  return regexLiteral(`${pathPattern(op.path)}(?:\\?|$)`)
+}
+
+/**
+ * Regex source for a declared path, read with `@pyreon/http`'s OWN grammar:
+ * `:name` is one non-empty segment value, `\\:` is a literal colon (audit
+ * A11 — a custom verb such as `/v1/:name\\:cancel`). Splitting on `/` and
+ * testing `startsWith(':')` treated `:name\\:cancel` as one opaque parameter
+ * and escaped `projects\\:list` to a pattern demanding a real backslash.
+ */
+function pathPattern(path: string): string {
+  let out = ''
+  let cursor = 0
+  for (const m of path.matchAll(/\\:|:([A-Za-z_][A-Za-z0-9_]*)/g)) {
+    out += escapeRegex(path.slice(cursor, m.index))
+    out += m[1] === undefined ? ':' : '[^/?#]+'
+    cursor = m.index + m[0].length
+  }
+  return out + escapeRegex(path.slice(cursor))
+}
+
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 /** A deterministic sample value for a type. */

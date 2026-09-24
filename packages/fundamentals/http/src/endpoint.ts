@@ -31,31 +31,58 @@ import type {
   ValidatorOutput,
 } from './types'
 
+type Alpha =
+  | 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm'
+  | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z'
+  | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M'
+  | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z' | '_'
+type AlphaNum = Alpha | '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'
+
+/** The leading `[A-Za-z0-9_]*` run of `S`. Tail-recursive, one char per step. */
+type TakeIdent<S extends string, Acc extends string = ''> = S extends `${infer C}${infer R}`
+  ? C extends AlphaNum
+    ? TakeIdent<R, `${Acc}${C}`>
+    : Acc
+  : Acc
+
 /**
- * Strip a trailing extension from a placeholder segment.
- *
- * The runtime matcher is `:([A-Za-z_][A-Za-z0-9_]*)`, so `/f/:name.json`
- * declares the parameter `name` with a literal `.json` suffix. Mirroring
- * that here keeps the type and the runtime from disagreeing about what the
- * caller must supply.
+ * The parameter a `:` introduces — exactly what the runtime matcher
+ * `:([A-Za-z_][A-Za-z0-9_]*)` captures, so `/f/:name.json` and
+ * `/v1/:name\:cancel` both declare `name` on BOTH sides. A `:` not followed
+ * by a letter or `_` (`:8080`) declares nothing, as at runtime.
  */
-type SegmentParam<S extends string> = S extends `${infer Name}.${string}` ? Name : S
+type ParamAt<S extends string> = S extends `${infer C}${string}`
+  ? C extends Alpha
+    ? TakeIdent<S>
+    : never
+  : never
+
+/**
+ * Every parameter in ONE segment. A segment can carry more than one
+ * (`:a-:b`) and a parameter need not start it (`file:id`), because the
+ * runtime scans the whole string. `\:` is a LITERAL colon and is skipped —
+ * the escape for Google-style custom verbs, `/v1/:name\:cancel`.
+ */
+type SegmentParams<S extends string> = S extends `${infer Before}:${infer After}`
+  ? Before extends `${string}\\`
+    ? SegmentParams<After>
+    : ParamAt<After> | SegmentParams<After>
+  : never
 
 /**
  * Extract `:name` placeholders from a path at the type level.
  *
- * Walks SEGMENTS (splitting on `/`) rather than scanning for `:` with a
- * leading `${string}`. The scanning form is the obvious one to write and it
- * is quadratic: `${string}:${infer Rest}` gives the compiler many candidate
- * split points per level, and nesting a second inference inside it blows
- * past the instantiation-depth limit at three parameters (`TS2589`). A
- * segment walk gives TypeScript exactly one split point per level.
+ * Walks SEGMENTS (splitting on `/`) rather than scanning the whole path for
+ * `:` with a leading `${string}`. The scanning form is the obvious one to
+ * write and it is quadratic: `${string}:${infer Rest}` gives the compiler
+ * many candidate split points per level, and nesting a second inference
+ * inside it blows past the instantiation-depth limit at three parameters
+ * (`TS2589`). A segment walk gives TypeScript exactly one split point per
+ * level; the per-segment colon scan only ever sees one short segment.
  */
 export type PathParamNames<S extends string> = S extends `${infer Head}/${infer Rest}`
-  ? (Head extends `:${infer Name}` ? SegmentParam<Name> : never) | PathParamNames<Rest>
-  : S extends `:${infer Name}`
-    ? SegmentParam<Name>
-    : never
+  ? SegmentParams<Head> | PathParamNames<Rest>
+  : SegmentParams<S>
 
 /** `'GET /users/:id'` — method and path in one literal. */
 export type EndpointSpec = `${HttpMethod} ${string}`

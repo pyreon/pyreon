@@ -237,9 +237,18 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
   return ops
 }
 
-/** `/users/{id}` -> `/users/:id`, the shape `@pyreon/http` declares. */
+/**
+ * `/users/{id}` -> `/users/:id`, the shape `@pyreon/http` declares.
+ *
+ * A LITERAL colon in the spec path is escaped to `\\:` first (audit A11).
+ * `@pyreon/http` reads `:name` as a parameter anywhere in a segment, so a
+ * Google-style custom verb — `/v1/{name}:cancel` — otherwise declared a second
+ * parameter `cancel` the caller could never supply, and the request threw.
+ */
 function toPyreonPath(path: string): string {
-  return path.replace(/\{([^}]+)\}/g, (_m, name: string) => `:${ident(name)}`)
+  return path
+    .replace(/:/g, '\\:')
+    .replace(/\{([^}]+)\}/g, (_m, name: string) => `:${ident(name)}`)
 }
 
 function bodyType(op: Json, at: string, ctx: Ctx): IrType | undefined {

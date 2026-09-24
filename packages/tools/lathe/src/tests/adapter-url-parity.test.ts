@@ -142,6 +142,8 @@ const CASES: {
     path: 'https://other.test/books',
   },
   { name: 'false and zero survive', base: 'https://api.test', path: '/x', query: { a: 0, b: false } },
+  // `\:` is a LITERAL colon (a custom verb) — not a second parameter.
+  { name: 'escaped literal colon', base: 'https://api.test', path: '/v1/:name\\:cancel', params: { name: 'a/b' } },
 ]
 
 describe('adapter URL parity — @pyreon/http is the oracle', () => {
