@@ -1,18 +1,26 @@
 // Marks → draw commands. The whole chart, as plain data.
 
-import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt, layoutSeriesPointsH } from './layout'
+import { echartsSmooth } from './curve'
+import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt, layoutSeriesPointsEdge, layoutSeriesPointsH } from './layout'
 import { DEFAULT_PALETTE } from './palette'
-import { layoutGroupedBars, layoutGroupedBarsH, layoutStackedBars, layoutStackedBarsH, layoutWaterfall, normalizeStack, stackCumulative, stackedExtent, waterfallExtent } from './stack'
+import { layoutGroupedBars, layoutGroupedBarsH, layoutStackLevels, layoutStackLevelsH, layoutWaterfall, normalizeStack, stackLevels, stackLevelsExtent, waterfallExtent } from './stack'
+import type { StackLevels, StackSegment } from './stack'
 import type { Formatter } from './format'
-import type { LayoutConfig, PlotLayout } from './layout'
-import { extent, isFiniteNumber, niceDomain, scaleLinear } from './scale'
+import type { ExtraYAxis, LayoutConfig, PlotLayout } from './layout'
+import { linesCommands } from './lines'
+import type { LinesSeries } from './lines'
+import { extent, isFiniteNumber, echartsNiceDomain, niceDomain, scaleLinear } from './scale'
 import { percent, plain } from './format'
 import { countToDouble } from './brush'
 import { polygonCmd, rectCmd } from './corners'
 import { seriesGradient } from './gradient'
 import type { SeriesGradient } from './gradient'
 import { withAlpha } from './radar'
-import type { DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
+import { autoLabelStyle, labelCommands, labelPlace } from './labels'
+import type { RichStyle } from './labels'
+import { pictorialCommands, symbolPoints } from './pictorial'
+import type { PictorialBar } from './pictorial'
+import type { ChartPattern, DrawCmd, Domain, MeasureText, Pt, Rect, Tick, Double } from './types'
 
 /** One drawable series. */
 export interface Series {
@@ -27,6 +35,22 @@ export interface Series {
   label: string
   /** Densifier applied to line/area points — `smooth`/`step` from ./curve. */
   curve?: ((points: Pt[]) => Pt[]) | undefined
+  /** ECharts' `smooth` amount (0.5 for `true`): shapes the line with ECharts' own Béziers, over `curve`. */
+  smoothAmount?: Double | undefined
+  /** ECharts' `smoothMonotone`: 'x', 'y', or unset. */
+  smoothMonotone?: string | undefined
+  /** ECharts' `connectNulls`: bridge a missing value instead of breaking the line. */
+  connectNulls?: boolean | undefined
+  /** A line that also fills down to its origin (ECharts' `areaStyle` on a line): the fill under, the line and its symbols over. */
+  areaFill?: boolean | undefined
+  /** The fill's opacity (ECharts' `areaStyle.opacity`, 0.7 by default). */
+  areaOpacity?: Double | undefined
+  /** The fill's colour (`areaStyle.color`); absent is the series colour. */
+  areaColor?: string | undefined
+  /** Where the fill closes (`areaStyle.origin`): 'auto' (zero, else the nearer edge), 'start' or 'end'. */
+  areaOrigin?: string | undefined
+  /** A numeric `areaStyle.origin`: the fill closes at this value (wins over `areaOrigin`). */
+  areaOriginAt?: Double | undefined
   /**
    * Label each datum with its value.
    *
@@ -52,20 +76,116 @@ export interface Series {
   radii?: Double[] | undefined
   /** Which y axis the series scales against; absent = left. See `seriesOnRightAxis`. */
   axis?: 'left' | 'right' | undefined
+  /** Index into `ChartSpec.extraYAxes` when the series scales on a third or later y axis. */
+  axisExtra?: Double | undefined
+  /** The series scales on the second x axis at its own x positions `xs`. */
+  onX2?: boolean | undefined
+  xs?: Double[] | undefined
   /** Halo rings around each point — the effectScatter look; `points` only. */
   effect?: boolean | undefined
-  /** Draw bars as a symbol instead of a rect — the pictorialBar look; `bars` only. */
+  /**
+   * Draw bars as a symbol instead of a rect — the pictorialBar look — or,
+   * on `points`, the datum symbol (ECharts' `symbol`); on `line`, set it to
+   * draw a symbol at every datum (ECharts' `showSymbol`, off by default here).
+   */
   symbol?: 'rect' | 'circle' | 'diamond' | 'triangle' | undefined
   /** Repeat the symbol along the bar instead of stretching it. */
   symbolRepeat?: boolean | undefined
+  /** Pictorial: gap between repeated symbols (px). */
+  symbolMargin?: Double | undefined
+  /** Pictorial: `[dx, dy]` px nudge of every symbol. */
+  symbolOffset?: Double[] | undefined
+  /** Pictorial: where the symbol (or run) sits along the bar — `start` (default), `end`, `center`. */
+  symbolPosition?: string | undefined
+  /** Pictorial: degrees of rotation about each cell's centre. */
+  symbolRotate?: Double | undefined
+  /** An "empty" symbol (ECharts' `emptyCircle`, …): the chart's surface inside a 2px ring of the series colour. */
+  symbolHollow?: boolean | undefined
+  /**
+   * Which datum symbols a line draws (ECharts' `showAllSymbol`): '' or 'all'
+   * every one; 'auto' every one unless they crowd a category axis (1.5× the
+   * symbol exceeds a category's width), then only at the axis's label
+   * interval; 'labels' always only there.
+   */
+  symbolShow?: string | undefined
+  /** Pictorial: clip to the bar instead of dropping a partial symbol. */
+  symbolClip?: boolean | undefined
+  /** Pictorial: the datum value a full symbol (or run) spans; with `symbolClip` the bar shows the covered fraction. */
+  symbolBoundingData?: Double | undefined
   /** Corner radii for bar-family series — `[tl, tr, br, bl]`, clamped at paint time. */
   corners?: Double[] | undefined
   /** Linear-gradient fill for bar-family and area series; resolved against the plot box. */
   gradient?: SeriesGradient | undefined
+  /** Repeating fill overlay for bar-family and area series. */
+  pattern?: ChartPattern | undefined
   /** Dash pattern for a line's stroke (`[on, off]` in px) — the target-line look; `line` only. */
   dash?: Double[] | undefined
   /** The fill a `waterfall` step takes when its value is negative; `color` otherwise. */
   negativeColor?: string | undefined
+  /**
+   * ECharts' `label.formatter` resolved per datum — the facade owns the
+   * `{a}`/`{b}`/`{c}`/`{d}` template because it is the only layer that knows
+   * the series name, the category and the percentage. Absent (or an entry
+   * left empty) falls back to the formatted value.
+   */
+  labelTexts?: string[] | undefined
+  /** ECharts' `label.color`; absent takes the theme's label colour. */
+  labelColor?: string | undefined
+  /** ECharts' `label.fontSize`; absent takes the theme's. */
+  labelSize?: Double | undefined
+  /** ECharts' `label.rich` — the named styles a `{name|text}` segment can take. */
+  labelRich?: RichStyle[] | undefined
+  /** ECharts' `label.position` on a shaped mark (a bar): `inside` (its default), `top`, `insideTop`, … */
+  labelPosition?: string | undefined
+  /** ECharts' `label.distance` from the shape's edge (5 by default). */
+  labelDistance?: Double | undefined
+  /** ECharts' `label.rotate` in degrees, counter-clockwise, about the label's anchor (a plain label only). */
+  labelRotate?: Double | undefined
+  /** ECharts' `label.offset`: [dx, dy] added to the anchor. */
+  labelOffset?: Double[] | undefined
+  /** ECharts' `label.align` / `verticalAlign`: replace the anchor's alignment ('left' | 'center' | 'right', 'top' | 'middle' | 'bottom'). */
+  labelAlign?: string | undefined
+  labelVerticalAlign?: string | undefined
+  /** ECharts' `label.textBorderColor`; absent picks zrender's automatic halo. */
+  labelBorderColor?: string | undefined
+  /** ECharts' `label.textBorderWidth` (2 by default; 0 draws no halo). */
+  labelBorderWidth?: Double | undefined
+  /**
+   * ECharts' `emphasis.focus`: `self` / `series` dim every datum that is NOT
+   * the highlighted one while a highlight is active (the blur state). This
+   * engine's highlight is a datum COLUMN across every series, so both spellings
+   * dim the other columns; `none` (the default) dims nothing.
+   */
+  focus?: string | undefined
+  /** ECharts' `emphasis.itemStyle.color`: the fill a highlighted datum takes. */
+  emphasisColor?: string | undefined
+  /** ECharts' `select.itemStyle.color`: the fill a selected (pinned) datum takes. */
+  selectColor?: string | undefined
+  /** ECharts' `blur.itemStyle.opacity`: the opacity a blurred datum fades to (default 0.1). */
+  blurOpacity?: Double | undefined
+  /** ECharts' `emphasis.scale`: the factor a highlighted point's radius takes (`true` reads as 1.1). */
+  emphasisScale?: Double | undefined
+  /** ECharts' `emphasis.disabled`: this series never highlights. */
+  emphasisDisabled?: boolean | undefined
+  /**
+   * ECharts' `emphasis.lineStyle.width` / `blur.lineStyle.width` and
+   * `emphasis.areaStyle.opacity` / `blur.areaStyle.opacity`. This engine's
+   * highlight is a datum COLUMN across every series, so a state's stroke and
+   * fill apply to the whole line while that state is active.
+   */
+  emphasisWidth?: Double | undefined
+  blurWidth?: Double | undefined
+  emphasisAreaOpacity?: Double | undefined
+  blurAreaOpacity?: Double | undefined
+  /** ECharts' `emphasis.label.show` / `select.label.show`: the datum's label appears in that state. */
+  emphasisLabel?: boolean | undefined
+  selectLabel?: boolean | undefined
+  /** `selectedMode: 'series'`: every datum of this series takes `select.itemStyle.color`. */
+  seriesSelected?: boolean | undefined
+  /** The brushed datums, in VISUAL indices; set with `brushOpacity` by `applyBrushSelection`. */
+  inBrush?: number[] | undefined
+  /** ECharts' `outOfBrush.colorAlpha`: the opacity a datum outside the brush fades to. */
+  brushOpacity?: Double | undefined
   /**
    * Error-bar bounds, index-aligned with `values` — a whisker from `errLow[i]`
    * to `errHigh[i]` through each bar centre / point. A gap in either bound
@@ -84,15 +204,68 @@ export interface Series {
    * region" the same request.
    */
   values2?: Double[] | undefined
+  /**
+   * Extra per-datum dimensions the TOOLTIP shows under the value — ECharts'
+   * `encode.tooltip`: a dataset's other columns for the hovered row. Drawn by
+   * nothing; read by `tooltipAt` only.
+   */
+  extras?: SeriesExtra[] | undefined
+  /**
+   * A fill per DATUM, index-aligned with `values`; an empty string keeps the
+   * series colour. ECharts' per-datum `itemStyle.color` and `colorBy:
+   * 'data'` land here. Applied wherever a datum is filled (bars, stacked and
+   * grouped segments, waterfall steps, points) through `stateFill`, so the
+   * hover / select / blur states act on the datum's own colour.
+   */
+  itemColors?: string[] | undefined
+  /**
+   * ECharts' bar sizing for this series (used when the spec's `barLayout` is
+   * on): `barWidth`, `barMaxWidth`, `barMinWidth` as pixels or percents of the
+   * band, and the stack it shares a column with.
+   */
+  barWidth?: BarLength | undefined
+  barMaxWidth?: BarLength | undefined
+  barMinWidth?: BarLength | undefined
+  barStack?: string | undefined
+  /**
+   * How a stacked value finds the total it stacks on (ECharts'
+   * `stackStrategy`): 'samesign' (the default — positives up, negatives
+   * down), 'all', 'positive' or 'negative'. See `stackLevels`.
+   */
+  stackStrategy?: string | undefined
+  /** The stack runs top-down (ECharts' `stackOrder: 'seriesDesc'`); read from a stack's first series. */
+  stackDesc?: boolean | undefined
+  /**
+   * The shortest a bar is drawn, in pixels (ECharts' `barMinHeight`): a
+   * shorter one grows to it from its base, the way it points — a zero bar
+   * grows up (right when horizontal).
+   */
+  barMinHeight?: Double | undefined
+  /** A strip behind each bar, the plot's full height in its column (ECharts' `showBackground`); '' draws none. */
+  barBackground?: string | undefined
+}
+
+/**
+ * One extra tooltip dimension: a label and either numbers or texts, one per
+ * datum. Two optional arrays rather than a union — a mixed string/number
+ * array has no native form. Named `numbers`, not `values`: struct selection
+ * matches object literals by field NAMES, and `{ label, values }` is the
+ * shape of every plain series literal in the engine — this type must not be
+ * what a `{ label: 'A', values: [80, 60] }` radar row resolves to.
+ */
+export interface SeriesExtra {
+  label: string
+  numbers?: Double[] | undefined
+  texts?: string[] | undefined
 }
 
 /**
  * A reference rule or band — the "target line" every dashboard needs.
  *
- * Exactly one of `y`, `x`, or the `yFrom`/`yTo` pair should be set; an
- * annotation with none is skipped rather than guessed at. Values are in DOMAIN
- * units — for a categorical x axis that is the datum INDEX, matching how the
- * points are placed.
+ * Exactly one of `y`, `x`, `yFrom`/`yTo`, `xFrom`/`xTo`, or the segment
+ * `x1`/`y1`/`x2`/`y2` should be set; an annotation with none is skipped
+ * rather than guessed at. Values are in DOMAIN units — for a categorical x
+ * axis that is the datum INDEX, matching how the points are placed.
  */
 export interface Annotation {
   /** Horizontal rule at this y value. */
@@ -102,6 +275,18 @@ export interface Annotation {
   /** Horizontal band between these two y values. */
   yFrom?: Double | undefined
   yTo?: Double | undefined
+  /** Vertical band between these two x-domain values. */
+  xFrom?: Double | undefined
+  xTo?: Double | undefined
+  /**
+   * Segment between two data-space points — ECharts' point-to-point markLine
+   * (`[{ coord }, { coord }]`, or max→min). All four are required for it to
+   * draw; the label sits at the second point.
+   */
+  x1?: Double | undefined
+  y1?: Double | undefined
+  x2?: Double | undefined
+  y2?: Double | undefined
   label?: string | undefined
   color?: string | undefined
 }
@@ -109,8 +294,9 @@ export interface Annotation {
 /**
  * A datum-anchored point marker — ECharts' markPoint, engine-shaped.
  *
- * Exactly one of `at` ('max' | 'min') or `atIndex` (a concrete datum index)
- * should be set; a marker with neither is skipped rather than guessed at —
+ * Exactly one of `at` ('max' | 'min' | 'average' — the datum NEAREST the
+ * series mean, ECharts' markPoint placement) or `atIndex` (a concrete datum
+ * index) should be set; a marker with neither is skipped rather than guessed at —
  * the Annotation precedent. Split into two fields rather than one
  * `'max' | 'min' | number` union because a mixed string/number union falls
  * outside the native subset the engine compiles in, and the split costs the
@@ -123,8 +309,8 @@ export interface Annotation {
 export interface PointMarker {
   /** Which series the marker reads; default 0. */
   seriesIndex?: Double | undefined
-  /** Anchor at the series' maximum or minimum datum. */
-  at?: 'max' | 'min' | undefined
+  /** Anchor at the series' maximum, minimum, or nearest-to-mean datum. */
+  at?: 'max' | 'min' | 'average' | undefined
   /** Anchor at a concrete datum index (clamped into range). */
   atIndex?: Double | undefined
   label?: string | undefined
@@ -206,10 +392,74 @@ export interface Emphasis {
   selected: number[]
 }
 
+/** A length as ECharts writes it: pixels, or a percent of a reference. */
+export interface BarLength {
+  value: Double
+  percent: boolean
+}
+
 export interface ChartSpec {
   width: Double
   height: Double
   series: Series[]
+  /**
+   * The order the independent series PAINT in, as indices into `series`
+   * (ECharts' `zlevel` / `z`: a higher one draws over a lower one). The legend,
+   * palette and hit test keep `series` order. Ignored unless it names every
+   * series exactly once.
+   */
+  drawOrder?: number[] | undefined
+  /**
+   * ECharts' category-axis `boundaryGap`. Unset or true: line and area points
+   * sit at their band centres, under their labels. False: they run edge to
+   * edge and the labels move onto them. A chart with bars keeps its bands.
+   */
+  boundaryGap?: boolean | undefined
+  /** Fixed plot insets in pixels (ECharts' `grid` position); an unset side is sized to its labels. */
+  /**
+   * Keep zero inside the value axes even for lines and points (ECharts'
+   * value-axis default, `scale: false`). Bars and areas always include it.
+   */
+  yZero?: boolean | undefined
+  /**
+   * Nice the value axes the way ECharts does: a step of `nice(span /
+   * ySplit)` (1, 2, 3, 5 or 10 at a power of ten), the extent floored and
+   * ceiled to it, and ticks at that step. Unset keeps the engine's own ticks.
+   */
+  ySplit?: Double | undefined
+  /**
+   * Lay bars out the way ECharts does: each stack (or lone bar series) is a
+   * column, sized by the series' `barWidth` / `barMaxWidth` / `barMinWidth`,
+   * the gap between columns `barGap` (default 10%) and the gap around the
+   * group `barCategoryGap` (default `max(35 - 4 × columns, 15)%`).
+   */
+  barLayout?: boolean | undefined
+  barGap?: BarLength | undefined
+  barCategoryGap?: BarLength | undefined
+  /**
+   * One pinned bound of the left value axis (ECharts' `min` / `max` given
+   * alone): the other is derived from the data. `yMinData` / `yMaxData` pin a
+   * bound to the data's own extent (`'dataMin'` / `'dataMax'`).
+   */
+  yMin?: Double | undefined
+  /** The value X axis' counterparts of `ySplit` / `yZero` / `yMin` / `yMax` / `yMinData` / `yMaxData`. */
+  xSplit?: Double | undefined
+  xZero?: boolean | undefined
+  xMin?: Double | undefined
+  xMax?: Double | undefined
+  xMinData?: boolean | undefined
+  xMaxData?: boolean | undefined
+  yMax?: Double | undefined
+  yMinData?: boolean | undefined
+  yMaxData?: boolean | undefined
+  gridLeft?: Double | undefined
+  /** Room kept free at the left edge before the plot's own gutter; the option facade sets it for a vertical legend on the left. */
+  reserveLeft?: Double | undefined
+  gridTop?: Double | undefined
+  gridRight?: Double | undefined
+  gridBottom?: Double | undefined
+  /** Grow a grid side to keep its axis labels inside the chart (ECharts' outer bounds). */
+  gridContain?: boolean | undefined
   categories: string[]
   theme: ChartTheme
   showXAxis: boolean
@@ -284,7 +534,126 @@ export interface ChartSpec {
   yTitle?: string | undefined
   y2Title?: string | undefined
   /** How the x tick labels react to running out of room — see `LayoutConfig.xLabels`. */
-  xLabels?: 'auto' | 'rotate' | 'thin' | 'all' | undefined
+  xLabels?: 'auto' | 'rotate' | 'thin' | 'all' | 'echarts' | undefined
+  /** With `xLabels: 'echarts'`: a fixed label rotation (degrees, clockwise) and ECharts' `axisLabel.interval`. */
+  xLabelAngle?: Double | undefined
+  xLabelInterval?: Double | undefined
+  /** Gap between an x tick label and its axis (ECharts' `axisLabel.margin`); absent is 6. */
+  xLabelMargin?: Double | undefined
+  /** x labels inside the plot (ECharts' `axisLabel.inside`). */
+  xLabelInside?: boolean | undefined
+  /** y tick labels turned about their anchor, degrees clockwise (ECharts' `axisLabel.rotate`, negated). */
+  yLabelAngle?: Double | undefined
+  /** Gap between a y tick label and its axis; absent is 6. */
+  yLabelMargin?: Double | undefined
+  /** y labels inside the plot. */
+  yLabelInside?: boolean | undefined
+  /** `false` hides the x axis line (ECharts' `axisLine.show`); absent draws it. */
+  xAxisLine?: boolean | undefined
+  /** `false` hides the y axis line; absent draws it. */
+  yAxisLine?: boolean | undefined
+  /** `false` hides the second y axis's line; absent draws it. */
+  y2AxisLine?: boolean | undefined
+  /** The x axis line and ticks sit on the y value 0 when the y range crosses it (ECharts' `axisLine.onZero`); labels stay at the edge. */
+  xAxisOnZero?: boolean | undefined
+  /** The y axis line and ticks sit on the x value 0 when a value x range crosses it. */
+  yAxisOnZero?: boolean | undefined
+  /** Split lines at the second y axis's ticks (ECharts draws each value axis's own). */
+  y2Grid?: boolean | undefined
+  /** Axis line colours and widths (ECharts' `axisLine.lineStyle`); absent takes the theme's axis colour, 1px. */
+  xAxisLineColor?: string | undefined
+  yAxisLineColor?: string | undefined
+  xAxisLineWidth?: Double | undefined
+  yAxisLineWidth?: Double | undefined
+  /** Tick marks on the x axis (ECharts' `axisTick`); absent draws none. */
+  xTicks?: boolean | undefined
+  /** Tick marks on the y axis. */
+  yTicks?: boolean | undefined
+  /** Tick length in px (5 in ECharts). */
+  xTickLength?: Double | undefined
+  yTickLength?: Double | undefined
+  /** Ticks point into the plot instead of out of it. */
+  xTickInside?: boolean | undefined
+  yTickInside?: boolean | undefined
+  /** Tick colours; absent takes the axis line's. */
+  xTickColor?: string | undefined
+  yTickColor?: string | undefined
+  /** Category x ticks at the band EDGES (ECharts' default) rather than on the labels (`alignWithLabel`). */
+  xTickBands?: boolean | undefined
+  /** The value split lines' colour, width and dash (ECharts' `splitLine.lineStyle`); absent takes the theme's grid colour, 1px, solid. */
+  gridColor?: string | undefined
+  gridWidth?: Double | undefined
+  gridDash?: Double[] | undefined
+  /** Vertical split lines at the x ticks (ECharts' x `splitLine`: on for a value axis, off for a category one). */
+  xGrid?: boolean | undefined
+  xGridColor?: string | undefined
+  xGridWidth?: Double | undefined
+  xGridDash?: Double[] | undefined
+  /** ECharts' `splitArea`: bands between consecutive ticks, cycling these colours from the axis start; absent draws none. */
+  ySplitArea?: string[] | undefined
+  xSplitArea?: string[] | undefined
+  /** ECharts' `minorSplitLine` on a value axis: each tick interval cut into this many pieces (its `minorTick.splitNumber`); absent draws none. */
+  yMinorSplit?: Double | undefined
+  yMinorSplitColor?: string | undefined
+  yMinorSplitWidth?: Double | undefined
+  xMinorSplit?: Double | undefined
+  xMinorSplitColor?: string | undefined
+  xMinorSplitWidth?: Double | undefined
+  /** ECharts' `minorTick` on a value axis: this many pieces per interval, the ticks `length` long; absent draws none. */
+  yMinorTicks?: Double | undefined
+  yMinorTickLength?: Double | undefined
+  yMinorTickColor?: string | undefined
+  xMinorTicks?: Double | undefined
+  xMinorTickLength?: Double | undefined
+  xMinorTickColor?: string | undefined
+  /** Draws the left value axis upside down — ECharts' `yAxis.inverse`. */
+  yInverse?: boolean | undefined
+  /** Runs the x axis right to left — ECharts' `xAxis.inverse`. */
+  xInverse?: boolean | undefined
+  /** The horizontal frame's categories run up from the bottom, as ECharts' category y axis does (the option facade sets it). */
+  bandsFromBottom?: boolean | undefined
+  /** Draws the x axis above the plot — ECharts' `xAxis.position: 'top'`. */
+  xTop?: boolean | undefined
+  /** Draws a lone y axis right of the plot — ECharts' `yAxis.position: 'right'`. */
+  yRight?: boolean | undefined
+  /** Pixels each axis sits away from the plot edge — ECharts' `offset`. */
+  xOffset?: Double | undefined
+  yOffset?: Double | undefined
+  y2Offset?: Double | undefined
+  /** Third and later y axes — ECharts' `yAxis[2..]`. */
+  extraYAxes?: ExtraYAxis[] | undefined
+  /** A second x axis's category labels — ECharts' `xAxis[1].data` — on the side opposite the first. */
+  x2Labels?: string[] | undefined
+  x2Title?: string | undefined
+  /** Pins the second x axis's value domain; derived from its series' xs when absent. */
+  x2Domain?: Domain | undefined
+  /** ECharts' `lines` series — polylines in data space, with optional trails. */
+  lines?: LinesSeries[] | undefined
+  /** Seconds on the host's effect clock; drives the trails. Absent = 0. */
+  effectTime?: Double | undefined
+}
+
+/**
+ * Where a value axis's minor ticks (and minor split lines) fall: each interval
+ * between consecutive ticks cut into `pieces` equal parts, the inner cuts only.
+ * Fewer than two pieces draws none.
+ */
+export function minorPositions(ticks: Tick[], pieces: Double): Double[] {
+  const out: Double[] = []
+  const n = Math.floor(pieces + 0.5)
+  if (n < 2.0) return out
+  for (let ti = 1; ti < ticks.length; ti++) {
+    const a = ticks[ti - 1]!.pos
+    const b = ticks[ti]!.pos
+    // Stepped rather than `a + (b - a) * j / n`, so no integer counter meets a Double (Swift will not type that).
+    const step = (b - a) / n
+    let at = a
+    for (let j = 1; j < n; j++) {
+      at = at + step
+      out.push(at)
+    }
+  }
+  return out
 }
 
 /**
@@ -300,6 +669,9 @@ export function themeCorners(radius: Double, positive: boolean, horizontal: bool
   if (horizontal) return positive ? [0.0, radius, radius, 0.0] : [radius, 0.0, 0.0, radius]
   return positive ? [radius, radius, 0.0, 0.0] : [0.0, 0.0, radius, radius]
 }
+
+/** The default fill opacity of an `area` mark (see its paint branch). */
+const AREA_MARK_OPACITY = 0.3
 
 export const defaultTheme: ChartTheme = {
   palette: DEFAULT_PALETTE,
@@ -321,11 +693,239 @@ export const defaultTheme: ChartTheme = {
   updateMs: 350.0,
 }
 
+
+/**
+ * A datum's label text: the series' resolved `labelTexts` entry when it has
+ * one, else the formatted value. Coalesced rather than narrowed — the native
+ * emit does not narrow a struct's optional through a guard.
+ */
+function labelTextAt(s: Series, index: number, fallback: string): string {
+  const texts = s.labelTexts ?? []
+  if (index < 0 || index >= texts.length) return fallback
+  /* v8 ignore next — unreachable: the bounds test above already returned for an
+     out-of-range index. The unwrap is for the native emit, which does not narrow. */
+  const own = texts[index] ?? ''
+  return own === '' ? fallback : own
+}
+
+/**
+ * A series label's own `offset`, `align` / `verticalAlign` and `rotate` over
+ * where its position put it — each about the same anchor, as ECharts applies
+ * them. A multi-segment label turns as one block about that anchor.
+ */
+function adjustLabel(s: Series, cmdsOf: (at: Pt, align: string, baseline: string) => DrawCmd[], at: Pt, align: string, baseline: string): DrawCmd[] {
+  const off = s.labelOffset ?? []
+  const ox = off.length > 0 ? off[0]! : 0.0
+  const oy = off.length > 1 ? off[1]! : 0.0
+  const deg = s.labelRotate ?? 0.0
+  // The offset is in the label's own (rotated) frame, as zrender applies it.
+  const rad = (deg * Math.PI) / 180.0
+  const dx = Math.cos(rad) * ox + Math.sin(rad) * oy
+  const dy = Math.cos(rad) * oy - Math.sin(rad) * ox
+  const ha = s.labelAlign ?? ''
+  const va = s.labelVerticalAlign ?? ''
+  const cmds = cmdsOf({ x: at.x + dx, y: at.y + dy }, ha === 'left' ? 'start' : ha === 'center' ? 'middle' : ha === 'right' ? 'end' : align, va === 'top' || va === 'middle' || va === 'bottom' ? va : baseline)
+  if (deg === 0.0) return cmds
+  // A rich or multi-line label is several segments laid out about the anchor: each
+  // segment's own anchor turns about the label's, and each takes the same angle, so
+  // the block turns as one piece (zrender rotates the whole text group about it).
+  // A plain label is the one-segment case: its anchor IS the label's and stays put.
+  const ax = at.x + dx
+  const ay = at.y + dy
+  const cw = 0.0 - rad
+  const cc = Math.cos(cw)
+  const sn = Math.sin(cw)
+  const out: DrawCmd[] = []
+  for (let i = 0; i < cmds.length; i++) {
+    const cmd = cmds[i]!
+    if (cmd.kind !== 'text') {
+      out.push(cmd)
+    } else {
+      // Coalesced: the native emit does not carry the `kind` narrowing, so `at` is optional there.
+      const p0: Pt = cmd.at ?? { x: ax, y: ay }
+      const rx = p0.x - ax
+      const ry = p0.y - ay
+      out.push({ ...cmd, at: { x: ax + cc * rx - sn * ry, y: ay + sn * rx + cc * ry }, rotate: 0.0 - deg })
+    }
+  }
+  return out
+}
+
+/** The commands a series' label draws — one text command for a plain label, one per segment for a rich or multi-line one. */
+function seriesLabelCmds(
+  s: Series,
+  index: number,
+  fallback: string,
+  at: Pt,
+  align: string,
+  baseline: string,
+  t: ChartTheme,
+  measure: MeasureText,
+): DrawCmd[] {
+  const color = s.labelColor ?? ''
+  const size = s.labelSize ?? 0.0
+  const text = labelTextAt(s, index, fallback)
+  return adjustLabel(s, (a, al, bl) => labelCommands(text, s.labelRich ?? [], a, al, bl, color === '' ? t.label : color, size > 0.0 ? size : t.fontSize, measure), at, align, baseline)
+}
+
+/**
+ * Where the x axis's ticks (and x split lines) fall: a category axis's band
+ * EDGES under `xTickBands` (ECharts' default), else the label positions —
+ * every shown label's, following its thinning.
+ */
+/** A category x axis's band edges, thinned with its labels (the last edge always kept). */
+function categoryEdges(spec: ChartSpec, l: PlotLayout, plot: Rect): Double[] {
+  const out: Double[] = []
+  const n = spec.categories.length
+  const every = l.xLabelEvery > 1 ? l.xLabelEvery : 1
+  for (let i = 0; i <= n; i++) if (i % every === 0 || i === n) out.push(plot.x + (plot.w * i) / n)
+  return out
+}
+
+function xTickPositions(spec: ChartSpec, l: PlotLayout, plot: Rect): Double[] {
+  const out: Double[] = []
+  const n = spec.categories.length
+  if (spec.xTickBands === true && n > 0 && spec.boundaryGap !== false) return categoryEdges(spec, l, plot)
+  for (let ti = 0; ti < l.xTicks.length; ti++) {
+    if (l.xLabelEvery > 1 && ti % l.xLabelEvery !== 0) continue
+    out.push(l.xTicks[ti]!.pos)
+  }
+  return out
+}
+
+/**
+ * A bar's value label, placed and coloured as ECharts does: `label.position`
+ * against the bar's rect (`inside` by default), and zrender's automatic fill
+ * and halo unless the series sets its own.
+ */
+function barLabelCmds(s: Series, index: number, fallback: string, r: Rect, shapeFill: string, t: ChartTheme, measure: MeasureText): DrawCmd[] {
+  const place = labelPlace(r, s.labelPosition ?? 'inside', s.labelDistance ?? 5.0)
+  const own = s.labelColor ?? ''
+  const auto = autoLabelStyle(place.inside, shapeFill, t.background)
+  const border = s.labelBorderColor ?? ''
+  const width = s.labelBorderWidth ?? 2.0
+  // zrender's automatic halo applies only to an automatic fill.
+  const halo = width <= 0.0 ? '' : border !== '' ? border : own === '' ? auto.halo : ''
+  const size = s.labelSize ?? 0.0
+  const text = labelTextAt(s, index, fallback)
+  return adjustLabel(s, (a, al, bl) => labelCommands(text, s.labelRich ?? [], a, al, bl, own === '' ? auto.textFill : own, size > 0.0 ? size : t.fontSize, measure, halo, width), place.at, place.align, place.baseline)
+}
+
+/**
+ * ECharts' area `origin` as a value: 'start' / 'end' the axis's ends, and
+ * 'auto' zero when the axis holds it, else the end nearer to it.
+ */
+export function areaOriginValue(origin: string, d: Domain): Double {
+  if (origin === 'start') return d.min
+  if (origin === 'end') return d.max
+  if (d.min <= 0.0 && d.max >= 0.0) return 0.0
+  return d.min > 0.0 ? d.min : d.max
+}
+
 /** 0 = plain, 1 = highlighted (a hover or a dispatched `highlight`), 2 = selected. */
 export function emphasisLevel(spec: ChartSpec, index: number): number {
   const e: Emphasis = spec.emphasis ?? { highlight: -1, selected: [] }
   for (const sel of e.selected) if (sel === index) return 2
   return e.highlight === index ? 1 : 0
+}
+
+/**
+ * Where each datum of a series sits for a LABEL: a bar's top, a stacked or
+ * grouped segment's far edge, else the placed point.
+ */
+function brushLikeAnchors(spec: ChartSpec, s: Series, sIdx: number, plot: Rect, yDomain: Domain, l: PlotLayout, place: (values: Double[]) => Pt[]): Pt[] {
+  const out: Pt[] = []
+  if (s.kind === 'bars' || s.kind === 'waterfall') {
+    for (const r of barsForIn(spec, sIdx, plot)) out.push({ x: r.x + r.w / 2.0, y: r.w < 0.0 ? -1000000.0 : r.y })
+    return out
+  }
+  if (s.kind === 'stacked' || s.kind === 'grouped') {
+    let kf = 0.0
+    for (let i = 0; i < sIdx; i++) kf = kf + 1.0
+    for (let i = 0; i < s.values.length; i++) {
+      const at = markerAnchor(spec, kf, i, plot, yDomain)
+      out.push(at.length > 0 ? at[0]! : { x: -1000000.0, y: -1000000.0 })
+    }
+    return out
+  }
+  return place(s.values)
+}
+
+/** The spec with whole-series selection applied (`selectedMode: 'series'`): every datum of a listed series takes its select colour. */
+export function applySeriesSelection(spec: ChartSpec, selected: number[]): ChartSpec {
+  const series: Series[] = []
+  let k = 0
+  for (const s of spec.series) {
+    let on = false
+    for (const i of selected) if (i === k) on = true
+    series.push(on ? { ...s, seriesSelected: true } : s)
+    k = k + 1
+  }
+  return { ...spec, series }
+}
+
+/** `emphasisLevel` for a SERIES' datum: its own `emphasis.disabled` and whole-series selection apply. */
+export function seriesEmphasisLevel(spec: ChartSpec, s: Series, index: number): number {
+  if (s.seriesSelected === true) return 2
+  const level = emphasisLevel(spec, index)
+  return level === 1 && s.emphasisDisabled === true ? 0 : level
+}
+
+/** The stroke width a series draws with under the active state. */
+export function stateWidth(spec: ChartSpec, s: Series): Double {
+  const e: Emphasis = spec.emphasis ?? { highlight: -1, selected: [] }
+  if (e.highlight >= 0 && s.emphasisDisabled !== true) return s.emphasisWidth ?? s.width
+  if (blurActive(spec)) return s.blurWidth ?? s.width
+  return s.width
+}
+
+/** The area-fill opacity a series draws with under the active state; -1 = the renderer's own. */
+export function stateAreaOpacity(spec: ChartSpec, s: Series): Double {
+  const e: Emphasis = spec.emphasis ?? { highlight: -1, selected: [] }
+  if (e.highlight >= 0 && s.emphasisDisabled !== true) return s.emphasisAreaOpacity ?? -1.0
+  if (blurActive(spec)) return s.blurAreaOpacity ?? -1.0
+  return -1.0
+}
+
+/** Whether a series shows its datum label in the state `index` is in (`emphasis.label` / `select.label`). */
+export function stateLabelShown(spec: ChartSpec, s: Series, index: number): boolean {
+  const level = seriesEmphasisLevel(spec, s, index)
+  if (level === 2) return s.selectLabel === true
+  return level === 1 && s.emphasisLabel === true
+}
+
+/** True when a highlight is active and some series asks to blur the others. */
+export function blurActive(spec: ChartSpec): boolean {
+  const e: Emphasis = spec.emphasis ?? { highlight: -1, selected: [] }
+  if (e.highlight < 0) return false
+  for (const s of spec.series) if (s.focus === 'self' || s.focus === 'series') return true
+  return false
+}
+
+/**
+ * The fill a datum paints with under the spec's states: the series'
+ * `selectColor` when pinned, its `emphasisColor` when highlighted, a faded
+ * `fill` when another datum is highlighted and the chart blurs, else `fill`.
+ */
+export function stateFill(spec: ChartSpec, s: Series, index: number, seriesFill: string): string {
+  const own = s.itemColors ?? []
+  const fill = index >= 0 && index < own.length && own[index]! !== '' ? own[index]! : seriesFill
+  const level = seriesEmphasisLevel(spec, s, index)
+  // Coalesced first, never narrowed through the guard: Swift does not narrow
+  // a struct's optional through `!== undefined`, and an empty colour is "none".
+  const selectColor = s.selectColor ?? ''
+  const emphasisColor = s.emphasisColor ?? ''
+  if (level === 2 && selectColor !== '') return selectColor
+  if (level === 1 && emphasisColor !== '') return emphasisColor
+  if (level === 0 && blurActive(spec)) return withAlpha(fill, s.blurOpacity ?? 0.1)
+  const brushed = s.inBrush ?? []
+  const brushAlpha = s.brushOpacity ?? -1.0
+  if (brushAlpha >= 0.0) {
+    let inside = false
+    for (const b of brushed) if (b === index) inside = true
+    if (!inside) return withAlpha(fill, brushAlpha)
+  }
+  return fill
 }
 
 /** The outline a highlighted (1) or selected (2) bar gets — closed, painted over the fill. */
@@ -350,7 +950,8 @@ export function emphasisOutline(r: Rect, level: number, stroke: string): DrawCmd
 export function resolveYDomain(spec: ChartSpec): Domain {
   // `?? derive` rather than an early return: Swift does not narrow
   // `spec.yDomain` through the guard, and the coalesce is the same contract.
-  return spec.yDomain ?? deriveOver(leftAxisSeries(spec))
+  const d = spec.yDomain ?? pinDomain(spec, leftAxisSeries(spec))
+  return spec.yInverse === true ? { min: d.min, max: d.max, inverse: true, step: d.step } : d
 }
 
 /**
@@ -362,7 +963,7 @@ export function resolveYDomain(spec: ChartSpec): Domain {
  * it anyway.
  */
 export function resolveY2Domain(spec: ChartSpec): Domain {
-  return spec.y2Domain ?? deriveOver(rightAxisSeries(spec))
+  return spec.y2Domain ?? deriveOver(rightAxisSeries(spec), spec.yZero === true, spec.ySplit ?? 0.0)
 }
 
 /**
@@ -403,7 +1004,8 @@ export function logBounds(spec: ChartSpec): Domain {
  * entry point calls, rather than in each host: the tooltip and the table
  * read the ORIGINAL spec, which is how they keep showing real values.
  */
-export function geometrySpec(spec: ChartSpec): ChartSpec {
+export function geometrySpec(raw: ChartSpec): ChartSpec {
+  const spec = invertCategories(raw)
   const isLog = spec.yScale === 'log'
   const norm = spec.stackNormalize === true
   if (!isLog && !norm) return spec
@@ -418,7 +1020,7 @@ export function geometrySpec(spec: ChartSpec): ChartSpec {
     if (norm && s.kind === 'stacked') {
       series.push({ ...s, values: si < stacked.length ? stacked[si]! : s.values })
       si = si + 1
-    } else if (isLog && !seriesOnRightAxis(s, spec)) {
+    } else if (isLog && !seriesOnRightAxis(s, spec) && !onExtraAxis(s, spec)) {
       const values: Double[] = []
       for (const v of s.values) values.push(v > 0.0 ? Math.log10(v / lb.min) : (0.0 / 0.0))
       const lows: Double[] = []
@@ -455,6 +1057,173 @@ export function geometrySpec(spec: ChartSpec): ChartSpec {
   return { ...spec, series, yDomain, annotations: spec.annotations === undefined ? undefined : notes, yScale: 'linear', stackNormalize: false }
 }
 
+
+/**
+ * True when the x axis runs right to left over CATEGORIES (or index-spaced
+ * points). A continuous x inverts through its domain instead, and the
+ * horizontal frame's x is the value axis, so neither reverses the data.
+ */
+/** A domain carrying the inverse flag when asked. */
+export function invertedDomain(d: Domain, inverse: boolean): Domain {
+  return inverse ? { min: d.min, max: d.max, inverse: true, step: d.step } : d
+}
+
+export function categoriesInverted(spec: ChartSpec): boolean {
+  return spec.xInverse === true && spec.horizontal !== true && (spec.xValues ?? []).length === 0
+}
+
+/** The number of category slots an inverted axis reflects over. */
+export function categorySlots(spec: ChartSpec): number {
+  const m = seriesMaxLength(spec.series)
+  return spec.categories.length > m ? spec.categories.length : m
+}
+
+/**
+ * A view index as the datum index the caller's data uses, and back — the
+ * reflection is its own inverse. Identity unless the categories are inverted;
+ * a miss (-1) stays a miss.
+ */
+export function categoryIndex(spec: ChartSpec, index: number): number {
+  if (!categoriesInverted(spec) || index < 0) return index
+  return categorySlots(spec) - 1 - index
+}
+
+function reversedDoubles(a: Double[] | undefined, n: number): Double[] | undefined {
+  const src = a ?? []
+  const out: Double[] = []
+  for (let i = 0; i < n; i++) {
+    const j = n - 1 - i
+    out.push(j < src.length ? src[j]! : 0.0 / 0.0)
+  }
+  return a === undefined ? undefined : out
+}
+
+function reversedStrings(a: string[] | undefined, n: number): string[] | undefined {
+  const src = a ?? []
+  const out: string[] = []
+  for (let i = 0; i < n; i++) {
+    const j = n - 1 - i
+    out.push(j < src.length ? src[j]! : '')
+  }
+  return a === undefined ? undefined : out
+}
+
+/**
+ * ECharts' `xAxis.inverse` over categories: the same chart with its data read
+ * right to left. Every per-datum channel reverses together, so bars, points,
+ * labels, whiskers, markers and hit geometry all agree; index-valued inputs
+ * (a marker's `atIndex`, an annotation's x, the emphasis) reflect with them.
+ */
+export function invertCategories(spec: ChartSpec): ChartSpec {
+  if (!categoriesInverted(spec)) return spec
+  const n = categorySlots(spec)
+  const last = n - 1.0
+  const series: Series[] = []
+  for (const s of spec.series) {
+    const extras: SeriesExtra[] = []
+    for (const e of s.extras ?? []) extras.push({ label: e.label, numbers: reversedDoubles(e.numbers, n), texts: reversedStrings(e.texts, n) })
+    series.push({
+      ...s,
+      values: reversedDoubles(s.values, n) ?? [],
+      rValues: reversedDoubles(s.rValues, n),
+      radii: reversedDoubles(s.radii, n),
+      labelTexts: reversedStrings(s.labelTexts, n),
+      itemColors: reversedStrings(s.itemColors, n),
+      errLow: reversedDoubles(s.errLow, n),
+      errHigh: reversedDoubles(s.errHigh, n),
+      values2: reversedDoubles(s.values2, n),
+      extras: s.extras === undefined ? undefined : extras,
+    })
+  }
+  const notes: Annotation[] = []
+  for (const a of spec.annotations ?? []) {
+    const ax = a.x ?? 0.0
+    const xf = a.xFrom ?? 0.0
+    const xt = a.xTo ?? 0.0
+    const x1 = a.x1 ?? 0.0
+    const x2 = a.x2 ?? 0.0
+    notes.push({
+      ...a,
+      x: a.x === undefined ? undefined : last - ax,
+      xFrom: a.xTo === undefined ? undefined : last - xt,
+      xTo: a.xFrom === undefined ? undefined : last - xf,
+      x1: a.x1 === undefined ? undefined : last - x1,
+      x2: a.x2 === undefined ? undefined : last - x2,
+    })
+  }
+  const marks: PointMarker[] = []
+  for (const m of spec.markers ?? []) {
+    const at = m.atIndex ?? 0.0
+    marks.push({ ...m, atIndex: m.atIndex === undefined ? undefined : last - at })
+  }
+  const em = spec.emphasis
+  const selected: number[] = []
+  for (const k of em?.selected ?? []) selected.push(n - 1 - k)
+  const highlight = em?.highlight ?? -1
+  return {
+    ...spec,
+    series,
+    categories: reversedStrings(spec.categories, spec.categories.length === 0 ? 0 : n) ?? [],
+    annotations: spec.annotations === undefined ? undefined : notes,
+    markers: spec.markers === undefined ? undefined : marks,
+    emphasis: em === undefined ? undefined : { highlight: highlight < 0 ? highlight : n - 1 - highlight, selected },
+  }
+}
+
+
+
+/** True when a series places its points on the second x axis. */
+export function seriesOnX2(s: Series, spec: ChartSpec): boolean {
+  return s.onX2 === true && spec.horizontal !== true && (s.xs ?? []).length > 0
+}
+
+/** True when any series uses the second x axis. */
+export function hasX2Axis(spec: ChartSpec): boolean {
+  for (const s of spec.series) if (seriesOnX2(s, spec)) return true
+  return false
+}
+
+/** The second x axis's domain: pinned, or the extent of its series' positions. */
+export function resolveX2Domain(spec: ChartSpec): Domain {
+  if (spec.x2Domain !== undefined) return spec.x2Domain ?? { min: 0.0, max: 1.0 }
+  const all: Double[] = []
+  for (const s of spec.series) if (seriesOnX2(s, spec)) for (const x of s.xs ?? []) all.push(x)
+  return all.length > 0 ? extent(all) : { min: 0.0, max: 1.0 }
+}
+
+/** True when a series scales on an extra y axis that exists. */
+function onExtraAxis(s: Series, spec: ChartSpec): boolean {
+  const k = s.axisExtra ?? -1.0
+  return spec.horizontal !== true && k >= 0.0 && k < (spec.extraYAxes ?? []).length
+}
+
+/** The resolved domain of extra axis `k`: its pinned range, or its series' extent. */
+export function extraAxisDomain(spec: ChartSpec, k: Double): Domain {
+  let i = 0.0
+  for (const a of spec.extraYAxes ?? []) {
+    if (i === k) return a.domain ?? deriveOver(spec.series.filter((q) => (q.axisExtra ?? -1.0) === k), spec.yZero === true, spec.ySplit ?? 0.0)
+    i = i + 1.0
+  }
+  return { min: 0.0, max: 1.0 }
+}
+
+/** Every extra axis with its domain resolved — what the layout measures. */
+export function resolvedExtraAxes(spec: ChartSpec): ExtraYAxis[] {
+  const out: ExtraYAxis[] = []
+  let i = 0.0
+  for (const a of spec.extraYAxes ?? []) {
+    out.push({ side: a.side, domain: extraAxisDomain(spec, i), title: a.title, offset: a.offset })
+    i = i + 1.0
+  }
+  return out
+}
+
+/** The domain a series scales against: an extra axis, the right axis, or the left. */
+export function seriesDomain(s: Series, spec: ChartSpec, yDomain: Domain, y2Domain: Domain): Domain {
+  if (onExtraAxis(s, spec)) return extraAxisDomain(spec, s.axisExtra ?? 0.0)
+  return seriesOnRightAxis(s, spec) ? y2Domain : yDomain
+}
+
 /**
  * Does this series scale on the RIGHT axis?
  *
@@ -466,12 +1235,13 @@ export function geometrySpec(spec: ChartSpec): ChartSpec {
  */
 export function seriesOnRightAxis(s: Series, spec: ChartSpec): boolean {
   if (spec.horizontal === true) return false
+  if (s.axisExtra !== undefined) return false
   if (s.kind === 'stacked' || s.kind === 'grouped' || s.kind === 'stackedArea') return false
   if (s.axis !== 'right') return false
   let hasLeft = false
   for (const q of spec.series) {
     const qRight = q.axis === 'right' && q.kind !== 'stacked' && q.kind !== 'grouped' && q.kind !== 'stackedArea'
-    if (!qRight) hasLeft = true
+    if (!qRight && q.axisExtra === undefined) hasLeft = true
   }
   return hasLeft
 }
@@ -483,25 +1253,73 @@ export function hasRightAxis(spec: ChartSpec): boolean {
 }
 
 function leftAxisSeries(spec: ChartSpec): Series[] {
-  return spec.series.filter((s) => !seriesOnRightAxis(s, spec))
+  return spec.series.filter((s) => !seriesOnRightAxis(s, spec) && (s.axisExtra === undefined || spec.horizontal === true))
 }
 
 function rightAxisSeries(spec: ChartSpec): Series[] {
   return spec.series.filter((s) => seriesOnRightAxis(s, spec))
 }
 
-function deriveOver(series: Series[]): Domain {
+/**
+ * The left axis' domain: its data extent (stack totals and all), any pinned
+ * bound applied, niced the way the spec asks — ECharts' interval when
+ * `ySplit` is set, the engine's own otherwise.
+ */
+/**
+ * A value X axis' domain: the data extent as it was, or — when the spec asks
+ * for ECharts' nicing (`xSplit`) — zero included unless `scale`, the pinned
+ * bounds applied, and the extent floored / ceiled to ECharts' interval.
+ */
+function resolveXValueDomain(spec: ChartSpec, data: Domain): Domain {
+  const split = spec.xSplit ?? 0.0
+  if (split <= 0.0) return data
+  const zero = spec.xZero === true && spec.xMinData !== true && spec.xMaxData !== true
+  const lo0 = zero && data.min > 0.0 ? 0.0 : data.min
+  const hi0 = zero && data.max < 0.0 ? 0.0 : data.max
+  const lo = spec.xMinData === true ? data.min : spec.xMin ?? lo0
+  const hi = spec.xMaxData === true ? data.max : spec.xMax ?? hi0
+  return echartsNiceDomain({ min: lo, max: hi }, split, spec.xMin !== undefined || spec.xMinData === true, spec.xMax !== undefined || spec.xMaxData === true)
+}
+
+function pinDomain(spec: ChartSpec, series: Series[]): Domain {
+  const fixMin = spec.yMin !== undefined || spec.yMinData === true
+  const fixMax = spec.yMax !== undefined || spec.yMaxData === true
+  // A bound pinned to the data (`dataMin` / `dataMax`) turns ECharts' zero-inclusion off.
+  const zero = spec.yZero === true && spec.yMinData !== true && spec.yMaxData !== true
+  const raw = rawExtentOver(series, zero)
+  // A bound pinned to the data turns `zero` off (above), so the pinned extent
+  // IS `raw` whenever it is read — no second pass over every value.
+  const data = raw
+  const lo = spec.yMinData === true ? data.min : spec.yMin ?? raw.min
+  const hi = spec.yMaxData === true ? data.max : spec.yMax ?? raw.max
+  const split = spec.ySplit ?? 0.0
+  if (split > 0.0) return echartsNiceDomain({ min: lo, max: hi }, split, fixMin, fixMax)
+  if (fixMin || fixMax) return niceDomain({ min: lo, max: hi }, 5.0)
+  return niceDomain(raw, 5.0)
+}
+
+function deriveOver(series: Series[], zero: boolean, split: Double): Domain {
+  const raw = rawExtentOver(series, zero)
+  return split > 0.0 ? echartsNiceDomain(raw, split, false, false) : niceDomain(raw, 5.0)
+}
+
+/** The un-niced extent a set of series spans: stack totals, waterfall running totals, band floors and error bars; zero included for bars (and for all when `zero`). */
+function rawExtentOver(series: Series[], zero: boolean): Domain {
   // A STACK's domain is its tallest TOTAL, not its tallest value — taking the
   // max of the individual series would clip the stack at the top.
   const stacked = series.filter((s) => s.kind === 'stacked' || s.kind === 'stackedArea')
   if (stacked.length > 0) {
-    const e = stackedExtent(stacked.map((s) => s.values))
+    const e = stackLevelsExtent(levelsOf(stacked))
     const others: Double[] = []
     for (const s of series) if (s.kind !== 'stacked' && s.kind !== 'stackedArea') for (const v of s.values) if (isFiniteValue(v)) others.push(v)
     const max = others.length > 0 ? Math.max(e.max, extent(others).max) : e.max
-    return niceDomain({ min: 0.0, max }, 5.0)
+    const min = others.length > 0 ? Math.min(e.min, extent(others).min, 0.0) : e.min
+    return { min, max }
   }
-  const all: Double[] = []
+  // Streamed rather than gathered: collecting every finite value into one
+  // array and then taking its extent copied a 100,000-point series twice per
+  // domain resolve, and the domain is resolved several times a frame.
+  let span: ExtentSpan = { seen: false, lo: 0.0, hi: 1.0, count: 0 }
   let hasBars = false
   for (const s of series) {
     if (s.kind === 'bars' || s.kind === 'area' || s.kind === 'grouped' || s.kind === 'waterfall' || s.kind === 'stackedArea') hasBars = true
@@ -509,24 +1327,58 @@ function deriveOver(series: Series[]): Domain {
       // A waterfall's extent is its RUNNING TOTALS, not its steps — a chart
       // of +5, +5, +5 must reach 15.
       const we = waterfallExtent(s.values)
-      all.push(we.min)
-      all.push(we.max)
+      span = extendSpan(span, [we.min, we.max], true)
       continue
     }
     // Gaps (NaN) carry no extent — and so do error bars beyond them: the
     // whisker must stay inside the axis.
-    for (const v of s.values) if (isFiniteValue(v)) all.push(v)
+    span = extendSpan(span, s.values, false)
     // A band's lower bound is data too; without it a band dipping below every
     // `values` entry is clipped at the axis floor.
-    for (const v of s.values2 ?? []) if (isFiniteValue(v)) all.push(v)
-    for (const v of s.errLow ?? []) if (isFiniteValue(v)) all.push(v)
-    for (const v of s.errHigh ?? []) if (isFiniteValue(v)) all.push(v)
+    span = extendSpan(span, s.values2 ?? [], false)
+    span = extendSpan(span, s.errLow ?? [], false)
+    span = extendSpan(span, s.errHigh ?? [], false)
   }
-  const e = extent(all)
-  const withZero: Domain = hasBars
+  const e: Domain = span.seen ? { min: span.lo, max: span.hi } : { min: 0.0, max: 1.0 }
+  return hasBars || (zero && span.count > 0)
     ? { min: e.min > 0.0 ? 0.0 : e.min, max: e.max < 0.0 ? 0.0 : e.max }
     : e
-  return niceDomain(withZero, 5.0)
+}
+
+/**
+ * A running extent: the finite values seen so far, and how many values were
+ * COUNTED (a waterfall's totals count even when not finite, exactly as the
+ * gathered array they replace did).
+ */
+interface ExtentSpan {
+  seen: boolean
+  lo: Double
+  hi: Double
+  count: number
+}
+
+/** `span` widened by the finite entries of `values`; `countAll` counts every entry, finite or not. */
+function extendSpan(span: ExtentSpan, values: Double[], countAll: boolean): ExtentSpan {
+  let seen = span.seen
+  let lo = span.lo
+  let hi = span.hi
+  let count = span.count
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i]!
+    if (countAll) count = count + 1
+    if (isFiniteValue(v)) {
+      if (!countAll) count = count + 1
+      if (!seen) {
+        lo = v
+        hi = v
+        seen = true
+      } else {
+        if (v < lo) lo = v
+        if (v > hi) hi = v
+      }
+    }
+  }
+  return { seen, lo, hi, count }
 }
 
 /** Finite check — `isFiniteNumber` from `./scale` (NaN AND infinity are gaps; `Number.*` has no native lowering). */
@@ -552,7 +1404,9 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     height: spec.height,
     xDomain:
       (spec.xValues ?? []).length > 0
-        ? extent(spec.xValues ?? [])
+        /* v8 ignore next — the inner `?? []` is unreachable: the test above already
+           established a non-empty list. Native needs the unwrap; the web cannot reach it. */
+        ? invertedDomain(resolveXValueDomain(spec, extent(spec.xValues ?? [])), spec.xInverse === true && spec.horizontal !== true)
         : { min: 0.0, max: n > 1 ? n - 1 : 1.0 },
     yDomain: resolveYDomain(spec),
     categories: spec.categories,
@@ -575,6 +1429,7 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     y2Format: spec.y2Format,
     xTime: spec.xTime === true,
     horizontal: spec.horizontal === true,
+    bandsFromBottom: spec.bandsFromBottom === true,
     xTitle: spec.xTitle,
     yTitle: spec.yTitle,
     y2Title: spec.y2Title,
@@ -582,7 +1437,30 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     yLogMin: lb.min,
     yLogMax: lb.max,
     yTime: spec.yTime === true,
+    xLabelAngle: spec.xLabelAngle,
+    xLabelInterval: spec.xLabelInterval,
+    xLabelMargin: spec.xLabelMargin,
+    xLabelInside: spec.xLabelInside,
+    yLabelAngle: spec.yLabelAngle,
+    yLabelMargin: spec.yLabelMargin,
+    yLabelInside: spec.yLabelInside,
+    insetLeft: spec.gridLeft,
+    reserveLeft: spec.reserveLeft,
+    insetTop: spec.gridTop,
+    insetRight: spec.gridRight,
+    insetBottom: spec.gridBottom,
+    insetContain: spec.gridContain,
+    edgeCategories: edgeCategoryPoints(spec),
     xLabels: spec.xLabels,
+    xTop: spec.xTop,
+    yRight: spec.yRight,
+    xOffset: spec.xOffset,
+    yOffset: spec.yOffset,
+    y2Offset: spec.y2Offset,
+    extraYAxes: resolvedExtraAxes(spec),
+    x2Labels: spec.x2Labels,
+    x2Title: spec.x2Title,
+    x2Domain: hasX2Axis(spec) ? resolveX2Domain(spec) : undefined,
   }
   return computeLayout(cfg, measure)
 }
@@ -594,6 +1472,304 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
  * labels. Series draw over the grid so a bar is never bisected by a gridline,
  * and labels draw last so nothing can cover them.
  */
+/** A draw order that names each of `n` series exactly once, else empty (paint in series order). */
+export function validDrawOrder(order: number[], n: number): number[] {
+  if (order.length !== n) return []
+  const seen: boolean[] = []
+  for (let i = 0; i < n; i++) seen.push(false)
+  for (let i = 0; i < order.length; i++) {
+    const k = order[i]!
+    if (k < 0 || k >= n || seen[k]!) return []
+    seen[k] = true
+  }
+  return order
+}
+
+/** Whether the category points run edge to edge (`boundaryGap: false` on a chart with no band series). */
+export function edgeCategoryPoints(spec: ChartSpec): boolean {
+  if (spec.boundaryGap !== false) return false
+  for (const s of spec.series) if (s.kind === 'bars' || s.kind === 'stacked' || s.kind === 'grouped' || s.kind === 'waterfall') return false
+  return true
+}
+
+/**
+ * A data-space x in pixels. On a category axis an index sits at its band
+ * centre (or on the edge-to-edge point under `boundaryGap: false`), where the
+ * series drew that datum; a value or time axis scales it.
+ */
+export function categoryXPixel(spec: ChartSpec, xDomain: Domain, plot: Rect, v: Double): Double {
+  const n = seriesMaxLength(spec.series)
+  if ((spec.xValues ?? []).length > 0 || n === 0 || edgeCategoryPoints(spec)) return scaleLinear(xDomain, plot.x, plot.x + plot.w, v)
+  return plot.x + (plot.w / countToDouble(n)) * (v + 0.5)
+}
+
+/** A category span `[from, to]` in pixels: band start of the first to band end of the last (edge points under `boundaryGap: false`). */
+export function categorySpanPixels(spec: ChartSpec, xDomain: Domain, plot: Rect, from: Double, to: Double): Pt {
+  const n = seriesMaxLength(spec.series)
+  if ((spec.xValues ?? []).length > 0 || n === 0 || edgeCategoryPoints(spec)) return { x: scaleLinear(xDomain, plot.x, plot.x + plot.w, from), y: scaleLinear(xDomain, plot.x, plot.x + plot.w, to) }
+  const lo = from < to ? from : to
+  const hi = from < to ? to : from
+  const band = plot.w / countToDouble(n)
+  return { x: plot.x + band * lo, y: plot.x + band * (hi + 1.0) }
+}
+
+/** A category series' points, band-centred or edge to edge as the spec's `boundaryGap` says. */
+export function categoryPoints(spec: ChartSpec, values: Double[], plot: Rect, dom: Domain): Pt[] {
+  return edgeCategoryPoints(spec) ? layoutSeriesPointsEdge(values, plot, dom) : layoutSeriesPoints(values, plot, dom)
+}
+
+/** A length in pixels against `ref` (a percent of it, or pixels as written); `fallback` when unset. */
+function barPx(raw: BarLength | undefined, ref: Double, fallback: Double): Double {
+  // Coalesced before use: Swift does not narrow an optional through the guard.
+  const has = raw !== undefined
+  const l = raw ?? NO_LENGTH
+  if (!has) return fallback
+  return l.percent ? (l.value / 100.0) * ref : l.value
+}
+
+const NO_LENGTH: BarLength = { value: 0.0, percent: false }
+
+/**
+ * ECharts' bar columns (`calcBarWidthAndOffset`): per series index, the left
+ * edge from the band centre and the width, in pixels. Empty when the spec does
+ * not ask for ECharts' layout; a series not a bar gets width -1.
+ */
+export function barColumns(spec: ChartSpec, band: Double): Pt[] {
+  const out: Pt[] = []
+  if (spec.barLayout !== true) return out
+  const ids: string[] = []
+  const widths: Double[] = []
+  const maxes: Double[] = []
+  const mins: Double[] = []
+  for (let k = 0; k < spec.series.length; k++) {
+    const s = spec.series[k]!
+    if (s.kind !== 'bars' && s.kind !== 'stacked' && s.kind !== 'grouped') continue
+    const id = s.barStack ?? (s.kind === 'stacked' ? '__stack' : 'series' + String(k))
+    let at = -1
+    for (let q = 0; q < ids.length; q++) if (ids[q] === id) at = q
+    if (at < 0) {
+      ids.push(id)
+      widths.push(0.0)
+      maxes.push(0.0)
+      mins.push(0.0)
+      at = ids.length - 1
+    }
+    if (s.barWidth !== undefined && widths[at]! === 0.0) widths[at] = barPx(s.barWidth, band, 0.0)
+    if (s.barMaxWidth !== undefined) maxes[at] = barPx(s.barMaxWidth, band, 0.0)
+    mins[at] = barPx(s.barMinWidth, band, 1.0)
+  }
+  const cols = countToDouble(ids.length)
+  const gapLength = spec.barGap ?? NO_LENGTH
+  const gapPct = spec.barGap === undefined ? 0.1 : gapLength.value / 100.0
+  const catGap = spec.barCategoryGap === undefined ? (Math.max(35.0 - cols * 4.0, 15.0) / 100.0) * band : barPx(spec.barCategoryGap, band, 0.0)
+  let remained = band
+  let autoCount = cols
+  for (let q = 0; q < ids.length; q++) if (widths[q]! > 0.0) remained = remained - Math.min(remained, widths[q]!)
+  const auto = Math.max(0.0, (remained - catGap) / (autoCount + (autoCount - 1.0) * gapPct))
+  const finals: Double[] = []
+  for (let q = 0; q < ids.length; q++) {
+    let w = widths[q]!
+    if (w === 0.0) {
+      let f = auto
+      if (maxes[q]! > 0.0 && maxes[q]! < f) f = Math.min(maxes[q]!, remained)
+      if (mins[q]! > f) f = mins[q]!
+      if (f !== auto) {
+        w = f
+        remained = remained - (f + gapPct * f)
+        autoCount = autoCount - 1.0
+      }
+    } else {
+      if (maxes[q]! > 0.0) w = Math.min(w, maxes[q]!)
+      if (mins[q]! > 0.0) w = Math.max(w, mins[q]!)
+      remained = remained - (w + gapPct * w)
+      autoCount = autoCount - 1.0
+    }
+    finals.push(w)
+  }
+  // Recalculated once the fixed columns have taken their share (ECharts does the same).
+  const auto2 = Math.max(0.0, (remained - catGap) / (autoCount + (autoCount - 1.0) * gapPct))
+  let sum = 0.0
+  for (let q = 0; q < finals.length; q++) {
+    if (finals[q]! === 0.0) finals[q] = auto2
+    sum = sum + finals[q]! * (1.0 + gapPct)
+  }
+  const total = finals.length > 0 ? sum - finals[finals.length - 1]! * gapPct : sum
+  const offsets: Double[] = []
+  let off = -total / 2.0
+  for (let q = 0; q < finals.length; q++) {
+    offsets.push(off)
+    off = off + finals[q]! * (1.0 + gapPct)
+  }
+  for (let k = 0; k < spec.series.length; k++) {
+    const s = spec.series[k]!
+    if (s.kind !== 'bars' && s.kind !== 'stacked' && s.kind !== 'grouped') {
+      out.push({ x: 0.0, y: -1.0 })
+      continue
+    }
+    const id = s.barStack ?? (s.kind === 'stacked' ? '__stack' : 'series' + String(k))
+    let at = 0
+    for (let q = 0; q < ids.length; q++) if (ids[q] === id) at = q
+    out.push({ x: offsets[at]!, y: finals[at]! })
+  }
+  return out
+}
+
+/** A bar rect moved into series `k`'s ECharts column, when the spec lays bars out that way. */
+function inColumn(spec: ChartSpec, cols: Pt[], k: number, r: Rect, i: number, n: number, plot: Rect): Rect {
+  // Bounds-check BEFORE indexing: `barColumns` is empty for every chart that
+  // does not opt into ECharts' bar layout, and the generated Kotlin `cols[k]`
+  // throws past the end where TS merely yields undefined.
+  if (k < 0 || k >= cols.length || n === 0) return r
+  const c = cols[k]!
+  if (c.y < 0.0) return r
+  const band = plot.w / countToDouble(n)
+  return { x: plot.x + band * countToDouble(i) + band / 2.0 + c.x, y: r.y, w: c.y, h: r.h }
+}
+
+/** The band width for a series count over a plot. */
+function bandOf(plot: Rect, n: number): Double {
+  return n === 0 ? 0.0 : plot.w / countToDouble(n)
+}
+
+/**
+ * ECharts' `barMinHeight`: a bar shorter than `min` pixels grows to it with
+ * its base fixed, the way it points (`up` — a zero bar counts as up, or
+ * right on the flipped frame). An empty slot (negative width) is left alone.
+ */
+function minBarLength(r: Rect, minLen: Double, up: boolean, horizontal: boolean, plot: Rect): Rect {
+  if (minLen <= 0.0 || r.w < 0.0 || r.h < 0.0) return r
+  if (!horizontal) {
+    if (r.h >= minLen) return r
+    // Grown past the grid, a bar is clipped to it (ECharts' bar `clip`, on by default).
+    if (up) {
+      const y = Math.max(plot.y, r.y + r.h - minLen)
+      return { x: r.x, y, w: r.w, h: r.y + r.h - y }
+    }
+    return { x: r.x, y: r.y, w: r.w, h: Math.min(plot.y + plot.h, r.y + minLen) - r.y }
+  }
+  if (r.w >= minLen) return r
+  if (up) return { x: r.x, y: r.y, w: Math.min(plot.x + plot.w, r.x + minLen) - r.x, h: r.h }
+  const x = Math.max(plot.x, r.x + r.w - minLen)
+  return { x, y: r.y, w: r.x + r.w - x, h: r.h }
+}
+
+/** A bar's background strip: its column across the whole plot. */
+export function barBackgroundRect(r: Rect, plot: Rect, horizontal: boolean): Rect {
+  return horizontal ? { x: plot.x, y: r.y, w: plot.w, h: r.h } : { x: r.x, y: plot.y, w: r.w, h: plot.h }
+}
+
+/** Where a plain bar's value is measured from: zero, held inside the domain. */
+function barZero(dom: Domain): Double {
+  return dom.min > 0.0 ? dom.min : dom.max < 0.0 ? dom.max : 0.0
+}
+
+/** `layoutBars` for series `k`, in its column. */
+function barsLaid(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] {
+  const s = spec.series[k]!
+  const rects = layoutBars(s.values, plot, dom, 0.25)
+  const cols = barColumns(spec, bandOf(plot, rects.length))
+  const min = s.barMinHeight ?? 0.0
+  const zero = barZero(dom)
+  const out: Rect[] = []
+  for (let i = 0; i < rects.length; i++) {
+    const v = i < s.values.length ? s.values[i]! : 0.0
+    out.push(minBarLength(inColumn(spec, cols, k, rects[i]!, i, rects.length, plot), min, !(v < zero), false, plot))
+  }
+  return out
+}
+
+/** The global series indices of a kind, in order. */
+function indicesOf(spec: ChartSpec, kind: string): number[] {
+  const out: number[] = []
+  for (let k = 0; k < spec.series.length; k++) if (spec.series[k]!.kind === kind) out.push(k)
+  return out
+}
+
+/**
+ * ECharts' stack levels for a set of stacked series: each stacks within its
+ * own `stack` group (`barStack`), by its own `stackStrategy`, in its group's
+ * `stackOrder`.
+ */
+function levelsOf(series: Series[]): StackLevels {
+  const values: Double[][] = []
+  const groups: string[] = []
+  const strategies: string[] = []
+  const descs: boolean[] = []
+  for (const s of series) {
+    values.push(s.values)
+    groups.push(s.barStack ?? '')
+    strategies.push(s.stackStrategy ?? '')
+    descs.push(s.stackDesc ?? false)
+  }
+  return stackLevels(values, groups, strategies, descs)
+}
+
+/** `layoutStackedBars` / `layoutGroupedBars` for a kind, each segment in its series' column. */
+function setLaid(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackSegment[] {
+  const idx = indicesOf(spec, kind)
+  const values = idx.map((k) => spec.series[k]!.values)
+  let n = 0
+  for (const v of values) if (v.length > n) n = v.length
+  const cols = barColumns(spec, bandOf(plot, n))
+  const segs = kind === 'stacked' ? layoutStackLevels(levelsOf(idx.map((k) => spec.series[k]!)), values, plot, dom, 0.25) : layoutGroupedBars(values, plot, dom, 0.25)
+  const out: StackSegment[] = []
+  for (const seg of segs) {
+    const sk = spec.series[idx[seg.seriesIndex]!]!
+    // A stacked segment grows from its stack base, a grouped bar from zero: both point up for a value >= 0.
+    const r = minBarLength(inColumn(spec, cols, idx[seg.seriesIndex]!, seg.rect, seg.datumIndex, n, plot), sk.barMinHeight ?? 0.0, !(seg.value < 0.0), false, plot)
+    out.push({ rect: r, seriesIndex: seg.seriesIndex, datumIndex: seg.datumIndex, value: seg.value })
+  }
+  return out
+}
+
+/**
+ * A horizontal-frame bar rect moved into series `k`'s ECharts column along y:
+ * the same `barColumns` widths the upright frame uses, and — under
+ * `bandsFromBottom` — the bands counted up from the bottom, as ECharts' category
+ * y axis runs. A chart without ECharts' bar layout keeps its rect.
+ */
+function inRow(spec: ChartSpec, cols: Pt[], k: number, r: Rect, i: number, n: number, plot: Rect): Rect {
+  if (k < 0 || k >= cols.length || n === 0) return r
+  const c = cols[k]!
+  if (c.y < 0.0) return r
+  const band = plot.h / countToDouble(n)
+  const j = spec.bandsFromBottom === true ? n - 1 - i : i
+  return { x: r.x, y: plot.y + band * countToDouble(j) + band / 2.0 + c.x, w: r.w, h: c.y }
+}
+
+/** `layoutBarsH` for series `k`, in its row. */
+function barsLaidH(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] {
+  const s = spec.series[k]!
+  const rects = layoutBarsH(s.values, plot, dom, 0.25)
+  const n = rects.length
+  const cols = barColumns(spec, n === 0 ? 0.0 : plot.h / countToDouble(n))
+  const min = s.barMinHeight ?? 0.0
+  const zero = barZero(dom)
+  const out: Rect[] = []
+  for (let i = 0; i < rects.length; i++) {
+    const v = i < s.values.length ? s.values[i]! : 0.0
+    out.push(minBarLength(inRow(spec, cols, k, rects[i]!, i, n, plot), min, !(v < zero), true, plot))
+  }
+  return out
+}
+
+/** `layoutStackedBarsH` / `layoutGroupedBarsH` for a kind, each segment in its series' row. */
+function setLaidH(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackSegment[] {
+  const idx = indicesOf(spec, kind)
+  const values = idx.map((k) => spec.series[k]!.values)
+  let n = 0
+  for (const v of values) if (v.length > n) n = v.length
+  const cols = barColumns(spec, n === 0 ? 0.0 : plot.h / countToDouble(n))
+  const segs = kind === 'stacked' ? layoutStackLevelsH(levelsOf(idx.map((k) => spec.series[k]!)), values, plot, dom, 0.25) : layoutGroupedBarsH(values, plot, dom, 0.25)
+  const out: StackSegment[] = []
+  for (const seg of segs) {
+    const sk = spec.series[idx[seg.seriesIndex]!]!
+    const r = minBarLength(inRow(spec, cols, idx[seg.seriesIndex]!, seg.rect, seg.datumIndex, n, plot), sk.barMinHeight ?? 0.0, !(seg.value < 0.0), true, plot)
+    out.push({ rect: r, seriesIndex: seg.seriesIndex, datumIndex: seg.datumIndex, value: seg.value })
+  }
+  return out
+}
+
 export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   return renderChartIn(spec, measure, layoutChart(spec, measure))
 }
@@ -613,8 +1789,9 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // original series through `printed`, so a log chart labels a bar "1000",
   // not "3".
   const spec = geometrySpec(raw)
+  const printedView = invertCategories(raw)
   const printed = (k: number, i: number): Double => {
-    const sv = raw.series[k]!.values
+    const sv = printedView.series[k]!.values
     return i < sv.length ? sv[i]! : 0.0 / 0.0
   }
   const yDomain = resolveYDomain(spec)
@@ -672,6 +1849,51 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     return outPts
   }
 
+  // Split areas first: every line draws over them.
+  const yAreas = spec.ySplitArea ?? []
+  if (yAreas.length > 0 && spec.horizontal !== true) {
+    for (let ti = 1; ti < l.yTicks.length; ti++) {
+      const a = l.yTicks[ti - 1]!.pos
+      const b = l.yTicks[ti]!.pos
+      out.push({ kind: 'rect', rect: { x: plot.x, y: a < b ? a : b, w: plot.w, h: a < b ? b - a : a - b }, fill: yAreas[(ti - 1) % yAreas.length]! })
+    }
+  }
+  // The horizontal frame: the VALUE axis (the y* fields) runs along x, its ticks in
+  // `l.xTicks`; the CATEGORY axis (the x* fields) runs up y, a band per category.
+  if (spec.horizontal === true) {
+    // ECharts paints the category axis's bands first, the value axis's over them (both are translucent).
+    const cAreas = spec.xSplitArea ?? []
+    const nh = spec.categories.length
+    if (cAreas.length > 0) {
+      for (let ci = 0; ci < nh; ci++) {
+        const bh = plot.h / countToDouble(nh)
+        const top = spec.bandsFromBottom === true ? plot.y + plot.h - bh * countToDouble(ci + 1) : plot.y + bh * countToDouble(ci)
+        out.push({ kind: 'rect', rect: { x: plot.x, y: top, w: plot.w, h: bh }, fill: cAreas[ci % cAreas.length]! })
+      }
+    }
+    const vAreas = spec.ySplitArea ?? []
+    if (vAreas.length > 0) {
+      for (let ti = 1; ti < l.xTicks.length; ti++) {
+        const a = l.xTicks[ti - 1]!.pos
+        const b = l.xTicks[ti]!.pos
+        out.push({ kind: 'rect', rect: { x: a < b ? a : b, y: plot.y, w: a < b ? b - a : a - b, h: plot.h }, fill: vAreas[(ti - 1) % vAreas.length]! })
+      }
+    }
+  }
+  const xAreas = spec.xSplitArea ?? []
+  if (xAreas.length > 0 && spec.horizontal !== true) {
+    // ECharts' bands follow the tick coordinates, which on a category axis are the band EDGES
+    // (whether or not the ticks themselves show).
+    const nc = spec.categories.length
+    const edges = (spec.xValues ?? []).length === 0 && nc > 0 && spec.boundaryGap !== false
+    const xs = edges ? categoryEdges(spec, l, plot) : xTickPositions(spec, l, plot)
+    for (let ti = 1; ti < xs.length; ti++) {
+      const a = xs[ti - 1]!
+      const b = xs[ti]!
+      out.push({ kind: 'rect', rect: { x: a < b ? a : b, y: plot.y, w: a < b ? b - a : a - b, h: plot.h }, fill: xAreas[(ti - 1) % xAreas.length]! })
+    }
+  }
+
   if (spec.showGrid) {
     if (spec.horizontal === true) {
       // The grid follows the VALUE axis — vertical lines in this frame.
@@ -690,36 +1912,110 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           kind: 'line',
           from: { x: plot.x, y: tick.pos },
           to: { x: plot.x + plot.w, y: tick.pos },
-          stroke: t.grid,
-          width: 1.0,
+          stroke: spec.gridColor ?? t.grid,
+          width: spec.gridWidth ?? 1.0,
+          dash: spec.gridDash,
         })
       }
     }
   }
+  if (spec.showGrid && spec.y2Grid === true && spec.horizontal !== true) {
+    for (const tick of l.y2Ticks) {
+      out.push({ kind: 'line', from: { x: plot.x, y: tick.pos }, to: { x: plot.x + plot.w, y: tick.pos }, stroke: spec.gridColor ?? t.grid, width: spec.gridWidth ?? 1.0, dash: spec.gridDash })
+    }
+  }
+  // Vertical split lines at the x ticks (a value x axis, or a category one that asks).
+  if (spec.xGrid === true && spec.horizontal !== true) {
+    for (const gx of xTickPositions(spec, l, plot)) {
+      out.push({ kind: 'line', from: { x: gx, y: plot.y }, to: { x: gx, y: plot.y + plot.h }, stroke: spec.xGridColor ?? t.grid, width: spec.xGridWidth ?? 1.0, dash: spec.xGridDash })
+    }
+  }
+  // Minor split lines inside each value interval.
+  const xValueAxis = (spec.xValues ?? []).length > 0
+  const yMinor = spec.horizontal !== true ? minorPositions(l.yTicks, spec.yMinorSplit ?? 0.0) : []
+  for (let mi = 0; mi < yMinor.length; mi++) out.push({ kind: 'line', from: { x: plot.x, y: yMinor[mi]! }, to: { x: plot.x + plot.w, y: yMinor[mi]! }, stroke: spec.yMinorSplitColor ?? '#f4f7fd', width: spec.yMinorSplitWidth ?? 1.0 })
+  // Horizontal: the value axis's minor split lines stand up along x.
+  const hMinor = spec.horizontal === true ? minorPositions(l.xTicks, spec.yMinorSplit ?? 0.0) : []
+  for (let mi = 0; mi < hMinor.length; mi++) out.push({ kind: 'line', from: { x: hMinor[mi]!, y: plot.y }, to: { x: hMinor[mi]!, y: plot.y + plot.h }, stroke: spec.yMinorSplitColor ?? '#f4f7fd', width: spec.yMinorSplitWidth ?? 1.0 })
+  const xMinor = spec.horizontal !== true && xValueAxis ? minorPositions(l.xTicks, spec.xMinorSplit ?? 0.0) : []
+  for (let mi = 0; mi < xMinor.length; mi++) out.push({ kind: 'line', from: { x: xMinor[mi]!, y: plot.y }, to: { x: xMinor[mi]!, y: plot.y + plot.h }, stroke: spec.xMinorSplitColor ?? '#f4f7fd', width: spec.xMinorSplitWidth ?? 1.0 })
 
-  if (spec.showYAxis) {
+  const yRight = spec.yRight === true && !useY2 && spec.horizontal !== true
+  const yOff = spec.yOffset ?? 0.0
+  const y2Off = spec.y2Offset ?? 0.0
+  const xOff = spec.xOffset ?? 0.0
+  const yAxisX = yRight ? plot.x + plot.w + yOff : plot.x - yOff
+  // ECharts' onZero: the line (and its ticks) moves to the other axis's zero; the labels do not.
+  const xd = l.xDomainUsed
+  const yLineX = spec.yAxisOnZero === true && (spec.xValues ?? []).length > 0 && xd.min < 0.0 && xd.max > 0.0 ? scaleLinear(xd, plot.x, plot.x + plot.w, 0.0) : yAxisX
+  const yLineColor = spec.yAxisLineColor ?? t.axis
+  if (spec.showYAxis && spec.yAxisLine !== false) {
     out.push({
       kind: 'line',
-      from: { x: plot.x, y: plot.y },
-      to: { x: plot.x, y: plot.y + plot.h },
-      stroke: t.axis,
-      width: 1.0,
+      from: { x: yLineX, y: plot.y },
+      to: { x: yLineX, y: plot.y + plot.h },
+      stroke: yLineColor,
+      width: spec.yAxisLineWidth ?? 1.0,
     })
   }
-  if (spec.showXAxis) {
+  // Ticks point away from the plot (into it under `inside`).
+  if (spec.showYAxis && spec.yTicks === true && spec.horizontal !== true) {
+    const yLen = spec.yTickLength ?? 5.0
+    const yDir = (yRight ? 1.0 : -1.0) * (spec.yTickInside === true ? -1.0 : 1.0)
+    for (const tick of l.yTicks) {
+      out.push({ kind: 'line', from: { x: yLineX, y: tick.pos }, to: { x: yLineX + yDir * yLen, y: tick.pos }, stroke: spec.yTickColor ?? yLineColor, width: 1.0 })
+    }
+  }
+  // Minor ticks: `minorTick.length` (3) the same way, in the tick colour.
+  if (spec.showYAxis && spec.horizontal !== true) {
+    const ym = minorPositions(l.yTicks, spec.yMinorTicks ?? 0.0)
+    const ymLen = spec.yMinorTickLength ?? 3.0
+    const ymDir = (yRight ? 1.0 : -1.0) * (spec.yTickInside === true ? -1.0 : 1.0)
+    for (let mi = 0; mi < ym.length; mi++) out.push({ kind: 'line', from: { x: yLineX, y: ym[mi]! }, to: { x: yLineX + ymDir * ymLen, y: ym[mi]! }, stroke: spec.yMinorTickColor ?? spec.yTickColor ?? yLineColor, width: 1.0 })
+  }
+  const xTop = spec.xTop === true && spec.horizontal !== true
+  const xAxisY = xTop ? plot.y - xOff : plot.y + plot.h + xOff
+  const xLineY = spec.xAxisOnZero === true && spec.horizontal !== true && yDomain.min < 0.0 && yDomain.max > 0.0 ? scaleLinear(yDomain, plot.y + plot.h, plot.y, 0.0) : xAxisY
+  const xLineColor = spec.xAxisLineColor ?? t.axis
+  if (spec.showXAxis && spec.xAxisLine !== false) {
     out.push({
       kind: 'line',
-      from: { x: plot.x, y: plot.y + plot.h },
-      to: { x: plot.x + plot.w, y: plot.y + plot.h },
-      stroke: t.axis,
-      width: 1.0,
+      from: { x: plot.x, y: xLineY },
+      to: { x: plot.x + plot.w, y: xLineY },
+      stroke: xLineColor,
+      width: spec.xAxisLineWidth ?? 1.0,
     })
   }
-  if (spec.showYAxis && useY2) {
+  if (spec.showXAxis && spec.xTicks === true && spec.horizontal !== true) {
+    const xLen = spec.xTickLength ?? 5.0
+    const xDir = (xTop ? -1.0 : 1.0) * (spec.xTickInside === true ? -1.0 : 1.0)
+    for (const tx of xTickPositions(spec, l, plot)) {
+      out.push({ kind: 'line', from: { x: tx, y: xLineY }, to: { x: tx, y: xLineY + xDir * xLen }, stroke: spec.xTickColor ?? xLineColor, width: 1.0 })
+    }
+  }
+  // Horizontal: the value axis's minor ticks hang off the bottom axis line.
+  if (spec.showXAxis && spec.horizontal === true) {
+    const hm = minorPositions(l.xTicks, spec.yMinorTicks ?? 0.0)
+    const hmLen = spec.yMinorTickLength ?? 3.0
+    for (let mi = 0; mi < hm.length; mi++) out.push({ kind: 'line', from: { x: hm[mi]!, y: xLineY }, to: { x: hm[mi]!, y: xLineY + hmLen }, stroke: spec.yMinorTickColor ?? spec.yTickColor ?? xLineColor, width: 1.0 })
+  }
+  if (spec.showXAxis && spec.horizontal !== true && xValueAxis) {
+    const xm = minorPositions(l.xTicks, spec.xMinorTicks ?? 0.0)
+    const xmLen = spec.xMinorTickLength ?? 3.0
+    const xmDir = (xTop ? -1.0 : 1.0) * (spec.xTickInside === true ? -1.0 : 1.0)
+    for (let mi = 0; mi < xm.length; mi++) out.push({ kind: 'line', from: { x: xm[mi]!, y: xLineY }, to: { x: xm[mi]!, y: xLineY + xmDir * xmLen }, stroke: spec.xMinorTickColor ?? spec.xTickColor ?? xLineColor, width: 1.0 })
+  }
+  if (spec.showYAxis && spec.horizontal !== true) {
+    for (const a of spec.extraYAxes ?? []) {
+      const ax = a.side === 'left' ? plot.x - (a.offset ?? 0.0) : plot.x + plot.w + (a.offset ?? 0.0)
+      if (a.line !== false) out.push({ kind: 'line', from: { x: ax, y: plot.y }, to: { x: ax, y: plot.y + plot.h }, stroke: t.axis, width: 1.0 })
+    }
+  }
+  if (spec.showYAxis && useY2 && spec.y2AxisLine !== false) {
     out.push({
       kind: 'line',
-      from: { x: plot.x + plot.w, y: plot.y },
-      to: { x: plot.x + plot.w, y: plot.y + plot.h },
+      from: { x: plot.x + plot.w + y2Off, y: plot.y },
+      to: { x: plot.x + plot.w + y2Off, y: plot.y + plot.h },
       stroke: t.axis,
       width: 1.0,
     })
@@ -744,6 +2040,21 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         rect: { x: plot.x, y: top, w: plot.w, h: Math.abs(y2 - y1) },
         fill: withAlpha(a.color ?? t.axis, 0.12),
       })
+      if (a.label !== undefined) out.push({ kind: 'text', text: a.label, at: { x: plot.x + plot.w - 4.0, y: top + 4.0 }, fill: a.color ?? t.label, size: t.fontSize, align: 'end', baseline: 'top' })
+    }
+    const xFrom = a.xFrom ?? 0.0
+    const xTo = a.xTo ?? 0.0
+    if (a.xFrom !== undefined && a.xTo !== undefined) {
+      const span = categorySpanPixels(spec, l.xDomainUsed, plot, xFrom, xTo)
+      const x1 = span.x
+      const x2 = span.y
+      const left = x1 < x2 ? x1 : x2
+      out.push({
+        kind: 'rect',
+        rect: { x: left, y: plot.y, w: Math.abs(x2 - x1), h: plot.h },
+        fill: withAlpha(a.color ?? t.axis, 0.12),
+      })
+      if (a.label !== undefined) out.push({ kind: 'text', text: a.label, at: { x: left + 4.0, y: plot.y + 4.0 }, fill: a.color ?? t.label, size: t.fontSize, align: 'start', baseline: 'top' })
     }
   }
   for (const a of notes) {
@@ -773,7 +2084,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     }
     const ax = a.x ?? 0.0
     if (a.x !== undefined) {
-      const xPos = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, ax)
+      const xPos = categoryXPixel(spec, l.xDomainUsed, plot, ax)
       out.push({
         kind: 'line',
         from: { x: xPos, y: plot.y },
@@ -793,6 +2104,22 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           align: 'start',
           baseline: 'top',
         })
+      }
+    }
+    // A segment between two data-space points, dashed like the rules. Both
+    // ends scale on the SAME axes the rules use, so a segment from a datum
+    // to a datum lands on the marks the series drew there.
+    const sx1 = a.x1 ?? 0.0
+    const sy1 = a.y1 ?? 0.0
+    const sx2 = a.x2 ?? 0.0
+    const sy2 = a.y2 ?? 0.0
+    if (a.x1 !== undefined && a.y1 !== undefined && a.x2 !== undefined && a.y2 !== undefined) {
+      const p1: Pt = { x: categoryXPixel(spec, l.xDomainUsed, plot, sx1), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy1) }
+      const p2: Pt = { x: categoryXPixel(spec, l.xDomainUsed, plot, sx2), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy2) }
+      out.push({ kind: 'line', from: p1, to: p2, stroke: a.color ?? t.axis, width: 1.0, dash: [4.0, 4.0] })
+      const segLabel = a.label ?? ''
+      if (a.label !== undefined) {
+        out.push({ kind: 'text', text: segLabel, at: { x: p2.x, y: p2.y - 4.0 }, fill: a.color ?? t.label, size: t.fontSize, align: 'middle', baseline: 'bottom' })
       }
     }
   }
@@ -831,55 +2158,55 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   const stackedSeries = spec.series.filter((s) => s.kind === 'stacked')
   if (stackedSeries.length > 0) {
     const stackSegs = spec.horizontal === true
-      ? layoutStackedBarsH(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)
-      : layoutStackedBars(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)
+      ? setLaidH(spec, 'stacked', plot, yDomain)
+      : setLaid(spec, 'stacked', plot, yDomain)
     const fmtS = spec.yFormat ?? plain
+    for (const seg of stackSegs) {
+      const bgS = stackedSeries[seg.seriesIndex]!.barBackground ?? ''
+      if (bgS !== '' && seg.rect.w >= 0.0) out.push(rectCmd(barBackgroundRect(seg.rect, plot, spec.horizontal === true), bgS, undefined, undefined, undefined))
+    }
     for (const seg of stackSegs) {
       const rS = growRect(seg.rect, yDomain)
       const gS = seriesGradient(stackedSeries[seg.seriesIndex]!.gradient, plot)
-      out.push(rectCmd(rS, stackedSeries[seg.seriesIndex]!.color, stackedSeries[seg.seriesIndex]!.corners, gS.stops.length === 0 ? undefined : gS))
-      const lvlS = emphasisLevel(spec, seg.datumIndex)
+      out.push(rectCmd(rS, stateFill(spec, stackedSeries[seg.seriesIndex]!, seg.datumIndex, stackedSeries[seg.seriesIndex]!.color), stackedSeries[seg.seriesIndex]!.corners, gS.stops.length === 0 ? undefined : gS, stackedSeries[seg.seriesIndex]!.pattern))
+      const lvlS = seriesEmphasisLevel(spec, stackedSeries[seg.seriesIndex]!, seg.datumIndex)
       if (lvlS > 0) out.push(emphasisOutline(rS, lvlS, t.label))
       // A stacked segment labels INSIDE itself: its value is the segment's
       // own, not the running total, and there is no outside edge to hang it
       // from that would not collide with the segment above.
       if (stackedSeries[seg.seriesIndex]!.showValues === true && progress >= 1.0) {
-        out.push({
-          kind: 'text',
-          text: fmtS(seg.value),
-          at: { x: rS.x + rS.w / 2.0, y: rS.y + rS.h / 2.0 },
-          fill: t.label,
-          size: t.fontSize,
-          align: 'middle',
-          baseline: 'middle',
-        })
+        const sS = stackedSeries[seg.seriesIndex]!
+        const cmdsS = sS.labelPosition !== undefined
+          ? barLabelCmds(sS, seg.datumIndex, fmtS(seg.value), rS, stateFill(spec, sS, seg.datumIndex, sS.color), t, measure)
+          : seriesLabelCmds(sS, seg.datumIndex, fmtS(seg.value), { x: rS.x + rS.w / 2.0, y: rS.y + rS.h / 2.0 }, 'middle', 'middle', t, measure)
+        for (const c of cmdsS) out.push(c)
       }
     }
   }
   const groupedSeries = spec.series.filter((s) => s.kind === 'grouped')
   if (groupedSeries.length > 0) {
     const groupSegs = spec.horizontal === true
-      ? layoutGroupedBarsH(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)
-      : layoutGroupedBars(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)
+      ? setLaidH(spec, 'grouped', plot, yDomain)
+      : setLaid(spec, 'grouped', plot, yDomain)
     const fmtG = spec.yFormat ?? plain
+    for (const seg of groupSegs) {
+      const bgG = groupedSeries[seg.seriesIndex]!.barBackground ?? ''
+      if (bgG !== '' && seg.rect.w >= 0.0) out.push(rectCmd(barBackgroundRect(seg.rect, plot, spec.horizontal === true), bgG, undefined, undefined, undefined))
+    }
     for (const seg of groupSegs) {
       const rG = growRect(seg.rect, yDomain)
       const gG = seriesGradient(groupedSeries[seg.seriesIndex]!.gradient, plot)
-      out.push(rectCmd(rG, groupedSeries[seg.seriesIndex]!.color, groupedSeries[seg.seriesIndex]!.corners, gG.stops.length === 0 ? undefined : gG))
-      const lvlG = emphasisLevel(spec, seg.datumIndex)
+      out.push(rectCmd(rG, stateFill(spec, groupedSeries[seg.seriesIndex]!, seg.datumIndex, groupedSeries[seg.seriesIndex]!.color), groupedSeries[seg.seriesIndex]!.corners, gG.stops.length === 0 ? undefined : gG, groupedSeries[seg.seriesIndex]!.pattern))
+      const lvlG = seriesEmphasisLevel(spec, groupedSeries[seg.seriesIndex]!, seg.datumIndex)
       if (lvlG > 0) out.push(emphasisOutline(rG, lvlG, t.label))
       // A grouped bar has a free outer edge, so it labels OUTSIDE like a
       // plain bar — above a positive one, below a negative one.
       if (groupedSeries[seg.seriesIndex]!.showValues === true && progress >= 1.0) {
-        out.push({
-          kind: 'text',
-          text: fmtG(seg.value),
-          at: { x: rG.x + rG.w / 2.0, y: seg.value < 0.0 ? rG.y + rG.h + 4.0 : rG.y - 4.0 },
-          fill: t.label,
-          size: t.fontSize,
-          align: 'middle',
-          baseline: seg.value < 0.0 ? 'top' : 'bottom',
-        })
+        const sG = groupedSeries[seg.seriesIndex]!
+        const cmdsG = sG.labelPosition !== undefined
+          ? barLabelCmds(sG, seg.datumIndex, fmtG(seg.value), rG, stateFill(spec, sG, seg.datumIndex, sG.color), t, measure)
+          : seriesLabelCmds(sG, seg.datumIndex, fmtG(seg.value), { x: rG.x + rG.w / 2.0, y: seg.value < 0.0 ? rG.y + rG.h + 4.0 : rG.y - 4.0 }, 'middle', seg.value < 0.0 ? 'top' : 'bottom', t, measure)
+        for (const c of cmdsG) out.push(c)
       }
     }
   }
@@ -889,24 +2216,31 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // outline of the topmost series is the total.
   const areaStack = spec.horizontal === true ? [] : spec.series.filter((s) => s.kind === 'stackedArea')
   if (areaStack.length > 0) {
-    const tops = stackCumulative(areaStack.map((s) => s.values))
+    const levels = levelsOf(areaStack)
+    // A band with nothing below it fills to zero, held inside the axis (ECharts' `origin: 'auto'`).
+    const origin = yDomain.min > 0.0 ? yDomain.min : yDomain.max < 0.0 ? yDomain.max : 0.0
     for (let k = 0; k < areaStack.length; k++) {
       const sA = areaStack[k]!
-      const top = tops[k]!
-      const below = k === 0 ? [] : tops[k - 1]!
+      const top = levels.tops[k]!
+      const base = levels.bases[k]!
       const upper: Pt[] = []
       const lower: Pt[] = []
       for (let i = 0; i < top.length; i++) {
-        const xAt = plot.x + (plot.w / Math.max(1.0, countToDouble(top.length))) * (countToDouble(i) + 0.5)
-        upper.push({ x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, top[i]!) })
-        lower.push({ x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, k === 0 ? yDomain.min : below[i]!) })
+        const xAt = edgeCategoryPoints(spec) && top.length > 1
+          ? plot.x + (plot.w / countToDouble(top.length - 1)) * countToDouble(i)
+          : plot.x + (plot.w / Math.max(1.0, countToDouble(top.length))) * (countToDouble(i) + 0.5)
+        const lo = isFiniteNumber(base[i]!) ? base[i]! : origin
+        // A gap is a zero-height band: it sits on whatever it would have stacked on.
+        const hiV = isFiniteNumber(top[i]!) ? top[i]! : k > 0 && isFiniteNumber(levels.tops[k - 1]![i]!) ? levels.tops[k - 1]![i]! : lo
+        upper.push({ x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, hiV) })
+        lower.push({ x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, isFiniteNumber(top[i]!) ? lo : hiV) })
       }
       if (upper.length > 1) {
         const poly: Pt[] = []
         for (const p of upper) poly.push(p)
         for (let i = lower.length - 1; i >= 0; i--) poly.push(lower[i]!)
         const gA = seriesGradient(sA.gradient, plot)
-        out.push(polygonCmd(poly, sA.color, gA.stops.length === 0 ? undefined : gA))
+        out.push(polygonCmd(poly, sA.color, gA.stops.length === 0 ? undefined : gA, sA.pattern))
         // Like a stacked SEGMENT, a stacked band labels inside itself with
         // its OWN value — the running total is what the outline already
         // shows, and a label repeating it would say nothing per series.
@@ -915,22 +2249,16 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           for (let i = 0; i < upper.length; i++) {
             const v = i < sA.values.length ? sA.values[i]! : 0.0 / 0.0
             if (!isFiniteValue(v)) continue
-            out.push({
-              kind: 'text',
-              text: fmtA(v),
-              at: { x: upper[i]!.x, y: (upper[i]!.y + lower[i]!.y) / 2.0 },
-              fill: t.label,
-              size: t.fontSize,
-              align: 'middle',
-              baseline: 'middle',
-            })
+            for (const c of seriesLabelCmds(sA, i, fmtA(v), { x: upper[i]!.x, y: (upper[i]!.y + lower[i]!.y) / 2.0 }, 'middle', 'middle', t, measure)) out.push(c)
           }
         }
       }
     }
   }
 
-  for (let sIdx = 0; sIdx < spec.series.length; sIdx++) {
+  const drawOrder = validDrawOrder(spec.drawOrder ?? [], spec.series.length)
+  for (let oIdx = 0; oIdx < spec.series.length; oIdx++) {
+    const sIdx = drawOrder.length === 0 ? oIdx : drawOrder[oIdx]!
     const s = spec.series[sIdx]!
     if (s.kind === 'stacked' || s.kind === 'grouped' || s.kind === 'stackedArea') continue
     // One helper rather than three call-site conditionals: line, area and
@@ -941,11 +2269,14 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     const xs = spec.xValues ?? []
     // Each independent series scales against ITS axis — the whole point of a
     // dual-axis chart, and the line that decides it.
-    const sDomain = seriesOnRightAxis(s, spec) ? y2Domain : yDomain
+    const sDomain = seriesDomain(s, spec, yDomain, y2Domain)
+    const onX2 = seriesOnX2(s, spec)
+    const sXs = onX2 ? s.xs ?? [] : xs
+    const sXDomain = onX2 ? resolveX2Domain(spec) : l.xDomainUsed
     const place = (values: Double[]): Pt[] =>
-      xs.length > 0
-        ? layoutSeriesPointsAt(values, xs, plot, sDomain, l.xDomainUsed)
-        : layoutSeriesPoints(values, plot, sDomain)
+      sXs.length > 0
+        ? layoutSeriesPointsAt(values, sXs, plot, sDomain, sXDomain)
+        : categoryPoints(spec, values, plot, sDomain)
 
     // The curve shapes line AND area from the same densified points — an
     // area whose fill followed straight segments under a smoothed outline
@@ -956,36 +2287,32 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     // Resolved once per series: the ramp spans the plot, not the shape.
     const sGradAll = seriesGradient(s.gradient, plot)
     const sGrad = sGradAll.stops.length === 0 ? undefined : sGradAll
-    const shape = (pts: Pt[]): Pt[] => curveFn(pts)
+    const smoothAmt = s.smoothAmount ?? 0.0
+    const smoothMono = s.smoothMonotone ?? ''
+    const shape = (pts: Pt[]): Pt[] => (smoothAmt > 0.0 ? echartsSmooth(pts, smoothAmt, smoothMono) : curveFn(pts))
 
     if (spec.horizontal === true) {
       if (s.kind !== 'bars') continue
-      const rects = layoutBarsH(s.values, plot, yDomain, 0.25)
+      const rects = barsLaidH(spec, sIdx, plot, yDomain)
+      const bgH = s.barBackground ?? ''
+      if (bgH !== '') for (const r of rects) if (r.w >= 0.0) out.push(rectCmd(barBackgroundRect(r, plot, true), bgH, undefined, undefined, undefined))
       for (let ri = 0; ri < rects.length; ri++) {
         const r = rects[ri]!
         const grown = growRectH(r)
+        const fillH = stateFill(spec, s, ri, s.color)
         if (s.symbol === undefined) {
-          out.push(rectCmd(grown, s.color, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad))
-        } else if (s.symbolRepeat === true) {
-          // Repeat a unit symbol along the bar (left to right); a partial last symbol is dropped.
-          const unit = grown.h
-          let count = 0
-          let acc = unit
-          for (let k = 0; k < 400; k++) {
-            if (unit > 0.0 && acc <= grown.w + 0.001) count = k + 1
-            acc = acc + unit
-          }
-          let kf = 0.0
-          for (let k = 0; k < count; k++) {
-            out.push(symbolCommand({ x: grown.x + unit * kf, y: grown.y, w: unit, h: unit }, s.symbol ?? 'rect', s.color))
-            kf = kf + 1.0
-          }
+          /* v8 ignore next — `(s.values[ri] ?? 0.0)` is unreachable: `ri` indexes
+             rects built FROM `s.values`, so the read is always in range. Native
+             needs the unwrap; the web cannot reach it. */
+          out.push(rectCmd(grown, fillH, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad, s.pattern))
         } else {
-          out.push(symbolCommand(grown, s.symbol ?? 'rect', s.color))
+          /* v8 ignore next — `s.values[ri] ?? 0.0` is unreachable: `ri` indexes rects built
+             FROM `s.values`. Native needs the unwrap; the web cannot reach it. */
+          for (const c of pictorialCommands(pictorialBar(s, grown, true, s.values[ri] ?? 0.0, fillH))) out.push(c)
         }
       }
       for (let i = 0; i < rects.length; i++) {
-        const lvl = emphasisLevel(spec, i)
+        const lvl = seriesEmphasisLevel(spec, s, i)
         if (lvl > 0) out.push(emphasisOutline(growRectH(rects[i]!), lvl, t.label))
       }
       if (s.showValues === true && progress >= 1.0) {
@@ -997,53 +2324,36 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           if (!isFiniteValue(v)) continue
           // The label sits just past the bar's far end — right of a positive
           // bar, left of a negative one.
-          out.push({
-            kind: 'text',
-            text: fmt(v),
-            at: {
-              x: v < 0.0 ? r.x - 4.0 : r.x + r.w + 4.0,
-              y: r.y + r.h / 2.0,
-            },
-            fill: t.label,
-            size: t.fontSize,
-            align: v < 0.0 ? 'end' : 'start',
-            baseline: 'middle',
-          })
+          const cmdsH = s.labelPosition !== undefined
+            ? barLabelCmds(s, i, fmt(v), r, stateFill(spec, s, i, s.color), t, measure)
+            : seriesLabelCmds(s, i, fmt(v), { x: v < 0.0 ? r.x - 4.0 : r.x + r.w + 4.0, y: r.y + r.h / 2.0 }, v < 0.0 ? 'end' : 'start', 'middle', t, measure)
+          for (const c of cmdsH) out.push(c)
         }
       }
       continue
     }
 
     if (s.kind === 'bars') {
-      const rects = layoutBars(s.values, plot, sDomain, 0.25)
+      const rects = barsLaid(spec, sIdx, plot, sDomain)
+      const bgV = s.barBackground ?? ''
+      if (bgV !== '') for (const r of rects) if (r.w >= 0.0) out.push(rectCmd(barBackgroundRect(r, plot, false), bgV, undefined, undefined, undefined))
       for (let ri = 0; ri < rects.length; ri++) {
         const r = rects[ri]!
         const grown = growRect(r, sDomain)
+        const fillV = stateFill(spec, s, ri, s.color)
         if (s.symbol === undefined) {
-          out.push(rectCmd(grown, s.color, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad))
-        } else if (s.symbolRepeat === true) {
-          // Repeat a unit symbol up the bar; a partial last symbol is dropped.
-          // (Horizontal charts left this loop above, so the bar is vertical.)
-          const unit = grown.w
-          const length = grown.h
-          let count = 0
-          let acc = unit
-          for (let k = 0; k < 400; k++) {
-            if (unit > 0.0 && acc <= length + 0.001) count = k + 1
-            acc = acc + unit
-          }
-          let kf = 0.0
-          for (let k = 0; k < count; k++) {
-            const cell: Rect = { x: grown.x, y: grown.y + grown.h - unit * (kf + 1.0), w: unit, h: unit }
-            out.push(symbolCommand(cell, s.symbol ?? 'rect', s.color))
-            kf = kf + 1.0
-          }
+          /* v8 ignore next — `(s.values[ri] ?? 0.0)` is unreachable: `ri` indexes
+             rects built FROM `s.values`, so the read is always in range. Native
+             needs the unwrap; the web cannot reach it. */
+          out.push(rectCmd(grown, fillV, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad, s.pattern))
         } else {
-          out.push(symbolCommand(grown, s.symbol ?? 'rect', s.color))
+          /* v8 ignore next — same unreachable native unwrap: `ri` indexes rects built FROM
+             `s.values`. */
+          for (const c of pictorialCommands(pictorialBar(s, grown, false, s.values[ri] ?? 0.0, fillV))) out.push(c)
         }
       }
       for (let i = 0; i < rects.length; i++) {
-        const lvl = emphasisLevel(spec, i)
+        const lvl = seriesEmphasisLevel(spec, s, i)
         if (lvl > 0) out.push(emphasisOutline(growRect(rects[i]!, sDomain), lvl, t.label))
       }
       if (s.showValues === true && progress >= 1.0) {
@@ -1054,15 +2364,10 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           if (!isFiniteValue(v)) continue
           // A negative bar hangs below the zero line, so its label goes under
           // its bottom edge — above the top would sit ON the zero line.
-          out.push({
-            kind: 'text',
-            text: fmt(v),
-            at: { x: r.x + r.w / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0 },
-            fill: t.label,
-            size: t.fontSize,
-            align: 'middle',
-            baseline: v < 0.0 ? 'top' : 'bottom',
-          })
+          const cmdsB = s.labelPosition !== undefined
+            ? barLabelCmds(s, i, fmt(v), r, stateFill(spec, s, i, s.color), t, measure)
+            : seriesLabelCmds(s, i, fmt(v), { x: r.x + r.w / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0 }, 'middle', v < 0.0 ? 'top' : 'bottom', t, measure)
+          for (const c of cmdsB) out.push(c)
         }
       }
     } else if (s.kind === 'waterfall') {
@@ -1071,14 +2376,14 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       const steps = layoutWaterfall(s.values, plot, sDomain, 0.25)
       for (let si = 0; si < steps.length; si++) {
         const st = steps[si]!
-        const fill = st.value < 0.0 ? s.negativeColor ?? withAlpha(s.color, 0.55) : s.color
+        const fill = stateFill(spec, s, st.datumIndex, st.value < 0.0 ? s.negativeColor ?? withAlpha(s.color, 0.55) : s.color)
         // Grows from its START level, not the axis zero: a step that begins
         // at 40 and adds 5 must rise from 40.
         const startY = scaleLinear(sDomain, plot.y + plot.h, plot.y, st.start)
         const grownH = st.rect.h * progress
         const grown: Rect = progress >= 1.0 ? st.rect : { x: st.rect.x, y: st.value >= 0.0 ? startY - grownH : startY, w: st.rect.w, h: grownH }
-        out.push(rectCmd(grown, fill, s.corners, sGrad))
-        const lvlW = emphasisLevel(spec, st.datumIndex)
+        out.push(rectCmd(grown, fill, s.corners, sGrad, s.pattern))
+        const lvlW = seriesEmphasisLevel(spec, s, st.datumIndex)
         if (lvlW > 0) out.push(emphasisOutline(grown, lvlW, t.label))
         if (si + 1 < steps.length && progress >= 1.0) {
           const next = steps[si + 1]!
@@ -1088,24 +2393,48 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         if (s.showValues === true && progress >= 1.0) {
           const fmt = spec.yFormat ?? plain
           const v = printed(sIdx, st.datumIndex)
-          out.push({
-            kind: 'text',
-            text: fmt(v),
-            at: { x: st.rect.x + st.rect.w / 2.0, y: v < 0.0 ? st.rect.y + st.rect.h + 4.0 : st.rect.y - 4.0 },
-            fill: t.label,
-            size: t.fontSize,
-            align: 'middle',
-            baseline: v < 0.0 ? 'top' : 'bottom',
-          })
+          const cmdsW = s.labelPosition !== undefined
+            ? barLabelCmds(s, st.datumIndex, fmt(v), st.rect, fill, t, measure)
+            : seriesLabelCmds(s, st.datumIndex, fmt(v), { x: st.rect.x + st.rect.w / 2.0, y: v < 0.0 ? st.rect.y + st.rect.h + 4.0 : st.rect.y - 4.0 }, 'middle', v < 0.0 ? 'top' : 'bottom', t, measure)
+          for (const c of cmdsW) out.push(c)
         }
       }
     } else if (s.kind === 'line') {
       // A non-finite value is a GAP: the line breaks into runs rather than
-      // drawing a zero or bridging the hole (ECharts' connectNulls: false).
-      for (const run of splitRuns(s.values, place)) {
+      // drawing a zero — or, under ECharts' `connectNulls`, bridges it.
+      for (const run of splitRuns(s.values, place, s.connectNulls)) {
         const pts = reveal(shape(run))
         if (pts.length > 1) {
-          out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width, dash: s.dash })
+          if (s.areaFill === true) {
+            // The fill closes to its origin under the same shaped points, so
+            // the outline and the fill cannot drift apart.
+            const baseY = scaleLinear(sDomain, plot.y + plot.h, plot.y, s.areaOriginAt ?? areaOriginValue(s.areaOrigin ?? 'auto', sDomain))
+            const poly: Pt[] = []
+            for (const p of pts) poly.push(p)
+            poly.push({ x: pts[pts.length - 1]!.x, y: baseY })
+            poly.push({ x: pts[0]!.x, y: baseY })
+            const over = stateAreaOpacity(spec, s)
+            const alpha = over >= 0.0 ? over : (s.areaOpacity ?? 0.7)
+            out.push(polygonCmd(poly, withAlpha(s.areaColor ?? s.color, alpha), sGrad, s.pattern))
+          }
+          out.push({ kind: 'polyline', points: pts, stroke: s.color, width: stateWidth(spec, s), dash: s.dash })
+        }
+      }
+      // A line shows its datum symbols only when asked (ECharts' showSymbol):
+      // one symbol per finite datum, at the line's own radius, over the line.
+      // Coalesced before use: Swift does not narrow `s.symbol` through the guard.
+      const lineSymbol = s.symbol ?? 'circle'
+      if (s.symbol !== undefined && progress >= 1.0) {
+        const dots = place(s.values)
+        const every = symbolInterval(s, spec, plot, l.xLabelEvery, sXs.length > 0)
+        for (let i = 0; i < dots.length; i++) {
+          if (!isFiniteValue(s.values[i]!)) continue
+          if (every > 1 && i % every !== 0) continue
+          const d = dots[i]!
+          const cell = { x: d.x - s.radius, y: d.y - s.radius, w: s.radius * 2.0, h: s.radius * 2.0 }
+          if (s.symbolHollow === true) {
+            for (const c of hollowSymbol(cell, lineSymbol, s.color, spec.theme.surface)) out.push(c)
+          } else out.push(symbolCommand(cell, lineSymbol, s.color))
         }
       }
     } else if (s.kind === 'band') {
@@ -1134,22 +2463,29 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const poly: Pt[] = []
         for (const p of upper) poly.push(p)
         for (let i = lower.length - 1; i >= 0; i--) poly.push(lower[i]!)
-        if (poly.length > 2) out.push(polygonCmd(poly, s.color, sGrad))
+        if (poly.length > 2) out.push(polygonCmd(poly, s.color, sGrad, s.pattern))
       }
     } else if (s.kind === 'area') {
       // Gap-splitting (a non-finite value breaks the fill into runs, same
       // as the line branch above) combined with gradient fill support — two
       // independent fixes to this branch that landed as separate PRs.
-      for (const run of splitRuns(s.values, place)) {
+      for (const run of splitRuns(s.values, place, s.connectNulls)) {
         const pts = reveal(shape(run))
         if (pts.length > 1) {
           const poly: Pt[] = []
           for (const p of pts) poly.push(p)
           // Close down to the baseline so the fill is a band under the line
           // rather than a polygon between the first and last data points.
-          poly.push({ x: pts[pts.length - 1]!.x, y: plot.y + plot.h })
-          poly.push({ x: pts[0]!.x, y: plot.y + plot.h })
-          out.push(polygonCmd(poly, s.color, sGrad))
+          // The baseline is the domain's minimum, so an inverted axis fills upward.
+          const baseY = scaleLinear(sDomain, plot.y + plot.h, plot.y, sDomain.min)
+          poly.push({ x: pts[pts.length - 1]!.x, y: baseY })
+          poly.push({ x: pts[0]!.x, y: baseY })
+          // Translucent by default, so the grid and anything drawn under the
+          // area stay visible: an opaque fill in a palette colour covered the
+          // plot. `areaOpacity` sets it; an emphasis/blur state overrides both.
+          const areaAlpha = stateAreaOpacity(spec, s)
+          const baseAlpha = s.areaOpacity ?? AREA_MARK_OPACITY
+          out.push(polygonCmd(poly, withAlpha(s.color, areaAlpha < 0.0 ? baseAlpha : areaAlpha), sGrad, s.pattern))
         }
       }
     } else {
@@ -1164,17 +2500,24 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           out.push({ kind: 'circle', center: pts[i]!, radius: fullR * 2.6 * progress, fill: withAlpha(s.color, 0.12) })
           out.push({ kind: 'circle', center: pts[i]!, radius: fullR * 1.7 * progress, fill: withAlpha(s.color, 0.25) })
         }
-        const lvlP = emphasisLevel(spec, i)
+        const lvlP = seriesEmphasisLevel(spec, s, i)
         if (lvlP > 0) {
           // A halo UNDER the dot: emphasis that never hides the value.
           out.push({ kind: 'circle', center: pts[i]!, radius: fullR * progress + (lvlP === 2 ? 4.0 : 3.0), fill: withAlpha(t.label, 0.35) })
         }
-        out.push({
-          kind: 'circle',
-          center: pts[i]!,
-          radius: fullR * progress,
-          fill: s.color,
-        })
+        // The datum symbol: a circle unless the series names another shape.
+        // `emphasis.scale` grows the highlighted symbol, as ECharts does.
+        const scaled = lvlP === 1 ? fullR * (s.emphasisScale ?? 1.0) : fullR
+        const r = scaled * progress
+        const pointSymbol = s.symbol ?? 'circle'
+        const fillP = stateFill(spec, s, i, s.color)
+        if (s.symbolHollow === true) {
+          for (const c of hollowSymbol({ x: pts[i]!.x - r, y: pts[i]!.y - r, w: r * 2.0, h: r * 2.0 }, pointSymbol, fillP, spec.theme.surface)) out.push(c)
+        } else if (pointSymbol === 'circle') {
+          out.push({ kind: 'circle', center: pts[i]!, radius: r, fill: fillP })
+        } else {
+          out.push(symbolCommand({ x: pts[i]!.x - r, y: pts[i]!.y - r, w: r * 2.0, h: r * 2.0 }, pointSymbol, fillP))
+        }
       }
     }
 
@@ -1204,16 +2547,30 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const v = printed(sIdx, i)
         // A gap has no value to print — same rule as the bars.
         if (!isFiniteValue(v)) continue
-        out.push({
-          kind: 'text',
-          text: fmtP(v),
-          // Above the point, clear of a dot of the series' own radius.
-          at: { x: labelPts[i]!.x, y: labelPts[i]!.y - (s.radius + 5.0) },
-          fill: t.label,
-          size: t.fontSize,
-          align: 'middle',
-          baseline: 'bottom',
-        })
+        // With a position (ECharts'), placed against the symbol's box — a hollow
+        // symbol's ring reaches a pixel past its radius. Else above the point,
+        // clear of a dot of the series' own radius.
+        const half = s.radius + (s.symbolHollow === true ? 1.0 : 0.0)
+        const cmdsP = s.labelPosition !== undefined
+          ? barLabelCmds(s, i, fmtP(v), { x: labelPts[i]!.x - half, y: labelPts[i]!.y - half, w: 2.0 * half, h: 2.0 * half }, s.color, t, measure)
+          : seriesLabelCmds(s, i, fmtP(v), { x: labelPts[i]!.x, y: labelPts[i]!.y - (s.radius + 5.0) }, 'middle', 'bottom', t, measure)
+        for (const c of cmdsP) out.push(c)
+      }
+    }
+
+    // `emphasis.label` / `select.label`: the datum's own label, shown only in
+    // that state. The anchor is the mark's own geometry — a bar's top, a
+    // stacked segment's far edge, a point — so it lands where the reader is
+    // pointing rather than at the raw value.
+    if ((s.emphasisLabel === true || s.selectLabel === true) && progress >= 1.0) {
+      const fmtS = spec.yFormat ?? plain
+      const anchors = brushLikeAnchors(spec, s, sIdx, plot, yDomain, l, place)
+      for (let i = 0; i < anchors.length; i++) {
+        if (!stateLabelShown(spec, s, i)) continue
+        const v = printed(sIdx, i)
+        if (!isFiniteValue(v)) continue
+        const at = anchors[i]!
+        for (const c of seriesLabelCmds(s, i, fmtS(v), { x: at.x, y: at.y - 6.0 }, 'middle', 'bottom', t, measure)) out.push(c)
       }
     }
 
@@ -1226,7 +2583,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     if (eLow.length > 0 && eHigh.length > 0 && progress >= 1.0 && s.kind !== 'waterfall') {
       const centres: Double[] = []
       if (s.kind === 'bars') {
-        for (const r of layoutBars(s.values, plot, sDomain, 0.25)) centres.push(r.x + r.w / 2.0)
+        for (const r of barsLaid(spec, sIdx, plot, sDomain)) centres.push(r.x + r.w / 2.0)
       } else {
         for (const p of place(s.values)) centres.push(p.x)
       }
@@ -1247,6 +2604,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     }
   }
 
+  for (const ls of spec.lines ?? []) for (const c of linesCommands(ls, plot, l.xDomainUsed, yDomain, spec.effectTime ?? 0.0)) out.push(c)
+
   // Point markers draw OVER the series (painter's order — a marker buried
   // under an area fill marks nothing) and UNDER the axis labels.
   const markers = spec.markers ?? []
@@ -1263,6 +2622,15 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     } else if (m.at === 'min') {
       idx = 0
       for (let i = 1; i < n; i++) if (s.values[i]! < s.values[idx]!) idx = i
+    } else if (m.at === 'average') {
+      // ECharts places an `average` markPoint on the datum NEAREST the mean
+      // (`indicesOfNearest`), not at the mean itself — the mean is rarely a
+      // point the series drew.
+      let sum = 0.0
+      for (let i = 0; i < n; i++) sum = sum + s.values[i]!
+      const mean = sum / n
+      idx = 0
+      for (let i = 1; i < n; i++) if (Math.abs(s.values[i]! - mean) < Math.abs(s.values[idx]! - mean)) idx = i
     } else {
       const rawAt = m.atIndex ?? -1.0
       if (m.atIndex !== undefined) {
@@ -1284,7 +2652,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       }
     }
     if (idx < 0) continue
-    const mDomain = seriesOnRightAxis(s, spec) ? y2Domain : yDomain
+    const mDomain = seriesDomain(s, spec, yDomain, y2Domain)
     const xsM = spec.xValues ?? []
     // The anchor is whatever the mark's own geometry put there. Markers used
     // to skip the flipped frame and the set-laid-out kinds entirely — a
@@ -1301,8 +2669,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         : spec.horizontal === true
           ? layoutSeriesPointsH(s.values, plot, mDomain)[idx]
           : xsM.length > 0
-            ? layoutSeriesPointsAt(s.values, xsM, plot, mDomain, l.xDomainUsed)[idx]
-            : layoutSeriesPoints(s.values, plot, mDomain)[idx]
+            ? layoutSeriesPointsAt(s.values, seriesOnX2(s, spec) ? s.xs ?? [] : xsM, plot, mDomain, seriesOnX2(s, spec) ? resolveX2Domain(spec) : l.xDomainUsed)[idx]
+            : categoryPoints(spec, s.values, plot, mDomain)[idx]
     if (p === undefined) continue
     const mColor = m.color ?? s.color
     out.push({ kind: 'circle', center: p, radius: (m.radius ?? 4.0) * progress, fill: mColor })
@@ -1323,6 +2691,12 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // The anchors hold in BOTH frames: y-side labels sit left of the plot,
   // x-side labels below it — only what the ticks CONTAIN differs (categories
   // vs values in the horizontal frame).
+  // `axisLabel.margin` off the axis (ECharts' 8 through the option, 6 here by
+  // default); `inside` flips the labels into the plot; `rotate` turns each
+  // about its anchor.
+  const yMargin = spec.yLabelMargin ?? 6.0
+  const yOutward = spec.yLabelInside === true ? yRight : !yRight
+  const yTurn = spec.yLabelAngle ?? 0.0
   for (let ti = 0; ti < l.yTicks.length; ti++) {
     const tick = l.yTicks[ti]!
     // The horizontal frame's category labels thin like x labels do.
@@ -1330,49 +2704,94 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     out.push({
       kind: 'text',
       text: tick.label,
-      at: { x: plot.x - 6.0, y: tick.pos },
+      at: { x: yOutward ? yAxisX - yMargin : yAxisX + yMargin, y: tick.pos },
       fill: t.label,
       size: t.fontSize,
-      align: 'end',
+      align: yOutward ? 'end' : 'start',
       baseline: 'middle',
+      rotate: yTurn !== 0.0 ? yTurn : undefined,
     })
   }
   for (const tick of l.y2Ticks) {
     out.push({
       kind: 'text',
       text: tick.label,
-      at: { x: plot.x + plot.w + 6.0, y: tick.pos },
+      at: { x: plot.x + plot.w + y2Off + 6.0, y: tick.pos },
       fill: t.label,
       size: t.fontSize,
       align: 'start',
       baseline: 'middle',
     })
   }
+  // A second x axis: its labels at the first axis's tick positions, on the
+  // opposite edge, reversed with the categories when the axis is inverted.
+  const x2 = spec.x2Labels ?? []
+  if ((x2.length > 0 || l.x2Ticks.length > 0) && spec.showXAxis && spec.horizontal !== true) {
+    const edgeY = xTop ? plot.y + plot.h : plot.y
+    out.push({ kind: 'line', from: { x: plot.x, y: edgeY }, to: { x: plot.x + plot.w, y: edgeY }, stroke: t.axis, width: 1.0 })
+    for (const tk of l.x2Ticks) out.push({ kind: 'text', text: tk.label, at: { x: tk.pos, y: xTop ? edgeY + 6.0 : edgeY - 6.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: xTop ? 'top' : 'bottom' })
+    const inv = categoriesInverted(spec)
+    for (let ti = 0; ti < l.xTicks.length; ti++) {
+      const tick = l.xTicks[ti]!
+      const j = inv ? x2.length - 1 - ti : ti
+      if (j < 0 || j >= x2.length) continue
+      out.push({ kind: 'text', text: x2[j]!, at: { x: tick.pos, y: xTop ? edgeY + 6.0 : edgeY - 6.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: xTop ? 'top' : 'bottom' })
+    }
+    const x2Title = spec.x2Title ?? ''
+    if (x2Title !== '') out.push({ kind: 'text', text: x2Title, at: { x: plot.x + plot.w / 2.0, y: xTop ? spec.height - 2.0 : 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: xTop ? 'bottom' : 'top' })
+  }
+
+  // Extra y axes: their tick labels outside their own line, and a title
+  // outside the widest of them.
+  let extraIndex = 0.0
+  for (const a of spec.extraYAxes ?? []) {
+    const left = a.side === 'left'
+    const ax = left ? plot.x - (a.offset ?? 0.0) : plot.x + plot.w + (a.offset ?? 0.0)
+    let widest = 0.0
+    for (const tk of l.extraTicks) {
+      if (tk.axis !== extraIndex) continue
+      out.push({ kind: 'text', text: tk.label, at: { x: left ? ax - 6.0 : ax + 6.0, y: tk.pos }, fill: t.label, size: t.fontSize, align: left ? 'end' : 'start', baseline: 'middle' })
+      const w = measure(tk.label, t.fontSize)
+      if (w > widest) widest = w
+    }
+    const title = a.title ?? ''
+    if (title !== '' && spec.showYAxis) {
+      const tx = left ? ax - 6.0 - widest - t.fontSize * 0.9 : ax + 6.0 + widest + t.fontSize * 0.9
+      out.push({ kind: 'text', text: title, at: { x: tx, y: plot.y + plot.h / 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: 'middle', rotate: left ? -90.0 : 90.0 })
+    }
+    extraIndex = extraIndex + 1.0
+  }
+  // `axisLabel.margin` off the axis; `inside` puts the labels on the plot's side of it.
+  const xMargin = spec.xLabelMargin ?? 6.0
+  const xBelow = spec.xLabelInside === true ? xTop : !xTop
+  const xLabelY = xBelow ? xAxisY + xMargin : xAxisY - xMargin
   for (let ti = 0; ti < l.xTicks.length; ti++) {
     const tick = l.xTicks[ti]!
     if (l.xLabelEvery > 1 && ti % l.xLabelEvery !== 0) continue
     if (l.xLabelRotate !== 0.0) {
       // Slanted: the label's END sits at the tick and the text hangs
       // down-left along the rotation, which is where the gutter made room.
+      // Above the plot the slant mirrors: the text rises up-left instead.
       out.push({
         kind: 'text',
         text: tick.label,
-        at: { x: tick.pos, y: plot.y + plot.h + 6.0 },
+        at: { x: tick.pos, y: xLabelY },
         fill: t.label,
         size: t.fontSize,
-        align: 'end',
+        // Turned counter-clockwise the text hangs from its end, clockwise from its start (ECharts).
+        align: l.xLabelRotate < 0.0 ? 'end' : 'start',
         baseline: 'middle',
-        rotate: l.xLabelRotate,
+        rotate: xTop ? -l.xLabelRotate : l.xLabelRotate,
       })
     } else {
       out.push({
         kind: 'text',
         text: tick.label,
-        at: { x: tick.pos, y: plot.y + plot.h + 6.0 },
+        at: { x: tick.pos, y: xLabelY },
         fill: t.label,
         size: t.fontSize,
         align: 'middle',
-        baseline: 'top',
+        baseline: xBelow ? 'top' : 'bottom',
       })
     }
   }
@@ -1382,11 +2801,11 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // along their axes.
   const xTitle = spec.xTitle ?? ''
   if (xTitle !== '' && spec.showXAxis) {
-    out.push({ kind: 'text', text: xTitle, at: { x: plot.x + plot.w / 2.0, y: spec.height - 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: 'bottom' })
+    out.push({ kind: 'text', text: xTitle, at: { x: plot.x + plot.w / 2.0, y: xTop ? 2.0 : spec.height - 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: xTop ? 'top' : 'bottom' })
   }
   const yTitle = spec.yTitle ?? ''
   if (yTitle !== '' && spec.showYAxis) {
-    out.push({ kind: 'text', text: yTitle, at: { x: t.fontSize * 0.9, y: plot.y + plot.h / 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: 'middle', rotate: -90.0 })
+    out.push({ kind: 'text', text: yTitle, at: { x: yRight ? spec.width - t.fontSize * 0.9 : t.fontSize * 0.9, y: plot.y + plot.h / 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: 'middle', rotate: yRight ? 90.0 : -90.0 })
   }
   const y2Title = spec.y2Title ?? ''
   if (y2Title !== '' && useY2 && spec.showYAxis) {
@@ -1402,7 +2821,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
  * every point at the x it would have had, so a gap removes a segment without
  * shifting its neighbours.
  */
-function splitRuns(values: Double[], place: (values: Double[]) => Pt[]): Pt[][] {
+function splitRuns(values: Double[], place: (values: Double[]) => Pt[], connect?: boolean): Pt[][] {
   const runs: Pt[][] = []
   let hasGap = false
   for (const v of values) if (!isFiniteValue(v)) hasGap = true
@@ -1415,6 +2834,13 @@ function splitRuns(values: Double[], place: (values: Double[]) => Pt[]): Pt[][] 
   const filled: Double[] = []
   for (const v of values) filled.push(isFiniteValue(v) ? v : 0.0)
   const pts = place(filled)
+  // ECharts' `connectNulls`: one run over the finite points, bridging each hole.
+  if (connect === true) {
+    const joined: Pt[] = []
+    for (let i = 0; i < pts.length; i++) if (isFiniteValue(values[i]!)) joined.push(pts[i]!)
+    runs.push(joined)
+    return runs
+  }
   // Track each run by its start index rather than re-assigning a fresh array
   // (a reassigned array binding has no native lowering).
   let runStart = -1
@@ -1434,6 +2860,41 @@ function splitRuns(values: Double[], place: (values: Double[]) => Pt[]): Pt[][] 
     runs.push(run)
   }
   return runs
+}
+
+/**
+ * How many data a line's symbols step by (ECharts' `showAllSymbol`, via
+ * LineView's `canShowAllSymbolForCategory`): 1 for every datum; on a crowded
+ * category axis, the axis's own label interval.
+ */
+function symbolInterval(s: Series, spec: ChartSpec, plot: Rect, labelEvery: number, valueX: boolean): number {
+  const mode = s.symbolShow ?? ''
+  if (mode === 'labels') return Math.max(1, labelEvery)
+  if (mode !== 'auto' || valueX) return 1
+  const count = spec.categories.length
+  if (count === 0) return 1
+  const avail = (spec.horizontal === true ? plot.h : plot.w) / (count * 1.0)
+  return s.radius * 2.0 * 1.5 > avail ? Math.max(1, labelEvery) : 1
+}
+
+/** An "empty" symbol: the surface inside a 2px ring of `stroke`, ring centred on the symbol's edge. */
+function hollowSymbol(cell: Rect, symbol: 'rect' | 'circle' | 'diamond' | 'triangle', stroke: string, surface: string): DrawCmd[] {
+  const inside = surface === '' ? '#ffffff' : surface
+  if (symbol === 'circle') {
+    const r = (cell.w < cell.h ? cell.w : cell.h) / 2.0
+    const c = { x: cell.x + cell.w / 2.0, y: cell.y + cell.h / 2.0 }
+    return [
+      { kind: 'circle', center: c, radius: r + 1.0, fill: stroke },
+      { kind: 'circle', center: c, radius: Math.max(0.0, r - 1.0), fill: inside },
+    ]
+  }
+  const body = symbolCommand(cell, symbol, inside)
+  // The outline from the shape's own points (`symbolPoints` draws the same rect / diamond / triangle).
+  const edge = symbolPoints(cell, symbol)
+  const ring: Pt[] = []
+  for (const p of edge) ring.push(p)
+  if (edge.length > 0) ring.push(edge[0]!)
+  return [body, { kind: 'polyline', points: ring, stroke, width: 2.0 }]
 }
 
 /** One symbol filling `cell` — rect, circle, diamond, or triangle. */
@@ -1468,6 +2929,32 @@ function symbolCommand(cell: Rect, symbol: 'rect' | 'circle' | 'diamond' | 'tria
   return { kind: 'rect', rect: cell, fill }
 }
 
+/** A series' pictorial keys for one laid-out bar. The bounding run scales linearly with the datum. */
+function pictorialBar(s: Series, bar: Rect, horizontal: boolean, value: Double, fill: string): PictorialBar {
+  const offset = s.symbolOffset ?? []
+  const barLength = horizontal ? bar.w : bar.h
+  const hasBounding = s.symbolBoundingData !== undefined && value !== 0.0
+  const bound = s.symbolBoundingData ?? 0.0
+  const boundingLength = hasBounding ? (barLength * Math.abs(bound)) / Math.abs(value) : 0.0
+  return {
+    bar,
+    horizontal,
+    /* v8 ignore next — unreachable: `pictorialBar` is only called from the `else` of
+       `s.symbol === undefined`, so the symbol is always set here. Native unwrap. */
+    symbol: s.symbol ?? 'rect',
+    repeat: s.symbolRepeat === true,
+    fill,
+    margin: s.symbolMargin ?? 0.0,
+    offsetX: offset.length > 0 ? offset[0]! : 0.0,
+    offsetY: offset.length > 1 ? offset[1]! : 0.0,
+    position: s.symbolPosition ?? 'start',
+    rotate: s.symbolRotate ?? 0.0,
+    clip: s.symbolClip === true,
+    hasBounding,
+    boundingLength,
+  }
+}
+
 /** Bar rects for a series index — what a hit test runs against. */
 export function barsFor(spec: ChartSpec, index: number, measure: MeasureText): Rect[] {
   return barsForIn(spec, index, layoutChart(spec, measure).plot)
@@ -1477,10 +2964,25 @@ export function barsFor(spec: ChartSpec, index: number, measure: MeasureText): R
 export function barsForIn(raw: ChartSpec, index: number, plot: Rect): Rect[] {
   const spec = geometrySpec(raw)
   const s = spec.series[index]
-  if (s === undefined || (s.kind !== 'bars' && s.kind !== 'waterfall')) return []
+  if (s === undefined) return []
+  // A stacked or grouped series' own segments, index-aligned with its values
+  // (a datum with no segment — a gap, a non-positive stack value — gets an
+  // empty rect nothing can land in).
+  if (s.kind === 'stacked' || s.kind === 'grouped') {
+    const idx = indicesOf(spec, s.kind)
+    let local = -1
+    for (let q = 0; q < idx.length; q++) if (idx[q] === index) local = q
+    const rects: Rect[] = []
+    for (let i = 0; i < s.values.length; i++) rects.push({ x: 0.0, y: 0.0, w: -1.0, h: -1.0 })
+    // Each frame's own layout — the horizontal one counts its bands along y.
+    const segs = spec.horizontal === true ? setLaidH(spec, s.kind, plot, resolveYDomain(spec)) : setLaid(spec, s.kind, plot, resolveYDomain(spec))
+    for (const seg of segs) if (seg.seriesIndex === local && seg.datumIndex < rects.length) rects[seg.datumIndex] = seg.rect
+    return rects
+  }
+  if (s.kind !== 'bars' && s.kind !== 'waterfall') return []
   // The hit rects must come from the SAME domain the bars were drawn with,
   // or a right-axis bar reports hits where the left-axis geometry would be.
-  const dom = seriesOnRightAxis(s, spec) ? resolveY2Domain(spec) : resolveYDomain(spec)
+  const dom = seriesDomain(s, spec, resolveYDomain(spec), resolveY2Domain(spec))
   if (s.kind === 'waterfall') {
     // Index-aligned with the values: a gap's slot is an empty rect nothing
     // can land in, so the datum index a hit reports stays the row's.
@@ -1489,7 +2991,7 @@ export function barsForIn(raw: ChartSpec, index: number, plot: Rect): Rect[] {
     for (const st of layoutWaterfall(s.values, plot, dom, 0.25)) rects[st.datumIndex] = st.rect
     return rects
   }
-  return layoutBars(s.values, plot, dom, 0.25)
+  return spec.horizontal === true ? barsLaidH(spec, index, plot, dom) : barsLaid(spec, index, plot, dom)
 }
 
 /**
@@ -1561,16 +3063,15 @@ export function markerAnchor(spec: ChartSpec, seriesIdx: Double, idx: number, pl
     g = g + 1.0
   }
   if (which < 0) return out
-  const values = spec.series.filter((q) => q.kind === kind).map((q) => q.values)
   const flipped = spec.horizontal === true
   const segs =
     kind === 'stacked'
       ? flipped
-        ? layoutStackedBarsH(values, plot, yDomain, 0.25)
-        : layoutStackedBars(values, plot, yDomain, 0.25)
+        ? setLaidH(spec, 'stacked', plot, yDomain)
+        : setLaid(spec, 'stacked', plot, yDomain)
       : flipped
-        ? layoutGroupedBarsH(values, plot, yDomain, 0.25)
-        : layoutGroupedBars(values, plot, yDomain, 0.25)
+        ? setLaidH(spec, 'grouped', plot, yDomain)
+        : setLaid(spec, 'grouped', plot, yDomain)
   for (const seg of segs) {
     if (seg.seriesIndex !== which) continue
     if (seg.datumIndex !== idx) continue
@@ -1592,18 +3093,17 @@ export function stackedHitIn(raw: ChartSpec, plot: Rect, px: Double, py: Double)
   for (const kind of ['stacked', 'grouped'] as const) {
     const series = spec.series.filter((s) => s.kind === kind)
     if (series.length === 0) continue
-    const values = series.map((s) => s.values)
     const segs =
       kind === 'stacked'
         ? flipped
-          ? layoutStackedBarsH(values, plot, yDomain, 0.25)
-          : layoutStackedBars(values, plot, yDomain, 0.25)
+          ? setLaidH(spec, 'stacked', plot, yDomain)
+          : setLaid(spec, 'stacked', plot, yDomain)
         : flipped
-          ? layoutGroupedBarsH(values, plot, yDomain, 0.25)
-          : layoutGroupedBars(values, plot, yDomain, 0.25)
+          ? setLaidH(spec, 'grouped', plot, yDomain)
+          : setLaid(spec, 'grouped', plot, yDomain)
     for (const seg of segs) {
       const r = seg.rect
-      if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return seg.datumIndex
+      if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return categoryIndex(raw, seg.datumIndex)
     }
   }
   return -1

@@ -40,6 +40,56 @@ export interface ErrorPattern {
  */
 export const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // The signal auto-call pass recognised three binding forms as shadows
+    // (a plain param, a one-level destructured param, a top-level `const`),
+    // so a `catch (error)` / `for (const item of …)` / nested-pattern binding
+    // that shared a module signal's name was still auto-called — and the
+    // throw landed INSIDE the error handler or loop that declared it. Fixed
+    // in the compiler (every binding form shadows); a pinned app still sees
+    // the JSC shape below, which names the non-function value it received.
+    pattern:
+      /(\w+) is not a function\. \(In '\1\(\)', '\1' is an instance of (?:Error|Object|Array|\w+)\)/,
+    diagnose: (m) => ({
+      cause: `A JSX child or attribute read \`${m[1]}\` bare, and the compiler auto-called it as a signal because a module-level \`const ${m[1]} = signal(…)\` exists — but at that point \`${m[1]}\` is a LOCAL binding (a \`catch (${m[1]})\` parameter, a \`for (const ${m[1]} of …)\` head, a nested destructure, a block-scoped \`let\`), which compilers before 0.53 did not recognise as a shadow.`,
+      fix: `Upgrade @pyreon/compiler — every binding form now shadows. If you are pinned, rename the local binding so it does not share a module signal's name.`,
+      fixCode: `// pinned workaround — a distinct name for the local
+try { load() } catch (err) { return <p>{err.message}</p> }`,
+    }),
+  },
+  {
+    // `<For>`'s row-mount path probed the render result for the NativeItem
+    // marker before checking it was a value at all, so a row rendering `null`
+    // — the ordinary way to hide one — threw before ANY row had been placed.
+    // The list is not partially rendered, it is entirely absent, and the throw
+    // surfaces only as an unhandled effect error, one layer away from the
+    // `<For>` that caused it. Fixed in runtime-dom; what remains to teach is
+    // the symptom, because a pinned app sees an empty list and a message that
+    // names neither the list nor the row.
+    pattern: /Cannot read propert(?:y|ies) of null \(reading '__isNative'\)/i,
+    diagnose: () => ({
+      cause:
+        "A <For> row's render callback returned null or undefined, and the row-mount path read a property off it before checking. The throw escapes the <For> effect before the first row is placed, so the WHOLE list renders as its two markers and nothing else — not just the null row. SSR renders the same source correctly, so a hydrated page also diverges from its own server.",
+      fix: 'Upgrade @pyreon/runtime-dom — a null row is now mounted as an empty placeholder that holds its position. If you are pinned, filter the list instead of returning null from the row, so every item the <For> receives renders something.',
+      fixCode:
+        "// pinned workaround — filter, don't return null from the row\n<For each={() => items().filter((i) => i.visible)} by={(i) => i.id}>\n  {(i) => <Row item={i} />}\n</For>",
+    }),
+  },
+  {
+    // The devtools element picker installs capture-phase, DOCUMENT-level
+    // mousemove/click listeners on the user's own app. Every drag
+    // implementation forwards pointer movement to `document` once the pointer
+    // leaves the handle, and `document` has no box to measure — so the picker
+    // threw inside the app's drag path, which reads as the app's own bug.
+    pattern: /(?:el|target)\.getBoundingClientRect is not a function/i,
+    diagnose: () => ({
+      cause:
+        "Something called getBoundingClientRect on an event target that is not an Element. The usual source is a listener reading `e.target` as an Element: a mousemove or click forwarded to `document` or `window` — which is what a drag implementation does once the pointer leaves its handle — makes the target a Document, which has no box. Pyreon's own devtools picker had this shape and threw inside the app it was inspecting.",
+      fix: 'Upgrade @pyreon/runtime-dom if the frame names devtools.ts. In your own listeners, narrow the target before measuring it: `e.target instanceof Element` (or `(e.target as Node).nodeType === 1`) and bail otherwise.',
+      fixCode:
+        "document.addEventListener('mousemove', (e) => {\n  const el = e.target as Node | null\n  if (!el || el.nodeType !== 1) return // Document/Window — nothing to measure\n  measure(el as Element)\n}, true)",
+    }),
+  },
+  {
     // A hydration walk that expected an ELEMENT and found a COMMENT (nodeType 8)
     // one step past a reactive range is the signature of a slot boundary read
     // wrongly: the walker consumed a nested accessor's markers as if they were
@@ -1851,6 +1901,69 @@ const geometry = () => props.shape
       fix: 'Upgrade: the compiler reads qualified names on both backends now, and the runtime puts `xlink:*` / `xml:*` into their real namespace in foreign content (SVG, MathML) rather than a null-namespace attribute an SVG `<use>` ignores. On an older version, avoid the namespaced spelling — a plain `href` works on `<use>` in every browser that supports SVG2, which is all current ones — or set it from a `ref` with `setAttributeNS`.',
       fixCode:
         "// throws on older versions (empty qualified name)\n// <svg><use xlink:href=\"#icon\" /></svg>\n\n// SVG2 spelling — no namespace needed\n<svg><use href=\"#icon\" /></svg>\n\n// or set it explicitly\n<svg><use ref={(el) => el.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', '#icon')} /></svg>",
+    }),
+  },
+  {
+    // `applyProps`' getter-descriptor branch handed a getter's VALUE straight
+    // to the static sink, so a getter yielding an accessor (a primitive's
+    // `getItemProps()` spread through a rocketstyle element) stringified the
+    // closure into the attribute. Fixed by resolving the accessor inside the
+    // tracked frame; the residual is an app on an older runtime, or a custom
+    // prop pipeline that stores accessors behind getters of its own.
+    pattern: /applyStaticProp received a function for "([^"]+)"/,
+    diagnose: (m) => ({
+      cause:
+        `A prop reached the DOM sink as a FUNCTION. \`${m[1] ?? 'the prop'}\` was an accessor (\`() => value\`) stored behind a getter — the shape a primitive's helper object (\`getItemProps()\`) takes after a descriptor-copying spread — and the getter branch of \`applyProps\` passed the closure through unresolved, so the element got the function's SOURCE TEXT as its value.`,
+      fix: 'Upgrade: `applyProps` now resolves an accessor a getter returns, inside the same tracked frame, so the value stays live. On an older runtime, call the accessor at the spread site (`tabIndex={props.tabIndex()}`) or pass the helper object through `mergeProps` / `splitProps` from `@pyreon/core` instead of a hand-rolled descriptor copy.',
+      fixCode:
+        '// stringified on older runtimes: a getter whose value is an accessor\n// <Star {...state.getItemProps(i)} />  // { tabIndex: () => 0 | -1 }\n\n// resolve at the site if you cannot upgrade\nconst item = state.getItemProps(i)\n<Star {...item} tabIndex={item.tabIndex()} />',
+    }),
+  },
+  {
+    // Appended at the END of the array deliberately: an open PR edits the
+    // `ErrorPattern` interface at the top of this file, and a new entry here
+    // cannot conflict with it.
+    //
+    // The dev warning the handler-attribute refusal emits. A user hitting this
+    // has written (or spread) a LOWERCASE handler name, which is HTML's inline
+    // spelling rather than Pyreon's prop spelling, so the fix is a rename — but
+    // the reachable way to get here is a spread of a user-keyed object, and then
+    // the fix is an allowlist at the boundary.
+    pattern: /Refused to write event-handler attribute "([^"]+)"/,
+    diagnose: (m) => ({
+      cause:
+        `An event-handler ATTRIBUTE reached a DOM sink. \`${m[1] ?? 'the name'}\` is HTML's inline-handler spelling, which is executable markup: written as an attribute, the browser compiles its value and runs it. Pyreon's own spelling is camelCase (\`onClick\`), which binds a real listener and never becomes an attribute, so a lowercase name is either a typo or — the reachable case — a spread of an object whose KEYS came from user data.`,
+      fix: 'Use the camelCase prop (`onClick={fn}`) to attach a handler. If the props come from a spread of a user-keyed object, validate the keys against an allowlist before spreading — an attacker-chosen key is the whole threat model here, and the same spread can inject a URL or a structurally-invalid attribute name too.',
+      fixCode:
+        "// refused — an inline handler attribute is executable markup\n<button onclick={`alert(1)`}>x</button>\n\n// bind a listener instead\n<button onClick={() => alert(1)}>x</button>\n\n// spreading user-keyed data? allowlist the keys first\nconst SAFE = new Set(['id', 'title', 'class'])\nconst safe = Object.fromEntries(Object.entries(userProps).filter(([k]) => SAFE.has(k)))\n<button {...safe}>x</button>",
+    }),
+  },
+  {
+    // Appended at the END on purpose: the catalog is matched in ORDER and a
+    // broad `/(\w+) is not defined/` entry already sits above, so the V8
+    // spelling of this error can never reach a rule added here. The JSC /
+    // Safari spelling is unclaimed, and it is the one a `bun` runner or a
+    // Safari user actually sees.
+    //
+    // Found while fixing the hydration boundary sweep: two real-`transformJSX`
+    // test harnesses in `runtime-dom` omitted `_setChild` / `_setChildAt` /
+    // `_fuse` from their `new Function` dependency map, the compiled body hit a
+    // free variable, `hydrateComponent` caught the throw — and the specs PASSED
+    // anyway, because nothing swept the server DOM the crashed client build
+    // never claimed. That is the general shape: under hydration this error is
+    // SILENT at the page level, because the SSR markup stays on screen and
+    // looks like a working render.
+    pattern: /Can't find variable: (_(?:tpl|bind\w*|applyProps|set\w+|mount\w+|textSlot|fuse|lc|ssr\w*|esc\w*|rsCollapse\w*))/,
+    diagnose: (m) => ({
+      cause: `\`${m[1]}\` is a RUNTIME HELPER the Pyreon JSX transform injects an import for, and at the point it ran nothing provided it. Three ways that happens: \`@pyreon/runtime-dom\` (or \`@pyreon/core\`, which owns \`_fuse\` and \`_lc\`) is OLDER than \`@pyreon/compiler\` and does not export the helper yet; a downstream transform stripped the injected import line; or a test harness evaluates the emit through \`new Function\` / \`eval\` and hands it a hand-maintained dependency map that has fallen behind the emit. Under HYDRATION the page-level symptom is misleading — the throw is caught per component, the server's markup stays on screen, and the page looks rendered while none of its bindings exist.`,
+      fix: 'Align the versions (`pyreon info` reports `@pyreon/*` skew; `pyreon upgrade` fixes it) and make sure whatever consumes the transform output preserves its injected imports. In a harness that evaluates the emit, do not maintain the dependency list by hand — parse the emitted `import { … } from "@pyreon/…"` names and ASSERT every one is provided, so a missing helper fails the spec loudly instead of leaving it asserting the server DOM.',
+      fixCode: `// harness: assert the deps cover the emit instead of discovering a gap
+const { code } = transformJSX(source, 'app.tsx')
+for (const m of code.matchAll(/^import\\s*\\{([^}]*)\\}/gm))
+  for (const raw of m[1].split(',')) {
+    const name = raw.trim().split(/\\s+as\\s+/).pop()
+    if (name && !(name in RUNTIME_DEPS)) throw new Error(\`missing runtime dep: \${name}\`)
+  }`,
     }),
   },
 ]

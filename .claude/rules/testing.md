@@ -5,7 +5,7 @@
 - Use `bun run test` to run all package tests (runs `bun run --filter='./packages/*' test`)
 - Each package's `vitest.config.ts` MUST use `defineNodeConfig` from `@pyreon/vitest-config`. Browser configs MUST use `defineBrowserConfig`. Both helpers enforce the canonical merge order by construction — `testTimeout: 20_000` + CI `retry: 2` + bun condition + per-category coverage defaults all flow through one canonical merge. Hand-rolled `mergeConfig` chains are forbidden (enforced by lint rule `pyreon/vitest-config-uses-shared`). Pre-migration history (PRs #914-#922): 87 configs mixed three merge-order patterns; 9 silently ran on vitest's 5s default timeout because `sharedConfig` ended up on the wrong side of `mergeConfig`. Canonical shape: `defineNodeConfig({ category: 'core' | 'fundamentals' | 'ui' | 'tools' | 'zero' | 'internals', environment: 'happy-dom' })` — see [`packages/internals/vitest-config/README.md`](../../packages/internals/vitest-config/README.md) for the full surface.
 - Vitest globals enabled — no need to import `describe`, `it`, `expect`, `vi`
-- Each root-level `playwright.*.config.ts` MUST use `definePlaywrightConfig` from `@pyreon/playwright-config` (the Playwright sibling of `@pyreon/vitest-config`). It bakes the shared defaults — `testDir: './e2e'`, `retries: process.env.CI ? 2 : 0`, `use: { headless, browserName: 'chromium' }`, per-webServer `reuseExistingServer: !process.env.CI` + default `timeout` — so each config states only its projects + webServers. A project's `port` becomes its `use.baseURL`; the dominant `bun run --filter=… dev -- --port … --strictPort` webServer is `viteDevServer(filter, port)`; bespoke boots (build-then-serve SSG, `node …/vite`) pass a raw `{ command, port, cwd?, env?, timeout? }` entry. The package exports `src/index.ts` under a `default` exports condition because Playwright's config loader resolves via Node CJS (no build step — Playwright transpiles the workspace `.ts` directly). See [`packages/internals/playwright-config/README.md`](../../packages/internals/playwright-config/README.md). (The root `vitest.shared.ts` is gone — absorbed into `@pyreon/vitest-config/src/internals.ts` in #914; there is no root-level vitest config.)
+- Each root-level `playwright.*.config.ts` MUST use `definePlaywrightConfig` from `@pyreon/playwright-config` (the Playwright sibling of `@pyreon/vitest-config`). It bakes the shared defaults — `testDir: './e2e'`, `retries: process.env.CI ? 2 : 0`, `use: { headless, browserName: 'chromium' }`, per-webServer `reuseExistingServer: !process.env.CI` + default `timeout` — so each config states only its projects + webServers. A project's `port` becomes its `use.baseURL`; the dominant `bun run --filter=… dev -- --port … --strictPort` webServer is `viteDevServer(filter, port)`; bespoke boots (build-then-serve SSG, `node …/vite`) pass a raw `{ command, port, cwd?, env?, timeout? }` entry. The package exports `src/index.ts` under a `default` exports condition because Playwright's config loader resolves via Node CJS (no build step — Playwright transpiles the workspace `.ts` directly). See [`packages/internals/playwright-config/README.md`](../../packages/internals/playwright-config/README.md). (The root `vitest.shared.ts` is gone — absorbed into `@pyreon/vitest-config/src/internals.ts` in #914. The root `vitest.config.mts` is a ROUTER, not a config: its `test.projects` maps every `packages/*/*` and `examples/*` config, so `bunx vitest run <path>` from the repo root runs each file under its OWN package's config. Before it existed a root invocation ran on vitest's defaults — 5,000ms timeout, parallel files — which is how every kotlinc-spawning `@pyreon/native-compiler` spec timed out from the root while passing from inside the package. Totality is locked by `test-utils/src/tests/root-vitest-projects.test.ts`.)
 
 ## DOM Testing
 
@@ -198,6 +198,22 @@ minutes a serial `123 probes x 1.36s` estimate implies — vitest runs files in
 parallel, so probe cost is amortized across workers. Estimating a per-file cost
 serially when the runner is parallel is an easy way to overstate a win by 10x.
 
+**And it is served by ONE warm compiler JVM per run** (`src/kotlin-daemon.ts`,
+2026-09). A cache miss used to cost a cold `kotlinc` per check — JVM start
+plus a re-analysis of the 2,300-line Compose stub file, ~4s here and ~6s on a
+CI runner — and with the stubs edited most days, a miss was the common case
+in CI (16 shards, ~140 runner-minutes per run). The same check against a
+loaded `K2JVMCompiler` with the stubs pre-compiled to a jar is ~78ms. The
+package's vitest `globalSetup` starts the JVM once per run and hands its spool
+directory to the worker processes through `PYREON_KOTLIN_DAEMON_SPOOL`
+(the forks pool starts a process per test FILE, so a per-process daemon
+measured only 2× where the run-wide one measures ~10×). The validator writes
+a request file and sleeps in 1ms `Atomics.wait` slices for the reply, because
+it is synchronous. Every failure path falls back to per-check `kotlinc`, and
+`kotlin-daemon.test.ts` asserts the two paths agree on both an accepted and a
+rejected emit (bisect: a daemon forging acceptance fails it). `PYREON_KOTLIN_DAEMON=0`
+forces the plain path — use it when bisecting a verdict you do not trust.
+
 Consequences you need to know when working in this package:
 
 - **A timing measurement in this package is meaningless without stating the
@@ -274,6 +290,49 @@ When bisect-verifying an e2e spec that runs against a Vite dev server (anything 
 **`playwright.config.ts` has `reuseExistingServer: !process.env.CI`** — locally, if port 5175 is already in use, playwright reuses the existing server. So step 4 (kill the server) is mandatory in iterative bisect cycles; the auto-reuse will otherwise serve from the stale boot.
 
 **Applies to**: any package whose code runs inside Vite's plugin chain. Today that's `@pyreon/vite-plugin` and `@pyreon/zero`. Adding a new plugin package: document its bisect-bisect-rebuild cycle here.
+
+## Never bisect an ENV-HYGIENE guard by exporting the hostile variable
+
+A test that shells out to `git` must strip `GIT_*` from the environment, because
+those variables OVERRIDE both `cwd` and `-C` — the trap already documented under
+"Subprocess testing as a default". The follow-on hazard is in how you PROVE that
+guard is load-bearing.
+
+The obvious bisect is to export the hostile variable and revert the guard:
+
+```sh
+# DO NOT do this in a worktree that holds real work
+GIT_DIR=$PWD/.git GIT_INDEX_FILE=$PWD/.git/index bun run test -- <the-suite>
+```
+
+With the guard reverted, the fixture's `git init -q` re-initialises the REAL
+repository, `git add -A` stages the temp fixture's files into the real index,
+and `git commit` lands a commit on the branch you are working on. Observed
+(2026-09, `@pyreon/cli`'s git-changed-default suite): a stray `init` commit on
+top of two real ones, `8207 files changed, 3 insertions(+), 1402240 deletions(-)`
+— the whole worktree deleted and replaced by a three-file fixture. It is
+recoverable (`git reflog` → `git reset <your commit>`, mixed, which leaves the
+working tree alone), but only because nothing had been pushed.
+
+The reproduction is the destruction. Reverting a guard whose entire job is to
+stop a command from touching the real repo, while telling that command to touch
+the real repo, is not a bisect — it is the bug, executed on purpose.
+
+**Do it one of these ways instead:**
+
+- Run the reverted state against a THROWAWAY clone (`git clone --depth 1 . /tmp/x`),
+  never the worktree holding the branch.
+- Assert the mechanism rather than executing it: with the guard in place, check
+  that `process.env.GIT_DIR` is undefined inside the test body, and that the
+  fixture repo — not the outer one — is what `git rev-parse --git-dir` reports.
+- Keep the FORWARD proof, which costs nothing: run the fixed suite with the
+  hostile variable exported. Green there is the claim you actually want ("this
+  suite survives a pre-push hook"), and it never writes to the real repo,
+  because the guard works.
+
+The general shape: **when a guard's failure mode is damage to something outside
+the test, the bisect must not be run where that something is real.** Same family
+as the `rm -rf` and force-push rules — the check is cheap and the mistake is not.
 
 ## Dependency-version bisect — never trust an incremental bun layout
 

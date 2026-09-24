@@ -12,10 +12,18 @@ final class PyreonChartEngineTests: XCTestCase {
     // Every field, because `ChartTheme` crosses as a struct where none is
     // optional (the web merges a partial in `resolveChartTheme`, native does
     // it at compile time) — so the synthesized init has no defaults to lean
-    // on. This call omitted nine of them and had never compiled.
+    // on. It omitted nine of them once and had never compiled; it then omitted
+    // four more (`positive`/`negative`/`muted`/`ramp`) after the struct grew,
+    // which is the same failure twice. A memberwise init over a struct that
+    // gains fields will keep doing this, so the fix is not to be careful — it
+    // is that this file has to compile in CI, which today it does not: the
+    // ubuntu runner has no swiftc, so the only place the breakage surfaces is
+    // a developer's pre-push, where it blocks work it has nothing to do with.
     private let theme = ChartTheme(
         palette: ["#4f7df3", "#f97362", "#22c3a6"], background: "#ffffff", surface: "#ffffff",
-        text: "#111827", label: "#333", axis: "#888", grid: "#eee", fontFamily: "",
+        text: "#111827", label: "#333", axis: "#888", grid: "#eee",
+        positive: "#15803d", negative: "#b42318", muted: "#e2e8f0",
+        ramp: ["#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"], fontFamily: "",
         fontSize: 12.0, titleSize: 15.0, radius: 3.0, enterMs: 700.0, updateMs: 350.0)
     /// Text measure the web renderer gets from the canvas context —
     /// a monospace-ish approximation is fine for geometry assertions.

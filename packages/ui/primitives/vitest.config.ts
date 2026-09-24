@@ -16,7 +16,18 @@ export default defineNodeConfig({
   // state-machine.browser.test.tsx — select/filter/expand/keyboard/props,
   // exercised through the headless state objects; ComboboxBase 54.83 -> 95.96,
   // TreeBase 78.32 -> 98.60).
-  coverageThresholds: { statements: 95, branches: 89, functions: 94, lines: 96 },
+  // Ratcheted 95/89/94/96 -> 95/92/94/96 by the 92%+ campaign (measured
+  // 95.92 / 92.13 / 94.94 / 96.87) — branches now clear the repo-wide bar.
+  // Four suites, each over a primitive's edge behaviour rather than its happy
+  // path: TreeBase's roving tab stop and string-valued ARIA state (a boolean
+  // renders presence-only, which assistive tech reads as the DEFAULT, so a
+  // selected node is announced unselected); NumberInputBase against values
+  // that are not numbers, where the promise is `value()` is "never NaN";
+  // PinInputBase's paste distribution and bogus-length fallback; ModalBase's
+  // dismissal (the overlay's `target === currentTarget` identity check, which
+  // is what stops a click on a form field closing the dialog) and its
+  // three-step initial-focus chain; ComboboxBase with an empty option list.
+  coverageThresholds: { statements: 95, branches: 92, functions: 94, lines: 96 },
   overrides: {
     // oxc transformer JSX config — these UI packages use Pyreon's JSX
     // import source rather than React's default.

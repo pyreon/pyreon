@@ -11,7 +11,7 @@
 // lives in family-svg.ts.
 
 import type { Double, DrawCmd, MeasureText, Rect } from './types'
-import { DEFAULT_PALETTE, paletteAt } from './palette'
+import { DEFAULT_PALETTE, hexDigit, paletteAt } from './palette'
 
 export interface TreeNode {
   name: string
@@ -50,6 +50,9 @@ export interface TreemapOptions {
 
 /** A node's value: its own, else the sum of its children (iterative — a deep tree must not recurse). */
 export function nodeValue(node: TreeNode): Double {
+  /* v8 ignore next — the `?? 0.0` arm is unreachable on the web: the test
+     already established the value is not undefined. It unwraps the optional
+     for the native emit, where that test does not narrow. */
   if (node.value !== undefined) return node.value ?? 0.0
   let sum = 0.0
   const stack: TreeNode[] = []
@@ -64,6 +67,8 @@ export function nodeValue(node: TreeNode): Double {
     sp = sp - 1
     const cur = stack[sp]!
     const own = cur.value
+    /* v8 ignore next — same unreachable native unwrap as `nodeValue`'s own
+       first line: `own` is known defined here. */
     if (own !== undefined) sum = sum + (own ?? 0.0)
     else {
       for (const c of cur.children ?? []) {
@@ -251,13 +256,6 @@ export function layoutTreemap(nodes: TreeNode[], rect: Rect, options?: TreemapOp
 }
 
 /** One hex digit's value from its char code (0 for anything else). */
-function hexDigit(c: Double): Double {
-  if (c >= 48.0 && c <= 57.0) return c - 48.0
-  if (c >= 97.0 && c <= 102.0) return c - 87.0
-  if (c >= 65.0 && c <= 70.0) return c - 55.0
-  return 0.0
-}
-
 /** The channel at `at` of a `#rrggbb` string as 0..255 (0 when malformed). */
 function hexPair(hex: string, at: number): Double {
   if (hex.length < at + 2) return 0.0

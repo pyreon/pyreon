@@ -9,6 +9,14 @@ description: "CSS-in-JS — styled() / css / keyframes / createGlobalStyle, reac
 
 Pyreon's CSS-in-JS engine. `styled('div')` is a tagged template that returns a `ComponentFn` injecting a generated class; `css` is a tagged template returning a LAZY `CSSResult` resolved on use (not a string); `keyframes` returns the generated animation-name string. Tagged-template interpolations receive the component's `props` (and the theme) so styles can be signal-driven — function interpolations flip the component onto the dynamic resolve path (`isDynamic`). A singleton `StyleSheet` with FNV-1a hashing dedupes and supports SSR; `createSheet()` makes an isolated instance. Theme is delivered through a REACTIVE context — `useTheme()` snapshots at call time, `useThemeAccessor()` returns the raw `() => Theme` accessor for tracking inside effects so whole-theme swaps re-resolve without remounting.
 
+## Multiplatform
+
+**Tier:** Shared — the same source runs on web, iOS and Android
+
+styled(Prim) + defineTheme tokens lower via the styler-native frontend; the CSS-in-JS runtime is web, the authored patterns compile
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - styled('div')`...` / styled(Component)`...` / styled.div`...` (Proxy) — component factory with `as` polymorphism + $-transient props

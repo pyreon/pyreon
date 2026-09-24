@@ -7,7 +7,7 @@
 // Swift and Kotlin engines carry it too: a native canvas calls the SAME
 // function the web canvas does.
 
-import type { ChartGradient, DrawCmd, Double, Pt, Rect } from './types'
+import type { ChartGradient, ChartPattern, DrawCmd, Double, Pt, Rect } from './types'
 
 /**
  * The four radii a rect will actually be drawn with, clamped.
@@ -49,15 +49,24 @@ export function rectCmd(
   fill: string,
   corners: Double[] | undefined,
   grad: ChartGradient | undefined,
+  pattern: ChartPattern | undefined = undefined,
 ): DrawCmd {
-  if (corners === undefined && grad === undefined) return { kind: 'rect', rect, fill }
-  if (grad === undefined) return { kind: 'rect', rect, fill, corners }
-  if (corners === undefined) return { kind: 'rect', rect, fill, grad }
-  return { kind: 'rect', rect, fill, corners, grad }
+  if (pattern === undefined) {
+    if (corners === undefined && grad === undefined) return { kind: 'rect', rect, fill }
+    if (grad === undefined) return { kind: 'rect', rect, fill, corners }
+    if (corners === undefined) return { kind: 'rect', rect, fill, grad }
+    return { kind: 'rect', rect, fill, corners, grad }
+  }
+  if (corners === undefined && grad === undefined) return { kind: 'rect', rect, fill, pattern }
+  if (grad === undefined) return { kind: 'rect', rect, fill, corners, pattern }
+  if (corners === undefined) return { kind: 'rect', rect, fill, grad, pattern }
+  return { kind: 'rect', rect, fill, corners, grad, pattern }
 }
 
 /** A polygon command, solid or gradient-filled — the area mark's shape. */
-export function polygonCmd(points: Pt[], fill: string, grad: ChartGradient | undefined): DrawCmd {
-  if (grad === undefined) return { kind: 'polygon', points, fill }
-  return { kind: 'polygon', points, fill, grad }
+export function polygonCmd(points: Pt[], fill: string, grad: ChartGradient | undefined, pattern: ChartPattern | undefined = undefined): DrawCmd {
+  if (grad === undefined && pattern === undefined) return { kind: 'polygon', points, fill }
+  if (grad === undefined) return { kind: 'polygon', points, fill, pattern }
+  if (pattern === undefined) return { kind: 'polygon', points, fill, grad }
+  return { kind: 'polygon', points, fill, grad, pattern }
 }

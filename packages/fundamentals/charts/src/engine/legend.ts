@@ -205,3 +205,86 @@ export function renderLegend(
   }
   return { cmds, height, boxes, pager }
 }
+
+/** Where the legend block sits relative to the plot. */
+export type LegendPosition = 'top' | 'bottom' | 'left' | 'right'
+
+/**
+ * A placed legend: its commands, the INSETS it consumed on each side of the
+ * area it was given, and the per-entry hit rects.
+ *
+ * Placement lives HERE, not in the host, because three targets have to agree
+ * on it. The web host used to spell the four branches inline, so a native host
+ * could either re-derive them or — what actually happened — draw every legend
+ * at the top and warn that `legendPosition` does not lower. One function the
+ * web host and both emitters call is the same argument `chrome.ts` already
+ * won for legend ENTRIES and tooltips.
+ */
+export interface LegendPlacement {
+  cmds: DrawCmd[]
+  /** Space the legend took at the top of the area (0 unless `position` is 'top'). */
+  top: Double
+  bottom: Double
+  left: Double
+  right: Double
+  /** One hit rect per entry; a paged-out entry gets a negative-size rect. */
+  boxes: Rect[]
+  pager?: LegendPager | undefined
+}
+
+/** The vertical legend's column width — the widest entry plus its swatch and gap. */
+export function legendColumnWidth(entries: LegendEntry[], opts: LegendOptions, measure: (text: string, size: Double) => Double): Double {
+  let w = 0.0
+  for (const e of entries) {
+    const ew = opts.swatch + 4.0 + measure(e.label, opts.fontSize) + opts.gap
+    if (ew > w) w = ew
+  }
+  return w
+}
+
+/**
+ * Lay the legend into one edge of `area` and report what it consumed.
+ *
+ * `opts.orientation` is IGNORED — the position decides it (a side legend is a
+ * column, a top or bottom one wraps in rows), so a caller cannot ask for a
+ * combination that lays out one way and measures another.
+ */
+export function placeLegend(
+  entries: LegendEntry[],
+  area: Rect,
+  position: LegendPosition,
+  opts: LegendOptions,
+  measure: (text: string, size: Double) => Double,
+): LegendPlacement {
+  const empty: LegendPlacement = { cmds: [], top: 0.0, bottom: 0.0, left: 0.0, right: 0.0, boxes: [] }
+  if (entries.length === 0) return empty
+  const pad = 8.0
+  if (position === 'left' || position === 'right') {
+    const col = Math.min(legendColumnWidth(entries, opts, measure), area.w * 0.4)
+    const lx = position === 'left' ? area.x + pad : area.x + area.w - col
+    const vertical: LegendOptions = { ...opts, orientation: 'vertical' }
+    const l = renderLegend(entries, { x: lx, y: area.y + pad, w: col, h: area.h }, vertical, measure)
+    const inset = col + pad
+    return {
+      cmds: l.cmds,
+      top: 0.0,
+      bottom: 0.0,
+      left: position === 'left' ? inset : 0.0,
+      right: position === 'right' ? inset : 0.0,
+      boxes: l.boxes,
+      pager: l.pager,
+    }
+  }
+  const horizontal: LegendOptions = { ...opts, orientation: 'horizontal' }
+  const wrapW = area.w - pad * 2.0
+  if (position === 'bottom') {
+    // Its height decides where it sits, so plan it first, then place it.
+    const rows = legendPlan(entries, { x: pad, y: 0.0, w: wrapW, h: area.h }, horizontal, measure, wrapW).rows
+    const rowH = Math.max(10.0, opts.fontSize) + 12.0
+    const lh = rows * rowH
+    const l = renderLegend(entries, { x: area.x + pad, y: area.y + area.h - lh, w: wrapW, h: lh }, horizontal, measure)
+    return { cmds: l.cmds, top: 0.0, bottom: l.height + pad, left: 0.0, right: 0.0, boxes: l.boxes, pager: l.pager }
+  }
+  const l = renderLegend(entries, { x: area.x + pad, y: area.y + pad, w: wrapW, h: area.h }, horizontal, measure)
+  return { cmds: l.cmds, top: l.height + pad, bottom: 0.0, left: 0.0, right: 0.0, boxes: l.boxes, pager: l.pager }
+}

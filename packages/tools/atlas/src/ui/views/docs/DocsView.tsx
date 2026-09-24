@@ -25,7 +25,10 @@ export function formatDefault(value: unknown): string {
 }
 
 export function DocsView(props: { model: WorkbenchModel }) {
-  const m = props.model
+  // Keep the model as a reference. The prop-derived inliner otherwise splices
+  // `props.model` into both adjacent statements in `openScenario` and loses
+  // their boundary: `view.set('canvas')(props.model).selectScenario(...)`.
+  let m = props.model
   const usage = () => {
     const c = m.sel()
     if (!c) return ''
@@ -36,6 +39,9 @@ export function DocsView(props: { model: WorkbenchModel }) {
         if (ct.type === 'bool') return val ? ct.key : ''
         if (ct.type === 'number' && typeof val === 'number') return `${ct.key}={${val}}`
         if (typeof val === 'string' && val) return `${ct.key}="${val}"`
+        // An object or array control (a data prop) was silently dropped, so the
+        // snippet showed a Tree with no data.
+        if (val && typeof val === 'object') return `${ct.key}={${JSON.stringify(val)}}`
         return ''
       })
       .filter(Boolean)
@@ -134,6 +140,21 @@ export function DocsView(props: { model: WorkbenchModel }) {
           </C.PropsTable>
           <C.DocsH2>Usage</C.DocsH2>
           <CodeBlock model={m} code={() => usage()} language="tsx" />
+          <C.ZoomBtn
+            data-testid="copy-usage"
+            title="Copy the usage snippet"
+            onClick={() => {
+              const text = usage()
+              if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                void navigator.clipboard.writeText(text).then(
+                  () => m.logAction('copy', 'usage snippet'),
+                  () => m.logAction('copy', 'clipboard unavailable'),
+                )
+              }
+            }}
+          >
+            Copy
+          </C.ZoomBtn>
           {c.scenarios && c.scenarios.length > 0 ? (
             <>
               <C.DocsH2>Scenarios</C.DocsH2>

@@ -37,6 +37,25 @@ const repoRoot = path.resolve(here, '..')
 // removed when its smoke suite lands — the self-expiring check below
 // errors if a listed package now has a *.browser.test.* file so the
 // removal can't be forgotten.
+/**
+ * The browser-categorized package list — the same file the lint rule reads.
+ * Loaded here so this gate can check the direction the rule cannot: that no
+ * package ships a `*.browser.test.*` while being absent from the list.
+ */
+const BROWSER_PACKAGES: string[] = (() => {
+  try {
+    const raw = JSON.parse(
+      readFileSync(path.join(repoRoot, '.claude/rules/browser-packages.json'), 'utf-8'),
+    ) as { packages?: string[] }
+    return raw.packages ?? []
+  } catch {
+    // An unreadable list must not silently disable the reverse check — an
+    // empty Set would report every package as unlisted, which is loud, and
+    // that is the correct direction to fail in.
+    return []
+  }
+})()
+
 const PHASE_5_PENDING_PACKAGES: string[] = [
   // Phase 5 rollout complete: ui (theme + components + primitives) +
   // compat layers (react/preact/vue/solid) all have *.browser.test.*
@@ -84,9 +103,8 @@ function findIndexFiles(): string[] {
 
 // Check: does an exempt package now have a *.browser.test.* file? If
 // yes, the exemption is stale — flag so the developer removes it.
-function findStaleExemptions(): string[] {
-  const stale: string[] = []
-  function hasBrowserTest(dir: string): boolean {
+/** Does this directory tree contain a `*.browser.test.*` file? */
+function hasBrowserTest(dir: string): boolean {
     let entries: string[]
     try {
       entries = readdirSync(dir)
@@ -110,8 +128,11 @@ function findStaleExemptions(): string[] {
       }
       if (/\.browser\.test\.(?:ts|tsx)$/.test(name)) return true
     }
-    return false
-  }
+  return false
+}
+
+function findStaleExemptions(): string[] {
+  const stale: string[] = []
   for (const exempt of PHASE_5_PENDING_PACKAGES) {
     const pkgDir = path.join(repoRoot, exempt)
     if (!existsSync(pkgDir)) continue
@@ -160,11 +181,62 @@ if (stale.length > 0) {
   }
 }
 
-// ── Exit ────────────────────────────────────────────────────────────────
-if (missingCount > 0 || stale.length > 0) {
+// ── Step 3: reality -> list ─────────────────────────────────────────────
+// The two checks above are list -> reality: every LISTED package must have a
+// browser test, and no exemption may be stale. Neither can notice a package
+// the list never learned about — and the list was SIX behind when this check
+// was added (@pyreon/primitives, a11y, hooks, http, test-utils, zero-content
+// each shipped a browser config and real specs, enforced by nothing).
+//
+// The consequence is not a missing entry, it is that deleting every
+// real-Chromium test from one of those packages passed both this gate and the
+// lint rule, so the browser-parity guarantee evaporated silently.
+const unlisted: string[] = []
+{
+  const listed = new Set(BROWSER_PACKAGES)
+  const pkgRoot = path.join(repoRoot, 'packages')
+  for (const category of existsSync(pkgRoot) ? readdirSync(pkgRoot) : []) {
+    const catDir = path.join(pkgRoot, category)
+    let entries: string[] = []
+    try {
+      entries = readdirSync(catDir)
+    } catch {
+      continue
+    }
+    for (const dir of entries) {
+      const src = path.join(catDir, dir, 'src')
+      if (!existsSync(src) || !hasBrowserTest(src)) continue
+      let name: string | undefined
+      try {
+        name = (
+          JSON.parse(readFileSync(path.join(catDir, dir, 'package.json'), 'utf-8')) as {
+            name?: string
+          }
+        ).name
+      } catch {
+        continue
+      }
+      if (name && !listed.has(name) && !PHASE_5_PENDING_PACKAGES.includes(`packages/${category}/${dir}`))
+        unlisted.push(name)
+    }
+  }
+}
+if (unlisted.length > 0) {
   // eslint-disable-next-line no-console
   console.error(
-    `\n${missingCount} missing-coverage error(s), ${stale.length} stale-exemption error(s).`,
+    `\n✗ ${unlisted.length} package(s) ship a *.browser.test.* file but are NOT in .claude/rules/browser-packages.json, so nothing requires them to keep it:\n`,
+  )
+  for (const p of unlisted) {
+    // eslint-disable-next-line no-console
+    console.error(`  - ${p}`)
+  }
+}
+
+// ── Exit ────────────────────────────────────────────────────────────────
+if (missingCount > 0 || stale.length > 0 || unlisted.length > 0) {
+  // eslint-disable-next-line no-console
+  console.error(
+    `\n${missingCount} missing-coverage error(s), ${stale.length} stale-exemption error(s), ${unlisted.length} unlisted-package error(s).`,
   )
   process.exit(1)
 }

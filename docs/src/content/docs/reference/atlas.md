@@ -9,6 +9,14 @@ description: "AI-native component workbench — derives, verifies, and serves a 
 
 Atlas inverts Storybook’s authoring-first model: your components and their TypeScript types are the source of truth, and Atlas DERIVES the catalog — controls inferred from props, scenarios generated from variant axes (rocketstyle dimensions included), and a five-check verify verdict per scenario (a11y, interaction, leak, reactivity coverage, snapshot). `atlas scan` writes `atlas-catalog.json` + `atlas-agent-guide.md` (the machine-readable surface an AI assistant consumes), `atlas dev` serves a zero-config workbench over the real Vite compiler, and `atlas verify-browser` runs the browser half of verification in real Chromium. Authoring is opt-in, not required: an `atlas.config.ts` can add a theme, a wrapper, presets (viewports / locales / roles), and authored scenarios with `play` interaction scripts.
 
+## Multiplatform
+
+**Tier:** Web-only — the browser package; the native story is stated below
+
+the component workbench — dev tooling that runs in a browser, not app runtime
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - Derived catalog: controls inferred from prop types, scenarios generated from variant axes (rocketstyle dimensions resolved through the project theme)
@@ -16,7 +24,8 @@ Atlas inverts Storybook’s authoring-first model: your components and their Typ
 - Machine-readable output: atlas-catalog.json + atlas-agent-guide.md, written for AI assistants as first-class consumers
 - Zero-config workbench (`atlas dev`): real Vite + the real Pyreon compiler, live control editors, canvas addons (viewport/background/zoom/measure/pseudo-states), axe-core a11y panel, autodocs, Actions log, Reactivity Lens
 - Browser verification (`atlas verify-browser`): reactive coverage measured on the page’s own devtools bridge + pixelmatch snapshot baselines, merged into the catalog
-- Authoring opt-in via atlas.config.ts: theme, wrapper, presets (viewports/locales/roles), authored scenarios with step-labelled `play` functions
+- Authoring opt-in via atlas.config.ts: theme, wrapper, presets (viewports/locales/roles), authored scenarios with step-labelled `play` functions (args stay live — a render-prop child or an h() tree reaches the canvas intact, and an authored Default is the base of every derived scenario), `matrix` (axis fan by default, full cross-product opt-in), `parts` (a part renders inside its parent) and `browserOnly` (an overlay that returns null where isServer is true)
+- A scenario that mounts NO DOM fails the interaction check with `empty-render` — "mounts, clicks and unmounts without throwing" is true of an empty container, and this is the check that is not
 - Honest verdicts by construction: three states (verified/failing/unverified), red scan = red exit, partial browser coverage named per scenario
 
 ## Complete example
@@ -98,7 +107,7 @@ Discover components (static TS scan + rocketstyle runtime detection), derive con
 
 ```tsx
 $ atlas scan .
-atlas: discovered 9 component(s), 43 scenario(s) — 41 verified, 2 failing, 0 unverified.
+atlas: discovered 10 component(s), 44 scenario(s) — 42 verified, 2 failing, 0 unverified.
   checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43
   not run: reactivityCoverage, snapshot — browser-only — run `atlas verify-browser`
   → atlas-catalog.json
@@ -197,7 +206,7 @@ Boot the workbench: real Vite + the real Pyreon compiler over your source, a der
 
 ```tsx
 $ atlas dev . --port=5210
-atlas dev: 9 component(s) → http://localhost:5210/
+atlas dev: 10 component(s) → http://localhost:5210/
 ```
 
 **Common mistakes**
@@ -221,7 +230,7 @@ Compile the workbench into a STATIC, deployable site — the same derived catalo
 
 ```tsx
 $ atlas build . --out docs/components --title "Acme DS"
-atlas build: 9 component(s) → /repo/docs/components
+atlas build: 10 component(s) → /repo/docs/components
   title: Acme DS
 ```
 

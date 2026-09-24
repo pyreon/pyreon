@@ -431,14 +431,30 @@ function isInsideOverlay(el: Element | null): boolean {
   return !!el && !!_reactivePanelEl && _reactivePanelEl.contains(el)
 }
 
+/**
+ * An event target the picker can actually measure and name.
+ *
+ * `e.target` is typed `EventTarget`, and for these listeners it genuinely is
+ * one: they are capture-phase and DOCUMENT-level, sitting on the user's app
+ * while it is being debugged, so they see every synthetic event the app
+ * dispatches — and forwarding a `mousemove` to `document` or `window` is how
+ * every drag implementation tracks the pointer once it leaves the handle.
+ * `document` has no `getBoundingClientRect` and no `tagName`, so an unchecked
+ * cast turns the picker into a throw inside the app's own drag path: the tool
+ * breaking the thing it was opened to inspect, in a way that reads as the
+ * app's bug.
+ */
+const pickableElement = (target: EventTarget | null): Element | null =>
+  target !== null && (target as Node).nodeType === 1 ? (target as Element) : null
+
 function onPickMove(e: MouseEvent): void {
-  const el = e.target as Element | null
+  const el = pickableElement(e.target)
   if (!el || isInsideOverlay(el)) return
   showPickHighlight(el)
 }
 
 function onPickClick(e: MouseEvent): void {
-  const el = e.target as Element | null
+  const el = pickableElement(e.target)
   if (!el || isInsideOverlay(el)) return // overlay's own buttons keep working
   e.preventDefault()
   e.stopPropagation()

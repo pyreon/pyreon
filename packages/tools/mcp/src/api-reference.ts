@@ -1016,6 +1016,23 @@ return <input ref={inputRef} />`,
     notes: 'Create a mutable ref object (`{ current: T | null }`) for holding DOM element references. Pass as the `ref` prop on JSX elements — the runtime sets `.current` after mount and clears it on unmount. Callback refs (`(el: T | null) => void`) are also supported via `RefProp<T>`. See also: onMount.',
   },
 
+  'core/elementRef': {
+    signature: 'elementRef<T = HTMLElement>(): ElementRef<T>',
+    example: `import { elementRef } from '@pyreon/core'
+import { useElementSize } from '@pyreon/hooks'
+
+function Card() {
+  const el = elementRef<HTMLDivElement>()
+  const size = useElementSize(el)   // el IS the () => T | null accessor
+  return <div ref={el}>{size().width}px</div>
+}`,
+    notes: 'A single value that is BOTH a ref and the `() => T | null` accessor element-consuming hooks take (`useElementSize`, `useClickOutside`, `useDraggable`, and ten others across `@pyreon/hooks`/`@pyreon/dnd`). The runtime already invokes a function ref as `ref(el)` on mount and `ref(null)` on unmount, so `elementRef` reads that call shape directly: called WITH an argument means SET (a ref attach/detach), called with NO argument means READ (the accessor hooks want). Without it, wiring N hooks to one element costs three touchpoints (a local variable, a hand-written `() => el` thunk per hook, a callback ref wiring the local back) — `elementRef` collapses that to two, and N hooks on the same element add none of them. `.current` is kept so it drops into code written against `createRef`. See also: createRef, use.',
+    mistakes: `- Using \`elementRef\` where TWO different elements are involved — it is one value FOR one element; a second element needs its own \`elementRef()\`, not a second read of the same one.
+- Treating \`null\` as a "no value yet" read — \`null\` is a legal SET (exactly what unmount passes). The discriminator is \`undefined\` (zero-arg call), not truthiness — \`el()\` reads, \`el(null)\` still writes.
+- Passing \`elementRef()\` to a hook that expects a PLAIN \`T | null\` value instead of an accessor — it is callable, not a value; hooks that take \`() => T | null\` (the convention every element-consuming hook in \`@pyreon/hooks\`/\`@pyreon/dnd\` follows) accept it directly, a hook expecting a raw element needs \`el()\`.
+- Re-declaring a local \`let\` + manual thunk alongside \`elementRef\` "to be safe" — that reintroduces the exact three-touchpoint duplication \`elementRef\` exists to remove.`,
+  },
+
   'core/nativeCompat': {
     signature: '<T>(fn: T) => T',
     example: `// In a framework package:
@@ -1230,11 +1247,11 @@ type Props = ExtractProps<typeof Iterator>
   },
 
   'primitives/connectWebHost': {
-    signature: 'connectWebHost<T>() => { data(): T | undefined; onData(cb: (data: T | undefined) => void): () => void; emit(message: string): void }',
+    signature: 'connectWebHost<T>() => { data(): T | undefined; onData(cb: (data: T | undefined) => void): () => void; emit(message: string): void; joinGroup(group: string): void; leaveGroup(): void; relay(message: string): void; onRelay(cb: (message: string) => void): () => void }',
     example: `const host = connectWebHost<{ rows: number[] }>()
 host.onData((d) => renderChart(root, d?.rows ?? []))
 bar.onclick = () => host.emit(String(bar.dataset.id))`,
-    notes: 'The guest-side glue for the `<WebView>` bridge — the reusable OTHER half of the WebView-host pattern. A web-only-rich component (chart/flow/editor) built as a self-contained bundle runs `connectWebHost()` INSIDE the hosted page (an `<iframe srcdoc>` on web, a WKWebView on iOS, an Android WebView) to read host-pushed props (`data()` / `onData(cb)` fires on every `pyreondata` push) and send events back (`emit(msg)` → the host `onMessage`). Same code on every platform, so a webview-hosted panel is truly 1:1. Guest-only: every method is an inert no-op off-browser, so importing it can never crash a build. See also: WebView, webHostDocument, Web / NativeIOS / NativeAndroid.',
+    notes: 'The guest-side glue for the `<WebView>` bridge — the reusable OTHER half of the WebView-host pattern. A web-only-rich component (chart/flow/editor) built as a self-contained bundle runs `connectWebHost()` INSIDE the hosted page (an `<iframe srcdoc>` on web, a WKWebView on iOS, an Android WebView) to read host-pushed props (`data()` / `onData(cb)` fires on every `pyreondata` push) and send events back (`emit(msg)` → the host `onMessage`). Same code on every platform, so a webview-hosted panel is truly 1:1. HOST GROUPS: `joinGroup(name)` puts the page in a group; `relay(msg)` reaches every OTHER hosted page of that group (a sibling iframe on web, a sibling WKWebView / Android WebView natively — the host does the fan-out, since separate pages can never see each other) and `onRelay(cb)` receives what siblings relay; this is how `<ChartWebView group>` mirrors zoom/legend/tooltip across hosted charts. Guest-only: every method is an inert no-op off-browser, so importing it can never crash a build. See also: WebView, webHostDocument, Web / NativeIOS / NativeAndroid.',
     mistakes: `- Hand-rolling \`window.__pyreonData\` / \`window.pyreonPostMessage\` in the bundle instead of this helper — the two ends can silently drift and the panel stops updating.
 - Calling it in the HOST component (the one rendering \`<WebView>\`) — it runs in the GUEST bundle inside the WebView, not the host.`,
   },
@@ -2380,7 +2397,7 @@ import { setStoreRegistryProvider } from "@pyreon/store"
 
 // once, at server startup:
 configureStoreIsolation(setStoreRegistryProvider)`,
-    notes: 'OVERRIDE per-request `@pyreon/store` isolation with a provider of your own. You do NOT need to call this to be isolated: `@pyreon/store` publishes its setter on a `globalThis` seam when it loads on a server, and the renderer wires it at its own choke point, so every `renderToString` / `renderToStream` / `runWithRequestContext` call already gets a fresh registry via ALS. It was opt-in before, which meant unisolated by default — the two layers that own the server (`@pyreon/server`, `@pyreon/zero`) cannot call it, because neither depends on `@pyreon/store`, so the only party who could opt in was the application author. Reach for it to supply a custom registry (a shared build-time cache across SSG pages, a test double); the last call wins. See also: runWithRequestContext, renderToString.',
+    notes: `OVERRIDE per-request \`@pyreon/store\` isolation with a provider of your own. You do NOT need to call this to be isolated: \`@pyreon/store\` publishes its setter on a \`globalThis\` seam when it loads on a server, and the renderer wires it at its own choke point, so every \`renderToString\` / \`renderToStream\` / \`runWithRequestContext\` call already gets a fresh registry via ALS. \`@pyreon/storage\` and \`@pyreon/state-tree\` are wired through the same choke point via their own seams; this function overrides the STORE's provider only. It was opt-in before, which meant unisolated by default — the two layers that own the server (\`@pyreon/server\`, \`@pyreon/zero\`) cannot call it, because neither depends on \`@pyreon/store\`, so the only party who could opt in was the application author. Reach for it to supply a custom registry (a shared build-time cache across SSG pages, a test double); the last call wins. See also: runWithRequestContext, renderToString.`,
     mistakes: `- Believing you must call it — isolation is automatic as of the seam; this is the override, not the switch. A pre-seam app that DID call it keeps working unchanged
 - Calling it per request instead of once at startup — it only needs to wire the provider once; the per-request fresh \`Map\` is handled internally by the ALS run
 - Passing something other than the \`setStoreRegistryProvider\` exported by \`@pyreon/store\` — the contract is specifically that provider-setter shape`,
@@ -2904,8 +2921,8 @@ post.author.id()   // 'u-42'`,
     example: `const useTodos = TodoList.asHook('todos')
 // tests:
 afterEach(() => resetAllHooks())   // else a mutation in one test leaks to the next`,
-    notes: 'Destroy `.asHook(id)` singletons. `.asHook(id)` stores ONE instance per id in a MODULE-LEVEL registry (created lazily on first call, shared for the process), so every consumer of `useX = Model.asHook("x")` gets the SAME instance — great for app-global state, a hazard for tests. `resetHook(id)` deletes that one singleton so the next `asHook(id)` call re-creates a fresh instance; `resetAllHooks()` clears the whole registry. Both are for TEST isolation (and hot-reload). See also: model, destroy.',
-    mistakes: `- Not resetting between tests — the \`asHook\` singleton lives in a module-level Map for the whole process, NOT per-test. State mutated in one test persists into the next; call \`resetAllHooks()\` (or \`resetHook(id)\`) in \`afterEach\`.
+    notes: 'Destroy `.asHook(id)` singletons. `.asHook(id)` stores ONE instance per id in a MODULE-LEVEL registry (created lazily on first call, shared for the process — or for the REQUEST, when rendering under `@pyreon/runtime-server`, which isolates the registry so concurrent requests never share an instance), so every consumer of `useX = Model.asHook("x")` gets the SAME instance — great for app-global state, a hazard for tests. `resetHook(id)` deletes that one singleton so the next `asHook(id)` call re-creates a fresh instance; `resetAllHooks()` clears the whole registry. Both are for TEST isolation (and hot-reload). See also: model, destroy.',
+    mistakes: `- Not resetting between tests — the \`asHook\` singleton lives in a module-level Map for the whole process (per REQUEST only inside an SSR render), NOT per-test. State mutated in one test persists into the next; call \`resetAllHooks()\` (or \`resetHook(id)\`) in \`afterEach\`.
 - Expecting \`resetHook\` to \`destroy()\` the old instance's subscriptions — it only DROPS the registry entry so the next \`asHook\` re-creates. If code still holds the old reference, call \`destroy()\` on it yourself.`,
   },
   // <gen-docs:api-reference:end @pyreon/state-tree>
@@ -4790,6 +4807,7 @@ theme.remove()    // delete from storage, reset to default`,
     mistakes: `- Expecting cross-tab sync with \`useSessionStorage\` — only \`useStorage\` (localStorage) fires storage events across tabs
 - Storing non-serializable values (functions, class instances) without custom \`serializer\`/\`deserializer\` — JSON.stringify drops them silently
 - Reading \`.remove()\` return value — it returns void, not the removed value
+- Treating \`.remove()\` as a per-consumer teardown that leaves other consumers alone — it always clears the STORED VALUE (that is what you asked for) and resets the shared signal. What is refcounted is the registry entry, so \`removeStorage\`/\`clearStorage\` keep seeing a key while any consumer still holds it.
 - Evolving the stored shape without \`version\` + \`migrate\` — a user with the OLD shape on disk loads it as-is (or \`onError\`/default if it no longer parses). Bump \`version\` and provide \`migrate\` to transform the old shape; a pre-versioning value is migrated as version \`0\`.
 - Assuming a \`.set()\` that exceeds quota throws — the in-memory signal always updates; the \`setItem\` failure is routed to \`onError\` (a notification) instead of throwing. Provide \`onError\` to surface quota problems to the user.`,
   },
@@ -4820,7 +4838,7 @@ filter.set({ query: 'pyreon', page: 1 })
     example: `const draft = useMemoryStorage('draft-id-42', '')
 draft.set('typing...')
 // → reactive, but cleared on reload`,
-    notes: 'In-memory reactive signal that mimics the storage hook shape — useful as an SSR-safe fallback or in environments without `localStorage`/`sessionStorage` (sandbox iframes, web workers without DOM, some embedded WebViews). Same `StorageSignal<T>` shape with `.remove()`. Values are lost on page reload; no persistence. See also: useStorage, useSessionStorage.',
+    notes: 'In-memory reactive signal that mimics the storage hook shape — useful as an SSR-safe fallback (its byte store is request-scoped on a server, so nothing written during one render is visible to the next) or in environments without `localStorage`/`sessionStorage` (sandbox iframes, web workers without DOM, some embedded WebViews). Same `StorageSignal<T>` shape with `.remove()`. Values are lost on page reload; no persistence. See also: useStorage, useSessionStorage.',
     mistakes: `- Reaching for useMemoryStorage when a plain \`signal()\` would do — if you don't need the StorageSignal \`.remove()\` shape or the cross-storage-backend interchangeability, a plain \`signal(defaultValue)\` is simpler.
 - Expecting persistence — values vanish on reload by design. If persistence is needed, swap to \`useStorage\` / \`useSessionStorage\` / \`useIndexedDB\`.`,
   },
@@ -4832,7 +4850,7 @@ draft.set('typing...')
 // Inside an SSR handler:
 setCookieSource(request.headers.get('cookie') ?? '')
 const html = await renderToString(<App />)`,
-    notes: `Tell \`useCookie\` how to read cookies during SSR. Pass the raw cookie header string, an accessor \`() => string\` returning it, or \`null\` to clear. The source is a single module-level slot: a bare STRING is shared across concurrent requests (safe only when rendering is serialized per process), so on a server handling concurrent requests pass an ACCESSOR bound to your per-request context (e.g. reading the current request's \`Cookie\` header out of \`runWithRequestContext\`'s AsyncLocalStorage) — the accessor is evaluated LAZILY at each cookie read, so each request resolves its own cookies without this module holding per-request state. See also: useCookie.`,
+    notes: `Tell \`useCookie\` how to read cookies during SSR. Pass the raw cookie header string, an accessor \`() => string\` returning it, or \`null\` to clear. The source is a single module-level slot: a bare STRING is shared across concurrent requests (safe only when rendering is serialized per process), so on a server handling concurrent requests pass an ACCESSOR bound to your per-request context (e.g. reading the current request's \`Cookie\` header out of \`runWithRequestContext\`'s AsyncLocalStorage) — the accessor is evaluated LAZILY at each cookie read, so each request resolves its own cookies without this module holding per-request state. The signal registry that caches cookie signals per key is itself isolated per request under \`@pyreon/runtime-server\`, which is what makes the accessor reachable on every request rather than only the first. See also: useCookie.`,
     mistakes: `- Forgetting to call setCookieSource on SSR — \`useCookie\` falls back to \`defaultValue\` on every request, ignoring the user's real cookie state. The page hydrates correctly on the client but flashes the default first.
 - Passing a bare STRING source on a CONCURRENTLY-rendering server — the source is one module-level slot, so request A's string can leak into request B's render. Pass an accessor \`() => currentRequest().cookieHeader\` bound to your per-request context (it's evaluated lazily at read time) so each request resolves its own cookies.
 - Passing a stale cookie source after redirect or login — the source is captured once; re-call after any operation that should change the cookie set.
@@ -5433,6 +5451,36 @@ const NodeWithToolbar = (props) => (
 - Forgetting \`pointer-events: all\` + \`nopan\` on an interactive label — the layer ignores the pointer, and a click that reaches the canvas starts a pan.`,
   },
 
+  'flow/BaseEdge': {
+    signature: 'BaseEdge(props: BaseEdgeProps) => VNodeChild',
+    example: `function Wire(props: EdgeComponentProps) {
+  const edge = () => getBezierPath({ sourceX: props.sourceX(), sourceY: props.sourceY(), targetX: props.targetX(), targetY: props.targetY() })
+  return <BaseEdge path={edge().path} label="wire" labelX={edge().labelX} labelY={edge().labelY} />
+}`,
+    notes: 'The visible part of a CUSTOM edge: its stroke, markers and an optional label (React Flow `<BaseEdge>`). `path` is SVG path data, typically from `getBezierPath` / `getSmoothStepPath`; the default stroke is `--pyreon-flow-edge` at 1.5px, and a `style` string REPLACES that default wholesale, as on any SVG element. `label` + `labelX` + `labelY` add an `<EdgeText>`. The flow already wraps every edge in a wider invisible hit path, so `BaseEdge` draws only what you see. Lowers natively (a native stroke plus label; `markerStart` / `markerEnd` are `url(#…)` references with no native meaning and are reported). See also: EdgeText, EdgeLabelRenderer, edge-path-helpers.',
+    mistakes: `- Passing a \`style\` that sets only \`opacity\` and expecting the default stroke to remain — \`style\` replaces the default declaration, so no \`stroke\` means no line.
+- Setting \`label\` without \`labelX\` / \`labelY\` — the label has no position and is not drawn.
+- Reading \`props.sourceX\` without calling it — the edge props are accessors (\`props.sourceX()\`).`,
+  },
+
+  'flow/EdgeText': {
+    signature: 'EdgeText(props: { x: number; y: number; label: string; style?: string }) => VNodeChild',
+    example: '<EdgeText x={edge().labelX} y={edge().labelY} label="42 ms" />',
+    notes: 'A text label at a point in flow coordinates, in the built-in edge-label style (11px, `--pyreon-flow-edge-label`). React Flow `<EdgeText>`. For interactive or rich labels use `<EdgeLabelRenderer>`, which renders HTML. Lowers natively. See also: BaseEdge, EdgeLabelRenderer.',
+    mistakes: '- Putting buttons or wrapped text in it — it is SVG `<text>`; use `<EdgeLabelRenderer>` for HTML.',
+  },
+
+  'flow/ViewportPortal': {
+    signature: 'ViewportPortal(props: { children?: VNodeChild }) => VNodeChild',
+    example: `<Flow instance={flow}>
+  <ViewportPortal>
+    <div style="position: absolute; transform: translate(200px, 80px)">Annotation</div>
+  </ViewportPortal>
+</Flow>`,
+    notes: 'Renders arbitrary HTML in flow coordinates: the children pan and zoom with the graph (React Flow `<ViewportPortal>`). Position them with a `transform: translate(x, y)` in flow units. Renders nothing outside a mounted `<Flow>` and on the server. WEB-ONLY: CSS positioning has no native meaning, so the compiler reports it and drops it; use `<EdgeLabelRenderer>`, `<NodeToolbar>` or `<Panel>` on native. See also: EdgeLabelRenderer, Panel.',
+    mistakes: '- Positioning with `left` / `top` in screen pixels — the layer is inside the zoomed viewport, so use flow units.',
+  },
+
   'flow/MarkerType / Position': {
     signature: `enum MarkerType { Arrow = 'arrow', ArrowClosed = 'arrowclosed' } · enum Position { Top = 'top', Right = 'right', Bottom = 'bottom', Left = 'left' }`,
     example: `import { MarkerType, Position } from '@pyreon/flow'
@@ -5562,7 +5610,7 @@ const sales = signal<Row[]>([{ month: 'Jan', revenue: 120, target: 100 }])
   title="Monthly revenue"
   height={240}
 />`,
-    notes: `Pyreon's OWN charting engine, from the \`@pyreon/charts/plot\` subpath — no ECharts, no third-party engine. Marks are IMPORTED BINDINGS (\`bars\`, \`line\`, \`area\`, \`points\`, \`stackedBars\`, \`groupedBars\`, \`stackedArea\` (shares over time — areas filled between running totals), \`band(low, high)\` (a REGION between two channels: a confidence interval or min/max range, whose floor is the data rather than the axis an \`area\` closes to), \`waterfall\`, plus the \`histogram()\` spread over the crossing \`binValues\`), so tree-shaking is structural rather than a build flag: a bar chart never pulls the radial trigonometry, the decimation or the time scales. Geometry is pure TypeScript over plain data and the platform half is a short backend that walks a flat \`DrawCmd[]\`, which is why the same source is the path to native rendering. Renders to canvas with a device-pixel-ratio-correct surface; \`showLegend\`, \`tooltip\`, \`crosshair\` and a title are opt-in props, and width falls back to the container's own so a chart in a flexible column fills it. The legend is INTERACTIVE by default: clicking an entry toggles its series, the domain rescales to what is visible, and hidden entries render muted (\`legendToggle: false\` opts out). \`rtl\` lays the chart out right-to-left — implemented as a MIRROR of the finished draw list about the canvas centreline, so bands run from the right, the value axis moves to the right gutter and the legend's swatch sits right of its label, while every pointer is mirrored back before it is hit tested (a click still reports the category it landed on). Text is repositioned, never reversed. The mirror is a TWO-WAY seam: screen -> chart turns a pointer into chart space before a hit test, and chart -> screen (\`screenX\` / \`screenRectX\`) turns chart geometry back into DOM space before it reaches an overlay's \`style.left\` — the tooltip goes through the second half, and a custom host that positions a DOM overlay from chart geometry must too. \`saveAsImage\` serialises the MIRRORED list, so an SVG export is the chart on screen rather than its mirror image. It lowers to native through \`pyreonMirrorCmds\`, whose parity with the web mirror is asserted by executing all three implementations; the \`rtl\` prop on a FAMILY host (treemap, sankey, …) is not lowered on native yet and warns by name. See also: chartToSvg, PieChart.`,
+    notes: `Pyreon's OWN charting engine, from the \`@pyreon/charts/plot\` subpath — no ECharts, no third-party engine. Marks are IMPORTED BINDINGS (\`bars\`, \`line\`, \`area\`, \`points\`, \`stackedBars\`, \`groupedBars\`, \`stackedArea\` (shares over time — areas filled between running totals), \`band(low, high)\` (a REGION between two channels: a confidence interval or min/max range, whose floor is the data rather than the axis an \`area\` closes to), \`waterfall\`, plus the \`histogram()\` spread over the crossing \`binValues\`), so tree-shaking is structural rather than a build flag: a bar chart never pulls the radial trigonometry, the decimation or the time scales. Geometry is pure TypeScript over plain data and the platform half is a short backend that walks a flat \`DrawCmd[]\`, which is why the same source is the path to native rendering. Renders to canvas with a device-pixel-ratio-correct surface; \`showLegend\`, \`tooltip\`, \`crosshair\` and a title are opt-in props, and width falls back to the container's own so a chart in a flexible column fills it. The legend is INTERACTIVE by default: clicking an entry toggles its series, the domain rescales to what is visible, and hidden entries render muted (\`legendToggle: false\` opts out). \`rtl\` lays the chart out right-to-left — implemented as a MIRROR of the finished draw list about the canvas centreline, so bands run from the right, the value axis moves to the right gutter and the legend's swatch sits right of its label, while every pointer is mirrored back before it is hit tested (a click still reports the category it landed on). Text is repositioned, never reversed. The mirror is a TWO-WAY seam: screen -> chart turns a pointer into chart space before a hit test, and chart -> screen (\`screenX\` / \`screenRectX\`) turns chart geometry back into DOM space before it reaches an overlay's \`style.left\` — the tooltip goes through the second half, and a custom host that positions a DOM overlay from chart geometry must too. \`saveAsImage\` serialises the MIRRORED list, so an SVG export is the chart on screen rather than its mirror image. It lowers to native through \`pyreonMirrorCmds\`, whose parity with the web mirror is asserted by executing all three implementations; every family host (treemap, sankey, …) takes \`rtl\` natively through the same mirror. See also: chartToSvg, PieChart.`,
     mistakes: `- Importing from \`@pyreon/charts\` instead of \`@pyreon/charts/plot\` — the default entry is the ECharts bridge; the two engines are separate subpaths and mixing them pulls ECharts back into the bundle
 - Passing \`marks\` as a string type name — a mark is an imported FUNCTION, which is exactly what makes the unused ones droppable; there is no string-keyed registry to tree-shake around
 - Expecting two series to be told apart without a legend — colours come from a per-series palette, but \`showLegend\` is opt-in and a chart with neither legend nor tooltip is unlabelled
@@ -5574,7 +5622,7 @@ const sales = signal<Row[]>([{ month: 'Jan', revenue: 120, target: 100 }])
 - Leaving \`format\` unset on a money or percentage chart — the default prints the raw number, so a revenue axis reads \`3200000\`; \`currency\`, \`percent\`, \`compact\` and \`fixed\` ship in the same subpath and one \`format\` covers the axis, the tooltip and the spoken description at once
 - Reading a rescaled axis as a data change after a legend toggle — hiding a dominant series RESCALES the domain to the visible ones (that is the point: it is how you read the small series); the accessible table still carries every series
 - Expecting \`crosshair\` on a \`horizontal\` chart — the pointer sweeps rows there and a vertical rule would mislead, so it is a documented no-op; the tooltip still works
-- Painting a 100k-point series without \`maxPoints\` — every point becomes a command on every repaint; \`maxPoints={1000}\` thins the visible slice with LTTB (marks stay aligned, hits report the GLOBAL row index) and the picture is the same to the eye
+- Painting a 100k-point series without \`maxPoints\` — every point becomes a command on every repaint; \`maxPoints={1000}\` thins the visible slice with LTTB (marks stay aligned, hits report the GLOBAL row index) and the picture is the same to the eye. It draws exactly \`maxPoints\` DISTINCT rows as of 0.52; before that the last bucket collided with the pinned final row and one slot was wasted on a duplicate.
 - Reading rounded bars as a style bug — \`theme.radius\` (3) rounds the corners away from the baseline by default; \`theme={{ radius: 0 }}\` is square, and a mark's own \`borderRadius\` always wins`,
   },
 
@@ -5607,7 +5655,7 @@ interface Group { name: string; samples: number[] }
 const groups: Group[] = [{ name: 'eu', samples: [12, 15, 14, 30, 11] }, { name: 'us', samples: [20, 22, 19, 25] }]
 
 <BoxplotChart data={groups} x={(g: Group) => g.name} values={(g: Group) => g.samples} height={220} title="Latency by region" />`,
-    notes: `A boxplot per category from RAW SAMPLES: \`values={(d) => d.samples}\` is reduced with \`fiveNumber\` (min, q1, median, q3, max; whiskers at the extremes) and drawn over the engine's box geometry, one colour per box from the theme palette. \`fiveNumber\` / \`renderBoxplot\` / \`hitBox\` / \`boxplotToSvg\` are exported for hosts that build their own. Web-only host today (the native lowering is a follow-up). See also: PlotChart.`,
+    notes: `A boxplot per category from RAW SAMPLES: \`values={(d) => d.samples}\` is reduced with \`fiveNumber\` (min, q1, median, q3, max; whiskers at the extremes) and drawn over the engine's box geometry, one colour per box from the theme palette. \`fiveNumber\` / \`renderBoxplot\` / \`hitBox\` / \`boxplotToSvg\` are exported for hosts that build their own. Lowers to SwiftUI and Compose like every other family host — title, legend, tap tooltip, entrance and \`onSelectIndex\` included — and is tapped on both device lanes. See also: PlotChart.`,
     mistakes: `- Passing pre-computed quartiles as \`values\` — the prop takes the RAW samples and reduces them; feed summaries to \`renderBoxplot(rows: FiveNumber[])\` directly instead
 - Reading an empty box as a bug — a category with fewer than two samples has no spread, so its box collapses to its median line`,
   },
@@ -5727,7 +5775,7 @@ const repo: TreeNode[] = [
 
 <TreemapChart data={repo} height={260} onSelect={(cell) => cell && console.log(cell.path)} />
 <SunburstChart data={repo} innerRatio={0.25} height={320} />`,
-    notes: `The hierarchy families of Pyreon's own engine share ONE data shape: \`TreeNode { name, value?, children?, color? }\`. \`<TreemapChart>\` (squarified), \`<SunburstChart>\` (radial partition) and \`<TreeChart>\` (tidy node-link, five orientations) all take the same \`data\`, so a drill-down can switch views without reshaping. Each is a reactive canvas host over a pure \`layoutX\` / \`renderX\` / \`hitX\` trio and ships an \`xToSvg\` for the server; cells and arcs carry a child-index \`path\` as a stable selection identity. Siblings in the same wave: \`<FunnelChart>\`, \`<BoxplotChart>\` (\`fiveNumber\` from raw samples), \`<SankeyChart>\` and \`<GraphChart>\` (a SEEDED force layout — same input, same picture). See also: PlotChart, optionToSvg.`,
+    notes: `The hierarchy families of Pyreon's own engine share ONE data shape: \`TreeNode { name, value?, children?, color? }\`. \`<TreemapChart>\` (squarified), \`<SunburstChart>\` (radial partition) and \`<TreeChart>\` (tidy node-link, five orientations) all take the same \`data\`, so a drill-down can switch views without reshaping. Each is a reactive canvas host over a pure \`layoutX\` / \`renderX\` / \`hitX\` trio and ships an \`xToSvg\` for the server; cells and arcs carry a child-index \`path\` as a stable selection identity. Siblings in the same wave: \`<FunnelChart>\`, \`<BoxplotChart>\` (\`fiveNumber\` from raw samples), \`<SankeyChart>\`, \`<GraphChart>\` (a SEEDED force layout — same input, same picture) and \`<ChordChart>\`, which takes sankey's \`{ nodes, links }\` verbatim but closes the layout into a circle — so it drops the axis and with it the acyclicity a sankey needs to read well, which is why a flow that goes BOTH ways (imports and exports, migration between regions, a confusion matrix) belongs on a chord. See also: PlotChart, optionToSvg.`,
     mistakes: `- Giving a parent BOTH a value and children — the parent value wins and the children are laid out inside it as if it were their sum; leave \`value\` off a parent so it is derived
 - Expecting \`onSelect\` to fire for the parent when a leaf is clicked — the hit test returns the DEEPEST cell; read \`cell.path\` to walk up
 - Reading colours as data — descendants inherit and TINT the top-level colour so nesting reads as nesting; set \`color\` per node only when it carries meaning
@@ -5768,7 +5816,7 @@ const svg = optionToSvg(
 )
 const { spec, warnings } = compileOption(echartsOption)
 if (warnings.length > 0) console.warn(warnings.map((w) => w.code + ' @ ' + w.path))`,
-    notes: `The ECharts option-compat facade: an ECharts-SHAPED option in, this engine out — cartesian series (line/bar/scatter/effectScatter/pictorialBar/lines/custom with \`renderItem\`), every family (pie, gauge, radar, candlestick, heatmap, funnel, boxplot, treemap, sunburst, tree, sankey, graph, themeRiver, map), \`coordinateSystem: 'polar' | 'geo' | 'singleAxis' | 'calendar'\`, \`dataset\` with filter/sort transforms, \`graphic\`, \`visualMap\`, \`markPoint\` / \`markLine\`, title, legend, tooltip. \`compileOption\` returns the spec plus \`warnings\` — anything unmapped is NAMED (\`option-key-unsupported\`, \`series-option-unsupported\`, \`series-type-unsupported\`, \`series-data-shape\`, …), never dropped silently, and a gallery-shaped conformance corpus ratchets the clean pass-rate upward in CI. \`{ theme, locale }\` apply registered themes (\`registerTheme\`; light/dark built in) and Intl-backed locale packs (\`registerLocale\`). See also: PlotChart, chartToSvg, MapChart.`,
+    notes: `The ECharts option-compat facade: an ECharts-SHAPED option in, this engine out — cartesian series (line/bar/scatter/effectScatter/pictorialBar/lines/custom with \`renderItem\`), every family (pie, gauge, radar, candlestick, heatmap, funnel, boxplot, treemap, sunburst, tree, sankey, graph, chord, themeRiver, map), \`coordinateSystem: 'polar' | 'geo' | 'singleAxis' | 'calendar'\`, \`dataset\` with filter/sort transforms, \`graphic\`, \`visualMap\`, \`markPoint\` / \`markLine\`, title, legend, tooltip. \`compileOption\` returns the spec plus \`warnings\` — anything unmapped is NAMED (\`option-key-unsupported\`, \`series-option-unsupported\`, \`series-type-unsupported\`, \`series-data-shape\`, …), never dropped silently, and a gallery-shaped conformance corpus ratchets the clean pass-rate upward in CI. \`{ theme, locale }\` apply registered themes (\`registerTheme\`; light/dark built in) and Intl-backed locale packs (\`registerLocale\`). See also: PlotChart, chartToSvg, MapChart.`,
     mistakes: `- Treating an empty \`warnings\` array as "pixel-identical to ECharts" — it means every key MAPPED; styling details (ECharts default paddings, label placement) still differ
 - Ignoring \`warnings\` — a \`series-type-unsupported\` means a whole series is missing from the picture; log them in development
 - Passing \`theme\` in the OPTION — ECharts sets it on \`init\`, so the facade takes it in the second argument (\`{ theme, locale }\`)
@@ -5784,12 +5832,14 @@ import { signal } from '@pyreon/reactivity'
 
 const option = signal<EChartsOption>({ xAxis: { data: ['Mon', 'Tue'] }, yAxis: {}, series: [{ type: 'bar', data: [120, 200] }] })
 <OptionChart option={() => option()} width={640} height={320} theme="dark" onSelect={(hit) => hit && console.log(hit.name, hit.value)} />`,
-    notes: `The ECharts-option-driven host: an ECharts-shaped option in (a value or an accessor), a live chart out. Cartesian plans — single grid or multi-\`grid\` — paint on a canvas through the SAME \`compiledCommands\` that \`optionToSvg\` serialises, so the host and the server never disagree on a pixel; family and geo plans render through the facade into an inline \`<svg>\`. A \`timeline\` steps on \`autoPlay\` (one interval, owned by the effect and cleared on every option change and on unmount) or is driven by \`timelineIndex\`; \`onSelect\` hit-tests clicks against the painted geometry (bars by rect, other series by nearest x) and reports \`{ seriesIndex, dataIndex, name, value }\`; \`theme\` / \`locale\` reach the compilers; the hidden table lists every series by category. It forwards every prop it shares with the shared canvas host — \`width\`, \`title\`, \`tooltip\`, \`keyboard\`, \`toolbox\`, \`onSaveImage\`, \`accessibleTable\`, \`class\` and \`rtl\` — through a passthrough map the type system requires to be TOTAL, so a new host prop is a compile error until it is forwarded or explicitly omitted. Interaction that needs the row model — tooltip, dataZoom, brush, navigator, keyboard — lives on \`<PlotChart>\`, whose \`marks\` API is the engine's native shape. See also: optionToSvg, PlotChart, compileOption.`,
+    notes: `The ECharts-option-driven host: an ECharts-shaped option in (a value or an accessor), a live chart out. Cartesian plans — single grid or multi-\`grid\` — paint on a canvas through the SAME \`compiledCommands\` that \`optionToSvg\` serialises, so the host and the server never disagree on a pixel; family plans (pie, sankey, treemap, map, …) mount that family's own interactive host, kept alive across option updates so an update TWEENS rather than remounting; SEVERAL charts in one option (two pies, a pie in the corner of a line chart, a gauge beside a radar, candlesticks on one grid and volume on another) are split into layers — the cartesian series on the canvas, series sharing a coordinate system together, every other family series as its own host placed by its \`center\` / \`radius\` or \`left\` / \`top\` / \`width\` / \`height\` box; boxplot and single-axis options still render as static SVG. It animates as ECharts does: an entrance (1000 ms \`cubicOut\` by default) and an update tween (300 ms \`cubicInOut\`), governed by the option's \`animation\`, \`animationDuration\` / \`animationEasing\` / \`animationDelay\`, their \`…Update\` twins and \`animationThreshold\`, on the option or a series, with ECharts' whole easing table. The option's \`tooltip\` component decides the tooltip: \`trigger\` (\`item\` / \`axis\`), a template (\`{a}\` \`{b}\` \`{c}\` \`{d}\`, indexed for an axis tooltip) or function \`formatter\` whose HTML renders through an allow-list, \`valueFormatter\`, \`order\`, every \`position\` form, \`confine\`, the look keys, \`triggerOn\`, \`showDelay\` / \`hideDelay\`, \`alwaysShowContent\`, \`enterable\`, and \`tooltip.axisPointer\` (\`line\`, \`shadow\`, \`cross\` with axis labels). A \`timeline\` steps on \`autoPlay\` or follows \`timelineIndex\`; \`dataZoom\`, the toolbox, brush and visualMap handles are interactive; \`onSelect\` hit-tests clicks against the painted geometry. See also: optionToSvg, PlotChart, compileOption.`,
     mistakes: `- Passing the option as a plain object and expecting updates — a value is static; pass an accessor (\`option={() => option()}\`) so a signal write repaints
 - Reading \`hit.dataIndex\` as a ROW index on a multi-grid option — it is the index within the hit grid's series; the grid is implied by \`seriesIndex\`
-- Expecting \`tooltip\` / \`dataZoom\` from the option to install pointer handlers — the option host paints what the facade compiles; pointer interaction is \`<PlotChart>\`'s
+- Expecting a tooltip with no \`tooltip\` component in the option — as in ECharts, none shows; add \`tooltip: {}\` (or \`trigger: 'axis'\` for every series at a column), or pass the \`tooltip\` prop for the plain default box
+- Expecting the first frame to be the settled chart — option charts animate by default as ECharts does; set \`animation: false\` in the option for a static first paint (a browser test sampling pixels at mount needs it)
+- Returning HTML with scripts, handlers, links or images from a tooltip \`formatter\` — it renders through an allow-list (formatting tags and presentational inline styles only); everything else is dropped
 - Setting \`timelineIndex\` AND \`timeline.autoPlay\` — an explicit index wins and auto-play is suspended while it is set
-- Reaching into the inline \`<svg>\` of a family option for hit-testing — families keep their own canvas hosts (\`<PieChart>\`, \`<SankeyChart>\`, …) for interaction`,
+- Reaching for the canvas of a family option for hit-testing — families mount their own canvas hosts (\`<PieChart>\`, \`<SankeyChart>\`, …); use \`onFamilySelect\``,
   },
 
   'charts/GanttChart': {
@@ -5822,7 +5872,7 @@ const chart = createChartHandle()
 chart.dispatch({ type: 'select', index: 2 })
 chart.dispatch({ type: 'dataZoom', start: 0.25, end: 0.75 })
 chart.dispatch({ type: 'restore' })`,
-    notes: `The imperative handle (ECharts \`dispatchAction\`) for ONE \`<PlotChart handle>\`: a link (\`zoom\`, \`hover\`) plus \`selected\` (pinned datums, GLOBAL indices) and \`hidden\` (series by mark index), and \`dispatch(action)\` over the ECharts vocabulary — \`highlight\` / \`downplay\` (VISIBLE-row index, the crosshair's space), \`select\` / \`unselect\` / \`toggleSelect\` (global datum), \`legendSelect\` / \`legendUnselect\` / \`legendToggle\` (series), \`dataZoom\` (fractions; a full window reads back as null) and \`restore\` (clears all four). Every dispatch is one batch, so the chart repaints once. The signals ARE the chart's state: \`handle.selected()\` reads the chart, and the change callbacks (\`onSelectChange\` / \`onHighlight\` / \`onLegendChange\` / \`onZoom\`) fire for a dispatch exactly as for a pointer. A handle is also a link — pass it as \`link\` to sibling charts to connect them. See also: createChartLink, PlotChart.`,
+    notes: `The imperative handle (ECharts \`dispatchAction\`) for ONE \`<PlotChart handle>\`: a link (\`zoom\`, \`hover\`) plus \`selected\` (pinned datums, GLOBAL indices) and \`hidden\` (series by mark index), and \`dispatch(action)\` over the ECharts vocabulary — \`highlight\` / \`downplay\` (VISIBLE-row index, the crosshair's space), \`select\` / \`unselect\` / \`toggleSelect\` (global datum), \`legendSelect\` / \`legendUnselect\` / \`legendToggle\` (series), \`dataZoom\` (fractions; a full window reads back as null), \`restore\` (clears all four), \`showTip\` / \`hideTip\` (the crosshair datum), \`legendAllSelect\` and \`legendInverseSelect\` (over the bound chart's \`seriesCount\`, which the chart keeps on the handle), \`takeGlobalCursor\` (arm the area brush with a type) and \`brush\` (set or clear its areas), and \`timelineChange\` / \`timelinePlayChange\` for an \`<OptionChart handle>\`, which also binds its zoom, hover, pins and brush. One pure reducer (\`applyChartAction\`) runs every dispatch, and it crosses: on iOS and Android \`createChartHandle()\` lowers to a \`PyreonChartHandle\`, the bound chart reads and writes its fields, and \`handle.dispatch({ ... })\` with an inline action object lowers too. Every dispatch is one batch, so the chart repaints once. The signals ARE the chart's state: \`handle.selected()\` reads the chart, and the change callbacks (\`onSelectChange\` / \`onHighlight\` / \`onLegendChange\` / \`onZoom\`) fire for a dispatch exactly as for a pointer; \`onClick\` / \`onDoubleClick\` / \`onContextMenu\` report the datum under the pointer (-1 for a miss) whatever \`selectedMode\` says, and \`onRendered\` follows each paint. A handle is also a link — pass it as \`link\` to sibling charts to connect them. See also: createChartLink, PlotChart.`,
     mistakes: `- Passing one handle as \`handle\` to TWO charts — both then share selection and legend state; give each chart its own handle and connect them with \`link\`
 - Dispatching \`highlight\` with a GLOBAL index on a zoomed chart — highlight speaks the VISIBLE-row space like the crosshair; subtract the window offset (the pins in \`select\` are global)
 - Expecting a miss-click to clear the selection — like ECharts it does not; dispatch \`unselect\` or \`restore\`
@@ -7709,7 +7759,8 @@ tags.set(['a', 'b'])  // ?tags=a&tags=b`,
 - Forgetting the default value — the type is inferred from it and determines the auto-coercion strategy (number default = coerce to number, boolean default = coerce to boolean)
 - Reading useUrlState in a non-reactive scope at component setup — the signal reads the URL once; wrap in a reactive scope to track URL changes
 - Calling setUrlRouter before the router is available — SSR renders may not have a router instance yet
-- Assuming a hand-rolled router object with only \`replace\` honours \`{ replace: false }\` — it cannot, so the update is downgraded to a replace and Back will not undo it. Give it a \`push(path)\`; a dev warning fires once if you do not.`,
+- Assuming a hand-rolled router object with only \`replace\` honours \`{ replace: false }\` — it cannot, so the update is downgraded to a replace and Back will not undo it. Give it a \`push(path)\`; a dev warning fires once if you do not.
+- Assuming the params live in \`location.search\` in a hash-routed app — they do not. \`@pyreon/router\` defaults to \`mode: "hash"\`, so a registered router puts the whole route, query included, in the fragment (\`#/products?page=3\`) and leaves \`location.search\` empty. url-state follows the REGISTERED router: read the value through \`useUrlState\` / \`getParam\` rather than \`new URLSearchParams(location.search)\`.`,
   },
 
   'url-state/setUrlRouter': {
@@ -7720,8 +7771,12 @@ import { setUrlRouter } from '@pyreon/url-state'
 const router = useRouter()
 setUrlRouter(router)
 // Now useUrlState routes through the router: replace() by default,
-// push() for a { replace: false } update (so Back undoes it)`,
-    notes: `Configure useUrlState to use a @pyreon/router instance for URL updates instead of the raw history API. When set, URL changes go through the router's navigation system, ensuring route guards, middleware, and scroll management integrate correctly. The router needs \`replace(path)\`; \`push(path)\` is optional but is what makes \`{ replace: false }\` mean anything — without it a push-intent update falls back to \`replace\` and dev-warns once, so Back will not undo it. \`@pyreon/router\` has both. See also: useUrlState.`,
+// push() for a { replace: false } update (so Back undoes it).
+// The router also decides WHERE the params live: in the router's default
+// hash mode they ride inside the fragment (#/products?page=3), not in
+// location.search — read them through useUrlState, never location.search.`,
+    notes: `Configure useUrlState to use a @pyreon/router instance for URL updates instead of the raw history API. When set, URL changes go through the router's navigation system, ensuring route guards, middleware, and scroll management integrate correctly. The router needs \`replace(path)\`; \`push(path)\` is optional but is what makes \`{ replace: false }\` mean anything — without it a push-intent update falls back to \`replace\` and dev-warns once, so Back will not undo it. \`@pyreon/router\` has both. The registered router also decides WHERE the params live: its \`mode\` (\`@pyreon/router\` defaults to \`hash\`) puts the query inside the fragment beside the route (\`#/products?page=3\`) rather than in \`location.search\`, and its \`base\` is re-applied by the router itself, so url-state hands it a base-relative path. Without a registered router, url-state owns \`location.search\` and preserves whatever fragment is there. See also: useUrlState.`,
+    mistakes: '- Reading the params back with `new URLSearchParams(location.search)` in a hash-routed app — the router owns the fragment, so `location.search` is empty and the read returns nothing. `getParam` / `useUrlState` ask the registered router which half of the URL the route lives in.',
   },
 
   'url-state/batchUrlUpdates': {
@@ -9205,6 +9260,84 @@ link.disconnect() // simulate offline`,
     notes: 'Link two in-memory FakeCrdtDocs so a write to one propagates to the other — the test analog of a transport. Returns a `disconnect()` to simulate going offline. See also: FakeCrdtAdapter.',
   },
 
+  'sync/pyreonAdapter': {
+    signature: '(actor?: string) => PyreonCrdtAdapter',
+    example: `import { pyreonAdapter, syncedSignal } from "@pyreon/sync"
+const adapter = pyreonAdapter()          // dependency-free scalar-map CRDT
+const doc = adapter.createDoc()
+const title = syncedSignal({ doc, key: "title", initial: "Untitled" })
+title.set("Roadmap")`,
+    notes: 'Convenience factory for the pure-TS LWW (last-writer-wins) engine — the MULTIPLATFORM counterpart to the Yjs adapter. Where Yjs is a web-only npm engine, this one is pure logic (Map, numbers, comparisons) with no external dependency, so the Pyreon Multi-Target Compiler lowers the SAME source to SwiftUI + Compose: a web peer and a native peer run byte-identical merge math and converge over one shared wire protocol. Generates a fresh `createActorId()` when `actor` is omitted — pass your own to persist a stable device identity across restarts. Matches the v1 seam exactly: a `CrdtMap` is a flat key → scalar register; rich collaborative text/lists stay on the Yjs engine until a native sequence-CRDT engine lands. See also: PyreonCrdtAdapter, createActorId, createNativeSyncHost.',
+    mistakes: `- Reaching for this when you need collaborative TEXT or LIST merge — it's scalar-only (last-writer-wins); use the Yjs engine's \`syncedText\`/\`syncedList\` for character/positional merge
+- Generating a fresh actor id on every mount instead of persisting one — a stable per-install id is what makes the LWW tie-break behave like a stable "this device" identity rather than a coin flip on every reload
+- Sharing one actor id across two LIVE peers — the id is the LWW tie-breaker; two peers with the same id can't be distinguished when they conflict`,
+  },
+
+  'sync/PyreonCrdtAdapter': {
+    signature: 'class PyreonCrdtAdapter implements CrdtAdapter { constructor(actor: string); createDoc(): CrdtDoc }',
+    example: `const adapter = new PyreonCrdtAdapter("device-1")
+const doc = adapter.createDoc()`,
+    notes: `The pure-TS LWW engine's CrdtAdapter implementation — usually reached through the \`pyreonAdapter()\` factory rather than constructed directly. Each \`createDoc()\` returns a \`PyreonCrdtDoc\` stamped with this adapter's \`actor\` id, so every doc it produces shares one peer identity. Implements the exact \`CrdtAdapter\` seam the reactive bridge (\`syncedSignal\`/\`syncedStore\`) is written against, so it's a drop-in swap for \`FakeCrdtAdapter\` or the Yjs adapter — nothing above the seam knows which engine it's talking to. See also: pyreonAdapter, PyreonCrdtDoc, CrdtAdapter.`,
+  },
+
+  'sync/PyreonCrdtDoc': {
+    signature: 'class PyreonCrdtDoc implements CrdtDoc { constructor(actor: string); readonly actor: string; getMap(name): CrdtMap; transact(fn, origin?): void; applyOps(ops, origin?): void; encodeState(): PyreonCrdtOp[]; destroy(): void }',
+    example: `const doc = new PyreonCrdtDoc("device-1")
+const map = doc.getMap("todos")
+doc.transact(() => map.set("title", "Buy milk"))
+const state = doc.encodeState() // ship this to a fresh peer to seed it`,
+    notes: `A state-based (CvRDT) LWW register-map document. Each register carries a Lamport-clock timestamp plus the writing \`actor\` id; a local write bumps the doc's monotonic clock, and a receive advances it to \`max(local, incoming)\` so a later local write always out-ranks anything already seen. Merge is deterministic — a higher clock wins, an equal clock is broken by the higher actor id — so \`applyOps\` (or a full \`encodeState()\` dump) converges regardless of order, duplicates, or partial delivery, which is what makes offline-then-reconnect 'just another merge' rather than a special case. \`applyOps\` fires observers but never re-emits ops, which is the structural half of loop-prevention (the transport's REMOTE-origin skip is the other half). See also: PyreonCrdtAdapter, connectPyreonSync, createNativeSyncHost.`,
+    mistakes: `- Calling \`applyOps\` from inside an in-progress local \`transact\` — it is guarded to no-op there; remote merges are meant to land at rest, which is how the transport always calls it
+- Assuming \`encodeState()\` is a diff — it is the FULL state (every register, every map); sending it on every change instead of relaying incremental ops (what \`connectPyreonSync\` actually does) wastes bandwidth
+- Constructing two docs with the SAME actor id and treating them as independent peers — the LWW tie-break can no longer distinguish their writes`,
+  },
+
+  'sync/createActorId': {
+    signature: '() => string',
+    example: `import { createActorId, pyreonAdapter } from "@pyreon/sync"
+// Generate once, persist it, and reuse on every subsequent launch.
+const actor = loadPersistedActorId() ?? createActorId()
+savePersistedActorId(actor)
+const adapter = pyreonAdapter(actor)`,
+    notes: 'Mint a per-peer actor id — the LWW tie-breaker `PyreonCrdtDoc` uses to deterministically resolve a concurrent write. Prefers `crypto.randomUUID()`; falls back to `crypto.getRandomValues` (hex-encoded) on runtimes without `randomUUID` (older/non-secure-context), and as a last resort mixes a per-process monotonic counter with `Date.now()`/`Math.random()` so two ids minted in the SAME process can never collide even under degraded entropy. Two LIVE peers must never share an id — generate once per doc/session and persist it (e.g. to `useSecureStorage`) for a stable per-install device identity across restarts. See also: pyreonAdapter, PyreonCrdtDoc.',
+    mistakes: `- Calling it fresh on every mount instead of persisting the result — a new id each launch means the LWW tie-break can no longer recognize "this is the same device that wrote last time"
+- Assuming it's cryptographically unique across ALL environments — the fallback path (no \`crypto.randomUUID\`/\`getRandomValues\`) only guarantees uniqueness WITHIN one process; that path is a last resort, not the common case`,
+  },
+
+  'sync/connectPyreonSync': {
+    signature: '(doc: PyreonCrdtDoc, channel: SyncChannel) => { disconnect(): void }',
+    example: `import { connectPyreonSync, webSocketChannel } from "@pyreon/sync"
+const channel = webSocketChannel("wss://sync.example.com/my-room")
+const { disconnect } = connectPyreonSync(doc, channel)
+// later:
+disconnect()`,
+    notes: `Wire a \`PyreonCrdtDoc\` to a peer over a \`SyncChannel\` — the pure-TS engine's transport, JSON-over-any-string-duplex with no binary framing, so the SAME code runs on web AND inside a native JS runtime bridged to native signals. On open it sends the doc's full state (\`encodeState()\`); thereafter it relays only LOCAL ops as they commit (\`doc._onOps\`). Inbound messages merge under \`REMOTE_ORIGIN\`; a malformed or foreign message is silently ignored rather than thrown. Echo-prevention is structural, not a filter: \`PyreonCrdtDoc.applyOps\` fires observers but emits NO ops, so a received update is never picked up by the local-ops relay and re-broadcast. See also: webSocketChannel, PyreonCrdtDoc, createNativeSyncHost.`,
+    mistakes: `- Writing a custom \`SyncChannel\` that re-delivers its OWN sent messages back through \`onMessage\` — that reintroduces an echo the doc-level guard can't see, because from the doc's perspective it looks like a genuine (if redundant) remote update
+- Expecting \`disconnect()\` to tear down the doc — it only stops relaying ops and closes the channel; call \`doc.destroy()\` separately for a full local teardown`,
+  },
+
+  'sync/webSocketChannel': {
+    signature: '(url: string, WebSocketImpl?: WebSocketCtor) => SyncChannel',
+    example: `import { connectPyreonSync, webSocketChannel } from "@pyreon/sync"
+const channel = webSocketChannel("wss://sync.example.com/room", MyWsPolyfill)
+connectPyreonSync(doc, channel)`,
+    notes: 'The WebSocket implementation of `SyncChannel` for `connectPyreonSync`. Defaults to `globalThis.WebSocket` (browsers + Node 21+); pass `WebSocketImpl` to inject the `ws` package (older Node relay tests) or a native-runtime socket shim — the same seam `createNativeSyncHost` uses to accept a platform-bridged `WebSocket`. Throws a clear `[Pyreon]`-prefixed error immediately (not a bare `ReferenceError`) when no implementation is available and none was injected, so a missing global fails loud at the call site instead of deep inside a send. See also: connectPyreonSync, createNativeSyncHost.',
+    mistakes: `- Assuming it works on older Node without passing \`WebSocketImpl\` — global \`WebSocket\` is Node 21+; pass the \`ws\` package's constructor on older runtimes`,
+  },
+
+  'sync/createNativeSyncHost': {
+    signature: '(options: { actor: string; url?: string; WebSocketImpl?: WebSocketCtor }) => NativeSyncHost',
+    example: `import { createNativeSyncHost } from "@pyreon/sync"
+const host = createNativeSyncHost({ actor: "device-1", url: "wss://sync.example.com/room" })
+const unobserve = host.observe("doc", "title", (value) => { /* set native @State */ })
+host.set("doc", "title", "Hello") // a native UI edit
+host.destroy() // tears down the transport + document`,
+    notes: `The JS side of the contract a native runtime host (iOS JavaScriptCore, an Android JS engine) drives to make a native app a real peer in the sync graph. The host evaluates the \`@pyreon/sync\` bundle, injects a platform-socket-backed \`WebSocketCtor\` (the same \`PyreonWebSocket\` \`useWebSocket\` uses), and calls this once. For each synced key the native UI binds, it calls \`host.observe(map, key, cb)\` — the callback fires IMMEDIATELY with the current value (seeding the native signal) and again on every change, local or remote; a native UI edit calls \`host.set(map, key, value)\`. Everything underneath — the LWW engine, the JSON transport, this bridge — is pure JS, so identical code runs on web and native; the host's only job is JS↔native value marshalling. \`url\` is optional: omit it for a local-only doc with no transport. v1 values crossing the boundary are scalars (string/number/boolean/null). See also: connectPyreonSync, webSocketChannel, pyreonAdapter.`,
+    mistakes: `- Forgetting to call \`unobserve()\` per key — each \`observe\` call registers a callback the host must release when the native view unmounts, or it keeps receiving updates for a view that's gone
+- Passing a non-scalar value through \`host.set\` — v1 only marshals string/number/boolean/null across the JS↔native boundary
+- Omitting \`url\` and expecting cross-device sync — without it the doc is LOCAL-ONLY; the native host still needs to inject a real \`WebSocketImpl\` for the transport to actually reach a relay`,
+  },
+
   'sync/createYjsDoc': {
     signature: '(yDoc?: Y.Doc) => YjsCrdtDoc',
     example: `import { createYjsDoc, connectViaWebSocket } from "@pyreon/sync/yjs"
@@ -9318,8 +9451,8 @@ const relay = await createSyncServer({
   authorize: ({ room, token }) => token === secretFor(room), // REQUIRED in prod
 })
 // later: await relay.close()`,
-    notes: `Start a Node/Bun WebSocket relay that brokers Yjs sync between clients sharing a room. Keeps one authoritative Y.Doc per room (so a late-joiner catches up), applies each inbound update, and broadcasts to the room's OTHER clients. Server-only (\`@pyreon/sync/server\` — imports \`ws\` + \`node:http\`, never enters a client bundle). The \`authorize(ctx)\` hook is the per-room/per-doc access gate: return false (or throw) to reject with close code 4401 before any data flows. Rooms are GC'd when the last client leaves — the relay is ephemeral (no persistence); clients keep their own copy. Pass \`server\` to attach to an existing http.Server instead of opening a port. See also: connectViaWebSocket, AuthorizeContext.`,
-    mistakes: `- Deploying without an \`authorize\` hook — the default allows EVERY connection (dev-only); a real deployment MUST supply it or anyone with the room id can read/write
+    notes: `Start a Node/Bun WebSocket relay that brokers Yjs sync between clients sharing a room. Keeps one authoritative Y.Doc per room (so a late-joiner catches up), applies each inbound update, and broadcasts to the room's OTHER clients. Server-only (\`@pyreon/sync/server\` — imports \`ws\` + \`node:http\`, never enters a client bundle). The \`authorize(ctx)\` hook is the per-room/per-doc access gate: return false (or throw) to reject with close code 4401 before any data flows. Omitting it accepts EVERY connection (an open relay) and warns once at startup, in production too. Rooms are GC'd when the last client leaves — the relay is ephemeral (no persistence); clients keep their own copy. Pass \`server\` to attach to an existing http.Server instead of opening a port. See also: connectViaWebSocket, AuthorizeContext.`,
+    mistakes: `- Deploying without an \`authorize\` hook — the default allows EVERY connection (dev-only); a real deployment MUST supply it or anyone with the room id can read/write. \`createSyncServer\` warns once at startup when the hook is absent, in production as well as development, because an open relay is a live misconfiguration rather than a developer-time nicety.
 - Importing \`@pyreon/sync/server\` into client code — it pulls \`ws\` + \`node:http\`; it is the server-only subpath by design
 - Expecting the relay to persist data — it is ephemeral; durability lives on the clients (persistViaIndexedDB) or an external store`,
   },
@@ -10733,7 +10866,7 @@ for (const note of doc.notes) console.warn(note.code, note.at, note.message)`,
   'atlas/atlas scan': {
     signature: 'atlas scan [dir] [--no-mount] [--check]',
     example: `$ atlas scan .
-atlas: discovered 9 component(s), 43 scenario(s) — 41 verified, 2 failing, 0 unverified.
+atlas: discovered 10 component(s), 44 scenario(s) — 42 verified, 2 failing, 0 unverified.
   checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43
   not run: reactivityCoverage, snapshot — browser-only — run \`atlas verify-browser\`
   → atlas-catalog.json
@@ -10787,7 +10920,7 @@ atlas verify Button: 1 component(s), 15 scenario(s)
   'atlas/atlas dev': {
     signature: 'atlas dev [dir] [--port=5210]',
     example: `$ atlas dev . --port=5210
-atlas dev: 9 component(s) → http://localhost:5210/`,
+atlas dev: 10 component(s) → http://localhost:5210/`,
     notes: 'Boot the workbench: real Vite + the real Pyreon compiler over your source, a derived catalog in the sidebar (nested by directory), live controls (bool/string/number/color editors), canvas addons (viewport / background / zoom / measure overlay / pseudo-state force), an A11y panel with on-demand axe-core, autodocs pages, an Actions log, and the Reactivity Lens. Components in files that import `@pyreon/atlas` are treated as workbench HOSTS and excluded from the nav (import-specifier match, never substrings). See also: atlas scan.',
     mistakes: `- Expecting authored \`play\` functions to run on DERIVED catalogs in the workbench — play crosses no JSON boundary; the ▶ button appears for hand catalogs, and derived play scripts run in \`atlas scan\` / the verify pipeline
 - Styling per-instance frames with inline styles — the workbench styles through the Element \`css\` prop channel (hashed classes); custom viewport widths ship zero inline styles`,
@@ -10796,7 +10929,7 @@ atlas dev: 9 component(s) → http://localhost:5210/`,
   'atlas/atlas build': {
     signature: 'atlas build [dir] [--out <dir>] [--title <text>] [--base <path>]',
     example: `$ atlas build . --out docs/components --title "Acme DS"
-atlas build: 9 component(s) → /repo/docs/components
+atlas build: 10 component(s) → /repo/docs/components
   title: Acme DS`,
     notes: 'Compile the workbench into a STATIC, deployable site — the same derived catalog `atlas dev` serves, as plain files for Pages / Netlify / Cloudflare / S3, with no server component. Crucially it BAKES the two node-answered panels: the Docs source block and the Reactivity Lens read files and run the TypeScript compiler API, neither of which can run in a page, so the build precomputes them per component and ships the answers as data — the Lens still reports real per-expression live/static verdicts on a fully static page. An answer that genuinely cannot be computed bakes its REASON, so the panel says what is wrong instead of surfacing a network error about a request that was never going to work. `--out` defaults to `atlas-dist` and a RELATIVE `--out` resolves against the scanned project, not your shell — `atlas build packages/ui --out site` writes `packages/ui/site`, the same base Vite uses for `outDir` and the same place `atlas scan` writes its catalog. Pass an absolute path when you want it elsewhere; the resolved directory is always printed. Emits a DIRECTORY PER COMPONENT, so `/button/` is a real page on a plain file server — pasteable, bookmarkable, and readable back by the workbench from its own path (the component leaves the query string, so the two can never disagree). Real URLs, not prerendered pages: the body is empty until JS runs. Skipped for a relative `--base`, whose assets would resolve against the wrong directory. `--base` is for a subdirectory deploy (`--base /my-repo/` for a GitHub Pages project site); `--title` wins over `atlas.config.ts`’s `title`. Fails loudly when discovery finds nothing rather than deploying an empty site. See also: atlas dev, atlas scan.',
     mistakes: `- Assuming a plain \`vite build\` of the workbench is equivalent — it produces a site that LOOKS complete while the Docs source block and the Reactivity Lens are permanently dark, because nothing baked their node-only answers

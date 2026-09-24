@@ -9,6 +9,14 @@ description: "65 signal-based hooks: state (useToggle/useCounter/usePrevious/use
 
 Signal-based hooks for Pyreon — 65 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.
 
+## Multiplatform
+
+**Tier:** Service backend — the API is shared; the native runtimes host it
+
+the L2 service-hook layer: every hook in PMTC's NATIVE_LOWERED_HOOKS has a web implementation and Swift/Kotlin runtime ports; the remaining hooks are web conveniences
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - 65 signal-based hooks across 7 categories

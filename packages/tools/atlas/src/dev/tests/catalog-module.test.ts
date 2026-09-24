@@ -229,7 +229,7 @@ describe('the project wrapper (atlas.config.ts)', () => {
     // context would let it shadow the workbench's RECORDING instance — the
     // Roles panel would silently audit nothing.
     expect(code).toContain("import { PermissionsProvider as __Perms } from '@pyreon/permissions'")
-    expect(code).toContain('h(__Perms, { value: ctx.can }, h(Comp, merged))')
+    expect(code).toContain('h(__Perms, { value: ctx.can }, h(Comp, __p, ...__c))')
   })
 
   it('emits NO config import when no wrapper exists', () => {
@@ -238,7 +238,7 @@ describe('the project wrapper (atlas.config.ts)', () => {
     const code = generateCatalogModule([entry()], { root: '/p/src' })
     expect(code).not.toContain('__config')
     expect(code).not.toContain('__wrapper')
-    expect(code).toContain('return h(Comp, merged)')
+    expect(code).toContain('return h(Comp, __p, ...__c)')
   })
 })
 
@@ -265,6 +265,33 @@ describe('the render ctx (derived catalogs are NOT ctx-blind)', () => {
     // An authored function value still runs AFTER the log — observation must
     // never swallow behaviour.
     expect(code).toContain("if (typeof user === 'function') user(...args)")
+  })
+
+  it('does not fabricate render props while instrumenting event handlers', () => {
+    // `reactive` is Atlas discovery's function-valued marker, not an event
+    // marker. Before this guard, an optional `children` render prop was always
+    // replaced with a logger function. Combobox therefore selected its
+    // render-prop escape hatch and rendered the logger's undefined return —
+    // every generated static preview was an empty card.
+    const code = generateCatalogModule(
+      [
+        {
+          component: ci({
+            name: 'RenderPropCard',
+            controls: [
+              { name: 'children', kind: 'reactive', reactive: true, required: false },
+              { name: 'renderItem', kind: 'reactive', reactive: true, required: false },
+              { name: 'onSelect', kind: 'reactive', reactive: true, required: false },
+            ],
+          }),
+          file: '/p/src/RenderPropCard.tsx',
+        },
+      ],
+      { root: '/p/src' },
+    )
+    expect(code).toContain('["onSelect"]')
+    expect(code).not.toContain('["children"')
+    expect(code).not.toContain('"renderItem"')
   })
 
   it('spreads ctx.pseudo gated on IS_ROCKETSTYLE (runtime truth, never guessed)', () => {
@@ -331,11 +358,11 @@ describe('derived scenarios reach the workbench catalog', () => {
       ],
       { root: '/p/src' },
     )
-    expect(code).toContain('"id":"b--ok","name":"Solid","args":{"variant":"solid"},"verdict":"ok"')
-    expect(code).toContain('"id":"b--bad","name":"Empty","args":{"label":""},"verdict":"fail"')
+    expect(code).toContain('{ id: "b--ok", name: "Solid", source: "auto-variant", args: {"variant":"solid"}, verdict: "ok" }')
+    expect(code).toContain('{ id: "b--bad", name: "Empty", source: "auto-variant", args: {"label":""}, verdict: "fail" }')
     // A verdict-less scenario is UNVERIFIED — not a pass. Rendering it as one
     // would be the false-green the three-state verify model exists to prevent.
-    expect(code).toContain('"id":"b--unchecked","name":"Long","args":{},"verdict":"unverified"')
+    expect(code).toContain('{ id: "b--unchecked", name: "Long", source: "auto-variant", args: {}, verdict: "unverified" }')
   })
 
   it('emits no scenarios key when the pipeline produced none', () => {
@@ -358,5 +385,37 @@ describe('presets reach the generated catalog', () => {
   it('emits no presets key when the config has none', () => {
     const code = generateCatalogModule([{ component: ci({}), file: '/p/src/X.tsx' }], { root: '/p/src' })
     expect(code).not.toContain('presets:')
+  })
+})
+
+describe('content seed in the generated module', () => {
+  it('merges the seed UNDER the control values and renders through materializeContent', () => {
+    const code = generateCatalogModule(
+      [{ component: ci({ content: { children: 'Button' } }), file: '/p/src/Button.tsx' }],
+      { root: '/p' },
+    )
+    expect(code).toContain("import { materializeContent as __content } from '@pyreon/atlas/core'")
+    // Seed, then the authored Default's live args (none without a config),
+    // then the control values — the order the content plugin verified in.
+    expect(code).toContain('const merged = { ...{"children":"Button"}, ...{}, ...props }')
+    expect(code).toContain('const { props: __p, children: __c } = __content(merged, h)')
+    expect(code).toContain('return h(Comp, __p, ...__c)')
+  })
+
+  it('emits an empty seed — not a missing one — for a component without content', () => {
+    const code = generateCatalogModule([{ component: ci(), file: '/p/src/Button.tsx' }], { root: '/p' })
+    expect(code).toContain('const merged = { ...{}, ...{}, ...props }')
+  })
+
+  it('uses the seed as a text control default the panel starts from', () => {
+    const control = toWorkbenchControl(
+      { name: 'children', kind: 'text', reactive: false, required: false },
+      'Button',
+    )
+    expect(control).toMatchObject({ key: 'children', type: 'text', default: 'Button' })
+    // A default the component states itself still wins over the seed.
+    expect(
+      toWorkbenchControl({ name: 'label', kind: 'text', defaultValue: 'Save', reactive: false, required: false }, 'X').default,
+    ).toBe('Save')
   })
 })

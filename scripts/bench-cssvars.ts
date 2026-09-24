@@ -122,8 +122,19 @@ async function main(): Promise<void> {
   const server = spawn(
     'bun',
     ['run', '--filter=@pyreon/example-cssvars-bench', 'dev', '--', '--port', String(PORT), '--strictPort'],
-    { stdio: ['ignore', 'pipe', 'inherit'], cwd: process.cwd() },
+    // detached = own process group. `bun run --filter … dev` is a wrapper whose
+    // grandchild is the actual vite server; SIGTERM to the wrapper alone left
+    // vite holding :5210 (found 2026-09-24 with a 12-hour-old orphan), which
+    // then failed every later run on --strictPort.
+    { stdio: ['ignore', 'pipe', 'inherit'], cwd: process.cwd(), detached: true },
   )
+  const stopServer = (): void => {
+    try {
+      if (server.pid !== undefined) process.kill(-server.pid, 'SIGTERM')
+    } catch {
+      server.kill('SIGTERM')
+    }
+  }
   await new Promise<void>((res, rej) => {
     const t = setTimeout(() => rej(new Error('dev server start timeout')), 30_000)
     server.stdout?.on('data', (c: Buffer) => {
@@ -133,12 +144,20 @@ async function main(): Promise<void> {
       }
     })
     server.on('exit', (code) => rej(new Error(`dev server exited ${code}`)))
+  }).catch((e: unknown) => {
+    stopServer()
+    throw e
   })
 
-  const browser = await chromium.launch({
-    headless: true,
-    args: ['--js-flags=--expose-gc', '--enable-precise-memory-info'],
-  })
+  const browser = await chromium
+    .launch({
+      headless: true,
+      args: ['--js-flags=--expose-gc', '--enable-precise-memory-info'],
+    })
+    .catch((e: unknown) => {
+      stopServer()
+      throw e
+    })
 
   try {
     console.log(
@@ -155,7 +174,12 @@ async function main(): Promise<void> {
     console.log('-'.repeat(80))
     console.log(`${pad(`wall-clock ms / ${FLIPS} flips`, 28)}${pad(ms(classic), 26)}${pad(ms(vars), 26)}`)
     const ratio = classic.medianMs / Math.max(vars.medianMs, 0.001)
-    console.log(`${pad('→ speedup', 28)}${pad('1.00×', 26)}${pad(`${ratio.toFixed(2)}×`, 26)}`)
+    // A ratio is only a speedup when the intervals are disjoint. Both the
+    // 2026-09-23 (1.16×) and 2026-09-24 (1.22×) runs printed a "speedup" whose
+    // CIs overlapped — i.e. no measurable difference at this sample size.
+    const overlap = classic.ci95[0] <= vars.ci95[1] && vars.ci95[0] <= classic.ci95[1]
+    const verdict = overlap ? '🤝 CI95 overlap — not distinguishable' : ratio > 1 ? 'cssVariables faster' : 'classic faster'
+    console.log(`${pad('→ ratio', 28)}${pad('1.00×', 26)}${pad(`${ratio.toFixed(2)}×  ${verdict}`, 26)}`)
     const mb = (b: number): string => `${(b / 1024 / 1024).toFixed(2)} MB`
     console.log(`${pad('retained heap (post-GC)', 28)}${pad(mb(classic.heapBytes), 26)}${pad(mb(vars.heapBytes), 26)}`)
     const counterKeys = ['styler.resolve', 'rocketstyle.getTheme', 'styler.sheet.insert', 'runtime.mountChild']
@@ -165,10 +189,14 @@ async function main(): Promise<void> {
       )
     }
     console.log('\n[bench-cssvars] counters are per-run (= per FLIPS-batch). vars=cssVariables.')
+    if (counterKeys.every((k) => !classic.counts[k] && !vars.counts[k])) {
+      console.log('[bench-cssvars] ⚠ every counter read 0 in BOTH modes — the perf-harness sink never')
+      console.log('  recorded, so the counter rows above measure nothing (they are not evidence of zero work).')
+    }
     console.log(JSON.stringify({ classic, vars, ratio, config: { N: N * 2, FLIPS, RUNS, WARMUP, THROTTLE } }))
   } finally {
     await browser.close()
-    server.kill('SIGTERM')
+    stopServer()
   }
 }
 

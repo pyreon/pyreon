@@ -14,6 +14,7 @@ import type { Domain, Tick, Double } from './types'
 export function scaleLinear(d: Domain, r0: Double, r1: Double, v: Double): Double {
   const span = d.max - d.min
   if (span === 0.0) return (r0 + r1) / 2.0
+  if (d.inverse === true) return r1 + ((v - d.min) / span) * (r0 - r1)
   return r0 + ((v - d.min) / span) * (r1 - r0)
 }
 
@@ -46,6 +47,73 @@ export function niceDomain(d: Domain, targetCount: Double): Domain {
   return {
     min: Math.floor(d.min / step) * step,
     max: Math.ceil(d.max / step) * step,
+  }
+}
+
+/**
+ * ECharts' `nice(val, round)`: `val` to a coefficient of 1, 2, 3, 5 or 10 at
+ * its power of ten — the step its value axes tick at. Ported as written,
+ * floating point included (0.35 / 5 is 0.06999…, which rounds to 0.05).
+ */
+export function echartsNice(val: Double, round: boolean): Double {
+  if (!(val > 0.0)) return 1.0
+  const exponent = Math.floor(Math.log10(val))
+  const exp10 = Math.pow(10.0, exponent)
+  const f = val / exp10
+  let nf = 10.0
+  if (round) {
+    if (f < 1.5) nf = 1.0
+    else if (f < 2.5) nf = 2.0
+    else if (f < 4.0) nf = 3.0
+    else if (f < 7.0) nf = 5.0
+  } else {
+    if (f < 1.0) nf = 1.0
+    else if (f < 2.0) nf = 2.0
+    else if (f < 3.0) nf = 3.0
+    else if (f < 5.0) nf = 5.0
+  }
+  const out = nf * exp10
+  // ECharts keeps the result exact for a negative exponent by rounding to its precision.
+  return exponent >= 0.0 ? out : roundTo(out, -exponent)
+}
+
+/** `v` rounded to `digits` decimals. */
+export function roundTo(v: Double, digits: Double): Double {
+  const k = Math.pow(10.0, digits)
+  return Math.floor(v * k + 0.5) / k
+}
+
+/** The decimals a step needs (ECharts' `getIntervalPrecision`, simplified to the step's own digits). */
+export function stepPrecision(step: Double): Double {
+  if (!(step > 0.0)) return 0.0
+  const e = Math.floor(Math.log10(step))
+  return e >= 0.0 ? 0.0 : -e + 1.0
+}
+
+/**
+ * ECharts' value-axis extent: the interval is `nice(span / splitNumber)`, and
+ * each bound not fixed is floored / ceiled to it. The returned domain carries
+ * the interval as its tick `step`.
+ */
+export function echartsNiceDomain(d: Domain, splitNumber: Double, fixMin: boolean, fixMax: boolean): Domain {
+  let lo = d.min
+  let hi = d.max
+  if (hi === lo) {
+    // ECharts widens a flat extent: around a non-zero value by half of it, zero to [0, 1].
+    if (lo === 0.0) hi = 1.0
+    else {
+      const half = Math.abs(lo) / 2.0
+      lo = lo - half
+      hi = hi + half
+    }
+  }
+  const split = splitNumber > 0.0 ? splitNumber : 5.0
+  const step = echartsNice((hi - lo) / split, true)
+  const p = stepPrecision(step)
+  return {
+    min: fixMin ? d.min : roundTo(Math.floor(lo / step) * step, p),
+    max: fixMax ? d.max : roundTo(Math.ceil(hi / step) * step, p),
+    step,
   }
 }
 
@@ -87,16 +155,24 @@ export function makeTicks(
     out.push({ value: d.min, pos: scaleLinear(d, r0, r1, d.min), label: fmt(d.min) })
     return out
   }
-  const step = niceStep(span / count)
+  const fixed = d.step ?? 0.0
+  const step = fixed > 0.0 ? fixed : niceStep(span / count)
   const first = Math.ceil(d.min / step) * step
+  // With a fixed step (ECharts' interval) a bound that is not a multiple of it
+  // is a tick of its own, as ECharts draws a pinned `min` / `max`.
+  const eps = step * 0.000001
+  if (fixed > 0.0 && first > d.min + eps) out.push({ value: d.min, pos: scaleLinear(d, r0, r1, d.min), label: fmt(d.min) })
   const maxTicks = 1000
   let i = 0
+  let last = d.min
   while (i < maxTicks) {
     const v = first + step * i
-    if (v > d.max + step * 0.000001) break
+    if (v > d.max + eps) break
     out.push({ value: v, pos: scaleLinear(d, r0, r1, v), label: fmt(v) })
+    last = v
     i = i + 1
   }
+  if (fixed > 0.0 && last < d.max - eps) out.push({ value: d.max, pos: scaleLinear(d, r0, r1, d.max), label: fmt(d.max) })
   return out
 }
 

@@ -15,6 +15,7 @@ import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { WebView } from '@pyreon/primitives'
 import { describe, expect, it } from 'vitest'
 import { FlowWebView, buildFlowHostHtml } from './webview'
+import type { FlowHostCommand } from './webview'
 
 const HOST = buildFlowHostHtml()
 
@@ -41,6 +42,41 @@ async function waitForFlow(iframe: HTMLIFrameElement, timeoutMs = 8000): Promise
 }
 
 describe('FlowWebView bridge (real SVG diagram in a real iframe)', () => {
+  it('executes viewport commands once and emits typed viewport and edge events', async () => {
+    const commands = signal<FlowHostCommand[]>([])
+    const events: unknown[] = []
+    const { container, unmount } = mountInBrowser(
+      h(FlowWebView as never, {
+        html: HOST,
+        graph: () => graph(['A', 'B']),
+        commands: () => commands(),
+        onEvent: (event: unknown) => events.push(event),
+      }),
+    )
+    container.style.width = '500px'
+    container.style.height = '400px'
+    await flush()
+    const iframe = query<HTMLIFrameElement>(container, 'iframe')
+    const doc = await waitForFlow(iframe)
+
+    commands.set([{ id: 'viewport-1', type: 'set-viewport', x: 12, y: 34, zoom: 2 }])
+    await flush()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(events).toContainEqual({ type: 'viewport-change', viewport: { x: 12, y: 34, zoom: 2 } })
+
+    const count = events.length
+    commands.set([{ id: 'viewport-1', type: 'set-viewport', x: 90, y: 90, zoom: 3 }])
+    await flush()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(events).toHaveLength(count)
+
+    const edge = query<SVGPathElement>(doc, '[data-edge-id="A->B"]')
+    edge.dispatchEvent(new (iframe.contentWindow as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent('click', { bubbles: true }))
+    await flush()
+    expect(events).toContainEqual({ type: 'edge-select', id: 'A->B', source: 'A', target: 'B' })
+    unmount()
+  })
+
   it('FORWARD: pushing a graph renders SVG nodes + bezier edges; updating re-renders in place', async () => {
     const g = signal(graph(['Start', 'Middle', 'End']))
     const wvProps: Record<string, unknown> = { html: HOST }
@@ -74,11 +110,13 @@ describe('FlowWebView bridge (real SVG diagram in a real iframe)', () => {
 
   it('REVERSE: tapping a node drives onSelect with {id,data}', async () => {
     const received: unknown[] = []
+    const messages: unknown[] = []
     const { container, unmount } = mountInBrowser(
       h(FlowWebView as never, {
         html: HOST,
         graph: () => graph(['A', 'B']),
         onSelect: (p: unknown) => received.push(p),
+        onMessage: (payload: unknown) => messages.push(payload),
       }),
     )
     container.style.width = '500px'
@@ -95,6 +133,57 @@ describe('FlowWebView bridge (real SVG diagram in a real iframe)', () => {
 
     expect(received).toHaveLength(1)
     expect(received[0]).toEqual({ id: 'B', data: { label: 'B' } })
+    expect(messages).toEqual([{ id: 'B', data: { label: 'B' } }])
+    unmount()
+  })
+
+  it('RELOAD: a reactive html swaps the hosted page, and the new page renders the same graph', async () => {
+    // The native hosts reload when `html` changes; the web wrapper read `html`
+    // once at setup and kept its first page. A second host with a different
+    // node fill makes the reload observable from inside the frame.
+    const alt = buildFlowHostHtml({ nodeFill: '#123456' })
+    const which = signal(false)
+    const props: Record<string, unknown> = { graph: () => graph(['A', 'B']) }
+    Object.defineProperty(props, 'html', { get: () => (which() ? alt : HOST), enumerable: true })
+    const { container, unmount } = mountInBrowser(h(FlowWebView as never, props as never))
+    container.style.width = '500px'
+    container.style.height = '400px'
+    await flush()
+    const iframe = query<HTMLIFrameElement>(container, 'iframe')
+    const first = await waitForFlow(iframe)
+    expect(first.querySelector('rect')?.getAttribute('fill')).toBe('#ffffff')
+
+    which.set(true)
+    const start = performance.now()
+    for (;;) {
+      const doc = iframe.contentDocument
+      if (doc && doc !== first && doc.querySelector('rect')?.getAttribute('fill') === '#123456') break
+      if (performance.now() - start > 8000) throw new Error('the reactive html never reloaded the hosted page')
+      await new Promise((r) => requestAnimationFrame(() => r(null)))
+    }
+    // The new document got the graph through the forward bridge.
+    expect(iframe.contentDocument!.querySelectorAll('[data-node-id]')).toHaveLength(2)
+    unmount()
+  })
+
+  it('reports a hosted render failure to the application instead of leaving a silent blank frame', async () => {
+    const errors: Error[] = []
+    const { container, unmount } = mountInBrowser(
+      h(FlowWebView as never, {
+        html: HOST,
+        graph: { nodes: [{ id: 'broken', position: null }], edges: [] },
+        onError: (error: Error) => errors.push(error),
+      }),
+    )
+    container.style.width = '300px'
+    container.style.height = '200px'
+    await flush()
+    const start = performance.now()
+    while (errors.length === 0 && performance.now() - start < 3000) {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+    expect(errors).toHaveLength(1)
+    expect(errors[0]!.message).toContain('null')
     unmount()
   })
 })

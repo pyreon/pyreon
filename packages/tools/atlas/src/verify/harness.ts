@@ -7,6 +7,7 @@
  * itself threw — are worth getting right once.
  */
 import type { ComponentRef } from '../core'
+import { materializeContent } from '../core'
 import type { DomEnv } from './dom'
 
 /**
@@ -166,6 +167,16 @@ export interface MountedScenario {
   readonly errors: readonly string[]
   /** Clickable elements currently in the tree. */
   interactives(): Element[]
+  /**
+   * Did the mount produce anything — an element, or non-whitespace text?
+   *
+   * The verify pipeline's checks were all TRUE of an empty container:
+   * "mounts, clicks and unmounts without throwing" and "SSR agrees with the
+   * client" hold for `null` exactly as well as for a rendered component,
+   * which is how 1,090 scenarios verified while 24 components rendered
+   * nothing at all. This is the fact that separates the two.
+   */
+  rendered(): boolean
   /** Dispatch a real bubbling click, so delegated handlers actually run. */
   click(el: Element): void
   dispose(): void
@@ -215,6 +226,10 @@ export function mountScenario(
   const doc = env.document
   const container = doc.createElement('div')
   doc.body.appendChild(container)
+  // A Portal mounts OUTSIDE the container (`document.body` is the usual
+  // target) — real DOM, just not in the slot. Anything the body gains beyond
+  // the container counts as rendered.
+  const bodyBefore = doc.body.childElementCount
 
   const errors: string[] = []
   // Two capture paths, because a component has two ways to throw where the
@@ -238,10 +253,20 @@ export function mountScenario(
 
   let unmount: (() => void) | undefined
   try {
-    const tree = runtime.h(component, args)
+    // Seeded content rides in `args` as JSON (a string label, or the layout
+    // blocks marker) and becomes REST children here — the same materialization
+    // the generated workbench render performs, so the canvas shows what was
+    // verified.
+    const { props, children } = materializeContent(args, runtime.h)
+    const tree = runtime.h(component, props, ...children)
     // The wrapper receives the scenario as `children`, so a project's existing
     // provider component works unchanged — no Atlas-specific contract to learn.
-    unmount = runtime.mount(wrapper ? runtime.h(wrapper, { children: tree }) : tree, container)
+    // The scenario sits in a SLOT of its own, so `rendered()` can ask what the
+    // component produced rather than what the container holds — a wrapper
+    // (`<PyreonUI>` renders a `display: contents` div) would otherwise count
+    // as the component's output, and every empty render would read as DOM.
+    const slot = runtime.h('div', { 'data-atlas-scenario': '' }, tree)
+    unmount = runtime.mount(wrapper ? runtime.h(wrapper, { children: slot }) : slot, container)
   } catch (err) {
     errors.push(describe(err))
   }
@@ -251,6 +276,14 @@ export function mountScenario(
     container,
     errors,
     interactives: () => [...container.querySelectorAll(INTERACTIVE)],
+    rendered: () => {
+      const slot = container.querySelector('[data-atlas-scenario]') ?? container
+      return (
+        slot.childElementCount > 0 ||
+        (slot.textContent ?? '').trim().length > 0 ||
+        doc.body.childElementCount > bodyBefore
+      )
+    },
     click(el) {
       try {
         // A constructed, bubbling MouseEvent — not `el.click()` — because

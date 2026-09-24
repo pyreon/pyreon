@@ -53,11 +53,14 @@ import { PlotChart, bars, line } from '@pyreon/charts/plot'
 />
 ```
 
-**A mark is an imported binding, not a string.** That is the whole
-tree-shaking story: `bars` and `line` are functions your bundler can see you
-using, so a bar chart never pulls the radial trigonometry, the LTTB
-decimation, or the time scales. A string-keyed `type: 'bars'` could not be
-dropped by any bundler, however the library was built.
+**A chart family is an imported binding, not a string.** `PlotChart`,
+`PieChart`, `RadarChart`, `CandlestickChart`, `HeatmapChart` and the rest are
+separate modules, so a bar chart never pulls the radial trigonometry or the
+finance and matrix families (locked by the repo's import budgets). WITHIN
+`PlotChart` the cartesian marks share one renderer and one interaction surface
+(tooltip, legend, zoom, brush, `maxPoints` decimation): a one-line chart
+measures the same 40.9 KB gz as a bar + line + tooltip + legend chart — see
+"Bundle size" below.
 
 Marks: `bars`, `line`, `area`, `points`, `stackedBars`, `groupedBars`.
 Components: `PlotChart`, `PieChart` (donut via `innerRadius`), `GaugeChart`.
@@ -86,10 +89,29 @@ family) or `step` (holds each value to the next datum — the honest shape for
 prices). Under the hood a curve is a `(points) => points` densifier, which is
 why it costs zero new backend work on any platform.
 
-**Annotations** are dashed rules and translucent bands with optional labels,
-placed by the same scale the axis is labelled with. **`bubble`** maps its r
+**Annotations** are dashed rules, translucent bands and point-to-point
+segments (`x1`/`y1`/`x2`/`y2`, in data units) with optional labels, placed by
+the same scale the axis is labelled with. **Markers** anchor a point at a
+series' `max`, `min`, `average` (the datum nearest the mean) or a datum index.
+The option facade resolves every ECharts `markLine` / `markPoint` spelling
+onto them — `median`, `[from, to]` pairs, category-named `coord`s, per-mark
+`lineStyle` / `itemStyle` colours and `symbolSize` — on web, iOS and Android. **`bubble`** maps its r
 channel by AREA, not radius — radius-proportional bubbles exaggerate the data.
 **`bars(y, { showValues: true })`** labels each bar with its formatted value.
+**Datasets on native**: a literal `dataset` (with `encode` and the built-in
+`filter` / `sort` transforms) resolves at compile time through the same
+`resolveDataset` the web runs — exposed as `@pyreon/charts/option-layer` for
+build tools — so the series data, the category axis and the tooltip extras
+are the same on iOS and Android. **Tooltip extras**: a series' `extras: [{ label, numbers | texts }]` lists extra
+dimensions under the value in the tooltip and as columns of the accessible
+table — the option facade's `encode.tooltip` over a dataset. **Gradients**: a mark's `gradient: { stops, direction }` ramps its fill across
+the plot (`shape: 'radial'` ramps out from its centre); the option facade
+reads ECharts' linear and radial gradient objects on `itemStyle` /
+`areaStyle` / `lineStyle` / series `color` (an image pattern has no engine
+form and warns by name). **States**: a mark's `emphasisColor` / `selectColor` / `focus` / `blurOpacity` (ECharts' `emphasis.itemStyle.color`, `select.itemStyle.color`, `emphasis.focus` and `blur.itemStyle.opacity`) colour the hovered and pinned datums and fade the others while a highlight is active; `<OptionChart>` hovers and pins (per the series' `selectedMode`) on web and native alike, and names a state's label, symbol scale or whole-series selection instead of dropping them. **Labels**: a series' `label.formatter` takes ECharts' `{a}` (series name), `{b}` (category), `{c}` (value) and `{d}` (share of the series total) or a function; `label.color` / `fontSize` style it, `\n` breaks a line, and `label.rich` names styles a `{name|text}` segment takes. A plain label still emits exactly one text command. The template resolves at compile time on native, so the same strings show on every target — a FUNCTION formatter cannot run there and warns by name. **Graphic layer**: ECharts' `graphic` elements are draw-list geometry — `text`, `rect`, `circle`, `line`, `polygon`, `polyline`, `bezierCurve` (quadratic and cubic), `arc`, `ring`, `sector` and nested `group`s, positioned by `x`/`y` or `left`/`top`/`right`/`bottom`; they cross to native, resolved at compile time. An `image` element needs a loaded bitmap and warns by name. **Pictorial bars**: `symbolMargin`, `symbolOffset`, `symbolPosition`, `symbolRotate`, `symbolClip` and `symbolBoundingData` are draw-list geometry (a partial cell is dropped, or clipped to the bar with `symbolClip`; a bounding datum sizes the run and the bar shows the fraction it covers), in pixels and degrees — a percent string warns by name. **Symbols**: `points(y, { symbol: 'diamond' })` draws every datum as that
+shape (rect, circle, diamond, triangle; the pictorialBar vocabulary), and
+`line(y, { symbol })` draws a symbol at every datum over the line — the
+facade's `symbol` / `showSymbol` / `symbolSize`, on web, iOS and Android.
 
 ### Entrance animation
 
@@ -163,7 +185,7 @@ palettes.okabeIto }}>` pins or tracks a mode for everything below it; the
 
 ### Every host, one surface
 
-The seventeen family hosts share one canvas host: `title` / `subtitle` /
+The 20 family hosts share one canvas host: `title` / `subtitle` /
 `showTitle`, `showLegend`, `tooltip`, `animate`, `theme`, `onSelect` (the
 family's rich hit) and `onSelectIndex` (the engine's index — what the native
 tap reports) mean the same thing on every one of them. Bars round from
@@ -247,9 +269,16 @@ hidden table beside the chart.
 
 ### Families, coordinates and the ECharts option facade
 
-Beyond bars, lines, points, pie, gauge, radar, candlestick and heatmap, `/plot` ships the full ECharts family set as tree-shakeable modules: **funnel, boxplot, treemap, sunburst, tree, sankey, graph** (seeded force / circular), **calendar, parallel, polar, single axis, theme river** and **map** (GeoJSON via `registerMap`, scatter + flight paths on geo). Each is a component (`<TreemapChart>`, `<SankeyChart>`, `<MapChart>`, …), a pure `layout` / `render` / `hit` trio and a server-safe `xToSvg`.
+Beyond bars, lines, points, pie, gauge, radar, candlestick and heatmap, `/plot` ships the full ECharts family set as tree-shakeable modules: **funnel, boxplot, treemap, sunburst, tree, sankey, graph** (seeded force / circular), **calendar, parallel, polar, single axis, theme river** and **map** (GeoJSON via `registerMap`, scatter + flight paths on geo). Each is a component (`<TreemapChart>`, `<SankeyChart>`, `<MapChart>`, …), a pure `layout` / `render` / `hit` trio and a server-safe `xToSvg`. Sankey, calendar and parallel coordinates take `orient="vertical"` — the horizontal layout reflected across the diagonal, on every target. Polar takes bar, line and scatter series (`kind: 'scatter'` draws the points alone, at `symbolSize / 2`).
 
 `optionToSvg` / `compileOption` accept an **ECharts-shaped option** — series, coordinates, `dataset` + transforms, `graphic`, `visualMap`, `custom` `renderItem`, `theme` and `locale` — and name every unmapped key in `warnings` instead of dropping it:
+
+Datasets follow ECharts' own contract: `source` (array or object rows, `sourceHeader`, `dimensions`), `id` / `datasetId` / `fromDatasetId` references, the built-in `filter` and `sort` transforms, and **external transforms** through `registerChartTransform` — the `echarts.registerTransform` shape, with the same `upstream` surface (`cloneRawData`, `getRawData`, `getDimensionInfo`, `cloneAllDimensionInfo`), so an ecStat transform object registers unchanged and a multi-result transform feeds `fromTransformResult`. `encode` resolves `x` / `y` / `value` / `itemName` / `seriesName` by dimension name or index; `encode.tooltip` is not mapped yet and warns by name.
+
+Large data: a series' `sampling` (`lttb` / `average` / `max` / `min` / `sum`) thins it to the pixel width, `large` + `largeThreshold` (2000) and `progressive` + `progressiveThreshold` (3000) bound its point count — all three resolve to the engine's one large-data mechanism, decimation on shared rows (every series and the category axis thinned together, so a hit still names a real datum), and only when every series has the same length. The native `<OptionChart>`
+runs the same decimation at compile time against the option's static width
+(its `width` prop, or the web's own 640 default), so a thinned chart carries
+the same datums on every target. Reactive updates take `setOption`'s own options on `<OptionChart optionUpdate>`: `notMerge`, `replaceMerge` (id-merge, drop what the update does not name), `lazyUpdate` and `silent` (accepted; the host already paints once per frame and emits nothing on apply).
 
 ```ts
 import { optionToSvg } from '@pyreon/charts/plot'
@@ -274,15 +303,23 @@ const sound = sonifyValues(price.map((d) => d.close), { duration: 3000, link }) 
 <OptionChart option={() => echartsOption()} theme="dark" onSelect={(hit) => hit && select(hit)} />
 ```
 
-`navigator` is the slider dataZoom, `zoomPresets` the range selector, `keyboard` walks the data with a focus ring and a live-region announcement, and a data change of the same shape tweens instead of snapping (`updateAnimation`). Every handler is a pointer handler — a finger drags, pans, brushes and pinch-zooms, a tap shows the tooltip. The family hosts (pie, treemap, sankey, …) carry the same stack: `keyboard` (on by default), `updateAnimation` (a draw-list tween), `legendPosition`, `toolbox={{ saveAsImage: true }}` (a PNG), and the canvas is `aria-describedby` its hidden table. `<OptionChart>` paints cartesian plans (single or multi-`grid`, with `timeline` auto-play) on a canvas through the same `compiledCommands` the server's `optionToSvg` uses.
+`navigator` is the slider dataZoom, `zoomPresets` the range selector, `keyboard` walks the data with a focus ring and a live-region announcement, and a data change of the same shape tweens instead of snapping (`updateAnimation`). Every handler is a pointer handler — a finger drags, pans, brushes and pinch-zooms, a tap shows the tooltip. The family hosts (pie, treemap, sankey, …) carry the same stack: `keyboard` (on by default), `updateAnimation` (a draw-list tween), `legendPosition`, `toolbox={{ saveAsImage: true }}` (a PNG), and the canvas is `aria-describedby` its hidden table. `<OptionChart>` paints cartesian plans (single or multi-`grid`, with `timeline` auto-play) on a canvas through the same `compiledCommands` the server's `optionToSvg` uses. A family option (pie, sankey, treemap and the rest) mounts the family's own host, and the option's `tooltip` component applies to it the way it applies to a line chart: `trigger`, `triggerOn`, a template or function `formatter` (with ECharts' `params`, including the pie's `percent`), `valueFormatter`, `position` and the box's look, refined by a series' own `tooltip`; a series' `cursor` and `silent` apply too. The facade's `rtl`, `toolbox`, `keyboard` and `accessibleTable` props reach a family host as they reach the cartesian one.
 
 ## Install
+
+The two engines install differently. For Pyreon's own engine (`@pyreon/charts/plot`, every target) nothing else is needed:
+
+```bash
+bun add @pyreon/charts @pyreon/core @pyreon/reactivity
+```
+
+For the ECharts bridge (the default `@pyreon/charts` entry and `@pyreon/charts/webview`), add `echarts` too:
 
 ```bash
 bun add @pyreon/charts echarts @pyreon/core @pyreon/reactivity
 ```
 
-`echarts` is a peer dep (`>=5.6.0`). **You must add the [tslib alias](#bundler-fix-tslib-alias) to your `vite.config.ts`** or the page throws on ECharts load. The same alias is needed for browser tests; see `vitest.browser.ts` / `tslibBrowserAlias()` in `@pyreon/test-utils` for the test-side variant.
+`echarts` is an OPTIONAL peer (`>=5.6.0`): `/plot` never imports it, so a plot-only app leaves it out. **With the bridge you must add the [tslib alias](#bundler-fix-tslib-alias) to your `vite.config.ts`** or the page throws on ECharts load. The same alias is needed for browser tests; see `vitest.browser.ts` / `tslibBrowserAlias()` in `@pyreon/test-utils` for the test-side variant.
 
 ## Quick start
 
@@ -478,15 +515,24 @@ bar, line, pie, scatter, radar, heatmap, treemap, sunburst, sankey, funnel, gaug
 
 tooltip, legend, title, toolbox, dataZoom, visualMap, timeline, graphic, brush, calendar, dataset, aria, grid (also implied by `xAxis`/`yAxis`), polar, radar, geo.
 
-## Bundle size (rough)
+## Bundle size (measured)
 
-| Usage                      | ECharts loaded                                                 | Approx gzipped |
-| -------------------------- | -------------------------------------------------------------- | -------------- |
-| No charts rendered         | Nothing                                                        | 0 KB           |
-| Bar + tooltip              | core + BarChart + Grid + Tooltip + Canvas                      | ~35 KB         |
-| Bar + Line + legend        | core + BarChart + LineChart + Grid + Legend + Tooltip + Canvas | ~42 KB         |
-| Pie only                   | core + PieChart + Canvas                                       | ~25 KB         |
-| `@pyreon/charts` bridge     | Module map + hook                                              | ~3 KB          |
+Gzipped (level 9) JavaScript beyond a bare Pyreon app's own runtime, measured
+by `examples/benchmark` → `bun run bench:charts-bundle` (one production
+`vite build` per entry; ECharts imported the documented tree-shaken way).
+An earlier version of this table quoted ~25–42 KB for the ECharts modules —
+those figures were never measured and were wrong by 4–5×.
+
+| Chart                          | `@pyreon/charts/plot` | ECharts 6, tree-shaken | ECharts 6, whole package |
+| ------------------------------ | --------------------- | ---------------------- | ------------------------ |
+| Line                           | 40.9 KB (`PlotChart`) | 155.9 KB               | 361.1 KB                 |
+| Bar + line, tooltip, legend    | 40.9 KB (`PlotChart`) | 176.8 KB               | —                        |
+| Pie                            | 18.1 KB (`PieChart`)  | 117.3 KB               | —                        |
+| Line, or bar + line + tooltip + legend, as an ECharts option (`OptionChart`) | 128.8–128.9 KB | — | — |
+
+`PlotChart` does not yet tree-shake per mark: a one-line chart costs the same
+as a bar + line + tooltip + legend chart. The bridge (`useChart`) loads the
+ECharts modules on demand, so they arrive as lazy chunks of the sizes above.
 
 ## Why Canvas by default
 
@@ -556,7 +602,8 @@ import { WebView } from '@pyreon/primitives'
 
 - **Forward** — `data={option}` → `window.__pyreonData` + a `pyreondata` event → `chart.setOption(option, true)`, in place. Use a data-driven option (no embedded `formatter`/`renderItem` closures — they don't survive JSON encoding across the native bridge).
 - **Reverse** — a chart tap → `window.pyreonPostMessage(json)` → your `onMessage`. The host resizes via `ResizeObserver` (rotation / late layout).
-- **`<ChartWebView option onSelect>`** is the web-side ergonomic wrapper (it builds the host + emits `<WebView>` for you); on native, use `<WebView html={CHART_HOST} …>` directly (the component's body can't be PMTC-lowered — the host string + `<WebView>` can).
+- **`<ChartWebView option onSelect>`** is the ergonomic wrapper (it builds the host + emits `<WebView>` for you) and lowers natively too: PMTC emits `PyreonWebView(html:data:onMessage:)` with the same envelope (`option`, once-only `commands`, `loading` / `loadingOptions`, `group`) and routes `onSelect` / `onEvent` / `onError` back. Host configuration (`engineScript`, `theme`, `renderer`, `background`, `forwardEvents`, `hostSetupScript`) must be statically resolvable on native.
+- **Connected groups** — `<ChartWebView group="dashboard">` mirrors dataZoom, legend selection, highlight/downplay and the data-anchored tooltip between every hosted chart sharing the name, the same action classes `echarts.connect` shares. Each hosted chart is its own page, so the engine's own `connect()` can never see a sibling host: the page joins the `<WebView>` **host group** of the same name and relays those actions through it, and the host fans them into the sibling pages — identically on web (sibling iframes), iOS (sibling WKWebViews) and Android (sibling WebViews). Pass an accessor to move a chart between groups; a relayed action never echoes back to its origin.
 
 See `examples/native-viz` for a full one-source bar + line + pie + flow app across web/iOS/Android.
 

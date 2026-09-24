@@ -115,6 +115,8 @@ A literal-prop rocketstyle call site (`<Button state="primary" size="medium">Sav
 | `ssr.entry`   | `string`                                            | Server entry path. Enables SSR dev middleware.                                                              |
 | `islands`     | `boolean`                                           | Auto-discover `island()` declarations into `virtual:pyreon/islands-registry`. Default `true`.              |
 | `collapse`    | `boolean \| PyreonCollapseOptions`                  | Opt-in compile-time rocketstyle wrapper collapse. OFF by default. Build-only.                              |
+| `include`     | `FilterPattern`                                     | Restrict the JSX transform to these modules (`createFilter` globs/regexes). A user `include` is the whole allowlist. |
+| `exclude`     | `FilterPattern`                                     | Modules the transform never touches. Default: `node_modules` except `@pyreon/*` — a third-party untranspiled `.jsx` is not reinterpreted as Pyreon JSX. |
 
 `PyreonCollapseOptions`: `sources?: string[]` (default `['@pyreon/ui-components']`), `components?: string[]` (optional local-name allowlist), `provider?: { name, source }` (default `PyreonUI@@pyreon/ui-core`), `theme?: { name, source }` (default `theme@@pyreon/ui-theme`), `mode?: { name, source }` (default `useMode@@pyreon/ui-core`).
 

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -25,15 +25,20 @@ import { describe, expect, it } from 'vitest'
  * change reverts/breaks the externalization, lib/ jumps back to multi-
  * megabyte territory and this test fails.
  *
- * Threshold: 2.5 MB. The plot surface (eleven families, maps included)
- * sits at ~1.6 MB, leaving headroom for legitimate growth — fonts,
- * generated `.d.ts` chains, additional renderers.
+ * Threshold: 3.5 MB. The plot surface has grown past the original 2.5 MB
+ * with the full ECharts-parity family set: measured 2.76 MB, of which
+ * 1.37 MB is `plot.js.map` — the source map ships by policy
+ * (check-distribution requires the .map files to ship), so it is half the
+ * total and grows with the surface. The guard is unchanged in kind: it catches
+ * echarts being BUNDLED again, whose broken state was 9.2 MB, so 3.5 MB still
+ * fails that loudly (2.6× over) while not reddening on honest growth.
+ * Verified when this moved: no `echarts/*` or `zrender` bytes in `lib/`.
  * Broken state was 9.2 MB (~20× over threshold), so the test fails
  * loudly the moment regression hits, with no false-positives from
  * normal package growth.
  */
 describe('charts — bundle size regression (echarts subpath externalization)', () => {
-  it('lib/ total stays under 2.5 MB (~1.6 MB with the plot surface; the pre-fix duplication was 9.2 MB)', () => {
+  it('lib/ total stays under 4.5 MB (~3.7 MB with the full family and option surface; the pre-fix duplication was 9.2 MB)', () => {
     const here = dirname(fileURLToPath(import.meta.url))
     const libDir = join(here, '..', '..', 'lib')
 
@@ -54,17 +59,41 @@ describe('charts — bundle size regression (echarts subpath externalization)', 
       for (const entry of readdirSync(cursor, { withFileTypes: true })) {
         const full = join(cursor, entry.name)
         if (entry.isDirectory()) {
-          stack.push(full)
+          // The build's bundle-analysis report is a local artifact, not part of
+          // the published package; measuring it counted 258 KB nobody installs.
+          if (entry.name !== 'analysis') stack.push(full)
         } else if (entry.isFile()) {
           totalBytes += statSync(full).size
+          // The defect this guards, asserted directly rather than through the
+          // size: ECharts core code BUNDLED into lib/. `registerPreprocessor`
+          // is an ECharts core API this package never names.
+          if (entry.name.endsWith('.js')) expect(readFileSync(full, 'utf8').includes('registerPreprocessor'), `${full} contains bundled ECharts code`).toBe(false)
         }
       }
     }
 
-    // 2.5 MB: the plot subpath ships eleven families with source maps
-    // (~1.6 MB total, ~370 KB of .js); the 9.2 MB duplication bug this
-    // guards against is still ~4x over the line.
-    const CAP = 2.5 * 1024 * 1024
+    // Measured 2026-09 at ~3.7 MB, of which ~2.3 MB is source maps and ~1.05 MB
+    // .js: the option facade grew ECharts' pie, gauge and axis layouts. The
+    // 9.2 MB duplication bug this guards against is still ~2x over the line,
+    // and the engine-once check below catches duplication directly.
+    const CAP = 4.5 * 1024 * 1024
     expect(totalBytes).toBeLessThan(CAP)
+
+    // Duplication, asserted directly: the engine is emitted into ONE chunk, not
+    // copied into each entry that uses it (plot, option, webview).
+    const jsFiles: string[] = []
+    const walk: string[] = [libDir]
+    while (walk.length > 0) {
+      const dir = walk.pop() as string
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory() && entry.name !== 'analysis') walk.push(full)
+        else if (entry.name.endsWith('.js')) jsFiles.push(full)
+      }
+    }
+    for (const fn of ['function layoutChart', 'function renderPie', 'function arcPolygon']) {
+      const holders = jsFiles.filter((f) => readFileSync(f, 'utf8').includes(fn))
+      expect(holders, `${fn} is defined in ${holders.length} files`).toHaveLength(1)
+    }
   })
 })

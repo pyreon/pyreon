@@ -1,5 +1,5 @@
 import { signal, wrapSignal } from '@pyreon/reactivity'
-import { getEntry, removeEntry, setEntry } from './registry'
+import { getEntry, getScopedMap, releaseEntry, retainEntry, setEntry } from './registry'
 import type { StorageBackend, StorageOptions, StorageSignal } from './types'
 import { deserialize, serialize } from './utils'
 
@@ -31,9 +31,18 @@ export function createStorage(
     defaultValue: T,
     options?: StorageOptions<T>,
   ): StorageSignal<T> {
-    // Return existing signal if already registered
+    // Same-key consumers each retain the per-key registry refcount, so the entry
+    // is destroyed on the LAST `.remove()` and not the first. `useStorage` was
+    // fixed this way in #725/#729 and the registry's own docstring states the
+    // contract ("per-consumer `.remove()` goes through `releaseEntry`") — this
+    // backend kept the pre-fix shape, so one consumer's `.remove()` orphaned
+    // every sibling: `clearStorage`/`removeStorage` stopped seeing their signal,
+    // and the next call for the same key minted a SECOND, independent one.
     const existing = getEntry<T>(name, key)
-    if (existing) return existing.signal
+    if (existing) {
+      retainEntry(name, key)
+      return existing.signal
+    }
 
     // Read initial value
     let initialValue = defaultValue
@@ -69,7 +78,7 @@ export function createStorage(
       } catch {
         // Remove failed
       }
-      removeEntry(name, key)
+      releaseEntry(name, key)
     }
 
     setEntry(name, key, storageSig, defaultValue, options)
@@ -92,13 +101,20 @@ export function createStorage(
  * ```
  */
 export const useMemoryStorage = createStorage(
-  (() => {
-    const store = new Map<string, string>()
-    return {
-      get: (key: string) => store.get(key) ?? null,
-      set: (key: string, value: string) => store.set(key, value),
-      remove: (key: string) => store.delete(key),
-    }
-  })(),
+  {
+    // Request-scoped rather than a module-level `Map`. A plain module map is
+    // correct in a browser and a cross-request bleed on a server: the store
+    // this hook documents as "useful for SSR" would serve request B whatever
+    // request A wrote under the same key. Isolating the cached SIGNAL alone
+    // does not fix that — a fresh signal seeded from a process-global byte
+    // store still reads A's value — so the bytes move behind the same seam.
+    get: (key: string) => getScopedMap<string>('memory').get(key) ?? null,
+    set: (key: string, value: string) => {
+      getScopedMap<string>('memory').set(key, value)
+    },
+    remove: (key: string) => {
+      getScopedMap<string>('memory').delete(key)
+    },
+  },
   'memory',
 )

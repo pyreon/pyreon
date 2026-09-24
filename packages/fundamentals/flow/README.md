@@ -72,7 +72,8 @@ The `TData` generic flows through to `FlowNode<TData>` and `NodeComponentProps<T
 | Geometry | `getNodeDimensions(id)` — effective box: explicit → measured → 150×40 default |
 | Auto-layout | `layout(algorithm?, options?)` — Promise, built-in seven-mode engine (code-split), fed measured node sizes |
 | Graph queries | `getConnectedEdges` / `getIncomers` / `getOutgoers` / `isValidConnection` / `findNodes` / `searchNodes` |
-| Listeners | `onConnect` / `onNodesChange` / `onNodeClick` / `onEdgeClick` / `onNodeDragStart` / `onNodeDragEnd` / `onNodeDoubleClick` |
+| Intersections | `getIntersectingNodes(nodeOrRect, partially?)` / `isNodeIntersecting(nodeOrRect, area, partially?)` / `getNodesBounds(ids?)` |
+| Listeners | `onConnect` / `onNodesChange` / `onNodeClick` / `onEdgeClick` / `onNodeDragStart` / `onNodeDragEnd` / `onNodeDoubleClick` / `onNodeContextMenu` / `onEdgeContextMenu` / `onPaneContextMenu` / `onNodeMouseEnter` / `onNodeMouseLeave` / `onEdgeMouseEnter` / `onEdgeMouseLeave` |
 | Serialization | `toJSON()` / `fromJSON(data)` |
 | Lifecycle | `dispose()` |
 
@@ -88,6 +89,9 @@ The `TData` generic flows through to `FlowNode<TData>` and `NodeComponentProps<T
 | `<Panel position="top-left" \| ...>` | Overlay panel relative to the flow viewport |
 | `<NodeResizer>` | Resize handles for the selected node |
 | `<NodeToolbar>` | Toolbar attached to a node |
+| `<EdgeLabelRenderer>` | HTML labels for custom edges |
+| `<BaseEdge path label? labelX? labelY?>` / `<EdgeText x y label>` | Building blocks for custom edges: the stroke and an SVG label |
+| `<ViewportPortal>` | HTML in flow coordinates (web only) |
 
 JSX components are **NOT generic at the call site** (`<Flow<MyData> />` isn't valid JSX). `FlowProps.instance` is typed as `FlowInstance<any>` so typed consumers pass `FlowInstance<MyData>` without casting.
 
@@ -115,7 +119,9 @@ Each node mounts ONCE per graph lifetime. Drags, selection clicks, and `updateNo
 
 ## Custom edge renderers
 
-Same accessor contract — `EdgeComponentProps` exposes `sourceX()` / `sourceY()` / `targetX()` / `targetY()` / `selected()` as reactive accessors. Use the path helpers (`getBezierPath`, `getSmoothStepPath`, `getStraightPath`, `getStepPath`, `getWaypointPath`) inside the render to compute `d`.
+Same accessor contract — `EdgeComponentProps` exposes `sourceX()` / `sourceY()` / `targetX()` / `targetY()` / `selected()` as reactive accessors. Use the path helpers (`getBezierPath`, `getSmoothStepPath`, `getStraightPath`, `getStepPath`, `getWaypointPath`) inside the render to compute `d`, and draw it with `<BaseEdge path={...}>` or a plain `<path>`.
+
+Nodes and edges take `zIndex`; a selected node is raised above its neighbours (`elevateNodesOnSelect`, on by default) and `elevateEdgesOnSelect` does the same for edges. `connectionMode: 'loose'` allows any handle to connect to any other, and the canvas auto-pans while a node or connection is dragged near its edge (`autoPanOnNodeDrag`, `autoPanOnConnect`, `autoPanSpeed`).
 
 ## Auto-layout
 
@@ -192,28 +198,62 @@ Position.Left // 'left'
 - **The layout engine is code-split** — the first `flow.layout()` call fetches its chunk, so it takes longer than subsequent ones; every mode is pure geometry with no external dependency.
 - **`flow.dispose()` is final** — listeners detach, signals stop updating. Don't reuse a disposed instance. `useFlow` wires this up for you on unmount.
 
-## Multiplatform — `@pyreon/flow/webview`
+## Multiplatform
 
-`@pyreon/flow` renders SVG/DOM + custom-JSX nodes (web-only). To show a flow diagram on iOS/Android too, host it in a native `<WebView>`. `buildFlowHostHtml()` returns a FULLY self-contained SVG renderer (no external bundle) that draws the same `{ nodes, edges }` model as `<Flow>` — labeled nodes, bezier edges (flow's real `getBezierPath`), pan + pinch/zoom, fit-on-load, tap-to-select:
+On iOS and Android the native compiler lowers `createFlow` / `useFlow` and `<Flow>` to `PyreonFlowState` plus an interactive SwiftUI or Compose host. This is a native view tree, not a WebView.
+
+The same source provides all of these on web, iOS and Android:
+
+- Node and edge CRUD, selection, history and all seven layouts.
+- The web's default node look, built-in and static custom node and edge renderers, and custom connection lines.
+- `<path d=…>` inside custom edges and connection lines, for any SVG path data.
+- Inline `<svg>` inside node, edge and connection-line renderers: its shapes (`path`, `rect`, `circle`, `ellipse`, `line`, `polyline`, `polygon`, nested `<g>`) draw natively, scaled by the `viewBox`, with SVG paint inheritance. `<text>`, gradients and `transform` are named in a warning.
+- Plain `<div>` / `<p>` / `<span>` in a renderer, in the two shapes whose native layout provably matches the browser's: text-only content, and a `<div>` of block children. A `class`, a `style` or inline-flow children keep the warning that points at `<FlowWebView>`.
+- Handles, connect and reconnect gestures (both `connectionMode`s), resizing, and toolbars.
+- `zIndex` and select elevation, auto-pan, the intersection helpers, and `<BaseEdge>` / `<EdgeText>`.
+- The context-menu listeners (long-press) and the hover listeners (pointer hover).
+- `<Background>`, `<Controls>`, `<MiniMap>` and `<Panel>`, plus `colorMode` including `'system'`.
+- Pan, pinch-zoom and drag.
+- Keyboard commands and accessibility names.
+- Culling with `onlyRenderVisibleElements`.
+
+**How it is verified:**
+
+- The native engines replay shared scenarios whose expected answers come from the web engine. Two checks fail when a portable method or a native config field has neither a scenario nor a stated exemption.
+- Both real toolchains compile the emitted code.
+- A test ties every native palette colour to the web's `--pyreon-flow-*` value, in light and dark.
+- The example apps' iOS and Android device suites assert what the renderer draws, the gestures, the keyboard commands and a 400-node scale scenario.
+
+The full list, including the platform limits, is in the [docs](https://pyreon.dev/docs/flow#ios-and-android).
+
+**What stays browser-only.** The compiler reports each of these by name:
+
+- `FlowLayersContext` and `flowStyles`, the DOM renderer's layer context and CSS custom properties.
+- `<ViewportPortal>` (HTML positioned with CSS).
+- Renderers whose layout depends on CSS: DOM elements with a `class` or `style`, inline-flow mixes of text and elements, and SVG `<text>`, gradients and `transform`. Plain SVG shapes and simple `<div>` / `<p>` / `<span>` structure are not in this list; they render natively.
+- Renderer maps computed at runtime.
+
+Keep that presentation in `NativeIOS` / `NativeAndroid` branches, or use the WebView route below. These inline styles lower directly:
+
+- Node styles: `width`, `height`, `padding`, hex `background`/`background-color`, hex `border-color`, `border-width`, `border-radius` and `opacity`.
+- Edge styles: `stroke` and `stroke-width`.
+
+**`@pyreon/flow/webview`** hosts the unchanged browser renderer when an app needs it. `<FlowWebView>` is the same JSX on every target. It lowers to the native `PyreonWebView` bridge, which provides:
+
+- A generated default host.
+- Reactive graph updates and a reactive `html` swap.
+- Once-only commands.
+- Selection, event, message and error callbacks.
 
 ```tsx
-import { buildFlowHostHtml } from '@pyreon/flow/webview'
-import { WebView } from '@pyreon/primitives'
+import { FlowWebView } from '@pyreon/flow/webview'
 
-const FLOW_HOST = buildFlowHostHtml()
-
-<WebView
-  html={FLOW_HOST}
-  data={{ nodes: nodes(), edges: edges() }}   // the same flow model
-  onMessage={(m) => selected.set(m)}           // tapped node → JSON { id, data }
-/>
+<FlowWebView graph={{ nodes: nodes(), edges: edges() }} onSelect={(e) => selected.set(e.id)} />
 ```
 
-- Compiles to WKWebView / Android WebView / an `<iframe srcdoc>` — same bridge (forward `data` push, reverse `pyreonPostMessage`) on every target.
-- **`<FlowWebView graph onSelect>`** is the web-side wrapper; native uses `<WebView html={FLOW_HOST} …>` directly.
-- **Full editor** (custom-JSX nodes / connection dragging / resizing): bundle your compiled `@pyreon/flow` web app and pass it as the host via `<FlowWebView html={…}>` / `<WebView html={…}>`.
+It is still a WebView, with a JSON bridge. The diagram is opaque to native gestures and to the platform accessibility tree, so prefer the native host unless the browser renderer itself is the requirement. Without an explicit height it defaults to 150pt (iOS) or 150dp (Android). `buildFlowHostHtml()` returns the self-contained host page, for hosting it in a plain `<WebView>` yourself.
 
-See `examples/native-viz` for a one-source multiplatform app.
+See `examples/native-tasks` (native `<Flow>` and `<FlowWebView>` side by side) and `examples/native-viz` for one-source multiplatform apps.
 
 ## Documentation
 

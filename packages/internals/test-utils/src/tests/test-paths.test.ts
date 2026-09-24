@@ -83,3 +83,38 @@ describe('regexes are exported for callers that need the raw pattern', () => {
     expect(isTestPath(d)).toBe(TEST_FILE_RE.test(d) || TEST_DIR_RE.test(d))
   })
 })
+
+describe('the native test conventions this repo actually ships', () => {
+  // The classifier was written for the TypeScript tree, so a Swift or Android
+  // test edit read as shipping source and `check-changeset-required` demanded
+  // a changeset for it. Both are provably unpublished — `runtime-swift`'s
+  // `files` is `Package.swift`/`Sources`/`README`/`LICENSE`, and an Android
+  // example is not a published package at all.
+  it('SwiftPM Tests/ is test code, capital T and all', () => {
+    expect(isTestPath('packages/native/runtime-swift/Tests/PyreonRuntimeTests/PyreonChartEngineTests.swift')).toBe(
+      true,
+    )
+    expect(isTestPath('packages/native/router-swift/Tests/PyreonRouterTests/RouterTests.swift')).toBe(true)
+  })
+
+  it('Gradle androidTest/ and its lowercase test/ sibling are both test code', () => {
+    expect(
+      isTestPath('examples/native-tasks-android/app/src/androidTest/kotlin/com/pyreon/TasksAppInstrumentedTest.kt'),
+    ).toBe(true)
+    // `src/test/` already matched via the lowercase `test` alternative; pinned
+    // so a future tidy-up of the alternation cannot drop it silently.
+    expect(isTestPath('packages/native/runtime-kotlin/src/test/kotlin/com/pyreon/runtime/StorageTest.kt')).toBe(true)
+  })
+
+  it('the SHIPPED halves of those same packages are NOT test code', () => {
+    // The assertion that makes the two above meaningful: widening the
+    // alternation must not swallow the sources these packages publish.
+    expect(isTestPath('packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartEngine.swift')).toBe(false)
+    expect(isTestPath('packages/native/runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonChartEngine.kt')).toBe(
+      false,
+    )
+    // …and a directory that merely CONTAINS the word is still not a match.
+    expect(isTestPath('packages/native/runtime-swift/Sources/LatestThing/x.swift')).toBe(false)
+    expect(isTestPath('packages/core/core/src/androidTestHelpers.ts')).toBe(false)
+  })
+})

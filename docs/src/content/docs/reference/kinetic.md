@@ -11,6 +11,16 @@ CSS-transition animation engine for Pyreon. One factory — `kinetic(tag)` — p
 
 > **Peer dependencies:** `@pyreon/core`, `@pyreon/reactivity`, `@pyreon/runtime-dom` — install alongside this package.
 
+## Multiplatform
+
+**Tier:** Web-only — the browser package; the native story is stated below
+
+CSS-transition animation engine (classes + rAF over real CSSOM). The CLASS/style machinery is web; the PRESET vocabulary crosses — see nativeFrontend
+
+**What crosses natively:** `kinetic(tag).preset(...)` with a known preset (fade / scale-in / slide-up|down|left|right) — the preset names an animation both targets know, so the box lowers through the same `<Transition>` path the primitive uses, with a synthesized mount flag driving the ENTER (a constant `show` compiles and never animates). A chain with NO `.preset()` has no animation vocabulary to carry, degrades to a plain container and warns by name. `<Transition name>` from `@pyreon/primitives` remains the portable spelling
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - kinetic(tag) factory — renderable component + immutable chain in one value
@@ -378,4 +388,4 @@ const Notice = kinetic('div').preset(fade).on({
 
 > **Compositor-thread animations:** Only `transform` / `opacity` / `filter` animate on the GPU compositor thread. Animating `width` / `height` / `top` / `left` runs on the main thread and may jank — use collapse mode for height animation.
 
-> **CSS-transition scope (not a JS animation engine):** kinetic offloads the tween to CSS/the compositor — it does NOT run a JS animation loop. It cannot do spring physics, interruptible / retargetable value animation, layout / shared-element (FLIP) animations, or gestures / drag; reach for Motion One or Framer Motion for those. What kinetic owns: declarative, SSR-safe, reactive-prop enter/leave/collapse/stagger with zero per-frame JS. Its framework JS overhead to reveal a list is competitive with Motion One (within ~1.5×, winning small-enter, tying elsewhere — see `bench/`), both a small constant over hand-rolled CSS.
+> **CSS-transition scope (not a JS animation engine):** kinetic offloads the tween to CSS/the compositor — it does NOT run a JS animation loop. It cannot do spring physics, interruptible / retargetable value animation, layout / shared-element (FLIP) animations, or gestures / drag; reach for Motion One or Framer Motion for those. What kinetic owns: declarative, SSR-safe, reactive-prop enter/leave/collapse/stagger with zero per-frame JS. There is currently no published speed comparison with Motion One: the earlier figures came from a harness that timed only part of the work kinetic does, revealed one element instead of N, and never animated its CSS baseline, so they were withdrawn (see `bench/README.md`).

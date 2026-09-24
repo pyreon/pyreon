@@ -134,6 +134,41 @@ export function _setChild(node: Element, value: unknown): void {
  * text node — the historical `document.createTextNode(x) + replaceChild` shape.
  */
 export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown): void {
+  // HYDRATION counterpart. The adoption verifier relaxes an element whose
+  // template has a `<!>` as its only child — it reads that as a sole slot whose
+  // SSR markers were elided — and then skips verifying the element's children.
+  // But the compiler routes two shapes here rather than to `_mountSlot`:
+  //
+  //   <div><>{rows}</></div>      fragment wrapper
+  //   <div>{null}{rows}</div>     dropped nothing-rendering sibling
+  //
+  // because `classifyJsxChild` recurses fragments and drops `{null}`, while
+  // `ssrSoleChild` counts both — so the template gets a `<!>` at firstChild
+  // while the slot is NOT sole to SSR. And when the value is STATIC, SSR emits
+  // no markers either way, so the verifier's marker re-check cannot separate
+  // "sole, elided" from "static, never applicable" and adopts.
+  //
+  // With no hydrate path here, `placeholder` was the SERVER's first child, and
+  // the mount-then-remove below inserted a fresh copy beside the server's nodes
+  // and removed exactly one of them:
+  //
+  //   ssr       <div class="w"><b>a</b><i>b</i></div>
+  //   hydrated  <div class="w"><b>a</b><i>b</i><i>b</i></div>
+  //   fresh     <div class="w"><b>a</b><i>b</i></div>
+  //
+  // A clone's placeholder is an EMPTY COMMENT; a server node never is, which is
+  // what tells the two apart. The parent's tag boundary supplies the extent, so
+  // the hydrator adopts over the whole child list exactly as it does for a real
+  // sole slot. No cleanup is threaded because this is the STATIC path — the
+  // content leaves with the clone, as it did before.
+  if (
+    _slotHydrator !== null &&
+    !isCloneSlotPlaceholder(placeholder) &&
+    !isMidSlotText(placeholder)
+  ) {
+    _slotHydrator(value as never, parent as Element, null)
+    return
+  }
   if (_isMountableTextValue(value)) {
     mountChild(value as VNodeChild, parent, placeholder)
     placeholder.remove()
@@ -145,7 +180,16 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
     // adopts but its one dynamic text is swapped for a fresh node.
     ;(placeholder as Text).data = value as string
   } else {
-    parent.replaceChild(document.createTextNode(value as string), placeholder)
+    // Nullish renders as EMPTY, not as the literal text "null". `String(null)`
+    // is `"null"`, and this branch used to hand that straight to
+    // `createTextNode` — so `<div>{null}{rows}</div>` put the word "null" on the
+    // page, while `_setChild` (`node.textContent = value`, which the DOM coerces)
+    // and SSR (`renderNode(null)` -> `''`) both render nothing. A client/server
+    // text divergence in the same file as its correct sibling.
+    parent.replaceChild(
+      document.createTextNode(value == null ? '' : (value as string)),
+      placeholder,
+    )
   }
 }
 

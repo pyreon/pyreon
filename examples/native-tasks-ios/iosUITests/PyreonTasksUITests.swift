@@ -29,6 +29,7 @@
 // path + nightly schedule. Promote to required once green across
 // multiple consecutive nightly runs (Gap 7's streak prerequisite).
 
+import UIKit
 import XCTest
 
 final class PyreonTasksUITests: XCTestCase {
@@ -75,6 +76,121 @@ final class PyreonTasksUITests: XCTestCase {
     /// test rather than a test that never touched the chart. That is exactly
     /// how the boxplot band assertion first failed on the simulator.
     @discardableResult
+    /** Pixels within a few units of #cccccc — the visualMap's inactive colour. */
+    /** Scroll the gallery until the WHOLE element is inside the window: a gesture on an off-screen part lands on nothing. */
+    private func scrollFullyOnScreen(_ element: XCUIElement, in app: XCUIApplication) {
+        let scroll = app.scrollViews["gal-scroll"].firstMatch
+        // Down the LEFT GUTTER, outside every chart, never the centre. The
+        // gallery's charts claim drags (dataZoom, brush, the roaming map, the
+        // toolbox band), so a scroll that started over one panned or zoomed
+        // that chart instead of scrolling the page. Which chart sat under the
+        // centre depended on the scroll position, so the damage moved around:
+        // the box zoom, map pan and trail checks each failed intermittently.
+        for _ in 0..<16 {
+            let window = app.windows.firstMatch.frame
+            if element.frame.minY < window.minY + 100 {
+                scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.4)).press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.65)))
+            } else if element.frame.maxY > window.maxY - 80 {
+                scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.65)).press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.4)))
+            } else {
+                waitForScrollToSettle(element)
+                return
+            }
+        }
+        waitForScrollToSettle(element)
+    }
+
+    /// A drag leaves the scroll view coasting, and a tap during that coast only
+    /// stops it: the tap never reaches the control. Wait until the element has
+    /// held still for two reads before anything taps or drags on it.
+    private func waitForScrollToSettle(_ element: XCUIElement) {
+        var last = element.frame
+        for _ in 0..<20 {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            let now = element.frame
+            if now == last { return }
+            last = now
+        }
+    }
+
+    /// Tap `point` until `label` reads `expected`: a tap that lands while the gallery's scroll is still
+    /// decelerating only stops the fling, so one retry absorbs that — a tap that hits the WRONG part
+    /// still fails, because the label then reads something else.
+    private func tapUntilLabel(_ point: XCUICoordinate, _ label: XCUIElement, _ expected: String) -> Bool {
+        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+        point.tap()
+        if waitForLabel(label, expected, timeout: 3) { return true }
+        point.tap()
+        return waitForLabel(label, expected, timeout: 3)
+    }
+
+    private func waitForValue(_ element: XCUIElement, _ value: String, timeout: TimeInterval) -> Bool {
+        let predicate = NSPredicate(format: "value == %@", value)
+        return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: element)], timeout: timeout) == .completed
+    }
+
+    private func redPixels(_ png: Data) -> Int { colorPixels(png, 255, 0, 0) }
+    private func greyPixels(_ png: Data) -> Int { colorPixels(png, 204, 204, 204) }
+
+    /**
+     * The x extent, in POINTS of `widthPoints`, of the blue-tinted run on the row
+     * `rowFromBottom` points above the image's bottom — the dataZoom window's
+     * filler (its handles are white and the strip outside it grey). Nil when no run.
+     */
+    private func blueRun(_ png: Data, rowFromBottom: CGFloat, widthPoints: CGFloat) -> (CGFloat, CGFloat)? {
+        guard let image = UIImage(data: png)?.cgImage else { return nil }
+        let w = image.width, h = image.height
+        var buf = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &buf, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        let scale = CGFloat(w) / widthPoints
+        let row = h - Int(rowFromBottom * scale)
+        guard row >= 0 && row < h else { return nil }
+        var lo = -1, hi = -1
+        for x in 0..<w {
+            let i = (row * w + x) * 4
+            if Int(buf[i + 2]) - Int(buf[i]) >= 12 {
+                if lo < 0 { lo = x }
+                hi = x
+            }
+        }
+        guard lo >= 0 && hi - lo > 20 else { return nil }
+        return (CGFloat(lo) / scale, CGFloat(hi) / scale)
+    }
+
+    private func colorPixels(_ png: Data, _ r: Int, _ g: Int, _ b: Int) -> Int {
+        // Redrawn into a known RGBA8 buffer: a screenshot's own pixel format varies by device.
+        guard let image = UIImage(data: png)?.cgImage else { return 0 }
+        let w = image.width, h = image.height
+        var buf = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &buf, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return 0 }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var n = 0
+        var i = 0
+        while i + 3 < buf.count {
+            if abs(Int(buf[i]) - r) <= 6 && abs(Int(buf[i + 1]) - g) <= 6 && abs(Int(buf[i + 2]) - b) <= 6 { n += 1 }
+            i += 4
+        }
+        return n
+    }
+
+    /// The right-most x (in image pixels) of pixels matching rgb, or nil.
+    private func colorMaxX(_ png: Data, _ r: Int, _ g: Int, _ b: Int) -> (maxX: Int, width: Int)? {
+        guard let image = UIImage(data: png)?.cgImage else { return nil }
+        let w = image.width, h = image.height
+        var buf = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &buf, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var maxX = -1
+        for y in 0..<h {
+            for x in 0..<w {
+                let i = (y * w + x) * 4
+                if abs(Int(buf[i]) - r) <= 6 && abs(Int(buf[i + 1]) - g) <= 6 && abs(Int(buf[i + 2]) - b) <= 6 && x > maxX { maxX = x }
+            }
+        }
+        return maxX < 0 ? nil : (maxX, w)
+    }
+
     private func scrollIntoView(
         _ element: XCUIElement,
         in app: XCUIApplication,
@@ -83,11 +199,13 @@ final class PyreonTasksUITests: XCTestCase {
         let scroller = app.scrollViews.firstMatch
         var swipes = 0
         while swipes < maxSwipes && !(element.exists && element.isHittable) {
-            if scroller.exists {
-                scroller.swipeUp()
-            } else {
-                app.swipeUp()
-            }
+            // Swipe TOWARD the element. Always swiping up could only ever reach
+            // content below; once a taller row above (a hosted WebView) shifted
+            // the layout, a target could end up ABOVE the screen and every
+            // further swipe carried it further away.
+            let above = element.exists && element.frame.maxY < app.windows.firstMatch.frame.minY
+            let target: XCUIElement = scroller.exists ? scroller : app
+            if above { target.swipeDown() } else { target.swipeUp() }
             swipes += 1
         }
         return swipes
@@ -466,16 +584,166 @@ final class PyreonTasksUITests: XCTestCase {
         let nodeCount = app.staticTexts["flow-node-count"].firstMatch
         XCTAssertTrue(nodeCount.waitForExistence(timeout: 10), "flow-node-count missing")
         XCTAssertEqual(nodeCount.label, "2", "seeded node count")
-        XCTAssertEqual(app.staticTexts["flow-edge-count"].firstMatch.label, "1", "seeded edge count")
+        XCTAssertEqual(app.staticTexts["flow-edge-count"].firstMatch.label, "2", "seeded edge count")
         XCTAssertEqual(app.staticTexts["flow-zoom"].firstMatch.label, "zoom 1.0", "initial zoom")
         tapAfterScrolling(app.buttons["flow-add"].firstMatch, in: app)
         XCTAssertTrue(waitForLabel(nodeCount, "3", timeout: 5), "addNode did not reach the native engine (label: \(nodeCount.label))")
         tapAfterScrolling(app.buttons["flow-select"].firstMatch, in: app)
         XCTAssertTrue(waitForLabel(app.staticTexts["flow-selected-count"].firstMatch, "1", timeout: 5), "selectNode did not reach the native engine")
+        // The RENDERER half (F3/F4): the <Flow> canvas and its chrome, a node
+        // DRAG, and the Controls driving the same engine the labels read.
+        // The drag runs FIRST, at the initial zoom 1: accessibility frames do
+        // not follow the canvas scaleEffect, so at any other zoom a node's
+        // reported frame is distorted and a coordinate drag misses it.
+        let canvas = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Task flow")).firstMatch
+        XCTAssertTrue(canvas.waitForExistence(timeout: 10), "Flow canvas (ariaLabel) did not render")
+        // The `wire` custom edge draws ARBITRARY SVG path data (a template
+        // literal), parsed by the native runtime: its #16a34a stroke must paint.
+        let wireGreen = colorPixels(canvas.screenshot().pngRepresentation, 0x16, 0xa3, 0x4a)
+        XCTAssertGreaterThan(wireGreen, 50, "the custom edge's arbitrary SVG path did not paint natively (\(wireGreen) green px)")
+        // At the right SCALE: the path ends at node 'b', seeded at graph x = 200
+        // with the viewport still the origin at zoom 1, so 200pt from the
+        // canvas edge.
+        if let wire = colorMaxX(canvas.screenshot().pngRepresentation, 0x16, 0xa3, 0x4a) {
+            let scale = Double(wire.width) / Double(canvas.frame.width)
+            XCTAssertLessThanOrEqual(abs(Double(wire.maxX) - 200 * scale), 20 * scale, "the custom edge ends at \(Double(wire.maxX) / scale)pt, node 'b' is at 200pt")
+        }
+        // The added node 'c' is a custom node with an inline <svg>: an 8-unit
+        // viewBox drawn at 16x16. Measured by AREA, not bounding box, so a stray
+        // antialiased pixel elsewhere cannot stretch it: a 16pt square is
+        // (16·scale)² px, and a viewBox that was not applied paints an 8pt one.
+        let badgePx = colorPixels(canvas.screenshot().pngRepresentation, 0x7c, 0x3a, 0xed)
+        XCTAssertGreaterThan(badgePx, 0, "the custom node's inline <svg> did not paint natively")
+        let shot = UIImage(data: canvas.screenshot().pngRepresentation)!.cgImage!
+        let badgeScale = Double(shot.width) / Double(canvas.frame.width)
+        let badgeSide = Double(badgePx).squareRoot() / badgeScale
+        XCTAssertLessThanOrEqual(abs(badgeSide - 16), 1.5, "the <svg> badge measures \(badgeSide)pt a side (\(badgePx) px), its size is 16x16")
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "minimap")).firstMatch.exists, "MiniMap chrome missing")
+        let startNode = app.staticTexts["Start"].firstMatch
+        XCTAssertTrue(startNode.waitForExistence(timeout: 5), "node 'Start' did not render on the canvas")
+        XCTAssertTrue(app.staticTexts["End"].firstMatch.exists, "node 'End' did not render on the canvas")
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "source handle out")).firstMatch.waitForExistence(timeout: 5), "source handle did not render")
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "target handle in")).firstMatch.exists, "target handle did not render")
+        let aPos = app.staticTexts["flow-a-pos"].firstMatch
+        XCTAssertTrue(aPos.waitForExistence(timeout: 5), "flow-a-pos missing")
+        let before = aPos.label
+        // The label reacts to an engine-driven move — the discriminator that
+        // separates "the position channel is live" from "the drag gesture ran".
+        tapAfterScrolling(app.buttons["flow-move"].firstMatch, in: app)
+        // Swift renders a Double as "25.0"; Android as "25". Either is the moved position.
+        XCTAssertTrue(waitForLabel(aPos, "25.0,35.0", timeout: 5) || aPos.label == "25,35", "updateNodePosition did not reach the label (label: \(aPos.label))")
+        let placed = aPos.label
+        let grab = startNode.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        // Slow, with a hold at each end: a fast synthesized drag reaches SwiftUI
+        // as a single jump, and a DragGesture that never sees an intermediate
+        // move does not fire.
+        grab.press(forDuration: 0.3, thenDragTo: grab.withOffset(CGVector(dx: 70, dy: 40)), withVelocity: .slow, thenHoldForDuration: 0.4)
+        let moved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", placed), object: aPos)
+        if XCTWaiter().wait(for: [moved], timeout: 5) != .completed { print("DIAG-HIERARCHY:\n\(app.debugDescription)") }
+        XCTAssertNotEqual(aPos.label, placed, "dragging node 'Start' did not move it in the native engine (still \(aPos.label))")
+
+        // A long-press on a node is the native context-menu gesture: it reaches
+        // `flow.onNodeContextMenu`, which writes the node id to `flow-menu`.
+        let menu = app.staticTexts["flow-menu"].firstMatch
+        XCTAssertEqual(menu.label, "none", "no context menu has been requested yet")
+        app.staticTexts["End"].firstMatch.press(forDuration: 1.0)
+        XCTAssertTrue(waitForLabel(menu, "menu b", timeout: 5), "a long-press on node 'End' did not reach onNodeContextMenu (label: \(menu.label))")
+        // (Hover is asserted on Android only: XCUITest on iOS has no pointer
+        // hover to synthesise, `XCUIElement.hover()` is macOS-only.)
+
+        func labelled(_ label: String) -> XCUIElement {
+            app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+        }
+        let edgeCount = app.staticTexts["flow-edge-count"].firstMatch
+        let selectedIds = app.staticTexts["flow-selected-ids"].firstMatch
+
+        // connectionMode 'strict' (the default), with B selected (raised): with e1 removed, a drag that
+        // STARTS on node b's target handle and drops on node a's source handle
+        // still creates the edge, in the source -> target direction.
+        tapAfterScrolling(app.buttons["flow-drop-e1"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabel(edgeCount, "1", timeout: 5), "removeEdge('e1') did not reach the engine (label: \(edgeCount.label))")
+        let vpBeforeConnect = app.staticTexts["flow-vp"].firstMatch.label
+        let fromHandle = labelled("target handle in").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let toHandle = labelled("source handle out").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        fromHandle.press(forDuration: 0.3, thenDragTo: toHandle, withVelocity: .slow, thenHoldForDuration: 0.3)
+        XCTAssertTrue(waitForLabel(edgeCount, "2", timeout: 5), "a drag from a target handle to a source handle did not connect under strict mode (edges: \(edgeCount.label), connect: \(app.staticTexts["flow-connect"].firstMatch.label), viewport: \(vpBeforeConnect) -> \(app.staticTexts["flow-vp"].firstMatch.label))")
+
+        // zIndex: A and B overlap, B later in the array, A raised to zIndex 5
+        // with nothing selected. A tap where they overlap must reach A.
+        tapAfterScrolling(app.buttons["flow-stack"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabel(aPos, "0.0,0.0", timeout: 5) || aPos.label == "0,0", "flow-stack did not move A (label: \(aPos.label))")
+        XCTAssertTrue(waitForLabel(selectedIds, "none", timeout: 5), "flow-stack did not clear the selection (label: \(selectedIds.label))")
+        app.staticTexts["Start"].firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(waitForLabel(selectedIds, "a", timeout: 5), "a tap where A (zIndex 5) overlaps B did not reach A (label: \(selectedIds.label))")
+
+        // Auto-pan: holding the dragged node at the canvas edge pans the viewport.
+        let vp = app.staticTexts["flow-vp"].firstMatch
+        let vpBefore = vp.label
+        let canvasEdge = labelled("Task flow").coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5))
+        app.staticTexts["Start"].firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.3, thenDragTo: canvasEdge, withVelocity: .slow, thenHoldForDuration: 1.0)
+        let panned = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", vpBefore), object: vp)
+        XCTAssertEqual(XCTWaiter().wait(for: [panned], timeout: 5), .completed, "holding a node at the canvas edge did not auto-pan (viewport still \(vp.label))")
+
         tapAfterScrolling(app.buttons["flow-zoom-in"].firstMatch, in: app)
         XCTAssertTrue(waitForLabel(app.staticTexts["flow-zoom"].firstMatch, "zoom 1.2", timeout: 5), "zoomIn did not reach the native engine (label: \(app.staticTexts["flow-zoom"].firstMatch.label))")
+        // Tapped past maxZoom (2) so the asserted value is the clamp, not a float product.
+        let zoomIn = app.buttons["Zoom in"].firstMatch
+        XCTAssertTrue(zoomIn.exists, "Controls zoom-in button missing")
+        for _ in 0..<4 { zoomIn.tap() }
+        XCTAssertTrue(waitForLabel(app.staticTexts["flow-zoom"].firstMatch, "zoom 2.0", timeout: 5), "Controls zoom-in did not clamp the engine at maxZoom (label: \(app.staticTexts["flow-zoom"].firstMatch.label))")
+        app.buttons["Fit view"].firstMatch.tap()
+
         tapAfterScrolling(app.buttons["flow-back"].firstMatch, in: app)
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 10), "flow-back did not return to tasks")
+
+        // F6 scale proof: 400 nodes with culling on. Every assertion is a COUNT
+        // or an identity, so it is deterministic on any simulator; a timing
+        // would not be.
+        tapAfterScrolling(app.buttons["tasks-flow-scale"].firstMatch, in: app)
+        XCTAssertTrue(app.otherElements["flow-scale-page"].firstMatch.waitForExistence(timeout: 15), "Flow scale page did not render")
+        let scaleTotal = app.staticTexts["flow-scale-total"].firstMatch
+        XCTAssertEqual(scaleTotal.label, "0", "the scale flow starts empty")
+        app.buttons["flow-scale-load"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(scaleTotal, "400", timeout: 15), "loading the grid did not reach the engine (label: \(scaleTotal.label))")
+        let gridNodes = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "grid node "))
+        func node(_ index: Int) -> XCUIElement {
+            app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "grid node \(index)")).firstMatch
+        }
+        XCTAssertTrue(node(0).waitForExistence(timeout: 10), "the first grid node did not render at the origin viewport")
+        // The ceiling: a phone canvas shows a few columns of 200pt-spaced nodes.
+        // Mounting all 400 would mean culling is off.
+        let mountedAtOrigin = gridNodes.count
+        XCTAssertGreaterThan(mountedAtOrigin, 1, "culling kept too few nodes")
+        XCTAssertLessThanOrEqual(mountedAtOrigin, 40, "culling mounted \(mountedAtOrigin) of 400 nodes at the origin viewport")
+        // The grid renders through a CUSTOM node with its own handles, so its
+        // renderer is culled too: one target handle per mounted node, no more.
+        let targetHandles = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "target handle in"))
+        XCTAssertEqual(targetHandles.count, mountedAtOrigin, "custom-node handles are not culled with their nodes")
+        // Panning swaps WHICH nodes are mounted: node 0 leaves, node 170 (row 8,
+        // column 10, placed exactly at the new viewport origin) arrives.
+        app.buttons["flow-scale-pan"].firstMatch.tap()
+        XCTAssertTrue(node(170).waitForExistence(timeout: 10), "panning did not mount the node now at the viewport origin")
+        XCTAssertFalse(node(0).exists, "node 0 stayed mounted after it was panned far off screen")
+        XCTAssertLessThanOrEqual(gridNodes.count, 40, "culling mounted \(gridNodes.count) nodes after the pan")
+        // A node that scrolled in is live: dragging it reaches the engine.
+        let farPos = app.staticTexts["flow-scale-far-pos"].firstMatch
+        let farBefore = farPos.label
+        let farGrab = node(170).coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        farGrab.press(forDuration: 0.3, thenDragTo: farGrab.withOffset(CGVector(dx: 60, dy: 30)), withVelocity: .slow, thenHoldForDuration: 0.4)
+        let farMoved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", farBefore), object: farPos)
+        XCTAssertEqual(XCTWaiter().wait(for: [farMoved], timeout: 5), .completed, "dragging a panned-in node did not move it (still \(farPos.label))")
+        // Pinching out zooms the engine and widens the culled set, and the set
+        // stays bounded rather than falling back to every node.
+        let scaleZoom = app.staticTexts["flow-scale-zoom"].firstMatch
+        let zoomBefore = scaleZoom.label
+        let scaleCanvas = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Scale flow")).firstMatch
+        scaleCanvas.pinch(withScale: 0.5, velocity: -1)
+        let zoomed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", zoomBefore), object: scaleZoom)
+        XCTAssertEqual(XCTWaiter().wait(for: [zoomed], timeout: 5), .completed, "pinching did not zoom the scale flow (label: \(scaleZoom.label))")
+        XCTAssertLessThan(gridNodes.count, 200, "culling mounted \(gridNodes.count) of 400 nodes after zooming out")
+        tapAfterScrolling(app.buttons["flow-scale-back"].firstMatch, in: app)
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 10), "flow-scale-back did not return to tasks")
 
         let lifecycleNav = app.buttons["tasks-lifecycle"].firstMatch
         XCTAssertTrue(lifecycleNav.exists, "Lifecycle button missing on tasks page")
@@ -626,16 +894,19 @@ final class PyreonTasksUITests: XCTestCase {
             "after the 'all' preset, a tap on the first band did not bind index 0 again (label: \(barPick.label))"
         )
         // #3272: the legend tap toggle. The chart has no title chrome, so the
-        // legend row is the canvas top: the 'Score' entry box spans x 0…~44, y 0…11.
+        // legend row sits at the canvas top INSET by the engine's 8pt pad
+        // (`placeLegend`, #3416 — the emit used to draw it at x 0, y 0, which
+        // is 8pt left and 8pt above where a browser puts it): the 'Score'
+        // entry box spans x 8…~52, y 8…19, so a tap at (20, 13) is inside it.
         // Hiding the only series leaves no bar geometry, so the band tap reports
         // -1; a second entry tap brings the series back and the band is 0 again.
-        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 20, dy: 6)).tap()
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 20, dy: 13)).tap()
         statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
         XCTAssertTrue(
             waitForLabel(barPick, "-1", timeout: 10),
             "after hiding the series from the legend entry, the band tap did not report -1 (label: \(barPick.label))"
         )
-        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 20, dy: 6)).tap()
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 20, dy: 13)).tap()
         statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
         XCTAssertTrue(
             waitForLabel(barPick, "0", timeout: 10),
@@ -763,6 +1034,296 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(waitForLabel(boxPick, "1", timeout: 10), "tap on the right band did not select box 1 (label: \(boxPick.label))")
         app.buttons["dash-back"].firstMatch.tap()
         XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after dashboard Back")
+
+        // The GALLERY — the ten chart families that had never rendered on a
+        // device. Nine of nineteen lowered hosts were device-proven before
+        // this; the other ten rested on stub typechecking, which catches a
+        // type error and cannot catch a chart that paints nothing.
+        //
+        // Existence, not coordinates: these assert that each family LAYS OUT
+        // AND PAINTS from shared source. The dashboard above proves
+        // interaction, and its taps are tuned to ITS layout — which is why
+        // these live on their own page rather than as more rows there.
+        let galleryBtn = app.buttons["tasks-gallery"].firstMatch
+        XCTAssertTrue(galleryBtn.exists, "Chart gallery button missing on tasks page")
+        galleryBtn.tap()
+        let galPage = app.otherElements["gal-page"].firstMatch
+        XCTAssertTrue(galPage.waitForExistence(timeout: 15), "Chart gallery page did not render")
+        // Option-placed families (first on the page, tapped where it opens — no scroll): the web's own compile places them (center / radius, the funnel's
+        // margins) at the device's size, and a tap is read back through that frame.
+        // The pie: centre (0.3W, 100), radius 40% of 100 = 40; slice 0 is the right half.
+        let optPie = app.descendants(matching: .any).matching(identifier: "gal-opt-pie").firstMatch
+        XCTAssertTrue(optPie.waitForExistence(timeout: 10), "gal-opt-pie missing on the gallery")
+        let pieSel = app.staticTexts["gal-opt-pie-sel"].firstMatch
+        let pieOrigin = optPie.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        XCTAssertTrue(tapUntilLabel(pieOrigin.withOffset(CGVector(dx: optPie.frame.width * 0.3 + 20, dy: 100)), pieSel, "East"), "a tap on the pie's right half did not select East (label: \(pieSel.label))")
+        XCTAssertTrue(tapUntilLabel(pieOrigin.withOffset(CGVector(dx: optPie.frame.width * 0.3 - 20, dy: 100)), pieSel, "West"), "a tap on the pie's left half did not select West (label: \(pieSel.label))")
+        // The funnel: its box is y 10..70 (top 10, height 60), the larger stage on top.
+        let optFunnel = app.descendants(matching: .any).matching(identifier: "gal-opt-funnel").firstMatch
+        XCTAssertTrue(optFunnel.waitForExistence(timeout: 10), "gal-opt-funnel missing on the gallery")
+        let funnelSel = app.staticTexts["gal-opt-funnel-sel"].firstMatch
+        let funnelOrigin = optFunnel.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        XCTAssertTrue(tapUntilLabel(funnelOrigin.withOffset(CGVector(dx: optFunnel.frame.width / 2, dy: 30)), funnelSel, "Visits"), "a tap on the funnel's top stage did not select Visits (label: \(funnelSel.label))")
+        XCTAssertTrue(tapUntilLabel(funnelOrigin.withOffset(CGVector(dx: optFunnel.frame.width / 2, dy: 55)), funnelSel, "Orders"), "a tap on the funnel's bottom stage did not select Orders (label: \(funnelSel.label))")
+        for id in [
+            "gal-calendar", "gal-candlestick", "gal-gantt", "gal-graph", "gal-map",
+            "gal-parallel", "gal-polar", "gal-river", "gal-sunburst", "gal-tree",
+        ] {
+            let canvas = app.descendants(matching: .any).matching(identifier: id).firstMatch
+            // Scrolled into view first: ten charts do not fit on a phone, and
+            // an off-screen element's `exists` is true while its frame is not
+            // meaningful — the same trap that made the boxplot assertion read
+            // an off-screen tap as a failed hit test.
+            scrollIntoView(canvas, in: app)
+            XCTAssertTrue(canvas.waitForExistence(timeout: 10), "\(id) canvas missing on the gallery")
+            XCTAssertFalse(canvas.frame.isEmpty, "\(id) rendered with an empty frame — it laid out to nothing")
+        }
+        // The map ROAMS: a horizontal drag pans it, so its canvas differs.
+        let roamMap = app.descendants(matching: .any).matching(identifier: "gal-map").firstMatch
+        XCTAssertTrue(roamMap.waitForExistence(timeout: 10), "gal-map canvas missing on the gallery")
+        // The gallery loop above left the page scrolled PAST the map (its frame
+        // sits above the window), and a drag at off-screen coordinates lands on
+        // nothing — so scroll back up until the map is fully on screen.
+        let galScroll = app.scrollViews["gal-scroll"].firstMatch
+        var upTries = 0
+        while roamMap.frame.minY < app.windows.firstMatch.frame.minY + 120 && upTries < 12 {
+            galScroll.swipeDown()
+            upTries += 1
+        }
+        let mapBefore = roamMap.screenshot().pngRepresentation
+        let mapGrab = roamMap.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5))
+        mapGrab.press(forDuration: 0.1, thenDragTo: mapGrab.withOffset(CGVector(dx: 90, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        XCTAssertNotEqual(mapBefore, roamMap.screenshot().pngRepresentation, "dragging the roaming map did not pan it")
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "gal-decal").firstMatch.waitForExistence(timeout: 10), "gal-decal canvas missing on the gallery")
+        // The calculable visualMap: dragging its high handle (bottom-left strip) left greys the hottest cells.
+        let visualMap = app.descendants(matching: .any).matching(identifier: "gal-visualmap").firstMatch
+        XCTAssertTrue(visualMap.waitForExistence(timeout: 10), "gal-visualmap canvas missing on the gallery")
+        scrollFullyOnScreen(visualMap, in: app)
+        let vmBefore = visualMap.screenshot().pngRepresentation
+        let vmOrigin = visualMap.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let vmHandleY = visualMap.frame.height - 41 + 16 + 4
+        vmOrigin.withOffset(CGVector(dx: 159, dy: vmHandleY)).press(forDuration: 0.2, thenDragTo: vmOrigin.withOffset(CGVector(dx: 80, dy: vmHandleY)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        // Out-of-range values take the inactive #cccccc: none before the drag, a block of it after.
+        XCTAssertLessThan(greyPixels(vmBefore), 50, "the visualMap greyed cells before any drag")
+        let vmGrey = greyPixels(visualMap.screenshot().pngRepresentation)
+        XCTAssertGreaterThan(vmGrey, 400, "dragging the visualMap handle did not grey the out-of-range cells (grey pixels: \(vmGrey))")
+        // The slider dataZoom opens on the low half; dragging the band right shows the tall bars (y extent pinned).
+        let zoomChart = app.descendants(matching: .any).matching(identifier: "gal-datazoom").firstMatch
+        XCTAssertTrue(zoomChart.waitForExistence(timeout: 10), "gal-datazoom canvas missing on the gallery")
+        scrollFullyOnScreen(zoomChart, in: app)
+        let zoomShot = zoomChart.screenshot().pngRepresentation
+        let redBefore = redPixels(zoomShot)
+        let zoomOrigin = zoomChart.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let zoomStripY = zoomChart.frame.height - 18
+        // The slider strip is ECharts' own — plot-aligned in the grid's bottom
+        // margin, not full-width — so the band is FOUND on the swipe row, and the
+        // press lands on its middle (a handle press would resize the window).
+        guard let band = blueRun(zoomShot, rowFromBottom: 18, widthPoints: zoomChart.frame.width) else {
+            XCTFail("found no dataZoom band on the strip's row")
+            return
+        }
+        let bandMid = (band.0 + band.1) / 2
+        zoomOrigin.withOffset(CGVector(dx: bandMid, dy: zoomStripY)).press(forDuration: 0.2, thenDragTo: zoomOrigin.withOffset(CGVector(dx: bandMid + (band.1 - band.0), dy: zoomStripY)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        let redAfter = redPixels(zoomChart.screenshot().pngRepresentation)
+        XCTAssertGreaterThan(redBefore, 100, "the zoomed bar chart painted no red bars before the drag")
+        XCTAssertGreaterThan(redAfter, redBefore * 3, "dragging the dataZoom band did not move the window to the tall bars (red before \(redBefore), after \(redAfter))")
+        // The timeline: a tap on the last checkpoint shows that step; next wraps to the first.
+        let timeline = app.descendants(matching: .any).matching(identifier: "gal-timeline").firstMatch
+        XCTAssertTrue(timeline.waitForExistence(timeout: 10), "gal-timeline missing on the gallery")
+        scrollFullyOnScreen(timeline, in: app)
+        XCTAssertEqual(timeline.value as? String, "2019", "the timeline did not open on its first step")
+        let tlOrigin = timeline.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let tlY = timeline.frame.height - 40 + 16
+        tlOrigin.withOffset(CGVector(dx: timeline.frame.width - 48, dy: tlY)).tap()
+        XCTAssertTrue(waitForValue(timeline, "2021", timeout: 5), "tapping the last checkpoint did not show it (value: \(String(describing: timeline.value)))")
+        tlOrigin.withOffset(CGVector(dx: timeline.frame.width - 33, dy: tlY)).tap()
+        XCTAssertTrue(waitForValue(timeline, "2019", timeout: 5), "next did not wrap to the first step (value: \(String(describing: timeline.value)))")
+        // dispatchAction: the handle's timelineChange moves the same step a tap does.
+        let tlLast = app.buttons["gal-tl-last"].firstMatch
+        scrollFullyOnScreen(tlLast, in: app)
+        tlLast.tap()
+        XCTAssertTrue(waitForValue(timeline, "2021", timeout: 5), "the handle's timelineChange did not move the step (value: \(String(describing: timeline.value)))")
+        for id in ["gal-opt-gauge", "gal-opt-decor"] {
+            let canvas = app.descendants(matching: .any).matching(identifier: id).firstMatch
+            scrollIntoView(canvas, in: app)
+            XCTAssertTrue(canvas.waitForExistence(timeout: 10), "\(id) canvas missing on the gallery")
+            XCTAssertFalse(canvas.frame.isEmpty, "\(id) rendered with an empty frame")
+        }
+        // The toolbox (dataZoom, back, dataView, line, bar, restore — right-aligned, 25pt apart at the top).
+        let toolbox = app.descendants(matching: .any).matching(identifier: "gal-toolbox").firstMatch
+        XCTAssertTrue(toolbox.waitForExistence(timeout: 10), "gal-toolbox missing on the gallery")
+        scrollFullyOnScreen(toolbox, in: app)
+        let tbOrigin = toolbox.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let tool = { (i: Int) -> XCUICoordinate in tbOrigin.withOffset(CGVector(dx: toolbox.frame.width - 9.5 - 25.0 * Double(5 - i), dy: 9.5)) }
+        let tbZoom = app.staticTexts["gal-toolbox-zoom"].firstMatch
+        tool(0).tap()
+        tbOrigin.withOffset(CGVector(dx: toolbox.frame.width * 0.5, dy: toolbox.frame.height * 0.5)).press(forDuration: 0.1, thenDragTo: tbOrigin.withOffset(CGVector(dx: toolbox.frame.width * 0.58, dy: toolbox.frame.height * 0.5)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        let zoomedAway = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", "0-100"), object: tbZoom)
+        XCTAssertEqual(XCTWaiter().wait(for: [zoomedAway], timeout: 5), .completed, "the toolbox box zoom did not zoom (label: \(tbZoom.label))")
+        tool(1).tap()
+        XCTAssertTrue(waitForLabel(tbZoom, "0-100", timeout: 5), "back did not undo the box zoom (label: \(tbZoom.label))")
+        tool(2).tap()
+        let dataView = app.descendants(matching: .any).matching(identifier: "pyreon-dataview").firstMatch
+        XCTAssertTrue(dataView.waitForExistence(timeout: 5), "the data view did not open")
+        app.buttons["pyreon-dataview-close"].firstMatch.tap()
+        let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: dataView)
+        XCTAssertEqual(XCTWaiter().wait(for: [closed], timeout: 5), .completed, "the data view did not close")
+        // dispatchAction: the handle's dataZoom and restore move the window the toolbox moves.
+        let hZoom = app.buttons["gal-h-zoom"].firstMatch
+        scrollFullyOnScreen(hZoom, in: app)
+        hZoom.tap()
+        XCTAssertTrue(waitForLabel(tbZoom, "0-50", timeout: 5), "the handle's dataZoom did not move the window (label: \(tbZoom.label))")
+        let hReset = app.buttons["gal-h-reset"].firstMatch
+        scrollFullyOnScreen(hReset, in: app)
+        hReset.tap()
+        XCTAssertTrue(waitForLabel(tbZoom, "0-100", timeout: 5), "the handle's restore did not reset the window (label: \(tbZoom.label))")
+        // saveAsImage on a family chart: the offscreen PNG reaches onSaveImage.
+        let saveChart = app.descendants(matching: .any).matching(identifier: "gal-save").firstMatch
+        XCTAssertTrue(saveChart.waitForExistence(timeout: 10), "gal-save missing on the gallery")
+        scrollFullyOnScreen(saveChart, in: app)
+        app.buttons["pyreon-save-image"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(app.staticTexts["gal-saved"].firstMatch, "data:image/png;", timeout: 15), "saveAsImage did not hand onSaveImage a PNG (label: \(app.staticTexts["gal-saved"].firstMatch.label))")
+        // The area brush: a lineX drag over the middle bars reports some of them; a tap clears it.
+        let areaChart = app.descendants(matching: .any).matching(identifier: "gal-brush").firstMatch
+        XCTAssertTrue(areaChart.waitForExistence(timeout: 10), "gal-brush missing on the gallery")
+        scrollFullyOnScreen(areaChart, in: app)
+        let areaOrigin = areaChart.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let areaCount = app.staticTexts["gal-brush-count"].firstMatch
+        areaOrigin.withOffset(CGVector(dx: areaChart.frame.width * 0.4, dy: areaChart.frame.height * 0.5)).press(forDuration: 0.1, thenDragTo: areaOrigin.withOffset(CGVector(dx: areaChart.frame.width * 0.66, dy: areaChart.frame.height * 0.5)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        let areaBrushed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label IN %@", ["1:1", "1:2", "1:3", "1:4", "1:5"]), object: areaCount)
+        XCTAssertEqual(XCTWaiter().wait(for: [areaBrushed], timeout: 5), .completed, "the lineX brush did not report a partial selection (label: \(areaCount.label))")
+        areaOrigin.withOffset(CGVector(dx: areaChart.frame.width * 0.5, dy: areaChart.frame.height * 0.5)).tap()
+        XCTAssertTrue(waitForLabel(areaCount, "1:0", timeout: 5), "a tap did not clear the brush (label: \(areaCount.label))")
+        // selectedMode="series": a tap pins the whole series it lands on and still reports the datum under it.
+        let seriesChart = app.descendants(matching: .any).matching(identifier: "gal-series-select").firstMatch
+        XCTAssertTrue(seriesChart.waitForExistence(timeout: 10), "gal-series-select missing on the gallery")
+        scrollFullyOnScreen(seriesChart, in: app)
+        let seriesOrigin = seriesChart.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let seriesDatum = app.staticTexts["gal-series-select-datum"].firstMatch
+        seriesOrigin.withOffset(CGVector(dx: seriesChart.frame.width * 0.15, dy: seriesChart.frame.height * 0.82)).tap()
+        let seriesPicked = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", "none"), object: seriesDatum)
+        XCTAssertEqual(XCTWaiter().wait(for: [seriesPicked], timeout: 5), .completed, "selectedMode series did not report a datum on tap (label: \(seriesDatum.label))")
+        // universalTransition: toggling from 3 to 5 rows morphs instead of crashing, and settles on the new count.
+        let growthChart = app.descendants(matching: .any).matching(identifier: "gal-growth").firstMatch
+        XCTAssertTrue(growthChart.waitForExistence(timeout: 10), "gal-growth missing on the gallery")
+        scrollFullyOnScreen(app.buttons["gal-growth-toggle"].firstMatch, in: app)
+        app.buttons["gal-growth-toggle"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(app.staticTexts["gal-growth-count"].firstMatch, "5", timeout: 5), "universalTransition row-count toggle did not settle on 5 (label: \(app.staticTexts["gal-growth-count"].firstMatch.label))")
+        app.buttons["gal-growth-toggle"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(app.staticTexts["gal-growth-count"].firstMatch, "3", timeout: 5), "universalTransition row-count toggle did not settle back on 3 (label: \(app.staticTexts["gal-growth-count"].firstMatch.label))")
+        // The geo route trail MOVES too: two screenshots half a second apart differ.
+        let geoTrail = app.descendants(matching: .any).matching(identifier: "gal-geo-trail").firstMatch
+        XCTAssertTrue(geoTrail.waitForExistence(timeout: 10), "gal-geo-trail canvas missing on the gallery")
+        var trailTries = 0
+        // On screen in either direction: an off-screen element's screenshot never changes. This step revisits an
+        // EARLY chart from near the page's bottom (every later chart's own scrollFullyOnScreen ran first), so it
+        // needs many more iterations than a one-chart-at-a-time scroll — but the SAME proven gesture shape (a
+        // 0.05s press, the margin so an interactive chart's own drag never intercepts it).
+        while trailTries < 80 {
+            let window = app.windows.firstMatch.frame
+            // Down the left margin, outside every chart. A chart's TAP no longer takes the page's scroll (it is a
+            // SpatialTapGesture, not a zero-distance drag), but one that also carries a DRAG — dataZoom, brush,
+            // navigator — still claims a swipe that starts on it.
+            let gutter = app.scrollViews["gal-scroll"].firstMatch
+            if geoTrail.frame.minY < window.minY + 120 {
+                gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.2)).press(forDuration: 0.05, thenDragTo: gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85)))
+            } else if geoTrail.frame.maxY > window.maxY - 60 {
+                gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85)).press(forDuration: 0.05, thenDragTo: gutter.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.2)))
+            } else {
+                break
+            }
+            trailTries += 1
+        }
+        let geoTrailBefore = geoTrail.screenshot().pngRepresentation
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertNotEqual(geoTrailBefore, geoTrail.screenshot().pngRepresentation, "gal-geo-trail did not move between frames (frame \(geoTrail.frame), window \(app.windows.firstMatch.frame))")
+        // The lines trail MOVES: two screenshots of its canvas half a second
+        // apart differ (the simulator runs with Reduce Motion off).
+        let linesChart = app.descendants(matching: .any).matching(identifier: "gal-lines").firstMatch
+        scrollFullyOnScreen(linesChart, in: app)
+        XCTAssertTrue(linesChart.waitForExistence(timeout: 10), "gal-lines canvas missing on the gallery")
+        let framesBefore = linesChart.screenshot().pngRepresentation
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        let framesAfter = linesChart.screenshot().pngRepresentation
+        XCTAssertNotEqual(framesBefore, framesAfter, "gal-lines trail did not move between frames")
+        // Runs AFTER the two moving-canvas checks on purpose: the hosted flow is a full-width
+        // pannable canvas, so once it is on screen a gutter swipe that starts on it PANS the
+        // graph instead of scrolling the page, and the geo-trail scroll-back loop above never
+        // brings its chart back into view (device-found: 80 futile tries, frame y -1829).
+        // `@pyreon/flow/webview` on device: the graph + `fit-view` command are pushed
+        // INTO the WKWebView, the hosted renderer fits and posts `viewport-change`
+        // BACK over the reverse bridge into native Text — page→host proven without
+        // asserting inside the WebView. The button pushes a NEW command id, so the
+        // count moving 1→2 (not 3) proves the reactive push AND that `initial-fit`
+        // ran once only.
+        let flowWebView = app.descendants(matching: .any).matching(identifier: "gal-flow-webview").firstMatch
+        XCTAssertTrue(flowWebView.waitForExistence(timeout: 10), "gal-flow-webview missing on the gallery")
+        let flowWebEvent = app.staticTexts["gal-flow-webview-event"].firstMatch
+        XCTAssertTrue(waitForLabel(flowWebEvent, "viewport-change", timeout: 20), "the hosted flow's initial fit-view never reached the host (label: \(flowWebEvent.label))")
+        let flowWebEvents = app.staticTexts["gal-flow-webview-events"].firstMatch
+        // A baseline, not a fixed "1": the WebView is tall enough now that the
+        // swipes scrolling the gallery can cross it, and a drag over the hosted
+        // flow is a pan that legitimately reports its own viewport-change.
+        scrollFullyOnScreen(app.buttons["gal-flow-webview-fit"].firstMatch, in: app)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        let eventsBeforeFit = Int(flowWebEvents.label) ?? 0
+        XCTAssertGreaterThanOrEqual(eventsBeforeFit, 1, "the initial fit-view never reported (label: \(flowWebEvents.label))")
+        app.buttons["gal-flow-webview-fit"].firstMatch.tap()
+        // Exactly ONE more: the new command id runs, and `initial-fit` does not
+        // run a second time.
+        XCTAssertTrue(waitForLabel(flowWebEvents, String(eventsBeforeFit + 1), timeout: 10), "pushing a second fit-view command did not round-trip exactly once (label: \(flowWebEvents.label), before: \(eventsBeforeFit))")
+        // F5: a node tap INSIDE the WebView reaches native `onSelect`. The graph is
+        // one symmetric row, so fit-view centres the middle node and a tap at the
+        // WebView's centre hits it on every device.
+        let flowWebSelected = app.staticTexts["gal-flow-webview-selected"].firstMatch
+        XCTAssertEqual(flowWebSelected.label, "none")
+        scrollFullyOnScreen(flowWebView, in: app)
+        // An unsized WebView used to collapse to a sliver, leaving the fitted graph
+        // no room and the centre tap nowhere to land. It now takes the web
+        // `<iframe>`'s 150pt default.
+        XCTAssertGreaterThanOrEqual(flowWebView.frame.height, 149, "an unsized FlowWebView must get the iframe's 150pt default height (frame: \(flowWebView.frame))")
+        flowWebView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(waitForLabel(flowWebSelected, "transform", timeout: 10), "tapping the hosted flow's middle node did not reach onSelect (label: \(flowWebSelected.label), frame: \(flowWebView.frame))")
+        // Swapping the graph re-renders IN PLACE: the same tap now lands on the new
+        // middle node, so the update reached the page and its handlers.
+        scrollFullyOnScreen(app.buttons["gal-flow-webview-swap"].firstMatch, in: app)
+        app.buttons["gal-flow-webview-swap"].firstMatch.tap()
+        scrollFullyOnScreen(flowWebView, in: app)
+        // The swapped graph crosses the JSON bridge asynchronously and the host
+        // reports nothing when it has rendered, so a single tap after a fixed
+        // wait can land on the OLD graph and select `transform` again (seen
+        // once in CI-like load). Tap until the new node answers, within the
+        // same 10s budget: every tap is harmless, and the assertion is still
+        // that the swapped graph reached the page and its handlers.
+        let swapDeadline = Date().addingTimeInterval(10)
+        repeat {
+            flowWebView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            if waitForLabel(flowWebSelected, "enrich", timeout: 1.5) { break }
+        } while Date() < swapDeadline
+        XCTAssertEqual(flowWebSelected.label, "enrich", "after swapping the graph the tap did not select the new middle node (label: \(flowWebSelected.label))")
+        // A graph the hosted renderer cannot draw (a node with no position) reaches
+        // native `onError` through the host-error bridge instead of failing silently.
+        let flowWebFailure = app.staticTexts["gal-flow-webview-failure"].firstMatch
+        XCTAssertTrue(waitForLabel(flowWebFailure, "error", timeout: 20), "the hosted flow's render failure never reached onError (label: \(flowWebFailure.label))")
+        // RELOAD: swapping `html` reloads the hosted page, and the NEW page must
+        // receive the graph again and answer over the reverse bridge. Each host
+        // reports `<host>:<node count>` as a selection.
+        let flowReloadStatus = app.staticTexts["gal-flow-webview-reload-status"].firstMatch
+        XCTAssertTrue(waitForLabel(flowReloadStatus, "a:3", timeout: 20), "the first hosted page never reported the pushed graph (label: \(flowReloadStatus.label))")
+        let flowReloadSwap = app.buttons["gal-flow-webview-reload-swap"].firstMatch
+        scrollFullyOnScreen(flowReloadSwap, in: app)
+        flowReloadSwap.tap()
+        XCTAssertTrue(waitForLabel(flowReloadStatus, "b:3", timeout: 20), "the reloaded page never received the graph and answered (label: \(flowReloadStatus.label))")
+        // gal-back is the LAST element on the gallery; the checks above leave the page
+        // scrolled wherever their subject sat, so a bare tap can land off-screen on
+        // nothing (intermittent "Did not return to tasks"). Android scrolls to it too.
+        let galBack = app.buttons["gal-back"].firstMatch
+        scrollFullyOnScreen(galBack, in: app)
+        galBack.tap()
+        XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after gallery Back")
 
         // Phase 5b: the TOOLKIT screen — the one place eleven packages that had
         // only ever been snippet-proven actually run. The web e2e asserts the

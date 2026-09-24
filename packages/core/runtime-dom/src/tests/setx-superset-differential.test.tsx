@@ -22,7 +22,7 @@ import { transformJSX } from '@pyreon/compiler'
 import { query } from '@pyreon/test-utils'
 import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
-import { renderToString } from '@pyreon/runtime-server'
+import { _ssrAttrGen, renderToString } from '@pyreon/runtime-server'
 import { _tpl, _bindText, _bindDirect, _setChild, _setChildAt } from '../template'
 import {
   _applyProps,
@@ -294,5 +294,181 @@ describe('_setStyle string → nullish flip clears — compiled ≡ h()', () => 
     // declarations are untracked keys and stay (pre-existing contract) …
     _setStyle(el, undefined)
     expect(el.style.background).toBe('')
+  })
+})
+
+/**
+ * Event-handler NAMES are the same superset class as the URL guard above, and
+ * the one that had been closed on exactly ONE of its cells. SSR's
+ * `renderPropSkipped` refused `onclick`; the three other sinks in the
+ * (renderer x namespace x vocabulary) matrix did not:
+ *
+ *   A1  h() path, SVG/MathML — the foreign-namespace branch in `setStaticProp`
+ *       `setAttribute`s ANY name and returns, so `<svg onload>` was written.
+ *   A2  the same for a nested SVG child (`<rect onclick>`).
+ *   B   `_setAttr` (the compiled sink) had no handler branch at all, so
+ *       `onclick={expr}` landed on PLAIN HTML.
+ *   B2  and a FUNCTION-valued one was CALLED to build the string — user code
+ *       executed during render, the client twin of the SSR half of #3432.
+ *   C   `_ssrAttrGen` (the compiled SSR sink) serialized it, because the
+ *       compiler's own `on*` bail is `/^on[A-Z]/` — camelCase only.
+ *
+ * Verified live in real Chromium before the fix (see
+ * `event-handler-attr.browser.test.tsx`): A2, B and the SVG `_setAttr` case all
+ * EXECUTED the attribute's script. happy-dom is the wrong oracle for liveness,
+ * so the assertions here are about the attribute being ABSENT and the three
+ * paths agreeing; the browser file owns the "and it would have run" half.
+ */
+describe('event-handler attributes — compiled ≡ h() ≡ SSR', () => {
+  // [label, jsx, vnode factory, selector, attribute]
+  const SITES: [string, string, () => unknown, string, string][] = [
+    [
+      'A1 svg onload',
+      '<div><svg onload={v} /></div>',
+      () => h('div', null, h('svg', { onload: 'alert(1)' })),
+      'svg',
+      'onload',
+    ],
+    [
+      'A2 nested svg child onclick',
+      '<div><svg><rect onclick={v} /></svg></div>',
+      () => h('div', null, h('svg', null, h('rect', { onclick: 'alert(1)' }))),
+      'rect',
+      'onclick',
+    ],
+    [
+      'A3 svg SMIL onbegin (a name the HTML-only set missed)',
+      '<div><svg><animate onbegin={v} /></svg></div>',
+      () => h('div', null, h('svg', null, h('animate', { onbegin: 'alert(1)' }))),
+      'animate',
+      'onbegin',
+    ],
+    [
+      'B plain HTML onclick',
+      '<div><button onclick={v}>x</button></div>',
+      () => h('div', null, h('button', { onclick: 'alert(1)' }, 'x')),
+      'button',
+      'onclick',
+    ],
+    [
+      'B3 vendor-legacy onmousewheel (Chromium compiles it)',
+      '<div><button onmousewheel={v}>x</button></div>',
+      () => h('div', null, h('button', { onmousewheel: 'alert(1)' }, 'x')),
+      'button',
+      'onmousewheel',
+    ],
+  ]
+
+  for (const [label, jsx, vnode, sel, attr] of SITES) {
+    it(`${label} is refused on all three paths`, async () => {
+      const compiled = compiledMount(jsx, { v: 'alert(1)' })
+      const via = hMount(vnode())
+      const ssr = await renderToString(vnode() as never)
+      const compiledVal = compiled.container.querySelector(sel)!.getAttribute(attr)
+      const hVal = via.container.querySelector(sel)!.getAttribute(attr)
+      expect(compiledVal, `compiled vs h() on ${sel}/${attr}`).toBe(hVal)
+      expect(ssrAttr(ssr, attr), `SSR vs h() on ${sel}/${attr}`).toBe(hVal)
+      expect(hVal, 'the handler attribute must be absent').toBeNull()
+      compiled.cleanup()
+      via.cleanup()
+    })
+  }
+
+  it('B2 `_setAttr` does not INVOKE a function-valued handler name', () => {
+    const el = document.createElement('div')
+    let called = false
+    _setAttr(el, 'onclick', () => {
+      called = true
+      return 'alert(1)'
+    })
+    // The refusal sits ABOVE the accessor resolution, so the closure is never
+    // run — the whole point of the ordering.
+    expect(called, 'a function-valued handler name must never be called').toBe(false)
+    expect(el.getAttribute('onclick')).toBeNull()
+  })
+
+  it('C the compiled SSR sink refuses it too (`_ssrAttrGen`)', () => {
+    expect(_ssrAttrGen('onclick', 'alert(1)')).toBe('')
+    expect(_ssrAttrGen('onbegin', 'alert(1)')).toBe('')
+    let called = false
+    expect(
+      _ssrAttrGen('onclick', () => {
+        called = true
+        return 'alert(1)'
+      }),
+    ).toBe('')
+    expect(called, 'a function-valued handler name must never be called').toBe(false)
+  })
+
+  it('C2 the compiler now BAILS on a lowercase handler — it never reaches `_ssrAttrGen`', () => {
+    // This spec exists to notice the moment the routing changes, and it has:
+    // it used to pin that a lowercase `on*` REACHED `_ssrAttrGen`, so that the
+    // refusal above was demonstrably on a live path. The compiler now skips
+    // lowercase handlers at the attribute seam (`SSR_EVENT_HANDLER_ATTRS`,
+    // identity-locked to core's `EVENT_HANDLER_ATTRS`), which is strictly
+    // better — the handler is dropped BEFORE any helper sees it, so it can
+    // never be invoked during a render.
+    //
+    // The invariant is unchanged: say out loud which path is live. So the
+    // assertion is inverted rather than deleted, and the case above is
+    // re-read as defence in depth — `_ssrAttrGen` is exported, and a backend
+    // composing its own document can still call it directly.
+    const { code } = transformJSX('const N = <div onclick={hx}>x</div>', 'case.tsx', {
+      ssr: true,
+      ssrTemplate: true,
+    })
+    expect(code, 'a lowercase handler must not reach the lean SSR attr helper').not.toContain(
+      '_ssrAttrGen("onclick"',
+    )
+    // And it is DROPPED, not re-routed to some other sink that would emit it.
+    expect(code, 'nor any other sink that would serialize it').not.toContain('onclick')
+  })
+
+  it('camelCase `onClick` still binds a real listener (control)', () => {
+    let fired = 0
+    const { container, cleanup } = hMount(h('button', { onClick: () => fired++ }, 'x'))
+    const btn = query(container, 'button') as unknown as HTMLElement & Record<string, unknown>
+    // `click` is DELEGATED, so the binding is an `__ev_click` expando invoked by
+    // the delegation root — a detached container has none, hence the structural
+    // assertion. It is the load-bearing one anyway: it proves `applyProp` routed
+    // the prop to `applyEventProp` rather than to the attribute sink.
+    expect(typeof btn.__ev_click, 'the documented camelCase prop must keep working').toBe(
+      'function',
+    )
+    expect(btn.getAttribute('onclick'), 'and never as an attribute').toBeNull()
+    ;(btn.__ev_click as (e: Event) => void)(new Event('click'))
+    expect(fired).toBe(1)
+    // A NON-delegated handler takes the real `addEventListener` path.
+    const el = document.createElement('div')
+    let entered = 0
+    const c2 = hMount(h('div', { onMouseEnter: () => entered++ }))
+    c2.container.querySelector('div')!.dispatchEvent(new Event('mouseenter'))
+    expect(entered).toBe(1)
+    void el
+    c2.cleanup()
+    cleanup()
+  })
+
+  it('ordinary SVG attributes still render (control)', async () => {
+    const jsx = '<div><svg><rect width={v} /></svg></div>'
+    const compiled = compiledMount(jsx, { v: '10' })
+    const vnode = () => h('div', null, h('svg', null, h('rect', { width: '10' })))
+    const via = hMount(vnode())
+    const ssr = await renderToString(vnode() as never)
+    expect(compiled.container.querySelector('rect')!.getAttribute('width')).toBe('10')
+    expect(via.container.querySelector('rect')!.getAttribute('width')).toBe('10')
+    expect(ssrAttr(ssr, 'width')).toBe('10')
+    compiled.cleanup()
+    via.cleanup()
+  })
+
+  it('`once` / `onyx` / `only` are ordinary attributes and still render (control)', () => {
+    // The reason the guard is a NAME SET and not `/^on[a-z]/`; an existing SSR
+    // spec asserts the same, and the client must not disagree with it.
+    for (const name of ['once', 'onyx', 'only', 'on']) {
+      const el = document.createElement('div')
+      _setAttr(el, name, 'x')
+      expect(el.getAttribute(name), `${name} is not a handler`).toBe('x')
+    }
   })
 })

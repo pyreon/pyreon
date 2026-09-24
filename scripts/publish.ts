@@ -17,7 +17,12 @@ import { join } from 'node:path'
 import { PUBLISH_ATTEMPTS, PUBLISH_BACKOFF_MS, isTransientPublishError } from './publish-retry'
 import { topoSortByWorkspaceDeps } from './publish-order'
 import { runPool } from './run-pool'
-import { stripBunCondition, stripSrcFromFiles } from './strip-bun-condition'
+import { classifyPublishFailure } from './publish-classify'
+import {
+  packageBuildsToLib,
+  stripBunCondition,
+  stripSrcFromFiles,
+} from './strip-bun-condition'
 
 const PACKAGES_DIR = join(import.meta.dirname, '..', 'packages')
 
@@ -252,6 +257,8 @@ const resolveErrors: string[] = []
 // want to publish. So a network error degrades to "attempt the publish", which
 // npm itself will then reject; it never silently SKIPS a package.
 const registryVersions = new Map<string, string>()
+/** Does the package exist on npm at ANY version? `undefined` = lookup could not answer. */
+const existsOnNpm = new Map<string, boolean | undefined>()
 {
   const candidates = await Promise.all(
     packageDirs.map(async (dir) => {
@@ -259,13 +266,15 @@ const registryVersions = new Map<string, string>()
       try {
         const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
         if (pkg.private || !pkg.name || PLATFORM_STUB_PACKAGES.has(pkg.name)) return undefined
-        return { key: dir.path, spec: `${pkg.name}@${pkg.version}` }
+        return { key: dir.path, name: pkg.name as string, spec: `${pkg.name}@${pkg.version}` }
       } catch {
         return undefined
       }
     }),
   )
-  const wanted = candidates.filter((c): c is { key: string; spec: string } => c !== undefined)
+  const wanted = candidates.filter(
+    (c): c is { key: string; name: string; spec: string } => c !== undefined,
+  )
   const found = await runPool(
     wanted,
     async ({ spec }) => {
@@ -282,6 +291,32 @@ const registryVersions = new Map<string, string>()
     { concurrency: 10 },
   )
   wanted.forEach((w, i) => registryVersions.set(w.key, found[i] ?? ''))
+
+  // Does the package EXIST on npm at all (any version)? This is a different
+  // question from "is THIS version published", and it is the one that
+  // disambiguates npm's 404-on-PUT — see `classifyPublishFailure`. An E404
+  // from `npm view <name>` is a definitive "absent"; any other failure leaves
+  // the answer `undefined` (unknown), which keeps the historical lenient
+  // routing rather than failing a release on an unproven claim.
+  const latest = await runPool(
+    wanted,
+    async ({ name }) => {
+      const proc = Bun.spawn(['npm', 'view', name, 'version'], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const [out, err] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+      ])
+      await proc.exited
+      if (out.trim()) return true
+      if (/E404|404 Not Found/i.test(err)) return false
+      return undefined
+    },
+    { concurrency: 10 },
+  )
+  wanted.forEach((w, i) => existsOnNpm.set(w.key, latest[i]))
 }
 
 for (const dir of packageDirs) {
@@ -310,9 +345,12 @@ for (const dir of packageDirs) {
     // rationale — eliminates the dual-resolution module-duplication
     // bug class at the source. Stripping `src` from `files` makes the
     // tarball lean (only `lib/` is reachable post-strip, so shipping
-    // `src/` is pure waste).
+    // `src/` is pure waste) — but ONLY for a package that actually
+    // builds to `lib/`. A source-shipping package (the Kotlin runtimes,
+    // consumed as a Gradle `srcDir`) has `src/` as its product; see
+    // `packageBuildsToLib`.
     ...(pkg.exports ? { exports: stripBunCondition(pkg.exports) } : {}),
-    ...(pkg.files ? { files: stripSrcFromFiles(pkg.files) } : {}),
+    ...(pkg.files && packageBuildsToLib(pkg) ? { files: stripSrcFromFiles(pkg.files) } : {}),
     dependencies: resolveWorkspaceDeps(pkg.dependencies, pkg.name, resolveErrors),
     peerDependencies: resolveWorkspaceDeps(pkg.peerDependencies, pkg.name, resolveErrors),
     devDependencies: resolveWorkspaceDeps(pkg.devDependencies, pkg.name, resolveErrors),
@@ -472,47 +510,21 @@ for (const { dirPath, pkgPath, raw, pkg, resolved } of publishOrder) {
     if (stderrText) process.stderr.write(stderrText)
 
     if (result.exitCode !== 0) {
-      // Categorize: is this an OIDC trusted-publisher chicken-and-egg
-      // 404 (the package doesn't exist on npm yet) vs a real publish
-      // failure (auth, network, validation, transient registry error)?
+      // Categorize: already-published (skip), a genuine first-publish
+      // bootstrap (warn, release continues), or a real failure (block).
       //
-      // The 404-on-PUT signature: npm returns
-      //   "npm error 404 Not Found - PUT https://registry.npmjs.org/@scope/pkg"
-      //   "could not be found or you do not have permission to access it"
-      // ONLY when the package doesn't exist AND OIDC can't create it
-      // (Trusted Publisher must be configured per-package on npmjs.com).
-      //
-      // First-publish bootstrap is a maintainer task (classic npm token
-      // + manual trusted-publisher setup); it should NOT block the rest
-      // of the release. Other failures (5xx, auth, etc.) DO block — they
-      // indicate a real registry or workflow problem worth halting on.
-      const is404NeedsBootstrap =
-        /npm (error|ERR!) 404 Not Found - PUT/i.test(stderrText) &&
-        /could not be found or you do not have permission to access/i.test(stderrText)
-      // Already-published-at-this-version is a SKIP, not a failure. The
-      // pre-publish `npm view` check (Phase 1) catches the settled case, but
-      // it races an IN-FLIGHT publish of the same commit: the 0.51.0
-      // release-merge CI ran this script's --dry-run while the real Release
-      // run was landing packages, so the view said "absent" and the PUT then
-      // hit "cannot publish over" — reddening a gate for the exact state a
-      // successful release produces. The same race hits a re-run resuming a
-      // partial release. npm's conflict message is the ground truth that the
-      // version is live, which is precisely what "skip already-published"
-      // means.
-      const isAlreadyPublishedConflict =
-        /cannot publish over the previously published version/i.test(stderrText)
-      if (isAlreadyPublishedConflict) {
-        console.log(
-          `⏭️  ${pkg.name}@${pkg.version} — already on npm (publish landed between the pre-check and this PUT; in-flight release or resumed run)`,
-        )
+      // `existsOnNpm` is what makes npm's 404-on-PUT decidable — the same
+      // message covers "package never existed" and "you may not publish to
+      // this existing package". See `classifyPublishFailure`.
+      const verdict = classifyPublishFailure(stderrText, existsOnNpm.get(dirPath))
+      if (verdict.kind === 'alreadyPublished') {
+        console.log(`⏭️  ${pkg.name}@${pkg.version} — ${verdict.reason}`)
         skipped.push(pkg.name)
-      } else if (is404NeedsBootstrap) {
-        console.warn(
-          `⚠️  ${pkg.name} not on npm yet — needs manual bootstrap (classic npm token publish + Trusted Publisher setup on npmjs.com). Skipping; release continues.`,
-        )
+      } else if (verdict.kind === 'needsBootstrap') {
+        console.warn(`⚠️  ${pkg.name} ${verdict.reason}`)
         needsBootstrap.push(pkg.name)
       } else {
-        console.error(`❌ Failed to publish ${pkg.name}`)
+        console.error(`❌ Failed to publish ${pkg.name} — ${verdict.reason}`)
         failed.push(pkg.name)
       }
     } else {
@@ -622,7 +634,15 @@ if (needsBootstrap.length > 0) {
       `\n## ⚠️ First-publish bootstrap needed (${needsBootstrap.length})\n\n` +
         needsBootstrap.map((n) => `- \`${n}\``).join('\n') +
         `\n\nOIDC trusted publishing cannot CREATE a package. One-time, per package:\n` +
-        `1. from the REPO ROOT: \`bun scripts/publish.ts --only=${name}\` (your npm auth)\n` +
+        // NOT `${name}`: the loop variable is out of scope here, and a Node
+        // script inheriting the DOM lib resolves the bare identifier to
+        // `window.name` at typecheck and to a ReferenceError at runtime — a
+        // crash reachable ONLY under Actions (`GITHUB_STEP_SUMMARY` is unset
+        // locally), which failed the release step this block is documented as
+        // non-blocking for.
+        needsBootstrap
+          .map((n) => `1. from the REPO ROOT: \`bun scripts/publish.ts --only=${n}\` (your npm auth)\n`)
+          .join('') +
         `   Do NOT run a bare \`bun publish\` from the package directory — it skips\n` +
         `   this script's manifest rewrite, so the tarball ships \`workspace:*\`\n` +
         `   dependencies (\`npm i\` then fails with EUNSUPPORTEDPROTOCOL), the \`bun\`\n` +

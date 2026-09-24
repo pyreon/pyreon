@@ -11,31 +11,35 @@ Verify a usage before committing to it:
     atlas check <Component> '{"prop":"value"}'
 
 ## Accordion
+optional: children(text)
 
 ## AccordionContent
+optional: children(text)
 
 ## AccordionItem
+optional: children(text)
 
 ## AccordionTrigger
+optional: children(text)
 
 ## ActionIcon
-optional: size(large|medium|small|xLarge|xSmall), state(danger|primary|secondary), variant(filled|outline|subtle|transparent)
+optional: children(text), size(large|medium|small|xLarge|xSmall), state(danger|primary|secondary), variant(filled|outline|subtle|transparent)
 
 ## Alert [feedback]
-optional: state(error|info|success|warning), variant(outline|solid|subtle)
+optional: children(text), state(error|info|success|warning), variant(outline|solid|subtle)
 
 ## AspectRatio
 
 ## Autocomplete
-optional: size(large|medium|small), state(error)
+optional: children(text), size(large|medium|small), state(error)
 
 ## Avatar [data]
-optional: size(large|medium|small|xLarge|xSmall), variant(circle|rounded)
+optional: children(text), size(large|medium|small|xLarge|xSmall), variant(circle|rounded)
 
 ## AvatarGroup [data, layout]
 
 ## Badge [feedback]
-optional: size(large|medium|small), state(error|primary|secondary|success|warning), variant(outline|solid|subtle)
+optional: children(text), size(large|medium|small), state(error|primary|secondary|success|warning), variant(outline|solid|subtle)
 
 ## Box [layout]
 
@@ -43,178 +47,194 @@ optional: size(large|medium|small), state(error|primary|secondary|success|warnin
 optional: gap(large|medium|small|xLarge|xxLarge), gapY(large|medium|small|xLarge|xSmall|xxLarge), indent(large|medium|small|xLarge|xxLarge)
 
 ## BreadcrumbItem [navigation]
+optional: children(text)
 
 ## Button [form]
-optional: size(large|medium|small), state(danger|primary|secondary|success), variant(ghost|link|outline|solid|subtle)
+optional: children(text), size(large|medium|small), state(danger|primary|secondary|success), variant(ghost|link|outline|solid|subtle)
 
 ## ButtonGroup [form, layout]
 optional: gap(large|medium|small|xLarge|xxLarge), gapY(large|medium|small|xLarge|xSmall|xxLarge), indent(large|medium|small|xLarge|xxLarge)
 
 ## Calendar
+optional: children(text)
 
 ## Card [data]
-optional: variant(elevated|filled|outline)
+optional: children(text), variant(elevated|filled|outline)
 
 ## CardFooter [data]
+optional: children(text)
 
 ## CardHeader [data]
+optional: children(text)
 
 ## CardSection [data]
 
 ## Center
 
 ## Checkbox [form, layout]
-optional: size(large|medium|small)
+optional: children(text), size(large|medium|small)
 
 ## CheckboxIndicator [form, layout]
-optional: size(large|medium|small), state(checked)
+optional: children(text), size(large|medium|small), state(checked)
 
 ## Chip [data]
-optional: size(large|medium|small), state(error|primary|secondary|success), variant(filled|outline)
+optional: children(text), size(large|medium|small), state(error|primary|secondary|success), variant(filled|outline)
 
 ## CloseButton [form]
-optional: size(large|medium|small)
+optional: children(text), size(large|medium|small)
 
 ## Code
-optional: variant(block|inline)
+optional: children(text), variant(block|inline)
 
 ## ColorPicker [layout]
+optional: children(text)
 
 ## ColorSwatch [layout]
-optional: size(large|medium|small)
+optional: children(text), size(large|medium|small)
 
 ## Combobox [layout]
 optional: children(reactive)
 reactive: children
 
 ## ComboboxStyled [layout]
-optional: size(large|medium|small), state(error)
+optional: children(text), size(large|medium|small), state(error)
 
 ## DatePicker
-optional: size(large|medium|small)
+optional: children(text), size(large|medium|small)
 
 ## DateRangePicker
-optional: size(large|medium|small)
+optional: children(text), size(large|medium|small)
 
 ## DateTimePicker
-optional: size(large|medium|small)
+optional: children(text), size(large|medium|small)
 
 ## Dialog [overlay]
-optional: size(medium|small)
+optional: children(text), open(boolean), size(medium|small)
 
 ## Divider [layout]
 optional: size(large|medium|small), variant(dashed|dotted|solid)
 
 ## Drawer [navigation]
-optional: size(large|medium|small|xLarge), variant(bottom|left|right|top)
+optional: children(text), open(boolean), size(large|medium|small|xLarge), variant(bottom|left|right|top)
 
 ## FieldDescription [form]
+optional: children(text)
 
 ## FieldError [form]
+optional: children(text)
 
 ## FieldLabel [form]
-optional: size(large|medium|small)
+optional: children(text), size(large|medium|small)
 
 ## Fieldset [form]
 
 ## FieldsetLegend [form]
+optional: children(text)
 
 ## FileUpload
+optional: children(text)
 
 ## FormField [form]
+optional: children(text)
 
 ## Group [layout]
 optional: gap(large|medium|small|xLarge|xxLarge), gapY(large|medium|small|xLarge|xSmall|xxLarge), indent(large|medium|small|xLarge|xxLarge)
 
 ## Highlight
-optional: state(error|primary|success|warning)
+optional: children(text), state(error|primary|success|warning)
 
 ## HoverCard [data]
+optional: children(text)
 
 ## IconButton [form]
-optional: size(large|medium|small)
+optional: children(text), size(large|medium|small)
 
 ## Image
-optional: variant(circle|rounded)
+optional: alt(text), src(text), variant(circle|rounded)
 
 ## Indicator
-optional: size(large|medium|small), state(error|primary|success|warning)
+optional: children(text), size(large|medium|small), state(error|primary|success|warning)
 
 ## Input [form]
-optional: size(large|medium|small), state(error|success), variant(filled|outline|underline)
+optional: placeholder(text), size(large|medium|small), state(error|success), variant(filled|outline|underline)
 
 ## InputGroup [form, layout]
 
 ## Kbd
+optional: children(text)
 
 ## Loader [feedback]
-optional: size(large|medium|small|xLarge), state(primary|secondary)
+optional: children(text), size(large|medium|small|xLarge), state(primary|secondary)
 
 ## Menu [navigation]
+optional: children(text)
 
 ## MenuItem [navigation]
-optional: size(medium|small)
+optional: children(text), size(medium|small)
 
 ## Modal [overlay]
-optional: size(full|large|medium|small|xLarge)
+optional: children(text), open(boolean), size(full|large|medium|small|xLarge)
 
 ## MonthPicker
+optional: children(text)
 
 ## MultiSelect [form]
-optional: size(large|medium|small)
+optional: children(text), size(large|medium|small)
 
 ## NavLink [navigation]
-optional: state(active)
+optional: children(text), state(active)
 
 ## Notification [feedback]
-optional: state(error|info|success|warning)
+optional: children(text), state(error|info|success|warning)
 
 ## NumberInput [form]
-optional: size(large|medium|small)
+optional: children(text), size(large|medium|small)
 
 ## Pagination [navigation]
 optional: size(large|medium|small)
 
 ## PaginationEllipsis [navigation]
+optional: children(text)
 
 ## PaginationItem [navigation]
-optional: state(active)
+optional: children(text), state(active)
 
 ## PaginationNext [navigation]
-optional: state(active)
+optional: children(text), state(active)
 
 ## PaginationPrev [navigation]
-optional: state(active)
+optional: children(text), state(active)
 
 ## Paragraph
-optional: size(large|medium|small)
+optional: children(text), size(large|medium|small)
 
 ## PasswordInput [form]
 optional: defaultVisible(boolean), hideLabel(text), onVisibleChange(reactive), showLabel(text), visible(boolean)
 reactive: onVisibleChange
 
 ## PinInput [form]
-optional: size(large|medium|small)
+optional: children(text), size(large|medium|small)
 
 ## PinInputCell [form]
-optional: size(large|medium|small)
+optional: placeholder(text), size(large|medium|small)
 
 ## Popover [overlay]
+optional: children(text)
 
 ## Progress [feedback]
-optional: size(large|medium|small), state(error|primary|success)
+optional: children(text), size(large|medium|small), state(error|primary|success)
 
 ## Radio [form]
-optional: size(large|medium|small)
+optional: children(text), size(large|medium|small)
 
 ## RadioDot [form]
-optional: size(large|medium|small), state(checked)
+optional: children(text), size(large|medium|small), state(checked)
 
 ## RadioGroup [form, layout]
 optional: variant(horizontal|vertical)
 
 ## RadioIndicator [form]
-optional: size(large|medium|small), state(checked)
+optional: children(text), size(large|medium|small), state(checked)
 
 ## RangeSlider [form]
 optional: children(reactive)
@@ -232,77 +252,83 @@ optional: children(unknown), color(color), size(number), thickness(number), trac
 optional: variant(both|horizontal|vertical)
 
 ## SegmentedControl
-optional: size(large|medium|small)
+optional: children(text), size(large|medium|small)
 
 ## SegmentedControlItem
-optional: size(large|medium|small), state(active)
+optional: children(text), size(large|medium|small), state(active)
 
 ## Select [form]
 optional: size(large|medium|small), state(error)
 
 ## Skeleton [feedback]
-optional: variant(circle|rect|text)
+optional: children(text), variant(circle|rect|text)
 
 ## Slider [form]
-optional: size(large|medium|small)
+optional: children(text), size(large|medium|small)
 
 ## Spoiler
+optional: children(text)
 
 ## SpoilerToggle [form]
+optional: children(text)
 
 ## Stack [layout]
 optional: gap(large|medium|small|xLarge|xxLarge), gapY(large|medium|small|xLarge|xSmall|xxLarge), indent(large|medium|small|xLarge|xxLarge)
 
 ## Step
-optional: state(active|completed|default)
+optional: children(text), state(active|completed|default)
 
 ## Stepper
 optional: variant(horizontal|vertical)
 
 ## Switch [form]
-optional: size(large|medium|small)
+optional: children(text), size(large|medium|small)
 
 ## SwitchThumb [form]
-optional: size(large|medium|small), state(checked)
+optional: children(text), size(large|medium|small), state(checked)
 
 ## Tab [navigation]
-optional: variant(enclosed|line|pills)
+optional: children(text), variant(enclosed|line|pills)
 
 ## Table [data, navigation]
 optional: size(compact|default|relaxed), variant(bordered|simple|striped)
 
 ## TabList [data, navigation]
+optional: children(text)
 
 ## TabPanel [navigation]
 
 ## Tabs [navigation]
-optional: variant(enclosed|line|pills)
+optional: children(text), variant(enclosed|line|pills)
 
 ## TagsInput [data, form]
 optional: children(reactive)
 reactive: children
 
 ## Textarea [form]
-optional: size(large|medium|small), state(error|success), variant(filled|outline|underline)
+optional: placeholder(text), size(large|medium|small), state(error|success), variant(filled|outline|underline)
 
 ## Timeline
+optional: children(text)
 
 ## TimelineItem
-optional: state(active|completed)
+optional: children(text), state(active|completed)
 
 ## TimePicker
-optional: size(large|medium|small)
+optional: children(text), size(large|medium|small)
 
 ## Title
-optional: size(h1|h2|h3|h4|h5|h6)
+optional: children(text), size(h1|h2|h3|h4|h5|h6)
 
 ## Tooltip [feedback]
+optional: children(text)
 
 ## Tree [data]
 optional: children(reactive)
 reactive: children
 
 ## TreeItem [data]
-optional: state(selected)
+optional: children(text), state(selected)
 
 ## VisuallyHidden
+optional: children(text)

@@ -11,10 +11,10 @@
 // Recharts all converge on marks-over-data rather than one nested config object.
 
 import type { Series } from './render'
-import { DEFAULT_PALETTE, paletteAt } from './palette'
+import { DEFAULT_PALETTE, labelSlots, paletteAt } from './palette'
 import { bubbleRadii } from './bubble'
 import type { SeriesGradient } from './gradient'
-import type { Double, Pt } from './types'
+import type { ChartPattern, Double, Pt } from './types'
 import { binLabel, binValues } from './bin'
 import type { Bin } from './bin'
 import { plain } from './format'
@@ -104,12 +104,16 @@ export interface MarkOptions {
    * `'horizontal'`.
    */
   gradient?: SeriesGradient
+  /** Repeating fill overlay for bar-family and area marks. */
+  pattern?: ChartPattern
   /**
    * Dash pattern for a `line` mark's stroke, `[on, off]` in px — the
    * target / forecast line look. The engine's draw command already carried
    * one for annotations; this is the mark-level way to ask for it.
    */
   dash?: Double[]
+  /** An `area` mark's fill opacity, 0–1. Defaults to 0.3 so the grid and the marks under it stay visible. */
+  areaOpacity?: Double
   /** The fill a `waterfall` step takes when its value is negative; a translucent `color` otherwise. */
   negativeColor?: string
 }
@@ -233,9 +237,8 @@ export function band<T>(low: Accessor<T>, high: Accessor<T>, options: MarkOption
  *
  * `stackedBars`' continuous sibling: each series is filled between the
  * running total below it and its own top, so the outline of the topmost
- * series is the total. Only non-negative values stack, on the same reasoning
- * as the bars — a mixed-sign stack has segments that overlap and a top that
- * is not the total.
+ * series is the total. Stacking follows ECharts' default (`samesign`, as the
+ * bars do): a negative value stacks down from zero on the negative total.
  */
 export function stackedArea<T>(y: Accessor<T>, options: MarkOptions = {}): Mark<T> {
   return mark('stackedArea', y, options)
@@ -286,6 +289,8 @@ export function bubble<T>(
  * read 0). A caller who wants zero says so in the accessor (`d.v ?? 0`).
  */
 export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly string[] = DEFAULT_PALETTE): Series[] {
+  // Colour follows the LABEL (`labelSlots`): marks sharing a label share a colour.
+  const slots = labelSlots(marks.map((m, k) => markLabel(m, k)))
   return marks.map((m, seriesIndex) => {
     const raw: Double[] = []
     for (let i = 0; i < data.length; i++) {
@@ -345,10 +350,10 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
       kind: m.kind,
       values,
       values2,
-      color: m.options.color ?? paletteAt(palette, seriesIndex),
+      color: m.options.color ?? paletteAt(palette, slots[seriesIndex] ?? seriesIndex),
       width: m.options.width ?? 2,
       radius: m.options.radius ?? 3,
-      label: m.options.label ?? `Series ${seriesIndex + 1}`,
+      label: markLabel(m, seriesIndex),
       curve: m.options.curve,
       showValues: m.options.showValues === true,
       radii,
@@ -359,7 +364,9 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
       symbolRepeat: m.options.symbolRepeat,
       corners: normalizeCorners(m.options.borderRadius),
       gradient: m.options.gradient,
+      pattern: m.options.pattern,
       dash: m.options.dash,
+      areaOpacity: m.options.areaOpacity,
       negativeColor: m.options.negativeColor,
       errLow,
       errHigh,
@@ -368,6 +375,11 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
 }
 
 /** Category labels for the x axis, from an accessor over the same data. */
+/** A mark's series label — its `label`, else `Series N`. One rule for the series, the legend and its taps. */
+export function markLabel<T>(m: Mark<T>, index: number): string {
+  return m.options.label ?? `Series ${index + 1}`
+}
+
 export function resolveCategories<T>(data: T[], x?: (d: T, index: number) => string): string[] {
   if (x === undefined) return []
   return data.map((d, i) => x(d, i))

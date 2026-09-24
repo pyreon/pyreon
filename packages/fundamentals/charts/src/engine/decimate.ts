@@ -1,95 +1,37 @@
-// Large-series decimation.
+// Large-series decimation — the `Pt[]` wrapper.
 //
 // A canvas cannot show more points than it has pixel columns, so plotting
 // 100,000 points into an 800px plot spends ~99% of the work drawing over
 // itself. Downsampling first is what makes big series interactive rather than
-// merely possible.
+// merely possible — and it matters MOST on the target with the least headroom,
+// which is why the arithmetic lives in `decimate-values.ts` and crosses to
+// Swift and Kotlin through the generated chart engine.
+//
+// This file holds only what cannot cross: a `Pt[]` signature. One
+// implementation underneath, so a native chart and a web chart cannot thin a
+// series differently.
 
-import type { Double, Pt } from './types'
+import { lttbIndices, minMaxBuckets } from './decimate-values'
+import type { Pt } from './types'
+
+export { lttbIndices, minMaxBuckets }
 
 /**
- * Largest-Triangle-Three-Buckets.
+ * Largest-Triangle-Three-Buckets over `Pt[]`.
  *
- * Chosen over naive every-nth sampling because nth-sampling DROPS SPIKES: a
- * one-sample spike between two sampled indices disappears entirely, which on a
- * monitoring chart is the single most important feature to preserve. LTTB picks
- * the point in each bucket forming the largest triangle with its neighbours,
- * which keeps visual extremes.
- *
- * First and last points are always kept so the series still spans its range.
+ * Kept on real `x` values rather than the point's position, because this is a
+ * public export from `@pyreon/charts/plot` and a caller's `x` may be a
+ * timestamp or a measurement — collapsing it to the index would silently change
+ * what "largest triangle" means for unevenly spaced data. The chart's own path
+ * passes evenly spaced rows and goes through {@link lttbIndices} directly with
+ * no `xs`, which skips materialising `0…n-1`.
  */
 export function lttb(points: Pt[], threshold: number): Pt[] {
-  const n = points.length
-  if (threshold >= n || threshold < 3) return points
-
-  const out: Pt[] = [points[0]!]
-  // Buckets exclude the pinned first and last points.
-  const every = (n - 2) / (threshold - 2)
-  let a = 0
-
-  for (let i = 0; i < threshold - 2; i++) {
-    const rangeStart = Math.floor((i + 1) * every) + 1
-    const rangeEnd = Math.min(Math.floor((i + 2) * every) + 1, n - 1)
-
-    // Average of the NEXT bucket forms the triangle's third vertex.
-    let avgX = 0.0
-    let avgY = 0.0
-    const avgStart = Math.floor((i + 1) * every) + 1
-    const avgEnd = Math.min(Math.floor((i + 2) * every) + 1, n)
-    const avgCount = Math.max(1, avgEnd - avgStart)
-    for (let j = avgStart; j < avgEnd; j++) {
-      avgX = avgX + points[j]!.x
-      avgY = avgY + points[j]!.y
-    }
-    avgX = avgX / avgCount
-    avgY = avgY / avgCount
-
-    let best = rangeStart
-    let bestArea = -1.0
-    const pa = points[a]!
-    for (let j = rangeStart; j < rangeEnd; j++) {
-      const p = points[j]!
-      const area = Math.abs(
-        (pa.x - avgX) * (p.y - pa.y) - (pa.x - p.x) * (avgY - pa.y),
-      )
-      if (area > bestArea) {
-        bestArea = area
-        best = j
-      }
-    }
-    out.push(points[best]!)
-    a = best
-  }
-
-  out.push(points[n - 1]!)
-  return out
-}
-
-/**
- * Min/max decimation over raw values, for bars and dense line series.
- *
- * Keeps BOTH extremes per bucket, so the drawn envelope still covers the real
- * range — a mean would smooth away exactly the outliers a reader is looking
- * for.
- */
-export function minMaxBuckets(values: Double[], buckets: number): Double[] {
-  const n = values.length
-  if (buckets <= 0 || n <= buckets * 2) return values
-  const out: Double[] = []
-  const size = n / buckets
-  for (let b = 0; b < buckets; b++) {
-    const start = Math.floor(b * size)
-    const end = Math.min(n, Math.floor((b + 1) * size))
-    if (start >= end) continue
-    let lo = values[start]!
-    let hi = values[start]!
-    for (let i = start; i < end; i++) {
-      const v = values[i]!
-      if (v < lo) lo = v
-      if (v > hi) hi = v
-    }
-    // Emit in the order they occur so the line does not zig-zag backwards.
-    out.push(lo, hi)
-  }
-  return out
+  const keep = lttbIndices(
+    points.map((p) => p.x),
+    points.map((p) => p.y),
+    threshold,
+  )
+  if (keep.length === 0) return points
+  return keep.map((i) => points[i]!)
 }

@@ -31,6 +31,7 @@
   },
   "files": [
     "lib",
+    "!lib/analysis",
     "src",
     "README.md",
     "LICENSE",
@@ -60,9 +61,9 @@
     "@tanstack/form-core": "^1.33.5",
     "arktype": "^2.2.3",
     "formik": "^2.4.9",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "react-hook-form": "^7.87.0"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-hook-form": "^7.88.0"
   },
   "publishConfig": {
     "access": "public"

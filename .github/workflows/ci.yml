@@ -168,13 +168,6 @@ jobs:
       # (twice), evicting the small entries every PR depends on. ONE key,
       # ONE writer: every other workflow that needs it restores under this
       # exact key (`bun-install-cache-<os>-<lockhash>`) and never saves.
-      - name: Restore bun install cache
-        id: bun-tarball-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-install-cache-${{ runner.os }}-
       - name: Restore node_modules
         id: nm-restore
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -188,6 +181,19 @@ jobs:
       # PYREON_BOOTSTRAP_SKIP=1 keeps the postinstall lib/ build out of the
       # install (it runs below, gated on `affected`, so a docs-only PR never
       # builds). Local-dev installs deliberately keep the postinstall build.
+      - name: Restore bun install cache
+        id: bun-tarball-cache
+        # ONLY on a node_modules miss. On a hit `bun install` links nothing
+        # and never reads the 1.9 GB download store, yet restoring it first
+        # cost ~47s on EVERY run (measured 2026-09-22, runs 35752640123 +
+        # 35753270456) — on the one job every other job waits for.
+        # setup-pyreon's fallback path has always had this order.
+        if: steps.nm-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-install-cache-${{ runner.os }}-
       - run: PYREON_BOOTSTRAP_SKIP=1 bun install --frozen-lockfile
       # node_modules is fully determined by the lockfile, so the content key
       # IS the exact key; downstream jobs restore it via setup-pyreon.
@@ -226,7 +232,10 @@ jobs:
             docs/node_modules
           key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
       - name: Save bun install cache (main only)
-        if: github.ref == 'refs/heads/main' && steps.bun-tarball-cache.outputs.cache-hit != 'true'
+        # Guarded on the node_modules miss too: when the store restore above
+        # was SKIPPED (node_modules hit), ~/.bun/install/cache is near-empty
+        # and saving it would publish a hollow store under a fresh key.
+        if: github.ref == 'refs/heads/main' && steps.nm-restore.outputs.cache-hit != 'true' && steps.bun-tarball-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
@@ -259,19 +268,15 @@ jobs:
         id: matrices
         run: |
           # Category lists MUST mirror the cells' own case statements below.
-          # The three `native-*` test entries are PSEUDO-categories splitting
-          # packages/native/ across three runners (see test-cell's timeout
-          # comment); their affected-args mirror the cell exactly so the
-          # decide verdict and the cell's own filter can never disagree
-          # (same script, same base, deterministic). `native-compiler-{1,2,3}`
-          # resolve the SAME package and differ only by vitest `--shard`.
+          # `native-rest` is a PSEUDO-category (packages/native/* minus the
+          # compiler, which native-validate.yml runs); its affected-args
+          # mirror the cell exactly so the decide verdict and the cell's own
+          # filter can never disagree (same script, same base, deterministic).
           TC_ALL='["core","fundamentals","internals","native","tools","ui","ui-system","zero","examples"]'
-          TEST_ALL='["core","fundamentals","internals","native-compiler-1","native-compiler-2","native-compiler-3","native-compiler-4","native-compiler-5","native-rest","tools","ui","ui-system","zero"]'
-          # The four native TEST cells must never share a runner: each keys a
-          # compile-verdict cache on its own category and the three derive
-          # DISJOINT verdict sets, so merging them would make the key ambiguous
-          # and silently turn every lookup into a miss.
-          NATIVE_ISO='native-compiler-1,native-compiler-2,native-compiler-3,native-compiler-4,native-compiler-5,native-rest'
+          TEST_ALL='["core","fundamentals","internals","native-rest","tools","ui","ui-system","zero"]'
+          # native-rest keys a compile-verdict cache on its own cell name, so it
+          # must not share a runner (a merged cell would change the key).
+          NATIVE_ISO='native-rest'
           emit() { # emit <prefix> <json>
             echo "$1=$2" >> "$GITHUB_OUTPUT"
             if [ "$2" = "[]" ]; then echo "$1-has=false" >> "$GITHUB_OUTPUT"; else echo "$1-has=true" >> "$GITHUB_OUTPUT"; fi
@@ -333,17 +338,11 @@ jobs:
           TEST_SEL=$(pick "$TEST_ALL" \
             "core:--category=core" "fundamentals:--category=fundamentals" \
             "internals:--category=internals" \
-            "native-compiler-1:--category=native/compiler" \
-            "native-compiler-2:--category=native/compiler" \
-            "native-compiler-3:--category=native/compiler" \
-            "native-compiler-4:--category=native/compiler" \
-            "native-compiler-5:--category=native/compiler" \
             "native-rest:--category=native --exclude=native/compiler" \
             "tools:--category=tools" "ui:--category=ui" \
             "ui-system:--category=ui-system" "zero:--category=zero")
           # typecheck: 9 categories -> 3 cells (~12 min serial).
-          # test: 7 non-native categories -> 2 cells, plus the 5 native compiler
-          # shards + native-rest kept 1:1 = 8 cells.
+          # test: 7 non-native categories -> 2 cells, plus native-rest = 3 cells.
           batch typecheck "$TC_SEL" 3
           batch test "$TEST_SEL" 2 "$NATIVE_ISO"
       - name: Select affected e2e suites
@@ -528,12 +527,20 @@ jobs:
             packages/*/*/lib
             .bootstrap-cache.json
           key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}
+      # SAME path list as the source-hashed entry above and as setup-pyreon's
+      # restore: actions/cache versions an entry by key AND by its path list,
+      # so a restore whose `path:` differs from the saver's can never match —
+      # the documented prefix-fallback in setup-pyreon was inert for exactly
+      # that reason (gated by check-cache-key-sync's path-list invariant).
       - name: Save lib/ under per-run-id key for downstream jobs
         if: steps.lib.outputs.run == 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: packages/*/*/lib
+          path: |
+            packages/*/*/lib
+            .bootstrap-cache.json
           key: ${{ env.BOOTSTRAP_KEY }}
+
 
   # ── Fast Gates: every lib-free gate, one runner ──────────────────────────
   # Consolidated 2026-08 (eleven singleton jobs → one) and again 2026-09
@@ -687,13 +694,33 @@ jobs:
           HAS_SKIP_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'skip-release-readiness') }}
         run: bun scripts/check-release-readiness.ts
       # ── dependencies + secrets ───────────────────────────────────────────
-      - name: Dependency Audit (untrusted deps)
+      # ADVISORY by construction: `bun pm untrusted` LISTS dependencies whose
+      # lifecycle scripts are blocked (bun's default) — it is an inventory,
+      # not a verdict, and exits non-zero on some bun versions merely for
+      # having entries. `continue-on-error` keeps it from failing the
+      # required `Fast Gates` job; the enforced half is the lockfile-drift
+      # step below plus dependency-audit.yml. Named "advisory" so it cannot
+      # be mistaken for a gate.
+      - name: Dependency Audit (untrusted deps, advisory)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun pm untrusted
         continue-on-error: true
       - name: Dependency Audit (no lockfile drift)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: git diff --exit-code bun.lock || (echo "::error::Lockfile is out of sync with package.json" && exit 1)
+      # ── every validate-fast gate no workflow step runs on its own ────────
+      # validate-fast is the pre-push wall; a hook is bypassed by
+      # PYREON_SKIP_PRE_PUSH / --no-verify / a merge that never came through
+      # a local push, so a gate that lived ONLY there was enforced by nobody
+      # (26 of 46 on 2026-09-15) while check-gates-wired reported it wired.
+      # `--ci-complement` computes the set at runtime (gates whose command no
+      # workflow file invokes), so nothing here is run twice and a gate added
+      # to validate-fast is enforced from its first PR. check-gates-wired
+      # fails if this step disappears.
+      - name: validate-fast gates not run elsewhere (ci-complement)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun scripts/validate-fast.ts --ci-complement
+
       # The trufflehog action `docker run`s ghcr.io/trufflesecurity/trufflehog
       # at runtime, and ghcr.io intermittently times out on the manifest fetch
       # (exit 125, before any scan). Pre-pull with retry + backoff so the
@@ -702,7 +729,12 @@ jobs:
       - name: Secrets Scan (pre-pull trufflehog image)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: |
-          img="ghcr.io/trufflesecurity/trufflehog:latest"
+          # The VERSION must match the action step's `version:` below — the
+          # action runs `$IMAGE:$VERSION`, so a pre-pull of a different tag
+          # warms nothing, and `latest` is a floating tag: a SHA-pinned action
+          # that runs a floating image is unpinned in the only sense that
+          # executes code.
+          img="ghcr.io/trufflesecurity/trufflehog:3.97.0"
           for i in 1 2 3 4; do
             if docker pull "$img"; then exit 0; fi
             echo "::warning::ghcr.io pull attempt $i/4 failed for $img; backing off ${i}0s"
@@ -714,6 +746,8 @@ jobs:
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         uses: trufflesecurity/trufflehog@bcfcf73aaf4759d4dadc2783177c245a02792318 # v3.97.0
         with:
+          # Pinned to the action's own release — the default is `latest`.
+          version: 3.97.0
           extra_args: --only-verified
 
   # ── Shared setup anchor (YAML anchor not supported, so we repeat) ───────
@@ -725,8 +759,9 @@ jobs:
   # narrows the affected-filter to its own slice via
   # `scripts/affected.ts --category=<name>`; cells with no affected
   # packages in their category skip gracefully (empty filter = no-op).
-  # Aggregator `typecheck` job (next) keeps the stable `Typecheck`
-  # required check name for branch protection.
+  # The `Test` aggregator (level 3) consumes these cells — there is no
+  # separate `Typecheck` required check any more (#3213 consolidated the
+  # aggregators; branch protection pins `Test`).
   #
   # Why shard: pre-P3b Typecheck ran `bun run $FILTER --sequential
   # typecheck` against EVERY affected package on one runner (~270s
@@ -901,11 +936,12 @@ jobs:
             examples/*/.cache/tsbuildinfo
           key: tsbuildinfo-${{ runner.os }}-${{ github.run_id }}-${{ matrix.name }}
 
+
   # ── Test: per-category matrix (P3b) ──────────────────────────────────
   # Same shard shape as `typecheck-cell` above (8 cells, per-category).
-  # Aggregator `test` job (next) keeps the stable `Test` required check
-  # name for branch protection. See `typecheck-cell` comment for shard
-  # rationale.
+  # The `Test` aggregator (level 3) keeps the stable `Test` required check
+  # name for branch protection — it also fails on a red typecheck cell.
+  # See `typecheck-cell` comment for shard rationale.
   #
   # P3c re-classification: needs `bootstrap`, not `install`. Most tests
   # use the bun condition → src/, but TWO classes of test legitimately
@@ -940,114 +976,33 @@ jobs:
     needs: install
     if: ${{ (success() && needs.install.outputs.test-has == 'true') || (failure() && needs.install.result != 'success') }}
     runs-on: ubuntu-latest
-    # `native` used to be ONE cell carrying two unrelated heavy workloads, and
-    # it kept getting timeout-CANCELLED — which fails the required `Test`
-    # aggregator on PRs that never touched native. The first attempt at a fix
-    # raised the cap 10 → 25 minutes; measurement shows why that only bought
-    # time: on `main` the single cell runs 1357–1472s against the 1500s cap,
-    # i.e. 2–10% headroom. A gate that close to its own limit is a coin flip,
-    # and a coin-flip required gate is worse than no gate.
+    # `@pyreon/native-compiler` is NOT run here. It lives in ONE job:
+    # native-validate.yml's required `Validate emitted Swift + Kotlin`
+    # (pinned swiftc/kotlinc, PYREON_REQUIRE_NATIVE_VALIDATE=1), whose decide
+    # job now also takes the dependency-graph verdict this matrix used to use.
     #
-    # `native/compiler` is ~75-85% of the pair's cost, and that cost is almost
-    # entirely REAL TOOLCHAIN. `packages/native/compiler/src/validate.ts` shells
-    # out via `execFileSync`, and the suite has 175 `validateSwift`/
-    # `validateKotlin` call sites across 98 test files. Measured warm, per
-    # invocation: `swiftc -parse` 5.2-5.7s, `kotlinc` 17.4s. 175 x ~15s ~= 2600s,
-    # which accounts for the whole ~2800s of aggregate test CPU. On 4 vCPUs that
-    # is ~700s + overhead; the cell is observed at 1276s. Consistent.
+    # History, so nobody re-adds the shards: from 2026-07 to 2026-09 the suite
+    # ran here a SECOND time, split 2 → 3 → 5 → 8 → 16 ways as each split hit
+    # the 25-minute cap. Every split paid for the same defect: the verdict
+    # cache could never converge. Each shard saved only its OWN verdicts under
+    # its own key, and every shard restored the single newest save — so a
+    # shard started each run with roughly 1/16 of the store and re-compiled the
+    # rest cold (measured 2026-09-22: 89 of 118 tests in one shard paid a real
+    # compile; every saved fragment stuck at ~1.8 MB). Cost: 2,599 of 9,290
+    # Linux job-minutes in 24 hours — 28% of the org's whole Linux load on a
+    # 20-slot pool — for a suite that native-validate's single-writer job runs
+    # in 139-194s warm (1,545-1,757s cold) on the same day. One writer is what
+    # makes a content-addressed cache converge; more shards cannot.
     #
-    # Two plausible hypotheses that measurement killed, recorded so nobody pays
-    # for them twice:
-    #   - "The 21 chained `verify-kotlin.ts --service=` runs pay kotlinc startup
-    #     21 times." They are 26% of the cell, and the JVM page-cache warms after
-    #     the first (29s cold, then 2-4s). Optimising them targets the wrong 26%.
-    #   - "native/compiler spawns no toolchain; `import 383s` is the lead."
-    #     Both false. `--no-isolate` cuts import 383s -> 48s and wall-clock does
-    #     not move (291s -> 294s): `tests`, not `import`, dominates.
-    #
-    # So neither cell can be made meaningfully faster by scheduling, and the
-    # toolchain cost is irreducible without changing what the suite validates.
-    # What WAS fixable: two unrelated heavy workloads shared one runner for no
-    # reason but living in the same directory. Hence a runner each.
-    #
-    # The halves are `native/compiler` and `native` MINUS `native/compiler`
-    # (see `filterByCategory`'s `exclude`), so their union is `native` BY
-    # CONSTRUCTION — a newly-added `packages/native/<pkg>` joins the `-rest`
-    # cell automatically rather than silently escaping CI.
-    #
-    # Observed after that split: `native-compiler` 1276s (85% of cap),
-    # `native-rest` 191s (13%). 85% was flagged there as thinner than a
-    # required gate deserves — and it was: the PMTC ui-system arc (#2456,
-    # #2463-#2466, #2475-#2477, #2483, #2485) grew the suite from 175
-    # `validateSwift`/`validateKotlin` call sites over 98 files to ~580 refs
-    # over 123, and `native-compiler` began timeout-CANCELLING at the 1500s
-    # cap ON MAIN — 3 of 4 consecutive main runs (30027780842, 30023863568,
-    # 30008739790 all killed at ~25m15s; 30006624167 passed at 18m03s). A
-    # cancelled cell fails the required `Test` aggregator, so main and every
-    # PR branched off it were red through no fault of their own.
-    #
-    # It is NOT a hang: the 18m03s success on identical code proves the suite
-    # converges, and the cancelled cells' logs show live `java`/kotlinc
-    # compiles at kill time. It is genuine, earned growth in toolchain spawns.
-    #
-    # The fix is more runners, not a bigger cap — the previous note's own
-    # conclusion ("the remaining lever is spawn reduction, NOT a cap tweak")
-    # still holds, and raising 25 -> 35 would just rebuild the same cliff one
-    # feature arc later. `native-compiler` is therefore SHARDED via vitest
-    # `--shard=i/N`, which splits the package's test FILES into disjoint
-    # groups whose union is every file — changing NOTHING about what is
-    # validated: every test still runs, on some runner, exactly once. Spawn
-    # reduction (batch/cache `swiftc -parse` / `kotlinc`) remains the real
-    # long-term lever; sharding buys the room to do it deliberately instead
-    # of under a red gate.
-    #
-    # 2026-08-19: the 2-way split ran out. `native-compiler-1` was CANCELLED
-    # at 25m16s against the 25-minute cap — not a failure, a ceiling — and
-    # the fail-closed aggregator turns `cancelled` into a red `Test`, so it
-    # presents as a broken PR rather than an over-budget cell. Split three
-    # ways (304 test files). The native lowering arcs keep adding REAL
-    # swiftc/kotlinc specs, which is exactly the growth this cap is meant to
-    # absorb, so expect to need a 4th eventually.
-    #
-    # 2026-09-04: the 3-way split ran out too, exactly as the note above
-    # predicted. MEASURED on main runs where the cells completed:
-    # `native-compiler-1` 24m (96% of the 25m cap), `-3` 23m (92%), `-2` 16m,
-    # `native-rest` 1m — ~63m of real work. Then `-1` began cancelling at
-    # 25m17s, and the fail-closed aggregator turned that into a red `Test` on
-    # THREE unrelated PRs at once (#3302, #2733, and the release PR's own
-    # branch), which is what a shared ceiling looks like from the outside:
-    # per-PR failures that have nothing to do with the PRs.
-    #
-    # Split FIVE ways, not four. The instinct is to add one cell, but the
-    # arithmetic refuses it: 63m / 4 = 15.8m mean, and the OBSERVED imbalance
-    # between the luckiest and unluckiest shard is 1.5x (16m vs 24m), because
-    # vitest `--shard` splits by FILE COUNT — it hashes the path, so it is
-    # blind to how expensive a file is. 15.8 x 1.5 = 23.6m = 94% of cap, i.e.
-    # a 4-way split re-cliffs on roughly the next feature arc. Five gives a
-    # 12.6m mean and a ~19m unlucky worst case (76%), under the 85% the note
-    # above already flagged as thinner than a required gate deserves.
-    #
-    # Expect a 6th. Spawn reduction (batching/caching `swiftc -parse` and
-    # `kotlinc` across specs) is still the real lever; sharding only buys the
-    # room to do it deliberately rather than under a red gate.
-    #
-    # If a shard starts creeping toward the cap again, add the NEXT cell and
-    # bump the `--shard=i/N` denominators — do NOT raise the cap. And when you
-    # do, grep for EVERY place the cell names are enumerated: the dispatch
-    # `case`, `TEST_ALL`, `NATIVE_ISO`, the `pick` cost-map, and the fallback
-    # matrix `include`. Miss one and that shard's FILES silently never run —
-    # the union-is-every-file property this whole design rests on is only
-    # true if all five lists agree.
-    #
-    # Non-native cells are vitest-only and keep the tight 10-minute cap so a
-    # genuine hang there still fails fast.
+    # `native-rest` (every other packages/native/* package) stays here: small
+    # (~1-6 min) and independent of the compile-verdict store.
     timeout-minutes: ${{ startsWith(matrix.name, 'native') && 25 || 20 }}
     strategy:
       fail-fast: false
       matrix:
         # Dynamic (see typecheck-cell): only affected categories spawn;
         # `|| full-list` fallback keeps a `changes` failure fail-closed.
-        include: ${{ fromJSON(needs.install.outputs.test-matrix || '[{"name":"native-compiler-1","members":"native-compiler-1"},{"name":"native-compiler-2","members":"native-compiler-2"},{"name":"native-compiler-3","members":"native-compiler-3"},{"name":"native-compiler-4","members":"native-compiler-4"},{"name":"native-compiler-5","members":"native-compiler-5"},{"name":"native-rest","members":"native-rest"},{"name":"batch-a","members":"core fundamentals internals"},{"name":"batch-b","members":"tools ui ui-system zero"}]') }}
+        include: ${{ fromJSON(needs.install.outputs.test-matrix || '[{"name":"native-rest","members":"native-rest"},{"name":"batch-a","members":"core fundamentals internals"},{"name":"batch-b","members":"tools ui ui-system zero"}]') }}
     steps:
       # Pin Node — vitest's `#!/usr/bin/env node` shebang means tests
       # run under whatever Node is on PATH. Without this, ubuntu-latest's
@@ -1064,31 +1019,12 @@ jobs:
           node-version: '24'
           # P3c — needs lib/ for bundle-size tests + nested-Vite-SSR
           # tests; default `restore-bootstrap: 'true'` is correct.
-      # Native compile-verdict cache — the single biggest work item in CI.
-      #
-      # The two native-compiler cells were measured at ~1030s EACH on an
-      # ordinary PR run (2026-08-04, run 30901780195): 44% of the entire run's
-      # work minutes, and the wall-clock critical path. Per-file timing showed
-      # where it goes — validate-kotlin.test.ts alone was 697s — because
-      # ubuntu runner images SHIP kotlinc, so the ~600 real compile
-      # validations run, and they ran COLD every time: the content-addressed
-      # verdict cache (validate-cache.ts; measured 397s cold → 6s warm) was
-      # only ever wired up in native-validate.yml. These cells fell back to
-      # tmpdir(), fresh per runner. The in-file comment above calling the
-      # toolchain cost "irreducible" predates that cache.
-      #
-      # Correctness is carried by the CACHE'S OWN KEYS (validator kind +
-      # compiler version + exact compiled bytes), not by this workflow key —
-      # a stale entry can only miss, never lie. RESTORE always; SAVE on
-      # push:main only (the #2652 lesson: per-branch saves duplicate the
-      # store once per branch and evict everything else out of the 10 GB
-      # repo budget). PRs restore main's latest store via the prefix key.
-      # The nightly native-validate schedule stays deliberately UNCACHED.
-      # Keys are PER-CATEGORY: the three native cells derive DISJOINT verdict
-      # sets (two vitest shards + the rest), so a shared key would (a) make
-      # the three saves race one immutable key — first wins, the others error
-      # — and (b) let a cell restore a sibling's store, all misses. Each cell
-      # saves and restores its own category's lineage.
+      # Compile-verdict cache for the `native-rest` cell (validate-cache.ts —
+      # content-addressed by validator kind + compiler version + stub text +
+      # exact bytes, so a stale entry can only miss, never lie). ONE cell is
+      # ONE writer, which is what lets a restore-newest/save-per-sha store
+      # converge — the property the retired native-compiler shards lacked (see
+      # the comment above `timeout-minutes`).
       - name: Restore native compile-verdict cache
         if: startsWith(matrix.name, 'native')
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -1126,42 +1062,12 @@ jobs:
           BATCH_FAILED=""
           for category in $MEMBERS; do
           echo "::group::test — $category"
-          # Most cells map 1:1 onto `packages/<category>/`. The two `native-*`
-          # cells are PSEUDO-categories splitting `packages/native/` across two
-          # runners (see the timeout-minutes comment). Their `--exclude`/glob
-          # complement is derived, never enumerated, so a new native package is
-          # always covered by exactly one of them.
+          # Most cells map 1:1 onto `packages/<category>/`. `native-rest` is a
+          # PSEUDO-category: every packages/native/* package EXCEPT the
+          # compiler, which native-validate.yml runs (see the timeout-minutes
+          # comment). Its `--exclude`/glob complement is derived, never
+          # enumerated, so a new native package is always covered here.
           case "$category" in
-            # All compiler shards resolve the SAME package; they differ only
-            # by vitest `--shard`, which splits the package's test FILES into
-            # disjoint groups whose union is every file. Sharding is applied
-            # at `vitest run`; `vitest list` ignores it, so never probe the
-            # split with `list`.
-            native-compiler-1)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=1/5"
-              ;;
-            native-compiler-2)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=2/5"
-              ;;
-            native-compiler-3)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=3/5"
-              ;;
-            native-compiler-4)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=4/5"
-              ;;
-            native-compiler-5)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=5/5"
-              ;;
             native-rest)
               AFFECTED_ARGS="--category=native --exclude=native/compiler"
               FULL_FILTER=$(for d in packages/native/*/; do
@@ -1191,7 +1097,7 @@ jobs:
             echo "::endgroup::"
             continue
           fi
-          echo "Cell filter: $FILTER${SHARD_ARGS:+ (shard $SHARD_ARGS)}"
+          echo "Cell filter: $FILTER"
           set -f
           # Some affected packages genuinely have no `test` script (rare
           # under packages/* — most are zero-cli kind of shape — but
@@ -1200,13 +1106,22 @@ jobs:
           # and exits 1. Tolerate that case — fail on real test
           # failures only.
           set +e
-          # `$SHARD_ARGS` is empty for every non-sharded cell, so this is
-          # byte-identical to the unsharded command there (unquoted on
-          # purpose, under `set -f`, so empty expands to nothing).
-          OUTPUT=$(bun run $FILTER test $SHARD_ARGS 2>&1)
-          EXIT=$?
+          # STREAM to a file via `tee`, do not buffer through `$(...)`. A
+          # buffered command substitution holds ALL output until the
+          # process exits — so a shard killed by `timeout-minutes` (the
+          # 25m cap) leaves the live log holding NOTHING past "Cell
+          # filter: …", and a cancelled cell gives no clue which test file
+          # was still running. `tee` writes every line
+          # as vitest emits it, so the live log (and this file, read below)
+          # carries real progress right up to the kill. `PIPESTATUS[0]`
+          # recovers vitest's own exit code across the pipe (bash-only,
+          # safe here — this step already relies on `set -f`/`set +e`).
+          OUTPUT_FILE=$(mktemp)
+          bun run $FILTER --sequential test -- 2>&1 | tee "$OUTPUT_FILE"
+          EXIT=${PIPESTATUS[0]}
           set -e
-          echo "$OUTPUT"
+          OUTPUT=$(cat "$OUTPUT_FILE")
+          rm -f "$OUTPUT_FILE"
           if [ $EXIT -ne 0 ] && echo "$OUTPUT" | grep -q "No packages matched the filter"; then
             echo "(no matching packages have a 'test' script — treating as no-op)"
             EXIT=0
@@ -1241,6 +1156,7 @@ jobs:
         with:
           path: .cache/pyreon-native-validate
           key: native-verdicts-ci-${{ runner.os }}-${{ matrix.name }}-${{ github.sha }}
+
 
   # ── E2E: real-Chromium app-level tests against example apps ──────────
   # Parallel, flake-resilient matrix. Before 2026-05 this was ONE runner
@@ -1404,6 +1320,7 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
+
   # ── Scaffold smoke: end-to-end gate against create-pyreon-app ──────────
   # Runs the actual scaffolder + bun install + bun run build for every
   # cell defined in scripts/scaffold-smoke.ts (template × adapter ×
@@ -1467,6 +1384,7 @@ jobs:
         env:
           MEMBERS: ${{ matrix.members }}
         run: bun scripts/scaffold-smoke.ts $MEMBERS
+
   # ── Test: the ONE aggregator for every dynamic matrix ────────────────────
   # Branch protection pins a stable name; matrix cells have dynamic names.
   # This used to be four aggregator jobs (Test, Typecheck, E2E, Scaffold
@@ -1484,50 +1402,47 @@ jobs:
   # is unknown and this is red regardless of what did run.
   test:
     name: Test
-    needs: [install, typecheck-cell, test-cell, e2e-suite, scaffold-smoke-cell]
+    # Starts right after Install — ALONGSIDE the cells, not after them — and
+    # waits for every aggregated job (scripts/ci-aggregate.ts). As a job that
+    # `needs:` all four matrices it became ready LAST and queued behind every
+    # other PR: measured 2026-09-22, 56-78 min for a 3-second verdict once its
+    # dependencies had finished. Its OWN conclusion is the required `Test`
+    # check, so it needs only `actions: read`: no job in this workflow holds a
+    # token that can write checks (see the script header for why the faster
+    # "last cell posts Test" version was withdrawn).
+    #
+    # `always()`: a failed Install must still produce a red `Test`, never a
+    # skipped-green one.
+    #
+    # Re-runs: this job no longer `needs:` the cells, so re-running ONE cell
+    # by hand does not re-evaluate it — use "Re-run failed jobs" (a red
+    # `Test` is itself a failed job, so it is included) or re-run it too.
+    needs: install
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    # Must outlast the slowest cell INCLUDING its queue wait (cells cap at 25
+    # min of runtime; a busy pool adds an hour or more). A timeout reports a
+    # cancelled — i.e. blocking, never green — `Test`.
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      actions: read # list this run's jobs
     steps:
-      - name: Aggregate typecheck / test / e2e / scaffold matrices
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            scripts/ci-aggregate.ts
+            .bun-version
+          sparse-checkout-cone-mode: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      - name: Wait for typecheck / test / e2e / scaffold matrices, then decide
         env:
-          INSTALL: ${{ needs.install.result }}
-          TYPECHECK: ${{ needs.typecheck-cell.result }}
-          TEST: ${{ needs.test-cell.result }}
-          E2E: ${{ needs.e2e-suite.result }}
-          E2E_HAS: ${{ needs.install.outputs.e2e-has }}
-          SCAFFOLD: ${{ needs.scaffold-smoke-cell.result }}
-        run: |
-          echo "install=$INSTALL  typecheck=$TYPECHECK  test=$TEST  e2e=$E2E (selected=$E2E_HAS)  scaffold=$SCAFFOLD"
-          fail=0
-          ok() { [ "$1" = "success" ] || [ "$1" = "skipped" ]; }
-          if [ "$INSTALL" != "success" ]; then
-            echo "::error::Install (decide) did not succeed ($INSTALL) — cell selection is unknown"
-            fail=1
-          fi
-          ok "$TYPECHECK" || { echo "::error::typecheck cell(s) failed ($TYPECHECK)"; fail=1; }
-          ok "$TEST" || { echo "::error::test cell(s) failed ($TEST)"; fail=1; }
-          ok "$SCAFFOLD" || { echo "::error::scaffold-smoke batch(es) failed ($SCAFFOLD)"; fail=1; }
-          if [ "$E2E_HAS" = "true" ]; then
-            [ "$E2E" = "success" ] || { echo "::error::e2e suites were selected but the matrix did not succeed ($E2E)"; fail=1; }
-          else
-            echo "No e2e-relevant changes — matrix empty, green skip."
-          fi
-          if [ "$fail" -eq 0 ]; then echo "All matrices passed (or were correctly skipped)."; fi
-          exit $fail
+          GITHUB_TOKEN: ${{ github.token }}
+          E2E_SELECTED: ${{ needs.install.outputs.e2e-has }}
+        run: bun scripts/ci-aggregate.ts
 
-  # ── Build: every lib-needing singleton gate, one runner ──────────────────
-  # Was SEVEN jobs — Build, Verify Modes, Check Bundle Budgets, Check Import
-  # Budgets, Check Distribution, Check Bin Liveness, Coverage — plus Test
-  # (Rust binary). All needed the same restored lib/, all did 20-110s of
-  # work, and each paid its own checkout + setup + a 20-50 minute slot wait
-  # (measured 2026-09-01). Their check names were dropped from branch
-  # protection; the gates themselves are unchanged and now report as named
-  # steps of this one required job. Every step runs even after an earlier
-  # failure (`!cancelled()`) so a push shows every red gate at once.
-  #
-  # Gated on `code` (a docs-only PR changes no build output), fail-closed
-  # on an Install failure.
   build:
     name: Build
     needs: install
@@ -1599,8 +1514,32 @@ jobs:
             echo "Root-file change → blast radius unknowable; full coverage runs on main."
             exit 0
           fi
-          NAMES=$(printf '%s\n' $FILTER | sed 's/^--filter=//' | paste -sd, -)
-          COUNT=$(printf '%s\n' $FILTER | grep -c . || true)
+          # TOOLCHAIN-BOUND packages are dropped BEFORE the width cap. Bringing
+          # `packages/native` into PACKAGE_DIRS (this PR's point) puts
+          # `@pyreon/native-compiler` in scope, and its suite spawns ~600 real
+          # swiftc/kotlinc processes — ~400s uncached WITHOUT coverage, and this
+          # job's verdict cache is cold. Measured on this very PR: the step ran
+          # 1381s and the job's 15-minute cap cancelled it, which reports as a
+          # RED `Build` naming no failure.
+          #
+          # The existing cap counts PACKAGES, and one package here costs more
+          # than fifteen ordinary ones — a cap chosen by the wrong dimension.
+          # Their coverage still lands, on `Coverage (Full)` at push:main +
+          # merge_group, which is exactly the backstop the width cap already
+          # leans on. Say WHICH were dropped, so the omission is visible rather
+          # than inferred from a smaller number.
+          SLOW='@pyreon/native-compiler'
+          DROPPED=$(printf '%s\n' $FILTER | sed 's/^--filter=//' | grep -xF "$SLOW" || true)
+          KEPT=$(printf '%s\n' $FILTER | sed 's/^--filter=//' | grep -vxF "$SLOW" || true)
+          if [ -n "$DROPPED" ]; then
+            echo "Toolchain-bound, measured on main instead: $(printf '%s' "$DROPPED" | paste -sd, -)"
+          fi
+          NAMES=$(printf '%s' "$KEPT" | paste -sd, -)
+          COUNT=$(printf '%s\n' $KEPT | grep -c . || true)
+          if [ "$COUNT" -eq 0 ]; then
+            echo "Nothing left to measure at PR time."
+            exit 0
+          fi
           # A release PR touches every package.json → ~130 explicit filters;
           # the push:main full run is the backstop for that width.
           if [ "$COUNT" -gt 15 ]; then
@@ -1772,75 +1711,3 @@ jobs:
         run: |
           bun run --filter='@pyreon/test-utils' test src/tests/bootstrap-exit-codes.test.ts
 
-  coverage-full:
-    name: Coverage (Full)
-    # P3c — runs the full test suite, same lib/-requiring tests as
-    # `test-cell`. Needs Bootstrap.
-    #
-    # Scoped to push:main + merge_group ONLY — NOT every PR. The original
-    # "runs on every trigger" claim estimated ~30s added to PR CI; actual
-    # CI measurement showed 262s (4.4 min) — 9× the estimate. That's a
-    # 262s slice off the PR critical path for a check that only catches
-    # numeric regressions main / merge_queue already gate on, and is
-    # functionally duplicated for PR-visible feedback by the
-    # `Coverage` floor gate (runs always, ~5s).
-    #
-    # Trade-off restored: a PR that drops a package's actual coverage from
-    # 92% to 88% (still above the floor) passes `Coverage` but fails
-    # `Coverage (Full)` at merge-queue time. Same safety as before; the
-    # signal just lands at merge-time instead of PR-time.
-    # Event-gated to push:main + merge_group only (never runs on PRs), so the
-    # docs-only Layer-2 gate does not apply here — a code change always exists
-    # by the time something lands on main.
-    #
-    # 2026-07 restoration: this job had gone red-on-arrival (12 packages below
-    # their configured thresholds — coverage drifted under feature waves whose
-    # tests live in the browser/e2e tier). A permanently-red safety net detects
-    # nothing. Invariant since the restoration: every package's configured
-    # thresholds sit AT/BELOW measured node-suite reality (ratchet up as tests
-    # land, like lint-baseline); browser-covered files are coverageExclude'd /
-    # v8-ignored from the node gate with per-site rationale. If this job goes
-    # red, treat it as a REGRESSION to fix or an honest re-baseline to land
-    # immediately — never leave it red (see anti-patterns.md "CI / Build Gate
-    # Mistakes": a red-on-arrival gate is a dead gate).
-    if: ${{ github.event_name == 'push' || github.event_name == 'merge_group' }}
-    needs: install
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-pyreon
-        with:
-          # Coverage REQUIRES node — bun's inspector lacks the V8 coverage API
-          # ('Coverage APIs are not supported'; the 2026-08-04 all-72-packages
-          # red main). check-coverage.ts spawns vitest under node explicitly
-          # and preflights for it; this pins the version instead of trusting
-          # whatever the runner image happens to ship on PATH that day.
-          node-version: '24'
-      - name: Run full per-package coverage
-        run: bun run coverage
-
-  # ── Benchmark (push:main only — track perf over time) ────────────────────
-  benchmark:
-    name: Benchmark
-    if: github.event_name == 'push'
-    # P3c — benchmarks measure realistic perf against the BUILT artifacts,
-    # not src/. Needs Bootstrap.
-    needs: install
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-pyreon
-      - name: Run core benchmarks
-        run: bun run bench:all > bench-results.json
-      - name: Run bundle size analysis
-        run: bun run bench:bundle-size > bundle-size.json
-      - name: Upload benchmark results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: bench-${{ github.sha }}
-          path: |
-            bench-results.json
-            bundle-size.json
-          retention-days: 90

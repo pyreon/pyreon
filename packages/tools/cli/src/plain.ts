@@ -96,6 +96,13 @@ export async function plain(opts: PlainOptions): Promise<number> {
       : expandPath(opts.cwd, opts.cwd)
 
   if (targets.length === 0) {
+    // `--json` must ALWAYS emit JSON. Printing prose on this branch
+    // hands a parser `No source files matched.` and it throws — the one
+    // consumer the flag exists for is the one that breaks.
+    if (opts.json) {
+      console.log(JSON.stringify({ files: [], declined: {}, matched: 0 }, null, 2))
+      return 0
+    }
     console.log(dim('  No source files matched.'))
     return 0
   }

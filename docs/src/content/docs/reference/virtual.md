@@ -9,6 +9,14 @@ description: "Pyreon adapter for TanStack Virtual — element-scoped and window-
 
 Reactive TanStack Virtual adapter for Pyreon. Signal-driven virtualizer that returns reactive `virtualItems`, `totalSize`, and `isScrolling` signals plus a fine-grained per-index `item(index)` accessor for dynamically-measured lists. Supports element-scoped (`useVirtualizer`) and window-scoped (`useWindowVirtualizer`) variants. Because Pyreon renders without a virtual DOM, a scroll patches only the entering/leaving rows (staying rows do zero work) — where a virtual-DOM adapter re-renders its virtualizer component and reconciles the whole visible window. SSR-safe — window virtualizer checks for browser environment before attaching scroll listeners.
 
+## Multiplatform
+
+**Tier:** Web-only — the browser package; the native story is stated below
+
+DOM virtualization (scroll containers, measured rows); native lists are lazy by construction (LazyColumn/LazyVStack)
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - useVirtualizer — element-scoped with reactive virtualItems, totalSize, isScrolling

@@ -167,7 +167,27 @@ function toComponent(
   const axes: VariantAxis[] = shapes
     .filter((s) => typeof s.type === 'object')
     .map((s) => ({ name: s.name, values: (s.type as { union: readonly string[] }).union }))
-  return { name, controls, axes, scenarios: [], tags: [], source }
+  const content = contentFromProps(name, shapes)
+  return { name, controls, axes, scenarios: [], tags: [], source, ...(content ? { content } : {}) }
+}
+
+/**
+ * The content seed for a TYPED component: only what its own props declare.
+ *
+ * A function component states its content channel in its type — `children`,
+ * or a `label` — and a scan cannot read a tag off it the way rocketstyle
+ * discovery can. So the seed is conservative: the first of those two props the
+ * component declares, when it carries no default of its own, gets the
+ * component's NAME. A component that declares neither is left alone; guessing
+ * a prop it does not have would put a control on the panel that does nothing.
+ */
+function contentFromProps(name: string, shapes: readonly PropShape[]): Record<string, unknown> | undefined {
+  for (const key of ['children', 'label'] as const) {
+    const shape = shapes.find((s) => s.name === key)
+    if (!shape || shape.defaultValue !== undefined) continue
+    if (shape.type === 'string' || shape.type === 'unknown') return { [key]: name }
+  }
+  return undefined
 }
 
 /**

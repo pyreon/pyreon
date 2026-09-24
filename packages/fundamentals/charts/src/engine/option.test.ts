@@ -129,7 +129,7 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
   { name: 'boxplot with outlier scatter', expectClean: true, option: {
     xAxis: { data: ['A', 'B'] }, yAxis: {},
     series: [{ type: 'boxplot', data: [[1, 2, 3, 4, 5], [2, 3, 4, 5, 6]] }, { type: 'scatter', data: [[0, 9]] }] } },
-  { name: 'rose pie (roseType unmapped)', expectClean: false, option: {
+  { name: 'rose pie', expectClean: true, option: {
     series: [{ type: 'pie', roseType: 'area', data: [{ value: 1, name: 'a' }] }] } },
   { name: 'radar + dataZoom (unmapped keys)', expectClean: false, option: {
     dataZoom: [{ type: 'inside' }], radar: { indicator: [] },
@@ -147,7 +147,7 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
 
 /** Flatten a plan to what the corpus asserts on — a multi-grid plan is clean only when EVERY part is. */
 const compiledOf = (p: OptionPlan): { supported: boolean; warnings: OptionWarning[] } => {
-  if (p.kind !== 'grids') return p.compiled
+  if (p.kind !== 'grids' && p.kind !== 'layers') return p.compiled
   const inner = p.parts.map((q) => compiledOf(q.plan))
   return { supported: inner.every((c) => c.supported), warnings: [...p.warnings, ...inner.flatMap((c) => c.warnings)] }
 }
@@ -184,7 +184,10 @@ describe('ECharts option facade — mappings', () => {
         { type: 'line', data: [1] }, { type: 'line', areaStyle: {}, data: [1] }, { type: 'scatter', data: [1] },
       ],
     })
-    expect(c.spec.series.map((s) => s.kind)).toEqual(['stacked', 'stacked', 'line', 'area', 'points'])
+    // A line with an areaStyle stays a line that also fills (ECharts draws its stroke and symbols over the fill).
+    expect(c.spec.series.map((s) => s.kind)).toEqual(['stacked', 'stacked', 'line', 'line', 'points'])
+    expect(c.spec.series[3]!.areaFill).toBe(true)
+    expect(c.spec.series[2]!.areaFill).toBeUndefined()
   })
 
   it('a second y axis lands on the right with its own {value} formatter', () => {
@@ -205,14 +208,35 @@ describe('ECharts option facade — mappings', () => {
     expect(c.spec.markers!.map((m) => m.at ?? m.atIndex)).toEqual(['max', 1])
   })
 
+  it('maps horizontal and vertical mark areas to engine bands', () => {
+    const option = {
+      xAxis: { type: 'value' }, yAxis: { min: 0, max: 10 },
+      series: [{
+        type: 'line', data: [[0, 2], [10, 8]],
+        markArea: { itemStyle: { color: '#225588' }, data: [
+          [{ name: 'target', yAxis: 3 }, { yAxis: 6 }],
+          [{ xAxis: 2 }, { xAxis: 4 }],
+        ] },
+      }],
+    }
+    const c = compileOption(option)
+    expect(c.spec.annotations).toEqual([
+      { yFrom: 3, yTo: 6, label: 'target', color: '#225588' },
+      { xFrom: 2, xTo: 4, label: undefined, color: '#225588' },
+    ])
+    expect(optionToSvg(option, { width: 300, height: 180 }).match(/fill="rgba\(34, 85, 136, 0\.12\)"/g)).toHaveLength(2)
+    expect(optionToSvg(option, { width: 300, height: 180 })).toContain('target')
+    expect(c.warnings).toEqual([])
+  })
+
   it('never drops silently: unknown top-level keys, series options and types are all NAMED', () => {
     const c = compileOption({
-      brush: {}, xAxis: { data: ['a'] }, yAxis: {},
-      series: [{ type: 'bar', data: [1], barWidth: 20 }, { type: 'funnel', data: [] }],
+      axisPointer: {}, xAxis: { data: ['a'] }, yAxis: {},
+      series: [{ type: 'bar', data: [1], barBorderRadius: 20 }, { type: 'funnel', data: [] }],
     })
     const codes = c.warnings.map((w) => `${w.code}@${w.path}`)
-    expect(codes).toContain('option-key-unsupported@brush')
-    expect(codes).toContain('series-option-unsupported@series[0].barWidth')
+    expect(codes).toContain('option-key-unsupported@axisPointer')
+    expect(codes).toContain('series-option-unsupported@series[0].barBorderRadius')
     expect(codes).toContain('series-type-unsupported@series[1].type')
     expect(c.supported).toBe(false)
   })

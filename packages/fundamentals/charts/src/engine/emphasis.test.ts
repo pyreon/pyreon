@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { bars, groupedBars, resolveMarks, stackedBars, points } from './marks'
-import { defaultTheme, emphasisLevel, layoutChart, renderChart } from './render'
+import { blurActive, defaultTheme, emphasisLevel, layoutChart, renderChart, stateFill } from './render'
 import type { ChartSpec, Emphasis } from './render'
 import type { DrawCmd } from './types'
 
@@ -108,5 +108,38 @@ describe('renderChart emphasis', () => {
     const cmds = renderChart(s, measure)
     expect(band(cmds)).toBeUndefined()
     expect(outlines(cmds)).toHaveLength(0)
+  })
+})
+
+describe('state fills (emphasis / select / blur)', () => {
+  const rectFills = (cmds: DrawCmd[]): string[] => cmds.filter((c): c is Extract<DrawCmd, { kind: 'rect' }> => c.kind === 'rect' && c.rect.h > 0 && c.fill !== defaultTheme.background).map((c) => c.fill)
+
+  it('a highlighted datum takes emphasisColor, a pinned one selectColor, and the others keep the series colour', () => {
+    const series = resolveMarks(ROWS, [bars((d: Row) => d.v, { color: '#111111' })]).map((s) => ({ ...s, emphasisColor: '#ee0000', selectColor: '#0000ee' }))
+    const cmds = renderChart(spec(series, { highlight: 0, selected: [2] }), measure)
+    const fills = rectFills(cmds).filter((f) => f === '#111111' || f === '#ee0000' || f === '#0000ee')
+    expect(fills).toEqual(['#ee0000', '#111111', '#0000ee'])
+    expect(stateFill(spec(series, { highlight: 1, selected: [1] }), series[0]!, 1, '#111111')).toBe('#0000ee')
+  })
+
+  it('focus: self blurs every other datum to blurOpacity while a highlight is active, and nothing without one', () => {
+    const series = resolveMarks(ROWS, [bars((d: Row) => d.v, { color: '#112233' })]).map((s) => ({ ...s, focus: 'self', blurOpacity: 0.2 }))
+    expect(blurActive(spec(series))).toBe(false)
+    expect(blurActive(spec(series, { highlight: -1, selected: [1] }))).toBe(false)
+    expect(blurActive(spec(series, { highlight: 1, selected: [] }))).toBe(true)
+    const fills = rectFills(renderChart(spec(series, { highlight: 1, selected: [] }), measure)).filter((f) => f.startsWith('rgba(17, 34, 51') || f === '#112233')
+    expect(fills).toEqual(['rgba(17, 34, 51, 0.2)', '#112233', 'rgba(17, 34, 51, 0.2)'])
+    // No focus on any series → no blur, even with a highlight.
+    const plain = resolveMarks(ROWS, [bars((d: Row) => d.v, { color: '#112233' })])
+    expect(rectFills(renderChart(spec(plain, { highlight: 1, selected: [] }), measure)).filter((f) => f === '#112233')).toHaveLength(3)
+  })
+
+  it('points and stacked segments take the same state fills', () => {
+    const pts = resolveMarks(ROWS, [points((d: Row) => d.v, { color: '#101010' })]).map((s) => ({ ...s, focus: 'series', selectColor: '#00ff00' }))
+    const circles = renderChart(spec(pts, { highlight: 0, selected: [2] }), measure).filter((c): c is Extract<DrawCmd, { kind: 'circle' }> => c.kind === 'circle' && (c.fill === '#101010' || c.fill === '#00ff00' || c.fill.startsWith('rgba(16, 16, 16')))
+    expect(circles.map((c) => c.fill)).toEqual(['#101010', 'rgba(16, 16, 16, 0.1)', '#00ff00'])
+    const stacked = resolveMarks(ROWS, [stackedBars((d: Row) => d.v, { color: '#aa0000' }), stackedBars((d: Row) => d.w, { color: '#00aa00' })]).map((s) => ({ ...s, emphasisColor: '#ffffff' }))
+    const fills = rectFills(renderChart(spec(stacked, { highlight: 2, selected: [] }), measure)).filter((f) => f === '#ffffff')
+    expect(fills).toHaveLength(2)
   })
 })

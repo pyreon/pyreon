@@ -11,6 +11,14 @@ Reactive WYSIWYG rich-text editor for Pyreon, built as a thin signal layer over 
 
 > **Peer dependencies:** `@pyreon/runtime-dom` — install alongside this package.
 
+## Multiplatform
+
+**Tier:** Web-only — the browser package; the native story is stated below
+
+wraps TipTap/ProseMirror (DOM editor); consume on native via the `<WebView>` bridge subpath
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - createRichTextEditor — reactive instance with writable Signal&lt;JSONContent&gt; json

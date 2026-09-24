@@ -1,13 +1,17 @@
 package com.pyreon.runtime
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.unit.dp
 
 // The Android twin of PyreonFlowEdgeCanvas.swift. The geometry (segments,
 // stroke record, Path builder, color parser) lives in
@@ -34,9 +38,12 @@ fun PyreonFlowEdgeCanvas(
     modifier: Modifier = Modifier,
 ) {
     Canvas(modifier = modifier) {
+        // Graph and viewport units are dp (iOS points, web CSS px); the canvas
+        // draws px, so the density joins the zoom in the one transform.
+        val unit = density
         withTransform({
-            translate(left = viewport.x.toFloat(), top = viewport.y.toFloat())
-            scale(scaleX = viewport.zoom.toFloat(), scaleY = viewport.zoom.toFloat(), pivot = Offset.Zero)
+            translate(left = viewport.x.toFloat() * unit, top = viewport.y.toFloat() * unit)
+            scale(scaleX = viewport.zoom.toFloat() * unit, scaleY = viewport.zoom.toFloat() * unit, pivot = Offset.Zero)
         }) {
             for (edge in edges) {
                 drawPath(
@@ -49,6 +56,77 @@ fun PyreonFlowEdgeCanvas(
                         pathEffect = edge.pathEffect,
                     ),
                 )
+                for (marker in listOfNotNull(edge.startMarker, edge.endMarker)) {
+                    val points = marker.points
+                    if (points.isEmpty()) continue
+                    val markerPath = androidx.compose.ui.graphics.Path().apply {
+                        moveTo(points[0].x.toFloat(), points[0].y.toFloat())
+                        for (point in points.drop(1)) lineTo(point.x.toFloat(), point.y.toFloat())
+                        if (marker.closed) close()
+                    }
+                    if (marker.closed) drawPath(markerPath, pyreonFlowEdgeColor(marker.color))
+                    else drawPath(markerPath, pyreonFlowEdgeColor(marker.color), style = Stroke(width = marker.strokeWidth.toFloat(), cap = StrokeCap.Butt, join = StrokeJoin.Round))
+                }
+            }
+        }
+    }
+}
+
+/** Compiler target for a shared-source custom edge SVG `<path>`. */
+@Composable
+fun PyreonFlowCustomEdgePath(
+    result: PyreonFlowPathResult,
+    /** The stroke colour; `null` draws no stroke (SVG `stroke: none`). */
+    color: String? = "#999999",
+    width: Double = 1.5,
+    dash: List<Double>? = null,
+    /** The fill colour; `null` draws no fill (SVG `fill: none`). */
+    fill: String? = null,
+    modifier: Modifier = Modifier,
+) {
+    val effect = dash?.let { PathEffect.dashPathEffect(it.map(Double::toFloat).toFloatArray()) }
+    Canvas(modifier.fillMaxSize()) {
+        // The path is in graph units, which are dp; the canvas draws px. The
+        // layer this sits in already carries the viewport's zoom, so only the
+        // density is left, exactly as in PyreonFlowEdgeCanvas. It was missing,
+        // so custom edges and connection lines drew at 1/density size.
+        val unit = density
+        withTransform({ scale(scaleX = unit, scaleY = unit, pivot = Offset.Zero) }) {
+            val path = pyreonFlowEdgePath(result.segments)
+            if (fill != null) drawPath(path, pyreonFlowEdgeColor(fill))
+            if (color != null) {
+                drawPath(path, pyreonFlowEdgeColor(color), style = Stroke(width = width.toFloat(), pathEffect = effect))
+            }
+        }
+    }
+}
+
+/**
+ * A lowered inline `<svg>`: its shapes drawn in one `Canvas`, sized and scaled
+ * as the browser sizes and scales the element. The transform works in dp, so
+ * the density multiplies in here; strokes scale with the viewBox, as on the
+ * web. Mirrors Swift's `PyreonFlowSvg`.
+ */
+@Composable
+fun PyreonFlowSvg(
+    width: Double? = null,
+    height: Double? = null,
+    viewBox: List<Double>? = null,
+    stretch: Boolean = false,
+    shapes: List<PyreonFlowSvgShape>,
+) {
+    val size = pyreonFlowSvgSize(width, height, viewBox)
+    val t = pyreonFlowSvgTransform(size.width, size.height, viewBox, stretch)
+    Canvas(Modifier.size(size.width.dp, size.height.dp)) {
+        val unit = density
+        withTransform({
+            translate(left = (t.translateX * unit).toFloat(), top = (t.translateY * unit).toFloat())
+            scale(scaleX = (t.scaleX * unit).toFloat(), scaleY = (t.scaleY * unit).toFloat(), pivot = Offset.Zero)
+        }) {
+            for (shape in shapes) {
+                val path = pyreonFlowEdgePath(shape.result.segments)
+                if (shape.fill != null) drawPath(path, pyreonFlowEdgeColor(shape.fill))
+                if (shape.stroke != null) drawPath(path, pyreonFlowEdgeColor(shape.stroke), style = Stroke(width = shape.strokeWidth.toFloat()))
             }
         }
     }

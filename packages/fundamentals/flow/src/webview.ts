@@ -37,6 +37,8 @@ export interface FlowWebViewNode {
   data?: unknown
   width?: number
   height?: number
+  /** Additional JSON-safe model fields are preserved for custom host pages. */
+  [key: string]: unknown
 }
 /** An edge in the pushed graph. */
 export interface FlowWebViewEdge {
@@ -49,10 +51,23 @@ export interface FlowWebViewGraph {
   nodes: FlowWebViewNode[]
   edges: FlowWebViewEdge[]
 }
+export type FlowHostCommand =
+  | { id: string; type: 'fit-view' }
+  | { id: string; type: 'set-viewport'; x: number; y: number; zoom: number }
+
+export type FlowHostEvent =
+  | { type: 'node-select'; id: string; data?: unknown }
+  | { type: 'edge-select'; id: string; source: string; target: string }
+  | { type: 'viewport-change'; viewport: { x: number; y: number; zoom: number } }
 /** Payload delivered to `onSelect` when a node is tapped. */
 export interface FlowSelectPayload {
   id: string
   data?: unknown
+}
+
+interface FlowHostErrorPayload {
+  __pyreonFlowHostError: 1
+  message: string
 }
 
 export interface BuildFlowHostHtmlOptions {
@@ -133,8 +148,25 @@ export function buildFlowHostHtml(options: BuildFlowHostHtmlOptions = {}): strin
   // The renderer — dependency-free vanilla JS. Edge geometry mirrors
   // `@pyreon/flow`'s `getBezierPath` (source handle Bottom → target Top,
   // curvature 0.25).
-  const script = `
+const script = `
 (function () {
+  var lastHostError = null;
+  function reportHostError(error) {
+    var message = String(error && error.stack || error);
+    if (message === lastHostError) return;
+    lastHostError = message;
+    window.__pyreonFlowError = message;
+    var attempts = 120;
+    (function send() {
+      try {
+        if (typeof window.pyreonPostMessage === 'function') {
+          window.pyreonPostMessage(JSON.stringify({ __pyreonFlowHostError: 1, message: message }));
+          return;
+        }
+      } catch (ignored) { return; }
+      if (--attempts > 0) setTimeout(send, 16);
+    })();
+  }
   try {
   var NS = 'http://www.w3.org/2000/svg';
   var NODE_W = ${num(nodeWidth)}, NODE_H = ${num(nodeHeight)};
@@ -150,6 +182,18 @@ export function buildFlowHostHtml(options: BuildFlowHostHtmlOptions = {}): strin
 
   var vp = { x: 0, y: 0, k: 1 }, fitted = false;
   function applyVp() { g.setAttribute('transform', 'translate(' + vp.x + ',' + vp.y + ') scale(' + vp.k + ')'); }
+  function post(payload) {
+    if (typeof window.pyreonPostMessage !== 'function') return;
+    try { window.pyreonPostMessage(JSON.stringify(payload)); } catch (ignored) {}
+  }
+  function emitViewport() { post({ type: 'viewport-change', viewport: { x: vp.x, y: vp.y, zoom: vp.k } }); }
+  var commandIds = [], commandSeen = Object.create(null);
+  function rememberCommand(id) {
+    if (commandSeen[id]) return false;
+    commandSeen[id] = true; commandIds.push(id);
+    if (commandIds.length > 1024) delete commandSeen[commandIds.shift()];
+    return true;
+  }
 
   // getBezierPath: dist * 0.25 control offset, source Bottom / target Top.
   function bezier(sx, sy, tx, ty) {
@@ -182,6 +226,20 @@ export function buildFlowHostHtml(options: BuildFlowHostHtmlOptions = {}): strin
     fitted = true; applyVp();
   }
 
+  function runCommands(data, nodes) {
+    var commands = data.__pyreonFlowCommands || [];
+    commands.forEach(function (command) {
+      if (!command || typeof command.id !== 'string' || !rememberCommand(command.id)) return;
+      if (command.type === 'fit-view') { fitted = false; fit(nodes); emitViewport(); }
+      else if (command.type === 'set-viewport') {
+        var x = Number(command.x), y = Number(command.y), zoom = Number(command.zoom);
+        vp.x = Number.isFinite(x) ? x : 0; vp.y = Number.isFinite(y) ? y : 0;
+        vp.k = Math.max(0.2, Math.min(4, Number.isFinite(zoom) ? zoom : 1));
+        fitted = true; applyVp(); emitViewport();
+      }
+    });
+  }
+
   function render() {
     var d = window.__pyreonData;
     if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { return; } }
@@ -194,7 +252,10 @@ export function buildFlowHostHtml(options: BuildFlowHostHtmlOptions = {}): strin
       var p = document.createElementNS(NS, 'path');
       p.setAttribute('d', bezier(s.position.x + sw / 2, s.position.y + sh, t.position.x + tw / 2, t.position.y));
       p.setAttribute('fill', 'none'); p.setAttribute('stroke', '${safeColor(edgeColor)}'); p.setAttribute('stroke-width', '1.5');
-      p.setAttribute('marker-end', 'url(#pf-arrow)'); g.appendChild(p);
+      p.setAttribute('marker-end', 'url(#pf-arrow)'); p.style.pointerEvents = 'stroke'; p.style.cursor = 'pointer';
+      p.setAttribute('data-edge-id', e.id || (e.source + '->' + e.target));
+      p.addEventListener('click', function () { post({ type: 'edge-select', id: e.id || (e.source + '->' + e.target), source: e.source, target: e.target }); });
+      g.appendChild(p);
     });
     nodes.forEach(function (n) {
       var w = n.width || NODE_W, h = n.height || NODE_H;
@@ -211,13 +272,18 @@ export function buildFlowHostHtml(options: BuildFlowHostHtmlOptions = {}): strin
       tx.setAttribute('font-family', 'system-ui, sans-serif'); tx.setAttribute('font-size', '13'); tx.setAttribute('fill', '${safeColor(labelColor)}');
       tx.textContent = String(labelOf(n)); grp.appendChild(tx);
       grp.addEventListener('click', function () {
-        if (typeof window.pyreonPostMessage === 'function') {
-          try { window.pyreonPostMessage(JSON.stringify({ id: n.id, data: n.data })); } catch (e) {}
-        }
+        post({ id: n.id, data: n.data });
       });
       g.appendChild(grp);
     });
-    fit(nodes);
+    fit(nodes); runCommands(d, nodes);
+  }
+  function safeRender() {
+    try {
+      render();
+      lastHostError = null;
+      window.__pyreonFlowError = null;
+    } catch (error) { reportHostError(error); }
   }
 
   // Pan (pointer) — bails on a node so taps aren't swallowed.
@@ -230,11 +296,11 @@ export function buildFlowHostHtml(options: BuildFlowHostHtmlOptions = {}): strin
     if (!panning) return; moved = true;
     vp.x += e.clientX - last.x; vp.y += e.clientY - last.y; last = { x: e.clientX, y: e.clientY }; applyVp();
   });
-  window.addEventListener('pointerup', function () { panning = false; });
+  window.addEventListener('pointerup', function () { if (panning && moved) emitViewport(); panning = false; });
   // Zoom (wheel / trackpad-pinch).
   svg.addEventListener('wheel', function (e) {
     e.preventDefault();
-    vp.k = Math.max(0.2, Math.min(4, vp.k * (e.deltaY < 0 ? 1.1 : 0.9))); applyVp();
+    vp.k = Math.max(0.2, Math.min(4, vp.k * (e.deltaY < 0 ? 1.1 : 0.9))); applyVp(); emitViewport();
   }, { passive: false });
 
   // PERF: the renderer rebuilds the whole node/edge SVG, so coalesce a burst of
@@ -242,13 +308,13 @@ export function buildFlowHostHtml(options: BuildFlowHostHtmlOptions = {}): strin
   var rafId = 0;
   function schedule() {
     if (rafId) return;
-    if (typeof requestAnimationFrame === 'function') rafId = requestAnimationFrame(function () { rafId = 0; render(); });
-    else render();
+    if (typeof requestAnimationFrame === 'function') rafId = requestAnimationFrame(function () { rafId = 0; safeRender(); });
+    else safeRender();
   }
   window.addEventListener('pyreondata', schedule);
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(function () { fitted = false; schedule(); }).observe(root);
-  applyVp(); render();
-  } catch (e) { window.__pyreonFlowError = String(e && e.stack || e); }
+  applyVp(); safeRender();
+  } catch (error) { reportHostError(error); }
 })();`
 
   return (
@@ -270,8 +336,20 @@ export interface FlowWebViewProps {
    * expression); on change it's pushed into the hosted page without reload.
    */
   graph: FlowWebViewGraph | (() => FlowWebViewGraph)
+  /** Once-only viewport commands. Reusing an id never executes twice. */
+  commands?: FlowHostCommand[] | (() => FlowHostCommand[])
   /** Node-tap callback — receives `{ id, data }`. */
   onSelect?: (payload: FlowSelectPayload) => void
+  /**
+   * Every parsed reverse-bridge payload from the hosted page. Non-JSON
+   * messages are delivered as strings. This is the generic channel for a
+   * bundled editor; node selections continue to reach `onSelect` as well.
+   */
+  onMessage?: (payload: unknown) => void
+  /** Typed events emitted by the built-in hosted renderer. */
+  onEvent?: (event: FlowHostEvent) => void
+  /** Receives errors raised while the hosted renderer starts or updates. */
+  onError?: (error: Error) => void
   /**
    * Provide your own host HTML (advanced — e.g. a bundled full `@pyreon/flow`
    * web app). Omit to build the self-contained diagram renderer from the
@@ -285,6 +363,7 @@ export interface FlowWebViewProps {
   nodeStroke?: string
   labelColor?: string
   edgeColor?: string
+  background?: string
 }
 
 /**
@@ -309,29 +388,60 @@ export function FlowWebView(props: FlowWebViewProps): VNode {
   if (props.nodeStroke !== undefined) built.nodeStroke = props.nodeStroke
   if (props.labelColor !== undefined) built.labelColor = props.labelColor
   if (props.edgeColor !== undefined) built.edgeColor = props.edgeColor
-  const html = props.html ?? buildFlowHostHtml(built)
+  if (props.background !== undefined) built.background = props.background
+  // `html` is forwarded as a GETTER, not read once here: native hosts reload
+  // when `html` changes, and an eager read froze the web host on its first
+  // page. The default host is built lazily, once, and only if needed.
+  let defaultHtml: string | undefined
 
-  const webViewProps: Record<string, unknown> = { html }
+  const webViewProps: Record<string, unknown> = {}
+  Object.defineProperty(webViewProps, 'html', {
+    enumerable: true,
+    configurable: true,
+    get: (): string => props.html ?? (defaultHtml ??= buildFlowHostHtml(built)),
+  })
   // Forward `graph` to `<WebView data>` reactively (getter re-reads each access
   // — see the ChartWebView note on why an eager read breaks compiler reactivity).
   Object.defineProperty(webViewProps, 'data', {
     enumerable: true,
     configurable: true,
     get(): unknown {
-      const gph = props.graph
-      return typeof gph === 'function' ? (gph as () => unknown)() : gph
+      const source = props.graph
+      const graph = typeof source === 'function' ? (source as () => FlowWebViewGraph)() : source
+      const sourceCommands = props.commands
+      const commands = typeof sourceCommands === 'function' ? sourceCommands() : sourceCommands
+      return commands === undefined || commands.length === 0 ? graph : { ...graph, __pyreonFlowCommands: commands }
     },
   })
-  if (props.onSelect) {
+  if (props.onSelect || props.onMessage || props.onError || props.onEvent) {
     const onSelect = props.onSelect
+    const onMessage = props.onMessage
+    const onError = props.onError
+    const onEvent = props.onEvent
     webViewProps.onMessage = (message: string): void => {
-      let payload: FlowSelectPayload
+      let payload: unknown
       try {
-        payload = JSON.parse(message) as FlowSelectPayload
+        payload = JSON.parse(message) as unknown
       } catch {
-        payload = { id: message }
+        payload = message
       }
-      onSelect(payload)
+      onMessage?.(payload)
+      if (
+        onError && payload && typeof payload === 'object' && '__pyreonFlowHostError' in payload &&
+        (payload as FlowHostErrorPayload).__pyreonFlowHostError === 1
+      ) {
+        onError(new Error(String((payload as FlowHostErrorPayload).message)))
+        return
+      }
+      if (onSelect) {
+        if (payload && typeof payload === 'object' && 'id' in payload && typeof payload.id === 'string')
+          onSelect(payload as FlowSelectPayload)
+        else if (typeof payload === 'string') onSelect({ id: payload })
+      }
+      if (onEvent && payload && typeof payload === 'object') {
+        if ('type' in payload && (payload.type === 'edge-select' || payload.type === 'viewport-change')) onEvent(payload as FlowHostEvent)
+        else if ('id' in payload && typeof payload.id === 'string') onEvent({ type: 'node-select', id: payload.id, ...('data' in payload ? { data: payload.data } : {}) })
+      }
     }
   }
   return h(WebView as (p: unknown) => VNodeChild, webViewProps) as VNode

@@ -70,6 +70,7 @@ extension View where Body == Never { public var body: Never { fatalError() } }
 extension Never: View { public typealias Body = Never }
 public struct EmptyView: View { public init() {}; public typealias Body = Never }
 public struct AnyStubView: View { public init() {}; public typealias Body = Never }
+public struct AnyView: View { public init<V: View>(_ view: V) {}; public typealias Body = Never }
 
 @resultBuilder public enum ViewBuilder {
   // buildExpression erases every leaf to AnyStubView while ENFORCING each child
@@ -384,7 +385,7 @@ public struct EnvironmentValues {
 // ---- Layout containers ----
 public enum HorizontalAlignment { case leading, center, trailing }
 public enum VerticalAlignment { case top, center, bottom }
-public enum Alignment { case center, leading, trailing, top, bottom }
+public enum Alignment { case center, leading, trailing, top, bottom, topLeading, topTrailing, bottomLeading, bottomTrailing }
 // Axis.Set is an OptionSet in real SwiftUI; the stub only needs the horizontal
 // / vertical cases the coolgrid Col fractional-span emit references.
 public struct Axis { public struct Set { public init() {}; public static let horizontal = Set(); public static let vertical = Set() } }
@@ -484,6 +485,19 @@ public enum Edge {
 }
 public protocol Shape {}
 public struct Rectangle: Shape { public init() {} }
+public struct SpatialTapValue { public var location: CGPoint = CGPoint() }
+public struct SpatialTapGesture: Gesture {
+  public init(count: Int = 1) {}
+  public func onEnded(_ action: @escaping (SpatialTapValue) -> Void) -> SpatialTapGesture { self }
+}
+public struct GestureMask: OptionSet {
+  public let rawValue: UInt32
+  public init(rawValue: UInt32) { self.rawValue = rawValue }
+  public static let none = GestureMask([])
+  public static let gesture = GestureMask(rawValue: 1)
+  public static let subviews = GestureMask(rawValue: 2)
+  public static let all = GestureMask(rawValue: 3)
+}
 public protocol Gesture {}
 public struct LongPressGesture: Gesture {
   public init(minimumDuration: Double = 0.5) {}
@@ -560,12 +574,14 @@ extension View {
   public func tint(_ color: Color?) -> some View { self }
   public func accessibilityIdentifier(_ id: String) -> some View { self }
   public func accessibilityLabel(_ label: String) -> some View { self }
+  public func accessibilityValue(_ value: String) -> some View { self }
   public func accessibilityElement(children: AccessibilityChildBehavior) -> some View { self }
   public func accessibilityAddTraits(_ traits: AccessibilityTraits) -> some View { self }
   public func keyboardType(_ type: UIKeyboardType) -> some View { self }
   public func accessibilityHidden(_ hidden: Bool) -> some View { self }
   public func simultaneousGesture<G: Gesture>(_ gesture: G) -> some View { self }
   public func highPriorityGesture<G: Gesture>(_ gesture: G) -> some View { self }
+  public func highPriorityGesture<G: Gesture>(_ gesture: G, including mask: GestureMask) -> some View { self }
   // .gesture / .contentShape(Rectangle()) — the chart-host tap emit (chart-hosts.ts).
   public func gesture<G: Gesture>(_ gesture: G) -> some View { self }
   public func contentShape<S: Shape>(_ shape: S) -> some View { self }
@@ -586,6 +602,7 @@ extension View {
   // runtime does is how a broken emit slips through — the same trap the
   // lineLimit note above records, in the opposite direction.
   public func background<V: View>(_ background: V) -> some View { self }
+  public func overlay<V: View>(alignment: Alignment = .center, @ViewBuilder content: () -> V) -> some View { self }
   // useHotkey -> .keyboardShortcut on a hidden Button. Mirrors SwiftUI's real
   // signature including the modifiers-defaults-to-command DEFAULT: the emit always
   // passes modifiers explicitly (even an empty set), so the default is never
@@ -623,7 +640,8 @@ extension View {
     maxWidth: Double? = nil,
     minHeight: Double? = nil,
     idealHeight: Double? = nil,
-    maxHeight: Double? = nil
+    maxHeight: Double? = nil,
+    alignment: Alignment = .center
   ) -> some View { self }
   // iOS 17 grid-column primitive: the coolgrid Col fractional span.
   public func containerRelativeFrame(_ axes: Axis.Set, count: Int, span: Int, spacing: Double, alignment: Alignment = .center) -> some View { self }
@@ -990,6 +1008,9 @@ public struct PyreonXYPosition: Equatable {
   public var y: Double = 0
   public init(x: Double, y: Double) {}
 }
+public struct PyreonFlowDimensions { public var width: Double; public var height: Double }
+public struct PyreonFlowMeasuredHandle { public var id: String; public var type: String; public var position: PyreonFlowPosition; public var x: Double; public var y: Double; public init(id: String, type: String, position: PyreonFlowPosition, x: Double, y: Double) { self.id = id; self.type = type; self.position = position; self.x = x; self.y = y } }
+public struct PyreonFlowNodeMeasurement { public var width: Double; public var height: Double; public var handles: [PyreonFlowMeasuredHandle]; public init(width: Double, height: Double, handles: [PyreonFlowMeasuredHandle] = []) { self.width = width; self.height = height; self.handles = handles } }
 public struct PyreonFlowContainerSize: Equatable {
   public var width: Double = 0
   public var height: Double = 0
@@ -1001,6 +1022,43 @@ public struct PyreonFlowViewport: Equatable {
   public var zoom: Double = 1
   public init(x: Double = 0, y: Double = 0, zoom: Double = 1) {}
 }
+public struct PyreonFlowNodeExtent: Equatable {
+  public init(minX: Double, minY: Double, maxX: Double, maxY: Double) {}
+}
+public enum PyreonFlowPosition { case top, right, bottom, left }
+public struct PyreonFlowPathResult {
+  public var path: String = ""
+  public var labelX: Double = 0
+  public var labelY: Double = 0
+}
+extension PyreonFlowPathResult {
+  public init(svgPath: String) { self.init() }
+}
+public func pyreonStraightPath(sourceX: Double, sourceY: Double, targetX: Double, targetY: Double) -> PyreonFlowPathResult { PyreonFlowPathResult() }
+public func pyreonBezierPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = .bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = .top, curvature: Double = 0.25) -> PyreonFlowPathResult { PyreonFlowPathResult() }
+public func pyreonWaypointPath(sourceX: Double, sourceY: Double, targetX: Double, targetY: Double, waypoints: [PyreonXYPosition]) -> PyreonFlowPathResult { PyreonFlowPathResult() }
+public func pyreonSmoothStepPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = .bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = .top, borderRadius: Double = 5, offset: Double = 20) -> PyreonFlowPathResult { PyreonFlowPathResult() }
+public func pyreonStepPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = .bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = .top, offset: Double = 20) -> PyreonFlowPathResult { PyreonFlowPathResult() }
+public func pyreonEdgePath(type: String, sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition, borderRadius: Double = 5, offset: Double = 20, curvature: Double = 0.25) -> PyreonFlowPathResult { PyreonFlowPathResult() }
+public func pyreonHandlePosition(_ position: PyreonFlowPosition, nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double, offset: Double = 50) -> PyreonXYPosition { PyreonXYPosition(x: nodeX, y: nodeY) }
+public struct PyreonFlowRect { public var x: Double; public var y: Double; public var width: Double; public var height: Double; public init(x: Double, y: Double, width: Double, height: Double) { self.x = x; self.y = y; self.width = width; self.height = height } }
+public func pyreonNodeIntersection(_ box: PyreonFlowRect, toward: PyreonXYPosition) -> PyreonXYPosition { toward }
+public struct PyreonFlowNodeBoxDimensions { public init(sourceW: Double, sourceH: Double, targetW: Double, targetH: Double) {} }
+public struct PyreonFlowHandleAnchor { public var x: Double = 0; public var y: Double = 0; public var position: PyreonFlowPosition = .bottom }
+public struct PyreonFlowFloatingEndpoints { public var source: PyreonFlowHandleAnchor = PyreonFlowHandleAnchor(); public var target: PyreonFlowHandleAnchor = PyreonFlowHandleAnchor() }
+public struct PyreonFlowSmartPositions { public var sourcePosition: PyreonFlowPosition = .bottom; public var targetPosition: PyreonFlowPosition = .top }
+public struct PyreonFlowHandleConfig: Equatable {
+  public init(id: String? = nil, type: String, position: PyreonFlowPosition, offset: Double = 50) {}
+}
+public struct PyreonFlowMarker: Equatable {
+  public init(type: String, color: String? = nil, width: Double = 10, height: Double = 7, strokeWidth: Double = 1) {}
+}
+public struct PyreonFlowResolvedMarkers { public let start: PyreonFlowMarker?; public let end: PyreonFlowMarker? }
+public let pyreonFlowDefaultMarkerEnd = PyreonFlowMarker(type: "arrowclosed")
+public func pyreonResolveFlowMarker(_ marker: PyreonFlowMarker?) -> PyreonFlowMarker? { marker }
+public func pyreonFlowMarkerId(_ marker: PyreonFlowMarker) -> String { "" }
+public func pyreonResolveFlowEdgeMarkers(_ edge: PyreonFlowEdge, defaultMarkerEnd: PyreonFlowMarker?) -> PyreonFlowResolvedMarkers { PyreonFlowResolvedMarkers(start: nil, end: nil) }
+public func pyreonCollectFlowEdgeMarkers(_ edges: [PyreonFlowEdge], defaultMarkerEnd: PyreonFlowMarker?) -> [String: PyreonFlowMarker] { [:] }
 public struct PyreonFlowNode<T> {
   public var id: String
   public var type: String? = nil
@@ -1008,14 +1066,49 @@ public struct PyreonFlowNode<T> {
   public var data: T
   public var width: Double? = nil
   public var height: Double? = nil
+  public var draggable: Bool? = nil
+  public var selectable: Bool? = nil
+  public var connectable: Bool? = nil
+  public var focusable: Bool? = nil
+  public var ariaLabel: String? = nil
+  public var hidden: Bool? = nil
+  public var deletable: Bool? = nil
+  public var className: String? = nil
+  public var style: String? = nil
+  public var parentId: String? = nil
+  public var extent: PyreonFlowNodeExtent? = nil
+  public var extentParent: Bool = false
+  public var expandParent: Bool? = nil
+  public var group: Bool? = nil
+  public var sourceHandles: [PyreonFlowHandleConfig] = []
+  public var targetHandles: [PyreonFlowHandleConfig] = []
+  public var zIndex: Double? = nil
   public init(
     id: String,
     type: String? = nil,
     position: PyreonXYPosition,
     data: T,
     width: Double? = nil,
-    height: Double? = nil
+    height: Double? = nil,
+    draggable: Bool? = nil,
+    selectable: Bool? = nil,
+    connectable: Bool? = nil,
+    focusable: Bool? = nil,
+    ariaLabel: String? = nil,
+    hidden: Bool? = nil,
+    deletable: Bool? = nil,
+    className: String? = nil,
+    style: String? = nil,
+    parentId: String? = nil,
+    extent: PyreonFlowNodeExtent? = nil,
+    extentParent: Bool = false,
+    expandParent: Bool? = nil,
+    group: Bool? = nil,
+    sourceHandles: [PyreonFlowHandleConfig] = [],
+    targetHandles: [PyreonFlowHandleConfig] = [],
+    zIndex: Double? = nil
   ) {
+    self.zIndex = zIndex
     self.id = id
     self.type = type
     self.position = position
@@ -1024,21 +1117,74 @@ public struct PyreonFlowNode<T> {
     self.height = height
   }
 }
+public func pyreonEffectiveDimensions<T>(_ node: PyreonFlowNode<T>, measurement: PyreonFlowNodeMeasurement? = nil) -> PyreonFlowDimensions { PyreonFlowDimensions(width: node.width ?? measurement?.width ?? 150, height: node.height ?? measurement?.height ?? 40) }
+public func pyreonGetFloatingEndpoints<S, T>(_ sourceNode: PyreonFlowNode<S>, targetNode: PyreonFlowNode<T>, dimensions: PyreonFlowNodeBoxDimensions) -> PyreonFlowFloatingEndpoints { PyreonFlowFloatingEndpoints() }
+public func pyreonGetSmartHandlePositions<S, T>(_ sourceNode: PyreonFlowNode<S>, targetNode: PyreonFlowNode<T>, dimensions: PyreonFlowNodeBoxDimensions? = nil) -> PyreonFlowSmartPositions { PyreonFlowSmartPositions() }
+public func pyreonResolveHandleAnchor<T>(_ node: PyreonFlowNode<T>, handleId: String?, type: String, dimensions: PyreonFlowDimensions, measurement: PyreonFlowNodeMeasurement? = nil) -> PyreonFlowHandleAnchor? { nil }
+public indirect enum PyreonFlowDataValue: Equatable { case string(String), number(Double), bool(Bool), object(PyreonFlowData), array([PyreonFlowDataValue]), null }
+@dynamicMemberLookup public struct PyreonFlowData: Equatable {
+  public var values: [String: PyreonFlowDataValue]
+  public init(_ values: [String: PyreonFlowDataValue] = [:]) { self.values = values }
+  public subscript(dynamicMember key: String) -> PyreonFlowDataValue? { values[key] }
+  public subscript(_ key: String) -> PyreonFlowDataValue? { values[key] }
+}
+public func pyreonFlowEdgeId(source: String, target: String, sourceHandle: String? = nil, targetHandle: String? = nil) -> String { "" }
 public struct PyreonFlowEdge: Equatable {
   public var id: String
   public var source: String
   public var target: String
+  public var sourceHandle: String? = nil
+  public var targetHandle: String? = nil
   public var type: String? = nil
   public var label: String? = nil
   public var animated: Bool = false
+  public var animatedSpecified: Bool = false
+  public var focusable: Bool? = nil
+  public var ariaLabel: String? = nil
+  public var hidden: Bool? = nil
+  public var deletable: Bool? = nil
+  public var reconnectable: Bool? = nil
+  public var interactionWidth: Double? = nil
+  public var className: String? = nil
+  public var style: String? = nil
+  public var data: PyreonFlowData? = nil
+  public var curvature: Double? = nil
+  public var borderRadius: Double? = nil
+  public var pathOffset: Double? = nil
+  public var markerStart: PyreonFlowMarker? = nil
+  public var markerEnd: PyreonFlowMarker? = nil
+  public var markerEndSpecified: Bool = false
+  public var waypoints: [PyreonXYPosition] = []
+  public var zIndex: Double? = nil
   public init(
     id: String,
     source: String,
     target: String,
+    sourceHandle: String? = nil,
+    targetHandle: String? = nil,
     type: String? = nil,
     label: String? = nil,
-    animated: Bool = false
+    animated: Bool = false,
+    animatedSpecified: Bool = false,
+    focusable: Bool? = nil,
+    ariaLabel: String? = nil,
+    hidden: Bool? = nil,
+    deletable: Bool? = nil,
+    reconnectable: Bool? = nil,
+    interactionWidth: Double? = nil,
+    className: String? = nil,
+    style: String? = nil,
+    data: PyreonFlowData? = nil,
+    curvature: Double? = nil,
+    borderRadius: Double? = nil,
+    pathOffset: Double? = nil,
+    markerStart: PyreonFlowMarker? = nil,
+    markerEnd: PyreonFlowMarker? = nil,
+    markerEndSpecified: Bool = false,
+    waypoints: [PyreonXYPosition] = [],
+    zIndex: Double? = nil
   ) {
+    self.zIndex = zIndex
     self.id = id
     self.source = source
     self.target = target
@@ -1047,44 +1193,259 @@ public struct PyreonFlowEdge: Equatable {
     self.animated = animated
   }
 }
+public struct PyreonFlowDefaultEdgeOptions: Equatable {
+  public init(type: String? = nil, label: String? = nil, animated: Bool? = nil, focusable: Bool? = nil, ariaLabel: String? = nil, hidden: Bool? = nil, deletable: Bool? = nil, reconnectable: Bool? = nil, interactionWidth: Double? = nil, curvature: Double? = nil, borderRadius: Double? = nil, pathOffset: Double? = nil, markerStart: PyreonFlowMarker? = nil, markerEnd: PyreonFlowMarker? = nil, markerEndSpecified: Bool = false) {}
+}
+public struct PyreonFlowConnection: Equatable {
+  public var source: String = ""
+  public var target: String = ""
+  public var sourceHandle: String? = nil
+  public var targetHandle: String? = nil
+  public init(source: String, target: String, sourceHandle: String? = nil, targetHandle: String? = nil) {}
+}
+public struct PyreonFlowSelection<T> { public let nodes: [PyreonFlowNode<T>]; public let edges: [PyreonFlowEdge] }
+public struct PyreonFlowNodeChange { public let type: String; public let id: String; public let position: PyreonXYPosition? }
+public struct PyreonFlowEdgeChange { public let type: String; public let id: String?; public let edge: PyreonFlowEdge? }
+public struct PyreonFlowConnectStart { public let nodeId: String; public let handleId: String }
+public struct PyreonFlowPaneEvent { public let position: PyreonXYPosition }
+public struct PyreonFlowSnapshot<T> { public let nodes: [PyreonFlowNode<T>]; public let edges: [PyreonFlowEdge]; public let viewport: PyreonFlowViewport? }
+public struct PyreonFlowSnapLines { public let x: Double?; public let y: Double?; public let snappedPosition: PyreonXYPosition }
+public struct PyreonFlowLayoutOptions { public init(direction: String = "DOWN", nodeSpacing: Double = 20, layerSpacing: Double = 40, animate: Bool = true, animationDuration: Double = 300) {} }
+public struct PyreonFlowLayoutPosition { public let id: String; public let position: PyreonXYPosition }
+public func pyreonComputeFlowLayout<T>(_ nodes: [PyreonFlowNode<T>], edges: [PyreonFlowEdge], algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()) async -> [PyreonFlowLayoutPosition] { [] }
 public final class PyreonFlowState<T> {
   public init(
     nodes: [PyreonFlowNode<T>] = [],
     edges: [PyreonFlowEdge] = [],
     viewport: PyreonFlowViewport = PyreonFlowViewport(),
     minZoom: Double = 0.1,
-    maxZoom: Double = 4
+    maxZoom: Double = 4,
+    snapToGrid: Bool = false,
+    snapGrid: Double = 15,
+    nodeExtent: PyreonFlowNodeExtent? = nil,
+    defaultMarkerEnd: PyreonFlowMarker? = PyreonFlowMarker(type: "arrowclosed"),
+    nodesDraggable: Bool = true, nodesConnectable: Bool = true, nodesSelectable: Bool = true, nodesFocusable: Bool = true,
+    edgesFocusable: Bool = true, disableKeyboardA11y: Bool = false, nodesDeletable: Bool = true, edgesDeletable: Bool = true, edgesReconnectable: Bool = true,
+    edgeInteractionWidth: Double = 20, connectionRadius: Double = 0, pannable: Bool = true, panOnDrag: Bool = true, panOnScroll: Bool = false, panOnScrollSpeed: Double = 0.5, zoomable: Bool = true, zoomOnScroll: Bool = true, zoomOnPinch: Bool = true, zoomOnDoubleClick: Bool = false, selectionOnDrag: Bool = false, selectionMode: String = "partial", connectionMode: String = "strict", elevateNodesOnSelect: Bool = true, elevateEdgesOnSelect: Bool = false, autoPanOnNodeDrag: Bool = true, autoPanOnConnect: Bool = true, autoPanSpeed: Double = 15, multiSelect: Bool = true, onlyRenderVisibleElements: Bool = false, snapToObjects: Bool = true,
+    defaultEdgeType: String = "bezier", connectionLineType: String = "bezier", defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(), fitView: Bool = false, fitViewPadding: Double = 0.1, autoHistory: Bool = true,
+    connectionRules: [String: [String]]? = nil,
+    isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil,
+    searchText: ((T) -> String?)? = nil,
+    reducedMotion: Bool? = nil,
+    deleteKeys: [String]? = ["Delete", "Backspace"], multiSelectionKey: String? = "shift", selectionKey: String? = "shift", zoomActivationKey: String? = "ctrl", preventScrolling: Bool = true
   ) {}
+  public var minZoom = 0.1; public var maxZoom = 4.0; public var snapToGrid = false; public var snapGrid = 15.0
+  public var nodeExtent: PyreonFlowNodeExtent? = nil; public var connectionRules: [String: [String]]? = nil
+  public var connectionValidator: ((PyreonFlowConnection) -> Bool)? = nil; public var reducedMotion: Bool? = nil
+  public var defaultMarkerEnd: PyreonFlowMarker? = nil
+  public var nodesDraggable = true; public var nodesConnectable = true; public var nodesSelectable = true; public var nodesFocusable = true
+  public var edgesFocusable = true; public var disableKeyboardA11y = false; public var nodesDeletable = true; public var edgesDeletable = true; public var edgesReconnectable = true
+  public var edgeInteractionWidth = 20.0; public var connectionRadius = 0.0; public var pannable = true; public var panOnDrag = true; public var panOnScroll = false; public var panOnScrollSpeed = 0.5
+  public var zoomable = true; public var zoomOnScroll = true; public var zoomOnPinch = true; public var zoomOnDoubleClick = false
+  public var selectionOnDrag = false; public var selectionMode = "partial"; public var connectionMode = "strict"; public var elevateNodesOnSelect = true; public var elevateEdgesOnSelect = false; public var autoPanOnNodeDrag = true; public var autoPanOnConnect = true; public var autoPanSpeed: Double = 15; public var multiSelect = true; public var onlyRenderVisibleElements = false; public var snapToObjects = true
+  public var defaultEdgeType = "bezier"; public var connectionLineType = "bezier"; public var defaultEdgeOptions = PyreonFlowDefaultEdgeOptions(); public var fitViewOnLoad = false; public var fitViewPadding = 0.1
+  public var autoHistory = true; public var deleteKeys: [String]? = ["Delete", "Backspace"]; public var multiSelectionKey: String? = "shift"; public var selectionKey: String? = "shift"; public var zoomActivationKey: String? = "ctrl"; public var preventScrolling = true
   public private(set) var nodes: [PyreonFlowNode<T>] = []
+  public var nodeLookup: [String: PyreonFlowNode<T>] { [:] }
   public private(set) var edges: [PyreonFlowEdge] = []
+  public var edgeLookup: [String: PyreonFlowEdge] { [:] }
+  public private(set) var measurements: [String: PyreonFlowNodeMeasurement] = [:]
   public private(set) var viewport: PyreonFlowViewport = PyreonFlowViewport()
   public var containerSize = PyreonFlowContainerSize()
   public var zoom: Double { viewport.zoom }
   public func getNode(_ id: String) -> PyreonFlowNode<T>? { nil }
+  public func getNodeDimensions(_ id: String) -> PyreonFlowDimensions { PyreonFlowDimensions(width: 150, height: 40) }
+  public func updateNodeMeasurement(_ id: String, width: Double, height: Double, handles: [PyreonFlowMeasuredHandle] = []) {}
+  public func replaceMeasurements(_ next: [String: PyreonFlowNodeMeasurement]) {}
+  public func updateMeasurements(_ update: ([String: PyreonFlowNodeMeasurement]) -> [String: PyreonFlowNodeMeasurement]) {}
+  public func clearNodeMeasurement(_ id: String) {}
+  public func batch(_ operation: () -> Void) { operation() }
+  public func dispose() {}
+  public func layout(_ algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()) {}
+  public func isValidConnection(_ connection: PyreonFlowConnection) -> Bool { true }
+  public func connect(_ connection: PyreonFlowConnection, id: String? = nil) -> PyreonFlowEdge? { nil }
+  public func resolvedMarkers(_ edge: PyreonFlowEdge) -> (start: PyreonFlowMarker?, end: PyreonFlowMarker?) { (nil, nil) }
+  public func snappedNodePosition(_ id: String, _ position: PyreonXYPosition, excluding: Set<String> = [], threshold: Double = 5) -> PyreonXYPosition { position }
+  public func nodesInSelection(from start: PyreonXYPosition, to end: PyreonXYPosition) -> [String] { [] }
+  @discardableResult public func emitNodeContextMenu(_ id: String) -> Bool { false }; @discardableResult public func emitEdgeContextMenu(_ id: String) -> Bool { false }; @discardableResult public func emitPaneContextMenu(_ position: PyreonXYPosition) -> Bool { false }
+  public func emitNodeMouseEnter(_ id: String) {}; public func emitNodeMouseLeave(_ id: String) {}; public func emitEdgeMouseEnter(_ id: String) {}; public func emitEdgeMouseLeave(_ id: String) {}
+  public func emitNodeClick(_ id: String) {}; public func emitNodeDoubleClick(_ id: String) {}; public func emitNodeDragStart(_ id: String) {}; public func emitNodeDrag(_ id: String) {}; public func emitNodeDragEnd(_ id: String) {}
+  public func emitConnectStart(nodeId: String, handleId: String?) {}; public func emitConnectEnd(_ connection: PyreonFlowConnection?) {}; public func emitPaneClick(_ position: PyreonXYPosition) {}; public func emitEdgeClick(_ id: String) {}
   public func addNode(_ node: PyreonFlowNode<T>) {}
+  public func addNodes(_ nodes: [PyreonFlowNode<T>]) {}
+  public func setNodes(_ nodes: [PyreonFlowNode<T>]) {}
+  public func setNodes(_ update: ([PyreonFlowNode<T>]) -> [PyreonFlowNode<T>]) {}
   public func removeNode(_ id: String) {}
+  public func removeNodes(_ ids: [String]) {}
   public func updateNodePosition(_ id: String, _ position: PyreonXYPosition) {}
+  public func updateNodeData(_ id: String, _ update: (inout T) -> Void) {}
+  public func updateNodeDataFromNode(_ id: String, _ update: (PyreonFlowNode<T>) -> T) {}
+  public func updateNode(_ id: String, _ update: (inout PyreonFlowNode<T>) -> Void) {}
+  public func setNodeExtent(minX: Double, minY: Double, maxX: Double, maxY: Double) {}
+  public func clearNodeExtent() {}
+  public func clampToExtent(_ position: PyreonXYPosition, _ nodeWidth: Double = 150, _ nodeHeight: Double = 40) -> PyreonXYPosition { position }
   public func getEdge(_ id: String) -> PyreonFlowEdge? { nil }
   public func addEdge(_ edge: PyreonFlowEdge) {}
+  public func addEdges(_ edges: [PyreonFlowEdge]) {}
+  public func setEdges(_ edges: [PyreonFlowEdge]) {}
+  public func setEdges(_ update: ([PyreonFlowEdge]) -> [PyreonFlowEdge]) {}
   public func removeEdge(_ id: String) {}
+  public func updateEdge(_ id: String, _ update: (inout PyreonFlowEdge) -> Void) {}
+  public func reconnectEdge(_ id: String, source: String? = nil, target: String? = nil, sourceHandle: String? = nil, targetHandle: String? = nil) {}
+  public func addEdgeWaypoint(_ edgeId: String, _ point: PyreonXYPosition, _ index: Int? = nil) {}
+  public func removeEdgeWaypoint(_ edgeId: String, _ index: Int) {}
+  public func updateEdgeWaypoint(_ edgeId: String, _ index: Int, _ point: PyreonXYPosition) {}
+  public func removeEdges(_ ids: [String]) {}
   public func isNodeSelected(_ id: String) -> Bool { false }
   public func isEdgeSelected(_ id: String) -> Bool { false }
   public func selectedNodes() -> [String] { [] }
   public func selectedEdges() -> [String] { [] }
   public func selectNode(_ id: String, additive: Bool = false) {}
+  public func selectNodes(_ ids: [String], additive: Bool = false) {}
   public func deselectNode(_ id: String) {}
   public func selectEdge(_ id: String, additive: Bool = false) {}
   public func clearSelection() {}
   public func selectAll() {}
   public func deleteSelected() {}
-  public func zoomTo(_ z: Double) {}
-  public func zoomIn() {}
-  public func zoomOut() {}
+  public func copySelected() {}
+  public func paste(_ offset: PyreonXYPosition = PyreonXYPosition(x: 50, y: 50)) {}
+  public func pushHistory() {}
+  public func undo() {}
+  public func redo() {}
+  public func toJSON() -> PyreonFlowSnapshot<T> { PyreonFlowSnapshot(nodes: [], edges: [], viewport: nil) }
+  public func fromJSON(_ snapshot: PyreonFlowSnapshot<T>) {}
+  public func zoomTo(_ z: Double, duration: Double = 0) {}
+  public func zoomIn(duration: Double = 0) {}
+  public func zoomOut(duration: Double = 0) {}
   public func panTo(_ position: PyreonXYPosition) {}
-  public func fitView(_ nodeIds: [String]? = nil, padding: Double = 0.1) {}
+  public func setViewport(x: Double? = nil, y: Double? = nil, zoom: Double? = nil, duration: Double = 0) {}
+  public func setViewport(_ next: PyreonFlowViewport) {}
+  public func setViewport(_ update: (PyreonFlowViewport) -> PyreonFlowViewport) {}
+  public func replaceContainerSize(_ next: PyreonFlowContainerSize) {}
+  public func updateContainerSize(_ update: (PyreonFlowContainerSize) -> PyreonFlowContainerSize) {}
+  public func setCenter(_ x: Double, _ y: Double, zoom: Double? = nil, duration: Double = 0) {}
+  public func animateViewport(x: Double? = nil, y: Double? = nil, zoom: Double? = nil, duration: Double = 300) {}
+  public func screenToFlowPosition(_ position: PyreonXYPosition) -> PyreonXYPosition { position }
+  public func flowToScreenPosition(_ position: PyreonXYPosition) -> PyreonXYPosition { position }
+  public func isNodeVisible(_ id: String) -> Bool { false }
+  public func fitView(_ nodeIds: [String]? = nil, padding: Double? = nil, duration: Double = 0) {}
   public func getConnectedEdges(_ nodeId: String) -> [PyreonFlowEdge] { [] }
   public func getIncomers(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }
   public func getOutgoers(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }
+  public func findNodes(_ predicate: (PyreonFlowNode<T>) -> Bool) -> [PyreonFlowNode<T>] { [] }
+  public func searchNodes(_ query: String) -> [PyreonFlowNode<T>] { [] }
+  public func getChildNodes(_ parentId: String) -> [PyreonFlowNode<T>] { [] }
+  public func getAbsolutePosition(_ nodeId: String) -> PyreonXYPosition { PyreonXYPosition(x: 0, y: 0) }
+  public func getProximityConnection(_ nodeId: String, _ threshold: Double = 50) -> PyreonFlowConnection? { nil }
+  public func getOverlappingNodes(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }
+  public func getIntersectingNodes(_ nodeId: String, partially: Bool = true) -> [PyreonFlowNode<T>] { [] }
+  public func getIntersectingNodes(_ rect: PyreonFlowRect, partially: Bool = true) -> [PyreonFlowNode<T>] { [] }
+  public func isNodeIntersecting(_ nodeId: String, _ area: PyreonFlowRect, partially: Bool = true) -> Bool { false }
+  public func isNodeIntersecting(_ rect: PyreonFlowRect, _ area: PyreonFlowRect, partially: Bool = true) -> Bool { false }
+  public func getNodesBounds(_ nodeIds: [String]? = nil) -> PyreonFlowRect { PyreonFlowRect(x: 0, y: 0, width: 0, height: 0) }
+  public func resolveCollisions(_ nodeId: String, _ spacing: Double = 10) {}
+  public func getSnapLines(_ nodeId: String, _ position: PyreonXYPosition, threshold: Double = 5, excluding: Set<String> = []) -> PyreonFlowSnapLines { PyreonFlowSnapLines(x: nil, y: nil, snappedPosition: position) }
+  @discardableResult public func onConnect(_ callback: @escaping (PyreonFlowConnection) -> Void) -> () -> Void { {} }
+  @discardableResult public func onViewportChange(_ callback: @escaping (PyreonFlowViewport) -> Void) -> () -> Void { {} }
+  @discardableResult public func onNodeClick(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { {} }
+  @discardableResult public func onNodeDoubleClick(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { {} }
+  @discardableResult public func onNodeContextMenu(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { {} }
+  @discardableResult public func onEdgeContextMenu(_ callback: @escaping (PyreonFlowEdge) -> Void) -> () -> Void { {} }
+  @discardableResult public func onPaneContextMenu(_ callback: @escaping (PyreonXYPosition) -> Void) -> () -> Void { {} }
+  @discardableResult public func onNodeMouseEnter(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { {} }
+  @discardableResult public func onNodeMouseLeave(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { {} }
+  @discardableResult public func onEdgeMouseEnter(_ callback: @escaping (PyreonFlowEdge) -> Void) -> () -> Void { {} }
+  @discardableResult public func onEdgeMouseLeave(_ callback: @escaping (PyreonFlowEdge) -> Void) -> () -> Void { {} }
+  @discardableResult public func onNodeDragStart(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { {} }
+  @discardableResult public func onNodeDrag(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { {} }
+  @discardableResult public func onNodeDragEnd(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { {} }
+  @discardableResult public func onEdgeClick(_ callback: @escaping (PyreonFlowEdge) -> Void) -> () -> Void { {} }
+  @discardableResult public func onSelectionChange(_ callback: @escaping (PyreonFlowSelection<T>) -> Void) -> () -> Void { {} }
+  @discardableResult public func onNodesDelete(_ callback: @escaping ([PyreonFlowNode<T>]) -> Void) -> () -> Void { {} }
+  @discardableResult public func onEdgesDelete(_ callback: @escaping ([PyreonFlowEdge]) -> Void) -> () -> Void { {} }
+  @discardableResult public func onNodesChange(_ callback: @escaping ([PyreonFlowNodeChange]) -> Void) -> () -> Void { {} }
+  @discardableResult public func onEdgesChange(_ callback: @escaping ([PyreonFlowEdgeChange]) -> Void) -> () -> Void { {} }
+  @discardableResult public func onConnectStart(_ callback: @escaping (PyreonFlowConnectStart) -> Void) -> () -> Void { {} }
+  @discardableResult public func onConnectEnd(_ callback: @escaping (PyreonFlowConnection?) -> Void) -> () -> Void { {} }
+  @discardableResult public func onPaneClick(_ callback: @escaping (PyreonFlowPaneEvent) -> Void) -> () -> Void { {} }
+  public func moveSelectedNodes(_ dx: Double, _ dy: Double) {}
+  public func handleKeyboardCommand(_ key: String, nodeId: String? = nil, shift: Bool = false, command: Bool = false, repeatKey: Bool = false, edgeId: String? = nil) -> Bool { false }
+  public func focusNode(_ nodeId: String, _ focusZoom: Double? = nil) {}
+}
+@available(iOS 17.0, macOS 14.0, *)
+public enum PyreonFlowBackgroundVariant {
+  case dots, lines, cross
+  public static func from(_ value: String) -> Self { .dots }
+}
+public struct PyreonFlowBackgroundStyle {
+  public init(variant: PyreonFlowBackgroundVariant = .dots, gap: Double = 20, size: Double = 1, color: String? = nil) {}
+}
+public enum PyreonFlowControlsPosition {
+  case topLeft, topRight, bottomLeft, bottomRight
+  public static func from(_ value: String) -> Self { .bottomLeft }
+}
+public struct PyreonFlowControlsStyle {
+  public init(showZoomIn: Bool = true, showZoomOut: Bool = true, showFitView: Bool = true, showLock: Bool = false, position: PyreonFlowControlsPosition = .bottomLeft) {}
+}
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonStandaloneFlowControls<T>: View {
+  public init(state: PyreonFlowState<T>, style: PyreonFlowControlsStyle = .init(), extraContent: @escaping () -> AnyView? = { nil }) {}
+  public var body: some View { EmptyView() }
+}
+public struct PyreonFlowMiniMapStyle {
+  public init(nodeColor: String? = nil, maskColor: String = "#000000", width: Double = 200, height: Double = 150, pannable: Bool = true, zoomable: Bool = true) {}
+}
+extension View {
+  public func pyreonFlowColorMode(_ colorMode: String) -> some View { self }
+}
+public struct PyreonFlowDefaultNode: View {
+  public init(label: String, selected: Bool) {}
+  public var body: some View { EmptyView() }
+}
+public struct PyreonFlowNodeResizerConfig {
+  public init(minWidth: Double = 50, minHeight: Double = 30, handleSize: Double = 8, showEdgeHandles: Bool = false) {}
+}
+public struct PyreonFlowNodeToolbarConfig {
+  public init(position: String = "top", align: String = "center", offset: Double = 8, showOnSelect: Bool = true, selectedOverride: Bool? = false, nodeIdOverride: String? = nil) {}
+}
+public struct PyreonFlowCustomEdgeContext {
+  public let edge: PyreonFlowEdge
+  public let sourceX: Double; public let sourceY: Double; public let targetX: Double; public let targetY: Double
+  public let sourcePosition: PyreonFlowPosition; public let targetPosition: PyreonFlowPosition
+  public let selected: Bool; public let labelX: Double; public let labelY: Double
+}
+public struct PyreonFlowConnectionLineContext {
+  public let sourceX: Double; public let sourceY: Double; public let targetX: Double; public let targetY: Double
+  public let sourcePosition: PyreonFlowPosition; public let path: PyreonFlowPathResult
+}
+public struct PyreonFlowCustomEdgePath: View {
+  public init(result: PyreonFlowPathResult, color: String? = "#999999", width: Double = 1.5, dash: [Double]? = nil, fill: String? = nil) {}
+  public var body: some View { EmptyView() }
+}
+public struct PyreonFlowSvgShape {
+  public init(result: PyreonFlowPathResult, stroke: String? = nil, strokeWidth: Double = 1, fill: String? = "#000000") {}
+}
+public struct PyreonFlowSvg: View {
+  public init(width: Double? = nil, height: Double? = nil, viewBox: [Double]? = nil, stretch: Bool = false, shapes: [PyreonFlowSvgShape]) {}
+  public var body: some View { EmptyView() }
+}
+public struct PyreonFlowBaseEdgePath: View {
+  public init(result: PyreonFlowPathResult, color: String? = nil, width: Double = 1.5) {}
+  public var body: some View { EmptyView() }
+}
+public struct PyreonFlowEdgeText: View {
+  public init(x: Double, y: Double, label: String) {}
+  public var body: some View { EmptyView() }
+}
+public struct PyreonFlowEdgeLabelRenderer<Content: View>: View {
+  public init(@ViewBuilder content: () -> Content) {}
+  public var body: some View { EmptyView() }
+}
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonFlowView<T, NodeContent: View>: View {
+  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, background: PyreonFlowBackgroundStyle? = nil, controls: PyreonFlowControlsStyle? = nil, controlsContent: @escaping () -> AnyView? = { nil }, miniMap: PyreonFlowMiniMapStyle? = nil, miniMapNodeColor: @escaping (PyreonFlowNode<T>) -> String = { _ in "" }, ariaLabel: String = "Flow diagram", colorMode: String = "light", nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] }, nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil }, nodeToolbarConfigs: @escaping (PyreonFlowNode<T>) -> [PyreonFlowNodeToolbarConfig] = { _ in [] }, nodeToolbar: @escaping (PyreonFlowNode<T>, Int, Bool, Bool) -> AnyView? = { _, _, _, _ in nil }, customEdgeTypes: Set<String> = [], customEdge: @escaping (PyreonFlowCustomEdgeContext) -> AnyView? = { _ in nil }, customConnectionLineEnabled: Bool = false, customConnectionLine: @escaping (PyreonFlowConnectionLineContext) -> AnyView? = { _ in nil }, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent) {}
+  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, background: PyreonFlowBackgroundStyle? = nil, controls: PyreonFlowControlsStyle? = nil, controlsContent: @escaping () -> AnyView? = { nil }, miniMap: PyreonFlowMiniMapStyle? = nil, miniMapNodeColor: @escaping (PyreonFlowNode<T>) -> String = { _ in "" }, ariaLabel: String = "Flow diagram", colorMode: String = "light", nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] }, nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil }, nodeToolbarConfigs: @escaping (PyreonFlowNode<T>) -> [PyreonFlowNodeToolbarConfig] = { _ in [] }, nodeToolbar: @escaping (PyreonFlowNode<T>, Int, Bool, Bool) -> AnyView? = { _, _, _, _ in nil }, customEdgeTypes: Set<String> = [], customEdge: @escaping (PyreonFlowCustomEdgeContext) -> AnyView? = { _ in nil }, customConnectionLineEnabled: Bool = false, customConnectionLine: @escaping (PyreonFlowConnectionLineContext) -> AnyView? = { _ in nil }, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>, Bool, Bool) -> NodeContent) {}
+  public var body: some View { EmptyView() }
 }
 public struct PyreonI18n {
   // fallbackLocale is OPTIONAL and DEFAULTED in the real PyreonI18n. The stub
@@ -1239,6 +1600,17 @@ public struct PyreonWebView: View {
   public init(src: String? = nil, html: String? = nil, data: String? = nil, onMessage: ((String) -> Void)? = nil) {}
   public typealias Body = Never
 }
+public struct PyreonChartWebViewSelection { public let name: String? }
+public struct PyreonChartWebViewEvent { public let name: String; public let payload: [String: Any] }
+public struct PyreonChartWebViewError: Error { public let message: String }
+public func pyreonChartWebViewData(option: String, commands: String, loading: Bool, loadingOptions: String, group: String? = nil) -> String { option }
+public func pyreonDispatchChartWebViewMessage(_ message: String, onSelect: ((PyreonChartWebViewSelection) -> Void)? = nil, onEvent: ((PyreonChartWebViewEvent) -> Void)? = nil, onError: ((PyreonChartWebViewError) -> Void)? = nil) {}
+public struct PyreonFlowWebViewSelection { public let id: String; public let data: Any? }
+public struct PyreonFlowWebViewViewport { public let x: Double; public let y: Double; public let zoom: Double }
+public struct PyreonFlowWebViewEvent { public let type: String; public let id: String?; public let data: Any?; public let source: String?; public let target: String?; public let viewport: PyreonFlowWebViewViewport? }
+public struct PyreonFlowWebViewError: Error { public let message: String }
+public func pyreonFlowWebViewData(graph: String, commands: String) -> String { graph }
+public func pyreonDispatchFlowWebViewMessage(_ message: String, onSelect: ((PyreonFlowWebViewSelection) -> Void)? = nil, onMessage: ((Any?) -> Void)? = nil, onEvent: ((PyreonFlowWebViewEvent) -> Void)? = nil, onError: ((PyreonFlowWebViewError) -> Void)? = nil) {}
 
 // ---- PyreonForm (@pyreon/form -> runtime-swift's PyreonForm, a final class) ----
 // The emit does @State private var form = PyreonForm(initialValues:validators:)
@@ -1657,6 +2029,21 @@ public struct AsyncImage: View {
 export const SWIFT_CHART_VIEW_STUBS = `
 // ---- @pyreon/charts/plot hosts (chart-hosts.ts emit) ----
 public struct GeometryProxy { public var size: CGSize = CGSize() }
+public func pyreonChartDataUrl(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double) -> String { "" }
+public func pyreonShareChartImage(_ cmds: [PyreonDrawCmd], _ width: Double, _ height: Double, _ name: String) {}
+public final class PyreonChartHandle {
+  public var zoom = ZoomWindow(start: 0.0, end: 1.0)
+  public var hover: Int = -1
+  public var selected: [Int] = []
+  public var hidden: [Int] = []
+  public var seriesCount: Int = 0
+  public var brushType: String = ""
+  public var areas: [BrushArea] = []
+  public var step: Int = -1
+  public var playing: Bool = false
+  public init(seriesCount: Int = 0) { self.seriesCount = seriesCount }
+  public func dispatch(_ action: ChartActionInput) {}
+}
 public struct GeometryReader<Content: View>: View {
   public init(@ViewBuilder content: @escaping (GeometryProxy) -> Content) {}
   public typealias Body = Never
@@ -1664,13 +2051,23 @@ public struct GeometryReader<Content: View>: View {
 public struct PyreonChartCanvas: View {
   public var cmds: [PyreonDrawCmd]
   public var fontFamily: String?
-  public init(cmds: [PyreonDrawCmd], fontFamily: String? = nil) { self.cmds = cmds; self.fontFamily = fontFamily }
+  public var durationMs: Double
+  public var universal: Bool
+  public var animated: Bool
+  public init(cmds: [PyreonDrawCmd], durationMs: Double = 350.0, universal: Bool = false, animated: Bool = true, fontFamily: String? = nil) { self.cmds = cmds; self.fontFamily = fontFamily; self.durationMs = durationMs; self.universal = universal; self.animated = animated }
   public var body: some View { EmptyView() }
 }
 public func pyreonChartColor(_ s: String) -> Color { Color.clear }
+public func pyreonLocaleNumberFormatter(_ tag: String) -> (Double) -> String { { String($0) } }
+public func pyreonLocaleDateFormatter(_ tag: String) -> (Double) -> String { { String($0) } }
+public func pyreonTransposeCmds(_ cmds: [PyreonDrawCmd]) -> [PyreonDrawCmd] { cmds }
 public func pyreonMirrorCmds(_ cmds: [PyreonDrawCmd], _ width: Double) -> [PyreonDrawCmd] { cmds }
 public struct PyreonChartEntrance<Content: View>: View {
   public init(durationMs: Double, @ViewBuilder content: @escaping (Double) -> Content) {}
+  public typealias Body = Never
+}
+public struct PyreonChartClock<Content: View>: View {
+  public init(@ViewBuilder content: @escaping (Double) -> Content) {}
   public typealias Body = Never
 }
 `

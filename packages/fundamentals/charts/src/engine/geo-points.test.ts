@@ -72,8 +72,8 @@ describe('geo coordinate option mapping', () => {
     expect(isFamilyOption(option)).toBe(true)
     const f = compileFamily(option)!
     if (f.plan.kind !== 'geoPoints') throw new Error('kind')
-    expect(f.plan.points).toEqual([{ name: 'p', lon: 5, lat: 5, value: 3 }, { lon: 15, lat: 5, value: 9 }])
-    expect(f.plan.options).toMatchObject({ radius: 6, effect: true, showLabels: true, color: '#123456' })
+    expect(f.plan.points).toEqual([{ name: 'p', lon: 5, lat: 5, value: 3, effect: true }, { lon: 15, lat: 5, value: 9, effect: true }])
+    expect(f.plan.options).toMatchObject({ radius: 6, showLabels: true, color: '#123456' })
     expect(f.plan.map.borderColor).toBe('#000000')
     expect(f.warnings.map((w) => w.code)).toEqual(['series-data-shape'])
     expect(familyToSvg(f.plan)).toContain('<circle')

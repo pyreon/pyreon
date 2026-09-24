@@ -24,6 +24,57 @@ test.describe('atlas build — static site', () => {
     expect(errors).toEqual([])
   })
 
+  test('optional render props stay absent and the component preview mounts', async ({ page }) => {
+    // Discovery marks every function-valued prop as `reactive`. Only on[A-Z]
+    // props are events: injecting an Actions logger as `children` changes a
+    // render-prop component's branch and used to leave the static canvas empty.
+    await page.goto('/render-prop-card/')
+    await expect(page.getByTestId('canvas-name')).toHaveText('RenderPropCard')
+    await expect(page.getByTestId('canvas-preview').getByRole('button')).toHaveText(
+      'Default render-prop preview',
+    )
+  })
+
+  test('every discovered component produces VISIBLE preview DOM', async ({ page }) => {
+    // A catalog-wide injection bug can leave the chrome healthy while every
+    // canvas contains only Pyreon's anchor comment. Exercise every emitted
+    // component route so that failure cannot hide behind the default entry.
+    //
+    // VISIBLE, not merely present: the deployed workbench once rendered all
+    // 108 of `@pyreon/ui-components` as empty shells — `<button>` 26×10,
+    // `<h2>` 0×0 — because derived scenarios carried no content, and a
+    // child-count assertion passed on every one of them. A box with area is
+    // the cheapest fact that separates "mounted something" from "shows
+    // something".
+    for (const id of [
+      'badge',
+      'button',
+      'chip',
+      'guarded-delete',
+      'render-prop-card',
+      'search-field',
+      'stack',
+    ]) {
+      await page.goto(`/${id}/`)
+      const preview = page.getByTestId('canvas-preview')
+      await expect(preview.locator(':scope > *')).not.toHaveCount(0)
+      await expect(preview.locator('[data-atlas-error]')).toHaveCount(0)
+      const box = await preview.locator(':scope > *').first().boundingBox()
+      expect(box, id).not.toBeNull()
+      expect(box!.width * box!.height, `${id} renders with no area`).toBeGreaterThan(200)
+    }
+  })
+
+  test('a rocketstyle text component is seeded with its name; a container with blocks', async ({ page }) => {
+    // The seed is what the scan verified AND what the canvas shows — one
+    // materializer on both sides. A text component's label is editable; a
+    // layout container gets placeholder children it can arrange.
+    await page.goto('/chip/')
+    await expect(page.getByTestId('canvas-preview')).toHaveText('Chip')
+    await page.goto('/stack/')
+    await expect(page.getByTestId('canvas-preview').locator('[data-atlas-content="block"]')).toHaveCount(3)
+  })
+
   test('the --title flag reaches the page title AND the chrome', async ({ page }) => {
     await page.goto('/')
     await expect(page).toHaveTitle('Atlas E2E')

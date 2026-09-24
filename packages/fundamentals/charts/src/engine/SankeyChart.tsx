@@ -17,6 +17,8 @@ export interface SankeyChartProps extends CanvasHostProps {
   /** Space kept for labels on both sides; default 80. */
   gutter?: Double
   sankey?: SankeyOptions
+  /** `'vertical'` lays the chart out top-to-bottom — the horizontal layout reflected across the diagonal (ECharts `orient` / `layout`). */
+  orient?: 'horizontal' | 'vertical'
   /** Fired with the node or link under the click, or null for a miss. */
   onSelect?: (hit: SankeyHit) => void
   /** The engine's INDEX hit — the multiplatform-safe twin of `onSelect` (what the native tap gesture reports). */
@@ -29,6 +31,7 @@ export function SankeyChart(props: SankeyChartProps): VNode {
   const opts = (t: ChartTheme): SankeyOptions => ({ palette: t.palette, labelColor: t.label, ...props.sankey })
   return canvasHost<SankeyLayout>({
     props,
+    transpose: () => props.orient === 'vertical',
     defaultHeight: 300,
     caption: 'Flow data',
     track: () => {
@@ -47,6 +50,16 @@ export function SankeyChart(props: SankeyChartProps): VNode {
       props.onSelectIndex?.(hitSankeyIndex(layout, px, py))
     },
     tooltip: (layout, px, py) => orNull(sankeyTip(layout, px, py)),
+    // ECharts reports a node or an edge; an edge is named "source > target".
+    item: (layout, px, py) => {
+      const hit = hitSankeyIndex(layout, px, py)
+      const n = layout.nodes[hit.node]
+      if (n !== undefined) return { seriesIndex: 0, dataIndex: hit.node, name: n.name, value: n.value, color: n.color, dataType: 'node' }
+      const l = layout.links[hit.link]
+      if (l === undefined) return null
+      const name = (layout.nodes[l.source]?.name ?? '') + ' > ' + (layout.nodes[l.target]?.name ?? '')
+      return { seriesIndex: 0, dataIndex: hit.link, name, value: l.value, color: layout.nodes[l.source]?.color, dataType: 'edge' }
+    },
     // Enter on a node selects it through the same hit path a click takes, at the node's centre.
     pick: (layout, i) => {
       const node = layout.nodes[i]

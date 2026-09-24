@@ -6,39 +6,44 @@
 // full ECharts feature set for the long tail.
 
 import { createUniqueId, h } from '@pyreon/core'
-import { A11Y_TABLE_MAX, shiftCmds } from './canvas-host'
+import { a11yTableNode, A11Y_TABLE_MAX, shiftCmds } from './canvas-host'
 import type { LegendPosition } from './canvas-host'
-import { lttb, minMaxBuckets } from './decimate'
+import { lttbIndices, minMaxBuckets } from './decimate-values'
 import { resolveChartTheme, tooltipStyle, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { batch, effect, isClient, signal, untrack } from '@pyreon/reactivity'
 import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas } from './canvas-web'
-import { renderLegend } from './legend'
+import { placeLegend } from './legend'
 import type { LegendPager } from './legend'
 import { renderTitle } from './title'
-import { sameShape, sameValues, tweenValues } from './tween'
-import { hitToolbox, renderToolbox, toolboxTools } from './toolbox'
+import { easeOutCubic, sameShape, sameValues, tweenValues } from './tween'
+import { cmdsEqual, universalTweenCmds } from './cmd-tween'
+import { hitToolbox, renderToolbox } from './toolbox'
+import { toolboxTools } from './toolbox-config'
 import { renderSvg } from './svg'
-import type { ToolboxTool } from './toolbox'
+import type { ToolboxConfig, ToolboxTool } from './toolbox-config'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
-import { geometrySpec, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
+import { applySeriesSelection, categoryIndex, categoryPoints, geometrySpec, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesDomain } from './render'
 import { mirrorCmds, screenRectX } from './rtl'
-import { layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
+import { layoutSeriesPointsAt } from './layout'
 import type { PlotLayout } from './layout'
 import { dateFormatter, numberFormatter } from './locale'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker, Series } from './render'
 import { scaleLinear } from './scale'
-import { resolveCategories, resolveMarks } from './marks'
-import { plotHitBarsIn, plotHitIndexIn } from './plot-hit'
+import { markLabel, resolveCategories, resolveMarks } from './marks'
+import { plotHitBarsIn, plotHitIndexIn, plotHitSeriesIn } from './plot-hit'
 import type { Mark } from './marks'
-import { chartTable, describeChart } from './a11y'
+import { chartRowCount, chartTable, chartTableRow, describeChart } from './a11y'
 import type { A11yInput } from './a11y'
 import { brushBand, brushRange, renderBrushBand } from './brush'
-import { hideHiddenSeries, legendHitIndex, legendToggle, pagerHit } from './legend-toggle'
+import { applyBrushSelection, brushAreaFromDrag, brushOnlySeries, brushAreaUsable, brushPolygonAdd, brushSelection, renderBrushAreas } from './brush-area'
+import type { BrushArea } from './brush-area'
+import { hideHiddenSeries, legendEntriesGrouped, legendHitIndex, legendToggleGroup, pagerHit, pinSelection } from './legend-toggle'
 import { navigatorDrag, navigatorHit, renderNavigator } from './navigator'
 import { presetHit, presetWindow, renderPresets } from './presets'
-import { isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
+import { clampWindow, isFullWindow, limitZoomWindow, panWindow, sliceRange, windowOfRows, zoomWindow } from './zoom'
+import { applyMagicType } from './magic-type'
 import type { ZoomWindow } from './zoom'
 import type { ChartHandle, ChartLink } from './link'
 import type { Formatter } from './format'
@@ -111,7 +116,8 @@ export interface PlotChartProps<T> {
    * indices. `onSelect` still fires for the pick itself; a miss leaves the
    * selection alone (clearing is an explicit `unselect` / `restore`).
    */
-  selectedMode?: 'single' | 'multiple'
+  /** ECharts' `selectedMode`. `series` pins WHOLE series: a click tints every datum of the one it lands on. */
+  selectedMode?: 'single' | 'multiple' | 'series'
   /** Fired with the selected datums (GLOBAL indices) whenever the set changes — a pick, a dispatch, a `restore`. */
   onSelectChange?: (selected: number[]) => void
   /**
@@ -124,6 +130,18 @@ export interface PlotChartProps<T> {
   onLegendChange?: (hidden: number[]) => void
   /** Fired with the zoom window (fractions; null = everything) whenever it changes — wheel, pan, navigator, preset, dispatch (ECharts `datazoom`). */
   onZoom?: (window: { start: number; end: number } | null) => void
+  /**
+   * A click on the plot — the GLOBAL datum index under the pointer, -1 for a
+   * miss. Fires whatever `selectedMode` says (a pick is `onSelect`); the
+   * ECharts `click` event in this engine's index space.
+   */
+  onClick?: (index: number) => void
+  /** A double-click on the plot, same index space as `onClick` (ECharts `dblclick`). With `dataZoom` the window still resets. */
+  onDoubleClick?: (index: number) => void
+  /** A context-menu gesture on the plot, same index space as `onClick` (ECharts `contextmenu`); the menu is not suppressed. */
+  onContextMenu?: (index: number) => void
+  /** After every paint of the canvas (ECharts `rendered` / `finished` — this engine paints in one pass). */
+  onRendered?: () => void
   /**
    * Hover emphasis: the highlighted datum's column gets a faint band, its
    * bars and points an outline. On by default when the events model is in
@@ -150,6 +168,21 @@ export interface PlotChartProps<T> {
   /** Fired when a brush completes (inclusive datum range) or clears (null). */
   onBrush?: (range: { start: number; end: number } | null) => void
   /**
+   * ECharts' area brush: drag a `rect`, a `polygon` (vertex by vertex along
+   * the drag), a `lineX` column span or a `lineY` row span over the plot.
+   * Datums outside every area fade to `outOfBrushOpacity`; `onBrushSelected`
+   * reports the datums inside, per series. A click clears (unless `multiple`).
+   */
+  brushType?: 'rect' | 'polygon' | 'lineX' | 'lineY' | undefined
+  /** `single` (default): a new drag replaces the area. `multiple`: areas accumulate. */
+  brushMode?: 'single' | 'multiple' | undefined
+  /** ECharts' `outOfBrush.colorAlpha` (default 0.1). */
+  outOfBrushOpacity?: number | undefined
+  /** ECharts' `brush.seriesIndex`: the series the area brush selects; absent = all. */
+  brushSeriesIndex?: number[] | undefined
+  /** The datums inside the brush, per series, in GLOBAL row indices; empty lists when cleared. */
+  onBrushSelected?: (selected: { seriesIndex: number; dataIndex: number[] }[]) => void
+  /**
    * Keyboard navigation: the canvas becomes focusable; Left/Right (and
    * Up/Down) move a focus datum, Home/End jump, Enter/Space select (through
    * `onSelect`), Escape clears. The focused datum is announced in a polite
@@ -171,12 +204,26 @@ export interface PlotChartProps<T> {
   /** Tween duration in ms; default 400. */
   updateDuration?: Double
   /**
+   * Tween a data change that adds/removes a series or a row instead of
+   * snapping (ECharts' `universalTransition`). Off by default: interpolating
+   * mismatched shapes is more work per frame than the same-shape path, and
+   * most updates ARE same-shape (`updateAnimation` alone covers them). With
+   * this on, a series count or row-count change morphs the previous frame's
+   * geometry into the new one — a shrinking bar rather than a bar vanishing
+   * and a new one appearing elsewhere.
+   */
+  universalTransition?: boolean
+  /**
    * The slider dataZoom: a navigator strip under the plot showing the first
    * series over ALL rows with the zoom window as a draggable band — drag the
    * band to move it, drag a handle to resize. Works with or without the
    * inside `dataZoom` (wheel + pan).
    */
   navigator?: boolean
+  /** The zoom window the chart opens on, as fractions of the rows (`{ start: 0.5, end: 1 }` = the second half). */
+  initialZoom?: { start: Double; end: Double }
+  /** ECharts' `zoomLock` / `minSpan` / `maxSpan` for every zoom gesture, as fractions of the rows. */
+  zoomLimits?: { lock?: boolean; minSpan?: Double; maxSpan?: Double }
   /**
    * Draw at most this many rows: past it the visible slice is thinned with
    * LTTB on the first mark (rows stay aligned across marks), so a 100k-point
@@ -280,7 +327,7 @@ export interface PlotChartProps<T> {
    * toggles and any magicType override; `magicType` offers line / bar
    * switches for the independent marks.
    */
-  toolbox?: { saveAsImage?: boolean | 'svg' | 'png'; restore?: boolean; magicType?: ('line' | 'bar')[] }
+  toolbox?: ToolboxConfig
   /** Called with the image (an SVG string, or a PNG data URL) on saveAsImage instead of triggering a download. */
   onSaveImage?: (data: string, format: 'svg' | 'png') => void
   /**
@@ -420,17 +467,55 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   // The hovered datum for the crosshair; -1 = no hover.
   const hoverIdx = props.handle?.hover ?? props.link?.hover ?? signal(-1)
   // The dataZoom window; null = everything (the untouched state).
-  const zoomWin = props.handle?.zoom ?? props.link?.zoom ?? signal<ZoomWindow | null>(null)
+  const zoomWin = props.handle?.zoom ?? props.link?.zoom ?? signal<ZoomWindow | null>(props.initialZoom === undefined || isFullWindow(props.initialZoom) ? null : clampWindow(props.initialZoom))
+  /** Every gesture's window goes through the limits; the full window is stored as null. */
+  const setZoom = (next: ZoomWindow): void => {
+    const l = props.zoomLimits
+    const prev = zoomWin() ?? { start: 0.0, end: 1.0 }
+    const w = l === undefined ? next : limitZoomWindow({ lock: l.lock === true, minSpan: l.minSpan ?? 0.0, maxSpan: l.maxSpan ?? 1.0 }, prev, next)
+    zoomWin.set(isFullWindow(w) ? null : w)
+    // Areas are drawn in pixels over the rows on screen; a new window moves the rows out from under them.
+    if (brushAreas.peek().length > 0) clearBrushAreas()
+  }
+  /** Report the area brush's datums, per series, in GLOBAL rows. */
+  const reportBrushSelected = (): void => {
+    const cb = props.onBrushSelected
+    const f = frameNow()
+    if (cb === undefined || f === null) return
+    const rows = readData()
+    const off = viewRange(rows).from
+    const keep = lastKeep
+    const sel = brushOnlySeries(brushSelection(f.spec, f.layout, brushAreas.peek()), props.brushSeriesIndex ?? [])
+    cb(sel.map((x) => ({ seriesIndex: x.seriesIndex, dataIndex: x.dataIndex.map((v) => { const i = categoryIndex(f.spec, v); return (keep === null ? i : keep[i]!) + off }) })))
+  }
+  const clearBrushAreas = (): void => {
+    brushAreas.set([])
+  }
   // Pinned datums, GLOBAL indices (they survive a zoom); the handle owns them when given.
   const selected = props.handle?.selected ?? signal<number[]>([])
+  // `selectedMode: 'series'` pins SERIES, not datums: the same signal, read as mark indices.
+  const seriesMode = props.selectedMode === 'series'
+  // A SEPARATE signal from the datum pin `selected`: series indices and global row indices must never share one array.
+  const selectedSeries = signal<number[]>([])
   const eventsOn = props.selectedMode !== undefined || props.handle !== undefined || props.onHighlight !== undefined
   const emphasisOn = props.emphasis ?? eventsOn
   // A committed brush band, in GLOBAL datum indices; null = none.
   const brushSel = signal<{ start: number; end: number } | null>(null)
+  // The area brush: its type ('' = off; the toolbox can switch it), keep mode,
+  // committed areas in PLOT pixels, and the one being drawn.
+  // Whether any area brush can run — a static prop or a toolbox brush tool; decides the pointer listeners.
+  const areaBrushOn = props.brushType !== undefined || (props.toolbox?.brush ?? []).length > 0 || props.handle !== undefined
+  // A handle owns the brush state (its `takeGlobalCursor` / `brush` actions move it); the prop seeds it.
+  const areaType = props.handle?.brushType ?? signal<string>(props.brushType ?? '')
+  if (props.handle !== undefined && props.brushType !== undefined && props.handle.brushType.peek() === '') props.handle.brushType.set(props.brushType)
+  const areaKeep = signal(props.brushMode === 'multiple')
+  const brushAreas = props.handle?.brushAreas ?? signal<BrushArea[]>([])
+  let areaDrag: BrushArea | null = null
+  let dragStartY = 0.0
   // In-flight drag bookkeeping. Plain locals, not signals: nothing should
   // repaint on every intermediate pixel except the overlay, which the move
   // handler drives through `draw()` itself.
-  let dragMode: 'pan' | 'brush' | 'nav' | null = null
+  let dragMode: 'pan' | 'brush' | 'nav' | 'zoomSelect' | 'area' | null = null
   let dragStartX = 0.0
   let dragLastX = 0.0
   let dragMoved = false
@@ -499,9 +584,15 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     tweenT = 0.0
     tweenFrame = requestAnimationFrame(tick)
   }
+  // A shape change (series added/removed, row count changed) that the
+  // value-level tween above cannot interpolate — mismatched arrays have no
+  // per-index correspondence. Set by `tweened` below, read once per frame by
+  // `draw` to decide whether to hand off to the command-level morph.
+  let shapeChangedThisFrame = false
   /** The spec actually painted: mid-tween values when a data update is animating. */
   const tweened = (spec: ChartSpec): ChartSpec => {
     const cur = spec.series.map((x) => x.values)
+    shapeChangedThisFrame = false
     if (tweenT >= 1.0 || tweenFrom === null) {
       const enabled = props.updateAnimation !== false && !prefersReducedMotion() && entrance >= 1.0 && (props.updateDuration ?? theme().updateMs) > 0.0
       if (enabled && lastValues !== null && sameShape(lastValues, cur) && !sameValues(lastValues, cur)) {
@@ -511,14 +602,81 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
         // The first tween frame is painted synchronously at t = 0.
         return { ...spec, series: spec.series.map((x, i) => ({ ...x, values: tweenValues(tweenFrom!, cur, 0.0)[i]! })) }
       }
+      if (enabled && lastValues !== null && !sameShape(lastValues, cur)) shapeChangedThisFrame = true
       lastValues = cur
       return spec
     }
     const frame = tweenValues(tweenFrom, cur, tweenT)
     return { ...spec, series: spec.series.map((x, i) => ({ ...x, values: frame[i]! })) }
   }
+  // Command-level tween for a shape change under `universalTransition`: the
+  // previous frame's rendered geometry (not values — the arrays don't line
+  // up) morphs into the new frame's, the same `cmd-tween.ts` machinery
+  // `OptionChart`'s canvas host uses. `lastCoreCmds` is the last SETTLED
+  // (fully-resolved) plot geometry, before the legend/nav/crosshair shift —
+  // the same scope `canvas-host.tsx` calls `family`.
+  let lastCoreCmds: DrawCmd[] | null = null
+  let coreTweenFrom: DrawCmd[] | null = null
+  let coreTweenTo: DrawCmd[] | null = null
+  let coreTweenT = 1.0
+  let coreTweenFrame = 0.0
+  const startCoreTween = (): void => {
+    if (typeof requestAnimationFrame !== 'function') {
+      coreTweenT = 1.0
+      coreTweenFrom = null
+      coreTweenTo = null
+      return
+    }
+    const duration = props.updateDuration ?? theme().updateMs
+    let start = -1.0
+    if (coreTweenFrame !== 0.0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(coreTweenFrame)
+    const tick = (now: number): void => {
+      if (start < 0.0) start = now
+      coreTweenT = Math.min(1.0, (now - start) / duration)
+      if (coreTweenT >= 1.0) {
+        coreTweenFrom = null
+        coreTweenTo = null
+      }
+      draw()
+      if (coreTweenT < 1.0) coreTweenFrame = requestAnimationFrame(tick)
+      else coreTweenFrame = 0.0
+    }
+    coreTweenT = 0.0
+    coreTweenFrame = requestAnimationFrame(tick)
+  }
+  /**
+   * The plot geometry to paint this frame: mid-morph commands while a
+   * shape-change tween runs, else the freshly-rendered target commands
+   * (starting a new tween first when this frame's shape differs from the
+   * last settled one). A no-op — `cmds` returned unchanged — unless
+   * `universalTransition` is on.
+   */
+  const coreCmdsFor = (cmds: DrawCmd[]): DrawCmd[] => {
+    if (props.universalTransition !== true) return cmds
+    if (coreTweenFrom !== null && coreTweenTo !== null && coreTweenT < 1.0) {
+      const out = universalTweenCmds(coreTweenFrom, coreTweenTo, easeOutCubic(coreTweenT))
+      lastCoreCmds = cmds
+      return out
+    }
+    let out = cmds
+    if (shapeChangedThisFrame && lastCoreCmds !== null && !cmdsEqual(lastCoreCmds, cmds)) {
+      coreTweenFrom = lastCoreCmds
+      coreTweenTo = cmds
+      startCoreTween()
+      out = universalTweenCmds(coreTweenFrom, coreTweenTo, 0.0)
+    }
+    lastCoreCmds = cmds
+    return out
+  }
   // Toolbox state: the magicType override, and last-draw hit boxes.
-  const typeOverride = signal<'line' | 'bar' | null>(null)
+  // magicType: the line / bar switch and the stack / tiled switch, independent as in ECharts ('' = off).
+  const magicKind = signal<'' | 'line' | 'bar'>('')
+  const magicStack = signal<'' | 'stack' | 'tiled'>('')
+  // Toolbox dataZoom: the box-select mode and the windows it replaced (for back).
+  const zoomSelect = signal(false)
+  let zoomHistory: (ZoomWindow | null)[] = []
+  // Toolbox dataView: the data as a table over the chart.
+  const dataView = signal(false)
   let toolboxBoxes: Rect[] = []
   let toolList: ToolboxTool[] = []
   // The last painted frame's commands, for saveAsImage.
@@ -582,8 +740,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (max === undefined || max < 3 || rows.length <= max) return null
     const first = props.marks[0]
     if (first === undefined) return null
-    const pts = rows.map((d, i) => ({ x: i, y: first.y(d, i) }))
-    return lttb(pts, max).map((pt) => pt.x)
+    // `lttbIndices` with no `xs` treats the index as x — which is what this is,
+    // rows being evenly spaced — so there is no `{x, y}` object per row and no
+    // `.x` read back out afterwards.
+    const keep = lttbIndices([], rows.map((d, i) => first.y(d, i)), max)
+    return keep.length === 0 ? null : keep
   }
 
   // The number formatter every surface shares: the explicit `format`, else
@@ -599,6 +760,13 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     props.xFormat ?? (props.locale === undefined ? undefined : props.xTime === true ? localeFmts(props.locale).date : undefined)
 
   const buildSpec = (allRows: T[], w: Double, hgt: Double): ChartSpec => {
+    const withStates = applyMagicType(buildSpecInner(allRows, w, hgt), magicKind(), magicStack())
+    const built = seriesMode ? applySeriesSelection(withStates, selectedSeries()) : withStates
+    // The handle's `legendInverseSelect` flips over the series the chart drew.
+    if (props.handle !== undefined && props.handle.seriesCount.peek() !== built.series.length) props.handle.seriesCount.set(built.series.length)
+    return built
+  }
+  const buildSpecInner = (allRows: T[], w: Double, hgt: Double): ChartSpec => {
     const off = viewRange(allRows).from
     const visible = viewRows(allRows)
     const keep = decimateRows(visible)
@@ -618,9 +786,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       ...m,
       // magicType: a line/bar switch retypes the INDEPENDENT marks only —
       // stacked/grouped/points keep their geometry (a stack is not a line).
-      kind: typeOverride() !== null && (m.kind === 'bars' || m.kind === 'line' || m.kind === 'area')
-        ? (typeOverride() === 'bar' ? 'bars' : 'line')
-        : m.kind,
+      kind: m.kind,
       y: (d: T, i: number) => m.y(d, gi(i)),
       ...(m.r !== undefined ? { r: (d: T, i: number) => m.r!(d, gi(i)) } : {}),
     })), theme().palette)),
@@ -680,11 +846,18 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     toolboxBoxes = []
     toolList = props.toolbox === undefined ? [] : toolboxTools(props.toolbox)
     if (toolList.length > 0) {
-      const ov = typeOverride()
+      const actives: ToolboxTool[] = []
+      if (magicKind() !== '') actives.push(magicKind() === 'bar' ? 'magicBar' : 'magicLine')
+      if (magicStack() !== '') actives.push(magicStack() === 'stack' ? 'magicStack' : 'magicTiled')
+      if (zoomSelect()) actives.push('dataZoom')
+      if (dataView()) actives.push('dataView')
+      const at = areaType()
+      if (at !== '') actives.push(at === 'rect' ? 'brushRect' : at === 'polygon' ? 'brushPolygon' : at === 'lineX' ? 'brushLineX' : 'brushLineY')
+      if (areaKeep()) actives.push('brushKeep')
       const tb = renderToolbox(toolList, { x: 0, y: 0, w, h: hgt }, {
         fontSize: theme().fontSize,
         color: theme().label,
-        active: ov === null ? undefined : ov === 'bar' ? 'magicBar' : 'magicLine',
+        actives,
       })
       for (const c of tb.cmds) legendCmds.push(c)
       toolboxBoxes = tb.boxes
@@ -703,6 +876,12 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // The legend: above the plot by default, else below it or in a column
     // beside it. A side legend narrows the plot; a bottom one sits under the
     // navigator and the presets.
+    // Placement is the ENGINE's `placeLegend`, the same call `canvas-host.tsx`
+    // and both native emitters make. This host used to carry its OWN copy of
+    // the four branches — a THIRD implementation — and the copies had already
+    // drifted: a top legend sat at x = 0 here and x = 8 in the family hosts, a
+    // bottom one reserved `height + 4` here and `height + 8` there. Neither
+    // difference was reported by anything.
     const legendPos = props.legendPosition ?? 'top'
     let legendBottom = 0.0
     let legendLeft = 0.0
@@ -710,44 +889,31 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (props.showLegend === true) {
       const series = resolveMarks(rows, props.marks, theme().palette)
       const hidden = hiddenSeries()
-      const entries = series.map((x, i) => ({ label: x.label, color: x.color, muted: hidden.includes(i) }))
-      const side = legendPos === 'left' || legendPos === 'right'
-      const opts = {
-        fontSize: theme().fontSize,
-        labelColor: theme().label,
-        swatch: 10,
-        gap: 12,
-        orientation: side ? ('vertical' as const) : ('horizontal' as const),
-        maxRows: props.legendMaxRows,
-        page: legendPage(),
-      }
-      if (side) {
-        let col = 0.0
-        for (const e of entries) col = Math.max(col, 10.0 + 4.0 + measure(e.label, theme().fontSize) + 12.0)
-        col = Math.min(col, w * 0.4)
-        const lx = legendPos === 'left' ? 8.0 : w - col
-        const l = renderLegend(entries, { x: lx, y: titleH + 8, w: col, h: hgt - titleH }, opts, measure)
-        for (const c of l.cmds) legendCmds.push(c)
-        legendBoxes = l.boxes
-        legendPager = l.pager ?? null
-        if (legendPos === 'left') legendLeft = col + 8
-        else legendRight = col + 8
-      } else if (legendPos === 'bottom') {
-        // Its height decides where it sits: lay it out at the top to learn the height, then move it down.
-        const probe = renderLegend(entries, { x: 0, y: 0, w, h: hgt }, opts, measure)
-        const ly = hgt - probe.height
-        const l = renderLegend(entries, { x: 0, y: ly, w, h: probe.height }, opts, measure)
-        for (const c of l.cmds) legendCmds.push(c)
-        legendBoxes = l.boxes
-        legendPager = l.pager ?? null
-        legendBottom = l.height + 4
-      } else {
-        const l = renderLegend(entries, { x: 0, y: titleH, w, h: hgt - titleH }, opts, measure)
-        legendH = l.height
-        for (const c of l.cmds) legendCmds.push(c)
-        legendBoxes = l.boxes
-        legendPager = l.pager ?? null
-      }
+      // One entry per LABEL (ECharts' rule): an area and a line both labelled
+      // Revenue are one Revenue entry, and a tap toggles both.
+      const entries = legendEntriesGrouped(series.map((x) => x.label), series.map((x) => x.color), hidden)
+      const placed = placeLegend(
+        entries,
+        { x: 0, y: titleH, w, h: hgt - titleH },
+        legendPos,
+        {
+          fontSize: theme().fontSize,
+          labelColor: theme().label,
+          swatch: 10,
+          gap: 12,
+          orientation: 'horizontal',
+          maxRows: props.legendMaxRows,
+          page: legendPage(),
+        },
+        measure,
+      )
+      for (const c of placed.cmds) legendCmds.push(c)
+      legendBoxes = placed.boxes
+      legendPager = placed.pager ?? null
+      legendH = placed.top
+      legendBottom = placed.bottom
+      legendLeft = placed.left
+      legendRight = placed.right
     }
 
     const top = titleH + legendH
@@ -791,12 +957,15 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (presetsJson !== untrack(presetBoxesJson)) presetBoxesJson.set(presetsJson)
     const navH = props.navigator === true ? 36.0 : 0.0
     bottomOffset = presetH + navH + legendBottom
-    const spec = tweened(buildSpec(rows, pw, hgt - top - presetH - navH - legendBottom))
+    const built = tweened(buildSpec(rows, pw, hgt - top - presetH - navH - legendBottom))
     // ONE layout per frame: the paint, the crosshair, the brush band and the
     // focus ring all read it, and the pointer handlers read it from the cache.
-    const l = layoutChart(spec, measure)
+    const l = layoutChart(built, measure)
+    // The area brush only re-colours datums, so the layout holds for the brushed spec.
+    const areasNow = areaDrag === null ? brushAreas() : [...brushAreas(), areaDrag]
+    const spec = applyBrushSelection(built, brushOnlySeries(brushSelection(built, l, areasNow), props.brushSeriesIndex ?? []), areasNow.length > 0, props.outOfBrushOpacity ?? 0.1)
     frameCache = { spec, layout: l, w, hgt }
-    const cmds = renderChartIn(spec, measure, l)
+    const cmds = coreCmdsFor(renderChartIn(spec, measure, l))
     const navCmds = shiftCmds(navigatorCmds(rows, pw, hgt - presetH - navH - legendBottom, navH), legendLeft, 0.0)
     if (navRect !== null && legendLeft !== 0.0) navRect = { ...navRect, x: navRect.x + legendLeft }
     const navStr = JSON.stringify(navRect)
@@ -807,7 +976,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // and this concern in the host.
     const shifted = shiftCmds(cmds, legendLeft, top)
     const crossShifted = shiftCmds(crosshairCmds(spec, l), legendLeft, top)
-    const bandShifted = shiftCmds(brushCmds(spec, l), legendLeft, top)
+    const bandShifted = shiftCmds([...brushCmds(spec, l), ...renderBrushAreas(areasNow, 'rgba(120,120,140,0.18)', spec.theme.axis)], legendLeft, top)
     const ringShifted = shiftCmds(focusRingCmds(spec, l), legendLeft, top)
     const frame = [...legendCmds, ...shifted, ...bandShifted, ...crossShifted, ...ringShifted, ...navCmds, ...presetCmds]
     // Capture what was actually painted so `saveAsImage` serializes THIS
@@ -821,6 +990,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     lastW = w
     lastH = hgt
     paint(ctx, painted, w, hgt, FONT)
+    if (props.onRendered !== undefined) untrack(() => props.onRendered!())
   }
 
   // The navigator's series over ALL rows, resolved once per data change (the
@@ -891,8 +1061,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (next < 0) next = 0
     if (next > n - 1) next = n - 1
     const off = viewRange(all).from
-    const t = chartTable(a11yInput())
-    const row = t.rows[globalOf(next, off)]
+    // One row, not the table: formatting every row of a 100,000-point chart
+    // per arrow key to announce the focused one.
+    const input = a11yInput()
+    const g = globalOf(next, off)
+    const row = g >= 0 && g < chartRowCount(input) ? chartTableRow(input, g) : undefined
     // One notify cycle for the three writes a keystroke makes (focus, hover, live region).
     batch(() => {
       focusIdx.set(next)
@@ -904,11 +1077,16 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   /** A datum was picked (click or keyboard): pin it per `selectedMode`, then report the pick. */
   const pickDatum = (global: number): void => {
     const mode = props.selectedMode
-    if (mode !== undefined && global >= 0) {
-      const cur = selected()
-      const has = cur.includes(global)
-      selected.set(mode === 'single' ? (has ? [] : [global]) : has ? cur.filter((i) => i !== global) : [...cur, global])
-    }
+    // Through the shared helper rather than inline: the two native hosts hold
+    // the same state and must agree with this on what a second tap does.
+    //
+    // The `global >= 0` guard stays even though `pinSelection` handles a miss
+    // by returning the set unchanged — writing the same reference back would
+    // still re-run the effect that watches `selected`, and this path is a tap.
+    // The helper keeps its own guard for the native hosts, which call it
+    // unconditionally.
+    // `series` pins whole series, and its pick comes from the pointer (a datum index cannot name a series).
+    if (mode !== undefined && mode !== 'series' && global >= 0) selected.set(pinSelection(selected(), global, mode === 'multiple'))
     if (props.onSelect !== undefined) props.onSelect(global)
     if (props.onSelectIndex !== undefined) props.onSelectIndex(global)
   }
@@ -974,11 +1152,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       if (sr.kind !== 'line' && sr.kind !== 'area' && sr.kind !== 'points') continue
       if (idx >= sr.values.length) continue
       // A right-axis series places its marker on ITS domain.
-      const dom = seriesOnRightAxis(sr, g) ? y2Domain : yDomain
+      const dom = seriesDomain(sr, g, yDomain, y2Domain)
       const pts =
         g.xValues !== undefined && g.xValues.length > 0
           ? layoutSeriesPointsAt(sr.values, g.xValues, plot, dom, l.xDomainUsed)
-          : layoutSeriesPoints(sr.values, plot, dom)
+          : categoryPoints(g, sr.values, plot, dom)
       const p = pts[idx]
       if (p === undefined) continue
       out.push({ kind: 'circle', center: p, radius: Math.max(3.0, sr.radius), fill: sr.color })
@@ -988,9 +1166,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
 
   /** The brush band — the live drag, or the committed selection projected through the window (engine-drawn; iOS and Android paint the same band). */
   const brushCmds = (spec: ChartSpec, l: PlotLayout): DrawCmd[] => {
-    if (props.brush !== true || props.horizontal === true) return []
     const plot = l.plot
     const live = brushDrag
+    if (zoomSelect() && live !== null) return renderBrushBand(plot, live.a < live.b ? live.a : live.b, live.a < live.b ? live.b : live.a, spec.theme.axis)
+    if (props.brush !== true || props.horizontal === true) return []
     if (live !== null) return renderBrushBand(plot, live.a < live.b ? live.a : live.b, live.a < live.b ? live.b : live.a, spec.theme.axis)
     const committed = brushSel()
     if (committed === null) return []
@@ -1029,10 +1208,17 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     hoverIdx()
     zoomWin()
     selected()
+    selectedSeries()
     brushSel()
     legendPage()
     focusIdx()
-    typeOverride()
+    magicKind()
+    magicStack()
+    zoomSelect()
+    dataView()
+    // A dispatched `brush` / `takeGlobalCursor` changes these from outside a pointer handler.
+    brushAreas()
+    areaType()
     // The theme in scope — a provider mode flip repaints; touched HERE because
     // draw() bails before reading it while the canvas ref is still unattached.
     theme()
@@ -1085,7 +1271,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const frac = plot.w <= 0.0 ? 0.5 : (px - plot.x) / plot.w
     const win = zoomWin() ?? { start: 0.0, end: 1.0 }
     const next = zoomWindow(win, ev.deltaY > 0 ? 1.25 : 0.8, frac)
-    zoomWin.set(isFullWindow(next) ? null : next)
+    setZoom(next)
   }
 
   // Touch: every pointer currently down on the canvas, for the pinch. Two
@@ -1108,7 +1294,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   }
 
   const handleDown = (ev: PointerEvent): void => {
-    if (props.dataZoom !== true && props.brush !== true && props.navigator !== true) return
+    if (props.dataZoom !== true && props.brush !== true && props.navigator !== true && props.toolbox?.dataZoom !== true && areaType() === '') return
     const el = canvas
     if (el === null) return
     const rect = el.getBoundingClientRect()
@@ -1133,6 +1319,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       return
     }
     dragStartX = localX(ev.clientX, rect)
+    dragStartY = ev.clientY - rect.top
     dragLastX = dragStartX
     dragMoved = false
     // A press inside the navigator strip grabs the band or one of its handles.
@@ -1151,8 +1338,12 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     suppressClick = false
     // With both gestures on, Shift picks the brush and plain drag pans; with
     // only one on, the drag is that one. Precedence over guesswork.
-    dragMode =
-      props.brush === true && (props.dataZoom !== true || ev.shiftKey) ? 'brush' : props.dataZoom === true ? 'pan' : null
+    // The toolbox's box-select zoom, while on, owns the plain drag.
+    dragMode = zoomSelect()
+      ? 'zoomSelect'
+      : areaType() !== '' && !(props.dataZoom === true && !ev.shiftKey)
+        ? 'area'
+        : props.brush === true && (props.dataZoom !== true || ev.shiftKey) ? 'brush' : props.dataZoom === true ? 'pan' : null
     if (dragMode !== null) ev.preventDefault()
   }
 
@@ -1162,6 +1353,25 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       // The pinch ends when the second finger lifts; the remaining finger does not start a pan.
       if (pointers.size < 2) pinch = null
       return
+    }
+    if (dragMode === 'zoomSelect' && dragMoved) {
+      const plot = plotNow()
+      const rows = readData()
+      if (plot !== null && rows.length > 0) {
+        const range = brushRange(plot.x, plot.w, dragStartX - leftOffset, dragLastX - leftOffset, zoomWin() ?? { start: 0.0, end: 1.0 }, rows.length)
+        zoomHistory = [...zoomHistory, zoomWin()]
+        setZoom(windowOfRows(range.start, range.end, rows.length))
+      }
+    }
+    if (dragMode === 'area') {
+      const area = areaDrag
+      areaDrag = null
+      if (dragMoved && area !== null && brushAreaUsable(area)) {
+        brushAreas.set(areaKeep() ? [...brushAreas.peek(), area] : [area])
+        draw()
+      } else if (!dragMoved && !areaKeep() && brushAreas.peek().length > 0) {
+        clearBrushAreas()
+      }
     }
     if (dragMode === 'brush' && dragMoved) {
       const plot = plotNow()
@@ -1193,7 +1403,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       if (plot !== null && d > 0.0 && pinch.dist > 0.0) {
         // Fingers apart = zoom in = a narrower window.
         const next = zoomWindow(pinch.win, pinch.dist / d, pinchCenterFrac(plot))
-        zoomWin.set(isFullWindow(next) ? null : next)
+        setZoom(next)
       }
       ev.preventDefault()
       return
@@ -1202,10 +1412,26 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       const rect0 = el.getBoundingClientRect()
       const x = localX(ev.clientX, rect0)
       if (Math.abs(x - dragStartX) > 3.0) dragMoved = true
+      if (dragMode === 'area') {
+        const y = ev.clientY - rect0.top
+        if (Math.abs(y - dragStartY) > 3.0) dragMoved = true
+        const plot = plotNow()
+        if (plot !== null) {
+          const px = x - leftOffset
+          const py = y - topOffset
+          const type = areaType()
+          areaDrag = type === 'polygon'
+            ? brushPolygonAdd(areaDrag ?? brushAreaFromDrag('polygon', plot, dragStartX - leftOffset, dragStartY - topOffset, px, py), plot, px, py)
+            : brushAreaFromDrag(type, plot, dragStartX - leftOffset, dragStartY - topOffset, px, py)
+          draw()
+        }
+        dragLastX = x
+        return
+      }
       if (dragMode === 'nav') {
         if (navDrag !== null && navRect !== null && navRect.w > 0.0) {
           const next = navigatorDrag(navDrag.kind, navDrag.startWin, (x - dragStartX) / navRect.w)
-          zoomWin.set(isFullWindow(next) ? null : next)
+          setZoom(next)
         }
         dragLastX = x
         return
@@ -1216,7 +1442,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
           const win = zoomWin() ?? { start: 0.0, end: 1.0 }
           // Dragging right moves the window LEFT — the data follows the hand.
           const next = panWindow(win, (dragLastX - x) / plot.w)
-          zoomWin.set(isFullWindow(next) ? null : next)
+          setZoom(next)
         }
       } else {
         brushDrag = { a: dragStartX, b: x }
@@ -1287,7 +1513,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       if (hit >= 0) {
         const it = props.zoomPresets?.[hit]
         const next = presetWindow(it === undefined ? 0 : it.count, readData().length)
-        zoomWin.set(isFullWindow(next) ? null : next)
+        setZoom(next)
         return
       }
     }
@@ -1311,12 +1537,46 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
             brushSel.set(null)
             hiddenSeries.set([])
             legendPage.set(0)
-            typeOverride.set(null)
+            magicKind.set('')
+            magicStack.set('')
+            zoomSelect.set(false)
+            dataView.set(false)
+            zoomHistory = []
+            areaType.set(props.brushType ?? '')
+            areaKeep.set(props.brushMode === 'multiple')
+            brushAreas.set([])
           })
         } else if (tool === 'magicLine') {
-          typeOverride.set(typeOverride() === 'line' ? null : 'line')
+          magicKind.set(magicKind() === 'line' ? '' : 'line')
         } else if (tool === 'magicBar') {
-          typeOverride.set(typeOverride() === 'bar' ? null : 'bar')
+          magicKind.set(magicKind() === 'bar' ? '' : 'bar')
+        } else if (tool === 'magicStack') {
+          magicStack.set(magicStack() === 'stack' ? '' : 'stack')
+        } else if (tool === 'magicTiled') {
+          magicStack.set(magicStack() === 'tiled' ? '' : 'tiled')
+        } else if (tool === 'dataZoom') {
+          batch(() => {
+            zoomSelect.set(!zoomSelect())
+            areaType.set('')
+          })
+        } else if (tool === 'dataZoomBack') {
+          // Back undoes the last box-select zoom; with nothing to undo it shows everything.
+          const prev = zoomHistory.length > 0 ? zoomHistory[zoomHistory.length - 1]! : null
+          zoomHistory = zoomHistory.slice(0, -1)
+          zoomWin.set(prev)
+        } else if (tool === 'dataView') {
+          dataView.set(!dataView())
+        } else if (tool === 'brushRect' || tool === 'brushPolygon' || tool === 'brushLineX' || tool === 'brushLineY') {
+          // A brush tool toggles its type on; the box zoom and the other brush types step aside.
+          const type = tool === 'brushRect' ? 'rect' : tool === 'brushPolygon' ? 'polygon' : tool === 'brushLineX' ? 'lineX' : 'lineY'
+          batch(() => {
+            areaType.set(areaType() === type ? '' : type)
+            zoomSelect.set(false)
+          })
+        } else if (tool === 'brushKeep') {
+          areaKeep.set(!areaKeep())
+        } else if (tool === 'brushClear') {
+          clearBrushAreas()
         } else {
           // Static, and deliberately not dynamic: `@pyreon/charts/plot` is
           // ONE package entry (rolldown builds it as a single-chunk bundle —
@@ -1367,11 +1627,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       const ly = ev.clientY - r0.top
       const i = legendHitIndex(legendBoxes, lx, ly)
       if (i >= 0) {
-        hiddenSeries.set(legendToggle(hiddenSeries(), i))
+        hiddenSeries.set(legendToggleGroup(hiddenSeries(), props.marks.map((m, k) => markLabel(m, k)), i))
         return
       }
     }
-    if (props.onSelect === undefined && props.onSelectIndex === undefined && props.selectedMode === undefined) return
+    if (props.onSelect === undefined && props.onSelectIndex === undefined && props.selectedMode === undefined && props.onClick === undefined) return
     const f = frameNow()
     if (f === null) return
     const rect = el.getBoundingClientRect()
@@ -1384,8 +1644,24 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // there is no separate loop here to keep in sync with it.
     const off = viewRange(readData()).from
     const idx = plotHitBarsIn(f.spec, f.layout, px, py)
-    pickDatum(idx < 0 ? idx : globalOf(idx, off))
+    const global = idx < 0 ? idx : globalOf(idx, off)
+    if (props.onClick !== undefined) props.onClick(global)
+    if (seriesMode) {
+      const hitSeries = plotHitSeriesIn(f.spec, f.layout, px, py, 14.0)
+      if (hitSeries >= 0) selectedSeries.set(pinSelection(selectedSeries(), hitSeries, true))
+    }
+    pickDatum(global)
   })
+
+  /** The GLOBAL datum under a pointer event, -1 for a miss — what `onDoubleClick` / `onContextMenu` report. */
+  const datumOfEvent = (ev: MouseEvent): number => {
+    const el = canvas
+    const f = frameNow()
+    if (el === null || f === null) return -1
+    const rect = el.getBoundingClientRect()
+    const idx = plotHitBarsIn(f.spec, f.layout, localX(ev.clientX, rect) - leftOffset, ev.clientY - rect.top - topOffset)
+    return idx < 0 ? idx : globalOf(idx, viewRange(readData()).from)
+  }
 
   // The a11y input is read by the description, the table and every keystroke;
   // resolving the marks over all rows each time was a full O(N) pass per read.
@@ -1414,6 +1690,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
         ...(s.errLow !== undefined ? { errLow: s.errLow } : {}),
         ...(s.errHigh !== undefined ? { errHigh: s.errHigh } : {}),
         ...(s.rValues !== undefined ? { rValues: s.rValues } : {}),
+        ...(s.onX2 === true && s.xs !== undefined ? { xs: s.xs } : {}),
       })),
     }
     a11yMemo = { rows, marks: props.marks, labels: props.seriesLabels, format: fmtNow, title: props.title, input }
@@ -1437,13 +1714,15 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       sizeObserver?.disconnect()
       sizeObserver = null
       if (el === null) {
-        // Unmounted mid-animation: neither frame may keep the closure alive.
+        // Unmounted mid-animation: no frame may keep the closure alive.
         if (typeof cancelAnimationFrame === 'function') {
           if (entranceFrame !== 0.0) cancelAnimationFrame(entranceFrame)
           if (tweenFrame !== 0.0) cancelAnimationFrame(tweenFrame)
+          if (coreTweenFrame !== 0.0) cancelAnimationFrame(coreTweenFrame)
         }
         entranceFrame = 0.0
         tweenFrame = 0.0
+        coreTweenFrame = 0.0
         frameCache = null
         return
       }
@@ -1482,13 +1761,22 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     'data-pyreon-hover': () => String(hoverIdx()),
     'data-pyreon-selected': () => selected().join(','),
     ...(keyboardOn ? { tabIndex: 0, onKeyDown: handleKeyDown, onBlur: () => batch(() => { focusIdx.set(-1); announce.set('') }) } : {}),
-    ...(props.dataZoom === true ? { onWheel: handleWheel, onDblClick: () => zoomWin.set(null) } : {}),
+    ...(props.dataZoom === true ? { onWheel: handleWheel } : {}),
+    ...(props.dataZoom === true || props.onDoubleClick !== undefined
+      ? {
+          onDblClick: (ev: MouseEvent) => {
+            if (props.dataZoom === true) zoomWin.set(null)
+            if (props.onDoubleClick !== undefined) props.onDoubleClick(datumOfEvent(ev))
+          },
+        }
+      : {}),
+    ...(props.onContextMenu !== undefined ? { onContextMenu: (ev: MouseEvent) => props.onContextMenu!(datumOfEvent(ev)) } : {}),
     // Pointer events, not mouse events: a finger drags, pans, brushes and
     // pinches exactly as a mouse does — and the tooltip follows a touch.
-    ...(props.dataZoom === true || props.brush === true || props.navigator === true
+    ...(props.dataZoom === true || props.brush === true || props.navigator === true || props.toolbox?.dataZoom === true || areaBrushOn
       ? { onPointerDown: handleDown, onPointerUp: endDrag, onPointerCancel: handleLeave }
       : {}),
-    ...(props.tooltip === true || props.crosshair === true || props.dataZoom === true || props.brush === true || props.navigator === true || eventsOn
+    ...(props.tooltip === true || props.crosshair === true || props.dataZoom === true || props.brush === true || props.navigator === true || props.toolbox?.dataZoom === true || areaBrushOn || eventsOn
       ? { onPointerMove: handleMove, onPointerLeave: handleLeave }
       : {}),
   })
@@ -1506,6 +1794,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       untrack(() => cb(v))
     })
   }
+  // Every change to the brush areas reports — a drag, a clear, a restore, or a dispatched `brush` action alike.
+  fireOnChange(() => brushAreas(), (a, b) => a === b, props.onBrushSelected === undefined ? undefined : () => reportBrushSelected())
   fireOnChange(
     () => {
       const i = hoverIdx()
@@ -1544,48 +1834,43 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       style: 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;margin:-1px;padding:0',
     }, () => announce())
 
-  if (props.accessibleTable === false && props.tooltip !== true && !keyboardOn) return canvasNode
+  // The toolbox data view: the chart's table, visible, over the canvas, with its own close button.
+  const dataViewNode = (): VNode | null => {
+    if (!dataView()) return null
+    const t = chartTable(a11yInput())
+    return h(
+      'div',
+      {
+        'data-pyreon-dataview': '',
+        style: 'position:absolute;inset:0;overflow:auto;background:#ffffff;color:#1f2937;font:12px system-ui,sans-serif;padding:8px;box-sizing:border-box',
+      },
+      h('button', { type: 'button', style: 'float:right', onClick: () => dataView.set(false) }, 'Close'),
+      h(
+        'table',
+        { style: 'border-collapse:collapse' },
+        h('thead', null, h('tr', null, ...t.headers.map((x) => h('th', { style: 'text-align:left;padding:2px 8px;border-bottom:1px solid #d1d5db' }, x)))),
+        h('tbody', null, ...t.rows.map((r) => h('tr', null, ...r.map((c) => h('td', { style: 'padding:2px 8px' }, c))))),
+      ),
+    )
+  }
+
+  if (props.accessibleTable === false && props.tooltip !== true && !keyboardOn && props.toolbox?.dataView !== true) return canvasNode
 
   // A real table rather than a longer label: a label is read as one
   // unstructured string, while a table can be navigated by row and column.
   // Positioned offscreen instead of `display: none`, which would remove it
   // from the accessibility tree along with the visual layout.
-  const table = (): VNode => {
-    const t = chartTable(a11yInput())
-    // Capped: a 100k-row chart drawn through `maxPoints` must not also
-    // materialize 100k table rows in the DOM; the caption says what was cut.
-    const shown = t.rows.length > A11Y_TABLE_MAX ? t.rows.slice(0, A11Y_TABLE_MAX) : t.rows
-    const caption = (props.title ?? 'Chart data') + (shown.length < t.rows.length ? ` (first ${A11Y_TABLE_MAX} of ${t.rows.length} rows)` : '')
-    // The clip styles go on a WRAPPER, not the table. A `<table>` uses auto
-    // layout and expands to its content regardless of `width: 1px`, so styling
-    // the table directly leaves ~126px of visible layout — which the browser
-    // test caught by measuring the rendered box rather than trusting the CSS.
-    return h(
-      'div',
-      {
-        style:
-          'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;margin:-1px;padding:0',
-      },
-      h(
-      'table',
-      { id: tableId },
-      h('caption', null, caption),
-      h('thead', null, h('tr', null, ...t.headers.map((x) => h('th', { scope: 'col' }, x)))),
-      h(
-        'tbody',
-        null,
-        ...shown.map((r) =>
-          h('tr', null, h('th', { scope: 'row' }, r[0] ?? ''), ...r.slice(1).map((c) => h('td', null, c))),
-        ),
-      ),
-      ),
-    )
-  }
+  // A real table rather than a longer label (see `a11yTableNode`), capped and
+  // updated in place.
+  const tableNode = a11yTableNode(() => chartTable(a11yInput(), A11Y_TABLE_MAX), tableId, () => props.title ?? 'Chart data')
+  const table = (): VNode => tableNode
+
 
   return h(
     'div',
     { style: 'position:relative' },
     canvasNode,
+    dataViewNode,
     ...(props.tooltip === true ? [tooltipNode()] : []),
     ...(keyboardOn ? [liveNode()] : []),
     ...(props.accessibleTable === false ? [] : [() => table()]),

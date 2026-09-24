@@ -8,7 +8,7 @@
  * FAIR BY CONSTRUCTION
  * ───────────────────────────────────────────────────────────────────────────
  * Both @pyreon/virtual and @tanstack/react-virtual wrap the SAME
- * `@tanstack/virtual-core` (3.17.4, pinned tree-wide via root `overrides` — the
+ * `@tanstack/virtual-core` (pinned tree-wide via root `overrides`; the run prints the installed version — the
  * range-math, window computation, and measurement cache both sides use are
  * byte-identical, verified in Section 4). This bench therefore measures the
  * ADAPTER layer — how each library surfaces a scroll/measure to the DOM — NOT
@@ -20,7 +20,7 @@
  *  1. `NODE_ENV=production` forced FIRST (the npm script's shell sets it too).
  *     Pyreon's dev mode keeps the reactive-devtools registry always-on; React's
  *     dev build ships freeze/prop-type/act overhead. Both are instrumentation.
- *  2. Same virtual-core (3.17.4) for BOTH — the engine is identical.
+ *  2. Same virtual-core for BOTH (printed from the installed package.json) — the engine is identical.
  *  3. CORRECTNESS GATE — both adapters must render the SAME visible index window
  *     at the SAME scroll offsets (mount + deep scroll) before any number counts.
  *  4. The HEADLINE result is a COUNT (component re-renders / row-element
@@ -62,6 +62,23 @@
 process.env.NODE_ENV = 'production'
 
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+import { createRequire } from 'node:module'
+
+// Read, never hard-code: a literal here drifted two releases behind the root
+// `overrides` and mislabelled the 2026-09-24 run.
+const VIRTUAL_CORE_VERSION: string = createRequire(import.meta.url)('@tanstack/virtual-core/package.json').version
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 GlobalRegistrator.register()
 // We drive React commits synchronously via flushSync (the correct bench
@@ -533,11 +550,17 @@ async function compileApp(
   const { transformJSX } = await import('../../../core/compiler/src/index')
   const esbuild = await import('esbuild')
   const stage1 = transformJSX(source, 'bench-app.tsx').code
-  const stage2 = esbuild.transformSync(stage1, {
-    loader: 'tsx',
-    jsx: 'automatic',
-    jsxImportSource: '@pyreon/core',
-  }).code
+  // ASYNC transform on purpose: transformSync starts a worker thread, and
+  // happy-dom's global registration replaces MessagePort, which crashes
+  // bun's worker messaging (`port.on is not a function`). The async form uses
+  // esbuild's child-process service; the output is identical.
+  const stage2 = (
+    await esbuild.transform(stage1, {
+      loader: 'tsx',
+      jsx: 'automatic',
+      jsxImportSource: '@pyreon/core',
+    })
+  ).code
   const body = stage2.replace(/^import\s+.*$/gm, '').trim()
   const deps: Record<string, unknown> = {
     _tpl: (rd as any)._tpl,
@@ -815,9 +838,13 @@ function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(`[virtual-bench correctness] ${msg}`)
 }
 
+console.log(benchRuntimeBanner())
+console.log(
+  '⚠ happy-dom (JS DOM) — not browser-representative: every WALL-CLOCK number below was timed against happy-dom, a JavaScript DOM implementation, not a browser engine (no real style/layout/paint; DOM-op costs differ from Chromium/WebKit/Gecko).',
+)
 console.log('\n=== @pyreon/virtual vs @tanstack/react-virtual — adapter head-to-head ===')
 console.log(
-  `  Bun ${typeof Bun !== 'undefined' ? (Bun as unknown as { version: string }).version : '?'} · ${process.platform}/${process.arch} · NODE_ENV=production · virtual-core 3.17.4 (identical engine both sides)`,
+  `  Bun ${typeof Bun !== 'undefined' ? (Bun as unknown as { version: string }).version : '?'} · ${process.platform}/${process.arch} · NODE_ENV=production · virtual-core ${VIRTUAL_CORE_VERSION} (identical engine both sides)`,
 )
 console.log(
   `  List: N=${fmt(N)} rows · ${ROW}px/row · ${VIEWPORT}px viewport · overscan ${OVERSCAN} · scroll ${SCROLL_ROWS} rows\n`,

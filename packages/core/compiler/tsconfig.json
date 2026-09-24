@@ -4,5 +4,8 @@
     "lib": [
       "ESNext"
     ]
-  }
+  },
+  "exclude": [
+    "src/tests/__content_audit_tmp__"
+  ]
 }

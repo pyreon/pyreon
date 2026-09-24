@@ -4,6 +4,8 @@ import { HEAT_RAMP } from './heat'
 import { colorRamp } from './heat-ramp'
 import type { OptionWarning } from './option'
 import type { Double, DrawCmd, Rect } from './types'
+import { renderVisualStrip, visualOutBands, visualStripSize } from './visual-strip'
+import type { VisualStrip } from './visual-strip'
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const num = (v: unknown): number | null => {
@@ -36,6 +38,14 @@ export interface VisualMapSpec {
   itemSize: Double
   /** Bar length for the continuous strip. */
   itemLength: Double
+  /** Continuous: draggable range handles (`calculable`). */
+  calculable: boolean
+  /** The selected range (`visualMap.range`), default the domain. */
+  range: [Double, Double]
+  /** Piecewise: per-piece selection (`visualMap.selected`, by piece index); default all on. */
+  selected: boolean[]
+  /** ECharts' `inactiveColor`: out-of-selection values and swatches. */
+  inactiveColor: string
 }
 
 /** Layout of the strip within `box`; the strip is anchored at the box origin. */
@@ -45,59 +55,41 @@ export interface VisualMapLayout {
   height: Double
 }
 
-const STRIPES = 24
+/** The spec as the engine's strip — the one geometry every target draws and hit-tests. */
+export function visualStripOf(spec: VisualMapSpec): VisualStrip {
+  return {
+    piecewise: spec.type === 'piecewise',
+    stops: spec.stops,
+    domain: { min: spec.domain[0], max: spec.domain[1] },
+    pieces: spec.pieces,
+    vertical: spec.orient === 'vertical',
+    highText: spec.text?.[0] ?? '',
+    lowText: spec.text?.[1] ?? '',
+    fontSize: spec.fontSize,
+    labelColor: spec.labelColor,
+    itemSize: spec.itemSize,
+    itemLength: spec.itemLength,
+    calculable: spec.calculable,
+    outColor: spec.inactiveColor,
+  }
+}
+
+/** The selection as renderer options (`inRange` / `outBands` / `outColor`), or empty when nothing is excluded. */
+export function visualSelectionOptions(spec: VisualMapSpec): { inRange?: { min: Double; max: Double }; outBands?: Double[]; outColor?: string } {
+  if (spec.type === 'piecewise') {
+    const bands = visualOutBands(visualStripOf(spec), spec.selected)
+    return bands.length === 0 ? {} : { outBands: bands, outColor: spec.inactiveColor }
+  }
+  const [lo, hi] = spec.range
+  if (lo <= spec.domain[0] && hi >= spec.domain[1]) return {}
+  return { inRange: { min: lo, max: hi }, outColor: spec.inactiveColor }
+}
 
 /** Render the strip with its top-left at `at`. */
 export function renderVisualMap(spec: VisualMapSpec, at: { x: Double; y: Double }): VisualMapLayout {
-  const cmds: DrawCmd[] = []
-  const fs = spec.fontSize
-  const gap = 4.0
-  const labelW = fs * 3.2
-  if (spec.type === 'piecewise') {
-    const rows = spec.pieces
-    if (spec.orient === 'vertical') {
-      let y = at.y
-      let widest = 0.0
-      for (const p of rows) {
-        cmds.push({ kind: 'rect', rect: { x: at.x, y, w: spec.itemSize, h: spec.itemSize }, fill: p.color })
-        cmds.push({ kind: 'text', text: p.label, at: { x: at.x + spec.itemSize + gap, y: y + spec.itemSize / 2.0 }, fill: spec.labelColor, size: fs, align: 'start', baseline: 'middle' })
-        if (p.label.length * fs * 0.55 > widest) widest = p.label.length * fs * 0.55
-        y = y + spec.itemSize + gap
-      }
-      return { cmds, width: spec.itemSize + gap + widest, height: Math.max(0.0, y - at.y - gap) }
-    }
-    let x = at.x
-    for (const p of rows) {
-      cmds.push({ kind: 'rect', rect: { x, y: at.y, w: spec.itemSize, h: spec.itemSize }, fill: p.color })
-      const tw = p.label.length * fs * 0.55
-      cmds.push({ kind: 'text', text: p.label, at: { x: x + spec.itemSize + gap, y: at.y + spec.itemSize / 2.0 }, fill: spec.labelColor, size: fs, align: 'start', baseline: 'middle' })
-      x = x + spec.itemSize + gap + tw + gap * 2.0
-    }
-    return { cmds, width: Math.max(0.0, x - at.x - gap * 2.0), height: spec.itemSize }
-  }
-  const ramp = colorRamp(spec.stops)
-  const [lo, hi] = spec.domain
-  const high = spec.text?.[0] ?? String(hi)
-  const low = spec.text?.[1] ?? String(lo)
-  if (spec.orient === 'vertical') {
-    // High at the top: the strip reads like a thermometer.
-    const y0 = at.y + fs + gap
-    for (let i = 0; i < STRIPES; i++) {
-      const t = 1.0 - (i + 0.5) / STRIPES
-      cmds.push({ kind: 'rect', rect: { x: at.x, y: y0 + (spec.itemLength * i) / STRIPES, w: spec.itemSize, h: spec.itemLength / STRIPES + 0.5 }, fill: ramp(t) })
-    }
-    cmds.push({ kind: 'text', text: high, at: { x: at.x + spec.itemSize / 2.0, y: at.y }, fill: spec.labelColor, size: fs, align: 'middle', baseline: 'top' })
-    cmds.push({ kind: 'text', text: low, at: { x: at.x + spec.itemSize / 2.0, y: y0 + spec.itemLength + gap }, fill: spec.labelColor, size: fs, align: 'middle', baseline: 'top' })
-    return { cmds, width: Math.max(spec.itemSize, labelW), height: fs * 2.0 + gap * 2.0 + spec.itemLength }
-  }
-  const x0 = at.x + labelW + gap
-  for (let i = 0; i < STRIPES; i++) {
-    const t = (i + 0.5) / STRIPES
-    cmds.push({ kind: 'rect', rect: { x: x0 + (spec.itemLength * i) / STRIPES, y: at.y, w: spec.itemLength / STRIPES + 0.5, h: spec.itemSize }, fill: ramp(t) })
-  }
-  cmds.push({ kind: 'text', text: low, at: { x: x0 - gap, y: at.y + spec.itemSize / 2.0 }, fill: spec.labelColor, size: fs, align: 'end', baseline: 'middle' })
-  cmds.push({ kind: 'text', text: high, at: { x: x0 + spec.itemLength + gap, y: at.y + spec.itemSize / 2.0 }, fill: spec.labelColor, size: fs, align: 'start', baseline: 'middle' })
-  return { cmds, width: labelW + gap + spec.itemLength + gap + labelW, height: spec.itemSize }
+  const strip = visualStripOf(spec)
+  const size = visualStripSize(strip)
+  return { cmds: renderVisualStrip(strip, at, { min: spec.range[0], max: spec.range[1] }, spec.selected), width: size.x, height: size.y }
 }
 
 /** Numeric extent of the first series' values — the domain when `visualMap` has no min/max. */
@@ -162,7 +154,13 @@ export function visualMapSpec(option: Record<string, unknown>): { spec: VisualMa
       }
     }
   }
-  if (vm['calculable'] === true) warnings.push({ code: 'series-option-unsupported', path: 'visualMap.calculable', message: 'A draggable visualMap handle is not supported; the strip is static.' })
+  const rangeRaw = vm['range']
+  const r0 = Array.isArray(rangeRaw) ? num(rangeRaw[0]) : null
+  const r1 = Array.isArray(rangeRaw) ? num(rangeRaw[1]) : null
+  const range: [Double, Double] = r0 !== null && r1 !== null ? [Math.min(r0, r1), Math.max(r0, r1)] : [domain[0], domain[1]]
+  // ECharts keys `selected` by piece label (or category); an index key also works here.
+  const selRaw = isObj(vm['selected']) ? vm['selected'] : {}
+  const selected = pieces.map((p, i) => selRaw[p.label] !== false && selRaw[String(i)] !== false)
   const textRaw = vm['text']
   const text: [string, string] | undefined = Array.isArray(textRaw) && textRaw.length === 2 ? [String(textRaw[0]), String(textRaw[1])] : undefined
   const spec: VisualMapSpec = {
@@ -176,6 +174,10 @@ export function visualMapSpec(option: Record<string, unknown>): { spec: VisualMa
     labelColor: '#64748b',
     itemSize: num(vm['itemWidth']) ?? (type === 'piecewise' ? 14.0 : 16.0),
     itemLength: num(vm['itemHeight']) ?? 120.0,
+    calculable: type === 'continuous' && vm['calculable'] === true,
+    range,
+    selected,
+    inactiveColor: typeof vm['inactiveColor'] === 'string' ? (vm['inactiveColor'] as string) : '#cccccc',
   }
   return { spec, place: { left: vm['left'], right: vm['right'], top: vm['top'], bottom: vm['bottom'] }, warnings }
 }

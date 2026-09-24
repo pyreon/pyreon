@@ -47,7 +47,7 @@
  * fuzz found six live instances of.
  */
 import type { ComponentRef, VerifyCheck, VerifyFinding } from '../core'
-import { finding } from '../core'
+import { finding, materializeContent } from '../core'
 import { ensureDom } from '../verify/dom'
 import type { MountRuntime } from '../verify/harness'
 import { SKIP_REASON, skipped } from './registry'
@@ -104,6 +104,16 @@ export function normalizeHtml(html: string): string {
     // which means the oracle was green for the wrong reason, not that adoption
     // broke it. Everything else it compares is untouched.
     .replaceAll(/ value="[^"]*"/g, '')
+    // `createUniqueId()` is a process-wide counter (`pyreon-N`), never reset
+    // between the SSR render, the hydrate and the fresh client mount this
+    // oracle compares — so a Combobox's `aria-controls="pyreon-2-listbox"`
+    // legitimately reads `pyreon-3-listbox` on the second mount. That is
+    // three instances of one counter, not a DOM mismatch, so the NUMBER is
+    // canonicalized and the id's SHAPE and every reference to it still have
+    // to agree. (The real, separate hazard — a hydrated component's closure
+    // holding a different id than the adopted server attribute — is not a
+    // DOM diff at all and needs its own check; see the anti-patterns entry.)
+    .replaceAll(/pyreon-\d+/g, 'pyreon-#')
     .trim()
 }
 
@@ -189,7 +199,14 @@ export async function checkSsrParity(
   }
 
   const build = (): unknown => {
-    const node = h(component as unknown, args)
+    // The same materialization the mount harness performs: seeded content
+    // (a label, or the layout-blocks marker) becomes REST children, so the
+    // tree rendered on the server is the tree the client mounted — a marker
+    // left as a prop reaches the renderer as a vnode with no `props` and
+    // throws inside `renderToString`, which then reads as the COMPONENT
+    // failing SSR.
+    const { props, children } = materializeContent(args, h)
+    const node = h(component as unknown, props, ...children)
     return wrapper ? h(wrapper as unknown, {}, node) : node
   }
 

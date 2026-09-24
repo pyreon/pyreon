@@ -9,6 +9,16 @@ description: "Local-first CRDT-backed sync for signals — a synced signal IS a 
 
 A local-first / collaborative sync layer for Pyreon. A synced value is a normal `Signal` (built via `wrapSignal`), so a remote change becomes one `signal.set` → one surgical fine-grained DOM update — never a VDOM re-render + diff. The engine-neutral `CrdtAdapter` seam keeps the reactive bridge engine-free; the real engine (raw Yjs) lives behind `@pyreon/sync/yjs` so importing the core never pulls in `yjs`. Covers offline persistence (IndexedDB), same-origin cross-tab + cross-device WebSocket transport, collaborative text + lists, and a Node/Bun relay with per-room/per-doc authz at `@pyreon/sync/server`. v1 syncs scalar map fields + collaborative `Y.Text` / `Y.Array`.
 
+## Multiplatform
+
+**Tier:** Web-only — the browser package; the native story is stated below
+
+the Yjs engine + IndexedDB/WebSocket transports stay web; the engine-neutral PyreonCrdt core + `syncedSignal` lower to a native runtime, cross-device transport tracked
+
+**What crosses natively:** PyreonSyncedSignal — `syncedSignal({ doc, key, initial })` over a shared PyreonCrdtDoc (scalar String/Double/Bool, local-first create-if-missing, remote-op reactivity)
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - syncedSignal / syncedStore — bind a Signal to a CRDT map entry; a synced signal is indistinguishable from a normal signal to the compiler and every effect
@@ -35,6 +45,13 @@ A local-first / collaborative sync layer for Pyreon. A synced value is a normal 
 | [`REMOTE_ORIGIN`](#remote-origin) | constant | Transaction-origin tag for a REMOTE-applied update (received from a peer/relay). |
 | [`FakeCrdtAdapter`](#fakecrdtadapter) | class | An in-memory, dependency-free CrdtAdapter for unit-testing synced stores without standing up a real engine. |
 | [`connectFakeDocs`](#connectfakedocs) | function | Link two in-memory FakeCrdtDocs so a write to one propagates to the other — the test analog of a transport. |
+| [`pyreonAdapter`](#pyreonadapter) | function | Convenience factory for the pure-TS LWW (last-writer-wins) engine — the MULTIPLATFORM counterpart to the Yjs adapter. |
+| [`PyreonCrdtAdapter`](#pyreoncrdtadapter) | class | The pure-TS LWW engine's CrdtAdapter implementation — usually reached through the `pyreonAdapter()` factory rather than  |
+| [`PyreonCrdtDoc`](#pyreoncrdtdoc) | class | A state-based (CvRDT) LWW register-map document. |
+| [`createActorId`](#createactorid) | function | Mint a per-peer actor id — the LWW tie-breaker `PyreonCrdtDoc` uses to deterministically resolve a concurrent write. |
+| [`connectPyreonSync`](#connectpyreonsync) | function | Wire a `PyreonCrdtDoc` to a peer over a `SyncChannel` — the pure-TS engine's transport, JSON-over-any-string-duplex with |
+| [`webSocketChannel`](#websocketchannel) | function | The WebSocket implementation of `SyncChannel` for `connectPyreonSync`. |
+| [`createNativeSyncHost`](#createnativesynchost) | function | The JS side of the contract a native runtime host (iOS JavaScriptCore, an Android JS engine) drives to make a native app |
 | [`createYjsDoc`](#createyjsdoc) | function | Create a CrdtDoc backed by a real Yjs Y.Doc (or wrap an existing one). |
 | [`syncedText`](#syncedtext) | function | Bind a Signal&lt;string&gt; to a Yjs Y.Text — a COLLABORATIVE string with character-level CRDT merge. |
 | [`syncedList`](#syncedlist) | function | Bind a Signal&lt;T[]&gt; to a Yjs Y.Array — a COLLABORATIVE list with positional CRDT merge. |
@@ -246,6 +263,186 @@ link.disconnect() // simulate offline
 ```
 
 **See also:** `FakeCrdtAdapter`
+
+---
+
+### pyreonAdapter `function`
+
+```ts
+(actor?: string) => PyreonCrdtAdapter
+```
+
+Convenience factory for the pure-TS LWW (last-writer-wins) engine — the MULTIPLATFORM counterpart to the Yjs adapter. Where Yjs is a web-only npm engine, this one is pure logic (Map, numbers, comparisons) with no external dependency, so the Pyreon Multi-Target Compiler lowers the SAME source to SwiftUI + Compose: a web peer and a native peer run byte-identical merge math and converge over one shared wire protocol. Generates a fresh `createActorId()` when `actor` is omitted — pass your own to persist a stable device identity across restarts. Matches the v1 seam exactly: a `CrdtMap` is a flat key → scalar register; rich collaborative text/lists stay on the Yjs engine until a native sequence-CRDT engine lands.
+
+**Example**
+
+```tsx
+import { pyreonAdapter, syncedSignal } from "@pyreon/sync"
+const adapter = pyreonAdapter()          // dependency-free scalar-map CRDT
+const doc = adapter.createDoc()
+const title = syncedSignal({ doc, key: "title", initial: "Untitled" })
+title.set("Roadmap")
+```
+
+**Common mistakes**
+
+- Reaching for this when you need collaborative TEXT or LIST merge — it's scalar-only (last-writer-wins); use the Yjs engine's `syncedText`/`syncedList` for character/positional merge
+- Generating a fresh actor id on every mount instead of persisting one — a stable per-install id is what makes the LWW tie-break behave like a stable "this device" identity rather than a coin flip on every reload
+- Sharing one actor id across two LIVE peers — the id is the LWW tie-breaker; two peers with the same id can't be distinguished when they conflict
+
+**See also:** `PyreonCrdtAdapter` · `createActorId` · `createNativeSyncHost`
+
+---
+
+### PyreonCrdtAdapter `class`
+
+```ts
+class PyreonCrdtAdapter implements CrdtAdapter { constructor(actor: string); createDoc(): CrdtDoc }
+```
+
+The pure-TS LWW engine's CrdtAdapter implementation — usually reached through the `pyreonAdapter()` factory rather than constructed directly. Each `createDoc()` returns a `PyreonCrdtDoc` stamped with this adapter's `actor` id, so every doc it produces shares one peer identity. Implements the exact `CrdtAdapter` seam the reactive bridge (`syncedSignal`/`syncedStore`) is written against, so it's a drop-in swap for `FakeCrdtAdapter` or the Yjs adapter — nothing above the seam knows which engine it's talking to.
+
+**Example**
+
+```tsx
+const adapter = new PyreonCrdtAdapter("device-1")
+const doc = adapter.createDoc()
+```
+
+**See also:** `pyreonAdapter` · `PyreonCrdtDoc` · `CrdtAdapter`
+
+---
+
+### PyreonCrdtDoc `class`
+
+```ts
+class PyreonCrdtDoc implements CrdtDoc { constructor(actor: string); readonly actor: string; getMap(name): CrdtMap; transact(fn, origin?): void; applyOps(ops, origin?): void; encodeState(): PyreonCrdtOp[]; destroy(): void }
+```
+
+A state-based (CvRDT) LWW register-map document. Each register carries a Lamport-clock timestamp plus the writing `actor` id; a local write bumps the doc's monotonic clock, and a receive advances it to `max(local, incoming)` so a later local write always out-ranks anything already seen. Merge is deterministic — a higher clock wins, an equal clock is broken by the higher actor id — so `applyOps` (or a full `encodeState()` dump) converges regardless of order, duplicates, or partial delivery, which is what makes offline-then-reconnect 'just another merge' rather than a special case. `applyOps` fires observers but never re-emits ops, which is the structural half of loop-prevention (the transport's REMOTE-origin skip is the other half).
+
+**Example**
+
+```tsx
+const doc = new PyreonCrdtDoc("device-1")
+const map = doc.getMap("todos")
+doc.transact(() => map.set("title", "Buy milk"))
+const state = doc.encodeState() // ship this to a fresh peer to seed it
+```
+
+**Common mistakes**
+
+- Calling `applyOps` from inside an in-progress local `transact` — it is guarded to no-op there; remote merges are meant to land at rest, which is how the transport always calls it
+- Assuming `encodeState()` is a diff — it is the FULL state (every register, every map); sending it on every change instead of relaying incremental ops (what `connectPyreonSync` actually does) wastes bandwidth
+- Constructing two docs with the SAME actor id and treating them as independent peers — the LWW tie-break can no longer distinguish their writes
+
+**See also:** `PyreonCrdtAdapter` · `connectPyreonSync` · `createNativeSyncHost`
+
+---
+
+### createActorId `function`
+
+```ts
+() => string
+```
+
+Mint a per-peer actor id — the LWW tie-breaker `PyreonCrdtDoc` uses to deterministically resolve a concurrent write. Prefers `crypto.randomUUID()`; falls back to `crypto.getRandomValues` (hex-encoded) on runtimes without `randomUUID` (older/non-secure-context), and as a last resort mixes a per-process monotonic counter with `Date.now()`/`Math.random()` so two ids minted in the SAME process can never collide even under degraded entropy. Two LIVE peers must never share an id — generate once per doc/session and persist it (e.g. to `useSecureStorage`) for a stable per-install device identity across restarts.
+
+**Example**
+
+```tsx
+import { createActorId, pyreonAdapter } from "@pyreon/sync"
+// Generate once, persist it, and reuse on every subsequent launch.
+const actor = loadPersistedActorId() ?? createActorId()
+savePersistedActorId(actor)
+const adapter = pyreonAdapter(actor)
+```
+
+**Common mistakes**
+
+- Calling it fresh on every mount instead of persisting the result — a new id each launch means the LWW tie-break can no longer recognize "this is the same device that wrote last time"
+- Assuming it's cryptographically unique across ALL environments — the fallback path (no `crypto.randomUUID`/`getRandomValues`) only guarantees uniqueness WITHIN one process; that path is a last resort, not the common case
+
+**See also:** `pyreonAdapter` · `PyreonCrdtDoc`
+
+---
+
+### connectPyreonSync `function`
+
+```ts
+(doc: PyreonCrdtDoc, channel: SyncChannel) => { disconnect(): void }
+```
+
+Wire a `PyreonCrdtDoc` to a peer over a `SyncChannel` — the pure-TS engine's transport, JSON-over-any-string-duplex with no binary framing, so the SAME code runs on web AND inside a native JS runtime bridged to native signals. On open it sends the doc's full state (`encodeState()`); thereafter it relays only LOCAL ops as they commit (`doc._onOps`). Inbound messages merge under `REMOTE_ORIGIN`; a malformed or foreign message is silently ignored rather than thrown. Echo-prevention is structural, not a filter: `PyreonCrdtDoc.applyOps` fires observers but emits NO ops, so a received update is never picked up by the local-ops relay and re-broadcast.
+
+**Example**
+
+```tsx
+import { connectPyreonSync, webSocketChannel } from "@pyreon/sync"
+const channel = webSocketChannel("wss://sync.example.com/my-room")
+const { disconnect } = connectPyreonSync(doc, channel)
+// later:
+disconnect()
+```
+
+**Common mistakes**
+
+- Writing a custom `SyncChannel` that re-delivers its OWN sent messages back through `onMessage` — that reintroduces an echo the doc-level guard can't see, because from the doc's perspective it looks like a genuine (if redundant) remote update
+- Expecting `disconnect()` to tear down the doc — it only stops relaying ops and closes the channel; call `doc.destroy()` separately for a full local teardown
+
+**See also:** `webSocketChannel` · `PyreonCrdtDoc` · `createNativeSyncHost`
+
+---
+
+### webSocketChannel `function`
+
+```ts
+(url: string, WebSocketImpl?: WebSocketCtor) => SyncChannel
+```
+
+The WebSocket implementation of `SyncChannel` for `connectPyreonSync`. Defaults to `globalThis.WebSocket` (browsers + Node 21+); pass `WebSocketImpl` to inject the `ws` package (older Node relay tests) or a native-runtime socket shim — the same seam `createNativeSyncHost` uses to accept a platform-bridged `WebSocket`. Throws a clear `[Pyreon]`-prefixed error immediately (not a bare `ReferenceError`) when no implementation is available and none was injected, so a missing global fails loud at the call site instead of deep inside a send.
+
+**Example**
+
+```tsx
+import { connectPyreonSync, webSocketChannel } from "@pyreon/sync"
+const channel = webSocketChannel("wss://sync.example.com/room", MyWsPolyfill)
+connectPyreonSync(doc, channel)
+```
+
+**Common mistakes**
+
+- Assuming it works on older Node without passing `WebSocketImpl` — global `WebSocket` is Node 21+; pass the `ws` package's constructor on older runtimes
+
+**See also:** `connectPyreonSync` · `createNativeSyncHost`
+
+---
+
+### createNativeSyncHost `function`
+
+```ts
+(options: { actor: string; url?: string; WebSocketImpl?: WebSocketCtor }) => NativeSyncHost
+```
+
+The JS side of the contract a native runtime host (iOS JavaScriptCore, an Android JS engine) drives to make a native app a real peer in the sync graph. The host evaluates the `@pyreon/sync` bundle, injects a platform-socket-backed `WebSocketCtor` (the same `PyreonWebSocket` `useWebSocket` uses), and calls this once. For each synced key the native UI binds, it calls `host.observe(map, key, cb)` — the callback fires IMMEDIATELY with the current value (seeding the native signal) and again on every change, local or remote; a native UI edit calls `host.set(map, key, value)`. Everything underneath — the LWW engine, the JSON transport, this bridge — is pure JS, so identical code runs on web and native; the host's only job is JS↔native value marshalling. `url` is optional: omit it for a local-only doc with no transport. v1 values crossing the boundary are scalars (string/number/boolean/null).
+
+**Example**
+
+```tsx
+import { createNativeSyncHost } from "@pyreon/sync"
+const host = createNativeSyncHost({ actor: "device-1", url: "wss://sync.example.com/room" })
+const unobserve = host.observe("doc", "title", (value) => { /* set native @State */ })
+host.set("doc", "title", "Hello") // a native UI edit
+host.destroy() // tears down the transport + document
+```
+
+**Common mistakes**
+
+- Forgetting to call `unobserve()` per key — each `observe` call registers a callback the host must release when the native view unmounts, or it keeps receiving updates for a view that's gone
+- Passing a non-scalar value through `host.set` — v1 only marshals string/number/boolean/null across the JS↔native boundary
+- Omitting `url` and expecting cross-device sync — without it the doc is LOCAL-ONLY; the native host still needs to inject a real `WebSocketImpl` for the transport to actually reach a relay
+
+**See also:** `connectPyreonSync` · `webSocketChannel` · `pyreonAdapter`
 
 ---
 
@@ -486,7 +683,7 @@ const title = syncedSignal({ doc, key: "title", initial: "Untitled" })
 (options: SyncServerOptions) => Promise<SyncServer>
 ```
 
-Start a Node/Bun WebSocket relay that brokers Yjs sync between clients sharing a room. Keeps one authoritative Y.Doc per room (so a late-joiner catches up), applies each inbound update, and broadcasts to the room's OTHER clients. Server-only (`@pyreon/sync/server` — imports `ws` + `node:http`, never enters a client bundle). The `authorize(ctx)` hook is the per-room/per-doc access gate: return false (or throw) to reject with close code 4401 before any data flows. Rooms are GC'd when the last client leaves — the relay is ephemeral (no persistence); clients keep their own copy. Pass `server` to attach to an existing http.Server instead of opening a port.
+Start a Node/Bun WebSocket relay that brokers Yjs sync between clients sharing a room. Keeps one authoritative Y.Doc per room (so a late-joiner catches up), applies each inbound update, and broadcasts to the room's OTHER clients. Server-only (`@pyreon/sync/server` — imports `ws` + `node:http`, never enters a client bundle). The `authorize(ctx)` hook is the per-room/per-doc access gate: return false (or throw) to reject with close code 4401 before any data flows. Omitting it accepts EVERY connection (an open relay) and warns once at startup, in production too. Rooms are GC'd when the last client leaves — the relay is ephemeral (no persistence); clients keep their own copy. Pass `server` to attach to an existing http.Server instead of opening a port.
 
 **Example**
 
@@ -501,7 +698,7 @@ const relay = await createSyncServer({
 
 **Common mistakes**
 
-- Deploying without an `authorize` hook — the default allows EVERY connection (dev-only); a real deployment MUST supply it or anyone with the room id can read/write
+- Deploying without an `authorize` hook — the default allows EVERY connection (dev-only); a real deployment MUST supply it or anyone with the room id can read/write. `createSyncServer` warns once at startup when the hook is absent, in production as well as development, because an open relay is a live misconfiguration rather than a developer-time nicety.
 - Importing `@pyreon/sync/server` into client code — it pulls `ws` + `node:http`; it is the server-only subpath by design
 - Expecting the relay to persist data — it is ephemeral; durability lives on the clients (persistViaIndexedDB) or an external store
 

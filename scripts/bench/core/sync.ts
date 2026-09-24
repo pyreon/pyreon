@@ -753,3 +753,8 @@ if (wants('remote')) {
   printSection('Remote op → signal (signature path, per-write ns)', benchRemoteOp())
 }
 console.log()
+// Exit explicitly: the timed sections create y-protocols Awareness instances,
+// whose outdated-state check is a setInterval. Every result is printed by now,
+// but that live timer kept the process running indefinitely — a caller
+// (run-all, a CI job, a queue) waited on it forever.
+process.exit(0)

@@ -5,7 +5,10 @@
 // `composeSvg` lays already-rendered `<svg>` strings into one document. The
 // facade's `optionToSvg` / `planOption` call these first, so every family and
 // the cartesian compiler see a plain single-grid option and need no awareness.
+import { GRID_PART_KEY } from './option-grid'
 import type { DrawCmd, Double, Rect } from './types'
+import { renderTimeline } from './timeline-strip'
+import type { TimelineStrip } from './timeline-strip'
 import { renderSvg } from './svg'
 import type { OptionWarning } from './option'
 
@@ -21,6 +24,104 @@ const num = (v: unknown): number | null => {
 }
 const toArr = (v: unknown): Obj[] => (Array.isArray(v) ? v.filter(isObj) : isObj(v) ? [v] : [])
 
+/**
+ * How a reactive option update lands — `setOption`'s `opts`, in Pyreon's and
+ * in ECharts' spelling (`notMerge`, `replaceMerge`, `lazyUpdate`, `silent`).
+ */
+export interface OptionUpdatePolicy {
+  /** Replace the whole previous option instead of merging the update. */
+  mode?: 'merge' | 'replace'
+  /** ECharts' spelling of `mode: 'replace'`. */
+  notMerge?: boolean
+  /** Top-level component keys replaced as a unit while the rest still merges. */
+  replaceKeys?: string | readonly string[]
+  /**
+   * ECharts' `replaceMerge`: for these component keys, components in the
+   * update merge into their id/name matches and every component the update
+   * does NOT name is removed (a plain merge keeps them). Distinct from
+   * `replaceKeys`, which takes the update's array verbatim.
+   */
+  replaceMerge?: string | readonly string[]
+  /**
+   * ECharts' `lazyUpdate` — defer the redraw to the next frame. The canvas
+   * host already paints once per frame for any number of option writes, so
+   * this is accepted for parity and changes nothing.
+   */
+  lazyUpdate?: boolean
+  /**
+   * ECharts' `silent` — do not emit events for the option change itself.
+   * Applying an option never emits an event in this engine (selection and
+   * hover events are pointer-driven), so this is accepted and changes nothing.
+   */
+  silent?: boolean
+}
+
+const INDEXED_COMPONENTS = new Set([
+  'series', 'xAxis', 'yAxis', 'grid', 'polar', 'radiusAxis', 'angleAxis',
+  'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'dataset', 'visualMap',
+  'dataZoom', 'title', 'legend', 'graphic',
+])
+
+const componentKey = (value: unknown): string | null => {
+  if (!isObj(value)) return null
+  if (typeof value['id'] === 'string' || typeof value['id'] === 'number') return `id:${String(value['id'])}`
+  if (typeof value['name'] === 'string') return `name:${value['name']}`
+  return null
+}
+
+const mergeComponentArray = (before: unknown[], after: unknown[]): unknown[] => {
+  const out = before.slice()
+  const claimed = new Set<number>()
+  for (let i = 0; i < after.length; i++) {
+    const next = after[i]
+    const key = componentKey(next)
+    let at = key === null ? -1 : out.findIndex((candidate, index) => !claimed.has(index) && componentKey(candidate) === key)
+    if (at < 0 && i < out.length && !claimed.has(i)) at = i
+    if (at < 0) {
+      out.push(next)
+      claimed.add(out.length - 1)
+      continue
+    }
+    claimed.add(at)
+    out[at] = isObj(out[at]) && isObj(next) ? mergeObjects(out[at] as Obj, next) : next
+  }
+  return out
+}
+
+/**
+ * Merge a reactive option update without mutating either input. Objects merge
+ * recursively; component arrays match stable ids, then names, then indices.
+ * Ordinary arrays are values and replace as a unit.
+ */
+export function mergeChartOptions(previous: Obj | undefined, update: Obj, policy: OptionUpdatePolicy = {}): Obj {
+  if (previous === undefined || policy.mode === 'replace' || policy.notMerge === true) return update
+  const keys = (v: string | readonly string[] | undefined): Set<string> => new Set(typeof v === 'string' ? [v] : v ?? [])
+  const replace = keys(policy.replaceKeys)
+  const replaceMerge = keys(policy.replaceMerge)
+  const out: Obj = { ...previous }
+  for (const key of Object.keys(update)) {
+    const before = previous[key]
+    const after = update[key]
+    if (replace.has(key)) out[key] = after
+    else if (replaceMerge.has(key) && Array.isArray(before) && Array.isArray(after)) out[key] = replaceMergeComponentArray(before, after)
+    else if (INDEXED_COMPONENTS.has(key) && Array.isArray(before) && Array.isArray(after)) out[key] = mergeComponentArray(before, after)
+    else out[key] = isObj(before) && isObj(after) ? mergeObjects(before, after) : after
+  }
+  return out
+}
+
+/** ECharts `replaceMerge`: the update's components, each merged into its id/name match; unmatched previous components are dropped. */
+const replaceMergeComponentArray = (before: unknown[], after: unknown[]): unknown[] => {
+  const claimed = new Set<number>()
+  return after.map((next) => {
+    const key = componentKey(next)
+    const at = key === null ? -1 : before.findIndex((candidate, index) => !claimed.has(index) && componentKey(candidate) === key)
+    if (at < 0) return next
+    claimed.add(at)
+    return isObj(before[at]) && isObj(next) ? mergeObjects(before[at] as Obj, next) : next
+  })
+}
+
 /** Height reserved under the chart for the timeline strip. */
 export const TIMELINE_HEIGHT = 40.0
 
@@ -31,6 +132,13 @@ export interface TimelineSteps {
   autoPlay: boolean
   /** `timeline.playInterval` in ms; default 2000 like ECharts. */
   playInterval: Double
+  /** The strip: labels, loop / rewind and which controls show; default ECharts'. */
+  strip?: TimelineStrip | undefined
+}
+
+/** ECharts' default timeline strip over some labels. */
+export function defaultTimelineStrip(labels: string[]): TimelineStrip {
+  return { labels, loop: true, rewind: false, showPlay: true, showPrev: true, showNext: true, label: '#374151', accent: '#2563eb', line: '#d1d5db', fontSize: 11.0 }
 }
 
 /** The step list of an option's `timeline`, or null when there is none. */
@@ -46,30 +154,50 @@ export function timelineSteps(option: Obj): TimelineSteps | null {
   const max = Math.max(0, labels.length - 1)
   const want = num(tl['currentIndex']) ?? 0
   const current = Math.min(max, Math.max(0, Math.floor(want)))
-  return { labels, current, autoPlay: tl['autoPlay'] === true, playInterval: num(tl['playInterval']) ?? 2000.0 }
+  const control = isObj(tl['controlStyle']) ? tl['controlStyle'] : {}
+  const checkpoint = isObj(tl['checkpointStyle']) ? tl['checkpointStyle'] : {}
+  const lineStyle = isObj(tl['lineStyle']) ? tl['lineStyle'] : {}
+  const labelStyle = isObj(tl['label']) ? tl['label'] : {}
+  const defaults = defaultTimelineStrip(labels)
+  const strip: TimelineStrip = {
+    ...defaults,
+    loop: tl['loop'] !== false,
+    rewind: tl['rewind'] === true,
+    showPlay: control['show'] !== false && control['showPlayBtn'] !== false,
+    showPrev: control['show'] !== false && control['showPrevBtn'] !== false,
+    showNext: control['show'] !== false && control['showNextBtn'] !== false,
+    accent: typeof checkpoint['color'] === 'string' ? (checkpoint['color'] as string) : defaults.accent,
+    line: typeof lineStyle['color'] === 'string' ? (lineStyle['color'] as string) : defaults.line,
+    label: typeof labelStyle['color'] === 'string' ? (labelStyle['color'] as string) : defaults.label,
+    fontSize: num(labelStyle['fontSize']) ?? defaults.fontSize,
+  }
+  return { labels, current, autoPlay: tl['autoPlay'] === true, playInterval: num(tl['playInterval']) ?? 2000.0, strip }
 }
 
-/** ECharts' timeline merge: a step's top-level objects merge shallowly over the base; series merge BY INDEX. */
-function mergeStep(base: Obj, step: Obj): Obj {
+const mergeObjects = (base: Obj, override: Obj): Obj => {
   const out: Obj = { ...base }
-  for (const key of Object.keys(step)) {
-    const sv = step[key]
-    const bv = base[key]
-    if (key === 'series') {
-      const bs = toArr(bv)
-      const ss = Array.isArray(sv) ? (sv as unknown[]) : isObj(sv) ? [sv] : []
-      const merged: unknown[] = bs.slice()
-      for (let i = 0; i < ss.length; i++) {
-        const s = ss[i]
-        merged[i] = isObj(s) && isObj(merged[i]) ? { ...(merged[i] as Obj), ...s } : s
-      }
-      out[key] = merged
-    } else if (isObj(sv) && isObj(bv)) {
-      out[key] = { ...bv, ...sv }
-    } else {
-      out[key] = sv
-    }
+  for (const key of Object.keys(override)) {
+    const before = base[key]
+    const after = override[key]
+    out[key] = isObj(before) && isObj(after) ? mergeObjects(before, after) : after
   }
+  return out
+}
+
+/** A step recursively merges objects over the base; series entries merge by index. */
+function mergeStep(base: Obj, step: Obj): Obj {
+  const out = mergeObjects(base, step)
+  if (!Object.prototype.hasOwnProperty.call(step, 'series')) return out
+  const baseSeries = toArr(base['series'])
+  const stepValue = step['series']
+  const stepSeries = Array.isArray(stepValue) ? stepValue : isObj(stepValue) ? [stepValue] : []
+  const merged: unknown[] = baseSeries.slice()
+  for (let index = 0; index < stepSeries.length; index++) {
+    const before = merged[index]
+    const after = stepSeries[index]
+    merged[index] = isObj(before) && isObj(after) ? mergeObjects(before, after) : after
+  }
+  out['series'] = merged
   return out
 }
 
@@ -95,10 +223,12 @@ export function resolveTimeline(option: Obj, index?: number): { option: Obj; war
   // The timeline component itself never reaches the compilers.
   delete base['timeline']
   if (options.length === 0) {
+    // ledger: invalid-input
     if (hasBase || (steps !== null && steps.labels.length > 0)) warnings.push({ code: 'timeline-step-out-of-range', path: 'options', message: 'timeline has no options[] steps; the base option was rendered.' })
     return { option: base, warnings }
   }
   if (idx < 0 || idx >= options.length) {
+    // ledger: invalid-input
     warnings.push({ code: 'timeline-step-out-of-range', path: 'options[' + String(idx) + ']', message: 'timeline step ' + String(idx) + ' does not exist (' + String(options.length) + ' steps); the base option was rendered.' })
     return { option: base, warnings }
   }
@@ -168,7 +298,12 @@ export function splitGrids(option: Obj, width: Double, height: Double): GridPart
       delete sub['title']
       delete sub['legend']
     }
-    sub['grid'] = grids[g]
+    // The grid's position placed this part's rect; left on the sub-option it
+    // would place the plot a second time inside that rect.
+    const ownGrid: Obj = { ...grids[g] }
+    for (const key of ['left', 'top', 'right', 'bottom', 'width', 'height']) delete ownGrid[key]
+    ownGrid[GRID_PART_KEY] = true
+    sub['grid'] = ownGrid
     if (xs.length > 0) sub['xAxis'] = xs.length === 1 ? { ...xs[0]!, gridIndex: undefined } : xs
     else delete sub['xAxis']
     if (ys.length > 0) sub['yAxis'] = ys.length === 1 ? { ...ys[0]!, gridIndex: undefined } : ys
@@ -180,23 +315,10 @@ export function splitGrids(option: Obj, width: Double, height: Double): GridPart
 }
 
 /** The timeline strip: an axis line, one dot per step, the current step filled and labelled bold. */
-export function timelineCommands(steps: TimelineSteps, width: Double, y: Double, h: Double, colors: { label: string; accent: string; grid: string } = { label: '#374151', accent: '#2563eb', grid: '#d1d5db' }): DrawCmd[] {
-  const out: DrawCmd[] = []
-  const n = steps.labels.length
-  if (n === 0) return out
-  const pad = 24.0
-  const cy = y + h * 0.4
-  const x0 = pad
-  const x1 = Math.max(pad, width - pad)
-  out.push({ kind: 'line', from: { x: x0, y: cy }, to: { x: x1, y: cy }, stroke: colors.grid, width: 1.0 })
-  for (let i = 0; i < n; i++) {
-    const x = n === 1 ? (x0 + x1) / 2.0 : x0 + ((x1 - x0) * i) / (n - 1)
-    const current = i === steps.current
-    out.push({ kind: 'circle', center: { x, y: cy }, radius: current ? 5.0 : 3.5, fill: colors.accent })
-    if (!current) out.push({ kind: 'circle', center: { x, y: cy }, radius: 2.5, fill: '#ffffff' })
-    out.push({ kind: 'text', text: steps.labels[i]!, at: { x, y: cy + 8.0 }, fill: current ? colors.accent : colors.label, size: 11.0, align: 'middle', baseline: 'top' })
-  }
-  return out
+/** The timeline strip's commands along the bottom band `y`…`y + h`; `playing` shows the pause control. */
+export function timelineCommands(steps: TimelineSteps, width: Double, y: Double, h: Double, playing = false): DrawCmd[] {
+  const strip = steps.strip ?? defaultTimelineStrip(steps.labels)
+  return renderTimeline({ ...strip, labels: steps.labels }, { x: 0.0, y, w: width, h }, steps.current, playing)
 }
 
 const inner = (svg: string): string => {

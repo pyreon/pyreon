@@ -72,18 +72,13 @@ const WEIGHTS: Record<string, number> = {
   internals: 30,
   native: 40,
   ui: 30,
-  // ── test categories (native is the slow tail) ──
-  // The compiler shards are `--isolate`d, so `buildBatchedMatrix` never reads
-  // their weight — each already sits alone in its own cell to keep its verdict
-  // cache key unambiguous. Listed anyway so the table tells the truth: measured
-  // 2026-09-04 at ~24m/16m/23m for a 3-way split (~63m total), which is why the
-  // split went to five. ~760s each is 63m / 5.
+  // ── test categories ──
+  // `native-rest` is `--isolate`d (its verdict cache keys on the cell name),
+  // so `buildBatchedMatrix` never reads its weight; listed so the table tells
+  // the truth. The native-compiler suite no longer runs in ci.yml at all —
+  // it lives in native-validate.yml's single `Validate emitted Swift + Kotlin`
+  // job (see ci.yml's test-cell comment for why sixteen shards never worked).
   'native-rest': 332,
-  'native-compiler-1': 760,
-  'native-compiler-2': 760,
-  'native-compiler-3': 760,
-  'native-compiler-4': 760,
-  'native-compiler-5': 760,
   // ── scaffold-smoke cells (run 31084707225; a scaffolded app's cold
   //    `bun install` + `vite build` — monorepo-vercel auto-skips on a
   //    version-ahead workspace, hence the outlier) ──

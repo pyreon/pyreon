@@ -17,6 +17,7 @@ import type {
   MeasuredHandle,
   NodeChange,
   NodeMeasurement,
+  Rect,
   SnapSession,
   Viewport,
   ViewportOptions,
@@ -72,6 +73,17 @@ export function createFlow<TData = Record<string, unknown>>(
     snapGrid = 15,
     connectionRules,
   } = config
+  // `instance.config` lives as long as the instance, and the INITIAL graph is
+  // read exactly once, here. Keeping it on the config pinned every initial node
+  // and edge for the instance's whole life, including ones later removed — a
+  // 1,000-node flow kept all 500 it removed. Rebinding (rather than exposing a
+  // copy beside the original) keeps the internals and `instance.config` one
+  // object, which the `<Controls>` lock toggle relies on when it writes
+  // `instance.config.nodesDraggable`.
+  const settings: FlowConfig<TData> = { ...config }
+  delete settings.nodes
+  delete settings.edges
+  config = settings
 
   // Normalize an edge: merge flow-wide defaults (edge's own fields win —
   // including an explicit `markerEnd: null`, which survives the spread because
@@ -411,6 +423,15 @@ export function createFlow<TData = Record<string, unknown>>(
   const connectStartListeners = new Set<(start: { nodeId: string; handleId: string }) => void>()
   const connectEndListeners = new Set<(connection: Connection | null) => void>()
   const paneClickListeners = new Set<(event: MouseEvent) => void>()
+  // Context menu (right-click on web, long-press on iOS / Android) and pointer
+  // hover (a mouse or trackpad on every target).
+  const nodeContextMenuListeners = new Set<(node: FlowNode<TData>) => void>()
+  const edgeContextMenuListeners = new Set<(edge: FlowEdge) => void>()
+  const paneContextMenuListeners = new Set<(position: XYPosition) => void>()
+  const nodeMouseEnterListeners = new Set<(node: FlowNode<TData>) => void>()
+  const nodeMouseLeaveListeners = new Set<(node: FlowNode<TData>) => void>()
+  const edgeMouseEnterListeners = new Set<(edge: FlowEdge) => void>()
+  const edgeMouseLeaveListeners = new Set<(edge: FlowEdge) => void>()
 
   function emitNodeChanges(changes: NodeChange[]) {
     for (const cb of nodesChangeListeners) cb(changes)
@@ -576,17 +597,19 @@ export function createFlow<TData = Record<string, unknown>>(
     )
   }
 
-  function updateNodePosition(id: string, position: XYPosition): void {
-    let pos = snapToGrid
+  function snapPosition(position: XYPosition): XYPosition {
+    return snapToGrid
       ? {
           x: Math.round(position.x / snapGrid) * snapGrid,
           y: Math.round(position.y / snapGrid) * snapGrid,
         }
       : position
+  }
 
+  function updateNodePosition(id: string, position: XYPosition): void {
     // Apply extent clamping
     const node = getNode(id)
-    pos = clampToExtent(pos, node?.width, node?.height)
+    const pos = clampToExtent(snapPosition(position), node?.width, node?.height)
 
     nodes.update((nds) => nds.map((n) => (n.id === id ? { ...n, position: pos } : n)))
     emitNodeChanges([{ type: 'position', id, position: pos }])
@@ -723,12 +746,16 @@ export function createFlow<TData = Record<string, unknown>>(
   // ── Selection ────────────────────────────────────────────────────────────
 
   function selectNode(id: string, additive = false): void {
+    // `multiSelect: false` means no multi-selection at all, as documented and
+    // as both native engines enforce. It used to gate only the drag-select
+    // box here, so a Shift-click still multi-selected on web.
+    const multi = additive && config.multiSelect !== false
     selectedNodeIds.update((set) => {
-      const next = additive ? new Set(set) : new Set<string>()
+      const next = multi ? new Set(set) : new Set<string>()
       next.add(id)
       return next
     })
-    if (!additive) {
+    if (!multi) {
       selectedEdgeIds.set(new Set())
     }
   }
@@ -748,23 +775,31 @@ export function createFlow<TData = Record<string, unknown>>(
   // nodes). Non-additive selection replaces the node set and clears the edge
   // set — the same net state the clearSelection + additive loop produced.
   function selectNodes(ids: Iterable<string>, additive = false): void {
+    // `multiSelect: false` means no multi-selection at all, as documented and
+    // as both native engines enforce. It used to gate only the drag-select
+    // box here, so a Shift-click still multi-selected on web.
+    const multi = additive && config.multiSelect !== false
     batch(() => {
       selectedNodeIds.update((set) => {
-        const next = additive ? new Set(set) : new Set<string>()
+        const next = multi ? new Set(set) : new Set<string>()
         for (const id of ids) next.add(id)
         return next
       })
-      if (!additive) selectedEdgeIds.set(new Set())
+      if (!multi) selectedEdgeIds.set(new Set())
     })
   }
 
   function selectEdge(id: string, additive = false): void {
+    // `multiSelect: false` means no multi-selection at all, as documented and
+    // as both native engines enforce. It used to gate only the drag-select
+    // box here, so a Shift-click still multi-selected on web.
+    const multi = additive && config.multiSelect !== false
     selectedEdgeIds.update((set) => {
-      const next = additive ? new Set(set) : new Set<string>()
+      const next = multi ? new Set(set) : new Set<string>()
       next.add(id)
       return next
     })
-    if (!additive) {
+    if (!multi) {
       selectedNodeIds.set(new Set())
     }
   }
@@ -944,11 +979,14 @@ export function createFlow<TData = Record<string, unknown>>(
   function isNodeVisible(id: string): boolean {
     const node = getNode(id)
     if (!node) return false
-    // Simplified check — actual implementation would use container dimensions
     const v = viewport.peek()
     const { width: w, height: h } = nodeDims(node)
-    const screenX = node.position.x * v.zoom + v.x
-    const screenY = node.position.y * v.zoom + v.y
+    // A child node's `position` is relative to its parent; visibility is a
+    // question about where it is on screen, so resolve the parent chain like
+    // fitView/focusNode (and the native engines) do.
+    const abs = node.parentId ? getAbsolutePosition(id) : node.position
+    const screenX = abs.x * v.zoom + v.x
+    const screenY = abs.y * v.zoom + v.y
     const screenW = w * v.zoom
     const screenH = h * v.zoom
     const { width: cw, height: ch } = containerSize.peek()
@@ -1118,6 +1156,13 @@ export function createFlow<TData = Record<string, unknown>>(
   const onConnectStart = listen(connectStartListeners)
   const onConnectEnd = listen(connectEndListeners)
   const onPaneClick = listen(paneClickListeners)
+  const onNodeContextMenu = listen(nodeContextMenuListeners)
+  const onEdgeContextMenu = listen(edgeContextMenuListeners)
+  const onPaneContextMenu = listen(paneContextMenuListeners)
+  const onNodeMouseEnter = listen(nodeMouseEnterListeners)
+  const onNodeMouseLeave = listen(nodeMouseLeaveListeners)
+  const onEdgeMouseEnter = listen(edgeMouseEnterListeners)
+  const onEdgeMouseLeave = listen(edgeMouseLeaveListeners)
 
   // ── Copy / Paste ────────────────────────────────────────────────────────
 
@@ -1241,22 +1286,30 @@ export function createFlow<TData = Record<string, unknown>>(
 
   // ── Multi-node drag ────────────────────────────────────────────────────
 
+  // A nudge is a positioned move: it snaps to the grid and clamps to the node
+  // extent exactly like `updateNodePosition`, and it reports each moved node
+  // through `onNodesChange`. The native engines route a nudge through their
+  // `updateNodePosition`; the web engine used to add the raw delta, so a
+  // keyboard nudge escaped the grid and the extent on web only (caught by the
+  // shared native-parity fixture).
   function moveSelectedNodes(dx: number, dy: number): void {
     const selected = selectedNodeIds.peek()
     if (selected.size === 0) return
 
+    const changes: NodeChange[] = []
     nodes.update((nds) =>
       nds.map((n) => {
         if (!selected.has(n.id)) return n
-        return {
-          ...n,
-          position: {
-            x: n.position.x + dx,
-            y: n.position.y + dy,
-          },
-        }
+        const position = clampToExtent(
+          snapPosition({ x: n.position.x + dx, y: n.position.y + dy }),
+          n.width,
+          n.height,
+        )
+        changes.push({ type: 'position', id: n.id, position })
+        return { ...n, position }
       }),
     )
+    if (changes.length > 0) emitNodeChanges(changes)
   }
 
   // ── Helper lines (snap guides) ─────────────────────────────────────────
@@ -1565,6 +1618,64 @@ export function createFlow<TData = Record<string, unknown>>(
     })
   }
 
+  // ── Intersection + bounds (React Flow's getIntersectingNodes /
+  // isNodeIntersecting / getNodesBounds, same semantics) ──────────────────
+  // A node's rect is its ABSOLUTE box (a child's position is relative to its
+  // parent) with the effective dimensions every other geometry path uses.
+  function nodeRect(node: FlowNode<TData>): Rect {
+    const { width, height } = nodeDims(node)
+    const p = node.parentId ? getAbsolutePosition(node.id) : node.position
+    return { x: p.x, y: p.y, width, height }
+  }
+
+  function overlapArea(a: Rect, b: Rect): number {
+    const w = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x)
+    const h = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y)
+    return w > 0 && h > 0 ? w * h : 0
+  }
+
+  function targetRect(target: string | Rect): Rect | undefined {
+    if (typeof target !== 'string') return target
+    const node = getNode(target)
+    return node ? nodeRect(node) : undefined
+  }
+
+  function isNodeIntersecting(target: string | Rect, area: Rect, partially = true): boolean {
+    const rect = targetRect(target)
+    if (!rect) return false
+    const overlap = overlapArea(rect, area)
+    return (partially && overlap > 0) || overlap >= rect.width * rect.height
+  }
+
+  function getIntersectingNodes(target: string | Rect, partially = true): FlowNode<TData>[] {
+    const rect = targetRect(target)
+    if (!rect) return []
+    const selfId = typeof target === 'string' ? target : undefined
+    return nodes.peek().filter((other) => {
+      if (other.id === selfId || other.hidden) return false
+      const otherRect = nodeRect(other)
+      const overlap = overlapArea(otherRect, rect)
+      return (partially && overlap > 0) || overlap >= otherRect.width * otherRect.height
+    })
+  }
+
+  function getNodesBounds(nodeIds?: string[]): Rect {
+    const targets = nodeIds ? nodes.peek().filter((n) => nodeIds.includes(n.id)) : nodes.peek().filter((n) => !n.hidden)
+    if (targets.length === 0) return { x: 0, y: 0, width: 0, height: 0 }
+    let minX = Number.POSITIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+    for (const node of targets) {
+      const r = nodeRect(node)
+      minX = Math.min(minX, r.x)
+      minY = Math.min(minY, r.y)
+      maxX = Math.max(maxX, r.x + r.width)
+      maxY = Math.max(maxY, r.y + r.height)
+    }
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
+  }
+
   function resolveCollisions(nodeId: string, spacing = 10): void {
     const overlapping = getOverlappingNodes(nodeId)
     if (overlapping.length === 0) return
@@ -1779,6 +1890,13 @@ export function createFlow<TData = Record<string, unknown>>(
     connectStartListeners.clear()
     connectEndListeners.clear()
     paneClickListeners.clear()
+    nodeContextMenuListeners.clear()
+    edgeContextMenuListeners.clear()
+    paneContextMenuListeners.clear()
+    nodeMouseEnterListeners.clear()
+    nodeMouseLeaveListeners.clear()
+    edgeMouseEnterListeners.clear()
+    edgeMouseLeaveListeners.clear()
     containerEl = null
     // Cancel any in-flight animations to prevent stale state mutations
     if (_layoutFrameId !== null) {
@@ -1965,6 +2083,13 @@ export function createFlow<TData = Record<string, unknown>>(
     onConnectStart,
     onConnectEnd,
     onPaneClick,
+    onNodeContextMenu,
+    onEdgeContextMenu,
+    onPaneContextMenu,
+    onNodeMouseEnter,
+    onNodeMouseLeave,
+    onEdgeMouseEnter,
+    onEdgeMouseLeave,
     /** @internal — drives the Flow component's re-fit after first measure */
     _fitViewConfigured: !!config.fitView,
     /** @internal — used by Flow component to emit events */
@@ -1996,6 +2121,32 @@ export function createFlow<TData = Record<string, unknown>>(
       paneClick: (event: MouseEvent) => {
         for (const cb of paneClickListeners) cb(event)
       },
+      // The context-menu emitters report whether anyone listened, so the
+      // renderer suppresses the browser's own menu only when there is one.
+      nodeContextMenu: (node: FlowNode<TData>) => {
+        for (const cb of nodeContextMenuListeners) cb(node)
+        return nodeContextMenuListeners.size > 0
+      },
+      edgeContextMenu: (edge: FlowEdge) => {
+        for (const cb of edgeContextMenuListeners) cb(edge)
+        return edgeContextMenuListeners.size > 0
+      },
+      paneContextMenu: (position: XYPosition) => {
+        for (const cb of paneContextMenuListeners) cb(position)
+        return paneContextMenuListeners.size > 0
+      },
+      nodeMouseEnter: (node: FlowNode<TData>) => {
+        for (const cb of nodeMouseEnterListeners) cb(node)
+      },
+      nodeMouseLeave: (node: FlowNode<TData>) => {
+        for (const cb of nodeMouseLeaveListeners) cb(node)
+      },
+      edgeMouseEnter: (edge: FlowEdge) => {
+        for (const cb of edgeMouseEnterListeners) cb(edge)
+      },
+      edgeMouseLeave: (edge: FlowEdge) => {
+        for (const cb of edgeMouseLeaveListeners) cb(edge)
+      },
     },
     copySelected,
     paste,
@@ -2014,6 +2165,9 @@ export function createFlow<TData = Record<string, unknown>>(
     reconnectEdge,
     getProximityConnection,
     getOverlappingNodes,
+    getIntersectingNodes,
+    isNodeIntersecting,
+    getNodesBounds,
     resolveCollisions,
     setNodeExtent,
     clampToExtent,

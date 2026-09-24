@@ -114,7 +114,35 @@ export default defineConfig({
     120_000,
   )
 
-  it.runIf(!ENABLED)('skipped without PYREON_SSG_E2E=1', () => {
-    expect(true).toBe(true)
+  // `expect(true).toBe(true)` used to sit here, and it was the file's ONLY
+  // executing assertion: `PYREON_SSG_E2E` is set in no workflow, no script and
+  // no vitest config — it appears nowhere in the repo except this file — so the
+  // real spec above has never run, while the suite reported green.
+  //
+  // A tautology is the worst possible stand-in, because it makes the file look
+  // covered. This says out loud what is true instead: the suite is UNMEASURED
+  // unless someone opts in, and it names how.
+  it.runIf(!ENABLED)('reports itself UNMEASURED rather than passing vacuously', () => {
+    // A console.warn here is swallowed by vitest's reporter, and a passing spec
+    // reads as coverage whatever it is named — so the only mechanism that can
+    // actually enforce this is an opt-in REQUIRE, the same shape
+    // `PYREON_REQUIRE_BUILT_LIB` uses elsewhere. Setting it turns the skip into
+    // a failure, which is one line in whichever job decides to own this.
+    const required = process.env.PYREON_REQUIRE_SSG_E2E === '1'
+    expect(
+      required && !ENABLED,
+      [
+        'This suite did not run. It is the regression guard for five SSG bugs its',
+        'own header says no unit test caught, and it is gated on PYREON_SSG_E2E=1,',
+        'which nothing in this repo sets — so it has been green-because-skipped.',
+        '',
+        'Run it with:  PYREON_SSG_E2E=1 bun run --cwd packages/zero/zero test ssg-end-to-end',
+        '',
+        'It is deliberately opt-in: each spec drives a real nested Vite SSG build',
+        'of examples/ssr-showcase and carries a 120s budget. `verify-modes` covers',
+        'the same bug CLASS at the artifact level on every PR, which is why this',
+        'is a gap rather than an outage — but the gap should be visible.',
+      ].join('\n'),
+    ).toBe(false)
   })
 })

@@ -124,7 +124,11 @@ export function scalarLiteralType(e: ExprIR): TypeIR | null {
   if (e.kind !== 'literal') return null
   if (typeof e.value === 'string') return { kind: 'string' }
   if (typeof e.value === 'number') {
-    return { kind: 'number', float: !Number.isInteger(e.value) }
+    // The literal's own `float` mark says an integral value IS a Double (a `1.0`
+    // in a Double column); reading only the value typed that field Int, so a
+    // column whose first row was integral and a later one fractional
+    // synthesized two row structs that could not share an array.
+    return { kind: 'number', float: e.float === true || !Number.isInteger(e.value) }
   }
   if (typeof e.value === 'boolean') return { kind: 'boolean' }
   return null // null literal — can't type a field from it
@@ -337,6 +341,52 @@ export function synthLiteralStructName(
   const typed: { name: string; type: TypeIR }[] = []
   for (const f of fields) {
     const t = synthFieldType(f.value, structs, keys, inferField)
+    if (t === null) return null
+    typed.push({ name: f.name, type: t })
+  }
+  const shapeKey = typed
+    .map((f) => `${f.name}:${typeShapeKey(f.type)}`)
+    .slice()
+    .sort()
+    .join(',')
+  const existing = keys.get(shapeKey)
+  if (existing !== undefined) return existing
+  const name = `__Obj${structs.length}`
+  structs.push({ name, fields: typed })
+  keys.set(shapeKey, name)
+  return name
+}
+
+/**
+ * The TYPE-directed twin of {@link synthLiteralStructName}: the synthesized
+ * struct name for an inline object TYPE (`createFlow<{ label: string }>`).
+ *
+ * It must hit the SAME registry key a value literal of that shape produces, or
+ * a generic and the literals it types name two different structs — Swift
+ * emitted `PyreonFlowState<String>` beside `data: __Obj0(label:)`, Kotlin
+ * `PyreonFlowState<Any>`, and neither compiled. Nested object fields register
+ * their own struct first, exactly as a nested literal does.
+ */
+export function synthTypedStructName(
+  fields: readonly { name: string; type: TypeIR }[],
+  structs: StructIR[],
+  keys: Map<string, string>,
+): string | null {
+  if (fields.length === 0) return null
+  const lift = (t: TypeIR): TypeIR | null => {
+    if (t.kind === 'object') {
+      const nested = synthTypedStructName(t.fields, structs, keys)
+      return nested === null ? null : { kind: 'typeRef', name: nested, args: [] }
+    }
+    if (t.kind === 'array') {
+      const element = lift(t.element)
+      return element === null ? null : { kind: 'array', element }
+    }
+    return t
+  }
+  const typed: { name: string; type: TypeIR }[] = []
+  for (const f of fields) {
+    const t = lift(f.type)
     if (t === null) return null
     typed.push({ name: f.name, type: t })
   }
@@ -1301,4 +1351,14 @@ export function optionalSpreadWarning(name: string): string {
     `Spreading \`${name}\`, which is optional, has no native lowering: the emit assigns through a Swift Optional / calls \`.copy\` on a Kotlin nullable, and neither compiles. ` +
     `Build the object field by field instead (\`field: ${name}?.field ?? <fallback>\`), or narrow \`${name}\` to non-optional before the spread.`
   )
+}
+
+/**
+ * A numeric literal, or a negated one. PMTC parses `-2` as a unary minus over
+ * `2`, so a reader that asks only `kind === 'literal'` treats every negative
+ * constant as a runtime expression and emits a conversion around it.
+ */
+export function isNumericLiteralOrNegation(x: ExprIR): boolean {
+  if (x.kind === 'literal') return typeof x.value === 'number' || typeof x.value === 'string'
+  return x.kind === 'unary' && (x.op === '-' || x.op === '+') && x.argument.kind === 'literal' && typeof x.argument.value === 'number'
 }

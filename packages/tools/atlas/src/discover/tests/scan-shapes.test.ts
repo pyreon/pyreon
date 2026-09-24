@@ -182,3 +182,28 @@ describe('fileBaseName', () => {
     expect(fileBaseName(file)).toBe(expected)
   })
 })
+
+describe('content seed for a TYPED component', () => {
+  const contentOf = (code: string) => scanSource(code)[0]?.content
+
+  it('seeds `children` with the name when the type declares it without a default', () => {
+    expect(contentOf('export function Card(props: { children?: unknown }) { return null }')).toEqual({
+      children: 'Card',
+    })
+  })
+
+  it('falls back to a string `label`', () => {
+    expect(contentOf('export function Tag(props: { label: string }) { return null }')).toEqual({ label: 'Tag' })
+  })
+
+  it('does NOT override a default the component states itself', () => {
+    expect(
+      contentOf('export function Save(props: { label?: string }) { return props.label ?? "Save" }'),
+    ).toBeUndefined()
+  })
+
+  it('seeds nothing for a component that declares no content channel', () => {
+    // Guessing a prop the type does not have would put a dead control on the panel.
+    expect(contentOf('export function Spinner(props: { size: number }) { return null }')).toBeUndefined()
+  })
+})

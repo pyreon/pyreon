@@ -50,8 +50,20 @@ export interface RiverOptions {
   showLabels?: boolean | undefined
   showAxis?: boolean | undefined
   fontSize?: Double | undefined
+  /**
+   * The band labels, which sit ON a palette-filled band — so this is white on
+   * both grounds and is deliberately NOT theme-derived. The axis text below is
+   * a different surface and takes `tickColor`.
+   */
   labelColor?: string | undefined
   axisColor?: string | undefined
+  /**
+   * The axis TICK text, which sits on the page ground rather than on a band.
+   * It had no option at all and was drawn in a fixed `#64748b` — about 2.5:1 on
+   * the dark theme's ground, i.e. below the 4.5:1 text minimum, and the reason
+   * a dark river looked like it had no axis labels.
+   */
+  tickColor?: string | undefined
   /** Entrance progress 0..1; the river flows in from the left. */
   progress?: Double | undefined
 }
@@ -213,6 +225,7 @@ export function renderRiver(layout: RiverLayout, options?: RiverOptions, measure
   const fontSize = options?.fontSize ?? 11.0
   const labelColor = options?.labelColor ?? '#ffffff'
   const axisColor = options?.axisColor ?? '#94a3b8'
+  const tickColor = options?.tickColor ?? '#64748b'
   const m: MeasureText = measure ?? approxTextWidth
   if (progress <= 0.0 || layout.xs.length < 2) return out
   for (const l of layout.layers) {
@@ -223,7 +236,7 @@ export function renderRiver(layout: RiverLayout, options?: RiverOptions, measure
   if (options?.showAxis !== false && layout.ticks.length > 0) {
     const y = layout.plot.y + layout.plot.h
     out.push({ kind: 'line', from: { x: layout.plot.x, y }, to: { x: layout.plot.x + layout.plot.w, y }, stroke: axisColor, width: 1.0 })
-    for (const t of layout.ticks) out.push({ kind: 'text', text: t.label, at: { x: t.x, y: y + 4.0 }, fill: '#64748b', size: fontSize, align: 'middle', baseline: 'top' })
+    for (const t of layout.ticks) out.push({ kind: 'text', text: t.label, at: { x: t.x, y: y + 4.0 }, fill: tickColor, size: fontSize, align: 'middle', baseline: 'top' })
   }
   if (options?.showLabels !== false) {
     for (const l of layout.layers) {

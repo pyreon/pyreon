@@ -4,7 +4,7 @@ Local-first, CRDT-backed sync for signals — **a synced signal is just a signal
 
 When a collaborative or offline change arrives, a fine-grained signal framework can do `apply op → one signal.set → one surgical DOM update`. That is the whole bet of this package: bind a signal to a CRDT entry through `wrapSignal`, and the rest of Pyreon (compiled templates, effects, `<For>`) treats it like any other signal — no special render path, no diff.
 
-> **Status (read this).** **Public.** `@pyreon/sync` ships the engine-independent reactive bridge (`syncedSignal` / `syncedStore`) + an in-memory `FakeCrdtAdapter` for tests, **plus the real Yjs engine adapter at the `@pyreon/sync/yjs` subpath** (`yjs` stays out of the core entry) with **IndexedDB offline persistence** (`persistViaIndexedDB`), **same-origin cross-tab sync** (`connectViaBroadcastChannel`), **collaborative text + lists** (`syncedText` / `syncedList` — Y.Text character-merge + Y.Array positional merge), and **cross-device sync** — a **WebSocket transport** (`connectViaWebSocket`) + a **relay server with per-room/per-doc authz** (`createSyncServer`, server-only at `@pyreon/sync/server`). **Not yet**: a turnkey-platform adapter, and a `@pyreon/zero` adapter extension to mount the relay on its Node/Bun server. See the [roadmap](#roadmap). v1 binds **scalar** map fields + collaborative text + lists.
+> **Status (read this).** **Public.** `@pyreon/sync` ships the engine-independent reactive bridge (`syncedSignal` / `syncedStore`) + an in-memory `FakeCrdtAdapter` for tests, **plus the real Yjs engine adapter at the `@pyreon/sync/yjs` subpath** (`yjs` stays out of the core entry) with **IndexedDB offline persistence** (`persistViaIndexedDB`), **same-origin cross-tab sync** (`connectViaBroadcastChannel`), **collaborative text + lists** (`syncedText` / `syncedList` — Y.Text character-merge + Y.Array positional merge), a **pure-TS multiplatform engine** (`pyreonAdapter` / `createNativeSyncHost` — the same merge math + wire protocol PMTC lowers to a native peer), and **cross-device sync** — a **WebSocket transport** (`connectViaWebSocket`) + a **relay server with per-room/per-doc authz** (`createSyncServer`, server-only at `@pyreon/sync/server`). **Not yet**: a turnkey-platform adapter, and a `@pyreon/zero` adapter extension to mount the relay on its Node/Bun server. See the [roadmap](#roadmap). v1 binds **scalar** map fields + collaborative text + lists.
 
 ## Install
 
@@ -184,6 +184,13 @@ const relay = await createSyncServer({
 })
 ```
 
+> **Omitting `authorize` makes an open relay.** Every connection is accepted, so
+> anyone who can reach the port joins any room and reads and rewrites its
+> document. That default exists for local development only, and
+> `createSyncServer` now says so at startup — once per server, **in production
+> too**, because it is a live misconfiguration rather than a developer-time
+> nicety.
+
 One authoritative `Y.Doc` per room: a late-joiner catches up via the
 state-vector handshake, each inbound update is applied + fanned out to the
 room's other clients, and a room is GC'd when its last client leaves (the relay
@@ -246,12 +253,88 @@ in-memory `FakeCrdtAdapter` is the reference implementation. Swapping engines
 re-platforms the *infrastructure* (persistence / transport / relay) — **not**
 this client bridge.
 
+## Multiplatform engine
+
+The Yjs engine (above) gives rich sequence CRDTs but is a web-only npm
+**engine** — the Pyreon Multi-Target Compiler lowers your *source*, not npm
+libraries. `@pyreon/sync` also ships a second, **pure-TS** engine that PMTC
+CAN lower, so a web peer and a native (iOS/Android) peer run byte-identical
+merge math and converge over one shared wire protocol.
+
+```ts
+import { pyreonAdapter, syncedSignal } from '@pyreon/sync'
+
+const adapter = pyreonAdapter()          // dependency-free scalar-map CRDT
+const doc = adapter.createDoc()
+const title = syncedSignal({ doc, key: 'title', initial: 'Untitled' })
+title.set('Roadmap')
+```
+
+`PyreonCrdtDoc` is a **state-based (CvRDT) LWW register map** — no `yjs`, only
+`Map`, numbers, and comparisons. Each register carries a Lamport-clock
+timestamp + the writing peer's `actor` id; a write bumps the doc's monotonic
+clock, and a receive advances it to `max(local, incoming)` so a later local
+write always out-ranks anything seen. Merge is deterministic (higher clock
+wins; an equal clock is broken by the higher actor id), so merging full
+states — any subset of ops, in any order, with duplicates — always converges.
+`createActorId()` mints a peer id (`crypto.randomUUID`, falling back through
+`getRandomValues` to a process-unique counter+random string); persist it for a
+stable device identity, and never share one live id across two peers.
+
+The client **transport** is pure JSON over any string duplex — no binary
+framing — so it runs unchanged on web and inside a native JS runtime
+(JavaScriptCore/V8 bridged to native signals):
+
+```ts
+import { connectPyreonSync, webSocketChannel } from '@pyreon/sync'
+
+const channel = webSocketChannel('wss://sync.example.com/my-room')
+const { disconnect } = connectPyreonSync(doc, channel)
+```
+
+`SyncChannel` is a 4-method duplex (`send` / `onMessage` / `onOpen` /
+`close`), so any transport binding works — a WebSocket, a WebView
+`postMessage` bridge, an in-memory pair for tests. `webSocketChannel` is the
+WebSocket implementation of it; pass `WebSocketImpl` to inject `ws` (older
+Node) or a native shim.
+
+### `createNativeSyncHost` — the native runtime contract
+
+`createNativeSyncHost` is the JS side of the bridge a native host (iOS
+JavaScriptCore / an Android JS engine) drives: it evaluates the
+`@pyreon/sync` bundle, injects a platform-socket-backed `WebSocketCtor`, and
+for each synced key the native UI binds, calls `host.observe(map, key, cb)`
+with a callback that sets the corresponding native signal (`@State` /
+`mutableStateOf`); a native UI write calls `host.set(map, key, value)`.
+Everything — engine, transport, this bridge — is pure JS, so identical code
+runs on every target; the native host only owns JS↔native value marshalling.
+v1 values crossing the boundary are scalars (string/number/boolean/null).
+
+```ts
+import { createNativeSyncHost } from '@pyreon/sync'
+
+const host = createNativeSyncHost({
+  actor: 'device-1',
+  url: 'wss://sync.example.com/my-room', // omit for a local-only doc
+})
+const unobserve = host.observe('doc', 'title', (value) => { /* set native @State */ })
+host.set('doc', 'title', 'Hello') // a native UI edit
+host.destroy() // tears down the transport + document
+```
+
+The pure-TS engine and the Yjs engine are **not interchangeable on the wire**
+— they're separate CRDT implementations behind the same `CrdtAdapter` seam,
+for different jobs. Use the Yjs engine (`@pyreon/sync/yjs`) for rich web-only
+collaborative text/lists; use `pyreonAdapter()` / `createNativeSyncHost` when
+a native target needs to be a real peer in the sync graph.
+
 ## Roadmap
 
 | Phase | Scope | Status |
 | --- | --- | --- |
 | Bridge | `syncedSignal` / `syncedStore` + `CrdtAdapter` seam + in-memory adapter | ✅ shipped |
 | Yjs engine adapter | raw `Y.Doc` behind the seam (`@pyreon/sync/yjs`) + in-memory peer link | ✅ shipped |
+| Multiplatform engine | pure-TS LWW register-map engine (`PyreonCrdtAdapter`) + JSON transport (`connectPyreonSync`) + native-host bridge (`createNativeSyncHost`) — one wire protocol for web AND native peers | ✅ shipped |
 | Turnkey engine adapter | a managed platform (e.g. Jazz) behind the same seam, for the raw-vs-turnkey decision | planned |
 | Persistence | IndexedDB offline durability (`persistViaIndexedDB`, via y-indexeddb) | ✅ shipped |
 | Cross-tab transport | same-origin `BroadcastChannel` sync (`connectViaBroadcastChannel`) | ✅ shipped |

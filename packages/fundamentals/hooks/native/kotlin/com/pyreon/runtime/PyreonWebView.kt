@@ -60,7 +60,11 @@ import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import java.lang.ref.WeakReference
+import org.json.JSONObject
 
 /**
  * Host an Android [WebView] in Compose. Supply [html] (inline HTML) OR
@@ -82,9 +86,34 @@ fun PyreonWebView(
     // `data` / `onMessage` that `update` writes.
     val state = remember { PyreonWebViewState() }
     AndroidView(
-        modifier = modifier,
+        // An unsized WebView measures to its content, which is ~18dp for a page
+        // whose body is `height: 100%` — so a hosted chart or flow gets no room
+        // to lay out and a tap at its centre lands on nothing. The web
+        // `<iframe>` falls back to the CSS replaced-element default of 150px in
+        // the same spot, so that is the default here.
+        //
+        // It has to be an EXACT height, not a minimum: AndroidView measures the
+        // View `EXACTLY` only when min == max, and otherwise lets it wrap. A
+        // `defaultMinSize` widened the Compose slot while the WebView inside it
+        // stayed 18dp. An explicit height (or `fillMaxHeight`) arrives with a
+        // non-zero minimum and passes through untouched.
+        modifier = modifier.pyreonWebViewDefaultHeight(),
+        onRelease = {
+            PyreonWebViewGroups.leave(state)
+            state.webView = null
+        },
         factory = { context ->
             WebView(context).apply {
+                // AndroidView hands the View WRAP_CONTENT params, and a WebView
+                // in that mode sizes its viewport to its CONTENT: the page's
+                // `height: 100%` then resolves to 0 (measured clientHeight 0 in
+                // a 150dp host), so a hosted flow fit its graph into nothing.
+                // MATCH_PARENT makes the viewport the size Compose gave it.
+                layoutParams = android.view.ViewGroup.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                )
+                state.webView = WeakReference(this)
                 @Suppress("SetJavaScriptEnabled")
                 settings.javaScriptEnabled = true
                 // Reverse bridge — the page's `window.pyreonPostMessage(s)`
@@ -127,11 +156,80 @@ fun PyreonWebView(
     )
 }
 
+/** The CSS replaced-element default height the web `<iframe>` falls back to. */
+internal const val PYREON_WEBVIEW_DEFAULT_HEIGHT_DP = 150
+
+/** Pin an UNSIZED host to [PYREON_WEBVIEW_DEFAULT_HEIGHT_DP]; leave a sized one alone. */
+private fun Modifier.pyreonWebViewDefaultHeight(): Modifier = layout { measurable, constraints ->
+    val c = if (constraints.minHeight == 0) {
+        val h = PYREON_WEBVIEW_DEFAULT_HEIGHT_DP.dp.roundToPx().coerceAtMost(constraints.maxHeight)
+        constraints.copy(minHeight = h, maxHeight = h)
+    } else constraints
+    val placeable = measurable.measure(c)
+    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+}
+
 private class PyreonWebViewState {
     var latestData: String? = null
     var loaded: Boolean = false
     var loadedKey: String? = null
     var onMessage: ((String) -> Unit)? = null
+    /** The hosted WebView — a sibling relay evaluates into it. */
+    var webView: WeakReference<WebView>? = null
+    /** The host group this page joined (null = none). */
+    var group: String? = null
+}
+
+/**
+ * Host-group registry — group name → the hosts currently in it. Every hosted
+ * page is its own realm, so two guests can never reach each other; a page that
+ * posted `{"__pyreonWebViewGroup":1,"join":"g"}` receives what its group
+ * siblings relay, through `window.__pyreonWebViewGroupMessage(s)`. Mirrors
+ * the web `<WebView>` host and the iOS runtime byte-for-byte in protocol.
+ * Members are removed by IDENTITY on leave and on `onRelease`; an emptied
+ * group is dropped. Main-thread only (the JS bridge marshals first).
+ */
+private object PyreonWebViewGroups {
+    private val members = HashMap<String, MutableSet<PyreonWebViewState>>()
+
+    /** Consume a reserved host-group message. Returns false for ordinary traffic. */
+    fun handle(message: String, from: PyreonWebViewState): Boolean {
+        if (!message.startsWith("{\"__pyreonWebViewGroup\"")) return false
+        val obj = try { JSONObject(message) } catch (_: Exception) { return false }
+        if (obj.optInt("__pyreonWebViewGroup") != 1) return false
+        val join = obj.optString("join")
+        when {
+            join.isNotEmpty() -> join(from, join)
+            obj.optBoolean("leave") -> leave(from)
+            obj.has("group") && obj.has("message") && obj.optString("group") == from.group ->
+                relay(obj.optString("message"), obj.optString("group"), from)
+        }
+        return true
+    }
+
+    fun join(state: PyreonWebViewState, group: String) {
+        if (state.group == group) return
+        leave(state)
+        members.getOrPut(group) { LinkedHashSet() }.add(state)
+        state.group = group
+    }
+
+    fun leave(state: PyreonWebViewState) {
+        val group = state.group ?: return
+        state.group = null
+        val set = members[group] ?: return
+        set.remove(state)
+        if (set.isEmpty()) members.remove(group)
+    }
+
+    private fun relay(message: String, group: String, from: PyreonWebViewState) {
+        val set = members[group] ?: return
+        val js = "if (typeof window.__pyreonWebViewGroupMessage === 'function') window.__pyreonWebViewGroupMessage(${JSONObject.quote(message)});"
+        for (member in set) {
+            if (member === from) continue
+            member.webView?.get()?.evaluateJavascript(js, null)
+        }
+    }
 }
 
 /**
@@ -147,7 +245,10 @@ private class PyreonJsBridge(private val state: PyreonWebViewState) {
 
     @JavascriptInterface
     fun postMessage(message: String) {
-        mainHandler.post { state.onMessage?.invoke(message) }
+        mainHandler.post {
+            // Reserved host-group traffic is consumed and never forwarded.
+            if (!PyreonWebViewGroups.handle(message, state)) state.onMessage?.invoke(message)
+        }
     }
 }
 

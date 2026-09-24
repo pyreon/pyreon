@@ -49,8 +49,11 @@ const CORPUS: DrawCmd[] = [
     kind: 'rect',
     rect: { x: 100, y: 10, w: 25, h: 60 },
     fill: '#f00',
-    grad: { from: { x: 100, y: 0 }, to: { x: 125, y: 0 }, stops: [{ offset: 0, color: '#000' }] },
+    grad: { from: { x: 100, y: 0 }, to: { x: 125, y: 0 }, stops: [{ offset: 0, color: '#000' }], radial: false },
+    pattern: { kind: 'cross', color: '#fff', spacing: 7, width: 1.5 },
   },
+  // A radial ramp is two points too: the centre and a point on its circle.
+  { kind: 'polygon', points: [{ x: 12, y: 3 }, { x: 44, y: 9 }, { x: 300, y: 1 }], fill: '#123', grad: { from: { x: 120, y: 5 }, to: { x: 150, y: 5 }, stops: [{ offset: 0, color: '#000' }, { offset: 1, color: '#fff' }], radial: true } },
   { kind: 'line', from: { x: 5, y: 1 }, to: { x: 395, y: 2 }, stroke: '#0f0', width: 1.5 },
   { kind: 'polyline', points: [{ x: 12, y: 3 }, { x: 44, y: 9 }, { x: 300, y: 1 }], stroke: '#00f', width: 2 },
   { kind: 'polygon', points: [{ x: 12, y: 3 }, { x: 44, y: 9 }, { x: 300, y: 1 }], fill: '#fff' },
@@ -58,6 +61,9 @@ const CORPUS: DrawCmd[] = [
   { kind: 'text', text: 'Revenue', at: { x: 8, y: 20 }, fill: '#111', size: 11, align: 'start', baseline: 'top' },
   { kind: 'text', text: '1.2M', at: { x: 392, y: 20 }, fill: '#111', size: 11, align: 'end', baseline: 'middle' },
   { kind: 'text', text: 'Mon', at: { x: 60, y: 40 }, fill: '#111', size: 10, align: 'middle', baseline: 'bottom', rotate: -35 },
+  // A clip region mirrors by its far edge like a rect; its `unclip` carries nothing to move.
+  { kind: 'clip', rect: { x: 12, y: 4, w: 100, h: 30 } },
+  { kind: 'unclip' },
 ]
 
 /**
@@ -77,6 +83,7 @@ function project(cmds: DrawCmd[]): string[] {
           n(c.rect.x), n(c.rect.y), n(c.rect.w), n(c.rect.h),
           (c.corners ?? []).map(n).join('/') || '-',
           c.grad === undefined ? '-' : `${n(c.grad.from.x)}>${n(c.grad.to.x)}`,
+          c.pattern === undefined ? '-' : `${c.pattern.kind}/${c.pattern.color}/${n(c.pattern.spacing)}/${n(c.pattern.width)}`,
         ].join(' ')
       case 'line':
         return ['line', n(c.from.x), n(c.from.y), n(c.to.x), n(c.to.y)].join(' ')
@@ -87,6 +94,10 @@ function project(cmds: DrawCmd[]): string[] {
         return ['circle', n(c.center.x), n(c.center.y), n(c.radius)].join(' ')
       case 'text':
         return ['text', c.text, n(c.at.x), n(c.at.y), c.align, n(c.rotate)].join(' ')
+      case 'clip':
+        return ['clip', n(c.rect.x), n(c.rect.y), n(c.rect.w), n(c.rect.h)].join(' ')
+      case 'unclip':
+        return 'unclip'
     }
   })
 }
@@ -167,6 +178,7 @@ function swiftCorpus(): string {
         const stops = c.grad.stops.map((st) => `PyreonChartGradientStop(offset: ${num(st.offset)}, color: ${JSON.stringify(st.color)})`).join(', ')
         f.set('grad', `PyreonChartGradient(from: ${pt(c.grad.from)}, to: ${pt(c.grad.to)}, stops: [${stops}])`)
       }
+      if (c.pattern !== undefined) f.set('pattern', `PyreonChartPattern(kind: ${JSON.stringify(c.pattern.kind)}, color: ${JSON.stringify(c.pattern.color)}, spacing: ${num(c.pattern.spacing)}, width: ${num(c.pattern.width)})`)
     } else if (c.kind === 'line') {
       f.set('from', pt(c.from)); f.set('to', pt(c.to)); f.set('stroke', JSON.stringify(c.stroke)); f.set('width', num(c.width))
     } else if (c.kind === 'polyline') {
@@ -175,6 +187,10 @@ function swiftCorpus(): string {
       f.set('points', `[${c.points.map(pt).join(', ')}]`); f.set('fill', JSON.stringify(c.fill))
     } else if (c.kind === 'circle') {
       f.set('center', pt(c.center)); f.set('radius', num(c.radius)); f.set('fill', JSON.stringify(c.fill))
+    } else if (c.kind === 'clip') {
+      f.set('rect', `PyreonChartRect(x: ${num(c.rect.x)}, y: ${num(c.rect.y)}, w: ${num(c.rect.w)}, h: ${num(c.rect.h)})`)
+    } else if (c.kind === 'unclip') {
+      // Only its kind.
     } else {
       f.set('text', JSON.stringify(c.text)); f.set('at', pt(c.at)); f.set('fill', JSON.stringify(c.fill))
       f.set('size', num(c.size)); f.set('align', JSON.stringify(c.align)); f.set('baseline', JSON.stringify(c.baseline))
@@ -198,6 +214,7 @@ function kotlinCorpus(): string {
         const stops = c.grad.stops.map((s) => `PyreonChartGradientStop(${num(s.offset)}, ${JSON.stringify(s.color)})`).join(', ')
         f.push(`grad = PyreonChartGradient(${ktPt(c.grad.from)}, ${ktPt(c.grad.to)}, listOf(${stops}))`)
       }
+      if (c.pattern !== undefined) f.push(`pattern = PyreonChartPattern(${JSON.stringify(c.pattern.kind)}, ${JSON.stringify(c.pattern.color)}, ${num(c.pattern.spacing)}, ${num(c.pattern.width)})`)
     } else if (c.kind === 'line') {
       f.push(`from = ${ktPt(c.from)}`, `to = ${ktPt(c.to)}`, `stroke = ${JSON.stringify(c.stroke)}`, `width = ${num(c.width)}`)
     } else if (c.kind === 'polyline') {
@@ -206,6 +223,10 @@ function kotlinCorpus(): string {
       f.push(`points = listOf(${c.points.map(ktPt).join(', ')})`, `fill = ${JSON.stringify(c.fill)}`)
     } else if (c.kind === 'circle') {
       f.push(`center = ${ktPt(c.center)}`, `radius = ${num(c.radius)}`, `fill = ${JSON.stringify(c.fill)}`)
+    } else if (c.kind === 'clip') {
+      f.push(`rect = PyreonChartRect(${num(c.rect.x)}, ${num(c.rect.y)}, ${num(c.rect.w)}, ${num(c.rect.h)})`)
+    } else if (c.kind === 'unclip') {
+      // Only its kind.
     } else {
       f.push(`text = ${JSON.stringify(c.text)}`, `at = ${ktPt(c.at)}`, `fill = ${JSON.stringify(c.fill)}`, `size = ${num(c.size)}`, `align = ${JSON.stringify(c.align)}`, `baseline = ${JSON.stringify(c.baseline)}`)
       if (c.rotate !== undefined) f.push(`rotate = ${num(c.rotate)}`)
@@ -224,13 +245,19 @@ func line(_ c: PyreonDrawCmd) -> String {
         let r = c.rect!
         let cs = c.corners == nil ? "-" : c.corners!.map { n($0) }.joined(separator: "/")
         let g = c.grad == nil ? "-" : "\\(n(c.grad!.from.x))>\\(n(c.grad!.to.x))"
-        return "rect \\(n(r.x)) \\(n(r.y)) \\(n(r.w)) \\(n(r.h)) \\(cs) \\(g)"
+        let p = c.pattern == nil ? "-" : "\\(c.pattern!.kind)/\\(c.pattern!.color)/\\(n(c.pattern!.spacing))/\\(n(c.pattern!.width))"
+        return "rect \\(n(r.x)) \\(n(r.y)) \\(n(r.w)) \\(n(r.h)) \\(cs) \\(g) \\(p)"
     case "line":
         return "line \\(n(c.from!.x)) \\(n(c.from!.y)) \\(n(c.to!.x)) \\(n(c.to!.y))"
     case "polyline", "polygon":
         return c.kind + " " + c.points!.map { "\\(n($0.x)),\\(n($0.y))" }.joined(separator: " ")
     case "circle":
         return "circle \\(n(c.center!.x)) \\(n(c.center!.y)) \\(n(c.radius))"
+    case "clip":
+        let r = c.rect!
+        return "clip \\(n(r.x)) \\(n(r.y)) \\(n(r.w)) \\(n(r.h))"
+    case "unclip":
+        return "unclip"
     default:
         return "text \\(c.text!) \\(n(c.at!.x)) \\(n(c.at!.y)) \\(c.align!) \\(n(c.rotate))"
     }
@@ -244,11 +271,14 @@ fun line(c: PyreonDrawCmd): String = when (c.kind) {
         val r = c.rect!!
         val cs = c.corners?.joinToString("/") { n(it) } ?: "-"
         val g = c.grad?.let { "\${n(it.from.x)}>\${n(it.to.x)}" } ?: "-"
-        "rect \${n(r.x)} \${n(r.y)} \${n(r.w)} \${n(r.h)} $cs $g"
+        val p = c.pattern?.let { "\${it.kind}/\${it.color}/\${n(it.spacing)}/\${n(it.width)}" } ?: "-"
+        "rect \${n(r.x)} \${n(r.y)} \${n(r.w)} \${n(r.h)} $cs $g $p"
     }
     "line" -> "line \${n(c.from!!.x)} \${n(c.from!!.y)} \${n(c.to!!.x)} \${n(c.to!!.y)}"
     "polyline", "polygon" -> c.kind + " " + c.points!!.joinToString(" ") { "\${n(it.x)},\${n(it.y)}" }
     "circle" -> "circle \${n(c.center!!.x)} \${n(c.center!!.y)} \${n(c.radius)}"
+    "clip" -> { val r = c.rect!!; "clip \${n(r.x)} \${n(r.y)} \${n(r.w)} \${n(r.h)}" }
+    "unclip" -> "unclip"
     else -> "text \${c.text} \${n(c.at!!.x)} \${n(c.at!!.y)} \${c.align} \${n(c.rotate)}"
 }
 `
@@ -286,11 +316,18 @@ let corpus: [PyreonDrawCmd] = ${swiftCorpus()}
 print(pyreonMirrorCmds(corpus, ${num(WIDTH)}).map { line($0) }.joined(separator: "\\n"))
 `
       writeFileSync(join(dir, 'main.swift'), harness)
-      execFileSync('swiftc', ['-O', join(dir, 'main.swift'), '-o', join(dir, 'run')], { stdio: 'pipe' })
+      execFileSync('swiftc', ['-O', join(dir, 'main.swift'), '-o', join(dir, 'run')], {
+        stdio: 'pipe',
+        env: {
+          ...process.env,
+          CLANG_MODULE_CACHE_PATH: join(dir, 'clang-module-cache'),
+          SWIFT_MODULECACHE_PATH: join(dir, 'swift-module-cache'),
+        },
+      })
       return execFileSync(join(dir, 'run'), { encoding: 'utf8' }).trimEnd().split('\n')
     })
     expect(got).toEqual(project(mirrorCmds(CORPUS, WIDTH)))
-  })
+  }, 60_000)
 
   it.skipIf(!isKotlincAvailable() || jvmPath() === undefined)(
     'the SHIPPED Kotlin mirror matches, executed',

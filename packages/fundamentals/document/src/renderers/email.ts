@@ -1,5 +1,6 @@
 import { escapeXml as esc, sanitizeColor, sanitizeHref, sanitizeImageSrc } from '../sanitize'
 import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
+import { cssDecl, headingTag, padStr, sanitizeNumber } from './css'
 
 /**
  * Email renderer — generates table-based HTML with inline styles
@@ -12,6 +13,8 @@ import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } 
  * - VML buttons for Outlook
  * - Max width 600px for compatibility
  */
+
+type PadInput = number | [number, number] | [number, number, number, number] | undefined
 
 function resolveColumn(col: string | TableColumn): TableColumn {
   return typeof col === 'string' ? { header: col } : col
@@ -55,16 +58,15 @@ function renderNode(node: DocNode): string {
 
     case 'section': {
       const bg = p.background ? `background-color:${sanitizeColor(p.background as string)};` : ''
-      const pad = p.padding
-        ? `padding:${typeof p.padding === 'number' ? `${p.padding}px` : Array.isArray(p.padding) ? (p.padding as number[]).map((v) => `${v}px`).join(' ') : '0'}`
-        : 'padding:0'
-      const radius = p.borderRadius ? `border-radius:${p.borderRadius}px;` : ''
+      const pad = `padding:${padStr(p.padding as PadInput) ?? '0'}`
+      const radius = cssDecl('border-radius', sanitizeNumber(p.borderRadius))
 
       if (p.direction === 'row') {
         // Row layout via nested table
         const children = node.children.filter((c): c is DocNode => typeof c !== 'string')
         const colWidth = Math.floor(100 / Math.max(children.length, 1))
-        return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="${bg}${radius}${pad}"><tr>${children.map((child) => `<td width="${colWidth}%" valign="top" style="padding:${(p.gap as number | undefined) ? `0 ${(p.gap as number) / 2}px` : '0'}">${renderNode(child)}</td>`).join('')}</tr></table>`
+        const gap = sanitizeNumber(p.gap, 0)
+        return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="${bg}${radius}${pad}"><tr>${children.map((child) => `<td width="${colWidth}%" valign="top" style="padding:0 ${gap / 2}px">${renderNode(child)}</td>`).join('')}</tr></table>`
       }
 
       return wrapInTable(renderChildren(node.children), `${bg}${radius}${pad}`)
@@ -72,7 +74,7 @@ function renderNode(node: DocNode): string {
 
     case 'row': {
       const children = node.children.filter((c): c is DocNode => typeof c !== 'string')
-      const gap = (p.gap as number) ?? 0
+      const gap = sanitizeNumber(p.gap, 0)
       return `<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>${children.map((child) => `<td valign="top" style="padding:0 ${gap / 2}px">${renderNode(child)}</td>`).join('')}</tr></table>`
     }
 
@@ -91,19 +93,24 @@ function renderNode(node: DocNode): string {
       }
       const size = sizes[level] ?? 24
       const color = sanitizeColor((p.color as string) ?? '#000000')
-      const align = (p.align as string) ?? 'left'
-      return `<h${level} style="margin:0 0 12px 0;font-size:${size}px;color:${color};text-align:${align};font-weight:bold;line-height:1.3">${renderChildren(node.children)}</h${level}>`
+      // `level` reached the TAG NAME raw — `level: '1 onload="alert(1)"'`
+      // emitted `<h1 onload="alert(1)" …>`, an attribute breakout that never
+      // touched a style value at all. The html renderer clamped it; this one
+      // did not.
+      const tag = headingTag(level)
+      const align = cssDecl('text-align', (p.align as string) ?? 'left')
+      return `<${tag} style="margin:0 0 12px 0;font-size:${size}px;color:${color};${align}font-weight:bold;line-height:1.3">${renderChildren(node.children)}</${tag}>`
     }
 
     case 'text': {
-      const size = (p.size as number) ?? 14
+      const size = sanitizeNumber(p.size, 14)
       const color = sanitizeColor((p.color as string) ?? '#333333')
       const weight = p.bold ? 'bold' : 'normal'
       const style = p.italic ? 'italic' : 'normal'
       const decoration = p.underline ? 'underline' : p.strikethrough ? 'line-through' : 'none'
-      const align = (p.align as string) ?? 'left'
-      const lh = (p.lineHeight as number) ?? 1.5
-      return `<p style="margin:0 0 12px 0;font-size:${size}px;color:${color};font-weight:${weight};font-style:${style};text-decoration:${decoration};text-align:${align};line-height:${lh}">${renderChildren(node.children)}</p>`
+      const align = cssDecl('text-align', (p.align as string) ?? 'left')
+      const lh = sanitizeNumber(p.lineHeight, 1.5)
+      return `<p style="margin:0 0 12px 0;font-size:${size}px;color:${color};font-weight:${weight};font-style:${style};text-decoration:${decoration};${align}line-height:${lh}">${renderChildren(node.children)}</p>`
     }
 
     case 'link':
@@ -111,7 +118,9 @@ function renderNode(node: DocNode): string {
 
     case 'image': {
       const align = (p.align as string) ?? 'left'
-      const img = `<img src="${esc(sanitizeImageSrc(p.src as string))}"${p.width ? ` width="${p.width}"` : ''}${p.height ? ` height="${p.height}"` : ''} alt="${esc((p.alt as string) ?? '')}" style="display:block;outline:none;border:none;text-decoration:none${p.width ? `;max-width:${p.width}px` : ''}" />`
+      const w = sanitizeNumber(p.width)
+      const h = sanitizeNumber(p.height)
+      const img = `<img src="${esc(sanitizeImageSrc(p.src as string))}"${w != null ? ` width="${w}"` : ''}${h != null ? ` height="${h}"` : ''} alt="${esc((p.alt as string) ?? '')}" style="display:block;outline:none;border:none;text-decoration:none${w != null ? `;max-width:${w}px` : ''}" />`
       if (p.caption) {
         return `<table cellpadding="0" cellspacing="0" border="0"${align === 'center' ? ' align="center"' : ''}><tr><td>${img}</td></tr><tr><td style="font-size:12px;color:#666;padding-top:4px;text-align:center">${esc(p.caption as string)}</td></tr></table>`
       }
@@ -139,10 +148,11 @@ function renderNode(node: DocNode): string {
           ? `background-color:${sanitizeColor(hs.background)};`
           : 'background-color:#f5f5f5;'
         const color = hs?.color ? `color:${sanitizeColor(hs.color)};` : ''
-        const align = col.align ? `text-align:${col.align};` : ''
-        const width = col.width
-          ? `width:${typeof col.width === 'number' ? `${col.width}px` : col.width};`
-          : ''
+        // `align` and `width` are both document-author controlled and land in
+        // a `style` attribute. #3435 guarded `width` alone; `align` broke out
+        // identically one line up. Route BOTH through the funnel.
+        const align = cssDecl('text-align', col.align)
+        const width = cssDecl('width', col.width)
         html += `<th style="${bg}${color}font-weight:bold;${align}${width}padding:8px;border-bottom:2px solid #ddd">${esc(col.header)}</th>`
       }
       html += '</tr>'
@@ -152,7 +162,7 @@ function renderNode(node: DocNode): string {
         html += '<tr>'
         for (let j = 0; j < columns.length; j++) {
           const col = columns[j]
-          const align = col?.align ? `text-align:${col.align};` : ''
+          const align = cssDecl('text-align', col?.align)
           html += `<td style="${bg}${align}padding:8px;border-bottom:1px solid #eee">${esc(String(rows[i]?.[j] ?? ''))}</td>`
         }
         html += '</tr>'
@@ -177,26 +187,28 @@ function renderNode(node: DocNode): string {
 
     case 'divider': {
       const color = sanitizeColor((p.color as string) ?? '#dddddd')
-      const thickness = (p.thickness as number) ?? 1
+      const thickness = sanitizeNumber(p.thickness, 1)
       return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0"><tr><td style="border-top:${thickness}px solid ${color};font-size:0;line-height:0">&nbsp;</td></tr></table>`
     }
 
     case 'page-break':
       return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0"><tr><td style="border-top:2px solid #dddddd;font-size:0;line-height:0">&nbsp;</td></tr></table>`
 
-    case 'spacer':
-      return `<div style="height:${p.height}px;line-height:${p.height}px;font-size:0">&nbsp;</div>`
+    case 'spacer': {
+      const height = sanitizeNumber(p.height, 0)
+      return `<div style="height:${height}px;line-height:${height}px;font-size:0">&nbsp;</div>`
+    }
 
     case 'button': {
       const bg = sanitizeColor((p.background as string) ?? '#4f46e5')
       const color = sanitizeColor((p.color as string) ?? '#ffffff')
-      const radius = (p.borderRadius as number) ?? 4
+      const radius = sanitizeNumber(p.borderRadius, 4)
       const href = esc(sanitizeHref(p.href as string))
       const text = renderChildren(node.children)
-      const align = (p.align as string) ?? 'left'
+      const align = cssDecl('text-align', (p.align as string) ?? 'left')
 
       // Bulletproof button — works in Outlook via VML, CSS everywhere else
-      return `<div style="text-align:${align};margin:12px 0"><!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${href}" style="height:44px;v-text-anchor:middle;width:200px" arcsize="10%" strokecolor="${bg}" fillcolor="${bg}"><w:anchorlock/><center style="color:${color};font-family:Arial,sans-serif;font-size:14px;font-weight:bold">${text}</center></v:roundrect><![endif]--><!--[if !mso]><!--><a href="${href}" style="display:inline-block;background-color:${bg};color:${color};padding:12px 24px;border-radius:${radius}px;text-decoration:none;font-weight:bold;font-size:14px;font-family:Arial,sans-serif" target="_blank">${text}</a><!--<![endif]--></div>`
+      return `<div style="${align}margin:12px 0"><!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${href}" style="height:44px;v-text-anchor:middle;width:200px" arcsize="10%" strokecolor="${bg}" fillcolor="${bg}"><w:anchorlock/><center style="color:${color};font-family:Arial,sans-serif;font-size:14px;font-weight:bold">${text}</center></v:roundrect><![endif]--><!--[if !mso]><!--><a href="${href}" style="display:inline-block;background-color:${bg};color:${color};padding:12px 24px;border-radius:${radius}px;text-decoration:none;font-weight:bold;font-size:14px;font-family:Arial,sans-serif" target="_blank">${text}</a><!--<![endif]--></div>`
     }
 
     case 'quote': {

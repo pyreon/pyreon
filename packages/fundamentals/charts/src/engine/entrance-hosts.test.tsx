@@ -83,12 +83,14 @@ describe('the family hosts play the entrance', () => {
       if (!f.endsWith('Chart.tsx')) continue
       const src = readFileSync(join(dir, f), 'utf8')
       if (!src.includes('canvasHost<')) continue
-      // OptionChart's cartesian surface rides the shared host too, but its
-      // render is a PRECOMPILED command list (`compiledCommands`, the same one
-      // `optionToSvg` serialises) with no progress parameter — the option
-      // facade draws fully formed on every target, so it declares no entrance.
+      // OptionChart's cartesian surface rides the shared host too, and plays
+      // ECharts' entrance: its render recomposes the compiled commands with the
+      // engine's `progress` set while the entrance runs (it used to hard-code
+      // `animate: false`, so an option's `animation*` keys could never act).
       if (f === 'OptionChart.tsx') {
-        expect(src.includes('animate: false')).toBe(true)
+        expect(src.includes('animates: true')).toBe(true)
+        expect(/render: \(g, _measure, _theme, progress, time\) =>[\s\S]*?stateCmds\(g, time, progress\)/.test(src)).toBe(true)
+        expect(src.includes('animate: false')).toBe(false)
         continue
       }
       // The render function the host calls, and the module that exports it.
@@ -100,11 +102,15 @@ describe('the family hosts play the entrance', () => {
       const takesProgress = /progress\?: Double/.test(mod![1])
       expect(src.includes('animates: true'), `${f} (${fn} in ${mod![0]}.ts takes a progress: ${takesProgress})`).toBe(takesProgress)
       if (takesProgress) {
-        expect(/render: \([^)]*\bprogress\)/.test(src), `${f}: render must receive progress`).toBe(true)
+        expect(/render: \([^)]*\bprogress\b[^)]*\)/.test(src), `${f}: render must receive progress`).toBe(true)
         expect(/[,{ ]progress\b[ }),]/.test(src.slice(src.indexOf('render: ('))), `${f}: render must pass progress on`).toBe(true)
         seen.push(f)
       }
     }
-    expect(seen.length).toBe(14)
+    // A backstop over the per-family assertions above, not a substitute for
+    // them: every family in `seen` has already proved it declares `animates`
+    // AND threads `progress` through, so this only catches a scan that found
+    // nothing. Bump it when a family lands — chord took it from 14 to 15.
+    expect(seen.length).toBe(16)
   })
 })

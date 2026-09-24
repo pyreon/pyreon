@@ -21,7 +21,7 @@ Or run it through the CLI front door with zero setup — `pyreon atlas <cmd>` de
 
 ```bash
 pyreon atlas scan .
-# atlas: discovered 9 component(s), 43 scenario(s) — 41 verified, 2 failing, 0 unverified.
+# atlas: discovered 10 component(s), 44 scenario(s) — 42 verified, 2 failing, 0 unverified.
 #   checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43
 #   not run: reactivityCoverage, snapshot — browser-only — run `atlas verify-browser`
 #   → atlas-catalog.json
@@ -31,7 +31,7 @@ pyreon atlas scan .
 #       a11y: missing accessible name: "label" is empty
 ```
 
-The **`checks:` line is the one to read**. `41 verified` counts *scenarios*, not checks — a package where `@pyreon/runtime-server` does not resolve can report every scenario verified having run only two of the six. The tally says which ran, which failed, and the `not run:` lines say why the rest did not.
+The **`checks:` line is the one to read**. `42 verified` counts *scenarios*, not checks — a package where `@pyreon/runtime-server` does not resolve can report every scenario verified having run only two of the six. The tally says which ran, which failed, and the `not run:` lines say why the rest did not.
 
 The scan discovers components (static TypeScript scan + rocketstyle runtime detection), derives controls and scenarios, **mounts every scenario** through a real module loader, and runs the node half of the verify pipeline. It writes two artifacts:
 
@@ -158,7 +158,9 @@ pyreon atlas dev . --port=5210
 
 Real Vite + the real Pyreon compiler over your source. The workbench ships:
 
-- **Sidebar** — the derived catalog, nested by directory, with per-scenario verdict dots (ok / fail / unverified — three states, never smoothed).
+- **Sidebar** — the derived catalog, nested by directory, with per-scenario verdict dots (ok / fail / unverified — three states, never smoothed). It has its own persistent filter (the ⌘K dialog's query is the dialog's, cleared on exit), parts sit under their parent, a long scenario list is capped with a "show all" row, and ↑↓ walk exactly the rows it shows.
+- **Live rescan** — a change to a scanned file re-derives the catalog and reloads the workbench (debounced, serialised; a failed rescan keeps the previous catalog and says so). A component added or a variant declared after boot shows up without a restart.
+- **Links** — the URL carries the component, the addon tab, the edited controls, the viewport / background / locale, the brand and appearance, the view (`?view=docs`), a forced pseudo state, the Data panel's query state and the active role. Chrome preferences (brand, appearance, panel widths, what is open) persist per browser; a link wins for what it names.
 - **Controls** — editors inferred from prop types: booleans, strings, selects, numbers, colors.
 - **Canvas addons** — viewport presets, backgrounds, zoom, a **measure overlay** (hover any element for its real layout box), and pseudo-state forcing (`:hover` / `:focus` / `:active`).
 - **A11y panel** — static checks plus **axe-core on demand**, scoped to the preview, with findings that highlight the offending element on hover.
@@ -245,7 +247,12 @@ export const presets = {
 - **`theme`** — your design tokens. This is what resolves rocketstyle `variant` / `size` axes: those chains are call expressions the static scanner can't see, so Atlas loads them and reads the dimensions — which requires the theme their callbacks dereference. Without it, rocketstyle components are still discovered but lose their axes.
 - **`wrapper`** — the providers your components genuinely need to mount (`PyreonUI`, a `PermissionsProvider`, …). Without it, provider-dependent scenarios honestly **fail** with `threw while mounted` — they are not quietly skipped.
 - **`presets`** — per-project viewports, locales (RTL supported), and permission roles for the canvas toolbars. Each family replaces the shipped defaults; omitted families keep them.
-- **`scenarios`** — authored scenarios with `play` scripts (below). Authored entries win over generated ones with the same id.
+- **`scenarios`** — authored scenarios with `play` scripts (below). Authored entries win over generated ones with the same id. Args stay **live**: a render-prop child (`children: (state) => …`) or an `h()` tree written here reaches the canvas intact — the JSON catalog marks them as living in the config. An authored `Default` is the base every derived scenario is built on, so `size=medium` on a render-prop component is the authored composition at medium size, not an empty base.
+- **`matrix`** — how variant scenarios are derived from a component's axes. `'axes'` (default) fans one axis at a time (`Default` plus one scenario per axis value, the other axes at their defaults — `Σ|axis|`); `'full'` crosses every axis (`Π|axis|`) — opt in when the axes genuinely interact, knowing a `state × size × variant` component then carries 60+ scenarios.
+- **`browserOnly`** — component names that render `null` outside a browser (an overlay gated on `isServer`, which a Node scan decides before any DOM exists). Their empty render reports `browser-only` instead of failing; `atlas verify-browser` judges them.
+- **`parts`** — `{ TabPanel: 'Tabs', AccordionContent: 'Accordion' }`. A part renders nothing on its own; the scan reports `part-of` for it, and the workbench canvas shows it inside its parent's opening scenario.
+
+Every scenario that mounts cleanly but produces **no DOM at all** — no element, no text, nothing portaled — fails the interaction check with `empty-render` and a fix that names where the missing data props or render-prop child belong. "Mounts, clicks and unmounts without throwing" was true of an empty container; this is the check that is not.
 
 ## Play functions — authored interaction scripts
 

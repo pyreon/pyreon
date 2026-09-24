@@ -1928,6 +1928,26 @@ export function transformJSX_JS(
   // quotes static, only the value escaped at runtime). Anything not provable
   // keeps the runtime `_ssrAttr*` (null-omit safety preserved).
 
+  /**
+   * Is the global `name` (String/Number) provably NOT rebound anywhere in the
+   * module? Any occurrence of the identifier that is not immediately a CALL —
+   * a declaration, a parameter, an import specifier, a member read — is
+   * treated as a rebinding; a conservative false only forgoes a bake (the
+   * runtime helper renders byte-identically), never correctness. Memoised per
+   * module: one regex scan per name.
+   */
+  const ssrGlobalIntactMemo = new Map<string, boolean>()
+  function ssrGlobalIntact(name: string): boolean {
+    let v = ssrGlobalIntactMemo.get(name)
+    if (v === undefined) {
+      // A non-call occurrence, or a `function`/`class` declaration (which
+      // is followed by `(`/`{` like a call and must still count).
+      v = !new RegExp(`(?<![\\w$.])${name}\\b(?!\\s*\\()|\\b(?:function|class)\\s+${name}\\b`).test(code)
+      ssrGlobalIntactMemo.set(name, v)
+    }
+    return v
+  }
+
   /** The expression provably evaluates to a STRING (never null/bool). */
   function ssrProvablyString(node: N): boolean {
     node = unwrapTypeLayers(node)
@@ -1940,18 +1960,15 @@ export function transformJSX_JS(
     }
     if (node.type === 'CallExpression') {
       const callee = node.callee
-      // `String(x)` global coercion → always a string.
-      if (callee?.type === 'Identifier' && callee.name === 'String') return true
-      // `x.method(...)` for a method that ALWAYS returns a string (unambiguous
-      // receiver — Array#join / Number#toFixed / String#* all return string).
-      if (
-        callee?.type === 'MemberExpression' &&
-        !callee.computed &&
-        callee.property?.type === 'Identifier' &&
-        SSR_STRING_METHODS.has(callee.property.name)
-      ) {
-        return true
-      }
+      // `String(x)` global coercion → always a string — when `String` IS the
+      // global. A module that binds the name (a param, an import, a local)
+      // makes the call whatever that binding returns, so a shadowed name
+      // proves nothing and keeps the runtime helper (null-omit safety).
+      // A method call (`x.join()`, `n.toFixed(2)`) proves NOTHING: the
+      // receiver is untyped, so the name says only what a built-in of that
+      // name returns — a user object's `join()` returning null baked
+      // `name="null"` where the h() path omits the attribute.
+      if (callee?.type === 'Identifier' && callee.name === 'String') return ssrGlobalIntact('String')
       return false
     }
     // `a + b` where EITHER operand is provably a string → string concat coerces
@@ -1975,9 +1992,10 @@ export function transformJSX_JS(
     ) {
       return true
     }
-    // `Number(x)` → always a number (NaN is still a number).
+    // `Number(x)` → always a number (NaN is still a number) — same global
+    // caveat as `String` above.
     if (node.type === 'CallExpression' && node.callee?.type === 'Identifier' && node.callee.name === 'Number') {
-      return true
+      return ssrGlobalIntact('Number')
     }
     // `a + b` with both operands non-null-non-boolean → number-or-string.
     if (node.type === 'BinaryExpression' && node.operator === '+') {
@@ -2074,6 +2092,14 @@ export function transformJSX_JS(
     // renderPropSkipped: key/ref/on* render NOTHING server-side — safe to omit.
     if (name === 'key' || name === 'ref') return true
     if (EVENT_RE.test(name)) return true
+    // LOWERCASE handler names (`onclick`) are skipped by `renderPropSkipped`
+    // too — by the SAME name set the runtime uses (`EVENT_HANDLER_ATTRS`,
+    // identity-locked). The fast path skipped only the camelCase spelling, so
+    // `onclick={handler}` reached `_ssrAttrGen`, which INVOKED the handler
+    // during render and wrote its return into the HTML — a server-side call of
+    // a client handler plus a divergence from the h() path (and, for a string
+    // value, a live inline handler the h() path refuses to emit).
+    if (SSR_EVENT_HANDLER_ATTRS.has(name)) return true
     // innerHTML / dangerouslySetInnerHTML are INNER CONTENT, not attrs → bail.
     if (name === 'innerHTML' || name === 'dangerouslySetInnerHTML') return false
     // `<textarea value>` is the other half of the PZ-09 concern that bails
@@ -2125,6 +2151,18 @@ export function transformJSX_JS(
       const raw = attr.value.expression
       if (!raw || raw.type === 'JSXEmptyExpression') return false
       const expr = unwrapTypeLayers(raw)
+      // A boolean ARIA attribute is a STRING enum: `renderPropValue` emits
+      // `aria-x="false"` for a literal `false` (the `true` arm below mirrors
+      // it) — omitting it here dropped the attribute the h() path renders.
+      if (
+        isAria &&
+        !hasUpper &&
+        (expr.type === 'BooleanLiteral' || expr.type === 'Literal') &&
+        expr.value === false
+      ) {
+        ssrEmitStatic(buf, ` ${name}="false"`)
+        return true
+      }
       // false / null / undefined → omit (compile-time; renderProp would too).
       if (
         ((expr.type === 'BooleanLiteral' || expr.type === 'Literal') && expr.value === false) ||
@@ -2184,7 +2222,14 @@ export function transformJSX_JS(
     if (SSR_URL_ATTRS.has(name)) {
       // Unsafe (`javascript:`/`data:`) → renderProp drops it (or keeps it only
       // for safe image data URIs) — too subtle to bake; bail to h().
-      if (SSR_UNSAFE_URL_RE.test(value)) return false
+      // Normalized as well as raw: the browser strips ASCII controls and
+      // spaces from ANYWHERE in a URL before resolving its scheme, so
+      // `java\tscript:alert(1)` is live and the bare regex reads it as safe.
+      // Mirrors `@pyreon/core`'s `isUnsafeUrl`; see its comment for why the
+      // static lint rule was stronger than the runtime guard. Reachable with a
+      // static literal because `@pyreon/lathe` generates JSX from OpenAPI specs.
+      if (SSR_UNSAFE_URL_RE.test(value) || SSR_UNSAFE_URL_RE.test(stripUrlSchemeNoise(value)))
+        return false
       ssrEmitStatic(buf, ` ${name}="${escapeHtmlSsr(value)}"`)
       return true
     }
@@ -2606,6 +2651,9 @@ export function transformJSX_JS(
     // ambiguous — the runtime drops the children. Still bail rather than guess.
     if (isVoid && !selfClosing) return false
     if (tag === 'select' || tag === 'option') return false // PZ-09 complexity → bail
+    // Raw-text content (`<style>`/`<script>`) is serialized by the runtime with
+    // a raw-text-safe escape, not `escapeHtml` — bail so the bake can't drift.
+    if (RAW_TEXT_ELEMENTS.has(tag) && !selfClosing) return false
     // Duplicate plain attrs (JSX last-wins) — baking both is parser-first-wins.
     // Rare; bail to let the h() path dedupe.
     const seen = new Set<string>()
@@ -3220,43 +3268,13 @@ export function transformJSX_JS(
   /**
    * Find declarations/params in a function that shadow JSX-returning fn
    * names — the `findShadowingNames` discipline applied to `jsxFnVars`
-   * (params + body-top-level variable declarations; a same-named re-decl
-   * that is ITSELF a JSX-returning fn is not a shadow, mirroring the
-   * `isSignalCall` carve-out).
+   * (a same-named re-decl that is ITSELF a JSX-returning fn is not a shadow,
+   * mirroring the `isSignalCall` carve-out).
    */
   function findShadowingJsxFnNames(node: N): string[] {
     const shadows: string[] = []
-    for (const param of node.params ?? []) {
-      if (param.type === 'Identifier' && jsxFnVars.has(param.name)) {
-        shadows.push(param.name)
-      }
-      if (param.type === 'ObjectPattern') {
-        for (const prop of param.properties ?? []) {
-          const val = prop.value ?? prop.key
-          if (val?.type === 'Identifier' && jsxFnVars.has(val.name)) {
-            shadows.push(val.name)
-          }
-        }
-      }
-      if (param.type === 'ArrayPattern') {
-        for (const el of param.elements ?? []) {
-          if (el?.type === 'Identifier' && jsxFnVars.has(el.name)) {
-            shadows.push(el.name)
-          }
-        }
-      }
-    }
-    const body = node.body
-    const stmts = body?.body ?? body?.statements
-    if (!Array.isArray(stmts)) return shadows
-    for (const stmt of stmts) {
-      if (stmt.type === 'VariableDeclaration') {
-        for (const decl of stmt.declarations ?? []) {
-          if (decl.id?.type === 'Identifier' && jsxFnVars.has(decl.id.name)) {
-            if (!isJsxFnInit(decl.init)) shadows.push(decl.id.name)
-          }
-        }
-      }
+    for (const { name, init } of collectFunctionBindings(node)) {
+      if (jsxFnVars.has(name) && !(init && isJsxFnInit(init))) shadows.push(name)
     }
     return shadows
   }
@@ -3321,47 +3339,15 @@ export function transformJSX_JS(
     return selectorVars.has(name) && !shadowedSelectors.has(name)
   }
 
-  /** Find variable declarations and parameters in a function that shadow signal names. */
+  /**
+   * Find variable declarations and parameters in a function that shadow
+   * signal names. A same-named re-declaration that is ITSELF `signal(...)`
+   * is not a shadow.
+   */
   function findShadowingNames(node: N): string[] {
     const shadows: string[] = []
-    // Check function parameters
-    for (const param of node.params ?? []) {
-      if (param.type === 'Identifier' && signalVars.has(param.name)) {
-        shadows.push(param.name)
-      }
-      // Handle destructured parameters: ({ name }) => ...
-      if (param.type === 'ObjectPattern') {
-        for (const prop of param.properties ?? []) {
-          const val = prop.value ?? prop.key
-          if (val?.type === 'Identifier' && signalVars.has(val.name)) {
-            shadows.push(val.name)
-          }
-        }
-      }
-      // Handle array destructured parameters: ([a, b]) => ...
-      if (param.type === 'ArrayPattern') {
-        for (const el of param.elements ?? []) {
-          if (el?.type === 'Identifier' && signalVars.has(el.name)) {
-            shadows.push(el.name)
-          }
-        }
-      }
-    }
-    // Check top-level variable declarations in the function body
-    const body = node.body
-    const stmts = body?.body ?? body?.statements
-    if (!Array.isArray(stmts)) return shadows
-    for (const stmt of stmts) {
-      if (stmt.type === 'VariableDeclaration') {
-        for (const decl of stmt.declarations ?? []) {
-          if (decl.id?.type === 'Identifier' && signalVars.has(decl.id.name)) {
-            // Only shadow if it's NOT a signal() call
-            if (!decl.init || !isSignalCall(decl.init)) {
-              shadows.push(decl.id.name)
-            }
-          }
-        }
-      }
+    for (const { name, init } of collectFunctionBindings(node)) {
+      if (signalVars.has(name) && !(init && isSignalCall(init))) shadows.push(name)
     }
     return shadows
   }
@@ -4089,12 +4075,24 @@ export function transformJSX_JS(
   // ── Template emission helpers ─────────────────────────────────────────────
 
   function hasBailAttr(node: N, isRoot = false): boolean {
+    let sawSpread = false
     for (const attr of jsxAttrs(node)) {
       if (attr.type === 'JSXSpreadAttribute') {
-        if (isRoot) continue
+        if (isRoot) {
+          sawSpread = true
+          continue
+        }
         return true
       }
       if (attr.type !== 'JSXAttribute') continue
+      // A plain attribute AFTER a spread must win over the spread's key (JSX
+      // object semantics: `<a {...p} rel="noopener">` ≡ `{...p, rel}`). The
+      // template path bakes the static value into the HTML and only THEN
+      // applies the spread, and a dynamic spread re-applies on every change —
+      // so source order was inverted and a caller-controlled `p.rel` silently
+      // overrode the guard written to defeat it. The h() path spreads into one
+      // object and is correct by construction: bail to it.
+      if (sawSpread) return true
       // A NAMESPACED name (`xlink:href`) is NOT a bail any more: every reader in
       // this emitter goes through `jsxAttrName`, so the qualified name reaches
       // the static bake, the dynamic `_setAttr` call and the prescan alike. The
@@ -4198,6 +4196,12 @@ export function transformJSX_JS(
     if (!tag || !isLowerCase(tag)) return -1
     if (hasBailAttr(node, isRoot)) return -1
     if (isSelfClosing(node)) return 1
+    // A raw-text element never decodes the entities a bake would carry, and
+    // a void element written with children (`<br>x</br>`) parses them as
+    // SIBLINGS of the template root and silently drops them — both keep the
+    // h() path (see `RAW_TEXT_ELEMENTS`).
+    if ((RAW_TEXT_ELEMENTS.has(tag) || VOID_ELEMENTS.has(tag)) && jsxChildren(node).length > 0)
+      return -1
     let count = 1
     // Decided ONCE per element and threaded down, including through fragment
     // children — a fragment flattens into its enclosing element's child list,
@@ -4474,7 +4478,7 @@ export function transformJSX_JS(
         (exprNode.type === 'Literal' || exprNode.type === 'StringLiteral') &&
         typeof exprNode.value === 'string'
       )
-        return isSelectValue ? null : ` ${htmlAttrName}="${escapeHtmlAttr(exprNode.value)}"`
+        return isSelectValue ? null : ` ${htmlAttrName}="${escapeLiteralAttr(exprNode.value)}"`
       // Numeric literal
       if (
         (exprNode.type === 'Literal' || exprNode.type === 'NumericLiteral') &&
@@ -4487,14 +4491,16 @@ export function transformJSX_JS(
         exprNode.value === true
       )
         return isSelectValue ? null : ` ${htmlAttrName}`
-      // No-substitution template literal: `id={\`x\`}` — bake the raw text
-      // (parity with the Rust backend, which always baked this; the JS
-      // fallthrough used to DROP the attribute entirely).
+      // No-substitution template literal: `id={\`x\`}` — bake the COOKED text
+      // (the value the runtime would see: `\`a\\tb\`` is a tab, not a backslash
+      // and a `t`; the raw text used to be baked, so escapes rendered as
+      // source). A quasi whose cooked value is absent carries an invalid
+      // escape — leave it to the runtime path, as `literalChildText` does.
       if (exprNode.type === 'TemplateLiteral' && (exprNode.expressions?.length ?? 0) === 0) {
         if (isSelectValue) return null
-        const quasi = exprNode.quasis?.[0]
-        if (quasi) return ` ${htmlAttrName}="${escapeHtmlAttr(quasi.value?.raw ?? '')}"`
-        return ''
+        const cooked = exprNode.quasis?.[0]?.value?.cooked
+        if (typeof cooked === 'string') return ` ${htmlAttrName}="${escapeLiteralAttr(cooked)}"`
+        return null
       }
       // Signed numeric literal: `tabIndex={-1}` — trivially foldable, bake it.
       // (The Rust backend used to DROP these; JS paid a runtime setAttribute.)
@@ -6071,6 +6077,28 @@ export function transformJSX_JS(
 
 // ─── Module-scope constants and helpers ─────────────────────────────────────
 
+/**
+ * Elements whose content the HTML parser reads as RAW TEXT — character
+ * references are NEVER decoded inside them (`<script>`/`<style>` and the
+ * legacy raw-text set — `<iframe>` is raw text too, but its content is a
+ * never-rendered fallback, so it is deliberately NOT here; `<noscript>` is raw text whenever scripting is
+ * enabled, which the `<template>` parser's owner document may be). A baked
+ * `&lt;` / `&#10;` therefore lands as the LITERAL characters, and an
+ * `_ssr` bake mirroring `renderNode`'s full escape would corrupt the same
+ * way. Every one of them keeps the h() path, whose `textContent` / raw-text
+ * serialization is correct. `<textarea>`/`<title>` are ESCAPABLE raw text
+ * (entities decode) and are unaffected.
+ */
+const RAW_TEXT_ELEMENTS = new Set([
+  'script',
+  'style',
+  'xmp',
+  'noembed',
+  'noframes',
+  'plaintext',
+  'noscript',
+])
+
 const VOID_ELEMENTS = new Set([
   'area',
   'base',
@@ -6215,8 +6243,170 @@ function containsJSXInExpr(node: N): boolean {
   return found
 }
 
+/**
+ * Every name a binding PATTERN introduces — nested object/array patterns,
+ * defaults (`{ a = 1 }`), rest (`...r`), TS parameter properties.
+ */
+function collectPatternNames(p: N | null | undefined, out: string[]): void {
+  if (!p) return
+  switch (p.type) {
+    case 'Identifier':
+      out.push(p.name)
+      return
+    case 'ObjectPattern':
+      for (const prop of p.properties ?? []) {
+        if (prop.type === 'RestElement') collectPatternNames(prop.argument, out)
+        else collectPatternNames(prop.value ?? prop.key, out)
+      }
+      return
+    case 'ArrayPattern':
+      for (const el of p.elements ?? []) collectPatternNames(el, out)
+      return
+    case 'AssignmentPattern':
+      collectPatternNames(p.left, out)
+      return
+    case 'RestElement':
+      collectPatternNames(p.argument, out)
+      return
+    case 'TSParameterProperty':
+      collectPatternNames(p.parameter, out)
+      return
+    default:
+      return
+  }
+}
+
+interface FunctionBinding {
+  name: string
+  /** The declarator's initializer when the binding is a plain `const x = …`
+   * (so callers can apply their "re-declared as the same kind" carve-out);
+   * `null` for every other binding form. */
+  init: N | null
+}
+
+/**
+ * Every name a FUNCTION binds — its parameters plus every declaration in its
+ * body at ANY block depth: `const`/`let`/`var` (any pattern), function and
+ * class declarations, `catch (e)`, `for (const x of …)` / `for (… in …)` /
+ * `for (let i …)` heads, and the same inside `if`/`try`/`switch`/loops/labels.
+ * Nested function and class BODIES are NOT descended — they get their own
+ * scope pass when visited.
+ *
+ * Block scoping is deliberately flattened: a name bound anywhere in the body
+ * is treated as shadowed for the whole function. That over-approximation can
+ * only SKIP an auto-call (the reference stays bare, exactly as any untracked
+ * identifier does); the under-approximation it replaces auto-called a
+ * `catch (error)` / `for (const item of …)` binding that happened to share a
+ * module signal's name — a `TypeError: error is not a function` inside the
+ * error handler itself. Both backends walk the identical statement set.
+ */
+function collectFunctionBindings(fn: N): FunctionBinding[] {
+  const out: FunctionBinding[] = []
+  const names: string[] = []
+  for (const param of fn.params ?? []) collectPatternNames(param, names)
+  for (const name of names) out.push({ name, init: null })
+  const body = fn.body
+  const stmts = body?.body ?? body?.statements
+  if (Array.isArray(stmts)) collectStatementBindings(stmts, out)
+  return out
+}
+
+function collectStatementBindings(stmts: N[], out: FunctionBinding[]): void {
+  for (const stmt of stmts) collectStatementBinding(stmt, out)
+}
+
+function collectStatementBinding(stmt: N | null | undefined, out: FunctionBinding[]): void {
+  if (!stmt) return
+  switch (stmt.type) {
+    case 'VariableDeclaration':
+      for (const decl of stmt.declarations ?? []) {
+        if (decl.id?.type === 'Identifier') {
+          out.push({ name: decl.id.name, init: decl.init ?? null })
+        } else {
+          const names: string[] = []
+          collectPatternNames(decl.id, names)
+          for (const name of names) out.push({ name, init: null })
+        }
+      }
+      return
+    case 'FunctionDeclaration':
+    case 'ClassDeclaration':
+      if (stmt.id?.type === 'Identifier') out.push({ name: stmt.id.name, init: null })
+      return
+    case 'BlockStatement':
+      collectStatementBindings(stmt.body ?? [], out)
+      return
+    case 'IfStatement':
+      collectStatementBinding(stmt.consequent, out)
+      collectStatementBinding(stmt.alternate, out)
+      return
+    case 'ForStatement':
+      if (stmt.init?.type === 'VariableDeclaration') collectStatementBinding(stmt.init, out)
+      collectStatementBinding(stmt.body, out)
+      return
+    case 'ForInStatement':
+    case 'ForOfStatement':
+      if (stmt.left?.type === 'VariableDeclaration') collectStatementBinding(stmt.left, out)
+      collectStatementBinding(stmt.body, out)
+      return
+    case 'WhileStatement':
+    case 'DoWhileStatement':
+    case 'LabeledStatement':
+      collectStatementBinding(stmt.body, out)
+      return
+    case 'TryStatement':
+      collectStatementBinding(stmt.block, out)
+      if (stmt.handler) {
+        const names: string[] = []
+        collectPatternNames(stmt.handler.param, names)
+        for (const name of names) out.push({ name, init: null })
+        collectStatementBinding(stmt.handler.body, out)
+      }
+      collectStatementBinding(stmt.finalizer, out)
+      return
+    case 'SwitchStatement':
+      for (const c of stmt.cases ?? []) collectStatementBindings(c.consequent ?? [], out)
+      return
+    default:
+      return
+  }
+}
+
+/**
+ * A JSX attribute STRING value (`title="…"`) baked into the `<template>` HTML.
+ * oxc keeps HTML entities LITERAL in `.value` and the downstream JSX transform
+ * (oxc/esbuild, the h() path) decodes the well-formed ones — `&quot;` → `"`,
+ * `&#10;` → newline, an unknown `&foo;` stays literal — exactly as the
+ * `<template>` parser will. So a well-formed entity is preserved (the twin of
+ * `escapeHtmlText`'s `&` rule; a second `&amp;` here rendered the SOURCE text
+ * `a&quot;b` as the attribute value), a bare `&` and `"` are escaped, and line
+ * terminators become numeric entities: a multi-line attribute is legal JSX and
+ * oxc keeps the newline verbatim, but the template HTML is emitted as a
+ * double-quoted JS string that escapes only `\\` and `"` — a raw newline in it
+ * broke the build with `Unterminated string` (see `escapeLiteralText`, the
+ * text-child twin that already carried this fix).
+ */
 function escapeHtmlAttr(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+  return escapeAttrLineTerminators(
+    s.replace(/&(?!(?:#\d+|#x[\da-fA-F]+|[a-zA-Z]\w*);)/g, '&amp;').replace(/"/g, '&quot;'),
+  )
+}
+
+/**
+ * The unconditional twin of `escapeHtmlAttr` for a JS string literal
+ * (`title={"…"}`, `` title={`…`} ``): a JS string never HTML-decodes, so `&` is
+ * always data (`"&amp;"` is five characters).
+ */
+function escapeLiteralAttr(s: string): string {
+  return escapeAttrLineTerminators(s.replace(/&/g, '&amp;').replace(/"/g, '&quot;'))
+}
+
+function escapeAttrLineTerminators(s: string): string {
+  return s
+    .replace(/\n/g, '&#10;')
+    .replace(/\r/g, '&#13;')
+    .replace(/\u2028/g, '&#8232;')
+    .replace(/\u2029/g, '&#8233;')
 }
 
 /**
@@ -6365,6 +6555,44 @@ const SSR_VOID_TAGS = new Set([
 // to `_ssrAttrGen`, the lean helper that SKIPS the url-guard regex, so the
 // compiled SSR path emitted a `javascript:` URL that all three other paths
 // blocked. Mirrored in `native/src/lib.rs:ssr_is_url_attr`.
+/**
+ * The LOWERCASE handler names `renderPropSkipped` drops — mirrors core's
+ * `EVENT_HANDLER_ATTRS` (identity-locked by `ssr-url-attrs-identity.test.ts`;
+ * the compiler is a build-time dependency and cannot import core at runtime).
+ * A name outside the set (`once`, `onyx`) is an ordinary attribute.
+ */
+export const SSR_EVENT_HANDLER_ATTRS = new Set([
+  'onabort', 'onactivate', 'onafterprint', 'onanimationcancel', 'onanimationend',
+  'onanimationiteration', 'onanimationstart', 'onappinstalled', 'onauxclick', 'onbeforecopy',
+  'onbeforecut', 'onbeforeinput', 'onbeforeinstallprompt', 'onbeforematch', 'onbeforepaste',
+  'onbeforeprint', 'onbeforetoggle', 'onbeforeunload', 'onbeforexrselect', 'onbegin', 'onblur',
+  'oncancel', 'oncanplay', 'oncanplaythrough', 'onchange', 'onclick', 'onclose', 'oncommand',
+  'oncontentvisibilityautostatechange', 'oncontextlost', 'oncontextmenu', 'oncontextrestored',
+  'oncopy', 'oncuechange', 'oncut', 'ondblclick', 'ondevicemotion', 'ondeviceorientation',
+  'ondeviceorientationabsolute', 'ondrag', 'ondragend', 'ondragenter', 'ondragexit', 'ondragleave',
+  'ondragover', 'ondragstart', 'ondrop', 'ondurationchange', 'onemptied', 'onencrypted', 'onend',
+  'onended', 'onenterpictureinpicture', 'onerror', 'onfocus', 'onfocusin', 'onfocusout',
+  'onformdata', 'onfullscreenchange', 'onfullscreenerror', 'ongamepadconnected',
+  'ongamepaddisconnected', 'ongotpointercapture', 'onhashchange', 'oninput', 'oninvalid',
+  'onkeydown', 'onkeypress', 'onkeyup', 'onlanguagechange', 'onleavepictureinpicture', 'onload',
+  'onloadeddata', 'onloadedmetadata', 'onloadstart', 'onlostpointercapture', 'onmessage',
+  'onmessageerror', 'onmousedown', 'onmouseenter', 'onmouseleave', 'onmousemove', 'onmouseout',
+  'onmouseover', 'onmouseup', 'onmousewheel', 'onmozfullscreenchange', 'onmozfullscreenerror',
+  'onoffline', 'ononline', 'onoverflow', 'onpagehide', 'onpagereveal', 'onpageshow', 'onpageswap',
+  'onpaste', 'onpause', 'onplay', 'onplaying', 'onpointercancel', 'onpointerdown',
+  'onpointerenter', 'onpointerleave', 'onpointermove', 'onpointerout', 'onpointerover',
+  'onpointerrawupdate', 'onpointerup', 'onpopstate', 'onprogress', 'onratechange',
+  'onrejectionhandled', 'onrepeat', 'onreset', 'onresize', 'onscroll', 'onscrollend',
+  'onscrollsnapchange', 'onscrollsnapchanging', 'onsearch', 'onsecuritypolicyviolation',
+  'onseeked', 'onseeking', 'onselect', 'onselectionchange', 'onselectstart', 'onslotchange',
+  'onstalled', 'onstorage', 'onsubmit', 'onsuspend', 'ontimeupdate', 'ontoggle', 'ontouchcancel',
+  'ontouchend', 'ontouchmove', 'ontouchstart', 'ontransitioncancel', 'ontransitionend',
+  'ontransitionrun', 'ontransitionstart', 'onunderflow', 'onunhandledrejection', 'onunload',
+  'onvolumechange', 'onwaiting', 'onwaitingforkey', 'onwebkitanimationend',
+  'onwebkitanimationiteration', 'onwebkitanimationstart', 'onwebkitfullscreenchange',
+  'onwebkitfullscreenerror', 'onwebkittransitionend', 'onwheel', 'onzoom'
+])
+
 export const SSR_URL_ATTRS = new Set([
   'href',
   'src',
@@ -6379,22 +6607,11 @@ export const SSR_URL_ATTRS = new Set([
 // a dynamic attr value is non-null-non-boolean (so its attr name+quotes can bake).
 // `Number#toFixed`/`Array#join`/`String#*` all return string; `slice`/`concat`/
 // `replace` are excluded (ambiguous receiver / can return an array).
-const SSR_STRING_METHODS = new Set([
-  'toFixed',
-  'toString',
-  'toLocaleString',
-  'join',
-  'padStart',
-  'padEnd',
-  'trim',
-  'trimStart',
-  'trimEnd',
-  'toUpperCase',
-  'toLowerCase',
-  'repeat',
-  'charAt',
-])
 const SSR_UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
+// oxlint-disable-next-line no-control-regex
+const SSR_URL_SCHEME_NOISE_RE = /[\u0000-\u0020]/g
+/** Strip what the URL parser strips before resolving a scheme. Mirrors core's `isUnsafeUrl`. */
+const stripUrlSchemeNoise = (v: string): string => v.replace(SSR_URL_SCHEME_NOISE_RE, '')
 
 // React/Babel JSX whitespace algorithm (cleanJSXElementLiteralChild).
 // Same-line text is preserved verbatim so adjacent expressions keep their

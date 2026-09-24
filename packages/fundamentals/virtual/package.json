@@ -26,6 +26,7 @@
   },
   "files": [
     "lib",
+    "!lib/analysis",
     "src",
     "README.md",
     "LICENSE"
@@ -53,10 +54,10 @@
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@tanstack/react-virtual": "3.14.10",
+    "@tanstack/react-virtual": "3.14.13",
     "@vitest/browser-playwright": "^4.1.11",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "publishConfig": {
     "access": "public"

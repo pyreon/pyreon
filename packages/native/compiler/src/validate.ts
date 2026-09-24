@@ -19,14 +19,35 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { compileKotlinViaDaemon } from './kotlin-daemon'
 import { KOTLIN_CHART_VIEW_STUBS, KOTLIN_COMPOSE_STUBS } from './kotlin-stubs'
 import { SWIFT_CHART_VIEW_STUBS, SWIFT_UI_STUBS } from './swift-stubs'
 import {
   readToolProbe,
   withVerdictCache,
   writeToolProbe,
+  isTransientProcessFailure,
   type ValidateKind,
 } from './validate-cache'
+
+// Every `execFileSync` call below is UNBOUNDED without this: none of them
+// pass a `timeout`, so a genuinely stuck `swiftc`/`kotlinc` (a runner
+// resource crunch, a pathological typecheck) blocks synchronously — the
+// event loop can't run, so vitest's own per-test `testTimeout` (180s) can
+// never fire to interrupt it — and the ONLY thing that can still end it is
+// the CI job's outer `timeout-minutes` (25m), which then reads as "this
+// whole shard is unaccountably slow" with zero diagnostic pointing at the
+// one call that never returned. `execFileSync`'s `timeout` sends SIGTERM on
+// expiry, which `isTransientProcessFailure` already classifies correctly
+// (a signalled kill is never cached as a verdict) — so a real hang now
+// fails LOUD and FAST as `transient`, instead of silently eating a shard's
+// whole 25-minute budget. `COMPILE_TIMEOUT_MS` sits comfortably under the
+// 180s test timeout so a hang is reported before vitest's own clock would
+// have masked it with an opaque "Test timed out"; `PROBE_TIMEOUT_MS` is
+// wider because a cold JVM start for `kotlinc -version` is documented
+// (below) to take up to ~20s under CI load.
+const COMPILE_TIMEOUT_MS = 150_000
+const PROBE_TIMEOUT_MS = 60_000
 
 export interface ValidationResult {
   /** True iff the source was accepted as syntactically valid. */
@@ -37,6 +58,27 @@ export interface ValidationResult {
   skipped?: boolean
   /** Human-readable reason for a skip. */
   skipReason?: string
+  /**
+   * True iff the compiler never delivered a verdict: a spawn failure, a kill
+   * by signal, or a timeout. Such a failure says nothing about the source and
+   * is never cached (see `isTransientProcessFailure`).
+   */
+  transient?: boolean
+}
+
+/**
+ * Turn a thrown `execFileSync` error into a `ValidationResult`, surfacing the
+ * compiler's stderr + stdout as the diagnostic and marking the result
+ * `transient` when the process never produced a verdict. ONE function for the
+ * four validators so they cannot drift on what counts as environmental.
+ */
+function processFailure(err: unknown, fallback: string): ValidationResult {
+  const e = err as { stdout?: string | Buffer; stderr?: string | Buffer; message?: string }
+  const stderr = typeof e.stderr === 'string' ? e.stderr : (e.stderr?.toString('utf8') ?? '')
+  const stdout = typeof e.stdout === 'string' ? e.stdout : (e.stdout?.toString('utf8') ?? '')
+  const output = [stderr, stdout].filter(Boolean).join('\n').trim()
+  const error = output || e.message || fallback
+  return isTransientProcessFailure(err) ? { ok: false, error, transient: true } : { ok: false, error }
 }
 
 /**
@@ -61,6 +103,7 @@ export function isSwiftcAvailable(): boolean {
     _swiftcVersion = execFileSync('swiftc', ['--version'], {
       stdio: ['ignore', 'pipe', 'ignore'],
       encoding: 'utf8',
+      timeout: PROBE_TIMEOUT_MS,
     }).trim()
     _swiftcAvailable = true
   } catch {
@@ -92,6 +135,12 @@ export function _resetSwiftcCache(): void {
  * (force skip) and PYREON_REQUIRE_NATIVE_VALIDATE (fail-on-absent).
  */
 export function validateSwift(source: string): ValidationResult {
+  // Skip and absent-tool answers come BEFORE the cache, as in
+  // validateSwiftWithStubs: a stored verdict must never answer a call that
+  // should skip.
+  if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1' || !isSwiftcAvailable()) {
+    return validateSwiftUncached(source)
+  }
   return withVerdictCache(
     'swift-parse' satisfies ValidateKind,
     swiftcVersion(),
@@ -130,20 +179,10 @@ function validateSwiftUncached(source: string): ValidationResult {
   writeFileSync(filename, source, 'utf8')
 
   try {
-    execFileSync('swiftc', ['-parse', filename], { stdio: 'pipe', encoding: 'utf8' })
+    execFileSync('swiftc', ['-module-cache-path', join(tempDir, 'module-cache'), '-parse', filename], { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS })
     return { ok: true }
   } catch (err) {
-    // execFileSync throws on non-zero exit. The thrown error carries
-    // `stdout` and `stderr` (Buffer | string) — surface both for the
-    // diagnostic.
-    const e = err as { stdout?: string | Buffer; stderr?: string | Buffer; message?: string }
-    const stderr = typeof e.stderr === 'string' ? e.stderr : e.stderr?.toString('utf8') ?? ''
-    const stdout = typeof e.stdout === 'string' ? e.stdout : e.stdout?.toString('utf8') ?? ''
-    const output = [stderr, stdout].filter(Boolean).join('\n').trim()
-    return {
-      ok: false,
-      error: output || e.message || 'swiftc -parse failed with no output',
-    }
+    return processFailure(err, 'swiftc -parse failed with no output')
   } finally {
     try {
       rmSync(tempDir, { recursive: true, force: true })
@@ -182,7 +221,7 @@ export function isSwiftUIAvailable(): boolean {
   const filename = join(tempDir, 'probe.swift')
   writeFileSync(filename, 'import SwiftUI\nlet _pyreonSwiftUIProbe = 0\n', 'utf8')
   try {
-    execFileSync('swiftc', ['-typecheck', filename], { stdio: 'ignore' })
+    execFileSync('swiftc', ['-module-cache-path', join(tempDir, 'module-cache'), '-typecheck', filename], { stdio: 'ignore', timeout: PROBE_TIMEOUT_MS })
     _swiftUIAvailable = true
   } catch {
     _swiftUIAvailable = false
@@ -239,7 +278,7 @@ export function isObservationAvailable(): boolean {
     'utf8',
   )
   try {
-    execFileSync('swiftc', ['-typecheck', filename], { stdio: 'ignore' })
+    execFileSync('swiftc', ['-module-cache-path', join(tempDir, 'module-cache'), '-typecheck', filename], { stdio: 'ignore', timeout: PROBE_TIMEOUT_MS })
     _observationAvailable = true
   } catch {
     _observationAvailable = false
@@ -293,6 +332,9 @@ export function _swiftTypecheckPreamble(source: string): string {
 }
 
 export function validateSwiftTypecheck(source: string): ValidationResult {
+  if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1' || !isSwiftcAvailable() || !isSwiftUIAvailable()) {
+    return validateSwiftTypecheckUncached(source)
+  }
   return withVerdictCache(
     'swift-typecheck' satisfies ValidateKind,
     swiftcVersion(),
@@ -329,17 +371,10 @@ function validateSwiftTypecheckUncached(source: string): ValidationResult {
   writeFileSync(filename, preamble + source, 'utf8')
 
   try {
-    execFileSync('swiftc', ['-typecheck', filename], { stdio: 'pipe', encoding: 'utf8' })
+    execFileSync('swiftc', ['-module-cache-path', join(tempDir, 'module-cache'), '-typecheck', filename], { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS })
     return { ok: true }
   } catch (err) {
-    const e = err as { stdout?: string | Buffer; stderr?: string | Buffer; message?: string }
-    const stderr = typeof e.stderr === 'string' ? e.stderr : e.stderr?.toString('utf8') ?? ''
-    const stdout = typeof e.stdout === 'string' ? e.stdout : e.stdout?.toString('utf8') ?? ''
-    const output = [stderr, stdout].filter(Boolean).join('\n').trim()
-    return {
-      ok: false,
-      error: output || e.message || 'swiftc -typecheck failed with no output',
-    }
+    return processFailure(err, 'swiftc -typecheck failed with no output')
   } finally {
     try {
       rmSync(tempDir, { recursive: true, force: true })
@@ -482,7 +517,13 @@ export function swiftChartAugmentation(source: string): string {
   const start = canvas.indexOf('public struct PyreonChartPt')
   const end = canvas.indexOf('/// Parse the engine')
   const types = start >= 0 && end > start ? canvas.slice(start, end) : ''
-  return SWIFT_CHART_VIEW_STUBS + '\n' + types + '\n' + engine.replace(SWIFT_STUBBED_IMPORTS, '')
+  // The extracted canvas section owns the real locale helpers. Keep their tiny
+  // fallback declarations only when the runtime source is absent; concatenating
+  // both made every unrelated chart-host swiftc test fail with redeclarations.
+  const viewStubs = SWIFT_CHART_VIEW_STUBS
+    .replace('public func pyreonLocaleNumberFormatter(_ tag: String) -> (Double) -> String { { String($0) } }\n', '')
+    .replace('public func pyreonLocaleDateFormatter(_ tag: String) -> (Double) -> String { { String($0) } }\n', '')
+  return viewStubs + '\n' + types + '\n' + engine.replace(SWIFT_STUBBED_IMPORTS, '')
 }
 
 /** The Kotlin stub text a chart-host emit needs beyond the Compose bundle; `''` when no host is present. */
@@ -581,20 +622,17 @@ function compileSwiftStubs(stub: string, inputText: string): ValidationResult {
   try {
     // Both files compiled as one module; the stubs satisfy SwiftUI/PyreonRuntime
     // references. -typecheck performs full name + type resolution (no codegen).
-    execFileSync('swiftc', ['-typecheck', stubsPath, inputPath], {
+    // Keep Clang/Swift modules beside the disposable inputs. Sandboxed local
+    // runs and hermetic CI workers may not be allowed to write the toolchain's
+    // default user cache; typechecking must not depend on that ambient path.
+    execFileSync('swiftc', ['-module-cache-path', join(tempDir, 'ModuleCache'), '-typecheck', stubsPath, inputPath], {
       stdio: 'pipe',
       encoding: 'utf8',
+      timeout: COMPILE_TIMEOUT_MS,
     })
     return { ok: true }
   } catch (err) {
-    const e = err as { stdout?: string | Buffer; stderr?: string | Buffer; message?: string }
-    const stderr = typeof e.stderr === 'string' ? e.stderr : e.stderr?.toString('utf8') ?? ''
-    const stdout = typeof e.stdout === 'string' ? e.stdout : e.stdout?.toString('utf8') ?? ''
-    const output = [stderr, stdout].filter(Boolean).join('\n').trim()
-    return {
-      ok: false,
-      error: output || e.message || 'swiftc -typecheck (stubs) failed with no output',
-    }
+    return processFailure(err, 'swiftc -typecheck (stubs) failed with no output')
   } finally {
     try {
       rmSync(tempDir, { recursive: true, force: true })
@@ -625,6 +663,7 @@ export function isKotlincAvailable(): boolean {
     _kotlincVersion = execFileSync('kotlinc', ['-version'], {
       stdio: ['ignore', 'pipe', 'pipe'],
       encoding: 'utf8',
+      timeout: PROBE_TIMEOUT_MS,
     }).trim()
     _kotlincAvailable = true
   } catch (err) {
@@ -653,6 +692,11 @@ function kotlincVersion(): string {
   return _kotlincVersion
 }
 
+/** The kotlinc version string, for the run-wide daemon's artefact keys (see kotlin-daemon.ts). */
+export function kotlincVersionForDaemon(): string {
+  return kotlincVersion()
+}
+
 /** For testing: reset the cached detection result. */
 export function _resetKotlincCache(): void {
   _kotlincAvailable = undefined
@@ -673,6 +717,11 @@ export function _resetKotlincCache(): void {
  * these stubs.
  */
 export function validateKotlin(source: string): ValidationResult {
+  // kotlinc prints its version on STDERR, so the captured version is '' even
+  // when the tool is present; the presence check has to be explicit.
+  if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1' || !isKotlincAvailable()) {
+    return validateKotlinUncached(source)
+  }
   return withVerdictCache(
     'kotlin' satisfies ValidateKind,
     kotlincVersion(),
@@ -696,6 +745,17 @@ function validateKotlinUncached(source: string): ValidationResult {
     return { ok: true, skipped: true, skipReason: 'kotlinc not on PATH' }
   }
 
+  // The warm path: one compiler JVM per process, the stubs pre-compiled to a
+  // jar, ~80ms per check instead of a ~4-6s cold `kotlinc` (see
+  // kotlin-daemon.ts). Null means the daemon cannot run here (or died on
+  // this request), and the per-check `kotlinc` below answers instead — the
+  // verdict is the same either way; only the cost differs.
+  const augmentation = kotlinChartAugmentation(source)
+  const warm = compileKotlinViaDaemon(source, KOTLIN_COMPOSE_STUBS, augmentation, kotlincVersion(), COMPILE_TIMEOUT_MS)
+  if (warm) {
+    return warm.code === 0 ? { ok: true } : { ok: false, error: warm.output.trim() || 'kotlinc failed with no output' }
+  }
+
   // Set up a temp directory containing the stubs + the input. kotlinc
   // accepts multiple .kt files and compiles them together; the stubs
   // satisfy Compose API references in the input source.
@@ -713,18 +773,11 @@ function validateKotlinUncached(source: string): ValidationResult {
       // kotlinc considers improvable but is still valid); -d produces
       // .class files in the temp dir which we discard via rmSync.
       ['-nowarn', '-d', outDir, stubsPath, inputPath],
-      { stdio: 'pipe', encoding: 'utf8' },
+      { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS },
     )
     return { ok: true }
   } catch (err) {
-    const e = err as { stdout?: string | Buffer; stderr?: string | Buffer; message?: string }
-    const stderr = typeof e.stderr === 'string' ? e.stderr : e.stderr?.toString('utf8') ?? ''
-    const stdout = typeof e.stdout === 'string' ? e.stdout : e.stdout?.toString('utf8') ?? ''
-    const output = [stderr, stdout].filter(Boolean).join('\n').trim()
-    return {
-      ok: false,
-      error: output || e.message || 'kotlinc failed with no output',
-    }
+    return processFailure(err, 'kotlinc failed with no output')
   } finally {
     try {
       rmSync(tempDir, { recursive: true, force: true })

@@ -7,7 +7,7 @@
  * new hook lands, the others don't. Audit caught the README claiming
  * 16 vs actual 34 — drift that shipped to users for weeks.
  *
- * Five counters today: hook-export, doc-page, lint-rule, lint-category,
+ * Counters today: hook-export, doc-page, lint-rule, lint-category, chart-host, chart-family-host,
  * detector-code. All TEXT-PARSE in-repo source via `repoRoot` (NOT
  * `import`, which resolves to a stale bun cache snapshot). A ClaimSpec
  * may set `all: true` to assert every occurrence of the pattern in a
@@ -47,6 +47,24 @@ interface ClaimCheck {
   /** Doc files that carry the claim */
   claims: ClaimSpec[]
 }
+
+/**
+ * The chart hosts `@pyreon/charts/plot` exports — every `XChart` VALUE export,
+ * minus `OptionChart` (the ECharts-option facade, which draws through the
+ * family hosts rather than being one).
+ */
+const chartHostNames = (repoRoot: string): string[] => {
+  const plotPath = join(repoRoot, 'packages/fundamentals/charts/src/plot.ts')
+  if (!existsSync(plotPath)) return []
+  const names = new Set<string>()
+  for (const [, list] of readFileSync(plotPath, 'utf8').matchAll(/^export \{([^}]*)\} from/gm)) {
+    for (const [, name] of (list ?? '').matchAll(/\b([A-Z]\w*Chart)\b(?!\w)/g)) if (name && name !== 'OptionChart') names.add(name)
+  }
+  return [...names]
+}
+const countChartHosts = (repoRoot: string): number => chartHostNames(repoRoot).length
+/** The family hosts — every chart host but `PlotChart`, which has its own host. */
+const countChartFamilyHosts = (repoRoot: string): number => chartHostNames(repoRoot).filter((n) => n !== 'PlotChart').length
 
 const countHookExports = (repoRoot: string): number => {
   const indexPath = join(repoRoot, 'packages/fundamentals/hooks/src/index.ts')
@@ -290,6 +308,17 @@ const checks: ClaimCheck[] = [
         pattern: /^(\d+) signal-based reactive utilities/m,
       },
       {
+        // The README's own "full surface" table-count line — historically
+        // UNGUARDED and the exact site that drifted to 55 against a real 65
+        // (the prose line above stayed correct because it WAS guarded; this
+        // one wasn't). Guarding both closes the class: a single claim site
+        // is one bump away from drift, but a second unguarded restatement
+        // of the SAME number right next to a guarded one is worse — it
+        // looks doubly-confirmed while only one copy is actually checked.
+        file: 'packages/fundamentals/hooks/README.md',
+        pattern: /^(\d+) hooks across 7 categories\.$/m,
+      },
+      {
         file: 'packages/fundamentals/hooks/src/manifest.ts',
         pattern: /'(\d+) signal-based hooks:/,
       },
@@ -305,6 +334,32 @@ const checks: ClaimCheck[] = [
         file: 'README.md',
         pattern: /\| (\d+) hooks — useHover/,
         rejectHedged: /\| (\d+)\+ hooks — useHover/,
+      },
+    ],
+  },
+  {
+    name: 'chart host count',
+    codeId: 'chart-host-count',
+    actual: countChartHosts,
+    claims: [
+      {
+        file: 'packages/fundamentals/charts/package.json',
+        pattern: /`@pyreon\/charts\/plot`: (\d+) chart families/,
+      },
+    ],
+  },
+  {
+    name: 'chart family host count',
+    codeId: 'chart-family-host-count',
+    actual: countChartFamilyHosts,
+    claims: [
+      {
+        file: 'packages/fundamentals/charts/README.md',
+        pattern: /The (\d+) family hosts share one canvas host/,
+      },
+      {
+        file: 'docs/src/content/docs/charts-plot.md',
+        pattern: /drives all (\d+) family hosts through the same paths/,
       },
     ],
   },

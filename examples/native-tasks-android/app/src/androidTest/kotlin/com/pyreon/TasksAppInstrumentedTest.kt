@@ -32,8 +32,19 @@ package com.pyreon
 
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.swipe
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.performMouseInput
+import org.junit.Assert.assertTrue
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.assertContentDescriptionContains
 import androidx.compose.ui.test.assertIsDisplayed
@@ -41,16 +52,23 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.pinch
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import android.os.SystemClock
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.pyreon.runtime.PyreonToast
@@ -115,6 +133,94 @@ class TasksAppInstrumentedTest {
      * ("done", toolkit-filter not found mid-remount) — one class, two
      * lines. Fix the class, not the line.
      */
+    /**
+     * Tap the hosted flow at the centre of its LAYOUT. `performTouchInput`'s
+     * `center` is the centre of the VISIBLE part, so a WebView only partly on
+     * screen after `performScrollTo` took the tap in its top strip, missing the
+     * fitted graph. Scrolling to the button right below brings the whole WebView
+     * on screen first.
+     */
+    private fun tapFlowWebViewCentre() {
+        composeRule.onNodeWithTag("gal-flow-webview-fit").performScrollTo()
+        val info = composeRule.onNodeWithTag("gal-flow-webview").fetchSemanticsNode().layoutInfo
+        val origin = info.coordinates.positionInRoot()
+        val target = Offset(origin.x + info.width / 2f, origin.y + info.height / 2f)
+        composeRule.onRoot().performTouchInput { click(target) }
+    }
+
+    /**
+     * Scroll a gallery chart to the MIDDLE of the screen before a gesture on it.
+     * `performScrollTo` scrolls the least it can, which leaves the target flush
+     * with a screen edge — measured locally: gal-map at y 0, gal-datazoom ending
+     * at y 2400 of 2400 — and every gallery gesture made at such an edge (the
+     * roaming map, the dataZoom band, the visualMap handle) flaked in CI.
+     */
+    private fun centred(tag: String): SemanticsNodeInteraction {
+        composeRule.onNodeWithTag(tag).performScrollTo()
+        val b = composeRule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+        val rootH = composeRule.onRoot().fetchSemanticsNode().size.height.toFloat()
+        val dy = (b.top + b.bottom) / 2f - rootH / 2f
+        val scrollers = composeRule.onAllNodes(hasScrollAction() and hasAnyDescendant(hasTestTag(tag)))
+        val count = scrollers.fetchSemanticsNodes().size
+        if (count > 0 && kotlin.math.abs(dy) > 1f) {
+            // The innermost scroller (tree order lists ancestors first) moves the chart.
+            scrollers[count - 1].performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, dy) }
+            composeRule.waitForIdle()
+        }
+        return composeRule.onNodeWithTag(tag)
+    }
+
+    /**
+     * What a chart capture shows, for a failure message: its size, how many
+     * pixels differ from its top-left corner (the chart's background), and its
+     * four most common colours. The gallery's pixel waits failed five PRs in one
+     * day with only "Condition still not satisfied" or "did not pan"; this says
+     * whether the chart had painted at all, and in what colours.
+     */
+    private fun paintSummary(b: android.graphics.Bitmap): String {
+        val bg = b.getPixel(0, 0)
+        var painted = 0
+        val counts = HashMap<Int, Int>()
+        for (y in 0 until b.height) for (x in 0 until b.width) {
+            val c = b.getPixel(x, y)
+            if (c != bg) painted++
+            counts[c] = (counts[c] ?: 0) + 1
+        }
+        val top = counts.entries.sortedByDescending { it.value }.take(4).joinToString(", ") { String.format("#%08x x%d", it.key, it.value) }
+        return "${b.width}x${b.height}, $painted px painted over bg ${String.format("#%08x", bg)}, top colours: $top"
+    }
+
+    /**
+     * One pixel row of a capture as runs of colour ("x0-x1 #aarrggbb"), for a
+     * failure message: where a strip, a handle or a gap actually sits on the row a
+     * gesture pressed, rather than where the test assumed it would be.
+     */
+    private fun rowRuns(b: android.graphics.Bitmap, y: Int, max: Int = 14): String {
+        if (y < 0 || y >= b.height) return "row $y outside 0..${b.height - 1}"
+        val runs = ArrayList<String>()
+        var start = 0
+        var colour = b.getPixel(0, y)
+        for (x in 1..b.width) {
+            val c = if (x < b.width) b.getPixel(x, y) else colour.inv()
+            if (c != colour) {
+                runs.add("$start-${x - 1} ${String.format("#%08x", colour)}")
+                start = x
+                colour = c
+            }
+        }
+        val shown = runs.take(max).joinToString(", ")
+        return "row $y: " + shown + if (runs.size > max) ", … (${runs.size} runs)" else ""
+    }
+
+    /** Where a tagged node sits and whether Compose considers it displayed — for a failure message. */
+    private fun nodePlace(tag: String): String {
+        val n = composeRule.onNodeWithTag(tag)
+        val bounds = runCatching { n.fetchSemanticsNode().boundsInRoot.toString() }.getOrElse { "unresolved (${it.message})" }
+        val shown = runCatching { n.assertIsDisplayed() }.isSuccess
+        val root = runCatching { composeRule.onRoot().fetchSemanticsNode().size.toString() }.getOrElse { "?" }
+        return "$tag at $bounds in root $root, displayed=$shown"
+    }
+
     private fun waitForTagText(tag: String, text: String) {
         try {
             composeRule.waitUntil(timeoutMillis = 20_000) {
@@ -185,7 +291,7 @@ class TasksAppInstrumentedTest {
      * displayed!" and nothing else — not where in the flow, not what was on
      * screen instead. Gradle's console output truncates the stack to the Compose
      * frame, so a CI-only failure cannot even be traced back to a call site:
-     * this file has SEVEN `tasks-page` assertions and the report names none of
+     * this file has TEN `tasks-page` assertions and the report names none of
      * them. Two rounds were spent not knowing which one fired.
      *
      * So carry the evidence in the message. The decisive part is whatever the
@@ -194,15 +300,30 @@ class TasksAppInstrumentedTest {
      * opposite fixes, and a bare not-displayed is identical for both — and for
      * a third case where the screen simply never recomposed.
      */
+    /** The text a tagged node shows right now — for before/after comparisons. */
+    private fun textOf(tag: String): String =
+        composeRule.onNodeWithTag(tag).fetchSemanticsNode().config.getOrNull(SemanticsProperties.Text)?.joinToString("") { it.text } ?: ""
+
     private fun assertTagDisplayed(tag: String, where: String) {
         try {
+            // WAIT first, exactly as the pre-helper assertions did
+            // (`waitUntil(15_000) { onAllNodesWithTag(tag)… }`): a route change
+            // that crosses the auth guard recomposes one frame later than the
+            // click on a loaded emulator, and an INSTANT assertIsDisplayed fires
+            // in that gap — reported as "the screen simply never recomposed",
+            // which is indistinguishable from the real bug it exists to catch.
+            composeRule.waitUntil(timeoutMillis = 15_000) {
+                composeRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+            }
             composeRule.onNodeWithTag(tag).assertIsDisplayed()
         } catch (e: Throwable) {
-            // `n.config.toString()` rather than a typed read: SemanticsConfiguration
-            // has no `getOrNull`, and indexing a missing key throws. describeTimeout
+            // `n.config.toString()` rather than a typed read: `describeTimeout`
             // above already reads it this way, so this stays on a construct this
             // file has compiled before — the whole point being that a diagnostic
-            // must not be the thing that breaks the build.
+            // must not be the thing that breaks the build. (`getOrNull` DOES
+            // exist — `androidx.compose.ui.semantics.getOrNull`, imported above —
+            // the earlier claim here that it did not is what caused the
+            // router-demo compile error.)
             val routerText =
                 try {
                     val nodes =
@@ -510,16 +631,223 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("tasks-flow").performClick()
         assertTagDisplayed("flow-page", "after tasks-flow (/tasks -> /flow)")
         composeRule.onNodeWithTag("flow-node-count").assertTextEquals("2")
-        composeRule.onNodeWithTag("flow-edge-count").assertTextEquals("1")
+        composeRule.onNodeWithTag("flow-edge-count").assertTextEquals("2")
         composeRule.onNodeWithTag("flow-zoom").assertTextEquals("zoom 1.0")
         composeRule.onNodeWithTag("flow-add").performClick()
         composeRule.onNodeWithTag("flow-node-count").assertTextEquals("3")
         composeRule.onNodeWithTag("flow-select").performClick()
         composeRule.onNodeWithTag("flow-selected-count").assertTextEquals("1")
-        composeRule.onNodeWithTag("flow-zoom-in").performClick()
-        composeRule.onNodeWithTag("flow-zoom").assertTextEquals("zoom 1.2")
+        // The RENDERER half (F3/F4): the <Flow> canvas and its chrome exist, a
+        // touch drag moves a node through the native engine, and the Controls
+        // drive the same engine the labels read. The drag runs FIRST, at the
+        // initial zoom 1 / origin viewport, so the node sits where the seed put
+        // it and no reset is needed.
+        composeRule.onNodeWithContentDescription("Task flow").assertExists()
+        // The default node is the web's DefaultNode box, painted from the
+        // palette: the label in --pyreon-flow-node-color (#1a192b, not the
+        // platform's default black) and, with node 'a' selected above, a
+        // --pyreon-flow-node-selected (#3b82f6) border.
+        run {
+            fun count(bmp: android.graphics.Bitmap, r: Int, g: Int, b: Int): Int {
+                var n = 0
+                for (y in 0 until bmp.height) for (x in 0 until bmp.width) {
+                    val c = bmp.getPixel(x, y)
+                    if (kotlin.math.abs(android.graphics.Color.red(c) - r) <= 6 && kotlin.math.abs(android.graphics.Color.green(c) - g) <= 6 && kotlin.math.abs(android.graphics.Color.blue(c) - b) <= 6) n++
+                }
+                return n
+            }
+            val label = composeRule.onNodeWithText("Start").captureToImage().asAndroidBitmap()
+            check(count(label, 0x1a, 0x19, 0x2b) > 50) { "the default node label is not --pyreon-flow-node-color (#1a192b)" }
+            check(count(label, 0, 0, 0) == 0) { "the default node label painted the platform's default black" }
+            val canvas = composeRule.onNodeWithContentDescription("Task flow").captureToImage().asAndroidBitmap()
+            check(count(canvas, 0x3b, 0x82, 0xf6) > 500) { "the selected default node has no --pyreon-flow-node-selected (#3b82f6) border" }
+        }
+        // The `wire` custom edge draws ARBITRARY SVG path data (a template
+        // literal), parsed by the native runtime: its #16a34a stroke must paint,
+        // and at the right SCALE. Graph units are dp; a path drawn in px would
+        // land shrunk by the density, well short of the End node.
+        run {
+            val canvasNode = composeRule.onNodeWithContentDescription("Task flow")
+            val bmp = canvasNode.captureToImage().asAndroidBitmap()
+            var green = 0
+            var maxX = Int.MIN_VALUE
+            for (y in 0 until bmp.height) for (x in 0 until bmp.width) {
+                val c = bmp.getPixel(x, y)
+                if (kotlin.math.abs(android.graphics.Color.red(c) - 0x16) <= 6 && kotlin.math.abs(android.graphics.Color.green(c) - 0xa3) <= 6 && kotlin.math.abs(android.graphics.Color.blue(c) - 0x4a) <= 6) {
+                    green++
+                    if (x > maxX) maxX = x
+                }
+            }
+            check(green > 50) { "the custom edge's arbitrary SVG path did not paint natively ($green green px)" }
+            // The path ends at node 'b', seeded at graph x = 200. The viewport is
+            // still the origin at zoom 1 here, so that is 200dp from the canvas
+            // edge. At 1/density it would stop at 200px, far short.
+            val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+            check(kotlin.math.abs(maxX - 200 * density) <= 20f) {
+                "the custom edge drew at the wrong scale: it ends at ${maxX}px, node 'b' is at ${200 * density}px"
+            }
+        }
+        // The added node 'c' is a custom node with an inline <svg>: an 8-unit
+        // viewBox drawn at 16x16dp. Measured by AREA, not bounding box: a couple
+        // of antialiased pixels elsewhere on the canvas land within tolerance and
+        // would stretch a box, but not a count. A 16dp square is (16·density)²
+        // px; a viewBox that was not applied paints an 8dp square, and a missing
+        // density a 16px one (about 6dp here).
+        run {
+            val bmp = composeRule.onNodeWithContentDescription("Task flow").captureToImage().asAndroidBitmap()
+            var count = 0
+            for (y in 0 until bmp.height) for (x in 0 until bmp.width) {
+                val c = bmp.getPixel(x, y)
+                if (kotlin.math.abs(android.graphics.Color.red(c) - 0x7c) <= 6 && kotlin.math.abs(android.graphics.Color.green(c) - 0x3a) <= 6 && kotlin.math.abs(android.graphics.Color.blue(c) - 0xed) <= 6) count++
+            }
+            check(count > 0) { "the custom node's inline <svg> did not paint natively" }
+            val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+            val side = kotlin.math.sqrt(count.toFloat()) / density
+            check(kotlin.math.abs(side - 16f) <= 1.5f) { "the <svg> badge measures ${side}dp a side ($count px), its size is 16x16" }
+        }
+        composeRule.onNodeWithContentDescription("minimap").assertExists()
+        composeRule.onNodeWithContentDescription("source handle out").assertExists()
+        composeRule.onNodeWithContentDescription("target handle in").assertExists()
+        val before = textOf("flow-a-pos")
+        composeRule.onNodeWithText("Start").performTouchInput {
+            down(center)
+            // Past the touch slop first (the drag starts at the slop point), then the move.
+            moveBy(Offset(24f, 0f))
+            moveBy(Offset(40f, 15f))
+            moveBy(Offset(40f, 15f))
+            up()
+        }
+        composeRule.waitUntil(5_000) { textOf("flow-a-pos") != before }
+        check(textOf("flow-a-pos") != before) { "dragging node 'Start' did not move it (still ${textOf("flow-a-pos")})" }
+        // A long-press on a node is the native context-menu gesture: it reaches
+        // `flow.onNodeContextMenu`, which writes the node id to `flow-menu`.
+        composeRule.onNodeWithTag("flow-menu").assertTextEquals("none")
+        composeRule.onNodeWithText("End").performTouchInput { longClick(center) }
+        composeRule.waitUntil(5_000) { textOf("flow-menu") == "menu b" }
+        composeRule.onNodeWithTag("flow-menu").assertTextEquals("menu b")
+
+        // Hover: a mouse moving onto node 'End' reaches `flow.onNodeMouseEnter`.
+        composeRule.onNodeWithTag("flow-hover").assertTextEquals("none")
+        composeRule.onNodeWithText("End").performMouseInput {
+            moveTo(Offset(-4f, -4f))
+            moveTo(center)
+        }
+        composeRule.waitUntil(5_000) { textOf("flow-hover") == "hover b" }
+        composeRule.onNodeWithTag("flow-hover").assertTextEquals("hover b")
+
+        fun centerInRoot(description: String) =
+            composeRule.onNodeWithContentDescription(description, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.center
+        fun textCenterInRoot(text: String) =
+            composeRule.onNodeWithText(text, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.center
+
+        // connectionMode 'strict' (the default), with B selected (raised): with e1 removed, a drag that
+        // STARTS on node b's target handle and drops on node a's source handle
+        // still creates the edge, in the source -> target direction.
+        composeRule.onNodeWithTag("flow-drop-e1").performClick()
+        waitForTagText("flow-edge-count", "1")
+        val fromHandle = centerInRoot("target handle in")
+        val toHandle = centerInRoot("source handle out")
+        composeRule.onRoot().performTouchInput {
+            down(fromHandle)
+            // Past the touch slop first (the drag starts at the slop point), then across.
+            moveTo(fromHandle + Offset(-24f, 0f))
+            moveTo(Offset((fromHandle.x + toHandle.x) / 2f, (fromHandle.y + toHandle.y) / 2f))
+            moveTo(toHandle)
+            up()
+        }
+        composeRule.waitUntil(5_000) { textOf("flow-edge-count") == "2" }
+        composeRule.onNodeWithTag("flow-edge-count").assertTextEquals("2")
+
+        // zIndex: A and B overlap, B later in the array, A raised to zIndex 5
+        // with nothing selected. A tap where they overlap must reach A.
+        composeRule.onNodeWithTag("flow-stack").performClick()
+        waitForTagText("flow-a-pos", "0,0")
+        waitForTagText("flow-selected-ids", "none")
+        composeRule.onRoot().performTouchInput { click(textCenterInRoot("Start")) }
+        composeRule.waitUntil(5_000) { textOf("flow-selected-ids") != "none" }
+        composeRule.onNodeWithTag("flow-selected-ids").assertTextEquals("a")
+
+        // Auto-pan: holding the dragged node at the canvas edge pans the viewport.
+        val vpBefore = textOf("flow-vp")
+        val canvas = composeRule.onNodeWithContentDescription("Task flow").fetchSemanticsNode().boundsInRoot
+        val grab = textCenterInRoot("Start")
+        // While the node is held in the edge band the pan loop runs every frame,
+        // so Compose is never idle: drive the test clock by hand for the hold.
+        composeRule.mainClock.autoAdvance = false
+        composeRule.onRoot().performTouchInput {
+            down(grab)
+            moveTo(grab + Offset(24f, 0f))
+            moveTo(Offset(canvas.right - 6f, grab.y))
+        }
+        // The pointer stays down between performTouchInput calls: ~0.5s held at the edge.
+        repeat(30) { composeRule.mainClock.advanceTimeByFrame() }
+        val vpHeld = textOf("flow-vp")
+        composeRule.onRoot().performTouchInput { up() }
+        composeRule.mainClock.autoAdvance = true
+        check(vpHeld != vpBefore) { "holding a node at the canvas edge did not auto-pan (viewport still $vpHeld)" }
+        // Tapped past maxZoom (2) so the asserted value is the clamp, not a float product.
+        repeat(5) { composeRule.onNodeWithContentDescription("Zoom in").performClick() }
+        composeRule.onNodeWithTag("flow-zoom").assertTextEquals("zoom 2.0")
+        composeRule.onNodeWithContentDescription("Fit view").performClick()
         composeRule.onNodeWithTag("flow-back").performClick()
         assertTagDisplayed("tasks-page", "after flow-back (/flow -> /tasks)")
+
+        // F6 scale proof: 400 nodes with culling on. Every assertion is a COUNT
+        // or an identity, so it is deterministic on any emulator.
+        composeRule.onNodeWithTag("tasks-flow-scale").performClick()
+        assertTagDisplayed("flow-scale-page", "after tasks-flow-scale (/tasks -> /flow-scale)")
+        composeRule.onNodeWithTag("flow-scale-total").assertTextEquals("0")
+        composeRule.onNodeWithTag("flow-scale-load").performClick()
+        waitForTagText("flow-scale-total", "400")
+        fun gridNode(index: Int) = composeRule.onNodeWithContentDescription("grid node $index", useUnmergedTree = true)
+        fun mountedGridNodes() = composeRule
+            .onAllNodes(hasContentDescription("grid node ", substring = true), useUnmergedTree = true)
+            .fetchSemanticsNodes().size
+        composeRule.waitUntil(10_000) { mountedGridNodes() > 0 }
+        gridNode(0).assertExists()
+        // The ceiling: a phone canvas shows a few columns of 200dp-spaced nodes.
+        // Mounting all 400 would mean culling is off.
+        val mountedAtOrigin = mountedGridNodes()
+        check(mountedAtOrigin in 2..40) { "culling mounted $mountedAtOrigin of 400 nodes at the origin viewport" }
+        // The grid renders through a CUSTOM node with its own handles, so its
+        // renderer is culled too: one target handle per mounted node, no more.
+        val targetHandles = composeRule
+            .onAllNodes(hasContentDescription("target handle in"), useUnmergedTree = true)
+            .fetchSemanticsNodes().size
+        check(targetHandles == mountedAtOrigin) { "custom-node handles are not culled with their nodes: $targetHandles handles for $mountedAtOrigin nodes" }
+        // Panning swaps WHICH nodes are mounted: node 0 leaves, node 170 (row 8,
+        // column 10, placed exactly at the new viewport origin) arrives.
+        composeRule.onNodeWithTag("flow-scale-pan").performClick()
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodes(hasContentDescription("grid node 170"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        gridNode(0).assertDoesNotExist()
+        check(mountedGridNodes() <= 40) { "culling mounted ${mountedGridNodes()} nodes after the pan" }
+        // A node that scrolled in is live: dragging it reaches the engine.
+        val farBefore = textOf("flow-scale-far-pos")
+        gridNode(170).performTouchInput {
+            down(center)
+            moveBy(Offset(24f, 0f))
+            moveBy(Offset(40f, 15f))
+            moveBy(Offset(40f, 15f))
+            up()
+        }
+        composeRule.waitUntil(5_000) { textOf("flow-scale-far-pos") != farBefore }
+        // Pinching out zooms the engine and widens the culled set, and the set
+        // stays bounded rather than falling back to every node.
+        val zoomBefore = textOf("flow-scale-zoom")
+        composeRule.onNodeWithContentDescription("Scale flow").performTouchInput {
+            pinch(
+                start0 = center + Offset(-200f, 0f),
+                end0 = center + Offset(-60f, 0f),
+                start1 = center + Offset(200f, 0f),
+                end1 = center + Offset(60f, 0f),
+            )
+        }
+        composeRule.waitUntil(5_000) { textOf("flow-scale-zoom") != zoomBefore }
+        check(mountedGridNodes() < 200) { "culling mounted ${mountedGridNodes()} of 400 nodes after zooming out" }
+        composeRule.onNodeWithTag("flow-scale-back").performClick()
+        assertTagDisplayed("tasks-page", "after flow-scale-back (/flow-scale -> /tasks)")
 
         composeRule
             .onNodeWithTag("tasks-lifecycle")
@@ -786,6 +1114,294 @@ class TasksAppInstrumentedTest {
             .performClick()
         assertTagDisplayed("tasks-page", "after dash-back (/dashboard -> /tasks)")
 
+        // The GALLERY — the ten chart families that had never rendered on a
+        // device. Nine of nineteen lowered hosts were device-proven before
+        // this; the other ten rested on stub typechecking, which catches a type
+        // error and cannot catch a chart that paints nothing.
+        //
+        // `tasks-gallery` lives on the same LazyColumn-backed tasks page as
+        // `tasks-dashboard` above. It has no ancestor exposing Compose's Scroll
+        // semantics action, so `performScrollTo()` here fails before the click.
+        // Inside the gallery, scroll each chart into view: ten charts do not fit
+        // on a phone, and an off-screen assertion is not device render proof.
+        composeRule
+            .onNodeWithTag("tasks-gallery")
+            .performClick()
+        assertTagDisplayed("gal-page", "after tasks-gallery (/tasks -> /gallery)")
+        for (tag in listOf(
+            "gal-calendar", "gal-candlestick", "gal-gantt", "gal-graph", "gal-map",
+            "gal-parallel", "gal-polar", "gal-river", "gal-sunburst", "gal-tree",
+        )) {
+            composeRule.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
+        }
+        // The map ROAMS: a horizontal drag pans it, so its pixels change.
+        // Driven as a hand does, like the flow and dataZoom drags above: past the
+        // touch slop first, then many small steps. One 400ms `swipe` intermittently
+        // never started `detectTransformGestures` (the gallery's vertical scroll
+        // competes for the same touch), failing unrelated PRs with "did not pan".
+        val roamMap = centred("gal-map")
+        val mapBefore = roamMap.captureToImage().asAndroidBitmap()
+        roamMap.performTouchInput {
+            down(Offset(width * 0.3f, height * 0.5f))
+            moveBy(Offset(24f * flowDensity, 0f))
+            repeat(10) { moveBy(Offset(12f * flowDensity, 0f)) }
+            up()
+        }
+        val panned = runCatching { composeRule.waitUntil(5_000) { !mapBefore.sameAs(roamMap.captureToImage().asAndroidBitmap()) } }.isSuccess
+        if (!panned) {
+            // Say what the map looked like before and after, so the next CI hit tells
+            // "never painted" from "painted, but the drag never started".
+            val mapAfter = roamMap.captureToImage().asAndroidBitmap()
+            var changed = 0
+            if (mapAfter.width == mapBefore.width && mapAfter.height == mapBefore.height) {
+                for (y in 0 until mapAfter.height) for (x in 0 until mapAfter.width) if (mapAfter.getPixel(x, y) != mapBefore.getPixel(x, y)) changed++
+            }
+            throw AssertionError(
+                "dragging the roaming map did not pan it: before ${paintSummary(mapBefore)}; after ${paintSummary(mapAfter)}; " +
+                    "$changed px changed; ${nodePlace("gal-map")}; drag from (30%, 50%) by 144dp in 11 steps",
+            )
+        }
+        composeRule.onNodeWithTag("gal-geo-trail").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("gal-decal").performScrollTo().assertIsDisplayed()
+        // The calculable visualMap: dragging its high handle (bottom-left strip) left greys the hottest cells.
+        val visualMap = centred("gal-visualmap")
+        val vmBefore = visualMap.captureToImage().asAndroidBitmap()
+        // Driven as a hand does (past the touch slop, then small steps), like the map
+        // and dataZoom drags: one 600ms `swipe` intermittently never moved the handle
+        // ("grey pixels: 0" on #3558). Same 79dp leftward drag of the high handle.
+        var vmDown = Offset.Zero
+        visualMap.performTouchInput {
+            val y = height - (41 - 16 - 4).dp.toPx()
+            vmDown = Offset(159.dp.toPx(), y)
+            down(vmDown)
+            moveBy(Offset(-12.dp.toPx(), 0f))
+            repeat(6) { moveBy(Offset(-(67f / 6f).dp.toPx(), 0f)) }
+            up()
+        }
+        // Out-of-range values take the inactive #cccccc: none before the drag, a block of it after.
+        fun greyPixels(b: android.graphics.Bitmap): Int {
+            var n = 0
+            for (y in 0 until b.height) for (x in 0 until b.width) {
+                val c = b.getPixel(x, y)
+                if (kotlin.math.abs(android.graphics.Color.red(c) - 204) <= 3 && kotlin.math.abs(android.graphics.Color.green(c) - 204) <= 3 && kotlin.math.abs(android.graphics.Color.blue(c) - 204) <= 3) n++
+            }
+            return n
+        }
+        assertTrue("the visualMap greyed cells before any drag", greyPixels(vmBefore) < 50)
+        runCatching { composeRule.waitUntil(5_000) { greyPixels(visualMap.captureToImage().asAndroidBitmap()) > 400 } }
+        val vmAfter = visualMap.captureToImage().asAndroidBitmap()
+        val vmGrey = greyPixels(vmAfter)
+        if (vmGrey <= 400) {
+            // Say where the finger went and what that row held, so the next CI hit
+            // tells "the press missed the handle" from "the drag never registered".
+            var changed = 0
+            if (vmAfter.width == vmBefore.width && vmAfter.height == vmBefore.height) {
+                for (y in 0 until vmAfter.height) for (x in 0 until vmAfter.width) if (vmAfter.getPixel(x, y) != vmBefore.getPixel(x, y)) changed++
+            }
+            throw AssertionError(
+                "dragging the visualMap handle did not grey the out-of-range cells (grey pixels: $vmGrey): " +
+                    "down at (${vmDown.x.toInt()}, ${vmDown.y.toInt()}) px, dragged 79dp left in 7 steps; " +
+                    "pressed ${rowRuns(vmBefore, vmDown.y.toInt())}; before ${paintSummary(vmBefore)}; after ${paintSummary(vmAfter)}; " +
+                    "$changed px changed; ${nodePlace("gal-visualmap")}",
+            )
+        }
+        // The slider dataZoom opens on the low half; dragging the band right shows the tall bars (y extent pinned).
+        fun redPixels(b: android.graphics.Bitmap): Int {
+            var n = 0
+            for (y in 0 until b.height) for (x in 0 until b.width) {
+                val c = b.getPixel(x, y)
+                if (android.graphics.Color.red(c) >= 249 && android.graphics.Color.green(c) <= 6 && android.graphics.Color.blue(c) <= 6) n++
+            }
+            return n
+        }
+        val zoomChart = centred("gal-datazoom")
+        // The low half's four short red bars are on screen from the start, so the
+        // baseline must see some red. Capturing straight after the scroll could
+        // precede the chart's first paint ("red before 0, after 0" on unrelated
+        // PRs), which reads as a failed drag. Wait for the paint first.
+        try {
+            composeRule.waitUntil(10_000) { redPixels(zoomChart.captureToImage().asAndroidBitmap()) > 0 }
+        } catch (e: Throwable) {
+            // A bare ComposeTimeoutException says nothing; say whether the chart
+            // painted at all, where it sits, and what colours it holds instead of red.
+            val shot = zoomChart.captureToImage().asAndroidBitmap()
+            throw AssertionError("gal-datazoom showed no red bar within 10s (red px: ${redPixels(shot)}; ${paintSummary(shot)}; ${nodePlace("gal-datazoom")})", e)
+        }
+        val dzBefore = zoomChart.captureToImage().asAndroidBitmap()
+        val redBefore = redPixels(dzBefore)
+        // The slider strip is ECharts' own now — plot-aligned in the grid's bottom
+        // margin, not a full-width band — so the band is FOUND, not assumed: on the
+        // swipe row, the window's filler is the blue-tinted run (the handles are
+        // white, the strip outside the window grey). Pressing its middle grabs the
+        // band, never a handle.
+        val dzRow = dzBefore.height - (18 * dzBefore.density / 160)
+        var dzL = -1
+        var dzR = -1
+        for (x in 0 until dzBefore.width) {
+            val c = dzBefore.getPixel(x, dzRow)
+            if (android.graphics.Color.blue(c) - android.graphics.Color.red(c) >= 12) {
+                if (dzL < 0) dzL = x
+                dzR = x
+            }
+        }
+        assertTrue("found no dataZoom band on the strip's row", dzL >= 0 && dzR - dzL > 20)
+        val dzMid = (dzL + dzR) / 2f
+        zoomChart.performTouchInput {
+            val y = dzRow.toFloat()
+            swipe(start = Offset(dzMid, y), end = Offset(dzMid + (dzR - dzL).toFloat(), y), durationMillis = 700)
+        }
+        composeRule.waitForIdle()
+        val redAfter = redPixels(zoomChart.captureToImage().asAndroidBitmap())
+        assertTrue("dragging the dataZoom band did not move the window to the tall bars (red before $redBefore, after $redAfter)", redAfter > redBefore * 3)
+        // The timeline: a tap on the last checkpoint shows that step; next wraps to the first.
+        val timeline = centred("gal-timeline")
+        timeline.assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2019"))
+        timeline.performTouchInput { click(Offset(width - 48.dp.toPx(), height - (40 - 16).dp.toPx())) }
+        composeRule.waitForIdle()
+        timeline.assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2021"))
+        timeline.performTouchInput { click(Offset(width - 33.dp.toPx(), height - (40 - 16).dp.toPx())) }
+        composeRule.waitForIdle()
+        timeline.assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2019"))
+        // dispatchAction: the handle's timelineChange moves the same step a tap does.
+        composeRule.onNodeWithTag("gal-tl-last").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-timeline").performScrollTo().assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "2021"))
+        // Option-placed families: the web's own compile places them (center / radius, the funnel's
+        // margins) at the device's size, and a tap is read back through that frame.
+        // The pie: centre (0.3W, 100dp), radius 40% of 100 = 40dp; slice 0 is the right half.
+        centred("gal-opt-pie").performTouchInput { click(Offset(width * 0.3f + 20.dp.toPx(), 100.dp.toPx())) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-opt-pie-sel").performScrollTo().assertTextEquals("East")
+        centred("gal-opt-pie").performTouchInput { click(Offset(width * 0.3f - 20.dp.toPx(), 100.dp.toPx())) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-opt-pie-sel").performScrollTo().assertTextEquals("West")
+        // The funnel: its box is y 10..70dp (top 10, height 60), the larger stage on top.
+        centred("gal-opt-funnel").performTouchInput { click(Offset(width / 2f, 30.dp.toPx())) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-opt-funnel-sel").performScrollTo().assertTextEquals("Visits")
+        centred("gal-opt-funnel").performTouchInput { click(Offset(width / 2f, 55.dp.toPx())) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-opt-funnel-sel").performScrollTo().assertTextEquals("Orders")
+        composeRule.onNodeWithTag("gal-opt-gauge").performScrollTo().assertExists()
+        composeRule.onNodeWithTag("gal-opt-decor").performScrollTo().assertExists()
+        // The toolbox (dataZoom, back, dataView, line, bar, restore — right-aligned, 25dp apart at the top).
+        val toolbox = centred("gal-toolbox")
+        val tool = { i: Int -> toolbox.performTouchInput { click(Offset(width - (9.5f + 25f * (5 - i)).dp.toPx(), 9.5.dp.toPx())) } }
+        tool(0)
+        composeRule.waitForIdle()
+        toolbox.performTouchInput { swipe(start = Offset(width * 0.5f, height * 0.5f), end = Offset(width * 0.58f, height * 0.5f), durationMillis = 600) }
+        composeRule.waitForIdle()
+        val zoomText = composeRule.onNodeWithTag("gal-toolbox-zoom").performScrollTo()
+        zoomText.assert(androidx.compose.ui.test.SemanticsMatcher("zoomed away from 0-100") { n -> n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.joinToString("") { it.text } != "0-100" })
+        centred("gal-toolbox")
+        tool(1)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-toolbox-zoom").performScrollTo().assertTextEquals("0-100")
+        centred("gal-toolbox")
+        tool(2)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("pyreon-dataview").assertExists()
+        composeRule.onNodeWithTag("pyreon-dataview-close").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("pyreon-dataview").assertDoesNotExist()
+        // dispatchAction: the handle's dataZoom and restore move the window the toolbox moves.
+        composeRule.onNodeWithTag("gal-h-zoom").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-toolbox-zoom").performScrollTo().assertTextEquals("0-50")
+        composeRule.onNodeWithTag("gal-h-reset").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-toolbox-zoom").performScrollTo().assertTextEquals("0-100")
+        // saveAsImage on a family chart: the offscreen PNG reaches onSaveImage.
+        composeRule.onNodeWithTag("gal-save").performScrollTo()
+        composeRule.onNodeWithTag("pyreon-save-image").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-saved").performScrollTo().assertTextEquals("data:image/png;")
+        // The area brush: a lineX drag over the middle bars reports some of them; a tap clears it.
+        val brushChart = composeRule.onNodeWithTag("gal-brush").performScrollTo()
+        brushChart.performTouchInput { swipe(start = Offset(width * 0.4f, height * 0.5f), end = Offset(width * 0.66f, height * 0.5f), durationMillis = 600) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-brush-count").performScrollTo().assert(androidx.compose.ui.test.SemanticsMatcher("a partial brush selection") { n -> (n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.joinToString("") { it.text } ?: "") in listOf("1:1", "1:2", "1:3", "1:4", "1:5") })
+        composeRule.onNodeWithTag("gal-brush").performScrollTo().performTouchInput { click(Offset(width * 0.5f, height * 0.5f)) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-brush-count").performScrollTo().assertTextEquals("1:0")
+        // selectedMode="series": a tap pins the whole series it lands on and still reports the datum under it.
+        val seriesChart = composeRule.onNodeWithTag("gal-series-select").performScrollTo()
+        seriesChart.performTouchInput { click(Offset(width * 0.15f, height * 0.82f)) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-series-select-datum").performScrollTo().assert(androidx.compose.ui.test.SemanticsMatcher("a series-mode tap reports a datum") { n -> (n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.joinToString("") { it.text } ?: "") != "none" })
+        // universalTransition: toggling from 3 to 5 rows morphs instead of crashing, and settles on the new count.
+        composeRule.onNodeWithTag("gal-growth").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("gal-growth-toggle").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-growth-count").performScrollTo().assertTextEquals("5")
+        composeRule.onNodeWithTag("gal-growth-toggle").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("gal-growth-count").performScrollTo().assertTextEquals("3")
+        // `@pyreon/flow/webview` on device — mirror of the iOS assertion: the
+        // hosted renderer's `fit-view` posts `viewport-change` back over the
+        // bridge into native Text; a second command id moves the count 1→2.
+        composeRule.onNodeWithTag("gal-flow-webview").performScrollTo().assertExists()
+        waitForTagText("gal-flow-webview-event", "viewport-change")
+        waitForTagText("gal-flow-webview-events", "1")
+        composeRule.onNodeWithTag("gal-flow-webview-fit").performScrollTo().performClick()
+        waitForTagText("gal-flow-webview-events", "2")
+        // F5: a node tap INSIDE the WebView reaches native `onSelect`. The graph is
+        // one symmetric row, so fit-view centres the middle node and a tap at the
+        // WebView's centre hits it; the touch is injected into the Compose root and
+        // routed to the embedded WebView like a finger would be.
+        waitForTagText("gal-flow-webview-selected", "none")
+        // An unsized WebView used to collapse to ~18dp, leaving the fitted graph no
+        // room and the centre tap nowhere to land. It now takes the web
+        // `<iframe>`'s 150dp default.
+        // Semantics size is CLIPPED to what is on screen, so measure the LAYOUT.
+        // The View itself is the thing that must be tall: a padded Compose slot
+        // around an 18dp WebView looks right here and still misses the tap.
+        composeRule.onNodeWithTag("gal-flow-webview").performScrollTo()
+        val webHeight = composeRule.onNodeWithTag("gal-flow-webview").fetchSemanticsNode().layoutInfo.height
+        check(webHeight >= with(composeRule.density) { 149.dp.roundToPx() }) {
+            "an unsized FlowWebView must get the iframe's 150dp default height, measured ${webHeight}px"
+        }
+        tapFlowWebViewCentre()
+        waitForTagText("gal-flow-webview-selected", "transform")
+        // Swapping the graph re-renders IN PLACE: the same tap now selects the new
+        // middle node.
+        composeRule.onNodeWithTag("gal-flow-webview-swap").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        // The swapped graph crosses the JSON bridge asynchronously and the host
+        // reports nothing when it has rendered, so one tap after a fixed wait
+        // can land on the OLD graph. Tap until the new node answers, within
+        // 10s: every tap is harmless, and the assertion is unchanged.
+        val swapDeadline = SystemClock.uptimeMillis() + 10_000
+        while (true) {
+            tapFlowWebViewCentre()
+            val answered = runCatching {
+                composeRule.waitUntil(1_500) { textOf("gal-flow-webview-selected") == "enrich" }
+            }.isSuccess
+            if (answered || SystemClock.uptimeMillis() > swapDeadline) break
+        }
+        waitForTagText("gal-flow-webview-selected", "enrich")
+        // A graph the hosted renderer cannot draw reaches native `onError`.
+        composeRule.onNodeWithTag("gal-flow-webview-broken").performScrollTo().assertExists()
+        waitForTagText("gal-flow-webview-failure", "error")
+        // RELOAD: swapping `html` reloads the hosted page, and the NEW page must
+        // receive the graph again and answer over the reverse bridge.
+        composeRule.onNodeWithTag("gal-flow-webview-reload-status").performScrollTo()
+        waitForTagText("gal-flow-webview-reload-status", "a:3")
+        composeRule.onNodeWithTag("gal-flow-webview-reload-swap").performScrollTo().performClick()
+        waitForTagText("gal-flow-webview-reload-status", "b:3")
+        // The lines trail renders. Its MOTION is proven on the iOS device lane
+        // and in real Chromium; here it cannot be: the trail runs on
+        // withInfiniteAnimationFrameNanos (a plain frame loop kept this harness
+        // busy forever), and the Compose test harness suspends infinite
+        // animations by design, so two captures are identical whatever the
+        // runtime does.
+        composeRule.onNodeWithTag("gal-lines").performScrollTo().assertIsDisplayed()
+        composeRule
+            .onNodeWithTag("gal-back")
+            .performScrollTo()
+            .performClick()
+        assertTagDisplayed("tasks-page", "after gal-back (/gallery -> /tasks)")
+
         // Phase 5b: the TOOLKIT screen — where eleven previously snippet-only
         // packages actually run. The web e2e asserts the same values in a
         // browser; this is the Android half. Until it existed the screen was
@@ -977,18 +1593,14 @@ class TasksAppInstrumentedTest {
         assertTagDisplayed("tasks-page", "after toolkit-back (/toolkit?filter=done -> /tasks)")
 
         // Phase 6: logout — flips the store flag back; lands on /login.
+        // Returning from the long toolkit page can preserve a scroll position
+        // that leaves the header action outside the viewport. Compose still
+        // finds that semantics node, but a bare click then targets off-screen
+        // coordinates and silently leaves the route unchanged.
         composeRule
             .onNodeWithTag("tasks-logout")
             .performClick()
 
-        composeRule.waitUntil(timeoutMillis = 15_000) {
-            composeRule
-                .onAllNodesWithTag("login-page")
-                .fetchSemanticsNodes()
-                .isNotEmpty()
-        }
-        composeRule
-            .onNodeWithTag("login-page")
-            .assertIsDisplayed()
+        assertTagDisplayed("login-page", "after tasks-logout (/tasks -> /login)")
     }
 }

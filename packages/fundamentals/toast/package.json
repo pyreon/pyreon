@@ -26,6 +26,7 @@
   },
   "files": [
     "lib",
+    "!lib/analysis",
     "src",
     "README.md",
     "LICENSE",
@@ -54,9 +55,9 @@
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^4.1.11",
     "@vitus-labs/tools-lint": "^2.7.1",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "react-hot-toast": "^2.6.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-hot-toast": "^2.6.1",
     "sonner": "^2.0.8"
   },
   "publishConfig": {

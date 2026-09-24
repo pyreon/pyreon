@@ -15,29 +15,128 @@
 // shape interpolate, so every family gets an update tween without knowing
 // what a value is.
 
-import { createUniqueId, h } from '@pyreon/core'
+import { createUniqueId, h, onUnmount } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { batch, effect, isClient, signal } from '@pyreon/reactivity'
-import { chartTable, describeChart } from './a11y'
-import type { A11yInput } from './a11y'
-import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas } from './canvas-web'
-import { cmdsEqual, sameCmdShape, tweenCmds } from './cmd-tween'
-import { legendPlan, renderLegend } from './legend'
-import type { LegendEntry } from './legend'
+import { chartRowCount, chartTable, chartTableRow, describeChart } from './a11y'
+import type { A11yInput, A11yTable } from './a11y'
+import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas, trackChartImages } from './canvas-web'
+import { cmdsEqual, sameCmdShape, tweenCmds, universalTweenCmds } from './cmd-tween'
+import { placeLegend } from './legend'
+import type { LegendEntry, LegendPosition } from './legend'
 import type { ChartTheme } from './render'
 import { resolveChartTheme, tooltipStyle, useChartTheme } from './theme'
 import { renderTitle } from './title'
 import { hitToolbox, renderToolbox } from './toolbox'
-import type { ToolboxTool } from './toolbox'
+import type { ToolboxTool } from './toolbox-config'
 import { placeTooltip } from './tooltip'
+import type { Size } from './tooltip'
+import { renderTooltipHtml } from './tooltip-html'
 import { easeOutCubic } from './tween'
-import type { ChartGradient, DrawCmd, Double, MeasureText, Rect } from './types'
-import { mirrorCmds, mirrorX, screenRectX } from './rtl'
+import type { ChartGradient, DrawCmd, Double, MeasureText, Pt, Rect } from './types'
+import { mirrorCmds, mirrorX, screenRectX , transposeCmds, transposeRect } from './rtl'
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 /** The accessible table stops here — a 100k-row table is a 100k-node DOM, and no reader walks it. */
 export const A11Y_TABLE_MAX = 1000
+/** Rows per `<tbody>` block of the accessible table (see `a11yTableNode`). */
+const TABLE_CHUNK = 50
 const OFFSCREEN = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;margin:-1px;padding:0'
+
+/** Make `parent` hold exactly `n` `tag` children, reusing the ones it has; returns them. */
+function ensureChildren(parent: Element, tag: string, n: number): Element[] {
+  const doc = parent.ownerDocument
+  while (parent.children.length > n) parent.lastElementChild?.remove()
+  while (parent.children.length < n) parent.appendChild(doc.createElement(tag))
+  return Array.from(parent.children)
+}
+
+/** Write `text` into `el`'s text node (creating it once) — `.data`, not `textContent`, which replaces the node. */
+function setCell(el: Element, text: string): void {
+  const node = el.firstChild
+  if (node !== null && node.nodeType === 3) (node as Text).data = text
+  else el.textContent = text
+}
+
+/**
+ * The offscreen accessible table, capped at `A11Y_TABLE_MAX` rows.
+ *
+ * One effect reconciles the table in place: rows and cells are created or
+ * removed only when the COUNT changes, and a cell's text is written only when
+ * it differs. It used to be rebuilt as fresh `h()` rows on every draw, which
+ * remounted 1,000 `<tr>`s per data update — on every frame, for a table nobody
+ * was reading at that moment. (A keyed `<For>` per row and per column was tried
+ * first and measured far WORSE on mount: 1,000 nested list instances.)
+ *
+ * The clip styles go on a WRAPPER, not the table: a `<table>` uses auto layout
+ * and expands to its content regardless of `width: 1px`.
+ */
+export function a11yTableNode(read: () => A11yTable, id: string, title: () => string): VNode {
+  const host = signal<HTMLTableElement | null>(null)
+  // What each body cell last held, so an unchanged cell costs a string compare
+  // and no DOM read or write.
+  let shown: string[][] = []
+  effect(() => {
+    const el = host()
+    if (el === null) return
+    const t = read()
+    const doc = el.ownerDocument
+    let caption = el.caption
+    if (caption === null) caption = el.createCaption()
+    setCell(caption, title() + (t.rows.length < t.total ? ` (first ${t.rows.length} of ${t.total} rows)` : ''))
+    let head = el.tHead
+    if (head === null) head = el.createTHead()
+    const headRow = ensureChildren(head, 'tr', 1)[0]!
+    const ths = ensureChildren(headRow, 'th', t.headers.length)
+    for (let c = 0; c < ths.length; c++) {
+      ths[c]!.setAttribute('scope', 'col')
+      setCell(ths[c]!, t.headers[c] ?? '')
+    }
+    // Rows go in <tbody> blocks of TABLE_CHUNK: building 1,000 rows into ONE
+    // row group measured ~1.7ms slower than into twenty, on a 1,000-point
+    // chart whose whole draw is ~1.5ms. (Not `content-visibility` on the
+    // blocks: containment does not apply to table-internal boxes, so it was
+    // measured to do nothing. And not on the wrapper either: that DOES skip
+    // the table's ~5ms of layout, but Chromium then drops every row from the
+    // accessibility tree — the table's only reader.)
+    const chunks = Math.ceil(t.rows.length / TABLE_CHUNK)
+    while (el.tBodies.length > chunks) el.tBodies[el.tBodies.length - 1]!.remove()
+    while (el.tBodies.length < chunks) el.appendChild(doc.createElement('tbody'))
+    const trs: Element[] = []
+    for (let k = 0; k < chunks; k++) {
+      const count = Math.min(TABLE_CHUNK, t.rows.length - k * TABLE_CHUNK)
+      for (const tr of ensureChildren(el.tBodies[k]!, 'tr', count)) trs.push(tr)
+    }
+    const next: string[][] = []
+    for (let r = 0; r < trs.length; r++) {
+      const row = t.rows[r]!
+      const tr = trs[r]!
+      next.push(row)
+      const was = shown[r]
+      // The first cell names the row; a count change rebuilds the row's cells.
+      if (was === undefined || tr.children.length !== row.length) {
+        tr.replaceChildren()
+        for (let c = 0; c < row.length; c++) {
+          const cell = doc.createElement(c === 0 ? 'th' : 'td')
+          if (c === 0) cell.setAttribute('scope', 'row')
+          tr.appendChild(cell)
+        }
+      }
+      const cells = tr.children
+      for (let c = 0; c < row.length; c++) {
+        const text = row[c] ?? ''
+        if (was === undefined || was.length !== row.length || was[c] !== text) setCell(cells[c]!, text)
+      }
+    }
+    shown = next
+  })
+  // `table-layout: fixed` + containment: the table is offscreen, so nothing it
+  // holds may cost a page layout. AUTO table layout measures every cell of
+  // every row to size its columns — ~6ms for 1,000 rows on each forced layout,
+  // several times the chart's own draw. Containment and fixed layout change
+  // nothing in the accessibility tree, which is the table's only reader.
+  return h('div', { style: `${OFFSCREEN};contain:strict` }, h('table', { id, style: 'table-layout:fixed;width:1px', ref: (el: HTMLTableElement | null) => host.set(el) }))
+}
 
 /** The crossing chrome functions return an EMPTY list for a miss; the host's tooltip contract says `null`. */
 export function orNull(lines: string[]): string[] | null {
@@ -59,6 +158,9 @@ export function shiftCmds(cmds: DrawCmd[], dx: Double, dy: Double): DrawCmd[] {
   }
   return cmds.map((c): DrawCmd => {
     switch (c.kind) {
+      case 'unclip':
+        return c
+      case 'clip':
       case 'rect':
         return shiftGradient(c, { ...c, rect: { ...c.rect, x: c.rect.x + dx, y: c.rect.y + dy } })
       case 'line':
@@ -75,9 +177,67 @@ export function shiftCmds(cmds: DrawCmd[], dx: Double, dy: Double): DrawCmd[] {
   })
 }
 
-export type LegendPosition = 'top' | 'bottom' | 'left' | 'right'
+export type { LegendPosition } from './legend'
 
 /** The props every canvas host accepts — the chrome, sizing, theme, interaction and a11y surface. */
+/** Keep a caller-placed box inside the bounds, for a view that asked to be confined. */
+function clampTooltip(at: Pt, size: Size, bounds: Rect): Pt {
+  let x = at.x
+  let y = at.y
+  if (x + size.w > bounds.x + bounds.w) x = bounds.x + bounds.w - size.w
+  if (x < bounds.x) x = bounds.x
+  if (y + size.h > bounds.y + bounds.h) y = bounds.y + bounds.h - size.h
+  if (y < bounds.y) y = bounds.y
+  return { x, y }
+}
+
+/**
+ * A tooltip richer than plain lines — what an ECharts-shaped option asks for.
+ * Every field is optional; absent means the host's default.
+ */
+export interface TooltipView {
+  /** Plain lines, rendered as text. */
+  lines?: string[] | undefined
+  /** HTML, rendered through an allow-list (`renderTooltipHtml`): tags and inline styles survive, scripts and handlers do not. */
+  html?: string | undefined
+  /** Where the box's top-left goes, in chart space, given its measured size; absent follows the pointer. */
+  place?: ((at: Pt, size: Size, bounds: Rect) => Pt) | undefined
+  /** Keep the box inside the chart (default true). */
+  confine?: boolean | undefined
+  /** CSS appended to the themed box style. */
+  css?: string | undefined
+  className?: string | undefined
+  /** The pointer may enter the box (links and buttons in it work). */
+  enterable?: boolean | undefined
+  /** Milliseconds before the box hides after the pointer leaves. */
+  hideDelay?: Double | undefined
+  /** Keep the box on screen after the pointer leaves. */
+  keepOnLeave?: boolean | undefined
+  /** Seconds the box glides between positions. */
+  transition?: Double | undefined
+}
+
+/**
+ * The item under the pointer, described the way ECharts describes it to a
+ * tooltip formatter. A family reports it through its spec's `item` hook so the
+ * option facade can apply the option's own `tooltip`, `cursor` and `silent` to
+ * any family without knowing its geometry.
+ */
+export interface HostItem {
+  /** The series the item belongs to; 0 for a family that draws one series. */
+  seriesIndex: number
+  seriesName?: string | undefined
+  /** The item's index in its series' data (a node or a link index for a graph-like family). */
+  dataIndex: number
+  name: string
+  value: unknown
+  color?: string | undefined
+  /** A slice's share of its whole, 0..100 (pie, funnel). */
+  percent?: Double | undefined
+  /** Which kind of element, for the families that have two (graph, sankey, chord). */
+  dataType?: 'node' | 'edge' | undefined
+}
+
 export interface CanvasHostProps {
 
   width?: Double
@@ -105,13 +265,24 @@ export interface CanvasHostProps {
   /**
    * Tween a data change from the previous frame to the new one instead of
    * snapping, when the two frames have the same shape. Default on; respects
-   * `prefers-reduced-motion`, like the entrance. A shape change (a row added,
-   * a series removed) snaps — there is no path between two different shapes
-   * that means anything.
+   * `prefers-reduced-motion`, like the entrance. Shape-changing updates snap
+   * unless `universalTransition` is enabled.
    */
   updateAnimation?: boolean
   /** Tween duration in ms; default the theme's `updateMs`. */
   updateDuration?: Double
+  /** Entrance duration in ms; default the theme's `enterMs`. */
+  enterDuration?: Double
+  /** Wait before the entrance starts, in ms. Default 0. */
+  enterDelay?: Double
+  /** Wait before an update tween starts, in ms. Default 0. */
+  updateDelay?: Double
+  /** The entrance's easing curve, 0..1 → 0..1. Default cubic ease-out. */
+  enterEasing?: (t: Double) => Double
+  /** The update tween's easing curve. Default cubic ease-out. */
+  updateEasing?: (t: Double) => Double
+  /** Morph updates even when the family or item count changes. Opt-in. */
+  universalTransition?: boolean
   /**
    * Keyboard navigation: the canvas is focusable; Left/Right (and Up/Down)
    * move through the chart's items, Home/End jump, Enter/Space select
@@ -140,6 +311,23 @@ export interface CanvasHostProps {
   /** Render the hidden data table (default on). */
   accessibleTable?: boolean
   class?: string
+  /**
+   * Rewrite the tooltip for the item under the pointer: the family's own
+   * lines come in, a box (or null for none) goes out. Only a family that
+   * reports items (its spec's `item` hook) calls it; `<OptionChart>` uses it to
+   * apply the option's `tooltip` component to every family.
+   */
+  itemTooltip?: ((item: HostItem, lines: string[], press: boolean) => string[] | TooltipView | null) | undefined
+  /** The CSS cursor over an item; absent keeps the family's own. */
+  itemCursor?: ((item: HostItem) => string) | undefined
+  /** An item that ignores the pointer: no tooltip, no cursor, no selection (ECharts' `silent`). */
+  itemSilent?: ((item: HostItem) => boolean) | undefined
+  /**
+   * Lay the family out in this rect (canvas pixels) instead of the box the
+   * chrome leaves. ECharts places a series in the whole chart — a pie at its
+   * `center` with a 75% radius — and draws the title and legend over it.
+   */
+  frame?: Rect | undefined
 }
 
 /** What a family gives the host. `L` is its layout; the host never looks inside it. */
@@ -151,7 +339,38 @@ export interface CanvasHostSpec<L> {
   /** Lay the family out in the box left after the chrome. */
   layout: (box: Rect, measure: MeasureText, theme: ChartTheme) => L
   /** Paint a layout; `progress` is 0..1 during the entrance (families that cannot grow ignore it). */
-  render: (layout: L, measure: MeasureText, theme: ChartTheme, progress: Double) => DrawCmd[]
+  render: (layout: L, measure: MeasureText, theme: ChartTheme, progress: Double, time: Double) => DrawCmd[]
+  /**
+   * Whether this layout draws a continuous effect (a `lines` trail) that
+   * `render` reads from `time`. While true, the host runs a frame clock —
+   * stopped under `prefers-reduced-motion`, where time holds at 0 and the
+   * chart is still. (It is not the entrance: an option chart's `animate` is
+   * off, and a trail is the chart's content, not its arrival.)
+   */
+  effectClock?: ((layout: L) => boolean) | undefined
+  /**
+   * Pan / zoom by pointer (ECharts' `roam`). The host keeps the view in a
+   * signal its `track` reads, so a gesture repaints; here the canvas only
+   * turns the wheel into `zoom` about the pointer and a drag into `pan`. A
+   * drag that moved never fires the click after it.
+   */
+  roam?: {
+    move: () => boolean
+    scale: () => boolean
+    zoom: (factor: Double, px: Double, py: Double) => void
+    pan: (dx: Double, dy: Double) => void
+  } | undefined
+  /**
+   * A pointer drag the chart owns (a visualMap handle). `start` answers
+   * whether the press lands on something draggable; while it does, every move
+   * goes to `move` in the layout's coordinates and roam stays out of it. The
+   * click that ends a drag is swallowed.
+   */
+  drag?: {
+    start: (layout: L, px: Double, py: Double) => boolean
+    move: (layout: L, px: Double, py: Double) => void
+    end?: (() => void) | undefined
+  } | undefined
   /** Legend entries for this layout, when the family has named series. */
   legend?: ((layout: L, theme: ChartTheme) => LegendEntry[]) | undefined
   /** Report the click through the family's own callbacks (rich hit and/or engine index). */
@@ -164,8 +383,18 @@ export interface CanvasHostSpec<L> {
   pick?: ((layout: L, index: number) => void) | undefined
   /** The rect to draw the keyboard focus ring around, for an item index; null draws none. */
   focusRect?: ((layout: L, index: number) => Rect | null) | undefined
-  /** Tooltip lines for a pointer position, or null for a miss. */
-  tooltip?: ((layout: L, px: Double, py: Double, theme: ChartTheme) => string[] | null) | undefined
+  /**
+   * The tooltip for a pointer position: plain lines, a richer `TooltipView`
+   * (HTML, placement, look, timing), or null for a miss. `press` is true for a
+   * pointer DOWN (a click or a tap), false for a hover move.
+   */
+  tooltip?: ((layout: L, px: Double, py: Double, theme: ChartTheme, press: boolean) => string[] | TooltipView | null) | undefined
+  /** The CSS cursor for a pointer position (ECharts' per-series `cursor`); '' is the default. */
+  cursor?: ((layout: L, px: Double, py: Double) => string) | undefined
+  /** The item under a pointer position, or null — what `itemTooltip` / `itemCursor` / `itemSilent` are applied to. */
+  item?: ((layout: L, px: Double, py: Double) => HostItem | null) | undefined
+  /** The pointer left the canvas (or the gesture was cancelled): whatever `tooltip` set as the hover is over. */
+  leave?: (() => void) | undefined
   /** The accessible description + table input. */
   a11y: (layout: L) => A11yInput
   /** A family-specific `aria-label` sentence, when the generic `describeChart` reads worse than the family's own (range and last close, grid dimensions). */
@@ -174,6 +403,12 @@ export interface CanvasHostSpec<L> {
   caption: string
   /** Whether `render` honours `progress` — only then does the entrance tween run. */
   animates?: boolean | undefined
+  /**
+   * Lay the family out TRANSPOSED (a vertical sankey / calendar / parallel):
+   * the layout runs in the box reflected across the diagonal, the draw list is
+   * reflected back, and every pointer is reflected before its hit test.
+   */
+  transpose?: (() => boolean) | undefined
 }
 
 /** Measures the PARENT, never the canvas: a canvas pinned to its own last width can never shrink with its container (the pinned-width trap). */
@@ -212,12 +447,60 @@ function focusRing(r: Rect): DrawCmd {
   }
 }
 
-export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
+/**
+ * Apply the item hooks (`itemTooltip`, `itemCursor`, `itemSilent`) over a
+ * family's own tooltip, cursor and selection. The props are read at call time,
+ * so a host whose props are live getters follows them.
+ */
+function withItemHooks<L>(spec: CanvasHostSpec<L>): CanvasHostSpec<L> {
+  const item = spec.item
+  if (item === undefined) return spec
+  const { props } = spec
+  const quiet = (it: HostItem | null): boolean => it !== null && props.itemSilent?.(it) === true
+  const hooked = (): boolean => props.itemTooltip !== undefined || props.itemCursor !== undefined || props.itemSilent !== undefined
+  const tooltip = spec.tooltip
+  const cursor = spec.cursor
+  const select = spec.select
+  return {
+    ...spec,
+    // A family with no tooltip of its own (the gauge) gains one only when an
+    // `itemTooltip` is supplied: otherwise it would mount a box that never answers.
+    tooltip: tooltip === undefined && props.itemTooltip === undefined ? undefined : (layout, px, py, theme, press) => {
+      const base = tooltip === undefined ? null : tooltip(layout, px, py, theme, press)
+      if (!hooked()) return base
+      const it = item(layout, px, py)
+      if (quiet(it)) return null
+      if (props.itemTooltip === undefined) return base
+      if (it === null) return null
+      const lines = base === null ? [] : Array.isArray(base) ? base : (base.lines ?? [])
+      return props.itemTooltip(it, lines, press)
+    },
+    cursor: (layout, px, py) => {
+      const own = cursor === undefined ? '' : cursor(layout, px, py)
+      if (props.itemCursor === undefined && props.itemSilent === undefined) return own
+      const it = item(layout, px, py)
+      if (it === null || quiet(it)) return ''
+      return props.itemCursor === undefined ? own : props.itemCursor(it)
+    },
+    select: select === undefined ? undefined : (layout, px, py) => {
+      if (quiet(item(layout, px, py))) return
+      select(layout, px, py)
+    },
+  }
+}
+
+export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
+  const spec = withItemHooks(rawSpec)
+  const transposed = (): boolean => spec.transpose?.() === true
+  /** The family's layout, in the box reflected across the diagonal when transposed (the render reflects it back). */
+  const lay = (box: Rect, measure: MeasureText, t: ChartTheme): L => spec.layout(transposed() ? transposeRect(box) : box, measure, t)
   const { props } = spec
   const themeOf = useChartTheme()
   const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
   let canvas: HTMLCanvasElement | null = null
   let tip: HTMLDivElement | null = null
+  // CSS a rich tooltip view last added to the themed box (its colours, border, padding, transition).
+  let appliedLook = ''
   let sizeObserver: ResizeObserver | null = null
   const keyboardOn = props.keyboard !== false
   const toolList: ToolboxTool[] = props.toolbox?.saveAsImage === true ? ['saveAsImage'] : []
@@ -242,18 +525,44 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     if (entranceStarted) return
     entranceStarted = true
     if (spec.animates !== true || props.animate === false || prefersReducedMotion() || !hasRaf()) return
-    const duration = theme().enterMs
+    const duration = props.enterDuration ?? theme().enterMs
     if (duration <= 0) return
+    const delay = props.enterDelay ?? 0.0
+    const curve = props.enterEasing ?? easeOutCubic
     let start = -1.0
     const tick = (now: number): void => {
-      if (start < 0.0) start = now
-      const t = Math.min(1.0, (now - start) / duration)
-      entrance = easeOutCubic(t)
+      if (start < 0.0) start = now + delay
+      const t = now < start ? 0.0 : Math.min(1.0, (now - start) / duration)
+      // An overshooting curve (backOut, elasticOut) passes 1 mid-flight; the
+      // engine clamps progress anyway, and `entrance >= 1` is how this host
+      // knows the entrance is OVER, so it may only reach 1 when time does.
+      entrance = t >= 1.0 ? 1.0 : Math.min(curve(t), 0.999999)
       draw()
       entranceFrame = t < 1.0 ? requestAnimationFrame(tick) : 0
     }
     entrance = 0.0
     entranceFrame = requestAnimationFrame(tick)
+  }
+
+  // Effect clock: seconds since the effect first painted, advanced once per frame.
+  let effectTime = 0.0
+  let effectStart = -1.0
+  let effectFrame = 0
+  const clockWanted = (layout: L): boolean =>
+    spec.effectClock !== undefined && spec.effectClock(layout) && !prefersReducedMotion() && hasRaf()
+  const syncClock = (layout: L): void => {
+    if (!clockWanted(layout)) {
+      cancelFrame(effectFrame)
+      effectFrame = 0
+      return
+    }
+    if (effectFrame !== 0) return
+    effectFrame = requestAnimationFrame((now: number) => {
+      effectFrame = 0
+      if (effectStart < 0.0) effectStart = now
+      effectTime = (now - effectStart) / 1000.0
+      draw()
+    })
   }
 
   // Update tween: from → to over `updateMs`, painted from the cached frame.
@@ -263,11 +572,12 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
   let tweenFrame = 0
   const startTween = (): void => {
     const duration = props.updateDuration ?? theme().updateMs
+    const delay = props.updateDelay ?? 0.0
     let start = -1.0
     cancelFrame(tweenFrame)
     const tick = (now: number): void => {
-      if (start < 0.0) start = now
-      tweenT = Math.min(1.0, (now - start) / duration)
+      if (start < 0.0) start = now + delay
+      tweenT = now < start ? 0.0 : Math.min(1.0, (now - start) / duration)
       paintCached()
       if (tweenT < 1.0) tweenFrame = requestAnimationFrame(tick)
       else {
@@ -280,17 +590,9 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     tweenFrame = requestAnimationFrame(tick)
   }
   /** The family commands to show right now: the tween's frame, else the last full frame. */
-  const shownFamily = (): DrawCmd[] => (tweenFrom !== null && tweenTo !== null && tweenT < 1.0 ? tweenCmds(tweenFrom, tweenTo, easeOutCubic(tweenT)) : (lastFamily ?? []))
-
-  /** The vertical legend's column width — the widest entry plus its swatch and gap. */
-  const legendColumnWidth = (entries: LegendEntry[], measure: MeasureText, t: ChartTheme): Double => {
-    let w = 0.0
-    for (const e of entries) {
-      const ew = 10.0 + 4.0 + measure(e.label, t.fontSize) + 12.0
-      if (ew > w) w = ew
-    }
-    return w
-  }
+  const transitionFrame = (from: DrawCmd[], to: DrawCmd[], t: Double): DrawCmd[] =>
+    props.universalTransition === true ? universalTweenCmds(from, to, t) : tweenCmds(from, to, t)
+  const shownFamily = (): DrawCmd[] => (tweenFrom !== null && tweenTo !== null && tweenT < 1.0 ? transitionFrame(tweenFrom, tweenTo, (props.updateEasing ?? easeOutCubic)(tweenT)) : (lastFamily ?? []))
 
   /**
    * Chrome first, then the family in what is left. The title and a wrapped
@@ -318,36 +620,29 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     if (props.showLegend === true && spec.legend !== undefined) {
       // The legend needs the entries, the entries need a layout: lay out once in
       // the pre-legend box for the names, then again in what the legend leaves.
-      const probe = spec.layout({ x: 0, y: top, w, h: Math.max(0, hgt - top) }, measure, t)
+      const probe = lay({ x: 0, y: top, w, h: Math.max(0, hgt - top) }, measure, t)
       const entries = spec.legend(probe, t)
-      const pos = props.legendPosition ?? 'top'
       if (entries.length === 0) layout = probe
-      else if (pos === 'left' || pos === 'right') {
-        const col = Math.min(legendColumnWidth(entries, measure, t), w * 0.4)
-        const lx = pos === 'left' ? 8.0 : w - col
-        const l = renderLegend(entries, { x: lx, y: top + 8, w: col, h: hgt - top }, { fontSize: t.fontSize, labelColor: t.label, swatch: 10, gap: 12, orientation: 'vertical' }, measure)
-        for (const c of l.cmds) chrome.push(c)
-        if (pos === 'left') left = col + 8
-        else right = col + 8
-      } else {
-        const opts = { fontSize: t.fontSize, labelColor: t.label, swatch: 10, gap: 12, orientation: 'horizontal' as const }
-        if (pos === 'bottom') {
-          // Its height decides where it sits, so plan it first, then place it.
-          const rows = legendPlan(entries, { x: 8, y: 0, w: w - 16, h: hgt }, opts, measure, w - 16).rows
-          const rowH = Math.max(10.0, t.fontSize) + 12.0
-          const lh = rows * rowH
-          const l = renderLegend(entries, { x: 8, y: hgt - lh, w: w - 16, h: lh }, opts, measure)
-          for (const c of l.cmds) chrome.push(c)
-          bottom = l.height + 8
-        } else {
-          const l = renderLegend(entries, { x: 8, y: top + 8, w: w - 16, h: hgt - top }, opts, measure)
-          for (const c of l.cmds) chrome.push(c)
-          top += l.height + 8
-        }
+      else {
+        // Placement is the ENGINE's — one function the web host and both
+        // native emitters call, so `legendPosition` cannot mean one thing in
+        // a browser and another on a phone.
+        const placed = placeLegend(
+          entries,
+          { x: 0, y: top, w, h: hgt - top },
+          props.legendPosition ?? 'top',
+          { fontSize: t.fontSize, labelColor: t.label, swatch: 10, gap: 12, orientation: 'horizontal' },
+          measure,
+        )
+        for (const c of placed.cmds) chrome.push(c)
+        top += placed.top
+        bottom = placed.bottom
+        left = placed.left
+        right = placed.right
       }
     }
-    const box = { x: left, y: top, w: Math.max(0, w - left - right), h: Math.max(0, hgt - top - bottom) }
-    if (layout === null || top > 0 || left > 0 || right > 0 || bottom > 0) layout = spec.layout(box, measure, t)
+    const box = props.frame ?? { x: left, y: top, w: Math.max(0, w - left - right), h: Math.max(0, hgt - top - bottom) }
+    if (layout === null || top > 0 || left > 0 || right > 0 || bottom > 0 || props.frame !== undefined) layout = lay(box, measure, t)
     return { w, hgt, box, layout, chrome, toolBoxes }
   }
 
@@ -356,8 +651,22 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     const i = focusIdx()
     if (i < 0 || spec.focusRect === undefined) return []
     const r = spec.focusRect(f.layout, i)
-    return r === null ? [] : [focusRing(r)]
+    return r === null ? [] : [focusRing(transposed() ? transposeRect(r) : r)]
   }
+
+  /**
+   * The presentation transform. EVERY paint must go through this: it is the
+   * last step before pixels, and it is what makes an RTL chart RTL.
+   *
+   * It lives here, above both paint paths, because having two of them is
+   * exactly how it got dropped — `draw()` applied it and `paintCached()` did
+   * not, so an RTL chart un-mirrored on the tween's every tick, on each arrow
+   * key, on Escape and on blur, and the tween's final frame SETTLED unmirrored
+   * while the pointer seam kept mirroring. The chrome and family are cached
+   * BEFORE this runs, so there was no compensation downstream either.
+   */
+  const present = (list: DrawCmd[], w: Double): DrawCmd[] =>
+    props.rtl === true ? mirrorCmds(list, w) : list
 
   /** Paint the cached frame with the family commands to show now — the tween's tick path, no layout. */
   const paintCached = (): void => {
@@ -367,7 +676,7 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     const t = theme()
     const ctx = prepareCanvas(el, f.w, f.hgt, t.background)
     if (ctx === null) return
-    paint(ctx, [...f.chrome, ...shownFamily(), ...ringCmds(f)], f.w, f.hgt, FONT)
+    paint(ctx, present([...f.chrome, ...shownFamily(), ...ringCmds(f)], f.w), f.w, f.hgt, FONT)
   }
 
   /**
@@ -376,8 +685,6 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
    * family and the focus ring have been concatenated, so all three mirror
    * together and nothing downstream has to know about direction.
    */
-  const present = (list: DrawCmd[], w: Double): DrawCmd[] =>
-    props.rtl === true ? mirrorCmds(list, w) : list
 
   const draw = (): void => {
     const el = canvas
@@ -390,16 +697,30 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     const measure = canvasMeasure(ctx, FONT)
     const f = frame(w, hgt, measure, t)
     last = f
-    const family = spec.render(f.layout, measure, t, entrance)
-    if (entrance >= 1.0) {
+    const family = transposed() ? transposeCmds(spec.render(f.layout, measure, t, entrance, effectTime)) : spec.render(f.layout, measure, t, entrance, effectTime)
+    // A clock-driven frame changes every tick by design; it is never an update to tween.
+    const clockDriven = clockWanted(f.layout)
+    syncClock(f.layout)
+    if (entrance >= 1.0 && clockDriven) {
+      lastFamily = family
+    } else if (entrance >= 1.0) {
+      // A redraw whose content is what a running tween is ALREADY heading to
+      // (an unrelated tracked read re-ran the draw) must let it finish. It used
+      // to fall through to the snap below, which cancels the tween: invisible
+      // on a host that draws once per change, fatal on one that redraws.
+      if (tweenFrame !== 0 && tweenTo !== null && cmdsEqual(tweenTo, family)) {
+        paint(ctx, present([...f.chrome, ...shownFamily(), ...ringCmds(f)], w), w, hgt, FONT)
+        return
+      }
       const enabled = props.updateAnimation !== false && hasRaf() && !prefersReducedMotion() && (props.updateDuration ?? t.updateMs) > 0
-      if (enabled && lastFamily !== null && sameCmdShape(lastFamily, family) && !cmdsEqual(lastFamily, family)) {
+      const transitionable = lastFamily !== null && (sameCmdShape(lastFamily, family) || props.universalTransition === true)
+      if (enabled && transitionable && lastFamily !== null && !cmdsEqual(lastFamily, family)) {
         // Retarget a running tween from where it is; start one from the last frame otherwise.
-        tweenFrom = tweenFrom !== null && tweenTo !== null && tweenT < 1.0 ? tweenCmds(tweenFrom, tweenTo, easeOutCubic(tweenT)) : lastFamily
+        tweenFrom = tweenFrom !== null && tweenTo !== null && tweenT < 1.0 ? transitionFrame(tweenFrom, tweenTo, (props.updateEasing ?? easeOutCubic)(tweenT)) : lastFamily
         tweenTo = family
         lastFamily = family
         startTween()
-        paint(ctx, present([...f.chrome, ...tweenCmds(tweenFrom, family, 0.0), ...ringCmds(f)], w), w, hgt, FONT)
+        paint(ctx, present([...f.chrome, ...transitionFrame(tweenFrom, family, 0.0), ...ringCmds(f)], w), w, hgt, FONT)
         return
       }
       // A shape change snaps, and cancels any tween still running toward the old shape.
@@ -415,6 +736,7 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
   effect(() => {
     spec.track()
     theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
+    trackChartImages() // a pattern image that finishes loading repaints
     // `peek`, not a read: reading the version here would subscribe this
     // effect to its own write and re-run it once per batch pass (32 times,
     // cancelling the update tween on every pass) — the intentional
@@ -470,7 +792,8 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     if (spec.select === undefined) return
     const f = layoutNow(el)
     if (f === null) return
-    spec.select(f.layout, p.x, p.y)
+    if (transposed()) spec.select(f.layout, p.y, p.x)
+    else spec.select(f.layout, p.x, p.y)
   }
 
   const handleMove = (ev: PointerEvent): void => {
@@ -480,36 +803,88 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     const f = layoutNow(el)
     if (f === null) return
     const p = localPoint(el, ev)
-    const lines = spec.tooltip(f.layout, p.x, p.y, theme())
-    if (lines === null || lines.length === 0) {
-      box.style.display = 'none'
+    if (spec.cursor !== undefined) el.style.cursor = transposed() ? spec.cursor(f.layout, p.y, p.x) : spec.cursor(f.layout, p.x, p.y)
+    const press = ev.type === 'pointerdown'
+    const out = transposed() ? spec.tooltip(f.layout, p.y, p.x, theme(), press) : spec.tooltip(f.layout, p.x, p.y, theme(), press)
+    const view: TooltipView | null = out === null ? null : Array.isArray(out) ? { lines: out } : out
+    if (view === null || (view.html === undefined && (view.lines === undefined || view.lines.length === 0))) {
+      hideTip()
       return
     }
-    box.textContent = lines.join('\n')
+    cancelHide()
+    currentView = view
+    // The view's look is written with the rest of the box's state, in this one
+    // handler: a REACTIVE style attribute would be re-applied after these writes
+    // and reset `display`, `left` and `top` with it.
+    const look = `${view.css === undefined || view.css === '' ? '' : ';' + view.css}${view.enterable === true ? ';pointer-events:auto' : ''}${view.transition !== undefined && view.transition > 0 ? `;transition:left ${view.transition}s,top ${view.transition}s` : ''}`
+    if (look !== appliedLook) {
+      box.setAttribute('style', tooltipStyle(theme(), FONT) + look)
+      appliedLook = look
+    }
+    box.className = view.className ?? ''
+    if (view.html !== undefined) renderTooltipHtml(box, view.html)
+    else box.textContent = view.lines!.join('\n')
     box.style.display = 'block'
     // Measure AFTER filling it: placement depends on the rendered size.
     const size = { w: box.offsetWidth, h: box.offsetHeight }
-    const at = placeTooltip(p, size, { x: 0, y: 0, w: f.w, h: f.hgt }, 12)
+    const bounds = { x: 0, y: 0, w: f.w, h: f.hgt }
+    const placed = view.place === undefined ? placeTooltip(p, size, bounds, 12) : view.place(p, size, bounds)
+    const at = view.confine === false || view.place === undefined ? placed : clampTooltip(placed, size, bounds)
     // `p` is CHART space (mirrored in by `localPoint`); the tooltip is a DOM
     // node in SCREEN space, so its left edge mirrors back out (`./rtl`).
     box.style.left = `${screenRectX(at.x, size.w, f.w, props.rtl === true)}px`
     box.style.top = `${at.y}px`
   }
-  const handleLeave = (): void => {
+  // The rich view the box last showed — its leave/hide behaviour applies until the next one.
+  let currentView: TooltipView | null = null
+  let hideTimer: ReturnType<typeof setTimeout> | null = null
+  const cancelHide = (): void => {
+    if (hideTimer !== null) clearTimeout(hideTimer)
+    hideTimer = null
+  }
+  const hideTip = (): void => {
+    cancelHide()
     if (tip !== null) tip.style.display = 'none'
+  }
+  onUnmount(cancelHide)
+  const handleLeave = (): void => {
+    if (canvas !== null && spec.cursor !== undefined) canvas.style.cursor = ''
+    spec.leave?.()
+    const view = currentView
+    if (view?.keepOnLeave === true) return
+    const delay = view?.hideDelay ?? 0.0
+    if (delay <= 0.0 || tip === null) {
+      hideTip()
+      return
+    }
+    cancelHide()
+    hideTimer = setTimeout(() => {
+      hideTimer = null
+      if (tip !== null) tip.style.display = 'none'
+    }, delay)
   }
 
   const layoutForA11y = (): L => {
+    // The drawn frame's layout when there is one: the a11y input reads the
+    // DATA a layout carries, which the draw already laid out — laying the
+    // chart out a second time here cost as much as the draw itself on a
+    // large series. Before the first draw (SSR, a detached host) it lays out
+    // with an approximate measure, as before.
+    const drawn = last
+    if (drawn !== null) return drawn.layout
     const el = canvas
-    const w = el === null ? 300 : drawWidth(el, props.width)
+    // Before the canvas lands, the chart's own `width` (else 300): laying out at a
+    // width the chart does not have described the wrong geometry AND made an
+    // option chart compile its option a second time for it.
+    const w = el === null ? (props.width ?? 300) : drawWidth(el, props.width)
     const hgt = props.height ?? spec.defaultHeight
     const measure: MeasureText = (text, size) => text.length * size * 0.6
-    return spec.layout({ x: 0, y: 0, w, h: hgt }, measure, theme())
+    return lay(props.frame ?? { x: 0, y: 0, w, h: hgt }, measure, theme())
   }
   /** The a11y input, computed once per draw (the description, the table and the keyboard all read it). */
   const a11yNow = (): A11yInput => {
     const version = a11yVersion()
-    const w = canvas === null ? 300 : drawWidth(canvas, props.width)
+    const w = canvas === null ? (props.width ?? 300) : drawWidth(canvas, props.width)
     const m = a11yMemo
     if (m !== null && m.version === version && m.w === w) return m.input
     const input = spec.a11y(layoutForA11y())
@@ -519,17 +894,19 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
 
   /** Move the keyboard focus item and announce it. */
   const moveFocus = (delta: number, absolute?: number): void => {
-    const rows = chartTable(a11yNow()).rows
-    const n = rows.length
+    // One row, not the table: formatting every row per arrow key to announce
+    // the focused one was O(n) per keystroke on a large chart.
+    const input = a11yNow()
+    const n = chartRowCount(input)
     if (n === 0) return
     const cur = focusIdx()
     let next = absolute !== undefined ? absolute : cur < 0 ? (delta > 0 ? 0 : n - 1) : cur + delta
     if (next < 0) next = 0
     if (next > n - 1) next = n - 1
-    const row = rows[next]
+    const row = chartTableRow(input, next)
     batch(() => {
       focusIdx.set(next)
-      announce.set(row === undefined ? '' : row.join(', '))
+      announce.set(row.join(', '))
     })
     paintCached()
   }
@@ -538,7 +915,7 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     if (key === 'ArrowRight' || key === 'ArrowUp') moveFocus(1)
     else if (key === 'ArrowLeft' || key === 'ArrowDown') moveFocus(-1)
     else if (key === 'Home') moveFocus(0, 0)
-    else if (key === 'End') moveFocus(0, chartTable(a11yNow()).rows.length - 1)
+    else if (key === 'End') moveFocus(0, chartRowCount(a11yNow()) - 1)
     else if (key === 'Enter' || key === ' ') {
       const i = focusIdx()
       const f = last
@@ -551,6 +928,100 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
       paintCached()
     } else return
     ev.preventDefault()
+  }
+
+  // Roam gestures. `dragFrom` is the last pointer position of a live drag;
+  // `dragMoved` swallows the click that ends a real pan.
+  let dragFrom: { x: Double; y: Double; id: number } | null = null
+  let dragMoved = false
+  const roam = spec.roam
+  const handleWheel = (ev: WheelEvent): void => {
+    const el = canvas
+    if (roam === undefined || el === null || !roam.scale()) return
+    ev.preventDefault()
+    const p = localPoint(el, ev)
+    roam.zoom(Math.exp(-ev.deltaY * 0.0015), p.x, p.y)
+  }
+  const chartDrag = spec.drag
+  let chartDragId = -1
+  const dragDown = (ev: PointerEvent): boolean => {
+    const el = canvas
+    if (chartDrag === undefined || el === null) return false
+    const f = layoutNow(el)
+    const p = localPoint(el, ev)
+    if (f === null || !chartDrag.start(f.layout, p.x, p.y)) return false
+    chartDragId = ev.pointerId
+    dragMoved = false
+    if (typeof el.setPointerCapture === 'function') {
+      try {
+        el.setPointerCapture(ev.pointerId)
+      } catch {
+        // not capturable — drag without it
+      }
+    }
+    return true
+  }
+  const dragMove = (ev: PointerEvent): boolean => {
+    const el = canvas
+    if (chartDrag === undefined || el === null || chartDragId !== ev.pointerId) return false
+    const f = layoutNow(el)
+    if (f === null) return true
+    const p = localPoint(el, ev)
+    dragMoved = true
+    chartDrag.move(f.layout, p.x, p.y)
+    return true
+  }
+  const roamDown = (ev: PointerEvent): void => {
+    const el = canvas
+    if (roam === undefined || el === null || !roam.move()) return
+    const p = localPoint(el, ev)
+    dragFrom = { x: p.x, y: p.y, id: ev.pointerId }
+    dragMoved = false
+  }
+  const roamMove = (ev: PointerEvent): void => {
+    const el = canvas
+    if (roam === undefined || el === null || dragFrom === null || dragFrom.id !== ev.pointerId) return
+    const p = localPoint(el, ev)
+    const dx = p.x - dragFrom.x
+    const dy = p.y - dragFrom.y
+    if (!dragMoved && Math.abs(dx) + Math.abs(dy) < 3.0) return
+    if (!dragMoved && typeof el.setPointerCapture === 'function') {
+      // Capture keeps a drag that leaves the canvas panning; a pointer the
+      // browser no longer tracks throws, and the pan must still happen.
+      try {
+        el.setPointerCapture(ev.pointerId)
+      } catch {
+        // not capturable — pan without it
+      }
+    }
+    dragMoved = true
+    dragFrom = { x: p.x, y: p.y, id: ev.pointerId }
+    roam.pan(dx, dy)
+  }
+  const roamUp = (): void => {
+    dragFrom = null
+    if (chartDragId >= 0) {
+      chartDragId = -1
+      chartDrag?.end?.()
+    }
+  }
+  const tooltipOn = props.tooltip === true && spec.tooltip !== undefined
+  const onPointerDown = (ev: PointerEvent): void => {
+    if (dragDown(ev)) return
+    roamDown(ev)
+    if (tooltipOn) handleMove(ev)
+  }
+  const onPointerMove = (ev: PointerEvent): void => {
+    if (dragMove(ev)) return
+    roamMove(ev)
+    if (tooltipOn && !dragMoved) handleMove(ev)
+  }
+  const onClickRoamAware = (ev: MouseEvent): void => {
+    if (dragMoved) {
+      dragMoved = false
+      return
+    }
+    handleClick(ev)
   }
 
   const canvasNode = h('canvas', {
@@ -571,8 +1042,10 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
         // Unmounted mid-animation: the frames must not keep the closure alive.
         cancelFrame(entranceFrame)
         cancelFrame(tweenFrame)
+        cancelFrame(effectFrame)
         entranceFrame = 0
         tweenFrame = 0
+        effectFrame = 0
         last = null
         return
       }
@@ -589,11 +1062,14 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
       })
       sizeObserver.observe(box)
     },
-    onClick: handleClick,
+    onClick: onClickRoamAware,
+    ...(roam !== undefined ? { onWheel: handleWheel } : {}),
+    ...(roam !== undefined || chartDrag !== undefined ? { onPointerUp: roamUp } : {}),
     ...(keyboardOn ? { tabIndex: 0, onKeyDown: handleKeyDown, onBlur: () => { batch(() => { focusIdx.set(-1); announce.set('') }); paintCached() } } : {}),
     // Pointer events, not mouse events: a finger gets the tooltip on tap
     // (pointerdown) and on drag (pointermove) exactly as a mouse does on hover.
-    ...(props.tooltip === true && spec.tooltip !== undefined ? { onPointerMove: handleMove, onPointerDown: handleMove, onPointerLeave: handleLeave, onPointerCancel: handleLeave } : {}),
+    ...(tooltipOn || roam !== undefined || chartDrag !== undefined ? { onPointerMove, onPointerDown } : {}),
+    ...(tooltipOn ? { onPointerLeave: handleLeave, onPointerCancel: () => { roamUp(); handleLeave() } } : roam !== undefined || chartDrag !== undefined ? { onPointerCancel: roamUp } : {}),
   })
 
   const tipNode = (): VNode | null =>
@@ -614,23 +1090,7 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
   if (t !== null) extras.push(t)
   if (keyboardOn) extras.push(liveNode())
   if (props.accessibleTable !== false) {
-    const table = (): VNode => {
-      const a = chartTable(a11yNow())
-      const shown = a.rows.length > A11Y_TABLE_MAX ? a.rows.slice(0, A11Y_TABLE_MAX) : a.rows
-      const caption = (props.title ?? spec.caption) + (shown.length < a.rows.length ? ` (first ${A11Y_TABLE_MAX} of ${a.rows.length} rows)` : '')
-      return h(
-        'div',
-        { style: OFFSCREEN },
-        h(
-          'table',
-          { id: tableId },
-          h('caption', null, caption),
-          h('thead', null, h('tr', null, ...a.headers.map((x) => h('th', { scope: 'col' }, x)))),
-          h('tbody', null, ...shown.map((r) => h('tr', null, h('th', { scope: 'row' }, r[0] ?? ''), ...r.slice(1).map((c) => h('td', null, c))))),
-        ),
-      )
-    }
-    extras.push(() => table())
+    extras.push(a11yTableNode(() => chartTable(a11yNow(), A11Y_TABLE_MAX), tableId, () => props.title ?? spec.caption))
   }
   if (extras.length === 0) return canvasNode
   return h('div', { style: 'position:relative' }, canvasNode, ...extras)

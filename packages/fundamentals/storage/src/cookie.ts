@@ -1,5 +1,5 @@
 import { signal, wrapSignal } from '@pyreon/reactivity'
-import { getEntry, removeEntry, setEntry } from './registry'
+import { getEntry, releaseEntry, retainEntry, setEntry } from './registry'
 import type { CookieOptions, StorageSignal } from './types'
 import { deserialize, isBrowser, serialize } from './utils'
 
@@ -11,6 +11,12 @@ import { deserialize, isBrowser, serialize } from './utils'
 // request's `Cookie` header out of `runWithRequestContext`'s AsyncLocalStorage),
 // so concurrent requests each resolve their own cookies without this module
 // holding per-request state. `null` clears it.
+//
+// The accessor form only became REACHABLE past request #1 once the signal
+// registry was isolated per request (see `registry.ts`): the registry caches
+// the resolved signal per key, so request B used to be handed request A's
+// signal — holding A's cookie value — and this source was never consulted.
+// Correct seam, unreachable. Both halves are required.
 let serverCookieSource: string | (() => string) | null = null
 
 /**
@@ -22,6 +28,11 @@ let serverCookieSource: string | (() => string) | null = null
  * concurrent requests — safe only when rendering is serialized per process. For
  * a server handling concurrent requests, pass an ACCESSOR that reads the current
  * request's cookies from your request context.
+ *
+ * The registry that caches cookie signals is isolated per request automatically
+ * under `@pyreon/runtime-server` (`renderToString` / `renderToStream` /
+ * `runWithRequestContext`), so an accessor source is honoured on EVERY request,
+ * not only the first.
  *
  * @example
  * ```ts
@@ -118,8 +129,9 @@ function deleteCookie<T>(key: string, options: CookieOptions<T>): void {
 // ─── useCookie ───────────────────────────────────────────────────────────────
 
 /**
- * Reactive signal backed by a browser cookie. SSR-compatible when
- * used with setCookieSource().
+ * Reactive signal backed by a browser cookie. SSR-compatible when used with
+ * `setCookieSource()` — and per-request under `@pyreon/runtime-server`, which
+ * isolates the signal registry for each render (see `registry.ts`).
  *
  * @example
  * ```ts
@@ -138,9 +150,18 @@ export function useCookie<T>(
   defaultValue: T,
   options: CookieOptions<T> = {},
 ): StorageSignal<T> {
-  // Return existing signal if already registered
+  // Same-key consumers each retain the per-key registry refcount, so the entry
+  // is destroyed on the LAST `.remove()` and not the first. `useStorage` was
+  // fixed this way in #725/#729 and the registry's own docstring states the
+  // contract ("per-consumer `.remove()` goes through `releaseEntry`") — this
+  // backend kept the pre-fix shape, so one consumer's `.remove()` orphaned
+  // every sibling: `clearStorage`/`removeStorage` stopped seeing their signal,
+  // and the next call for the same key minted a SECOND, independent one.
   const existing = getEntry<T>('cookie', key)
-  if (existing) return existing.signal
+  if (existing) {
+    retainEntry('cookie', key)
+    return existing.signal
+  }
 
   // Read initial value from cookie
   const raw = readCookie(key)
@@ -159,9 +180,11 @@ export function useCookie<T>(
   }) as unknown as StorageSignal<T>
 
   storageSig.remove = () => {
+    // The VALUE is always cleared — that is what the caller asked for. Only the
+    // registry entry is refcounted, matching `createStorageSignal`'s contract.
     sig.set(defaultValue)
     deleteCookie(key, options)
-    removeEntry('cookie', key)
+    releaseEntry('cookie', key)
   }
 
   setEntry('cookie', key, storageSig, defaultValue, options)

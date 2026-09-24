@@ -9,6 +9,14 @@ description: "16 cross-platform UI primitives that compile to DOM + SwiftUI + Co
 
 The multiplatform UI vocabulary for Pyreon. ONE canonical name per concept (`<Stack>` not `<View>`/`<VStack>`/`<div>`; `onPress` everywhere, not `onClick` vs `action:`). Web renders real DOM via `@pyreon/runtime-dom`; on iOS/Android the PMTC compiler intercepts the JSX at build time and emits idiomatic SwiftUI / Compose (the import is a type-anchor on native). Tokens-first styling (`padding={4}`, `gap="md"`) resolves through the theme per target. No responsive props / animations in v1 — apps needing responsive web use `@pyreon/elements` directly. CRITICAL boundary for native: PMTC compiles your component SOURCE in a narrow declarative TS subset, NOT npm libraries — see `get_pattern({ name: "multiplatform" })` for the supported subset + the silent-failure cliff.
 
+## Multiplatform
+
+**Tier:** Shared — the same source runs on web, iOS and Android
+
+the 15 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - 15 canonical primitives compile to web DOM + iOS SwiftUI + Android Compose from one .tsx
@@ -547,10 +555,10 @@ Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe 
 ### connectWebHost `function`
 
 ```ts
-connectWebHost<T>() => { data(): T | undefined; onData(cb: (data: T | undefined) => void): () => void; emit(message: string): void }
+connectWebHost<T>() => { data(): T | undefined; onData(cb: (data: T | undefined) => void): () => void; emit(message: string): void; joinGroup(group: string): void; leaveGroup(): void; relay(message: string): void; onRelay(cb: (message: string) => void): () => void }
 ```
 
-The guest-side glue for the `<WebView>` bridge — the reusable OTHER half of the WebView-host pattern. A web-only-rich component (chart/flow/editor) built as a self-contained bundle runs `connectWebHost()` INSIDE the hosted page (an `<iframe srcdoc>` on web, a WKWebView on iOS, an Android WebView) to read host-pushed props (`data()` / `onData(cb)` fires on every `pyreondata` push) and send events back (`emit(msg)` → the host `onMessage`). Same code on every platform, so a webview-hosted panel is truly 1:1. Guest-only: every method is an inert no-op off-browser, so importing it can never crash a build.
+The guest-side glue for the `<WebView>` bridge — the reusable OTHER half of the WebView-host pattern. A web-only-rich component (chart/flow/editor) built as a self-contained bundle runs `connectWebHost()` INSIDE the hosted page (an `<iframe srcdoc>` on web, a WKWebView on iOS, an Android WebView) to read host-pushed props (`data()` / `onData(cb)` fires on every `pyreondata` push) and send events back (`emit(msg)` → the host `onMessage`). Same code on every platform, so a webview-hosted panel is truly 1:1. HOST GROUPS: `joinGroup(name)` puts the page in a group; `relay(msg)` reaches every OTHER hosted page of that group (a sibling iframe on web, a sibling WKWebView / Android WebView natively — the host does the fan-out, since separate pages can never see each other) and `onRelay(cb)` receives what siblings relay; this is how `<ChartWebView group>` mirrors zoom/legend/tooltip across hosted charts. Guest-only: every method is an inert no-op off-browser, so importing it can never crash a build.
 
 **Example**
 

@@ -73,7 +73,7 @@ describe('diagnosticsForDocument', () => {
 
   it('surfaces an unsupported-subset warning for a generic helper', () => {
     const diags = diagnosticsForDocument(
-      'function first<T>(x: T[]): T { return x[0] }\nexport function C() { return <text>h</text> }',
+      'function first<T>(x: T[]): T { return x[0] }\nexport function C() { return <Text>h</Text> }',
       'X.tsx',
     )
     expect(diags.length).toBeGreaterThanOrEqual(1)
@@ -107,7 +107,7 @@ describe('_handleMessage — JSON-RPC contract', () => {
       params: {
         textDocument: {
           uri: 'file:///X.tsx',
-          text: 'function first<T>(x: T[]): T { return x[0] }\nexport function C() { return <text>h</text> }',
+          text: 'function first<T>(x: T[]): T { return x[0] }\nexport function C() { return <Text>h</Text> }',
         },
       },
     })
@@ -126,7 +126,7 @@ describe('_handleMessage — JSON-RPC contract', () => {
       method: 'textDocument/didChange',
       params: {
         textDocument: { uri: 'file:///X.tsx' },
-        contentChanges: [{ text: 'export function C() { return <text>ok</text> }' }],
+        contentChanges: [{ text: 'export function C() { return <Text>ok</Text> }' }],
       },
     })
     expect(count).toBe(1)

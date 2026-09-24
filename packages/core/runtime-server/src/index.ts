@@ -37,7 +37,9 @@ import {
   runWithHooks,
   Suspense,
   setContextStackProvider,
-  URL_ATTRS,
+  isUrlAttr,
+  isEventHandlerAttr,
+  UNSAFE_ATTR_NAME_RE,
 } from '@pyreon/core'
 
 // Dev-mode perf counter sink — zero coupling to @pyreon/perf-harness; we just
@@ -180,12 +182,46 @@ const _fallbackStack: Map<symbol, unknown>[] = []
 /* v8 ignore next */
 setContextStackProvider(() => _contextAls.getStore() ?? _fallbackStack)
 
-// ─── Store isolation (optional) ───────────────────────────────────────────────
-// A second ALS isolates store registries between concurrent requests.
-// Activated only when the user calls configureStoreIsolation().
+// ─── Per-request registry isolation ──────────────────────────────────────────
+// A fundamentals package whose public API is keyed by a USER-CHOSEN key
+// (`defineStore('cart')`, `useCookie('session')`, `Model.asHook('cart')`) keeps
+// a module-level registry so the same key resolves to the same value. That is
+// correct in a browser — one process, one user — and a cross-request bleed on a
+// server, where one process serves everyone.
+//
+// Each such registry gets its OWN AsyncLocalStorage here (own = no key
+// collisions between packages) and is wired from the `globalThis` seam that
+// package publishes when it loads on a server. `@pyreon/store` was fixed this
+// way first; `@pyreon/storage` and `@pyreon/state-tree` had the identical shape
+// and were not swept with it.
+//
+// Activated lazily, per render — see `tryAutoWireRegistryIsolation`.
+
+interface RegistrySeam {
+  /** The `globalThis` property the owning package publishes its setter on. */
+  readonly seamKey: string
+  readonly als: AsyncLocalStorage<Map<string, unknown>>
+  active: boolean
+}
 
 const _storeAls = new AsyncLocalStorage<Map<string, unknown>>()
-let _storeIsolationActive = false
+
+const _registrySeams: RegistrySeam[] = [
+  { seamKey: '__PYREON_STORE_SET_REGISTRY_PROVIDER__', als: _storeAls, active: false },
+  {
+    seamKey: '__PYREON_STORAGE_SET_REGISTRY_PROVIDER__',
+    als: new AsyncLocalStorage<Map<string, unknown>>(),
+    active: false,
+  },
+  {
+    seamKey: '__PYREON_STATE_TREE_SET_REGISTRY_PROVIDER__',
+    als: new AsyncLocalStorage<Map<string, unknown>>(),
+    active: false,
+  },
+]
+
+/** The store's seam — `configureStoreIsolation` is its public, explicit path. */
+const _storeSeam = _registrySeams[0] as RegistrySeam
 
 /**
  * Wire up per-request store isolation.
@@ -204,7 +240,7 @@ export function configureStoreIsolation(
   // read. `undefined` tells the registry to use its process default, so
   // isolation applies exactly where it has something to say.
   setStoreRegistryProvider(() => _storeAls.getStore())
-  _storeIsolationActive = true
+  _storeSeam.active = true
 }
 
 /**
@@ -223,20 +259,38 @@ export function configureStoreIsolation(
  * imports `@pyreon/store`. One `globalThis` property read per render call is
  * not measurable against rendering a page.
  */
-function tryAutoWireStoreIsolation(): void {
-  const seam = (
-    globalThis as {
-      __PYREON_STORE_SET_REGISTRY_PROVIDER__?: (fn: () => Map<string, unknown> | undefined) => void
-    }
-  ).__PYREON_STORE_SET_REGISTRY_PROVIDER__
-  if (typeof seam === 'function') configureStoreIsolation(seam)
+function tryAutoWireRegistryIsolation(seam: RegistrySeam): void {
+  const setProvider = (
+    globalThis as unknown as Record<
+      string,
+      undefined | ((fn: () => Map<string, unknown> | undefined) => void)
+    >
+  )[seam.seamKey]
+  if (typeof setProvider !== 'function') return
+  // Return the ALS store, or `undefined` — NOT a fresh Map. See
+  // `configureStoreIsolation`'s note: fabricating a throwaway map outside a
+  // request silently drops whatever was written there.
+  setProvider(() => seam.als.getStore())
+  seam.active = true
 }
 
-/** Wrap a function call in a fresh store registry (no-op when @pyreon/store is absent). */
-function withStoreContext<T>(fn: () => T): T {
-  if (!_storeIsolationActive) tryAutoWireStoreIsolation()
-  if (!_storeIsolationActive) return fn()
-  return _storeAls.run(new Map(), fn)
+/**
+ * Wrap a call in a fresh per-request registry for every isolatable package that
+ * is actually loaded (a no-op for each one that is absent).
+ *
+ * Nested `als.run` rather than one shared Map: a single map would let two
+ * packages collide on the same user key, and each package's provider must be
+ * able to answer `undefined` for its own scope independently.
+ */
+function withIsolatedRegistries<T>(fn: () => T): T {
+  let call = fn
+  for (const seam of _registrySeams) {
+    if (!seam.active) tryAutoWireRegistryIsolation(seam)
+    if (!seam.active) continue
+    const inner = call
+    call = () => seam.als.run(new Map(), inner)
+  }
+  return call()
 }
 
 // ─── Per-request styler SSR scope ───────────────────────────────────────────
@@ -387,7 +441,7 @@ export async function renderToString(root: VNode | null): Promise<string> {
   // NOT `withStylerSSRScope` — see its doc comment. String-mode SSR reads the
   // buffer AFTER this returns, which is the documented pattern; scoping here
   // hides every rule from that read.
-  return withStoreContext(() => _contextAls.run([], () => renderNode(root)))
+  return withIsolatedRegistries(() => _contextAls.run([], () => renderNode(root)))
 }
 
 /**
@@ -396,7 +450,7 @@ export async function renderToString(root: VNode | null): Promise<string> {
  * outside of renderToString but still want per-request isolation.
  */
 export function runWithRequestContext<T>(fn: () => Promise<T>): Promise<T> {
-  return withStoreContext(() => _contextAls.run([], fn))
+  return withIsolatedRegistries(() => _contextAls.run([], fn))
 }
 
 /**
@@ -554,7 +608,7 @@ export function renderToStream(
           })
       return _contextAls.getStore() !== undefined
         ? streamBody()
-        : withStylerSSRScope(() => withStoreContext(() => _contextAls.run([], streamBody)))
+        : withStylerSSRScope(() => withIsolatedRegistries(() => _contextAls.run([], streamBody)))
     },
     cancel(reason) {
       // Consumer (browser fetch reader) closed the stream — propagate to
@@ -682,8 +736,12 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
     // every await, so a module-level stack would cross-contaminate; the
     // ALS context sticks to this stream's continuation graph.
     const taValue = textareaValue(tag, props)
+    const raw = taValue === null ? rawTextContent(tag, vnode.children) : null
+    const children = raw !== null && 'fallback' in raw ? raw.fallback : vnode.children
     if (taValue !== null) {
       enqueue(taValue)
+    } else if (raw !== null && 'html' in raw) {
+      enqueue(raw.html)
     } else {
       const frame = tag === 'select' ? makeSelectFrame(props) : null
       // Sole-child accessor: stream its VALUE directly, no range markers — the
@@ -691,16 +749,16 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
       // Spelled out per branch rather than through a shared closure: this runs
       // once per streamed element, and the `<select>` frame was the only case
       // that allocated one before.
-      const sole = soleAccessorChild(vnode.children)
+      const sole = soleAccessorChild(children)
       if (frame) {
         await _selectValueAls.run(frame, async () => {
           if (sole) await streamNode(sole(), enqueue)
-          else for (const child of vnode.children) await streamNode(child, enqueue)
+          else for (const child of children) await streamNode(child, enqueue)
         })
       } else if (sole) {
         await streamNode(sole(), enqueue)
       } else {
-        for (const child of vnode.children) await streamNode(child, enqueue)
+        for (const child of children) await streamNode(child, enqueue)
       }
     }
   }
@@ -1198,13 +1256,18 @@ function renderElement(vnode: VNode): MaybeAsync {
       html += taValue
       return `${html}</${tag}>`
     }
+    const raw = rawTextContent(tag, vnode.children)
+    if (raw !== null && 'html' in raw) return `${html}${raw.html}</${tag}>`
+    // A raw-text element with a non-text child renders its ONCE-resolved
+    // children (never re-invoking an accessor); every other tag its own.
+    const children = raw !== null ? raw.fallback : vnode.children
     const frame = tag === 'select' ? makeSelectFrame(props) : null
     // Sole-child accessor: render its VALUE directly — the tag boundary is the
     // extent, so no range markers. See `soleAccessorChild`.
-    const sole = soleAccessorChild(vnode.children)
+    const sole = soleAccessorChild(children)
     const renderInner = sole
       ? () => renderNode(sole())
-      : () => renderChildList(vnode.children, 0, '')
+      : () => renderChildList(children, 0, '')
     const inner = frame ? _selectValueAls.run(frame, renderInner) : renderInner()
     if (typeof inner !== 'string') {
       const open = html
@@ -1293,6 +1356,15 @@ export function _ssrAttr(tag: string, name: string, value: unknown): string {
  * `_ssrAttr` purely from the (statically-known) attribute NAME.
  */
 export function _ssrAttrGen(name: string, value: unknown): string {
+  // `renderProp`'s SKIP branch, and the other half of the byte-identity claim.
+  // The lean path is chosen from the NAME, and the compiler's own `on*` bail is
+  // `/^on[A-Z]/` — camelCase only — so a LOWERCASE handler (`<div onclick={e}>`)
+  // is routed straight here, where `renderProp` would have dropped it. That made
+  // the compiled SSR emit carry `onclick="…"` bytes the h() renderer refuses:
+  // live markup in the response, executed before any framework code. Above the
+  // resolution below for the same reason `_ssrAttrUrl` guards above its own: a
+  // function-valued handler would otherwise be CALLED to build the string.
+  if (isEventHandlerAttr(name)) return ''
   // `renderProp`'s function branch, which the byte-identity claim above depends
   // on. The lean path is selected from the attribute NAME alone, but whether
   // `renderProp` resolves depends on the VALUE'S TYPE — so the name-based
@@ -1733,12 +1805,36 @@ function renderPropSkipped(key: string): boolean {
   // literal attributes, costing bytes and forcing a hydration fix-up.
   if (key === 'key' || key === 'ref') return true
   if (key === 'innerHTML' || key === 'dangerouslySetInnerHTML') return true
-  // on[A-Z]* event props — charCode probe (no regex machinery per prop)
-  if (key.length > 2 && key.charCodeAt(0) === 111 && key.charCodeAt(1) === 110) {
-    const c = key.charCodeAt(2)
-    if (c >= 65 && c <= 90) return true
-  }
-  return false
+  // `on*` event props — charCode probe (no regex machinery per prop).
+  //
+  // BOTH cases, deliberately. The camelCase form is the one Pyreon documents,
+  // but the skip used to require an uppercase third character, so the LOWERCASE
+  // spelling — which is the real HTML event-handler content attribute — fell
+  // through and was serialized verbatim:
+  //
+  //   h('div', { onclick: 'alert(1)' })          -> <div onclick="alert(1)">
+  //   h('img', { src: 'x', onerror: 'alert(1)' }) -> <img src="x" onerror="alert(1)">
+  //
+  // i.e. a live inline handler in the server-rendered HTML, which the browser
+  // runs before any framework code. The reachable vector is a spread of a
+  // user-keyed object, which is verbatim the threat model `UNSAFE_ATTR_NAME_RE`
+  // below already documents — and that regex cannot see it, because `onclick`
+  // contains no breakout character.
+  //
+  // This skip also runs BEFORE the `typeof value === 'function'` resolution
+  // further down, which is the second half: a lowercase `on*` holding a
+  // FUNCTION was CALLED during render, so a typo'd `onclick={handleDelete}`
+  // executed `handleDelete` on the server.
+  //
+  // Dropping an unknown `on*` matches React, which refuses to render a
+  // lowercase handler prop for the same reason.
+  //
+  // The probe itself now lives in `@pyreon/core`'s `isEventHandlerAttr` — the
+  // ONE predicate the client sinks (`setStaticProp`, `applyAttrProp`) and the
+  // compiled SSR sink (`_ssrAttrGen`) call too. Open-coded here, it guarded a
+  // single cell of the renderer x namespace x vocabulary matrix while the other
+  // three wrote the attribute verbatim.
+  return isEventHandlerAttr(key)
 }
 
 function renderPropValue(key: string, value: unknown): string | null {
@@ -1800,7 +1896,7 @@ function renderProp(tag: string, key: string, value: unknown): string | null {
   }
 
   if (
-    URL_ATTRS.has(key) &&
+    isUrlAttr(key) &&
     typeof value === 'string' &&
     isUnsafeUrl(value) &&
     !isSafeImageDataUri(tag, key, value)
@@ -2071,7 +2167,8 @@ const SVG_ATTRIBUTE_MAP: Record<string, string> = {
 // A control char in an attribute name is a parser-significant breakout vector, so
 // matching control chars IS the point here.
 // oxlint-disable-next-line no-control-regex
-const UNSAFE_ATTR_NAME_RE = /[\s/>="'<\u0000-\u001F\u007F]/
+// Single-sourced in `@pyreon/core` — `@pyreon/head` serializes attributes too
+// and had no name check at all, which is the drift this move closes.
 
 const warnIfUnsafeAttrName: (key: string) => void =
   process.env.NODE_ENV === 'production'
@@ -2217,6 +2314,91 @@ const NEEDS_ESCAPE_RE = /[&<>"']/
  * (`<textarea value="prop">child</textarea>` yields `.value === "prop"` on the
  * client). SSR emitting the children instead would be a hydration mismatch.
  */
+// ─── Raw-text elements (`<script>` / `<style>`) ───────────────────────────────
+//
+// The HTML parser reads the content of these two elements as RAW TEXT: no
+// character reference is ever decoded inside them, so the `escapeHtml` every
+// other text child gets would land as LITERAL characters — `.b > i` became
+// `.b &gt; i` (an invalid selector, rule dropped) and `a && b` became
+// `a &amp;&amp; b` (a SyntaxError at script-eval). The only thing that CAN
+// break out of raw text is the element's own end tag (plus, for script, the
+// `<!--`/`<script` double-escape state), so that is the only thing escaped —
+// the same minimal escape React's Fizz renderer applies (`escapeStyleTextContent`
+// / `escapeEntireInlineScriptContent`). `\u0073` is chosen over a backslash
+// because it is valid inside a JS identifier, string AND regex, so the escaped
+// source still parses to the same program.
+//
+// Content is collected from string/number/accessor children only; a VNode
+// child (or anything else) keeps the ordinary path, which is what the h()
+// client mount does for it too. The compiled `_ssr` fast path bails on these
+// tags in both backends (`RAW_TEXT_ELEMENTS`), so the runtime is the single
+// producer of their bytes.
+/**
+ * Collect a raw-text element's children as text. Every TOP-LEVEL accessor
+ * child is invoked exactly once ("function values are called once at render
+ * time — SSR is one-shot"): `resolved` holds the values, so when a child turns
+ * out not to be text-shaped the ordinary path renders `resolved`, never
+ * re-invoking the accessor.
+ */
+function rawTextChildren(children: readonly VNodeChild[]): {
+  ok: boolean
+  text: string
+  resolved: VNodeChild[]
+} {
+  let out = ''
+  const walk = (c: unknown): boolean => {
+    if (c == null || typeof c === 'boolean') return true
+    if (typeof c === 'string') {
+      out += c
+      return true
+    }
+    if (typeof c === 'number') {
+      out += String(c)
+      return true
+    }
+    if (typeof c === 'function') return walk((c as () => unknown)())
+    if (Array.isArray(c)) {
+      for (const x of c) if (!walk(x)) return false
+      return true
+    }
+    return false
+  }
+  const resolved: VNodeChild[] = []
+  let ok = true
+  for (const c of children) {
+    const v = typeof c === 'function' ? ((c as () => unknown)() as VNodeChild) : c
+    resolved.push(v)
+    if (!walk(v)) ok = false
+  }
+  return { ok, text: out, resolved }
+}
+
+const SCRIPT_BREAKOUT_RE = /(<\/|<)(s)(cript)/gi
+const STYLE_BREAKOUT_RE = /<\/(style)/gi
+
+function escapeRawText(tag: string, text: string): string {
+  if (tag === 'script') {
+    return text.replace(SCRIPT_BREAKOUT_RE, (_m, prefix: string, s: string, rest: string) =>
+      `${prefix}${s === 's' ? '\\u0073' : '\\u0053'}${rest}`,
+    )
+  }
+  return text.replace(STYLE_BREAKOUT_RE, '<\\/$1')
+}
+
+/**
+ * Raw-text content for a `<script>`/`<style>` element: `{ html }` when every
+ * child is text-shaped, `{ fallback }` (the ONCE-resolved children for the
+ * ordinary path) when one is not, `null` when the tag is not raw-text.
+ */
+function rawTextContent(
+  tag: string,
+  children: readonly VNodeChild[],
+): { html: string } | { fallback: readonly VNodeChild[] } | null {
+  if (tag !== 'script' && tag !== 'style') return null
+  const r = rawTextChildren(children)
+  return r.ok ? { html: escapeRawText(tag, r.text) } : { fallback: r.resolved }
+}
+
 function textareaValue(tag: string, props: Record<string, unknown> | null): string | null {
   if (tag !== 'textarea' || props == null) return null
   let v = props.value

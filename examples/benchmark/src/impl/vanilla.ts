@@ -18,6 +18,30 @@ import {
   tick,
 } from '../runner'
 
+/**
+ * Row prototype, cloned per row — the krausest `vanillajs-keyed` shape
+ * (`rowTemplate.cloneNode(true)` then a firstChild/nextSibling walk), which is
+ * what a skilled hand-written app does: one native deep clone per row instead
+ * of three `createElement` calls + two `appendChild`s.
+ */
+let rowTemplate: HTMLElement | null = null
+
+function createRow(row: Row): { tr: HTMLElement; labelTd: HTMLElement } {
+  if (rowTemplate === null) {
+    // Built lazily (first call happens in an untimed warm-up) so importing
+    // this module never touches `document`.
+    rowTemplate = document.createElement('tr')
+    rowTemplate.innerHTML = '<td></td><td></td>'
+  }
+  const tr = rowTemplate.cloneNode(true) as HTMLElement
+  const td1 = tr.firstChild as HTMLElement
+  const td2 = td1.nextSibling as HTMLElement
+  // raw number — see runner.ts "Row-id rendering rule"
+  ;(td1 as unknown as NumericText).textContent = row.id
+  td2.textContent = row.label
+  return { tr, labelTd: td2 }
+}
+
 export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
   resetRng()
   const suite: BenchSuite = { framework: 'Vanilla JS', container, results: [] }
@@ -38,18 +62,10 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
     selectedTr = null
 
     for (let i = 0; i < rows.length; i++) {
-      const row = rows[i] as Row
-      const tr = document.createElement('tr')
-      const td1 = document.createElement('td')
-      const td2 = document.createElement('td')
-      // raw number — see runner.ts "Row-id rendering rule"
-      ;(td1 as unknown as NumericText).textContent = row.id
-      td2.textContent = row.label
-      tr.appendChild(td1)
-      tr.appendChild(td2)
+      const { tr, labelTd } = createRow(rows[i] as Row)
       tbody.appendChild(tr)
       trElements[i] = tr
-      labelTds[i] = td2
+      labelTds[i] = labelTd
     }
 
     table.appendChild(tbody)
@@ -232,18 +248,11 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
       const appended = buildRows(1_000)
       for (let i = 0; i < appended.length; i++) {
         const row = appended[i] as Row
-        const tr = document.createElement('tr')
-        const td1 = document.createElement('td')
-        const td2 = document.createElement('td')
-        // raw number — see runner.ts "Row-id rendering rule"
-      ;(td1 as unknown as NumericText).textContent = row.id
-        td2.textContent = row.label
-        tr.appendChild(td1)
-        tr.appendChild(td2)
+        const { tr, labelTd } = createRow(row)
         tbody.appendChild(tr)
         rows.push(row)
         trElements.push(tr)
-        labelTds.push(td2)
+        labelTds.push(labelTd)
       }
     },
     {

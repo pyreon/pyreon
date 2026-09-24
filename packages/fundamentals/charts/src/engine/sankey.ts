@@ -11,7 +11,7 @@
 // svg half in family-svg.ts.
 
 import type { Double, DrawCmd, Pt, Rect } from './types'
-import { DEFAULT_PALETTE, paletteAt } from './palette'
+import { DEFAULT_PALETTE, hexDigit, paletteAt } from './palette'
 
 
 export interface SankeyNode {
@@ -71,19 +71,12 @@ export interface SankeyOptions {
 }
 
 /** One hex digit's value from its char code (0 for anything else). */
-function sankeyHexDigit(c: Double): Double {
-  if (c >= 48.0 && c <= 57.0) return c - 48.0
-  if (c >= 97.0 && c <= 102.0) return c - 87.0
-  if (c >= 65.0 && c <= 70.0) return c - 55.0
-  return 0.0
-}
-
 /** `#rrggbb` + alpha → `rgba(r, g, b, a)`; a malformed colour passes through. */
 export function sankeyRgba(hex: string, alpha: Double): string {
   if (hex.length < 7) return hex
-  const r = sankeyHexDigit(hex.charCodeAt(1)) * 16.0 + sankeyHexDigit(hex.charCodeAt(2))
-  const g = sankeyHexDigit(hex.charCodeAt(3)) * 16.0 + sankeyHexDigit(hex.charCodeAt(4))
-  const b = sankeyHexDigit(hex.charCodeAt(5)) * 16.0 + sankeyHexDigit(hex.charCodeAt(6))
+  const r = hexDigit(hex.charCodeAt(1)) * 16.0 + hexDigit(hex.charCodeAt(2))
+  const g = hexDigit(hex.charCodeAt(3)) * 16.0 + hexDigit(hex.charCodeAt(4))
+  const b = hexDigit(hex.charCodeAt(5)) * 16.0 + hexDigit(hex.charCodeAt(6))
   return `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${alpha})`
 }
 

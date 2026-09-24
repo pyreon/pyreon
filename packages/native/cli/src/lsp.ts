@@ -183,24 +183,33 @@ function sendMessage(msg: JsonRpcMessage): void {
  */
 export function startLspServer(): void {
   _setNotify((method, params) => sendMessage({ jsonrpc: '2.0', method, params }))
-  let buffer = ''
-  process.stdin.setEncoding('utf-8')
-  process.stdin.on('data', (chunk: string) => {
-    buffer += chunk
+  // The buffer is a Buffer, and stdin is deliberately NOT set to a string
+  // encoding: `Content-Length` is a count of BYTES, while a decoded chunk is a
+  // JS string measured in UTF-16 code units. Accumulating strings makes the
+  // two silently disagree for any multi-byte character — the body slice comes
+  // up short, `JSON.parse` throws, the catch below swallows it, and the
+  // document is DROPPED with no error anywhere. In practice that meant
+  // diagnostics stopped working for any file containing an accent, a curly
+  // quote or an emoji, which is not an edge case in real source. Byte-slicing
+  // also keeps a chunk boundary that lands mid-codepoint from corrupting the
+  // frame, since the decode happens only once a whole body is in hand.
+  let buffer = Buffer.alloc(0)
+  process.stdin.on('data', (chunk: Buffer | string) => {
+    buffer = Buffer.concat([buffer, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, 'utf-8')])
     while (true) {
       const headerEnd = buffer.indexOf('\r\n\r\n')
       if (headerEnd === -1) break
-      const header = buffer.slice(0, headerEnd)
+      const header = buffer.subarray(0, headerEnd).toString('utf-8')
       const match = header.match(/Content-Length:\s*(\d+)/i)
       if (!match) {
-        buffer = buffer.slice(headerEnd + 4)
+        buffer = buffer.subarray(headerEnd + 4)
         continue
       }
       const contentLength = Number.parseInt(match[1]!, 10)
       const bodyStart = headerEnd + 4
       if (buffer.length < bodyStart + contentLength) break
-      const body = buffer.slice(bodyStart, bodyStart + contentLength)
-      buffer = buffer.slice(bodyStart + contentLength)
+      const body = buffer.subarray(bodyStart, bodyStart + contentLength).toString('utf-8')
+      buffer = buffer.subarray(bodyStart + contentLength)
       try {
         const response = _handleMessage(JSON.parse(body) as JsonRpcMessage)
         if (response) sendMessage(response)

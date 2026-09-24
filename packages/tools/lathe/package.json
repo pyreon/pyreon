@@ -49,6 +49,7 @@
   "files": [
     "bin",
     "lib",
+    "!lib/analysis",
     "src",
     "README.md",
     "LICENSE"
@@ -73,7 +74,8 @@
     "axios": "^1.20.0",
     "gray-matter": "^4.0.3",
     "ky": "^2.1.0",
-    "zod": "^4.5.4"
+    "oxc-parser": "^0.148.0",
+    "zod": "^4.6.5"
   },
   "dependencies": {
     "@pyreon/config": "workspace:*",

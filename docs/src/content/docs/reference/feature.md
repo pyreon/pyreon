@@ -9,6 +9,16 @@ description: "Schema-driven CRUD primitives — define once, get queries, forms,
 
 Schema-driven feature factory for Pyreon. Define a validation schema (Zod / Valibot / ArkType) and an API base path once, and `defineFeature` auto-generates reactive hooks for listing, fetching, searching, creating, updating, deleting, form management, table configuration, and store access. Composes `@pyreon/query`, `@pyreon/form`, `@pyreon/validation`, `@pyreon/store`, and `@pyreon/table` under the hood.
 
+## Multiplatform
+
+**Tier:** Web-only — the browser package; the native story is stated below
+
+CRUD composite over query/form/store/validation. The RUNTIME half stays web — the generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher, and validator/form integration all lower only when every dependency does. The DECLARATION half already crosses (see nativeFrontend)
+
+**What crosses natively:** `defineFeature({ name, schema })` with the LITERAL field-type map (`schema: { id: 'string', done: 'boolean' }`) — emits a Codable struct plus a module-scope const carrying `name` + `initialValues` on both targets, reachable under the SOURCE binding name (`Todo.name`). A runtime schema (Zod / Valibot / ArkType) is NOT introspected and warns by name. One limit, warned by name: Swift and Kotlin share a single namespace for types and values, so a file declaring both `const Todo = defineFeature(...)` and a TYPE named `Todo` cannot emit both — rename one
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - defineFeature(&#123; name, schema, api &#125;) — single declaration generates 11 reactive members

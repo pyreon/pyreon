@@ -7,14 +7,14 @@ import manifest from '../manifest'
 
 describe('gen-docs — storage snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/storage — Reactive client-side storage — localStorage, sessionStorage, cookies, IndexedDB. Browser-backed hooks (\`useStorage\`, \`useSessionStorage\`, \`useIndexedDB\`) return the default value on the server. \`useCookie\` is SSR-readable via \`setCookieSource()\` which reads from the request headers."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/storage — Reactive client-side storage — localStorage, sessionStorage, cookies, IndexedDB. Browser-backed hooks (\`useStorage\`, \`useSessionStorage\`, \`useIndexedDB\`) return the default value on the server. \`useCookie\` is SSR-readable via \`setCookieSource()\` which reads from the request headers. Under \`@pyreon/runtime-server\` the signal registry is isolated per request automatically, so concurrent renders never share a cached signal — pass an ACCESSOR cookie source bound to your request context to make use of it."`)
   })
 
   it('renders to llms-full.txt section', () => {
     expect(renderLlmsFullSection(manifest)).toMatchInlineSnapshot(`
       "## @pyreon/storage — Reactive Storage
 
-      Signal-backed persistence for Pyreon. Every stored value is a reactive signal that persists writes automatically to the underlying storage backend. \`useStorage\` (localStorage, cross-tab synced), \`useSessionStorage\`, \`useCookie\` (SSR-readable, configurable expiry), \`useIndexedDB\` (large data, debounced writes), and \`useMemoryStorage\` (ephemeral, SSR-safe). All hooks return \`StorageSignal<T>\` which extends \`Signal<T>\` with \`.remove()\`. \`createStorage(backend)\` enables custom backends (encrypted, remote, etc.). SSR-safe — browser-API hooks return the default value on the server.
+      Signal-backed persistence for Pyreon. Every stored value is a reactive signal that persists writes automatically to the underlying storage backend. \`useStorage\` (localStorage, cross-tab synced), \`useSessionStorage\`, \`useCookie\` (SSR-readable, configurable expiry), \`useIndexedDB\` (large data, debounced writes), and \`useMemoryStorage\` (ephemeral, SSR-safe). All hooks return \`StorageSignal<T>\` which extends \`Signal<T>\` with \`.remove()\`. Calling the same hook with the same key ANYWHERE returns the SAME signal, refcounted across every backend — so one consumer calling \`.remove()\` clears the stored value without orphaning the siblings still holding it; the entry is destroyed on the last release. \`createStorage(backend)\` enables custom backends (encrypted, remote, etc.). SSR-safe — browser-API hooks return the default value on the server, and the signal registry is isolated PER REQUEST under \`@pyreon/runtime-server\`, so a cached \`useCookie\` / \`useMemoryStorage\` signal is never handed to the next visitor.
 
       \`\`\`typescript
       import { useStorage, useSessionStorage, useCookie, useIndexedDB, useMemoryStorage, createStorage } from '@pyreon/storage'
@@ -56,7 +56,7 @@ describe('gen-docs — storage snapshot', () => {
       const secret = useEncrypted('api-key', '')
       \`\`\`
 
-      > **SSR safety**: Browser-backed hooks (\`useStorage\`, \`useSessionStorage\`, \`useIndexedDB\`) return the default value on the server. \`useCookie\` is SSR-readable via \`setCookieSource()\` which reads from the request headers.
+      > **SSR safety**: Browser-backed hooks (\`useStorage\`, \`useSessionStorage\`, \`useIndexedDB\`) return the default value on the server. \`useCookie\` is SSR-readable via \`setCookieSource()\` which reads from the request headers. Under \`@pyreon/runtime-server\` the signal registry is isolated per request automatically, so concurrent renders never share a cached signal — pass an ACCESSOR cookie source bound to your request context to make use of it.
       >
       > **Cross-tab sync**: Only \`useStorage\` (localStorage) syncs across tabs via \`storage\` events. \`useSessionStorage\` is per-tab. Cookies and IndexedDB have no built-in cross-tab notification.
       >
@@ -73,7 +73,7 @@ describe('gen-docs — storage snapshot', () => {
     // useIndexedDB, setCookieSource, createStorage, removeStorage, clearStorage
     expect(Object.keys(record).length).toBe(9)
     expect(record['storage/useStorage']!.notes).toContain('localStorage')
-    expect(record['storage/useStorage']!.mistakes?.split('\n').length).toBe(5)
+    expect(record['storage/useStorage']!.mistakes?.split('\n').length).toBe(6)
     // The imperative clear/remove helpers are now documented.
     expect(record['storage/clearStorage']!.notes).toContain('MANAGED')
     expect(record['storage/removeStorage']!.notes).toContain('RESET')

@@ -5,8 +5,10 @@
 // SwiftUI `Canvas` and Compose `Canvas`, which is the point of emitting a flat
 // command list rather than drawing directly.
 
+import { signal } from '@pyreon/reactivity'
 import { cornerRadii, hasCorners } from './corners'
-import type { ChartGradient, DrawCmd, MeasureText, Pt } from './types'
+import { patternImageCells, patternMarks } from './pattern'
+import type { ChartGradient, ChartPattern, DrawCmd, MeasureText, Pt, Rect } from './types'
 
 /**
  * Text measurement backed by the canvas itself, for `computeLayout`.
@@ -70,6 +72,11 @@ function traceRoundedRect(
   ctx.closePath()
 }
 
+/** A radial gradient's radius — the distance from its centre to the point on its outer circle. */
+function gradientRadius(grad: ChartGradient): number {
+  return Math.hypot(grad.to.x - grad.from.x, grad.to.y - grad.from.y)
+}
+
 /** A canvas gradient from the engine's stops — or the solid fill when it has none. */
 function fillStyleFor(
   ctx: CanvasRenderingContext2D,
@@ -77,7 +84,9 @@ function fillStyleFor(
   grad: ChartGradient | undefined,
 ): string | CanvasGradient {
   if (grad === undefined || grad.stops.length === 0) return fill
-  const g = ctx.createLinearGradient(grad.from.x, grad.from.y, grad.to.x, grad.to.y)
+  const g = grad.radial
+    ? ctx.createRadialGradient(grad.from.x, grad.from.y, 0, grad.from.x, grad.from.y, gradientRadius(grad))
+    : ctx.createLinearGradient(grad.from.x, grad.from.y, grad.to.x, grad.to.y)
   for (const st of grad.stops) g.addColorStop(Math.min(1, Math.max(0, st.offset)), st.color)
   return g
 }
@@ -86,6 +95,78 @@ function tracePolyline(ctx: CanvasRenderingContext2D, points: Pt[]): void {
   ctx.beginPath()
   ctx.moveTo(points[0]!.x, points[0]!.y)
   for (let i = 1; i < points.length; i++) ctx.lineTo(points[i]!.x, points[i]!.y)
+}
+
+/** Bounded: a chart names a handful of textures; an unbounded map would grow with every URL ever drawn. */
+const IMAGE_CACHE_LIMIT = 64
+const imageCache = new Map<string, HTMLImageElement>()
+/**
+ * Bumped when a pattern image finishes loading. `chartImage` reads it, so the
+ * canvas host's draw effect — the only tracked caller — repaints once the
+ * texture exists instead of leaving the first, image-less frame on screen.
+ */
+const imageVersion = signal(0)
+
+/**
+ * Subscribe the caller to pattern-image loads. The canvas host's draw effect
+ * calls this so a frame first painted before its texture arrived repaints —
+ * the first paint can run outside the effect (when the canvas ref attaches),
+ * where the read inside `chartImage` would track nothing.
+ */
+export function trackChartImages(): void {
+  imageVersion()
+}
+
+function chartImage(src: string): HTMLImageElement | null {
+  let img = imageCache.get(src)
+  if (img === undefined) {
+    if (typeof Image !== 'function') return null
+    img = new Image()
+    img.onload = () => imageVersion.set(imageVersion.peek() + 1)
+    img.src = src
+    imageCache.set(src, img)
+    if (imageCache.size > IMAGE_CACHE_LIMIT) {
+      const oldest = imageCache.keys().next().value
+      if (oldest !== undefined) imageCache.delete(oldest)
+    }
+  }
+  return img.complete && img.naturalWidth > 0 ? img : null
+}
+
+function paintPattern(ctx: CanvasRenderingContext2D, pattern: ChartPattern | undefined, bounds: Rect): void {
+  if (pattern === undefined) return
+  ctx.save()
+  ctx.clip()
+  if (pattern.kind === 'image' && pattern.image !== undefined) {
+    const img = chartImage(pattern.image)
+    if (img !== null) {
+      for (const cell of patternImageCells(pattern, bounds, img.naturalWidth, img.naturalHeight)) {
+        ctx.drawImage(img, cell.x, cell.y, cell.w, cell.h)
+      }
+    }
+  }
+  for (const m of patternMarks(pattern, bounds)) {
+    if (m.kind === 'line') {
+      ctx.strokeStyle = m.stroke
+      ctx.lineWidth = m.width
+      ctx.beginPath()
+      ctx.moveTo(m.from.x, m.from.y)
+      ctx.lineTo(m.to.x, m.to.y)
+      ctx.stroke()
+    } else if (m.kind === 'circle') {
+      ctx.fillStyle = m.fill
+      ctx.beginPath()
+      ctx.arc(m.center.x, m.center.y, m.radius, 0, Math.PI * 2)
+      ctx.fill()
+    } else if (m.kind === 'polygon') {
+      ctx.fillStyle = m.fill
+      ctx.beginPath()
+      tracePolyline(ctx, m.points)
+      ctx.closePath()
+      ctx.fill()
+    }
+  }
+  ctx.restore()
 }
 
 /**
@@ -105,8 +186,21 @@ export function paint(
 ): void {
   ctx.save()
   ctx.clearRect(0, 0, width, height)
+  // Open clips: an `unclip` with none open is ignored, so it can never pop the frame's own save.
+  let clips = 0
   for (const c of cmds) {
-    if (c.kind === 'rect') {
+    if (c.kind === 'clip') {
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(c.rect.x, c.rect.y, c.rect.w, c.rect.h)
+      ctx.clip()
+      clips++
+    } else if (c.kind === 'unclip') {
+      if (clips > 0) {
+        ctx.restore()
+        clips--
+      }
+    } else if (c.kind === 'rect') {
       ctx.fillStyle = fillStyleFor(ctx, c.fill, c.grad)
       const radii = cornerRadii(c.rect, c.corners)
       if (hasCorners(radii)) {
@@ -114,6 +208,14 @@ export function paint(
         ctx.fill()
       } else {
         ctx.fillRect(c.rect.x, c.rect.y, c.rect.w, c.rect.h)
+      }
+      if (c.pattern !== undefined) {
+        if (hasCorners(radii)) traceRoundedRect(ctx, c.rect.x, c.rect.y, c.rect.w, c.rect.h, radii)
+        else {
+          ctx.beginPath()
+          ctx.rect(c.rect.x, c.rect.y, c.rect.w, c.rect.h)
+        }
+        paintPattern(ctx, c.pattern, c.rect)
       }
     } else if (c.kind === 'line') {
       ctx.strokeStyle = c.stroke
@@ -145,6 +247,15 @@ export function paint(
         tracePolyline(ctx, c.points)
         ctx.closePath()
         ctx.fill()
+        if (c.pattern !== undefined) {
+          tracePolyline(ctx, c.points)
+          ctx.closePath()
+          const xs = c.points.map((p) => p.x)
+          const ys = c.points.map((p) => p.y)
+          const x = Math.min(...xs)
+          const y = Math.min(...ys)
+          paintPattern(ctx, c.pattern, { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y })
+        }
       }
     } else if (c.kind === 'circle') {
       ctx.fillStyle = c.fill
@@ -153,23 +264,39 @@ export function paint(
       ctx.fill()
     } else {
       ctx.fillStyle = c.fill
-      ctx.font = `${c.size}px ${fontFamily}`
+      ctx.font = `${c.weight === 'bold' ? 'bold ' : ''}${c.size}px ${fontFamily}`
       ctx.textAlign = c.align === 'middle' ? 'center' : c.align
       ctx.textBaseline =
         c.baseline === 'middle' ? 'middle' : c.baseline === 'top' ? 'top' : 'alphabetic'
       const rot = c.rotate ?? 0
+      // A halo is stroked under the fill, as zrender paints a textBorder.
+      const paintText = (x: number, y: number): void => {
+        if (c.stroke !== undefined && c.stroke !== '') {
+          ctx.strokeStyle = c.stroke
+          ctx.lineWidth = c.strokeWidth ?? 2
+          ctx.lineJoin = 'miter'
+          ctx.miterLimit = 2
+          ctx.strokeText(c.text, x, y)
+        }
+        ctx.fillText(c.text, x, y)
+      }
       if (rot !== 0) {
         // Rotate about the anchor: the text's own align/baseline then apply
         // in the rotated frame, which is what a slanted axis label wants.
         ctx.save()
         ctx.translate(c.at.x, c.at.y)
         ctx.rotate((rot * Math.PI) / 180)
-        ctx.fillText(c.text, 0, 0)
+        paintText(0, 0)
         ctx.restore()
       } else {
-        ctx.fillText(c.text, c.at.x, c.at.y)
+        paintText(c.at.x, c.at.y)
       }
     }
+  }
+  // A list that left a clip open does not leak it into the next frame.
+  while (clips > 0) {
+    ctx.restore()
+    clips--
   }
   ctx.restore()
 }

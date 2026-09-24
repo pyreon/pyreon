@@ -45,7 +45,14 @@ export const RingProgress: ComponentFn<RingProgressProps> = (props) => {
   // Live value read — supports number OR accessor.
   const read = () => {
     const v = typeof own.value === 'function' ? own.value() : own.value
-    return Math.max(0, Math.min(100, v ?? 0))
+    // `?? 0` catches null/undefined but NOT NaN, and `Math.min(100, NaN)`
+    // is NaN — so a percentage computed as `done / total` with both at 0
+    // produced `stroke-dashoffset="NaN"`. That does not error: the arc
+    // simply stops rendering, so the ring silently disappears at exactly
+    // the moment the data is degenerate. `Infinity` was already handled
+    // (it clamps to 100); NaN and a non-numeric value were not.
+    const n = typeof v === 'number' ? v : Number(v ?? 0)
+    return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0
   }
 
   const offset = () => circumference * (1 - read() / 100)

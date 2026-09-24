@@ -3397,11 +3397,10 @@ a.px-footer-item:hover {
  * Fix once, for every example: scope styling to `.pyreon-example__surface`
  * (so it never leaks into docs prose) and style the BARE elements + the
  * unprefixed helper classes. Every color is a theme token, so it follows
- * light/dark automatically; `color-scheme` makes any residual native
- * chrome (caret, focus ring, scrollbars) match the active theme too. */
-.pyreon-example__surface {
-  color-scheme: light dark;
-}
+ * light/dark automatically; the residual native chrome (caret, focus ring,
+ * scrollbars) follows the `color-scheme` the root declares with the theme
+ * (tokens.css). It used to say `light dark` here, which follows the OS and so
+ * disagreed with the site whenever the toggle overrode it. */
 
 .pyreon-example__surface button {
   padding: 0.375rem 0.75rem;

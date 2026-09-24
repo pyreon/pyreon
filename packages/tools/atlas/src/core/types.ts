@@ -59,7 +59,15 @@ export interface VariantAxis {
  * typed-but-unimplemented class. A new source enters this union in the same
  * change that ships its producer.
  */
-export type ScenarioSource = 'auto-default' | 'auto-variant' | 'authored'
+/**
+ * `auto-edge` is the edge-cases plugin's Empty / Long-content pair: states
+ * atlas MANUFACTURES to exercise rendering, not states the component claims.
+ * Kept distinct from `auto-variant` so a check can tell "the author blanked
+ * the label" from "atlas blanked it to see what happens" — the static a11y
+ * check fails a REQUIRED name that is empty in either, but an OPTIONAL one
+ * only when a scenario the component owns supplies it empty.
+ */
+export type ScenarioSource = 'auto-default' | 'auto-variant' | 'auto-edge' | 'authored'
 
 /**
  * A named, concrete state of a component — the derived replacement for a
@@ -140,6 +148,19 @@ export type FindingCode =
   | 'play-failed'
   /** Nothing interactive to drive — a pass, stated so it is not read as one. */
   | 'nothing-to-drive'
+  /**
+   * The scenario mounted cleanly and produced NO DOM — no element, no text.
+   * A fail for a scenario the component owns (it needs data, an `open`
+   * state, or a render-prop child the seed cannot manufacture); reported as
+   * a finding on a manufactured `auto-edge` scenario, where an empty result
+   * is the point.
+   */
+  | 'empty-render'
+  /**
+   * The component is a declared PART of another (`AtlasConfig.parts`) and
+   * renders nothing standalone by design — the parent's scenarios verify it.
+   */
+  | 'part-of'
   // ── ssrParity ────────────────────────────────────────────────────────────
   | 'ssr-render-threw'
   | 'hydrate-threw'
@@ -307,6 +328,22 @@ export interface ComponentIntelligence {
   bundleCost?: { raw: number; gzip: number }
   /** a one-line summary (from a manifest or generated) */
   summary?: string
+  /**
+   * Representative content, merged UNDER every scenario's args — a label for a
+   * text component, a `src` for an image, placeholder blocks for a layout
+   * container. Plain JSON: it is written to the catalog file and into the
+   * generated workbench module, and `materializeContent` turns it into vnodes
+   * at mount. See `core/content.ts` for why derived scenarios need it.
+   */
+  content?: Readonly<Record<string, unknown>>
+  /**
+   * The base COMPONENT a rocketstyle chain renders through
+   * (`el.config({ component: ModalBase })`), by display name. Absent for a
+   * chain that renders a tag and for plain function components. It is what
+   * the content seed keys on when there is no tag to read, and what the
+   * agent guide names when a component renders nothing standalone.
+   */
+  base?: string
 }
 
 /** The serialized whole-catalog shape — the machine surface agents consume. */

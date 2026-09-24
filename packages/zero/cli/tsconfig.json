@@ -8,5 +8,8 @@
   "include": [
     "src",
     "../zero/src/sharp.d.ts"
+  ],
+  "exclude": [
+    "src/commands/__fixtures__/**/__pyreon-zero-ssr-entry.js"
   ]
 }

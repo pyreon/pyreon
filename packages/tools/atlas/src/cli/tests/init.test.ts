@@ -18,7 +18,7 @@ const write = (relative: string, source: string): void => {
   mkdirSync(join(path, '..'), { recursive: true })
   writeFileSync(path, source, 'utf8')
 }
-const COMPONENT = 'export function Button(props: { label: string }) { return null as never }\n'
+const COMPONENT = 'export function Button(props: { label: string }) { return 1 as never }\n'
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'atlas-init-'))

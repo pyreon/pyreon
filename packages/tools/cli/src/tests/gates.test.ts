@@ -16,7 +16,7 @@ import {
 } from '../doctor/gates/audit-leak-classes'
 import { _parseAuditTypesOutput } from '../doctor/gates/audit-types'
 import { _parseBundleBudgetsOutput } from '../doctor/gates/bundle-budgets'
-import { _detectMapsInPackOutput } from '../doctor/gates/distribution'
+import { _detectAnalysisInPackOutput, _detectMapsInPackOutput } from '../doctor/gates/distribution'
 import type { Finding, GateResult, Severity } from '../doctor/types'
 import { finding } from '../doctor/types'
 
@@ -162,7 +162,19 @@ describe('runDocClaimsGate', () => {
     // which had rotted to "56 rules" against a real 98 because it was the one
     // count surface this gate did not cover — and `.claude/rules/code-style.md`,
     // stale at 97) and +1 lint-category-count site (the same code-style.md).
-    expect(result.meta.scanned).toBe(33)
+    //
+    // 34 as of the README-gaps audit: +1 hook-count site — the hooks
+    // README's OWN "N hooks across 7 categories." table-count line, which
+    // had rotted to 55 against a real 65 while the prose line two lines
+    // above it (a DIFFERENT, already-guarded claim site in the same file)
+    // stayed correct. Two claims in one file, one guarded — see
+    // doc-claims.ts's `hook export count` check.
+    //
+    // 37 as of the chart-ledger honesty pass: +1 chart-host-count site (the
+    // charts package.json description) and +2 chart-family-host-count sites
+    // (the charts README and charts-plot.md), which had drifted to
+    // "seventeen" and "twenty" against a real 20 family hosts.
+    expect(result.meta.scanned).toBe(37)
     // The real repo must be drift-free — this gate runs in CI; if a
     // count claim drifts, EVERY PR's doctor run fails until it's fixed.
     const errs = result.findings.filter((f) => f.severity === 'error')
@@ -1156,5 +1168,33 @@ describe('runBundleBudgetsGate', () => {
     expect(result.meta.skipped).toBe(true)
     expect(result.meta.skipReason).toContain('Pyreon monorepo')
     fs.rmSync(tmp, { recursive: true, force: true })
+  })
+})
+
+describe('the bundle-analysis report stays out of the package', () => {
+  const write = (tmp: string, name: string, pj: Record<string, unknown>): void => {
+    fs.mkdirSync(path.join(tmp, 'packages', 'fundamentals', name), { recursive: true })
+    fs.writeFileSync(path.join(tmp, 'packages', 'fundamentals', name, 'package.json'), JSON.stringify({ name: `@pyreon/${name}`, sideEffects: false, ...pj }))
+  }
+
+  it('a vl_rolldown_build package publishing lib must exclude lib/analysis', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-dist-analysis-'))
+    write(tmp, 'ships', { files: ['lib'], scripts: { build: 'vl_rolldown_build' } })
+    write(tmp, 'clean', { files: ['lib', '!lib/analysis'], scripts: { build: 'vl_rolldown_build' } })
+    write(tmp, 'other', { files: ['lib'], scripts: { build: 'tsc -p .' } })
+    const result = await runDistributionGate({ cwd: tmp, skipPackProbe: true })
+    const flagged = result.findings.filter((f) => f.code === 'distribution/ships-bundle-analysis').map((f) => f.message.split(' ')[0])
+    expect(flagged).toEqual(['@pyreon/ships'])
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it('the live pack probe names report files in the tarball, and passes a clean one', () => {
+    const probe = { dir: '/repo/packages/core/reactivity' }
+    const dirty = JSON.stringify([{ files: [{ path: 'lib/index.js' }, { path: 'lib/analysis/index.js.html' }] }])
+    const found = _detectAnalysisInPackOutput(dirty, '/repo', probe, '@pyreon/reactivity')
+    expect(found?.code).toBe('distribution/tarball-ships-bundle-analysis')
+    expect(found?.message).toContain('lib/analysis/index.js.html')
+    const clean = JSON.stringify([{ files: [{ path: 'lib/index.js' }, { path: 'lib/index.js.map' }] }])
+    expect(_detectAnalysisInPackOutput(clean, '/repo', probe, '@pyreon/reactivity')).toBeNull()
   })
 })

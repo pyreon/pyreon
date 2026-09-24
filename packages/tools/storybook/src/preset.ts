@@ -30,10 +30,24 @@ export const addons: string[] = []
 // (vitest serves modules over its own scheme) hand out non-file URLs, where
 // `fileURLToPath` THROWS at module eval — the same "works shipped, dies in
 // another loader" fragility class this file was just cured of, inverted.
+/**
+ * The preview path a loader will accept, for either URL scheme.
+ *
+ * Named and exported so BOTH arms are testable from source. Under vitest the
+ * module's own `import.meta.url` is always vitest's scheme, so the `file:`
+ * arm — the one that runs in every shipped Storybook — is unreachable from a
+ * source test; it is exercised only by `shipped-preset.test.ts`, which loads
+ * the built artifact. A branch whose production arm can only be reached
+ * through a different artifact is one nobody can reason about locally.
+ *
+ * @internal
+ */
+export function previewPathFor(url: URL): string {
+  return url.protocol === 'file:' ? fileURLToPath(url) : url.pathname
+}
+
 const previewUrl = new URL('preview', import.meta.url)
-export const previewAnnotations: string[] = [
-  previewUrl.protocol === 'file:' ? fileURLToPath(previewUrl) : previewUrl.pathname,
-]
+export const previewAnnotations: string[] = [previewPathFor(previewUrl)]
 
 export const core = {
   // Storybook REQUIRES a builder from the framework preset — without it,

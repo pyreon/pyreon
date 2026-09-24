@@ -10,9 +10,14 @@
 // heat + layout/scale), never the canvas components: the components own
 // pointer handlers and reactivity, which have no meaning on a server.
 
+import type { HeatSelection } from './heat-chart'
+import { transposeCmds, transposeRect } from './rtl'
 import { fitCircle, layoutArcs, renderGauge, renderPie } from './arc'
 import { paletteAt } from './palette'
-import type { GaugeOptions } from './arc'
+import type { ArcConfig, GaugeOptions } from './arc'
+import type { PieLabelOptions } from './pie-labels'
+import { renderDial } from './gauge-dial'
+import type { DialSpec } from './gauge-dial'
 import { renderRadar } from './radar'
 import type { RadarAxis } from './radar'
 import { ohlcExtent, renderCandles } from './candlestick'
@@ -25,6 +30,8 @@ import { layoutSunburst, renderSunburst, treeDepth } from './sunburst'
 import type { SunburstOptions } from './sunburst'
 import { layoutTree, renderTree } from './tree'
 import type { TreeOptions } from './tree'
+import { layoutChord, renderChord } from './chord'
+import type { ChordLink, ChordNode, ChordOptions } from './chord'
 import { layoutRiver, renderRiver } from './river'
 import type { RiverOptions, RiverSeries } from './river'
 import { layoutPolar, renderPolar } from './polar'
@@ -55,6 +62,7 @@ import type { Formatter } from './format'
 import { measureApprox, renderSvg } from './svg'
 import type { SvgOptions } from './svg'
 import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
+import { themedDial } from './option-gauge'
 
 /**
  * The legend options the CANVAS host builds (`canvas-host.tsx`) — same fields,
@@ -140,6 +148,12 @@ export interface PieToSvgOptions<T> {
   /** Explicit long description; derived from the data when a title is given. */
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
+  /** ECharts' pie layout — start angle, direction, min/pad angles, rose, outside labels — as `<PieChart pie>`. */
+  pie?: { arcs: ArcConfig; labels: PieLabelOptions | undefined; empty?: string | undefined } | undefined
+  /** Draw the pie in this rect, the legend over it (ECharts' placement); below the legend without it. */
+  frame?: Rect | undefined
+  /** The rect outside labels keep within; the whole image without it. */
+  view?: Rect | undefined
 }
 
 
@@ -167,11 +181,17 @@ export function pieToSvg<T>(options: PieToSvgOptions<T>): string {
     legendH = l.height
     for (const c of l.cmds) cmds.push(c)
   }
-  const body = renderPie(slices, { x: 0, y: legendH, w: width, h: height - legendH }, {
+  const labels = options.pie?.labels
+  const body = renderPie(slices, options.frame ?? { x: 0, y: legendH, w: width, h: height - legendH }, {
     innerRadius: options.innerRadius ?? 0,
     showLabels: options.showLabels ?? true,
-    labelColor: '#ffffff',
+    labelColor: labels !== undefined && labels.position !== 'inside' ? t.label : '#ffffff',
     fontSize: t.fontSize,
+    arcs: options.pie?.arcs,
+    labels,
+    view: options.view ?? { x: 0, y: 0, w: width, h: height },
+    empty: options.pie?.empty,
+    measure,
   })
   for (const c of body) cmds.push(c)
 
@@ -201,6 +221,10 @@ export interface GaugeToSvgOptions {
   title?: string
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
+  /** ECharts' gauge, as `<GaugeChart dial>`; the half-circle track without it. */
+  dial?: DialSpec | undefined
+  /** The square the dial fills (ECharts' center and radius); the whole image without it. */
+  frame?: Rect | undefined
 }
 
 /** A single-value gauge as a standalone `<svg>` string. */
@@ -221,8 +245,13 @@ export function gaugeToSvg(options: GaugeToSvgOptions): string {
   }
   // A half-circle occupies the top half of its box, so the drawing box is
   // twice the visible height — the same trick the component uses.
-  const cmds = renderGauge(options.value, { x: 0, y: 0, w: width, h: height * 2 }, opts)
-  if (options.showValue !== false) {
+  const dial = options.dial
+  const frame = options.frame ?? { x: 0, y: 0, w: width, h: height }
+  const fit = fitCircle(frame)
+  const cmds = dial !== undefined
+    ? renderDial(themedDial(dial, t), fit.center, fit.radius, [...t.palette])
+    : renderGauge(options.value, { x: 0, y: 0, w: width, h: height * 2 }, opts)
+  if (dial === undefined && options.showValue !== false) {
     cmds.push({
       kind: 'text',
       text: fmt(options.value),
@@ -234,6 +263,10 @@ export function gaugeToSvg(options: GaugeToSvgOptions): string {
     })
   }
   return renderSvg(cmds, width, height, svgTail(options.svg, options.title, options.description, () =>
+  /* v8 ignore next — the `?? '<name>'` fallbacks below are unreachable:
+     `svgTail` only calls this deriver when `title` is defined. They are
+     kept as a guard rather than removed, but an UNTITLED chart derives no
+     description at all today, which is worth closing on its own.  */
     `${options.title ?? 'Gauge'}: ${fmt(options.value)} of ${fmt(max)}.`,
   ))
 }
@@ -397,6 +430,10 @@ export function candlestickToSvg<T>(options: CandlestickToSvgOptions<T>): string
 
   const fmt = options.format ?? plain
   return renderSvg(cmds, width, height, svgTail(options.svg, options.title, options.description, () => {
+    /* v8 ignore next 2 — the `?? '<name>'` fallbacks here are unreachable:
+       `svgTail` only calls this deriver when `title` is defined. Kept as a
+       guard; that an UNTITLED chart derives no description at all is a
+       separate a11y gap worth closing on its own. */
     if (candles.length === 0) return `${options.title ?? 'Candlestick chart'}: no data.`
     const ext = ohlcExtent(candles)
     const last = candles[candles.length - 1]!
@@ -417,6 +454,8 @@ export interface HeatmapToSvgOptions<T> {
   /** `#rrggbb` ramp stops, cold to hot. */
   colors?: string[]
   gap?: Double
+  /** A visualMap's domain and selection (see `HeatSelection`). */
+  selection?: HeatSelection
   theme?: Partial<ChartTheme>
   measure?: MeasureText
   title?: string
@@ -450,6 +489,10 @@ export function heatmapToSvg<T>(options: HeatmapToSvgOptions<T>): string {
   const grid: HeatGrid = buildHeatGrid(
     cols,
     yCats,
+    /* v8 ignore next 2 — the `?? -1` misses are unreachable: `cols`/`yCats`
+       are built by `firstSeen` over these same rows with these same accessors,
+       so every lookup hits. Kept as the guard for a non-deterministic
+       accessor. */
     rows.map((d, i) => colIdx.get(options.x(d, i)) ?? -1),
     rows.map((d, i) => rowIdx.get(options.y(d, i)) ?? -1),
     rows.map((d, i) => {
@@ -476,6 +519,10 @@ export function heatmapToSvg<T>(options: HeatmapToSvgOptions<T>): string {
     plot,
     stops: options.colors ?? t.ramp,
     gap: options.gap,
+    domain: options.selection?.domain,
+    inRange: options.selection?.inRange,
+    outBands: options.selection?.outBands,
+    outColor: options.selection?.outColor,
   })
   const nc = grid.cols.length
   const nr = grid.rows.length
@@ -502,6 +549,10 @@ export function heatmapToSvg<T>(options: HeatmapToSvgOptions<T>): string {
     })
   }
   return renderSvg(cmds, width, height, svgTail(options.svg, options.title, options.description, () => {
+    /* v8 ignore next 2 — the `?? '<name>'` fallbacks here are unreachable:
+       `svgTail` only calls this deriver when `title` is defined. Kept as a
+       guard; that an UNTITLED chart derives no description at all is a
+       separate a11y gap worth closing on its own. */
     if (grid.cells.length === 0) return `${options.title ?? 'Heatmap'}: no data.`
     return `${options.title ?? 'Heatmap'}: ${nc} columns by ${nr} rows, values ${grid.min} to ${grid.max}.`
   }))
@@ -664,6 +715,42 @@ export function treeToSvg(options: TreeToSvgOptions): string {
   })
 }
 
+export interface ChordToSvgOptions {
+  nodes: ChordNode[]
+  links: ChordLink[]
+  width?: Double
+  height?: Double
+  chord?: ChordOptions
+  measure?: MeasureText
+  /** Chart theme; the canvas host reads the same fields. */
+  theme?: Partial<ChartTheme>
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Chord diagram → `<svg>` string, server-safe. */
+export function chordToSvg(options: ChordToSvgOptions): string {
+  const t = themeOf(options.theme)
+  const width = options.width ?? 480.0
+  const height = options.height ?? 480.0
+  const measure = options.measure ?? measureApprox()
+  const box = { x: 8.0, y: 8.0, w: Math.max(0.0, width - 16.0), h: Math.max(0.0, height - 16.0) }
+  const chordOpts: ChordOptions = { palette: t.palette, labelColor: t.label, ...options.chord }
+  const layout = layoutChord(options.nodes, options.links, box, chordOpts, measure)
+  const cmds = renderChord(layout, chordOpts, measure)
+  const description =
+    options.description ??
+    (options.title !== undefined
+      ? `${options.title}: ${layout.arcs.length} categories, ${layout.ribbons.length} flows.`
+      : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
 export interface RiverToSvgOptions {
   series: RiverSeries[]
   width?: Double
@@ -683,7 +770,7 @@ export function riverToSvg(options: RiverToSvgOptions): string {
   const width = options.width ?? 640.0
   const height = options.height ?? 320.0
   const layout = layoutRiver(options.series, { x: 8.0, y: 8.0, w: Math.max(0.0, width - 16.0), h: Math.max(0.0, height - 16.0) }, { palette: t.palette, ...options.river })
-  const cmds = renderRiver(layout, { palette: t.palette, ...options.river }, options.measure ?? measureApprox())
+  const cmds = renderRiver(layout, { palette: t.palette, axisColor: t.axis, tickColor: t.label, ...options.river }, options.measure ?? measureApprox())
   const description =
     options.description ??
     (options.title !== undefined ? `${options.title}: ${options.series.length} streams over ${layout.xs.length} points (${options.series.map((s) => s.name).join(', ')}).` : undefined)
@@ -738,6 +825,8 @@ export interface SankeyToSvgOptions {
   width?: Double
   height?: Double
   sankey?: SankeyOptions
+  /** `'vertical'` — the horizontal layout reflected across the diagonal. */
+  orient?: 'horizontal' | 'vertical'
   measure?: MeasureText
   /** Chart theme; the canvas host reads the same fields. */
   theme?: Partial<ChartTheme>
@@ -752,8 +841,11 @@ export function sankeyToSvg(options: SankeyToSvgOptions): string {
   const width = options.width ?? 640.0
   const height = options.height ?? 400.0
   const gutter = 80.0
-  const layout = layoutSankey(options.nodes, options.links, { x: gutter, y: 8.0, w: Math.max(0.0, width - gutter * 2.0), h: Math.max(0.0, height - 16.0) }, { palette: t.palette, labelColor: t.label, ...options.sankey })
-  const cmds = renderSankey(layout, { palette: t.palette, labelColor: t.label, ...options.sankey })
+  const vertical = options.orient === 'vertical'
+  const box = vertical ? transposeRect({ x: 0.0, y: 0.0, w: width, h: height }) : { x: 0.0, y: 0.0, w: width, h: height }
+  const layout = layoutSankey(options.nodes, options.links, { x: box.x + gutter, y: box.y + 8.0, w: Math.max(0.0, box.w - gutter * 2.0), h: Math.max(0.0, box.h - 16.0) }, { palette: t.palette, labelColor: t.label, ...options.sankey })
+  const drawn = renderSankey(layout, { palette: t.palette, labelColor: t.label, ...options.sankey })
+  const cmds = vertical ? transposeCmds(drawn) : drawn
   void (options.measure ?? measureApprox())
   let total = 0.0
   for (const l of layout.links) total = total + l.value
@@ -811,6 +903,8 @@ export interface CalendarToSvgOptions {
   width?: Double
   height?: Double
   calendar?: CalendarOptions
+  /** `'vertical'` — the horizontal layout reflected across the diagonal. */
+  orient?: 'horizontal' | 'vertical'
   measure?: MeasureText
   /** Chart theme; the canvas host reads the same fields. */
   theme?: Partial<ChartTheme>
@@ -824,9 +918,12 @@ export function calendarToSvg(options: CalendarToSvgOptions): string {
   const t = themeOf(options.theme)
   const width = options.width ?? 720.0
   const height = options.height ?? 140.0
-  const layout = layoutCalendar(options.start, options.end, { x: 4.0, y: 4.0, w: width - 8.0, h: height - 8.0 }, { labelColor: t.label, emptyColor: t.muted, stops: t.ramp, ...options.calendar })
+  const vertical = options.orient === 'vertical'
+  const box = vertical ? transposeRect({ x: 0.0, y: 0.0, w: width, h: height }) : { x: 0.0, y: 0.0, w: width, h: height }
+  const layout = layoutCalendar(options.start, options.end, { x: box.x + 4.0, y: box.y + 4.0, w: box.w - 8.0, h: box.h - 8.0 }, { labelColor: t.label, emptyColor: t.muted, stops: t.ramp, ...options.calendar })
   const vals = calendarValues(options.values)
-  const cmds = renderCalendar(layout, vals, { labelColor: t.label, emptyColor: t.muted, stops: t.ramp, ...options.calendar })
+  const drawnCal = renderCalendar(layout, vals, { labelColor: t.label, emptyColor: t.muted, stops: t.ramp, ...options.calendar })
+  const cmds = vertical ? transposeCmds(drawnCal) : drawnCal
   void (options.measure ?? measureApprox())
   let filled = 0
   for (const c of layout.cells) if (options.values[c.date] !== undefined) filled++
@@ -884,6 +981,8 @@ export interface ParallelToSvgOptions {
   width?: Double
   height?: Double
   parallel?: ParallelOptions
+  /** `'vertical'` — the horizontal layout reflected across the diagonal. */
+  orient?: 'horizontal' | 'vertical'
   measure?: MeasureText
   /** Chart theme; the canvas host reads the same fields. */
   theme?: Partial<ChartTheme>
@@ -898,8 +997,11 @@ export function parallelToSvg(options: ParallelToSvgOptions): string {
   const width = options.width ?? 640.0
   const height = options.height ?? 360.0
   const gutter = 40.0
-  const layout = layoutParallel(options.axes, parallelRows(options.axes, options.rows), { x: gutter, y: 8.0, w: Math.max(0.0, width - gutter * 2.0), h: Math.max(0.0, height - 16.0) }, { palette: t.palette, labelColor: t.label, axisColor: t.axis, ...options.parallel })
-  const cmds = renderParallel(layout, { palette: t.palette, labelColor: t.label, axisColor: t.axis, highlightColor: t.negative, ...options.parallel })
+  const vertical = options.orient === 'vertical'
+  const box = vertical ? transposeRect({ x: 0.0, y: 0.0, w: width, h: height }) : { x: 0.0, y: 0.0, w: width, h: height }
+  const layout = layoutParallel(options.axes, parallelRows(options.axes, options.rows), { x: box.x + gutter, y: box.y + 8.0, w: Math.max(0.0, box.w - gutter * 2.0), h: Math.max(0.0, box.h - 16.0) }, { palette: t.palette, labelColor: t.label, axisColor: t.axis, ...options.parallel })
+  const drawnPar = renderParallel(layout, { palette: t.palette, labelColor: t.label, axisColor: t.axis, highlightColor: t.negative, ...options.parallel })
+  const cmds = vertical ? transposeCmds(drawnPar) : drawnPar
   void (options.measure ?? measureApprox())
   const description =
     options.description ??

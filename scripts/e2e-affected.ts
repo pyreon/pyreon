@@ -44,7 +44,7 @@
  *   bun run scripts/e2e-affected.ts --base=HEAD~5 --list     # debug
  */
 
-import { execFileSync } from 'node:child_process'
+import { gitChangedFilesZ } from './changed-files'
 
 // ── Suite catalogue ────────────────────────────────────────────────────────
 // `name` is the matrix label + check name; `script` is the package.json
@@ -413,6 +413,24 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    // `atlas build` over the REAL library — the command `docs.yml` runs for
+    // pyreon.dev/atlas. Every component page must show the component: the
+    // workshop's seven components never exercised an overlay, a render-prop
+    // base, a `<table>` or a part, and the deployed site rendered 24 of 108 as
+    // nothing while every other gate stayed green.
+    name: 'atlas-ui-components',
+    script: 'test:e2e:atlas-ui-components',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/tools/atlas/',
+      'packages/tools/vite-plugin/',
+      'packages/core/compiler/',
+      'packages/ui/',
+      'packages/ui-system/',
+      'e2e/atlas-ui-components.spec.ts',
+    ],
+  },
+  {
     // `atlas verify-browser` — the browser half of the verify pipeline as a
     // subprocess: real coverage on the page's own reactivity instance +
     // baseline-create/compare snapshots, merged back into the catalog.
@@ -452,11 +470,28 @@ export type { Suite }
  * True when a changed path has broad/unknowable blast radius and the
  * conservative response is to run the FULL suite. Exported for unit tests.
  */
+/** Budget data read only by the budget gates — see `forcesFullRun`. */
+export const BUDGET_DATA_FILES: ReadonlySet<string> = new Set([
+  'scripts/bundle-budgets.json',
+  'scripts/import-budgets.json',
+])
+
 export function forcesFullRun(path: string): boolean {
   if (path === 'bun.lock' || path === 'package.json') return true
   if (/^tsconfig.*\.json$/.test(path)) return true
-  if (path === 'vitest.shared.ts' || path === 'vitest.browser.ts') return true
+  // Every root `vitest.*.ts` (see `affected.ts:isRootFile` — the two names
+  // this used to list no longer exist) and the pinned toolchain.
+  if (/^vitest\.[^/]*\.ts$/.test(path)) return true
+  if (path === '.bun-version') return true
   if (path.startsWith('.github/workflows/')) return true
+  // The size-budget DATA files are the one exception under `scripts/`: no e2e
+  // spec, e2e config, example build, or served page reads them — only the
+  // budget gates do. Measured 2026-09-23 over one week of PRs: 83 of the 124
+  // pushes that ran ALL 30 suites were forced by these two files ALONE
+  // (parallel sessions bump budgets constantly), i.e. ~57% of all e2e
+  // suite-runs. A budget file changing still runs whatever suites the PR's
+  // OTHER files select, so this narrows only the "unknown blast radius" arm.
+  if (BUDGET_DATA_FILES.has(path)) return false
   if (path.startsWith('scripts/')) return true
   if (/^playwright[^/]*\.config\.ts$/.test(path)) return true
   if (path.startsWith('e2e-configs/')) return true
@@ -536,12 +571,7 @@ function main(): void {
       // entirely (`--base="; rm -rf / #"` becomes just an unknown ref to
       // git, not executable shell). Same fix applied to scripts/affected.ts
       // (PR #968 follow-up); landed alongside the concurrency fix in this PR.
-      const out = execFileSync(
-        'git',
-        ['diff', '--name-only', `${base}...HEAD`],
-        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
-      )
-      changed = out.split('\n').filter(Boolean)
+      changed = gitChangedFilesZ(`${base}...HEAD`, { stdio: ['ignore', 'pipe', 'ignore'] })
     } catch {
       changed = null // can't diff → selectSuites returns ALL (safe)
     }

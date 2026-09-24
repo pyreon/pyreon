@@ -23,6 +23,7 @@ import { Bar, Line, resolveGrammar } from './grammar'
 import { layoutBars, layoutBarsH } from './layout'
 import { bars } from './marks'
 import { HOST_PASSTHROUGH_KEYS, hostPropsFor } from './OptionChart'
+import { ECHARTS_ANIMATION_DEFAULTS } from './animation-option'
 import { DARK_PALETTE, DEFAULT_PALETTE } from './palette'
 import { layoutParallel, parallelPlace } from './parallel'
 import { parallelRows } from './parallel-web'
@@ -190,15 +191,27 @@ describe('OptionChart — the host passthrough is TOTAL over CanvasHostProps (fi
       rtl: true,
     }
     const out = hostPropsFor(every) as Record<string, unknown>
-    for (const k of Object.keys(HOST_PASSTHROUGH_KEYS)) expect(out[k], k).toBe((every as Record<string, unknown>)[k])
-    expect(out).toMatchObject({ height: 320, animate: false, updateAnimation: false })
+    // The passthrough is forwarded as live GETTERS — a value copy pinned every
+    // signal-driven prop at its mount-time value. A getter reads transparently,
+    // so these assertions are unchanged from the value-copy era; the invariant
+    // this spec exists for is TOTALITY over `HOST_PASSTHROUGH_KEYS`.
+    for (const k of Object.keys(HOST_PASSTHROUGH_KEYS))
+      expect(out[k], k).toBe((every as Record<string, unknown>)[k])
+    expect(out.height).toBe(320)
+    // The animation is the OPTION's, and ECharts animates by default (1000 ms
+    // entrance, 300 ms update). An option chart used to pin both off here,
+    // so `animation*` keys in the option could never take effect.
+    expect(out).toMatchObject({ animate: true, updateAnimation: true, enterDuration: 1000, updateDuration: 300, enterDelay: 0, updateDelay: 0 })
     expect('option' in out).toBe(false)
-    // An absent prop is absent (not `undefined`) so the host's defaults apply.
+    // An absent prop is absent (not `undefined`) so the host's defaults apply;
+    // the animation keys are always present because the option always has an answer.
     const bare = hostPropsFor({ option: {} })
-    expect(Object.keys(bare).sort()).toEqual(['animate', 'height', 'updateAnimation'])
+    expect(Object.keys(bare).sort()).toEqual(['animate', 'enterDelay', 'enterDuration', 'enterEasing', 'height', 'updateAnimation', 'updateDelay', 'updateDuration', 'updateEasing'])
+    const off = hostPropsFor({ option: {} }, () => ({ ...ECHARTS_ANIMATION_DEFAULTS, enter: false, update: false })) as Record<string, unknown>
+    expect(off).toMatchObject({ animate: false, updateAnimation: false })
     // The type is the load-bearing lock (a new CanvasHostProps key must be listed or omitted);
     // this assignment is where it would fail to compile.
-    const check: Record<Exclude<keyof CanvasHostProps, 'theme' | 'showTitle' | 'subtitle' | 'showLegend' | 'legendPosition' | 'animate' | 'updateAnimation' | 'updateDuration' | 'height'>, true> = HOST_PASSTHROUGH_KEYS
+    const check: Record<Exclude<keyof CanvasHostProps, 'frame' | 'itemTooltip' | 'itemCursor' | 'itemSilent' | 'theme' | 'showTitle' | 'subtitle' | 'showLegend' | 'legendPosition' | 'animate' | 'updateAnimation' | 'updateDuration' | 'enterDuration' | 'enterDelay' | 'updateDelay' | 'enterEasing' | 'updateEasing' | 'height'>, true> = HOST_PASSTHROUGH_KEYS
     expect(Object.keys(check)).toContain('rtl')
   })
 })

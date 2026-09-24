@@ -14,16 +14,44 @@
  * Svelte append").
  *
  * `$state.raw` is Svelte's own documented opt-out for a value that is
- * REPLACED wholesale rather than mutated field-by-field — which is precisely
- * this workload: every write here assigns a fresh array, and no row object is
- * ever mutated in place. This is what a Svelte author optimising this table
- * would write, so it is what the benchmark must measure.
+ * REPLACED wholesale rather than mutated element-by-element — which is
+ * precisely this workload: every write to the LIST assigns a fresh array. The
+ * one per-row field that IS mutated in place (`label`) carries its own
+ * `$state` (see `SvelteRow` below), so it needs no deep proxy either. This is
+ * what a Svelte author optimising this table would write, so it is what the
+ * benchmark must measure.
  *
  * Raw state cannot be exported as a reassignable `let` (the compiler rejects
  * reassigning an imported binding), hence the accessor pair. `selectedId`
  * stays a plain `$state` — it is one scalar, with no proxy cost worth avoiding.
  */
-export type SvelteRow = { id: number; label: string }
+/**
+ * ## `label` is per-row `$state`, deliberately
+ *
+ * The row list is replaced wholesale, but a row's LABEL is mutated in place by
+ * `partial update (every 10th)`. The idiomatic Svelte 5 model for a mutable
+ * field on an otherwise-immutable record is a `$state` class field — the same
+ * fine-grained per-row source Pyreon (`signal`) and Solid (`createSignal`)
+ * give every row, and the shape the krausest `svelte-keyed` (v5) entry uses.
+ * `{row.label}` in the `{#each}` then subscribes to THAT row only, so a
+ * partial update touches 100 text nodes instead of re-running the keyed each
+ * over a rebuilt 1,000-row array (what the previous `{ ...row, label }` +
+ * wholesale-replace arm measured — a handicap no Svelte author would write).
+ *
+ * The constructor-assigned `$state` form compiles to one private source per
+ * instance with a getter/setter pair (verified with `svelte/compiler`
+ * `compileModule`), the same per-row allocation the Pyreon/Solid arms pay at
+ * create time.
+ */
+export class SvelteRow {
+  id: number
+  label: string
+
+  constructor(id: number, label: string) {
+    this.id = id
+    this.label = $state(label)
+  }
+}
 
 export const state = $state<{
   selectedId: number | null

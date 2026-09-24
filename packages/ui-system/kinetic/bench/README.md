@@ -1,11 +1,12 @@
 # @pyreon/kinetic — animation JS-overhead benchmark
 
-Real-Chromium (Playwright) benchmark of the **synchronous framework JS overhead**
-each library pays to **reveal N elements with an equivalent enter / stagger
-animation**.
+Real-Chromium (Playwright) benchmark of the **main-thread framework JS** each
+library runs to **reveal N elements with an equivalent enter / stagger
+animation**, from the reveal trigger until the end state is reached.
 
 ```bash
-cd packages/ui-system/kinetic && bun run bench
+cd packages/ui-system/kinetic && bun run bench          # full run
+cd packages/ui-system/kinetic && bun bench/run.ts --quick   # correctness smoke; timings meaningless
 ```
 
 ## What this measures — and what it does NOT
@@ -16,9 +17,11 @@ compositable properties uses **WAAPI** — also compositor-driven. So the actual
 animation runs off the main thread and is **identical in smoothness across all
 three** contenders; smoothness is a browser property, not a framework axis.
 
-The only framework-attributable cost is therefore the **synchronous JS to set
-up + commit the reveal**, which is what this bench times. It does **not** measure
-animation smoothness, frame rate, or interpolation quality.
+The framework-attributable cost is therefore the **main-thread JS to set up +
+commit the reveal** — including work a library defers to animation frames
+(kinetic applies its enter-to state in a batched double-`requestAnimationFrame`).
+It does **not** measure animation smoothness, frame rate, or interpolation
+quality.
 
 ## Contenders
 
@@ -34,48 +37,46 @@ and no reactivity. The real head-to-head is **kinetic vs Motion One**.
 
 ## Fairness contract
 
-- Element **creation is un-timed** (a constant setup phase); only the reveal
-  trigger is timed. So kinetic's number is its enter-commit orchestration (N
-  state-machine ticks + class/style writes), Motion One's is its `animate()`
-  setup, baseline's is a class toggle.
+- Element **creation is un-timed** (a constant setup phase, then two un-timed
+  settle frames); only the reveal is timed.
 - Every contender animates the **same visual**: opacity 0→1 + translateY 16→0
   over 300ms ease-out.
-- The timed block flushes **one microtask** (kinetic's enter effect commit
-  boundary) — a turn the synchronous WAAPI/baseline paths pay too, so nobody
-  gets a free async deferral.
-- **Correctness gate** per sample: the reveal must produce N elements in a real
-  reveal state or the sample is rejected.
+- **One end point for every arm**: the timed window runs from the trigger
+  through the **second animation frame** after it. The sample is the sum of the
+  JS inside that window — trigger → microtasks drained, plus frame-1 JS, plus
+  frame-2 JS — where each frame's JS is bracketed by a sentinel rAF callback
+  registered to run FIRST in that frame and one registered to run LAST. Idle
+  time between frames and the browser's own style/layout/paint are excluded
+  identically for every arm. A sample where a frame slipped in before the
+  microtask drain completed is discarded and retried.
+- **End-state correctness gate** per sample, the same criterion for every arm:
+  all N elements have a **started animation** (`getAnimations()` non-empty — a
+  CSS transition for kinetic/baseline, WAAPI for Motion One) and carry the
+  arm's target state (kinetic: inline enter-to styles; baseline: the shown
+  class). Element COUNT alone is not accepted — the rows exist before the reveal.
 - `NODE_ENV=production` forced before any framework import; real published
   `motion`; **real Chromium**; per-sample fresh container + teardown;
   randomized run order per (op, N); median + 95% bootstrap CI + CI-overlap tie
-  marker.
+  marker; machine stamp (CPU, Chromium version, load average) printed.
 
-## Representative result — R1 (measured, Apple M3 Max, Chromium)
+## Results — WITHDRAWN, re-measurement pending
 
-Median ms (lower = faster). `[CI95]`. Numbers move run-to-run (Motion One's
-WAAPI object allocation shows notable variance); reproduce with `bun run bench`.
+The previously published table (R1: "kinetic 1.6× faster" on enter 500, ties
+elsewhere) is **withdrawn**. It was produced by a harness with three defects,
+all fixed here and all of which the new end-state gate now catches:
 
-| Scenario | baseline (floor) | kinetic | motion (Motion One) | kinetic vs Motion One |
-| --- | --- | --- | --- | --- |
-| enter 500  | 0.2 ms | **1.2 ms** `[1.2, 1.3]` | 1.9 ms `[1.7, 2.0]` | **kinetic 1.6× faster** |
-| enter 2000 | 0.7 ms | 5.1 ms `[4.9, 5.3]` | 8.0 ms `[5.2, 8.5]` | 🤝 tie (Motion One CI wide) |
-| stagger 300  | 0.1 ms | 0.8 ms `[0.8, 0.8]` | 0.9 ms `[0.8, 0.9]` | 🤝 tie |
-| stagger 1000 | 0.4 ms | 2.8 ms `[2.7, 2.9]` | 2.4 ms `[2.3, 3.1]` | 🤝 tie |
+1. **The window closed after one microtask**, so kinetic's double-rAF enter-to
+   application (and any frame-deferred Motion One work) was never timed, while
+   Motion One's `animate()` setup was.
+2. **The kinetic `enter` arm revealed ONE element, not N.** It called
+   `mount()` once per row, and `mount()` clears its container — so the DOM held
+   a single element (plus N−1 detached trees still subscribed to `show`). Its
+   old gate only checked "at least one element".
+3. **The bare-CSS baseline never animated.** The `transition` was declared only
+   on the hidden class being removed, so no CSS transition ever started.
 
-## Honest verdict (author-judge disclosed)
-
-- **kinetic is competitive with Motion One on framework JS overhead** — it wins
-  the small-enter case outright and ties the other three (Motion One's WAAPI
-  path shows higher variance, so the large-N cases are statistical ties).
-- **Both are ~6–8× the bare-CSS floor.** That constant is the cost of a real
-  animation abstraction (a lifecycle state machine + completion callbacks +
-  reduced-motion + reactive props for kinetic; WAAPI Animation objects for
-  Motion One) over a raw class toggle. The floor buys none of that.
-- **kinetic's per-child mount is a real cost at large stagger N.** kinetic
-  mounts a full per-child component (its own state machine + `transitionend`
-  wiring, which is what enables per-child reduced-motion + per-child callbacks);
-  Motion One's stagger is one `animate(elements, …)` call. This is why kinetic's
-  large-N stagger tracks slightly behind Motion One.
+No replacement numbers are published until a full run on an idle machine.
+Until then, make no kinetic-vs-Motion-One performance claim from this bench.
 
 ## What kinetic architecturally CANNOT match (not a perf axis)
 

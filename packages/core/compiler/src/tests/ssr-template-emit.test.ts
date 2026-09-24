@@ -246,19 +246,21 @@ describe('ssrTemplate — component children are preserved-source holes', () => 
     expect(ssrFast(`const N = <main class="m"><b>x</b></main>`)).not.toContain('_ssrDeferred')
   })
 
-  test('statics escape `</script` (and only that) — the HTML-inlining break-out', () => {
-    // The statics are baked HTML embedded as JS string literals. `JSON.stringify`
-    // cannot break OUT of the literal, so the module is well-formed either way —
-    // but a user's own `<script>` element puts a literal `</script` in the string,
-    // and a bundler that INLINES the chunk into an HTML `<script>` block would let
-    // the HTML tokenizer end the element there. `"<\/script"` === `"</script"` in
-    // JS, so this is invisible at runtime (byte-identity is unaffected).
+  test('a `<script>`/`<style>` with content BAILS — raw text is the runtime\'s to serialize', () => {
+    // The runtime escapes raw-text children (`<script>`/`<style>`) with a
+    // raw-text-safe escape rather than `escapeHtml` (`a && b` must not become
+    // `a &amp;&amp; b` in a script), so a compile-time bake mirroring
+    // `escapeHtml` would drift from it. Bail the element; a childless one still
+    // bakes. (This also retires the `</script` static: a user's `<script>` no
+    // longer reaches the statics at all.)
     const out = ssrFast(`const N = <div class="d"><script>{s}</script></div>`)
-    expect(out).toContain('<\\/script>')
-    // Precision: every OTHER closing tag is left alone, which is why this costs
-    // no churn across the existing emit expectations.
-    expect(out).toContain('</div>')
-    expect(out).not.toContain('<\\/div>')
+    expect(out).not.toContain('_ssr(')
+    expect(ssrFast(`const N = <div class="d"><style>{s}</style></div>`)).not.toContain('_ssr(')
+    expect(ssrFast(`const N = <div class="d"><style /></div>`)).toContain('_ssr(')
+    // Precision: an ordinary closing tag is left alone.
+    const plain = ssrFast(`const N = <div class="d"><b>{s}</b></div>`)
+    expect(plain).toContain('</div>')
+    expect(plain).not.toContain('<\\/div>')
   })
 
   test('a component child carrying `key` still bails', () => {

@@ -70,6 +70,28 @@ const GRADIENT = {
 }
 
 describe('gradient fills — pixels', () => {
+  it('clips a repeating pattern inside the bar while preserving its base fill', async () => {
+    const { container, unmount } = mountInBrowser(
+      <PlotChart<Row> {...chartProps({ marks: [bars((d: Row) => d.v, { color: TOP, pattern: { kind: 'cross', color: '#ffffff', spacing: 8, width: 2 } })] })} />,
+    )
+    await flush()
+    const canvas = query(container, 'canvas')
+    const box = paintedBox(canvas)
+    let red = 0
+    let white = 0
+    for (let y = box.y + 3; y < box.y + box.h - 3; y += 2) {
+      for (let x = box.x + 3; x < box.x + box.w - 3; x += 2) {
+        const p = rgbaAt(canvas, x, y)
+        if (p[0]! > 220 && p[1]! < 60 && p[2]! < 60) red++
+        if (p[0]! > 220 && p[1]! > 220 && p[2]! > 220) white++
+      }
+    }
+    expect(red).toBeGreaterThan(20)
+    expect(white).toBeGreaterThan(20)
+    expect(rgbaAt(canvas, Math.max(0, box.x - 3), box.y + box.h / 2)[3]).toBe(0)
+    unmount()
+  })
+
   it('a solid bar is one colour top to bottom; a gradient bar is red at the top and blue at the bottom', async () => {
     const solid = mountInBrowser(<PlotChart<Row> {...chartProps()} />)
     await flush()
@@ -119,5 +141,28 @@ describe('gradient fills — pixels', () => {
     const bottom = rgbaAt(c, box.x + box.w / 2, box.y + box.h - 5)
     expect(Math.abs(top[0]! - bottom[0]!)).toBeLessThan(30)
     unmount()
+  })
+})
+
+describe('radial gradient fills — pixels', () => {
+  it('a radial bar is red at the centre of the plot and blue towards the edge, symmetrically', async () => {
+    const wide: Row[] = [{ k: 'a', v: 10 }, { k: 'b', v: 10 }, { k: 'c', v: 10 }]
+    const grad = mountInBrowser(
+      <PlotChart<Row> {...chartProps({ data: wide, marks: [bars((d: Row) => d.v, { color: TOP, gradient: { ...GRADIENT, shape: 'radial' } })] })} />,
+    )
+    await flush()
+    const canvas = query(grad.container, 'canvas')
+    const box = paintedBox(canvas)
+    const midY = box.y + box.h / 2
+    const centre = rgbaAt(canvas, box.x + box.w / 2, midY)
+    const left = rgbaAt(canvas, box.x + 3, midY)
+    const right = rgbaAt(canvas, box.x + box.w - 4, midY)
+    // Centre is red-dominant, the edges are bluer than the centre …
+    expect(centre[0]).toBeGreaterThan(centre[2]!)
+    expect(left[2]).toBeGreaterThan(centre[2]!)
+    expect(right[2]).toBeGreaterThan(centre[2]!)
+    // … and the two edges match each other: a LINEAR ramp reads differently left and right.
+    expect(Math.abs(left[2]! - right[2]!)).toBeLessThan(12)
+    grad.unmount()
   })
 })

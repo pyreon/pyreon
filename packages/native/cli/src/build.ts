@@ -321,6 +321,10 @@ export function conditionalKotlinImports(emitted: string): string {
   }
   // `contentDescription` (accessibilityLabel) — gated precisely so a role-only
   // `.semantics { role = … }` emit doesn't pull an unused import.
+  // A timeline OptionChart states its current step as the node's stateDescription.
+  if (emitted.includes('stateDescription =')) {
+    imports.push('import androidx.compose.ui.semantics.stateDescription')
+  }
   if (emitted.includes('contentDescription =')) {
     imports.push('import androidx.compose.ui.semantics.contentDescription')
   }
@@ -589,6 +593,9 @@ export function build(options: BuildOptions): BuildResult {
     }
     const result = transform(code, {
       target: options.target,
+      // The real path, so a parse error names the file the user has open
+      // rather than the compiler's in-memory default.
+      filename: input,
       ...(options.fonts ? { fonts: options.fonts } : {}),
     })
     for (const w of result.warnings) warnings.push({ file: input, warning: w })

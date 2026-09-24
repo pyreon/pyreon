@@ -16,11 +16,11 @@
 //   handed the layout to the renderer, so the same value is in scope on every
 //   target.
 
-import { fitCircle, hitArc, layoutArcs } from './arc'
-import type { Slice } from './arc'
+import { fitCircle, hitArc, layoutArcs, layoutArcsWith } from './arc'
+import type { ArcConfig, Slice } from './arc'
 import { hitCalendarIndex } from './calendar'
 import type { CalendarLayout, CalendarValue } from './calendar'
-import { plain } from './format'
+import { groupThousands, plain } from './format'
 import { geoValueOf, hitGeoIndex } from './geo'
 import type { GeoLayout, GeoValue } from './geo'
 import { hitFunnel } from './funnel'
@@ -33,7 +33,11 @@ import type { LegendEntry } from './legend'
 import { paletteAt } from './palette'
 import { hitPolarIndex } from './polar'
 import type { PolarLayout, PolarSeries } from './polar'
+import { hitSingleAxis } from './single-axis'
+import type { SingleAxisLayout, SingleAxisPoint } from './single-axis'
 import { hitRiverIndex } from './river'
+import { hitChordIndex } from './chord'
+import type { ChordLayout } from './chord'
 import type { RiverLayout } from './river'
 import { hitSankeyIndex } from './sankey'
 import type { SankeyLayout } from './sankey'
@@ -91,6 +95,16 @@ export function riverLegend(layout: RiverLayout): LegendEntry[] {
   const out: LegendEntry[] = []
   for (const l of layout.layers) {
     const e: LegendEntry = { label: l.name, color: l.color }
+    out.push(e)
+  }
+  return out
+}
+
+/** One entry per node arc, in ring order. */
+export function chordLegend(layout: ChordLayout): LegendEntry[] {
+  const out: LegendEntry[] = []
+  for (const a of layout.arcs) {
+    const e: LegendEntry = { label: a.name, color: a.color }
     out.push(e)
   }
   return out
@@ -161,12 +175,22 @@ export function treeTip(layout: TreeLayout, px: Double, py: Double, symbolSize?:
   // what unwraps the optional natively — a ternary over `=== undefined` does
   // not narrow in the emit.
   if (n.value === undefined) return [n.name]
+  /* v8 ignore next — the `?? 0.0` arm is unreachable on the web: the guard
+     above already returned for undefined. It exists to unwrap the optional
+     natively, where a `=== undefined` ternary does not narrow. */
   return [n.name, plain(n.value ?? 0.0)]
 }
 
 export function riverTip(layout: RiverLayout, px: Double, py: Double, curve?: 'smooth' | 'linear'): string[] {
   const i = hitRiverIndex(layout, px, py, curve)
   return i < 0 ? [] : [layout.layers[i]!.name]
+}
+
+export function chordTip(layout: ChordLayout, px: Double, py: Double): string[] {
+  const i = hitChordIndex(layout, px, py)
+  if (i < 0) return []
+  const a = layout.arcs[i]!
+  return [a.name, plain(a.total)]
 }
 
 export function sankeyTip(layout: SankeyLayout, px: Double, py: Double): string[] {
@@ -192,6 +216,9 @@ export function graphTip(layout: GraphLayout, px: Double, py: Double): string[] 
   // what unwraps the optional natively — a ternary over `=== undefined` does
   // not narrow in the emit.
   if (n.value === undefined) return [n.name]
+  /* v8 ignore next — the `?? 0.0` arm is unreachable on the web: the guard
+     above already returned for undefined. It exists to unwrap the optional
+     natively, where a `=== undefined` ternary does not narrow. */
   return [n.name, plain(n.value ?? 0.0)]
 }
 
@@ -226,6 +253,24 @@ export function calendarTip(layout: CalendarLayout, values: CalendarValue[], px:
   return [date]
 }
 
+/**
+ * The point's name and its position on the axis.
+ *
+ * A single-axis plot carries ONE number per point, and the layout keeps only
+ * where it was drawn — so the caller's own points supply the value, the way
+ * `calendarTip` and `geoTip` take theirs.
+ */
+export function singleAxisTip(layout: SingleAxisLayout, points: SingleAxisPoint[], px: Double, py: Double): string[] {
+  const i = hitSingleAxis(layout, px, py)
+  // A BOUNDS test, not an `=== undefined` test on the indexed value: this file
+  // crosses to Swift and Kotlin, where `points[i]` is a subscript that TRAPS
+  // out of range rather than handing back a nil to compare.
+  if (i < 0 || i >= points.length) return []
+  const point = points[i]!
+  const name = point.name
+  return name === undefined ? [plain(point.x)] : [name, plain(point.x)]
+}
+
 /** The region's name, and its value when one was recorded for that region. */
 export function geoTip(layout: GeoLayout, values: GeoValue[], px: Double, py: Double): string[] {
   const i = hitGeoIndex(layout, px, py)
@@ -242,11 +287,58 @@ export function funnelTip(stages: FunnelStage[], plot: Rect, px: Double, py: Dou
   return [s.label, plain(s.value)]
 }
 
+/**
+ * ECharts' default item tooltip for the funnel stage under a point: the series
+ * name (none when unnamed), then the stage's colour, name and grouped value —
+ * the cells `renderTooltipRows` draws. Empty on a miss.
+ */
+export function funnelTipRowsWith(stages: FunnelStage[], plot: Rect, px: Double, py: Double, seriesName: string, options?: FunnelOptions): string[] {
+  const i = hitFunnel(stages, plot, px, py, options)
+  if (i < 0 || i >= stages.length) return []
+  const s = stages[i]!
+  return [seriesName, s.color, s.label, groupThousands(s.value)]
+}
+
 /** The slice's label, value and share of the whole. */
 export function pieTip(slices: Slice[], box: Rect, innerRatio: Double, px: Double, py: Double): string[] {
   const fit = fitCircle(box)
-  const i = hitArc(layoutArcs(slices), fit.center, fit.radius, fit.radius * innerRatio, { x: px, y: py })
-  if (i < 0) return []
+  const arcs = layoutArcs(slices)
+  const i = hitArc(arcs, fit.center, fit.radius, fit.radius * innerRatio, { x: px, y: py })
+  return i < 0 ? [] : pieTipAt(slices, arcs[i]!.index)
+}
+
+/** The tooltip lines for the slice at input index `i`, or none. */
+/**
+ * The slice under a point by its INPUT index (a slice that draws nothing is
+ * not an arc), laid round by `arcs` — ECharts' start angle, direction, rose
+ * and gaps; -1 on a miss.
+ */
+export function pieHitWith(slices: Slice[], box: Rect, innerRatio: Double, arcs: ArcConfig, px: Double, py: Double): number {
+  const fit = fitCircle(box)
+  const laid = layoutArcsWith(slices, arcs)
+  const i = hitArc(laid, fit.center, fit.radius, fit.radius * innerRatio, { x: px, y: py })
+  return i < 0 ? -1 : laid[i]!.index
+}
+
+/** `pieTip` for a pie laid round by `arcs`. */
+export function pieTipWith(slices: Slice[], box: Rect, innerRatio: Double, arcs: ArcConfig, px: Double, py: Double): string[] {
+  return pieTipAt(slices, pieHitWith(slices, box, innerRatio, arcs, px, py))
+}
+
+/**
+ * ECharts' default tooltip rows for the slice under a point: the series name,
+ * then its colour, name and grouped value — the flat shape `renderTooltipRows`
+ * draws. Empty on a miss.
+ */
+export function pieTipRowsWith(slices: Slice[], box: Rect, innerRatio: Double, arcs: ArcConfig, px: Double, py: Double, seriesName: string): string[] {
+  const i = pieHitWith(slices, box, innerRatio, arcs, px, py)
+  if (i < 0 || i >= slices.length) return []
+  const s = slices[i]!
+  return [seriesName, s.color, s.label, groupThousands(s.value)]
+}
+
+export function pieTipAt(slices: Slice[], i: number): string[] {
+  if (i < 0 || i >= slices.length) return []
   const s = slices[i]!
   let total = 0.0
   for (const x of slices) total += x.value
@@ -310,6 +402,56 @@ export function renderTooltip(
   for (const l of lines) {
     cmds.push({ kind: 'text', text: l, at: { x: p.x + opts.pad, y }, fill: opts.text, size: opts.fontSize, align: 'start', baseline: 'top' })
     y = y + lineH
+  }
+  return cmds
+}
+
+/**
+ * ECharts' default tooltip box as draw commands: `rows[0]` the header (a
+ * series or a category name; '' for none), then (colour, name, value) triples — a 10px
+ * swatch, the name, and the value bold at the right with at least 20px
+ * between them; rows 10px apart. The box is edged in the first row's colour
+ * when `edgeByRow` (an item tooltip), else the theme's border.
+ */
+export function renderTooltipRows(rows: string[], at: Pt, bounds: Rect, opts: TooltipOptions, measure: (text: string, size: Double) => Double, edgeByRow: boolean): DrawCmd[] {
+  const cmds: DrawCmd[] = []
+  if (rows.length < 4) return cmds
+  const fs = opts.fontSize
+  const count = Math.floor((rows.length - 1) / 3)
+  const head = rows[0]! !== ''
+  let w = head ? measure(rows[0]!, fs) : 0.0
+  for (let k = 0; k < count; k++) {
+    const rw = 16.0 + measure(rows[1 + k * 3 + 1]!, fs) + 20.0 + measure(rows[1 + k * 3 + 2]!, fs)
+    if (rw > w) w = rw
+  }
+  const inner = (head ? fs + 10.0 : 0.0) + count * fs + (count - 1) * 10.0
+  const size: Size = { w: w + opts.pad * 2.0, h: inner + opts.pad * 2.0 }
+  const p = placeTooltip(at, size, bounds, 12.0)
+  const r = opts.radius
+  const edge = edgeByRow ? rows[1]! : opts.border
+  cmds.push({ kind: 'rect', rect: { x: p.x, y: p.y, w: size.w, h: size.h }, fill: opts.fill, corners: [r, r, r, r] })
+  cmds.push({
+    kind: 'polyline',
+    points: [
+      { x: p.x, y: p.y },
+      { x: p.x + size.w, y: p.y },
+      { x: p.x + size.w, y: p.y + size.h },
+      { x: p.x, y: p.y + size.h },
+      { x: p.x, y: p.y },
+    ],
+    stroke: edge,
+    width: 1.0,
+  })
+  const left = p.x + opts.pad
+  const right = p.x + size.w - opts.pad
+  if (head) cmds.push({ kind: 'text', text: rows[0]!, at: { x: left, y: p.y + opts.pad }, fill: opts.text, size: fs, align: 'start', baseline: 'top' })
+  let y = head ? p.y + opts.pad + fs + 10.0 : p.y + opts.pad
+  for (let k = 0; k < count; k++) {
+    cmds.push({ kind: 'circle', center: { x: left + 5.0, y: y + fs / 2.0 }, radius: 5.0, fill: rows[1 + k * 3]! })
+    // An unnamed row (ECharts' noName) draws no name.
+    if (rows[1 + k * 3 + 1]! !== '') cmds.push({ kind: 'text', text: rows[1 + k * 3 + 1]!, at: { x: left + 16.0, y }, fill: opts.text, size: fs, align: 'start', baseline: 'top' })
+    cmds.push({ kind: 'text', text: rows[1 + k * 3 + 2]!, at: { x: right, y }, fill: opts.text, size: fs, align: 'end', baseline: 'top', weight: 'bold' })
+    y = y + fs + 10.0
   }
   return cmds
 }

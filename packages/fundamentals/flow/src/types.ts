@@ -105,6 +105,12 @@ export interface FlowNode<TData = Record<string, unknown>> {
    * rendered; edges touching a hidden node are not rendered either.
    */
   hidden?: boolean
+  /**
+   * Stacking order among nodes (higher draws on top). A dragged node is
+   * raised by 1000 and, with `elevateNodesOnSelect` (default), a selected one
+   * by 100.
+   */
+  zIndex?: number
   /** `false` exempts the node from `deleteSelected()` / the Delete key. */
   deletable?: boolean
   /** Custom class name */
@@ -191,6 +197,11 @@ export interface FlowEdge {
   ariaLabel?: string
   /** Hidden edges stay in the graph but are not rendered. */
   hidden?: boolean
+  /**
+   * Stacking order among edges (higher draws on top). Edges draw in array
+   * order otherwise; `elevateEdgesOnSelect` adds 1000 while an edge is selected.
+   */
+  zIndex?: number
   /** `false` exempts the edge from `deleteSelected()` / the Delete key. */
   deletable?: boolean
   /**
@@ -495,6 +506,35 @@ export interface FlowConfig<TData = Record<string, unknown>> {
    */
   selectionMode?: 'partial' | 'full'
   /**
+   * Which handles a connection may join (React Flow's `connectionMode`).
+   * `'strict'` (default): a source handle to a target handle; a drag may start
+   * at either end and the edge is still oriented source → target. `'loose'`:
+   * any handle to any handle, oriented from where the drag started.
+   *
+   * @example
+   * createFlow({ nodes, edges, connectionMode: 'loose' })
+   */
+  connectionMode?: 'strict' | 'loose'
+  /**
+   * Raise a selected node above its neighbours (+100 to its z-index). Default
+   * `true`, as in React Flow.
+   */
+  elevateNodesOnSelect?: boolean
+  /**
+   * Draw a selected edge above the others (+1000 to its z-index). Default
+   * `false`, as in React Flow.
+   */
+  elevateEdgesOnSelect?: boolean
+  /**
+   * Pan the viewport while a node is dragged near its edge. Default `true`,
+   * as in React Flow.
+   */
+  autoPanOnNodeDrag?: boolean
+  /** Pan the viewport while a connection is dragged near its edge. Default `true`. */
+  autoPanOnConnect?: boolean
+  /** Auto-pan speed in px per frame at the very edge. Default `15`. */
+  autoPanSpeed?: number
+  /**
    * Keys that delete the selection — default: `['Delete', 'Backspace']`.
    * `null` disables keyboard deletion. Compared against `KeyboardEvent.key`.
    */
@@ -758,6 +798,31 @@ export interface FlowInstance<TData = Record<string, unknown>> {
   onConnectEnd: (callback: (connection: Connection | null) => void) => () => void
   /** Called for a click on the empty canvas (not on a node, edge or panel). */
   onPaneClick: (callback: (event: MouseEvent) => void) => () => void
+  /**
+   * A node's context menu was requested: right-click on web, long-press on
+   * iOS and Android. While at least one listener is registered the browser's
+   * own menu is suppressed, so a custom menu can take its place. Returns an
+   * unsubscribe function.
+   *
+   * @example
+   * flow.onNodeContextMenu((node) => openMenu(node.id))
+   */
+  onNodeContextMenu: (callback: (node: FlowNode<TData>) => void) => () => void
+  /** An edge's context menu was requested (right-click / long-press). See `onNodeContextMenu`. */
+  onEdgeContextMenu: (callback: (edge: FlowEdge) => void) => () => void
+  /**
+   * The empty canvas's context menu was requested, at `position` in FLOW
+   * coordinates (convert with `flowToScreenPosition` to place a menu).
+   */
+  onPaneContextMenu: (callback: (position: XYPosition) => void) => () => void
+  /** A pointer (mouse, trackpad, stylus hover) entered a node. Touch has no hover. */
+  onNodeMouseEnter: (callback: (node: FlowNode<TData>) => void) => () => void
+  /** A pointer left a node. */
+  onNodeMouseLeave: (callback: (node: FlowNode<TData>) => void) => () => void
+  /** A pointer entered an edge's hit area. */
+  onEdgeMouseEnter: (callback: (edge: FlowEdge) => void) => () => void
+  /** A pointer left an edge's hit area. */
+  onEdgeMouseLeave: (callback: (edge: FlowEdge) => void) => () => void
 
   // ── Copy / Paste ─────────────────────────────────────────────────────────
 
@@ -777,7 +842,11 @@ export interface FlowInstance<TData = Record<string, unknown>> {
 
   // ── Multi-node drag ─────────────────────────────────────────────────────
 
-  /** Move all selected nodes by dx/dy */
+  /**
+   * Nudge every selected node by a delta. A positioned move like
+   * `updateNodePosition`: snaps to the grid when `snapToGrid` is on, clamps
+   * to the node extent, and reports each moved node through `onNodesChange`.
+   */
   moveSelectedNodes: (dx: number, dy: number) => void
 
   // ── Helper lines ────────────────────────────────────────────────────────
@@ -844,6 +913,34 @@ export interface FlowInstance<TData = Record<string, unknown>> {
 
   /** Get nodes that overlap with the given node */
   getOverlappingNodes: (nodeId: string) => FlowNode<TData>[]
+  /**
+   * Nodes whose box intersects a node (by id) or a rect in flow coordinates.
+   * With `partially` (default) any overlap counts; with `false` a node must lie
+   * entirely inside. The node itself and hidden nodes are excluded. Same
+   * semantics as React Flow's `getIntersectingNodes`.
+   *
+   * @example
+   * flow.getIntersectingNodes('a')                              // nodes touching 'a'
+   * flow.getIntersectingNodes({ x: 0, y: 0, width: 200, height: 100 }, false)
+   */
+  getIntersectingNodes: (target: string | Rect, partially?: boolean) => FlowNode<TData>[]
+  /**
+   * Whether a node (by id) or a rect intersects `area`. `partially: false`
+   * requires it to lie entirely inside. An unknown id is `false`.
+   *
+   * @example
+   * flow.isNodeIntersecting('a', { x: 0, y: 0, width: 300, height: 300 })
+   */
+  isNodeIntersecting: (target: string | Rect, area: Rect, partially?: boolean) => boolean
+  /**
+   * The smallest rect enclosing the given nodes (all visible nodes when omitted),
+   * in absolute flow coordinates. `{ x: 0, y: 0, width: 0, height: 0 }` when there
+   * are none.
+   *
+   * @example
+   * const { x, y, width, height } = flow.getNodesBounds(['a', 'b'])
+   */
+  getNodesBounds: (nodeIds?: string[]) => Rect
   /** Push overlapping nodes apart */
   resolveCollisions: (nodeId: string, spacing?: number) => void
 
@@ -932,6 +1029,13 @@ export interface FlowInstance<TData = Record<string, unknown>> {
     connectStart: (start: { nodeId: string; handleId: string }) => void
     connectEnd: (connection: Connection | null) => void
     paneClick: (event: MouseEvent) => void
+    nodeContextMenu: (node: FlowNode<TData>) => boolean
+    edgeContextMenu: (edge: FlowEdge) => boolean
+    paneContextMenu: (position: XYPosition) => boolean
+    nodeMouseEnter: (node: FlowNode<TData>) => void
+    nodeMouseLeave: (node: FlowNode<TData>) => void
+    edgeMouseEnter: (edge: FlowEdge) => void
+    edgeMouseLeave: (edge: FlowEdge) => void
   }
 
   // ── Config ───────────────────────────────────────────────────────────────
@@ -969,13 +1073,13 @@ export interface LayoutOptions {
    */
   direction?: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'
   /**
-   * Spacing between nodes — default: 50. **Applies to all
+   * Spacing between nodes — default: 20. **Applies to all
    * algorithms.** Minimum gap between neighbouring nodes, which is a
    * generic spacing option respected by every algorithm in the suite.
    */
   nodeSpacing?: number
   /**
-   * Spacing between layers — default: 80.
+   * Spacing between layers — default: 40.
    *
    * **Applies to**: `layered` only. Gap between layers —
    * `elk.layered.spacing.nodeNodeBetweenLayers` which is namespaced
@@ -1001,28 +1105,14 @@ export interface LayoutOptions {
 
 // ─── Component props ─────────────────────────────────────────────────────────
 
-export interface FlowProps {
-  /**
-   * The flow instance. Typed as `FlowInstance<any>` rather than a
-   * generic on the prop type because Pyreon JSX components cannot
-   * be parameterised at the call site (`<Flow<MyData> />` is not
-   * valid JSX). Typed consumers pass their `FlowInstance<MyData>`
-   * here without needing to cast.
-   */
-  instance: FlowInstance<any>
-  style?: string
-  class?: string
-  children?: VNodeChild
-  /**
-   * Accessible name for the flow canvas. The container is a focusable
-   * (`tabindex=0`), keyboard-interactive region, so a screen reader needs a
-   * name to announce when it receives focus — without one it's an unlabeled
-   * focus stop. Rendered as `aria-label` on the `role="group"` container.
-   * Defaults to `"Flow diagram"`; override with something specific like
-   * `"Pipeline editor"`.
-   */
-  ariaLabel?: string
-}
+/**
+ * Props accepted by the main `<Flow>` component.
+ *
+ * This aliases the component's canonical definition so the public `FlowProps`
+ * export cannot drift from `FlowComponentProps` when host capabilities are
+ * added. The import is type-only and is erased from the runtime module graph.
+ */
+export type FlowProps = import('./components/flow-component').FlowComponentProps
 
 export interface BackgroundProps {
   variant?: 'dots' | 'lines' | 'cross'
@@ -1059,6 +1149,11 @@ export interface MiniMapProps {
 }
 
 export interface ControlsProps {
+  /**
+   * Flow instance to control when `<Controls>` is rendered outside `<Flow>`.
+   * Inside a flow host this is optional because the instance comes from context.
+   */
+  instance?: FlowInstance<any>
   showZoomIn?: boolean
   showZoomOut?: boolean
   showFitView?: boolean

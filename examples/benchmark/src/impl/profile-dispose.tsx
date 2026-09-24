@@ -117,7 +117,10 @@ export function setupDisposeProfile(hosts: Record<string, HTMLElement>): void {
   const rows = sigs.map((s) => ({ value: () => s() }))
 
   const solidSigs = Array.from({ length: ROWS }, () => createSignal(-1))
-  const solidTmpl = template('<span class="fx-row"></span>')
+  // Emit-faithful to babel-preset-solid 1.9.15, the same shape as the effects
+  // scenario's Solid arm (scenario-effects.ts documents the diffed source).
+  const solidTmpl = template('<span class=fx-row>')
+  const solidListTmpl = template('<div class=fx-list>')
 
   const arms: Record<string, Arm> = {
     A_full: {
@@ -236,25 +239,31 @@ export function setupDisposeProfile(hosts: Record<string, HTMLElement>): void {
     G_solid: {
       name: 'G_solid',
       mount: () => {
-        function SolidRow(props: { index: number }): HTMLElement {
+        function SolidRow(props: { index: number }): Node {
           const [get] = solidSigs[props.index] as [() => number, (v: number) => void]
-          const span = solidTmpl() as HTMLElement
-          insert(span, get)
           createEffect(() => {
             const v = get()
             sink.values[props.index] = v
             sink.runs++
           })
-          return span
+          return (() => {
+            const _el$ = solidTmpl()
+            insert(_el$, get)
+            return _el$
+          })()
         }
-        return solidRender(() => {
-          const list = document.createElement('div')
-          list.className = 'fx-list'
+        function SolidList(): Node {
+          const children: Node[] = []
           for (let i = 0; i < ROWS; i++) {
-            list.appendChild(createComponent(SolidRow, { index: i }) as HTMLElement)
+            children.push(createComponent(SolidRow, { index: i }) as Node)
           }
-          return list
-        }, hosts.G as HTMLElement)
+          return (() => {
+            const _el$2 = solidListTmpl()
+            insert(_el$2, children)
+            return _el$2
+          })()
+        }
+        return solidRender(() => createComponent(SolidList, {}) as Node, hosts.G as HTMLElement)
       },
     },
   }

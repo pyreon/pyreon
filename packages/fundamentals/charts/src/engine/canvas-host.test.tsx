@@ -124,7 +124,7 @@ describe('canvasHost', () => {
 describe('shiftCmds', () => {
   it('translates every positional field, gradients included, and returns the same list for a zero shift', () => {
     const cmds: DrawCmd[] = [
-      { kind: 'rect', rect: { x: 1, y: 2, w: 3, h: 4 }, fill: '#000', grad: { from: { x: 0, y: 0 }, to: { x: 1, y: 1 }, stops: [] } } as DrawCmd,
+      { kind: 'rect', rect: { x: 1, y: 2, w: 3, h: 4 }, fill: '#000', grad: { from: { x: 0, y: 0 }, to: { x: 1, y: 1 }, stops: [], radial: false } } as DrawCmd,
       { kind: 'line', from: { x: 1, y: 1 }, to: { x: 2, y: 2 }, stroke: '#000', width: 1 },
       { kind: 'polyline', points: [{ x: 1, y: 1 }], stroke: '#000', width: 1 },
       { kind: 'polygon', points: [{ x: 1, y: 1 }], fill: '#000' },

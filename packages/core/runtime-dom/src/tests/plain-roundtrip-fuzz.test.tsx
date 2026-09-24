@@ -106,8 +106,18 @@ ${effectPart}${view}
 
 const SEEDS = Math.max(1, Number((process.env as Record<string, string | undefined>).PYREON_FUZZ_SEEDS) || 40)
 
+// The wall-clock backstop must EXCEED the work, and the work is linear in
+// SEEDS. This honoured `PYREON_FUZZ_SEEDS` but kept vitest's 20s default, so the
+// sweep the override exists for died on the clock and reported "test timed out"
+// — a wall-clock kill that reads as an ORACLE failure, which is the most
+// expensive way for a fuzz gate to fail. Derived from the same constant, and
+// from the same 12ms/seed budget as `hydration-parity-fuzz`: measured here at
+// ~1.4ms/seed (40 seeds 141ms, 120 seeds 254ms), so the budget carries the
+// same ~7x headroom for a loaded CI runner.
+const TIMEOUT_MS = Math.max(20_000, SEEDS * 12)
+
 describe(`plain round-trip fuzz (${SEEDS} seeds)`, () => {
-  it('codemodded programs behave byte-identically to their classic originals', () => {
+  it('codemodded programs behave byte-identically to their classic originals', { timeout: TIMEOUT_MS }, () => {
     for (let seed = 1; seed <= SEEDS; seed++) {
       const { classic, mutators } = generate(seed)
       const migrated = migrateToPlain(classic, `fuzz-${seed}.tsx`)

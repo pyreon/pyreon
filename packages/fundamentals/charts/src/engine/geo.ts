@@ -4,7 +4,7 @@
 // once at startup (ECharts' registerMap shape), bounded by the app's map
 // count, and looked up by name from the option facade.
 
-import { HEAT_RAMP, rampColor } from './heat'
+import { HEAT_RAMP, rampColor, visualOutside } from './heat'
 import { approxTextWidth } from './treemap'
 import type { Domain, Double, DrawCmd, MeasureText, Pt, Rect } from './types'
 import { isFiniteNumber } from './scale'
@@ -108,6 +108,15 @@ export interface GeoOptions {
   labelColor?: string | undefined
   /** Entrance progress 0..1; regions fade in from the empty colour. */
   progress?: Double | undefined
+  /** Roam view: magnification about the fitted map's centre (1 = fitted). */
+  zoom?: Double | undefined
+  /** Roam view: pixel offset applied after the zoom. */
+  panX?: Double | undefined
+  panY?: Double | undefined
+  /** visualMap selection: values outside it paint `outColor` (see `visualOutside`). */
+  inRange?: Domain | undefined
+  outBands?: Double[] | undefined
+  outColor?: string | undefined
 }
 
 export function projectLonLat(lon: Double, lat: Double, projection: GeoProjection): Pt {
@@ -174,9 +183,17 @@ export function layoutGeoShapes(shapes: GeoShape[], box: Rect, options?: GeoOpti
   const innerH = Math.max(0.0, box.h - pad * 2.0)
   const spanX = maxX - minX
   const spanY = maxY - minY
-  const scale = raw.length === 0 || spanX <= 0.0 || spanY <= 0.0 ? 1.0 : Math.min(innerW / spanX, innerH / spanY)
-  const ox = box.x + pad + (innerW - spanX * scale) / 2.0
-  const oy = box.y + pad + (innerH - spanY * scale) / 2.0
+  const fitScale = raw.length === 0 || spanX <= 0.0 || spanY <= 0.0 ? 1.0 : Math.min(innerW / spanX, innerH / spanY)
+  const fitOx = box.x + pad + (innerW - spanX * fitScale) / 2.0
+  const fitOy = box.y + pad + (innerH - spanY * fitScale) / 2.0
+  // Roam: zoom about the box centre, then pan. Every pixel below (regions,
+  // centroids, bboxes, and the transform overlays reuse) goes through these.
+  const zoom = (options?.zoom ?? 1.0) > 0.0 ? options?.zoom ?? 1.0 : 1.0
+  const cx = box.x + box.w / 2.0
+  const cy = box.y + box.h / 2.0
+  const scale = fitScale * zoom
+  const ox = cx + (fitOx - cx) * zoom + (options?.panX ?? 0.0)
+  const oy = cy + (fitOy - cy) * zoom + (options?.panY ?? 0.0)
   const toPx = (p: Pt): Pt => ({ x: ox + (p.x - minX) * scale, y: oy + (maxY - p.y) * scale })
   const regions: GeoRegion[] = raw.map((r) => {
     const rings = r.rings.map((ring) => ring.map(toPx))
@@ -219,6 +236,37 @@ export function layoutGeoShapes(shapes: GeoShape[], box: Rect, options?: GeoOpti
   return { regions, transform: { minX, maxY, scale, ox, oy, projection } }
 }
 
+/** A roam view: the zoom and pan a host keeps between frames. */
+export interface GeoView {
+  zoom: Double
+  panX: Double
+  panY: Double
+}
+
+/**
+ * Zoom a view by `factor` about the pointer at (px, py), keeping the map point
+ * under the pointer fixed, with the zoom clamped to [minZoom, maxZoom].
+ */
+export function geoRoamZoom(view: GeoView, factor: Double, px: Double, py: Double, box: Rect, minZoom: Double, maxZoom: Double): GeoView {
+  const lo = minZoom > 0.0 ? minZoom : 0.1
+  const hi = maxZoom >= lo ? maxZoom : lo
+  const wanted = view.zoom * factor
+  const zoom = wanted < lo ? lo : wanted > hi ? hi : wanted
+  const k = zoom / view.zoom
+  const cx = box.x + box.w / 2.0
+  const cy = box.y + box.h / 2.0
+  // A point p on screen came from cx + (q - cx)*z + pan; holding p fixed across
+  // the zoom change solves for the new pan.
+  const panX = (px - cx) - (px - cx - view.panX) * k
+  const panY = (py - cy) - (py - cy - view.panY) * k
+  return { zoom, panX, panY }
+}
+
+/** Pan a view by a pointer delta. */
+export function geoRoamPan(view: GeoView, dx: Double, dy: Double): GeoView {
+  return { zoom: view.zoom, panX: view.panX + dx, panY: view.panY + dy }
+}
+
 /** Value extent over the regions that have data. */
 export function geoDomain(layout: GeoLayout, values: GeoValue[]): Domain {
   let lo = 0.0
@@ -258,7 +306,7 @@ export function renderGeo(layout: GeoLayout, values: GeoValue[], options?: GeoOp
     const v = geoValueOf(values, r.name)
     const has = isFiniteNumber(v) && progress > 0.0
     const t = !has ? 0.0 : span <= 0.0 ? 1.0 : ((v - lo) / span) * progress
-    const fill = has ? rampColor(stops, t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t) : emptyColor
+    const fill = !has ? emptyColor : visualOutside(v, options?.inRange, options?.outBands) ? options?.outColor ?? '#cccccc' : rampColor(stops, t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t)
     for (const ring of r.rings) out.push({ kind: 'polygon', points: ring, fill })
   }
   for (const r of layout.regions) {

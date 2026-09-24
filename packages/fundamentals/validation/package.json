@@ -41,6 +41,7 @@
   },
   "files": [
     "lib",
+    "!lib/analysis",
     "src",
     "README.md",
     "LICENSE"
@@ -64,8 +65,8 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "arktype": "^2.2.3",
-    "valibot": "^1.4.2",
-    "zod": "^4.5.4"
+    "valibot": "^1.5.0",
+    "zod": "^4.6.5"
   },
   "publishConfig": {
     "access": "public"

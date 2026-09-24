@@ -6,7 +6,7 @@
 // two ends are pinned to one contract here.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { connectWebHost, webHostDocument } from '../web-host-bridge'
+import { connectWebHost, parseWebHostGroupMessage, webHostDocument } from '../web-host-bridge'
 
 type HostWindow = typeof window & {
   __pyreonData?: unknown
@@ -86,5 +86,58 @@ describe('webHostDocument — self-contained page shell for <WebView html>', () 
     const html = webHostDocument({ script: 'x', css: 'y' })
     expect(html).not.toMatch(/<script[^>]+src=/)
     expect(html).not.toMatch(/<link/)
+  })
+})
+
+describe('host groups — the guest half + the reserved protocol', () => {
+  it('parseWebHostGroupMessage recognises exactly the three reserved shapes and nothing else', () => {
+    expect(parseWebHostGroupMessage('clicked:A')).toBeNull()
+    expect(parseWebHostGroupMessage('{"name":"A"}')).toBeNull()
+    expect(parseWebHostGroupMessage('{"__pyreonWebViewGroup":2,"join":"g"}')).toBeNull()
+    expect(parseWebHostGroupMessage('{"__pyreonWebViewGroup":1,"join":""}')).toBeNull()
+    expect(parseWebHostGroupMessage('{"__pyreonWebViewGroup":1')).toBeNull()
+    expect(parseWebHostGroupMessage('{"__pyreonWebViewGroup":1,"join":"g"}')).toEqual({ __pyreonWebViewGroup: 1, join: 'g' })
+    expect(parseWebHostGroupMessage('{"__pyreonWebViewGroup":1,"leave":true}')).toEqual({ __pyreonWebViewGroup: 1, leave: true })
+    expect(parseWebHostGroupMessage('{"__pyreonWebViewGroup":1,"group":"g","message":"{\\"type\\":\\"hideTip\\"}"}')).toEqual({
+      __pyreonWebViewGroup: 1,
+      group: 'g',
+      message: '{"type":"hideTip"}',
+    })
+    // A relay without a group, or a non-string message, is not a relay.
+    expect(parseWebHostGroupMessage('{"__pyreonWebViewGroup":1,"message":"x"}')).toBeNull()
+    expect(parseWebHostGroupMessage('{"__pyreonWebViewGroup":1,"group":"g","message":1}')).toBeNull()
+  })
+
+  it('joinGroup / leaveGroup / relay post the reserved messages through pyreonPostMessage', () => {
+    const posted: string[] = []
+    w.pyreonPostMessage = (m: string) => posted.push(m)
+    const host = connectWebHost()
+    host.relay('early') // not in a group yet → nothing
+    host.joinGroup('dash')
+    host.joinGroup('dash') // idempotent
+    host.relay('{"type":"hideTip"}')
+    host.joinGroup('other') // moving groups = one join (the host leaves the old one itself)
+    host.leaveGroup()
+    host.leaveGroup() // idempotent
+    host.relay('late') // left → nothing
+    expect(posted.map((m) => JSON.parse(m))).toEqual([
+      { __pyreonWebViewGroup: 1, join: 'dash' },
+      { __pyreonWebViewGroup: 1, group: 'dash', message: '{"type":"hideTip"}' },
+      { __pyreonWebViewGroup: 1, join: 'other' },
+      { __pyreonWebViewGroup: 1, leave: true },
+    ])
+  })
+
+  it('onRelay installs ONE page-level entry point and fans a host-delivered relay to every subscriber', () => {
+    const host = connectWebHost()
+    const seen: string[] = []
+    const offA = host.onRelay((m) => seen.push('a:' + m))
+    host.onRelay((m) => seen.push('b:' + m))
+    const entry = (w as unknown as { __pyreonWebViewGroupMessage?: (m: string) => void }).__pyreonWebViewGroupMessage
+    expect(typeof entry).toBe('function')
+    entry!('one')
+    offA()
+    entry!('two')
+    expect(seen).toEqual(['a:one', 'b:one', 'b:two'])
   })
 })

@@ -201,7 +201,15 @@ function renderField(
   depth: number,
   self: string,
 ): string | null {
-  const value = render(field.type, doc, depth, field, self)
+  // `depth + 1`: a field's VALUE sits one level below the object holding
+  // it. Passing `depth` unchanged rendered a NESTED object at depth 1
+  // too, so it took the `depth === 1` overrides spread — and
+  // `createUser({ id: 'x' })` then put `id` inside `address` as well.
+  // The generated schema rejects that shape, so the fixture fails the
+  // validator generated from the same spec. The object branch already
+  // indents its children at `depth + 1`, which is the intent this
+  // restores.
+  const value = render(field.type, doc, depth + 1, field, self)
   if (field.type.kind !== 'ref') return value
   if (!referencesSelf(field.type, doc, self)) return value
   // A recursive REF. Optional -> omit at the limit. Required -> there is no

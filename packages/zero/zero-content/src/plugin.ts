@@ -322,6 +322,40 @@ export function findCollectionForFileImpl(
 }
 
 /**
+ * The slug a page is INDEXED under: its path relative to the collection
+ * root, extension dropped, separators normalised to `/`.
+ *
+ * Extracted because it was computed in one place and cached in another.
+ * The compile path derived this, indexed under it, and then stored the
+ * markdown pipeline's own `result.slug` on the cache entry — a
+ * ROOT-relative value. The cache-hit path read that instead, so the
+ * `has(slug)` guard compared two different strings, never matched, and
+ * stashed the SAME page a second time under `docs/a` rather than `a`.
+ *
+ * Its URL is built as `/<collection>/<slug>`, so the duplicate resolved
+ * to `/docs/docs/a` — a search hit that 404s. Every SSG build transforms
+ * each page at least twice (the outer client build and the inner SSR
+ * sub-build), so this shipped for every page of every content site, with
+ * the correct entry sitting right beside it.
+ *
+ * @internal exported for testing
+ */
+export function collectionSlugFor(
+  id: string,
+  collectionPath: string,
+  root: string,
+): string {
+  const absCollectionPath = path.isAbsolute(collectionPath)
+    ? collectionPath
+    : path.join(root, collectionPath)
+  return path
+    .relative(absCollectionPath, id)
+    .replace(/\.(md|mdx)$/, '')
+    .split(path.sep)
+    .join('/')
+}
+
+/**
  * PR-L audit M19 — write configured SEO outputs (sitemap.xml / rss.xml /
  * llms.txt) to `outDir`. Pure-ish — the only side effect is `writeFile`.
  *
@@ -907,6 +941,11 @@ export {}
           return { code: cached.code, map: null }
         }
 
+        // Set by the search-index stash below when this file belongs to a
+        // collection; falls back to the pipeline's own slug otherwise (a
+        // file outside every collection is never indexed, so the value is
+        // unused there).
+        let indexedSlug: string | null = null
         const result = await compileMarkdown(code, id, opts)
 
         // Surface non-fatal compile warnings (unknown directive name
@@ -972,14 +1011,12 @@ export {}
             const collectionPath =
               loadedConfig.config.collections[collectionName]!.path ??
               `src/content/${collectionName}`
-            const absCollectionPath = path.isAbsolute(collectionPath)
-              ? collectionPath
-              : path.join(resolvedConfig.root, collectionPath)
-            const slug = path
-              .relative(absCollectionPath, id)
-              .replace(/\.(md|mdx)$/, '')
-              .split(path.sep)
-              .join('/')
+            const slug = collectionSlugFor(id, collectionPath, resolvedConfig.root)
+            // Remember the slug the index actually used, so the
+            // cache-hit path re-stashes under the SAME key and its
+            // `has(slug)` guard can match. Storing anything else here
+            // duplicates every page — see `collectionSlugFor`.
+            indexedSlug = slug
             const frontmatter = result.frontmatter as Record<string, unknown>
             const title = String(frontmatter.title ?? slug)
             const description =
@@ -1034,7 +1071,7 @@ export {}
             hoistedEsm: result.hoistedEsm,
             frontmatter: result.frontmatter,
             headings: result.headings,
-            slug: result.slug,
+            slug: indexedSlug ?? result.slug,
             source: code,
           })
           return { code: result.code, map: null }
@@ -1054,7 +1091,7 @@ export {}
           hoistedEsm: result.hoistedEsm,
           frontmatter: result.frontmatter,
           headings: result.headings,
-          slug: result.slug,
+          slug: indexedSlug ?? result.slug,
           source: code,
         })
         return { code: compiled.code, map: null }

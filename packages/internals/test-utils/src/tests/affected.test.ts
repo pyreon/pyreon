@@ -9,6 +9,7 @@ import {
   isScriptFile,
   transitiveDependents,
   type Workspace,
+  parseFileList,
 } from '../../../../../scripts/affected'
 
 /**
@@ -85,14 +86,19 @@ describe('isRootFile', () => {
     'bun.lock',
     'tsconfig.json',
     'tsconfig.base.json',
-    'vitest.shared.ts',
-    'vitest.browser.ts',
+    // the root setup file every package's vitest config loads — the two
+    // names this list used to carry (`vitest.shared.ts` / `vitest.browser.ts`)
+    // were deleted in #914, so the classifier matched nothing at the root
+    'vitest.setup.ts',
+    'vitest.workspace.ts',
+    '.bun-version',
     '.github/workflows/ci.yml',
   ])('treats %s as a root file (forces full suite)', (path) => {
     expect(isRootFile(path)).toBe(true)
   })
 
   it.each([
+    'packages/core/runtime-dom/vitest.config.ts', // a PACKAGE vitest config is not root
     'packages/core/reactivity/src/signal.ts',
     'examples/playground/src/App.tsx',
     'docs/src/content/docs/zero.md',
@@ -326,10 +332,14 @@ describe('isScriptFile — must AGREE with e2e-affected on scripts/**', () => {
     expect(isScriptFile('lint-baseline.json')).toBe(false) // root ratchet file — not scripts/
   })
 
-  it('still classifies script code files and rejects non-script paths', () => {
+  it('classifies ANY file under scripts/ (aligned with e2e-affected\'s forcesFullRun) and rejects other paths', () => {
     expect(isScriptFile('scripts/affected.ts')).toBe(true)
     expect(isScriptFile('scripts/bench/core/router.ts')).toBe(true)
-    expect(isScriptFile('scripts/README.md')).toBe(false)
+    // A non-code file under scripts/ is a script input too: e2e-affected already
+    // escalated on it, and this decider computing ∅ for the same path was the
+    // fail-closed-aggregator contradiction (a `.swift` harness, a `.sh`).
+    expect(isScriptFile('scripts/phase0/harness.swift')).toBe(true)
+    expect(isScriptFile('scripts/README.md')).toBe(true)
     expect(isScriptFile('packages/core/core/src/index.ts')).toBe(false)
   })
 })
@@ -571,6 +581,7 @@ describe('computeAffectedFlags', () => {
     it('docInputConsumer identifies the parser package', () => {
       expect(docInputConsumer('.claude/rules/anti-patterns.md')).toBe('@pyreon/mcp')
       expect(docInputConsumer('docs/patterns/keyed-lists.md')).toBe('@pyreon/mcp')
+      expect(docInputConsumer('.claude/rules/browser-packages.json')).toBe('@pyreon/lint')
       expect(docInputConsumer('docs/guides/routing.md')).toBeUndefined()
       expect(docInputConsumer('packages/tools/mcp/src/index.ts')).toBeUndefined()
     })
@@ -800,5 +811,21 @@ describe('an e2e-only change must produce a NON-EMPTY affected set', () => {
         root: ROOT,
       }),
     ).not.toBe('--filter=*')
+  })
+})
+
+// `--files-from-stdin` feeds native-validate.yml's decide job, which gates the
+// ONLY runner of the native-compiler suite. The load-bearing case is the empty
+// one: an empty read means the file-list pipe failed (a PR cannot reach CI with
+// zero files), so it must escalate like an undiffable base — never read as
+// "nothing changed", which would skip the gate.
+describe('parseFileList (--files-from-stdin)', () => {
+  it('splits one path per line, trimming blanks', () => {
+    expect(parseFileList('a/b.ts\n\n  c/d.ts  \n')).toEqual(['a/b.ts', 'c/d.ts'])
+  })
+  it('treats an empty list as unknowable (null → full run), not as no change', () => {
+    expect(parseFileList('')).toBeNull()
+    expect(parseFileList('\n  \n')).toBeNull()
+    expect(computeAffectedFlags({ changed: parseFileList(''), workspaces: [] })).toBe('--filter=*')
   })
 })

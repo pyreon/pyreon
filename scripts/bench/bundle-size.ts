@@ -87,7 +87,33 @@ const PACKAGES: PackageSpec[] = [
 
 // ─── Bundle + measure ───────────────────────────────────────────────────────
 
-async function measurePackage(pkg: PackageSpec): Promise<SizeEntry> {
+/**
+ * Every package entry reads its own manifest as
+ * `import { name, version } from '../package.json' with { type: 'json' }`.
+ * Per the import-attributes spec a JSON module has ONLY a default export,
+ * and esbuild enforces that when the attribute is present — so every entry
+ * failed to bundle and the bench reported the four core packages UNMEASURED
+ * (the `Benchmark` job red on main). The shipped `lib/` is built by rolldown,
+ * which inlines the two named fields; this loader does the same for the
+ * bench: the manifest becomes a JS module exporting `name` and `version`
+ * (plus the whole object as default), so the measurement matches what
+ * consumers bundle rather than failing on a spec technicality.
+ */
+const jsonNamedExports: esbuild.Plugin = {
+  name: 'json-named-exports',
+  setup(build) {
+    build.onLoad({ filter: /package\.json$/ }, (args) => {
+      const json = JSON.parse(readFileSync(args.path, 'utf8')) as Record<string, unknown>
+      const named = ['name', 'version']
+        .filter((k) => k in json)
+        .map((k) => `export const ${k} = ${JSON.stringify(json[k])};`)
+        .join('\n')
+      return { contents: `${named}\nexport default ${JSON.stringify(json)};`, loader: 'js' }
+    })
+  },
+}
+
+async function measurePackage(pkg: PackageSpec): Promise<SizeEntry | null> {
   const entryPath = resolve(ROOT, pkg.entry)
   const tmpDir = mkdtempSync(join(tmpdir(), 'pyreon-bench-'))
   const outFile = join(tmpDir, 'bundle.js')
@@ -108,6 +134,7 @@ async function measurePackage(pkg: PackageSpec): Promise<SizeEntry> {
       // Resolve workspace packages using bun condition
       conditions: ['bun'],
       logLevel: 'silent',
+      plugins: [jsonNamedExports],
     })
 
     const raw = readFileSync(outFile)
@@ -122,12 +149,20 @@ async function measurePackage(pkg: PackageSpec): Promise<SizeEntry> {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[bundle-size] Failed to bundle ${pkg.name}: ${msg}`)
-    return {
-      package: pkg.name,
-      entry: pkg.entry,
-      raw: 0,
-      gzipped: 0,
-    }
+    // A failed bundle is NOT a zero-byte bundle. Returning 0 here printed
+    //
+    //   @pyreon/reactivity   0B   0B
+    //   @pyreon/core         0B   0B
+    //   @pyreon/runtime-dom  0B   0B
+    //   @pyreon/router       0B   0B
+    //
+    // in a human-facing report, where 0 B reads as "remarkably small" rather
+    // than "unmeasured" — and the script still exited 0. (The cause was
+    // esbuild 0.28.2 rejecting a NAMED import from JSON when the
+    // `with { type: 'json' }` attribute is present, which is how those entries
+    // read their own name and version.) `null` marks the row unmeasured; the
+    // caller renders it as FAILED and exits non-zero.
+    return null
   } finally {
     rmSync(tmpDir, { recursive: true, force: true })
   }
@@ -136,10 +171,12 @@ async function measurePackage(pkg: PackageSpec): Promise<SizeEntry> {
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 const entries: SizeEntry[] = []
+const failed: string[] = []
 
 for (const pkg of PACKAGES) {
   const entry = await measurePackage(pkg)
-  entries.push(entry)
+  if (entry === null) failed.push(pkg.name)
+  else entries.push(entry)
 }
 
 if (JSON_MODE) {
@@ -171,4 +208,17 @@ if (JSON_MODE) {
   }
 
   console.log()
+}
+
+// A report that silently prints 0 B for a package it could not bundle is worse
+// than no report: 0 B reads as "remarkably small". Name them, and exit non-zero
+// so nothing downstream treats the numbers as complete.
+if (failed.length > 0) {
+  console.error('')
+  console.error(
+    `[bundle-size] UNMEASURED — ${failed.length} package(s) failed to bundle and are ABSENT from the table above:`,
+  )
+  for (const name of failed) console.error(`  - ${name}`)
+  console.error('  The figures above describe the packages that DID bundle, and nothing else.')
+  process.exit(1)
 }

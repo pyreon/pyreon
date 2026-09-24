@@ -6,7 +6,7 @@
  * pass while the real pipeline silently reported a serene zero, which is the
  * exact failure shape the check exists to prevent.
  */
-import { h } from '@pyreon/core'
+import { createUniqueId, h } from '@pyreon/core'
 import { hydrateRoot, mount, onHydrationMismatch } from '@pyreon/runtime-dom'
 import { renderToString } from '@pyreon/runtime-server'
 import { checkSsrParity, describeMismatch, normalizeHtml } from '../ssr-parity'
@@ -105,11 +105,47 @@ describe('describeMismatch', () => {
 })
 
 describe('checkSsrParity', () => {
+  it('does not blame a component for the process-wide unique-id counter', async () => {
+    // Three renders (SSR, hydrate, fresh mount) mint three ids from ONE
+    // counter. Before the normalizer canonicalized the number, every
+    // `createUniqueId()` user (ui-components' Combobox, Tree) failed parity
+    // with a diff that named nothing but `pyreon-2` vs `pyreon-3`.
+    const WithId = () => {
+      const id = createUniqueId()
+      return h('div', {}, h('input', { 'aria-controls': `${id}-listbox` }), h('ul', { id: `${id}-listbox` }))
+    }
+    const [a, b] = containers()
+    const verdict = await checkSsrParity(runtime, WithId as never, {}, a, b)
+    expect(verdict.status).toBe('pass')
+  })
+
   it('PASSES a component that renders identically on both sides', async () => {
     const Good = (props: { label: string }) => h('button', {}, props.label)
     const [a, b] = containers()
     const verdict = await checkSsrParity(runtime, Good as never, { label: 'Save' }, a, b)
 
+    expect(verdict.status).toBe('pass')
+    expect(verdict.findings ?? []).toEqual([])
+  })
+
+  it('materializes seeded layout blocks BEFORE rendering — the marker is not a vnode', async () => {
+    // A derived scenario for a layout container carries `children` as the
+    // JSON blocks marker. Handed to `h()` as a prop it reaches the renderer as
+    // an object with no `props`, and `renderToString` throws — reported as the
+    // COMPONENT failing SSR. Both sides must materialize it the way the mount
+    // harness does.
+    const Stack = (props: { children?: unknown }) => h('div', { class: 'stack' }, props.children as never)
+    const [a, b] = containers()
+    const verdict = await checkSsrParity(
+      runtime,
+      Stack as never,
+      { children: { __atlasContent: 'blocks', count: 2 } },
+      a,
+      b,
+    )
+    // Before the fix this was `ssr-render-threw` — the marker reached
+    // `renderToString` as a prop. A pass with no findings is the whole claim:
+    // the containers are detached scratch space the check disposes itself.
     expect(verdict.status).toBe('pass')
     expect(verdict.findings ?? []).toEqual([])
   })

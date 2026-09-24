@@ -1,4 +1,6 @@
-import { For, createUniqueId, isClient, provide, type VNodeChild, cx } from '@pyreon/core'
+import { autoPanVelocity } from '../auto-pan'
+import { flowNodeZ, orderEdges } from '../z-order'
+import { For, createUniqueId, isClient, onUnmount, provide, type VNodeChild, cx } from '@pyreon/core'
 import { batch, computed, effect, signal } from '@pyreon/reactivity'
 import {
   getEdgePath,
@@ -162,6 +164,16 @@ function visibleNodeList<T>(instance: FlowInstance<T>): FlowNode<T>[] {
 }
 
 function visibleEdgeList<T>(instance: FlowInstance<T>): FlowEdge[] {
+  // Stacking: `zIndex` and `elevateEdgesOnSelect` order the SVG paths, which
+  // draw in DOM order. Selection is read only when elevation is on.
+  const elevate = instance.config.elevateEdgesOnSelect === true
+  const selected = elevate ? new Set(instance.selectedEdges()) : EMPTY_ID_SET
+  return orderEdges(visibleEdgeListUnordered(instance), selected, elevate)
+}
+
+const EMPTY_ID_SET: ReadonlySet<string> = new Set()
+
+function visibleEdgeListUnordered<T>(instance: FlowInstance<T>): FlowEdge[] {
   const raw = instance.edges()
   const nm = instance.nodeMap()
   // An edge is hidden by its own flag OR by either endpoint being hidden.
@@ -185,35 +197,44 @@ function visibleEdgeList<T>(instance: FlowInstance<T>): FlowEdge[] {
 }
 
 /**
- * The closest target-capable handle to a FLOW point within `radius` flow
- * units, excluding `excludeNodeId`. Measured `<Handle>` dots are used when the
- * node has them; a node without measured handles falls back to its declared
- * left-middle target anchor (the same default the edge geometry draws to).
+ * The closest handle of type `want` (`'any'` under `connectionMode: 'loose'`)
+ * to a FLOW point within `radius` flow units, excluding `excludeNodeId`.
+ * Measured `<Handle>` dots are used when the node has them; a node without
+ * measured handles falls back to its declared anchors, target at the left
+ * middle and source at the right middle (the defaults the edge geometry draws
+ * to).
  */
-function nearestTargetHandle<T>(
+function nearestHandle<T>(
   instance: FlowInstance<T>,
   point: XYPosition,
   radius: number,
   excludeNodeId: string,
-): { nodeId: string; handleId: string } | null {
+  want: HandleType | 'any',
+): { nodeId: string; handleId: string; type: HandleType } | null {
   const measured = instance.measurements.peek()
-  let best: { nodeId: string; handleId: string } | null = null
+  let best: { nodeId: string; handleId: string; type: HandleType } | null = null
   let bestD = radius * radius
   for (const node of instance.nodes.peek()) {
     if (node.id === excludeNodeId || node.hidden) continue
     if (node.connectable === false) continue
     const m = measured.get(node.id)
     const dims = getEffectiveDimensions(node, m)
-    const candidates: { id: string; x: number; y: number }[] = []
+    const candidates: { id: string; x: number; y: number; type: HandleType }[] = []
     if (m?.handles && m.handles.length > 0) {
       for (const hd of m.handles) {
-        if (hd.type !== 'target') continue
-        candidates.push({ id: hd.id, x: node.position.x + hd.x, y: node.position.y + hd.y })
+        if (want !== 'any' && hd.type !== want) continue
+        candidates.push({ id: hd.id, x: node.position.x + hd.x, y: node.position.y + hd.y, type: hd.type })
       }
     }
     if (candidates.length === 0) {
-      const p = getHandlePosition(Position.Left, node.position.x, node.position.y, dims.width, dims.height)
-      candidates.push({ id: 'target', x: p.x, y: p.y })
+      if (want !== 'source') {
+        const p = getHandlePosition(Position.Left, node.position.x, node.position.y, dims.width, dims.height)
+        candidates.push({ id: 'target', x: p.x, y: p.y, type: 'target' })
+      }
+      if (want !== 'target') {
+        const p = getHandlePosition(Position.Right, node.position.x, node.position.y, dims.width, dims.height)
+        candidates.push({ id: 'source', x: p.x, y: p.y, type: 'source' })
+      }
     }
     for (const c of candidates) {
       const dx = c.x - point.x
@@ -221,7 +242,7 @@ function nearestTargetHandle<T>(
       const d = dx * dx + dy * dy
       if (d <= bestD) {
         bestD = d
-        best = { nodeId: node.id, handleId: c.id }
+        best = { nodeId: node.id, handleId: c.id, type: c.type }
       }
     }
   }
@@ -271,6 +292,8 @@ interface ConnectionState {
   active: boolean
   sourceNodeId: string
   sourceHandleId: string
+  /** The type of the handle the drag started from (the fixed end, for a reconnect). */
+  sourceHandleType: HandleType
   sourcePosition: Position
   sourceX: number
   sourceY: number
@@ -310,6 +333,7 @@ const emptyConnection: ConnectionState = {
   active: false,
   sourceNodeId: '',
   sourceHandleId: '',
+  sourceHandleType: 'source',
   sourcePosition: Position.Right,
   sourceX: 0,
   sourceY: 0,
@@ -419,6 +443,16 @@ function EdgeLayer(props: {
         if (edgeId) instance.selectEdge(edgeId)
         instance._emit.edgeClick(liveEdge())
       }}
+      // The wide invisible stroke is every edge's hit area, default and
+      // custom alike, so the context menu and hover live here.
+      onContextMenu={(e: MouseEvent) => {
+        if (instance._emit.edgeContextMenu(liveEdge())) {
+          e.preventDefault()
+          e.stopPropagation()
+        }
+      }}
+      onMouseEnter={() => instance._emit.edgeMouseEnter(liveEdge())}
+      onMouseLeave={() => instance._emit.edgeMouseLeave(liveEdge())}
     />,
     () => {
       if (!isSelected() || !reconnectable(liveEdge())) return null
@@ -903,7 +937,7 @@ function NodeLayer(props: {
               // the node inherits `none` and drag/click/select all stop working.
               const p = n.parentId ? instance._absPositionById(id)() : n.position
               return `position: absolute; pointer-events: auto; transform: translate(${p.x}px, ${p.y}px); z-index: ${
-                isDragging() ? 1000 : isSelected() ? 100 : 0
+                flowNodeZ(n.zIndex, isSelected(), isDragging(), instance.config.elevateNodesOnSelect !== false)
               }; ${n.style ?? ''}`
             }}
             data-nodeid={id}
@@ -934,6 +968,16 @@ function NodeLayer(props: {
               e.stopPropagation()
               instance._emit.nodeDoubleClick(node())
             }}
+            onContextMenu={(e: MouseEvent) => {
+              // Only a node's own menu: a handle, toolbar or form control
+              // inside it keeps the browser's behaviour.
+              if (instance._emit.nodeContextMenu(node())) {
+                e.preventDefault()
+                e.stopPropagation()
+              }
+            }}
+            onMouseEnter={() => instance._emit.nodeMouseEnter(node())}
+            onMouseLeave={() => instance._emit.nodeMouseLeave(node())}
             onPointerDown={(e: PointerEvent) => {
               const target = e.target as HTMLElement
               // Don't start a node drag when the pointer goes down on an
@@ -1230,7 +1274,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
   const handleHandlePointerDown = (
     e: PointerEvent,
     nodeId: string,
-    _handleType: string,
+    handleType: string,
     handleId: string,
     position: Position,
   ) => {
@@ -1245,7 +1289,8 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     // user actually grabbed — else the declared side's midpoint.
     const m = instance.measurements.peek().get(nodeId)
     const dims = getEffectiveDimensions(node, m)
-    const anchor = resolveHandleAnchor(node, handleId, 'source', dims, m)
+    const startType: HandleType = handleType === 'target' ? 'target' : 'source'
+    const anchor = resolveHandleAnchor(node, handleId, startType, dims, m)
     const handlePos =
       anchor ?? getHandlePosition(position, node.position.x, node.position.y, dims.width, dims.height)
 
@@ -1253,6 +1298,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       active: true,
       sourceNodeId: nodeId,
       sourceHandleId: handleId,
+      sourceHandleType: startType,
       sourcePosition: position,
       sourceX: handlePos.x,
       sourceY: handlePos.y,
@@ -1344,6 +1390,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       active: true,
       sourceNodeId: fixedIsSource ? edge.source : edge.target,
       sourceHandleId: (fixedIsSource ? edge.sourceHandle : edge.targetHandle) ?? (fixedIsSource ? 'source' : 'target'),
+      sourceHandleType: fixedIsSource ? 'source' : 'target',
       sourcePosition: fixedIsSource ? g.sourcePosition : g.targetPosition,
       sourceX: fixedIsSource ? g.sourceX : g.targetX,
       sourceY: fixedIsSource ? g.sourceY : g.targetY,
@@ -1427,10 +1474,49 @@ export function Flow(props: FlowComponentProps): VNodeChild {
 
   // ── Unified pointer move/up ────────────────────────────────────────────
 
+  // ── Auto-pan ───────────────────────────────────────────────────────────
+  // While a node or a connection is dragged near the container edge, a frame
+  // loop pans the viewport and replays the last pointer position, so the
+  // dragged node (or the connection line's end) stays under the pointer even
+  // when the pointer itself holds still. A node drag's ORIGIN moves by the
+  // pan, which is what keeps the node glued to the pointer.
+  let autoPanFrame = 0
+  let autoPanEl: HTMLElement | null = null
+  let lastPointer: { clientX: number; clientY: number } | null = null
+  const autoPanActive = () =>
+    (dragState.peek().active && instance.config.autoPanOnNodeDrag !== false) ||
+    (connectionState.peek().active && instance.config.autoPanOnConnect !== false)
+  const autoPanTick = () => {
+    autoPanFrame = 0
+    const el = autoPanEl
+    const p = lastPointer
+    if (!el || !p || !autoPanActive()) return
+    const rect = el.getBoundingClientRect()
+    const v = autoPanVelocity(p.clientX - rect.left, p.clientY - rect.top, rect.width, rect.height, instance.config.autoPanSpeed ?? 15)
+    if (v.x === 0 && v.y === 0) return
+    const vp = instance.viewport.peek()
+    instance.setViewport({ x: vp.x + v.x, y: vp.y + v.y, zoom: vp.zoom })
+    const drag = dragState.peek()
+    if (drag.active) dragState.set({ ...drag, startX: drag.startX + v.x, startY: drag.startY + v.y })
+    handlePointerMove({ clientX: p.clientX, clientY: p.clientY, currentTarget: el } as unknown as PointerEvent)
+  }
+  const stopAutoPan = () => {
+    if (autoPanFrame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(autoPanFrame)
+    autoPanFrame = 0
+    lastPointer = null
+  }
+  onUnmount(stopAutoPan)
+
   const handlePointerMove = (e: PointerEvent) => {
     const drag = dragState.peek()
     const conn = connectionState.peek()
     const sel = selectionBox.peek()
+
+    if (autoPanActive() && typeof requestAnimationFrame === 'function') {
+      lastPointer = { clientX: e.clientX, clientY: e.clientY }
+      autoPanEl = (e.currentTarget as HTMLElement | null) ?? autoPanEl
+      if (!autoPanFrame) autoPanFrame = requestAnimationFrame(autoPanTick)
+    }
 
     if (sel.active) {
       const container = e.currentTarget as HTMLElement
@@ -1565,6 +1651,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
   }
 
   const handlePointerUp = (e: PointerEvent) => {
+    stopAutoPan()
     const drag = dragState.peek()
     const conn = connectionState.peek()
     const sel = selectionBox.peek()
@@ -1628,19 +1715,32 @@ export function Flow(props: FlowComponentProps): VNodeChild {
         // cursor. Hit-test the real drop target by cursor position instead.
         const dropEl = isClient ? document.elementFromPoint(e.clientX, e.clientY) : null
         const handle = dropEl?.closest('.pyreon-flow-handle') ?? null
+        // connectionMode: 'strict' (default) accepts only the OPPOSITE handle
+        // type — for a reconnect, the moved end's own type — and 'loose'
+        // accepts any handle.
+        const loose = instance.config.connectionMode === 'loose'
+        const want: HandleType | 'any' = loose
+          ? 'any'
+          : conn.reconnect
+            ? conn.reconnect.end
+            : conn.sourceHandleType === 'source' ? 'target' : 'source'
         let targetNodeId = ''
         let targetHandleId = 'target'
         if (handle) {
-          targetNodeId = handle.closest('.pyreon-flow-node')?.getAttribute('data-nodeid') ?? ''
-          targetHandleId = handle.getAttribute('data-handleid') ?? 'target'
+          const type: HandleType = handle.getAttribute('data-handletype') === 'source' ? 'source' : 'target'
+          if (want === 'any' || type === want) {
+            targetNodeId = handle.closest('.pyreon-flow-node')?.getAttribute('data-nodeid') ?? ''
+            targetHandleId = handle.getAttribute('data-handleid') ?? type
+          }
         } else if ((instance.config.connectionRadius ?? 0) > 0) {
-          // No handle under the pointer: snap to the nearest TARGET handle
+          // No handle under the pointer: snap to the nearest acceptable handle
           // within `connectionRadius` (screen px → flow units at this zoom).
-          const nearest = nearestTargetHandle(
+          const nearest = nearestHandle(
             instance,
             instance.screenToFlowPosition({ x: e.clientX, y: e.clientY }),
             (instance.config.connectionRadius ?? 0) / instance.viewport.peek().zoom,
             conn.sourceNodeId,
+            want,
           )
           if (nearest) {
             targetNodeId = nearest.nodeId
@@ -1673,12 +1773,12 @@ export function Flow(props: FlowComponentProps): VNodeChild {
               }
             }
           } else {
-            const connection: Connection = {
-              source: conn.sourceNodeId,
-              target: targetNodeId,
-              sourceHandle: conn.sourceHandleId,
-              targetHandle: targetHandleId,
-            }
+            // A strict drag started from a TARGET handle still yields a
+            // source -> target edge: the dropped node is the source.
+            const flip = !loose && conn.sourceHandleType === 'target'
+            const connection: Connection = flip
+              ? { source: targetNodeId, target: conn.sourceNodeId, sourceHandle: targetHandleId, targetHandle: conn.sourceHandleId }
+              : { source: conn.sourceNodeId, target: targetNodeId, sourceHandle: conn.sourceHandleId, targetHandle: targetHandleId }
 
             if (instance.isValidConnection(connection)) {
               instance.addEdge({
@@ -1935,6 +2035,13 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onKeyDown={handleKeyDown}
+      onContextMenu={(e: MouseEvent) => {
+        // Same pane test as a click; a node or edge that handled its own menu
+        // stopped propagation before this.
+        const t = e.target as HTMLElement | null
+        if (t?.closest('.pyreon-flow-node, .pyreon-flow-edges, .pyreon-flow-controls, .pyreon-flow-minimap, .pyreon-flow-panel')) return
+        if (instance._emit.paneContextMenu(instance.screenToFlowPosition({ x: e.clientX, y: e.clientY }))) e.preventDefault()
+      }}
       onClick={(e: MouseEvent) => {
         // A click that reached the container without a node / edge / panel
         // stopping it is a PANE click (React Flow `onPaneClick`).

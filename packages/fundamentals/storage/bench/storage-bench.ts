@@ -50,6 +50,18 @@ import { createJSONStorage as zustandJSON, persist } from 'zustand/middleware'
 import { createStorage } from '../src/custom'
 import { _resetRegistry } from '../src/registry'
 import type { StorageBackend } from '../src/types'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 declare const Bun: {
   spawnSync: (
@@ -367,6 +379,7 @@ for (const op of OP_ORDER) {
   rows.push(row)
 }
 
+console.log(benchRuntimeBanner())
 console.log(
   `=== @pyreon/storage vs Jotai atomWithStorage vs Zustand persist (${process.platform}/${process.arch}, NODE_ENV=production, shared in-memory storage engine, per-(op×impl) isolated processes, median ns/op [CI95], 🤝 = CI-overlap tie) ===\n`,
 )

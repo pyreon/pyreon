@@ -1,4 +1,5 @@
-import { escapeXml as escapeHtml, sanitizeColor, sanitizeHref, sanitizeImageSrc, sanitizeStyle } from '../sanitize'
+import { escapeXml as escapeHtml, sanitizeColor, sanitizeHref, sanitizeImageSrc } from '../sanitize'
+import { cssDecl, headingTag, padStr, sanitizeNumber, styleDecls, styleStr } from './css'
 import type {
   DocChild,
   DocNode,
@@ -10,31 +11,6 @@ import type {
 
 function resolveColumn(col: string | TableColumn): TableColumn {
   return typeof col === 'string' ? { header: col } : col
-}
-
-/** Raw `prop:value` declarations (no attribute wrapper) — see styleStr. */
-function styleDecls(styles: Record<string, string | number | undefined>): string {
-  const parts: string[] = []
-  for (const [k, v] of Object.entries(styles)) {
-    if (v != null && v !== '') {
-      const prop = k.replace(/([A-Z])/g, '-$1').toLowerCase()
-      // String values can be document-author / CMS controlled (column
-      // `width`, `align`, `gap`, …) and land inside a `style="…"`
-      // attribute. Without sanitization `width: 'x"><script>…'` breaks
-      // out of the attribute → XSS in the produced HTML (emailed /
-      // served). Route every string value through the same `sanitizeCss`
-      // the rest of this renderer uses (strips `" < > ; ( )` + css
-      // injection vectors). Numbers are structurally safe.
-      const safeV = typeof v === 'number' ? `${v}px` : sanitizeStyle(v)
-      if (safeV !== '') parts.push(`${prop}:${safeV}`)
-    }
-  }
-  return parts.join(';')
-}
-
-function styleStr(styles: Record<string, string | number | undefined>): string {
-  const decls = styleDecls(styles)
-  return decls.length > 0 ? ` style="${decls}"` : ''
 }
 
 /**
@@ -75,15 +51,6 @@ function resolvedCssRecord(
   if (src.maxWidth != null) rec.maxWidth = src.maxWidth
   if (src.opacity != null) rec.opacity = String(src.opacity)
   return rec
-}
-
-function padStr(
-  pad: number | [number, number] | [number, number, number, number] | undefined,
-): string | undefined {
-  if (pad == null) return undefined
-  if (typeof pad === 'number') return `${pad}px`
-  if (pad.length === 2) return `${pad[0]}px ${pad[1]}px`
-  return `${pad[0]}px ${pad[1]}px ${pad[2]}px ${pad[3]}px`
 }
 
 function renderChild(child: DocChild, opts?: RenderOptions): string {
@@ -154,8 +121,7 @@ function renderNode(node: DocNode, opts?: RenderOptions): string {
       return `<div${styleStr({ flex: p.width ? undefined : '1', width: p.width as string | undefined, textAlign: p.align as string | undefined, ...rs })}>${renderChildren(node.children, opts)}</div>`
 
     case 'heading': {
-      const level = (p.level as number) ?? 1
-      const tag = `h${Math.min(Math.max(level, 1), 6)}`
+      const tag = headingTag(p.level)
       return `<${tag}${styleStr({ color: sanitizeColor(p.color as string | undefined), textAlign: p.align as string | undefined, ...rs })}>${renderChildren(node.children, opts)}</${tag}>`
     }
 
@@ -185,7 +151,13 @@ function renderNode(node: DocNode, opts?: RenderOptions): string {
       // Always emit `alt` (default "") — an <img> with no alt attribute is
       // WCAG-nonconformant (screen readers fall back to the filename); alt=""
       // correctly marks a decorative image. Matches the email renderer.
-      const img = `<img src="${escapeHtml(sanitizeImageSrc(p.src as string))}"${p.width ? ` width="${p.width}"` : ''}${p.height ? ` height="${p.height}"` : ''} alt="${escapeHtml((p.alt as string) ?? '')}"${alignStyle ? ` style="${sanitizeStyle(alignStyle)}"` : ''} />`
+      // `width`/`height` are typed `number` but arrive from an untyped
+      // document tree, and landed in an ATTRIBUTE raw — `width: '1" onerror=…'`
+      // closed it. A finite number cannot carry a quote; a non-finite value
+      // emits no attribute at all.
+      const w = sanitizeNumber(p.width)
+      const h = sanitizeNumber(p.height)
+      const img = `<img src="${escapeHtml(sanitizeImageSrc(p.src as string))}"${w != null ? ` width="${w}"` : ''}${h != null ? ` height="${h}"` : ''} alt="${escapeHtml((p.alt as string) ?? '')}"${alignStyle ? ` style="${alignStyle}"` : ''} />`
       if (p.caption) {
         return `<figure${p.align === 'center' ? ' style="text-align:center"' : ''}>${img}<figcaption>${escapeHtml(p.caption as string)}</figcaption></figure>`
       }
@@ -213,10 +185,12 @@ function renderNode(node: DocNode, opts?: RenderOptions): string {
         const bgStyle = hs?.background ? `background:${sanitizeColor(hs.background)};` : ''
         const colorStyle = hs?.color ? `color:${sanitizeColor(hs.color)};` : ''
         const fontStyle = hs?.bold !== false ? 'font-weight:bold;' : ''
-        const alignStyle = col.align ? `text-align:${col.align};` : ''
-        const widthStyle = col.width
-          ? `width:${typeof col.width === 'number' ? `${col.width}px` : col.width};`
-          : ''
+        // Both `align` and `width` are document-author controlled and land in
+        // a `style` attribute. #3435 guarded `width` alone; `align` broke out
+        // identically one line up (`text-align:left;" onmouseover="…`). Route
+        // BOTH through the funnel rather than guarding them one at a time.
+        const alignStyle = cssDecl('text-align', col.align)
+        const widthStyle = cssDecl('width', col.width)
         html += `<th style="${cellBorder}${bgStyle}${colorStyle}${fontStyle}${alignStyle}${widthStyle}padding:8px">${escapeHtml(col.header)}</th>`
       }
       html += '</tr></thead>'
@@ -228,7 +202,7 @@ function renderNode(node: DocNode, opts?: RenderOptions): string {
         for (let j = 0; j < columns.length; j++) {
           const cellBorder = bordered ? 'border:1px solid #ddd;' : ''
           const col = columns[j]
-          const alignStyle = col?.align ? `text-align:${col.align};` : ''
+          const alignStyle = cssDecl('text-align', col?.align)
           html += `<td style="${cellBorder}${alignStyle}padding:8px">${escapeHtml(String(rows[i]?.[j] ?? ''))}</td>`
         }
         html += '</tr>'
@@ -257,7 +231,7 @@ function renderNode(node: DocNode, opts?: RenderOptions): string {
 
     case 'divider': {
       const color = sanitizeColor((p.color as string) ?? '#ddd')
-      const thickness = (p.thickness as number) ?? 1
+      const thickness = sanitizeNumber(p.thickness, 1)
       const extra = styleDecls(rs)
       return `<hr style="border:none;border-top:${thickness}px solid ${color};margin:16px 0${extra ? `;${extra}` : ''}" />`
     }
@@ -266,16 +240,16 @@ function renderNode(node: DocNode, opts?: RenderOptions): string {
       return '<div style="page-break-after:always;break-after:page"></div>'
 
     case 'spacer':
-      return `<div style="height:${p.height}px"></div>`
+      return `<div style="height:${sanitizeNumber(p.height, 0)}px"></div>`
 
     case 'button': {
       const bg = sanitizeColor((p.background as string) ?? '#4f46e5')
       const color = sanitizeColor((p.color as string) ?? '#fff')
-      const radius = (p.borderRadius as number) ?? 4
-      const pad = padStr((p.padding ?? [12, 24]) as [number, number])
-      const align = (p.align as string) ?? 'left'
+      const radius = sanitizeNumber(p.borderRadius, 4)
+      const pad = padStr((p.padding ?? [12, 24]) as [number, number]) ?? '12px 24px'
+      const align = styleStr({ textAlign: (p.align as string) ?? 'left' })
       const extra = styleDecls(rs)
-      return `<div style="text-align:${align}"><a href="${escapeHtml(sanitizeHref(p.href as string))}" style="display:inline-block;background:${bg};color:${color};padding:${pad};border-radius:${radius}px;text-decoration:none;font-weight:bold${extra ? `;${extra}` : ''}">${renderChildren(node.children, opts)}</a></div>`
+      return `<div${align}><a href="${escapeHtml(sanitizeHref(p.href as string))}" style="display:inline-block;background:${bg};color:${color};padding:${pad};border-radius:${radius}px;text-decoration:none;font-weight:bold${extra ? `;${extra}` : ''}">${renderChildren(node.children, opts)}</a></div>`
     }
 
     case 'quote': {

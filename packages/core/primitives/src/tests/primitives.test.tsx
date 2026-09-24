@@ -293,6 +293,21 @@ describe('<Audio> happy-dom unit', () => {
     unmount()
   })
 
+  it('reports each playback status through onStatusChange', () => {
+    // The three media events the native runtimes also surface. Each handler is
+    // built by the same `notify` factory, so an unfired one is an untested
+    // status rather than dead code.
+    const seen: string[] = []
+    const { container, unmount } = mountTest(
+      h(Audio, { src: '/ping.mp3', onStatusChange: (s: string) => seen.push(s) }),
+    )
+    const el = container.firstElementChild as HTMLAudioElement
+    for (const type of ['playing', 'pause', 'waiting']) el.dispatchEvent(new Event(type))
+    expect(seen).toEqual(['playing', 'paused', 'waiting'])
+    unmount()
+  })
+
+
   it('a BARE src name resolves to the bundled asset path', () => {
     const { container, unmount } = mountTest(h(Audio, { src: 'ping.mp3' }))
     expect((container.firstElementChild as HTMLAudioElement).getAttribute('src')).toBe(

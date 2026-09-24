@@ -67,6 +67,38 @@ describe('inline style → native modifiers (emit)', () => {
     )
   })
 
+  it('an UNRESOLVABLE typography value is dropped WITH a warning, not silently', () => {
+    // `color`/`fontWeight`/`textAlign` each resolve through a lookup table or
+    // color parser. A value that table has no entry for (a CSS-wide keyword,
+    // an unmapped weight name, 'justify') used to be accepted into `typo`
+    // regardless, and the consuming modifier emitter found no match and wrote
+    // NOTHING — the property vanished from BOTH the output and the warnings.
+    // It now falls back to the same generic style-property path any other
+    // unrecognized/unparseable CSS value takes.
+    const src = `<Text style={{ color: 'rebeccapurple', fontWeight: 'ultralight', textAlign: 'justify' }}>Hi</Text>`
+    const { code, warnings } = swift(src)
+    expect(code).not.toMatch(/foregroundColor|multilineTextAlignment/)
+    const joined = warnings.join('\n')
+    expect(joined).toContain('color')
+    expect(joined).toMatch(/fontWeight/)
+    expect(joined).toMatch(/textAlign/)
+
+    const k = kotlin(src)
+    expect(k.code).not.toMatch(/fontWeight = |textAlign = /)
+    expect(k.warnings.join('\n')).toMatch(/fontWeight/)
+  })
+
+  it('a RESOLVABLE typography value still lowers normally (the control)', () => {
+    expect(
+      swift(`<Text style={{ color: '#ff0000', fontWeight: 'bold', textAlign: 'center' }}>Hi</Text>`)
+        .code,
+    ).toMatch(/foregroundColor.*multilineTextAlignment\(\.center\)|foregroundColor/)
+    expect(
+      kotlin(`<Text style={{ color: '#ff0000', fontWeight: 'bold', textAlign: 'center' }}>Hi</Text>`)
+        .code,
+    ).toContain('fontWeight = FontWeight.Bold')
+  })
+
   it('collapses a horizontal-only padding to the axis form', () => {
     expect(swift(`<Stack style={{ paddingX: 12 }}><Text>x</Text></Stack>`).code).toContain(
       '.padding(.horizontal, 12)',
@@ -367,6 +399,19 @@ describe('inline style — sizing constraints (emit)', () => {
     )
     expect(kotlin(`<Stack style={{ aspectRatio: '16 / 9' }}><Text>x</Text></Stack>`).code).toContain(
       '.aspectRatio(1.7778f)',
+    )
+  })
+
+  it('drops a degenerate `W / H` ratio (zero or negative width) instead of emitting a 0 aspectRatio', () => {
+    // parseAspectRatio's slash form only checked h > 0, so '0 / 9' produced a
+    // real (degenerate) 0 ratio -- both aspectRatio(0, ...) and aspectRatio(0f)
+    // collapse the view. The plain-number and bare-string forms already
+    // guard `> 0`; the slash form must too.
+    expect(swift(`<Stack style={{ aspectRatio: '0 / 9' }}><Text>x</Text></Stack>`).code).not.toContain(
+      '.aspectRatio(',
+    )
+    expect(kotlin(`<Stack style={{ aspectRatio: '0 / 9' }}><Text>x</Text></Stack>`).code).not.toContain(
+      '.aspectRatio(',
     )
   })
 

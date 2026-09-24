@@ -34,21 +34,39 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.graphics.toPixelMap
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.withKeyDown
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.pinch
+import androidx.compose.ui.unit.dp
+import android.app.UiModeManager
+import androidx.compose.ui.input.key.Key
 import android.content.Context
+import android.content.pm.ActivityInfo
+import android.os.Build
 import android.location.Location
 import android.location.LocationManager
 import android.location.provider.ProviderProperties
@@ -64,6 +82,315 @@ import org.junit.runner.RunWith
 class CounterInstrumentedTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
+
+    @Test
+    fun directNativeFlowRendersNodes() {
+        composeRule.onNodeWithText("Native Flow Start").assertIsDisplayed()
+        composeRule.onNodeWithText("Native Flow End").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Native Flow device proof").assertExists()
+        // Every node owns a toolbar, so this label is intentionally repeated.
+        // Assert that at least the first toolbar is rendered instead of using
+        // the single-node matcher, which rejects the valid two-node result.
+        composeRule.onAllNodesWithText("Native flow tools")[0].assertIsDisplayed()
+        composeRule.onAllNodesWithContentDescription("source handle out").assertCountEquals(2)
+        composeRule.onAllNodesWithContentDescription("target handle in").assertCountEquals(2)
+
+        composeRule.onNodeWithTag("native-flow-selected-node-count").assertTextEquals("0")
+        val keyboardNode = composeRule.onNodeWithContentDescription("Native Flow Start")
+        keyboardNode.performClick()
+        // The node also handles double-tap, so its single tap resolves only after
+        // the double-tap timeout — wait for the selection instead of reading it
+        // the instant the click returns.
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-selected-node-count").fetchSemanticsNode().config[SemanticsProperties.Text].first().text == "1"
+        }
+        composeRule.onNodeWithTag("native-flow-selected-node-count").assertTextEquals("1")
+        val positionBeforeKey = composeRule.onNodeWithTag("native-flow-start-position").fetchSemanticsNode().config[SemanticsProperties.Text].first().text
+        keyboardNode.performSemanticsAction(SemanticsActions.RequestFocus)
+        keyboardNode.performKeyInput {
+            keyDown(Key.DirectionRight)
+            keyUp(Key.DirectionRight)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-start-position").fetchSemanticsNode().config[SemanticsProperties.Text].first().text != positionBeforeKey
+        }
+        // F4 focus/action matrix, node row: Escape clears the selection and
+        // Enter re-selects the FOCUSED node, as on the web.
+        keyboardNode.performKeyInput {
+            keyDown(Key.Escape)
+            keyUp(Key.Escape)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-selected-node-count").fetchSemanticsNode().config[SemanticsProperties.Text].first().text == "0"
+        }
+        keyboardNode.performKeyInput {
+            keyDown(Key.Enter)
+            keyUp(Key.Enter)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-selected-node-count").fetchSemanticsNode().config[SemanticsProperties.Text].first().text == "1"
+        }
+        // Canvas row: Ctrl+A selects every node, Delete removes them with
+        // their connected edge, and Ctrl+Z restores the graph, as on the web.
+        fun textOfTag(tag: String) = composeRule.onNodeWithTag(tag).fetchSemanticsNode().config[SemanticsProperties.Text].first().text
+        keyboardNode.performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.A) } }
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-selected-node-count") == "2" }
+        keyboardNode.performKeyInput { pressKey(Key.Delete) }
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-edge-count") == "0" }
+        composeRule.onNodeWithContentDescription("Native Flow device proof").performSemanticsAction(SemanticsActions.RequestFocus)
+        composeRule.onNodeWithContentDescription("Native Flow device proof").performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.Z) } }
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-edge-count") == "1" }
+        composeRule.onNodeWithTag("native-flow-clear-selection").performClick()
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-selected-node-count") == "0" }
+        keyboardNode.performClick()
+        composeRule.waitUntil(5_000) { textOfTag("native-flow-selected-node-count") == "1" }
+
+        composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("0")
+        val keyboardEdge = composeRule.onNodeWithContentDescription("Native flow edge")
+        keyboardEdge.performClick()
+        composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("1")
+        composeRule.onNodeWithTag("native-flow-clear-selection").performClick()
+        composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("0")
+        // F4 edge hardware focus: the label takes keyboard focus like the web's
+        // edge path, and Enter selects the FOCUSED edge. Before, the label had
+        // no focus action at all and was reachable by TalkBack only.
+        keyboardEdge.performSemanticsAction(SemanticsActions.RequestFocus)
+        keyboardEdge.performKeyInput {
+            keyDown(Key.Enter)
+            keyUp(Key.Enter)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-selected-edge-count").fetchSemanticsNode().config[SemanticsProperties.Text].first().text == "1"
+        }
+        composeRule.onNodeWithTag("native-flow-clear-selection").performClick()
+        composeRule.onNodeWithTag("native-flow-selected-edge-count").assertTextEquals("0")
+        composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
+        // Connect end -> start before exposing the selected seed edge's
+        // endpoint controls for the independent reconnect gesture below.
+        val source = composeRule.onAllNodesWithContentDescription("source handle out")[1]
+        val sourceBounds = source.getBoundsInRoot()
+        check(sourceBounds.right - sourceBounds.left >= 47.dp) { "source handle touch target is below the native minimum" }
+        val targetCenter = composeRule.onAllNodesWithContentDescription("target handle in")[0].fetchSemanticsNode().boundsInRoot.center
+        val sourceCenter = source.fetchSemanticsNode().boundsInRoot.center
+        source.performTouchInput {
+            down(center)
+            moveBy((targetCenter - sourceCenter) * 0.4f)
+            moveBy((targetCenter - sourceCenter) * 0.4f)
+            moveBy((targetCenter - sourceCenter) * 0.2f)
+            up()
+        }
+        composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("2")
+
+        composeRule.onNodeWithTag("native-flow-start-size").assertTextEquals("150,60")
+        val resize = composeRule.onNodeWithContentDescription("Resize se for node native-start")
+        val resizeBounds = resize.getBoundsInRoot()
+        check(resizeBounds.right - resizeBounds.left >= 47.dp) { "resizer touch target is below the native minimum" }
+        resize.performTouchInput {
+            down(center)
+            moveBy(androidx.compose.ui.geometry.Offset(24f, 18f))
+            moveBy(androidx.compose.ui.geometry.Offset(40f, 30f))
+            up()
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-start-size").fetchSemanticsNode().config[SemanticsProperties.Text].first().text != "150,60"
+        }
+
+        composeRule.onNodeWithTag("native-flow-edge-target").assertTextEquals("native-end")
+        composeRule.onNodeWithTag("native-flow-prepare-reconnect").performClick()
+        composeRule.onNodeWithText("Native Flow Third").assertIsDisplayed()
+        val reconnect = composeRule.onNodeWithContentDescription("Reconnect target of edge native-edge")
+        val reconnectBounds = reconnect.getBoundsInRoot()
+        check(reconnectBounds.right - reconnectBounds.left >= 47.dp) { "reconnect touch target is below the native minimum" }
+        val thirdTargetCenter = composeRule.onAllNodesWithContentDescription("target handle in")[2].fetchSemanticsNode().boundsInRoot.center
+        val reconnectCenter = reconnect.fetchSemanticsNode().boundsInRoot.center
+        reconnect.performTouchInput {
+            down(center)
+            moveBy((thirdTargetCenter - reconnectCenter) * 0.4f)
+            moveBy((thirdTargetCenter - reconnectCenter) * 0.4f)
+            moveBy((thirdTargetCenter - reconnectCenter) * 0.2f)
+            up()
+        }
+        composeRule.onNodeWithTag("native-flow-edge-target").assertTextEquals("native-third")
+
+        val canvas = composeRule.onNodeWithContentDescription("Native Flow device proof")
+        val xBeforePan = composeRule.onNodeWithTag("native-flow-viewport-x").fetchSemanticsNode().config[SemanticsProperties.Text].first().text
+        canvas.performTouchInput {
+            down(androidx.compose.ui.geometry.Offset(center.x, 10f))
+            moveBy(androidx.compose.ui.geometry.Offset(24f, 0f))
+            moveBy(androidx.compose.ui.geometry.Offset(40f, 0f))
+            up()
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-viewport-x").fetchSemanticsNode().config[SemanticsProperties.Text].first().text != xBeforePan
+        }
+
+        val zoomBeforePinch = composeRule.onNodeWithTag("native-flow-zoom-percent").fetchSemanticsNode().config[SemanticsProperties.Text].first().text
+        canvas.performTouchInput {
+            pinch(
+                start0 = center + androidx.compose.ui.geometry.Offset(-30f, 0f),
+                start1 = center + androidx.compose.ui.geometry.Offset(30f, 0f),
+                end0 = center + androidx.compose.ui.geometry.Offset(-70f, 0f),
+                end1 = center + androidx.compose.ui.geometry.Offset(70f, 0f),
+                durationMillis = 500,
+            )
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onNodeWithTag("native-flow-zoom-percent").fetchSemanticsNode().config[SemanticsProperties.Text].first().text != zoomBeforePinch
+        }
+    }
+
+    /// F3 renderer parity, kept apart from the gesture test above: every check
+    /// here reads something the RENDERER painted or placed, not the engine.
+    // Flow animation frames (animateViewport / fitView / animated layout) mutate
+    // the engine and call app listeners. They ran on a background Timer thread,
+    // so a listener that touched a View threw CalledFromWrongThreadException
+    // (seen in CI in this class). Rendering a flow view must switch them to the
+    // main looper, and every frame must then reach listeners there.
+    @Test
+    fun flowAnimationFramesRunOnTheMainThread() {
+        com.pyreon.runtime.PyreonFlowFrames.scheduler = com.pyreon.runtime.PyreonFlowFrames.timerScheduler
+        composeRule.activityRule.scenario.recreate()
+        composeRule.onNodeWithContentDescription("Native Flow device proof").assertExists()
+        check(com.pyreon.runtime.PyreonFlowFrames.scheduler !== com.pyreon.runtime.PyreonFlowFrames.timerScheduler) {
+            "rendering PyreonFlowView did not install the main-thread frame scheduler"
+        }
+        val onMain = java.util.concurrent.CopyOnWriteArrayList<Boolean>()
+        lateinit var state: com.pyreon.runtime.PyreonFlowState<String>
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            // Motion forced ON: with system animations off (CI emulators run
+            // with animator scale 0), the engine honours reduced motion and
+            // jumps to the end in ONE synchronous frame on this thread, which
+            // never touches the scheduler this test exists to check.
+            state = com.pyreon.runtime.PyreonFlowState(reducedMotion = false)
+            state.onViewportChange { onMain.add(android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) }
+            state.animateViewport(x = 100.0, duration = 120.0)
+        }
+        val deadline = SystemClock.uptimeMillis() + 5_000
+        while (SystemClock.uptimeMillis() < deadline && onMain.size < 3) SystemClock.sleep(20)
+        check(onMain.size >= 3) { "the viewport animation delivered only ${onMain.size} frames" }
+        check(onMain.all { it }) { "a viewport animation frame reached its listener OFF the main thread ($onMain)" }
+    }
+
+    @Test
+    fun flowRendererParityChrome() {
+        composeRule.onNodeWithText("Native Flow Start").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Native Flow device proof").assertExists()
+        composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
+        // F3 renderer parity — the chrome the flow audit listed as unproven on
+        // device. Every check reads something the RENDERER did, not the engine.
+        val flowCanvas = composeRule.onNodeWithContentDescription("Native Flow device proof")
+        val canvasBounds = flowCanvas.getBoundsInRoot()
+        // <Panel position="bottom-right"> lands in the canvas's bottom-right quadrant.
+        val panelBounds = composeRule.onNodeWithTag("native-flow-panel").assertIsDisplayed().getBoundsInRoot()
+        val panelCx = (panelBounds.left + panelBounds.right) / 2
+        val panelCy = (panelBounds.top + panelBounds.bottom) / 2
+        val canvasCx = (canvasBounds.left + canvasBounds.right) / 2
+        val canvasCy = (canvasBounds.top + canvasBounds.bottom) / 2
+        check(panelCx > canvasCx && panelCy > canvasCy) {
+            "bottom-right panel is not in the canvas's bottom-right quadrant ($panelBounds in $canvasBounds)"
+        }
+        fun canvasPixels(r: Int, g: Int, b: Int): Int {
+            composeRule.waitForIdle()
+            val map = flowCanvas.captureToImage().toPixelMap()
+            var n = 0
+            for (y in 0 until map.height) for (x in 0 until map.width) {
+                val c = map[x, y]
+                if (abs((c.red * 255).roundToInt() - r) <= 6 && abs((c.green * 255).roundToInt() - g) <= 6 && abs((c.blue * 255).roundToInt() - b) <= 6) n++
+            }
+            return n
+        }
+        // The seed edge's closed arrowhead is pure #ff0000, which nothing else on this screen paints.
+        check(canvasPixels(255, 0, 0) > 0) { "the edge's red markerEnd arrowhead did not paint on the native canvas" }
+        // colorMode is reactive: the web's dark canvas colour (#0b1220) paints only while dark.
+        composeRule.onNodeWithTag("native-flow-color-mode").assertTextEquals("light")
+        check(canvasPixels(11, 18, 32) == 0) { "the dark canvas colour painted while colorMode is light" }
+        composeRule.onNodeWithTag("native-flow-toggle-dark").performScrollTo().performClick()
+        composeRule.onNodeWithTag("native-flow-color-mode").assertTextEquals("dark")
+        flowCanvas.performScrollTo()
+        check(canvasPixels(11, 18, 32) > 1000) { "colorMode=\"dark\" did not paint the web's dark canvas colour" }
+        composeRule.onNodeWithTag("native-flow-toggle-dark").performScrollTo().performClick()
+        composeRule.onNodeWithTag("native-flow-color-mode").assertTextEquals("light")
+        flowCanvas.performScrollTo()
+        check(canvasPixels(11, 18, 32) == 0) { "the dark canvas colour outlived colorMode=\"dark\"" }
+        // colorMode="system" follows the DEVICE appearance, switched here through
+        // the per-app night mode (a uiMode configuration change the activity
+        // handles in place, so the app's own state survives the switch).
+        val uiModes = InstrumentationRegistry.getInstrumentation().targetContext
+            .getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+        try {
+            uiModes.setApplicationNightMode(UiModeManager.MODE_NIGHT_NO)
+            composeRule.onNodeWithTag("native-flow-toggle-system").performScrollTo().performClick()
+            composeRule.onNodeWithTag("native-flow-color-mode").assertTextEquals("system")
+            flowCanvas.performScrollTo()
+            check(canvasPixels(11, 18, 32) == 0) { "colorMode=\"system\" painted dark on a light device" }
+            uiModes.setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)
+            composeRule.onNodeWithTag("native-flow-color-mode").assertTextEquals("system")
+            flowCanvas.performScrollTo()
+            check(canvasPixels(11, 18, 32) > 1000) { "colorMode=\"system\" did not follow the device into dark" }
+            uiModes.setApplicationNightMode(UiModeManager.MODE_NIGHT_NO)
+            flowCanvas.performScrollTo()
+            check(canvasPixels(11, 18, 32) == 0) { "colorMode=\"system\" stayed dark after the device went light" }
+            composeRule.onNodeWithTag("native-flow-toggle-system").performScrollTo().performClick()
+            composeRule.onNodeWithTag("native-flow-color-mode").assertTextEquals("light")
+            // The toggle sits at the bottom of the page: bring the canvas back
+            // before the drag checks below, or their touches land off-screen.
+            flowCanvas.performScrollTo()
+        } finally {
+            uiModes.setApplicationNightMode(UiModeManager.MODE_NIGHT_AUTO)
+        }
+
+        composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
+        val startNode = composeRule.onNodeWithContentDescription("Native Flow Start")
+        val source = composeRule.onAllNodesWithContentDescription("source handle out")[1]
+        val sourceCenter = source.fetchSemanticsNode().boundsInRoot.center
+        check(startNode.fetchSemanticsNode().boundsInRoot.left >= 0f) { "start node off root" }
+        // connectionLine={NativeConnectionLine} renders ONLY mid-drag: the
+        // gesture is split across two performTouchInput calls so the identifier
+        // can be asserted between `down` and `up`; the release lands on empty
+        // canvas, so nothing connects and the seed edge count stays 1.
+        composeRule.onAllNodesWithTag("native-flow-custom-line").assertCountEquals(0)
+        composeRule.onNodeWithTag("native-flow-custom-line-mounts").assertTextEquals("0")
+        // Mostly sideways, ending just below the End node: a vertical drag is a
+        // page scroll on both platforms before any handle sees it. The hold must
+        // stay clear of the canvas's 40dp auto-pan band: held inside it, the
+        // graph pans every frame (as on the web) and Compose never idles, so the
+        // mid-drag assertion times out. It used to hold 39.3dp from the bottom.
+        val holdDown = run {
+            val canvas = flowCanvas.fetchSemanticsNode().boundsInRoot
+            val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+            minOf(120f, canvas.bottom - 60f * density - sourceCenter.y)
+        }
+        source.performTouchInput {
+            down(center)
+            moveBy(androidx.compose.ui.geometry.Offset(-40f, holdDown / 2f))
+            moveBy(androidx.compose.ui.geometry.Offset(-40f, holdDown / 2f))
+        }
+        composeRule.onNodeWithTag("native-flow-custom-line").assertExists()
+        source.performTouchInput { up() }
+        composeRule.onAllNodesWithTag("native-flow-custom-line").assertCountEquals(0)
+        // The same mount probe iOS relies on (XCUITest cannot look mid-drag).
+        composeRule.onNodeWithTag("native-flow-custom-line-mounts").assertTextEquals("1")
+        composeRule.onNodeWithTag("native-flow-edge-count").assertTextEquals("1")
+        // Reduced motion, the web's `config.reducedMotion` contract: while ON a
+        // 3s viewport animation lands at once; flipped OFF through `config`, the
+        // same call takes its 3s — so "instant" cannot be mistaken for
+        // "animation unsupported". Measured by ELAPSED time: a semantics read
+        // waits for composition idle, and a running 16ms animation timer keeps
+        // it busy until the last frame, so a mid-flight value cannot be read here
+        // (iOS reads one; XCUITest does not idle-wait).
+        fun zoomText() = composeRule.onNodeWithTag("native-flow-zoom-percent").fetchSemanticsNode().config[SemanticsProperties.Text].first().text
+        val instantStart = SystemClock.uptimeMillis()
+        composeRule.onNodeWithTag("native-flow-animate-zoom").performScrollTo().performClick()
+        composeRule.waitUntil(6_000) { zoomText() == "50" }
+        val instantElapsed = SystemClock.uptimeMillis() - instantStart
+        check(instantElapsed < 1_500) { "reducedMotion: true did not make the 3s zoom animation land instantly (took ${instantElapsed}ms)" }
+        composeRule.onNodeWithTag("native-flow-allow-motion").performScrollTo().performClick()
+        val animatedStart = SystemClock.uptimeMillis()
+        composeRule.onNodeWithTag("native-flow-animate-zoom-back").performScrollTo().performClick()
+        composeRule.waitUntil(8_000) { zoomText() == "100" }
+        val animatedElapsed = SystemClock.uptimeMillis() - animatedStart
+        check(animatedElapsed >= 2_000) { "with reduced motion off the 3s zoom animation landed in ${animatedElapsed}ms" }
+    }
 
     @Test
     fun appLaunchesAndIncrementsCounter() {
@@ -85,6 +412,38 @@ class CounterInstrumentedTest {
         composeRule
             .onNodeWithText("Count: 1")
             .assertIsDisplayed()
+    }
+
+    // Rotation and a dark-mode switch are CONFIGURATION changes. Without
+    // `android:configChanges` on MainActivity, Android destroys and recreates
+    // the activity for each one, and every compiler-emitted
+    // `remember { mutableStateOf(...) }` starts over: the count goes back to
+    // 0, a half-typed form empties, a flow graph resets. The manifest now
+    // declares the changes it handles, so Compose recomposes in place.
+    @Test
+    fun stateSurvivesRotationAndThemeSwitch() {
+        composeRule.onNodeWithText("Increment").performClick()
+        composeRule.onNodeWithText("Increment").performClick()
+        composeRule.onNodeWithText("Count: 2").assertIsDisplayed()
+        val before = composeRule.activity
+        val uiModes = InstrumentationRegistry.getInstrumentation().targetContext
+            .getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+        try {
+            composeRule.runOnUiThread { before.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+            composeRule.waitForIdle()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                uiModes.setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)
+                composeRule.waitForIdle()
+            }
+            // Give a recreation, if one were coming, time to land.
+            SystemClock.sleep(1_500)
+            composeRule.waitForIdle()
+            check(composeRule.activity === before) { "the activity was recreated by a configuration change" }
+            composeRule.onNodeWithText("Count: 2").assertExists()
+        } finally {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) uiModes.setApplicationNightMode(UiModeManager.MODE_NIGHT_AUTO)
+            composeRule.runOnUiThread { composeRule.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+        }
     }
 
     // M2.3 — GESTURE (long-press) asserted on device. The shared
@@ -161,10 +520,10 @@ class CounterInstrumentedTest {
             .text
         val before = label.removePrefix("Notes: ").trim().toInt()
 
-        composeRule.onNodeWithText("Save Note").performClick()
+        composeRule.onNodeWithText("Save Note").performScrollTo().performClick()
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("Notes: ${before + 1}").assertIsDisplayed()
+        composeRule.onNodeWithText("Notes: ${before + 1}").performScrollTo().assertIsDisplayed()
     }
 
     // useDatabase — the record is on the DEVICE'S DISK, not in a cache.
@@ -200,9 +559,9 @@ class CounterInstrumentedTest {
             .trim()
             .toInt()
 
-        composeRule.onNodeWithText("Save Note").performClick()
+        composeRule.onNodeWithText("Save Note").performScrollTo().performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Notes: ${before + 1}").assertIsDisplayed()
+        composeRule.onNodeWithText("Notes: ${before + 1}").performScrollTo().assertIsDisplayed()
 
         // A cold reader over the same app-private directory. The context comes
         // from the rule's own activity rather than InstrumentationRegistry:
@@ -403,9 +762,9 @@ class CounterInstrumentedTest {
     // becomes "Power: on" (a dropped/broken machine would stay "off").
     @Test
     fun stateMachineTransitionsOnTap() {
-        composeRule.onNodeWithText("Power: off").assertIsDisplayed()
-        composeRule.onNodeWithText("Toggle Power").performClick()
-        composeRule.onNodeWithText("Power: on").assertIsDisplayed()
+        composeRule.onNodeWithText("Power: off").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Toggle Power").performScrollTo().performClick()
+        composeRule.onNodeWithText("Power: on").performScrollTo().assertIsDisplayed()
     }
 
     // M2.7 — ANIMATIONS (<Transition show>) asserted in the REAL Compose
@@ -421,13 +780,13 @@ class CounterInstrumentedTest {
     // (AnimatedVisibility exit → removed); a second click brings it back.
     @Test
     fun transitionAnimatesShowHide() {
-        composeRule.onNodeWithText("Animated Box").assertIsDisplayed()
-        composeRule.onNodeWithText("Toggle Box").performClick()
+        composeRule.onNodeWithText("Animated Box").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Toggle Box").performScrollTo().performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Animated Box").assertDoesNotExist()
-        composeRule.onNodeWithText("Toggle Box").performClick()
+        composeRule.onNodeWithText("Toggle Box").performScrollTo().performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Animated Box").assertIsDisplayed()
+        composeRule.onNodeWithText("Animated Box").performScrollTo().assertIsDisplayed()
     }
 
     // M4.5 — the ASYNC-AWAIT LOWERING asserted in the REAL Compose semantics
@@ -473,9 +832,9 @@ class CounterInstrumentedTest {
     // iOS = full behavioural round trip; Android = registration + render.
     @Test
     fun imagePickerLauncherRegistersOnDevice() {
-        composeRule.onNodeWithText("Photo: idle").assertIsDisplayed()
+        composeRule.onNodeWithText("Photo: idle").performScrollTo().assertIsDisplayed()
         // The trigger exists and is reachable — the button the launcher backs.
-        composeRule.onNodeWithText("Pick Photo").assertIsDisplayed()
+        composeRule.onNodeWithText("Pick Photo").performScrollTo().assertIsDisplayed()
     }
 
     // M3.8 — the file picker's composable-scope OpenDocument launcher registers
@@ -495,9 +854,9 @@ class CounterInstrumentedTest {
     // (`test_filePickerPresentsAndCancelFlowsBackOnDevice`).
     @Test
     fun filePickerLauncherRegistersOnDevice() {
-        composeRule.onNodeWithText("File: idle").assertIsDisplayed()
+        composeRule.onNodeWithText("File: idle").performScrollTo().assertIsDisplayed()
         // The trigger exists and is reachable — the button the launcher backs.
-        composeRule.onNodeWithText("Pick File").assertIsDisplayed()
+        composeRule.onNodeWithText("Pick File").performScrollTo().assertIsDisplayed()
     }
 
     // Core-UI row closure, ANDROID halves — the iOS device assertions for
@@ -584,12 +943,12 @@ class CounterInstrumentedTest {
 
     @Test
     fun biometricAsyncGateRunsOnDevice() {
-        composeRule.onNodeWithText("Lock: idle").assertIsDisplayed()
-        composeRule.onNodeWithText("Unlock").performClick()
+        composeRule.onNodeWithText("Lock: idle").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Unlock").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithText("Lock: denied").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText("Lock: denied").assertIsDisplayed()
+        composeRule.onNodeWithText("Lock: denied").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Lock: idle").assertDoesNotExist()
     }
 

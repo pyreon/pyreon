@@ -767,6 +767,25 @@ describe('applyProp — boolean ARIA state attributes render as strings', () => 
 // `renderEffect` so the attribute tracks the signal — a plain value read would
 // fire the getter once and freeze the value (the descriptor-copy footgun class).
 describe('applyProps — reactive getter-descriptor props', () => {
+  it('resolves an ACCESSOR returned by a getter instead of stringifying it', () => {
+    // The shape a primitive's helper object takes once spread through a
+    // rocketstyle element: `{ tabIndex: () => 0 | -1 }` behind a descriptor
+    // getter. Pre-fix the closure reached `applyStaticProp` and the element's
+    // tabIndex became the SOURCE TEXT (coerced), with a console warning.
+    const roving = signal(0)
+    const props = Object.defineProperty({}, 'tabIndex', {
+      enumerable: true,
+      configurable: true,
+      get: () => () => roving(),
+    })
+    const el = document.createElement('button')
+    const cleanup = applyProps(el, props)
+    expect(el.tabIndex).toBe(0)
+    roving.set(-1)
+    expect(el.tabIndex).toBe(-1)
+    cleanup?.()
+  })
+
   it('binds a getter-shaped prop reactively (updates on signal change)', () => {
     const title = signal('a')
     const el = document.createElement('div')

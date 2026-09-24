@@ -20,15 +20,13 @@ name: Native Compiler Validation
 #     deadlock-free (the trigger-level `paths:` filter would instead
 #     leave non-matching PRs stuck on an "expected" check forever).
 #
-#     History: an earlier audit note (2026-06, CRIT-1) claimed
-#     path-filtering left a hole because "packages/core/compiler/
-#     cascades through PMTC" — that premise doesn't survive the
-#     dependency graph: `@pyreon/native-compiler` imports ONLY
-#     `oxc-parser` (verified: zero `@pyreon/*` runtime imports in its
-#     src). The decide filter above IS the cascade surface; a
-#     core-compiler change cannot alter the native emit. Before that
-#     note, EVERY PR — docs-only included — paid the Swift+Kotlin
-#     toolchain install + full fixture compile (~10-25 min ubuntu).
+#     The path classifier is NOT the whole cascade surface any more:
+#     `@pyreon/native-compiler` now has RUNTIME deps on `@pyreon/charts`
+#     and `@pyreon/compiler` (an earlier note here said it imported
+#     only `oxc-parser`; that stopped being true). So the decide job
+#     ALSO emits `graph` — the workspace dependency graph's verdict —
+#     and the Linux `validate` job runs on either. The macOS job and
+#     native-device.yml stay on the path classifier alone.
 #   - `workflow_dispatch` — manual run, useful for re-validating
 #     a specific commit without a fresh PR. Always runs (decide
 #     short-circuits to true for non-PR events).
@@ -75,7 +73,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-validate-${{ github.workflow }}-${{ github.ref }}
+  # The event name is part of the group: the nightly (UNCACHED, ~2h) and a
+  # push to main (cache-warming, the thing PRs inherit) both run on
+  # `refs/heads/main` and used to queue behind each other — a nightly in
+  # flight held every main push's verdict-cache save for its whole duration.
+  group: native-validate-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -93,6 +95,8 @@ jobs:
       pull-requests: read
     outputs:
       run: ${{ steps.diff.outputs.run }}
+      # `graph` gates ONLY the Linux `validate` job — see its `if:`.
+      graph: ${{ steps.diff.outputs.graph }}
     steps:
       # The classifier reads changed package.json manifests at the PR head, so
       # it needs the merge-ref checkout (default depth is enough).
@@ -110,6 +114,7 @@ jobs:
           set -euo pipefail
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "graph=true" >> "$GITHUB_OUTPUT"
             echo "non-PR event — always validate"
             exit 0
           fi
@@ -119,14 +124,38 @@ jobs:
           # and EVERY package.json as native surface — measured 2026-09-07 at ~2h of
           # runner time (50 min macOS swiftc + 50 min iOS + 30 min Android) per
           # affected PR, on 6 of the last 40 PRs.
-          gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[].filename' \
-            | bun scripts/native-surface-touched.ts --self=.github/workflows/native-validate.yml
+          FILES=$(mktemp)
+          gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[].filename' > "$FILES"
+          bun scripts/native-surface-touched.ts --self=.github/workflows/native-validate.yml < "$FILES"
+          # `graph` — the DEPENDENCY-GRAPH half. `@pyreon/native-compiler` has
+          # RUNTIME deps on `@pyreon/charts` and `@pyreon/compiler` (the chart
+          # engine sources are PMTC input), so a PR that touches neither
+          # packages/native/** nor a native example can still change what the
+          # suite emits. The path classifier above cannot see that; the
+          # workspace graph can. This is the SAME computation ci.yml's test
+          # matrix used to decide the native-compiler shards it no longer runs
+          # (this job is now the suite's only runner), so moving the suite here
+          # neither widened nor narrowed when it runs. Fail-closed: any
+          # affected.ts error or an unknowable diff reads as "run".
+          GRAPH=$(bun scripts/affected.ts --files-from-stdin --category=native/compiler < "$FILES") || GRAPH='--filter=*'
+          if [ -n "$GRAPH" ]; then
+            echo "graph=true" >> "$GITHUB_OUTPUT"
+            echo "native-compiler in the affected graph ($GRAPH) — the Linux suite runs"
+          else
+            echo "graph=false" >> "$GITHUB_OUTPUT"
+          fi
 
   validate:
     name: Validate emitted Swift + Kotlin
     needs: decide
     # Fail-closed: a decide that could not run must not SKIP the gate.
-    if: (success() && needs.decide.outputs.run == 'true') || (failure() && needs.decide.result != 'success')
+    #
+    # `run || graph`: this job is the ONLY runner of the `@pyreon/native-compiler`
+    # suite (ci.yml used to run it a second time as 16 shards whose verdict
+    # cache could never converge — see ci.yml's test-cell comment), so it
+    # must fire on every PR the dependency graph says can change the emit, not
+    # just on native-surface paths. The macOS job below keeps `run` alone.
+    if: (success() && (needs.decide.outputs.run == 'true' || needs.decide.outputs.graph == 'true')) || (failure() && needs.decide.result != 'success')
     runs-on: ubuntu-latest
     # Derived, not guessed (the ws-relay backstop rule). RE-DERIVED 2026-07-29
     # with the SAME formula, because the suite outgrew the previous budget —
@@ -296,7 +325,7 @@ jobs:
       - name: Restore native compile-verdict cache
         # Skipped on the nightly drift run — see the uncached env below.
         if: github.event_name != 'schedule'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/pyreon-native-validate
           key: native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
@@ -333,6 +362,30 @@ jobs:
         env:
           PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
           PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
+
+      # The ONLY place the Kotlin runtime packages' own tests run in CI.
+      # `@pyreon/native-{runtime,router}-kotlin` gate their `test` script on
+      # `command -v kotlinc`, which is the right default for a dev with no
+      # Android stack — and every CI runner that would reach them lacks it,
+      # except this one, which installs a pinned kotlinc two steps up.
+      #
+      # Same hole its Swift sibling had, found the same way: `native-runtime-swift`
+      # sat red on main because nothing ran it, and asking the question once
+      # showed four native packages in that state, not one. The Swift pair is
+      # covered on the iOS device job (macOS has swift); this covers the Kotlin
+      # pair here, where kotlinc already exists.
+      #
+      # ~23s for both. Placed before the heavier co-located gate below so a
+      # broken runtime fails early.
+      - name: Unit-test the Kotlin packages (PyreonRuntime, PyreonRouter)
+        # The probe is the gate: both scripts self-skip without kotlinc and exit
+        # 0, so without it this step reports green having run nothing.
+        run: |
+          command -v kotlinc >/dev/null 2>&1 || {
+            echo "::error::kotlinc is not on PATH; the native-*-kotlin suites would self-skip and this gate would be green-but-empty"
+            exit 1
+          }
+          bun run --filter='@pyreon/native-*-kotlin' test
 
       - name: Verify co-located native runtime sources
         # Each cross-platform package ships its native runtime beside its src/
@@ -480,6 +533,17 @@ jobs:
           grep -q 'Toggle("", isOn: Binding(' generated/TodoApp.swift
           echo "[ios-todomvc-smoke] ✓ TodoApp.tsx compiles to typecheck-clean SwiftUI (Phase 2 feature set verified)"
 
+      # Saved in its own `always()` step. The implicit post-save of `actions/cache`
+      # is skipped when `timeout-minutes` cancels the job, so the verdicts a run
+      # DID compute were lost and every retry started exactly as cold, timing out
+      # again: a PR with enough new native code could never go green.
+      - name: Save native compile-verdict cache
+        if: always() && github.event_name != 'schedule'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/pyreon-native-validate
+          key: native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
+
   validate-swift-typecheck:
     name: Validate emitted Swift (real-SDK typecheck, macOS)
     needs: decide
@@ -601,7 +665,7 @@ jobs:
       # never finish inside its cap on a busy day.
       - name: Restore native compile-verdict cache
         if: github.event_name != 'schedule'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/pyreon-native-validate
           key: native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
@@ -611,11 +675,22 @@ jobs:
       - name: Run native-compiler tests (real-SDK Swift -typecheck)
         # macos-15 ships the real SwiftUI SDK → isSwiftUIAvailable()=true → the
         # real-SDK `swiftc -typecheck` blocks run (they SKIP on ubuntu). Kotlin
-        # blocks skip (no kotlinc); the ubuntu `validate` job covers Kotlin.
+        # blocks are skipped explicitly: the ubuntu `validate` job owns them.
         env:
           PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
           PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
-        run: bun run --filter='@pyreon/native-compiler' test
+        # The macos-15 image now ships kotlinc, which silently turned on hundreds
+        # of cold JVM compiles here and pushed this job past its cap. A shim that
+        # exits 127 shadows it for THIS step only: the validator reads a non-zero
+        # probe as "absent", and the tool-probe cache is keyed on the resolved
+        # binary, so a stale "available" entry cannot answer for the shim. An env
+        # switch was tried first and leaked into the unit tests that fake kotlinc.
+        # The co-source step below still runs Kotlin on purpose.
+        run: |
+          mkdir -p "$RUNNER_TEMP/no-kotlinc"
+          printf '#!/bin/sh\nexit 127\n' > "$RUNNER_TEMP/no-kotlinc/kotlinc"
+          chmod +x "$RUNNER_TEMP/no-kotlinc/kotlinc"
+          PATH="$RUNNER_TEMP/no-kotlinc:$PATH" bun run --filter='@pyreon/native-compiler' test
 
       - name: Native coverage — COMPILE every registry snippet
         # The coverage gate normally judges a package by transform WARNINGS and
@@ -654,3 +729,11 @@ jobs:
         env:
           PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
           PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
+
+      # See the matching step in `validate`: a timed-out run must still save.
+      - name: Save native compile-verdict cache
+        if: always() && github.event_name != 'schedule'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/pyreon-native-validate
+          key: native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}

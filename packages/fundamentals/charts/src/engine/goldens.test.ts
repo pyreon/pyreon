@@ -18,6 +18,7 @@ import { chartToSvg } from './svg-chart'
 import { area, bars, line, points, stackedBars } from './marks'
 import {
   calendarToSvg, candlestickToSvg, funnelToSvg, ganttToSvg, gaugeToSvg, graphToSvg, heatmapToSvg, parallelToSvg,
+  chordToSvg,
   pieToSvg, polarToSvg, radarToSvg, riverToSvg, sankeyToSvg, sunburstToSvg, treeToSvg, treemapToSvg,
 } from './family-svg'
 import { boxplotToSvg } from './boxplot-svg'
@@ -65,6 +66,7 @@ const GOLDENS: Record<string, () => string> = {
   treemap: () => treemapToSvg({ data: TREE, ...SIZE }),
   sunburst: () => sunburstToSvg({ data: TREE, ...SIZE }),
   tree: () => treeToSvg({ data: TREE, ...SIZE }),
+  chord: () => chordToSvg({ nodes: [{ name: 'A' }, { name: 'B' }, { name: 'C' }], links: [{ source: 'A', target: 'B', value: 10 }, { source: 'B', target: 'C', value: 5 }, { source: 'C', target: 'A', value: 5 }], ...SIZE }),
   river: () => riverToSvg({ series: [{ name: 'a', values: [1, 3, 2, 4] }, { name: 'b', values: [2, 1, 3, 1] }], ...SIZE }),
   polar: () => polarToSvg({ axes: { categories: ['a', 'b', 'c'] }, series: [{ name: 'x', kind: 'bar', values: [1, 2, 3] }, { name: 'y', kind: 'line', values: [3, 1, 2] }], ...SIZE }),
   sankey: () => sankeyToSvg({ nodes: [{ name: 'a' }, { name: 'b' }, { name: 'c' }], links: [{ source: 'a', target: 'b', value: 5 }, { source: 'b', target: 'c', value: 3 }, { source: 'a', target: 'c', value: 2 }], ...SIZE }),

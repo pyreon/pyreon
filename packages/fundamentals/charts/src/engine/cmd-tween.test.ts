@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cmdsEqual, sameCmdShape, tweenCmds } from './cmd-tween'
+import { cmdsEqual, sameCmdShape, tweenCmds, universalTweenCmds } from './cmd-tween'
 import type { DrawCmd } from './types'
 
 const A: DrawCmd[] = [
@@ -16,6 +16,23 @@ const B: DrawCmd[] = [
 ]
 
 describe('tweenCmds — the draw-list update animation', () => {
+  it('morphs across command kinds and settles on the exact target', () => {
+    const from: DrawCmd[] = [{ kind: 'rect', rect: { x: 0, y: 10, w: 20, h: 30 }, fill: '#111111' }]
+    const to: DrawCmd[] = [{ kind: 'circle', center: { x: 100, y: 80 }, radius: 12, fill: '#222222' }]
+    expect(universalTweenCmds(from, to, 0.5)).toEqual([
+      { kind: 'circle', center: { x: 55, y: 52.5 }, radius: 13.5, fill: '#222222' },
+    ])
+    expect(universalTweenCmds(from, to, 1)).toBe(to)
+  })
+
+  it('grows inserted commands and collapses removed commands', () => {
+    const a: DrawCmd = { kind: 'circle', center: { x: 10, y: 10 }, radius: 8, fill: '#111111' }
+    const b: DrawCmd = { kind: 'circle', center: { x: 30, y: 30 }, radius: 6, fill: '#222222' }
+    expect(universalTweenCmds([], [b], 0)[0]).toMatchObject({ center: { x: 30, y: 30 }, radius: 0 })
+    const removed = universalTweenCmds([a, b], [b], 0.5)
+    expect(removed).toHaveLength(2)
+    expect(removed[1]).toMatchObject({ center: { x: 30, y: 30 }, radius: 3 })
+  })
   it('interpolates every placing number halfway and snaps colours to the target', () => {
     const f = tweenCmds(A, B, 0.5)
     expect(f[0]).toMatchObject({ kind: 'rect', rect: { x: 0, y: 80, w: 10, h: 40 }, fill: '#999' })
@@ -42,10 +59,10 @@ describe('tweenCmds — the draw-list update animation', () => {
   })
 
   it('interpolates a gradient axis and keeps the target stops', () => {
-    const g0: DrawCmd = { kind: 'rect', rect: { x: 0, y: 0, w: 1, h: 1 }, fill: '#000', grad: { from: { x: 0, y: 0 }, to: { x: 0, y: 100 }, stops: [{ offset: 0, color: '#a' }] } }
-    const g1: DrawCmd = { kind: 'rect', rect: { x: 0, y: 0, w: 1, h: 1 }, fill: '#000', grad: { from: { x: 0, y: 0 }, to: { x: 0, y: 50 }, stops: [{ offset: 0, color: '#b' }] } }
+    const g0: DrawCmd = { kind: 'rect', rect: { x: 0, y: 0, w: 1, h: 1 }, fill: '#000', grad: { from: { x: 0, y: 0 }, to: { x: 0, y: 100 }, stops: [{ offset: 0, color: '#a' }], radial: false } }
+    const g1: DrawCmd = { kind: 'rect', rect: { x: 0, y: 0, w: 1, h: 1 }, fill: '#000', grad: { from: { x: 0, y: 0 }, to: { x: 0, y: 50 }, stops: [{ offset: 0, color: '#b' }], radial: false } }
     const f = tweenCmds([g0], [g1], 0.5)[0] as DrawCmd & { kind: 'rect' }
-    expect(f.grad).toEqual({ from: { x: 0, y: 0 }, to: { x: 0, y: 75 }, stops: [{ offset: 0, color: '#b' }] })
+    expect(f.grad).toEqual({ from: { x: 0, y: 0 }, to: { x: 0, y: 75 }, stops: [{ offset: 0, color: '#b' }], radial: false })
   })
 })
 
@@ -67,7 +84,44 @@ describe('cmdsEqual — the "nothing moved" test the host snaps on', () => {
     const f = tweenCmds([L, P], [{ ...L, to: { x: 3, y: 1 } }, { ...P, points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 3, y: 1 } ] }], 0.5)
     expect(f[0]).toMatchObject({ kind: 'line', to: { x: 2, y: 1 } })
     expect(f[1]).toMatchObject({ kind: 'polygon', points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 1 }] })
-    const g1: DrawCmd = { kind: 'rect', rect: { x: 0, y: 0, w: 1, h: 1 }, fill: '#000', grad: { from: { x: 0, y: 0 }, to: { x: 0, y: 50 }, stops: [] } }
+    const g1: DrawCmd = { kind: 'rect', rect: { x: 0, y: 0, w: 1, h: 1 }, fill: '#000', grad: { from: { x: 0, y: 0 }, to: { x: 0, y: 50 }, stops: [], radial: false } }
     expect((tweenCmds([A[0]!], [g1], 0.5)[0] as DrawCmd & { kind: 'rect' }).grad).toEqual(g1.grad)
+  })
+})
+
+describe('universalTweenCmds — entering and leaving marks', () => {
+  // The universal transition grows an ENTERING command out of its own centre
+  // and collapses a LEAVING one back into it, so a chart whose series changes
+  // shape animates instead of cutting. Every command kind has its own arm,
+  // and a kind with no case would silently pop.
+  const kinds: DrawCmd[] = [
+    { kind: 'rect', rect: { x: 0, y: 0, w: 10, h: 4 }, fill: '#111' },
+    { kind: 'line', from: { x: 0, y: 0 }, to: { x: 10, y: 4 }, stroke: '#222', width: 1 },
+    { kind: 'polyline', points: [{ x: 0, y: 0 }, { x: 8, y: 6 }], stroke: '#333', width: 1 },
+    { kind: 'polygon', points: [{ x: 0, y: 0 }, { x: 8, y: 6 }, { x: 2, y: 9 }], fill: '#444' },
+    { kind: 'circle', center: { x: 4, y: 4 }, radius: 3, fill: '#555' },
+    { kind: 'text', text: 'Jan', at: { x: 1, y: 2 }, fill: '#666', size: 10, align: 'start', baseline: 'top' },
+  ]
+
+  it('grows each kind in from nothing and lands exactly on the target', () => {
+    for (const cmd of kinds) {
+      const mid = universalTweenCmds([], [cmd], 0.5)
+      expect(mid).toHaveLength(1)
+      expect(universalTweenCmds([], [cmd], 1)).toEqual([cmd])
+    }
+  })
+
+  it('collapses each kind on the way out', () => {
+    for (const cmd of kinds) {
+      const mid = universalTweenCmds([cmd], [], 0.5)
+      expect(mid).toHaveLength(1)
+      // At the END of a leave the command is gone entirely — a collapsed
+      // zero-size shape would still paint a dot at the centre.
+      expect(universalTweenCmds([cmd], [], 1)).toEqual([])
+    }
+  })
+
+  it('a same-shape list still tweens pairwise', () => {
+    expect(universalTweenCmds(A, B, 0)).toEqual(tweenCmds(A, B, 0))
   })
 })

@@ -10,7 +10,7 @@
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ModuleLoader } from '../load'
-import { discoverRocketstyle, readDimensions } from '../rocketstyle'
+import { discoverRocketstyle, readDimensions, readTag } from '../rocketstyle'
 
 const rocket = (dimensions: Record<string, Record<string, unknown>>) =>
   Object.assign(() => null, {
@@ -128,5 +128,58 @@ describe('discovery', () => {
     }
     const found = await discoverRocketstyle(['bad.tsx', 'good.tsx'], { loader })
     expect(found.map((c) => c.name)).toEqual(['Button'])
+  })
+})
+
+describe('content seed (the empty-preview class)', () => {
+  const chain = (...attrs: unknown[]) =>
+    Object.assign(() => null, {
+      IS_ROCKETSTYLE: true,
+      getStaticDimensions: () => ({ dimensions: { size: { sm: 1 } } }),
+      __rs_attrs: attrs,
+    })
+
+  it('reads the tag off the attrs chain — object OR callback entries, last wins', () => {
+    expect(readTag(chain({ tag: 'div' }, () => ({ tag: 'button' })))).toBe('button')
+    expect(readTag(chain({ role: 'region' }))).toBeUndefined()
+    expect(readTag(() => null)).toBeUndefined()
+  })
+
+  it('reads a tag-string BASE (`.config({ component: "hr" })`), attrs still winning', () => {
+    const hr = Object.assign(chain(), { __rs_component: 'hr' })
+    expect(readTag(hr)).toBe('hr')
+    expect(readTag(Object.assign(chain({ tag: 'div' }), { __rs_component: 'hr' }))).toBe('div')
+    // A COMPONENT base says nothing about the tag.
+    expect(readTag(Object.assign(chain(), { __rs_component: () => null }))).toBeUndefined()
+  })
+
+  it('survives an attrs callback that throws on the empty props it is handed', () => {
+    const thrower = () => {
+      throw new TypeError('props.state is undefined')
+    }
+    expect(readTag(chain(thrower, { tag: 'span' }))).toBe('span')
+  })
+
+  it('seeds a label + a children control for a text component', async () => {
+    const [found] = await discoverRocketstyle(['a.tsx'], {
+      loader: loaderOf({ 'a.tsx': { Button: chain({ tag: 'button' }) } }),
+    })
+    expect(found!.content).toEqual({ children: 'Button' })
+    expect(found!.controls.map((c) => c.name)).toEqual(['size', 'children'])
+  })
+
+  it('seeds placeholder blocks — and NO control — for a layout container', async () => {
+    const [found] = await discoverRocketstyle(['a.tsx'], {
+      loader: loaderOf({ 'a.tsx': { Stack: chain({ tag: 'div' }) } }),
+    })
+    expect(found!.content).toEqual({ children: { __atlasContent: 'blocks', count: 3 } })
+    expect(found!.controls.map((c) => c.name)).toEqual(['size'])
+  })
+
+  it('seeds nothing — and no field — for a tag that takes no content', async () => {
+    const [found] = await discoverRocketstyle(['a.tsx'], {
+      loader: loaderOf({ 'a.tsx': { Divider: chain({ tag: 'hr' }) } }),
+    })
+    expect(found!.content).toBeUndefined()
   })
 })

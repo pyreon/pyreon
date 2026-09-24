@@ -16,6 +16,7 @@ import {
   readToolProbe,
   withVerdictCache,
   writeToolProbe,
+  isTransientProcessFailure,
 } from '../validate-cache'
 
 let dir: string
@@ -90,9 +91,11 @@ describe('withVerdictCache', () => {
     expect(calls).toBe(1)
   })
 
-  it('preserves the compiler ERROR TEXT across a hit', () => {
-    // A cached failure must stay diagnosable — an `ok:false` with the error
-    // dropped would turn a useful gate failure into a mystery.
+  it('caches a compiler REJECTION exactly like an acceptance', () => {
+    // Roughly half this suite is "does NOT compile" specs. A cache that forgot
+    // every rejection re-ran ~300 cold compiles per shard on every run — a
+    // permanent 25-minute cell, killed by the cap. A non-zero exit with
+    // diagnostics is as pure a function of the key as a success is.
     let calls = 0
     const run = (): { ok: boolean; error: string } => {
       calls++
@@ -103,6 +106,57 @@ describe('withVerdictCache', () => {
     expect(calls).toBe(1)
     expect(second.ok).toBe(false)
     expect(second.error).toBe("error: cannot find 'Switch' in scope")
+  })
+
+  it('does NOT cache a TRANSIENT failure — the compiler never answered', () => {
+    // A spawn failure, a kill by signal, or a timeout is environmental, and
+    // caching it would serve a phantom rejection to every later job.
+    let calls = 0
+    const run = (): { ok: boolean; error: string; transient: true } => {
+      calls++
+      return { ok: false, error: 'spawnSync kotlinc ETIMEDOUT', transient: true }
+    }
+    withVerdictCache('kotlin', 'v', 's', 'src', run)
+    const second = withVerdictCache('kotlin', 'v', 's', 'src', run)
+    expect(calls).toBe(2)
+    expect(second.ok).toBe(false)
+    expect(readdirSync(dir).filter((f) => f.endsWith('.json'))).toEqual([])
+  })
+
+  it('evicts a LEGACY cached failure whose provenance is unknown', () => {
+    // Written before failures were classified, and its text is not compiler
+    // output — it could be a cached ENOENT. Derive a fresh verdict.
+    const key = cacheKey('kotlin', 'v', 's', 'src')
+    writeFileSync(join(dir, `${key}.json`), '{"ok":false,"error":"Operation not permitted"}', 'utf8')
+    let calls = 0
+    const result = withVerdictCache('kotlin', 'v', 's', 'src', () => {
+      calls++
+      return { ok: true }
+    })
+    expect(result.ok).toBe(true)
+    expect(calls).toBe(1)
+    expect(JSON.parse(readFileSync(join(dir, `${key}.json`), 'utf8'))).toEqual({ v: 2, ok: true })
+  })
+
+  it('KEEPS a legacy cached failure that is visibly compiler output', () => {
+    // The store main saved under the previous cache version holds ~300 of
+    // these. `swiftc` prefixes diagnostics with `error:` and `kotlinc` with
+    // `e: `; keeping them is what lets that store stay warm.
+    for (const [src, error] of [
+      ['swift-src', "input.swift:3:5: error: cannot find 'Switch' in scope"],
+      ['kotlin-src', 'e: input.kt:3:5 Unresolved reference: Switch'],
+    ] as const) {
+      const key = cacheKey('kotlin', 'v', 's', src)
+      writeFileSync(join(dir, `${key}.json`), JSON.stringify({ ok: false, error }), 'utf8')
+      let calls = 0
+      const result = withVerdictCache('kotlin', 'v', 's', src, () => {
+        calls++
+        return { ok: true }
+      })
+      expect(result.ok, src).toBe(false)
+      expect(result.error, src).toBe(error)
+      expect(calls, src).toBe(0)
+    }
   })
 
   it('re-computes after the stub content changes', () => {
@@ -265,5 +319,35 @@ describe('tool-availability probe cache', () => {
     writeToolProbe('sh', { available: true, version: 'x' })
     process.env.PYREON_VALIDATE_NO_CACHE = '1'
     expect(readToolProbe('sh')).toBeNull()
+  })
+})
+
+
+describe('isTransientProcessFailure — shape, never text', () => {
+  // The four shapes `execFileSync` produces, verified identical under bun and
+  // node. Only a non-zero EXIT is the compiler's judgement about the source.
+  it('a non-zero exit with no signal is a compiler VERDICT', () => {
+    expect(isTransientProcessFailure({ status: 3, signal: null, stderr: 'error: x' })).toBe(false)
+  })
+  it('a kill by signal is transient', () => {
+    expect(isTransientProcessFailure({ status: null, signal: 'SIGKILL' })).toBe(true)
+  })
+  it('a spawn failure (errno) is transient', () => {
+    expect(isTransientProcessFailure({ signal: null, code: 'ENOENT', errno: -2 })).toBe(true)
+  })
+  it('a timeout is transient', () => {
+    expect(
+      isTransientProcessFailure({ status: null, signal: 'SIGTERM', code: 'ETIMEDOUT' }),
+    ).toBe(true)
+  })
+  it('a non-object throw is transient', () => {
+    expect(isTransientProcessFailure('boom')).toBe(true)
+    expect(isTransientProcessFailure(null)).toBe(true)
+  })
+  it('does not read the diagnostic text', () => {
+    // A rejection whose stderr happens to mention a timeout is still a verdict.
+    expect(
+      isTransientProcessFailure({ status: 1, signal: null, stderr: 'error: ETIMEDOUT is undefined' }),
+    ).toBe(false)
   })
 })

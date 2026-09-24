@@ -68,6 +68,32 @@ describe('gen-docs — core snapshot', () => {
           <HeavyPage />
         </Suspense>
       )
+
+      // Async data boundary — pending / error / empty / data from any AsyncLike source
+      import type { AsyncLike, Directive } from "@pyreon/core"
+      declare const todos: AsyncLike<{ id: number; title: string }[]>
+      const TodoList = () => (
+        <Async of={todos} empty="No todos yet." error={(e) => <p>{String(e)}</p>}>
+          {(rows) => <ul>{rows.map(r => <li>{r.title}</li>)}</ul>}
+        </Async>
+      )
+
+      // Directive composer — compose element behaviours into one ref
+      const clickOutside = (cb: () => void): Directive => (el) => {
+        const h2 = (e: Event) => { if (!el.contains(e.target as Node)) cb() }
+        document.addEventListener("mousedown", h2)
+        return () => document.removeEventListener("mousedown", h2)
+      }
+      const Popover = (props: { close: () => void }) => (
+        <div ref={use(clickOutside(props.close))} />
+      )
+
+      // elementRef — one value that is both the ref AND the () => T | null accessor
+      const Card = () => {
+        const cardEl = elementRef<HTMLDivElement>()
+        onMount(() => cardEl()?.focus())
+        return <div ref={cardEl} tabIndex={0} />
+      }
       \`\`\`
 
       > **Components run once**: Pyreon components are plain functions that execute a single time. Reactivity comes from reading signals inside reactive scopes (JSX expression thunks, \`effect()\`, \`computed()\`), not from re-running the component function. \`if (!cond()) return null\` at the top level runs once and is static — use \`return (() => { if (!cond()) return null; return <div /> })\` for reactive conditional rendering.
@@ -85,12 +111,15 @@ describe('gen-docs — core snapshot', () => {
 
   it('renders @pyreon/core to MCP api-reference entries — one per api[] item', () => {
     const record = renderApiReferenceEntries(coreManifest)
-    expect(Object.keys(record).length).toBe(34)
+    expect(Object.keys(record).length).toBe(35)
     expect(Object.keys(record)).toContain('core/h')
     expect(Object.keys(record)).toContain('core/removeUndefinedProps')
     // Async + use — the data-boundary component and the directive composer.
     expect(Object.keys(record)).toContain('core/Async')
     expect(Object.keys(record)).toContain('core/use')
+    // elementRef — one value that is both a ref and the () => T | null
+    // accessor element-consuming hooks take.
+    expect(Object.keys(record)).toContain('core/elementRef')
     // Compat-mode native marker — added so framework JSX components opt out
     // of `@pyreon/{react,preact,vue,solid}-compat` wrapping.
     expect(Object.keys(record)).toContain('core/nativeCompat')

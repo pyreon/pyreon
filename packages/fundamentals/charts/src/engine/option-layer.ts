@@ -4,6 +4,8 @@
 
 import { renderSvg } from './svg'
 import type { OptionWarning } from './option'
+import { graphicDrawCommands } from './graphic'
+import type { GraphicElement } from './graphic'
 import type { Double, DrawCmd, Pt } from './types'
 
 export type EChartsOptionLike = Record<string, unknown>
@@ -81,18 +83,170 @@ function evalCond(t: Table, cond: Cond, row: unknown[], warnings: OptionWarning[
   return true
 }
 
-/** Apply a dataset's `transform` list (filter / sort) to a table; unknown kinds pass through with a warning. */
-export function applyTransforms(t: Table, transforms: unknown[], warnings: OptionWarning[], path = 'dataset'): Table {
-  let cur = t
+// ---- external transforms -------------------------------------------------
+// ECharts ships exactly two built-in dataset transforms (`filter`, `sort`);
+// everything else — the ecStat regression / clustering / histogram family, a
+// user's own — arrives through `registerTransform`. The registry here speaks
+// that contract's `upstream` surface (`cloneRawData`, `getDimensionInfo`,
+// `cloneAllDimensionInfo`, `sourceFormat`), so an ecStat transform object can
+// be registered as-is.
+
+/** The upstream table a registered transform reads — ECharts' external-transform `upstream` surface. */
+export interface ChartTransformUpstream {
+  /** Always `'arrayRows'`: rows are arrays in dimension order (object sources were normalised on read). */
+  sourceFormat: 'arrayRows'
+  /** A deep-enough copy of the rows — mutate freely. */
+  cloneRawData(): unknown[][]
+  /** The rows themselves — do not mutate. */
+  getRawData(): unknown[][]
+  /** Resolve a dimension by index or name; `undefined` when unknown. */
+  getDimensionInfo(dim: string | number): ChartTransformDimension | undefined
+  /** Every dimension, in order. */
+  cloneAllDimensionInfo(): ChartTransformDimension[]
+}
+
+export interface ChartTransformDimension {
+  index: number
+  name: string
+  displayName: string
+}
+
+export interface ChartTransformParams {
+  upstream: ChartTransformUpstream
+  /** The `config` object written on the dataset's transform entry. */
+  config: unknown
+}
+
+/** What a transform returns: rows (array or object records) plus optional dimension names. One result, or several for `fromTransformResult`. */
+export interface ChartTransformResult {
+  data?: unknown[][] | Record<string, unknown>[]
+  dimensions?: unknown[]
+}
+
+export interface ChartTransform {
+  /** The `type` a dataset names, e.g. `'ecStat:regression'` or `'myTransform:double'`. */
+  type: string
+  transform(params: ChartTransformParams): ChartTransformResult | ChartTransformResult[]
+}
+
+const chartTransforms = new Map<string, ChartTransform>()
+
+/**
+ * Register an external dataset transform (`echarts.registerTransform`'s shape).
+ * Later registrations of the same `type` replace earlier ones. ecStat's
+ * transform objects satisfy the contract unchanged:
+ *
+ * @example
+ * import { transform as ecStat } from 'echarts-stat'
+ * registerChartTransform(ecStat.regression)
+ * // dataset: [{ source }, { transform: { type: 'ecStat:regression', config: { method: 'linear' } } }]
+ */
+export function registerChartTransform(transform: ChartTransform): void {
+  chartTransforms.set(transform.type, transform)
+}
+
+/** Remove a registered transform; a dataset naming it warns again. */
+export function unregisterChartTransform(type: string): void {
+  chartTransforms.delete(type)
+}
+
+/** The registered transform types, in registration order. */
+export function listChartTransforms(): string[] {
+  return Array.from(chartTransforms.keys())
+}
+
+function upstreamOf(t: Table): ChartTransformUpstream {
+  const dimension = (i: number): ChartTransformDimension => ({ index: i, name: t.dims[i]!, displayName: t.dims[i]! })
+  return {
+    sourceFormat: 'arrayRows',
+    cloneRawData: () => t.rows.map((r) => r.slice()),
+    getRawData: () => t.rows,
+    getDimensionInfo: (dim) => {
+      const i = dimIndex(t, dim)
+      return i === null ? undefined : dimension(i)
+    },
+    cloneAllDimensionInfo: () => t.dims.map((_, i) => dimension(i)),
+  }
+}
+
+/** Turn a transform's result into a table; dimension names fall back to the upstream's, then to `dimN`. */
+function tableFromResult(result: ChartTransformResult, upstream: Table): Table {
+  const data = Array.isArray(result.data) ? result.data : []
+  const rows: unknown[][] = []
+  let objectKeys: string[] | null = null
+  for (const record of data) {
+    if (Array.isArray(record)) rows.push(record)
+    else if (isObj(record)) {
+      objectKeys ??= []
+      for (const k of Object.keys(record)) if (!objectKeys.includes(k)) objectKeys.push(k)
+      rows.push(record as unknown as unknown[])
+    }
+  }
+  if (objectKeys !== null) {
+    const keys = objectKeys
+    return { dims: keys, rows: rows.map((r) => (Array.isArray(r) ? r : keys.map((k) => (r as unknown as Record<string, unknown>)[k]))) }
+  }
+  const declared = Array.isArray(result.dimensions)
+    ? result.dimensions.map((d, i) => (isObj(d) && typeof d['name'] === 'string' ? (d['name'] as string) : typeof d === 'string' ? d : 'dim' + String(i)))
+    : null
+  let width = 0
+  for (const r of rows) if (r.length > width) width = r.length
+  const dims = declared ?? (width === upstream.dims.length ? upstream.dims.slice() : Array.from({ length: width }, (_, i) => 'dim' + String(i)))
+  return { dims, rows }
+}
+
+/**
+ * Apply a dataset's `transform` list and return EVERY result of its last step
+ * (a registered transform may produce several — `fromTransformResult` picks
+ * one). Built-ins: `filter` and `sort`; anything else resolves through
+ * {@link registerChartTransform}, and an unknown type passes the table
+ * through with a warning.
+ */
+export function applyTransformsAll(t: Table, transforms: unknown[], warnings: OptionWarning[], path = 'dataset'): Table[] {
+  let results: Table[] = [t]
   for (let i = 0; i < transforms.length; i++) {
     const tr = transforms[i]
     const tp = path + '.transform[' + String(i) + ']'
     if (!isObj(tr)) continue
+    const cur = results[0]!
     const cfg = tr['config']
-    if (tr['type'] === 'filter') {
+    const type = tr['type']
+    if (type === 'filter' || type === 'sort') {
+      results = [applyBuiltIn(cur, type, cfg, warnings, tp)]
+      continue
+    }
+    const registered = typeof type === 'string' ? chartTransforms.get(type) : undefined
+    if (registered === undefined) {
+      // ledger: data.transforms
+      warnings.push({ code: 'option-key-unsupported', path: tp + '.type', message: 'dataset transform "' + String(type) + '" is not registered (filter and sort are built in; register others with registerChartTransform); the table passed through unchanged.' })
+      results = [cur]
+      continue
+    }
+    let produced: ChartTransformResult | ChartTransformResult[]
+    try {
+      produced = registered.transform({ upstream: upstreamOf(cur), config: cfg })
+    } catch (error) {
+      warnings.push({ code: 'series-data-shape', path: tp, message: 'dataset transform "' + String(type) + '" threw (' + (error instanceof Error ? error.message : String(error)) + '); the table passed through unchanged.' })
+      results = [cur]
+      continue
+    }
+    const list = Array.isArray(produced) ? produced : [produced]
+    results = list.length === 0 ? [{ dims: cur.dims, rows: [] }] : list.map((r) => tableFromResult(isObj(r) ? (r as ChartTransformResult) : {}, cur))
+  }
+  return results
+}
+
+/** Apply a dataset's `transform` list; the FIRST result of the last step (see {@link applyTransformsAll}). */
+export function applyTransforms(t: Table, transforms: unknown[], warnings: OptionWarning[], path = 'dataset'): Table {
+  return applyTransformsAll(t, transforms, warnings, path)[0]!
+}
+
+function applyBuiltIn(cur: Table, type: 'filter' | 'sort', cfg: unknown, warnings: OptionWarning[], tp: string): Table {
+  {
+    if (type === 'filter') {
       const cond = isObj(cfg) ? (cfg as Cond) : {}
-      cur = { dims: cur.dims, rows: cur.rows.filter((r) => evalCond(cur, cond, r, warnings, tp + '.config')) }
-    } else if (tr['type'] === 'sort') {
+      return { dims: cur.dims, rows: cur.rows.filter((r) => evalCond(cur, cond, r, warnings, tp + '.config')) }
+    } else {
       const keys = (Array.isArray(cfg) ? cfg : [cfg]).filter(isObj)
       const resolved = keys.map((k) => ({ di: dimIndex(cur, k['dimension']), desc: k['order'] === 'desc' }))
       for (let k = 0; k < resolved.length; k++) if (resolved[k]!.di === null) warnings.push({ code: 'series-data-shape', path: tp + '.config.dimension', message: 'Unknown dataset dimension "' + String(keys[k]!['dimension']) + '" in a sort; that key was ignored.' })
@@ -105,12 +259,9 @@ export function applyTransforms(t: Table, transforms: unknown[], warnings: Optio
         }
         return a.idx - b.idx
       })
-      cur = { dims: cur.dims, rows: indexed.map((x) => x.r) }
-    } else {
-      warnings.push({ code: 'option-key-unsupported', path: tp + '.type', message: 'dataset transform "' + String(tr['type']) + '" is not supported (filter and sort are); the table passed through unchanged.' })
+      return { dims: cur.dims, rows: indexed.map((x) => x.r) }
     }
   }
-  return cur
 }
 
 function transpose(t: Table): Table {
@@ -136,7 +287,7 @@ function dimIndex(t: Table, ref: unknown): number | null {
   return null
 }
 
-const NAME_VALUE_TYPES = new Set(['pie', 'funnel', 'treemap', 'sunburst'])
+const NAME_VALUE_TYPES = new Set(['pie', 'funnel', 'treemap', 'sunburst', 'gauge', 'map'])
 
 /**
  * Materialise `series[].data` (and a category `xAxis.data`) from `dataset`.
@@ -148,23 +299,46 @@ export function resolveDataset(option: EChartsOptionLike): { option: EChartsOpti
   const dsRaw = option['dataset']
   if (dsRaw === undefined) return { option, warnings }
   const datasets = (Array.isArray(dsRaw) ? dsRaw : [dsRaw]).filter(isObj)
+  // `id` references resolve to positions: `fromDatasetId` / `datasetId` are
+  // ECharts' spelling for a dataset named rather than counted.
+  const idIndex = new Map<string, number>()
+  for (let i = 0; i < datasets.length; i++) {
+    const id = datasets[i]!['id']
+    if (typeof id === 'string' && !idIndex.has(id)) idIndex.set(id, i)
+  }
+  const datasetRef = (byId: unknown, byIndex: unknown, fallback: number): number =>
+    typeof byId === 'string' ? (idIndex.get(byId) ?? -1) : (num(byIndex) ?? fallback)
   // Datasets resolve in order so a derived one can build on an earlier one.
+  // Each keeps EVERY result of its transform so `fromTransformResult` can pick.
   const tables: (Table | null)[] = []
+  const results: Table[][] = []
   for (let i = 0; i < datasets.length; i++) {
     const d = datasets[i]!
     const trRaw = d['transform']
-    if (trRaw === undefined) {
-      tables.push(readSource(d))
+    const hasUpstream = d['fromDatasetIndex'] !== undefined || d['fromDatasetId'] !== undefined || d['fromTransformResult'] !== undefined
+    if (trRaw === undefined && !hasUpstream) {
+      const own = readSource(d)
+      tables.push(own)
+      results.push(own === null ? [] : [own])
       continue
     }
-    const from = num(d['fromDatasetIndex']) ?? 0
-    const base = tables[from] ?? null
+    const from = datasetRef(d['fromDatasetId'], d['fromDatasetIndex'], 0)
+    const which = num(d['fromTransformResult']) ?? 0
+    const upstreamResults = results[from] ?? []
+    const base = upstreamResults[which] ?? null
     if (base === null) {
-      warnings.push({ code: 'series-data-shape', path: 'dataset[' + String(i) + '].fromDatasetIndex', message: 'The dataset to transform (index ' + String(from) + ') has no readable source; this dataset is empty.' })
+      const refPath = d['fromTransformResult'] !== undefined && upstreamResults.length > 0 ? 'fromTransformResult' : d['fromDatasetId'] !== undefined ? 'fromDatasetId' : 'fromDatasetIndex'
+      const detail = refPath === 'fromTransformResult'
+        ? 'The upstream dataset produced ' + String(upstreamResults.length) + ' result(s); result ' + String(which) + ' does not exist.'
+        : 'The dataset to transform (' + (typeof d['fromDatasetId'] === 'string' ? 'id "' + d['fromDatasetId'] + '"' : 'index ' + String(from)) + ') has no readable source.'
+      warnings.push({ code: 'series-data-shape', path: 'dataset[' + String(i) + '].' + refPath, message: detail + ' This dataset is empty.' })
       tables.push(null)
+      results.push([])
       continue
     }
-    tables.push(applyTransforms(base, Array.isArray(trRaw) ? trRaw : [trRaw], warnings, 'dataset[' + String(i) + ']'))
+    const produced = trRaw === undefined ? [base] : applyTransformsAll(base, Array.isArray(trRaw) ? trRaw : [trRaw], warnings, 'dataset[' + String(i) + ']')
+    tables.push(produced[0] ?? null)
+    results.push(produced)
   }
   const seriesArr = Array.isArray(option['series']) ? (option['series'] as unknown[]) : option['series'] === undefined ? [] : [option['series']]
   let xData: unknown[] | null = null
@@ -181,43 +355,136 @@ export function resolveDataset(option: EChartsOptionLike): { option: EChartsOpti
   const withData = (sr: Record<string, unknown>, data: unknown[]): Record<string, unknown> => {
     const o: Record<string, unknown> = { ...sr, data }
     delete o['datasetIndex']
+    delete o['datasetId']
     delete o['encode']
     delete o['seriesLayoutBy']
+    delete o['dimensions']
     return o
   }
   const outSeries = seriesArr.map((sRaw, si) => {
     if (!isObj(sRaw) || Array.isArray(sRaw['data'])) return sRaw
-    const dsIndex = num(sRaw['datasetIndex']) ?? 0
+    const dsIndex = datasetRef(sRaw['datasetId'], sRaw['datasetIndex'], 0)
     let t = tables[dsIndex] ?? null
     if (t === null) {
-      warnings.push({ code: 'series-data-shape', path: 'series[' + String(si) + '].datasetIndex', message: 'No readable dataset source for this series; treated as empty.' })
+      const refKey = typeof sRaw['datasetId'] === 'string' ? 'datasetId' : 'datasetIndex'
+      warnings.push({ code: 'series-data-shape', path: 'series[' + String(si) + '].' + refKey, message: 'No readable dataset source for this series; treated as empty.' })
       return sRaw
     }
     if (sRaw['seriesLayoutBy'] === 'row') t = transpose(t)
+    // A series' own `dimensions` names the columns it reads, over the dataset's.
+    if (Array.isArray(sRaw['dimensions'])) {
+      const own = (sRaw['dimensions'] as unknown[]).map((d, i) => (isObj(d) && typeof d['name'] === 'string' ? (d['name'] as string) : typeof d === 'string' ? d : t!.dims[i] ?? 'dim' + String(i)))
+      t = { ...t, dims: t.dims.map((d, i) => own[i] ?? d) }
+    }
     const enc = isObj(sRaw['encode']) ? sRaw['encode'] : {}
     const type = typeof sRaw['type'] === 'string' ? (sRaw['type'] as string) : ''
     const col = (v: unknown[] | undefined | unknown, fallback: number): number | null => dimIndex(t!, Array.isArray(v) ? v[0] : v) ?? (fallback < t!.dims.length ? fallback : null)
+    // `encode.tooltip` picks the dimensions the tooltip shows under the value:
+    // each named column becomes a `tooltipExtras` entry the facade hands to
+    // the engine's `Series.extras` (numbers as values, anything else as text).
+    // An unknown dimension warns by name and is skipped.
+    const tipDims = enc['tooltip'] === undefined ? [] : Array.isArray(enc['tooltip']) ? (enc['tooltip'] as unknown[]) : [enc['tooltip']]
+    const tooltipExtras: { label: string; numbers?: number[]; texts?: string[] }[] = []
+    for (const ref of tipDims) {
+      const c = dimIndex(t, ref)
+      if (c === null) {
+        warnings.push({ code: 'series-data-shape', path: 'series[' + String(si) + '].encode.tooltip', message: 'Unknown dataset dimension "' + String(ref) + '"; the tooltip skips it.' })
+        continue
+      }
+      const cells = t.rows.map((r) => r[c])
+      const label = t.dims[c] ?? String(ref)
+      if (cells.every((v) => num(v) !== null)) tooltipExtras.push({ label, numbers: cells.map((v) => num(v) as number) })
+      else tooltipExtras.push({ label, texts: cells.map((v) => (v === undefined || v === null ? '' : String(v))) })
+    }
+    const withExtras = (o: Record<string, unknown>): Record<string, unknown> => (tooltipExtras.length === 0 ? o : { ...o, tooltipExtras })
+    // `encode.seriesName` names the series after a dimension; an explicit
+    // `name` still wins (it is the author's, not the data's).
+    let sr: Record<string, unknown> = sRaw
+    if (sr['name'] === undefined && enc['seriesName'] !== undefined) {
+      const nameCol = dimIndex(t, Array.isArray(enc['seriesName']) ? (enc['seriesName'] as unknown[])[0] : enc['seriesName'])
+      if (nameCol !== null) sr = { ...sr, name: t.dims[nameCol] }
+      else warnings.push({ code: 'series-data-shape', path: 'series[' + String(si) + '].encode.seriesName', message: 'Unknown dataset dimension "' + String(enc['seriesName']) + '"; the series keeps its default name.' })
+    }
     if (NAME_VALUE_TYPES.has(type)) {
       const nameCol = col(enc['itemName'], 0)
       const valueCol = col(enc['value'], enc['value'] === undefined ? nextColumn(dsIndex) : 0)
-      if (nameCol === null || valueCol === null) return sRaw
-      return withData(sRaw, t.rows.map((r) => ({ name: String(r[nameCol] ?? ''), value: num(r[valueCol]) ?? 0 })))
+      if (nameCol === null || valueCol === null) return sr
+      return withExtras(withData(sr, t.rows.map((r) => ({ name: String(r[nameCol] ?? ''), value: num(r[valueCol]) ?? 0 }))))
+    }
+    // The tuple families: each datum gathers several columns of one row.
+    const cols = (key: string, n: number, from: number): number[] | null => {
+      const v = enc[key]
+      if (v !== undefined) {
+        const refs = Array.isArray(v) ? (v as unknown[]) : [v]
+        const out: number[] = []
+        for (const ref of refs) {
+          const c = dimIndex(t!, ref)
+          if (c === null) {
+            warnings.push({ code: 'series-data-shape', path: 'series[' + String(si) + '].encode.' + key, message: 'Unknown dataset dimension "' + String(ref) + '"; treated as empty.' })
+            return null
+          }
+          out.push(c)
+        }
+        return out
+      }
+      const out: number[] = []
+      for (let k = 0; k < n && from + k < t!.dims.length; k++) out.push(from + k)
+      return out.length === n ? out : null
+    }
+    // candlestick [open, close, lowest, highest] and boxplot [min, Q1, median, Q3, max] on a category x.
+    if (type === 'candlestick' || type === 'boxplot') {
+      const xCol = col(enc['x'], 0)
+      const ys = cols('y', type === 'candlestick' ? 4 : 5, 1)
+      if (xCol === null || ys === null) return sr
+      if (xData === null) xData = t.rows.map((r) => r[xCol])
+      return withExtras(withData(sr, t.rows.map((r) => ys.map((c) => num(r[c]) ?? 0))))
+    }
+    // heatmap [x, y, value]: the reader resolves names against the category axes.
+    if (type === 'heatmap') {
+      const xCol = col(enc['x'], 0)
+      const yCol = col(enc['y'], 1)
+      const vCol = col(enc['value'], 2)
+      if (xCol === null || yCol === null || vCol === null) return sr
+      return withExtras(withData(sr, t.rows.map((r) => [r[xCol], r[yCol], num(r[vCol]) ?? 0])))
+    }
+    // radar: a named polygon per row, its value every other column (or `encode.value`).
+    if (type === 'radar') {
+      const nameCol = col(enc['itemName'], 0)
+      const values = enc['value'] !== undefined ? cols('value', 0, 0) : t.dims.map((_, i) => i).filter((i) => i !== nameCol)
+      if (nameCol === null || values === null) return sr
+      return withExtras(withData(sr, t.rows.map((r) => ({ name: String(r[nameCol] ?? ''), value: values.map((c) => num(r[c]) ?? 0) }))))
+    }
+    // parallel: a row per line, one value per dimension, in dimension order.
+    if (type === 'parallel') return withExtras(withData(sr, t.rows.map((r) => t!.dims.map((_, c) => r[c] ?? null))))
+    // themeRiver [date, value, name].
+    if (type === 'themeRiver') {
+      const dCol = col(enc['single'], 0)
+      const vCol = col(enc['value'], 1)
+      const nCol = col(enc['itemName'] ?? enc['seriesName'], 2)
+      if (dCol === null || vCol === null || nCol === null) return sr
+      return withExtras(withData(sr, t.rows.map((r) => [String(r[dCol] ?? ''), num(r[vCol]) ?? 0, String(r[nCol] ?? '')])))
     }
     if (type === 'scatter') {
       const xCol = col(enc['x'], 0)
       const yCol = col(enc['y'], enc['y'] === undefined ? nextColumn(dsIndex) : 0)
-      if (xCol === null || yCol === null) return sRaw
-      return withData(sRaw, t.rows.map((r) => [num(r[xCol]) ?? 0, num(r[yCol]) ?? 0]))
+      if (xCol === null || yCol === null) return sr
+      return withExtras(withData(sr, t.rows.map((r) => [num(r[xCol]) ?? 0, num(r[yCol]) ?? 0])))
     }
     const xCol = col(enc['x'], 0)
     const want = enc['y'] === undefined ? nextColumn(dsIndex) : 0
     const yCol = col(enc['y'], want)
     if (yCol === null) {
       warnings.push({ code: 'series-data-shape', path: 'series[' + String(si) + ']', message: 'The dataset has no dimension for this series (dimension ' + String(want) + '); treated as empty.' })
-      return sRaw
+      return sr
     }
     if (xData === null && xCol !== null) xData = t.rows.map((r) => r[xCol])
-    return withData(sRaw, t.rows.map((r) => num(r[yCol]) ?? null))
+    // `encode.itemName` names each datum (the {name, value} item the facade
+    // already reads); without it the values stay bare, byte-identical to before.
+    const itemNameCol = enc['itemName'] === undefined ? null : dimIndex(t, Array.isArray(enc['itemName']) ? (enc['itemName'] as unknown[])[0] : enc['itemName'])
+    if (enc['itemName'] !== undefined && itemNameCol === null) {
+      warnings.push({ code: 'series-data-shape', path: 'series[' + String(si) + '].encode.itemName', message: 'Unknown dataset dimension "' + String(enc['itemName']) + '"; the data keeps bare values.' })
+    }
+    return withExtras(withData(sr, t.rows.map((r) => (itemNameCol === null ? num(r[yCol]) ?? null : { name: String(r[itemNameCol] ?? ''), value: num(r[yCol]) ?? null }))))
   })
   const out: EChartsOptionLike = { ...option, series: Array.isArray(option['series']) ? outSeries : outSeries[0] }
   const x = out['xAxis']
@@ -246,10 +513,16 @@ function place(v: unknown, size: Double, extent: Double): Double | null {
 
 /** Free-form shapes from `option.graphic` as draw commands, in document order. */
 export function graphicCommands(option: EChartsOptionLike, width: Double, height: Double): { cmds: DrawCmd[]; warnings: OptionWarning[] } {
-  const cmds: DrawCmd[] = []
+  const parsed = graphicElements(option, width, height)
+  return { cmds: graphicDrawCommands(parsed.elements), warnings: parsed.warnings }
+}
+
+/** Every `graphic` element, positioned against the canvas — the engine draws them. */
+export function graphicElements(option: EChartsOptionLike, width: Double, height: Double): { elements: GraphicElement[]; warnings: OptionWarning[] } {
+  const elementsOut: GraphicElement[] = []
   const warnings: OptionWarning[] = []
   const raw = option['graphic']
-  const elements = Array.isArray(raw) ? raw : isObj(raw) && Array.isArray(raw['elements']) ? (raw['elements'] as unknown[]) : isObj(raw) ? [raw] : []
+  const roots = Array.isArray(raw) ? raw : isObj(raw) && Array.isArray(raw['elements']) ? (raw['elements'] as unknown[]) : isObj(raw) ? [raw] : []
   const walk = (els: unknown[], ox: Double, oy: Double, path: string): void => {
     for (let i = 0; i < els.length; i++) {
       const e = els[i]
@@ -257,13 +530,14 @@ export function graphicCommands(option: EChartsOptionLike, width: Double, height
       if (!isObj(e)) continue
       const style = isObj(e['style']) ? e['style'] : {}
       const shape = isObj(e['shape']) ? e['shape'] : {}
-      const type = e['type']
+      const type = String(e['type'] ?? '')
       const fill = typeof style['fill'] === 'string' ? (style['fill'] as string) : '#334155'
       const stroke = typeof style['stroke'] === 'string' ? (style['stroke'] as string) : fill
       const lineWidth = num(style['lineWidth']) ?? 1.0
+      const radius = num(shape['r']) ?? 0.0
       // Position: explicit x/y, else left/top (right/bottom anchored from the far edge).
-      const w = num(shape['width']) ?? (type === 'circle' ? (num(shape['r']) ?? 0.0) * 2.0 : 0.0)
-      const hgt = num(shape['height']) ?? (type === 'circle' ? (num(shape['r']) ?? 0.0) * 2.0 : 0.0)
+      const w = num(shape['width']) ?? (type === 'circle' ? radius * 2.0 : 0.0)
+      const hgt = num(shape['height']) ?? (type === 'circle' ? radius * 2.0 : 0.0)
       let x = num(e['x']) ?? 0.0
       let y = num(e['y']) ?? 0.0
       const left = place(e['left'], width, w)
@@ -280,30 +554,63 @@ export function graphicCommands(option: EChartsOptionLike, width: Double, height
         walk(Array.isArray(e['children']) ? (e['children'] as unknown[]) : [], x, y, p + '.children')
         continue
       }
-      if (type === 'text') {
-        const text = typeof style['text'] === 'string' ? (style['text'] as string) : String(style['text'] ?? '')
-        const size = num(style['fontSize']) ?? 12.0
-        const align = style['textAlign'] === 'center' ? 'middle' : style['textAlign'] === 'right' ? 'end' : 'start'
-        cmds.push({ kind: 'text', text, at: { x, y }, fill, size, align, baseline: 'top' })
-      } else if (type === 'rect') {
-        cmds.push({ kind: 'rect', rect: { x: x + (num(shape['x']) ?? 0.0), y: y + (num(shape['y']) ?? 0.0), w, h: hgt }, fill })
-      } else if (type === 'circle') {
-        cmds.push({ kind: 'circle', center: { x: x + (num(shape['cx']) ?? 0.0), y: y + (num(shape['cy']) ?? 0.0) }, radius: num(shape['r']) ?? 0.0, fill })
-      } else if (type === 'line') {
-        cmds.push({ kind: 'line', from: { x: x + (num(shape['x1']) ?? 0.0), y: y + (num(shape['y1']) ?? 0.0) }, to: { x: x + (num(shape['x2']) ?? 0.0), y: y + (num(shape['y2']) ?? 0.0) }, stroke, width: lineWidth })
-      } else if (type === 'polygon' || type === 'polyline') {
-        const pts: Pt[] = []
-        for (const q of Array.isArray(shape['points']) ? (shape['points'] as unknown[]) : []) {
-          if (Array.isArray(q) && num(q[0]) !== null && num(q[1]) !== null) pts.push({ x: x + (num(q[0]) as number), y: y + (num(q[1]) as number) })
-        }
-        if (pts.length >= 2) cmds.push(type === 'polygon' ? { kind: 'polygon', points: pts, fill } : { kind: 'polyline', points: pts, stroke, width: lineWidth })
-      } else {
-        warnings.push({ code: 'mark-shape-unsupported', path: p + '.type', message: 'graphic type "' + String(type) + '" is not supported yet (text, rect, circle, line, polygon, polyline, group are); it was ignored.' })
+      const pts: Pt[] = []
+      const pushPair = (a: unknown, b: unknown): void => {
+        if (num(a) !== null && num(b) !== null) pts.push({ x: num(a) as number, y: num(b) as number })
       }
+      let kind = type
+      if (type === 'line') {
+        pushPair(shape['x1'], shape['y1'])
+        pushPair(shape['x2'], shape['y2'])
+      } else if (type === 'polygon' || type === 'polyline') {
+        for (const q of Array.isArray(shape['points']) ? (shape['points'] as unknown[]) : []) {
+          if (Array.isArray(q)) pushPair(q[0], q[1])
+        }
+      } else if (type === 'bezierCurve') {
+        kind = 'bezier'
+        pushPair(shape['x1'], shape['y1'])
+        pushPair(shape['cpx1'], shape['cpy1'])
+        if (num(shape['cpx2']) !== null && num(shape['cpy2']) !== null) pushPair(shape['cpx2'], shape['cpy2'])
+        pushPair(shape['x2'], shape['y2'])
+      } else if (type !== 'text' && type !== 'rect' && type !== 'circle' && type !== 'arc' && type !== 'ring' && type !== 'sector') {
+        warnings.push({
+          // ledger: coordinates.graphic
+          code: 'mark-shape-unsupported',
+          path: p + '.type',
+          message:
+            type === 'image'
+              ? 'graphic image elements are not supported (they need a loaded bitmap, which the draw list has no form for); the element was skipped.'
+              : 'graphic type "' + type + '" is not supported yet (text, rect, circle, line, polygon, polyline, bezierCurve, arc, ring, sector and group are); the element was skipped.',
+        })
+        continue
+      }
+      elementsOut.push({
+        kind,
+        x,
+        y,
+        w,
+        h: hgt,
+        fill,
+        stroke,
+        lineWidth,
+        text: type === 'text' ? (typeof style['text'] === 'string' ? (style['text'] as string) : String(style['text'] ?? '')) : '',
+        fontSize: num(style['fontSize']) ?? 12.0,
+        align: style['textAlign'] === 'center' ? 'middle' : style['textAlign'] === 'right' ? 'end' : 'start',
+        // `rect` carries its shape offset in the same two fields the round
+        // shapes use for their centre: one struct, no per-kind optionals.
+        cx: type === 'rect' ? num(shape['x']) ?? 0.0 : num(shape['cx']) ?? 0.0,
+        cy: type === 'rect' ? num(shape['y']) ?? 0.0 : num(shape['cy']) ?? 0.0,
+        r: radius,
+        r0: num(shape['r0']) ?? 0.0,
+        startAngle: num(shape['startAngle']) ?? 0.0,
+        endAngle: num(shape['endAngle']) ?? 0.0,
+        clockwise: shape['clockwise'] !== false,
+        points: pts,
+      })
     }
   }
-  walk(elements, 0.0, 0.0, 'graphic')
-  return { cmds, warnings }
+  walk(roots, 0.0, 0.0, 'graphic')
+  return { elements: elementsOut, warnings }
 }
 
 /** Splice a graphic layer into an already-rendered `<svg>` string, above the chart. */

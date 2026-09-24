@@ -7,7 +7,15 @@ description: "Structured reactive state tree — composable models with snapshot
 
 > **Generated** from `state-tree`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [state-tree](/docs/state-tree).
 
-MobX-State-Tree-inspired structured state management built on Pyreon signals. Models compose state (signals), views (computeds), and actions into self-contained units that support typed snapshots, JSON-patch record/replay, and action interception middleware. Models can nest other models for tree-shaped state, and `.asHook(id)` provides singleton instances scoped to a store-like registry.
+MobX-State-Tree-inspired structured state management built on Pyreon signals. Models compose state (signals), views (computeds), and actions into self-contained units that support typed snapshots, JSON-patch record/replay, and action interception middleware. Models can nest other models for tree-shaped state, and `.asHook(id)` provides singleton instances scoped to a store-like registry — per process in a browser, and per REQUEST on a server under `@pyreon/runtime-server`, which isolates that registry automatically.
+
+## Multiplatform
+
+**Tier:** Service backend — the API is shared; the native runtimes host it
+
+model() lowers to PyreonModel singletons on both targets
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 
 ## Features
 
@@ -636,7 +644,7 @@ const user = resolveIdentifier(store, User, 'u-42')
 resetHook(id: string) => void; resetAllHooks() => void
 ```
 
-Destroy `.asHook(id)` singletons. `.asHook(id)` stores ONE instance per id in a MODULE-LEVEL registry (created lazily on first call, shared for the process), so every consumer of `useX = Model.asHook("x")` gets the SAME instance — great for app-global state, a hazard for tests. `resetHook(id)` deletes that one singleton so the next `asHook(id)` call re-creates a fresh instance; `resetAllHooks()` clears the whole registry. Both are for TEST isolation (and hot-reload).
+Destroy `.asHook(id)` singletons. `.asHook(id)` stores ONE instance per id in a MODULE-LEVEL registry (created lazily on first call, shared for the process — or for the REQUEST, when rendering under `@pyreon/runtime-server`, which isolates the registry so concurrent requests never share an instance), so every consumer of `useX = Model.asHook("x")` gets the SAME instance — great for app-global state, a hazard for tests. `resetHook(id)` deletes that one singleton so the next `asHook(id)` call re-creates a fresh instance; `resetAllHooks()` clears the whole registry. Both are for TEST isolation (and hot-reload).
 
 **Example**
 
@@ -648,7 +656,7 @@ afterEach(() => resetAllHooks())   // else a mutation in one test leaks to the n
 
 **Common mistakes**
 
-- Not resetting between tests — the `asHook` singleton lives in a module-level Map for the whole process, NOT per-test. State mutated in one test persists into the next; call `resetAllHooks()` (or `resetHook(id)`) in `afterEach`.
+- Not resetting between tests — the `asHook` singleton lives in a module-level Map for the whole process (per REQUEST only inside an SSR render), NOT per-test. State mutated in one test persists into the next; call `resetAllHooks()` (or `resetHook(id)`) in `afterEach`.
 - Expecting `resetHook` to `destroy()` the old instance's subscriptions — it only DROPS the registry entry so the next `asHook` re-creates. If code still holds the old reference, call `destroy()` on it yourself.
 
 **See also:** `model` · `destroy`

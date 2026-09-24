@@ -10,7 +10,8 @@
  * Output: JSON to stdout (pipe to file for CI)
  */
 
-import { execSync } from 'node:child_process'
+import { execFileSync, execSync } from 'node:child_process'
+import { cpus, loadavg } from 'node:os'
 import { resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dir, '../..')
@@ -23,6 +24,8 @@ interface BenchMetric {
 interface BenchOutput {
   timestamp: string
   commit: string
+  /** Runtime + machine the numbers were measured on — without these, two runs are not comparable. */
+  machine: { engine: string; cpu: string; cores: number; loadBefore: number[]; loadAfter: number[] }
   results: Record<string, BenchMetric>
 }
 
@@ -37,18 +40,28 @@ function getCommitHash(): string {
 /**
  * Run a benchmark script and return its stdout.
  */
-function runBench(scriptPath: string): string {
+const LOAD_BEFORE = loadavg()
+
+/** A bench that could not run — recorded by name so the run FAILS instead of quietly omitting rows. */
+const failed: string[] = []
+
+function runBench(scriptPath: string, args: string[] = [], timeoutMs = 120_000): string {
   const fullPath = resolve(ROOT, scriptPath)
   try {
-    return execSync(`bun ${fullPath}`, {
+    // `execFileSync`, not a shell string: the path is absolute and built from
+    // the repo root, so interpolating it into a command line hands the shell
+    // whatever a directory name happens to contain (CodeQL js/shell-command-…).
+    // Passing argv directly also removes the quoting question entirely.
+    return execFileSync('bun', [fullPath, ...args], {
       cwd: ROOT,
       encoding: 'utf-8',
-      timeout: 120_000,
+      timeout: timeoutMs,
       env: { ...process.env, NODE_ENV: 'production' },
     })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[bench] Failed to run ${scriptPath}: ${msg}`)
+    failed.push(scriptPath)
     return ''
   }
 }
@@ -95,7 +108,9 @@ function extractReactivity(output: string, results: Record<string, BenchMetric>)
   const lines = output.split('\n')
   for (const line of lines) {
     const parsed = parseOpsLine(line)
-    if (!parsed || !parsed.label.startsWith('Pyreon')) continue
+    // `Pyreon-bundled …` rows are the NODE_ENV-folded variant; keep the key space
+    // to the plain `Pyreon …` rows it has always recorded.
+    if (!parsed || !/^Pyreon\s/.test(parsed.label)) continue
 
     const key = parsed.label
       .replace(/^Pyreon\s+/, '')
@@ -183,7 +198,9 @@ function extractHead(output: string, results: Record<string, BenchMetric>): void
   const lines = output.split('\n')
   for (const line of lines) {
     const parsed = parseOpsLine(line)
-    if (!parsed || !parsed.label.startsWith('Pyreon')) continue
+    // `Pyreon-bundled …` rows are the NODE_ENV-folded variant; keep the key space
+    // to the plain `Pyreon …` rows it has always recorded.
+    if (!parsed || !/^Pyreon\s/.test(parsed.label)) continue
 
     const key = parsed.label
       .replace(/^Pyreon\s+/, '')
@@ -286,9 +303,30 @@ function extractUnistyle(output: string, results: Record<string, BenchMetric>): 
 const results: Record<string, BenchMetric> = {}
 
 const benchmarks = [
-  { script: 'scripts/bench/core/reactivity.ts', extractor: extractReactivity, name: 'reactivity' },
+  {
+    script: 'scripts/bench/core/reactivity.ts',
+    extractor: extractReactivity,
+    name: 'reactivity',
+    // Full protocol is one process per cell × 3 rounds (~2 min); the aggregate
+    // run takes one round.
+    args: ['--quick'],
+    timeoutMs: 300_000,
+  },
   { script: 'scripts/bench/core/compiler.ts', extractor: extractCompiler, name: 'compiler' },
-  { script: 'scripts/bench/core/router.ts', extractor: extractRouter, name: 'router' },
+  {
+    script: 'scripts/bench/core/router.ts',
+    extractor: extractRouter,
+    name: 'router',
+    // The router bench's FULL protocol is process-isolated per cell and
+    // documented at ~6-9 minutes, so it never fit the shared 120s budget:
+    // every main run's Benchmark job hit `spawnSync /bin/sh ETIMEDOUT` here
+    // and silently shipped an artefact with no router rows. The aggregate
+    // run takes `--quick` (one process per cell, fewer windows) with a
+    // budget sized for a contended two-core runner; the full protocol is
+    // the manual `bun run bench:router`.
+    args: ['--quick'],
+    timeoutMs: 420_000,
+  },
   {
     script: 'scripts/bench/core/runtime-server.ts',
     extractor: extractSSR,
@@ -300,9 +338,15 @@ const benchmarks = [
   { script: 'scripts/bench/core/unistyle.ts', extractor: extractUnistyle, name: 'unistyle' },
 ]
 
-for (const { script, extractor, name } of benchmarks) {
+for (const { script, extractor, name, args, timeoutMs } of benchmarks as {
+  script: string
+  extractor: (output: string, results: Record<string, BenchMetric>) => void
+  name: string
+  args?: string[]
+  timeoutMs?: number
+}[]) {
   console.error(`[bench] Running ${name}...`)
-  const output = runBench(script)
+  const output = runBench(script, args, timeoutMs)
   if (output) {
     extractor(output, results)
     console.error(`[bench] ${name} done — ${Object.keys(results).length} metrics total`)
@@ -312,8 +356,26 @@ for (const { script, extractor, name } of benchmarks) {
 const output: BenchOutput = {
   timestamp: new Date().toISOString(),
   commit: getCommitHash(),
+  machine: {
+    // Every bench runs under bun (JavaScriptCore). V8 (browsers, Node) can rank
+    // micro-ops differently — see scripts/bench/core/reactivity.ts --runtime node.
+    engine: `bun ${execFileSync('bun', ['--version'], { encoding: 'utf-8' }).trim()} (JavaScriptCore)`,
+    cpu: cpus()[0]?.model ?? 'unknown',
+    cores: cpus().length,
+    loadBefore: LOAD_BEFORE,
+    loadAfter: loadavg(),
+  },
   results,
 }
 
 // Output JSON to stdout (stderr was used for progress)
 console.log(JSON.stringify(output, null, 2))
+
+// A bench that did not run is an UNMEASURED row, not a missing one: the
+// artefact above is still written (every row that ran is real), but the
+// run says which benches are absent and exits non-zero — the same contract
+// bundle-size.ts adopted after four packages printed as 0 B.
+if (failed.length > 0) {
+  console.error(`[bench] ${failed.length} bench(es) did not run and are ABSENT from the output: ${failed.join(', ')}`)
+  process.exit(1)
+}

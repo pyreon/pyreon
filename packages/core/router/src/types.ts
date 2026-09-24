@@ -459,6 +459,18 @@ export interface RouterOptions {
  * ```
  */
 export interface Router<TNames extends string = string> {
+  /**
+   * Which part of the URL this router treats as the route — `'hash'` (the
+   * DEFAULT: the whole route, query included, lives in the fragment, and
+   * `location.search` is empty) or `'history'`.
+   *
+   * Public because a consumer that writes URLs alongside the router has to ask:
+   * `@pyreon/url-state` built `/{pathname}?{search}` for every router and so
+   * navigated a hash-mode app off its own route on the first param write. The
+   * field was on the router object from the start — only the public TYPE
+   * omitted it, which is what let the wrong assumption look correct.
+   */
+  readonly mode: 'hash' | 'history'
   /** Navigate to a path. Resolves with what the navigation did — see {@link NavigationResult}. */
   push(path: string): Promise<NavigationResult>
   /** Navigate to a named route */
@@ -566,7 +578,6 @@ import type { SizedMap } from '@pyreon/sized-map'
 
 export interface RouterInstance extends Router {
   routes: RouteRecord[]
-  mode: 'hash' | 'history'
   /** Normalized base path (e.g. "/app"), empty string if none */
   _base: string
   _currentPath: Signal<string>

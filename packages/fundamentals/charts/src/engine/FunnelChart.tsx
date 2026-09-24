@@ -5,6 +5,7 @@ import { canvasHost, orNull } from './canvas-host'
 import { funnelLegend, funnelTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
 import { hitFunnel, renderFunnel } from './funnel'
+import { funnelItem } from './host-item'
 import type { FunnelOptions, FunnelStage } from './funnel'
 import { paletteAt } from './palette'
 import type { Double, Rect } from './types'
@@ -45,6 +46,7 @@ export function FunnelChart<T>(props: FunnelChartProps<T>): VNode {
       props.onSelectIndex?.(i)
     },
     tooltip: (g, px, py) => orNull(funnelTip(g.stages, g.plot, px, py, props.funnel)),
+    item: (g, px, py) => funnelItem(g.stages, hitFunnel(g.stages, g.plot, px, py, props.funnel)),
     pick: (_g, i) => {
       props.onSelect?.(i)
       props.onSelectIndex?.(i)

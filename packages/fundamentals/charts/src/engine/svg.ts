@@ -16,7 +16,8 @@
 // rendering context), which is why `measureApprox` exists — see its note.
 
 import { cornerRadii, hasCorners } from './corners'
-import type { ChartGradient, DrawCmd, Double, MeasureText, Pt } from './types'
+import { patternImageCells, patternMarks } from './pattern'
+import type { ChartGradient, DrawCmd, Double, MeasureText, Pt, Rect } from './types'
 
 /**
  * Round to at most 2 decimals and drop a trailing `.0`.
@@ -126,10 +127,66 @@ export function collectGradients(cmds: DrawCmd[], prefix: string): { defs: strin
     // of each shape's bounding box (the SVG default) — which is exactly what
     // makes one ramp span the plot instead of repeating per bar.
     parts.push(
-      `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${n(g.from.x)}" y1="${n(g.from.y)}" x2="${n(g.to.x)}" y2="${n(g.to.y)}">${stops}</linearGradient>`,
+      g.radial
+        ? `<radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="${n(g.from.x)}" cy="${n(g.from.y)}" r="${n(Math.hypot(g.to.x - g.from.x, g.to.y - g.from.y))}">${stops}</radialGradient>`
+        : `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${n(g.from.x)}" y1="${n(g.from.y)}" x2="${n(g.to.x)}" y2="${n(g.to.y)}">${stops}</linearGradient>`,
     )
   }
   return { defs: parts.length === 0 ? '' : `<defs>${parts.join('')}</defs>`, ids }
+}
+
+/** Tile size for a fill image in SVG, where the natural size is unknowable at render time. */
+const SVG_IMAGE_TILE = 32.0
+
+export function collectPatterns(cmds: DrawCmd[], prefix: string): { defs: string; ids: string[] } {
+  const parts: string[] = []
+  const ids: string[] = []
+  let i = 0
+  for (const c of cmds) {
+    const p = c.kind === 'rect' || c.kind === 'polygon' ? c.pattern : undefined
+    if (p === undefined) { ids.push(''); continue }
+    const id = `${prefix}-p${i++}`
+    ids.push(id)
+    // One tile the size of the shape's box, holding the engine's marks for it —
+    // the same geometry every other painter draws.
+    const box = c.kind === 'rect' ? c.rect : boundsOf(c.kind === 'polygon' ? c.points : [])
+    if (p.kind === 'image' && p.image !== undefined) {
+      // SVG cannot read an image's natural size, so a fill image tiles at
+      // SVG_IMAGE_TILE (or the pattern's own width / spacingY when it has them);
+      // an image decal keeps its grid geometry exactly.
+      const tw = p.repeat === 'grid' ? p.spacing : p.width > 0.0 ? p.width : SVG_IMAGE_TILE
+      const th = p.repeat === 'grid' ? p.spacingY ?? p.spacing : p.spacingY ?? tw
+      const cells = p.repeat === 'grid' ? patternImageCells(p, box, 0.0, 0.0) : patternImageCells(p, box, tw, th)
+      const imgs = cells.map((r) => `<image href="${esc(p.image ?? '')}" x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" preserveAspectRatio="xMidYMid meet"/>`).join('')
+      parts.push(`<pattern id="${id}" x="0" y="0" width="${n(Math.max(box.x + box.w, 0.01))}" height="${n(Math.max(box.y + box.h, 0.01))}" patternUnits="userSpaceOnUse">${imgs}</pattern>`)
+      continue
+    }
+    const marks = patternMarks(p, box).map(markSvg).join('')
+    parts.push(`<pattern id="${id}" x="${n(box.x)}" y="${n(box.y)}" width="${n(Math.max(box.w, 0.01))}" height="${n(Math.max(box.h, 0.01))}" patternUnits="userSpaceOnUse"><g transform="translate(${n(-box.x)} ${n(-box.y)})">${marks}</g></pattern>`)
+  }
+  return { defs: parts.length === 0 ? '' : `<defs>${parts.join('')}</defs>`, ids }
+}
+
+function boundsOf(points: Pt[]): Rect {
+  if (points.length === 0) return { x: 0, y: 0, w: 0, h: 0 }
+  let x0 = points[0]!.x
+  let y0 = points[0]!.y
+  let x1 = x0
+  let y1 = y0
+  for (const q of points) {
+    if (q.x < x0) x0 = q.x
+    if (q.y < y0) y0 = q.y
+    if (q.x > x1) x1 = q.x
+    if (q.y > y1) y1 = q.y
+  }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+}
+
+function markSvg(m: DrawCmd): string {
+  if (m.kind === 'line') return `<line x1="${n(m.from.x)}" y1="${n(m.from.y)}" x2="${n(m.to.x)}" y2="${n(m.to.y)}" stroke="${esc(m.stroke)}" stroke-width="${n(m.width)}"/>`
+  if (m.kind === 'circle') return `<circle cx="${n(m.center.x)}" cy="${n(m.center.y)}" r="${n(m.radius)}" fill="${esc(m.fill)}"/>`
+  if (m.kind === 'polygon') return `<polygon points="${m.points.map((q) => `${n(q.x)},${n(q.y)}`).join(' ')}" fill="${esc(m.fill)}"/>`
+  return ''
 }
 
 /**
@@ -138,15 +195,19 @@ export function collectGradients(cmds: DrawCmd[], prefix: string): { defs: strin
  * `gradientId` is the id `collectGradients` minted for THIS command; without
  * one, a gradient-bearing command falls back to its solid `fill`.
  */
-export function svgCommand(c: DrawCmd, fontFamily: string, gradientId?: string): string {
+export function svgCommand(c: DrawCmd, fontFamily: string, gradientId?: string, patternId?: string): string {
+  // A clip spans the commands after it, so it is the document's (`renderSvg`), not one command's.
+  if (c.kind === 'clip' || c.kind === 'unclip') return ''
   const paint = (fill: string, grad: ChartGradient | undefined): string =>
     grad !== undefined && gradientId !== undefined && gradientId !== '' ? `url(#${gradientId})` : esc(fill)
   if (c.kind === 'rect') {
     const radii = cornerRadii(c.rect, c.corners)
     if (hasCorners(radii)) {
-      return `<path d="${roundedRectPath(c.rect.x, c.rect.y, c.rect.w, c.rect.h, radii)}" fill="${paint(c.fill, c.grad)}"/>`
+      const shape = `<path d="${roundedRectPath(c.rect.x, c.rect.y, c.rect.w, c.rect.h, radii)}"`
+      return `${shape} fill="${paint(c.fill, c.grad)}"/>${c.pattern === undefined || !patternId ? '' : `${shape} fill="url(#${patternId})"/>`}`
     }
-    return `<rect x="${n(c.rect.x)}" y="${n(c.rect.y)}" width="${n(c.rect.w)}" height="${n(c.rect.h)}" fill="${paint(c.fill, c.grad)}"/>`
+    const shape = `<rect x="${n(c.rect.x)}" y="${n(c.rect.y)}" width="${n(c.rect.w)}" height="${n(c.rect.h)}"`
+    return `${shape} fill="${paint(c.fill, c.grad)}"/>${c.pattern === undefined || !patternId ? '' : `${shape} fill="url(#${patternId})"/>`}`
   }
   if (c.kind === 'line') {
     return `<line x1="${n(c.from.x)}" y1="${n(c.from.y)}" x2="${n(c.to.x)}" y2="${n(c.to.y)}" stroke="${esc(c.stroke)}" stroke-width="${n(c.width)}"${dashAttr(c.dash)}/>`
@@ -159,14 +220,15 @@ export function svgCommand(c: DrawCmd, fontFamily: string, gradientId?: string):
   }
   if (c.kind === 'polygon') {
     if (c.points.length < 3) return ''
-    return `<polygon points="${pointsAttr(c.points)}" fill="${paint(c.fill, c.grad)}"/>`
+    const shape = `<polygon points="${pointsAttr(c.points)}"`
+    return `${shape} fill="${paint(c.fill, c.grad)}"/>${c.pattern === undefined || !patternId ? '' : `${shape} fill="url(#${patternId})"/>`}`
   }
   if (c.kind === 'circle') {
     return `<circle cx="${n(c.center.x)}" cy="${n(c.center.y)}" r="${n(c.radius)}" fill="${esc(c.fill)}"/>`
   }
   const rot = c.rotate ?? 0
   const transform = rot === 0 ? '' : ` transform="rotate(${n(rot)} ${n(c.at.x)} ${n(c.at.y)})"`
-  return `<text x="${n(c.at.x)}" y="${n(c.at.y)}" fill="${esc(c.fill)}" font-size="${n(c.size)}" font-family="${esc(fontFamily)}" text-anchor="${ANCHOR[c.align]}" dominant-baseline="${BASELINE[c.baseline]}"${transform}>${esc(c.text)}</text>`
+  return `<text x="${n(c.at.x)}" y="${n(c.at.y)}" fill="${esc(c.fill)}" font-size="${n(c.size)}" font-family="${esc(fontFamily)}"${c.weight === 'bold' ? ' font-weight="bold"' : ''}${c.stroke !== undefined && c.stroke !== '' ? ` stroke="${esc(c.stroke)}" stroke-width="${n(c.strokeWidth ?? 2)}" paint-order="stroke" stroke-miterlimit="2"` : ''} text-anchor="${ANCHOR[c.align]}" dominant-baseline="${BASELINE[c.baseline]}"${transform}>${esc(c.text)}</text>`
 }
 
 /** Options for {@link renderSvg}. */
@@ -235,15 +297,36 @@ export function renderSvg(
   if (options.description !== undefined) aria.push(`aria-describedby="${descId}"`)
 
   const gradients = collectGradients(cmds, prefix)
+  const patterns = collectPatterns(cmds, prefix)
   const body: string[] = []
   if (gradients.defs !== '') body.push(gradients.defs)
+  if (patterns.defs !== '') body.push(patterns.defs)
   if (options.background !== undefined) {
     body.push(`<rect x="0" y="0" width="${n(width)}" height="${n(height)}" fill="${esc(options.background)}"/>`)
   }
+  // A clip opens a `<g clip-path>` over the commands up to its `unclip`; the id is the
+  // chart's prefix plus the command index, unique within and across charts on a page.
+  let clips = 0
   for (let i = 0; i < cmds.length; i++) {
-    const s = svgCommand(cmds[i]!, fontFamily, gradients.ids[i])
+    const c = cmds[i]!
+    if (c.kind === 'clip') {
+      const id = `${prefix}-clip-${i}`
+      body.push(`<clipPath id="${id}"><rect x="${n(c.rect.x)}" y="${n(c.rect.y)}" width="${n(c.rect.w)}" height="${n(c.rect.h)}"/></clipPath><g clip-path="url(#${id})">`)
+      clips++
+      continue
+    }
+    if (c.kind === 'unclip') {
+      if (clips > 0) {
+        body.push('</g>')
+        clips--
+      }
+      continue
+    }
+    const s = svgCommand(c, fontFamily, gradients.ids[i], patterns.ids[i])
     if (s !== '') body.push(s)
   }
+  // An unclosed clip still closes its group: the document stays well formed.
+  for (; clips > 0; clips--) body.push('</g>')
 
   return `<svg xmlns="http://www.w3.org/2000/svg" ${size} ${aria.join(' ')}>${labelled.join('')}${body.join('')}</svg>`
 }

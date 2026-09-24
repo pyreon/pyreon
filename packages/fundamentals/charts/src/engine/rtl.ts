@@ -39,7 +39,7 @@
 // side of the pointer. Every DOM overlay positioned by a chart x goes through
 // the second half.
 
-import type { ChartGradient, DrawCmd, Double, Pt } from './types'
+import type { ChartGradient, DrawCmd, Double, Pt, Rect } from './types'
 
 /** Mirror one x coordinate about the canvas's vertical centreline. */
 export function mirrorX(x: Double, width: Double): Double {
@@ -70,7 +70,7 @@ export function mirrorPoint(p: Pt, width: Double): Pt {
 
 function mirrorGrad(g: ChartGradient | undefined, width: Double): ChartGradient | undefined {
   if (g === undefined) return undefined
-  return { from: mirrorPoint(g.from, width), to: mirrorPoint(g.to, width), stops: g.stops }
+  return { from: mirrorPoint(g.from, width), to: mirrorPoint(g.to, width), stops: g.stops, radial: g.radial }
 }
 
 /**
@@ -98,6 +98,10 @@ function flipAlign(a: 'start' | 'middle' | 'end'): 'start' | 'middle' | 'end' {
 export function mirrorCmds(cmds: DrawCmd[], width: Double): DrawCmd[] {
   return cmds.map((c): DrawCmd => {
     switch (c.kind) {
+      case 'unclip':
+        return c
+      case 'clip':
+        return { ...c, rect: { ...c.rect, x: mirrorX(c.rect.x + c.rect.w, width) } }
       case 'rect':
         // The rect's own x is its LEFT edge, so the mirrored left edge is the
         // mirror of its RIGHT edge — mirroring `x` alone would shift every
@@ -124,6 +128,66 @@ export function mirrorCmds(cmds: DrawCmd[], width: Double): DrawCmd[] {
           // A slanted label mirrors with the chart, or it slants away from the
           // tick it belongs to.
           ...(c.rotate === undefined ? {} : { rotate: -c.rotate }),
+        }
+    }
+  })
+}
+
+// ---- transpose ----------------------------------------------------------
+// A VERTICAL sankey / calendar / parallel is the horizontal one reflected
+// across the diagonal: x becomes y and y becomes x. Like the mirror it is a
+// pure transform of the finished draw list, hand-written per target
+// (`pyreonTransposeCmds` in both native runtimes) and locked by execution.
+
+/** Reflect a point across the diagonal. */
+export function transposePoint(p: Pt): Pt {
+  return { x: p.y, y: p.x }
+}
+
+/** Reflect a rect across the diagonal: its origin swaps, and so do its sides. */
+export function transposeRect(r: Rect): Rect {
+  return { x: r.y, y: r.x, w: r.h, h: r.w }
+}
+
+const alignOfBaseline = (b: 'top' | 'middle' | 'bottom'): 'start' | 'middle' | 'end' => (b === 'top' ? 'start' : b === 'bottom' ? 'end' : 'middle')
+const baselineOfAlign = (a: 'start' | 'middle' | 'end'): 'top' | 'middle' | 'bottom' => (a === 'start' ? 'top' : a === 'end' ? 'bottom' : 'middle')
+
+/**
+ * Transpose a draw list. Applying it twice is the identity, which its test
+ * leans on. Text is anchored, never reflected: the horizontal anchor becomes
+ * the vertical one and back, and a rotation is reflected with the frame.
+ */
+export function transposeCmds(cmds: DrawCmd[]): DrawCmd[] {
+  return cmds.map((c): DrawCmd => {
+    switch (c.kind) {
+      case 'unclip':
+        return c
+      case 'clip':
+        return { ...c, rect: transposeRect(c.rect) }
+      case 'rect':
+        return {
+          ...c,
+          rect: transposeRect(c.rect),
+          // Corners run top-left, top-right, bottom-right, bottom-left; the
+          // diagonal fixes the first and third and swaps the other two.
+          ...(c.corners === undefined ? {} : { corners: [c.corners[0]!, c.corners[3]!, c.corners[2]!, c.corners[1]!] }),
+          ...(c.grad === undefined ? {} : { grad: { ...c.grad, from: transposePoint(c.grad.from), to: transposePoint(c.grad.to) } }),
+        }
+      case 'line':
+        return { ...c, from: transposePoint(c.from), to: transposePoint(c.to) }
+      case 'polyline':
+        return { ...c, points: c.points.map(transposePoint) }
+      case 'polygon':
+        return { ...c, points: c.points.map(transposePoint), ...(c.grad === undefined ? {} : { grad: { ...c.grad, from: transposePoint(c.grad.from), to: transposePoint(c.grad.to) } }) }
+      case 'circle':
+        return { ...c, center: transposePoint(c.center) }
+      case 'text':
+        return {
+          ...c,
+          at: transposePoint(c.at),
+          align: alignOfBaseline(c.baseline),
+          baseline: baselineOfAlign(c.align),
+          ...(c.rotate === undefined ? {} : { rotate: 90.0 - c.rotate }),
         }
     }
   })

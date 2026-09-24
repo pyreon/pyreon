@@ -32,12 +32,15 @@ import { execSync, spawn } from 'node:child_process'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { chromium } from 'playwright'
+import { LoadRecorder, parseWaitQuiet, waitForQuietMachine } from './machine-load'
 
 const REPEAT = (() => {
   const i = process.argv.indexOf('--repeat')
   return i >= 0 ? Math.max(1, Number(process.argv[i + 1]) || 1) : 3
 })()
 const PORT = 4181
+/** `--wait-quiet [maxLoad]` — opt-in: block until load1 ≤ maxLoad before measuring. */
+const WAIT_QUIET = parseWaitQuiet(process.argv)
 const FRAMEWORKS = ['Pyreon', 'React 19', 'Preact', 'Vue 3']
 
 interface SuiteResult {
@@ -64,8 +67,10 @@ function ci95(xs: number[]): [number, number] {
 }
 
 const fmt = (ms: number): string => (ms < 1 ? `${(ms * 1000).toFixed(0)}µs` : `${ms.toFixed(2)}ms`)
-const load1 = (): string =>
-  execSync("uptime | sed 's/.*load averages*: *//' | awk '{print $1}'").toString().trim()
+// Load stamps go through the shared recorder (os.loadavg + CPU identity)
+// instead of an `uptime | sed | awk` pipeline whose output format varies by
+// platform. See machine-load.ts.
+const load = new LoadRecorder('bench-apppage', WAIT_QUIET)
 const cv = (xs: number[]): number => {
   const m = xs.reduce((a, b) => a + b, 0) / xs.length
   return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / xs.length) / m
@@ -145,6 +150,11 @@ try {
   console.log(`[bench-apppage] verified page loaded ${diskBundle}`)
   await clockPage.close()
 
+  // ── Machine load ─────────────────────────────────────────────────────────
+  load.printIdentity()
+  if (WAIT_QUIET !== null) await waitForQuietMachine('bench-apppage', WAIT_QUIET)
+  load.stamp('before measuring')
+
   // ── Passes ───────────────────────────────────────────────────────────────
   const pooled = new Map<string, number[]>()
   const adoption = new Map<string, string>()
@@ -154,8 +164,8 @@ try {
       const j = (i * 7 + pass * 13) % (i + 1)
       ;[order[i], order[j]] = [order[j]!, order[i]!]
     }
-    const l0 = load1()
-    console.log(`[bench-apppage] === pass ${pass}/${REPEAT} (order: ${order.join(', ')}) load=${l0} ===`)
+    console.log(`[bench-apppage] === pass ${pass}/${REPEAT} (order: ${order.join(', ')}) ===`)
+    load.stamp(`pass ${pass} start`)
     for (const fw of order) {
       const page = await browser.newPage()
       await page.goto(`${baseUrl}?mode=apppage&framework=${encodeURIComponent(fw)}`)
@@ -164,6 +174,9 @@ try {
           const s = document.getElementById('status')?.textContent ?? ''
           return s.includes('Done') || s.includes('FAILED')
         },
+        // `waitForFunction(fn, arg, options)` — options is the THIRD argument.
+        // Passed second, it was taken as `arg` and the 30s default applied.
+        undefined,
         { timeout: 300_000 },
       )
       const status = await page.evaluate(() => document.getElementById('status')?.textContent)
@@ -183,8 +196,9 @@ try {
       console.log(`[bench-apppage]   ▸ ${fw}  adopted ${adoption.get(fw) ?? 'n/a'}`)
       await page.close()
     }
-    console.log(`[bench-apppage] === pass ${pass} end load=${load1()} ===`)
+    load.stamp(`pass ${pass} end`)
   }
+  load.stamp('after measuring')
 
   console.log(
     `\nApp-page hydration: 320-component static composition, SSR HTML → interactive`,

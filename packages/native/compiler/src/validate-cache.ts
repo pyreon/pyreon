@@ -9,11 +9,20 @@
 // 180s per-spec `testTimeout` and a 50-minute workflow timeout: both raise
 // the ceiling, neither removes the cost.
 //
-// WHY it is SAFE: a validate call is a PURE function of
-// (kind, compiler identity, stub content, source). The compilers are
-// deterministic, and the stubs are module constants. So the same key always
-// implies the same verdict, and a hit can never change a result — only skip
-// re-deriving one.
+// WHY it is SAFE: a validate call is a PURE function of (kind, compiler
+// identity, stub content, source). The compilers are deterministic, so the
+// same key always implies the same VERDICT — accepted or rejected alike.
+//
+// WHAT IS NOT A VERDICT: a process that never delivered one. A spawn failure
+// (ENOENT), a kill by signal (OOM, a runner cap), or a timeout is
+// environmental — the compiler was not asked, or was not allowed to answer —
+// and caching that as a rejection would poison every later job. Those are
+// classified by the failure's SHAPE (`isTransientProcessFailure`: no exit
+// status, or a signal, or an errno) and passed through uncached. A non-zero
+// EXIT with diagnostics is the compiler's judgement and is cached exactly
+// like a success: roughly half this suite is "does NOT compile" specs, and a
+// cache that forgot every rejection re-ran ~300 cold compiles per shard on
+// every run — measured as a permanent 25-minute cell, killed by the cap.
 //
 // The KEY MUST include the stub content. This is the load-bearing detail,
 // not a nicety: the stubs are edited regularly (a subset stub manufactures
@@ -40,12 +49,51 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
-/** The shape stored on disk. Deliberately NOT `ValidationResult` — a
- * `skipped` verdict depends on tool availability, which is environmental and
- * must never be cached. Only real compiler verdicts are persisted. */
+/**
+ * The shape stored on disk. `v: 2` marks an entry written by code that
+ * classified failures (see `isTransientProcessFailure`) BEFORE caching them,
+ * so a stored rejection is known to be the compiler's. Deliberately NOT
+ * `ValidationResult` — a `skipped` verdict depends on tool availability,
+ * which is environmental and must never be cached.
+ */
 interface CachedVerdict {
+  v?: 2
   ok: boolean
   error?: string
+}
+
+/**
+ * Whether a thrown `execFileSync` error means the compiler never produced a
+ * verdict. Shapes, verified identical under bun and node:
+ *
+ *   non-zero exit  → { status: 3,    signal: null,      code: undefined }
+ *   killed         → { status: null, signal: 'SIGKILL', code: undefined }
+ *   spawn failure  → { status: null, signal: null,      code: 'ENOENT'   }
+ *   timeout        → { status: null, signal: 'SIGTERM', code: 'ETIMEDOUT' }
+ *
+ * Only the first is a judgement about the source. The classification is
+ * structural — it never inspects diagnostic text, which a compiler is free to
+ * reword between versions.
+ */
+export function isTransientProcessFailure(err: unknown): boolean {
+  if (err === null || typeof err !== 'object') return true
+  const e = err as { status?: unknown; signal?: unknown; code?: unknown }
+  if (typeof e.status !== 'number') return true
+  if (e.signal !== null && e.signal !== undefined) return true
+  if (typeof e.code === 'string') return true
+  return false
+}
+
+/**
+ * A legacy (pre-`v: 2`) stored rejection was written before failures were
+ * classified, so its provenance is unknown — EXCEPT when the stored error is
+ * visibly compiler output. `swiftc` prefixes every diagnostic with
+ * `error:` and `kotlinc` with `e: `; an ENOENT/ETIMEDOUT/signal message
+ * carries neither. Keeping those entries is what lets a store written by the
+ * previous cache version stay warm instead of recompiling ~300 rejections.
+ */
+function legacyRejectionIsCompilerOutput(error: string): boolean {
+  return /(^|\n)e: |(^|[\s:])error: /.test(error)
 }
 
 /** Which validator produced the verdict. Two validators can disagree about
@@ -175,6 +223,10 @@ export function cacheKey(
   source: string,
 ): string {
   return createHash('sha256')
+    // v2 invalidates entries written before interrupted compiler processes
+    // were distinguished from deterministic compiler verdicts.
+    .update('v2')
+    .update('\0')
     .update(kind)
     .update('\0')
     .update(compilerVersion)
@@ -199,14 +251,19 @@ function readDisk(key: string): CachedVerdict | undefined {
     const parsed = JSON.parse(raw) as unknown
     // Validate the SHAPE before trusting it. A half-written or
     // foreign-format file must read as a miss, never as a verdict.
-    if (
-      parsed !== null &&
-      typeof parsed === 'object' &&
-      typeof (parsed as CachedVerdict).ok === 'boolean'
-    ) {
-      const v = parsed as CachedVerdict
-      return v.error === undefined ? { ok: v.ok } : { ok: v.ok, error: v.error }
+    if (parsed !== null && typeof parsed === 'object') {
+      const v = parsed as { v?: unknown; ok?: unknown; error?: unknown }
+      if (v.ok === true) return { v: 2, ok: true }
+      if (v.ok === false && typeof v.error === 'string') {
+        // A classified rejection, or a legacy one whose text proves the
+        // compiler wrote it. Anything else predates classification and could
+        // be a cached ENOENT/timeout — evict it and derive a fresh verdict.
+        if (v.v === 2 || legacyRejectionIsCompilerOutput(v.error)) {
+          return { v: 2, ok: false, error: v.error }
+        }
+      }
     }
+    unlinkSync(file)
   } catch {
     // Corrupt entry: drop it so it stops costing a read every call.
     try {
@@ -328,16 +385,25 @@ function whichSync(bin: string): string | null {
 /**
  * Run `compute` unless a cached verdict for this exact input already exists.
  *
- * `skipped` verdicts are passed through UNCACHED: they encode tool
- * availability rather than a compiler judgement, and they are already free.
+ * Both compiler verdicts are cached — accepted AND rejected — because both are
+ * pure functions of the key. Two shapes pass through UNCACHED: a `skipped`
+ * result (tool availability, environmental, already free) and a `transient`
+ * failure (the compiler never delivered a verdict — see
+ * `isTransientProcessFailure`).
  */
 export function withVerdictCache(
   kind: ValidateKind,
   compilerVersion: string,
   stubs: string,
   source: string,
-  compute: () => { ok: boolean; error?: string; skipped?: boolean; skipReason?: string },
-): { ok: boolean; error?: string; skipped?: boolean; skipReason?: string } {
+  compute: () => {
+    ok: boolean
+    error?: string
+    skipped?: boolean
+    skipReason?: string
+    transient?: boolean
+  },
+): { ok: boolean; error?: string; skipped?: boolean; skipReason?: string; transient?: boolean } {
   if (cacheDisabled()) return compute()
 
   const key = cacheKey(kind, compilerVersion, stubs, source)
@@ -349,10 +415,10 @@ export function withVerdictCache(
   }
 
   const result = compute()
-  if (result.skipped === true) return result
+  if (result.skipped === true || result.transient === true) return result
 
   const verdict: CachedVerdict =
-    result.error === undefined ? { ok: result.ok } : { ok: result.ok, error: result.error }
+    result.error === undefined ? { v: 2, ok: result.ok } : { v: 2, ok: result.ok, error: result.error }
   memo.set(key, verdict)
   writeDisk(key, verdict)
   return result

@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { bars, line } from './marks'
 import { PlotChart } from './Chart'
+import { placeLegend } from './legend'
+import { canvasMeasure } from './canvas-web'
 
 interface Row { v: number; r: number }
 const DATA: Row[] = [{ v: 100, r: 0.2 }, { v: 50, r: 0.9 }, { v: 100, r: 0.5 }]
@@ -28,6 +30,25 @@ const canvasOf = (el: HTMLElement): HTMLCanvasElement => el.querySelector('canva
 const click = (c: HTMLCanvasElement, x: number, y: number) => {
   const r = c.getBoundingClientRect()
   c.dispatchEvent(new MouseEvent('click', { clientX: r.left + x, clientY: r.top + y, bubbles: true }))
+}
+
+/**
+ * The pager's next-arrow rect, through `placeLegend` — the same call the host
+ * makes. A hardcoded "right-aligned at 396" tracked nothing: it went stale the
+ * moment the host's own legend padding moved, and the failure read as "paging
+ * broke" rather than "the click missed by 4 pixels".
+ */
+const pagerNext = (c: HTMLCanvasElement, labels: readonly string[], w: number, h: number) => {
+  const placed = placeLegend(
+    labels.map((label) => ({ label, color: '#000' })),
+    { x: 0, y: 0, w, h },
+    'top',
+    { fontSize: 11, labelColor: '#5a6b7a', swatch: 10, gap: 12, orientation: 'horizontal', maxRows: 1, page: 0 },
+    canvasMeasure(c.getContext('2d')!, 'system-ui, -apple-system, "Segoe UI", sans-serif'),
+  )
+  const n = placed.pager?.next
+  if (n === undefined) throw new Error('no pager — the fixture must overflow one row')
+  return { x: n.x + n.w / 2, y: n.y + n.h / 2 }
 }
 
 describe('PlotChart plumb (real browser)', () => {
@@ -75,8 +96,10 @@ describe('PlotChart plumb (real browser)', () => {
     await flush()
     const c = canvasOf(container)
     const before = inked(c)
-    // The pager sits right-aligned on the single visible legend row.
-    click(c, 396, 10)
+    // The pager sits right-aligned on the single visible legend row — asked
+    // for, not guessed.
+    const at = pagerNext(c, many.map((_, i) => `series-number-${i}`), 400, 200)
+    click(c, at.x, at.y)
     await flush()
     expect(inked(c)).not.toBe(before)
   })

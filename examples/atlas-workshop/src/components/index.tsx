@@ -59,3 +59,15 @@ export function Badge(props: BadgeProps): VNodeChild {
     </DemoBadge>
   )
 }
+
+export interface RenderPropCardProps {
+  /** Optional escape hatch; Atlas must not fabricate this callback. */
+  children?: (label: string) => VNodeChild
+  onSelect?: () => void
+}
+
+/** Regression fixture for optional render props in a generated Atlas catalog. */
+export function RenderPropCard(props: RenderPropCardProps): VNodeChild {
+  if (typeof props.children === 'function') return props.children('render-prop content')
+  return <button onClick={props.onSelect}>Default render-prop preview</button>
+}

@@ -37,8 +37,16 @@ describe('defaultScenarioPlugin', () => {
     expect(out.scenarios).toHaveLength(1)
     expect(out.scenarios[0]!.source).toBe('auto-default')
   })
-  it('leaves a component with scenarios unchanged', async () => {
-    const input = ci({ scenarios: [makeScenario({ component: 'Button', name: 'p' })] })
+  it('adds a Default to a component that has OTHER scenarios — the guarantee is unconditional', async () => {
+    // The old rule ("only when there are none") depended on running last,
+    // and the bundle ran the edge cases first: 95 of ui-components' 108
+    // components had no Default, 28 had ONLY `Empty` + `Long content`.
+    const input = ci({ scenarios: [makeScenario({ component: 'Button', name: 'Empty', source: 'auto-edge' })] })
+    const out = await dec(defaultScenarioPlugin(), input)
+    expect(out.scenarios.map((s) => s.name)).toEqual(['Empty', 'Default'])
+  })
+  it('leaves a component that already has a Default unchanged (dedup by id)', async () => {
+    const input = ci({ scenarios: [makeScenario({ component: 'Button', name: 'Default', source: 'authored' })] })
     expect(await dec(defaultScenarioPlugin(), input)).toBe(input)
   })
 })
@@ -214,8 +222,12 @@ describe('recommendedPlugins', () => {
       'atlas:tags',
       'atlas:variant-matrix',
       'atlas:states',
-      'atlas:edge-cases',
+      // Default BEFORE the edge cases, so it heads every component's list.
       'atlas:default-scenario',
+      'atlas:edge-cases',
+      // After every generator, before required-prop filling: a `label` seeded
+      // with the name is a real value, not a `'label'` stand-in.
+      'atlas:content',
       'atlas:fill-defaults',
       'atlas:a11y-static',
       // The first check that actually RUNS the component. Ordered after the
@@ -225,6 +237,6 @@ describe('recommendedPlugins', () => {
     ])
   })
   it('threads baseArgs into the variant-matrix plugin', () => {
-    expect(recommendedPlugins({ baseArgs: { x: 1 } })).toHaveLength(9)
+    expect(recommendedPlugins({ baseArgs: { x: 1 } })).toHaveLength(10)
   })
 })

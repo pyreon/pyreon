@@ -20,4 +20,19 @@ describe('connectWebHost — SSR (no window/document)', () => {
     expect(typeof off).toBe('function')
     expect(() => off()).not.toThrow() // unsubscribe is a safe no-op too
   })
+
+  it('the host-GROUP half is inert too', () => {
+    // Added when groups landed: a hosted page that joins a group during SSR
+    // must not reach for `window`, and its relay subscription must hand back
+    // an unsubscribe that is itself safe to call.
+    const host = connectWebHost()
+    expect(() => host.joinGroup('charts')).not.toThrow()
+    expect(() => host.relay('anything')).not.toThrow()
+    const offRelay = host.onRelay(() => {
+      throw new Error('onRelay must never fire off-browser')
+    })
+    expect(typeof offRelay).toBe('function')
+    expect(() => offRelay()).not.toThrow()
+    expect(() => host.leaveGroup()).not.toThrow()
+  })
 })

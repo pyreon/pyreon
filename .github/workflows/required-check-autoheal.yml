@@ -1,0 +1,141 @@
+name: Required Check Autoheal
+
+# A required check that lands `cancelled` blocks merge exactly like a real
+# failure, but shows no red X inviting investigation and never retries
+# itself — the difference between "CI is strict" (a real failure stays red)
+# and "CI is fragile" (an infra hiccup silently strands a mergeable PR until
+# a human notices the BLOCKED state and re-runs it by hand). That is what
+# happened to `Native Device Build` on #3492: `iOS — xcodebuild (Simulator
+# SDK)` (a required check) was actively mid-build when the WHOLE RUN was
+# cancelled from outside — its unrelated `notify-nightly` sibling job, gated
+# `if: always() && github.event_name == 'schedule'` and normally SKIPPED on
+# a pull_request run, was marked `cancelled` at the identical second, which
+# only happens when a run-level cancel hits every job at once. Nothing in
+# the job's own logic explains it.
+#
+# This workflow does NOT retry a genuine `failure` — that must stay loud and
+# block merge, which is the "strict" half. It retries ONLY `cancelled`,
+# bounded to 2 attempts total (the run's own `run_attempt`, so a rerun of a
+# rerun does not loop forever), and always leaves a visible trace: a PR
+# comment naming what happened, so a third failure is investigated by a
+# human rather than retried into silence.
+#
+# SECOND cancellation class, found after this shipped: a `cancelled` run is
+# not always an anomaly to retry — the workflow's own per-ref
+# `cancel-in-progress: true` cancels a branch's in-progress device build on
+# EVERY new push to that branch, by design (don't burn scarce macOS minutes
+# on a superseded commit). A push cadence faster than the ~40-95min build
+# (observed: a merge-up chain pushing every 15-20min) makes THAT the
+# dominant source of `cancelled` runs, not the external-reclaim class this
+# workflow was built for. Blindly rerunning a superseded run wastes exactly
+# the runner time the OTHER half of this fix (job-level concurrency,
+# below/elsewhere) exists to conserve, races the newer run that's already
+# in flight, and posts a misleading "cancelled from outside the workflow"
+# comment for something GitHub cancelled entirely on purpose. So: skip the
+# rerun when a NEWER run already exists for this workflow+branch — that run
+# is what matters, not this one.
+#
+# The run-list check alone is not sufficient. A cancelled older run can finish
+# after the replacement run was dispatched, and GitHub may briefly return the
+# older run first (especially while a failed-jobs rerun is being materialized).
+# Re-running that stale SHA enters the branch concurrency group again and can
+# cancel the CURRENT device build. The PR head SHA is authoritative: autoheal
+# may act only while the cancelled run still belongs to the PR's current head.
+on:
+  workflow_run:
+    workflows:
+      - Native Device Build
+    types: [completed]
+
+# Nothing at the workflow level (Scorecard TokenPermissionsID): the one job
+# below gets exactly what it uses, and a job added later starts with nothing.
+permissions: {}
+
+jobs:
+  heal:
+    if: github.event.workflow_run.conclusion == 'cancelled' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.run_attempt < 2
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write # re-run the cancelled jobs
+      pull-requests: write # leave the visible trace comment on the PR
+    steps:
+      - name: Re-run the failed/cancelled jobs and say so on the PR
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          retries: 3
+          script: |
+            const run = context.payload.workflow_run
+
+            // Never let a stale run cancel the replacement that superseded it.
+            // `workflow_run.pull_requests` can be empty for unusual event/API
+            // shapes; autoheal is a mutation, so uncertainty must fail closed.
+            const prs = run.pull_requests ?? []
+            if (prs.length === 0) {
+              core.notice(`run ${run.id} has no associated PR — not rerunning without a current-head proof.`)
+              return
+            }
+            let isCurrentHead = false
+            for (const pr of prs) {
+              const { data: current } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+              })
+              if (current.state === 'open' && current.head.sha === run.head_sha) {
+                isCurrentHead = true
+                break
+              }
+            }
+            if (!isCurrentHead) {
+              core.notice(
+                `run ${run.id} (${run.head_sha}) is not the current head of any associated open PR — ` +
+                `not rerunning a superseded build.`,
+              )
+              return
+            }
+
+            // Superseded check: is this still the latest run of this workflow
+            // for its branch? `list` is already newest-first, so the first
+            // entry IS the latest — compare its id, not created_at (two runs
+            // created in the same second, which happens under rapid pushes,
+            // would tie on a timestamp compare).
+            const { data: recent } = await github.rest.actions.listWorkflowRunsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch: run.head_branch,
+              per_page: 5,
+            })
+            const runsForThisWorkflow = recent.workflow_runs.filter((r) => r.workflow_id === run.workflow_id)
+            const latest = runsForThisWorkflow[0]
+            if (latest && latest.id !== run.id) {
+              core.notice(
+                `run ${run.id} was cancelled by a newer push (run ${latest.id} is now the latest for ` +
+                `${run.head_branch}) — not rerunning a superseded build.`,
+              )
+              return
+            }
+
+            await github.rest.actions.reRunWorkflowFailedJobs({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: run.id,
+            })
+            // The RERUN above is the deliverable; this comment is advisory context
+            // for it. A GitHub API 5xx here must never turn the heal job itself red —
+            // that IS the dead-gate class `notify-nightly` documents two jobs over.
+            for (const pr of prs) {
+              try {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  body:
+                    `\`Native Device Build\` was cancelled from outside the workflow (not a job failure) — ` +
+                    `re-running the failed/cancelled jobs automatically: ${run.html_url}\n\n` +
+                    `If this happens a second time on the same commit, treat it as a real signal rather than retrying again.`,
+                })
+              } catch (err) {
+                core.warning(`could not comment on #${pr.number}: ${err}`)
+              }
+            }

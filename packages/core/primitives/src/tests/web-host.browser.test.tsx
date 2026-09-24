@@ -103,3 +103,79 @@ describe('WebView-host round-trip (real Chromium)', () => {
     expect(onMessage).toHaveBeenCalledWith('clicked:Tap')
   })
 })
+
+// A guest that joins a host group and echoes relayed strings into its DOM. It
+// speaks the raw reserved protocol (an isolated iframe can't import
+// `connectWebHost`) — the same messages that helper posts.
+const GROUP_GUEST_SCRIPT = `
+  var root = document.getElementById('root');
+  var log = document.createElement('pre'); log.id = 'log'; root.appendChild(log);
+  window.__pyreonWebViewGroupMessage = function (m) { log.textContent += m + ';'; };
+  function apply() {
+    var d = window.__pyreonData || {};
+    if (d.group) window.pyreonPostMessage(JSON.stringify({ __pyreonWebViewGroup: 1, join: d.group }));
+    else window.pyreonPostMessage(JSON.stringify({ __pyreonWebViewGroup: 1, leave: true }));
+    if (d.send) window.pyreonPostMessage(JSON.stringify({ __pyreonWebViewGroup: 1, group: d.group, message: d.send }));
+    if (d.say) window.pyreonPostMessage(d.say);
+  }
+  window.addEventListener('pyreondata', apply);
+  apply();
+`
+
+describe('WebView host groups (real Chromium)', () => {
+  const waitForLog = async (iframe: HTMLIFrameElement): Promise<HTMLElement> => {
+    for (let i = 0; i < 100; i++) {
+      const el = iframe.contentDocument?.getElementById('log')
+      if (el) return el
+      await new Promise((r) => setTimeout(r, 10))
+    }
+    throw new Error('guest page never rendered')
+  }
+  const tick = () => new Promise((r) => setTimeout(r, 30))
+
+  it('relays a guest string to every sibling host of the same group, never to the origin or another group, and consumes the reserved traffic', async () => {
+    const html = webHostDocument({ script: GROUP_GUEST_SCRIPT })
+    const states = [signal<Record<string, unknown>>({ group: 'g' }), signal<Record<string, unknown>>({ group: 'g' }), signal<Record<string, unknown>>({ group: 'other' })]
+    const messages: string[] = []
+    const mounted = states.map((state) =>
+      mountInBrowser(h(WebView as never, webViewProps(html, () => state(), (m) => messages.push(m)))),
+    )
+    cleanups.push(() => mounted.forEach(({ unmount }) => unmount()))
+    await flush()
+    const frames = mounted.map(({ container }) => query<HTMLIFrameElement>(container, 'iframe'))
+    const logs = await Promise.all(frames.map(waitForLog))
+    await tick()
+
+    // Origin (0) relays; sibling (1) receives; the other group (2) does not.
+    states[0]!.set({ group: 'g', send: 'hello' })
+    await flush()
+    await tick()
+    expect(logs[1]!.textContent).toBe('hello;')
+    expect(logs[0]!.textContent, 'never echoed to the origin').toBe('')
+    expect(logs[2]!.textContent, 'other group untouched').toBe('')
+    // Reserved traffic (join/relay) never reached onMessage; an ordinary
+    // message through the same channel still does.
+    expect(messages).toEqual([])
+    states[0]!.set({ group: 'g', say: 'plain' })
+    await flush()
+    await tick()
+    expect(messages).toEqual(['plain'])
+
+    // The sibling leaves; a further relay from the origin no longer lands.
+    states[1]!.set({})
+    await flush()
+    await tick()
+    states[0]!.set({ group: 'g', send: 'again' })
+    await flush()
+    await tick()
+    expect(logs[1]!.textContent).toBe('hello;')
+
+    // Unmounting a host removes it: relaying into a group of one is a no-op
+    // (and does not throw against the torn-down frame).
+    mounted[2]!.unmount()
+    states[0]!.set({ group: 'g', send: 'last' })
+    await flush()
+    await tick()
+    expect(logs[1]!.textContent).toBe('hello;')
+  })
+})

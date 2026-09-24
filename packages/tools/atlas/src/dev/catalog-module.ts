@@ -13,7 +13,7 @@
  * component whose name collides, a path that needs escaping, a project with
  * nothing in it).
  */
-import { componentKey, type ComponentIntelligence, type PropControl } from '../core'
+import { catalogReplacer, componentKey, type ComponentIntelligence, type PropControl } from '../core'
 
 /** A component paired with the absolute path it is imported from. */
 export interface CatalogEntrySource {
@@ -35,6 +35,19 @@ function lit(value: string): string {
  * one-wins: two components legitimately share a name across directories, and
  * silently dropping one is the failure mode this whole tool exists to avoid.
  */
+/**
+ * The args a scenario can carry as JSON — a function (a render-prop child) or
+ * a vnode built with `h` is dropped, key by key. See `catalogReplacer` for
+ * the file-side twin, which MARKS them instead so a reader knows.
+ */
+export function linkableArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(args)) {
+    if (JSON.stringify(value, catalogReplacer) === JSON.stringify(value)) out[key] = value
+  }
+  return out
+}
+
 export function slugify(name: string): string {
   return (
     name
@@ -73,7 +86,11 @@ export function groupFor(file: string, root: string): string {
 }
 
 /** Map a discovered control to the workbench's control shape. */
-export function toWorkbenchControl(control: PropControl): {
+export function toWorkbenchControl(
+  control: PropControl,
+  /** The component's content seed for this prop — the default when the prop declares none. */
+  seeded?: unknown,
+): {
   key: string
   label: string
   type: 'text' | 'enum' | 'bool' | 'number' | 'color'
@@ -105,13 +122,18 @@ export function toWorkbenchControl(control: PropControl): {
     }
   }
   if (control.kind === 'number') {
-    return { key: control.name, label, type: 'number', default: control.defaultValue ?? 0, ...(control.required ? { required: true } : {}) }
+    // No fabricated `0`. A number prop with no declared default keeps the
+    // COMPONENT's own default when the control is blank — `0` was handed to
+    // `RingProgress`'s `size` and rendered a 0×0 ring on the deployed
+    // workbench, reading as "this component renders nothing".
+    return { key: control.name, label, type: 'number', default: control.defaultValue, ...(control.required ? { required: true } : {}) }
   }
   if (control.kind === 'color') {
     return { key: control.name, label, type: 'color', default: control.defaultValue ?? '#3b82f6', ...(control.required ? { required: true } : {}) }
   }
   // Everything else edits as text.
-  return { key: control.name, label, type: 'text', default: control.defaultValue ?? '', ...(control.required ? { required: true } : {}) }
+  const fallback = typeof seeded === 'string' ? seeded : ''
+  return { key: control.name, label, type: 'text', default: control.defaultValue ?? fallback, ...(control.required ? { required: true } : {}) }
 }
 
 /**
@@ -136,6 +158,8 @@ export function isEditableControl(control: PropControl): boolean {
 export interface GenerateOptions {
   /** Absolute path of the scanned root, used to derive groups. */
   root: string
+  /** Part → parent component name — see `AtlasConfig.parts`. */
+  parts?: Record<string, string>
   /**
    * Absolute path of the project's `atlas.config.*`, when it exports a
    * `wrapper`. The generated module imports the config IN THE BROWSER (so the
@@ -295,7 +319,13 @@ export function generateCatalogModule(
 
   const ordered = sortEntries(entries, options)
   const ids = catalogIds(entries, options)
-  const lines: string[] = ["import { h } from '@pyreon/core'", '']
+  const lines: string[] = [
+    "import { h } from '@pyreon/core'",
+    // The SAME materializer the verify harness uses — one implementation, so a
+    // seed that verified renders identically on the canvas.
+    "import { materializeContent as __content } from '@pyreon/atlas/core'",
+    '',
+  ]
 
   // Component modules are imported INDIVIDUALLY and non-fatally.
   //
@@ -378,6 +408,17 @@ export function generateCatalogModule(
     lines.push('const __wrapAll = (__el) =>')
     lines.push('  __layers.reduceRight((__acc, __ext) => h(__ext.wrap, {}, __acc), __el)')
     lines.push('')
+    // An AUTHORED scenario's args are read from the config module itself —
+    // the same object the verify harness mounted — so a render-prop child or
+    // a vnode built with `h` in `atlas.config.ts` reaches the canvas intact.
+    // The JSON copy is the fallback for a config the browser cannot import.
+    lines.push('const __authored = (key, name, scen, fallback) => {')
+    lines.push('  const all = __section.scenarios ?? __config.scenarios')
+    lines.push('  const list = all?.[key] ?? all?.[name]')
+    lines.push('  const hit = Array.isArray(list) ? list.find((s) => s?.name === scen) : undefined')
+    lines.push('  return hit?.args ?? fallback')
+    lines.push('}')
+    lines.push('')
   }
 
   lines.push('export const catalog = {')
@@ -386,11 +427,18 @@ export function generateCatalogModule(
 
   ordered.forEach((entry, i) => {
     const { component } = entry
-    const controls = component.controls.filter(isEditableControl).map(toWorkbenchControl)
-    // The discovered event surface. These are the props the Actions panel can
-    // observe — the controls list deliberately excludes them (a function is not
-    // an editable value), so they are threaded separately.
-    const reactiveProps = component.controls.filter((c) => c.reactive).map((c) => c.name)
+    const controls = component.controls
+      .filter(isEditableControl)
+      .map((c) => toWorkbenchControl(c, component.content?.[c.name]))
+    // The discovered EVENT surface. `reactive` means only "function-valued";
+    // it also includes render props such as `children`/`renderItem`. Fabricating
+    // one of those changes component behaviour even when the user supplied no
+    // callback (Combobox sees a function child, enters its render-prop escape
+    // hatch, and renders the logger's `undefined` return). The framework's
+    // event contract is `on[A-Z]`, so observe exactly that subset.
+    const reactiveProps = component.controls
+      .filter((c) => c.reactive && /^on[A-Z]/.test(c.name))
+      .map((c) => c.name)
     const page = pageFor(component, options.pages)
     lines.push('    {')
     lines.push(`      id: ${lit(ids[i]!)},`)
@@ -420,19 +468,26 @@ export function generateCatalogModule(
       // `atlas scan` publishes. Three states on purpose: `unverified` is not a
       // pass, and rendering it as one would be the false-green the verify
       // model exists to prevent.
-      const scenarios = component.scenarios.map((s) => ({
-        id: s.id,
-        name: s.name,
-        args: s.args,
-        verdict: s.verify
+      const items = component.scenarios.map((s) => {
+        const verdict = s.verify
           ? s.verify.ok
-            ? ('ok' as const)
+            ? 'ok'
             : s.verify.checked > 0
-              ? ('fail' as const)
-              : ('unverified' as const)
-          : ('unverified' as const),
-      }))
-      lines.push(`      scenarios: ${JSON.stringify(scenarios)},`)
+              ? 'fail'
+              : 'unverified'
+          : 'unverified'
+        // An authored scenario's args are read LIVE from the config (a render-prop
+        // child, a vnode tree); a derived scenario's JSON copy DROPS what JSON
+        // cannot carry — those keys come back at render time from the authored
+        // Default the derived scenario was built on (`__base` below), so the
+        // marker string the catalog file shows is never handed to a component.
+        const args =
+          s.source === 'authored' && options.configPath
+            ? `__authored(${lit(key)}, ${lit(component.name)}, ${lit(s.name)}, ${JSON.stringify(s.args, catalogReplacer)})`
+            : JSON.stringify(linkableArgs(s.args))
+        return `{ id: ${lit(s.id)}, name: ${lit(s.name)}, source: ${lit(s.source)}, args: ${args}, verdict: ${lit(verdict)} }`
+      })
+      lines.push(`      scenarios: [${items.join(', ')}],`)
     }
     // The guard is the point: one broken export must not blank the workbench.
     //
@@ -462,7 +517,16 @@ export function generateCatalogModule(
         `: ${lit(`Could not load ${component.name} from `)} + ${lit(entry.file)})`,
     )
     lines.push(`        }`)
-    lines.push(`        const merged = { ...props }`)
+    // Content merges UNDER the control values: the seed is what renders when
+    // the user has said nothing, and clearing the `children` field to '' is a
+    // real edit that wins. The layout-blocks marker has no control, so it
+    // always comes from here.
+    // Seed, then the authored Default's live args, then the scenario/control
+    // values — the same order the content plugin used when the scan verified.
+    const base = options.configPath
+      ? `__authored(${lit(key)}, ${lit(component.name)}, "Default", {})`
+      : '{}'
+    lines.push(`        const merged = { ...${JSON.stringify(component.content ?? {})}, ...${base}, ...props }`)
     if (reactiveProps.length > 0) {
       lines.push(`        for (const name of ${JSON.stringify(reactiveProps)}) {`)
       lines.push(`          const user = merged[name]`)
@@ -474,12 +538,21 @@ export function generateCatalogModule(
       lines.push(`          }`)
       lines.push(`        }`)
     }
+    // An overlay seeded `open: true` closes the way a real app closes it:
+    // its `onClose` writes the `open` control back, so Escape / the backdrop
+    // dismiss the preview and the Controls panel shows it dismissed.
+    if (controls.some((c) => c.key === 'open')) {
+      lines.push(`        if (typeof merged.onClose !== 'function') {`)
+      lines.push(`          merged.onClose = () => { ctx.logAction('onClose', ''); ctx.setValue('open', false) }`)
+      lines.push(`        }`)
+    }
     lines.push(`        if (Comp.IS_ROCKETSTYLE) Object.assign(merged, ctx.pseudo)`)
+    lines.push(`        const { props: __p, children: __c } = __content(merged, h)`)
     if (options.configPath) {
-      lines.push(`        const __el = h(__Perms, { value: ctx.can }, h(Comp, merged))`)
+      lines.push(`        const __el = h(__Perms, { value: ctx.can }, h(Comp, __p, ...__c))`)
       lines.push(`        return __wrapAll(__el)`)
     } else {
-      lines.push(`        return h(Comp, merged)`)
+      lines.push(`        return h(Comp, __p, ...__c)`)
     }
     lines.push(`      },`)
     lines.push('    },')
@@ -487,6 +560,23 @@ export function generateCatalogModule(
 
   lines.push('  ],')
   lines.push('}')
+  if (options.parts && Object.keys(options.parts).length > 0) {
+    // A PART renders as its parent's opening scenario: a tab panel shown
+    // inside its tabs, an accordion item inside its accordion. Its own render
+    // would be empty (no context), and an empty canvas says nothing. Resolved
+    // at module evaluation, by name, so a part whose parent is not in the
+    // catalog simply keeps its own render.
+    lines.push('')
+    lines.push(`const __parts = ${JSON.stringify(options.parts)}`)
+    lines.push('const __opening = (c) => (c.scenarios?.find((s) => s.name === "Default") ?? c.scenarios?.[0])?.args ?? {}')
+    lines.push('for (const [part, parent] of Object.entries(__parts)) {')
+    lines.push('  const p = catalog.components.find((c) => c.name === part)')
+    lines.push('  const par = catalog.components.find((c) => c.name === parent)')
+    lines.push('  if (!p || !par || p === par) continue')
+    lines.push('  p.partOf = par.id')
+    lines.push('  p.render = (_props, ctx) => par.render(__opening(par), ctx)')
+    lines.push('}')
+  }
   lines.push('')
   return lines.join('\n')
 }

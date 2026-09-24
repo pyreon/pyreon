@@ -25,6 +25,7 @@
  */
 import { resolve } from 'node:path'
 import type { ComponentIntelligence, ComponentRef, PropControl, VariantAxis } from '../core'
+import { deriveContent } from '../core'
 import type { ModuleLoader } from './load'
 
 /** The shape rocketstyle attaches to a finished component. */
@@ -34,6 +35,52 @@ interface RocketstyleComponent {
   getStaticDimensions?: (theme: unknown) => {
     dimensions?: Record<string, Record<string, unknown>>
   }
+  /** The `.attrs()` chain rocketstyle exposes — where `tag` lives. */
+  __rs_attrs?: ReadonlyArray<unknown>
+  /** The base the chain renders — a tag string, or a component. */
+  __rs_component?: unknown
+}
+
+/**
+ * The DOM tag a rocketstyle component renders as, read off its `.attrs()`
+ * chain — `el.attrs({ tag: 'button' })` is how every `@pyreon/elements`-based
+ * component says what it is. Each entry is applied like rocketstyle applies it
+ * (a function of props, or a plain object); the last `tag` wins, the same as
+ * at render. Undefined when nothing in the chain sets one, and never a throw:
+ * an attrs callback that dereferences a prop we did not pass is the
+ * component's business, not a reason to lose the whole entry.
+ */
+export function readTag(value: unknown): string | undefined {
+  const component = value as RocketstyleComponent | undefined
+  // `.config({ component: 'hr' })` renders the tag DIRECTLY — no attrs chain
+  // ever names it. An attrs `tag` still wins when both are present.
+  let tag: string | undefined = typeof component?.__rs_component === 'string' ? component.__rs_component : undefined
+  const chain = component?.__rs_attrs
+  if (!Array.isArray(chain)) return tag
+  for (const entry of chain) {
+    try {
+      const attrs = typeof entry === 'function' ? entry({}) : entry
+      const t = (attrs as { tag?: unknown } | null | undefined)?.tag
+      if (typeof t === 'string') tag = t
+    } catch {
+      // see above
+    }
+  }
+  return tag
+}
+
+/**
+ * The COMPONENT a rocketstyle chain renders through, by display name —
+ * `el.config({ component: ModalBase })` sets `__rs_component` to the base
+ * function. Undefined when the chain renders a tag (a string base, or an
+ * attrs `tag`), which is the case `readTag` answers instead.
+ */
+export function readBase(value: unknown): string | undefined {
+  const base = (value as RocketstyleComponent | undefined)?.__rs_component
+  if (typeof base !== 'function') return undefined
+  const named = base as { displayName?: unknown; name?: unknown }
+  const name = typeof named.displayName === 'string' ? named.displayName : named.name
+  return typeof name === 'string' && name.length > 0 ? name : undefined
 }
 
 export interface RocketstyleDiscoveryOptions {
@@ -162,14 +209,21 @@ export async function discoverRocketstyle(
       const axes = readDimensions(value, options.theme)
       if (!axes) continue
       seen.add(name)
+      // Dimensions say how the component can LOOK; they never say what it
+      // renders WITH. Without this every derived scenario mounted an empty
+      // `<button>` / `<h2>` / `<div>` — see `core/content.ts`.
+      const base = readBase(value)
+      const content = deriveContent({ name, tag: readTag(value), base })
       out.push({
         name,
         component: value as ComponentRef,
-        controls: axes.map((axis) => toControl(axis.name, axis.values)),
+        controls: [...axes.map((axis) => toControl(axis.name, axis.values)), ...content.controls],
         axes,
         scenarios: [],
         tags: [],
         source: file,
+        ...(Object.keys(content.args).length > 0 ? { content: content.args } : {}),
+        ...(base ? { base } : {}),
       })
     }
   }

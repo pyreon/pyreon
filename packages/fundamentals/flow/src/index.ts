@@ -26,7 +26,7 @@
 
 export { Background } from './components/background'
 export { Controls } from './components/controls'
-export type { FlowComponentProps } from './components/flow-component'
+export type { EdgeComponentProps, FlowComponentProps } from './components/flow-component'
 // Components
 export { Flow } from './components/flow-component'
 export { Handle } from './components/handle'
@@ -36,6 +36,8 @@ export { NodeResizer } from './components/node-resizer'
 export type { NodeToolbarProps } from './components/node-toolbar'
 export { NodeToolbar } from './components/node-toolbar'
 export type { EdgeLabelRendererProps } from './components/edge-label-renderer'
+export type { BaseEdgeProps, EdgeTextProps, ViewportPortalProps } from './components/edge-base'
+export { BaseEdge, EdgeText, ViewportPortal } from './components/edge-base'
 export { EdgeLabelRenderer } from './components/edge-label-renderer'
 export type { FlowLayers } from './components/flow-context'
 export { FlowLayersContext } from './components/flow-context'

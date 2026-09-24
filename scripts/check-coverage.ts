@@ -51,6 +51,7 @@ import { readdirSync, existsSync, readFileSync, appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { isModuleEntry } from './is-entry'
+import { isTestPath } from './test-paths'
 
 const PACKAGE_DIRS = [
   'packages/core',
@@ -62,6 +63,20 @@ const PACKAGE_DIRS = [
   // UNSCANNED by this gate — so ui-components/ui-primitives coverage was
   // never enforced and sat RED locally with nobody catching it.
   'packages/ui',
+  // Previously UNSCANNED, the same class as the `packages/ui` note above, one
+  // category over: test-utils, manifest, perf-harness, ansi, vitest-config.
+  // `@pyreon/test-utils` declares an explicit 95/95/95 that nothing was
+  // checking.
+  //
+  'packages/internals',
+  // `@pyreon/native-compiler` is the most-changed package in this release at
+  // 55k lines, and PUBLISHED — and its coverage had never been measured. Its
+  // suite spawns real swiftc/kotlinc, so the run is dominated by the VERDICT
+  // CACHE: cold it exceeds ten minutes, warm it is fast. The cache lives in
+  // `node_modules/.cache/pyreon-native-validate`, i.e. per checkout, which is
+  // why a fresh worktree measures cold and CI (which restores it via
+  // `PYREON_VALIDATE_CACHE_DIR`) does not. See `NATIVE_TIMEOUT_MS`.
+  'packages/native',
 ]
 const DEFAULT_THRESHOLD = 95
 const MINIMUM_FLOOR = 95
@@ -113,6 +128,19 @@ const SERIAL_PACKAGES = new Set(['@pyreon/zero', '@pyreon/mcp', '@pyreon/vite-pl
  * next CI run says so in the table rather than leaving it to be guessed at.
  */
 const PACKAGE_TIMEOUT_MS = 600_000
+/**
+ * `@pyreon/native-compiler` spawns real `swiftc`/`kotlinc` — hundreds of them —
+ * so its wall time is a function of the VERDICT CACHE, not of the suite. Warm
+ * it is fast; cold it exceeds the shared budget, which is what a fresh checkout
+ * always is. CI restores the cache (`PYREON_VALIDATE_CACHE_DIR`), so this
+ * headroom is for the cold local run rather than the normal path.
+ *
+ * A timeout here is still a LOUD failure that says the thresholds were not
+ * enforced — raising it buys a measurement, it does not paper over one.
+ */
+const NATIVE_TIMEOUT_MS = 1_800_000
+const timeoutFor = (pkg: string): number =>
+  pkg === '@pyreon/native-compiler' ? NATIVE_TIMEOUT_MS : PACKAGE_TIMEOUT_MS
 
 /**
  * The vitest CLI entry, run under `node` (see the spawn comment in
@@ -165,59 +193,67 @@ interface FloorExemption {
   reason: string
 }
 const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
-  '@pyreon/charts': {
-    currentStatements: 94,
-    currentBranches: 85,
+  '@pyreon/native-compiler': {
+    currentStatements: 95,
+    currentBranches: 92,
     reason:
-      'The plot-engine family wave (2026-09, ~30 stacked PRs: funnel through gantt, the ECharts option facade, the option host, the native crossings). Each PR lands one family with statement-level geometry specs; the edge and interaction specs that lift branch coverage arrive in LATER PRs of the same stack, so an intermediate branch measures 94-97% statements and 85-90% branches (theme river: 96.28 / 87.49 with the browser-covered canvas hosts excluded) while the top of the stack sits higher. Recorded at the wave floor rather than lowered per PR; the ratchet back toward 98 is one follow-up once the wave has merged, and the family hosts stay excluded because each is covered only by its real-Chromium spec.',
+      'PMTC compiler (parse.ts + emit-swift.ts + emit-kotlin.ts + the expr/type/style helpers). Ratcheted 88/82 -> 95/92 by the 92%+ campaign (measured 95.84/93.31/95.35/97.06 on a full run, all 475 files, 6511 specs). Nine parallel cov-* suites over parse.ts (three line ranges), emit-swift.ts (two ranges), emit-kotlin.ts (two ranges), expr-utils.ts/style-to-native.ts/infer-type.ts, and the validators/theme/rocketstyle/chart-hosts group. Each pairs the TSX/TS source shape a branch acts on with the neighbour that must not, asserting emitted Swift AND Kotlin. NOT deterministic: which validate specs run depends on toolchain availability (swiftc/kotlinc) and the verdict cache, so the floor sits below the observed range rather than at the best run, matching the prior entry\'s own caveat.\n\nSeven real product bugs found and fixed on the way, each bisect-verified: a sparse array literal ([1, , 2], valid TS) crashing transform() with an opaque uncaught TypeError; a computed object key ({[k]: v}) emitted under its VARIABLE NAME instead of skipped, in both parse-theme.ts and parse-rocketstyle.ts; an unresolvable Text color/fontWeight/textAlign value vanishing with zero warning; a degenerate \'0 / N\' aspectRatio emitting a real 0 ratio; @pyreon/validate\'s wrapper-less s DSL unable to lower ANY nested schema shape (a synthesized re-entry wrapper built an Identifier callee literally named null); and a CSS template segment with an unparseable escape (\\2014, the ordinary em-dash) silently dropping every OTHER declaration sharing that segment. Several more are locked as self-retiring it.fails specs naming the fix (a Swift-only value-const inliner substituting through a shadowing parameter; a nested-struct name collision keyed on field names only; swift-stubs/kotlin-stubs missing real SDK members, rejecting correct emits) -- tracked as follow-up, not papered over.',
+  },
+  '@pyreon/native-cli': {
+    currentStatements: 95,
+    currentBranches: 92,
+    reason:
+      'Newly MEASURED for the same reason as its sibling above — published, never scanned. The first measurement was 76.37/70.68/82.17/78.05; #3454 took it to 89/82/94/91; the 92%+ campaign then took it to 95/92/96/96 (measured 96.62/93.21/97.02/97.06 on macOS) with two suites: the CLI paths a real invocation takes that nothing had driven (the space-separated flag form, --fonts, --target=all\'s worst-exit contract, the build report\'s skipped/warning sections, wire\'s json/ios-out/co-located modes, the LSP\'s didSave/shutdown turns) and one spec per content-keyed Kotlin import arm — the class where a predicate keyed on the wrong call shape is invisible to the kotlinc stub gate and costs a device build. Statements clear the bar; branches sit under the 95 floor. Ratchet up; never lower to absorb a regression. Watch the platform skew when re-measuring: `check.test.ts` gates four specs on `isSwiftUIAvailable()`, true on macOS and false on every runner, so a Mac reads HIGHER than the machine that gates this — the ~1% headroom is for that; take the figure from CI, not from a local run.',
+  },
+  '@pyreon/manifest': {
+    currentStatements: 95,
+    currentBranches: 94,
+    reason:
+      'Newly MEASURED, not newly regressed: `packages/internals` was outside PACKAGE_DIRS, so none of the five internals packages had ever been scanned by this gate. Four of them pass outright — ansi 100%, perf-harness 100%, test-utils 99.3%, and vitest-config has no instrumentable source. This one measures 98.12% statements / 94.39% branches, i.e. 0.61pp under the branch floor, and is recorded at the MEASURED actual so the widened scan root can land without lowering anything. Ratchet it back to 95 with the branch specs; do not raise this to absorb a regression.',
   },
   '@pyreon/lathe': {
-    currentStatements: 90,
-    currentBranches: 80,
+    currentStatements: 96,
+    currentBranches: 92,
     reason:
-      'Spec-to-client codegen, arrived at 84.46% statements / 72.22% branches and ratcheted to 90.69 / 80.51 in the same PR. It reached main unmeasured: its PR changed a set large enough to trip the PR-time coverage step\'s >15-package cap, so the step SKIPPED and a brand-new package slipped past the mechanism whose stated job is preventing exactly that. (I first attributed this to the ROOT-FILE escalation, a real second hole with the same outcome — `--filter=*` makes that step exit — but `isRootFile` is false for the `scripts/*.ts` paths that PR touched, so it was the cap. The escalation hole is fixed in `affected.ts` regardless.) ' +
-      'The shortfall is real, not an accounting artifact. `src/cli/report.ts` (40 -> 98), `src/emit/mock.ts` (77 -> 98), `src/emit/schema.ts` (71 -> 87) `src/core/naming.ts` (79 -> 97) and `src/input/openapi.ts` (79 -> 87) are done — the fixture generator\'s per-kind shapes and the portable-regex guard, both of which encode cross-target decisions rather than lines. Recorded at the MEASURED actual and ratcheted with it, never lowered to absorb a regression.',
+      'Spec-to-client codegen. Arrived at 84.46/72.22, ratcheted to 90.69/80.51 in its own PR, and now 96/92 in the 2026-09 campaign (measured 96.21/92.14). The suites that closed it cover the surfaces where a mistake is silent because the output is CODE someone else runs: the first-party YAML reader and what it refuses, the OpenAPI reduction and its notes channel, the faker/docs/client emitters, the contract diff `--fail-on-breaking` gates on, the CLI parser, and the layered entry graph. Three bugs fell out of it. The residual is the watch loop, the vite plugin host and the nested-emitter plumbing — surfaces reached by a real build rather than a unit run. Raise as tests land; never lower to absorb a regression.',
   },
+
   // ── Statements + branches < floor ───────────────────────────────────
   '@pyreon/flow': {
-    currentStatements: 98,
-    currentBranches: 90,
+    currentStatements: 99,
+    currentBranches: 92,
     reason:
-      'Node-graph canvas. Statements are ABOVE the 95 floor (98.49 measured); only branches sit under it, and the shortfall is ONE file: ' +
-      '`layout-engine.ts` at 75.63% branches, the in-house engine that replaced elkjs in #2933 (the tree\'s last copyleft dependency). ' +
-      'Its algorithmic fallbacks — cycle-breaking, ranking, ordering — carry many branches the current tests do not drive. Every other ' +
-      'file in the package is at 99%+ branches, so this is one bounded, nameable gap rather than a thin package. Raising it means ' +
-      'exercising the layout algorithm directly, which is real work and tracked separately.',
+      'Node-graph canvas. Statements are ABOVE the 95 floor (99.15 measured); only branches sit under it, at 92.72. ' +
+      'Ratcheted 98/90 -> 99/92 by the 92%+ campaign: the shortfall named here was `layout-engine.ts` at 75.63% branches ' +
+      '(the in-house engine that replaced elkjs in #2933), and three new suites took it to 83.97 — malformed graphs ' +
+      '(dangling edges, cycles, self-loops, forests, across all SEVEN algorithms; the prior tests ran five and only ever ' +
+      'passed well-formed input), the `direction` option including the UP/LEFT axis flip, and the edge API no-op guards ' +
+      'driven through the undo stack. The residual is the engine\'s numeric ordering/crossing-reduction arms plus ' +
+      'flow.ts interaction paths the real-Chromium suites drive. Raise in lockstep as tests land; never lower.',
   },
   '@pyreon/compiler': {
-    currentStatements: 91,
-    currentBranches: 85,
+    currentStatements: 97,
+    currentBranches: 93,
     reason:
-      'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). Ratcheted 89/83 → 91/85 (measured 91.79/85.56) after validate-emit.ts — the pure TS-compiler-API compile-time @pyreon/validate specializer — gained full behavioral coverage (56.3%→98.9% stmts) of its check vocabulary + emitSchemaSource mini rewrite. Residual gap is the jsx.ts codegen edge-case tail (dual-backend, covered by native-equivalence + fuzz-equivalence in the `test (native)` cell) plus the syntactic audit modules (native-audit/content-audit/island-audit/ssg-audit) and diagnose.ts (exercised by e2e/dev-error-printer.spec.ts). Lifting to 95/95 is multi-PR work tracked as a long-tail effort.',
+      'JSX compiler. Ratcheted 93/86 -> 97/93 by the 92%+ campaign (measured 97.47/93.54, functions 99.86, lines 98.65). Twenty cov-* suites (1,096 specs) over jsx.ts (the template emitter: attr setters, SSR fast-path bail catalogue, collapse detectors, prop-derived inlining and its shadow set, signal auto-call, templatize-component-children, text fusion), plain.ts + plain-migrate.ts (every Plain Mode shape asserted BYTE-EQUAL across the JS and Rust backends), and the audits/detectors/scanner. Each pairs the source shape that takes an arm with the neighbour that must not. Two product bugs surfaced: the Rust plain-mode mirror forced JSX on for `.ts` files (a generic arrow or angle-bracket cast made the whole module silently not-plain), and the on-change-input probe could not read a non-self-closing `<input>`. MEASURED RESIDUAL, 406 arms: ~130 `?? []` / `?? \'\'` fallbacks on AST fields oxc always supplies, ~60 `if (!node)` presence guards, position-guard operands short-circuited by an earlier operand, ESTree-legacy case labels oxc never emits (StringLiteral/NumericLiteral), the `needsCxImport` vestige (never assigned true since class routes through _setClass), and the native-binary fallback arms (the binary is loaded in-process, so the JS fallback side cannot run). Lifting further means synthesising malformed ASTs, which asserts nothing about the product.',
   },
   '@pyreon/loom': {
     currentStatements: 95,
-    currentBranches: 90,
+    currentBranches: 92,
     reason:
-      'Dependency observatory. Statements, functions and lines all clear the floor comfortably (97.71 / 99.09 / 98.96) and are NOT exempted — only branches is, at 90.32. It had no threshold entry at all, so all four inherited the 95% default and the branch shortfall reddened `Coverage (Full)` on every main run while nothing in the package stated its branch contract. The 54 uncovered branches are spread thin across six files that are otherwise 96-99% (workspace 83.8, model 86.6, detect 88.3, config 88.3, graph 90, imports 96.1) and are defensive arms — `??` fallbacks and optional chaining on shapes the callers already guarantee. Ratchet up as tests land.',
-  },
-  '@pyreon/atlas': {
-    currentStatements: 82,
-    currentBranches: 75,
-    reason:
-      'AI-native component workbench. FIRST time this package has ever been enforced: it was absent from every CI coverage table because the runner silently dropped any package whose output it could not parse, so its declared 95/95/95 was decorative and the package sat ~15pp under it. Honest first baseline (measured 79.72/75.98, functions 66.06, lines 79.94). The uncovered surface is concentrated and named: `static.ts` (the `atlas build` static-docs generator, landed with no tests), `server.ts`/`plugin.ts`/`run.ts` (the vite-booting dev surface, proven by e2e/atlas-workshop.spec.ts rather than node vitest), `lens.ts`/`lens-client.ts`/`axe.ts` (browser-side instrumentation measured on the page\'s own devtools bridge), and the `A11y*` styled-declaration modules. This is the low end of a deliberate ratchet — raise these thresholds + this entry in lockstep as tests land, never lower.',
+      'Dependency observatory. Statements, functions and lines all clear the floor comfortably (98.31 / 99.09 / 99.27) and are NOT exempted — only branches is, now at 92.65, which clears the 92%+ campaign bar though not the gate\'s 95. Ratcheted 90 -> 92 by covering `core/detect.ts`, where every uncovered arm was a RECOGNITION rule present because the naive detector produced wrong warnings on a real monorepo: the `@types/*` twin (including the scoped `@scope/x` -> `@types/scope__x` mapping, which is not the obvious one), type-only-counts-as-used, and private-vs-published severity. Writing them surfaced a real gap — `if (!prod) continue` skipped the WHOLE package, so one whose runtime imports are all relative or all declared never had its `import type` specifiers checked at all, making `phantom-type-dep` unreachable for exactly the shape where it is the only finding available. The residual is defensive `??` fallbacks spread thin across files that are otherwise 96-99%.',
   },
   '@pyreon/ui-components': {
-    currentStatements: 62,
-    currentBranches: 75,
+    currentStatements: 98,
+    currentBranches: 94,
     reason:
-      '67-component rocketstyle library. This is the FIRST PR to bring packages/ui under the coverage gate (it was entirely unscanned). Honest first baseline (measured 49.48/72.22, functions 16.09, lines 50.35): the library is imported by the export-existence test but almost never RENDERED, so definition-chain statements are covered while the .theme/.states/.sizes callbacks (the bulk of functions) are not. `includeIndexInCoverage` un-excludes the component index.ts files (same vacuous-barrel trap @pyreon/store fixed in #2167). This is the low end of a deliberate ratchet — the UI-excellence effort adds per-component mount/interaction tests phase by phase; raise these thresholds + this entry in lockstep as coverage climbs, never lower. Ratcheted 49/72 -> 62/75 (measured 62.62/75.67, functions 37.64, lines 61.88) as the Tree/SegmentedControl/Accordion/NumberInput/PinInput/Spoiler wirings landed with real mount specs.',
+      '67-component rocketstyle library, and the package that was furthest below the bar. Baselined at 49/72 when packages/ui first came under this gate, ratcheted to 62/75 as per-component wirings landed, and now 62/75 -> 98/94 by the 92%+ campaign (measured 98.86/94.39, functions 97.99, lines 98.80). The lift is almost entirely one test — `every-component-mounts` — because the shortfall was never thin coverage of tested components but a LONG TAIL of components rendered by no spec at all: files sitting at 25-60% statements with 100% branches, i.e. definition chains that had evaluated but never run. A rocketstyle chain with a bad `.theme()` key or a missing base throws on first mount, so without that smoke the first person to find it is a consumer at runtime. The list derives from the barrel, so a new export is covered the day it lands. Writing it also surfaced a real bug in RingProgress (a NaN percentage escaped the clamp and the ring silently vanished). Residual: six branches in styles callbacks that need specific resolved theme values.',
   },
   '@pyreon/ui-primitives': {
     currentStatements: 95,
-    currentBranches: 89,
+    currentBranches: 92,
     reason:
-      '12 headless behavior primitives (SelectBase/ComboboxBase/CalendarBase/TreeBase/…). First baseline under the gate (measured 62.99/54.79, functions 63.68, lines 66.85): the 11 browser tests exercise ARIA + keyboard surfaces but not the full state machines (Checkbox/Switch/Combobox/FileUpload/keyboard.ts navigateByRole largely unexercised — which is why interaction bugs shipped). Ratchet target as the UI-excellence effort adds interaction tests; raise in lockstep, never lower. Ratcheted 62/54 -> 78/71 (measured 78.61/71.58, functions 79.15, lines 82.48) as Tree/PinInput/NumberInput/Accordion/Calendar landed with real interaction specs. Ratcheted 78/71 -> 81/75 (measured 81.58/76.04, functions 82.42, lines 84.81) as the CheckboxBase/SwitchBase/RadioBase toggle state-machine interaction tests landed — the run that surfaced + locked the CheckboxBase + RadioBase <label>→<input> double-toggle fix (onClick preventDefault). Ratcheted 81/75 -> 86/81 (measured 87.42/82.12, functions 86.08, lines 89.66) as the ComboboxBase + TreeBase state-machine tests landed (select/filter/open-close/expand-collapse/keyboard/props helpers, exercised directly through the headless ComboboxState + TreeState objects — ComboboxBase 54.83 -> 95.96, TreeBase 78.32 -> 98.60).',
+      '12 headless behavior primitives (SelectBase/ComboboxBase/CalendarBase/TreeBase/…). Ratcheted across several waves from a 62/54 first baseline — 78/71, then 81/75 (the run that surfaced and locked the CheckboxBase + RadioBase label-to-input double-toggle fix), then 86/81 (Combobox + Tree state machines through the headless state objects) — and now 89 -> 92 by the 92%+ campaign (measured 95.92/92.13), which clears that bar though not the gate\'s 95. The lift is four edge-behaviour suites: TreeBase\'s roving tab stop (without the fallback an untouched tree renders ZERO tab stops and is unreachable by keyboard) and its string-valued ARIA state; NumberInputBase against non-numbers, where the surface promises `value()` is never NaN; PinInputBase\'s paste distribution and length fallback; ModalBase\'s dismissal and its three-step initial-focus chain; ComboboxBase with an empty option list. Plus TreeBase typeahead, the rule PAIR nothing asserted: a repeated character CYCLES from after the current item while a longer buffer REFINES from at it, and getting either backwards still moves focus — just somewhere the user did not intend, which reports as \'the tree feels broken\'. Residual is spread across the remaining primitives (Calendar, RangeSlider, TagsInput, Tabs) rather than concentrated. Raise in lockstep; never lower.',
   },
   // ── Branch < MINIMUM_BRANCH_FLOOR=95 (statements OK at ≥95) ─────────
   // Each entry's `currentBranches` mirrors the package's vitest.config.ts
@@ -231,40 +267,48 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
   //   residual gaps are compiler-emitted fast paths and timing-sensitive
   //   animation/transition arms, covered by real-Chromium e2e.
   '@pyreon/cli': {
-    currentStatements: 88,
-    currentBranches: 76,
+    currentStatements: 97,
+    currentBranches: 92,
     reason:
-      'CLI tool. Re-baselined 95/85 → 88/76 at the 2026-07 coverage-gate restoration (measured 88.88/76.91): the CLI-unification wave (`pyreon new`/`mcp`/`add`/`check`/`upgrade` npx-delegator + subprocess paths) and the doctor gates that shell out to real repo scans (check-bundle-budgets, audit-types, native-audit, audit-leak-classes) landed with integration-tier coverage. Multi-PR per-subcommand work to lift back.',
+      'CLI tool. Re-baselined 95/85 -> 88/76 at the 2026-07 gate restoration, then ratcheted 88/76 -> 93/83 -> 97/92 by the 92%+ campaign (measured 97.73/92.50, functions 100, lines 98.01). BOTH bars now clear; the entry stays only because branches sit under MINIMUM_BRANCH_FLOOR=95. The second half of the lift targeted the doctor — the part of this package that renders a verdict about SOMEONE ELSE\'s project, where an untested branch is a wrong answer they act on: the three lockfile readers behind check-dedup (a parser that silently reads nothing reports no duplicates, certifying the exact state it exists to catch), the report renderer\'s refusal to print a score for a run that measured nothing, the doc-claims gate end to end (including the escaped-em-dash JSON claim and the count repeated five times with four bumped), the scan-surface predicates that decide what is audited at all, and the --ci exit code contract. What remains is ~80 scattered arms: colour-only ternaries, defensive type narrowings TypeScript cannot see through, and the two gates that shell out to real repo scans. Raise in lockstep; never lower.',
   },
   '@pyreon/server': {
-    currentStatements: 95,
-    currentBranches: 86,
+    currentStatements: 98,
+    currentBranches: 92,
     reason:
-      'SSR server. Branches at ~86% — residual gap is client-side island() path (browser-only client.ts hydration scheduling) covered by islands.browser.test.tsx in real Chromium but unreachable from node-process vitest. PRs #1335 + #1336 added happy-dom coverage for bare island() invocation; further lift to 95 requires real-browser mount tests.',
+      'SSR server. Statements are ABOVE the 95 floor (98.48 measured); only branches sit under it, at 92.11. ' +
+      'Ratcheted 95/86 -> 98/92 by the 92%+ campaign. The reason this entry previously gave — "the client-side island() ' +
+      'path is browser-only and unreachable from node-process vitest" — was true of the hydration SCHEDULING and wrongly ' +
+      'generalised to the whole client half: the server-island client path (self-activation ref, fragment fetch, the ' +
+      'idempotency stamp shared by two activation paths, all three failure modes) had ZERO coverage purely because its ' +
+      'only suite runs under `node`, where `isClient` is false. Under happy-dom it is entirely reachable. Also added: the ' +
+      'island props codec against a malformed `data-props` attribute, and prerender resilience incl. the leak-class-I ' +
+      'timer clear. The residual IS genuinely browser-only (islands.browser.test.tsx in real Chromium) plus two arms the ' +
+      'source documents as unreachable.',
   },
   '@pyreon/zero': {
-    currentStatements: 94,
-    currentBranches: 85,
+    currentStatements: 96,
+    currentBranches: 92,
     reason:
-      'Full-stack meta-framework. Branches at ~85% — residual gap in adapter-build SSG/SSR/ISR plugin chains, fs-router auto-detect, image plugin sharp paths exercised by `verify-modes` build matrix + Playwright e2e rather than unit tests. Statements re-baselined 95 → 94 at the 2026-07 coverage-gate restoration (measured 94.97 locally; the package is usually SKIPPED on CI by the gate’s 120s per-package timeout, so the shortfall went unnoticed).',
+      'Full-stack meta-framework. Ratcheted 94/85 → 96/92 in the 2026-09 coverage campaign (measured 96.78/92.23); statements now clear the 95 floor outright and the entry remains only for branches. The residual sits in the Vite plugin chains (ssg/ssr/image/font-import), the `https()` plugin wiring and the `perf-advisor` build hook — surfaces a Node-side vitest run reaches only through a real `vite build`, and which `verify-modes` + the ssg/ssr/isr e2e already gate. Raise as tests land; never lower to absorb a regression.',
   },
   '@pyreon/zero-content': {
-    currentStatements: 86,
-    currentBranches: 79,
+    currentStatements: 96,
+    currentBranches: 92,
     reason:
-      'Markdown content layer. The 2026-06 docs cutover (PRs #1448 + #1491) landed substantial integration-tier surface node vitest cannot reach: plugin.ts dev-server search middleware (configureServer), build-mode search-index emission (closeBundle), and optional-dependency dynamic imports (katex/mermaid success paths). Achieved node coverage at true-up: 87.39% statements / 80.79% branches (thresholds carry ~1pp variance margin). The integration paths are exercised daily by the real docs/ build + verify-modes; the Chromium harness (PR 7 follow-up) is the tracked lift back toward 95. Raise the package thresholds + this entry in lockstep as tests land.',
+      'Markdown content layer. Ratcheted 86/79 → 96/92 in the 2026-09 coverage campaign (measured 96.56/92.17). The prior entry recorded the dev-server search middleware and the build-mode index emission as unreachable from node vitest; they were not — a Vite plugin hook is a function on an object, and driving `configureServer` / `transform` / `closeBundle` directly is what surfaced four shipped bugs. What genuinely stays out of reach is the optional-peer success path: katex and mermaid are imported through a specifier assembled at RUNTIME so no bundler resolves it, which also puts it beyond `vi.doMock`. Raise as tests land; never lower to absorb a regression.',
   },
   '@pyreon/runtime-dom': {
-    currentStatements: 92,
-    currentBranches: 83,
+    currentStatements: 97,
+    currentBranches: 92,
     reason:
-      'DOM renderer. Branches at ~86% — residual gap in template fast paths, hydrate NativeItem swaps, transition timing arms only reachable via compiler-emitted templates in real Chromium (covered by ui-showcase e2e). Statements ratcheted 93 → 94 (measured 94.59) after the props.ts reactive getter-descriptor / applySelectValueProp / applyAttrProp aria-boolean paths and binding-registry.ts no-doc + stale-graph-node guards gained behavioral tests; the remaining sub-95 statements are devtools.ts reactive-overlay + DOM→signal picker machinery (e2e/reactive-overlay.spec.ts) and hydrate.ts parity-fuzz recovery arms that land with e2e-tier coverage. LOWERED 94 → 92 statements / 86 → 83 branches (2026-08): the row-plan replay hydrator (hydration-plan.ts, PR #2694) landed at 72.57% statements / 59.34% branches and dragged the package under its own gate, reddening Coverage (Full) on EVERY main run. `hydration-plan.test.tsx` covers the bail contract — the refusals a fast path\'s correctness rests on — plus tplAdoptVerify, lifting that file to 78% and the package to 92.90 / 84.01. The residual is the replay INTERNALS (adopt-plan build/replay, signature matching), which need real SSR row fixtures rather than synthetic vnodes; that is the tracked lift back to 94/86. This is visible debt, not a new normal.',
+      "DOM renderer. Ratcheted 92/83 -> 97/92 by the 92%+ campaign (measured 97.43/92.03, functions 99.27, lines 98.11), so it now clears 92 on both axes; the entry stays because branches remain under the 95 floor. Two passes. The first targeted the hydration machinery, where this package's failures are silent: the row-plan bail contract on its VNODE side (a plan compiled from row 0 replayed over rows whose vnodes differ), the compiled-template adopt verifier, mismatch recovery, async-component hydration, and the dev overlays that install global capture-phase listeners on the user's own app. The second targeted the paths a WRONG-SHAPED list or a STALE server page reaches. Between them they surfaced seven shipped defects, each rendering something visibly wrong with nothing in the console: a tag mismatch recovering at the END of the child list; an unparseable <For> rendering its list twice; a <For> row returning null throwing and rendering the WHOLE list as nothing; a keyed list silently deleting the row whose key went missing; a duplicate key wedging the next reorder into a no-op; a diverged reactive text leaving the server's stale copy on the page beside the corrected one; and a bound <input value> going nullish clearing its reset default instead of the field. The residual (~190 arms) is production-only NODE_ENV gates (46, structurally unreachable under vitest) plus TypeScript-forced defensive narrowings (`?? parent`, `if (!entry) continue`) the public API cannot produce. Raise in lockstep; never lower.",
   },
   '@pyreon/vue-compat': {
-    currentStatements: 95,
-    currentBranches: 86,
+    currentStatements: 97,
+    currentBranches: 92,
     reason:
-      'Vue 3 compat shim. Branches at ~86% — residual gap in Transition/TransitionGroup class-prop forwarders. Real-Chromium e2e (`e2e/compat-layers/vue-compat.spec.ts`) covers production shapes.',
+      'Vue compat layer. Ratcheted 95/86 -> 97/92 (measured 97.92/92.72). The gap was the COMPONENT-RENDER-CONTEXT half of `watch`: every existing watch test called it at module scope, which takes a different branch entirely, so the hook-slot path (register once, reuse across re-renders, stop on unmount) was unreached for both the single-source and array forms — and the array form of `watch([a, b], cb)` had no test at all. Covering it surfaced a real bug: an `immediate` watcher fired TWICE at setup, `(5, undefined)` then a spurious `(5, 5)`, so every immediate watcher with a side effect did it twice on mount; fixed across all four watch variants in the same change. Also covers readonly/shallowReadonly enforcement (a proxy that accepts a write is worse than no proxy) and the twelve Vue-to-Pyreon Transition class mappings, of which the suite passed two.',
   },
   '@pyreon/store': {
     currentStatements: 100,
@@ -273,40 +317,40 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'Composition-store engine. The prior 98% thresholds were VACUOUS — the default `src/**/index.ts` barrel coverage-exclude dropped the entire implementation (index.ts IS the module, not a re-export barrel), so the gate measured only ~42 registry/hydration statements. Un-excluded at the 2026-07 excellence pass (PR #2167): statements/functions/lines now at a true 100%, branches at 92% — the residual is the prod side of `process.env.NODE_ENV !== \'production\'` dev-warning gates (unknown-patch-key + same-id-redefinition warnings), which never executes under the vitest `development` NODE_ENV. Those arms are structurally uncoverable from node vitest without a second production-mode bundle-inspection pass; lift to 95 is not meaningful debt.',
   },
   '@pyreon/router': {
-    currentStatements: 91,
-    currentBranches: 85,
+    currentStatements: 96,
+    currentBranches: 92,
     reason:
-      'Router. Re-baselined 95/88 → 91/85 at the 2026-07 coverage-gate restoration (measured 91.78/85.12): View Transitions API integration (browser-only), scroll restoration timing arms, prefetch IntersectionObserver paths, route-change announcer (router.browser.test.tsx), RouterLink link-DX warning paths, serverLoader/invalidateLoader arms — exercised by Playwright e2e (ssr-showcase, ssg-i18n) + the router browser suite rather than node vitest.',
+      'Router. Ratcheted 91/85 → 96/92 (measured 96.59/92.19) by covering the error paths of whole features that had none: the single-fetch server-loader pipeline on BOTH sides (including the three generation checks that stop a stale response overwriting a newer navigation, and the chain-INDEX keying that a path-keyed version silently collided), the pending-loader timing machine (delay, minimum-display floor, timer teardown), the not-found trie tiebreakers on both the layout and page tracks, the shared beforeunload refcount, SWR background revalidation, and a NODE-environment file for the isServer arms happy-dom makes unreachable by construction. Every guard bisect-verified individually. The residual is two-tier and deliberately not chased: ~20 env-gate arms a node run cannot reach, and ~10 RouterLink external/target/rel branches covered by routerlink-external.browser.test.tsx — duplicating those in node would move the number without reducing risk. Aspiration stays 95 branches.',
   },
   '@pyreon/vite-plugin': {
-    currentStatements: 94,
-    currentBranches: 87,
+    currentStatements: 96,
+    currentBranches: 92,
     reason:
-      'Vite plugin. Residual gap in Vite plugin hooks invoked by Vite itself (not directly testable from vitest). 48 helper-function tests landed in PR #1323; further lift needs integration tests covered by `verify-modes`. Re-baselined 95/88 → 94/87 at the 2026-07 coverage-gate restoration (measured 94.58/87.84 locally; usually SKIPPED on CI by the gate’s 120s per-package timeout, so the drift went unnoticed).',
+      'Vite plugin. 94/87 → 95/90 → 96/92 across two passes of the 92%+ campaign (measured 96.08/92.01). The first pass covered the transform hook\'s early-exit LADDER, the SSR compile-to-string capability gate the anti-pattern catalog records shipping broken once, the balanced-args parser and the auto-import merge. The second closed what that pass called integration-tier and was not: `configureServer` and `watchChange` are functions on an object, so the dev SSR handler, the LPIH cache write, the per-delete cache sweep and the boot islands audit are all driven directly. Also the source-masking scanner, whose failure corrupts a user STRING rather than losing a name — its one unsafe gap (a template literal nested inside an interpolation) is pinned as a documented limit rather than closed, because rewriting the scanner the whole dev transform depends on is the larger risk. The residual is the rocketstyle-collapse resolver, which boots a NESTED Vite build, plus arms that need `typeof process === \'undefined\'`. Raise as tests land; never lower to absorb a regression.',
   },
   '@pyreon/solid-compat': {
-    currentStatements: 95,
-    currentBranches: 89,
+    currentStatements: 96,
+    currentBranches: 92,
     reason:
-      'Solid compat shim. Branches at ~89% — residual gap in createResource / createMutable proxy traps. Real-Chromium e2e covers production shapes.',
+      'Solid compat layer. Ratcheted 95/89 -> 96/91 by covering `setStore`\'s path forms, `createResource`\'s staleness guards on both arms, and the store proxy over a vanished path — which surfaced a real bug (the proxy target was a plain `{}` regardless of the value, so a store-wrapped ARRAY threw on `JSON.stringify` and reported false for `Array.isArray`, while `.length`, indexing and `.map()` all worked). Then 91 -> 92 by the 92%+ campaign, clearing that bar: the deciding arm is the unmount guard inside `scheduleEffects`, which defers into a microtask so a component can go away before its effects run — an effect that runs anyway subscribes, times, or writes into a disposed owner and says nothing about it. The arms still uncovered are UNREACHABLE through the shipped API rather than untested: nothing pushes to `pendingLayoutEffects`, `onMount`\'s wrapper returns undefined unconditionally so a stored cleanup is never a function, and `safeAssign`\'s zero-length path cannot be reached because `setStore` dispatches either the draft form or a path form with >= 1 segment. Raise when one becomes reachable, not by calling internals.',
   },
   '@pyreon/svelte-compat': {
-    currentStatements: 95,
-    currentBranches: 89,
+    currentStatements: 98,
+    currentBranches: 92,
     reason:
-      'Svelte compat shim. Branches at ~89% — residual gap in store-contract derived/readable edge arms + Svelte 5 runes adapter. Real-Chromium e2e covers production shapes.',
+      'Svelte compat shim. Ratcheted 95/89 -> 98/92 by the 92%+ campaign (measured 98.89/92.30), clearing that bar. Two contracts got it there, both previously unasserted: the unmount guard inside `scheduleEffects` — effects are deferred to a microtask, so a component can unmount first, and one that runs anyway leaks silently — and the CHILDLESS shape of the hardcoded native-component bypass (`<Show when={x} fallback={y} />` with the content passed as a prop rather than as children). The residual is store-contract derived/readable edge arms plus the Svelte 5 runes adapter; real-Chromium e2e covers production shapes.',
   },
   '@pyreon/lint': {
-    currentStatements: 95,
-    currentBranches: 90,
+    currentStatements: 96,
+    currentBranches: 92,
     reason:
-      'Lint engine. Branches at ~90% — residual gap in 89-rule AST detectors against rare/synthetic source shapes.',
+      'Lint engine. Ratcheted 95/90 -> 96/92 by the 92%+ campaign (measured 96.85/92.32). Three more shape-matrix suites (`rule-shape-matrices-4/5/6`, 101 specs) took branches from 90.12 to 92.32: each pairs a shape a rule must act on with the corrected form it must leave alone, so an unconditional rule fails as surely as an inert one. The last batch covered the seams AROUND the rules that had no spec at all — the runner\'s extension gate and error-severity option diagnostics, `applyFixes` over an empty edit list, the reporter\'s totals pluralization, the `why-off` did-you-mean, unknown `settings` keys, the relative `routes/` and `entry-client` file-role shapes, and the manifest readers\' refusals (no package.json, non-string name, `.cjs` by extension). MEASURED RESIDUAL: 329 arms uncovered, the majority defensive narrowings over AST nodes (nullish array fallbacks, node-presence guards, type-tag guards, depth caps) that a real parse cannot produce; lifting further means synthesising malformed ASTs, which asserts nothing about the product. Branches stay below the 95 floor by design.',
   },
   '@pyreon/mcp': {
-    currentStatements: 94,
-    currentBranches: 86,
+    currentStatements: 96,
+    currentBranches: 92,
     reason:
-      'MCP server. First explicit full thresholds landed at the 2026-07 coverage-gate restoration (measured 94.55/87.64 locally). Branches re-baselined 87 → 86 on 2026-08-04 at the measured 86.12: the atlas + content tool arms added by #2610/#2646 (get_atlas_catalog fallbacks, content walking) grew the optional-chain-dense branch surface faster than its tests, and the drift went unnoticed because the coverage child was dying on CI before printing a summary (turned loud the same day). Ratchet back to 87+ as those arms get specs. Residual gap is tool-handler orchestration + docs-parsing arms against rare doc shapes.',
+      'MCP server. Ratcheted 94/86 → 96/92 in the 2026-09 coverage campaign (measured 96.32/92.91), closing the atlas + content arms the 2026-08-04 entry flagged as owing specs. The residual is tool-handler orchestration — the thin `index.ts` layer that turns a request into one of these renderer calls — plus docs-parsing arms against document shapes the repo does not contain. Raise as tests land; never lower to absorb a regression.',
   },
   '@pyreon/runtime-server': {
     currentStatements: 97,
@@ -314,17 +358,11 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     reason:
       'SSR string/stream renderer. Coverage is ENVIRONMENT-DEPENDENT: CI linux measures 98.05/95.19, a macOS run of the identical tree measures 97.84/94.89 (platform-gated arms in the streaming/abort paths). Thresholds sit at the cross-environment MINIMUM (97/94) so `bun run coverage` is green on a green tree everywhere; aspiration stays 98/95.',
   },
-  '@pyreon/testing': {
-    currentStatements: 99,
-    currentBranches: 90,
-    reason:
-      'Public test kit. First explicit thresholds landed at the 2026-07 coverage-gate restoration (previously NO explicit entry — the gate assumed 95 while vitest enforced the 80/75 tools default, so it failed the gate silently at 90% statements). Now measured 100/91.66 after failure-path specs + dogfooding src/vitest.ts as the package setupFiles; thresholds 99/90 leave a 1pp drift margin. The 2 residual uncovered branches are matcher-internal defensive arms.',
-  },
   '@pyreon/validate': {
-    currentStatements: 96,
-    currentBranches: 91,
+    currentStatements: 97,
+    currentBranches: 94,
     reason:
-      'Validator runtime. Re-baselined 99/97 → 95/90 at the 2026-07 coverage-gate restoration (measured 95.12/90.11): the JIT compiles most check verdicts inline, so the INTERPRETER failure arms of the newer check/composition waves (string substring checks, object algebra, union call-forms, mini/server subpaths) no longer execute under parse() — their contracts are locked via the compiled path (jit-differential + emit-equivalence). Ratcheted 95/90 → 96/91 after toJsonSchema (json-schema.ts) reached 100% — every representable kind, check→constraint mapping, unrepresentable policy, and the forward-compat op-union branches now covered. Remaining lift = the interpreter-path test corpus, tracked as follow-up.',
+      'Validator runtime. Ratcheted 96/91 -> 97/94 by the 92%+ campaign (measured 97.62/94.58): the interpreter-path corpus tracked as follow-up in the previous entry has since landed, so the measured value is simply recorded. Residual 68 arms, concentrated in core/schema.ts (18) and core/jit.ts (14): the JIT compiles most check verdicts inline, so the INTERPRETER failure arms of the newer check/composition waves no longer execute under parse() — their contracts are locked via the compiled path (jit-differential + emit-equivalence). Below the 95 floor by that one point; raise in lockstep when the interpreter arms are covered, never lower.',
   },
 }
 
@@ -618,6 +656,55 @@ export interface MetricShortfall {
  * Deliberately small: it absorbs noise, not a real regression. A package losing
  * a whole percentage point of coverage still fails.
  */
+/** `a, b,,c` → `['a','b','c']` — the shape both `--only` and `--skip` take. */
+export function parseNameList(raw: string): Set<string> {
+  return new Set(
+    raw
+      .split(',')
+      .map((n) => n.trim())
+      .filter(Boolean),
+  )
+}
+
+export interface PackageSelection<T extends { name: string }> {
+  /** What this run measures. */
+  selected: T[]
+  /** Names removed by `--skip` that DID match — printed so the omission is visible. */
+  skipped: string[]
+  /** `--skip` names matching no testable workspace — a misconfiguration, not a no-op. */
+  unknownSkips: string[]
+}
+
+/**
+ * Apply `--only=` then `--skip=` to the collected package list.
+ *
+ * `--skip` exists so a package whose suite is toolchain-bound
+ * (`@pyreon/native-compiler`: hundreds of real swiftc/kotlinc spawns) can be
+ * measured in its OWN job with the verdict cache restored and an honest cap,
+ * while `Coverage (Full)` keeps its 15-minute budget for the other ~80. Before
+ * it, that one package sat inside the shared 4-way pool with a cold cache and
+ * pinned the whole job at its cap on every main push — a dead gate.
+ *
+ * An unknown `--skip` name is reported rather than ignored: the caller meant to
+ * move a package elsewhere, and silently keeping it here would recreate the
+ * exact cap-pinning the flag was added to end.
+ */
+export function selectPackages<T extends { name: string }>(
+  all: readonly T[],
+  onlyArg: string | null,
+  skipArg: string | null,
+): PackageSelection<T> {
+  const onlyNames = onlyArg ? parseNameList(onlyArg.slice('--only='.length)) : null
+  const skipNames = skipArg ? parseNameList(skipArg.slice('--skip='.length)) : new Set<string>()
+  const afterOnly = onlyNames ? all.filter((p) => onlyNames.has(p.name)) : [...all]
+  const known = new Set(all.map((p) => p.name))
+  return {
+    selected: afterOnly.filter((p) => !skipNames.has(p.name)),
+    skipped: afterOnly.filter((p) => skipNames.has(p.name)).map((p) => p.name),
+    unknownSkips: [...skipNames].filter((n) => !known.has(n)),
+  }
+}
+
 export const FLOOR_TOLERANCE_PP = 0.5
 
 export function findShortfalls(
@@ -734,7 +821,16 @@ function runCoverage(
         // vitest exposes no env var for "coverage is on", so guessing one
         // silently never skips (verified — neither VITEST_COVERAGE nor
         // NODE_V8_COVERAGE is set by vitest).
-        env: { ...process.env, PYREON_COVERAGE_RUN: '1' },
+        env: {
+          ...process.env,
+          PYREON_COVERAGE_RUN: '1',
+          // The native-compiler suite spawns real swiftc/kotlinc per file.
+          // Its vitest config runs files serially only under this flag (the
+          // native TEST cells set it); a coverage run that leaves it unset
+          // starts one JVM per worker on top of V8 instrumentation, and
+          // that stampede is what pinned `Coverage (Full)` at its cap.
+          ...(pkgName === '@pyreon/native-compiler' ? { PYREON_NATIVE_COMPILER_SERIAL: '1' } : {}),
+        },
       },
     )
 
@@ -750,7 +846,7 @@ function runCoverage(
     const timer = setTimeout(() => {
       timedOut = true
       child.kill('SIGTERM')
-    }, PACKAGE_TIMEOUT_MS)
+    }, timeoutFor(pkgName))
 
     child.on('close', (code, signal) => {
       clearTimeout(timer)
@@ -831,6 +927,70 @@ interface PackageInfo {
   branchThreshold: number
 }
 
+/**
+ * Every instrumentable TypeScript source a package carries (tests excluded).
+ *
+ * `isTestPath` is the repo's single definition of a test path, shared with
+ * `check-changeset-required` and `check-diagnose-catalog` — so this cannot
+ * drift into disagreeing with them about what counts as source.
+ */
+function instrumentableSources(pkgDir: string): string[] {
+  const srcDir = join(pkgDir, 'src')
+  if (!existsSync(srcDir)) return []
+  const out: string[] = []
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules') continue
+        walk(full)
+      } else if (/\.tsx?$/.test(entry.name) && !isTestPath(full)) {
+        out.push(full)
+      }
+    }
+  }
+  walk(srcDir)
+  return out
+}
+
+/**
+ * A package whose `test` script does not run vitest.
+ *
+ * The four `@pyreon/native-{runtime,router}-{swift,kotlin}` packages ship
+ * Swift/Kotlin SOURCE consumed by SPM and Gradle. Their `test` script runs
+ * `swift test` / `verify-kotlin.ts`, and they contain ZERO TypeScript — so a
+ * JS coverage pass over them measures 0/0 files. This gate rightly refuses to
+ * call 0/0 a pass, but for these packages "measured nothing" is the TRUTH
+ * rather than a failure: there is no JS to cover, and their real gate is the
+ * Swift/Kotlin toolchain plus the device jobs.
+ *
+ * Two things make this a classification rather than a hole:
+ *
+ * 1. The discriminator is the CONFIG FILE, never a name list. A package that
+ *    runs vitest has a `vitest.config.ts`; one that doesn't, doesn't. A name
+ *    list would need editing every time a package is added, and the edit that
+ *    gets forgotten is the one that hides a package.
+ * 2. The claim is VERIFIED, not trusted. A package with no vitest config that
+ *    nonetheless carries instrumentable TypeScript is a REAL hole — someone
+ *    shipped JS with no suite wired — and is reported as a problem instead of
+ *    skipped. Checking a skip list in only one direction is exactly how it
+ *    rots into a place where packages hide.
+ */
+export function classifyNonVitestPackage(
+  pkgDir: string,
+): { kind: 'vitest' } | { kind: 'no-js'; sources: 0 } | { kind: 'unwired'; sources: number } {
+  if (existsSync(join(pkgDir, 'vitest.config.ts'))) return { kind: 'vitest' }
+  const sources = instrumentableSources(pkgDir)
+  return sources.length === 0
+    ? { kind: 'no-js', sources: 0 }
+    : { kind: 'unwired', sources: sources.length }
+}
+
+/** Packages skipped because they run no vitest at all, for the report. */
+const nonVitestPackages: string[] = []
+/** Packages with TypeScript source but NO vitest config — a real hole. */
+const unwiredPackages: { name: string; sources: number }[] = []
+
 /** Collect all testable packages. */
 function collectPackages(): PackageInfo[] {
   const packages: PackageInfo[] = []
@@ -848,6 +1008,16 @@ function collectPackages(): PackageInfo[] {
       const pkg = JSON.parse(readFileSync(pkgJson, 'utf-8'))
       if (!pkg.scripts?.test) continue
       if (pkg.scripts.test.startsWith('echo')) continue // skip placeholder scripts
+
+      const classified = classifyNonVitestPackage(pkgDir)
+      if (classified.kind === 'no-js') {
+        nonVitestPackages.push(pkg.name)
+        continue
+      }
+      if (classified.kind === 'unwired') {
+        unwiredPackages.push({ name: pkg.name, sources: classified.sources })
+        continue
+      }
 
       packages.push({
         dir: pkgDir,
@@ -1118,18 +1288,24 @@ const isFloorOnly = process.argv.includes('--floor-only')
  * main, where a red gate blocks nobody and gets re-run past.
  */
 const onlyArg = process.argv.find((a) => a.startsWith('--only='))
-const onlyNames = onlyArg
-  ? new Set(
-      onlyArg
-        .slice('--only='.length)
-        .split(',')
-        .map((n) => n.trim())
-        .filter(Boolean),
-    )
-  : null
+const skipArg = process.argv.find((a) => a.startsWith('--skip='))
+const onlyNames = onlyArg ? parseNameList(onlyArg.slice('--only='.length)) : null
 
 const allPackages = collectPackages()
-const packages = onlyNames ? allPackages.filter((p) => onlyNames.has(p.name)) : allPackages
+const selection = selectPackages(allPackages, onlyArg ?? null, skipArg ?? null)
+const packages = selection.selected
+if (selection.skipped.length > 0) {
+  // Name the omission so a smaller table is never mistaken for a full one.
+  console.log(`  Skipped by --skip (measured by their own job): ${selection.skipped.join(', ')}`)
+}
+if (selection.unknownSkips.length > 0) {
+  // A `--skip` naming nothing is a misconfiguration, not a no-op: the
+  // package the caller meant to move to its own job is still in THIS run.
+  console.error(
+    `[check-coverage] FAILED — --skip names no testable workspace: ${selection.unknownSkips.join(', ')}`,
+  )
+  process.exit(1)
+}
 
 if (onlyNames && packages.length === 0) {
   // Nothing to measure is a legitimate outcome here (a docs-only PR), but say
@@ -1202,7 +1378,10 @@ const { results, problems, staleDeclarations } = await runWithConcurrency(packag
 const sorted = results.sort((a, b) => a.package.localeCompare(b.package))
 const sortedProblems = problems.sort((a, b) => a.package.localeCompare(b.package))
 const hasFailures =
-  sorted.some(isFailingResult) || sortedProblems.length > 0 || staleDeclarations.length > 0
+  sorted.some(isFailingResult) ||
+  sortedProblems.length > 0 ||
+  staleDeclarations.length > 0 ||
+  unwiredPackages.length > 0
 
 // Build report
 const reportLines: string[] = [
@@ -1244,6 +1423,37 @@ if (sortedProblems.length > 0) {
     `\u274c ${sortedProblems.length} package(s) could not be measured \u2014 their thresholds were NOT enforced:`,
     '',
     ...sortedProblems.map((p) => `  ${describeProblem(p)}`),
+  )
+}
+
+if (nonVitestPackages.length > 0) {
+  // Visible, never silent: a skipped package must be nameable from the report,
+  // or "not measured" is indistinguishable from "measured and fine" — the
+  // exact confusion this gate exists to remove.
+  reportLines.push(
+    '',
+    `\u2139\ufe0f  ${nonVitestPackages.length} package(s) run no vitest and carry no TypeScript, ` +
+      `so a JS coverage percentage is not a signal for them:`,
+    ...nonVitestPackages
+      .slice()
+      .sort()
+      .map((n) => `  ${n} — ships Swift/Kotlin source; gated by its own toolchain + the device jobs.`),
+  )
+}
+
+if (unwiredPackages.length > 0) {
+  reportLines.push(
+    '',
+    `\u274c ${unwiredPackages.length} package(s) have TypeScript source but NO vitest.config.ts — ` +
+      `their coverage is not measured by anything:`,
+    ...unwiredPackages
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(
+        (p) =>
+          `  ${p.name}: ${p.sources} instrumentable source file(s), no vitest config. ` +
+          `Add one (see @pyreon/vitest-config), or the package ships JS nothing measures.`,
+      ),
   )
 }
 

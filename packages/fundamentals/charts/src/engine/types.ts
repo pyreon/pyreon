@@ -52,6 +52,10 @@ export interface Tick {
 export interface Domain {
   min: Double
   max: Double
+  /** Maps `min` to the far end of the range — ECharts' `axis.inverse`. */
+  inverse?: boolean | undefined
+  /** A fixed tick step (ECharts' axis interval); unset, the ticks pick their own. */
+  step?: Double | undefined
 }
 
 /**
@@ -92,9 +96,47 @@ export interface ChartGradientStop {
  * nothing.
  */
 export interface ChartGradient {
+  /** Linear: the ramp's start. Radial: the centre. */
   from: Pt
+  /** Linear: the ramp's end. Radial: a point ON the outer circle (its distance from `from` is the radius). */
   to: Pt
   stops: ChartGradientStop[]
+  /**
+   * A radial ramp instead of a linear one. Both shapes are two points, so
+   * every geometry pass (mirror, transpose, shift, tween) moves a radial
+   * gradient without knowing it is one.
+   */
+  radial: boolean
+}
+
+/** A repeating, backend-neutral fill overlay. */
+export interface ChartPattern {
+  /** Stripe, crossed-stripe, dot, tiled-symbol, or image texture. */
+  kind: 'diagonal' | 'cross' | 'dots' | 'symbols' | 'image'
+  /** Foreground colour painted over the command's ordinary fill. */
+  color: string
+  /** Distance between repeated marks, in engine units (horizontal for symbols). */
+  spacing: Double
+  /** Stripe width, dot diameter, or symbol size, in engine units. */
+  width: Double
+  /** Rotation of the texture in degrees; stripes default to 45. */
+  angle?: Double | undefined
+  /** The tiled symbol: rect, circle, triangle, diamond, pin, arrow, or path (with `path`). */
+  symbol?: string | undefined
+  /** Vertical distance between symbol rows; defaults to `spacing`. */
+  spacingY?: Double | undefined
+  /** `kind: 'image'`: the image URL (http(s) or a data: URI). */
+  image?: string | undefined
+  /**
+   * `kind: 'image'`: how it tiles — ECharts' `repeat` / `repeat-x` /
+   * `repeat-y` / `no-repeat` at the image's natural size from the canvas
+   * origin, or `grid` (an image decal symbol) at `width` on the pitch.
+   */
+  repeat?: string | undefined
+  /** A `symbol: 'path'` decal's shape: unit-box points, rings flattened. */
+  shape?: Pt[] | undefined
+  /** Point count of each ring in `shape`. */
+  shapeRings?: Double[] | undefined
 }
 
 export type DrawCmd =
@@ -114,10 +156,12 @@ export type DrawCmd =
       corners?: Double[] | undefined
       /** Paint the fill as a gradient; `fill` stays the fallback. */
       grad?: ChartGradient | undefined
+      /** Paint a repeating overlay clipped to the shape. */
+      pattern?: ChartPattern | undefined
     }
   | { kind: 'line'; from: Pt; to: Pt; stroke: string; width: Double; dash?: Double[] | undefined }
   | { kind: 'polyline'; points: Pt[]; stroke: string; width: Double; dash?: Double[] | undefined }
-  | { kind: 'polygon'; points: Pt[]; fill: string; grad?: ChartGradient | undefined }
+  | { kind: 'polygon'; points: Pt[]; fill: string; grad?: ChartGradient | undefined; pattern?: ChartPattern | undefined }
   | { kind: 'circle'; center: Pt; radius: Double; fill: string }
   | {
       kind: 'text'
@@ -136,4 +180,19 @@ export type DrawCmd =
        * Absent is unrotated and serializes byte-identically to before.
        */
       rotate?: Double | undefined
+      /** 'bold' sets the text heavier (ECharts' `fontWeight: 'bold'`); absent is normal and serializes as before. */
+      weight?: string | undefined
+      /** A halo drawn under the fill (ECharts' `textBorderColor`); absent draws none. */
+      stroke?: string | undefined
+      /** The halo's width in px (ECharts' `textBorderWidth`, 2 by default). */
+      strokeWidth?: Double | undefined
     }
+  /**
+   * Clip every following command to `rect` until the matching `unclip` — a
+   * stack, so clips nest. Each executor saves its drawing state here and
+   * restores it at the `unclip` (web canvas `save`/`clip`/`restore`, an SVG
+   * `<g clip-path>`, a SwiftUI context copy, a Compose `clipRect` save).
+   */
+  | { kind: 'clip'; rect: Rect }
+  /** Ends the innermost `clip`. */
+  | { kind: 'unclip' }

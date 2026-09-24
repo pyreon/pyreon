@@ -1,5 +1,5 @@
 import type { ClassValue, Props } from '@pyreon/core'
-import { cx, isSafeImageDataUri, isUnsafeUrl, normalizeStyleValue, toKebabCase, URL_ATTRS } from '@pyreon/core'
+import { cx, isEventHandlerAttr, isSafeImageDataUri, isUnsafeUrl, normalizeStyleValue, toKebabCase, isUrlAttr } from '@pyreon/core'
 
 import { batch, renderEffect } from '@pyreon/reactivity'
 import { DELEGATED_EVENTS, delegatedPropName } from './delegate'
@@ -92,7 +92,19 @@ export function applyProps(el: Element, props: Props, skipKey?: string): Cleanup
     const descriptor = Object.getOwnPropertyDescriptor(props, key)
     let c: Cleanup | null
     if (descriptor?.get) {
-      c = renderEffect(() => applyStaticProp(el, key, (props as Record<string, unknown>)[key]))
+      c = renderEffect(() => {
+        // A getter's VALUE can itself be an accessor: a primitive's helper
+        // object (`getItemProps()` → `{ tabIndex: () => 0 | -1 }`) spread onto
+        // a rocketstyle element reaches here with the function behind a getter
+        // — the descriptor path never took `applyProp`'s function branch, so
+        // the closure hit `applyStaticProp` and was stringified into the
+        // attribute (warned as "received a function", 12× per ui-components
+        // scan, from Rating / Tree / SegmentedControl / NavLink / ScrollArea).
+        // Resolving here, inside the tracked frame, keeps it live either way.
+        let value = (props as Record<string, unknown>)[key]
+        if (typeof value === 'function') value = (value as () => unknown)()
+        applyStaticProp(el, key, value)
+      })
     } else {
       c = applyProp(el, key, props[key])
     }
@@ -695,6 +707,14 @@ function setAttrNsAware(el: Element, key: string, value: string): void {
  * `applyClassProp`→`_setClass` extractions.
  */
 export function applyAttrProp(el: Element, key: string, value: unknown): void {
+  // Event-handler NAMES first — BEFORE the accessor resolution below, which is
+  // the load-bearing ordering. `_setAttr` is the compiled sink for every generic
+  // dynamic attribute, and a lowercase handler name reaches it (the compiler's
+  // own `on*` skip is `/^on[A-Z]/`, camelCase-only), so `onclick={expr}` wrote a
+  // live handler on plain HTML — and a FUNCTION-valued one was CALLED here to
+  // produce the string, executing user code during render exactly as the SSR
+  // half of this bug did. Refusing above the call closes both.
+  if (isBlockedHandlerAttr(key, value)) return
   if (typeof value === 'function') {
     // Callable-as-accessor, mirroring `applyProp`'s function branch and SSR's
     // `renderProp`. A BARE IDENTIFIER holding an accessor —
@@ -819,7 +839,7 @@ export function applyValueProp(el: Element, value: unknown): void {
  */
 function isBlockedUrl(el: Element, key: string, value: unknown): boolean {
   if (
-    URL_ATTRS.has(key) &&
+    isUrlAttr(key) &&
     typeof value === 'string' &&
     isUnsafeUrl(value) &&
     !isSafeImageDataUri(el.tagName, key, value)
@@ -830,6 +850,29 @@ function isBlockedUrl(el: Element, key: string, value: unknown): boolean {
     return true
   }
   return false
+}
+
+/**
+ * Refuse an event-handler NAME at an attribute sink — the client twin of SSR's
+ * `renderPropSkipped` skip, sharing `@pyreon/core`'s `isEventHandlerAttr` so the
+ * two renderers cannot drift on WHICH names are handlers.
+ *
+ * Writing one is not a cosmetic divergence, it is script execution: measured in
+ * real Chromium, `setAttribute('onclick', 'window.x = 1')` on an HTML div AND on
+ * an SVG `<rect>` both ran the string on the next click. Returning silently
+ * (no write, last value kept) mirrors `isBlockedUrl`'s early return and SSR's
+ * drop, so the three paths agree on the absent attribute.
+ */
+function isBlockedHandlerAttr(key: string, value: unknown): boolean {
+  if (!isEventHandlerAttr(key)) return false
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn(
+      `[Pyreon] Refused to write event-handler attribute "${key}" (${typeof value}). ` +
+        `An inline handler attribute is executable markup. Use the camelCase prop ` +
+        `(onClick={fn}) — it binds a real listener instead of serializing a string.`,
+    )
+  }
+  return true
 }
 
 // INVARIANT (every `_setX` the compiler emits): `applyAttrProp` (`_setAttr`),
@@ -845,6 +888,18 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   // Block javascript:/data: URI injection in URL-bearing attributes.
   if (isBlockedUrl(el, key, value)) return
 
+  // Event-handler NAMES, at the TOP rather than beside each attribute branch.
+  // This function writes an attribute from FOUR places (the foreign-namespace
+  // branch, `data-`/`aria-`, the `key in el` catch fallback, and the tail), and
+  // the bug this closes was precisely a branch that returns before the later
+  // checks: the SVG/MathML branch below `setAttrNsAware`s any name it is given,
+  // so `<rect onclick="...">` was a live handler on the h() path while SSR
+  // dropped it. Guarding each sink instead would be the same shape that failed.
+  // The property routes are unaffected in practice: assigning a string to an
+  // `EventHandler` IDL property is a no-op (WebIDL treats a non-object as null),
+  // so nothing that worked stops working.
+  if (isBlockedHandlerAttr(key, value)) return
+
   if (key === 'class' || key === 'className') {
     applyClassProp(el, value)
     return
@@ -856,6 +911,21 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   }
 
   if (value == null) {
+    // `value` on a form control is a live PROPERTY, and clearing it means
+    // `node.value = ''` — `removeAttribute` leaves whatever the user typed
+    // sitting in the field AND wipes `defaultValue` (the attribute IS the reset
+    // default), so it gets the one case exactly backwards. This generic branch
+    // sits ABOVE the `value` dispatch below, so it claimed the nullish case
+    // before `applyValueProp` — which carries its own, correct, nullish
+    // handling — could ever see it, and the h() path silently kept a stale
+    // value where the compiled path (`_setValue`) cleared it. Reachable by the
+    // ordinary clear-the-field flow: `<input value={draft()} />` with `draft`
+    // going `string | undefined`. Booleans deliberately stay on the generic
+    // path below, where SSR also treats them as presence.
+    if (key === 'value' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+      applyValueProp(el, value)
+      return
+    }
     el.removeAttribute(key)
     return
   }

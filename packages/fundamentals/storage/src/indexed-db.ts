@@ -1,5 +1,5 @@
 import { signal, wrapSignal } from '@pyreon/reactivity'
-import { getEntry, removeEntry, setEntry } from './registry'
+import { getEntry, releaseEntry, retainEntry, setEntry } from './registry'
 import type { IndexedDBOptions, StorageSignal } from './types'
 import { deserialize, isBrowser, serialize } from './utils'
 
@@ -101,9 +101,18 @@ export function useIndexedDB<T>(
   defaultValue: T,
   options: IndexedDBOptions<T> = {},
 ): StorageSignal<T> {
-  // Return existing signal if already registered
+  // Same-key consumers each retain the per-key registry refcount, so the entry
+  // is destroyed on the LAST `.remove()` and not the first. `useStorage` was
+  // fixed this way in #725/#729 and the registry's own docstring states the
+  // contract ("per-consumer `.remove()` goes through `releaseEntry`") — this
+  // backend kept the pre-fix shape, so one consumer's `.remove()` orphaned
+  // every sibling: `clearStorage`/`removeStorage` stopped seeing their signal,
+  // and the next call for the same key minted a SECOND, independent one.
   const existing = getEntry<T>('indexeddb', key)
-  if (existing) return existing.signal
+  if (existing) {
+    retainEntry('indexeddb', key)
+    return existing.signal
+  }
 
   const dbName = options.dbName ?? 'pyreon-storage'
   const storeName = options.storeName ?? 'kv'
@@ -185,7 +194,7 @@ export function useIndexedDB<T>(
       /* v8 ignore stop */
     }
 
-    removeEntry('indexeddb', key)
+    releaseEntry('indexeddb', key)
   }
 
   setEntry('indexeddb', key, storageSig, defaultValue, options)

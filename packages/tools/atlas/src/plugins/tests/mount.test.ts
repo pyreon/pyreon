@@ -11,7 +11,7 @@
  */
 import { effect, signal } from '@pyreon/reactivity'
 import { afterAll, describe, expect, it, vi } from 'vitest'
-import { h } from '@pyreon/core'
+import { h, Portal } from '@pyreon/core'
 import { defineComponent } from '../../auto'
 import { makeScenario } from '../../core'
 import type { ComponentIntelligence, Scenario } from '../../core'
@@ -32,8 +32,8 @@ afterAll(() => {
 
 const plugin = mountPlugin()
 
-const scenarioFor = (args: Record<string, unknown>): Scenario =>
-  makeScenario({ component: 'Probe', name: 'probe', args, source: 'authored' })
+const scenarioFor = (args: Record<string, unknown>, source: Scenario['source'] = 'authored'): Scenario =>
+  makeScenario({ component: 'Probe', name: 'probe', args, source })
 
 const intelligence = (component?: (props: Record<string, unknown>) => unknown): ComponentIntelligence =>
   defineComponent('Probe', component ? { component } : {})
@@ -41,8 +41,9 @@ const intelligence = (component?: (props: Record<string, unknown>) => unknown): 
 const runVerify = async (
   component: ((props: Record<string, unknown>) => unknown) | undefined,
   args: Record<string, unknown> = {},
+  source: Scenario['source'] = 'authored',
 ) => {
-  const result = await plugin.verify!({ scenario: scenarioFor(args), component: intelligence(component) })
+  const result = await plugin.verify!({ scenario: scenarioFor(args, source), component: intelligence(component) })
   return result.interaction!
 }
 
@@ -89,12 +90,69 @@ describe('a scenario that behaves', () => {
     expect(await runVerify(Good, { label: 'Save' })).toEqual({ status: 'pass' })
   })
 
-  it('passes a component that renders NOTHING', async () => {
-    // Deliberate: a `<Show>` that is false, or a Portal mounting elsewhere,
-    // renders an empty container and is perfectly correct. Failing on empty
-    // output would flag working components, and one false failure costs more
-    // trust than ten true ones earn.
-    expect((await runVerify(() => null)).status).toBe('pass')
+  it('passes a component that PORTALS its content elsewhere — the DOM is real, just not here', async () => {
+    const Modal = () => h(Portal, { target: document.body }, h('div', { role: 'dialog' }, 'in body'))
+    expect((await runVerify(Modal)).status).toBe('pass')
+  })
+})
+
+describe('a scenario that renders NOTHING (the empty-preview class)', () => {
+  // Every other check is TRUE of an empty container — mounts, clicks and
+  // unmounts cleanly; SSR agrees with the client — which is how 1,090
+  // scenarios verified while 24 components rendered no DOM on the deployed
+  // workbench. "Mounted no DOM" is the fact that separates the two.
+  it('FAILS a scenario the component owns, naming where the fix lives', async () => {
+    const check = await runVerify(() => null, { open: false })
+    expect(check.status).toBe('fail')
+    expect(check.findings?.map((f) => f.code)).toEqual(['empty-render'])
+    expect(check.findings?.[0]?.fix).toContain('atlas.config.ts')
+  })
+
+  it('reports, but does not fail, a manufactured edge case — an empty result may be the point', async () => {
+    const check = await runVerify(() => null, { children: '' }, 'auto-edge')
+    expect(check.status).toBe('pass')
+    expect(check.findings?.map((f) => f.code)).toEqual(['empty-render'])
+  })
+
+  it('counts TEXT as rendered — a component may be a bare string', async () => {
+    expect(await runVerify(() => 'just text')).toEqual({ status: 'pass', findings: [expect.objectContaining({ code: 'nothing-to-drive' })] })
+  })
+
+  it('does not count a wrapper\'s own element — the slot is what the component produced', async () => {
+    const wrapped = mountPlugin({ wrapper: (props) => h('div', { style: 'display: contents' }, props.children as never) })
+    const result = await wrapped.verify!({ scenario: scenarioFor({}), component: intelligence(() => null) })
+    expect(result.interaction!.status).toBe('fail')
+  })
+})
+
+describe('seeded content reaches the mount (the empty-preview class)', () => {
+  // Real mount, real DOM: the layout-blocks marker is JSON in the catalog and
+  // must become elements HERE, through the runtime's own `h`, or the verify
+  // verdict covers an empty container while the canvas shows blocks.
+  it('mounts the blocks marker as real elements the component receives as children', async () => {
+    const dom = await ensureDom()
+    if (!dom.ok) return
+    const seen: unknown[] = []
+    const Probe = (props: Record<string, unknown>) => {
+      seen.push(props.children)
+      return h('section', {}, props.children as never)
+    }
+    const mounted = mountScenario(dom.env, await defaultRuntime(), Probe as never, {
+      children: { __atlasContent: 'blocks', count: 2 },
+    })
+    expect(mounted.errors).toEqual([])
+    expect(mounted.container.querySelectorAll('[data-atlas-content="block"]')).toHaveLength(2)
+    expect(Array.isArray(seen[0])).toBe(true)
+    mounted.dispose()
+  })
+
+  it('hands a string seed to the component as its children', async () => {
+    const dom = await ensureDom()
+    if (!dom.ok) return
+    const Probe = (props: Record<string, unknown>) => h('button', {}, props.children as never)
+    const mounted = mountScenario(dom.env, await defaultRuntime(), Probe as never, { children: 'Save', size: 'sm' })
+    expect(mounted.container.querySelector('button')?.textContent).toBe('Save')
+    mounted.dispose()
   })
 })
 
@@ -228,5 +286,33 @@ describe('teardown', () => {
     mounted.dispose()
     expect(() => mounted.dispose()).not.toThrow()
     expect(mounted.errors).toEqual([])
+  })
+})
+
+describe('declared gates — browserOnly and parts', () => {
+  // Both say: an empty render here is not the component's fault. They differ
+  // in WHY, and the finding names it.
+  it('reports browser-only instead of failing a declared browserOnly component', async () => {
+    const plugin2 = mountPlugin({ browserOnly: ['Probe'] })
+    const result = await plugin2.verify!({ scenario: scenarioFor({ open: true }), component: intelligence(() => null) })
+    expect(result.interaction!.status).toBe('skip')
+    expect(result.interaction!.findings?.[0]?.code).toBe('browser-only')
+  })
+
+  it('reports part-of, naming the parent, for a declared part', async () => {
+    const plugin2 = mountPlugin({ parts: { Probe: 'Tabs' } })
+    const result = await plugin2.verify!({ scenario: scenarioFor({}), component: intelligence(() => null) })
+    expect(result.interaction!.status).toBe('skip')
+    expect(result.interaction!.findings?.[0]?.code).toBe('part-of')
+    expect(result.interaction!.findings?.[0]?.message).toContain('<Tabs>')
+  })
+
+  it('still judges a gated component that DOES render — the gate covers emptiness only', async () => {
+    const plugin2 = mountPlugin({ browserOnly: ['Probe'], parts: { Probe: 'Tabs' } })
+    const Throws = () => {
+      throw new Error('boom')
+    }
+    const result = await plugin2.verify!({ scenario: scenarioFor({}), component: intelligence(Throws) })
+    expect(result.interaction!.status).toBe('fail')
   })
 })

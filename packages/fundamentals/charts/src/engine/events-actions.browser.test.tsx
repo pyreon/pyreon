@@ -182,3 +182,82 @@ describe('createChartHandle', () => {
     expect(zooms).toEqual(['0.500-1.000', '0.500-1.000'])
   })
 })
+
+describe('ECharts vocabulary: tip + legend-all/inverse actions, click/dblclick/contextmenu/rendered', () => {
+  it('showTip / hideTip move the crosshair datum; legendAllSelect and legendInverseSelect flip over the bound series count', async () => {
+    const chart: ChartHandle = createChartHandle()
+    const hid: number[][] = []
+    const { container } = mountChart({ handle: chart, showLegend: true, onLegendChange: (s: number[]) => hid.push(s) })
+    await flush()
+    const c = canvasOf(container)
+    chart.dispatch({ type: 'showTip', index: 2 })
+    await flush()
+    expect(c.getAttribute('data-pyreon-hover')).toBe('2')
+    chart.dispatch({ type: 'hideTip' })
+    await flush()
+    expect(c.getAttribute('data-pyreon-hover')).toBe('-1')
+    // One mark → the chart reports one series to the handle.
+    expect(chart.seriesCount()).toBe(1)
+    chart.dispatch({ type: 'legendToggle', series: 0 })
+    chart.dispatch({ type: 'legendInverseSelect' })
+    await flush()
+    expect(chart.hidden(), 'inverse of [0] over one series').toEqual([])
+    chart.dispatch({ type: 'legendInverseSelect' })
+    await flush()
+    expect(chart.hidden()).toEqual([0])
+    chart.dispatch({ type: 'legendAllSelect' })
+    chart.dispatch({ type: 'legendAllSelect' }) // idempotent — no spurious change
+    await flush()
+    expect(chart.hidden()).toEqual([])
+    expect(hid).toEqual([[0], [], [0], []])
+    // An explicit count stands in when no chart is bound.
+    const loose = createChartHandle()
+    loose.dispatch({ type: 'legendToggle', series: 1 })
+    loose.dispatch({ type: 'legendInverseSelect', count: 3 })
+    expect(loose.hidden()).toEqual([0, 2])
+  })
+
+  it('click / dblclick / contextmenu report the datum under the pointer, -1 for a miss; onRendered follows each paint', async () => {
+    const clicks: number[] = []
+    const dbl: number[] = []
+    const ctx: number[] = []
+    let paints = 0
+    const { container } = mountChart({
+      onClick: (i: number) => clicks.push(i),
+      onDoubleClick: (i: number) => dbl.push(i),
+      onContextMenu: (i: number) => ctx.push(i),
+      onRendered: () => { paints += 1 },
+    })
+    await flush()
+    const c = canvasOf(container)
+    expect(paints, 'the mount painted').toBeGreaterThan(0)
+    const r = c.getBoundingClientRect()
+    const fire = (type: string, x: number, y: number): void => {
+      c.dispatchEvent(new MouseEvent(type, { clientX: r.left + x, clientY: r.top + y, bubbles: true, cancelable: true }))
+    }
+    // A miss at the very corner is -1. Then find a bar: sweep the plot until
+    // a click reports a datum (the bar geometry is the engine's, not the test's).
+    fire('click', 1, 1)
+    await flush()
+    expect(clicks).toEqual([-1])
+    let hit: { x: number; y: number } | null = null
+    for (let y = 40; y < 200 && hit === null; y += 20) {
+      for (let x = 20; x < 320 && hit === null; x += 10) {
+        const before = clicks.length
+        fire('click', x, y)
+        if (clicks.length > before && clicks[before]! >= 0) hit = { x, y }
+      }
+    }
+    expect(hit, 'a click somewhere on the plot lands on a bar').not.toBeNull()
+    const index = clicks[clicks.length - 1]!
+    fire('dblclick', 1, 1)
+    fire('dblclick', hit!.x, hit!.y)
+    fire('contextmenu', 1, 1)
+    fire('contextmenu', hit!.x, hit!.y)
+    await flush()
+    expect(dbl).toEqual([-1, index])
+    expect(ctx).toEqual([-1, index])
+    // No selectedMode → a click never pins.
+    expect(c.getAttribute('data-pyreon-selected')).toBe('')
+  })
+})

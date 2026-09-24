@@ -11,6 +11,14 @@ Reactive code editor for Pyreon built on CodeMirror 6 — the core editor is ~13
 
 > **Peer dependencies:** `@pyreon/runtime-dom` — install alongside this package.
 
+## Multiplatform
+
+**Tier:** Web-only — the browser package; the native story is stated below
+
+wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath
+
+See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
+
 ## Features
 
 - createEditor — reactive instance with writable Signal&lt;string&gt; value

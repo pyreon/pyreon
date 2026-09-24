@@ -246,4 +246,10 @@ export interface IRocketStyleComponent<
    * `extractDocumentTree` and any other inspector consuming the hoist.
    */
   readonly __rs_attrs: ReadonlyArray<(props: Record<string, unknown>) => Record<string, unknown>>
+  /**
+   * The base the chain renders — a tag string (`.config({ component: 'hr' })`)
+   * or the wrapped component. Discovery reads it to learn what the component
+   * renders AS when its attrs chain sets no `tag`.
+   */
+  readonly __rs_component: unknown
 }

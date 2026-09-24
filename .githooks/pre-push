@@ -46,6 +46,41 @@ fi
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT" || exit 1
 
+# One validation wall per repository. Two concurrent pushes previously ran the
+# same affected graph twice, raced over package-owned test scratch directories,
+# exhausted kotlinc/vitest workers, and then reported unrelated ENOTEMPTY,
+# timeout, or SIGKILL failures. `mkdir` is atomic on every supported host.
+GIT_COMMON_DIR=$(git rev-parse --git-common-dir)
+case "$GIT_COMMON_DIR" in
+  /*) ;;
+  *) GIT_COMMON_DIR="$REPO_ROOT/$GIT_COMMON_DIR" ;;
+esac
+PRE_PUSH_LOCK="$GIT_COMMON_DIR/pyreon-pre-push.lock"
+if ! mkdir "$PRE_PUSH_LOCK" 2>/dev/null; then
+  LOCK_PID=$(sed -n '1p' "$PRE_PUSH_LOCK/pid" 2>/dev/null || true)
+  if [ -n "$LOCK_PID" ] && kill -0 "$LOCK_PID" 2>/dev/null; then
+    echo "[pyreon pre-push] another validation is already running for this repository (pid $LOCK_PID)."
+    echo "[pyreon pre-push] Wait for that push to finish, then retry; concurrent walls are intentionally blocked."
+    exit 1
+  fi
+  # A machine crash cannot run the EXIT trap. Reclaim only this exact stale
+  # lock (two narrow operations, no recursive deletion), then retry atomically.
+  rm -f "$PRE_PUSH_LOCK/pid"
+  rmdir "$PRE_PUSH_LOCK" 2>/dev/null || true
+  if ! mkdir "$PRE_PUSH_LOCK" 2>/dev/null; then
+    echo "[pyreon pre-push] could not reclaim the stale validation lock at $PRE_PUSH_LOCK"
+    exit 1
+  fi
+fi
+echo "$$" > "$PRE_PUSH_LOCK/pid"
+TEST_OUTPUT_FILE=""
+cleanup() {
+  if [ -n "$TEST_OUTPUT_FILE" ]; then rm -f "$TEST_OUTPUT_FILE"; fi
+  rm -f "$PRE_PUSH_LOCK/pid"
+  rmdir "$PRE_PUSH_LOCK" 2>/dev/null || true
+}
+trap cleanup EXIT HUP INT TERM
+
 TIMEOUT_SEC="${PYREON_PRE_PUSH_TIMEOUT_SEC:-300}"
 
 # validate-fast gets its OWN budget, and it must not be the 300s default.
@@ -124,20 +159,30 @@ run_with_timeout_secs() {
       echo "[pyreon pre-push]    This is a CLOCK failure, not a gate failure — the step did not"
       echo "[pyreon pre-push]    report a problem, it ran out of time. Raise the budget with"
       echo "[pyreon pre-push]    PYREON_PRE_PUSH_TIMEOUT_SEC=1800 git push before assuming a bug."
-      echo "[pyreon pre-push]    Common cause: orphaned vitest processes from a prior worktree."
-      echo "[pyreon pre-push]    Try: pkill -f 'vitest run' && git push"
+      echo "[pyreon pre-push]    This hook has terminated only the timed-out step's process tree."
+      echo "[pyreon pre-push]    Inspect any older unrelated watchers before retrying."
       echo "[pyreon pre-push]    Or:  PYREON_SKIP_PRE_PUSH=1 git push  (one-off bypass)"
-      kill -TERM "$cmd_pid" 2>/dev/null
+      terminate_tree "$cmd_pid" TERM
       sleep 2
-      kill -KILL "$cmd_pid" 2>/dev/null
-      # Also kill any orphaned vitest spawned by this step
-      pkill -KILL -f "vitest run" 2>/dev/null
+      terminate_tree "$cmd_pid" KILL
       return 124
     fi
     sleep 1
   done
   wait "$cmd_pid"
   return $?
+}
+
+# Kill only descendants of THIS hook step. The old global `pkill -f
+# "vitest run"` could terminate an IDE watcher or another worktree and still
+# missed kotlinc descendants whose wrapper had already exited.
+terminate_tree() {
+  tree_pid="$1"
+  tree_signal="$2"
+  for child_pid in $(pgrep -P "$tree_pid" 2>/dev/null); do
+    terminate_tree "$child_pid" "$tree_signal"
+  done
+  kill -"$tree_signal" "$tree_pid" 2>/dev/null || true
 }
 
 run_with_timeout() {
@@ -223,9 +268,8 @@ echo
 # "nothing to run".
 echo "[3/3] tests (affected)"
 TEST_OUTPUT_FILE=$(mktemp -t pyreon-pre-push-XXXXXX)
-trap 'rm -f "$TEST_OUTPUT_FILE"' EXIT
 
-run_with_timeout "tests" "bun run $FILTER test > '$TEST_OUTPUT_FILE' 2>&1"
+run_with_timeout "tests" "bun run $FILTER --sequential test -- > '$TEST_OUTPUT_FILE' 2>&1"
 TEST_EXIT=$?
 cat "$TEST_OUTPUT_FILE"
 

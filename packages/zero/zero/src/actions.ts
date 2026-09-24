@@ -130,9 +130,15 @@ export interface CreateActionMiddlewareOptions {
    * Origins (scheme + host + optional port) allowed to POST to
    * `/_zero/actions/*` cross-origin. Default: same-origin only.
    *
-   * Each entry is matched as a STARTS-WITH against the request's
-   * `Origin` / `Referer` header. Example: `['https://admin.example.com']`
-   * allows POSTs from any URL under that origin.
+   * Each entry is an ORIGIN and is matched by EXACT EQUALITY against the
+   * origin the request's `Origin` header carries (a `Referer` is first
+   * reduced to its own origin). Example: `['https://admin.example.com']`
+   * allows POSTs from any URL under that origin — and ONLY that origin.
+   * A prefix match would accept `https://admin.example.com.evil.net`,
+   * so it is deliberately not used; write the full scheme + host (+ port).
+   * Entries are normalized to their origin at construction, so a trailing
+   * slash or an explicit default port is fine; an entry that is not a
+   * parseable absolute URL is dropped with a warning.
    *
    * Without this opt-in, any cross-origin POST is rejected with HTTP 403.
    * This is the CSRF baseline: a malicious origin that a logged-in user
@@ -163,7 +169,23 @@ export function createActionMiddleware(
 ): (
   ctx: MiddlewareContext,
 ) => Response | undefined | Promise<Response | undefined> {
-  const corsOrigins = options?.corsOrigins ?? []
+  // Normalize the allowlist ONCE, at construction. Entries are written by
+  // hand, so `https://admin.example.com/` (trailing slash) and a default
+  // port are both plausible spellings of the same origin — and since the
+  // match below is equality, an unnormalized entry would silently never
+  // fire. An entry that is not a parseable absolute URL is dropped with a
+  // warning rather than sitting in the list matching nothing.
+  const corsOrigins = (options?.corsOrigins ?? []).flatMap((entry) => {
+    const origin = originOf(entry)
+    if (origin === null || origin === 'null') {
+      console.warn(
+        `[Pyreon] createActionMiddleware: ignoring corsOrigins entry ${JSON.stringify(entry)} — ` +
+          'not a parseable origin. Write the full scheme + host (+ port), e.g. "https://admin.example.com".',
+      )
+      return []
+    }
+    return [origin]
+  })
   return async (ctx: MiddlewareContext) => {
     if (!ctx.path.startsWith('/_zero/actions/')) return
 
@@ -190,14 +212,21 @@ export function createActionMiddleware(
     //     here would break legitimate usage. The auth layer is responsible
     //     for the "is this a logged-in user?" check; the CSRF baseline is
     //     "did this request come from a browser tab on an attacker's origin?".
-    //   - If Origin/Referer is present → require it to start with the
-    //     request's own origin OR one of the opt-in `corsOrigins` entries.
+    //   - If Origin/Referer is present → PARSE it and require its ORIGIN to
+    //     equal the request's own origin, or to be one of the opt-in
+    //     `corsOrigins` entries. Equality, never a prefix: `startsWith`
+    //     accepts `https://app.example.com.evil.net`, `...comevil.net` and
+    //     `https://app.example.com@evil.net` (userinfo), all of which are
+    //     attacker-controlled origins. A `Referer` is a full URL, so it is
+    //     reduced to its origin the same way.
+    //   - An unparseable header (including the literal `null` a sandboxed
+    //     iframe sends) yields no origin → 403.
     //   - Otherwise → 403.
     const headerOrigin = ctx.req.headers.get('origin') ?? ctx.req.headers.get('referer')
     if (headerOrigin) {
-      const reqUrl = new URL(ctx.req.url)
-      const sameOrigin = headerOrigin.startsWith(reqUrl.origin)
-      const allowedCrossOrigin = corsOrigins.some((o) => headerOrigin.startsWith(o))
+      const origin = originOf(headerOrigin)
+      const sameOrigin = origin !== null && origin === new URL(ctx.req.url).origin
+      const allowedCrossOrigin = origin !== null && corsOrigins.includes(origin)
       if (!sameOrigin && !allowedCrossOrigin) {
         return Response.json(
           {
@@ -262,8 +291,32 @@ async function executeAction(action: RegisteredAction, req: Request): Promise<Re
     })
     return Response.json(result ?? null)
   } catch (err) {
+    // Log the real error for operators; return a GENERIC message to the
+    // client in production. `err.message` routinely carries connection
+    // strings, credentials and internal hostnames ("pg: password
+    // authentication failed for user ..."), and the client has no claim
+    // on it — exactly the reasoning the body-parse arm above already
+    // applies. Outside production the detail is kept, because that is
+    // where a developer is reading the response.
     console.error('[Pyreon Action] handler failed:', err)
-    const message = err instanceof Error ? err.message : 'Internal server error'
+    const isProduction = process.env.NODE_ENV === 'production'
+    const message =
+      isProduction || !(err instanceof Error) ? 'Internal server error' : err.message
     return Response.json({ error: message }, { status: 500 })
+  }
+}
+
+/**
+ * Reduce an `Origin` or `Referer` header value to its ORIGIN
+ * (scheme + host + port), or `null` when it is not a parseable absolute URL.
+ *
+ * The `null` return is load-bearing: a caller must treat "no origin" as
+ * "not allowed", never as "same origin".
+ */
+function originOf(headerValue: string): string | null {
+  try {
+    return new URL(headerValue).origin
+  } catch {
+    return null
   }
 }

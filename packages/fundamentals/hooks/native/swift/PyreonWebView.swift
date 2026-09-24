@@ -85,9 +85,19 @@ public struct PyreonWebView: View {
     }
 
     public var body: some View {
+        // An unsized WebView inside a ScrollView gets no height to lay out in,
+        // so a hosted chart or flow page has nothing to draw into and a tap at
+        // its centre lands on nothing. The web `<iframe>` falls back to the CSS
+        // replaced-element default of 150px in the same spot, so that is the
+        // IDEAL height here: used only when the parent proposes none, which
+        // leaves an explicit `.frame(height:)` from the caller in charge.
         _PyreonWebViewBridge(html: html, src: src, data: data, onMessage: onMessage)
+            .frame(idealHeight: pyreonWebViewDefaultHeight)
     }
 }
+
+/// The CSS replaced-element default height the web `<iframe>` falls back to.
+let pyreonWebViewDefaultHeight: CGFloat = 150
 
 /// The script-message handler name the injected `window.pyreonPostMessage`
 /// shim forwards to (`window.webkit.messageHandlers.pyreonNative`).
@@ -107,6 +117,10 @@ private let _pyreonReverseBridgeShim =
 final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     var latestData: String?
     var loaded = false
+    /// The hosted WKWebView — a sibling relay evaluates into it.
+    weak var webView: WKWebView?
+    /// The host group this page joined (nil = none).
+    var group: String?
     /// The html/src the page was last loaded with — a `data`-only change
     /// must NOT reload (that would defeat the live push).
     var loadedKey: String?
@@ -124,8 +138,13 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         didReceive message: WKScriptMessage
     ) {
         guard message.name == _pyreonMessageHandlerName else { return }
-        onMessage?(String(describing: message.body))
+        let body = String(describing: message.body)
+        // Reserved host-group traffic is consumed here and never forwarded.
+        if _PyreonWebViewGroups.shared.handle(body, from: self) { return }
+        onMessage?(body)
     }
+
+    deinit { _PyreonWebViewGroups.shared.leave(self) }
 
     /// Push the latest JSON into `window.__pyreonData` + fire `pyreondata`.
     /// No-op until the page has finished loading or when there's no data.
@@ -133,6 +152,67 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         guard loaded, let json = latestData, !json.isEmpty else { return }
         let js = "window.__pyreonData = \(json); window.dispatchEvent(new Event(\"pyreondata\"));"
         webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+}
+
+/// Host-group registry — group name → the hosts currently in it. Every
+/// hosted page is its own realm, so two guests can never reach each other;
+/// a page that posted `{"__pyreonWebViewGroup":1,"join":"g"}` receives what
+/// its group siblings relay, through `window.__pyreonWebViewGroupMessage(s)`.
+/// Mirrors the web `<WebView>` host and the Android runtime byte-for-byte
+/// in protocol. Members are held weakly and removed by IDENTITY on leave,
+/// dismantle and deinit; an emptied group is dropped.
+final class _PyreonWebViewGroups {
+    static let shared = _PyreonWebViewGroups()
+    private var members: [String: NSHashTable<_PyreonWebViewCoordinator>] = [:]
+
+    /// Consume a reserved host-group message. Returns false for ordinary traffic.
+    func handle(_ message: String, from coordinator: _PyreonWebViewCoordinator) -> Bool {
+        guard message.hasPrefix("{\"__pyreonWebViewGroup\""),
+              let data = message.data(using: .utf8),
+              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              (object["__pyreonWebViewGroup"] as? NSNumber)?.intValue == 1
+        else { return false }
+        if let join = object["join"] as? String, !join.isEmpty {
+            self.join(coordinator, group: join)
+        } else if object["leave"] as? Bool == true {
+            leave(coordinator)
+        } else if let group = object["group"] as? String, let relayed = object["message"] as? String,
+                  coordinator.group == group {
+            relay(relayed, in: group, from: coordinator)
+        }
+        return true
+    }
+
+    func join(_ coordinator: _PyreonWebViewCoordinator, group: String) {
+        if coordinator.group == group { return }
+        leave(coordinator)
+        let table = members[group] ?? NSHashTable<_PyreonWebViewCoordinator>.weakObjects()
+        table.add(coordinator)
+        members[group] = table
+        coordinator.group = group
+    }
+
+    func leave(_ coordinator: _PyreonWebViewCoordinator) {
+        guard let group = coordinator.group else { return }
+        coordinator.group = nil
+        guard let table = members[group] else { return }
+        table.remove(coordinator)
+        if table.count == 0 { members[group] = nil }
+    }
+
+    private func relay(_ message: String, in group: String, from coordinator: _PyreonWebViewCoordinator) {
+        guard let table = members[group] else { return }
+        // A JS string literal for the payload — JSON-encode it as a one-element
+        // array and strip the brackets (fragment encoding needs no options).
+        guard let data = try? JSONSerialization.data(withJSONObject: [message]),
+              let array = String(data: data, encoding: .utf8), array.count >= 2
+        else { return }
+        let literal = String(array.dropFirst().dropLast())
+        let js = "if (typeof window.__pyreonWebViewGroupMessage === 'function') window.__pyreonWebViewGroupMessage(\(literal));"
+        for member in table.allObjects where member !== coordinator {
+            member.webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
     }
 }
 
@@ -178,6 +258,7 @@ private func _makePyreonWebView(coordinator: _PyreonWebViewCoordinator) -> WKWeb
     config.userContentController = contentController
     let webView = WKWebView(frame: .zero, configuration: config)
     webView.navigationDelegate = coordinator
+    coordinator.webView = webView
     return webView
 }
 
@@ -195,6 +276,9 @@ private struct _PyreonWebViewBridge: UIViewRepresentable {
         context.coordinator.onMessage = onMessage
         _syncPyreonWebView(webView, coordinator: context.coordinator, html: html, src: src, data: data)
     }
+    static func dismantleUIView(_ webView: WKWebView, coordinator: _PyreonWebViewCoordinator) {
+        _PyreonWebViewGroups.shared.leave(coordinator)
+    }
 }
 #elseif canImport(AppKit)
 private struct _PyreonWebViewBridge: NSViewRepresentable {
@@ -209,6 +293,9 @@ private struct _PyreonWebViewBridge: NSViewRepresentable {
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.onMessage = onMessage
         _syncPyreonWebView(webView, coordinator: context.coordinator, html: html, src: src, data: data)
+    }
+    static func dismantleNSView(_ webView: WKWebView, coordinator: _PyreonWebViewCoordinator) {
+        _PyreonWebViewGroups.shared.leave(coordinator)
     }
 }
 #endif

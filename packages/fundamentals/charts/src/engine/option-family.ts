@@ -4,15 +4,23 @@
 // a named warning — and the output is data the family SVG helpers (and,
 // later, the family components) consume directly.
 
+import { circleView, familyRect } from './option-layers'
+import { GAUGE_DIAL_KEYS, readGaugeDial } from './option-gauge'
+import type { DialSpec } from './gauge-dial'
+import { PIE_SHAPE_KEYS, readPieArcs, readPieEmpty, readPieLabels } from './option-pie'
+import type { PieShape } from './option-pie'
 import type { EChartsOption, OptionWarning } from './option'
 import { paletteAt } from './palette'
-import { calendarToSvg, candlestickToSvg, funnelToSvg, gaugeToSvg, graphToSvg, heatmapToSvg, parallelToSvg, pieToSvg, polarToSvg, radarToSvg, riverToSvg, sankeyToSvg, sunburstToSvg, treeToSvg, treemapToSvg } from './family-svg'
+import {
+  chordToSvg, calendarToSvg, candlestickToSvg, funnelToSvg, gaugeToSvg, graphToSvg, heatmapToSvg, parallelToSvg, pieToSvg, polarToSvg, radarToSvg, riverToSvg, sankeyToSvg, sunburstToSvg, treeToSvg, treemapToSvg } from './family-svg'
 import type { TreeNode, TreemapOptions } from './treemap'
 import type { SunburstOptions } from './sunburst'
 import type { TreeOptions, TreeOrient } from './tree'
 import type { SankeyLink, SankeyNode, SankeyOptions } from './sankey'
 import type { GraphLink, GraphNode, GraphOptions } from './graph'
 import type { CalendarOptions } from './calendar'
+import { visualMapSpec, visualSelectionOptions } from './visual-map'
+import type { VisualMapSpec } from './visual-map'
 import type { ParallelAxis, ParallelOptions } from './parallel'
 import type { ParallelRow } from './parallel-web'
 import type { PolarAxes, PolarOptions, PolarSeries } from './polar'
@@ -25,35 +33,55 @@ import type { GeoOptions } from './geo'
 import type { GeoJson } from './geo-web'
 import { geoPointsToSvg } from './geo-points'
 import type { GeoPath, GeoPoint, GeoPointsOptions } from './geo-points'
-import { singleAxisToSvg } from './single-axis'
+import type { GeoHeatPoint, GeoPie, GeoTrail } from './geo-overlay'
+import type { Slice } from './arc'
+import { singleAxisToSvg } from './single-axis-web'
 import type { SingleAxisOptions, SingleAxisPoint, SingleAxisSpec } from './single-axis'
 import type { FunnelOptions } from './funnel'
 import type { RadarAxis } from './radar'
 import type { Double } from './types'
+import { ANIMATION_KEYS, resolveAnimation } from './animation-option'
+import type { ChartAnimation } from './animation-option'
 
 export type FamilyPlan =
-  | { kind: 'pie'; rows: { value: Double; name: string; color: string | undefined }[]; innerRadius: Double; showLabels: boolean; showLegend: boolean; title: string | undefined }
-  | { kind: 'gauge'; value: Double; min: Double; max: Double; showValue: boolean; thickness: Double | undefined; valueColor: string | undefined; title: string | undefined }
+  | { kind: 'pie'; rows: { value: Double; name: string; color: string | undefined }[]; innerRadius: Double; showLabels: boolean; showLegend: boolean; title: string | undefined; pie: PieShape }
+  | { kind: 'gauge'; value: Double; min: Double; max: Double; showValue: boolean; thickness: Double | undefined; valueColor: string | undefined; title: string | undefined; dial: DialSpec }
   | { kind: 'radar'; axes: RadarAxis[]; rows: { values: Double[]; name: string; color: string | undefined }[]; fillAlpha: Double; showLegend: boolean; title: string | undefined }
-  | { kind: 'candlestick'; rows: { x: string; open: Double; high: Double; low: Double; close: Double }[]; upColor: string | undefined; downColor: string | undefined; title: string | undefined }
-  | { kind: 'heatmap'; rows: { x: string; y: string; value: Double }[]; colors: string[] | undefined; title: string | undefined }
+  | { kind: 'candlestick'; rows: { x: string; open: Double; high: Double; low: Double; close: Double }[]; upColor: string | undefined; downColor: string | undefined; title: string | undefined; zoom?: OptionZoom | undefined }
+  | { kind: 'heatmap'; rows: { x: string; y: string; value: Double }[]; colors: string[] | undefined; title: string | undefined; visualMap?: VisualMapSpec | undefined }
   | { kind: 'funnel'; rows: { value: Double; name: string; color: string | undefined }[]; funnel: FunnelOptions; title: string | undefined }
   | { kind: 'treemap'; nodes: TreeNode[]; treemap: TreemapOptions; title: string | undefined }
   | { kind: 'sunburst'; nodes: TreeNode[]; innerRatio: Double; sunburst: SunburstOptions; title: string | undefined }
   | { kind: 'tree'; nodes: TreeNode[]; tree: TreeOptions; title: string | undefined }
-  | { kind: 'sankey'; nodes: SankeyNode[]; links: SankeyLink[]; sankey: SankeyOptions; title: string | undefined }
+  | { kind: 'sankey'; nodes: SankeyNode[]; links: SankeyLink[]; sankey: SankeyOptions; orient?: 'vertical'; title: string | undefined; visualMap?: VisualMapSpec | undefined }
+  | { kind: 'chord'; nodes: ChordNode[]; links: ChordLink[]; chord: ChordOptions; title: string | undefined }
   | { kind: 'graph'; nodes: GraphNode[]; links: GraphLink[]; graph: GraphOptions; title: string | undefined }
-  | { kind: 'calendar'; start: string; end: string; values: Record<string, Double>; calendar: CalendarOptions; title: string | undefined }
-  | { kind: 'parallel'; axes: ParallelAxis[]; rows: ParallelRow[]; parallel: ParallelOptions; title: string | undefined }
+  | { kind: 'calendar'; start: string; end: string; values: Record<string, Double>; calendar: CalendarOptions; orient?: 'vertical'; title: string | undefined; visualMap?: VisualMapSpec | undefined }
+  | { kind: 'parallel'; axes: ParallelAxis[]; rows: ParallelRow[]; parallel: ParallelOptions; orient?: 'vertical'; title: string | undefined }
   | { kind: 'polar'; axes: PolarAxes; series: PolarSeries[]; polar: PolarOptions; title: string | undefined }
   | { kind: 'themeRiver'; series: RiverSeries[]; river: RiverOptions; title: string | undefined }
   | { kind: 'boxplot'; rows: (FiveNumber & { x: string })[]; fill: string | undefined; stroke: string | undefined; title: string | undefined }
-  | { kind: 'map'; geo: GeoJson; values: Record<string, Double>; options: GeoOptions; title: string | undefined }
-  | { kind: 'geoPoints'; geo: GeoJson; points: GeoPoint[]; paths: GeoPath[]; map: GeoOptions; options: GeoPointsOptions; title: string | undefined }
+  | { kind: 'map'; geo: GeoJson; values: Record<string, Double>; options: GeoOptions; title: string | undefined; roam: RoamMode; scaleLimit: { min: Double; max: Double }; visualMap?: VisualMapSpec | undefined }
+  | { kind: 'geoPoints'; geo: GeoJson; points: GeoPoint[]; paths: GeoPath[]; heat: GeoHeatPoint[]; heatRadius: Double; heatStops: string[]; pies: GeoPie[]; trail?: GeoTrail | undefined; values: Record<string, Double>; map: GeoOptions; options: GeoPointsOptions; title: string | undefined; roam: RoamMode; scaleLimit: { min: Double; max: Double } }
   | { kind: 'singleAxis'; axis: SingleAxisSpec; points: SingleAxisPoint[]; options: SingleAxisOptions; title: string | undefined }
+
+import type { ChordLink, ChordNode, ChordOptions } from './chord'
+import type { ChartTheme } from './render'
+import { readDataZoom } from './option-zoom'
+import type { OptionZoom } from './option-zoom'
+import { sliceRange } from './zoom'
 
 export interface CompiledFamily {
   plan: FamilyPlan
+  /**
+   * The option the plan was compiled from, its dataset already resolved into
+   * each series' `data` — what the host reads a series' own `tooltip`,
+   * `cursor` and `silent` from, whether the family is the whole chart or one
+   * layer of it.
+   */
+  source: EChartsOption
+  /** The animation the option asks for (ECharts' `animation*` keys). */
+  animation: ChartAnimation
   warnings: OptionWarning[]
   supported: boolean
 }
@@ -84,7 +112,7 @@ export interface CompiledFamily {
  * adding different members merge cleanly.
  */
 const MULTI_SERIES_FAMILIES = new Set(['radar', 'polar', 'boxplot', 'geo', 'singleAxis'])
-const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph', 'parallel', 'themeRiver', 'boxplot', 'map'])
+export const FAMILY_TYPES: ReadonlySet<string> = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph', 'parallel', 'themeRiver', 'boxplot', 'map', 'chord'])
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const num = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
@@ -101,31 +129,69 @@ const pct = (v: unknown): number | null => {
 }
 
 /** True when the option's first series is a family (non-cartesian) type. */
+
+/** ECharts' `roam`: false, both, zoom only or pan only. */
+export type RoamMode = false | true | 'scale' | 'move'
+
+/** Read `roam`, `zoom` and `scaleLimit` off a map series or a geo component. */
+function roamOf(o: Record<string, unknown>, path: string, warn: (code: OptionWarning['code'], path: string, message: string) => void): { roam: RoamMode; scaleLimit: { min: Double; max: Double }; zoom: Double | null } {
+  const r = o['roam']
+  const roam: RoamMode = r === true ? true : r === 'scale' || r === 'zoom' ? 'scale' : r === 'move' || r === 'pan' ? 'move' : false
+  // ledger: invalid-input
+  if (r !== undefined && r !== false && roam === false) warn('series-option-unsupported', path + '.roam', 'roam must be true, "scale"/"zoom" or "move"/"pan"; the map is static.')
+  const lim = isObj(o['scaleLimit']) ? o['scaleLimit'] : {}
+  for (const key of ['center', 'aspectScale', 'layoutCenter', 'layoutSize']) {
+    // ledger: coordinates.geo
+    if (o[key] !== undefined) warn('series-option-unsupported', path + '.' + key, '"' + key + '" has no mapping yet; the map is fitted to the box.')
+  }
+  return { roam, scaleLimit: { min: num(lim['min']) ?? 0.5, max: num(lim['max']) ?? 20.0 }, zoom: num(o['zoom']) }
+}
+
 export function isFamilyOption(option: EChartsOption): boolean {
   const s = first(option['series'] as unknown)
   return isObj(s) && typeof s['type'] === 'string' && (FAMILY_TYPES.has(s['type'] as string) || s['coordinateSystem'] === 'polar' || s['coordinateSystem'] === 'geo' || s['coordinateSystem'] === 'singleAxis')
 }
 
-const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid', 'calendar', 'parallel', 'parallelAxis', 'polar', 'angleAxis', 'radiusAxis', 'singleAxis', 'dataset', 'graphic', 'geo'])
-const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
-  pie: new Set(['type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
-  gauge: new Set(['type', 'name', 'data', 'min', 'max', 'detail', 'axisLine', 'progress', 'itemStyle', 'color']),
-  radar: new Set(['type', 'name', 'data', 'areaStyle', 'itemStyle', 'lineStyle', 'symbol', 'color']),
-  candlestick: new Set(['type', 'name', 'data', 'itemStyle', 'color']),
-  heatmap: new Set(['coordinateSystem', 'calendarIndex', 'type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
-  funnel: new Set(['type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis']),
-  treemap: new Set(['type', 'name', 'data', 'leafDepth', 'label', 'itemStyle', 'color', 'emphasis', 'roam', 'nodeClick', 'breadcrumb']),
-  sunburst: new Set(['type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis', 'nodeClick', 'levels']),
-  tree: new Set(['type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'leaves', 'roam', 'expandAndCollapse', 'emphasis', 'top', 'left', 'right', 'bottom']),
-  sankey: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'nodeWidth', 'nodeGap', 'nodeAlign', 'layoutIterations', 'orient', 'draggable', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'levels', 'top', 'left', 'right', 'bottom']),
-  singleAxis: new Set(['type', 'name', 'data', 'coordinateSystem', 'singleAxisIndex', 'symbolSize', 'symbol', 'label', 'itemStyle', 'emphasis', 'color', 'animation']),
-  geo: new Set(['type', 'name', 'data', 'coordinateSystem', 'geoIndex', 'symbolSize', 'symbol', 'label', 'itemStyle', 'lineStyle', 'effect', 'polyline', 'emphasis', 'rippleEffect', 'showEffectOn', 'color', 'animation', 'zlevel', 'z']),
-  map: new Set(['type', 'name', 'data', 'map', 'roam', 'label', 'itemStyle', 'emphasis', 'select', 'selectedMode', 'nameProperty', 'projection', 'zoom', 'center', 'aspectScale', 'layoutCenter', 'layoutSize', 'showLegendSymbol', 'geoIndex', 'left', 'top', 'right', 'bottom']),
-  themeRiver: new Set(['type', 'name', 'data', 'coordinateSystem', 'singleAxisIndex', 'boundaryGap', 'label', 'itemStyle', 'emphasis', 'color', 'animation']),
-  polar: new Set(['type', 'name', 'data', 'coordinateSystem', 'polarIndex', 'stack', 'itemStyle', 'lineStyle', 'label', 'emphasis', 'smooth', 'symbol', 'symbolSize', 'barWidth', 'barGap', 'barCategoryGap', 'roundCap', 'showBackground', 'backgroundStyle', 'areaStyle', 'animation', 'color']),
-  parallel: new Set(['type', 'name', 'data', 'coordinateSystem', 'parallelIndex', 'lineStyle', 'emphasis', 'inactiveOpacity', 'activeOpacity', 'realtime', 'smooth', 'progressive', 'animation']),
-  graph: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'categories', 'layout', 'symbol', 'symbolSize', 'force', 'circular', 'roam', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'draggable', 'edgeSymbol', 'edgeSymbolSize', 'focusNodeAdjacency', 'zoom', 'center', 'left', 'top', 'right', 'bottom', 'width', 'height', 'coordinateSystem']),
-  boxplot: new Set(['type', 'name', 'data', 'itemStyle', 'color', 'boxWidth', 'emphasis']),
+export const FAMILY_KNOWN_TOP: ReadonlySet<string> = new Set([...ANIMATION_KEYS, 'series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'backgroundColor', 'textStyle', 'grid', 'calendar', 'parallel', 'parallelAxis', 'polar', 'angleAxis', 'radiusAxis', 'singleAxis', 'dataset', 'graphic', 'geo'])
+/**
+ * Series keys a family honours through its host: the series' own `tooltip`,
+ * `cursor` and `silent` (see `family-tooltip.ts`), and `universalTransition`
+ * (the host morphs an update that changes the item count), and `z` /
+ * `zlevel` (the stacking of the family's layer among the other layers). Not boxplot or a
+ * single-axis scatter: those option charts render as SVG, with no host.
+ */
+const FAMILY_ITEM_KEYS = ['tooltip', 'cursor', 'silent', 'universalTransition', 'z', 'zlevel'] as const
+/**
+ * The dataset keys the dataset pre-pass (`resolveDataset`) consumes for a
+ * family it can encode: which dataset, how it is laid out, the series' own
+ * dimension names and the column mapping.
+ */
+const FAMILY_DATASET_KEYS = ['datasetIndex', 'datasetId', 'seriesLayoutBy', 'dimensions', 'encode'] as const
+export const KNOWN_BY_FAMILY: Readonly<Record<string, ReadonlySet<string>>> = {
+  pie: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, ...PIE_SHAPE_KEYS, 'colorBy', 'type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
+  gauge: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, ...GAUGE_DIAL_KEYS, 'type', 'name', 'data', 'min', 'max', 'itemStyle', 'color']),
+  radar: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'colorBy', 'type', 'name', 'data', 'areaStyle', 'itemStyle', 'lineStyle', 'symbol', 'color']),
+  candlestick: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'itemStyle', 'color']),
+  heatmap: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'coordinateSystem', 'type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
+  funnel: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'colorBy', 'type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis']),
+  treemap: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'leafDepth', 'label', 'itemStyle', 'color', 'emphasis', 'roam']),
+  sunburst: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis']),
+  tree: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'roam', 'emphasis', 'top', 'left', 'right', 'bottom']),
+  sankey: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'nodes', 'links', 'edges', 'nodeWidth', 'nodeGap', 'nodeAlign', 'layoutIterations', 'orient', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'top', 'left', 'right', 'bottom']),
+  singleAxis: new Set([...ANIMATION_KEYS, 'id', 'type', 'name', 'data', 'coordinateSystem', 'symbolSize', 'symbol', 'label', 'itemStyle', 'emphasis', 'color']),
+  geo: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'geoIndex', 'pointSize', 'blurSize', 'map', 'symbolSize', 'symbol', 'label', 'itemStyle', 'lineStyle', 'effect', 'polyline', 'emphasis', 'color']),
+  map: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'map', 'roam', 'scaleLimit', 'label', 'itemStyle', 'emphasis', 'select', 'selectedMode', 'nameProperty', 'projection', 'zoom', 'center', 'aspectScale', 'layoutCenter', 'layoutSize', 'geoIndex', 'left', 'top', 'right', 'bottom']),
+  themeRiver: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'colorBy', 'type', 'name', 'data', 'coordinateSystem', 'boundaryGap', 'label', 'itemStyle', 'emphasis', 'color']),
+  polar: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'stack', 'itemStyle', 'lineStyle', 'label', 'emphasis', 'smooth', 'symbol', 'symbolSize', 'areaStyle', 'color']),
+  parallel: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'coordinateSystem', 'lineStyle', 'emphasis', 'smooth', 'progressive']),
+  graph: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'colorBy', 'type', 'name', 'data', 'nodes', 'links', 'edges', 'categories', 'layout', 'symbol', 'symbolSize', 'force', 'circular', 'roam', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'zoom', 'center', 'left', 'top', 'right', 'bottom', 'width', 'height', 'coordinateSystem']),
+  boxplot: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, 'type', 'name', 'data', 'itemStyle', 'color', 'emphasis']),
+  // Sankey's keys, minus the ones only an axis layout has (nodeWidth /
+  // nodeGap / nodeAlign / layoutIterations / orient), plus the two a ring
+  // needs. Deliberately a SUBSET rather than a copy: a spec that carries
+  // `nodeAlign` onto a chord is telling us it was written for a sankey, and
+  // that is worth a named warning rather than a silent no-op.
+  chord: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'colorBy', 'type', 'name', 'data', 'nodes', 'links', 'edges', 'padAngle', 'ringSize', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'top', 'left', 'right', 'bottom']),
 }
 
 /**
@@ -134,20 +200,37 @@ const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
  */
 export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   if (!isFamilyOption(rawOption)) return null
+  const resolved = resolveDataset(rawOption)
+  const compiled = compileFamilyPlan(rawOption, resolved)
+  if (compiled === null) return null
+  const animation = resolveAnimation(rawOption as Record<string, unknown>, (code, path, message) => compiled.warnings.push({ code, path, message }))
+  return { ...compiled, animation, source: resolved.option as EChartsOption }
+}
+
+function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof resolveDataset>): Omit<CompiledFamily, 'animation' | 'source'> | null {
+  if (!isFamilyOption(rawOption)) return null
   const warnings: OptionWarning[] = []
   const warn = (code: OptionWarning['code'], path: string, message: string): void => {
     warnings.push({ code, path, message })
   }
-  const resolved = resolveDataset(rawOption)
   for (const w of resolved.warnings) warnings.push(w)
   const option = resolved.option as EChartsOption
   let supported = true
   const seriesArr = Array.isArray(option['series']) ? (option['series'] as unknown[]) : [option['series']]
   const s = seriesArr[0] as Record<string, unknown>
   const type = s['type'] as string
-  const familyKey = s['coordinateSystem'] === 'polar' ? 'polar' : s['coordinateSystem'] === 'geo' ? 'geo' : s['coordinateSystem'] === 'singleAxis' ? 'singleAxis' : type
-  for (const key of Object.keys(option)) if (!KNOWN_TOP.has(key)) warn('option-key-unsupported', key, `"${key}" has no mapping yet; it was ignored.`)
-  for (const key of Object.keys(s)) if (!KNOWN_BY_FAMILY[familyKey]!.has(key)) warn('series-option-unsupported', `series[0].${key}`, `"${key}" has no mapping for ${type} yet; it was ignored.`)
+  // A theme river is keyed by TYPE: ECharts requires `coordinateSystem:
+  // 'singleAxis'` on it, and keying on the coordinate first sent every
+  // canonical theme river into the single-axis scatter arm, which skipped it.
+  // A geo chart is keyed by ANY of its series sitting on the geo: its first
+  // series may be the map layer (geoIndex) or a pie centred on a lon/lat.
+  const anyOnGeo = seriesArr.some((ser) => isObj(ser) && (ser['coordinateSystem'] === 'geo' || (ser['type'] === 'map' && ser['geoIndex'] !== undefined)))
+  const familyKey = type === 'themeRiver' ? 'themeRiver' : s['coordinateSystem'] === 'polar' ? 'polar' : anyOnGeo ? 'geo' : s['coordinateSystem'] === 'singleAxis' ? 'singleAxis' : type
+  // A candlestick reads `dataZoom` itself (its opening window, below).
+  // ledger: data.key-totality
+  for (const key of Object.keys(option)) if (!FAMILY_KNOWN_TOP.has(key) && !(key === 'dataZoom' && type === 'candlestick')) warn('option-key-unsupported', key, `"${key}" has no mapping yet; it was ignored.`)
+  // ledger: data.key-totality
+  if (familyKey !== 'geo') for (const key of Object.keys(s)) if (!KNOWN_BY_FAMILY[familyKey]!.has(key)) warn('series-option-unsupported', `series[0].${key}`, `"${key}" has no mapping for ${type} yet; it was ignored.`)
   // This guard has collided across the whole charts wave — polar, boxplot,
   // and now geo each legitimately render more than one series per option.
   // Both sides carved an exception out of this guard — polar on this branch,
@@ -158,6 +241,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   // in every branch. (Worth turning into a set membership test rather than a
   // chain — it has collided three times in this wave alone.)
   if (seriesArr.length > 1 && !MULTI_SERIES_FAMILIES.has(familyKey) && !MULTI_SERIES_FAMILIES.has(type)) {
+    // ledger: series.multi-series
     warn('series-option-unsupported', 'series[1]', `Only one ${type} series is rendered per chart; extra series were ignored.`)
   }
   const titleRaw = first(option['title'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
@@ -165,6 +249,12 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   const legendRaw = option['legend']
   const showLegend = legendRaw !== undefined && !(isObj(legendRaw) && legendRaw['show'] === false)
   const palette: readonly string[] = Array.isArray(option['color']) ? (option['color'] as unknown[]).filter((c): c is string => typeof c === 'string') : []
+  // ECharts' `colorBy`: 'data' gives each datum its own palette colour, 'series'
+  // gives every datum the series' one colour. Each family's default is ECharts'
+  // own (pie, funnel, radar, chord, theme river: 'data'; graph: 'series').
+  const colorByOf = (ser: Record<string, unknown>, byDefault: 'data' | 'series'): 'data' | 'series' => (ser['colorBy'] === 'data' || ser['colorBy'] === 'series' ? (ser['colorBy'] as 'data' | 'series') : byDefault)
+  const seriesColor = (si: number): string => paletteAt(palette, si)
+  const colorBy = colorByOf(s, type === 'graph' ? 'series' : 'data')
   const data = Array.isArray(s['data']) ? (s['data'] as unknown[]) : []
   if (!Array.isArray(s['data'])) {
     warn('series-data-shape', 'series[0].data', 'Series data must be an array; treated as empty.')
@@ -172,6 +262,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
 
   if (type === 'pie') {
     const rows: { value: Double; name: string; color: string | undefined }[] = []
+    const rawRows: unknown[] = []
     for (let i = 0; i < data.length; i++) {
       const d = data[i]
       const v = isObj(d) ? num(d['value']) : num(d)
@@ -179,11 +270,12 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
         warn('series-data-shape', `series[0].data[${i}]`, 'A pie datum needs a numeric value; it was skipped.')
         continue
       }
+      rawRows.push(d)
       const item = isObj(d) && isObj(d['itemStyle']) ? d['itemStyle'] : {}
       rows.push({
         value: v,
         name: isObj(d) && typeof d['name'] === 'string' ? (d['name'] as string) : `Slice ${i + 1}`,
-        color: typeof item['color'] === 'string' ? (item['color'] as string) : palette[i % Math.max(1, palette.length)],
+        color: typeof item['color'] === 'string' ? (item['color'] as string) : colorBy === 'series' ? seriesColor(0) : palette[i % Math.max(1, palette.length)],
       })
     }
     // radius: '60%' | ['40%', '70%'] → the hole as a fraction of the outer radius.
@@ -195,7 +287,8 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       if (inner !== null && outer !== null && outer > 0) innerRadius = Math.max(0.0, Math.min(0.95, inner / outer))
     }
     const label = isObj(s['label']) ? s['label'] : {}
-    return { plan: { kind: 'pie', rows, innerRadius, showLabels: label['show'] !== false, showLegend, title }, warnings, supported }
+    const pie: PieShape = { arcs: readPieArcs(s), labels: readPieLabels(s, rows, rawRows), empty: readPieEmpty(s) }
+    return { plan: { kind: 'pie', rows, innerRadius, showLabels: label['show'] !== false, showLegend, title, pie }, warnings, supported }
   }
 
   if (type === 'gauge') {
@@ -219,6 +312,8 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
         thickness: num(axisLine['width']) ?? undefined,
         valueColor: typeof progress['color'] === 'string' ? (progress['color'] as string) : typeof item['color'] === 'string' ? (item['color'] as string) : undefined,
         title,
+        // ledger: series.gauge
+        dial: readGaugeDial(s, palette, (path, message) => warn('series-option-unsupported', path, message)),
       },
       warnings,
       supported,
@@ -257,7 +352,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
         rows.push({
           values: raw.map((v) => num(v) ?? 0.0),
           name: isObj(d) && typeof d['name'] === 'string' ? (d['name'] as string) : `Series ${rows.length + 1}`,
-          color: typeof item['color'] === 'string' ? (item['color'] as string) : palette[rows.length % Math.max(1, palette.length)],
+          color: typeof item['color'] === 'string' ? (item['color'] as string) : colorByOf(rs, 'data') === 'series' ? seriesColor(si) : palette[rows.length % Math.max(1, palette.length)],
         })
       }
     }
@@ -278,6 +373,10 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       }
       rows.push({ x: cats[i] ?? String(i + 1), open: num(arr[0]) ?? 0.0, close: num(arr[1]) ?? 0.0, low: num(arr[2]) ?? 0.0, high: num(arr[3]) ?? 0.0 })
     }
+    // `dataZoom`: the plan carries every row and the zoom; the web host opens
+    // on the window and drags / pinches it (`<CandlestickChart zoom>`), and
+    // the SVG draws the opening window.
+    const zoom = readDataZoom(option, cats, warn)
     const item = isObj(s['itemStyle']) ? s['itemStyle'] : {}
     return {
       plan: {
@@ -286,6 +385,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
         upColor: typeof item['color'] === 'string' ? (item['color'] as string) : undefined,
         downColor: typeof item['color0'] === 'string' ? (item['color0'] as string) : undefined,
         title,
+        ...(zoom !== undefined ? { zoom } : {}),
       },
       warnings,
       supported,
@@ -293,7 +393,9 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   }
 
   if (familyKey === 'singleAxis') {
-    if (type !== 'scatter' && type !== 'effectScatter') warn('series-type-unsupported', 'series[0].type', 'Only scatter renders on a single axis; ' + type + ' was skipped.')
+    // ECharts' own contract: a single axis hosts scatter / effectScatter (and the theme river, keyed by type above).
+    // ledger: invalid-input
+    if (type !== 'scatter' && type !== 'effectScatter') warn('series-type-unsupported', 'series[0].type', 'Only scatter and effectScatter render on a single axis (ECharts allows no other series there); ' + type + ' was skipped.')
     const axRaw = first(option['singleAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
     const ax = isObj(axRaw) ? axRaw : {}
     const isCat = ax['type'] === 'category'
@@ -303,7 +405,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
     const axis: SingleAxisSpec = {
       type: isCat ? 'category' : 'value',
       ...(isCat ? { categories: cats ?? [] } : {}),
-      ...(!isCat && lo !== null && hi !== null ? { domain: [lo, hi] as [Double, Double] } : {}),
+      ...(!isCat && lo !== null && hi !== null ? { domain: { min: lo, max: hi } } : {}),
       ...(typeof ax['name'] === 'string' ? { name: ax['name'] as string } : {}),
     }
     const points: SingleAxisPoint[] = []
@@ -338,79 +440,178 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   }
 
   if (familyKey === 'geo') {
-    if (type !== 'scatter' && type !== 'effectScatter' && type !== 'lines') {
-      warn('series-type-unsupported', 'series[0].type', 'Only scatter, effectScatter and lines render on the geo coordinate; ' + type + ' was skipped.')
-    }
     const geoCfg = first(option['geo'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
     const geoObj = isObj(geoCfg) ? geoCfg : {}
     const mapName = typeof geoObj['map'] === 'string' ? (geoObj['map'] as string) : ''
     const found = getMap(mapName)
+    // ledger: invalid-input
     if (found === null) warn('series-option-unsupported', 'geo.map', 'Map "' + mapName + '" is not registered (call registerMap first); nothing was drawn.')
     const geo: GeoJson = found ?? { type: 'FeatureCollection', features: [] }
     const geoItem = isObj(geoObj['itemStyle']) ? geoObj['itemStyle'] : {}
+    const geoRoam = roamOf(geoObj, 'geo', warn)
     const map: GeoOptions = {
+      ...(geoRoam.zoom !== null ? { zoom: geoRoam.zoom } : {}),
       ...(typeof geoItem['borderColor'] === 'string' ? { borderColor: geoItem['borderColor'] as string } : {}),
       ...(typeof geoItem['areaColor'] === 'string' ? { emptyColor: geoItem['areaColor'] as string } : {}),
     }
+    const vm = first(option['visualMap'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const heatStops = isObj(vm) && isObj(vm['inRange']) && Array.isArray(vm['inRange']['color'])
+      ? (vm['inRange']['color'] as unknown[]).filter((c): c is string => typeof c === 'string')
+      : []
     const points: GeoPoint[] = []
-    if (type === 'scatter' || type === 'effectScatter') {
-      for (let i = 0; i < data.length; i++) {
-        const d = data[i]
-        const arr = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['value']) ? (d['value'] as unknown[]) : null
-        const lon = arr === null ? null : num(arr[0])
-        const lat = arr === null ? null : num(arr[1])
-        if (arr === null || lon === null || lat === null) {
-          warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A geo scatter datum must be [lon, lat, value?]; it was skipped.')
-          continue
-        }
-        const v = num(arr[2])
-        const item = isObj(d) && isObj(d['itemStyle']) ? d['itemStyle'] : {}
-        points.push({
-          lon,
-          lat,
-          ...(isObj(d) && typeof d['name'] === 'string' ? { name: d['name'] as string } : {}),
-          ...(v !== null ? { value: v } : {}),
-          ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
-        })
-      }
-    }
     const paths: GeoPath[] = []
-    if (type === 'lines') {
-      const ls = isObj(s['lineStyle']) ? s['lineStyle'] : {}
-      for (let i = 0; i < data.length; i++) {
-        const d = data[i]
-        const coords = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['coords']) ? (d['coords'] as unknown[]) : null
-        const pairs: [Double, Double][] = []
-        for (const c of coords ?? []) {
-          const lon = Array.isArray(c) ? num(c[0]) : null
-          const lat = Array.isArray(c) ? num(c[1]) : null
-          if (lon !== null && lat !== null) pairs.push([lon, lat])
+    const heat: GeoHeatPoint[] = []
+    const pies: GeoPie[] = []
+    const values: Record<string, Double> = {}
+    let options: GeoPointsOptions = {}
+    let heatRadius = 20.0
+    let trail: GeoTrail | undefined = undefined
+    let pointsSeen = false
+    // Every series that sits on the geo draws; the map is shared.
+    for (let si = 0; si < seriesArr.length; si++) {
+      const ser = seriesArr[si]
+      const path = 'series[' + String(si) + ']'
+      if (!isObj(ser)) continue
+      const stype = typeof ser['type'] === 'string' ? (ser['type'] as string) : ''
+      const onGeo = ser['coordinateSystem'] === 'geo' || (stype === 'map' && ser['geoIndex'] !== undefined) || (stype === 'pie' && ser['coordinateSystem'] === 'geo')
+      if (!onGeo) {
+        // ledger: series.multi-series
+        warn('series-type-unsupported', path + '.coordinateSystem', 'A series beside a geo chart must sit on the geo (coordinateSystem: geo, or a map with geoIndex); it was skipped.')
+        continue
+      }
+      const sdata = Array.isArray(ser['data']) ? (ser['data'] as unknown[]) : []
+      // ledger: data.key-totality
+      for (const key of Object.keys(ser)) if (!KNOWN_BY_FAMILY['geo']!.has(key) && !(stype === 'pie' && (key === 'center' || key === 'radius'))) warn('series-option-unsupported', path + '.' + key, '"' + key + '" has no mapping for ' + stype + ' yet; it was ignored.')
+      if (stype === 'scatter' || stype === 'effectScatter') {
+        for (let i = 0; i < sdata.length; i++) {
+          const d = sdata[i]
+          const arr = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['value']) ? (d['value'] as unknown[]) : null
+          const lon = arr === null ? null : num(arr[0])
+          const lat = arr === null ? null : num(arr[1])
+          if (arr === null || lon === null || lat === null) {
+            warn('series-data-shape', path + '.data[' + String(i) + ']', 'A geo scatter datum must be [lon, lat, value?]; it was skipped.')
+            continue
+          }
+          const v = num(arr[2])
+          const item = isObj(d) && isObj(d['itemStyle']) ? d['itemStyle'] : {}
+          const sitem = isObj(ser['itemStyle']) ? ser['itemStyle'] : {}
+          // The FIRST points series styles through the shared options; a later one carries its colour per point.
+          const color = typeof item['color'] === 'string' ? (item['color'] as string) : pointsSeen && typeof sitem['color'] === 'string' ? (sitem['color'] as string) : undefined
+          points.push({
+            lon,
+            lat,
+            ...(isObj(d) && typeof d['name'] === 'string' ? { name: d['name'] as string } : {}),
+            ...(v !== null ? { value: v } : {}),
+            ...(color !== undefined ? { color } : {}),
+            ...(stype === 'effectScatter' ? { effect: true } : {}),
+          })
         }
-        if (pairs.length < 2) {
-          warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A geo lines datum needs coords with at least two [lon, lat] pairs; it was skipped.')
+        if (!pointsSeen) {
+          pointsSeen = true
+          const label = isObj(ser['label']) ? ser['label'] : {}
+          const item = isObj(ser['itemStyle']) ? ser['itemStyle'] : {}
+          const size = num(ser['symbolSize'])
+          options = {
+            showLabels: label['show'] === true,
+            effect: false,
+            ...(size !== null ? { radius: size / 2.0 } : {}),
+            ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
+          }
+        }
+      } else if (stype === 'lines') {
+        const ls = isObj(ser['lineStyle']) ? ser['lineStyle'] : {}
+        const eff = isObj(ser['effect']) ? ser['effect'] : {}
+        if (eff['show'] === true) {
+          trail = {
+            period: num(eff['period']) ?? 4.0,
+            trailLength: num(eff['trailLength']) ?? 0.2,
+            color: typeof eff['color'] === 'string' ? (eff['color'] as string) : '',
+            symbolSize: num(eff['symbolSize']) ?? 3.0,
+          }
+          // ledger: series.lines
+          for (const key of Object.keys(eff)) if (!['show', 'period', 'trailLength', 'color', 'symbolSize', 'symbol', 'loop'].includes(key)) warn('series-option-unsupported', path + '.effect.' + key, '"' + key + '" has no trail mapping yet; it was ignored.')
+        }
+        for (let i = 0; i < sdata.length; i++) {
+          const d = sdata[i]
+          const coords = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['coords']) ? (d['coords'] as unknown[]) : null
+          const pairs: [Double, Double][] = []
+          for (const c of coords ?? []) {
+            const lon = Array.isArray(c) ? num(c[0]) : null
+            const lat = Array.isArray(c) ? num(c[1]) : null
+            if (lon !== null && lat !== null) pairs.push([lon, lat])
+          }
+          if (pairs.length < 2) {
+            warn('series-data-shape', path + '.data[' + String(i) + ']', 'A geo lines datum needs coords with at least two [lon, lat] pairs; it was skipped.')
+            continue
+          }
+          const dls = isObj(d) && isObj(d['lineStyle']) ? d['lineStyle'] : {}
+          const color = typeof dls['color'] === 'string' ? (dls['color'] as string) : typeof ls['color'] === 'string' ? (ls['color'] as string) : undefined
+          const width = num(dls['width']) ?? num(ls['width'])
+          paths.push({ coords: pairs, ...(color !== undefined ? { color } : {}), ...(width !== null ? { width } : {}) })
+        }
+      } else if (stype === 'heatmap') {
+        const pr = num(ser['pointSize']) ?? num(ser['blurSize'])
+        if (pr !== null) heatRadius = pr
+        for (let i = 0; i < sdata.length; i++) {
+          const d = sdata[i]
+          const arr = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['value']) ? (d['value'] as unknown[]) : null
+          const lon = arr === null ? null : num(arr[0])
+          const lat = arr === null ? null : num(arr[1])
+          const v = arr === null ? null : num(arr[2])
+          if (lon === null || lat === null || v === null) {
+            warn('series-data-shape', path + '.data[' + String(i) + ']', 'A geo heatmap datum must be [lon, lat, value]; it was skipped.')
+            continue
+          }
+          heat.push({ lon, lat, value: v })
+        }
+      } else if (stype === 'pie') {
+        const center = Array.isArray(ser['center']) ? (ser['center'] as unknown[]) : []
+        const lon = num(center[0])
+        const lat = num(center[1])
+        if (lon === null || lat === null) {
+          warn('series-data-shape', path + '.center', 'A pie on the geo needs center: [lon, lat]; it was skipped.')
           continue
         }
-        const dls = isObj(d) && isObj(d['lineStyle']) ? d['lineStyle'] : {}
-        const color = typeof dls['color'] === 'string' ? (dls['color'] as string) : typeof ls['color'] === 'string' ? (ls['color'] as string) : undefined
-        const width = num(dls['width']) ?? num(ls['width'])
-        paths.push({ coords: pairs, ...(color !== undefined ? { color } : {}), ...(width !== null ? { width } : {}) })
+        const rad = ser['radius']
+        const outer = Array.isArray(rad) ? num(rad[1]) : num(rad)
+        const inner = Array.isArray(rad) ? num(rad[0]) : null
+        const slices: Slice[] = []
+        for (let i = 0; i < sdata.length; i++) {
+          const d = sdata[i]
+          const v = isObj(d) ? num(d['value']) : num(d)
+          if (v === null) {
+            warn('series-data-shape', path + '.data[' + String(i) + ']', 'A pie datum needs a numeric value; it was skipped.')
+            continue
+          }
+          const item = isObj(d) && isObj(d['itemStyle']) ? d['itemStyle'] : {}
+          slices.push({ value: v, label: isObj(d) && typeof d['name'] === 'string' ? (d['name'] as string) : '', color: typeof item['color'] === 'string' ? (item['color'] as string) : paletteAt(palette, i) })
+        }
+        const r = outer ?? 20.0
+        pies.push({ lon, lat, radius: r, innerRadius: inner !== null && r > 0.0 ? inner / r : 0.0, slices })
+      } else if (stype === 'map') {
+        for (let i = 0; i < sdata.length; i++) {
+          const d = sdata[i]
+          const v = isObj(d) ? num(d['value']) : null
+          if (!isObj(d) || typeof d['name'] !== 'string' || v === null) {
+            warn('series-data-shape', path + '.data[' + String(i) + ']', 'A map datum must be { name, value }; it was skipped.')
+            continue
+          }
+          values[d['name'] as string] = v
+        }
+      } else {
+        // ledger: coordinates.geo
+        warn('series-type-unsupported', path + '.type', 'Only scatter, effectScatter, lines, heatmap, pie and map render on the geo coordinate; ' + stype + ' was skipped.')
       }
     }
-    const label = isObj(s['label']) ? s['label'] : {}
-    const item = isObj(s['itemStyle']) ? s['itemStyle'] : {}
-    const size = num(s['symbolSize'])
-    const options: GeoPointsOptions = {
-      showLabels: label['show'] === true,
-      effect: type === 'effectScatter',
-      ...(size !== null ? { radius: size / 2.0 } : {}),
-      ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
-    }
-    return { plan: { kind: 'geoPoints', geo, points, paths, map, options, title }, warnings, supported }
+    if (heatStops.length >= 2) map.stops = heatStops
+    return { plan: { kind: 'geoPoints', geo, points, paths, heat, heatRadius, heatStops, pies, values, ...(trail === undefined ? {} : { trail }), map, options, title, roam: geoRoam.roam, scaleLimit: geoRoam.scaleLimit }, warnings, supported }
   }
+
 
   if (type === 'map') {
     const mapName = typeof s['map'] === 'string' ? (s['map'] as string) : ''
     const found = getMap(mapName)
+    // ledger: invalid-input
     if (found === null) warn('series-option-unsupported', 'series[0].map', 'Map "' + mapName + '" is not registered (call registerMap first); nothing was drawn.')
     const geo: GeoJson = found ?? { type: 'FeatureCollection', features: [] }
     const values: Record<string, Double> = {}
@@ -431,8 +632,9 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       : []
     const vmMin = isObj(vm) ? num(vm['min']) : null
     const vmMax = isObj(vm) ? num(vm['max']) : null
-    if (s['roam'] === true) warn('series-option-unsupported', 'series[0].roam', 'Map roaming (pan/zoom) is not supported yet; the map is static.')
+    const mapRoam = roamOf(s, 'series[0]', warn)
     const options: GeoOptions = {
+      ...(mapRoam.zoom !== null ? { zoom: mapRoam.zoom } : {}),
       showLabels: label['show'] === true,
       ...(typeof s['nameProperty'] === 'string' ? { nameProperty: s['nameProperty'] as string } : {}),
       ...(typeof item['borderColor'] === 'string' ? { borderColor: item['borderColor'] as string } : {}),
@@ -440,7 +642,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       ...(stops.length >= 2 ? { stops } : {}),
       ...(vmMin !== null && vmMax !== null ? { domain: { min: vmMin, max: vmMax } } : {}),
     }
-    return { plan: { kind: 'map', geo, values, options, title }, warnings, supported }
+    return { plan: { kind: 'map', geo, values, options, title, roam: mapRoam.roam, scaleLimit: mapRoam.scaleLimit, ...(visualMapSpec(option) === null ? {} : { visualMap: visualMapSpec(option)!.spec }) }, warnings, supported }
   }
 
   if (type === 'themeRiver') {
@@ -462,7 +664,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
     }
     const categories = Array.from(dates).sort()
     const series: RiverSeries[] = []
-    for (const [name, row] of byName) series.push({ name, values: categories.map((c) => row.get(c) ?? 0.0) })
+    for (const [name, row] of byName) series.push({ name, values: categories.map((c) => row.get(c) ?? 0.0), ...(colorBy === 'series' ? { color: seriesColor(0) } : {}) })
     const label = isObj(s['label']) ? s['label'] : {}
     const river: RiverOptions = { categories, showLabels: label['show'] !== false }
     return { plan: { kind: 'themeRiver', series, river, title }, warnings, supported }
@@ -490,11 +692,13 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
     for (let k = 0; k < seriesArr.length; k++) {
       const ser = seriesArr[k]
       if (!isObj(ser)) continue
-      const st = ser['type']
-      if (st !== 'bar' && st !== 'line') {
-        warn('series-type-unsupported', 'series[' + String(k) + '].type', 'Only bar and line series render on the polar coordinate; ' + String(st) + ' was skipped.')
+      const st = ser['type'] === 'effectScatter' ? 'scatter' : ser['type']
+      if (st !== 'bar' && st !== 'line' && st !== 'scatter') {
+        // ledger: coordinates.polar
+        warn('series-type-unsupported', 'series[' + String(k) + '].type', 'Only bar, line and scatter series render on the polar coordinate; ' + String(ser['type']) + ' was skipped.')
         continue
       }
+      const symbolSize = num(ser['symbolSize'])
       const rows = Array.isArray(ser['data']) ? (ser['data'] as unknown[]) : []
       const values: Double[] = []
       for (const d of rows) {
@@ -509,6 +713,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
         kind: st,
         values,
         ...(color !== undefined ? { color } : {}),
+        ...(symbolSize !== null && st !== 'bar' ? { radius: symbolSize / 2.0 } : {}),
         ...(typeof ser['stack'] === 'string' ? { stack: ser['stack'] as string } : {}),
       })
     }
@@ -544,7 +749,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
     }
     for (let i = 0; i < axes.length; i++) if (axes[i] === undefined) axes[i] = { name: 'dim ' + String(i) }
     const par = first(option['parallel'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
-    if (isObj(par) && par['layout'] === 'vertical') warn('series-option-unsupported', 'parallel.layout', 'A vertical parallel layout is not supported yet; rendered horizontally.')
+    const parallelVertical = isObj(par) && par['layout'] === 'vertical'
     const rows: ParallelRow[] = []
     for (let i = 0; i < data.length; i++) {
       const d = data[i]
@@ -563,7 +768,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       ...(lo !== null ? { lineOpacity: lo } : {}),
       ...(typeof ls['color'] === 'string' ? { lineColor: ls['color'] as string } : {}),
     }
-    return { plan: { kind: 'parallel', axes, rows, parallel, title }, warnings, supported }
+    return { plan: { kind: 'parallel', axes, rows, parallel, ...(parallelVertical ? { orient: 'vertical' as const } : {}), title }, warnings, supported }
   }
 
   if (type === 'heatmap' && s['coordinateSystem'] === 'calendar') {
@@ -583,8 +788,9 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       end = range + '-' + (lastDay < 10 ? '0' : '') + String(lastDay)
     } else if (typeof range === 'string') [start, end] = [range, range]
     else if (Array.isArray(range) && range.length === 2 && typeof range[0] === 'string' && typeof range[1] === 'string') [start, end] = [range[0], range[1]]
+    // ledger: invalid-input
     else warn('series-option-unsupported', 'calendar.range', 'calendar.range must be a year, a "YYYY-MM", a date, or [start, end]; nothing was laid out.')
-    if (calObj['orient'] === 'vertical') warn('series-option-unsupported', 'calendar.orient', 'A vertical calendar is not supported yet; rendered horizontally.')
+    const calendarVertical = calObj['orient'] === 'vertical'
     const values: Record<string, Double> = {}
     for (let i = 0; i < data.length; i++) {
       const d = data[i]
@@ -616,10 +822,12 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       ...(stops.length >= 2 ? { stops } : {}),
       ...(vmMin !== null && vmMax !== null ? { domain: { min: vmMin, max: vmMax } } : {}),
     }
-    return { plan: { kind: 'calendar', start, end, values, calendar, title }, warnings, supported }
+    return { plan: { kind: 'calendar', start, end, values, calendar, ...(calendarVertical ? { orient: 'vertical' as const } : {}), title, ...(visualMapSpec(option) === null ? {} : { visualMap: visualMapSpec(option)!.spec }) }, warnings, supported }
   }
 
   if (type === 'graph') {
+    const seriesItem = isObj(s['itemStyle']) ? s['itemStyle'] : {}
+    const graphSeriesColor = typeof seriesItem['color'] === 'string' ? (seriesItem['color'] as string) : seriesColor(0)
     const rawNodes = Array.isArray(s['nodes']) ? (s['nodes'] as unknown[]) : data
     const nodes: GraphNode[] = []
     for (let i = 0; i < rawNodes.length; i++) {
@@ -639,7 +847,13 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
         ...(typeof d['name'] === 'string' ? { name: d['name'] as string } : {}),
         ...(v !== null ? { value: v } : {}),
         ...(cat !== null ? { category: cat } : {}),
-        ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
+        ...(typeof item['color'] === 'string'
+          ? { color: item['color'] as string }
+          : // ECharts' graph colours an uncategorised node with the series colour
+            // unless colorBy is 'data'; a category's colour comes from the category.
+            cat === null && colorBy === 'series'
+            ? { color: graphSeriesColor }
+            : {}),
         ...(x !== null ? { x } : {}),
         ...(y !== null ? { y } : {}),
       })
@@ -660,6 +874,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
     }
     const label = isObj(s['label']) ? s['label'] : {}
     const cats = Array.isArray(s['categories']) ? (s['categories'] as unknown[]).map((c, i) => (isObj(c) && typeof c['name'] === 'string' ? (c['name'] as string) : typeof c === 'string' ? c : 'Category ' + String(i + 1))) : undefined
+    // ledger: series.graph
     if (typeof s['symbolSize'] === 'function') warn('series-option-unsupported', 'series[0].symbolSize', 'A symbolSize FUNCTION is not supported; pass a number or per-node values.')
     const symbolSize = num(s['symbolSize'])
     const force = isObj(s['force']) ? s['force'] : {}
@@ -702,7 +917,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       }
       links.push({ source: d['source'] as string, target: d['target'] as string, value: v })
     }
-    if (s['orient'] === 'vertical') warn('series-option-unsupported', 'series[0].orient', 'Vertical sankey is not supported yet; rendered horizontally.')
+    const sankeyVertical = s['orient'] === 'vertical'
     const label = isObj(s['label']) ? s['label'] : {}
     const nodeWidth = num(s['nodeWidth'])
     const nodeGap = num(s['nodeGap'])
@@ -714,7 +929,45 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       ...(iterations !== null ? { iterations } : {}),
       ...(s['nodeAlign'] === 'left' ? { align: 'left' as const } : {}),
     }
-    return { plan: { kind: 'sankey', nodes, links, sankey, title }, warnings, supported }
+    return { plan: { kind: 'sankey', nodes, links, sankey, ...(sankeyVertical ? { orient: 'vertical' as const } : {}), title }, warnings, supported }
+  }
+
+  if (type === 'chord') {
+    // ECharts 6's chord takes the same `nodes` + `links` shape as sankey, so
+    // the parsing is deliberately identical — a spec written for one reads on
+    // the other, which is the whole reason a user reaches for chord instead.
+    const rawNodes = Array.isArray(s['nodes']) ? (s['nodes'] as unknown[]) : data
+    const nodes: ChordNode[] = []
+    for (let i = 0; i < rawNodes.length; i++) {
+      const d = rawNodes[i]
+      if (!isObj(d) || typeof d['name'] !== 'string') {
+        warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A chord node must be an object with a name; it was skipped.')
+        continue
+      }
+      const item = isObj(d['itemStyle']) ? d['itemStyle'] : {}
+      const nodeColor = typeof item['color'] === 'string' ? (item['color'] as string) : colorBy === 'series' ? seriesColor(0) : undefined
+      nodes.push({ name: d['name'] as string, ...(nodeColor === undefined ? {} : { color: nodeColor }) })
+    }
+    const rawLinks = Array.isArray(s['links']) ? (s['links'] as unknown[]) : Array.isArray(s['edges']) ? (s['edges'] as unknown[]) : []
+    const links: ChordLink[] = []
+    for (let i = 0; i < rawLinks.length; i++) {
+      const d = rawLinks[i]
+      const v = isObj(d) ? num(d['value']) : null
+      if (!isObj(d) || typeof d['source'] !== 'string' || typeof d['target'] !== 'string' || v === null) {
+        warn('series-data-shape', 'series[0].links[' + String(i) + ']', 'A chord link needs string source/target and a numeric value; it was skipped.')
+        continue
+      }
+      links.push({ source: d['source'] as string, target: d['target'] as string, value: v })
+    }
+    const label = isObj(s['label']) ? s['label'] : {}
+    const pad = num(s['padAngle'])
+    const ring = num(s['ringSize'])
+    const chord: ChordOptions = {
+      showLabels: label['show'] !== false,
+      ...(pad !== null ? { padAngle: pad } : {}),
+      ...(ring !== null ? { ringRatio: ring } : {}),
+    }
+    return { plan: { kind: 'chord', nodes, links, chord, title }, warnings, supported }
   }
 
   if (type === 'tree') {
@@ -835,7 +1088,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       rows.push({
         value: v,
         name: isObj(d) && typeof d['name'] === 'string' ? (d['name'] as string) : `Stage ${i + 1}`,
-        color: typeof item['color'] === 'string' ? (item['color'] as string) : palette[i % Math.max(1, palette.length)],
+        color: typeof item['color'] === 'string' ? (item['color'] as string) : colorBy === 'series' ? seriesColor(0) : palette[i % Math.max(1, palette.length)],
       })
     }
     const sortRaw = s['sort']
@@ -919,17 +1172,25 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   const colors = isObj(vm) && isObj(vm['inRange']) && Array.isArray(vm['inRange']['color'])
     ? (vm['inRange']['color'] as unknown[]).filter((c): c is string => typeof c === 'string')
     : undefined
-  return { plan: { kind: 'heatmap', rows, colors, title }, warnings, supported }
+  return { plan: { kind: 'heatmap', rows, colors, title, ...(visualMapSpec(option) === null ? {} : { visualMap: visualMapSpec(option)!.spec }) }, warnings, supported }
 }
 
 /** Render a compiled family plan to an `<svg>` string. */
-export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined; height?: Double | undefined } = {}): string {
+export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined; height?: Double | undefined } = {}, source?: Record<string, unknown>, theme?: Partial<ChartTheme>): string {
+  // The option's theme, when it set one (`optionToSvg`'s `theme`); absent, each renderer's default.
+  const themed = theme === undefined ? {} : { theme }
   const width = size.width ?? 640.0
   const height = size.height ?? 320.0
+  // With the option at hand, a pie sits where ECharts places it in the whole image.
+  const s0 = source !== undefined && Array.isArray(source['series']) ? (source['series'] as unknown[])[0] : source?.['series']
+  const placed = isObj(s0) ? s0 : null
   switch (plan.kind) {
     case 'pie': {
       const hasColors = plan.rows.some((r) => r.color !== undefined)
       return pieToSvg({
+        ...themed,
+        pie: plan.pie,
+        ...(placed !== null ? { frame: familyRect(placed, width, height), view: circleView(placed, width, height) } : {}),
         data: plan.rows,
         value: (d) => d.value,
         label: (d) => d.name,
@@ -944,6 +1205,9 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
     }
     case 'gauge':
       return gaugeToSvg({
+        ...themed,
+        dial: plan.dial,
+        ...(placed !== null ? { frame: familyRect(placed, width, height) } : {}),
         value: plan.value,
         min: plan.min,
         max: plan.max,
@@ -957,6 +1221,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
     case 'radar': {
       const hasColors = plan.rows.some((r) => r.color !== undefined)
       return radarToSvg({
+        ...themed,
         data: plan.rows,
         axes: plan.axes,
         values: (d) => d.values,
@@ -971,7 +1236,9 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
     }
     case 'candlestick':
       return candlestickToSvg({
-        data: plan.rows,
+        ...themed,
+        // A static picture draws the zoom's opening window.
+        data: plan.zoom === undefined ? plan.rows : plan.rows.slice(sliceRange(plan.zoom.window, plan.rows.length).from, sliceRange(plan.zoom.window, plan.rows.length).to),
         x: (d) => d.x,
         open: (d) => d.open,
         high: (d) => d.high,
@@ -985,6 +1252,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
     case 'funnel': {
       const hasColors = plan.rows.some((r) => r.color !== undefined)
       return funnelToSvg({
+        ...themed,
         data: plan.rows,
         value: (d) => d.value,
         label: (d) => d.name,
@@ -997,6 +1265,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
     }
     case 'singleAxis':
       return singleAxisToSvg({
+        ...themed,
         axis: plan.axis,
         points: plan.points,
         options: plan.options,
@@ -1006,9 +1275,15 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'geoPoints':
       return geoPointsToSvg({
+        ...themed,
         geo: plan.geo,
         points: plan.points,
         paths: plan.paths,
+        heat: plan.heat,
+        heatRadius: plan.heatRadius,
+        heatStops: plan.heatStops,
+        pies: plan.pies,
+        values: plan.values,
         map: plan.map,
         options: plan.options,
         width,
@@ -1017,15 +1292,17 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'map':
       return geoToSvg({
+        ...themed,
         geo: plan.geo,
         values: plan.values,
-        options: plan.options,
+        options: plan.visualMap === undefined ? plan.options : { ...plan.options, ...visualSelectionOptions(plan.visualMap) },
         width,
         height,
         ...(plan.title !== undefined ? { title: plan.title } : {}),
       })
     case 'themeRiver':
       return riverToSvg({
+        ...themed,
         series: plan.series,
         river: plan.river,
         width,
@@ -1034,6 +1311,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'polar':
       return polarToSvg({
+        ...themed,
         axes: plan.axes,
         series: plan.series,
         polar: plan.polar,
@@ -1043,25 +1321,30 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'parallel':
       return parallelToSvg({
+        ...themed,
         axes: plan.axes,
         rows: plan.rows,
         parallel: plan.parallel,
+        ...(plan.orient === undefined ? {} : { orient: plan.orient }),
         width,
         height,
         ...(plan.title !== undefined ? { title: plan.title } : {}),
       })
     case 'calendar':
       return calendarToSvg({
+        ...themed,
         start: plan.start,
         end: plan.end,
         values: plan.values,
-        calendar: plan.calendar,
+        calendar: plan.visualMap === undefined ? plan.calendar : { ...plan.calendar, ...visualSelectionOptions(plan.visualMap) },
+        ...(plan.orient === undefined ? {} : { orient: plan.orient }),
         width,
         height,
         ...(plan.title !== undefined ? { title: plan.title } : {}),
       })
     case 'graph':
       return graphToSvg({
+        ...themed,
         nodes: plan.nodes,
         links: plan.links,
         graph: plan.graph,
@@ -1071,15 +1354,28 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'sankey':
       return sankeyToSvg({
+        ...themed,
         nodes: plan.nodes,
         links: plan.links,
         sankey: plan.sankey,
+        ...(plan.orient === undefined ? {} : { orient: plan.orient }),
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+    case 'chord':
+      return chordToSvg({
+        ...themed,
+        nodes: plan.nodes,
+        links: plan.links,
+        chord: plan.chord,
         width,
         height,
         ...(plan.title !== undefined ? { title: plan.title } : {}),
       })
     case 'tree':
       return treeToSvg({
+        ...themed,
         data: plan.nodes,
         tree: plan.tree,
         width,
@@ -1088,6 +1384,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'sunburst':
       return sunburstToSvg({
+        ...themed,
         data: plan.nodes,
         innerRatio: plan.innerRatio,
         sunburst: plan.sunburst,
@@ -1097,6 +1394,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'treemap':
       return treemapToSvg({
+        ...themed,
         data: plan.nodes,
         treemap: plan.treemap,
         width,
@@ -1105,6 +1403,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     case 'boxplot':
       return boxplotToSvg({
+        ...themed,
         data: plan.rows,
         values: () => [],
         x: (d) => d.x,
@@ -1117,15 +1416,16 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
     default:
       return heatmapToSvg({
+        ...themed,
         data: plan.rows,
         x: (d) => d.x,
         y: (d) => d.y,
         value: (d) => d.value,
         ...(plan.colors !== undefined && plan.colors.length > 1 ? { colors: plan.colors } : {}),
+        ...(plan.visualMap === undefined ? {} : { selection: { domain: { min: plan.visualMap.domain[0], max: plan.visualMap.domain[1] }, ...visualSelectionOptions(plan.visualMap) } }),
         width,
         height,
         ...(plan.title !== undefined ? { title: plan.title } : {}),
       })
   }
 }
-

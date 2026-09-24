@@ -128,7 +128,43 @@ describe('polar option mapping', () => {
     if (radial.plan.kind !== 'polar') throw new Error('kind')
     expect(radial.plan.axes.categoryOn).toBe('radius')
     expect(radial.plan.axes.valueDomain).toEqual({ min: 0, max: 5 })
-    const bad = compileFamily({ angleAxis: { type: 'category', data: ['a'] }, series: [{ type: 'scatter', coordinateSystem: 'polar', data: [[1, 1]] }] })!
+    // A series type with no polar geometry warns; scatter has one (see below).
+    const bad = compileFamily({ angleAxis: { type: 'category', data: ['a'] }, series: [{ type: 'bar', coordinateSystem: 'polar', data: [1] }, { type: 'gauge', coordinateSystem: 'polar', data: [1] }] })!
     expect(bad.warnings.map((w) => w.code)).toContain('series-type-unsupported')
+  })
+})
+
+describe('polar scatter series', () => {
+  it('lays out points like a line but renders circles only, at the symbol radius, on both category axes', () => {
+    for (const categoryOn of ['angle', 'radius'] as const) {
+      const scatter: PolarSeries = { name: 's', kind: 'scatter', values: [1, 2, 3, 4], radius: 6 }
+      const l = layoutPolar({ ...axes, categoryOn }, [scatter], box)
+      const asLine = layoutPolar({ ...axes, categoryOn }, [{ ...scatter, kind: 'line', radius: undefined }], box)
+      expect(l.lines[0]!.points.map((p) => p.at)).toEqual(asLine.lines[0]!.points.map((p) => p.at))
+      expect(l.lines[0]!.scatter).toBe(true)
+      expect(l.lines[0]!.radius).toBe(6)
+      expect(asLine.lines[0]!.radius).toBe(2.5)
+      const cmds = renderPolar(l, { progress: 1 })
+      expect(cmds.filter((c) => c.kind === 'polyline' && c.stroke === l.lines[0]!.color)).toHaveLength(0)
+      expect(cmds.filter((c) => c.kind === 'circle' && c.radius === 6)).toHaveLength(4)
+      expect(renderPolar(asLine, { progress: 1 }).filter((c) => c.kind === 'polyline' && c.stroke === l.lines[0]!.color)).toHaveLength(1)
+      // The points are hittable exactly as line points are.
+      const p = l.lines[0]!.points[2]!
+      expect(hitPolar(l, p.at.x, p.at.y)).toMatchObject({ kind: 'point', point: { series: 0, index: 2 } })
+    }
+  })
+
+  it('the facade maps polar scatter and effectScatter, symbolSize as a diameter, with no warning', () => {
+    const f = compileFamily({ angleAxis: { type: 'category', data: ['a', 'b'] }, radiusAxis: {}, series: [
+      { type: 'scatter', coordinateSystem: 'polar', symbolSize: 10, data: [1, 2] },
+      { type: 'effectScatter', coordinateSystem: 'polar', data: [2, 1] },
+      { type: 'line', coordinateSystem: 'polar', symbolSize: 8, data: [1, 1] },
+      { type: 'bar', coordinateSystem: 'polar', symbolSize: 8, data: [1, 1] },
+      { type: 'gauge', coordinateSystem: 'polar', data: [1, 1] },
+    ] })!
+    if (f.plan.kind !== 'polar') throw new Error('kind')
+    expect(f.warnings.map((w) => w.code + '@' + w.path)).toEqual(['series-type-unsupported@series[4].type'])
+    expect(f.plan.series.map((s) => [s.kind, s.radius])).toEqual([['scatter', 5], ['scatter', undefined], ['line', 4], ['bar', undefined]])
+    expect(familyToSvg(f.plan)).toContain('<circle')
   })
 })

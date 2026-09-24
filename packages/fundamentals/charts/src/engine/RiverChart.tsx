@@ -5,6 +5,7 @@ import { canvasHost, orNull } from './canvas-host'
 import { riverLegend, riverTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
 import { hitRiver, hitRiverIndex, layoutRiver, renderRiver } from './river'
+import type { ChartTheme } from './render'
 import type { RiverLayer, RiverLayout, RiverOptions, RiverSeries } from './river'
 
 export interface RiverChartProps extends CanvasHostProps {
@@ -18,7 +19,7 @@ export interface RiverChartProps extends CanvasHostProps {
 
 export function RiverChart(props: RiverChartProps): VNode {
   const readSeries = (): RiverSeries[] => (typeof props.series === 'function' ? props.series() : props.series)
-  const opts = (palette: readonly string[]): RiverOptions => ({ palette, ...props.river })
+  const opts = (t: ChartTheme): RiverOptions => ({ palette: t.palette, axisColor: t.axis, tickColor: t.label, ...props.river })
   return canvasHost<RiverLayout>({
     props,
     defaultHeight: 300,
@@ -26,15 +27,25 @@ export function RiverChart(props: RiverChartProps): VNode {
     track: () => {
       readSeries()
     },
-    layout: (box, _measure, theme) => layoutRiver(readSeries(), { x: box.x + 8.0, y: box.y + 8.0, w: Math.max(0.0, box.w - 16.0), h: Math.max(0.0, box.h - 16.0) }, opts(theme.palette)),
+    layout: (box, _measure, theme) => layoutRiver(readSeries(), { x: box.x + 8.0, y: box.y + 8.0, w: Math.max(0.0, box.w - 16.0), h: Math.max(0.0, box.h - 16.0) }, opts(theme)),
     animates: true,
-    render: (layout, measure, theme, progress) => renderRiver(layout, { ...opts(theme.palette), progress }, measure),
+    render: (layout, measure, theme, progress) => renderRiver(layout, { ...opts(theme), progress }, measure),
     legend: riverLegend,
     select: (layout, px, py) => {
       props.onSelect?.(hitRiver(layout, px, py, props.river?.curve))
       props.onSelectIndex?.(hitRiverIndex(layout, px, py, props.river?.curve))
     },
     tooltip: (layout, px, py) => orNull(riverTip(layout, px, py, props.river?.curve)),
+    // A river item is the layer, valued at the category nearest the pointer.
+    item: (layout, px, py) => {
+      const i = hitRiverIndex(layout, px, py, props.river?.curve)
+      const l = layout.layers[i]
+      if (l === undefined) return null
+      let k = 0
+      for (let j = 1; j < layout.xs.length; j++) if (Math.abs(layout.xs[j]! - px) < Math.abs(layout.xs[k]! - px)) k = j
+      const v = readSeries()[l.series]?.values[k]
+      return { seriesIndex: 0, dataIndex: i, name: l.name, value: v ?? 0, color: l.color }
+    },
     // The keyboard walks the LAYERS (one table row each): Enter picks the
     // focused layer, the ring wraps its two edges.
     pick: (layout, i) => {
