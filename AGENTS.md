@@ -146,7 +146,7 @@ Before adding any module-level cache, stack or registry, answer: what evicts ent
 
 ### Git
 
-- Never push to `main`. Work on a branch in a worktree created from `origin/main` (`git worktree add /tmp/wt-<name> origin/main -b <branch>`); do not check out or pull in the primary checkout.
+- Never push to `main`. Work on a branch in a worktree created from `origin/main` (`git worktree add /tmp/wt-<name> origin/main -b <branch>`); do not check out or pull in the primary checkout. When the PR merges, remove the worktree and its branch (`git worktree remove --force <dir> && git branch -D <branch>`): each one holds about 1.7 GB, and nothing else removes them.
 - Every PR targets `main`. Never base a PR on another feature branch: it merges without the required checks.
 - Stage specific files, never `git add .`. After a `package.json` change run `bun install` and commit `bun.lock`.
 - **Never merge a PR.** Open it, report the URL and stop. Merge only when the maintainer says "merge it" for that PR.
