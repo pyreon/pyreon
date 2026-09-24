@@ -37,7 +37,8 @@ import type { GeoHeatPoint, GeoPie, GeoTrail } from './geo-overlay'
 import type { Slice } from './arc'
 import { singleAxisToSvg } from './single-axis-web'
 import type { SingleAxisOptions, SingleAxisPoint, SingleAxisSpec } from './single-axis'
-import type { FunnelOptions } from './funnel'
+import type { FunnelEcConfig, FunnelOptions } from './funnel'
+import { readFunnelEc } from './option-funnel'
 import { readTreemapEc } from './option-treemap'
 import type { TreemapEc } from './option-treemap'
 import type { RadarAxis } from './radar'
@@ -51,7 +52,7 @@ export type FamilyPlan =
   | { kind: 'radar'; axes: RadarAxis[]; rows: { values: Double[]; name: string; color: string | undefined }[]; fillAlpha: Double; showLegend: boolean; title: string | undefined }
   | { kind: 'candlestick'; rows: { x: string; open: Double; high: Double; low: Double; close: Double }[]; upColor: string | undefined; downColor: string | undefined; title: string | undefined; zoom?: OptionZoom | undefined }
   | { kind: 'heatmap'; rows: { x: string; y: string; value: Double }[]; colors: string[] | undefined; title: string | undefined; visualMap?: VisualMapSpec | undefined }
-  | { kind: 'funnel'; rows: { value: Double; name: string; color: string | undefined }[]; funnel: FunnelOptions; title: string | undefined }
+  | { kind: 'funnel'; rows: { value: Double; name: string; color: string | undefined }[]; funnel: FunnelOptions; ec: FunnelEcConfig; title: string | undefined }
   | { kind: 'treemap'; nodes: TreeNode[]; treemap: TreemapOptions; ec: TreemapEc; title: string | undefined }
   | { kind: 'sunburst'; nodes: TreeNode[]; innerRatio: Double; sunburst: SunburstOptions; title: string | undefined }
   | { kind: 'tree'; nodes: TreeNode[]; tree: TreeOptions; title: string | undefined }
@@ -175,7 +176,7 @@ export const KNOWN_BY_FAMILY: Readonly<Record<string, ReadonlySet<string>>> = {
   radar: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'colorBy', 'type', 'name', 'data', 'areaStyle', 'itemStyle', 'lineStyle', 'symbol', 'color']),
   candlestick: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'itemStyle', 'color']),
   heatmap: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'coordinateSystem', 'type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
-  funnel: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'colorBy', 'type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis']),
+  funnel: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'colorBy', 'type', 'name', 'data', 'sort', 'gap', 'minSize', 'maxSize', 'min', 'max', 'orient', 'label', 'labelLine', 'itemStyle', 'funnelAlign', 'color', 'emphasis', 'left', 'top', 'right', 'bottom', 'width', 'height']),
   treemap: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'leafDepth', 'label', 'itemStyle', 'color', 'emphasis', 'roam', 'sort', 'squareRatio', 'visibleMin', 'childrenVisibleMin', 'levels', 'left', 'top', 'right', 'bottom', 'width', 'height']),
   sunburst: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis']),
   tree: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'roam', 'emphasis', 'top', 'left', 'right', 'bottom']),
@@ -1082,6 +1083,7 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
 
   if (type === 'funnel') {
     const rows: { value: Double; name: string; color: string | undefined }[] = []
+    const rawRows: unknown[] = []
     for (let i = 0; i < data.length; i++) {
       const d = data[i]
       const v = isObj(d) ? num(d['value']) : num(d)
@@ -1089,6 +1091,7 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
         warn('series-data-shape', `series[0].data[${i}]`, 'A funnel datum needs a numeric value; it was skipped.')
         continue
       }
+      rawRows.push(d)
       const item = isObj(d) && isObj(d['itemStyle']) ? d['itemStyle'] : {}
       rows.push({
         value: v,
@@ -1108,7 +1111,10 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
       align: alignRaw === 'left' ? 'left' : alignRaw === 'right' ? 'right' : 'center',
       showLabels: label['show'] !== false,
     }
-    return { plan: { kind: 'funnel', rows, funnel, title }, warnings, supported }
+    // `funnel` drives <FunnelChart>'s own layout (and the native host); `ec`
+    // is ECharts' own funnel — sizing, stacking, borders, outside labels —
+    // which the option path draws on the web and in SVG.
+    return { plan: { kind: 'funnel', rows, funnel, ec: readFunnelEc(s, rows, rawRows), title }, warnings, supported }
   }
 
   if (type === 'boxplot') {
@@ -1263,6 +1269,8 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         label: (d) => d.name,
         ...(hasColors ? { color: (d: { color: string | undefined }, i: number) => d.color ?? paletteAt([], i) } : {}),
         funnel: plan.funnel,
+        echarts: plan.ec,
+        ...(placed !== null ? { frame: familyRect(placed, width, height) } : {}),
         width,
         height,
         ...(plan.title !== undefined ? { title: plan.title } : {}),

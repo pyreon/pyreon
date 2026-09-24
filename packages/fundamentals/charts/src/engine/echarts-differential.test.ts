@@ -23,6 +23,8 @@ import { optionTitleCommands, readOptionTitle } from './option-title'
 import { echartsBeziers } from './curve'
 import { layoutTreemapEc } from './treemap'
 import { readTreemapEc } from './option-treemap'
+import { renderFunnelEc } from './funnel'
+import { palettes } from './palettes'
 import type { Pt } from './types'
 
 const W = 400
@@ -1620,6 +1622,130 @@ describe('ECharts differential: stacked line values (dataStack)', () => {
         if (Number.isNaN(ev)) expect(Number.isNaN(v), `series ${k}[${i}] is a gap`).toBe(true)
         else expect(v, `series ${k}[${i}]`).toBeCloseTo(ev, 9)
       }))
+    })
+  }
+})
+
+// ---- funnels: ECharts' funnelLayout + labelLayout + FunnelView styling ----
+
+interface FunnelFacts {
+  stages: { i: number; pts: number[]; fill: string }[]
+  lines: { pts: number[]; stroke: string }[]
+  labels: { text: string; x: number; y: number; anchor: string; fill: string; halo: string }[]
+}
+/** A colour as `#rrggbb` lower case, so `#fff` and `rgb(255,255,255)` compare equal. */
+function hexOf(c: string): string {
+  const m = /^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/.exec(c)
+  if (m) return '#' + [m[1], m[2], m[3]].map((v) => Number(v).toString(16).padStart(2, '0')).join('')
+  if (/^#[0-9a-f]{3}$/i.test(c)) return ('#' + c.slice(1).split('').map((h) => h + h).join('')).toLowerCase()
+  return c.toLowerCase()
+}
+function echartsFunnel(option: object): FunnelFacts {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: W, height: H })
+  chart.setOption({ animation: false, ...option })
+  const svg = chart.renderToSVGString()
+  chart.dispose()
+  const stages = [...svg.matchAll(/<polygon points="([^"]+)" fill="([^"]+)"[^>]*ecmeta_data_index="(\d+)"/g)].map((m) => ({ i: Number(m[3]), pts: pt(m[1]!), fill: hexOf(m[2]!) }))
+  const lines = [...svg.matchAll(/<polyline points="([^"]+)" fill="none"[^>]*stroke="([^"]+)"/g)]
+    .map((m) => ({ pts: pt(m[1]!), stroke: hexOf(m[2]!) }))
+    // An inside label's guide line is zero length and draws nothing.
+    .filter((l) => l.pts[0] !== l.pts[2] || l.pts[1] !== l.pts[3])
+  const labels = [...svg.matchAll(/<text dominant-baseline="central" text-anchor="(\w+)"[^>]*x="(-?[\d.]+)" y="(-?[\d.]+)" fill="([^"]+)"( stroke="([^"]+)")?[^>]*>([^<]*)</g)].map((m) => ({
+    text: m[7]!,
+    x: Number(m[2]),
+    y: Number(m[3]),
+    anchor: m[1]!,
+    fill: hexOf(m[4]!),
+    halo: m[6] === undefined ? '' : hexOf(m[6]),
+  }))
+  return { stages: stages.sort((a, b) => a.i - b.i), lines, labels }
+}
+function ourFunnel(option: object): FunnelFacts {
+  const fam = compileFamily(option as EChartsOption)!
+  const plan = fam.plan
+  if (plan.kind !== 'funnel') throw new Error('not a funnel')
+  const s = (option as { series: Record<string, unknown>[] }).series[0]!
+  // A bare option takes the host's palette, which is ECharts 6's default.
+  const stages = plan.rows.map((r, i) => ({ value: r.value, label: r.name, color: r.color ?? palettes.echarts6[i % palettes.echarts6.length]! }))
+  const cmds = renderFunnelEc(stages, familyRect(s, W, H), plan.ec, 1.0, '')
+  const out: FunnelFacts = { stages: [], lines: [], labels: [] }
+  for (const c of cmds) {
+    if (c.kind === 'polygon') out.stages.push({ i: -1, pts: c.points.flatMap((q) => [q.x, q.y]), fill: hexOf(c.fill) })
+    else if (c.kind === 'polyline' && c.points.length === 2) out.lines.push({ pts: c.points.flatMap((q) => [q.x, q.y]), stroke: hexOf(c.stroke) })
+    else if (c.kind === 'text') out.labels.push({ text: c.text, x: c.at.x, y: c.at.y, anchor: c.align, fill: hexOf(c.fill), halo: c.stroke === undefined ? '' : hexOf(c.stroke) })
+  }
+  // Stages are drawn in layout order; name each by its input index through its fill.
+  for (const st of out.stages) st.i = stages.findIndex((x) => hexOf(x.color) === st.fill)
+  return { ...out, stages: out.stages.sort((a, b) => a.i - b.i) }
+}
+const fdata = [{ name: 'Visit', value: 60 }, { name: 'Cart', value: 40 }, { name: 'Order', value: 20 }]
+const funnelOf = (series: object = {}, data: unknown[] = fdata): object => ({ series: [{ type: 'funnel', data, ...series }] })
+const FUNNEL_CASES: [string, object][] = [
+  ['the defaults (outer labels, 80/60/80/65 box)', funnelOf()],
+  ['horizontal', funnelOf({ orient: 'horizontal' })],
+  ['ascending', funnelOf({ sort: 'ascending' })],
+  ['ascending horizontal', funnelOf({ sort: 'ascending', orient: 'horizontal' })],
+  ['sort none', funnelOf({ sort: 'none' }, [{ name: 'A', value: 20 }, { name: 'B', value: 60 }, { name: 'C', value: 40 }])],
+  ['a gap', funnelOf({ gap: 6 })],
+  ['min and max pinned', funnelOf({ min: 10, max: 100 })],
+  ['minSize / maxSize percent', funnelOf({ minSize: '20%', maxSize: '80%' })],
+  ['minSize / maxSize pixels', funnelOf({ minSize: 30, maxSize: 200 })],
+  ['funnelAlign left', funnelOf({ funnelAlign: 'left' })],
+  ['funnelAlign right', funnelOf({ funnelAlign: 'right' })],
+  ['horizontal, funnelAlign top', funnelOf({ orient: 'horizontal', funnelAlign: 'top' })],
+  ['horizontal, funnelAlign bottom', funnelOf({ orient: 'horizontal', funnelAlign: 'bottom' })],
+  ['a box: left / top / width / height', funnelOf({ left: 40, top: 20, width: 200, height: 180 })],
+  ['a box in percent', funnelOf({ left: '10%', right: '30%', top: '5%', bottom: '10%' })],
+  ['per-item height', funnelOf({}, [{ name: 'Visit', value: 60, itemStyle: { height: '50%' } }, { name: 'Cart', value: 40 }, { name: 'Order', value: 20 }])],
+  ['labels inside', funnelOf({ label: { position: 'inside' } })],
+  ['labels insideLeft', funnelOf({ label: { position: 'insideLeft' } })],
+  ['labels insideRight', funnelOf({ label: { position: 'insideRight' } })],
+  ['labels left', funnelOf({ label: { position: 'left' } })],
+  ['labels leftTop', funnelOf({ label: { position: 'leftTop' } })],
+  ['labels rightBottom', funnelOf({ label: { position: 'rightBottom' } })],
+  ['labels top on a vertical funnel (moved left)', funnelOf({ label: { position: 'top' } })],
+  ['horizontal, labels top', funnelOf({ orient: 'horizontal', label: { position: 'top' } })],
+  ['horizontal, labels rightTop', funnelOf({ orient: 'horizontal', label: { position: 'rightTop' } })],
+  ['a shorter label line', funnelOf({ labelLine: { length: 8 } })],
+  ['no label line', funnelOf({ labelLine: { show: false } })],
+  ['label colour inherit', funnelOf({ label: { color: 'inherit' } })],
+  ['a template formatter', funnelOf({ label: { formatter: '{b}: {c} ({d}%)' } })],
+  ['a zero stage', funnelOf({}, [{ name: 'A', value: 50 }, { name: 'B', value: 0 }, { name: 'C', value: 25 }])],
+  ['a negative stage', funnelOf({}, [{ name: 'A', value: 50 }, { name: 'B', value: -20 }, { name: 'C', value: 25 }])],
+  ['one stage', funnelOf({}, [{ name: 'Only', value: 5 }])],
+]
+
+describe('ECharts differential: funnels', () => {
+  for (const [name, option] of FUNNEL_CASES) {
+    it(name, () => {
+      const e = echartsFunnel(option)
+      const u = ourFunnel(option)
+      expect(e.stages.length).toBeGreaterThan(0)
+      expect(u.stages.map((x) => x.i)).toEqual(e.stages.map((x) => x.i))
+      u.stages.forEach((st, k) => {
+        const ep = e.stages[k]!.pts
+        expect(st.pts.length, `stage ${st.i} corners`).toBe(ep.length)
+        // ECharts writes polygon coordinates rounded to 0.1px.
+        st.pts.forEach((v, j) => expect(Math.abs(v - ep[j]!), `stage ${st.i} coord ${j}`).toBeLessThan(0.06))
+      })
+      const byStart = (l: FunnelFacts['lines']) => [...l].sort((a, b) => a.pts[0]! - b.pts[0]! || a.pts[1]! - b.pts[1]!)
+      expect(u.lines.length, 'label lines').toBe(e.lines.length)
+      byStart(u.lines).forEach((l, k) => {
+        const el = byStart(e.lines)[k]!
+        expect(l.stroke).toBe(el.stroke)
+        l.pts.forEach((v, j) => expect(Math.abs(v - el.pts[j]!), `line ${k} coord ${j}`).toBeLessThan(0.06))
+      })
+      expect(e.labels.length).toBeGreaterThan(0)
+      const byText = (l: FunnelFacts['labels']) => [...l].sort((a, b) => a.text.localeCompare(b.text))
+      expect(byText(u.labels).map((l) => l.text)).toEqual(byText(e.labels).map((l) => l.text))
+      byText(u.labels).forEach((l, k) => {
+        const el = byText(e.labels)[k]!
+        expect(Math.abs(l.x - el.x), `${l.text} x`).toBeLessThan(0.01)
+        expect(Math.abs(l.y - el.y), `${l.text} y`).toBeLessThan(0.01)
+        expect(l.anchor, `${l.text} anchor`).toBe(el.anchor)
+        expect(l.fill, `${l.text} fill`).toBe(el.fill)
+        expect(l.halo, `${l.text} halo`).toBe(el.halo)
+      })
     })
   }
 })
