@@ -836,13 +836,14 @@ export function generateRouteModuleFromRoutes(
           props.push(`${indent}  gcTime: ${mod}.gcTime`)
         }
         if (exp.hasGetStaticPaths) {
-          // getStaticPaths runs at SSG build time (not request time), so
-          // routing it through a dynamic import is fine — but going through
-          // a namespace import keeps it consistent with loaderKey/gcTime
-          // and avoids per-call import overhead during the SSG enumeration
-          // phase.
-          const mod = nextModuleImport(page.filePath)
-          props.push(`${indent}  getStaticPaths: ${mod}.getStaticPaths`)
+          // getStaticPaths runs at SSG build time and is AWAITED there, so a
+          // thunk over the same dynamic import as the lazy component works.
+          // A static namespace import here (the previous shape) pulled the
+          // whole route module into the main chunk — the route lost code
+          // splitting and every fresh build printed INEFFECTIVE_DYNAMIC_IMPORT.
+          props.push(
+            `${indent}  getStaticPaths: (...args) => import("${fullPath}").then((m) => m.getStaticPaths(...args))`,
+          )
         }
         emitInlineMeta(exp, props, indent)
         if (errorName || exp.hasError) {
