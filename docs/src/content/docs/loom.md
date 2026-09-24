@@ -59,6 +59,15 @@ Plus a detail panel per package (metrics, depends-on / required-by, findings, re
 
 Vite + `@pyreon/vite-plugin` are **optional peers**: `loom scan` runs without them; `loom dev` names the install when missing.
 
+## `loom build` — the observatory as a static site
+
+```bash
+pyreon loom build . --out=dist/observatory
+# loom: 142 package(s) → dist/observatory
+```
+
+Prerenders the same five views to plain files — deployable to any static host, or openable straight from `file://`. Each view gets its own URL (until this shipped there was no way to link someone directly to the cycles view — it was a client-side signal). `--out=<dir>` picks the output directory (default `loom-dist`); `--base=<path>` sets the public base path for a subdirectory deploy. Needs `vite` + `@pyreon/vite-plugin` + `@pyreon/zero`, same optional peers as `loom dev`; `loom scan` needs none of them. The build is a snapshot — re-run it after dependency changes to refresh.
+
 ## Configuration
 
 Two homes, one shape. The root `package.json`'s `loom` key, or a `loom` section in the ecosystem-wide `pyreon.config.*`:
