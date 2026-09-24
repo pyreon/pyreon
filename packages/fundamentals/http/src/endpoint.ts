@@ -91,17 +91,31 @@ export type EndpointSpec = `${HttpMethod} ${string}`
 type MethodOf<S extends string> = S extends `${infer M} ${string}` ? M : never
 type PathOf<S extends string> = S extends `${string} ${infer P}` ? P : never
 
-/** Per-call arguments. `params` is required iff the path declares any. */
-export type EndpointArgs<P extends string> = ([PathParamNames<P>] extends [never]
+/**
+ * What an endpoint call SENDS: path parameters, query and body.
+ *
+ * `params` is required iff the path declares any, with exactly the names the
+ * path declares. This is the DEFAULT input; an endpoint may be declared with a
+ * narrower one (see {@link Endpoint}'s `I`), which is how a code generator
+ * types `query` and `json` from a spec instead of leaving them `unknown`.
+ */
+export type EndpointInput<P extends string> = ([PathParamNames<P>] extends [never]
   ? { params?: undefined }
   : { params: Record<PathParamNames<P>, string | number> }) & {
   query?: QueryParams | undefined
   json?: unknown
+}
+
+/** Per-call options every endpoint accepts, whatever its input type. */
+export interface EndpointCallOptions {
   headers?: HeadersInit | undefined
   signal?: AbortSignal | undefined
   timeout?: number | false | undefined
   meta?: Record<string, unknown> | undefined
 }
+
+/** Per-call arguments. `params` is required iff the path declares any. */
+export type EndpointArgs<P extends string> = EndpointInput<P> & EndpointCallOptions
 
 /** Makes the argument optional when nothing in it is required. */
 export type CallArgs<A> = Record<string, never> extends A ? [args?: A] : [args: A]
@@ -138,12 +152,46 @@ export interface EndpointOptions {
    * ```
    */
   queryStyle?: Readonly<Record<string, QueryStyle>> | undefined
+  /**
+   * Namespace for this endpoint's cache keys: `[keyScope, method, path, …]`.
+   *
+   * Two clients that both declare `GET /users` produce the SAME key without
+   * it, so one `QueryClient` serves one API's cached users for the other's.
+   * Usually set once on the client (`createHttp({ keyScope })`), which every
+   * endpoint inherits.
+   */
+  keyScope?: string | undefined
 }
 
+/**
+ * How the response body is decoded.
+ *
+ * `json` (the default) is the only one a `response` schema validates; the
+ * others decode to the platform type named here. `stream` hands back the raw
+ * `ReadableStream` (Server-Sent Events, NDJSON, a large download) and `void`
+ * drains and discards the body.
+ */
+export type ResponseKind = 'json' | 'text' | 'blob' | 'arrayBuffer' | 'stream' | 'void'
+
+/** The value an endpoint resolves to for a given {@link ResponseKind}. */
+export type BodyOf<K extends ResponseKind, V> = K extends 'text'
+  ? string
+  : K extends 'blob'
+    ? Blob
+    : K extends 'arrayBuffer'
+      ? ArrayBuffer
+      : K extends 'stream'
+        ? ReadableStream<Uint8Array> | null
+        : K extends 'void'
+          ? void
+          : ResponseOf<V>
+
 /** {@link EndpointOptions} plus the validator slot that types the response. */
-export type EndpointConfig<V> = EndpointOptions & {
+export type EndpointConfig<V, K extends ResponseKind = 'json'> = EndpointOptions & {
   /** Validates and types the response. Omit for an unchecked `unknown`. */
   response?: V | undefined
+  /** How the body is decoded — see {@link ResponseKind}. Defaults to `json`. */
+  responseType?: K | undefined
 }
 
 /** Structural mirror of TanStack's query options — no dependency needed. */
@@ -158,19 +206,31 @@ export interface MutationOptionsLike<T, TVars> {
   invalidates?: EndpointKey[] | undefined
 }
 
-/** A declared endpoint — callable, plus key/query/mutation helpers. */
-export interface Endpoint<S extends EndpointSpec, TResponse> {
-  (...args: CallArgs<EndpointArgs<PathOf<S>>>): Promise<TResponse>
+/**
+ * A declared endpoint — callable, plus key/query/mutation helpers.
+ *
+ * `I` is what a call sends. It defaults to {@link EndpointInput} — typed
+ * `params`, loosely typed `query`/`json` — and may be narrowed at declaration
+ * (`api.endpoint<S, V, I>(…)`), which is how a generated client makes a
+ * direct call as strictly typed as its hooks. Every call also accepts the
+ * {@link EndpointCallOptions}.
+ */
+export interface Endpoint<
+  S extends EndpointSpec,
+  TResponse,
+  I extends EndpointInput<PathOf<S>> = EndpointInput<PathOf<S>>,
+> {
+  (...args: CallArgs<I & EndpointCallOptions>): Promise<TResponse>
   /** Narrowed to the literal from the spec — `'GET'`, not `HttpMethod`. */
   readonly method: MethodOf<S>
   /** The declared path, placeholders intact — `'/users/:id'`. */
   readonly path: PathOf<S>
   /** Build the cache key for these arguments; `.prefix` matches them all. */
-  readonly key: ((...args: CallArgs<EndpointArgs<PathOf<S>>>) => EndpointKey) & {
+  readonly key: ((...args: CallArgs<I & EndpointCallOptions>) => EndpointKey) & {
     readonly prefix: EndpointKey
   }
   /** Options for `useQuery` — key, fetcher and cancellation all wired. */
-  query(...args: CallArgs<EndpointArgs<PathOf<S>>>): QueryOptionsLike<TResponse>
+  query(...args: CallArgs<I & EndpointCallOptions>): QueryOptionsLike<TResponse>
   /**
    * Options for `useMutation`.
    *
@@ -178,7 +238,7 @@ export interface Endpoint<S extends EndpointSpec, TResponse> {
    * NO context and therefore no `AbortSignal`. Pass one in `variables` if
    * the mutation must be cancellable.
    */
-  mutation<TVars extends EndpointArgs<PathOf<S>> = EndpointArgs<PathOf<S>>>(
+  mutation<TVars extends I & EndpointCallOptions = I & EndpointCallOptions>(
     options?: { invalidates?: readonly { readonly key: { readonly prefix: EndpointKey } }[] },
   ): MutationOptionsLike<TResponse, TVars>
 }
@@ -233,13 +293,16 @@ interface RawArgs {
 export function defineEndpoint<
   S extends EndpointSpec,
   V extends Validator<unknown> | undefined = undefined,
+  I extends EndpointInput<PathOf<S>> = EndpointInput<PathOf<S>>,
+  K extends ResponseKind = 'json',
 >(
   client: HttpClient,
   spec: S,
-  options: EndpointConfig<V> = {},
-): Endpoint<S, ResponseOf<V>> {
+  options: EndpointConfig<V, K> = {},
+): Endpoint<S, BodyOf<K, V>, I> {
   const { method, path } = splitSpec(spec)
-  const prefix: EndpointKey = [method, path]
+  const prefix: EndpointKey =
+    options.keyScope === undefined ? [method, path] : [options.keyScope, method, path]
 
   const buildKey = (args?: RawArgs): EndpointKey => {
     const params = args?.params
@@ -248,7 +311,7 @@ export function defineEndpoint<
     const scope: Record<string, unknown> = {}
     if (!isEmpty(params)) scope.params = params
     if (!isEmpty(query)) scope.query = query
-    return [method, path, scope]
+    return [...prefix, scope]
   }
 
   const call = (args?: RawArgs): Promise<unknown> => {
@@ -263,9 +326,22 @@ export function defineEndpoint<
       meta: args?.meta,
       throwHttpErrors: options.throwHttpErrors,
     })
-    return options.response
-      ? request.json(options.response as Validator<unknown>)
-      : request.json()
+    switch (options.responseType ?? 'json') {
+      case 'text':
+        return request.text()
+      case 'blob':
+        return request.blob()
+      case 'arrayBuffer':
+        return request.arrayBuffer()
+      case 'stream':
+        return request.then((response) => response.raw.body)
+      case 'void':
+        return request.void()
+      default:
+        return options.response
+          ? request.json(options.response as Validator<unknown>)
+          : request.json()
+    }
   }
 
   const key = Object.assign((args?: RawArgs) => buildKey(args), { prefix })
@@ -290,5 +366,5 @@ export function defineEndpoint<
   // `EndpointArgs<PathOf<S>>` and `unknown` the erasure of the inferred
   // response type; TypeScript cannot verify that relation through
   // `Object.assign`, so it is asserted once, here, rather than at each site.
-  return endpoint as unknown as Endpoint<S, ResponseOf<V>>
+  return endpoint as unknown as Endpoint<S, BodyOf<K, V>, I>
 }

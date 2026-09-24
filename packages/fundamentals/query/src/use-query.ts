@@ -36,6 +36,25 @@ const QueryResultProto = makeResultProto<
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
+/**
+ * The options `useQuery`'s accessor returns — TanStack's `QueryObserverOptions`
+ * with the generic order of `useQuery` itself: `TQueryFnData` is what the
+ * `queryFn` resolves to, `TData` what the result carries after `select`.
+ *
+ * @example
+ * ```ts
+ * type Extra = Omit<UseQueryOptions<Post[], Error, number>, 'queryKey' | 'queryFn'>
+ * const count = useQuery(() => ({ queryKey: ['posts'], queryFn: fetchPosts, select: (p) => p.length }))
+ * count.data() // number | undefined
+ * ```
+ */
+export type UseQueryOptions<
+  TQueryFnData = unknown,
+  TError = DefaultError,
+  TData = TQueryFnData,
+  TKey extends QueryKey = QueryKey,
+> = QueryObserverOptions<TQueryFnData, TError, TData, TQueryFnData, TKey>
+
 export interface UseQueryResult<TData, TError = DefaultError> {
   /** Raw signal — the full observer result. Fine-grained accessors below are preferred. */
   result: Signal<QueryObserverResult<TData, TError>>
@@ -66,8 +85,13 @@ export interface UseQueryResult<TData, TError = DefaultError> {
  * }))
  * // In template: () => query.data()?.name
  */
-export function useQuery<TData = unknown, TError = DefaultError, TKey extends QueryKey = QueryKey>(
-  options: () => QueryObserverOptions<TData, TError, TData, TData, TKey>,
+export function useQuery<
+  TQueryFnData = unknown,
+  TError = DefaultError,
+  TData = TQueryFnData,
+  TKey extends QueryKey = QueryKey,
+>(
+  options: () => UseQueryOptions<TQueryFnData, TError, TData, TKey>,
 ): UseQueryResult<TData, TError> {
   // Mount-N baseline. Per-hook overhead is now: 1 observer alloc + 1 subscribe
   // + 1 setOptions effect — signals are lazy-allocated on first property
@@ -79,7 +103,10 @@ export function useQuery<TData = unknown, TError = DefaultError, TKey extends Qu
 
   const client = useQueryClient()
   const isRestoring = useIsRestoring()
-  const observer = new QueryObserver<TData, TError, TData, TData, TKey>(client, options())
+  const observer = new QueryObserver<TQueryFnData, TError, TData, TQueryFnData, TKey>(
+    client,
+    options(),
+  )
 
   // Lazy-allocated fine-grained signals. Each field starts as `undefined`;
   // first property access materializes the signal seeded with the observer's

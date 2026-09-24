@@ -13,10 +13,12 @@
 import { compose } from './chain'
 import {
   defineEndpoint,
+  type BodyOf,
   type Endpoint,
   type EndpointConfig,
+  type EndpointInput,
   type EndpointSpec,
-  type ResponseOf,
+  type ResponseKind,
 } from './endpoint'
 import { AbortError, HttpError, TimeoutError, httpErrorFor, isAbortError } from './errors'
 import { createResponsePromise, type HttpResponsePromise, type ParseContext } from './response'
@@ -48,6 +50,7 @@ interface ResolvedConfig {
   throwHttpErrors: boolean
   meta: Record<string, unknown>
   parse: ParseContext
+  keyScope: string | undefined
 }
 
 /** A configured HTTP client. Immutable — use {@link HttpClient.extend}. */
@@ -63,13 +66,20 @@ export interface HttpClient {
   /** Derive a new client. Headers and middleware ACCUMULATE; scalars override. */
   extend(config: HttpClientConfig): HttpClient
   /** Declare a reusable endpoint — see {@link defineEndpoint}. */
-  endpoint<S extends EndpointSpec, V extends Validator<unknown> | undefined = undefined>(
+  endpoint<
+    S extends EndpointSpec,
+    V extends Validator<unknown> | undefined = undefined,
+    I extends EndpointInput<PathOfSpec<S>> = EndpointInput<PathOfSpec<S>>,
+    K extends ResponseKind = 'json',
+  >(
     spec: S,
-    options?: EndpointConfig<V>,
-  ): Endpoint<S, ResponseOf<V>>
+    options?: EndpointConfig<V, K>,
+  ): Endpoint<S, BodyOf<K, V>, I>
 }
 
 const DEFAULT_TIMEOUT = 30_000
+
+type PathOfSpec<S extends string> = S extends `${string} ${infer P}` ? P : never
 
 function toResolved(config: HttpClientConfig, base?: ResolvedConfig): ResolvedConfig {
   const headerSources = [...(base?.headerSources ?? [])]
@@ -84,6 +94,7 @@ function toResolved(config: HttpClientConfig, base?: ResolvedConfig): ResolvedCo
     credentials: config.credentials ?? base?.credentials ?? 'same-origin',
     throwHttpErrors: config.throwHttpErrors ?? base?.throwHttpErrors ?? true,
     meta: { ...base?.meta, ...config.meta },
+    keyScope: config.keyScope ?? base?.keyScope,
     parse: {
       validate: config.validate ?? base?.parse.validate ?? 'strict',
       schema: config.schema ?? base?.parse.schema,
@@ -266,7 +277,17 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
     options: (path, options) => request('OPTIONS', path, options),
     request,
     extend: (next) => fromResolved(toResolved(next, resolved)),
-    endpoint: (spec, endpointOptions) => defineEndpoint(client, spec, endpointOptions),
+    // The client's `keyScope` is the endpoint's DEFAULT; an endpoint may set
+    // its own. Copied only when there is something to copy, so the dominant
+    // unscoped client passes the caller's options object through untouched.
+    endpoint: (spec, endpointOptions) =>
+      defineEndpoint(
+        client,
+        spec,
+        resolved.keyScope !== undefined && endpointOptions?.keyScope === undefined
+          ? { ...endpointOptions, keyScope: resolved.keyScope }
+          : endpointOptions,
+      ),
   }
 
   return client

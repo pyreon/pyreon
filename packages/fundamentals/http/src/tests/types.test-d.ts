@@ -182,3 +182,33 @@ describe('client typing', () => {
     expectTypeOf(api.extend({ baseUrl: '/v2' })).toEqualTypeOf<HttpClient>()
   })
 })
+
+describe('typed endpoint input + response kinds', () => {
+  const Pet = z.object({ id: z.number() })
+  type AddPetInput = { query?: { dryRun?: boolean | undefined } | undefined; json: { name: string } }
+  const addPet = api.endpoint<'POST /pets', typeof Pet, AddPetInput>('POST /pets', { response: Pet })
+
+  it('a narrowed input is required exactly where it says', () => {
+    expectTypeOf(addPet).parameter(0).toEqualTypeOf<AddPetInput & import('../endpoint').EndpointCallOptions>()
+    // @ts-expect-error — `json` is required and typed
+    void addPet({ json: { wrong: true } })
+    // @ts-expect-error — the argument is required when `json` is
+    void addPet()
+    void addPet({ json: { name: 'x' }, signal: new AbortController().signal })
+  })
+
+  it('the default input still requires exactly the path params', () => {
+    const getPet = api.endpoint('GET /pets/:id')
+    // @ts-expect-error — `id` is missing
+    void getPet({ params: {} })
+    void getPet({ params: { id: 1 }, query: { a: 1 } })
+  })
+
+  it('responseType chooses the resolved body type', async () => {
+    expectTypeOf(await api.endpoint('GET /log', { responseType: 'text' })()).toEqualTypeOf<string>()
+    expectTypeOf(await api.endpoint('GET /img', { responseType: 'blob' })()).toEqualTypeOf<Blob>()
+    expectTypeOf(await api.endpoint('GET /b', { responseType: 'arrayBuffer' })()).toEqualTypeOf<ArrayBuffer>()
+    expectTypeOf(await api.endpoint('GET /s', { responseType: 'stream' })()).toEqualTypeOf<ReadableStream<Uint8Array> | null>()
+    expectTypeOf(await api.endpoint('GET /p', { response: Pet })()).toEqualTypeOf<{ id: number }>()
+  })
+})

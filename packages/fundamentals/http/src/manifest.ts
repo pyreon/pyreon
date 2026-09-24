@@ -99,9 +99,9 @@ const user = await api.get('/users/1').json() // decoded body`,
       name: 'endpoint',
       kind: 'function',
       signature:
-        "(spec: `${HttpMethod} ${string}`, options?: { response?: Validator }) => Endpoint",
+        "<S, V, I = EndpointInput<path>, K = 'json'>(spec: `${HttpMethod} ${string}`, options?: { response?: V; responseType?: K; queryStyle?; keyScope?; headers?; timeout? }) => Endpoint<S, BodyOf<K, V>, I>",
       summary:
-        'Declare a reusable endpoint. One declaration yields the callable, a stable structural cache key, and the response type — which is what stops queryKey and URL from drifting apart, the single biggest pain with axios plus TanStack Query. `params` is REQUIRED by the type system exactly when the path declares `:placeholders`, and its keys are extracted from the path literal, so a typo is a compile error. `.query(args)` emits `{ queryKey, queryFn }` with the AbortSignal already forwarded; `.mutation()` emits `{ mutationFn, invalidates }`.',
+        'Declare a reusable endpoint. One declaration yields the callable, a stable structural cache key, and the response type — which is what stops queryKey and URL from drifting apart, the single biggest pain with axios plus TanStack Query. `params` is REQUIRED by the type system exactly when the path declares `:placeholders`, and its keys are extracted from the path literal, so a typo is a compile error. `.query(args)` emits `{ queryKey, queryFn }` with the AbortSignal already forwarded; `.mutation()` emits `{ mutationFn, invalidates }`. `responseType` (`text` / `blob` / `arrayBuffer` / `stream` / `void`) decodes non-JSON bodies and types the result accordingly; `queryStyle` states OpenAPI query serialization per key (`form` / `spaceDelimited` / `pipeDelimited` / `deepObject`, `explode`); `keyScope` namespaces the cache key. The third generic `I` narrows what a call sends (`api.endpoint<S, typeof Schema, { json: NewPet }>(…)`) — how a generated client types `query` and `json` on direct calls. In a path, `\\\\:` is a literal colon (`/v1/:name\\\\:cancel`).',
       example: `const getUser = api.endpoint('GET /users/:id', { response: UserSchema })
 
 await getUser({ params: { id: '1' } })

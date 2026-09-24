@@ -64,3 +64,13 @@ describe('QueryError — error type of a query result', () => {
     expectTypeOf<QueryError<string>>().toEqualTypeOf<never>()
   })
 })
+
+describe('useQuery select generic', () => {
+  it('UseQueryOptions carries TQueryFnData and the selected TData separately', () => {
+    type O = import('../index').UseQueryOptions<Post[], Error, number>
+    expectTypeOf<NonNullable<O['select']>>().toEqualTypeOf<(data: Post[]) => number>()
+    expectTypeOf<ReturnType<typeof import('../index').useQuery<Post[], Error, number>>>().toEqualTypeOf<
+      UseQueryResult<number, Error>
+    >()
+  })
+})

@@ -307,4 +307,11 @@ export interface HttpClientConfig
   schema?: SchemaResolver | undefined
   /** How a validation failure is handled. Defaults to `'strict'`. */
   validate?: ValidateMode | undefined
+  /**
+   * Namespace every endpoint's cache key with this string —
+   * `[keyScope, method, path, …]`. Set it when two clients share one
+   * `QueryClient`: without it, `GET /users` on one API and `GET /users` on
+   * another are the SAME cache entry.
+   */
+  keyScope?: string | undefined
 }
