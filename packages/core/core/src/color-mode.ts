@@ -75,7 +75,7 @@ export function systemColorMode(): () => ColorMode {
  * default is a constant.
  */
 const systemDefault = (): ColorMode => systemColorMode()()
-const ColorModeContext = createContext<() => ColorMode>(systemDefault)
+const ColorModeContext = /* @__PURE__ */ createContext<() => ColorMode>(systemDefault)
 
 /**
  * The mode in scope, as an accessor. Call it inside an effect, a computed or
