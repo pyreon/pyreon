@@ -32,6 +32,7 @@
  *  - INP's first-input fallback for browsers without `interactionId` is not
  *    implemented; such browsers simply report no INP.
  */
+import { isServer } from '@pyreon/reactivity'
 import { getActiveRouter } from '@pyreon/router'
 
 export type WebVitalName = 'LCP' | 'CLS' | 'INP' | 'FCP' | 'TTFB'
@@ -89,7 +90,7 @@ export function reportWebVitals(
   handler: (metric: WebVitalMetric) => void,
   options: ReportWebVitalsOptions = {},
 ): () => void {
-  if (typeof window === 'undefined' || typeof PerformanceObserver === 'undefined') return () => {}
+  if (isServer || typeof PerformanceObserver === 'undefined') return () => {}
 
   const disposers: (() => void)[] = []
   const nav = performance.getEntriesByType('navigation')[0] as
