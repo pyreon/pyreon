@@ -1,4 +1,4 @@
-import { h } from '@pyreon/core'
+import { h, mergeProps, splitProps } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import type { A11yPoliteness } from './announce'
 import { VisuallyHidden } from './visually-hidden'
@@ -75,29 +75,30 @@ export interface LiveRegionProps {
  * ```
  */
 export function LiveRegion(props: LiveRegionProps): VNodeChild {
-  const {
-    politeness = 'polite',
-    atomic = true,
-    role,
-    visible = false,
-    children,
-    ...rest
-  } = props as LiveRegionProps
-
-  const resolvedRole =
-    role ??
-    (politeness === 'off' ? undefined : politeness === 'assertive' ? 'alert' : 'status')
-
-  const ariaProps: Record<string, unknown> = {
-    ...rest,
+  // splitProps, not a destructure: signal-driven props arrive as getters, and a
+  // destructure read each once — `politeness={mode()}` never moved the region
+  // between polite and assertive, and forwarded attributes froze. The ARIA
+  // attributes are accessors over `own`, so they track. `visible` picks the
+  // element shape and is read once at setup.
+  const [own, rest] = splitProps(props as LiveRegionProps, [
+    'politeness',
+    'atomic',
+    'role',
+    'visible',
+    'children',
+  ])
+  const politeness = () => own.politeness ?? 'polite'
+  const ariaProps = mergeProps(rest as Record<string, unknown>, {
     'aria-live': politeness,
-    'aria-atomic': atomic ? 'true' : 'false',
-  }
-  if (resolvedRole !== undefined) ariaProps.role = resolvedRole
+    'aria-atomic': () => ((own.atomic ?? true) ? 'true' : 'false'),
+    role: () =>
+      own.role ??
+      (politeness() === 'off' ? undefined : politeness() === 'assertive' ? 'alert' : 'status'),
+  })
 
   // Visible: a plain element carrying the live-region semantics.
-  if (visible) return h('div', ariaProps, children)
+  if (own.visible) return h('div', ariaProps, own.children)
   // Default: screen-reader-only — reuse VisuallyHidden's canonical clipping
   // (kept in the a11y tree, unlike display:none) and forward the ARIA props.
-  return h(VisuallyHidden, { as: 'div', ...ariaProps }, children)
+  return h(VisuallyHidden, mergeProps({ as: 'div' }, ariaProps), own.children)
 }

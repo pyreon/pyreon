@@ -12,7 +12,8 @@ import { join, relative, resolve } from 'node:path'
 import { createAtlas } from '../index'
 import type { CatalogGraph, ComponentIntelligence, Scenario } from '../core'
 import { catalogReplacer } from '../core'
-import { focusComponents } from '../verify/focus'
+import { focusComponents, suggestNames } from '../verify/focus'
+import { version as atlasVersion } from '../../package.json' with { type: 'json' }
 import { diffVerdicts, formatDiff, readBaselineScenarios, summarizeDiff } from '../verify/diff'
 import {
   buildVerifyReport,
@@ -515,7 +516,12 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
  * note: nothing to compare is not a regression, and making the first `--check`
  * run red for everybody is how a ratchet gets disabled on day one.
  */
-function reportRatchet(catalogPath: string, current: readonly Scenario[]): number {
+function reportRatchet(
+  catalogPath: string,
+  current: readonly Scenario[],
+  options: { scope?: ReadonlySet<string>; say?: (text: string) => void } = {},
+): number {
+  const say = options.say ?? out
   let raw: unknown
   try {
     raw = JSON.parse(readFileSync(catalogPath, 'utf8'))
@@ -531,9 +537,14 @@ function reportRatchet(catalogPath: string, current: readonly Scenario[]): numbe
     err(`atlas: ${catalogPath} is not a readable catalog — skipping the comparison.\n`)
     return 0
   }
-  const diff = diffVerdicts(baseline, current)
-  out(`atlas --check: ${summarizeDiff(diff)}\n`)
-  for (const line of formatDiff(diff)) out(`  ${line}\n`)
+  // A scoped run (`atlas verify Card --check`) holds one component, so it is
+  // compared against that component's slice of the baseline. Against the
+  // whole catalog, every OTHER component read as "no longer present" — a
+  // regression — and the command failed on any catalog of two or more.
+  const scoped = options.scope ? baseline.filter((s) => options.scope?.has(s.component)) : baseline
+  const diff = diffVerdicts(scoped, current)
+  say(`atlas --check: ${summarizeDiff(diff)}\n`)
+  for (const line of formatDiff(diff)) say(`  ${line}\n`)
   // Only a REGRESSION is a red exit. An improvement is information, and an
   // unchanged run is the common case — neither should fail a build.
   return diff.regressed ? 1 : 0
@@ -566,8 +577,11 @@ const FAILURE_PRINT_LIMIT = 20
 
 const HELP = `atlas — component workshop + catalog for the Pyreon ecosystem
 
-Usage:
-  atlas init [dir]    detect this workspace's packages and write atlas.config.ts —
+Usage: atlas <command> [dir] [options]
+  [dir] is the project directory (default: the current one). Options take a
+  value as "--out x" or "--out=x". Unknown options are an error.
+
+  atlas init [dir]    detect this workspace's packages and write pyreon.config.ts —
                       the ONLY file you write; components, controls and
                       scenarios are derived from source, so there are no
                       story files to create or keep in sync
@@ -579,13 +593,20 @@ Usage:
                       catches the value that renders silently wrong
                       (state="primry"). Exits non-zero on findings, so it
                       works in a hook or a CI step
+    --cwd <dir>       the project directory (default: the current one)
   atlas dev [dir]     start the workbench against <dir>'s real components —
                       catalog derived from source, no stories to write
+    --port <n>        port (default 5210, or the next free one)
+    --dir <path>      source directory to scan (default src)
   atlas scan [dir]    discover components under <dir>/src, build a verified
                       catalog, and write atlas-catalog.json + atlas-agent-guide.md;
                       exits non-zero when any scenario FAILS a check
     --no-mount        purely static scan — never imports (= executes) the
-                      project's modules; runtime checks report skip
+                      project's components; runtime checks report skip.
+                      pyreon.config.ts is still loaded
+    --json            machine-readable summary on stdout (narration → stderr)
+    --no-write        don't write atlas-catalog.json / atlas-agent-guide.md
+    --dir <path>      source directory to scan (default src)
     --check           RATCHET: compare against the committed atlas-catalog.json
                       instead of rewriting it, and exit non-zero on a
                       REGRESSION. A check that stopped RUNNING counts as one —
@@ -595,11 +616,13 @@ Usage:
   atlas build [dir]   compile the workbench into a STATIC, deployable site —
                       the same catalog atlas dev serves, with the node-only
                       answers (source, Reactivity Lens) baked in as data
-    --out <dir>       output directory (default atlas-dist)
+    --out <dir>       output directory (default atlas-dist). It is emptied
+                      first, so it must be new, empty, or a previous build
+    --dir <path>      source directory to scan (default src)
     --title <text>    site title (wins over atlas.config.ts's \`title\`)
     --base <path>     public base path for a subdirectory deploy,
                       e.g. --base /my-repo/ for GitHub Pages
-  atlas verify [Component] [dir]
+  atlas verify [Component] [--cwd <dir>]
                       re-check ONE component and report WHICH check failed and
                       why — the fast write → verify → fix loop. Only the match
                       is mounted, exercised and hydrated, so this is a question
@@ -609,6 +632,8 @@ Usage:
     --json            machine-readable report (for agents and CI)
     --check           RATCHET: also report what MOVED since the committed
                       catalog, and exit non-zero on a regression
+    --cwd <dir>       the project directory (default: the current one)
+    --no-mount        static checks only, as for scan
   atlas verify-browser [dir]
                       run the browser half of verification in real Chromium —
                       reactive coverage measured on the client build, and a
@@ -616,7 +641,8 @@ Usage:
                       Needs playwright-core (optional peer). Merges verdicts
                       into atlas-catalog.json; exits non-zero on visual diffs
     --update-snapshots  re-baseline: overwrite stored snapshots with current
-  atlas --help        show this help
+  atlas --help        show this help (also: atlas <command> --help)
+  atlas --version     print the installed version
 `
 
 function out(text: string): void {
@@ -689,8 +715,6 @@ const VALUE_FLAGS = new Set([
   '--base',
   '--dir',
   '--port',
-  '--project',
-  '--catalog',
   // `--cwd` was missing, and every command that reads a positional alongside it
   // took the PATH as that positional: `atlas check Button --cwd ./ui` parsed
   // `./ui` as the component's args JSON and reported "could not parse the args"
@@ -729,6 +753,57 @@ export function positionalDir(args: readonly string[]): string | undefined {
   return positionalArgs(args)[0]
 }
 
+/**
+ * Every flag each command accepts. Anything else is an error.
+ *
+ * Unknown flags used to be ignored, so `atlas scan --json` silently printed
+ * text and `atlas build --outt x` built into the default location and then
+ * complained about a `--dir` the user never passed. A flag that is quietly
+ * dropped is worse than one that is rejected.
+ */
+const COMMAND_FLAGS: Record<string, { flags: readonly string[]; positionals: number }> = {
+  init: { flags: ['--force', '--dry-run', '--title'], positionals: 1 },
+  check: { flags: ['--cwd'], positionals: 2 },
+  dev: { flags: ['--port', '--dir'], positionals: 1 },
+  scan: { flags: ['--no-mount', '--no-write', '--check', '--json', '--dir'], positionals: 1 },
+  build: { flags: ['--out', '--title', '--base', '--dir'], positionals: 1 },
+  verify: { flags: ['--json', '--check', '--cwd', '--no-mount'], positionals: 1 },
+  'verify-browser': { flags: ['--update-snapshots'], positionals: 1 },
+}
+
+/** Reject unknown flags, missing values and surplus arguments, before any work. */
+export function validateArgs(cmd: string, args: readonly string[]): string | undefined {
+  const spec = COMMAND_FLAGS[cmd]
+  if (!spec) return undefined
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string
+    if (!arg.startsWith('-')) continue
+    const name = arg.includes('=') ? arg.slice(0, arg.indexOf('=')) : arg
+    if (!spec.flags.includes(name)) {
+      const guess = suggestNames(spec.flags, name, 1)[0]
+      return `unknown option ${name} for \`atlas ${cmd}\`.${guess ? ` Did you mean ${guess}?` : ''}`
+    }
+    if (VALUE_FLAGS.has(name)) {
+      if (arg.includes('=')) {
+        if (arg.slice(name.length + 1) === '') return `${name} needs a value.`
+      } else {
+        const next = args[i + 1]
+        if (next === undefined || next.startsWith('-')) return `${name} needs a value.`
+        i++
+      }
+    } else if (arg.includes('=')) {
+      return `${name} does not take a value.`
+    }
+  }
+  const positional = positionalArgs(args)
+  if (positional.length > spec.positionals) {
+    const extra = positional.slice(spec.positionals)
+    const hint = cmd === 'verify' ? ' The project directory is given with --cwd <dir>.' : ''
+    return `unexpected argument ${extra.map((e) => `"${e}"`).join(', ')}.${hint}`
+  }
+  return undefined
+}
+
 /** `{ key: value }` only when set — `exactOptionalPropertyTypes` rejects `undefined`. */
 function optional<K extends string, V>(key: K, value: V | undefined): Record<K, V> | object {
   return value === undefined ? {} : ({ [key]: value } as Record<K, V>)
@@ -741,6 +816,20 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   if (!cmd || cmd === '--help' || cmd === '-h' || cmd === 'help') {
     out(HELP)
     return 0
+  }
+  if (cmd === '--version' || cmd === '-v' || cmd === 'version') {
+    out(`${atlasVersion}\n`)
+    return 0
+  }
+  // `atlas scan --help` used to RUN a scan.
+  if (rest.includes('--help') || rest.includes('-h')) {
+    out(HELP)
+    return 0
+  }
+  const argError = validateArgs(cmd, rest)
+  if (argError) {
+    err(`atlas: ${argError} Try \`atlas --help\`.\n`)
+    return 1
   }
 
   if (cmd === 'scan') {
@@ -755,7 +844,14 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     const mount = !rest.includes('--no-mount')
     // `--check` must NOT write: a ratchet that overwrites its own baseline
     // compares a run against itself and can never report a regression again.
-    const result = await runScan({ cwd: dir ?? '.', mount, ...(ratchet ? { write: false } : {}) })
+    const scanDir = flagValue(rest, '--dir')
+    const json = rest.includes('--json')
+    const result = await runScan({
+      cwd: dir ?? '.',
+      ...optional('dir', scanDir),
+      mount,
+      ...(ratchet || rest.includes('--no-write') ? { write: false } : {}),
+    })
     // Before the summary: a config that was found and could not be used
     // explains most of what follows (no groups, no title, no projects), and
     // reading it after the counts is reading it too late.
@@ -790,13 +886,15 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       )
     }
     if (result.components === 0) {
-      err(`atlas: no components found under ${join(dir ?? '.', 'src')}\n`)
+      err(`atlas: no components found under ${join(dir ?? '.', scanDir ?? 'src')}\n`)
       return 1
     }
     // Reports what was actually established. The previous line called every
     // scenario "verified" regardless of whether anything checked it, which is
     // the same claim the catalog and agent guide were fixed for.
-    out(
+    // Under --json, stdout carries only the document; narration goes to stderr.
+    const say = json ? err : out
+    say(
       `atlas: discovered ${result.components} component(s), ${result.scenarios} scenario(s) ` +
         `— ${result.verified} verified, ${result.failed} failing, ` +
         `${result.unverified} unverified.\n`,
@@ -805,9 +903,9 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     // failed is the whole content of the message — without this line, answering
     // it meant opening the catalog JSON and walking it by hand.
     const report = buildVerifyReport(result.graph.scenarios())
-    out(`  checks: ${formatCheckTally(report.tallies)}\n`)
-    for (const line of formatNotRun(report.tallies)) out(`  ${line}\n`)
-    if (result.catalogPath) out(`  → ${result.catalogPath}\n  → ${result.guidePath}\n`)
+    say(`  checks: ${formatCheckTally(report.tallies)}\n`)
+    for (const line of formatNotRun(report.tallies)) say(`  ${line}\n`)
+    if (result.catalogPath) say(`  → ${result.catalogPath}\n  → ${result.guidePath}\n`)
     // What the scan LOOKED at and could not catalogue. Not a failure — a
     // provider or a schema belongs in that list too — but a component you
     // expected and cannot find will be in it, and without this the only
@@ -829,14 +927,48 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     if (result.unmatched && result.unmatched.length > 0) {
       err(`${formatUnmatched(result.unmatched).join('\n')}\n`)
     }
+    // Components whose own module failed to load were catalogued from source
+    // but never checked. Exiting 0 for them read as "all good" for a file with
+    // a syntax error.
+    const cwdAbs = resolve(dir ?? '.')
+    const loadFailed = new Set((result.loadErrors ?? []).map((e) => resolve(cwdAbs, e.file)))
+    const brokenComponents = result.graph
+      .list()
+      .filter((c) => c.source !== undefined && loadFailed.has(resolve(cwdAbs, c.source)))
+      .map((c) => c.name)
+    const emitJson = (code: number): number => {
+      if (json) {
+        out(
+          `${JSON.stringify(
+            {
+              ok: code === 0,
+              components: result.components,
+              ...report,
+              ...(brokenComponents.length > 0 ? { failedToLoad: brokenComponents } : {}),
+              ...(result.catalogPath ? { catalogPath: result.catalogPath, guidePath: result.guidePath } : {}),
+              ...(result.configError ? { configError: result.configError } : {}),
+            },
+            null,
+            2,
+          )}\n`,
+        )
+      }
+      return code
+    }
     if (ratchet) {
       // Reported BEFORE the absolute failures below: a reader running --check
       // is asking "did I change anything", and the answer has to lead.
-      const code = reportRatchet(
-        join(dir ?? '.', 'atlas-catalog.json'),
-        result.graph.scenarios(),
+      const code = reportRatchet(join(dir ?? '.', 'atlas-catalog.json'), result.graph.scenarios(), {
+        ...(json ? { say: err } : {}),
+      })
+      if (code !== 0) return emitJson(code)
+    }
+    if (brokenComponents.length > 0) {
+      err(
+        `atlas: ${brokenComponents.length} component(s) could not be loaded, so none of their checks ran: ` +
+          `${brokenComponents.join(', ')}. Fix the error reported above and re-run.\n`,
       )
-      if (code !== 0) return code
+      return emitJson(1)
     }
     if (result.failed > 0) {
       // A red scan is a red exit — otherwise wiring `atlas scan` into CI gates
@@ -849,9 +981,9 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       err(`atlas: ${result.failed} failing scenario(s):\n`)
       for (const line of formatFailures(report.failures, FAILURE_PRINT_LIMIT)) err(`  ${line}\n`)
       err(`  Run \`atlas verify <Component>\` to re-check one component on its own.\n`)
-      return 1
+      return emitJson(1)
     }
-    return 0
+    return emitJson(0)
   }
 
   if (cmd === 'verify') {
@@ -864,6 +996,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     const json = rest.includes('--json')
     const result = await runScan({
       cwd: flagValue(rest, '--cwd') ?? '.',
+      mount: !rest.includes('--no-mount'),
       ...(name !== undefined ? { only: name } : {}),
       // NEVER writes. A scoped run holds one component, and writing that as
       // `atlas-catalog.json` would replace the whole catalog with a
@@ -918,10 +1051,17 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     // The ratchet, scoped to the same component. Reported before the absolute
     // verdict for the same reason as `scan --check`: "did I help" is the
     // question, and the answer must lead.
-    if (rest.includes('--check') && !json) {
+    // Under --json the comparison still runs and still sets the exit code; its
+    // narration goes to stderr so stdout stays one JSON document. It used to be
+    // skipped entirely, so `--check --json` silently never ratcheted.
+    if (rest.includes('--check')) {
       const code = reportRatchet(
         join(flagValue(rest, '--cwd') ?? '.', 'atlas-catalog.json'),
         result.graph.scenarios(),
+        {
+          ...(name !== undefined ? { scope: new Set(result.graph.list().map((c) => c.name)) } : {}),
+          ...(json ? { say: err } : {}),
+        },
       )
       if (code !== 0) return code
     }
@@ -979,19 +1119,24 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     // that is rejected.
     const portArg = flagValue(rest, '--port')
     const port = portArg !== undefined ? Number(portArg) : undefined
+    if (port !== undefined && (!Number.isInteger(port) || port < 1 || port > 65535)) {
+      err(`atlas: --port must be a whole number from 1 to 65535 (got "${portArg}").\n`)
+      return 1
+    }
     // Imported lazily: the dev server pulls in Vite, and `atlas scan` must keep
     // working (and starting fast) in a project that has none.
     const { startDevServer } = await import('../dev/server')
     try {
       const handle = await startDevServer({
         cwd: dir ?? '.',
+        ...optional('dir', flagValue(rest, '--dir')),
         ...(port !== undefined ? { port } : {}),
       })
       if (handle.components === 0) {
         // Not a hard failure — the server is up and says so — but silence here
         // would look like a broken workbench rather than an empty scan.
         err(
-          `atlas: no components found under ${join(dir ?? '.', 'src')}. The workbench is running but empty.\n`,
+          `atlas: no components found under ${join(dir ?? '.', flagValue(rest, '--dir') ?? 'src')}. The workbench is running but empty.\n`,
         )
       }
       out(`atlas dev: ${handle.components} component(s) → ${handle.url}\n`)
@@ -1092,6 +1237,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     try {
       const result = await buildStatic({
         cwd: dir ?? '.',
+        ...optional('dir', flagValue(rest, '--dir')),
         ...optional('out', flagValue(rest, '--out')),
         ...optional('title', flagValue(rest, '--title')),
         ...optional('base', flagValue(rest, '--base')),
