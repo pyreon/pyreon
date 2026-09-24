@@ -254,6 +254,12 @@ export interface RenderOptions {
 
 export type RenderResult = string | Uint8Array
 
+/** Formats whose renderer resolves to bytes (`Uint8Array`). */
+export type BinaryOutputFormat = 'pdf' | 'docx' | 'xlsx' | 'pptx'
+
+/** Formats whose renderer resolves to a `string`. */
+export type TextOutputFormat = Exclude<OutputFormat, BinaryOutputFormat>
+
 /** A document renderer that converts a node tree to a specific format. */
 export interface DocumentRenderer {
   render(node: DocNode, options?: RenderOptions): Promise<RenderResult>

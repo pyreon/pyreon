@@ -1,4 +1,12 @@
-import type { DocNode, DocumentRenderer, OutputFormat, RenderOptions, RenderResult } from './types'
+import type {
+  BinaryOutputFormat,
+  DocNode,
+  DocumentRenderer,
+  OutputFormat,
+  RenderOptions,
+  RenderResult,
+  TextOutputFormat,
+} from './types'
 
 // ─── Renderer Registry ──────────────────────────────────────────────────────
 
@@ -164,6 +172,21 @@ function applyBaseUrl(node: DocNode, baseUrl: string): DocNode {
  * `{ baseUrl: 'https://cdn.example.com/assets/' }` emits the absolute URL in
  * every output format.
  */
+export function render(
+  node: DocNode,
+  format: BinaryOutputFormat,
+  options?: RenderOptions,
+): Promise<Uint8Array>
+export function render(
+  node: DocNode,
+  format: TextOutputFormat,
+  options?: RenderOptions,
+): Promise<string>
+export function render(
+  node: DocNode,
+  format: OutputFormat | (string & {}),
+  options?: RenderOptions,
+): Promise<RenderResult>
 export async function render(
   node: DocNode,
   format: OutputFormat | string,

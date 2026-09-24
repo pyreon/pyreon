@@ -195,71 +195,71 @@ export function createDocument(props: DocumentProps = {}): DocumentBuilder {
     },
 
     async toHtml(options?: RenderOptions) {
-      return render(getNode(), 'html', options) as Promise<string>
+      return render(getNode(), 'html', options)
     },
 
     async toPdf(options?: RenderOptions) {
-      return render(getNode(), 'pdf', options) as Promise<Uint8Array>
+      return render(getNode(), 'pdf', options)
     },
 
     async toDocx(options?: RenderOptions) {
-      return render(getNode(), 'docx', options) as Promise<Uint8Array>
+      return render(getNode(), 'docx', options)
     },
 
     async toEmail(options?: RenderOptions) {
-      return render(getNode(), 'email', options) as Promise<string>
+      return render(getNode(), 'email', options)
     },
 
     async toPptx(options?: RenderOptions) {
-      return render(getNode(), 'pptx', options) as Promise<Uint8Array>
+      return render(getNode(), 'pptx', options)
     },
 
     async toXlsx(options?: RenderOptions) {
-      return render(getNode(), 'xlsx', options) as Promise<Uint8Array>
+      return render(getNode(), 'xlsx', options)
     },
 
     async toMarkdown(options?: RenderOptions) {
-      return render(getNode(), 'md', options) as Promise<string>
+      return render(getNode(), 'md', options)
     },
 
     async toText(options?: RenderOptions) {
-      return render(getNode(), 'text', options) as Promise<string>
+      return render(getNode(), 'text', options)
     },
 
     async toCsv(options?: RenderOptions) {
-      return render(getNode(), 'csv', options) as Promise<string>
+      return render(getNode(), 'csv', options)
     },
 
     async toSlack(options?: RenderOptions) {
-      return render(getNode(), 'slack', options) as Promise<string>
+      return render(getNode(), 'slack', options)
     },
 
     async toSvg(options?: RenderOptions) {
-      return render(getNode(), 'svg', options) as Promise<string>
+      return render(getNode(), 'svg', options)
     },
 
     async toTeams(options?: RenderOptions) {
-      return render(getNode(), 'teams', options) as Promise<string>
+      return render(getNode(), 'teams', options)
     },
 
     async toDiscord(options?: RenderOptions) {
-      return render(getNode(), 'discord', options) as Promise<string>
+      return render(getNode(), 'discord', options)
     },
 
     async toTelegram(options?: RenderOptions) {
-      return render(getNode(), 'telegram', options) as Promise<string>
+      return render(getNode(), 'telegram', options)
     },
 
     async toNotion(options?: RenderOptions) {
-      return render(getNode(), 'notion', options) as Promise<string>
+      return render(getNode(), 'notion', options)
     },
 
     async toConfluence(options?: RenderOptions) {
-      return render(getNode(), 'confluence', options) as Promise<string>
+      return render(getNode(), 'confluence', options)
     },
 
     async toWhatsApp(options?: RenderOptions) {
-      return render(getNode(), 'whatsapp', options) as Promise<string>
+      return render(getNode(), 'whatsapp', options)
     },
 
     async toGoogleChat(options?: RenderOptions) {
@@ -267,11 +267,11 @@ export function createDocument(props: DocumentProps = {}): DocumentBuilder {
     },
 
     async toJson(options?: RenderOptions) {
-      return render(getNode(), 'json', options) as Promise<string>
+      return render(getNode(), 'json', options)
     },
 
     async toJsonl(options?: RenderOptions) {
-      return render(getNode(), 'jsonl', options) as Promise<string>
+      return render(getNode(), 'jsonl', options)
     },
 
     async download(filename: string, options?: RenderOptions) {
