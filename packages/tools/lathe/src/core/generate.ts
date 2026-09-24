@@ -121,9 +121,15 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
   // Per-LAYER, not one flat barrel: an entry point is a reachability edge, and
   // a barrel naming every layer makes one hook reach every operation and every
   // fixture. Measured at 120 operations that was 30.7 kB against 6.1 kB.
-  const entryOpts = { plugins: config.plugins, client: config.client }
+  // Keyed on what was EMITTED, not on what was selected: an emitter with
+  // nothing to say writes no file, and a barrel naming it does not compile.
   if (has('client')) pushMaybe(emitEndpointsBarrel(doc))
   if (has('queries')) pushMaybe(emitQueriesBarrel(doc))
+  const entryOpts = {
+    plugins: config.plugins,
+    client: config.client,
+    emitted: new Set(files.map((f) => f.path)),
+  }
   pushMaybe(emitDevEntry(doc, entryOpts))
   push(emitBarrel(doc, entryOpts))
 

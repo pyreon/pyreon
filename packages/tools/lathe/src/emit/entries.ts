@@ -51,6 +51,22 @@ export const QUERIES_BARREL = 'queries/index.ts'
 export interface EntryOptions {
   plugins: readonly string[]
   client?: ClientName | undefined
+  /**
+   * The paths that were ACTUALLY emitted before the entries.
+   *
+   * An entry re-exports files, and the plugin selection says which files were
+   * ASKED for, not which exist: an emitter with nothing to say (no models, no
+   * query operations, no faker factories) produces no file at all. Keying the
+   * barrel on the selection made a zero-model or zero-operation spec emit an
+   * `index.ts` importing `./schemas` / `./keys` / `./faker` that were never
+   * written. When omitted, every selected module is assumed present.
+   */
+  emitted?: ReadonlySet<string> | undefined
+}
+
+/** Is `file` (a path relative to the output root) going to exist? */
+function exists(opts: EntryOptions, file: string): boolean {
+  return opts.emitted === undefined || opts.emitted.has(file)
 }
 
 /**
@@ -83,19 +99,28 @@ export function emitBarrel(doc: IrDocument, opts: EntryOptions): SourceFile {
     'for the same reason and live in `./components`.',
   )
 
-  if (has('schemas')) lines.push(`export * from './schemas'`)
-  else if (has('types')) lines.push(`export * from './types'`)
+  if (has('schemas')) {
+    if (exists(opts, 'schemas.ts')) lines.push(`export * from './schemas'`)
+  } else if (has('types') && exists(opts, 'types.ts')) lines.push(`export * from './types'`)
   if (has('client')) {
-    lines.push(`export { api } from './client'`)
+    if (exists(opts, 'client.ts')) lines.push(`export { api } from './client'`)
     for (const [tag] of byTag(doc)) {
-      lines.push(`export * from './endpoints/${tagFile(tag)}'`)
+      if (exists(opts, `endpoints/${tagFile(tag)}.ts`)) {
+        lines.push(`export * from './endpoints/${tagFile(tag)}'`)
+      }
     }
   }
   if (has('queries')) {
-    for (const [tag] of byTag(doc)) lines.push(`export * from './queries/${tagFile(tag)}'`)
-    lines.push(`export { keys } from './keys'`)
+    for (const [tag] of byTag(doc)) {
+      if (exists(opts, `queries/${tagFile(tag)}.ts`)) lines.push(`export * from './queries/${tagFile(tag)}'`)
+    }
+    if (exists(opts, KEYS_FILE)) lines.push(`export { keys } from './keys'`)
   }
   for (const l of lines) f.line(l)
+  // A file with no import/export is a SCRIPT, and a consumer compiling with
+  // `isolatedModules` rejects it (TS1208). Only reachable for a spec that
+  // emits nothing re-exportable.
+  if (lines.length === 0) f.line('export {}')
   return f
 }
 
@@ -113,7 +138,9 @@ export function emitBarrel(doc: IrDocument, opts: EntryOptions): SourceFile {
 export function emitDevEntry(doc: IrDocument, opts: EntryOptions): SourceFile | null {
   const f = new SourceFile(DEV_FILE)
   const has = (p: string): boolean => opts.plugins.includes(p)
-  if (!has('mocks') && !has('faker')) return null
+  const mocks = has('mocks') && exists(opts, 'mocks.ts')
+  const faker = has('faker') && exists(opts, 'faker.ts')
+  if (!mocks && !faker) return null
 
   f.line()
   f.doc(
@@ -131,7 +158,7 @@ export function emitDevEntry(doc: IrDocument, opts: EntryOptions): SourceFile | 
     'exactly one kind of consumer (an Atlas config, a story), and that consumer',
     'imports `./components` directly.',
   )
-  if (has('mocks')) {
+  if (mocks) {
     f.line(`export { installMocks, routes as mockRouteTable } from './mocks'`)
     // `mockRoutes` is a `@pyreon/http` MIDDLEWARE and has no equivalent on the
     // generated adapters, which answer through their own transport seam.
@@ -139,7 +166,7 @@ export function emitDevEntry(doc: IrDocument, opts: EntryOptions): SourceFile | 
       f.line(`export { mockRoutes } from './mocks'`)
     }
   }
-  if (has('faker')) f.line(`export * from './faker'`)
+  if (faker) f.line(`export * from './faker'`)
   return f
 }
 
