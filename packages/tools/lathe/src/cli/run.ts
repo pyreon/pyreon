@@ -160,7 +160,11 @@ export async function run(
   }
 
   const projects = resolveProjects(merged)
-  const runs: RunOutcome[] = []
+  // TWO PHASES: every project is generated before any is written. A spec that
+  // is refused (Swagger 2, not a spec at all, unparseable) must leave EVERY
+  // output tree untouched -- including the ones listed before it -- rather than
+  // leaving a monorepo half-regenerated against a run that failed.
+  const generated: Array<{ config: ResolvedConfig; result: ReturnType<typeof generate> }> = []
   for (const config of projects) {
     if (!fs.exists(config.input)) {
       return {
@@ -168,7 +172,11 @@ export async function run(
         stdout: `[Pyreon] lathe: spec not found at ${config.input}${config.name ? ` (project \`${config.name}\`)` : ''}\n`,
       }
     }
-    const result = generate(fs.read(config.input), config)
+    generated.push({ config, result: generate(fs.read(config.input), config) })
+  }
+
+  const runs: RunOutcome[] = []
+  for (const { config, result } of generated) {
     const verify = verifyNative(result.files, await resolveTransform())
 
     // Read the PREVIOUS surface before the write loop overwrites it. This is

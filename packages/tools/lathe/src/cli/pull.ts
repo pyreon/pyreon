@@ -34,6 +34,7 @@
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
+import { openApiVersionProblem } from '../input/openapi'
 import { parseSpecText } from '../input/yaml'
 
 // Built rather than written literally, matching `report.ts`: a raw ESC byte in
@@ -88,18 +89,6 @@ async function readCapped(res: Response): Promise<string | undefined> {
   return new TextDecoder().decode(joined)
 }
 
-/**
- * True when the parsed document actually claims to be an OpenAPI spec.
- *
- * "It parsed as YAML" is a much weaker statement than it sounds: an HTML error
- * page fails, but a plain-text one, a JSON error envelope, or somebody's CI
- * config all parse fine and would then be written over a working spec.
- */
-function looksLikeSpec(parsed: unknown): boolean {
-  if (parsed === null || typeof parsed !== 'object') return false
-  const doc = parsed as Record<string, unknown>
-  return typeof doc.openapi === 'string' || typeof doc.swagger === 'string'
-}
 
 /** How long to wait for a spec URL before giving up. */
 const PULL_TIMEOUT_MS = 30_000
@@ -142,11 +131,15 @@ export async function pullSpec(url: string, dest: string): Promise<number> {
     )
     return 1
   }
-  if (!looksLikeSpec(parsed)) {
-    process.stderr.write(
-      `[Pyreon] lathe: ${url} parsed, but carries no \`openapi\` or \`swagger\` version key,\n` +
-        '  so it is not an OpenAPI document. Nothing was written.\n',
-    )
+  // "It parsed as YAML" is a much weaker statement than it sounds: an HTML
+  // error page fails, but a plain-text one, a JSON error envelope, or somebody's
+  // CI config all parse fine and would then be written over a working spec. The
+  // rule is the one `generate` applies, so a spec `pull` accepts is one
+  // `generate` reads -- it used to accept Swagger 2, which generate then turned
+  // into an empty client.
+  const problem = openApiVersionProblem(parsed)
+  if (problem) {
+    process.stderr.write(`${problem.replace('[Pyreon] lathe: ', `[Pyreon] lathe: ${url}: `)}\n  Nothing was written.\n`)
     return 1
   }
 

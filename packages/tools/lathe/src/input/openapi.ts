@@ -34,10 +34,57 @@ export interface LoadResult {
 /** Parse a spec document (JSON or YAML text) into the IR. */
 export function loadOpenApi(source: string): LoadResult {
   const raw = parseSpecText(source)
-  if (raw === null || typeof raw !== 'object') {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('[Pyreon] lathe: spec did not parse to an object')
   }
+  const refusal = openApiVersionProblem(raw)
+  if (refusal) throw new Error(refusal)
   return { doc: convert(raw as Json) }
+}
+
+/**
+ * Why a parsed document is not an OpenAPI 3.x spec Lathe can read, or
+ * `undefined` when it is.
+ *
+ * Checked BEFORE conversion, because conversion is lenient by design and a
+ * lenient reader turns the wrong document into an EMPTY client rather than an
+ * error: a Swagger 2 spec (whose models live under `definitions` and whose
+ * bodies live in `in: body` parameters) produced 0 models and exit 0, and a
+ * YAML file that was not a spec at all overwrote a working generated tree --
+ * `api-surface.json` included, which silently reset the contract baseline.
+ *
+ * Shared with `lathe pull`, so a download is refused by the same rule that
+ * would refuse it at generate time.
+ */
+export function openApiVersionProblem(doc: unknown): string | undefined {
+  const d = obj(doc)
+  if (!d) return '[Pyreon] lathe: the spec did not parse to an object.'
+  if (d.swagger !== undefined) {
+    return (
+      `[Pyreon] lathe: this is a Swagger ${String(d.swagger)} document, and Lathe reads OpenAPI 3.x.\n` +
+      '  Swagger 2 keeps models in `definitions` and request bodies in `in: body` parameters,\n' +
+      '  so reading it as 3.x would produce an empty client. Convert it first, then generate:\n' +
+      '    npx swagger2openapi swagger.json -o openapi.json'
+    )
+  }
+  // A YAML `openapi: 3.0` (unquoted) reads as the NUMBER 3, which is still a
+  // 3.x document; stringifying first accepts it rather than refusing a spec on
+  // a quoting technicality.
+  const version = typeof d.openapi === 'number' ? String(d.openapi) : d.openapi
+  if (typeof version !== 'string') {
+    return (
+      '[Pyreon] lathe: this document has no `openapi` version key, so it is not an OpenAPI spec.\n' +
+      '  Nothing was generated and the output directory was not touched.\n' +
+      '  Check that `input` points at the API description (it starts with `openapi: 3.x`).'
+    )
+  }
+  if (!/^3(\.|$)/.test(version)) {
+    return (
+      `[Pyreon] lathe: \`openapi: ${version}\` is not a version Lathe reads — it supports OpenAPI 3.0 and 3.1.\n` +
+      '  Nothing was generated and the output directory was not touched.'
+    )
+  }
+  return undefined
 }
 
 function convert(spec: Json): IrDocument {
