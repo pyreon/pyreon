@@ -520,9 +520,9 @@ Precedence is always: route-file `export const renderMode` (closest to the code)
 
 **No silent missing pages.** Under SSG, a dynamic route (`[id].tsx`) with no `getStaticPaths` cannot be enumerated — the build now warns loudly, naming the file and the three fixes (add `getStaticPaths`, hand-list `ssg.paths`, or declare `renderMode = 'spa'` if a client-rendered shell is intended). Routes that declare a non-static mode and API routes are exempt.
 
-### Streaming by default (`mode: 'ssr'`)
+### Streaming (`ssr: { mode: 'stream' }`)
 
-`mode: 'ssr'` streams by default: the shell flushes immediately and Suspense boundaries resolve out-of-order (styles flush inline per boundary, so streamed content arrives styled). Opt back into buffered rendering with `ssr: { mode: 'string' }`. ISR apps stay buffered — the SWR cache stores complete bodies; a per-route `renderMode = 'isr'` declaration inside a streaming app automatically uses a buffered render for the cached routes.
+`mode: 'ssr'` renders buffered by default (`ssr.mode: 'string'`). (`resolveConfig` sets it; only a hand-written `createServer({ config: { mode: 'ssr' } })` that omits `ssr.mode` streams.) Opt into streaming with `ssr: { mode: 'stream' }`: the shell flushes immediately and Suspense boundaries resolve out-of-order (styles flush inline per boundary, so streamed content arrives styled). ISR apps stay buffered — the SWR cache stores complete bodies; a per-route `renderMode = 'isr'` declaration inside a streaming app automatically uses a buffered render for the cached routes.
 
 ## Server Islands
 
