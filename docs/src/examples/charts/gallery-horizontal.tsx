@@ -1,4 +1,5 @@
-import { ChartThemeProvider, OptionChart, systemChartMode } from '@pyreon/charts/plot'
+import { ChartThemeProvider, systemChartMode } from '@pyreon/charts'
+import { OptionChart } from '@pyreon/charts/option'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**

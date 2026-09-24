@@ -1318,7 +1318,7 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
     // chart-hosts.ts) — the web-only rationale is about the ECharts bridge at
     // the package root, and would be wrong for this import.
     const subpath = src.startsWith('@pyreon/') ? src.slice('@pyreon/'.length).split('/')[1] : undefined
-    const isWebviewBridgeImport = subpath === 'webview' || (pkg === '@pyreon/charts' && subpath === 'plot')
+    const isWebviewBridgeImport = subpath === 'webview' || (pkg === '@pyreon/charts' && subpath !== 'echarts')
     if (
       WEB_ONLY_PACKAGES.has(pkg) &&
       !UNLOWERED_PYREON_MODULES.has(pkg) &&
@@ -2696,7 +2696,7 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       // through those same hosts; unsupported option families warn by path.
       // The ECharts-backed default export stays web.
       advice:
-        'Most `@pyreon/charts/plot` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart/CalendarChart/ParallelChart/BoxplotChart. MapChart lowers from a PRECOMPUTED `GeoShape[]` const — the map registry, raw GeoJSON and `geoShapes()` itself stay web and warn by name (project once on the web or in a build step). OptionChart lowers static pie, gauge, line, area, bar, and scatter options through the same native hosts and names unsupported option paths. The theme lowers per chart (`theme={chartThemes.dark}` / `theme={{ palette: palettes.okabeIto }}`) and `<ChartThemeProvider mode theme>` is a compile-time scope its chart children inherit (a literal `mode` / `theme`; a reactive mode cannot be read at compile time and warns); the ECharts-backed default export is web-only — keep it in a `<Web>` branch, or embed via the `/webview` bridge',
+        'Most `@pyreon/charts` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart/CalendarChart/ParallelChart/BoxplotChart. MapChart lowers from a PRECOMPUTED `GeoShape[]` const — the map registry, raw GeoJSON and `geoShapes()` itself stay web and warn by name (project once on the web or in a build step). OptionChart lowers static pie, gauge, line, area, bar, and scatter options through the same native hosts and names unsupported option paths. The theme lowers per chart (`theme={chartThemes.dark}` / `theme={{ palette: palettes.okabeIto }}`) and `<ChartThemeProvider mode theme>` is a compile-time scope its chart children inherit (a literal `mode` / `theme`; a reactive mode cannot be read at compile time and warns); the ECharts-backed default export is web-only — keep it in a `<Web>` branch, or embed via the `/webview` bridge',
       supported: new Set([
         // DERIVED from the registries that actually do the lowering, rather
         // than re-typed. The two disagreed the moment a host was added:
@@ -2720,8 +2720,8 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
         'createChartHandle',
         'chartThemes',
         'palettes',
-        // The grammar: <Plot> desugars to <PlotChart marks>; its mark/config children are consumed by that desugar.
-        'Plot',
+        // The grammar: <Chart> desugars to <PlotChart marks>; its mark/config children are consumed by that desugar.
+        'Chart',
         'Bar',
         'Line',
         'Area',
@@ -2732,7 +2732,7 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
         'Legend',
         'Zoom',
         'Label',
-        // The family marks: <Plot> with one of these desugars to the row-array host it names.
+        // The family marks: <Chart> with one of these desugars to the row-array host it names.
         'Arc',
         'Stage',
         'Cell',
@@ -2945,7 +2945,7 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
     if (node.type !== 'ImportDeclaration') continue
     const src = node.source?.value
     if (typeof src !== 'string') continue
-    // ROOT-normalized lookup: `@pyreon/charts/plot` must match the
+    // ROOT-normalized lookup: `@pyreon/charts` must match the
     // `@pyreon/charts` entry — an exact-string get left every subpath
     // import SILENT (no symbol warn, and warnWebOnlyImports skips packages
     // that have an entry here, so nothing fired at all). The `/webview`
@@ -8254,7 +8254,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // through unchanged (string arg) — the runtime container hands the URL
   // to the OS (iOS `UIApplication.shared.open`, Android
   // `Intent.ACTION_VIEW`). Like useShare, Android needs a Context.
-  // `const chart = createChartHandle()` from `@pyreon/charts/plot` → a
+  // `const chart = createChartHandle()` from `@pyreon/charts` → a
   // PyreonChartHandle: observable fields the bound PlotChart reads and writes,
   // and a `dispatch` that runs the crossing `applyChartAction` reducer.
   if (calleeName === 'createChartHandle') {

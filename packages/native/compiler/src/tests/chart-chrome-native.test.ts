@@ -13,30 +13,31 @@ const SW = swiftTheme()
 const KT = kotlinTheme()
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
-const TREEMAP = `import { TreemapChart } from '@pyreon/charts/plot'
-import type { TreeNode } from '@pyreon/charts/plot'
+const TREEMAP = `import { TreemapChart } from '@pyreon/charts'
+import type { TreeNode } from '@pyreon/charts'
 const DATA: TreeNode[] = [{ name: 'src', children: [{ name: 'core', value: 50 }] }, { name: 'docs', value: 30 }]
 export function Files() {
   return <TreemapChart data={DATA} height={200} title="Files" subtitle="by size" showTitle showLegend tooltip onSelectIndex={(i: number) => console.log(i)} />
 }`
 
-const PIE = `import { PieChart } from '@pyreon/charts/plot'
+const PIE = `import { PieChart } from '@pyreon/charts'
 interface S { label: string; v: number }
 const SL: S[] = [{ label: 'a', v: 3 }, { label: 'b', v: 1 }]
 export function Share() {
   return <PieChart data={SL} value={(d: S) => d.v} label={(d: S) => d.label} title="Share" showTitle showLegend tooltip width={240} height={200} />
 }`
 
-const POLAR = `import { PolarChart } from '@pyreon/charts/plot'
-import type { PolarAxes, PolarSeries } from '@pyreon/charts/plot'
+const POLAR = `import { PolarChart } from '@pyreon/charts'
+import type { PolarSeries } from '@pyreon/charts'
+import type { PolarAxes } from '@pyreon/charts/engine'
 const AXES: PolarAxes = { categories: ['x', 'y'] }
 const SERIES: PolarSeries[] = [{ name: 'a', kind: 'bar', values: [3.5, 4.5] }]
 export function Rose() {
   return <PolarChart axes={AXES} series={SERIES} showLegend tooltip height={240} />
 }`
 
-const PLAIN = `import { TreemapChart } from '@pyreon/charts/plot'
-import type { TreeNode } from '@pyreon/charts/plot'
+const PLAIN = `import { TreemapChart } from '@pyreon/charts'
+import type { TreeNode } from '@pyreon/charts'
 const DATA: TreeNode[] = [{ name: 'docs', value: 30 }]
 export function Files() { return <TreemapChart data={DATA} height={200} /> }`
 

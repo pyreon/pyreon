@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Charts BUNDLE SIZE — `@pyreon/charts/plot` vs ECharts 6, for the same chart,
+ * Charts BUNDLE SIZE — `@pyreon/charts` vs ECharts 6, for the same chart,
  * in the same kind of app.
  *
  * Protocol (same as `bench-bundle.ts`):
@@ -71,7 +71,7 @@ const ENTRIES: Entry[] = [
   {
     name: 'Pyreon PlotChart',
     group: 'line chart',
-    source: `${MOUNT}import { line, PlotChart } from '@pyreon/charts/plot'
+    source: `${MOUNT}import { line, PlotChart } from '@pyreon/charts/engine'
 ${LINE_DATA}
 ;(globalThis as Record<string, unknown>).__benchKeep = () => mount(h(PlotChart, { data: rows, x: (d: { m: string }) => d.m, marks: [line((d: { v: number }) => d.v)] }), document.body)
 `,
@@ -79,7 +79,7 @@ ${LINE_DATA}
   {
     name: 'Pyreon OptionChart',
     group: 'line chart',
-    source: `${MOUNT}import { OptionChart } from '@pyreon/charts/plot'
+    source: `${MOUNT}import { OptionChart } from '@pyreon/charts/option'
 ;(globalThis as Record<string, unknown>).__benchKeep = () => mount(h(OptionChart, { option: ${OPTION_LINE} }), document.body)
 `,
   },
@@ -100,7 +100,7 @@ ${LINE_DATA}
   {
     name: 'Pyreon PlotChart',
     group: 'bar + line, tooltip, legend',
-    source: `${MOUNT}import { bars, line, PlotChart } from '@pyreon/charts/plot'
+    source: `${MOUNT}import { bars, line, PlotChart } from '@pyreon/charts/engine'
 ${LINE_DATA}
 ;(globalThis as Record<string, unknown>).__benchKeep = () => mount(h(PlotChart, { data: rows, x: (d: { m: string }) => d.m, marks: [bars((d: { v: number }) => d.v, { label: 'A' }), line((d: { v: number }) => d.v, { label: 'B' })], tooltip: true, showLegend: true }), document.body)
 `,
@@ -108,7 +108,7 @@ ${LINE_DATA}
   {
     name: 'Pyreon OptionChart',
     group: 'bar + line, tooltip, legend',
-    source: `${MOUNT}import { OptionChart } from '@pyreon/charts/plot'
+    source: `${MOUNT}import { OptionChart } from '@pyreon/charts/option'
 ;(globalThis as Record<string, unknown>).__benchKeep = () => mount(h(OptionChart, { option: ${OPTION_BAR_RICH} }), document.body)
 `,
   },
@@ -124,7 +124,7 @@ ${LINE_DATA}
   {
     name: 'Pyreon PieChart',
     group: 'pie chart',
-    source: `${MOUNT}import { PieChart } from '@pyreon/charts/plot'
+    source: `${MOUNT}import { PieChart } from '@pyreon/charts'
 ;(globalThis as Record<string, unknown>).__benchKeep = () => mount(h(PieChart, { data: [{ label: 'A', value: 3 }, { label: 'B', value: 5 }], label: (d: { label: string }) => d.label, value: (d: { value: number }) => d.value }), document.body)
 `,
   },

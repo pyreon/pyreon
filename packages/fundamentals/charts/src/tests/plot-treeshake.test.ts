@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest'
 import { hasBuiltLib } from '@pyreon/test-utils/built-lib'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const PLOT = join(here, '..', '..', 'lib', 'plot.js')
+const PLOT = join(here, '..', '..', 'lib', 'engine.js')
 
 /** A literal that appears ONLY in the named family's geometry. */
 const FAMILY_MARKERS: ReadonlyArray<readonly [string, string]> = [

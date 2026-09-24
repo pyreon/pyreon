@@ -128,8 +128,8 @@ describe('resolveGrammar — the family marks name the host', () => {
     expect(g.family?.host).toBe('pie')
     expect(g.marks).toEqual([])
     expect(warn.mock.calls.map((c) => String(c[0]))).toEqual([
-      '[Pyreon] <Plot>: one family per plot — <Stage> is ignored beside the pie mark.',
-      '[Pyreon] <Plot>: a pie mark beside <Bar> — the plot renders the pie; the cartesian marks are ignored.',
+      '[Pyreon] <Chart>: one family per plot — <Stage> is ignored beside the pie mark.',
+      '[Pyreon] <Chart>: a pie mark beside <Bar> — the plot renders the pie; the cartesian marks are ignored.',
     ])
     warn.mockRestore()
   })

@@ -1,10 +1,10 @@
-// The grammar in real Chromium: `<Plot>` with mark children paints through
+// The grammar in real Chromium: `<Chart>` with mark children paints through
 // `<PlotChart>`, a data flip repaints in place, and a `<Show>` around a mark
 // adds and removes its series.
 import { h, Show } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
-import { Arc, Bar, Line, Plot, Tip, chartThemes } from '../plot'
+import { Arc, Bar, Line, Chart, Tip, chartThemes } from '../engine'
 
 interface Row { q: string; v: number; w: number }
 const rows = signal<Row[]>([{ q: 'a', v: 5, w: 2 }, { q: 'b', v: 9, w: 4 }])
@@ -18,10 +18,10 @@ function rowColours(canvas: HTMLCanvasElement, fy: number): Set<string> {
   return set
 }
 
-describe('<Plot> grammar', () => {
+describe('<Chart> grammar', () => {
   it('paints bar and line marks with the theme palette, and repaints in place on a data flip', async () => {
     const { container, unmount } = mountInBrowser(
-      h(Plot<Row>, { data: () => rows(), x: 'q', width: 240, height: 160, animate: false, updateAnimation: false, showGrid: false }, h(Bar<Row>, { y: 'v' }), h(Line<Row>, { y: 'w', width: 3 }), h(Tip, {})),
+      h(Chart<Row>, { data: () => rows(), x: 'q', width: 240, height: 160, animate: false, updateAnimation: false, showGrid: false }, h(Bar<Row>, { y: 'v' }), h(Line<Row>, { y: 'w', width: 3 }), h(Tip, {})),
     )
     await flush()
     const canvas = container.querySelector('canvas')!
@@ -38,7 +38,7 @@ describe('<Plot> grammar', () => {
     const withLine = signal(false)
     const data: Row[] = [{ q: 'a', v: 5, w: 2 }, { q: 'b', v: 9, w: 4 }]
     const { container, unmount } = mountInBrowser(
-      h(Plot<Row>, { data, x: 'q', width: 240, height: 160, animate: false, updateAnimation: false, showGrid: false }, h(Bar<Row>, { y: 'v' }), h(Show, { when: () => withLine() }, () => h(Line<Row>, { y: 'w', color: '#ff0000', width: 4 }))),
+      h(Chart<Row>, { data, x: 'q', width: 240, height: 160, animate: false, updateAnimation: false, showGrid: false }, h(Bar<Row>, { y: 'v' }), h(Show, { when: () => withLine() }, () => h(Line<Row>, { y: 'w', color: '#ff0000', width: 4 }))),
     )
     await flush()
     const canvas = container.querySelector('canvas')!
@@ -54,7 +54,7 @@ describe('<Plot> grammar', () => {
     const slices: Slice[] = [{ name: 'a', pct: 60 }, { name: 'b', pct: 40 }]
     const picked: number[] = []
     const { container, unmount } = mountInBrowser(
-      h(Plot<Slice>, { data: slices, width: 200, height: 200, animate: false, onSelect: (i: number) => picked.push(i) }, h(Arc<Slice>, { value: 'pct', label: 'name' })),
+      h(Chart<Slice>, { data: slices, width: 200, height: 200, animate: false, onSelect: (i: number) => picked.push(i) }, h(Arc<Slice>, { value: 'pct', label: 'name' })),
     )
     await flush()
     const canvas = container.querySelector('canvas')!

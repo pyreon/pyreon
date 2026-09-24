@@ -4,7 +4,7 @@
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
-import { ChartThemeProvider, PlotChart, bars, chartThemes, palettes } from '../plot'
+import { ChartThemeProvider, PlotChart, bars, chartThemes, palettes } from '../engine'
 
 const rows = [{ q: 'a', v: 5 }, { q: 'b', v: 9 }]
 

@@ -1,4 +1,4 @@
-import { band, bollinger, histogram, PlotChart, stackedArea, waterfall } from '@pyreon/charts/plot'
+import { band, bollinger, histogram, PlotChart, stackedArea, waterfall } from '@pyreon/charts/engine'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**

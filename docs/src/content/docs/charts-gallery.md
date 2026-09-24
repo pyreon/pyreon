@@ -12,7 +12,7 @@ toggle), else the OS preference. A bare option chart keeps ECharts' own light
 look, exactly as ECharts does, so the option examples here sit in a
 `<ChartThemeProvider mode={systemChartMode()}>`. Each example's source is one click away.
 
-<PackageBadge name="@pyreon/charts" href="/docs/charts-plot" />
+<PackageBadge name="@pyreon/charts" href="/docs/charts" />
 
 ## A trend
 

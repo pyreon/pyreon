@@ -7327,7 +7327,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   }
   if (tag === 'Flow' && canAliasIntercept(tag, '@pyreon/flow')) return emitKotlinFlowHost(e)
   if (tag === 'Controls' && canAliasIntercept(tag, '@pyreon/flow')) return emitKotlinStandaloneFlowControls(e, indent)
-  // `@pyreon/charts/plot` family hosts → PyreonChartCanvas over the generated
+  // `@pyreon/charts` family hosts → PyreonChartCanvas over the generated
   // engine (chart-hosts.ts); accessor-prop hosts warn by name.
   if (isChartHostTag(tag)) return emitKotlinChartHost(e, indent)
   // `<ChartThemeProvider>` — transparent on native; see the Swift twin for why.
@@ -7421,7 +7421,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Link' || tag === 'RouterLink') return emitKotlinLink(e, indent)
   if (tag === 'PieChart') return emitKotlinPieChart(e, indent)
   if (tag === 'GaugeChart') return emitKotlinGaugeChart(e, indent)
-  // `<PieChart>` / `<GaugeChart>` from @pyreon/charts/plot — mirror of the
+  // `<PieChart>` / `<GaugeChart>` from @pyreon/charts — mirror of the
   // Swift branch: the radial family lowers to the runtime composables over
   // the GENERATED engine.
   if (tag === 'PermissionsProvider') return emitKotlinPermissionsProvider(e, indent)
@@ -11226,7 +11226,7 @@ function ktChartDouble(text: string): string {
 }
 
 /**
- * `<PieChart data value label …>` (@pyreon/charts/plot) → the runtime-kotlin
+ * `<PieChart data value label …>` (@pyreon/charts) → the runtime-kotlin
  * `PyreonPieChart` composable. Mirror of emitSwiftPieChart — see its
  * docblock for the accessor-arity rule.
  */
@@ -11286,7 +11286,7 @@ function emitKotlinPieChart(
 }
 
 /**
- * `<GaugeChart value …>` (@pyreon/charts/plot) → the runtime-kotlin
+ * `<GaugeChart value …>` (@pyreon/charts) → the runtime-kotlin
  * `PyreonGaugeChart` composable. Mirror of emitSwiftGaugeChart.
  */
 function emitKotlinGaugeChart(
@@ -11336,7 +11336,7 @@ function emitKotlinGaugeChart(
 }
 
 // ---------------------------------------------------------------------------
-// `@pyreon/charts/plot` family hosts → PyreonChartCanvas (the Compose Canvas
+// `@pyreon/charts` family hosts → PyreonChartCanvas (the Compose Canvas
 // that walks the generated engine's draw list). Mirror of the Swift emitter;
 // see chart-hosts.ts for the per-host table.
 // ---------------------------------------------------------------------------
@@ -11610,7 +11610,7 @@ function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
 
 function emitKotlinChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
-  // The grammar: `<Plot>` with mark children desugars to the `<PlotChart marks>` element the plot emit lowers.
+  // The grammar: `<Chart>` with mark children desugars to the `<PlotChart marks>` element the plot emit lowers.
   if (tag === GRAMMAR_CHART_HOST) {
     // The grammar desugars to the host it names (`<PlotChart marks>`, or a family host for `<Arc>` / `<Stage>` / `<Cell>` / `<Candle>`) and re-enters here as that element.
     return emitKotlinChartHost(desugarChartGrammar(e, (w) => _emitWarnings.push(w)), indent)
@@ -11620,7 +11620,7 @@ function emitKotlinChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
     return lowered === undefined ? 'Box {}' : emitKotlinChartHost(lowered, indent)
   }
   if (Object.hasOwn(GRAMMAR_MARK_TAGS, tag) || Object.hasOwn(GRAMMAR_FAMILY_TAGS, tag) || GRAMMAR_CONFIG_TAGS.includes(tag)) {
-    _emitWarnings.push(`<${tag}> only means something as a child of <Plot>; on its own it renders nothing.`)
+    _emitWarnings.push(`<${tag}> only means something as a child of <Chart>; on its own it renders nothing.`)
     return 'Box {}'
   }
   // Chrome the web host draws but this target does not yet — named, never silent.

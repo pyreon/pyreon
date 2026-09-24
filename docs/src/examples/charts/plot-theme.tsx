@@ -1,5 +1,6 @@
-import { bars, ChartThemeProvider, line, palettes, PlotChart } from '@pyreon/charts/plot'
-import type { ChartThemeMode } from '@pyreon/charts/plot'
+import { ChartThemeProvider, palettes } from '@pyreon/charts'
+import { bars, line, PlotChart } from '@pyreon/charts/engine'
+import type { ChartThemeMode } from '@pyreon/charts'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**

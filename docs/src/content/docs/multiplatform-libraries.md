@@ -489,11 +489,12 @@ the machine-checked contract.
 > `bun scripts/check-multiplatform-tier.ts --write-table` — edit the
 > manifests, not this table. The gate fails when they drift.
 
-### `shared` — the authoring surface lowers on every target (11)
+### `shared` — the authoring surface lowers on every target (12)
 
 | Package | Why |
 | --- | --- |
 | `@pyreon/attrs` | attrs(&#123; name, component &#125;) default-prop HOC lowers via attrs-native (use-site wins) |
+| `@pyreon/charts` | the engine is generated into the native runtimes and every chart component lowers to a native PyreonChartCanvas over the same draw list: `<Chart>` with its marks (desugared to `<PlotChart marks>`), the family components (Pie / Gauge / Funnel / Radar / Candlestick / Heatmap / Boxplot / Treemap / Sunburst / Tree / Sankey / Graph / Chord / River / Polar / SingleAxis / Gantt / Calendar / Parallel, and `<MapChart>` from a precomputed `GeoShape[]` — the map registry, raw GeoJSON and `geoShapes()` stay web and warn by name). Theme tokens (`chartThemes`, `palettes`) resolve at compile time and `<ChartThemeProvider mode>` is a compile-time scope. A literal `<OptionChart>` option (`/option`) lowers for the common families; a dynamic one warns. `<EChart>` (`/echarts`) wraps the ECharts library and stays web — keep it in a `<Web>` branch or host it through `/webview` |
 | `@pyreon/coolgrid` | Container/Row/Col lower (equal-fill + literal fractional Col spans) |
 | `@pyreon/core` | the JSX authoring surface PMTC compiles — For/Show/Suspense/ErrorBoundary lower; Switch/Match/Dynamic/Portal/Index warn with concrete alternatives |
 | `@pyreon/elements` | Element→Stack and Text lower via elements-native; the rich web-only surfaces (Overlay/Portal/List slots) warn per-construct |
@@ -520,13 +521,12 @@ the machine-checked contract.
 | `@pyreon/storage` | useStorage family over @PyreonAppStorage (Swift) / rememberPyreonStorage (Kotlin); persistence device-proven |
 | `@pyreon/store` | defineStore lowers to @Observable singleton (Swift) / mutableStateOf object (Kotlin); cross-screen state device-proven |
 
-### `web-only` — architecturally coupled to the web platform (36)
+### `web-only` — architecturally coupled to the web platform (35)
 
 | Package | Why |
 | --- | --- |
 | `@pyreon/a11y` | mostly DOM/ARIA utilities (the native element a11y story is the AccessibilityProps vocabulary on @pyreon/primitives); `announce(...)` now lowers to the native PyreonA11y runtime |
 | `@pyreon/atlas` | the component workbench — dev tooling that runs in a browser, not app runtime |
-| `@pyreon/charts` | the DEFAULT export wraps ECharts (a browser canvas engine) and stays web — keep it in a `<Web>` branch or embed it through the `<WebView>` bridge subpath. `@pyreon/charts/plot` is the multiplatform engine: every direct family host lowers to a native PyreonChartCanvas (`<MapChart>` from a precomputed `GeoShape[]`; the map registry, raw GeoJSON and `geoShapes()` stay web and warn by name) over the GENERATED engine. Static inline `<OptionChart>` options lower for line / bar / scatter, pie, gauge, radar, candlestick, heatmap, funnel, treemap, sunburst, tree, sankey and graph; dynamic options and the remaining option families warn instead of silently emitting an empty native view. A bare host follows the device colour scheme, as it follows `prefers-color-scheme` in a browser. Marks lower too, the indicators included: `sma` / `ema` / `trend` from a numeric-literal window, and `bollinger`'s array spread expanded to the band and middle line it names (see nativeFrontend and the Charts row of the capability matrix) |
 | `@pyreon/code` | wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath |
 | `@pyreon/compiler` | the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime |
 | `@pyreon/config` | build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target |

@@ -12,12 +12,12 @@ import { transform } from '../index'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
 const HEAD = `import { Stack } from '@pyreon/primitives'
-import type { TreeNode } from '@pyreon/charts/plot'
+import type { TreeNode } from '@pyreon/charts'
 const DATA: TreeNode[] = [{ name: 'src', children: [{ name: 'core', value: 50 }] }, { name: 'docs', value: 30 }]
 interface S { label: string; v: number }
 const SL: S[] = [{ label: 'a', v: 3 }, { label: 'b', v: 1 }]
 `
-const PROVIDED = `import { ChartThemeProvider, TreemapChart, PieChart } from '@pyreon/charts/plot'
+const PROVIDED = `import { ChartThemeProvider, TreemapChart, PieChart } from '@pyreon/charts'
 ${HEAD}export function Dash() {
   return (
     <Stack>
@@ -29,7 +29,7 @@ ${HEAD}export function Dash() {
     </Stack>
   )
 }`
-const OWN = `import { chartThemes, TreemapChart, PieChart } from '@pyreon/charts/plot'
+const OWN = `import { chartThemes, TreemapChart, PieChart } from '@pyreon/charts'
 ${HEAD}export function Dash() {
   return (
     <Stack>
@@ -41,7 +41,7 @@ ${HEAD}export function Dash() {
     </Stack>
   )
 }`
-const LAYERED = `import { ChartThemeProvider, TreemapChart, palettes } from '@pyreon/charts/plot'
+const LAYERED = `import { ChartThemeProvider, TreemapChart, palettes } from '@pyreon/charts'
 ${HEAD}export function Dash() {
   return (
     <ChartThemeProvider mode="dark" theme={{ palette: palettes.okabeIto, radius: 6 }}>
@@ -51,7 +51,7 @@ ${HEAD}export function Dash() {
     </ChartThemeProvider>
   )
 }`
-const REACTIVE = `import { ChartThemeProvider, TreemapChart } from '@pyreon/charts/plot'
+const REACTIVE = `import { ChartThemeProvider, TreemapChart } from '@pyreon/charts'
 import { signal } from '@pyreon/reactivity'
 ${HEAD}export function Dash() {
   const mode = signal<'light' | 'dark'>('dark')
@@ -61,7 +61,7 @@ ${HEAD}export function Dash() {
     </ChartThemeProvider>
   )
 }`
-const SYSTEM = `import { ChartThemeProvider, TreemapChart } from '@pyreon/charts/plot'
+const SYSTEM = `import { ChartThemeProvider, TreemapChart } from '@pyreon/charts'
 ${HEAD}export function Dash() {
   return (<ChartThemeProvider><TreemapChart data={DATA} showLegend height={200} /></ChartThemeProvider>)
 }`

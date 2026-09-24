@@ -786,7 +786,7 @@ public struct PyreonChartCanvas: View {
 
 // ── Radial chart components ─────────────────────────────────────────────
 //
-// The native twins of `@pyreon/charts/plot`'s `<PieChart>` / `<GaugeChart>`.
+// The native twins of `@pyreon/charts`'s `<PieChart>` / `<GaugeChart>`.
 // PMTC lowers those JSX components to these views; the geometry comes from
 // the GENERATED PyreonChartEngine (renderPie / renderGauge), so web and
 // native draw from the same byte-locked math. Defaults mirror the web

@@ -1,32 +1,33 @@
-// The grammar — `<Plot>` with MARK CHILDREN. (`Plot`, not `Chart`: the package's
-// default entry already exports the ECharts bridge as `<Chart>`, and one name
-// for two components across two subpaths is the confusion the audit flagged.)
+// The grammar — `<Chart>` with MARK CHILDREN, the package's main entry. (It was
+// `<Chart>` while the main entry exported the ECharts bridge as `<Chart>`; that
+// bridge now lives at `@pyreon/charts/echarts` as `<EChart>`, so one name
+// means one component.)
 //
-//   <Plot data={rows} x="month">
+//   <Chart data={rows} x="month">
 //     <Bar y="revenue" label="Revenue" />
 //     <Line y="target" label="Target" />
 //     <Axis y format={currency('$')} />
 //     <Tip /> <Legend />
-//   </Plot>
+//   </Chart>
 //
 // Channels are FIELD NAMES (`y="revenue"`, typed `keyof T`) or accessors;
 // marks are JSX children, so layering is composition and a `<Show>` around a
-// mark is ordinary Pyreon. Nothing here is a second engine: `<Plot>` scans its
+// mark is ordinary Pyreon. Nothing here is a second engine: `<Chart>` scans its
 // children STRUCTURALLY (the `Switch` / `Match` precedent — a mark is a branded
-// component that is never invoked; `<Plot>` reads its vnode's props) and
+// component that is never invoked; `<Chart>` reads its vnode's props) and
 // resolves them into the `marks={[bars(…)]}` props `<PlotChart>` already takes.
 // The array form stays the config form and the two are the same spec.
 //
-// Long-format data: `<Plot color="region">` pivots every `y` mark into one
-// series per distinct `region` value, categories from `x` — the Plot / Vega
+// Long-format data: `<Chart color="region">` pivots every `y` mark into one
+// series per distinct `region` value, categories from `x` — the Observable Plot / Vega
 // idiom — while a chart with no `color` channel is wide-format: one mark, one
 // series, exactly as `<PlotChart>`.
 //
 // The FAMILY marks make the same grammar cover the row-array hosts: `<Arc
 // value label>` is a pie or donut, `<Stage value label>` a funnel, `<Cell x y
 // value>` a heatmap, `<Candle open high low close>` a candlestick — each is
-// the host's own props with channels for its accessors, so `<Plot>` renders
-// that host instead of `<PlotChart>`. One family per plot; a family mark
+// the host's own props with channels for its accessors, so `<Chart>` renders
+// that host instead of `<PlotChart>`. One family per chart; a family mark
 // beside a cartesian one is reported and the family wins.
 
 import { For, Fragment, Show, h, _rp as reactiveProp } from '@pyreon/core'
@@ -61,7 +62,7 @@ export function channel<T, V>(c: Channel<T, V>): (d: T, index: number) => V {
 }
 
 // ---------------------------------------------------------------------------
-// Marks — branded components. Never mounted: `<Plot>` reads their vnode props.
+// Marks — branded components. Never mounted: `<Chart>` reads their vnode props.
 // ---------------------------------------------------------------------------
 
 export interface MarkProps<T> extends Omit<MarkOptions, 'color'> {
@@ -275,7 +276,7 @@ export const Cell = /* @__PURE__ */ brand<CellProps<any>>('Cell') as <T>(props: 
 /** A candlestick — the family mark for `<CandlestickChart>`. */
 export const Candle = /* @__PURE__ */ brand<CandleProps<any>>('Candle') as <T>(props: CandleProps<T>) => VNode | null
 
-/** The family a mark belongs to, and the host `<Plot>` renders for it. */
+/** The family a mark belongs to, and the host `<Chart>` renders for it. */
 export type FamilyHost = 'pie' | 'funnel' | 'heatmap' | 'candlestick'
 const FAMILY_OF: Readonly<Record<string, FamilyHost>> = { Arc: 'pie', Stage: 'funnel', Cell: 'heatmap', Candle: 'candlestick' }
 
@@ -327,7 +328,7 @@ function flatChildren(children: VNodeChild): VNode[] {
   return out
 }
 
-export interface PlotProps<T> {
+export interface ChartProps<T> {
   data: T[] | (() => T[])
   /** The category channel (evenly spaced). */
   x?: Channel<T, string>
@@ -384,7 +385,7 @@ export interface PlotProps<T> {
   children?: VNodeChild
 }
 
-/** What `<Plot>` resolved its children into — exported so the equivalence with the array form is testable. */
+/** What `<Chart>` resolved its children into — exported so the equivalence with the array form is testable. */
 export interface ResolvedGrammar<T> {
   marks: Mark<T>[]
   props: Partial<PlotChartProps<T>>
@@ -402,7 +403,7 @@ const describeChild = (v: VNode): string => {
 }
 
 const warnGrammar = (m: string): void => {
-  if (process.env.NODE_ENV !== 'production') console.warn(`[Pyreon] <Plot>: ${m}`)
+  if (process.env.NODE_ENV !== 'production') console.warn(`[Pyreon] <Chart>: ${m}`)
 }
 
 /** A family mark's props with every channel turned into an accessor. */
@@ -422,7 +423,7 @@ function familyProps<T>(name: string, p: Record<string, unknown>): Record<string
 }
 
 /** Resolve mark children + chart channels into `<PlotChart>` props. Pure; called inside the host's effects so channel reads track. */
-export function resolveGrammar<T>(rows: T[], chart: PlotProps<T>, children: VNodeChild): ResolvedGrammar<T> {
+export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNodeChild): ResolvedGrammar<T> {
   const nodes = flatChildren(children)
   const props: Partial<PlotChartProps<T>> = {}
   const annotations: Annotation[] = []
@@ -434,7 +435,7 @@ export function resolveGrammar<T>(rows: T[], chart: PlotProps<T>, children: VNod
     if (name === undefined) {
       // A child that is not a mark renders NOTHING here, so say so: a silent
       // skip reads as "my chart is empty" rather than "wrong child".
-      warnGrammar(`unrecognized child ${describeChild(v)} — only mark components (<Bar>, <Line>, <Rule>, …) render inside <Plot>; it is ignored.`)
+      warnGrammar(`unrecognized child ${describeChild(v)} — only mark components (<Bar>, <Line>, <Rule>, …) render inside <Chart>; it is ignored.`)
       continue
     }
     const p = v.props as Record<string, unknown>
@@ -632,7 +633,7 @@ function toMark<T>(name: string, p: Record<string, unknown>, yOverride: ((d: T, 
  * signal read in a channel or a `<Show>` around a mark repaints like any other
  * reactive input; the children are scanned again each time.
  */
-export function Plot<T>(props: PlotProps<T>): VNodeChild {
+export function Chart<T>(props: ChartProps<T>): VNodeChild {
   const readRows = (): T[] => (typeof props.data === 'function' ? (props.data as () => T[])() : props.data)
   // One scan per change, not one per prop read: every forwarded prop below
   // reads through this computed, which re-resolves when the data, a channel or
@@ -650,7 +651,7 @@ export function Plot<T>(props: PlotProps<T>): VNodeChild {
     for (const key of ['tooltip', 'showLegend', 'legendPosition', 'format'] as const) p[key] = reactiveProp(() => read(key) ?? (resolved().props as Record<string, unknown>)[key])
     // The family hosts take a PNG-only toolbox; the plot's `'svg'` form maps to it.
     p.toolbox = reactiveProp(() => {
-      const tb = read('toolbox') as PlotProps<T>['toolbox']
+      const tb = read('toolbox') as ChartProps<T>['toolbox']
       return tb === undefined ? undefined : { saveAsImage: tb.saveAsImage !== undefined && tb.saveAsImage !== false }
     })
     if (kind === 'candlestick') p.x = reactiveProp(() => (props.x === undefined ? undefined : channel<T, string>(props.x)))
@@ -706,7 +707,7 @@ export function Plot<T>(props: PlotProps<T>): VNodeChild {
  * compared. A new value adds a panel; panels whose value persists keep
  * their identity across data changes (each reads its rows through a signal).
  */
-function facetGrid<T>(props: PlotProps<T>, readRows: () => T[], base: Record<string, unknown>): VNodeChild {
+function facetGrid<T>(props: ChartProps<T>, readRows: () => T[], base: Record<string, unknown>): VNodeChild {
   const facetOf = channel<T, string>(props.facet!)
   const panelRows = new Map<string, Signal<T[]>>()
   /**

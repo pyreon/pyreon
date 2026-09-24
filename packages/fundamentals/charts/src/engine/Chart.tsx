@@ -67,7 +67,7 @@ export interface PlotChartProps<T> {
   showGrid?: boolean
   /** Fired with the datum index when a bar is tapped, or -1 for a miss. */
   onSelect?: (index: number) => void
-  /** The engine's INDEX hit — identical to `onSelect` here; the name every host shares, so a native tap and a grammar `<Plot>` bind the same way. */
+  /** The engine's INDEX hit — identical to `onSelect` here; the name every host shares, so a native tap and a grammar `<Chart>` bind the same way. */
   onSelectIndex?: (index: number) => void
   /** Draw a legend, using each mark's `label`. */
   showLegend?: boolean
@@ -1578,7 +1578,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
         } else if (tool === 'brushClear') {
           clearBrushAreas()
         } else {
-          // Static, and deliberately not dynamic: `@pyreon/charts/plot` is
+          // Static, and deliberately not dynamic: `@pyreon/charts` is
           // ONE package entry (rolldown builds it as a single-chunk bundle —
           // no code splitting), so `import('./svg')` inlines to exactly the
           // same bytes as a static import while adding an async indirection

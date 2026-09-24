@@ -1805,7 +1805,7 @@ const geometry = () => props.shape
   },
   {
     // A chart JSX component reached the native build unlowered. The radial
-    // components (`PieChart` / `GaugeChart` from `@pyreon/charts/plot`) DO
+    // components (`PieChart` / `GaugeChart` from `@pyreon/charts`) DO
     // lower — but only in the supported shape, and every decline path warns
     // by name at transform time (an `(d, index)` accessor, a missing
     // `data`/`value`/`label`/`value` prop). `PlotChart` and the rest of the

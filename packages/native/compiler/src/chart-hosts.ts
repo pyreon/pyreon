@@ -1,4 +1,4 @@
-// `@pyreon/charts/plot` family hosts on native — the table both emitters lower
+// `@pyreon/charts` family hosts on native — the table both emitters lower
 // from.
 //
 // Every plot family's GEOMETRY is generated into the native runtimes
@@ -881,18 +881,18 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
 /** Plot hosts that exist on the web but have no native lowering yet, with the reason. */
 export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {}
 
-/** The grammar host and its mark/config children — `<Plot>` desugars to `<PlotChart marks>` before the plot emit runs. */
-export const GRAMMAR_CHART_HOST = 'Plot'
+/** The grammar host and its mark/config children — `<Chart>` desugars to `<PlotChart marks>` before the plot emit runs. */
+export const GRAMMAR_CHART_HOST = 'Chart'
 export const GRAMMAR_MARK_TAGS: Readonly<Record<string, string>> = { Bar: 'bars', Line: 'line', Area: 'area', Dot: 'points', StackedArea: 'stackedArea', Band: 'band' }
 export const GRAMMAR_CONFIG_TAGS: readonly string[] = ['Rule', 'Axis', 'Tip', 'Legend', 'Zoom', 'Label', 'Scale', 'Histogram']
-/** The FAMILY marks: `<Plot>` with one of these desugars to the row-array host it names, channels as accessors. */
+/** The FAMILY marks: `<Chart>` with one of these desugars to the row-array host it names, channels as accessors. */
 export const GRAMMAR_FAMILY_TAGS: Readonly<Record<string, string>> = { Arc: 'PieChart', Stage: 'FunnelChart', Cell: 'HeatmapChart', Candle: 'CandlestickChart' }
 /** The channels of each family mark (the host's accessor props); every other attr is an option. */
 const FAMILY_CHANNELS: Readonly<Record<string, readonly string[]>> = { Arc: ['value', 'label', 'color'], Stage: ['value', 'label', 'color'], Cell: ['x', 'y', 'value'], Candle: ['open', 'high', 'low', 'close'] }
 /** Where a family mark's option attrs go: an options struct prop, or straight onto the host. */
 const FAMILY_OPTIONS_PROP: Readonly<Record<string, string | undefined>> = { Stage: 'funnel', Candle: 'candle' }
 
-/** Whether a JSX tag is a `@pyreon/charts/plot` host, lowered or not (the grammar's mark tags included, so a stray one warns instead of emitting a phantom component). */
+/** Whether a JSX tag is a `@pyreon/charts` host, lowered or not (the grammar's mark tags included, so a stray one warns instead of emitting a phantom component). */
 export function isChartHostTag(tag: string): boolean {
   return (
     Object.hasOwn(CHART_HOSTS, tag) ||
@@ -2949,7 +2949,7 @@ const flagOn = (e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string): bool
 }
 
 /**
- * `<Plot data x>` with mark children → the `<PlotChart data x marks={[…]}>`
+ * `<Chart data x>` with mark children → the `<PlotChart data x marks={[…]}>`
  * element the plot emit already lowers, so the grammar is the SAME spec on
  * native as on the web. Field-name channels become accessors; mark children
  * become mark calls with their options; Rule/Axis/Tip/Legend/Zoom become the
@@ -2969,7 +2969,7 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   const markers: ExprIR[] = []
   for (const a of e.attrs) {
     if (a.kind === 'attr' && (a.name === 'x' || a.name === 'xValue')) attrs.push({ kind: 'attr', name: a.name, value: channelArrow(a.value) })
-    else if (a.kind === 'attr' && a.name === 'color') warn('<Plot color>: the long-format pivot is resolved on the web at runtime and is not lowered on native; the chart renders wide-format (one mark, one series).')
+    else if (a.kind === 'attr' && a.name === 'color') warn('<Chart color>: the long-format pivot is resolved on the web at runtime and is not lowered on native; the chart renders wide-format (one mark, one series).')
     else attrs.push(a)
   }
   for (const c of e.children) {
@@ -3136,7 +3136,7 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
         break
       }
       default:
-        warn(`<Plot>: child <${tag}> is not a mark or a chart setting; it is ignored on native.`)
+        warn(`<Chart>: child <${tag}> is not a mark or a chart setting; it is ignored on native.`)
     }
   }
   if (histogram !== undefined) {
@@ -3147,7 +3147,7 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     const dataAttr = attrs.find((a) => a.kind === 'attr' && a.name === 'data')
     const rows = dataAttr?.kind === 'attr' ? dataAttr.value : undefined
     if (rows === undefined) {
-      warn('<Histogram>: <Plot> needs a `data` attribute to bin; the plot renders without it on native.')
+      warn('<Histogram>: <Chart> needs a `data` attribute to bin; the plot renders without it on native.')
     } else {
       if (marks.length > 0) warn('<Histogram>: a mark beside it reads the ORIGINAL rows, which the histogram replaces with bins; it is dropped on native.')
       const binned: ExprIR = {
@@ -3177,7 +3177,7 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
 }
 
 /**
- * `<Plot data><Arc value label /></Plot>` → `<PieChart data value={(d) => d.value} label={…}>`
+ * `<Chart data><Arc value label /></Chart>` → `<PieChart data value={(d) => d.value} label={…}>`
  * (and Stage → Funnel, Cell → Heatmap, Candle → Candlestick): the plot's shared
  * props carry over, the mark's channels become the host's accessors, its
  * option attrs go where the host keeps them (`funnel={{…}}` / `candle={{…}}`
@@ -3197,9 +3197,9 @@ function desugarFamilyGrammar(
   for (const a of e.attrs) {
     if (a.kind === 'attr' && a.name === 'x') {
       if (host === 'CandlestickChart') attrs.push({ kind: 'attr', name: 'x', value: channelArrow(a.value) })
-      else warn(`<Plot x>: a ${host.replace('Chart', '').toLowerCase()} has no x channel; it is ignored.`)
+      else warn(`<Chart x>: a ${host.replace('Chart', '').toLowerCase()} has no x channel; it is ignored.`)
     } else if (a.kind === 'attr' && (a.name === 'xValue' || a.name === 'color' || a.name === 'horizontal' || a.name === 'showGrid')) {
-      warn(`<Plot ${a.name}>: not a ${host.replace('Chart', '').toLowerCase()} prop; it is ignored.`)
+      warn(`<Chart ${a.name}>: not a ${host.replace('Chart', '').toLowerCase()} prop; it is ignored.`)
     } else attrs.push(a)
   }
   const channels = FAMILY_CHANNELS[mark.tag]!
@@ -3215,13 +3215,13 @@ function desugarFamilyGrammar(
   for (const child of children) {
     if (child === mark) continue
     if (Object.hasOwn(GRAMMAR_FAMILY_TAGS, child.tag)) {
-      warn(`<Plot>: one family per plot — <${child.tag}> is ignored beside <${mark.tag}>.`)
+      warn(`<Chart>: one family per plot — <${child.tag}> is ignored beside <${mark.tag}>.`)
       continue
     }
     if (child.tag === 'Tip') attrs.push({ kind: 'attr', name: 'tooltip', value: lit(true) })
     else if (child.tag === 'Legend') attrs.push({ kind: 'attr', name: 'showLegend', value: lit(true) })
     else if (child.tag === 'Axis' && !flagOn(child, 'x') && !flagOn(child, 'y2') && attrOf(child, 'format') !== undefined) attrs.push({ kind: 'attr', name: 'format', value: attrOf(child, 'format')! })
-    else warn(`<Plot>: <${child.tag}> does not apply to a ${host.replace('Chart', '').toLowerCase()}; it is ignored.`)
+    else warn(`<Chart>: <${child.tag}> does not apply to a ${host.replace('Chart', '').toLowerCase()}; it is ignored.`)
   }
   return { kind: 'jsx-element', tag: host, attrs, children: [] }
 }
@@ -3333,7 +3333,7 @@ export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = 
  * `defaultTheme` is module-private in both targets. Field ORDER is the struct's
  * declaration order (Swift's memberwise init rejects reordered arguments), and
  * every value is the emitted TEXT of that field. Drift against
- * `@pyreon/charts/plot`'s `defaultTheme` is locked by `chart-theme-default.test.ts`.
+ * `@pyreon/charts`'s `defaultTheme` is locked by `chart-theme-default.test.ts`.
  */
 export const CHART_THEME_DEFAULT = {
   palette: ['#4f7df3', '#f97362', '#22c3a6', '#a66cff', '#ffb020', '#2fb7e8', '#f45fa3', '#7bc950', '#8892a6', '#c47a3d'],
@@ -3356,7 +3356,7 @@ export const CHART_THEME_DEFAULT = {
 } as const
 
 /**
- * The named palettes `@pyreon/charts/plot` exports as `palettes.*`, so a theme
+ * The named palettes `@pyreon/charts` exports as `palettes.*`, so a theme
  * literal may say `palette: palettes.okabeIto` and lower to the resolved list.
  * Drift-locked against theme.ts by `chart-theme-default.test.ts`.
  */

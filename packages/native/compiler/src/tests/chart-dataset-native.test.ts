@@ -11,7 +11,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * page's registry and are named as web-only.
  */
 const DATASET = `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return (
     <OptionChart option={{
@@ -44,7 +44,7 @@ describe.each(['swift', 'kotlin'] as const)('dataset on %s', (target) => {
 
   it('object rows with declared dimensions feed a pie through encode.itemName / value', () => {
     const r = transform(`
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ dataset: { dimensions: ['name', 'share'], source: [{ name: 'A', share: 60 }, { name: 'B', share: 40 }] }, series: [{ type: 'pie', encode: { itemName: 'name', value: 'share' } }] }} />
 }`, { target })
@@ -57,7 +57,7 @@ export function App() {
 
   it('a registered transform is named as web-only rather than run silently empty', () => {
     const r = transform(`
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ dataset: [{ source: [['x', 'y'], ['a', 1]] }, { transform: { type: 'ecStat:regression' } }], xAxis: { type: 'category' }, yAxis: {}, series: [{ type: 'line', datasetIndex: 1 }] }} />
 }`, { target })
@@ -66,7 +66,7 @@ export function App() {
 
   it('fromDatasetIndex chains a derived dataset through a built-in transform, the same as the web', () => {
     const r = transform(`
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return (
     <OptionChart option={{
@@ -95,7 +95,7 @@ export function App() {
 describe.each(['swift', 'kotlin'] as const)('negative datums on %s', (target) => {
   it('a negative literal datum lowers like a positive one (a unary minus over a literal is a literal)', () => {
     const r = transform(`
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ xAxis: { type: 'category', data: ['a', 'b'] }, yAxis: {}, series: [{ type: 'line', data: [1, -2.5] }] }} />
 }`, { target })

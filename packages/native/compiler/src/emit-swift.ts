@@ -8791,7 +8791,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   }
   if (tag === 'Flow' && canAliasIntercept(tag, '@pyreon/flow')) return emitSwiftFlowHost(e)
   if (tag === 'Controls' && canAliasIntercept(tag, '@pyreon/flow')) return emitSwiftStandaloneFlowControls(e, indent)
-  // `@pyreon/charts/plot` family hosts → PyreonChartCanvas over the generated
+  // `@pyreon/charts` family hosts → PyreonChartCanvas over the generated
   // engine (chart-hosts.ts); accessor-prop hosts warn by name.
   if (isChartHostTag(tag)) return emitSwiftChartHost(e, indent)
   // `<ChartThemeProvider>` provides a theme through CONTEXT on the web; the
@@ -8901,7 +8901,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Link' || tag === 'RouterLink') return emitSwiftLink(e, indent)
   if (tag === 'PieChart') return emitSwiftPieChart(e, indent)
   if (tag === 'GaugeChart') return emitSwiftGaugeChart(e, indent)
-  // `<PieChart>` / `<GaugeChart>` from @pyreon/charts/plot — the radial
+  // `<PieChart>` / `<GaugeChart>` from @pyreon/charts — the radial
   // family lowers to the runtime wrapper views over the GENERATED engine
   // (renderPie / renderGauge), so web and native draw the same math.
   // `<QueryClientProvider client={…}>` is TRANSPARENT on native. It exists on
@@ -13270,7 +13270,7 @@ function emitSwiftRxCall(
 }
 
 /**
- * `<PieChart data value label …>` (@pyreon/charts/plot) → the runtime-swift
+ * `<PieChart data value label …>` (@pyreon/charts) → the runtime-swift
  * `PyreonPieChart` view. The accessor props pass through as closures — the
  * wrapper is generic over the row type, so `value={(d) => d.amount}` emits
  * `{ d in d.amount }` and Swift infers the parameter from `data`.
@@ -13334,7 +13334,7 @@ function emitSwiftPieChart(
 }
 
 /**
- * `<GaugeChart value …>` (@pyreon/charts/plot) → the runtime-swift
+ * `<GaugeChart value …>` (@pyreon/charts) → the runtime-swift
  * `PyreonGaugeChart` view. Scalar props map 1:1; `value={() => x()}`
  * unwraps to the reactive read.
  */
@@ -13383,7 +13383,7 @@ function emitSwiftGaugeChart(
 
 
 // ---------------------------------------------------------------------------
-// `@pyreon/charts/plot` family hosts → PyreonChartCanvas (the SwiftUI Canvas
+// `@pyreon/charts` family hosts → PyreonChartCanvas (the SwiftUI Canvas
 // that walks the generated engine's draw list). See chart-hosts.ts.
 // ---------------------------------------------------------------------------
 
@@ -13701,7 +13701,7 @@ function emitSwiftChartHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
 
 function emitSwiftChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
-  // The grammar: `<Plot>` with mark children desugars to the `<PlotChart marks>` element the plot emit lowers.
+  // The grammar: `<Chart>` with mark children desugars to the `<PlotChart marks>` element the plot emit lowers.
   if (tag === GRAMMAR_CHART_HOST) {
     // The grammar desugars to the host it names (`<PlotChart marks>`, or a family host for `<Arc>` / `<Stage>` / `<Cell>` / `<Candle>`) and re-enters here as that element.
     return emitSwiftChartHost(desugarChartGrammar(e, (w) => _emitWarnings.push(w)), indent)
@@ -13711,7 +13711,7 @@ function emitSwiftChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
     return lowered === undefined ? 'EmptyView()' : emitSwiftChartHost(lowered, indent)
   }
   if (Object.hasOwn(GRAMMAR_MARK_TAGS, tag) || Object.hasOwn(GRAMMAR_FAMILY_TAGS, tag) || GRAMMAR_CONFIG_TAGS.includes(tag)) {
-    _emitWarnings.push(`<${tag}> only means something as a child of <Plot>; on its own it renders nothing.`)
+    _emitWarnings.push(`<${tag}> only means something as a child of <Chart>; on its own it renders nothing.`)
     return 'EmptyView()'
   }
   // Chrome the web host draws but this target does not yet — named, never silent.

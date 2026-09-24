@@ -1,4 +1,4 @@
-import { Area, Axis, Bar, Legend, Line, Plot, Rule, Tip, Zoom, compact } from '@pyreon/charts/plot'
+import { Area, Axis, Bar, Legend, Line, Chart, Rule, Tip, Zoom, compact } from '@pyreon/charts'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**
@@ -40,7 +40,7 @@ export default function PlotGrammar(props: { shared?: Signal<number> }) {
         </button>
         <span>toggles: {() => toggles()}</span>
       </div>
-      <Plot<Row> data={ROWS} x="month" height={240} animate={false}>
+      <Chart<Row> data={ROWS} x="month" height={240} animate={false}>
         <Area y="cost" label="Cost" />
         <Bar y="revenue" label="Revenue" />
         {() => showTarget() && <Line y="target" label="Target" width={2} />}
@@ -49,7 +49,7 @@ export default function PlotGrammar(props: { shared?: Signal<number> }) {
         <Tip crosshair />
         <Legend />
         <Zoom />
-      </Plot>
+      </Chart>
     </div>
   )
 }

@@ -1,7 +1,10 @@
-// `@pyreon/charts/plot` — Pyreon's own charting engine.
+// `@pyreon/charts/engine` — the WHOLE engine surface: layouts, hit tests,
+// draw-list builders, the array-of-marks `<PlotChart>`, the ECharts option
+// compiler. For building on the engine rather than using it; everyday charts
+// import from `@pyreon/charts`, whose curated surface is the stable one. This
+// entry is NOT covered by the stability promise.
 //
-// Distinct from the package's default export, which bridges ECharts. This one
-// owns no third-party engine: the geometry is pure TypeScript over plain data,
+// The engine owns no third-party code: the geometry is pure TypeScript over plain data,
 // and the platform half is a short backend that executes a flat draw list. That
 // is what makes it the path to native rendering, and what makes it
 // tree-shakeable — every mark and every module here is an imported binding, so
@@ -9,8 +12,8 @@
 // radial trigonometry, the decimation, or the time scales.
 
 export { PlotChart } from './engine/Chart'
-export { Arc, Area, Axis, Band, Bar, Candle, Cell, Dot, Histogram, Label, Legend, Line, Plot, Rule, Scale, StackedArea, Stage, Tip, Zoom, channel, resolveGrammar } from './engine/grammar'
-export type { ArcProps, AxisProps, BandProps, BarProps, CandleProps, CellProps, Channel, DotProps, FamilyHost, HistogramProps as HistogramMarkProps, LabelProps, LegendProps, MarkProps, PlotProps, ResolvedGrammar, RuleProps, ScaleProps, StageProps, TipProps, ZoomProps } from './engine/grammar'
+export { Arc, Area, Axis, Band, Bar, Candle, Cell, Dot, Histogram, Label, Legend, Line, Chart, Rule, Scale, StackedArea, Stage, Tip, Zoom, channel, resolveGrammar } from './engine/grammar'
+export type { ArcProps, AxisProps, BandProps, BarProps, CandleProps, CellProps, Channel, DotProps, FamilyHost, HistogramProps as HistogramMarkProps, LabelProps, LegendProps, MarkProps, ChartProps, ResolvedGrammar, RuleProps, ScaleProps, StageProps, TipProps, ZoomProps } from './engine/grammar'
 export type { AxisLabelMode, PlotChartProps } from './engine/Chart'
 export { GaugeChart, PieChart } from './engine/PieChart'
 export { CandlestickChart } from './engine/CandlestickChart'

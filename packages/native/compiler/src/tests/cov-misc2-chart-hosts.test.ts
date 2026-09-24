@@ -1,5 +1,5 @@
 // Branch matrix for `chart-hosts.ts` — the per-host data adapters and the
-// `<Plot>` grammar desugar, both reached through the real `transform()`.
+// `<Chart>` grammar desugar, both reached through the real `transform()`.
 //
 // The adapters' whole job is to REFUSE a shape that cannot cross rather than
 // emit a native view that does not exist, so nearly every spec here pairs a
@@ -29,7 +29,7 @@ describe('chart-hosts — the CalendarChart values adapter', () => {
     app(
       `<CalendarChart start="2026-01-01" end="2026-02-01" values={${values}} />`,
       decls,
-      `import { CalendarChart } from '@pyreon/charts/plot'`,
+      `import { CalendarChart } from '@pyreon/charts'`,
     )
 
   it('lowers an INLINE record literal to the engine list', () => {
@@ -66,7 +66,7 @@ describe('chart-hosts — the ParallelChart rows adapter', () => {
     app(
       `<ParallelChart axes={${axes}} rows={${rows}} />`,
       decls,
-      `import { ParallelChart } from '@pyreon/charts/plot'`,
+      `import { ParallelChart } from '@pyreon/charts'`,
     )
 
   it('lowers numeric rows and maps a null cell to the engine gap marker', () => {
@@ -120,7 +120,7 @@ describe('chart-hosts — the MapChart adapters', () => {
     app(
       `<MapChart ${attrs.includes('values') ? '' : 'values={{}}'} ${attrs} />`,
       decls,
-      `import { MapChart } from '@pyreon/charts/plot'`,
+      `import { MapChart } from '@pyreon/charts'`,
     )
 
   it('refuses the map REGISTRY name and raw GeoJSON, naming the crossing shape', () => {
@@ -152,19 +152,19 @@ describe('chart-hosts — the MapChart adapters', () => {
   })
 })
 
-// ─── the <Plot> grammar desugar ──────────────────────────────────────
+// ─── the <Chart> grammar desugar ──────────────────────────────────────
 
 const ROWS = `interface Row { name: string; v: number; w: number; lo: number; hi: number; r: number }
 const ROWS: Row[] = [{ name: 'a', v: 1, w: 2, lo: 0, hi: 3, r: 1 }]`
 
 const plot = (children: string, plotAttrs = `data={ROWS} x="name"`) =>
   app(
-    `<Plot ${plotAttrs}>${children}</Plot>`,
+    `<Chart ${plotAttrs}>${children}</Chart>`,
     ROWS,
-    `import { Plot, Bar, Line, Area, Dot, Band, Rule, Axis, Scale, Tip, Label, Legend, Zoom, Histogram, Arc } from '@pyreon/charts/plot'`,
+    `import { Chart, Bar, Line, Area, Dot, Band, Rule, Axis, Scale, Tip, Label, Legend, Zoom, Histogram, Arc } from '@pyreon/charts'`,
   )
 
-describe('chart-hosts — <Plot> marks', () => {
+describe('chart-hosts — <Chart> marks', () => {
   it('turns a STRING channel into an accessor and passes an arrow through', () => {
     expect(swift(plot(`<Bar y="v" />`)).code).toContain('.v')
     expect(swift(plot(`<Bar y={(d: Row) => d.w} />`)).code).toContain('.w')
@@ -204,7 +204,7 @@ describe('chart-hosts — <Plot> marks', () => {
   })
 })
 
-describe('chart-hosts — <Plot> settings children', () => {
+describe('chart-hosts — <Chart> settings children', () => {
   it('lowers <Rule> from a y, a from/to pair, or an x — and skips an empty one', () => {
     expect(swift(plot(`<Bar y="v" /><Rule y={3} label="g" color="#111" />`)).code).toContain('"g"')
     expect(swift(plot(`<Bar y="v" /><Rule from={1} to={2} />`)).code).toContain('yFrom')
@@ -274,7 +274,7 @@ describe('chart-hosts — <Plot> settings children', () => {
 
   it('names the long-format `color` pivot', () => {
     const w = swift(plot(`<Bar y="v" />`, `data={ROWS} x="name" color="name"`)).warnings.join('\n')
-    expect(w).toContain('<Plot color>: the long-format pivot')
+    expect(w).toContain('<Chart color>: the long-format pivot')
   })
 })
 
@@ -294,17 +294,17 @@ describe('chart-hosts — <Histogram> replaces the rows', () => {
   it('names a missing `x` and a missing `data`', () => {
     expect(swift(plot(`<Histogram />`)).warnings.join('\n')).toContain('<Histogram>: needs an `x`')
     expect(swift(plot(`<Histogram x="v" />`, `x="name"`)).warnings.join('\n')).toContain(
-      '<Plot> needs a `data` attribute to bin',
+      '<Chart> needs a `data` attribute to bin',
     )
   })
 })
 
-describe('chart-hosts — the family grammar (<Plot><Arc/></Plot>)', () => {
+describe('chart-hosts — the family grammar (<Chart><Arc/></Chart>)', () => {
   const fam = (mark: string, plotAttrs = `data={ROWS}`, extra = '') =>
     app(
-      `<Plot ${plotAttrs}>${mark}${extra}</Plot>`,
+      `<Chart ${plotAttrs}>${mark}${extra}</Chart>`,
       ROWS,
-      `import { Plot, Arc, Bar, Tip, Legend, Axis, Zoom, Stage } from '@pyreon/charts/plot'`,
+      `import { Chart, Arc, Bar, Tip, Legend, Axis, Zoom, Stage } from '@pyreon/charts'`,
     )
 
   it('routes a family mark to its host and moves the mark channels onto it', () => {
@@ -321,7 +321,7 @@ describe('chart-hosts — the family grammar (<Plot><Arc/></Plot>)', () => {
     ).warnings.join('\n')
     expect(w).toContain('has no x channel')
     for (const p of ['xValue', 'color', 'horizontal', 'showGrid']) {
-      expect(w, p).toContain(`<Plot ${p}>: not a`)
+      expect(w, p).toContain(`<Chart ${p}>: not a`)
     }
   })
 
@@ -343,16 +343,16 @@ describe('chart-hosts — the family grammar (<Plot><Arc/></Plot>)', () => {
     // no options prop, so an extra attr lands straight on the host.
     const stage = swift(
       app(
-        `<Plot data={ROWS}><Stage value="v" label="name" gap={7} /></Plot>`,
+        `<Chart data={ROWS}><Stage value="v" label="name" gap={7} /></Chart>`,
         ROWS,
-        `import { Plot, Stage } from '@pyreon/charts/plot'`,
+        `import { Chart, Stage } from '@pyreon/charts'`,
       ),
     )
     const plainStage = swift(
       app(
-        `<Plot data={ROWS}><Stage value="v" label="name" /></Plot>`,
+        `<Chart data={ROWS}><Stage value="v" label="name" /></Chart>`,
         ROWS,
-        `import { Plot, Stage } from '@pyreon/charts/plot'`,
+        `import { Chart, Stage } from '@pyreon/charts'`,
       ),
     )
     expect(stage.code).not.toBe(plainStage.code)
@@ -367,7 +367,7 @@ describe('chart-hosts — chart theme literals', () => {
     app(
       `<PieChart data={ROWS} value={(d: Row) => d.v} theme={${theme}} />`,
       ROWS,
-      `import { PieChart, chartThemes, palettes } from '@pyreon/charts/plot'`,
+      `import { PieChart, chartThemes, palettes } from '@pyreon/charts'`,
     )
 
   it('accepts a named theme reference and an object literal', () => {
@@ -415,7 +415,7 @@ describe('chart-hosts — <ChartThemeProvider> scope', () => {
     app(
       `<ChartThemeProvider ${attrs}><PieChart data={ROWS} value={(d: Row) => d.v} /></ChartThemeProvider>`,
       ROWS,
-      `import { PieChart, ChartThemeProvider, chartThemes } from '@pyreon/charts/plot'`,
+      `import { PieChart, ChartThemeProvider, chartThemes } from '@pyreon/charts'`,
     )
 
   it('accepts a literal mode and names a missing or non-literal one', () => {
@@ -448,7 +448,7 @@ describe('chart-hosts — the optional-options field helper', () => {
       `<TreeChart data={NODE} onSelectIndex={(i: number) => pick(i)} ${attrs} />`,
       `const NODE = { name: 'root', children: [] }
 function pick(i: number) {}`,
-      `import { TreeChart } from '@pyreon/charts/plot'`,
+      `import { TreeChart } from '@pyreon/charts'`,
     )
 
   it('reads the field off the options value on BOTH targets, given or not', () => {
@@ -467,9 +467,9 @@ function pick(i: number) {}`,
 describe('chart-hosts — residual grammar and theme shapes', () => {
   const hist = (x: string) =>
     app(
-      `<Plot data={ROWS} x="name"><Histogram x={${x}} /></Plot>`,
+      `<Chart data={ROWS} x="name"><Histogram x={${x}} /></Chart>`,
       ROWS,
-      `import { Plot, Histogram } from '@pyreon/charts/plot'
+      `import { Chart, Histogram } from '@pyreon/charts'
 function pick(v: number) { return v }`,
     )
 
@@ -489,9 +489,9 @@ function pick(v: number) { return v }`,
   it('ignores a Plot child that is not a JSX element', () => {
     const r = swift(
       app(
-        `<Plot data={ROWS} x="name">{' '}<Bar y="v" /></Plot>`,
+        `<Chart data={ROWS} x="name">{' '}<Bar y="v" /></Chart>`,
         ROWS,
-        `import { Plot, Bar } from '@pyreon/charts/plot'`,
+        `import { Chart, Bar } from '@pyreon/charts'`,
       ),
     )
     expect(r.code).toContain('Series(kind: "bars"')
@@ -501,11 +501,11 @@ function pick(v: number) { return v }`,
   it('ignores a SPREAD / event attr on a family mark rather than treating it as an option', () => {
     const r = swift(
       app(
-        `<Plot data={ROWS}><Arc value="v" label="name" onSelect={(i: number) => sink(i)} {...extra} /></Plot>`,
+        `<Chart data={ROWS}><Arc value="v" label="name" onSelect={(i: number) => sink(i)} {...extra} /></Chart>`,
         `${ROWS}
 const extra = {}
 function sink(i: number) { return i }`,
-        `import { Plot, Arc } from '@pyreon/charts/plot'`,
+        `import { Chart, Arc } from '@pyreon/charts'`,
       ),
     )
     expect(r.code).toContain('PyreonChartCanvas')
@@ -517,7 +517,7 @@ function sink(i: number) { return i }`,
         `<PieChart data={ROWS} value={(d: Row) => d.v} theme={{ ...base, fontSize: 13 }} />`,
         `${ROWS}
 const base = {}`,
-        `import { PieChart } from '@pyreon/charts/plot'`,
+        `import { PieChart } from '@pyreon/charts'`,
       ),
     )
     expect(chart.warnings.join('\n')).toContain('only an object literal with literal fields lowers')
@@ -526,7 +526,7 @@ const base = {}`,
         `<ChartThemeProvider mode="dark" theme={{ ...base, fontSize: 13 }}><PieChart data={ROWS} value={(d: Row) => d.v} /></ChartThemeProvider>`,
         `${ROWS}
 const base = {}`,
-        `import { PieChart, ChartThemeProvider } from '@pyreon/charts/plot'`,
+        `import { PieChart, ChartThemeProvider } from '@pyreon/charts'`,
       ),
     )
     expect(provider.warnings.join('\n')).toContain("the mode's theme applies")
@@ -537,9 +537,9 @@ describe('chart-hosts — the settings children with NO options set', () => {
   const bare = (child: string) =>
     swift(
       app(
-        `<Plot data={ROWS} x="name"><Bar y="v" />${child}</Plot>`,
+        `<Chart data={ROWS} x="name"><Bar y="v" />${child}</Chart>`,
         ROWS,
-        `import { Plot, Bar, Axis, Scale, Label } from '@pyreon/charts/plot'`,
+        `import { Chart, Bar, Axis, Scale, Label } from '@pyreon/charts'`,
       ),
     ).code
 

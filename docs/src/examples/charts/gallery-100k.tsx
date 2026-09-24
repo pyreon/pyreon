@@ -1,4 +1,4 @@
-import { line, PlotChart } from '@pyreon/charts/plot'
+import { line, PlotChart } from '@pyreon/charts/engine'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**

@@ -96,7 +96,7 @@ export interface Scenario {
   imports: string[]
   /**
    * Lib entry file relative to the package's lib/ (default "index.js").
-   * Subpath scenarios (e.g. charts' "plot.js") lock a subpath export's
+   * Subpath scenarios (e.g. charts' "engine.js") lock a subpath export's
    * tree-shaking without routing through the main barrel.
    */
   entry?: string
@@ -203,7 +203,7 @@ export const SCENARIOS: Scenario[] = [
     id: '@pyreon/charts::plot-minimal',
     pkg: '@pyreon/charts',
     dir: 'fundamentals/charts',
-    entry: 'plot.js',
+    entry: 'engine.js',
     // A bar+line chart must not pull the radial/finance/matrix families
     // or the SVG serializer — marks are imported bindings by design.
     imports: ['PlotChart', 'bars', 'line'],
@@ -212,7 +212,7 @@ export const SCENARIOS: Scenario[] = [
     id: '@pyreon/charts::plot-svg',
     pkg: '@pyreon/charts',
     dir: 'fundamentals/charts',
-    entry: 'plot.js',
+    entry: 'svg.js',
     // The server-side serializer must not drag components or the canvas
     // host (ResizeObserver/rAF) into a node bundle.
     imports: ['chartToSvg'],
@@ -230,9 +230,16 @@ export const SCENARIOS: Scenario[] = [
     id: '@pyreon/charts::plot-pie',
     pkg: '@pyreon/charts',
     dir: 'fundamentals/charts',
-    entry: 'plot.js',
     // A radial-only import must not pull the cartesian layout/stack path.
     imports: ['PieChart'],
+  },
+  {
+    id: '@pyreon/charts::chart-line',
+    pkg: '@pyreon/charts',
+    dir: 'fundamentals/charts',
+    // The recommended first chart from the main entry: <Chart> + <Line>.
+    // Must not pull the family hosts or the ECharts wrapper.
+    imports: ['Chart', 'Line'],
   },
 ]
 

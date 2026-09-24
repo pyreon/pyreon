@@ -1,8 +1,9 @@
-import { area, bars, line, PlotChart, points, smooth, currency } from '@pyreon/charts/plot'
+import { currency } from '@pyreon/charts'
+import { area, bars, line, PlotChart, points, smooth } from '@pyreon/charts/engine'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**
- * Live `@pyreon/charts/plot` demo — the REAL engine, not a re-implementation.
+ * Live `@pyreon/charts` demo — the REAL engine, not a re-implementation.
  *
  * Shows the three things the plot engine is actually about: marks compose in
  * paint order (area under line under points), `data` as an ACCESSOR is what

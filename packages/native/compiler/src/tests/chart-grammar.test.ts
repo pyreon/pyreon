@@ -15,14 +15,14 @@ const BRUSH_FN = `function onBrush(r: BrushRange | null) {
   if (r == null) return
 }
 `
-const GRAMMAR = `${HEAD}import { Plot, Bar, Line, Dot, Rule, Axis, Tip, Legend, Zoom, compact } from '@pyreon/charts/plot'
-import type { BrushRange } from '@pyreon/charts/plot'
+const GRAMMAR = `${HEAD}import { Chart, Bar, Line, Dot, Rule, Axis, Tip, Legend, Zoom, compact } from '@pyreon/charts'
+import type { BrushRange } from '@pyreon/charts'
 ${DATA}export function Revenue() {
   const picked = signal(-1)
   return (
     <Stack>
       <Text>{picked()}</Text>
-      <Plot data={MONTHS} x="name" height={240} theme={{ palette: ['#111111', '#222222'] }} onSelect={(i: number) => picked.set(i)}>
+      <Chart data={MONTHS} x="name" height={240} theme={{ palette: ['#111111', '#222222'] }} onSelect={(i: number) => picked.set(i)}>
         <Bar y="revenue" label="Revenue" />
         <Line y={(d: Month) => d.cost} label="Cost" width={3} />
         <Dot y="revenue" r="size" label="Size" />
@@ -30,13 +30,15 @@ ${DATA}export function Revenue() {
         <Axis y format={compact} />
         <Legend />
         <Zoom navigator presets={[{ label: '1M', count: 30 }]} />
-      </Plot>
+      </Chart>
     </Stack>
   )
 }
 `
-const ARRAY = `${HEAD}import { PlotChart, bars, line, bubble, compact } from '@pyreon/charts/plot'
-import type { Annotation, BrushRange } from '@pyreon/charts/plot'
+const ARRAY = `${HEAD}import { compact } from '@pyreon/charts'
+import { PlotChart, bars, line, bubble } from '@pyreon/charts/engine'
+import type { BrushRange } from '@pyreon/charts'
+import type { Annotation } from '@pyreon/charts/engine'
 ${DATA}export function Revenue() {
   const picked = signal(-1)
   return (
@@ -48,7 +50,7 @@ ${DATA}export function Revenue() {
 }
 `
 
-describe('chart grammar — <Plot> children desugar to <PlotChart marks>', () => {
+describe('chart grammar — <Chart> children desugar to <PlotChart marks>', () => {
   for (const target of ['swift', 'kotlin'] as const) {
     it(`${target}: the grammar form emits BYTE-IDENTICAL code to the marks-array form`, () => {
       const g = transform(GRAMMAR, { target })
@@ -58,13 +60,13 @@ describe('chart grammar — <Plot> children desugar to <PlotChart marks>', () =>
       expect(g.code).toContain('PyreonChartCanvas(')
     })
   }
-  it('a long-format color channel warns BY NAME and the chart still lowers wide-format; a stray mark outside <Plot> warns', () => {
+  it('a long-format color channel warns BY NAME and the chart still lowers wide-format; a stray mark outside <Chart> warns', () => {
     const src = GRAMMAR.replace('x="name" height={240}', 'x="name" color="name" height={240}')
     const r = transform(src, { target: 'swift' })
-    expect(r.warnings).toEqual(['<Plot color>: the long-format pivot is resolved on the web at runtime and is not lowered on native; the chart renders wide-format (one mark, one series).'])
+    expect(r.warnings).toEqual(['<Chart color>: the long-format pivot is resolved on the web at runtime and is not lowered on native; the chart renders wide-format (one mark, one series).'])
     expect(r.code).toContain('PyreonChartCanvas(')
-    const stray = transform(`${HEAD}import { Bar } from '@pyreon/charts/plot'\nexport function A() { return (<Stack><Bar y="x" /></Stack>) }`, { target: 'kotlin' })
-    expect(stray.warnings).toEqual(['<Bar> only means something as a child of <Plot>; on its own it renders nothing.'])
+    const stray = transform(`${HEAD}import { Bar } from '@pyreon/charts'\nexport function A() { return (<Stack><Bar y="x" /></Stack>) }`, { target: 'kotlin' })
+    expect(stray.warnings).toEqual(['<Bar> only means something as a child of <Chart>; on its own it renders nothing.'])
   })
   it('<Tip> lowers to the tooltip flag (the plot host draws it on tap); <Axis x time hidden> and a brush on <Zoom> map to their plot props', () => {
     const src = GRAMMAR.replace(DATA, DATA + BRUSH_FN).replace('<Legend />', '<Legend /><Tip crosshair /><Axis x time hidden /><Zoom brush={onBrush} inside={false} />').replace('<Zoom navigator presets={[{ label: \'1M\', count: 30 }]} />', '')
@@ -92,7 +94,7 @@ describe('chart grammar — the toolchains accept the desugared emit', () => {
 })
 
 // ---------------------------------------------------------------------------
-// The family marks: `<Plot>` with `<Arc>` / `<Stage>` / `<Cell>` / `<Candle>`
+// The family marks: `<Chart>` with `<Arc>` / `<Stage>` / `<Cell>` / `<Candle>`
 // desugars to the row-array host it names, byte-identical to writing that
 // host directly — so the accessor inlining, the chrome, the tap and the
 // entrance are inherited. `<Label>` lowers to the plot's point markers and
@@ -101,22 +103,22 @@ describe('chart grammar — the toolchains accept the desugared emit', () => {
 const SLICES = `interface S { name: string; pct: number; tint: string }
 const SL: S[] = [{ name: 'a', pct: 60, tint: '#111111' }, { name: 'b', pct: 40, tint: '#222222' }]
 `
-const ARC = `${HEAD}import { Plot, Arc, Tip, Legend } from '@pyreon/charts/plot'
+const ARC = `${HEAD}import { Chart, Arc, Tip, Legend } from '@pyreon/charts'
 ${SLICES}export function Share() {
-  return (<Stack><Plot data={SL} title="Share" showTitle width={240} height={200}><Arc value="pct" label="name" color={(d: S) => d.tint} innerRadius={0.5} /><Tip /><Legend /></Plot></Stack>)
+  return (<Stack><Chart data={SL} title="Share" showTitle width={240} height={200}><Arc value="pct" label="name" color={(d: S) => d.tint} innerRadius={0.5} /><Tip /><Legend /></Chart></Stack>)
 }
 `
-const PIE = `${HEAD}import { PieChart } from '@pyreon/charts/plot'
+const PIE = `${HEAD}import { PieChart } from '@pyreon/charts'
 ${SLICES}export function Share() {
   return (<Stack><PieChart data={SL} title="Share" showTitle width={240} height={200} value={(d) => d.pct} label={(d) => d.name} color={(d: S) => d.tint} innerRadius={0.5} tooltip showLegend /></Stack>)
 }
 `
-const STAGE = `${HEAD}import { Plot, Stage } from '@pyreon/charts/plot'
+const STAGE = `${HEAD}import { Chart, Stage } from '@pyreon/charts'
 ${SLICES}export function Steps() {
-  return (<Stack><Plot data={SL} height={200}><Stage value="pct" label="name" sort="none" gap={4} /></Plot></Stack>)
+  return (<Stack><Chart data={SL} height={200}><Stage value="pct" label="name" sort="none" gap={4} /></Chart></Stack>)
 }
 `
-const FUNNEL = `${HEAD}import { FunnelChart } from '@pyreon/charts/plot'
+const FUNNEL = `${HEAD}import { FunnelChart } from '@pyreon/charts'
 ${SLICES}export function Steps() {
   return (<Stack><FunnelChart data={SL} height={200} value={(d) => d.pct} label={(d) => d.name} funnel={{ sort: 'none', gap: 4 }} /></Stack>)
 }
@@ -124,12 +126,12 @@ ${SLICES}export function Steps() {
 const OBS = `interface C { hour: string; day: string; n: number }
 const CELLS: C[] = [{ hour: '1', day: 'Mon', n: 2 }, { hour: '2', day: 'Mon', n: 5 }]
 `
-const CELL = `${HEAD}import { Plot, Cell, Axis, compact } from '@pyreon/charts/plot'
+const CELL = `${HEAD}import { Chart, Cell, Axis, compact } from '@pyreon/charts'
 ${OBS}export function Heat() {
-  return (<Stack><Plot data={CELLS} width={240} height={160}><Cell x="hour" y="day" value="n" gap={2} /><Axis y format={compact} /></Plot></Stack>)
+  return (<Stack><Chart data={CELLS} width={240} height={160}><Cell x="hour" y="day" value="n" gap={2} /><Axis y format={compact} /></Chart></Stack>)
 }
 `
-const HEAT = `${HEAD}import { HeatmapChart, compact } from '@pyreon/charts/plot'
+const HEAT = `${HEAD}import { HeatmapChart, compact } from '@pyreon/charts'
 ${OBS}export function Heat() {
   return (<Stack><HeatmapChart data={CELLS} width={240} height={160} x={(d) => d.hour} y={(d) => d.day} value={(d) => d.n} gap={2} format={compact} /></Stack>)
 }
@@ -137,22 +139,22 @@ ${OBS}export function Heat() {
 const BARS = `interface B { day: string; o: number; h: number; l: number; c: number }
 const BARS: B[] = [{ day: 'Mon', o: 1, h: 3, l: 0.5, c: 2 }, { day: 'Tue', o: 2, h: 4, l: 1.5, c: 3 }]
 `
-const CANDLE = `${HEAD}import { Plot, Candle } from '@pyreon/charts/plot'
+const CANDLE = `${HEAD}import { Chart, Candle } from '@pyreon/charts'
 ${BARS}export function Periods() {
-  return (<Stack><Plot data={BARS} x="day" height={180}><Candle open="o" high="h" low="l" close="c" upColor="#00ff00" /></Plot></Stack>)
+  return (<Stack><Chart data={BARS} x="day" height={180}><Candle open="o" high="h" low="l" close="c" upColor="#00ff00" /></Chart></Stack>)
 }
 `
-const CANDLESTICK = `${HEAD}import { CandlestickChart } from '@pyreon/charts/plot'
+const CANDLESTICK = `${HEAD}import { CandlestickChart } from '@pyreon/charts'
 ${BARS}export function Periods() {
   return (<Stack><CandlestickChart data={BARS} x={(d) => d.day} height={180} open={(d) => d.o} high={(d) => d.h} low={(d) => d.l} close={(d) => d.c} candle={{ upColor: '#00ff00' }} /></Stack>)
 }
 `
-const LABELS = `${HEAD}import { Plot, Bar, Label, Rule } from '@pyreon/charts/plot'
+const LABELS = `${HEAD}import { Chart, Bar, Label, Rule } from '@pyreon/charts'
 ${DATA}export function Peaks() {
-  return (<Stack><Plot data={MONTHS} x="name" height={200}><Bar y="revenue" /><Label at="max" text="Peak" color="#b42318" /><Label series={0} at={1} text="Feb" radius={6} /><Rule x={0.5} label="launch" /></Plot></Stack>)
+  return (<Stack><Chart data={MONTHS} x="name" height={200}><Bar y="revenue" /><Label at="max" text="Peak" color="#b42318" /><Label series={0} at={1} text="Feb" radius={6} /><Rule x={0.5} label="launch" /></Chart></Stack>)
 }
 `
-const MARKERS = `${HEAD}import { PlotChart, bars } from '@pyreon/charts/plot'
+const MARKERS = `${HEAD}import { PlotChart, bars } from '@pyreon/charts/engine'
 ${DATA}export function Peaks() {
   return (<Stack><PlotChart data={MONTHS} x={(d) => d.name} height={200} marks={[bars((d) => d.revenue)]} annotations={[{ x: 0.5, label: 'launch' }]} markers={[{ label: 'Peak', at: 'max', color: '#b42318' }, { label: 'Feb', seriesIndex: 0, atIndex: 1, radius: 6 }]} /></Stack>)
 }
@@ -177,18 +179,18 @@ describe('chart grammar — the family marks desugar to the row-array hosts', ()
     }
   }
   it('what does not apply to a family is reported by name and the host still lowers', () => {
-    const src = `${HEAD}import { Plot, Arc, Stage, Bar, Zoom } from '@pyreon/charts/plot'
+    const src = `${HEAD}import { Chart, Arc, Stage, Bar, Zoom } from '@pyreon/charts'
 ${SLICES}export function Share() {
-  return (<Stack><Plot data={SL} x="name" height={200}><Arc value="pct" label="name" /><Stage value="pct" label="name" /><Bar y="pct" /><Zoom /></Plot></Stack>)
+  return (<Stack><Chart data={SL} x="name" height={200}><Arc value="pct" label="name" /><Stage value="pct" label="name" /><Bar y="pct" /><Zoom /></Chart></Stack>)
 }
 `
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(src, { target })
       expect(r.warnings).toEqual([
-        '<Plot x>: a pie has no x channel; it is ignored.',
-        '<Plot>: one family per plot — <Stage> is ignored beside <Arc>.',
-        '<Plot>: <Bar> does not apply to a pie; it is ignored.',
-        '<Plot>: <Zoom> does not apply to a pie; it is ignored.',
+        '<Chart x>: a pie has no x channel; it is ignored.',
+        '<Chart>: one family per plot — <Stage> is ignored beside <Arc>.',
+        '<Chart>: <Bar> does not apply to a pie; it is ignored.',
+        '<Chart>: <Zoom> does not apply to a pie; it is ignored.',
       ])
       expect(r.code).toContain('renderPie(')
     }

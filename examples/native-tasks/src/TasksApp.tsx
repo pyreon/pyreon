@@ -85,8 +85,6 @@ import {
   MapChart,
   ParallelChart,
   PieChart,
-  OptionChart,
-  PlotChart,
   PolarChart,
   RadarChart,
   RiverChart,
@@ -94,12 +92,10 @@ import {
   SunburstChart,
   TreeChart,
   TreemapChart,
-  bars,
-  bollinger,
   createChartHandle,
-  line,
-  sma,
-} from '@pyreon/charts/plot'
+} from '@pyreon/charts'
+import { OptionChart } from '@pyreon/charts/option'
+import { PlotChart, bars, bollinger, line, sma } from '@pyreon/charts/engine'
 import type {
   BrushRange,
   GeoHeatPoint,
@@ -113,7 +109,7 @@ import type {
   SankeyNode,
   TreeNode,
   ZoomWindow,
-} from '@pyreon/charts/plot'
+} from '@pyreon/charts'
 import { useForm } from '@pyreon/form'
 import { useFetch, useCrashReporter } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'

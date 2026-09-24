@@ -1,4 +1,5 @@
-import { area, currency, line, PlotChart, points, smooth } from '@pyreon/charts/plot'
+import { currency } from '@pyreon/charts'
+import { area, line, PlotChart, points, smooth } from '@pyreon/charts/engine'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**

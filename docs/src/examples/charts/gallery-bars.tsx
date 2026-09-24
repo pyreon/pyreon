@@ -1,4 +1,4 @@
-import { groupedBars, PlotChart, stackedBars } from '@pyreon/charts/plot'
+import { groupedBars, PlotChart, stackedBars } from '@pyreon/charts/engine'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**

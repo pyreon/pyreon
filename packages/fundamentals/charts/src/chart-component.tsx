@@ -1,7 +1,7 @@
 import type { VNodeChild } from '@pyreon/core'
 import { effect, onCleanup } from '@pyreon/reactivity'
 import type { EChartsOption } from 'echarts'
-import type { ChartEventHandler, ChartEventParams, ChartProps } from './types'
+import type { ChartEventHandler, ChartEventParams, EChartProps } from './types'
 import { useChart } from './use-chart'
 
 // Bare `process.env.NODE_ENV !== 'production'` — bundler-agnostic library
@@ -20,7 +20,7 @@ type ECHandler = (...args: unknown[]) => void
  * @example
  * ```tsx
  * // Default — any chart type
- * <Chart
+ * <EChart
  *   options={() => ({
  *     series: [{ type: 'bar', data: revenue() }],
  *     tooltip: {},
@@ -29,7 +29,7 @@ type ECHandler = (...args: unknown[]) => void
  * />
  *
  * // Any ECharts event (not just the mouse shorthands) + reactive loading
- * <Chart
+ * <EChart
  *   options={() => ({ legend: {}, series: [{ type: 'pie', data: segments() }] })}
  *   showLoading={isFetching()}
  *   onEvents={{
@@ -41,7 +41,7 @@ type ECHandler = (...args: unknown[]) => void
  *
  * // Strict — only specific chart types
  * import type { ComposeOption, BarSeriesOption } from '@pyreon/charts'
- * <Chart<ComposeOption<BarSeriesOption>>
+ * <EChart<ComposeOption<BarSeriesOption>>
  *   options={() => ({
  *     series: [{ type: 'bar', data: revenue() }],
  *   })}
@@ -49,8 +49,8 @@ type ECHandler = (...args: unknown[]) => void
  * />
  * ```
  */
-export function Chart<TOption extends EChartsOption = EChartsOption>(
-  props: ChartProps<TOption>,
+export function EChart<TOption extends EChartsOption = EChartsOption>(
+  props: EChartProps<TOption>,
 ): VNodeChild {
   const chart = useChart(props.options, {
     // Theme is normalized to the ACCESSOR form so it is reactive both ways:

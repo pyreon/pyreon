@@ -23,7 +23,7 @@ const read = (p: string) => readFileSync(join(REPO, p), 'utf8')
 const CANVAS_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartCanvas.swift'
 const ENGINE_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartEngine.swift'
 
-const src = (attr: string): string => `import { PieChart } from '@pyreon/charts/plot'
+const src = (attr: string): string => `import { PieChart } from '@pyreon/charts'
 interface Row { n: string; v: number }
 const ROWS: Row[] = [{ n: 'a', v: 1 }, { n: 'b', v: 2 }]
 export function Share() {
@@ -90,7 +90,7 @@ describe('legendPosition lowers on both targets', () => {
   // made this distinction (chrome reads raw, the plot subtracts the title);
   // the x side only needed it once something moved the plot HORIZONTALLY.
   it('a legend hit reads CANVAS space while the plot hit reads PLOT space', () => {
-    const src = `import { PlotChart, bars } from '@pyreon/charts/plot'
+    const src = `import { PlotChart, bars } from '@pyreon/charts/engine'
 interface Row { k: string; v: number }
 const ROWS: Row[] = [{ k: 'a', v: 1 }, { k: 'b', v: 2 }]
 export function S() {

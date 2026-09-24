@@ -49,12 +49,12 @@ interface ClaimCheck {
 }
 
 /**
- * The chart hosts `@pyreon/charts/plot` exports — every `XChart` VALUE export,
+ * The chart hosts `@pyreon/charts/engine` exports — every `XChart` VALUE export,
  * minus `OptionChart` (the ECharts-option facade, which draws through the
  * family hosts rather than being one).
  */
 const chartHostNames = (repoRoot: string): string[] => {
-  const plotPath = join(repoRoot, 'packages/fundamentals/charts/src/plot.ts')
+  const plotPath = join(repoRoot, 'packages/fundamentals/charts/src/engine.ts')
   if (!existsSync(plotPath)) return []
   const names = new Set<string>()
   for (const [, list] of readFileSync(plotPath, 'utf8').matchAll(/^export \{([^}]*)\} from/gm)) {
@@ -344,7 +344,7 @@ const checks: ClaimCheck[] = [
     claims: [
       {
         file: 'packages/fundamentals/charts/package.json',
-        pattern: /`@pyreon\/charts\/plot`: (\d+) chart families/,
+        pattern: /first-party engine \((\d+) chart families/,
       },
     ],
   },
@@ -358,7 +358,7 @@ const checks: ClaimCheck[] = [
         pattern: /The (\d+) family hosts share one canvas host/,
       },
       {
-        file: 'docs/src/content/docs/charts-plot.md',
+        file: 'docs/src/content/docs/charts.md',
         pattern: /drives all (\d+) family hosts through the same paths/,
       },
     ],

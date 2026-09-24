@@ -18,25 +18,26 @@ import { Stack, Text } from '@pyreon/primitives'
 const DATA = `interface Month { name: string; revenue: number; cost: number }
 const MONTHS: Month[] = [{ name: 'Jan', revenue: 12, cost: 8 }, { name: 'Feb', revenue: 15, cost: 9 }]
 `
-const TIP = `${HEAD}import { PlotChart, bars, line, compact } from '@pyreon/charts/plot'
+const TIP = `${HEAD}import { compact } from '@pyreon/charts'
+import { PlotChart, bars, line } from '@pyreon/charts/engine'
 ${DATA}export function Revenue() {
   const picked = signal(-1)
   return (<Stack><Text>{picked()}</Text><PlotChart data={MONTHS} x={(d) => d.name} marks={[bars((d) => d.revenue, { label: 'Revenue' }), line((d) => d.cost, { label: 'Cost' })]} format={compact} tooltip height={200} onSelect={(i: number) => picked.set(i)} /></Stack>)
 }
 `
-const TIP_ONLY = `${HEAD}import { PlotChart, bars } from '@pyreon/charts/plot'
+const TIP_ONLY = `${HEAD}import { PlotChart, bars } from '@pyreon/charts/engine'
 ${DATA}export function Revenue() {
   return (<Stack><PlotChart data={MONTHS} x={(d) => d.name} marks={[bars((d) => d.revenue)]} tooltip height={200} /></Stack>)
 }
 `
-const WINDOWED = `${HEAD}import { PlotChart, bars } from '@pyreon/charts/plot'
+const WINDOWED = `${HEAD}import { PlotChart, bars } from '@pyreon/charts/engine'
 ${DATA}export function Revenue() {
   const picked = signal(-1)
   return (<Stack><PlotChart data={MONTHS} x={(d) => d.name} marks={[bars((d) => d.revenue)]} tooltip dataZoom height={200} onSelect={(i: number) => picked.set(i)} /></Stack>)
 }
 `
-const FORMATTED = `${HEAD}import { PlotChart, bars } from '@pyreon/charts/plot'
-import type { TooltipContent } from '@pyreon/charts/plot'
+const FORMATTED = `${HEAD}import { PlotChart, bars } from '@pyreon/charts/engine'
+import type { TooltipContent } from '@pyreon/charts/engine'
 ${DATA}function describe(c: TooltipContent): string {
   return c.title
 }
@@ -44,9 +45,9 @@ export function Revenue() {
   return (<Stack><PlotChart data={MONTHS} x={(d) => d.name} marks={[bars((d) => d.revenue)]} tooltip tooltipFormatter={describe} height={200} /></Stack>)
 }
 `
-const GRAMMAR = `${HEAD}import { Plot, Bar, Tip } from '@pyreon/charts/plot'
+const GRAMMAR = `${HEAD}import { Chart, Bar, Tip } from '@pyreon/charts'
 ${DATA}export function Revenue() {
-  return (<Stack><Plot data={MONTHS} x="name" height={200}><Bar y="revenue" /><Tip crosshair /></Plot></Stack>)
+  return (<Stack><Chart data={MONTHS} x="name" height={200}><Bar y="revenue" /><Tip crosshair /></Chart></Stack>)
 }
 `
 const PLAIN = TIP_ONLY.replace(' tooltip height', ' height')

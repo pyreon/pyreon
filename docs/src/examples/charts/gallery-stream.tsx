@@ -1,5 +1,5 @@
 import { onMount } from '@pyreon/core'
-import { area, line, PlotChart, smooth } from '@pyreon/charts/plot'
+import { area, line, PlotChart, smooth } from '@pyreon/charts/engine'
 import { signal, type Signal } from '@pyreon/reactivity'
 
 /**
