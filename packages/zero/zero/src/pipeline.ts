@@ -105,6 +105,21 @@ export function createRequestPipeline(options: RequestPipelineOptions): RequestP
 }
 
 /**
+ * What a request that no middleware answered gets when it is NOT a GET/HEAD:
+ * the page renderer only renders HTML for GET/HEAD, so OPTIONS → 204 and any
+ * other method → 405, both with `Allow`. Mirrors `@pyreon/server`'s handler
+ * (PR-S6) byte for byte; zero's dev server uses it so a stray `POST /page`
+ * gets the same answer in dev as in production. `undefined` for GET/HEAD.
+ */
+export function pageMethodResponse(method: string): Response | undefined {
+	if (method === "GET" || method === "HEAD") return undefined;
+	if (method === "OPTIONS") {
+		return new Response(null, { status: 204, headers: { Allow: "GET, HEAD, OPTIONS" } });
+	}
+	return new Response(null, { status: 405, headers: { Allow: "GET, HEAD, OPTIONS" } });
+}
+
+/**
  * Run the chain: the first middleware returning a Response wins. A throwing
  * middleware is re-thrown to the caller (production answers 500; dev shows
  * the overlay).

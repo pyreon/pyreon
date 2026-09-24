@@ -520,7 +520,14 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 				// production dispatches — skipping it in dev returned Vite's 404.
 				if (!isApiPathname(pathname) && /\.\w+$/.test(pathname)) return next();
 
-				dispatchDevPipeline(server, root, config, req, res).then(
+				dispatchDevPipeline(
+					server,
+					root,
+					config,
+					req,
+					res,
+					proxyContexts.length > 0 && matchesProxyContext(req.url ?? "/", proxyContexts),
+				).then(
 					(handled) => {
 						if (!handled) next();
 					},
@@ -1323,6 +1330,7 @@ async function dispatchDevPipeline(
 	config: ZeroConfig,
 	req: IncomingMessage,
 	res: ServerResponse,
+	proxyOwned: boolean,
 ): Promise<boolean> {
 	const [routesMod, mwMod, apiMod, pipelineMod, entryOptions] = await Promise.all([
 		ssrLoadModuleQuiet(server, VIRTUAL_ROUTES_ID),
@@ -1331,7 +1339,7 @@ async function dispatchDevPipeline(
 		ssrLoadModuleQuiet(server, "@pyreon/zero/pipeline"),
 		loadEntryPipelineOptions(server, root),
 	]);
-	const { createRequestPipeline, runRequestPipeline, readCarriedActionState } =
+	const { createRequestPipeline, pageMethodResponse, readCarriedActionState, runRequestPipeline } =
 		pipelineMod as unknown as typeof import("./pipeline");
 	const pipeline = createRequestPipeline({
 		// A no-JS action post re-renders its page through the dev renderer
@@ -1365,7 +1373,14 @@ async function dispatchDevPipeline(
 	};
 	if (req.socket?.remoteAddress) ctx.locals.remoteAddress = req.socket.remoteAddress;
 
-	const response = await runRequestPipeline(pipeline, ctx);
+	const response =
+		(await runRequestPipeline(pipeline, ctx)) ??
+		// Nothing answered a non-GET/HEAD: production's handler replies
+		// 405/204 here. Page form actions (a route `action` export or
+		// `?_action=`) are pipeline middleware, so they answer first and
+		// never reach this fallback, so dev must too — unless a vite `server.proxy`
+		// context owns the URL (the proxy runs downstream of this middleware).
+		(proxyOwned ? undefined : pageMethodResponse(webReq.method));
 	if (response) {
 		sendWebResponse(res, response);
 		return true;

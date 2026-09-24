@@ -958,7 +958,7 @@ function InlineScript() {
 
 ### Dev runs the production request pipeline
 
-`vite dev` runs the same middleware chain `createServer` builds in production — the server entry's own `middleware` (`src/entry-server.ts`), then route middleware, API routes, server-island fragments, `/_pyreon/data` and `/_zero/actions/*` — before rendering the page. Security headers, auth gates and middleware `locals` therefore behave the same in dev as in production. As in production, code-valued `zero({ middleware })` is not applied: pass middleware to `createServer({ middleware })` in `src/entry-server.ts`.
+`vite dev` runs the same middleware chain `createServer` builds in production — the server entry's own `middleware` (`src/entry-server.ts`), then route middleware, API routes, server-island fragments, `/_pyreon/data` and `/_zero/actions/*` — before rendering the page, and a non-GET request to a page gets the same 405 as production. Security headers, auth gates and middleware `locals` therefore behave the same in dev as in production. As in production, code-valued `zero({ middleware })` is not applied: pass middleware to `createServer({ middleware })` in `src/entry-server.ts`.
 
 ## API Routes
 

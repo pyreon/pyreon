@@ -106,4 +106,22 @@ describe("zero dev runs route form actions", { timeout: DEV_SERVER_TEST_TIMEOUT_
 		});
 		expect(res.status).toBe(403);
 	});
+
+	it("a route action takes precedence over the dev 405; a page without one still 405s", async () => {
+		const withAction = await devFetch(`${baseUrl}/guest`, "POST to a page with an action", {
+			observe: state,
+			method: "POST",
+			headers: { ...form, "x-zero-action": "1" },
+			body: "name=zed",
+		});
+		expect(withAction.status).toBe(200);
+		expect(await withAction.json()).toEqual({ kind: "data", status: 200, data: { added: "zed" } });
+		const without = await devFetch(`${baseUrl}/`, "POST to a page without an action", {
+			observe: state,
+			method: "POST",
+			headers: form,
+			body: "name=zed",
+		});
+		expect(without.status).toBe(405);
+	});
 });

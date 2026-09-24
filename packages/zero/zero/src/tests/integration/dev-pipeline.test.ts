@@ -89,4 +89,18 @@ describe("zero dev runs the production request pipeline", { timeout: DEV_SERVER_
 		});
 		expect(blocked.status).toBe(403);
 	});
+
+	it("a non-GET request to a page answers 405/204 like production, not the SPA shell", async () => {
+		const post = await devFetch(`${baseUrl}/`, "POST to a page", {
+			observe: state,
+			method: "POST",
+			headers: { accept: "text/html" },
+		});
+		expect(post.status).toBe(405);
+		expect(post.headers.get("allow")).toBe("GET, HEAD, OPTIONS");
+		const options = await devFetch(`${baseUrl}/`, "OPTIONS to a page", { observe: state, method: "OPTIONS" });
+		// Vite's own CORS middleware answers a bare OPTIONS (204, no `Allow`)
+		// before any plugin middleware — same status as production.
+		expect(options.status).toBe(204);
+	});
 });

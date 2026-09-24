@@ -805,6 +805,8 @@ export interface RouteFileExports {
   hasLayoutExport?: boolean
   /** `export const loader = <literal>` — not callable. */
   loaderIsLiteral?: boolean
+  /** Pure-literal `gcTime` initializer, inlined so it needs no static import. */
+  gcTimeLiteral?: string
   /** Has `export const loader` or `export function loader` */
   hasLoader: boolean
   /** Has `export const guard` or `export function guard` */
