@@ -128,7 +128,7 @@ export function _resetSubmissions(): void {
 }
 
 function readHydratedSnapshot(id: string): ActionSnapshot | undefined {
-  if (typeof document === 'undefined') return undefined
+  if (isServer) return undefined
   const el = document.querySelector(`template[data-zero-action-result="${CSS.escape(id)}"]`)
   const raw = el?.getAttribute('data-value')
   if (!raw) return undefined
