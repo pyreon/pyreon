@@ -143,11 +143,55 @@ function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx)
           })
           return { kind: 'union', options, discriminator: undefined }
         }
+        if (type.discriminator) {
+          const why = unprovableTag(options, type.discriminator)
+          if (why) {
+            ctx.notes.push({
+              code: 'unsupported-schema',
+              at,
+              message: `discriminator \`${type.discriminator}\` cannot be proven from the members (${why}) - emitted as a plain union instead, which validates the same data without the tag dispatch.`,
+            })
+            return { kind: 'union', options, discriminator: undefined }
+          }
+        }
         return { ...type, options }
       }
       default:
         return type
     }
+  }
+
+  /**
+   * Why a discriminated union's tag cannot be dispatched on, or `undefined`.
+   *
+   * Both schema libraries build the tag -> member map when the union is
+   * CONSTRUCTED, so a member whose tag field is not a required literal/enum
+   * throws at IMPORT of the generated schemas module -- one such model took
+   * every other model in the file down with it. The IR is the place to decide,
+   * because it is the one place that can see through `$ref`s: each member's tag
+   * must be a required, non-nullable string enum, and no two members may claim
+   * the same value. Anything else falls back to a plain union, which accepts
+   * exactly the same data and only loses the O(1) dispatch.
+   */
+  const unprovableTag = (options: readonly IrType[], tag: string): string | undefined => {
+    const claimed = new Set<string>()
+    for (const option of options) {
+      let t: IrType | undefined = option
+      for (let hops = 0; t?.kind === 'ref' && hops < 8; hops++) t = byName.get(t.name)?.type
+      if (t?.kind !== 'object') return 'a member is not an object'
+      const field = t.fields.find((f) => f.name === tag)
+      if (!field) return `a member has no \`${tag}\` field`
+      if (!field.required) return `a member's \`${tag}\` is optional`
+      if (field.nullable) return `a member's \`${tag}\` is nullable`
+      if (field.type.kind !== 'string' || !field.type.enum || field.type.enum.length === 0) {
+        return `a member's \`${tag}\` is not a string literal or enum`
+      }
+      for (const v of field.type.enum) {
+        if (claimed.has(v)) return `two members claim the tag value \`${v}\``
+        claimed.add(v)
+      }
+    }
+    return undefined
   }
 
   for (const m of models) m.type = walk(m.type, `#/components/schemas/${m.name}`) as IrType
