@@ -350,13 +350,10 @@ describe('event-handler attributes — compiled ≡ h() ≡ SSR', () => {
       'button',
       'onclick',
     ],
-    [
-      'B3 vendor-legacy onmousewheel (Chromium compiles it)',
-      '<div><button onmousewheel={v}>x</button></div>',
-      () => h('div', null, h('button', { onmousewheel: 'alert(1)' }, 'x')),
-      'button',
-      'onmousewheel',
-    ],
+    // B3 (vendor-legacy `onmousewheel`) moved to event-handler-attr.browser.test.tsx:
+    // the client asks the ELEMENT which names are handlers (`key in el`), and
+    // happy-dom's <button> does not define `onmousewheel` — Chromium's does.
+    // The claim is about Chromium, so it is asserted there.
   ]
 
   for (const [label, jsx, vnode, sel, attr] of SITES) {

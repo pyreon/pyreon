@@ -131,8 +131,10 @@ describe.skipIf(!CAN_BUILD || !BUILT)('the emitted site', () => {
 
   it('the view tabs are real links, which is what makes the URLs mean anything', () => {
     const html = readFileSync(join(out, 'index.html'), 'utf8')
-    expect(html).toContain('href="/matrix"')
-    expect(html).toContain('href="/cycles"')
+    // The hash carries the current selection across the full-page tab
+    // navigation (`#pkg=<id>`); the path is what routes.
+    expect(html).toMatch(/href="\/matrix(#pkg=[^"]+)?"/)
+    expect(html).toMatch(/href="\/cycles(#pkg=[^"]+)?"/)
   })
 
   it('bakes the report in rather than fetching it — the output works from file://', () => {

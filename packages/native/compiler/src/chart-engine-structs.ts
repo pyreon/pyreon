@@ -8414,6 +8414,154 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "TreemapEcNode",
+    "fields": [
+      {
+        "name": "name",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "value",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "children",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "TreemapEcNode",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "borderWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "gapWidth",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "upperLabelHeight",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "visibleMin",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "childrenVisibleMin",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "TreemapEcConfig",
+    "fields": [
+      {
+        "name": "squareRatio",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "sort",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "leafDepth",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "TreemapEcFrame",
+    "fields": [
+      {
+        "name": "node",
+        "type": {
+          "kind": "typeRef",
+          "name": "TreemapEcNode",
+          "args": []
+        }
+      },
+      {
+        "name": "rect",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartRect",
+          "args": []
+        }
+      },
+      {
+        "name": "depth",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "path",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "number"
+          }
+        }
+      },
+      {
+        "name": "hide",
+        "type": {
+          "kind": "boolean"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "SunburstArc",
     "fields": [
       {
@@ -16024,6 +16172,9 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "TreeOptions",
   "TreeOrient",
   "TreemapCell",
+  "TreemapEcConfig",
+  "TreemapEcFrame",
+  "TreemapEcNode",
   "TreemapFrame",
   "TreemapOptions",
   "VisualPiece",

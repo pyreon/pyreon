@@ -1,6 +1,5 @@
 import type { NativeItem, VNodeChild } from '@pyreon/core'
 import { _rdNodeId, getContextOwner, renderEffect } from '@pyreon/reactivity'
-import { SizedMap } from '@pyreon/sized-map'
 import { _tagTextBinding } from './binding-registry'
 import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, SVG_TAGS, type PolyTextCore } from './mount'
 import { _bindEvent } from './props'
@@ -447,13 +446,17 @@ export function _bindDirect(
 
 // Cache parsed <template> elements by HTML string — parse once, clone many.
 //
-// SizedMap in FIFO mode: get() does NOT touch ordering, so a cache HIT is a
-// single Map lookup with no recency bookkeeping (see `_tpl` below for why
-// touch-on-read was rejected). Bounded at 1024 because an app that builds JSX
-// from user input could otherwise grow this unboundedly, with every unique
-// string holding a parsed <template> alive. 1024 x ~1KB parsed is ~1MB worst
-// case and no real codebase approaches the cap.
-const _tplCache = new SizedMap<string, HTMLTemplateElement>({ maxEntries: 1024 })
+// A plain Map with FIFO eviction on insert: get() does NOT touch ordering, so a
+// cache HIT is a single Map lookup with no recency bookkeeping (see `_tpl` below
+// for why touch-on-read was rejected). Bounded at TPL_CACHE_MAX because an app
+// that builds JSX from user input could otherwise grow this unboundedly, with
+// every unique string holding a parsed <template> alive. 1024 x ~1KB parsed is
+// ~1MB worst case and no real codebase approaches the cap. (This was a
+// `@pyreon/sized-map` instance; the cache only ever inserts on a MISS, so the
+// class's re-insert and LRU branches were dead weight — ~0.2 KB gz in every
+// app bundle for one line of eviction.)
+const TPL_CACHE_MAX = 1024
+const _tplCache = new Map<string, HTMLTemplateElement>()
 
 /**
  * Compiler-emitted template instantiation.
@@ -602,7 +605,7 @@ export function _setHydrationActive(v: boolean): boolean {
 const HOLE_ATTR = 'data-pyreon-hole'
 // Module-level registry, so the three questions, answered:
 //  (1) EVICTION — weak keys, held only by `_tplCache`'s template content, which
-//      is itself a SizedMap capped at 1024 with FIFO eviction.
+//      is itself a Map capped at 1024 with FIFO eviction.
 //  (2) CLEANUP CONTRACT — none needed; nothing here is a strong reference.
 //  (3) EXERCISED — every hole-adoption spec goes through add + lookup.
 // The catalogued hazard for a weak collection is its BACKING TABLE, which never
@@ -644,7 +647,7 @@ function stripMarkers(content: DocumentFragment, attr: string, into: WeakSet<Ele
 // rule is rejected above for holes and rejected here for the same reason.
 // The attribute is stripped at parse time, before any clone or signature walk,
 // and elements are remembered by IDENTITY. Registry lifecycle mirrors
-// `_tplHoleEls` (weak keys held by `_tplCache`'s capped SizedMap).
+// `_tplHoleEls` (weak keys held by `_tplCache`'s capped Map).
 const HTML_ATTR = 'data-pyreon-html'
 const _tplHtmlEls = new WeakSet<Element>()
 
@@ -769,8 +772,9 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
     // bare valueless attribute and HTML_ATTR likewise, and neither string is
     // a substring of the other ("data-pyreon-hole" vs "data-pyreon-html").
     if (html.includes(HTML_ATTR)) stripMarkers(tpl.content, HTML_ATTR, _tplHtmlEls)
-    // SizedMap.set() handles FIFO eviction internally — drops the
-    // oldest entry once we hit the cap.
+    // FIFO eviction — drop the oldest entry once we hit the cap. Map iteration
+    // order is insertion order, so `keys().next()` is the oldest.
+    if (_tplCache.size >= TPL_CACHE_MAX) _tplCache.delete(_tplCache.keys().next().value as string)
     _tplCache.set(html, tpl)
   }
   // Cache-HIT is a no-op — no LRU touch. The previous `delete + set` re-insert

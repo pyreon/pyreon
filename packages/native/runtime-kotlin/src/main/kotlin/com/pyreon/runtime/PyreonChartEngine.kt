@@ -162,6 +162,12 @@ data class TreemapOptions(var palette: List<String>? = null, var padding: Double
 
 data class TreemapFrame(var children: List<TreeNode>, var area: PyreonChartRect, var depth: Int, var path: List<Int>, var inherited: String, var hasInherited: Boolean)
 
+data class TreemapEcNode(var name: String, var value: Double, var color: String, var children: List<TreemapEcNode>, var borderWidth: Double, var gapWidth: Double, var upperLabelHeight: Double, var visibleMin: Double, var childrenVisibleMin: Double)
+
+data class TreemapEcConfig(var squareRatio: Double, var sort: String, var leafDepth: Double)
+
+data class TreemapEcFrame(var node: TreemapEcNode, var rect: PyreonChartRect, var depth: Int, var path: List<Int>, var hide: Boolean)
+
 data class SunburstArc(var name: String, var value: Double, var depth: Int, var path: List<Int>, var start: Double, var end: Double, var innerR: Double, var outerR: Double, var color: String, var leaf: Boolean)
 
 data class SunburstOptions(var palette: List<String>? = null, var startAngle: Double? = null, var padAngle: Double? = null, var maxDepth: Double? = null, var sort: String? = null, var showLabels: Boolean? = null, var labelColor: String? = null, var fontSize: Double? = null, var progress: Double? = null)
@@ -7391,6 +7397,265 @@ fun hitTreemapIndex(cells: List<TreemapCell>, px: Double, py: Double): Int {
 fun hitTreemap(cells: List<TreemapCell>, px: Double, py: Double): TreemapCell? {
     val i = hitTreemapIndex(cells, px, py)
     return if (i < 0) null else cells[i]
+  }
+
+fun treemapWorst(areas: List<Double>, rowArea: Double, fixed: Double, ratio: Double): Double {
+    var areaMax = 0.0
+    var areaMin = (1.0).toDouble() / (0.0).toDouble()
+    for (a in areas) {
+      if (a != 0.0) {
+        if (a < areaMin) {
+          areaMin = a
+        }
+        if (a > areaMax) {
+          areaMax = a
+        }
+      }
+    }
+    val squareArea = rowArea * rowArea
+    val f = fixed * fixed * ratio
+    if (squareArea == 0.0) {
+      return (1.0).toDouble() / (0.0).toDouble()
+    }
+    val a1 = ((f * areaMax)).toDouble() / (squareArea).toDouble()
+    val a2 = (squareArea).toDouble() / ((f * areaMin)).toDouble()
+    return if (a1 > a2) a1 else a2
+  }
+
+fun layoutTreemapEc(root: TreemapEcNode, box: PyreonChartRect, cfg: TreemapEcConfig): List<TreemapCell> {
+    val out: MutableList<TreemapCell> = mutableListOf()
+    val stack: MutableList<TreemapEcFrame> = mutableListOf()
+    stack.add(TreemapEcFrame(node = root, rect = box, depth = 0, path = listOf(), hide = false))
+    var sp = 1
+    while (sp > 0) {
+      sp = sp - 1
+      val frame = stack[sp]
+      val node = frame.node
+      val halfGap = (node.gapWidth).toDouble() / (2.0).toDouble()
+      val upperHeight = if (node.borderWidth > node.upperLabelHeight) node.borderWidth else node.upperLabelHeight
+      val offset = node.borderWidth - halfGap
+      val offsetUpper = upperHeight - halfGap
+      val w0 = frame.rect.w - 2.0 * offset
+      val h0 = frame.rect.h - offset - offsetUpper
+      val width = if (w0 > 0.0) w0 else 0.0
+      val height = if (h0 > 0.0) h0 else 0.0
+      val totalArea = width * height
+      val overLeafDepth = isFiniteNumber(cfg.leafDepth) && cfg.leafDepth <= countDepth(frame.depth)
+      val kids: MutableList<Int> = mutableListOf()
+      if (!(frame.hide && !overLeafDepth)) {
+        for (i in 0 until node.children.length) {
+          kids.add(i)
+        }
+        if (cfg.sort == "desc" || cfg.sort == "asc") {
+          for (i in 1 until kids.length) {
+            val cur = kids[i]
+            var j = i - 1
+            while (j >= 0) {
+              val a = node.children[kids[j]].value
+              val b = node.children[cur].value
+              val swap = if (cfg.sort == "asc") a > b || (a == b && kids[j] > cur) else a < b || (a == b && kids[j] < cur)
+              if (!swap) {
+                break
+              }
+              kids[j + 1] = kids[j]
+              j = j - 1
+            }
+            kids[j + 1] = cur
+          }
+        }
+      }
+      var sum = 0.0
+      for (k in kids) {
+        sum = sum + node.children[k].value
+      }
+      var visible = kids
+      if (sum > 0.0 && (cfg.sort == "desc" || cfg.sort == "asc") && isFiniteNumber(node.visibleMin)) {
+        val n = kids.length
+        var deletePoint = n
+        for (i in n - 1 downTo 0) {
+          val value = node.children[kids[if (cfg.sort == "asc") n - i - 1 else i]].value
+          if (((value).toDouble() / (sum).toDouble()) * totalArea < node.visibleMin) {
+            deletePoint = i
+            sum = sum - value
+          }
+        }
+        val kept: MutableList<Int> = mutableListOf()
+        if (cfg.sort == "asc") {
+          for (i in n - deletePoint until n) {
+            kept.add(kids[i])
+          }
+        } else {
+          for (i in 0 until deletePoint) {
+            kept.add(kids[i])
+          }
+        }
+        visible = kept
+      }
+      val laidOut = sum > 0.0 && !overLeafDepth && visible.length > 0
+      out.add(TreemapCell(name = node.name, value = node.value, rect = frame.rect, depth = frame.depth, path = frame.path, color = node.color, leaf = !laidOut))
+      if (!laidOut) {
+        continue
+      }
+      val areas: MutableList<Double> = mutableListOf()
+      for (k in visible) {
+        areas.add(((node.children[k].value).toDouble() / (sum).toDouble()) * totalArea)
+      }
+      val rects: MutableList<PyreonChartRect> = mutableListOf()
+      for (i in 0 until visible.length) {
+        rects.add(PyreonChartRect(x = 0.0, y = 0.0, w = 0.0, h = 0.0))
+      }
+      var rx = frame.rect.x + offset
+      var ry = frame.rect.y + offsetUpper
+      var rw = width
+      var rh = height
+      var fixed = if (rw < rh) rw else rh
+      var best = (1.0).toDouble() / (0.0).toDouble()
+      var rowStart = 0
+      var rowArea = 0.0
+      var i = 0
+      while (i <= visible.length) {
+        val closing = i == visible.length
+        var accept = false
+        if (!closing) {
+          val trial: MutableList<Double> = mutableListOf()
+          for (q in rowStart..i) {
+            trial.add(areas[q])
+          }
+          val score = treemapWorst(trial, rowArea + areas[i], fixed, cfg.squareRatio)
+          if (score <= best) {
+            accept = true
+            best = score
+            rowArea = rowArea + areas[i]
+            i = i + 1
+          }
+        }
+        if (accept) {
+          continue
+        }
+        if (i == rowStart) {
+          break
+        }
+        val alongX = fixed == rw
+        var rowOther = if (fixed != 0.0) (rowArea).toDouble() / (fixed).toDouble() else 0.0
+        val across = if (alongX) rh else rw
+        if (closing || rowOther > across) {
+          rowOther = across
+        }
+        var last = if (alongX) rx else ry
+        val end = if (alongX) rx + rw else ry + rh
+        for (q in rowStart until i) {
+          val step = if (rowOther != 0.0) (areas[q]).toDouble() / (rowOther).toDouble() else 0.0
+          val wh1raw = rowOther - 2.0 * halfGap
+          val wh1 = if (wh1raw > 0.0) wh1raw else 0.0
+          val remain = end - last
+          val mod = if (q == i - 1 || remain < step) remain else step
+          val wh0raw = mod - 2.0 * halfGap
+          val wh0 = if (wh0raw > 0.0) wh0raw else 0.0
+          val off1 = if (halfGap < (wh1).toDouble() / (2.0).toDouble()) halfGap else (wh1).toDouble() / (2.0).toDouble()
+          val off0 = if (halfGap < (wh0).toDouble() / (2.0).toDouble()) halfGap else (wh0).toDouble() / (2.0).toDouble()
+          if (alongX) {
+            rects[q] = PyreonChartRect(x = last + off0, y = ry + off1, w = wh0, h = wh1)
+          } else {
+            rects[q] = PyreonChartRect(x = rx + off1, y = last + off0, w = wh1, h = wh0)
+          }
+          last = last + mod
+        }
+        if (alongX) {
+          ry = ry + rowOther
+          rh = rh - rowOther
+        } else {
+          rx = rx + rowOther
+          rw = rw - rowOther
+        }
+        if (closing) {
+          break
+        }
+        fixed = if (rw < rh) rw else rh
+        best = (1.0).toDouble() / (0.0).toDouble()
+        rowStart = i
+        rowArea = 0.0
+      }
+      val hideNext = frame.hide || (isFiniteNumber(node.childrenVisibleMin) && totalArea < node.childrenVisibleMin)
+      for (q in visible.length - 1 downTo 0) {
+        val k = visible[q]
+        val path: MutableList<Int> = mutableListOf()
+        for (p in frame.path) {
+          path.add(p)
+        }
+        path.add(k)
+        val f = TreemapEcFrame(node = node.children[k], rect = rects[q], depth = frame.depth + 1, path = path, hide = hideNext)
+        if (sp < stack.length) {
+          stack[sp] = f
+        } else {
+          stack.add(f)
+        }
+        sp = sp + 1
+      }
+    }
+    return out
+  }
+
+fun countDepth(d: Int): Double {
+    var f = 0.0
+    for (i in 0 until d) {
+      f = f + 1.0
+    }
+    return f
+  }
+
+fun treemapEcCells(root: TreemapEcNode, box: PyreonChartRect, cfg: TreemapEcConfig, palette: List<String>): List<TreemapCell> {
+    val out: MutableList<TreemapCell> = mutableListOf()
+    val colors = mutableListOf("")
+    for (c in layoutTreemapEc(root, box, cfg)) {
+      if (c.depth == 0) {
+        continue
+      }
+      val inherited = if (c.depth == 1) (if (palette.length == 0) "#5070dd" else palette[c.path[0] % palette.length]) else colors[c.depth - 1]
+      val color = if (c.color != "") c.color else inherited
+      if (c.depth < colors.length) {
+        colors[c.depth] = color
+      } else {
+        colors.add(color)
+      }
+      out.add(TreemapCell(name = c.name, value = c.value, rect = c.rect, depth = c.depth - 1, path = c.path, color = color, leaf = c.leaf))
+    }
+    return out
+  }
+
+fun renderTreemapEc(cells: List<TreemapCell>, box: PyreonChartRect, borderColor: String, labelColor: String, fontSize: Double, showLabels: Boolean, progress: Double, measure: (String, Double) -> Double): List<PyreonDrawCmd> {
+    val out: MutableList<PyreonDrawCmd> = mutableListOf()
+    val p = if (progress < 0.0) 0.0 else if (progress > 1.0) 1.0 else progress
+    out.add(PyreonDrawCmd(kind = "rect", rect = box, fill = borderColor))
+    for (c in cells) {
+      if (!c.leaf) {
+        out.add(PyreonDrawCmd(kind = "rect", rect = c.rect, fill = borderColor))
+        continue
+      }
+      val w = c.rect.w * p
+      val h = c.rect.h * p
+      out.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = c.rect.x + ((c.rect.w - w)).toDouble() / (2.0).toDouble(), y = c.rect.y + ((c.rect.h - h)).toDouble() / (2.0).toDouble(), w = w, h = h), fill = c.color))
+    }
+    if (!showLabels || p < 1.0) {
+      return out
+    }
+    for (c in cells) {
+      if (!c.leaf || c.rect.h < fontSize) {
+        continue
+      }
+      val text = truncateLabel(c.name, c.rect.w, fontSize, measure)
+      if (text == "") {
+        continue
+      }
+      out.add(PyreonDrawCmd(kind = "text", fill = labelColor, text = text, at = PyreonChartPt(x = c.rect.x + (c.rect.w).toDouble() / (2.0).toDouble(), y = c.rect.y + (c.rect.h).toDouble() / (2.0).toDouble()), size = fontSize, align = "middle", baseline = "middle"))
+    }
+    return out
+  }
+
+fun treemapGround(borderColor: String, background: String): String {
+    if (borderColor != "") {
+      return borderColor
+    }
+    return if (background != "") background else "#ffffff"
   }
 
 fun treeDepth(nodes: List<TreeNode>): Int {

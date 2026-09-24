@@ -35,6 +35,9 @@ export interface NodeVM {
   /** Issue counts attributed to this node (as pkg or dep). */
   errors: number
   warnings: number
+  /** Info-severity findings — surfaced beside err/warn so a node whose
+   * FINDINGS list is non-empty never reads as "0 err · 0 warn". */
+  infos: number
 }
 
 export interface ObservatoryModel {
@@ -65,13 +68,14 @@ export interface ObservatoryModel {
 /** Build the node universe from a report — pure. */
 export function buildNodes(report: LoomReport): NodeVM[] {
   const cycleMembers = new Set(report.graph.cycles.flat())
-  const errorsByTarget = new Map<string, { e: number; w: number }>()
+  const errorsByTarget = new Map<string, { e: number; w: number; i: number }>()
   for (const issue of report.issues) {
     for (const target of [issue.pkg, issue.dep]) {
       if (!target || target === 'ROOT') continue
-      const rec = errorsByTarget.get(target) ?? { e: 0, w: 0 }
+      const rec = errorsByTarget.get(target) ?? { e: 0, w: 0, i: 0 }
       if (issue.severity === 'error') rec.e += 1
       else if (issue.severity === 'warning') rec.w += 1
+      else rec.i += 1
       errorsByTarget.set(target, rec)
     }
   }
@@ -96,7 +100,7 @@ export function buildNodes(report: LoomReport): NodeVM[] {
 
   const nodes: NodeVM[] = []
   for (const p of report.model.packages) {
-    const counts = errorsByTarget.get(p.name) ?? { e: 0, w: 0 }
+    const counts = errorsByTarget.get(p.name) ?? { e: 0, w: 0, i: 0 }
     const status: NodeStatus = cycleMembers.has(p.name)
       ? 'circular'
       : counts.e > 0
@@ -113,6 +117,7 @@ export function buildNodes(report: LoomReport): NodeVM[] {
       status,
       errors: counts.e,
       warnings: counts.w,
+      infos: counts.i,
     })
   }
 
@@ -120,7 +125,7 @@ export function buildNodes(report: LoomReport): NodeVM[] {
   for (const ext of report.external) {
     const ranges = Object.keys(ext.ranges)
     const users = [...new Set(Object.values(ext.ranges).flat().map((u) => u.user))]
-    const counts = errorsByTarget.get(ext.name) ?? { e: 0, w: 0 }
+    const counts = errorsByTarget.get(ext.name) ?? { e: 0, w: 0, i: 0 }
     const drift = ranges.length > 1
     // Externals sit one column past their deepest internal user.
     const userDepths = users.map((u) => report.graph.depths[u] ?? 0)
@@ -136,12 +141,27 @@ export function buildNodes(report: LoomReport): NodeVM[] {
       status: drift ? 'drift' : counts.e > 0 ? 'issue' : 'current',
       errors: counts.e,
       warnings: counts.w,
+      infos: counts.i,
     })
   }
   return nodes
 }
 
-export function createModel(report: LoomReport, initialView: ViewId = 'graph'): ObservatoryModel {
+/** Host-supplied starting state — the browser-only preferences (theme,
+ * viewport, a selection carried in the URL) resolved by the host, so the
+ * model itself stays pure and SSR-safe. */
+export interface ModelInit {
+  dark?: boolean
+  selId?: string
+  navOpen?: boolean
+  panelOpen?: boolean
+}
+
+export function createModel(
+  report: LoomReport,
+  initialView: ViewId = 'graph',
+  init: ModelInit = {},
+): ObservatoryModel {
   const nodes = buildNodes(report)
   const byId = new Map(nodes.map((n) => [n.id, n]))
   const cycleNodes = new Set(report.graph.cycles.flat())
@@ -150,12 +170,12 @@ export function createModel(report: LoomReport, initialView: ViewId = 'graph'): 
   const kind = signal<KindFilter>('all')
   const query = signal('')
   const searchOpen = signal(false)
-  const selId = signal(nodes[0]?.id ?? '')
+  const selId = signal(init.selId && byId.has(init.selId) ? init.selId : (nodes[0]?.id ?? ''))
   const hoverId = signal<string | null>(null)
   const showCycles = signal(true)
-  const dark = signal(true)
-  const navOpen = signal(true)
-  const panelOpen = signal(true)
+  const dark = signal(init.dark ?? true)
+  const navOpen = signal(init.navOpen ?? true)
+  const panelOpen = signal(init.panelOpen ?? true)
 
   const shown = computed(() => {
     const q = query().trim().toLowerCase()
@@ -188,9 +208,12 @@ export function createModel(report: LoomReport, initialView: ViewId = 'graph'): 
       { text: n.version.toLowerCase(), weight: 30, reason: `version · ${n.version}` },
       { text: n.kind, weight: 15, reason: `kind · ${n.kind}` },
     ]
-    if (n.license) entries.push({ text: n.license.toLowerCase(), weight: 20, reason: `license · ${n.license}` })
-    for (const d of n.deps) entries.push({ text: d.toLowerCase(), weight: 25, reason: `depends on · ${d}` })
-    for (const d of n.dependents) entries.push({ text: d.toLowerCase(), weight: 25, reason: `needed by · ${d}` })
+    if (n.license)
+      entries.push({ text: n.license.toLowerCase(), weight: 20, reason: `license · ${n.license}` })
+    for (const d of n.deps)
+      entries.push({ text: d.toLowerCase(), weight: 25, reason: `depends on · ${d}` })
+    for (const d of n.dependents)
+      entries.push({ text: d.toLowerCase(), weight: 25, reason: `needed by · ${d}` })
     for (const iss of issuesByPkg.get(n.id) ?? []) {
       entries.push({ text: iss.code, weight: 45, reason: `finding · ${iss.code}` })
       entries.push({ text: iss.message.toLowerCase(), weight: 15, reason: `finding · ${iss.code}` })
@@ -308,7 +331,11 @@ export function layoutGraph(shown: NodeVM[]): GraphLayout {
     list.forEach((n, i) => {
       pos.set(n.id, {
         x: GRAPH_PAD_L + di * GRAPH_COL_W,
-        y: GRAPH_PAD_T + ((maxRows - list.length) * GRAPH_ROW_H) / 2 + i * GRAPH_ROW_H + GRAPH_ROW_H / 2,
+        y:
+          GRAPH_PAD_T +
+          ((maxRows - list.length) * GRAPH_ROW_H) / 2 +
+          i * GRAPH_ROW_H +
+          GRAPH_ROW_H / 2,
       })
     })
   })
@@ -327,4 +354,16 @@ export function impactRows(model: ObservatoryModel): { node: NodeVM; reach: numb
 export function shortName(id: string): string {
   const i = id.indexOf('/')
   return id.startsWith('@') && i > 0 ? id.slice(i + 1) : id
+}
+
+/**
+ * Truncate in the MIDDLE, keeping both ends: sibling ids share prefixes
+ * (`@atlaskit/pragmatic-drag-and-drop-*`, `example-cpa-pw-app-*`), so an
+ * end-ellipsis rendered several nodes with the identical label.
+ */
+export function truncateMiddle(s: string, max: number): string {
+  if (s.length <= max) return s
+  const keep = max - 1
+  const head = Math.ceil(keep / 2)
+  return `${s.slice(0, head)}…${s.slice(s.length - (keep - head))}`
 }

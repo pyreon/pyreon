@@ -39,6 +39,8 @@ import { singleAxisToSvg } from './single-axis-web'
 import type { SingleAxisOptions, SingleAxisPoint, SingleAxisSpec } from './single-axis'
 import type { FunnelEcConfig, FunnelOptions } from './funnel'
 import { readFunnelEc } from './option-funnel'
+import { readTreemapEc } from './option-treemap'
+import type { TreemapEc } from './option-treemap'
 import type { RadarAxis } from './radar'
 import type { Double } from './types'
 import { ANIMATION_KEYS, resolveAnimation } from './animation-option'
@@ -51,7 +53,7 @@ export type FamilyPlan =
   | { kind: 'candlestick'; rows: { x: string; open: Double; high: Double; low: Double; close: Double }[]; upColor: string | undefined; downColor: string | undefined; title: string | undefined; zoom?: OptionZoom | undefined }
   | { kind: 'heatmap'; rows: { x: string; y: string; value: Double }[]; colors: string[] | undefined; title: string | undefined; visualMap?: VisualMapSpec | undefined }
   | { kind: 'funnel'; rows: { value: Double; name: string; color: string | undefined }[]; funnel: FunnelOptions; ec: FunnelEcConfig; title: string | undefined }
-  | { kind: 'treemap'; nodes: TreeNode[]; treemap: TreemapOptions; title: string | undefined }
+  | { kind: 'treemap'; nodes: TreeNode[]; treemap: TreemapOptions; ec: TreemapEc; title: string | undefined }
   | { kind: 'sunburst'; nodes: TreeNode[]; innerRatio: Double; sunburst: SunburstOptions; title: string | undefined }
   | { kind: 'tree'; nodes: TreeNode[]; tree: TreeOptions; title: string | undefined }
   | { kind: 'sankey'; nodes: SankeyNode[]; links: SankeyLink[]; sankey: SankeyOptions; orient?: 'vertical'; title: string | undefined; visualMap?: VisualMapSpec | undefined }
@@ -175,7 +177,7 @@ export const KNOWN_BY_FAMILY: Readonly<Record<string, ReadonlySet<string>>> = {
   candlestick: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'itemStyle', 'color']),
   heatmap: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'coordinateSystem', 'type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
   funnel: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'colorBy', 'type', 'name', 'data', 'sort', 'gap', 'minSize', 'maxSize', 'min', 'max', 'orient', 'label', 'labelLine', 'itemStyle', 'funnelAlign', 'color', 'emphasis', 'left', 'top', 'right', 'bottom', 'width', 'height']),
-  treemap: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'leafDepth', 'label', 'itemStyle', 'color', 'emphasis', 'roam']),
+  treemap: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'leafDepth', 'label', 'itemStyle', 'color', 'emphasis', 'roam', 'sort', 'squareRatio', 'visibleMin', 'childrenVisibleMin', 'levels', 'left', 'top', 'right', 'bottom', 'width', 'height']),
   sunburst: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_DATASET_KEYS, ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis']),
   tree: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'roam', 'emphasis', 'top', 'left', 'right', 'bottom']),
   sankey: new Set([...ANIMATION_KEYS, 'id', ...FAMILY_ITEM_KEYS, 'type', 'name', 'data', 'nodes', 'links', 'edges', 'nodeWidth', 'nodeGap', 'nodeAlign', 'layoutIterations', 'orient', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'top', 'left', 'right', 'bottom']),
@@ -1073,7 +1075,10 @@ function compileFamilyPlan(rawOption: EChartsOption, resolved: ReturnType<typeof
       showLabels: label['show'] !== false,
       ...(depth !== null ? { maxDepth: depth } : {}),
     }
-    return { plan: { kind: 'treemap', nodes, treemap, title }, warnings, supported }
+    // `treemap` drives <TreemapChart>'s own layout (and the native host); `ec`
+    // is ECharts' treemap — its box, squarify, sort, levels and thresholds —
+    // which the option path draws on the web and in SVG.
+    return { plan: { kind: 'treemap', nodes, treemap, ec: readTreemapEc(s, data), title }, warnings, supported }
   }
 
   if (type === 'funnel') {
@@ -1405,6 +1410,8 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         ...themed,
         data: plan.nodes,
         treemap: plan.treemap,
+        echarts: plan.ec,
+        ...(placed !== null ? { frame: familyRect(placed, width, height) } : {}),
         width,
         height,
         ...(plan.title !== undefined ? { title: plan.title } : {}),
