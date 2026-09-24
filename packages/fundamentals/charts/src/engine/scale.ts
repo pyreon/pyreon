@@ -1,5 +1,6 @@
 // Scales and ticks — the arithmetic every mark sits on.
 
+import { groupThousands } from './format'
 import type { Formatter } from './format'
 import type { Domain, Tick, Double } from './types'
 
@@ -143,7 +144,9 @@ export function makeTicks(
   count: Double,
   format?: Formatter,
 ): Tick[] {
-  const fmt = format ?? formatTick
+  // ECharts labels a value axis with `addCommas` (IntervalScale.getLabel), so
+  // the default groups thousands: 60,000 rather than 60000.
+  const fmt = format ?? groupThousands
   const out: Tick[] = []
   if (count <= 0.0) return out
   // A non-finite bound has no ticks: the loop below would step NaN 1000

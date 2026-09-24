@@ -9,7 +9,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * `graphicDrawCommands`, so the native canvas draws what the web draws.
  */
 const app = (graphic: string, extra = ''): string => `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart${extra} option={{ xAxis: { type: 'category', data: ['a', 'b'] }, yAxis: {}, series: [{ type: 'bar', data: [1, 2] }], graphic: ${graphic} }} />
 }`
@@ -55,7 +55,7 @@ describe.each(['swift', 'kotlin'] as const)('graphic layer on %s', (target) => {
 
   it('a non-literal graphic option is named, not silently dropped', () => {
     const r = transform(`
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App(props: { g: unknown }) {
   return <OptionChart option={{ xAxis: { type: 'category', data: ['a'] }, yAxis: {}, series: [{ type: 'bar', data: [1] }], graphic: props.g }} />
 }`, { target })
