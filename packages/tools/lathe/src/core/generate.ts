@@ -18,6 +18,7 @@ import {
 import {
   emitClient,
   emitNativeModules,
+  hasNativeDataComponent,
   emitWebEndpoints,
   emitWebQueries,
 } from '../emit/client'
@@ -187,6 +188,15 @@ function decide(op: IrOperation, baseUrl: string): { reach: Reach; reason?: stri
     return {
       reach: 'web-only',
       reason: `\`${op.method}\` lowers through mutations, which PMTC does not yet recognise; GET operations on this client DO reach native.`,
+    }
+  }
+  // Asked of the emitter rather than re-derived: the reach report and the
+  // native layout must agree about which reads get a data component.
+  if (!hasNativeDataComponent(op)) {
+    return {
+      reach: 'web-only',
+      reason:
+        'no typed JSON response (no content, or a media type Lathe cannot type) -- a native query decodes into a declared type, so there is nothing to lower it to.',
     }
   }
   return { reach: 'web+native' }
