@@ -369,6 +369,19 @@ export function hasAnyMetaExport(exports: RouteFileExports): boolean {
  *   code generator uses to optimize imports (skip metadata namespace
  *   imports for routes that only export `default`).
  */
+/**
+ * Normalize a filesystem path to forward slashes. Windows `path.relative` /
+ * `path.join` produce `\`, which breaks the route TREE (dirPath keys never
+ * match `/`-split segments, so nested routes lose their layout) and the
+ * generated `import "C:\app\src\routes\a.tsx"` strings (`\a` etc. are
+ * JS escapes). Every path is normalized at the scan boundary; Windows and
+ * Vite both accept `C:/…`.
+ * @internal
+ */
+export function toPosixPath(p: string): string {
+  return p.includes('\\') ? p.replace(/\\/g, '/') : p
+}
+
 export function parseFileRoutes(
   files: string[],
   defaultMode: RenderMode = 'ssr',
@@ -376,9 +389,10 @@ export function parseFileRoutes(
 ): FileRoute[] {
   return files
     .filter((f) => ROUTE_EXTENSIONS.some((ext) => f.endsWith(ext)))
-    .map((filePath) => {
+    .map((rawPath) => {
+      const filePath = toPosixPath(rawPath)
       const route = parseFilePath(filePath, defaultMode)
-      const exp = exportsMap?.get(filePath)
+      const exp = exportsMap?.get(filePath) ?? exportsMap?.get(rawPath)
       return exp ? { ...route, exports: exp } : route
     })
     .sort(sortRoutes)
@@ -555,6 +569,7 @@ export function generateRouteModule(
   routesDir: string,
   options?: GenerateRouteModuleOptions,
 ): string {
+  routesDir = toPosixPath(routesDir)
   // Synchronously read each route file's source and detect its optional
   // metadata exports. This produces the optimal shape every time:
   //   • `lazy(() => import(...))` for routes with no metadata
@@ -593,6 +608,12 @@ export function generateRouteModuleFromRoutes(
   routesDir: string,
   options?: GenerateRouteModuleOptions,
 ): string {
+  routesDir = toPosixPath(routesDir)
+  routes = routes.map((r) =>
+    r.filePath.includes('\\') || r.dirPath.includes('\\')
+      ? { ...r, filePath: toPosixPath(r.filePath), dirPath: toPosixPath(r.dirPath) }
+      : r,
+  )
   const tree = buildRouteTree(routes)
   const imports: string[] = []
   let importCounter = 0
@@ -990,6 +1011,7 @@ export function generateRouteModuleFromRoutes(
  * skipping no-middleware files keeps both paths working.
  */
 export function generateMiddlewareModule(files: string[], routesDir: string): string {
+  routesDir = toPosixPath(routesDir)
   const routes = parseFileRoutes(files)
   const imports: string[] = []
   const layoutEntries: string[] = []
@@ -1079,7 +1101,7 @@ export async function scanRouteFiles(routesDir: string): Promise<string[]> {
         // bundle" guarantee. All four extensions are now excluded.
         && !/\.server\.[jt]sx?$/.test(entry.name)
       ) {
-        files.push(relative(routesDir, fullPath))
+        files.push(toPosixPath(relative(routesDir, fullPath)))
       }
     }
   }
@@ -1284,7 +1306,7 @@ export function resolveAutoModeSync(
           ROUTE_EXTENSIONS.some((ext) => entry.endsWith(ext))
           && !/\.server\.[jt]sx?$/.test(entry)
         ) {
-          files.push(full.slice(routesDir.length + 1))
+          files.push(toPosixPath(full.slice(routesDir.length + 1)))
         }
       } catch {
         /* unreadable entry */
