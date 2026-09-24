@@ -772,6 +772,31 @@ values do (the bubble radius channel's shape) into the engine's `errLow` /
 `<Histogram>` (the row reshape; `binValues` itself crosses), `locale` (Intl)
 and `facet` (a DOM panel grid).
 
+## Migrating from 0.51
+
+0.52 made this engine the package's main entry. Most of the change is
+mechanical, and `pyreon check --fix` (or the MCP `migrate_pyreon` tool) does it:
+it rewrites every old import to the entry that now exports each name, and
+renames at every reference.
+
+| 0.51 | 0.52 |
+| --- | --- |
+| `import { Chart, useChart } from '@pyreon/charts'` (the ECharts wrapper) | `import { EChart, useChart } from '@pyreon/charts/echarts'` |
+| `@pyreon/charts/manual`, `@pyreon/charts/vite` | `@pyreon/charts/echarts/manual`, `@pyreon/charts/echarts/vite` |
+| `<Plot>` from `@pyreon/charts/plot` | `<Chart>` from `@pyreon/charts` |
+| `<Tip>` | `<Tooltip>` |
+| `<PieChart>`, `<FunnelChart>`, `<HeatmapChart>`, `<CandlestickChart>` | the marks `<Arc>`, `<Stage>`, `<Cell>`, `<Candle>` inside `<Chart>` (the components live on in `/engine`) |
+| `OptionChart`, `optionToSvg` from `/plot` | `@pyreon/charts/option` |
+| `chartToSvg` and the `*ToSvg` family from `/plot` | `@pyreon/charts/svg` |
+| everything else from `/plot` | `@pyreon/charts/engine` |
+
+Two changes need a person, and both surface as type errors after the fix:
+
+- `<Chart toolbox={{ … }}>` becomes a child, `<Toolbox … />`, which is what
+  lets a chart without one skip the tool strip's code.
+- `<Chart onSelectIndex>` is gone: `<Chart onSelect>` receives the drawn
+  item's index on every target.
+
 ## Choosing between this engine and the ECharts wrapper
 
 | | `@pyreon/charts` | `@pyreon/charts/echarts` |
