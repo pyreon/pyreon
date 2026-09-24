@@ -101,11 +101,18 @@ const HTTP_METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HE
 export function createApiMiddleware(routes: ApiRouteEntry[]): Middleware {
   return async (ctx: MiddlewareContext) => {
     for (const route of routes) {
-      const params = matchApiRoute(route.pattern, ctx.path)
+      // PATHNAME, not `ctx.path`: that carries the query string, so
+      // `/api/posts?page=2` matched nothing and `/api/users/5?x=1` handed
+      // the handler `id = "5?x=1"`.
+      const params = matchApiRoute(route.pattern, ctx.url.pathname)
       if (!params) continue
 
       const method = ctx.req.method.toUpperCase() as HttpMethod
-      const handler = route.module[method]
+      // HEAD is GET without a body (RFC 9110 §9.3.2): serve it from the GET
+      // handler rather than 405 a route that plainly answers GET.
+      const handler =
+        route.module[method] ??
+        (method === 'HEAD' ? route.module.GET : undefined)
 
       if (!handler) {
         // Route matched but method not supported

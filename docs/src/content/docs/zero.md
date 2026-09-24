@@ -1345,6 +1345,19 @@ export default createServer({
 })
 ```
 
+**Your `zero({...})` settings reach this server automatically.** A production build injects the data part of the config (`mode`, `base`, `ssr`, `isr`, `routeRules`, `i18n`), and a `config` you pass here wins key by key. Settings that are code, such as `middleware` or a custom ISR `store` / `cacheKey` function, cannot be carried into the bundle: when you set them on `zero()` without a `src/entry-server.ts`, the build warns, and you pass them here instead.
+
+**Request order.** Each request runs, in this order:
+
+1. `middleware` from `zero({...})` and from this call (app-wide: auth, rate limits, CORS, security headers);
+2. the matched route's own `middleware` export;
+3. the framework endpoints: API routes, island fragments, the server-loader data endpoint (`/_pyreon/data`) and server actions (`/_zero/actions/*`);
+4. the page render.
+
+Because app-wide and route middleware run first, an auth check protects API routes, actions and loader data as well as pages. Route middleware is matched on the pathname (a query string can't skip it), with `base` and the i18n locale prefix removed. For the data endpoint it is matched on the page the data belongs to, so `/_pyreon/data?path=/admin` runs `/admin`'s middleware.
+
+With `mode: 'isr'`, only HTML page renders are cached. API routes and the framework endpoints always run live, and responses keep their own content type.
+
 ### startClient
 
 Client-side hydration / mount.

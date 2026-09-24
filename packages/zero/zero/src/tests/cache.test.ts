@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchGlob } from '../cache'
+import { cacheMiddleware, matchGlob } from '../cache'
 
 describe('cache header logic', () => {
   const HASHED_ASSET = /\.[a-f0-9]{8,}\.\w+$/
@@ -91,5 +91,32 @@ describe('matchGlob', () => {
   it('handles patterns with brackets', () => {
     expect(matchGlob('/api/[id]', '/api/[id]')).toBe(true)
     expect(matchGlob('/api/[id]', '/api/123')).toBe(false)
+  })
+})
+
+describe('cacheMiddleware — personalized pages are never public', () => {
+  it('a page for a credentialed request gets private, no-cache', async () => {
+    const mw = cacheMiddleware({ pages: 60 })
+    const ctx = (headers: Record<string, string>) => {
+      const url = new URL('http://localhost/account')
+      return { req: new Request(url, { headers }), url, path: '/account', headers: new Headers(), locals: {} }
+    }
+    const anon = ctx({})
+    await mw(anon)
+    expect(anon.headers.get('Cache-Control')).toContain('public')
+    const withCookie = ctx({ cookie: 'sid=1' })
+    await mw(withCookie)
+    expect(withCookie.headers.get('Cache-Control')).toBe('private, no-cache')
+    const withAuth = ctx({ authorization: 'Bearer x' })
+    await mw(withAuth)
+    expect(withAuth.headers.get('Cache-Control')).toBe('private, no-cache')
+  })
+
+  it('assets stay public for credentialed requests', async () => {
+    const mw = cacheMiddleware({ pages: 60 })
+    const url = new URL('http://localhost/assets/app.abc12345ef.js')
+    const c = { req: new Request(url, { headers: { cookie: 'sid=1' } }), url, path: url.pathname, headers: new Headers(), locals: {} }
+    await mw(c)
+    expect(c.headers.get('Cache-Control')).toContain('public')
   })
 })

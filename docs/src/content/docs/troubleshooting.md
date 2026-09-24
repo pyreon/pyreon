@@ -5,7 +5,7 @@ description: "Common Pyreon mistakes and their fixes, grouped by area — the er
 
 # Troubleshooting
 
-Common mistakes and anti-patterns across Pyreon, grouped by area, each with its fix. Distilled from the framework's own anti-pattern catalog (410 entries) — the same source MCP `get_anti_patterns` serves to AI agents. Many are caught automatically by [`@pyreon/lint`](/docs/lint), `pyreon doctor`, or MCP `validate`; the detector code is noted on each entry that has one.
+Common mistakes and anti-patterns across Pyreon, grouped by area, each with its fix. Distilled from the framework's own anti-pattern catalog (411 entries) — the same source MCP `get_anti_patterns` serves to AI agents. Many are caught automatically by [`@pyreon/lint`](/docs/lint), `pyreon doctor`, or MCP `validate`; the detector code is noted on each entry that has one.
 
 ## Categories
 
@@ -14,7 +14,7 @@ Common mistakes and anti-patterns across Pyreon, grouped by area, each with its 
 - **[Context & Provider Mistakes](/docs/troubleshooting/context)** — 6 entries
 - **[Architecture Mistakes](/docs/troubleshooting/architecture)** — 73 entries
 - **[Islands Mistakes](/docs/troubleshooting/islands)** — 11 entries
-- **[SSR-rendering Mistakes](/docs/troubleshooting/ssr)** — 25 entries
+- **[SSR-rendering Mistakes](/docs/troubleshooting/ssr)** — 26 entries
 - **[SSG / e2e Test-Server Mistakes](/docs/troubleshooting/ssg)** — 17 entries
 - **[Bundling Mistakes](/docs/troubleshooting/bundling)** — 4 entries
 - **[Testing Mistakes](/docs/troubleshooting/testing)** — 27 entries

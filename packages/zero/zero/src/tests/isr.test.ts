@@ -6,10 +6,19 @@ import {
   type ISRStore,
 } from '../isr'
 
+// ISR caches PAGE renders only (a text/html content type). Fixtures default
+// to HTML; a test that needs another type passes its own header.
+function htmlResponse(body?: BodyInit | null, init: ResponseInit = {}): Response {
+  const headers = new Headers(init.headers)
+  if (!headers.has('content-type')) headers.set('content-type', 'text/html')
+  return new Response(body, { ...init, headers })
+}
+
+
 function mockHandler(html = '<html>test</html>') {
   return vi.fn(
     async () =>
-      new Response(html, {
+      htmlResponse(html, {
         headers: { 'content-type': 'text/html' },
       }),
   )
@@ -59,7 +68,7 @@ describe('createISRHandler', () => {
   it('caches different paths independently', async () => {
     const inner = vi.fn(async (req: Request) => {
       const url = new URL(req.url)
-      return new Response(`page: ${url.pathname}`)
+      return htmlResponse(`page: ${url.pathname}`)
     })
     const handler = createISRHandler(inner, { revalidate: 60 })
 
@@ -92,7 +101,7 @@ describe('createISRHandler', () => {
     let n = 0
     const inner = vi.fn(async () => {
       n++
-      return new Response(n === 1 ? 'boom' : 'ok', { status: n === 1 ? 500 : 200 })
+      return htmlResponse(n === 1 ? 'boom' : 'ok', { status: n === 1 ? 500 : 200 })
     })
     const handler = createISRHandler(inner, { revalidate: 60 })
 
@@ -110,7 +119,7 @@ describe('createISRHandler', () => {
     let n = 0
     const inner = vi.fn(async () => {
       n++
-      return new Response(`u${n}`, {
+      return htmlResponse(`u${n}`, {
         status: 200,
         headers: { 'set-cookie': `session=user${n}` },
       })
@@ -135,7 +144,7 @@ describe('createISRHandler', () => {
     let n = 0
     const inner = vi.fn(async () => {
       n++
-      if (n === 1) return new Response('v1', { status: 200 })
+      if (n === 1) return htmlResponse('v1', { status: 200 })
       // Every revalidation hangs forever.
       return new Promise<Response>(() => {})
     })
@@ -173,7 +182,7 @@ describe('createISRHandler', () => {
       const inner = vi.fn(async (req: Request) => {
         calls++
         const url = new URL(req.url)
-        return new Response(`call ${calls} (q=${url.searchParams.get('id') ?? ''})`)
+        return htmlResponse(`call ${calls} (q=${url.searchParams.get('id') ?? ''})`)
       })
       const handler = createISRHandler(inner, { revalidate: 60 })
 
@@ -198,7 +207,7 @@ describe('createISRHandler', () => {
 
     it('default warning: fires ONCE per handler instance at first request when no cacheKey configured', async () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      const inner = vi.fn(async () => new Response('ok'))
+      const inner = vi.fn(async () => htmlResponse('ok'))
       const handler = createISRHandler(inner, { revalidate: 60 })
 
       // Warning fires on first request — same handler instance, multiple
@@ -222,7 +231,7 @@ describe('createISRHandler', () => {
 
     it('default warning: does NOT fire when explicit cacheKey is configured', async () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      const inner = vi.fn(async () => new Response('ok'))
+      const inner = vi.fn(async () => htmlResponse('ok'))
       const handler = createISRHandler(inner, {
         revalidate: 60,
         cacheKey: (req) => new URL(req.url).pathname,
@@ -240,7 +249,7 @@ describe('createISRHandler', () => {
 
     it('default warning: fires once PER HANDLER INSTANCE (two handlers → two warnings)', async () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      const inner = vi.fn(async () => new Response('ok'))
+      const inner = vi.fn(async () => htmlResponse('ok'))
 
       // Two separate `createISRHandler` calls each create a fresh
       // `deriveKey` closure → each one warns once independently. This
@@ -264,7 +273,7 @@ describe('createISRHandler', () => {
         calls++
         const session
           = req.headers.get('cookie')?.match(/session=([^;]+)/)?.[1] ?? 'anon'
-        return new Response(`call ${calls} (session=${session})`)
+        return htmlResponse(`call ${calls} (session=${session})`)
       })
       const handler = createISRHandler(inner, {
         revalidate: 60,
@@ -311,7 +320,7 @@ describe('createISRHandler', () => {
       let n = 0
       const inner = vi.fn(async () => {
         n++
-        return new Response(`v${n}`, { status: 200 })
+        return htmlResponse(`v${n}`, { status: 200 })
       })
       const handler = createISRHandler(inner, {
         revalidate: 0, // immediately stale
@@ -344,7 +353,7 @@ describe('createISRHandler', () => {
       const inner = vi.fn(async (req: Request) => {
         n++
         seen.push(req.headers.get('cookie'))
-        return new Response(`v${n}`, { status: 200 })
+        return htmlResponse(`v${n}`, { status: 200 })
       })
       const handler = createISRHandler(inner, {
         revalidate: 0,
@@ -383,7 +392,7 @@ describe('createISRHandler', () => {
       const inner = vi.fn(async (req: Request) => {
         calls++
         const url = new URL(req.url)
-        return new Response(`call ${calls} sort=${url.searchParams.get('sort')}`)
+        return htmlResponse(`call ${calls} sort=${url.searchParams.get('sort')}`)
       })
       const handler = createISRHandler(inner, {
         revalidate: 60,
@@ -412,7 +421,7 @@ describe('createISRHandler', () => {
   describe('pluggable store', () => {
     it('default in-memory store keeps prior behaviour (backwards-compat)', async () => {
       let calls = 0
-      const inner = vi.fn(async (_req: Request) => new Response(`call ${++calls}`))
+      const inner = vi.fn(async (_req: Request) => htmlResponse(`call ${++calls}`))
       // No `store` field → uses createMemoryStore by default.
       const handler = createISRHandler(inner, { revalidate: 60 })
       const r1 = await handler(new Request('http://localhost/a'))
@@ -440,7 +449,7 @@ describe('createISRHandler', () => {
 
     it('custom store: handler calls get(key) before render, set(key, entry) after', async () => {
       const calls: Array<{ op: string; key: string }> = []
-      const inner = vi.fn(async (_req: Request) => new Response('hi'))
+      const inner = vi.fn(async (_req: Request) => htmlResponse('hi'))
       // Fake store recording every call — simulates a Redis adapter shape.
       const fake: ISRStore<ISRCacheEntry> = {
         get(key) {
@@ -477,7 +486,7 @@ describe('createISRHandler', () => {
         },
       }
       let calls = 0
-      const inner = vi.fn(async (_req: Request) => new Response(`call ${++calls}`))
+      const inner = vi.fn(async (_req: Request) => htmlResponse(`call ${++calls}`))
       const handler = createISRHandler(inner, { revalidate: 60, store: asyncStore })
 
       // First call: store.get awaits + misses → render → store.set awaits.
@@ -505,7 +514,7 @@ describe('createISRHandler', () => {
           /* unused for this test — get returns a hit */
         },
       }
-      const inner = vi.fn(async (_req: Request) => new Response('SHOULD NOT RUN'))
+      const inner = vi.fn(async (_req: Request) => htmlResponse('SHOULD NOT RUN'))
       const handler = createISRHandler(inner, { revalidate: 60, store: fake })
       const res = await handler(new Request('http://localhost/cached'))
       expect(await res.text()).toBe('pre-warmed')
@@ -524,7 +533,7 @@ describe('createISRHandler', () => {
         },
       }
       // 5xx response
-      const fivexx = vi.fn(async () => new Response('err', { status: 500 }))
+      const fivexx = vi.fn(async () => htmlResponse('err', { status: 500 }))
       const h1 = createISRHandler(fivexx, { revalidate: 60, store: fake })
       const r1 = await h1(new Request('http://localhost/err'))
       expect(r1.status).toBe(500)
@@ -533,7 +542,7 @@ describe('createISRHandler', () => {
       // Set-Cookie response
       const cooked = vi.fn(
         async () =>
-          new Response('ok', {
+          htmlResponse('ok', {
             status: 200,
             headers: { 'set-cookie': 'session=x' },
           }),
@@ -571,7 +580,7 @@ describe('createISRHandler', () => {
       // Update the upstream handler's output (simulates CMS update)
       inner.mockImplementation(
         async () =>
-          new Response('<html>v2</html>', { headers: { 'content-type': 'text/html' } }),
+          htmlResponse('<html>v2</html>', { headers: { 'content-type': 'text/html' } }),
       )
 
       // Next request MUST miss the cache and pick up v2
@@ -606,7 +615,7 @@ describe('createISRHandler', () => {
       let renderCount = 0
       const inner = vi.fn(async () => {
         renderCount++
-        return new Response(`<html>v${renderCount}</html>`, {
+        return htmlResponse(`<html>v${renderCount}</html>`, {
           headers: { 'content-type': 'text/html' },
         })
       })
@@ -722,7 +731,7 @@ describe('createISRHandler', () => {
       let renderCount = 0
       const inner = vi.fn(async () => {
         renderCount++
-        return new Response(`<html>v${renderCount}</html>`, {
+        return htmlResponse(`<html>v${renderCount}</html>`, {
           headers: { 'content-type': 'text/html' },
         })
       })
@@ -767,7 +776,7 @@ describe('createISRHandler', () => {
         })
         // Hang past the timeout (50ms) so the timer wins the race.
         await new Promise((resolve) => setTimeout(resolve, 200))
-        return new Response('<html>never-arrives</html>', {
+        return htmlResponse('<html>never-arrives</html>', {
           headers: { 'content-type': 'text/html' },
         })
       })
@@ -779,7 +788,7 @@ describe('createISRHandler', () => {
       // Populate cache (first call uses TTL but doesn't hang here)
       inner.mockImplementationOnce(
         async () =>
-          new Response('<html>seed</html>', {
+          htmlResponse('<html>seed</html>', {
             headers: { 'content-type': 'text/html' },
           }),
       )
@@ -814,13 +823,13 @@ describe('createISRHandler', () => {
         callCount++
         if (callCount === 1) {
           // First call (seed) returns immediately
-          return new Response('<html>seed</html>', {
+          return htmlResponse('<html>seed</html>', {
             headers: { 'content-type': 'text/html' },
           })
         }
         // Second call (the racing revalidate) waits for the gate
         await handlerGate
-        return new Response('<html>racing-revalidate</html>', {
+        return htmlResponse('<html>racing-revalidate</html>', {
           headers: { 'content-type': 'text/html' },
         })
       })
@@ -848,7 +857,7 @@ describe('createISRHandler', () => {
       // can prove the racing revalidate's content didn't land
       inner.mockImplementationOnce(
         async () =>
-          new Response('<html>post-webhook</html>', {
+          htmlResponse('<html>post-webhook</html>', {
             headers: { 'content-type': 'text/html' },
           }),
       )
@@ -880,7 +889,7 @@ describe('createISRHandler', () => {
         const count = callCounts[path]!
         // First call per path (seed) returns immediately
         if (count === 1) {
-          return new Response(`<html>seed-${path.slice(1)}</html>`, {
+          return htmlResponse(`<html>seed-${path.slice(1)}</html>`, {
             headers: { 'content-type': 'text/html' },
           })
         }
@@ -888,12 +897,12 @@ describe('createISRHandler', () => {
         // gate so we can synchronize revalidateAll with the race
         if (path === '/a') {
           await aGate
-          return new Response('<html>race-a</html>', {
+          return htmlResponse('<html>race-a</html>', {
             headers: { 'content-type': 'text/html' },
           })
         }
         await bGate
-        return new Response('<html>race-b</html>', {
+        return htmlResponse('<html>race-b</html>', {
           headers: { 'content-type': 'text/html' },
         })
       })
@@ -926,7 +935,7 @@ describe('createISRHandler', () => {
       // store.set calls were skipped by the per-key epoch guard
       inner.mockImplementation(async (req: Request) => {
         const p = new URL(req.url).pathname
-        return new Response(`<html>fresh-${p.slice(1)}</html>`, {
+        return htmlResponse(`<html>fresh-${p.slice(1)}</html>`, {
           headers: { 'content-type': 'text/html' },
         })
       })
@@ -956,7 +965,7 @@ describe('createISRHandler', () => {
 
 describe('PR-S4: isCacheable extended HTTP-cache-directive checks', () => {
   function mkResponse(html: string, headers: Record<string, string> = {}) {
-    return vi.fn(async () => new Response(html, { headers: { 'content-type': 'text/html', ...headers } }))
+    return vi.fn(async () => htmlResponse(html, { headers: { 'content-type': 'text/html', ...headers } }))
   }
 
   it('refuses to cache Cache-Control: private (was: cached + leaked across users)', async () => {
@@ -1059,7 +1068,7 @@ describe('PR-S4: isCacheable extended HTTP-cache-directive checks', () => {
 
 describe('PR-S4: responseFilter — final-say override', () => {
   function mkResponse(html: string, headers: Record<string, string> = {}) {
-    return vi.fn(async () => new Response(html, { headers: { 'content-type': 'text/html', ...headers } }))
+    return vi.fn(async () => htmlResponse(html, { headers: { 'content-type': 'text/html', ...headers } }))
   }
 
   it('filter returning null bypasses cache even when default-cacheable', async () => {
@@ -1098,7 +1107,7 @@ describe('PR-S4: responseFilter — final-say override', () => {
       responseFilter: (res) => {
         const newHeaders = new Headers(res.headers)
         newHeaders.delete('vary')
-        return new Response(res.body, {
+        return htmlResponse(res.body, {
           status: res.status,
           headers: newHeaders,
         })
@@ -1140,7 +1149,7 @@ describe('PR-S6: request-credential-aware fail-safe default', () => {
     return vi.fn(async (req: Request) => {
       const user = req.headers.get('cookie')?.match(/session=([^;]+)/)?.[1]
         ?? (req.headers.get('authorization') ? 'bearer-user' : 'anon')
-      return new Response(`<html>Welcome ${user}</html>`, {
+      return htmlResponse(`<html>Welcome ${user}</html>`, {
         headers: { 'content-type': 'text/html' },
       })
     })
@@ -1233,7 +1242,7 @@ describe('PR-S6: request-credential-aware fail-safe default', () => {
     // to seed the shared cache.
     const inner = vi.fn(
       async () =>
-        new Response('<html>shared public</html>', {
+        htmlResponse('<html>shared public</html>', {
           headers: { 'content-type': 'text/html', 'cache-control': 'public, max-age=3600' },
         }),
     )
@@ -1358,10 +1367,10 @@ describe('expireOnTimeout (Tier-2 G)', () => {
     let calls = 0
     const base = vi.fn(async (): Promise<Response> => {
       calls++
-      if (calls === 1) return new Response('v1', { headers: { 'content-type': 'text/html' } })
+      if (calls === 1) return htmlResponse('v1', { headers: { 'content-type': 'text/html' } })
       // second render (the background revalidation) hangs past the timeout
       await new Promise((r) => setTimeout(r, 200))
-      return new Response('v2', { headers: { 'content-type': 'text/html' } })
+      return htmlResponse('v2', { headers: { 'content-type': 'text/html' } })
     })
     const store = createMemoryStore()
     const handler = createISRHandler(base, {
@@ -1381,9 +1390,9 @@ describe('expireOnTimeout (Tier-2 G)', () => {
     let calls = 0
     const base = vi.fn(async (): Promise<Response> => {
       calls++
-      if (calls === 1) return new Response('v1', { headers: { 'content-type': 'text/html' } })
+      if (calls === 1) return htmlResponse('v1', { headers: { 'content-type': 'text/html' } })
       await new Promise((r) => setTimeout(r, 200))
-      return new Response('v2', { headers: { 'content-type': 'text/html' } })
+      return htmlResponse('v2', { headers: { 'content-type': 'text/html' } })
     })
     const store = createMemoryStore()
     const handler = createISRHandler(base, {
@@ -1396,5 +1405,160 @@ describe('expireOnTimeout (Tier-2 G)', () => {
     await handler(new Request('http://x/p'))
     await new Promise((r) => setTimeout(r, 120))
     expect(await store.get('/p')).toBeDefined() // stale entry retained
+  })
+})
+
+describe('ISR — only page renders are cached (audit 2026-09)', () => {
+  it('never caches a JSON response, and keeps its content type', async () => {
+    const inner = vi.fn(async () => Response.json({ term: '<img src=x onerror=alert(1)>' }))
+    const handler = createISRHandler(inner, { revalidate: 60 })
+    const first = await handler(new Request('http://localhost/api/echo'))
+    const second = await handler(new Request('http://localhost/api/echo'))
+    expect(first.headers.get('content-type')).toContain('application/json')
+    expect(second.headers.get('content-type')).toContain('application/json')
+    expect(second.headers.get('x-isr-cache')).toBe('BYPASS')
+    expect(inner).toHaveBeenCalledTimes(2)
+  })
+
+  it('a cached page is replayed with its own content type', async () => {
+    const inner = vi.fn(async () =>
+      htmlResponse('<p>x</p>', { headers: { 'content-type': 'text/html; charset=iso-8859-2' } }),
+    )
+    const handler = createISRHandler(inner, { revalidate: 60 })
+    await handler(new Request('http://localhost/p'))
+    const hit = await handler(new Request('http://localhost/p'))
+    expect(hit.headers.get('x-isr-cache')).toBe('HIT')
+    expect(hit.headers.get('content-type')).toBe('text/html; charset=iso-8859-2')
+  })
+
+  it('refuses a response carrying a per-response CSP nonce', async () => {
+    const inner = vi.fn(async () =>
+      htmlResponse('<p>n</p>', { headers: { 'content-security-policy': "script-src 'nonce-abc123'" } }),
+    )
+    const handler = createISRHandler(inner, { revalidate: 60 })
+    await handler(new Request('http://localhost/n'))
+    const again = await handler(new Request('http://localhost/n'))
+    expect(again.headers.get('x-isr-cache')).toBe('BYPASS')
+    expect(inner).toHaveBeenCalledTimes(2)
+  })
+
+  it('refuses a response that varies on a header outside the key (Origin), but not Accept-Encoding', async () => {
+    const origin = createISRHandler(
+      vi.fn(async () => htmlResponse('o', { headers: { vary: 'Origin' } })),
+      { revalidate: 60 },
+    )
+    await origin(new Request('http://localhost/o'))
+    expect((await origin(new Request('http://localhost/o'))).headers.get('x-isr-cache')).toBe('BYPASS')
+
+    const enc = createISRHandler(
+      vi.fn(async () => htmlResponse('e', { headers: { vary: 'Accept-Encoding' } })),
+      { revalidate: 60 },
+    )
+    await enc(new Request('http://localhost/e'))
+    expect((await enc(new Request('http://localhost/e'))).headers.get('x-isr-cache')).toBe('HIT')
+  })
+})
+
+describe('ISR — cold-miss coalescing', () => {
+  function gated(body: string, init?: ResponseInit) {
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const inner = vi.fn(async () => {
+      await gate
+      return htmlResponse(body, init)
+    })
+    return { inner, release }
+  }
+
+  it('concurrent misses for one key render once', async () => {
+    const { inner, release } = gated('<p>once</p>')
+    const handler = createISRHandler(inner, { revalidate: 60 })
+    const all = Array.from({ length: 20 }, () => handler(new Request('http://localhost/c')))
+    release()
+    const res = await Promise.all(all)
+    expect(inner).toHaveBeenCalledTimes(1)
+    for (const r of res) expect(await r.text()).toBe('<p>once</p>')
+  })
+
+  it('credentialed requests are never coalesced under the default key', async () => {
+    const { inner, release } = gated('<p>me</p>')
+    const handler = createISRHandler(inner, { revalidate: 60 })
+    const all = Array.from({ length: 5 }, () =>
+      handler(new Request('http://localhost/c', { headers: { cookie: 'sid=1' } })),
+    )
+    release()
+    await Promise.all(all)
+    expect(inner).toHaveBeenCalledTimes(5)
+  })
+
+  it('a non-shareable leader result (Set-Cookie) is not handed to followers', async () => {
+    const { inner, release } = gated('<p>s</p>', { headers: { 'set-cookie': 'sid=secret' } })
+    const handler = createISRHandler(inner, { revalidate: 60 })
+    const all = Array.from({ length: 4 }, () => handler(new Request('http://localhost/s')))
+    release()
+    await Promise.all(all)
+    expect(inner).toHaveBeenCalledTimes(4)
+  })
+
+  it('a throwing leader releases its followers', async () => {
+    let n = 0
+    const inner = vi.fn(async () => {
+      n++
+      if (n === 1) {
+        await new Promise((r) => setTimeout(r, 5))
+        throw new Error('leader failed')
+      }
+      return htmlResponse('<p>ok</p>')
+    })
+    const handler = createISRHandler(inner, { revalidate: 60 })
+    const leader = handler(new Request('http://localhost/t'))
+    const follower = handler(new Request('http://localhost/t'))
+    await expect(leader).rejects.toThrow('leader failed')
+    expect(await (await follower).text()).toBe('<p>ok</p>')
+  })
+})
+
+describe('ISR — invalidation during a cold render', () => {
+  it('a revalidateNow landing mid-render wins over the slow render', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    let calls = 0
+    const inner = vi.fn(async () => {
+      calls++
+      if (calls === 1) await gate
+      return htmlResponse(`<p>v${calls}</p>`)
+    })
+    const handler = createISRHandler(inner, { revalidate: 60 })
+    const slow = handler(new Request('http://localhost/r'))
+    // The render must already be in flight when the invalidation lands.
+    await vi.waitFor(() => expect(inner).toHaveBeenCalledTimes(1))
+    await handler.revalidateNow('/r')
+    release()
+    await slow
+    const next = await handler(new Request('http://localhost/r'))
+    expect(next.headers.get('x-isr-cache')).toBe('MISS')
+  })
+})
+
+describe('ISR — revalidation failures are visible', () => {
+  it('logs a failed background revalidation', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let calls = 0
+    const inner = vi.fn(async () => {
+      calls++
+      if (calls > 1) throw new Error('db down')
+      return htmlResponse('<p>v1</p>')
+    })
+    const handler = createISRHandler(inner, { revalidate: 0.001 })
+    await handler(new Request('http://localhost/f'))
+    await new Promise((r) => setTimeout(r, 10))
+    await handler(new Request('http://localhost/f'))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(err.mock.calls.some((c) => String(c[0]).includes('Revalidation of /f failed'))).toBe(true)
+    err.mockRestore()
   })
 })

@@ -187,9 +187,12 @@ export function createActionMiddleware(
     return [origin]
   })
   return async (ctx: MiddlewareContext) => {
-    if (!ctx.path.startsWith('/_zero/actions/')) return
+    // Pathname only — `ctx.path` carries the query string, which would be
+    // glued onto the action id.
+    const pathname = ctx.url.pathname
+    if (!pathname.startsWith('/_zero/actions/')) return
 
-    const actionId = ctx.path.slice('/_zero/actions/'.length)
+    const actionId = pathname.slice('/_zero/actions/'.length)
     const action = actionRegistry.get(actionId)
 
     if (!action) {
