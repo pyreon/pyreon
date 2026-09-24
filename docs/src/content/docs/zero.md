@@ -107,16 +107,16 @@ export default {
 
 `zeroPlugin()` returns `Plugin[]` — the main plugin plus mode companions (the SSG plugin for `ssg` and hybrid server modes, the SSR plugin for `ssr`/`isr`) and the build-summary plugin. Vite's plugins array natively accepts nested arrays, so `plugins: [pyreon(), zero()]` works unchanged in all modes.
 
-For type-safe config, use `defineConfig` from `@pyreon/zero/server` (or `@pyreon/zero/config`):
+The options are type-checked where you write them: `zero()`'s parameter is typed, so a typo such as `mdoe` is a compile error in `vite.config.ts` — as long as `vite.config.ts` is in your `tsconfig` `include` (scaffolded apps include it). There is no separate `zero.config.ts`; nothing reads one. To build the config somewhere else, `defineConfig` is a typed identity helper:
 
-```ts title="zero.config.ts"
-import { defineConfig } from '@pyreon/zero/server'
+```ts title="vite.config.ts"
+import zero, { defineConfig } from '@pyreon/zero/server'
 
-export default defineConfig({
-  mode: 'ssr',
-  adapter: 'node',
-  port: 3000,
-})
+const config = defineConfig({ mode: 'ssr', adapter: 'node', port: 3000 })
+
+export default {
+  plugins: [pyreon(), zero(config)],
+}
 ```
 
 ### ZeroConfig Options
@@ -124,8 +124,7 @@ export default defineConfig({
 | Option       | Type                                                                          | Default | Description                                                  |
 | ------------ | ----------------------------------------------------------------------------- | ------- | ------------------------------------------------------------ |
 | `mode`       | `"ssr" \| "ssg" \| "spa" \| "isr"`                                            | `"ssr"` | Global rendering mode                                        |
-| `vite`       | `Record<string, unknown>`                                                     | `{}`    | Vite config overrides                                        |
-| `ssr.mode`   | `"stream" \| "string"`                                                        | `"stream"` when `mode: "ssr"`, `"string"` otherwise | SSR output mode                |
+| `ssr.mode`   | `"stream" \| "string"`                                                        | `"string"` | SSR output mode. `"stream"` flushes the shell first and streams Suspense boundaries — opt in with `ssr: { mode: 'stream' }` |
 | `ssg`        | `{ paths?, emit404?, emitRedirects?, redirectsAsHtml?, onPathError?, errorArtifact?, concurrency?, onProgress?, splitChunks?, speculationRules?, viewTransitions?, cssMode?, earlyHints?, modulePreload? }` | `{}` | SSG options — see **[SSG](/docs/ssg)** |
 | `isr`        | `ISRConfig` (`{ revalidate, maxEntries?, cacheKey?, store?, tagsForRequest? }`) | —       | Runtime ISR config (only used when `mode: "isr"`)            |
 | `adapter`    | `"node" \| "bun" \| "static" \| "vercel" \| "cloudflare" \| "netlify" \| Adapter` | auto     | Deployment adapter (name or constructed instance). When unset, the build platform is auto-detected from its env (`VERCEL` / `NETLIFY` / `CF_PAGES`) and that adapter is used — local builds default to `"node"` |
@@ -140,7 +139,7 @@ export default defineConfig({
 | `og`         | `OgImagePluginConfig`                                                         | —       | Auto-wires `ogImagePlugin` (templates + text layers → per-locale social-share images) |
 | `ai`         | `AiPluginConfig`                                                              | —       | Auto-wires `aiPlugin` (llms.txt, llms-full.txt, /.well-known/ai-plugin.json, OpenAPI spec) |
 
-`resolveConfig(userConfig?)` merges user config with the defaults above (`mode: 'ssr'`, `base: '/'`, `port: 3000`, `adapter: 'node'`). When no `ssr.mode` is set, the server picks the effective default at runtime: `'stream'` for `mode: 'ssr'`, `'string'` for every other mode — pass `ssr: { mode: 'string' }` to opt an SSR app back into buffered rendering.
+`resolveConfig(userConfig?)` merges user config with the defaults above (`mode: 'ssr'`, `base: '/'`, `port: 3000`, `adapter: 'node'`). `ssr.mode` defaults to `'string'` (buffered). Streaming is opt-in: `ssr: { mode: 'stream' }`. ISR routes always render buffered, because the cache stores complete responses.
 
 ## Build Output
 
@@ -256,7 +255,8 @@ your real route paths and rejects typos at compile time — the TanStack-Router 
 / Next-typed-routes bar, built on the standard module-augmentation pattern.
 
 ```ts title="vite.config.ts"
-import { zero } from '@pyreon/zero/config'
+import pyreon from '@pyreon/vite-plugin'
+import zero from '@pyreon/zero/server'
 
 export default {
   plugins: [pyreon(), zero({ typedRoutes: true })],
@@ -307,11 +307,16 @@ Each route file can export any combination of:
 ```tsx
 // src/routes/users/[id].tsx
 
-// Required: the page component
-export default function UserPage({ params, data }) {
+// Required: the page component. Read loader data with useLoaderData() —
+// the component receives { params, query, meta }, never the data itself.
+// Keep `props` whole: destructuring it captures the values once.
+import { useLoaderData } from '@pyreon/router'
+
+export default function UserPage(props) {
+  const data = useLoaderData()
   return (
     <div>
-      User {params.id}: {data.name}
+      User {props.params.id}: {data.name}
     </div>
   )
 }
@@ -1012,6 +1017,8 @@ export default createServer({
 Call them from components as plain async functions: `const r = await createPost({ title, body })`.
 
 The `ActionContext` exposes `request`, `json` (parsed JSON body), `formData` (for `multipart/form-data`), and `headers`.
+
+Each action's id is derived at build time by zero's Vite plugin from the defining module's path and the name the action is assigned to, so the client bundle and the server bundle agree on it and it stays the same across rebuilds and HMR. The plugin also removes the handler from the client bundle, along with imports that only the handler used, so server-only code such as a database client does not ship to the browser. `defineAction` therefore requires `zero()` in your Vite config: without it, a call in the browser throws in production and warns in development.
 
 ## SEO
 

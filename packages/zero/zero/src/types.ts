@@ -299,8 +299,6 @@ export interface ZeroConfig {
    */
   typedRoutes?: boolean
 
-  /** Vite config overrides. */
-  vite?: Record<string, unknown>
 
   /**
    * Path to the client-side entry module that mounts the app. Auto-
