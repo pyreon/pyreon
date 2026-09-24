@@ -109,7 +109,7 @@ export function reportWebVitals(
   let firstHiddenTime = document.visibilityState === 'hidden' ? 0 : Infinity
 
   let path = location.pathname
-  let navType = hardNavType
+  let navType: WebVitalMetric['navigationType'] = hardNavType
 
   type Slot = { id: string; path: string; navType: WebVitalMetric['navigationType']; value: number; reported: number | null }
   const slot = (): Slot => ({ id: `v1-${Date.now()}-${++idSeq}`, path, navType, value: -1, reported: null })

@@ -2,6 +2,7 @@ import { defineNodeConfig } from '@pyreon/vitest-config'
 
 export default defineNodeConfig({
   category: 'zero',
+  excludeBrowserTests: true,
   // Logic in src/index.ts (zero's main re-export + setup). Keep measured.
   includeIndexInCoverage: true,
   // Integration-tier: Vite build-time plugins, server-runtime

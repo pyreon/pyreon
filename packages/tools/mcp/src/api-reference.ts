@@ -8257,6 +8257,48 @@ app.post('/api/webhooks/posts-changed', async () => {
 - A throwing \`tagsForRequest\` never breaks caching — the entry is cached UNTAGGED (dev-mode warns)`,
   },
 
+  'zero/sessionMiddleware': {
+    signature: 'function sessionMiddleware(options: SessionOptions): Middleware  // + getSession(ctx | request | { request }), useSession(), requireUser(options)',
+    example: `import { getSession, requireUser, sessionMiddleware } from '@pyreon/zero/session'
+
+createServer({ routes, middleware: [sessionMiddleware({ secret: process.env.SESSION_SECRET! })] })
+
+export const loader = ({ request }) => ({ userId: getSession({ request }).get('userId') ?? null })
+export const middleware = requireUser({ redirectTo: '/login' })`,
+    notes: 'Signed cookie sessions from `@pyreon/zero/session` (also re-exported by `@pyreon/zero/server`). The whole session lives in one HMAC-SHA256-signed cookie via Web Crypto, so it runs on Node, Bun, Deno and Cloudflare workerd. `secret` takes a string or an array (index 0 signs, all verify — key rotation). Defaults: HttpOnly, SameSite=Lax, Path=/, Secure except on http://localhost, 7-day maxAge enforced as a SIGNED expiry too, 4096-byte limit (throws). Tampered/expired cookies read as an empty session. Any read or write marks the response `Cache-Control: private, no-store` + `Vary: Cookie`, which createISRHandler refuses unconditionally — a per-user render can never be ISR-cached. `requireUser({ redirectTo? })` is route middleware answering 302 (with `?next=`) or 401. See also: createISRHandler, createPreviewHandler.',
+    mistakes: `- Calling \`getSession\` without registering \`sessionMiddleware\` first — throws a [Pyreon] error naming the fix
+- Forgetting \`await\` on \`set\`/\`update\`/\`unset\`/\`destroy\` — writes re-sign asynchronously and the Set-Cookie lands only when the promise resolves
+- Storing large objects in the session — the signed cookie is capped at 4096 bytes; store an id and keep the data server-side
+- Rendering session values in a component — \`useSession()\` is \`null\` on the client (HttpOnly cookie), so hydration disagrees; pass the data through a loader
+- Touching the session inside a late Suspense boundary under \`mode: 'stream'\` — headers already left with the shell, so the response is not marked private and no cookie is set
+- Overriding \`Cache-Control\` to \`public\` after reading the session — the private marking is what keeps per-user HTML out of shared caches`,
+  },
+
+  'zero/createPreviewHandler': {
+    signature: 'function createPreviewHandler(options: { secret; token; path?; maxAge? }): Middleware  // + previewMiddleware({ secret }), isPreview(request | ctx | { request })',
+    example: `import { createPreviewHandler, isPreview, previewMiddleware } from '@pyreon/zero/preview'
+
+const secret = process.env.PREVIEW_SECRET!
+createServer({ routes, middleware: [createPreviewHandler({ secret, token: process.env.PREVIEW_TOKEN! }), previewMiddleware({ secret })] })
+
+export const loader = ({ request }) => getCollection('blog', { request })`,
+    notes: 'Preview / draft mode from the client-safe `@pyreon/zero/preview`. `GET /api/preview?token=…&redirect=/path` (constant-time token check, same-origin redirect only) sets a signed HttpOnly preview cookie; `/api/preview/exit` clears it. `previewMiddleware` verifies the cookie, marks the response private, and makes `isPreview()` true. createISRHandler bypasses its cache for any request carrying the preview cookie — no HIT, never stored. `@pyreon/zero-content` `getCollection(name, { request })` includes `draft: true` entries for a verified preview request. SSG static files are unaffected (no server code runs for them). See also: sessionMiddleware, createISRHandler.',
+    mistakes: `- Registering \`createPreviewHandler\` without \`previewMiddleware\` — the cookie is set but nothing verifies it, so \`isPreview()\` stays false
+- Expecting preview to affect SSG pages — a prerendered file is served by the host without running server code
+- Reusing the signing secret as the URL token — keep them separate so the token (visible in CMS config) can rotate independently`,
+  },
+
+  'zero/reportWebVitals': {
+    signature: 'function reportWebVitals(handler: (m: WebVitalMetric) => void, options?: { router?: RouterLike | false }): () => void  // + sendToBeacon(url), webVitalsEndpoint(path, onMetric)',
+    example: `import { reportWebVitals, sendToBeacon } from '@pyreon/zero/web-vitals'
+
+reportWebVitals(sendToBeacon('/api/vitals'))`,
+    notes: `Core Web Vitals from \`@pyreon/zero/web-vitals\` (standalone ~1.5 KB gz, import-budget-locked): LCP, CLS, INP, FCP, TTFB via PerformanceObserver, following the web-vitals library (activation-relative timings, session-window CLS, p98 INP with durationThreshold 40, LCP finalized on first input or hide). Deviation: on a client route change (active router's afterEach) CLS and INP are reported and reset per route with \`navigationType: 'soft-navigation'\`; LCP/FCP/TTFB are hard-load only. \`sendToBeacon(url)\` posts via navigator.sendBeacon; \`webVitalsEndpoint(path, fn)\` is the validating server middleware. No-op on the server. See also: zero.`,
+    mistakes: `- Calling it before \`startClient\` — the default router is resolved at call time; call after, or pass \`{ router }\`
+- Expecting LCP per client route — browsers expose no stable soft-navigation LCP; only CLS/INP are per route
+- Expecting a metric immediately — LCP/CLS/INP report on first input / page hide / route change, like web-vitals`,
+  },
+
   'zero/ISRStore': {
     signature: 'interface ISRStore<E = ISRCacheEntry> { get(key): E | Promise<E | undefined> | undefined; set(key, entry): void | Promise<void>; delete?(key): void | Promise<void>; clear?(): void | Promise<void>; setTags?(key, tags: readonly string[]): void | Promise<void>; keysByTag?(tag): string[] | Promise<string[]> }',
     example: `import type { ISRStore } from '@pyreon/zero/server'

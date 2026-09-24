@@ -89,6 +89,12 @@ Read before touching `packages/zero/**`, a build adapter, SSG/SSR/ISR output, or
 - `bun run verify-modes` checks built artifacts.
 - E2E: `ssr-node`, `isr-node`, `ssg-*`. SSG suites serve `dist/` with `scripts/serve-ssg.ts`, never `vite preview` — its SPA fallback serves `index.html` for every path and hides missing per-route HTML.
 
+## Sessions, preview, web vitals
+
+- `@pyreon/zero/session`: HMAC-SHA256 signed cookie sessions (Web Crypto; rotation via secret array; tamper/expiry → empty). ANY session read/write calls `markPrivate(ctx.headers)` → `Cache-Control: private, no-store` + `Vary: Cookie`, which `isCacheable` in `isr.ts` refuses UNCONDITIONALLY (custom `cacheKey` included). Loaders reach the session through a `WeakMap<Request, Session>` (`getSession({ request })`). Stream mode: headers leave with the shell — touch the session before it.
+- `@pyreon/zero/preview` (client-safe): `createISRHandler` bypasses the cache on preview-cookie PRESENCE (verification is `previewMiddleware`'s job; a forged cookie buys nothing a query-string variant does not). zero-content `getCollection({ request })` includes drafts for a verified preview request. No effect on SSG static files.
+- `@pyreon/zero/web-vitals`: web-vitals semantics; CLS/INP flush+reset per client route via `router.afterEach`; LCP/FCP/TTFB hard-load only. Import budget `@pyreon/zero::web-vitals`. Real-Chromium test `src/tests/web-vitals.browser.test.ts`.
+
 ## Other features
 
 - The route hydrates in place: `startClient` calls `router.preload(path, undefined, { skipLoaders: true })` before `hydrateRoot`, so the first client render is the real route component rather than a `lazy()` fallback that matches nothing (a rejection still hydrates). The client's first render is the source of truth — any host whose first render is a placeholder must resolve before hydrating, or the server DOM is rebuilt. Islands are unaffected: the client island vnode has no children, so the host adopts the marker and only the island's own `hydrateRoot` touches its interior.
