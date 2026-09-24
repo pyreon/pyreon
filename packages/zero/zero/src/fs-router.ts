@@ -1620,6 +1620,8 @@ async function scanRouteFilesWithExportsUncached(
  * Only checked when the source was actually parsed (`hasDefault` defined).
  * @internal
  */
+const _warnedNoDefault = new Set<string>()
+
 export function assertRouteFileShapes(routes: readonly FileRoute[]): void {
   const problems: string[] = []
   for (const r of routes) {
@@ -1633,10 +1635,16 @@ export function assertRouteFileShapes(routes: readonly FileRoute[]): void {
         )
       }
     } else if (!exp.hasDefault) {
-      problems.push(
-        `"${r.filePath}": no default export — a route file must \`export default function Page() { … }\`. ` +
-          '(An API handler belongs in src/routes/api/*.ts.)',
-      )
+      // A WARNING, not an error: apps colocate helper modules under
+      // src/routes (examples/app-showcase does), and those are not pages.
+      if (!_warnedNoDefault.has(r.filePath)) {
+        _warnedNoDefault.add(r.filePath)
+        console.warn(
+          `[Pyreon] Route file "${r.filePath}" has no default export, so ${r.urlPath} renders nothing. ` +
+            'Add `export default function Page() { … }`, or move a helper module out of src/routes ' +
+            '(an API handler belongs in src/routes/api/*.ts).',
+        )
+      }
     }
     if (exp.loaderIsLiteral) {
       problems.push(

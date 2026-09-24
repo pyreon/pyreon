@@ -1,6 +1,6 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { assertRouteFileShapes, detectRouteExports, invalidateRouteScanCache, parseFileRoutes } from '../fs-router'
 import { zeroPlugin } from '../vite-plugin'
 
@@ -22,10 +22,14 @@ describe('route file shape diagnostics', () => {
     ).not.toThrow()
   })
 
-  it('names a page without a default export', () => {
-    expect(() => check({ 'about.tsx': 'export function About() { return null }' })).toThrow(
-      /\[Pyreon\] Invalid route file.*"about\.tsx": no default export/s,
-    )
+  it('WARNS (does not fail) for a route file without a default export — helpers colocate there', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(() => check({ 'about.tsx': 'export function About() { return null }' })).not.toThrow()
+      expect(warn.mock.calls.flat().join(' ')).toMatch(/"about\.tsx" has no default export/)
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   it('names a default-only layout (layouts use the `layout` export)', () => {
@@ -50,7 +54,7 @@ describe('shipped entry: the routes virtual module fails naming the file', () =>
 
   it('zero plugin load() rejects instead of serving an app that spins', async () => {
     mkdirSync(join(ROOT, 'src', 'routes'), { recursive: true })
-    writeFileSync(join(ROOT, 'src', 'routes', 'about.ts'), 'export const x = 1\n')
+    writeFileSync(join(ROOT, 'src', 'routes', 'about.ts'), 'export default () => null\nexport const loader = { a: 1 }\n')
     const main = zeroPlugin({ mode: 'spa' }).find((p) => p.name === 'pyreon-zero')!
     const hook = <T>(h: unknown) => (typeof h === 'function' ? h : (h as { handler: T }).handler) as T
     hook<(c: unknown) => void>(main.configResolved).call(main, {
@@ -63,6 +67,6 @@ describe('shipped entry: the routes virtual module fails naming the file', () =>
     })
     const load = hook<(id: string, o?: unknown) => Promise<unknown>>(main.load)
     const id = hook<(id: string) => string>(main.resolveId).call(main, 'virtual:zero/routes')
-    await expect(load.call(main, id, {})).rejects.toThrow(/"about\.ts": no default export/)
+    await expect(load.call(main, id, {})).rejects.toThrow(/"about\.ts": `loader` is a value/)
   })
 })

@@ -378,7 +378,7 @@ export const gcTime = 0 // disable loader caching for auth-gated routes
 
 `getStaticPaths`, `revalidate`, `loaderKey`, and `gcTime` are documented in depth in the **[SSG reference](/docs/ssg)** (the first two) and **[router docs](/docs/router)** (the last two).
 
-**Route files are checked when the routes module loads.** A page with no default export, a `_layout` that exports only `default` (layouts are read from the named `layout` export), or a `loader` whose value is not a function fails with a `[Pyreon] Invalid route file(s)` error naming the file — instead of a page that sits on its loading state. A page's own `export function error()` is its error component with or without a `_error.tsx` in the directory (the directory file is the fallback).
+**Route files are checked when the routes module loads.** A `_layout` that exports only `default` (layouts are read from the named `layout` export) or a `loader` whose value is not a function fails with a `[Pyreon] Invalid route file(s)` error naming the file; a route file with no default export (often a colocated helper) logs a warning naming it. A page's own `export function error()` is its error component with or without a `_error.tsx` in the directory (the directory file is the fallback).
 
 ### Loader Context
 
