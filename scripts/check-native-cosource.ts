@@ -33,6 +33,7 @@ import {
 import {
   existsSync,
   mkdtempSync,
+  rmSync,
   readdirSync,
   readFileSync,
   statSync,
@@ -170,7 +171,11 @@ const swiftFullSdk =
       // `-typecheck`, NOT `-parse`: parse is syntax-only and accepts `import
       // SwiftUI` even when the module is absent (Linux). Typecheck RESOLVES the
       // import, so it fails on Linux and succeeds only with the real SDK (macOS).
-      return spawnSync('swiftc', ['-typecheck', probe], { encoding: 'utf8' }).status === 0
+      try {
+        return spawnSync('swiftc', ['-typecheck', probe], { encoding: 'utf8' }).status === 0
+      } finally {
+        rmSync(probeDir, { recursive: true, force: true })
+      }
     } catch {
       return false
     }

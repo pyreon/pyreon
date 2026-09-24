@@ -173,6 +173,20 @@ Opt out for minimal logs (log scrapers, size-diff tooling):
 zero({ buildSummary: false })
 ```
 
+### Router loaders are compiled out when unused
+
+A production build scans `src/routes`. When no route exports a `loader` and there is no `.server.ts` sibling, zero defines `globalThis.__PYREON_ROUTER_LOADERS__` as `false`, which removes the router's loader engine and loader rendering from the client bundle (0.9–1 KB gz off the initial load, measured on two example apps). Apps with loaders get `true`, which costs nothing. `zero dev` never sets it, so adding a loader never needs a restart.
+
+A route passed to `startClient` / `createApp` by hand is not part of the scan. If one of those has a loader, the app refuses to start with a `[Pyreon]` error instead of rendering without its data. Set the value yourself and zero will not override it:
+
+```ts
+// vite.config.ts
+export default defineConfig({
+  define: { 'globalThis.__PYREON_ROUTER_LOADERS__': 'true' },
+  plugins: [zero()],
+})
+```
+
 ## File-System Routing
 
 Routes live in `src/routes/`. The file path maps directly to the URL:
@@ -183,6 +197,8 @@ Routes live in `src/routes/`. The file path maps directly to the URL:
 | `src/routes/about.tsx`          | `/about`     |
 | `src/routes/users/[id].tsx`     | `/users/:id` |
 | `src/routes/blog/[...slug].tsx` | `/blog/*`    |
+
+Parameter names may contain letters, digits, `_` and `-`: `[post-id].tsx` reads as `params['post-id']`.
 
 ### Special Files
 
