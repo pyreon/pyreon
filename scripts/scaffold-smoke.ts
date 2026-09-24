@@ -64,6 +64,12 @@ interface Cell {
    * the dist/client outDir detection landed).
    */
   previewSmoke?: (url: string, body: string) => void
+  /**
+   * Boot the BUILT production server (`node dist/index.js`, node adapter
+   * only) and hand the running origin to the check — used to curl an API
+   * route and to drive a real browser against the deployed shape.
+   */
+  serverSmoke?: (origin: string) => Promise<void>
 }
 
 // ─── Smoke helpers ──────────────────────────────────────────────────────────
@@ -268,6 +274,29 @@ const MATRIX: Cell[] = [
     },
   },
 
+  // app + node — the PRODUCTION RUNTIME cell (audit A3). Every other cell
+  // stops at "the build produced files". This one boots the node adapter's
+  // emitted server and asserts what a user deploys: an API route answers
+  // JSON, and the page HYDRATES — a click on the counter changes the DOM.
+  {
+    name: 'cpa-smoke-app-node',
+    template: 'app',
+    adapter: 'node',
+    smoke: (dir) => {
+      assertFileExists(join(dir, 'dist', 'index.js'))
+      assertFileContains(join(dir, 'vite.config.ts'), 'nodeAdapter')
+    },
+    serverSmoke: async (origin) => {
+      const api = await fetch(`${origin}/api/health`)
+      const type = api.headers.get('content-type') ?? ''
+      if (api.status !== 200 || !type.includes('application/json')) {
+        throw new Error(`/api/health: expected 200 JSON, got ${api.status} "${type}"`)
+      }
+      await api.json()
+      await assertCounterHydrates(`${origin}/counter`)
+    },
+  },
+
   // monorepo + vercel — Bun workspaces shell. Exercises the recursive
   // scaffold path (apps/web/ runs the full flat pipeline), the
   // `@<scope>/{ui,types}` workspace deps, and the root `workspaces`
@@ -361,6 +390,127 @@ const MATRIX: Cell[] = [
     }),
   ),
 ]
+
+// ─── Production-runtime helpers (A3) ────────────────────────────────────────
+
+/** A free TCP port on 127.0.0.1. */
+async function freePort(): Promise<number> {
+  const { createServer } = await import('node:net')
+  return new Promise((res, rej) => {
+    const s = createServer()
+    s.once('error', rej)
+    s.listen(0, '127.0.0.1', () => {
+      const a = s.address()
+      s.close(() => (typeof a === 'object' && a ? res(a.port) : rej(new Error('no port'))))
+    })
+  })
+}
+
+/** Boots `node dist/index.js` (PORT honoured at runtime) and runs `fn` against it. */
+async function runServerSmoke(projectDir: string, fn: (origin: string) => Promise<void>): Promise<void> {
+  const entry = join(projectDir, 'dist', 'index.js')
+  assertFileExists(entry)
+  const port = await freePort()
+  const child = spawn('node', [entry], {
+    cwd: projectDir,
+    env: { ...process.env, PORT: String(port), NODE_ENV: 'production' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  let log = ''
+  child.stdout?.on('data', (d: Buffer) => (log += d.toString()))
+  child.stderr?.on('data', (d: Buffer) => (log += d.toString()))
+  const origin = `http://127.0.0.1:${port}`
+  try {
+    const deadline = Date.now() + 30_000
+    for (;;) {
+      if (child.exitCode !== null) throw new Error(`built server exited early:\n${log.slice(-2000)}`)
+      try {
+        await fetch(origin)
+        break
+      } catch {
+        if (Date.now() > deadline) throw new Error(`built server never became ready:\n${log.slice(-2000)}`)
+        await new Promise((r) => setTimeout(r, 200))
+      }
+    }
+    await fn(origin)
+  } finally {
+    child.kill('SIGTERM')
+    await new Promise((r) => setTimeout(r, 200))
+    if (child.exitCode === null) child.kill('SIGKILL')
+  }
+}
+
+/**
+ * Loads the scaffold's counter page in real Chromium and clicks "+". A page
+ * that server-renders but never hydrates shows the right HTML and ignores the
+ * click, so the DOM must change. Fails closed: no launchable Chromium is a
+ * failure with the install command, never a skip.
+ */
+async function assertCounterHydrates(url: string): Promise<void> {
+  const { chromium } = await import('playwright')
+  let browser: Awaited<ReturnType<typeof chromium.launch>>
+  try {
+    browser = await chromium.launch()
+  } catch (e) {
+    throw new Error(
+      `could not launch Chromium for the hydration check — run \`bunx playwright install chromium\`.\n${String(e)}`,
+    )
+  }
+  try {
+    const page = await browser.newPage()
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(String(e)))
+    await page.goto(url)
+    // `startClient` marks the container once handlers are attached.
+    await page.waitForSelector('[data-pyreon-hydrated]', { timeout: 15_000 })
+    const display = page.locator('.counter-display')
+    const before = (await display.textContent())?.trim()
+    await page.getByRole('button', { name: '+', exact: true }).click()
+    await page.waitForFunction(
+      (prev) => document.querySelector('.counter-display')?.textContent?.trim() !== prev,
+      before,
+      { timeout: 5_000 },
+    )
+    const after = (await display.textContent())?.trim()
+    if (before !== '0' || after !== '1') {
+      throw new Error(`counter did not increment after hydration: "${before}" → "${after}"`)
+    }
+    if (errors.length > 0) throw new Error(`page errors during hydration:\n${errors.join('\n')}`)
+  } finally {
+    await browser.close()
+  }
+}
+
+/**
+ * Runs the scaffold's own `doctor:ci` from a copy OUTSIDE the monorepo.
+ * `pyreon doctor` resolves its scan roots from the nearest workspace-
+ * declaring ancestor, so inside `examples/` it audited the whole Pyreon
+ * repo instead of the app — hundreds of findings that are not the
+ * scaffold's. A real user's app is its own root; the copy reproduces that.
+ * Sources are copied, `node_modules` is linked (the same install), and
+ * build output is left behind.
+ */
+async function runDoctorCiIsolated(projectDir: string): Promise<void> {
+  const { cpSync, symlinkSync } = await import('node:fs')
+  const iso = mkdtempSync(join(tmpdir(), 'cpa-doctor-'))
+  try {
+    const app = join(iso, 'app')
+    cpSync(projectDir, app, {
+      recursive: true,
+      filter: (src) => !/[\\/](node_modules|dist)([\\/]|$)/.test(src.slice(projectDir.length)),
+    })
+    symlinkSync(join(projectDir, 'node_modules'), join(app, 'node_modules'), 'dir')
+    runProjectScript(app, 'doctor:ci')
+  } finally {
+    await rm(iso, { recursive: true, force: true })
+  }
+}
+
+/** `bun run <script>` in the project; throws with the script name on failure. */
+function runProjectScript(cwd: string, script: string): void {
+  const result = spawnSync('bun', ['run', script], { cwd, stdio: 'inherit' })
+  if (result.status !== 0) throw new Error(`bun run ${script} exited with code ${result.status}`)
+}
 
 // ─── Per-cell harness ───────────────────────────────────────────────────────
 
@@ -778,6 +928,17 @@ async function runCell(cell: Cell, opts: { keep: boolean }): Promise<CellResult>
     runBunInstall(projectDir, isolated)
     runBuild(projectDir)
     cell.smoke(projectDir)
+    // Every non-isolated scaffold must pass its OWN gates: it typechecks,
+    // and `doctor:ci` (the script it ships for users' CI, run from an
+    // isolated copy — see `runDoctorCiIsolated`) exits 0. A
+    // scaffold that fails either tells users their fresh app is broken.
+    // Isolated (npm-resolved) cells run published packages, which a
+    // source change cannot fix, so they are exempt.
+    if (!isolated) {
+      runProjectScript(projectDir, 'typecheck')
+      await runDoctorCiIsolated(projectDir)
+    }
+    if (cell.serverSmoke) await runServerSmoke(projectDir, cell.serverSmoke)
 
     // Optional second pass: assert `bun run preview` actually serves the
     // built output (catches "build passes but preview 404s" regressions).
