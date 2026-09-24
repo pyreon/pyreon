@@ -33,6 +33,7 @@ import type {
   HttpResponse,
   RequestOptions,
   Transport,
+  ValidateMode,
   Validator,
 } from './types'
 import { buildUrl } from './url'
@@ -41,7 +42,7 @@ type HeaderSource = HeadersInit | (() => HeadersInit)
 
 /** Config after `extend()` folding — header/middleware sources accumulate. */
 interface ResolvedConfig {
-  baseUrl: string | undefined
+  baseUrl: string | (() => string | undefined) | undefined
   headerSources: readonly HeaderSource[]
   middleware: readonly HttpMiddleware[]
   transport: Transport
@@ -50,6 +51,8 @@ interface ResolvedConfig {
   throwHttpErrors: boolean
   meta: Record<string, unknown>
   parse: ParseContext
+  /** Set when `validate` is an accessor — read per request instead of once. */
+  validateSource: (() => ValidateMode) | undefined
   keyScope: string | undefined
 }
 
@@ -96,9 +99,16 @@ function toResolved(config: HttpClientConfig, base?: ResolvedConfig): ResolvedCo
     meta: { ...base?.meta, ...config.meta },
     keyScope: config.keyScope ?? base?.keyScope,
     parse: {
-      validate: config.validate ?? base?.parse.validate ?? 'strict',
+      validate:
+        typeof config.validate === 'string' ? config.validate : (base?.parse.validate ?? 'strict'),
       schema: config.schema ?? base?.parse.schema,
     },
+    validateSource:
+      typeof config.validate === 'function'
+        ? config.validate
+        : config.validate === undefined
+          ? base?.validateSource
+          : undefined,
   }
 }
 
@@ -209,7 +219,13 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
       // rejects; resolve it against the inbound request when one is in
       // scope. A no-op in the browser, where the document supplies it.
       const url = resolveAgainstAmbientOrigin(
-        buildUrl(resolved.baseUrl, path, options.params, options.query, options.queryStyle),
+        buildUrl(
+          typeof resolved.baseUrl === 'function' ? resolved.baseUrl() : resolved.baseUrl,
+          path,
+          options.params,
+          options.query,
+          options.queryStyle,
+        ),
       )
 
       const link = linkSignals(options.signal, options.timeout ?? resolved.timeout)
@@ -264,7 +280,13 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
       }
     })()
 
-    return createResponsePromise(exec, resolved.parse)
+    // An accessor `validate` is read per request (so a runtime switch between
+    // 'strict' and 'warn' applies to the next call); the static form keeps
+    // sharing the one context object.
+    const parse = resolved.validateSource
+      ? { validate: resolved.validateSource(), schema: resolved.parse.schema }
+      : resolved.parse
+    return createResponsePromise(exec, parse)
   }
 
   const client: HttpClient = {

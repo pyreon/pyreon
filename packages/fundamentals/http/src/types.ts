@@ -273,8 +273,11 @@ export interface HttpClientConfig
   /**
    * Prefix for relative paths. A path starting with `http://`/`https://`
    * ignores it.
+   *
+   * An ACCESSOR is read per request — the seam for an environment switch or
+   * a runtime-configured API origin (`baseUrl: () => settings.apiUrl()`).
    */
-  baseUrl?: string | undefined
+  baseUrl?: string | (() => string | undefined) | undefined
   /**
    * Static headers, or an ACCESSOR evaluated per request (the seam for a
    * token signal: `headers: () => ({ Authorization: \`Bearer ${token()}\` })`).
@@ -305,8 +308,11 @@ export interface HttpClientConfig
    * validation code when you do not use it.
    */
   schema?: SchemaResolver | undefined
-  /** How a validation failure is handled. Defaults to `'strict'`. */
-  validate?: ValidateMode | undefined
+  /**
+   * How a validation failure is handled. Defaults to `'strict'`. An accessor
+   * is read per request, so it can change at runtime.
+   */
+  validate?: ValidateMode | (() => ValidateMode) | undefined
   /**
    * Namespace every endpoint's cache key with this string —
    * `[keyScope, method, path, …]`. Set it when two clients share one
