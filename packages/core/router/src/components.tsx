@@ -243,7 +243,18 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
           return false
         }
         const isLeaf = depth >= b.route.matched.length - 1
-        if (isLeaf) return a.route === b.route
+        // The leaf ALSO re-emits when its loader data is REPLACED with the
+        // route unchanged — `router.revalidate()` (mutation-then-refresh)
+        // writes fresh data in place, and a leaf held only by `route`
+        // identity kept rendering the stale `useLoaderData()` snapshot.
+        // First ARRIVAL (undefined → data) is not a replacement: the pending
+        // machinery (`pendingMs` / `pendingMinMs`) owns that swap.
+        if (isLeaf) {
+          return (
+            a.route === b.route &&
+            (a.loaderData === undefined || a.loaderData === b.loaderData)
+          )
+        }
         return a.loaderData === b.loaderData
       },
     },
