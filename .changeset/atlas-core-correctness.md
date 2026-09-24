@@ -12,3 +12,5 @@ Correctness fixes across discovery, verification and the dev server:
 - A check that did not run names its real cause — `load-failed` (with the import error) or `mount-disabled` (new `mountDisabledPlugin()`) — and the report no longer prints "not run" twice.
 - The scan's embedded Vite runs without HMR/WebSocket and without its own logging (`ATLAS_VITE_LOG=1` restores it), and a project that cannot resolve `@pyreon/core` / `runtime-dom` gets an install command.
 - `atlas dev` rescans in a child process (a second in-process scan was 7× slower with false failures and +420 MB), and rescans on saves in every `projects` directory and on `atlas.config.*` edits.
+
+The scan summary now shows these too: `--no-mount` reports its skipped checks as a choice rather than "no plugin claimed this check"; a project that cannot resolve `@pyreon/core` gets the install command instead of a per-file import error; and framework dev warnings raised while scenarios mounted are listed with the scenarios that raised them.
