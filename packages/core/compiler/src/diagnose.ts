@@ -40,6 +40,19 @@ export interface ErrorPattern {
  */
 export const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // `globalThis.__PYREON_ROUTER_LOADERS__` = false compiles the router's
+    // loader engine out. @pyreon/zero defines it from its scan of src/routes,
+    // so a loader on a route defined elsewhere is invisible to that decision;
+    // createApp refuses to start rather than render pages with missing data.
+    pattern: /compiled route loaders out/,
+    diagnose: () => ({
+      cause:
+        "This build defined globalThis.__PYREON_ROUTER_LOADERS__ as false, which removes the router's loader engine, but a route in the running app declares a loader. @pyreon/zero sets the flag from its scan of src/routes, and a route passed to startClient/createApp by hand is not part of that scan.",
+      fix: 'Turn loaders back on for this app by defining the flag yourself in the Vite config — zero never overrides a value you set. Or move the route into src/routes so the scan sees it.',
+      fixCode: "// vite.config.ts\nexport default defineConfig({\n  define: { 'globalThis.__PYREON_ROUTER_LOADERS__': 'true' },\n  plugins: [zero()],\n})",
+    }),
+  },
+  {
     // The signal auto-call pass recognised three binding forms as shadows
     // (a plain param, a one-level destructured param, a top-level `const`),
     // so a `catch (error)` / `for (const item of …)` / nested-pattern binding

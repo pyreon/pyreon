@@ -56,6 +56,23 @@ describe('the gap this closes', () => {
     expect(controlsOf(code, '/p/Button.tsx', files)).toEqual({ label: 'text', count: 'number' })
   })
 
+  it('an imported `extends` props type inherits the base declared beside it', () => {
+    const files = {
+      '/p/types.ts':
+        "interface Base { label: string }\nexport interface Props extends Base { count: number }",
+    }
+    const code = "import type { Props } from './types'\nexport function Button(props: Props) {}"
+    expect(controlsOf(code, '/p/Button.tsx', files)).toEqual({ label: 'text', count: 'number' })
+  })
+
+  it('an imported intersection alias is resolved and followed', () => {
+    const files = {
+      '/p/types.ts': "type Base = { label: string }\nexport type Props = Base & { count: number }",
+    }
+    const code = "import type { Props } from './types'\nexport function Button(props: Props) {}"
+    expect(controlsOf(code, '/p/Button.tsx', files)).toEqual({ label: 'text', count: 'number' })
+  })
+
   it('reads a union through the import, so the VARIANT AXIS survives', () => {
     // The axis is what produces scenarios. Without it a component imported this
     // way had only edge-case scenarios, however many variants it declared.

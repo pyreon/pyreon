@@ -1,10 +1,10 @@
-import { txt, type T } from '../../kit'
+import { txt } from '../../kit'
 
 export const DocsStatus = txt
   .attrs({
     tag: 'span',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     fontSize: t.size.caption,
     fontWeight: '700',
     letterSpacing: t.tracking.md,

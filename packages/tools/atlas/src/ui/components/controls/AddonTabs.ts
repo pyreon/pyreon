@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const AddonTabs = el
   .attrs({
@@ -7,7 +7,7 @@ export const AddonTabs = el
     contentAlignY: 'center',
     gap: 2,
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     // Eleven addon tabs never fit a 352px panel — wrap instead of the old
     // overflowX:auto, whose hidden scroll clipped half the strip with no
     // affordance that more tabs existed.

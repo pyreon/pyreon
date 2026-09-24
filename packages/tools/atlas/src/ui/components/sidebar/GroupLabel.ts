@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const GroupLabel = el
   .attrs({
@@ -7,7 +7,7 @@ export const GroupLabel = el
     contentAlignY: 'center',
     gap: 8,
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     margin: '16px 0 4px',
     padding: '0 8px',
     fontSize: t.size.caption,
