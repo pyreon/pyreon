@@ -32,7 +32,7 @@ Use `<For>` for reactive list rendering, not `.map()`.
 ### A VNode-returning call as a bare `{…}` child of a DOM element
 
 `<div>{tab('all')}</div>` where `tab` returns JSX now mounts correctly on every path, so prefer the element form `<Tab f="all" />` for clarity (PascalCase does not change how a bare call is classified).
-  - In-file JSX-returning helpers are tracked (`jsxFnVars`/`isJsxHelperCall` in `compiler/src/jsx.ts` + `native/src/lib.rs`) and emit `_mountSlot(() => (cell(x)), …)`.
+  - In-file JSX-returning helpers are tracked (`jsxFnVars`/`isJsxHelperCall` in `compiler/src/jsx.ts` + `native/src/lib.rs`) and emit `_mountSlot(() => (cell(x)), …)` (also for the accessor form `{() => cell(x)}`); array-literal and `.map()` consts take `_mountSlot` too.
   - Any other call (imported helper, `obj.render(x)`) lowers to `bindPolymorphicText`, which mounts a returned VNode/VNode[] at runtime.
   - `{sig()}` holding a VNode: `_bindText` is text-first and upgrades to a subtree mount on the first VNode value. `{() => sig()}` takes the same fast path (`tryDirectSignalRef` unwraps it). The dev warning fires only for a detached text node.
   - Locked by `compiler/src/tests/template-child-classification.test.ts`, `runtime-dom/src/tests/template-child-classification.test.tsx`, `runtime-dom/src/tests/bindtext-vnode-upgrade.test.tsx`.
@@ -93,7 +93,7 @@ Both emits must wrap `{props.children}` using the same `shouldWrap` predicate th
 ### Absorbing component children into a template (`templatizeComponentChildren`)
 
 The option bakes an element skeleton and mounts trailing component children into the clone. It is default on in `@pyreon/vite-plugin` and opt-in in the `@pyreon/compiler` primitive. Three requirements:
-  - Ordering: a `_tpl` bind runs when its call expression evaluates. Only the `_lc`-deferred sole-child position may absorb; every other eager-argument position (multi-child component parent, member/namespaced tag, fragment, expression container) bails to `h()` (`templateMountIsEagerlyOrdered`).
+  - Ordering: a `_tpl` bind runs when its call expression evaluates. Under a component parent only the `_lc`-deferred sole child may absorb; every eager-argument position (multi-child component parent, member/namespaced tag — `jsxTagName` returns `''` there, so an uppercase test would misread it as a DOM tag — fragment, expression container) bails to `h()` (`templateMountIsEagerlyOrdered`).
   - The absorbed child is a preserved hole that is walked, never a source slice (a slice drops `_rp`, `_lc` and nested `_tpl`).
   - The absorbed child's element needs a phase-1 ref const (the two-phase rule above).
   - Only the shape `[element*][component+]` (components in one trailing run) is absorbed; any other arrangement emits byte-identically to the option being off. Locked by `runtime-dom/src/tests/templatize-component-children.test.tsx`.

@@ -47,7 +47,7 @@ The loader never runs, but the import still pulls the component into the client 
 
 Use `'load'` for anything the user interacts with on first paint.
   - `'interaction'` suits interactive content that is not visible at first paint (modals, dropdowns, command palettes).
-  - Only clicks are replayed after hydration; focus, pointerenter and touchstart trigger hydration without replay.
+  - Only clicks and form submits are replayed after hydration; focus, pointerenter and touchstart trigger hydration without replay.
 
 ---
 

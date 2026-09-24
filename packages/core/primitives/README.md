@@ -129,7 +129,7 @@ bun run test:browser    # real-Chromium browser smoke (6 primitives end-to-end)
 ## Related
 
 - **End-user docs**: [`docs/src/content/docs/multiplatform.md`](../../../docs/src/content/docs/multiplatform.md)
-- **CLAUDE.md** "PMTC Multi-Target Architecture" section
+- **`.agents/guides/multiplatform/README.md`** — the PMTC multi-target architecture
 - **Phase B PRs** (PMTC emit) — extend `packages/native/compiler/src/canonical-primitives.ts` mapping table
 - **`@pyreon/elements`** — web-only rich primitive layer (rocketstyle/styler-coupled). Stays as-is.
 

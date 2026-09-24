@@ -177,8 +177,8 @@ export type Gotcha = string | { label: string; note: string }
  * placed at `packages/<category>/<pkg>/src/manifest.ts` — inside the
  * package's `rootDir` so tsc type-checks it alongside the rest of
  * the source. Consumed by `scripts/gen-docs.ts` to produce `llms.txt`,
- * `llms-full.txt`, the MCP api-reference, and the CLAUDE.md package
- * table.
+ * `llms-full.txt`, the MCP api-reference, and the docs-site reference
+ * pages.
  *
  * **Source-of-truth boundary** (decided 9/10 pass):
  * - Structured fields (`signature`, `example`, `mistakes`) — the
@@ -233,8 +233,7 @@ export interface PackageManifest {
   /** Package name including scope — `@pyreon/flow`. */
   name: string
   /**
-   * One-line tagline — ≤120 chars. Appears in `llms.txt` and the
-   * package table in CLAUDE.md.
+   * One-line tagline — ≤120 chars. Appears in `llms.txt`.
    */
   tagline: string
   /**
@@ -289,8 +288,7 @@ export interface PackageManifest {
   peerDeps?: string[]
   /**
    * 3-8 high-level feature bullets. One line each, no trailing
-   * punctuation. Drives the `llms-full.txt` per-package section and
-   * the CLAUDE.md detail section.
+   * punctuation. Drives the `llms-full.txt` per-package section.
    */
   features: string[]
   /**
@@ -303,8 +301,8 @@ export interface PackageManifest {
   api: ApiEntry[]
   /**
    * Package-level gotchas not tied to a single API — migration notes,
-   * runtime surprises, cross-package interactions. Feeds the Common
-   * Issues section in CLAUDE.md and the MCP `diagnose` tool (T2.5.5).
+   * runtime surprises, cross-package interactions. Feeds the MCP
+   * `diagnose` tool (T2.5.5).
    *
    * Entries accept two forms (see `Gotcha` type):
    *

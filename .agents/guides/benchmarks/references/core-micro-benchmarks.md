@@ -35,8 +35,8 @@ For genuinely unbundled server paths, gate with a module-init ternary whose cond
 Standings are in `BENCHMARKS.md` §8. Pyreon leads effect propagation and batching; it loses signal creation (~5× vs Preact), computed diamond, deep chains, and (on V8) wide fan-out.
 
 - **Diamond and deep chain are the cost side of a deliberate trade.** `computed` compares its value with `Object.is` at the runner boundary, so a downstream cascade stops when a derived value is unchanged (the memo-wall win). This bench changes every value every tick, so the gate never short-circuits and only adds a compare per hop. Do not revert it to win this bench.
-- **Signal creation is bound by `Object.setPrototypeOf`** — the price of the callable-with-methods API. Per-instance method copies were measured and declined: they save a little once per signal, make every `.set()` dispatch ~2× slower (prototype dispatch beats own-property loads on a function object), and add ~95 B per signal.
-- **Wide fan-out** is a near-tie whose sign machine load can flip; read it as leaning behind, not a regression.
+- **Signal creation is bound by `Object.setPrototypeOf`** — the price of the callable-with-methods API. Per-instance method copies were measured and declined: they save a little once per signal, make every `.set()` dispatch ~2× slower (prototype dispatch beats own-property loads on a function object), and add ~95 B per signal. Fields-first ordering, `__proto__` assignment and rest-args removal also measured neutral.
+- **Wide fan-out** is engine-dependent: a loss on V8 (1.76× behind Preact) and a narrow lead on JSC (1.09×). Its sign is sensitive to machine load; check both engines before calling it a regression or a win.
 - Memory: signal 152 B, + computed 913 B, + effect 929 B. Effect-queue flags are created lazily, so idle effects stay lean.
 - Compiled apps use `_bindText` direct-subscriber bindings, not raw `effect()`, which is why DOM `partial update` wins while this bench's raw-effect rows are closer.
 
@@ -54,6 +54,7 @@ Declined micro-optimizations (measured on JSC; the current code was already fast
 - Sole-subscriber extraction: `subs.values().next().value` is fastest (`for…of`+break 1.4× slower, `Set.forEach` 3.1×).
 - Hoisting `Set.prototype.size` in `notifySubscribers`: no measurable delta; JSC folds the getter.
 - Replacing `Object.is` in `_set`'s equality gate with an inlined expression: slower; `Object.is` is intrinsified.
+- Part of the per-hop deep-chain cost is the Set-iterator extraction above; subscriber storage is a `Set` shared by verify-mode deps, `_set` dispatch, `subscribe()` and devtools, so an intrusive-list rewrite is a declined cross-cutting trade.
 
 ## Head, styler, validate
 
@@ -67,7 +68,7 @@ All figures, wins and losses, are in `BENCHMARKS.md` §10. Notes that affect how
 - **i18n**: `Intl.PluralRules` is memoized per locale (the bench caught a plural regression).
 - **permissions**: only the fair resolver-race rows compare resolvers; memo-hit rows are a cache read.
 - **query** vs `@tanstack/react-query`: both wrap the same `@tanstack/query-core`, so this measures the adapter. On a data-only change, an intra-component reader of 8 fields re-runs 1 field derivation and 0 components in Pyreon vs 8 derivations + 1 re-render in react-query. Cross-component (one component reads `status`, another `data`) is a tie — react-query's tracked props are field-aware across components. Mount is a tie. Runs in happy-dom.
-- **http** vs ky/ofetch/redaxios/axios (`bun run --filter='@pyreon/http' bench:http`): every client goes through one stubbed `globalThis.fetch`, so rows isolate wrapper JS; the `bare` column is a floor, not a competitor. Static header objects are folded lazily at first request (so client creation stays lean) and snapshot there; function header sources stay live per request. Base clients disable Pyreon's and ky's default timeouts to match ofetch/redaxios/axios. This is CPU wrapper overhead: invisible for one request over a real network, relevant at SSR/loader fan-out volume.
+- **http** vs ky/ofetch/redaxios/axios (`bun run --filter='@pyreon/http' bench:http`): every client goes through one stubbed `globalThis.fetch`, so rows isolate wrapper JS; the `bare` column is a floor, not a competitor. Static header objects are folded lazily at first request (an eager fold at creation measured slower; client creation still trails ofetch/redaxios) and snapshot there; function header sources stay live per request. Base clients disable Pyreon's and ky's default timeouts to match ofetch/redaxios/axios. This is CPU wrapper overhead: invisible for one request over a real network, relevant at SSR/loader fan-out volume.
 
 ## SSR harnesses
 

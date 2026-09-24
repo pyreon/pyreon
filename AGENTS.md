@@ -45,10 +45,9 @@ Read the matching file **before** working in its area, and prefer it over memory
 
 ### The Pyreon MCP server
 
-The repo ships its own MCP server (`@pyreon/mcp`), which exposes 19 tools: `get_anti_patterns` (a token-budgeted index over the anti-pattern catalog), `validate` (static detectors for Pyreon and React-habit mistakes), `diagnose`, `explain_error`, `explain_reactivity`, `get_api`, `get_pattern`, `audit_test_environment`, `audit_islands` and more. Prefer them over grepping large files.
+The repo ships its own MCP server (`@pyreon/mcp`), which exposes 21 tools: `get_anti_patterns` (a token-budgeted index over the anti-pattern catalog), `validate` (static detectors for Pyreon and React-habit mistakes), `diagnose`, `explain_error`, `explain_reactivity`, `get_api`, `get_pattern`, `audit_test_environment`, `audit_islands` and more. Prefer them over grepping large files.
 
-- Claude Code picks it up from `.mcp.json` (approve the project server once).
-- Any other MCP client: run `node packages/tools/mcp/lib/index.js` over stdio from the repo root (`bun install` builds `lib/`).
+Project configs register it for the common tools: `.mcp.json` (Claude Code; approve the server once), `.vscode/mcp.json` (VS Code / Copilot), `.cursor/mcp.json` (Cursor) and `.gemini/settings.json` (Gemini CLI, which also points Gemini at this file). Any other MCP client: run `node packages/tools/mcp/lib/index.js` over stdio from the repo root. The server runs from `lib/`, which `bun install` builds.
 
 ## Packages
 
@@ -114,7 +113,7 @@ What is reactive depends on where a signal is read:
 - Error messages start with `[Pyreon]` and say how to fix the problem.
 - `exactOptionalPropertyTypes` is on: optional properties assigned a possibly-undefined value need an explicit `| undefined`.
 - A `node:*` import must never be reachable from a client-safe entry — not even through a lazy `import()`. Put server-only code behind a server-only module or subpath.
-- Pyreon ships ESM only: no `require` or `default` export conditions (`check-esm-only`).
+- Pyreon ships ESM only: no published package declares a `require` or `default` export condition (`check-esm-only`; only `@pyreon/storybook` is exempt, because Storybook loads presets through CJS).
 - Browser-running packages need a real-Chromium smoke test (`*.browser.test.tsx`, listed in `.agents/rules/browser-packages.json`).
 
 ### Memory-leak classes

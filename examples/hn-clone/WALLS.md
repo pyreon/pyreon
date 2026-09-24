@@ -16,12 +16,12 @@ source code unless I'm genuinely stuck. Every wall gets a severity
 
 ### W0 — Worktree bootstrap is slow + silent
 
-**Severity**: LOW (one-time cost, well-documented in CLAUDE.md)
+**Severity**: LOW (one-time cost, well-documented in `.agents/rules/architecture.md`)
 **Phase**: Setup
 **Hit at**: First minute.
 
 Fresh `git worktree add` → `bun install` took ~40s to complete the workspace
-build. This is documented in CLAUDE.md ("Bootstrap on fresh worktree…") but
+build. This is documented in `.agents/rules/architecture.md` (bootstrap) but
 during the 40s there's no progress indicator beyond the `[bootstrap]` line.
 A user trying their first Pyreon repo would assume `bun install` is doing
 something hostile.
@@ -449,13 +449,13 @@ why isn't the DOM updating" debugging.
 
 ### W12 — `@pyreon/charts` consumer apps need tslib alias (documented but easy to miss)
 
-**Severity**: LOW (documented in CLAUDE.md, but invisible until first chart mounts)
+**Severity**: LOW (documented in the `@pyreon/charts` README, but invisible until first chart mounts)
 **Phase**: Building /stats page
 **Hit at**: Used `<Chart options={() => ...} />` from `@pyreon/charts`. 4
 chart cards rendered, but 0 `<canvas>` elements inside. No error thrown,
 no warning logged.
 
-**Root cause** (after re-reading CLAUDE.md): ECharts imports `tslib` for
+**Root cause** (after re-reading the `@pyreon/charts` README): ECharts imports `tslib` for
 TypeScript helpers (`__extends`, etc.). tslib's CJS factory destructures named
 helpers from `__toESM(require_tslib())`'s default — which fails because the
 helpers are top-level vars, not on the default export. ECharts then throws

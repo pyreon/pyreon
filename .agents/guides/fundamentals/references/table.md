@@ -20,7 +20,7 @@ TanStack Table v9 adapter.
 ## Fine-grained cells
 
 - Use `flexRender` for column-def templates. Inside a keyed `<For>`, plain `flexRender(cell…, cell.getContext())` freezes on an in-place value change (the reconciler reuses the row and never re-runs its body). Read cells with `<td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>`.
-- Drive the inner cell loop with `visibleCells(table, row.id)`, never a captured `row.getVisibleCells()`: the tracked form's memo deps read `table.options`, which every options sync changes, so a single-cell edit re-runs every row's cell list.
+- Drive the inner cell loop with `visibleCells(table, row.id)`, never a captured `row.getVisibleCells()`: the tracked form's memo deps read `table.options`, which every options sync changes, so a single-cell edit re-runs every row's cell list. `visibleCells` subscribes to the row signal plus the column-geometry slices (visibility/order/pinning/grouping) and looks cells up untracked from the current model; a table without the reactivity bridge falls back to the tracked, coarse form.
 - The adapter keeps per-row version signals. A cell subscribes to its row only, and the whole cell lookup runs untracked; any tracked v9 step (`getRowModel`, `getVisibleCells`, `getContext` are all derived-atom reads) would re-subscribe the cell to table-wide state.
 - Atom bindings default `compare` to `Object.is` (TanStack Store parity). Without it, every data edit re-notifies every slice subscriber with an unchanged value.
 - A structure or columns change bumps all rows. Columns are compared by structural signature (including `groupedColumnMode`), not array identity, because an inline `columns: [...]` literal changes reference on every sync.

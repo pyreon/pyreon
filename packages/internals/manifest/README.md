@@ -6,7 +6,7 @@ The schema + identity helper for per-package manifests. Consumed via workspace p
 
 ## Why
 
-A Pyreon PR that touches a public API used to need synchronized updates across up to 9 documentation surfaces: `CLAUDE.md`, `llms.txt`, `llms-full.txt`, MCP `api-reference.ts`, per-package `README.md`, `docs/src/content/docs/<pkg>.md`, JSDoc, source comments, and `.agents/rules/*.md`. Drift was constant; PR review time was dominated by surface-sync checking.
+A Pyreon PR that touches a public API used to need synchronized updates across up to 9 documentation surfaces: `AGENTS.md`, `llms.txt`, `llms-full.txt`, MCP `api-reference.ts`, per-package `README.md`, `docs/src/content/docs/<pkg>.md`, JSDoc, source comments, and `.agents/rules/*.md`. Drift was constant; PR review time was dominated by surface-sync checking.
 
 The manifest collapses structured fields (API signatures, examples, common mistakes, peer deps, gotchas, feature bullets) to **one source** per package. Free-form prose (guides, conceptual overviews, TSDoc directives like `@deprecated`/`@internal`) stays hand-maintained where it belongs.
 

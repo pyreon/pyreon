@@ -102,7 +102,7 @@ The compiler emits `<Comp prop={sig()}>` as `h(Comp, { prop: _rp(() => sig()) })
 
 ### Reading sibling computeds that share an upstream in one accessor
 
-When upstream notifies, the accessor can run before B recomputes and see `(A_new, B_old)`. Collapse A and B into one computed returning the pair, with `equals` comparing both fields. Reference: `RouterView`'s `depthEntry: { rec, comp, errored }` in `packages/core/router/src/router.ts`.
+When upstream notifies, the accessor can run before B recomputes and see `(A_new, B_old)`. Collapse A and B into one computed returning the pair, with `equals` comparing both fields. Reference: `RouterView`'s `depthEntry: { rec, comp, errored }` in `packages/core/router/src/components.tsx`.
 
 ---
 
@@ -232,7 +232,7 @@ A hand-rolled splitter must model strings, comments and `url(…)` before counti
 
 ### Assigning the CSS `transition` shorthand clobbers `transition-delay`
 
-`el.style.transition = '…'` resets every omitted longhand, including the stagger delay, in real browsers. happy-dom does not model this, so test in real Chromium. `@pyreon/kinetic` assigns through `setTransition`, which re-applies the delay from a stable `--kinetic-delay` custom property (a plain inline delay is also wiped by kinetic's `transition = ''` reset). Never assign a shorthand (`transition`, `animation`, `background`, `font`, `border`) when a longhand must survive. Kinetic's `nextFrame` batches same-burst callbacks into one double-rAF, keyed to the scheduling `requestAnimationFrame`; cancel removes the callback from its batch, which works in every phase and needs no browser API. Reference: `packages/ui-system/kinetic/src/utils.ts`; test `__tests__/stagger-delay-preserved.browser.test.tsx`.
+`el.style.transition = '…'` resets every omitted longhand, including the stagger delay, in real browsers. happy-dom does not model this, so test in real Chromium. `@pyreon/kinetic` assigns through `setTransition`, which re-applies the delay from a stable `--kinetic-delay` custom property (a plain inline delay is also wiped by kinetic's `transition = ''` reset). Never assign a shorthand (`transition`, `animation`, `background`, `font`, `border`) when a longhand must survive. Kinetic's `nextFrame` batches same-burst callbacks into one double-rAF, keyed to the scheduling `requestAnimationFrame`; a callback registered after the batch's outer frame fired opens a new batch, so its "from" state still paints; cancel removes the callback from its batch, which works in every phase and needs no browser API. Reference: `packages/ui-system/kinetic/src/utils.ts`; test `__tests__/stagger-delay-preserved.browser.test.tsx`.
 
 ---
 

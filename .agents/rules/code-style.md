@@ -4,7 +4,7 @@
 
 - **oxlint** for general JS/TS linting (400+ rules, Rust-powered)
 - **oxfmt** for formatting (Rust-powered, Prettier-compatible)
-- **@pyreon/lint** for Pyreon-specific rules (132 rules, 25 categories — the gated count lives in AGENTS.md's package table; keep the two in sync)
+- **@pyreon/lint** for Pyreon-specific rules (132 rules, 25 categories — the gated count also appears in AGENTS.md's package list; keep the two in sync)
 - Config files: `.oxlintrc.json` (linting), `.oxfmtrc.json` (formatting), `.pyreonlintrc.json` (Pyreon-specific rules)
 - Commands: `bun run lint` (`oxlint .`), `bun run format` (`oxfmt --write .`), `bun run format:check` (`oxfmt --check .`)
 - Inline suppression: `// oxlint-disable-next-line rule-name` (not `biome-ignore`)
@@ -37,7 +37,7 @@ The backlog is at zero: `oxlint .` reports 0 warnings and 0 errors, and `lint-ba
   - `typescript/no-this-alias` — deliberate `this` capture in the signal hot path and compat shims.
   - `unicorn/no-useless-spread` — defensive `[...coll]` snapshots before deleting while iterating.
   - `typescript/no-non-null-assertion` — `!` is used where null is provably impossible.
-  - `vitest/expect-expect`, `vitest/require-mock-type-parameters` — false positives against custom assertion helpers.
+  - `vitest/expect-expect`, `vitest/require-mock-type-parameters`, `vitest/no-conditional-expect`, `vitest/require-to-throw-message` — per-rule floods, mostly false positives against custom assertion helpers.
   - `jsx-a11y/label-has-associated-control`, `control-has-associated-label` — label association needs cross-element resolution an AST walker cannot do.
 - **Scoped off:** `no-console` in `examples/**`, `packages/**/scripts/**` and CLI packages; the jsx-a11y interactivity set in `examples/**` and `packages/ui/primitives/src/**` (headless primitives provide a11y through ARIA helpers the AST cannot see); `vitest/no-disabled-tests`, `no-conditional-tests`, `valid-title` in `**/*.test.*`; `unicorn/no-empty-file` in `**/*.d.ts`; `unicorn/no-thenable` in the native compiler (`then` is an IR field).
 

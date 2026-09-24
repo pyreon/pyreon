@@ -51,7 +51,7 @@ Tier-1 drains in subscription order, not topological order, so a queued evaluato
 
 ### An effect that reads a counter it also writes
 
-The write re-queues the effect, and the batch re-runs it up to `MAX_PASSES` (32) times with no warning.
+The write re-queues the effect, and the batch re-runs it up to `MAX_PASSES` (32) times before dropping it with only a generic MAX_PASSES console warning.
   - Write a counter that exists for other readers with `.peek()`: `version.set(version.peek() + 1)`.
   - The symptom may not look like a loop: in `packages/fundamentals/charts/src/engine/canvas-host.tsx` each re-run called `draw()`, which cancelled the tween the first run started, so the animation snapped.
 

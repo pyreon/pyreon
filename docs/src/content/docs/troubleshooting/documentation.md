@@ -124,6 +124,7 @@ A hand-maintained allowlist in an emitter plus a test enumerating it hides every
   - Make the test total over the language surface (a hand-written ECMAScript `Math` member list, not the runtime's), requiring each member to lower and compile or warn by name.
   - Pick the validation rung by what the failure is: name-resolution and arity errors need a typecheck (`swiftc -parse` accepts `Math.sign(-3)`); a different answer needs execution against the web's own result, computed in the test.
   - `min`/`max`/`hypot` are variadic; a single argument is valid.
+  - A diagnostic that cannot separate the broken case from correct emit is not worth its false-positive rate: an "untypeable `.length` receiver" warning was removed because most hits were already-correct arrays; add type information instead (helper return types, `<For>` row params typed from `each`).
   - When a shape cannot be lowered faithfully, emit the closest approximation (for `{ ...p, ...q }`, the last source) so misuse fails at its use site, not a silently compiling fall-through.
   - Reference: `packages/native/compiler/src/{math-lowering,spread-lowering,jsx-helper-call}.ts`; tests `native-math-totality`, `native-length-helper-receiver`, `native-object-spread-shapes`, `native-jsx-helper-call` (`.test.ts`).
 

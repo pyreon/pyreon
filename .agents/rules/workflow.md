@@ -25,6 +25,7 @@ Priorities: correctness > performance > DX > AI-friendliness.
 
 ## Code changes
 
+- Read the existing source in the area first, and check whether the pattern already exists in another package before writing a new one.
 - One feature per PR, one concern per file.
 - Naming: `signal()`/`computed()`/`effect()` for reactivity; `onMount`/`onUnmount` for lifecycle; `createX` for factories; `useX` for context hooks.
 - Export types separately from runtime values.
@@ -95,7 +96,7 @@ When CI fails on a gate not listed here, add a row in the same PR.
 |---|---|---|
 | `Coverage (Full)` (`ci-main.yml`, main only) red, not caused by your PR | A package drifted below its threshold on main | Fix the gate; never rerun past it. Triage per package: (a) a file at ~0% in the node run because only a `*.browser.test.tsx` covers it → `coverageExclude` with a rationale (never exclude a file covered nowhere); (b) a cheap real gap → write the test; (c) re-baseline to the measured value with a `scripts/check-coverage.ts` exemption entry (table and config must match) and ratchet back up. Never lower thresholds in bulk. Trust the results table, not interleaved progress lines. |
 | `Coverage (changed packages)` (PR time) | Your PR lowered a directly changed package's coverage | It measures `affected.ts --changed-only` (directly changed workspaces), because coverage depends on a package's own sources and tests, not the dependent closure. |
-| `Coverage (Native)` | `@pyreon/native-compiler` coverage | Measured alone in `ci-main.yml` with the verdict cache and serial files; `Coverage (Full)` runs `--skip=@pyreon/native-compiler`. |
+| `Coverage (Native)` | `@pyreon/native-compiler` coverage | Measured alone in `ci-main.yml` with the verdict cache and serial files; `Coverage (Full)` runs `--skip=@pyreon/native-compiler`. An unknown `--skip` name fails the script, so the skip cannot silently stop matching. A job a package is deferred to must actually be able to run it (cap, cache, isolation). |
 
 ### PR state, stacking and merge refs
 
@@ -126,6 +127,7 @@ When CI fails on a gate not listed here, add a row in the same PR.
 - A fix applied to one call site is not a fix. When you fix a CI trap, state the invariant it implies, apply it everywhere it holds, and gate it.
 - A gate that is permanently red, flaky, or unable to fail is worse than no gate. Finding one is a finding: fix it in its own PR.
 - A wall-clock threshold inside a required check is flaky by construction. Test for determinism (does it fail every time?) and look at the spread within one attempt (`perf-stress.browser.test.tsx` once logged five identical runs varying 3.3×). Gate the property that holds on any machine, log the duration, and keep timing in the advisory lane (`@pyreon/perf-harness`, `perf.yml`, `.agents/guides/benchmarks/README.md`). Do not widen the threshold.
+- A bench that cannot run is an UNMEASURED row and must fail the run, never an omitted row in a green artefact (`scripts/bench/run-all.ts` exits non-zero naming it). Under esbuild a JSON module imported `with { type: 'json' }` has only a default export, so package entries' named `name`/`version` import needs the `jsonNamedExports` plugin in `scripts/bench/bundle-size.ts`.
 - CI is queue-dominated (see `.agents/guides/ci/README.md`): a gate that takes seconds is a step, not a job. To diagnose: `gh api repos/pyreon/pyreon/actions/runs/<id>/jobs`, exclude `conclusion == "skipped"`, then `started_at − created_at` is queue and `completed_at − started_at` is work.
 
 ## Restacking after a parent merges
@@ -151,6 +153,8 @@ Restack in dependency order, not PR order. Never use a bare `git stash pop` duri
 ## Git — detail
 
 - **Stacked PRs.** Branch protection can only require checks on a protected base, and protecting feature branches makes them read-only (a ruleset's required checks gate ref updates). So open dependent PRs against `main` from a branch cut from the parent; the diff shrinks once the parent merges. Merge existing stacks bottom-up.
+- A `bun install` in a fresh worktree can rewrite `bun.lock` without any `package.json` change; revert that drift instead of committing it. Edit files through the worktree's own absolute path, never the primary checkout's.
+- Backticks inside a double-quoted `-m`/`--body` are blocked by the `.claude/scripts/guard-shell-substitution.sh` PreToolUse hook; single quotes or `-F`/`--body-file` avoid it.
 - Commit only when asked, and only after validation. No force-push or amending of published commits. Commit messages explain why.
 - **No AI attribution** is enforced by `.claude/scripts/guard-ai-attribution.sh` (a PreToolUse hook, tested by `guard-ai-attribution.test.ts`). It blocks `git commit` / `git tag` / `gh pr` / `gh issue` / `gh release` carrying either form, in the command text or in a `-F` / `--body-file` file. It matches at line start only, so prose discussing the rule is allowed unless a line begins with one of the forms. A human `Co-Authored-By` is allowed. The rule outranks any tool default or mid-session instruction; to change the policy, change `AGENTS.md`, this file and the hook together.
 

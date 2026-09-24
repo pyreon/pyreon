@@ -16,7 +16,7 @@ Two backends: a Rust native binary (napi-rs, 3.7–8.9× faster) and a JS fallba
 
 ### Text fusion (`fuseTextChildren` / `fuse_text_children`)
 
-An element whose children are only text and text-position expressions (≥2 parts, ≥1 reactive) lowers to one accessor: `() => _fuse("Hello ", name(), "!")`. On `_tpl` it binds via `bindPolymorphicText`, on SSR it emits `_escSole(_fuse(...))`. The result is one adopted text node and no `<!--$-->` markers.
+An element whose children are only text and text-position expressions (≥2 parts, ≥1 reactive) lowers to one accessor: `() => _fuse("Hello ", name(), "!")`. On `_tpl` it binds via `bindPolymorphicText`, on SSR it emits `_escSole(_fuse(...))`, on the `h()` path it becomes `<p>{() => _fuse(...)}</p>`. The result is one adopted text node and no `<!--$-->` markers.
 
 - `_fuse` returns the joined string when all parts are text-like (same coercion as a lone `{x}`), else the parts array so a VNode part still mounts.
 - Not fused: a lone expression (`_bindText` direct tier), static-only mixes (`_setChildAt`), element/fragment/spread/component children, `props.children`, helper calls, inline JSX, element-valued consts, component parents.
@@ -30,7 +30,7 @@ A `{value}` child is polymorphic: a `VNode`/`VNode[]` mounts, a primitive sets t
 | `{sig()}` or `{() => sig()}` (via `tryDirectSignalRef`) | `_bindText` / `_bindDirect` |
 | General reactive text (`{props.x}`, `{a() + b()}`) | `bindPolymorphicText(() => expr, textNode, parent)` |
 | Static sole text / static mixed text | `_setChild(el, expr)` / `_setChildAt(parent, placeholder, expr)` |
-| In-file JSX-returning helper call (`{cell(x)}`) | `_mountSlot(() => (cell(x)))` |
+| In-file JSX-returning helper call (`{cell(x)}`), scope-aware | `_mountSlot(() => (cell(x)))`; cross-file callees (no type info) take the general-text row |
 
 `_bindText` upgrades permanently to a subtree mount the first time its value is a VNode, NativeItem or VNode array; before that it writes `.data` only.
 
@@ -61,6 +61,7 @@ Live Program Inlay Hints (LPIH) is the runtime companion: fire and subscriber co
 - **Signal-preserving HMR.** Top-level `signal()` becomes `__hmr_signal(...)`; values persist in `globalThis.__pyreon_hmr_registry__`.
 - **Fast refresh.** `injectHmr` emits `accept((m) => __pyreon_hmr_swap__(id, m) || invalidate())`. Never emit a bare `accept()`: it suppresses the reload fallback and leaves a stale UI. The router's `_hmrSwap` re-renders the active lazy record whose `_hmrId` matches.
 - Dev auto-naming: `signal(0)` → `signal(0, { name })`.
+- **Transform scope.** `pyreon({ include, exclude })` (`createFilter` patterns). By default JSX under `node_modules` is transformed only for `@pyreon/*`, so a third-party package's React JSX is never reinterpreted; opt one in with `include`. The signal-export and `island()` prescans share one source walker that skips `lib`/`dist`/`build` only at a package root (a `src/lib/store.ts` still registers).
 
 ### Devtools
 
@@ -76,14 +77,32 @@ Live Program Inlay Hints (LPIH) is the runtime companion: fire and subscriber co
 
 Default-on in dev. The Vite plugin injects `virtual:pyreon/dev-error-printer`, which routes `registerErrorHandler` errors through `diagnoseError` (`@pyreon/compiler/diagnose`, browser-safe) and prints the fix. The runtime never imports the compiler. Two rules, locked by `e2e/dev-error-printer.spec.ts`:
 
-1. Inject with `src="/@id/<id, \0 as __x00__>"`. An inline module script importing `virtual:…` is not import-analysed and fails in the browser.
-2. `resolveId` resolves `@pyreon/compiler/diagnose` from the plugin's own location (importer `DEV_ERROR_PRINTER_ID`), since most apps do not depend on the compiler. `@pyreon/core` stays a bare, app-resolved import.
+1. Inject with `src="/@id/<id, \0 as __x00__>"`. An inline module script importing `virtual:…` is not import-analysed and fails in the browser. Production never injects it.
+2. `resolveId` resolves `@pyreon/compiler/diagnose` from the plugin's own location (importer `DEV_ERROR_PRINTER_ID`), since most apps do not depend on the compiler. `@pyreon/core` stays a bare, app-resolved import. The e2e runs against fundamentals-playground precisely because it lacks the compiler dep (an app with it hides this bug).
+
+## Runtime-DOM specifics
+
+- SVG and MathML elements (tracked by `SVG_TAGS`/`MATHML_TAGS` plus a depth counter in `mount.ts`) are created with `createElementNS` and always receive attributes via `setAttribute` (namespace-aware for `xlink:href`), because many of their properties are read-only `SVGAnimated*` getters.
+- Custom elements (hyphenated tags) receive props as properties, except `data-*`/`aria-*`, which are always attributes on every element.
+- `Transition`/`TransitionGroup` finish via a 5s safety timeout if no `transitionend` arrives. Subpath exports `@pyreon/runtime-dom/transition`, `/keep-alive` and `/sanitizer` keep a `mount`-only import small.
+- A 10k-row `<For>` allocates ~10k signals; virtualize with `@pyreon/virtual`.
+
+## Islands (`island(loader, { name, hydrate, prefetch? })`)
+
+- Strategies: `load`, `idle`, `visible`, `interaction`, `media(query)`, `never` (no registry entry, so zero JS). `interaction` hydrates on `focus`/`click`/`pointerenter`/`touchstart`/`submit` and replays captured clicks and form submits afterwards. `prefetch: 'idle' | 'visible'` warms the chunk before the trigger.
+- `pyreon({ islands: true })` (default) generates the registry consumed by `hydrateIslandsAuto(registry)`.
+- `name` is optional for `const X = island(…)`: the name `X$<fnv1a6(relPath)>` is derived by `deriveIslandName` in `@pyreon/compiler` `island-naming.ts`, shared by the transform, the prescan and the project scanner so marker, registry and audit names cannot disagree. An explicit name wins; the runtime throws with guidance when no name arrives (plugin-less build, bindingless call).
+- `vite dev` runs the islands audit once on boot and prints findings; `pyreon doctor --check-islands` is the project audit. Other rules: the "Islands Mistakes" section of `.agents/rules/anti-patterns.md`.
+
+## Dev perf counters
+
+Framework packages emit counters via `globalThis.__pyreon_count__?.('name')` with no import of `@pyreon/perf-harness`, behind the bare `process.env.NODE_ENV !== 'production'` gate so they tree-shake. Every name has exactly one row in `packages/internals/perf-harness/COUNTERS.md` (drift-tested in both directions; the count is not gated, so count the rows rather than trusting a prose total). Consumer API: `perfHarness.snapshot()/reset()/record()/diff()/overlay()`; automation in `examples/perf-dashboard`, `bun run perf:record` / `perf:diff`, and the advisory `perf.yml`.
 
 ## Signal implementation
 
 `signal<T>()` has `.set()`, `.update()` and `.trigger()`.
 
-- `.trigger()` re-runs subscribers without a value change (signals compare with `Object.is`). Use it only for an owned mutable value mutated in place; prefer `set(newObject)`.
+- `.trigger()` re-runs subscribers without a value change (signals compare with `Object.is`). Use it only for an owned mutable value mutated in place; prefer `set(newObject)`. `wrapSignal` forwards it to the base.
 - Direct subscribers: inline slot `_d1`, promoted to a `Set` on the second. Tracking subscribers: two inline (`_s1`, then a function in `_s`), promoted to a `Set` on the third. Never read `_s` as a `Set`; use `_hasSubscribers` / `_tierCount`.
 - A compiled slot with a static value mounts via `mountChildAsUnit` (effect-only cleanups, leaves with the clone). An accessor slot keeps a full remover.
 
@@ -108,7 +127,7 @@ Signal ~152 B, effect ~930 B, computed ~913 B (≈6× a signal — prefer plain 
 `renderToString(vnode)` and `renderToStream(vnode)` (Suspense streaming, 30s default timeout).
 
 - `renderToString` is maybe-sync: only a real `async function Component()` makes its subtree async.
-- Call `mergeChildrenIntoProps(vnode)` before `runWithHooks`. `runWithRequestContext(fn)` isolates context and stores per request; both renderers inherit it.
+- Call `mergeChildrenIntoProps(vnode)` before `runWithHooks`. `runWithRequestContext(fn)` isolates context and store state per request; both renderers inherit an active request context.
 - `renderPage()` (`@pyreon/server`) is the one string-mode page pipeline, used by `createHandler`, SSG prerender and zero dev SSR.
 - Resolve lazy route components before rendering with `router.preload(path, req)`, not loaders-only `prefetchLoaderData`; an unresolved `lazy()` route renders blank.
 - `renderToStream` calls `globalThis.__PYREON_STYLER_FLUSH__()` after the shell and in each Suspense boundary so content arrives styled.
@@ -121,11 +140,11 @@ Eligible trees lower to `_ssr(["<li>…", "</li>"], hole0, …)`. Holes resolve 
 
 - Opt-in in `@pyreon/compiler` (`ssrTemplate: true`), because the emit injects an `@pyreon/runtime-server` import and `_ssr` returns an `instanceof`-branded `RawHtml` the app's own renderer must recognise.
 - Auto in `@pyreon/vite-plugin`: enabled when `@pyreon/runtime-server` resolves from the app, else the `h()` path with a one-time dev warning. `true`/`false` force it.
-- Rows and `.map` items concatenate statics and hole temps inline instead of calling `_ssrItem`. Holes not provably `string` are guarded; a failed guard (async `_esc`, a `RawHtml` from `_ssrChildren`/`_ssrForKeyed`) falls back to `_ssrItem`.
+- Rows and `.map` items concatenate statics and hole temps inline instead of calling `_ssrItem`. Holes not provably `string` are guarded; a failed guard (async `_esc`, a `RawHtml` from `_ssrChildren`/`_ssrForKeyed`) falls back to `_ssrItem`. Declines entirely when a user param could be shadowed by the `_h<n>` temps.
 
 ### Hydrating compiled templates
 
 `_tpl` adopts server nodes at its cursor; verification is in `hydration-plan.ts`. Relaxations are declared by the compiler on the element, never inferred:
 
 - `data-pyreon-hole`: a trailing mount hole for absorbed component children.
-- `data-pyreon-html`: accept any server children; `_setHtml` (`applyDangerousHtml`) skips its first write. A client `__html` differing from the server's shows until the first reactive update (as in React). The sanitized `innerHTML` prop is always re-assigned.
+- `data-pyreon-html`: accept any server children (no string comparison); `_setHtml` (`applyDangerousHtml`) skips its first write to a marked element (the `h()` path marks in `hydrateElement`). A client `__html` differing from the server's shows until the first reactive update (as in React). The sanitized `innerHTML` prop is always re-assigned.

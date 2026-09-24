@@ -25,7 +25,7 @@ import lastUpdated from './vite-plugins/last-updated'
 // `--base` flag is passed in the deploy workflow. (Pre-cutover the
 // GitHub Pages project-pages URL needed `--base=/pyreon/` via the
 // `argvHasBaseFlag` carve-out in @pyreon/zero — PR #1395 — retired now.)
-// Per CLAUDE.md PR E "base single-source-of-truth wiring":
+// Per PR E "base single-source-of-truth wiring":
 // `zero({ base })` flows to vite.config.base, __ZERO_BASE__, and
 // the SSG entry's createApp call.
 export default defineConfig({

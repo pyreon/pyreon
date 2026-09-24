@@ -6691,6 +6691,26 @@ diagnose({
 - Calling outside a Pyreon project — same caveat as \`get_routes\`: returns empty if the scanner can't find a project root.`,
   },
 
+  'mcp/get_content_collection': {
+    signature: 'tool: get_content_collection({ name? }) → markdown',
+    example: `get_content_collection()
+// → # Content collections (2) — \`docs\` (markdown) — 42 entries at \`src/content/docs\`
+get_content_collection({ name: 'docs' })
+// → one line per entry: \`getting-started\` — Getting started (\`getting-started.md\`)`,
+    notes: `List the \`@pyreon/zero-content\` collections declared in the project's \`content.config.{ts,mts,js,mjs}\` (name, type, entry count, content directory), or — with \`name\` — one collection's entries (slug, title, file). Reads from \`process.cwd()\`. See also: get_content_entry, get_routes.`,
+    mistakes: `- Calling it outside a \`@pyreon/zero-content\` app — with no \`content.config.*\` it answers "No content.config found", not an empty list.
+- Passing a collection name that is not declared — the answer lists the known collection names instead.`,
+  },
+
+  'mcp/get_content_entry': {
+    signature: 'tool: get_content_entry({ collection, slug }) → markdown',
+    example: `get_content_entry({ collection: 'docs', slug: 'getting-started' })
+// → path, title, bytes, ## Frontmatter, ## Heading outline`,
+    notes: `Fetch one content entry: its path, title and size, the parsed frontmatter as key/value pairs, and the heading outline (code-fence aware). Use \`slug: ""\` for a collection's index entry. When the slug is not found, the answer suggests up to five nearby slugs. See also: get_content_collection.`,
+    mistakes: `- Guessing slugs — call \`get_content_collection({ name })\` first to list the real ones.
+- Using the file name with its extension as the slug — slugs are derived the same way the runtime derives them, without \`.md\`.`,
+  },
+
   'mcp/get_atlas_catalog': {
     signature: 'tool: get_atlas_catalog({ tag?: string }) → string',
     example: `get_atlas_catalog({})

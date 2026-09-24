@@ -97,7 +97,8 @@ Keep this list honest and current; it is `BENCHMARKS.md` §12:
 - Production `vite build`, real published competitor deps, seeded RNG, DOM verification every iteration (gates read the table back, not just a row count).
 - Tightest commit per framework (`flushSync` / microtask / synchronous — never an `rAF` wait inside the timed window). Per-run resets on every op. Randomized, per-pass-reshuffled order.
 - Cross-origin isolated pages (`examples/benchmark/vite.config.ts` sets COOP/COEP) give a 5 µs `performance.now()` quantum instead of Chromium's 100 µs clamp. `bench-fair` prints `crossOriginIsolated=` and the quantum; confirm it before trusting sub-millisecond rows.
-- `--wait-quiet [maxLoad]` re-checks machine load before every framework and pass. Stamp load before and after every run.
+- `--wait-quiet [maxLoad]` re-checks machine load before every framework and pass. Run benches strictly one at a time, never concurrently, and stamp load before and after every run.
+- Async verify callbacks are awaited, outside the timed region (`src/runner.ts`); a verifier that is not awaited cannot fail a no-op arm.
 - The bimodality guard (`examples/benchmark/bimodality-guard.ts`) flags cells whose samples split between two timing modes.
 - Retained heap is read post-GC with `--enable-precise-memory-info`. `STABLE_DELTA` (16 KB) in `bench-fair.ts` is a GC-convergence threshold, not the metric's resolution.
 - Standard run: `cd examples/benchmark && bun bench-fair.ts --repeat 5 --wait-quiet 6`. Also `bench-scenarios.ts`, `bench-hydration.ts`, `bench-apppage.ts`, `bench-ssr.ts`, `bench-crossover.ts`.
@@ -107,6 +108,7 @@ Keep this list honest and current; it is `BENCHMARKS.md` §12:
 - Every arm builds row data with the same helper, outside the timed window.
 - Use each framework's real compiled output: Vue compiled templates (not hand-written `h()`, which disables patch flags), Solid byte-for-byte as `babel-preset-solid` emits (getter props, `_tmpl$()` clones, `_$insert`), React/Preact through the automatic `jsx()` runtime, Svelte 5 with per-row `$state`, Vanilla cloning a `<template>` row.
 - When an arm is hand-written "at compiler-output level", compile the snippet through the real toolchain and diff the emit. Do not reason about what the compiler probably does.
+- Competitors run on their documented optimizations: in the context scenario React/Preact build the tree once and pass it as reference-stable `children`, so only the consumers re-render (`src/impl/scenario-tree.ts`).
 - Per-framework idiomatic data modelling is deliberate: Pyreon and Solid allocate a per-row signal; plain-object frameworks re-render. Do not give Pyreon plain objects to shrink a gap. State the difference wherever it affects a number (it costs Pyreon ~95 µs in the hydration walk).
 - Diagnostic arms (for example `SolidJS (eager props)`, the no-a11y-table chart arm) are excluded from ranking via `NON_RANKING` in `bench-scenarios.ts`.
 - Audit a number with the same rigor whether it flatters Pyreon or not.
@@ -126,9 +128,9 @@ Each of these produced a wrong published figure at some point.
 - **Layout-bound ops.** `bench()` in `examples/benchmark/src/runner.ts` times `fn()` plus a forced `getBoundingClientRect()` flush. On create/replace/remove/append, browser layout is most of the op and identical across frameworks, so wall clock cannot separate frameworks there. Append is ~90% layout, and all eight implementations emit byte-identical DOM — claim "end-to-end append cost including the layout it causes", never "the reconciler is N× faster".
 - **Create measures a replace.** There is no reset between runs and row ids are monotonic, so 19 of 20 `create N rows` samples replace N live rows. That is why create and replace report near-identical medians.
 - **Hydration total is ~80% layout.** The same forced flush makes layout ~80% of every hydration total and identical across frameworks; a small total ratio can hide a larger walk ratio. Report both.
-- **`table-layout: auto`.** Any op that widens a cell re-measures column widths across the whole table. It inflated `partial update` margins (disproportionately for Solid) and caused append bimodality. The fixture uses `table-layout: fixed` for every arm (`examples/benchmark/src/main.ts`) — less representative of real apps, deliberately.
+- **`table-layout: auto`.** Any op that widens a cell re-measures column widths across the whole table. It inflated `partial update` margins (disproportionately for Solid) and caused append bimodality. The fixture uses `table-layout: fixed` for every arm (`.bench-fixture table` in `examples/benchmark/index.html`) — less representative of real apps, deliberately.
 - **Timer resolution.** Without cross-origin isolation, Chromium clamps `performance.now()` to 100 µs, so a sub-millisecond sample is a multiple of one tick. A zero-width CI with a huge CV is the signature of samples bouncing between adjacent quanta. Use the isolated 5 µs clock, or batch K ops per window (`bench:crossover`), before publishing any select/clear ratio.
-- **Sampling attribution is not wall clock.** A CDP profile's per-function total is attribution. Check it against the op's measured wall time before quoting it (`bench-createprofile.ts` output once understated create-10k framework JS ~6×).
+- **Sampling attribution is not wall clock.** A CDP profile's per-function total is attribution. Check it against the op's measured wall time before quoting it (`bench-createprofile.ts` output once understated create-10k framework JS ~6×). Use a subtree-attributed profile rooted at the timed call: a flat self-time view also pools the untimed per-iteration reset, whose cost tracks SSR payload size.
 - **V8 inlining double-counts.** An inlined callee's self time also appears in its caller's frame. Read profile frames as a tree; one cost can appear as two "independent floors".
 - **Minified builds strip function names.** Attribution keyed on `Function.name` silently reads `0.0µs`. The attribution drivers refuse to report an empty attribution; keep that behaviour in any new driver.
 - **Model checks under load.** A decomposition's sum-of-rungs check taken on a loaded box can look precise and be noise. Re-take it on a quiet box.
@@ -136,7 +138,7 @@ Each of these produced a wrong published figure at some point.
 - **Engine-internal caches in heap metrics.** V8's `smi_string_cache` grows when an arm stringifies many distinct integers in JS (`String(row.id)`) and is charged to whichever arm did it. Every arm renders the raw `row.id`. Bucket a heap snapshot by constructor and check GC-root-held entries (`bench-heapdiff.ts`) before attributing a heap delta to a framework. Node saturates this cache at startup, so only a fresh browser page shows it.
 - **Competitor handicaps.** A non-idiomatic competitor shape (Octane's `{String(row.id)}` disabling its `forBlock` fast path, an `rAF` idle wait inside React's window, a Solid arm skipping getter props) silently inflates Pyreon's lead.
 - **Dependency bumps move the board.** A competitor version bump can flip a verdict (Octane 0.2.x/0.4.x changed several ops). Attribute a change to Pyreon only after splitting "Pyreon moved" from "competitor moved".
-- **Noisy load hides gaps.** A wide CI at high load can make a real gap look like a tie. Check CI width before publishing a tie; re-run on a quiet machine.
+- **Noisy load hides gaps.** A wide CI at high load can make a real gap look like a tie. Check CI width before publishing a tie; re-run on a quiet machine, and publish a verdict on a close op only after two runs agree.
 
 ## Standing findings not in `BENCHMARKS.md`
 

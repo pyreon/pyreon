@@ -25,7 +25,7 @@ All three are needed for edges to paint:
 
 1. `.pyreon-flow-viewport` is sized `width/height: 100%`. A 0×0 viewport collapses the edge `<svg>` to zero area, and a zero-area SVG paints nothing even though its paths exist.
 2. That viewport is `pointer-events: none`; node wrappers re-enable `auto`, edge paths `stroke`. Otherwise it swallows Controls/MiniMap/pan clicks.
-3. A ResizeObserver per node writes rendered size and every `<Handle>` dot centre into `instance.measurements`. One rule, `getEffectiveDimensions` (explicit `width`/`height` → measured → 150×40), feeds every geometry consumer: edge anchors, `layout()`, `fitView`, snap lines, rubber-band hit tests, minimap, `<NodeResizer>`, culling. Public accessor: `flow.getNodeDimensions(id)`. Measurement is client-only.
+3. A ResizeObserver per node writes rendered size and every `<Handle>` dot centre into `instance.measurements`. One rule, `getEffectiveDimensions` (explicit `width`/`height` → measured → 150×40), feeds every geometry consumer: edge anchors, `layout()`, `fitView`, snap lines, rubber-band hit tests, minimap, `<NodeResizer>`, culling. Public accessor: `flow.getNodeDimensions(id)`. Dot centres are recorded node-relative and unscaled via `getBoundingClientRect` ÷ zoom (`offsetLeft` is re-based by a custom node's own `position: relative`). Measurement is client-only (SSR/happy-dom fall back to explicit-or-default).
 
 Edge anchoring per endpoint (`src/edges.ts:resolveHandleAnchor`): explicit `sourceHandle`/`targetHandle` → measured `<Handle>` dot centre → config handle side midpoint → first handle of the type → floating endpoints (`getFloatingEndpoints`/`getNodeIntersection`, where the centre-to-centre line crosses the perimeter). An unknown handle id anchors at the first handle and dev-warns once.
 
@@ -36,5 +36,5 @@ Edge anchoring per endpoint (`src/edges.ts:resolveHandleAnchor`): explicit `sour
 
 ## Native
 
-- `createFlow` state crosses to native as `PyreonFlowState` (state only; gestures, layout and chrome do not).
+- `createFlow`/`useFlow` lower to native `PyreonFlowState` (CRUD, selection, viewport, graph queries), and `<Flow>` plus `computeLayout`, literal `nodeTypes`/`edgeTypes` maps, `<Handle>`, `<NodeResizer>`, `<Background>`, `<Controls>`, `<MiniMap>`, `<Panel>` and the edge-path/marker helpers lower to the `PyreonFlowView` engine (the list lives in the `@pyreon/flow` advice in `packages/native/compiler/src/parse.ts`). Arbitrary SVG path strings or browser-only DOM/CSS in a custom renderer still need a platform branch or the webview bridge.
 - `@pyreon/flow/webview`: `<FlowWebView>` lowers to `PyreonWebView` on SwiftUI and Compose with a generated dependency-free host, live graph/command JSON, and parsed selection/event/message/error callbacks. The generated host is freshness-gated against `buildFlowHostHtml()`; the handled prop set is `HANDLED_FLOW_WEBVIEW_PROPS` in `packages/native/compiler/src/flow-lowering.ts`, ratcheted against the public prop interface. Host styling must be statically resolvable; dynamic values warn by name.

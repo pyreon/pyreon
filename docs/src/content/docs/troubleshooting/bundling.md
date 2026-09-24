@@ -28,3 +28,9 @@ A branch on a runtime prop is reachable code. In `@pyreon/charts`, geometry and 
 Minification renames `seedFaker`, so `not.toContain('seedFaker')` always passes. Assert on external import specifiers (`@faker-js/faker`) and string data. Pair every "must be absent" suite with a control that bundles everything (`export *`) and requires each marker present. Reference: `lathe/src/tests/entry-points.test.ts:DEV_MARKERS`.
 
 ---
+
+### A bundle assertion keyed on a generated identifier is vacuous
+
+Minification renames it, so `expect(bundle).not.toContain('seedFaker')` passes with the module bundled. Assert on what minification cannot touch: external import specifiers (`@faker-js/faker`) and string data (a fixture uuid). Pair every "must be absent" suite with a control that bundles the module (via `export *`, so every surface is reached) and requires each marker present; otherwise the suite also passes when the emitter produces nothing. Reference: `lathe/src/tests/entry-points.test.ts:DEV_MARKERS`.
+
+---

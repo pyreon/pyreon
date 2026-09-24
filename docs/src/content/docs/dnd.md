@@ -547,10 +547,10 @@ The honest verdict is **near-zero tax** — a signal-driven layer at ~raw-pdnd c
 | `useDraggable`                   | none (CI overlap)                   |
 | `useDroppable`                   | none (CI overlap)                   |
 | `useSortable` item              | none (CI overlap)                   |
-| `useDragMonitor`                 | ~one extra closure allocation (~50ns/mount) |
-| per drag-event dispatch          | one optional-callback hop (negligible) |
+| `useDragMonitor`                 | none (CI overlap)                   |
+| per drag-event dispatch          | +5ns (one optional-callback hop)    |
 
-The `useSortable` item's per-item registration also writes the ARIA attributes (`role="listitem"`, `aria-roledescription`, `tabindex`) for you — accessibility the raw path would have to add itself. Real pointer-driven drag **gesture** timing is browser-dependent and out of scope for this micro-benchmark (this measures the wrapper's own JS, not the OS drag loop). Author-judge disclosed.
+The `useSortable` item's per-item registration also writes the ARIA attributes (`role="listitem"`, `aria-roledescription`, `tabindex`) for you — accessibility the raw path would have to add itself. Real pointer-driven drag **gesture** timing is browser-dependent and out of scope for this micro-benchmark (this measures the wrapper's own JS, not the OS drag loop). Figures from the 2026-09-23 full run (`BENCHMARKS.md` §10), which also measured a 24× row-enter fan-out win for the selector path over a naive per-row subscription. Author-judge disclosed.
 
 ## TypeScript
 

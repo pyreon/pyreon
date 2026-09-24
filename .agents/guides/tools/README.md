@@ -133,3 +133,7 @@ OpenAPI 3.x in; `@pyreon/validate` schemas, `@pyreon/http` endpoints, `@pyreon/q
 - `dependency-fabric` runs the project's own `@pyreon/loom` (resolved, never fetched) and skips when absent.
 - File-scanning gates take their scope from the workspace's own `workspaces` / pnpm globs (`doctor/utils/workspace-roots.ts`, cwd-independent, multi-root aware). `pyreon.doctor.excludeRoots` in the root `package.json` excludes roots.
 - An empty scan is a skip with a warning, never a clean pass (`meta.emptyScan`). A skipped category is excluded from the mean, never scored 100. A run where nothing was measured renders `—` and fails `--ci` (`report.measured`).
+
+## `.mcp.json` launcher
+
+The repo's MCP server is launched through `bash -c` with an UNBRACED `$CLAUDE_PROJECT_DIR`, because no working directory is guaranteed. Claude Code substitutes `${VAR}` / `${VAR:-default}` in `.mcp.json` args from its own environment, where `CLAUDE_PROJECT_DIR` is unset, so a braced form becomes `.` before bash runs; the unbraced form reaches bash, which reads it from the server's environment (the `test -n … || CLAUDE_PROJECT_DIR=$PWD` guard covers a genuine absence). When testing a change, simulate both expansion stages, not just the bash one.

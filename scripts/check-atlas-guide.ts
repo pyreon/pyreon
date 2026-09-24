@@ -6,7 +6,7 @@
  *
  * `@pyreon/ui-components` is the largest prop surface in the repo — 108
  * components, 67 of them rocketstyle chains — and until now none of it was
- * machine-readable. Its contract lived in prose (`CLAUDE.md`,
+ * machine-readable. Its contract lived in prose (`AGENTS.md`,
  * `.agents/rules/code-style.md`), which is what an AI assistant reads and what
  * nothing verifies. Rename a dimension value and the prose keeps confidently
  * teaching the old one.

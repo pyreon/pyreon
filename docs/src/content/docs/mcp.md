@@ -534,10 +534,6 @@ List every component in the current project with its props and signal usage. Sam
 
 Enumerate `@pyreon/zero-content` collections in the current project, or fetch one by name. The tool reads each declared collection's content directory, derives slugs the same way the runtime does (strip extension + trailing `/index`), and reports the title from every entry's frontmatter — so an agent can answer "what pages exist in the docs collection?" without scraping `import.meta.glob` patterns.
 
-:::note{title="Registered but not in the overview"}
-This tool is fully registered and callable, but is not yet listed in the package manifest — so it doesn't appear in `mcp_overview()`. Call it directly by name.
-:::
-
 **Parameters:**
 
 | Param  | Type      | Description                                              |
@@ -556,10 +552,6 @@ Falls back with a clear message when no `content.config.{ts,mts,js,mjs}` exists 
 ### get_content_entry
 
 Fetch a single entry from a `@pyreon/zero-content` collection. Returns the entry's frontmatter (parsed key→value), the full heading outline (with levels), the source size in bytes, and the file's relative path. Pairs with [`get_content_collection`](#get_content_collection) to let an agent navigate the docs corpus structurally — discover collections, list entries, drill into one.
-
-:::note{title="Registered but not in the overview"}
-Like `get_content_collection`, this tool is callable but not yet listed in the manifest, so it's absent from `mcp_overview()`. Call it directly by name.
-:::
 
 **Parameters:**
 

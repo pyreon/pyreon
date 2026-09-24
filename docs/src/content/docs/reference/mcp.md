@@ -7,7 +7,7 @@ description: "Model Context Protocol server — discoverability map, live API lo
 
 > **Generated** from `mcp`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [mcp](/docs/mcp).
 
-MCP server (stdio transport) that exposes Pyreon\'s structured knowledge to AI coding assistants (Claude Code, Cursor, etc.). Sixteen tools: `mcp_overview` (start here — markdown table of every tool with "when to use" + example, read straight from this manifest), `get_api` (look up any Pyreon API), `validate` (catch React + Pyreon-specific anti-patterns in a snippet), `migrate_react` (auto-convert React code), `diagnose` (parse a Pyreon error into structured fix info; optional `componentSource` + `reactiveTrace` for causal diagnosis), `explain_error` (assemble a failure dossier from a full error report), `get_routes` / `get_components` (project introspection), `get_content_collection` / `get_content_entry` (enumerate `@pyreon/zero-content` collections + drill into one entry\'s frontmatter + heading outline), `get_browser_smoke_status` (which packages need a browser smoke test), `get_pattern` (canonical "how do I do X" docs), `get_anti_patterns` (the catalog from `.agents/rules/anti-patterns.md`), `get_changelog` (recent release notes per package), `audit_test_environment` (mock-vnode test scanner — PR #197 bug class), and `audit_islands` (project-wide islands cross-file audit — duplicate names, dead islands, registry drift, nested islands, never-with-registry).
+MCP server (stdio transport) that exposes Pyreon\'s structured knowledge to AI coding assistants (Claude Code, Cursor, VS Code, Gemini CLI, etc.). Tools: `mcp_overview` (start here — markdown table of every tool with "when to use" + example, read straight from this manifest), `get_api` (look up any Pyreon API), `validate` (catch React + Pyreon-specific anti-patterns in a snippet), `migrate_react` (auto-convert React code), `diagnose` (parse a Pyreon error into structured fix info; optional `componentSource` + `reactiveTrace` for causal diagnosis), `explain_error` (assemble a failure dossier from a full error report), `get_routes` / `get_components` (project introspection), `get_content_collection` / `get_content_entry` (enumerate `@pyreon/zero-content` collections + drill into one entry\'s frontmatter + heading outline), `get_browser_smoke_status` (which packages need a browser smoke test), `get_pattern` (canonical "how do I do X" docs), `get_anti_patterns` (the catalog from `.agents/rules/anti-patterns.md`), `get_changelog` (recent release notes per package), `audit_test_environment` (mock-vnode test scanner — PR #197 bug class), and `audit_islands` (project-wide islands cross-file audit — duplicate names, dead islands, registry drift, nested islands, never-with-registry).
 
 ## Multiplatform
 
@@ -19,7 +19,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 ## Features
 
-- Sixteen tools covering discovery, lookup, validation, migration, diagnosis, introspection, audit
+- Tools covering discovery, lookup, validation, migration, diagnosis, introspection, audit
 - stdio transport — drop-in compatible with every MCP client
 - Project context cached per server instance, auto-invalidates on cwd change
 - Manifest-driven — `get_api` reads `api-reference.ts`, regenerated from package manifests
@@ -75,6 +75,8 @@ A full, end-to-end usage of the package:
 | [`explain_error`](#explain-error) | constant | The rich-context sibling of `diagnose`. |
 | [`get_routes`](#get-routes) | constant | List every route in the current project — path, loader presence, guards, params, and named-route name. |
 | [`get_components`](#get-components) | constant | List every component in the current project with its props and signal usage. |
+| [`get_content_collection`](#get-content-collection) | constant | List the `@pyreon/zero-content` collections declared in the project's `content.config.{ts,mts,js,mjs}` (name, type, entr |
+| [`get_content_entry`](#get-content-entry) | constant | Fetch one content entry: its path, title and size, the parsed frontmatter as key/value pairs, and the heading outline (c |
 | [`get_atlas_catalog`](#get-atlas-catalog) | constant | Serve the VERIFIED component catalog `atlas scan` writes (`atlas-catalog.json`) — every component with its real props, a |
 | [`get_dependency_fabric`](#get-dependency-fabric) | constant | Serve the workspace dependency graph `loom scan` writes (`loom-report.json`): the shape (packages, edges, depth), runtim |
 | [`get_atlas_component`](#get-atlas-component) | constant | Prescriptive usage for ONE catalogued component: required and optional props with their exact allowed values, which prop |
@@ -394,6 +396,56 @@ get_components()
 - Calling outside a Pyreon project — same caveat as `get_routes`: returns empty if the scanner can't find a project root.
 
 **See also:** `get_routes`
+
+---
+
+### get_content_collection `constant`
+
+```ts
+tool: get_content_collection({ name? }) → markdown
+```
+
+List the `@pyreon/zero-content` collections declared in the project's `content.config.{ts,mts,js,mjs}` (name, type, entry count, content directory), or — with `name` — one collection's entries (slug, title, file). Reads from `process.cwd()`.
+
+**Example**
+
+```tsx
+get_content_collection()
+// → # Content collections (2) — `docs` (markdown) — 42 entries at `src/content/docs`
+get_content_collection({ name: 'docs' })
+// → one line per entry: `getting-started` — Getting started (`getting-started.md`)
+```
+
+**Common mistakes**
+
+- Calling it outside a `@pyreon/zero-content` app — with no `content.config.*` it answers "No content.config found", not an empty list.
+- Passing a collection name that is not declared — the answer lists the known collection names instead.
+
+**See also:** `get_content_entry` · `get_routes`
+
+---
+
+### get_content_entry `constant`
+
+```ts
+tool: get_content_entry({ collection, slug }) → markdown
+```
+
+Fetch one content entry: its path, title and size, the parsed frontmatter as key/value pairs, and the heading outline (code-fence aware). Use `slug: ""` for a collection's index entry. When the slug is not found, the answer suggests up to five nearby slugs.
+
+**Example**
+
+```tsx
+get_content_entry({ collection: 'docs', slug: 'getting-started' })
+// → path, title, bytes, ## Frontmatter, ## Heading outline
+```
+
+**Common mistakes**
+
+- Guessing slugs — call `get_content_collection({ name })` first to list the real ones.
+- Using the file name with its extension as the slug — slugs are derived the same way the runtime derives them, without `.md`.
+
+**See also:** `get_content_collection`
 
 ---
 

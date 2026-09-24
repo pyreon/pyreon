@@ -26,6 +26,7 @@ Component libraries in `packages/ui/` (private):
 
 ## @pyreon/styler
 
+- `styled('div')` → `ComponentFn`; `css` → lazy `CSSResult`; `keyframes` → animation name; `createGlobalStyle` / `createSheet()`.
 - `ThemeContext` is reactive (`createReactiveContext<Theme>`). `useTheme()` returns a snapshot; `useThemeAccessor()` returns `() => Theme` for use in effects. A whole-theme swap re-resolves CSS and swaps class names without remounting.
 - One singleton `StyleSheet` (FNV-1a hashing, dedup, SSR).
 - `innerRef` is an alias of `ref` on `styled()` components.
@@ -52,7 +53,7 @@ Component libraries in `packages/ui/` (private):
 - `kinetic(component)` → `.preset()`, `.enter()`/`.enterTo()`, `.leave()`/`.leaveTo()`, `.collapse()`, `.stagger()`, `.group()`.
 - **SSR:** `<Transition show={() => false}>` still renders its children, with the hidden-state classes inlined (`leaveTo`, else `enterFrom`). Content is structural, animation is visual; this keeps SSG scroll-reveal content in the HTML. Trade-off: an initially hidden transition with `unmount: true` is not removed from the DOM after a later leave.
 - **`setTransition`** (`utils.ts`) re-applies `transition-delay` after assigning the `transition` shorthand, which otherwise resets the delay to `0s` and makes staggers animate all at once. The delay comes from a `--kinetic-delay` custom property, which survives the shorthand and the reset at `entered`. happy-dom does not model the reset; the lock is `stagger-delay-preserved.browser.test.tsx`.
-- **`nextFrame`** batches callbacks from the same burst into one shared double-rAF. A callback registered after the batch's outer frame opens a new batch. Cancel removes one callback from its batch in any phase. No-op when `requestAnimationFrame` is undefined.
+- **`nextFrame`** batches callbacks from the same burst into one shared double-rAF. A callback registered after the batch's outer frame opens a new batch. The batch is keyed to the `requestAnimationFrame` that scheduled it, so a swapped stub or polyfill cannot strand callbacks. Cancel removes one callback from its batch in any phase, without touching siblings. No-op when `requestAnimationFrame` is undefined.
 - Kinetic is CSS-transition based: no springs, interruptible value animation, layout or gesture animation. Benchmark: `bun run bench` in the package (see `bench/README.md`).
 
 ## @pyreon/elements
@@ -63,7 +64,7 @@ Component libraries in `packages/ui/` (private):
   - Alignment is axis-fixed: X is always horizontal; `block` means stretch.
   - `gap` renders CSS gap on the simple path and on the button/fieldset/legend flex-fix layer.
   - `block: true` for full-width elements and app roots; the default is shrink-wrapping `inline-flex`.
-  - Theme layout is correct only for `flexWrap`, CSS grid, and `display: 'block'` for text ellipsis.
+  - Theme-level flex overrides fight the wrapper's emitted CSS and never reach the flex-fix inner layer. Theme layout is correct only for `flexWrap`, CSS grid, and `display: 'block'` for text ellipsis.
 - Simple-path fast path: without before/after content and on a non-fix tag, `Element` makes one styled invocation. `internElementBundle()` returns the same `$element` object for the same primitive tuple, so the class cache hits.
 
 ### Overlay
@@ -87,7 +88,7 @@ Opt-in. With the flag off, output is identical to classic mode.
 - A light/dark flip is one `documentElement[data-theme]` write, with no re-resolution or class-name churn: under the flag rocketstyle's `_resolveRsEntry` does not read or key on the mode signal.
 - Component-level `mode(a, b)` becomes a hashed, deduplicated var pair (`--px-m-<fnv1a>`). Theme authoring is unchanged.
 - The root provider writes the mode attribute to `document.documentElement` and renders children unwrapped. Only nested or `inversed` providers render a `display: contents` wrapper for their override.
-- `cssVariablesPrePaintScript({ attribute?, storageKey?, fallback? })` builds the blocking `<head>` script that prevents a flash; zero's `themeScript` composes it.
+- `cssVariablesPrePaintScript({ attribute?, storageKey?, fallback? })` (from `@pyreon/ui-core`) builds the blocking `<head>` script that prevents a flash; zero's `themeScript` composes it.
 - Document export resolves `mode(a, b)` vars via `resolveModeVar` and `extractDocNode({ theme?, mode? })` (`@pyreon/document-primitives`).
 - `coreContext` exposes theme and mode through lazy getters; an eager object subscribes every theme reader to mode.
 - Never do JS arithmetic on a `var()` value (`gap / 2` → `NaN`). Coolgrid detects vars with `isCssVarValue` and uses `calc()`.

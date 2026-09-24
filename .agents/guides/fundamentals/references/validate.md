@@ -37,6 +37,7 @@ Bench: `bench/validation.ts`, results in `bench/results/` (`final-2026-08-31.txt
 - `parse`, invalid input: outright win on 4 of 5 shapes; typia wins scalar number-range invalid by about 1.2×.
 - `parse`, valid input: not ahead anywhere. zod-compiled wins scalar number-range, array-of-20 and object-with-array-of-objects; ArkType and typia win scalar email; ArkType wins flat object; deep-nested and DU tie. Still ahead of interpreted Zod, Valibot, Yup and Joi on every valid shape.
 - Known causes on the valid path: ArkType returns the input by reference while Pyreon returns a stripped clone (deliberate). zod-compiled also clones, so cloning is not the gap against it; the deep-cell remainder has no identified mechanism.
+- The `parse()` seam's SIZE decides whether V8 inlines it: keep the hot seam tiny (the `Result` envelope allocation itself is not the cost).
 - Refuted levers (do not re-propose): a one-unit `jitParse(input)` wrapper, and emitting the `Result` envelope inside the validator (it outgrew the inliner and slowed DU).
 
 Harness rules:
@@ -44,5 +45,6 @@ Harness rules:
 - Rotate an input pool per scenario (8 same-shape entries). With one constant input, V8 hoists the call out of the loop and the table ranks inlinability.
 - Round-robin processes across libraries in a row, so a load burst widens every CI instead of landing on one library.
 - Sub-nanosecond seam verdicts come only from `bench/four-cells.ts` (process-isolated); in-process probes have a ±1.5 ns slot bias.
+- Contention inflates absolutes and widens CIs into ties, so a loaded run reads as MORE dominant than a quiet one; record machine load with every run.
 - Setup cost reports only an explicit compile call (`z.compile`, `TypeCompiler.Compile`).
 - typia validators are generated ahead of time with a TypeScript 7 toolchain the repo does not use, so its fixtures are vendored as plain JS in `bench/typia/`; the bench's cross-library correctness gate catches drift. On the parse axis use `plain.createValidateClone` (`typia.validate` returns the input by reference).
