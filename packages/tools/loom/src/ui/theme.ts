@@ -18,6 +18,12 @@ export interface LoomTokens {
   /** External-package hue (the design's steel blue). */
   ext: string
   edge: string
+  /**
+   * Resting opacity of an unlit graph edge. Per mode because the same alpha
+   * reads very differently on each ground: 0.1 is a whisper on near-black but
+   * vanishes entirely on the light surface.
+   */
+  edgeAlpha: string
   dot: string
   codeBg: string
   danger: string
@@ -53,6 +59,7 @@ export function tokens(dark: boolean): LoomTokens {
       accentSoft: hexToRgba(ACCENT, 0.15),
       ext: '#5b8dd9',
       edge: '#33333f',
+      edgeAlpha: '0.1',
       dot: 'rgba(255,255,255,.04)',
       codeBg: '#0a0a0e',
       danger: '#ef5f5f',
@@ -71,23 +78,37 @@ export function tokens(dark: boolean): LoomTokens {
     surface: '#ffffff',
     surface2: '#f1f2f5',
     text: '#16171c',
-    muted: '#666d7d',
-    faint: '#9aa0ad',
+    muted: '#5b6273',
+    // Was #9aa0ad (2.4:1 on the light bg) — axis labels, eyebrows and the
+    // table's secondary columns were near-unreadable. #7a8193 is ~4:1.
+    faint: '#7a8193',
     border: '#e4e6ec',
     accent: ACCENT,
     accentSoft: hexToRgba(ACCENT, 0.1),
     ext: '#3f6fbf',
-    edge: '#d3d6de',
+    edge: '#b3b8c5',
+    edgeAlpha: '0.28',
     dot: 'rgba(20,24,40,.05)',
     codeBg: '#f1f2f5',
     danger: '#d64545',
     dangerSoft: 'rgba(214,69,69,.08)',
     dangerRing: 'rgba(214,69,69,.28)',
-    ok: '#2f9e6f',
+    // Darker than the dark-mode green: #2f9e6f on its own tint was ~3:1, so the
+    // "fabric clean" pill read as disabled. #1f7f58 clears 4.5:1.
+    ok: '#1f7f58',
     okSoft: 'rgba(47,158,111,.1)',
     okRing: 'rgba(47,158,111,.3)',
-    warn: '#c98a20',
+    warn: '#a86f0f',
     warnSoft: 'rgba(201,138,32,.1)',
     warnRing: 'rgba(201,138,32,.3)',
   }
+}
+
+/** Every token as a `--lm-<key>` custom property, for the plain-CSS layers
+ * (graph SVG, matrix grid, manifest table) that are deliberately NOT
+ * rocketstyle components — see `global-css.ts` for why. */
+export function cssVars(t: LoomTokens): string {
+  let out = ''
+  for (const [key, value] of Object.entries(t)) out += `--lm-${key}:${value};`
+  return out
 }

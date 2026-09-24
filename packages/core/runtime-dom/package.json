@@ -59,9 +59,6 @@
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^"
   },
-  "dependencies": {
-    "@pyreon/sized-map": "workspace:*"
-  },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.11.6",
     "@pyreon/compiler": "workspace:^",

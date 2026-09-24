@@ -13,11 +13,15 @@ export function CyclesView(props: { model: ObservatoryModel }) {
   return (
     <C.Article data-testid="cycles-view">
       <C.Eyebrow>{`03 · cycles · ${cycles.length} loops across ${m.cycleNodes.size} packages`}</C.Eyebrow>
-      <C.H1>{cycles.length ? 'Loops that resolve back to themselves.' : 'No loops. The graph is acyclic.'}</C.H1>
+      <C.H1>
+        {cycles.length
+          ? 'Loops that resolve back to themselves.'
+          : 'No loops. The graph is acyclic.'}
+      </C.H1>
       <C.Lead>
-        Detected by depth-first traversal over the RUNTIME graph (dev edges deliberately excluded — a monorepo
-        legitimately shares test utilities both ways). Each loop below is a real import chain that returns to its own
-        origin — resolve one edge and the loop opens.
+        {cycles.length
+          ? 'Detected by depth-first traversal over the RUNTIME graph (dev edges deliberately excluded — a monorepo legitimately shares test utilities both ways). Each loop below is a real import chain that returns to its own origin — resolve one edge and the loop opens.'
+          : 'Checked by depth-first traversal over the RUNTIME graph (dev edges deliberately excluded — a monorepo legitimately shares test utilities both ways). Every import chain terminates, so packages can be layered and initialised in dependency order.'}
       </C.Lead>
       <Show when={() => cycles.length === 0}>
         <C.EmptyCard data-testid="cycles-clean">
@@ -31,7 +35,9 @@ export function CyclesView(props: { model: ObservatoryModel }) {
             <C.CycleTag>{`LOOP ${String(i + 1).padStart(2, '0')}`}</C.CycleTag>
             <C.CycleMeta>{`${loop.length} packages · ${loop.length} edges`}</C.CycleMeta>
             <C.Spacer />
-            <C.CycleSev variant={loop.length > 2 ? 'high' : 'medium'}>{loop.length > 2 ? 'high' : 'medium'}</C.CycleSev>
+            <C.CycleSev variant={loop.length > 2 ? 'high' : 'medium'}>
+              {loop.length > 2 ? 'high' : 'medium'}
+            </C.CycleSev>
           </C.CycleHead>
           <C.ChipRow>
             {loop.map((id, j) => (
