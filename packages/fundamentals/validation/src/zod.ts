@@ -3,10 +3,9 @@ import type {
   SchemaValidateFn,
   TypedSchemaAdapter,
   ValidateFn,
-  ValidationError,
   ValidationIssue,
 } from './types'
-import { flattenIssuePath, issuesToRecord } from './utils'
+import { emptyErrors, flattenIssuePath, formLevelError, issuesToRecord } from './utils'
 
 /**
  * Minimal Zod-compatible interfaces so we don't require zod as a hard dep.
@@ -30,6 +29,40 @@ interface ZodSchema<T = unknown> {
   safeParseAsync(
     data: unknown,
   ): Promise<{ success: boolean; data?: T; error?: { issues: ZodIssue[] } }>
+}
+
+type ZodSafeParseResult<T> = ReturnType<ZodSchema<T>['safeParse']>
+
+/**
+ * Zod refuses a synchronous parse of a schema containing an async refine /
+ * transform by THROWING (zod 4: `$ZodAsyncError` "Encountered Promise during
+ * synchronous parse"; zod 3: "…Use .parseAsync instead"). Anything else thrown
+ * from `safeParse` is a genuine user error and must not be retried.
+ */
+function isZodAsyncError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  return err.constructor.name === '$ZodAsyncError' || /parseAsync|encountered promise/i.test(err.message)
+}
+
+/**
+ * SYNC FAST PATH: try `safeParse` first and only fall back to
+ * `safeParseAsync` when zod reports the schema is async. Most schemas are
+ * sync, and the old always-`safeParseAsync` form paid a Promise + microtask
+ * per validation (every keystroke under `validateOn`). A sync schema now
+ * returns its result synchronously; an async one still returns a Promise.
+ */
+function runZod<T, R>(
+  schema: ZodSchema<T>,
+  value: unknown,
+  onResult: (result: ZodSafeParseResult<T>) => R,
+  onError: (err: unknown) => R,
+): R | Promise<R> {
+  try {
+    return onResult(schema.safeParse(value))
+  } catch (err) {
+    if (!isZodAsyncError(err)) return onError(err)
+  }
+  return schema.safeParseAsync(value).then(onResult, onError)
 }
 
 function zodIssuesToGeneric(issues: ZodIssue[]): ValidationIssue[] {
@@ -66,17 +99,16 @@ function zodIssuesToGeneric(issues: ZodIssue[]): ValidationIssue[] {
 export function zodSchema<TValues extends Record<string, unknown>>(
   schema: ZodSchema<TValues>,
 ): TypedSchemaAdapter<TValues> {
-  const validator: SchemaValidateFn<TValues> = async (values: TValues) => {
-    try {
-      const result = await schema.safeParseAsync(values)
-      if (result.success) return {} as Partial<Record<keyof TValues, ValidationError>>
-      return issuesToRecord<TValues>(zodIssuesToGeneric(result.error!.issues))
-    } catch (err) {
-      return {
-        '': err instanceof Error ? err.message : String(err),
-      } as Partial<Record<keyof TValues, ValidationError>>
-    }
-  }
+  type Errors = ReturnType<typeof emptyErrors<TValues>>
+  const toErrors = (result: ZodSafeParseResult<TValues>): Errors =>
+    result.success ? emptyErrors<TValues>() : issuesToRecord<TValues>(zodIssuesToGeneric(result.error!.issues))
+  const validator: SchemaValidateFn<TValues> = (values: TValues) =>
+    runZod(
+      schema,
+      values,
+      toErrors,
+      (err) => formLevelError<TValues>(err),
+    )
 
   // Sync parse path for @pyreon/store's schema-driven defineStore.
   // Uses `safeParse` (NOT `safeParseAsync`) — async refinements are
@@ -118,13 +150,11 @@ export function zodSchema<TValues extends Record<string, unknown>>(
  * })
  */
 export function zodField<T>(schema: ZodSchema<T>): ValidateFn<T> {
-  return async (value: T) => {
-    try {
-      const result = await schema.safeParseAsync(value)
-      if (result.success) return undefined
-      return result.error!.issues[0]?.message
-    } catch (err) {
-      return err instanceof Error ? err.message : String(err)
-    }
-  }
+  return (value: T) =>
+    runZod(
+      schema,
+      value,
+      (result) => (result.success ? undefined : result.error!.issues[0]?.message),
+      (err) => (err instanceof Error ? err.message : String(err)),
+    )
 }

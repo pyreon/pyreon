@@ -463,7 +463,13 @@ describe('op-compiler memoization', () => {
     const schema = s.string()
     schema.parse('hello') // compiles
     expect((schema as unknown as { _compiled?: unknown })._compiled).toBeDefined()
-    schema.min(2) // mutates — should invalidate
+    // Chaining is copy-on-write: the receiver's cache survives, the derived
+    // schema starts uncompiled.
+    const derived = schema.min(2)
+    expect((schema as unknown as { _compiled?: unknown })._compiled).toBeDefined()
+    expect((derived as unknown as { _compiled?: unknown })._compiled).toBeUndefined()
+    // A direct op-list change invalidates via `_invalidateCompile`.
+    schema._invalidateCompile()
     expect((schema as unknown as { _compiled?: unknown })._compiled).toBeUndefined()
   })
 })
