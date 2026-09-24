@@ -716,8 +716,12 @@ export function generateRouteModuleFromRoutes(
           if (exp.hasRenderMode) metaParts.push(`renderMode: ${mod}.renderMode`)
           props.push(`${indent}  meta: { ${metaParts.join(', ')} }`)
         }
-        if (errorName) {
-          const errorRef = exp.hasError ? `${mod}.error || ${errorName}` : errorName
+        // A page's OWN `error` export applies with or without a directory
+        // `_error.tsx`; the directory one is only the fallback.
+        if (errorName || exp.hasError) {
+          const errorRef = exp.hasError
+            ? errorName ? `${mod}.error || ${errorName}` : `${mod}.error`
+            : errorName
           props.push(`${indent}  errorComponent: ${errorRef}`)
         }
       } else {
@@ -805,7 +809,7 @@ export function generateRouteModuleFromRoutes(
           props.push(`${indent}  getStaticPaths: ${mod}.getStaticPaths`)
         }
         emitInlineMeta(exp, props, indent)
-        if (errorName) {
+        if (errorName || exp.hasError) {
           // For error components we can't easily await — pass the lazy
           // thunk through `lazy()` so the router resolves it like any
           // other lazy component when an error fires.
@@ -833,8 +837,12 @@ export function generateRouteModuleFromRoutes(
           if (exp.hasRenderMode) metaParts.push(`renderMode: ${mod}.renderMode`)
           props.push(`${indent}  meta: { ${metaParts.join(', ')} }`)
         }
-        if (errorName) {
-          const errorRef = exp.hasError ? `${mod}.error || ${errorName}` : errorName
+        // A page's OWN `error` export applies with or without a directory
+        // `_error.tsx`; the directory one is only the fallback.
+        if (errorName || exp.hasError) {
+          const errorRef = exp.hasError
+            ? errorName ? `${mod}.error || ${errorName}` : `${mod}.error`
+            : errorName
           props.push(`${indent}  errorComponent: ${errorRef}`)
         }
       } else {
