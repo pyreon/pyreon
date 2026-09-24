@@ -14,7 +14,8 @@ export function DetailPanel(props: { model: ObservatoryModel }) {
     <C.Panel data-testid="loom-panel">
       {() => {
         const n = m.sel()
-        const badgeVariant = n.status === 'current' ? 'ok' : n.status === 'drift' ? 'warn' : 'danger'
+        const badgeVariant =
+          n.status === 'current' ? 'ok' : n.status === 'drift' ? 'warn' : 'danger'
         const issues = m.report.issues.filter((i) => i.pkg === n.id || i.dep === n.id)
         const path = n.kind === 'internal' ? pathTo(m, n.id) : [n.id]
         const reach = m.report.graph.reach[n.id]
@@ -22,7 +23,9 @@ export function DetailPanel(props: { model: ObservatoryModel }) {
         return (
           <>
             <C.PanelHead>
-              <C.PanelKind>{n.kind === 'internal' ? 'INTERNAL PACKAGE' : 'EXTERNAL DEPENDENCY'}</C.PanelKind>
+              <C.PanelKind>
+                {n.kind === 'internal' ? 'INTERNAL PACKAGE' : 'EXTERNAL DEPENDENCY'}
+              </C.PanelKind>
               <C.PanelName data-testid="panel-name">{n.id}</C.PanelName>
               <C.ChipRow>
                 <C.MetaChip>{n.kind === 'internal' ? `v${n.version}` : n.version}</C.MetaChip>
@@ -37,8 +40,8 @@ export function DetailPanel(props: { model: ObservatoryModel }) {
                 <C.CycleWarn>
                   <C.CycleWarnTitle>CIRCULAR</C.CycleWarnTitle>
                   <C.CycleWarnText>
-                    This package participates in a runtime dependency loop. Imports resolve back to itself, which
-                    blocks layering and can break module initialisation order.
+                    This package participates in a runtime dependency loop. Imports resolve back to
+                    itself, which blocks layering and can break module initialisation order.
                   </C.CycleWarnText>
                 </C.CycleWarn>
               </Show>
@@ -59,13 +62,17 @@ export function DetailPanel(props: { model: ObservatoryModel }) {
               {reach !== undefined ? (
                 <C.MetricRow>
                   <C.MetricLabel>Transitive reach</C.MetricLabel>
-                  <C.MetricValue variant={reach > 10 ? 'warn' : 'plain'}>{`${reach} pkg`}</C.MetricValue>
+                  <C.MetricValue
+                    variant={reach > 10 ? 'warn' : 'plain'}
+                  >{`${reach} pkg`}</C.MetricValue>
                 </C.MetricRow>
               ) : null}
               <C.MetricRow>
                 <C.MetricLabel>Findings</C.MetricLabel>
-                <C.MetricValue variant={n.errors ? 'danger' : n.warnings ? 'warn' : 'ok'}>
-                  {`${n.errors} err · ${n.warnings} warn`}
+                <C.MetricValue
+                  variant={n.errors ? 'danger' : n.warnings ? 'warn' : n.infos ? 'muted' : 'ok'}
+                >
+                  {`${n.errors} err · ${n.warnings} warn · ${n.infos} info`}
                 </C.MetricValue>
               </C.MetricRow>
 
@@ -100,7 +107,9 @@ export function DetailPanel(props: { model: ObservatoryModel }) {
                 <C.PanelSection>{`FINDINGS · ${issues.length}`}</C.PanelSection>
                 {issues.slice(0, 8).map((issue) => (
                   <C.FindingCard variant={issue.severity} data-testid={`finding-${issue.code}`}>
-                    <C.FindingTitle variant={issue.severity}>{`${issue.severity.toUpperCase()} · ${issue.code}`}</C.FindingTitle>
+                    <C.FindingTitle
+                      variant={issue.severity}
+                    >{`${issue.severity.toUpperCase()} · ${issue.code}`}</C.FindingTitle>
                     <C.FindingText>{issue.message}</C.FindingText>
                   </C.FindingCard>
                 ))}

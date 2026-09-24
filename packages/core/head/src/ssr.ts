@@ -1,6 +1,6 @@
 import { isHeadAttrSafe } from './attr-guard'
 import type { ComponentFn, VNode } from '@pyreon/core'
-import { h, pushContext } from '@pyreon/core'
+import { h, isEventHandlerAttr, pushContext } from '@pyreon/core'
 import { renderToString } from '@pyreon/runtime-server'
 import type { HeadTag } from './context'
 import { createHeadContext, HeadContext } from './context'
@@ -124,7 +124,7 @@ function serializeTag(
       // since two serializers with private copies is how the element renderer
       // acquired its own gaps.
       const v = props[k] as string
-      if (!isHeadAttrSafe(k, v, tag.tag)) continue
+      if (!isHeadAttrSafe(k, v, tag.tag, isEventHandlerAttr)) continue
       open += ` ${k}="${esc(v)}"`
     }
   }
