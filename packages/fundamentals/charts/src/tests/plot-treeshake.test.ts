@@ -18,6 +18,7 @@ import { hasBuiltLib } from '@pyreon/test-utils/built-lib'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const PLOT = join(here, '..', '..', 'lib', 'engine.js')
+const MAIN = join(here, '..', '..', 'lib', 'index.js')
 
 /** A literal that appears ONLY in the named family's geometry. */
 const FAMILY_MARKERS: ReadonlyArray<readonly [string, string]> = [
@@ -26,12 +27,12 @@ const FAMILY_MARKERS: ReadonlyArray<readonly [string, string]> = [
   ['calendar (month labels)', 'Jan'],
 ]
 
-async function bundle(imports: readonly string[]): Promise<string> {
+async function bundle(imports: readonly string[], from: string = PLOT): Promise<string> {
   // esbuild, not `Bun.build`: vitest runs this under Node, where `Bun` is not
   // defined — the first version failed with `ReferenceError: Bun is not
   // defined` rather than with anything about tree-shaking.
   const entry = join(here, `__ts-entry-${imports.join('-')}.ts`)
-  writeFileSync(entry, `export { ${imports.join(', ')} } from '${PLOT.replace(/\\/g, '/')}'\n`)
+  writeFileSync(entry, `export { ${imports.join(', ')} } from '${from.replace(/\\/g, '/')}'\n`)
   try {
     const out = await build({
       entryPoints: [entry],
@@ -68,5 +69,23 @@ describe.skipIf(!hasBuiltLib(PLOT, "the plot families' tree-shaking"))('plot —
     const code = await bundle(['CalendarChart'])
     expect(code.includes('"Mon"') || code.includes("'Mon'")).toBe(true)
     expect(code.includes('"Jan"') || code.includes("'Jan'")).toBe(true)
+  })
+})
+
+// `<Chart>` takes its interaction features and its plot host from its
+// children (`plot-features.ts`), so the main entry's recipes pay only for
+// what they use. The SVG namespace literal lives in the serializer alone,
+// which only `<Toolbox>` (save-as-image) brings in.
+const SVG_NS = 'http://www.w3.org/2000/svg'
+
+describe.skipIf(!hasBuiltLib(MAIN, "the main entry's feature tree-shaking"))('<Chart> — interactions and hosts come from the children', () => {
+  it('<Chart> + <Line> bundles no toolbox and no SVG serializer', async () => {
+    const code = await bundle(['Chart', 'Line'], MAIN)
+    expect(code.includes(SVG_NS), 'the SVG serializer reached a chart with no <Toolbox>').toBe(false)
+  })
+
+  it('and the marker is real — adding <Toolbox> brings the serializer in', async () => {
+    const code = await bundle(['Chart', 'Line', 'Toolbox'], MAIN)
+    expect(code.includes(SVG_NS), 'the SVG namespace marker is not load-bearing').toBe(true)
   })
 })

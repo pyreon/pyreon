@@ -2731,6 +2731,7 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
         'Tooltip',
         'Legend',
         'Zoom',
+        'Toolbox',
         'Label',
         // The family marks: <Chart> with one of these desugars to the row-array host it names.
         'Arc',

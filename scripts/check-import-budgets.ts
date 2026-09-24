@@ -227,11 +227,12 @@ export const SCENARIOS: Scenario[] = [
     imports: ['createFlow', 'Flow', 'Background', 'Controls', 'MiniMap'],
   },
   {
-    id: '@pyreon/charts::plot-pie',
+    id: '@pyreon/charts::chart-pie',
     pkg: '@pyreon/charts',
     dir: 'fundamentals/charts',
-    // A radial-only import must not pull the cartesian layout/stack path.
-    imports: ['PieChart'],
+    // A pie through the main entry, <Chart> + <Arc>: must not pull the
+    // funnel, heatmap or candlestick hosts, nor the zoom and toolbox code.
+    imports: ['Chart', 'Arc'],
   },
   {
     id: '@pyreon/charts::chart-line',

@@ -32,9 +32,12 @@
 
 import { For, Fragment, Show, h, _rp as reactiveProp } from '@pyreon/core'
 import type { VNode, VNodeChild } from '@pyreon/core'
-import { computed, signal } from '@pyreon/reactivity'
+import { computed, signal, untrack } from '@pyreon/reactivity'
 import type { Signal } from '@pyreon/reactivity'
-import { PlotChart } from './Chart'
+import { plotCore } from './Chart'
+import { toolboxFeature, zoomFeature } from './plot-features'
+import type { PlotFeatures, ToolboxFeature, ZoomFeature } from './plot-features'
+import type { ToolboxConfig } from './toolbox-config'
 import type { AxisLabelMode, PlotChartProps } from './Chart'
 import { PieChart } from './PieChart'
 import { FunnelChart } from './FunnelChart'
@@ -218,11 +221,48 @@ export interface ZoomProps {
   /** Range brush; reports a global inclusive index range. */
   brush?: (range: { start: number; end: number } | null) => void
 }
+/**
+ * The tool strip: save-as-image, restore, magic type (switch line and bar,
+ * stacked and tiled), a box-select zoom, a data view and the area brushes.
+ * Each is opt-in, and so is the code: a chart without `<Toolbox>` does not
+ * bundle any of it.
+ */
+export interface ToolboxProps extends ToolboxConfig {}
 
 function brand<P>(name: string): (props: P) => VNode | null {
   const fn = (_props: P): VNode | null => null
   Object.defineProperty(fn, CHART_MARK, { value: name, configurable: true })
   Object.defineProperty(fn, 'displayName', { value: name, configurable: true })
+  return fn
+}
+
+/**
+ * The interaction feature a chrome mark carries — `<Zoom>` the navigator,
+ * presets and range brush, `<Toolbox>` the tool strip. Same mechanism as a
+ * family mark's host: the implementation rides on the mark, so a chart
+ * without the mark leaves it unreferenced and a bundler drops it.
+ */
+const MARK_FEATURE = Symbol.for('pyreon.charts.markFeature')
+
+function featureMark<P>(name: string, feature: unknown): (props: P) => VNode | null {
+  const fn = brand<P>(name)
+  Object.defineProperty(fn, MARK_FEATURE, { value: feature, configurable: true })
+  return fn
+}
+
+/**
+ * The cartesian plot host, carried by every cartesian mark. `<Chart>` takes
+ * it from its children rather than importing it, for the same reason a
+ * family mark carries its own host: a pie is `<Chart><Arc/></Chart>`, and a
+ * chart with no cartesian mark must not bundle the whole cartesian plot.
+ */
+const PLOT_HOST = Symbol.for('pyreon.charts.plotHost')
+
+type PlotHost = typeof plotCore
+
+function plotMark<P>(name: string, host: PlotHost): (props: P) => VNode | null {
+  const fn = brand<P>(name)
+  Object.defineProperty(fn, PLOT_HOST, { value: host, configurable: true })
   return fn
 }
 
@@ -246,13 +286,13 @@ function familyMark<P>(name: string, host: unknown): (props: P) => VNode | null 
 }
 
 /** Vertical bars; `stack` / `group` combine several. */
-export const Bar = /* @__PURE__ */ brand<BarProps<any>>('Bar') as <T>(props: BarProps<T>) => VNode | null
+export const Bar = /* @__PURE__ */ plotMark<BarProps<any>>('Bar', plotCore) as <T>(props: BarProps<T>) => VNode | null
 /** A polyline through the values. */
-export const Line = /* @__PURE__ */ brand<MarkProps<any>>('Line') as <T>(props: MarkProps<T>) => VNode | null
+export const Line = /* @__PURE__ */ plotMark<MarkProps<any>>('Line', plotCore) as <T>(props: MarkProps<T>) => VNode | null
 /** A filled area under the line. */
-export const Area = /* @__PURE__ */ brand<MarkProps<any>>('Area') as <T>(props: MarkProps<T>) => VNode | null
+export const Area = /* @__PURE__ */ plotMark<MarkProps<any>>('Area', plotCore) as <T>(props: MarkProps<T>) => VNode | null
 /** Dots; with `r`, area-mapped bubbles. */
-export const Dot = /* @__PURE__ */ brand<DotProps<any>>('Dot') as <T>(props: DotProps<T>) => VNode | null
+export const Dot = /* @__PURE__ */ plotMark<DotProps<any>>('Dot', plotCore) as <T>(props: DotProps<T>) => VNode | null
 
 /**
  * Areas stacked on one another — `stackedArea`'s grammar form.
@@ -261,7 +301,7 @@ export const Dot = /* @__PURE__ */ brand<DotProps<any>>('Dot') as <T>(props: Dot
  * z-stack, and one canonical name means one concept. Naming it after its own
  * mark also matches every sibling (`bars`→`<Bar>`, `band`→`<Band>`).
  */
-export const StackedArea = /* @__PURE__ */ brand<MarkProps<any>>('StackedArea') as <T>(props: MarkProps<T>) => VNode | null
+export const StackedArea = /* @__PURE__ */ plotMark<MarkProps<any>>('StackedArea', plotCore) as <T>(props: MarkProps<T>) => VNode | null
 
 /**
  * A filled REGION between two channels — `band`'s grammar form.
@@ -269,7 +309,7 @@ export const StackedArea = /* @__PURE__ */ brand<MarkProps<any>>('StackedArea') 
  * Two channels rather than one, so it takes `low` and `high` instead of `y`;
  * every other mark's single `y` would have nothing to be.
  */
-export const Band = /* @__PURE__ */ brand<BandProps<any>>('Band') as <T>(props: BandProps<T>) => VNode | null
+export const Band = /* @__PURE__ */ plotMark<BandProps<any>>('Band', plotCore) as <T>(props: BandProps<T>) => VNode | null
 /** A reference line or band. */
 export const Rule = /* @__PURE__ */ brand<RuleProps>('Rule')
 /** Axis configuration. */
@@ -279,13 +319,15 @@ export const Tooltip = /* @__PURE__ */ brand<TooltipProps>('Tooltip')
 /** The legend. */
 export const Legend = /* @__PURE__ */ brand<LegendProps>('Legend')
 /** Zoom, navigator, presets, brush, linking. */
-export const Zoom = /* @__PURE__ */ brand<ZoomProps>('Zoom')
+export const Zoom = /* @__PURE__ */ featureMark<ZoomProps>('Zoom', zoomFeature)
+/** The tool strip — see {@link ToolboxProps}. */
+export const Toolbox = /* @__PURE__ */ featureMark<ToolboxProps>('Toolbox', toolboxFeature)
 /** A datum-anchored label (the engine's point marker). */
 export const Label = /* @__PURE__ */ brand<LabelProps>('Label')
 /** The scale switches — see {@link ScaleProps}. */
 export const Scale = /* @__PURE__ */ brand<ScaleProps>('Scale')
 /** A binned value channel drawn as bars — see {@link HistogramProps}. */
-export const Histogram = /* @__PURE__ */ brand<HistogramProps<any>>('Histogram') as <T>(props: HistogramProps<T>) => VNode | null
+export const Histogram = /* @__PURE__ */ plotMark<HistogramProps<any>>('Histogram', plotCore) as <T>(props: HistogramProps<T>) => VNode | null
 /** A pie or donut — the family mark for `<PieChart>`. */
 export const Arc = /* @__PURE__ */ familyMark<ArcProps<any>>('Arc', PieChart) as <T>(props: ArcProps<T>) => VNode | null
 /** A funnel — the family mark for `<FunnelChart>`. */
@@ -392,7 +434,6 @@ export interface ChartProps<T> {
   emphasis?: boolean
   /** Names for the tooltip, the legend and the accessible table when a mark sets no `label`. */
   seriesLabels?: string[]
-  toolbox?: PlotChartProps<T>['toolbox']
   onSaveImage?: PlotChartProps<T>['onSaveImage']
   /** A BCP 47 tag formatting numbers and dates through Intl — see `<PlotChart locale>`. */
   locale?: string
@@ -416,6 +457,10 @@ export interface ResolvedGrammar<T> {
   pivot: { rows: unknown[]; x: (d: unknown, index: number) => string } | null
   /** A family mark was given: the host to render and the props (channels as accessors) it takes instead of `<PlotChart>`. */
   family: { host: FamilyHost; component: HostComponent; props: Record<string, unknown> } | null
+  /** The interaction features the children asked for (`<Zoom>`, `<Toolbox>`). */
+  features: { zoom?: ZoomFeature | undefined; toolbox?: ToolboxFeature | undefined }
+  /** The cartesian plot host, taken from the first cartesian mark; absent for a family-only or empty chart. */
+  plotHost: PlotHost | undefined
 }
 
 const describeChild = (v: VNode): string => {
@@ -453,6 +498,8 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
   const markers: PointMarker[] = []
   const rawMarks: { vnode: VNode; name: string }[] = []
   let family: ResolvedGrammar<T>['family'] = null
+  const features: ResolvedGrammar<T>['features'] = {}
+  let plotHost: PlotHost | undefined
   for (const v of nodes) {
     const name = markName(v.type)
     if (name === undefined) {
@@ -462,6 +509,7 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
       continue
     }
     const p = v.props as Record<string, unknown>
+    if (plotHost === undefined) plotHost = (v.type as unknown as Record<symbol, PlotHost | undefined>)[PLOT_HOST]
     const familyHost = FAMILY_OF[name]
     if (familyHost !== undefined) {
       if (family === null) family = { host: familyHost, component: (v.type as unknown as Record<symbol, HostComponent>)[FAMILY_HOST]!, props: familyProps<T>(name, p) }
@@ -544,7 +592,15 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
         if (l.position !== undefined) props.legendPosition = l.position
         break
       }
+      case 'Toolbox': {
+        const cfg: ToolboxConfig = {}
+        for (const [k, val] of Object.entries(p)) if (k !== 'children' && val !== undefined) (cfg as Record<string, unknown>)[k] = val
+        props.toolbox = cfg
+        features.toolbox = (v.type as unknown as Record<symbol, ToolboxFeature>)[MARK_FEATURE]
+        break
+      }
       case 'Zoom': {
+        features.zoom = (v.type as unknown as Record<symbol, ZoomFeature>)[MARK_FEATURE]
         const z = p as ZoomProps
         if (z.inside !== false) props.dataZoom = true
         if (z.navigator === true) props.navigator = true
@@ -562,7 +618,7 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
   if (markers.length > 0) props.markers = markers
   if (family !== null) {
     if (rawMarks.length > 0) warnGrammar(`a ${family.host} mark beside <${rawMarks[0]!.name}> — the plot renders the ${family.host}; the cartesian marks are ignored.`)
-    return { marks: [], props, pivot: null, family }
+    return { marks: [], props, pivot: null, family, features, plotHost }
   }
 
   // A histogram replaces the rows with its bins; it is the whole plot.
@@ -576,12 +632,12 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
     if (hp.color !== undefined) opts.color = hp.color
     if (hp.format !== undefined) opts.format = hp.format
     const built = histogram(rows, channel<T, Double>(hp.x), opts)
-    return { marks: built.marks as unknown as Mark<T>[], props, pivot: { rows: built.data, x: (d) => built.x(d as (typeof built.data)[number]) }, family: null }
+    return { marks: built.marks as unknown as Mark<T>[], props, pivot: { rows: built.data, x: (d) => built.x(d as (typeof built.data)[number]) }, family: null, features, plotHost }
   }
 
   const colorOf = chart.color === undefined ? null : channel<T, string>(chart.color)
   if (colorOf === null) {
-    return { marks: rawMarks.map(({ vnode, name }) => toMark<T>(name, vnode.props as Record<string, unknown>, undefined)), props, pivot: null, family: null }
+    return { marks: rawMarks.map(({ vnode, name }) => toMark<T>(name, vnode.props as Record<string, unknown>, undefined)), props, pivot: null, family: null, features, plotHost }
   }
   // Long format: pivot rows into (category × series) per `y` mark.
   const xOf = chart.x === undefined ? (_d: T, i: number) => String(i) : channel<T, string>(chart.x)
@@ -622,7 +678,7 @@ export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNo
       marks.push(m)
     }
   }
-  return { marks, props, pivot: { rows: categories, x: (d) => d as string }, family: null }
+  return { marks, props, pivot: { rows: categories, x: (d) => d as string }, family: null, features, plotHost }
 }
 
 function toMark<T>(name: string, p: Record<string, unknown>, yOverride: ((d: T, i: number) => Double) | undefined): Mark<T> {
@@ -666,6 +722,20 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
   // data change repaints the host in place and only a family flip (a `<Show>`
   // around the family mark) remounts.
   const hostKind = computed<FamilyHost | 'plot'>(() => resolved().family?.host ?? 'plot')
+  // The interaction features the children asked for, read at call time so a
+  // `<Zoom>` added later (a `<Show>` around it) is picked up.
+  const features: PlotFeatures = {
+    get zoom() {
+      return resolved().features.zoom
+    },
+    get toolbox() {
+      return resolved().features.toolbox
+    },
+  }
+  const GrammarPlot = (p: PlotChartProps<T>): VNode | null => {
+    const host = untrack(() => resolved().plotHost)
+    return host === undefined ? null : host(p, features)
+  }
   const read = (key: string): unknown => (props as unknown as Record<string, unknown>)[key]
   const familyNode = (kind: FamilyHost): VNode => {
     const p: Record<string, unknown> = { data: reactiveProp(readRows) }
@@ -678,7 +748,7 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
     for (const key of ['tooltip', 'showLegend', 'legendPosition', 'format'] as const) p[key] = reactiveProp(() => read(key) ?? (resolved().props as Record<string, unknown>)[key])
     // The family hosts take a PNG-only toolbox; the plot's `'svg'` form maps to it.
     p.toolbox = reactiveProp(() => {
-      const tb = read('toolbox') as ChartProps<T>['toolbox']
+      const tb = (resolved().props as Record<string, unknown>).toolbox as ToolboxConfig | undefined
       return tb === undefined ? undefined : { saveAsImage: tb.saveAsImage !== undefined && tb.saveAsImage !== false }
     })
     if (kind === 'candlestick') p.x = reactiveProp(() => (props.x === undefined ? undefined : channel<T, string>(props.x)))
@@ -700,17 +770,17 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
     xValue: reactiveProp(() => (props.xValue === undefined ? undefined : channel<T, Double>(props.xValue))),
   }
   // Every `<PlotChart>` prop a child can set, forwarded as an accessor; the chart's own props win when both are given.
-  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'initialZoom', 'zoomLimits', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize'] as const
+  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'initialZoom', 'zoomLimits', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'toolbox', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize'] as const
   for (const key of forwarded) plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key] ?? (resolved().props as Record<string, unknown>)[key])
   // Every other `<PlotChart>` prop, the events/actions model included — the grammar reaches the whole host.
-  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'seriesLabels', 'toolbox', 'onSaveImage', 'locale'] as const) {
+  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'seriesLabels', 'onSaveImage', 'locale'] as const) {
     plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key])
   }
   plotProps.onSelect = reactiveProp(() => props.onSelect)
-  if (props.facet !== undefined) return facetGrid(props, readRows, plotProps)
+  if (props.facet !== undefined) return facetGrid(props, readRows, plotProps, GrammarPlot)
   return () => {
     const kind = hostKind()
-    return kind === 'plot' ? h(PlotChart as unknown as (p: Record<string, unknown>) => VNode, plotProps) : familyNode(kind)
+    return kind === 'plot' ? h(GrammarPlot as unknown as (p: Record<string, unknown>) => VNode, plotProps) : familyNode(kind)
   }
 }
 
@@ -723,7 +793,7 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
  * compared. A new value adds a panel; panels whose value persists keep
  * their identity across data changes (each reads its rows through a signal).
  */
-function facetGrid<T>(props: ChartProps<T>, readRows: () => T[], base: Record<string, unknown>): VNodeChild {
+function facetGrid<T>(props: ChartProps<T>, readRows: () => T[], base: Record<string, unknown>, host: (p: PlotChartProps<T>) => VNode | null): VNodeChild {
   const facetOf = channel<T, string>(props.facet!)
   const panelRows = new Map<string, Signal<T[]>>()
   /**
@@ -789,7 +859,7 @@ function facetGrid<T>(props: ChartProps<T>, readRows: () => T[], base: Record<st
     p.yDomain = reactiveProp(() => shared())
     p.title = key
     p.showTitle = true
-    return h(PlotChart as unknown as (p: Record<string, unknown>) => VNode, p)
+    return h(host as unknown as (p: Record<string, unknown>) => VNode, p)
   }
   return h('div', { class: 'pyreon-plot-facets', style: `display:grid;grid-template-columns:repeat(${cols},minmax(0,1fr));gap:12px` }, () => keys().map(panel))
 }

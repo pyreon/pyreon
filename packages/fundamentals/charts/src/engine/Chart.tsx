@@ -18,9 +18,6 @@ import type { LegendPager } from './legend'
 import { renderTitle } from './title'
 import { easeOutCubic, sameShape, sameValues, tweenValues } from './tween'
 import { cmdsEqual, universalTweenCmds } from './cmd-tween'
-import { hitToolbox, renderToolbox } from './toolbox'
-import { toolboxTools } from './toolbox-config'
-import { renderSvg } from './svg'
 import type { ToolboxConfig, ToolboxTool } from './toolbox-config'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
@@ -36,14 +33,11 @@ import { plotHitBarsIn, plotHitIndexIn, plotHitSeriesIn } from './plot-hit'
 import type { Mark } from './marks'
 import { chartRowCount, chartTable, chartTableRow, describeChart } from './a11y'
 import type { A11yInput } from './a11y'
-import { brushBand, brushRange, renderBrushBand } from './brush'
-import { applyBrushSelection, brushAreaFromDrag, brushOnlySeries, brushAreaUsable, brushPolygonAdd, brushSelection, renderBrushAreas } from './brush-area'
 import type { BrushArea } from './brush-area'
 import { hideHiddenSeries, legendEntriesGrouped, legendHitIndex, legendToggleGroup, pagerHit, pinSelection } from './legend-toggle'
-import { navigatorDrag, navigatorHit, renderNavigator } from './navigator'
-import { presetHit, presetWindow, renderPresets } from './presets'
 import { clampWindow, isFullWindow, limitZoomWindow, panWindow, sliceRange, windowOfRows, zoomWindow } from './zoom'
-import { applyMagicType } from './magic-type'
+import { ALL_PLOT_FEATURES } from './plot-features'
+import type { BandFeature, PlotFeatures } from './plot-features'
 import type { ZoomWindow } from './zoom'
 import type { ChartHandle, ChartLink } from './link'
 import type { Formatter } from './format'
@@ -424,7 +418,20 @@ function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double 
   return w > 0 ? w : 300
 }
 
+/** `<PlotChart>` with every interaction feature: the toolbox, save-as-image, the brushes, the navigator and the presets. */
 export function PlotChart<T>(props: PlotChartProps<T>): VNode {
+  return plotCore(props, ALL_PLOT_FEATURES)
+}
+
+/**
+ * The plot host with the interaction features it is HANDED rather than
+ * imports (see `plot-features.ts`), so the grammar can build a chart that
+ * references only the features its children ask for. An absent feature
+ * behaves exactly as the feature does when unused.
+ */
+export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): VNode {
+  // The x-range band is drawn by `<Zoom brush>` and by the toolbox's dataZoom tool alike.
+  const band = (): BandFeature | undefined => features.zoom ?? features.toolbox
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
 
@@ -485,7 +492,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const rows = readData()
     const off = viewRange(rows).from
     const keep = lastKeep
-    const sel = brushOnlySeries(brushSelection(f.spec, f.layout, brushAreas.peek()), props.brushSeriesIndex ?? [])
+    const tb = features.toolbox
+    const sel = tb === undefined ? [] : tb.brushOnlySeries(tb.brushSelection(f.spec, f.layout, brushAreas.peek()), props.brushSeriesIndex ?? [])
     cb(sel.map((x) => ({ seriesIndex: x.seriesIndex, dataIndex: x.dataIndex.map((v) => { const i = categoryIndex(f.spec, v); return (keep === null ? i : keep[i]!) + off }) })))
   }
   const clearBrushAreas = (): void => {
@@ -760,7 +768,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     props.xFormat ?? (props.locale === undefined ? undefined : props.xTime === true ? localeFmts(props.locale).date : undefined)
 
   const buildSpec = (allRows: T[], w: Double, hgt: Double): ChartSpec => {
-    const withStates = applyMagicType(buildSpecInner(allRows, w, hgt), magicKind(), magicStack())
+    const inner = buildSpecInner(allRows, w, hgt)
+    const withStates = features.toolbox === undefined ? inner : features.toolbox.applyMagicType(inner, magicKind(), magicStack())
     const built = seriesMode ? applySeriesSelection(withStates, selectedSeries()) : withStates
     // The handle's `legendInverseSelect` flips over the series the chart drew.
     if (props.handle !== undefined && props.handle.seriesCount.peek() !== built.series.length) props.handle.seriesCount.set(built.series.length)
@@ -844,8 +853,9 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     legendPager = null
     const legendCmds: ReturnType<typeof renderChart> = []
     toolboxBoxes = []
-    toolList = props.toolbox === undefined ? [] : toolboxTools(props.toolbox)
-    if (toolList.length > 0) {
+    const tbx = features.toolbox
+    toolList = props.toolbox === undefined || tbx === undefined ? [] : tbx.toolboxTools(props.toolbox)
+    if (tbx !== undefined && toolList.length > 0) {
       const actives: ToolboxTool[] = []
       if (magicKind() !== '') actives.push(magicKind() === 'bar' ? 'magicBar' : 'magicLine')
       if (magicStack() !== '') actives.push(magicStack() === 'stack' ? 'magicStack' : 'magicTiled')
@@ -854,7 +864,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       const at = areaType()
       if (at !== '') actives.push(at === 'rect' ? 'brushRect' : at === 'polygon' ? 'brushPolygon' : at === 'lineX' ? 'brushLineX' : 'brushLineY')
       if (areaKeep()) actives.push('brushKeep')
-      const tb = renderToolbox(toolList, { x: 0, y: 0, w, h: hgt }, {
+      const tb = tbx.renderToolbox(toolList, { x: 0, y: 0, w, h: hgt }, {
         fontSize: theme().fontSize,
         color: theme().label,
         actives,
@@ -928,8 +938,9 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     let presetH = 0.0
     let presetCmds: DrawCmd[] = []
     presetBoxes = []
-    if (presetItems.length > 0) {
-      const strip = renderPresets(
+    const zmp = features.zoom
+    if (zmp !== undefined && presetItems.length > 0) {
+      const strip = zmp.renderPresets(
         presetItems,
         rows.length,
         zoomWin() ?? { start: 0.0, end: 1.0 },
@@ -955,7 +966,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // allocate two strings and notify two signals for nothing.
     const presetsJson = JSON.stringify(presetBoxes)
     if (presetsJson !== untrack(presetBoxesJson)) presetBoxesJson.set(presetsJson)
-    const navH = props.navigator === true ? 36.0 : 0.0
+    const navH = props.navigator === true && features.zoom !== undefined ? 36.0 : 0.0
     bottomOffset = presetH + navH + legendBottom
     const built = tweened(buildSpec(rows, pw, hgt - top - presetH - navH - legendBottom))
     // ONE layout per frame: the paint, the crosshair, the brush band and the
@@ -963,7 +974,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const l = layoutChart(built, measure)
     // The area brush only re-colours datums, so the layout holds for the brushed spec.
     const areasNow = areaDrag === null ? brushAreas() : [...brushAreas(), areaDrag]
-    const spec = applyBrushSelection(built, brushOnlySeries(brushSelection(built, l, areasNow), props.brushSeriesIndex ?? []), areasNow.length > 0, props.outOfBrushOpacity ?? 0.1)
+    const tba = features.toolbox
+    const spec = tba === undefined ? built : tba.applyBrushSelection(built, tba.brushOnlySeries(tba.brushSelection(built, l, areasNow), props.brushSeriesIndex ?? []), areasNow.length > 0, props.outOfBrushOpacity ?? 0.1)
     frameCache = { spec, layout: l, w, hgt }
     const cmds = coreCmdsFor(renderChartIn(spec, measure, l))
     const navCmds = shiftCmds(navigatorCmds(rows, pw, hgt - presetH - navH - legendBottom, navH), legendLeft, 0.0)
@@ -976,7 +988,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // and this concern in the host.
     const shifted = shiftCmds(cmds, legendLeft, top)
     const crossShifted = shiftCmds(crosshairCmds(spec, l), legendLeft, top)
-    const bandShifted = shiftCmds([...brushCmds(spec, l), ...renderBrushAreas(areasNow, 'rgba(120,120,140,0.18)', spec.theme.axis)], legendLeft, top)
+    const bandShifted = shiftCmds([...brushCmds(spec, l), ...(tba === undefined ? [] : tba.renderBrushAreas(areasNow, 'rgba(120,120,140,0.18)', spec.theme.axis))], legendLeft, top)
     const ringShifted = shiftCmds(focusRingCmds(spec, l), legendLeft, top)
     const frame = [...legendCmds, ...shifted, ...bandShifted, ...crossShifted, ...ringShifted, ...navCmds, ...presetCmds]
     // Capture what was actually painted so `saveAsImage` serializes THIS
@@ -1010,9 +1022,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   /** The navigator strip — engine-laid-out (iOS and Android drive the same one); `navRect` is what the drag measures against. */
   const navigatorCmds = (allRows: T[], w: Double, y0: Double, navH: Double): DrawCmd[] => {
     navRect = null
-    if (props.navigator !== true || navH <= 0.0) return []
+    const zm = features.zoom
+    if (props.navigator !== true || navH <= 0.0 || zm === undefined) return []
     const nav = navigatorSeries(allRows, w)
-    const l = renderNavigator(
+    const l = zm.renderNavigator(
       nav.values,
       nav.color,
       zoomWin() ?? { start: 0.0, end: 1.0 },
@@ -1168,13 +1181,15 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   const brushCmds = (spec: ChartSpec, l: PlotLayout): DrawCmd[] => {
     const plot = l.plot
     const live = brushDrag
-    if (zoomSelect() && live !== null) return renderBrushBand(plot, live.a < live.b ? live.a : live.b, live.a < live.b ? live.b : live.a, spec.theme.axis)
+    const bf = band()
+    if (bf === undefined) return []
+    if (zoomSelect() && live !== null) return bf.renderBrushBand(plot, live.a < live.b ? live.a : live.b, live.a < live.b ? live.b : live.a, spec.theme.axis)
     if (props.brush !== true || props.horizontal === true) return []
-    if (live !== null) return renderBrushBand(plot, live.a < live.b ? live.a : live.b, live.a < live.b ? live.b : live.a, spec.theme.axis)
+    if (live !== null) return bf.renderBrushBand(plot, live.a < live.b ? live.a : live.b, live.a < live.b ? live.b : live.a, spec.theme.axis)
     const committed = brushSel()
     if (committed === null) return []
-    const band = brushBand(plot, committed, zoomWin() ?? { start: 0.0, end: 1.0 }, readData().length)
-    return band.visible ? renderBrushBand(plot, band.lo, band.hi, spec.theme.axis) : []
+    const vis = bf.brushBand(plot, committed, zoomWin() ?? { start: 0.0, end: 1.0 }, readData().length)
+    return vis.visible ? bf.renderBrushBand(plot, vis.lo, vis.hi, spec.theme.axis) : []
   }
 
   /**
@@ -1324,9 +1339,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     dragMoved = false
     // A press inside the navigator strip grabs the band or one of its handles.
     const pressY = ev.clientY - rect.top
-    if (props.navigator === true && navRect !== null && pressY >= navRect.y && pressY <= navRect.y + navRect.h) {
+    const zmn = features.zoom
+    if (props.navigator === true && zmn !== undefined && navRect !== null && pressY >= navRect.y && pressY <= navRect.y + navRect.h) {
       const win = zoomWin() ?? { start: 0.0, end: 1.0 }
-      navDrag = { kind: navigatorHit(navRect, win, dragStartX), startWin: win }
+      navDrag = { kind: zmn.navigatorHit(navRect, win, dragStartX), startWin: win }
       dragMode = 'nav'
       suppressClick = false
       ev.preventDefault()
@@ -1357,8 +1373,9 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (dragMode === 'zoomSelect' && dragMoved) {
       const plot = plotNow()
       const rows = readData()
-      if (plot !== null && rows.length > 0) {
-        const range = brushRange(plot.x, plot.w, dragStartX - leftOffset, dragLastX - leftOffset, zoomWin() ?? { start: 0.0, end: 1.0 }, rows.length)
+      const bf = band()
+      if (bf !== undefined && plot !== null && rows.length > 0) {
+        const range = bf.brushRange(plot.x, plot.w, dragStartX - leftOffset, dragLastX - leftOffset, zoomWin() ?? { start: 0.0, end: 1.0 }, rows.length)
         zoomHistory = [...zoomHistory, zoomWin()]
         setZoom(windowOfRows(range.start, range.end, rows.length))
       }
@@ -1366,7 +1383,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (dragMode === 'area') {
       const area = areaDrag
       areaDrag = null
-      if (dragMoved && area !== null && brushAreaUsable(area)) {
+      if (dragMoved && area !== null && features.toolbox !== undefined && features.toolbox.brushAreaUsable(area)) {
         brushAreas.set(areaKeep() ? [...brushAreas.peek(), area] : [area])
         draw()
       } else if (!dragMoved && !areaKeep() && brushAreas.peek().length > 0) {
@@ -1376,9 +1393,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (dragMode === 'brush' && dragMoved) {
       const plot = plotNow()
       const rows = readData()
-      if (plot !== null && rows.length > 0) {
+      const bf = band()
+      if (bf !== undefined && plot !== null && rows.length > 0) {
         const win = zoomWin() ?? { start: 0.0, end: 1.0 }
-        const range = brushRange(plot.x, plot.w, dragStartX - leftOffset, dragLastX - leftOffset, win, rows.length)
+        const range = bf.brushRange(plot.x, plot.w, dragStartX - leftOffset, dragLastX - leftOffset, win, rows.length)
         brushSel.set(range)
         if (props.onBrush !== undefined) props.onBrush(range)
       }
@@ -1416,21 +1434,22 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
         const y = ev.clientY - rect0.top
         if (Math.abs(y - dragStartY) > 3.0) dragMoved = true
         const plot = plotNow()
-        if (plot !== null) {
+        const tbd = features.toolbox
+        if (plot !== null && tbd !== undefined) {
           const px = x - leftOffset
           const py = y - topOffset
           const type = areaType()
           areaDrag = type === 'polygon'
-            ? brushPolygonAdd(areaDrag ?? brushAreaFromDrag('polygon', plot, dragStartX - leftOffset, dragStartY - topOffset, px, py), plot, px, py)
-            : brushAreaFromDrag(type, plot, dragStartX - leftOffset, dragStartY - topOffset, px, py)
+            ? tbd.brushPolygonAdd(areaDrag ?? tbd.brushAreaFromDrag('polygon', plot, dragStartX - leftOffset, dragStartY - topOffset, px, py), plot, px, py)
+            : tbd.brushAreaFromDrag(type, plot, dragStartX - leftOffset, dragStartY - topOffset, px, py)
           draw()
         }
         dragLastX = x
         return
       }
       if (dragMode === 'nav') {
-        if (navDrag !== null && navRect !== null && navRect.w > 0.0) {
-          const next = navigatorDrag(navDrag.kind, navDrag.startWin, (x - dragStartX) / navRect.w)
+        if (navDrag !== null && navRect !== null && navRect.w > 0.0 && features.zoom !== undefined) {
+          const next = features.zoom.navigatorDrag(navDrag.kind, navDrag.startWin, (x - dragStartX) / navRect.w)
           setZoom(next)
         }
         dragLastX = x
@@ -1507,12 +1526,13 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       return
     }
     // Zoom presets: a click on a button sets the window and stops here.
-    if (presetBoxes.length > 0) {
+    const zmc = features.zoom
+    if (zmc !== undefined && presetBoxes.length > 0) {
       const r0 = el.getBoundingClientRect()
-      const hit = presetHit(presetBoxes, localX(ev.clientX, r0), ev.clientY - r0.top)
+      const hit = zmc.presetHit(presetBoxes, localX(ev.clientX, r0), ev.clientY - r0.top)
       if (hit >= 0) {
         const it = props.zoomPresets?.[hit]
-        const next = presetWindow(it === undefined ? 0 : it.count, readData().length)
+        const next = zmc.presetWindow(it === undefined ? 0 : it.count, readData().length)
         setZoom(next)
         return
       }
@@ -1526,9 +1546,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // Legend hits take priority and are NOT a datum selection: a click on an
     // entry toggles its series. Boxes come from the last draw, so they match
     // exactly what is on screen.
-    if (toolList.length > 0) {
+    const tbc = features.toolbox
+    if (tbc !== undefined && toolList.length > 0) {
       const r0 = el.getBoundingClientRect()
-      const tool = hitToolbox(toolList, toolboxBoxes, localX(ev.clientX, r0), ev.clientY - r0.top)
+      const tool = tbc.hitToolbox(toolList, toolboxBoxes, localX(ev.clientX, r0), ev.clientY - r0.top)
       if (tool !== null) {
         if (tool === 'restore') {
           // One notify cycle for the five resets, not five redraws.
@@ -1595,7 +1616,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
               a.click()
             }
           } else {
-            const svg = renderSvg(lastFrame, lastW, lastH, { fontFamily: FONT, ...(props.title !== undefined ? { title: props.title } : {}) })
+            const svg = tbc.renderSvg(lastFrame, lastW, lastH, { fontFamily: FONT, ...(props.title !== undefined ? { title: props.title } : {}) })
             if (props.onSaveImage !== undefined) props.onSaveImage(svg, 'svg')
             else if (isClient && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
               const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))

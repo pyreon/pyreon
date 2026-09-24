@@ -71,6 +71,13 @@ around a mark adds and removes its series like any other Pyreon child.
 | `<Tooltip crosshair? format? />` | The pointer tooltip. |
 | `<Legend toggle? maxRows? />` | The legend (click toggles series). |
 | `<Zoom inside? navigator? presets? link? brush? />` | Pinch/wheel zoom and drag pan, the slider strip, preset buttons, cross-chart linking, the range brush. |
+| `<Toolbox saveAsImage? restore? magicType? dataZoom? dataView? brush? />` | The tool strip: save as SVG or PNG, restore, switch line and bar or stacked and tiled, a box-select zoom, a data table view, the area brushes. |
+
+The interaction children carry their own code: a chart without `<Zoom>` does
+not bundle the navigator, the presets or the range brush, and one without
+`<Toolbox>` does not bundle the tool strip or the SVG serializer. `<Chart>`
+with one `<Line>` is about 43.7 KB gzipped; a pie through `<Arc>` about
+24.5 KB. CI import budgets lock both.
 
 `<Chart color="region">` switches to **long format**: every `y` mark becomes
 one series per distinct `region`, categories come from `x`, a missing

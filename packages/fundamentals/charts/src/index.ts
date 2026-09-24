@@ -32,8 +32,8 @@ import { registerSingleton } from '@pyreon/reactivity'
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 // The chart and its marks.
-export { Arc, Area, Axis, Band, Bar, Candle, Cell, Chart, Dot, Histogram, Label, Legend, Line, Rule, Scale, StackedArea, Stage, Tooltip, Zoom } from './engine/grammar'
-export type { ArcProps, AxisProps, BandProps, BarProps, CandleProps, CellProps, Channel, ChartProps, DotProps, HistogramProps, LabelProps, LegendProps, MarkProps, RuleProps, ScaleProps, StageProps, TooltipProps, ZoomProps } from './engine/grammar'
+export { Arc, Area, Axis, Band, Bar, Candle, Cell, Chart, Dot, Histogram, Label, Legend, Line, Rule, Scale, StackedArea, Stage, Toolbox, Tooltip, Zoom } from './engine/grammar'
+export type { ArcProps, AxisProps, BandProps, BarProps, CandleProps, CellProps, Channel, ChartProps, DotProps, HistogramProps, LabelProps, LegendProps, MarkProps, RuleProps, ScaleProps, StageProps, ToolboxProps, TooltipProps, ZoomProps } from './engine/grammar'
 
 // A pie, a funnel, a heatmap and a candlestick are MARKS (<Arc>, <Stage>,
 // <Cell>, <Candle>). The families below have no row-per-datum shape to be a

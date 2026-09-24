@@ -23,6 +23,7 @@ import {
   Scale,
   Stage,
   StackedArea,
+  Toolbox,
   Tooltip,
   Zoom,
   resolveGrammar,
@@ -367,9 +368,9 @@ describe('<Chart> — the accessors it hands its host', () => {
     expect(Array.isArray(p['data'])).toBe(true)
     // The toolbox maps the plot's form to the family host's PNG-only switch.
     expect(p['toolbox']).toBeUndefined()
-    const withTb = (Chart<Row>({ data: ROWS, toolbox: { saveAsImage: 'svg' }, children: h(Arc<Row>, { value: 'revenue', label: 'month' } as never) } as never) as () => VNode)()
+    const withTb = (Chart<Row>({ data: ROWS, children: [h(Arc<Row>, { value: 'revenue', label: 'month' } as never), h(Toolbox, { saveAsImage: 'svg' })] } as never) as () => VNode)()
     expect(readProps(withTb)['toolbox']).toEqual({ saveAsImage: true })
-    const offTb = (Chart<Row>({ data: ROWS, toolbox: { saveAsImage: false }, children: h(Arc<Row>, { value: 'revenue', label: 'month' } as never) } as never) as () => VNode)()
+    const offTb = (Chart<Row>({ data: ROWS, children: [h(Arc<Row>, { value: 'revenue', label: 'month' } as never), h(Toolbox, { saveAsImage: false })] } as never) as () => VNode)()
     expect(readProps(offTb)['toolbox']).toEqual({ saveAsImage: false })
   })
 

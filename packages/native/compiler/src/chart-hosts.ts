@@ -884,7 +884,7 @@ export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {}
 /** The grammar host and its mark/config children — `<Chart>` desugars to `<PlotChart marks>` before the plot emit runs. */
 export const GRAMMAR_CHART_HOST = 'Chart'
 export const GRAMMAR_MARK_TAGS: Readonly<Record<string, string>> = { Bar: 'bars', Line: 'line', Area: 'area', Dot: 'points', StackedArea: 'stackedArea', Band: 'band' }
-export const GRAMMAR_CONFIG_TAGS: readonly string[] = ['Rule', 'Axis', 'Tooltip', 'Legend', 'Zoom', 'Label', 'Scale', 'Histogram']
+export const GRAMMAR_CONFIG_TAGS: readonly string[] = ['Rule', 'Axis', 'Tooltip', 'Legend', 'Zoom', 'Toolbox', 'Label', 'Scale', 'Histogram']
 /** The FAMILY marks: `<Chart>` with one of these desugars to the row-array host it names, channels as accessors. */
 export const GRAMMAR_FAMILY_TAGS: Readonly<Record<string, string>> = { Arc: 'PieChart', Stage: 'FunnelChart', Cell: 'HeatmapChart', Candle: 'CandlestickChart' }
 /** The channels of each family mark (the host's accessor props); every other attr is an option. */
@@ -3120,6 +3120,14 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
         if (maxRows !== undefined) attrs.push({ kind: 'attr', name: 'legendMaxRows', value: maxRows })
         break
       }
+      case 'Toolbox': {
+        // `<Toolbox saveAsImage magicType={[…]}>` → `toolbox={{ … }}`: the
+        // child's attributes ARE the config object the host takes.
+        const fields: { name: string; value: ExprIR }[] = []
+        for (const a of child.attrs) if (a.kind === 'attr') fields.push({ name: a.name, value: a.value })
+        attrs.push({ kind: 'attr', name: 'toolbox', value: { kind: 'object', fields } })
+        break
+      }
       case 'Zoom': {
         const inside = attrOf(child, 'inside')
         if (inside === undefined || !(inside.kind === 'literal' && inside.value === false)) attrs.push({ kind: 'attr', name: 'dataZoom', value: lit(true) })
@@ -3226,6 +3234,12 @@ function desugarFamilyGrammar(
     }
     if (child.tag === 'Tooltip') attrs.push({ kind: 'attr', name: 'tooltip', value: lit(true) })
     else if (child.tag === 'Legend') attrs.push({ kind: 'attr', name: 'showLegend', value: lit(true) })
+    else if (child.tag === 'Toolbox') {
+      // A family host's toolbox is PNG-only: any save form turns it on, as on the web.
+      const save = attrOf(child, 'saveAsImage')
+      const on = save !== undefined && !(save.kind === 'literal' && save.value === false)
+      attrs.push({ kind: 'attr', name: 'toolbox', value: { kind: 'object', fields: [{ name: 'saveAsImage', value: lit(on) }] } })
+    }
     else if (child.tag === 'Axis' && !flagOn(child, 'x') && !flagOn(child, 'y2') && attrOf(child, 'format') !== undefined) attrs.push({ kind: 'attr', name: 'format', value: attrOf(child, 'format')! })
     else warn(`<Chart>: <${child.tag}> does not apply to a ${host.replace('Chart', '').toLowerCase()}; it is ignored.`)
   }
