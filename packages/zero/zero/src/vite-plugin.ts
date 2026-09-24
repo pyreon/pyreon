@@ -612,6 +612,7 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 								}
 								const error = err instanceof Error ? err : new Error(String(err));
 								server.ssrFixStacktrace(error);
+								logDevSsrError(server, req.url, error);
 								const html = renderErrorOverlay(error);
 								res.statusCode = 500;
 								res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -719,6 +720,7 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 					errored = true;
 					const error = err instanceof Error ? err : new Error(String(err));
 					server.ssrFixStacktrace(error);
+					logDevSsrError(server, req.url, error);
 					const html = renderErrorOverlay(error);
 					res.statusCode = 500;
 					res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -1163,6 +1165,22 @@ export function assertPyreonPluginPresent(
 			'  import pyreon from "@pyreon/vite-plugin"\n' +
 			'  import zero from "@pyreon/zero/server"\n\n' +
 			"  export default defineConfig({ plugins: [pyreon(), zero()] })\n",
+	);
+}
+
+/**
+ * The dev error overlay tells the user to "check the terminal" — so the
+ * terminal must actually carry the error (source-mapped stack included).
+ * @internal
+ */
+export function logDevSsrError(
+	server: Pick<ViteDevServer, "config">,
+	url: string | undefined,
+	error: Error,
+): void {
+	server.config.logger.error(
+		`[Pyreon] SSR error while rendering ${url ?? "/"}:\n${error.stack ?? error.message}`,
+		{ error },
 	);
 }
 

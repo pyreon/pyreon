@@ -40,6 +40,7 @@ let backend: Server;
 let backendPort: number;
 let server: ViteDevServer;
 let baseUrl: string;
+const loggedErrors: string[] = [];
 
 // Snapshot for `devFetch`'s failure message — a thunk, so it costs nothing on
 // the passing path and only runs when a request has already failed.
@@ -96,7 +97,19 @@ beforeAll(async () => {
 				"^/rx/\\d+": { target },
 			},
 		},
-		logLevel: "silent",
+		// Captures error-level output so a spec can assert the dev SSR error
+		// the overlay points at ("check the terminal") actually reached it.
+		customLogger: {
+			info() {},
+			warn() {},
+			warnOnce() {},
+			error(msg: string) {
+				loggedErrors.push(msg);
+			},
+			clearScreen() {},
+			hasErrorLogged: () => false,
+			hasWarned: false,
+		},
 	});
 	await server.listen();
 	const address = server.httpServer?.address();
@@ -113,6 +126,15 @@ afterAll(async () => {
 });
 
 describe("PZ-11 — zero dev honors vite server.proxy", { timeout: DEV_SERVER_TEST_TIMEOUT_MS }, () => {
+	it("an SSR render error is LOGGED to the terminal the overlay points at", async () => {
+		const res = await devFetch(`${baseUrl}/broken`, "broken route renders the dev overlay", {
+			observe: state,
+			headers: { accept: "text/html" },
+		});
+		expect(res.status).toBe(500);
+		expect(loggedErrors.join("\n")).toMatch(/\[Pyreon\] SSR error while rendering \/broken[\s\S]*Intentional SSR error/);
+	});
+
 	it("dispatches a DOTTED fs api path (/api/files/report.csv) instead of skipping it as a file", async () => {
 		const res = await devFetch(`${baseUrl}/api/files/report.csv`, "dotted api path", { observe: state });
 		expect(res.status).toBe(200);
