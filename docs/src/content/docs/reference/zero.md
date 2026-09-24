@@ -144,7 +144,7 @@ export default function PostPage() { /* component body */ }
 function zero(config?: ZeroConfig): Plugin[] // default export of @pyreon/zero/server
 ```
 
-Top-level Vite plugin chain for @pyreon/zero. Single config object selects rendering mode (`'ssr' | 'ssg' | 'isr' | 'spa'`), subpath base (`base: '/blog/'`), SSG settings (paths, concurrency, onProgress, emit404, emitRedirects), i18n config (locales / defaultLocale / strategy), and deployment adapter. Returns `Plugin[]` because the SSG mode adds a companion `ssgPlugin()` automatically — Vite's plugins array natively flattens nested arrays so `plugins: [pyreon(), zero()]` works without spread.
+Top-level Vite plugin chain for @pyreon/zero. Single config object selects rendering mode (`'ssr' | 'ssg' | 'isr' | 'spa'`), subpath base (`base: '/blog/'`), SSG settings (paths, concurrency, workers — opt-in worker-thread prerender, onProgress, emit404, emitRedirects), i18n config (locales / defaultLocale / strategy), and deployment adapter. Returns `Plugin[]` because the SSG mode adds a companion `ssgPlugin()` automatically — Vite's plugins array natively flattens nested arrays so `plugins: [pyreon(), zero()]` works without spread.
 
 **Example**
 
