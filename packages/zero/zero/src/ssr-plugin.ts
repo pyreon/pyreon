@@ -132,6 +132,9 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
   let assetsInlineLimit: BuildOptions['assetsInlineLimit']
   let assetsDir: string | undefined
   let resolvedBase: string = '/'
+  // Replaced in configResolved with Vite's logger (honours `logLevel`).
+  // oxlint-disable-next-line no-console
+  let logInfo: (msg: string) => void = (msg) => console.log(msg)
   // USER plugins captured for forwarding into the inner SSR sub-build.
   // See `ssg-plugin.ts` userPlugins doc + `buildSsrBundle`'s userPlugins
   // option for the filtering rules. Same propagation pattern keeps SSR
@@ -186,6 +189,8 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       root = resolved.root
       distDir = resolve(root, resolved.build.outDir)
       isSsrTargetBuild = Boolean(resolved.build.ssr)
+      // Informational output honours `logLevel` (see ssg-plugin).
+      logInfo = (msg) => resolved.logger.info(msg)
       assetsInlineLimit = resolved.build.assetsInlineLimit
       assetsDir = resolved.build.assetsDir
       resolvedBase = resolved.base
@@ -362,8 +367,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
         }
       }
 
-      // oxlint-disable-next-line no-console
-      console.log(
+      logInfo(
         `[zero:ssr] Built ${serverEntry} [adapter: ${adapter.name}]${userEntryExists ? ' (using src/entry-server.ts)' : ' (synthetic entry)'}`,
       )
 
@@ -372,10 +376,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       try {
         const tableMode = config._autoMode ? ('auto' as const) : mode
         const modeEntries = await collectFileRouteModes(join(root, 'src', 'routes'), tableMode, config.routeRules)
-        for (const line of formatRouteModeTable(modeEntries, tableMode)) {
-          // oxlint-disable-next-line no-console
-          console.log(line)
-        }
+        for (const line of formatRouteModeTable(modeEntries, tableMode)) logInfo(line)
       } catch {
         /* table is informational only */
       }

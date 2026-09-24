@@ -10,6 +10,8 @@
 loom scan .        # analyze + report; writes loom-report.json; red exit on errors
 loom scan . --json # the full report as machine-readable JSON
 loom dev .         # the observatory UI — graph · matrix · cycles · impact · manifest
+loom build .       # the observatory as a static site in ./loom-dist
+loom --version
 ```
 
 ## What the scan detects

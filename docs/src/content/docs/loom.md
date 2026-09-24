@@ -41,10 +41,13 @@ It reads the same declarations an install tool reads — root `workspaces` globs
 
 `loom scan` **exits non-zero on error findings** (`--strict` includes warnings) — wire it into CI and the fabric gates itself. `--json` prints the full report to stdout and *only* that — the write notice goes to stderr, so `loom scan . --json > report.json` is a valid JSON file; `--no-imports` skips the lexical detectors; `--no-write` skips the report file.
 
+A scan that finds **no workspace packages fails** rather than reporting a clean fabric — it measured nothing. Run it from inside a member package and the error names the workspace root to scan instead. Unknown or misspelled flags and config keys are errors with a did-you-mean, never silently ignored; options take a value as `--out site` or `--out=site`.
+
 ## `loom dev` — the observatory
 
 ```bash
-pyreon loom dev . --port=5230
+pyreon loom dev .            # http://localhost:5230, or the next free port
+pyreon loom dev . --port 4000  # exactly this port, or fail
 ```
 
 Five views over the same report:
@@ -57,7 +60,7 @@ Five views over the same report:
 
 Plus a detail panel per package (metrics, depends-on / required-by, findings, resolution path from the nearest entry point), ⌘K search, kind filters, ↑↓ navigation, and dark/light theming. The report endpoint re-scans per request — edit a manifest, reload, see fresh truth.
 
-Vite + `@pyreon/vite-plugin` are **optional peers**: `loom scan` runs without them; `loom dev` names the install when missing.
+Vite + `@pyreon/vite-plugin` are **optional peers**: `loom scan` runs without them; `loom dev` names the install when missing. The dev server reports with the same settings `loom scan` resolves (config file + `package.json` key), and keeps its own dependency cache in `node_modules/.cache/loom-vite`, so it never invalidates your app's Vite cache.
 
 ## Configuration
 
