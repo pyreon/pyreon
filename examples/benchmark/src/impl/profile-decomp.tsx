@@ -11,7 +11,7 @@
  * The ladder — each rung adds ONE thing over the rung below, and every arm
  * renders the same two-cell row into its own host:
  *
- *   V   vanilla       createElement/appendChild, plain `{id,label}` rows
+ *   V   vanilla       row-prototype cloneNode + walk, plain `{id,label}` rows
  *   L1  For + static  `<For>` + `_tpl` clone + 2 `_setChild`; compiler returns
  *                     `null` for the row cleanup (verified in the emit), so this
  *                     rung carries the reconciler and template but NO
@@ -64,19 +64,29 @@ export function setupDecompProfile(hosts: {
   resetRng()
 
   // ─── V — hand-written Vanilla, copied from impl/vanilla.ts `renderAll` ────
+  let vRowProto: HTMLElement | null = null
+  /** Lazily-built `<tr><td></td><td></td></tr>` prototype (see impl/vanilla.ts). */
+  function vanillaRowProto(): HTMLElement {
+    if (vRowProto === null) {
+      vRowProto = document.createElement('tr')
+      vRowProto.innerHTML = '<td></td><td></td>'
+    }
+    return vRowProto
+  }
+
   function vanillaRenderAll(newRows: PlainRow[]) {
     hosts.vanilla.innerHTML = ''
     const table = document.createElement('table')
     const tbody = document.createElement('tbody')
     for (let i = 0; i < newRows.length; i++) {
       const row = newRows[i] as PlainRow
-      const tr = document.createElement('tr')
-      const td1 = document.createElement('td')
-      const td2 = document.createElement('td')
+      // Row prototype clone + firstChild/nextSibling walk — the krausest
+      // vanillajs idiom impl/vanilla.ts now uses (`createRow`).
+      const tr = vanillaRowProto().cloneNode(true) as HTMLElement
+      const td1 = tr.firstChild as HTMLElement
+      const td2 = td1.nextSibling as HTMLElement
       ;(td1 as unknown as NumericText).textContent = row.id
       td2.textContent = row.label
-      tr.appendChild(td1)
-      tr.appendChild(td2)
       tbody.appendChild(tr)
     }
     table.appendChild(tbody)

@@ -23,6 +23,18 @@ import {
   processTemplate,
 } from '../../../packages/core/server/src/html'
 
+// NODE_ENV self-re-exec guard: `bun run bench:X` does not set production, and
+// Pyreon's dev gates (devtools registry, warnings) would otherwise be measured.
+// Static imports above this line still evaluate in the parent, but the parent
+// does no timed work — the prod-env child does.
+if (process.env.NODE_ENV !== 'production') {
+  const child = Bun.spawnSync(['bun', import.meta.path, ...process.argv.slice(2)], {
+    env: { ...process.env, NODE_ENV: 'production' },
+    stdio: ['inherit', 'inherit', 'inherit'],
+  })
+  process.exit(child.exitCode ?? 0)
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function Text(text: string): ComponentFn {

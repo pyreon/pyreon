@@ -13,7 +13,8 @@
  * Also compares other bundler transforms for reference:
  *   - esbuild  — Go-based (Vite 5, tsup)
  *   - SWC      — Rust-based (Next.js, Turbopack)
- *   - Babel    — JS-based (legacy, Solid's compiler)
+ *   - Babel    — JS-based, @babel/plugin-transform-react-jsx only (NOT
+ *                babel-preset-solid, whose dom-expressions pass costs more)
  *
  * Usage: bun scripts/bench/core/compiler.ts
  */
@@ -23,6 +24,18 @@ import babelJsx from '@babel/plugin-transform-react-jsx'
 import { transformSync as swcTransform } from '@swc/core'
 import * as esbuild from 'esbuild'
 import { transformJSX } from '../../../packages/core/compiler/src/index'
+
+// NODE_ENV self-re-exec guard: `bun run bench:X` does not set production, and
+// Pyreon's dev gates (devtools registry, warnings) would otherwise be measured.
+// Static imports above this line still evaluate in the parent, but the parent
+// does no timed work — the prod-env child does.
+if (process.env.NODE_ENV !== 'production') {
+  const child = Bun.spawnSync(['bun', import.meta.path, ...process.argv.slice(2)], {
+    env: { ...process.env, NODE_ENV: 'production' },
+    stdio: ['inherit', 'inherit', 'inherit'],
+  })
+  process.exit(child.exitCode ?? 0)
+}
 
 // oxc-transform uses CJS exports
 const oxc = require('oxc-transform') as {
@@ -223,7 +236,7 @@ function benchAlternatives(code: string): BenchResult[] {
         jsxImportSource: '@pyreon/core',
       })),
     bench('SWC (Next.js)', () => swcTransform(code, SWC_OPTS)),
-    bench('Babel (Solid, legacy)', () => babel.transformSync(code, BABEL_OPTS)),
+    bench('Babel react-jsx (not babel-preset-solid)', () => babel.transformSync(code, BABEL_OPTS)),
   ]
 }
 

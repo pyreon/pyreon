@@ -5,11 +5,13 @@
  *
  * Why a separate harness from `validation.ts`: that one interleaves all four
  * libraries in a single process, which is the right call for a *cold /
- * cross-library* comparison but DEFEATS V8's escape analysis + monomorphic
- * inline caches (the call sites see four shapes, so allocations can't be
- * elided and dispatch goes megamorphic). A REAL app calls ONE schema's
- * `.parse` repeatedly — monomorphic, hot — and there V8 elides the per-parse
- * `ctx` / result allocations entirely. This harness reproduces THAT by
+ * cross-library* comparison but DEFEATS the JIT's escape analysis +
+ * monomorphic inline caches (the call sites see four shapes, so allocations
+ * can't be elided and dispatch goes megamorphic). A REAL app calls ONE
+ * schema's `.parse` repeatedly — monomorphic, hot — and there the JIT can
+ * elide the per-parse `ctx` / result allocations. NOTE: the children run
+ * under `bun` = JavaScriptCore, NOT V8 (this rationale was first written with
+ * V8 in mind) — the printed banner names the engine that produced the numbers. This harness reproduces THAT by
  * spawning one fresh `bun` process per (library, scenario), so each library
  * is measured exactly as a real app would run it.
  *
@@ -20,6 +22,19 @@
  * Run: bun bench/validation-mono.ts
  */
 process.env.NODE_ENV = 'production'
+
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 // The measurement harness, stringified into each child process. `SETUP`
 // defines `parse` (a 0-arg fn that parses a fixed input); we time it.
@@ -135,7 +150,7 @@ for (const sc of scenarios) {
 
 const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(2)}µs` : `${n.toFixed(1)}ns`)
 console.log(`\nMONOMORPHIC validation benchmark (separate process per library — real-app shape)`)
-console.log(`Node ${process.version}, ${process.platform} ${process.arch}, NODE_ENV=production`)
+console.log(`${benchRuntimeBanner()}, NODE_ENV=production`)
 console.log(`Median ns/op (lower = faster). Multiplier = vs fastest in row.\n`)
 const head = ['scenario', 'pyreon', 'zod', 'valibot', 'arktype', 'winner']
 console.log(head.map((h) => h.padEnd(h === 'scenario' ? 20 : 13)).join(''))
@@ -154,4 +169,4 @@ for (const r of rows) {
       winner,
   )
 }
-console.log('\n' + JSON.stringify({ meta: { node: process.version, platform: `${process.platform}/${process.arch}`, mode: 'monomorphic' }, rows }, null, 0))
+console.log('\n' + JSON.stringify({ meta: { runtime: benchRuntimeBanner(), platform: `${process.platform}/${process.arch}`, mode: 'monomorphic' }, rows }, null, 0))

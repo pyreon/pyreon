@@ -1494,6 +1494,136 @@ describe('ECharts differential: horizontal bars', () => {
   }
 })
 
+// ---- bar rects: stacking (dataStack), barMinHeight, showBackground ----
+
+interface RectFact { key: string; x: number; y: number; w: number; h: number }
+/** Every bar rect and background strip ECharts draws, as positive-size rects. */
+function echartsBarRects(option: object): { bars: RectFact[]; backgrounds: { x: number; y: number; w: number; h: number; fill: string }[] } {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: W, height: H })
+  chart.setOption({ animation: false, ...option })
+  const svg = chart.renderToSVGString()
+  chart.dispose()
+  const bars: RectFact[] = []
+  const backgrounds: { x: number; y: number; w: number; h: number; fill: string }[] = []
+  for (const m of svg.matchAll(/<path d="M(-?[\d.]+) (-?[\d.]+)l(-?[\d.]+) 0l0 (-?[\d.]+)[^"]*"([^>]*)>/g)) {
+    const x = Number(m[1]), y = Number(m[2]), w = Number(m[3]), h = Number(m[4])
+    const r = { x: w < 0 ? x + w : x, y: h < 0 ? y + h : y, w: Math.abs(w), h: Math.abs(h) }
+    const id = /ecmeta_series_index="(\d+)" ecmeta_data_index="(\d+)"/.exec(m[5]!)
+    if (id !== null) bars.push({ key: `${id[1]}/${id[2]}`, ...r })
+    else {
+      const fill = /fill="([^"]+)"/.exec(m[5]!)?.[1] ?? ''
+      const op = /fill-opacity="([^"]+)"/.exec(m[5]!)?.[1]
+      backgrounds.push({ ...r, fill: op === undefined ? fill : `${fill}@${op}` })
+    }
+  }
+  return { bars: bars.sort((a, b) => (a.key < b.key ? -1 : 1)), backgrounds }
+}
+function ourBarRects(option: object): { bars: RectFact[]; backgrounds: { x: number; y: number; w: number; h: number; fill: string }[] } {
+  const c = compileOption(option as EChartsOption, { width: W, height: H })
+  const m = (t: string) => t.length * 7
+  const bars: RectFact[] = []
+  c.spec.series.forEach((s, k) => {
+    if (s.kind === 'bars' || s.kind === 'grouped' || s.kind === 'stacked') barsFor(c.spec, k, m).forEach((r, d) => { if (r.w >= 0) bars.push({ key: `${k}/${d}`, x: r.x, y: r.y, w: r.w, h: r.h }) })
+  })
+  // Background strips are the full-plot rects drawn in a background colour.
+  const bgColors = new Set(c.spec.series.map((s) => s.barBackground ?? '').filter((x) => x !== ''))
+  const backgrounds = renderChart(c.spec, m).flatMap((d) => (d.kind === 'rect' && bgColors.has(d.fill) ? [{ x: d.rect.x, y: d.rect.y, w: d.rect.w, h: d.rect.h, fill: d.fill }] : []))
+  return { bars: bars.sort((a, b) => (a.key < b.key ? -1 : 1)), backgrounds }
+}
+/** `rgba(r, g, b, a)` → `rgb(r,g,b)@a`, the way ECharts' SVG splits a translucent fill. */
+const rgbaToSvg = (c: string): string => {
+  const m = /^rgba\(([^,]+),([^,]+),([^,]+),([^)]+)\)$/.exec(c.replace(/\s/g, ''))
+  return m === null ? c : `rgb(${m[1]},${m[2]},${m[3]})@${Number(m[4])}`
+}
+/** `#rrggbb@a` → `rgb(r,g,b)@a`: ECharts writes a hex fill and its opacity apart. */
+const hexToRgb = (c: string): string => {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})(@.*)?$/i.exec(c)
+  return m === null ? c : `rgb(${parseInt(m[1]!, 16)},${parseInt(m[2]!, 16)},${parseInt(m[3]!, 16)})${m[4] ?? ''}`
+}
+const cat3 = { xAxis: { type: 'category', data: ['a', 'b', 'c'] }, yAxis: { type: 'value' } }
+const hcat3 = { yAxis: { type: 'category', data: ['a', 'b', 'c'] }, xAxis: { type: 'value' } }
+const sbar = (data: number[], extra: object = {}): object => ({ type: 'bar', data, ...extra })
+const BAR_RECT_CASES: [string, object][] = [
+  ['a mixed-sign stack diverges from zero (samesign)', { ...cat3, series: [sbar([3, -2, 1], { stack: 's' }), sbar([-1, 2, 2], { stack: 's' })] }],
+  ['three-series mixed-sign stack', { ...cat3, series: [sbar([3, -2, 1], { stack: 's' }), sbar([-1, 2, -2], { stack: 's' }), sbar([2, -1, 3], { stack: 's' })] }],
+  ['an all-negative stack', { ...cat3, series: [sbar([-3, -2, -1], { stack: 's' }), sbar([-1, -2, -2], { stack: 's' })] }],
+  ['stackStrategy all', { ...cat3, series: [sbar([3, -2, 1], { stack: 's', stackStrategy: 'all' }), sbar([-1, 2, 2], { stack: 's', stackStrategy: 'all' })] }],
+  ['stackStrategy positive', { ...cat3, series: [sbar([3, -2, 1], { stack: 's', stackStrategy: 'positive' }), sbar([-1, 2, 2], { stack: 's', stackStrategy: 'positive' })] }],
+  ['stackStrategy negative', { ...cat3, series: [sbar([-3, 2, -1], { stack: 's', stackStrategy: 'negative' }), sbar([1, -2, -2], { stack: 's', stackStrategy: 'negative' })] }],
+  ['stackOrder seriesDesc', { ...cat3, series: [sbar([3, 2, 1], { stack: 's', stackOrder: 'seriesDesc' }), sbar([1, 2, 2], { stack: 's' })] }],
+  ['two stack groups', { ...cat3, series: [sbar([3, 2, 1], { stack: 'a' }), sbar([1, 2, 2], { stack: 'a' }), sbar([2, 2, 2], { stack: 'b' })] }],
+  ['a stack with a gap', { ...cat3, series: [sbar([3, Number.NaN, 1], { stack: 's' }), sbar([1, 2, 2], { stack: 's' })] }],
+  ['a horizontal mixed-sign stack', { ...hcat3, series: [sbar([3, -2, 1], { stack: 's' }), sbar([-1, 2, 2], { stack: 's' })] }],
+  ['barMinHeight lifts small and zero bars', { ...cat3, series: [sbar([100, 1, 0], { barMinHeight: 30 })] }],
+  ['barMinHeight on a negative bar', { ...cat3, series: [sbar([100, -1, 50], { barMinHeight: 30 })] }],
+  ['barMinHeight, horizontal', { ...hcat3, series: [sbar([100, 1, 0], { barMinHeight: 30 })] }],
+  ['barMinHeight on a stacked segment', { ...cat3, series: [sbar([100, 80, 60], { stack: 's' }), sbar([1, 0, 50], { stack: 's', barMinHeight: 20 })] }],
+  ['showBackground', { ...cat3, series: [sbar([3, 1, 2], { showBackground: true })] }],
+  ['showBackground, horizontal', { ...hcat3, series: [sbar([3, 1, 2], { showBackground: true })] }],
+  ['showBackground with a colour and opacity', { ...cat3, series: [sbar([3, 1, 2], { showBackground: true, backgroundStyle: { color: '#123456', opacity: 0.5 } })] }],
+  ['showBackground on grouped bars', { ...cat3, series: [sbar([3, 1, 2], { showBackground: true }), sbar([1, 2, 3])] }],
+]
+
+describe('ECharts differential: bar rects (stacking, barMinHeight, showBackground)', () => {
+  for (const [name, option] of BAR_RECT_CASES) {
+    it(name, () => {
+      const e = echartsBarRects(option)
+      const u = ourBarRects(option)
+      expect(e.bars.length).toBeGreaterThan(0)
+      expect(u.bars.map((b) => b.key)).toEqual(e.bars.map((b) => b.key))
+      u.bars.forEach((b, k) => {
+        for (const f of ['x', 'y', 'w', 'h'] as const) expect(Math.abs(b[f] - e.bars[k]![f]), `bar ${b.key}.${f}`).toBeLessThan(0.6)
+      })
+      const byXY = <T extends { x: number; y: number }>(l: T[]) => [...l].sort((a, b) => a.x - b.x || a.y - b.y)
+      expect(u.backgrounds.length, 'background strips').toBe(e.backgrounds.length)
+      byXY(u.backgrounds).forEach((g, k) => {
+        const eg = byXY(e.backgrounds)[k]!
+        for (const f of ['x', 'y', 'w', 'h'] as const) expect(Math.abs(g[f] - eg[f]), `background ${k}.${f}`).toBeLessThan(0.6)
+        expect(rgbaToSvg(g.fill).replace(/@1$/, '')).toBe(hexToRgb(eg.fill.replace(/\s/g, '')))
+      })
+    })
+  }
+})
+
+/** ECharts' stacked values, read from its own data model: the stack result dimension. */
+function echartsStackValues(option: object): number[][] {
+  const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: W, height: H })
+  chart.setOption({ animation: false, ...option })
+  const model = (chart as unknown as { getModel(): { getSeriesCount(): number; getSeriesByIndex(i: number): { getData(): { count(): number; getCalculationInfo(k: string): string; get(dim: string, i: number): number; mapDimension(d: string): string } } } }).getModel()
+  const out: number[][] = []
+  for (let k = 0; k < model.getSeriesCount(); k++) {
+    const data = model.getSeriesByIndex(k).getData()
+    const dim = data.getCalculationInfo('stackResultDimension') ?? data.mapDimension('y')
+    const row: number[] = []
+    for (let i = 0; i < data.count(); i++) row.push(data.get(dim, i))
+    out.push(row)
+  }
+  chart.dispose()
+  return out
+}
+const sline = (data: number[], extra: object = {}): object => ({ type: 'line', data, ...extra })
+const LINE_STACK_CASES: [string, object][] = [
+  ['stacked lines, mixed signs (samesign)', { ...cat3, series: [sline([3, -2, 1], { stack: 's' }), sline([-1, 2, 2], { stack: 's' }), sline([2, 1, -3], { stack: 's' })] }],
+  ['stacked lines, stackStrategy all', { ...cat3, series: [sline([3, -2, 1], { stack: 's', stackStrategy: 'all' }), sline([-1, 2, 2], { stack: 's', stackStrategy: 'all' })] }],
+  ['stacked lines, seriesDesc', { ...cat3, series: [sline([3, 2, 1], { stack: 's', stackOrder: 'seriesDesc' }), sline([1, 2, 2], { stack: 's' })] }],
+  ['stacked lines with a gap', { ...cat3, series: [sline([3, Number.NaN, 1], { stack: 's' }), sline([1, 2, 2], { stack: 's' })] }],
+]
+
+describe('ECharts differential: stacked line values (dataStack)', () => {
+  for (const [name, option] of LINE_STACK_CASES) {
+    it(name, () => {
+      const e = echartsStackValues(option)
+      const u = compileOption(option as EChartsOption, { width: W, height: H }).spec.series.map((s) => s.values)
+      expect(u.length).toBe(e.length)
+      u.forEach((row, k) => row.forEach((v, i) => {
+        const ev = e[k]![i]!
+        if (Number.isNaN(ev)) expect(Number.isNaN(v), `series ${k}[${i}] is a gap`).toBe(true)
+        else expect(v, `series ${k}[${i}]`).toBeCloseTo(ev, 9)
+      }))
+    })
+  }
+})
+
 // ---- funnels: ECharts' funnelLayout + labelLayout + FunnelView styling ----
 
 interface FunnelFacts {

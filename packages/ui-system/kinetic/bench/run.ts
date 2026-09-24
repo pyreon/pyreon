@@ -1,8 +1,9 @@
 /**
  * @pyreon/kinetic animation-overhead benchmark — real Chromium via Playwright.
  *
- * Measures the SYNCHRONOUS framework JS overhead to reveal N elements with an
- * equivalent enter / stagger animation, comparing:
+ * Measures the main-thread framework JS to reveal N elements with an
+ * equivalent enter / stagger animation — trigger through the 2nd animation
+ * frame, the same end point for every arm — comparing:
  *   - kinetic   — the idiomatic `kinetic(tag).<config>` component API
  *   - motion    — Motion One (`animate` from the `motion` package, real dep)
  *   - baseline  — hand-rolled bare-CSS transitions (the theoretical floor)
@@ -12,7 +13,8 @@
  * the tween. Motion One's `animate` on compositable props uses WAAPI, also
  * compositor-driven. So the actual animation is off-main-thread and IDENTICAL
  * in smoothness across all three — the only framework-attributable cost is the
- * SYNCHRONOUS JS to set up + commit the reveal, which is what this measures.
+ * main-thread JS to set up + commit the reveal (including kinetic's
+ * double-rAF enter-to application), which is what this measures.
  * kinetic's number includes full Pyreon component mount semantics (VNode→DOM,
  * reactive props, an enter state machine, transitionend wiring) that the
  * raw-DOM contenders (motion / baseline) never pay — so this is a "total JS to
@@ -28,11 +30,11 @@
  * sample; median + 95% bootstrap CI + CI-overlap tie marker; randomized run
  * order per (op,n); machine stamp printed.
  *
- * Usage: bun bench/run.ts   (from packages/ui-system/kinetic)
+ * Usage: bun bench/run.ts [--quick]   (from packages/ui-system/kinetic)
  */
 process.env.NODE_ENV = 'production'
 
-import { cpus } from 'node:os'
+import { cpus, loadavg } from 'node:os'
 import { join } from 'node:path'
 import { serve } from 'bun'
 import { chromium } from 'playwright'
@@ -103,8 +105,11 @@ const SCENARIOS: Array<{ op: string; n: number; label: string }> = [
   { op: 'stagger', n: 1000, label: 'stagger 1000' },
 ]
 const LIBS = ['kinetic', 'motion', 'baseline'] as const
-const WARMUP = 8
-const SAMPLES = 25
+// `--quick`: structural/correctness smoke only (tiny N, few samples) — its
+// timings are not meaningful.
+const QUICK = process.argv.includes('--quick')
+const WARMUP = QUICK ? 1 : 8
+const SAMPLES = QUICK ? 3 : 25
 
 function shuffle<T>(arr: T[]): T[] {
   const a = arr.slice()
@@ -122,7 +127,16 @@ async function main() {
   const server = serve({
     port: 0,
     fetch() {
-      return new Response(html, { headers: { 'content-type': 'text/html' } })
+      // Cross-origin isolation unlocks Chromium's fine-grained clock (~5µs).
+      // Without it performance.now() is clamped to 100µs and every sample here
+      // (0.4–1.1ms) is a handful of ticks — the previous results were quantized.
+      return new Response(html, {
+        headers: {
+          'content-type': 'text/html',
+          'cross-origin-opener-policy': 'same-origin',
+          'cross-origin-embedder-policy': 'require-corp',
+        },
+      })
     },
   })
   const url = `http://localhost:${server.port}/`
@@ -133,17 +147,30 @@ async function main() {
   page.on('pageerror', (e) => console.error('[pageerror]', e.message))
   await page.goto(url)
   await page.waitForFunction(() => typeof (globalThis as any).__kbench?.runScenario === 'function')
+  if (!(await page.evaluate(() => globalThis.crossOriginIsolated))) {
+    console.error('[kinetic-bench] page is not cross-origin isolated — the clock is clamped to 100µs; aborting')
+    process.exit(1)
+  }
 
   const results = new Map<string, Row[]>()
 
-  for (const { op, n, label } of SCENARIOS) {
+  // KBENCH_SCENARIOS=enter:250,enter:500 — ad-hoc sizes (scaling probes).
+  const custom = process.env.KBENCH_SCENARIOS?.split(',').map((t) => {
+    const [op, size] = t.split(':')
+    return { op: op!, n: Number(size), label: `${op} ${size}` }
+  })
+  const scenarios = custom ?? (QUICK ? [{ op: 'enter', n: 50, label: 'enter 50 (quick)' }, { op: 'stagger', n: 50, label: 'stagger 50 (quick)' }] : SCENARIOS)
+  for (const { op, n, label } of scenarios) {
     const rows: Row[] = []
     for (const lib of shuffle([...LIBS])) {
+      console.error(`[kinetic-bench] ${label} · ${lib}…`)
+      const armStart = performance.now()
       const samples: number[] = await page.evaluate(
         ([l, o, size, w, s]) =>
           (globalThis as any).__kbench.runScenario(l, o, size, w, s) as Promise<number[]>,
         [lib, op, n, WARMUP, SAMPLES] as const,
       )
+      console.error(`[kinetic-bench]   ${label} · ${lib} done in ${((performance.now() - armStart) / 1000).toFixed(1)}s`)
       const { median, lo, hi } = bootstrapCI(samples)
       rows.push({ lib, median, lo, hi })
     }
@@ -151,14 +178,20 @@ async function main() {
     results.set(label, rows)
   }
 
+  const browserVersion = browser.version()
   await browser.close()
   server.stop()
 
   // ─── Report ────────────────────────────────────────────────────────────────
-  const machine = `${cpus()[0]?.model ?? 'unknown'} · Chromium (Playwright)`
+  const chromiumVersion = browserVersion
+  const machine =
+    `${cpus()[0]?.model ?? 'unknown'} · Chromium ${chromiumVersion} (Playwright, V8) · ` +
+    `harness bun ${Bun.version} · loadavg ${loadavg().map((l) => l.toFixed(2)).join(' ')}`
   console.log(`\n@pyreon/kinetic — animation JS-overhead benchmark`)
   console.log(`${machine}`)
-  console.log(`warmup ${WARMUP} · ${SAMPLES} samples · median ± 95% bootstrap CI · lower = faster\n`)
+  console.log(`warmup ${WARMUP} · ${SAMPLES} samples · median ± 95% bootstrap CI · lower = faster`)
+  console.log('  timed = main-thread JS from the reveal trigger through the 2nd animation frame')
+  console.log('  (same end point for every arm; idle + browser render time excluded)\n')
 
   for (const [label, rows] of results) {
     console.log(`  ${label}`)

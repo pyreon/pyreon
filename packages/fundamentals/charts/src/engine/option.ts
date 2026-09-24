@@ -18,6 +18,8 @@ import type { BrushArea, BrushSeriesSelection } from './brush-area'
 import { readBrush } from './option-brush'
 import type { OptionBrush } from './option-brush'
 import { layoutChart, renderChart } from './render'
+import { stackLevels } from './stack'
+import { withAlpha } from './radar'
 import { appendGraphicLayer, graphicCommands, resolveDataset, svgSize } from './option-layer'
 import { visualMapCommands } from './visual-map'
 import { readDataZoom, windowSpec } from './option-zoom'
@@ -153,7 +155,7 @@ export const KNOWN_SERIES: ReadonlySet<string> = new Set([
   // pair by the dataset pre-pass, `cursor` / `tooltip` / `universalTransition`
   // by the host (see OptionChart).
   'id', 'seriesLayoutBy', 'datasetId', 'colorBy', 'cursor', 'tooltip', 'universalTransition',
-  'type', 'name', 'data', 'stack', 'smooth', 'smoothMonotone', 'connectNulls', 'step', 'areaStyle', 'itemStyle',
+  'type', 'name', 'data', 'stack', 'stackStrategy', 'stackOrder', 'barMinHeight', 'showBackground', 'backgroundStyle', 'smooth', 'smoothMonotone', 'connectNulls', 'step', 'areaStyle', 'itemStyle',
   'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'xAxisIndex', 'markLine', 'markPoint', 'markArea',
   'color', 'showSymbol', 'showAllSymbol', 'symbol', 'emphasis', 'silent',
   'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'symbolPosition', 'symbolRotate', 'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex', 'tooltipExtras',
@@ -267,6 +269,8 @@ const num = (v: unknown): number | null => {
   return null
 }
 const first = <T,>(v: T | T[] | undefined): T | undefined => (Array.isArray(v) ? v[0] : v)
+/** ECharts' empty datum — `null`, `undefined`, `'-'` or a NaN number — which leaves a gap. */
+const isEmptyDatum = (v: unknown): boolean => v === null || v === undefined || v === '-' || (typeof v === 'number' && Number.isNaN(v))
 
 /** ECharts `dashArray`: a number n is dash n + gap n; [dash, gap] as given; a nested array uses its first row. */
 function dashPeriod(v: unknown, fallback: Double): { dash: Double; period: Double } {
@@ -712,8 +716,9 @@ function compileUpright(rawOption: EChartsOption, opts: CompileOptions = {}): Co
   const sampleRequests: SamplingRequest[] = []
   // The first series' `selectedMode` decides how the host pins a click.
   let selectedMode: 'single' | 'multiple' | 'series' | undefined = undefined
-  // Running totals per `stack` name for stacked LINES.
-  const lineStacks = new Map<string, Double[]>()
+  // Stacked LINES, by compiled series index: stacked after every series is
+  // read, because ECharts' `stackOrder: 'seriesDesc'` needs the whole group.
+  const lineStackIdx: number[] = []
   const barCount = rawSeries.filter((s) => isObj(s) && s['type'] === 'bar' && s['stack'] === undefined).length
 
   for (let i = 0; i < rawSeries.length; i++) {
@@ -818,7 +823,11 @@ function compileUpright(rawOption: EChartsOption, opts: CompileOptions = {}): Co
       if (Array.isArray(d) && d.length >= 2) {
         const x = num(d[0])
         const y = num(d[1])
-        if (x === null || y === null) {
+        if (x !== null && isEmptyDatum(d[1])) {
+          // A missing y is ECharts' empty datum: a gap, not a zeroed point.
+          xs.push(x)
+          values.push(NaN)
+        } else if (x === null || y === null) {
           warn('series-data-shape', `${path}.data[${j}]`, 'A [x, y] pair must be numeric; the point was zeroed.')
           xs.push(j)
           values.push(0.0)
@@ -826,11 +835,11 @@ function compileUpright(rawOption: EChartsOption, opts: CompileOptions = {}): Co
           xs.push(x)
           values.push(y)
         }
-      } else if (d === null || d === undefined || d === '-') {
+      } else if (isEmptyDatum(d)) {
         // ECharts' empty datum: a GAP in the line, not a zero and not an error.
         values.push(NaN)
       } else if (isObj(d)) {
-        const v = d['value'] === null || d['value'] === '-' ? NaN : num(d['value'])
+        const v = isEmptyDatum(d['value']) ? NaN : num(d['value'])
         if (v === null) warn('series-data-shape', `${path}.data[${j}].value`, 'Non-numeric value; the point was zeroed.')
         values.push(v ?? 0.0)
       } else {
@@ -854,22 +863,13 @@ function compileUpright(rawOption: EChartsOption, opts: CompileOptions = {}): Co
     // ledger: data.progressive-large
     const request = samplingRequest(s, opts.width ?? 640.0, (message) => warn('series-option-unsupported', `${path}.sampling`, message))
     if (request !== null) sampleRequests.push(request)
-    // Stacked LINES: each line sits on the running total of the lines that
-    // share its `stack` name (ECharts' stacked line chart). The total is
-    // carried across a gap so a missing datum does not drop the lines above
-    // it to zero; the gap itself stays a gap. Stacked AREAS are the engine's
-    // own `stackedArea` kind (fills between levels), so their values stay raw.
-    if (type === 'line' && kind === 'line' && s['stack'] !== undefined) {
-      const key = String(s['stack'])
-      const below = lineStacks.get(key)
-      const total: Double[] = []
-      for (let j = 0; j < values.length; j++) {
-        const under = below?.[j] ?? 0.0
-        const v = values[j]!
-        if (!Number.isNaN(v)) values[j] = v + under
-        total.push(Number.isNaN(v) ? under : v + under)
-      }
-      lineStacks.set(key, total)
+    // Stacked LINES sit on the totals of the lines sharing their `stack`
+    // name, by ECharts' `dataStack` — see the pass after this loop. Stacked
+    // AREAS are the engine's own `stackedArea` kind (fills between levels).
+    if (type === 'line' && kind === 'line' && s['stack'] !== undefined) lineStackIdx.push(series.length)
+    if ((type === 'scatter' || type === 'effectScatter') && (s['stack'] !== undefined || s['stackStrategy'] !== undefined || s['stackOrder'] !== undefined)) {
+      // ledger: series.scatter
+      warn('series-option-unsupported', `${path}.stack`, 'Only bars and lines stack; the scatter points were drawn unstacked.')
     }
 
     const itemStyle = isObj(s['itemStyle']) ? s['itemStyle'] : {}
@@ -924,6 +924,7 @@ function compileUpright(rawOption: EChartsOption, opts: CompileOptions = {}): Co
       ...(itemColors.some((c) => c !== '') ? { itemColors } : {}),
       // ECharts' bar sizing: the engine solves the columns at layout (`barColumns`).
       ...(kind === 'bars' || kind === 'stacked' || kind === 'grouped' ? barSizing(s) : {}),
+      ...stackFields(s, kind),
       ...stateFields(s, path, warn),
       ...labelFields(label, typeof s['name'] === 'string' ? (s['name'] as string) : `Series ${i + 1}`, categories, values, `${path}.label`, warn, localeNumber ?? plain),
       // ECharts places a bar's label INSIDE it unless told otherwise.
@@ -1081,6 +1082,16 @@ function compileUpright(rawOption: EChartsOption, opts: CompileOptions = {}): Co
         warn('mark-shape-unsupported', `${path}.markPoint.data[${k}]`, 'Only max/min/average and coord markPoints are mapped.')
       }
     }
+  }
+
+  // Stacked lines, by ECharts' `dataStack`: each group's values become its
+  // stacked totals (a gap stays a gap; the next line stacks past it).
+  if (lineStackIdx.length > 0) {
+    const members = lineStackIdx.map((k) => series[k]!)
+    const levels = stackLevels(members.map((m) => m.values), members.map((m) => m.barStack ?? ''), members.map((m) => m.stackStrategy ?? ''), members.map((m) => m.stackDesc ?? false))
+    lineStackIdx.forEach((k, m) => {
+      series[k] = { ...series[k]!, values: levels.tops[m]!.slice(0, series[k]!.values.length) }
+    })
   }
 
   // ---- title / legend / tooltip ----------------------------------------
@@ -1312,7 +1323,42 @@ function barSizing(s: Record<string, unknown>): Partial<Series> {
   if (w !== undefined) out.barWidth = w
   if (max !== undefined) out.barMaxWidth = max
   if (min !== undefined) out.barMinWidth = min
-  if (typeof s['stack'] === 'string') out.barStack = 'stack:' + (s['stack'] as string)
+  const minH = s['barMinHeight']
+  if (typeof minH === 'number' && Number.isFinite(minH) && minH > 0) out.barMinHeight = minH
+  const bg = barBackgroundColor(s)
+  if (bg !== '') out.barBackground = bg
+  return out
+}
+
+/**
+ * ECharts' `showBackground` strip colour: `backgroundStyle.color`
+ * (`rgba(180, 180, 180, 0.2)` by default) with `backgroundStyle.opacity`
+ * multiplied in; '' when the series shows none.
+ */
+function barBackgroundColor(s: Record<string, unknown>): string {
+  if (s['showBackground'] !== true) return ''
+  const st = isObj(s['backgroundStyle']) ? s['backgroundStyle'] : {}
+  const color = typeof st['color'] === 'string' ? (st['color'] as string) : 'rgba(180, 180, 180, 0.2)'
+  const op = st['opacity']
+  if (typeof op !== 'number' || !Number.isFinite(op) || op >= 1) return color
+  const m = /^rgba\(([^,]+),([^,]+),([^,]+),([^)]+)\)$/.exec(color.replace(/\s/g, ''))
+  if (m !== null) return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${Number(m[4]) * Math.max(0, op)})`
+  return withAlpha(color, op)
+}
+
+/**
+ * ECharts' stacking keys on any stacked series: its `stack` group (the
+ * engine's `barStack`, which also gives a bar stack its own column),
+ * `stackStrategy` and `stackOrder`.
+ */
+function stackFields(s: Record<string, unknown>, kind: Series['kind']): Partial<Series> {
+  const st = s['stack']
+  if (st === undefined || st === null || st === false || st === '') return {}
+  const out: Partial<Series> = {}
+  if (kind === 'stacked' || kind === 'stackedArea' || kind === 'line') out.barStack = 'stack:' + String(st)
+  const strategy = s['stackStrategy']
+  if (strategy === 'all' || strategy === 'positive' || strategy === 'negative' || strategy === 'samesign') out.stackStrategy = strategy
+  if (s['stackOrder'] === 'seriesDesc') out.stackDesc = true
   return out
 }
 

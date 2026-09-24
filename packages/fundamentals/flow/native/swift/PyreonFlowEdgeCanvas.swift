@@ -104,8 +104,24 @@ public func pyreonFlowInteractiveHandles(nodeId: String, node: PyreonFlowRect, h
 public func pyreonNearestFlowHandle(_ handles: [PyreonFlowInteractiveHandle], point: PyreonXYPosition, type: String, radius: Double) -> PyreonFlowInteractiveHandle? {
     guard radius >= 0 else { return nil }
     return handles
-        .filter { $0.type == type && hypot($0.x - point.x, $0.y - point.y) <= radius }
+        .filter { (type == "any" || $0.type == type) && hypot($0.x - point.x, $0.y - point.y) <= radius }
         .min { hypot($0.x - point.x, $0.y - point.y) < hypot($1.x - point.x, $1.y - point.y) }
+}
+
+/// The connection a handle drag makes when it ends at `point`, under the web's
+/// `connectionMode` rules. `"strict"` (default): only a handle of the OPPOSITE
+/// type is accepted, and the result is always source -> target, so a drag that
+/// started at a target handle makes the dropped node the source. `"loose"`: any
+/// handle, oriented from where the drag started. The start node is never a
+/// candidate. `nil` when no acceptable handle is within `radius`.
+public func pyreonFlowResolveConnection(from start: PyreonFlowInteractiveHandle, handles: [PyreonFlowInteractiveHandle], point: PyreonXYPosition, radius: Double, connectionMode: String) -> PyreonFlowConnection? {
+    let loose = connectionMode == "loose"
+    let want = loose ? "any" : (start.type == "target" ? "source" : "target")
+    guard let end = pyreonNearestFlowHandle(handles.filter { $0.nodeId != start.nodeId }, point: point, type: want, radius: radius) else { return nil }
+    if !loose && start.type == "target" {
+        return PyreonFlowConnection(source: end.nodeId, target: start.nodeId, sourceHandle: end.handleId, targetHandle: start.handleId)
+    }
+    return PyreonFlowConnection(source: start.nodeId, target: end.nodeId, sourceHandle: start.handleId, targetHandle: end.handleId)
 }
 
 public func pyreonHandlePosition(_ position: PyreonFlowPosition, nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double, offset: Double = 50) -> PyreonXYPosition {
@@ -852,4 +868,51 @@ public struct PyreonFlowSvg: View {
         .frame(width: CGFloat(size.width), height: CGFloat(size.height))
         .allowsHitTesting(false)
     }
+}
+
+// MARK: - Stacking order (mirrors the web's z-order.ts)
+
+/// A node's z-index: its own `zIndex`, +1000 while dragged, +100 while selected when `elevate`.
+public func pyreonFlowNodeZ(zIndex: Double?, selected: Bool, dragging: Bool, elevate: Bool) -> Double {
+    (zIndex ?? 0) + (dragging ? 1000 : (selected && elevate ? 100 : 0))
+}
+
+/// An edge's stacking key: its own `zIndex`, +1000 while selected when `elevate`.
+public func pyreonFlowEdgeZ(zIndex: Double?, selected: Bool, elevate: Bool) -> Double {
+    (zIndex ?? 0) + (selected && elevate ? 1000 : 0)
+}
+
+/// Edges in drawing order: a STABLE sort by `pyreonFlowEdgeZ` (Swift's own
+/// sort is not stable, so the original index breaks ties). Returns the input
+/// unchanged when nothing would move.
+public func pyreonFlowOrderedEdges(_ edges: [PyreonFlowEdge], elevate: Bool, isSelected: (String) -> Bool) -> [PyreonFlowEdge] {
+    let anyZ = edges.contains { ($0.zIndex ?? 0) != 0 }
+    guard anyZ || (elevate && edges.contains { isSelected($0.id) }) else { return edges }
+    // Spelled out step by step: the chained form is too slow for swiftc's
+    // type checker ("unable to type-check this expression in reasonable time").
+    var keyed: [(index: Int, z: Double)] = []
+    keyed.reserveCapacity(edges.count)
+    for (index, edge) in edges.enumerated() {
+        let z: Double = pyreonFlowEdgeZ(zIndex: edge.zIndex, selected: isSelected(edge.id), elevate: elevate)
+        keyed.append((index: index, z: z))
+    }
+    keyed.sort { (a: (index: Int, z: Double), b: (index: Int, z: Double)) -> Bool in
+        a.z != b.z ? a.z < b.z : a.index < b.index
+    }
+    return keyed.map { (entry: (index: Int, z: Double)) -> PyreonFlowEdge in edges[entry.index] }
+}
+
+// MARK: - Auto-pan (mirrors the web's auto-pan.ts)
+
+/// How far to pan the viewport this frame while a node or connection is
+/// dragged at canvas point (`x`, `y`) in a `width` x `height` canvas: within
+/// `threshold` of an edge, toward it, faster the closer; past it, full `speed`.
+public func pyreonFlowAutoPanVelocity(x: Double, y: Double, width: Double, height: Double, speed: Double = 15, threshold: Double = 40) -> (x: Double, y: Double) {
+    func axis(_ value: Double, _ size: Double) -> Double {
+        guard size > 2 * threshold else { return 0 }
+        if value < threshold { return min(max(threshold - value, 1), threshold) / threshold }
+        if value > size - threshold { return -min(max(value - (size - threshold), 1), threshold) / threshold }
+        return 0
+    }
+    return (axis(x, width) * speed, axis(y, height) * speed)
 }

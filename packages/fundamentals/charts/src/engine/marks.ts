@@ -237,9 +237,8 @@ export function band<T>(low: Accessor<T>, high: Accessor<T>, options: MarkOption
  *
  * `stackedBars`' continuous sibling: each series is filled between the
  * running total below it and its own top, so the outline of the topmost
- * series is the total. Only non-negative values stack, on the same reasoning
- * as the bars — a mixed-sign stack has segments that overlap and a top that
- * is not the total.
+ * series is the total. Stacking follows ECharts' default (`samesign`, as the
+ * bars do): a negative value stacks down from zero on the negative total.
  */
 export function stackedArea<T>(y: Accessor<T>, options: MarkOptions = {}): Mark<T> {
   return mark('stackedArea', y, options)

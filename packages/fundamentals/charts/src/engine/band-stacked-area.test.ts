@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import { chartToSvg } from './svg-chart'
 import { band, line, stackedArea } from './marks'
-import { stackCumulative } from './stack'
+import { stackLevels } from './stack'
 
 interface Row { m: string; lo: number; hi: number; v: number; a: number; b: number }
 const ROWS: Row[] = [
@@ -72,18 +72,20 @@ describe('stackedArea — shares over time', () => {
   })
 
   it('stacks cumulatively, and a gap contributes nothing', () => {
-    const tops = stackCumulative([[3, 5, 2], [4, 2, 6]])
+    const tops = stackLevels([[3, 5, 2], [4, 2, 6]], [], [], []).tops
     expect(tops[0]).toEqual([3, 5, 2])
     expect(tops[1]).toEqual([7, 7, 8])
-    const withGap = stackCumulative([[3, Number.NaN], [4, 2]])
-    expect(withGap[0]![1]).toBe(0)
+    // A gap is a gap in its own row, and the row above stacks past it.
+    const withGap = stackLevels([[3, Number.NaN], [4, 2]], [], [], []).tops
+    expect(Number.isNaN(withGap[0]![1]!)).toBe(true)
     expect(withGap[1]![1]).toBe(2)
   })
 
-  it('a negative value does not stack — the top stays the total of what did', () => {
-    // Same rule as the bars: a mixed-sign stack has a top that is not the
-    // total, which no reading of the chart recovers.
-    const tops = stackCumulative([[5], [-3], [2]])
+  it('a negative value stacks DOWN from zero, and the positives keep their own total (ECharts samesign)', () => {
+    const { bases, tops } = stackLevels([[5], [-3], [2]], [], [], [])
+    expect(tops[1]![0]).toBe(-3)
+    expect(Number.isNaN(bases[1]![0]!)).toBe(true)
     expect(tops[2]![0]).toBe(7)
+    expect(bases[2]![0]).toBe(5)
   })
 })

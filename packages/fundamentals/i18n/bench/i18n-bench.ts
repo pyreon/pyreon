@@ -13,7 +13,10 @@
  *  - CORRECTNESS GATE asserts both produce identical output for `t` /
  *    interpolation / plural / number, and (for date) both format the same
  *    instant — see the date DISCLOSURE below.
- *  - PER-OP PROCESS ISOLATION (each op in a fresh `bun` child).
+ *  - PER-(OP × LIBRARY) PROCESS ISOLATION — each cell runs in a fresh child
+ *    in which ONLY that library's path is warmed + timed (it used to be one
+ *    child per op timing Pyreon FIRST, then the competitor, in the same
+ *    process — an order bias against whichever ran second or first).
  *  - DISCLOSURE: i18next's `init()` is ASYNC + runs a plugin/format pipeline;
  *    `t` resolution walks that pipeline. Pyreon's `t` is a direct reactive
  *    lookup. For `date`, the two libraries' DEFAULT `Intl.DateTimeFormat`
@@ -30,10 +33,14 @@
  *    be somewhat slower than measured here — Pyreon's interpolation win is if
  *    anything understated, never inflated. (Verified empirically: Pyreon outputs
  *    `<b>Ada</b>` raw, identical to i18next esc=off; i18next esc=on escapes it.)
- *  - Median ns/op over warmup + N runs; a `sink` defeats DCE.
+ *  - Impl order rotated per round; samples pooled over ${BENCH_ROUNDS:-4}
+ *    rounds → median ns/op + seeded bootstrap CI95; CI overlap = 🤝 tie.
+ *    A `sink` (written out by every child) defeats DCE. `--quick` = a
+ *    correctness/structure smoke with meaningless timings.
  */
 process.env.NODE_ENV = 'production'
 
+import { cpus, loadavg } from 'node:os'
 import i18next from 'i18next'
 import { createI18n } from '../src/index'
 
@@ -63,8 +70,33 @@ await i18.init({
   interpolation: { escapeValue: false },
 })
 
+// ─── isolated-cell harness ───────────────────────────────────────────────────
+// ONE fresh child process per (op × library) — only that library's path is
+// warmed/timed in it, so neither library measures after the other's JIT/heap
+// debt. The impl order is ROTATED per round (and per op), so neither library
+// is systematically first while the machine drifts; samples from every round
+// are POOLED → median + SEEDED bootstrap CI95 (reproducible for identical
+// samples). Overlapping CIs = 🤝 statistical tie — no winner is read. Same
+// shape as the store / rx / http benches. `--quick` (or BENCH_QUICK=1) is a
+// structural/correctness smoke only — its timings are meaningless.
+declare const Bun: {
+  version: string
+  spawnSync: (
+    cmd: string[],
+    opts: { env: Record<string, string | undefined> },
+  ) => { stdout: Uint8Array; stderr: Uint8Array; exitCode: number }
+}
+const QUICK = process.argv.includes('--quick') || process.env.BENCH_QUICK === '1'
+const ROUNDS = QUICK ? 1 : Number(process.env.BENCH_ROUNDS ?? 4)
 const now = () => Number(process.hrtime.bigint())
-function measure(fn: () => void, { warmup = 2_000, iters = 20_000, runs = 11 } = {}): number {
+
+function measureSamples(
+  fn: () => void,
+  opts: { warmup?: number; iters?: number; runs?: number } = {},
+): number[] {
+  const warmup = QUICK ? 100 : (opts.warmup ?? 2_000)
+  const iters = QUICK ? 500 : (opts.iters ?? 20_000)
+  const runs = QUICK ? 3 : (opts.runs ?? 11)
   for (let i = 0; i < warmup; i++) fn()
   const samples: number[] = []
   for (let r = 0; r < runs; r++) {
@@ -72,8 +104,143 @@ function measure(fn: () => void, { warmup = 2_000, iters = 20_000, runs = 11 } =
     for (let i = 0; i < iters; i++) fn()
     samples.push((now() - t0) / iters)
   }
-  samples.sort((a, b) => a - b)
-  return samples[samples.length >> 1] as number
+  return samples
+}
+
+function median(xs: readonly number[]): number {
+  const s = [...xs].sort((a, b) => a - b)
+  const m = s.length >> 1
+  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2
+}
+
+/** mulberry32 PRNG — seeded so the CI is reproducible for identical samples. */
+function seededRandom(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/** FNV-1a — a stable per-cell seed from the cell's label. */
+function seedOf(key: string): number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 0x01000193)
+  return h >>> 0
+}
+
+function bootstrapCI(samples: readonly number[], key: string, B = 2_000): [number, number] {
+  const rand = seededRandom(seedOf(key))
+  const n = samples.length
+  const meds = new Array<number>(B)
+  const re = new Array<number>(n)
+  for (let b = 0; b < B; b++) {
+    for (let i = 0; i < n; i++) re[i] = samples[(rand() * n) | 0]!
+    meds[b] = median(re)
+  }
+  meds.sort((a, b) => a - b)
+  return [meds[(B * 0.025) | 0]!, meds[(B * 0.975) | 0]!]
+}
+
+interface Cell {
+  median: number
+  ci: [number, number]
+  n: number
+}
+const ciOverlap = (a: Cell, b: Cell): boolean => a.ci[0] <= b.ci[1] && b.ci[0] <= a.ci[1]
+
+function runtimeBanner(): string {
+  const engine =
+    typeof Bun !== 'undefined'
+      ? `bun ${Bun.version} (JavaScriptCore)`
+      : `node ${process.version} (V8)`
+  const load = loadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${cpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load} · NODE_ENV=${process.env.NODE_ENV}`
+}
+
+/** Child argv: `<op> <impl>` (flags such as `--quick` are ignored here). */
+const childArgs = process.argv.slice(2).filter((a) => !a.startsWith('--'))
+
+function runIsolatedCells<I extends string>(
+  ops: readonly string[],
+  impls: readonly I[],
+): Record<string, Record<I, Cell>> {
+  const pooled: Record<string, Record<string, number[]>> = {}
+  for (const op of ops) {
+    pooled[op] = {}
+    for (const impl of impls) pooled[op]![impl] = []
+  }
+  for (let round = 0; round < ROUNDS; round++) {
+    ops.forEach((op, opIndex) => {
+      const k = (round + opIndex) % impls.length
+      const order = [...impls.slice(k), ...impls.slice(0, k)]
+      for (const impl of order) {
+        const proc = Bun.spawnSync(
+          [process.execPath, import.meta.path, op, impl, ...(QUICK ? ['--quick'] : [])],
+          { env: { ...process.env, NODE_ENV: 'production' } },
+        )
+        if (proc.exitCode !== 0) {
+          throw new Error(
+            `child failed for (op "${op}", impl "${impl}"):\n${new TextDecoder().decode(proc.stderr)}`,
+          )
+        }
+        const out = JSON.parse(new TextDecoder().decode(proc.stdout)) as { samples: number[] }
+        pooled[op]![impl]!.push(...out.samples)
+      }
+    })
+  }
+  const result: Record<string, Record<I, Cell>> = {}
+  for (const op of ops) {
+    const row = {} as Record<I, Cell>
+    for (const impl of impls) {
+      const s = pooled[op]![impl]!
+      row[impl] = { median: median(s), ci: bootstrapCI(s, `${op}::${impl}`), n: s.length }
+    }
+    result[op] = row
+  }
+  return result
+}
+
+/** Two-library table: Pyreon vs one competitor, CI + tie verdict per row. */
+function printPairTable<I extends string>(opts: {
+  title: string
+  ops: readonly string[]
+  cells: Record<string, Record<I, Cell>>
+  pyreon: I
+  competitor: I
+  competitorLabel: string
+  notes: Record<string, string | undefined>
+  opWidth: number
+}): void {
+  const { ops, cells, pyreon, competitor, competitorLabel, notes, opWidth } = opts
+  console.log(`=== ${opts.title} ===`)
+  console.log(runtimeBanner())
+  console.log(
+    `one fresh process per (op × library) · ${ROUNDS} round(s), impl order rotated · pooled median ns/op [seeded bootstrap CI95] · 🤝 = CI overlap (tie)${QUICK ? ' · --quick: TIMINGS MEANINGLESS' : ''}\n`,
+  )
+  const fmtCell = (c: Cell) => `${c.median.toFixed(0)} [${c.ci[0].toFixed(0)}–${c.ci[1].toFixed(0)}]`
+  console.log(
+    `${'op'.padEnd(opWidth)} ${'pyreon'.padStart(20)} ${competitorLabel.padStart(20)}  verdict   note`,
+  )
+  console.log('─'.repeat(opWidth + 80))
+  for (const op of ops) {
+    const p = cells[op]![pyreon]
+    const c = cells[op]![competitor]
+    const ratio = c.median / p.median
+    const verdict = ciOverlap(p, c)
+      ? '🤝 tie'
+      : ratio >= 1
+        ? `pyreon ${ratio.toFixed(1)}x faster`
+        : `pyreon ${(1 / ratio).toFixed(1)}x SLOWER`
+    console.log(
+      `${op.padEnd(opWidth)} ${fmtCell(p).padStart(20)} ${fmtCell(c).padStart(20)}  ${verdict}   ${notes[op] ?? ''}`,
+    )
+  }
 }
 
 let sink = 0
@@ -142,15 +309,19 @@ const OPS: Record<string, { note?: string; make: () => Impl }> = {
 }
 const OP_ORDER = Object.keys(OPS)
 
-// ─── child mode ──────────────────────────────────────────────────────────────
-const childOp = process.argv[2]
+// ─── child mode: measure ONE (op, impl) cell, print JSON ─────────────────────
+const [childOp, childImpl] = childArgs
 if (childOp) {
   const spec = OPS[childOp]
   if (!spec) throw new Error(`unknown op: ${childOp}`)
-  const impl = spec.make()
-  const out: Record<string, number> = {}
-  for (const name of IMPLS) out[name] = measure(impl[name])
-  process.stdout.write(JSON.stringify(out))
+  if (!childImpl || !(IMPLS as readonly string[]).includes(childImpl)) {
+    throw new Error(`unknown impl: ${String(childImpl)}`)
+  }
+  // `make()` builds both arms' fixtures, but ONLY `childImpl` is warmed + timed.
+  const fn = spec.make()[childImpl as ImplName]
+  const samples = measureSamples(fn)
+  // `sink` is written out so the measured work is observable (no DCE).
+  process.stdout.write(JSON.stringify({ samples, sink }))
   process.exit(0)
 }
 
@@ -171,31 +342,19 @@ function assert(cond: boolean, msg: string): void {
   console.log('✓ correctness gate passed — t/interpolation/plural/number byte-identical; date formats the same instant (defaults differ)\n')
 }
 
-declare const Bun: {
-  spawnSync: (cmd: string[], opts: { env: Record<string, string | undefined> }) => { stdout: Uint8Array; exitCode: number }
-}
-interface Row {
-  op: string
-  pyreon: number
-  i18next: number
-  note?: string
-}
-const rows: Row[] = []
-for (const op of OP_ORDER) {
-  const proc = Bun.spawnSync(['bun', import.meta.path, op], { env: { ...process.env, NODE_ENV: 'production' } })
-  if (proc.exitCode !== 0) throw new Error(`child failed for op "${op}"`)
-  const r = JSON.parse(new TextDecoder().decode(proc.stdout)) as Record<ImplName, number>
-  rows.push({ op, pyreon: r.pyreon, i18next: r.i18next, note: OPS[op]?.note })
-}
-
-console.log(`=== @pyreon/i18n vs i18next (${process.platform}/${process.arch}, NODE_ENV=production, per-op isolated, median ns/op) ===\n`)
-const pad = (s: string, n: number) => s.padEnd(n)
-const padL = (s: string, n: number) => s.padStart(n)
-console.log(`${pad('op', 26)} ${padL('pyreon', 9)} ${padL('i18next', 9)} ${padL('ratio', 14)}   note`)
-console.log('─'.repeat(110))
-for (const r of rows) {
-  const ratio = r.i18next / r.pyreon
-  const ratioStr = ratio >= 1 ? `${ratio.toFixed(1)}x faster` : `${(1 / ratio).toFixed(1)}x SLOWER`
-  console.log(`${pad(r.op, 26)} ${padL(r.pyreon.toFixed(0), 9)} ${padL(r.i18next.toFixed(0), 9)} ${padL(ratioStr, 14)}   ${r.note ?? ''}`)
-}
-console.log(`\n(ratio = i18next ÷ Pyreon; >1 ⇒ Pyreon faster. Median 11×20k, each op in a fresh process. ns machine-dependent — the ratio is the portable signal.)`)
+const cells = runIsolatedCells(OP_ORDER, IMPLS)
+const notes: Record<string, string | undefined> = {}
+for (const op of OP_ORDER) notes[op] = OPS[op]?.note
+printPairTable({
+  title: '@pyreon/i18n vs i18next',
+  ops: OP_ORDER,
+  cells,
+  pyreon: 'pyreon',
+  competitor: 'i18next',
+  competitorLabel: 'i18next',
+  notes,
+  opWidth: 26,
+})
+console.log(
+  `\n(verdict = i18next ÷ pyreon median, printed only when the CI95s do NOT overlap. ns is machine-dependent — the ratio is the portable signal.)`,
+)

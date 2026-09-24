@@ -48,6 +48,22 @@ export const ECHARTS_INERT_BY_TYPE: Readonly<Record<string, Readonly<Record<stri
 /** Top-level keys the timeline composite (`option-composite.ts`) consumes before the facade sees the option. */
 export const ECHARTS_COMPOSITE_TOP_KEYS: ReadonlySet<string> = new Set(['timeline', 'options', 'baseOption'])
 
+/**
+ * Keys the shared cartesian reader (`KNOWN_SERIES`) reads for SOME series
+ * types but that do nothing for these. `KNOWN_SERIES` is one set for every
+ * cartesian type, so without this a key implemented for bars would count as
+ * read for scatter too. Each entry stays a gap until that type honours it.
+ * Hand-maintained, like `ECHARTS_INERT_BY_TYPE`; the generator and the
+ * totality test both read it.
+ */
+export const ECHARTS_NOT_HONOURED_BY_TYPE: Readonly<Record<string, readonly string[]>> = {
+  // Only bars and lines stack; a scatter's `stack` draws unstacked points (with a warning).
+  scatter: ['stackStrategy', 'stackOrder'],
+  effectScatter: ['stackStrategy', 'stackOrder'],
+  // A pictorial bar's symbols are not differential-tested against a minimum height.
+  pictorialBar: ['barMinHeight'],
+}
+
 export const ECHARTS_TOP_GAPS: Readonly<Record<string, string>> = {
   matrix: 'coordinates.matrix',
   axisPointer: 'coordinates.axis-pointer',
@@ -61,9 +77,7 @@ export const ECHARTS_TOP_GAPS: Readonly<Record<string, string>> = {
 
 export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   bar: {
-    backgroundStyle: 'series.bar',
     barMinAngle: 'series.bar',
-    barMinHeight: 'series.bar',
     blendMode: 'presentation.layering',
     colorLayer: 'presentation.palette',
     coord: 'coordinates.matrix',
@@ -77,10 +91,7 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     polarIndex: 'coordinates.polar',
     realtimeSort: 'series.bar',
     roundCap: 'series.bar',
-    showBackground: 'series.bar',
     sourceHeader: 'data.dimensions-encode',
-    stackOrder: 'series.bar',
-    stackStrategy: 'series.bar',
     stateAnimation: 'presentation.animation',
     xAxisId: 'coordinates.axes',
     yAxisId: 'coordinates.axes',
@@ -418,8 +429,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     polarId: 'coordinates.polar',
     polarIndex: 'coordinates.polar',
     sourceHeader: 'data.dimensions-encode',
-    stackOrder: 'series.line',
-    stackStrategy: 'series.line',
     stateAnimation: 'presentation.animation',
     symbolKeepAspect: 'series.line',
     triggerEvent: 'runtime.events',
@@ -536,8 +545,6 @@ export const ECHARTS_SERIES_GAPS: Readonly<Record<string, Readonly<Record<string
     polarId: 'coordinates.polar',
     polarIndex: 'coordinates.polar',
     sourceHeader: 'data.dimensions-encode',
-    stackOrder: 'series.pictorial-bar',
-    stackStrategy: 'series.pictorial-bar',
     stateAnimation: 'presentation.animation',
     symbolPatternSize: 'series.pictorial-bar',
     symbolRepeatDirection: 'series.pictorial-bar',

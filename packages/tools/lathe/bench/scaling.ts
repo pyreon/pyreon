@@ -27,6 +27,18 @@
 import { resolveConfig } from '../src/core/config'
 import { generate } from '../src/core/generate'
 import { loadOpenApi } from '../src/input/openapi'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 type Shape = 'chain' | 'shallow' | 'flat'
 
@@ -143,6 +155,7 @@ for (const shape of ['chain', 'shallow', 'flat'] as const) {
 if (process.argv.includes('--json')) {
   console.log(JSON.stringify({ warmup: WARMUP, trials: TRIALS, rows }, null, 2))
 } else {
+  console.log(benchRuntimeBanner())
   const fmt = (m: { median: number; spread: number }): string => {
     const noisy = m.spread > 0.2
     return `${m.median.toFixed(1).padStart(7)}ms ${noisy ? `(±${(m.spread * 100).toFixed(0)}% NOISY)` : `(±${(m.spread * 100).toFixed(0)}%)`}`

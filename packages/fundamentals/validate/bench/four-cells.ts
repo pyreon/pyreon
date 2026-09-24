@@ -13,7 +13,8 @@ const run = (cell: string, lib: string): number => {
   return med((JSON.parse(r.stdout.trim()) as { samples: number[] }).samples)
 }
 const load = () => require('node:os').loadavg().map((x: number) => x.toFixed(2)).join(' ')
-console.log(`load=${load()} rounds=${ROUNDS}`)
+// Children are `bun` = JavaScriptCore; the banner names the engine + CPU + load.
+console.log(`engine=bun ${process.versions.bun ?? '?'} (JavaScriptCore) · cpu=${require('node:os').cpus()[0]?.model ?? '?'} · load=${load()} rounds=${ROUNDS}`)
 const acc: Record<string, number[]> = {}
 for (let r = 0; r < ROUNDS; r++) for (const c of CELLS) for (const l of LIBS) (acc[`${c}|${l}`] ??= []).push(run(c, l))
 for (const c of CELLS) { const p = med(acc[`${c}|pyreon`]!), z = med(acc[`${c}|zod-c`]!); console.log(`${c.padEnd(26)} pyreon ${p.toFixed(2).padStart(7)}  zod-c ${z.toFixed(2).padStart(7)}  → ${(p / z).toFixed(2)}×`) }

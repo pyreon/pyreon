@@ -58,6 +58,18 @@
 process.env.NODE_ENV = 'production'
 
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 GlobalRegistrator.register()
 
@@ -231,13 +243,19 @@ function spawnPool<T>(key: string): T[] {
     const proc = Bun.spawnSync(['bun', import.meta.path], {
       env: { ...process.env, PYREON_BENCH_WORKER: key },
       stdout: 'pipe',
+      stderr: 'pipe',
     })
-    const txt = proc.stdout.toString().trim()
-    try {
-      out.push(JSON.parse(txt) as T)
-    } catch {
-      // worker failed → skip sample
+    // A failed worker used to be SKIPPED silently ("worker failed → skip
+    // sample"): a library whose worker throws its own correctness check then
+    // contributes FEWER (or zero) samples than its peer, and an all-failed
+    // cell printed as a crash in `fmt(undefined)` far from the cause. A worker
+    // failure is a correctness-gate failure — surface it.
+    if (proc.exitCode !== 0) {
+      throw new Error(
+        `[toast-commit-bench] worker "${key}" failed (exit ${proc.exitCode}):\n${proc.stderr.toString().slice(-600)}`,
+      )
     }
+    out.push(JSON.parse(proc.stdout.toString().trim()) as T)
   }
   return out
 }
@@ -265,7 +283,10 @@ const fmt = (x: number) =>
   Number.isNaN(x) ? 'n/a' : x >= 1000 ? `${(x / 1000).toFixed(2)}µs` : `${x.toFixed(0)}ns`
 
 console.log(`\nMounted/commit toast benchmark — @pyreon/toast vs react-hot-toast vs sonner`)
-console.log(`Node ${process.version}, ${process.platform} ${process.arch}, NODE_ENV=production`)
+console.log(`${benchRuntimeBanner()}, NODE_ENV=production`)
+console.log(
+  '⚠ happy-dom (JS DOM) — not browser-representative: every WALL-CLOCK number below was timed against happy-dom, a JavaScript DOM implementation, not a browser engine (no real style/layout/paint; DOM-op costs differ from Chromium/WebKit/Gecko).',
+)
 console.log(`Median ns/op (lower = faster). Multiplier = vs fastest in row. K=${K} fresh spawns/cell.\n`)
 
 console.log(
@@ -319,7 +340,7 @@ console.log(
   '\n' +
     JSON.stringify(
       {
-        meta: { node: process.version, platform: `${process.platform}/${process.arch}`, K },
+        meta: { runtime: benchRuntimeBanner(), platform: `${process.platform}/${process.arch}`, K },
         createThroughput: tp,
         commit: {
           create: commitMed(commitRows.create),

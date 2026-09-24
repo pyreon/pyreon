@@ -98,6 +98,8 @@ data class PyreonFlowNode<T>(
     val group: Boolean? = null,
     val sourceHandles: List<PyreonFlowHandleConfig> = emptyList(),
     val targetHandles: List<PyreonFlowHandleConfig> = emptyList(),
+    /** Stacking order among nodes; see [pyreonFlowNodeZ]. */
+    val zIndex: Double? = null,
 )
 
 fun <T> pyreonEffectiveDimensions(node: PyreonFlowNode<T>, measurement: PyreonFlowNodeMeasurement? = null) = PyreonFlowDimensions(
@@ -177,6 +179,8 @@ data class PyreonFlowEdge(
     val markerEnd: PyreonFlowMarker? = null,
     val markerEndSpecified: Boolean = false,
     val waypoints: List<PyreonXYPosition> = emptyList(),
+    /** Stacking order among edges; see [pyreonFlowEdgeZ]. */
+    val zIndex: Double? = null,
 )
 
 /** Deterministic missing-id fallback used by the web Flow engine. */
@@ -735,6 +739,12 @@ class PyreonFlowState<T>(
     var zoomOnDoubleClick: Boolean = false,
     var selectionOnDrag: Boolean = false,
     selectionMode: String = "partial",
+    connectionMode: String = "strict",
+    elevateNodesOnSelect: Boolean = true,
+    elevateEdgesOnSelect: Boolean = false,
+    autoPanOnNodeDrag: Boolean = true,
+    autoPanOnConnect: Boolean = true,
+    autoPanSpeed: Double = 15.0,
     var multiSelect: Boolean = true,
     var onlyRenderVisibleElements: Boolean = false,
     var snapToObjects: Boolean = true,
@@ -762,6 +772,18 @@ class PyreonFlowState<T>(
         } catch (_: ReflectiveOperationException) { false }
     }
     var selectionMode: String = if (selectionMode == "full") "full" else "partial"
+    /** `"strict"` (default): a connection joins a source handle to a target handle. `"loose"`: any handle to any handle. */
+    var connectionMode: String = if (connectionMode == "loose") "loose" else "strict"
+    /** Raise a selected node by 100 (default `true`). */
+    var elevateNodesOnSelect: Boolean = elevateNodesOnSelect
+    /** Draw a selected edge above the others (default `false`). */
+    var elevateEdgesOnSelect: Boolean = elevateEdgesOnSelect
+    /** Pan while a node is dragged near the edge (default `true`). */
+    var autoPanOnNodeDrag: Boolean = autoPanOnNodeDrag
+    /** Pan while a connection is dragged near the edge (default `true`). */
+    var autoPanOnConnect: Boolean = autoPanOnConnect
+    /** Px per frame at the very edge (default 15). */
+    var autoPanSpeed: Double = maxOf(0.0, autoPanSpeed)
     fun batch(operation: () -> Unit) { Snapshot.withMutableSnapshot(operation) }
     fun dispose() {
         viewportAnimationGeneration++; layoutAnimationGeneration++
@@ -773,10 +795,13 @@ class PyreonFlowState<T>(
         nodesDeleteListeners.clear(); edgesDeleteListeners.clear()
         nodesChangeListeners.clear(); edgesChangeListeners.clear()
         connectStartListeners.clear(); connectEndListeners.clear(); paneClickListeners.clear()
+        nodeContextMenuListeners.clear(); edgeContextMenuListeners.clear(); paneContextMenuListeners.clear()
+        nodeMouseEnterListeners.clear(); nodeMouseLeaveListeners.clear(); edgeMouseEnterListeners.clear(); edgeMouseLeaveListeners.clear()
     }
-    private companion object {
-        val viewportAnimationTimer = Timer("PyreonFlowViewport", true)
-    }
+    /** Schedules one animation frame. Every frame mutates engine state and calls
+     *  app listeners, so on Android it must run on the MAIN thread; see
+     *  [PyreonFlowFrames]. */
+    private fun scheduleFrame(frame: () -> Unit) = PyreonFlowFrames.scheduler.schedule(16L, frame)
     @Volatile private var viewportAnimationGeneration = 0
     @Volatile private var layoutAnimationGeneration = 0
     private val undoStack = ArrayList<PyreonFlowHistorySnapshot<T>>()
@@ -802,6 +827,13 @@ class PyreonFlowState<T>(
     private val connectStartListeners = LinkedHashMap<Int, (PyreonFlowConnectStart) -> Unit>()
     private val connectEndListeners = LinkedHashMap<Int, (PyreonFlowConnection?) -> Unit>()
     private val paneClickListeners = LinkedHashMap<Int, (PyreonFlowPaneEvent) -> Unit>()
+    private val nodeContextMenuListeners = LinkedHashMap<Int, (PyreonFlowNode<T>) -> Unit>()
+    private val edgeContextMenuListeners = LinkedHashMap<Int, (PyreonFlowEdge) -> Unit>()
+    private val paneContextMenuListeners = LinkedHashMap<Int, (PyreonXYPosition) -> Unit>()
+    private val nodeMouseEnterListeners = LinkedHashMap<Int, (PyreonFlowNode<T>) -> Unit>()
+    private val nodeMouseLeaveListeners = LinkedHashMap<Int, (PyreonFlowNode<T>) -> Unit>()
+    private val edgeMouseEnterListeners = LinkedHashMap<Int, (PyreonFlowEdge) -> Unit>()
+    private val edgeMouseLeaveListeners = LinkedHashMap<Int, (PyreonFlowEdge) -> Unit>()
     var connectionRadius: Double = maxOf(0.0, connectionRadius)
     var fitViewPadding: Double = maxOf(0.0, fitViewPadding)
     var nodeExtent: PyreonFlowNodeExtent? = nodeExtent
@@ -873,14 +905,12 @@ class PyreonFlowState<T>(
         if (changes.isNotEmpty()) { markMutation(); emitNodeChanges(changes) }
     }
     private fun scheduleLayoutFrame(generation: Int, starts: Map<String, PyreonXYPosition>, targets: Map<String, PyreonXYPosition>, startNanos: Long, durationNanos: Double) {
-        viewportAnimationTimer.schedule(object : TimerTask() {
-            override fun run() {
-                if (layoutAnimationGeneration != generation) return
-                val t = ((System.nanoTime() - startNanos) / durationNanos).coerceIn(0.0, 1.0); val eased = 1.0 - Math.pow(1.0 - t, 3.0)
-                applyLayoutPositions(targets.mapNotNull { (id, target) -> starts[id]?.let { start -> id to PyreonXYPosition(start.x + (target.x - start.x) * eased, start.y + (target.y - start.y) * eased) } }.toMap())
-                if (t < 1.0) scheduleLayoutFrame(generation, starts, targets, startNanos, durationNanos)
-            }
-        }, 16L)
+        scheduleFrame {
+            if (layoutAnimationGeneration != generation) return@scheduleFrame
+            val t = ((System.nanoTime() - startNanos) / durationNanos).coerceIn(0.0, 1.0); val eased = 1.0 - Math.pow(1.0 - t, 3.0)
+            applyLayoutPositions(targets.mapNotNull { (id, target) -> starts[id]?.let { start -> id to PyreonXYPosition(start.x + (target.x - start.x) * eased, start.y + (target.y - start.y) * eased) } }.toMap())
+            if (t < 1.0) scheduleLayoutFrame(generation, starts, targets, startNanos, durationNanos)
+        }
     }
     fun onConnect(callback: (PyreonFlowConnection) -> Unit): () -> Unit {
         val id = nextListenerId++; connectListeners[id] = callback
@@ -943,6 +973,23 @@ class PyreonFlowState<T>(
     fun emitConnectStart(nodeId: String, handleId: String?) { val event = PyreonFlowConnectStart(nodeId, handleId ?: ""); connectStartListeners.values.forEach { it(event) } }
     fun emitConnectEnd(connection: PyreonFlowConnection?) { connectEndListeners.values.forEach { it(connection) } }
     fun emitPaneClick(position: PyreonXYPosition) { val event = PyreonFlowPaneEvent(position); paneClickListeners.values.forEach { it(event) } }
+    // Context menu (a long-press natively, right-click on web) and pointer hover. Mirrors Swift.
+    fun onNodeContextMenu(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = addNodeListener(nodeContextMenuListeners, callback)
+    fun onNodeMouseEnter(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = addNodeListener(nodeMouseEnterListeners, callback)
+    fun onNodeMouseLeave(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = addNodeListener(nodeMouseLeaveListeners, callback)
+    fun onEdgeContextMenu(callback: (PyreonFlowEdge) -> Unit): () -> Unit { val id = nextListenerId++; edgeContextMenuListeners[id] = callback; return { edgeContextMenuListeners.remove(id) } }
+    fun onEdgeMouseEnter(callback: (PyreonFlowEdge) -> Unit): () -> Unit { val id = nextListenerId++; edgeMouseEnterListeners[id] = callback; return { edgeMouseEnterListeners.remove(id) } }
+    fun onEdgeMouseLeave(callback: (PyreonFlowEdge) -> Unit): () -> Unit { val id = nextListenerId++; edgeMouseLeaveListeners[id] = callback; return { edgeMouseLeaveListeners.remove(id) } }
+    /** The empty canvas's context menu, at [position] in flow coordinates. */
+    fun onPaneContextMenu(callback: (PyreonXYPosition) -> Unit): () -> Unit { val id = nextListenerId++; paneContextMenuListeners[id] = callback; return { paneContextMenuListeners.remove(id) } }
+    /** `true` when a listener received it: the view then consumes the gesture. */
+    fun emitNodeContextMenu(id: String): Boolean { val node = nodeMap[id] ?: return false; if (nodeContextMenuListeners.isEmpty()) return false; nodeContextMenuListeners.values.toList().forEach { it(node) }; return true }
+    fun emitEdgeContextMenu(id: String): Boolean { val edge = getEdge(id) ?: return false; if (edgeContextMenuListeners.isEmpty()) return false; edgeContextMenuListeners.values.toList().forEach { it(edge) }; return true }
+    fun emitPaneContextMenu(position: PyreonXYPosition): Boolean { if (paneContextMenuListeners.isEmpty()) return false; paneContextMenuListeners.values.toList().forEach { it(position) }; return true }
+    fun emitNodeMouseEnter(id: String) { nodeMap[id]?.let { node -> nodeMouseEnterListeners.values.forEach { it(node) } } }
+    fun emitNodeMouseLeave(id: String) { nodeMap[id]?.let { node -> nodeMouseLeaveListeners.values.forEach { it(node) } } }
+    fun emitEdgeMouseEnter(id: String) { getEdge(id)?.let { edge -> edgeMouseEnterListeners.values.forEach { it(edge) } } }
+    fun emitEdgeMouseLeave(id: String) { getEdge(id)?.let { edge -> edgeMouseLeaveListeners.values.forEach { it(edge) } } }
     private fun emitNodeChanges(changes: List<PyreonFlowNodeChange>) { if (changes.isNotEmpty()) nodesChangeListeners.values.forEach { it(changes) } }
     private fun emitEdgeChanges(changes: List<PyreonFlowEdgeChange>) { if (changes.isNotEmpty()) edgesChangeListeners.values.forEach { it(changes) } }
     private fun emitDeleted(nodes: List<PyreonFlowNode<T>>, edges: List<PyreonFlowEdge>) {
@@ -1537,22 +1584,20 @@ class PyreonFlowState<T>(
         scheduleViewportFrame(generation, start, end, System.nanoTime(), duration * 1_000_000.0)
     }
     private fun scheduleViewportFrame(generation: Int, start: PyreonFlowViewport, end: PyreonFlowViewport, startNanos: Long, durationNanos: Double) {
-        viewportAnimationTimer.schedule(object : TimerTask() {
-            override fun run() {
-                if (viewportAnimationGeneration != generation) return
-                val t = ((System.nanoTime() - startNanos) / durationNanos).coerceIn(0.0, 1.0)
-                val eased = 1.0 - Math.pow(1.0 - t, 3.0)
-                Snapshot.withMutableSnapshot {
-                    _viewport = PyreonFlowViewport(
-                        start.x + (end.x - start.x) * eased,
-                        start.y + (end.y - start.y) * eased,
-                        start.zoom + (end.zoom - start.zoom) * eased,
-                    )
-                }
-                emitViewportChange()
-                if (t < 1.0) scheduleViewportFrame(generation, start, end, startNanos, durationNanos)
+        scheduleFrame {
+            if (viewportAnimationGeneration != generation) return@scheduleFrame
+            val t = ((System.nanoTime() - startNanos) / durationNanos).coerceIn(0.0, 1.0)
+            val eased = 1.0 - Math.pow(1.0 - t, 3.0)
+            Snapshot.withMutableSnapshot {
+                _viewport = PyreonFlowViewport(
+                    start.x + (end.x - start.x) * eased,
+                    start.y + (end.y - start.y) * eased,
+                    start.zoom + (end.zoom - start.zoom) * eased,
+                )
             }
-        }, 16L)
+            emitViewportChange()
+            if (t < 1.0) scheduleViewportFrame(generation, start, end, startNanos, durationNanos)
+        }
     }
     fun screenToFlowPosition(position: PyreonXYPosition): PyreonXYPosition = PyreonXYPosition(
         x = (position.x - _viewport.x) / _viewport.zoom,
@@ -1669,6 +1714,45 @@ class PyreonFlowState<T>(
             other.id != nodeId && node.position.x < other.position.x + (other.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH) && right > other.position.x && node.position.y < other.position.y + (other.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT) && bottom > other.position.y
         }
     }
+    // Intersection + bounds: the web's getIntersectingNodes / isNodeIntersecting
+    // / getNodesBounds (React Flow semantics). Mirrors Swift.
+    private fun intersectionRect(node: PyreonFlowNode<T>): PyreonFlowRect {
+        val d = getNodeDimensions(node.id)
+        val p = getAbsolutePosition(node.id)
+        return PyreonFlowRect(p.x, p.y, d.width, d.height)
+    }
+    private fun overlapArea(a: PyreonFlowRect, b: PyreonFlowRect): Double {
+        val w = minOf(a.x + a.width, b.x + b.width) - maxOf(a.x, b.x)
+        val h = minOf(a.y + a.height, b.y + b.height) - maxOf(a.y, b.y)
+        return if (w > 0 && h > 0) w * h else 0.0
+    }
+    private fun intersects(rect: PyreonFlowRect, area: PyreonFlowRect, partially: Boolean): Boolean {
+        val overlap = overlapArea(rect, area)
+        return (partially && overlap > 0) || overlap >= rect.width * rect.height
+    }
+    fun isNodeIntersecting(nodeId: String, area: PyreonFlowRect, partially: Boolean = true): Boolean {
+        val node = nodeMap[nodeId] ?: return false
+        return intersects(intersectionRect(node), area, partially)
+    }
+    fun isNodeIntersecting(rect: PyreonFlowRect, area: PyreonFlowRect, partially: Boolean = true): Boolean = intersects(rect, area, partially)
+    fun getIntersectingNodes(nodeId: String, partially: Boolean = true): List<PyreonFlowNode<T>> {
+        val node = nodeMap[nodeId] ?: return emptyList()
+        return intersectingNodes(intersectionRect(node), nodeId, partially)
+    }
+    fun getIntersectingNodes(rect: PyreonFlowRect, partially: Boolean = true): List<PyreonFlowNode<T>> = intersectingNodes(rect, null, partially)
+    private fun intersectingNodes(rect: PyreonFlowRect, selfId: String?, partially: Boolean): List<PyreonFlowNode<T>> =
+        nodes.filter { other -> other.id != selfId && other.hidden != true && intersects(intersectionRect(other), rect, partially) }
+    fun getNodesBounds(nodeIds: List<String>? = null): PyreonFlowRect {
+        val targets = if (nodeIds != null) nodes.filter { it.id in nodeIds } else nodes.filter { it.hidden != true }
+        if (targets.isEmpty()) return PyreonFlowRect(0.0, 0.0, 0.0, 0.0)
+        var minX = Double.POSITIVE_INFINITY; var minY = Double.POSITIVE_INFINITY
+        var maxX = Double.NEGATIVE_INFINITY; var maxY = Double.NEGATIVE_INFINITY
+        for (node in targets) {
+            val r = intersectionRect(node)
+            minX = minOf(minX, r.x); minY = minOf(minY, r.y); maxX = maxOf(maxX, r.x + r.width); maxY = maxOf(maxY, r.y + r.height)
+        }
+        return PyreonFlowRect(minX, minY, maxX - minX, maxY - minY)
+    }
     @JvmOverloads
     fun resolveCollisions(nodeId: String, spacing: Double = 10.0) {
         val node = nodeMap[nodeId] ?: return
@@ -1759,4 +1843,28 @@ class PyreonFlowState<T>(
         emitViewportChange()
         selectNode(nodeId)
     }
+}
+
+
+/** Schedules one frame of a flow animation after [delayMillis]. */
+fun interface PyreonFlowFrameScheduler {
+    fun schedule(delayMillis: Long, frame: () -> Unit)
+}
+
+/**
+ * Where flow animation frames run. Each frame of `animateViewport`, `fitView`
+ * and an animated `layout` mutates the engine and calls app listeners
+ * (`onViewportChange`, `onNodesChange`, ...), so on Android it must run on the
+ * MAIN thread: a listener that touches a View from any other thread throws
+ * `CalledFromWrongThreadException`. The default is a daemon [Timer], which keeps
+ * this file free of the Android SDK so the engine's JVM tests can run it;
+ * `PyreonFlowView` installs a main-looper scheduler the first time it composes.
+ * Swift has no equivalent seam: its frames already run on the main queue.
+ */
+object PyreonFlowFrames {
+    val timerScheduler: PyreonFlowFrameScheduler = run {
+        val timer = Timer("PyreonFlowViewport", true)
+        PyreonFlowFrameScheduler { delay, frame -> timer.schedule(object : TimerTask() { override fun run() = frame() }, delay) }
+    }
+    @Volatile var scheduler: PyreonFlowFrameScheduler = timerScheduler
 }

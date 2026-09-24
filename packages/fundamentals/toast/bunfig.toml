@@ -1,0 +1,5 @@
+# Bun runs bench/*.ts(x) and src/*.tsx directly. It does not follow the
+# bare-specifier `extends` in tsconfig.json (@pyreon/tsconfig/lib-jsx.json),
+# so without this it compiles JSX against React's runtime.
+jsx = "react-jsx"
+jsxImportSource = "@pyreon/core"

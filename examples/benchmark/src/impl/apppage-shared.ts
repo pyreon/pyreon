@@ -12,9 +12,9 @@
  * annotations (Vue's `<!--[-->` fragment markers, Pyreon's `<!--$-->` accessor
  * markers, etc.).
  *
- * React / Preact / Vue are written at their documented no-compile API
- * (createElement / h / render function) — the same discipline the row-list
- * bench uses. Pyreon's client half is REAL JSX compiled by
+ * React / Preact are written as their automatic JSX runtime's emit
+ * (`jsx`/`jsxs`), Vue as build-time-compiled templates — each framework's own
+ * toolchain output, the same standard the row-list bench uses. Pyreon's client half is REAL JSX compiled by
  * @pyreon/vite-plugin (src/impl/apppage-pyreon.tsx, generated); the Pyreon SSR
  * half below is its h() twin, which the runtime renders to the same markup.
  */
@@ -78,180 +78,177 @@ export function pyreonAppPage(selected: () => string | null): VNode {
 }
 
 // ─── React ───────────────────────────────────────────────────────────────────
-import * as React from 'react'
+// React and Preact are written as the automatic JSX runtime's output — esbuild's
+// `jsx: 'automatic'` emit for the idiomatic page, diffed rather than assumed:
+//
+//   const FormRow = (p) => <div className="row"><label className="row-label">{p.label}</label>
+//     <div className="row-ctl"><input className="row-input" type="text" name={p.name}
+//       defaultValue={p.value} /><small className="row-hint">{p.hint}</small></div></div>
+//   <div className="page"><div className="page-hd">…<button …>Save</button></div>
+//     {ROWS.map((d, i) => d.kind === 'header' ? <SectionHeader key={i} … /> : <FormRow key={i} … />)}</div>
+//
+// i.e. `jsxs` with ONE `children` array per multi-child element, keys as
+// `jsx`'s third argument, and the mapped rows as a single nested array — not
+// `createElement` varargs plus a hand-keyed flat array, which JSX never emits.
+import type * as React from 'react'
+import { jsx as rjsx, jsxs as rjsxs } from 'react/jsx-runtime'
 
 const RSectionHeader = (p: { title: string; hint: string }) =>
-  React.createElement(
-    'div',
-    { className: 'sec-hd' },
-    React.createElement('h2', { className: 'sec-title' }, p.title),
-    React.createElement('span', { className: 'sec-hint' }, p.hint),
-  )
+  rjsxs('div', {
+    className: 'sec-hd',
+    children: [
+      rjsx('h2', { className: 'sec-title', children: p.title }),
+      rjsx('span', { className: 'sec-hint', children: p.hint }),
+    ],
+  })
 const RFormRow = (p: { label: string; name: string; value: string; hint: string }) =>
-  React.createElement(
-    'div',
-    { className: 'row' },
-    React.createElement('label', { className: 'row-label' }, p.label),
-    React.createElement(
-      'div',
-      { className: 'row-ctl' },
-      React.createElement('input', {
-        className: 'row-input',
-        type: 'text',
-        name: p.name,
-        defaultValue: p.value,
+  rjsxs('div', {
+    className: 'row',
+    children: [
+      rjsx('label', { className: 'row-label', children: p.label }),
+      rjsxs('div', {
+        className: 'row-ctl',
+        children: [
+          rjsx('input', {
+            className: 'row-input',
+            type: 'text',
+            name: p.name,
+            defaultValue: p.value,
+          }),
+          rjsx('small', { className: 'row-hint', children: p.hint }),
+        ],
       }),
-      React.createElement('small', { className: 'row-hint' }, p.hint),
-    ),
-  )
+    ],
+  })
 
 export function reactAppPage(
   selected: string | null,
   onSelect: (id: string) => void,
 ): React.ReactElement {
-  const r = React.createElement
-  const kids: React.ReactNode[] = [
-    r(
-      'div',
-      { key: 'hd', className: 'page-hd' },
-      r('h1', { className: 'page-title' }, 'Settings'),
-      r(
-        'button',
-        {
-          type: 'button',
-          className: selected === 'save' ? 'page-save active' : 'page-save',
-          onClick: () => onSelect('save'),
-        },
-        'Save',
+  return rjsxs('div', {
+    className: 'page',
+    children: [
+      rjsxs('div', {
+        className: 'page-hd',
+        children: [
+          rjsx('h1', { className: 'page-title', children: 'Settings' }),
+          rjsx('button', {
+            type: 'button',
+            className: selected === 'save' ? 'page-save active' : 'page-save',
+            onClick: () => onSelect('save'),
+            children: 'Save',
+          }),
+        ],
+      }),
+      ROWS.map((d: AppPageRow, i: number) =>
+        d.kind === 'header'
+          ? rjsx(RSectionHeader, { title: d.label, hint: d.hint }, i)
+          : rjsx(RFormRow, { label: d.label, name: d.name, value: d.value, hint: d.hint }, i),
       ),
-    ),
-  ]
-  ROWS.forEach((d: AppPageRow, i: number) => {
-    kids.push(
-      d.kind === 'header'
-        ? r(RSectionHeader, { key: i, title: d.label, hint: d.hint })
-        : r(RFormRow, { key: i, label: d.label, name: d.name, value: d.value, hint: d.hint }),
-    )
+    ],
   })
-  return r('div', { className: 'page' }, kids)
 }
 
 // ─── Preact ──────────────────────────────────────────────────────────────────
-import { h as ph } from 'preact'
 import type { ComponentChild } from 'preact'
+import { jsx as pjsx, jsxs as pjsxs } from 'preact/jsx-runtime'
+import { preactJsxKeyed } from './preact-jsx-keyed'
 
 const PSectionHeader = (p: { title: string; hint: string }) =>
-  ph(
-    'div',
-    { class: 'sec-hd' },
-    ph('h2', { class: 'sec-title' }, p.title),
-    ph('span', { class: 'sec-hint' }, p.hint),
-  )
+  pjsxs('div', {
+    class: 'sec-hd',
+    children: [
+      pjsx('h2', { class: 'sec-title', children: p.title }),
+      pjsx('span', { class: 'sec-hint', children: p.hint }),
+    ],
+  })
 const PFormRow = (p: { label: string; name: string; value: string; hint: string }) =>
-  ph(
-    'div',
-    { class: 'row' },
-    ph('label', { class: 'row-label' }, p.label),
-    ph(
-      'div',
-      { class: 'row-ctl' },
-      ph('input', { class: 'row-input', type: 'text', name: p.name, value: p.value }),
-      ph('small', { class: 'row-hint' }, p.hint),
-    ),
-  )
+  pjsxs('div', {
+    class: 'row',
+    children: [
+      pjsx('label', { class: 'row-label', children: p.label }),
+      pjsxs('div', {
+        class: 'row-ctl',
+        children: [
+          pjsx('input', { class: 'row-input', type: 'text', name: p.name, value: p.value }),
+          pjsx('small', { class: 'row-hint', children: p.hint }),
+        ],
+      }),
+    ],
+  })
 
 export function preactAppPage(
   selected: string | null,
   onSelect: (id: string) => void,
 ): ComponentChild {
-  const kids: ComponentChild[] = [
-    ph(
-      'div',
-      { key: 'hd', class: 'page-hd' },
-      ph('h1', { class: 'page-title' }, 'Settings'),
-      ph(
-        'button',
-        {
-          type: 'button',
-          class: selected === 'save' ? 'page-save active' : 'page-save',
-          onClick: () => onSelect('save'),
-        },
-        'Save',
+  return pjsxs('div', {
+    class: 'page',
+    children: [
+      pjsxs('div', {
+        class: 'page-hd',
+        children: [
+          pjsx('h1', { class: 'page-title', children: 'Settings' }),
+          pjsx('button', {
+            type: 'button',
+            class: selected === 'save' ? 'page-save active' : 'page-save',
+            onClick: () => onSelect('save'),
+            children: 'Save',
+          }),
+        ],
+      }),
+      ROWS.map((d: AppPageRow, i: number) =>
+        d.kind === 'header'
+          ? preactJsxKeyed(PSectionHeader, { title: d.label, hint: d.hint }, i)
+          : preactJsxKeyed(
+              PFormRow,
+              { label: d.label, name: d.name, value: d.value, hint: d.hint },
+              i,
+            ),
       ),
-    ),
-  ]
-  ROWS.forEach((d: AppPageRow, i: number) => {
-    kids.push(
-      d.kind === 'header'
-        ? ph(PSectionHeader, { key: i, title: d.label, hint: d.hint })
-        : ph(PFormRow, { key: i, label: d.label, name: d.name, value: d.value, hint: d.hint }),
-    )
+    ],
   })
-  return ph('div', { class: 'page' }, kids)
 }
 
 // ─── Vue ─────────────────────────────────────────────────────────────────────
-import { h as vh, ref } from 'vue'
-import type { Component, FunctionalComponent, Ref, VNodeChild } from 'vue'
+// COMPILED templates — `APPPAGE_*_VUE_TEMPLATE` (`vue-templates.ts`), three
+// SFC-style components. The render functions are INJECTED, exactly as in
+// `hydration-shared.ts`'s `vueApp`, because the two sides compile the SAME
+// template strings with the SAME `VUE_SFC_COMPILE_OPTIONS` through different
+// doors:
+//   - browser: build-time `virtual:apppage-*-vue-render` (vite.config.ts)
+//   - fixture generator (bun, no vite): `@vue/compiler-dom` at script start
+// The previous functional components + hand-written `h()` page carried no
+// block tree or patch flags, so hydration re-patched every static prop; the
+// compiled vnodes let Vue's hydrator skip them, as a real Vue app's do.
+import { ref } from 'vue'
+import type { Component, Ref } from 'vue'
 
-// Functional components — Vue's documented no-compile component form, the
-// render-function analogue of the React/Preact halves above.
-const VSectionHeader: FunctionalComponent<{ title: string; hint: string }> = (p) =>
-  vh('div', { class: 'sec-hd' }, [
-    vh('h2', { class: 'sec-title' }, p.title),
-    vh('span', { class: 'sec-hint' }, p.hint),
-  ])
-VSectionHeader.props = { title: String, hint: String }
+export interface VueAppPageRenders {
+  page: (...args: never[]) => unknown
+  sectionHeader: (...args: never[]) => unknown
+  formRow: (...args: never[]) => unknown
+}
 
-const VFormRow: FunctionalComponent<{
-  label: string
-  name: string
-  value: string
-  hint: string
-}> = (p) =>
-  vh('div', { class: 'row' }, [
-    vh('label', { class: 'row-label' }, p.label),
-    vh('div', { class: 'row-ctl' }, [
-      vh('input', { class: 'row-input', type: 'text', name: p.name, value: p.value }),
-      vh('small', { class: 'row-hint' }, p.hint),
-    ]),
-  ])
-VFormRow.props = { label: String, name: String, value: String, hint: String }
-
-export function vueAppPage(): { component: Component; selected: Ref<string | null> } {
+export function vueAppPage(renders: VueAppPageRenders): {
+  component: Component
+  selected: Ref<string | null>
+} {
   const selected = ref<string | null>(null)
+  const SectionHeader: Component = {
+    props: { title: String, hint: String },
+    render: renders.sectionHeader,
+  }
+  const FormRow: Component = {
+    props: { label: String, name: String, value: String, hint: String },
+    render: renders.formRow,
+  }
   const component: Component = {
+    components: { SectionHeader, FormRow },
+    render: renders.page,
     setup() {
-      return () => {
-        const kids: VNodeChild[] = [
-          vh('div', { class: 'page-hd' }, [
-            vh('h1', { class: 'page-title' }, 'Settings'),
-            vh(
-              'button',
-              {
-                type: 'button',
-                class: selected.value === 'save' ? 'page-save active' : 'page-save',
-                onClick: () => (selected.value = 'save'),
-              },
-              'Save',
-            ),
-          ]),
-        ]
-        ROWS.forEach((d: AppPageRow, i: number) => {
-          kids.push(
-            d.kind === 'header'
-              ? vh(VSectionHeader, { key: i, title: d.label, hint: d.hint })
-              : vh(VFormRow, {
-                  key: i,
-                  label: d.label,
-                  name: d.name,
-                  value: d.value,
-                  hint: d.hint,
-                }),
-          )
-        })
-        return vh('div', { class: 'page' }, kids)
-      }
+      // `ROWS` is returned as setup state, which is only SHALLOWLY unwrapped —
+      // no row is proxied, the same no-reactivity-tax data the other arms get.
+      return { rows: ROWS, selected }
     },
   }
   return { component, selected }

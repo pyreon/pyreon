@@ -27,18 +27,39 @@ function expectRows(container: HTMLElement, n: number): void {
 function expectCompleted(container: HTMLElement, n: number): void {
   const got = container.querySelectorAll('.todos li.completed').length
   if (got !== n) throw new Error(`expected ${n} completed rows, got ${got}`)
+  // The class alone is half the toggle: the checkbox is the other DOM write.
+  const checked = container.querySelectorAll<HTMLInputElement>('.todos li input').length
+  let on = 0
+  for (const el of container.querySelectorAll<HTMLInputElement>('.todos li input')) if (el.checked) on++
+  if (on !== n || checked !== n) throw new Error(`expected ${n} checked boxes, got ${on}/${checked}`)
+}
+
+/** Rows present AND carrying the text each was added with (a no-op or
+ *  wrong-content render fails, not just a wrong count). */
+function expectAddedRows(container: HTMLElement, n: number): void {
+  expectRows(container, n)
+  const spans = container.querySelectorAll('.todos li span')
+  for (let i = 0; i < n; i++) {
+    const want = `Todo item ${i + 1}`
+    if (spans[i]?.textContent !== want) throw new Error(`row ${i}: expected "${want}", got "${spans[i]?.textContent}"`)
+  }
 }
 
 /**
- * The shipped scenarios. Each is a single sync timed region followed by ONE
- * commit, so they isolate render cost cleanly. Sizes differ per scenario:
+ * The shipped scenarios. Each is a single sync timed region committed through
+ * the framework's `runCommitted` (Pyreon: direct; React: `flushSync`), so they
+ * isolate render cost cleanly. Sizes differ per scenario:
  *
- * - `add-100` — 100 *rapid-succession* appends (CLAUDE.md scenario d). Pyreon
- *   does 100 incremental keyed-`<For>` inserts; React auto-batches the 100
- *   `setState`s into one render of 100 rows. Both real shapes.
+ * - `add-100` — 100 *rapid-succession* appends in one synchronous task. Each
+ *   framework does what it natively does with that input: Pyreon's un-batched
+ *   `rows.set` runs 100 incremental keyed-`<For>` reconciles (and copies the
+ *   array 100×); React batches the 100 `setState`s into ONE render. So this
+ *   cell compares a batching and a non-batching default, not per-insert cost —
+ *   a Pyreon app wrapping the loop in `batch()` would do one reconcile.
  * - `toggle-1000` / `clear-1000` — bulk operations at 1000 so Pyreon's
  *   fine-grained path stays measurably above the `performance.now()` floor
- *   (at 100 items it reads 0µs — real, but floor-quantized to a useless cv).
+ *   (measured when the page was NOT cross-origin isolated — at 100 items it
+ *   read 0µs under the 100µs clamp; the page is isolated now, 5µs clock).
  *   Pyreon flips 1000 per-row `done` signals (1000 in-place checkbox/class
  *   patches, no list reconciliation); React re-renders the whole 1000-row list
  *   and reconciles via VDOM diff.
@@ -55,7 +76,7 @@ export const SCENARIOS: Scenario[] = [
     act: (app) => {
       for (let i = 0; i < 100; i++) app.addOne(`Todo item ${i + 1}`)
     },
-    verify: (c) => expectRows(c, 100),
+    verify: (c) => expectAddedRows(c, 100),
   },
   {
     name: 'toggle-1000',

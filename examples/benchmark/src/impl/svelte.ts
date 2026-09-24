@@ -13,10 +13,10 @@
  * Svelte 5 users ship.
  */
 import { mount, unmount, flushSync } from 'svelte'
-import type { BenchSuite, Row } from '../runner'
-import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng } from '../runner'
+import type { BenchSuite } from '../runner'
+import { bench, buildRowsWith, expectRows, expectRowsWithSelected, resetRng } from '../runner'
 import Bench from './Bench.svelte'
-import { setRawRows, state, type SvelteRow } from './bench-state.svelte'
+import { setRawRows, state, SvelteRow } from './bench-state.svelte'
 
 // flushSync applies Svelte's queued effects (DOM updates) SYNCHRONOUSLY —
 // the DOM is committed when it returns, so no extra macrotask wait is needed
@@ -50,19 +50,17 @@ export async function runSvelte(container: HTMLElement): Promise<BenchSuite> {
     await commit()
   }
 
-  // Adapt the runner's Row type (id + label) to Svelte's. Identical
-  // shape — just keeps the type system honest about the per-framework
-  // type parameter.
-  // Identity: SvelteRow and Row are structurally identical ({id,label}), so the
-  // former .map() allocated a second 10,000-object array INSIDE the timed
-  // region for a pure type-level formality — a tax no other framework paid.
-  const toSvelteRows = (rows: Row[]): SvelteRow[] => rows
+  // Each row carries its own `$state` label (see bench-state.svelte.ts), built
+  // inside the timed region exactly like the Pyreon/Solid arms build their
+  // per-row signals.
+  const mkRows = (n: number): SvelteRow[] =>
+    buildRowsWith<SvelteRow>(n, (id, label) => new SvelteRow(id, label))
 
   await bench(
     'create 1,000 rows',
     suite,
     async () => {
-      currentRows = toSvelteRows(buildRows(1_000))
+      currentRows = mkRows(1_000)
       await setRows(currentRows)
     },
     { verify: expectRows(1_000) },
@@ -72,7 +70,7 @@ export async function runSvelte(container: HTMLElement): Promise<BenchSuite> {
     'replace all rows',
     suite,
     async () => {
-      currentRows = toSvelteRows(buildRows(1_000))
+      currentRows = mkRows(1_000)
       await setRows(currentRows)
     },
     { verify: expectRows(1_000) },
@@ -83,29 +81,29 @@ export async function runSvelte(container: HTMLElement): Promise<BenchSuite> {
     'partial update (every 10th)',
     suite,
     async () => {
-      const updated = [...currentRows]
-      for (let i = 0; i < updated.length; i += 10) {
-        const row = updated[i]
-        if (row) updated[i] = { ...row, label: `${row.label} !!!` }
+      // Idiomatic Svelte 5: write the row's own `$state` label in place.
+      for (let i = 0; i < currentRows.length; i += 10) {
+        const row = currentRows[i]
+        if (row) row.label = `${row.label} !!!`
       }
-      currentRows = updated
-      await setRows(currentRows)
+      await commit()
     },
     {
       // Reset labels before each run
       reset: async () => {
-        currentRows = currentRows.map((row, i) => {
+        for (let i = 0; i < currentRows.length; i += 10) {
+          const row = currentRows[i]
           const orig = originalLabels[i]
-          return orig !== undefined ? { ...row, label: orig } : row
-        })
-        await setRows(currentRows)
+          if (row && orig !== undefined) row.label = orig
+        }
+        await commit()
       },
       verify: expectRows(1_000),
     },
   )
 
   // Re-create clean rows for remaining tests
-  currentRows = toSvelteRows(buildRows(1_000))
+  currentRows = mkRows(1_000)
   await setRows(currentRows)
   originalLabels = currentRows.map((row) => row.label)
 
@@ -157,7 +155,7 @@ export async function runSvelte(container: HTMLElement): Promise<BenchSuite> {
       // restore a full 1,000-row table (untimed) so each timed run removes
       // a row from a complete list, not an already-shortened one
       reset: async () => {
-        currentRows = toSvelteRows(buildRows(1_000))
+        currentRows = mkRows(1_000)
         await setRows(currentRows)
       },
       verify: expectRows(999),
@@ -175,20 +173,20 @@ export async function runSvelte(container: HTMLElement): Promise<BenchSuite> {
       // repopulate 1000 rows (untimed) so each timed run clears a FULL list,
       // not an already-empty one (median was 0µs without this)
       reset: async () => {
-        await setRows(toSvelteRows(buildRows(1_000)))
+        await setRows(mkRows(1_000))
       },
       verify: expectRows(0),
     },
   )
 
-  currentRows = toSvelteRows(buildRows(1_000))
+  currentRows = mkRows(1_000)
   await setRows(currentRows)
 
   await bench(
     'create 10,000 rows',
     suite,
     async () => {
-      currentRows = toSvelteRows(buildRows(10_000))
+      currentRows = mkRows(10_000)
       await setRows(currentRows)
     },
     { verify: expectRows(10_000) },
@@ -198,7 +196,7 @@ export async function runSvelte(container: HTMLElement): Promise<BenchSuite> {
     'append 1,000 to 10,000 rows',
     suite,
     async () => {
-      currentRows = [...currentRows, ...toSvelteRows(buildRows(1_000))]
+      currentRows = [...currentRows, ...mkRows(1_000)]
       await setRows(currentRows)
     },
     {

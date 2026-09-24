@@ -503,7 +503,7 @@ s.nativeEnum(Role).parse('admin') // → { ok: true, value: 'admin' }`,
     },
     {
       label: 'Three shipped performance layers — runtime JIT + two build flags',
-      note: "The runtime JIT (`core/jit.ts`) auto-applies on first `.parse()` and is differential-fuzz-locked against the interpreter (incl. async trees + the partial-inline seam). On top: `pyreon({ optimizeValidators: true })` rewrites module-level `s.` chains to the tree-shakeable `/mini` form (~−41% measured), and `pyreon({ compileValidators: true })` attaches build-emitted monomorphic `.is()` verdicts (1.6–3× on hot verdict loops — nanoseconds; only matters in tight `.is()` loops, `.parse()` is unchanged). Both build flags recognize statically-analyzable chains only (a dynamically-built or out-of-emit-scope chain — e.g. `.cuid2()`, unions — gracefully stays full-runtime).",
+      note: "The runtime JIT (`core/jit.ts`) auto-applies on first `.parse()` and is differential-fuzz-locked against the interpreter (incl. async trees + the partial-inline seam). On top: `pyreon({ optimizeValidators: true })` rewrites module-level `s.` chains to the tree-shakeable `/mini` form (~−41% measured), and `pyreon({ compileValidators: true })` attaches build-emitted monomorphic `.is()` verdicts (CURRENTLY ~2× SLOWER than the default runtime `.is()` — measured 0.42–0.63× on 4 schemas, 2 runs, 2026-09-23: the build emits an issues-array validator, while the runtime `.is()` has since gained its own verdict-only JIT; `.parse()` is unchanged). Both build flags recognize statically-analyzable chains only (a dynamically-built or out-of-emit-scope chain — e.g. `.cuid2()`, unions — gracefully stays full-runtime).",
     },
   ],
 })

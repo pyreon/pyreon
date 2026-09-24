@@ -8,6 +8,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -30,6 +31,8 @@ import androidx.compose.material.Text
 import androidx.compose.material.darkColors
 import androidx.compose.material.lightColors
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
@@ -205,6 +209,44 @@ fun PyreonFlowColorMode(colorMode: String, content: @Composable () -> Unit) {
             content()
         }
     }
+}
+
+/** The web's `BaseEdge` stroke: [color] when styled, else the palette's edge colour. Mirrors Swift. */
+@Composable
+fun PyreonFlowBaseEdgePath(result: PyreonFlowPathResult, color: String? = null, width: Double = 1.5) {
+    PyreonFlowCustomEdgePath(result = result, color = color ?: LocalPyreonFlowPalette.current.edge, width = width, fill = null)
+}
+
+/**
+ * Runs flow animation frames on Android's MAIN looper, where the engine's
+ * listeners may touch Views. Installed by `PyreonFlowView` the first time it
+ * composes; call it yourself if you animate a flow before any view exists.
+ */
+fun pyreonFlowUseMainThreadFrames() {
+    if (PyreonFlowFrames.scheduler === PyreonFlowFrames.timerScheduler) PyreonFlowFrames.scheduler = pyreonFlowMainThreadFrames
+}
+
+private val pyreonFlowMainThreadFrames: PyreonFlowFrameScheduler = run {
+    val main = android.os.Handler(android.os.Looper.getMainLooper())
+    PyreonFlowFrameScheduler { delay, frame -> main.postDelayed({ frame() }, delay) }
+}
+
+/** Above every node in the canvas Box: dragging adds 1000, selection 100, and user `zIndex` values are small. */
+private const val PYREON_FLOW_ABOVE_ALL_NODES_Z = 1_000_000f
+
+/** A text label centred at a flow point in a custom edge (the web's `EdgeText`). Mirrors Swift. */
+@Composable
+fun PyreonFlowEdgeText(x: Double, y: Double, label: String) {
+    val palette = LocalPyreonFlowPalette.current
+    var size by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    Text(
+        label,
+        fontSize = 11.sp,
+        color = pyreonFlowEdgeColor(palette.edgeLabel),
+        modifier = Modifier
+            .onSizeChanged { size = it }
+            .offset { IntOffset((x * density).roundToInt() - size.width / 2, (y * density).roundToInt() - size.height / 2) },
+    )
 }
 
 @Composable
@@ -502,7 +544,14 @@ fun <T> PyreonFlowView(
     val unit = density.density.toDouble()
     var interactionsLocked by remember { mutableStateOf(false) }
     var connectionDraft by remember { mutableStateOf<PyreonFlowConnectionDraft?>(null) }
+    var hoveredEdgeId by remember { mutableStateOf<String?>(null) }
+    // Auto-pan: the dragging pointer in CANVAS dp while a node or connection
+    // drag is live. A frame loop pans while it sits in the edge band, shifting
+    // the dragged nodes (or the draft's end) so they stay under the finger.
+    var dragPointer by remember { mutableStateOf<PyreonXYPosition?>(null) }
     var reconnectDraft by remember { mutableStateOf<PyreonFlowReconnectDraft?>(null) }
+    // Animation frames must reach listeners on the main thread (see PyreonFlowFrames).
+    pyreonFlowUseMainThreadFrames()
     var nodeDragStarts by remember { mutableStateOf<Map<String, PyreonXYPosition>>(emptyMap()) }
     var didInitialFit by remember { mutableStateOf(false) }
     val visibleNodes = state.nodes.filter { it.hidden != true && (!state.onlyRenderVisibleElements || state.isNodeVisible(it.id)) }
@@ -515,6 +564,42 @@ fun <T> PyreonFlowView(
                 PyreonFlowNodeBox(absolute.x, absolute.y, dimensions.width, dimensions.height),
                 pyreonFlowEffectiveHandles(node, nodeHandles(node)),
             )
+        }
+    }
+    // A node's stacking position among its Box siblings. Handles and resizers
+    // are siblings of the nodes here (on the web they are the node's own
+    // children), so they take their node's value plus a half: they ride with
+    // the node, stay above it, and a higher node still covers them.
+    fun nodeStackZ(id: String): Float {
+        val node = state.getNode(id) ?: return 0f
+        return pyreonFlowNodeZ(node.zIndex, state.isNodeSelected(id), nodeDragStarts.containsKey(id), state.elevateNodesOnSelect).toFloat()
+    }
+    // The frame loop runs only while the pointer sits in the edge band. Keying
+    // it on "a drag is live" instead kept it awaiting frames for the WHOLE
+    // drag, so Compose never went idle: a test (or anything waiting for idle)
+    // mid-drag timed out with ComposeNotIdleException, and the loop burned a
+    // frame per vsync doing nothing. The band is re-read on every pointer move,
+    // since `dragPointer` is state.
+    val autoPanActive = dragPointer?.let { p ->
+        val v = pyreonFlowAutoPanVelocity(p.x, p.y, state.containerSize.width, state.containerSize.height, state.autoPanSpeed)
+        v.x != 0.0 || v.y != 0.0
+    } ?: false
+    LaunchedEffect(autoPanActive) {
+        while (autoPanActive) {
+            withFrameNanos { }
+            val p = dragPointer ?: break
+            val v = pyreonFlowAutoPanVelocity(p.x, p.y, state.containerSize.width, state.containerSize.height, state.autoPanSpeed)
+            if (v.x == 0.0 && v.y == 0.0) break
+            state.setViewport(x = state.viewport.x + v.x, y = state.viewport.y + v.y)
+            val zoom = state.viewport.zoom
+            if (nodeDragStarts.isNotEmpty()) {
+                nodeDragStarts = nodeDragStarts.mapValues { (id, current) ->
+                    PyreonXYPosition(current.x - v.x / zoom, current.y - v.y / zoom).also { state.updateNodePosition(id, it) }
+                }
+            }
+            connectionDraft?.let { draft ->
+                connectionDraft = draft.copy(current = PyreonFlowPathPoint((p.x - state.viewport.x) / zoom, (p.y - state.viewport.y) / zoom))
+            }
         }
     }
     val edgeStrokes = pyreonFlowEdgeStrokes(state, resolvedEdgeColor, edgeWidth, nodeHandles).filter { !state.onlyRenderVisibleElements || pyreonFlowEdgeStrokeIsVisible(it, state) }.toMutableList().also { strokes ->
@@ -603,12 +688,35 @@ fun <T> PyreonFlowView(
                         val next = state.zoom
                         state.setViewport(x = screen.x - point.x * next, y = screen.y - point.y * next, zoom = next)
                     }
+                }, onLongPress = { screenPx ->
+                    // The canvas's context menu: the edge under the press, else the pane.
+                    val point = PyreonFlowPathPoint((screenPx.x / unit - state.viewport.x) / state.viewport.zoom, (screenPx.y / unit - state.viewport.y) / state.viewport.zoom)
+                    val edge = pyreonNearestFlowEdge(edgeStrokes.filter { !it.id.startsWith("__") }, point, state.viewport.zoom)
+                    if (edge != null) state.emitEdgeContextMenu(edge.id) else state.emitPaneContextMenu(PyreonXYPosition(point.x, point.y))
                 }, onTap = { screenPx ->
                     val point = PyreonFlowPathPoint((screenPx.x / unit - state.viewport.x) / state.viewport.zoom, (screenPx.y / unit - state.viewport.y) / state.viewport.zoom)
                     val edge = pyreonNearestFlowEdge(edgeStrokes.filter { it.id != "__connection-preview" }, point, state.viewport.zoom)
                     if (edge != null) { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) }
                     else state.emitPaneClick(PyreonXYPosition(point.x, point.y))
                 })
+            }.pointerInput(state, edgeStrokes, state.viewport) {
+                // Edge hover: a mouse or stylus moving over the canvas enters and
+                // leaves edges by the same nearest-edge hit test a tap uses.
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val screenPx = event.changes.firstOrNull()?.position ?: continue
+                        val id = if (event.type == PointerEventType.Exit) null else {
+                            val point = PyreonFlowPathPoint((screenPx.x / unit - state.viewport.x) / state.viewport.zoom, (screenPx.y / unit - state.viewport.y) / state.viewport.zoom)
+                            pyreonNearestFlowEdge(edgeStrokes.filter { !it.id.startsWith("__") }, point, state.viewport.zoom)?.id
+                        }
+                        if (id != hoveredEdgeId) {
+                            hoveredEdgeId?.let { state.emitEdgeMouseLeave(it) }
+                            id?.let { state.emitEdgeMouseEnter(it) }
+                            hoveredEdgeId = id
+                        }
+                    }
+                }
             },
         )
 
@@ -659,7 +767,7 @@ fun <T> PyreonFlowView(
             }
             val strokesById = edgeStrokes.associateBy { it.id }
             val labelsById = pyreonFlowEdgeLabels(state, nodeHandles).associateBy { it.id }
-            for (edge in state.edges) {
+            for (edge in pyreonFlowOrderedEdges(state.edges, state.elevateEdgesOnSelect, state::isEdgeSelected)) {
                 if (edge.hidden == true || !customEdgeTypes.contains(edge.type ?: PYREON_FLOW_DEFAULT_EDGE_TYPE)) continue
                 val stroke = strokesById[edge.id] ?: continue
                 val first = stroke.segments.firstOrNull() ?: continue
@@ -689,7 +797,7 @@ fun <T> PyreonFlowView(
                     // A tap gesture, not `clickable`: `clickable` inflates its hit box to
                     // the 48dp minimum, and a label centred on a short edge then covered
                     // neighbouring controls. The semantics action keeps it activatable.
-                    .pointerInput(edge.id) { detectTapGestures { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) } }
+                    .pointerInput(edge.id) { detectTapGestures(onLongPress = { state.emitEdgeContextMenu(edge.id) }) { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) } }
                     .semantics { onClick { state.selectEdge(edge.id); state.emitEdgeClick(edge.id); true } }
                 // Hardware-keyboard focus, like the web's `tabindex` on the edge
                 // path: Tab reaches the label and Enter/Space selects the edge.
@@ -705,12 +813,15 @@ fun <T> PyreonFlowView(
                     edge.text ?: "",
                     if (edge.text == null) edgeModifier else edgeModifier.background(pyreonFlowEdgeColor(palette.panelBackground).copy(alpha = 0.9f)),
                     color = pyreonFlowEdgeColor(palette.edgeLabel),
+                    // The web's built-in edge label is 11px (flow-component.tsx).
+                    fontSize = 11.sp,
                 )
             }
             for (node in visibleNodes) {
                 val absolute = state.getAbsolutePosition(node.id)
                 val inlineStyle = pyreonFlowNodeInlineStyle(node.style)
                 var nodeModifier = Modifier
+                    .zIndex(nodeStackZ(node.id))
                     .offset { IntOffset((absolute.x * unit).roundToInt(), (absolute.y * unit).roundToInt()) }
                 val styledWidth = node.width ?: inlineStyle.width
                 val styledHeight = node.height ?: inlineStyle.height
@@ -731,12 +842,28 @@ fun <T> PyreonFlowView(
                     nodeShape,
                 )
                 if (inlineStyle.opacity < 1) nodeModifier = nodeModifier.graphicsLayer { alpha = inlineStyle.opacity.toFloat() }
-                if (node.selectable ?: state.nodesSelectable) {
-                    nodeModifier = nodeModifier.pointerInput(node.id, "node-taps") {
-                        detectTapGestures(
-                            onDoubleTap = { state.emitNodeDoubleClick(node.id) },
-                            onTap = { state.selectNode(node.id); state.emitNodeClick(node.id) },
-                        )
+                // A tap selects (when selectable) and reports a click, as on web;
+                // a long-press is the web's right-click. Compose runs onTap OR
+                // onLongPress for one press, never both.
+                nodeModifier = nodeModifier.pointerInput(node.id, "node-taps") {
+                    detectTapGestures(
+                        onDoubleTap = { state.emitNodeDoubleClick(node.id) },
+                        onLongPress = { state.emitNodeContextMenu(node.id) },
+                        onTap = {
+                            if (node.selectable ?: state.nodesSelectable) state.selectNode(node.id)
+                            state.emitNodeClick(node.id)
+                        },
+                    )
+                }.pointerInput(node.id, "node-hover") {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            when (event.type) {
+                                PointerEventType.Enter -> state.emitNodeMouseEnter(node.id)
+                                PointerEventType.Exit -> state.emitNodeMouseLeave(node.id)
+                                else -> {}
+                            }
+                        }
                     }
                 }
                 if (!interactionsLocked && (node.draggable ?: state.nodesDraggable)) {
@@ -747,10 +874,18 @@ fun <T> PyreonFlowView(
                                 nodeDragStarts = pyreonFlowDragNodeIds(state, node.id).associateWith { id -> state.getNode(id)!!.position }
                                 state.emitNodeDragStart(node.id)
                             },
-                            onDragCancel = { if (nodeDragStarts.isNotEmpty()) state.emitNodeDragEnd(node.id); nodeDragStarts = emptyMap() },
-                            onDragEnd = { if (nodeDragStarts.isNotEmpty()) state.emitNodeDragEnd(node.id); nodeDragStarts = emptyMap() },
+                            onDragCancel = { dragPointer = null; if (nodeDragStarts.isNotEmpty()) state.emitNodeDragEnd(node.id); nodeDragStarts = emptyMap() },
+                            onDragEnd = { dragPointer = null; if (nodeDragStarts.isNotEmpty()) state.emitNodeDragEnd(node.id); nodeDragStarts = emptyMap() },
                         ) { change, _ ->
                             change.consume()
+                            if (state.autoPanOnNodeDrag) {
+                                // Local px inside the node are graph units × unit; canvas dp = graph × zoom + viewport.
+                                val at = state.getAbsolutePosition(node.id)
+                                dragPointer = PyreonXYPosition(
+                                    (at.x + change.position.x / unit) * state.viewport.zoom + state.viewport.x,
+                                    (at.y + change.position.y / unit) * state.viewport.zoom + state.viewport.y,
+                                )
+                            }
                             val delta = (change.position - change.previousPosition) / unit.toFloat()
                             val primary = nodeDragStarts[node.id] ?: return@detectDragGestures
                             val rawPrimary = PyreonXYPosition(primary.x + delta.x / state.viewport.zoom, primary.y + delta.y / state.viewport.zoom)
@@ -784,6 +919,8 @@ fun <T> PyreonFlowView(
                 val hitSize = maxOf(diameter, 48.0 / state.viewport.zoom)
                 Canvas(
                     Modifier
+                        // Rides with its node (the web's handles are the node's children).
+                        .zIndex(nodeStackZ(handle.nodeId) + 0.5f)
                         .offset { IntOffset(((handle.x - hitSize / 2) * unit).roundToInt(), ((handle.y - hitSize / 2) * unit).roundToInt()) }
                         .requiredSize(hitSize.toFloat().dp)
                         .semantics {
@@ -791,18 +928,18 @@ fun <T> PyreonFlowView(
                             role = androidx.compose.ui.semantics.Role.Button
                         }
                         .pointerInput(handle, interactionsLocked, state.viewport.zoom) {
-                            if (interactionsLocked || handle.type != "source") return@pointerInput
+                            if (interactionsLocked) return@pointerInput
                             var current = PyreonFlowPathPoint(handle.x, handle.y)
                             detectDragGestures(
                                 onDragStart = { state.emitConnectStart(handle.nodeId, handle.handleId); connectionDraft = PyreonFlowConnectionDraft(handle, current) },
-                                onDragCancel = { state.emitConnectEnd(null); connectionDraft = null },
+                                onDragCancel = { dragPointer = null; state.emitConnectEnd(null); connectionDraft = null },
                                 onDragEnd = {
-                                    val target = pyreonNearestFlowHandle(interactiveHandles, current, "target", (6.0 + state.connectionRadius) / state.viewport.zoom)
+                                    dragPointer = null
+                                    // The draft's end, not the last pointer event: auto-pan may have moved the viewport since.
+                                    val end = connectionDraft?.current ?: current
+                                    val connection = pyreonFlowResolveConnection(handle, interactiveHandles, end, (6.0 + state.connectionRadius) / state.viewport.zoom, state.connectionMode)
                                     var completed: PyreonFlowConnection? = null
-                                    if (target != null) {
-                                        val connection = PyreonFlowConnection(handle.nodeId, target.nodeId, handle.handleId, target.handleId)
-                                        if (state.connect(connection) != null) completed = connection
-                                    }
+                                    if (connection != null && state.connect(connection) != null) completed = connection
                                     state.emitConnectEnd(completed)
                                     connectionDraft = null
                                 },
@@ -815,6 +952,7 @@ fun <T> PyreonFlowView(
                                 // Local px inside the zoomed layer are graph units × unit.
                                 current = PyreonFlowPathPoint(handle.x - hitSize / 2 + change.position.x / unit, handle.y - hitSize / 2 + change.position.y / unit)
                                 connectionDraft = PyreonFlowConnectionDraft(handle, current)
+                                if (state.autoPanOnConnect) dragPointer = PyreonXYPosition(current.x * state.viewport.zoom + state.viewport.x, current.y * state.viewport.zoom + state.viewport.y)
                             }
                         },
                 ) {
@@ -836,6 +974,7 @@ fun <T> PyreonFlowView(
                     val hitSize = maxOf(diameter, 48.0 / state.viewport.zoom)
                     Canvas(
                         Modifier
+                            .zIndex(nodeStackZ(node.id) + 0.5f)
                             .offset { IntOffset(((x - hitSize / 2) * unit).roundToInt(), ((y - hitSize / 2) * unit).roundToInt()) }
                             .requiredSize(hitSize.toFloat().dp)
                             .semantics { contentDescription = "Resize $direction for node ${node.id}" }
@@ -864,6 +1003,7 @@ fun <T> PyreonFlowView(
                 val hitSize = maxOf(diameter, 48.0 / state.viewport.zoom)
                 Canvas(
                     Modifier
+                        .zIndex(PYREON_FLOW_ABOVE_ALL_NODES_Z)
                         .offset { IntOffset(((updater.x - hitSize / 2) * unit).roundToInt(), ((updater.y - hitSize / 2) * unit).roundToInt()) }
                         .requiredSize(hitSize.toFloat().dp)
                         .semantics { contentDescription = "Reconnect ${updater.end} of edge ${updater.edgeId}" }
@@ -885,9 +1025,9 @@ fun <T> PyreonFlowView(
                                     if (edge != null) {
                                         val movingTarget = updater.end == "target"
                                         val fixedNodeId = if (movingTarget) edge.source else edge.target
-                                        val target = pyreonNearestFlowHandle(interactiveHandles.filter { it.nodeId != fixedNodeId }, current, if (movingTarget) "target" else "source", (6.0 + state.connectionRadius) / state.viewport.zoom)
+                                        val target = pyreonNearestFlowHandle(interactiveHandles.filter { it.nodeId != fixedNodeId }, current, if (state.connectionMode == "loose") "any" else if (movingTarget) "target" else "source", (6.0 + state.connectionRadius) / state.viewport.zoom)
                                         if (target != null) {
-                                            pyreonFlowReconnectConnection(edge, updater.end, target)?.let { state.reconnectEdge(edge.id, it) }
+                                            pyreonFlowReconnectConnection(edge, updater.end, target, state.connectionMode == "loose")?.let { state.reconnectEdge(edge.id, it) }
                                         }
                                     }
                                     reconnectDraft = null

@@ -24,7 +24,25 @@ const { renderToString: pyreonRender } = await import('@pyreon/runtime-server')
 const { renderToString: reactRender } = await import('react-dom/server')
 const { renderToString: preactRender } = await import('preact-render-to-string')
 const { renderToString: vueRender } = await import('@vue/server-renderer')
-const { createSSRApp } = await import('vue')
+const Vue = await import('vue')
+const { createSSRApp } = Vue
+const { compile: compileVueTemplate } = await import('@vue/compiler-dom')
+const {
+  APPPAGE_FORM_ROW_VUE_TEMPLATE,
+  APPPAGE_SECTION_HEADER_VUE_TEMPLATE,
+  APPPAGE_VUE_TEMPLATE,
+  VUE_SFC_COMPILE_OPTIONS,
+} = await import('../src/impl/vue-templates')
+
+/**
+ * Vue renders the SAME compiled templates the browser hydrates with: identical
+ * template strings + options; `mode: 'function'` only swaps the import header
+ * (`const { … } = Vue`) for the render body the vite plugin emits as a module.
+ */
+const compileVue = (template: string) =>
+  new Function('Vue', compileVueTemplate(template, { mode: 'function', ...VUE_SFC_COMPILE_OPTIONS }).code)(
+    Vue,
+  ) as (...args: never[]) => unknown
 
 const { pyreonAppPage, reactAppPage, preactAppPage, vueAppPage } = await import(
   '../src/impl/apppage-shared'
@@ -34,7 +52,15 @@ const { APPPAGE_COMPONENTS } = await import('../src/impl/apppage-descriptor')
 const pyreonHtml = await pyreonRender(pyreonAppPage(() => null))
 const reactHtml = reactRender(reactAppPage(null, () => {}))
 const preactHtml = preactRender(preactAppPage(null, () => {}))
-const vueHtml = await vueRender(createSSRApp(vueAppPage().component))
+const vueHtml = await vueRender(
+  createSSRApp(
+    vueAppPage({
+      page: compileVue(APPPAGE_VUE_TEMPLATE),
+      sectionHeader: compileVue(APPPAGE_SECTION_HEADER_VUE_TEMPLATE),
+      formRow: compileVue(APPPAGE_FORM_ROW_VUE_TEMPLATE),
+    }).component,
+  ),
+)
 
 const all = { pyreon: pyreonHtml, react: reactHtml, preact: preactHtml, vue: vueHtml }
 

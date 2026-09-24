@@ -3,7 +3,7 @@
  *
  * Lives in its own module with no imports so `vite.config.ts` can read it at
  * BUILD time and precompile it with `@vue/compiler-dom` — see the
- * `virtual:dbmon-vue-render` plugin there. That is what an SFC does, and doing
+ * `virtual:dbmon-vue-render` module (the `vue-templates` plugin) there. That is what an SFC does, and doing
  * it any other way measures the wrong thing: Vue's RUNTIME compiler wraps the
  * render body in `with (_ctx) { … }`, a V8 deoptimization barrier that an SFC
  * never emits, and `prefixIdentifiers: true` (which removes it) is rejected by
