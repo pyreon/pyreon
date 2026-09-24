@@ -16,7 +16,7 @@
  * inlines the const, so it cannot produce the double accessor.
  */
 import { transformJSX } from '@pyreon/compiler'
-import { Fragment, h, onMount, onUnmount, _rp, _rpd, cx } from '@pyreon/core'
+import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { transformSync } from 'esbuild'
 import { afterEach, describe, expect, test, vi } from 'vitest'
