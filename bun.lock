@@ -3109,6 +3109,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "sharp": "^0.35.3",
+        "typescript": "^6.0.3",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
