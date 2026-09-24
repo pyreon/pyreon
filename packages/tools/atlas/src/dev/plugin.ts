@@ -340,6 +340,30 @@ function escapeHtml(text: string): string {
  * query string — its host router has never heard of `/button/`, so a reload
  * there would 404.
  */
+/**
+ * The web-font `<head>` lines, shared by `atlas dev` and `atlas build`.
+ *
+ * - WEIGHTS are exactly the ones the chrome uses (Space Grotesk 600/700 for
+ *   titles, Public Sans 400-700 for UI text, JetBrains Mono 400/600 for data):
+ *   the previous request asked for eleven faces, four of which nothing drew.
+ * - The stylesheet is loaded NON-BLOCKING (`media="print"`, swapped to `all`
+ *   on load, with a `<noscript>` fallback). As a plain `rel="stylesheet"` it
+ *   held first paint on a cross-origin round trip; `display=swap` only governs
+ *   the font FILES, not the CSS that declares them. The fallback stacks in the
+ *   theme render the shell until the faces arrive.
+ */
+export const FONT_CSS_URL =
+  'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap'
+
+export function fontLinks(): string[] {
+  return [
+    '    <link rel="preconnect" href="https://fonts.googleapis.com" />',
+    '    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />',
+    `    <link rel="stylesheet" href="${FONT_CSS_URL}" media="print" onload="this.media='all'" />`,
+    `    <noscript><link rel="stylesheet" href="${FONT_CSS_URL}" /></noscript>`,
+  ]
+}
+
 export function routesFlagScript(): string {
   return '<script>globalThis.__ATLAS_ROUTES__ = true</script>'
 }
@@ -358,9 +382,7 @@ export function devHtml(title = 'atlas'): string {
     // The workbench's typography depends on these three families; without
     // them every `font: inherit` fell back to the BROWSER default (Times) —
     // the single biggest "unstyled" impression the workbench could give.
-    '    <link rel="preconnect" href="https://fonts.googleapis.com" />',
-    '    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />',
-    '    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />',
+    ...fontLinks(),
     `    ${routesFlagScript()}`,
     '  </head>',
     '  <body>',

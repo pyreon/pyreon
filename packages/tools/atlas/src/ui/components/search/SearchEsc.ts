@@ -1,20 +1,18 @@
 import { txt, type T } from '../../kit'
 
-export const Kbd = txt
-  .attrs({
-    tag: 'span',
-  })
+/**
+ * The dialog's `esc` badge. The top bar's `Kbd` is absolutely positioned
+ * inside its trigger; reused here it overlapped the input and the focus ring.
+ */
+export const SearchEsc = txt
+  .attrs({ tag: 'span' })
   .theme((t: T) => ({
-    position: 'absolute',
-    right: '12px',
-    top: '50%',
-    transform: 'translateY(-50%)',
+    flex: 'none',
     fontFamily: t.font.mono,
     fontSize: t.size.label,
     padding: '1px 8px',
     borderRadius: t.radius.chip,
     color: t.faint,
     border: t.hairline,
-    // A keyboard shortcut is noise on a touch screen.
     extendCss: '@media (pointer:coarse){display:none;}',
   }))

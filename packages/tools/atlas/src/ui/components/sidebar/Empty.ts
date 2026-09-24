@@ -3,6 +3,8 @@ import { el, type T } from '../../kit'
 export const Empty = el
   .attrs({
     tag: 'div',
+    contentDirection: 'rows',
+    contentAlignX: 'center',
   })
   .theme((t: T) => ({
     textAlign: 'center',

@@ -23,9 +23,12 @@ export const ScenBtn = el
   }))
   .states(
     dim((t) => ({
+      // Quieter than the selected COMPONENT row above it (accent fill): the
+      // two used to be the same fill, and read as two selections.
       active: {
         color: t.text,
-        backgroundColor: t.accentSoft,
+        fontWeight: 600,
+        backgroundColor: t.surface2,
       },
       idle: {},
     })),

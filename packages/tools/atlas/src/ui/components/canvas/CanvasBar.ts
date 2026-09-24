@@ -11,6 +11,7 @@ export const CanvasBar = el
     height: '52px',
     flex: 'none',
     padding: '0 16px',
+    extendCss: '@media (max-width:900px){gap:8px;padding:0 8px;}',
     borderBottom: t.hairline,
     background: t.surface,
   }))
