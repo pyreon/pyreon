@@ -28,9 +28,8 @@
  *    + `Cargo.toml` + `Cargo.lock`. Same drift-detection shape as
  *    `scripts/bootstrap.ts`.
  *
- * Phase 4 of the Rust-compiler-to-production roadmap (`.claude/plans/`)
- * replaces this script with napi-rs CLI for cross-platform pre-built
- * binaries. Until then, this script is the local-build path.
+ * This script is the local-build path; the per-platform pre-built binaries
+ * (`@pyreon/compiler-<platform>`) are built by `.github/workflows/release-native.yml`.
  */
 
 import { execSync, spawnSync } from 'node:child_process'

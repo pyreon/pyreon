@@ -3,7 +3,7 @@
  *
  * Run: `bun run bench:stores` (sets NODE_ENV=production).
  *
- * Objectivity contract (see .claude/plans/fundamentals-benchmarks.md):
+ * Objectivity contract:
  *  - NODE_ENV=production set by the npm script's SHELL before the process
  *    starts (imports are hoisted, so the in-file assignment below runs AFTER
  *    module load — it only covers per-call gates for direct invocation; the

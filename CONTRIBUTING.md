@@ -100,13 +100,13 @@ DOM-dependent packages (`runtime-dom`, `router`, `head`, compat packages) use `h
 
 ### Memory-Leak Avoidance
 
-Before introducing a new **module-level cache / stack / registry** (`new Map()`, `new Set()`, `let stack: T[] = []`, etc.), read [`.claude/rules/anti-patterns.md`](.claude/rules/anti-patterns.md) → "Memory Leak Classes". The 8-PR leak-hunt sweep (#725 → #741) produced a 5-class taxonomy (A position-based pop, C unbounded cache, D event-listener pile-up, F promise stale resolution, I orphaned `Promise.race + setTimeout`) with canonical fix shapes for each.
+Before introducing a new **module-level cache / stack / registry** (`new Map()`, `new Set()`, `let stack: T[] = []`, etc.), read [`.agents/rules/anti-patterns.md`](.agents/rules/anti-patterns.md) → "Memory Leak Classes". The 8-PR leak-hunt sweep (#725 → #741) produced a 5-class taxonomy (A position-based pop, C unbounded cache, D event-listener pile-up, F promise stale resolution, I orphaned `Promise.race + setTimeout`) with canonical fix shapes for each.
 
 Three preventative layers are in place:
 
 - **Lint rules** (in the `recommended` preset): `pyreon/promise-race-needs-cleartimeout` (Class I) and `pyreon/init-fn-needs-idempotency` (Class D) — fire at edit time.
 - **Static audit** (`bun run audit-leak-classes` or `pyreon doctor --only audit-leak-classes`): permissive offline scan with 4 detectors. Produces an advisory report for manual triage.
-- **Anti-patterns catalog** (`.claude/rules/anti-patterns.md`): the canonical reference for the 5 classes + cross-references to the PRs that fixed each instance.
+- **Anti-patterns catalog** (`.agents/rules/anti-patterns.md`): the canonical reference for the 5 classes + cross-references to the PRs that fixed each instance.
 
 The 3-question defensive check when adding new module-level state:
 
@@ -210,7 +210,7 @@ Settings → Actions → General → Workflow permissions → check **"Allow Git
 - **SSR** uses `AsyncLocalStorage` for per-request context isolation.
 - **The compiler** transforms JSX to `_tpl()` + `_bind()` calls for optimal DOM creation via `cloneNode`.
 
-See [CLAUDE.md](./CLAUDE.md) for detailed architectural documentation.
+See [AGENTS.md](./AGENTS.md) for detailed architectural documentation.
 
 ## License
 

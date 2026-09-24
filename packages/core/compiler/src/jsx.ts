@@ -860,7 +860,7 @@ export interface CollapsibleHandler {
 
 /**
  * Partial-collapse detector — PR 1 of the partial-collapse spec
- * (`CLAUDE.md` ("Compile-time rocketstyle collapse") collapse-tail). The `on*`-handler-only
+ * (`.agents/guides/internals/README.md` "Rocketstyle collapse" collapse-tail). The `on*`-handler-only
  * subset the bail-reason census measured at 7.8% of all
  * `@pyreon/ui-components` call sites (`collapse-bail-census.test.ts`).
  *
@@ -955,7 +955,7 @@ export interface DynamicCollapsibleProp {
 
 /**
  * Dynamic-prop partial-collapse detector — PR 2 of the dynamic-prop
- * partial-collapse build (`CLAUDE.md` "Compile-time rocketstyle collapse";
+ * partial-collapse build (`.agents/guides/internals/README.md` "Rocketstyle collapse";
  * dynamic-prop bucket = 15.3% of all real-corpus sites; the next-bigger
  * bite after the `on*`-handler partial-collapse).
  *
@@ -5088,7 +5088,7 @@ export function transformJSX_JS(
       // INTO the template HTML and grab it via `.firstChild` — saves a
       // `document.createTextNode("") + appendChild` pair per template
       // instantiation (per ROW under <For>; measured in the create-path
-      // perf audit, .claude/audits/create-path-perf-2026-06-11.md).
+      // perf audit).
       // Correct by construction: (a) a whitespace-only text node survives
       // innerHTML parsing in EVERY element context — including table
       // foster-parenting, which exempts whitespace-only runs — so the

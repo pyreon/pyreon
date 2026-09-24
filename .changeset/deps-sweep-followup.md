@@ -84,7 +84,7 @@ un-handicapping with a new `fastKeyedForBlock` path; the bench impl still
 reaches it (confirmed by compiling `octane.tsrx` through `octane/compiler`
 0.2.2 and reading the emitted flags), so the comparison stays fair, but
 every previously-published Pyreon-vs-Octane number in
-`.claude/skills/pyreon-benchmarks/SKILL.md` was measured against 0.1.46 and
+`.agents/guides/benchmarks/README.md` was measured against 0.1.46 and
 needs re-verification against 0.2.2 before being cited again — flagged
 there, not restated as fact here.
 

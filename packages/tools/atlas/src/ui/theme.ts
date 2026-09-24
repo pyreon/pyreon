@@ -171,7 +171,7 @@ export interface ThemeTokens extends ThemeScale {
 //
 // A library must not mutate a consumer's global type surface. Atlas therefore
 // types `t` LOCALLY at each call site via the `T` alias in `./kit` — same DX, zero
-// blast radius. See .claude/rules/anti-patterns.md "Duplicate module augmentation".
+// blast radius. See .agents/rules/anti-patterns.md "Duplicate module augmentation".
 
 export interface BrandTheme {
   id: string

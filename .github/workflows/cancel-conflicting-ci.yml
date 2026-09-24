@@ -4,7 +4,7 @@ name: Cancel CI on conflict
 #
 # GitHub already refuses to DISPATCH a `pull_request` workflow for a
 # conflicting PR (the merge ref cannot be built, so nothing queues — the
-# "checks never started" shape in .claude/rules/anti-patterns.md). What it does
+# "checks never started" shape in .agents/rules/anti-patterns.md). What it does
 # NOT do is stop a run that was already running when a merge to main created
 # the conflict. That run tests `old-main + head`, the PR cannot merge on it,
 # and resolving the conflict pushes a commit that dispatches a fresh run — so

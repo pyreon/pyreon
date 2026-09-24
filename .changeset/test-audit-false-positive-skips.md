@@ -14,7 +14,7 @@ mocks, so the "no `h()` import" signal was structurally inapplicable:
   to share the shape. Those tests call the REAL `Document`/`Page`/`Text` constructors
   and the real `render`; there is no `h()` anywhere in the package to import.
 
-`.claude/rules/test-environment-parity.md` specifies the pre-merge guard as "verify
+`.agents/rules/test-environment-parity.md` specifies the pre-merge guard as "verify
 HIGH + MEDIUM count is still 0", and the scanner's own test file recorded that T1.2
 achieved it — but nothing asserted it, so the count drifted back to 2 unnoticed. A
 documented invariant with no test is a convention, not a guard; the real-repo count is

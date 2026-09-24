@@ -17,7 +17,7 @@
  * blames the user for calling a hook "outside component setup".
  *
  * Third instance of the reset-vs-restore class already catalogued in
- * `.claude/rules/anti-patterns.md` (the reactivity cleanup collector and deps
+ * `.agents/rules/anti-patterns.md` (the reactivity cleanup collector and deps
  * collector were the first two).
  *
  * These specs compile REAL source through `transformJSX` — the emit is the

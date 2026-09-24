@@ -4,7 +4,7 @@ import { getSpan, isCallTo } from '../../utils/ast'
 /**
  * Flags the provably-dead narrow shape of the "conditional reads hide
  * tracking" class (the general class is documented as too-high-FP for
- * static detection — `.claude/rules/anti-patterns.md` "Ternary
+ * static detection — `.agents/rules/anti-patterns.md` "Ternary
  * short-circuit hiding signal tracking"):
  *
  *   effect(() => {

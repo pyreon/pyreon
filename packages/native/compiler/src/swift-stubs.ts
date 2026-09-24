@@ -18,7 +18,7 @@
 //
 // THE GENERIC CONSTRAINTS ARE LOAD-BEARING. `animation<V: Equatable>(_:value:)`
 // mirrors SwiftUI's EXACT constraint — a loose `value: Any` would MASK the very
-// bug class this gate exists to catch (see `.claude/rules/anti-patterns.md`
+// bug class this gate exists to catch (see `.agents/rules/anti-patterns.md`
 // "validation stub must mirror the real library's EXACT public surface, never a
 // convenient superset — a superset stub is itself a masking source"). Any new
 // modifier added here must carry the same constraint the real SwiftUI declares.

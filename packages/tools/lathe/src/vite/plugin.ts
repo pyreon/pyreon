@@ -92,7 +92,7 @@ export function runPass(
     // throws ENOENT, which this has to handle anyway — and pairing a filesystem
     // CHECK with a later WRITE is the TOCTOU shape CodeQL flags as
     // `js/file-system-race` (high). Same fix zero's route-types generator took;
-    // see .claude/rules/anti-patterns.md, the write-if-changed guard entry.
+    // see .agents/rules/anti-patterns.md, the write-if-changed guard entry.
     const source = readFileOrUndefined(input)
     if (source === undefined) continue
     const result = generate(source, project)

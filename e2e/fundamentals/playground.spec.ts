@@ -177,8 +177,7 @@ test.describe('Playground — RouterLink reactive `to` + active class', () => {
 // Locks in CodeDemo's CodeEditor mount post-fix. The fundamentals
 // `/code` route is `test.fixme()`d in the multi-route SWEEP above
 // because direct SSR navigation to `/code` was historically aborting
-// on cold CI runners (#383). Path B from the e2e expansion plan
-// (`.claude/plans/jaunty-herding-kazoo.md`) sidesteps that by visiting
+// on cold CI runners (#383). This spec sidesteps that by visiting
 // a lightweight route first then client-side navigating to `/code` —
 // no SSR cold-start under load. Combined with the post-fix demo
 // (using `<CodeEditor instance={editor}>` instead of a one-shot ref),

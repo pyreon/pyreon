@@ -707,16 +707,8 @@ Returns a CodeMirror `Extension` — the canvas code-overview minimap. Equivalen
 
 `@pyreon/code` is built on CodeMirror 6 instead of Monaco. Language grammars are `optionalDependencies` loaded on demand by `loadLanguage`, so a JSON-only editor never downloads the Rust, C++, or Markdown grammar; Vim and Emacs key modes are optional and not bundled at all.
 
-Measured with esbuild (ESM, minify, tree-shake, code-split) + gzip -9 — reproduce with `bun run --filter=@pyreon/code bench`:
+Measured with esbuild (ESM, minify, tree-shake, code-split) + gzip -9 — reproduce with `bun run --filter=@pyreon/code bench`.
 
-| Bundle | minified | gzipped | notes |
-| --- | --- | --- | --- |
-| `@pyreon/code` core editor | ~416 KB | **~138 KB** | CM6 core + wrapper; framework runtime external, no grammar |
-| — + one language grammar | ~111 KB | ~41 KB | streams on first use; reuses the loaded core |
-| `@pyreon/code` full API | ~444 KB | ~147 KB | + diff + tabs + minimap + binding |
-| `@uiw/react-codemirror` | ~396 KB | ~129 KB | fair peer — wraps the same CM6 (React external) |
-| `monaco-editor` ESM core | ~3.6 MB | **~940 KB** | conservative lower bound (CSS, fonts, web workers excluded) |
-
-The two CM6 wrappers land within ~7% of each other — they wrap the same engine, so the delta is wrapper + which-extensions-each-bundles, not the editor. Against Monaco, `@pyreon/code`'s core is **~7x smaller gzipped**, and Monaco's real footprint is larger still once its CSS and web-worker bundles are counted.
+In the full 2026-09-23 run (`BENCHMARKS.md` §13), the `@pyreon/code` core editor is **3% larger gzipped than `@uiw/react-codemirror`** — they wrap the same CodeMirror 6 engine, so the delta is wrapper plus which extensions each bundles, not the editor. That run has **no current Monaco figure**: monaco-editor failed to bundle, so the Monaco comparison row is missing and no size ratio against Monaco is claimed here until it is re-measured.
 
 This is a bundle-size measurement, not a runtime latency benchmark — the mount / doc-swap / reactive-binding timing comparison is a separate axis (it needs real-browser layout).

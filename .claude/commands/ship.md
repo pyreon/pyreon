@@ -2,63 +2,52 @@
 description: Full ship pipeline — parallel audit, bisect proof, gates, docs, PR. Never merges.
 ---
 
-Take the current work from "written" to "PR open with green CI", using the
-specialist agents. Do not shortcut a stage; each one catches a different class.
+Take the current work from "written" to "PR open with green CI". Each stage catches a
+different class; do not skip one silently.
 
-## Stage 1 — parallel audit (fan out, single message)
+## Stage 1 — parallel audit (one message)
 
-Spawn these concurrently and wait for all of them:
+- `pyreon-reviewer` — ask it explicitly whether the fix covers the whole class or only
+  the reproduced shape.
+- `parity-auditor` — if the diff touches `packages/core/compiler`, runtime-dom
+  props/template, `runtime-server`, or makes a browser-behaviour claim.
+- `leak-hunter` — if the diff adds a module-level cache/stack/registry, a listener, a
+  timer, a promise queue, a scratch buffer, or a long-lived closure.
 
-- `pyreon-reviewer` — review the diff against the anti-pattern catalog. Ask it
-  explicitly to answer: **is the fix the whole CLASS or just the reproduced shape?**
-- `parity-auditor` — only if the diff touches `packages/core/compiler`,
-  `runtime-dom` props/template, `runtime-server`, or makes a browser-behavior claim.
-- `leak-hunter` — only if the diff adds a module-level cache/stack/registry, a
-  listener, a timer, a promise queue, a scratch buffer, or a long-lived closure.
-
-Skipping one is a decision: say which you skipped and why.
+Say which you skipped and why.
 
 ## Stage 2 — act on findings
 
-Fix what came back. If a finding says the fix is a SHAPE rather than the CLASS,
-widen the fix before continuing — that is the single most expensive miss in this
-repo's history. If you disagree with a finding, say so with evidence rather than
-silently ignoring it.
+Fix what came back. If the fix covers only a shape, widen it to the class before
+continuing. If you disagree with a finding, say so with evidence.
 
-## Stage 3 — prove the tests are load-bearing
+## Stage 3 — prove the tests
 
-For every behavior fix, run `bisect-verifier`. Capture its verbatim line:
+Run `bisect-verifier` for every behaviour fix and keep its line verbatim:
 
     Bisect-verified: reverted <fix>, test failed with `<error>`, restored, passed.
 
-If it reports the test is NOT load-bearing, go back to Stage 2. A regression test
-that passes against the broken state is false confidence, not coverage.
+If a test is not load-bearing, return to Stage 2.
 
 ## Stage 4 — gates
 
-Run `gate-runner`. Fix everything it flags, using its triage table. Re-run until
-clean. If a gate is red-on-arrival (failing independently of this change), report
-that as its own finding — a permanently-red gate is a dead gate.
+Run `gate-runner`; fix everything it flags; re-run until clean. A gate that is red
+independent of this change is reported as its own finding.
 
 ## Stage 5 — documentation
 
-Run `docs-syncer` if any public API, behavior, LOCKED count, or anti-pattern
-changed. It reports each of the nine surfaces as updated / not-applicable /
-needs-attention.
+Run `docs-syncer` if a public API, behaviour, locked count or anti-pattern changed.
 
 ## Stage 6 — PR
 
-Run `pr-shepherd`. It handles worktree hygiene, lockfile discipline, the changeset,
-an honest PR body, and CI triage.
-
-**It does not merge, and neither do you.** Report the PR URL and stop.
+Run `pr-shepherd`. It does not merge, and neither do you. Report the URL and stop.
 
 ## Final report
 
-- what changed and the ROOT CAUSE (not the symptom)
+- what changed and the root cause
 - the bisect line, verbatim
-- per-stage verdicts, including stages skipped and why
-- **lead with what is NOT in this PR** — gaps, unverified assumptions, follow-ups
-- the follow-up PRs you opened (open them now; do not leave a TODO)
+- per-stage verdicts, including skipped stages and why
+- first: what is not in this PR — gaps, unverified assumptions, follow-ups
+- follow-up PRs you opened (open them now; no TODOs)
 
-Never inflate. If it is 7/10, say 7/10 and name the gap.
+Never inflate the assessment.

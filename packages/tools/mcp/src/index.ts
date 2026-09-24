@@ -610,7 +610,7 @@ server.tool(
     {
       let dir = cwd
       for (let i = 0; i < 30; i++) {
-        const candidate = path.join(dir, '.claude', 'rules', 'browser-packages.json')
+        const candidate = path.join(dir, '.agents', 'rules', 'browser-packages.json')
         if (fs.existsSync(candidate)) {
           try {
             const parsed = JSON.parse(fs.readFileSync(candidate, 'utf8')) as {
@@ -632,7 +632,7 @@ server.tool(
 
     if (browserPackages.length === 0) {
       return textResult(
-        'No `.claude/rules/browser-packages.json` found in the current project. ' +
+        'No `.agents/rules/browser-packages.json` found in the current project. ' +
           'This tool reports browser-smoke coverage for Pyreon monorepos that ship ' +
           'the single-source-of-truth list. Consumer apps can still opt in via the ' +
           "lint rule's `additionalPackages` option.",
@@ -739,7 +739,7 @@ server.tool(
       parts.push('')
       parts.push(
         'Add a `*.browser.test.{ts,tsx}` file under `src/` in each missing package. ' +
-          'See `.claude/rules/test-environment-parity.md` for the setup recipe.',
+          'See `.agents/rules/test-environment-parity.md` for the setup recipe.',
       )
     }
     if (unknown.length > 0) {
@@ -864,7 +864,7 @@ server.tool(
   )
 
   // ═══════════════════════════════════════════════════════════════════════════════
-  // Tool: get_anti_patterns — parses .claude/rules/anti-patterns.md
+  // Tool: get_anti_patterns — parses .agents/rules/anti-patterns.md
   // ═══════════════════════════════════════════════════════════════════════════════
 
   server.tool(
@@ -902,7 +902,7 @@ server.tool(
       const doc = loadAntiPatternsDoc()
       if (!doc) {
         return textResult(
-          'Could not locate `.claude/rules/anti-patterns.md`. This tool reads the file from the Pyreon monorepo — running in a consumer project without the rules directory surfaces this miss. File issues against pyreon/pyreon if the file exists but is not being found.',
+          'Could not locate `.agents/rules/anti-patterns.md`. This tool reads the file from the Pyreon monorepo — running in a consumer project without the rules directory surfaces this miss. File issues against pyreon/pyreon if the file exists but is not being found.',
         )
       }
       const all = parseAntiPatterns(doc)

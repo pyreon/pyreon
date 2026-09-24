@@ -16,7 +16,6 @@
 // app wires a handler via `init({ navigate })` (see `./config`); external links
 // stay a plain `<a target="_blank">`.
 //
-// Architecture: `.claude/plans/multiplatform-architecture.md`
 // End-user docs: `docs/src/content/docs/multiplatform.md`
 
 // ===== Type exports — all 16 canonical primitives =====

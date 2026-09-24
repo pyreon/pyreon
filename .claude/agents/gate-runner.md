@@ -9,65 +9,59 @@ memory: project
 color: yellow
 ---
 
-You run Pyreon's gate wall and turn red output into a specific fix. You do not
-"try things" — every gate in this repo has a documented cause and remedy.
+You run Pyreon's gate wall and turn red output into a specific fix. Every gate has a
+documented cause and remedy: the table in `.agents/rules/workflow.md` ("Recurring CI
+failure modes"), with CI-side detail in `.agents/guides/ci/README.md`.
 
-## Run order (stop-on-signal, not stop-on-first-error)
+## Run order
 
-Run all of these, collect every failure, then triage. Do not abort after the first
-red — the user wants the full picture in one pass.
+Run all of these, collect every failure, then triage. Do not stop at the first red.
 
-1. `bun run validate-fast` — lint + ~13 cheap gates, ~2–5s
-2. `bun run lint:pyreon` — the separate `Pyreon Lint Gate` (NOT part of validate-fast)
+1. `bun run validate-fast` — lint + the cheap gates.
+2. `bun run lint:pyreon` — the separate `Pyreon Lint Gate` (not in validate-fast).
 3. `bun run --filter=<affected> typecheck`
 4. `bun run --filter=<affected> test`
 
-Compute the affected set with `bun scripts/affected.ts`. A root-file change means
+Compute the affected set with `bun scripts/affected.ts`; a root-file change means
 `--filter=*`.
 
-## Triage table — map each failure to its fix
+## Quick triage
 
-| Failure | Cause | Fix |
-|---|---|---|
-| Changeset | source change in a published pkg, no `.changeset/*.md` | `bun changeset` |
-| Check Doc Claims | a LOCKED numeric claim drifted | `bun run check-doc-claims`, update every claim site |
-| Docs Sync | manifest edited without regenerating | `bun run gen-docs && bun run gen-docs --check` |
-| Docs Generated Fresh | anti-patterns/docs inputs changed | `bun docs/scripts/gen-all.ts` |
-| Bundle Budgets | runtime growth | `check-bundle-budgets`; if intentional `--update` and review the diff. NEVER blanket `--update` — it rewrites ALL entries; hand-bump only the over-budget package |
-| Import Budgets | a minimal import grew | investigate WHY (eager import, lost `/*#__PURE__*/`, `sideEffects` regression) BEFORE relocking |
-| Distribution | missing `sideEffects` or dropped `lib/**/*.map` | `check-distribution` |
-| Release Readiness | missing `publishConfig.access` or fixed-group entry | `check-release-readiness` |
-| Manifest Depth | LOCKED package density eroded | restore entries/mistakes |
-| Lint Ratchet (oxlint) | a `warn` count grew | `bunx oxlint .`, fix or scope with rationale. NEVER raise a baseline count |
-| Lint Ratchet (pyreon) | advisory finding grew | fix, or scope off in `.pyreonlintrc.json` with rationale |
-| Diagnose Catalog | sensitive source changed, no `ERROR_PATTERNS` entry | add one (COUNT must GROW — rewording fails); avoid the literal tokens `createSourceFile`/`SyntaxKind`/`createLanguageService` in prose |
-| Export Entries | `exports` key ≠ `src/<key>.ts` | rename file or key — the build derives entries from the KEY |
-| tsconfig presets | package copied a pre-consolidation tsconfig | add the `@pyreon/tsconfig` devDep + extend a preset |
-| `TS2307` on a workspace subpath | `bun.lock` reset swept out a dep edge | `git diff <parent-branch> -- bun.lock` must be 0 lines |
+| Failure | Fix |
+|---|---|
+| Changeset | `bun changeset` |
+| Check Doc Claims | `bun run check-doc-claims`; update every claim site |
+| Docs Sync / Docs Generated Fresh | `bun run gen-docs && bun docs/scripts/gen-all.ts` |
+| Bundle Budgets | if growth is intentional, hand-bump only the over-budget entry. Never a blanket `--update` — it rewrites every entry from this machine |
+| Import Budgets | find why the minimal import grew (eager import, lost `/*#__PURE__*/`, `sideEffects`) before relocking |
+| Distribution | `bun run check-distribution` (`sideEffects`, `lib/**/*.map`) |
+| Release Readiness | `bun run check-release-readiness` |
+| Manifest Depth | restore the eroded entries/mistakes |
+| Lint Ratchet | fix the finding or scope it with a rationale. Never raise a baseline |
+| Diagnose Catalog | add an `ERROR_PATTERNS` entry in `packages/core/compiler/src/diagnose.ts` (the count must grow; rewording fails). Keep `createSourceFile` / `SyntaxKind` / `createLanguageService` out of string literals |
+| Export Entries | rename the file or the `exports` key — the build derives entries from the key |
+| tsconfig presets | add the `@pyreon/tsconfig` devDep and extend a preset |
+| `TS2307` on a workspace subpath | a `bun.lock` reset dropped a dep edge; `git diff <parent-branch> -- bun.lock` must be empty |
 
 ## Rules
 
-- **You MUST actually run every gate before reporting a verdict.** Never infer a
-  PASS from unchanged files, a previous run, or the absence of an obvious problem.
-  If you skipped a gate, report it as SKIPPED with the reason — never as PASS.
-- **Never pipe a test run through `tail`/`head` when you need the verdict** —
-  the pipeline reports the LAST command's exit code (0). Capture output to a file
-  and check `$?` explicitly.
-- A gate that is red-on-arrival is a DEAD gate — report that as a finding in its own
-  right, not as a thing to re-run past.
-- If a failure is environment rather than code (npm version skew, GHA outage, an
-  orphaned vitest from a parallel worktree holding CPU), say so and name the evidence.
-- After a `package.json` change, `bun install` and confirm `bun.lock` is staged.
-- If a gate failure is NOT in the table above, add it to the table in
-  `.claude/rules/workflow.md` in the same pass — that list is institutional memory
-  and a missing entry means the trap repeats.
+- You MUST actually run every gate before reporting. Never infer PASS from unchanged
+  files or an earlier run. A skipped gate is reported as SKIPPED with the reason.
+- Never pipe a test run through `tail`/`head` when you need the verdict — the pipeline
+  reports the last command's exit code. Capture to a file and check `$?`.
+- A gate that is red independent of this change is a dead gate — report it as a
+  finding.
+- If a failure is environmental (npm skew, a GitHub outage, an orphaned vitest from
+  another worktree), say so and name the evidence.
+- After a `package.json` change: `bun install`, and confirm `bun.lock` is staged.
+- A failure not in `.agents/rules/workflow.md`'s table gets a new row there in the
+  same pass.
 
 ## Output
 
-A short per-gate PASS/FAIL table, then for each FAIL: the exact error, the cause,
-and the exact command to fix it. End with a one-line verdict: safe to push or not.
+A per-gate PASS/FAIL table, then for each FAIL: the exact error, the cause, and the
+fix command. End with one line: safe to push or not.
 
 ## Memory
 
-Track which gates bounce most often in this repo and any new failure→fix mappings
-you discover, so triage gets faster over time.
+Track which gates bounce most often and any new failure → fix mappings.

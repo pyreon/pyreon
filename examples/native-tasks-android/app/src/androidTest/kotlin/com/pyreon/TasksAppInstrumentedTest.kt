@@ -190,6 +190,28 @@ class TasksAppInstrumentedTest {
         return "${b.width}x${b.height}, $painted px painted over bg ${String.format("#%08x", bg)}, top colours: $top"
     }
 
+    /**
+     * One pixel row of a capture as runs of colour ("x0-x1 #aarrggbb"), for a
+     * failure message: where a strip, a handle or a gap actually sits on the row a
+     * gesture pressed, rather than where the test assumed it would be.
+     */
+    private fun rowRuns(b: android.graphics.Bitmap, y: Int, max: Int = 14): String {
+        if (y < 0 || y >= b.height) return "row $y outside 0..${b.height - 1}"
+        val runs = ArrayList<String>()
+        var start = 0
+        var colour = b.getPixel(0, y)
+        for (x in 1..b.width) {
+            val c = if (x < b.width) b.getPixel(x, y) else colour.inv()
+            if (c != colour) {
+                runs.add("$start-${x - 1} ${String.format("#%08x", colour)}")
+                start = x
+                colour = c
+            }
+        }
+        val shown = runs.take(max).joinToString(", ")
+        return "row $y: " + shown + if (runs.size > max) ", … (${runs.size} runs)" else ""
+    }
+
     /** Where a tagged node sits and whether Compose considers it displayed — for a failure message. */
     private fun nodePlace(tag: String): String {
         val n = composeRule.onNodeWithTag(tag)
@@ -1147,9 +1169,11 @@ class TasksAppInstrumentedTest {
         // Driven as a hand does (past the touch slop, then small steps), like the map
         // and dataZoom drags: one 600ms `swipe` intermittently never moved the handle
         // ("grey pixels: 0" on #3558). Same 79dp leftward drag of the high handle.
+        var vmDown = Offset.Zero
         visualMap.performTouchInput {
             val y = height - (41 - 16 - 4).dp.toPx()
-            down(Offset(159.dp.toPx(), y))
+            vmDown = Offset(159.dp.toPx(), y)
+            down(vmDown)
             moveBy(Offset(-12.dp.toPx(), 0f))
             repeat(6) { moveBy(Offset(-(67f / 6f).dp.toPx(), 0f)) }
             up()
@@ -1165,8 +1189,22 @@ class TasksAppInstrumentedTest {
         }
         assertTrue("the visualMap greyed cells before any drag", greyPixels(vmBefore) < 50)
         runCatching { composeRule.waitUntil(5_000) { greyPixels(visualMap.captureToImage().asAndroidBitmap()) > 400 } }
-        val vmGrey = greyPixels(visualMap.captureToImage().asAndroidBitmap())
-        assertTrue("dragging the visualMap handle did not grey the out-of-range cells (grey pixels: $vmGrey)", vmGrey > 400)
+        val vmAfter = visualMap.captureToImage().asAndroidBitmap()
+        val vmGrey = greyPixels(vmAfter)
+        if (vmGrey <= 400) {
+            // Say where the finger went and what that row held, so the next CI hit
+            // tells "the press missed the handle" from "the drag never registered".
+            var changed = 0
+            if (vmAfter.width == vmBefore.width && vmAfter.height == vmBefore.height) {
+                for (y in 0 until vmAfter.height) for (x in 0 until vmAfter.width) if (vmAfter.getPixel(x, y) != vmBefore.getPixel(x, y)) changed++
+            }
+            throw AssertionError(
+                "dragging the visualMap handle did not grey the out-of-range cells (grey pixels: $vmGrey): " +
+                    "down at (${vmDown.x.toInt()}, ${vmDown.y.toInt()}) px, dragged 79dp left in 7 steps; " +
+                    "pressed ${rowRuns(vmBefore, vmDown.y.toInt())}; before ${paintSummary(vmBefore)}; after ${paintSummary(vmAfter)}; " +
+                    "$changed px changed; ${nodePlace("gal-visualmap")}",
+            )
+        }
         // The slider dataZoom opens on the low half; dragging the band right shows the tall bars (y extent pinned).
         fun redPixels(b: android.graphics.Bitmap): Int {
             var n = 0

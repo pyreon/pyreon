@@ -57,7 +57,8 @@ describe('splitLayers — several charts in one option', () => {
 
   it('each family gets ECharts\' default box when it names none', () => {
     const rectOf = (type: string) => splitLayers({ series: [{ type, data: [] }, pie(['90%', '90%'], '5%')] }, 1000, 500)![0]!.rect
-    expect(rectOf('funnel')).toEqual({ x: 80, y: 60, w: 840, h: 380 })
+    // ECharts' funnel margins are 80 / 60 / 80 / 65 (its SSR puts a 300px chart's funnel bottom at 235).
+    expect(rectOf('funnel')).toEqual({ x: 80, y: 60, w: 840, h: 375 })
     expect(rectOf('treemap')).toEqual({ x: 100, y: 50, w: 800, h: 400 })
     expect(rectOf('tree')).toEqual({ x: 120, y: 60, w: 760, h: 380 })
     expect(rectOf('sankey')).toEqual({ x: 50, y: 25, w: 750, h: 450 })

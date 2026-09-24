@@ -82,7 +82,3 @@ Each is a one-PR fix. The fixture's Kotlin row will land in
 - **PR-5.2** — web sibling (`examples/native-tasks-web/`) + iOS host (`examples/native-tasks-ios/project.yml`) + Android host (`examples/native-tasks-android/build.gradle.kts`). All three import / build the canonical `src/TasksApp.tsx` from this directory.
 - **PR-5.3** — XCUITest + Espresso e2e on `data-testid` selectors; wire into `native-device` CI gate; add to `verify-modes` matrix.
 - **PR-5.4+** — real backend (`useFetch` + `useStorage`), `defineStore` migration (when Gap 4 PR-4 ships), form validation, more screens.
-
-## Audit status
-
-Closes the canonical-source scaffold of Gap 5 from `.claude/audits/native-readiness-2026-06-05.md`. The full Gap 5 closure requires PR-5.2 + PR-5.3 (host shells + e2e) — multi-week follow-up per the audit's effort estimate.

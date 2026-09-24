@@ -28,7 +28,7 @@ export function APICard(props: APICardProps) {
   // 'data')`, which threw during setup once per card → /docs/router and every
   // generated API-reference page rendered ZERO cards. Keeping the badge a
   // static element means no slot precedes the ref'd `.api-name`. (Same compiler
-  // slot-before-ref class as <CodeBlock>; see .claude/rules/anti-patterns.md.)
+  // slot-before-ref class as <CodeBlock>; see .agents/rules/anti-patterns.md.)
   return (
     <div class="api-card">
       <div class="api-card-header">

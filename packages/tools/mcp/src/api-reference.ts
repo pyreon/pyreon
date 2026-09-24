@@ -6548,9 +6548,9 @@ if (__DEV__) console.warn('hello')`,
     ]
   }
 }`,
-    notes: `Locks in the durability of the T1.1 browser smoke harness (PRs #224, #227, #229, #231). Every browser-categorized package MUST ship at least one \`*.browser.test.{ts,tsx}\` file under \`src/\`. Without this rule, new browser packages can quietly ship without smoke coverage and we drift back to the world before T1.1 — happy-dom silently masks environment-divergence bugs (PR #197 mock-vnode metadata drop, PR #200 \`typeof process\` dead code, multi-word event delegation bug). Default browser-package list mirrors \`.claude/rules/test-environment-parity.md\`. The rule fires once per package on its \`src/index.ts\`, walks the package directory looking for \`*.browser.test.*\`, and reports if none are found. Off in \`app\` preset because apps don't ship as packages with smoke obligations. See also: no-process-dev-gate.`,
+    notes: `Locks in the durability of the T1.1 browser smoke harness (PRs #224, #227, #229, #231). Every browser-categorized package MUST ship at least one \`*.browser.test.{ts,tsx}\` file under \`src/\`. Without this rule, new browser packages can quietly ship without smoke coverage and we drift back to the world before T1.1 — happy-dom silently masks environment-divergence bugs (PR #197 mock-vnode metadata drop, PR #200 \`typeof process\` dead code, multi-word event delegation bug). Default browser-package list mirrors \`.agents/rules/test-environment-parity.md\`. The rule fires once per package on its \`src/index.ts\`, walks the package directory looking for \`*.browser.test.*\`, and reports if none are found. Off in \`app\` preset because apps don't ship as packages with smoke obligations. See also: no-process-dev-gate.`,
     mistakes: `- Adding a new browser-running package without a browser test — the rule will fail your PR
-- Hardcoding the browser-package list in the rule — the list lives in \`.claude/rules/browser-packages.json\` (single source of truth), not in the rule source
+- Hardcoding the browser-package list in the rule — the list lives in \`.agents/rules/browser-packages.json\` (single source of truth), not in the rule source
 - Disabling the rule globally — use \`exemptPaths\` to exempt specific packages still under construction
 - Shipping a \`sanity.browser.test.ts\` with \`expect(1).toBe(1)\` just to satisfy the rule — it passes but provides zero signal. The rule is a GATE, not a quality check; review actual contents on PR`,
   },
@@ -6578,9 +6578,9 @@ if (__DEV__) console.warn('hello')`,
     signature: 'tool: get_browser_smoke_status — no args',
     example: `// Ask the MCP server:
 //   "which Pyreon packages are missing browser smoke coverage?"
-// Tool walks packages/, matches against .claude/rules/browser-packages.json,
+// Tool walks packages/, matches against .agents/rules/browser-packages.json,
 // returns a coverage report.`,
-    notes: `Companion to the \`pyreon/require-browser-smoke-test\` lint rule. Reports which browser-categorized Pyreon packages have at least one \`*.browser.test.{ts,tsx}\` file under \`src/\`. Uses the same \`.claude/rules/browser-packages.json\` single source of truth as the rule + the CI script. Lets an AI agent check coverage before writing a new browser package (so it adds a smoke test in the same PR) instead of discovering the failure when CI runs. Falls back with a clear message if the JSON isn't present (e.g. consumer apps that don't ship the Pyreon monorepo layout). See also: audit_test_environment.`,
+    notes: `Companion to the \`pyreon/require-browser-smoke-test\` lint rule. Reports which browser-categorized Pyreon packages have at least one \`*.browser.test.{ts,tsx}\` file under \`src/\`. Uses the same \`.agents/rules/browser-packages.json\` single source of truth as the rule + the CI script. Lets an AI agent check coverage before writing a new browser package (so it adds a smoke test in the same PR) instead of discovering the failure when CI runs. Falls back with a clear message if the JSON isn't present (e.g. consumer apps that don't ship the Pyreon monorepo layout). See also: audit_test_environment.`,
     mistakes: `- Using the tool's output as a substitute for running the CI script — this tool only checks file existence, not the self-expiring-exemption check that \`bun run lint:browser-smoke\` performs`,
   },
 
@@ -6605,7 +6605,7 @@ function MyComp(props) {
 }
 \` })`,
     notes: 'Two AST-based detectors run in parallel: `detectReactPatterns` flags "coming from React" mistakes (`useState`, `useEffect`, `className`, `onChange` on inputs, React-package imports), and `detectPyreonPatterns` flags "using Pyreon wrong" mistakes (`<For>` missing `by`, props destructured at component signature, `typeof process` dev gates, raw `addEventListener`, `Date.now() + Math.random()` IDs). Diagnostics are merged + sorted by line / column for top-down reading. See also: get_anti_patterns, migrate_react.',
-    mistakes: `- Treating zero diagnostics as "the code is correct" — \`validate\` is a STATIC detector. It catches the documented anti-patterns from \`.claude/rules/anti-patterns.md\` but does NOT verify runtime semantics, cross-file consistency, type correctness, or compiler output. Pair with \`tsc\` + tests for full coverage.
+    mistakes: `- Treating zero diagnostics as "the code is correct" — \`validate\` is a STATIC detector. It catches the documented anti-patterns from \`.agents/rules/anti-patterns.md\` but does NOT verify runtime semantics, cross-file consistency, type correctness, or compiler output. Pair with \`tsc\` + tests for full coverage.
 - Omitting the \`filename\` arg for path-sensitive detectors — some detectors (e.g. \`pyreon/no-window-in-ssr\` with its \`exemptPaths\` option) need the path to know whether the file is server-only-exempt. Without it the diagnostic may misfire or fail to fire.
 - Running \`validate\` on a snippet that is NOT a full file — detectors expect complete syntax (every \`import\`, every \`function\`). Passing a partial expression yields no diagnostics, which can be mistaken for "clean".
 - Calling \`validate\` after the code is already merged — it's a pre-commit / before-paste tool. After-the-fact use is fine but the maximum value is catching the bug BEFORE it ships.`,
@@ -6708,6 +6708,26 @@ diagnose({
 - Calling outside a Pyreon project — same caveat as \`get_routes\`: returns empty if the scanner can't find a project root.`,
   },
 
+  'mcp/get_content_collection': {
+    signature: 'tool: get_content_collection({ name? }) → markdown',
+    example: `get_content_collection()
+// → # Content collections (2) — \`docs\` (markdown) — 42 entries at \`src/content/docs\`
+get_content_collection({ name: 'docs' })
+// → one line per entry: \`getting-started\` — Getting started (\`getting-started.md\`)`,
+    notes: `List the \`@pyreon/zero-content\` collections declared in the project's \`content.config.{ts,mts,js,mjs}\` (name, type, entry count, content directory), or — with \`name\` — one collection's entries (slug, title, file). Reads from \`process.cwd()\`. See also: get_content_entry, get_routes.`,
+    mistakes: `- Calling it outside a \`@pyreon/zero-content\` app — with no \`content.config.*\` it answers "No content.config found", not an empty list.
+- Passing a collection name that is not declared — the answer lists the known collection names instead.`,
+  },
+
+  'mcp/get_content_entry': {
+    signature: 'tool: get_content_entry({ collection, slug }) → markdown',
+    example: `get_content_entry({ collection: 'docs', slug: 'getting-started' })
+// → path, title, bytes, ## Frontmatter, ## Heading outline`,
+    notes: `Fetch one content entry: its path, title and size, the parsed frontmatter as key/value pairs, and the heading outline (code-fence aware). Use \`slug: ""\` for a collection's index entry. When the slug is not found, the answer suggests up to five nearby slugs. See also: get_content_collection.`,
+    mistakes: `- Guessing slugs — call \`get_content_collection({ name })\` first to list the real ones.
+- Using the file name with its extension as the slug — slugs are derived the same way the runtime derives them, without \`.md\`.`,
+  },
+
   'mcp/get_atlas_catalog': {
     signature: 'tool: get_atlas_catalog({ tag?: string }) → string',
     example: `get_atlas_catalog({})
@@ -6765,7 +6785,7 @@ get_pattern({})
 get_anti_patterns({ name: 'Destructuring props' })  // → that entry's full body
 get_anti_patterns({ category: 'reactivity' })       // → full bodies, one category
 get_anti_patterns({ full: true })                   // → entire catalog (~14K)`,
-    notes: `Browse the anti-patterns catalog from \`.claude/rules/anti-patterns.md\`, token-frugal by default. **No args → a COMPACT INDEX** (one line per entry: title + \`[detector: <code>]\` tag + one-sentence hook; ≈3.3K tokens vs the ≈14K full dump — a ~76% cut on the common orient call). Drill in deliberately: \`{ name }\` → the single matching entry\\'s full body (cheapest); \`{ category }\` → full bodies for one category; \`{ full: true }\` → entire catalog (≈14K, explicit opt-in). The index keeps per-category \`## <Heading>\` markers so categories are still discoverable in one call; each \`[detector: <code>]\` tag pairs the entry with the live \`validate\` detector. See also: validate, get_pattern.`,
+    notes: `Browse the anti-patterns catalog from \`.agents/rules/anti-patterns.md\`, token-frugal by default. **No args → a COMPACT INDEX** (one line per entry: title + \`[detector: <code>]\` tag + one-sentence hook; ≈3.3K tokens vs the ≈14K full dump — a ~76% cut on the common orient call). Drill in deliberately: \`{ name }\` → the single matching entry\\'s full body (cheapest); \`{ category }\` → full bodies for one category; \`{ full: true }\` → entire catalog (≈14K, explicit opt-in). The index keeps per-category \`## <Heading>\` markers so categories are still discoverable in one call; each \`[detector: <code>]\` tag pairs the entry with the live \`validate\` detector. See also: validate, get_pattern.`,
     mistakes: `- Reaching for \`{ full: true }\` to "see the anti-patterns" — that is the ~14K dump. The no-arg index is the orient call; pull full bodies with \`{ name }\` once you know which entry matters
 - Expecting no-arg to return full bodies — it returns the index (behaviour changed in the token-slim PR). Full bodies need \`{ name }\`, \`{ category }\`, or \`{ full: true }\``,
   },
