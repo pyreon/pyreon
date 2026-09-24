@@ -10,19 +10,27 @@
  * Shared-schema fairness: v1 supports Standard Schema natively, so the SAME
  * `formSchema` is passed straight to the form-level validators (no adapter).
  *
- * Built with `React.createElement` (no JSX); `flushSync` commit boundary.
+ * Written as the automatic JSX runtime's output (`jsx`/`jsxs`, esbuild
+ * `jsx: 'automatic'` emit, diffed); `flushSync` commit boundary.
  */
 import { useForm } from '@tanstack/react-form'
-import * as React from 'react'
+import type * as React from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { flushSync } from 'react-dom'
-import { setInput, fieldInputCount, visibleErrorCount } from '../dom'
-import { bench, type BenchSuite } from '../runner'
-import { FIELD_NAMES, emptyValues, formSchema } from '../../shared/schema'
+import { jsx, jsxs } from 'react/jsx-runtime'
+import {
+  expectDirtyDom,
+  expectEmailError,
+  expectLibraryValue,
+  expectResetDom,
+  fieldInputCount,
+  setInput,
+} from '../dom'
+import { bench, settle, type BenchSuite } from '../runner'
+import { FIELD_NAMES, emptyValues, formSchema, validValues } from '../../shared/schema'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false
 
-const rc = React.createElement
 const TYPED = 'abcdefghijkl'
 
 // `useForm` carries 20+ generic params; partial application
@@ -47,32 +55,41 @@ function fieldError(meta: { errors?: ReadonlyArray<unknown> }): string {
   return ''
 }
 
+/** The render-prop surface this form reads. `jsx()` types its props as
+ *  `unknown` (no contextual typing through it), so it is spelled out. */
+interface FieldRender {
+  state: { value: string; meta: { errors?: ReadonlyArray<unknown> } }
+  handleChange: (value: string) => void
+  handleBlur: () => void
+}
+
 function FormImpl({ mode, onReady }: { mode: 'change' | 'blur'; onReady: (f: TForm) => void }) {
   const form = useTanstackForm(mode)
   onReady(form)
   const Field = form.Field
-  return rc(
-    'form',
-    null,
-    FIELD_NAMES.map((name) =>
-      rc(Field, {
-        key: name,
-        name,
-        children: (field) =>
-          rc(
-            'div',
-            null,
-            rc('input', {
-              'data-field': name,
-              value: field.state.value,
-              onChange: (e: React.ChangeEvent<HTMLInputElement>) => field.handleChange(e.target.value),
-              onBlur: field.handleBlur,
+  return jsx('form', {
+    children: FIELD_NAMES.map((name) =>
+      jsx(
+        Field,
+        {
+          name,
+          children: (field: FieldRender) =>
+            jsxs('div', {
+              children: [
+                jsx('input', {
+                  'data-field': name,
+                  value: field.state.value,
+                  onChange: (e: React.ChangeEvent<HTMLInputElement>) => field.handleChange(e.target.value),
+                  onBlur: field.handleBlur,
+                }),
+                jsx('span', { 'data-error': name, children: fieldError(field.state.meta) }),
+              ],
             }),
-            rc('span', { 'data-error': name }, fieldError(field.state.meta)),
-          ),
-      }),
+        },
+        name,
+      ),
     ),
-  )
+  })
 }
 
 interface Mounted {
@@ -85,7 +102,7 @@ function mountForm(container: HTMLElement, mode: 'change' | 'blur'): Mounted {
   let captured: TForm | undefined
   const root = createRoot(container)
   flushSync(() => {
-    root.render(rc(FormImpl, { mode, onReady: (f) => (captured = f) }))
+    root.render(jsx(FormImpl, { mode, onReady: (f: TForm) => (captured = f) }))
   })
   return {
     form: captured as TForm,
@@ -118,29 +135,39 @@ export async function runTanstack(container: HTMLElement): Promise<BenchSuite> {
 
   // ── keystroke-blur ───────────────────────────────────────────────────────
   {
-    const { dispose } = mountForm(container, 'blur')
+    const { form, dispose } = mountForm(container, 'blur')
     const input = container.querySelector('input[data-field="email"]') as HTMLInputElement
     await bench('keystroke-blur', suite, () => {
       for (let i = 1; i <= TYPED.length; i++) flushSync(() => setInput(input, TYPED.slice(0, i)))
     }, {
-      reset: () => flushSync(() => setInput(input, '')),
-      verify: () => {
-        if (input.value !== TYPED) throw new Error('keystroke-blur: value not committed')
+      reset: async () => {
+        flushSync(() => setInput(input, ''))
+        await settle()
       },
+      verify: () => expectLibraryValue('keystroke-blur', form.getFieldValue('email'), TYPED),
     })
     dispose()
   }
 
   // ── keystroke-change ─────────────────────────────────────────────────────
   {
-    const { dispose } = mountForm(container, 'change')
+    const { form, dispose } = mountForm(container, 'change')
     const input = container.querySelector('input[data-field="email"]') as HTMLInputElement
-    await bench('keystroke-change', suite, () => {
-      for (let i = 1; i <= TYPED.length; i++) flushSync(() => setInput(input, TYPED.slice(0, i)))
+    await bench('keystroke-change', suite, async () => {
+      // One keystroke = dispatch, commit, then let its async validation settle
+      // (see runner.ts `settle`) — identical in every column.
+      for (let i = 1; i <= TYPED.length; i++) {
+        flushSync(() => setInput(input, TYPED.slice(0, i)))
+        await settle()
+      }
     }, {
-      reset: () => flushSync(() => setInput(input, '')),
-      verify: () => {
-        if (input.value !== TYPED) throw new Error('keystroke-change: value not committed')
+      reset: async () => {
+        flushSync(() => setInput(input, ''))
+        await settle()
+      },
+      verify: (c) => {
+        expectLibraryValue('keystroke-change', form.getFieldValue('email'), TYPED)
+        expectEmailError(c)
       },
     })
     dispose()
@@ -152,15 +179,15 @@ export async function runTanstack(container: HTMLElement): Promise<BenchSuite> {
     await bench('reset-dirty-form', suite, () => {
       flushSync(() => form.reset())
     }, {
-      reset: () =>
+      reset: async () => {
+        const dirty = validValues()
         flushSync(() => {
-          for (const name of FIELD_NAMES) form.setFieldValue(name, 'dirty')
-        }),
-      verify: () => {
-        const first = container.querySelector('input[data-field="first"]') as HTMLInputElement
-        if (first.value !== '') throw new Error('reset: form not reset')
-        if (visibleErrorCount(container) !== 0) throw new Error('reset: errors not cleared')
+          for (const name of FIELD_NAMES) form.setFieldValue(name, dirty[name])
+        })
+        await settle()
+        expectDirtyDom(container, dirty)
       },
+      verify: expectResetDom,
     })
     dispose()
   }

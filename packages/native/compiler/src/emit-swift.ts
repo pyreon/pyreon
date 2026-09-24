@@ -21,9 +21,13 @@ import {
   unloweredFlowMemberWarning,
   HANDLED_FLOW_WEBVIEW_PROPS,
   collectFlowRendererComponents,
+  flowRectLiteralFields,
+  NODE_RESIZER_FOREIGN_NODE_WARNING,
+  nodeResizerTargetsAnotherNode,
 } from './flow-lowering'
 import { planFlowSvg, type FlowSvgNumber } from './flow-svg'
 import { lowerFlowPlainElement } from './flow-dom'
+import { PALETTE_STROKE, VIEWPORT_PORTAL_WARNING, planBaseEdge, planEdgeText } from './flow-base-edge'
 import { CHART_WEBVIEW_HOST_PROPS, configureChartWebViewHost, legacyChartHostProp, HANDLED_CHART_WEBVIEW_PROPS } from './chart-webview-lowering'
 import { DEFAULT_FLOW_WEBVIEW_HOST_HTML } from './generated-flow-webview-host'
 import {
@@ -256,6 +260,7 @@ let _flowComponentsWithInvalidHandles: Set<string> = new Set()
 type StaticFlowNodeResizer = { minWidth: number; minHeight: number; handleSize: number; showEdgeHandles: boolean }
 let _flowComponentResizers: Map<string, StaticFlowNodeResizer> = new Map()
 let _flowComponentsWithInvalidResizers: Set<string> = new Set()
+let _flowComponentsWithForeignResizer: Set<string> = new Set()
 type StaticFlowNodeToolbar = {
   position: string
   align: string
@@ -277,7 +282,7 @@ function collectStaticFlowNodeToolbars(expr: ExprIR): Extract<ExprIR, { kind: 'j
   return expr.children.flatMap((child) => child.kind === 'expr' ? collectStaticFlowNodeToolbars(child.expr) : [])
 }
 
-function collectStaticFlowNodeResizer(expr: ExprIR): { config?: StaticFlowNodeResizer; invalid: boolean } {
+function collectStaticFlowNodeResizer(expr: ExprIR, propsParamName?: string): { config?: StaticFlowNodeResizer; invalid: boolean; foreignNodeId?: boolean } {
   if (expr.kind !== 'jsx-fragment' && expr.kind !== 'jsx-element') return { invalid: false }
   if (expr.kind === 'jsx-element' && expr.tag === 'NodeResizer') {
     const read = (name: string): string | number | boolean | undefined => {
@@ -286,7 +291,7 @@ function collectStaticFlowNodeResizer(expr: ExprIR): { config?: StaticFlowNodeRe
     }
     const invalid = ['minWidth', 'minHeight', 'handleSize'].some((name) => expr.attrs.some((entry) => entry.kind === 'attr' && entry.name === name) && typeof read(name) !== 'number') ||
       expr.attrs.some((entry) => entry.kind === 'attr' && entry.name === 'showEdgeHandles') && typeof read('showEdgeHandles') !== 'boolean'
-    return { invalid, config: {
+    return { invalid, foreignNodeId: nodeResizerTargetsAnotherNode(expr, propsParamName), config: {
       minWidth: typeof read('minWidth') === 'number' ? read('minWidth') as number : 50,
       minHeight: typeof read('minHeight') === 'number' ? read('minHeight') as number : 30,
       handleSize: typeof read('handleSize') === 'number' ? read('handleSize') as number : 8,
@@ -294,7 +299,7 @@ function collectStaticFlowNodeResizer(expr: ExprIR): { config?: StaticFlowNodeRe
     } }
   }
   for (const child of expr.children) if (child.kind === 'expr') {
-    const found = collectStaticFlowNodeResizer(child.expr)
+    const found = collectStaticFlowNodeResizer(child.expr, propsParamName)
     if (found.config || found.invalid) return found
   }
   return { invalid: false }
@@ -1224,6 +1229,7 @@ export function emitSwift(
   _flowComponentsWithInvalidHandles = new Set()
   _flowComponentResizers = new Map()
   _flowComponentsWithInvalidResizers = new Set()
+  _flowComponentsWithForeignResizer = new Set()
   _flowComponentToolbars = new Map()
   _flowComponentsWithInvalidToolbars = new Set()
   const flowToolbarComponents: ComponentIR[] = []
@@ -1232,9 +1238,10 @@ export function emitSwift(
     const result = collectStaticFlowHandles(component.returnExpr)
     _flowComponentHandles.set(component.name, result.handles)
     if (result.invalid) _flowComponentsWithInvalidHandles.add(component.name)
-    const resizer = collectStaticFlowNodeResizer(component.returnExpr)
+    const resizer = collectStaticFlowNodeResizer(component.returnExpr, component.propsParamName)
     if (resizer.config) _flowComponentResizers.set(component.name, resizer.config)
     if (resizer.invalid) _flowComponentsWithInvalidResizers.add(component.name)
+    if (resizer.foreignNodeId) _flowComponentsWithForeignResizer.add(component.name)
     const toolbars = collectStaticFlowNodeToolbars(component.returnExpr)
     if (toolbars.length > 0) {
       const parsedToolbars: StaticFlowNodeToolbar[] = []
@@ -4284,6 +4291,7 @@ function emitSwiftDecl(
           ...(n.group !== undefined ? [`group: ${n.group}`] : []),
           ...(n.sourceHandles !== undefined ? [`sourceHandles: ${swiftFlowParsedHandles(n.sourceHandles)}`] : []),
           ...(n.targetHandles !== undefined ? [`targetHandles: ${swiftFlowParsedHandles(n.targetHandles)}`] : []),
+          ...(n.zIndex !== undefined ? [`zIndex: ${n.zIndex}`] : []),
         ]
         return `PyreonFlowNode(${parts.join(', ')})`
       })
@@ -4314,6 +4322,7 @@ function emitSwiftDecl(
           ...(e.markerStart !== undefined ? [`markerStart: ${swiftFlowMarker(e.markerStart)}`] : []),
           ...(e.markerEnd !== undefined ? [`markerEnd: ${e.markerEnd === null ? 'nil' : swiftFlowMarker(e.markerEnd)}`, 'markerEndSpecified: true'] : []),
           ...(e.waypoints !== undefined ? [`waypoints: [${e.waypoints.map((p) => `PyreonXYPosition(x: ${swiftFlowCoord(p.x)}, y: ${swiftFlowCoord(p.y)})`).join(', ')}]`] : []),
+          ...(e.zIndex !== undefined ? [`zIndex: ${e.zIndex}`] : []),
         ]
         return `PyreonFlowEdge(${parts.join(', ')})`
       })
@@ -4331,6 +4340,9 @@ function emitSwiftDecl(
       ...(d.panOnScrollSpeed !== undefined ? [`panOnScrollSpeed: ${d.panOnScrollSpeed}`] : []),
       ...(['zoomable', 'zoomOnScroll', 'zoomOnPinch', 'zoomOnDoubleClick', 'selectionOnDrag'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key]}`]),
       ...(d.selectionMode !== undefined ? [`selectionMode: ${swiftStr(d.selectionMode)}`] : []),
+      ...(d.connectionMode !== undefined ? [`connectionMode: ${swiftStr(d.connectionMode)}`] : []),
+      ...(['elevateNodesOnSelect', 'elevateEdgesOnSelect', 'autoPanOnNodeDrag', 'autoPanOnConnect'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key]}`]),
+      ...(d.autoPanSpeed !== undefined ? [`autoPanSpeed: ${d.autoPanSpeed}`] : []),
       ...(['multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key]}`]),
       ...(d.edgeInteractionWidth !== undefined ? [`edgeInteractionWidth: ${d.edgeInteractionWidth}`] : []),
       ...(d.connectionRadius !== undefined ? [`connectionRadius: ${d.connectionRadius}`] : []),
@@ -4463,6 +4475,7 @@ function swiftFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
     }),
     ...(sourceHandlesExpr ? [`sourceHandles: ${swiftFlowHandlesLiteral(sourceHandlesExpr) ?? emitSwiftExpr(sourceHandlesExpr, 0)}`] : []),
     ...(targetHandlesExpr ? [`targetHandles: ${swiftFlowHandlesLiteral(targetHandlesExpr) ?? emitSwiftExpr(targetHandlesExpr, 0)}`] : []),
+    ...(field('zIndex') ? [`zIndex: Double(${emitSwiftExpr(field('zIndex')!, 0)})`] : []),
   ]
   return `PyreonFlowNode(${parts.join(', ')})`
 }
@@ -4589,6 +4602,7 @@ function swiftFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
       const value = swiftFlowPositionsLiteral(waypointsExpr)
       return [`waypoints: ${value ?? emitSwiftExpr(waypointsExpr, 0)}`]
     })() : []),
+    ...(field('zIndex') ? [`zIndex: Double(${emitSwiftExpr(field('zIndex')!, 0)})`] : []),
   ]
   return `PyreonFlowEdge(${parts.join(', ')})`
 }
@@ -6469,6 +6483,19 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             })
             return `${swiftIdent(flowName)}.updateEdge(${emitSwiftExpr(e.args[0]!, indent)}) { edge in ${statements.join('; ')} }`
           }
+        }
+        // React Flow's intersection helpers: a rect literal becomes the engine's
+        // PyreonFlowRect, and the positional `partially` flag gets its label.
+        if ((member === 'getIntersectingNodes' && e.args.length >= 1) || (member === 'isNodeIntersecting' && e.args.length >= 2)) {
+          const target = (arg: ExprIR) => {
+            const rect = flowRectLiteralFields(arg)
+            if (!rect) return emitSwiftExpr(arg, indent)
+            const labels = ['x', 'y', 'width', 'height']
+            return `PyreonFlowRect(${rect.map((v, i) => `${labels[i]}: ${v.kind === 'literal' ? emitSwiftExpr(v, indent) : `Double(${emitSwiftExpr(v, indent)})`}`).join(', ')})`
+          }
+          const rest = member === 'isNodeIntersecting' ? [target(e.args[0]!), target(e.args[1]!)] : [target(e.args[0]!)]
+          const flag = e.args[member === 'isNodeIntersecting' ? 2 : 1]
+          return `${swiftIdent(flowName)}.${member}(${rest.join(', ')}${flag ? `, partially: ${emitSwiftExpr(flag, indent)}` : ''})`
         }
         if (['panTo', 'screenToFlowPosition', 'flowToScreenPosition'].includes(member) && e.args.length === 1) {
           const lit = swiftFlowPositionLiteral(e.args[0]!)
@@ -8844,6 +8871,17 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
     return 'EmptyView()'
   }
   if (tag === 'path') return emitSwiftFlowCustomPath(e, indent)
+  if (tag === 'BaseEdge' && !_componentNames.has(tag)) return emitSwiftFlowBaseEdge(e, indent)
+  if (tag === 'EdgeText' && !_componentNames.has(tag)) {
+    const plan = planEdgeText(e)
+    for (const w of plan.warnings) if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+    if (!plan.text || !plan.x || !plan.y) return 'EmptyView()'
+    return `PyreonFlowEdgeText(x: Double(${emitSwiftExpr(plan.x, indent)}), y: Double(${emitSwiftExpr(plan.y, indent)}), label: ${emitSwiftExpr(plan.text, indent)})`
+  }
+  if (tag === 'ViewportPortal' && !_componentNames.has(tag)) {
+    if (!_emitWarnings.includes(VIEWPORT_PORTAL_WARNING)) _emitWarnings.push(VIEWPORT_PORTAL_WARNING)
+    return 'EmptyView()'
+  }
   if ((tag === 'div' || tag === 'p' || tag === 'span') && _flowRendererComponents.has(_activeComponentName)) {
     const lowered = lowerFlowPlainElement(e)
     if (lowered) return emitSwiftJsx(lowered, indent)
@@ -8902,6 +8940,7 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   for (const entry of nodeTypes ?? []) {
     if (_flowComponentsWithInvalidHandles.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <Handle> requires literal \`type\` and \`position\` props for native extraction; the dynamic handle was not attached to the node.`)
     if (_flowComponentsWithInvalidResizers.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeResizer> size and edge-handle options must be literals for native extraction; dynamic values use native defaults.`)
+    if (_flowComponentsWithForeignResizer.has(entry.component)) _emitWarnings.push(NODE_RESIZER_FOREIGN_NODE_WARNING(entry.component))
     if (_flowComponentsWithInvalidToolbars.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeToolbar> requires literal position, align, offset, and showOnSelect props on native; unsupported values use native defaults.`)
   }
   const edgeTypesAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'edgeTypes')
@@ -9076,6 +9115,19 @@ function emitSwiftFlowSvg(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   ]
   const body = shapes.length > 0 ? `[\n${shapes.join(',\n')}\n${' '.repeat(indent)}]` : '[]'
   return `PyreonFlowSvg(${[...args, `shapes: ${body}`].join(', ')})`
+}
+
+function emitSwiftFlowBaseEdge(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const plan = planBaseEdge(e)
+  for (const w of plan.warnings) if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+  if (!plan.path) return 'EmptyView()'
+  const stroke = plan.paint.stroke
+  const color = stroke.kind === 'none' ? '"#00000000"' : stroke.kind === 'literal' ? (stroke.value === PALETTE_STROKE ? 'nil' : JSON.stringify(stroke.value)) : emitSwiftExpr(stroke.expr, indent)
+  const width = plan.paint.width.kind === 'literal' ? String(plan.paint.width.value) : `Double(${emitSwiftExpr(plan.paint.width.expr, indent)})`
+  const path = `PyreonFlowBaseEdgePath(result: PyreonFlowPathResult(svgPath: ${emitSwiftExpr(plan.path, indent)}), color: ${color}, width: ${width})`
+  if (!plan.label) return path
+  const pad = ' '.repeat(indent + 2)
+  return `Group {\n${pad}${path}\n${pad}PyreonFlowEdgeText(x: Double(${emitSwiftExpr(plan.label.x, indent)}), y: Double(${emitSwiftExpr(plan.label.y, indent)}), label: ${emitSwiftExpr(plan.label.text, indent)})\n${' '.repeat(indent)}}`
 }
 
 function emitSwiftFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {

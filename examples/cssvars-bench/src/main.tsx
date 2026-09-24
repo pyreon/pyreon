@@ -31,6 +31,10 @@ const Base = (props: Record<string, unknown>) =>
   h('div', props, (props as { children?: never }).children)
 ;(Base as { displayName?: string }).displayName = 'Base'
 
+/** The sentinel box's computed background per mode — what `measure` asserts. */
+const SENTINEL_LIGHT = 'rgb(16, 185, 129)'
+const SENTINEL_DARK = 'rgb(239, 68, 68)'
+
 const ModeBox = (rocketstyle()({ name: 'ModeBox', component: Base }) as any)
   .styles(
     (css: any) => css`
@@ -41,7 +45,7 @@ const ModeBox = (rocketstyle()({ name: 'ModeBox', component: Base }) as any)
       background-color: ${({ $rocketstyle }: any) => $rocketstyle.bg};
     `,
   )
-  .theme((_t: any, m: any) => ({ bg: m('rgb(16, 185, 129)', 'rgb(239, 68, 68)') }))
+  .theme((_t: any, m: any) => ({ bg: m(SENTINEL_LIGHT, SENTINEL_DARK) }))
 
 const STATES = ['primary', 'secondary'] as const
 const SIZES = ['small', 'medium', 'large'] as const
@@ -114,15 +118,32 @@ function forceRecalc(): string {
       forceRecalc()
     }
   },
-  /** Reset counters, run `n` timed flips, return elapsed ms + counter deltas. */
+  /**
+   * Reset counters, run `n` timed flips, return elapsed ms + counter deltas.
+   *
+   * Correctness gate: every flip's recalc result is recorded (the read the
+   * loop already does — no extra work in the window) and checked AFTER timing
+   * against the mode it should show. A mode that skipped the restyle (a no-op
+   * flip, a stale var) would otherwise report a fast time and pass.
+   */
   measure(n: number): { ms: number; counts: Record<string, number> } {
     perf()?.reset()
+    const seen: string[] = new Array(n)
+    const modes: ('light' | 'dark')[] = new Array(n)
     const t0 = performance.now()
     for (let i = 0; i < n; i++) {
-      mode.set(mode.peek() === 'light' ? 'dark' : 'light')
-      forceRecalc()
+      const next = mode.peek() === 'light' ? 'dark' : 'light'
+      mode.set(next)
+      modes[i] = next
+      seen[i] = forceRecalc()
     }
     const ms = performance.now() - t0
+    for (let i = 0; i < n; i++) {
+      const want = modes[i] === 'light' ? SENTINEL_LIGHT : SENTINEL_DARK
+      if (seen[i] !== want) {
+        throw new Error(`[cssvars-bench] flip ${i} (${modes[i]}): sentinel is ${seen[i]}, expected ${want}`)
+      }
+    }
     return { ms, counts: perf()?.snapshot() ?? {} }
   },
   /** Per-flip computed-style sanity: the sentinel's color for the current mode. */

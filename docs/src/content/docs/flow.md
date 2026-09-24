@@ -135,6 +135,12 @@ When no generic is supplied it defaults to `Record<string, unknown>`.
 | `fitViewPadding`            | `number`                                   | `0.1`   | Padding ratio used by `fitView()`                                    |
 | `defaultMarkerEnd`          | `EdgeMarkerSpec \| null`                   | `{ type: ArrowClosed }` | Default END arrowhead; `null` makes edges arrowless |
 | `onlyRenderVisibleElements` | `boolean`                                  | `false` | Cull off-screen nodes/edges (see [Render Virtualization](#render-virtualization)) |
+| `connectionMode`            | `'strict' \| 'loose'`                      | `'strict'` | `strict`: a connection runs from a source handle to a target handle. `loose`: any handle to any handle (see [Connection mode](#connection-mode)) |
+| `elevateNodesOnSelect`      | `boolean`                                  | `true`  | Draw a selected node above the others (see [Stacking order](#stacking-order-zindex)) |
+| `elevateEdgesOnSelect`      | `boolean`                                  | `false` | Draw a selected edge above the others                                |
+| `autoPanOnNodeDrag`         | `boolean`                                  | `true`  | Pan the canvas when a dragged node nears its edge (see [Auto-pan](#auto-pan)) |
+| `autoPanOnConnect`          | `boolean`                                  | `true`  | Pan the canvas when a connection drag nears its edge                 |
+| `autoPanSpeed`              | `number`                                   | `15`    | Auto-pan speed, in screen pixels per frame at the edge               |
 
 :::warning
 `nodeExtent` is `[[minX, minY], [maxX, maxY]]` — a tuple of corner points, **not** `{ x: [min, max], y: [min, max] }`. The same tuple shape is accepted by `flow.setNodeExtent(...)`.
@@ -267,6 +273,21 @@ flow.updateNodeData('a', { label: 'A!' }) // merge into data (or a function of t
 ### `hidden` and `deletable`
 
 A node or edge with `hidden: true` stays in the graph (ids, edges, selection, JSON) but is not rendered — an edge touching a hidden node disappears with it. `deletable: false` exempts an element from `deleteSelected()` and the Delete key (it stays selected so the user can see it survived); `nodesDeletable: false` / `edgesDeletable: false` set the default. An edge whose endpoint node is deleted goes regardless of its own flag.
+### Stacking order (`zIndex`)
+
+Nodes and edges take an optional `zIndex`; a higher value draws above a lower one, and ties keep array order. A selected node is raised by 100 while `elevateNodesOnSelect` is on (the default) and a dragged node by 1000, so the node you are working with is not hidden behind a neighbour. `elevateEdgesOnSelect` raises a selected edge by 1000 and is off by default. These follow React Flow.
+
+```tsx
+const flow = createFlow({
+  nodes: [
+    { id: 'frame', position: { x: 0, y: 0 }, data: {}, zIndex: -1 },
+    { id: 'card', position: { x: 40, y: 40 }, data: {}, zIndex: 5 },
+  ],
+  edges: [{ id: 'e', source: 'frame', target: 'card', zIndex: 2 }],
+  elevateEdgesOnSelect: true,
+})
+```
+
 ### Sub-flows (parent / child nodes)
 
 ```ts
@@ -455,6 +476,14 @@ flow.setEdges((edges) => edges.filter((e) => !e.animated))
 flow.removeEdges(['ab'])
 flow.updateEdge('ab', { label: 'renamed' })
 ```
+### Connection mode
+
+`connectionMode: 'strict'` (the default) only connects a source handle to a target handle, and a drag may start from either end: starting from a target handle builds the edge in the right direction. `'loose'` connects any handle to any other, which suits undirected graphs; the edge runs from the handle the drag started on. A reconnect follows the same rule for the end being moved.
+
+### Auto-pan
+
+When a dragged node, or a connection being drawn, comes within 40 screen pixels of the canvas edge, the canvas pans towards it, faster the closer the pointer gets, up to `autoPanSpeed` pixels per frame. The dragged node stays under the pointer while the view moves. Turn it off with `autoPanOnNodeDrag: false` / `autoPanOnConnect: false`.
+
 ### Hit width and reconnection
 
 Every edge carries an invisible interaction path around its visible line (`edgeInteractionWidth`, default 20px; per-edge `interactionWidth`), so a hairline edge is clickable. A selected edge shows two endpoint handles: drag one onto another node's handle to reconnect that end (the other end stays fixed, `isValidConnection` / `connectionRules` are consulted, and a drop on nothing leaves the edge as it was). Turn the handles off per edge with `reconnectable: false` or globally with `edgesReconnectable: false`.
@@ -694,7 +723,15 @@ flow.getIncomers('2')       // FlowNode<TData>[] — nodes with edges pointing T
 flow.getOutgoers('2')       // FlowNode<TData>[] — nodes this node points to
 flow.getChildNodes('group') // FlowNode<TData>[] — nodes whose parentId === 'group'
 flow.getAbsolutePosition('2') // XYPosition — position accounting for parent offsets (cycle-safe)
+
+// Intersections — React Flow's helpers, in flow coordinates
+flow.getIntersectingNodes('2')                  // FlowNode[] overlapping node 2 (hidden nodes skipped)
+flow.getIntersectingNodes({ x: 0, y: 0, width: 100, height: 100 }, false) // fully INSIDE the rect
+flow.isNodeIntersecting('2', { x: 0, y: 0, width: 100, height: 100 })     // boolean
+flow.getNodesBounds(['1', '2'])                 // Rect — the box around the given nodes
 ```
+
+`partially` (default `true`) counts any overlap; `false` requires the whole node to lie inside the other rect. Touching edges do not count as an overlap. Sizes come from explicit `width`/`height`, then the measured size, then the default. A node is never reported as intersecting itself.
 
 ## Search and Filter
 
@@ -811,6 +848,8 @@ flow.onNodeDoubleClick((node) => { /* double click */ })
 | `onConnectStart({ nodeId, handleId })` / `onConnectEnd(connection \| null)` | a connection drag starting / ending (null = dropped nowhere) |
 | `onConnect(connection)` | an edge added by a drop or `addEdge(s)` |
 | `onNodeClick` / `onNodeDoubleClick` / `onEdgeClick` / `onPaneClick(event)` | clicks; the pane is the empty canvas |
+| `onNodeContextMenu(node)` / `onEdgeContextMenu(edge)` / `onPaneContextMenu(position)` | a right-click (a long-press on iOS and Android). `position` is in flow coordinates. While any context-menu listener is registered the browser menu is suppressed for that target; with none, the browser's own menu shows |
+| `onNodeMouseEnter` / `onNodeMouseLeave` / `onEdgeMouseEnter` / `onEdgeMouseLeave` | pointer hover. On iOS and Android this needs a pointer (trackpad, mouse); touch has no hover |
 
 Every registrar returns an unsubscribe; `dispose()` clears them all.
 
@@ -1004,6 +1043,25 @@ function LabeledEdge(props: EdgeComponentProps) {
 ```
 
 The layer is `pointer-events: none`; an interactive label opts back in with `pointer-events: all` and the `nopan` class (so a click on it does not start a canvas pan).
+
+### Edge building blocks
+
+`<BaseEdge>`, `<EdgeText>` and `<ViewportPortal>` are React Flow's building blocks for custom edges.
+
+- `<BaseEdge path label labelX labelY>` draws an edge's visible stroke (the palette's edge colour at 1.5px unless you pass a `style` string) and an optional label. The flow already adds the wider invisible hit path around every edge.
+- `<EdgeText x y label>` draws a label in flow coordinates in the built-in edge-label style.
+- `<ViewportPortal>` renders arbitrary HTML in flow coordinates: it pans and zooms with the graph and does not scale with each node.
+
+```tsx
+import { BaseEdge, getBezierPath, type EdgeComponentProps } from '@pyreon/flow'
+
+function Wire(props: EdgeComponentProps) {
+  const edge = () => getBezierPath({ sourceX: props.sourceX(), sourceY: props.sourceY(), targetX: props.targetX(), targetY: props.targetY() })
+  return <BaseEdge path={edge().path} label="wire" labelX={edge().labelX} labelY={edge().labelY} />
+}
+```
+
+A `style` replaces the default stroke entirely, as on any SVG element: a style that sets no `stroke` draws no line.
 
 ### Portaled node toolbar
 
@@ -1211,7 +1269,7 @@ web page in a WebView.
 | Web | Native |
 | --- | --- |
 | `createFlow(config)` / `useFlow(config)` | `PyreonFlowState`, an observable engine with the same state and the same `FlowInstance` methods |
-| `<Flow instance={flow}>` | `PyreonFlowView`, with `<Background>`, `<Controls>`, `<MiniMap>`, `<Panel>`, `<Handle>`, `<NodeResizer>`, `<NodeToolbar>` and `<EdgeLabelRenderer>` |
+| `<Flow instance={flow}>` | `PyreonFlowView`, with `<Background>`, `<Controls>`, `<MiniMap>`, `<Panel>`, `<Handle>`, `<NodeResizer>`, `<NodeToolbar>`, `<EdgeLabelRenderer>`, `<BaseEdge>` and `<EdgeText>` |
 | A node without a `type` | The web's default node: the same box, palette colours and selected border |
 | `nodeTypes` / `edgeTypes` | Custom node and edge components. The map must be statically resolvable. |
 | `<path d=…>` in a custom edge or connection line | A native path. Any SVG path data works, including a template literal; fill, stroke and width follow the browser's rules. |
@@ -1227,6 +1285,9 @@ Gestures:
 - Connect and reconnect.
 - Resize.
 - Tap to select a node or an edge.
+- Long-press for the context-menu listeners, and pointer hover (trackpad or mouse) for the hover listeners.
+- Auto-pan while dragging a node or a connection near the edge.
+- `connectionMode`, `zIndex` and the select-elevation options behave as on the web.
 
 Keyboard:
 
@@ -1238,12 +1299,16 @@ Keyboard:
 
 `onlyRenderVisibleElements` culls off-screen nodes on native too.
 
+Animation frames (`animateViewport`, `fitView`, an animated `layout`) reach your listeners on the main thread on both platforms. On Android the flow view arranges this the first time it renders. Hand-written Kotlin that animates a `PyreonFlowState` before any flow view exists should call `pyreonFlowUseMainThreadFrames()` first.
+
 ### What does not cross, and what to use instead
 
 A few parts of the web package are tied to the DOM, and the compiler names
 each one when it meets it:
 
 - `FlowLayersContext` and `flowStyles`, the DOM renderer's layer context and CSS custom properties.
+- `<ViewportPortal>`, which places arbitrary HTML with CSS. Use `<EdgeLabelRenderer>` in a custom edge, `<NodeToolbar>`, or `<Panel>`.
+- `markerStart` / `markerEnd` on `<BaseEdge>` (an SVG `url(#…)` reference). Set the marker on the edge itself; a marker spec lowers natively.
 - A renderer whose look depends on CSS: DOM elements with a `class` or `style`, text mixed with inline elements, or browser CSS selectors. The compiler cannot see a stylesheet, and guessing a layout would draw something plausible and wrong.
 - SVG `<text>`, gradients, `transform`, and SVG children produced by a `.map` or a conditional inside an `<svg>`.
 - A renderer map computed at runtime, rather than one the compiler can resolve statically.
@@ -1272,6 +1337,7 @@ Give it an explicit height where you can. Without one, it defaults to 150 points
 ### How this is verified
 
 - **State and algorithms.** Native test fixtures replay shared scenarios against both native engines, with the web engine's own answers as the oracle. Two checks fail when a portable method, or a native config field, has no scenario and no stated reason.
+- **Gestures added for React Flow parity.** On both device suites, a long-press on a node reaches `onNodeContextMenu`; a drag that starts on a target handle connects under `connectionMode: 'strict'`, even when that node is raised; a tap where two nodes overlap reaches the one with the higher `zIndex`; and holding a dragged node at the canvas edge auto-pans. Hover is asserted on Android only, because XCUITest cannot synthesise pointer hover on iOS.
 - **Rendering and interaction.** The iOS Simulator and Android Emulator suites for the example apps read what the renderer painted or placed. They check marker colours, dark-mode canvas pixels, the default node's colours, a custom edge drawn from a path string (ending where the target node is), a custom node's inline `<svg>` (measured at its 16-point size from an 8-unit `viewBox`), panel placement and the custom connection line. They also drive the gestures and keyboard commands above.
 - **Theme.** A test requires every native palette colour to equal the web's `--pyreon-flow-*` value, in light and dark mode.
 - **Scale.** A 400-node graph with culling mounts at most 40 nodes on web, iOS and Android. It keeps those bounds while panning, dragging and pinching. On web, garbage-collection tests check that a disposed flow and its removed nodes are actually released.

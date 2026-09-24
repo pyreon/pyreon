@@ -269,6 +269,13 @@ export interface PyreonPluginOptions {
    * verdict is byte-equivalent to the runtime (locked by the compiler's
    * emit-equivalence gate), so this only changes SPEED, never the result.
    *
+   * **Currently slower, not faster.** Since the runtime `.is()` gained its own
+   * verdict-only JIT, this emitted verdict (an issues-array validator in a
+   * try/catch) measures ~2× SLOWER than leaving the option off (0.42–0.63×,
+   * `packages/fundamentals/validate/bench/compiled-verdict.ts`, 2026-09-23).
+   * It only remains useful where runtime code generation is blocked (a CSP
+   * without `unsafe-eval`), which the runtime JIT cannot use.
+   *
    * OFF by default (zero behaviour change). Build-only — dev keeps the runtime
    * path (which is already correct and HMR-reactive). Composed/aliased/unsupported
    * schemas are skipped silently and fall back to the runtime `.is()`.

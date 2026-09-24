@@ -82,7 +82,7 @@ fun <T> pyreonFlowEdgeStrokes(
     nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
 ): List<PyreonFlowEdgeStroke> {
     val nodes = state.nodes.filter { it.hidden != true }.associateBy { it.id }
-    return state.edges.mapNotNull { edge ->
+    return pyreonFlowOrderedEdges(state.edges, state.elevateEdgesOnSelect, state::isEdgeSelected).mapNotNull { edge ->
         if (edge.hidden == true) return@mapNotNull null
         val source = nodes[edge.source] ?: return@mapNotNull null
         val target = nodes[edge.target] ?: return@mapNotNull null
@@ -123,7 +123,7 @@ fun <T> pyreonFlowEdgeStrokes(
 
 fun <T> pyreonFlowEdgeLabels(state: PyreonFlowState<T>, nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() }): List<PyreonFlowEdgeLabel> {
     val nodes = state.nodes.filter { it.hidden != true }.associateBy { it.id }
-    return state.edges.mapNotNull { edge ->
+    return pyreonFlowOrderedEdges(state.edges, state.elevateEdgesOnSelect, state::isEdgeSelected).mapNotNull { edge ->
         if (edge.hidden == true) return@mapNotNull null
         val source = nodes[edge.source] ?: return@mapNotNull null
         val target = nodes[edge.target] ?: return@mapNotNull null
@@ -153,9 +153,10 @@ fun <T> pyreonFlowEdgeUpdaters(state: PyreonFlowState<T>, strokes: List<PyreonFl
     }
 }
 
-fun pyreonFlowReconnectConnection(edge: PyreonFlowEdge, end: String, handle: PyreonFlowInteractiveHandle): PyreonFlowConnection? = when {
-    end == "target" && handle.type == "target" && handle.nodeId != edge.source -> PyreonFlowConnection(edge.source, handle.nodeId, edge.sourceHandle, handle.handleId)
-    end == "source" && handle.type == "source" && handle.nodeId != edge.target -> PyreonFlowConnection(handle.nodeId, edge.target, handle.handleId, edge.targetHandle)
+/** The connection an endpoint drag makes: `strict` needs the moved end's handle type, [loose] accepts either. Mirrors Swift. */
+fun pyreonFlowReconnectConnection(edge: PyreonFlowEdge, end: String, handle: PyreonFlowInteractiveHandle, loose: Boolean = false): PyreonFlowConnection? = when {
+    end == "target" && (loose || handle.type == "target") && handle.nodeId != edge.source -> PyreonFlowConnection(edge.source, handle.nodeId, edge.sourceHandle, handle.handleId)
+    end == "source" && (loose || handle.type == "source") && handle.nodeId != edge.target -> PyreonFlowConnection(handle.nodeId, edge.target, handle.handleId, edge.targetHandle)
     else -> null
 }
 
@@ -173,4 +174,21 @@ fun <T> pyreonFlowDragNodeIds(state: PyreonFlowState<T>, draggedNodeId: String):
         hasSelectedAncestor
     }
     return ids
+}
+
+// ─── Stacking order (mirrors the web's z-order.ts and Swift) ────────────────
+
+/** A node's z-index: its own `zIndex`, +1000 while dragged, +100 while selected when [elevate]. */
+fun pyreonFlowNodeZ(zIndex: Double?, selected: Boolean, dragging: Boolean, elevate: Boolean): Double =
+    (zIndex ?: 0.0) + if (dragging) 1000.0 else if (selected && elevate) 100.0 else 0.0
+
+/** An edge's stacking key: its own `zIndex`, +1000 while selected when [elevate]. */
+fun pyreonFlowEdgeZ(zIndex: Double?, selected: Boolean, elevate: Boolean): Double =
+    (zIndex ?: 0.0) + if (selected && elevate) 1000.0 else 0.0
+
+/** Edges in drawing order: a stable sort by [pyreonFlowEdgeZ]; the input itself when nothing would move. */
+fun pyreonFlowOrderedEdges(edges: List<PyreonFlowEdge>, elevate: Boolean, isSelected: (String) -> Boolean): List<PyreonFlowEdge> {
+    val anyZ = edges.any { (it.zIndex ?: 0.0) != 0.0 }
+    if (!anyZ && !(elevate && edges.any { isSelected(it.id) })) return edges
+    return edges.sortedBy { pyreonFlowEdgeZ(it.zIndex, isSelected(it.id), elevate) }
 }

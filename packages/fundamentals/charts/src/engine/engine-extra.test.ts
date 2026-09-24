@@ -128,11 +128,14 @@ describe('stacked bars', () => {
     expect(stackedExtent([[10, 20], [5, 5]]).max).toBe(25)
   })
 
-  /** A mixed-sign stack has a height that is not its total; flag, do not guess. */
-  it('reports negatives rather than silently dropping them unannounced', () => {
+  /** A mixed-sign stack diverges from zero (ECharts' samesign): every value draws a segment. */
+  it('draws a negative stack value below zero instead of dropping it', () => {
     expect(stackHasNegatives([[1, -2]])).toBe(true)
     expect(stackHasNegatives([[1, 2]])).toBe(false)
-    expect(layoutStackedBars([[1, -2]], plot, { min: 0, max: 2 }, 0.25)).toHaveLength(1)
+    const segs = layoutStackedBars([[1], [-2]], plot, { min: -2, max: 2 }, 0.25)
+    expect(segs).toHaveLength(2)
+    // Above zero for +1, below it for -2: the two meet at the zero line.
+    expect(segs[0]!.rect.y + segs[0]!.rect.h).toBeCloseTo(segs[1]!.rect.y, 9)
   })
 
   it('handles ragged series', () => {

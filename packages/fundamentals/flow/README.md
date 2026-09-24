@@ -72,7 +72,8 @@ The `TData` generic flows through to `FlowNode<TData>` and `NodeComponentProps<T
 | Geometry | `getNodeDimensions(id)` — effective box: explicit → measured → 150×40 default |
 | Auto-layout | `layout(algorithm?, options?)` — Promise, built-in seven-mode engine (code-split), fed measured node sizes |
 | Graph queries | `getConnectedEdges` / `getIncomers` / `getOutgoers` / `isValidConnection` / `findNodes` / `searchNodes` |
-| Listeners | `onConnect` / `onNodesChange` / `onNodeClick` / `onEdgeClick` / `onNodeDragStart` / `onNodeDragEnd` / `onNodeDoubleClick` |
+| Intersections | `getIntersectingNodes(nodeOrRect, partially?)` / `isNodeIntersecting(nodeOrRect, area, partially?)` / `getNodesBounds(ids?)` |
+| Listeners | `onConnect` / `onNodesChange` / `onNodeClick` / `onEdgeClick` / `onNodeDragStart` / `onNodeDragEnd` / `onNodeDoubleClick` / `onNodeContextMenu` / `onEdgeContextMenu` / `onPaneContextMenu` / `onNodeMouseEnter` / `onNodeMouseLeave` / `onEdgeMouseEnter` / `onEdgeMouseLeave` |
 | Serialization | `toJSON()` / `fromJSON(data)` |
 | Lifecycle | `dispose()` |
 
@@ -88,6 +89,9 @@ The `TData` generic flows through to `FlowNode<TData>` and `NodeComponentProps<T
 | `<Panel position="top-left" \| ...>` | Overlay panel relative to the flow viewport |
 | `<NodeResizer>` | Resize handles for the selected node |
 | `<NodeToolbar>` | Toolbar attached to a node |
+| `<EdgeLabelRenderer>` | HTML labels for custom edges |
+| `<BaseEdge path label? labelX? labelY?>` / `<EdgeText x y label>` | Building blocks for custom edges: the stroke and an SVG label |
+| `<ViewportPortal>` | HTML in flow coordinates (web only) |
 
 JSX components are **NOT generic at the call site** (`<Flow<MyData> />` isn't valid JSX). `FlowProps.instance` is typed as `FlowInstance<any>` so typed consumers pass `FlowInstance<MyData>` without casting.
 
@@ -115,7 +119,9 @@ Each node mounts ONCE per graph lifetime. Drags, selection clicks, and `updateNo
 
 ## Custom edge renderers
 
-Same accessor contract — `EdgeComponentProps` exposes `sourceX()` / `sourceY()` / `targetX()` / `targetY()` / `selected()` as reactive accessors. Use the path helpers (`getBezierPath`, `getSmoothStepPath`, `getStraightPath`, `getStepPath`, `getWaypointPath`) inside the render to compute `d`.
+Same accessor contract — `EdgeComponentProps` exposes `sourceX()` / `sourceY()` / `targetX()` / `targetY()` / `selected()` as reactive accessors. Use the path helpers (`getBezierPath`, `getSmoothStepPath`, `getStraightPath`, `getStepPath`, `getWaypointPath`) inside the render to compute `d`, and draw it with `<BaseEdge path={...}>` or a plain `<path>`.
+
+Nodes and edges take `zIndex`; a selected node is raised above its neighbours (`elevateNodesOnSelect`, on by default) and `elevateEdgesOnSelect` does the same for edges. `connectionMode: 'loose'` allows any handle to connect to any other, and the canvas auto-pans while a node or connection is dragged near its edge (`autoPanOnNodeDrag`, `autoPanOnConnect`, `autoPanSpeed`).
 
 ## Auto-layout
 
@@ -203,7 +209,9 @@ The same source provides all of these on web, iOS and Android:
 - `<path d=…>` inside custom edges and connection lines, for any SVG path data.
 - Inline `<svg>` inside node, edge and connection-line renderers: its shapes (`path`, `rect`, `circle`, `ellipse`, `line`, `polyline`, `polygon`, nested `<g>`) draw natively, scaled by the `viewBox`, with SVG paint inheritance. `<text>`, gradients and `transform` are named in a warning.
 - Plain `<div>` / `<p>` / `<span>` in a renderer, in the two shapes whose native layout provably matches the browser's: text-only content, and a `<div>` of block children. A `class`, a `style` or inline-flow children keep the warning that points at `<FlowWebView>`.
-- Handles, connect and reconnect gestures, resizing, and toolbars.
+- Handles, connect and reconnect gestures (both `connectionMode`s), resizing, and toolbars.
+- `zIndex` and select elevation, auto-pan, the intersection helpers, and `<BaseEdge>` / `<EdgeText>`.
+- The context-menu listeners (long-press) and the hover listeners (pointer hover).
 - `<Background>`, `<Controls>`, `<MiniMap>` and `<Panel>`, plus `colorMode` including `'system'`.
 - Pan, pinch-zoom and drag.
 - Keyboard commands and accessibility names.
@@ -221,6 +229,7 @@ The full list, including the platform limits, is in the [docs](https://pyreon.de
 **What stays browser-only.** The compiler reports each of these by name:
 
 - `FlowLayersContext` and `flowStyles`, the DOM renderer's layer context and CSS custom properties.
+- `<ViewportPortal>` (HTML positioned with CSS).
 - Renderers whose layout depends on CSS: DOM elements with a `class` or `style`, inline-flow mixes of text and elements, and SVG `<text>`, gradients and `transform`. Plain SVG shapes and simple `<div>` / `<p>` / `<span>` structure are not in this list; they render natively.
 - Renderer maps computed at runtime.
 

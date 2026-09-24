@@ -11,21 +11,28 @@
  * `validate` fn (zod issues → Formik's flat errors object). Identical
  * validation work to every other column; no extra dependency.
  *
- * Built with `React.createElement` (no JSX) — same as the RHF impl. Commit
+ * Written as the automatic JSX runtime's output (`jsx`/`jsxs`, esbuild
+ * `jsx: 'automatic'` emit, diffed) — same as the RHF impl. Commit
  * boundary: `flushSync` so the controlled re-render commits inside the timed
  * region (CPU-objective; see METHODOLOGY.md).
  */
 import { useFormik } from 'formik'
-import * as React from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { flushSync } from 'react-dom'
-import { setInput, fieldInputCount, visibleErrorCount } from '../dom'
-import { bench, type BenchSuite } from '../runner'
-import { FIELD_NAMES, emptyValues, formSchema, type FieldName, type FormValues } from '../../shared/schema'
+import { jsx, jsxs } from 'react/jsx-runtime'
+import {
+  expectDirtyDom,
+  expectEmailError,
+  expectLibraryValue,
+  expectResetDom,
+  fieldInputCount,
+  setInput,
+} from '../dom'
+import { bench, settle, type BenchSuite } from '../runner'
+import { FIELD_NAMES, emptyValues, formSchema, validValues, type FieldName, type FormValues } from '../../shared/schema'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false
 
-const rc = React.createElement
 type Formik = ReturnType<typeof useFormik<FormValues>>
 
 /** A 12-keystroke word per timed run — matches every other impl. */
@@ -52,40 +59,56 @@ function FormImpl({ validateOnChange, onReady }: { validateOnChange: boolean; on
     onSubmit: () => {},
   })
   onReady(formik)
-  return rc(
-    'form',
-    null,
-    FIELD_NAMES.map((name) =>
-      rc(
+  return jsx('form', {
+    children: FIELD_NAMES.map((name) =>
+      jsxs(
         'div',
-        { key: name },
-        rc('input', {
-          'data-field': name,
-          name,
-          value: formik.values[name],
-          onChange: formik.handleChange,
-          onBlur: formik.handleBlur,
-        }),
-        rc('span', { 'data-error': name }, (formik.touched[name] && formik.errors[name]) || ''),
+        {
+          children: [
+            jsx('input', {
+              'data-field': name,
+              name,
+              value: formik.values[name],
+              onChange: formik.handleChange,
+              onBlur: formik.handleBlur,
+            }),
+            jsx('span', { 'data-error': name, children: (formik.touched[name] && formik.errors[name]) || '' }),
+          ],
+        },
+        name,
       ),
     ),
-  )
+  })
 }
 
 interface Mounted {
   formik: Formik
+  /** The LATEST render's `useFormik` return. `formik` above is the first
+   *  render's object, whose `values`/`errors` are a stale snapshot (its
+   *  callbacks are stable, so calling them is fine). */
+  latest: () => Formik
   root: Root
   dispose: () => void
 }
 
 function mountForm(container: HTMLElement, validateOnChange: boolean): Mounted {
   let captured: Formik | undefined
+  let latest: Formik | undefined
   const root = createRoot(container)
   flushSync(() => {
-    root.render(rc(FormImpl, { validateOnChange, onReady: (f) => (captured = f) }))
+    root.render(
+      jsx(FormImpl, {
+        validateOnChange,
+        onReady: (f: Formik) => {
+          captured ??= f
+          latest = f
+        },
+      }),
+    )
   })
   return {
     formik: captured as Formik,
+    latest: () => latest as Formik,
     root,
     dispose: () => {
       root.unmount()
@@ -115,29 +138,44 @@ export async function runFormik(container: HTMLElement): Promise<BenchSuite> {
 
   // ── keystroke-blur (validateOnChange:false — but controlled still re-renders) ─
   {
-    const { dispose } = mountForm(container, false)
+    const { latest, dispose } = mountForm(container, false)
     const input = container.querySelector('input[data-field="email"]') as HTMLInputElement
     await bench('keystroke-blur', suite, () => {
       for (let i = 1; i <= TYPED.length; i++) flushSync(() => setInput(input, TYPED.slice(0, i)))
     }, {
-      reset: () => flushSync(() => setInput(input, '')),
-      verify: () => {
-        if (input.value !== TYPED) throw new Error('keystroke-blur: value not committed')
+      reset: async () => {
+        flushSync(() => setInput(input, ''))
+        await settle()
       },
+      verify: () => expectLibraryValue('keystroke-blur', latest().values.email, TYPED),
     })
     dispose()
   }
 
   // ── keystroke-change (validate every keystroke) ──────────────────────────
   {
-    const { dispose } = mountForm(container, true)
+    const { formik, latest, dispose } = mountForm(container, true)
     const input = container.querySelector('input[data-field="email"]') as HTMLInputElement
-    await bench('keystroke-change', suite, () => {
-      for (let i = 1; i <= TYPED.length; i++) flushSync(() => setInput(input, TYPED.slice(0, i)))
+    // Idiomatic Formik renders an error only once the field is TOUCHED (set on
+    // blur), so an untouched field in change mode validates but renders no
+    // error — one fewer DOM write per run than every other column. Mark the
+    // field touched (untimed, no validation) so all columns render the error.
+    flushSync(() => void formik.setFieldTouched('email', true, false))
+    await bench('keystroke-change', suite, async () => {
+      // One keystroke = dispatch, commit, then let its async validation settle
+      // (see runner.ts `settle`) — identical in every column.
+      for (let i = 1; i <= TYPED.length; i++) {
+        flushSync(() => setInput(input, TYPED.slice(0, i)))
+        await settle()
+      }
     }, {
-      reset: () => flushSync(() => setInput(input, '')),
-      verify: () => {
-        if (input.value !== TYPED) throw new Error('keystroke-change: value not committed')
+      reset: async () => {
+        flushSync(() => setInput(input, ''))
+        await settle()
+      },
+      verify: (c) => {
+        expectLibraryValue('keystroke-change', latest().values.email, TYPED)
+        expectEmailError(c)
       },
     })
     dispose()
@@ -149,15 +187,15 @@ export async function runFormik(container: HTMLElement): Promise<BenchSuite> {
     await bench('reset-dirty-form', suite, () => {
       flushSync(() => formik.resetForm())
     }, {
-      reset: () =>
+      reset: async () => {
+        const dirty = validValues()
         flushSync(() => {
-          for (const name of FIELD_NAMES) formik.setFieldValue(name, 'dirty')
-        }),
-      verify: () => {
-        const first = container.querySelector('input[data-field="first"]') as HTMLInputElement
-        if (first.value !== '') throw new Error('reset: form not reset')
-        if (visibleErrorCount(container) !== 0) throw new Error('reset: errors not cleared')
+          for (const name of FIELD_NAMES) void formik.setFieldValue(name, dirty[name])
+        })
+        await settle()
+        expectDirtyDom(container, dirty)
       },
+      verify: expectResetDom,
     })
     dispose()
   }

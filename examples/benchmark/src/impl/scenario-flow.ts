@@ -51,7 +51,7 @@ import {
   type Node as RfNode,
   type ReactFlowInstance,
 } from '@xyflow/react'
-import * as React from 'react'
+import { jsx as reactJsx } from 'react/jsx-runtime'
 import { flushSync as reactFlushSync } from 'react-dom'
 import * as ReactDOM from 'react-dom/client'
 import type { BenchSuite } from '../runner'
@@ -196,10 +196,9 @@ function reactFlowTarget(base: { nodes: GraphNode[]; edges: GraphEdge[] }): Flow
         resolveReady = r
       })
       const root = ReactDOM.createRoot(host)
-      const element = React.createElement(
-        ReactFlowProvider,
-        null,
-        React.createElement(ReactFlow, {
+      // Automatic-JSX-runtime emit of `<ReactFlowProvider><ReactFlow … /></ReactFlowProvider>`.
+      const element = reactJsx(ReactFlowProvider, {
+        children: reactJsx(ReactFlow, {
           defaultNodes: base.nodes.map(toNode),
           defaultEdges: base.edges.map(toEdge),
           onInit: (i: ReactFlowInstance) => {
@@ -209,7 +208,7 @@ function reactFlowTarget(base: { nodes: GraphNode[]; edges: GraphEdge[] }): Flow
           fitView: false,
           proOptions: { hideAttribution: true },
         }),
-      )
+      })
       reactFlushSync(() => root.render(element))
       return () => {
         root.unmount()

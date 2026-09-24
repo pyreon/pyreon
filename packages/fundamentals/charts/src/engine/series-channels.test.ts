@@ -46,6 +46,11 @@ const ROLE: Readonly<Record<keyof Series, Role>> = {
   barMaxWidth: 'presentation',
   barMinWidth: 'presentation',
   barStack: 'presentation',
+  // How values stack changes where a segment is drawn, not what the datum is: the table reads the values.
+  stackStrategy: 'presentation',
+  stackDesc: 'presentation',
+  barMinHeight: 'presentation',
+  barBackground: 'presentation',
   color: 'presentation',
   width: 'presentation',
   radius: 'presentation',

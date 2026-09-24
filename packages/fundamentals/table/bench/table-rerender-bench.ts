@@ -57,6 +57,18 @@
 process.env.NODE_ENV = 'production'
 
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 GlobalRegistrator.register()
 // Drive React commits synchronously via flushSync — the correct bench primitive.
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false
@@ -383,6 +395,7 @@ const padL = (s: string, w: number) => s.padStart(w)
 
 const jsonOut: Record<string, Record<string, Counts>> = {}
 
+console.log(benchRuntimeBanner())
 for (const op of ['single-cell', 'sort'] as const) {
   console.log(
     `\n=== ${op === 'single-cell' ? 'SINGLE-CELL edit (one field of one row, immutable update)' : 'SORT toggle (re-order all rows by column c0)'} — ${COLS} columns ===`,

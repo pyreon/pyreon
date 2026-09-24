@@ -108,6 +108,18 @@ import Joi from 'joi'
 // and what limits the drift risk.
 import * as typiaGen from './typia/generated.js'
 import { s } from '../src/v1'
+import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+
+// Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
+// node = V8) plus CPU and load, so a result is never quoted engine-less.
+function benchRuntimeBanner(): string {
+  const bunRt = (globalThis as { Bun?: { version: string } }).Bun
+  const engine = bunRt ? `bun ${bunRt.version} (JavaScriptCore)` : `node ${process.version} (V8)`
+  const load = benchLoadavg()
+    .map((l) => l.toFixed(2))
+    .join(' ')
+  return `${engine} · ${process.platform}/${process.arch} · ${benchCpus()[0]?.model ?? 'unknown cpu'} · loadavg ${load}`
+}
 
 // ─── libraries ─────────────────────────────────────────────────────────
 const ALL_LIBS = [
@@ -1028,7 +1040,7 @@ console.log(
   `versions: zod ${z.core?.version ? `${z.core.version.major}.${z.core.version.minor}.${z.core.version.patch}` : '4'}, valibot 1, arktype 2, typebox 0.34, typia 14, yup 1, joi 18`,
 )
 console.log(
-  `Node ${process.version}, ${process.platform} ${process.arch}, NODE_ENV=${process.env.NODE_ENV}`,
+  `${benchRuntimeBanner()}, NODE_ENV=${process.env.NODE_ENV}`,
 )
 console.log(
   `Per-cell isolation, ${PROCS} processes pooled per cell · median ns/op ±95% bootstrap CI · 🤝 = CI overlaps the winner (tied within noise)`,
@@ -1123,7 +1135,7 @@ console.log(
   JSON.stringify(
     {
       meta: {
-        node: process.version,
+        runtime: benchRuntimeBanner(),
         platform: `${process.platform}/${process.arch}`,
         libs: LIBS,
         axes: AXES,
