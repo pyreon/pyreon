@@ -21,8 +21,8 @@
  * when it is missing, so `atlas scan` keeps working in a project that has no
  * bundler at all.
  */
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { relative, resolve, sep } from 'node:path'
 import { runScan } from '../cli/run'
 import { discoverComponents } from '../discover'
 import { workspaceResolvePlugin } from '../discover/workspace-packages'
@@ -35,7 +35,7 @@ import {
   type RpcMethod,
 } from '../dev/plugin'
 import { catalogIds, type CatalogEntrySource } from '../dev/catalog-module'
-import { bakedRpcScript, bakeRpc } from './bake'
+import { BAKED_RPC_DIR, bakedRpcScript, bakedRpcUrlScript, bakeRpc, splitBakedRpc, type BakedRpc } from './bake'
 import { collectEntries } from './entries'
 
 export interface BuildOptions {
@@ -85,12 +85,72 @@ const NO_VITE =
  */
 const WORK_DIR = 'node_modules/.atlas-build'
 
+/** Written into every build output; lets a later build empty the directory. */
+export const OUT_MARKER = '.atlas-build-output'
+
+/**
+ * Refuse an output directory whose emptying would destroy the user's work.
+ *
+ * The build empties `outDir` first, and Vite's own guard is off for a
+ * directory outside its root, which the output always is. So `--out .`
+ * deleted the project, `--out src` replaced the components with the site, and
+ * `--out ../anything` emptied a sibling directory. A directory is safe to empty
+ * when it is new, empty, or carries the marker a previous build wrote. The
+ * default `atlas-dist` and any earlier atlas output (`isEarlierAtlasBuild`)
+ * are also accepted, since builds before the marker existed wrote there.
+ */
+/**
+ * Output from a build that predates the marker: its shell mounts into
+ * `#atlas-root`, which nothing else writes. Accepting it keeps an upgrade from
+ * refusing a directory atlas itself filled.
+ */
+function isEarlierAtlasBuild(outDir: string): boolean {
+  try {
+    return readFileSync(resolve(outDir, 'index.html'), 'utf8').includes('id="atlas-root"')
+  } catch {
+    return false
+  }
+}
+
+export function assertSafeOutDir(
+  outDir: string,
+  context: { root: string; scanRoot: string; isDefault: boolean },
+): void {
+  const inside = (child: string, parent: string) => {
+    const rel = relative(parent, child)
+    return rel === '' || (!rel.startsWith('..') && !rel.startsWith(sep) && rel !== '..')
+  }
+  const refuse = (why: string): never => {
+    throw new Error(
+      `[Pyreon] atlas build: refusing to write to ${outDir} — ${why}. ` +
+        'The build empties its output directory first. Choose a new or empty directory, e.g. --out atlas-dist.',
+    )
+  }
+  if (inside(context.root, outDir)) refuse('it contains the project')
+  if (inside(outDir, context.scanRoot) || inside(context.scanRoot, outDir)) {
+    refuse('it overlaps the component source directory')
+  }
+  if (context.isDefault || !existsSync(outDir)) return
+  let entries: string[]
+  try {
+    entries = readdirSync(outDir)
+  } catch {
+    return refuse('it is not a directory')
+  }
+  if (entries.length > 0 && !entries.includes(OUT_MARKER) && !isEarlierAtlasBuild(outDir)) {
+    refuse('it is not empty and was not written by atlas build')
+  }
+}
+
 export async function buildStatic(options: BuildOptions = {}): Promise<BuildResult> {
   const root = resolve(options.cwd ?? '.')
   const scanDir = options.dir ?? 'src'
   const scanRoot = resolve(root, scanDir)
   const outDir = resolve(root, options.out ?? 'atlas-dist')
   const log = options.onLog ?? (() => {})
+  // Before any work: the build EMPTIES this directory, so a wrong `--out`
+  // would delete whatever is there.
+  assertSafeOutDir(outDir, { root, scanRoot, isDefault: options.out === undefined })
 
   // ── 1. Derive the catalog ───────────────────────────────────────────────
   // The same pipeline `atlas dev` boots from, for the same reason: one
@@ -172,7 +232,9 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
   mkdirSync(workDir, { recursive: true })
 
   writeFileSync(resolve(workDir, 'entry.js'), staticEntry(title), 'utf8')
-  writeFileSync(resolve(workDir, 'index.html'), staticHtml(title, baked), 'utf8')
+  const split = splitBakedRpc(baked, root)
+  const base = options.base ?? '/'
+  writeFileSync(resolve(workDir, 'index.html'), staticHtml(title, split.inline, base), 'utf8')
 
   // ── 4. Build ────────────────────────────────────────────────────────────
   type ViteBuild = (config: Record<string, unknown>) => Promise<unknown>
@@ -186,6 +248,14 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
 
   const factory = await loadPyreonPlugin()
 
+  // `vite build` sets NODE_ENV=production only when it is UNSET, and the scan
+  // above ran a Vite server, which sets it to `development`. So every built
+  // site shipped Pyreon's dev build: 56 dev-warning strings and the
+  // reactive-devtools stack capture, which alone was a 266 ms boot task. A
+  // deployed site has no dev variant, so the value is forced for the build
+  // and then restored; mutating the caller's environment is not ours to keep.
+  const prevNodeEnv = process.env.NODE_ENV
+  process.env.NODE_ENV = 'production'
   try {
     await build({
       // Root is the GENERATED directory, not the project.
@@ -243,11 +313,23 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
       },
     })
   } finally {
+    if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = prevNodeEnv
     // The generated input has served its purpose. Left behind it would be
     // picked up by the next `vite dev` glob in some projects, and it is
     // regenerated from scratch on every build anyway.
     rmSync(workDir, { recursive: true, force: true })
   }
+
+  // The per-component answers, fetched on demand (see `splitBakedRpc`).
+  const rpcDir = resolve(outDir, BAKED_RPC_DIR)
+  mkdirSync(rpcDir, { recursive: true })
+  writeFileSync(resolve(rpcDir, 'index.json'), JSON.stringify(split.index), 'utf8')
+  for (const [file, content] of split.files) {
+    writeFileSync(resolve(rpcDir, file), JSON.stringify(content), 'utf8')
+  }
+  // Marks the directory as atlas's own, so the next build may empty it.
+  writeFileSync(resolve(outDir, OUT_MARKER), 'Written by atlas build. Safe to delete.\n', 'utf8')
 
   // ── 5. A directory per component ────────────────────────────────────────
   // The SAME ids the catalog module generates — `catalogIds` is the one owner.
@@ -395,7 +477,7 @@ function escapeHtml(text: string): string {
  * Sharing them would mean one of the two is always carrying the other's
  * accidents.
  */
-export function staticHtml(title: string, baked: Parameters<typeof bakedRpcScript>[0]): string {
+export function staticHtml(title: string, baked: BakedRpc, base = '/'): string {
   return [
     '<!doctype html>',
     '<html lang="en">',
@@ -408,6 +490,7 @@ export function staticHtml(title: string, baked: Parameters<typeof bakedRpcScrip
     '    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />',
     // Before the module script, which is deferred — see `bakedRpcScript`.
     `    ${bakedRpcScript(baked)}`,
+    `    ${bakedRpcUrlScript(base)}`,
     `    ${routesFlagScript()}`,
     '  </head>',
     '  <body>',
