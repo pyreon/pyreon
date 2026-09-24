@@ -464,7 +464,19 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
   // renderEffect rather than effect since mountElement's cleanup array owns the
   // lifecycle.
   if (typeof value === 'function') {
-    return renderEffect(() => applyStaticProp(el, key, (value as () => unknown)()))
+    return renderEffect(() => {
+      // The accessor's RESULT can itself be an accessor. The compiler inlines a
+      // prop-derived function-valued const at its use site, so
+      // `const tabIndexFor = () => …` passed as `tabIndex={tabIndexFor}` on a
+      // spread element arrives here as `() => (() => …)`. Unresolved, the inner
+      // closure reached `applyStaticProp` and `el.tabIndex = fn` coerced it to 0
+      // on EVERY item, breaking roving tabindex in Radio / Tabs /
+      // SegmentedControl. The getter branch in `applyProps` and the compiled
+      // `_setAttr` already resolve this second level; this is the same rule.
+      let resolved = (value as () => unknown)()
+      if (typeof resolved === 'function') resolved = (resolved as () => unknown)()
+      applyStaticProp(el, key, resolved)
+    })
   }
 
   applyStaticProp(el, key, value)

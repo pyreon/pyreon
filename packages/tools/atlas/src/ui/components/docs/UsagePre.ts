@@ -1,10 +1,10 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const UsagePre = el
   .attrs({
     tag: 'pre',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     margin: '0',
     padding: '16px',
     borderRadius: t.radius.card,

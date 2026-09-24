@@ -1,10 +1,10 @@
-import { txt, type T } from '../../kit'
+import { txt } from '../../kit'
 
 export const CountPill = txt
   .attrs({
     tag: 'span',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     fontSize: t.size.caption,
     padding: '2px 8px',
     borderRadius: t.radius.pill,

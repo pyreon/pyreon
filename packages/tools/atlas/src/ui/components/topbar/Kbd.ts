@@ -1,10 +1,10 @@
-import { txt, type T } from '../../kit'
+import { txt } from '../../kit'
 
 export const Kbd = txt
   .attrs({
     tag: 'span',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     position: 'absolute',
     right: '12px',
     top: '50%',

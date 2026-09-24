@@ -1,10 +1,10 @@
-import { txt, type T } from '../../kit'
+import { txt } from '../../kit'
 
 export const SideLabel = txt
   .attrs({
     tag: 'span',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     fontFamily: t.font.mono,
     fontSize: t.size.label,
     letterSpacing: t.tracking.xxl,

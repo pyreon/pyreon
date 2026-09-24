@@ -40,9 +40,51 @@ export const SKIP_REASON = {
   /** Measured in a real browser; `atlas scan` cannot do it in Node. */
   browserOnly:
     'browser-only — run `atlas verify-browser` to measure this (a Node scan cannot)',
-  /** Nothing has examined this scenario at all. */
-  notRun: 'not run — no plugin claimed this check',
+  /**
+   * Nothing has examined this scenario at all.
+   *
+   * Phrased as the CAUSE only: the report prints it after `not run: <checks> —`,
+   * and a reason that restated "not run" printed it twice.
+   */
+  notRun: 'no plugin claimed this check',
+  /** Mounting was switched off for the run, so no runtime check could execute. */
+  mountDisabled: 'mounting is disabled for this run (`--no-mount`) — the scan stayed static',
 } as const
+
+/**
+ * The runtime checks' skip when the component's module did not load.
+ *
+ * Shared by every plugin whose check needs the component FUNCTION, so the
+ * interaction, leak and parity rows all name the one cause instead of each
+ * inventing a vaguer one.
+ */
+export function unmountableSkip(ci: { loadError?: string | undefined }): VerifyCheck {
+  if (ci.loadError) {
+    return skipped(
+      'load-failed',
+      `module failed to load — ${ci.loadError}`,
+      'Fix the import error above (run the file through your bundler to see it in context); the runtime checks run once it loads.',
+    )
+  }
+  return skipped('not-run', 'no component function to mount — the catalog carries metadata only')
+}
+
+/**
+ * Claims the mount-dependent checks with the reason they did not run, for a
+ * registry built WITHOUT the mount/parity plugins (`atlas scan --no-mount`).
+ *
+ * Without it those checks keep a bare skip and the report can only say "no
+ * plugin claimed this check", which blames a missing plugin for what was a
+ * deliberate choice. Register it only when mounting is off — a real
+ * `mountPlugin` placed after it would override these anyway.
+ */
+export function mountDisabledPlugin(reason: string = SKIP_REASON.mountDisabled): AtlasPlugin {
+  const check = skipped('mount-disabled', reason)
+  return {
+    name: 'atlas:mount-disabled',
+    verify: () => ({ interaction: check, leak: check, ssrParity: check }),
+  }
+}
 
 /**
  * A skip that says why, and carries the CLASS of why.
