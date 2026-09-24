@@ -184,6 +184,10 @@ export type FindingCode =
   | 'browser-only'
   /** No plugin claimed this check. */
   | 'not-run'
+  /** Mounting was switched off for this run (`--no-mount`, or an unmountable setup). */
+  | 'mount-disabled'
+  /** The component's module failed to import, so nothing could be mounted. */
+  | 'load-failed'
   /** No DOM could be created to mount into. */
   | 'no-dom'
   /** The leak check needs a GC hook (`bun`, or `node --expose-gc`). */
@@ -317,6 +321,13 @@ export interface ComponentIntelligence {
   tags: readonly string[]
   /** source file path, when known */
   source?: string
+  /**
+   * Why the component's module could not be loaded, when the scan tried and
+   * failed. Present only then: it is what lets every runtime check that could
+   * not run name the REAL cause ("module failed to load") instead of the
+   * generic "no plugin claimed this check".
+   */
+  loadError?: string
   /**
    * What this component's OWN source costs a consumer, minified + gzipped.
    *

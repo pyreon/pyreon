@@ -50,7 +50,7 @@ import type { ComponentRef, VerifyCheck, VerifyFinding } from '../core'
 import { finding, materializeContent } from '../core'
 import { ensureDom } from '../verify/dom'
 import type { MountRuntime } from '../verify/harness'
-import { SKIP_REASON, skipped } from './registry'
+import { SKIP_REASON, skipped, unmountableSkip } from './registry'
 import type { AtlasPlugin } from './types'
 
 /** Why a parity check could not run. Stated, never silently passed. */
@@ -333,9 +333,11 @@ export function ssrParityPlugin(options: SsrParityOptions = {}): AtlasPlugin {
     name: 'atlas:ssr-parity',
     async verify(ctx) {
       const runtime = options.runtime
-      if (!runtime) return { ssrParity: skipped('not-run', SKIP_REASON.notRun) }
+      if (!runtime) {
+        return { ssrParity: skipped('not-run', 'the parity plugin was given no runtime to render with') }
+      }
       const component = ctx.component.component
-      if (typeof component !== 'function') return { ssrParity: skipped('not-run', SKIP_REASON.notRun) }
+      if (typeof component !== 'function') return { ssrParity: unmountableSkip(ctx.component) }
 
       // The DOM is acquired here rather than injected, matching the mount
       // plugin: `ensureDom` installs the globals `@pyreon/runtime-dom` reaches

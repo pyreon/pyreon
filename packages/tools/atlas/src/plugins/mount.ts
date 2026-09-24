@@ -29,7 +29,7 @@
  */
 import type { ComponentIntelligence, ComponentRef, PlayFn, VerifyCheck, VerifyFinding } from '../core'
 import { finding } from '../core'
-import { skipped } from './registry'
+import { skipped, unmountableSkip } from './registry'
 import { defineAtlasPlugin } from './define'
 import { installRouteFor } from './router'
 import type { AtlasPlugin, VerifyContext } from './types'
@@ -425,9 +425,11 @@ export function mountPlugin(options: MountPluginOptions = {}): AtlasPlugin {
     async verify(ctx: VerifyContext): Promise<{ interaction: VerifyCheck; leak: VerifyCheck }> {
       const component = ctx.component.component
       if (typeof component !== 'function') {
-        // Metadata-only intelligence: the catalog knows the component's shape
-        // but was never handed the function. Nothing to mount.
-        return { interaction: { status: 'skip' }, leak: { status: 'skip' } }
+        // Metadata-only intelligence, or a module that failed to load: the
+        // catalog knows the component's shape but was never handed the
+        // function. Nothing to mount — and the skip says which of the two.
+        const why = unmountableSkip(ctx.component)
+        return { interaction: why, leak: why }
       }
 
       // The WHOLE CATALOG is verified together, on the first scenario that asks.

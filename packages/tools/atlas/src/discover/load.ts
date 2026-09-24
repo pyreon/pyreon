@@ -416,8 +416,12 @@ export function componentLoaderPlugin(loader?: ModuleLoader): AtlasPlugin {
       // `source` is already relative to the PROCESS cwd (discovery joins the
       // scan root itself), so it resolves against that — joining `ctx.cwd`
       // again produces `examples/x/examples/x/...` and every load fails.
-      const { component } = await loadComponent(resolve(ci.source), ci.name, active)
-      return component ? { ...ci, component } : ci
+      const { component, reason } = await loadComponent(resolve(ci.source), ci.name, active)
+      if (component) return { ...ci, component }
+      // Recorded, not dropped: every runtime check downstream skips for this
+      // component, and without the reason each one says "no plugin claimed
+      // this check" — true of nothing here.
+      return reason ? { ...ci, loadError: reason } : ci
     },
   })
 }
