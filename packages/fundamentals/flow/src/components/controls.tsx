@@ -83,7 +83,7 @@ const LockIcon = () => (
  * *before* a `<MiniMap>` silently failed to render (its DOM was never
  * mounted) — a compiler slot-ordering bug where an earlier dynamic slot
  * shifted the sibling element-ref walk, since fixed at the root.
- * See `.claude/rules/anti-patterns.md` → "Flow overlay child order".
+ * See `.agents/rules/anti-patterns.md` → "Flow overlay child order".
  *
  * @example
  * ```tsx

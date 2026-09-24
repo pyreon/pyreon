@@ -418,8 +418,7 @@ export function makeReactiveProps(
 // ─── Unique ID ───────────────────────────────────────────────────────────────
 
 // Plain module-scope counter. The duplicate-instance bug class is now
-// prevented at the bundler layer + detected at the runtime layer — see
-// `.claude/plans/jaunty-herding-kazoo.md`.
+// prevented at the bundler layer + detected at the runtime layer.
 let _idCounter = 0
 
 /**

@@ -513,7 +513,7 @@ export function createISRHandler(
   // WeakSet membership check tree-shake to zero bytes in production.
   // Every dev gate in this file is now this bare inline shape (the local
   // `__DEV__` const alias it replaced is the documented anti-pattern).
-  // See .claude/rules/anti-patterns.md → "Local `__DEV__` const alias".
+  // See .agents/rules/anti-patterns.md → "Local `__DEV__` const alias".
   if (
     process.env.NODE_ENV !== 'production'
     && config.cacheKey === undefined

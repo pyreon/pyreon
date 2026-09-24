@@ -1,9 +1,9 @@
-Run the full validation pipeline before pushing.
+Run the validation pipeline before pushing.
 
 Steps:
 
-1. Run `bun run lint` — report any lint errors
-2. Run `bun run typecheck` — report any type errors (ignore MCP TS2589 pre-existing)
-3. Run `bun run test` — report any test failures
-4. If all pass, report "All checks pass ✓"
-5. If any fail, report the specific errors with file:line references and suggest fixes
+1. `bun run validate-fast` — lint plus the cheap CI gates (docs sync, doc claims, changeset, budgets, distribution, release readiness, ratchets…).
+2. `bun run lint:pyreon`
+3. `bun run --filter=<affected> typecheck` and `bun run --filter=<affected> test`, with the affected set from `bun scripts/affected.ts` (a root-file change means `--filter=*`).
+4. If all pass, report "All checks pass ✓".
+5. If any fail, report each error with `file:line` and the fix from `.agents/rules/workflow.md` ("Recurring CI failure modes").

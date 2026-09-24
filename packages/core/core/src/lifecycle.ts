@@ -7,8 +7,7 @@ import type { CleanupFn, LifecycleHooks } from './types'
 // — the duplicate-instance bug class is now prevented at the bundler
 // layer (`@pyreon/vite-plugin` injects `resolve.dedupe`) and detected at
 // the runtime layer (every package calls `registerSingleton` at module
-// load). See `.claude/plans/jaunty-herding-kazoo.md` for the full
-// defense-in-depth architecture.
+// load).
 let _current: LifecycleHooks | null = null
 
 export function setCurrentHooks(hooks: LifecycleHooks | null) {

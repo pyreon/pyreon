@@ -100,7 +100,7 @@ const VIRTUAL_ROUTES_ID = "virtual:zero/routes";
  * `prev='silent'` (post-A); A's `finally` deletes env; B's `finally`
  * restores `'silent'` — leaking the silence past both scopes
  * permanently. The refcount is order-independent. See
- * `.claude/rules/anti-patterns.md` "Sentinel opt-out for legitimate
+ * `.agents/rules/anti-patterns.md` "Sentinel opt-out for legitimate
  * dual-load" and the bisect-verified test in
  * `packages/core/reactivity/src/tests/singleton-sentinel.test.ts`.
  *

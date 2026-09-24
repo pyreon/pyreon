@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { hitFunnel, layoutFunnel, renderFunnel } from './funnel'
+import { hitFunnel, hitFunnelEc, layoutFunnel, renderFunnel, renderFunnelEc } from './funnel'
+import { compileFamily } from './option-family'
+import type { EChartsOption } from './option'
 import { funnelToSvg } from './family-svg'
 import type { FunnelStage } from './funnel'
 
@@ -59,5 +61,52 @@ describe('funnel geometry', () => {
     expect(svg).toContain('Sign-up')
     expect(svg).toContain('3 stages')
     expect(svg).not.toContain('NaN')
+  })
+})
+
+describe('the ECharts funnel: hit test and draw order', () => {
+  const ecOf = (series: object) => {
+    const plan = compileFamily({ series: [{ type: 'funnel', data: [{ name: 'Visit', value: 60 }, { name: 'Cart', value: 40 }, { name: 'Order', value: 20 }], ...series }] } as EChartsOption)!.plan
+    if (plan.kind !== 'funnel') throw new Error('not a funnel')
+    return plan.ec
+  }
+  const st: FunnelStage[] = [
+    { value: 60, label: 'Visit', color: '#5070dd' },
+    { value: 40, label: 'Cart', color: '#b6d634' },
+    { value: 20, label: 'Order', color: '#505372' },
+  ]
+  // ECharts' default box on a 400×300 chart: x 80..320, y 60..235.
+  const box = { x: 80, y: 60, w: 240, h: 175 }
+
+  it('hits the stage under the point, by its polygon', () => {
+    const ec = ecOf({})
+    expect(hitFunnelEc(st, box, ec, 200, 80)).toBe(0)
+    expect(hitFunnelEc(st, box, ec, 200, 150)).toBe(1)
+    expect(hitFunnelEc(st, box, ec, 200, 220)).toBe(2)
+    // Beside the narrowing stage, inside its bounding box but outside its polygon.
+    expect(hitFunnelEc(st, box, ec, 130, 220)).toBe(-1)
+  })
+
+  it('an ascending funnel is hit where it is drawn: the largest stage at the bottom', () => {
+    const ec = ecOf({ sort: 'ascending' })
+    expect(hitFunnelEc(st, box, ec, 200, 220)).toBe(0)
+    expect(hitFunnelEc(st, box, ec, 200, 80)).toBe(2)
+  })
+
+  it('draws leader lines under the stages and labels over them', () => {
+    const cmds = renderFunnelEc(st, box, ecOf({}), 1, '')
+    const kinds = cmds.map((c) => c.kind)
+    expect(kinds.indexOf('polygon')).toBeGreaterThan(kinds.indexOf('polyline'))
+    expect(kinds.lastIndexOf('polygon')).toBeLessThan(kinds.indexOf('text'))
+  })
+
+  it('labels wait for the entrance to finish', () => {
+    expect(renderFunnelEc(st, box, ecOf({}), 0.5, '').some((c) => c.kind === 'text')).toBe(false)
+  })
+
+  it('the border takes the chart background, white on a bare chart', () => {
+    const ring = (bg: string) => renderFunnelEc(st, box, ecOf({}), 1, bg).find((c) => c.kind === 'polyline' && c.points.length === 5)
+    expect(ring('')).toMatchObject({ stroke: '#ffffff', width: 1 })
+    expect(ring('#101418')).toMatchObject({ stroke: '#101418' })
   })
 })

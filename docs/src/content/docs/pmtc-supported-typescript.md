@@ -4,8 +4,6 @@ title: PMTC Supported TypeScript Surface
 
 # PMTC Supported TypeScript Surface
 
-> **Status:** Phase D follow-up of the [2026-06 native readiness audit](https://github.com/pyreon/pyreon/blob/main/.claude/audits/native-readiness-2026-06-02.md). Scout-8 scored this surface 18/100 — the lowest of any item — because there was no enumeration of what TS shapes PMTC accepts, drops, or warns on. This page closes that gap.
-
 The Pyreon Multi-Target Compiler (PMTC) intercepts JSX + TypeScript source in your `.tsx` files and emits Swift (SwiftUI) and Kotlin (Compose). It does **not** compile arbitrary TypeScript — Phase 0 deliberately ships a focused subset that covers the seven canonical patterns the TodoMVC + native-counter examples exercise. This page enumerates exactly what works, what silently drops, what fires a warning, and what's planned.
 
 If you hit a shape this page doesn't list, treat it as undefined behavior — file an issue with the source snippet so the matrix can grow.
@@ -239,4 +237,3 @@ If you need any of the above, file an issue with the source pattern; the matrix 
 - [`packages/native/compiler/src/types.ts`](https://github.com/pyreon/pyreon/blob/main/packages/native/compiler/src/types.ts) — DeclIR + ExprIR union shapes
 - [`packages/native/compiler/src/tests/native-audit-warnings.test.ts`](https://github.com/pyreon/pyreon/blob/main/packages/native/compiler/src/tests/native-audit-warnings.test.ts) — locked diagnostic-warning catalogue
 - [`docs/src/content/docs/multiplatform.md`](https://github.com/pyreon/pyreon/blob/main/docs/src/content/docs/multiplatform.md) — the architectural overview
-- [`.claude/audits/native-readiness-2026-06-02.md`](https://github.com/pyreon/pyreon/blob/main/.claude/audits/native-readiness-2026-06-02.md) — the audit that drove this enumeration

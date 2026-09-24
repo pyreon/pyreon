@@ -48,10 +48,10 @@ Both adapters wrap the **same** `@tanstack/query-core` (pinned to one version tr
 | --- | --- | --- |
 | **Cross-component** — one component reads only `status`, one only `data` → flip `data` | `status` skips, `data` re-runs (**1**) | `status` skips, `data` re-renders (**1**) — 🤝 tie (tracked-props) |
 | **Intra-component** — one component reads all 8 fields → flip `data` | **0** component re-runs · **1** field-derivation | **1** whole-component re-render · **8** field-derivations + VDOM reconcile |
-| **Time to reflect the change in the DOM** | ~1.6 µs (synchronous fine-grained patch) | ~6.3 µs (macrotask-batched render + reconcile) — Pyreon ~**4×** faster |
-| **Mount a 1-query component → first DOM** | ~11 µs | ~12 µs — 🤝 ~tied |
+| **Time to reflect the change in the DOM** | synchronous fine-grained patch | macrotask-batched render + reconcile — Pyreon **4.6×** faster |
+| **Mount a 1-query component → first DOM** | 🤝 tie | 🤝 tie |
 
-The honest reads: react-query is **not** naive — its tracked-props make it field-aware _across_ components (the cross-component row is a genuine tie). Pyreon's structural win is _within_ a component (fine-grained signals vs whole-component re-render) and steady-state per-update latency (synchronous fine-grained patch vs macrotask-batched VDOM reconcile). Mounting is comparable. (Machine-dependent µs — the ratios and counts are the portable signal.)
+The honest reads: react-query is **not** naive — its tracked-props make it field-aware _across_ components (the cross-component row is a genuine tie). Pyreon's structural win is _within_ a component (fine-grained signals vs whole-component re-render) and steady-state per-update latency (synchronous fine-grained patch vs macrotask-batched VDOM reconcile). Mounting is comparable. (Figures from the 2026-09-23 full run, recorded in `BENCHMARKS.md`; this suite runs in happy-dom — a JavaScript DOM, not a browser — so the counts and ratios are the signal, not absolute times.)
 
 ### Lazy signal allocation
 

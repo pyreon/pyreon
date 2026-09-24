@@ -1,6 +1,6 @@
 # @pyreon/native-cli
 
-> **PRIVATE / EXPERIMENTAL.** Build CLI orchestration for the Pyreon Multi-Target Compiler (PMTC). Phase 0 scaffold per [`native-platforms-phase0-roadmap.md`](../../../.claude/plans/native-platforms-phase0-roadmap.md) PR 2.
+> **PRIVATE / EXPERIMENTAL.** Build CLI orchestration for the Pyreon Multi-Target Compiler (PMTC).
 
 Wraps [`@pyreon/native-compiler`](../compiler/README.md) in a thin CLI that walks a directory of `.tsx` files and emits per-target native code.
 

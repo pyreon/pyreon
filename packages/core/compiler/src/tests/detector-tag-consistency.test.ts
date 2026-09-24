@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // Drift guard between Pyreon's static detectors (compiler + lint) and the
-// `[detector: <code>]` annotations on `.claude/rules/anti-patterns.md`.
+// `[detector: <code>]` annotations on `.agents/rules/anti-patterns.md`.
 // Without this test, a new bullet can land without a detector tag, or
 // a detector code can be renamed without updating the doc. Either
 // direction is a silent inconsistency — consumers read the doc and
@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(HERE, '../../../../../')
-const ANTI_PATTERNS_PATH = resolve(REPO_ROOT, '.claude/rules/anti-patterns.md')
+const ANTI_PATTERNS_PATH = resolve(REPO_ROOT, '.agents/rules/anti-patterns.md')
 
 // Kept in sync with the `PyreonDiagnosticCode` union in
 // `pyreon-intercept.ts`. When adding a new code, ALSO add a bullet
@@ -92,7 +92,7 @@ describe('anti-patterns.md detector tags vs static detectors', () => {
       if (!tagSet.has(code)) missing.push(code)
     }
     // If this fails, add a bullet for the new detector code to
-    // `.claude/rules/anti-patterns.md` with the `[detector: <code>]`
+    // `.agents/rules/anti-patterns.md` with the `[detector: <code>]`
     // suffix. The doc is the human-readable catalog; the detector is
     // the static enforcement arm — they have to name each other.
     expect(missing).toEqual([])

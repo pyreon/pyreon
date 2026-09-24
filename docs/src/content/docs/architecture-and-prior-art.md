@@ -57,61 +57,37 @@ every project.
 
 ## Performance, stated honestly
 
-**Retracted and corrected 2026-08-18, twice — this section previously
-overstated Pyreon's lead because our own benchmark harness had three bugs,
-all of which flattered Pyreon:** it rendered Octane's row id as
-`{String(row.id)}` (its own idiomatic form passes the raw number), which
-disabled a compiler fast path and made Octane look slower than it is; it let
-five implementations' `String(row.id)` calls inflate a shared V8 engine
-cache that the retained-heap metric charged to the framework; and the bench
-fixture used `table-layout: auto`, which forced Chromium to re-measure the
-whole table's column widths whenever an op widened a cell — this caused
-`append`'s erratic timing and separately inflated the published Pyreon-vs-Solid
-`partial update` lead by more than 2×. None was a Pyreon regression —
-Pyreon's own numbers are unchanged or slightly better throughout. The fixes
-are staged as open PRs (#2893, #2894, #2895, #2897, #2899, #2901, #2903 —
-#2896 is unrelated to this suite) and have not merged as of this writing.
+**Restated against the full benchmark run of 2026-09-23.** That run was
+preceded by an audit of every harness, and most of the defects it found
+flattered Pyreon — competitor arms paying a slower helper inside the timed
+window, Vue measured through hand-written render functions instead of its
+compiled templates, Solid arms skipping work its compiler emits. All were
+fixed before measuring. The authoritative record is `BENCHMARKS.md` at the
+repo root; the [benchmarks page](/docs/benchmarks) summarises it.
 
-On the synthetic row-list benchmark (Chromium via Playwright), compiled
-Pyreon is **competitive with the fastest frameworks measured**, with one
-clear win that WIDENED after the table-layout fix rather than narrowing: it
-runs **~2.6× faster than React and ~3.3× than Preact** at bulk-create
-(10,000 rows), up from ~2.4×/~3.1×. It also takes a second outright win at
-`append`, which similarly widened to **~1.14–1.20×** (was ~1.04× before the
-table-layout root cause was found and fixed). Elsewhere it is mostly a
-**statistical tie with [Octane](https://octanejs.dev)**, the nearest rival —
-plausible ties on `create 1,000`, `replace`, `partial update`, and `remove`;
-Octane wins `clear rows` outright (~1.45× on `main` today, unaffected by
-the layout fix — a real, architectural gap, since Octane registers no
-per-row subscriptions at all; a separate open fix narrows it to ~1.15×
-without closing it — see [benchmarks](/docs/benchmarks));
-and `select row` has no honest multiplier to publish (both frameworks sit at
-the edge of what real-Chromium timing can resolve). **A retraction that
-matters on its own: the previously-published `partial update` lead over
-Solid (~4.9×) was itself a table-layout artifact — the corrected figure is
-~2.1×**, still a real lead, less than half the size claimed. The `create
-1,000`/`replace` tie is itself a browser-layout-bound measurement, not just
-a CI overlap — a profiling pass found layout is ~86% of that op and
-statistically identical between arms, so the instrument structurally cannot
-separate the frameworks there; the only reproducible signal is a small
-JS-only Pyreon cost (~+28%) invisible in wall clock (see `docs/benchmarks`
-for the full split). Important caveats, kept verbatim with the project's
-internal record:
+On the krausest-style synthetic row-list benchmark (Chromium via
+Playwright), compiled Pyreon is **the fastest framework measured on five of
+nine ops outright** — create 1,000, replace, clear rows, create 10,000 and
+append — and **statistically tied with [Octane](https://octanejs.dev)**, the
+nearest rival, on partial update and swap, and with Octane and Solid on
+remove. `select row` sits below the clock resolution of that instrument; a
+batch-timed run resolves it at roughly 0.5µs for Pyreon against 0.9µs for
+Octane. The VDOM frameworks pay the most at scale: at 10,000 rows React is
+2.46× and Preact 3.35× slower. Against hand-written Vanilla, Pyreon costs
+1.04–1.10× on most ops. Important caveats, stated as the project's
+record:
 
-- It is **not** "fastest on all benchmarks." This is the **synthetic
-  row-list suite** only, and on it Pyreon wins two ops outright
-  (bulk-create, append) rather than most of the field — and the append
-  number carries its own caveat: even after the table-layout fix it is
-  ~90% layout cost, and the honest claim is end-to-end append cost
-  including the layout it causes, not a claim about the reconciler alone.
-  The "mid-pack on retained memory (6th of 7)" this page used to state was **our
-  own harness scoring us wrong** in one direction, and "2nd among frameworks"
-  — the correction this page then carried — was **our own harness scoring us
-  wrong again, in the same direction**. Measured correctly, Pyreon is **3rd
-  of 8 and tied with Preact** (2.50 MB) — a tie, not a ranking.
-- These are synthetic-benchmark numbers. **Real-app head-to-head
-  measurements are still pending** — treat cross-framework performance
-  claims accordingly.
+- It is **not** "fastest on all benchmarks." Mounting a deep component tree
+  (2,047 components) is **1.29× slower than Solid**; Vue's compiled SSR is
+  1.06–1.09× faster on 100- and 1,000-row pages; Preact Signals creates
+  signals about 5× faster; and the same app ships 16.6KB gzipped against
+  Solid's 7.5KB.
+- Create, replace, remove and append are dominated by browser layout every
+  framework pays identically, so small gaps there are mostly not framework
+  JavaScript. Retained heap after the suite ties Preact for the lightest
+  framework (2.78 MB) — a tie, not a ranking.
+- These are author-judged benchmarks, and no independent third-party run
+  exists yet — treat cross-framework performance claims accordingly.
 
 ## Trade-offs we name ourselves
 

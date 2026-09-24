@@ -1,6 +1,6 @@
 # native-counter-ios — first PMTC iOS example
 
-> **PRIVATE / EXPERIMENTAL.** Phase 0 roadmap PR 3 scaffold; see [`native-platforms-phase0-roadmap.md`](../../.claude/plans/native-platforms-phase0-roadmap.md). The counter implementation itself lands in PR 4.
+> **PRIVATE / EXPERIMENTAL.** Minimal PMTC counter example for iOS.
 
 This example demonstrates the full PMTC compile loop for iOS:
 

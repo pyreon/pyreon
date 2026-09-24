@@ -11,14 +11,14 @@ import { expect, test, type Page } from '@playwright/test'
  *   3. Posts route loader fetches + renders
  *
  * `.first()` everywhere because the framework's known dev-SSR layout
- * double-mount (documented in CLAUDE.md, partial fix in #406) produces
+ * double-mount (partial fix in #406) produces
  * two copies of every layout child. Same workaround as the existing
  * ssr-showcase / fundamentals e2e specs.
  */
 
 // Console-error patterns we tolerate as known dev-server noise. The
-// MIME-mismatch on the SSG plugin's leaked dynamic import is documented
-// in CLAUDE.md and doesn't affect the rendered page contract this gate
+// MIME-mismatch on the SSG plugin's leaked dynamic import is known
+// and doesn't affect the rendered page contract this gate
 // is designed to catch.
 const TOLERATED_CONSOLE_NOISE = [
   /Failed to load module script.*MIME type of "text\/html"/,

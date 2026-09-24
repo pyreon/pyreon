@@ -2,7 +2,7 @@
 //
 // rocketstyle takes ONE callback returning the whole map —
 // `.sizes((t) => ({ small: { … } }))`. The object-of-FUNCTIONS form reads just
-// as naturally, is a documented footgun (`.claude/rules/anti-patterns.md`
+// as naturally, is a documented footgun (`.agents/rules/anti-patterns.md`
 // records that it "produces EMPTY dimension themes"), and produced no
 // diagnostic at all: `objectExprToStyleObject` returns `{}` for anything that
 // is not an object literal, so the emit dropped the styles and reported

@@ -9,7 +9,7 @@
  * file as genuine ESM, where `join(__dirname, 'preview')` is a
  * ReferenceError → SB_CORE-SERVER_0002 CriticalPresetLoadError on any
  * `storybook build`/`dev`. The repo rule this violated: test the shipped
- * ENTRY, not the export (.claude/rules/testing.md — the pyreon-lint no-op
+ * ENTRY, not the export (.agents/rules/testing.md — the pyreon-lint no-op
  * bin precedent). These specs import the artifact Storybook actually loads.
  *
  * Requires `lib/` to be built (CI test cells restore the bootstrap; locally
@@ -38,7 +38,7 @@ describe('shipped preset (lib/preset.js, loaded as genuine ESM)', () => {
   // `import.meta.url`-based paths — the exact environment-parity gap that
   // let the broken preset ship. The child writes its result to a FILE
   // (never stdout — subprocess stdout capture is non-deterministic under
-  // parallel load, per .claude/rules/testing.md).
+  // parallel load, per .agents/rules/testing.md).
   function loadShippedPreset(): {
     previewAnnotations: string[]
     core: Record<string, string>
