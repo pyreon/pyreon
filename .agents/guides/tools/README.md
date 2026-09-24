@@ -122,7 +122,7 @@ OpenAPI 3.x in; `@pyreon/validate` schemas, `@pyreon/http` endpoints, `@pyreon/q
 - `pyreon new [name] [--native]` — delegates to `npx @pyreon/create-zero@latest` (or `@pyreon/create-multiplatform@latest` with `--native`); other args pass through; `--dry-run` prints the command.
 - `pyreon mcp [args]` — delegates to `npx @pyreon/mcp` without `@latest`, so a project-local `@pyreon/mcp` (matching the installed Pyreon version) wins. Inherits stdio. `--dry-run` passes through.
 - `pyreon plain [paths] [--write] [--json]` — Plain Mode readiness report (per-file convertibility, each declined shape named, histogram). `--write` applies the classic → plain codemod. No paths → whole tree under cwd.
-- `pyreon lint` (forwards every `pyreon-lint` flag via `runCli`), `pyreon info` (env + `@pyreon/*` version skew), `pyreon upgrade` (align versions).
+- `pyreon lint` (forwards every `pyreon-lint` flag via `runCli`), `pyreon info` (env + `@pyreon/*` version skew), `pyreon upgrade` (align versions, then run the versioned codemods the upgrade crosses — `packages/tools/cli/src/codemods`; a `@pyreon/zero` minor changeset must carry `Upgrade: none | codemod <id> | manual — <reason>`, gated by `check-breaking-changeset-codemod`).
 - `pyreon atlas`, `pyreon lathe`, `pyreon loom` forward to those tools.
 
 ## `pyreon doctor`

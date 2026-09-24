@@ -28,6 +28,7 @@
  *   - check-advisory-comment-steps (advisory PR-comment step that can turn a check red)
  *   - check-leak-ratchet    (a leak-class finding grew above its committed baseline)
  *   - check-zero-feature-coverage (a documented zero feature has no real-build test)
+ *   - check-breaking-changeset-codemod (a zero minor changeset lacks an `Upgrade:` line)
  *   - check-lint-ratchet    (oxlint warn-finding count grew above baseline)
  *   - check-multiplatform-tier (published pkg without a declared multiplatform story)
  *   - check-native-coverage (an app-runtime pkg that should cross to native regressed)
@@ -81,6 +82,9 @@ const GATES: Gate[] = [
   // Every feature documented in zero.md has an e2e spec or verify-modes cell,
   // or a reasoned entry in the shrink-only uncovered allowlist.
   { name: 'check-zero-feature-coverage', cmd: 'bun scripts/check-zero-feature-coverage.ts' },
+  // A new `@pyreon/zero` minor (= breaking, while 0.x) changeset says how
+  // users upgrade: `Upgrade: none | codemod <id> | manual — <reason>`.
+  { name: 'check-breaking-changeset-codemod', cmd: 'bun scripts/check-breaking-changeset-codemod.ts' },
   { name: 'check-multiplatform-tier', cmd: 'bun scripts/check-multiplatform-tier.ts' },
   // The finish-line ratchet: every app-runtime/feature-building package that
   // SHOULD cross to native either lowers clean through PMTC or ships a native
