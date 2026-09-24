@@ -93,8 +93,9 @@ optional: children(text)
 optional: children(text), size(large|medium|small)
 
 ## Combobox [layout]
-optional: children(reactive)
-reactive: children
+required: options(unknown)
+optional: children(reactive), defaultValue(unknown), disabled(boolean), multiple(boolean), onChange(reactive), placeholder(text), value(unknown)
+reactive: children, onChange
 
 ## ComboboxStyled [layout]
 optional: children(text), size(large|medium|small), state(error)
@@ -237,12 +238,12 @@ optional: variant(horizontal|vertical)
 optional: children(text), size(large|medium|small), state(checked)
 
 ## RangeSlider [form]
-optional: children(reactive)
-reactive: children
+optional: children(reactive), defaultValue(unknown), disabled(boolean), labels(unknown), largeStep(number), max(number), min(number), minRange(number), onChange(reactive), step(number), value(unknown)
+reactive: children, onChange
 
 ## Rating
-optional: children(reactive)
-reactive: children
+optional: children(reactive), defaultValue(number), labels(unknown), max(number), onChange(reactive), readOnly(boolean), value(number)
+reactive: children, onChange
 
 ## RingProgress [feedback]
 required: value(unknown)
@@ -302,8 +303,8 @@ optional: children(text)
 optional: children(text), variant(enclosed|line|pills)
 
 ## TagsInput [data, form]
-optional: children(reactive)
-reactive: children
+optional: allowDuplicates(boolean), children(reactive), defaultValue(unknown), labels(unknown), maxTags(number), onChange(reactive), validateTag(reactive), value(unknown)
+reactive: children, onChange, validateTag
 
 ## Textarea [form]
 optional: placeholder(text), size(large|medium|small), state(error|success), variant(filled|outline|underline)
@@ -324,8 +325,9 @@ optional: children(text), size(h1|h2|h3|h4|h5|h6)
 optional: children(text)
 
 ## Tree [data]
-optional: children(reactive)
-reactive: children
+required: data(unknown)
+optional: children(reactive), defaultExpanded(unknown), defaultValue(unknown), multiple(boolean), onChange(reactive), onExpand(reactive), value(unknown)
+reactive: children, onChange, onExpand
 
 ## TreeItem [data]
 optional: children(text), state(selected)
