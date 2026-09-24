@@ -230,6 +230,7 @@ export const SCENARIOS: Scenario[] = [
     id: '@pyreon/charts::plot-pie',
     pkg: '@pyreon/charts',
     dir: 'fundamentals/charts',
+    entry: 'engine.js',
     // A radial-only import must not pull the cartesian layout/stack path.
     imports: ['PieChart'],
   },
