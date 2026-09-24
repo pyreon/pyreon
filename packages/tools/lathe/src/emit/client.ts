@@ -28,6 +28,7 @@ import {
   runtimeTransport,
   runtimeValidate,
   type ClientName,
+  type ResponseValidation,
 } from './client-runtime'
 import { PURE, schemaExpr, schemaRefs, schemaSpecifier, schemaSpecifierFor, tsType } from './schema'
 import { dialectOf, type ValidatorName } from './validator'
@@ -41,6 +42,8 @@ export interface ClientOptions {
   client?: ClientName | undefined
   /** Which library the schemas are written in. Defaults to `pyreon`. */
   validator?: ValidatorName | undefined
+  /** Response validation mode. Defaults to `strict`. */
+  responseValidation?: ResponseValidation | undefined
 }
 
 export const CLIENT_FILE = 'client.ts'
@@ -91,6 +94,10 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
   f.line(`export const api = createHttp({`)
   f.line(`  baseUrl: ${q(baseUrlOf(doc, opts))},`)
   f.line(`  schema: standardSchema,`)
+  // Only when it differs from `@pyreon/http`'s own default, so the common
+  // output does not change.
+  const mode = opts.responseValidation ?? 'strict'
+  if (mode !== 'strict') f.line(`  validate: ${q(mode)},`)
   f.line(`  use: [(req, next) => (devTransport ? devTransport(req, next) : next(req))],`)
   f.line(`})`)
   return f
@@ -147,7 +154,7 @@ function emitAdapterClient(
   f.line()
   f.lines(...runtimePreamble())
   f.line()
-  f.lines(...runtimeValidate())
+  f.lines(...runtimeValidate(opts.responseValidation))
   f.line()
   f.lines(...runtimeTransport())
   f.line()

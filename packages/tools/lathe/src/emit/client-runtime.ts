@@ -41,6 +41,16 @@
  */
 
 /** Which HTTP runtime the generated client is built on. */
+/**
+ * What the generated client does when a response does not match its schema --
+ * `@pyreon/http`'s `ValidateMode`, with the same meaning on every client:
+ * `strict` rejects, `warn` logs and passes the raw body through, `off` skips
+ * validation entirely (safe here: generated schemas never transform).
+ */
+export type ResponseValidation = 'strict' | 'warn' | 'off'
+
+export const ALL_RESPONSE_VALIDATION: readonly ResponseValidation[] = ['strict', 'warn', 'off']
+
 export type ClientName = 'pyreon' | 'fetch' | 'axios' | 'ky'
 
 export const ALL_CLIENTS: readonly ClientName[] = ['pyreon', 'fetch', 'axios', 'ky']
@@ -227,8 +237,12 @@ export function runtimePreamble(): string[] {
  *   3. `validate` may return a Promise. Awaiting a non-Promise is free, so it
  *      is awaited unconditionally rather than branched on.
  */
-export function runtimeValidate(): string[] {
+export function runtimeValidate(mode: ResponseValidation = 'strict'): string[] {
   return [
+    // Baked in, like the base URL: the mode is a property of the generated
+    // client, set once in the lathe config.
+    `const RESPONSE_VALIDATION: 'strict' | 'warn' | 'off' = ${JSON.stringify(mode)}`,
+    '',
     'type StandardResult = { issues?: readonly { message: string }[]; value?: unknown }',
     'type StandardSchema = { "~standard": { validate: (v: unknown) => StandardResult | Promise<StandardResult> } }',
     '',
@@ -240,12 +254,18 @@ export function runtimeValidate(): string[] {
     '}',
     '',
     'async function validateResponse(schema: unknown, body: unknown): Promise<unknown> {',
-    '  if (!isStandardSchema(schema)) return body',
+    '  if (RESPONSE_VALIDATION === "off" || !isStandardSchema(schema)) return body',
     '  const result = await schema["~standard"].validate(body)',
     '  // Failure is `issues` being present and non-empty — NOT the absence of',
     '  // `value`, which some libraries return alongside the issues.',
     '  if (result.issues && result.issues.length > 0) {',
     '    const detail = result.issues.map((i) => i.message).join(", ")',
+    '    // `warn` degrades instead of failing: the RAW body goes through, as',
+    '    // `@pyreon/http` does in the same mode.',
+    '    if (RESPONSE_VALIDATION === "warn") {',
+    '      console.warn(`[lathe] response did not match its schema: ${detail}`)',
+    '      return body',
+    '    }',
     '    throw new Error(`[lathe] response did not match its schema: ${detail}`)',
     '  }',
     '  return result.value',

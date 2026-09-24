@@ -116,6 +116,12 @@ export interface LatheSection {
   baseUrl?: string
   /** Exit non-zero when a generated native module does not lower. */
   strictNative?: boolean
+  /**
+   * What the generated web client does with a response that does not match
+   * its schema: `strict` (default) rejects, `warn` logs and passes the raw
+   * body through, `off` skips validation.
+   */
+  responseValidation?: 'strict' | 'warn' | 'off'
 }
 
 /**

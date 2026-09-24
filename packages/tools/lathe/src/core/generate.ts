@@ -71,7 +71,14 @@ export function generate(specText: string, config: ResolvedConfig): GenerateResu
   if (has('types')) push(emitTypes(doc))
   if (has('schemas')) for (const f of emitSchemas(doc, { native: false, validator: config.validator })) push(f)
   if (has('client')) {
-    push(emitClient(doc, { native, baseUrl: config.baseUrl, client: config.client }))
+    push(
+      emitClient(doc, {
+        native,
+        baseUrl: config.baseUrl,
+        client: config.client,
+        responseValidation: config.responseValidation,
+      }),
+    )
     for (const f of emitWebEndpoints(doc, config.validator)) push(f)
   }
   if (has('queries')) {

@@ -243,3 +243,26 @@ describe('the validator setting', () => {
     expect(files.get('client.ts')).toContain('~standard')
   })
 })
+
+describe('responseValidation', () => {
+  const clientFor = (responseValidation?: 'strict' | 'warn' | 'off'): string => {
+    const cfg = resolveConfig({ input: 'x', plugins: ['schemas', 'client'], ...(responseValidation ? { responseValidation } : {}) })
+    return generate(SPEC, cfg).files.find((f) => f.path === 'client.ts')?.contents ?? ''
+  }
+
+  it('passes a non-default mode to @pyreon/http', () => {
+    expect(clientFor('warn')).toContain("validate: 'warn',")
+    expect(clientFor('off')).toContain("validate: 'off',")
+  })
+
+  it('leaves the default output unchanged', () => {
+    expect(clientFor()).not.toContain('validate:')
+    expect(clientFor('strict')).toBe(clientFor())
+  })
+
+  it('rejects an unknown mode by name', () => {
+    expect(() => resolveConfig({ input: 'x', responseValidation: 'loose' as never })).toThrow(
+      /unknown responseValidation `loose`.*Known: strict, warn, off/s,
+    )
+  })
+})
