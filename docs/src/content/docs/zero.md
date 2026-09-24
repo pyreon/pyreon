@@ -141,6 +141,8 @@ export default {
 
 `resolveConfig(userConfig?)` merges user config with the defaults above (`mode: 'ssr'`, `base: '/'`, `port: 3000`, `adapter: 'node'`). `ssr.mode` defaults to `'string'` (buffered). Streaming is opt-in: `ssr: { mode: 'stream' }`. ISR routes always render buffered, because the cache stores complete responses.
 
+**Options are validated.** An unknown key (`adaptor`) or a bad value (`mode: 'ssgg'`) fails at startup with one `[Pyreon] Invalid zero() config` error listing every problem, with a did-you-mean suggestion. `zero()` also requires `pyreon()` (the JSX plugin) before it — a missing one is a single clear error rather than a JSX parse error per route.
+
 ## Build Output
 
 Every production build ends with a branded summary of what it produced — after the SSG prerender, SSR bundle, and deploy-adapter staging have all finished:
@@ -361,6 +363,8 @@ export const gcTime = 0 // disable loader caching for auth-gated routes
 ```
 
 `getStaticPaths`, `revalidate`, `loaderKey`, and `gcTime` are documented in depth in the **[SSG reference](/docs/ssg)** (the first two) and **[router docs](/docs/router)** (the last two).
+
+**Route files are checked when the routes module loads.** A page with no default export, a `_layout` that exports only `default` (layouts are read from the named `layout` export), or a `loader` whose value is not a function fails with a `[Pyreon] Invalid route file(s)` error naming the file — instead of a page that sits on its loading state. A page's own `export function error()` is its error component with or without a `_error.tsx` in the directory (the directory file is the fallback).
 
 ### Loader Context
 
@@ -938,6 +942,10 @@ function InlineScript() {
 }
 ```
 
+### Dev runs the production request pipeline
+
+`vite dev` runs the same middleware chain `createServer` builds in production — the server entry's own `middleware` (`src/entry-server.ts`), then route middleware, API routes, server-island fragments, `/_pyreon/data` and `/_zero/actions/*` — before rendering the page. Security headers, auth gates and middleware `locals` therefore behave the same in dev as in production. As in production, code-valued `zero({ middleware })` is not applied: pass middleware to `createServer({ middleware })` in `src/entry-server.ts`.
+
 ## API Routes
 
 API routes are `.ts` files in `src/routes/api/` that export HTTP method handlers and return `Response` objects.
@@ -1382,6 +1390,10 @@ startClient({ routes })
 ```
 
 `startClient` auto-detects whether to hydrate (SSR-rendered HTML present) or mount fresh (SPA). It also reads the Vite-injected `__ZERO_BASE__` so the router prefix matches the SSR/build output. With fs-router, never pass `layout` to `startClient`.
+
+### `zero preview`
+
+For a static build (`ssg` / `spa`) `zero preview` serves `dist/`. For an `ssr` / `isr` build with the `node` or `bun` adapter it runs the emitted production server (`dist/index.js` / `dist/index.ts`) on the preview port, so SSR pages and API routes work. A server build for a hosting platform (vercel / netlify / cloudflare) has no local runner: preview warns and serves only the static client — use the platform's CLI to run it locally.
 
 ## Base Path
 
