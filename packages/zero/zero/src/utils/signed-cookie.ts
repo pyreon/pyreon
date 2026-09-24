@@ -64,7 +64,14 @@ export interface Signer {
   verify(value: string | null | undefined): Promise<unknown>
 }
 
-export function createSigner(secrets: readonly string[]): Signer {
+/**
+ * `purpose` is bound into the MAC input (`purpose \0 body`) so a value minted
+ * for one context (e.g. preview) never verifies in another (e.g. session),
+ * even when an app reuses one secret for both — cross-context replay.
+ */
+export type SignerPurpose = 'pyreon-session' | 'pyreon-preview'
+
+export function createSigner(secrets: readonly string[], purpose: SignerPurpose): Signer {
   const subtle = globalThis.crypto?.subtle
   if (!subtle) {
     throw new Error('[Pyreon] Signed cookies need Web Crypto (`globalThis.crypto.subtle`) — Node ≥ 18, Bun, Deno and workerd all provide it.')
@@ -75,7 +82,7 @@ export function createSigner(secrets: readonly string[]): Signer {
   return {
     async sign(payload, maxAgeSeconds) {
       const body = toB64url(enc.encode(JSON.stringify({ d: payload, e: Date.now() + maxAgeSeconds * 1000 })))
-      const sig = new Uint8Array(await subtle.sign('HMAC', await keys[0]!, enc.encode(body)))
+      const sig = new Uint8Array(await subtle.sign('HMAC', await keys[0]!, enc.encode(`${purpose}\0${body}`)))
       return `${body}.${toB64url(sig)}`
     },
     async verify(value) {
@@ -88,7 +95,7 @@ export function createSigner(secrets: readonly string[]): Signer {
       let ok = false
       // `subtle.verify` compares in constant time; try every rotation key.
       for (const key of keys) {
-        if (await subtle.verify('HMAC', await key, sig, enc.encode(body))) {
+        if (await subtle.verify('HMAC', await key, sig, enc.encode(`${purpose}\0${body}`))) {
           ok = true
           break
         }

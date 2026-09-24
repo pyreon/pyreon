@@ -92,7 +92,7 @@ function isLocalHttp(url: URL): boolean {
  */
 export function sessionMiddleware(options: SessionOptions): Middleware {
   const secrets = normalizeSecrets(options.secret, 'sessionMiddleware')
-  const signer = createSigner(secrets)
+  const signer = createSigner(secrets, 'pyreon-session')
   const name = options.cookieName ?? 'pyreon_session'
   const maxAge = options.maxAge ?? 60 * 60 * 24 * 7
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES

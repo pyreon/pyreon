@@ -51,7 +51,7 @@ describe('sessionMiddleware', () => {
   })
 
   it('an expired signature reads as empty even if the client kept the cookie', async () => {
-    const signer = createSigner([SECRET])
+    const signer = createSigner([SECRET], 'pyreon-session')
     const v = await signer.sign({ userId: 'u1' }, -1)
     const ctx = ctxFor('https://x.test/', `pyreon_session=${v}`)
     await sessionMiddleware({ secret: SECRET })(ctx)
@@ -120,6 +120,21 @@ describe('sessionMiddleware', () => {
     getSession(ctx).get('userId')
     expect(ctx.headers.get('cache-control')).toBe('private, no-store')
     expect(ctx.headers.get('vary')).toBe('Cookie')
+  })
+})
+
+describe('purpose binding (cross-context replay)', () => {
+  it('a preview-signed value never verifies as a session under the SAME secret, and vice versa', async () => {
+    const preview = createSigner([SECRET], 'pyreon-preview')
+    const session = createSigner([SECRET], 'pyreon-session')
+    const pv = await preview.sign({ userId: 'admin' }, 60)
+    expect(await preview.verify(pv)).toEqual({ userId: 'admin' })
+    expect(await session.verify(pv)).toBeNull()
+    expect(await preview.verify(await session.sign(true, 60))).toBeNull()
+    // Replayed under the session cookie NAME through the real middleware.
+    const ctx = ctxFor('https://x.test/', `pyreon_session=${pv}`)
+    await sessionMiddleware({ secret: SECRET })(ctx)
+    expect(getSession(ctx).all()).toEqual({})
   })
 })
 

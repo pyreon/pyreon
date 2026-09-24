@@ -97,7 +97,7 @@ function safeRedirect(target: string | null): string {
  * ```
  */
 export function previewMiddleware(options: PreviewOptions): Middleware {
-  const signer = createSigner(normalizeSecrets(options.secret, 'previewMiddleware'))
+  const signer = createSigner(normalizeSecrets(options.secret, 'previewMiddleware'), 'pyreon-preview')
   return async (ctx: MiddlewareContext) => {
     const cookie = readCookie(ctx.req, PREVIEW_COOKIE)
     if (!cookie) return
@@ -121,7 +121,7 @@ export function previewMiddleware(options: PreviewOptions): Middleware {
  * ```
  */
 export function createPreviewHandler(options: PreviewHandlerOptions): Middleware {
-  const signer = createSigner(normalizeSecrets(options.secret, 'createPreviewHandler'))
+  const signer = createSigner(normalizeSecrets(options.secret, 'createPreviewHandler'), 'pyreon-preview')
   normalizeSecrets(options.token, 'createPreviewHandler (token)')
   const path = (options.path ?? '/api/preview').replace(/\/$/, '')
   const maxAge = options.maxAge ?? 60 * 60
