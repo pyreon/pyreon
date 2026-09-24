@@ -148,7 +148,7 @@ function familyHostFor(plan: FamilyPlan, o: FamilyHostOptions): VNode | null {
       return h(HeatmapChart, { data: plan.rows, x: (r: { x: string }) => r.x, y: (r: { y: string }) => r.y, value: (r: { value: Double }) => r.value, ...(plan.colors !== undefined ? { colors: plan.colors } : {}), ...(plan.visualMap !== undefined ? { visualMap: plan.visualMap } : {}), ...size, ...chrome, ...sel('heatmap') })
     case 'funnel': {
       const color = colorOf(plan.rows)
-      return h(FunnelChart, { data: plan.rows, value: (r: { value: Double }) => r.value, label: (r: { name: string }) => r.name, ...(color !== undefined ? { color } : {}), funnel: plan.funnel, ...size, ...chrome, ...sel('funnel') })
+      return h(FunnelChart, { data: plan.rows, value: (r: { value: Double }) => r.value, label: (r: { name: string }) => r.name, ...(color !== undefined ? { color } : {}), funnel: plan.funnel, echarts: plan.ec, ...size, ...chrome, ...sel('funnel') })
     }
     case 'treemap':
       return h(TreemapChart, { data: plan.nodes, treemap: plan.treemap, ...size, ...chrome, ...sel('treemap') })
