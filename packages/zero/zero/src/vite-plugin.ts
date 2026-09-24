@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { isAbsolute, join } from 'node:path'
+import { isAbsolute, join, relative, sep } from 'node:path'
+import { transformServerActions } from './actions-transform'
 import { innerBuildFlagSet } from './build-flags'
 import { collectBuildStats, detectColorLevel, formatBuildSummary } from './build-summary'
 import { Readable } from 'node:stream'
@@ -314,6 +315,19 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 					resolvedConfig.base,
 				);
 			}
+		},
+
+		// Server actions: give every `defineAction()` a build-time id derived
+		// from its module path + binding, identical in the client and server
+		// bundles, and strip the handler from the client bundle. See
+		// `actions-transform.ts`.
+		transform(code, id, options) {
+			if (id.startsWith("\0") || !/\.[mc]?[jt]sx?(?:\?|$)/.test(id)) return null;
+			if (!code.includes("@pyreon/zero/actions")) return null;
+			const file = id.split("?")[0] as string;
+			const rel = relative(root, file).split(sep).join("/");
+			const out = transformServerActions(code, file, rel, options?.ssr === true);
+			return out === null ? null : { code: out, map: null };
 		},
 
 		async buildStart() {

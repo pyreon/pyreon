@@ -1013,6 +1013,8 @@ Call them from components as plain async functions: `const r = await createPost(
 
 The `ActionContext` exposes `request`, `json` (parsed JSON body), `formData` (for `multipart/form-data`), and `headers`.
 
+Each action's id is derived at build time by zero's Vite plugin from the defining module's path and the name the action is assigned to, so the client bundle and the server bundle agree on it and it stays the same across rebuilds and HMR. The plugin also removes the handler from the client bundle, along with imports that only the handler used, so server-only code such as a database client does not ship to the browser. `defineAction` therefore requires `zero()` in your Vite config: without it, a call in the browser throws in production and warns in development.
+
 ## SEO
 
 Zero auto-generates `sitemap.xml` and `robots.txt` at build time. Declare it directly on `zero()` — no separate plugin import:
