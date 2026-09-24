@@ -2,27 +2,103 @@
 
 Read before touching `packages/zero/**`, a build adapter, SSG/SSR/ISR output, or `https()`.
 
-## Modes (SSG / SSR / ISR) — durable contract
+`verify-modes` and `audit-types` guard the `mode:` API against becoming typed-but-unimplemented again.
 
- (the `mode:` API was typed-but-unimplemented; `verify-modes` + `audit-types` gate against recurrence):
+## SSG (`ssgPlugin`)
 
-- **SSG** (`ssgPlugin`):
-  - per-route HTML at build via a nested Vite SSR sub-build (env-flag-gated to avoid re-trigger; concurrency-pooled via `runWithConcurrency`, `ssg.onProgress`).
-  - `getStaticPaths` enumerates dynamic routes (`[id].tsx`); `_404.tsx`/`_not-found.tsx` → `dist/404.html` (router-driven so it renders INSIDE layout chrome — `findNotFoundFallback` synthesizes the chain; loaders skipped via `router.preload(path, _, { skipLoaders: true })`; noindex auto-injected).
-  - Loader-thrown `redirect()` → `dist/_redirects` (Netlify/CF) + `_redirects.json` (Vercel) + optional meta-refresh HTML. Sitemap auto-emit (`seoPlugin({ sitemap: { useSsgPaths, hreflang } })`). Per-route `<link rel=modulepreload>` (static closure only). Path-collision detection (loud build error).
-  - `ssg.format` / `ssg.onPathError` / `ssg.errorArtifact` (`dist/_pyreon-ssg-errors.json`).
-  - i18n route duplication (`expandRoutesForLocales`, `prefix` / `prefix-except-default`; root layouts NOT duplicated under prefix-except-default — they wrap via hierarchical match; per-locale `dist/{locale}/404.html` + hreflang clusters).
-- **SSR/ISR**:
-  - `ssrPlugin` auto-builds `dist/server/entry-server.js` + invokes `adapter.build({ kind: 'ssr' })` (the `AdapterBuildOptions` is a `kind: 'ssr'|'ssg'` discriminated union).
-  - Deploy staging uses `materialize(src, dest)` (handles same-dir / dest-inside-src — never `cp` into itself, the EINVAL that made the artifact unrunnable).
-  - Production template = the BUILT client `index.html` (hashed `<script>`/CSS) copied to `dist/server/template.html` + read via `readBuiltTemplate()` (`clientEntry: false` suppresses the dev entry) — else the page server-renders but ships the dev `/src/entry-client.ts` and never hydrates.
-  - **Cloudflare/workerd**: no fs + `undefined` `import.meta.url` — the adapter inlines the template into `globalThis.__PYREON_SSR_TEMPLATE__` then dynamic-imports the handler; `normalizeLocation` guards `undefined`; needs `nodejs_compat`.
-  - ISR: `createISRHandler` keys by `pathname + search` by default (cookies/Authorization need an explicit `cacheKey` — auth-unsafe otherwise; warns at init + a BUILD-time warning names any isr-mode route whose loader source reads cookie/authorization headers without a cacheKey function (`fs-router.ts:detectIsrAuthRisk`)), pluggable `ISRStore` (default `createMemoryStore`), build-time per-route `export const revalidate` → `dist/_pyreon-revalidate.json` + `Adapter.revalidate(path)` (`vercelRevalidateHandler` scaffold validates path against the manifest).
-- **Mode visibility + zero-config adapter (Tier-1 DX)**:
-  - every build prints a per-route mode table (`○ ssg · λ ssr · ⟳ isr · ⚡ spa`, `(declared)` marks overrides; >40 routes collapse to counts) — ssr-plugin prints it for server builds, ssg-plugin for `mode:'ssg'` (gated so hybrid builds print ONCE); `zero dev` banner shows the app mode + hybrid overrides and TRUTHFUL per-route modes (`collectFileRouteModes` — file-level twin of `collectRouteModes`: leaf > nearest layout > app mode).
-  - `adapter` unset → auto-detected from platform env (VERCEL/NETLIFY/CF_PAGES; local = node, explicit always wins). SSG build WARNS loudly on a dynamic route with no `getStaticPaths` (exempt: declared non-static renderMode, api routes).
-  - **`mode: 'auto'` (EXPERIMENTAL, Tier-4)**: per-route inference — `revalidate`→isr, `getStaticPaths`→ssg (even with loader), loader/serverLoader/guard/middleware→ssr, else ssg; explicit exports + routeRules win. Implemented as inference-as-declaration (`applyModeInference` injects `renderModeLiteral` before generation → runtime/build need zero auto-awareness); app pipeline via `resolveAutoModeSync` at zeroPlugin factory time (cwd-based routes dir; announced once); table/banner show 'auto' + per-route inferred modes (`collectFileRouteModes('auto')`). `ZeroUserConfig` widens only zero()'s param — internal `ZeroConfig.mode` stays narrow; `_autoMode` internal marker.
-  - **routeRules (Tier-4)**: `zero({ routeRules: { '/blog/**': { renderMode: 'isr' } } })` — central glob overrides (`*` one segment, `**` any depth, most-specific wins); precedence file export > routeRules > app mode, applied uniformly in `resolveRenderModeForPath`/`collectRouteModes`/`collectFileRouteModes` (runtime dispatch, build filtering, mode table, SSG completeness warning) with `via: 'file'|'rule'` provenance in entries + rule-aware error lines.
-  - **Tier-2 silent-failure kills**: computed (non-literal) `renderMode` → build warning (still works at runtime via namespace import, but invisible to file-level mode surfaces); mode build errors carry per-route pasteable fix lines; explicit `ssg.paths` REPLACES auto-detection and now warns when route `getStaticPaths` exports get ignored (documented precedence); route `export const revalidate` (build-time platform manifest) vs `isr.revalidate` (runtime SWR TTL) are different layers — both JSDoc'd; ISR `cacheKey: 'path-only'` shorthand (strips query params; does NOT count as custom key for auth-refusal) + `expireOnTimeout` (drop stale entry on revalidation timeout, default keep-stale); `ssg.format: 'both'` auto-injects a root-relative canonical to the clean URL into both copies (skips pages with existing canonical + meta-refresh stubs).
-- **`https()` (dev/preview TLS, `@pyreon/zero/server`)**: NOT for localhost (already a secure context) — it exists so a REAL DEVICE gets one. A phone reaches the dev server at `http://192.168.1.24:3000`, which is insecure, so the EIGHT secure-context-gated hooks (`useGeolocation`/`useDeviceMotion`/`useAudioRecorder`/`useBluetooth`/`useClipboard`/`useNotifications`/`useShare`/`useWakeLock` + service workers) are ALL unavailable — silently, because the browser just doesn't define the API. Gated is NOT the same as sensory: `useCamera` (an `<input type=file capture>` picker), `useSpeech` (`speechSynthesis`; only SpeechRecognition is gated) and `usePush` (host-driven) work fine on http, and an early version of this entry wrongly listed all three. `hooks/src/tests/secure-context-coverage.test.ts` statically asserts every gated hook calls `warnIfInsecureContext` — hand-wiring a cross-cutting concern file-by-file left 5 of 8 silent while the docs claimed all of them. `lan: true` certifies the LAN address AND binds to it (both halves — a cert for an unbound address is unreachable; the plugin's `config()` DOES override `zero dev`'s inline `host: false`, verified). Cert tiers: `{cert,key}` → an installed `mkcert` CA (warning-free) → a zero-dependency self-signed leaf (one-time interstitial). **Pyreon never installs a CA** — a local CA key mints certs for ANY domain, so trusting one is the user's deliberate act (`mkcert -install`), not a plugin side effect. Custom hosts: `*.localhost` resolves natively; anything else gets its `/etc/hosts` lines PRINTED, never written. X.509 is hand-rolled on `node:crypto` (`src/https/der.ts` + `selfsign.ts`) — an IP must be an `iPAddress` SAN, not a `dNSName` (a dNSName holding an IP parses fine and is IGNORED by browsers, silently breaking the whole LAN feature; bisect-locked). Companion diagnostic `warnIfInsecureContext` in `@pyreon/hooks` fires ONLY when `isSecureContext === false`, so it can't blame TLS for an API the browser simply lacks. HTTP/1.1 only (Vite dev dropped h2 in v3).
-- Gates: `pyreon doctor --check-ssg` + lint `ssg` category (`revalidate-not-pure-literal` / `missing-get-static-paths` (skips api routes + non-default-export files) / `invalid-loader-export`). `verify-modes` (build artifacts) + the `ssr-node`/`isr-node`/`ssg-*` e2e (directory-rewriting `scripts/serve-ssg.ts` — NOT `vite preview`, whose SPA fallback masks per-route prerendered HTML).
+- Per-route HTML is built by a nested Vite SSR sub-build. An env flag stops it re-triggering itself; pages render concurrently via `runWithConcurrency`, with progress through `ssg.onProgress`.
+- `getStaticPaths` enumerates dynamic routes (`[id].tsx`).
+- `_404.tsx` / `_not-found.tsx` → `dist/404.html`. It renders inside layout chrome: `findNotFoundFallback` builds the chain, loaders are skipped via `router.preload(path, _, { skipLoaders: true })`, and `noindex` is injected.
+- A loader-thrown `redirect()` → `dist/_redirects` (Netlify/Cloudflare) + `_redirects.json` (Vercel) + optional meta-refresh HTML.
+- Sitemap: `seoPlugin({ sitemap: { useSsgPaths, hreflang } })`.
+- Each route gets `<link rel=modulepreload>` for its static import closure only.
+- Two routes resolving to the same URL is a build error.
+- Options: `ssg.format`, `ssg.onPathError`, `ssg.errorArtifact` (`dist/_pyreon-ssg-errors.json`).
+- `ssg.format: 'both'` injects a root-relative canonical to the clean URL into both copies (skipped when a canonical already exists and for meta-refresh stubs).
+- Explicit `ssg.paths` replaces auto-detection, and warns when route `getStaticPaths` exports are ignored.
+- The build warns on a dynamic route with no `getStaticPaths`, unless the route declares a non-static `renderMode` or is an API route.
+- i18n (`expandRoutesForLocales`, strategies `prefix` / `prefix-except-default`):
+  - Under `prefix-except-default`, root layouts are not duplicated — they wrap every locale via hierarchical match. Non-root layouts are duplicated.
+  - Each locale gets `dist/{locale}/404.html` and hreflang clusters.
+
+## SSR and ISR
+
+- `ssrPlugin` builds `dist/server/entry-server.js` and calls `adapter.build({ kind: 'ssr' })`. `AdapterBuildOptions` is a `kind: 'ssr' | 'ssg'` discriminated union.
+- Deploy staging uses `materialize(src, dest)`, which handles same-dir and dest-inside-src. Never `cp` a directory into itself (`ERR_FS_CP_EINVAL`).
+- The production template is the built client `index.html` (hashed `<script>` + CSS), copied to `dist/server/template.html` and read by `readBuiltTemplate()`. `clientEntry: false` suppresses the dev entry. Without this the page server-renders but ships `/src/entry-client.ts` and never hydrates.
+- Cloudflare/workerd has no filesystem and an `undefined` `import.meta.url`:
+  - the adapter inlines the template into `globalThis.__PYREON_SSR_TEMPLATE__`, then dynamic-imports the handler (a static import would evaluate first);
+  - `normalizeLocation` tolerates `undefined`;
+  - the worker needs `nodejs_compat`.
+- ISR (`createISRHandler`):
+  - The default cache key is `pathname + search`. Per-user pages need an explicit `cacheKey` function. The handler warns at init, and the build warns for any `isr` route whose loader reads cookie/authorization headers without one (`fs-router.ts:detectIsrAuthRisk`).
+  - `cacheKey: 'path-only'` strips the query. It does not count as a custom key for the auth refusal.
+  - `expireOnTimeout` drops a stale entry when revalidation times out (default: keep stale).
+  - Storage is a pluggable `ISRStore` (default `createMemoryStore`).
+- Two different revalidate layers:
+  - route `export const revalidate` → build-time `dist/_pyreon-revalidate.json` for `Adapter.revalidate(path)`; `vercelRevalidateHandler` validates the path against that manifest;
+  - `isr.revalidate` → the runtime stale-while-revalidate TTL.
+
+## Mode visibility and adapter selection
+
+- Every build prints a per-route mode table (`○ ssg · λ ssr · ⟳ isr · ⚡ spa`; `(declared)` marks overrides; more than 40 routes collapse to counts). `ssrPlugin` prints it for server builds, `ssgPlugin` for `mode: 'ssg'`; a hybrid build prints it once.
+- The `zero dev` banner shows the app mode, hybrid overrides and per-route modes from `collectFileRouteModes` (file-level twin of `collectRouteModes`; precedence leaf > nearest layout > app mode).
+- An unset `adapter` is auto-detected from the platform env (`VERCEL` / `NETLIFY` / `CF_PAGES`; local → node). An explicit adapter always wins.
+- A computed (non-literal) `renderMode` works at runtime but is invisible to the file-level mode surfaces, so the build warns.
+- Mode build errors carry a pasteable fix line per route.
+
+### `mode: 'auto'` (experimental)
+
+- Per-route inference: `revalidate` → isr; `getStaticPaths` → ssg (even with a loader); loader / serverLoader / guard / middleware → ssr; otherwise ssg. Explicit exports and `routeRules` win.
+- `applyModeInference` injects a `renderModeLiteral` before generation, so runtime and build code never need to know about `auto`.
+- The app pipeline resolves it with `resolveAutoModeSync` when the zero plugin is created (cwd-based routes dir, announced once).
+- `ZeroUserConfig` widens only `zero()`'s parameter. Internal `ZeroConfig.mode` stays narrow; `_autoMode` is the internal marker.
+
+### `routeRules`
+
+- `zero({ routeRules: { '/blog/**': { renderMode: 'isr' } } })` — glob overrides (`*` = one segment, `**` = any depth, most specific wins).
+- Precedence: file export > `routeRules` > app mode. Applied the same way in `resolveRenderModeForPath`, `collectRouteModes` and `collectFileRouteModes`, with `via: 'file' | 'rule'` provenance.
+
+## `https()` — dev/preview TLS (`@pyreon/zero/server`)
+
+- Purpose: give a real device a secure context. Localhost is already secure. A phone at `http://192.168.1.24:3000` is not, so the browser silently omits these APIs:
+  - hooks: `useGeolocation`, `useDeviceMotion`, `useAudioRecorder`, `useBluetooth`, `useClipboard`, `useNotifications`, `useShare`, `useWakeLock`;
+  - service workers.
+- Not gated: `useCamera` (a file-input picker), `useSpeech` (only SpeechRecognition is gated) and `usePush` work on http.
+- Every gated hook calls `warnIfInsecureContext` (`@pyreon/hooks`), which fires only when `isSecureContext === false`. `hooks/src/tests/secure-context-coverage.test.ts` asserts each gated hook calls it.
+- `lan: true` both certifies the LAN address and binds to it. The plugin's `config()` overrides `zero dev`'s inline `host: false`.
+- Certificate sources, in order: `{ cert, key }` → an installed `mkcert` CA (no browser warning) → a zero-dependency self-signed leaf (one-time interstitial).
+- Pyreon never installs a CA. Trusting one (`mkcert -install`) is the user's decision, because a local CA key can mint certs for any domain.
+- Custom hosts: `*.localhost` resolves natively; for anything else the `/etc/hosts` lines are printed, never written.
+- X.509 is hand-rolled on `node:crypto` (`src/https/der.ts`, `selfsign.ts`). An IP must be an `iPAddress` SAN. A `dNSName` holding an IP parses fine and browsers ignore it.
+- HTTP/1.1 only (Vite dev dropped h2).
+
+## Gates
+
+- `pyreon doctor --check-ssg` and the lint `ssg` category: `revalidate-not-pure-literal`, `missing-get-static-paths` (skips API routes and files without a default export), `invalid-loader-export`.
+- `bun run verify-modes` checks built artifacts.
+- E2E: `ssr-node`, `isr-node`, `ssg-*`. SSG suites serve `dist/` with `scripts/serve-ssg.ts`, never `vite preview` — its SPA fallback serves `index.html` for every path and hides missing per-route HTML.
+
+## Other features
+
+- The main entry is client-safe; server-only code is at `@pyreon/zero/server` (clear stubs on misimport).
+- Adapters: Vercel, Cloudflare Pages, Netlify, Node, Bun, static. Immutable caching applies only to `<base><assetsDir>`, keyed on path, never extension.
+- CSP: `cspMiddleware` + `useNonce`. `renderPage` reads `useRequestLocals().cspNonce` once and stamps it on the loader-data and store-state `<script>`s, passes it to `collectStyles(nonce)` and `renderWithHead(app, { nonce })`. The client styler inherits the nonce from the reused SSR `<style>` (`.nonce` property). SSG/SPA cannot carry a per-request nonce (use hash-based CSP); the client entry `<script src>` relies on `'self'`.
+- Also: `loggerMiddleware`, `aiPlugin` (llms.txt/JSON-LD), `useRequestLocals`.
+- Env vars (`@pyreon/zero/env`: `str`/`num`/`bool`/`url`/`oneOf`/`schema`, typed from defaults):
+  - `validateEnv` is server-only (reads live `process.env`).
+  - `publicEnv()` is isomorphic: the plugin loads `ZERO_PUBLIC_*` at build and inlines the prefix-stripped snapshot as the `__ZERO_PUBLIC_ENV__` define into client and SSR bundles, so both read the same value.
+  - Only `ZERO_PUBLIC_*` is inlined (`loadPublicEnvVars` in `src/public-env.ts`); an unprefixed secret cannot reach the client bundle.
+  - Both accept any Standard Schema (zod, valibot, arktype, `s`) and receive the raw string, so use a coercing schema (`z.coerce.number()`, `s.stringbool()`). Async schemas are rejected.
+  - Inlining is per build: changing a public var needs a rebuild.
+  - `zero({ env: { API_URL: url() } })`: `assertPublicEnv` fails the build (warns in dev) on a missing or invalid declared var.
+  - Lint rule `pyreon/no-private-env-in-client` flags raw private `process.env` reads in client code.
+  - Locked by `env.test.ts`, `public-env-plugin.test.ts`, `e2e/public-env.spec.ts`.
+- The dev server honours Vite `server.proxy`: zero's catch-all middlewares run before Vite's proxy, so they `next()` proxy-context URLs via `matchesProxyContext` (mirrors Vite's `doesProxyContextMatchUrl` on the full `req.url`). Precedence: fs API routes > `server.proxy` > SSR/404.
+- Per-route `export const renderMode = 'ssg' | 'spa' | 'isr' | 'ssr'` (cascades from layouts) overrides the app `mode`; one resolver, `src/route-modes.ts:resolveRenderModeForPath`, drives build and runtime. Inside `mode: 'ssg'`, `ssr`/`isr` declarations are a build error.
+- Images: `<Image src>` (a `?optimize` descriptor, or a runtime URL with required `width`/`height`), `<OptimizedImage source>`, `<NoOptimize>`/`useNoOptimize()`, `createImageRegistry`, `createImage(Base)`. Placeholders: blur or `'color'` (`'dominant-color'` is a deprecated alias). Ambient types ship at `@pyreon/zero/image-types`.
+- Fonts: `usePreloadFont`, `?font` imports (`fontImportPlugin`), `fontPlugin` (`zero({ font })`). `subsets` scopes self-hosted Google Font subsets. `fallbackAdjust` (default on) computes size-adjusted fallback fonts to remove swap CLS and emits a `--pyreon-font-<slug>` CSS variable.
+- Resource hints: `usePreconnect`, `useDnsPrefetch`, `usePreload`. Icons: `<Icon>`/`createIcon`, `iconsPlugin`/`createNamedIcon`. Favicons: `faviconPlugin` (sharp required; theme-switched assets need the `data-favicon-theme` attribute). `ogImagePlugin`.
+- SSG emits per-route `<link rel=modulepreload>` from static imports only. `ssg.format: 'file' | 'directory' | 'both'` (default `'directory'`). `zero({ perfAdvisor: true })` gives advisory `route-js-budget` and `cls-footgun` findings.
+- Typed routes: `zero({ typedRoutes: true })` writes `src/pyreon-routes.d.ts` (page routes only, rewritten on route add/remove, only when content changes) augmenting `RegisteredRoutes`. `RouteHref = RoutePath | (string & {})`. Code: `src/route-types.ts` + `src/route-types-gen.ts`. Gitignore the generated file.
+- `@pyreon/zero-content`: compile-time `.md` → Pyreon JSX, typed collections, MDX components from `src/mdx/`.

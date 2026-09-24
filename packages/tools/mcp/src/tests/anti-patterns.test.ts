@@ -132,9 +132,15 @@ describe('index hook follows the NEED, not the format', () => {
   })
 
   it('a title past the clamp is cut on a word boundary, marked, and still a substring of the real title', () => {
-    const huge = entries.find((e) => e.name.length > 120)
-    expect(huge, 'catalog has no clamped entry to check').toBeDefined()
-    const line = index.split('\n').find((l) => l.startsWith(`- **${huge!.name.slice(0, 40)}`)) ?? ''
+    // Synthetic: the catalog keeps titles short, so the clamp is exercised on
+    // an injected entry rather than depending on the catalog's current shape.
+    const huge = {
+      ...entries[0]!,
+      name: 'A deliberately long anti-pattern title that runs well past the index clamp so the formatter has to cut it on a word boundary and mark it',
+    }
+    expect(huge.name.length).toBeGreaterThan(120)
+    const clampedIndex = formatAntiPatternsIndex([huge])
+    const line = clampedIndex.split('\n').find((l) => l.startsWith(`- **${huge.name.slice(0, 40)}`)) ?? ''
     expect(line).not.toBe('')
     const shown = line.slice('- **'.length, line.indexOf('**', 4))
     expect(shown.endsWith('…')).toBe(true)
@@ -142,7 +148,7 @@ describe('index hook follows the NEED, not the format', () => {
     // No hook after a clamped title either.
     expect(line.replace(/ `\[detector:[^`]+`$/, '')).toBe(`- **${shown}**`)
     // What `get_anti_patterns({ name })` does: strip the marker, substring-match.
-    expect(huge!.name.includes(shown.slice(0, -1))).toBe(true)
+    expect(huge.name.includes(shown.slice(0, -1))).toBe(true)
     expect(shown.slice(0, -1).endsWith(' ')).toBe(false)
   })
 

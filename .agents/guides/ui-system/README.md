@@ -1,71 +1,116 @@
 # Pyreon UI System
 
-### UI System — Key Technical Details
-
-- **@pyreon/styler**:
-  - `styled('div')` → `ComponentFn`; `css` → lazy `CSSResult`; `keyframes` → animation name; `createGlobalStyle`/`createSheet()`.
-  - `ThemeContext` is REACTIVE (`createReactiveContext<Theme>`) — `useTheme()` snapshots, `useThemeAccessor()` returns the `() => Theme` for tracking in effects. Whole-theme swaps re-resolve CSS + swap classnames without remounting.
-  - Singleton `StyleSheet` (FNV-1a hashing, dedup, SSR).
-  - **`innerRef` is a `ref` alias** on `styled()` (a styled component renders one DOM node so `ref` already targets it); without it `<Styled innerRef={fn}>` silently dropped the ref.
-  - **SSR fast path** in `DynamicStyled` (`IS_SERVER` const): skips the per-component reactive `computed`+`ref`+`renderEffect` allocation server-side (~5× faster `renderToString`, byte-identical className → no hydration mismatch).
-- **@pyreon/unistyle**:
-  - single value, mobile-first array `[xs,sm,md,lg]`, or breakpoint object. 170+ CSS property mappings. A `null`/`undefined` slot in a mobile-first array is a SKIP → it inherits the PREVIOUS breakpoint (`['red', null, 'blue']` = xs red, sm red, md blue), matching a breakpoint object with a missing key AND styled-system/theme-ui — NOT filled from the last element (`normalizeTheme:handleArrayCb`; the prior `?? lastValue` turned the color blue one breakpoint too early + dropped interior gaps when the last element was null). Arrays and objects of the same shape now normalize identically; `0`/`false` are real values, not gaps.
-  - Responsive `@media (min-width)` emits only deltas (mobile-first cascade — `optimizeBreakpointDeltas`; the diff runs against the RUNNING cascade so a value that reverts to an earlier one IS re-emitted — never a dropped reset).
-  - **`themeToCssVars(theme, opts?)`** autogenerates `--px-*` custom properties from a plain theme JSON — returns `{ vars, css, registry }`; units baked at emission via `value()`+rootSize (`spacing.small: 8` → `--px-spacing-small: 0.5rem`); plain `var()`/`calc()` strings flow through the whole value pipeline untouched (the tested passthrough contract). Pure + WeakMap-cached by theme identity. See "CSS-variables theming" below.
-- **@pyreon/rocketstyle**:
-  - `rocketstyle(component)` multi-dimensional engine (dimensions: `state`/`size`/`variant`/`theme` + custom; dark/light via `useDarkMode`).
-  - **Per-definition caching** (created once per `rocketComponent()`, shared via WeakMap): `_dimensionsCache`, `_reservedKeysCache`, `_omitSetCache`, `LocalThemeManager`, and `_rsMemo` — a `WeakMap<theme, Map<keyString, {rocketstyle, rocketstate}>>` keyed by `mode|dimensionPropTuple|pseudoState` that returns SAME object identities on hit so the styler `classCache` skips resolution (LRU 128/theme; real apps need ONE shared `<PyreonUI>` for the memo to span instances).
-  - `getTheme` in-place merge + frozen `EMPTY_PSEUDO`. Dev guard tree-shaken in prod.
-- **@pyreon/attrs**: `attrs(component)` chainable — `.attrs({props})` (default props), `.config({dimensions})`, `.statics({method})`, `.compose(enhancer)`.
-- **@pyreon/kinetic**:
-  - `kinetic(component)` → `.preset()`, `.enter()/.enterTo()`, `.leave()/.leaveTo()`, `.collapse()`, `.stagger()`, `.group()`. 4 modes.
-  - **SSR contract**: `<Transition show={() => false}>` always emits children with hidden-state classes inlined (`leaveTo` else `enterFrom`) — critical for SSG scroll-reveal (IO can't fire server-side). Animation is visual, content is structural; matches Framer Motion / react-transition-group norm.
-  - Trade-off: initially-hidden `unmount:true` no longer triggers true DOM removal after a later leave.
-  - **`setTransition` preserves `transition-delay` when kinetic assigns the `transition` shorthand** — the shorthand resets omitted longhands (`transition-delay`→`0s`) in Chromium/Firefox; a bare `el.style.transition = enterTransition` erased stagger delays, so STYLE/preset staggers (`.preset(slideUp).stagger()`) animated all children AT ONCE. Delay sourced from a stable `--kinetic-delay` custom prop (survives the shorthand AND the `transition=''` reset at 'entered' → multi-cycle safe). happy-dom does NOT model the shorthand→longhand reset → only real Chromium catches it (`stagger-delay-preserved.browser.test.tsx`). **`nextFrame` BATCHES all same-burst callbacks into ONE shared double-rAF** (2 rAF registrations for a 1000-child stagger, not 2000 — the measured dominant per-child overhead vs Motion One at N=1000; a callback registered after the batch's outer frame opens a NEW batch so its "from" state still paints; identity-keyed to the scheduling `requestAnimationFrame`, so swapped stubs/polyfills can't strand callbacks on a dead batch). Its cancel REMOVES the callback from the batch — works in every phase (a rapid enter→leave inside one frame can never commit the stale enter-to state) without touching batch siblings; SSR-safe no-op when rAF is undefined.
-  - **Animation JS-overhead bench** (`bun run bench`, real Chromium via Playwright vs Motion One + a bare-CSS floor; 2026-07 re-measure AFTER the shared-`nextFrame` batching): kinetic WINS enter-500 (~1.8–2× faster than Motion One) and stagger-300 (~1.3×), wins-or-ties enter-2000, and statistically TIES stagger-1000 (🤝 CI-overlap across repeat runs — was a stable 1.27× LOSS pre-batching, −24% wall; Motion One's WAAPI path shows higher variance); both ~6–8× the bare-CSS floor (the cost of a real animation abstraction). kinetic is CSS-transition-based so it CANNOT do springs / interruptible value animation / layout / gestures (Motion One / Framer own those). Honest CSS-offload framing in `bench/README.md`.
-- **@pyreon/elements**:
-  - `Element` (block w/ responsive style props), `Text`, `List`, `Overlay` (positioned + backdrop), `Portal` (per-instance wrapper element inside `DOMLocation`, default `document.body` — read rendered DOM one level deeper).
-  - **Element layout is PROPS, not theme CSS** (see code-style.md "Layout in `.attrs()`" for the full contract): simple elements read `contentDirection`/`contentAlignX`/`contentAlignY` (bare `direction`/`alignX`/`alignY` = slot axis of compound elements); alignment is AXIS-FIXED (X horizontal always, `block`=stretch); `gap` renders CSS gap on the simple path + the button flex-fix layer (0.51+); `block: true` for full-width/app roots (default is shrink-wrapping `inline-flex`). Theme-level flex overrides fight the wrapper's emitted CSS and never reach the needsFix inner layer. Theme layout stays correct ONLY for: `flexWrap`, CSS grid, and `display:'block'` for text ellipsis.
-  - **Overlay focus restore** (a11y): `useOverlay` returns focus to the trigger on close only when focus is still inside the closing overlay. Use `useOverlay` for tooltips/popovers/dropdowns; never reimplement positioning. `useOverlay` returns `{ triggerRef, contentRef, active, align, alignX, alignY, showContent, hideContent, setContentPosition, setupListeners, blocked, ... }` — NOT `isOpen`/`open`/`close`/`toggle`/`triggerProps` (those never existed; a doc-drift fixed alongside the two Overlay bugs below).
-  - **Overlay content stability + hover-reachability (durable contracts, fixed 2026-07)**: (1) the content receives `align`/`alignX`/`alignY` as LIVE `_rp()` reactive props (not value reads inside the mount accessor) — a viewport-edge FLIP re-styles the content in place, NO remount (pre-fix the content subtree remounted on flip, double-firing `onMount` + dropping an input's state in a popover). (2) A hover overlay's CONTENT-hover listeners re-bind as `isContentLoaded` flips (the content mounts AFTER `setupListeners`) — so moving the pointer trigger→content keeps it open (pre-fix `attachHoverListeners()` ran once at mount with `contentEl` still null → content unreachable). Both are real-Chromium-locked (`Overlay-content-reactive-align` / `Overlay-hover-content` browser specs, bisect-verified).
-  - **Overlay trigger/content render props receive a typed `ref`** (`{ ref, active, showContent, hideContent }` for trigger; `+ align/alignX/alignY` for content) — attach it or the hook can't measure/position/click-outside/focus. `OverlayProvider` coordination props (`blocked`/`setBlocked`/`setUnblocked`) are OPTIONAL — a root `<OverlayProvider>` uses no-op defaults; the default overlay context is a working no-op (not the former `{}` cast).
-  - Element simple-path fast path (no before/after content + non-needsFix tag → single styled invocation, 31–45% faster; a spot-check measured a non-compound Element mounting ~3.4× faster than a 3-slot compound one); `$element` bundle interning (`internElementBundle()`, same primitive tuple → same identity → `elClassCache` hit).
-- **@pyreon/ui-core PyreonUI**: single provider (theme/mode/config). Props `theme`, `mode` (`"light"|"dark"|"system"` — system auto-detects `prefers-color-scheme`), `inversed`. `useMode()` → mode signal; `enrichTheme(theme)` merges defaults. `init()` preserved for custom envs.
-
-**CSS-variables theming — `init({ cssVariables: true | { prefix, attribute } })`** (opt-in, ui-system-wide; flag off = byte-identical classic):
-
-- PyreonUI tokenizes the enriched theme via `themeToCssVars`, injects the `:root` block once (SSR-aware), provides a var-leaf tree.
-- Dark/light flip becomes ONE `documentElement[data-theme]` attribute write with ZERO re-resolution / className churn (rocketstyle `_resolveRsEntry` neither reads nor keys on the mode signal under the flag — styler `classCache` skips resolution on flip).
-- Component-level `mode(a, b)` becomes a hashed deduped var-pair factory (`--px-m-<fnv1a>`); theme authoring is UNCHANGED.
-- **Root-vs-nested split** (FOUC fix): the ROOT provider writes the mode attribute to `document.documentElement` via a client effect + returns children unwrapped; only NESTED/`inversed` providers render a `display:contents` wrapper scoping an override.
-- `cssVariablesPrePaintScript({ attribute?, storageKey?, fallback? })` (from `@pyreon/ui-core`) builds the blocking `<head>` script (zero's `themeScript` composes automatically).
-- Document export resolves `mode(a,b)` vars via `resolveModeVar` + `extractDocNode({ theme?, mode? })`.
-- Measured: ~1.9× faster steady-state toggle at 300 real components (vars does ZERO per-component JS; the EAGER-vs-LAZY `coreContext` getter fix was load-bearing — an eager `{ theme, mode }` object subscribed every theme reader to mode). Retained heap neutral; bundle ~2.2 KB gz.
-- The one bug class is JS arithmetic on a `var()` value (`gap/2` → NaN) — found only in coolgrid (`isCssVarValue` → native `calc()`); the styler dev validator (`sheet.insert` NaN/malformed-var scan) is the runtime safety net.
-- Reference: `unistyle/cssVariables.ts`, `ui-core/{config,PyreonUI}.tsx`, `rocketstyle/utils/theme.ts`, `styler/sheet.ts`.
-
-### UI Component Library (packages/ui/)
+## Packages
 
 | Package | Description |
 | --- | --- |
-| `@pyreon/ui-theme` | Default theme + rocketstyle ThemeDefault/StylesDefault augmentation |
-| `@pyreon/ui-components` | 80 rocketstyle components across 14 categories |
-| `@pyreon/ui-primitives` | Headless behavior primitives (ComboboxBase, CalendarBase, etc.) — full WAI-ARIA keyboard nav (Combobox/Tree Home/End + typeahead; Tree `*` expand-siblings), string aria-state |
-
-**@pyreon/ui-components architecture**: three bases — `el` (Element/layout), `txt` (Text/typography), `list` (List/flowing). Factory re-exports `el`/`txt`/`list`/`rs` from `bases/`. **Layout in `.attrs()`** (`tag`, `direction`, `alignX`, `alignY`, `gap`, `block` → Element's inner layout); **CSS + pseudo-states in `.theme()`** (`hover`/`focus`/`active`/`disabled` objects → `:hover`/`:focus-visible`/`:active`/`:disabled`). `:hover` is unconditional (only `cursor:pointer` gates on `onClick`/`href`). CSS naming is unistyle convention (`borderWidthTop`, not `borderTopWidth`). **`useBooleans: false` is the rocketstyle default** — dimension props take strings (`state="primary"`), not booleans; opt in via `rocketstyle({ useBooleans: true })`. Theme augmentation lives in `@pyreon/ui-theme` (`ThemeDefault extends Theme`, `StylesDefault extends ITheme`) — apps must NOT re-augment. **A11y**: interactive components DELEGATE role/state ARIA to their `*Base` primitive (`@pyreon/ui-primitives`) — ui-components emit essentially NO own ARIA; presentational components that own no primitive carry correct a11y defaults via `.attrs()` (`Loader` → `role="status"` + `aria-label="Loading"`, `Pagination` → `aria-label="Pagination"` on its `<nav>`, `Tooltip` → `role="tooltip"`, `CloseButton` → `aria-label="Close"`; `Alert` → SEVERITY-DRIVEN live region via an `.attrs((props) => …)` callback reading the `state` dimension — `error`/`warning` → `role="alert"`+`aria-live="assertive"`, else `role="status"`+`aria-live="polite"` — matching `@pyreon/toast`'s type-aware Toaster role, plus an EXPLICIT `aria-live` because an Alert container commonly mutates in place, unlike toast's insert-only rows; `Notification` → fixed `role="status"`+`aria-live="polite"` (ambient card, never interrupts by default); `Breadcrumb` → `<nav aria-label="Breadcrumb">` landmark via `tag: 'nav'` on its List-base root (a styled flex `<div>`, not `<ol>/<li>`) — mark the current `<BreadcrumbItem>` with `aria-current="page"` (literal string, forwards through `applyProps`); all overridable, all flow through the `applyProps` path so they are correct). The #2214-deferred Alert/Notification live-region roles + Breadcrumb nav landmark are now CLOSED. Known cross-cutting gap (NOT in ui-components — a compiler follow-up): the primitives' DIRECT-JSX `aria-invalid`/`aria-disabled`/`data-*` with an `undefined` branch render the literal `="undefined"` in real (vite-plugin-compiled) apps via the un-guarded template `attrSetter` — see anti-patterns "Boolean ARIA-STATE … Compiled-template-path caveat".
-
-### UI System (Component Library)
-
-| Package | Description |
-| --- | --- |
-| `@pyreon/ui-core` | Config engine, init(), utilities, HTML tags, theme-reader hooks (useThemeValue, useRootSize, useSpacing) |
-| `@pyreon/styler` | CSS-in-JS: styled(), css, keyframes, theming |
-| `@pyreon/unistyle` | Responsive breakpoints, CSS property mappings, unit utilities |
-| `@pyreon/elements` | 5 foundational primitives (Element, Text, List, Overlay, Portal) |
-| `@pyreon/attrs` | Chainable HOC factory (.attrs(), .config(), .statics()) |
-| `@pyreon/rocketstyle` | Multi-state styling (states, sizes, variants, themes, dark mode) |
-| `@pyreon/coolgrid` | 12-column responsive grid (Container, Row, Col) |
-| `@pyreon/kinetic` | CSS-transition animations (Transition, Stagger, Collapse) |
+| `@pyreon/ui-core` | Config engine, `init()`, `<PyreonUI>`, utilities, HTML tags, theme-reader hooks (`useThemeValue`, `useRootSize`, `useSpacing`) |
+| `@pyreon/styler` | CSS-in-JS: `styled()`, `css`, `keyframes`, theming |
+| `@pyreon/unistyle` | Responsive breakpoints, CSS property mappings, units, theme engine |
+| `@pyreon/elements` | `Element`, `Text`, `List`, `Overlay`, `Portal` |
+| `@pyreon/attrs` | Chainable HOC factory (`.attrs()`, `.config()`, `.statics()`, `.compose()`) |
+| `@pyreon/rocketstyle` | Multi-dimensional styling (states, sizes, variants, themes, dark mode) |
+| `@pyreon/coolgrid` | 12-column responsive grid (`Container`, `Row`, `Col`) |
+| `@pyreon/kinetic` | CSS-transition animations (`Transition`, `Stagger`, `Collapse`) |
 | `@pyreon/kinetic-presets` | 120+ animation presets |
-| `@pyreon/connector-document` | Bridge between ui-system components and @pyreon/document |
-| `@pyreon/document-primitives` | Rocketstyle-based document components — render in browser AND export |
+| `@pyreon/connector-document` | Bridge between ui-system components and `@pyreon/document` |
+| `@pyreon/document-primitives` | Rocketstyle document components that render in the browser and export |
+
+Component libraries in `packages/ui/` (private):
+
+| Package | Description |
+| --- | --- |
+| `@pyreon/ui-theme` | Default theme plus rocketstyle `ThemeDefault` / `StylesDefault` augmentation |
+| `@pyreon/ui-components` | Rocketstyle components, grouped by category |
+| `@pyreon/ui-primitives` | Headless behaviour primitives (`ComboboxBase`, `CalendarBase`, …) with WAI-ARIA keyboard navigation and string aria-state |
+
+## @pyreon/styler
+
+- `ThemeContext` is reactive (`createReactiveContext<Theme>`). `useTheme()` returns a snapshot; `useThemeAccessor()` returns `() => Theme` for use in effects. A whole-theme swap re-resolves CSS and swaps class names without remounting.
+- One singleton `StyleSheet` (FNV-1a hashing, dedup, SSR).
+- `innerRef` is an alias of `ref` on `styled()` components.
+- On the server `DynamicStyled` (`IS_SERVER`) skips its reactive `computed`/`renderEffect` setup and emits the same class name.
+- The dev validator in `sheet.ts` flags `NaN` and malformed `var()` values in inserted CSS.
+
+## @pyreon/unistyle
+
+- A style value is a single value, a mobile-first array `[xs, sm, md, lg]`, or a breakpoint object. 170+ CSS property mappings.
+- A `null`/`undefined` array slot is skipped and inherits the previous breakpoint: `['red', null, 'blue']` = xs red, sm red, md blue. Arrays and breakpoint objects normalize identically; `0` and `false` are values, not gaps (`normalizeTheme.ts`).
+- `@media (min-width)` blocks emit only deltas (`optimizeBreakpointDeltas`). The diff runs against the running cascade, so a value that reverts to an earlier one is re-emitted.
+- `themeToCssVars(theme, opts?)` (`cssVariables.ts`) turns a plain theme into `--px-*` custom properties and returns `{ vars, css, registry }`. Units are applied at emission (`spacing.small: 8` → `--px-spacing-small: 0.5rem`). Plain `var()`/`calc()` strings pass through unchanged. Pure, cached per theme object.
+- Registers its theme engine (`enrichTheme`, `themeToCssVars`, `cpseRewrite`) into `ui-core` at load.
+
+## @pyreon/rocketstyle
+
+- `rocketstyle(component)`: dimensions `state` / `size` / `variant` / `theme` plus custom ones; light/dark via the `mode` from `<PyreonUI>`.
+- `useBooleans: false` is the default: dimension props take strings (`state="primary"`). Opt in with `rocketstyle({ useBooleans: true })`.
+- Per-definition caches, created once per component and shared via `WeakMap`: `_dimensionsCache`, `_reservedKeysCache`, `_omitSetCache`, `LocalThemeManager`, and `_rsMemo`. `_rsMemo` is a `WeakMap<theme, SizedMap>` keyed by mode, resolved dimension values and pseudo-state, capped at 128 entries per theme. It returns the same object identities on a hit so the styler class cache skips resolution. Apps need one shared `<PyreonUI>` for the memo to span instances.
+- `resolveModeVar(value, mode)` resolves a `mode(a, b)` variable pair to its raw value for non-CSS targets.
+
+## @pyreon/kinetic
+
+- `kinetic(component)` → `.preset()`, `.enter()`/`.enterTo()`, `.leave()`/`.leaveTo()`, `.collapse()`, `.stagger()`, `.group()`.
+- **SSR:** `<Transition show={() => false}>` still renders its children, with the hidden-state classes inlined (`leaveTo`, else `enterFrom`). Content is structural, animation is visual; this keeps SSG scroll-reveal content in the HTML. Trade-off: an initially hidden transition with `unmount: true` is not removed from the DOM after a later leave.
+- **`setTransition`** (`utils.ts`) re-applies `transition-delay` after assigning the `transition` shorthand, which otherwise resets the delay to `0s` and makes staggers animate all at once. The delay comes from a `--kinetic-delay` custom property, which survives the shorthand and the reset at `entered`. happy-dom does not model the reset; the lock is `stagger-delay-preserved.browser.test.tsx`.
+- **`nextFrame`** batches callbacks from the same burst into one shared double-rAF. A callback registered after the batch's outer frame opens a new batch. Cancel removes one callback from its batch in any phase. No-op when `requestAnimationFrame` is undefined.
+- Kinetic is CSS-transition based: no springs, interruptible value animation, layout or gesture animation. Benchmark: `bun run bench` in the package (see `bench/README.md`).
+
+## @pyreon/elements
+
+- `Element`, `Text`, `List`, `Overlay`, `Portal`. `Portal` renders into a per-instance wrapper element inside `DOMLocation` (default `document.body`), so rendered DOM is one level deeper.
+- **Layout is props, not theme CSS** (full contract in `.agents/rules/code-style.md`, "Layout in `.attrs()`"):
+  - Simple elements read `contentDirection`, `contentAlignX`, `contentAlignY`. Bare `direction` / `alignX` / `alignY` are the slot axis of compound elements.
+  - Alignment is axis-fixed: X is always horizontal; `block` means stretch.
+  - `gap` renders CSS gap on the simple path and on the button/fieldset/legend flex-fix layer.
+  - `block: true` for full-width elements and app roots; the default is shrink-wrapping `inline-flex`.
+  - Theme layout is correct only for `flexWrap`, CSS grid, and `display: 'block'` for text ellipsis.
+- Simple-path fast path: without before/after content and on a non-fix tag, `Element` makes one styled invocation. `internElementBundle()` returns the same `$element` object for the same primitive tuple, so the class cache hits.
+
+### Overlay
+
+- Use `useOverlay` for tooltips, popovers and dropdowns; never reimplement positioning. It returns `{ triggerRef, contentRef, active, align, alignX, alignY, showContent, hideContent, setContentPosition, setupListeners, blocked, setBlocked, setUnblocked, Provider }`. There is no `isOpen`, `open`, `close`, `toggle` or `triggerProps`.
+- Trigger and content render props receive a `ref` (`{ ref, active, showContent, hideContent }`, plus `align` / `alignX` / `alignY` for content). Attach it, or the hook cannot measure, position, detect outside clicks or manage focus.
+- On close, focus returns to the trigger only when focus was inside the closing overlay (or was lost).
+- Content receives `align` / `alignX` / `alignY` as live reactive props, so a viewport-edge flip restyles it in place without a remount (`Overlay-content-reactive-align.browser.test.tsx`).
+- Content hover listeners re-bind whenever `isContentLoaded` changes, so moving the pointer from trigger to content keeps a hover overlay open (`Overlay-hover-content.browser.test.tsx`).
+- `OverlayProvider` coordination props (`blocked` / `setBlocked` / `setUnblocked`) are optional; the default context is a working no-op.
+
+## @pyreon/ui-core — `<PyreonUI>`
+
+Single provider for theme, mode and config. Props: `theme`, `mode` (`"light" | "dark" | "system"`; `system` follows `prefers-color-scheme`), `inversed`. `useMode()` returns the resolved mode. `init()` configures custom environments. Theme enrichment comes from the engine unistyle registers.
+
+### CSS-variables theming — `init({ cssVariables: true | { prefix, attribute } })`
+
+Opt-in. With the flag off, output is identical to classic mode.
+
+- `<PyreonUI>` tokenizes the enriched theme with `themeToCssVars`, injects the `:root` block once (SSR-aware), and provides a tree of `var()` leaves.
+- A light/dark flip is one `documentElement[data-theme]` write, with no re-resolution or class-name churn: under the flag rocketstyle's `_resolveRsEntry` does not read or key on the mode signal.
+- Component-level `mode(a, b)` becomes a hashed, deduplicated var pair (`--px-m-<fnv1a>`). Theme authoring is unchanged.
+- The root provider writes the mode attribute to `document.documentElement` and renders children unwrapped. Only nested or `inversed` providers render a `display: contents` wrapper for their override.
+- `cssVariablesPrePaintScript({ attribute?, storageKey?, fallback? })` builds the blocking `<head>` script that prevents a flash; zero's `themeScript` composes it.
+- Document export resolves `mode(a, b)` vars via `resolveModeVar` and `extractDocNode({ theme?, mode? })` (`@pyreon/document-primitives`).
+- `coreContext` exposes theme and mode through lazy getters; an eager object subscribes every theme reader to mode.
+- Never do JS arithmetic on a `var()` value (`gap / 2` → `NaN`). Coolgrid detects vars with `isCssVarValue` and uses `calc()`.
+- Code: `unistyle/src/cssVariables.ts`, `ui-core/src/{config.ts,PyreonUI.tsx}`, `rocketstyle/src/utils/theme.ts`, `styler/src/sheet.ts`.
+
+## @pyreon/ui-components
+
+- Three bases: `el` (Element, layout), `txt` (Text, typography), `list` (List, flowing content). `factory.ts` re-exports `el` / `txt` / `list` / `rs`.
+- Layout in `.attrs()` (`tag`, `direction`, `alignX`, `alignY`, `gap`, `block`); CSS and pseudo-states in `.theme()` (`hover` / `focus` / `active` / `disabled` → `:hover` / `:focus-visible` / `:active` / `:disabled`).
+- `:hover` styles are unconditional; only `cursor: pointer` depends on `onClick` / `href`.
+- CSS property names follow unistyle (`borderWidthTop`, not `borderTopWidth`).
+- Theme augmentation lives in `@pyreon/ui-theme` (`ThemeDefault extends Theme`, `StylesDefault extends ITheme`). Apps must not re-augment.
+
+### Accessibility
+
+Interactive components delegate role and state ARIA to their `*Base` primitive in `@pyreon/ui-primitives`. Presentational components set overridable defaults in `.attrs()`:
+
+| Component | Default |
+| --- | --- |
+| `Loader` | `role="status"`, `aria-label="Loading"` |
+| `Pagination` | `aria-label="Pagination"` on its `<nav>` |
+| `Tooltip` | `role="tooltip"` |
+| `CloseButton` | `aria-label="Close"` |
+| `Alert` | from the `state` dimension via `.attrs((props) => …)`: `error`/`warning` → `role="alert"` + `aria-live="assertive"`, else `role="status"` + `aria-live="polite"` (explicit `aria-live` because an alert usually mutates in place) |
+| `Notification` | `role="status"`, `aria-live="polite"` (never interrupts by default) |
+| `Breadcrumb` | `<nav aria-label="Breadcrumb">` via `tag: 'nav'` on its List root; mark the current `<BreadcrumbItem>` with `aria-current="page"` |

@@ -1,3 +1,63 @@
 # Plain Mode (experimental) — reactive code as plain JavaScript
 
-A compile-time dialect: a module with the `'use plain'` directive (or importing from `@pyreon/core/plain`) is rewritten by `transformPlain` (`@pyreon/compiler`) BEFORE the JSX transform — both backends see classic code, so templates/SSR/hydration/native need zero awareness. `let count = state(0)` → `const count = signal(0)`; every READ becomes a tracked call, every WRITE `.set(...)` (compound/update/logical-assign forms included, expression positions via comma/IIFE forms preserving JS value semantics); `derived(expr)` → `computed(() => expr)`; `effect(fn)` gets TOTAL tracking (conditionally-read state hoisted into a `void (…)` prologue — a branch flip or post-`await` read can never lose its subscription; write-only bindings are never hoisted, so no self-retrigger). Component props destructuring (`{ name, size = 'm' }`, param or body form) rewrites to live `props.*` reads; a component-body `if (<reactive>) return <jsx>` wraps the statement tail in a returned accessor so the branch re-evaluates. Three laws: a read is a read (value, everywhere); liveness comes from position; arguments are values, module exports are live (`export let x = state(0)` exports the SIGNAL — the vite-plugin registry feeds importers, classic AND plain, via `knownSignals`; assigning to an imported binding is a warning — ESM law). The vite-plugin transforms marker-bearing `.ts`/`.mts` store modules too (cheap `detectPlain` gate). **DEEP state**: a LITERAL object/array initializer lowers to `signal(createStore(<literal>))` — the outer signal makes the root read a tracked CALL (so JSX children/attrs/component props are all live through existing machinery, zero downstream/Rust awareness — the direct-proxy lowering was measured STATIC in compiled JSX and rejected), while the store proxy gives per-key granularity: `todos.push(t)` / `user.name = x` notify their key only, whole reassignment `user = v` re-wraps via `signal.set(createStore(v))` (coarse, correct — and later mutations on the NEW value still track). `state.raw(v)` opts a literal out (shallow signal, replace semantics, member mutation warns); a NON-literal argument is always shallow (the split must be static). Total tracking hoists conditional STATIC member paths (`void (user().name);`) — never a WRITE target (self-retrigger). **Codemod + readiness**: `pyreon plain [paths] [--write] [--json]` — per-BINDING classic→plain migration (`migrateToPlain` in `@pyreon/compiler`; reads `x()`→`x`, `.set`→assignment, simple `.update` param-substituted, `.peek`→`untrack(() => x)`; object-literal signals → `state.raw` since the codemod NEVER changes semantics; any other reference declines the binding with a named reason) and the dry-run IS the readiness report (declined-shape histogram = the build-next signal). The codemod + compiler form a ROUND-TRIP fuzz oracle (`runtime-dom/src/tests/plain-roundtrip-fuzz.test.tsx`: seeded classic programs → codemod → compile both → behavioral DOM diff; 500-seed sweep clean). **PMTC**: `parsePyreon` runs the same pre-pass via the light `@pyreon/compiler/plain` subpath — a plain shared-source file emits byte-identical Swift/Compose to its classic twin. **Lens**: plain warnings surface as `plain-mode` footgun findings in `analyzeReactivity`. Deliberately out of scope, each a WARNING not a silent wrong answer: deep mutation on SHALLOW state (raw/non-literal — replace the object), destructuring assignment onto state, rest/nested props patterns, compound-assign/`++` on a deep-state BINDING. Unprocessed plain code throws `[Pyreon] state() … reached the runtime` (diagnose-catalog entry teaches the fix). Locked by `compiler/src/tests/plain.test.ts` + `plain-migrate.test.ts` (emit shapes), `runtime-dom/src/tests/plain-mode.test.tsx` (behavioral: DOM updates, deep-state per-key granularity, twin classic↔plain equivalence, SSR+hydrate) + the round-trip fuzz, `vite-plugin/src/tests/plain-mode.test.ts` (cross-module matrix incl. deep/raw exports), `native/compiler/src/tests/native-plain-mode.test.ts` (emit equality) — deep-store lowering, write-target suppression, Lens surfacing, codemod read-rewrite, PMTC hook and export-scan all bisect-verified. **The pre-pass has a RUST MIRROR** (`native/src/plain.rs`, napi `transformPlain`): `transformJSX` prefers it when the binary ships the export (typeof-gated — older per-platform binaries fall back to JS; a THROW falls back, a `null` is a verdict). Byte-equality is the contract: `plain-native-equivalence.test.ts` (31-shape corpus + seeded grammar fuzz, 300 seeds in CI, 10k-seed sweep clean, prologue-neuter bisect-verified) locks code AND warnings; the JS implementation stays the ORACLE, and any dialect change lands in BOTH implementations in one PR. The port's `Magic` replicates the MagicString subset the pre-pass uses (Left-before-Right insert ordering at a position, call-order within a side) and keeps JS `Set` insertion-order parity via ordered Vecs — the two mirror-fidelity traps.
+A module with the `'use plain'` directive, or one importing from `@pyreon/core/plain`, is rewritten by `transformPlain` (`@pyreon/compiler`) before the JSX transform. Both compiler backends then see classic code, so templates, SSR, hydration and native need no awareness of the dialect.
+
+## Lowering
+
+- `let count = state(0)` → `const count = signal(0)`. Every read becomes a tracked call; every write becomes `.set(...)`, including compound, update and logical-assign forms (expression positions keep JS value semantics).
+- `derived(expr)` → `computed(() => expr)`.
+- `effect(fn)` gets total tracking: conditionally read state is hoisted into a `void (…)` prologue, so a branch flip or a read after `await` never loses its subscription. Write-only bindings and write targets are never hoisted, so an effect cannot retrigger itself.
+- Component props destructuring (`{ name, size = 'm' }`, parameter or body form) becomes live `props.*` reads.
+- A component-body `if (<reactive>) return <jsx>` wraps the rest of the body in a returned accessor, so the branch re-evaluates.
+- The Vite plugin also transforms `.ts`/`.mts` modules carrying the marker (`detectPlain` gate).
+
+## Three laws
+
+1. A read is a read: it yields the value everywhere.
+2. Liveness comes from position.
+3. Arguments are values; module exports are live. `export let x = state(0)` exports the signal, and the Vite plugin's registry feeds importers (classic and plain) via `knownSignals`. Assigning to an imported binding warns.
+
+## Deep state
+
+- A literal object or array initializer lowers to `signal(createStore(<literal>))`. The outer signal makes the root read a tracked call, so JSX children, attributes and props stay live with no downstream changes; the store proxy gives per-key updates (`todos.push(t)`, `user.name = x`).
+- Whole reassignment `user = v` becomes `signal.set(createStore(v))`; later mutations on the new value still track.
+- `state.raw(v)` opts a literal out: shallow signal, replace semantics, member mutation warns. A non-literal argument is always shallow.
+
+## Unsupported shapes (each emits a warning)
+
+- Deep mutation on shallow state (`state.raw` or non-literal) — replace the object instead.
+- Destructuring assignment onto state.
+- Rest or nested props patterns.
+- Compound assignment or `++` on a deep-state binding.
+
+Plain code that reaches the runtime unprocessed throws `[Pyreon] state() … reached the runtime`; the diagnose catalog explains the fix.
+
+## Codemod and readiness report
+
+`pyreon plain [paths] [--write] [--json]` runs `migrateToPlain` (`@pyreon/compiler`) per binding:
+
+- `x()` → `x`, `.set` → assignment, simple `.update` param-substituted, `.peek` → `untrack(() => x)`.
+- Object-literal signals become `state.raw`, because the codemod never changes semantics.
+- Any other reference declines the binding with a named reason. The dry run is the readiness report, including a histogram of declined shapes.
+
+`runtime-dom/src/tests/plain-roundtrip-fuzz.test.tsx` is a round-trip oracle: seeded classic programs → codemod → compile both → compare DOM behaviour.
+
+## Integrations
+
+- **PMTC**: `parsePyreon` runs the same pre-pass via the `@pyreon/compiler/plain` subpath; a plain file emits the same Swift/Compose as its classic twin.
+- **Reactivity Lens**: plain warnings appear as `plain-mode` findings in `analyzeReactivity`.
+
+## Rust mirror
+
+`native/src/plain.rs` (napi `transformPlain`) mirrors the pre-pass. `transformJSX` prefers it when the binary exports it; a throw falls back to JS, while a `null` result is a verdict.
+
+- Byte equality of code and warnings is the contract, locked by `plain-native-equivalence.test.ts` (shape corpus plus 300 fuzz seeds in CI).
+- The JS implementation is the oracle. Any dialect change lands in both implementations in one PR.
+- The port's `Magic` replicates the MagicString subset used (left-before-right insert ordering at one position, call order within a side) and preserves JS `Set` insertion order with ordered `Vec`s.
+
+## Tests
+
+- `compiler/src/tests/plain.test.ts`, `plain-migrate.test.ts` — emit shapes.
+- `runtime-dom/src/tests/plain-mode.test.tsx` — DOM updates, per-key deep state, classic/plain equivalence, SSR + hydrate.
+- `vite-plugin/src/tests/plain-mode.test.ts` — cross-module exports, including deep and raw.
+- `native/compiler/src/tests/native-plain-mode.test.ts` — PMTC emit equality.

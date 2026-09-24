@@ -1,3 +1,13 @@
 # @pyreon/toast
 
-- **@pyreon/toast**: `toast(message)` + `.success/.error/.warning/.info/.loading`; `.update`/`.dismiss`/`.remove`/`.promise`; `<Toaster>` (Portal, CSS transitions, a countdown suspended by three INDEPENDENT holds — hover, keyboard focus, and a hidden tab — tracked by identity so releasing one (a `mouseleave`) never restarts the clock while another (focus still inside) is outstanding, and so a missed release recovers on the next release of that same source; type-aware live-region role — `role="alert"` for error/warning, `role="status"` for info/success + `aria-atomic`; the role implies aria-live so the container carries none). **Two-phase removal**: `dismiss(id?)` is SOFT (flips `state:'exiting'`, plays the CSS leave animation — fade + collapse in place with sibling reflow — then hard-removes after `LEAVE_DURATION`=200ms; `onDismiss` fires immediately); `remove(id?)` is HARD/instant (no animation) — the exact react-hot-toast `dismiss`/`remove` split. Auto-dismiss + manual dismiss both go through the soft path. The store owns the leave timing (works headless); the render path is UNCHANGED (the `class` binding already reacts to `state==='exiting'`). **Reactive rows**: `<For by={id}>` keys on IDs; each row reads live fields via a `_toastMap` computed (same as flow's `nodeMap`). Portal'd buttons need scoped delegation (`setupDelegation(host)` on a per-instance host appended to body) — delegated events don't bubble through the mount root from a portal. **Deliberate non-goals** (documented scope, not gaps): swipe-to-dismiss, sonner-style collapsed-stacking, per-toast position.
+- `toast(message)` plus `.success/.error/.warning/.info/.loading`; `.update`, `.dismiss`, `.remove`, `.promise`.
+- `<Toaster>` renders through a Portal with CSS transitions.
+- The countdown pauses under three independent holds — hover, keyboard focus, hidden tab — tracked by identity, so releasing one does not restart the clock while another is held.
+- Live-region role by type: `role="alert"` for error/warning, `role="status"` for info/success, with `aria-atomic`. The role implies `aria-live`, so the container sets none.
+- Two-phase removal (the react-hot-toast split):
+  - `dismiss(id?)` is soft: it sets `state: 'exiting'`, plays the leave animation, then removes after `LEAVE_DURATION` (200 ms). `onDismiss` fires immediately. Auto-dismiss uses this path.
+  - `remove(id?)` removes instantly.
+  - The store owns the leave timing, so it works headless.
+- Rows are keyed `<For by={id}>` and read live fields through the `_toastMap` computed.
+- Portal'd buttons need a scoped delegation root: a per-instance host appended to `body` with `setupDelegation(host)`.
+- Out of scope: swipe-to-dismiss, collapsed stacking, per-toast position.

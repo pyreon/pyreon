@@ -1,3 +1,8 @@
 # @pyreon/query
 
-- **@pyreon/query**: full TanStack adapter — `useQuery`/`useMutation`/`useInfiniteQuery`/`useQueries`/`useSuspenseQuery` etc.; persist (`/persist` subpath) + devtools (`/devtools` subpath). **Options as a FUNCTION** (`useQuery(() => ({queryKey: [id()], ...}))`) so `queryKey` can read signals + refetch reactively; `useMutation` options are a plain object. `defineQueries({...})` named parallel queries. Fine-grained per-field signals, lazily materialized (slot-bag with property getters). Re-exports query-core (pinned tree-wide via `overrides`).
+- TanStack Query adapter: `useQuery`, `useMutation`, `useInfiniteQuery`, `useQueries`, `useSuspenseQuery` and the rest; `/persist` and `/devtools` subpaths.
+- Pass `useQuery` options as a function (`useQuery(() => ({ queryKey: [id()], … }))`) so `queryKey` can read signals and refetch reactively. `useMutation` takes a plain object.
+- `defineQueries({ … })` declares named parallel queries.
+- Results are fine-grained per-field signals, created lazily behind property getters.
+- Type helpers `QueryData`/`QueryError` unwrap the result bags.
+- Re-exports query-core, pinned repo-wide through `overrides`.

@@ -34,8 +34,16 @@ for (const e of entries) {
   byCat.set(e.category, g)
 }
 
+// The page is MDX: a paragraph that starts with the word `import` or `export`
+// is parsed as an ES module statement and fails the build. Entry bodies are
+// sentences, so capitalising the first letter both reads correctly and makes
+// that parse impossible (the ESM keywords are lowercase only).
+function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
 function renderEntry(e: AntiPatternEntry): string {
-  const parts = [`### ${escFlow(e.name)}`, escFlow(e.description)]
+  const parts = [`### ${escFlow(e.name)}`, escFlow(capitalise(e.description))]
   if (e.detectorCodes.length) {
     parts.push(
       '**Detected by:** ' +

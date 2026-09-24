@@ -1,264 +1,137 @@
 # Test Environment Parity
 
-Tests must run in the same environment as production. The recurring failure mode this rule prevents: tests pass because vitest provides something (`process`, hand-constructed vnodes, mocked APIs) that production does not — the LOGIC is correct given the test setup, but the test setup doesn't match reality.
+Tests must run in the environment the code runs in production. The failure this prevents: the logic is correct given the test setup, but vitest supplies something production does not — `process`, hand-built vnodes, mocked APIs — so the test passes and the product is broken. General test rules and the bisect-verify procedure are in `.agents/rules/testing.md`.
 
-This isn't theoretical. PR #197 found a silent metadata drop because no test ran a real rocketstyle primitive through the extraction pipeline (only mock vnodes did). PR #200 found a dev warning that was dead code in browsers because the gate used `typeof process` and tests ran in vitest where `process` exists.
-
-## The rule
-
-Categorize each package into one of three buckets and apply the matching rule:
+## Package categories
 
 ### Browser packages
 
-These run in real browsers in production. **Must have at least one Playwright/browser smoke test** in addition to vitest tests.
+Packages that run in real browsers must have at least one real-browser smoke test (`*.browser.test.{ts,tsx}` under `src/`) in addition to vitest tests. The smoke test imports the public API, mounts a minimal example, exercises one or two key flows, and asserts observable behaviour in real Chromium.
 
-The canonical machine-readable list lives at [`.agents/rules/browser-packages.json`](./browser-packages.json) — consumed by the `pyreon/require-browser-smoke-test` lint rule, the MCP `get_browser_smoke_status` tool, and the CI script `scripts/check-browser-smoke.ts`. Update the JSON when adding a new browser-running package; this prose list is kept in sync manually.
+The list is `.agents/rules/browser-packages.json` — the single source of truth; do not copy it elsewhere. It is consumed by:
 
-- `@pyreon/runtime-dom`
-- `@pyreon/router`
-- `@pyreon/head`
-- `@pyreon/server`
-- `@pyreon/flow`
-- `@pyreon/code`
-- `@pyreon/rich-text`
-- `@pyreon/charts`
-- `@pyreon/document-primitives`
-- `@pyreon/ui-components`, `@pyreon/ui-primitives`, `@pyreon/ui-theme`
-- `@pyreon/elements`, `@pyreon/styler`, `@pyreon/unistyle`, `@pyreon/rocketstyle`, `@pyreon/coolgrid`, `@pyreon/kinetic`
-- `@pyreon/connector-document`
-- `@pyreon/dnd`
-- `@pyreon/toast`
-- All `compat` packages (`react-compat`, `preact-compat`, `vue-compat`, `solid-compat`)
+- the lint rule `pyreon/require-browser-smoke-test` (fires on each package's `src/index.ts`; options `additionalPackages` to extend, `exemptPaths` to opt out),
+- `scripts/check-browser-smoke.ts` (CI), which checks both directions: a listed package without a browser test fails, and a package with a browser test that is not listed also fails,
+- the MCP tool `get_browser_smoke_status`.
 
-The smoke test imports the public API, mounts a minimal example, exercises 1-2 key flows, and asserts observable behavior in a real browser. Not exhaustive — just enough to catch environment divergence.
-
-**This rule is enforced by the lint rule `pyreon/require-browser-smoke-test`** — every package in the list above MUST have at least one `*.browser.test.{ts,tsx}` file under `src/`. The rule fires on each package's `src/index.ts` during `bun run lint`. The default browser-package list inside the rule mirrors the categorization above; keep them in sync when adding a new browser-running package. Use the rule's `additionalPackages` option to extend, or `exemptPaths` to opt out (e.g. for packages still under construction).
+Add a package to the JSON when it ships browser-running code.
 
 ### Server packages
 
-These run in Node/Bun in production. Vitest in Node IS production, so vitest tests are sufficient.
-
-- `@pyreon/runtime-server`
-- `@pyreon/server`
-- `@pyreon/zero` (server entry)
-- `@pyreon/vite-plugin`
-- `@pyreon/cli`, `@pyreon/lint`, `@pyreon/mcp`
-
-For these packages, `typeof process !== 'undefined'` is a fine pattern because production has `process` defined.
+These run in Node/Bun in production, so vitest in Node is production: `@pyreon/runtime-server`, `@pyreon/server` (also on the browser list for its client entry), `@pyreon/zero` (server entry), `@pyreon/vite-plugin`, `@pyreon/cli`, `@pyreon/lint`, `@pyreon/mcp`. `typeof process !== 'undefined'` is fine here.
 
 ### Universal packages
 
-Environment-independent. Vitest is fine — but with one exception below.
+Environment-independent; vitest is sufficient. Examples: `@pyreon/reactivity`, `@pyreon/core` (mostly), `@pyreon/compiler`, `@pyreon/store`, `@pyreon/state-tree`, `@pyreon/form`, `@pyreon/validation`, `@pyreon/query`, `@pyreon/table`, `@pyreon/i18n`, `@pyreon/hotkeys`, `@pyreon/permissions`, `@pyreon/machine`, `@pyreon/document` (the renderer; primitives are in `document-primitives`), `@pyreon/rx`, `@pyreon/url-state`, `@pyreon/storage`, `@pyreon/feature`.
 
-- `@pyreon/reactivity`
-- `@pyreon/core` (mostly — some browser-only paths)
-- `@pyreon/compiler`
-- `@pyreon/store`, `@pyreon/state-tree`
-- `@pyreon/form`, `@pyreon/validation`
-- `@pyreon/query`, `@pyreon/table`, `@pyreon/virtual`
-- `@pyreon/i18n`, `@pyreon/hooks`, `@pyreon/hotkeys`
-- `@pyreon/permissions`, `@pyreon/machine`
-- `@pyreon/document` (the renderer — primitives are in `document-primitives`)
-- `@pyreon/rx`, `@pyreon/toast`, `@pyreon/url-state`, `@pyreon/storage`
-- `@pyreon/feature`
+Exception — a code path that branches on the environment needs a test in each branch:
 
-**Exception**: any code path that branches on environment must have a test that runs in the branched environment.
+- `typeof window !== 'undefined'` → a happy-dom test and a node-environment test for the SSR fallback.
+- A dev-only gate → a vitest test plus a bundle-inspection test: bundle with `define: { 'process.env.NODE_ENV': '"production"' }` and assert the dev strings are gone, then with `"development"` and assert they are present. Reference: `packages/fundamentals/flow/src/tests/integration.test.ts`.
+- Library dev gates use bare `process.env.NODE_ENV !== 'production'`. Never `typeof process !== 'undefined'` (dead in Vite browser bundles) and never `import.meta.env.DEV` (Vite-only). Reference: `warnIgnoredOptions` in `packages/fundamentals/flow/src/layout.ts`; enforced by `pyreon/no-process-dev-gate`.
 
-- Code that checks `typeof window !== 'undefined'` → must have a happy-dom test AND a Node-only test (the latter explicitly verifies the SSR fallback path).
-- Code that checks `import.meta.env.DEV` → must have a vitest test (which sets `DEV = true`) AND an esbuild bundle inspection test (which verifies the prod-replaced literal tree-shakes correctly).
-- Code that checks `typeof process !== 'undefined'` → DELETE the check. Use `import.meta.env.DEV` instead. See `flow/src/layout.ts:warnIgnoredOptions` for the reference implementation.
+## Forbidden patterns
+
+### Mock-vnode tests as the only coverage for a contract
+
+A hand-built vnode skips the real pipeline (for example, the rocketstyle attrs HOC that moves props). Keep the fast mock test if you like, but always add a real-`h()` test:
+
+```ts
+// Mock (not sufficient on its own)
+const vnode = { type: 'div', props: { _documentProps: {...} }, children: [] }
+expect(extractDocumentTree(vnode).props).toEqual({...})
+
+// Real h() (required)
+import { h } from '@pyreon/core'
+import { DocDocument } from '../primitives/DocDocument'
+expect(extractDocumentTree(h(DocDocument, { title: 'Test' })).props.title).toBe('Test')
+```
+
+Detection: `pyreon doctor --only audit-tests` (also the MCP `audit_test_environment` tool) classifies each test file HIGH / MEDIUM / LOW by the balance of mock-vnode literals and helpers against real `h()` calls. Implementation: `packages/core/compiler/src/test-audit.ts`; tests: `packages/core/compiler/src/tests/test-audit.test.ts`.
+
+Before merging a PR that adds or changes `*.test.{ts,tsx}`, run it and keep HIGH + MEDIUM at 0. If a file regresses, convert it to real `h()` or document the exception in the PR description. The scanner recognises the helper names `mockVNode`, `vnode`, `createVNode`, `VNodeMock` and `makeVNode`.
+
+### happy-dom as a stand-in for a real browser
+
+happy-dom is a partial DOM in Node. It does not model real `IntersectionObserver`/`ResizeObserver`/`requestAnimationFrame` timing, touch/pointer sequencing, CSS rendering (computed style, layout, scroll), browser-context `import.meta.env`, workers, or real network. Use it to check that a component renders some DOM; use a real browser to check it renders the right DOM.
+
+### Mocking the framework
+
+A test that mocks `@pyreon/core`, `@pyreon/runtime-dom` or another framework package tests the mock. Use the real package.
+
+### A spec that hardcodes a platform modifier
+
+Playwright resolves `Meta`/`Control` against the host OS; a component resolves its shortcut from the user agent (for example `packages/zero/zero-content/src/search/search-runtime.tsx`: `navigator.userAgent.includes('Mac') ? e.metaKey : e.ctrlKey`). A spec pressing `Meta+k` passes on a Mac and silently does nothing on the Linux CI runner.
+
+Press `ControlOrMeta+<key>`, which follows the same branch. When the product branches on the environment, derive the branch in the spec; never restate one side of it. Limits:
+
+- A spoofed user agent breaks the pairing; drive the modifier that UA implies.
+- A chord the browser claims itself (`Control+Shift+R`) never reaches the page; see `e2e/reactive-overlay.spec.ts`.
 
 ## Typed test helpers (`@pyreon/test-utils`)
 
-Three categories of `any` / type-erasure patterns in tests have canonical typed replacements. Use the helper instead of inline casts — the helper's tests document the contract, and future regressions surface as test failures rather than silent erosion.
+Use these instead of inline casts:
 
-- **`accessInternal<T>(obj)`** — typed escape hatch for white-box tests that need to reach framework-internal state. Replaces `(obj as unknown as { _internal })._internal` (11 sites converted in PRs #925 + #928).
+- `accessInternal<T>(obj)` — read framework-internal state.
+
   ```ts
-  // Before:
-  expect((c as unknown as { _d: Set<unknown> })._d.size).toBe(1)
-  // After:
   expect(accessInternal<{ _d: Set<unknown> }>(c)._d.size).toBe(1)
+  // instead of (c as unknown as { _d: Set<unknown> })._d.size
   ```
-- **`callInternal<TKey, TReturn>(obj, method, ...args)`** — typed escape hatch for calling internal methods. Replaces the cast-then-call shape.
+
+- `callInternal<TKey, TReturn>(obj, method, ...args)` — call an internal method.
+
   ```ts
-  // Before:
-  return (router as unknown as { _resolve(p: string): unknown })._resolve(path)
-  // After:
   return callInternal<'_resolve', unknown>(router, '_resolve', path)
   ```
-- **`mockAdapter<TOpts, TReturn>(impl)`** — typed wrapper for `vi.mock` callback signatures. Replaces `(opts: any) => {...}` adapter mocks.
+
+- `mockAdapter<TOpts, TReturn>(impl)` — type a `vi.mock` callback.
+
   ```ts
-  // Before:
-  vi.mock('@x/lib', () => ({ doThing: (opts: any) => { ... } }))
-  // After:
   vi.mock('@x/lib', () => ({ doThing: mockAdapter<Opts, void>((opts) => { ... }) }))
   ```
 
-**Exceptions kept**: HTML element narrowing (`as HTMLInputElement` ~149 sites — idiomatic DOM testing), deliberate SSR global deletion (`delete (document as any).body` — testing SSR fallback paths), `@ts-expect-error` (~36 sites — explicit error-path tests), type-normalization (`as unknown as VNodeChild` / `as unknown as ComponentFn<...>` — framework primitive shape casts). These are documented as legitimate per the test-environment-parity rule's "deliberate" categories.
+Accepted casts: DOM element narrowing (`as HTMLInputElement`), deliberate SSR global deletion (`delete (document as any).body`), `@ts-expect-error` in error-path tests, and framework shape casts (`as unknown as VNodeChild`, `as unknown as ComponentFn<...>`). `packages/fundamentals/dnd/src/tests/integration.test.ts` keeps a deliberate `any` on its pdnd adapter mock callbacks, because a typed shape breaks the assertions that call across many option shapes.
 
-**One known load-bearing `any`** at `@pyreon/dnd`'s `src/tests/integration.test.ts`: typing the pdnd adapter mock callbacks with a non-`any` shape produces 16+ downstream typecheck errors because the assertion sites call across many opts shapes (`opts.onDragEnter`, `opts.onDrop`, etc.). The test deliberately uses `any` for dispatch-across-shapes pragmatism. **If the lint rule `pyreon/no-test-any-without-helper` ships in a future PR, add this file to its `exemptPaths`.**
+## Adding a browser smoke test
 
-## A spec that hardcodes a platform modifier tests only the author's OS
+Tests run in real Chromium via `@vitest/browser` + Playwright.
 
-Playwright resolves `Meta` and `Control` against the **host** platform. A
-component that offers a platform-aware shortcut resolves it against the **user
-agent**. Those agree on a developer's Mac and on a Linux runner — so a spec that
-hardcodes one of them passes locally and does nothing in CI, silently.
-
-`@pyreon/zero-content`'s search overlay is the worked example:
-
-```ts
-const isMod = navigator.userAgent.includes('Mac') ? e.metaKey : e.ctrlKey
-```
-
-The docs specs pressed `Meta+k`. On macOS the panel opened; on the ubuntu runner
-the component was listening for Control, nothing happened, and the assertion
-reported `.pyreon-search__panel` not visible — i.e. **"search is broken", from
-the one cause that is not it.** The specs had never executed anywhere but a
-laptop (see the sibling entry on `test:e2e:*` scripts that no matrix invokes),
-so the mismatch shipped with them.
-
-**Rule: press `ControlOrMeta+<key>`.** Playwright maps it the same way the
-component maps its own branch, so the spec follows the product rather than one
-operating system. More generally: when a product branches on the environment,
-the spec must *derive* the same branch, never restate one side of it — a
-restated constant is correct exactly on the machine it was written on.
-
-Two things this does NOT cover, worth stating so the rule is not over-trusted:
-
-- A **spoofed** user agent breaks the pairing again — `ControlOrMeta` follows
-  the host, `navigator.userAgent` follows the override. If a spec sets a UA, it
-  must drive the modifier that UA implies.
-- A chord the **browser itself** claims (`Control+Shift+R` is Chromium's hard
-  reload) never reaches the page on any platform. That is a different failure
-  and `e2e/reactive-overlay.spec.ts` documents it at its own call site.
-
-## Anti-patterns this rule explicitly forbids
-
-### 1. Mock-vnode tests as the only coverage for a contract
-
-**Bad:**
-
-```ts
-const vnode = { type: 'div', props: { _documentProps: {...} }, children: [] }
-const tree = extractDocumentTree(vnode)
-expect(tree.props).toEqual({...})
-```
-
-**Good (in addition to the mock test, not instead of):**
-
-```ts
-import { h } from '@pyreon/core'
-import { DocDocument } from '../primitives/DocDocument'
-
-const vnode = h(DocDocument, { title: 'Test' })
-const tree = extractDocumentTree(vnode)
-expect(tree.props.title).toBe('Test')
-```
-
-**Detection.** The `audit_test_environment` MCP tool (also wired into `pyreon doctor --audit-tests`) scans every test file for this anti-pattern and classifies the file HIGH / MEDIUM / LOW based on the balance of mock-vnode literals + helpers + helper-call sites vs real `h()` calls + `@pyreon/core` import. Run it before merging a new test file or after a framework change to verify the parallel real-`h()` coverage is in place. The scanner's heuristics include three context-aware skips (helper-def vs binding discrimination, type-guard call-arg skip, template-string fixture mask) so genuine code patterns aren't drowned out by false positives — see `packages/core/compiler/src/test-audit.ts` for the implementation and `tests/test-audit.test.ts` for the bisect-verified test suite.
-
-The mock test is the fast unit-test path. The real-`h()` test is the safety net that catches contract bugs. Always have both. The connector-document bug fixed in PR #197 was hidden for the entire lifetime of the package because no test used the real-`h()` form.
-
-### 2. `typeof process !== 'undefined'` as a dev-mode gate in browser packages
-
-Dead code in real Vite browser bundles. See `.agents/rules/anti-patterns.md` and the reference implementation in `flow/src/layout.ts`.
-
-### 3. happy-dom as a stand-in for a real browser
-
-happy-dom is a partial DOM polyfill running in Node. It does not catch:
-
-- Real `IntersectionObserver`, `ResizeObserver`, `requestAnimationFrame` timing
-- Touch/pointer event sequencing
-- Real CSS rendering (computed styles, scroll behavior, layout)
-- Vite-specific `import.meta.env` behavior in browser context
-- Web Worker, SharedWorker, ServiceWorker runtime behavior
-- Real network fetch, WebSocket, EventSource
-
-happy-dom is fine for testing your component renders ANY DOM at all. It is NOT fine for testing your component renders the RIGHT DOM in a real browser. Use Playwright (or `@vitest/browser`) for the latter.
-
-### 4. Mocking the entire framework in tests
-
-If a test mocks `@pyreon/core`, `@pyreon/runtime-dom`, or any other framework package, it's testing the mock, not the framework integration. Use the real package. If the real package is too slow to set up, the package itself probably has an ergonomics problem worth fixing.
-
-## Pre-merge audit guard
-
-Before merging any PR that adds or modifies `*.test.{ts,tsx}` files, run `pyreon doctor --audit-tests` and verify HIGH + MEDIUM count is still 0. If it regressed, either convert the new test to use real `h()` from `@pyreon/core` (or rename mock helpers off the scanner's name list — `mockVNode` / `vnode` / `createVNode` / `VNodeMock` / `makeVNode`) or document the exception in the PR description with the rationale. The T1.2 sweep brought the count to 0/0; this guard locks it in without CI tooling.
-
-## How to add a browser smoke test
-
-The harness is set up (T1.1 Phase 1). Tests run in real Chromium via `@vitest/browser` + Playwright — not happy-dom, not Node.
-
-Per-package opt-in:
-
-1. Add `vitest.browser.config.ts` next to the existing `vitest.config.ts`:
+1. Add `vitest.browser.config.ts` next to `vitest.config.ts`:
 
    ```ts
    import { playwright } from '@vitest/browser-playwright'
-   import { defineBrowserConfig } from '../../../vitest.browser'
+   import { defineBrowserConfig } from '@pyreon/vitest-config'
    export default defineBrowserConfig(playwright())
    ```
 
-2. Add `"test:browser": "vitest run --config ./vitest.browser.config.ts"` to the package's `package.json` scripts.
-3. Add `@vitest/browser-playwright` to the package's devDeps (required for Vite's static resolver inside the package directory).
-4. If the package also has a regular `vitest.config.ts`, merge `nodeExcludeBrowserTests` from `vitest.shared` into it so `bun run test` skips `.browser.test.*` files.
-5. Write tests as `*.browser.test.ts(x)` anywhere under `src/`. Import `mountInBrowser` + `flush` from `@pyreon/test-utils/browser` for a disposable container + a microtask+rAF flush helper.
+2. Add `"test:browser": "vitest run --config ./vitest.browser.config.ts"` to the package scripts.
+3. Add `@vitest/browser-playwright` to devDependencies.
+4. Set `excludeBrowserTests: true` in the package's `defineNodeConfig({...})` so `bun run test` skips `*.browser.test.*` files.
+5. Write `*.browser.test.ts(x)` under `src/`. Import `mountInBrowser` and `flush` from `@pyreon/test-utils/browser` (a disposable container and a microtask + rAF flush). Pass `mountInBrowser` a VNode, not an arrow — see `.agents/rules/testing.md`.
+6. Add the package to `.agents/rules/browser-packages.json`.
 
-CI runs the root `test:browser` script across every opt-in package via the `Test (browser)` job. Playwright Chromium is cached between runs.
-
-Reference implementation: [packages/internals/test-utils/src/browser/sanity.browser.test.ts](../../packages/internals/test-utils/src/browser/sanity.browser.test.ts).
+The root `bun run test:browser` runs every package's `test:browser`; CI runs it in the `Test (browser)` job. Reference: `packages/internals/test-utils/src/browser/sanity.browser.test.ts`.
 
 ## Real-app regression gate (ui-showcase)
 
-Browser smoke tests cover ONE package's surface in isolation. They do not cover the cross-package shapes where most real-world regressions land — rocketstyle's `attrs()` HOC moving props through styler + unistyle + elements + runtime-dom in a real app, with real signal handlers and real hydration.
+Browser smoke tests cover one package in isolation. Most real-world regressions land in cross-package shapes — the rocketstyle `attrs()` HOC moving props through styler, unistyle, elements and runtime-dom with real signals and hydration. Those five packages (`runtime-dom`, `styler`, `rocketstyle`, `elements`, `unistyle`) produce a disproportionate share of `fix:` commits.
 
-The audit (PR #351) found that 5 packages — `runtime-dom`, `styler`, `rocketstyle`, `elements`, `unistyle` — produced 24% of all `fix:` commits. Every one of those fixes came from a real app surfacing a bug that synthetic tests structurally couldn't catch:
+`e2e/ui-showcase-regression.spec.ts` runs against `examples/ui-showcase` in real Chromium via `bun run test:e2e:ui-regression` (`e2e-configs/ui-regression.config.ts`, its own webServer). CI selects it through `scripts/e2e-affected.ts`. It covers:
 
-- **PR #197** — silent metadata drop. Mock-vnode test passed; real `h()` flow broke (rocketstyle attrs HOC moved `_documentProps`).
-- **PR #200** — `typeof process` dev-gate dead in real Vite browser bundles; vitest had `process` defined and missed it.
-- **PR #336** — 4 production regressions on a real consumer app (Show/Match crash on signal accessor, void-tag children leak, styler malformed-CSS silent, zero SSG typed-but-unimplemented).
-- **PR #349** — `_layout` double-mount in SSR (partial fix; full fix landed in the structure/data-decoupling RouterView refactor on top of #402, which dropped per-page-load PyreonUI invocations from 27 → 4 in the ui-showcase mount probe), plus 5 compiler bugs only visible when real JSX runs through the compiler.
+- composition + interaction: a rocketstyle Button click updates a signal end to end;
+- the HOC contract: a `size` dimension prop reaches the DOM with visibly different sizes;
+- Element/Wrapper composition: no `undefined` leaks (void-tag children);
+- SSR/hydration: goto → click → assert, with no console errors;
+- theme + signal-driven styling: styler injects rules and classes are non-empty.
 
-The gate that catches this shape: `e2e/ui-showcase-regression.spec.ts` runs against `examples/ui-showcase` in real Chromium via `bun run test:e2e:ui-regression` (own [`e2e-configs/ui-regression.config.ts`](../../e2e-configs/ui-regression.config.ts), separate webServer boot to avoid resource contention with the existing `test:e2e` boot). Each spec maps to one of the bug-shapes above:
+When a real app finds a bug in one of the five packages, the fixing PR adds a spec here that fails against the broken version (bisect-verified). The gate does not cover other packages, visual regressions or performance.
 
-- **Composition + interaction** — rocketstyle Button click increments via signal end-to-end (catches #336.1, #349)
-- **HOC contract walk-through** — `size` dimension prop reaches the rendered DOM with visibly different sizes (catches #197 — mock-vnode tests bypass the HOC)
-- **Element + Wrapper composition** — no `undefined` leaks, dev markers present (catches #336.2 void-tag children)
-- **SSR / hydration smoke** — full goto → wait → click → assert path; no console errors (catches #349)
-- **Theme + signal-driven styling** — styler injects ≥1 CSS rule, classes are non-empty (catches #336.3 styler dev-gate dead)
+## Multi-render-cycle contracts need e2e
 
-CI runs `bun run test:e2e:ui-regression` as a separate step in the `E2E` job, after the existing `bun run test:e2e` (playground + ssr-showcase).
+Some contracts hold on a single synchronous mount and break only when signals re-run code. Example: the `nativeCompat()` marker makes the `*-compat` `jsx()` runtimes call a framework component through `h(type, props)` instead of `wrapCompatComponent`. Without it, the component body runs in the wrapper's accessor, so `provide()` lands in a stale context and `effect()` re-runs lose live signals.
 
-**Adding a new spec when a real-app regression surfaces.** When a real consumer app finds a bug in any of the 5 target packages, the same PR that fixes the bug should also add a spec to `e2e/ui-showcase-regression.spec.ts` that would have caught it BEFORE merge. The bar is "would the spec have failed against the broken version?" — i.e. bisect-verify it (see below). The gate is only as good as its specs; treat each new bug as an opportunity to lock its shape in.
+- **Unit layer** proves the structural contract (marker presence, `vnode.type` identity) — each compat package's `src/tests/native-marker-bypass.test.tsx`. A single-mount Provider + Consumer test passes even without the marker, so it is not a regression guard.
+- **E2E layer** proves the runtime contract under navigation: `e2e/cpa-app-compat.shared.ts`, where removing `nativeCompat(RouterView)` in `packages/core/router/src/components.tsx` leaves `<main>` empty after a route change.
 
-**What this gate doesn't catch.** Bugs in packages OUTSIDE the 5 target ones (router, query, form, etc. — those have their own browser-test stories). Visual regressions (separate `visual` project, currently disabled). Performance regressions (covered by `@pyreon/perf-harness`). Bug shapes nobody wrote a spec for — gate is reactive, not predictive.
-
-## Multi-render-cycle bugs need e2e coverage, not just unit tests
-
-Some framework contracts are invisible in synchronous-mount unit tests but break end-to-end under signal-driven re-execution. Reference case: the compat-mode `nativeCompat()` marker contract (PRs #419/#422/#425/#427/#429).
-
-The marker tells `@pyreon/{react,preact,vue,solid}-compat`'s `jsx()` runtime to route framework components through `h(type, props)` directly instead of through `wrapCompatComponent`. Without the marker, the component body runs inside the wrapper's accessor instead of Pyreon's setup frame — `provide()` calls end up in a torn-down context stack, `effect()` re-runs lose live-signal access.
-
-**The unit test layer can prove the JSX-runtime bypass fires** (`vnode.type === Native` for marked, `vnode.type === wrapper` for unmarked — see each compat package's `native-marker-bypass.test.tsx`). It CANNOT prove the contract holds across multiple render cycles, because synchronous mount preserves `provide()` context even WITH the wrapper (provide() pushes onto the global context stack regardless). A unit test that mounts a marked Provider + Consumer once and reads the value will pass even if you remove the marker.
-
-**The e2e test layer is required to catch the genuine bug shape.** PR #427's `e2e/cpa-app-compat.shared.ts` runs against the cpa-app-compat fixtures with real router state — when a navigation re-fires `RouterView`'s effect inside the wrapper, the loader's `provide(LoaderDataContext, ...)` lands in a stale context stack and `useLoaderData()` reads `undefined`. Bisect-verified by removing `nativeCompat(RouterView)` from `packages/core/router/src/components.tsx`: the cpa-app posts test fails with `<main>` empty.
-
-**Pattern for any contract that depends on Pyreon's setup frame surviving across re-runs**:
-- **Unit layer**: prove the structural / identity contract (function identity, prop shape, marker presence). Fast, focused per-package.
-- **E2E layer**: prove the runtime contract under real-app reactivity (signal click, loader-populated route, signal-driven re-render). Slower, cross-package, real-shape.
-
-Both layers are required. Comments in `*-compat/src/tests/native-marker-bypass.test.tsx` explicitly document which assertions are bisect-load-bearing (the structural ones) and which are smoke (the mount + provide() integration check) so a future contributor doesn't mistake the smoke test for a regression guard it isn't.
-
-## Bisect-verify regression tests
-
-When you add a regression test, you must bisect-verify it before the PR is ready:
-
-1. Save the fix.
-2. Revert the fix (temporary).
-3. Run the test — assert it fails with the right error message.
-4. Restore the fix.
-5. Run the test — assert it passes.
-
-If step 3 doesn't fail, the test passes for the wrong reason and provides false confidence. PR #200's first regression test passed even with the broken pattern because esbuild's minifier folds the dead code regardless of the gate. The bisect verification caught that. Without it, the test would have shipped with no actual coverage.
-
-This is mandatory for any test marked as a regression test. Document the bisect result in the PR description: "Bisect-verified: reverted gate to broken pattern, test failed with `<error>`, restored, test passed."
+Any contract that depends on Pyreon's setup frame surviving re-runs needs both layers.
