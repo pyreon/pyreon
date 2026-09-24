@@ -1,4 +1,4 @@
-import { dim, el, type T } from '../../kit'
+import { el } from '../../kit'
 
 /**
  * A reactive node on the Why? panel. Full-strength text on a tinted surface —
@@ -10,7 +10,7 @@ export const NodeChip = el
   .attrs({
     tag: 'button',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     font: 'inherit',
     fontFamily: t.font.mono,
     fontSize: t.size.meta,
@@ -24,8 +24,8 @@ export const NodeChip = el
     hover: { borderColor: t.accent },
   }))
   .states(
-    dim((t) => ({
+    (t) => ({
       active: { borderColor: t.accent, backgroundColor: t.accentSoft },
       idle: {},
-    })),
+    }),
   )

@@ -1,4 +1,4 @@
-import { dim, txt, type T } from '../../kit'
+import { txt } from '../../kit'
 
 /**
  * A scenario's verify verdict on the docs page. `ok` reads as a PASS — the
@@ -9,7 +9,7 @@ export const VerdictTag = txt
   .attrs({
     tag: 'span',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     fontFamily: t.font.mono,
     fontSize: t.size.small,
     fontWeight: '600',
@@ -18,9 +18,9 @@ export const VerdictTag = txt
     border: t.hairline,
   }))
   .states(
-    dim((t) => ({
+    (t) => ({
       ok: { color: t.ok, borderColor: t.ok },
       fail: { color: t.danger, borderColor: t.danger },
       unverified: { color: t.muted },
-    })),
+    }),
   )

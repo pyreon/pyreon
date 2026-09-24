@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const A11ySummary = el
   .attrs({
@@ -7,7 +7,7 @@ export const A11ySummary = el
     contentAlignY: 'center',
     gap: 16,
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     // Wrap rather than overflow: the Data panel reuses this strip for four
     // query flags, and on the default panel width the last one ("data:
     // present") was clipped at the panel edge. `flexWrap` has no Element prop

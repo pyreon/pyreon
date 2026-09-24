@@ -48,4 +48,4 @@ export { editDistance, formatUsage, nearest, validateUsage } from './validate-us
 export type { ComponentIdentity } from './identity'
 export { ambiguousComponentMessage, componentKey, fileQualifierFor, pathQualifierFor, resolveComponent } from './identity'
 export type { CatalogGraph, SearchHit } from './graph'
-export { createCatalogGraph } from './graph'
+export { createCatalogGraph, qualifyIdentities } from './graph'

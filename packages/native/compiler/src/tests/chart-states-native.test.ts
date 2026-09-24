@@ -10,7 +10,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * is named, never dropped.
  */
 const app = (series: string): string => `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ xAxis: { type: 'category', data: ['a', 'b', 'c'] }, yAxis: {}, series: [${series}] }} />
 }`
@@ -62,7 +62,7 @@ describe.each(['swift', 'kotlin'] as const)('states on %s', (target) => {
 
   it('a PlotChart with selectedMode "series" lowers directly (not through OptionChart) — the pin, the plot-hit, and no other pinning state', () => {
     const r = transform(`
-import { PlotChart, bars, line } from '@pyreon/charts/plot'
+import { PlotChart, bars, line } from '@pyreon/charts/engine'
 const ROWS = [{ a: 1, b: 4 }, { a: 2, b: 3 }, { a: 3, b: 2 }]
 export function App() {
   return <PlotChart data={ROWS} marks={[bars((d) => d.a), line((d) => d.b)]} height={220} selectedMode="series" />

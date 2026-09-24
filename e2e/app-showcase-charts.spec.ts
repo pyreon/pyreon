@@ -80,7 +80,7 @@ test.describe('app-showcase /dashboard — charts canvas mount', () => {
 })
 
 /**
- * Pyreon's OWN engine (`@pyreon/charts/plot`) in a real app.
+ * Pyreon's OWN engine (`@pyreon/charts`) in a real app.
  *
  * The engine's own suite runs under vitest's JSX transform, which is NOT the
  * transform that ships. This repo's recurring lesson is that a package's
@@ -93,7 +93,7 @@ test.describe('app-showcase /dashboard — charts canvas mount', () => {
  * the failure a chart engine can have.
  */
 test.describe('app-showcase /dashboard — the plot engine, real compiler', () => {
-  test('paints a chart drawn by @pyreon/charts/plot', async ({ page }) => {
+  test('paints a chart drawn by @pyreon/charts', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (err) => errors.push(err.message))
 

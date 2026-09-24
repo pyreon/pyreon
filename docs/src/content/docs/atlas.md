@@ -38,7 +38,7 @@ The scan discovers components (static TypeScript scan + rocketstyle runtime dete
 - **`atlas-catalog.json`** — every component, control, scenario, and verdict as data.
 - **`atlas-agent-guide.md`** — the compact, prescriptive summary an AI assistant reads to know what exists, what's verified, and what's broken.
 
-A failing scenario is a **red exit** — wire `atlas scan` into CI and the catalog gates itself. `--no-mount` keeps the scan purely static (no project code executes).
+A failing scenario is a **red exit** — wire `atlas scan` into CI and the catalog gates itself. `--no-mount` keeps the scan static: no component module is imported, so no component code executes (`pyreon.config.ts` is still loaded).
 
 ### `atlas verify` — re-check one component
 
@@ -207,6 +207,26 @@ Two of the five checks are claims only a real browser can make. This command boo
 - captures a **visual snapshot** of the preview and compares it against a per-scenario baseline (pixelmatch, tolerance-based). First run creates baselines; later runs fail on real diffs and write an `.actual.png` beside the baseline. `--update-snapshots` re-baselines.
 
 Both verdicts merge back into `atlas-catalog.json`. Baselines are machine-specific (font antialiasing) — keep `atlas-snapshots/` gitignored and let each environment create its own.
+
+### `atlas build` — a static, deployable site
+
+```bash
+pyreon atlas build . --out atlas-dist --base /my-repo/
+# atlas build: 108 component(s) → /…/atlas-dist
+```
+
+Compiles the workbench into plain files for any static host: one URL per component (`/button/`), no server. The two panels Node answers in `atlas dev` — the Docs source block and the Reactivity Lens — are baked at build time into one small JSON file per component under `_atlas/rpc/`, fetched when that component's panel asks. File paths in them are project-relative, so a public deploy does not publish your machine's directory layout. The site is a production build: the dev-only analysis panels (Why?, Perf, reactive coverage) live in `atlas dev`.
+
+The output directory is **emptied first**, so it must be new, empty, or a previous `atlas build` output (marked by a `.atlas-build-output` file). `--out .`, the source directory, or a non-empty directory atlas did not write is refused before anything is touched.
+
+### CLI conventions
+
+- `[dir]` is the project directory; `--dir <path>` is the source directory inside it (default `src`). `atlas verify` and `atlas check` take the project with `--cwd <dir>`, since their positional is the component.
+- Options take a value as `--out x` or `--out=x`. An unknown option is an error with a did-you-mean — never silently ignored.
+- `atlas scan --json` and `atlas verify --json` print one JSON document on stdout; narration goes to stderr.
+- `atlas <command> --help` and `atlas --version` do what they say.
+- `atlas dev` uses port 5210, or the next free one; `--port <n>` requires that port.
+- A component whose module fails to load (a syntax error, an unresolvable import) makes `atlas scan` exit non-zero: it was catalogued from its source but none of its checks ran.
 
 ## The five-check verify verdict
 

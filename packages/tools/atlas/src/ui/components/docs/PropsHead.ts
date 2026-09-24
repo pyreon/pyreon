@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const PropsHead = el
   .attrs({
@@ -10,7 +10,7 @@ export const PropsHead = el
     // same columns.
     block: true,
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     display: 'grid',
     gridTemplateColumns: '1.4fr 1fr 1fr',
     columnGap: '16px',
