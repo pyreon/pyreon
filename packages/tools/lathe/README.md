@@ -580,12 +580,17 @@ single directory is never what was meant.
 `lathe check` regenerates in memory and fails when committed output has drifted
 from the spec — the CI half, same contract as `gen-docs --check`.
 
-## The spec parser is first-party
+## YAML is read strictly
 
-There is no third-party OpenAPI or YAML dependency. The YAML reader is scoped
-to the subset OpenAPI documents actually use and **refuses** anchors, merge
-keys, explicit tags and tab indentation with a line number, rather than
-producing a document that is subtly wrong everywhere the construct was used.
+YAML goes through the [`yaml`](https://eemeli.org/yaml/) package (ISC, zero
+dependencies) as YAML 1.2 core. An earlier first-party reader covered "the
+subset OpenAPI uses" and turned out to refuse GitHub, Stripe, OpenAI, Twilio
+and DigitalOcean outright while silently corrupting block scalars in the files
+it did open. Anchors, aliases and merge keys are now resolved. Refused, with a
+line number: duplicate keys, a multi-document stream, custom tags (`!Ref`), a
+recursive alias, `.inf` / `.nan`, a collection used as a key, and tab
+indentation — each would otherwise produce a document the author did not
+write. A UTF-8 BOM is accepted on both the JSON and the YAML path.
 
 ## Contract changes
 

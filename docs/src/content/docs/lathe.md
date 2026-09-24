@@ -81,11 +81,15 @@ becomes a `note` with a stable code and a JSON-pointer location, so a loss is
 reported once instead of rediscovered by six emitters — and it lands in the
 generated reference pages, not only in the terminal.
 
-### The spec parser is first-party
+### YAML is read strictly
 
-Including a YAML reader scoped to the OpenAPI subset, which **refuses** anchors,
-merge keys, explicit tags and tab indentation with a line number rather than
-mis-reading them. There is no third-party spec dependency to trust.
+YAML is parsed by the [`yaml`](https://eemeli.org/yaml/) package (ISC, zero
+dependencies) as YAML 1.2 core, so the multi-line scalars, `- >-` items and
+nested sequences every YAML dumper writes all read correctly. Anchors, aliases
+and merge keys are resolved. What the reader **refuses**, with a line number,
+is everything that would otherwise produce a document the author did not
+write: duplicate keys, a multi-document stream, custom tags (`!Ref`), a
+recursive alias, `.inf` / `.nan`, and tab indentation.
 
 ## Entry points mirror the dependency graph
 
