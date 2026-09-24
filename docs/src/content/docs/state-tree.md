@@ -939,8 +939,8 @@ function restore(store: ReturnType<typeof TodoList.create>) {
 Both `getSnapshot` and `applySnapshot` throw if called on a non-model-instance:
 
 ```ts
-getSnapshot({}) // throws: "[@pyreon/state-tree] getSnapshot: not a model instance"
-applySnapshot({}, {}) // throws: "[@pyreon/state-tree] applySnapshot: not a model instance"
+getSnapshot({}) // throws: "[Pyreon] state-tree getSnapshot: not a model instance"
+applySnapshot({}, {}) // throws: "[Pyreon] state-tree applySnapshot: not a model instance"
 ```
 
 > **Schema mode re-validates.** In schema mode, `applySnapshot` routes the snapshot through the schema-validated `patch` helper — a malformed snapshot is **rejected** (the schema is the source of truth), not written raw to signals. Plain mode writes directly.
@@ -1636,11 +1636,11 @@ Destroy all hook singletons.
 All public functions that accept a model instance (`getSnapshot`, `applySnapshot`, `onPatch`, `applyPatch`, `addMiddleware`) validate their input and throw a descriptive error if called on a non-model-instance:
 
 ```ts
-getSnapshot({}) // Error: [@pyreon/state-tree] getSnapshot: not a model instance
-applySnapshot({}, {}) // Error: [@pyreon/state-tree] applySnapshot: not a model instance
-onPatch({}, () => {}) // Error: [@pyreon/state-tree] onPatch: not a model instance
-applyPatch({}, {}) // Error: [@pyreon/state-tree] applyPatch: not a model instance
-addMiddleware({}, fn) // Error: [@pyreon/state-tree] addMiddleware: not a model instance
+getSnapshot({}) // Error: [Pyreon] state-tree getSnapshot: not a model instance
+applySnapshot({}, {}) // Error: [Pyreon] state-tree applySnapshot: not a model instance
+onPatch({}, () => {}) // Error: [Pyreon] state-tree onPatch: not a model instance
+applyPatch({}, {}) // Error: [Pyreon] state-tree applyPatch: not a model instance
+addMiddleware({}, fn) // Error: [Pyreon] state-tree addMiddleware: not a model instance
 ```
 
 ## Internals
