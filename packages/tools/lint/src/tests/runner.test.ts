@@ -3489,7 +3489,7 @@ describe('config-file round-trip', () => {
 
 describe('pyreon/require-browser-smoke-test', () => {
   // Helpers shared by the suite — set up a fake MONOREPO with a
-  // `.claude/rules/browser-packages.json` at the root and a fake
+  // `.agents/rules/browser-packages.json` at the root and a fake
   // package under `packages/<name>/`. The rule discovers the JSON by
   // walking upward from the linted file, so we mirror that structure.
   async function setupFakePackage(opts: {
@@ -3506,7 +3506,7 @@ describe('pyreon/require-browser-smoke-test', () => {
     rule._resetBrowserPackagesCache()
 
     const rootDir = mkdtempSync(join(tmpdir(), 'pyreon-require-browser-smoke-'))
-    mkdirSync(join(rootDir, '.claude', 'rules'), { recursive: true })
+    mkdirSync(join(rootDir, '.agents', 'rules'), { recursive: true })
     const packages = opts.browserPackagesOverride ?? [
       '@pyreon/runtime-dom',
       '@pyreon/router',
@@ -3531,7 +3531,7 @@ describe('pyreon/require-browser-smoke-test', () => {
       '@pyreon/solid-compat',
     ]
     writeFileSync(
-      join(rootDir, '.claude', 'rules', 'browser-packages.json'),
+      join(rootDir, '.agents', 'rules', 'browser-packages.json'),
       JSON.stringify({ packages }),
     )
 
@@ -3806,9 +3806,9 @@ describe('pyreon/require-browser-smoke-test', () => {
 
     const rootDir = mkdtempSync(join(tmpdir(), 'pyreon-lint-bad-json-'))
     try {
-      mkdirSync(join(rootDir, '.claude', 'rules'), { recursive: true })
+      mkdirSync(join(rootDir, '.agents', 'rules'), { recursive: true })
       writeFileSync(
-        join(rootDir, '.claude', 'rules', 'browser-packages.json'),
+        join(rootDir, '.agents', 'rules', 'browser-packages.json'),
         `{ not valid json`,
       )
       const pkgDir = join(rootDir, 'packages', 'runtime-dom')

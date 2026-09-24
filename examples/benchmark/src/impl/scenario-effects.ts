@@ -195,7 +195,7 @@ function pyreonTarget(sink: EffectSink): EffectsTarget {
     },
     applyAll(next) {
       // `batch()` is the documented way to group multiple signal writes —
-      // CLAUDE.md lists "3+ signal updates without batch()" as an anti-pattern,
+      // `.agents/rules/anti-patterns.md` lists "3+ signal updates without batch()" as an anti-pattern,
       // so this IS the idiomatic fast path, not a bench-only trick.
       pyreonBatch(() => {
         for (let i = 0; i < EFFECT_ROWS; i++) (sigs[i] as ReturnType<typeof signal<number>>).set(next[i] as number)

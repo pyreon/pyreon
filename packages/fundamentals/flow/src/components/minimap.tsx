@@ -16,7 +16,7 @@ const MINIMAP_PADDING = 40
  * compilers, place `<MiniMap>` FIRST — a `<Controls>` mounted before a
  * sibling `<MiniMap>` silently failed to render (a compiler
  * slot-ordering bug, since fixed). See `<Controls>` and
- * `.claude/rules/anti-patterns.md` → "Flow overlay child order".
+ * `.agents/rules/anti-patterns.md` → "Flow overlay child order".
  *
  * @example
  * ```tsx

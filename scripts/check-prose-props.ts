@@ -11,7 +11,7 @@
  * consequences, and nothing reads it out of source.
  *
  * So semantics stay hand-written. The exposure is that hand-written prose is
- * unfalsifiable: rename a prop and `.claude/rules/code-style.md` keeps
+ * unfalsifiable: rename a prop and `.agents/rules/code-style.md` keeps
  * confidently teaching the old name to every assistant that reads it — which is
  * worse than silence, because it is specific and wrong.
  *
@@ -42,7 +42,7 @@ import { join } from 'node:path'
 const ROOT = join(import.meta.dirname, '..')
 
 /** Files scanned for `@props` markers. */
-const PROSE = ['.claude/rules/code-style.md', 'CLAUDE.md']
+const PROSE = ['.agents/rules/code-style.md', 'AGENTS.md']
 
 /**
  * Where a marked component's props are DECLARED.

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { _resetUnloadFlush } from '../local'
 import { _resetRegistry, useStorage } from '../index'
 
-// Real timers (not fake) per .claude/rules/testing.md — fake timers cause
+// Real timers (not fake) per .agents/rules/testing.md — fake timers cause
 // subtle issues with the debounce/await flow.
 const tick = (ms: number) => new Promise((r) => setTimeout(r, ms))
 

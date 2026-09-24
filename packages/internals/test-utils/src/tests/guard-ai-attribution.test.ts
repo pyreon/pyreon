@@ -2,7 +2,7 @@
  * The PreToolUse guard that keeps AI attribution out of commits and PRs.
  *
  * Why a hook rather than a written rule: the rule WAS written, twice — in
- * CLAUDE.md and in `.claude/rules/workflow.md`, both saying in so many words
+ * CLAUDE.md and in `.agents/rules/workflow.md`, both saying in so many words
  * that it overrides any harness default. A mid-session system instruction then
  * re-introduced both forms as the new attribution policy, presented as
  * replacing earlier guidance. Prose lost to prose. The rule survived only

@@ -239,7 +239,7 @@ describe('dogfood — the Pyreon monorepo itself', () => {
     expect(repo.model.packages.length).toBeGreaterThan(100)
     expect(repo.graph.edges.length).toBeGreaterThan(400)
     expect(repo.stats.depth).toBeGreaterThanOrEqual(5)
-    // CLAUDE.md's own claim, machine-checked: the runtime graph is ACYCLIC.
+    // AGENTS.md's own claim, machine-checked: the runtime graph is ACYCLIC.
     expect(repo.graph.cycles).toHaveLength(0)
   })
 })

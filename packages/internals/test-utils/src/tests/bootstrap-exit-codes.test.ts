@@ -30,8 +30,8 @@ const describeIfFull = SKIP_SLOW ? describe.skip : describe
  * Subprocess regression test for `scripts/bootstrap.ts` exit-code
  * behaviour.
  *
- * Policy (post gap #3 closure — see PR #435 + CLAUDE.md "Bootstrap
- * fails loudly on partial state"):
+ * Policy (post gap #3 closure — see PR #435 + `.agents/rules/architecture.md`
+ * "Bootstrap fails loudly on partial state"):
  *
  *   1. Build failure under any invocation (postinstall, manual, CI)
  *      exits non-zero by default. Pre-fix the postinstall path

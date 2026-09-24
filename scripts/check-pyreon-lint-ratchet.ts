@@ -15,7 +15,7 @@
  * shrink, off = deliberately N/A (a rule scoped-off for a package via
  * `.pyreonlintrc.json` / `exemptPaths` simply stops producing findings).
  *
- * See `.claude/rules/code-style.md` "three-state model" for the philosophy and
+ * See `.agents/rules/code-style.md` "three-state model" for the philosophy and
  * `scripts/check-lint-ratchet.ts` for the oxlint sibling this mirrors.
  *
  * Runs from the repo root (resolves `@pyreon/lint` + the CLI via the `bun`
@@ -61,7 +61,7 @@ const DESCRIPTION =
   'Pyreon-lint ratchet — @pyreon/lint advisory (warning + info) findings over framework `packages/*/src` ' +
   'may only DECREASE. A change pushing any rule above its baseline fails `bun scripts/check-pyreon-lint-ratchet.ts`. ' +
   'After fixing findings (or scoping a rule off for a package with rationale), tighten with `--update`. ' +
-  'Never raise the baseline to absorb new findings. See .claude/rules/code-style.md (three-state model).'
+  'Never raise the baseline to absorb new findings. See .agents/rules/code-style.md (three-state model).'
 
 /** Build the baseline object (DOWN-only ratchet) from current counts. */
 export function buildBaseline(current: Record<string, number>): LintBaseline {

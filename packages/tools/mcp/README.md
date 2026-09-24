@@ -84,7 +84,7 @@ bunx @pyreon/mcp     # starts stdio MCP server
 The server is designed to run standalone in a consumer project. Two things make that work:
 
 - **`typescript` is a runtime dependency.** The code-analysis tools (`validate`, `explain_reactivity`, `diagnose`, `migrate_react`, `migrate_pyreon`) call into `@pyreon/compiler`, which needs the TypeScript compiler API. A `bunx` isolated install therefore pulls `typescript` in automatically — no peer-dependency setup required.
-- **Doc/content tools ship a bundled snapshot.** `get_pattern`, `get_anti_patterns`, and `get_changelog` normally read from the Pyreon monorepo (`docs/src/content/docs/patterns/*.md`, `.claude/rules/anti-patterns.md`, `packages/**/CHANGELOG.md`). Those files don't exist in a consumer checkout, so the published package includes a `content/` snapshot of them (regenerated on every build). The loaders prefer the live monorepo source when present and fall back to the bundled snapshot otherwise — so the tools return real content in a consumer. The snapshot reflects the installed `@pyreon/mcp` version; upgrade the package to refresh it.
+- **Doc/content tools ship a bundled snapshot.** `get_pattern`, `get_anti_patterns`, and `get_changelog` normally read from the Pyreon monorepo (`docs/src/content/docs/patterns/*.md`, `.agents/rules/anti-patterns.md`, `packages/**/CHANGELOG.md`). Those files don't exist in a consumer checkout, so the published package includes a `content/` snapshot of them (regenerated on every build). The loaders prefer the live monorepo source when present and fall back to the bundled snapshot otherwise — so the tools return real content in a consumer. The snapshot reflects the installed `@pyreon/mcp` version; upgrade the package to refresh it.
 
 ### `get_api`
 

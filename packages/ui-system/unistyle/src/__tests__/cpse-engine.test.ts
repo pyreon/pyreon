@@ -1,6 +1,5 @@
 /**
  * CPSE engine — the `styles()` extractVars mode.
- * See `.claude/audits/custom-property-style-extraction-2026-06-22.md`.
  *
  * Proves the general engine: WITH an `extractVars` sink, every flat
  * `prop: value` declaration becomes a value-agnostic `prop: var(--u-<hash>)`

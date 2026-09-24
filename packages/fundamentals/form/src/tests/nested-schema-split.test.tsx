@@ -9,7 +9,7 @@ import { matchSchemaErrorForField, useForm } from '../use-form'
 // nested schema validates correctly, and its `address.city`-keyed errors route
 // to the LEAF field `address.city` (preferred), else to the nearest registered
 // ANCESTOR object field (`address`), else are flagged as orphans (never
-// silently dropped). See .claude/rules/anti-patterns.md schema-error-routing.
+// silently dropped). See .agents/rules/anti-patterns.md schema-error-routing.
 //
 // The `schema: … as never` cast is the honest acknowledgement that typed
 // deep-path inference (`NestValues<T>`) is DEFERRED (#2209): the schema is

@@ -1,7 +1,6 @@
 /**
- * CPSE win-matrix — measures the trade-off the RFC reasons about (risk §6.1:
- * inline-style bytes vs shared-rule bytes), so the claim is MEASURED, not
- * assumed. See `.claude/audits/custom-property-style-extraction-2026-06-22.md`.
+ * CPSE win-matrix — measures the trade-off CPSE rests on (inline-style bytes
+ * vs shared-rule bytes), so the claim is MEASURED, not assumed.
  *
  * Across two shapes at N instances, classic `styled` vs `cpseStyled`:
  *   - rule count + `styler.resolve` count (the robust, asserted wins)

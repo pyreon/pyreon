@@ -5,41 +5,43 @@ description: "Common best-practice mistakes (opt-in `@pyreon/lint` rules) in Pyr
 
 # Best-Practice Mistakes (opt-in `@pyreon/lint` rules)
 
-> **Generated** from `.claude/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
+> **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
 ### `<img>` without `alt`
 
-[`pyreon/require-img-alt`]: every `<img>` needs `alt` for screen readers. Add a descriptive `alt`, or `alt=""` if the image is purely decorative.
+[`pyreon/require-img-alt`]: add a descriptive `alt`, or `alt=""` for decorative images.
 
 ---
 
 ### `<img>` without `width`+`height`
 
-[`pyreon/img-requires-dimensions`]: missing intrinsic dimensions cause Cumulative Layout Shift (CLS) as the image loads. Set both `width` and `height` (or a CSS `aspect-ratio`).
+[`pyreon/img-requires-dimensions`]: missing intrinsic dimensions cause layout shift (CLS). Set both, or a CSS `aspect-ratio`.
 
 ---
 
 ### `content-visibility: auto` without `contain-intrinsic-size`
 
-[`pyreon/content-visibility-needs-intrinsic-size`]: `content-visibility: auto` makes the browser skip rendering an off-screen element and ESTIMATE its size; with no `contain-intrinsic-size` the estimate is wrong, so the box corrects on render and shoves content below it down — a Cumulative Layout Shift that's mobile-biased (narrow viewport ⇒ more off-screen content ⇒ more estimate→correct corrections) and invisible on fast desktop loads. This was the exact bug that capped bokisch.com/resume's mobile Lighthouse at 91 (single shift = the whole 0.145 CLS). Fix: `contain-intrinsic-size: auto <height>` next to it (camelCase `containIntrinsicSize` in style/theme objects); the `auto` keyword makes the browser remember the real size after first render. Detects the object-literal form (JSX `style={{}}` + styler/rocketstyle `.theme(()=>({}))`), `css`/`styled` tagged-template CSS, and string `style="…"`. Known limitation (opt-in + warn, so the bar is low): can't see a `contain-intrinsic-size` set on a different selector/object that this one inherits from — possible false positive; exempt via `exemptPaths` or an inline `// pyreon-lint-ignore`.
+[`pyreon/content-visibility-needs-intrinsic-size`]: the browser guesses the skipped element's size and corrects it on render, shifting content below (worst on mobile).
+  - Add `contain-intrinsic-size: auto <height>` (`containIntrinsicSize` in style/theme objects); `auto` makes the browser remember the real size.
+  - Checks style objects, `.theme()` objects, `css`/`styled` templates and `style="…"` strings. It cannot see a size set on another selector; exempt with `exemptPaths` or `// pyreon-lint-ignore`.
 
 ---
 
 ### Positive `tabIndex`
 
-[`pyreon/no-positive-tabindex`, auto-fixable]: `tabIndex={n}` where n &gt; 0 hijacks the natural tab order and breaks keyboard navigation. Use `0` (focusable, natural order) or `-1` (programmatic focus only).
+[`pyreon/no-positive-tabindex`, auto-fixable]: `tabIndex > 0` breaks natural tab order. Use `0` or `-1`.
 
 ---
 
 ### Raw `<img>` in a `@pyreon/zero` app
 
-[`pyreon/prefer-zero-image`]: prefer `@pyreon/zero`'s `<Image>` — it adds lazy-loading, `srcset`, and a blur placeholder for free.
+[`pyreon/prefer-zero-image`]: use `@pyreon/zero`'s `<Image>` for lazy-loading, `srcset` and a blur placeholder.
 
 ---
 
 ### `useQuery` options as an object literal
 
-`useQuery({ queryKey, queryFn })` captures the options ONCE. `@pyreon/query` hooks take options as a FUNCTION so `queryKey` can read signals and refetch reactively — wrap it: `useQuery(() => ({ queryKey: [id()], queryFn }))`. `useMutation` is the exception (its options are a plain object — imperative, no tracking).
+Options are read once. Pass a function so `queryKey` can track signals: `useQuery(() => ({ queryKey: [id()], queryFn }))`. `useMutation` takes a plain object.
 
 **Detected by:** `query-options-as-function` — surfaced by `@pyreon/lint` / `pyreon doctor` / MCP `validate`.
 
@@ -47,24 +49,24 @@ description: "Common best-practice mistakes (opt-in `@pyreon/lint` rules) in Pyr
 
 ### Nested `@pyreon/rx` transforms
 
-[`pyreon/rx-prefer-pipe`]: `map(filter(src, p), f)` creates N intermediate computeds. Compose with `pipe(src, filter(p), map(f))` — one computed, one subscription.
+[`pyreon/rx-prefer-pipe`]: `map(filter(src, p), f)` creates a computed per step. Use `pipe(src, filter(p), map(f))`.
 
 ---
 
 ### Signal read in `useForm({ initialValues })`
 
-[`pyreon/no-signal-in-form-initial-values`]: `initialValues` is captured once at form setup, so `initialValues: { name: user() }` snapshots the signal and never updates. Pass the plain value, or use `form.setFieldValue` / a reactive field for dynamic defaults.
+[`pyreon/no-signal-in-form-initial-values`]: `initialValues` is read once, so `{ name: user() }` is a snapshot. Pass the plain value, or use `form.setFieldValue` for dynamic defaults.
 
 ---
 
 ### `{t('…')}` interleaved with JSX
 
-[`pyreon/i18n-prefer-trans-for-rich-jsx`]: when a translated string sits next to JSX element siblings (`<p>{t('cta')} <a>…</a></p>`), string interpolation can't safely carry the markup. Use `@pyreon/i18n`'s `<Trans>` component for rich/JSX interpolation. Plain text (`<h1>{t('title')}</h1>`) is fine — the rule only fires when element siblings make it "rich".
+[`pyreon/i18n-prefer-trans-for-rich-jsx`]: when a translation sits beside element siblings (`<p>{t('cta')} <a>…</a></p>`), use `@pyreon/i18n`'s `<Trans>`. Plain `<h1>{t('title')}</h1>` is fine.
 
 ---
 
 ### Manual `new URLSearchParams(...)` in a router app
 
-[`pyreon/prefer-typed-search-params`]: hand-parsing the query string loses type-coercion + SSR-safety. Use `@pyreon/router`'s `useTypedSearchParams({ page: 'number', q: 'string' })` — typed, auto-coerced, NaN-guarded, SSR-safe.
+[`pyreon/prefer-typed-search-params`]: use `useTypedSearchParams({ page: 'number', q: 'string' })` from `@pyreon/router` (typed, coerced, NaN-guarded, SSR-safe).
 
 ---

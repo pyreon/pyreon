@@ -3,7 +3,7 @@ import { defineManifest } from '@pyreon/manifest'
 /**
  * Manifest for `@pyreon/sync` — the single source of truth for the package's
  * generated docs surfaces (`llms.txt` bullet, `llms-full.txt` section, the MCP
- * `api-reference` region, and the CLAUDE.md table row). Edit this, then run
+ * `api-reference` region, and the docs-site reference page). Edit this, then run
  * `bun run gen-docs`; do NOT hand-edit the generated files.
  */
 export default defineManifest({

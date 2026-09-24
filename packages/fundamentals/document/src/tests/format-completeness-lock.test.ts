@@ -10,9 +10,8 @@ import { fileURLToPath } from 'node:url'
  *
  * Why this exists: each renderer has its own `switch (node.type)`, and a
  * switch with a missing case + no default SILENTLY DROPS a primitive. That
- * exact class shipped twice — docx `page-break` (fixed earlier, CLAUDE.md
- * anti-pattern "A member of a public discriminated union with NO registered
- * runtime handler") and pptx `page-break` (fixed in this PR) — because 19
+ * exact class shipped twice — docx `page-break` (fixed earlier, `.agents/rules/anti-patterns.md`
+ * "A public union member with no runtime handler") and pptx `page-break` (fixed in this PR) — because 19
  * independent switches were trusted by eye. This test converts them into a
  * gate: a future 19th NodeType, or a renderer edit that drops a case, fails
  * here naming the exact (primitive, format) cell.

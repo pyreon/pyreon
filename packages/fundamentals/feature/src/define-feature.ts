@@ -452,7 +452,7 @@ export function defineFeature<TValues extends Record<string, unknown>>(
       // (route nav away, list re-render). Without a guard, the late
       // .then would call setFieldValue / isSubmitting.set on a form
       // whose scope is gone — the stale-promise class (see
-      // .claude/rules/anti-patterns.md "Memory Leak Classes" → F, and
+      // .agents/rules/anti-patterns.md "Memory Leak Classes" → F, and
       // the storage/charts/createResource precedents). onUnmount fires
       // on the owning component's disposal; the cancelled flag skips
       // both settle branches after unmount.

@@ -2,7 +2,7 @@
  * `pyreon plain`'s report — the histogram, the JSON surface, and what
  * `--write` may touch.
  *
- * The dry run IS the readiness report, and CLAUDE.md is explicit about what
+ * The dry run IS the readiness report, and `.agents/guides/internals/plain-mode.md` is explicit about what
  * makes it useful: "the declined-shape histogram = the build-next signal".
  * That is a claim about ORDER — the shape blocking the most bindings is the
  * one worth implementing next — and nothing asserted it. A histogram in

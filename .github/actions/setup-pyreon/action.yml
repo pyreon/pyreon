@@ -18,8 +18,6 @@ description: |
   keys / paths / action SHAs in lockstep; a single edit here propagates
   to all consumers.
 
-  P2b of the CI speedup plan (.claude/plans/keen-imagining-cherny.md).
-
   ## Caller pattern
 
   ```yaml
@@ -119,7 +117,7 @@ runs:
         restore-keys: bun-install-cache-${{ runner.os }}-
     # A prefix-key restore hands this job a node_modules built from a
     # DIFFERENT lockfile, and installing over it does not converge:
-    # `.claude/rules/testing.md` ("never trust an incremental bun layout")
+    # `.agents/rules/testing.md` ("never trust an incremental bun layout")
     # records that neither a plain `bun install` NOR `bun install --force`
     # clears the stale peer-hash instance dirs under `node_modules/.bun` —
     # their internal symlinks keep pointing at the old versions, so the
@@ -148,7 +146,7 @@ runs:
     # What this does NOT fix: that Build would still have measured the
     # pre-#3398 tree, which never merged. Self-consistent, still not a
     # function of what merges — concurrent-merge staleness, the class
-    # CLAUDE.md documents for Docs Sync, whose answer is detection on main
+    # `.agents/rules/workflow.md` documents for Docs Sync, whose answer is detection on main
     # after the merge rather than anything this step can do.
     #
     # So the stale tree is REMOVED rather than topped up. On a full miss

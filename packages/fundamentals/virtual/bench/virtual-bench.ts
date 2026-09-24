@@ -8,7 +8,7 @@
  * FAIR BY CONSTRUCTION
  * ───────────────────────────────────────────────────────────────────────────
  * Both @pyreon/virtual and @tanstack/react-virtual wrap the SAME
- * `@tanstack/virtual-core` (3.17.4, pinned tree-wide via root `overrides` — the
+ * `@tanstack/virtual-core` (pinned tree-wide via root `overrides`; the run prints the installed version — the
  * range-math, window computation, and measurement cache both sides use are
  * byte-identical, verified in Section 4). This bench therefore measures the
  * ADAPTER layer — how each library surfaces a scroll/measure to the DOM — NOT
@@ -20,7 +20,7 @@
  *  1. `NODE_ENV=production` forced FIRST (the npm script's shell sets it too).
  *     Pyreon's dev mode keeps the reactive-devtools registry always-on; React's
  *     dev build ships freeze/prop-type/act overhead. Both are instrumentation.
- *  2. Same virtual-core (3.17.4) for BOTH — the engine is identical.
+ *  2. Same virtual-core for BOTH (printed from the installed package.json) — the engine is identical.
  *  3. CORRECTNESS GATE — both adapters must render the SAME visible index window
  *     at the SAME scroll offsets (mount + deep scroll) before any number counts.
  *  4. The HEADLINE result is a COUNT (component re-renders / row-element
@@ -63,6 +63,11 @@ process.env.NODE_ENV = 'production'
 
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { cpus as benchCpus, loadavg as benchLoadavg } from 'node:os'
+import { createRequire } from 'node:module'
+
+// Read, never hard-code: a literal here drifted two releases behind the root
+// `overrides` and mislabelled the 2026-09-24 run.
+const VIRTUAL_CORE_VERSION: string = createRequire(import.meta.url)('@tanstack/virtual-core/package.json').version
 
 // Runtime banner — which ENGINE produced these numbers (bun = JavaScriptCore,
 // node = V8) plus CPU and load, so a result is never quoted engine-less.
@@ -839,7 +844,7 @@ console.log(
 )
 console.log('\n=== @pyreon/virtual vs @tanstack/react-virtual — adapter head-to-head ===')
 console.log(
-  `  Bun ${typeof Bun !== 'undefined' ? (Bun as unknown as { version: string }).version : '?'} · ${process.platform}/${process.arch} · NODE_ENV=production · virtual-core 3.17.4 (identical engine both sides)`,
+  `  Bun ${typeof Bun !== 'undefined' ? (Bun as unknown as { version: string }).version : '?'} · ${process.platform}/${process.arch} · NODE_ENV=production · virtual-core ${VIRTUAL_CORE_VERSION} (identical engine both sides)`,
 )
 console.log(
   `  List: N=${fmt(N)} rows · ${ROW}px/row · ${VIEWPORT}px viewport · overscan ${OVERSCAN} · scroll ${SCROLL_ROWS} rows\n`,
