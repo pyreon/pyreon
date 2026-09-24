@@ -38,6 +38,8 @@ export default defineNodeConfig({
     // Browser-only utility:
     'src/utils/intersection-observer.ts',
     'src/utils/use-intersection-observer.ts',
+    // PerformanceObserver-driven; covered by web-vitals.browser.test.ts in real Chromium.
+    'src/web-vitals.ts',
     'src/theme.tsx', // JSX components — browser-tested integration tier
     'src/client.ts', // browser-runtime entry; tested via real-Chromium e2e
     'src/fs-router.ts', // file-system router — exercised by integration fixtures
