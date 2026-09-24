@@ -11,8 +11,7 @@
  *   - a route without `og` gets neither a PNG nor a meta tag,
  *   - the `og` export never reaches the client bundle.
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { cpSync } from 'node:fs'
+import { cpSync, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import sharp from 'sharp'

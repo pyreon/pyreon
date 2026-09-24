@@ -5,8 +5,7 @@
  * content-hashed asset + (SSG) every prerendered page, nothing that does
  * not exist on disk, and no internal artifacts.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { cpSync } from 'node:fs'
+import { cpSync, existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join, relative, resolve, sep } from 'node:path'
 import { build } from 'vite'
