@@ -14,6 +14,10 @@ builder serializes on the server, and the Swift and Kotlin runtimes draw
 natively (the geometry is generated into them). Every mark and chart family is
 an imported binding, so an unused family (pie, radar, candlestick, heatmap, …)
 tree-shakes out of your bundle like any unused function.
+The family marks follow the same rule: `<Arc>`, `<Stage>`, `<Cell>` and
+`<Candle>` each carry their own renderer, so a `<Chart>` with only cartesian
+marks never includes the pie, funnel, heatmap or candlestick code. A CI import
+budget locks it.
 
 The package has five entries:
 

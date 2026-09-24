@@ -238,7 +238,9 @@ export const SCENARIOS: Scenario[] = [
     pkg: '@pyreon/charts',
     dir: 'fundamentals/charts',
     // The recommended first chart from the main entry: <Chart> + <Line>.
-    // Must not pull the family hosts or the ECharts wrapper.
+    // Must not pull the family hosts (pie/funnel/heatmap/candlestick) — each
+    // family mark carries its own host, so an unused mark leaves its
+    // renderer unreferenced — nor the ECharts wrapper.
     imports: ['Chart', 'Line'],
   },
 ]
