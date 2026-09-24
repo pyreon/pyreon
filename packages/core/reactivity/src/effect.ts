@@ -85,6 +85,47 @@ export function onCleanup(fn: () => void): void {
   }
 }
 
+/**
+ * Saved state of the onCleanup window, as returned by `_enterCleanupFrame`.
+ * `false` = window was closed, `true` = open with nothing collected yet, an
+ * array = open with that collector. Encoded as one value so entering a frame
+ * allocates nothing.
+ * @internal
+ */
+export type CleanupFrameToken = boolean | (() => void)[]
+
+/**
+ * Open a fresh onCleanup window for a NON-effect owner — a component's setup
+ * frame. `@pyreon/core`'s `runWithHooks` calls this so that `onCleanup()` in a
+ * component body is collected for THAT component (and run on its unmount)
+ * instead of vanishing at the root or latching onto whichever effect happens to
+ * be mounting the component (a `<For>` / `<Show>` / router boundary), whose
+ * re-runs would fire it while the component is still mounted.
+ *
+ * Must be paired with `_exitCleanupFrame(token)` in a `finally` — it RESTORES
+ * the caller's window (never resets to a constant: setup nests inside effect
+ * runs and inside other setups).
+ * @internal
+ */
+export function _enterCleanupFrame(): CleanupFrameToken {
+  const token: CleanupFrameToken = _cleanupWindowOpen ? (_cleanupCollector ?? true) : false
+  _cleanupWindowOpen = true
+  _cleanupCollector = null
+  return token
+}
+
+/**
+ * Close the frame opened by `_enterCleanupFrame`, restore the caller's window,
+ * and return what this frame collected (`null` when nothing was registered).
+ * @internal
+ */
+export function _exitCleanupFrame(token: CleanupFrameToken): (() => void)[] | null {
+  const collected = _cleanupCollector
+  _cleanupWindowOpen = token !== false
+  _cleanupCollector = typeof token === 'boolean' ? null : token
+  return collected
+}
+
 // Lazy inner-effect window sentinel: a run opens the window by setting the
 // module collector to THIS array, and the first nested `effect()` swaps in a real
 // one. Nothing ever pushes into the sentinel, so the dominant

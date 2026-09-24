@@ -183,9 +183,9 @@ export function syncedSignal<T>(options: SyncedSignalOptions<T>): SyncedSignal<T
     off()
     offDefaults()
   }
-  // Auto-dispose when created inside a reactive scope. A no-op outside one
-  // (onCleanup only registers against an active cleanup collector), so
-  // module-scope / component-body callers must call `.dispose()` themselves or
+  // Auto-dispose with the owner it was created in: an effect run, a component
+  // body (on unmount) or an `EffectScope.runInScope` (on stop). A no-op at
+  // module scope, so module-level callers must call `.dispose()` themselves or
   // use the `syncedStore` layer.
   onCleanup(facade.dispose)
 
