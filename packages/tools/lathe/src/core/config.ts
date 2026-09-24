@@ -113,10 +113,17 @@ export interface LatheSection {
    */
   projects?: readonly LatheProject[]
 
-  /** Path to the OpenAPI document (`.json`, `.yaml`, `.yml`). */
+  /**
+   * Path to the OpenAPI 3.x document (`.json`, `.yaml`, `.yml`).
+   *
+   * Relative to the config FILE when read from `pyreon.config.ts`; a path given
+   * on the command line is relative to the working directory, like any other
+   * CLI argument.
+   */
   input?: string
-  /** Output directory, relative to the config file. */
+  /** Output directory. Relative to the config file, like `input`. Default `./src/gen`. */
   output?: string
+
   /**
    * `web` emits the idiomatic multi-file layout.
    *
