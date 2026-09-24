@@ -10,3 +10,4 @@ Generated-client correctness and DX pass:
 - An operation-level parameter overrides a path-level one with the same `name` + `in`, as OpenAPI specifies.
 - Faker builders compile under `noUnusedParameters`.
 - A literal `:` in a spec path (`/v1/{name}:cancel`) is escaped, so custom-verb operations no longer demand a phantom parameter; mocks match them too.
+- Query parameters honour the spec's `style` / `explode` (CSV, space- and pipe-delimited arrays, `deepObject` and exploded `form` objects) through the endpoint's `queryStyle`, on every client; object query parameters now typecheck and no longer go out as `[object Object]`.

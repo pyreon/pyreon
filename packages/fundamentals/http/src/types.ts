@@ -16,18 +16,47 @@
 /** HTTP methods the client can issue. Mirrors zero's `HttpMethod`. */
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
 
+/** A single query-string value. */
+export type QueryScalar = string | number | boolean
+
+/**
+ * A query parameter that is an OBJECT — serialized with bracket keys
+ * (`filter[status]=open`) unless its {@link QueryStyle} says otherwise.
+ * One level deep, which is all OpenAPI's styles define.
+ */
+export interface QueryObject {
+  readonly [key: string]: QueryScalar | null | undefined | readonly QueryScalar[]
+}
+
 /**
  * A value accepted for a query-string entry. `undefined` / `null` entries
  * are DROPPED (not serialized as the strings `"undefined"` / `"null"` —
- * the classic hand-rolled `URLSearchParams` bug); arrays repeat the key.
+ * the classic hand-rolled `URLSearchParams` bug); arrays repeat the key;
+ * objects use bracket keys. {@link QueryStyle} changes the last two.
  */
-export type QueryValue =
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
-  | readonly (string | number | boolean)[]
+export type QueryValue = QueryScalar | null | undefined | readonly QueryScalar[] | QueryObject
+
+/**
+ * How one query parameter is serialized — OpenAPI's vocabulary, so a
+ * generated client can state what the spec says instead of hand-writing it.
+ *
+ * | style | array `[1, 2]` | object `{ a: 1, b: 2 }` |
+ * | --- | --- | --- |
+ * | default | `k=1&k=2` | `k[a]=1&k[b]=2` |
+ * | `form` (explode) | `k=1&k=2` | `a=1&b=2` |
+ * | `form`, `explode: false` | `k=1,2` | `k=a,1,b,2` |
+ * | `spaceDelimited`, `explode: false` | `k=1 2` | — |
+ * | `pipeDelimited`, `explode: false` | `k=1\|2` | — |
+ * | `deepObject` | — | `k[a]=1&k[b]=2` |
+ *
+ * `explode` defaults to `true`, as in OpenAPI. The delimiter is
+ * form-encoded like every other character (`%2C`), which servers decode
+ * before splitting.
+ */
+export interface QueryStyle {
+  style?: 'form' | 'spaceDelimited' | 'pipeDelimited' | 'deepObject' | undefined
+  explode?: boolean | undefined
+}
 
 /** Path parameters substituted into a `:name` placeholder. */
 export type PathParams = Record<string, string | number>
@@ -220,6 +249,8 @@ export interface RequestOptions {
   params?: PathParams | undefined
   /** Appended as a query string. */
   query?: QueryParams | undefined
+  /** Per-key serialization of `query` — see {@link QueryStyle}. */
+  queryStyle?: Readonly<Record<string, QueryStyle>> | undefined
   headers?: HeadersInit | undefined
   /** Serialized with `JSON.stringify` + `Content-Type: application/json`. */
   json?: unknown
@@ -238,7 +269,7 @@ export interface RequestOptions {
 
 /** Client-level configuration. Every field is optional. */
 export interface HttpClientConfig
-  extends Omit<RequestOptions, 'params' | 'json' | 'body' | 'headers'> {
+  extends Omit<RequestOptions, 'params' | 'json' | 'body' | 'headers' | 'queryStyle'> {
   /**
    * Prefix for relative paths. A path starting with `http://`/`https://`
    * ignores it.

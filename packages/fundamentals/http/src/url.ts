@@ -10,7 +10,7 @@
  *      `"undefined"` by a naive `URLSearchParams` build.
  */
 
-import type { PathParams, QueryParams } from './types'
+import type { PathParams, QueryObject, QueryParams, QueryStyle, QueryValue } from './types'
 
 const ABSOLUTE_RE = /^[a-z][a-z\d+\-.]*:\/\//i
 
@@ -77,25 +77,77 @@ export function applyPathParams(path: string, params: PathParams | undefined): s
  *
  * `undefined` and `null` entries are DROPPED — the single most common
  * hand-rolled bug is `String(undefined)` landing in the URL as the text
- * `"undefined"`. Arrays repeat the key (`?tag=a&tag=b`).
+ * `"undefined"`. Arrays repeat the key (`?tag=a&tag=b`); a plain object
+ * serializes with bracket keys (`?filter[status]=open`), the convention
+ * `qs`, Rails, PHP and Laravel all parse.
+ *
+ * `styles` overrides that per key with OpenAPI's serialization vocabulary —
+ * see {@link QueryStyle}. An endpoint declares it once
+ * (`api.endpoint(spec, { queryStyle })`), so call sites never think about it.
  */
-export function buildQuery(query: QueryParams | undefined): string {
+export function buildQuery(
+  query: QueryParams | undefined,
+  styles?: Readonly<Record<string, QueryStyle>>,
+): string {
   if (!query) return ''
   const search = new URLSearchParams()
   for (const key of Object.keys(query)) {
     const value = query[key]
     if (value === undefined || value === null) continue
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        if (item === undefined || item === null) continue
-        search.append(key, String(item))
-      }
-      continue
-    }
-    search.append(key, String(value as string | number | boolean))
+    appendStyled(search, key, value, styles?.[key])
   }
   const out = search.toString()
   return out ? `?${out}` : ''
+}
+
+type Scalar = string | number | boolean
+
+function scalars(values: readonly (Scalar | null | undefined)[]): string[] {
+  const out: string[] = []
+  for (const v of values) if (v !== undefined && v !== null) out.push(String(v))
+  return out
+}
+
+const DELIMITER = { form: ',', spaceDelimited: ' ', pipeDelimited: '|' } as const
+
+function appendStyled(
+  search: URLSearchParams,
+  key: string,
+  value: Exclude<QueryValue, null | undefined>,
+  style: QueryStyle | undefined,
+): void {
+  if (Array.isArray(value)) {
+    const items = scalars(value as readonly Scalar[])
+    const kind = style?.style
+    // `explode: false` (or a delimited style that is not exploded) joins the
+    // values into ONE entry; everything else repeats the key.
+    if (kind !== undefined && kind !== 'deepObject' && style?.explode === false) {
+      if (items.length > 0) search.append(key, items.join(DELIMITER[kind]))
+      return
+    }
+    for (const item of items) search.append(key, item)
+    return
+  }
+  if (typeof value === 'object') {
+    const entries = Object.keys(value).flatMap((prop) => {
+      const v = (value as QueryObject)[prop]
+      if (v === undefined || v === null) return []
+      return Array.isArray(v) ? scalars(v).map((item) => [prop, item] as const) : [[prop, String(v)] as const]
+    })
+    const kind = style?.style ?? 'deepObject'
+    if (kind === 'deepObject') {
+      for (const [prop, v] of entries) search.append(`${key}[${prop}]`, v)
+    } else if (style?.explode === false) {
+      // `form` + `explode: false`: `key=p1,v1,p2,v2`.
+      if (entries.length > 0) search.append(key, entries.flat().join(DELIMITER[kind]))
+    } else {
+      // `form` + `explode: true` (OpenAPI's DEFAULT for a query object): each
+      // property becomes its own parameter and the object's name disappears.
+      for (const [prop, v] of entries) search.append(prop, v)
+    }
+    return
+  }
+  search.append(key, String(value))
 }
 
 /** Full resolution: base + path + params + query. */
@@ -104,10 +156,11 @@ export function buildUrl(
   path: string,
   params: PathParams | undefined,
   query: QueryParams | undefined,
+  styles?: Readonly<Record<string, QueryStyle>>,
 ): string {
   const withParams = applyPathParams(path, params)
   const joined = joinUrl(baseUrl, withParams)
-  const qs = buildQuery(query)
+  const qs = buildQuery(query, styles)
   if (!qs) return joined
   return joined.includes('?') ? `${joined}&${qs.slice(1)}` : `${joined}${qs}`
 }

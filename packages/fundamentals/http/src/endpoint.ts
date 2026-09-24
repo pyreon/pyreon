@@ -27,6 +27,7 @@ import type {
   HttpMethod,
   PathParams,
   QueryParams,
+  QueryStyle,
   Validator,
   ValidatorOutput,
 } from './types'
@@ -122,6 +123,21 @@ export interface EndpointOptions {
   timeout?: number | false | undefined
   headers?: HeadersInit | undefined
   throwHttpErrors?: boolean | undefined
+  /**
+   * Per-key query serialization — OpenAPI's `style` / `explode`, stated once
+   * on the endpoint so no call site has to know that `ids` goes out as
+   * `ids=1,2`. See {@link QueryStyle}.
+   *
+   * @example
+   * ```ts
+   * const search = api.endpoint('GET /search', {
+   *   queryStyle: { ids: { style: 'form', explode: false }, filter: { style: 'deepObject' } },
+   * })
+   * await search({ query: { ids: [1, 2], filter: { status: 'open' } } })
+   * // GET /search?ids=1%2C2&filter%5Bstatus%5D=open
+   * ```
+   */
+  queryStyle?: Readonly<Record<string, QueryStyle>> | undefined
 }
 
 /** {@link EndpointOptions} plus the validator slot that types the response. */
@@ -239,6 +255,7 @@ export function defineEndpoint<
     const request = client.request(method, path, {
       params: args?.params,
       query: args?.query,
+      queryStyle: options.queryStyle,
       json: args?.json,
       headers: args?.headers ?? options.headers,
       signal: args?.signal,

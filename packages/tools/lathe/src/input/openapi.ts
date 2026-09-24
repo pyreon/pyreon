@@ -219,6 +219,7 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
           // A path parameter is always required, whatever the spec claims.
           required: po.in === 'path' ? true : po.required === true,
           doc: str(po.description),
+          ...(po.in === 'query' ? queryStyle(po) : {}),
         })
       }
       ops.push({
@@ -235,6 +236,17 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
     }
   }
   return ops
+}
+
+const QUERY_STYLES = ['form', 'spaceDelimited', 'pipeDelimited', 'deepObject'] as const
+
+/** A query parameter's `style` / `explode`, when the spec states them (audit B2). */
+function queryStyle(po: Json): Pick<IrParam, 'style' | 'explode'> {
+  const out: Pick<IrParam, 'style' | 'explode'> = {}
+  const style = QUERY_STYLES.find((s) => s === po.style)
+  if (style) out.style = style
+  if (typeof po.explode === 'boolean') out.explode = po.explode
+  return out
 }
 
 /**

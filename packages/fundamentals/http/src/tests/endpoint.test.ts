@@ -280,3 +280,27 @@ describe('mock', () => {
     expect(call.body).toBe('{"a":1}')
   })
 })
+
+describe('endpoint queryStyle', () => {
+  it('is applied to every call of the endpoint', async () => {
+    const urls: string[] = []
+    const api = createHttp({
+      baseUrl: 'https://a.test',
+      transport: async (req) => {
+        urls.push(req.url)
+        return {
+          raw: new Response('{}'),
+          status: 200,
+          ok: true,
+          headers: new Headers(),
+          request: req,
+        }
+      },
+    })
+    const search = api.endpoint('GET /search', {
+      queryStyle: { ids: { style: 'form', explode: false }, f: { style: 'deepObject' } },
+    })
+    await search({ query: { ids: [1, 2], f: { s: 'open' } } })
+    expect(decodeURIComponent(urls[0] ?? '')).toBe('https://a.test/search?ids=1,2&f[s]=open')
+  })
+})

@@ -226,7 +226,8 @@ export function emitWebEndpoints(
     // Built once per operation. The previous form called `responseCfg` a second
     // time just to test the string for `s.`, which rebuilt every response
     // schema expression in the tag for a substring check.
-    const clauses = ops.map((op) => responseCfg(op, false, validator))
+    const models = new Map(doc.models.map((m) => [m.name, m.type]))
+    const clauses = ops.map((op) => webEndpointCfg(op, validator, models))
     // A composite clause (`array(Book)`, a union) needs the binding itself.
     if (clauses.some((c) => c.includes(`${dialect.binding}.`))) {
       f.import(dialect.module, dialect.binding)
@@ -260,6 +261,70 @@ function responseCfg(
   if (!op.response) return ''
   if (op.response.kind === 'unknown') return ''
   return `, { response: ${schemaExpr(op.response, { native, validator, models })} }`
+}
+
+/**
+ * The WEB endpoint's config clause: the response schema plus anything else
+ * the runtime needs to know about the operation.
+ *
+ * Built as a list of entries so each concern is one line of reasoning. The
+ * NATIVE layout deliberately does not use this: PMTC reports any endpoint
+ * option it cannot lower, and the native data components never pass a query.
+ */
+function webEndpointCfg(
+  op: IrOperation,
+  validator: ValidatorName,
+  models: ReadonlyMap<string, IrType>,
+): string {
+  const entries: string[] = []
+  if (op.response && op.response.kind !== 'unknown') {
+    entries.push(`response: ${schemaExpr(op.response, { native: false, validator })}`)
+  }
+  const styles = op.queryParams.flatMap((p) => {
+    const style = runtimeQueryStyle(p, models)
+    return style ? [`${propKey(p.name)}: ${style}`] : []
+  })
+  if (styles.length > 0) entries.push(`queryStyle: { ${styles.join(', ')} }`)
+  return entries.length > 0 ? `, { ${entries.join(', ')} }` : ''
+}
+
+/**
+ * The `queryStyle` entry a query parameter needs, or `undefined` when the
+ * runtime's default already serializes it the way the spec says (audit B2).
+ *
+ * The two defaults differ, which is the whole reason this is not a straight
+ * copy: OpenAPI's default for a query OBJECT is `form` + exploded (each
+ * property its own parameter), while `@pyreon/http` defaults an object to
+ * bracket keys. For an ARRAY they agree (repeat the key). A scalar has no
+ * style to speak of.
+ */
+function runtimeQueryStyle(
+  p: IrOperation['queryParams'][number],
+  models: ReadonlyMap<string, IrType>,
+): string | undefined {
+  const kind = resolvedKind(p.type, models)
+  const style = p.style ?? 'form'
+  // OpenAPI: `explode` defaults to true for `form`, false for everything else.
+  const explode = p.explode ?? style === 'form'
+  if (kind === 'array') {
+    // `deepObject` is undefined for arrays in OpenAPI; the default is the
+    // only sensible reading.
+    if (style === 'deepObject' || explode) return undefined
+    return `{ style: ${q(style)}, explode: false }`
+  }
+  if (kind === 'object') {
+    if (style === 'deepObject') return undefined
+    return `{ style: ${q(style)}, explode: ${explode} }`
+  }
+  return undefined
+}
+
+function resolvedKind(type: IrType, models: ReadonlyMap<string, IrType>, depth = 0): IrType['kind'] {
+  if (type.kind === 'ref' && depth < 16) {
+    const target = models.get(type.name)
+    return target ? resolvedKind(target, models, depth + 1) : 'unknown'
+  }
+  return type.kind
 }
 
 /** WEB layout: `queries.ts` — reactive hooks, one per operation. */

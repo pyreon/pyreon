@@ -59,6 +59,13 @@ export interface IrParam {
   type: IrType
   required: boolean
   doc?: string | undefined
+  /**
+   * OpenAPI serialization for a QUERY parameter, verbatim from the spec.
+   * Absent means the spec's default (`form`, exploded). Emitters decide what
+   * that means for the runtime they target.
+   */
+  style?: 'form' | 'spaceDelimited' | 'pipeDelimited' | 'deepObject' | undefined
+  explode?: boolean | undefined
 }
 
 /** One API operation — the unit every emitter iterates. */

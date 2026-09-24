@@ -198,7 +198,7 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
       // rejects; resolve it against the inbound request when one is in
       // scope. A no-op in the browser, where the document supplies it.
       const url = resolveAgainstAmbientOrigin(
-        buildUrl(resolved.baseUrl, path, options.params, options.query),
+        buildUrl(resolved.baseUrl, path, options.params, options.query, options.queryStyle),
       )
 
       const link = linkSignals(options.signal, options.timeout ?? resolved.timeout)

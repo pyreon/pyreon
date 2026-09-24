@@ -27,7 +27,7 @@
  * on generated code proves the emitter wrote what the emitter meant to write
  * and nothing about whether it is correct.
  */
-import { buildUrl as oracleBuildUrl, type QueryValue } from '@pyreon/http'
+import { buildUrl as oracleBuildUrl, type QueryStyle, type QueryValue } from '@pyreon/http'
 import { join } from 'node:path'
 import { ADAPTER_CLIENTS, cleanGenerated, writeGenerated } from './helpers/adapter-fixture'
 
@@ -37,6 +37,7 @@ interface ClientModule {
     path: string,
     params: Record<string, string | number> | undefined,
     query: Record<string, QueryValue> | undefined,
+    styles?: Record<string, QueryStyle>,
   ) => string
   api: { endpoint: (spec: string, config?: { response?: unknown }) => never }
 }
@@ -64,6 +65,7 @@ const CASES: {
   path: string
   params?: Record<string, string | number>
   query?: Record<string, QueryValue>
+  styles?: Record<string, QueryStyle>
 }[] = [
   { name: 'plain path', base: 'https://api.test/v1', path: '/books' },
   { name: 'base with trailing slash', base: 'https://api.test/v1/', path: '/books' },
@@ -142,6 +144,18 @@ const CASES: {
     path: 'https://other.test/books',
   },
   { name: 'false and zero survive', base: 'https://api.test', path: '/x', query: { a: 0, b: false } },
+  // Object query parameters and OpenAPI styles (audit A10/B2) — every style
+  // on both collection shapes, so the adapters' serializer cannot drift.
+  { name: 'object query, default brackets', base: 'https://api.test', path: '/x', query: { f: { s: 'open', n: 1 } } },
+  ...(['form', 'spaceDelimited', 'pipeDelimited', 'deepObject'] as const).flatMap((style) =>
+    [true, false].map((explode) => ({
+      name: `style ${style} explode=${explode}`,
+      base: 'https://api.test',
+      path: '/x',
+      query: { ids: [1, 'a b', 3], f: { a: 1, b: ['x', 'y'] } },
+      styles: { ids: { style, explode }, f: { style, explode } },
+    })),
+  ),
   // `\:` is a LITERAL colon (a custom verb) — not a second parameter.
   { name: 'escaped literal colon', base: 'https://api.test', path: '/v1/:name\\:cancel', params: { name: 'a/b' } },
 ]
@@ -153,8 +167,8 @@ describe('adapter URL parity — @pyreon/http is the oracle', () => {
         it(c.name, () => {
           const mod = modules.get(client)
           if (!mod) throw new Error(`no module for ${client}`)
-          const expected = oracleBuildUrl(c.base, c.path, c.params, c.query)
-          expect(mod.buildUrl(c.base, c.path, c.params, c.query)).toBe(expected)
+          const expected = oracleBuildUrl(c.base, c.path, c.params, c.query, c.styles)
+          expect(mod.buildUrl(c.base, c.path, c.params, c.query, c.styles)).toBe(expected)
         })
       }
     })
