@@ -25,6 +25,18 @@ describe('discoverComponents', () => {
     expect(names).not.toContain('Ignored')
   })
 
+  it('matches ignore patterns RELATIVE to the scan root, not the checkout location', () => {
+    // Regression: the patterns were matched against the ABSOLUTE path, so a
+    // project checked out under `my.test.app/` (or `/home/x/node_modules/…`)
+    // matched `.test.` on every file and discovery found nothing, silently.
+    const project = join(dir, 'my.test.app')
+    mkdirSync(join(project, 'src'), { recursive: true })
+    writeFileSync(join(project, 'src', 'Card.tsx'), `export function Card(props: { title: string }) { return null }`)
+    writeFileSync(join(project, 'src', 'Card.test.tsx'), `export function Ignored(props: { x: string }) { return null }`)
+    const names = discoverComponents({ cwd: project }).map((c) => c.name)
+    expect(names).toEqual(['Card'])
+  })
+
   it('KEEPS same-named components from different files', () => {
     // This test used to assert the opposite — that the first sorted file won
     // and the rest were dropped. That encoded a real bug: a per-page

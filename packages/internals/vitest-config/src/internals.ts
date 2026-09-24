@@ -29,6 +29,10 @@ export const sharedConfig: VitestUserConfig = {
     // Absolute path — the setup file must resolve from any package's
     // vitest run, not just the workspace root.
     setupFiles: [resolve(REPO_ROOT, 'vitest.setup.ts')],
+    // Each run gets its own TMPDIR, deleted when the run ends, so scratch
+    // directories tests forget to remove cannot pile up in the OS temp dir.
+    // See tmp-sandbox.ts.
+    globalSetup: [resolve(import.meta.dirname, 'tmp-sandbox.ts')],
     // Vitest's default 5000ms is too tight for tests that do
     // `await import(...)` on Pyreon's transitively-deep module graphs
     // (rocketstyle + attrs + styler + unistyle chain, ECharts dynamic

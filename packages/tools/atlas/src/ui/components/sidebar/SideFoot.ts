@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const SideFoot = el
   .attrs({
@@ -7,7 +7,7 @@ export const SideFoot = el
     contentAlignY: 'center',
     gap: 8,
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     borderTop: t.hairline,
     padding: '12px 16px',
     fontSize: t.size.small,

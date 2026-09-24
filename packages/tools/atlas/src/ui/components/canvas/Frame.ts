@@ -1,4 +1,4 @@
-import { dim, el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const Frame = el
   // The structural css lives in the THEME (not `.attrs({ css })`) so the
@@ -21,7 +21,7 @@ export const Frame = el
   // surface inside it measured 80px (its own padding) on the deployed
   // workbench: every block-level component (`<hr>`, `<table>`, a slider
   // track, a tree) collapsed to 0 width and read as "renders nothing".
-  .variants(dim((t: T) => ({
+  .variants((t) => ({
     bare: { width: '100%', background: 'transparent', border: 'none', boxShadow: 'none', borderRadius: '0' },
     framed: {
       borderRadius: t.radius.stage,
@@ -29,7 +29,7 @@ export const Frame = el
       border: t.hairline,
       background: t.surface,
     },
-  })))
+  }))
   .sizes(() => ({
     vFull: {},
     vMobile: { width: '375px', maxWidth: '100%' },

@@ -216,3 +216,16 @@ describe('escapeJsxText neutralises what JSX would interpret', () => {
     expect(escapeJsxText('plain words')).toBe('plain words')
   })
 })
+
+describe('headings in non-Latin scripts get real, distinct anchors', () => {
+  it('a CJK heading gets its own id and a punctuation-only one gets "section"', async () => {
+    const heading = (text: string) => ({
+      type: 'heading',
+      depth: 2,
+      children: [{ type: 'text', value: text }],
+    })
+    const out = await run([heading('入门'), heading('进阶'), heading('!!!')])
+    expect(out.headings.map((h) => h.slug)).toEqual(['入门', '进阶', 'section'])
+    expect(out.body).toContain('id={"入门"}')
+  })
+})
