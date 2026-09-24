@@ -136,7 +136,7 @@ function awarenessClientIds(payload: Uint8Array): number[] {
     let mult = 1
     for (;;) {
       const byte = payload[pos++]
-      if (byte === undefined || mult > 2 ** 49) throw new Error('malformed awareness varUint')
+      if (byte === undefined || mult > 2 ** 49) throw new Error('[Pyreon] sync server: malformed awareness varUint')
       num += (byte & 0x7f) * mult
       if (byte < 0x80) return num
       mult *= 0x80
@@ -148,7 +148,7 @@ function awarenessClientIds(payload: Uint8Array): number[] {
     ids.push(varUint())
     varUint() // clock
     pos += varUint() // state string bytes
-    if (pos > payload.length) throw new Error('truncated awareness update')
+    if (pos > payload.length) throw new Error('[Pyreon] sync server: truncated awareness update')
   }
   return ids
 }
