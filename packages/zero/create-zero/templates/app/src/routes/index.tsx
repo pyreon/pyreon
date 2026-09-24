@@ -46,7 +46,7 @@ export default function Home() {
           <pre>
             <code>
               <span class="cm"># Create a new project in seconds</span>
-              <span class="fn">bun</span> create zero my-app
+              <span class="fn">bun</span> create @pyreon/zero my-app
               <span class="fn">cd</span> my-app
               <span class="fn">bun</span> install
               <span class="fn">bun</span> run dev
