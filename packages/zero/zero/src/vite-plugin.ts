@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { isAbsolute, join } from 'node:path'
+import { isAbsolute, join, relative, sep } from 'node:path'
+import { transformServerActions } from './actions-transform'
 import { innerBuildFlagSet } from './build-flags'
 import { collectBuildStats, detectColorLevel, formatBuildSummary } from './build-summary'
 import { Readable } from 'node:stream'
@@ -318,6 +319,19 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 			}
 		},
 
+		// Server actions: give every `defineAction()` a build-time id derived
+		// from its module path + binding, identical in the client and server
+		// bundles, and strip the handler from the client bundle. See
+		// `actions-transform.ts`.
+		transform(code, id, options) {
+			if (id.startsWith("\0") || !/\.[mc]?[jt]sx?(?:\?|$)/.test(id)) return null;
+			if (!code.includes("@pyreon/zero/actions")) return null;
+			const file = id.split("?")[0] as string;
+			const rel = relative(root, file).split(sep).join("/");
+			const out = transformServerActions(code, file, rel, options?.ssr === true);
+			return out === null ? null : { code: out, map: null };
+		},
+
 		async buildStart() {
 			// Typed routes (opt-in): generate src/pyreon-routes.d.ts once at
 			// build/dev start so `<Link href>` autocomplete is available.
@@ -361,9 +375,11 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 				if (html.includes(`src="${entry}"`)) return html;
 				if (html.includes(`src='${entry}'`)) return html;
 				const tag = `<script type="module" src="${entry}"></script>`;
+				// Replacer function: `entry` is user config and must not be
+				// read as a `$`-replacement pattern.
 				return html.replace(
 					'<!--pyreon-scripts-->',
-					`${tag}\n    <!--pyreon-scripts-->`,
+					() => `${tag}\n    <!--pyreon-scripts-->`,
 				);
 			},
 		},
@@ -1407,11 +1423,29 @@ async function renderSsr(
 		return { kind: "redirect", to: result.to, status: result.status };
 	}
 
-	const html = template
-		.replace("<!--pyreon-head-->", result.head)
-		.replace("<!--pyreon-app-->", result.appHtml)
-		.replace("<!--pyreon-scripts-->", result.loaderScript);
+	// FUNCTION replacements — a string replacement interprets `$$` / `$&` /
+	// `$'` / `` $` `` inside the rendered page (see `fillDevTemplate`).
+	const html = fillDevTemplate(template, result);
 	return { kind: "html", html, status: result.status };
+}
+
+/**
+ * Fill the dev SSR template's three Pyreon placeholders with a rendered
+ * page. Uses replacer FUNCTIONS, never string replacements: with a string
+ * replacement `String.prototype.replace` interprets `$$`, `$&`, `` $` ``,
+ * `$'` and `$n` even for a literal search, so a page containing
+ * `cost $$5 and $' tail` rendered `$5` plus a copy of the template tail.
+ *
+ * @internal exported for tests
+ */
+export function fillDevTemplate(
+	template: string,
+	result: { head: string; appHtml: string; loaderScript: string },
+): string {
+	return template
+		.replace("<!--pyreon-head-->", () => result.head)
+		.replace("<!--pyreon-app-->", () => result.appHtml)
+		.replace("<!--pyreon-scripts-->", () => result.loaderScript);
 }
 
 /**

@@ -50,7 +50,8 @@ import type { ComponentRef, VerifyCheck, VerifyFinding } from '../core'
 import { finding, materializeContent } from '../core'
 import { ensureDom } from '../verify/dom'
 import type { MountRuntime } from '../verify/harness'
-import { SKIP_REASON, skipped } from './registry'
+import { frameworkWarningFinding, withFrameworkWarnings } from './framework-warnings'
+import { skipped, unmountableSkip } from './registry'
 import type { AtlasPlugin } from './types'
 
 /** Why a parity check could not run. Stated, never silently passed. */
@@ -333,9 +334,11 @@ export function ssrParityPlugin(options: SsrParityOptions = {}): AtlasPlugin {
     name: 'atlas:ssr-parity',
     async verify(ctx) {
       const runtime = options.runtime
-      if (!runtime) return { ssrParity: skipped('not-run', SKIP_REASON.notRun) }
+      if (!runtime) {
+        return { ssrParity: skipped('not-run', 'the parity plugin was given no runtime to render with') }
+      }
       const component = ctx.component.component
-      if (typeof component !== 'function') return { ssrParity: skipped('not-run', SKIP_REASON.notRun) }
+      if (typeof component !== 'function') return { ssrParity: unmountableSkip(ctx.component) }
 
       // The DOM is acquired here rather than injected, matching the mount
       // plugin: `ensureDom` installs the globals `@pyreon/runtime-dom` reaches
@@ -347,15 +350,21 @@ export function ssrParityPlugin(options: SsrParityOptions = {}): AtlasPlugin {
       const container = dom.env.document.createElement('div')
       const clientContainer = dom.env.document.createElement('div')
 
+      // Render + hydrate + client mount run framework code the plain mount
+      // never reaches (the hydrate walker's prop path, above all), so their
+      // `[Pyreon]` warnings are this check's to report — not the terminal's.
+      const { result: parity, warnings } = await withFrameworkWarnings(() =>
+        checkSsrParity(runtime, component, ctx.scenario.args ?? {}, container, clientContainer, options.wrapper),
+      )
+      if (warnings.length === 0) return { ssrParity: parity }
       return {
-        ssrParity: await checkSsrParity(
-          runtime,
-          component,
-          ctx.scenario.args ?? {},
-          container,
-          clientContainer,
-          options.wrapper,
-        ),
+        ssrParity: {
+          ...parity,
+          findings: [
+            ...(parity.findings ?? []),
+            ...warnings.map((w) => frameworkWarningFinding(w, 'rendered to a string and hydrated')),
+          ],
+        },
       }
     },
   }

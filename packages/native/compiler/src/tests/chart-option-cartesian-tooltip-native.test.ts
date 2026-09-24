@@ -11,7 +11,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * lines (native runs no formatter function).
  */
 const src = (tooltip: string, names = true): string => `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return (
     <OptionChart option={{
@@ -60,7 +60,7 @@ describe.each(['swift', 'kotlin'] as const)('OptionChart cartesian tooltip on %s
 
 describe.each(['swift', 'kotlin'] as const)('OptionChart funnel tooltip on %s', (target) => {
   const funnel = (series: string, tooltip = '{}'): string => `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ tooltip: ${tooltip}, series: [{ ${series}type: 'funnel', data: [{ name: 'Visits', value: 1000 }, { name: 'Orders', value: 50 }] }] }} />
 }`

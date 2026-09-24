@@ -9,7 +9,7 @@
 // Two surfaces, because they answer different questions: a SUMMARY for "what
 // does this show", and a TABLE for "what are the numbers".
 
-import { plain } from './format'
+import { groupThousands } from './format'
 import type { Formatter } from './format'
 import { isFiniteNumber } from './scale'
 import type { Double } from './types'
@@ -71,7 +71,7 @@ export interface A11yInput {
  * is unavailable. Reading out every datum instead would bury that.
  */
 export function describeChart(input: A11yInput): string {
-  const fmt = input.format ?? plain
+  const fmt = input.format ?? groupThousands
   const parts: string[] = []
   const title = input.title ?? 'Chart'
 
@@ -253,7 +253,7 @@ export function chartRowCount(input: A11yInput): number {
  * item), which used to format every row of the table to read one.
  */
 export function chartTableRow(input: A11yInput, i: number): string[] {
-  const fmt = input.format ?? plain
+  const fmt = input.format ?? groupThousands
   // Bounds-checked, not coalesced: a subscript past the end is a crash on
   // Swift, not an `undefined` — and a series may be longer than the
   // categories (or shorter than its siblings).

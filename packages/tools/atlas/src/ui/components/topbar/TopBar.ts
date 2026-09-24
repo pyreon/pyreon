@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const TopBar = el
   .attrs({
@@ -7,7 +7,7 @@ export const TopBar = el
     contentAlignY: 'center',
     gap: 16,
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     // A MINIMUM, so the bar can wrap: at phone width the brand, the view
     // segment, the search trigger and the avatar no longer fit one 56px row,
     // and a fixed height clipped whatever fell off the end.

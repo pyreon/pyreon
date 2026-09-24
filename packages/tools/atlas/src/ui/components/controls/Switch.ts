@@ -1,10 +1,10 @@
-import { dim, el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const Switch = el
   .attrs({
     tag: 'button',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     cursor: 'pointer',
     border: 'none',
     padding: '0',
@@ -16,8 +16,8 @@ export const Switch = el
     background: t.border,
   }))
   .states(
-    dim((t) => ({
+    (t) => ({
       on: { backgroundColor: t.accent },
       off: {},
-    })),
+    }),
   )
