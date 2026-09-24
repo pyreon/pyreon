@@ -32,6 +32,7 @@ yarn add @pyreon/machine
 ## Quick Start
 
 ```tsx
+// @check
 import { createMachine } from '@pyreon/machine'
 
 const machine = createMachine({

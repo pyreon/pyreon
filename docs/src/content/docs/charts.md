@@ -80,6 +80,7 @@ Inside the monorepo, browser tests use `tslibBrowserAlias()` from the shared tes
 The `<Chart />` component is the simplest way to render a chart. Pass an `options` **function** that returns a standard ECharts configuration. Signal reads inside the function are tracked, so the chart updates reactively.
 
 ```tsx
+// @check
 import { signal } from '@pyreon/reactivity'
 import { Chart } from '@pyreon/charts'
 
