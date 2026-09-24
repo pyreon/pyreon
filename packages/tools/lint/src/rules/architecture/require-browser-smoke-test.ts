@@ -26,7 +26,7 @@ import type { Rule, VisitorCallbacks } from '../../types'
  * themselves, so they get skipped via the path check.
  *
  * **Default browser packages list**: matches the categorization in
- * `.claude/rules/test-environment-parity.md`. Override via the
+ * `.agents/rules/test-environment-parity.md`. Override via the
  * `additionalPackages` option to opt in new packages, or via
  * `exemptPaths` to opt out (e.g. for a brand-new package still under
  * construction).
@@ -59,15 +59,15 @@ import type { Rule, VisitorCallbacks } from '../../types'
 
 /**
  * Single source of truth for browser-categorized packages lives at
- * `.claude/rules/browser-packages.json`. Loading it lazily here means:
+ * `.agents/rules/browser-packages.json`. Loading it lazily here means:
  *
  *   1. Updating the list never requires re-publishing `@pyreon/lint`.
  *   2. The script `scripts/check-browser-smoke.ts` + the human-readable
- *      `.claude/rules/test-environment-parity.md` share the same source,
+ *      `.agents/rules/test-environment-parity.md` share the same source,
  *      so they can't drift out of sync silently.
  *
  * The JSON is searched for by walking up from the linted file's directory
- * to the first ancestor containing `.claude/rules/browser-packages.json`.
+ * to the first ancestor containing `.agents/rules/browser-packages.json`.
  * If not found (rule running in a consumer repo that doesn't ship the
  * JSON), the rule falls back to an empty list — `additionalPackages`
  * becomes the only signal and the rule stays opt-in, not a footgun.
@@ -82,7 +82,7 @@ function loadBrowserPackages(fromFile: string): Set<string> {
   let dir = path.dirname(fromFile)
   // Walk up to /; bounded in practice by the project root.
   for (let i = 0; i < 30; i++) {
-    const candidate = path.join(dir, '.claude', 'rules', 'browser-packages.json')
+    const candidate = path.join(dir, '.agents', 'rules', 'browser-packages.json')
     if (existsSync(candidate)) {
       try {
         const parsed = JSON.parse(readFileSync(candidate, 'utf8')) as {
@@ -216,7 +216,7 @@ export const requireBrowserSmokeTest: Rule = {
             `[Pyreon] Browser-categorized package "${pkgName}" has no \`*.browser.test.{ts,tsx}\` file. ` +
             `Add at least one real-browser smoke test under \`src/\` to catch environment-divergence bugs ` +
             `that happy-dom hides (typeof process dead code, real pointer events, computed styles, etc.). ` +
-            `See .claude/rules/test-environment-parity.md for the recipe.`,
+            `See .agents/rules/test-environment-parity.md for the recipe.`,
           span: { start: node.start ?? 0, end: node.end ?? 0 },
         })
       },

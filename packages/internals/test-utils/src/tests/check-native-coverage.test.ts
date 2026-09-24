@@ -3,7 +3,7 @@
 // Unit coverage for its PURE policy (classification + summary + registry
 // invariants). The pure functions are called DIRECTLY with synthetic inputs —
 // no subprocess fork, no `transform(...)` run (that is the gate's integration
-// job) — see .claude/rules/anti-patterns.md "Subprocess testing as a default".
+// job) — see .agents/rules/anti-patterns.md "Subprocess testing as a default".
 
 import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'

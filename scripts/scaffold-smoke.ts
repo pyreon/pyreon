@@ -18,7 +18,7 @@
  * because templates aren't in any tsconfig include path — wrong API
  * names, gitignore-eaten files, missing deps under feature toggles,
  * non-existent framework helpers. Every single one would have been
- * caught here. See `.claude/plans/post-create-pyreon-validation.md`.
+ * caught here.
  *
  * Run locally:
  *   bun run scripts/scaffold-smoke.ts             # all cells

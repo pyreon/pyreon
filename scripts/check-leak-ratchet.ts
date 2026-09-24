@@ -25,7 +25,7 @@
  * `pyreon-lint-baseline.json`, and it reuses their `compareToBaseline`.
  *
  * The audit stays PERMISSIVE (false positives expected — it is a heuristic
- * scan, see `.claude/rules/anti-patterns.md` "Memory Leak Classes"), so a new
+ * scan, see `.agents/rules/anti-patterns.md` "Memory Leak Classes"), so a new
  * entry is a prompt to triage, not proof of a leak. Triaging it to "not a
  * leak" is a legitimate outcome — record it by running `--update` once the
  * finding is understood, exactly as the lint ratchets do.
@@ -49,7 +49,7 @@ const DESCRIPTION =
   'The audit is PERMISSIVE (heuristic, false positives expected): a new entry is a prompt ' +
   'to TRIAGE, not proof of a leak — if it is genuinely not one, tighten with `--update` ' +
   'once you have read it. Never raise a count to absorb an untriaged finding. ' +
-  'See .claude/rules/anti-patterns.md "Memory Leak Classes".'
+  'See .agents/rules/anti-patterns.md "Memory Leak Classes".'
 
 interface RawFinding {
   detector?: string
@@ -161,7 +161,7 @@ function main(): void {
     console.error('\nRead each one (`bun scripts/audit-leak-classes.ts` prints the line + context).')
     console.error('The audit is permissive, so a finding may be a false positive — but it must be')
     console.error('READ before it is absorbed. Fix the leak, or `--update` once you have triaged it.')
-    console.error('See .claude/rules/anti-patterns.md "Memory Leak Classes" for the fix shapes.')
+    console.error('See .agents/rules/anti-patterns.md "Memory Leak Classes" for the fix shapes.')
     process.exit(1)
   }
 

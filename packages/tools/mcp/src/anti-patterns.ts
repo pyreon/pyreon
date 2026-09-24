@@ -1,5 +1,5 @@
 /**
- * Parser for `.claude/rules/anti-patterns.md`. Drives the `get_anti_patterns`
+ * Parser for `.agents/rules/anti-patterns.md`. Drives the `get_anti_patterns`
  * MCP tool (T2.5.4) and the `detector-tag-consistency` test, so a single
  * canonical source of truth produces the AI-facing list, the doc file,
  * and the drift guard.
@@ -203,13 +203,13 @@ function parseBullet(bullet: string): {
 }
 
 /**
- * Locate `.claude/rules/anti-patterns.md` by walking up from `startDir`.
+ * Locate `.agents/rules/anti-patterns.md` by walking up from `startDir`.
  * Returns the file contents or null if not found within 30 levels.
  */
 function findAntiPatternsFile(startDir: string): string | null {
   let dir = resolve(startDir)
   for (let i = 0; i < 30; i++) {
-    const candidate = join(dir, '.claude', 'rules', 'anti-patterns.md')
+    const candidate = join(dir, '.agents', 'rules', 'anti-patterns.md')
     if (existsSync(candidate)) {
       try {
         return readFileSync(candidate, 'utf8')
@@ -228,7 +228,7 @@ function findAntiPatternsFile(startDir: string): string | null {
  * Load the anti-patterns catalog doc. Prefers the live monorepo source found
  * by walking up from `startDir` (so in-repo dev sees the latest), but only
  * when that file is actually Pyreon's catalog (it parses to ≥1 entry — a
- * consumer's own unrelated `.claude/rules/anti-patterns.md` parses to zero
+ * consumer's own unrelated `.agents/rules/anti-patterns.md` parses to zero
  * and MUST NOT shadow the bundled Pyreon snapshot). Falls back to the
  * package's bundled `content/anti-patterns.md` (the `bunx @pyreon/mcp`
  * consumer case). Returns null only when neither source exists.
@@ -298,7 +298,7 @@ export function formatAntiPatterns(
 ): string {
   if (entries.length === 0) {
     return filterCategory === 'all'
-      ? 'No anti-patterns found. Check that `.claude/rules/anti-patterns.md` is reachable.'
+      ? 'No anti-patterns found. Check that `.agents/rules/anti-patterns.md` is reachable.'
       : `No anti-patterns found in category '${filterCategory}'. Valid categories: ${ANTI_PATTERN_CATEGORIES.join(', ')}, all.`
   }
 
@@ -317,7 +317,7 @@ export function formatAntiPatterns(
   parts.push(header)
   parts.push('')
   parts.push(
-    'Each entry is a known mistake documented at `.claude/rules/anti-patterns.md`. Entries tagged `[detector: <code>]` are caught statically by the MCP `validate` tool — the rest require a human / AI review. Read them BEFORE writing new code, not during code review.',
+    'Each entry is a known mistake documented at `.agents/rules/anti-patterns.md`. Entries tagged `[detector: <code>]` are caught statically by the MCP `validate` tool — the rest require a human / AI review. Read them BEFORE writing new code, not during code review.',
   )
   parts.push('')
 
@@ -429,7 +429,7 @@ export const INDEX_PAGE_SIZE = 240
 
 export function formatAntiPatternsIndex(entries: AntiPatternEntry[], page = 1): string {
   if (entries.length === 0) {
-    return 'No anti-patterns found. Check that `.claude/rules/anti-patterns.md` is reachable.'
+    return 'No anti-patterns found. Check that `.agents/rules/anti-patterns.md` is reachable.'
   }
   // Page BEFORE grouping: categories are very uneven, so paging per category
   // would make the page size unpredictable.

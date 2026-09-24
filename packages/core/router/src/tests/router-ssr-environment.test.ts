@@ -4,7 +4,7 @@
  *
  * The rest of this package's suite runs in happy-dom, where `document` always
  * exists, so `isClient` is permanently true and the SSR arms are unreachable
- * BY CONSTRUCTION. `.claude/rules/test-environment-parity.md` names this
+ * BY CONSTRUCTION. `.agents/rules/test-environment-parity.md` names this
  * exactly: code branching on the environment "must have a happy-dom test AND a
  * Node-only test (the latter explicitly verifies the SSR fallback path)". The
  * Node half did not exist.

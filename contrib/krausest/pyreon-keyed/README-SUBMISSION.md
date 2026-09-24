@@ -3,8 +3,8 @@
 This directory is a ready-to-submit `frameworks/keyed/pyreon` implementation
 for the independent [js-framework-benchmark](https://github.com/krausest/js-framework-benchmark).
 Submitting it upstream is the one step that resolves the documented
-author-judge limit on Pyreon's own benchmark claims (see CLAUDE.md
-"Benchmark Results — honest limits").
+author-judge limit on Pyreon's own benchmark claims (see
+`.agents/guides/benchmarks/README.md` "Honest limits").
 
 It uses ONLY published npm packages — no workspace references — so it builds
 standalone inside the upstream repo. `package.json` is the single source of

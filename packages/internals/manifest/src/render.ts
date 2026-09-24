@@ -362,7 +362,7 @@ function renderStringLiteral(s: string): string {
   // (e.g. the markdown-fenced code-group example `\`\`\`bash`) would
   // otherwise render as `\\` + raw backtick = (escaped backslash)(literal
   // backtick) → the literal backtick closes the template prematurely and
-  // breaks `api-reference.ts` parse. See CLAUDE.md "Documentation Mistakes"
+  // breaks `api-reference.ts` parse. See `.agents/rules/anti-patterns.md` "Documentation Mistakes"
   // for the recurring failure mode this fix closes.
   let body = s
   if (hasBackslash) body = body.replace(/\\/g, '\\\\')

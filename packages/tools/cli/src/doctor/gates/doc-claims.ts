@@ -173,7 +173,7 @@ const countDetectorCodes = (repoRoot: string): number => {
 
 // `@pyreon/document`'s `OutputFormat` union is the single source of truth
 // for "how many output formats" — every renderer is keyed by one of its
-// literals. README + CLAUDE.md repeat the count in prose; gate them all.
+// literals. READMEs repeat the count in prose; gate them all.
 const countDocumentFormats = (repoRoot: string): number => {
   const file = join(repoRoot, 'packages/fundamentals/document/src/types.ts')
   if (!existsSync(file)) return 0
@@ -189,7 +189,7 @@ const countDocumentFormats = (repoRoot: string): number => {
 // `packages/<category>/`. Scans ALL category dirs (robust to a future 6th)
 // and filters by the private flag, so `packages/internals|ui|native` (all
 // private) drop out automatically. This is THE most-frequently-drifting
-// count in the repo (README + CLAUDE.md both quote it).
+// count in the repo (README + AGENTS.md both quote it).
 /**
  * MCP tools the server registers.
  *
@@ -279,7 +279,7 @@ const countPublishedPackages = (repoRoot: string): number => {
 }
 
 /**
- * NOTE — CLAUDE.md is not a claim site for the hook count or the document
+ * NOTE — AGENTS.md (formerly CLAUDE.md) is not a claim site for the hook count or the document
  * output-format count any more.
  *
  * Both claims lived in the package table, and #2538 slimmed CLAUDE.md by ~190
@@ -294,7 +294,7 @@ const countPublishedPackages = (repoRoot: string): number => {
  * those entries still fail on drift. What was lost is a duplicate, not the
  * protection.
  *
- * If a future edit re-adds a count to CLAUDE.md, add the claim back here — an
+ * If a future edit re-adds a count to AGENTS.md, add the claim back here — an
  * unguarded number is exactly what this gate exists to prevent.
  */
 const checks: ClaimCheck[] = [
@@ -369,7 +369,7 @@ const checks: ClaimCheck[] = [
     actual: countDocPages,
     claims: [
       {
-        file: 'CLAUDE.md',
+        file: 'AGENTS.md',
         pattern: /(\d+) doc pages covering all packages/,
       },
     ],
@@ -380,7 +380,7 @@ const checks: ClaimCheck[] = [
     actual: countLintRules,
     claims: [
       {
-        file: 'CLAUDE.md',
+        file: 'AGENTS.md',
         pattern: /Pyreon-specific linter — (\d+) rules, \d+ categories/,
       },
       {
@@ -411,7 +411,7 @@ const checks: ClaimCheck[] = [
         pattern: /Pyreon-specific linter — (\d+) rules/,
       },
       {
-        file: '.claude/rules/code-style.md',
+        file: '.agents/rules/code-style.md',
         pattern: /Pyreon-specific rules \((\d+) rules, \d+ categories/,
       },
     ],
@@ -422,7 +422,7 @@ const checks: ClaimCheck[] = [
     actual: countLintCategories,
     claims: [
       {
-        file: 'CLAUDE.md',
+        file: 'AGENTS.md',
         pattern: /Pyreon-specific linter — \d+ rules, (\d+) categories/,
       },
       {
@@ -439,7 +439,7 @@ const checks: ClaimCheck[] = [
         pattern: /lint rules across (\d+) categories/,
       },
       {
-        file: '.claude/rules/code-style.md',
+        file: '.agents/rules/code-style.md',
         pattern: /Pyreon-specific rules \(\d+ rules, (\d+) categories/,
       },
     ],
@@ -450,11 +450,11 @@ const checks: ClaimCheck[] = [
     actual: countDetectorCodes,
     claims: [
       {
-        file: '.claude/rules/anti-patterns.md',
+        file: '.agents/rules/anti-patterns.md',
         pattern: /flags (\d+) of the patterns below statically/,
       },
       {
-        file: 'CLAUDE.md',
+        file: 'AGENTS.md',
         pattern:
           /catches "using Pyreon wrong" mistakes — (\d+) detector codes today/,
       },
@@ -505,8 +505,8 @@ const checks: ClaimCheck[] = [
     actual: countMcpTools,
     claims: [
       {
-        file: 'CLAUDE.md',
-        pattern: /MCP server, so its (\d+) tools are available/,
+        file: 'AGENTS.md',
+        pattern: /MCP server \(`@pyreon\/mcp`\), which exposes (\d+) tools/,
       },
     ],
   },
@@ -516,7 +516,7 @@ const checks: ClaimCheck[] = [
     actual: countManifests,
     claims: [
       {
-        file: 'CLAUDE.md',
+        file: 'AGENTS.md',
         pattern: /Coverage: (\d+) of \d+ published packages have a manifest/,
       },
     ],
@@ -530,7 +530,7 @@ const checks: ClaimCheck[] = [
     actual: (root: string) => countPublishedPackages(root) - countManifests(root),
     claims: [
       {
-        file: 'CLAUDE.md',
+        file: 'AGENTS.md',
         pattern: /The remaining (\d+) are EXPLICITLY EXEMPT/,
       },
     ],
@@ -550,11 +550,11 @@ const checks: ClaimCheck[] = [
         pattern: /(\d+) packages across 6 categories/,
       },
       {
-        file: 'CLAUDE.md',
+        file: 'AGENTS.md',
         pattern: /(\d+) published packages across 6 categories/,
       },
       {
-        file: 'CLAUDE.md',
+        file: 'AGENTS.md',
         pattern: /Coverage: \d+ of (\d+) published packages have a manifest/,
       },
     ],
@@ -602,7 +602,7 @@ export const runDocClaimsGate = async (
   // This gate validates the Pyreon monorepo's OWN doc-claim numbers (hook
   // counts, lint-rule counts, …) against the framework source-of-truth — it
   // is MEANINGLESS in a downstream consumer project. Both the claim sites
-  // (hooks README, CLAUDE.md, docs/src/content/docs/index.md, …) and the
+  // (hooks README, AGENTS.md, docs/src/content/docs/index.md, …) and the
   // source-of-truth files the counters read (packages/fundamentals/hooks/
   // src/index.ts, …) are Pyreon-monorepo-internal paths a consumer never has.
   //
@@ -613,7 +613,7 @@ export const runDocClaimsGate = async (
   // framework repo and in no consumer project.
   //
   // A previous guard skipped only when ZERO *claim files* existed — but the
-  // claim set includes generic `README.md` / `CLAUDE.md`, which nearly every
+  // claim set includes generic `README.md` / `AGENTS.md`, which nearly every
   // consumer has, so the gate ran anyway and flooded the `documentation`
   // category with spurious `file-missing` errors for the monorepo-internal
   // paths — dragging an otherwise-clean consumer app to a misleading C.

@@ -44,7 +44,7 @@
  *    doesn't systematically land on whichever scenario follows it.
  *
  * 6. No forced GC inside the timed loop (`Bun.gc(true)` jettisons compiled code
- *    → fake re-tier costs; see CLAUDE.md's bench-harness lesson).
+ *    → fake re-tier costs; see `.agents/guides/benchmarks/references/core-micro-benchmarks.md`).
  *
  * FIDELITY CONTRACT: the ROUTES ARRAY is built ONCE per scenario (module-level
  * in real apps — zero's `virtual:zero/routes`), while the router + vnode tree

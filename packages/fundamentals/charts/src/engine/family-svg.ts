@@ -23,7 +23,7 @@ import type { RadarAxis } from './radar'
 import { ohlcExtent, renderCandles } from './candlestick'
 import type { CandleOptions, Ohlc } from './candlestick'
 import { buildHeatGrid, renderHeat } from './heat'
-import { renderFunnel } from './funnel'
+import { renderFunnel, renderFunnelEc } from './funnel'
 import { layoutTreemap, renderTreemap } from './treemap'
 import type { TreeNode, TreemapOptions } from './treemap'
 import { layoutSunburst, renderSunburst, treeDepth } from './sunburst'
@@ -49,7 +49,7 @@ import { parallelRows } from './parallel-web'
 import type { ParallelRow } from './parallel-web'
 import type { CalendarOptions } from './calendar'
 import { calendarValues } from './calendar-web'
-import type { FunnelOptions, FunnelStage } from './funnel'
+import type { FunnelEcConfig, FunnelOptions, FunnelStage } from './funnel'
 import type { HeatGrid } from './heat'
 import { computeLayout } from './layout'
 import { niceDomain } from './scale'
@@ -574,6 +574,10 @@ export interface FunnelToSvgOptions<T> {
   width?: Double
   height?: Double
   funnel?: FunnelOptions
+  /** ECharts' own funnel, laid out in `frame` (the whole image without one); replaces `funnel`'s layout. */
+  echarts?: FunnelEcConfig
+  /** The series box, in image pixels. */
+  frame?: Rect
   measure?: MeasureText
   /** Chart theme; the canvas host reads the same fields. */
   theme?: Partial<ChartTheme>
@@ -594,7 +598,10 @@ export function funnelToSvg<T>(options: FunnelToSvgOptions<T>): string {
     color: options.color !== undefined ? options.color(d, i) : paletteAt(options.palette ?? t.palette, i),
   }))
   const pad = 8.0
-  const cmds = renderFunnel(stages, { x: pad, y: pad, w: width - pad * 2.0, h: height - pad * 2.0 }, options.funnel)
+  const cmds =
+    options.echarts !== undefined
+      ? renderFunnelEc(stages, options.frame ?? { x: 0.0, y: 0.0, w: width, h: height }, options.echarts, 1.0, t.background)
+      : renderFunnel(stages, { x: pad, y: pad, w: width - pad * 2.0, h: height - pad * 2.0 }, options.funnel)
   void (options.measure ?? measureApprox())
   const description =
     options.description ??

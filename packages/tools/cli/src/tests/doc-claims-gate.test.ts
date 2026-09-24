@@ -138,7 +138,7 @@ describe('a claim that no longer exists is reported, not ignored', () => {
     // The file is there and the pattern is not. That is a lost anchor,
     // not a lie — an error here would make every legitimate rewording a
     // build failure, which is how a gate gets bypassed.
-    build({ 'CLAUDE.md': 'the docs cover every package\n' })
+    build({ 'AGENTS.md': 'the docs cover every package\n' })
     return run().then((r) => {
       const miss = forCheck(r, 'doc-count').filter((f) => f.code.endsWith('-pattern-miss'))
       expect(miss.length).toBe(1)
@@ -333,11 +333,11 @@ describe('a count repeated in one file must agree everywhere', () => {
       'packages/tools/lint/src/rules/index.ts':
         `export const allRules: Rule[] = [\n` +
         `  // Reactivity (2)\n  a,\n  b,\n\n  // SSR (1)\n  c,\n]\n`,
-      'CLAUDE.md': `Pyreon-specific linter — 3 rules, 1 categories\n`,
+      'AGENTS.md': `Pyreon-specific linter — 3 rules, 1 categories\n`,
     })
     return run().then((r) => {
       const drift = forCheck(r, 'lint-rule-count').filter(
-        (f) => f.code.endsWith('-drift') && f.location?.relPath === 'CLAUDE.md',
+        (f) => f.code.endsWith('-drift') && f.location?.relPath === 'AGENTS.md',
       )
       expect(drift, 'three rules, three claimed').toEqual([])
     })
@@ -410,7 +410,7 @@ describe('the counters read the source, not a cached build', () => {
     build({
       'packages/core/compiler/src/pyreon-intercept.ts':
         `export type PyreonDiagnosticCode =\n  | 'for-missing-by'\n  | 'props-destructured'\n  | 'empty-theme'\n\nexport const x = 1\n`,
-      '.claude/rules/anti-patterns.md': `flags 3 of the patterns below statically\n`,
+      '.agents/rules/anti-patterns.md': `flags 3 of the patterns below statically\n`,
     })
     return run().then((r) => {
       const drift = forCheck(r, 'detector-code-count').filter((f) => f.code.endsWith('-drift'))
@@ -424,7 +424,7 @@ describe('the counters read the source, not a cached build', () => {
     build({
       'packages/core/compiler/src/pyreon-intercept.ts':
         `export type PyreonDiagnosticCode =\n  | 'a-b'\n  | 'c-d'\n  | 'e-f'\n  | 'g-h'\n\nexport const x = 1\n`,
-      '.claude/rules/anti-patterns.md': `flags 3 of the patterns below statically\n`,
+      '.agents/rules/anti-patterns.md': `flags 3 of the patterns below statically\n`,
     })
     return run().then((r) => {
       const drift = forCheck(r, 'detector-code-count').filter((f) => f.code.endsWith('-drift'))
@@ -442,11 +442,11 @@ describe('the counters read the source, not a cached build', () => {
       'packages/tools/lint/src/rules/ssr/c.ts': `export const c = { category: 'ssr' }\n`,
       'packages/tools/lint/src/rules/helpers/README.md': `not a rule\n`,
       'packages/tools/lint/src/rules/index.ts': `export const allRules: Rule[] = [\n  a,\n  b,\n  c,\n]\n`,
-      'CLAUDE.md': `Pyreon-specific linter — 3 rules, 2 categories\n`,
+      'AGENTS.md': `Pyreon-specific linter — 3 rules, 2 categories\n`,
     })
     return run().then((r) => {
       const drift = forCheck(r, 'lint-category-count').filter(
-        (f) => f.code.endsWith('-drift') && f.location?.relPath === 'CLAUDE.md',
+        (f) => f.code.endsWith('-drift') && f.location?.relPath === 'AGENTS.md',
       )
       expect(drift, 'two declared categories, two claimed').toEqual([])
     })
@@ -459,12 +459,12 @@ describe('the counters read the source, not a cached build', () => {
       'packages/tools/lint/src/rules/reactivity/a.ts': `export const a = { category: 'reactivity' }\n`,
       'packages/tools/lint/src/rules/index.ts': `export const allRules: Rule[] = [\n  a,\n]\n`,
       'packages/tools/lint/src/rules/types.ts': `export type Rule = unknown\n`,
-      'CLAUDE.md': `Pyreon-specific linter — 1 rules, 1 categories\n`,
+      'AGENTS.md': `Pyreon-specific linter — 1 rules, 1 categories\n`,
     })
     return run().then((r) => {
       expect(
         forCheck(r, 'lint-category-count').filter(
-          (f) => f.code.endsWith('-drift') && f.location?.relPath === 'CLAUDE.md',
+          (f) => f.code.endsWith('-drift') && f.location?.relPath === 'AGENTS.md',
         ),
       ).toEqual([])
     })

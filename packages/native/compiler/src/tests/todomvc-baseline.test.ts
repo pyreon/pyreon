@@ -1,10 +1,8 @@
 // TodoMVC compile-baseline — the structural test of whether the full
 // compiler stack handles a real-app shape.
 //
-// Per `.claude/plans/native-platforms-todomvc-walkthrough.md` (#799),
 // TodoMVC exercises 8 distinct Pyreon constructs the 7 starter
-// fixtures don't combine. The walkthrough doc names 8 compositional
-// gaps that need closing before TodoMVC can compile cleanly.
+// fixtures don't combine.
 //
 // This baseline test:
 //   1. Compiles the canonical TodoMVC source

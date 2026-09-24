@@ -77,7 +77,7 @@ test('matrix view renders the internal adjacency block', async ({ page }) => {
 
 test('cycles view reports the acyclic truth for this repo', async ({ page }) => {
   await page.getByTestId('view-cycles').click()
-  // CLAUDE.md's own claim, asserted through the UI: the runtime graph is clean.
+  // AGENTS.md's own claim, asserted through the UI: the runtime graph is clean.
   await expect(page.getByTestId('cycles-clean')).toBeVisible()
 })
 

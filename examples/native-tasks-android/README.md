@@ -2,8 +2,6 @@
 
 > **PRIVATE / EXPERIMENTAL.** Android host shell for the Gap 5 tasks showcase. Compiles the SHARED `TasksApp.tsx` source (from #1449) via PMTC; SAME source the web (#1456) and iOS (#1457) hosts use.
 
-**Closes the FINAL Gap 5 host-shells follow-up** from the [2026-06-05 native-readiness audit](../../.claude/audits/native-readiness-2026-06-05.md). With this PR, ALL three native-tasks target hosts (web + iOS + Android) ship.
-
 ## Architecture
 
 ```text

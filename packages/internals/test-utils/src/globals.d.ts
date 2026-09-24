@@ -2,8 +2,7 @@
  * Ambient type augmentation for test-side global probes and platform APIs
  * that TypeScript's standard `lib` either doesn't ship or marks read-only.
  *
- * Per the test-any reduction effort (audit at
- * `.claude/plans/test-any-reduction-audit.md`), this file absorbs the
+ * Per the test-any reduction effort, this file absorbs the
  * `(document as any).startViewTransition`, `(window as any).__X`, and
  * `(globalThis as any).WebSocket` casts that recurred across 32 sites.
  *

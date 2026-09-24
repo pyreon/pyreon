@@ -11,8 +11,7 @@
 // "emits" spec fails with "expected … to contain PyreonI18n(…)". Restored
 // → all pass.
 //
-// Reference: docs/src/content/docs/multiplatform-libraries.md → "Tier 2" + the
-// Strategy-B / PR-3 progression in CLAUDE.md.
+// Reference: docs/src/content/docs/multiplatform-libraries.md → "Tier 2".
 
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
