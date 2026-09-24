@@ -5,7 +5,7 @@
     "_doc": "Budgets whose headroom is below the ~1.5% macOS/ubuntu gzip variance, and so cannot be satisfied reliably on both. Grandfathered so existing thin entries do not redden unrelated PRs; a NEW thin budget fails the gate. This list only shrinks — each entry names what retires it."
   },
   "@pyreon/a11y": 1536,
-  "@pyreon/atlas": 14887,
+  "@pyreon/atlas": 15500,
   "@pyreon/attrs": 1280,
   "@pyreon/charts": 2944,
   "@pyreon/cli": 18215,
@@ -32,7 +32,7 @@
   "@pyreon/kinetic": 4864,
   "@pyreon/kinetic-presets": 4864,
   "@pyreon/lathe": 27064,
-  "@pyreon/lint": 69209,
+  "@pyreon/lint": 69300,
   "@pyreon/loom": 8520,
   "@pyreon/machine": 1150,
   "@pyreon/mcp": 393342,

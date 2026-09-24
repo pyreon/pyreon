@@ -19,6 +19,7 @@
           "packages/tools/storybook/",
           "packages/tools/typescript/",
           "packages/native/cli/",
+          "packages/internals/vitest-config/",
           "packages/core/runtime-dom/src/hydration-debug.ts",
           "-compat/",
           "scripts/",

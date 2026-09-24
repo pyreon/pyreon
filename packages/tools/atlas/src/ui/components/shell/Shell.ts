@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const Shell = el
   .attrs({
@@ -9,7 +9,7 @@ export const Shell = el
     contentDirection: 'rows',
     contentAlignX: 'block',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     height: '100vh',
     overflow: 'hidden',
     fontFamily: t.font.sans,

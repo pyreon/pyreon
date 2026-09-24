@@ -1,10 +1,10 @@
-import { dim, el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const EnumBtn = el
   .attrs({
     tag: 'button',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     font: 'inherit',
     fontSize: t.size.body,
     cursor: 'pointer',
@@ -18,12 +18,12 @@ export const EnumBtn = el
     hover: { borderColor: t.accent, color: t.text },
   }))
   .states(
-    dim((t) => ({
+    (t) => ({
       active: {
         borderColor: t.accent,
         color: t.text,
         backgroundColor: t.accentSoft,
       },
       idle: {},
-    })),
+    }),
   )
