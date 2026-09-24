@@ -46,11 +46,11 @@ function expandField(raw: string, field: (typeof FIELDS)[number]): number[] {
     const m = /^(\*|(\d+)(?:-(\d+))?)(?:\/(\d+))?$/.exec(part)
     if (!m) {
       throw new Error(
-        `${field.name} field "${raw}" is not valid (use a number, *, a-b, */n or a-b/n; names like MON/JAN are not portable across platforms)`,
+        `[Pyreon] cron ${field.name} field "${raw}" is not valid (use a number, *, a-b, */n or a-b/n; names like MON/JAN are not portable across platforms)`,
       )
     }
     const step = m[4] !== undefined ? Number(m[4]) : 1
-    if (step < 1) throw new Error(`${field.name} step must be >= 1 (got "${part}")`)
+    if (step < 1) throw new Error(`[Pyreon] cron ${field.name} step must be >= 1 (got "${part}")`)
     let lo: number
     let hi: number
     if (m[1] === '*') {
@@ -61,7 +61,7 @@ function expandField(raw: string, field: (typeof FIELDS)[number]): number[] {
       hi = m[3] !== undefined ? Number(m[3]) : m[4] !== undefined ? field.max : lo
     }
     if (lo < field.min || hi > field.max || lo > hi) {
-      throw new Error(`${field.name} value "${part}" is out of range ${field.min}-${field.max}`)
+      throw new Error(`[Pyreon] cron ${field.name} value "${part}" is out of range ${field.min}-${field.max}`)
     }
     for (let v = lo; v <= hi; v += step) values.add(field.name === 'day-of-week' && v === 7 ? 0 : v)
   }
@@ -79,7 +79,7 @@ export function parseCron(expression: string): ParsedCron {
   const parts = expression.trim().split(/\s+/)
   if (parts.length !== 5) {
     throw new Error(
-      `expected 5 fields (minute hour day-of-month month day-of-week), got ${parts.length}${expression.trim().startsWith('@') ? ' — macros like @hourly are not portable, write "0 * * * *"' : ''}`,
+      `[Pyreon] cron expected 5 fields (minute hour day-of-month month day-of-week), got ${parts.length}${expression.trim().startsWith('@') ? ' — macros like @hourly are not portable, write "0 * * * *"' : ''}`,
     )
   }
   const [minute, hour, dom, month, dow] = parts.map((p, i) => expandField(p, FIELDS[i]!))

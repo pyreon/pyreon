@@ -76,7 +76,8 @@ export async function collectDeployTargets(routesDir: string): Promise<DeployTar
         cron = parseCron(value)
       } catch (err) {
         throw new Error(
-          `[Pyreon] ${file}: invalid schedule "${value}": ${err instanceof Error ? err.message : String(err)}.`,
+          `[Pyreon] ${file}: invalid schedule "${value}": ${(err instanceof Error ? err.message : String(err)).replace(/^\[Pyreon\] cron /, '')}.`,
+          { cause: err },
         )
       }
       schedules.push({ path: pattern, schedule: cron.expression, cron, file })
