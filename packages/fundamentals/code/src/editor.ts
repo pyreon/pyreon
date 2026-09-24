@@ -725,7 +725,10 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
 
   // ── Expose mount for component ─────────────────────────────────────
 
-  const instance: EditorInstance & { _mount: typeof mount } = {
+  const instance: EditorInstance & { _mount: typeof mount; _themeExplicit: boolean } = {
+    // Whether `theme` was passed: `<CodeEditor>` follows the app's colour mode
+    // only for an editor that did not choose one.
+    _themeExplicit: config.theme !== undefined,
     value,
     language,
     theme,

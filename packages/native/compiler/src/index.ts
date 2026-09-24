@@ -26,10 +26,10 @@ export {
   type ValidationResult,
 } from './validate'
 
-/** A module that imports from `@pyreon/charts/plot` constructs the generated
+/** A module that imports from `@pyreon/charts` constructs the generated
  *  engine's structs (`SankeyNode`, `GanttTask`, …): their declarations are
  *  known to the emitters as EXTERNAL structs so literals type correctly. */
-const CHART_PLOT_IMPORT = /from\s*['"]@pyreon\/charts\/plot['"]/
+const CHART_PLOT_IMPORT = /from\s*['"]@pyreon\/charts(?:\/(?:engine|option|svg))?['"]/
 
 /**
  * A user type whose NAME matches one the generated chart engine declares
@@ -51,7 +51,7 @@ function chartEngineShadowWarnings(parsed: ReturnType<typeof parsePyreon>): stri
     .sort()
     .map(
       (n) =>
-        `\`${n}\` is also the name of a type in the generated chart engine, and this file uses \`@pyreon/charts/plot\` — your declaration SHADOWS the engine's, `
+        `\`${n}\` is also the name of a type in the generated chart engine, and this file uses \`@pyreon/charts\` — your declaration SHADOWS the engine's, `
         + `so the native build fails (\`invalid redeclaration of '${n}'\` in the compile gates; a type mismatch at every engine call in an app). Rename yours.`,
     )
 }

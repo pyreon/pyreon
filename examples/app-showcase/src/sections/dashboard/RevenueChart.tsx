@@ -1,4 +1,4 @@
-import { Chart } from '@pyreon/charts'
+import { EChart } from '@pyreon/charts/echarts'
 import { useQuery } from '@pyreon/query'
 import { css, useCSS, useTheme } from '@pyreon/styler'
 import type { Theme } from '@pyreon/ui-theme'
@@ -20,7 +20,7 @@ const canvasCss = css`
 /**
  * Revenue line chart for the last 14 days. Demonstrates @pyreon/charts:
  *   • `useQuery` fetches the time series async
- *   • `<Chart options={() => ...} />` lazy-loads the ECharts modules it
+ *   • `<EChart options={() => ...} />` lazy-loads the ECharts modules it
  *     needs, mounts a chart, and updates when the options function's
  *     signal dependencies change
  *   • The container's height is set on `ChartCanvas` so ECharts knows
@@ -50,7 +50,7 @@ export function RevenueChart() {
         const data = query.data()
         if (!data) return <ChartFallback>Loading chart…</ChartFallback>
         return (
-          <Chart
+          <EChart
             class={canvasClass}
             options={() => ({
               tooltip: { trigger: 'axis' },
