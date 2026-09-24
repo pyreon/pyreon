@@ -10,7 +10,9 @@
 // optional narrowing (every optional read goes through `??`); the svg half
 // lives in family-svg.ts.
 
+import { isFiniteNumber } from './scale'
 import type { Double, DrawCmd, MeasureText, Rect } from './types'
+import { truncateLabel } from './pie-labels'
 import { DEFAULT_PALETTE, hexDigit, paletteAt } from './palette'
 
 export interface TreeNode {
@@ -345,4 +347,281 @@ export function hitTreemapIndex(cells: TreemapCell[], px: Double, py: Double): n
 export function hitTreemap(cells: TreemapCell[], px: Double, py: Double): TreemapCell | null {
   const i = hitTreemapIndex(cells, px, py)
   return i < 0 ? null : cells[i]!
+}
+
+// ---- the ECharts treemap (the option path) ----
+//
+// A port of ECharts 6's `treemapLayout.js` (`squarify`, `initChildren`,
+// `filterByThreshold`, `worst`, `position`), differential-tested against the
+// layouts ECharts' own model computes (echarts-differential.test.ts).
+// `<TreemapChart>`'s props keep the simpler layout above.
+
+/**
+ * A treemap node with its ECharts styling already resolved (own `itemStyle`
+ * / `upperLabel`, else `levels[depth]`, else the series). A NaN threshold
+ * means none. `value` is ECharts' completed value: the node's own, else the
+ * sum of its children, never below zero.
+ */
+export interface TreemapEcNode {
+  name: string
+  value: Double
+  color: string
+  children: TreemapEcNode[]
+  borderWidth: Double
+  gapWidth: Double
+  /** The upper label band's height when `upperLabel.show`, else 0. */
+  upperLabelHeight: Double
+  visibleMin: Double
+  childrenVisibleMin: Double
+}
+
+export interface TreemapEcConfig {
+  /** Target aspect ratio of the cells (ECharts' golden ratio by default). */
+  squareRatio: Double
+  /** 'desc', 'asc', or '' for input order. */
+  sort: string
+  /** Levels drawn below the root; NaN = all. */
+  leafDepth: Double
+}
+
+/** ECharts' `worst`: how far a row of cells strays from the square ratio. */
+function treemapWorst(areas: Double[], rowArea: Double, fixed: Double, ratio: Double): Double {
+  let areaMax = 0.0
+  let areaMin = 1.0 / 0.0
+  for (const a of areas) {
+    if (a !== 0.0) {
+      if (a < areaMin) areaMin = a
+      if (a > areaMax) areaMax = a
+    }
+  }
+  const squareArea = rowArea * rowArea
+  const f = fixed * fixed * ratio
+  if (squareArea === 0.0) return 1.0 / 0.0
+  const a1 = (f * areaMax) / squareArea
+  const a2 = squareArea / (f * areaMin)
+  return a1 > a2 ? a1 : a2
+}
+
+/** A frame of the layout's work stack: a node, its absolute rect, and how it was reached. */
+interface TreemapEcFrame {
+  node: TreemapEcNode
+  rect: Rect
+  depth: number
+  path: number[]
+  hide: boolean
+}
+
+/**
+ * Lay an ECharts treemap out: `root` (the series itself, whose children are the
+ * top-level data) fills `box`. Every visible node comes back, parents before
+ * their children.
+ */
+export function layoutTreemapEc(root: TreemapEcNode, box: Rect, cfg: TreemapEcConfig): TreemapCell[] {
+  // `TreemapCell`, counted from the series root (depth 0, empty path);
+  // `treemapEcCells` drops the root for `<TreemapChart>`.
+  const out: TreemapCell[] = []
+  const stack: TreemapEcFrame[] = []
+  stack.push({ node: root, rect: box, depth: 0, path: [], hide: false })
+  let sp = 1
+  while (sp > 0) {
+    sp = sp - 1
+    const frame = stack[sp]!
+    const node = frame.node
+    const halfGap = node.gapWidth / 2.0
+    const upperHeight = node.borderWidth > node.upperLabelHeight ? node.borderWidth : node.upperLabelHeight
+    const offset = node.borderWidth - halfGap
+    const offsetUpper = upperHeight - halfGap
+    const w0 = frame.rect.w - 2.0 * offset
+    const h0 = frame.rect.h - offset - offsetUpper
+    const width = w0 > 0.0 ? w0 : 0.0
+    const height = h0 > 0.0 ? h0 : 0.0
+    const totalArea = width * height
+    // `initChildren`: which children are laid out, in what order, with what area.
+    const overLeafDepth = isFiniteNumber(cfg.leafDepth) && cfg.leafDepth <= countDepth(frame.depth)
+    const kids: number[] = []
+    if (!(frame.hide && !overLeafDepth)) {
+      for (let i = 0; i < node.children.length; i++) kids.push(i)
+      if (cfg.sort === 'desc' || cfg.sort === 'asc') {
+        // Insertion sort; ties go by input index — descending for 'desc', as ECharts' comparator does.
+        for (let i = 1; i < kids.length; i++) {
+          const cur = kids[i]!
+          let j = i - 1
+          while (j >= 0) {
+            const a = node.children[kids[j]!]!.value
+            const b = node.children[cur]!.value
+            const swap = cfg.sort === 'asc' ? a > b || (a === b && kids[j]! > cur) : a < b || (a === b && kids[j]! < cur)
+            if (!swap) break
+            kids[j + 1] = kids[j]!
+            j = j - 1
+          }
+          kids[j + 1] = cur
+        }
+      }
+    }
+    let sum = 0.0
+    for (const k of kids) sum = sum + node.children[k]!.value
+    // `filterByThreshold`: with a sort, the smallest children under `visibleMin` pixels² drop out.
+    let visible: number[] = kids
+    if (sum > 0.0 && (cfg.sort === 'desc' || cfg.sort === 'asc') && isFiniteNumber(node.visibleMin)) {
+      const n = kids.length
+      let deletePoint = n
+      for (let i = n - 1; i >= 0; i--) {
+        const value = node.children[kids[cfg.sort === 'asc' ? n - i - 1 : i]!]!.value
+        if ((value / sum) * totalArea < node.visibleMin) {
+          deletePoint = i
+          sum = sum - value
+        }
+      }
+      const kept: number[] = []
+      if (cfg.sort === 'asc') {
+        for (let i = n - deletePoint; i < n; i++) kept.push(kids[i]!)
+      } else {
+        for (let i = 0; i < deletePoint; i++) kept.push(kids[i]!)
+      }
+      visible = kept
+    }
+    const laidOut = sum > 0.0 && !overLeafDepth && visible.length > 0
+    out.push({ path: frame.path, depth: frame.depth, rect: frame.rect, name: node.name, value: node.value, color: node.color, leaf: !laidOut })
+    if (!laidOut) continue
+    const areas: Double[] = []
+    for (const k of visible) areas.push((node.children[k]!.value / sum) * totalArea)
+    // `squarify`: rows along the shorter side, each closed when adding a cell makes it worse.
+    const rects: Rect[] = []
+    for (let i = 0; i < visible.length; i++) rects.push({ x: 0.0, y: 0.0, w: 0.0, h: 0.0 })
+    let rx = frame.rect.x + offset
+    let ry = frame.rect.y + offsetUpper
+    let rw = width
+    let rh = height
+    let fixed = rw < rh ? rw : rh
+    let best = 1.0 / 0.0
+    let rowStart = 0
+    let rowArea = 0.0
+    let i = 0
+    while (i <= visible.length) {
+      const closing = i === visible.length
+      let accept = false
+      if (!closing) {
+        const trial: Double[] = []
+        for (let q = rowStart; q <= i; q++) trial.push(areas[q]!)
+        const score = treemapWorst(trial, rowArea + areas[i]!, fixed, cfg.squareRatio)
+        if (score <= best) {
+          accept = true
+          best = score
+          rowArea = rowArea + areas[i]!
+          i = i + 1
+        }
+      }
+      if (accept) continue
+      if (i === rowStart) break
+      // `position`: lay the row [rowStart, i) along the fixed side.
+      const alongX = fixed === rw
+      let rowOther = fixed !== 0.0 ? rowArea / fixed : 0.0
+      const across = alongX ? rh : rw
+      if (closing || rowOther > across) rowOther = across
+      let last = alongX ? rx : ry
+      const end = alongX ? rx + rw : ry + rh
+      for (let q = rowStart; q < i; q++) {
+        const step = rowOther !== 0.0 ? areas[q]! / rowOther : 0.0
+        const wh1raw = rowOther - 2.0 * halfGap
+        const wh1 = wh1raw > 0.0 ? wh1raw : 0.0
+        const remain = end - last
+        const mod = q === i - 1 || remain < step ? remain : step
+        const wh0raw = mod - 2.0 * halfGap
+        const wh0 = wh0raw > 0.0 ? wh0raw : 0.0
+        const off1 = halfGap < wh1 / 2.0 ? halfGap : wh1 / 2.0
+        const off0 = halfGap < wh0 / 2.0 ? halfGap : wh0 / 2.0
+        if (alongX) rects[q] = { x: last + off0, y: ry + off1, w: wh0, h: wh1 }
+        else rects[q] = { x: rx + off1, y: last + off0, w: wh1, h: wh0 }
+        last = last + mod
+      }
+      if (alongX) {
+        ry = ry + rowOther
+        rh = rh - rowOther
+      } else {
+        rx = rx + rowOther
+        rw = rw - rowOther
+      }
+      if (closing) break
+      fixed = rw < rh ? rw : rh
+      best = 1.0 / 0.0
+      rowStart = i
+      rowArea = 0.0
+    }
+    // `childrenVisibleMin`: a parent too small hides its grandchildren.
+    const hideNext = frame.hide || (isFiniteNumber(node.childrenVisibleMin) && totalArea < node.childrenVisibleMin)
+    // Pushed in reverse so the first child pops (and appears) first.
+    for (let q = visible.length - 1; q >= 0; q--) {
+      const k = visible[q]!
+      const path: number[] = []
+      for (const p of frame.path) path.push(p)
+      path.push(k)
+      const f: TreemapEcFrame = { node: node.children[k]!, rect: rects[q]!, depth: frame.depth + 1, path, hide: hideNext }
+      if (sp < stack.length) stack[sp] = f
+      else stack.push(f)
+      sp = sp + 1
+    }
+  }
+  return out
+}
+
+/** A depth as a Double, for comparing with `leafDepth` (the native targets will not mix Int into Double math). */
+function countDepth(d: number): Double {
+  let f = 0.0
+  for (let i = 0; i < d; i++) f = f + 1.0
+  return f
+}
+
+/**
+ * The ECharts layout as `TreemapCell`s, the way `<TreemapChart>` counts: the
+ * series root dropped, depth 0 the top level. A node without a colour takes
+ * the palette's (top level) or its parent's.
+ */
+export function treemapEcCells(root: TreemapEcNode, box: Rect, cfg: TreemapEcConfig, palette: readonly string[]): TreemapCell[] {
+  const out: TreemapCell[] = []
+  // The colour at each depth of the current branch, the root's at 0: cells come parents first.
+  const colors: string[] = ['']
+  for (const c of layoutTreemapEc(root, box, cfg)) {
+    if (c.depth === 0) continue
+    const inherited = c.depth === 1 ? (palette.length === 0 ? '#5070dd' : palette[c.path[0]! % palette.length]!) : colors[c.depth - 1]!
+    const color = c.color !== '' ? c.color : inherited
+    if (c.depth < colors.length) colors[c.depth] = color
+    else colors.push(color)
+    out.push({ name: c.name, value: c.value, rect: c.rect, depth: c.depth - 1, path: c.path, color, leaf: c.leaf })
+  }
+  return out
+}
+
+/**
+ * Draw an ECharts treemap: the series box and every parent as a background in
+ * `borderColor` (which the gaps and borders show through), each leaf in its
+ * colour, and each leaf's name centred in it, truncated to fit, as ECharts
+ * labels a leaf. `progress` (0..1) grows the leaves from their centres.
+ */
+export function renderTreemapEc(cells: TreemapCell[], box: Rect, borderColor: string, labelColor: string, fontSize: Double, showLabels: boolean, progress: Double, measure: MeasureText): DrawCmd[] {
+  const out: DrawCmd[] = []
+  const p = progress < 0.0 ? 0.0 : progress > 1.0 ? 1.0 : progress
+  out.push({ kind: 'rect', rect: box, fill: borderColor })
+  for (const c of cells) {
+    if (!c.leaf) {
+      out.push({ kind: 'rect', rect: c.rect, fill: borderColor })
+      continue
+    }
+    const w = c.rect.w * p
+    const h = c.rect.h * p
+    out.push({ kind: 'rect', rect: { x: c.rect.x + (c.rect.w - w) / 2.0, y: c.rect.y + (c.rect.h - h) / 2.0, w, h }, fill: c.color })
+  }
+  if (!showLabels || p < 1.0) return out
+  for (const c of cells) {
+    if (!c.leaf || c.rect.h < fontSize) continue
+    const text = truncateLabel(c.name, c.rect.w, fontSize, measure)
+    if (text === '') continue
+    out.push({ kind: 'text', text, at: { x: c.rect.x + c.rect.w / 2.0, y: c.rect.y + c.rect.h / 2.0 }, fill: labelColor, size: fontSize, align: 'middle', baseline: 'middle' })
+  }
+  return out
+}
+
+/** A treemap parent's background: its `borderColor`, else the chart's background, else white (ECharts' default). */
+export function treemapGround(borderColor: string, background: string): string {
+  if (borderColor !== '') return borderColor
+  return background !== '' ? background : '#ffffff'
 }
