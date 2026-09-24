@@ -181,7 +181,18 @@ export async function createModuleLoader(
     // project's `index.html`, which belongs to the app and pre-bundles a graph
     // this has no use for.
     appType: 'custom',
-    server: { middlewareMode: true },
+    // No HMR, no WebSocket: nothing ever connects to this server, and leaving
+    // both on made every command print `WebSocket server error: Port … is
+    // already in use` whenever another Vite was running (or, in middleware
+    // mode, even when none was).
+    server: { middlewareMode: true, hmr: false, ws: false },
+    // Quiet by default. Every failure this server can hit already reaches
+    // Atlas as a REJECTED `ssrLoadModule`, which Atlas reports in its own
+    // summary with the file and a fix; Vite logging the same failure first, as
+    // a timestamped stack trace, made an ordinary situation (a component that
+    // throws, a missing optional peer) read like Atlas crashing.
+    // `ATLAS_VITE_LOG=1` restores Vite's own output for debugging the loader.
+    customLogger: quietLogger(),
     optimizeDeps: { entries: [] },
     // Resolve EXTERNALISED ssr imports with the host's conditions.
     //
@@ -229,6 +240,63 @@ export async function createModuleLoader(
     load: (file) => server.ssrLoadModule(file.startsWith('/') ? pathToFileURL(file).pathname : file),
     close: () => server.close(),
   }
+}
+
+/**
+ * A Vite logger that stays silent unless `ATLAS_VITE_LOG=1`.
+ *
+ * Structural rather than Vite's `Logger` type for the same reason as
+ * `CreateServer` above: naming Vite's types would put it in the type graph.
+ */
+function quietLogger(): Record<string, unknown> {
+  const verbose = process.env.ATLAS_VITE_LOG === '1'
+  const warned = new Set<string>()
+  const noop = (): void => {}
+  const emit = (level: 'info' | 'warn' | 'error') => (msg: string) => {
+    if (!verbose) return
+    console[level === 'info' ? 'log' : level](msg)
+  }
+  return {
+    info: emit('info'),
+    warn: emit('warn'),
+    warnOnce: (msg: string) => {
+      if (warned.has(msg)) return
+      warned.add(msg)
+      emit('warn')(msg)
+    },
+    error: emit('error'),
+    clearScreen: noop,
+    hasErrorLogged: () => false,
+    hasWarned: false,
+  }
+}
+
+/**
+ * The framework packages a scan cannot mount without.
+ *
+ * Named in the failure message rather than left to Vite's `Failed to load url
+ * @pyreon/core … Does the file exist?`, which describes a symptom and names no
+ * remedy.
+ */
+const REQUIRED_RUNTIME = ['@pyreon/core', '@pyreon/runtime-dom', '@pyreon/reactivity'] as const
+
+/**
+ * Turn "the project cannot resolve the framework" into the one thing to do.
+ *
+ * Returns the actionable message, or undefined when the failure is something
+ * else (a dual instance, a throwing module) that has its own handling.
+ */
+export function missingRuntimeMessage(message: string): string | undefined {
+  const missing = REQUIRED_RUNTIME.filter((pkg) =>
+    new RegExp(`(Failed to load url|Cannot find (module|package)) '?${pkg.replace('/', '\\/')}(?![\\w-])`).test(message),
+  )
+  if (missing.length === 0) return undefined
+  return (
+    `[Pyreon] atlas: this project does not resolve ${missing.join(', ')}, so no component can be ` +
+    `mounted. Install the framework runtime in the project being scanned:\n\n` +
+    `    bun add ${REQUIRED_RUNTIME.join(' ')}\n\n` +
+    `  (or run with --no-mount for a static scan).`
+  )
 }
 
 /** The host runtime honours the `bun` export condition. */
@@ -288,7 +356,8 @@ export async function loadRuntime(
     // The project may not depend on the DOM runtime at all (a headless catalog).
     // Falling back to Atlas's own copy is wrong here — it would be a second
     // instance — so the caller mounts nothing and the check skips.
-    onFailure?.(err instanceof Error ? err.message : String(err))
+    const raw = err instanceof Error ? err.message : String(err)
+    onFailure?.(missingRuntimeMessage(raw) ?? raw)
     return undefined
   }
 }
