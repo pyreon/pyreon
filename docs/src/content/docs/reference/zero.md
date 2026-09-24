@@ -101,6 +101,7 @@ export default function PostPage() { /* component body */ }
 | [`netlifyAdapter`](#netlifyadapter) | function | Netlify adapter. |
 | [`seoPlugin`](#seoplugin) | function | SEO plugin — emits `sitemap.xml`, `robots.txt`, JSON-LD, and hreflang cross-references. |
 | [`aiPlugin`](#aiplugin) | function | AI integration plugin — generates `llms.txt`, `llms-full.txt`, and JSON-LD inference metadata at build time. |
+| [`OgImage`](#ogimage) | type | Per-route Open Graph image from JSX. |
 | [`i18nRouting`](#i18nrouting) | function | Vite plugin for REQUEST-TIME locale detection — Accept-Language header, cookie, root-path redirect to detected locale. |
 | [`https`](#https) | function | Serves the dev server over TLS. |
 | [`validateEnv`](#validateenv) | function | Env-variable validation with type coercion. |
@@ -557,6 +558,38 @@ plugins: [pyreon(), zero(), seoPlugin({ ... }), aiPlugin()]
 ```
 
 **See also:** `seoPlugin` · `zero`
+
+---
+
+### OgImage `type`
+
+```ts
+type OgImage<TData = unknown, TParams = Record<string, string>> = (ctx: { path: string; params: TParams; data: TData | undefined }) => VNodeChild // route file `export const og`
+```
+
+Per-route Open Graph image from JSX. A page route exports `og` — a component rendering the card as SVG JSX from its params + loader data. SSG paths rasterize at BUILD time to a content-hashed PNG under `assets/og/` and get `og:image` (+ width/height, `twitter:card`) injected; SSR/ISR routes are served at request time from `/_zero/og/<path>.png` (CDN `s-maxage` + `stale-while-revalidate`) with an absolute `og:image` injected into the page. Referenced only from the server graph — never the client bundle. Rasterizer: the optional peer `sharp`. Size + absolute origin via `zero({ routeOg: { width, height, siteUrl } })`.
+
+**Example**
+
+```tsx
+import type { OgImage } from '@pyreon/zero/server'
+
+export const og: OgImage<{ title: string }> = ({ data }) => (
+  <svg width="1200" height="630">
+    <rect width="1200" height="630" fill="#0b1020" />
+    <text x="80" y="330" font-size="72" fill="#fff">{data?.title}</text>
+  </svg>
+)
+```
+
+**Common mistakes**
+
+- Rendering HTML (`<div>`) instead of an `<svg>` root — sharp rasterizes SVG via librsvg, which does not lay out HTML or `<foreignObject>`; the build fails with a `[Pyreon]` error naming the fix
+- Omitting `routeOg.siteUrl` for SSG — most crawlers (Facebook, LinkedIn, Slack) need an ABSOLUTE og&#58;image URL; without it the build-time tag is root-relative
+- Expecting `vite dev` to serve `/_zero/og/…` — the image is produced by the build / production server; preview with a build
+- Setting og&#58;image via `useHead` AND exporting `og` — the explicit tag wins and nothing is injected
+
+**See also:** `zero` · `seoPlugin`
 
 ---
 

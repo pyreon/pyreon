@@ -137,6 +137,7 @@ export default {
 | `favicon`    | `FaviconPluginConfig \| false`                                                | auto    | Explicit config wires `faviconPlugin`; **omitted → file-convention auto-detect** (`src/favicon.svg` → full set, zero config); `false` disables — see **[Favicons](#favicons)** |
 | `theme`      | `boolean`                                                                     | `false` | `true` auto-injects the pre-paint `themeScript` into every page `<head>` (no manual script tag) — see **[Theme System](#theme-system)** |
 | `og`         | `OgImagePluginConfig`                                                         | —       | Auto-wires `ogImagePlugin` (templates + text layers → per-locale social-share images) |
+| `routeOg`    | `RouteOgConfig`                                                               | —       | Per-route `export const og` images: size (default 1200×630) + `siteUrl` for absolute build-time `og:image` |
 | `ai`         | `AiPluginConfig`                                                              | —       | Auto-wires `aiPlugin` (llms.txt, llms-full.txt, /.well-known/ai-plugin.json, OpenAPI spec) |
 
 `resolveConfig(userConfig?)` merges user config with the defaults above (`mode: 'ssr'`, `base: '/'`, `port: 3000`, `adapter: 'node'`). `ssr.mode` defaults to `'string'` (buffered). Streaming is opt-in: `ssr: { mode: 'stream' }`. ISR routes always render buffered, because the cache stores complete responses.
@@ -1237,6 +1238,34 @@ import { Meta } from '@pyreon/zero'
 ```
 
 **Font note:** text layers render via SVG → sharp, which resolves `fontFamily` against fonts installed on the **build machine** (no webfont loading). Stick to widely-available families or install your brand font into the CI image.
+
+### Per-route OG images from JSX
+
+A page route can render its **own** card from its params and loader data by exporting `og` — a component returning **SVG JSX**:
+
+```tsx
+// src/routes/posts/[slug].tsx
+import type { OgImage } from '@pyreon/zero/server' // type-only — erased from the client
+
+export const getStaticPaths = () => [{ params: { slug: 'hello' } }]
+export const loader = async ({ params }) => getPost(params.slug)
+
+export const og: OgImage<{ title: string }, { slug: string }> = ({ data, params }) => (
+  <svg width="1200" height="630" viewBox="0 0 1200 630">
+    <rect width="1200" height="630" fill="#0b1020" />
+    <text x="80" y="330" font-size="72" fill="#fff">{data?.title ?? params.slug}</text>
+  </svg>
+)
+```
+
+- **SSG paths** — rendered at **build** time to a content-hashed PNG (`dist/assets/og/<path>.<hash>.png`), and that page's `<head>` gets `og:image` + `og:image:width/height` + `twitter:card`. The loader data is the value the page itself rendered with (loaders run once per path).
+- **SSR / ISR routes** — served at request time from `/_zero/og/<path>.png` (auto-mounted by `createServer`), and the rendered page carries the matching **absolute** `og:image` (request origin). The endpoint answers `Cache-Control: public, max-age=0, s-maxage=3600, stale-while-revalidate=3600`, so a CDN caches and revalidates it (ISR at the edge; the in-process ISR cache deliberately never stores `/_zero/*` endpoints).
+- An explicit `og:image` (from `useHead`/`<Meta>`) always wins — nothing is injected over it.
+- The `og` export is referenced **only** from the server graph (the SSG sub-build and the SSR bundle), via a lazy import — it never reaches the client bundle.
+
+Tune with `zero({ routeOg: { width, height, siteUrl } })` (defaults 1200×630). Set `siteUrl` for SSG builds: most crawlers (Facebook, LinkedIn, Slack) require an **absolute** `og:image` URL, and without it the build-time tag is root-relative.
+
+Constraints, stated plainly: the rasterizer is **sharp** (optional peer — a route with `og` fails the build with a `[Pyreon]` install hint when it is missing). sharp renders SVG through librsvg, so the card must have an `<svg>` root; HTML elements and `<foreignObject>` are not laid out, and text wrapping is manual (`<tspan>`). Fonts resolve on the build/server machine, as above. Not served by `vite dev` — preview it with a build.
 
 ## Environment Variables
 

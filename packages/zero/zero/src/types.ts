@@ -779,6 +779,14 @@ export interface ZeroConfig {
   og?: import('./og-image').OgImagePluginConfig
 
   /**
+   * Route-level OG images (`export const og` in a route file — a component
+   * rendering SVG JSX from params + loader data). No config is needed to
+   * enable them; this only tunes size and the absolute origin used for the
+   * build-time `og:image` URL. Requires the optional peer `sharp`.
+   */
+  routeOg?: import('./og-route-shared').RouteOgConfig
+
+  /**
    * AI discoverability — auto-wires `aiPlugin` when a config is supplied
    * (llms.txt, llms-full.txt, /.well-known/ai-plugin.json, OpenAPI spec).
    * Same shape as `aiPlugin(config)`.
@@ -851,6 +859,8 @@ export interface RouteFileExports {
    * build-time-only concern that never reaches the runtime router.
    */
   hasRevalidate: boolean
+  /** Route declares `export const og` (a per-route OG image component). */
+  hasOg?: boolean
   /**
    * The route file's source reads request cookie / authorization state —
    * a `headers.get('cookie')` / `headers.get('authorization')` call

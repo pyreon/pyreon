@@ -63,6 +63,15 @@ import {
   renderModulePreloadLinks,
 } from './ssg-modulepreload'
 import { ensureNoindexMeta } from './not-found'
+import {
+  absoluteOgUrl,
+  injectOgMeta,
+  OG_DEFAULT_HEIGHT,
+  OG_DEFAULT_WIDTH,
+  ogMetaTags,
+  rasterizeOgSvg,
+} from './og-route-shared'
+import { createHash } from 'node:crypto'
 import type { ZeroConfig } from './types'
 
 // M2.3 — Server-side perf-harness counter sink (same shape as
@@ -141,7 +150,7 @@ import { h } from "@pyreon/core"
 import { renderWithHead } from "@pyreon/head/ssr"
 import { renderPage } from "@pyreon/server"
 import { runWithRequestContext } from "@pyreon/runtime-server"
-import { collectRouteModes, createApp, resolveRenderModeForPath } from "@pyreon/zero/server"
+import { collectRouteModes, createApp, renderOgSvgFromLoaded, resolveRenderModeForPath } from "@pyreon/zero/server"
 
 // Phase 2 — route-level render modes. The plugin filters/validates the
 // resolved path list through THESE exports so build-time mode decisions
@@ -223,12 +232,19 @@ export default async function renderPath(path, options) {
   if (result.kind === "redirect") {
     return { kind: "redirect", from: path, to: result.to, status: result.status }
   }
+  // Route OG images: render the leaf route's \`og\` export to SVG with the
+  // loader data THIS render already produced (loaders run once per path).
+  // Rasterization happens in the outer plugin (Node + sharp).
+  const ogSvg = options?.isNotFound === true
+    ? null
+    : await renderOgSvgFromLoaded(routes, path, router._loaderData)
   return {
     kind: "html",
     appHtml: result.appHtml,
     head: result.head,
     loaderScript: result.loaderScript,
     routeModules: result.routeModules,
+    ogSvg,
   }
 }
 
@@ -1444,6 +1460,8 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
               head: string
               loaderScript: string
               routeModules?: string[]
+              /** Route OG image SVG (leaf route declares `export const og`). */
+              ogSvg?: string | null
             }
           | { kind: 'redirect'; from: string; to: string; status: number }
         >
@@ -1627,6 +1645,21 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // (single-threaded mutations — same safety rationale as errors[]).
       const earlyHintHrefs = new Map<string, string[]>()
 
+      const ogWidth = config.routeOg?.width ?? OG_DEFAULT_WIDTH
+      const ogHeight = config.routeOg?.height ?? OG_DEFAULT_HEIGHT
+      const writeRouteOgImage = async (p: string, svg: string): Promise<string> => {
+        const png = await rasterizeOgSvg(svg, ogWidth, ogHeight)
+        const hash = createHash('sha256').update(png).digest('hex').slice(0, 10)
+        const slug = p.replace(/^\/+|\/+$/g, '').replace(/[^a-zA-Z0-9_-]+/g, '-') || 'index'
+        const dir = assetsDir ?? 'assets'
+        const rel = `${dir}/og/${slug}.${hash}.png`
+        const file = join(distDir, rel)
+        await mkdirOnce(dirname(file))
+        await writeFileAtomic(file, png)
+        const baseUrl = (config.base ?? '/').replace(/\/$/, '')
+        return ogMetaTags(absoluteOgUrl(`${baseUrl}/${rel}`, config.routeOg?.siteUrl), ogWidth, ogHeight)
+      }
+
       const renderOne = async (p: string): Promise<void> => {
         // M2.3 — emit `ssg.pathRender` per attempted render. Pair with
         // `ssg.pathWrite` / `ssg.pathRedirect` / `ssg.pathError` to see
@@ -1706,6 +1739,12 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           }
 
           let html = injectIntoTemplate(template, result)
+          // Route OG image: rasterize the SVG the entry rendered from the
+          // route's `og` export, write it as a content-hashed PNG, and point
+          // this page's og:image at it.
+          if (result.ogSvg) {
+            html = injectOgMeta(html, await writeRouteOgImage(p, result.ogSvg))
+          }
           // Phase 6 — opt-in page enhancements (pure injections; see
           // ssg-enhance.ts).
           const specMode = config.ssg?.speculationRules
