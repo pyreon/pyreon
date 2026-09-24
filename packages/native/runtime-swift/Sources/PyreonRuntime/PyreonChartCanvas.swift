@@ -1,4 +1,5 @@
 import SwiftUI
+import Accessibility
 import Observation
 import Foundation
 #if canImport(UIKit)
@@ -1078,5 +1079,39 @@ public final class PyreonChartHandle {
         if next.areas.count != areas.count || action.type == "brush" { areas = next.areas }
         if next.step != step { step = next.step }
         if next.playing != playing { playing = next.playing }
+    }
+}
+
+/// The chart's data for VoiceOver: the native twin of the web host's hidden
+/// data table. A canvas is one opaque element, so without this VoiceOver can
+/// read the one-paragraph description (`describeChart`) and nothing else.
+/// An `AXChartDescriptor` gives it the Audio Graph and a per-point data
+/// explorer, built from the SAME `A11yInput` the description and the web
+/// table read, so the three cannot disagree about what the chart shows.
+public struct PyreonChartDescriptor: AXChartDescriptorRepresentable {
+    public let input: A11yInput
+
+    public init(_ input: A11yInput) {
+        self.input = input
+    }
+
+    public func makeChartDescriptor() -> AXChartDescriptor {
+        let format = input.format
+        let finite = input.series.flatMap { $0.values.filter { $0.isFinite } }
+        let low = min(finite.min() ?? 0.0, 0.0)
+        let high = max(finite.max() ?? 1.0, low + 1.0)
+        let categories = input.categories
+        let xAxis = AXCategoricalDataAxisDescriptor(title: "Category", categoryOrder: categories)
+        let yAxis = AXNumericDataAxisDescriptor(title: "Value", range: low...high, gridlinePositions: []) { value in
+            format?(value) ?? String(format: "%g", value)
+        }
+        let series = input.series.map { s -> AXDataSeriesDescriptor in
+            var points: [AXDataPoint] = []
+            for (i, v) in s.values.enumerated() where i < categories.count && v.isFinite {
+                points.append(AXDataPoint(x: categories[i], y: v))
+            }
+            return AXDataSeriesDescriptor(name: s.label, isContinuous: s.kind == "line" || s.kind == "area", dataPoints: points)
+        }
+        return AXChartDescriptor(title: input.title, summary: describeChart(input), xAxis: xAxis, yAxis: yAxis, additionalAxes: [], series: series)
     }
 }

@@ -903,6 +903,13 @@ class TasksAppInstrumentedTest {
         composeRule
             .onNodeWithTag("stats-bars")
             .assertContentDescriptionContains("Scores by subject", substring = true)
+        // Beyond the one-sentence description, each datum is its own TalkBack
+        // node (PyreonChartPoints) labelled with the web table's row, so a
+        // swipe walks the data and explore-by-touch finds the bar under the
+        // finger. Exact match: "art, Score 91" is the second subject's row.
+        composeRule
+            .onNodeWithContentDescription("art, Score 91", useUnmergedTree = true)
+            .assertExists()
         composeRule
             .onNodeWithTag("stats-bars")
             .assertContentDescriptionContains("3 categories", substring = true)

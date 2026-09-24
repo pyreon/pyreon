@@ -1107,7 +1107,11 @@ describe('chart hosts — <PlotChart navigator> as the engine-laid-out slider st
       expect(r.code).not.toContain('pyreonNavigator')
       expect(r.code).not.toContain('pyreonNavKind')
     }
-    expect(transform(PRESETS, { target: 'kotlin' }).code).toContain('PyreonChartCanvas(cmds = renderChart(pyreonSpec, ::pyreonChartMeasure) + pyreonPresetStrip.cmds, modifier = Modifier.fillMaxWidth().height((200.0).dp).pointerInput(pyreonSpec, pyreonZoom) {')
+    // The canvas fills the host Box that also holds the TalkBack data nodes
+    // (PyreonChartPoints); the host keeps the size and the chart's identity.
+    const k = transform(PRESETS, { target: 'kotlin' }).code
+    expect(k).toContain('PyreonChartCanvas(cmds = renderChart(pyreonSpec, ::pyreonChartMeasure) + pyreonPresetStrip.cmds, modifier = Modifier.fillMaxSize().pointerInput(pyreonSpec, pyreonZoom) {')
+    expect(k).toContain('PyreonChartPoints(')
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts the navigator emit', () => {
     const r = validateSwiftWithStubs(transform(NAV_PRESETS.replace('navigator={true}', 'navigator={true} dataZoom={true}'), { target: 'swift' }).code)
@@ -1221,7 +1225,7 @@ describe('chart hosts — <PlotChart brush onBrush> as a plain drag over the eng
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(PRESETS, { target })
       expect(r.code).not.toContain('pyreonBrush')
-      expect(r.code).not.toContain('layoutChart(pyreonSpec')
+      expect(r.code).not.toContain('brushRange(')
     }
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts the brush emit', () => {

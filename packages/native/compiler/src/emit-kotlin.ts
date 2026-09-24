@@ -12991,7 +12991,13 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
       `if (pyreonDataView) { Box(modifier = Modifier.fillMaxSize().background(Color(0xFFFFFFFF)).testTag("pyreon-dataview")) { Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(8.dp)) { val pyreonTable = chartTable(${input}); Text(pyreonTable.headers.joinToString("  "), fontSize = 12.sp); for (pyreonRow in pyreonTable.rows) Text(pyreonRow.joinToString("  "), fontSize = 12.sp) }; ` +
       `Text("Close", modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).testTag("pyreon-dataview-close").clickable { pyreonDataView = false }) } }`
   }
-  const overlays = [overlay, dataViewOverlay].filter((o): o is string => o !== undefined)
+  // TalkBack's per-datum nodes: one per visible category over the plot, the
+  // native twin of the web host's hidden table. Evenly spaced columns only —
+  // a decimated or continuous-x chart keeps the description alone.
+  const pointsOverlay = decimated || xValueAcc !== undefined
+    ? undefined
+    : `PyreonChartPoints(${describe.slice('describeChart('.length, -1)}, layoutChart(pyreonSpec, ::pyreonChartMeasure).plot, pyreonCats.size, ${windowed ? 'pyreonRange.from' : '0'}, ${horizontal}, ${chrome.left}, ${chrome.top}, ${readStaticAttrKotlin(e, 'rtl') === true ? W : '-1.0'})`
+  const overlays = [pointsOverlay, overlay, dataViewOverlay].filter((o): o is string => o !== undefined)
   return kotlinFrameHostWithDensity(e, lets, cmds, tap, W, H, hasWidth, indent, windowed || tap !== '' || toolbox !== null, overlays.length === 0 ? undefined : overlays.join('\n'), describe)
 }
 

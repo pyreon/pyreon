@@ -2070,4 +2070,12 @@ public struct PyreonChartClock<Content: View>: View {
   public init(@ViewBuilder content: @escaping (Double) -> Content) {}
   public typealias Body = Never
 }
+// Mirrors runtime-swift PyreonChartDescriptor.swift: VoiceOver's chart data.
+public struct PyreonChartDescriptor {
+  public let input: A11yInput
+  public init(_ input: A11yInput) { self.input = input }
+}
+extension View {
+  public func accessibilityChartDescriptor(_ descriptor: PyreonChartDescriptor) -> some View { self }
+}
 `

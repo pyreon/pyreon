@@ -409,8 +409,21 @@ Natively the same sentence is the canvas's accessibility label: `a11y.ts`
 crosses with the engine, so VoiceOver and TalkBack read `describeChart` over
 the series the canvas painted. The precedence matches the web — an explicit
 `accessibilityLabel`, else the data description, else `title`, else the family
-word — so a chart is never an unnamed rectangle on any target. The offscreen
-TABLE is web-only (a native canvas has no DOM to put it in).
+word — so a chart is never an unnamed rectangle on any target.
+
+The table's DATA crosses too, in each platform's own form, from the same input
+the description reads:
+
+- **iOS**: the canvas carries an `AXChartDescriptor`
+  (`.accessibilityChartDescriptor`), so VoiceOver offers the Audio Graph and
+  its per-point data explorer.
+- **Android**: one TalkBack node per visible category sits over its column
+  (its row, for a horizontal chart), labelled with the table's row — "art,
+  Score 91". A swipe walks the data in order and explore-by-touch finds the
+  bar under the finger. The nodes take no pointer input, so taps still reach
+  the chart. A zoomed chart labels its visible rows from the full data; a
+  decimated or continuous-x chart, whose columns are not evenly spaced, keeps
+  the description alone.
 
 ## Server-side SVG
 

@@ -14099,9 +14099,14 @@ function swiftChartMap(
  * native chart canvas is therefore named; before this only a titled host was.
  */
 function swiftChartA11y(e: Extract<ExprIR, { kind: 'jsx-element' }>, describe: string | undefined, indent: number): string {
+  // With the data in hand (the plot host), VoiceOver also gets the chart's
+  // DATA: an AXChartDescriptor over the same A11yInput the description reads —
+  // the Audio Graph and a per-point explorer, the native twin of the web
+  // host's hidden table.
+  const descriptor = describe === undefined ? '' : `.accessibilityChartDescriptor(PyreonChartDescriptor(${describe.slice('describeChart('.length, -1)}))`
   const explicit = readStringAttrExpr(e, 'accessibilityLabel', indent)
-  if (explicit !== undefined) return `.accessibilityLabel(${explicit})`
-  if (describe !== undefined) return `.accessibilityLabel(${describe})`
+  if (explicit !== undefined) return `.accessibilityLabel(${explicit})${descriptor}`
+  if (describe !== undefined) return `.accessibilityLabel(${describe})${descriptor}`
   const title = readStringAttrExpr(e, 'title', indent)
   return `.accessibilityLabel(${title ?? swiftStr(chartDefaultLabel(e.tag))})`
 }
