@@ -113,7 +113,7 @@ import type {
 import { useForm } from '@pyreon/form'
 import { useFetch, useCrashReporter } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
-import { For, Show, Suspense, ErrorBoundary, onMount } from '@pyreon/core'
+import { ColorModeProvider, For, Show, Suspense, ErrorBoundary, onMount, useColorMode } from '@pyreon/core'
 import {
   Stack,
   Inline,
@@ -362,6 +362,15 @@ function QuotesPage() {
 // path helper). The native runtimes parse the string themselves, so this is a
 // native view on iOS and Android, not a WebView. Pure green (#16a34a) is a
 // colour nothing else on the screen paints: the device suites count it.
+// The framework-wide colour mode, read by a component. Under a literal
+// <ColorModeProvider mode="dark"> it must read "dark" on every target, whatever
+// the device's own setting — on iOS the provider pins SwiftUI's colorScheme,
+// on Android the configuration's night bit.
+function ModeProbe() {
+  const mode = useColorMode()
+  return <Text data-testid="gal-color-mode">{mode()}</Text>
+}
+
 function WireEdge(props: EdgeComponentProps) {
   return <path d={`M ${props.sourceX()} ${props.sourceY() + 12} L ${props.targetX()} ${props.targetY() + 12}`} style="fill: none; stroke: #16a34a; stroke-width: 4" />
 }
@@ -1111,6 +1120,9 @@ function GalleryPage() {
         <Chart data={SCORE_ROWS} height={200} data-testid="gal-grammar-pie">
           <Arc value="score" label="subject" innerRadius={0.5} />
         </Chart>
+        <ColorModeProvider mode="dark">
+          <ModeProbe />
+        </ColorModeProvider>
         {/* An ECharts lines series with its animated trail — the device tests
             capture this canvas twice and assert the frames differ. */}
         <OptionChart

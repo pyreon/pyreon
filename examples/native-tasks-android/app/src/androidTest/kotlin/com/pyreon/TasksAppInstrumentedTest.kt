@@ -1153,6 +1153,11 @@ class TasksAppInstrumentedTest {
             .assertExists()
             .performClick()
         waitForTagText("gal-grammar-pick", "0")
+        // The framework-wide colour mode: under <ColorModeProvider mode="dark"> a
+        // component's own useColorMode() reads "dark" whatever the device says
+        // (the emulator runs light), because the provider pins the
+        // configuration's night bit for its subtree.
+        composeRule.onNodeWithTag("gal-color-mode").performScrollTo().assertTextEquals("dark")
         // The map ROAMS: a horizontal drag pans it, so its pixels change.
         // Driven as a hand does, like the flow and dataZoom drags above: past the
         // touch slop first, then many small steps. One 400ms `swipe` intermittently
