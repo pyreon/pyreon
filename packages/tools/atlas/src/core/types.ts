@@ -161,6 +161,12 @@ export type FindingCode =
    * renders nothing standalone by design — the parent's scenarios verify it.
    */
   | 'part-of'
+  /**
+   * The framework emitted a `[Pyreon]` dev warning while the scenario was
+   * mounted or driven — a defect no exception surfaces (a boolean `tabIndex`,
+   * a `<For>` without `by`). Attached to the scenario that produced it.
+   */
+  | 'framework-warning'
   // ── ssrParity ────────────────────────────────────────────────────────────
   | 'ssr-render-threw'
   | 'hydrate-threw'
@@ -184,6 +190,10 @@ export type FindingCode =
   | 'browser-only'
   /** No plugin claimed this check. */
   | 'not-run'
+  /** Mounting was switched off for this run (`--no-mount`, or an unmountable setup). */
+  | 'mount-disabled'
+  /** The component's module failed to import, so nothing could be mounted. */
+  | 'load-failed'
   /** No DOM could be created to mount into. */
   | 'no-dom'
   /** The leak check needs a GC hook (`bun`, or `node --expose-gc`). */
@@ -309,6 +319,13 @@ export interface ComponentIntelligence {
    * identical to what it was before multi-root existed.
    */
   project?: string
+  /**
+   * Source directory (or file stem) that tells this component apart from a
+   * same-named one — set ONLY when the name collides, by the graph's
+   * qualification rule (see `componentKey`). Absent otherwise, which keeps
+   * every key and scenario id of a collision-free catalog unchanged.
+   */
+  pathQualifier?: string
   /** the component itself, when available (optional so the graph is buildable from metadata alone) */
   component?: ComponentRef
   controls: readonly PropControl[]
@@ -317,6 +334,13 @@ export interface ComponentIntelligence {
   tags: readonly string[]
   /** source file path, when known */
   source?: string
+  /**
+   * Why the component's module could not be loaded, when the scan tried and
+   * failed. Present only then: it is what lets every runtime check that could
+   * not run name the REAL cause ("module failed to load") instead of the
+   * generic "no plugin claimed this check".
+   */
+  loadError?: string
   /**
    * What this component's OWN source costs a consumer, minified + gzipped.
    *

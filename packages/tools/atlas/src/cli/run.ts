@@ -26,6 +26,7 @@ import type { AgentAsset } from '../plugins'
 import {
   aiAssetsPlugin,
   authoredScenariosPlugin,
+  mountDisabledPlugin,
   mountPlugin,
   recommendedPlugins,
   ssrParityPlugin,
@@ -56,6 +57,7 @@ import {
   formatPluginVirtuals,
 } from '../discover'
 import { type DetectedProject, detectProjects } from '../discover/workspace'
+import { missingRuntimeMessage } from '../discover/load'
 
 export interface ScanOptions extends DiscoverOptions {
   /** output directory for the catalog + guide, relative to cwd (default '.') */
@@ -136,6 +138,17 @@ export interface ScanResult {
    * grouped / titled?" with nothing to point at.
    */
   configError?: string
+  /**
+   * The project cannot resolve `@pyreon/core` / `@pyreon/runtime-dom`, so
+   * nothing was mounted. Carries the install command.
+   */
+  runtimeError?: string
+  /**
+   * Framework dev warnings raised while scenarios mounted, one entry per
+   * distinct message with the scenarios that raised it. They are findings in
+   * the catalog; this is so the scan summary shows them too.
+   */
+  frameworkWarnings?: readonly { message: string; scenarios: readonly string[] }[]
   /**
    * The config file that was FOUND, whether or not it loaded.
    *
@@ -310,7 +323,11 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
   // extract them here so the re-report below doesn't drop the one fact that
   // makes the condition diagnosable (see `dualInstanceDetail`'s doc).
   const dualDetail = dualInstance ? dualInstanceDetail(runtimeFailure as string) : undefined
-  const canMount = mount && !dualInstance
+  // A project that cannot resolve the framework cannot mount anything, and the
+  // raw loader error ("Failed to load url @pyreon/runtime-dom") names a symptom.
+  const runtimeError =
+    runtimeFailure !== undefined && !dualInstance ? missingRuntimeMessage(runtimeFailure) : undefined
+  const canMount = mount && !dualInstance && runtimeError === undefined
   // Only when the ordinary root scan finds nothing — see `autoDetectProjects`.
   const autoDetected = autoDetectProjects(cwd, options.dir ?? 'src', loaded.config.projects)
   const effectiveProjects: readonly ProjectRoot[] | undefined =
@@ -414,6 +431,9 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
         // Appended AFTER the bundle so it can carry the project's wrapper. The
         // bundle's own entry is disabled above rather than duplicated.
         ...(canMount ? [mountPlugin({ ...loaded.config, ...(runtime ? { runtime } : {}) })] : []),
+        // `--no-mount` is a choice, and the skipped checks say so rather than
+        // reporting that no plugin claimed them.
+        ...(mount ? [] : [mountDisabledPlugin()]),
         // Same gate and same wrapper as the mount check — a scenario that
         // cannot be mounted cannot be hydrated either, and one rendered
         // WITHOUT the project's providers would report a parity failure that is
@@ -482,6 +502,20 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
       ...(loaded.error ? { configError: loaded.error } : {}),
       ...(loaded.path ? { configFound: loaded.path } : {}),
       ...(dualInstance ? { dualInstance: true } : {}),
+      // Also from the components themselves: when Atlas can resolve its own
+      // framework copy, the loader succeeds and the project's missing install
+      // only surfaces as each component failing to import
+      // `@pyreon/core/jsx-dev-runtime`.
+      ...((): { runtimeError?: string } => {
+        const message =
+          runtimeError ??
+          graph
+            .list()
+            .map((c) => (c.loadError ? missingRuntimeMessage(c.loadError) : undefined))
+            .find((m) => m !== undefined)
+        return message ? { runtimeError: message } : {}
+      })(),
+      ...frameworkWarningsOf(scenarios),
       ...(dualDetail ? { dualInstanceDetail: dualDetail } : {}),
       ...(unmatched.length > 0 ? { unmatched } : {}),
       ...(rocketstyleLoadErrors.length > 0 ? { loadErrors: rocketstyleLoadErrors } : {}),
@@ -548,6 +582,46 @@ function reportRatchet(
   // Only a REGRESSION is a red exit. An improvement is information, and an
   // unchanged run is the common case — neither should fail a build.
   return diff.regressed ? 1 : 0
+}
+
+/** Group `framework-warning` findings by message, for the scan summary. */
+export function frameworkWarningsOf(
+  scenarios: readonly Scenario[],
+): { frameworkWarnings?: { message: string; scenarios: string[] }[] } {
+  const byMessage = new Map<string, Set<string>>()
+  for (const scenario of scenarios) {
+    const verdict = scenario.verify
+    if (!verdict) continue
+    for (const check of Object.values(verdict)) {
+      if (typeof check !== 'object' || check === null) continue
+      for (const f of (check as { findings?: readonly { code: string; message: string }[] }).findings ?? []) {
+        if (f.code !== 'framework-warning') continue
+        let ids = byMessage.get(f.message)
+        if (!ids) {
+          ids = new Set()
+          byMessage.set(f.message, ids)
+        }
+        ids.add(scenario.id)
+      }
+    }
+  }
+  if (byMessage.size === 0) return {}
+  return {
+    frameworkWarnings: [...byMessage].map(([message, ids]) => ({ message, scenarios: [...ids].sort() })),
+  }
+}
+
+/** One line per distinct warning, naming the first few scenarios that raised it. */
+export function formatFrameworkWarnings(
+  warnings: readonly { message: string; scenarios: readonly string[] }[],
+): string[] {
+  const lines = [`atlas: ${warnings.length} framework warning(s) during mount — they point at real defects:`]
+  for (const w of warnings) {
+    const shown = w.scenarios.slice(0, 3).join(', ')
+    const more = w.scenarios.length > 3 ? ` +${w.scenarios.length - 3} more` : ''
+    lines.push(`  ▲ ${w.message}`, `    in ${shown}${more}`)
+  }
+  return lines
 }
 
 /** Write via tmp-then-rename — a reader sees the old file or the whole new one. */
@@ -856,6 +930,8 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     // explains most of what follows (no groups, no title, no projects), and
     // reading it after the counts is reading it too late.
     if (result.configError) err(`atlas: ${result.configError}\n`)
+    if (result.runtimeError) err(`${result.runtimeError}\n`)
+    if (result.frameworkWarnings) err(`${formatFrameworkWarnings(result.frameworkWarnings).join('\n')}\n`)
     // Before the summary, for the same reason: it explains why every scenario
     // below says `unverified`, and reading that after the counts is too late.
     if (result.dualInstance) {
