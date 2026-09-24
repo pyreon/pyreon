@@ -313,6 +313,13 @@ export interface ComponentIntelligence {
    * identical to what it was before multi-root existed.
    */
   project?: string
+  /**
+   * Source directory (or file stem) that tells this component apart from a
+   * same-named one — set ONLY when the name collides, by the graph's
+   * qualification rule (see `componentKey`). Absent otherwise, which keeps
+   * every key and scenario id of a collision-free catalog unchanged.
+   */
+  pathQualifier?: string
   /** the component itself, when available (optional so the graph is buildable from metadata alone) */
   component?: ComponentRef
   controls: readonly PropControl[]
