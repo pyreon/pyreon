@@ -59,7 +59,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
-    "bench": "bun bench/scaling.ts"
+    "bench": "bun bench/scaling.ts",
+    "corpus": "bun scripts/corpus.ts"
   },
   "devDependencies": {
     "@faker-js/faker": "^10.1.0",
