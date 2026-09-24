@@ -1760,7 +1760,7 @@ const KOTLIN_URL_STATE = `class PyreonUrlState(
  */
 const KOTLIN_URL_NUMBER = `private fun pyreonUrlNumber(raw: String, fallback: Double): Double {
     val t = raw.trim()
-    if (t.isEmpty()) return 0.0
+    if (t.isEmpty()) return fallback
     if (t == "Infinity" || t == "+Infinity") return Double.POSITIVE_INFINITY
     if (t == "-Infinity") return Double.NEGATIVE_INFINITY
     if (t.length > 2 && t[0] == '0') {
@@ -1835,7 +1835,12 @@ const KOTLIN_URL_STATE_BOOL = `class PyreonUrlStateBool(
 ) {
     operator fun invoke(): Boolean {
         val raw = router?.query?.value?.get(key) ?: return defaultValue
-        return raw == "true"
+        // Mirrors the web decode: true/1, false/0, anything else the default.
+        return when (raw) {
+            "true", "1" -> true
+            "false", "0" -> false
+            else -> defaultValue
+        }
     }
     fun set(value: Boolean) { router?.setQueryParam(key, if (value) "true" else "false") }
     fun clear() { router?.setQueryParam(key, null) }
@@ -3081,8 +3086,13 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   if (d.kind === 'permissions') {
     // Mirror of Swift: a BARE `usePermissions()` reads the provider's
     // CompositionLocal rather than constructing an empty set that denies.
-    if (d.grants.length === 0) {
+    if (!d.seeded) {
       return `val ${kotlinIdent(d.name)} = LocalPyreonPermissions.current`
+    }
+    // `usePermissions([])` — an explicit empty grant list is a deny-all
+    // container, not a provider read (matches the web runtime).
+    if (d.grants.length === 0) {
+      return `val ${kotlinIdent(d.name)} = remember { PyreonPermissions() }`
     }
     const seed = `setOf(${d.grants.map((g) => kotlinStr(g)).join(', ')})`
     return `val ${kotlinIdent(d.name)} = remember { PyreonPermissions(${seed}) }`

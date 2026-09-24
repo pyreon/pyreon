@@ -332,7 +332,7 @@ directly.
 - **`row.getVisibleCells()` needs `columnVisibilityFeature`**; the core equivalent is `row.getAllCells()`.
 - **A per-slice `on*Change` callback takes ownership of that slice** — supply `state.<slice>` too, or the slice will look frozen.
 - **Same instance across updates** — the table reference is stable; its state slices are the signals. Don't compare table references for change detection.
-- **Sync effect disposes on unmount** via `onUnmount`, along with the table's reactive subscriptions. The table instance itself has no `dispose` — its lifecycle is the component's.
+- **Sync effects dispose with the owning scope** (the component on unmount, or any `EffectScope` — so `useTable` also works in a store without a lifecycle warning), along with the table's reactive subscriptions. A cell renderer that reads table state itself (`info.row.getIsSelected()`) is tracked by `flexRenderCell`, so it updates on that state change. The table instance itself has no `dispose` — its lifecycle is the component's.
 - **Use `<For>`, not `.map()`** — `.map()` inside a reactive scope rebuilds the whole `<tbody>` on every change (worst-case DOM churn). Keyed `<For>` reuses/moves DOM nodes.
 - **Cells that change in place need `flexRenderCell` in an accessor** — a keyed `<For>` reuses the cell and never re-runs its body, so `flexRender(cell…, cell.getContext())` freezes on an in-place value change. `flexRenderCell(table, row.id, cell.column.id)` re-navigates to the live cell.
 

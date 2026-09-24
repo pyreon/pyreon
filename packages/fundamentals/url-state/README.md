@@ -46,13 +46,13 @@ Inferred from the default value:
 
 | Default | URL → value | Notes |
 |---|---|---|
-| `1` (number) | `?page=2` → `2` | Invalid numbers fall back to the **default** (not `NaN`) |
+| `1` (number) | `?page=2` → `2` | Invalid AND empty (`?page=`) values fall back to the **default** (not `NaN` / `0`) |
 | `''` (string) | `?q=hello` → `'hello'` | URL-decoded (`+` → space per `application/x-www-form-urlencoded`) |
-| `false` (boolean) | `?dark=true` → `true` | Only the exact string `'true'` is `true`; anything else (incl. `'1'`) is `false` |
-| `[]` (string[]) | `?tags=a,b` → `['a','b']` | `arrayFormat: 'comma'` (default) or `'repeat'` |
+| `false` (boolean) | `?dark=true` → `true` | `'true'`/`'1'` → `true`, `'false'`/`'0'` → `false`; anything else falls back to the **default** |
+| `['']` / `[0]` / `[false]` (array) | `?ids=1,2` → `[1, 2]` | Element type inferred from the default's FIRST element (an empty `[]` default keeps strings). A `,` inside an element is escaped. An element that does not parse makes the whole value fall back to the default. `arrayFormat: 'comma'` (default) or `'repeat'` |
 | `{}` (object) | `?filter=%7B...%7D` → object | JSON encoded |
 
-For non-standard shapes, supply a custom `serialize` / `deserialize` pair.
+For non-standard shapes, supply a custom `serialize` and/or `deserialize` — either half alone is honoured, the other is inferred from the default. With `arrayFormat: 'repeat'` a custom codec is applied **per element**.
 
 ## Options
 
@@ -64,7 +64,7 @@ interface UrlStateOptions<T> {
   debounce?: number // default 0; coalesce rapid set() calls
   arrayFormat?: 'comma' | 'repeat' // default 'comma'
   clearOnDefault?: boolean // default true — drop the param when it equals the default
-  onChange?: (value: T) => void // external changes (popstate / cross-hook)
+  onChange?: (value: T) => void // external changes that actually CHANGED the value (popstate / router navigation / cross-hook)
 }
 ```
 
@@ -124,10 +124,17 @@ interface UrlRouter {
   push?(path: string): void | Promise<void>
   mode?: 'hash' | 'history'
   _base?: string
+  currentRoute?: () => unknown // when present, navigations update every live signal
 }
 ```
 
 Any object satisfying it works (you don't strictly need `@pyreon/router`).
+
+With `currentRoute` present (every `@pyreon/router` instance has it), a navigation
+made through the router — `router.push('/products?page=2')`, a `<RouterLink>`
+click — updates every live `useUrlState` signal. Without a registered router,
+only `popstate` and url-state's own writes are observed: a raw
+`history.pushState` fires no event.
 
 ### The router decides WHERE the params live
 
@@ -154,11 +161,11 @@ Without a registered router nothing changes: `useUrlState` owns
 
 ## SSR safety
 
-`useUrlState` reads from `window.location.search` lazily on first read and never touches the DOM during SSR. On the server it returns the default value; on hydration it reads the actual URL and updates if it differs. No mismatch warnings.
+`useUrlState` reads the URL **once, when it is created** (not lazily on first read) and never touches the DOM during SSR. On the server it returns the default value. On the client the signal is created with the actual URL value, so a server-rendered default and a client value can differ for a URL that carries the param — render URL-dependent markup client-only (or pass the request's search params to the server render) if that matters.
 
 ## Popstate sync
 
-Back / forward buttons trigger a `popstate` event; every active `useUrlState` re-reads from the URL and notifies subscribers. The `onChange` option fires on external updates (popstate OR a different `useUrlState` call updating the same param).
+Back / forward buttons trigger a `popstate` event; every active `useUrlState` re-reads from the URL and notifies subscribers. The `onChange` option fires on external updates (popstate, a navigation through the registered router, OR a different `useUrlState` call updating the same param) — and only when the value actually changed.
 
 ## Cross-hook sync
 
@@ -204,7 +211,7 @@ sort.set('name') // URL keeps ?sort=name instead of dropping it
 
 - **`set()` does NOT trigger navigation** — it uses `history.replaceState` (or `pushState` if `replace: false`). Use `@pyreon/router`'s `push` / `replace` for real navigations.
 - **`reset()` removes the param** when the value equals the default (keeps the URL clean). `remove()` removes it unconditionally.
-- **NaN guard**: non-numeric strings fall back to the **default value**, not `NaN` — typed-number params can't end up with the unusable `NaN` value.
+- **NaN guard**: non-numeric AND empty strings fall back to the **default value**, not `NaN` / `0` — typed-number params can't end up with an unusable or accidental value.
 - **Object values are JSON-encoded** — pass `serialize` / `deserialize` for short-form encodings if URL length matters.
 - **`debounce: 300` debounces the URL write, not the signal** — `state()` reflects the latest `set()` immediately, only the URL lags.
 - **Schema mode returns an object** — destructuring captures the signal references, not values. `const { page } = useUrlState({ page: 1 })` then `page()` to read.

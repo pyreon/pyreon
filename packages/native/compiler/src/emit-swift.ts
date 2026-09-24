@@ -1026,7 +1026,7 @@ const SWIFT_URL_STATE = `struct PyreonUrlState {
  *   "NaN"     JS NaN        Swift nan      Kotlin nan
  *
  * So the grammar is checked here instead, identically on both targets: trim,
- * empty → 0, the three `Infinity` spellings, the 0x/0o/0b radix prefixes, then
+ * empty → the default (the web reads `?page=` as absent, not 0), the three `Infinity` spellings, the 0x/0o/0b radix prefixes, then
  * a charset guard that rejects every letter except the exponent `e`/`E` before
  * deferring to the native parse. That last guard is what excludes `inf`,
  * `NaN` and Kotlin's `f`/`d` literal suffixes in one rule.
@@ -1035,7 +1035,7 @@ const SWIFT_URL_STATE = `struct PyreonUrlState {
  */
 const SWIFT_URL_NUMBER = `private func pyreonUrlNumber(_ raw: String, _ fallback: Double) -> Double {
     let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    if t.isEmpty { return 0 }
+    if t.isEmpty { return fallback }
     if t == "Infinity" || t == "+Infinity" { return .infinity }
     if t == "-Infinity" { return -.infinity }
     if t.count > 2, t.hasPrefix("0") {
@@ -1131,7 +1131,12 @@ const SWIFT_URL_STATE_BOOL = `struct PyreonUrlStateBool {
     let defaultValue: Bool
     func callAsFunction() -> Bool {
         guard let raw = router?.query[key] else { return defaultValue }
-        return raw == "true"
+        // Mirrors the web decode: true/1, false/0, anything else the default.
+        switch raw {
+        case "true", "1": return true
+        case "false", "0": return false
+        default: return defaultValue
+        }
     }
     func set(_ value: Bool) { router?.setQueryParam(key, value ? "true" : "false") }
     func clear() { router?.setQueryParam(key, nil) }
@@ -4014,8 +4019,13 @@ function emitSwiftDecl(
     // A BARE `usePermissions()` is the web-correct call — the grants come
     // from `<PermissionsProvider>`. Read them from the environment rather
     // than constructing an empty set in which every check denies.
-    if (d.grants.length === 0) {
+    if (!d.seeded) {
       return `@Environment(\\.pyreonPermissions) private var ${swiftIdent(d.name)}`
+    }
+    // `usePermissions([])` — an explicit empty grant list is a deny-all
+    // container, not a provider read (matches the web runtime).
+    if (d.grants.length === 0) {
+      return `@State private var ${swiftIdent(d.name)} = PyreonPermissions()`
     }
     const seed = `[${d.grants.map((g) => swiftStr(g)).join(', ')}]`
     return `@State private var ${swiftIdent(d.name)} = PyreonPermissions(${seed})`

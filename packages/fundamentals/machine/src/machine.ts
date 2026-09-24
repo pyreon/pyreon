@@ -47,8 +47,16 @@ export function createMachine<const TConfig extends MachineConfig<string, string
 
   const { initial, states } = config as unknown as MachineConfig<TState, TEvent>
 
+  // Every lookup keyed by a caller-controlled name (a state or an event) must
+  // be an OWN-property lookup. `x in states` / `on[event]` also see
+  // Object.prototype, so `send('toString')` found a "transition" (the inherited
+  // function), resolved its `.target` to `undefined`, and moved the machine
+  // into an undefined state — permanently stuck, no error.
+  const isState = (name: unknown): boolean =>
+    typeof name === 'string' && Object.hasOwn(states, name)
+
   // Validate initial state
-  if (!(initial in states)) {
+  if (!isState(initial)) {
     throw new Error(`[Pyreon] machine: initial state '${initial}' is not defined in states`)
   }
 
@@ -72,7 +80,7 @@ export function createMachine<const TConfig extends MachineConfig<string, string
       for (const tr of list) targets.push(typeof tr === 'string' ? tr : tr.target)
     }
     for (const target of targets) {
-      if (!(target in states)) {
+      if (!isState(target)) {
         throw new Error(
           `[Pyreon] machine: transition target '${target}' (from state '${stateName}') is not defined in states`,
         )
@@ -111,6 +119,7 @@ export function createMachine<const TConfig extends MachineConfig<string, string
     const stateConfig = states[current.peek()]
     if (!stateConfig?.on) return null
 
+    if (!Object.hasOwn(stateConfig.on, event)) return null
     const transition = stateConfig.on[event] as TransitionConfig<TState> | undefined
     if (!transition) return null
 
@@ -143,19 +152,36 @@ export function createMachine<const TConfig extends MachineConfig<string, string
   // Perform a single transition: exit(from) → set → transition → enter(to) →
   // done(if final). onExit fires while still in `from` (state-chart order:
   // exit before the state change is observable); onTransition/onEnter after.
+  //
+  // Every listener call is isolated: a throwing callback is REPORTED and the
+  // transition continues. Letting it propagate aborted the step midway — a
+  // throwing onExit left the machine in `from` with the event half-applied, a
+  // throwing onEnter skipped the remaining listeners, the `always` cascade and
+  // onDone — so one buggy subscriber could desynchronise every other one.
   function doTransition(from: TState, to: TState, event: MachineEvent<TEvent>): void {
     const exits = exitListeners.get(from)
-    if (exits) for (const cb of exits) cb(event)
+    if (exits) for (const cb of exits) callListener('onExit', () => cb(event))
 
     current.set(to)
 
-    for (const cb of transitionListeners) cb(from, to, event)
+    for (const cb of transitionListeners) callListener('onTransition', () => cb(from, to, event))
 
     const enters = enterListeners.get(to)
-    if (enters) for (const cb of enters) cb(event)
+    if (enters) for (const cb of enters) callListener('onEnter', () => cb(event))
 
     if (states[to]?.final) {
-      for (const cb of doneListeners) cb(event)
+      for (const cb of doneListeners) callListener('onDone', () => cb(event))
+    }
+  }
+
+  function callListener(kind: string, run: () => void): void {
+    try {
+      run()
+    } catch (err) {
+      // Reported in production too: swallowing a user callback's error
+      // silently would hide a real bug. Not rethrown, so the transition (and
+      // every other subscriber) still completes.
+      console.error(`[Pyreon] machine: an ${kind} listener threw; the transition continued.`, err)
     }
   }
 
@@ -179,22 +205,51 @@ export function createMachine<const TConfig extends MachineConfig<string, string
     return current()
   }
 
-  machine.send = (event: TEvent, payload?: unknown): TState => {
-    const target = resolveTransition(event, payload)
-    // Unhandled event (or guard rejected) — no transition; report current state.
-    if (target === null) return current.peek()
+  // Run-to-completion: an event sent WHILE a macrostep is running (from an
+  // onEnter/onExit/onTransition/onDone listener) is queued and processed after
+  // the current macrostep finishes. Processing it inline ran the nested
+  // transition in the middle of the outer one — later listeners of the outer
+  // step then fired against a state the machine had already left, and the
+  // outer step's onDone/always-cascade ran from the wrong state.
+  let processing = false
+  const queue: Array<{ event: TEvent; payload: unknown }> = []
 
+  function processEvent(event: TEvent, payload: unknown): void {
+    const target = resolveTransition(event, payload)
+    // Unhandled event (or guard rejected) — no transition.
+    if (target === null) return
     const machineEvent: MachineEvent<TEvent> = { type: event, payload }
-    // Batch the transition + eventless ('always') cascade so a reactive reader
-    // (effect/computed subscribing to `machine()`) settles on the FINAL state
-    // and never observes a transient `always` step — the contract the manifest
-    // documents ("a transient state is never observed by reactive readers").
-    // Batch defers only signal-subscriber notifications; the per-step
-    // onEnter/onExit/onTransition imperative callbacks still fire per step.
-    batch(() => {
-      doTransition(current.peek(), target, machineEvent)
-      runAlways(machineEvent)
-    })
+    doTransition(current.peek(), target, machineEvent)
+    runAlways(machineEvent)
+  }
+
+  machine.send = (event: TEvent, payload?: unknown): TState => {
+    if (processing) {
+      queue.push({ event, payload })
+      // The queued event has not run yet — report the state as it is now.
+      return current.peek()
+    }
+    // Fast path for an unhandled event: no batch, no macrostep.
+    if (resolveTransition(event, payload) === null) return current.peek()
+
+    processing = true
+    try {
+      // Batch the transition + eventless ('always') cascade + queued events so
+      // a reactive reader (effect/computed subscribing to `machine()`) settles
+      // on the FINAL state and never observes a transient step — the contract
+      // the manifest documents ("a transient state is never observed by
+      // reactive readers"). Batch defers only signal-subscriber notifications;
+      // the per-step onEnter/onExit/onTransition callbacks still fire per step.
+      batch(() => {
+        processEvent(event, payload)
+        for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+          processEvent(next.event, next.payload)
+        }
+      })
+    } finally {
+      processing = false
+      queue.length = 0
+    }
     // The settled state after the event + any eventless ('always') cascade.
     return current.peek()
   }

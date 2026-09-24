@@ -1,8 +1,8 @@
-import { effect, isClient, onCleanup, signal } from '@pyreon/reactivity'
-import { inferSerializer } from './serializers'
+import { effect, isClient, onCleanup, signal, untrack } from '@pyreon/reactivity'
+import { INVALID, inferElementCodec, inferSerializer } from './serializers'
 import { isBatching, subscribeKey, writeRepeatedParam, writeSingleParam } from './sync'
 import type { Serializer, UrlStateOptions, UrlStateSignal } from './types'
-import { getParam, getParamAll } from './url'
+import { getParam, getParamAll, trackUrlRouter, type UrlRouter } from './url'
 
 // ─── Single-param overload ──────────────────────────────────────────────────
 
@@ -82,16 +82,50 @@ function createUrlSignal<T>(
   const isArray = Array.isArray(defaultValue)
   const isRepeat = isArray && arrayFormat === 'repeat'
 
-  const { serialize, deserialize }: Serializer<T> =
-    options?.serialize && options?.deserialize
-      ? { serialize: options.serialize, deserialize: options.deserialize }
-      : inferSerializer(defaultValue, arrayFormat)
+  // Each half of a custom codec stands on its own: a lone `deserialize` (the
+  // common case — parse a date) used to be IGNORED unless `serialize` came
+  // with it. The missing half is inferred from the default.
+  const inferred = inferSerializer(defaultValue, arrayFormat)
+  const { serialize, deserialize }: Serializer<T> = {
+    serialize: options?.serialize ?? inferred.serialize,
+    deserialize: options?.deserialize ?? inferred.deserialize,
+  }
+
+  // Repeat format writes one `?k=` per ELEMENT, so the codec is per element: a
+  // custom `serialize` / `deserialize` is applied to each element, otherwise
+  // the element type is inferred from the default's first element. (Repeat
+  // mode used to return raw strings, ignoring both the element type and any
+  // custom deserializer.)
+  const elementCodec = inferElementCodec(defaultValue)
+  const serializeElement = options?.serialize
+    ? (e: unknown) => (options.serialize as (v: unknown) => string)(e)
+    : elementCodec.serialize
+  const deserializeElement = options?.deserialize
+    ? (raw: string) => (options.deserialize as (r: string) => unknown)(raw)
+    : elementCodec.deserialize
 
   // Read the current URL value (falls back to default when missing or in SSR).
   const readFromUrl = (): T => {
     if (isRepeat) {
       const values = getParamAll(key)
-      return values.length > 0 ? (values as T) : defaultValue
+      if (values.length === 0) return defaultValue
+      try {
+        const out: unknown[] = []
+        for (const raw of values) {
+          const v = deserializeElement(raw)
+          if (v === INVALID) return defaultValue
+          out.push(v)
+        }
+        return out as T
+      } catch (err) {
+        /* v8 ignore next — production arm of a dev gate. */
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(
+            `[Pyreon] url-state: could not deserialize ?${key} — using the default. ${String(err)}`,
+          )
+        }
+        return defaultValue
+      }
     }
     const raw = getParam(key)
     if (raw === null) return defaultValue
@@ -123,10 +157,27 @@ function createUrlSignal<T>(
   // Pending debounce timer
   let timer: ReturnType<typeof setTimeout> | undefined
 
+  // A comparable string for a value, so a re-read can tell whether the URL
+  // actually moved. Custom codecs may throw — then treat it as changed.
+  const snapshot = (value: T): string | undefined => {
+    try {
+      return isRepeat
+        ? JSON.stringify((value as unknown[]).map(serializeElement))
+        : serialize(value)
+    } catch {
+      return undefined
+    }
+  }
+
   // Re-read from the URL and reflect it into the signal + onChange. Runs on
-  // popstate (back/forward) AND when a SIBLING signal for the same key writes.
+  // popstate (back/forward), after a navigation through the registered
+  // router, AND when a SIBLING signal for the same key writes. Only a value
+  // that actually differs is reported — a popstate for an unrelated param (or
+  // a navigation this signal caused itself) used to fire `onChange` anyway.
   const reRead = () => {
     const value = readFromUrl()
+    const next = snapshot(value)
+    if (next !== undefined && next === snapshot(state.peek())) return
     state.set(value)
     options?.onChange?.(value)
   }
@@ -134,8 +185,8 @@ function createUrlSignal<T>(
   // Write URL when signal changes.
   const writeUrl = (value: T) => {
     if (isRepeat) {
-      const arr = value as string[]
-      const defaultArr = defaultValue as string[]
+      const arr = (value as unknown[]).map(serializeElement)
+      const defaultArr = (defaultValue as unknown[]).map(serializeElement)
       // Remove the param when the value equals the default (unless clearOnDefault:false).
       const equalsDefault =
         arr.length === defaultArr.length && arr.every((v, i) => v === defaultArr[i])
@@ -197,6 +248,41 @@ function createUrlSignal<T>(
         window.removeEventListener('popstate', reRead)
         unsubscribe()
         if (timer !== undefined) clearTimeout(timer)
+      })
+    })
+
+    // Follow navigations made THROUGH the registered router
+    // (`router.push('?page=2')`, `<RouterLink>`). Those are `pushState` /
+    // `replaceState` calls, which fire no event, so without this the signal
+    // stayed stale until the next popstate. Tracks the router REGISTRATION too,
+    // so a signal created before `setUrlRouter()` picks the router up.
+    // pyreon-lint-disable-next-line pyreon/no-imperative-effect-on-create
+    // The router this effect last subscribed to. Kept (not the route object —
+    // retaining a snapshot for the effect's lifetime is leak class H).
+    let subscribedTo: UrlRouter | null = null
+    effect(() => {
+      const router = trackUrlRouter()
+      if (typeof router?.currentRoute !== 'function') return
+      router.currentRoute() // the tracked dependency
+      // The subscribing run is not a navigation — the value was just read.
+      // Re-reading here raced a write of our own that an async router has
+      // not committed yet, and briefly reverted it.
+      const first = subscribedTo !== router
+      subscribedTo = router
+      if (first) return
+      // Deferred one microtask: `@pyreon/router` commits the route signal
+      // BEFORE it writes the browser URL (same synchronous block), so reading
+      // the URL inside this run saw the PREVIOUS query — and clobbered the
+      // signal's own fresh write with it.
+      let live = true
+      onCleanup(() => {
+        live = false
+      })
+      queueMicrotask(() => {
+        // A debounced write of our own is still pending: its value is newer
+        // than the URL, so a re-read would clobber it.
+        if (!live || timer !== undefined) return
+        untrack(reRead)
       })
     })
   }

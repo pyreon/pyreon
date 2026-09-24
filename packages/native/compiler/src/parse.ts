@@ -7986,19 +7986,25 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // `usePermissions()` or a non-literal arg yields an empty grant set and the
   // emit produces a default-constructed container.
   if (calleeName === 'usePermissions') {
-    const grants = tryExtractStringArray(init.arguments?.[0])
+    const grantsArg = init.arguments?.[0] as AnyNode | undefined
+    const grants = tryExtractStringArray(grantsArg)
+    // An array literal — even an EMPTY one — is the self-contained form, the
+    // same mode selection the web runtime makes (by presence, not length).
+    // `usePermissions([])` means "this screen grants nothing": deny-all, never
+    // a fallback to the provider.
+    const seeded = grantsArg?.type === 'ArrayExpression'
     // A bare `usePermissions()` is the CORRECT web call — the grants live in
     // `<PermissionsProvider>`, which has no native lowering. So the shape a
     // web author writes produced an empty native set in which every check
     // denies, silently: guarded UI simply never appeared on device, with
     // nothing to trace it by. Say so rather than emit a container that is
     // guaranteed to answer `false`.
-    if (grants.length === 0 && !ctx.hasPermissionsProvider) {
+    if (!seeded && !ctx.hasPermissionsProvider) {
       ctx.warnings.push(
         `usePermissions() \`${name}\`: no grants reach this call — there is no literal argument and no <PermissionsProvider permissions={{ … }}> in this file, so the native permission set is EMPTY and every check denies. Wrap the tree in a provider (which lowers), seed at the call site (usePermissions(["posts.*"])), or grant() before the first check.`,
       )
     }
-    return { kind: 'permissions', name, grants }
+    return { kind: 'permissions', name, grants, seeded }
   }
   // Phase 4 — `const clipboard = useClipboard()` from `@pyreon/hooks` →
   // the PyreonClipboard reactive wrapper. No arguments. V1 supports

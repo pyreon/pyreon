@@ -66,9 +66,14 @@ export interface Permissions {
    * @example
    * ```tsx
    * can.all('posts.read', 'posts.create')
+   * can.all(['posts.read', 'posts.update'], post) // context → predicates
    * ```
    */
-  all: (...keys: string[]) => boolean
+  all: {
+    (...keys: string[]): boolean
+    /** Array form — `context` is passed to every predicate. */
+    (keys: readonly string[], context?: unknown): boolean
+  }
 
   /**
    * Check if ANY of the listed permissions is granted.
@@ -76,9 +81,14 @@ export interface Permissions {
    * @example
    * ```tsx
    * can.any('posts.update', 'posts.delete')
+   * can.any(['posts.update', 'posts.delete'], post) // context → predicates
    * ```
    */
-  any: (...keys: string[]) => boolean
+  any: {
+    (...keys: string[]): boolean
+    /** Array form — `context` is passed to every predicate. */
+    (keys: readonly string[], context?: unknown): boolean
+  }
 
   /**
    * Replace all permissions. All reactive reads update automatically.

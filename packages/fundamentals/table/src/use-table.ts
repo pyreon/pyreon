@@ -1,6 +1,5 @@
-import { onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
-import { effect, signal, untrack } from '@pyreon/reactivity'
+import { effect, getCurrentScope, onScopeDispose, signal, untrack } from '@pyreon/reactivity'
 import {
   constructTable,
   type RowData,
@@ -54,15 +53,41 @@ export function _getRowSignalBridge(table: object): RowSignalBridge | undefined 
  * the order they appear in. Used instead of an array-identity check so that an
  * inline `columns: [...]` literal (recreated on every options run) is not
  * mistaken for a real column change.
+ *
+ * It covers everything that decides what a cell RENDERS: group columns'
+ * children (recursively — a change nested in a group used to be invisible),
+ * and the `cell` / `header` / `footer` renderers. A renderer is keyed by its
+ * SOURCE TEXT rather than its identity: an inline arrow is a new function on
+ * every options run, so identity would report "changed" on every data edit —
+ * the exact coarse invalidation this signature exists to avoid — while a
+ * genuinely different renderer (a swap through a signal) has different source.
+ * A renderer whose source is identical but whose CAPTURED values differ is not
+ * distinguished; a renderer's own signal reads are tracked by `flexRenderCell`
+ * instead.
  */
 export function columnSignature(columns: readonly unknown[] | undefined): string {
   if (!columns) return ''
   let out = ''
   for (const column of columns) {
-    const c = column as { id?: string; accessorKey?: string | number; header?: unknown }
-    out += `${c.id ?? ''}\u0000${String(c.accessorKey ?? '')}\u0000${typeof c.header === 'string' ? c.header : ''}\u0000`
+    const c = column as {
+      id?: string
+      accessorKey?: string | number
+      header?: unknown
+      cell?: unknown
+      footer?: unknown
+      columns?: readonly unknown[]
+    }
+    out += `${c.id ?? ''}\u0000${String(c.accessorKey ?? '')}\u0000${renderKey(c.header)}\u0000${renderKey(c.cell)}\u0000${renderKey(c.footer)}\u0000`
+    if (Array.isArray(c.columns)) out += `\u0002${columnSignature(c.columns)}\u0003`
   }
   return out
+}
+
+/** Key for a header/cell/footer template: strings verbatim, functions by source. */
+function renderKey(template: unknown): string {
+  if (typeof template === 'string') return template
+  if (typeof template === 'function') return `\u0004${Function.prototype.toString.call(template)}`
+  return ''
 }
 
 /**
@@ -223,12 +248,19 @@ export function useTable<TFeatures extends TableFeatures, TData extends RowData>
     prevColumns = columns
   })
 
-  onUnmount(() => {
-    sync.dispose()
-    rowSync.dispose()
-    rowVersions.clear()
-    table._reactivity.unmount?.()
-  })
+  // Tear down with the OWNING scope (a component, or any EffectScope). This is
+  // scope-based rather than `onUnmount` so `useTable` also works in a store or
+  // module — `onUnmount` outside component setup only warns and registers
+  // nothing. The two effects above are owned by the same scope already; this
+  // adds the per-row signals and the adapter's own reactivity teardown.
+  if (getCurrentScope() !== null) {
+    onScopeDispose(() => {
+      sync.dispose()
+      rowSync.dispose()
+      rowVersions.clear()
+      table._reactivity.unmount?.()
+    })
+  }
 
   return table
 }

@@ -189,11 +189,25 @@ export function C() { const o = useUrlState('o', -3); return (<Stack><Text>{\`\$
     expect(transform(TYPED_SRC, { target: 'kotlin' }).code).toContain('value.toLong().toString()')
   })
 
-  // The web's boolean decode is `raw === 'true'` — "1"/"TRUE" are false. A
-  // permissive check would diverge on a hand-written link.
-  it('decodes a boolean by exact "true" match, not truthiness', () => {
-    expect(transform(TYPED_SRC, { target: 'swift' }).code).toContain('return raw == "true"')
-    expect(transform(TYPED_SRC, { target: 'kotlin' }).code).toContain('return raw == "true"')
+  // The web's boolean decode is true/1 → true, false/0 → false, anything else
+  // → the DEFAULT (not `false`). A truthiness check would diverge on a
+  // hand-written link.
+  it('decodes a boolean exactly like the web: true/1, false/0, else the default', () => {
+    const swift = transform(TYPED_SRC, { target: 'swift' }).code
+    expect(swift).toContain('case "true", "1": return true')
+    expect(swift).toContain('case "false", "0": return false')
+    expect(swift).toContain('default: return defaultValue')
+    const kotlin = transform(TYPED_SRC, { target: 'kotlin' }).code
+    expect(kotlin).toContain('"true", "1" -> true')
+    expect(kotlin).toContain('"false", "0" -> false')
+    expect(kotlin).toContain('else -> defaultValue')
+  })
+
+  // `?page=` is ABSENT on the web (the default), not 0 — `+''` is 0 in JS, so
+  // the ToNumber reproduction must special-case it the same way.
+  it('an empty numeric param decodes to the default on both targets', () => {
+    expect(transform(TYPED_SRC, { target: 'swift' }).code).toContain('if t.isEmpty { return fallback }')
+    expect(transform(TYPED_SRC, { target: 'kotlin' }).code).toContain('if (t.isEmpty()) return fallback')
   })
 
   // Only the helpers actually bound are emitted, so a string-only file is

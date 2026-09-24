@@ -19,9 +19,17 @@ export type ArrayFormat =
 
 /** Options for `useUrlState`. */
 export interface UrlStateOptions<T = unknown> {
-  /** Custom serializer — converts value to a URL-safe string. */
+  /**
+   * Custom serializer — converts value to a URL-safe string. May be given
+   * without `deserialize` (the other half is inferred from the default). With
+   * `arrayFormat: 'repeat'` it is applied to each ELEMENT.
+   */
   serialize?: (value: T) => string
-  /** Custom deserializer — converts URL string back to a value. */
+  /**
+   * Custom deserializer — converts URL string back to a value. May be given
+   * without `serialize`. With `arrayFormat: 'repeat'` it receives each
+   * repeated value and returns one ELEMENT.
+   */
   deserialize?: (raw: string) => T
   /**
    * Use `history.replaceState` (true) or `history.pushState` (false).
@@ -49,8 +57,10 @@ export interface UrlStateOptions<T = unknown> {
   clearOnDefault?: boolean
   /**
    * Called when the URL param changes externally — a `popstate` (back/forward)
-   * navigation, or another `useUrlState` signal bound to the SAME key writing a
-   * new value. NOT called for this signal's own `.set()` / `.reset()` / `.remove()`.
+   * navigation, a navigation through the registered router, or another
+   * `useUrlState` signal bound to the SAME key writing a new value — and only
+   * when the value actually changed. NOT called for this signal's own
+   * `.set()` / `.reset()` / `.remove()`.
    */
   onChange?: (value: T) => void
 }
