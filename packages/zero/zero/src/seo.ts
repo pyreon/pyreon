@@ -361,7 +361,11 @@ function renderClusterEntry(
     `    <priority>${canonical.priority ?? priority}</priority>`,
   ]
   const lastmod = canonical.lastmod ?? defaultLastmod
-  if (lastmod) lines.push(`    <lastmod>${lastmod}</lastmod>`)
+  // `<loc>` and the hreflang hrefs are escaped a few lines down; this one was
+  // not, inside the same function. `additionalPaths[].lastmod` is typed
+  // `string` and the documented pattern is deriving it from a data source, so
+  // it can forge a whole `<url>` entry.
+  if (lastmod) lines.push(`    <lastmod>${escapeXml(lastmod)}</lastmod>`)
 
   if (i18n != null && i18n.locales.length > 0 && variantsByLocale.size > 1) {
     // hreflang per locale variant + x-default → default locale's URL.

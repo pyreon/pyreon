@@ -234,6 +234,16 @@ export const SCENARIOS: Scenario[] = [
     // A radial-only import must not pull the cartesian layout/stack path.
     imports: ['PieChart'],
   },
+  {
+    id: '@pyreon/charts::plot-grammar',
+    pkg: '@pyreon/charts',
+    dir: 'fundamentals/charts',
+    entry: 'plot.js',
+    // The <Plot> grammar with one cartesian mark must not pull the family
+    // hosts (pie/funnel/heatmap/candlestick): each family mark carries its
+    // own host, so an unused mark leaves its renderer unreferenced.
+    imports: ['Plot', 'Line'],
+  },
 ]
 
 /**
