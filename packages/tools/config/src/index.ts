@@ -112,6 +112,8 @@ export interface LatheSection {
   input?: string
   /** Output directory, relative to the config file. Default `./src/gen`. */
   output?: string
+  /** Where `lathe pull` fetches the spec from — an http(s) URL, written to `input`. */
+  source?: string
   /**
    * `web` emits the idiomatic multi-file layout; `multiplatform` ALSO emits
    * one self-contained module per tag, shaped for the native compiler, and

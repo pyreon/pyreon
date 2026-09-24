@@ -123,6 +123,11 @@ export interface LatheSection {
   input?: string
   /** Output directory. Relative to the config file, like `input`. Default `./src/gen`. */
   output?: string
+  /**
+   * Where `lathe pull` fetches the spec from: an http(s) URL, written to
+   * `input`. With `projects`, `lathe pull` pulls every project that sets one.
+   */
+  source?: string
 
   /**
    * `web` emits the idiomatic multi-file layout.
@@ -254,6 +259,14 @@ export function resolveConfig(section: LatheSection | undefined): ResolvedConfig
     )
   }
   const target = section?.target ?? 'web'
+  // Validated like the others: a config typo (`target: 'native'`) used to be
+  // treated as `web` by every `=== 'multiplatform'` check downstream, so the
+  // native modules the author asked for were silently never generated.
+  if (target !== 'web' && target !== 'multiplatform') {
+    throw new Error(
+      `[Pyreon] lathe: unknown target \`${String(target)}\`. Known: web, multiplatform.`,
+    )
+  }
   // REFUSED rather than silently downgraded. `multiplatform` exists to prove
   // the generated modules lower, and PMTC recognises `createHttp` by NAME — an
   // axios instance is an ordinary import it has never heard of. Emitting

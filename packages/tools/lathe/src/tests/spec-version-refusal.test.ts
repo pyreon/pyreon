@@ -71,9 +71,9 @@ describe('a refused spec leaves every output tree untouched', () => {
       'bad.yaml': 'hello: world\n',
       'gen/api-surface.json': '{"committed":"baseline"}',
     })
-    await expect(run(parseArgv(['generate', 'bad.yaml', '--out', 'gen']), undefined, fs)).rejects.toThrow(
-      /no `openapi` version key/,
-    )
+    const r = await run(parseArgv(['generate', 'bad.yaml', '--out', 'gen']), undefined, fs)
+    expect(r.code).toBe(1)
+    expect(r.stderr).toMatch(/no `openapi` version key/)
     expect(Object.keys(fs.files).sort()).toEqual(['bad.yaml', 'gen/api-surface.json'])
     expect(fs.files['gen/api-surface.json']).toBe('{"committed":"baseline"}')
   })
@@ -86,7 +86,10 @@ describe('a refused spec leaves every output tree untouched', () => {
         { name: 'bad', input: 'bad.json', output: 'gen/bad' },
       ],
     }
-    await expect(run(parseArgv(['generate']), section, fs)).rejects.toThrow(/Swagger 2/)
+    const r = await run(parseArgv(['generate']), section, fs)
+    expect(r.code).toBe(1)
+    // Names WHICH project was refused -- the error itself cannot know.
+    expect(r.stderr).toMatch(/Swagger 2[\s\S]*project `bad`/)
     expect(Object.keys(fs.files).filter((p) => p.startsWith('gen/'))).toEqual([])
   })
 })

@@ -15,17 +15,43 @@ import type { VerifyReport } from '../verify/lower'
 // Built rather than written literally: a raw ESC byte in source is invisible
 // in diffs and review, and trivially lost to a well-meaning formatter.
 const ESC = String.fromCharCode(27)
-const paint =
-  (code: string) =>
-  (s: string): string =>
-    `${ESC}[${code}m${s}${ESC}[0m`
-const C = {
-  dim: paint('2'),
-  bold: paint('1'),
-  green: paint('32'),
-  yellow: paint('33'),
-  red: paint('31'),
-  cyan: paint('36'),
+
+/**
+ * The palette, or a no-op one.
+ *
+ * Colour is a decision about the DESTINATION, which the report cannot see: an
+ * escape code is noise in a CI log, a file, a pipe into `grep`, and for anyone
+ * who set `NO_COLOR`. It used to be unconditional. The bin decides (see
+ * {@link shouldColor}); a library caller gets plain text unless it asks.
+ */
+function palette(color: boolean) {
+  const paint =
+    (code: string) =>
+    (s: string): string =>
+      color ? `${ESC}[${code}m${s}${ESC}[0m` : s
+  return {
+    dim: paint('2'),
+    bold: paint('1'),
+    green: paint('32'),
+    yellow: paint('33'),
+    red: paint('31'),
+    cyan: paint('36'),
+  }
+}
+
+/**
+ * Whether output to `stream` should be coloured, by the de-facto conventions:
+ * `NO_COLOR` (any value) disables, `FORCE_COLOR` (other than `0`) enables, a
+ * `dumb` terminal disables, and otherwise only a TTY gets colour.
+ */
+export function shouldColor(
+  stream: { isTTY?: boolean | undefined },
+  env: Readonly<Record<string, string | undefined>>,
+): boolean {
+  if (env.NO_COLOR !== undefined && env.NO_COLOR !== '') return false
+  if (env.FORCE_COLOR !== undefined) return env.FORCE_COLOR !== '0'
+  if (env.TERM === 'dumb') return false
+  return stream.isTTY === true
 }
 
 /** How many contract changes to print before summarising the rest. */
@@ -51,8 +77,11 @@ export function renderReport(
     name?: string | undefined
     plugins: readonly string[]
     requestedPlugins: readonly string[]
+    /** Emit ANSI colour. Default `false`: the caller knows the destination. */
+    color?: boolean | undefined
   },
 ): string {
+  const C = palette(opts.color ?? false)
   const lines: string[] = []
   const { doc } = result
   lines.push('')
