@@ -7,6 +7,16 @@ description: "Common library api-shape mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### Importing `@pyreon/charts` through a pre-0.52 entry point
+
+The main entry is now the engine (`<Chart>` with mark children, formerly `<Plot>` at `/plot`), and the ECharts wrapper is `<EChart>` at `/echarts`, with `/manual` and `/vite` under it. `<Chart options={…}>` from the root is the old wrapper and no longer type-checks.
+  - `pyreon check --fix` rewrites each import to the entry that exports the name now, and renames `Plot`→`Chart`, `Tip`→`Tooltip` and the wrapper's `Chart`→`EChart` at every reference.
+  - The wrapper is told apart from the grammar by an `options` attribute or a wrapper-only name in the same import.
+
+**Detected by:** `charts-legacy-import` — surfaced by `@pyreon/lint` / `pyreon doctor` / MCP `validate`.
+
+---
+
 ### Narrower projections silently drop a new struct field
 
 A layer that copies a shared struct field by field into its own narrower type compiles and renders when a field is added, but loses it. In `@pyreon/charts`, `values2` (a band's second bound) was lost by the value labels, a11y description and tooltip types, and the bubble mark's reader surfaces held pixel `radii` instead of the datum. Rules:
@@ -82,5 +92,11 @@ Rules for release tooling:
 ### Using an own-key count as a membership test
 
 `@pyreon/validate`'s `.strict()` emitters once short-circuited on `Object.keys(x).length === N`, but field checks read through the prototype chain, so a prototype-carried object and a typo'd key in place of a real one both slipped past the unknown-key scan. The short-circuit must prove each declared key is in `Object.keys(x)`: use `Object.prototype.propertyIsEnumerable.call` (own and enumerable), not `Object.hasOwn`, which also matches non-enumerable own keys. When optimizing a predicate, name what the cheap version assumes and what code establishes it. When two emitters share one predicate, a fuzz whose oracle is their agreement (`is() === parse().ok`) cannot catch it; differential-test against the interpreter. Reference: `packages/fundamentals/validate/src/core/jit.ts:strictShortCircuitMiss`; locks `src/tests/strict-prototype-keys.test.ts`, the schema-paired fuzz in `src/tests/jit-check-differential.test.ts`, and the `.strict()` block in `src/tests/jit-differential.test.ts`.
+
+---
+
+### A callback-or-object union whose OBJECT arm is `Partial<Record<string, unknown>>` silently swallows every callback
+
+(`@pyreon/rocketstyle` `.theme()`, 2026-09). `{ [k: string]?: unknown }` accepts a FUNCTION, so `.theme((t: Anything) => …)` matched the object arm and its `ThemeCb` contract was never consulted: a wrong annotation on `t` compiled, and `@pyreon/atlas`/`@pyreon/loom` carried ~180 `(t: T)` annotations nothing verified. They annotated because the factory hard-coded the theme generic to `{}` — no channel for a token type except a global `ThemeDefault` augmentation (unsafe from a library) or a cast. **Fix: exclude functions from the object arm (`O & { call?: never; apply?: never }`) and give the type a LOCAL channel (`rocketstyle(cfg).withTheme<Tokens>()`, type-only).** General rule: when a parameter accepts "an object OR a callback", prove a mistyped callback is REJECTED — an index-signature object type accepts functions, so the union collapses to its loosest arm. Lock with an `@ts-expect-error` spec. Reference: `rocketstyle/src/types/rocketstyle.ts:ThemeObject` + `src/__tests__/with-theme.types.test.ts`.
 
 ---

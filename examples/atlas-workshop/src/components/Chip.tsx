@@ -18,7 +18,7 @@ import { chipBase } from './chip-kit'
 
 export const Chip = chipBase
   .attrs({ tag: 'span', css: 'display:inline-flex;align-items:center;' })
-  .theme((t: { accent: string; text: string }) => ({
+  .theme((t) => ({
     padding: '3px 10px',
     borderRadius: '12px',
     fontSize: '12px',
@@ -29,19 +29,13 @@ export const Chip = chipBase
     // THIS block — the e2e asserts the computed style flips.
     hover: { opacity: 0.55 },
   }))
-  // The callback param is typed by rocketstyle from the (empty) local theme
-  // augmentation, so the token read narrows the RUNTIME theme the config
-  // supplies — same shape the demo catalog handles with its `dim()` helper,
-  // inlined here because this file must not import the workbench package.
-  .variants((t) => {
-    const tok = t as unknown as { accent: string }
-    return {
-      solid: { backgroundColor: tok.accent, color: '#fff' },
-      outline: {
-        backgroundColor: 'transparent',
-        borderWidth: '1px',
-        borderStyle: 'solid',
-        borderColor: tok.accent,
-      },
-    }
-  })
+  .variants((t) => ({
+    solid: { backgroundColor: t.accent, color: '#fff' },
+    outline: {
+      backgroundColor: 'transparent',
+      borderWidth: '1px',
+      borderStyle: 'solid',
+      borderColor: t.accent,
+    },
+  }))
+

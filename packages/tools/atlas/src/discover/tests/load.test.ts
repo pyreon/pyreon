@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { defineComponent } from '../../auto'
 import { loadAtlasConfig } from '../config'
+import { mountPlugin } from '../../plugins/mount'
 import { componentLoaderPlugin, loadComponent, runtimeLoader } from '../load'
 
 const dirs: string[] = []
@@ -95,6 +96,24 @@ describe('componentLoaderPlugin', () => {
     const ci = { ...defineComponent('Card'), source: join(tempDir(), 'nope.js') }
     const out = await componentLoaderPlugin(runtimeLoader()).decorate!(ci, ctx)
     expect(out.component).toBeUndefined()
+    // …and records WHY, so the skipped runtime checks can name the load
+    // failure instead of "no plugin claimed this check".
+    expect(out.loadError).toContain('could not import')
+  })
+
+  it('the mount check names the load failure as its skip reason', async () => {
+    const ci = { ...defineComponent('Card'), source: join(tempDir(), 'nope.js') }
+    const loaded = await componentLoaderPlugin(runtimeLoader()).decorate!(ci, ctx)
+    const scenario = {
+      id: 'card--default',
+      component: 'Card',
+      name: 'Default',
+      args: {},
+      source: 'auto-default' as const,
+    }
+    const out = await mountPlugin().verify!({ component: loaded, scenario } as never)
+    expect(out.interaction?.findings?.[0]?.code).toBe('load-failed')
+    expect(out.interaction?.findings?.[0]?.message).toContain('module failed to load')
   })
 })
 

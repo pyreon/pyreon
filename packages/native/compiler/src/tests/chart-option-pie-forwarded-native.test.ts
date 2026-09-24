@@ -10,7 +10,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * device's own size. The tap and the tooltip hit the same laid-out arcs.
  */
 const OPTION = `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return (
     <OptionChart option={{

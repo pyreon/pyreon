@@ -1,4 +1,4 @@
-import { el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const CanvasBar = el
   .attrs({
@@ -7,7 +7,7 @@ export const CanvasBar = el
     contentAlignY: 'center',
     gap: 16,
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     height: '52px',
     flex: 'none',
     padding: '0 16px',

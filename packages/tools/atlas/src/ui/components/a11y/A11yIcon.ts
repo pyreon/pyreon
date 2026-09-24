@@ -1,4 +1,4 @@
-import { dim, el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const A11yIcon = el
   .attrs({
@@ -6,7 +6,7 @@ export const A11yIcon = el
     contentAlignX: 'center',
     contentAlignY: 'center',
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     width: '20px',
     height: '20px',
     flex: 'none',
@@ -16,10 +16,10 @@ export const A11yIcon = el
     background: t.ok,
   }))
   .states(
-    dim((t) => ({
+    (t) => ({
       ok: { backgroundColor: t.ok },
       warn: { backgroundColor: t.warn },
       danger: { backgroundColor: t.danger },
       unknown: { backgroundColor: t.faint },
-    })),
+    }),
   )

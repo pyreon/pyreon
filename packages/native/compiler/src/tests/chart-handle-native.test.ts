@@ -17,7 +17,8 @@ describe.each(['swift', 'kotlin'] as const)('chart handle on %s', (target) => {
   it('the handle binds the chart state and every action shape lowers', () => {
     const r = transform(`
 import { Stack, Button } from '@pyreon/primitives'
-import { PlotChart, bars, line, createChartHandle } from '@pyreon/charts/plot'
+import { createChartHandle } from '@pyreon/charts'
+import { PlotChart, bars, line } from '@pyreon/charts/engine'
 const ROWS = [{ a: 1, b: 3 }, { a: 2, b: 2 }, { a: 3, b: 1 }]
 export function App() {
   const chart = createChartHandle()
@@ -43,7 +44,8 @@ export function App() {
   it('a handle that is not a createChartHandle() const, and a non-literal action, warn by name', () => {
     const r = transform(`
 import { Stack, Button } from '@pyreon/primitives'
-import { PlotChart, bars, createChartHandle } from '@pyreon/charts/plot'
+import { createChartHandle } from '@pyreon/charts'
+import { PlotChart, bars } from '@pyreon/charts/engine'
 const ROWS = [{ a: 1 }]
 export function App(props: { h: any; act: any }) {
   const chart = createChartHandle()
@@ -59,7 +61,8 @@ export function App(props: { h: any; act: any }) {
   it('every plot drag shares ONE DragGesture (SwiftUI runs only one of several chained simultaneous drags)', () => {
     if (target !== 'swift') return
     const r = transform(`
-import { PlotChart, bars, createChartHandle } from '@pyreon/charts/plot'
+import { createChartHandle } from '@pyreon/charts'
+import { PlotChart, bars } from '@pyreon/charts/engine'
 const ROWS = [{ a: 1 }, { a: 2 }, { a: 3 }]
 export function App() {
   const chart = createChartHandle()
@@ -72,7 +75,7 @@ export function App() {
 
   it('selectedMode under a zoom window compiles (it referenced rows only a decimated chart declares)', () => {
     const r = transform(`
-import { PlotChart, bars } from '@pyreon/charts/plot'
+import { PlotChart, bars } from '@pyreon/charts/engine'
 const ROWS = [{ a: 1 }, { a: 2 }, { a: 3 }]
 export function App() {
   return <PlotChart data={ROWS} marks={[bars((d) => d.a)]} height={200} dataZoom selectedMode="multiple" />
@@ -92,7 +95,8 @@ describe.each(['swift', 'kotlin'] as const)('OptionChart handle on %s', (target)
   it('a timeline OptionChart takes its step and play state from the handle; a plain one binds the plot host', () => {
     const r = transform(`
 import { Stack, Button } from '@pyreon/primitives'
-import { OptionChart, createChartHandle } from '@pyreon/charts/plot'
+import { createChartHandle } from '@pyreon/charts'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   const tl = createChartHandle()
   const plain = createChartHandle()

@@ -21,6 +21,17 @@ export type InnerComponentProps = {
   'data-rocketstyle'?: string | undefined
 } & Record<string, any>
 
+/**
+ * The OBJECT arm of `.theme()`. `Partial<Record<string, unknown>>` is
+ * `{ [k: string]?: unknown }`, and a FUNCTION is assignable to that — so every
+ * `.theme((t: X) => …)` callback matched the object arm and was never checked
+ * against `ThemeCb`: a wrong annotation on `t` compiled, and an un-annotated `t`
+ * was whatever the author said it was. Forbidding the members every function
+ * carries routes callbacks to the checked arm. No theme object has a `call` or
+ * `apply` key (they are not CSS properties or theme tokens).
+ */
+export type ThemeObject<O> = O & { call?: never; apply?: never }
+
 export type RocketStyleComponent<
   OA extends TObj = {},
   EA extends TObj = {},
@@ -193,7 +204,7 @@ export interface IRocketStyleComponent<
 
   // THEME chaining method
   theme: <P extends TObj = TObj>(
-    param: Partial<P> | Partial<Styles<CSS>> | ThemeCb<P, Theme<T>>,
+    param: ThemeObject<Partial<P> | Partial<Styles<CSS>>> | ThemeCb<P, Theme<T>>,
   ) => RocketStyleComponent<OA, EA, T, MergeTypes<[CSS, P]>, S, HOC, D, UB, DKP>
 
   // STYLES chaining method

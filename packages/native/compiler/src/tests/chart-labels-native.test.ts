@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compileOption } from '@pyreon/charts/plot'
+import { compileOption } from '@pyreon/charts/engine'
 import { transform } from '../index'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
@@ -11,7 +11,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * segmentation on both targets.
  */
 const app = (label: string): string => `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ xAxis: { type: 'category', data: ['Mon', 'Tue'] }, yAxis: {}, series: [{ type: 'bar', name: 'Sales', data: [30, 10], label: ${label} }] }} />
 }`
@@ -40,7 +40,7 @@ describe.each(['swift', 'kotlin'] as const)('series labels on %s', (target) => {
 
   it('a FUNCTION formatter cannot run at compile time and is named, not silently dropped', () => {
     const r = transform(`
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ xAxis: { type: 'category', data: ['a'] }, yAxis: {}, series: [{ type: 'bar', data: [1], label: { show: true, formatter: (p: { value: number }) => String(p.value) } }] }} />
 }`, { target })

@@ -19,7 +19,7 @@ const ENGINE_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/Pyreon
 const CANVAS_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartCanvas.swift'
 const read = (p: string): string => readFileSync(join(REPO, p), 'utf8')
 
-const SRC = `import { PlotChart, line, sma, ema, trend } from '@pyreon/charts/plot'
+const SRC = `import { PlotChart, line, sma, ema, trend } from '@pyreon/charts/engine'
 interface Row { m: string; v: number }
 const ROWS: Row[] = [{ m: 'Jan', v: 10 }, { m: 'Feb', v: 14 }]
 export function App() {
@@ -34,7 +34,7 @@ export function App() {
 }
 `
 
-const BB = `import { PlotChart, bollinger } from '@pyreon/charts/plot'
+const BB = `import { PlotChart, bollinger } from '@pyreon/charts/engine'
 interface Row { m: string; v: number }
 const ROWS: Row[] = [{ m: 'Jan', v: 10 }, { m: 'Feb', v: 14 }, { m: 'Mar', v: 9 }]
 export function App() {
