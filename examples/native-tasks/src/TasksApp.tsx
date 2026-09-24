@@ -74,6 +74,8 @@ import { announce } from '@pyreon/a11y'
 import { useUrlState } from '@pyreon/url-state'
 import { signal, computed } from '@pyreon/reactivity'
 import {
+  Arc,
+  Bar,
   BoxplotChart,
   CalendarChart,
   GanttChart,
@@ -88,6 +90,8 @@ import {
   SunburstChart,
   TreeChart,
   TreemapChart,
+  Chart,
+  Tooltip,
   createChartHandle,
 } from '@pyreon/charts'
 import { OptionChart } from '@pyreon/charts/option'
@@ -1013,6 +1017,7 @@ const SUNBURST: TreeNode[] = [
 ]
 
 function GalleryPage() {
+  const grammarPick = signal(-1)
   const navigate = useNavigate()
   // The toolbox's box zoom reports its window here; the save button its PNG's prefix.
   const tbZoom = signal('0-100')
@@ -1095,6 +1100,17 @@ function GalleryPage() {
         <RiverChart series={RIVER_SERIES} height={180} data-testid="gal-river" />
         <SunburstChart data={SUNBURST} height={200} data-testid="gal-sunburst" />
         <TreeChart data={SUNBURST} height={200} data-testid="gal-tree" />
+        {/* The stable API: <Chart> with mark children. Desugared at compile
+            time to the same hosts the components above lower to; asserted on
+            both device lanes so the grammar itself is device-proven. */}
+        <Chart data={SCORE_ROWS} x="subject" height={200} data-testid="gal-grammar-bars" onSelect={(i: number) => grammarPick.set(i)}>
+          <Bar y="score" label="Points" />
+          <Tooltip />
+        </Chart>
+        <Text data-testid="gal-grammar-pick">{String(grammarPick())}</Text>
+        <Chart data={SCORE_ROWS} height={200} data-testid="gal-grammar-pie">
+          <Arc value="score" label="subject" innerRadius={0.5} />
+        </Chart>
         {/* An ECharts lines series with its animated trail — the device tests
             capture this canvas twice and assert the frames differ. */}
         <OptionChart

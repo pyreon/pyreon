@@ -1068,6 +1068,7 @@ final class PyreonTasksUITests: XCTestCase {
         for id in [
             "gal-calendar", "gal-candlestick", "gal-gantt", "gal-graph", "gal-map",
             "gal-parallel", "gal-polar", "gal-river", "gal-sunburst", "gal-tree",
+            "gal-grammar-bars", "gal-grammar-pie",
         ] {
             let canvas = app.descendants(matching: .any).matching(identifier: id).firstMatch
             // Scrolled into view first: ten charts do not fit on a phone, and
@@ -1078,6 +1079,16 @@ final class PyreonTasksUITests: XCTestCase {
             XCTAssertTrue(canvas.waitForExistence(timeout: 10), "\(id) canvas missing on the gallery")
             XCTAssertFalse(canvas.frame.isEmpty, "\(id) rendered with an empty frame — it laid out to nothing")
         }
+        // The stable `<Chart>` grammar on device: a tap on the first bar
+        // reaches the chart's `onSelect` with index 0, through the same host
+        // the grammar desugars to at compile time.
+        let grammarBars = app.descendants(matching: .any).matching(identifier: "gal-grammar-bars").firstMatch
+        scrollIntoView(grammarBars, in: app)
+        let grammarPick = app.staticTexts["gal-grammar-pick"].firstMatch
+        XCTAssertTrue(
+            tapUntilLabel(grammarBars.coordinate(withNormalizedOffset: CGVector(dx: 0.26, dy: 0.6)), grammarPick, "0"),
+            "a tap on the grammar chart's first bar did not select it (label: \(grammarPick.label))"
+        )
         // The map ROAMS: a horizontal drag pans it, so its canvas differs.
         let roamMap = app.descendants(matching: .any).matching(identifier: "gal-map").firstMatch
         XCTAssertTrue(roamMap.waitForExistence(timeout: 10), "gal-map canvas missing on the gallery")

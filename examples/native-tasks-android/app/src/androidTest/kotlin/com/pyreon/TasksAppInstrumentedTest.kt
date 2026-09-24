@@ -1116,9 +1116,21 @@ class TasksAppInstrumentedTest {
         for (tag in listOf(
             "gal-calendar", "gal-candlestick", "gal-gantt", "gal-graph", "gal-map",
             "gal-parallel", "gal-polar", "gal-river", "gal-sunburst", "gal-tree",
+            "gal-grammar-bars", "gal-grammar-pie",
         )) {
             composeRule.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
         }
+        // The stable `<Chart>` grammar on device. Its bars expose one TalkBack
+        // node per subject; a click at the centre of the "math" node lands on
+        // the first bar beneath it (the nodes take no pointer input), so the
+        // chart's `onSelect` reports 0 — which proves the node sits over its
+        // bar, the property explore-by-touch depends on.
+        composeRule.onNodeWithTag("gal-grammar-bars").performScrollTo()
+        composeRule
+            .onNodeWithContentDescription("math, Points 82", useUnmergedTree = true)
+            .assertExists()
+            .performClick()
+        waitForTagText("gal-grammar-pick", "0")
         // The map ROAMS: a horizontal drag pans it, so its pixels change.
         // Driven as a hand does, like the flow and dataZoom drags above: past the
         // touch slop first, then many small steps. One 400ms `swipe` intermittently
