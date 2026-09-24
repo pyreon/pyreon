@@ -415,7 +415,7 @@ export function generateOpenApiSpec(
         const method = match[1]!.toLowerCase()
         const path = match[2]!
         // Convert :param to {param} for OpenAPI
-        const openApiPath = path.replace(/:(\w+)/g, '{$1}')
+        const openApiPath = path.replace(/:(\w[\w-]*)/g, '{$1}')
         if (!paths[openApiPath]) paths[openApiPath] = {}
         paths[openApiPath][method] = {
           summary: desc,
@@ -427,7 +427,7 @@ export function generateOpenApiSpec(
 
   // Auto-discovered API files (fill in gaps)
   for (const pattern of parseApiFiles(apiFiles)) {
-    const openApiPath = pattern.replace(/:(\w+)/g, '{$1}')
+    const openApiPath = pattern.replace(/:(\w[\w-]*)/g, '{$1}')
     if (!paths[openApiPath]) {
       paths[openApiPath] = {
         get: {
@@ -583,7 +583,7 @@ function parseApiFiles(files: string[]): string[] {
       let path = f.replace(/\.\w+$/, '').replace(/\/index$/, '')
       if (!path.startsWith('/')) path = `/${path}`
       // Convert [param] to :param
-      path = path.replace(/\[\.\.\.(\w+)\]/g, ':$1*').replace(/\[(\w+)\]/g, ':$1')
+      path = path.replace(/\[\.\.\.(\w[\w-]*)\]/g, ':$1*').replace(/\[(\w[\w-]*)\]/g, ':$1')
       return `/api${path === '/' ? '' : path}`
     })
 }

@@ -1,4 +1,4 @@
-import { dim, el, type T } from '../../kit'
+import { el } from '../../kit'
 
 export const CompBtn = el
   .attrs({
@@ -8,7 +8,7 @@ export const CompBtn = el
     block: true,
     gap: 12,
   })
-  .theme((t: T) => ({
+  .theme((t) => ({
     font: 'inherit',
     cursor: 'pointer',
     textAlign: 'left',
@@ -24,12 +24,12 @@ export const CompBtn = el
     hover: { background: t.surface2 },
   }))
   .states(
-    dim((t) => ({
+    (t) => ({
       active: {
         fontWeight: 600,
         color: t.text,
         backgroundColor: t.accentSoft,
       },
       idle: {},
-    })),
+    }),
   )

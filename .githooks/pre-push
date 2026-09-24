@@ -56,6 +56,16 @@ case "$GIT_COMMON_DIR" in
   *) GIT_COMMON_DIR="$REPO_ROOT/$GIT_COMMON_DIR" ;;
 esac
 PRE_PUSH_LOCK="$GIT_COMMON_DIR/pyreon-pre-push.lock"
+
+# Git exports GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE and friends to hooks, and
+# they override `cwd` and `git -C` for every git the gates and tests spawn. A
+# test that makes a throwaway repo with `git -C <tmp> init` then re-initialises
+# THIS repository and writes its `user.email` into our `.git/config`, which is
+# how every commit here became `T <t@t.local>`. The hook has everything it needs
+# from git above; from here on git must find repositories by directory.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE GIT_PREFIX GIT_QUARANTINE_PATH \
+  GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
 if ! mkdir "$PRE_PUSH_LOCK" 2>/dev/null; then
   LOCK_PID=$(sed -n '1p' "$PRE_PUSH_LOCK/pid" 2>/dev/null || true)
   if [ -n "$LOCK_PID" ] && kill -0 "$LOCK_PID" 2>/dev/null; then
