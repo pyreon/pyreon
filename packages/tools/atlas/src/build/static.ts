@@ -151,6 +151,10 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
   // Before any work: the build EMPTIES this directory, so a wrong `--out`
   // would delete whatever is there.
   assertSafeOutDir(outDir, { root, scanRoot, isDefault: options.out === undefined })
+  // The CALLER's value, captured before the scan below: that scan runs a Vite
+  // server, which sets NODE_ENV=development, so reading it any later would
+  // "restore" development onto a caller that never had it set.
+  const prevNodeEnv = process.env.NODE_ENV
 
   // ── 1. Derive the catalog ───────────────────────────────────────────────
   // The same pipeline `atlas dev` boots from, for the same reason: one
@@ -253,8 +257,8 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
   // site shipped Pyreon's dev build: 56 dev-warning strings and the
   // reactive-devtools stack capture, which alone was a 266 ms boot task. A
   // deployed site has no dev variant, so the value is forced for the build
-  // and then restored; mutating the caller's environment is not ours to keep.
-  const prevNodeEnv = process.env.NODE_ENV
+  // and then restored to the value captured at entry; mutating the caller's
+  // environment is not ours to keep.
   process.env.NODE_ENV = 'production'
   try {
     await build({

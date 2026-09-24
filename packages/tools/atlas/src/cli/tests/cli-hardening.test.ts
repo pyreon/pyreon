@@ -15,9 +15,9 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { assertSafeOutDir, OUT_MARKER } from '../../build/static'
-import { relativizePaths, splitBakedRpc } from '../../build/bake'
+import { bakeRpc, relativizePaths, splitBakedRpc } from '../../build/bake'
 import { readBakedRpcFile } from '../../ui/lens-client'
-import { runCli, validateArgs } from '../run'
+import { flagValue, positionalArgs, runCli, validateArgs } from '../run'
 
 let dir: string
 let stdout: string[]
@@ -190,5 +190,128 @@ describe('the baked payload', () => {
     } finally {
       delete host.__ATLAS_STATIC_RPC_URL__
     }
+  })
+})
+
+describe('argument reading, the edges', () => {
+  it('flagValue: absent, spaced, inline-free, and a following flag is not a value', () => {
+    expect(flagValue(['--out', 'site'], '--out')).toBe('site')
+    expect(flagValue(['app'], '--out')).toBeUndefined()
+    expect(flagValue(['--out'], '--out')).toBeUndefined()
+    expect(flagValue(['--out', '--title'], '--out')).toBeUndefined()
+  })
+
+  it('positionalArgs skips a spaced value but not an inline one', () => {
+    expect(positionalArgs(['app', '--out', 'site', '--base=/x/', '--json'])).toEqual(['app'])
+    expect(positionalArgs(['--out=site', 'app'])).toEqual(['app'])
+  })
+
+  it('validateArgs: unknown command passes through, no guess for a far-off flag, an empty inline value', () => {
+    expect(validateArgs('not-a-command', ['--anything'])).toBeUndefined()
+    expect(validateArgs('scan', ['--zzzzzzzzzz'])).toBe('unknown option --zzzzzzzzzz for `atlas scan`.')
+    expect(validateArgs('build', ['--out='])).toBe('--out needs a value.')
+    // A surplus argument outside `verify` carries no --cwd hint.
+    expect(validateArgs('build', ['a', 'b'])).toBe('unexpected argument "b".')
+  })
+})
+
+describe('atlas dev --port', () => {
+  it.each(['0', '65536', 'abc', '1.5'])('rejects %s before starting a server', async (port) => {
+    expect(await runCli(['dev', dir, '--port', port])).toBe(1)
+    expect(stderr.join('')).toContain('--port must be a whole number from 1 to 65535')
+  })
+})
+
+describe('bakeRpc failure reasons', () => {
+  it('records a non-Error throw as its string form', async () => {
+    const warnings: string[] = []
+    const baked = await bakeRpc({
+      methods: {
+        source: async () => {
+          throw 'plain string'
+        },
+      },
+      components: ['Button'],
+      onWarn: (m) => warnings.push(m),
+    })
+    expect(baked.source).toEqual({ Button: { __atlasRpcError: 'plain string' } })
+    expect(warnings).toEqual(['atlas build: source(Button) — plain string'])
+  })
+
+  it('relativizePaths accepts a root given with its trailing separator', () => {
+    expect(relativizePaths(['/r/x.ts'], '/r/')).toEqual(['x.ts'])
+  })
+})
+
+describe('the static client, unhappy paths', () => {
+  it('reports a method missing from a baked file, and treats a non-OK response as absent', async () => {
+    const host = globalThis as { __ATLAS_STATIC_RPC_URL__?: string }
+    host.__ATLAS_STATIC_RPC_URL__ = '/edge/'
+    const files: Record<string, unknown> = {
+      '/edge/index.json': { Button: 'b.json', Gone: 'gone.json' },
+      '/edge/b.json': { source: 'SRC' },
+    }
+    const fetchImpl = vi.fn(async (url: string) =>
+      url in files ? { ok: true, json: async () => files[url] } : { ok: false, json: async () => ({}) },
+    ) as never
+    try {
+      expect(await readBakedRpcFile('lens', { component: 'Button' }, fetchImpl)).toEqual({
+        ok: false,
+        error: 'Not available on this site: lens was not baked for Button.',
+      })
+      expect(await readBakedRpcFile('source', { component: 'Gone' }, fetchImpl)).toMatchObject({ ok: false })
+    } finally {
+      delete host.__ATLAS_STATIC_RPC_URL__
+    }
+  })
+})
+
+describe('runCli --json, the reporting branches', () => {
+  it('scan --json names what failed to load, the config error, and where it wrote', async () => {
+    write('src/Counter.tsx', 'export function Counter(props: { count: number }) { return 1 }\n')
+    write('src/Broken.tsx', "import './does-not-exist'\nexport function Broken() { return 1 }\n")
+    write('atlas.config.ts', 'export default {\n')
+    const code = await runCli(['scan', dir, '--json'])
+    const doc = JSON.parse(stdout.join(''))
+    expect(code).not.toBe(0)
+    expect(doc.ok).toBe(false)
+    expect(doc.failedToLoad).toEqual(['Broken'])
+    expect(typeof doc.configError).toBe('string')
+    expect(doc.catalogPath).toContain('atlas-catalog.json')
+  })
+
+  it('scan --check --json keeps stdout one document and narrates the ratchet on stderr', async () => {
+    write('src/Counter.tsx', 'export function Counter(props: { count: number }) { return 1 }\n')
+    await runCli(['scan', dir, '--no-mount'])
+    stdout = []
+    stderr = []
+    await runCli(['scan', dir, '--no-mount', '--check', '--json'])
+    expect(() => JSON.parse(stdout.join(''))).not.toThrow()
+    expect(stderr.join('')).toContain('--check:')
+  })
+
+  it('verify --check --json keeps stdout parseable too', async () => {
+    write('src/Counter.tsx', 'export function Counter(props: { count: number }) { return 1 }\n')
+    await runCli(['scan', dir, '--no-mount'])
+    stdout = []
+    stderr = []
+    await runCli(['verify', '--cwd', dir, '--check', '--json', '--no-mount'])
+    expect(() => JSON.parse(stdout.join(''))).not.toThrow()
+    expect(stderr.join('')).toContain('--check:')
+  })
+})
+
+describe('runScan config wiring', () => {
+  it('a config carrying matrix, authored scenarios and parts is read, not dropped', async () => {
+    write('src/Counter.tsx', 'export function Counter(props: { count: number }) { return 1 }\n')
+    write(
+      'atlas.config.ts',
+      "export const matrix = 'axes'\nexport const scenarios = { Counter: [] }\nexport const parts = { Counter: 'Core' }\n",
+    )
+    const code = await runCli(['scan', dir, '--no-write', '--json'])
+    const doc = JSON.parse(stdout.join(''))
+    expect(doc.configError).toBeUndefined()
+    expect(doc.components).toBe(1)
+    expect(code).toBe(0)
   })
 })
