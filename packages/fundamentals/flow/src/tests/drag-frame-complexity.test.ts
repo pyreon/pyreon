@@ -8,7 +8,7 @@
  * for a single-node drag, because they all subscribe to the one `nodes()`
  * signal. Before the `nodeMap`/`edgeMap` fix, each thunk did an O(N)/O(E)
  * `Array.prototype.find` → O(N²) (nodes) + O(E×(2N+E)) (edges) PER FRAME,
- * contradicting CLAUDE.md's "a 60fps drag in a 1000-node graph is O(1) per
+ * contradicting the documented "a 60fps drag in a 1000-node graph is O(1) per
  * frame" claim. The fix routes every accessor through the shared
  * `instance.nodeMap()`/`edgeMap()` computeds (O(1) `Map.get`), so a drag
  * frame does ZERO per-accessor finds — just one map rebuild (a `for` loop).

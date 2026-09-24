@@ -31,7 +31,7 @@ export type Styles = ({
    * `prop: var(--u-<hash>)` and the value is written into this object — so the
    * emitted CSS is value-agnostic (one shared rule) and the per-instance value
    * is delivered as an inline custom property. ABSENT ⇒ byte-identical to the
-   * classic path. See `.claude/audits/custom-property-style-extraction-2026-06-22.md`.
+   * classic path.
    */
   extractVars?: Record<string, string> | undefined
   /** CPSE responsive: suffixes the var names so per-breakpoint values get

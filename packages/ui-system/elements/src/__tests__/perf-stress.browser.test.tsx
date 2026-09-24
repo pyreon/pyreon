@@ -11,7 +11,7 @@
  *
  * WALL-CLOCK IS REPORTED, NEVER GATED. This file runs inside `Test (browser)`,
  * a REQUIRED check on a GitHub-hosted runner that this repo's CI is documented
- * to saturate (CLAUDE.md: queue-dominated under parallel-session load). A
+ * to saturate (`.agents/guides/ci/README.md`: queue-dominated under parallel-session load). A
  * duration threshold there is not a measurement — it is a coin flip that blocks
  * every open PR when it lands tails. It did: 2026-09-10, `500 bare Element`
  * read 343/260/241ms against a 200ms literal on three consecutive attempts of

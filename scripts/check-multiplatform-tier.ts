@@ -40,7 +40,7 @@ const TIERS = new Set(['shared', 'service-backend', 'web-only'])
 
 /**
  * Published packages with NO consumable runtime API and therefore no
- * manifest — the same explicitly-exempt set CLAUDE.md documents for the
+ * manifest — the same explicitly-exempt set AGENTS.md documents for the
  * manifest pipeline (tooling / scaffolding / compat shims / source-shipping
  * native runtimes). Adding a package here instead of writing a manifest is a
  * DELIBERATE decision; a new published package that is neither here nor

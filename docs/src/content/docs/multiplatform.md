@@ -1623,4 +1623,4 @@ The runtime packages exist, with one reactive container per data/service hook:
 - Web runtime: `packages/core/primitives/src/web/` — all 15 canonical primitives
 - Example apps: `examples/native-todomvc-{ios,android,web}/` + `examples/native-router-demo-{ios,web}/` — `native-router-demo-ios` ships a full XcodeGen host shell (#1105) so `bash scripts/build.sh` produces a buildable Xcode project, not a source-only stub. `examples/native-todomvc-web/README.md` was also corrected (#1106) so it no longer references a fictional `src/TodoApp.tsx` — the one-source contract (Phase E3) keeps the shared TodoApp source in `examples/native-todomvc-ios/src/`.
 - Real-device build gate: `.github/workflows/native-device.yml` (opt-in via the `native-device` label / dispatch)
-- CLAUDE.md "PMTC Multi-Target Architecture" section — agent-context summary of the layered model + roadmap
+- `.agents/guides/multiplatform/README.md` — agent-context summary of the layered model

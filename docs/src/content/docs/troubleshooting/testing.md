@@ -5,125 +5,140 @@ description: "Common testing mistakes in Pyreon and how to fix them."
 
 # Testing Mistakes
 
-> **Generated** from `.claude/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
+> **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
-### A verify pipeline whose every check is TRUE of an empty container — "mounts, clicks and unmounts without throwing" is not evidence that anything rendered
+### A verify check that passes on an empty render
 
-(`@pyreon/atlas`, 2026-09; the second half of the empty-preview class). PR #3492 seeded content so derived scenarios stopped mounting bare `<button>`s, and the deployed workbench STILL showed 24 of 108 components as nothing — while the scan reported 1,090/1,090 verified. Four independent causes, each invisible to every gate: (1) the canvas FRAME was an inline-flex Element with no width, so the preview surface measured 80px (its own padding) and every block-level component collapsed to zero width — `<hr>`, `<table>`, a slider track, a tree; (2) the canvas rendered from CONTROL DEFAULTS, and selecting a scenario filtered its args down to the ones with a control — a `Tree`'s `data` has no control, so the authored scenario rendered an empty tree too; (3) a rocketstyle chain rendering through a BASE (`el.config({ component: ModalBase })`) has no tag to key content on, and the base returns `null` until `open` / a render-prop child arrives; (4) the mount check declined "did anything render?" on purpose (a false `<Show>` is correct), so `null` passed interaction, parity (`null === null`) and leak. **Rules.** (a) A "renders" gate measures AREA or TEXT, never child count — and a verify check that cannot fail on `null` is not a check of rendering, whatever it is a check of; name the emptiness (`empty-render`) and let a declared reason (`auto-edge`, `browserOnly`, `parts`) downgrade it, rather than declining the question. (b) Ask what the component produced, not what the container holds: a wrapper renders a `display: contents` div, a Portal renders OUTSIDE the container — mount into a slot and count the body's gain. (c) A scenario is the WHOLE pinned state; filtering its args to the editable subset is how a verified state renders as something the verdict never covered. (d) An Element-based frame needs `block`/a width or it shrink-wraps its content — the same contract `code-style.md` states for app roots, here for a stage. (e) `isServer` is decided at module evaluation: installing a DOM before the loader runs flips the SSR-parity oracle to a client render (Portal in `renderToString` throws), so a Node mount cannot render a server-gated component and the honest verdict is a declared `browserOnly` skip, not an early DOM. Locked by `e2e/atlas-ui-components.spec.ts` (every page of the REAL library, measured), `plugins/tests/mount.test.ts` (empty-render + portal + slot), `ui/tests/model-opening-scenario.test.ts`.
-
----
-
-### [FIXED, 2026-09] A hot seam's SIZE decides whether it inlines — identical steps cost 3 ns as a small method and 10 ns inside a big one.
-
-`@pyreon/validate`'s `parse()` carried the pure-JIT fast path (two field loads, one call, one `issues.length`, one `Result` literal) in the SAME body as the general path, the async refusal and its error object. Decomposed on a quiet box (`bench/decompose-seam.ts`, bun/JSC): the emitted validator alone 2.63 ns, zod-c's whole `safeParse` 2.61, the fast-path steps as a standalone closure 2.99, the SAME steps as a tiny prototype method 2.98 — and `S.parse()` 10.2. Nothing in the seam was slow; the seam was too big to inline. Splitting the cold halves into module-level `parseGeneral`/`pureFail` (and the Standard Schema closure likewise) took `S.parse` to ~4.9 ns with 816 specs byte-identical. **Rule: when a decomposition shows every step is cheap and the whole is not, measure the whole's SHAPE — build the same steps as a tiny function and compare; if that closes the gap, the fix is a split, not an optimization of any step.** Two measurement traps on the way: under load the seam read as 28% of the cell (it is 75%), and a "pre-bound closure" arm that still wrapped the big body measured nothing. Reference: `packages/fundamentals/validate/src/core/schema.ts:parse` + `bench/decompose-seam.ts`.
-
----
-
-### A fixture proves a rule CAN fire; only real source proves it fires on code as WRITTEN — and a probe at a synthetic path measures the GATE, not the rule
-
-(the gated-rule sweep, 2026-09). `@pyreon/lint` has a totality invariant (`rule-fires.test.ts`: every rule has a fires fixture AND a quiet counterpart), and it still left 39 rules unverified against reality, because they are OFF in every shipped preset — opt-in, monorepo-scoped, or dependency-gated — so a full-repo run under `recommended` exercises none of them. Force-enabling all 39 over 5,386 real files left 12 silent, and separating "the repo is clean" from "the rule is inert" needed a POSITIVE CONTROL per rule: construct the defect the way a real author writes it, and check. Three traps in doing that, each of which produced a WRONG verdict first. **(1) A dep-gated rule at a synthetic path can never fire** — `lintFile('/repo/src/x.ts', …)` has no `package.json` above it, so five rules read as inert when the gate was simply doing its job; the probe has to write a real project on disk with a manifest declaring the libraries. **(2) A rule's NAME is not its subject** — `no-circular-import` sounds like it detects import cycles and is in fact a package LAYER-ORDER rule, so a two-file relative cycle proves nothing about it; probing the wrong shape reported a healthy rule as dead. **(3) A lexical scan sees code inside STRINGS** — a manifest's `longExample` carries `import { enrichTheme } from '@pyreon/unistyle'` as documentation, which a regex reads as a real upward import (the same trap `@pyreon/loom` documents); the AST-based rule never saw it, so the "violation" existed only in the measurement. Two REAL gaps survived all that: `prefer-canonical-primitive` read JSX only, and Pyreon has TWO spellings for a DOM element — `@pyreon/primitives`' own web implementations are written entirely in `h('div', …)`, so a JSX-only rule reports nothing on a file made of nothing but DOM elements; and `no-circular-import` enforced `packages/core/` only, leaving `packages/ui-system/` — the tree where a real `ui-core` ↔ `unistyle` cycle actually happened and was fixed by a registration seam — guarded by nothing but that fix's own tests. **Rules: (a) a gate that runs rules under a preset says nothing about the rules that preset disables — probe them separately, with the gating lifted; (b) a silent rule needs a positive control before you call the repo clean, and the control must be the shape real code uses, not the rule's own fixture; (c) when a framework offers two spellings for one concept, a rule covering one of them is half a rule.**
+"mounts, clicks and unmounts without throwing" is true of a component that rendered nothing, so `@pyreon/atlas` once reported every scenario verified while many previews were blank. Causes and rules:
+  - A "renders" gate measures area or text, never child count. Name emptiness (`empty-render`) and let a declared reason (`auto-edge`, `browserOnly`, `parts`) downgrade it.
+  - Ask what the component produced, not what the container holds: a wrapper renders a `display: contents` div, a Portal renders outside the container. Mount into a slot and count what the body gained.
+  - A scenario is its whole pinned state. Filtering its args to the ones that have a control renders a state the verdict never covered.
+  - An Element-based frame needs `block` or a width, or it shrink-wraps and block-level components collapse to zero width (same contract as app roots in `.agents/rules/code-style.md`).
+  - `isServer` is decided at module evaluation. Installing a DOM before the loader runs flips the SSR-parity oracle to a client render, so a server-gated component gets a declared `browserOnly` skip, not an early DOM.
+  - Locks: `e2e/atlas-ui-components.spec.ts`, `plugins/tests/mount.test.ts`, `ui/tests/model-opening-scenario.test.ts`.
 
 ---
 
-### A guessed rank table is worse than no rank table
+### A hot seam too large to inline
 
-(same sweep). Widening the layer rule to `packages/ui-system/` meant encoding an order, and two packages — `connector-document`, `document-primitives` — are not in the documented chain. Ranking them by eye put them beside `elements` when they in fact sit above it: **41 findings in a tree with zero real violations**, in an `error`-severity rule that gates CI. Omitting them entirely is correct — an unranked package is simply ignored, so the rule keeps guarding the edges it actually knows. **Rule: encode only what is DOCUMENTED, measure the whole tree with the REAL rule before trusting the table, and prefer a known-incomplete table to a plausible-looking complete one.** Note the two orders must also stay INDEPENDENT: `core` and `ui-system` are separate stacks and a ui-system package importing a core one is the normal direction, so a single merged rank table would flag every such import.
-
----
-
-### A "difference of two op medians" estimator is not a framework cost until the CONTROL arm's same difference is subtracted — and a RESIDUAL is the wrong statistic for a complexity claim
-
-a create-path split harness reported keyed teardown as `pyreon.replace.js - pyreon.fresh.js` and printed the Vanilla arm's identical difference beside it labelled `(noise floor)`. It is not noise: Vanilla's `renderAll` opens with `innerHTML = ''`, which clears an EMPTY host in fresh mode and n live `<tr>` in replace mode — so that term is the browser removing n nodes, 545–645µs at 1,000 rows, 5–7× the part attributable to Pyreon. Reading the uncorrected figure as "teardown" at 1,000 rows and comparing it against a corrected excess at 10,000 produced an apparent **43× growth for a 10× row increase**, which reads as a complexity bug and was escalated as the framework's highest-value perf lever. **Correcting the endpoints is necessary but not sufficient, because a residual is a difference and therefore inherits every confound the two arms do not share.** Two were live here, both n-dependent and neither Pyreon's: (a) the fixture ran `table-layout: auto`, which re-measures the whole table on any mutation that can widen a column — worth ~30% of the n=10,000 absolute, and the reason a per-row column that is FLAT on `table-layout: fixed` (85–125 ns/row, exponent 0.92–1.07 across 100× of rows) tilts upward to 175 ns/row without it; (b) the arms did not perform the same DOM work — Pyreon calls `tbody.replaceChildren()` over n+2 children while the Vanilla control calls `host.innerHTML=''` over ONE child, orphaning the rows as a subtree, a difference measured at 5–38 ns/row and rising with n. **Rules.** (1) Subtract the control arm's SAME difference; an estimator both arms pay measures the platform. (2) A ratio between two sizes is a scaling claim only when both ends are the same quantity — otherwise it is two numbers with a division sign. (3) **Lead with an operation COUNT or a structural argument, not an exponent.** The load-bearing evidence that this teardown is O(n) is that a clear performs exactly one `replaceChildren` and zero `removeChild` regardless of n, and that `handleFastClear` is one pass over `cache.values()` — both checkable and lockable; the timing exponent only corroborates. (4) A difference-of-four-medians carries the noise of all four, so any exponent read off its endpoints is unfalsifiable: fit the whole curve, run the row sweep in BOTH orders (the largest n otherwise always runs last, confounding size with session age), report the CIs, and subtract the measured confound rather than disclaiming it in prose. Reference: `examples/benchmark/bench-teardown-curve.ts` (curve, drift probe, order control, and a `--dom-control` that prices the arm asymmetry itself).
+When every step of a path measures cheap and the whole does not, rebuild the same steps as a tiny function and compare. If that closes the gap, split the cold branches out rather than optimizing any step. `@pyreon/validate`'s `parse()` keeps only the pure-JIT fast path in its body; the general path and failure path live in module-level `parseGeneral`/`pureFail`. Reference: `packages/fundamentals/validate/src/core/schema.ts:parse`.
 
 ---
 
-### Spying on a DOM primitive counts the ENGINE's implementation of it, not your framework's calls — and happy-dom and Chromium disagree about which primitive is primitive
+### Fixture-only proof that a gated lint rule fires
 
-a spy on `Node.prototype.removeChild` during a `<For>` clear of 1,000 rows reports **0 calls in Chromium** and **n+2 in happy-dom**, because happy-dom implements `replaceChildren` as a `removeChild` loop while Chromium's is native. A test asserting "zero per-row removals" therefore passes in the browser and fails in the unit harness, and — worse — a test written to the happy-dom number would assert the OPPOSITE of the shipped behaviour. **Fix: suppress the counter for the duration of the bulk primitive** (`inBulk` flag set inside the patched `replaceChildren`), so the count is "calls the framework itself made". Note the honest limit even then — it is engine-specific in the other direction: `el.remove()` routes through `Node.prototype.removeChild` in happy-dom but NOT in Chromium, so a refactor to `.remove()` would be counted in one engine and invisible in the other. **The assertion to lean on is the one that needs no suppression and no engine assumption: record `parent.childNodes.length` AT the bulk call — `[n + 2]` proves the bulk call is what removes the rows, `[2]` proves per-row cleanups detached first. Record it PER CALL, not as a running sum, or two calls that happen to add up are indistinguishable from one.** Same family as "happy-dom is not a real browser", but sharper: here the harness does not merely under-model the engine, it inverts the measurement. Reference: `packages/core/runtime-dom/src/tests/for-clear-bulk-dom-ops.test.tsx:recordRemovals`.
-
----
-
-### A microbenchmark that calls the same function with the SAME input every iteration measures how INLINABLE the callee is, not how fast it is
-
-(the validation-library suite, 2026-08). A loop-invariant call is a loop-invariant computation, and V8 is entitled to hoist it out of the timed loop or drop it. Measured directly: ArkType's `string.email` cell read **~3ns/op** — below the cost of the regex the check must perform, i.e. the work had stopped happening — while Pyreon and TypeBox, whose validators V8 did not manage to hoist, kept reporting their real ~28ns. The table was ranking inlinability. **A result SINK does not fix it** (`if (run(x) === neverReturnedSymbol) sink++` still lets a hoisted value satisfy the comparison); only VARYING THE INPUT does. Rotate a pool of SAME-SHAPE, different-value inputs so the object maps stay monomorphic and every entry does identical work — the pool defeats hoisting without changing what is measured. **The tell is an absolute number below the physical floor of the operation** (a regex test, a hash lookup, a DOM crossing); when one arm reads implausibly fast and its neighbours do not, suspect the harness before believing the winner. Same family as "verify the harness before trusting its result". Reference: `packages/fundamentals/validate/bench/validation.ts` (`POOL` + the sink's own docblock).
+A rule's fixture proves it can fire; only real source proves it fires on code as written. `rule-fires.test.ts` (fires + quiet fixture per rule) does not cover rules that every shipped preset disables, so probe those separately with the gate lifted, using a positive control shaped like real code. Traps:
+  - A dependency-gated rule never fires at a synthetic path with no `package.json` above it. Write a real project on disk.
+  - A rule's name is not its subject: `no-circular-import` is a package layer-order rule, not an import-cycle detector.
+  - A lexical scan sees code inside strings (manifest `longExample`s); an AST rule does not.
+  - When a concept has two spellings (JSX and `h('div', …)`), a rule covering one is half a rule.
 
 ---
 
-### Running one arm's PROCESSES consecutively lets a load burst land entirely on that arm
+### A guessed rank table in a layer rule
 
-(same suite). Per-cell process isolation with N pooled processes is the right shape, but scheduling them lib-by-lib (all of A, then all of B) is not: on a shared machine a contention burst outlasts a single cell, so it hits whichever library was running and shows up as a lopsided ROW rather than as noise. Observed: a Pyreon cell read **155ns against its own 5ns** on the interleaved schedule — a 31× artifact that reads exactly like a real regression. **ROUND-ROBIN the processes across the arms in a row** (process 1 for every library, then process 2, …) so a burst widens every CI together — and a widened CI reads as a 🤝 tie, which is the conservative failure. This is the cross-library twin of the repo's existing "round-robin timing runs so GC/tier debt spreads across cells" rule.
-
----
-
-### A per-item measurement that comes out UNIFORM across items that do very different work is measuring the shared setup, not the item
-
-(same suite). A "setup cost" table timed `build the scenario, then bind library L` — but building the scenario constructed EVERY library's schema, so all nine columns read ~1.4ms of shared construction and the per-library compile was invisible. Nine libraries doing genuinely different amounts of work cannot legitimately agree to three significant figures; **uniformity across arms is a tell, exactly as an implausibly-low absolute is**. Fixed by measuring only the thing that differs — the explicit compile CALL (`z.compile` ~55µs, `TypeCompiler.Compile` ~48µs on the same schema) — and reporting `—` for the libraries that compile lazily or at definition time rather than printing a number that measures something else for them.
+Encode only documented layer order. Packages outside the documented chain (`connector-document`, `document-primitives`) stay unranked, which makes the rule ignore them; a plausible guessed rank produced dozens of false `error` findings. Keep the `core` and `ui-system` orders independent — a ui-system package importing a core one is the normal direction. Run the real rule over the whole tree before trusting a table.
 
 ---
 
-### An in-process micro-probe's ARM-SLOT bias exceeds a sub-ns seam effect — one function read 4.48ns in one slot and 2.99ns in another
+### Reading a two-median difference as a framework cost
 
-(the `@pyreon/validate` seam probe, 2026-09-07). `decompose-seam*.ts` calls every arm through one `batch(fn)` site, so bun/JSC tiers the closures by call order: the FIRST arm is penalized ~1.4ns and the LAST inherits the warmest ICs, and interleaving rounds cannot undo it because each arm keeps its own closure. The probe that sized #3316 had the shipped seam in slot 1 and the competitor last, so its "seam = 2.21ns (46%)" magnitude is inflated (the DIRECTION — a smaller method inlines — survived a process-isolated re-run; the number did not). **Rules: (1) add a discarded warm arm in slot 1 AND a duplicate of the arm under test in the last slot — if the duplicate disagrees by more than the effect, the probe cannot decide; (2) take the verdict from the process-isolated per-cell runner (`bench/four-cells.ts`: with → `git checkout` → with again), never from an in-process delta.** Same family as "verify the harness before trusting its result": a probe whose two copies of one arm disagree has measured itself. Reference: `packages/fundamentals/validate/bench/decompose-seam3.ts` (the W/P0/PP0 control arms).
-
----
-
-### A/B perf harnesses that toggle variants via `git apply … 2>/dev/null` without VERIFYING the state they label
-
-`git apply` fails ATOMICALLY (whole patch, all files) when any hunk doesn't apply — under `2>/dev/null` a mid-sequence failure silently leaves the PREVIOUS state in place, so the harness measures one variant while labeling it another (a mislabeled A/B is worse than none: it "proves" the wrong design). Real instance: the validate pure-seam INLINE-vs-OUTLINED comparison ran 3 rounds of "INLINE" that were actually the un-patched BASELINE (the multi-file fix patch conflicted with an already-applied hunk of itself), and the design verdict REVERSED once states were verified. **Rule: every A/B toggle must (a) reset to a KNOWN state first (`git checkout -- <files>`, then apply), and (b) grep a variant-unique marker before measuring — fail loudly on mismatch.** Same family as bisect-verify: a measurement whose code-state you didn't verify is not evidence.
-
----
-
-### A probe run from OUTSIDE the workspace resolves a STALE copy of the package it is probing, and answers confidently with the wrong codegen
-
-(2026-08). A one-off script written to `/tmp` and run as `bun /tmp/probe.ts` does NOT get the repo's workspace resolution — `@pyreon/compiler` resolves out of the global `~/.bun` cache, so the probe reports whatever version happens to be cached there. Observed while decomposing the hydration marker cost: a probe of `_tpl` ref emission printed every ref re-walking from the root (`__e1 = __root.firstElementChild.nextElementSibling`), i.e. O(K²) DOM reads for a K-child template — which reads as a systematic, shippable codegen defect and was one edit away from being "fixed". The CSE that prevents it (`chainFromCaptured` / `capturedRefs` in `jsx.ts`) had in fact shipped long before, with its own bench and measured −9.1%. Copied VERBATIM into `packages/core/compiler/` and re-run, the same probe printed the chained form (`__e1 = __e0.nextElementSibling`). **Rule: an ad-hoc probe of a workspace package must live INSIDE the workspace (or run through vitest) — a `/tmp` script's imports are resolved by a different module graph than the repo's, and the failure mode is not an error but a plausible, confident, WRONG answer.** Two compounding traps in the same family: `transformJSX` prefers the NATIVE binary, so a compiler probe must also state WHICH backend produced its output (temporarily moving `native/pyreon-compiler.node` aside is the cheap way to compare, and is how the two were confirmed to agree here); and a spawn-based or `lib/`-reading probe needs `bun scripts/bootstrap.ts` first. Same root as the dual-backend bisect rule: verify what your harness actually loaded before believing what it printed.
+An estimator like `replace − fresh` includes work the control arm pays too (Vanilla's `innerHTML = ''` removes n live rows in replace mode). Rules:
+  1. Subtract the control arm's same difference.
+  2. A ratio between two sizes is a scaling claim only when both ends measure the same quantity.
+  3. Lead with an operation count or structural argument, not a timing exponent. `<For>` clear is O(n) because it performs one `replaceChildren` and zero `removeChild`, and `handleFastClear` is one pass over `cache.values()`.
+  4. A difference of medians inherits every confound the arms don't share (`table-layout: auto` reflow, unequal DOM work). Fit the whole curve, run the sweep in both orders, report CIs, and measure confounds.
+  Reference: `examples/benchmark/bench-teardown-curve.ts` (incl. `--dom-control`).
 
 ---
 
-### A ceiling probe that reuses ONE warm object predicts the wrong number for a path that allocates a fresh one per iteration
+### Spying on a DOM primitive in happy-dom vs Chromium
 
-(the ref-walk instance, 2026-08). `probe-refwalk.ts` measured the compiler's per-child DOM pointer walks against a single long-lived `<tr>` read 10,000 times — every read hitting a hot cache line — and reported the 8-cell saving as 2.05ms/10k rows. The real mount clones a NEW row per iteration (`_tpl`), so the walk is always cold; measured against a fresh clone the same saving is **3.31ms/10k**, and the end-to-end A/B beat the hot ceiling by ~2.5×. **A "ceiling" that comes out BELOW the real number is not a ceiling — it is a different workload.** The direction matters: a hot probe understating a win makes you DECLINE a real optimization with a number, which is the most expensive kind of wrong. Rule: match the probe's ALLOCATION shape to the path being predicted (fresh clone vs reused instance, cold vs warm cache), and when an end-to-end result beats its own ceiling, treat that as the probe being wrong rather than as a bonus — chase it until the two agree.
-
----
-
-### Comparing a measurement against a baseline taken on a DIFFERENT page/fixture, and reading the difference as the change's effect
-
-adding an arm to a shared profiling page changes the document every OTHER arm is measured in (a forced layout flush lays out the whole document), so a before/after across that edit conflates the code change with the fixture change. The fix is an in-run CONTROL: on the create-split harness, Vanilla is hand-written DOM that no compiler change can touch, so its own spread across runs (755–805µs, 6.6%) IS the instrument's drift — and any Pyreon delta smaller than that is unreportable. In the ref-chaining PR this is what turned "narrow row got 45µs worse" from an apparent regression into the correct verdict of a tie: the predicted saving there was ~22µs, 2–4× below the measured drift. Rule: re-measure BOTH arms on the SAME fixture, and size the noise floor from a control the change provably cannot affect rather than from the run-to-run spread of the thing you are trying to move.
+Happy-dom implements `replaceChildren` as a `removeChild` loop, so a `removeChild` spy reads n+2 there and 0 in Chromium. Suppress the counter while the bulk primitive runs (`inBulk`), or better, record `parent.childNodes.length` per bulk call (`[n + 2]` = bulk call removed the rows). `el.remove()` routes through `removeChild` in happy-dom but not Chromium. Reference: `packages/core/runtime-dom/src/tests/for-clear-bulk-dom-ops.test.tsx:recordRemovals`.
 
 ---
 
-### A cross-framework arm hand-written at "compiler output level" silently omits costs that framework's REAL compiler emits — measure both shapes before publishing the ratio
+### Microbenchmark with a constant input
 
-the deep-component-tree scenario passed Solid `createComponent(Node, { depth: props.depth - 1 })` with the arithmetic evaluated EAGERLY, while Pyreon's compiler lowers the same source to `_rp(() => props.depth - 1)` — a lazy getter, and (because each level's getter closes over its own props) a CHAIN that costs O(depth) per read. But `babel-preset-solid` emits `get depth() { return props.depth - 1 }` for exactly that expression — VERIFIED by compiling the snippet through the installed preset rather than assuming it — so real Solid pays the same class of cost: adding the getter moved Solid 2.75 → 3.30ms (+20%), almost precisely the +20% Pyreon pays (4.10 eager → 4.90). **26% of a headline 1.78× gap was the hand-written arm, not the framework.** The scenario was NOT rigged — its author flagged the caveat in the PR body and called the number an upper bound; the lesson is that the caveat is CHEAP TO CLOSE and should be, because a published ratio outlives the paragraph next to it. **Rule: when an arm is hand-written because the framework's compiler plugin is absent from the harness, add the compiler-shaped variant as a second arm and report both — a caveat in prose is not a measurement.** The variants also make the fix's control group free: a Pyreon-only change must leave every non-Pyreon arm inside its CI, which is what proved the −8.2% real. Two sub-traps: a hand-written arm is easiest to write in its FASTEST form, so this bias is systematically anti-your-own-framework; and per-arm absolute ms drift with machine load, so INTERLEAVE the arms (alternating order per pass) rather than running one build then the other — between-run drift on a shared box exceeded the effect being measured here.
-
----
-
-### A "the competitor returns the input by reference" lever must be checked against the competitor's EMIT before it becomes a plan item — read its generated code, not its API shape
-
-(the `@pyreon/validate` clone-on-demand instance, 2026-09). The plan carried "zod-compiled returns the input by reference when nothing transforms; our per-item stripped clone is the deep-cell gap; the lever is clone-on-demand (return the input when no key needs stripping)" for a week, with a semantic edge attached (`parse(x).value === x`). Printing zod 4.5's compiled parser (`z.compile(S)._zod.bag` holds only a VERDICT function; the output-building `parser` is a closure, but `v4/core/compile.cjs:generateObjectCheck` shows it emitting `const v = { k: v0, … }` per object and `new Array(n)` per array) and asserting `Z.parse(clean) === clean` (false, and false for every nested item) showed it CLONES exactly as we do. The real per-array difference was our `P = mutablePath(ctx); P.push("items"); … P.pop()` materialisation on every parse — now skipped for pure-inline element subtrees — and it is worth a nominal 5–13% on the object cell and nothing on the 20-item array (two quiet-box raw-emit runs, CI-overlap). **Rule: before a competitor's behaviour becomes a design premise, obtain it from the competitor's emitted code or an executed identity check, never from the shape of its API or the ledger's memory of it.** Companion finding: an in-process interleaved harness ranks the SAME two libraries differently from the process-isolated bench on the 20-object array (zod-c 150 vs 108 ns) — the bench's data pool and isolation are part of the standing, so a cross-library ratio is only quotable from the bench, while an A/B of our own two emits is fine in-process.
+A loop-invariant call can be hoisted or dropped by V8, so the cell measures inlinability. A result sink does not fix it; rotate a pool of same-shape, different-value inputs. A number below the physical floor of the operation (a regex, a hash lookup) means the harness is wrong. Reference: `packages/fundamentals/validate/bench/validation.ts` (`POOL`).
 
 ---
 
-### A bench cell whose fixture shape-mismatches the API measures the library's own error-swallowing — and the "loss" gets documented as a Pareto trade-off
+### Running one arm's processes consecutively
 
-`@pyreon/storage`'s bench passed the raw localStorage-shaped shim (`getItem/setItem`) straight to `createStorage` (which needs `StorageBackend {get,set,remove}`), so `backend.set` was `undefined` and EVERY Pyreon write threw a TypeError silently swallowed by the write path's own quota-guard `try/catch` (`onError` unset). The write rows measured ~600ns of throw/catch machinery instead of the ~35ns real path — a fabricated 1.5× "loss" vs zustand that shipped as a documented "Pareto: syscall-dominated" trade-off, while Pyreon never actually persisted anything. THREE stacked failures: (1) `bench/` is outside `tsconfig include: ["src"]`, so the shape mismatch never typechecked; (2) the correctness gate asserted only the IN-MEMORY round-trip (`p() === 5`) — its header CLAIMED "write-through-to-storage" but nothing read the backing Map; (3) defensive error-swallowing in the measured path (correct for quota errors in prod) hid the wiring bug. **Rules**: a bench correctness gate must assert the EFFECT the op claims to measure (persistence bench ⇒ read the backing store after a write), not a proxy; a fixture handed to your own API in an untypechecked dir deserves an explicit type annotation (`const backend: StorageBackend = …`) so the mismatch surfaces as a red squiggle even without a typecheck gate; and any suspiciously-close loss in a path wrapped in `try/catch` should be decomposition-profiled (component sums vs measured total — 35ns of parts vs 596ns measured was the tell). Bisect-locked: the strengthened gate FAILS with `pyreon write-through (mem=undefined)` against the original wiring. Reference: `packages/fundamentals/storage/bench/storage-bench.ts:makePyreon`.
-
----
-
-### happy-dom fires `hashchange` for `history.pushState`/`replaceState` — deferred, so the echo can land in the NEXT test
-
-real browsers never fire `hashchange` for pushState/replaceState (WHATWG: only fragment navigations); happy-dom's `Location[setURL]` queues one on a `setTimeout` whenever the hash differs. Any code that treats `hashchange` as a genuine traversal (e.g. `@pyreon/router`'s browser-nav pipeline) then sees a STALE echo of a previous test's URL write — delivered mid-way through the next test, superseding its in-flight navigation with a path from the previous test. Passes in isolation, fails in the full file run; real Chromium never reproduces it. **Fix (spec-parity patch, not router code)**: wrap `history.pushState`/`replaceState` in the package's vitest `setupFiles` to count hash-changing calls and swallow that many synthetic `hashchange` events in a capture-phase listener; discriminate tests' MANUAL `new HashChangeEvent('hashchange')` dispatches by their empty `oldURL` (happy-dom populates it, manual events leave `''`). `location.hash = …` assignments are real fragment navigations and must NOT be swallowed. The shim is now the SHARED `installHappyDomHashchangeEchoGuard()` in `@pyreon/test-utils` — import it from the framework-free SUBPATH `@pyreon/test-utils/happy-dom-hashchange-guard` (the barrel pulls @pyreon/core + @pyreon/reactivity src instances into the setup context, tripping the duplicate-instance sentinel in tests that bundle built lib/) — and it MUST be installed via `setupFiles` by ANY package driving a real router in happy-dom (the router's default mode is `hash`, so every `router.push` is a hash-changing pushState; `@pyreon/a11y` was the latent second instance — its route announcer fired for a prior spec's echo under CI load). Reference: `packages/core/router/src/tests/setup.ts` + `packages/fundamentals/a11y/src/tests/setup.ts` (wired via `setupFiles` in each vitest.config.ts; ALSO wired in `@pyreon/testing` + `@pyreon/perf-harness` — the sweep's other two real-router-in-happy-dom suites) + the deterministic interleaving regression in `a11y/src/tests/router.test.tsx` (bisect-verified).
+A load burst then lands on one library and reads as a real regression. Round-robin process runs across arms (process 1 for every library, then process 2) so a burst widens every CI together.
 
 ---
 
-### A toolchain spawned per check where the toolchain's START is the cost — "the compilers are crazy slow" was the JVM, not the compiler
+### Uniform per-item timings across arms
 
-(2026-09, `@pyreon/native-compiler`). `validateKotlin` ran `kotlinc` per emit: a cold JVM, the whole 2,300-line stub file re-analysed, codegen to a throwaway dir — 4.2s per check locally, ~6s on a two-core runner, ~600 checks per run, 16 CI shards at 5–19 minutes each (~140 runner-minutes, 59% of a CI run's compute). Decomposed: `kotlinc -version` alone 1.4s; the same input against stubs pre-compiled to a jar 2.1s; a warm in-process `K2JVMCompiler` with the jar **78ms**. The input was never the cost. Fix: one compiler JVM per test RUN (vitest `globalSetup`, spool-directory transport for the synchronous caller, workers attach by pid), stubs compiled once per stubs text into the verdict cache, plain `kotlinc` as the fallback on every failure path, a parity spec locking both paths to identical verdicts. **Two traps on the way: (1) a per-PROCESS daemon measured only 2× — vitest's forks pool starts a fresh process per test FILE, so "once per process" was once per file; scope a warm resource to the RUN, not the module or the process. (2) a "definitely invalid" probe shape must be checked against the language — `String + Int` is legal Kotlin, so the first parity probe was accepted by both paths and proved nothing.** General rule: when a suite's wall clock is dominated by spawning a JIT-compiled toolchain, measure the toolchain's START against its WORK before sharding, caching, or blaming load — a cache only helps when it hits, and shards multiply the start cost they were meant to hide.
+When arms doing different work agree to three significant figures, you are measuring shared setup. Time only the part that differs (the explicit compile call) and report `—` for libraries that have no such step.
 
 ---
 
-### Running vitest from the repo ROOT ran every file on vitest's DEFAULTS — a 5,000ms timeout and parallel files — because the root had no config
+### In-process micro-probe slot bias
 
-(2026-09, surfaced by a chart-lowering matrix). Each package's `vitest.config.ts` (bun aliases, the shared setup file, the 20s default, `@pyreon/native-compiler`'s 180s budget + serial files for its swiftc/kotlinc subprocesses) applies only when vitest starts INSIDE that package. `bunx vitest run packages/native/compiler/src/tests/chart-*.test.ts` from the root — the natural way to run a hand-picked matrix across packages — found no config and ran the defaults: six kotlinc specs failed `Test timed out in 5000ms` (7–31s each) while every one passed from the package dir, and the parallel JVM stampede made it worse under load, so it read as a load flake in the tests rather than a missing config. **Fix: the root `vitest.config.mts` is a ROUTER** — `test.projects: ['packages/*/*/vitest.config.ts', 'examples/*/vitest.config.ts']` — so a root invocation resolves each file to its owning package and runs it under that package's config (measured: the same two files 6 failed → 32 passed; a warm reactivity spec 0.65s wall from the root). It changes nothing for `bun run test`, which still runs each package from its own directory. **Rule: in a monorepo where per-package configs carry load-bearing overrides, the root must route to them, or the ONE invocation shape that spans packages silently drops every override — and "passes in isolation, times out in a matrix" then looks like contention when it is configuration.** Totality (every per-package config covered by a router glob) is locked by `test-utils/src/tests/root-vitest-projects.test.ts`, bisect-verified.
+Calling every arm through one `batch(fn)` site penalizes the first arm and favours the last by more than a sub-ns effect. Add a discarded warm arm first and a duplicate of the arm under test last; if the duplicate disagrees by more than the effect, the probe cannot decide. Take verdicts from the process-isolated runner (`bench/four-cells.ts`). Reference: `packages/fundamentals/validate/bench/decompose-seam3.ts`.
+
+---
+
+### A/B toggles via unverified `git apply`
+
+`git apply` fails atomically, and under `2>/dev/null` the harness silently measures the previous state under the new label. Reset to a known state (`git checkout -- <files>`) before applying, and grep a variant-unique marker before measuring.
+
+---
+
+### A probe run outside the workspace
+
+`bun /tmp/probe.ts` resolves `@pyreon/*` from the global bun cache, not the workspace, and prints plausible stale output. Keep probes inside the workspace (or run them via vitest). A compiler probe must state which backend ran (`transformJSX` prefers the native binary); a spawn-based or `lib/`-reading probe needs `bun scripts/bootstrap.ts` first.
+
+---
+
+### A ceiling probe that reuses one warm object
+
+A path that clones a fresh node per iteration walks cold memory, so a probe against one long-lived node understates the cost and the saving. Match the probe's allocation shape. If an end-to-end result beats its own ceiling, the probe is wrong.
+
+---
+
+### Comparing against a baseline from a different fixture
+
+Adding an arm to a shared page changes the document the other arms run in. Re-measure both arms on the same fixture and size the noise floor from a control the change cannot affect (Vanilla on the create-split harness).
+
+---
+
+### Hand-written cross-framework arms
+
+An arm written "at compiler-output level" is easiest to write in its fastest form and may omit costs the real compiler emits (`babel-preset-solid` emits a lazy `get depth()` getter, not an eager value). Compile the snippet through the real preset, add the compiler-shaped variant as a second arm, report both, and interleave arms per pass.
+
+---
+
+### Assuming a competitor's behaviour from its API shape
+
+Verify it from its emitted code or an executed identity check. zod 4.5's compiled parser clones objects and arrays (`Z.parse(x) === x` is false), so "return the input by reference" was never a lever. Cross-library ratios are quotable only from the process-isolated bench; in-process A/Bs of our own emits are fine.
+
+---
+
+### A bench fixture that mismatches the API
+
+`@pyreon/storage`'s bench once handed a `getItem/setItem` shim to `createStorage` (which needs `StorageBackend {get,set,remove}`), so every write threw inside the quota-guard `try/catch` and the bench timed error handling. Rules: the correctness gate asserts the effect being measured (read the backing store after a write); annotate fixtures in untypechecked dirs (`const backend: StorageBackend = …`); when parts sum far below the measured total in a `try/catch` path, profile it. Reference: `packages/fundamentals/storage/bench/storage-bench.ts:makePyreon`.
+
+---
+
+### happy-dom fires `hashchange` for `pushState`/`replaceState`
+
+Real browsers don't. happy-dom queues it on a `setTimeout`, so a stale echo from one test can supersede the next test's navigation (passes alone, fails in the full file). Any package driving a real router in happy-dom must install `installHappyDomHashchangeEchoGuard()` via `setupFiles`, imported from the subpath `@pyreon/test-utils/happy-dom-hashchange-guard` (the barrel pulls framework src instances and trips the duplicate-instance sentinel). The guard swallows only echoes of hash-changing history calls; manual `HashChangeEvent`s (empty `oldURL`) and `location.hash =` assignments pass through. Reference: `packages/core/router/src/tests/setup.ts`, `packages/fundamentals/a11y/src/tests/setup.ts`, regression `a11y/src/tests/router.test.tsx`.
+
+---
+
+### Spawning a JVM toolchain per check
+
+In `@pyreon/native-compiler` the cost of `kotlinc` was JVM start, not compilation. One warm compiler JVM per test run (vitest `globalSetup: src/tests/global-setup-kotlin-daemon.ts`) with stubs pre-compiled to a jar replaces per-check spawns; plain `kotlinc` remains the fallback and a parity spec locks both to identical verdicts. Scope a warm resource to the run: vitest's forks pool starts a process per test file. Check that an "invalid" probe is actually invalid (`String + Int` is legal Kotlin). Measure a toolchain's start against its work before sharding or caching.
+
+---
+
+### Running vitest from the repo root
+
+Per-package configs (timeouts, setup files, serial files) apply only when vitest resolves them. The root `vitest.config.mts` routes via `test.projects: ['packages/*/*/vitest.config.ts', 'examples/*/vitest.config.ts']`, so a cross-package invocation runs each file under its own package config. Totality is locked by `packages/internals/test-utils/src/tests/root-vitest-projects.test.ts`.
 
 ---
 
@@ -133,9 +148,9 @@ Use `bun run test` (runs vitest via package scripts)
 
 ---
 
-### An inked-pixel COUNT cannot see a change on a canvas that is already fully painted
+### An inked-pixel count on a fully painted canvas
 
-(2026-09). `inkedPixels()` (non-transparent count) is the charts suites' standard "did it draw" proof — and on a treemap, a heatmap or any host whose ground is painted it reads the same number before and after ANY change (60000 of 60000 on a 300×200 treemap), so a keyboard focus ring or an update tween asserts as a no-op. Use a channel CHECKSUM (a weighted sum over every RGBA byte) when the claim is "the frame moved", and keep the count for "something was drawn at all". Sibling trap in the same suite: a `flush()` is one rAF, so a snapshot after it is already a tween TICK, not t=0 — assert a tween by sampling through it (more than two distinct frames) rather than by pinning a frame at a time. Reference: `charts/src/engine/host-parity.browser.test.tsx:checksum`.
+`inkedPixels()` reads the same before and after any change on a host whose ground is painted (treemap, heatmap). Use a channel checksum for "the frame changed" and the count for "something was drawn". A `flush()` is one rAF, so a snapshot after it is already a tween tick; sample several frames to assert a tween. Reference: `packages/fundamentals/charts/src/engine/host-parity.browser.test.tsx:checksum`.
 
 ---
 
@@ -163,8 +178,8 @@ Packages with DOM need `environment: "happy-dom"` in vitest config
 
 ---
 
-### Stale DOM references after re-render in compat-layer tests
+### Stale DOM references in compat-layer tests
 
-`@pyreon/react-compat`, `@pyreon/preact-compat`, etc. do **full DOM subtree replacement on every state change** — there's no VDOM diffing in the compat layer (Pyreon's native pattern is fine-grained reactivity, not whole-component re-renders). A test that captures a button reference BEFORE click and asserts on `.textContent` AFTER click sees the OLD text because the captured node is now detached. **Always re-query the DOM after a state change**: `container.querySelector('#x')!.click(); await flush(); expect(container.querySelector('#x')!.textContent).toBe(...)`. Phase A2's first react-compat smoke held a stale reference and looked like a re-render bug; was actually a test-pattern bug. Reference: `packages/tools/react-compat/src/react-compat-rerender.browser.test.tsx`.
+The `*-compat` layers replace the component's DOM subtree on every state change, so a node captured before a click is detached afterwards. Re-query after each state change: `container.querySelector('#x')!.click(); await flush(); expect(container.querySelector('#x')!.textContent)…`. Reference: `packages/tools/react-compat/src/react-compat-rerender.browser.test.tsx`.
 
 ---

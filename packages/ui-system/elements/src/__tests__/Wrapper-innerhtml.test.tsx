@@ -18,7 +18,7 @@
  *    pipeline. Catches the prop drop wherever it might occur along the
  *    chain (Wrapper, Element, rocketstyle attrs HOC, runtime-dom prop
  *    application). This is the "safety net" pattern from
- *    .claude/rules/test-environment-parity.md — mock-vnode tests bypass
+ *    .agents/rules/test-environment-parity.md — mock-vnode tests bypass
  *    the HOC + mount pipeline and CAN miss bugs that surface only when
  *    the real `h()` + mount path runs, exactly like PR #197's silent
  *    metadata drop. Always have both.

@@ -2,8 +2,6 @@
 
 > **PRIVATE / EXPERIMENTAL.** Android-target sibling of [`native-counter-ios`](../native-counter-ios/). Compiles the **SAME** `Counter.tsx` source to Jetpack Compose / Kotlin — proving the PMTC multi-target contract for the canonical Counter sample at the Android-real-toolchain level.
 
-Closes the Android half of Gap 5 (Espresso parity beyond TodoMVC) from the [2026-06-05 native-readiness audit](../../.claude/audits/native-readiness-2026-06-05.md). The iOS half landed in #1452.
-
 ## Architecture
 
 ```text

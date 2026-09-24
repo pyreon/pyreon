@@ -3,7 +3,7 @@
  *
  * Run: `bun run bench:mst` (sets NODE_ENV=production).
  *
- * Objectivity contract (see .claude/plans/fundamentals-benchmarks.md):
+ * Objectivity contract:
  *  - NODE_ENV=production (shell-set by the script) BEFORE either library loads,
  *    so neither library's dev-mode instrumentation is measured.
  *  - Each library is used IDIOMATICALLY — MST `types.model().actions()`;

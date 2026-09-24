@@ -100,7 +100,7 @@ let corePromise: Promise<typeof import('echarts/core')> | null = null
  * on first chart mount. Without the `chartsViteAlias()` alias in the
  * consumer's vite.config, every chart silently renders as an empty div
  * (W12 from #942 — invisible failure, ~25 min of "why aren't my charts
- * rendering"). Documented in CLAUDE.md but easy to miss.
+ * rendering"). Documented in the package README but easy to miss.
  *
  * Heuristic: any error whose message mentions `__extends`, `__assign`,
  * `__rest`, or one of the other tslib helpers AND happens during the

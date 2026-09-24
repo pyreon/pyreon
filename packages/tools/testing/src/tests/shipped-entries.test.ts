@@ -5,7 +5,7 @@ import { resolve } from 'node:path'
 // Shipped-entry contract for the `/matchers` + `/vitest` subpaths
 // --------------------------------------------------------
 //
-// "Test the shipped ENTRY, not the export" (.claude/rules/testing.md): every
+// "Test the shipped ENTRY, not the export" (.agents/rules/testing.md): every
 // in-repo suite resolves this package via the bun condition (src/), so the
 // BUILT lib/ was never executed by any test — and it shipped broken in every
 // release up to the 2026-07 upstream report:

@@ -23,7 +23,7 @@ const ROOT = resolve(import.meta.dirname, '../../../../../..')
  * So an edit to the CLI's source is INVISIBLE here until `bun scripts/bootstrap.ts`
  * rebuilds it, and this suite keeps passing against the PREVIOUS version's
  * output in the meantime. That is a false green, and it is the spawn-based twin
- * of the dev-server bisect trap in `.claude/rules/testing.md` — observed
+ * of the dev-server bisect trap in `.agents/rules/testing.md` — observed
  * directly: changing the scan's failure format left both real-scan specs green
  * until a bootstrap ran, and they failed the moment it did.
  *

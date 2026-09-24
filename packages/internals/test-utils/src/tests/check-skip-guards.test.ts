@@ -1,6 +1,6 @@
 // The gate that keeps a silently-skipping spec guard from coming back.
 //
-// The RULE already existed — `.claude/rules/testing.md` has said "a skipped
+// The RULE already existed — `.agents/rules/testing.md` has said "a skipped
 // suite must never masquerade as coverage" since the release audit — and four
 // more guards were written the quiet way anyway. That is what a documented but
 // unenforced invariant does, so this makes it structural.

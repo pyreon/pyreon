@@ -5,7 +5,7 @@ import type { ChartEventHandler, ChartEventParams, ChartProps } from './types'
 import { useChart } from './use-chart'
 
 // Bare `process.env.NODE_ENV !== 'production'` — bundler-agnostic library
-// convention used by React/Vue/Solid. See .claude/rules/anti-patterns.md.
+// convention used by React/Vue/Solid. See .agents/rules/anti-patterns.md.
 
 /**
  * The listener shape ECharts' generic `on(eventName: string, handler)`

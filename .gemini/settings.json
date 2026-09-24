@@ -1,0 +1,9 @@
+{
+  "contextFileName": "AGENTS.md",
+  "mcpServers": {
+    "pyreon": {
+      "command": "node",
+      "args": ["packages/tools/mcp/lib/index.js"]
+    }
+  }
+}

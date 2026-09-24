@@ -5,7 +5,8 @@
  * `NestValues` is the STANDALONE opt-in companion of the runtime
  * `nestValues()` — deliberately NOT threaded through `useForm`'s signature
  * (the type cascade would break generic wrappers like `@pyreon/feature`,
- * per the documented CLAUDE.md decision). These specs lock the standalone
+ * per the decision documented in
+ * `.agents/guides/fundamentals/references/form.md`). These specs lock the standalone
  * contract only.
  */
 
