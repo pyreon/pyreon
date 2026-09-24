@@ -2,7 +2,7 @@ import pyreon from '@pyreon/vite-plugin'
 import zero, { nodeAdapter } from '@pyreon/zero/server'
 import { fontPlugin } from '@pyreon/zero/font'
 import { seoPlugin } from '@pyreon/zero/seo'
-import { chartsViteAlias } from '@pyreon/charts/vite'
+import { chartsViteAlias } from '@pyreon/charts/echarts/vite'
 
 export default {
   // @pyreon/charts requires tslib aliased to its ESM build (the

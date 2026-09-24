@@ -13,9 +13,10 @@
 import { Element, Text } from '@pyreon/elements'
 import rocketstyle from '@pyreon/rocketstyle'
 import { makeItResponsive, styles } from '@pyreon/unistyle'
+import type { LoomTokens } from './theme'
 
 /** Shared rocketstyle factory (string dimension props, e.g. state="active"). */
-export const rs = rocketstyle({ useBooleans: false })
+export const rs = rocketstyle({ useBooleans: false }).withTheme<LoomTokens>()
 
 /**
  * Base element — layout box with :hover / :focus-visible / :active / :disabled.

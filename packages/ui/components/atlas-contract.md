@@ -246,7 +246,7 @@ reactive: children
 
 ## RingProgress [feedback]
 required: value(unknown)
-optional: children(unknown), color(color), size(number), thickness(number), trackColor(text)
+optional: aria-label(text), children(unknown), color(color), size(number), thickness(number), trackColor(text)
 
 ## ScrollArea
 optional: variant(both|horizontal|vertical)
