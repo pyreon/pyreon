@@ -2463,7 +2463,13 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const poly: Pt[] = []
         for (const p of upper) poly.push(p)
         for (let i = lower.length - 1; i >= 0; i--) poly.push(lower[i]!)
-        if (poly.length > 2) out.push(polygonCmd(poly, s.color, sGrad, s.pattern))
+        // Translucent by default, like `area`: a band is drawn UNDER the lines
+        // it frames (a Bollinger envelope under its price), and an opaque fill
+        // in a palette colour hid them. `areaOpacity` sets it; an
+        // emphasis/blur state overrides both.
+        const bandAlpha = stateAreaOpacity(spec, s)
+        const bandFill = withAlpha(s.color, bandAlpha < 0.0 ? s.areaOpacity ?? AREA_MARK_OPACITY : bandAlpha)
+        if (poly.length > 2) out.push(polygonCmd(poly, bandFill, sGrad, s.pattern))
       }
     } else if (s.kind === 'area') {
       // Gap-splitting (a non-finite value breaks the fill into runs, same

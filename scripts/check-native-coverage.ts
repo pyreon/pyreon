@@ -255,9 +255,9 @@ export function unmetCompileRequest(
 }
 
 export const REGISTRY: RegistryEntry[] = [
-  // ── @pyreon/charts/plot: the OWN engine's family hosts lower to the native canvas ──
-  // Distinct from the `@pyreon/charts` entry below (the ECharts bridge, a
-  // webview host): every plot family's geometry is GENERATED into
+  // ── @pyreon/charts: the OWN engine's family hosts lower to the native canvas ──
+  // Distinct from the `@pyreon/charts/echarts` entry below (the ECharts
+  // wrapper, a webview host): every plot family's geometry is GENERATED into
   // PyreonChartEngine.swift/.kt, and the data-prop hosts (<SankeyChart>,
   // <GraphChart>, <TreemapChart>, <SunburstChart>, <TreeChart>, <RiverChart>,
   // <GanttChart>, <PolarChart>) and the accessor / frame hosts (PlotChart,
@@ -268,14 +268,14 @@ export const REGISTRY: RegistryEntry[] = [
   // option resolved at compile time; a signal-driven option warns. A subpath
   // import is skipped by the export check by design.
   {
-    name: '@pyreon/charts/plot',
+    name: '@pyreon/charts',
     mechanism: 'pmtc-lowers',
     rationale:
       'the plot engine is generated into the native runtimes and every host lowers to PyreonChartCanvas (a native Canvas over the same draw list); <OptionChart> needs a literal option and <MapChart> a precomputed GeoShape[]; a bare host follows the runtime colour scheme',
     snippet: `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
-import { BoxplotChart, SankeyChart } from '@pyreon/charts/plot'
-import type { SankeyLink, SankeyNode } from '@pyreon/charts/plot'
+import { BoxplotChart, SankeyChart } from '@pyreon/charts'
+import type { SankeyLink, SankeyNode } from '@pyreon/charts'
 interface Row { team: string; samples: number[] }
 const ROWS: Row[] = [{ team: 'a', samples: [1, 2, 3] }]
 export function C() {
@@ -756,7 +756,7 @@ export function C() {
   // below are what keeps that honest: each carries the payload shape its package
   // actually crosses by, so the mechanism is checked rather than described.
   {
-    name: '@pyreon/charts',
+    name: '@pyreon/charts/echarts',
     mechanism: 'webview-host',
     rationale:
       'ECharts is a canvas engine with no native equivalent, so it crosses by HOSTING the same web chart in a native <WebView> (@pyreon/charts/webview). Bridge proven in real Chromium against real ECharts; native host is emit + stub-typecheck proven, NOT device-proven.',

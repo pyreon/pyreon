@@ -1,4 +1,4 @@
-// `@pyreon/charts/plot` family hosts on native — `<SankeyChart>` and its
+// `@pyreon/charts` family hosts on native — `<SankeyChart>` and its
 // siblings lower to `PyreonChartCanvas` walking the generated engine's draw
 // list, sized by the container (GeometryReader / BoxWithConstraints) or by
 // explicit `width` / `height`. The hosts whose props are accessor closures
@@ -32,8 +32,8 @@ const ENGINE_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/Pyreon
 
 const SANKEY = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
-import { SankeyChart } from '@pyreon/charts/plot'
-import type { SankeyLink, SankeyNode } from '@pyreon/charts/plot'
+import { SankeyChart } from '@pyreon/charts'
+import type { SankeyLink, SankeyNode } from '@pyreon/charts'
 export function Flows() {
   const nodes = signal<SankeyNode[]>([{ name: 'Coal' }, { name: 'Power' }, { name: 'Homes' }])
   const links = signal<SankeyLink[]>([{ source: 'Coal', target: 'Power', value: 10 }, { source: 'Power', target: 'Homes', value: 8 }])
@@ -46,8 +46,8 @@ export function Flows() {
 }`
 
 const GANTT = `import { Stack } from '@pyreon/primitives'
-import { GanttChart } from '@pyreon/charts/plot'
-import type { GanttTask } from '@pyreon/charts/plot'
+import { GanttChart } from '@pyreon/charts'
+import type { GanttTask } from '@pyreon/charts'
 const TASKS: GanttTask[] = [
   { id: 'a', name: 'Design', start: '2024-03-01', end: '2024-03-10', progress: 0.5 },
   { id: 'b', name: 'Build', start: '2024-03-08', end: '2024-03-24', dependencies: ['a'] },
@@ -57,8 +57,8 @@ export function Plan() {
 }`
 
 const SUNBURST = `import { Stack } from '@pyreon/primitives'
-import { SunburstChart } from '@pyreon/charts/plot'
-import type { TreeNode } from '@pyreon/charts/plot'
+import { SunburstChart } from '@pyreon/charts'
+import type { TreeNode } from '@pyreon/charts'
 const DATA: TreeNode[] = [{ name: 'root', value: 10 }]
 export function Rings() {
   return (<Stack><SunburstChart animate={false} data={DATA} width={200} height={200} innerRatio={0.3} /></Stack>)
@@ -91,7 +91,7 @@ describe('chart hosts — Swift', () => {
   })
   it('a missing data prop warns by name and emits an EmptyView', () => {
     const r = transform(
-      `import { SankeyChart } from '@pyreon/charts/plot'
+      `import { SankeyChart } from '@pyreon/charts'
 export function C() { return <SankeyChart animate={false} nodes={[]} /> }`,
       { target: 'swift' },
     )
@@ -100,14 +100,14 @@ export function C() { return <SankeyChart animate={false} nodes={[]} /> }`,
   })
   it('an unsupported OptionChart shape warns by option path instead of naming a view that does not exist', () => {
     const r = transform(
-      `import { OptionChart } from '@pyreon/charts/plot'
+      `import { OptionChart } from '@pyreon/charts/option'
 export function C() { return <OptionChart option={{ series: [] }} /> }`,
       { target: 'swift' },
     )
     expect(r.warnings.join('\n')).toContain('<OptionChart option.series>')
     expect(r.code).not.toContain('OptionChart(')
   })
-  it('importing from @pyreon/charts/plot does not raise the web-only package warning', () => {
+  it('importing from @pyreon/charts does not raise the web-only package warning', () => {
     const r = transform(SANKEY, { target: 'swift' })
     expect(r.warnings.some((w) => /web-only/i.test(w))).toBe(false)
   })
@@ -132,7 +132,7 @@ describe('chart hosts — Kotlin', () => {
   })
   it('a missing data prop warns and emits an empty Box', () => {
     const r = transform(
-      `import { GraphChart } from '@pyreon/charts/plot'
+      `import { GraphChart } from '@pyreon/charts'
 export function C() { return <GraphChart animate={false} links={[]} /> }`,
       { target: 'kotlin' },
     )
@@ -161,8 +161,8 @@ describe('chart hosts — compile-proven', () => {
 
 const ONSELECT = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
-import { SankeyChart, TreemapChart } from '@pyreon/charts/plot'
-import type { SankeyHitIndex, SankeyLink, SankeyNode, TreeNode } from '@pyreon/charts/plot'
+import { SankeyChart, TreemapChart } from '@pyreon/charts'
+import type { SankeyHitIndex, SankeyLink, SankeyNode, TreeNode } from '@pyreon/charts'
 const CELLS: TreeNode[] = [{ name: 'a', value: 3 }, { name: 'b', value: 1 }]
 function report(i: number) {
   return i
@@ -209,8 +209,8 @@ describe('chart hosts — onSelectIndex (tap → the engine index hit)', () => {
   })
   it('a bare function reference is called with the hit', () => {
     const src = `import { Stack } from '@pyreon/primitives'
-import { GanttChart } from '@pyreon/charts/plot'
-import type { GanttTask } from '@pyreon/charts/plot'
+import { GanttChart } from '@pyreon/charts'
+import type { GanttTask } from '@pyreon/charts'
 const TASKS: GanttTask[] = [{ id: 'a', name: 'Design', start: '2024-03-01', end: '2024-03-10' }]
 function chosen(i: number) {
   return i
@@ -238,7 +238,8 @@ export function Plan() {
 
 const ACCESSOR = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
-import { FunnelChart, GaugeChart, PieChart } from '@pyreon/charts/plot'
+import { GaugeChart } from '@pyreon/charts'
+import { FunnelChart, PieChart } from '@pyreon/charts/engine'
 interface Stage { name: string; total: number; tint: string }
 const STAGES: Stage[] = [{ name: 'Visit', total: 120, tint: '#111111' }, { name: 'Sign up', total: 48, tint: '#222222' }]
 export function Sales() {
@@ -285,7 +286,7 @@ describe('chart hosts — accessor-prop hosts (Funnel / Pie) and Gauge', () => {
   })
   it('a block-bodied accessor is reported by name; a pie legend now lowers', () => {
     const r = transform(
-      `import { FunnelChart, PieChart } from '@pyreon/charts/plot'
+      `import { FunnelChart, PieChart } from '@pyreon/charts/engine'
 interface Row { n: string; v: number }
 const ROWS: Row[] = [{ n: 'a', v: 1 }]
 export function C() { return (<><FunnelChart animate={false} data={ROWS} value={(d) => { const twice = d.v * 2; return twice }} label={(d) => d.n} /><PieChart data={ROWS} value={(d) => d.v} label={(d) => d.n} showLegend={true} /></>) }`,
@@ -309,8 +310,9 @@ export function C() { return (<><FunnelChart animate={false} data={ROWS} value={
 })
 
 const FRAMES = `import { Stack } from '@pyreon/primitives'
-import { CandlestickChart, HeatmapChart, RadarChart } from '@pyreon/charts/plot'
-import type { RadarAxis } from '@pyreon/charts/plot'
+import { RadarChart } from '@pyreon/charts'
+import { CandlestickChart, HeatmapChart } from '@pyreon/charts/engine'
+import type { RadarAxis } from '@pyreon/charts'
 interface Bar { day: string; o: number; h: number; l: number; c: number }
 interface Cell { d: string; hour: string; n: number }
 interface Team { name: string; scores: number[] }
@@ -364,8 +366,9 @@ describe('chart hosts — cartesian-frame hosts (Candlestick / Heatmap) and Rada
   })
   it('a cell-shaped heatmap onSelect is reported by name; a literal theme and a radar legend lower', () => {
     const r = transform(
-      `import { CandlestickChart, HeatmapChart, RadarChart } from '@pyreon/charts/plot'
-import type { RadarAxis } from '@pyreon/charts/plot'
+      `import { RadarChart } from '@pyreon/charts'
+import { CandlestickChart, HeatmapChart } from '@pyreon/charts/engine'
+import type { RadarAxis } from '@pyreon/charts'
 interface Bar { o: number; h: number; l: number; c: number }
 interface Cell { d: string; hour: string; n: number }
 interface Team { name: string; scores: number[] }
@@ -398,8 +401,8 @@ export function C() { return (<><CandlestickChart data={BARS} open={(d) => d.o} 
 
 const PLOT = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
-import { PlotChart, area, bars, line } from '@pyreon/charts/plot'
-import type { Annotation } from '@pyreon/charts/plot'
+import { PlotChart, area, bars, line } from '@pyreon/charts/engine'
+import type { Annotation } from '@pyreon/charts/engine'
 interface Month { name: string; revenue: number; cost: number }
 const MONTHS: Month[] = [{ name: 'Jan', revenue: 12, cost: 8 }, { name: 'Feb', revenue: 15, cost: 9 }, { name: 'Mar', revenue: 11, cost: 10 }]
 const GOAL: Annotation[] = [{ y: 14, label: 'goal', color: '#b42318' }]
@@ -480,7 +483,7 @@ describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
   })
   it('a curve option and a non-literal marks array are reported by name; a bubble mark lowers; brush (every prop now) stays quiet', () => {
     const r = transform(
-      `import { PlotChart, bubble, line, monotoneCurve } from '@pyreon/charts/plot'
+      `import { PlotChart, bubble, line, monotoneCurve } from '@pyreon/charts/engine'
 interface Row { n: string; v: number; r: number }
 const ROWS: Row[] = [{ n: 'a', v: 1, r: 2 }]
 const MARKS = [line((d: Row) => d.v)]
@@ -514,8 +517,10 @@ export function C() { return (<><PlotChart animate={false} data={ROWS} marks={[b
 
 
 const CHROME = `import { Stack } from '@pyreon/primitives'
-import { PieChart, PlotChart, RadarChart, bars, line } from '@pyreon/charts/plot'
-import type { RadarAxis } from '@pyreon/charts/plot'
+import { RadarChart } from '@pyreon/charts'
+import { PieChart } from '@pyreon/charts/engine'
+import { PlotChart, bars, line } from '@pyreon/charts/engine'
+import type { RadarAxis } from '@pyreon/charts'
 interface Month { name: string; revenue: number; cost: number }
 interface Team { name: string; scores: number[]; share: number }
 const MONTHS: Month[] = [{ name: 'Jan', revenue: 12, cost: 8 }, { name: 'Feb', revenue: 15, cost: 9 }]
@@ -585,7 +590,9 @@ describe('chart hosts — legend + title chrome (Plot / Pie / Radar)', () => {
 
 
 const PROPS = `import { Stack } from '@pyreon/primitives'
-import { CandlestickChart, PlotChart, bubble, bars, compact, fixed, plain } from '@pyreon/charts/plot'
+import { compact, fixed, plain } from '@pyreon/charts'
+import { CandlestickChart } from '@pyreon/charts/engine'
+import { PlotChart, bubble, bars } from '@pyreon/charts/engine'
 interface City { name: string; pop: number; area: number; growth: number }
 interface Bar { day: string; o: number; h: number; l: number; c: number }
 const CITIES: City[] = [{ name: 'A', pop: 8, area: 100, growth: 3 }, { name: 'B', pop: 3, area: 40, growth: -1 }]
@@ -638,7 +645,7 @@ describe('chart hosts — theme overrides, formatters and bubble marks', () => {
     expect(bad.code).toContain('Series(kind: "bars", values: pyreonValues0, color: "#4f7df3"')
   })
   it('`palettes.<name>` and `chartThemes.dark` resolve at compile time on both targets', () => {
-    const base = PLOT.replace("import { PlotChart, area, bars, line } from '@pyreon/charts/plot'", "import { PlotChart, area, bars, line, chartThemes, palettes } from '@pyreon/charts/plot'")
+    const base = PLOT.replace("import { PlotChart, area, bars, line } from '@pyreon/charts/engine'", "import { chartThemes, palettes } from '@pyreon/charts'\nimport { PlotChart, area, bars, line } from '@pyreon/charts/engine'")
     const named = base.replace('marks={[bars((d) => d.revenue, { label: \'Revenue\', color: \'#0f766e\' }), line((d) => d.cost, { label: \'Cost\', width: 3 })]}', "theme={{ palette: palettes.okabeIto }} marks={[bars((d) => d.revenue, { label: 'Revenue' }), line((d) => d.cost, { label: 'Cost', width: 3 })]}")
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(named, { target })
@@ -658,9 +665,9 @@ describe('chart hosts — theme overrides, formatters and bubble marks', () => {
     const unknown = transform(named.replace('palettes.okabeIto', 'palettes.nope'), { target: 'swift' })
     expect(unknown.warnings).toEqual(['<PlotChart theme>: `palettes.nope` is not a named palette (pyreon, pyreonDark, echarts6, echarts5, echartsDark, observable10, tableau10, okabeIto, tailwind); the default palette applies.'])
   })
-  it('<ChartThemeProvider mode="dark"> is a compile-time scope on both targets: its chart children inherit the theme, byte-identical to their own theme={chartThemes.dark}', () => {
-    const src = PLOT.replace("import { PlotChart, area, bars, line } from '@pyreon/charts/plot'", "import { ChartThemeProvider, PlotChart, area, bars, line } from '@pyreon/charts/plot'").replace('<Stack>', '<Stack><ChartThemeProvider mode="dark">').replace('</Stack>', '</ChartThemeProvider></Stack>')
-    const own = PLOT.replace("import { PlotChart, area, bars, line } from '@pyreon/charts/plot'", "import { chartThemes, PlotChart, area, bars, line } from '@pyreon/charts/plot'").replace('<PlotChart animate={false}', '<PlotChart animate={false} theme={chartThemes.dark}')
+  it('<ColorModeProvider mode="dark"> + <ChartThemeProvider> is a compile-time scope on both targets: its chart children inherit the theme, byte-identical to their own theme={chartThemes.dark}', () => {
+    const src = PLOT.replace("import { PlotChart, area, bars, line } from '@pyreon/charts/engine'", "import { ColorModeProvider } from '@pyreon/core'\nimport { ChartThemeProvider } from '@pyreon/charts'\nimport { PlotChart, area, bars, line } from '@pyreon/charts/engine'").replace('<Stack>', '<Stack><ColorModeProvider mode="dark"><ChartThemeProvider>').replace('</Stack>', '</ChartThemeProvider></ColorModeProvider></Stack>')
+    const own = PLOT.replace("import { PlotChart, area, bars, line } from '@pyreon/charts/engine'", "import { chartThemes } from '@pyreon/charts'\nimport { PlotChart, area, bars, line } from '@pyreon/charts/engine'").replace('<PlotChart animate={false}', '<PlotChart animate={false} theme={chartThemes.dark}')
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(src, { target })
       const o = transform(own, { target })
@@ -672,7 +679,8 @@ describe('chart hosts — theme overrides, formatters and bubble marks', () => {
     }
   })
   it('chrome props a target does not draw warn BY NAME; `animate` on an engine with no entrance is named as inert everywhere', () => {
-    const src = `import { TreemapChart, PieChart } from '@pyreon/charts/plot'
+    const src = `import { TreemapChart } from '@pyreon/charts'
+import { PieChart } from '@pyreon/charts/engine'
 type N = { name: string; value: number }
 const NODES: N[] = [{ name: 'a', value: 1 }]
 type S = { label: string; v: number }
@@ -687,7 +695,7 @@ export const B = () => <PieChart data={SL} value={(d: S) => d.v} label={(d: S) =
   })
   it('a non-literal theme keeps the default and says so', () => {
     const r = transform(
-      `import { PlotChart, bars } from '@pyreon/charts/plot'
+      `import { PlotChart, bars } from '@pyreon/charts/engine'
 interface Row { v: number }
 const ROWS: Row[] = [{ v: 1 }]
 const DARK = { label: '#fff' }
@@ -714,7 +722,7 @@ export function C() { return <PlotChart animate={false} data={ROWS} marks={[bars
 
 const ZOOM = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
-import { PlotChart, bars, line } from '@pyreon/charts/plot'
+import { PlotChart, bars, line } from '@pyreon/charts/engine'
 interface Day { label: string; hits: number; avg: number }
 const DAYS: Day[] = [{ label: 'Mon', hits: 3, avg: 2 }, { label: 'Tue', hits: 5, avg: 3 }, { label: 'Wed', hits: 2, avg: 3 }, { label: 'Thu', hits: 7, avg: 4 }]
 export function Traffic() {
@@ -788,7 +796,7 @@ describe('chart hosts — <PlotChart dataZoom> as pinch + pan over a fraction wi
 
 const PRESETS = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
-import { PlotChart, bars } from '@pyreon/charts/plot'
+import { PlotChart, bars } from '@pyreon/charts/engine'
 interface Day { label: string; hits: number }
 const DAYS: Day[] = [{ label: 'Mon', hits: 3 }, { label: 'Tue', hits: 5 }, { label: 'Wed', hits: 2 }, { label: 'Thu', hits: 7 }]
 export function Traffic() {
@@ -890,7 +898,7 @@ describe('chart hosts — <PlotChart zoomPresets> as the engine-laid-out preset 
 
 const LEGEND = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
-import { PlotChart, bars, line } from '@pyreon/charts/plot'
+import { PlotChart, bars, line } from '@pyreon/charts/engine'
 interface Day { label: string; hits: number; avg: number }
 const DAYS: Day[] = [{ label: 'Mon', hits: 3, avg: 2 }, { label: 'Tue', hits: 5, avg: 3 }, { label: 'Wed', hits: 2, avg: 3 }, { label: 'Thu', hits: 7, avg: 4 }]
 export function Traffic() {
@@ -903,7 +911,7 @@ export function Traffic() {
   )
 }`
 
-const ON_ZOOM = LEGEND.replace('showLegend={true}', "showLegend={true} dataZoom={true} onZoom={(w: ZoomWindow) => zoomText.set(String(w.start))}").replace("import { PlotChart, bars, line } from '@pyreon/charts/plot'", "import { PlotChart, bars, line } from '@pyreon/charts/plot'\nimport type { ZoomWindow } from '@pyreon/charts/plot'").replace('const picked = signal(-1)', "const picked = signal(-1)\n  const zoomText = signal('')")
+const ON_ZOOM = LEGEND.replace('showLegend={true}', "showLegend={true} dataZoom={true} onZoom={(w: ZoomWindow) => zoomText.set(String(w.start))}").replace("import { PlotChart, bars, line } from '@pyreon/charts/engine'", "import { PlotChart, bars, line } from '@pyreon/charts/engine'\nimport type { ZoomWindow } from '@pyreon/charts'").replace('const picked = signal(-1)', "const picked = signal(-1)\n  const zoomText = signal('')")
 
 describe('<PlotChart onZoom> — one observer over the window state on both targets', () => {
   it('Swift: an onChange over the window fields runs the handler with the ZoomWindow', () => {
@@ -1014,7 +1022,7 @@ describe('chart hosts — <PlotChart showLegend> legend tap toggle + paging', ()
 
 const NAV = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
-import { PlotChart, line } from '@pyreon/charts/plot'
+import { PlotChart, line } from '@pyreon/charts/engine'
 interface Day { label: string; hits: number }
 const DAYS: Day[] = [{ label: 'Mon', hits: 3 }, { label: 'Tue', hits: 5 }, { label: 'Wed', hits: 2 }, { label: 'Thu', hits: 7 }]
 export function Traffic() {
@@ -1099,7 +1107,11 @@ describe('chart hosts — <PlotChart navigator> as the engine-laid-out slider st
       expect(r.code).not.toContain('pyreonNavigator')
       expect(r.code).not.toContain('pyreonNavKind')
     }
-    expect(transform(PRESETS, { target: 'kotlin' }).code).toContain('PyreonChartCanvas(cmds = renderChart(pyreonSpec, ::pyreonChartMeasure) + pyreonPresetStrip.cmds, modifier = Modifier.fillMaxWidth().height((200.0).dp).pointerInput(pyreonSpec, pyreonZoom) {')
+    // The canvas fills the host Box that also holds the TalkBack data nodes
+    // (PyreonChartPoints); the host keeps the size and the chart's identity.
+    const k = transform(PRESETS, { target: 'kotlin' }).code
+    expect(k).toContain('PyreonChartCanvas(cmds = renderChart(pyreonSpec, ::pyreonChartMeasure) + pyreonPresetStrip.cmds, modifier = Modifier.fillMaxSize().pointerInput(pyreonSpec, pyreonZoom) {')
+    expect(k).toContain('PyreonChartPoints(')
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts the navigator emit', () => {
     const r = validateSwiftWithStubs(transform(NAV_PRESETS.replace('navigator={true}', 'navigator={true} dataZoom={true}'), { target: 'swift' }).code)
@@ -1118,8 +1130,8 @@ describe('chart hosts — <PlotChart navigator> as the engine-laid-out slider st
 
 const BRUSH = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
-import { PlotChart, bars } from '@pyreon/charts/plot'
-import type { BrushRange } from '@pyreon/charts/plot'
+import { PlotChart, bars } from '@pyreon/charts/engine'
+import type { BrushRange } from '@pyreon/charts'
 interface Day { label: string; hits: number }
 const DAYS: Day[] = [{ label: 'Mon', hits: 3 }, { label: 'Tue', hits: 5 }, { label: 'Wed', hits: 2 }, { label: 'Thu', hits: 7 }]
 export function Traffic() {
@@ -1213,7 +1225,7 @@ describe('chart hosts — <PlotChart brush onBrush> as a plain drag over the eng
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(PRESETS, { target })
       expect(r.code).not.toContain('pyreonBrush')
-      expect(r.code).not.toContain('layoutChart(pyreonSpec')
+      expect(r.code).not.toContain('brushRange(')
     }
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts the brush emit', () => {
@@ -1233,7 +1245,7 @@ describe('chart hosts — <PlotChart brush onBrush> as a plain drag over the eng
 
 const CALENDAR = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
-import { CalendarChart } from '@pyreon/charts/plot'
+import { CalendarChart } from '@pyreon/charts'
 export function Activity() {
   const picked = signal(-1)
   return (
@@ -1247,8 +1259,8 @@ const CALENDAR_CALL = CALENDAR.replace("values={{ '2026-01-05': 3, '2026-01-20':
 
 const PARALLEL = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
-import { ParallelChart } from '@pyreon/charts/plot'
-import type { ParallelAxis } from '@pyreon/charts/plot'
+import { ParallelChart } from '@pyreon/charts'
+import type { ParallelAxis } from '@pyreon/charts'
 const AXES: ParallelAxis[] = [{ name: 'Cyl', type: 'category', categories: ['4', '6', '8'] }, { name: 'MPG' }]
 const axesOf = (): ParallelAxis[] => AXES
 export function Cars() {
@@ -1265,8 +1277,8 @@ const PARALLEL_ROW_COLOR = PARALLEL.replace('gutter={30}', "gutter={30} rowColor
 
 const MAP = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
-import { MapChart } from '@pyreon/charts/plot'
-import type { GeoOverlayOptions, GeoOverlayPath, GeoOverlayPoint, GeoShape } from '@pyreon/charts/plot'
+import { MapChart } from '@pyreon/charts'
+import type { GeoOverlayOptions, GeoOverlayPath, GeoOverlayPoint, GeoShape } from '@pyreon/charts'
 const SHAPES: GeoShape[] = [
   { name: 'A', rings: [[{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]] },
   { name: 'B', rings: [[{ x: 12, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 8 }]] },
@@ -1476,7 +1488,7 @@ describe('chart hosts — MapChart lowers from projected shapes; the registry an
 
 const EVENTS_MODEL = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
-import { PlotChart, bars } from '@pyreon/charts/plot'
+import { PlotChart, bars } from '@pyreon/charts/engine'
 interface Row { k: string; v: number }
 const ROWS: Row[] = [{ k: 'a', v: 3 }, { k: 'b', v: 5 }]
 export function Picks() {

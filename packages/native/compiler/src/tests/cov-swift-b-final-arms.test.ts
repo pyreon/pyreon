@@ -194,7 +194,7 @@ describe('chart tap handlers — the onSelectIndex shapes', () => {
     sw(
       `import { signal } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'
-import { PlotChart, bars } from '@pyreon/charts/plot'
+import { PlotChart, bars } from '@pyreon/charts/engine'
 export function C() {
   const rows = signal<{ y: number }[]>([])
   const named = (r: unknown) => {}
@@ -287,7 +287,7 @@ describe('the last tail arms', () => {
     const { code, warnings } = sw(
       `import { signal } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'
-import { PlotChart, bars } from '@pyreon/charts/plot'
+import { PlotChart, bars } from '@pyreon/charts/engine'
 export function C() {
   const rows = signal<{ y: number }[]>([])
   return (<Stack><PlotChart data={rows()} marks={[bars()]} /></Stack>)

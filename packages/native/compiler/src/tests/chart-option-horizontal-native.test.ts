@@ -11,7 +11,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
  * keeps the upright chart and says so.
  */
 const src = (series: string, yAxis = "{ type: 'category', data: ['Mon', 'Tue', 'Wed'], splitArea: { show: true } }"): string => `
-import { OptionChart } from '@pyreon/charts/plot'
+import { OptionChart } from '@pyreon/charts/option'
 export function App() {
   return <OptionChart option={{ xAxis: { type: 'value', minorTick: { show: true } }, yAxis: ${yAxis}, series: ${series} }} />
 }`

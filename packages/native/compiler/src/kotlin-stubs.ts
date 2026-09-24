@@ -129,13 +129,22 @@ fun isSystemInDarkTheme(): Boolean = false
 // device build imports it via the CLI's conditionalKotlinImports; this stub mirrors
 // the surface so the validate-kotlin gate resolves it (previously missing → any
 // useSizeClass emit failed kotlinc).
-class Configuration {
+// android.content.res.Configuration: a copy constructor, a MUTABLE uiMode
+// and the night-mode bits — <ColorModeProvider mode> provides a copy with the
+// night bit set (the device build imports it via conditionalKotlinImports).
+class Configuration() {
+  constructor(other: Configuration) : this()
   val screenWidthDp: Int = 0
+  var uiMode: Int = 0
+  companion object {
+    const val UI_MODE_NIGHT_MASK: Int = 0x30
+    const val UI_MODE_NIGHT_NO: Int = 0x10
+    const val UI_MODE_NIGHT_YES: Int = 0x20
+  }
 }
-object LocalConfiguration {
-  val current: Configuration
-    @Composable get() = Configuration()
-}
+// A PROVIDABLE composition local, as in real Compose, so "LocalConfiguration
+// provides ..." resolves exactly where the real SDK accepts it.
+val LocalConfiguration: ProvidableCompositionLocal<Configuration> = compositionLocalOf { Configuration() }
 // Context + LocalContext (android.content / androidx.compose.ui.platform).
 // EVERY Context-injecting service emits "val xCtx = LocalContext.current" --
 // clipboard, share, linking, notifications, the two pickers, and any
@@ -2476,18 +2485,21 @@ class PyreonAuth<User> {
 
 /**
  * The Compose canvas (+ the two runtime helpers the chart hosts call) for a
- * `@pyreon/charts/plot` host emit; validate.ts appends the REAL engine and
+ * `@pyreon/charts` host emit; validate.ts appends the REAL engine and
  * draw-list data classes next to this. Lives here so the stub-coverage
  * ratchet counts `PyreonChartCanvas` as covered. The signature mirrors
  * runtime-kotlin `PyreonChartCanvas.kt` exactly.
  */
 export const KOTLIN_CHART_VIEW_STUBS = `
-// ---- @pyreon/charts/plot hosts (chart-hosts.ts emit) ----
+// ---- @pyreon/charts hosts (chart-hosts.ts emit) ----
 @Composable
 @Suppress("UNUSED_PARAMETER")
 fun PyreonChartCanvas(cmds: List<PyreonDrawCmd>, modifier: Modifier = Modifier, durationMs: Double = 350.0, universal: Boolean = false, animated: Boolean = true) {}
 @Composable
 fun PyreonChartEntrance(durationMs: Double, content: @Composable (Double) -> Unit) { content(1.0) }
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonChartPoints(input: A11yInput, plot: PyreonChartRect, visible: Int, first: Int = 0, horizontal: Boolean = false, left: Double = 0.0, top: Double = 0.0, mirrorWidth: Double = -1.0) {}
 @Composable
 fun PyreonChartClock(content: @Composable (Double) -> Unit) { content(0.0) }
 fun pyreonChartMeasure(text: String, size: Double): Double = text.length * size * 0.6

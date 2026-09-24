@@ -30,17 +30,19 @@ import {
  *
  * @example
  * ```ts
- * // zero.config.ts
- * import { i18nRouting } from "@pyreon/zero"
+ * // vite.config.ts
+ * import { i18nRouting } from "@pyreon/zero/server"
  *
- * export default defineConfig({
+ * export default {
  *   plugins: [
+ *     pyreon(),
+ *     zero(),
  *     i18nRouting({
  *       locales: ["en", "de", "cs"],
  *       defaultLocale: "en",
  *     }),
  *   ],
- * })
+ * }
  * ```
  */
 export function i18nRouting(config: I18nRoutingConfig): Plugin {

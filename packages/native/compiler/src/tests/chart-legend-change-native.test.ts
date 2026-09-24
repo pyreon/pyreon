@@ -19,7 +19,7 @@ import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWit
 // that state, but a test fixture skips the typecheck and can.
 const SRC = `import { signal } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'
-import { PlotChart, line } from '@pyreon/charts/plot'
+import { PlotChart, line } from '@pyreon/charts/engine'
 type Row = { label: string; a: number; b: number }
 export function Trends() {
   const rows = signal<Row[]>([{ label: 'Jan', a: 2.5, b: 3.5 }, { label: 'Feb', a: 4.5, b: 1.5 }])

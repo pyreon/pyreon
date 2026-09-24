@@ -4,7 +4,7 @@ import path from 'node:path'
 
 /**
  * Returns a `resolve.alias` entry that fixes the recurring tslib bug
- * triggered by importing `@pyreon/charts` (which transitively imports
+ * triggered by importing `@pyreon/charts/echarts` (which transitively imports
  * `echarts`) into a Vite-bundled app.
  *
  * The bug: tslib's `package.json` `exports` map points the `import`
@@ -21,14 +21,14 @@ import path from 'node:path'
  * Usage:
  *
  *   // vite.config.ts
- *   import { chartsViteAlias } from '@pyreon/charts/vite'
+ *   import { chartsViteAlias } from '@pyreon/charts/echarts/vite'
  *
  *   export default defineConfig({
  *     resolve: { alias: { ...chartsViteAlias() } },
  *   })
  *
  * No-op (`{}`) if tslib can't be located in any common install layout —
- * apps that don't actually use `@pyreon/charts` won't break their config.
+ * apps that don't actually use `@pyreon/charts/echarts` won't break their config.
  *
  * Tracking upstream: microsoft/tslib#189.
  */

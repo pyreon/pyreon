@@ -1,6 +1,6 @@
 # Anti-Patterns
 
-Known mistakes and their fixes, grouped by area. `detectPyreonPatterns` in `@pyreon/compiler` (`packages/core/compiler/src/pyreon-intercept.ts`) flags 18 of the patterns below statically: an entry tagged `[detector: <code>]` is reported by `pyreon check` and the MCP `validate` tool. Untagged entries need scope, type or runtime information a syntax walk cannot get, so only reading this file catches them. `packages/core/compiler/src/tests/detector-tag-consistency.test.ts` keeps tags and diagnostic codes in sync.
+Known mistakes and their fixes, grouped by area. `detectPyreonPatterns` in `@pyreon/compiler` (`packages/core/compiler/src/pyreon-intercept.ts`) flags 19 of the patterns below statically: an entry tagged `[detector: <code>]` is reported by `pyreon check` and the MCP `validate` tool. Untagged entries need scope, type or runtime information a syntax walk cannot get, so only reading this file catches them. `packages/core/compiler/src/tests/detector-tag-consistency.test.ts` keeps tags and diagnostic codes in sync.
 
 This file is also the source of the MCP `get_anti_patterns` tool and the docs site's troubleshooting pages, so keep its format: `## Category` headings, one `- **Title**` bullet per entry, and a detector tag on the entry's first line.
 
@@ -865,6 +865,9 @@ Rules for backing a third-party library's pluggable reactivity (atom-style `crea
 
 ## Library API-Shape Mistakes
 
+- **Importing `@pyreon/charts` through a pre-0.52 entry point** `[detector: charts-legacy-import]`: the main entry is now the engine (`<Chart>` with mark children, formerly `<Plot>` at `/plot`), and the ECharts wrapper is `<EChart>` at `/echarts`, with `/manual` and `/vite` under it. `<Chart options={…}>` from the root is the old wrapper and no longer type-checks.
+  - `pyreon check --fix` rewrites each import to the entry that exports the name now, and renames `Plot`→`Chart`, `Tip`→`Tooltip` and the wrapper's `Chart`→`EChart` at every reference.
+  - The wrapper is told apart from the grammar by an `options` attribute or a wrapper-only name in the same import.
 - **Narrower projections silently drop a new struct field**: a layer that copies a shared struct field by field into its own narrower type compiles and renders when a field is added, but loses it. In `@pyreon/charts`, `values2` (a band's second bound) was lost by the value labels, a11y description and tooltip types, and the bubble mark's reader surfaces held pixel `radii` instead of the datum. Rules:
   - When adding a field to a cross-layer struct, grep for every type that restates its shape. Pass by reference where possible.
   - A totality spec must have no unexamined exemptions; a documented limit and an unwritten branch look the same.

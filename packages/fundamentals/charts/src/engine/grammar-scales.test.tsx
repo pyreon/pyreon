@@ -4,7 +4,7 @@ import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { signal } from '@pyreon/reactivity'
 import { query } from '@pyreon/test-utils'
-import { Axis, Bar, Dot, Histogram, Line, Plot, Scale, resolveGrammar } from './grammar'
+import { Axis, Bar, Dot, Histogram, Line, Chart, Scale, resolveGrammar } from './grammar'
 import { PlotChart } from './Chart'
 import { bars, resolveMarks } from './marks'
 import type { Bin } from './bin'
@@ -76,13 +76,13 @@ describe('resolveGrammar — scales, titles, histogram, waterfall, error bars', 
   })
 })
 
-describe('<Plot facet> and locale hosts (happy-dom)', () => {
+describe('<Chart facet> and locale hosts (happy-dom)', () => {
   it('facet renders one titled panel per distinct value in a grid, every panel sharing the y domain, and a new value adds a panel', async () => {
     const rows = signal(ROWS)
     const container = document.createElement('div')
     document.body.appendChild(container)
     const unmount = mount(
-      h(Plot<Row>, { data: () => rows(), x: 'month', facet: 'region', facetColumns: 3, children: h(Bar<Row>, { y: 'revenue' }) }),
+      h(Chart<Row>, { data: () => rows(), x: 'month', facet: 'region', facetColumns: 3, children: h(Bar<Row>, { y: 'revenue' }) }),
       container,
     )
     await new Promise((r) => setTimeout(r, 0))
