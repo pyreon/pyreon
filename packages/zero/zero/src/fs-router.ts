@@ -136,9 +136,17 @@ export function detectRouteExports(source: string, filename = 'route.tsx'): Rout
     return { ...EMPTY_EXPORTS, readsRequestAuth: READS_REQUEST_AUTH_RE.test(source) }
   }
 
+  let hasDefault = false
+  let hasLayoutExport = false
   for (const stmt of staticExports) {
     for (const entry of stmt.entries) {
-      if (entry.isType || entry.exportName.kind !== 'Name') continue
+      if (entry.isType) continue
+      if (entry.exportName.kind === 'Default' || entry.exportName.name === 'default') {
+        hasDefault = true
+        continue
+      }
+      if (entry.exportName.kind !== 'Name') continue
+      if (entry.exportName.name === 'layout') hasLayoutExport = true
       const name = entry.exportName.name
       if (name === null || !(ROUTE_EXPORT_NAMES as readonly string[]).includes(name)) continue
       found.add(name as RouteExportName)
@@ -168,8 +176,15 @@ export function detectRouteExports(source: string, filename = 'route.tsx'): Rout
   // (`dist/_pyreon-revalidate.json`); it is never inlined into the route
   // record.
   const revalidateLiteral = literalOf('revalidate')
+  // A `loader` whose initializer is a pure literal (object / string / number
+  // / array) is not callable — the router would throw `loader is not a
+  // function` per request. Recorded so the scan can fail naming the file.
+  const loaderIsLiteral = found.has('loader') && literalOf('loader') !== undefined
 
   return {
+    hasDefault,
+    hasLayoutExport,
+    ...(loaderIsLiteral ? { loaderIsLiteral: true } : {}),
     hasLoader: found.has('loader'),
     hasGuard: found.has('guard'),
     hasMeta: found.has('meta'),
@@ -1556,4 +1571,41 @@ async function scanRouteFilesWithExportsUncached(
   )
 
   return parseFileRoutes(files, defaultMode, exportsMap)
+}
+
+/**
+ * Fail the build (or dev module load) naming the FILE when a route cannot
+ * work at runtime. Without this a page with no default export lazy-loads
+ * `undefined` and the app sits on its loading state forever with a 200, and
+ * a literal `loader` throws `loader is not a function` on every request.
+ * Only checked when the source was actually parsed (`hasDefault` defined).
+ * @internal
+ */
+export function assertRouteFileShapes(routes: readonly FileRoute[]): void {
+  const problems: string[] = []
+  for (const r of routes) {
+    const exp = r.exports
+    if (!exp || exp.hasDefault === undefined) continue
+    if (r.isLayout) {
+      if (!exp.hasLayoutExport) {
+        problems.push(
+          `"${r.filePath}": a _layout file must \`export function layout()\` (render <RouterView /> inside it)` +
+            (exp.hasDefault ? ' — a default export is not used for layouts.' : '.'),
+        )
+      }
+    } else if (!exp.hasDefault) {
+      problems.push(
+        `"${r.filePath}": no default export — a route file must \`export default function Page() { … }\`. ` +
+          '(An API handler belongs in src/routes/api/*.ts.)',
+      )
+    }
+    if (exp.loaderIsLiteral) {
+      problems.push(
+        `"${r.filePath}": \`loader\` is a value, not a function — write \`export async function loader(ctx) { return … }\`.`,
+      )
+    }
+  }
+  if (problems.length > 0) {
+    throw new Error(`[Pyreon] Invalid route file(s):\n${problems.map((p) => `  - ${p}`).join('\n')}`)
+  }
 }

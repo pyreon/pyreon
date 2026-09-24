@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { didYouMean, validateZeroConfig } from '../config-validation'
 import { zeroPlugin } from '../vite-plugin'
 
@@ -38,5 +40,39 @@ describe('zero() config validation', () => {
 
   it('didYouMean does not guess wildly', () => {
     expect(didYouMean('completelyUnrelated', ['mode', 'base'])).toBeUndefined()
+  })
+})
+
+describe('missing @pyreon/vite-plugin', () => {
+  const ROOT = join(__dirname, '.tmp-missing-pyreon')
+  beforeAll(() => {
+    mkdirSync(join(ROOT, 'src', 'routes'), { recursive: true })
+    writeFileSync(join(ROOT, 'src', 'routes', 'index.tsx'), 'export default () => <div />\n')
+  })
+  afterAll(() => rmSync(ROOT, { recursive: true, force: true }))
+
+  it('a real Vite resolve without pyreon() fails with ONE clear error', async () => {
+    const { resolveConfig } = await import('vite')
+    await expect(
+      resolveConfig({ configFile: false, root: ROOT, logLevel: 'silent', plugins: [zeroPlugin()] }, 'build'),
+    ).rejects.toThrow(/\[Pyreon\] zero\(\) needs the Pyreon JSX plugin/)
+  })
+
+  it('a JSX-free routes tree (plain h() modules) is not refused', async () => {
+    const { resolveConfig } = await import('vite')
+    await expect(
+      resolveConfig({ configFile: false, root: __dirname, logLevel: 'silent', plugins: [zeroPlugin()] }, 'build'),
+    ).resolves.toBeTruthy()
+  })
+
+  it('passes when pyreon() is present', async () => {
+    const { resolveConfig } = await import('vite')
+    const pyreon = (await import('@pyreon/vite-plugin')).default
+    await expect(
+      resolveConfig(
+        { configFile: false, root: ROOT, logLevel: 'silent', plugins: [pyreon(), zeroPlugin()] },
+        'build',
+      ),
+    ).resolves.toBeTruthy()
   })
 })

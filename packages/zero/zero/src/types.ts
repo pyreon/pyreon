@@ -796,6 +796,15 @@ export interface ZeroConfig {
  * and silencing `IMPORT_IS_UNDEFINED` warnings from Rolldown.
  */
 export interface RouteFileExports {
+  /**
+   * Has a default export (the page / special component). `undefined` when the
+   * file could not be parsed or the exports were supplied synthetically.
+   */
+  hasDefault?: boolean
+  /** Has a named `layout` export (the `_layout` convention). */
+  hasLayoutExport?: boolean
+  /** `export const loader = <literal>` — not callable. */
+  loaderIsLiteral?: boolean
   /** Has `export const loader` or `export function loader` */
   hasLoader: boolean
   /** Has `export const guard` or `export function guard` */

@@ -62,6 +62,7 @@ import {
 	scanRouteFiles,
 	scanRouteFilesWithExports,
 	invalidateRouteScanCache,
+	assertRouteFileShapes,
 } from "./fs-router";
 import { validateZeroConfig } from "./config-validation";
 import { expandRoutesForLocales } from "./i18n-routing";
@@ -302,6 +303,10 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 		enforce: "pre",
 
 		configResolved(resolvedConfig) {
+			// zero() is layered ON TOP of @pyreon/vite-plugin (the JSX
+			// transform). Without it every route fails to parse — ten
+			// cryptic JSX errors instead of the one cause. Fail once, clearly.
+			assertPyreonPluginPresent(resolvedConfig.plugins, `${resolvedConfig.root}/src/routes`);
 			root = resolvedConfig.root;
 			routesDir = `${root}/src/routes`;
 			proxyContexts = Object.keys(resolvedConfig.server?.proxy ?? {});
@@ -407,6 +412,10 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 					//   • Direct mod.loader/.guard/.meta access for routes with metadata
 					//   • No spurious IMPORT_IS_UNDEFINED warnings from Rolldown
 					const baseRoutes = await scanRouteFilesWithExports(routesDir, config.mode);
+					// Name the FILE for a route that cannot work (no default export,
+					// default-only layout, literal `loader`) instead of a page that
+					// spins on its loading state with a 200.
+					assertRouteFileShapes(baseRoutes);
 					// PR H — fan routes into per-locale variants when `i18n` is
 					// configured. No-op when unset; identity-returns the input
 					// otherwise so existing apps see byte-identical output.
@@ -453,7 +462,11 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 					return config.i18n
 						? `${routeModule}\nimport { _registerI18nConfig as __zeroRegisterI18n } from "@pyreon/zero";\n__zeroRegisterI18n(${JSON.stringify(config.i18n)});\n`
 						: routeModule;
-				} catch (_err) {
+				} catch (err) {
+					// A [Pyreon] diagnostic (invalid route file, loader + server
+					// loader conflict, …) names the fix — surface it instead of
+					// silently serving an app with no routes.
+					if (err instanceof Error && err.message.startsWith("[Pyreon]")) throw err;
 					return `export const routes = []`;
 				}
 			}
@@ -1120,6 +1133,37 @@ function themeScriptInjectPlugin(): Plugin {
 			},
 		},
 	};
+}
+
+function hasJsxRouteFile(dir: string): boolean {
+	if (!existsSync(dir)) return false;
+	for (const entry of readdirSync(dir, { withFileTypes: true })) {
+		if (entry.isDirectory()) {
+			if (hasJsxRouteFile(`${dir}/${entry.name}`)) return true;
+		} else if (/\.[jt]sx$/.test(entry.name)) return true;
+	}
+	return false;
+}
+
+/**
+ * Throw a single actionable error when `@pyreon/vite-plugin` (plugin name
+ * `pyreon`) is missing from the Vite config.
+ * @internal
+ */
+export function assertPyreonPluginPresent(
+	plugins: readonly { name: string }[] | undefined,
+	routesDir: string,
+): void {
+	if (!plugins || plugins.some((p) => p.name === "pyreon")) return;
+	// Only JSX needs the transform — a routes tree of plain `.ts` modules
+	// (h() calls) builds without it, so don't refuse those.
+	if (!hasJsxRouteFile(routesDir)) return;
+	throw new Error(
+		'[Pyreon] zero() needs the Pyreon JSX plugin. Add it BEFORE zero() in vite.config.ts:\n\n' +
+			'  import pyreon from "@pyreon/vite-plugin"\n' +
+			'  import zero from "@pyreon/zero/server"\n\n' +
+			"  export default defineConfig({ plugins: [pyreon(), zero()] })\n",
+	);
 }
 
 /** `/api` or anything under it — the only place fs API routes can match. */
