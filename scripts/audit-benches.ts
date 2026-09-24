@@ -204,7 +204,7 @@ for (const f of files) {
   //
   // Flagging on the SYNTAX alone produced 8 findings that were all false
   // positives — an audit nobody could act on, which is worse than no audit
-  // (see .claude/rules/workflow.md "a red gate is a dead gate"). Resolve the
+  // (see .agents/rules/workflow.md "a red gate is a dead gate"). Resolve the
   // competitor and check whether a dev/prod split exists at all; flag only
   // then, so every remaining finding is real.
   // COMPETITORS holds PREFIXES ('@tanstack/'), so resolve the ACTUAL specifier

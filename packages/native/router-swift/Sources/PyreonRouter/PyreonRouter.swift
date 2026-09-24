@@ -229,7 +229,7 @@ public final class PyreonRouter {
     /// PMTC-emitted apps configure these from `createRouter({
     /// beforeEach: [authGuard, logGuard] })` config.
     ///
-    /// **Lifecycle hazard** (Class C from `.claude/rules/anti-patterns.md`):
+    /// **Lifecycle hazard** (Class C from `.agents/rules/anti-patterns.md`):
     /// this array grows monotonically with every `.append(...)` call —
     /// apps that add guards from per-view scopes (test fixtures, modal
     /// controllers) silently leak guards across the router's lifetime.

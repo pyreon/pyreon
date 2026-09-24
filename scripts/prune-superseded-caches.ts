@@ -13,7 +13,7 @@
  * generations = 6 GB of a 9.9 GB total. At capacity GitHub evicts the
  * SMALLEST, least-recently-used entries first — which is the native
  * compile-verdict store, whose loss turns a 1-minute native test cell into a
- * 25-minute timeout-cancel (see .claude/rules/workflow.md, the
+ * 25-minute timeout-cancel (see .agents/rules/workflow.md, the
  * native-compiler cap entry). Keeping the budget clear is what keeps that
  * store warm.
  *

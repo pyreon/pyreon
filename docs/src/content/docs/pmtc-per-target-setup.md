@@ -4,8 +4,6 @@ title: PMTC Per-Target Setup
 
 # PMTC Per-Target Setup
 
-> **Status:** Phase D3 of the [2026-06 native readiness audit](https://github.com/pyreon/pyreon/blob/main/.claude/audits/native-readiness-2026-06-02.md). Scout-8 scored *per-target setup docs* at **38/100** — the audit's findings: *"'Setup' story = 'use scaffolder'; zero docs on integrating into existing Xcode/Gradle, SwiftPM vs CocoaPods, etc."* This page closes that gap.
-
 This page assumes you've followed [Multi-Platform (PMTC)](./multiplatform.md) and have a `.tsx` source compiling to Swift / Kotlin via `@pyreon/native-compiler`. The next question is: **how do you turn that emitted source into a real app on iOS / Android / web?**
 
 Three setup paths, in order of how-much-control:
@@ -343,4 +341,3 @@ If any of the three fail with errors about un-emitted shapes, check [`pmtc-suppo
 - [`docs/create-multiplatform.md`](./create-multiplatform.md) — the scaffolder
 - [`examples/native-counter-ios/`](https://github.com/pyreon/pyreon/tree/main/examples/native-counter-ios) — minimal iOS reference
 - [`examples/native-todomvc-{ios,android,web}/`](https://github.com/pyreon/pyreon/tree/main/examples) — full one-source 3-target reference
-- [`.claude/audits/native-readiness-2026-06-02.md`](https://github.com/pyreon/pyreon/blob/main/.claude/audits/native-readiness-2026-06-02.md) — the audit that drove this doc

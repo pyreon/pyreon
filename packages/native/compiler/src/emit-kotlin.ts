@@ -8731,7 +8731,7 @@ function emitKotlinTransitionGroup(
  * cleanly onto Compose AND swiftc accepts them as user-defined names)
  * and have the iOS emit translate the other direction. This table is
  * a tactical fix that closes the K3 typecheck error TODAY; the DSL
- * decision is tracked in `.claude/plans/native-platforms-phase1-roadmap.md`.
+ * decision is still open.
  *
  * Single source of truth: user-defined Composables that happen to be
  * named `VStack`/`HStack`/`ZStack` will collide with this rewrite.

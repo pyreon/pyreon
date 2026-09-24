@@ -1,6 +1,6 @@
 # @pyreon/native-runtime-swift
 
-> **PRIVATE / EXPERIMENTAL.** SwiftPM package that compiler-emitted Swift code links against on iOS. Phase 0 scaffold; see [`native-platforms-phase0-roadmap.md`](../../../.claude/plans/native-platforms-phase0-roadmap.md) PR 1 for scope + acceptance criteria.
+> **PRIVATE / EXPERIMENTAL.** SwiftPM package that compiler-emitted Swift code links against on iOS.
 
 ## What lives here
 

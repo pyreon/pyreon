@@ -13,8 +13,6 @@ import type { CSSProperties, Preset } from './types'
 // importing just `blurInUp` used to ship all 122 preset factory results
 // (~13 KB raw / ~2 KB gzipped). With the annotation, the same consumer
 // ships only `blurInUp` (~300 bytes).
-//
-// See `.claude/notes/rolldown-pure-factory-calls.md` for the investigation.
 /* #__NO_SIDE_EFFECTS__ */
 const s = (
   hidden: CSSProperties,

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Generate the TROUBLESHOOTING reference from `.claude/rules/anti-patterns.md`
+ * Generate the TROUBLESHOOTING reference from `.agents/rules/anti-patterns.md`
  * — Pyreon's equivalent of Next.js's `/docs/messages/` error reference, and a
  * surface no other framework ships. Reuses the SAME parser that powers MCP
  * `get_anti_patterns` (`packages/tools/mcp/src/anti-patterns.ts`), so the docs
@@ -19,7 +19,7 @@ import { parseAntiPatterns, type AntiPatternEntry } from '../../packages/tools/m
 import { escFlow, yaml } from './_md-safe'
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
-const SRC = join(REPO_ROOT, '.claude', 'rules', 'anti-patterns.md')
+const SRC = join(REPO_ROOT, '.agents', 'rules', 'anti-patterns.md')
 const DOCS = join(REPO_ROOT, 'docs', 'src', 'content', 'docs')
 const OUT_DIR = join(DOCS, 'troubleshooting')
 const NAV_FILE = join(REPO_ROOT, 'docs', 'src', 'troubleshooting-nav.generated.ts')
@@ -34,8 +34,16 @@ for (const e of entries) {
   byCat.set(e.category, g)
 }
 
+// The page is MDX: a paragraph that starts with the word `import` or `export`
+// is parsed as an ES module statement and fails the build. Entry bodies are
+// sentences, so capitalising the first letter both reads correctly and makes
+// that parse impossible (the ESM keywords are lowercase only).
+function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
 function renderEntry(e: AntiPatternEntry): string {
-  const parts = [`### ${escFlow(e.name)}`, escFlow(e.description)]
+  const parts = [`### ${escFlow(e.name)}`, escFlow(capitalise(e.description))]
   if (e.detectorCodes.length) {
     parts.push(
       '**Detected by:** ' +
@@ -60,7 +68,7 @@ for (const [cat, { heading, items }] of byCat) {
   out.push(`# ${heading}`)
   out.push('')
   out.push(
-    '> **Generated** from `.claude/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.',
+    '> **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.',
   )
   out.push('')
   for (const e of items) {

@@ -5,7 +5,7 @@
  *
  * Why bundle: `get_pattern` / `get_anti_patterns` / `get_changelog` read
  * their data from monorepo files (`docs/src/content/docs/patterns/*.md`,
- * `.claude/rules/anti-patterns.md`, `packages/**​/CHANGELOG.md`). None of
+ * `.agents/rules/anti-patterns.md`, `packages/**​/CHANGELOG.md`). None of
  * those exist in a `bunx @pyreon/mcp` consumer install, so without a
  * bundled snapshot the tools returned empty. The loaders prefer the live
  * monorepo source when present (in-repo dev sees latest) and fall back to
@@ -64,7 +64,7 @@ function copyPatterns(root: string): number {
 }
 
 function copyAntiPatterns(root: string): boolean {
-  const src = join(root, '.claude', 'rules', 'anti-patterns.md')
+  const src = join(root, '.agents', 'rules', 'anti-patterns.md')
   if (!existsSync(src)) return false
   cpSync(src, join(CONTENT_DIR, 'anti-patterns.md'))
   return true

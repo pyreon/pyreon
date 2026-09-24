@@ -6,7 +6,7 @@
  * Those catch most regressions but miss the gates that have repeatedly
  * tripped freshly-pushed PRs:
  *
- *   - check-doc-claims      (CLAUDE.md doc page count drifted)
+ *   - check-doc-claims      (AGENTS.md doc page count drifted)
  *   - check-docs-content-drops (a docs page renders with text MISSING)
  *   - check-multiplatform-matrix (matrix headline drifted from its own table)
  *   - check-changeset-required (no changeset for published-pkg source change)

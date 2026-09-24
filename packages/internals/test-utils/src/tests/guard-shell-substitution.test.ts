@@ -3,8 +3,8 @@
  * message/body argument.
  *
  * Why this is worth a test rather than trusting the script: the mistake it
- * prevents is one the repo had ALREADY written down (CLAUDE.md: "backticks in
- * `-m` execute") and which recurred anyway, silently — the shell drops the
+ * prevents is one the repo had ALREADY written down (AGENTS.md "Git": backticks
+ * inside a double-quoted `-m` are command substitution) and which recurred anyway, silently — the shell drops the
  * text and the command still exits 0. A guard against a silent failure is
  * itself worthless if it silently stops matching.
  *

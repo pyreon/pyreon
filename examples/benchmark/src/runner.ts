@@ -137,7 +137,7 @@ export interface BenchOptions {
    *
    * Each impl uses the TIGHTEST commit that still passes DOM verification,
    * so the timed region isolates framework work and minimises scheduler
-   * latency (objectivity pass — see CLAUDE.md → "Benchmark Results"):
+   * latency (objectivity pass — see `BENCHMARKS.md`):
    * - **React, Svelte 5**: `flushSync()` — commits SYNCHRONOUSLY, zero
    *   scheduler wait, measures pure reconcile+commit CPU.
    * - **Vue**: `await nextTick()` — one microtask (Vue's real flush

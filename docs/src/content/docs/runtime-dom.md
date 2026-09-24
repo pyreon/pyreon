@@ -1375,7 +1375,7 @@ const userId = signal(1)
 
 When `userId.set(2)` fires, only the `useQuery`'s internal `setOptions` effect re-runs — the `<For>` effect itself does NOT re-run. Without this contract, `<For>` would re-run, dispose every inner setOptions effect, and silently lose reactivity on every item (the keyed-update path skips re-mount on unchanged keys).
 
-This is the documented contract; if you find a case where it doesn't hold, treat it as a framework bug. Reference fix: PR #505. Anti-pattern catalog entry: `.claude/rules/anti-patterns.md` → "Reactive-render entry points missing `runUntracked` around child mounts".
+This is the documented contract; if you find a case where it doesn't hold, treat it as a framework bug. Reference fix: PR #505. Anti-pattern catalog entry: `.agents/rules/anti-patterns.md` → "Reactive-render entry points missing `runUntracked` around child mounts".
 
 ## Real-World Examples
 
