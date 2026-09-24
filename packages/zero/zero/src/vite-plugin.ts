@@ -58,6 +58,7 @@ import {
 	warnIsrAuthRisk,
 	generateRouteModuleFromRoutes,
 	resolveAutoModeSync,
+	routesDeclareLoadersSync,
 	scanRouteFiles,
 	scanRouteFilesWithExports,
 } from "./fs-router";
@@ -738,6 +739,27 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 			// the SAME values so `publicEnv()` is hydration-consistent.
 			const publicEnvVars = loadPublicEnvVars(configEnv?.mode ?? 'production', cwd)
 
+			// Router loader flag (production builds only). `false` compiles the
+			// router's loader engine out of the bundle (~0.7 KB gz); `true` folds
+			// the router's own guard away. Defining it EITHER way is the point:
+			// left undefined, the guard stays as a runtime check. Dev never sets
+			// it, so adding a loader mid-session needs no restart. A value the
+			// user defined themselves always wins — it is the escape hatch for
+			// routes that live outside src/routes, which createApp checks for.
+			const userDefine = viteUserConfig.define ?? {}
+			const routerLoadersDefine: Record<string, string> =
+				configEnv?.command === "build" &&
+				!("globalThis.__PYREON_ROUTER_LOADERS__" in userDefine)
+					? {
+							"globalThis.__PYREON_ROUTER_LOADERS__": String(
+								routesDeclareLoadersSync(
+									`${isAbsolute(cwd) ? cwd : join(process.cwd(), cwd)}/src/routes`,
+									{ existsSync, readdirSync, readFileSync, statSync },
+								),
+							),
+						}
+					: {};
+
 			// Build-time gate: if the app declared `zero({ env })`, validate the
 			// PUBLIC env NOW — a missing/invalid declared var FAILS the build (warns
 			// in dev), catching "forgot to set ZERO_PUBLIC_X" before it ships to the
@@ -855,6 +877,7 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 					// Public env snapshot — inlined into client + SSR bundles so
 					// `publicEnv()` works in the browser. Only ZERO_PUBLIC_* vars.
 					__ZERO_PUBLIC_ENV__: JSON.stringify(publicEnvVars),
+					...routerLoadersDefine,
 				},
 			};
 		},
