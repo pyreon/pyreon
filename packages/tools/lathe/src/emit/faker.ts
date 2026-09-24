@@ -113,10 +113,18 @@ export function emitFaker(doc: IrDocument, typesFrom: 'schemas' | 'types'): Sour
         ? `\`${model.name}\` is recursive in the spec, so expansion stops at depth ${MAX_DEPTH}.`
         : undefined,
     )
+    const body = render(model.type, doc, 1, undefined, model.name)
+    // A builder that never recurses never reads `d`, and one whose model is
+    // not an object never spreads `o` (audit A16). Both are still PASSED so
+    // every builder shares one call shape, but an unread one is `_`-prefixed:
+    // `noUnusedParameters` is a common app setting, and it rejected every
+    // leaf builder in the file.
+    const dParam = /\(d [+>]/.test(body) ? 'd' : '_d'
+    const oParam = body.includes('...o') ? 'o' : '_o'
     f.line(
-      `function build${pascal(model.name)}(d: number, o: Partial<${model.name}> = {}): ${model.name} {`,
+      `function build${pascal(model.name)}(${dParam}: number, ${oParam}: Partial<${model.name}> = {}): ${model.name} {`,
     )
-    f.line(`  return ${render(model.type, doc, 1, undefined, model.name)}`)
+    f.line(`  return ${body}`)
     f.line('}')
   }
   return f
