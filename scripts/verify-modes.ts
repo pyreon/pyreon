@@ -39,6 +39,7 @@ import {
   assertRunsUnderWorkerd,
   invokeIsolated,
   loadRuntimeEol,
+  withNodeServer,
   netlifyOutputProblems,
   vercelOutputProblems,
 } from './zero-adapter-runtimes'
@@ -765,6 +766,41 @@ const MATRIX: Cell[] = [
       assertSomeFileInDirContains(join(dist, 'server'), 'ACTION_HANDLER_SENTINEL_z3k8')
       assertClientClean(join(dist, 'client'), {
         forbiddenSentinels: ['SERVER_ONLY_SENTINEL_q7x9', 'ACTION_HANDLER_SENTINEL_z3k8'],
+      })
+    },
+  },
+  {
+    // A1 — a SUBPATH deploy on the node adapter's real server. Every page of a
+    // `base` app used to 404 in production (the handler routed the prefixed
+    // path), its assets were served as HTML (static lookup ignored base),
+    // and the base-prefixed data endpoint skipped the target page's
+    // middleware. Boots `dist/index.js` and asserts all of it over HTTP.
+    example: 'ssr-showcase',
+    mode: 'ssr',
+    base: '/sub/',
+    smoke: async (dist) => {
+      await withNodeServer(dist, async (origin) => {
+        const get = (p: string, init?: RequestInit) => fetch(origin + p, { redirect: 'manual', ...init })
+        const about = await get('/sub/about')
+        const html = await about.text()
+        if (about.status !== 200 || !html.includes('about-page')) {
+          throw new Error(`/sub/about: expected the about page, got ${about.status}`)
+        }
+        if (!html.includes('href="/sub/about"')) throw new Error('/sub/about: links are not base-prefixed')
+        const script = /src="(\/sub\/assets\/[^"]+\.js)"/.exec(html)?.[1]
+        if (!script) throw new Error('/sub/about: no base-prefixed module script')
+        const asset = await get(script)
+        if (asset.status !== 200 || !String(asset.headers.get('content-type')).includes('javascript')) {
+          throw new Error(`${script}: expected JavaScript, got ${asset.status} ${asset.headers.get('content-type')}`)
+        }
+        const api = await get('/sub/api/posts')
+        if (api.status !== 200 || !String(api.headers.get('content-type')).includes('application/json')) {
+          throw new Error(`/sub/api/posts: expected JSON, got ${api.status}`)
+        }
+        const guarded = await get('/sub/_pyreon/data?path=/guarded')
+        if (guarded.status !== 401) throw new Error(`/sub/_pyreon/data?path=/guarded: expected 401, got ${guarded.status}`)
+        const missing = await get('/sub/definitely-not-a-route')
+        if (missing.status !== 404) throw new Error(`unknown route under base: expected 404, got ${missing.status}`)
       })
     },
   },
@@ -1999,7 +2035,8 @@ const VERIFY_CONFIG_NAME = 'vite.config.verify.ts'
 
 function cellId(c: Cell): string {
   const adapter = c.adapter && c.adapter !== 'node' ? ` (${c.adapter})` : ''
-  return `${c.example} × ${c.mode}${adapter}`
+  const base = c.base && c.base !== '/' ? ` base=${c.base}` : ''
+  return `${c.example} × ${c.mode}${adapter}${base}`
 }
 
 function configSourceFor(cell: Cell): string {

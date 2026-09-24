@@ -38,12 +38,12 @@ export function bunAdapter(): Adapter {
       const port = options.config.port ?? 3000
       // The hashed-asset URL prefix (`/<assetsDir>/`, default `/assets/`) baked
       // into the emitted handler so a custom `build.assetsDir` still gets
-      // immutable cache. NOTE: `base` is deliberately NOT included — this
-      // self-hosted handler serves files by raw `url.pathname` (no base-strip),
-      // so a subpath deploy isn't supported here regardless; threading base into
-      // only the cache check would imply support that doesn't exist. (The CDN
-      // adapters DO scope their rules to `<base><assetsDir>`.)
+      // immutable cache. Static lookups use the BASE-STRIPPED path (Vite emits
+      // `<base>assets/…`; the client dir holds `assets/…`), same as node.
       const assetPrefix = `/${options.assetsDir ?? 'assets'}/`
+      let basePrefix = options.config.base && options.config.base !== '/' ? options.config.base : ''
+      if (basePrefix && !basePrefix.startsWith('/')) basePrefix = `/${basePrefix}`
+      while (basePrefix.endsWith('/')) basePrefix = basePrefix.slice(0, -1)
       const serverEntry = `
 import { normalize } from "node:path"
 
@@ -87,10 +87,20 @@ Bun.serve({
     // static file) with a 500 before the SSR handler ran.
     // \`node:path.normalize\` is pure-string path arithmetic and
     // doesn't touch the filesystem — safe for arbitrary input.
-    if (req.method === "GET") {
+    // \`base\` removed before any static lookup; a path outside it is never
+    // a static file. Routing gets the full URL (the handler strips base).
+    const BASE = ${JSON.stringify(basePrefix)}
+    const staticPathname = !BASE
+      ? url.pathname
+      : url.pathname === BASE
+        ? "/"
+        : url.pathname.startsWith(BASE + "/")
+          ? url.pathname.slice(BASE.length)
+          : null
+    if (req.method === "GET" && staticPathname !== null) {
       let decoded
       try {
-        decoded = decodeURIComponent(url.pathname)
+        decoded = decodeURIComponent(staticPathname)
       } catch {
         // Malformed %-encoding → reject (don't fall through to SSR
         // with a corrupt URL).

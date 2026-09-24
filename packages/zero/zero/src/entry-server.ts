@@ -108,6 +108,14 @@ function trimTrailingSlashes(value: string): string {
 	return value.slice(0, end);
 }
 
+/** `pathname` with `config.base` removed when it is under it (else unchanged). */
+export function stripBase(pathname: string, config: ZeroConfig): string {
+	const base = config.base && config.base !== "/" ? trimTrailingSlashes(config.base) : "";
+	if (!base) return pathname;
+	if (pathname === base) return "/";
+	return pathname.startsWith(`${base}/`) ? pathname.slice(base.length) : pathname;
+}
+
 /**
  * The path a request's route middleware must be matched against.
  *
@@ -121,17 +129,15 @@ function trimTrailingSlashes(value: string): string {
  *   neither (`/app/de/admin` is the `/admin` route).
  */
 export function routingPathname(url: URL, config: ZeroConfig): string {
-	let pathname = url.pathname;
+	// Base first: under `base: '/app/'` the data endpoint is `/app/_pyreon/data`,
+	// and checking for it BEFORE the strip missed it — so the target page's
+	// middleware never ran for a subpath deploy's client navigations.
+	let pathname = stripBase(url.pathname, config);
 	if (pathname === DATA_ENDPOINT) {
 		const target = url.searchParams.get("path");
 		if (target && target.startsWith("/")) {
-			pathname = new URL(target, "http://pyreon.invalid").pathname;
+			pathname = stripBase(new URL(target, "http://pyreon.invalid").pathname, config);
 		}
-	}
-	const base = config.base && config.base !== "/" ? trimTrailingSlashes(config.base) : "";
-	if (base) {
-		if (pathname === base) pathname = "/";
-		else if (pathname.startsWith(`${base}/`)) pathname = pathname.slice(base.length);
 	}
 	const locales = config.i18n?.locales;
 	if (locales?.length) {
@@ -273,6 +279,21 @@ export function createServer(options: CreateServerOptions) {
 		);
 	}
 
+	// Framework endpoints and API routes match base-less paths. Under `base`
+	// the browser calls `<base>/_pyreon/data` and `<base>/api/…`; present
+	// them base-stripped (an unprefixed request is left as is — a proxy may
+	// already have removed the prefix). The Request itself is untouched.
+	if (config.base && config.base !== "/") {
+		allMiddleware.push((ctx) => {
+			const stripped = stripBase(ctx.url.pathname, config);
+			if (stripped !== ctx.url.pathname) {
+				const next = new URL(ctx.url.href);
+				next.pathname = stripped;
+				ctx.url = next;
+			}
+		});
+	}
+
 	if (options.apiRoutes?.length) {
 		allMiddleware.push(createApiMiddleware(options.apiRoutes));
 	}
@@ -308,10 +329,14 @@ export function createServer(options: CreateServerOptions) {
 	// opting in and replayed as `text/html` — a JSON API that echoes input
 	// became stored XSS.
 	const apiPatterns = (options.apiRoutes ?? []).map((r) => r.pattern);
-	const isEndpoint = (pathname: string): boolean =>
-		pathname.startsWith("/_pyreon/") ||
-		pathname.startsWith("/_zero/") ||
-		apiPatterns.some((p) => matchApiRoute(p, pathname) !== null);
+	const isEndpoint = (rawPathname: string): boolean => {
+		const pathname = stripBase(rawPathname, config);
+		return (
+			pathname.startsWith("/_pyreon/") ||
+			pathname.startsWith("/_zero/") ||
+			apiPatterns.some((p) => matchApiRoute(p, pathname) !== null)
+		);
+	};
 
 	const { App } = createApp({
 		routes: options.routes,
@@ -370,6 +395,10 @@ export function createServer(options: CreateServerOptions) {
 		mode: config.ssr?.mode ?? (config.mode === "ssr" ? "stream" : "string"),
 		...(resolvedTemplate ? { template: resolvedTemplate } : {}),
 		...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
+		// Route `<base>/about` as `/about`. The App's router already had the
+		// base, but the handler built its own per-request router without it,
+		// so every page of a subpath deploy was a 404 in production.
+		...(config.base && config.base !== "/" ? { base: config.base } : {}),
 	});
 
 	// PR-S5: wire the render mode. `mode: 'isr'` was a typed-but-not-

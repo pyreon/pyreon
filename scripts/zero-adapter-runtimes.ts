@@ -310,3 +310,42 @@ export async function assertRunsUnderWorkerd(distDir: string): Promise<void> {
     rmSync(proj, { recursive: true, force: true })
   }
 }
+
+// ─── The node adapter's own server ─────────────────────────────────────────
+
+/**
+ * Boots the node adapter's emitted `dist/index.js` on a free port (`PORT` is
+ * honoured at runtime) and runs `fn` against it. Collects the server's stderr
+ * so a check can assert what production LOGS.
+ */
+export async function withNodeServer(
+  distDir: string,
+  fn: (origin: string, stderr: () => string) => Promise<void>,
+): Promise<void> {
+  const entry = join(distDir, 'index.js')
+  if (!existsSync(entry)) throw new Error(`[node-server] ${entry} does not exist`)
+  const port = await freePort()
+  const child = spawn('node', [entry], {
+    env: { ...process.env, PORT: String(port), NODE_ENV: 'production' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  let err = ''
+  child.stderr?.on('data', (d) => (err += String(d)))
+  const origin = `http://127.0.0.1:${port}`
+  try {
+    const deadline = Date.now() + 30_000
+    for (;;) {
+      if (child.exitCode !== null) throw new Error(`[node-server] exited early:\n${err}`)
+      try {
+        await fetch(origin)
+        break
+      } catch {
+        if (Date.now() > deadline) throw new Error(`[node-server] never became ready:\n${err}`)
+        await new Promise((r) => setTimeout(r, 200))
+      }
+    }
+    await fn(origin, () => err)
+  } finally {
+    child.kill('SIGTERM')
+  }
+}

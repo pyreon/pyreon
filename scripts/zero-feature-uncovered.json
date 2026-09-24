@@ -15,7 +15,6 @@
     "Composing them — `@pyreon/zero/middleware`": "no built app composes the shipped middlewares (rate limit, CORS, security headers)",
     "CSP Nonce": "no built-server test asserts the nonce reaches inline scripts",
     "Using a backend proxy in dev": "integration test runs a dev server in vitest, not an e2e spec",
-    "Server Actions": "no example, e2e spec or verify-modes cell uses defineAction (audit WP5)",
     "Image Processing": "no cell asserts the image plugin's generated variants",
     "Favicons": "no cell asserts generated favicon files",
     "Social-Share Images (og:image)": "no cell asserts generated og:image files",

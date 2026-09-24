@@ -160,6 +160,11 @@ export const ZERO_FEATURE_COVERAGE: Record<string, Coverage> = {
     spec: 'e2e/ssr-node.spec.ts',
     evidence: 'route middleware gates the page',
   },
+  'Server Actions': {
+    kind: 'e2e',
+    spec: 'e2e/production-truth.shared.ts',
+    evidence: 'app middleware 401s a server-action POST before the handler runs',
+  },
   'API Routes': {
     kind: 'e2e',
     spec: 'e2e/ssr-node.spec.ts',
