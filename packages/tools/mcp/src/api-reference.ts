@@ -8440,9 +8440,8 @@ export default function NewPost() {
   <input name="title" required />
   <button type="submit">Create</button>
 </Form>`,
-    notes: `A \`<form method="post">\` bound to a server action (\`@pyreon/zero/actions\`). Renders \`action="?_action=<id>"\` — a query-only URL, so the POST targets the current page with base path and locale prefix intact, identically on server and client. With JavaScript it intercepts submit, sends the same request via \`fetch\`, updates \`useSubmission(action)\`, then on success re-runs the current route's loaders (\`revalidate\`, default \`true\`; \`false\` opts out; an array of loaderKey values invalidates only those) and resets its fields (\`resetOnSuccess\`). A \`redirect()\` navigates client-side. See also: defineAction, useSubmission.`,
-    mistakes: `- Relying on the page query string inside the action or its re-render — the query-only action URL replaces it
-- Forgetting \`enctype="multipart/form-data"\` for file inputs — attributes pass through to the <form>`,
+    notes: `A \`<form method="post">\` bound to a server action (\`@pyreon/zero/actions\`). Renders \`action="?<page query>&_action=<id>"\` — a query-only URL, so the POST targets the current page with base path, locale prefix and query intact, identically on server and client. With JavaScript it intercepts submit, sends the same request via \`fetch\`, updates \`useSubmission(action)\`, then on success re-runs the current route's loaders (\`revalidate\`, default \`true\`; \`false\` opts out; an array of loaderKey values invalidates only those) and resets its fields (\`resetOnSuccess\`). A \`redirect()\` navigates client-side. See also: defineAction, useSubmission.`,
+    mistakes: '- Forgetting `enctype="multipart/form-data"` for file inputs — attributes pass through to the <form>',
   },
 
   'zero/useSubmission': {

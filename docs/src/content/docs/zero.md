@@ -1060,7 +1060,9 @@ A `defineAction` result is also a plain async function: `await createPost({ titl
 
 A route whose `action` export is not a `defineAction()` result answers `500` and logs how to fix it, since only `defineAction` keeps the handler out of the client bundle.
 
-**Limitations.** The query-only action URL replaces the page's own query string for the POST and its re-render, so loaders reading the query do not see it. `vite dev` does not run actions yet (neither the JSON endpoint nor page form posts); build and run the server to try them.
+The form's action keeps the page's own query (`?page=2&_action=…`), so loaders see it on the POST and its re-render. App and route middleware run once per submission: the re-render reuses their `locals` and response headers instead of running them again.
+
+**Limitations.** `vite dev` does not run actions yet (neither the JSON endpoint nor page form posts); build and run the server to try them.
 
 ## SEO
 

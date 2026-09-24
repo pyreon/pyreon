@@ -19,9 +19,8 @@
  *    loaders re-run in place (`router.revalidate()`), or a `redirect()`
  *    navigates client-side.
  *
- * Caveat: the query-only action URL REPLACES the page's own query string
- * for the POST and the re-render (`/posts?page=2` posts to
- * `/posts?_action=…`). Loaders that read the query see it without it.
+ * The action URL keeps the page's own query (`/posts?page=2` posts to
+ * `/posts?page=2&_action=…`), so loaders see it on the POST and re-render.
  */
 import type { Props, VNodeChild } from '@pyreon/core'
 import { splitProps } from '@pyreon/core'

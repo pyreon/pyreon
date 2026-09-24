@@ -376,6 +376,36 @@ test.describe('server functions (<Form> + route action)', () => {
     expect(errors).toEqual([])
   })
 
+  test('a document POST re-render hydrates with the result kept (then enhances)', async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+    page.on('console', (m) => {
+      if (m.type() === 'error' || /mismatch/i.test(m.text())) errors.push(m.text())
+    })
+    await page.goto('/form-actions?tab=guests')
+    await page.waitForLoadState('networkidle')
+    await page.getByTestId('name-input').fill('hydrate-cy')
+    // form.submit() skips the submit event → a real document POST, exactly
+    // what a browser does before (or without) the enhancement.
+    await Promise.all([
+      page.waitForNavigation(),
+      page.evaluate(() => {
+        const f = document.querySelector('[data-testid="guestbook-form"]') as HTMLFormElement
+        HTMLFormElement.prototype.submit.call(f)
+      }),
+    ])
+    await page.waitForLoadState('networkidle')
+    // The page query survived the post.
+    expect(new URL(page.url()).search).toContain('tab=guests')
+    // Server-rendered result survives hydration (read back from the page's state).
+    await expect(page.getByTestId('result')).toHaveText('added: hydrate-cy')
+    // And the hydrated form is live: an enhanced submission updates in place.
+    await page.getByTestId('name-input').fill('hydrate-dee')
+    await page.getByTestId('submit').click()
+    await expect(page.getByTestId('result')).toHaveText('added: hydrate-dee')
+    expect(errors).toEqual([])
+  })
+
   test('with JavaScript: a redirect() navigates client-side', async ({ page }) => {
     await page.goto('/form-actions')
     await page.waitForLoadState('networkidle')
