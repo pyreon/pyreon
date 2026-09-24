@@ -43,7 +43,19 @@ export function loadOpenApi(source: string): LoadResult {
 
 function convert(spec: Json): IrDocument {
   const notes: IrNote[] = []
-  const ctx: Ctx = { spec, notes, modelNames: new Map(), resolving: new Set() }
+  const ctx: Ctx = {
+    spec,
+    notes,
+    modelNames: new Map(),
+    modelKeys: new Map(),
+    modelTypes: new Map(),
+    converting: new Set(),
+    refStack: [],
+    hoisted: new Map(),
+    reentered: new Set(),
+    extraModels: [],
+    taken: new Set(),
+  }
 
   const info = obj(spec.info) ?? {}
   const servers = arr(spec.servers)
@@ -63,7 +75,10 @@ function convert(spec: Json): IrDocument {
   const schemas = obj(obj(spec.components)?.schemas) ?? {}
   const uniq = uniquifier()
   for (const key of Object.keys(schemas).sort()) {
-    ctx.modelNames.set(key, uniq(typeIdent(key)))
+    const name = uniq(typeIdent(key))
+    ctx.modelNames.set(key, name)
+    ctx.modelKeys.set(name, key)
+    ctx.taken.add(name)
   }
   const models: IrModel[] = []
   for (const key of Object.keys(schemas).sort()) {
@@ -71,12 +86,16 @@ function convert(spec: Json): IrDocument {
     if (!schema) continue
     models.push({
       name: ctx.modelNames.get(key) as string,
-      type: toType(schema, `#/components/schemas/${key}`, ctx),
+      type: modelType(key, ctx) ?? { kind: 'unknown', reason: 'cyclic model' },
       doc: str(schema.description) ?? str(schema.title),
     })
   }
 
   const operations = collectOperations(spec, ctx)
+  // Schemas reached through a non-component pointer that turned out to be
+  // RECURSIVE were hoisted into named models while converting; they join the
+  // document here, after every conversion that could add one.
+  models.push(...ctx.extraModels)
 
   // Post-pass: two union shapes a real spec produces that the emitted schema
   // DSL cannot express. Runs here, after models exist, because deciding either
@@ -213,8 +232,58 @@ interface Ctx {
   notes: IrNote[]
   /** Spec schema key -> generated model name. */
   modelNames: Map<string, string>
-  /** Guards `$ref` cycles while resolving inline. */
-  resolving: Set<string>
+  /** Generated model name -> spec schema key (the reverse of `modelNames`). */
+  modelKeys: Map<string, string>
+  /** Component models converted so far, memoized by spec key. */
+  modelTypes: Map<string, IrType>
+  /** Component models being converted right now -- an `allOf` cycle guard. */
+  converting: Set<string>
+  /**
+   * `$ref` pointers being resolved right now, innermost last. `pure` marks a
+   * frame whose target is itself only a `$ref`: a cycle made ENTIRELY of those
+   * (`X -> Y -> X`) describes no structure at all.
+   */
+  refStack: { ref: string; pure: boolean }[]
+  /** Non-component pointers hoisted into a named model (recursive ones). */
+  hoisted: Map<string, string>
+  /** Pointers re-entered during their own resolution (i.e. recursive). */
+  reentered: Set<string>
+  /** Models synthesized for recursive non-component pointers. */
+  extraModels: IrModel[]
+  /** Every model name in use, so a synthesized one never collides. */
+  taken: Set<string>
+}
+
+/**
+ * The IR type of a component model, converted ONCE and memoized.
+ *
+ * `allOf: [{ $ref: Base }]` needs Base's FIELDS, not a reference to it, so the
+ * merge used to re-convert Base on every use -- duplicating every note Base
+ * produced, and recursing forever on an `allOf` cycle (`A: allOf [A]`, or
+ * `A -> B -> A`), which a real spec can reach by accident. Returns
+ * `undefined` for a model that is still being converted: the caller is inside
+ * a cycle and decides what that means for it.
+ */
+function modelType(key: string, ctx: Ctx): IrType | undefined {
+  const done = ctx.modelTypes.get(key)
+  if (done) return done
+  if (ctx.converting.has(key)) return undefined
+  const schema = obj(obj(obj(ctx.spec.components)?.schemas)?.[key])
+  if (!schema) return undefined
+  ctx.converting.add(key)
+  const t = toType(schema, `#/components/schemas/${key}`, ctx)
+  ctx.converting.delete(key)
+  ctx.modelTypes.set(key, t)
+  return t
+}
+
+/** A model name derived from `base` that is not yet in use. */
+function claimName(base: string, ctx: Ctx): string {
+  const root = typeIdent(base)
+  let name = root
+  for (let n = 2; ctx.taken.has(name); n++) name = `${root}${n}`
+  ctx.taken.add(name)
+  return name
 }
 
 function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
@@ -354,7 +423,7 @@ function deref(node: unknown, at: string, ctx: Ctx): unknown {
   }
   let cur: unknown = ctx.spec
   for (const seg of ref.slice(2).split('/')) {
-    const key = seg.replace(/~1/g, '/').replace(/~0/g, '~')
+    const key = decodePointerSegment(seg)
     cur = obj(cur)?.[key]
     if (cur === undefined) {
       ctx.notes.push({ code: 'unsupported-ref', at, message: `$ref \`${ref}\` does not resolve.` })
@@ -393,14 +462,7 @@ function nullable(inner: IrType): IrType {
 
 function toTypeNonNull(schema: Json, at: string, ctx: Ctx): IrType {
   const ref = str(schema.$ref)
-  if (ref) {
-    const key = ref.startsWith('#/components/schemas/') ? ref.slice('#/components/schemas/'.length) : undefined
-    const name = key ? ctx.modelNames.get(key) : undefined
-    if (name) return { kind: 'ref', name }
-    const resolved = deref(schema, at, ctx)
-    const ro = obj(resolved)
-    return ro ? toType(ro, at, ctx) : { kind: 'unknown', reason: `unresolved $ref ${ref}` }
-  }
+  if (ref) return refType(ref, schema, at, ctx)
 
   // allOf: merge object members. This is how specs express inheritance, and
   // flattening is the only representation the targets have.
@@ -499,6 +561,61 @@ function toTypeNonNull(schema: Json, at: string, ctx: Ctx): IrType {
     default:
       return unsupported(at, ctx, `unsupported type \`${String(t)}\``)
   }
+}
+
+/**
+ * A `$ref`: a component model by name, anything else inlined -- and, when
+ * inlining finds the pointer RECURSIVE, hoisted into a named model.
+ *
+ * Only `#/components/schemas/*` refs became models, so a recursive schema
+ * anywhere else (`#/$defs/Node`, a pointer into a property) was inlined
+ * forever: Bun's proper tail calls turned the recursion into a silent hang, and
+ * V8 overflowed the stack. `lathe check` in CI hung with it. A recursive
+ * pointer now closes through `kind: 'ref'` exactly like a component model, so
+ * the emitters' existing cycle handling (`lazy`) applies. A cycle made only of
+ * refs (`X: $ref Y`, `Y: $ref X`) describes no value at all; that is reported
+ * as `cyclic-ref` and typed `unknown`.
+ */
+function refType(ref: string, schema: Json, at: string, ctx: Ctx): IrType {
+  const key = ref.startsWith('#/components/schemas/') ? ref.slice('#/components/schemas/'.length) : undefined
+  const name = key !== undefined ? ctx.modelNames.get(decodePointerSegment(key)) : undefined
+  if (name) return { kind: 'ref', name }
+  const hoisted = ctx.hoisted.get(ref)
+  if (hoisted) return { kind: 'ref', name: hoisted }
+
+  const open = ctx.refStack.findIndex((f) => f.ref === ref)
+  if (open !== -1) {
+    // Re-entered while resolving itself. Every frame from there to here being
+    // a bare `$ref` means the cycle never passes through a schema.
+    if (ctx.refStack.slice(open).every((f) => f.pure)) {
+      ctx.notes.push({
+        code: 'cyclic-ref',
+        at,
+        message: `\`$ref\` \`${ref}\` resolves back to itself through references alone, so it describes no value — typed as unknown.`,
+      })
+      return { kind: 'unknown', reason: `cyclic $ref ${ref}` }
+    }
+    ctx.reentered.add(ref)
+    let synthetic = ctx.hoisted.get(ref)
+    if (!synthetic) {
+      synthetic = claimName(ref.split('/').pop() || 'Schema', ctx)
+      ctx.hoisted.set(ref, synthetic)
+    }
+    return { kind: 'ref', name: synthetic }
+  }
+
+  const target = obj(deref(schema, at, ctx))
+  if (!target) return { kind: 'unknown', reason: `unresolved $ref ${ref}` }
+  ctx.refStack.push({ ref, pure: typeof target.$ref === 'string' && Object.keys(target).length === 1 })
+  const t = toType(target, at, ctx)
+  ctx.refStack.pop()
+  const synthetic = ctx.hoisted.get(ref)
+  if (synthetic && ctx.reentered.has(ref)) {
+    ctx.extraModels.push({ name: synthetic, type: t, doc: str(target.description) ?? str(target.title) })
+    ctx.reentered.delete(ref)
+    return { kind: 'ref', name: synthetic }
+  }
+  return t
 }
 
 /** The type a schema with no `type` keyword implies by its other keywords. */
@@ -607,9 +724,21 @@ function mergeAllOf(parts: unknown[], self: Json, at: string, ctx: Ctx): IrType 
     if (t.kind === 'ref') {
       // Resolve the referenced model so its fields flatten in. `allOf` with a
       // $ref is the standard inheritance idiom and must not degrade to unknown.
-      const key = [...ctx.modelNames.entries()].find(([, v]) => v === t.name)?.[0]
-      const target = key ? obj(obj(obj(ctx.spec.components)?.schemas)?.[key]) : undefined
-      if (target) { push(toType(target, at, ctx)); return }
+      const key = ctx.modelKeys.get(t.name)
+      if (key !== undefined) {
+        const target = modelType(key, ctx)
+        if (target) { push(target); return }
+        // Still being converted: an allOf CYCLE. A schema that is "all of
+        // itself and X" is just X, so the cyclic part contributes nothing.
+        ctx.notes.push({
+          code: 'cyclic-ref',
+          at,
+          message: `allOf reaches \`${t.name}\` again while merging it — the cyclic part contributes no fields.`,
+        })
+        return
+      }
+      const hoisted = ctx.extraModels.find((m) => m.name === t.name)
+      if (hoisted) { push(hoisted.type); return }
     }
     sawNonObject = true
   }
@@ -622,6 +751,20 @@ function mergeAllOf(parts: unknown[], self: Json, at: string, ctx: Ctx): IrType 
     return { kind: 'unknown', reason: 'allOf of non-objects' }
   }
   return { kind: 'object', fields, additional: undefined }
+}
+
+/**
+ * One JSON-pointer segment, as it appears in a URI fragment: percent-decoded
+ * first (RFC 6901 §6), then `~1` -> `/` and `~0` -> `~` (§4, in that order).
+ */
+function decodePointerSegment(seg: string): string {
+  let s = seg
+  try {
+    s = decodeURIComponent(seg)
+  } catch {
+    // A lone `%` is not an escape; the segment is taken literally.
+  }
+  return s.replace(/~1/g, '/').replace(/~0/g, '~')
 }
 
 function stripTrailingSlash(url: string): string {
