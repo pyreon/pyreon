@@ -18,19 +18,26 @@ export function analyzeGraph(model: WorkspaceModel): GraphAnalysis {
   for (const p of model.packages) runtimeDeps.set(p.name, [])
 
   for (const p of model.packages) {
+    // One edge per (from, to, class). A package routinely declares the same
+    // internal dep in BOTH `dependencies` and `peerDependencies` (a plugin that
+    // needs its host at build and at install); counting that twice doubled the
+    // dependents index, the blast radius, and the rendered graph's edge.
+    const seenRuntime = new Set<string>()
+    const seenDev = new Set<string>()
     for (const d of p.deps) {
       if (!internal.has(d.name) || d.name === p.name) continue
       if (d.field === 'devDependencies') {
+        if (seenDev.has(d.name)) continue
+        seenDev.add(d.name)
         devEdges.push([p.name, d.name])
-      } else if (d.field === 'optionalDependencies') {
-        // optional internal deps are runtime when present — in a workspace
-        // they are always present, so they count as runtime edges.
-        edges.push([p.name, d.name])
-        runtimeDeps.get(p.name)!.push(d.name)
-      } else {
-        edges.push([p.name, d.name])
-        runtimeDeps.get(p.name)!.push(d.name)
+        continue
       }
+      if (seenRuntime.has(d.name)) continue
+      seenRuntime.add(d.name)
+      // dependencies / peerDependencies / optionalDependencies are all runtime
+      // edges — an optional internal dep is always present in a workspace.
+      edges.push([p.name, d.name])
+      runtimeDeps.get(p.name)!.push(d.name)
     }
   }
 

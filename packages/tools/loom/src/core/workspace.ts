@@ -13,6 +13,7 @@
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
+import { matchesPathGlob } from './imports'
 import type { DeclaredDep, DepField, WorkspaceModel, WorkspacePackage, WorkspaceRoot } from './types'
 
 const DEP_FIELDS: DepField[] = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
@@ -32,12 +33,67 @@ interface RawManifest {
   optionalDependencies?: Record<string, string>
 }
 
+/**
+ * Read a manifest. `null` means the file does not EXIST — and only that.
+ *
+ * A file that exists but does not parse is an error, not an absence. Treating
+ * the two alike silently dropped a malformed member from the workspace (so
+ * every sibling depending on it saw an EXTERNAL package, and the graph lost
+ * its edges) and reported a malformed ROOT as "no package.json", sending the
+ * reader to look for a file that was right there.
+ */
 function readJson(path: string): RawManifest | null {
+  let raw: string
   try {
-    return JSON.parse(readFileSync(path, 'utf8')) as RawManifest
-  } catch {
-    return null
+    raw = readFileSync(path, 'utf8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw err
   }
+  try {
+    return JSON.parse(raw) as RawManifest
+  } catch (err) {
+    throw new Error(`[Pyreon] loom: ${path} is not valid JSON: ${(err as Error).message}`)
+  }
+}
+
+/**
+ * The `packages:` list from a pnpm-workspace.yaml — and nothing else.
+ *
+ * Not a YAML parser: it reads the one key, in block form (`- 'glob'` lines
+ * under it) or flow form (`packages: ['a', 'b']`). Scoping to the key is the
+ * point — the same file carries other lists (`onlyBuiltDependencies`,
+ * `catalog` entries), and reading every `- item` line anywhere turned each of
+ * those into a workspace glob.
+ */
+export function parsePnpmWorkspacePackages(yaml: string): string[] {
+  const out: string[] = []
+  const unquote = (v: string): string => v.trim().replace(/^['"]|['"]$/g, '')
+  let inPackages = false
+  for (const rawLine of yaml.split('\n')) {
+    const line = rawLine.replace(/\s+#.*$/, '').replace(/^#.*$/, '')
+    if (line.trim() === '') continue
+    const top = /^([A-Za-z0-9_-]+)\s*:(.*)$/.exec(line)
+    if (top) {
+      inPackages = top[1] === 'packages'
+      const rest = top[2]!.trim()
+      if (inPackages && rest.startsWith('[')) {
+        for (const item of rest.replace(/^\[|\]$/g, '').split(',')) {
+          const v = unquote(item)
+          if (v) out.push(v)
+        }
+        inPackages = false
+      }
+      continue
+    }
+    if (!inPackages) continue
+    const m = /^\s*-\s*(.+?)\s*$/.exec(line)
+    if (m?.[1]) {
+      const v = unquote(m[1])
+      if (v) out.push(v)
+    }
+  }
+  return out
 }
 
 /** Root workspace globs from package.json (+ pnpm-workspace.yaml when present). */
@@ -53,10 +109,7 @@ export function readWorkspaceGlobs(rootDir: string): string[] {
   // general YAML.
   try {
     const yaml = readFileSync(join(rootDir, 'pnpm-workspace.yaml'), 'utf8')
-    for (const line of yaml.split('\n')) {
-      const m = /^\s*-\s*['"]?([^'"#\s]+)['"]?\s*$/.exec(line)
-      if (m?.[1]) globs.push(m[1])
-    }
+    globs.push(...parsePnpmWorkspacePackages(yaml))
   } catch {
     // no pnpm workspace file — the common case
   }
@@ -144,14 +197,18 @@ export function scanWorkspace(rootDir: string): WorkspaceModel {
 
   const globs = readWorkspaceGlobs(rootDir)
   const include = globs.filter((g) => !g.startsWith('!'))
-  const exclude = new Set(globs.filter((g) => g.startsWith('!')).map((g) => g.slice(1).replace(/\/$/, '')))
+  // A negation is a GLOB like any other (`!packages/*/fixtures`), not a literal
+  // path — matched with the same segment-wise matcher the rest of loom uses.
+  const exclude = globs
+    .filter((g) => g.startsWith('!'))
+    .map((g) => g.slice(1).replace(/^\.\//, '').replace(/\/$/, ''))
 
   const dirs = new Set<string>()
   for (const glob of include) {
     for (const dir of expandGlob(rootDir, glob)) {
       // Normalize to forward slashes so the model is OS-stable.
       const norm = dir.split(sep).join('/')
-      if (!exclude.has(norm)) dirs.add(norm)
+      if (!exclude.some((g) => matchesPathGlob(norm, g))) dirs.add(norm)
     }
   }
 
