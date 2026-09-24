@@ -194,6 +194,23 @@ describe('a model is emitted as an interface when it can be', () => {
     expect(out).not.toContain('export interface Status')
   })
 
+  it('uses `type` for a UNION whose first member is an inline object', () => {
+    // Rendered, this starts with `{` -- the old keyword test, which produced
+    // `export interface Shape { … } | { … }`, a parse error.
+    const out = emitModels([{
+      name: 'Shape',
+      type: {
+        kind: 'union',
+        options: [
+          { kind: 'object', fields: [{ name: 'r', type: { kind: 'number' }, required: true, nullable: false }] },
+          { kind: 'object', fields: [{ name: 'w', type: { kind: 'number' }, required: true, nullable: false }] },
+        ],
+      },
+    } as never])
+    expect(out).toContain('export type Shape = {')
+    expect(out).not.toContain('export interface Shape')
+  })
+
   it('renders a dictionary model as a Record alias', () => {
     // `{}` in TypeScript accepts almost anything — the opposite of what
     // an author reads it as.

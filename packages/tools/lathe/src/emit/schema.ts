@@ -331,11 +331,24 @@ export function emitTypes(doc: IrDocument): SourceFile {
   for (const model of order.map((n) => byName.get(n)).filter((m) => m !== undefined)) {
     f.line()
     f.doc(model.doc)
-    const rendered = tsType(model.type)
-    const keyword = rendered.startsWith('{') ? 'interface' : 'type'
-    f.line(keyword === 'interface' ? `export interface ${model.name} ${rendered}` : `export type ${model.name} = ${rendered}`)
+    f.line(typeDeclaration(model.name, model.type))
   }
   return f
+}
+
+/**
+ * `export interface X {…}` or `export type X = …`, decided from the IR KIND.
+ *
+ * An interface is only valid for a single object type literal. This used to
+ * test whether the RENDERED text started with `{`, which a union whose first
+ * member is an inline object also does -- `export interface X { … } | { … }`
+ * is a parse error, and GitHub's `types.ts` carried 3,997 errors from it.
+ */
+export function typeDeclaration(name: string, type: IrType, widenEnums = false): string {
+  const rendered = tsType(type, 0, widenEnums)
+  return type.kind === 'object' && type.fields.length > 0
+    ? `export interface ${name} ${rendered}`
+    : `export type ${name} = ${rendered}`
 }
 
 /** Specifier another generated file uses to import the schema module. */
