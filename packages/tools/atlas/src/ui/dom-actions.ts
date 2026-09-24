@@ -80,6 +80,10 @@ export function captureDomActions(
   log: (name: string, detail: string) => void,
 ): () => void {
   const handler = (e: Event) => log(LABEL[e.type] ?? e.type, describeEvent(e, root))
+  // Not `useEventListener`: this is called from a `ref` (outside component
+  // setup, where no unmount hook exists) and returns its own disposer, which
+  // the ref's detach calls.
+  // pyreon-lint-disable-next-line pyreon/no-raw-addeventlistener
   for (const type of DOM_ACTION_EVENTS) root.addEventListener(type, handler, true)
   return () => {
     for (const type of DOM_ACTION_EVENTS) root.removeEventListener(type, handler, true)

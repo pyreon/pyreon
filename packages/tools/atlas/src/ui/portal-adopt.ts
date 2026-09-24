@@ -28,6 +28,8 @@
  * frame), and the one body observer lives only while a host is registered.
  */
 
+import { isServer } from '@pyreon/reactivity'
+
 const hosts: HTMLElement[] = []
 let observer: MutationObserver | null = null
 
@@ -83,8 +85,8 @@ export function adoptInto(host: HTMLElement, body: HTMLElement): number {
 
 function sweep(): void {
   const host = hosts[hosts.length - 1]
-  if (!host || !host.isConnected || typeof document === 'undefined') return
-  adoptInto(host, document.body)
+  if (!host || !host.isConnected) return
+  adoptInto(host, host.ownerDocument.body)
 }
 
 /**
@@ -92,7 +94,7 @@ function sweep(): void {
  * A no-op outside a browser.
  */
 export function adoptBodyPortals(host: HTMLElement): () => void {
-  if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return () => {}
+  if (isServer || typeof MutationObserver === 'undefined') return () => {}
   hosts.push(host)
   if (!observer) {
     observer = new MutationObserver(sweep)
